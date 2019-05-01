@@ -504,7 +504,8 @@
 		#nav > ul > li {
 			border-radius: 10px 10px 0 0;
 			display: inline-block;
-      float: left;
+			padding: 0.5em 1.5em;
+      float: right;
 		}
 
 			#nav > ul > li a {
@@ -518,7 +519,7 @@
 			}
 
 			#nav > ul > li:hover a {
-				color: #red;
+				color: #fff;
 			}
 
 			#nav > ul > li.active {
