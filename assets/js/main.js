@@ -1,8 +1,3 @@
-/*
-	Industrious by TEMPLATED
-	templated.co @templatedco
-	Released for free under the Creative Commons Attribution 3.0 license (templated.co/license)
-*/
 (function($) {
 
 	var	$window = $(window),
@@ -41,5 +36,11 @@
 				resetForms: true,
 				side: 'right'
 			});
+
+  var includes = $('[data-include]');
+  jQuery.each(includes, function(){
+    var file = 'includes/' + $(this).data('include') + '.html';
+    $(this).load(file);
+  });
 
 })(jQuery);
