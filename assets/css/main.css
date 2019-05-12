@@ -2208,7 +2208,7 @@ ul.icons {
 #footer {
   background-color: #111111;
   color: rgba(255, 255, 255, 0.5);
-  padding: 8rem 0 6rem 0 ; }
+  padding: 4rem 0 6rem 0 ; }
   #footer input, #footer select, #footer textarea {
     color: #ffffff; }
   #footer a {
@@ -2357,6 +2357,7 @@ ul.icons {
       #footer .content section:last-child {
         padding-left: 4rem; }
   #footer .copyright {
+    color: white;
     border-top: 1px solid;
     font-size: 0.8rem;
     opacity: 0.5;
@@ -2378,14 +2379,14 @@ ul.icons {
           padding-right: 0; } }
   @media screen and (max-width: 736px) {
     #footer {
-      padding: 3rem 0 1rem 0 ; }
+      padding: 4rem 0 1rem 0 ; }
       #footer .content section {
         width: 100%; }
         #footer .content section:last-child {
           padding-left: 0; } }
   @media screen and (max-width: 480px) {
     #footer {
-      padding: 2rem 0 0.1rem 0 ; } }
+      padding: 4rem 0 0.1rem 0 ; } }
 
 /* Header */
 body {
