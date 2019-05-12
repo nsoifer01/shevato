@@ -2429,6 +2429,7 @@ body {
   width: 100%;
   z-index: 10001; }
   #header > .logo {
+    fill: #ffffff;
     color: #ffffff;
     font-size: 1rem;
     font-weight: 600;
