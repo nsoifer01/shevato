@@ -2340,10 +2340,11 @@ ul.icons {
     #footer .testimonials .content .credit strong {
       color: #ce1b28; }
   #footer a {
+    font-family: 'Oxygen';
     color: rgba(255, 255, 255, 0.5);
     text-decoration: none; }
     #footer a:hover {
-      color: #ce1b28; }
+      color: #ffffff; }
   #footer .content {
     display: -moz-flex;
     display: -webkit-flex;
