@@ -1,4 +1,4 @@
-async src="https://www.googletagmanager.com/gtag/js?id=UA-140119780-1"
 window.dataLayer = window.dataLayer || [];
 function gtag(){dataLayer.push(arguments);}
 gtag('js', new Date());
+tag('config', 'UA-140119780-1');
