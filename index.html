@@ -102,9 +102,7 @@
     <script src="assets/js/util.js"></script>
     <script src="assets/js/main.js"></script>
     <script>
-      var link = 'index.html';
-      link.split('.html')[0];
-      window.history.replaceState( null, null, link );
+      window.history.pushState({}, document.title, "/" + "index");
     </script>
   </body>
 </html>
