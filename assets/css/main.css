@@ -2354,9 +2354,9 @@ ul.icons {
       width: 25%; }
       #footer .content section:first-child {
         width: 50%;
-        padding-right: 4rem; }
+        padding-right: 0rem; }
       #footer .content section:last-child {
-        padding-left: 4rem; }
+        padding-left: 0rem; }
   #footer .copyright {
     color: white;
     border-top: 1px solid;
