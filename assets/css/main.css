@@ -2460,7 +2460,7 @@ body {
           margin-left: 0.25rem;
           padding-left: 1rem; }
         #header > nav > a:last-child {
-          padding-right: 1rem; } }
+          padding-right: 1.25rem; } }
 
 @media screen and (max-width: 980px) {
   body {
