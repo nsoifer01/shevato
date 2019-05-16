@@ -578,10 +578,9 @@ ul {
         display: inline-block;
         margin-right: 1rem;
         text-align: center;
-        width: 2rem;
+        width: 0rem;
         height: 2rem;
-        line-height: 2rem;
-        background: rgba(0, 0, 0, 0.5); }
+        line-height: 2rem; }
   ul.alt {
     list-style: none;
     padding-left: 0; }
