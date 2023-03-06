@@ -1,0 +1,255 @@
+<body>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            background-color: #f5f5f5;
+        }
+
+        #container {
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 30px;
+            background-color: #fff;
+            border-radius: 10px;
+            box-shadow: 0px 0px 10px rgba(0, 0, 0, 0.2);
+        }
+
+        h1,
+        h2 {
+            font-weight: normal;
+            margin: 0;
+            text-align: center;
+        }
+
+        #search-container {
+            margin-top: 20px;
+        }
+
+        #year-container {
+            margin-top: 20px;
+        }
+
+        label {
+            display: block;
+            margin-bottom: 5px;
+            font-weight: bold;
+        }
+
+        input[type="text"] {
+            display: block;
+            width: 100%;
+            padding: 10px;
+            border-radius: 5px;
+            border: none;
+            box-shadow: 0px 0px 5px rgba(0, 0, 0, 0.2);
+        }
+
+        input[type="number"] {
+            display: block;
+            width: 100%;
+            padding: 10px;
+            border-radius: 5px;
+            border: none;
+            box-shadow: 0px 0px 5px rgba(0, 0, 0, 0.2);
+        }
+
+        ul {
+            list-style: none;
+            padding: 0;
+            margin: 0;
+        }
+
+        li {
+            padding: 10px;
+            cursor: pointer;
+            border-bottom: 1px solid #eee;
+            transition: background-color 0.2s;
+        }
+
+        li:hover {
+            background-color: #eee;
+        }
+
+        #result-container {
+            margin-top: 20px;
+        }
+
+        p {
+            font-size: 24px;
+            text-align: center;
+        }
+
+        button {
+            display: block;
+            margin: 0 auto;
+            margin-top: 20px;
+            padding: 10px 20px;
+            background-color: #0074d9;
+            color: #fff;
+            border-radius: 5px;
+            border: none;
+            box-shadow: 0px 0px 5px rgba(0, 0, 0, 0.2);
+            cursor: pointer;
+            transition: background-color 0.2s;
+        }
+
+        button:hover {
+            background-color: #005ca9;
+        }
+
+        table {
+            border-collapse: collapse;
+            width: 100%;
+            margin-bottom: 20px;
+        }
+
+        th,
+        td {
+            text-align: center;
+            padding: 10px;
+        }
+
+        thead th {
+            background-color: #4286f4;
+            color: #fff;
+        }
+
+        tbody tr:nth-child(even) {
+            background-color: #f2f2f2;
+        }
+    </style>
+
+    <div id="container">
+        <h1>Player Stats</h1>
+        <div id="search-container">
+            <label for="player-input">Enter player name:</label>
+            <input type="text" id="player-input" name="player-input">
+        </div>
+        <div id="year-container">
+            <label for="year-input">Enter year:</label>
+            <input type="number" id="year-input" name="year-input">
+        </div>
+        <div id="result-container">
+            <h2 id="player-name"></h2>
+            <p id="conversion-rate"></p>
+        </div>
+        <button id="search-btn" onclick="getStats()">Search</button>
+
+        <div id="cumulative-stats">
+            <h2>Cumulative Stats</h2>
+            <table id="cumulative-table">
+                <thead>
+                    <tr>
+                        <th>Shots Taken</th>
+                        <th>Shots on Target</th>
+                        <th>Conversion Rate</th>
+                    </tr>
+                </thead>
+                <tbody>
+                </tbody>
+            </table>
+        </div>
+
+        <div id="average-stats">
+            <h2>Average Stats per Game</h2>
+            <table id="average-table">
+                <thead>
+                    <tr>
+                        <th>Shots Taken</th>
+                        <th>Shots on Target</th>
+                        <th>Conversion Rate</th>
+                    </tr>
+                </thead>
+                <tbody>
+                </tbody>
+            </table>
+        </div>
+
+    </div>
+</body>
+
+<script>
+    // Constants for API endpoints and RapidAPI headers
+    const API_BASE_URL = "https://api-football-v1.p.rapidapi.com/v3";
+    const API_KEY = "c91fd075aamsh13a3c2681ef304bp1a7c0fjsn29c3db997ec4";
+
+    // Get references to HTML elements
+    const playerInput = document.getElementById("player-input");
+    const yearInput = document.getElementById("year-input");
+    const playerName = document.getElementById("player-name");
+    const conversionRate = document.getElementById("conversion-rate");
+    const cumulativeTable = document
+        .getElementById("cumulative-table")
+        .getElementsByTagName("tbody")[0];
+    const averageTable = document
+        .getElementById("average-table")
+        .getElementsByTagName("tbody")[0];
+
+    // Function to retrieve player stats from the API and update the page
+    async function getStats() {
+        const playerNameValue = playerInput.value;
+        const yearValue = yearInput.value;
+
+        // Make API call to retrieve player data
+        const playerResponse = await fetch(
+            `${API_BASE_URL}/players?search=${playerNameValue}`, {
+                method: "GET",
+                headers: {
+                    "x-rapidapi-key": API_KEY,
+                    "x-rapidapi-host": "api-football-v1.p.rapidapi.com"
+                }
+            }
+        );
+        const playerData = await playerResponse.json();
+
+        // Find the player ID for the given year
+        const playerId = playerData.response.find((player) => {
+            return player.statistics.find(
+                (stat) => stat.league.year === parseInt(yearValue)
+            );
+        }).player.id;
+
+        // Make API call to retrieve player statistics for the given year
+        const statsResponse = await fetch(
+            `${API_BASE_URL}/statistics?player=${playerId}&year=${yearValue}`, {
+                method: "GET",
+                headers: {
+                    "x-rapidapi-key": API_KEY,
+                    "x-rapidapi-host": "api-football-v1.p.rapidapi.com"
+                }
+            }
+        );
+        const statsData = await statsResponse.json();
+
+        // Calculate cumulative stats and update the table
+        let totalShots = 0;
+        let totalShotsOnTarget = 0;
+        statsData.response.forEach((stat) => {
+            totalShots += stat.shots.total;
+            totalShotsOnTarget += stat.shots.on;
+        });
+        const cumulativeConversionRate = (
+            (totalShotsOnTarget / totalShots) *
+            100
+        ).toFixed(2);
+        cumulativeTable.innerHTML = `<tr><td>${totalShots}</td><td>${totalShotsOnTarget}</td><td>${cumulativeConversionRate}%</td></tr>`;
+
+        // Calculate average stats and update the table
+        let gameCount = 0;
+        let gameShots = 0;
+        let gameShotsOnTarget = 0;
+        let gameConversionRate = 0;
+        statsData.response.forEach((stat) => {
+            gameCount++;
+            gameShots += stat.shots.total;
+            gameShotsOnTarget += stat.shots.on;
+            gameConversionRate += stat.shots.on / stat.shots.total;
+            const avgShots = (gameShots / gameCount).toFixed(2);
+            const avgShotsOnTarget = (gameShotsOnTarget / gameCount).toFixed(2);
+            const avgConversionRate = ((gameConversionRate / gameCount) * 100).toFixed(
+                2
+            );
+            averageTable.innerHTML += `<tr><td>${avgShots}</td><td>${avgShotsOnTarget}</td><td>${avgConversionRate}%</td></tr>`;
+        });
+    }
+</script>
