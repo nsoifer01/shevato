@@ -9,17 +9,18 @@
       gtag('js', new Date());
       gtag('config', 'UA-140119780-1');
     </script>
-    <title>Extras</title>
+    <title>Extras - Shevato</title>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=no" />
-    <meta name="description" content="" />
-    <meta name="keywords" content="" />
+    <meta name="description" content="Explore additional features and tools by Shevato" />
+    <meta name="keywords" content="Software Engineering, REST APIs, Microservices, Spring Boot, Java, Extras" />
     <link rel="stylesheet" href="assets/css/main.css" />
+    <link rel="stylesheet" href="assets/css/extras.css" />
   </head>
   <body class="is-preload">
     <header id="header">
       <a class="logo" href="home">
-        <img src="images/logo-top.png">
+        <img src="images/logo-top.png" alt="Shevato Logo">
       </a>
       <nav>
         <a href="#menu">Menu</a>
@@ -38,12 +39,20 @@
           <header>
             <h2>Extras</h2>
           </header>
-          <p>Lorem ipsum dolor sit accumsan interdum nisi, quis tincidunt felis sagittis eget. tempus euismod. Magna et cursus lorem faucibus vestibulum. Blandit adipiscing eu felis iaculis volutpat ac adipiscing accumsan eu faucibus. Integer ac pellentesque praesent tincidunt felis sagittis eget. tempus euismod tempus. Vestibulum ante ipsum primis in faucibus vestibulum. Blandit adipiscing eu felis iaculis volutpat ac adipiscing accumsan eu faucibus. Integer ac pellentesque praesent tincidunt felis sagittis eget. tempus euismod. Vestibulum ante ipsum primis in faucibus vestibulum. Blandit adipiscing eu felis iaculis volutpat ac adipiscing accumsan eu faucibus. Integer ac sed amet praesent. Nunc lacinia ante nunc ac gravida lorem ipsum dolor sit amet dolor feugiat consequat. </p>
-          <p>Lorem ipsum dolor sit accumsan interdum nisi, quis tincidunt felis sagittis eget. tempus euismod. Magna et cursus lorem faucibus vestibulum. Blandit adipiscing eu felis iaculis volutpat ac adipiscing accumsan eu faucibus. Integer ac pellentesque praesent tincidunt felis sagittis eget. tempus euismod tempus. Vestibulum ante ipsum primis in faucibus vestibulum. Blandit adipiscing eu felis iaculis volutpat ac adipiscing accumsan eu faucibus. Integer ac pellentesque praesent tincidunt felis sagittis eget. tempus euismod. Vestibulum ante ipsum primis in faucibus vestibulum. Blandit adipiscing eu felis iaculis volutpat ac adipiscing accumsan eu faucibus. Integer ac sed amet praesent. Nunc lacinia ante nunc ac gravida lorem ipsum dolor sit amet dolor feugiat consequat. </p>
-          <hr />
-          <h3>Magna odio tempus commodo</h3>
-          <p>In arcu accumsan arcu adipiscing accumsan orci ac. Felis id enim aliquet. Accumsan ac integer lobortis commodo ornare aliquet accumsan erat tempus amet porttitor. Ante commodo blandit adipiscing integer semper orci eget. Faucibus commodo adipiscing mi eu nullam accumsan morbi arcu ornare odio mi adipiscing nascetur lacus ac interdum morbi accumsan vis mi accumsan ac praesent.</p>
-          <p>Felis sagittis eget tempus primis in faucibus vestibulum. Blandit adipiscing eu felis iaculis volutpat ac adipiscing accumsan eu faucibus. Integer ac pellentesque praesent tincidunt felis sagittis eget. tempus euismod. Magna sed etiam ante ipsum primis in faucibus vestibulum. Blandit adipiscing eu ipsum primis in faucibus vestibulum. Blandit adipiscing eu felis iaculis volutpat ac adipiscing accumsan eu faucibus lorem ipsum dolor sit amet nullam.</p>
+          <p>Welcome to the extras section! Here, you can explore additional features and tools we've created to showcase our capabilities. Try out our REST API Explorer below to see how our APIs work in action.</p>
+          
+          <div id="api-explorer">
+            <h3>REST API Explorer</h3>
+            <div class="api-endpoint">
+              <label for="endpoint">Endpoint:</label>
+              <input type="text" id="endpoint" value="https://jsonplaceholder.typicode.com/posts/1">
+              <button id="fetch-data">Fetch Data</button>
+            </div>
+            <div class="api-response">
+              <h4>Response:</h4>
+              <pre id="response"></pre>
+            </div>
+          </div>
         </div>
       </div>
     </section>
@@ -54,6 +63,7 @@
     <script src="assets/js/breakpoints.min.js"></script>
     <script src="assets/js/util.js"></script>
     <script src="assets/js/main.js"></script>
+    <script src="assets/js/extras.js"></script>
     <script>
       window.history.pushState({}, document.title, "/" + "extras");
     </script>
