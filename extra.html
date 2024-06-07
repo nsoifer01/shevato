@@ -3,23 +3,23 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>2D RPG Game</title>
+    <title>Icy Tower Clone</title>
     <style>
         body {
             margin: 0;
             overflow: hidden;
-            background-color: #000;
+            background-color: #87ceeb;
             display: flex;
             justify-content: center;
             align-items: center;
             height: 100vh;
             font-family: Arial, sans-serif;
-            color: white;
         }
 
         #gameCanvas {
-            border: 2px solid white;
+            border: 2px solid black;
             background-color: #222;
+            display: block;
         }
 
         #ui {
@@ -34,9 +34,7 @@
 <body>
     <canvas id="gameCanvas" width="800" height="600"></canvas>
     <div id="ui">
-        <div>Health: <span id="health">100</span></div>
         <div>Score: <span id="score">0</span></div>
-        <div>Level: <span id="level">1</span></div>
     </div>
     <script>
         const canvas = document.getElementById('gameCanvas');
@@ -74,149 +72,115 @@
         class Player extends GameObject {
             constructor(x, y) {
                 super(x, y, 30, 30, 'blue');
-                this.health = 100;
-                this.speed = 4;
+                this.speed = 5;
+                this.jumpPower = 15;
+                this.onGround = false;
             }
 
             move(direction) {
-                switch(direction) {
-                    case 'up': this.dy = -this.speed; break;
-                    case 'down': this.dy = this.speed; break;
-                    case 'left': this.dx = -this.speed; break;
-                    case 'right': this.dx = this.speed; break;
+                if (direction === 'left') {
+                    this.dx = -this.speed;
+                } else if (direction === 'right') {
+                    this.dx = this.speed;
                 }
             }
 
-            stopMove(direction) {
-                switch(direction) {
-                    case 'up': 
-                    case 'down': this.dy = 0; break;
-                    case 'left': 
-                    case 'right': this.dx = 0; break;
-                }
-            }
-        }
-
-        class Enemy extends GameObject {
-            constructor(x, y) {
-                super(x, y, 30, 30, 'red');
-                this.health = 50;
+            stop() {
+                this.dx = 0;
             }
 
-            follow(player) {
-                if (player.x < this.x) this.dx = -1;
-                else if (player.x > this.x) this.dx = 1;
-                else this.dx = 0;
-
-                if (player.y < this.y) this.dy = -1;
-                else if (player.y > this.y) this.dy = 1;
-                else this.dy = 0;
-            }
-        }
-
-        class Item extends GameObject {
-            constructor(x, y, type) {
-                super(x, y, 20, 20, 'green');
-                this.type = type;
-            }
-
-            applyEffect(player) {
-                if (this.type === 'health') {
-                    player.health += 20;
-                } else if (this.type === 'score') {
-                    score += 10;
+            jump() {
+                if (this.onGround) {
+                    this.dy = -this.jumpPower;
+                    this.onGround = false;
                 }
             }
         }
 
-        let player = new Player(50, 50);
-        let enemies = [];
-        let items = [];
+        class Platform extends GameObject {
+            constructor(x, y, width, height, color) {
+                super(x, y, width, height, color);
+            }
+        }
+
+        let player = new Player(385, 500);
+        let platforms = [];
         let score = 0;
-        let level = 1;
+        let scrollOffset = 0;
 
-        function createEnemies(number) {
-            for (let i = 0; i < number; i++) {
-                let enemy = new Enemy(Math.random() * canvas.width, Math.random() * canvas.height);
-                enemies.push(enemy);
+        function generatePlatforms() {
+            for (let i = 0; i < 10; i++) {
+                let width = 100;
+                let height = 10;
+                let x = Math.random() * (canvas.width - width);
+                let y = i * 60 + 200;
+                platforms.push(new Platform(x, y, width, height, 'green'));
             }
-        }
-
-        function createItems(number) {
-            for (let i = 0; i < number; i++) {
-                let type = Math.random() > 0.5 ? 'health' : 'score';
-                let item = new Item(Math.random() * canvas.width, Math.random() * canvas.height, type);
-                items.push(item);
-            }
-        }
-
-        function nextLevel() {
-            level++;
-            document.getElementById('level').textContent = level;
-            createEnemies(level * 3);
-            createItems(level * 2);
         }
 
         function update() {
             ctx.clearRect(0, 0, canvas.width, canvas.height);
 
+            // Update player
+            player.dy += 0.5; // gravity
             player.update();
-            player.draw();
 
-            enemies.forEach(enemy => {
-                enemy.follow(player);
-                enemy.update();
-                enemy.draw();
-
-                if (enemy.collidesWith(player)) {
-                    player.health -= 1;
-                    if (player.health <= 0) {
-                        alert("Game Over!");
-                        document.location.reload();
-                    }
-                }
-            });
-
-            items.forEach(item => {
-                item.draw();
-                if (item.collidesWith(player)) {
-                    item.applyEffect(player);
-                    items = items.filter(i => i !== item);
-                    document.getElementById('health').textContent = player.health;
-                    document.getElementById('score').textContent = score;
-                }
-            });
-
-            if (enemies.length === 0) {
-                nextLevel();
+            // Player movement limits
+            if (player.x < 0) player.x = 0;
+            if (player.x + player.width > canvas.width) player.x = canvas.width - player.width;
+            if (player.y > canvas.height) {
+                alert("Game Over!");
+                document.location.reload();
             }
 
-            document.getElementById('health').textContent = player.health;
-            document.getElementById('score').textContent = score;
+            player.onGround = false;
+
+            // Update platforms and check for collisions
+            platforms.forEach(platform => {
+                platform.y += scrollOffset;
+
+                if (player.collidesWith(platform) && player.dy > 0) {
+                    player.dy = 0;
+                    player.y = platform.y - player.height;
+                    player.onGround = true;
+                }
+
+                platform.draw();
+            });
+
+            player.draw();
+
+            // Scroll the screen
+            if (player.y < canvas.height / 2) {
+                scrollOffset = (canvas.height / 2 - player.y) * 0.1;
+                player.y += scrollOffset;
+                platforms.forEach(platform => platform.y += scrollOffset);
+                score += scrollOffset;
+                document.getElementById('score').textContent = Math.floor(score);
+            } else {
+                scrollOffset = 0;
+            }
 
             requestAnimationFrame(update);
         }
 
         document.addEventListener('keydown', (e) => {
-            switch(e.key) {
-                case 'ArrowUp': player.move('up'); break;
-                case 'ArrowDown': player.move('down'); break;
-                case 'ArrowLeft': player.move('left'); break;
-                case 'ArrowRight': player.move('right'); break;
+            if (e.key === 'ArrowLeft') {
+                player.move('left');
+            } else if (e.key === 'ArrowRight') {
+                player.move('right');
+            } else if (e.key === ' ') {
+                player.jump();
             }
         });
 
         document.addEventListener('keyup', (e) => {
-            switch(e.key) {
-                case 'ArrowUp': player.stopMove('up'); break;
-                case 'ArrowDown': player.stopMove('down'); break;
-                case 'ArrowLeft': player.stopMove('left'); break;
-                case 'ArrowRight': player.stopMove('right'); break;
+            if (e.key === 'ArrowLeft' || e.key === 'ArrowRight') {
+                player.stop();
             }
         });
 
-        createEnemies(3);
-        createItems(2);
+        generatePlatforms();
         update();
     </script>
 </body>
