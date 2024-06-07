@@ -17,8 +17,6 @@
         }
 
         #gameCanvas {
-            border: 2px solid black;
-            background-color: #222;
             display: block;
         }
 
@@ -28,6 +26,7 @@
             left: 10px;
             color: white;
             font-size: 20px;
+            text-shadow: 2px 2px 4px #000;
         }
     </style>
 </head>
@@ -40,20 +39,34 @@
         const canvas = document.getElementById('gameCanvas');
         const ctx = canvas.getContext('2d');
 
+        // Load images
+        const backgroundImage = new Image();
+        backgroundImage.src = 'background.png';
+
+        const playerImage = new Image();
+        playerImage.src = 'player.png';
+
+        const platformImage = new Image();
+        platformImage.src = 'platform.png';
+
         class GameObject {
-            constructor(x, y, width, height, color) {
+            constructor(x, y, width, height, image) {
                 this.x = x;
                 this.y = y;
                 this.width = width;
                 this.height = height;
-                this.color = color;
+                this.image = image;
                 this.dx = 0;
                 this.dy = 0;
             }
 
             draw() {
-                ctx.fillStyle = this.color;
-                ctx.fillRect(this.x, this.y, this.width, this.height);
+                if (this.image) {
+                    ctx.drawImage(this.image, this.x, this.y, this.width, this.height);
+                } else {
+                    ctx.fillStyle = this.color;
+                    ctx.fillRect(this.x, this.y, this.width, this.height);
+                }
             }
 
             update() {
@@ -70,8 +83,8 @@
         }
 
         class Player extends GameObject {
-            constructor(x, y) {
-                super(x, y, 30, 30, 'blue');
+            constructor(x, y, image) {
+                super(x, y, 50, 50, image);
                 this.speed = 5;
                 this.jumpPower = 15;
                 this.onGround = false;
@@ -98,12 +111,12 @@
         }
 
         class Platform extends GameObject {
-            constructor(x, y, width, height, color) {
-                super(x, y, width, height, color);
+            constructor(x, y, width, height, image) {
+                super(x, y, width, height, image);
             }
         }
 
-        let player = new Player(385, 500);
+        let player = new Player(385, 500, playerImage);
         let platforms = [];
         let score = 0;
         let scrollOffset = 0;
@@ -111,9 +124,9 @@
 
         function generatePlatform(y) {
             let width = 100;
-            let height = 10;
+            let height = 20;
             let x = Math.random() * (canvas.width - width);
-            platforms.push(new Platform(x, y, width, height, 'green'));
+            platforms.push(new Platform(x, y, width, height, platformImage));
         }
 
         function generateInitialPlatforms() {
@@ -124,6 +137,9 @@
 
         function update() {
             ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+            // Draw background
+            ctx.drawImage(backgroundImage, 0, 0, canvas.width, canvas.height);
 
             // Update player
             player.dy += 0.5; // gravity
@@ -192,8 +208,10 @@
             }
         });
 
-        generateInitialPlatforms();
-        update();
+        window.onload = () => {
+            generateInitialPlatforms();
+            update();
+        };
     </script>
 </body>
 </html>
