@@ -30,29 +30,11 @@
             color: black;
             font-size: 24px;
         }
-
-        .controls {
-            position: absolute;
-            bottom: 20px;
-            width: 100%;
-            text-align: center;
-        }
-
-        .controls button {
-            padding: 10px;
-            font-size: 18px;
-            margin: 5px;
-        }
     </style>
 </head>
 <body>
     <canvas id="gameCanvas"></canvas>
     <div id="score">Score: 0</div>
-    <div class="controls">
-        <button id="leftBtn">Left</button>
-        <button id="jumpBtn">Jump</button>
-        <button id="rightBtn">Right</button>
-    </div>
     <script>
         const canvas = document.getElementById('gameCanvas');
         const ctx = canvas.getContext('2d');
@@ -151,43 +133,48 @@
             requestAnimationFrame(update);
         }
 
-        document.addEventListener('keydown', (e) => {
-            if (e.key === 'ArrowRight') {
-                player.dx = player.speed;
-            } else if (e.key === 'ArrowLeft') {
-                player.dx = -player.speed;
-            } else if (e.key === 'ArrowUp' && player.onGround) {
-                player.dy = -player.jumpPower;
-                player.onGround = false;
+        let touchStartX = 0;
+        let touchStartY = 0;
+        let touchEndX = 0;
+        let touchEndY = 0;
+
+        function handleTouchStart(e) {
+            const touch = e.changedTouches[0];
+            touchStartX = touch.screenX;
+            touchStartY = touch.screenY;
+        }
+
+        function handleTouchEnd(e) {
+            const touch = e.changedTouches[0];
+            touchEndX = touch.screenX;
+            touchEndY = touch.screenY;
+            handleGesture();
+        }
+
+        function handleGesture() {
+            const deltaX = touchEndX - touchStartX;
+            const deltaY = touchEndY - touchStartY;
+            const absDeltaX = Math.abs(deltaX);
+            const absDeltaY = Math.abs(deltaY);
+
+            if (absDeltaX > absDeltaY) {
+                if (deltaX > 30) {
+                    player.dx = player.speed;
+                    setTimeout(() => { player.dx = 0; }, 100);
+                } else if (deltaX < -30) {
+                    player.dx = -player.speed;
+                    setTimeout(() => { player.dx = 0; }, 100);
+                }
+            } else {
+                if (deltaY < -30 && player.onGround) {
+                    player.dy = -player.jumpPower;
+                    player.onGround = false;
+                }
             }
-        });
+        }
 
-        document.addEventListener('keyup', (e) => {
-            if (e.key === 'ArrowRight' || e.key === 'ArrowLeft') {
-                player.dx = 0;
-            }
-        });
-
-        document.getElementById('leftBtn').addEventListener('touchstart', () => {
-            player.dx = -player.speed;
-        });
-        document.getElementById('leftBtn').addEventListener('touchend', () => {
-            player.dx = 0;
-        });
-
-        document.getElementById('rightBtn').addEventListener('touchstart', () => {
-            player.dx = player.speed;
-        });
-        document.getElementById('rightBtn').addEventListener('touchend', () => {
-            player.dx = 0;
-        });
-
-        document.getElementById('jumpBtn').addEventListener('touchstart', () => {
-            if (player.onGround) {
-                player.dy = -player.jumpPower;
-                player.onGround = false;
-            }
-        });
+        document.addEventListener('touchstart', handleTouchStart, false);
+        document.addEventListener('touchend', handleTouchEnd, false);
 
         update();
     </script>
