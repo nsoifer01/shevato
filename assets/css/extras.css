@@ -1,11 +1,3 @@
-/* assets/css/main.css */
-
-/* Google Analytics (remains in the HTML head section) */
-
-body.is-preload {
-  /* Add any additional body styling if needed */
-}
-
 .tic-tac-toe {
   display: flex;
   flex-direction: column;
