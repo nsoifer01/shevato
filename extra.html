@@ -107,14 +107,18 @@
         let platforms = [];
         let score = 0;
         let scrollOffset = 0;
+        let platformFrequency = 60; // distance between platforms
 
-        function generatePlatforms() {
+        function generatePlatform(y) {
+            let width = 100;
+            let height = 10;
+            let x = Math.random() * (canvas.width - width);
+            platforms.push(new Platform(x, y, width, height, 'green'));
+        }
+
+        function generateInitialPlatforms() {
             for (let i = 0; i < 10; i++) {
-                let width = 100;
-                let height = 10;
-                let x = Math.random() * (canvas.width - width);
-                let y = i * 60 + 200;
-                platforms.push(new Platform(x, y, width, height, 'green'));
+                generatePlatform(i * platformFrequency + 200);
             }
         }
 
@@ -150,6 +154,14 @@
 
             player.draw();
 
+            // Remove platforms that are off the screen
+            platforms = platforms.filter(platform => platform.y <= canvas.height);
+
+            // Generate new platforms if necessary
+            if (platforms.length < 10) {
+                generatePlatform(platforms[platforms.length - 1].y - platformFrequency);
+            }
+
             // Scroll the screen
             if (player.y < canvas.height / 2) {
                 scrollOffset = (canvas.height / 2 - player.y) * 0.1;
@@ -180,7 +192,7 @@
             }
         });
 
-        generatePlatforms();
+        generateInitialPlatforms();
         update();
     </script>
 </body>
