@@ -72,6 +72,8 @@
         text-align: center;
         display: inline-block;
         width: 150px; /* Adjust width as needed */
+        line-height: 1.5em; /* Ensure proper alignment */
+        vertical-align: middle;
       }
 
       #restartButton:hover {
@@ -196,6 +198,7 @@
             winningMessageTextElement.innerText = 'Draw!';
           } else {
             winningMessageTextElement.innerText = `${winningClass === CIRCLE_CLASS ? "O's" : "X's"} Wins!`;
+            winningMessageTextElement.style.color = winningClass === CIRCLE_CLASS ? '#4287f5' : '#f44b42';
             drawWinningLine(winningClass);
           }
           winningMessageElement.classList.add('show');
