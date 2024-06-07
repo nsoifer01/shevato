@@ -178,9 +178,9 @@ document.addEventListener('DOMContentLoaded', () => {
       line.style.width = `${Math.sqrt((x2 - x1) ** 2 + (y2 - y1) ** 2)}px`;
       line.style.height = '4px';
       line.style.backgroundColor = '#f44b42';
-      line.style.top = `${(y1 + y2) / 2}px`;
-      line.style.left = `${(x1 + x2) / 2}px`;
-      line.style.transform = `translate(-50%, -50%) rotate(${Math.atan2(y2 - y1, x2 - x1) * (180 / Math.PI)}deg)`;
+      line.style.top = `${y1}px`;
+      line.style.left = `${x1}px`;
+      line.style.transform = `translateY(-50%) rotate(${Math.atan2(y2 - y1, x2 - x1) * (180 / Math.PI)}deg)`;
 
       board.appendChild(line);
     }
