@@ -39,20 +39,24 @@ document.addEventListener('DOMContentLoaded', () => {
     const currentClass = circleTurn ? CIRCLE_CLASS : X_CLASS;
     placeMark(cell, currentClass);
     if (checkWin(currentClass)) {
-      endGame(false);
+      endGame(false, currentClass);
     } else if (isDraw()) {
       endGame(true);
     } else {
       swapTurns();
       setBoardHoverClass();
+      if (!circleTurn) {
+        bestMove();
+      }
     }
   }
 
-  function endGame(draw) {
+  function endGame(draw, winningClass) {
     if (draw) {
       winningMessageTextElement.innerText = 'Draw!';
     } else {
       winningMessageTextElement.innerText = `${circleTurn ? "O's" : "X's"} Wins!`;
+      drawWinningLine(winningClass);
     }
     winningMessageElement.classList.add('show');
   }
@@ -87,5 +91,82 @@ document.addEventListener('DOMContentLoaded', () => {
         return cellElements[index].classList.contains(currentClass);
       });
     });
+  }
+
+  function bestMove() {
+    let bestScore = -Infinity;
+    let move;
+    cellElements.forEach((cell, index) => {
+      if (!cell.classList.contains(X_CLASS) && !cell.classList.contains(CIRCLE_CLASS)) {
+        cell.classList.add(CIRCLE_CLASS);
+        let score = minimax(board, 0, false);
+        cell.classList.remove(CIRCLE_CLASS);
+        if (score > bestScore) {
+          bestScore = score;
+          move = index;
+        }
+      }
+    });
+    placeMark(cellElements[move], CIRCLE_CLASS);
+    if (checkWin(CIRCLE_CLASS)) {
+      endGame(false, CIRCLE_CLASS);
+    } else if (isDraw()) {
+      endGame(true);
+    } else {
+      swapTurns();
+      setBoardHoverClass();
+    }
+  }
+
+  function minimax(board, depth, isMaximizing) {
+    if (checkWin(CIRCLE_CLASS)) {
+      return 1;
+    } else if (checkWin(X_CLASS)) {
+      return -1;
+    } else if (isDraw()) {
+      return 0;
+    }
+
+    if (isMaximizing) {
+      let bestScore = -Infinity;
+      cellElements.forEach((cell, index) => {
+        if (!cell.classList.contains(X_CLASS) && !cell.classList.contains(CIRCLE_CLASS)) {
+          cell.classList.add(CIRCLE_CLASS);
+          let score = minimax(board, depth + 1, false);
+          cell.classList.remove(CIRCLE_CLASS);
+          bestScore = Math.max(score, bestScore);
+        }
+      });
+      return bestScore;
+    } else {
+      let bestScore = Infinity;
+      cellElements.forEach((cell, index) => {
+        if (!cell.classList.contains(X_CLASS) && !cell.classList.contains(CIRCLE_CLASS)) {
+          cell.classList.add(X_CLASS);
+          let score = minimax(board, depth + 1, true);
+          cell.classList.remove(X_CLASS);
+          bestScore = Math.min(score, bestScore);
+        }
+      });
+      return bestScore;
+    }
+  }
+
+  function drawWinningLine(winningClass) {
+    const winningCombination = WINNING_COMBINATIONS.find(combination => {
+      return combination.every(index => {
+        return cellElements[index].classList.contains(winningClass);
+      });
+    });
+    if (winningCombination) {
+      const [start, , end] = winningCombination;
+      const startPos = cellElements[start].getBoundingClientRect();
+      const endPos = cellElements[end].getBoundingClientRect();
+      const line = document.createElement('div');
+      line.classList.add('winning-line');
+      line.style.top = `${(startPos.top + endPos.top) / 2}px`;
+      line.style.left = `${(startPos.left + endPos.left) / 2}px`;
+      document.body.appendChild(line);
+    }
   }
 });
