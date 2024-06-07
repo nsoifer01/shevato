@@ -39,52 +39,15 @@
         const canvas = document.getElementById('gameCanvas');
         const ctx = canvas.getContext('2d');
 
-        // Load images
+        // Load images as base64
         const backgroundImage = new Image();
-        backgroundImage.src = 'background.png';
+        backgroundImage.src = 'data:image/png;base64,...';  // Add your base64 encoded background image here
+
         const playerImage = new Image();
-        playerImage.src = 'player.png';
+        playerImage.src = 'data:image/png;base64,...';  // Add your base64 encoded player image here
+
         const platformImage = new Image();
-        platformImage.src = 'platform.png';
-
-        // Fallback colors
-        const fallbackColors = {
-            player: 'blue',
-            platform: 'green',
-        };
-
-        let imagesLoaded = false;
-        let imagesToLoad = 3;
-        
-        // Function to check if all images are loaded
-        function checkImagesLoaded() {
-            imagesToLoad--;
-            if (imagesToLoad === 0) {
-                imagesLoaded = true;
-                startGame();
-            }
-        }
-
-        // Set up image load handlers
-        backgroundImage.onload = checkImagesLoaded;
-        backgroundImage.onerror = () => {
-            console.error('Failed to load background image.');
-            checkImagesLoaded();
-        };
-
-        playerImage.onload = checkImagesLoaded;
-        playerImage.onerror = () => {
-            console.error('Failed to load player image.');
-            playerImage.src = ''; // Prevent further loading attempts
-            checkImagesLoaded();
-        };
-
-        platformImage.onload = checkImagesLoaded;
-        platformImage.onerror = () => {
-            console.error('Failed to load platform image.');
-            platformImage.src = ''; // Prevent further loading attempts
-            checkImagesLoaded();
-        };
+        platformImage.src = 'data:image/png;base64,...';  // Add your base64 encoded platform image here
 
         class GameObject {
             constructor(x, y, width, height, image, fallbackColor) {
@@ -99,7 +62,7 @@
             }
 
             draw() {
-                if (imagesLoaded && this.image) {
+                if (this.image) {
                     ctx.drawImage(this.image, this.x, this.y, this.width, this.height);
                 } else {
                     ctx.fillStyle = this.fallbackColor;
@@ -154,7 +117,7 @@
             }
         }
 
-        let player = new Player(385, 500, playerImage, fallbackColors.player);
+        let player = new Player(385, 500, playerImage, 'blue');
         let platforms = [];
         let score = 0;
         let scrollOffset = 0;
@@ -164,7 +127,7 @@
             let width = 100;
             let height = 20;
             let x = Math.random() * (canvas.width - width);
-            platforms.push(new Platform(x, y, width, height, platformImage, fallbackColors.platform));
+            platforms.push(new Platform(x, y, width, height, platformImage, 'green'));
         }
 
         function generateInitialPlatforms() {
@@ -173,21 +136,11 @@
             }
         }
 
-        function startGame() {
-            generateInitialPlatforms();
-            update();
-        }
-
         function update() {
             ctx.clearRect(0, 0, canvas.width, canvas.height);
 
             // Draw background
-            if (imagesLoaded && backgroundImage) {
-                ctx.drawImage(backgroundImage, 0, 0, canvas.width, canvas.height);
-            } else {
-                ctx.fillStyle = '#87ceeb';
-                ctx.fillRect(0, 0, canvas.width, canvas.height);
-            }
+            ctx.drawImage(backgroundImage, 0, 0, canvas.width, canvas.height);
 
             // Update player
             player.dy += 0.5; // gravity
@@ -255,6 +208,11 @@
                 player.stop();
             }
         });
+
+        window.onload = () => {
+            generateInitialPlatforms();
+            update();
+        };
     </script>
 </body>
 </html>
