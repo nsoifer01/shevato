@@ -225,7 +225,7 @@
           winningMessageTextElement.innerText = 'Draw!';
           winningMessageTextElement.style.color = 'black';
         } else {
-          winningMessageTextElement.innerText = `${winningClass === CIRCLE_CLASS ? "O's" : "X's"} Wins!`;
+          winningMessageTextElement.innerText = `${winningClass === CIRCLE_CLASS ? "O" : "X"} Wins!`;
           winningMessageTextElement.style.color = winningClass === CIRCLE_CLASS ? '#4287f5' : '#f44b42';
           drawWinningLine(winningClass);
         }
