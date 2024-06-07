@@ -2,6 +2,8 @@
   display: flex;
   flex-direction: column;
   align-items: center;
+  justify-content: center;
+  min-height: 60vh;
 }
 
 .board {
@@ -14,12 +16,24 @@
 .cell {
   width: 100px;
   height: 100px;
-  background-color: #eee;
+  background-color: #f4f4f4;
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 2em;
+  font-size: 2rem;
+  font-weight: bold;
   cursor: pointer;
+  border: 2px solid #333;
+}
+
+.cell.x::before {
+  content: 'X';
+  color: #f44b42;
+}
+
+.cell.circle::before {
+  content: 'O';
+  color: #42a5f5;
 }
 
 .winning-message {
@@ -32,16 +46,21 @@
   display: flex;
 }
 
+.winning-message div {
+  font-size: 2rem;
+  margin-bottom: 20px;
+}
+
 button {
+  padding: 10px 20px;
+  font-size: 1rem;
   background-color: #f44b42;
   color: #fff;
   border: none;
-  padding: 10px 20px;
   cursor: pointer;
   border-radius: 5px;
-  font-size: 1em;
 }
 
 button:hover {
-  background-color: #d43a35;
+  background-color: #d94334;
 }
