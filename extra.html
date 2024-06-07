@@ -42,29 +42,67 @@
         // Load images
         const backgroundImage = new Image();
         backgroundImage.src = 'background.png';
-
         const playerImage = new Image();
         playerImage.src = 'player.png';
-
         const platformImage = new Image();
         platformImage.src = 'platform.png';
 
+        // Fallback colors
+        const fallbackColors = {
+            player: 'blue',
+            platform: 'green',
+        };
+
+        let imagesLoaded = false;
+        let imagesToLoad = 3;
+        
+        // Function to check if all images are loaded
+        function checkImagesLoaded() {
+            imagesToLoad--;
+            if (imagesToLoad === 0) {
+                imagesLoaded = true;
+                startGame();
+            }
+        }
+
+        // Set up image load handlers
+        backgroundImage.onload = checkImagesLoaded;
+        backgroundImage.onerror = () => {
+            console.error('Failed to load background image.');
+            checkImagesLoaded();
+        };
+
+        playerImage.onload = checkImagesLoaded;
+        playerImage.onerror = () => {
+            console.error('Failed to load player image.');
+            playerImage.src = ''; // Prevent further loading attempts
+            checkImagesLoaded();
+        };
+
+        platformImage.onload = checkImagesLoaded;
+        platformImage.onerror = () => {
+            console.error('Failed to load platform image.');
+            platformImage.src = ''; // Prevent further loading attempts
+            checkImagesLoaded();
+        };
+
         class GameObject {
-            constructor(x, y, width, height, image) {
+            constructor(x, y, width, height, image, fallbackColor) {
                 this.x = x;
                 this.y = y;
                 this.width = width;
                 this.height = height;
                 this.image = image;
+                this.fallbackColor = fallbackColor;
                 this.dx = 0;
                 this.dy = 0;
             }
 
             draw() {
-                if (this.image) {
+                if (imagesLoaded && this.image) {
                     ctx.drawImage(this.image, this.x, this.y, this.width, this.height);
                 } else {
-                    ctx.fillStyle = this.color;
+                    ctx.fillStyle = this.fallbackColor;
                     ctx.fillRect(this.x, this.y, this.width, this.height);
                 }
             }
@@ -83,8 +121,8 @@
         }
 
         class Player extends GameObject {
-            constructor(x, y, image) {
-                super(x, y, 50, 50, image);
+            constructor(x, y, image, fallbackColor) {
+                super(x, y, 50, 50, image, fallbackColor);
                 this.speed = 5;
                 this.jumpPower = 15;
                 this.onGround = false;
@@ -111,12 +149,12 @@
         }
 
         class Platform extends GameObject {
-            constructor(x, y, width, height, image) {
-                super(x, y, width, height, image);
+            constructor(x, y, width, height, image, fallbackColor) {
+                super(x, y, width, height, image, fallbackColor);
             }
         }
 
-        let player = new Player(385, 500, playerImage);
+        let player = new Player(385, 500, playerImage, fallbackColors.player);
         let platforms = [];
         let score = 0;
         let scrollOffset = 0;
@@ -126,7 +164,7 @@
             let width = 100;
             let height = 20;
             let x = Math.random() * (canvas.width - width);
-            platforms.push(new Platform(x, y, width, height, platformImage));
+            platforms.push(new Platform(x, y, width, height, platformImage, fallbackColors.platform));
         }
 
         function generateInitialPlatforms() {
@@ -135,11 +173,21 @@
             }
         }
 
+        function startGame() {
+            generateInitialPlatforms();
+            update();
+        }
+
         function update() {
             ctx.clearRect(0, 0, canvas.width, canvas.height);
 
             // Draw background
-            ctx.drawImage(backgroundImage, 0, 0, canvas.width, canvas.height);
+            if (imagesLoaded && backgroundImage) {
+                ctx.drawImage(backgroundImage, 0, 0, canvas.width, canvas.height);
+            } else {
+                ctx.fillStyle = '#87ceeb';
+                ctx.fillRect(0, 0, canvas.width, canvas.height);
+            }
 
             // Update player
             player.dy += 0.5; // gravity
@@ -207,11 +255,6 @@
                 player.stop();
             }
         });
-
-        window.onload = () => {
-            generateInitialPlatforms();
-            update();
-        };
     </script>
 </body>
 </html>
