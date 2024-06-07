@@ -1,31 +1,44 @@
-#api-explorer {
+#tic-tac-toe {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
   margin-top: 20px;
-  padding: 20px;
-  border: 1px solid #ddd;
-  border-radius: 8px;
-  background-color: #f9f9f9;
 }
 
-.api-endpoint {
-  margin-bottom: 20px;
+.board {
+  display: grid;
+  grid-template-columns: repeat(3, 100px);
+  grid-template-rows: repeat(3, 100px);
+  gap: 5px;
 }
 
-.api-endpoint label {
+.cell {
+  width: 100px;
+  height: 100px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background-color: #f0f0f0;
+  font-size: 2em;
+  cursor: pointer;
+}
+
+.game-status {
+  margin-top: 20px;
+  text-align: center;
+}
+
+.winning-message {
+  display: none;
+}
+
+.winning-message.show {
   display: block;
-  font-weight: bold;
-  margin-bottom: 5px;
 }
 
-.api-endpoint input {
-  width: 100%;
-  padding: 10px;
-  margin-bottom: 10px;
-  border: 1px solid #ddd;
-  border-radius: 4px;
-}
-
-.api-endpoint button {
+button {
   padding: 10px 20px;
+  margin-top: 10px;
   background-color: #007bff;
   color: white;
   border: none;
@@ -33,22 +46,6 @@
   cursor: pointer;
 }
 
-.api-endpoint button:hover {
+button:hover {
   background-color: #0056b3;
-}
-
-.api-response {
-  margin-top: 20px;
-}
-
-.api-response h4 {
-  font-weight: bold;
-}
-
-.api-response pre {
-  background-color: #272822;
-  color: #f8f8f2;
-  padding: 20px;
-  border-radius: 4px;
-  overflow-x: auto;
 }
