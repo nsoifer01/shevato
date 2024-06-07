@@ -1,5 +1,3 @@
-/* assets/js/main.js */
-
 document.addEventListener('DOMContentLoaded', () => {
   const X_CLASS = 'x';
   const CIRCLE_CLASS = 'circle';
@@ -191,6 +189,3 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   }
 });
-
-/* Additional script to push state (remains in the HTML body) */
-window.history.pushState({}, document.title, "/" + "extras");
