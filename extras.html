@@ -89,13 +89,13 @@
     }
 
     .line.horizontal {
-      width: 310px;
+      width: 330px;
       height: 5px;
     }
 
     .line.vertical {
       width: 5px;
-      height: 310px;
+      height: 330px;
     }
 
     .line.diagonal {
@@ -268,29 +268,21 @@
         WINNING_COMBINATIONS.forEach((combination, index) => {
           if (combination.every(idx => cellElements[idx].classList.contains(winningClass))) {
             let lineClass = '';
-            switch (index) {
-              case 0: case 1: case 2:
-                lineClass = 'horizontal';
-                line.style.top = `${combination[0] * 100 + 50}px`;
-                break;
-              case 3: case 4: case 5:
-                lineClass = 'vertical';
-                line.style.left = `${combination[0] % 3 * 100 + 50}px`;
-                break;
-              case 6:
-                lineClass = 'diagonal';
-                line.style.left = '0';
-                line.style.top = '0';
-                line.style.transform = 'rotate(45deg)';
-                break;
-              case 7:
-                lineClass = 'diagonal';
-                line.style.left = '0';
-                line.style.top = '0';
-                line.style.transform = 'rotate(-45deg)';
-                break;
-            }
-            line.classList.add(lineClass);
+            let startCell = cellElements[combination[0]];
+            let endCell = cellElements[combination[2]];
+            let startX = startCell.offsetLeft + startCell.offsetWidth / 2;
+            let startY = startCell.offsetTop + startCell.offsetHeight / 2;
+            let endX = endCell.offsetLeft + endCell.offsetWidth / 2;
+            let endY = endCell.offsetTop + endCell.offsetHeight / 2;
+            let length = Math.sqrt(Math.pow(endX - startX, 2) + Math.pow(endY - startY, 2));
+            let angle = Math.atan2(endY - startY, endX - startX) * (180 / Math.PI);
+
+            line.style.width = `${length}px`;
+            line.style.height = `5px`;
+            line.style.left = `${startX}px`;
+            line.style.top = `${startY}px`;
+            line.style.transform = `rotate(${angle}deg)`;
+            line.style.transformOrigin = '0 0';
             line.style.display = 'block';
           }
         });
