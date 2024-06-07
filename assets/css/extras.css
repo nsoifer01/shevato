@@ -1,3 +1,11 @@
+/* assets/css/main.css */
+
+/* Google Analytics (remains in the HTML head section) */
+
+body.is-preload {
+  /* Add any additional body styling if needed */
+}
+
 .tic-tac-toe {
   display: flex;
   flex-direction: column;
@@ -9,12 +17,13 @@
   grid-template-columns: repeat(3, 100px);
   grid-gap: 10px;
   margin-bottom: 20px;
+  position: relative;
 }
 
 .cell {
   width: 100px;
   height: 100px;
-  background-color: #f0f0f0;
+  background-color: #d0d0d0; /* Darker shade */
   display: flex;
   justify-content: center;
   align-items: center;
@@ -51,17 +60,44 @@
   border: none;
   border-radius: 5px;
   cursor: pointer;
+  text-align: center;
+  display: inline-block;
+  width: 150px; /* Adjust width as needed */
+  height: 40px;
+  line-height: 1.5em; /* Ensure proper alignment */
+  vertical-align: middle;
 }
 
 #restartButton:hover {
   background-color: #e03e3e;
 }
 
-.winning-line {
+.line {
   position: absolute;
+  background-color: #000;
+  z-index: 1;
+}
+
+.line.horizontal {
+  width: 330px;
+  height: 5px;
+}
+
+.line.vertical {
   width: 5px;
-  height: 200px;
-  background-color: #f44b42;
-  z-index: 10;
+  height: 330px;
+}
+
+.line.diagonal {
+  width: 5px;
+  height: 440px;
   transform-origin: center center;
+}
+
+.container {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
 }
