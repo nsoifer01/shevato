@@ -32,6 +32,7 @@ document.addEventListener('DOMContentLoaded', () => {
     });
     setBoardHoverClass();
     winningMessageElement.classList.remove('show');
+    clearWinningLine();
   }
 
   function handleClick(e) {
@@ -158,15 +159,34 @@ document.addEventListener('DOMContentLoaded', () => {
         return cellElements[index].classList.contains(winningClass);
       });
     });
+
     if (winningCombination) {
       const [start, , end] = winningCombination;
       const startPos = cellElements[start].getBoundingClientRect();
       const endPos = cellElements[end].getBoundingClientRect();
+
       const line = document.createElement('div');
       line.classList.add('winning-line');
+
+      const deltaX = endPos.left - startPos.left;
+      const deltaY = endPos.top - startPos.top;
+      const distance = Math.sqrt(deltaX * deltaX + deltaY * deltaY);
+      line.style.width = `${distance}px`;
+
+      const angle = Math.atan2(deltaY, deltaX) * (180 / Math.PI);
+      line.style.transform = `rotate(${angle}deg)`;
+
       line.style.top = `${(startPos.top + endPos.top) / 2}px`;
       line.style.left = `${(startPos.left + endPos.left) / 2}px`;
+
       document.body.appendChild(line);
+    }
+  }
+
+  function clearWinningLine() {
+    const existingLine = document.querySelector('.winning-line');
+    if (existingLine) {
+      existingLine.remove();
     }
   }
 });
