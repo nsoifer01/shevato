@@ -51,15 +51,22 @@
             onGround: false
         };
 
-        const platforms = [
-            { x: 0, y: 550, width: 800, height: 50 },
-            { x: 200, y: 450, width: 100, height: 20 },
-            { x: 400, y: 350, width: 100, height: 20 },
-            { x: 600, y: 250, width: 100, height: 20 }
-        ];
-
-        const goal = { x: 700, y: 200, width: 50, height: 50, color: 'green' };
+        const platforms = [];
+        const goal = { x: 750, y: 0, width: 50, height: 50, color: 'green' };
         let score = 0;
+
+        function generatePlatforms() {
+            for (let i = 0; i < 500; i++) {
+                let platform = {
+                    x: Math.random() * (canvas.width - 100),
+                    y: canvas.height - (i * 100),
+                    width: 100,
+                    height: 20,
+                    color: `hsl(${Math.random() * 360}, 100%, 50%)`
+                };
+                platforms.push(platform);
+            }
+        }
 
         function drawPlayer() {
             ctx.fillStyle = player.color;
@@ -67,8 +74,8 @@
         }
 
         function drawPlatforms() {
-            ctx.fillStyle = 'blue';
             platforms.forEach(platform => {
+                ctx.fillStyle = platform.color;
                 ctx.fillRect(platform.x, platform.y, platform.width, platform.height);
             });
         }
@@ -144,6 +151,7 @@
             }
         });
 
+        generatePlatforms();
         update();
     </script>
 </body>
