@@ -9,11 +9,11 @@
       gtag('js', new Date());
       gtag('config', 'UA-140119780-1');
     </script>
-    <title>Extras - Shevato</title>
+    <title>Extras</title>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=no" />
-    <meta name="description" content="Explore additional features and tools by Shevato" />
-    <meta name="keywords" content="Software Engineering, REST APIs, Microservices, Spring Boot, Java, Extras" />
+    <meta name="description" content="Extras page with fun and engaging content" />
+    <meta name="keywords" content="Tic-Tac-Toe, Extras, Fun, Game" />
     <link rel="stylesheet" href="assets/css/main.css" />
     <link rel="stylesheet" href="assets/css/extras.css" />
   </head>
@@ -35,30 +35,25 @@
     </nav>
     <section id="main" class="wrapper">
       <div class="inner">
-        <div class="content">
-          <header>
-            <h2>Extras</h2>
-          </header>
+        <header>
+          <h2>Extras</h2>
           <p>Welcome to the extras section! Here, you can enjoy a classic game of Tic-Tac-Toe. Try your best to win!</p>
-          
-          <div id="tic-tac-toe">
-            <div class="board">
-              <div class="cell" data-cell></div>
-              <div class="cell" data-cell></div>
-              <div class="cell" data-cell></div>
-              <div class="cell" data-cell></div>
-              <div class="cell" data-cell></div>
-              <div class="cell" data-cell></div>
-              <div class="cell" data-cell></div>
-              <div class="cell" data-cell></div>
-              <div class="cell" data-cell></div>
-            </div>
-            <div class="game-status">
-              <h3 id="winning-message" class="winning-message">
-                <span id="winning-message-text"></span>
-              </h3>
-              <button id="restartButton">Restart Game</button>
-            </div>
+        </header>
+        <div class="tic-tac-toe">
+          <div class="board" id="board">
+            <div class="cell" data-cell></div>
+            <div class="cell" data-cell></div>
+            <div class="cell" data-cell></div>
+            <div class="cell" data-cell></div>
+            <div class="cell" data-cell></div>
+            <div class="cell" data-cell></div>
+            <div class="cell" data-cell></div>
+            <div class="cell" data-cell></div>
+            <div class="cell" data-cell></div>
+          </div>
+          <div class="winning-message" id="winningMessage">
+            <div data-winning-message-text></div>
+            <button id="restartButton">Restart Game</button>
           </div>
         </div>
       </div>
