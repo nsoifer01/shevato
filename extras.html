@@ -27,6 +27,7 @@
       grid-template-columns: repeat(3, 100px);
       grid-gap: 10px;
       margin-bottom: 20px;
+      position: relative;
     }
 
     .cell {
@@ -80,6 +81,28 @@
     #restartButton:hover {
       background-color: #e03e3e;
     }
+
+    .line {
+      position: absolute;
+      background-color: #000;
+      z-index: 1;
+    }
+
+    .line.horizontal {
+      width: 310px;
+      height: 5px;
+    }
+
+    .line.vertical {
+      width: 5px;
+      height: 310px;
+    }
+
+    .line.diagonal {
+      width: 5px;
+      height: 440px;
+      transform-origin: center center;
+    }
   </style>
 </head>
 <body class="is-preload">
@@ -115,6 +138,7 @@
           <div class="cell" data-cell></div>
           <div class="cell" data-cell></div>
           <div class="cell" data-cell></div>
+          <div id="line" class="line"></div>
         </div>
         <div class="winning-message" id="winningMessage">
           <div data-winning-message-text></div>
@@ -151,6 +175,7 @@
       const restartButton = document.getElementById('restartButton');
       const winningMessageTextElement = document.querySelector('[data-winning-message-text]');
       const errorMessage = document.getElementById('errorMessage');
+      const line = document.getElementById('line');
       let circleTurn;
 
       startGame();
@@ -168,6 +193,7 @@
         setBoardHoverClass();
         winningMessageElement.classList.remove('show');
         errorMessage.style.display = 'none';
+        line.style.display = 'none';
       }
 
       function handleClick(e) {
@@ -201,6 +227,7 @@
         } else {
           winningMessageTextElement.innerText = `${winningClass === CIRCLE_CLASS ? "O's" : "X's"} Wins!`;
           winningMessageTextElement.style.color = winningClass === CIRCLE_CLASS ? '#4287f5' : '#f44b42';
+          drawWinningLine(winningClass);
         }
         winningMessageElement.classList.add('show');
       }
@@ -234,6 +261,38 @@
           return combination.every(index => {
             return cellElements[index].classList.contains(currentClass);
           });
+        });
+      }
+
+      function drawWinningLine(winningClass) {
+        WINNING_COMBINATIONS.forEach((combination, index) => {
+          if (combination.every(idx => cellElements[idx].classList.contains(winningClass))) {
+            let lineClass = '';
+            switch (index) {
+              case 0: case 1: case 2:
+                lineClass = 'horizontal';
+                line.style.top = `${combination[0] * 100 + 50}px`;
+                break;
+              case 3: case 4: case 5:
+                lineClass = 'vertical';
+                line.style.left = `${combination[0] % 3 * 100 + 50}px`;
+                break;
+              case 6:
+                lineClass = 'diagonal';
+                line.style.left = '0';
+                line.style.top = '0';
+                line.style.transform = 'rotate(45deg)';
+                break;
+              case 7:
+                lineClass = 'diagonal';
+                line.style.left = '0';
+                line.style.top = '0';
+                line.style.transform = 'rotate(-45deg)';
+                break;
+            }
+            line.classList.add(lineClass);
+            line.style.display = 'block';
+          }
         });
       }
 
