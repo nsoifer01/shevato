@@ -1,54 +1,112 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Home - Shevato.com - TEST</title>
-  <link rel="stylesheet" href="assets/css/styles.css">
-</head>
-<body>
-  <header>
-    <div class="container">
-      <div class="logo"><h1>Shevato.com</h1></div>
+<!DOCTYPE HTML>
+<html>
+  <head>
+    <!-- Google Analytics -->
+    <script async src="https://www.googletagmanager.com/gtag/js?id=UA-140119780-1"></script>
+    <script>
+      window.dataLayer = window.dataLayer || [];
+      function gtag(){dataLayer.push(arguments);}
+      gtag('js', new Date());
+      gtag('config', 'UA-140119780-1');
+    </script>
+    <title>Home - Shevato</title>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=no" />
+    <meta name="description" content="Shevato.com - Expert Software Engineering Services" />
+    <meta name="keywords" content="Software Engineering, REST APIs, Microservices, Spring Boot, Java" />
+    <link rel="stylesheet" href="assets/css/main.css" />
+  </head>
+  <body class="is-preload">
+    <header id="header">
+      <a class="logo" href="home">
+        <img src="images/logo-top.png" alt="Shevato.com Logo">
+      </a>
       <nav>
-        <ul>
-          <li><a href="home-TEST.html">Home</a></li>
-          <li><a href="services-TEST.html">Services</a></li>
-          <li><a href="about-TEST.html">About Us</a></li>
-          <li><a href="contact-TEST.html">Contact Us</a></li>
-        </ul>
+        <a href="#menu">Menu</a>
       </nav>
-    </div>
-  </header>
-  <main>
-    <section class="banner">
-      <div class="container">
-        <h1>Welcome to Shevato.com</h1>
-        <p>Providing Top-Notch API and Microservices Solutions.</p>
-      </div>
-    </section>
-    <section class="about">
-      <div class="container">
-        <h2>About Us</h2>
-        <p>Shevato.com specializes in developing REST APIs, Microservices, and Spring Boot applications using Java.</p>
-      </div>
-    </section>
-    <section class="featured-client">
-      <div class="container">
-        <h2>Our Featured Client</h2>
-        <p>We are proud to work with Tire Rack, delivering exceptional solutions to meet their needs.</p>
-      </div>
-    </section>
-  </main>
-  <footer>
-    <div class="container">
-      <p>&copy; 2024 Shevato.com. All rights reserved.</p>
-      <ul>
-        <li><a href="#">Privacy Policy</a></li>
-        <li><a href="#">Terms of Service</a></li>
+    </header>
+    <nav id="menu">
+      <ul class="links">
+        <li><a href="home">Home</a></li>
+        <li><a href="product">Product</a></li>
+        <li><a href="extras">Extras</a></li>
       </ul>
-    </div>
-  </footer>
-  <script src="assets/js/scripts.js"></script>
-</body>
+    </nav>
+    <section class="wrapper" style="padding-top:inherit">
+      <div class="inner">
+        <header class="special">
+          <h2>
+            <img src="images/full-logo.svg" alt="Shevato.com">
+          </h2>
+          <p>Welcome to Shevato, your trusted partner for top-notch software engineering services. Specializing in REST APIs, Microservices, and Spring Boot with Java.</p>
+        </header>
+        <div class="highlights">
+          <section>
+            <div class="content">
+              <header>
+                <span class="icon fa-vcard-o" style="color: #f44b42"></span>
+                <h3>Our Expertise</h3>
+              </header>
+              <p>With years of experience in software development, we offer expert solutions in REST APIs, Microservices, and Spring Boot using Java to meet your business needs.</p>
+            </div>
+          </section>
+          <section>
+            <div class="content">
+              <header>
+                <span class="icon fa-files-o" style="color: #f44b42"></span>
+                <h3>Client Focus</h3>
+              </header>
+              <p>Our main client, Tire Rack, trusts us for our reliable and efficient software solutions. We are committed to providing excellent service to all our clients.</p>
+            </div>
+          </section>
+          <section>
+            <div class="content">
+              <header>
+                <span class="icon fa-floppy-o" style="color: #f44b42"></span>
+                <h3>Innovative Solutions</h3>
+              </header>
+              <p>We leverage the latest technologies and methodologies to deliver innovative software solutions that drive business success.</p>
+            </div>
+          </section>
+          <section>
+            <div class="content">
+              <header>
+                <span class="icon fa-line-chart" style="color: #f44b42"></span>
+                <h3>Continuous Improvement</h3>
+              </header>
+              <p>Our team is dedicated to continuous improvement, constantly updating our skills and knowledge to provide the best possible service.</p>
+            </div>
+          </section>
+          <section>
+            <div class="content">
+              <header>
+                <span class="icon fa-paper-plane-o" style="color: #f44b42"></span>
+                <h3>Collaborative Approach</h3>
+              </header>
+              <p>We believe in a collaborative approach, working closely with our clients to understand their needs and deliver tailored solutions.</p>
+            </div>
+          </section>
+          <section>
+            <div class="content">
+              <header>
+                <span class="icon fa-qrcode" style="color: #f44b42"></span>
+                <h3>Future Ready</h3>
+              </header>
+              <p>Our solutions are designed to be future-ready, ensuring scalability and adaptability in a rapidly changing technological landscape.</p>
+            </div>
+          </section>
+        </div>
+      </div>
+    </section>
+    <div data-include="footer"></div>
+    <!-- Scripts -->
+    <script src="assets/js/jquery.min.js"></script>
+    <script src="assets/js/browser.min.js"></script>
+    <script src="assets/js/breakpoints.min.js"></script>
+    <script src="assets/js/util.js"></script>
+    <script src="assets/js/main.js"></script>
+    <script>
+      window.history.pushState({}, document.title, "/" + "home");
+    </script>
+  </body>
 </html>
