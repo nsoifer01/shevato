@@ -16,11 +16,6 @@
     <meta name="keywords" content="Software Engineering, REST APIs, Microservices, Spring Boot, Java, Extras" />
     <link rel="stylesheet" href="assets/css/main.css" />
     <link rel="stylesheet" href="assets/css/extras.css" />
-    <style>
-      .content h3 {
-        min-height: 4em; /* Adjust as needed to ensure alignment */
-      }
-    </style>
   </head>
   <body class="is-preload">
     <header id="header">
@@ -44,18 +39,25 @@
           <header>
             <h2>Extras</h2>
           </header>
-          <p>Welcome to the extras section! Here, you can explore additional features and tools we've created to showcase our capabilities. Try out our REST API Explorer below to see how our APIs work in action.</p>
+          <p>Welcome to the extras section! Here, you can enjoy a classic game of Tic-Tac-Toe. Try your best to win!</p>
           
-          <div id="api-explorer">
-            <h3>REST API Explorer</h3>
-            <div class="api-endpoint">
-              <label for="endpoint">Endpoint:</label>
-              <input type="text" id="endpoint" value="https://jsonplaceholder.typicode.com/posts/1">
-              <button id="fetch-data">Fetch Data</button>
+          <div id="tic-tac-toe">
+            <div class="board">
+              <div class="cell" data-cell></div>
+              <div class="cell" data-cell></div>
+              <div class="cell" data-cell></div>
+              <div class="cell" data-cell></div>
+              <div class="cell" data-cell></div>
+              <div class="cell" data-cell></div>
+              <div class="cell" data-cell></div>
+              <div class="cell" data-cell></div>
+              <div class="cell" data-cell></div>
             </div>
-            <div class="api-response">
-              <h4>Response:</h4>
-              <pre id="response"></pre>
+            <div class="game-status">
+              <h3 id="winning-message" class="winning-message">
+                <span id="winning-message-text"></span>
+              </h3>
+              <button id="restartButton">Restart Game</button>
             </div>
           </div>
         </div>
