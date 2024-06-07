@@ -104,6 +104,14 @@
       height: 440px;
       transform-origin: center center;
     }
+
+    .container {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      text-align: center;
+    }
   </style>
 </head>
 <body class="is-preload">
@@ -124,28 +132,30 @@
   </nav>
   <section id="main" class="wrapper">
     <div class="inner">
-      <header>
-        <h2>Extras</h2>
-        <p>Welcome to the extras section! Here, you can enjoy a classic game of Tic-Tac-Toe. Try your best to win!</p>
-      </header>
-      <div class="tic-tac-toe">
-        <div class="board" id="board">
-          <div class="cell" data-cell></div>
-          <div class="cell" data-cell></div>
-          <div class="cell" data-cell></div>
-          <div class="cell" data-cell></div>
-          <div class="cell" data-cell></div>
-          <div class="cell" data-cell></div>
-          <div class="cell" data-cell></div>
-          <div class="cell" data-cell></div>
-          <div class="cell" data-cell></div>
-          <div id="line" class="line"></div>
+      <div class="container">
+        <header>
+          <h2>Extras</h2>
+          <p>Welcome to the extras section! Here, you can enjoy a classic game of Tic-Tac-Toe. Try your best to win!</p>
+        </header>
+        <div class="tic-tac-toe">
+          <div class="board" id="board">
+            <div class="cell" data-cell></div>
+            <div class="cell" data-cell></div>
+            <div class="cell" data-cell></div>
+            <div class="cell" data-cell></div>
+            <div class="cell" data-cell></div>
+            <div class="cell" data-cell></div>
+            <div class="cell" data-cell></div>
+            <div class="cell" data-cell></div>
+            <div class="cell" data-cell></div>
+            <div id="line" class="line"></div>
+          </div>
+          <div class="winning-message" id="winningMessage">
+            <div data-winning-message-text></div>
+            <button id="restartButton">Restart Game</button>
+          </div>
+          <div id="errorMessage" style="color: red; display: none;">Pick an empty square!</div>
         </div>
-        <div class="winning-message" id="winningMessage">
-          <div data-winning-message-text></div>
-          <button id="restartButton">Restart Game</button>
-        </div>
-        <div id="errorMessage" style="color: red; display: none;">Pick an empty square!</div>
       </div>
     </div>
   </section>
@@ -226,7 +236,7 @@
           winningMessageTextElement.innerText = 'Draw!';
           winningMessageTextElement.style.color = 'black';
         } else {
-          winningMessageTextElement.innerText = `${winningClass === CIRCLE_CLASS ? "O" : "X"} Wins!`;
+          winningMessageTextElement.innerText = `${winningClass === CIRCLE_CLASS ? "O's" : "X's"} Wins!`;
           winningMessageTextElement.style.color = winningClass === CIRCLE_CLASS ? '#4287f5' : '#f44b42';
           drawWinningLine(winningClass);
         }
