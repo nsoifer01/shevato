@@ -1,58 +1,67 @@
-body {
-  font-family: Arial, sans-serif;
+.tic-tac-toe {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
 }
 
-#board {
+.board {
   display: grid;
   grid-template-columns: repeat(3, 100px);
-  grid-template-rows: repeat(3, 100px);
-  gap: 10px;
-  justify-content: center;
-  align-items: center;
-  margin: 20px auto;
+  grid-gap: 10px;
+  margin-bottom: 20px;
 }
 
-[data-cell] {
+.cell {
   width: 100px;
   height: 100px;
-  background-color: #f4f4f4;
+  background-color: #f0f0f0;
   display: flex;
-  align-items: center;
   justify-content: center;
-  font-size: 2em;
+  align-items: center;
+  font-size: 3rem;
   cursor: pointer;
-  user-select: none;
 }
 
-.x {
-  color: #ff4b42;
+.cell.x::before {
+  content: "X";
+  color: #f44b42;
 }
 
-.circle {
-  color: #4290f4;
+.cell.circle::before {
+  content: "O";
+  color: #4287f5;
+}
+
+.winning-message {
+  display: none;
+  flex-direction: column;
+  align-items: center;
+}
+
+.winning-message.show {
+  display: flex;
+}
+
+#restartButton {
+  margin-top: 20px;
+  padding: 10px 20px;
+  font-size: 1rem;
+  background-color: #f44b42;
+  color: white;
+  border: none;
+  border-radius: 5px;
+  cursor: pointer;
+}
+
+#restartButton:hover {
+  background-color: #e03e3e;
 }
 
 .winning-line {
   position: absolute;
+  width: 5px;
+  height: 200px;
   background-color: #f44b42;
-  height: 4px;
   z-index: 10;
-}
-
-button {
-  background-color: #ff4b42;
-  border: none;
-  color: white;
-  padding: 10px 20px;
-  text-align: center;
-  text-decoration: none;
-  display: inline-block;
-  font-size: 16px;
-  margin: 20px auto;
-  cursor: pointer;
-  border-radius: 5px;
-}
-
-button:hover {
-  background-color: #e03e37;
+  transform-origin: center center;
 }
