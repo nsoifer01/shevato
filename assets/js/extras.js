@@ -45,8 +45,8 @@ document.addEventListener('DOMContentLoaded', () => {
     } else {
       swapTurns();
       setBoardHoverClass();
-      if (!circleTurn) {
-        bestMove();
+      if (circleTurn) {
+        setTimeout(bestMove, 500); // AI makes a move after a short delay
       }
     }
   }
@@ -55,7 +55,7 @@ document.addEventListener('DOMContentLoaded', () => {
     if (draw) {
       winningMessageTextElement.innerText = 'Draw!';
     } else {
-      winningMessageTextElement.innerText = `${circleTurn ? "O's" : "X's"} Wins!`;
+      winningMessageTextElement.innerText = `${winningClass === CIRCLE_CLASS ? "O's" : "X's"} Wins!`;
       drawWinningLine(winningClass);
     }
     winningMessageElement.classList.add('show');
@@ -99,7 +99,7 @@ document.addEventListener('DOMContentLoaded', () => {
     cellElements.forEach((cell, index) => {
       if (!cell.classList.contains(X_CLASS) && !cell.classList.contains(CIRCLE_CLASS)) {
         cell.classList.add(CIRCLE_CLASS);
-        let score = minimax(board, 0, false);
+        let score = minimax(cellElements, 0, false);
         cell.classList.remove(CIRCLE_CLASS);
         if (score > bestScore) {
           bestScore = score;
@@ -118,7 +118,7 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   }
 
-  function minimax(board, depth, isMaximizing) {
+  function minimax(newBoard, depth, isMaximizing) {
     if (checkWin(CIRCLE_CLASS)) {
       return 1;
     } else if (checkWin(X_CLASS)) {
@@ -132,7 +132,7 @@ document.addEventListener('DOMContentLoaded', () => {
       cellElements.forEach((cell, index) => {
         if (!cell.classList.contains(X_CLASS) && !cell.classList.contains(CIRCLE_CLASS)) {
           cell.classList.add(CIRCLE_CLASS);
-          let score = minimax(board, depth + 1, false);
+          let score = minimax(cellElements, depth + 1, false);
           cell.classList.remove(CIRCLE_CLASS);
           bestScore = Math.max(score, bestScore);
         }
@@ -143,7 +143,7 @@ document.addEventListener('DOMContentLoaded', () => {
       cellElements.forEach((cell, index) => {
         if (!cell.classList.contains(X_CLASS) && !cell.classList.contains(CIRCLE_CLASS)) {
           cell.classList.add(X_CLASS);
-          let score = minimax(board, depth + 1, true);
+          let score = minimax(cellElements, depth + 1, true);
           cell.classList.remove(X_CLASS);
           bestScore = Math.min(score, bestScore);
         }
