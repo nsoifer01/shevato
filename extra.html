@@ -49,6 +49,34 @@
         const platformImage = new Image();
         platformImage.src = 'data:image/png;base64,...';  // Add your base64 encoded platform image here
 
+        let imagesLoaded = 0;
+
+        function imageLoaded() {
+            imagesLoaded++;
+            if (imagesLoaded === 3) {
+                startGame();
+            }
+        }
+
+        backgroundImage.onload = imageLoaded;
+        playerImage.onload = imageLoaded;
+        platformImage.onload = imageLoaded;
+
+        backgroundImage.onerror = () => {
+            console.error('Failed to load background image.');
+            imageLoaded();
+        };
+
+        playerImage.onerror = () => {
+            console.error('Failed to load player image.');
+            imageLoaded();
+        };
+
+        platformImage.onerror = () => {
+            console.error('Failed to load platform image.');
+            imageLoaded();
+        };
+
         class GameObject {
             constructor(x, y, width, height, image, fallbackColor) {
                 this.x = x;
@@ -136,11 +164,21 @@
             }
         }
 
+        function startGame() {
+            generateInitialPlatforms();
+            update();
+        }
+
         function update() {
             ctx.clearRect(0, 0, canvas.width, canvas.height);
 
             // Draw background
-            ctx.drawImage(backgroundImage, 0, 0, canvas.width, canvas.height);
+            if (backgroundImage.complete) {
+                ctx.drawImage(backgroundImage, 0, 0, canvas.width, canvas.height);
+            } else {
+                ctx.fillStyle = '#87ceeb';
+                ctx.fillRect(0, 0, canvas.width, canvas.height);
+            }
 
             // Update player
             player.dy += 0.5; // gravity
@@ -208,11 +246,6 @@
                 player.stop();
             }
         });
-
-        window.onload = () => {
-            generateInitialPlatforms();
-            update();
-        };
     </script>
 </body>
 </html>
