@@ -28,13 +28,14 @@
     }
     #footer .inner {
       display: flex;
-      justify-content: space-between;
+      flex-direction: column;
+      justify-content: center;
       align-items: center;
-      flex-wrap: wrap;
     }
     #footer .content {
-      flex: 1;
-      min-width: 200px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
       margin-bottom: 1em;
     }
     #footer h4 {
@@ -44,6 +45,7 @@
     #footer .plain {
       list-style: none;
       padding: 0;
+      margin: 0;
     }
     #footer .plain li {
       margin: 0.5em 0;
@@ -73,10 +75,21 @@
       color: #f44b42;
     }
     #footer .copyright {
-      flex: 1;
-      min-width: 200px;
       font-size: 0.9em;
       color: #aaa;
+      margin-top: 1em;
+    }
+    @media (min-width: 768px) {
+      #footer .inner {
+        flex-direction: row;
+        justify-content: space-between;
+      }
+      #footer .content {
+        flex-direction: row;
+      }
+      #footer .content section {
+        margin: 0 1em;
+      }
     }
   </style>
 </footer>
