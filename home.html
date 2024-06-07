@@ -1,115 +1,366 @@
 <!DOCTYPE HTML>
 <html>
-  <head>
-    <!-- Google Analytics -->
-    <script async src="https://www.googletagmanager.com/gtag/js?id=UA-140119780-1"></script>
-    <script>
-      window.dataLayer = window.dataLayer || [];
-      function gtag(){dataLayer.push(arguments);}
-      gtag('js', new Date());
-      gtag('config', 'UA-140119780-1');
-    </script>
-    <title>Home - Shevato</title>
-    <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=no" />
-    <meta name="description" content="Shevato - Expert Software Engineering Services" />
-    <meta name="keywords" content="Software Engineering, REST APIs, Microservices, Spring Boot, Java" />
-    <link rel="stylesheet" href="assets/css/main.css" />
-    <link rel="icon" type="image/png" href="images/white_icon_transparent.png">
-    <style>
-      .content h3 {
-        min-height: 4em; /* Adjust as needed to ensure alignment */
-      }
-    </style>
-  </head>
-  <body class="is-preload">
-    <header id="header">
-      <a class="logo" href="home">
-        <img src="images/logo-top.png" alt="Shevato Logo">
-      </a>
-      <nav>
-        <a href="#menu">Menu</a>
-      </nav>
-    </header>
-    <nav id="menu">
-      <ul class="links">
-        <li><a href="home">Home</a></li>
-        <li><a href="product">Product</a></li>
-        <li><a href="extras">Extras</a></li>
-      </ul>
+<head>
+  <!-- Google Analytics -->
+  <script async src="https://www.googletagmanager.com/gtag/js?id=UA-140119780-1"></script>
+  <script>
+    window.dataLayer = window.dataLayer || [];
+    function gtag(){dataLayer.push(arguments);}
+    gtag('js', new Date());
+    gtag('config', 'UA-140119780-1');
+  </script>
+  <title>Extras</title>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=no" />
+  <meta name="description" content="Extras page with fun and engaging content" />
+  <meta name="keywords" content="Tic-Tac-Toe, Extras, Fun, Game" />
+  <link rel="stylesheet" href="assets/css/main.css" />
+  <link rel="icon" type="image/png" href="images/white_icon_transparent.png">
+  <style>
+    .tic-tac-toe {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+    }
+
+    .board {
+      display: grid;
+      grid-template-columns: repeat(3, 100px);
+      grid-gap: 10px;
+      margin-bottom: 20px;
+      position: relative;
+    }
+
+    .cell {
+      width: 100px;
+      height: 100px;
+      background-color: #d0d0d0; /* Darker shade */
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      font-size: 3rem;
+      cursor: pointer;
+    }
+
+    .cell.x::before {
+      content: "X";
+      color: #f44b42;
+    }
+
+    .cell.circle::before {
+      content: "O";
+      color: #4287f5;
+    }
+
+    .winning-message {
+      display: none;
+      flex-direction: column;
+      align-items: center;
+    }
+
+    .winning-message.show {
+      display: flex;
+    }
+
+    #restartButton {
+      margin-top: 20px;
+      padding: 10px 20px;
+      font-size: 1rem;
+      background-color: #f44b42;
+      color: white;
+      border: none;
+      border-radius: 5px;
+      cursor: pointer;
+      text-align: center;
+      display: inline-block;
+      width: 150px; /* Adjust width as needed */
+      height: 40px;
+      line-height: 1.5em; /* Ensure proper alignment */
+      vertical-align: middle;
+    }
+
+    #restartButton:hover {
+      background-color: #e03e3e;
+    }
+
+    .line {
+      position: absolute;
+      background-color: #000;
+      z-index: 1;
+    }
+
+    .line.horizontal {
+      width: 330px;
+      height: 5px;
+    }
+
+    .line.vertical {
+      width: 5px;
+      height: 330px;
+    }
+
+    .line.diagonal {
+      width: 5px;
+      height: 440px;
+      transform-origin: center center;
+    }
+
+    .container {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      text-align: center;
+    }
+  </style>
+</head>
+<body class="is-preload">
+  <header id="header">
+    <a class="logo" href="home">
+      <img src="images/logo-top.png" alt="Shevato Logo">
+    </a>
+    <nav>
+      <a href="#menu">Menu</a>
     </nav>
-    <section class="wrapper" style="padding-top:inherit">
-      <div class="inner">
-        <header class="special">
-          <h2>
-            <img src="images/full-logo.svg" alt="Shevato">
-          </h2>
-          <p>Welcome to Shevato, your trusted partner for top-notch software engineering services. Specializing in REST APIs, Microservices, and Spring Boot with Java.</p>
+  </header>
+  <nav id="menu">
+    <ul class="links">
+      <li><a href="home">Home</a></li>
+      <li><a href="product">Product</a></li>
+      <li><a href="extras">Extras</a></li>
+    </ul>
+  </nav>
+  <section id="main" class="wrapper">
+    <div class="inner">
+      <div class="container">
+        <header>
+          <h2>Extras</h2>
+          <p>Welcome to the extras section! Here, you can enjoy a classic game of Tic-Tac-Toe. Try your best to win!</p>
         </header>
-        <div class="highlights">
-          <section>
-            <div class="content">
-              <header>
-                <span class="icon fa-cogs" style="color: #f44b42"></span>
-                <h3>Our Expertise</h3>
-              </header>
-              <p>With years of experience in software development, we offer expert solutions in REST APIs, Microservices, and Spring Boot using Java to meet your business needs.</p>
-            </div>
-          </section>
-          <section>
-            <div class="content">
-              <header>
-                <span class="icon fa-users" style="color: #f44b42"></span>
-                <h3>Client Focus</h3>
-              </header>
-              <p>Our main client, Tire Rack, trusts us for our reliable and efficient software solutions. We are committed to providing excellent service to all our clients.</p>
-            </div>
-          </section>
-          <section>
-            <div class="content">
-              <header>
-                <span class="icon fa-lightbulb-o" style="color: #f44b42"></span>
-                <h3>Innovative Solutions</h3>
-              </header>
-              <p>We leverage the latest technologies and methodologies to deliver innovative software solutions that drive business success.</p>
-            </div>
-          </section>
-          <section>
-            <div class="content">
-              <header>
-                <span class="icon fa-line-chart" style="color: #f44b42"></span>
-                <h3>Continuous Improvement</h3>
-              </header>
-              <p>Our team is dedicated to continuous improvement, constantly updating our skills and knowledge to provide the best possible service.</p>
-            </div>
-          </section>
-          <section>
-            <div class="content">
-              <header>
-                <span class="icon fa-handshake-o" style="color: #f44b42"></span>
-                <h3>Collaborative Approach</h3>
-              </header>
-              <p>We believe in a collaborative approach, working closely with our clients to understand their needs and deliver tailored solutions.</p>
-            </div>
-          </section>
-          <section>
-            <div class="content">
-              <header>
-                <span class="icon fa-rocket" style="color: #f44b42"></span>
-                <h3>Future Ready</h3>
-              </header>
-              <p>Our solutions are designed to be future-ready, ensuring scalability and adaptability in a rapidly changing technological landscape.</p>
-            </div>
-          </section>
+        <div class="tic-tac-toe">
+          <div class="board" id="board">
+            <div class="cell" data-cell></div>
+            <div class="cell" data-cell></div>
+            <div class="cell" data-cell></div>
+            <div class="cell" data-cell></div>
+            <div class="cell" data-cell></div>
+            <div class="cell" data-cell></div>
+            <div class="cell" data-cell></div>
+            <div class="cell" data-cell></div>
+            <div class="cell" data-cell></div>
+            <div id="line" class="line"></div>
+          </div>
+          <div class="winning-message" id="winningMessage">
+            <div data-winning-message-text></div>
+            <button id="restartButton">Restart Game</button>
+          </div>
+          <div id="errorMessage" style="color: red; display: none;">Pick an empty square!</div>
         </div>
       </div>
-    </section>
-    <div data-include="footer"></div>
-    <!-- Scripts -->
-    <script src="assets/js/jquery.min.js"></script>
-    <script src="assets/js/browser.min.js"></script>
-    <script src="assets/js/breakpoints.min.js"></script>
-    <script src="assets/js/util.js"></script>
-    <script src="assets/js/main.js"></script>
-  </body>
+    </div>
+  </section>
+  <div data-include="footer"></div>
+  <!-- Scripts -->
+  <script src="assets/js/jquery.min.js"></script>
+  <script src="assets/js/browser.min.js"></script>
+  <script src="assets/js/breakpoints.min.js"></script>
+  <script src="assets/js/util.js"></script>
+  <script src="assets/js/main.js"></script>
+  <script>
+    document.addEventListener('DOMContentLoaded', () => {
+      const X_CLASS = 'x';
+      const CIRCLE_CLASS = 'circle';
+      const WINNING_COMBINATIONS = [
+        [0, 1, 2],
+        [3, 4, 5],
+        [6, 7, 8],
+        [0, 3, 6],
+        [1, 4, 7],
+        [2, 5, 8],
+        [0, 4, 8],
+        [2, 4, 6]
+      ];
+      const cellElements = document.querySelectorAll('[data-cell]');
+      const board = document.getElementById('board');
+      const winningMessageElement = document.getElementById('winningMessage');
+      const restartButton = document.getElementById('restartButton');
+      const winningMessageTextElement = document.querySelector('[data-winning-message-text]');
+      const errorMessage = document.getElementById('errorMessage');
+      const line = document.getElementById('line');
+      let circleTurn;
+
+      startGame();
+
+      restartButton.addEventListener('click', startGame);
+
+      function startGame() {
+        circleTurn = false;
+        cellElements.forEach(cell => {
+          cell.classList.remove(X_CLASS);
+          cell.classList.remove(CIRCLE_CLASS);
+          cell.removeEventListener('click', handleClick);
+          cell.addEventListener('click', handleClick, { once: true });
+        });
+        setBoardHoverClass();
+        winningMessageElement.classList.remove('show');
+        errorMessage.style.display = 'none';
+        line.style.display = 'none';
+      }
+
+      function handleClick(e) {
+        const cell = e.target;
+        const currentClass = circleTurn ? CIRCLE_CLASS : X_CLASS;
+        if (cell.classList.contains(X_CLASS) || cell.classList.contains(CIRCLE_CLASS)) {
+          errorMessage.style.display = 'block';
+          setTimeout(() => {
+            errorMessage.style.display = 'none';
+          }, 2000);
+          return;
+        }
+        placeMark(cell, currentClass);
+        if (checkWin(currentClass)) {
+          endGame(false, currentClass);
+        } else if (isDraw()) {
+          endGame(true);
+        } else {
+          swapTurns();
+          setBoardHoverClass();
+          if (circleTurn) {
+            setTimeout(bestMove, 300); // AI makes a move after a short delay
+          }
+        }
+      }
+
+      function endGame(draw, winningClass) {
+        if (draw) {
+          winningMessageTextElement.innerText = 'Draw!';
+          winningMessageTextElement.style.color = 'black';
+        } else {
+          winningMessageTextElement.innerText = `${winningClass === CIRCLE_CLASS ? "O's" : "X's"} Wins!`;
+          winningMessageTextElement.style.color = winningClass === CIRCLE_CLASS ? '#4287f5' : '#f44b42';
+          drawWinningLine(winningClass);
+        }
+        winningMessageElement.classList.add('show');
+      }
+
+      function isDraw() {
+        return [...cellElements].every(cell => {
+          return cell.classList.contains(X_CLASS) || cell.classList.contains(CIRCLE_CLASS);
+        });
+      }
+
+      function placeMark(cell, currentClass) {
+        cell.classList.add(currentClass);
+      }
+
+      function swapTurns() {
+        circleTurn = !circleTurn;
+      }
+
+      function setBoardHoverClass() {
+        board.classList.remove(X_CLASS);
+        board.classList.remove(CIRCLE_CLASS);
+        if (circleTurn) {
+          board.classList.add(CIRCLE_CLASS);
+        } else {
+          board.classList.add(X_CLASS);
+        }
+      }
+
+      function checkWin(currentClass) {
+        return WINNING_COMBINATIONS.some(combination => {
+          return combination.every(index => {
+            return cellElements[index].classList.contains(currentClass);
+          });
+        });
+      }
+
+      function drawWinningLine(winningClass) {
+        WINNING_COMBINATIONS.forEach((combination, index) => {
+          if (combination.every(idx => cellElements[idx].classList.contains(winningClass))) {
+            let lineClass = '';
+            let startCell = cellElements[combination[0]];
+            let endCell = cellElements[combination[2]];
+            let startX = startCell.offsetLeft + startCell.offsetWidth / 2;
+            let startY = startCell.offsetTop + startCell.offsetHeight / 2;
+            let endX = endCell.offsetLeft + endCell.offsetWidth / 2;
+            let endY = endCell.offsetTop + endCell.offsetHeight / 2;
+            let length = Math.sqrt(Math.pow(endX - startX, 2) + Math.pow(endY - startY, 2));
+            let angle = Math.atan2(endY - startY, endX - startX) * (180 / Math.PI);
+
+            line.style.width = `${length}px`;
+            line.style.height = `5px`;
+            line.style.left = `${startX}px`;
+            line.style.top = `${startY}px`;
+            line.style.transform = `rotate(${angle}deg)`;
+            line.style.transformOrigin = '0 0';
+            line.style.display = 'block';
+          }
+        });
+      }
+
+      function bestMove() {
+        let bestScore = -Infinity;
+        let move;
+        cellElements.forEach((cell, index) => {
+          if (!cell.classList.contains(X_CLASS) && !cell.classList.contains(CIRCLE_CLASS)) {
+            cell.classList.add(CIRCLE_CLASS);
+            let score = minimax(cellElements, 0, false);
+            cell.classList.remove(CIRCLE_CLASS);
+            if (score > bestScore) {
+              bestScore = score;
+              move = index;
+            }
+          }
+        });
+        placeMark(cellElements[move], CIRCLE_CLASS);
+        if (checkWin(CIRCLE_CLASS)) {
+          endGame(false, CIRCLE_CLASS);
+        } else if (isDraw()) {
+          endGame(true);
+        } else {
+          swapTurns();
+          setBoardHoverClass();
+        }
+      }
+
+      function minimax(newBoard, depth, isMaximizing) {
+        if (checkWin(CIRCLE_CLASS)) {
+          return 1;
+        } else if (checkWin(X_CLASS)) {
+          return -1;
+        } else if (isDraw()) {
+          return 0;
+        }
+
+        if (isMaximizing) {
+          let bestScore = -Infinity;
+          cellElements.forEach((cell, index) => {
+            if (!cell.classList.contains(X_CLASS) && !cell.classList.contains(CIRCLE_CLASS)) {
+              cell.classList.add(CIRCLE_CLASS);
+              let score = minimax(cellElements, depth + 1, false);
+              cell.classList.remove(CIRCLE_CLASS);
+              bestScore = Math.max(score, bestScore);
+            }
+          });
+          return bestScore;
+        } else {
+          let bestScore = Infinity;
+          cellElements.forEach((cell, index) => {
+            if (!cell.classList.contains(X_CLASS) && !cell.classList.contains(CIRCLE_CLASS)) {
+              cell.classList.add(X_CLASS);
+              let score = minimax(cellElements, depth + 1, true);
+              cell.classList.remove(X_CLASS);
+              bestScore = Math.min(score, bestScore);
+            }
+          });
+          return bestScore;
+        }
+      }
+    });
+  </script>
+  <script>
+    window.history.pushState({}, document.title, "/" + "extras");
+  </script>
+</body>
 </html>
