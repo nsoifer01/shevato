@@ -32,7 +32,6 @@ document.addEventListener('DOMContentLoaded', () => {
     });
     setBoardHoverClass();
     winningMessageElement.classList.remove('show');
-    clearWinningLine();
   }
 
   function handleClick(e) {
@@ -159,37 +158,15 @@ document.addEventListener('DOMContentLoaded', () => {
         return cellElements[index].classList.contains(winningClass);
       });
     });
-
     if (winningCombination) {
+      const [start, , end] = winningCombination;
+      const startPos = cellElements[start].getBoundingClientRect();
+      const endPos = cellElements[end].getBoundingClientRect();
       const line = document.createElement('div');
       line.classList.add('winning-line');
-      line.style.position = 'absolute';
-
-      const positions = winningCombination.map(index => cellElements[index].getBoundingClientRect());
-      const start = positions[0];
-      const end = positions[2];
-      const boardRect = board.getBoundingClientRect();
-
-      const x1 = start.left + (start.width / 2) - boardRect.left;
-      const y1 = start.top + (start.height / 2) - boardRect.top;
-      const x2 = end.left + (end.width / 2) - boardRect.left;
-      const y2 = end.top + (end.height / 2) - boardRect.top;
-
-      line.style.width = `${Math.sqrt((x2 - x1) ** 2 + (y2 - y1) ** 2)}px`;
-      line.style.height = '4px';
-      line.style.backgroundColor = '#f44b42';
-      line.style.top = `${y1}px`;
-      line.style.left = `${x1}px`;
-      line.style.transform = `translateY(-50%) rotate(${Math.atan2(y2 - y1, x2 - x1) * (180 / Math.PI)}deg)`;
-
-      board.appendChild(line);
-    }
-  }
-
-  function clearWinningLine() {
-    const existingLine = document.querySelector('.winning-line');
-    if (existingLine) {
-      existingLine.remove();
+      line.style.top = `${(startPos.top + endPos.top) / 2}px`;
+      line.style.left = `${(startPos.left + endPos.left) / 2}px`;
+      document.body.appendChild(line);
     }
   }
 });
