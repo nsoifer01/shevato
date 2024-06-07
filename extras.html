@@ -80,15 +80,6 @@
     #restartButton:hover {
       background-color: #e03e3e;
     }
-
-    .winning-line {
-      position: absolute;
-      width: 5px;
-      height: 200px;
-      background-color: #f44b42;
-      z-index: 10;
-      transform-origin: center center;
-    }
   </style>
 </head>
 <body class="is-preload">
@@ -176,7 +167,6 @@
         });
         setBoardHoverClass();
         winningMessageElement.classList.remove('show');
-        clearWinningLine();
         errorMessage.style.display = 'none';
       }
 
@@ -211,7 +201,6 @@
         } else {
           winningMessageTextElement.innerText = `${winningClass === CIRCLE_CLASS ? "O's" : "X's"} Wins!`;
           winningMessageTextElement.style.color = winningClass === CIRCLE_CLASS ? '#4287f5' : '#f44b42';
-          drawWinningLine(winningClass);
         }
         winningMessageElement.classList.add('show');
       }
@@ -304,31 +293,6 @@
             }
           });
           return bestScore;
-        }
-      }
-
-      function drawWinningLine(winningClass) {
-        const winningCombination = WINNING_COMBINATIONS.find(combination => {
-          return combination.every(index => {
-            return cellElements[index].classList.contains(winningClass);
-          });
-        });
-        if (winningCombination) {
-          const [start, , end] = winningCombination;
-          const startPos = cellElements[start].getBoundingClientRect();
-          const endPos = cellElements[end].getBoundingClientRect();
-          const line = document.createElement('div');
-          line.classList.add('winning-line');
-          line.style.width = `${Math.hypot(endPos.left - startPos.left, endPos.top - startPos.top)}px`;
-          line.style.transform = `translate(${startPos.left + startPos.width / 2}px, ${startPos.top + startPos.height / 2}px) rotate(${Math.atan2(endPos.top - startPos.top, endPos.left - startPos.left)}rad)`;
-          document.body.appendChild(line);
-        }
-      }
-
-      function clearWinningLine() {
-        const line = document.querySelector('.winning-line');
-        if (line) {
-          line.remove();
         }
       }
     });
