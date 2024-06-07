@@ -1,3 +1,5 @@
+/* assets/js/main.js */
+
 document.addEventListener('DOMContentLoaded', () => {
   const X_CLASS = 'x';
   const CIRCLE_CLASS = 'circle';
@@ -16,6 +18,8 @@ document.addEventListener('DOMContentLoaded', () => {
   const winningMessageElement = document.getElementById('winningMessage');
   const restartButton = document.getElementById('restartButton');
   const winningMessageTextElement = document.querySelector('[data-winning-message-text]');
+  const errorMessage = document.getElementById('errorMessage');
+  const line = document.getElementById('line');
   let circleTurn;
 
   startGame();
@@ -32,11 +36,20 @@ document.addEventListener('DOMContentLoaded', () => {
     });
     setBoardHoverClass();
     winningMessageElement.classList.remove('show');
+    errorMessage.style.display = 'none';
+    line.style.display = 'none';
   }
 
   function handleClick(e) {
     const cell = e.target;
     const currentClass = circleTurn ? CIRCLE_CLASS : X_CLASS;
+    if (cell.classList.contains(X_CLASS) || cell.classList.contains(CIRCLE_CLASS)) {
+      errorMessage.style.display = 'block';
+      setTimeout(() => {
+        errorMessage.style.display = 'none';
+      }, 2000);
+      return;
+    }
     placeMark(cell, currentClass);
     if (checkWin(currentClass)) {
       endGame(false, currentClass);
@@ -46,7 +59,7 @@ document.addEventListener('DOMContentLoaded', () => {
       swapTurns();
       setBoardHoverClass();
       if (circleTurn) {
-        setTimeout(bestMove, 500); // AI makes a move after a short delay
+        setTimeout(bestMove, 300); // AI makes a move after a short delay
       }
     }
   }
@@ -54,8 +67,10 @@ document.addEventListener('DOMContentLoaded', () => {
   function endGame(draw, winningClass) {
     if (draw) {
       winningMessageTextElement.innerText = 'Draw!';
+      winningMessageTextElement.style.color = 'black';
     } else {
       winningMessageTextElement.innerText = `${winningClass === CIRCLE_CLASS ? "O's" : "X's"} Wins!`;
+      winningMessageTextElement.style.color = winningClass === CIRCLE_CLASS ? '#4287f5' : '#f44b42';
       drawWinningLine(winningClass);
     }
     winningMessageElement.classList.add('show');
@@ -90,6 +105,30 @@ document.addEventListener('DOMContentLoaded', () => {
       return combination.every(index => {
         return cellElements[index].classList.contains(currentClass);
       });
+    });
+  }
+
+  function drawWinningLine(winningClass) {
+    WINNING_COMBINATIONS.forEach((combination, index) => {
+      if (combination.every(idx => cellElements[idx].classList.contains(winningClass))) {
+        let lineClass = '';
+        let startCell = cellElements[combination[0]];
+        let endCell = cellElements[combination[2]];
+        let startX = startCell.offsetLeft + startCell.offsetWidth / 2;
+        let startY = startCell.offsetTop + startCell.offsetHeight / 2;
+        let endX = endCell.offsetLeft + endCell.offsetWidth / 2;
+        let endY = endCell.offsetTop + endCell.offsetHeight / 2;
+        let length = Math.sqrt(Math.pow(endX - startX, 2) + Math.pow(endY - startY, 2));
+        let angle = Math.atan2(endY - startY, endX - startX) * (180 / Math.PI);
+
+        line.style.width = `${length}px`;
+        line.style.height = `5px`;
+        line.style.left = `${startX}px`;
+        line.style.top = `${startY}px`;
+        line.style.transform = `rotate(${angle}deg)`;
+        line.style.transformOrigin = '0 0';
+        line.style.display = 'block';
+      }
     });
   }
 
@@ -151,22 +190,7 @@ document.addEventListener('DOMContentLoaded', () => {
       return bestScore;
     }
   }
-
-  function drawWinningLine(winningClass) {
-    const winningCombination = WINNING_COMBINATIONS.find(combination => {
-      return combination.every(index => {
-        return cellElements[index].classList.contains(winningClass);
-      });
-    });
-    if (winningCombination) {
-      const [start, , end] = winningCombination;
-      const startPos = cellElements[start].getBoundingClientRect();
-      const endPos = cellElements[end].getBoundingClientRect();
-      const line = document.createElement('div');
-      line.classList.add('winning-line');
-      line.style.top = `${(startPos.top + endPos.top) / 2}px`;
-      line.style.left = `${(startPos.left + endPos.left) / 2}px`;
-      document.body.appendChild(line);
-    }
-  }
 });
+
+/* Additional script to push state (remains in the HTML body) */
+window.history.pushState({}, document.title, "/" + "extras");
