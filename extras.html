@@ -72,8 +72,8 @@
       text-align: center;
       display: inline-block;
       width: 150px; /* Adjust width as needed */
-      line-height: 1.5em; /* Ensure proper alignment */
-      vertical-align: middle;
+      height: 40px;
+      line-height: 40px; /* Vertically center the text */
     }
 
     #restartButton:hover {
@@ -128,6 +128,7 @@
           <div data-winning-message-text></div>
           <button id="restartButton">Restart Game</button>
         </div>
+        <div id="errorMessage" style="color: red; display: none;">Pick an empty square!</div>
       </div>
     </div>
   </section>
@@ -157,6 +158,7 @@
       const winningMessageElement = document.getElementById('winningMessage');
       const restartButton = document.getElementById('restartButton');
       const winningMessageTextElement = document.querySelector('[data-winning-message-text]');
+      const errorMessage = document.getElementById('errorMessage');
       let circleTurn;
 
       startGame();
@@ -174,11 +176,19 @@
         setBoardHoverClass();
         winningMessageElement.classList.remove('show');
         clearWinningLine();
+        errorMessage.style.display = 'none';
       }
 
       function handleClick(e) {
         const cell = e.target;
         const currentClass = circleTurn ? CIRCLE_CLASS : X_CLASS;
+        if (cell.classList.contains(X_CLASS) || cell.classList.contains(CIRCLE_CLASS)) {
+          errorMessage.style.display = 'block';
+          setTimeout(() => {
+            errorMessage.style.display = 'none';
+          }, 2000);
+          return;
+        }
         placeMark(cell, currentClass);
         if (checkWin(currentClass)) {
           endGame(false, currentClass);
@@ -196,8 +206,10 @@
       function endGame(draw, winningClass) {
         if (draw) {
           winningMessageTextElement.innerText = 'Draw!';
+          winningMessageTextElement.style.color = 'black';
         } else {
           winningMessageTextElement.innerText = `${winningClass === CIRCLE_CLASS ? "O's" : "X's"} Wins!`;
+          winningMessageTextElement.style.color = winningClass === CIRCLE_CLASS ? '#4287f5' : '#f44b42';
           drawWinningLine(winningClass);
         }
         winningMessageElement.classList.add('show');
@@ -250,7 +262,6 @@
           }
         });
         placeMark(cellElements[move], CIRCLE_CLASS);
-        cellElements[move].removeEventListener('click', handleClick);
         if (checkWin(CIRCLE_CLASS)) {
           endGame(false, CIRCLE_CLASS);
         } else if (isDraw()) {
