@@ -137,7 +137,7 @@
             }
         }
 
-        let player = new Player(385, 500);
+        let player;
         let platforms = [];
         let score = 0;
         let scrollOffset = 0;
@@ -151,9 +151,12 @@
         }
 
         function generateInitialPlatforms() {
+            platforms = [];
             for (let i = 0; i < 10; i++) {
                 generatePlatform(i * platformFrequency + 200);
             }
+            player.y = platforms[0].y - player.height;
+            player.onGround = true;
         }
 
         function update() {
@@ -217,7 +220,6 @@
         function restartGame() {
             document.getElementById('gameOver').style.display = 'none';
             player = new Player(385, 500);
-            platforms = [];
             score = 0;
             scrollOffset = 0;
             generateInitialPlatforms();
@@ -240,6 +242,7 @@
             }
         });
 
+        player = new Player(385, 500);
         generateInitialPlatforms();
         update();
     </script>
