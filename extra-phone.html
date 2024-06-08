@@ -4,15 +4,17 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Interactive Phone Game</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/animate.css/4.1.1/animate.min.css"/>
     <style>
         body {
             margin: 0;
-            font-family: Arial, sans-serif;
+            font-family: 'Arial', sans-serif;
             display: flex;
             justify-content: center;
             align-items: center;
             height: 100vh;
-            background-color: #f0f0f0;
+            background: linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%);
+            overflow: hidden;
         }
 
         #game-container {
@@ -20,38 +22,54 @@
             width: 100vw;
             height: 100vh;
             overflow: hidden;
-            background-color: #ffffff;
-            border: 2px solid #000;
+            background: rgba(255, 255, 255, 0.8);
+            border-radius: 20px;
+            box-shadow: 0 8px 16px rgba(0, 0, 0, 0.2);
         }
 
         #circle {
             position: absolute;
-            width: 50px;
-            height: 50px;
+            width: 60px;
+            height: 60px;
             border-radius: 50%;
-            background-color: red;
+            background: radial-gradient(circle, rgba(255,0,0,1) 0%, rgba(255,0,0,0.6) 100%);
+            box-shadow: 0 4px 8px rgba(255, 0, 0, 0.4);
             display: none;
         }
 
         #score, #time {
             position: absolute;
-            top: 10px;
+            top: 20px;
             font-size: 24px;
-            color: #000;
+            color: #333;
+            background: rgba(255, 255, 255, 0.9);
+            padding: 10px 20px;
+            border-radius: 10px;
+            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
         }
 
         #score {
-            left: 10px;
+            left: 20px;
         }
 
         #time {
-            right: 10px;
+            right: 20px;
+        }
+
+        @keyframes fadeInOut {
+            0% { opacity: 0; }
+            50% { opacity: 1; }
+            100% { opacity: 0; }
+        }
+
+        .animate-circle {
+            animation: fadeInOut 1s;
         }
     </style>
 </head>
 <body>
     <div id="game-container">
-        <div id="circle"></div>
+        <div id="circle" class="animate__animated"></div>
         <div id="score">Score: 0</div>
         <div id="time">Time: 30</div>
     </div>
@@ -79,11 +97,14 @@
         }
 
         function showCircle() {
-            let x = Math.random() * (gameContainer.clientWidth - 50);
-            let y = Math.random() * (gameContainer.clientHeight - 50);
+            let x = Math.random() * (gameContainer.clientWidth - 60);
+            let y = Math.random() * (gameContainer.clientHeight - 60);
             circle.style.left = `${x}px`;
             circle.style.top = `${y}px`;
             circle.style.display = 'block';
+            circle.classList.remove('animate__fadeIn');
+            void circle.offsetWidth;  // Trigger reflow to restart animation
+            circle.classList.add('animate__fadeIn');
         }
 
         circle.addEventListener('click', () => {
