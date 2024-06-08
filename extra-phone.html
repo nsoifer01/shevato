@@ -39,6 +39,10 @@
         #time {
             right: 20px;
         }
+
+        canvas {
+            border-radius: 20px;
+        }
     </style>
 </head>
 <body>
@@ -158,6 +162,7 @@
             timeDisplay.textContent = `Time: ${timeLeft}`;
             Matter.Composite.clear(world, true);
             createBuilding();
+            World.add(world, [ground, leftWall, rightWall, ball]);
             Body.setPosition(ball, { x: 150, y: window.innerHeight / 2 });
             Body.setVelocity(ball, { x: 0, y: 0 });
             startGame();
