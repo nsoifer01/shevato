@@ -142,6 +142,7 @@
         let score = 0;
         let scrollOffset = 0;
         const platformFrequency = 60; // distance between platforms
+        const cameraSpeed = 0.5; // speed of the camera
 
         function generatePlatform(y) {
             const width = 100;
@@ -177,7 +178,7 @@
 
             // Update platforms and check for collisions
             platforms.forEach(platform => {
-                platform.y += scrollOffset;
+                platform.y += scrollOffset + cameraSpeed;
 
                 if (player.collidesWith(platform) && player.dy > 0) {
                     player.dy = 0;
@@ -199,14 +200,16 @@
             }
 
             // Scroll the screen
-            if (player.y < canvas.height / 2) {
-                scrollOffset = (canvas.height / 2 - player.y) * 0.05;  // Slower screen movement
-                player.y += scrollOffset;
-                platforms.forEach(platform => platform.y += scrollOffset);
-                score += scrollOffset;
-                document.getElementById('score').textContent = Math.floor(score);
-            } else {
-                scrollOffset = 0;
+            scrollOffset = (canvas.height / 2 - player.y) * 0.05;  // Slower screen movement
+            player.y += scrollOffset + cameraSpeed;
+            platforms.forEach(platform => platform.y += scrollOffset);
+
+            score += cameraSpeed;
+            document.getElementById('score').textContent = Math.floor(score);
+
+            // Check if the player is caught by the camera
+            if (player.y + player.height >= canvas.height) {
+                endGame();
             }
 
             requestAnimationFrame(update);
