@@ -107,12 +107,12 @@
         let platforms = [];
         let score = 0;
         let scrollOffset = 0;
-        let platformFrequency = 60; // distance between platforms
+        const platformFrequency = 60; // distance between platforms
 
         function generatePlatform(y) {
-            let width = 100;
-            let height = 10;
-            let x = Math.random() * (canvas.width - width);
+            const width = 100;
+            const height = 10;
+            const x = Math.random() * (canvas.width - width);
             platforms.push(new Platform(x, y, width, height, 'green'));
         }
 
