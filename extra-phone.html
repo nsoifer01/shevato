@@ -87,54 +87,67 @@
         Runner.run(runner, engine);
 
         // Create ground
-        const ground = Bodies.rectangle(window.innerWidth / 2, window.innerHeight, window.innerWidth, 60, { isStatic: true });
+        const ground = Bodies.rectangle(render.options.width / 2, render.options.height + 30, render.options.width, 60, { isStatic: true });
         World.add(world, ground);
 
-        // Create building blocks
-        const createBuilding = () => {
-            const blocks = [];
-            const blockWidth = 80;
-            const blockHeight = 40;
-            const rows = 6;
-            const cols = 5;
-
-            for (let row = 0; row < rows; row++) {
-                for (let col = 0; col < cols; col++) {
-                    const block = Bodies.rectangle(300 + col * blockWidth, window.innerHeight - 60 - row * blockHeight, blockWidth, blockHeight, {
-                        restitution: 0.6,
-                        friction: 0.3
-                    });
-                    blocks.push(block);
-                }
-            }
-
-            World.add(world, blocks);
+        // Create targets
+        const createTarget = () => {
+            const targetSize = 50;
+            const x = Math.random() * (render.options.width - targetSize) + targetSize / 2;
+            const y = Math.random() * (render.options.height / 2) + targetSize / 2;
+            const target = Bodies.rectangle(x, y, targetSize, targetSize, {
+                isStatic: true,
+                render: {
+                    fillStyle: 'red'
+                },
+                label: 'Target'
+            });
+            World.add(world, target);
         };
 
-        createBuilding();
+        const createMultipleTargets = (count) => {
+            for (let i = 0; i < count; i++) {
+                createTarget();
+            }
+        };
+
+        createMultipleTargets(5);
 
         // Create ball
-        const ball = Bodies.circle(150, window.innerHeight / 2, 30, { restitution: 0.8 });
+        const ball = Bodies.circle(render.options.width / 2, render.options.height - 60, 20, {
+            restitution: 0.8,
+            render: {
+                fillStyle: 'blue'
+            }
+        });
         World.add(world, ball);
 
-        const mouse = Mouse.create(render.canvas);
-        const mouseConstraint = MouseConstraint.create(engine, {
-            mouse: mouse,
-            constraint: {
-                render: { visible: false }
-            }
-        });
-        World.add(world, mouseConstraint);
-
-        Events.on(mouseConstraint, 'enddrag', (event) => {
-            if (event.body === ball) {
-                Body.setVelocity(ball, { x: 20, y: -10 });
-            }
+        // Handle swipe to launch the ball
+        let initialTouch = null;
+        gameContainer.addEventListener('touchstart', (event) => {
+            initialTouch = event.touches[0];
         });
 
+        gameContainer.addEventListener('touchend', (event) => {
+            if (!initialTouch) return;
+
+            const finalTouch = event.changedTouches[0];
+            const deltaX = finalTouch.clientX - initialTouch.clientX;
+            const deltaY = finalTouch.clientY - initialTouch.clientY;
+
+            Body.setVelocity(ball, {
+                x: deltaX / 10,
+                y: deltaY / 10
+            });
+
+            initialTouch = null;
+        });
+
+        // Detect collisions with targets
         Events.on(engine, 'collisionStart', (event) => {
             event.pairs.forEach((pair) => {
-                if (pair.bodyA.label === 'Block' || pair.bodyB.label === 'Block') {
+                if (pair.bodyA.label === 'Target' || pair.bodyB.label === 'Target') {
+                    World.remove(world, pair.bodyA.label === 'Target' ? pair.bodyA : pair.bodyB);
                     score++;
                     scoreDisplay.textContent = `Score: ${score}`;
                 }
@@ -160,13 +173,19 @@
             scoreDisplay.textContent = `Score: ${score}`;
             timeDisplay.textContent = `Time: ${timeLeft}`;
             Matter.Composite.clear(world, true);
-            createBuilding();
-            Body.setPosition(ball, { x: 150, y: window.innerHeight / 2 });
+            World.add(world, ground);
+            World.add(world, ball);
+            createMultipleTargets(5);
+            Body.setPosition(ball, { x: render.options.width / 2, y: render.options.height - 60 });
             Body.setVelocity(ball, { x: 0, y: 0 });
             startGame();
         }
 
         window.onload = startGame;
+        window.onresize = () => {
+            render.canvas.width = window.innerWidth;
+            render.canvas.height = window.innerHeight;
+        };
     </script>
 </body>
 </html>
