@@ -3,22 +3,27 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Interactive Destruction Game</title>
+    <title>Throw Ball Game</title>
     <style>
         body {
             margin: 0;
             font-family: 'Arial', sans-serif;
-            overflow: hidden;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
             background: linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%);
+            overflow: hidden;
         }
 
         #game-container {
-            position: absolute;
-            top: 0;
-            left: 0;
+            position: relative;
             width: 100vw;
             height: 100vh;
             overflow: hidden;
+            background: rgba(255, 255, 255, 0.8);
+            border-radius: 20px;
+            box-shadow: 0 8px 16px rgba(0, 0, 0, 0.2);
         }
 
         #score, #time {
@@ -70,8 +75,8 @@
             engine: engine,
             canvas: document.getElementById('gameCanvas'),
             options: {
-                width: 3000,
-                height: 2000,
+                width: window.innerWidth,
+                height: window.innerHeight,
                 wireframes: false,
                 background: 'rgba(255, 255, 255, 0.8)'
             }
@@ -82,28 +87,22 @@
         Runner.run(runner, engine);
 
         // Create ground
-        const ground = Bodies.rectangle(1500, 2000, 3000, 60, { isStatic: true });
+        const ground = Bodies.rectangle(window.innerWidth / 2, window.innerHeight, window.innerWidth, 60, { isStatic: true });
         World.add(world, ground);
-
-        // Create walls
-        const leftWall = Bodies.rectangle(0, 1000, 60, 2000, { isStatic: true });
-        const rightWall = Bodies.rectangle(3000, 1000, 60, 2000, { isStatic: true });
-        World.add(world, [leftWall, rightWall]);
 
         // Create building blocks
         const createBuilding = () => {
             const blocks = [];
             const blockWidth = 80;
             const blockHeight = 40;
-            const rows = 12;
-            const cols = 20;
+            const rows = 6;
+            const cols = 5;
 
             for (let row = 0; row < rows; row++) {
                 for (let col = 0; col < cols; col++) {
-                    const block = Bodies.rectangle(800 + col * blockWidth, 1900 - row * blockHeight, blockWidth, blockHeight, {
+                    const block = Bodies.rectangle(300 + col * blockWidth, window.innerHeight - 60 - row * blockHeight, blockWidth, blockHeight, {
                         restitution: 0.6,
-                        friction: 0.3,
-                        label: 'Block'
+                        friction: 0.3
                     });
                     blocks.push(block);
                 }
@@ -162,37 +161,10 @@
             timeDisplay.textContent = `Time: ${timeLeft}`;
             Matter.Composite.clear(world, true);
             createBuilding();
-            World.add(world, [ground, leftWall, rightWall, ball]);
             Body.setPosition(ball, { x: 150, y: window.innerHeight / 2 });
             Body.setVelocity(ball, { x: 0, y: 0 });
             startGame();
         }
-
-        // Handle canvas scrolling
-        const canvas = render.canvas;
-        canvas.style.position = 'absolute';
-
-        let offsetX = 0;
-        let offsetY = 0;
-        const scrollSpeed = 20;
-
-        window.addEventListener('keydown', (event) => {
-            switch (event.key) {
-                case 'ArrowUp':
-                    offsetY -= scrollSpeed;
-                    break;
-                case 'ArrowDown':
-                    offsetY += scrollSpeed;
-                    break;
-                case 'ArrowLeft':
-                    offsetX -= scrollSpeed;
-                    break;
-                case 'ArrowRight':
-                    offsetX += scrollSpeed;
-                    break;
-            }
-            canvas.style.transform = `translate(${-offsetX}px, ${-offsetY}px)`;
-        });
 
         window.onload = startGame;
     </script>
