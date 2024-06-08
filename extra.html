@@ -142,6 +142,7 @@
         let score = 0;
         let scrollOffset = 0;
         const platformFrequency = 60; // distance between platforms
+        const cameraSpeed = 1; // speed of the camera moving up
 
         function generatePlatform(y) {
             const width = 100;
@@ -207,6 +208,17 @@
                 document.getElementById('score').textContent = Math.floor(score);
             } else {
                 scrollOffset = 0;
+            }
+
+            // Camera movement
+            platforms.forEach(platform => platform.y += cameraSpeed);
+            player.y += cameraSpeed;
+            score += cameraSpeed;
+            document.getElementById('score').textContent = Math.floor(score);
+
+            // Check if camera reaches player
+            if (player.y + player.height > canvas.height) {
+                endGame();
             }
 
             requestAnimationFrame(update);
