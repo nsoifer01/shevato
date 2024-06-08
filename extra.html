@@ -18,7 +18,7 @@
         #gameCanvas {
             border: 2px solid #000;
             display: block;
-            background: url('background.jpg') no-repeat center center;
+            background: url('images/back.webp') no-repeat center center;
             background-size: cover;
         }
 
@@ -76,7 +76,7 @@
         const ctx = canvas.getContext('2d');
 
         const playerImg = new Image();
-        playerImg.src = 'player.png';
+        playerImg.src = 'path/to/your/player.png';
 
         class GameObject {
             constructor(x, y, width, height, color) {
