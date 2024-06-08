@@ -109,6 +109,264 @@
                 this.speed = 3;  // Reduced speed
                 this.jumpPower = 15;
                 this.onGround = false;
+                this.hasJumped = false;
+            }
+
+            move(direction) {
+                if (direction === 'left') {
+                    this.dx = -this.speed;
+                } else if (direction === 'right') {
+                    this.dx = this.speed;
+                }
+            }
+
+            stop() {
+                this.dx = 0;
+            }
+
+            jump() {
+                if (this.onGround) {
+                    this.dy = -this.jumpPower;
+                    this.onGround = false;
+                    this.hasJumped = true;
+                }
+            }
+        }
+
+        class Platform extends GameObject {
+            constructor(x, y, width, height, color) {
+                super(x, y, width, height, color);
+            }
+        }
+
+        let player;
+        let platforms = [];
+        let score = 0;
+        let scrollOffset = 0;
+        const platformFrequency = 60; // distance between platforms
+        const cameraSpeed = 0.33; // speed of the camera moving up
+
+        function generatePlatform(y) {
+            const width = 100;
+            const height = 10;
+            const x = Math.random() * (canvas.width - width);
+            platforms.push(new Platform(x, y, width, height, 'green'));
+        }
+
+        function generateInitialPlatforms() {
+            platforms = [];
+            for (let i = 0; i < 10; i++) {
+                generatePlatform(i * platformFrequency + 200);
+            }
+            platforms.unshift(new Platform(0, canvas.height - 30, canvas.width, 30, 'brown')); // floor
+            player.y = platforms[0].y - player.height;
+            player.onGround = true;
+        }
+
+        function update() {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+            // Update player
+            player.dy += 0.5; // gravity
+            player.update();
+
+            // Player movement limits
+            if (player.x < 0) player.x = 0;
+            if (player.x + player.width > canvas.width) player.x = canvas.width - player.width;
+            if (player.y > canvas.height) {
+                endGame();
+            }
+
+            player.onGround = false;
+
+            // Update platforms and check for collisions
+            platforms.forEach(platform => {
+                if (player.collidesWith(platform) && player.dy > 0) {
+                    player.dy = 0;
+                    player.y = platform.y - player.height;
+                    player.onGround = true;
+                }
+
+                platform.draw();
+            });
+
+            player.draw();
+
+            // Remove platforms that are off the screen
+            platforms = platforms.filter(platform => platform.y <= canvas.height);
+
+            // Generate new platforms if necessary
+            if (platforms.length < 10) {
+                generatePlatform(platforms[platforms.length - 1].y - platformFrequency);
+            }
+
+            // Scroll the screen if the player has jumped
+            if (player.hasJumped) {
+                platforms.forEach(platform => platform.y += cameraSpeed);
+                player.y += cameraSpeed;
+                score += cameraSpeed;
+                document.getElementById('score').textContent = Math.floor(score);
+            }
+
+            // Check if camera reaches player
+            if (player.y + player.height > canvas.height) {
+                endGame();
+            }
+
+            requestAnimationFrame(update);
+        }
+
+        function endGame() {
+            document.getElementById('finalScore').textContent = Math.floor(score);
+            document.getElementById('gameOver').style.display = 'block';
+        }
+
+        function restartGame() {
+            document.getElementById('gameOver').style.display = 'none';
+            player = new Player(385, 500);
+            score = 0;
+            scrollOffset = 0;
+            generateInitialPlatforms();
+            update();
+        }
+
+        document.addEventListener('keydown', (e) => {
+            if (e.key === 'ArrowLeft') {
+                player.move('left');
+            } else if (e.key === 'ArrowRight') {
+                player.move('right');
+            } else if (e.key === ' ') {
+                player.jump();
+            }
+        });
+
+        document.addEventListener('keyup', (e) => {
+            if (e.key === 'ArrowLeft' || e.key === 'ArrowRight') {
+                player.stop();
+            }
+        });
+
+        function initGame() {
+            player = new Player(385, 500);
+            generateInitialPlatforms();
+            update();
+        }
+
+        initGame();
+    </script>
+</body>
+</html>
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Icy Tower Clone</title>
+    <style>
+        body {
+            margin: 0;
+            overflow: hidden;
+            background: linear-gradient(to bottom, #87ceeb, #1e90ff);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            font-family: 'Arial', sans-serif;
+        }
+
+        #gameCanvas {
+            border: 2px solid #000;
+            background-color: #222;
+            display: block;
+        }
+
+        #ui {
+            position: absolute;
+            top: 10px;
+            left: 10px;
+            color: white;
+            font-size: 20px;
+        }
+
+        #gameOver {
+            display: none;
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            color: white;
+            font-size: 40px;
+            text-align: center;
+            background: rgba(0, 0, 0, 0.7);
+            padding: 20px;
+            border-radius: 10px;
+        }
+
+        button {
+            margin-top: 20px;
+            padding: 10px 20px;
+            font-size: 20px;
+            border: none;
+            border-radius: 5px;
+            background-color: #4CAF50;
+            color: white;
+            cursor: pointer;
+        }
+
+        button:hover {
+            background-color: #45a049;
+        }
+    </style>
+</head>
+<body>
+    <canvas id="gameCanvas" width="800" height="600"></canvas>
+    <div id="ui">
+        <div>Score: <span id="score">0</span></div>
+    </div>
+    <div id="gameOver">
+        <div>Game Over!</div>
+        <div>Score: <span id="finalScore">0</span></div>
+        <button onclick="restartGame()">Restart</button>
+    </div>
+    <script>
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
+
+        class GameObject {
+            constructor(x, y, width, height, color) {
+                this.x = x;
+                this.y = y;
+                this.width = width;
+                this.height = height;
+                this.color = color;
+                this.dx = 0;
+                this.dy = 0;
+            }
+
+            draw() {
+                ctx.fillStyle = this.color;
+                ctx.fillRect(this.x, this.y, this.width, this.height);
+            }
+
+            update() {
+                this.x += this.dx;
+                this.y += this.dy;
+            }
+
+            collidesWith(other) {
+                return this.x < other.x + other.width &&
+                       this.x + this.width > other.x &&
+                       this.y < other.y + other.height &&
+                       this.y + this.height > other.y;
+            }
+        }
+
+        class Player extends GameObject {
+            constructor(x, y) {
+                super(x, y, 30, 30, 'blue');
+                this.speed = 3;  // Reduced speed
+                this.jumpPower = 15;
+                this.onGround = false;
             }
 
             move(direction) {
