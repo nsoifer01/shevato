@@ -242,9 +242,13 @@
             }
         });
 
-        player = new Player(385, 500);
-        generateInitialPlatforms();
-        update();
+        function initGame() {
+            player = new Player(385, 500);
+            generateInitialPlatforms();
+            update();
+        }
+
+        initGame();
     </script>
 </body>
 </html>
