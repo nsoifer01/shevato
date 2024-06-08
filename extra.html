@@ -43,6 +43,21 @@
             padding: 20px;
             border-radius: 10px;
         }
+
+        button {
+            margin-top: 20px;
+            padding: 10px 20px;
+            font-size: 20px;
+            border: none;
+            border-radius: 5px;
+            background-color: #4CAF50;
+            color: white;
+            cursor: pointer;
+        }
+
+        button:hover {
+            background-color: #45a049;
+        }
     </style>
 </head>
 <body>
@@ -182,7 +197,7 @@
 
             // Scroll the screen
             if (player.y < canvas.height / 2) {
-                scrollOffset = (canvas.height / 2 - player.y) * 0.1;
+                scrollOffset = (canvas.height / 2 - player.y) * 0.05;  // Slower screen movement
                 player.y += scrollOffset;
                 platforms.forEach(platform => platform.y += scrollOffset);
                 score += scrollOffset;
