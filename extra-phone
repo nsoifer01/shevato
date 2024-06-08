@@ -1,0 +1,107 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Interactive Phone Game</title>
+    <style>
+        body {
+            margin: 0;
+            font-family: Arial, sans-serif;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            background-color: #f0f0f0;
+        }
+
+        #game-container {
+            position: relative;
+            width: 100vw;
+            height: 100vh;
+            overflow: hidden;
+            background-color: #ffffff;
+            border: 2px solid #000;
+        }
+
+        #circle {
+            position: absolute;
+            width: 50px;
+            height: 50px;
+            border-radius: 50%;
+            background-color: red;
+            display: none;
+        }
+
+        #score, #time {
+            position: absolute;
+            top: 10px;
+            font-size: 24px;
+            color: #000;
+        }
+
+        #score {
+            left: 10px;
+        }
+
+        #time {
+            right: 10px;
+        }
+    </style>
+</head>
+<body>
+    <div id="game-container">
+        <div id="circle"></div>
+        <div id="score">Score: 0</div>
+        <div id="time">Time: 30</div>
+    </div>
+    <script>
+        let score = 0;
+        let timeLeft = 30;
+        let gameInterval;
+        let circle = document.getElementById('circle');
+        let scoreDisplay = document.getElementById('score');
+        let timeDisplay = document.getElementById('time');
+        let gameContainer = document.getElementById('game-container');
+
+        function startGame() {
+            gameInterval = setInterval(() => {
+                if (timeLeft > 0) {
+                    timeLeft--;
+                    timeDisplay.textContent = `Time: ${timeLeft}`;
+                    showCircle();
+                } else {
+                    clearInterval(gameInterval);
+                    alert(`Game Over! Your score is ${score}`);
+                    resetGame();
+                }
+            }, 1000);
+        }
+
+        function showCircle() {
+            let x = Math.random() * (gameContainer.clientWidth - 50);
+            let y = Math.random() * (gameContainer.clientHeight - 50);
+            circle.style.left = `${x}px`;
+            circle.style.top = `${y}px`;
+            circle.style.display = 'block';
+        }
+
+        circle.addEventListener('click', () => {
+            score++;
+            scoreDisplay.textContent = `Score: ${score}`;
+            circle.style.display = 'none';
+        });
+
+        function resetGame() {
+            score = 0;
+            timeLeft = 30;
+            scoreDisplay.textContent = `Score: ${score}`;
+            timeDisplay.textContent = `Time: ${timeLeft}`;
+            circle.style.display = 'none';
+            startGame();
+        }
+
+        window.onload = startGame;
+    </script>
+</body>
+</html>
