@@ -142,8 +142,8 @@
         let player;
         let platforms = [];
         let score = 0;
-        const platformFrequency = 50; // decreased distance between platforms
-        const cameraSpeed = 0.5; // increased speed of the camera moving up
+        const platformFrequency = 60; // Adjusted frequency for smoother platform generation
+        const cameraSpeed = 0.5; // Increased speed of the camera moving up
 
         function generatePlatform(y) {
             const width = 100;
@@ -195,7 +195,7 @@
             platforms = platforms.filter(platform => platform.y <= canvas.height);
 
             // Generate new platforms if necessary
-            if (platforms.length < 10) {
+            if (platforms.length === 0 || platforms[platforms.length - 1].y > platformFrequency) {
                 generatePlatform(platforms[platforms.length - 1].y - platformFrequency);
             }
 
