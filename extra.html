@@ -8,7 +8,6 @@
         body {
             margin: 0;
             overflow: hidden;
-            background: linear-gradient(to bottom, #87ceeb, #1e90ff);
             display: flex;
             justify-content: center;
             align-items: center;
@@ -18,8 +17,9 @@
 
         #gameCanvas {
             border: 2px solid #000;
-            background-color: #222;
             display: block;
+            background: url('background.jpg') no-repeat center center;
+            background-size: cover;
         }
 
         #ui {
@@ -75,6 +75,9 @@
         const canvas = document.getElementById('gameCanvas');
         const ctx = canvas.getContext('2d');
 
+        const playerImg = new Image();
+        playerImg.src = 'player.png';
+
         class GameObject {
             constructor(x, y, width, height, color) {
                 this.x = x;
@@ -87,8 +90,12 @@
             }
 
             draw() {
-                ctx.fillStyle = this.color;
-                ctx.fillRect(this.x, this.y, this.width, this.height);
+                if (this instanceof Player) {
+                    ctx.drawImage(playerImg, this.x, this.y, this.width, this.height);
+                } else {
+                    ctx.fillStyle = this.color;
+                    ctx.fillRect(this.x, this.y, this.width, this.height);
+                }
             }
 
             update() {
@@ -144,7 +151,7 @@
         let platforms = [];
         let score = 0;
         const platformFrequency = 60; // Adjusted frequency for smoother platform generation
-        const cameraSpeed = 0.5; // Increased speed of the camera moving up
+        const cameraSpeed = 0.55; // Increased speed of the camera moving up by 10%
         let gameOver = false;
 
         function generatePlatform(y) {
@@ -256,7 +263,7 @@
             update();
         }
 
-        initGame();
+        playerImg.onload = initGame;
     </script>
 </body>
 </html>
