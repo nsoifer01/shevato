@@ -101,6 +101,7 @@
                 this.jumpPower = 15;
                 this.onGround = false;
                 this.hasJumped = false;
+                this.firstJump = false; // Track the first jump
             }
 
             move(direction) {
@@ -120,6 +121,7 @@
                     this.dy = -this.jumpPower;
                     this.onGround = false;
                     this.hasJumped = true;
+                    this.firstJump = true; // Indicate the player has jumped for the first time
                 }
             }
         }
@@ -184,7 +186,7 @@
                     player.dy = 0;
                     player.y = platform.y - player.height;
                     player.onGround = true;
-                    if (!platform.counted) {
+                    if (!platform.counted && player.firstJump) {
                         score++;
                         platform.counted = true;
                         if (score % 10 === 0) {
