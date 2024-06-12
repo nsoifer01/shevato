@@ -133,7 +133,7 @@
         let player;
         let platforms = [];
         let score = 0;
-        let baseCameraSpeed = 0.4; // Slower initial speed
+        let baseCameraSpeed = 0.6; // Slower initial speed
         const platformFrequency = 60;
         let gameOver = false;
 
@@ -187,7 +187,7 @@
                         score++;
                         platform.counted = true;
                         if (score % 10 === 0) {
-                            baseCameraSpeed += 0.1; // Increase camera speed every 10 platforms
+                            baseCameraSpeed += 0.01; // Increase camera speed every 10 platforms
                         }
                     }
                 }
@@ -229,7 +229,7 @@
             document.getElementById('gameOver').style.display = 'none';
             player = new Player(385, 1100); // Adjusted initial position for the new canvas size
             score = 0;
-            baseCameraSpeed = 0.4; // Reset camera speed
+            baseCameraSpeed = 0.6; // Reset camera speed
             gameOver = false;
             generateInitialPlatforms();
             update();
