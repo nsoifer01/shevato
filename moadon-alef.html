@@ -74,7 +74,9 @@
         <h2>
           <img src="images/moadeon-alef.png" alt="Moadon Alef">
         </h2>
-        <!-- <p>Welcome to Moadon Alef, your trusted partner for expert house visiting doctor services, specializing in home healthcare, general checkups, and emergency visits.</p> -->
+        <p id="welcome-en">Welcome to Moadon Alef, your trusted partner for expert house visiting doctor services, specializing in home healthcare, general checkups, and emergency visits.</p>
+        <p id="welcome-ru" style="display:none;">Добро пожаловать в Мадон Алеф, вашего надежного партнера по предоставлению услуг по вызову врача на дом, специализирующегося на домашнем медицинском обслуживании, общих медицинских осмотрах и экстренных визитах.</p>
+        <p id="welcome-he" style="display:none;">ברוכים הבאים למועדון אלף, השותף המהימן שלך לשירותי רופא מבקר בבית, המתמחה בטיפול רפואי בבית, בדיקות כלליות וביקורי חירום.</p>
         <p id="service-en">24-Hour Doctor Appointment Service</p>
         <p id="service-ru" style="display:none;">Круглосуточное обслуживание врачей</p>
         <p id="service-he" style="display:none;">שירות רופא 24 שעות ביממה</p>
@@ -193,6 +195,7 @@
   <script>
     function switchLanguage(lang) {
       // English
+      document.getElementById('welcome-en').style.display = (lang === 'en') ? 'block' : 'none';
       document.getElementById('service-en').style.display = (lang === 'en') ? 'block' : 'none';
       document.getElementById('expertise-en').style.display = (lang === 'en') ? 'block' : 'none';
       document.getElementById('expertise-text-en').style.display = (lang === 'en') ? 'block' : 'none';
@@ -208,6 +211,7 @@
       document.getElementById('preventive-text-en').style.display = (lang === 'en') ? 'block' : 'none';
 
       // Russian
+      document.getElementById('welcome-ru').style.display = (lang === 'ru') ? 'block' : 'none';
       document.getElementById('service-ru').style.display = (lang === 'ru') ? 'block' : 'none';
       document.getElementById('expertise-ru').style.display = (lang === 'ru') ? 'block' : 'none';
       document.getElementById('expertise-text-ru').style.display = (lang === 'ru') ? 'block' : 'none';
@@ -223,6 +227,7 @@
       document.getElementById('preventive-text-ru').style.display = (lang === 'ru') ? 'block' : 'none';
 
       // Hebrew
+      document.getElementById('welcome-he').style.display = (lang === 'he') ? 'block' : 'none';
       document.getElementById('service-he').style.display = (lang === 'he') ? 'block' : 'none';
       document.getElementById('expertise-he').style.display = (lang === 'he') ? 'block' : 'none';
       document.getElementById('expertise-text-he').style.display = (lang === 'he') ? 'block' : 'none';
