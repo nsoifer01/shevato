@@ -8,7 +8,7 @@
     <style>
         body {
             font-family: 'Roboto', sans-serif;
-            background: linear-gradient(135deg, #ececec 25%, #f4f4f9 100%);
+            background: #f4f4f9;
             color: #333;
             margin: 0;
             padding: 0;
@@ -41,21 +41,39 @@
             margin: 20px auto;
             box-sizing: border-box;
         }
-        h1, h2 {
-            color: #4CAF50;
-            text-align: center;
-        }
         h1 {
             font-size: 2.5em;
             margin-bottom: 20px;
+            color: #4CAF50;
+            text-align: center;
         }
-        h2 {
-            font-size: 1.8em;
-            margin-top: 20px;
-            margin-bottom: 10px;
+        .collapsible {
+            background-color: #4CAF50;
+            color: white;
+            cursor: pointer;
+            padding: 18px;
+            width: 100%;
+            border: none;
+            text-align: left;
+            outline: none;
+            font-size: 1.5em;
+            margin-top: 10px;
+            border-radius: 5px;
+        }
+        .active, .collapsible:hover {
+            background-color: #45a049;
+        }
+        .content {
+            padding: 0 18px;
+            display: none;
+            overflow: hidden;
+            background-color: #f9f9f9;
+            margin-top: 10px;
+            border-radius: 5px;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
         }
         p, ul {
-            margin-bottom: 15px;
+            margin: 15px 0;
             line-height: 1.6;
         }
         ul {
@@ -94,42 +112,75 @@
     </header>
     <div class="container">
         <h1>Запросы, с которыми работаю:</h1>
-        <h2>Чувства и мысли, переживания и состояния:</h2>
-        <ul>
-            <li>Тревога, беспокойство, навязчивые мысли</li>
-            <li>Обида, вина, злость, агрессия</li>
-            <li>Страхи, фобии, панические атаки</li>
-            <li>Одиночество, грусть, тоска</li>
-            <li>Стресс, выгорание, прокрастинация</li>
-        </ul>
-        <h2>Отношения с собой:</h2>
-        <ul>
-            <li>Низкая самооценка, восприимчивость к мнению окружающих, поиск себя</li>
-            <li>Сложности в принятии решений, перфекционизм, гиперответственность</li>
-        </ul>
-        <h2>Отношения с другими людьми:</h2>
-        <ul>
-            <li>Стеснительность, не возможность отстоять себя и высказать мнение</li>
-            <li>Проблемы с доверием, конфликты, чувствительность</li>
-            <li>Отношения с родителями и близкими родственниками</li>
-        </ul>
-        <h2>Образование:</h2>
-        <ul>
-            <li>Профессиональная переподготовка: «Мастерство психологического консультирования» — 500 ч. Психолог-консультант 2022–2024 гг.</li>
-            <li>Схема-терапевт — 500 ч. 2023–2024 гг.</li>
-            <li>Повышение квалификации: «Психиатрия для психологов» 30 ч. 2024г.</li>
-            <li>«Как справляться с сильными эмоциями» — 72 ч. 2024г.</li>
-            <li>Прохожу регулярные супервизии</li>
-            <li>+100 часов личной терапии</li>
-        </ul>
-        <h2>Стоимость консультации:</h2>
-        <p>2500 рублей за 55 минут встречи.</p>
-        <p>Работаю онлайн, со взрослыми. Не работаю с детьми и семейным парами.</p>
-        <p>Если вы не нашли в списке ваш запрос — это нормально. Возможно, ваша ситуация слишком запутана, чтобы определить запрос самостоятельно. Моя работа предполагает помощь в формировании запроса и разбора спутанной ситуации.</p>
+
+        <button class="collapsible">Чувства и мысли, переживания и состояния</button>
+        <div class="content">
+            <ul>
+                <li>Тревога, беспокойство, навязчивые мысли</li>
+                <li>Обида, вина, злость, агрессия</li>
+                <li>Страхи, фобии, панические атаки</li>
+                <li>Одиночество, грусть, тоска</li>
+                <li>Стресс, выгорание, прокрастинация</li>
+            </ul>
+        </div>
+
+        <button class="collapsible">Отношения с собой</button>
+        <div class="content">
+            <ul>
+                <li>Низкая самооценка, восприимчивость к мнению окружающих, поиск себя</li>
+                <li>Сложности в принятии решений, перфекционизм, гиперответственность</li>
+            </ul>
+        </div>
+
+        <button class="collapsible">Отношения с другими людьми</button>
+        <div class="content">
+            <ul>
+                <li>Стеснительность, не возможность отстоять себя и высказать мнение</li>
+                <li>Проблемы с доверием, конфликты, чувствительность</li>
+                <li>Отношения с родителями и близкими родственниками</li>
+            </ul>
+        </div>
+
+        <button class="collapsible">Образование</button>
+        <div class="content">
+            <ul>
+                <li>Профессиональная переподготовка: «Мастерство психологического консультирования» — 500 ч. Психолог-консультант 2022–2024 гг.</li>
+                <li>Схема-терапевт — 500 ч. 2023–2024 гг.</li>
+                <li>Повышение квалификации: «Психиатрия для психологов» 30 ч. 2024г.</li>
+                <li>«Как справляться с сильными эмоциями» — 72 ч. 2024г.</li>
+                <li>Прохожу регулярные супервизии</li>
+                <li>+100 часов личной терапии</li>
+            </ul>
+        </div>
+
+        <button class="collapsible">Стоимость консультации</button>
+        <div class="content">
+            <p>2500 рублей за 55 минут встречи.</p>
+            <p>Работаю онлайн, со взрослыми. Не работаю с детьми и семейным парами.</p>
+            <p>Если вы не нашли в списке ваш запрос — это нормально. Возможно, ваша ситуация слишком запутана, чтобы определить запрос самостоятельно. Моя работа предполагает помощь в формировании запроса и разбора спутанной ситуации.</p>
+        </div>
+
         <a href="https://wa.me/972586211989" class="whatsapp-link">Связаться через WhatsApp</a>
     </div>
     <footer>
         &copy; 2024 Профиль Терапевта Вика
     </footer>
+    
+    <script>
+        document.addEventListener("DOMContentLoaded", function() {
+            var coll = document.getElementsByClassName("collapsible");
+            for (var i = 0; i < coll.length; i++) {
+                coll[i].addEventListener("click", function() {
+                    this.classList.toggle("active");
+                    var content = this.nextElementSibling;
+                    if (content.style.display === "block") {
+                        content.style.display = "none";
+                    } else {
+                        content.style.display = "block";
+                    }
+                });
+            }
+        });
+    </script>
 </body>
 </html>
