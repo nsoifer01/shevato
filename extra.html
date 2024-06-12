@@ -18,8 +18,7 @@
         #ui {
             position: absolute;
             top: 10px;
-            left: 50%;
-            transform: translateX(-50%);
+            left: 10px;
             color: white;
             font-size: 20px;
         }
@@ -70,6 +69,8 @@
 
         const playerImg = new Image();
         playerImg.src = 'images/player.png';
+        const backgroundImg = new Image();
+        backgroundImg.src = 'images/background.png'; // Add a background image
 
         class GameObject {
             constructor(x, y, width, height, color) {
@@ -144,7 +145,7 @@
         let platforms = [];
         let score = 0;
         const platformFrequency = 60; // Adjusted frequency for smoother platform generation
-        const cameraSpeed = 0.55; // Increased speed of the camera moving up by 10%
+        const cameraSpeed = 0.65; // Increased speed of the camera moving up
         let gameOver = false;
 
         function generatePlatform(y) {
@@ -166,6 +167,7 @@
 
         function update() {
             ctx.clearRect(0, 0, canvas.width, canvas.height);
+            ctx.drawImage(backgroundImg, 0, 0, canvas.width, canvas.height); // Draw the background image
 
             if (gameOver) return;
 
@@ -239,7 +241,7 @@
                 player.move('left');
             } else if (e.key === 'ArrowRight') {
                 player.move('right');
-            } else if (e.key === ' ') {
+            } else if (e.key === ' ' || e.key === 'ArrowUp') {
                 player.jump();
             }
         });
