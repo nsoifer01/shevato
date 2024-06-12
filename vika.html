@@ -40,12 +40,12 @@
             padding: 30px;
             margin: 20px auto;
             box-sizing: border-box;
+            text-align: center;
         }
         h1 {
             font-size: 2.5em;
             margin-bottom: 20px;
             color: #4CAF50;
-            text-align: center;
         }
         .collapsible {
             background-color: #4CAF50;
@@ -79,6 +79,7 @@
         ul {
             list-style-type: none;
             padding: 0;
+            text-align: left;
         }
         ul li {
             padding-left: 20px;
@@ -104,6 +105,15 @@
         .whatsapp-link:hover {
             background-color: #1DA851;
         }
+        .profile-img {
+            width: 150px;
+            height: 150px;
+            border-radius: 50%;
+            margin: 20px auto;
+        }
+        .profile-description {
+            margin: 20px 0;
+        }
     </style>
 </head>
 <body>
@@ -111,8 +121,10 @@
         Профиль Терапевта Вика
     </header>
     <div class="container">
-        <h1>Запросы, с которыми работаю:</h1>
-
+        <img src="https://via.placeholder.com/150" alt="Profile Image" class="profile-img">
+        <h1>Вика</h1>
+        <p class="profile-description">Опытный терапевт, специализирующийся на работе с эмоциональными и психологическими проблемами.</p>
+        
         <button class="collapsible">Чувства и мысли, переживания и состояния</button>
         <div class="content">
             <ul>
