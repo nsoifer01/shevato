@@ -102,6 +102,7 @@
                 this.onGround = false;
                 this.hasJumped = false;
                 this.firstJump = false; // Track the first jump
+                this.highestPlatform = canvas.height; // Track the highest platform landed on
             }
 
             move(direction) {
@@ -186,9 +187,10 @@
                     player.dy = 0;
                     player.y = platform.y - player.height;
                     player.onGround = true;
-                    if (!platform.counted && player.firstJump) {
+                    if (!platform.counted && player.firstJump && platform.y < player.highestPlatform) {
                         score++;
                         platform.counted = true;
+                        player.highestPlatform = platform.y; // Update the highest platform landed on
                         if (score % 10 === 0) {
                             baseCameraSpeed += 0.01; // Increase camera speed every 10 platforms
                         }
