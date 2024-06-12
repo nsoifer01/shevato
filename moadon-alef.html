@@ -58,16 +58,23 @@
       margin-right: 10px;
       color: #fff;
     }
-    #contact-number {
-      font-size: 1.5rem; /* Larger font size */
-      font-weight: bold; /* Bolder text */
-      margin: 10px 0; /* Margin for spacing */
-      text-align: center;
-    }
-    #contact-number a {
-      text-decoration: none;
-      color: inherit;
-    }
+.header-special {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+#contact-number {
+  font-size: 1.5rem; /* Larger font size */
+  font-weight: bold; /* Bolder text */
+  margin: 10px 0; /* Margin for spacing */
+  text-align: center; /* Center align text */
+}
+
+#contact-number a {
+  text-decoration: none;
+  color: inherit;
+}
   </style>
   <!-- Font Awesome for icons -->
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/4.7.0/css/font-awesome.min.css">
@@ -80,7 +87,7 @@
   </header>
   <section class="wrapper" style="padding-top:inherit">
     <div class="inner">
-      <header class="special">
+      <header class="special header-special">
         <h2>
           <img src="images/moadeon-alef.png" alt="Moadon Alef">
         </h2>
