@@ -15,14 +15,6 @@
             font-family: 'Arial', sans-serif;
         }
 
-        #ui {
-            position: absolute;
-            top: 10px;
-            left: 10px;
-            color: white;
-            font-size: 20px;
-        }
-
         #gameOver {
             display: none;
             position: absolute;
@@ -55,9 +47,6 @@
 </head>
 <body>
     <canvas id="gameCanvas" width="888" height="950"></canvas>
-    <div id="ui">
-        <div>Score: <span id="score">0</span></div>
-    </div>
     <div id="gameOver">
         <div>Game Over!</div>
         <div>Score: <span id="finalScore">0</span></div>
@@ -144,8 +133,8 @@
         let player;
         let platforms = [];
         let score = 0;
+        let baseCameraSpeed = 0.4; // Slower initial speed
         const platformFrequency = 60;
-        const cameraSpeed = 0.65; // Increased speed of the camera moving up
         let gameOver = false;
 
         function generatePlatform(y) {
@@ -169,6 +158,10 @@
             ctx.clearRect(0, 0, canvas.width, canvas.height);
             ctx.drawImage(backgroundImg, 0, 0, canvas.width, canvas.height); // Draw the background image
 
+            ctx.fillStyle = 'white';
+            ctx.font = '20px Arial';
+            ctx.fillText('Score: ' + score, 10, 30); // Display score on top left corner
+
             if (gameOver) return;
 
             // Update player
@@ -185,21 +178,23 @@
             player.onGround = false;
 
             // Update platforms and check for collisions
-platforms.forEach(platform => {
-    if (player.collidesWith(platform) && player.dy > 0) {
-        player.dy = 0;
-        player.y = platform.y - player.height;
-        player.onGround = true;
-        if (!platform.counted) {
-            score++;
-            platform.counted = true;
-            document.getElementById('score').textContent = score;
-        }
-    }
+            platforms.forEach(platform => {
+                if (player.collidesWith(platform) && player.dy > 0) {
+                    player.dy = 0;
+                    player.y = platform.y - player.height;
+                    player.onGround = true;
+                    if (!platform.counted) {
+                        score++;
+                        platform.counted = true;
+                        document.getElementById('score').textContent = score;
+                        if (score % 10 === 0) {
+                            baseCameraSpeed += 0.1; // Increase camera speed every 10 platforms
+                        }
+                    }
+                }
 
-    platform.draw();
-});
-
+                platform.draw();
+            });
 
             player.draw();
 
@@ -213,8 +208,8 @@ platforms.forEach(platform => {
 
             // Scroll the screen if the player has jumped
             if (player.hasJumped) {
-                platforms.forEach(platform => platform.y += cameraSpeed);
-                player.y += cameraSpeed;
+                platforms.forEach(platform => platform.y += baseCameraSpeed);
+                player.y += baseCameraSpeed;
             }
 
             // Check if camera reaches player
@@ -235,6 +230,7 @@ platforms.forEach(platform => {
             document.getElementById('gameOver').style.display = 'none';
             player = new Player(385, 1100); // Adjusted initial position for the new canvas size
             score = 0;
+            baseCameraSpeed = 0.4; // Reset camera speed
             gameOver = false;
             generateInitialPlatforms();
             update();
