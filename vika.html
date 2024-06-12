@@ -43,7 +43,7 @@
             text-align: center;
         }
         h1 {
-            font-size: 2.5em;
+            font-size: 2em;
             margin-bottom: 20px;
             color: #4CAF50;
         }
@@ -56,25 +56,24 @@
             border: none;
             text-align: left;
             outline: none;
-            font-size: 1.5em;
+            font-size: 1.2em;
             margin-top: 10px;
             border-radius: 5px;
         }
-        .active, .collapsible:hover {
-            background-color: #45a049;
-        }
         .content {
             padding: 0 18px;
-            display: none;
             overflow: hidden;
             background-color: #f9f9f9;
             margin-top: 10px;
             border-radius: 5px;
             box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+            display: block;
         }
         p, ul {
             margin: 15px 0;
             line-height: 1.6;
+            font-size: 0.9em;
+            text-align: left;
         }
         ul {
             list-style-type: none;
@@ -90,20 +89,31 @@
             color: #4CAF50;
             padding-right: 10px;
         }
-        .whatsapp-link {
-            display: block;
+        .whatsapp-link, .telegram-link {
+            display: inline-block;
             margin-top: 20px;
             text-align: center;
-            padding: 15px 25px;
+            padding: 10px 20px;
             background-color: #25D366;
             color: white;
             text-decoration: none;
             border-radius: 5px;
             font-weight: bold;
             transition: background-color 0.3s;
+            margin-right: 10px;
         }
         .whatsapp-link:hover {
             background-color: #1DA851;
+        }
+        .telegram-link {
+            background-color: #0088cc;
+        }
+        .telegram-link:hover {
+            background-color: #007ab8;
+        }
+        .whatsapp-icon {
+            margin-right: 5px;
+            vertical-align: middle;
         }
         .profile-img {
             width: 150px;
@@ -172,7 +182,10 @@
             <p>Если вы не нашли в списке ваш запрос — это нормально. Возможно, ваша ситуация слишком запутана, чтобы определить запрос самостоятельно. Моя работа предполагает помощь в формировании запроса и разбора спутанной ситуации.</p>
         </div>
 
-        <a href="https://wa.me/972586211989" class="whatsapp-link">Связаться через WhatsApp</a>
+        <a href="https://wa.me/972586211989" class="whatsapp-link">
+            <img src="https://upload.wikimedia.org/wikipedia/commons/6/6b/WhatsApp.svg" alt="WhatsApp" class="whatsapp-icon" width="20">Связаться через WhatsApp
+        </a>
+        <a href="https://t.me/Victoria_Sorokivskaia" class="telegram-link">@Victoria_Sorokivskaia</a>
     </div>
     <footer>
         &copy; 2024 Профиль Терапевта Вика
@@ -182,6 +195,10 @@
         document.addEventListener("DOMContentLoaded", function() {
             var coll = document.getElementsByClassName("collapsible");
             for (var i = 0; i < coll.length; i++) {
+                coll[i].classList.add("active");
+                var content = coll[i].nextElementSibling;
+                content.style.display = "block";
+
                 coll[i].addEventListener("click", function() {
                     this.classList.toggle("active");
                     var content = this.nextElementSibling;
