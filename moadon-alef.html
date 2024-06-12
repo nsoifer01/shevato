@@ -20,11 +20,27 @@
     .content h3 {
       min-height: 4em; /* Adjust as needed to ensure alignment */
     }
+    .lang-switcher {
+      display: flex;
+      justify-content: center;
+      margin-top: 20px;
+    }
     .lang-switcher button {
       margin: 5px;
-      padding: 10px;
+      padding: 10px 20px;
       border: none;
+      border-radius: 5px;
       cursor: pointer;
+      background-color: #0044cc;
+      color: #fff;
+      font-size: 1rem;
+      transition: background-color 0.3s;
+    }
+    .lang-switcher button:hover {
+      background-color: #003399;
+    }
+    .lang-switcher button:focus {
+      outline: none;
     }
   </style>
   <!-- Font Awesome for icons -->
@@ -42,7 +58,7 @@
         <h2>
           <img src="images/new-logo.png" alt="Moadon Alef">
         </h2>
-        <p id="welcome-text">Welcome to Moadon Alef, your trusted partner for expert house visiting doctor services, specializing in home healthcare, general checkups, and emergency visits.</p>
+        <!-- <p>Welcome to Moadon Alef, your trusted partner for expert house visiting doctor services, specializing in home healthcare, general checkups, and emergency visits.</p> -->
         <p id="service-en">24-Hour Doctor Appointment Service</p>
         <p id="service-ru" style="display:none;">Круглосуточное обслуживание врачей</p>
         <p id="service-he" style="display:none;">שירות רופא 24 שעות ביממה</p>
@@ -109,13 +125,13 @@
           <div class="content">
             <header>
               <span class="icon fa-user-plus" style="color: #0044cc"></span>
-              <h3 id="service-en">Personalized Service</h3>
-              <h3 id="service-ru" style="display:none;">Персонализированное обслуживание</h3>
-              <h3 id="service-he" style="display:none;">שירות מותאם אישית</h3>
+              <h3 id="personalized-en">Personalized Service</h3>
+              <h3 id="personalized-ru" style="display:none;">Персонализированное обслуживание</h3>
+              <h3 id="personalized-he" style="display:none;">שירות מותאם אישית</h3>
             </header>
-            <p id="service-text-en">We work closely with each patient to understand their unique needs and deliver customized healthcare solutions.</p>
-            <p id="service-text-ru" style="display:none;">Мы тесно работаем с каждым пациентом, чтобы понять его уникальные потребности и предоставить индивидуальные решения в области здравоохранения.</p>
-            <p id="service-text-he" style="display:none;">אנו עובדים בצמוד עם כל מטופל כדי להבין את צרכיו הייחודיים ולהעניק פתרונות בריאות מותאמים אישית.</p>
+            <p id="personalized-text-en">We work closely with each patient to understand their unique needs and deliver customized healthcare solutions.</p>
+            <p id="personalized-text-ru" style="display:none;">Мы тесно работаем с каждым пациентом, чтобы понять его уникальные потребности и предоставить индивидуальные решения в области здравоохранения.</p>
+            <p id="personalized-text-he" style="display:none;">אנו עובדים בצמוד עם כל מטופל כדי להבין את צרכיו הייחודיים ולהעניק פתרונות בריאות מותאמים אישית.</p>
           </div>
         </section>
         <section>
@@ -160,7 +176,6 @@
   <script>
     function switchLanguage(lang) {
       // English
-      document.getElementById('welcome-text').style.display = (lang === 'en') ? 'block' : 'none';
       document.getElementById('service-en').style.display = (lang === 'en') ? 'block' : 'none';
       document.getElementById('expertise-en').style.display = (lang === 'en') ? 'block' : 'none';
       document.getElementById('expertise-text-en').style.display = (lang === 'en') ? 'block' : 'none';
@@ -170,8 +185,8 @@
       document.getElementById('care-text-en').style.display = (lang === 'en') ? 'block' : 'none';
       document.getElementById('emergency-en').style.display = (lang === 'en') ? 'block' : 'none';
       document.getElementById('emergency-text-en').style.display = (lang === 'en') ? 'block' : 'none';
-      document.getElementById('service-en').style.display = (lang === 'en') ? 'block' : 'none';
-      document.getElementById('service-text-en').style.display = (lang === 'en') ? 'block' : 'none';
+      document.getElementById('personalized-en').style.display = (lang === 'en') ? 'block' : 'none';
+      document.getElementById('personalized-text-en').style.display = (lang === 'en') ? 'block' : 'none';
       document.getElementById('preventive-en').style.display = (lang === 'en') ? 'block' : 'none';
       document.getElementById('preventive-text-en').style.display = (lang === 'en') ? 'block' : 'none';
 
@@ -185,8 +200,8 @@
       document.getElementById('care-text-ru').style.display = (lang === 'ru') ? 'block' : 'none';
       document.getElementById('emergency-ru').style.display = (lang === 'ru') ? 'block' : 'none';
       document.getElementById('emergency-text-ru').style.display = (lang === 'ru') ? 'block' : 'none';
-      document.getElementById('service-ru').style.display = (lang === 'ru') ? 'block' : 'none';
-      document.getElementById('service-text-ru').style.display = (lang === 'ru') ? 'block' : 'none';
+      document.getElementById('personalized-ru').style.display = (lang === 'ru') ? 'block' : 'none';
+      document.getElementById('personalized-text-ru').style.display = (lang === 'ru') ? 'block' : 'none';
       document.getElementById('preventive-ru').style.display = (lang === 'ru') ? 'block' : 'none';
       document.getElementById('preventive-text-ru').style.display = (lang === 'ru') ? 'block' : 'none';
 
@@ -200,8 +215,8 @@
       document.getElementById('care-text-he').style.display = (lang === 'he') ? 'block' : 'none';
       document.getElementById('emergency-he').style.display = (lang === 'he') ? 'block' : 'none';
       document.getElementById('emergency-text-he').style.display = (lang === 'he') ? 'block' : 'none';
-      document.getElementById('service-he').style.display = (lang === 'he') ? 'block' : 'none';
-      document.getElementById('service-text-he').style.display = (lang === 'he') ? 'block' : 'none';
+      document.getElementById('personalized-he').style.display = (lang === 'he') ? 'block' : 'none';
+      document.getElementById('personalized-text-he').style.display = (lang === 'he') ? 'block' : 'none';
       document.getElementById('preventive-he').style.display = (lang === 'he') ? 'block' : 'none';
       document.getElementById('preventive-text-he').style.display = (lang === 'he') ? 'block' : 'none';
     }
