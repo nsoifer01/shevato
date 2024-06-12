@@ -20,6 +20,12 @@
     .content h3 {
       min-height: 4em; /* Adjust as needed to ensure alignment */
     }
+    .lang-switcher button {
+      margin: 5px;
+      padding: 10px;
+      border: none;
+      cursor: pointer;
+    }
   </style>
   <!-- Font Awesome for icons -->
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/4.7.0/css/font-awesome.min.css">
@@ -36,64 +42,93 @@
         <h2>
           <img src="images/new-logo.png" alt="Moadon Alef">
         </h2>
-        <!--<p>Welcome to Moadon Alef, your trusted partner for expert house visiting doctor services, specializing in home healthcare, general checkups, and emergency visits.</p>-->
-        <p>24-Hour Doctor Appointment Service</p>
-        <p>Круглосуточное обслуживание врачей</p>
-        <p>הזמנת רופא 24 שעות ביממה</p>
+        <p id="welcome-text">Welcome to Moadon Alef, your trusted partner for expert house visiting doctor services, specializing in home healthcare, general checkups, and emergency visits.</p>
+        <p id="service-en">24-Hour Doctor Appointment Service</p>
+        <p id="service-ru" style="display:none;">Круглосуточное обслуживание врачей</p>
+        <p id="service-he" style="display:none;">שירות רופא 24 שעות ביממה</p>
+        <div class="lang-switcher">
+          <button onclick="switchLanguage('en')">English</button>
+          <button onclick="switchLanguage('ru')">Русский</button>
+          <button onclick="switchLanguage('he')">עברית</button>
+        </div>
       </header>
       <div class="highlights">
         <section>
           <div class="content">
             <header>
               <span class="icon fa-stethoscope" style="color: #0044cc"></span>
-              <h3>Our Expertise</h3>
+              <h3 id="expertise-en">Our Expertise</h3>
+              <h3 id="expertise-ru" style="display:none;">Наша экспертиза</h3>
+              <h3 id="expertise-he" style="display:none;">ההתמחות שלנו</h3>
             </header>
-            <p>With extensive experience in home healthcare, we provide expert medical services including general checkups, emergency visits, and chronic disease management in the comfort of your home.</p>
+            <p id="expertise-text-en">With extensive experience in home healthcare, we provide expert medical services including general checkups, emergency visits, and chronic disease management in the comfort of your home.</p>
+            <p id="expertise-text-ru" style="display:none;">С большим опытом работы в области домашнего здравоохранения, мы предоставляем экспертные медицинские услуги, включая общие проверки здоровья, экстренные визиты и управление хроническими заболеваниями в комфорте вашего дома.</p>
+            <p id="expertise-text-he" style="display:none;">עם ניסיון רב בתחום הבריאות הביתית, אנו מספקים שירותים רפואיים מומחים כולל בדיקות כלליות, ביקורי חירום וניהול מחלות כרוניות בנוחות ביתכם.</p>
           </div>
         </section>
         <section>
           <div class="content">
             <header>
               <span class="icon fa-user-md" style="color: #0044cc"></span>
-              <h3>Patient Focus</h3>
+              <h3 id="focus-en">Patient Focus</h3>
+              <h3 id="focus-ru" style="display:none;">Фокус на пациента</h3>
+              <h3 id="focus-he" style="display:none;">מוקד למטופל</h3>
             </header>
-            <p>Our dedicated team of doctors and healthcare professionals is committed to delivering personalized and compassionate care to all our patients.</p>
+            <p id="focus-text-en">Our dedicated team of doctors and healthcare professionals is committed to delivering personalized and compassionate care to all our patients.</p>
+            <p id="focus-text-ru" style="display:none;">Наша преданная команда врачей и медицинских работников стремится предоставить персонализированный и сострадательный уход всем нашим пациентам.</p>
+            <p id="focus-text-he" style="display:none;">צוות הרופאים ואנשי המקצוע הבריאותי המסור שלנו מחויב להעניק טיפול מותאם אישית ומלא חמלה לכל המטופלים שלנו.</p>
           </div>
         </section>
         <section>
           <div class="content">
             <header>
               <span class="icon fa-heartbeat" style="color: #0044cc"></span>
-              <h3>Comprehensive Care</h3>
+              <h3 id="care-en">Comprehensive Care</h3>
+              <h3 id="care-ru" style="display:none;">Комплексный уход</h3>
+              <h3 id="care-he" style="display:none;">טיפול מקיף</h3>
             </header>
-            <p>We offer a wide range of medical services to address all your healthcare needs, ensuring comprehensive and continuous care at home.</p>
+            <p id="care-text-en">We offer a wide range of medical services to address all your healthcare needs, ensuring comprehensive and continuous care at home.</p>
+            <p id="care-text-ru" style="display:none;">Мы предлагаем широкий спектр медицинских услуг, чтобы удовлетворить все ваши потребности в здравоохранении, обеспечивая комплексный и непрерывный уход на дому.</p>
+            <p id="care-text-he" style="display:none;">אנו מציעים מגוון רחב של שירותים רפואיים כדי לענות על כל צרכי הבריאות שלך, תוך הבטחת טיפול מקיף ורציף בבית.</p>
           </div>
         </section>
         <section>
           <div class="content">
             <header>
               <span class="icon fa-ambulance" style="color: #0044cc"></span>
-              <h3>Emergency Response</h3>
+              <h3 id="emergency-en">Emergency Response</h3>
+              <h3 id="emergency-ru" style="display:none;">Экстренная помощь</h3>
+              <h3 id="emergency-he" style="display:none;">תגובה חירום</h3>
             </header>
-            <p>Our team is ready to respond to medical emergencies, providing immediate and efficient care when you need it most.</p>
+            <p id="emergency-text-en">Our team is ready to respond to medical emergencies, providing immediate and efficient care when you need it most.</p>
+            <p id="emergency-text-ru" style="display:none;">Наша команда готова реагировать на медицинские чрезвычайные ситуации, предоставляя незамедлительный и эффективный уход, когда это нужно больше всего.</p>
+            <p id="emergency-text-he" style="display:none;">הצוות שלנו מוכן להגיב למצבי חירום רפואיים, ומספק טיפול מיידי ויעיל כאשר אתם זקוקים לו ביותר.</p>
           </div>
         </section>
         <section>
           <div class="content">
             <header>
               <span class="icon fa-user-plus" style="color: #0044cc"></span>
-              <h3>Personalized Service</h3>
+              <h3 id="service-en">Personalized Service</h3>
+              <h3 id="service-ru" style="display:none;">Персонализированное обслуживание</h3>
+              <h3 id="service-he" style="display:none;">שירות מותאם אישית</h3>
             </header>
-            <p>We work closely with each patient to understand their unique needs and deliver customized healthcare solutions.</p>
+            <p id="service-text-en">We work closely with each patient to understand their unique needs and deliver customized healthcare solutions.</p>
+            <p id="service-text-ru" style="display:none;">Мы тесно работаем с каждым пациентом, чтобы понять его уникальные потребности и предоставить индивидуальные решения в области здравоохранения.</p>
+            <p id="service-text-he" style="display:none;">אנו עובדים בצמוד עם כל מטופל כדי להבין את צרכיו הייחודיים ולהעניק פתרונות בריאות מותאמים אישית.</p>
           </div>
         </section>
         <section>
           <div class="content">
             <header>
               <span class="icon fa-medkit" style="color: #0044cc"></span>
-              <h3>Preventive Care</h3>
+              <h3 id="preventive-en">Preventive Care</h3>
+              <h3 id="preventive-ru" style="display:none;">Профилактическая помощь</h3>
+              <h3 id="preventive-he" style="display:none;">טיפול מונע</h3>
             </header>
-            <p>Our preventive care services help you maintain optimal health and prevent illness through regular checkups and health screenings.</p>
+            <p id="preventive-text-en">Our preventive care services help you maintain optimal health and prevent illness through regular checkups and health screenings.</p>
+            <p id="preventive-text-ru" style="display:none;">Наши профилактические услуги помогают вам поддерживать оптимальное здоровье и предотвращать болезни с помощью регулярных проверок и скринингов.</p>
+            <p id="preventive-text-he" style="display:none;">השירותים המונעים שלנו עוזרים לכם לשמור על בריאות מיטבית ולמנוע מחלות באמצעות בדיקות סדירות ובדיקות בריאות.</p>
           </div>
         </section>
       </div>
@@ -122,5 +157,54 @@
   <script src="assets/js/breakpoints.min.js"></script>
   <script src="assets/js/util.js"></script>
   <script src="assets/js/main.js"></script>
+  <script>
+    function switchLanguage(lang) {
+      // English
+      document.getElementById('welcome-text').style.display = (lang === 'en') ? 'block' : 'none';
+      document.getElementById('service-en').style.display = (lang === 'en') ? 'block' : 'none';
+      document.getElementById('expertise-en').style.display = (lang === 'en') ? 'block' : 'none';
+      document.getElementById('expertise-text-en').style.display = (lang === 'en') ? 'block' : 'none';
+      document.getElementById('focus-en').style.display = (lang === 'en') ? 'block' : 'none';
+      document.getElementById('focus-text-en').style.display = (lang === 'en') ? 'block' : 'none';
+      document.getElementById('care-en').style.display = (lang === 'en') ? 'block' : 'none';
+      document.getElementById('care-text-en').style.display = (lang === 'en') ? 'block' : 'none';
+      document.getElementById('emergency-en').style.display = (lang === 'en') ? 'block' : 'none';
+      document.getElementById('emergency-text-en').style.display = (lang === 'en') ? 'block' : 'none';
+      document.getElementById('service-en').style.display = (lang === 'en') ? 'block' : 'none';
+      document.getElementById('service-text-en').style.display = (lang === 'en') ? 'block' : 'none';
+      document.getElementById('preventive-en').style.display = (lang === 'en') ? 'block' : 'none';
+      document.getElementById('preventive-text-en').style.display = (lang === 'en') ? 'block' : 'none';
+
+      // Russian
+      document.getElementById('service-ru').style.display = (lang === 'ru') ? 'block' : 'none';
+      document.getElementById('expertise-ru').style.display = (lang === 'ru') ? 'block' : 'none';
+      document.getElementById('expertise-text-ru').style.display = (lang === 'ru') ? 'block' : 'none';
+      document.getElementById('focus-ru').style.display = (lang === 'ru') ? 'block' : 'none';
+      document.getElementById('focus-text-ru').style.display = (lang === 'ru') ? 'block' : 'none';
+      document.getElementById('care-ru').style.display = (lang === 'ru') ? 'block' : 'none';
+      document.getElementById('care-text-ru').style.display = (lang === 'ru') ? 'block' : 'none';
+      document.getElementById('emergency-ru').style.display = (lang === 'ru') ? 'block' : 'none';
+      document.getElementById('emergency-text-ru').style.display = (lang === 'ru') ? 'block' : 'none';
+      document.getElementById('service-ru').style.display = (lang === 'ru') ? 'block' : 'none';
+      document.getElementById('service-text-ru').style.display = (lang === 'ru') ? 'block' : 'none';
+      document.getElementById('preventive-ru').style.display = (lang === 'ru') ? 'block' : 'none';
+      document.getElementById('preventive-text-ru').style.display = (lang === 'ru') ? 'block' : 'none';
+
+      // Hebrew
+      document.getElementById('service-he').style.display = (lang === 'he') ? 'block' : 'none';
+      document.getElementById('expertise-he').style.display = (lang === 'he') ? 'block' : 'none';
+      document.getElementById('expertise-text-he').style.display = (lang === 'he') ? 'block' : 'none';
+      document.getElementById('focus-he').style.display = (lang === 'he') ? 'block' : 'none';
+      document.getElementById('focus-text-he').style.display = (lang === 'he') ? 'block' : 'none';
+      document.getElementById('care-he').style.display = (lang === 'he') ? 'block' : 'none';
+      document.getElementById('care-text-he').style.display = (lang === 'he') ? 'block' : 'none';
+      document.getElementById('emergency-he').style.display = (lang === 'he') ? 'block' : 'none';
+      document.getElementById('emergency-text-he').style.display = (lang === 'he') ? 'block' : 'none';
+      document.getElementById('service-he').style.display = (lang === 'he') ? 'block' : 'none';
+      document.getElementById('service-text-he').style.display = (lang === 'he') ? 'block' : 'none';
+      document.getElementById('preventive-he').style.display = (lang === 'he') ? 'block' : 'none';
+      document.getElementById('preventive-text-he').style.display = (lang === 'he') ? 'block' : 'none';
+    }
+  </script>
 </body>
 </html>
