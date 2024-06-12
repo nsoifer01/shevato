@@ -54,7 +54,7 @@
     </style>
 </head>
 <body>
-    <canvas id="gameCanvas" width="800" height="950"></canvas> <!-- Adjusted to a rectangular shape -->
+    <canvas id="gameCanvas" width="888" height="950"></canvas>
     <div id="ui">
         <div>Score: <span id="score">0</span></div>
     </div>
@@ -190,8 +190,9 @@
                     player.dy = 0;
                     player.y = platform.y - player.height;
                     player.onGround = true;
-                    if (platform.y > player.y + player.dy) { // Ensure counting only platforms that are below the player
-                        score += 1;
+                    if (!platform.counted && platform.y < player.y) {
+                        score++;
+                        platform.counted = true;
                         document.getElementById('score').textContent = score;
                     }
                 }
@@ -231,7 +232,7 @@
 
         function restartGame() {
             document.getElementById('gameOver').style.display = 'none';
-            player = new Player(585, 700); // Adjusted initial position for the rectangular canvas
+            player = new Player(385, 1100); // Adjusted initial position for the new canvas size
             score = 0;
             gameOver = false;
             generateInitialPlatforms();
@@ -255,7 +256,7 @@
         });
 
         function initGame() {
-            player = new Player(585, 700); // Adjusted initial position for the rectangular canvas
+            player = new Player(385, 1100); // Adjusted initial position for the new canvas size
             generateInitialPlatforms();
             update();
         }
