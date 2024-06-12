@@ -185,20 +185,21 @@
             player.onGround = false;
 
             // Update platforms and check for collisions
-            platforms.forEach(platform => {
-                if (player.collidesWith(platform) && player.dy > 0) {
-                    player.dy = 0;
-                    player.y = platform.y - player.height;
-                    player.onGround = true;
-                    if (!platform.counted && platform.y < player.y) {
-                        score++;
-                        platform.counted = true;
-                        document.getElementById('score').textContent = score;
-                    }
-                }
+platforms.forEach(platform => {
+    if (player.collidesWith(platform) && player.dy > 0) {
+        player.dy = 0;
+        player.y = platform.y - player.height;
+        player.onGround = true;
+        if (!platform.counted) {
+            score++;
+            platform.counted = true;
+            document.getElementById('score').textContent = score;
+        }
+    }
 
-                platform.draw();
-            });
+    platform.draw();
+});
+
 
             player.draw();
 
