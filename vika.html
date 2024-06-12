@@ -8,22 +8,35 @@
     <style>
         body {
             font-family: 'Roboto', sans-serif;
-            background-color: #f4f4f9;
+            background: linear-gradient(135deg, #ececec 25%, #f4f4f9 100%);
             color: #333;
             margin: 0;
             padding: 0;
             display: flex;
-            justify-content: center;
-            align-items: center;
-            height: 100vh;
+            flex-direction: column;
+            min-height: 100vh;
+        }
+        header {
+            background-color: #4CAF50;
+            padding: 20px;
+            text-align: center;
+            color: white;
+        }
+        footer {
+            background-color: #4CAF50;
+            color: white;
+            text-align: center;
+            padding: 10px 0;
+            margin-top: auto;
         }
         .container {
             background: #fff;
             border-radius: 10px;
             box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
-            max-width: 700px;
+            max-width: 800px;
             width: 90%;
             padding: 30px;
+            margin: 20px auto;
             box-sizing: border-box;
         }
         h1 {
@@ -73,8 +86,10 @@
     </style>
 </head>
 <body>
-    <div class="container">
+    <header>
         <h1>Профиль Терапевта Вика</h1>
+    </header>
+    <div class="container">
         <h2>Запросы, с которыми работаю:</h2>
         <p><strong>Чувства и мысли, переживания и состояния:</strong></p>
         <ul>
@@ -110,5 +125,8 @@
         <p>Если вы не нашли в списке ваш запрос — это нормально. Возможно, ваша ситуация слишком запутана, чтобы определить запрос самостоятельно. Моя работа предполагает помощь в формировании запроса и разбора спутанной ситуации.</p>
         <a href="https://wa.me/972586211989" class="whatsapp-link">Связаться через WhatsApp</a>
     </div>
+    <footer>
+        <p>&copy; 2024 Профиль Терапевта Вика</p>
+    </footer>
 </body>
 </html>
