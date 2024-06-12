@@ -127,6 +127,7 @@
         class Platform extends GameObject {
             constructor(x, y, width, height, color) {
                 super(x, y, width, height, color);
+                this.counted = false;
             }
         }
 
@@ -183,7 +184,7 @@
                     player.dy = 0;
                     player.y = platform.y - player.height;
                     player.onGround = true;
-                    if (!platform.counted && platform.y < player.y) {
+                    if (!platform.counted) {
                         score++;
                         platform.counted = true;
                         if (score % 10 === 0) {
