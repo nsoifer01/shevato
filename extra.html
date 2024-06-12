@@ -61,6 +61,8 @@
         const backgroundImg = new Image();
         backgroundImg.src = 'images/background.png'; // Add a background image
 
+        const platformColors = ['green', 'blue', 'red', 'purple', 'orange']; // Array of colors for platforms
+
         class GameObject {
             constructor(x, y, width, height, color) {
                 this.x = x;
@@ -140,11 +142,17 @@
         const platformFrequency = 60;
         let gameOver = false;
 
+        function getPlatformColor(score) {
+            const index = Math.floor(score / 20) % platformColors.length;
+            return platformColors[index];
+        }
+
         function generatePlatform(y) {
             const width = 100;
             const height = 10;
             const x = Math.random() * (canvas.width - width);
-            platforms.push(new Platform(x, y, width, height, 'green'));
+            const color = getPlatformColor(score); // Get the color based on score
+            platforms.push(new Platform(x, y, width, height, color));
             if (player.firstJump) {
                 score++; // Increment score when a new platform is generated from the top
                 if (score % 10 === 0) {
