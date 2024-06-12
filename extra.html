@@ -183,7 +183,7 @@
                     player.dy = 0;
                     player.y = platform.y - player.height;
                     player.onGround = true;
-                    if (!platform.counted) {
+                    if (!platform.counted && platform.y < player.y) {
                         score++;
                         platform.counted = true;
                         if (score % 10 === 0) {
