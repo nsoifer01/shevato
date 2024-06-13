@@ -99,7 +99,7 @@
         class Player extends GameObject {
             constructor(x, y) {
                 super(x, y, 30, 30, 'blue');
-                this.speed = 3;
+                this.speed = 4; // Increased speed for longer horizontal jumps
                 this.jumpPower = 12;
                 this.gravity = 0.3;
                 this.onGround = false;
@@ -144,7 +144,7 @@
         let platforms = [];
         let score = 0;
         let baseCameraSpeed = 0.65; // Slower initial speed
-        const platformFrequency = 60;
+        const platformFrequency = 80; // Increased frequency to decrease platform density
         let gameOver = false;
 
         function getPlatformColor(score) {
