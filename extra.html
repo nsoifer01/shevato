@@ -100,7 +100,7 @@
             constructor(x, y) {
                 super(x, y, 30, 30, 'blue');
                 this.speed = 4; // Increased speed for longer horizontal jumps
-                this.jumpPower = 15; // Original jump power
+                this.jumpPower = 13; // Original jump power
                 this.gravity = 0.4; // Adjusted gravity for smoother fall
                 this.onGround = false;
                 this.hasJumped = false;
@@ -143,8 +143,8 @@
         let player;
         let platforms = [];
         let score = 0;
-        let baseCameraSpeed = 0.5; // Slower initial speed
-        const platformFrequency = 100; // Increased frequency to decrease platform density
+        let baseCameraSpeed = 0.6; // Slower initial speed
+        const platformFrequency = 90; // Increased frequency to decrease platform density
         let gameOver = false;
 
         function getPlatformColor(score) {
@@ -201,19 +201,11 @@
 
             // Update platforms and check for collisions
             platforms.forEach(platform => {
-                if (player.collidesWith(platform)) {
-                    if (player.dy > 0 && player.y + player.height <= platform.y + platform.height) {
-                        // Collision from the top
-                        player.dy = 0;
-                        player.y = platform.y - player.height;
-                        player.onGround = true;
-                    } else if (player.dy < 0 && player.y >= platform.y) {
-                        // Collision from the bottom
-                        player.dy = 0;
-                        player.y = platform.y + platform.height;
-                    }
+                if (player.collidesWith(platform) && player.dy > 0) {
+                    player.dy = 0;
+                    player.y = platform.y - player.height;
+                    player.onGround = true;
                 }
-
                 platform.draw();
             });
 
@@ -251,7 +243,7 @@
             document.getElementById('gameOver').style.display = 'none';
             player = new Player(385, 1100); // Adjusted initial position for the new canvas size
             score = 0;
-            baseCameraSpeed = 0.5; // Reset camera speed
+            baseCameraSpeed = 0.6; // Reset camera speed
             gameOver = false;
             generateInitialPlatforms();
             update();
