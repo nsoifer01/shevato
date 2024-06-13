@@ -201,10 +201,17 @@
 
             // Update platforms and check for collisions
             platforms.forEach(platform => {
-                if (player.collidesWith(platform) && player.dy > 0) {
-                    player.dy = 0;
-                    player.y = platform.y - player.height;
-                    player.onGround = true;
+                if (player.collidesWith(platform)) {
+                    if (player.dy > 0 && player.y + player.height <= platform.y + platform.height) {
+                        // Collision from the top
+                        player.dy = 0;
+                        player.y = platform.y - player.height;
+                        player.onGround = true;
+                    } else if (player.dy < 0 && player.y >= platform.y) {
+                        // Collision from the bottom
+                        player.dy = 0;
+                        player.y = platform.y + platform.height;
+                    }
                 }
 
                 platform.draw();
