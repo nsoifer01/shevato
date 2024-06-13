@@ -100,7 +100,8 @@
             constructor(x, y) {
                 super(x, y, 30, 30, 'blue');
                 this.speed = 3;
-                this.jumpPower = 15;
+                this.jumpPower = 20; // Increased jump power
+                this.gravity = 0.3; // Reduced gravity
                 this.onGround = false;
                 this.hasJumped = false;
                 this.firstJump = false; // Track the first jump
@@ -125,6 +126,10 @@
                     this.hasJumped = true;
                     this.firstJump = true; // Indicate the player has jumped for the first time
                 }
+            }
+
+            applyGravity() {
+                this.dy += this.gravity;
             }
         }
 
@@ -182,7 +187,7 @@
             if (gameOver) return;
 
             // Update player
-            player.dy += 0.5; // gravity
+            player.applyGravity(); // Apply gravity
             player.update();
 
             // Player movement limits
