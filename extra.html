@@ -100,8 +100,8 @@
             constructor(x, y) {
                 super(x, y, 30, 30, 'blue');
                 this.speed = 3;
-                this.jumpPower = 15; // Reverted jump power to original value
-                this.gravity = 0.3; // Reduced gravity
+                this.jumpPower = 12;
+                this.gravity = 0.3;
                 this.onGround = false;
                 this.hasJumped = false;
                 this.firstJump = false; // Track the first jump
@@ -143,7 +143,7 @@
         let player;
         let platforms = [];
         let score = 0;
-        let baseCameraSpeed = 0.6; // Slower initial speed
+        let baseCameraSpeed = 0.65; // Slower initial speed
         const platformFrequency = 60;
         let gameOver = false;
 
@@ -160,8 +160,8 @@
             platforms.push(new Platform(x, y, width, height, color));
             if (player.firstJump) {
                 score++; // Increment score when a new platform is generated from the top
-                if (score % 10 === 0) {
-                    baseCameraSpeed += 0.01; // Increase camera speed every 10 platforms
+                if (score % 20 === 0) {
+                    baseCameraSpeed += 0.02; // Increase camera speed every 20 platforms
                 }
             }
         }
@@ -244,7 +244,7 @@
             document.getElementById('gameOver').style.display = 'none';
             player = new Player(385, 1100); // Adjusted initial position for the new canvas size
             score = 0;
-            baseCameraSpeed = 0.6; // Reset camera speed
+            baseCameraSpeed = 0.65; // Reset camera speed
             gameOver = false;
             generateInitialPlatforms();
             update();
