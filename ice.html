@@ -1,0 +1,108 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>City Tower Game</title>
+    <style>
+        body {
+            margin: 0;
+            overflow: hidden;
+        }
+        canvas {
+            display: block;
+        }
+    </style>
+</head>
+<body>
+    <canvas id="gameCanvas"></canvas>
+    <script>
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
+
+        canvas.width = window.innerWidth;
+        canvas.height = window.innerHeight;
+
+        const game = {
+            blocks: [],
+            currentBlock: null,
+            speed: 2,
+            isGameOver: false,
+            score: 0,
+        };
+
+        class Block {
+            constructor(x, y, width, height) {
+                this.x = x;
+                this.y = y;
+                this.width = width;
+                this.height = height;
+                this.speed = game.speed;
+                this.direction = 1;
+            }
+
+            update() {
+                this.x += this.speed * this.direction;
+                if (this.x + this.width > canvas.width || this.x < 0) {
+                    this.direction *= -1;
+                }
+            }
+
+            draw() {
+                ctx.fillStyle = 'blue';
+                ctx.fillRect(this.x, this.y, this.width, this.height);
+            }
+        }
+
+        function createNewBlock() {
+            const y = game.blocks.length > 0 ? game.blocks[game.blocks.length - 1].y - 30 : canvas.height - 30;
+            game.currentBlock = new Block(0, y, 100, 30);
+        }
+
+        function placeBlock() {
+            const current = game.currentBlock;
+            if (game.blocks.length > 0) {
+                const lastBlock = game.blocks[game.blocks.length - 1];
+                if (current.x < lastBlock.x || current.x + current.width > lastBlock.x + lastBlock.width) {
+                    game.isGameOver = true;
+                    alert('Game Over! Your score: ' + game.score);
+                    document.location.reload();
+                } else {
+                    const offset = Math.abs(current.x - lastBlock.x);
+                    current.width -= offset;
+                    current.x = Math.max(current.x, lastBlock.x);
+                }
+            }
+            game.blocks.push(current);
+            game.score++;
+            createNewBlock();
+        }
+
+        function updateGame() {
+            if (game.isGameOver) return;
+            game.currentBlock.update();
+        }
+
+        function drawGame() {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            game.blocks.forEach(block => block.draw());
+            game.currentBlock.draw();
+        }
+
+        function gameLoop() {
+            updateGame();
+            drawGame();
+            requestAnimationFrame(gameLoop);
+        }
+
+        canvas.addEventListener('click', () => {
+            if (!game.isGameOver) {
+                placeBlock();
+            }
+        });
+
+        createNewBlock();
+        gameLoop();
+    </script>
+</body>
+</html>
