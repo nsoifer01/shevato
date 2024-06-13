@@ -100,7 +100,7 @@
             constructor(x, y) {
                 super(x, y, 30, 30, 'blue');
                 this.speed = 3;
-                this.jumpPower = 20; // Increased jump power
+                this.jumpPower = 15; // Reverted jump power to original value
                 this.gravity = 0.3; // Reduced gravity
                 this.onGround = false;
                 this.hasJumped = false;
@@ -257,6 +257,10 @@
                 player.move('right');
             } else if (e.key === ' ' || e.key === 'ArrowUp') {
                 player.jump();
+            } else if (e.key === 'Enter') {
+                if (gameOver) {
+                    restartGame(); // Restart game if Enter is pressed and game is over
+                }
             }
         });
 
