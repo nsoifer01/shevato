@@ -30,14 +30,14 @@ function preprocessData(historyData) {
 }
 
 async function createAndTrainModel(features) {
-    const inputs = features.map(f => [f.transfers, f.chip]);
+    const inputs = features.map(f => [f.transfers, f.chip, 0, 0]); // Adjust this as needed
     const labels = features.map(f => f.points);
 
-    const inputTensor = tf.tensor2d(inputs, [inputs.length, 2]);
+    const inputTensor = tf.tensor2d(inputs, [inputs.length, 4]); // Adjust to 4 dimensions
     const labelTensor = tf.tensor2d(labels, [labels.length, 1]);
 
     const model = tf.sequential();
-    model.add(tf.layers.dense({ units: 100, activation: 'relu', inputShape: [2] }));
+    model.add(tf.layers.dense({ units: 100, activation: 'relu', inputShape: [4] })); // Adjust to 4 dimensions
     model.add(tf.layers.dense({ units: 1 }));
 
     model.compile({ optimizer: 'adam', loss: 'meanSquaredError' });
