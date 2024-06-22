@@ -46,7 +46,7 @@ async function predictPoints(model, playerData) {
     const playerFeatures = playerData.elements.map(player => ({
         id: player.id,
         transfers: player.transfers_in_event,
-        chip: player.event_transfers // Placeholder: replace with actual feature values
+        chip: 0 // Placeholder: replace with actual feature values
     }));
 
     const inputs = playerFeatures.map(f => [f.transfers, f.chip]);
@@ -86,13 +86,13 @@ async function displayData() {
 
         const playerFeatures = await predictPoints(model, data.playerData);
 
+        console.log('Player Data:', data.playerData.elements); // Debug player data
+        console.log('Player Features:', playerFeatures); // Debug predictions
+
         const budget = 100; // Example budget
         const selectedTeam = optimizeTeam(playerFeatures, budget);
 
-        console.log('Team Data:', data.teamData);
-        console.log('Features:', features);
-        console.log('Trained Model:', model);
-        console.log('Selected Team:', selectedTeam);
+        console.log('Selected Team:', selectedTeam); // Debug selected team
 
         document.getElementById('team-info').innerHTML = `
             <h2>Team Info</h2>
