@@ -9,7 +9,7 @@ async function getData() {
 
     const teamData = await fetchData(`https://fantasy.premierleague.com/api/entry/${teamID}/`);
     const historyData = await fetchData(`https://fantasy.premierleague.com/api/entry/${teamID}/history/`);
-    const playerData = await fetchData('https://fantasy.premierleague.com/api/bootstrap-static/'); // Fetch general player data
+    const playerData = await fetch('historical_data.json').then(response => response.json()); // Fetch historical data
 
     return { teamData, historyData, playerData };
 }
@@ -45,6 +45,8 @@ async function createAndTrainModel(features) {
 async function predictPoints(model, playerData) {
     const playerFeatures = playerData.elements.map(player => ({
         id: player.id,
+        web_name: player.web_name,
+        now_cost: player.now_cost,
         transfers: player.transfers_in_event,
         chip: 0 // Placeholder: replace with actual feature values
     }));
