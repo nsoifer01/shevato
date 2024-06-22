@@ -30,14 +30,15 @@ function preprocessData(historyData) {
 }
 
 async function createAndTrainModel(features) {
-    const inputs = features.map(f => [f.transfers, f.chip]);
+    // Adjusted to handle a 4-dimensional input
+    const inputs = features.map(f => [f.transfers, f.chip, 0, 0]); // Adjust this as needed
     const labels = features.map(f => f.points);
 
-    const inputTensor = tf.tensor2d(inputs, [inputs.length, 2]);
+    const inputTensor = tf.tensor2d(inputs, [inputs.length, 4]); // Adjust to 4 dimensions
     const labelTensor = tf.tensor2d(labels, [labels.length, 1]);
 
     const model = tf.sequential();
-    model.add(tf.layers.dense({ units: 100, activation: 'relu', inputShape: [2] }));
+    model.add(tf.layers.dense({ units: 100, activation: 'relu', inputShape: [4] })); // Adjust to 4 dimensions
     model.add(tf.layers.dense({ units: 1 }));
 
     model.compile({ optimizer: 'adam', loss: 'meanSquaredError' });
@@ -68,15 +69,7 @@ async function predictPoints(model, playerData) {
     const inputs = playerFeatures.map(f => [f.transfers, f.chip, f.now_cost, f.form]);
     const inputTensor = tf.tensor2d(inputs, [inputs.length, 4]);
 
-    const modelPrediction = tf.sequential();
-    modelPrediction.add(tf.layers.dense({ units: 100, activation: 'relu', inputShape: [4] }));
-    modelPrediction.add(tf.layers.dense({ units: 1 }));
-
-    modelPrediction.compile({ optimizer: 'adam', loss: 'meanSquaredError' });
-
-    await modelPrediction.fit(inputTensor, inputTensor, { epochs: 50, shuffle: true });
-
-    const predictions = modelPrediction.predict(inputTensor).dataSync();
+    const predictions = model.predict(inputTensor).dataSync();
 
     playerFeatures.forEach((player, index) => {
         player.predicted_points = predictions[index];
