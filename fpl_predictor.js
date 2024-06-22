@@ -25,6 +25,27 @@ function preprocessData(historyData) {
     return features;
 }
 
+async function createAndTrainModel(features) {
+    // Convert features to tensors
+    const inputs = features.map(f => [f.transfers, f.chip]);
+    const labels = features.map(f => f.points);
+
+    const inputTensor = tf.tensor2d(inputs, [inputs.length, 2]);
+    const labelTensor = tf.tensor2d(labels, [labels.length, 1]);
+
+    // Create a simple neural network model
+    const model = tf.sequential();
+    model.add(tf.layers.dense({ units: 100, activation: 'relu', inputShape: [2] }));
+    model.add(tf.layers.dense({ units: 1 }));
+
+    model.compile({ optimizer: 'adam', loss: 'meanSquaredError' });
+
+    // Train the model
+    await model.fit(inputTensor, labelTensor, { epochs: 50, shuffle: true });
+
+    return model;
+}
+
 async function displayData() {
     try {
         const data = await getData();
@@ -32,9 +53,13 @@ async function displayData() {
         // Preprocess data to create features
         const features = preprocessData(data.historyData);
 
+        // Train the model with the features
+        const model = await createAndTrainModel(features);
+
         // Display data for debugging purposes
         console.log('Team Data:', data.teamData);
         console.log('Features:', features);
+        console.log('Trained Model:', model);
 
         document.getElementById('team-info').innerHTML = `
             <h2>Team Info</h2>
@@ -48,5 +73,5 @@ async function displayData() {
     }
 }
 
-// Call the displayData function to fetch and display the data
+// Call the displayData function to fetch, preprocess, train, and display the data
 displayData();
