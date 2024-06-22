@@ -9,8 +9,9 @@ async function getData() {
 
     const teamData = await fetchData(`https://fantasy.premierleague.com/api/entry/${teamID}/`);
     const historyData = await fetchData(`https://fantasy.premierleague.com/api/entry/${teamID}/history/`);
+    const playerData = await fetchData('https://fantasy.premierleague.com/api/bootstrap-static/'); // Fetch general player data
 
-    return { teamData, historyData };
+    return { teamData, historyData, playerData };
 }
 
 function preprocessData(historyData) {
@@ -41,6 +42,40 @@ async function createAndTrainModel(features) {
     return model;
 }
 
+async function predictPoints(model, playerData) {
+    const playerFeatures = playerData.elements.map(player => ({
+        id: player.id,
+        transfers: player.transfers_in_event,
+        chip: player.event_transfers // Placeholder: replace with actual feature values
+    }));
+
+    const inputs = playerFeatures.map(f => [f.transfers, f.chip]);
+    const inputTensor = tf.tensor2d(inputs, [inputs.length, 2]);
+
+    const predictions = model.predict(inputTensor).dataSync();
+
+    playerFeatures.forEach((player, index) => {
+        player.predicted_points = predictions[index];
+    });
+
+    return playerFeatures;
+}
+
+function optimizeTeam(playerFeatures, budget) {
+    const sortedPlayers = playerFeatures.sort((a, b) => b.predicted_points - a.predicted_points);
+    let selectedTeam = [];
+    let remainingBudget = budget;
+
+    for (const player of sortedPlayers) {
+        if (remainingBudget >= player.now_cost / 10) {
+            selectedTeam.push(player);
+            remainingBudget -= player.now_cost / 10;
+        }
+    }
+
+    return selectedTeam;
+}
+
 async function displayData() {
     try {
         const data = await getData();
@@ -49,15 +84,23 @@ async function displayData() {
 
         const model = await createAndTrainModel(features);
 
+        const playerFeatures = await predictPoints(model, data.playerData);
+
+        const budget = 100; // Example budget
+        const selectedTeam = optimizeTeam(playerFeatures, budget);
+
         console.log('Team Data:', data.teamData);
         console.log('Features:', features);
         console.log('Trained Model:', model);
+        console.log('Selected Team:', selectedTeam);
 
         document.getElementById('team-info').innerHTML = `
             <h2>Team Info</h2>
             <p>Team Name: ${data.teamData.name}</p>
             <p>Overall Points: ${data.teamData.summary_overall_points}</p>
             <p>Overall Rank: ${data.teamData.summary_overall_rank}</p>
+            <h2>Selected Team</h2>
+            ${selectedTeam.map(player => `<p>${player.web_name}: ${player.predicted_points.toFixed(2)} points</p>`).join('')}
         `;
 
     } catch (error) {
