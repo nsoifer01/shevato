@@ -68,7 +68,15 @@ async function predictPoints(model, playerData) {
     const inputs = playerFeatures.map(f => [f.transfers, f.chip, f.now_cost, f.form]);
     const inputTensor = tf.tensor2d(inputs, [inputs.length, 4]);
 
-    const predictions = model.predict(inputTensor).dataSync();
+    const modelPrediction = tf.sequential();
+    modelPrediction.add(tf.layers.dense({ units: 100, activation: 'relu', inputShape: [4] }));
+    modelPrediction.add(tf.layers.dense({ units: 1 }));
+
+    modelPrediction.compile({ optimizer: 'adam', loss: 'meanSquaredError' });
+
+    await modelPrediction.fit(inputTensor, inputTensor, { epochs: 50, shuffle: true });
+
+    const predictions = modelPrediction.predict(inputTensor).dataSync();
 
     playerFeatures.forEach((player, index) => {
         player.predicted_points = predictions[index];
