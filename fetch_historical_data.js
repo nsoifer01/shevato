@@ -17,15 +17,20 @@ async function collectHistoricalData() {
     for (const season of seasons) {
         console.log(`Fetching data for season ${season}...`);
         const data = await fetchSeasonData(season);
-        historicalData = historicalData.concat(data.elements.map(player => ({
-            id: player.id,
-            web_name: player.web_name,
-            now_cost: player.now_cost,
-            transfers_in_event: player.transfers_in_event,
-            points: player.total_points,
-            position: player.element_type,
-            form: player.form
-        })));
+
+        if (data && data.elements) {
+            historicalData = historicalData.concat(data.elements.map(player => ({
+                id: player.id,
+                web_name: player.web_name,
+                now_cost: player.now_cost,
+                transfers_in_event: player.transfers_in_event,
+                points: player.total_points,
+                position: player.element_type,
+                form: player.form
+            })));
+        } else {
+            console.error(`Failed to fetch data for season ${season}`);
+        }
     }
 
     localStorage.setItem('historicalData', JSON.stringify({ elements: historicalData }));
