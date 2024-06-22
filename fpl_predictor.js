@@ -48,18 +48,25 @@ async function createAndTrainModel(features) {
 }
 
 async function predictPoints(model, playerData) {
+    const positionMap = {
+        1: "GK",
+        2: "DEF",
+        3: "MID",
+        4: "FWD"
+    };
+
     const playerFeatures = playerData.elements.map(player => ({
         id: player.id,
         web_name: player.web_name,
         now_cost: player.now_cost,
         transfers: player.transfers_in_event || 0,
         chip: 0,
-        position: player.element_type,
+        position: positionMap[player.element_type] || "UNK",
         form: parseFloat(player.form) || 0
     }));
 
-    const inputs = playerFeatures.map(f => [f.transfers, f.chip]);
-    const inputTensor = tf.tensor2d(inputs, [inputs.length, 2]);
+    const inputs = playerFeatures.map(f => [f.transfers, f.chip, f.now_cost, f.form]);
+    const inputTensor = tf.tensor2d(inputs, [inputs.length, 4]);
 
     const predictions = model.predict(inputTensor).dataSync();
 
