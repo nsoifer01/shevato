@@ -3,56 +3,11 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>FPL Tool</title>
+    <title>FPL Predictor</title>
+    <script src="fpl_predictor.js" defer></script>
 </head>
 <body>
-    <h1>FPL Team and League Info</h1>
+    <h1>FPL Team Predictor</h1>
     <div id="team-info"></div>
-    <div id="league-info"></div>
-
-    <script>
-        const teamID = 4602825;
-        const leagueID = 1028577;
-        const apiKey = '95fd0396c5d5aacfa0b34b20c2cc6727';
-        const proxyUrl = `https://api.scraperapi.com?api_key=${apiKey}&url=`;
-
-        async function fetchTeamInfo(teamID) {
-            const response = await fetch(`${proxyUrl}https://fantasy.premierleague.com/api/entry/${teamID}/`);
-            const data = await response.json();
-            return data;
-        }
-
-        async function fetchLeagueInfo(leagueID) {
-            const response = await fetch(`${proxyUrl}https://fantasy.premierleague.com/api/leagues-classic/${leagueID}/standings/`);
-            const data = await response.json();
-            return data;
-        }
-
-        async function displayInfo() {
-            try {
-                const teamInfo = await fetchTeamInfo(teamID);
-                const leagueInfo = await fetchLeagueInfo(leagueID);
-
-                document.getElementById('team-info').innerHTML = `
-                    <h2>Team Info</h2>
-                    <p>Team Name: ${teamInfo.name}</p>
-                    <p>Overall Points: ${teamInfo.summary_overall_points}</p>
-                    <p>Overall Rank: ${teamInfo.summary_overall_rank}</p>
-                `;
-
-                let leagueHTML = '<h2>League Standings</h2><ul>';
-                leagueInfo.standings.results.forEach(team => {
-                    leagueHTML += `<li>${team.entry_name}: ${team.total} points</li>`;
-                });
-                leagueHTML += '</ul>';
-
-                document.getElementById('league-info').innerHTML = leagueHTML;
-            } catch (error) {
-                console.error('Error fetching data:', error);
-            }
-        }
-
-        displayInfo();
-    </script>
 </body>
 </html>
