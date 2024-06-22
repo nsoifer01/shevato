@@ -13,15 +13,16 @@
     <script>
         const teamID = 4602825;
         const leagueID = 1028577;
+        const proxyUrl = 'https://cors-anywhere.herokuapp.com/';
 
         async function fetchTeamInfo(teamID) {
-            const response = await fetch(`https://fantasy.premierleague.com/api/entry/${teamID}/`);
+            const response = await fetch(`${proxyUrl}https://fantasy.premierleague.com/api/entry/${teamID}/`);
             const data = await response.json();
             return data;
         }
 
         async function fetchLeagueInfo(leagueID) {
-            const response = await fetch(`https://fantasy.premierleague.com/api/leagues-classic/${leagueID}/standings/`);
+            const response = await fetch(`${proxyUrl}https://fantasy.premierleague.com/api/leagues-classic/${leagueID}/standings/`);
             const data = await response.json();
             return data;
         }
