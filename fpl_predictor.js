@@ -30,14 +30,14 @@ function preprocessData(historyData) {
 }
 
 async function createAndTrainModel(features) {
-    const inputs = features.map(f => [f.transfers, f.chip, 0, 0]);
+    const inputs = features.map(f => [f.transfers, f.chip, 0, 0]); // Adjust this as needed
     const labels = features.map(f => f.points);
 
-    const inputTensor = tf.tensor2d(inputs, [inputs.length, 4]);
+    const inputTensor = tf.tensor2d(inputs, [inputs.length, 4]); // Adjust to 4 dimensions
     const labelTensor = tf.tensor2d(labels, [labels.length, 1]);
 
     const model = tf.sequential();
-    model.add(tf.layers.dense({ units: 100, activation: 'relu', inputShape: [4] }));
+    model.add(tf.layers.dense({ units: 100, activation: 'relu', inputShape: [4] })); // Adjust to 4 dimensions
     model.add(tf.layers.dense({ units: 1 }));
 
     model.compile({ optimizer: 'adam', loss: 'meanSquaredError' });
@@ -83,32 +83,13 @@ function optimizeTeam(playerFeatures, budget) {
     let selectedTeam = [];
     let remainingBudget = budget;
 
-    const teamStructure = { GK: 1, DEF: 4, MID: 4, FWD: 2 };
-
-    console.log("Starting team optimization...");
-    console.log("Initial team structure:", teamStructure);
-    console.log("Initial budget:", remainingBudget);
-
     for (const player of sortedPlayers) {
-        const position = player.position;
-
-        console.log("Evaluating player:", player.web_name, "Position:", position, "Cost:", player.now_cost, "Predicted points:", player.predicted_points);
-        
-        if (teamStructure[position] > 0 && remainingBudget >= player.now_cost / 10 && !uniquePlayers.has(player.web_name)) {
+        if (remainingBudget >= player.now_cost / 10 && !uniquePlayers.has(player.web_name)) {
             selectedTeam.push(player);
             uniquePlayers.add(player.web_name);
             remainingBudget -= player.now_cost / 10;
-            teamStructure[position]--;
-            
-            console.log("Added player:", player.web_name);
-            console.log("Updated team structure:", teamStructure);
-            console.log("Remaining budget:", remainingBudget);
         }
-
-        if (selectedTeam.length >= 11) {
-            console.log("Team is complete with 11 players.");
-            break;
-        }
+        if (selectedTeam.length >= 11) break; // Ensure team has 11 players
     }
 
     return selectedTeam;
