@@ -1,15 +1,9 @@
-async function fetchData(url) {
-    const proxyUrl = `https://api.scraperapi.com?api_key=95fd0396c5d5aacfa0b34b20c2cc6727&url=`;
-    const response = await fetch(proxyUrl + encodeURIComponent(url));
-    return response.json();
-}
-
 async function getData() {
     const teamID = 4602825;
 
     const teamData = await fetchData(`https://fantasy.premierleague.com/api/entry/${teamID}/`);
     const historyData = await fetchData(`https://fantasy.premierleague.com/api/entry/${teamID}/history/`);
-    const playerData = await fetch('historical_data.json').then(response => response.json());
+    const playerData = JSON.parse(localStorage.getItem('historicalData'));
 
     return { teamData, historyData, playerData };
 }
