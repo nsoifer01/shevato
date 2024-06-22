@@ -9,7 +9,7 @@ async function getData() {
 
     const teamData = await fetchData(`https://fantasy.premierleague.com/api/entry/${teamID}/`);
     const historyData = await fetchData(`https://fantasy.premierleague.com/api/entry/${teamID}/history/`);
-    const playerData = await fetch('historical_data.json').then(response => response.json()); // Fetch historical data
+    const playerData = await fetch('historical_data.json').then(response => response.json());
 
     return { teamData, historyData, playerData };
 }
@@ -48,7 +48,9 @@ async function predictPoints(model, playerData) {
         web_name: player.web_name,
         now_cost: player.now_cost,
         transfers: player.transfers_in_event,
-        chip: 0 // Placeholder: replace with actual feature values
+        chip: 0,
+        position: player.position,
+        form: player.form
     }));
 
     const inputs = playerFeatures.map(f => [f.transfers, f.chip]);
@@ -88,13 +90,13 @@ async function displayData() {
 
         const playerFeatures = await predictPoints(model, data.playerData);
 
-        console.log('Player Data:', data.playerData.elements); // Debug player data
-        console.log('Player Features:', playerFeatures); // Debug predictions
+        console.log('Player Data:', data.playerData.elements);
+        console.log('Player Features:', playerFeatures);
 
-        const budget = 100; // Example budget
+        const budget = 100;
         const selectedTeam = optimizeTeam(playerFeatures, budget);
 
-        console.log('Selected Team:', selectedTeam); // Debug selected team
+        console.log('Selected Team:', selectedTeam);
 
         document.getElementById('team-info').innerHTML = `
             <h2>Team Info</h2>
