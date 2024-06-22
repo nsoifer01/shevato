@@ -13,8 +13,8 @@
     <script>
         const teamID = 4602825;
         const leagueID = 1028577;
-        const apiKey = '95fd0396c5d5aacfa0b34b20c2cc6727'; // Replace with your ScraperAPI key
-        const proxyUrl = `http://api.scraperapi.com?api_key=${apiKey}&url=`;
+        const apiKey = '95fd0396c5d5aacfa0b34b20c2cc6727';
+        const proxyUrl = `https://api.scraperapi.com?api_key=${apiKey}&url=`;
 
         async function fetchTeamInfo(teamID) {
             const response = await fetch(`${proxyUrl}https://fantasy.premierleague.com/api/entry/${teamID}/`);
