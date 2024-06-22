@@ -1,9 +1,20 @@
+async function fetchData(url) {
+    const proxyUrl = `https://api.scraperapi.com?api_key=95fd0396c5d5aacfa0b34b20c2cc6727&url=`;
+    const response = await fetch(proxyUrl + encodeURIComponent(url));
+    return response.json();
+}
+
 async function getData() {
     const teamID = 4602825;
 
     const teamData = await fetchData(`https://fantasy.premierleague.com/api/entry/${teamID}/`);
     const historyData = await fetchData(`https://fantasy.premierleague.com/api/entry/${teamID}/history/`);
     const playerData = JSON.parse(localStorage.getItem('historicalData'));
+
+    if (!playerData || !playerData.elements) {
+        console.error('No historical data found or data is invalid.');
+        return { teamData, historyData, playerData: { elements: [] } };
+    }
 
     return { teamData, historyData, playerData };
 }
@@ -77,6 +88,11 @@ function optimizeTeam(playerFeatures, budget) {
 async function displayData() {
     try {
         const data = await getData();
+
+        if (!data.playerData || !data.playerData.elements.length) {
+            console.error('No player data available for prediction.');
+            return;
+        }
 
         const features = preprocessData(data.historyData);
 
