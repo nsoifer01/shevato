@@ -1,5 +1,6 @@
 async function fetchData(url) {
-    const response = await fetch(url);
+    const proxyUrl = `https://api.scraperapi.com?api_key=95fd0396c5d5aacfa0b34b20c2cc6727&url=`;
+    const response = await fetch(proxyUrl + encodeURIComponent(url));
     return response.json();
 }
 
@@ -9,8 +10,6 @@ async function getData() {
 
     const teamData = await fetchData(`https://fantasy.premierleague.com/api/entry/${teamID}/`);
     const leagueData = await fetchData(`https://fantasy.premierleague.com/api/leagues-classic/${leagueID}/standings/`);
-
-    // Fetch additional data if needed, such as fixtures, player stats, etc.
 
     return { teamData, leagueData };
 }
