@@ -52,10 +52,10 @@ async function predictPoints(model, playerData) {
         id: player.id,
         web_name: player.web_name,
         now_cost: player.now_cost,
-        transfers: player.transfers_in_event || 0, // Ensure non-null values
+        transfers: player.transfers_in_event || 0,
         chip: 0,
-        position: player.position,
-        form: parseFloat(player.form) || 0 // Ensure non-null values and convert to float
+        position: player.element_type,
+        form: parseFloat(player.form) || 0
     }));
 
     const inputs = playerFeatures.map(f => [f.transfers, f.chip]);
