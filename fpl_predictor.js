@@ -30,15 +30,14 @@ function preprocessData(historyData) {
 }
 
 async function createAndTrainModel(features) {
-    // Adjusted to handle a 4-dimensional input
-    const inputs = features.map(f => [f.transfers, f.chip, 0, 0]); // Adjust this as needed
+    const inputs = features.map(f => [f.transfers, f.chip]);
     const labels = features.map(f => f.points);
 
-    const inputTensor = tf.tensor2d(inputs, [inputs.length, 4]); // Adjust to 4 dimensions
+    const inputTensor = tf.tensor2d(inputs, [inputs.length, 2]);
     const labelTensor = tf.tensor2d(labels, [labels.length, 1]);
 
     const model = tf.sequential();
-    model.add(tf.layers.dense({ units: 100, activation: 'relu', inputShape: [4] })); // Adjust to 4 dimensions
+    model.add(tf.layers.dense({ units: 100, activation: 'relu', inputShape: [2] }));
     model.add(tf.layers.dense({ units: 1 }));
 
     model.compile({ optimizer: 'adam', loss: 'meanSquaredError' });
@@ -79,15 +78,18 @@ async function predictPoints(model, playerData) {
 }
 
 function optimizeTeam(playerFeatures, budget) {
+    const uniquePlayers = new Set();
     const sortedPlayers = playerFeatures.sort((a, b) => b.predicted_points - a.predicted_points);
     let selectedTeam = [];
     let remainingBudget = budget;
 
     for (const player of sortedPlayers) {
-        if (remainingBudget >= player.now_cost / 10) {
+        if (remainingBudget >= player.now_cost / 10 && !uniquePlayers.has(player.web_name)) {
             selectedTeam.push(player);
+            uniquePlayers.add(player.web_name);
             remainingBudget -= player.now_cost / 10;
         }
+        if (selectedTeam.length >= 11) break; // Ensure team has 11 players
     }
 
     return selectedTeam;
