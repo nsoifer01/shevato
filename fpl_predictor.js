@@ -83,12 +83,23 @@ function optimizeTeam(playerFeatures, budget) {
     let selectedTeam = [];
     let remainingBudget = budget;
 
+    const teamStructure = {
+        GK: parseInt(document.getElementById('gk').value),
+        DEF: parseInt(document.getElementById('def').value),
+        MID: parseInt(document.getElementById('mid').value),
+        FWD: parseInt(document.getElementById('fwd').value)
+    };
+
     for (const player of sortedPlayers) {
-        if (remainingBudget >= player.now_cost / 10 && !uniquePlayers.has(player.web_name)) {
+        const position = player.position;
+
+        if (teamStructure[position] > 0 && remainingBudget >= player.now_cost / 10 && !uniquePlayers.has(player.web_name)) {
             selectedTeam.push(player);
             uniquePlayers.add(player.web_name);
             remainingBudget -= player.now_cost / 10;
+            teamStructure[position]--;
         }
+
         if (selectedTeam.length >= 11) break; // Ensure team has 11 players
     }
 
@@ -113,7 +124,7 @@ async function displayData() {
         console.log('Player Data:', data.playerData.elements);
         console.log('Player Features:', playerFeatures);
 
-        const budget = 100;
+        const budget = parseFloat(document.getElementById('budget').value);
         const selectedTeam = optimizeTeam(playerFeatures, budget);
 
         console.log('Selected Team:', selectedTeam);
