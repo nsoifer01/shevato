@@ -37,7 +37,7 @@ async function createAndTrainModel(features) {
     const labelTensor = tf.tensor2d(labels, [labels.length, 1]);
 
     const model = tf.sequential();
-    model.add(tf.layers.dense({ units: 100, activation: 'relu', inputShape: [4] })); // Adjust to 4 dimensions
+    model.add(tf.layers.dense({ units: 100, activation: 'relu', inputShape: [7] })); // Adjust to 4 dimensions
     model.add(tf.layers.dense({ units: 1 }));
 
     model.compile({ optimizer: 'adam', loss: 'meanSquaredError' });
