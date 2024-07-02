@@ -3,25 +3,18 @@
 <head>
     <meta charset="UTF-8">
     <title>FPL Team Predictor</title>
-    <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs"></script>
-    <script src="fpl_predictor.js"></script>
 </head>
 <body>
-    <h1>FPL Team Predictor</h1>
     <div id="team-info"></div>
-    <div>
-        <h2>Customize Team</h2>
-        <label for="budget">Budget:</label>
-        <input type="number" id="budget" value="100">
-        <label for="gk">Goalkeepers:</label>
-        <input type="number" id="gk" value="1">
-        <label for="def">Defenders:</label>
-        <input type="number" id="def" value="4">
-        <label for="mid">Midfielders:</label>
-        <input type="number" id="mid" value="4">
-        <label for="fwd">Forwards:</label>
-        <input type="number" id="fwd" value="2">
-        <button onclick="displayData()">Update Team</button>
-    </div>
+    <h2>Customize Team</h2>
+    <form id="team-form">
+        Budget: <input type="number" id="budget" value="100"><br>
+        Goalkeepers: <input type="number" id="gk" value="1"><br>
+        Defenders: <input type="number" id="def" value="4"><br>
+        Midfielders: <input type="number" id="mid" value="4"><br>
+        Forwards: <input type="number" id="fwd" value="2"><br>
+        <button type="button" id="update-team">Update Team</button>
+    </form>
+    <script src="fpl_predictor.js"></script>
 </body>
 </html>
