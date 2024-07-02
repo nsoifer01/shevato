@@ -16,10 +16,6 @@ async function getData() {
         return { teamData, historyData, playerData: { elements: [] } };
     }
 
-    console.log('Team Data:', teamData);
-    console.log('History Data:', historyData);
-    console.log('Player Data:', playerData);
-
     return { teamData, historyData, playerData };
 }
 
@@ -41,15 +37,15 @@ async function createAndTrainModel(features) {
     const inputTensor = tf.tensor2d(inputs, [inputs.length, 4]); // Adjust to 4 dimensions
     const labelTensor = tf.tensor2d(labels, [labels.length, 1]);
 
+    console.log('Training model with input tensor:', inputTensor.shape);
+    console.log('Training model with label tensor:', labelTensor.shape);
+
     const model = tf.sequential();
     model.add(tf.layers.dense({ units: 100, activation: 'relu', inputShape: [4] })); // Adjust to 4 dimensions
     model.add(tf.layers.dense({ units: 1 }));
 
     model.compile({ optimizer: 'adam', loss: 'meanSquaredError' });
 
-    console.log('Training model with input tensor:', inputTensor);
-    console.log('Training model with label tensor:', labelTensor);
-    
     await model.fit(inputTensor, labelTensor, { epochs: 50, shuffle: true });
 
     return model;
@@ -76,10 +72,12 @@ async function predictPoints(model, playerData) {
         xGA: parseFloat(player.xGA) || 0
     }));
 
+    console.log('Player Features:', playerFeatures);
+
     const inputs = playerFeatures.map(f => [f.transfers, f.chip, f.now_cost, f.form, f.xG, f.xA, f.xGA]);
     const inputTensor = tf.tensor2d(inputs, [inputs.length, 7]);
 
-    console.log('Predicting points with input tensor:', inputTensor);
+    console.log('Predicting points with input tensor:', inputTensor.shape);
 
     const predictions = model.predict(inputTensor).dataSync();
 
@@ -87,7 +85,6 @@ async function predictPoints(model, playerData) {
         player.predicted_points = predictions[index];
     });
 
-    console.log('Player Features with Predicted Points:', playerFeatures);
     return playerFeatures;
 }
 
@@ -117,13 +114,16 @@ function optimizeTeam(playerFeatures, budget) {
         if (selectedTeam.length >= 11) break; // Ensure team has 11 players
     }
 
-    console.log('Selected Team:', selectedTeam);
     return selectedTeam;
 }
 
 async function displayData() {
     try {
         const data = await getData();
+
+        console.log('Team Data:', data.teamData);
+        console.log('History Data:', data.historyData);
+        console.log('Player Data:', data.playerData.elements);
 
         if (!data.playerData || !data.playerData.elements.length) {
             console.error('No player data available for prediction.');
@@ -136,7 +136,6 @@ async function displayData() {
 
         const playerFeatures = await predictPoints(model, data.playerData);
 
-        console.log('Player Data:', data.playerData.elements);
         console.log('Player Features:', playerFeatures);
 
         const budget = parseFloat(document.getElementById('budget').value);
@@ -158,6 +157,6 @@ async function displayData() {
     }
 }
 
-document.getElementById('update-team').addEventListener('click', displayData);
-
 displayData();
+
+document.getElementById('update-team').addEventListener('click', displayData);
