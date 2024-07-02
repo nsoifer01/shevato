@@ -63,18 +63,16 @@ const analyzeStats = (teamData, historyData) => {
     const { name, overall_points, summary_overall_rank } = teamData;
     const current_season = historyData.current;
 
-    // Check if expected stats are available in the current season data
-    const totalExpectedGoals = current_season.reduce((sum, match) => sum + (match.xG || 0), 0);
-    const totalExpectedAssists = current_season.reduce((sum, match) => sum + (match.xA || 0), 0);
-    const totalExpectedGoalsAllowed = current_season.reduce((sum, match) => sum + (match.xGA || 0), 0);
+    // Since expected stats are not available, we will show other available information
+    const totalPoints = current_season.reduce((sum, match) => sum + match.total_points, 0);
 
     return {
         teamName: name,
-        totalPoints: overall_points,
+        totalPoints: overall_points !== undefined ? overall_points : totalPoints,
         overallRank: summary_overall_rank,
-        totalExpectedGoals,
-        totalExpectedAssists,
-        totalExpectedGoalsAllowed,
+        totalExpectedGoals: 0, // Placeholder as data is not available
+        totalExpectedAssists: 0, // Placeholder as data is not available
+        totalExpectedGoalsAllowed: 0 // Placeholder as data is not available
     };
 };
 
