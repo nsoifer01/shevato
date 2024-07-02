@@ -26,22 +26,18 @@ function preprocessData(historyData) {
         chip: gameweek.active_chip ? 1 : 0
     }));
 
-    console.log('Preprocessed Features:', features);
     return features;
 }
 
 async function createAndTrainModel(features) {
-    const inputs = features.map(f => [f.transfers, f.chip, 0, 0]); // Adjust this as needed
+    const inputs = features.map(f => [f.transfers, f.chip, 0, 0, 0, 0, 0]); // Adjust this as needed
     const labels = features.map(f => f.points);
 
-    const inputTensor = tf.tensor2d(inputs, [inputs.length, 4]); // Adjust to 4 dimensions
+    const inputTensor = tf.tensor2d(inputs, [inputs.length, 7]); // Adjust to 7 dimensions
     const labelTensor = tf.tensor2d(labels, [labels.length, 1]);
 
-    console.log('Training model with input tensor:', inputTensor.shape);
-    console.log('Training model with label tensor:', labelTensor.shape);
-
     const model = tf.sequential();
-    model.add(tf.layers.dense({ units: 100, activation: 'relu', inputShape: [4] })); // Adjust to 4 dimensions
+    model.add(tf.layers.dense({ units: 100, activation: 'relu', inputShape: [7] })); // Adjust to 7 dimensions
     model.add(tf.layers.dense({ units: 1 }));
 
     model.compile({ optimizer: 'adam', loss: 'meanSquaredError' });
@@ -72,12 +68,8 @@ async function predictPoints(model, playerData) {
         xGA: parseFloat(player.xGA) || 0
     }));
 
-    console.log('Player Features:', playerFeatures);
-
     const inputs = playerFeatures.map(f => [f.transfers, f.chip, f.now_cost, f.form, f.xG, f.xA, f.xGA]);
     const inputTensor = tf.tensor2d(inputs, [inputs.length, 7]);
-
-    console.log('Predicting points with input tensor:', inputTensor.shape);
 
     const predictions = model.predict(inputTensor).dataSync();
 
@@ -131,11 +123,13 @@ async function displayData() {
         }
 
         const features = preprocessData(data.historyData);
+        console.log('Preprocessed Features:', features);
 
         const model = await createAndTrainModel(features);
+        console.log('Training model with input tensor:', model.inputs[0].shape);
+        console.log('Training model with label tensor:', model.outputs[0].shape);
 
         const playerFeatures = await predictPoints(model, data.playerData);
-
         console.log('Player Features:', playerFeatures);
 
         const budget = parseFloat(document.getElementById('budget').value);
@@ -158,5 +152,4 @@ async function displayData() {
 }
 
 displayData();
-
 document.getElementById('update-team').addEventListener('click', displayData);
