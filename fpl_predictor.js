@@ -23,21 +23,25 @@ function preprocessData(historyData) {
     const features = historyData.current.map(gameweek => ({
         points: gameweek.points,
         transfers: gameweek.event_transfers,
-        chip: gameweek.active_chip ? 1 : 0
+        chip: gameweek.active_chip ? 1 : 0,
+        xG: gameweek.xG || 0,
+        xA: gameweek.xA || 0,
+        xGA: gameweek.xGA || 0,
+        form: gameweek.form || 0
     }));
 
     return features;
 }
 
 async function createAndTrainModel(features) {
-    const inputs = features.map(f => [f.transfers, f.chip, 0, 0]); // Adjust this as needed
+    const inputs = features.map(f => [f.transfers, f.chip, f.xG, f.xA, f.xGA, f.form, 0]); // Adjust this as needed
     const labels = features.map(f => f.points);
 
-    const inputTensor = tf.tensor2d(inputs, [inputs.length, 4]); // Adjust to 4 dimensions
+    const inputTensor = tf.tensor2d(inputs, [inputs.length, 7]); // Adjust to 7 dimensions
     const labelTensor = tf.tensor2d(labels, [labels.length, 1]);
 
     const model = tf.sequential();
-    model.add(tf.layers.dense({ units: 100, activation: 'relu', inputShape: [7] })); // Adjust to 4 dimensions
+    model.add(tf.layers.dense({ units: 100, activation: 'relu', inputShape: [7] })); // Adjust to 7 dimensions
     model.add(tf.layers.dense({ units: 1 }));
 
     model.compile({ optimizer: 'adam', loss: 'meanSquaredError' });
