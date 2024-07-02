@@ -16,6 +16,10 @@ async function getData() {
         return { teamData, historyData, playerData: { elements: [] } };
     }
 
+    console.log('Team Data:', teamData);
+    console.log('History Data:', historyData);
+    console.log('Player Data:', playerData);
+
     return { teamData, historyData, playerData };
 }
 
@@ -23,29 +27,29 @@ function preprocessData(historyData) {
     const features = historyData.current.map(gameweek => ({
         points: gameweek.points,
         transfers: gameweek.event_transfers,
-        chip: gameweek.active_chip ? 1 : 0,
-        xG: gameweek.xG || 0,
-        xA: gameweek.xA || 0,
-        xGA: gameweek.xGA || 0,
-        form: gameweek.form || 0
+        chip: gameweek.active_chip ? 1 : 0
     }));
 
+    console.log('Preprocessed Features:', features);
     return features;
 }
 
 async function createAndTrainModel(features) {
-    const inputs = features.map(f => [f.transfers, f.chip, f.xG, f.xA, f.xGA, f.form, 0]); // Adjust this as needed
+    const inputs = features.map(f => [f.transfers, f.chip, 0, 0]); // Adjust this as needed
     const labels = features.map(f => f.points);
 
-    const inputTensor = tf.tensor2d(inputs, [inputs.length, 7]); // Adjust to 7 dimensions
+    const inputTensor = tf.tensor2d(inputs, [inputs.length, 4]); // Adjust to 4 dimensions
     const labelTensor = tf.tensor2d(labels, [labels.length, 1]);
 
     const model = tf.sequential();
-    model.add(tf.layers.dense({ units: 100, activation: 'relu', inputShape: [7] })); // Adjust to 7 dimensions
+    model.add(tf.layers.dense({ units: 100, activation: 'relu', inputShape: [4] })); // Adjust to 4 dimensions
     model.add(tf.layers.dense({ units: 1 }));
 
     model.compile({ optimizer: 'adam', loss: 'meanSquaredError' });
 
+    console.log('Training model with input tensor:', inputTensor);
+    console.log('Training model with label tensor:', labelTensor);
+    
     await model.fit(inputTensor, labelTensor, { epochs: 50, shuffle: true });
 
     return model;
@@ -75,12 +79,15 @@ async function predictPoints(model, playerData) {
     const inputs = playerFeatures.map(f => [f.transfers, f.chip, f.now_cost, f.form, f.xG, f.xA, f.xGA]);
     const inputTensor = tf.tensor2d(inputs, [inputs.length, 7]);
 
+    console.log('Predicting points with input tensor:', inputTensor);
+
     const predictions = model.predict(inputTensor).dataSync();
 
     playerFeatures.forEach((player, index) => {
         player.predicted_points = predictions[index];
     });
 
+    console.log('Player Features with Predicted Points:', playerFeatures);
     return playerFeatures;
 }
 
@@ -110,6 +117,7 @@ function optimizeTeam(playerFeatures, budget) {
         if (selectedTeam.length >= 11) break; // Ensure team has 11 players
     }
 
+    console.log('Selected Team:', selectedTeam);
     return selectedTeam;
 }
 
@@ -149,5 +157,7 @@ async function displayData() {
         console.error('Error fetching data:', error);
     }
 }
+
+document.getElementById('update-team').addEventListener('click', displayData);
 
 displayData();
