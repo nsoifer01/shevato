@@ -62,11 +62,14 @@ async function predictPoints(model, playerData) {
         transfers: player.transfers_in_event || 0,
         chip: 0,
         position: positionMap[player.element_type] || "UNK",
-        form: parseFloat(player.form) || 0
+        form: parseFloat(player.form) || 0,
+        xG: parseFloat(player.xG) || 0,
+        xA: parseFloat(player.xA) || 0,
+        xGA: parseFloat(player.xGA) || 0
     }));
 
-    const inputs = playerFeatures.map(f => [f.transfers, f.chip, f.now_cost, f.form]);
-    const inputTensor = tf.tensor2d(inputs, [inputs.length, 4]);
+    const inputs = playerFeatures.map(f => [f.transfers, f.chip, f.now_cost, f.form, f.xG, f.xA, f.xGA]);
+    const inputTensor = tf.tensor2d(inputs, [inputs.length, 7]);
 
     const predictions = model.predict(inputTensor).dataSync();
 
