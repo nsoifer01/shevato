@@ -3,54 +3,81 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Tic Tac Toe vs AI</title>
+    <title>Tic-Tac-Toe vs AI</title>
     <style>
         body {
+            font-family: Arial, sans-serif;
             display: flex;
             justify-content: center;
             align-items: center;
             height: 100vh;
             margin: 0;
-            font-family: Arial, sans-serif;
             background-color: #f0f0f0;
+        }
+        .game-container {
+            text-align: center;
         }
         .board {
             display: grid;
             grid-template-columns: repeat(3, 100px);
-            grid-template-rows: repeat(3, 100px);
-            gap: 5px;
+            grid-gap: 5px;
+            margin-top: 20px;
         }
         .cell {
-            display: flex;
-            align-items: center;
-            justify-content: center;
             width: 100px;
             height: 100px;
-            font-size: 24px;
-            border: 1px solid #000;
             background-color: #fff;
+            border: 2px solid #333;
+            font-size: 2em;
+            display: flex;
+            justify-content: center;
+            align-items: center;
             cursor: pointer;
         }
-        .cell.disabled {
-            cursor: not-allowed;
+        .cell:hover {
+            background-color: #eee;
         }
-        .message {
+        #status {
             margin-top: 20px;
-            font-size: 20px;
+            font-size: 1.2em;
+            font-weight: bold;
+        }
+        #reset {
+            margin-top: 20px;
+            padding: 10px 20px;
+            font-size: 1em;
+            background-color: #4CAF50;
+            color: white;
+            border: none;
+            cursor: pointer;
+        }
+        #reset:hover {
+            background-color: #45a049;
         }
     </style>
 </head>
 <body>
-    <div>
-        <div class="board"></div>
-        <div class="message"></div>
+    <div class="game-container">
+        <h1>Tic-Tac-Toe vs AI</h1>
+        <div class="board" id="board">
+            <div class="cell" data-cell></div>
+            <div class="cell" data-cell></div>
+            <div class="cell" data-cell></div>
+            <div class="cell" data-cell></div>
+            <div class="cell" data-cell></div>
+            <div class="cell" data-cell></div>
+            <div class="cell" data-cell></div>
+            <div class="cell" data-cell></div>
+            <div class="cell" data-cell></div>
+        </div>
+        <div id="status"></div>
+        <button id="reset">Reset Game</button>
     </div>
-    <script>
-        const boardElement = document.querySelector('.board');
-        const messageElement = document.querySelector('.message');
-        const board = Array(9).fill(null);
 
-        const winningCombinations = [
+    <script>
+        const X_CLASS = 'X';
+        const O_CLASS = 'O';
+        const WINNING_COMBINATIONS = [
             [0, 1, 2],
             [3, 4, 5],
             [6, 7, 8],
@@ -61,94 +88,130 @@
             [2, 4, 6]
         ];
 
-        let isPlayerTurn = true;
+        const cellElements = document.querySelectorAll('[data-cell]');
+        const board = document.getElementById('board');
+        const statusElement = document.getElementById('status');
+        const resetButton = document.getElementById('reset');
+        let currentPlayer = X_CLASS;
 
-        function checkWinner(board) {
-            for (let combo of winningCombinations) {
-                const [a, b, c] = combo;
-                if (board[a] && board[a] === board[b] && board[a] === board[c]) {
-                    return board[a];
-                }
-            }
-            return board.includes(null) ? null : 'tie';
+        startGame();
+
+        resetButton.addEventListener('click', startGame);
+
+        function startGame() {
+            cellElements.forEach(cell => {
+                cell.classList.remove(X_CLASS);
+                cell.classList.remove(O_CLASS);
+                cell.textContent = '';
+                cell.removeEventListener('click', handleClick);
+                cell.addEventListener('click', handleClick, { once: true });
+            });
+            currentPlayer = X_CLASS;
+            statusElement.textContent = "Your turn (X)";
+            board.classList.remove('game-over');
         }
 
-        function minimax(newBoard, isMaximizing) {
-            const winner = checkWinner(newBoard);
-            if (winner === 'X') return { score: -1 };
-            if (winner === 'O') return { score: 1 };
-            if (winner === 'tie') return { score: 0 };
-
-            const scores = [];
-
-            for (let i = 0; i < newBoard.length; i++) {
-                if (newBoard[i] === null) {
-                    const newBoardCopy = [...newBoard];
-                    newBoardCopy[i] = isMaximizing ? 'O' : 'X';
-
-                    const result = minimax(newBoardCopy, !isMaximizing);
-                    scores.push({
-                        score: result.score,
-                        index: i
-                    });
-                }
-            }
-
-            if (isMaximizing) {
-                return scores.reduce((best, move) => (move.score > best.score ? move : best));
+        function handleClick(e) {
+            const cell = e.target;
+            placeMark(cell, currentPlayer);
+            if (checkWin(currentPlayer)) {
+                endGame(false);
+            } else if (isDraw()) {
+                endGame(true);
             } else {
-                return scores.reduce((best, move) => (move.score < best.score ? move : best));
+                currentPlayer = O_CLASS;
+                statusElement.textContent = "AI is thinking...";
+                setTimeout(aiMove, 500);
             }
         }
 
-        function handleCellClick(event) {
-            const cellIndex = event.target.dataset.index;
-            if (board[cellIndex] || !isPlayerTurn) return;
-
-            board[cellIndex] = 'X';
-            renderBoard();
-            isPlayerTurn = false;
-
-            const winner = checkWinner(board);
-            if (winner) {
-                setTimeout(() => {
-                    messageElement.textContent = `Game over! ${winner === 'tie' ? "It's a tie!" : `${winner} wins!`}`;
-                    disableBoard();
-                }, 100);
-                return;
-            }
-
-            const bestMove = minimax(board, true);
-            board[bestMove.index] = 'O';
-            renderBoard();
-            isPlayerTurn = true;
-
-            const aiWinner = checkWinner(board);
-            if (aiWinner) {
-                setTimeout(() => {
-                    messageElement.textContent = `Game over! ${aiWinner === 'tie' ? "It's a tie!" : `${aiWinner} wins!`}`;
-                    disableBoard();
-                }, 100);
-            }
+        function placeMark(cell, currentClass) {
+            cell.classList.add(currentClass);
+            cell.textContent = currentClass;
         }
 
-        function renderBoard() {
-            boardElement.innerHTML = '';
-            board.forEach((cell, index) => {
-                const cellElement = document.createElement('div');
-                cellElement.className = 'cell' + (cell ? ' disabled' : '');
-                cellElement.dataset.index = index;
-                cellElement.textContent = cell || '';
-                cellElement.addEventListener('click', handleCellClick);
-                boardElement.appendChild(cellElement);
+        function checkWin(currentClass) {
+            return WINNING_COMBINATIONS.some(combination => {
+                return combination.every(index => {
+                    return cellElements[index].classList.contains(currentClass);
+                });
             });
         }
 
-        function disableBoard() {
-            document.querySelectorAll('.cell').forEach(cell => cell.classList.add('disabled'));
+        function isDraw() {
+            return [...cellElements].every(cell => {
+                return cell.classList.contains(X_CLASS) || cell.classList.contains(O_CLASS);
+            });
         }
 
-        renderBoard();
+        function endGame(draw) {
+            if (draw) {
+                statusElement.textContent = "It's a draw!";
+            } else {
+                statusElement.textContent = `${currentPlayer === X_CLASS ? "You win!" : "AI wins!"}`;
+            }
+            board.classList.add('game-over');
+        }
+
+        function aiMove() {
+            const bestMove = findBestMove();
+            placeMark(cellElements[bestMove], O_CLASS);
+            if (checkWin(O_CLASS)) {
+                endGame(false);
+            } else if (isDraw()) {
+                endGame(true);
+            } else {
+                currentPlayer = X_CLASS;
+                statusElement.textContent = "Your turn (X)";
+            }
+        }
+
+        function findBestMove() {
+            let bestScore = -Infinity;
+            let bestMove;
+            for (let i = 0; i < 9; i++) {
+                if (!cellElements[i].classList.contains(X_CLASS) && !cellElements[i].classList.contains(O_CLASS)) {
+                    cellElements[i].classList.add(O_CLASS);
+                    let score = minimax(false);
+                    cellElements[i].classList.remove(O_CLASS);
+                    if (score > bestScore) {
+                        bestScore = score;
+                        bestMove = i;
+                    }
+                }
+            }
+            return bestMove;
+        }
+
+        function minimax(isMaximizing) {
+            if (checkWin(O_CLASS)) return 1;
+            if (checkWin(X_CLASS)) return -1;
+            if (isDraw()) return 0;
+
+            if (isMaximizing) {
+                let bestScore = -Infinity;
+                for (let i = 0; i < 9; i++) {
+                    if (!cellElements[i].classList.contains(X_CLASS) && !cellElements[i].classList.contains(O_CLASS)) {
+                        cellElements[i].classList.add(O_CLASS);
+                        let score = minimax(false);
+                        cellElements[i].classList.remove(O_CLASS);
+                        bestScore = Math.max(score, bestScore);
+                    }
+                }
+                return bestScore;
+            } else {
+                let bestScore = Infinity;
+                for (let i = 0; i < 9; i++) {
+                    if (!cellElements[i].classList.contains(X_CLASS) && !cellElements[i].classList.contains(O_CLASS)) {
+                        cellElements[i].classList.add(X_CLASS);
+                        let score = minimax(true);
+                        cellElements[i].classList.remove(X_CLASS);
+                        bestScore = Math.min(score, bestScore);
+                    }
+                }
+                return bestScore;
+            }
+        }
     </script>
 </body>
 </html>
