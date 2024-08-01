@@ -102,6 +102,7 @@
             cellElements.forEach(cell => {
                 cell.classList.remove(X_CLASS);
                 cell.classList.remove(O_CLASS);
+                cell.textContent = '';
                 cell.removeEventListener('click', handleClick);
                 cell.addEventListener('click', handleClick, { once: true });
             });
@@ -126,6 +127,7 @@
 
         function placeMark(cell, currentClass) {
             cell.classList.add(currentClass);
+            cell.textContent = currentClass;
         }
 
         function checkWin(currentClass) {
