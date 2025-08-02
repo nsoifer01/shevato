@@ -11,7 +11,14 @@
       </section>
     </div>
     <div class="copyright">
-      &copy; Copyright 2024, Shevato LLC
+      &copy; Copyright <span id="year"></span>, Shevato LLC
     </div>
   </div>
 </footer>
+
+<script>
+  (function(){
+    const y = new Date().getFullYear();
+    document.getElementById('year').textContent = y;
+  })();
+</script>
