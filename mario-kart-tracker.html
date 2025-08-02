@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
     <meta name="description" content="Track your Mario Kart race results, view statistics, and analyze your performance">
     <meta name="theme-color" content="#667eea">
-    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="default">
     <title>Mario Kart Race Tracker</title>
     <!-- Favicon -->
@@ -36,6 +36,7 @@
     <script src="https://apis.google.com/js/api.js"></script>
 </head>
 <body>
+    <div data-include="header"></div>
     <!-- Skip to main content link for accessibility -->
     <a href="#main-content" class="skip-to-main">Skip to main content</a>
     
@@ -502,6 +503,7 @@
         </div>
     </div>
 
+    <div data-include="footer"></div>
     <!-- Import all modules -->
     <script src="js/constants.js"></script>
     <script src="js/playerNameManager.js"></script>
@@ -531,6 +533,7 @@
     <script src="js/tooltip.js"></script>
     <!-- Main script must load last -->
     <script src="js/main.js"></script>
+    <script src="assets/js/main.js"></script>
 
 </body>
 </html>
