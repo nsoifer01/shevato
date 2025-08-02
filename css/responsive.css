@@ -308,13 +308,6 @@ body {
     height: auto !important;
 }
 
-.chart-canvas-wrapper {
-    position: relative;
-    width: 100% !important;
-    min-height: 400px !important;
-    height: auto !important;
-    overflow: visible !important;
-}
 
 canvas {
     max-width: 100% !important;
@@ -324,11 +317,6 @@ canvas {
     position: relative !important;
 }
 
-/* Chart title responsive */
-.chart-title {
-    font-size: 1rem;
-    margin-bottom: 0.5rem;
-}
 
 /* Chart content wrapper */
 .chart-content {
