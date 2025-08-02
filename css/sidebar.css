@@ -1,0 +1,1651 @@
+/* Sidebar Styles */
+
+/* Prevent scrollbar flash and layout shifts */
+html {
+    overflow-x: hidden;
+    /* Only show scrollbar when content overflows */
+    overflow-y: auto;
+    margin: 0;
+    padding: 0;
+}
+
+body {
+    overflow-x: hidden;
+    /* Only show scrollbar when content overflows */
+    overflow-y: auto;
+    position: relative;
+    margin: 0;
+    padding: 0;
+    min-height: 100vh;
+}
+
+.sidebar-container {
+    position: fixed;
+    top: 0;
+    left: 0;
+    height: 100vh;
+    z-index: 1000;
+}
+
+.sidebar-overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background-color: rgba(0, 0, 0, 0.5);
+    opacity: 0;
+    visibility: hidden;
+    transition: opacity 0.3s ease, visibility 0.3s ease;
+    z-index: 1000;
+}
+
+.sidebar-overlay.active {
+    opacity: 1;
+    visibility: visible;
+}
+
+.sidebar {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 280px;
+    height: 100vh;
+    background: #f5f6f7;
+    box-shadow: 2px 0 10px rgba(0, 0, 0, 0.1);
+    transform: translateX(-100%);
+    transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    overflow-y: auto;
+    overflow-x: hidden;
+    z-index: 1001;
+    /* Isolate scrolling to sidebar only */
+    overscroll-behavior: contain;
+    -webkit-overflow-scrolling: touch;
+    /* Flexbox to ensure full height coverage */
+    display: flex;
+    flex-direction: column;
+}
+
+/* Pretty scrollbar for sidebar - matching Analysis section */
+.sidebar::-webkit-scrollbar {
+    width: 8px;
+}
+
+.sidebar::-webkit-scrollbar-track {
+    background: rgba(0, 0, 0, 0.05);
+    border-radius: 4px;
+    margin: 4px 0;
+}
+
+.sidebar::-webkit-scrollbar-thumb {
+    background: linear-gradient(180deg, #667eea 0%, #764ba2 100%);
+    border-radius: 4px;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+    transition: all 0.3s ease;
+}
+
+/* Note: :hover pseudo-class is not supported on scrollbar pseudo-elements in some browsers */
+
+/* Firefox scrollbar */
+.sidebar {
+    scrollbar-width: thin;
+    scrollbar-color: #667eea rgba(0, 0, 0, 0.05);
+}
+
+/* Dark theme scrollbar */
+body.dark-theme .sidebar::-webkit-scrollbar-track {
+    background: rgba(255, 255, 255, 0.05);
+}
+
+body.dark-theme .sidebar::-webkit-scrollbar-thumb {
+    background: linear-gradient(180deg, #818cf8 0%, #a78bfa 100%);
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.3);
+}
+
+/* Note: :hover pseudo-class is not supported on scrollbar pseudo-elements in some browsers */
+
+body.dark-theme .sidebar {
+    scrollbar-color: #818cf8 rgba(255, 255, 255, 0.05);
+}
+
+.sidebar.open {
+    transform: translateX(0);
+}
+
+/* Sidebar toggle is hidden via JavaScript when sidebar is open */
+
+.sidebar-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 20px;
+    border-bottom: 1px solid var(--border-color);
+}
+
+.sidebar-header-buttons {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+}
+
+.sidebar-theme-toggle {
+    background: transparent;
+    border: 1px solid var(--border-color, #e2e8f0);
+    border-radius: 8px;
+    padding: 8px;
+    cursor: pointer;
+    font-size: 1.2rem;
+    transition: all 0.2s ease;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 36px;
+    height: 36px;
+}
+
+.sidebar-theme-toggle:hover {
+    background: rgba(0, 0, 0, 0.05);
+    transform: scale(1.05);
+}
+
+body.dark-theme .sidebar-theme-toggle {
+    border-color: rgba(107, 114, 128, 0.5);
+}
+
+body.dark-theme .sidebar-theme-toggle:hover {
+    background: rgba(255, 255, 255, 0.05);
+}
+
+.sidebar-header-clear {
+    background: transparent;
+    border: 1px solid var(--border-color, #e2e8f0);
+    border-radius: 8px;
+    padding: 8px;
+    cursor: pointer;
+    font-size: 1.2rem;
+    transition: all 0.2s ease;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 36px;
+    height: 36px;
+}
+
+.sidebar-header-clear:hover:not(:disabled) {
+    background: rgba(239, 68, 68, 0.1);
+    border-color: #ef4444;
+    transform: scale(1.05);
+}
+
+.sidebar-header-clear:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
+body.dark-theme .sidebar-header-clear {
+    border-color: rgba(107, 114, 128, 0.5);
+}
+
+body.dark-theme .sidebar-header-clear:hover:not(:disabled) {
+    background: rgba(239, 68, 68, 0.2);
+    border-color: #ef4444;
+}
+
+.sidebar-title {
+    font-size: 1.2rem;
+    font-weight: 600;
+    color: var(--text-primary);
+    margin: 0;
+}
+
+.sidebar-close-btn {
+    background: none;
+    border: none;
+    font-size: 1.5rem;
+    cursor: pointer;
+    color: var(--text-secondary);
+    padding: 5px;
+    border-radius: 4px;
+    transition: background-color 0.2s ease;
+}
+
+.sidebar-close-btn:hover {
+    background-color: var(--hover-bg);
+}
+
+.sidebar-close-btn:focus {
+    outline: 2px solid var(--primary-color);
+    outline-offset: 2px;
+}
+
+.sidebar-content {
+    padding: 20px;
+    /* No background - inherit from parent sidebar */
+    flex: 1; /* Take remaining space */
+}
+
+.sidebar-section {
+    margin-bottom: 30px;
+}
+
+.sidebar-section-title {
+    font-size: 0.9rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    color: var(--text-secondary);
+    margin-bottom: 15px;
+    letter-spacing: 0.5px;
+}
+
+/* Sidebar Toggle Button */
+.sidebar-toggle {
+    position: fixed;
+    top: 20px;
+    left: 20px;
+    background: var(--primary-gradient);
+    color: white;
+    border: none;
+    border-radius: 8px;
+    padding: 12px;
+    cursor: pointer;
+    box-shadow: var(--shadow-md);
+    transition: all 0.3s ease;
+    z-index: 999;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+
+.sidebar-toggle:hover {
+    transform: translateY(-2px);
+    box-shadow: var(--shadow-lg);
+}
+
+.sidebar-toggle:focus {
+    outline: 2px solid var(--primary-color);
+    outline-offset: 2px;
+}
+
+.sidebar-toggle svg {
+    width: 24px;
+    height: 24px;
+}
+
+/* Responsive adjustments */
+@media (min-width: 1024px) {
+    /* On larger screens, sidebar overlays content without shifting */
+    .sidebar-overlay {
+        display: none;
+    }
+}
+
+@media (max-width: 1023px) {
+    /* On smaller screens, sidebar overlays content */
+    .sidebar {
+        box-shadow: 0 0 20px rgba(0, 0, 0, 0.15);
+    }
+}
+
+/* Dark theme adjustments */
+body.dark-theme .sidebar {
+    box-shadow: 2px 0 10px rgba(0, 0, 0, 0.3);
+}
+
+body.dark-theme .sidebar-overlay {
+    background-color: rgba(0, 0, 0, 0.7);
+}
+
+/* Sidebar content styles for moved elements */
+.sidebar .date-filter-section {
+    margin: 0;
+    padding: 0;
+}
+
+.sidebar .date-filter-section h3 {
+    display: none;
+}
+
+.sidebar .date-filter-controls {
+    flex-direction: column;
+    gap: 10px;
+    display: flex;
+}
+
+.sidebar .filter-btn {
+    width: 100%;
+    justify-content: center;
+    padding: 10px 16px;
+    background: var(--button-bg);
+    color: var(--text-primary);
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    font-size: 0.9rem;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all 0.2s ease;
+}
+
+.sidebar .filter-btn:hover {
+    background: var(--hover-bg);
+    transform: translateY(-1px);
+    box-shadow: var(--shadow-sm);
+}
+
+.sidebar .filter-btn.active {
+    background: var(--primary-gradient);
+    color: white;
+    border-color: transparent;
+}
+
+.sidebar .filter-btn:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
+.sidebar .action-buttons {
+    flex-direction: column;
+    gap: 10px;
+    margin: 0;
+    display: flex;
+}
+
+/* Add spacing between action button groups */
+.sidebar-action-buttons-group + .action-buttons {
+    margin-top: 10px;
+}
+
+.sidebar .action-buttons button {
+    width: 100%;
+    margin: 0 !important;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.5rem;
+    padding: 10px 16px;
+    border: 1px solid var(--border-color, #e2e8f0);
+    border-radius: 8px;
+    font-size: 0.9rem;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all 0.2s ease;
+}
+
+.sidebar .action-buttons button:hover {
+    transform: translateY(-1px);
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+}
+
+/* Export button */
+.sidebar .action-buttons button[onclick*="exportData"] {
+    background: #48BB78;
+    color: white;
+    border-color: #38a169;
+}
+
+.sidebar .action-buttons button[onclick*="exportData"]:hover {
+    background: #38a169;
+}
+
+/* Import button */
+.sidebar .action-buttons button[onclick*="importFile"] {
+    background: #38B2AC;
+    color: white;
+    border-color: #319795;
+}
+
+.sidebar .action-buttons button[onclick*="importFile"]:hover {
+    background: #319795;
+}
+
+/* Backup button */
+.sidebar .action-buttons button[onclick*="backupToGoogleDrive"] {
+    background: #4299E1;
+    color: white;
+    border-color: #3182ce;
+}
+
+.sidebar .action-buttons button[onclick*="backupToGoogleDrive"]:hover {
+    background: #3182ce;
+}
+
+.sidebar .custom-date-range {
+    margin-top: 10px;
+    padding: 15px;
+    background: var(--hover-bg);
+    border-radius: 8px;
+    border: 1px solid var(--border-color);
+}
+
+.sidebar .custom-date-range input {
+    width: 100%;
+    margin-bottom: 4px;
+    padding: 8px 12px;
+    border: 1px solid var(--border-color);
+    border-radius: 6px;
+    background: #f5f6f7;
+    color: var(--text-primary);
+    font-size: 0.9rem;
+}
+
+.sidebar .custom-date-range span {
+    display: block;
+    text-align: center;
+    margin: 4px 0;
+    color: var(--text-secondary);
+    font-size: 0.85rem;
+}
+
+.sidebar .custom-date-range button {
+    width: 100%;
+    padding: 10px 16px;
+    background: var(--primary-gradient);
+    color: white;
+    border: none;
+    border-radius: 6px;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all 0.2s ease;
+}
+
+.sidebar .custom-date-range button:hover {
+    transform: translateY(-1px);
+    box-shadow: var(--shadow-md);
+}
+
+/* Custom Date Error Message in Sidebar */
+.sidebar #custom-date-error {
+    margin-top: 8px;
+    width: 100%;
+    animation: slideDown 0.2s ease;
+}
+
+@keyframes slideDown {
+    from {
+        opacity: 0;
+        transform: translateY(-5px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+/* Animations */
+@keyframes sidebarSlideIn {
+    from {
+        transform: translateX(-100%);
+    }
+    to {
+        transform: translateX(0);
+    }
+}
+
+@keyframes sidebarSlideOut {
+    from {
+        transform: translateX(0);
+    }
+    to {
+        transform: translateX(-100%);
+    }
+}
+
+/* Accessibility */
+.sidebar:focus-within {
+    outline: 2px solid var(--primary-color);
+    outline-offset: -2px;
+}
+
+/* Skip to main content link for screen readers */
+.skip-to-main {
+    position: absolute;
+    top: -40px;
+    left: 0;
+    background: var(--primary-color);
+    color: white;
+    padding: 8px;
+    text-decoration: none;
+    border-radius: 0 0 4px 0;
+}
+
+.skip-to-main:focus {
+    top: 0;
+}
+
+/* Sidebar Race Date Styles */
+.sidebar-race-date {
+    width: 100%;
+}
+
+/* Date button container */
+.sidebar-date-btn-container {
+    width: 100%;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0.75rem 1rem;
+    background: linear-gradient(135deg, #8b5cf6 0%, #7c3aed 100%);
+    border-radius: 0.5rem;
+    gap: 0.5rem;
+    box-shadow: 0 2px 8px rgba(139, 92, 246, 0.3);
+}
+
+.sidebar-date-btn-container .date-text {
+    color: white;
+    font-weight: 600;
+    font-size: 1rem;
+    cursor: default;
+    user-select: none;
+    flex: 1;
+}
+
+/* Date icon wrapper */
+.sidebar-date-icon-wrapper {
+    position: relative;
+}
+
+/* Hidden date input */
+.sidebar-date-input-hidden {
+    position: absolute;
+    opacity: 0;
+    width: 100%;
+    height: 100%;
+    top: 0;
+    left: 0;
+    cursor: pointer;
+    z-index: 1;
+}
+
+/* Hide the native calendar icon */
+.sidebar-date-input-hidden::-webkit-calendar-picker-indicator {
+    position: absolute;
+    width: 100%;
+    height: 100%;
+    top: 0;
+    left: 0;
+    opacity: 0;
+    cursor: pointer;
+}
+
+/* Calendar icon button (label) */
+.sidebar-date-icon-btn {
+    background: rgba(255, 255, 255, 0.2);
+    border: 1px solid rgba(255, 255, 255, 0.3);
+    border-radius: 0.375rem;
+    padding: 0.5rem;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.sidebar-date-icon-btn:hover {
+    background: rgba(255, 255, 255, 0.3);
+    transform: translateY(-1px);
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
+}
+
+.sidebar-date-icon-btn:active {
+    transform: translateY(0);
+}
+
+.sidebar-date-icon-btn .date-icon {
+    font-size: 1.2rem;
+    cursor: pointer;
+    line-height: 1;
+    pointer-events: none;
+}
+
+/* Firefox-specific cursor fix for calendar icon */
+@-moz-document url-prefix() {
+    .sidebar-date-icon-btn,
+    .sidebar-date-icon-btn * {
+        cursor: pointer !important;
+    }
+}
+
+/* Today button */
+
+.sidebar-date-today-btn {
+    width: 100%;
+    padding: 0.5rem;
+    background: #10b981;
+    color: white;
+    border: none;
+    border-radius: 0.375rem;
+    font-size: 0.875rem;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    margin-top: 0.5rem;
+}
+
+.sidebar-date-today-btn:hover {
+    background: #059669;
+}
+
+.sidebar-date-today-btn:active {
+    transform: scale(0.98);
+}
+
+/* Dark theme support */
+body.dark-theme .sidebar-date-icon-btn {
+    background: rgba(255, 255, 255, 0.1);
+    border-color: rgba(255, 255, 255, 0.2);
+}
+
+body.dark-theme .sidebar-date-icon-btn:hover {
+    background: rgba(255, 255, 255, 0.2);
+}
+
+/* Dark mode for hidden date input */
+body.dark-theme .sidebar-date-input-hidden {
+    color-scheme: dark;
+}
+
+/* Ensure calendar picker works in dark mode */
+body.dark-theme .sidebar-date-input-hidden::-webkit-calendar-picker-indicator {
+    cursor: pointer;
+}
+
+/* Sidebar Add Race Button Styles */
+.sidebar-add-race-btn {
+    width: 100%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.5rem;
+    padding: 10px 16px;
+    background: linear-gradient(135deg, #10b981 0%, #059669 100%);
+    color: white;
+    border: none;
+    border-radius: 8px;
+    font-size: 0.9rem;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    box-shadow: 0 2px 4px rgba(16, 185, 129, 0.2);
+    position: relative;
+    overflow: hidden;
+    margin-bottom: 10px;
+}
+
+.sidebar-add-race-btn::before {
+    content: '';
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    width: 0;
+    height: 0;
+    border-radius: 50%;
+    background: rgba(255, 255, 255, 0.2);
+    transform: translate(-50%, -50%);
+    transition: width 0.6s, height 0.6s;
+}
+
+.sidebar-add-race-btn:hover::before {
+    width: 300px;
+    height: 300px;
+}
+
+.sidebar-add-race-btn:hover {
+    background: linear-gradient(135deg, #059669 0%, #047857 100%);
+    transform: translateY(-1px);
+    box-shadow: 0 4px 8px rgba(16, 185, 129, 0.3);
+}
+
+.sidebar-add-race-btn:active {
+    transform: translateY(0);
+    box-shadow: 0 2px 4px rgba(16, 185, 129, 0.2);
+}
+
+.sidebar-add-race-btn .add-icon {
+    font-size: 1rem;
+    position: relative;
+    z-index: 1;
+}
+
+.sidebar-add-race-btn .add-text {
+    font-size: 0.9rem;
+    position: relative;
+    z-index: 1;
+}
+
+/* Disabled state */
+.sidebar-add-race-btn:disabled {
+    background: #9ca3af;
+    cursor: not-allowed;
+    box-shadow: none;
+}
+
+.sidebar-add-race-btn:disabled:hover {
+    transform: none;
+    background: #9ca3af;
+}
+
+/* Dark theme support */
+body.dark-theme .sidebar-add-race-btn {
+    box-shadow: 0 2px 4px rgba(16, 185, 129, 0.2);
+}
+
+body.dark-theme .sidebar-add-race-btn:hover {
+    box-shadow: 0 4px 8px rgba(16, 185, 129, 0.3);
+}
+
+/* Sidebar Race Form Styles */
+.sidebar-race-form {
+    display: none;
+    margin-top: 1rem;
+    padding: 1rem;
+    background: #f5f6f7;
+    border: 1px solid var(--border-color, #e2e8f0);
+    border-radius: 0.5rem;
+    box-shadow: inset 0 2px 4px rgba(0, 0, 0, 0.06);
+    opacity: 0;
+    transform: translateY(-10px);
+    transition: none;
+}
+
+.sidebar-race-form.open {
+    display: block;
+    opacity: 1;
+    transform: translateY(0);
+    transition: opacity 0.3s ease, transform 0.3s ease;
+}
+
+/* Sidebar Race Error Styles */
+.sidebar-race-error {
+    display: none;
+    padding: 0.75rem;
+    background: #fee;
+    border: 1px solid #fcc;
+    border-radius: 0.375rem;
+    color: #c53030;
+    font-size: 0.875rem;
+    font-weight: 500;
+    margin-bottom: 0.75rem;
+    animation: errorShake 0.3s ease;
+}
+
+.sidebar-race-error.show {
+    display: block;
+}
+
+@keyframes errorShake {
+    0%, 100% { transform: translateX(0); }
+    25% { transform: translateX(-5px); }
+    75% { transform: translateX(5px); }
+}
+
+/* Dark theme error styles */
+body.dark-theme .sidebar-race-error {
+    background: rgba(254, 202, 202, 0.1);
+    border-color: rgba(252, 129, 129, 0.3);
+    color: #fc8181;
+}
+
+/* Separate animation for race form to avoid conflicts */
+@keyframes raceFormSlideDown {
+    0% {
+        opacity: 0;
+        transform: translateY(-10px) translateX(0);
+    }
+    100% {
+        opacity: 1;
+        transform: translateY(0) translateX(0);
+    }
+}
+
+.sidebar-add-race-btn.active {
+    background: linear-gradient(135deg, #059669 0%, #047857 100%);
+    box-shadow: inset 0 2px 4px rgba(0, 0, 0, 0.1);
+}
+
+.sidebar-race-inputs {
+    display: flex;
+    flex-direction: column;
+    gap: 0.75rem;
+    margin-bottom: 1rem;
+}
+
+.sidebar-player-input {
+    display: flex;
+    flex-direction: column;
+    gap: 0.25rem;
+}
+
+.sidebar-player-input label {
+    font-size: 0.875rem;
+    font-weight: 500;
+    color: var(--text-secondary, #4a5568);
+}
+
+.sidebar-position-input {
+    width: 100%;
+    padding: 0.5rem;
+    border: 1px solid var(--border-color, #e2e8f0);
+    border-radius: 0.375rem;
+    font-size: 0.875rem;
+    background: white;
+    color: var(--text-color, #2d3748);
+    transition: all 0.2s ease;
+}
+
+.sidebar-position-input:focus {
+    outline: none;
+    border-color: #10b981;
+    box-shadow: 0 0 0 3px rgba(16, 185, 129, 0.1);
+}
+
+.sidebar-position-input::-webkit-inner-spin-button,
+.sidebar-position-input::-webkit-outer-spin-button {
+    -webkit-appearance: none;
+    margin: 0;
+}
+
+.sidebar-race-actions {
+    display: flex;
+    gap: 0.5rem;
+}
+
+.sidebar-submit-race,
+.sidebar-cancel-race {
+    flex: 1;
+    padding: 0.5rem;
+    border: none;
+    border-radius: 0.375rem;
+    font-size: 0.875rem;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all 0.2s ease;
+}
+
+.sidebar-submit-race {
+    background: #3b82f6;
+    color: white;
+}
+
+.sidebar-submit-race:hover {
+    background: #2563eb;
+    transform: translateY(-1px);
+}
+
+.sidebar-submit-race:active {
+    transform: translateY(0);
+}
+
+.sidebar-cancel-race {
+    background: #e5e7eb;
+    color: #374151;
+}
+
+.sidebar-cancel-race:hover {
+    background: #d1d5db;
+}
+
+/* Dark theme support */
+body.dark-theme .sidebar-race-form {
+    background: rgba(45, 55, 72, 0.5);
+    border-color: rgba(74, 85, 104, 0.5);
+}
+
+body.dark-theme .sidebar-position-input {
+    background: rgba(74, 85, 104, 0.8);
+    border-color: rgba(107, 114, 128, 0.5);
+    color: #e2e8f0;
+}
+
+body.dark-theme .sidebar-position-input:focus {
+    border-color: #34d399;
+}
+
+body.dark-theme .sidebar-cancel-race {
+    background: rgba(74, 85, 104, 0.8);
+    color: #e2e8f0;
+}
+
+body.dark-theme .sidebar-cancel-race:hover {
+    background: rgba(74, 85, 104, 1);
+}
+
+/* Position Picker Styles */
+.position-input-group {
+    display: flex;
+    gap: 0.5rem;
+    align-items: stretch;
+}
+
+.sidebar-position-input {
+    flex: 1;
+}
+
+.position-picker-toggle {
+    padding: 0 0.75rem;
+    background: #e5e7eb;
+    border: 1px solid #d1d5db;
+    border-radius: 0.375rem;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.position-picker-toggle:hover {
+    background: #d1d5db;
+    transform: translateY(-1px);
+}
+
+.position-picker-toggle:active {
+    transform: translateY(0);
+}
+
+.picker-icon {
+    font-size: 1.2rem;
+    line-height: 1;
+}
+
+.position-picker {
+    margin-top: 0.75rem;
+    padding: 1rem;
+    background: #f5f6f7;
+    border: 1px solid var(--border-color, #e2e8f0);
+    border-radius: 0.75rem;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08), 0 0 0 1px rgba(0, 0, 0, 0.04);
+    animation: pickerSlideDown 0.2s ease;
+    max-height: 280px;
+    overflow-y: auto;
+    overflow-x: hidden;
+    /* Isolate scrolling to position picker only */
+    overscroll-behavior: contain;
+    -webkit-overflow-scrolling: touch;
+}
+
+/* Pretty scrollbar for position picker */
+.position-picker::-webkit-scrollbar {
+    width: 6px;
+}
+
+.position-picker::-webkit-scrollbar-track {
+    background: rgba(0, 0, 0, 0.02);
+    border-radius: 3px;
+}
+
+.position-picker::-webkit-scrollbar-thumb {
+    background: linear-gradient(180deg, #667eea 0%, #764ba2 100%);
+    border-radius: 3px;
+}
+
+/* Note: :hover pseudo-class is not supported on scrollbar pseudo-elements in some browsers */
+
+@keyframes pickerSlideDown {
+    from {
+        opacity: 0;
+        transform: translateY(-8px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+.picker-header {
+    font-size: 0.75rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    color: var(--text-secondary, #6b7280);
+    margin-bottom: 0.75rem;
+    text-align: center;
+    letter-spacing: 0.5px;
+}
+
+.position-grid {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 0.375rem;
+}
+
+.position-btn {
+    aspect-ratio: 1;
+    min-height: 2.25rem;
+    background: white;
+    border: 1.5px solid #e5e7eb;
+    border-radius: 0.375rem;
+    font-size: 0.875rem;
+    font-weight: 600;
+    color: #374151;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    position: relative;
+    overflow: hidden;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.position-btn::before {
+    content: '';
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    width: 0;
+    height: 0;
+    background: rgba(16, 185, 129, 0.1);
+    border-radius: 50%;
+    transform: translate(-50%, -50%);
+    transition: width 0.3s, height 0.3s;
+}
+
+.position-btn:hover {
+    background: #f9fafb;
+    border-color: #10b981;
+    transform: translateY(-1px);
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+    z-index: 1;
+}
+
+.position-btn:active {
+    transform: translateY(0) scale(0.98);
+}
+
+.position-btn.selected {
+    background: #10b981;
+    color: white;
+    border-color: #059669;
+    font-weight: 700;
+    box-shadow: 0 2px 4px rgba(16, 185, 129, 0.3);
+    transform: none;
+}
+
+.position-btn.selected::before {
+    width: 100%;
+    height: 100%;
+    background: rgba(255, 255, 255, 0.2);
+}
+
+/* Podium positions special styling */
+.position-btn[data-position="1"] {
+    border-color: #fbbf24;
+    background: linear-gradient(135deg, #fffbeb 0%, #fef3c7 100%);
+}
+
+.position-btn[data-position="1"]:hover {
+    border-color: #f59e0b;
+    background: linear-gradient(135deg, #fef3c7 0%, #fde68a 100%);
+}
+
+.position-btn[data-position="1"].selected {
+    background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%);
+    border-color: #d97706;
+}
+
+.position-btn[data-position="2"] {
+    border-color: #cbd5e1;
+    background: linear-gradient(135deg, #f8fafc 0%, #e2e8f0 100%);
+}
+
+.position-btn[data-position="2"]:hover {
+    border-color: #94a3b8;
+    background: linear-gradient(135deg, #e2e8f0 0%, #cbd5e1 100%);
+}
+
+.position-btn[data-position="2"].selected {
+    background: linear-gradient(135deg, #94a3b8 0%, #64748b 100%);
+    border-color: #64748b;
+}
+
+.position-btn[data-position="3"] {
+    border-color: #fed7aa;
+    background: linear-gradient(135deg, #fff7ed 0%, #fed7aa 100%);
+}
+
+.position-btn[data-position="3"]:hover {
+    border-color: #fb923c;
+    background: linear-gradient(135deg, #fed7aa 0%, #fdba74 100%);
+}
+
+.position-btn[data-position="3"].selected {
+    background: linear-gradient(135deg, #fb923c 0%, #ea580c 100%);
+    border-color: #ea580c;
+}
+
+/* Dark theme support */
+body.dark-theme .position-picker-toggle {
+    background: rgba(74, 85, 104, 0.8);
+    border-color: rgba(107, 114, 128, 0.5);
+    color: #e2e8f0;
+}
+
+body.dark-theme .position-picker-toggle:hover {
+    background: rgba(74, 85, 104, 1);
+}
+
+body.dark-theme .position-picker {
+    background: rgba(45, 55, 72, 0.5);
+    border-color: rgba(74, 85, 104, 0.5);
+}
+
+body.dark-theme .position-btn {
+    background: rgba(74, 85, 104, 0.6);
+    border-color: rgba(107, 114, 128, 0.5);
+    color: #e2e8f0;
+}
+
+body.dark-theme .position-btn:hover {
+    background: rgba(74, 85, 104, 0.8);
+    border-color: #10b981;
+}
+
+body.dark-theme .position-btn.selected {
+    background: #10b981;
+    color: white;
+    border-color: #059669;
+}
+
+/* Responsive adjustments */
+@media (max-width: 360px) {
+    .position-grid {
+        grid-template-columns: repeat(3, 1fr);
+        gap: 0.25rem;
+    }
+    
+    .position-btn {
+        min-height: 2rem;
+        font-size: 0.75rem;
+    }
+    
+    .position-picker {
+        padding: 0.75rem;
+    }
+}
+
+/* Sidebar Player Settings Button */
+.sidebar-player-settings-btn {
+    width: 100%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.5rem;
+    padding: 0.75rem 1rem;
+    background: linear-gradient(135deg, #ec4899 0%, #8b5cf6 100%);
+    color: white;
+    border: none;
+    border-radius: 0.5rem;
+    font-size: 1rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.3s ease;
+    box-shadow: 0 2px 8px rgba(236, 72, 153, 0.3);
+}
+
+.sidebar-player-settings-btn:hover {
+    background: linear-gradient(135deg, #db2777 0%, #7c3aed 100%);
+    transform: translateY(-1px);
+    box-shadow: 0 4px 12px rgba(236, 72, 153, 0.4);
+}
+
+.sidebar-player-settings-btn:active {
+    transform: translateY(0);
+}
+
+.sidebar-player-settings-btn.active {
+    background: linear-gradient(135deg, #be185d 0%, #6d28d9 100%);
+}
+
+.settings-icon {
+    font-size: 1.2rem;
+}
+
+.settings-text {
+    font-size: 0.9rem;
+}
+
+/* Dark theme support */
+body.dark-theme .sidebar-player-settings-btn {
+    background: linear-gradient(135deg, #f472b6 0%, #a78bfa 100%);
+    box-shadow: 0 2px 8px rgba(244, 114, 182, 0.3);
+}
+
+body.dark-theme .sidebar-player-settings-btn:hover {
+    background: linear-gradient(135deg, #ec4899 0%, #9333ea 100%);
+    box-shadow: 0 4px 12px rgba(244, 114, 182, 0.4);
+}
+
+body.dark-theme .sidebar-player-settings-btn.active {
+    background: linear-gradient(135deg, #db2777 0%, #7c3aed 100%);
+}
+
+/* Player Settings Container Animation */
+.sidebar-player-settings {
+    opacity: 0;
+    transform: translateY(-10px);
+    transition: opacity 0.3s ease, transform 0.3s ease;
+    margin-top: 1rem;
+}
+
+.sidebar-player-settings.open {
+    opacity: 1;
+    transform: translateY(0);
+}
+
+/* Sidebar Player Settings Styles */
+.sidebar-players-form {
+    width: 100%;
+}
+
+.player-count-section {
+    margin-bottom: 1.5rem;
+}
+
+.player-count-label {
+    display: block;
+    font-size: 0.875rem;
+    font-weight: 500;
+    color: var(--text-secondary, #6b7280);
+    margin-bottom: 0.75rem;
+}
+
+.player-count-selector {
+    display: flex;
+    gap: 0.5rem;
+    width: 100%;
+}
+
+.player-count-btn {
+    flex: 1;
+    padding: 0.5rem;
+    background: transparent;
+    border: 1px solid var(--border-color, #e2e8f0);
+    border-radius: 0.375rem;
+    font-size: 0.875rem;
+    font-weight: 600;
+    color: var(--text-primary, #2d3748);
+    cursor: pointer;
+    transition: all 0.2s ease;
+}
+
+.player-count-btn:hover {
+    background: rgba(0, 0, 0, 0.05);
+    border-color: #10b981;
+}
+
+.player-count-btn.selected {
+    background: #10b981;
+    color: white;
+    border-color: #059669;
+}
+
+.sidebar-players-list {
+    display: flex;
+    flex-direction: column;
+    gap: 0.75rem;
+}
+
+.sidebar-player-item {
+    padding: 0.75rem;
+    background: transparent;
+    border: 1px solid var(--border-color, #e2e8f0);
+    border-radius: 0.5rem;
+    transition: all 0.2s ease;
+    position: relative;
+}
+
+.sidebar-player-item.inactive {
+    opacity: 0.5;
+}
+
+.sidebar-player-header {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+}
+
+.sidebar-player-initial {
+    width: 2.5rem;
+    height: 2.5rem;
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 1.25rem;
+    color: white;
+    flex-shrink: 0;
+    transition: all 0.2s ease;
+}
+
+.sidebar-player-initial.clickable {
+    cursor: pointer;
+}
+
+.sidebar-player-initial.clickable:hover {
+    transform: scale(1.1);
+    box-shadow: 0 4px 8px rgba(102, 126, 234, 0.3);
+}
+
+.sidebar-initial-letter {
+    font-weight: 700;
+}
+
+.sidebar-player-details {
+    flex: 1;
+    min-width: 0;
+}
+
+.sidebar-player-label {
+    display: block;
+    font-size: 0.75rem;
+    font-weight: 600;
+    color: var(--text-secondary, #6b7280);
+    margin-bottom: 0.25rem;
+}
+
+.sidebar-player-name-input {
+    width: 100%;
+    padding: 0.375rem 0.5rem;
+    background: transparent;
+    border: 1px solid var(--border-color, #e2e8f0);
+    border-radius: 0.25rem;
+    font-size: 0.875rem;
+    color: var(--text-primary, #2d3748);
+    transition: all 0.2s ease;
+}
+
+.sidebar-player-name-input:focus {
+    outline: none;
+    border-color: #667eea;
+    box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
+}
+
+.sidebar-player-name-input:disabled {
+    background: rgba(0, 0, 0, 0.05);
+    cursor: not-allowed;
+}
+
+.sidebar-player-status {
+    font-size: 0.75rem;
+    font-weight: 500;
+    color: #9ca3af;
+    padding: 0.25rem 0.5rem;
+    background: rgba(0, 0, 0, 0.05);
+    border-radius: 9999px;
+}
+
+.sidebar-player-status.active {
+    color: #10b981;
+    background: rgba(16, 185, 129, 0.1);
+}
+
+/* Icon Picker Styles */
+.sidebar-icon-picker {
+    position: absolute;
+    background: white;
+    border: 1px solid var(--border-color, #e2e8f0);
+    border-radius: 0.5rem;
+    padding: 0.5rem;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+    z-index: 100;
+    max-height: 200px;
+    overflow-y: auto;
+}
+
+.sidebar-icon-picker-grid {
+    display: grid;
+    grid-template-columns: repeat(5, 1fr);
+    gap: 0.25rem;
+}
+
+.sidebar-icon-option {
+    width: 2rem;
+    height: 2rem;
+    background: transparent;
+    border: 1px solid transparent;
+    border-radius: 0.25rem;
+    font-size: 1.25rem;
+    cursor: pointer;
+    transition: all 0.15s ease;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.sidebar-icon-option:hover {
+    background: #f3f4f6;
+    border-color: #667eea;
+    transform: scale(1.1);
+}
+
+/* Dark theme support */
+body.dark-theme .player-count-btn {
+    background: transparent;
+    color: #e2e8f0;
+    border-color: rgba(107, 114, 128, 0.5);
+}
+
+body.dark-theme .player-count-btn:hover {
+    background: rgba(255, 255, 255, 0.05);
+    border-color: #34d399;
+}
+
+body.dark-theme .player-count-btn.selected {
+    background: #10b981;
+    color: white;
+    border-color: #059669;
+}
+
+body.dark-theme .sidebar-player-item {
+    border-color: rgba(107, 114, 128, 0.5);
+}
+
+body.dark-theme .sidebar-player-initial {
+    background: linear-gradient(135deg, #818cf8 0%, #a78bfa 100%);
+}
+
+body.dark-theme .sidebar-player-name-input {
+    background: transparent;
+    border-color: rgba(107, 114, 128, 0.5);
+    color: #e2e8f0;
+}
+
+body.dark-theme .sidebar-player-name-input:focus {
+    border-color: #818cf8;
+}
+
+body.dark-theme .sidebar-player-name-input:disabled {
+    background: rgba(255, 255, 255, 0.05);
+}
+
+body.dark-theme .sidebar-player-status {
+    background: rgba(255, 255, 255, 0.05);
+    color: #6b7280;
+}
+
+body.dark-theme .sidebar-player-status.active {
+    color: #34d399;
+    background: rgba(52, 211, 153, 0.1);
+}
+
+body.dark-theme .sidebar-icon-picker {
+    background: rgba(45, 55, 72, 0.95);
+    border-color: rgba(74, 85, 104, 0.5);
+}
+
+body.dark-theme .sidebar-icon-option:hover {
+    background: rgba(255, 255, 255, 0.1);
+    border-color: #818cf8;
+}
+
+/* Sidebar Action Buttons Group */
+.sidebar-action-buttons-group {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    margin: 0;
+}
+
+.sidebar-action-btn {
+    width: 100%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.5rem;
+    padding: 10px 16px;
+    background: transparent;
+    color: var(--text-primary, #2d3748);
+    border: 1px solid var(--border-color, #e2e8f0);
+    border-radius: 8px;
+    font-size: 0.9rem;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    text-align: center;
+}
+
+.sidebar-action-btn:hover:not(:disabled) {
+    background: rgba(0, 0, 0, 0.05);
+    transform: translateY(-1px);
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+}
+
+.sidebar-action-btn:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
+/* Undo button styling */
+.sidebar-action-btn.undo-btn {
+    background: #3b82f6;
+    color: white;
+    border-color: #2563eb;
+}
+
+.sidebar-action-btn.undo-btn:hover:not(:disabled) {
+    background: #2563eb;
+    transform: translateY(-1px);
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+}
+
+/* Redo button styling */
+.sidebar-action-btn.redo-btn {
+    background: #10b981;
+    color: white;
+    border-color: #059669;
+}
+
+.sidebar-action-btn.redo-btn:hover:not(:disabled) {
+    background: #059669;
+    transform: translateY(-1px);
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+}
+
+/* Restore button styling */
+.sidebar-action-btn.restore-btn {
+    background: #f59e0b;
+    color: white;
+    border-color: #d97706;
+}
+
+.sidebar-action-btn.restore-btn:hover {
+    background: #d97706;
+    transform: translateY(-1px);
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+}
+
+/* Clear button moved to header */
+
+.sidebar-action-btn .action-icon {
+    font-size: 1rem;
+    width: 1.5rem;
+    min-width: 1.5rem;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    text-align: center;
+}
+
+.sidebar-action-btn .action-text {
+    font-size: 0.9rem;
+}
+
+/* Dark theme support for action buttons */
+body.dark-theme .sidebar-action-btn {
+    background: transparent;
+    color: #e2e8f0;
+    border-color: rgba(107, 114, 128, 0.5);
+}
+
+body.dark-theme .sidebar-action-btn:hover:not(:disabled) {
+    background: rgba(255, 255, 255, 0.05);
+    border-color: rgba(107, 114, 128, 0.8);
+}
+
+body.dark-theme .sidebar-action-btn.undo-btn {
+    background: #60a5fa;
+    color: #1a202c;
+    border-color: #3b82f6;
+}
+
+body.dark-theme .sidebar-action-btn.undo-btn:hover:not(:disabled) {
+    background: #3b82f6;
+    transform: translateY(-1px);
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.3);
+}
+
+body.dark-theme .sidebar-action-btn.redo-btn {
+    background: #34d399;
+    color: #1a202c;
+    border-color: #10b981;
+}
+
+body.dark-theme .sidebar-action-btn.redo-btn:hover:not(:disabled) {
+    background: #10b981;
+    transform: translateY(-1px);
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.3);
+}
+
+body.dark-theme .sidebar-action-btn.restore-btn {
+    background: #fbbf24;
+    color: #1a202c;
+    border-color: #f59e0b;
+}
+
+body.dark-theme .sidebar-action-btn.restore-btn:hover {
+    background: #f59e0b;
+    transform: translateY(-1px);
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.3);
+}
+
+/* Clear button moved to header */
+
+/* Dark theme support for export/import/backup buttons */
+body.dark-theme .sidebar .action-buttons button[onclick*="exportData"] {
+    background: #68D391;
+    color: #1a202c;
+    border-color: #48BB78;
+}
+
+body.dark-theme .sidebar .action-buttons button[onclick*="exportData"]:hover {
+    background: #48BB78;
+}
+
+body.dark-theme .sidebar .action-buttons button[onclick*="importFile"] {
+    background: #4FD1C5;
+    color: #1a202c;
+    border-color: #38B2AC;
+}
+
+body.dark-theme .sidebar .action-buttons button[onclick*="importFile"]:hover {
+    background: #38B2AC;
+}
+
+body.dark-theme .sidebar .action-buttons button[onclick*="backupToGoogleDrive"] {
+    background: #63B3ED;
+    color: #1a202c;
+    border-color: #4299E1;
+}
+
+body.dark-theme .sidebar .action-buttons button[onclick*="backupToGoogleDrive"]:hover {
+    background: #4299E1;
+}

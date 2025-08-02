@@ -1,0 +1,921 @@
+/* ========================================= */
+/* RESPONSIVE REDESIGN - MOBILE FIRST APPROACH */
+/* ========================================= */
+
+/* Reset and Base Styles */
+* {
+    box-sizing: border-box;
+}
+
+html {
+    font-size: 16px;
+    -webkit-text-size-adjust: 100%;
+    -ms-text-size-adjust: 100%;
+    overflow-x: hidden;
+    width: 100%;
+}
+
+body {
+    margin: 0;
+    padding: 0;
+    min-height: 100vh;
+    overflow-x: hidden;
+    position: relative;
+    width: 100%;
+}
+
+/* Prevent horizontal overflow from any element */
+* {
+    max-width: 100%;
+}
+
+/* Responsive Container */
+.container {
+    width: 100%;
+    max-width: 100%;
+    margin: 0 auto;
+    padding: 1rem;
+    position: relative;
+}
+
+/* Prevent horizontal scroll */
+#main-content {
+    overflow-x: hidden;
+    width: 100%;
+}
+
+/* ========================================= */
+/* MOBILE FIRST STYLES (320px - 767px) */
+/* ========================================= */
+
+/* Header Section */
+.header-section {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    text-align: center;
+    gap: 1rem;
+    margin-bottom: 1.5rem;
+    padding: 0 0.5rem;
+}
+
+.header-section h1 {
+    font-size: clamp(1.25rem, 5vw, 2rem);
+    margin: 0;
+    line-height: 1.2;
+    word-wrap: break-word;
+}
+
+
+/* Toggle Section - Stacked on Mobile */
+.toggle-section {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 0.5rem;
+    margin-bottom: 1.5rem;
+    padding: 0 0.5rem;
+}
+
+.toggle-btn {
+    padding: 0.75rem 0.5rem;
+    font-size: 0.75rem;
+    border-radius: 0.5rem;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    min-height: 2.5rem;
+}
+
+/* Input Section - Single Column on Mobile */
+.input-section {
+    background: var(--card-bg, white);
+    border-radius: 1rem;
+    padding: 1rem;
+    margin-bottom: 1.5rem;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+}
+
+.input-group {
+    display: flex;
+    flex-direction: column;
+    gap: 1rem;
+}
+
+.input-field {
+    width: 100%;
+    min-width: 0;
+}
+
+.input-field label {
+    display: block;
+    margin-bottom: 0.5rem;
+    font-weight: 600;
+    font-size: 0.875rem;
+}
+
+.input-field input[type="number"] {
+    width: 100%;
+    padding: 0.75rem;
+    font-size: 1rem;
+    border: 2px solid var(--border-color, #e5e7eb);
+    border-radius: 0.5rem;
+    text-align: center;
+}
+
+/* Input Stepper for Touch */
+.input-stepper {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    margin-top: 0.5rem;
+}
+
+.stepper-btn {
+    flex: 0 0 2.5rem;
+    width: 2.5rem;
+    height: 2.5rem;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 1.25rem;
+    touch-action: manipulation;
+}
+
+.stepper-display {
+    flex: 1;
+    text-align: center;
+    font-size: 1.25rem;
+    font-weight: bold;
+    padding: 0.5rem;
+    background: var(--bg-secondary, #f3f4f6);
+    border-radius: 0.5rem;
+}
+
+/* Action Buttons - Stacked on Mobile */
+.action-buttons {
+    display: flex;
+    flex-direction: column;
+    gap: 0.75rem;
+    margin-bottom: 1.5rem;
+}
+
+.action-buttons button {
+    width: 100%;
+    padding: 0.875rem 1rem;
+    font-size: 0.875rem;
+    border-radius: 0.5rem;
+    margin: 0 !important;
+}
+
+/* Date Filter Section */
+.date-filter-section {
+    margin-bottom: 1.5rem;
+}
+
+.date-filter-controls {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 0.5rem;
+}
+
+.filter-btn {
+    padding: 0.625rem 0.75rem;
+    font-size: 0.75rem;
+    border-radius: 0.5rem;
+}
+
+.custom-date-range {
+    display: flex;
+    flex-direction: column;
+    gap: 0.25rem;
+    margin-top: 1rem;
+    padding: 1rem;
+    background: var(--bg-secondary, #f9fafb);
+    border-radius: 0.5rem;
+}
+
+.custom-date-range input {
+    width: 100%;
+    padding: 0.5rem;
+    border-radius: 0.375rem;
+}
+
+/* Bar Containers - Responsive Grids */
+.bar-container {
+    margin-top: 1rem;
+    overflow: hidden;
+}
+
+.achievement-bars-grid {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 0.25rem;
+}
+
+.position-heat-grid {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 0.25rem;
+}
+
+.recent-streak-grid {
+    display: grid;
+    grid-template-columns: repeat(5, 1fr);
+    gap: 0.125rem;
+}
+
+.sweet-spot-grid {
+    display: grid;
+    grid-template-columns: repeat(6, 1fr);
+    gap: 0.125rem;
+}
+
+/* Stats Container */
+.stats-container {
+    display: flex;
+    flex-direction: column;
+    gap: 1rem;
+    margin-bottom: 2rem;
+}
+
+.stat-card {
+    background: var(--card-bg, white);
+    border-radius: 0.75rem;
+    padding: 1.25rem;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+    overflow: hidden;
+}
+
+.stat-grid {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 0.75rem;
+}
+
+/* Analysis card specific fixes */
+.analysis-card {
+    overflow: visible;
+}
+
+.pattern-analysis {
+    max-height: 200px;
+    overflow-y: auto;
+    padding-right: 0.5rem;
+}
+
+.pattern-analysis::-webkit-scrollbar {
+    width: 4px;
+}
+
+.pattern-analysis::-webkit-scrollbar-thumb {
+    background: rgba(0, 0, 0, 0.2);
+    border-radius: 2px;
+}
+
+.pattern-analysis li {
+    margin-bottom: 0.5rem;
+    line-height: 1.4;
+    font-size: 0.875rem;
+}
+
+/* Charts - Full Width on Mobile */
+.chart-container,
+.heatmap-container {
+    width: 100%;
+    height: 250px;
+    min-height: 250px;
+    max-height: 300px;
+    padding: 1rem;
+    margin-bottom: 1rem;
+    overflow: hidden;
+    position: relative;
+}
+
+.analysis-card {
+    width: 100%;
+    min-height: 200px;
+    height: auto;
+    padding: 1rem;
+    margin-bottom: 1rem;
+    overflow: visible;
+    position: relative;
+}
+
+/* Performance Trends specific fixes */
+.performance-trends-container {
+    min-height: 250px !important;
+    height: auto !important;
+}
+
+.chart-canvas-wrapper {
+    position: relative;
+    width: 100% !important;
+    min-height: 400px !important;
+    height: auto !important;
+    overflow: visible !important;
+}
+
+canvas {
+    max-width: 100% !important;
+    height: auto !important;
+    min-height: 350px !important;
+    width: 100% !important;
+    position: relative !important;
+}
+
+/* Chart title responsive */
+.chart-title {
+    font-size: 1rem;
+    margin-bottom: 0.5rem;
+}
+
+/* Chart content wrapper */
+.chart-content {
+    position: relative;
+    width: 100%;
+    height: calc(100% - 3rem);
+}
+
+/* Table - Horizontal Scroll on Mobile */
+.race-history {
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    margin: 0 -1rem;
+    padding: 0 1rem;
+}
+
+.table-container {
+    min-width: 100%;
+    overflow-x: auto;
+}
+
+#history-table {
+    width: 100%;
+    min-width: 500px;
+}
+
+/* Mobile Cards Alternative */
+.mobile-cards {
+    display: flex;
+    flex-direction: column;
+    gap: 1rem;
+}
+
+.mobile-card {
+    background: var(--card-bg, white);
+    border-radius: 0.5rem;
+    padding: 1rem;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+}
+
+/* Help Panel Mobile Adjustments */
+.help-panel {
+    margin: 0 -1rem 1.5rem -1rem;
+    border-radius: 0;
+}
+
+.help-content {
+    padding: 1rem;
+}
+
+.help-grid {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 1rem;
+}
+
+.help-item {
+    padding: 1rem;
+    border-radius: 0.5rem;
+    background: var(--bg-secondary, #f9fafb);
+}
+
+.viz-guide-grid {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 1rem;
+}
+
+/* Hide Desktop Elements on Mobile */
+@media (max-width: 767px) {
+    .floating-race-widget,
+    .fab-button,
+    .quick-race-form {
+        display: none !important;
+    }
+    
+    /* Show mobile table cards instead of table */
+    .table-container {
+        display: none;
+    }
+    
+    .mobile-cards {
+        display: flex;
+    }
+    
+    /* Number buttons - hide on small mobile */
+    .number-buttons {
+        display: none;
+    }
+}
+
+/* ========================================= */
+/* TABLET STYLES (768px - 1023px) */
+/* ========================================= */
+@media (min-width: 768px) {
+    .container {
+        padding: 1.5rem;
+        max-width: 920px;
+    }
+    
+    /* Header */
+    .header-section {
+        flex-direction: row;
+        justify-content: center;
+        margin-bottom: 2rem;
+    }
+    
+    .header-section h1 {
+        font-size: 2rem;
+    }
+    
+    
+    /* Toggle Section - Row Layout */
+    .toggle-section {
+        display: flex;
+        flex-direction: row;
+        flex-wrap: wrap;
+        justify-content: center;
+        gap: 0.5rem;
+        margin-bottom: 2rem;
+    }
+    
+    .toggle-btn {
+        width: auto;
+        flex: 0 0 auto;
+        min-width: 100px;
+        padding: 0.625rem 1rem;
+        font-size: 0.875rem;
+    }
+    
+    /* Input Section - 2 Column Grid */
+    .input-section {
+        padding: 1.5rem;
+    }
+    
+    .input-group {
+        display: grid;
+        grid-template-columns: repeat(2, 1fr);
+        gap: 1.5rem;
+    }
+    
+    /* Hide steppers on tablet */
+    .input-stepper {
+        display: none;
+    }
+    
+    /* Show number buttons */
+    .number-buttons {
+        display: grid;
+        grid-template-columns: repeat(12, 1fr);
+        gap: 0.25rem;
+        margin-bottom: 0.5rem;
+    }
+    
+    /* Action Buttons - Row Layout */
+    .action-buttons {
+        flex-direction: row;
+        flex-wrap: wrap;
+        justify-content: center;
+        gap: 1rem;
+    }
+    
+    .action-buttons button {
+        width: auto;
+        min-width: 140px;
+        flex: 0 0 auto;
+    }
+    
+    /* Date Filter - Row Layout */
+    .date-filter-controls {
+        display: flex;
+        flex-direction: row;
+        flex-wrap: wrap;
+        justify-content: center;
+        gap: 0.5rem;
+    }
+    
+    .filter-btn {
+        width: auto;
+        min-width: 100px;
+        padding: 0.5rem 1rem;
+        font-size: 0.875rem;
+    }
+    
+    .custom-date-range {
+        flex-direction: row;
+        align-items: center;
+        justify-content: center;
+        gap: 0.5rem;
+    }
+    
+    /* Bar Grids - More Columns */
+    .achievement-bars-grid {
+        grid-template-columns: repeat(3, 1fr);
+    }
+    
+    .position-heat-grid {
+        grid-template-columns: repeat(4, 1fr);
+    }
+    
+    .recent-streak-grid {
+        grid-template-columns: repeat(10, 1fr);
+    }
+    
+    .sweet-spot-grid {
+        grid-template-columns: repeat(12, 1fr);
+    }
+    
+    /* Stats - 2 Column Grid */
+    .stats-container {
+        display: grid;
+        grid-template-columns: repeat(2, 1fr);
+        gap: 1.5rem;
+    }
+    
+    .stat-grid {
+        grid-template-columns: repeat(2, 1fr);
+    }
+    
+    /* Charts - Larger Height */
+    .chart-container,
+    .heatmap-container {
+        height: 350px;
+        padding: 1.5rem;
+    }
+    
+    .analysis-card {
+        min-height: 250px;
+        height: auto;
+        padding: 1.5rem;
+    }
+    
+    /* Table - Show table, hide cards */
+    .table-container {
+        display: block;
+    }
+    
+    .mobile-cards {
+        display: none;
+    }
+    
+    .race-history {
+        margin: 0;
+        padding: 0;
+    }
+    
+    /* Show floating widgets */
+    .floating-race-widget {
+        display: flex !important;
+        position: fixed;
+        bottom: 2rem;
+        right: 2rem;
+        z-index: 999;
+    }
+    
+    /* Help panel tablet styles */
+    .help-panel {
+        margin: 0 0 2rem 0;
+        border-radius: 1rem;
+    }
+    
+    .help-content {
+        padding: 2rem;
+    }
+    
+    .help-grid {
+        grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+        gap: 1.5rem;
+    }
+    
+    .viz-guide-grid {
+        grid-template-columns: repeat(2, 1fr);
+        gap: 1.5rem;
+    }
+}
+
+/* ========================================= */
+/* DESKTOP STYLES (1024px+) */
+/* ========================================= */
+@media (min-width: 1024px) {
+    .container {
+        padding: 2rem;
+        max-width: 1200px;
+    }
+    
+    /* Header */
+    .header-section h1 {
+        font-size: 2.5rem;
+    }
+    
+    /* Input Section - 3 Column Grid */
+    .input-group {
+        grid-template-columns: repeat(3, 1fr);
+        gap: 2rem;
+    }
+    
+    /* Bar Grids - Desktop Layout */
+    .achievement-bars-grid {
+        grid-template-columns: repeat(5, 1fr);
+    }
+    
+    /* Stats - Larger Grid */
+    .stat-grid {
+        grid-template-columns: repeat(3, 1fr);
+    }
+    
+    /* Charts - Desktop Height */
+    .chart-container,
+    .heatmap-container {
+        height: 400px;
+        padding: 2rem;
+    }
+    
+    .analysis-card {
+        min-height: 300px;
+        height: auto;
+        padding: 2rem;
+    }
+}
+
+/* ========================================= */
+/* LARGE DESKTOP STYLES (1440px+) */
+/* ========================================= */
+@media (min-width: 1440px) {
+    .container {
+        max-width: 1400px;
+    }
+    
+    /* Input Section - 4 Column Grid */
+    .input-group {
+        grid-template-columns: repeat(4, 1fr);
+    }
+    
+    /* Stats - 2x2 Grid */
+    .stats-container {
+        grid-template-columns: repeat(2, 1fr);
+        grid-template-rows: repeat(2, 1fr);
+    }
+}
+
+/* ========================================= */
+/* PORTRAIT ORIENTATION FIXES */
+/* ========================================= */
+@media (orientation: portrait) and (max-width: 767px) {
+    .toggle-section {
+        grid-template-columns: 1fr;
+    }
+    
+    .date-filter-controls {
+        grid-template-columns: 1fr;
+    }
+}
+
+/* ========================================= */
+/* LANDSCAPE ORIENTATION MOBILE */
+/* ========================================= */
+@media (orientation: landscape) and (max-height: 500px) {
+    .header-section {
+        margin-bottom: 1rem;
+    }
+    
+    .header-section h1 {
+        font-size: 1.5rem;
+    }
+    
+    .toggle-section {
+        grid-template-columns: repeat(4, 1fr);
+        gap: 0.25rem;
+    }
+    
+    .toggle-btn {
+        padding: 0.5rem 0.25rem;
+        font-size: 0.625rem;
+    }
+    
+    .chart-container,
+    .heatmap-container {
+        height: 200px;
+    }
+    
+    .analysis-card {
+        min-height: 150px;
+        height: auto;
+    }
+}
+
+/* ========================================= */
+/* SIDEBAR RESPONSIVE ADJUSTMENTS */
+/* ========================================= */
+.sidebar {
+    width: 280px;
+    max-width: 85vw;
+}
+
+/* Small mobile screens */
+@media (max-width: 374px) {
+    .sidebar {
+        width: 100%;
+        max-width: 100%;
+    }
+    
+    .sidebar-content {
+        padding: 1rem;
+    }
+    
+    .sidebar-section {
+        margin-bottom: 1.5rem;
+    }
+}
+
+/* Mobile sidebar adjustments */
+@media (max-width: 767px) {
+    .sidebar {
+        width: 280px;
+        max-width: 90vw;
+    }
+    
+    /* Ensure sidebar sections are properly spaced on mobile */
+    .sidebar-section {
+        margin-bottom: 1.5rem;
+    }
+    
+    /* Smaller text for mobile */
+    .sidebar-section-title {
+        font-size: 0.8rem;
+    }
+    
+    /* Better button sizing for mobile */
+    .sidebar-action-btn {
+        padding: 12px 14px;
+        font-size: 0.875rem;
+    }
+    
+    .sidebar-add-race-btn {
+        padding: 12px 14px;
+    }
+    
+    /* Ensure date controls are touch-friendly */
+    .sidebar-date-btn-container {
+        padding: 0.875rem 1rem;
+    }
+    
+    /* Ensure the sidebar toggle button is visible and accessible */
+    .sidebar-toggle {
+        width: 44px;
+        height: 44px;
+        padding: 10px;
+        top: 1rem;
+        left: 1rem;
+    }
+    
+    /* When sidebar is open on mobile */
+    .sidebar.open + .container {
+        /* Don't shift content on mobile */
+        margin-left: 0;
+    }
+    
+    /* Ensure sidebar player icon picker scrolls properly */
+    .sidebar-icon-picker {
+        max-height: 150px;
+        overflow-y: auto;
+    }
+    
+    /* Make sidebar position picker more compact on mobile */
+    .position-picker {
+        max-height: 200px;
+        padding: 0.75rem;
+    }
+    
+    .position-grid {
+        grid-template-columns: repeat(4, 1fr);
+        gap: 0.25rem;
+    }
+    
+    .position-btn {
+        min-height: 2rem;
+        font-size: 0.75rem;
+    }
+}
+
+/* ========================================= */
+/* ACCESSIBILITY & REDUCED MOTION */
+/* ========================================= */
+@media (prefers-reduced-motion: reduce) {
+    *,
+    *::before,
+    *::after {
+        animation-duration: 0.01ms !important;
+        animation-iteration-count: 1 !important;
+        transition-duration: 0.01ms !important;
+    }
+}
+
+/* ========================================= */
+/* PRINT STYLES */
+/* ========================================= */
+@media print {
+    .action-buttons,
+    .floating-race-widget,
+    .sidebar-toggle,
+    .sidebar {
+        display: none !important;
+    }
+    
+    .container {
+        max-width: 100%;
+        padding: 0;
+    }
+    
+    .stat-card,
+    .chart-container {
+        page-break-inside: avoid;
+        box-shadow: none;
+        border: 1px solid #ddd;
+    }
+}
+
+/* ========================================= */
+/* HIGH CONTRAST MODE */
+/* ========================================= */
+@media (prefers-contrast: more) {
+    .stat-card,
+    .chart-container,
+    .input-section {
+        border: 2px solid currentColor;
+    }
+    
+    button {
+        border: 2px solid currentColor;
+    }
+    
+    input {
+        border-width: 2px;
+    }
+}
+
+/* ========================================= */
+/* DARK MODE RESPONSIVE ADJUSTMENTS */
+/* ========================================= */
+body.dark-theme .input-section,
+body.dark-theme .stat-card,
+body.dark-theme .chart-container {
+    background: var(--dark-card-bg, #2d3748);
+}
+
+/* ========================================= */
+/* UTILITY CLASSES FOR RESPONSIVE */
+/* ========================================= */
+.hide-mobile {
+    display: none !important;
+}
+
+.hide-tablet {
+    display: block !important;
+}
+
+.hide-desktop {
+    display: block !important;
+}
+
+@media (min-width: 768px) {
+    .hide-mobile {
+        display: block !important;
+    }
+    
+    .hide-tablet {
+        display: none !important;
+    }
+}
+
+@media (min-width: 1024px) {
+    .hide-desktop {
+        display: none !important;
+    }
+}
+
+/* ========================================= */
+/* SAFE AREA INSETS FOR MODERN DEVICES */
+/* ========================================= */
+@supports (padding: env(safe-area-inset-left)) {
+    .container {
+        padding-left: max(1rem, env(safe-area-inset-left));
+        padding-right: max(1rem, env(safe-area-inset-right));
+    }
+    
+    
+    .sidebar {
+        padding-bottom: env(safe-area-inset-bottom);
+    }
+}
