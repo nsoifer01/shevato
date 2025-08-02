@@ -1,0 +1,219 @@
+/* Form Components and Inputs */
+
+input[type="number"], input[type="date"] {
+    padding: 10px;
+    border: 2px solid #e2e8f0;
+    border-radius: 8px;
+    font-size: 16px;
+    transition: all 0.3s ease;
+}
+
+input[type="number"]:focus, input[type="date"]:focus {
+    outline: none;
+    border-color: #667eea;
+    box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
+}
+
+/* Race date section */
+.race-date-section {
+    margin-bottom: 25px;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    justify-content: center;
+}
+
+.race-date-section label {
+    font-weight: 600;
+    color: #4a5568;
+    font-size: 1em;
+    margin-bottom: 0;
+}
+
+.race-date-input {
+    padding: 10px 15px;
+    border: 2px solid #e2e8f0;
+    border-radius: 8px;
+    font-size: 16px;
+    transition: all 0.3s ease;
+    background: white;
+    color: #374151;
+    font-weight: 500;
+}
+
+.race-date-input:focus {
+    outline: none;
+    border-color: #667eea;
+    box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
+}
+
+.race-date-input::-webkit-calendar-picker-indicator {
+    cursor: pointer;
+    opacity: 0.6;
+    transition: opacity 0.2s ease;
+}
+
+.race-date-input:hover::-webkit-calendar-picker-indicator {
+    opacity: 1;
+}
+
+/* Number buttons grid */
+.number-buttons {
+    display: grid;
+    grid-template-columns: repeat(12, 1fr);
+    gap: 4px;
+    margin-bottom: 8px;
+}
+
+.number-btn {
+    background: #9ca3af;
+    color: white;
+    border: 1px solid #6b7280;
+    border-radius: 4px;
+    padding: 6px 4px;
+    font-size: 12px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    text-align: center;
+    min-height: 28px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.number-btn:hover {
+    background: #6b7280;
+    border-color: #4b5563;
+}
+
+.number-btn.selected {
+    background: #667eea;
+    color: white;
+    border-color: #667eea;
+}
+
+.number-btn:active {
+    transform: scale(0.95);
+}
+
+/* Button styles */
+button {
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    color: white;
+    border: none;
+    padding: 12px 30px;
+    border-radius: 8px;
+    font-size: 16px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.3s ease;
+    box-shadow: 0 4px 15px rgba(102, 126, 234, 0.4);
+}
+
+button:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 6px 20px rgba(102, 126, 234, 0.5);
+}
+
+.toggle-btn {
+    padding: 8px 20px;
+    background: #10b981;
+    border: none;
+    border-radius: 20px;
+    cursor: pointer;
+    font-weight: 600;
+    transition: all 0.3s ease;
+    color: white;
+}
+
+.toggle-btn.active {
+    background: #059669;
+    color: white;
+}
+
+.toggle-btn:hover {
+    background: #0d9488;
+    color: white;
+    transform: translateY(-1px);
+}
+
+.clear-btn {
+    background: #ef4444;
+    color: white;
+    margin-left: 10px;
+}
+
+.clear-btn:hover {
+    background: #dc2626;
+}
+
+.clear-btn.disabled,
+.clear-btn:disabled {
+    background: #9ca3af !important;
+    color: #374151 !important;
+    cursor: not-allowed !important;
+    opacity: 0.8 !important;
+}
+
+.clear-btn.disabled:hover,
+.clear-btn:disabled:hover {
+    background: #9ca3af !important;
+    transform: none !important;
+    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05) !important;
+}
+
+.filter-btn {
+    padding: 8px 16px;
+    background: #3b82f6;
+    border: none;
+    border-radius: 20px;
+    cursor: pointer;
+    font-weight: 600;
+    transition: all 0.3s ease;
+    font-size: 0.9em;
+    color: white;
+}
+
+.filter-btn.active {
+    background: #1d4ed8;
+    color: white;
+}
+
+.filter-btn:hover {
+    background: #2563eb;
+    color: white;
+    transform: translateY(-1px);
+}
+
+.edit-btn {
+    background: #3b82f6;
+    color: white;
+    border: none;
+    padding: 5px 10px;
+    border-radius: 5px;
+    cursor: pointer;
+    font-size: 0.9em;
+    transition: background 0.3s ease;
+    margin-right: 5px;
+}
+
+.edit-btn:hover {
+    background: #2563eb;
+}
+
+.delete-btn {
+    background: #ef4444;
+    color: white;
+    border: none;
+    padding: 5px 10px;
+    border-radius: 5px;
+    cursor: pointer;
+    font-size: 0.9em;
+    transition: background 0.3s ease;
+}
+
+.delete-btn:hover {
+    background: #dc2626;
+}
+

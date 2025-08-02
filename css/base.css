@@ -1,0 +1,108 @@
+/* Reset and Base Styles */
+* {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+}
+
+body {
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    color: #333;
+    transition: all 0.3s ease;
+}
+
+.container {
+    background: rgba(255, 255, 255, 0.95);
+    border-radius: 20px;
+    box-shadow: 0 20px 40px rgba(0, 0, 0, 0.2);
+}
+
+h1 {
+    color: #5a67d8;
+    font-size: 2.5em;
+    text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.1);
+    margin: 0;
+}
+
+label {
+    font-weight: 600;
+    color: #4a5568;
+    margin-bottom: 5px;
+    font-size: 0.9em;
+}
+
+/* Position colors (updated for 24 positions) */
+.pos-1 { background: #ffd700; color: #333; }
+.pos-2 { background: #c0c0c0; color: #333; }
+.pos-3 { background: #cd7f32; color: white; }
+.pos-4-8 { background: #86efac; color: #166534; }
+.pos-9-12 { background: #fde68a; color: #92400e; }
+.pos-13-18 { background: #D26868; color: white; }
+.pos-19-24 { background: #ff0000; color: white; }
+
+/* Stat colors */
+.best { background: #34d399; color: white; }    /* Green for 1st */
+.second { background: #fbbf24; color: white; }   /* Yellow for 2nd */
+.worst { background: #ef4444; color: white; }   /* Red for 3rd+ */
+.middle { background: #9ca3af; color: white; }  /* Gray for ties */
+
+/* Basic table styles */
+table {
+    width: 100%;
+    border-collapse: collapse;
+}
+
+th, td {
+    padding: 12px;
+    text-align: center;
+    border-bottom: 1px solid #e2e8f0;
+}
+
+th {
+    background: #f7fafc;
+    font-weight: 700;
+    color: #4a5568;
+    position: sticky;
+    top: 0;
+}
+
+tr:hover {
+    background: #f7fafc;
+}
+
+.position-cell {
+    font-weight: 600;
+    border-radius: 6px;
+    padding: 6px 12px;
+    display: inline-block;
+}
+
+/* Shared dropdown overlay */
+.dropdown-overlay {
+    display: none;
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.3);
+    z-index: 999;
+    opacity: 0;
+    transition: opacity 0.3s ease;
+}
+
+.dropdown-overlay.active {
+    display: block;
+    opacity: 1;
+}
+
+@media (max-width: 768px) {
+    .dropdown-overlay {
+        display: block;
+        opacity: 0;
+        pointer-events: none;
+    }
+    
+    .dropdown-overlay.active {
+        pointer-events: auto;
+        opacity: 1;
+    }
+}

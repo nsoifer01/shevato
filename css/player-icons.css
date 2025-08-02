@@ -1,0 +1,79 @@
+/* Player Icons Display Styles */
+.player-icon {
+    display: inline-block;
+    width: 20px;
+    height: 20px;
+    border-radius: 50%;
+    object-fit: cover;
+    vertical-align: middle;
+    margin-right: 6px;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.2);
+    background: #f0f0f0;
+}
+
+/* Dark theme support */
+body.dark-theme .player-icon {
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.4);
+    background: #2d3748;
+}
+
+/* Form label icons */
+label .player-icon {
+    margin-right: 6px;
+}
+
+/* Table header icons */
+th .player-icon {
+    margin-right: 6px;
+}
+
+/* Achievement bar icons */
+.achievement-name .player-icon {
+    width: 16px;
+    height: 16px;
+    margin-right: 4px;
+}
+
+/* Chart legend icons */
+.chart-legend-item .player-icon,
+[class*="legend"] .player-icon {
+    width: 16px;
+    height: 16px;
+    margin-right: 4px;
+}
+
+/* Remove hover effect to prevent flickering */
+/* .player-icon:hover {
+    transform: scale(1.1);
+    transition: transform 0.2s ease;
+} */
+
+/* Loading state */
+.player-icon.loading {
+    background: linear-gradient(90deg, #f0f0f0 25%, #e0e0e0 50%, #f0f0f0 75%);
+    background-size: 200% 100%;
+    animation: loading 1.5s infinite;
+}
+
+@keyframes loading {
+    0% {
+        background-position: 200% 0;
+    }
+    100% {
+        background-position: -200% 0;
+    }
+}
+
+/* Mobile responsiveness */
+@media (max-width: 768px) {
+    .player-icon {
+        width: 16px;
+        height: 16px;
+    }
+    
+    label .player-icon,
+    th .player-icon {
+        width: 18px;
+        height: 18px;
+    }
+}

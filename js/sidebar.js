@@ -1,0 +1,244 @@
+// Sidebar functionality
+let sidebarOpen = false;
+
+function initializeSidebar() {
+    // Prevent scroll propagation from sidebar
+    const sidebar = document.getElementById('sidebar');
+    if (sidebar) {
+        sidebar.addEventListener('wheel', (e) => {
+            e.stopPropagation();
+        }, { passive: true });
+        
+        // Prevent touchmove from propagating on mobile
+        sidebar.addEventListener('touchmove', (e) => {
+            e.stopPropagation();
+        }, { passive: true });
+    }
+    
+    // Small delay to ensure DOM is fully ready
+    setTimeout(() => {
+        // Move date filter section to sidebar
+        const dateFilterSection = document.querySelector('.date-filter-section');
+        const sidebarDateFilter = document.getElementById('sidebar-date-filter');
+        if (dateFilterSection && sidebarDateFilter && !sidebarDateFilter.contains(dateFilterSection)) {
+            // Move the date filter section (not clone, to preserve event listeners)
+            sidebarDateFilter.appendChild(dateFilterSection);
+            
+            // Hide the h3 title within the date filter section since sidebar has its own title
+            const h3Title = dateFilterSection.querySelector('h3');
+            if (h3Title) {
+                h3Title.style.display = 'none';
+            }
+        }
+        
+        // Move action buttons to sidebar
+        const actionButtons = document.querySelector('.input-section .action-buttons');
+        const sidebarActionButtons = document.getElementById('sidebar-action-buttons');
+        if (actionButtons && sidebarActionButtons && !sidebarActionButtons.contains(actionButtons)) {
+            // Clone the action buttons to preserve original functionality
+            const buttonsClone = actionButtons.cloneNode(true);
+            sidebarActionButtons.appendChild(buttonsClone);
+            
+            // Re-attach event handlers for cloned buttons
+            const exportButton = buttonsClone.querySelector('button[onclick*="exportData"]');
+            if (exportButton) {
+                exportButton.onclick = () => {
+                    if (typeof exportData === 'function') exportData();
+                };
+            }
+            
+            // Re-attach backup button
+            const backupButton = buttonsClone.querySelector('button[onclick*="backupToGoogleDrive"]');
+            if (backupButton) {
+                backupButton.onclick = () => {
+                    if (typeof backupToGoogleDrive === 'function') backupToGoogleDrive();
+                };
+            }
+            
+            // Remove date button from cloned action buttons since it's now in the sidebar
+            const dateButton = buttonsClone.querySelector('#date-button');
+            if (dateButton && dateButton.parentNode) {
+                dateButton.parentNode.removeChild(dateButton);
+            }
+            
+            // Re-attach the import file input functionality
+            const importInput = buttonsClone.querySelector('#importFile');
+            if (importInput) {
+                importInput.id = 'importFile-sidebar';
+                const importButton = buttonsClone.querySelector('button[onclick*="importFile"]');
+                if (importButton) {
+                    importButton.onclick = () => {
+                        document.getElementById('importFile-sidebar').click();
+                    };
+                }
+                // Re-attach change event to import input
+                importInput.onchange = (event) => {
+                    if (typeof importData === 'function') importData(event);
+                };
+            }
+            
+            // Hide the original action buttons
+            actionButtons.style.display = 'none';
+        }
+    }, 100);
+    
+    // Sidebar stays closed on page load regardless of previous state
+    // Users can manually open it if needed
+    
+    // Add keyboard event listeners
+    document.addEventListener('keydown', handleSidebarKeyboard);
+    
+    // Handle responsive behavior
+    handleResponsiveSidebar();
+    window.addEventListener('resize', handleResponsiveSidebar);
+}
+
+function toggleSidebar() {
+    if (sidebarOpen) {
+        closeSidebar();
+    } else {
+        openSidebar();
+    }
+}
+
+function openSidebar(animate = true) {
+    const sidebar = document.getElementById('sidebar');
+    const overlay = document.getElementById('sidebar-overlay');
+    const toggle = document.getElementById('sidebar-toggle');
+    const container = document.querySelector('.container');
+    
+    sidebarOpen = true;
+    
+    // Update ARIA attributes
+    toggle.setAttribute('aria-expanded', 'true');
+    
+    // Open sidebar
+    sidebar.classList.add('open');
+    overlay.classList.add('active');
+    
+    // Hide toggle button
+    toggle.style.opacity = '0';
+    toggle.style.pointerEvents = 'none';
+    
+    // On mobile, prevent body scroll
+    if (window.innerWidth < 1024) {
+        document.body.style.overflow = 'hidden';
+        document.body.style.position = 'fixed';
+        document.body.style.width = '100%';
+    }
+    
+    // Save state
+    localStorage.setItem('sidebarOpen', 'true');
+    
+    // Focus management
+    if (animate) {
+        setTimeout(() => {
+            sidebar.querySelector('.sidebar-close-btn').focus();
+        }, 300);
+    }
+}
+
+function closeSidebar() {
+    const sidebar = document.getElementById('sidebar');
+    const overlay = document.getElementById('sidebar-overlay');
+    const toggle = document.getElementById('sidebar-toggle');
+    const container = document.querySelector('.container');
+    
+    sidebarOpen = false;
+    
+    // Update ARIA attributes
+    toggle.setAttribute('aria-expanded', 'false');
+    
+    // Close sidebar
+    sidebar.classList.remove('open');
+    overlay.classList.remove('active');
+    
+    // Show toggle button
+    toggle.style.opacity = '1';
+    toggle.style.pointerEvents = 'auto';
+    
+    // Restore body scroll on mobile
+    if (window.innerWidth < 1024) {
+        document.body.style.overflow = '';
+        document.body.style.position = '';
+        document.body.style.width = '';
+    }
+    
+    // Save state
+    localStorage.setItem('sidebarOpen', 'false');
+    
+    // Return focus to toggle button
+    toggle.focus();
+}
+
+function handleSidebarKeyboard(event) {
+    // ESC key closes sidebar
+    if (event.key === 'Escape' && sidebarOpen) {
+        closeSidebar();
+    }
+    
+    // Trap focus within sidebar when open
+    if (sidebarOpen && event.key === 'Tab') {
+        const sidebar = document.getElementById('sidebar');
+        const focusableElements = sidebar.querySelectorAll(
+            'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])'
+        );
+        
+        if (focusableElements.length === 0) return;
+        
+        const firstElement = focusableElements[0];
+        const lastElement = focusableElements[focusableElements.length - 1];
+        
+        if (event.shiftKey && document.activeElement === firstElement) {
+            event.preventDefault();
+            lastElement.focus();
+        } else if (!event.shiftKey && document.activeElement === lastElement) {
+            event.preventDefault();
+            firstElement.focus();
+        }
+    }
+}
+
+function handleResponsiveSidebar() {
+    const container = document.querySelector('.container');
+    const toggle = document.getElementById('sidebar-toggle');
+    
+    // Remove any container adjustments - sidebar should overlay
+}
+
+// Touch gesture support for mobile
+let touchStartX = null;
+let touchEndX = null;
+
+document.addEventListener('touchstart', (e) => {
+    touchStartX = e.changedTouches[0].screenX;
+}, { passive: true });
+
+document.addEventListener('touchend', (e) => {
+    touchEndX = e.changedTouches[0].screenX;
+    handleSwipeGesture();
+}, { passive: true });
+
+function handleSwipeGesture() {
+    if (!touchStartX || !touchEndX) return;
+    
+    const swipeThreshold = 50;
+    const edgeSwipeZone = 20;
+    
+    // Swipe right from left edge to open
+    if (!sidebarOpen && touchStartX < edgeSwipeZone && touchEndX > touchStartX + swipeThreshold) {
+        openSidebar();
+    }
+    
+    // Swipe left to close
+    if (sidebarOpen && touchStartX > touchEndX + swipeThreshold) {
+        closeSidebar();
+    }
+    
+    // Reset values
+    touchStartX = null;
+    touchEndX = null;
+}
+
+// Initialize sidebar when DOM is ready
+document.addEventListener('DOMContentLoaded', initializeSidebar);
