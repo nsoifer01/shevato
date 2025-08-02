@@ -28,6 +28,9 @@ function createTrendCharts(raceData = null) {
     statsDisplay.innerHTML = `
         <section id="trends">
             <h2>📈 Performance Trends</h2>
+            <p style="text-align: center; color: #718096; margin-top: -0.5rem; margin-bottom: 1rem; font-size: 0.875rem;">
+                ${totalRaces} races • ${dateRange}
+            </p>
             <div id="trends-chart-container">
                 <canvas id="trendsChart"></canvas>
             </div>
@@ -35,9 +38,8 @@ function createTrendCharts(raceData = null) {
     `;
 
     // Create performance trend chart
-    const canvas = document.getElementById('trend-chart');
-    const scrollContainer = canvas.parentElement;
-    const trendCtx = canvas.getContext('2d');
+    const canvas = document.getElementById('trendsChart');
+    const ctx = canvas.getContext('2d');
 
     // Sort races chronologically
     const sortedRaces = [...raceData].sort((a, b) => {
@@ -45,19 +47,6 @@ function createTrendCharts(raceData = null) {
         const dateB = new Date(b.date + (b.timestamp ? ' ' + b.timestamp : ''));
         return dateA - dateB;
     });
-
-    // Calculate canvas width based on number of races
-    const maxRacesWithoutScroll = 30;
-    const minPixelsPerRace = 40;
-    const chartWidth = sortedRaces.length > maxRacesWithoutScroll 
-        ? sortedRaces.length * minPixelsPerRace 
-        : '100%';
-    
-    // Set canvas width
-    if (typeof chartWidth === 'number') {
-        canvas.style.width = chartWidth + 'px';
-        canvas.width = chartWidth;
-    }
 
     const labels = sortedRaces.map((race, index) => `Race ${index + 1}`);
     // Use global dynamic players array
@@ -70,8 +59,8 @@ function createTrendCharts(raceData = null) {
         backgroundColor: colors[index] + '20',
         fill: false,
         tension: 0.4,
-        pointRadius: 5,
-        pointHoverRadius: 8,
+        pointRadius: 4,
+        pointHoverRadius: 6,
         pointBackgroundColor: colors[index],
         pointBorderColor: '#ffffff',
         pointBorderWidth: 2,
@@ -83,7 +72,7 @@ function createTrendCharts(raceData = null) {
 
     if (trendChart) trendChart.destroy();
 
-    trendChart = new Chart(trendCtx, {
+    trendChart = new Chart(ctx, {
         type: 'line',
         data: { labels, datasets },
         options: {
@@ -91,9 +80,9 @@ function createTrendCharts(raceData = null) {
             maintainAspectRatio: false,
             layout: {
                 padding: {
-                    top: 50,    // Increased padding to prevent position 1 clipping
+                    top: 10,
                     bottom: 10,
-                    left: 10,
+                    left: 0,      // No padding on left to keep y-axis visible
                     right: 10
                 }
             },
@@ -129,11 +118,10 @@ function createTrendCharts(raceData = null) {
             },
             scales: {
                 y: {
+                    type: 'linear',
                     reverse: true,
-                    suggestedMin: MIN_POSITIONS - 1,    // Suggest starting at 0 for padding
-                    suggestedMax: MAX_POSITIONS + 1,    // Suggest ending at 25 for padding
-                    min: MIN_POSITIONS,                 // Hard limit at 1
-                    max: MAX_POSITIONS,                 // Hard limit at 24
+                    suggestedMin: MIN_POSITIONS - 0.5,
+                    suggestedMax: MAX_POSITIONS + 0.5,
                     ticks: {
                         color: isDarkTheme ? '#e2e8f0' : '#4a5568',
                         padding: 8,
@@ -141,19 +129,18 @@ function createTrendCharts(raceData = null) {
                             size: 12,
                             weight: '500'
                         },
-                        stepSize: 1,            // Show only whole numbers
+                        stepSize: 2,            // Show every position
                         autoSkip: false,        // Show all ticks
-                        callback: function(value) {
-                            // Only show integer values from 1 to 24
-                            if (Number.isInteger(value) && value >= MIN_POSITIONS && value <= MAX_POSITIONS) {
-                                return value;
-                            }
-                            return null;
-                        }
+                        includeBounds: true,
                     },
                     grid: {
                         color: isDarkTheme ? 'rgba(74, 85, 104, 0.3)' : 'rgba(226, 232, 240, 0.5)',
-                        drawBorder: false
+                        drawBorder: true,
+                        lineWidth: 1
+                    },
+                    border: {
+                        display: true,
+                        color: isDarkTheme ? '#4a5568' : '#e2e8f0',
                     },
                     title: {
                         display: true,
@@ -182,13 +169,6 @@ function createTrendCharts(raceData = null) {
             }
         }
     });
-
-    // Scroll to show the latest races if there are more than 30
-    if (sortedRaces.length > maxRacesWithoutScroll) {
-        setTimeout(() => {
-            scrollContainer.scrollLeft = scrollContainer.scrollWidth - scrollContainer.clientWidth;
-        }, 100);
-    }
 
 }
 
