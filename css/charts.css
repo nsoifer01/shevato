@@ -41,6 +41,25 @@
 
 
 
+/* Light theme support for Trends */
+body.light-mode #trends {
+    background-color: #ffffff;
+    border: 1px solid #e2e8f0;
+}
+
+body.light-mode #trends h2 {
+    color: #1a202c;
+}
+
+body.light-mode #trends p {
+    color: #4a5568;
+}
+
+body.light-mode #trends-chart-container {
+    background: rgba(0, 0, 0, 0.02);
+    border: 1px solid #f1f5f9;
+}
+
 /* Dark theme support for Trends */
 body.dark-theme #trends {
     background-color: #2d3748;
@@ -398,6 +417,21 @@ body.dark-theme #trends-chart-container {
 
 .heatmap-legend-item:hover {
     transform: scale(1.2);
+}
+
+/* Light theme explicit overrides for Activity */
+body.light-mode {
+    --activity-bg-gradient: linear-gradient(135deg, #f8fafc 0%, #e2e8f0 100%);
+    --activity-card-shadow: 0 20px 40px rgba(0, 0, 0, 0.08);
+    --activity-hover-shadow: 0 25px 50px rgba(0, 0, 0, 0.12);
+    --activity-border: rgba(226, 232, 240, 0.8);
+    --activity-accent: #667eea;
+    --activity-accent-light: #7c3aed;
+    --activity-text-primary: #1a202c;
+    --activity-text-secondary: #4a5568;
+    --activity-chart-bg: rgba(255, 255, 255, 0.7);
+    --activity-bar-track: #f1f5f9;
+    --activity-bar-border: #e2e8f0;
 }
 
 /* Dark theme support for Activity */
