@@ -19,6 +19,11 @@ body {
     min-height: 100vh;
 }
 
+/* Disable page scrolling when sidebar is open */
+body.sidebar-open {
+    overflow: hidden;
+}
+
 .sidebar-container {
     position: fixed;
     top: 0;
