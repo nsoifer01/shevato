@@ -1,0 +1,36 @@
+<footer id="footer">
+  <div class="inner">
+    <div class="content">
+      <section>
+        <h4 lang="en">Contact Us</h4>
+        <h4 lang="ru">Свяжитесь с нами</h4>
+        <h4 lang="he">צור קשר</h4>
+        <ul class="plain">
+          <li><a href="mailto:moadon-alef@013net.net"><i class="icon fa-envelope">&nbsp;</i>moadon-alef@013net.net</a></li>
+          <li><a href="tel:+972523220779"><i class="icon fa-phone">&nbsp;</i>+972 52-322-0779</a></li>
+          <li><a href="tel:+1700701103"><i class="icon fa-phone-square">&nbsp;</i>1 700-7011-03</a></li>
+          <li lang="en"><i class="icon fa-map-marker">&nbsp;</i>P.O. Box 4862 Haifa</li>
+          <li lang="ru"><i class="icon fa-map-marker">&nbsp;</i>П/Я 4862 Хайфа</li>
+          <li lang="he"><i class="icon fa-map-marker">&nbsp;</i>ת.ד. 4862 חיפה</li>
+        </ul>
+      </section>
+    </div>
+    <div class="copyright">
+      <span lang="en">&copy; Copyright <span id="year"></span>, Moadon Alef</span>
+      <span lang="ru">&copy; Авторские права <span id="year-ru"></span>, Моадон Алеф</span>
+      <span lang="he">&copy; כל הזכויות שמורות <span id="year-he"></span>, מועדון אלף</span>
+    </div>
+  </div>
+</footer>
+
+<script>
+  (function(){
+    const y = new Date().getFullYear();
+    const yearEn = document.getElementById('year');
+    const yearRu = document.getElementById('year-ru');
+    const yearHe = document.getElementById('year-he');
+    if (yearEn) yearEn.textContent = y;
+    if (yearRu) yearRu.textContent = y;
+    if (yearHe) yearHe.textContent = y;
+  })();
+</script>

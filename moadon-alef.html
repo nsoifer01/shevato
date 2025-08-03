@@ -9,207 +9,282 @@
     gtag('js', new Date());
     gtag('config', 'UA-140119780-1');
   </script>
-  <title>Moadon Alef</title>
+  <title>Moadon Alef - 24/7 House Call Doctor Services</title>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=no" />
-  <meta name="description" content="Moadon Alef - Expert House Visiting Doctor Services" />
-  <meta name="keywords" content="House Visiting Doctor, Medical Services, Home Healthcare, General Checkups, Emergency Visits" />
+  <meta name="description" content="Moadon Alef - Expert House Visiting Doctor Services. 24/7 medical care in the comfort of your home." />
+  <meta name="keywords" content="House Visiting Doctor, Medical Services, Home Healthcare, General Checkups, Emergency Visits, 24/7 Doctor" />
   <link rel="stylesheet" href="assets/css/main.css" />
   <link rel="icon" type="image/png" href="images/moadon-alef-header.png">
   <style>
-    .content h3 {
-      min-height: 4em; /* Adjust as needed to ensure alignment */
+    /* Override some styles for medical theme */
+    
+    
+    .highlights section {
+      transition: all 0.3s ease;
+      border: 2px solid transparent;
     }
+    
+    .highlights section:hover {
+      border-color: #0066cc;
+      transform: translateY(-5px);
+    }
+    
+    /* Medical theme colors */
+    .icon.medical {
+      color: #0066cc !important;
+    }
+    
+    /* Language switcher styles */
     .lang-switcher {
       display: flex;
       justify-content: center;
-      margin-top: 20px;
+      gap: 10px;
+      margin: 30px 0;
+      flex-wrap: wrap;
+      direction: ltr !important;
     }
-    .lang-switcher button {
-      margin: 5px;
-      padding: 10px 20px;
-      border: none;
-      border-radius: 5px;
+    
+    .lang-btn {
+      padding: 12px 24px;
+      border: 2px solid #0066cc;
+      background: white;
+      color: #0066cc;
+      border-radius: 25px;
       cursor: pointer;
-      background-color: #bbb;
-      color: #333;
-      font-size: 1rem;
-      transition: background-color 0.3s;
+      font-weight: 600;
+      transition: all 0.3s ease;
       display: flex;
       align-items: center;
-      justify-content: center;
+      gap: 8px;
     }
-    .lang-switcher button:hover {
-      background-color: #999;
+    
+    .lang-btn:hover {
+      background: #0066cc;
+      color: white;
+      transform: translateY(-2px);
     }
-    .lang-switcher button:focus {
-      outline: none;
+    
+    .lang-btn.active {
+      background: #0066cc;
+      color: white;
     }
-    .footer .content ul.plain {
-      list-style: none;
-      padding: 0;
+    
+    
+    /* Contact header styles */
+    .contact-header {
+      text-align: center;
+      margin-bottom: 40px;
     }
-    .footer .content ul.plain li {
-      display: flex;
-      align-items: center;
-      margin: 5px 0;
+    
+    .brand-title {
+      font-size: 3rem;
+      font-weight: bold;
+      color: #0066cc;
+      margin-bottom: 20px;
+      letter-spacing: -1px;
     }
-    .footer .content ul.plain li i {
-      margin-right: 10px;
-      color: #fff;
+    
+    .main-phone {
+      font-size: 2.5rem;
+      font-weight: bold;
+      color: #0066cc;
+      text-decoration: none;
+      display: inline-block;
+      margin: 20px 0;
+      transition: all 0.3s ease;
     }
-.header-special {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-}
-
-#contact-number {
-  font-size: 1.5rem; /* Larger font size */
-  font-weight: bold; /* Bolder text */
-  margin: 10px 0; /* Margin for spacing */
-  text-align: center; /* Center align text */
-}
-
-#contact-number a {
-  text-decoration: none;
-  color: inherit;
-}
-
-#service-en {
-  margin-top: 20px; /* Adjust as needed */
-  text-align: center; /* Center align text */
-}
+    
+    .main-phone:hover {
+      color: #0044aa;
+      transform: scale(1.05);
+    }
+    
+    
+    .service-tagline {
+      font-size: 1.3rem;
+      color: #666;
+      margin: 10px 0;
+    }
+    
+    
+    /* Emergency banner */
+    .emergency-banner {
+      background: linear-gradient(135deg, #ff4444, #cc0000);
+      color: white;
+      padding: 15px;
+      border-radius: 10px;
+      text-align: center;
+      margin: 20px 0;
+      font-weight: bold;
+      animation: pulse 2s infinite;
+    }
+    
+    @keyframes pulse {
+      0% { transform: scale(1); }
+      50% { transform: scale(1.02); }
+      100% { transform: scale(1); }
+    }
+    
+    /* Hide language-specific content by default */
+    [lang]:not([lang="en"]) {
+      display: none;
+    }
+    
+    /* Responsive improvements */
+    @media (max-width: 736px) {
+      .brand-title {
+        font-size: 2.5rem;
+      }
+      
+      .main-phone {
+        font-size: 2rem;
+      }
+      
+      .lang-btn {
+        padding: 10px 16px;
+        font-size: 0.9rem;
+      }
+    }
   </style>
-  <!-- Font Awesome for icons -->
-  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/4.7.0/css/font-awesome.min.css">
 </head>
 <body class="is-preload">
-  <header id="header">
-    <a class="logo" href="/moadon-alef">
-      <img src="images/moadon-alef-header.png" alt="Moadon Alef Logo">
-    </a>
-  </header>
-<section class="wrapper" style="padding-top:inherit">
-  <div class="inner">
-    <header class="special header-special">
-      <h2>
-        <img src="images/moadon-alef.png" alt="Moadon Alef">
-      </h2>
-      <p id="contact-number"><a href="tel:+1700701103">1 700-7011-03</a></p>
-      <p id="service-en">24-Hour Doctor Appointment Service</p>
-      <p id="service-ru" style="display:none;">Круглосуточное обслуживание врачей</p>
-      <p id="service-he" style="display:none;">שירות רופא 24 שעות ביממה</p>
-      <p id="welcome-en">Welcome to Moadon Alef, your trusted partner for expert house visiting doctor services, specializing in home healthcare, general checkups, and emergency visits.</p>
-      <p id="welcome-ru" style="display:none;">Добро пожаловать в Мадон Алеф, вашего надежного партнера по предоставлению услуг по вызову врача на дом, специализирующегося на домашнем медицинском обслуживании, общих медицинских осмотрах и экстренных визитах.</p>
-      <p id="welcome-he" style="display:none;">ברוכים הבאים למועדון אלף, השותף המהימן שלך לשירותי רופא מבקר בבית, המתמחה בטיפול רפואי בבית, בדיקות כלליות וביקורי חירום.</p>
-      <div class="lang-switcher">
-        <button onclick="switchLanguage('en')">English</button>
-        <button onclick="switchLanguage('ru')">Русский</button>
-        <button onclick="switchLanguage('he')">עברית</button>
+  <!-- Main -->
+  <section class="wrapper" style="padding-top:inherit">
+    <div class="inner">
+      <div class="contact-header">
+        <h1 class="brand-title" lang="en">Moadon Alef</h1>
+        <h1 class="brand-title" lang="ru">Моадон Алеф</h1>
+        <h1 class="brand-title" lang="he">מועדון אלף</h1>
+        <div>
+          <a href="tel:+1700701103" class="main-phone">📞 1-700-7011-03</a>
+        </div>
+        <p class="service-tagline" lang="en">24/7 House Call Doctor Service</p>
+        <p class="service-tagline" lang="ru">Круглосуточная служба вызова врача на дом</p>
+        <p class="service-tagline" lang="he">שירות רופא עד הבית 24/7</p>
+        
+        <div class="emergency-banner" lang="en">
+          🚨 Emergency? Call us now for immediate medical assistance!
+        </div>
+        <div class="emergency-banner" lang="ru">
+          🚨 Экстренная ситуация? Звоните нам прямо сейчас!
+        </div>
+        <div class="emergency-banner" lang="he">
+          🚨 מצב חירום? התקשרו אלינו עכשיו לסיוע רפואי מיידי!
+        </div>
       </div>
-    </header>
+      
+      <header class="special">
+        <p lang="en">Welcome to Moadon Alef, your trusted partner for professional house call medical services. We bring quality healthcare directly to your home with our team of experienced doctors available 24/7.</p>
+        <p lang="ru">Добро пожаловать в Моадон Алеф - ваш надежный партнер в области профессиональных медицинских услуг на дому. Мы предоставляем качественную медицинскую помощь прямо у вас дома с нашей командой опытных врачей, доступных 24/7.</p>
+        <p lang="he">ברוכים הבאים למועדון אלף, השותף המהימן שלכם לשירותי רפואה מקצועיים עד הבית. אנו מביאים טיפול רפואי איכותי ישירות לביתכם עם צוות רופאים מנוסים הזמינים 24/7.</p>
+        
+        <div class="lang-switcher">
+          <button class="lang-btn active" onclick="switchLanguage('en')">
+            🇬🇧 English
+          </button>
+          <button class="lang-btn" onclick="switchLanguage('ru')">
+            🇷🇺 Русский
+          </button>
+          <button class="lang-btn" onclick="switchLanguage('he')">
+            🇮🇱 עברית
+          </button>
+        </div>
+      </header>
+      
       <div class="highlights">
         <section>
           <div class="content">
             <header>
-              <span class="icon fa-stethoscope" style="color: #0044cc"></span>
-              <h3 id="expertise-en">Our Expertise</h3>
-              <h3 id="expertise-ru" style="display:none;">Наша экспертиза</h3>
-              <h3 id="expertise-he" style="display:none;">ההתמחות שלנו</h3>
+              <span class="icon fa-stethoscope medical"></span>
+              <h3 lang="en">Professional Medical Care</h3>
+              <h3 lang="ru">Профессиональная медицинская помощь</h3>
+              <h3 lang="he">טיפול רפואי מקצועי</h3>
             </header>
-            <p id="expertise-text-en">With extensive experience in home healthcare, we provide expert medical services including general checkups, emergency visits, and chronic disease management in the comfort of your home.</p>
-            <p id="expertise-text-ru" style="display:none;">С большим опытом работы в области домашнего здравоохранения, мы предоставляем экспертные медицинские услуги, включая общие проверки здоровья, экстренные визиты и управление хроническими заболеваниями в комфорте вашего дома.</p>
-            <p id="expertise-text-he" style="display:none;">עם ניסיון רב בתחום הבריאות הביתית, אנו מספקים שירותים רפואיים מומחים כולל בדיקות כלליות, ביקורי חירום וניהול מחלות כרוניות בנוחות ביתכם.</p>
+            <p lang="en">Our licensed physicians provide comprehensive medical examinations, diagnosis, and treatment in the comfort of your home. From routine check-ups to acute care, we deliver hospital-quality service at your doorstep.</p>
+            <p lang="ru">Наши лицензированные врачи проводят комплексные медицинские осмотры, диагностику и лечение в комфорте вашего дома. От плановых осмотров до неотложной помощи - мы предоставляем услуги больничного качества у вашего порога.</p>
+            <p lang="he">הרופאים המורשים שלנו מספקים בדיקות רפואיות מקיפות, אבחון וטיפול בנוחות ביתכם. מבדיקות שגרתיות ועד טיפול דחוף, אנו מספקים שירות באיכות בית חולים בפתח ביתכם.</p>
           </div>
         </section>
+        
         <section>
           <div class="content">
             <header>
-              <span class="icon fa-user-md" style="color: #0044cc"></span>
-              <h3 id="focus-en">Patient Focus</h3>
-              <h3 id="focus-ru" style="display:none;">Фокус на пациента</h3>
-              <h3 id="focus-he" style="display:none;">מוקד למטופל</h3>
+              <span class="icon fa-clock-o medical"></span>
+              <h3 lang="en">24/7 Availability</h3>
+              <h3 lang="ru">Доступность 24/7</h3>
+              <h3 lang="he">זמינות 24/7</h3>
             </header>
-            <p id="focus-text-en">Our dedicated team of doctors and healthcare professionals is committed to delivering personalized and compassionate care to all our patients.</p>
-            <p id="focus-text-ru" style="display:none;">Наша преданная команда врачей и медицинских работников стремится предоставить персонализированный и сострадательный уход всем нашим пациентам.</p>
-            <p id="focus-text-he" style="display:none;">צוות הרופאים ואנשי המקצוע הבריאותי המסור שלנו מחויב להעניק טיפול מותאם אישית ומלא חמלה לכל המטופלים שלנו.</p>
+            <p lang="en">Medical emergencies don't follow a schedule. That's why our doctors are available round the clock, including weekends and holidays. One call connects you to immediate medical assistance.</p>
+            <p lang="ru">Медицинские экстренные ситуации не следуют расписанию. Поэтому наши врачи доступны круглосуточно, включая выходные и праздники. Один звонок - и вы получите немедленную медицинскую помощь.</p>
+            <p lang="he">מצבי חירום רפואיים לא מתרחשים לפי לוח זמנים. לכן הרופאים שלנו זמינים מסביב לשעון, כולל בסופי שבוע וחגים. שיחה אחת מחברת אתכם לסיוע רפואי מיידי.</p>
           </div>
         </section>
+        
         <section>
           <div class="content">
             <header>
-              <span class="icon fa-heartbeat" style="color: #0044cc"></span>
-              <h3 id="care-en">Comprehensive Care</h3>
-              <h3 id="care-ru" style="display:none;">Комплексный уход</h3>
-              <h3 id="care-he" style="display:none;">טיפול מקיף</h3>
+              <span class="icon fa-home medical"></span>
+              <h3 lang="en">Comfort of Home</h3>
+              <h3 lang="ru">Комфорт дома</h3>
+              <h3 lang="he">נוחות הבית</h3>
             </header>
-            <p id="care-text-en">We offer a wide range of medical services to address all your healthcare needs, ensuring comprehensive and continuous care at home.</p>
-            <p id="care-text-ru" style="display:none;">Мы предлагаем широкий спектр медицинских услуг, чтобы удовлетворить все ваши потребности в здравоохранении, обеспечивая комплексный и непрерывный уход на дому.</p>
-            <p id="care-text-he" style="display:none;">אנו מציעים מגוון רחב של שירותים רפואיים כדי לענות על כל צרכי הבריאות שלך, תוך הבטחת טיפול מקיף ורציף בבית.</p>
+            <p lang="en">Avoid crowded waiting rooms and long hospital queues. Our doctors come to you, providing personalized care in familiar surroundings, especially beneficial for elderly patients, children, and those with mobility issues.</p>
+            <p lang="ru">Избегайте переполненных залов ожидания и длинных больничных очередей. Наши врачи приезжают к вам, предоставляя персонализированный уход в знакомой обстановке, что особенно важно для пожилых пациентов, детей и людей с ограниченной подвижностью.</p>
+            <p lang="he">הימנעו מחדרי המתנה צפופים ותורים ארוכים בבתי חולים. הרופאים שלנו מגיעים אליכם, מספקים טיפול אישי בסביבה מוכרת, מה שמועיל במיוחד לקשישים, ילדים ואנשים עם מוגבלויות ניידות.</p>
           </div>
         </section>
+        
         <section>
           <div class="content">
             <header>
-              <span class="icon fa-ambulance" style="color: #0044cc"></span>
-              <h3 id="emergency-en">Emergency Response</h3>
-              <h3 id="emergency-ru" style="display:none;">Экстренная помощь</h3>
-              <h3 id="emergency-he" style="display:none;">תגובה חירום</h3>
+              <span class="icon fa-user-md medical"></span>
+              <h3 lang="en">Experienced Physicians</h3>
+              <h3 lang="ru">Опытные врачи</h3>
+              <h3 lang="he">רופאים מנוסים</h3>
             </header>
-            <p id="emergency-text-en">Our team is ready to respond to medical emergencies, providing immediate and efficient care when you need it most.</p>
-            <p id="emergency-text-ru" style="display:none;">Наша команда готова реагировать на медицинские чрезвычайные ситуации, предоставляя незамедлительный и эффективный уход, когда это нужно больше всего.</p>
-            <p id="emergency-text-he" style="display:none;">הצוות שלנו מוכן להגיב למצבי חירום רפואיים, ומספק טיפול מיידי ויעיל כאשר אתם זקוקים לו ביותר.</p>
+            <p lang="en">Our network includes board-certified doctors from various specialties, ensuring you receive expert care for any medical condition. All physicians are thoroughly vetted and continuously trained.</p>
+            <p lang="ru">Наша сеть включает сертифицированных врачей различных специальностей, что гарантирует получение экспертной помощи при любом заболевании. Все врачи проходят тщательную проверку и постоянное обучение.</p>
+            <p lang="he">הרשת שלנו כוללת רופאים מוסמכים ממגוון התמחויות, מה שמבטיח שתקבלו טיפול מומחה לכל מצב רפואי. כל הרופאים עוברים בדיקה יסודית והכשרה מתמשכת.</p>
           </div>
         </section>
+        
         <section>
           <div class="content">
             <header>
-              <span class="icon fa-user-plus" style="color: #0044cc"></span>
-              <h3 id="personalized-en">Personalized Service</h3>
-              <h3 id="personalized-ru" style="display:none;">Персонализированное обслуживание</h3>
-              <h3 id="personalized-he" style="display:none;">שירות מותאם אישית</h3>
+              <span class="icon fa-medkit medical"></span>
+              <h3 lang="en">Comprehensive Services</h3>
+              <h3 lang="ru">Комплексные услуги</h3>
+              <h3 lang="he">שירותים מקיפים</h3>
             </header>
-            <p id="personalized-text-en">We work closely with each patient to understand their unique needs and deliver customized healthcare solutions.</p>
-            <p id="personalized-text-ru" style="display:none;">Мы тесно работаем с каждым пациентом, чтобы понять его уникальные потребности и предоставить индивидуальные решения в области здравоохранения.</p>
-            <p id="personalized-text-he" style="display:none;">אנו עובדים בצמוד עם כל מטופל כדי להבין את צרכיו הייחודיים ולהעניק פתרונות בריאות מותאמים אישית.</p>
+            <p lang="en">From general consultations to specialized care, blood tests, IV treatments, vaccinations, and prescription services - we bring a full range of medical services to your home.</p>
+            <p lang="ru">От общих консультаций до специализированной помощи, анализов крови, внутривенного лечения, вакцинации и выписки рецептов - мы предоставляем полный спектр медицинских услуг на дому.</p>
+            <p lang="he">מייעוצים כלליים ועד טיפול מתמחה, בדיקות דם, טיפולי IV, חיסונים ושירותי מרשמים - אנו מביאים מגוון מלא של שירותים רפואיים לביתכם.</p>
           </div>
         </section>
+        
         <section>
           <div class="content">
             <header>
-              <span class="icon fa-medkit" style="color: #0044cc"></span>
-              <h3 id="preventive-en">Preventive Care</h3>
-              <h3 id="preventive-ru" style="display:none;">Профилактическая помощь</h3>
-              <h3 id="preventive-he" style="display:none;">טיפול מונע</h3>
+              <span class="icon fa-heart medical"></span>
+              <h3 lang="en">Compassionate Care</h3>
+              <h3 lang="ru">Заботливый уход</h3>
+              <h3 lang="he">טיפול אכפתי</h3>
             </header>
-            <p id="preventive-text-en">Our preventive care services help you maintain optimal health and prevent illness through regular checkups and health screenings.</p>
-            <p id="preventive-text-ru" style="display:none;">Наши профилактические услуги помогают вам поддерживать оптимальное здоровье и предотвращать болезни с помощью регулярных проверок и скринингов.</p>
-            <p id="preventive-text-he" style="display:none;">השירותים המונעים שלנו עוזרים לכם לשמור על בריאות מיטבית ולמנוע מחלות באמצעות בדיקות סדירות ובדיקות בריאות.</p>
+            <p lang="en">We believe in treating not just the illness, but the whole person. Our doctors take time to listen, understand, and provide compassionate care that addresses both physical and emotional well-being.</p>
+            <p lang="ru">Мы верим в лечение не только болезни, но и человека в целом. Наши врачи уделяют время, чтобы выслушать, понять и обеспечить заботливый уход, учитывающий как физическое, так и эмоциональное благополучие.</p>
+            <p lang="he">אנו מאמינים בטיפול לא רק במחלה, אלא באדם כולו. הרופאים שלנו מקדישים זמן להקשיב, להבין ולספק טיפול אכפתי שמתייחס לרווחה הפיזית והרגשית כאחד.</p>
           </div>
         </section>
       </div>
     </div>
   </section>
-<footer id="footer" class="footer">
-  <div class="inner">
-    <div class="content">
-      <section>
-        <h4>Contact Us</h4>
-        <ul class="plain">
-          <li><a href="mailto:moadon-alef@013net.net"><i class="icon fa-envelope"></i>moadon-alef@013net.net</a></li>
-          <li><a href="tel:+972523220779"><i class="icon fa-phone"></i>+972 52-322-0779</a></li>
-          <li><a href="tel:+1700701103"><i class="icon fa-phone-square"></i>1 700-7011-03</a></li>
-          <li><i class="icon fa-map-marker"></i>P.O. Box 4862 Haifa</li>
-        </ul>
-      </section>
-    </div>
-    <div class="copyright">
-      &copy; Copyright 2024, Moadon Alef
-    </div>
-  </div>
-</footer>
+  
+  <!-- Use Moadon Alef specific footer -->
+  <div data-include="footer-moadon-alef"></div>
+  
   <!-- Scripts -->
+  <script src="assets/js/passive-events-fix.js"></script>
   <script src="assets/js/jquery.min.js"></script>
   <script src="assets/js/browser.min.js"></script>
   <script src="assets/js/breakpoints.min.js"></script>
@@ -217,54 +292,37 @@
   <script src="assets/js/main.js"></script>
   <script>
     function switchLanguage(lang) {
-      // English
-      document.getElementById('welcome-en').style.display = (lang === 'en') ? 'block' : 'none';
-      document.getElementById('service-en').style.display = (lang === 'en') ? 'block' : 'none';
-      document.getElementById('expertise-en').style.display = (lang === 'en') ? 'block' : 'none';
-      document.getElementById('expertise-text-en').style.display = (lang === 'en') ? 'block' : 'none';
-      document.getElementById('focus-en').style.display = (lang === 'en') ? 'block' : 'none';
-      document.getElementById('focus-text-en').style.display = (lang === 'en') ? 'block' : 'none';
-      document.getElementById('care-en').style.display = (lang === 'en') ? 'block' : 'none';
-      document.getElementById('care-text-en').style.display = (lang === 'en') ? 'block' : 'none';
-      document.getElementById('emergency-en').style.display = (lang === 'en') ? 'block' : 'none';
-      document.getElementById('emergency-text-en').style.display = (lang === 'en') ? 'block' : 'none';
-      document.getElementById('personalized-en').style.display = (lang === 'en') ? 'block' : 'none';
-      document.getElementById('personalized-text-en').style.display = (lang === 'en') ? 'block' : 'none';
-      document.getElementById('preventive-en').style.display = (lang === 'en') ? 'block' : 'none';
-      document.getElementById('preventive-text-en').style.display = (lang === 'en') ? 'block' : 'none';
-
-      // Russian
-      document.getElementById('welcome-ru').style.display = (lang === 'ru') ? 'block' : 'none';
-      document.getElementById('service-ru').style.display = (lang === 'ru') ? 'block' : 'none';
-      document.getElementById('expertise-ru').style.display = (lang === 'ru') ? 'block' : 'none';
-      document.getElementById('expertise-text-ru').style.display = (lang === 'ru') ? 'block' : 'none';
-      document.getElementById('focus-ru').style.display = (lang === 'ru') ? 'block' : 'none';
-      document.getElementById('focus-text-ru').style.display = (lang === 'ru') ? 'block' : 'none';
-      document.getElementById('care-ru').style.display = (lang === 'ru') ? 'block' : 'none';
-      document.getElementById('care-text-ru').style.display = (lang === 'ru') ? 'block' : 'none';
-      document.getElementById('emergency-ru').style.display = (lang === 'ru') ? 'block' : 'none';
-      document.getElementById('emergency-text-ru').style.display = (lang === 'ru') ? 'block' : 'none';
-      document.getElementById('personalized-ru').style.display = (lang === 'ru') ? 'block' : 'none';
-      document.getElementById('personalized-text-ru').style.display = (lang === 'ru') ? 'block' : 'none';
-      document.getElementById('preventive-ru').style.display = (lang === 'ru') ? 'block' : 'none';
-      document.getElementById('preventive-text-ru').style.display = (lang === 'ru') ? 'block' : 'none';
-
-      // Hebrew
-      document.getElementById('welcome-he').style.display = (lang === 'he') ? 'block' : 'none';
-      document.getElementById('service-he').style.display = (lang === 'he') ? 'block' : 'none';
-      document.getElementById('expertise-he').style.display = (lang === 'he') ? 'block' : 'none';
-      document.getElementById('expertise-text-he').style.display = (lang === 'he') ? 'block' : 'none';
-      document.getElementById('focus-he').style.display = (lang === 'he') ? 'block' : 'none';
-      document.getElementById('focus-text-he').style.display = (lang === 'he') ? 'block' : 'none';
-      document.getElementById('care-he').style.display = (lang === 'he') ? 'block' : 'none';
-      document.getElementById('care-text-he').style.display = (lang === 'he') ? 'block' : 'none';
-      document.getElementById('emergency-he').style.display = (lang === 'he') ? 'block' : 'none';
-      document.getElementById('emergency-text-he').style.display = (lang === 'he') ? 'block' : 'none';
-      document.getElementById('personalized-he').style.display = (lang === 'he') ? 'block' : 'none';
-      document.getElementById('personalized-text-he').style.display = (lang === 'he') ? 'block' : 'none';
-      document.getElementById('preventive-he').style.display = (lang === 'he') ? 'block' : 'none';
-      document.getElementById('preventive-text-he').style.display = (lang === 'he') ? 'block' : 'none';
+      // Update button states
+      document.querySelectorAll('.lang-btn').forEach(btn => btn.classList.remove('active'));
+      event.target.classList.add('active');
+      
+      // Hide all language content
+      document.querySelectorAll('[lang]').forEach(el => el.style.display = 'none');
+      
+      // Show selected language content
+      document.querySelectorAll(`[lang="${lang}"]`).forEach(el => {
+        if (el.tagName === 'P' || el.tagName === 'H3' || el.tagName === 'DIV') {
+          el.style.display = 'block';
+        } else {
+          el.style.display = 'inline';
+        }
+      });
+      
+      // Set page direction for Hebrew
+      document.body.dir = (lang === 'he') ? 'rtl' : 'ltr';
+      
+      // Save preference
+      localStorage.setItem('moadon-alef-lang', lang);
     }
+    
+    // Load saved language preference
+    document.addEventListener('DOMContentLoaded', function() {
+      const savedLang = localStorage.getItem('moadon-alef-lang') || 'en';
+      const langBtn = document.querySelector(`.lang-btn:nth-child(${savedLang === 'en' ? 1 : savedLang === 'ru' ? 2 : 3})`);
+      if (langBtn) {
+        langBtn.click();
+      }
+    });
   </script>
 </body>
 </html>

@@ -33,7 +33,7 @@
     <ul class="links">
       <li><a href="../../home.html">Home</a></li>
       <li><a href="../../product.html">Product</a></li>
-      <li><a href="../../extras.html">Extras</a></li>
+      <li><a href="../../apps.html">Apps</a></li>
     </ul>
   </nav>
   
@@ -42,11 +42,28 @@
       <div class="content">
         <header>
           <h2>Tic-Tac-Toe</h2>
-          <p>Challenge the AI! You play as X, computer plays as O.</p>
+          <p>Challenge the Opponent! You play as X, opponent plays as O.</p>
         </header>
         
         <div class="tic-tac-toe">
-          <div class="board" id="board">
+          <div class="start-selection" id="startSelection">
+            <h3>Select Difficulty</h3>
+            <div class="difficulty-options">
+              <button class="difficulty-option easy" onclick="selectDifficulty('easy')">Easy</button>
+              <button class="difficulty-option medium" onclick="selectDifficulty('medium')">Medium</button>
+              <button class="difficulty-option hard" onclick="selectDifficulty('hard')">Hard</button>
+            </div>
+            
+            <div class="starter-selection" id="starterSelection" style="display: none;">
+              <h3>Who starts first?</h3>
+              <div class="start-options">
+                <button class="start-option player" onclick="selectStarter('player')">You (X)</button>
+                <button class="start-option ai" onclick="selectStarter('ai')">Opponent (O)</button>
+              </div>
+            </div>
+          </div>
+          
+          <div class="board" id="board" style="display: none;">
             <div class="cell" data-cell></div>
             <div class="cell" data-cell></div>
             <div class="cell" data-cell></div>
@@ -65,6 +82,21 @@
           </div>
           
           <div id="errorMessage" style="display: none;">Pick an empty square!</div>
+          
+          <div class="game-controls" id="gameControls" style="display: none;">
+            <button id="midGameRestartButton" class="mid-game-restart" onclick="confirmRestart()">🔄 Restart Game</button>
+          </div>
+          
+          <div class="restart-modal" id="restartModal" style="display: none;">
+            <div class="modal-content">
+              <h3>Restart Game?</h3>
+              <p>Are you sure you want to abandon this game and start over?</p>
+              <div class="modal-buttons">
+                <button class="confirm-btn" onclick="confirmRestartYes()">Yes, Restart</button>
+                <button class="cancel-btn" onclick="confirmRestartNo()">Keep Playing</button>
+              </div>
+            </div>
+          </div>
         </div>
       </div>
     </div>
@@ -90,6 +122,7 @@
   </footer>
   
   <!-- Scripts -->
+  <script src="../../assets/js/passive-events-fix.js"></script>
   <script src="../../assets/js/jquery.min.js"></script>
   <script src="../../assets/js/browser.min.js"></script>
   <script src="../../assets/js/breakpoints.min.js"></script>
