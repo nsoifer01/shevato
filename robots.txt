@@ -1,0 +1,62 @@
+# Robots.txt for shevato.com
+# This file allows search engines to crawl all pages on the site
+
+# Allow all crawlers
+User-agent: *
+Allow: /
+
+# Sitemap location
+Sitemap: https://shevato.com/sitemap.xml
+
+# Crawl-delay for politeness (optional, in seconds)
+# This helps prevent server overload from aggressive crawlers
+Crawl-delay: 1
+
+# Disallow access to certain file types and directories if they exist
+# (These are common security practices)
+Disallow: /cgi-bin/
+Disallow: /wp-admin/
+Disallow: /wp-includes/
+Disallow: /.git/
+Disallow: /node_modules/
+Disallow: *.sql
+Disallow: *.log
+Disallow: *.bak
+Disallow: *.swp
+Disallow: *.swo
+
+# Special directives for major search engines
+# Google
+User-agent: Googlebot
+Allow: /
+
+# Bing
+User-agent: Bingbot
+Allow: /
+
+# Yandex (Russian search engine - relevant for Russian content)
+User-agent: Yandex
+Allow: /
+
+# Allow social media crawlers for better sharing
+User-agent: facebookexternalhit
+Allow: /
+
+User-agent: Twitterbot
+Allow: /
+
+User-agent: LinkedInBot
+Allow: /
+
+# Block bad bots (optional security measure)
+User-agent: AhrefsBot
+Disallow: /
+
+User-agent: SemrushBot
+Disallow: /
+
+User-agent: DotBot
+Disallow: /
+
+User-agent: MJ12bot
+Disallow: /
