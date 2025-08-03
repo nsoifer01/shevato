@@ -515,24 +515,47 @@ body.dark-theme .weekly-breakdown-table tbody tr:hover {
     
     .activity-content {
         gap: 16px;
+        overflow-x: visible;
     }
     
-    .weekly-table-container,
+    .weekly-table-container {
+        padding: 12px;
+        border-radius: 12px;
+        width: 100%;
+        overflow-x: auto;
+        -webkit-overflow-scrolling: touch;
+    }
+    
     .activity-chart-wrapper {
         padding: 16px;
         border-radius: 12px;
         width: 100%;
         max-width: 350px;
         height: 350px;
+        margin: 0 auto;
     }
     
     .weekly-breakdown-table {
-        font-size: 0.75rem;
+        font-size: 0.7rem;
+        min-width: 500px;
+        white-space: nowrap;
     }
     
     .weekly-breakdown-table th,
     .weekly-breakdown-table td {
-        padding: 8px !important;
+        padding: 6px 4px !important;
+        min-width: 40px;
+        text-align: center !important;
+    }
+    
+    .weekly-breakdown-table th:first-child,
+    .weekly-breakdown-table td:first-child {
+        min-width: 80px;
+        text-align: left !important;
+        position: sticky;
+        left: 0;
+        background: var(--activity-chart-bg);
+        z-index: 2;
     }
     
     .heatmap-calendar {
@@ -544,7 +567,7 @@ body.dark-theme .weekly-breakdown-table tbody tr:hover {
 @media (max-width: 480px) {
     .activity-container,
     .heatmap-container {
-        padding: 16px;
+        padding: 12px;
         margin-bottom: 16px;
     }
     
@@ -553,7 +576,28 @@ body.dark-theme .weekly-breakdown-table tbody tr:hover {
         margin-bottom: 16px;
     }
     
-    .weekly-table-container,
+    .weekly-table-container {
+        padding: 8px;
+        margin: 0 -4px;
+    }
+    
+    .weekly-breakdown-table {
+        font-size: 0.65rem;
+        min-width: 450px;
+    }
+    
+    .weekly-breakdown-table th,
+    .weekly-breakdown-table td {
+        padding: 4px 2px !important;
+        min-width: 35px;
+    }
+    
+    .weekly-breakdown-table th:first-child,
+    .weekly-breakdown-table td:first-child {
+        min-width: 70px;
+        font-size: 0.6rem;
+    }
+    
     .activity-chart-wrapper {
         padding: 12px;
         width: 100%;
