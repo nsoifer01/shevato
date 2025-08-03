@@ -1403,6 +1403,30 @@ body.dark-theme .sidebar-player-settings-btn.active {
     gap: 0.25rem;
 }
 
+/* Pretty scrollbar for icon picker - matching sidebar style */
+.sidebar-icon-picker::-webkit-scrollbar {
+    width: 6px;
+}
+
+.sidebar-icon-picker::-webkit-scrollbar-track {
+    background: rgba(0, 0, 0, 0.05);
+    border-radius: 3px;
+    margin: 3px 0;
+}
+
+.sidebar-icon-picker::-webkit-scrollbar-thumb {
+    background: linear-gradient(180deg, #667eea 0%, #764ba2 100%);
+    border-radius: 3px;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+    transition: all 0.3s ease;
+}
+
+/* Firefox scrollbar for icon picker */
+.sidebar-icon-picker {
+    scrollbar-width: thin;
+    scrollbar-color: #667eea rgba(0, 0, 0, 0.05);
+}
+
 .sidebar-icon-option {
     width: 2rem;
     height: 2rem;
@@ -1478,6 +1502,17 @@ body.dark-theme .sidebar-icon-picker {
     background-color: #2d3748;
     opacity: 1;
     border-color: rgba(74, 85, 104, 0.5);
+    scrollbar-color: #818cf8 rgba(255, 255, 255, 0.05);
+}
+
+/* Dark theme scrollbar for icon picker */
+body.dark-theme .sidebar-icon-picker::-webkit-scrollbar-track {
+    background: rgba(255, 255, 255, 0.05);
+}
+
+body.dark-theme .sidebar-icon-picker::-webkit-scrollbar-thumb {
+    background: linear-gradient(180deg, #818cf8 0%, #a78bfa 100%);
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.3);
 }
 
 body.dark-theme .sidebar-icon-option:hover {
