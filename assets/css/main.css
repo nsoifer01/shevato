@@ -2201,7 +2201,7 @@ ul.icons {
 #footer {
   background-color: #181818;
   color: rgba(255, 255, 255, 0.5);
-  padding: 4rem 0 1rem 0 ; }
+  padding: 1rem 0 0.25rem 0 ; }
   #footer input, #footer select, #footer textarea {
     color: #ffffff; }
   #footer a {
@@ -2353,13 +2353,23 @@ ul.icons {
   #footer .copyright {
     color: white;
     border-top: 1px solid;
-    font-size: 0.8rem;
+    font-size: 0.75rem;
     opacity: 0.5;
-    padding: 2rem 0;
-    text-align: center; }
+    padding: 0.5rem 0;
+    text-align: center;
+    margin: 0; }
+  #footer h4 {
+    font-size: 1rem;
+    margin-bottom: 0.5rem; }
+  #footer ul.plain {
+    margin: 0; }
+  #footer ul.plain li {
+    padding: 0.1rem 0; }
+  #footer .inner {
+    padding: 0; }
   @media screen and (max-width: 1280px) {
     #footer {
-      padding: 4rem 0 2rem 0 ; } }
+      padding: 1rem 0 0.25rem 0 ; } }
   @media screen and (max-width: 980px) {
     #footer .content {
       -moz-flex-wrap: wrap;
@@ -2373,14 +2383,14 @@ ul.icons {
           padding-right: 0; } }
   @media screen and (max-width: 736px) {
     #footer {
-      padding: 4rem 0 1rem 0 ; }
+      padding: 0.75rem 0 0.25rem 0 ; }
       #footer .content section {
         width: 100%; }
         #footer .content section:last-child {
           padding-left: 0; } }
   @media screen and (max-width: 480px) {
     #footer {
-      padding: 4rem 0 0.1rem 0 ; } }
+      padding: 0.5rem 0 0.25rem 0 ; } }
 
 /* Header */
 body {
