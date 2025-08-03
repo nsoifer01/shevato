@@ -1,3 +1,514 @@
+/* Light Mode CSS Variables */
+:root {
+    /* Page backgrounds */
+    --bg-page: #ffffff;
+    --bg-gradient: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    --bg-container: rgba(255, 255, 255, 0.95);
+    
+    /* Component backgrounds */
+    --bg-sidebar: #f8f9fa;
+    --bg-card: #ffffff;
+    --bg-input: #ffffff;
+    --bg-dropdown: #ffffff;
+    --bg-modal: #ffffff;
+    --bg-tooltip: #1f2937;
+    
+    /* Text colors */
+    --text-primary: #1a202c;
+    --text-secondary: #4a5568;
+    --text-tertiary: #718096;
+    --text-muted: #a0aec0;
+    --text-white: #ffffff;
+    --text-inverse: #ffffff;
+    
+    /* Border colors */
+    --border-color: #e2e8f0;
+    --border-focus: #667eea;
+    --border-error: #ef4444;
+    --border-success: #10b981;
+    
+    /* Button colors */
+    --btn-primary-bg: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    --btn-primary-hover: linear-gradient(135deg, #5a67d8 0%, #6b46c1 100%);
+    --btn-secondary-bg: #6b7280;
+    --btn-secondary-hover: #4b5563;
+    --btn-success-bg: #10b981;
+    --btn-success-hover: #059669;
+    --btn-danger-bg: #ef4444;
+    --btn-danger-hover: #dc2626;
+    --btn-warning-bg: #f59e0b;
+    --btn-warning-hover: #d97706;
+    
+    /* Interactive states */
+    --hover-bg: rgba(0, 0, 0, 0.05);
+    --hover-border: #cbd5e0;
+    --active-bg: rgba(0, 0, 0, 0.1);
+    --focus-ring: rgba(102, 126, 234, 0.1);
+    
+    /* Status colors */
+    --success-color: #10b981;
+    --error-color: #ef4444;
+    --warning-color: #f59e0b;
+    --info-color: #3b82f6;
+    
+    /* Shadows */
+    --shadow-sm: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
+    --shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+    --shadow-lg: 0 10px 15px -3px rgba(0, 0, 0, 0.1);
+    --shadow-xl: 0 20px 25px -5px rgba(0, 0, 0, 0.1);
+    
+    /* Gradients */
+    --primary-gradient: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    --success-gradient: linear-gradient(135deg, #10b981 0%, #059669 100%);
+    --danger-gradient: linear-gradient(135deg, #ef4444 0%, #dc2626 100%);
+    
+    /* Scrollbar colors */
+    --scrollbar-track: rgba(0, 0, 0, 0.05);
+    --scrollbar-thumb: linear-gradient(180deg, #667eea 0%, #764ba2 100%);
+    --scrollbar-thumb-hover: linear-gradient(180deg, #5a67d8 0%, #6b46c1 100%);
+}
+
+/* Light Mode Styles */
+body {
+    background: var(--bg-gradient);
+    color: var(--text-primary);
+}
+
+body .container {
+    background: var(--bg-container);
+    color: var(--text-primary);
+}
+
+body .input-section {
+    background: var(--bg-card);
+}
+
+body .stat-card,
+body .race-history,
+body #history-table {
+    background: var(--bg-card);
+    color: var(--text-primary);
+}
+
+body th,
+body #history-table th {
+    background: var(--bg-sidebar);
+    color: var(--text-primary);
+}
+
+body td,
+body #history-table td {
+    background: var(--bg-card);
+    color: var(--text-primary);
+    border-color: var(--border-color);
+}
+
+body #history-heading {
+    color: var(--text-primary);
+}
+
+/* Light mode stepper styling */
+body .stepper-display {
+    background: var(--bg-input);
+    color: var(--text-primary);
+    border-color: var(--border-color);
+}
+
+body .stepper-btn {
+    background: var(--btn-primary-bg);
+    color: var(--text-white);
+}
+
+body .stepper-btn:hover {
+    background: var(--btn-primary-hover);
+}
+
+body .input-field input[type="number"] {
+    background: var(--bg-input);
+    color: var(--text-primary);
+    border-color: var(--border-color);
+}
+
+body .input-field input[type="number"]:focus {
+    background: var(--bg-input);
+    border-color: var(--border-focus);
+}
+
+/* Light mode for visualization text elements */
+body .heat-percentage {
+    color: var(--text-secondary);
+}
+
+body .achievement-number {
+    color: var(--text-secondary);
+}
+
+/* Light theme for achievement and position heat bars */
+body .achievement-bar {
+    border-color: var(--border-color);
+}
+
+body .position-heat-bar {
+    border-color: var(--border-color);
+}
+
+/* Light theme for expanded achievements */
+body .achievement-bar.achievement-expanded {
+    background: rgba(102, 126, 234, 0.1);
+    border-color: rgba(102, 126, 234, 0.3);
+}
+
+body .expanded-achievement-item {
+    background: var(--bg-card);
+    border-color: var(--border-color);
+}
+
+body .expanded-achievement-item.active-streak-glow {
+    border-color: rgba(16, 185, 129, 0.4);
+    box-shadow: 0 0 10px rgba(16, 185, 129, 0.15);
+}
+
+body .expanded-achievement-bar .achievement-number {
+    color: var(--text-primary);
+}
+
+body .expanded-achievement-bar .achievement-name {
+    color: var(--text-primary);
+}
+
+body .achievement-close-icon {
+    background: var(--hover-bg);
+    color: var(--text-secondary);
+}
+
+body .achievement-close-icon:hover {
+    background: rgba(239, 68, 68, 0.1);
+    color: var(--error-color);
+}
+
+body .expanded-achievement-details {
+    color: var(--text-primary);
+    background: var(--hover-bg);
+    border-left-color: rgba(102, 126, 234, 0.3);
+}
+
+/* Light theme for active streak indicator */
+body .achievement-bar.active-streak::before {
+    background: var(--success-color);
+}
+
+body .achievement-bar.has-data::before {
+    background: var(--text-tertiary);
+}
+
+@keyframes activePulseLight {
+    0%, 100% {
+        box-shadow: 0 0 0 0 rgba(16, 185, 129, 0.4);
+    }
+    50% {
+        box-shadow: 0 0 0 3px rgba(16, 185, 129, 0.15);
+    }
+}
+
+body .achievement-bar.active-streak {
+    animation: activePulseLight 2s ease-in-out infinite;
+}
+
+/* Light theme for achievement toggle buttons */
+body .achievement-toggle-all-btn {
+    background: rgba(245, 158, 11, 0.1);
+    border-color: rgba(245, 158, 11, 0.2);
+    color: var(--warning-color);
+}
+
+body .achievement-toggle-all-btn:hover {
+    background: rgba(245, 158, 11, 0.15);
+    border-color: rgba(245, 158, 11, 0.3);
+}
+
+body .achievement-toggle-active-btn {
+    background: rgba(16, 185, 129, 0.1);
+    border-color: rgba(16, 185, 129, 0.2);
+    color: var(--success-color);
+}
+
+body .achievement-toggle-active-btn:hover {
+    background: rgba(16, 185, 129, 0.15);
+    border-color: rgba(16, 185, 129, 0.3);
+}
+
+/* Light theme for position heat expanded sections */
+body .position-heat-bar.position-heat-expanded {
+    background: rgba(102, 126, 234, 0.1);
+    border-color: rgba(102, 126, 234, 0.3);
+}
+
+body .expanded-position-heat-title {
+    color: var(--text-primary);
+}
+
+body .expanded-position-heat-item {
+    background: var(--bg-card);
+    border-color: var(--border-color);
+}
+
+body .expanded-position-heat-bar .position-heat-count {
+    color: var(--text-primary);
+}
+
+body .expanded-position-heat-bar .position-heat-avg {
+    color: var(--text-primary);
+}
+
+body .position-heat-close-icon {
+    background: var(--hover-bg);
+    color: var(--text-secondary);
+}
+
+body .position-heat-close-icon:hover {
+    background: rgba(239, 68, 68, 0.1);
+    color: var(--error-color);
+}
+
+body .expanded-position-heat-details {
+    color: var(--text-primary);
+    background: var(--hover-bg);
+    border-left-color: rgba(102, 126, 234, 0.3);
+}
+
+body .spot-number {
+    color: var(--text-secondary);
+}
+
+body tr:hover {
+    background: var(--hover-bg);
+}
+
+body input[type="number"],
+body input[type="date"] {
+    background: var(--bg-input);
+    color: var(--text-primary);
+    border-color: var(--border-color);
+}
+
+body input[type="number"]::placeholder,
+body input[type="date"]::placeholder {
+    color: var(--text-muted);
+}
+
+body .names-dropdown,
+body .fixed-names-dropdown {
+    background: var(--bg-dropdown);
+    border-color: var(--border-color);
+    color: var(--text-primary);
+}
+
+body .names-compact-grid input {
+    background: var(--bg-input);
+    color: var(--text-primary);
+    border-color: var(--border-color);
+}
+
+/* Light mode styles for filter and toggle buttons */
+body .filter-btn {
+    background: var(--bg-card);
+    color: var(--text-primary);
+    border: 1px solid var(--border-color);
+}
+
+body .filter-btn:hover {
+    background: var(--btn-primary-bg);
+    color: var(--text-white);
+}
+
+body .filter-btn.active {
+    background: var(--btn-primary-bg);
+    color: var(--text-white);
+}
+
+body .toggle-btn {
+    background: var(--bg-card);
+    color: var(--text-primary);
+    border: 1px solid var(--border-color);
+}
+
+body .toggle-btn:hover {
+    background: var(--btn-primary-bg);
+    color: var(--text-white);
+}
+
+body .toggle-btn.active {
+    background: var(--btn-primary-bg);
+    color: var(--text-white);
+}
+
+/* Light mode styles for visualization guide */
+body .bars-legend {
+    background: var(--bg-card);
+    color: var(--text-primary);
+}
+
+body .bars-legend h3 {
+    color: var(--text-primary);
+}
+
+body .legend-item {
+    background: var(--bg-sidebar);
+    color: var(--text-primary);
+}
+
+body .legend-text {
+    color: var(--text-primary);
+}
+
+body .legend-text strong {
+    color: var(--text-primary);
+}
+
+body .legend-text small {
+    color: var(--text-muted);
+}
+
+body .achievement-details h4 {
+    color: var(--text-primary);
+}
+
+body .achievement-info strong {
+    color: var(--text-primary);
+}
+
+body .achievement-info small {
+    color: var(--text-muted);
+}
+
+body .achievement-expanded-item {
+    background: var(--bg-sidebar);
+    color: var(--text-primary);
+}
+
+/* Light mode for position heat bars */
+body .heat-label {
+    color: var(--text-primary);
+}
+
+body .spot-number {
+    color: var(--text-primary);
+}
+
+/* Light mode for all headings */
+body h1 {
+    color: var(--text-primary);
+}
+
+body h2 {
+    color: var(--text-primary);
+}
+
+body h3 {
+    color: var(--text-primary);
+}
+
+body h4 {
+    color: var(--text-primary);
+}
+
+body label {
+    color: var(--text-primary);
+}
+
+/* Light Mode Explicit Class Styles */
+body.light-mode {
+    background: var(--bg-gradient);
+    color: var(--text-primary);
+}
+
+body.light-mode .container {
+    background: var(--bg-container);
+    color: var(--text-primary);
+}
+
+body.light-mode .sidebar {
+    background: var(--bg-sidebar);
+}
+
+body.light-mode .sidebar::-webkit-scrollbar-track {
+    background: var(--scrollbar-track);
+}
+
+body.light-mode .sidebar::-webkit-scrollbar-thumb {
+    background: var(--scrollbar-thumb);
+}
+
+body.light-mode .sidebar {
+    scrollbar-color: #667eea var(--scrollbar-track);
+}
+
+body.light-mode .sidebar-icon-picker {
+    background: var(--bg-card);
+    border-color: var(--border-color);
+}
+
+body.light-mode .sidebar-icon-picker::-webkit-scrollbar-track {
+    background: var(--scrollbar-track);
+}
+
+body.light-mode .sidebar-icon-picker::-webkit-scrollbar-thumb {
+    background: var(--scrollbar-thumb);
+}
+
+body.light-mode .sidebar-icon-picker {
+    scrollbar-color: #667eea var(--scrollbar-track);
+}
+
+body.light-mode .filter-btn {
+    background: var(--bg-card);
+    color: var(--text-primary);
+    border-color: var(--border-color);
+}
+
+body.light-mode .filter-btn:hover {
+    background: var(--btn-primary-bg);
+    color: var(--text-white);
+}
+
+body.light-mode .filter-btn.active {
+    background: var(--btn-primary-bg);
+    color: var(--text-white);
+}
+
+body.light-mode .toggle-btn {
+    background: var(--bg-card);
+    color: var(--text-primary);
+    border-color: var(--border-color);
+}
+
+body.light-mode .toggle-btn:hover {
+    background: var(--btn-primary-bg);
+    color: var(--text-white);
+}
+
+body.light-mode .toggle-btn.active {
+    background: var(--btn-primary-bg);
+    color: var(--text-white);
+}
+
+/* Ensure light mode overrides for all key elements */
+body.light-mode input[type="number"],
+body.light-mode input[type="date"] {
+    background: var(--bg-input);
+    color: var(--text-primary);
+    border-color: var(--border-color);
+}
+
+body.light-mode .stepper-btn {
+    background: var(--btn-primary-bg);
+    color: var(--text-white);
+}
+
+body.light-mode .stepper-btn:hover {
+    background: var(--btn-primary-hover);
+}
+
 /* Dark Theme Styles */
 body.dark-theme {
     background: linear-gradient(135deg, #1a202c 0%, #2d3748 100%);

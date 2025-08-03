@@ -56,8 +56,8 @@ body.sidebar-open {
     left: 0;
     width: 280px;
     height: 100vh;
-    background: #f5f6f7;
-    box-shadow: 2px 0 10px rgba(0, 0, 0, 0.1);
+    background: var(--bg-sidebar);
+    box-shadow: var(--shadow-lg);
     transform: translateX(-100%);
     transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1);
     overflow-y: auto;
@@ -71,21 +71,21 @@ body.sidebar-open {
     flex-direction: column;
 }
 
-/* Pretty scrollbar for sidebar - matching Analysis section */
+/* Pretty scrollbar for sidebar */
 .sidebar::-webkit-scrollbar {
     width: 8px;
 }
 
 .sidebar::-webkit-scrollbar-track {
-    background: rgba(0, 0, 0, 0.05);
+    background: var(--scrollbar-track);
     border-radius: 4px;
     margin: 4px 0;
 }
 
 .sidebar::-webkit-scrollbar-thumb {
-    background: linear-gradient(180deg, #667eea 0%, #764ba2 100%);
+    background: var(--scrollbar-thumb);
     border-radius: 4px;
-    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+    box-shadow: var(--shadow-sm);
     transition: all 0.3s ease;
 }
 
@@ -94,7 +94,7 @@ body.sidebar-open {
 /* Firefox scrollbar */
 .sidebar {
     scrollbar-width: thin;
-    scrollbar-color: #667eea rgba(0, 0, 0, 0.05);
+    scrollbar-color: #667eea var(--scrollbar-track);
 }
 
 /* Dark theme scrollbar */
@@ -219,7 +219,7 @@ body.dark-theme .sidebar-header-clear:hover:not(:disabled) {
 }
 
 .sidebar-close-btn:focus {
-    outline: 2px solid var(--primary-color);
+    outline: 2px solid var(--border-focus);
     outline-offset: 2px;
 }
 
@@ -248,7 +248,7 @@ body.dark-theme .sidebar-header-clear:hover:not(:disabled) {
     top: 20px;
     left: 20px;
     background: var(--primary-gradient);
-    color: white;
+    color: var(--text-white);
     border: none;
     border-radius: 8px;
     padding: 12px;
@@ -268,7 +268,7 @@ body.dark-theme .sidebar-header-clear:hover:not(:disabled) {
 }
 
 .sidebar-toggle:focus {
-    outline: 2px solid var(--primary-color);
+    outline: 2px solid var(--border-focus);
     outline-offset: 2px;
 }
 
@@ -1409,22 +1409,22 @@ body.dark-theme .sidebar-player-settings-btn.active {
 }
 
 .sidebar-icon-picker::-webkit-scrollbar-track {
-    background: rgba(0, 0, 0, 0.05);
+    background: var(--scrollbar-track);
     border-radius: 3px;
     margin: 3px 0;
 }
 
 .sidebar-icon-picker::-webkit-scrollbar-thumb {
-    background: linear-gradient(180deg, #667eea 0%, #764ba2 100%);
+    background: var(--scrollbar-thumb);
     border-radius: 3px;
-    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+    box-shadow: var(--shadow-sm);
     transition: all 0.3s ease;
 }
 
 /* Firefox scrollbar for icon picker */
 .sidebar-icon-picker {
     scrollbar-width: thin;
-    scrollbar-color: #667eea rgba(0, 0, 0, 0.05);
+    scrollbar-color: #667eea var(--scrollbar-track);
 }
 
 .sidebar-icon-option {
