@@ -1,8 +1,6 @@
 @import url(font-awesome.min.css);
 @import url("https://fonts.googleapis.com/css?family=Raleway:200,300,400,500,600");
 /* Basic */
-@-ms-viewport {
-  width: device-width; }
 body {
   -ms-overflow-style: scrollbar; }
 
@@ -72,9 +70,6 @@ mark {
   background-color: transparent;
   color: inherit; }
 
-input::-moz-focus-inner {
-  border: 0;
-  padding: 0; }
 
 input, select, textarea {
   -moz-appearance: none;
@@ -416,10 +411,6 @@ select {
   height: 3.25rem;
   padding-right: 3.25rem;
   text-overflow: ellipsis; }
-  select:focus::-ms-value {
-    background-color: transparent; }
-  select::-ms-expand {
-    display: none; }
 
 textarea {
   padding: 0.75rem 1rem; }
@@ -448,7 +439,6 @@ input[type="radio"] {
     position: relative; }
     input[type="checkbox"] + label:before,
     input[type="radio"] + label:before {
-      -moz-osx-font-smoothing: grayscale;
       -webkit-font-smoothing: antialiased;
       font-family: FontAwesome;
       font-style: normal;
@@ -486,8 +476,6 @@ input[type="radio"] + label:before {
 ::-moz-placeholder {
   opacity: 1.0; }
 
-:-ms-input-placeholder {
-  opacity: 1.0; }
 
 label {
   color: #555555; }
@@ -545,8 +533,6 @@ input[type="radio"]:focus + label:before {
 ::-moz-placeholder {
   color: #bbbbbb !important; }
 
-:-ms-input-placeholder {
-  color: #bbbbbb !important; }
 
 /* List */
 ol {
@@ -658,20 +644,16 @@ table.alt tbody tr td {
   display: -webkit-flex;
   display: -ms-flex;
   display: flex;
-  -moz-flex-wrap: wrap;
   -webkit-flex-wrap: wrap;
   -ms-flex-wrap: wrap;
   flex-wrap: wrap;
-  -moz-align-items: -moz-stretch;
   -webkit-align-items: -webkit-stretch;
   -ms-align-items: -ms-stretch;
   align-items: stretch; }
   .highlights > * {
-    -moz-flex-shrink: 1;
     -webkit-flex-shrink: 1;
     -ms-flex-shrink: 1;
     flex-shrink: 1;
-    -moz-flex-grow: 0;
     -webkit-flex-grow: 0;
     -ms-flex-grow: 0;
     flex-grow: 0; }
@@ -695,7 +677,10 @@ table.alt tbody tr td {
     border-radius: 4px;
     height: 100%;
     padding: 3rem;
-    text-align: center; }
+    text-align: center;
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between; }
     .highlights .content .icon {
       font-size: 5rem; }
   .highlights > div > :last-child {
@@ -733,7 +718,10 @@ table.alt tbody tr td {
     .highlights > :nth-child(2n) {
       width: calc(50% + 0rem); }
     .highlights .content {
-      padding: 2rem; } }
+      padding: 2rem;
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between; } }
   @media screen and (max-width: 736px) {
     .highlights > * {
       width: 100%; }
@@ -794,20 +782,16 @@ table.alt tbody tr td {
   display: -webkit-flex;
   display: -ms-flex;
   display: flex;
-  -moz-flex-wrap: wrap;
   -webkit-flex-wrap: wrap;
   -ms-flex-wrap: wrap;
   flex-wrap: wrap;
-  -moz-align-items: -moz-stretch;
   -webkit-align-items: -webkit-stretch;
   -ms-align-items: -ms-stretch;
   align-items: stretch; }
   .testimonials > * {
-    -moz-flex-shrink: 1;
     -webkit-flex-shrink: 1;
     -ms-flex-shrink: 1;
     flex-shrink: 1;
-    -moz-flex-grow: 0;
     -webkit-flex-grow: 0;
     -ms-flex-grow: 0;
     flex-grow: 0; }
@@ -836,7 +820,6 @@ table.alt tbody tr td {
       display: -webkit-flex;
       display: -ms-flex;
       display: flex;
-      -moz-align-items: center;
       -webkit-align-items: center;
       -ms-align-items: center;
       align-items: center; }
@@ -956,13 +939,11 @@ ul.actions {
     padding: 0 0 0 1rem;
     vertical-align: middle; }
   ul.actions.special {
-    -moz-justify-content: center;
     -webkit-justify-content: center;
     -ms-justify-content: center;
     justify-content: center;
     width: calc(100% + 1rem); }
   ul.actions.stacked {
-    -moz-flex-direction: column;
     -webkit-flex-direction: column;
     -ms-flex-direction: column;
     flex-direction: column;
@@ -974,11 +955,9 @@ ul.actions {
   ul.actions.fit {
     width: calc(100% + 1rem); }
     ul.actions.fit li {
-      -moz-flex-grow: 1;
       -webkit-flex-grow: 1;
       -ms-flex-grow: 1;
       flex-grow: 1;
-      -moz-flex-shrink: 1;
       -webkit-flex-shrink: 1;
       -ms-flex-shrink: 1;
       flex-shrink: 1;
@@ -989,18 +968,15 @@ ul.actions {
       width: 100%; }
   @media screen and (max-width: 480px) {
     ul.actions:not(.fixed) {
-      -moz-flex-direction: column;
       -webkit-flex-direction: column;
       -ms-flex-direction: column;
       flex-direction: column;
       margin-left: 0;
       width: 100% !important; }
       ul.actions:not(.fixed) li {
-        -moz-flex-grow: 1;
         -webkit-flex-grow: 1;
         -ms-flex-grow: 1;
         flex-grow: 1;
-        -moz-flex-shrink: 1;
         -webkit-flex-shrink: 1;
         -ms-flex-shrink: 1;
         flex-shrink: 1;
@@ -1715,7 +1691,6 @@ ul.actions {
   border-bottom: none;
   position: relative; }
   .icon:before {
-    -moz-osx-font-smoothing: grayscale;
     -webkit-font-smoothing: antialiased;
     font-family: FontAwesome;
     font-style: normal;
@@ -1792,7 +1767,6 @@ ul.icons {
   -ms-flex-pack: center;
   background-color: #181818;
   color: rgba(255, 255, 255, 0.5);
-  -moz-align-items: center;
   -webkit-align-items: center;
   -ms-align-items: center;
   align-items: center;
@@ -1800,7 +1774,6 @@ ul.icons {
   display: -webkit-flex;
   display: -ms-flex;
   display: flex;
-  -moz-justify-content: center;
   -webkit-justify-content: center;
   -ms-justify-content: center;
   justify-content: center;
@@ -1922,8 +1895,6 @@ ul.icons {
     color: rgba(255, 255, 255, 0.4) !important; }
   #banner ::-moz-placeholder {
     color: rgba(255, 255, 255, 0.4) !important; }
-  #banner :-ms-input-placeholder {
-    color: rgba(255, 255, 255, 0.4) !important; }
   #banner ul.alt li {
     border-top-color: rgba(255, 255, 255, 0.25); }
   #banner table tbody tr {
@@ -2011,7 +1982,6 @@ ul.icons {
     opacity: 0.6;
     position: absolute;
     top: 0;
-    webkit-linear-gradientidth: 100%;
     width: 100%;
     z-index: 1; }
   #banner.small {
@@ -2166,8 +2136,6 @@ ul.icons {
     color: rgba(255, 255, 255, 0.4) !important; }
   #cta ::-moz-placeholder {
     color: rgba(255, 255, 255, 0.4) !important; }
-  #cta :-ms-input-placeholder {
-    color: rgba(255, 255, 255, 0.4) !important; }
   #cta ul.alt li {
     border-top-color: rgba(255, 255, 255, 0.25); }
   #cta table tbody tr {
@@ -2308,8 +2276,6 @@ ul.icons {
     color: rgba(255, 255, 255, 0.4) !important; }
   #footer ::-moz-placeholder {
     color: rgba(255, 255, 255, 0.4) !important; }
-  #footer :-ms-input-placeholder {
-    color: rgba(255, 255, 255, 0.4) !important; }
   #footer ul.alt li {
     border-top-color: rgba(255, 255, 255, 0.25); }
   #footer table tbody tr {
@@ -2372,7 +2338,6 @@ ul.icons {
       padding: 1rem 0 0.25rem 0 ; } }
   @media screen and (max-width: 980px) {
     #footer .content {
-      -moz-flex-wrap: wrap;
       -webkit-flex-wrap: wrap;
       -ms-flex-wrap: wrap;
       flex-wrap: wrap; }
@@ -2411,7 +2376,6 @@ body {
     opacity: 0.05; }
 
 #header {
-  -moz-align-items: center;
   -webkit-align-items: center;
   -ms-align-items: center;
   align-items: center;
@@ -2419,7 +2383,6 @@ body {
   display: -webkit-flex;
   display: -ms-flex;
   display: flex;
-  -moz-justify-content: space-between;
   -webkit-justify-content: space-between;
   -ms-justify-content: space-between;
   justify-content: space-between;
@@ -2452,7 +2415,6 @@ body {
       text-decoration: none;
       -webkit-tap-highlight-color: rgba(0, 0, 0, 0); }
       #header > nav > a[href="#menu"]:before {
-        -moz-osx-font-smoothing: grayscale;
         -webkit-font-smoothing: antialiased;
         font-family: FontAwesome;
         font-style: normal;
@@ -2492,7 +2454,6 @@ body {
   -ms-flex-pack: center;
   background-color: #181818;
   color: rgba(255, 255, 255, 0.5);
-  -moz-align-items: center;
   -webkit-align-items: center;
   -ms-align-items: center;
   align-items: center;
@@ -2500,7 +2461,6 @@ body {
   display: -webkit-flex;
   display: -ms-flex;
   display: flex;
-  -moz-justify-content: center;
   -webkit-justify-content: center;
   -ms-justify-content: center;
   justify-content: center;
@@ -2621,8 +2581,6 @@ body {
   #heading :-moz-placeholder {
     color: rgba(255, 255, 255, 0.4) !important; }
   #heading ::-moz-placeholder {
-    color: rgba(255, 255, 255, 0.4) !important; }
-  #heading :-ms-input-placeholder {
     color: rgba(255, 255, 255, 0.4) !important; }
   #heading ul.alt li {
     border-top-color: rgba(255, 255, 255, 0.25); }
@@ -2799,7 +2757,6 @@ body {
     vertical-align: middle;
     width: 7rem; }
     #menu .close:before {
-      -moz-osx-font-smoothing: grayscale;
       -webkit-font-smoothing: antialiased;
       font-family: FontAwesome;
       font-style: normal;
