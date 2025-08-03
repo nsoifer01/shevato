@@ -19,6 +19,11 @@ body {
     min-height: 100vh;
 }
 
+/* Disable page scrolling when sidebar is open */
+body.sidebar-open {
+    overflow: hidden;
+}
+
 .sidebar-container {
     position: fixed;
     top: 0;
@@ -51,8 +56,8 @@ body {
     left: 0;
     width: 280px;
     height: 100vh;
-    background: #f5f6f7;
-    box-shadow: 2px 0 10px rgba(0, 0, 0, 0.1);
+    background: var(--bg-sidebar);
+    box-shadow: var(--shadow-lg);
     transform: translateX(-100%);
     transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1);
     overflow-y: auto;
@@ -66,21 +71,21 @@ body {
     flex-direction: column;
 }
 
-/* Pretty scrollbar for sidebar - matching Analysis section */
+/* Pretty scrollbar for sidebar */
 .sidebar::-webkit-scrollbar {
     width: 8px;
 }
 
 .sidebar::-webkit-scrollbar-track {
-    background: rgba(0, 0, 0, 0.05);
+    background: var(--scrollbar-track);
     border-radius: 4px;
     margin: 4px 0;
 }
 
 .sidebar::-webkit-scrollbar-thumb {
-    background: linear-gradient(180deg, #667eea 0%, #764ba2 100%);
+    background: var(--scrollbar-thumb);
     border-radius: 4px;
-    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+    box-shadow: var(--shadow-sm);
     transition: all 0.3s ease;
 }
 
@@ -89,7 +94,7 @@ body {
 /* Firefox scrollbar */
 .sidebar {
     scrollbar-width: thin;
-    scrollbar-color: #667eea rgba(0, 0, 0, 0.05);
+    scrollbar-color: #667eea var(--scrollbar-track);
 }
 
 /* Dark theme scrollbar */
@@ -214,7 +219,7 @@ body.dark-theme .sidebar-header-clear:hover:not(:disabled) {
 }
 
 .sidebar-close-btn:focus {
-    outline: 2px solid var(--primary-color);
+    outline: 2px solid var(--border-focus);
     outline-offset: 2px;
 }
 
@@ -243,33 +248,126 @@ body.dark-theme .sidebar-header-clear:hover:not(:disabled) {
     top: 20px;
     left: 20px;
     background: var(--primary-gradient);
-    color: white;
+    color: var(--text-white);
     border: none;
-    border-radius: 8px;
-    padding: 12px;
+    border-radius: 12px;
+    padding: 14px;
     cursor: pointer;
-    box-shadow: var(--shadow-md);
-    transition: all 0.3s ease;
+    box-shadow: 0 4px 20px rgba(102, 126, 234, 0.3);
+    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
     z-index: 999;
     display: flex;
     align-items: center;
     justify-content: center;
+    width: 48px;
+    height: 48px;
+    backdrop-filter: blur(10px);
+    border: 1px solid rgba(255, 255, 255, 0.1);
 }
 
-
 .sidebar-toggle:hover {
-    transform: translateY(-2px);
-    box-shadow: var(--shadow-lg);
+    transform: translateY(-3px) scale(1.05);
+    box-shadow: 0 8px 30px rgba(102, 126, 234, 0.4);
+    background: linear-gradient(135deg, #5a67d8 0%, #6b46c1 100%);
+}
+
+.sidebar-toggle:active {
+    transform: translateY(-1px) scale(1.02);
+    transition: all 0.1s ease;
 }
 
 .sidebar-toggle:focus {
-    outline: 2px solid var(--primary-color);
-    outline-offset: 2px;
+    outline: none;
+    box-shadow: 0 4px 20px rgba(102, 126, 234, 0.3), 0 0 0 3px rgba(102, 126, 234, 0.2);
 }
 
 .sidebar-toggle svg {
-    width: 24px;
-    height: 24px;
+    width: 20px;
+    height: 20px;
+    transition: transform 0.2s ease;
+}
+
+.sidebar-toggle:hover svg {
+    transform: rotate(-180deg);
+}
+
+/* Responsive design for sidebar toggle */
+@media (max-width: 1024px) {
+    .sidebar-toggle {
+        width: 52px;
+        height: 52px;
+        padding: 16px;
+        top: 16px;
+        left: 16px;
+        border-radius: 14px;
+        box-shadow: 0 6px 25px rgba(102, 126, 234, 0.35);
+    }
+    
+    .sidebar-toggle svg {
+        width: 22px;
+        height: 22px;
+    }
+}
+
+@media (max-width: 768px) {
+    .sidebar-toggle {
+        width: 56px;
+        height: 56px;
+        padding: 18px;
+        top: 12px;
+        left: 12px;
+        border-radius: 16px;
+        box-shadow: 0 8px 30px rgba(102, 126, 234, 0.4);
+    }
+    
+    .sidebar-toggle svg {
+        width: 24px;
+        height: 24px;
+    }
+    
+    .sidebar-toggle:hover {
+        transform: translateY(-2px) scale(1.03);
+    }
+}
+
+@media (max-width: 480px) {
+    .sidebar-toggle {
+        width: 48px;
+        height: 48px;
+        padding: 14px;
+        top: 10px;
+        left: 10px;
+        border-radius: 14px;
+    }
+    
+    .sidebar-toggle svg {
+        width: 20px;
+        height: 20px;
+    }
+}
+
+/* Dark theme enhancements */
+body.dark-theme .sidebar-toggle {
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    border-color: rgba(255, 255, 255, 0.15);
+    box-shadow: 0 4px 20px rgba(102, 126, 234, 0.4);
+}
+
+body.dark-theme .sidebar-toggle:hover {
+    background: linear-gradient(135deg, #5a67d8 0%, #6b46c1 100%);
+    box-shadow: 0 8px 30px rgba(102, 126, 234, 0.5);
+}
+
+/* Light theme enhancements */
+body.light-mode .sidebar-toggle {
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    border-color: rgba(0, 0, 0, 0.1);
+    box-shadow: 0 4px 20px rgba(102, 126, 234, 0.25);
+}
+
+body.light-mode .sidebar-toggle:hover {
+    background: linear-gradient(135deg, #5a67d8 0%, #6b46c1 100%);
+    box-shadow: 0 8px 30px rgba(102, 126, 234, 0.35);
 }
 
 /* Responsive adjustments */
@@ -1379,13 +1477,15 @@ body.dark-theme .sidebar-player-settings-btn.active {
 
 /* Icon Picker Styles */
 .sidebar-icon-picker {
-    position: absolute;
-    background: white;
+    position: fixed;
+    background: #ffffff;
+    background-color: #ffffff;
+    opacity: 1;
     border: 1px solid var(--border-color, #e2e8f0);
     border-radius: 0.5rem;
     padding: 0.5rem;
     box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
-    z-index: 100;
+    z-index: 10000;
     max-height: 200px;
     overflow-y: auto;
 }
@@ -1394,6 +1494,30 @@ body.dark-theme .sidebar-player-settings-btn.active {
     display: grid;
     grid-template-columns: repeat(5, 1fr);
     gap: 0.25rem;
+}
+
+/* Pretty scrollbar for icon picker - matching sidebar style */
+.sidebar-icon-picker::-webkit-scrollbar {
+    width: 6px;
+}
+
+.sidebar-icon-picker::-webkit-scrollbar-track {
+    background: var(--scrollbar-track);
+    border-radius: 3px;
+    margin: 3px 0;
+}
+
+.sidebar-icon-picker::-webkit-scrollbar-thumb {
+    background: var(--scrollbar-thumb);
+    border-radius: 3px;
+    box-shadow: var(--shadow-sm);
+    transition: all 0.3s ease;
+}
+
+/* Firefox scrollbar for icon picker */
+.sidebar-icon-picker {
+    scrollbar-width: thin;
+    scrollbar-color: #667eea var(--scrollbar-track);
 }
 
 .sidebar-icon-option {
@@ -1467,8 +1591,21 @@ body.dark-theme .sidebar-player-status.active {
 }
 
 body.dark-theme .sidebar-icon-picker {
-    background: rgba(45, 55, 72, 0.95);
+    background: #2d3748;
+    background-color: #2d3748;
+    opacity: 1;
     border-color: rgba(74, 85, 104, 0.5);
+    scrollbar-color: #818cf8 rgba(255, 255, 255, 0.05);
+}
+
+/* Dark theme scrollbar for icon picker */
+body.dark-theme .sidebar-icon-picker::-webkit-scrollbar-track {
+    background: rgba(255, 255, 255, 0.05);
+}
+
+body.dark-theme .sidebar-icon-picker::-webkit-scrollbar-thumb {
+    background: linear-gradient(180deg, #818cf8 0%, #a78bfa 100%);
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.3);
 }
 
 body.dark-theme .sidebar-icon-option:hover {

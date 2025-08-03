@@ -116,16 +116,12 @@ function openSidebar(animate = true) {
     sidebar.classList.add('open');
     overlay.classList.add('active');
     
+    // Add class to prevent page scrolling
+    document.body.classList.add('sidebar-open');
+    
     // Hide toggle button
     toggle.style.opacity = '0';
     toggle.style.pointerEvents = 'none';
-    
-    // On mobile, prevent body scroll
-    if (window.innerWidth < 1024) {
-        document.body.style.overflow = 'hidden';
-        document.body.style.position = 'fixed';
-        document.body.style.width = '100%';
-    }
     
     // Save state
     localStorage.setItem('sidebarOpen', 'true');
@@ -153,16 +149,12 @@ function closeSidebar() {
     sidebar.classList.remove('open');
     overlay.classList.remove('active');
     
+    // Remove class to restore page scrolling
+    document.body.classList.remove('sidebar-open');
+    
     // Show toggle button
     toggle.style.opacity = '1';
     toggle.style.pointerEvents = 'auto';
-    
-    // Restore body scroll on mobile
-    if (window.innerWidth < 1024) {
-        document.body.style.overflow = '';
-        document.body.style.position = '';
-        document.body.style.width = '';
-    }
     
     // Save state
     localStorage.setItem('sidebarOpen', 'false');
