@@ -1,0 +1,590 @@
+/* ===================================== */
+/* Help Section - Modern Styling         */
+/* ===================================== */
+
+/* CSS Custom Properties for Help Section */
+:root {
+    /* Help Section Colors */
+    --help-bg: #1a1f2e;
+    --help-card-bg: #232937;
+    --help-card-hover: #2a3342;
+    --help-text-primary: #e2e8f0;
+    --help-text-secondary: #94a3b8;
+    --help-accent: #667eea;
+    --help-accent-light: #818cf8;
+    --help-border: rgba(102, 126, 234, 0.2);
+    --help-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
+    --help-shadow-hover: 0 8px 30px rgba(102, 126, 234, 0.2);
+    
+    /* Help Section Spacing */
+    --help-section-gap: 3rem;
+    --help-card-padding: 2rem;
+    --help-item-gap: 1.5rem;
+    
+    /* Help Section Typography */
+    --help-heading-size: 2rem;
+    --help-subheading-size: 1.5rem;
+    --help-text-size: 1rem;
+    --help-small-size: 0.875rem;
+}
+
+/* Light Theme Overrides */
+body.light-mode {
+    --help-bg: #f8fafc;
+    --help-card-bg: #ffffff;
+    --help-card-hover: #f1f5f9;
+    --help-text-primary: #1e293b;
+    --help-text-secondary: #64748b;
+    --help-accent: #6366f1;
+    --help-accent-light: #818cf8;
+    --help-border: rgba(99, 102, 241, 0.2);
+    --help-shadow: 0 4px 20px rgba(0, 0, 0, 0.08);
+    --help-shadow-hover: 0 8px 30px rgba(99, 102, 241, 0.15);
+}
+
+/* Help Panel Container */
+.help-panel {
+    background: var(--help-bg);
+    border-radius: 16px;
+    overflow: hidden;
+    box-shadow: var(--help-shadow);
+    margin: 2rem 0;
+    animation: fadeIn 0.3s ease-out;
+}
+
+/* Help Content Wrapper */
+.help-content {
+    padding: 2rem;
+    max-width: 1200px;
+    margin: 0 auto;
+}
+
+/* Help Section Styling */
+.help-section {
+    margin-bottom: var(--help-section-gap);
+}
+
+.help-section:last-child {
+    margin-bottom: 0;
+}
+
+/* Help Headings */
+.help-section h4,
+.help-section h3 {
+    color: var(--help-text-primary);
+    font-weight: 700;
+    margin-bottom: 1.5rem;
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    font-size: var(--help-subheading-size);
+    letter-spacing: -0.025em;
+}
+
+.help-section h3 {
+    font-size: var(--help-heading-size);
+    margin-bottom: 2rem;
+}
+
+/* Help Section Paragraphs */
+.help-section > p {
+    color: var(--help-text-secondary);
+    line-height: 1.7;
+    font-size: var(--help-text-size);
+    margin-bottom: 1.5rem;
+    max-width: 80ch;
+}
+
+/* Help Grid Layout */
+.help-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+    gap: 1.5rem;
+    margin-bottom: 2rem;
+}
+
+/* Help Item Cards */
+.help-item {
+    background: var(--help-card-bg);
+    border-radius: 12px;
+    padding: 1.75rem;
+    border: 1px solid var(--help-border);
+    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    display: flex;
+    gap: 1.25rem;
+    align-items: flex-start;
+}
+
+.help-item:hover {
+    background: var(--help-card-hover);
+    transform: translateY(-2px);
+    box-shadow: var(--help-shadow-hover);
+    border-color: var(--help-accent);
+}
+
+/* Help Icons */
+.help-icon {
+    font-size: 2.5rem;
+    flex-shrink: 0;
+    width: 3.5rem;
+    height: 3.5rem;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: linear-gradient(135deg, var(--help-accent), var(--help-accent-light));
+    border-radius: 12px;
+    box-shadow: 0 4px 12px rgba(102, 126, 234, 0.3);
+}
+
+/* Help Text Content */
+.help-text {
+    flex: 1;
+}
+
+.help-text strong {
+    display: block;
+    color: var(--help-text-primary);
+    font-size: 1.125rem;
+    font-weight: 600;
+    margin-bottom: 0.5rem;
+    letter-spacing: -0.015em;
+}
+
+.help-text p {
+    color: var(--help-text-secondary);
+    line-height: 1.6;
+    font-size: var(--help-small-size);
+    margin: 0;
+}
+
+/* Quick Start Guide */
+.help-steps {
+    background: var(--help-card-bg);
+    border-radius: 12px;
+    padding: 2rem;
+    counter-reset: step-counter;
+    list-style: none;
+    margin: 0;
+    border: 1px solid var(--help-border);
+}
+
+.help-steps li {
+    position: relative;
+    padding-left: 3rem;
+    margin-bottom: 1.5rem;
+    color: var(--help-text-secondary);
+    line-height: 1.7;
+    counter-increment: step-counter;
+}
+
+.help-steps li:last-child {
+    margin-bottom: 0;
+}
+
+.help-steps li::before {
+    content: counter(step-counter);
+    position: absolute;
+    left: 0;
+    top: 0;
+    width: 2rem;
+    height: 2rem;
+    background: var(--help-accent);
+    color: white;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-weight: 700;
+    font-size: 0.875rem;
+    box-shadow: 0 2px 8px rgba(102, 126, 234, 0.3);
+}
+
+.help-steps li strong {
+    color: var(--help-text-primary);
+    font-weight: 600;
+}
+
+/* Visualization Guide */
+.visualization-guide {
+    background: var(--help-card-bg);
+    border-radius: 16px;
+    padding: 2.5rem;
+    border: 1px solid var(--help-border);
+}
+
+.viz-guide-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+    gap: 1.5rem;
+    margin-bottom: 2rem;
+}
+
+/* Visualization Cards */
+.viz-guide-card {
+    background: var(--help-bg);
+    border-radius: 12px;
+    padding: 1.5rem;
+    border: 1px solid var(--help-border);
+    transition: all 0.3s ease;
+}
+
+.viz-guide-card:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 8px 20px rgba(0, 0, 0, 0.1);
+    border-color: var(--help-accent);
+}
+
+.viz-guide-card header {
+    margin-bottom: 1rem;
+}
+
+.viz-guide-card h4 {
+    color: var(--help-text-primary);
+    font-size: 1.125rem;
+    font-weight: 600;
+    margin: 0;
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+}
+
+.viz-guide-card p {
+    color: var(--help-text-secondary);
+    line-height: 1.6;
+    font-size: var(--help-small-size);
+    margin-bottom: 0.75rem;
+}
+
+.viz-guide-card ul {
+    list-style: none;
+    padding: 0;
+    margin: 0;
+}
+
+.viz-guide-card ul li {
+    color: var(--help-text-secondary);
+    font-size: var(--help-small-size);
+    line-height: 1.6;
+    padding-left: 1.25rem;
+    position: relative;
+    margin-bottom: 0.5rem;
+}
+
+.viz-guide-card ul li::before {
+    content: "•";
+    position: absolute;
+    left: 0;
+    color: var(--help-accent);
+    font-weight: bold;
+}
+
+/* Viz Tips */
+.viz-tip {
+    background: linear-gradient(135deg, rgba(102, 126, 234, 0.1), rgba(129, 140, 248, 0.1));
+    border-left: 3px solid var(--help-accent);
+    border-radius: 6px;
+    padding: 0.75rem 1rem;
+    margin-top: 1rem;
+    font-size: var(--help-small-size);
+    color: var(--help-text-secondary);
+}
+
+/* Color Legend */
+.viz-color-legend {
+    background: var(--help-bg);
+    border-radius: 12px;
+    padding: 1.5rem;
+    border: 1px solid var(--help-border);
+}
+
+.viz-color-legend h4 {
+    color: var(--help-text-primary);
+    font-size: 1.125rem;
+    font-weight: 600;
+    margin-bottom: 1rem;
+}
+
+.color-legend-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+    gap: 0.75rem;
+}
+
+.color-item {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+}
+
+.color-box {
+    width: 24px;
+    height: 24px;
+    border-radius: 6px;
+    flex-shrink: 0;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+}
+
+.color-box.best {
+    background: #10b981;
+}
+
+.color-box.second {
+    background: #fbbf24;
+}
+
+.color-box.worst {
+    background: #ef4444;
+}
+
+.color-box.middle {
+    background: #e5e7eb;
+}
+
+.color-item span:not(.color-box) {
+    color: var(--help-text-secondary);
+    font-size: var(--help-small-size);
+}
+
+/* Help Features List */
+.help-features {
+    list-style: none;
+    padding: 0;
+    margin: 0;
+}
+
+.help-features li {
+    position: relative;
+    padding-left: 2rem;
+    margin-bottom: 1rem;
+    color: var(--help-text-secondary);
+    line-height: 1.7;
+}
+
+.help-features li::before {
+    content: "✓";
+    position: absolute;
+    left: 0;
+    top: 0.125rem;
+    color: var(--help-accent);
+    font-weight: bold;
+    font-size: 1.125rem;
+}
+
+.help-features li strong {
+    color: var(--help-text-primary);
+    font-weight: 600;
+}
+
+/* Nested Lists */
+.help-features ul {
+    margin-top: 0.5rem;
+    margin-bottom: 0;
+    padding-left: 1rem;
+}
+
+.help-features ul li {
+    padding-left: 1.5rem;
+    margin-bottom: 0.5rem;
+}
+
+.help-features ul li::before {
+    content: "→";
+    font-size: 0.875rem;
+}
+
+/* Disclaimers Section */
+.help-disclaimers .disclaimer-list {
+    background: rgba(239, 68, 68, 0.05);
+    border: 1px solid rgba(239, 68, 68, 0.2);
+    border-radius: 12px;
+    padding: 1.5rem;
+}
+
+body.light-mode .help-disclaimers .disclaimer-list {
+    background: rgba(239, 68, 68, 0.02);
+    border-color: rgba(239, 68, 68, 0.15);
+}
+
+/* Help Footer */
+.help-footer {
+    background: var(--help-card-bg);
+    border-radius: 12px;
+    padding: 2rem;
+    margin-top: 2rem;
+    border: 1px solid var(--help-border);
+}
+
+.help-footer p {
+    color: var(--help-text-primary);
+    font-size: 1.125rem;
+    font-weight: 600;
+    margin-bottom: 1rem;
+}
+
+.help-footer ul {
+    list-style: none;
+    padding: 0;
+    margin: 0;
+    columns: 2;
+    column-gap: 2rem;
+}
+
+.help-footer ul li {
+    position: relative;
+    padding-left: 1.5rem;
+    margin-bottom: 0.75rem;
+    color: var(--help-text-secondary);
+    font-size: var(--help-small-size);
+    line-height: 1.6;
+    break-inside: avoid;
+}
+
+.help-footer ul li::before {
+    content: "💡";
+    position: absolute;
+    left: 0;
+    top: 0.125rem;
+}
+
+/* Responsive Design */
+@media (max-width: 768px) {
+    :root {
+        --help-heading-size: 1.5rem;
+        --help-subheading-size: 1.25rem;
+        --help-card-padding: 1.5rem;
+        --help-section-gap: 2rem;
+    }
+    
+    .help-content {
+        padding: 1.5rem;
+    }
+    
+    .help-grid {
+        grid-template-columns: 1fr;
+        gap: 1rem;
+    }
+    
+    .help-icon {
+        width: 3rem;
+        height: 3rem;
+        font-size: 2rem;
+    }
+    
+    .viz-guide-grid {
+        grid-template-columns: 1fr;
+    }
+    
+    .help-footer ul {
+        columns: 1;
+    }
+    
+    .help-steps {
+        padding: 1.5rem;
+    }
+    
+    .visualization-guide {
+        padding: 1.5rem;
+    }
+}
+
+@media (max-width: 480px) {
+    .help-content {
+        padding: 1rem;
+    }
+    
+    .help-item {
+        padding: 1.25rem;
+    }
+    
+    .help-section h4,
+    .help-section h3 {
+        font-size: 1.125rem;
+    }
+    
+    .help-steps li {
+        padding-left: 2.5rem;
+    }
+}
+
+/* Technical Details Enhancement */
+.help-technical .technical-list {
+    background: linear-gradient(135deg, rgba(99, 102, 241, 0.05), rgba(129, 140, 248, 0.05));
+    border: 1px solid rgba(99, 102, 241, 0.2);
+    border-radius: 12px;
+    padding: 1.5rem;
+}
+
+body.light-mode .help-technical .technical-list {
+    background: linear-gradient(135deg, rgba(99, 102, 241, 0.02), rgba(129, 140, 248, 0.02));
+    border-color: rgba(99, 102, 241, 0.15);
+}
+
+/* What is this Section Enhancement */
+.help-section:first-child {
+    text-align: center;
+    padding: 2rem;
+    background: linear-gradient(135deg, var(--help-card-bg), transparent);
+    border-radius: 16px;
+    margin-bottom: 3rem;
+}
+
+.help-section:first-child h4 {
+    font-size: 2rem;
+    justify-content: center;
+    margin-bottom: 1rem;
+}
+
+.help-section:first-child p {
+    max-width: 60ch;
+    margin: 0 auto;
+    font-size: 1.125rem;
+}
+
+/* Smooth Scrolling for Help Content */
+.help-content {
+    scroll-behavior: smooth;
+}
+
+/* Enhanced Focus States */
+.help-item:focus-within,
+.viz-guide-card:focus-within {
+    outline: 2px solid var(--help-accent);
+    outline-offset: 2px;
+}
+
+/* Animation */
+@keyframes fadeIn {
+    from {
+        opacity: 0;
+        transform: translateY(10px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+/* Stagger Animation for Grid Items */
+.help-grid .help-item {
+    animation: fadeIn 0.4s ease-out backwards;
+}
+
+.help-grid .help-item:nth-child(1) { animation-delay: 0.1s; }
+.help-grid .help-item:nth-child(2) { animation-delay: 0.2s; }
+.help-grid .help-item:nth-child(3) { animation-delay: 0.3s; }
+.help-grid .help-item:nth-child(4) { animation-delay: 0.4s; }
+.help-grid .help-item:nth-child(5) { animation-delay: 0.5s; }
+.help-grid .help-item:nth-child(6) { animation-delay: 0.6s; }
+
+/* Print Styles */
+@media print {
+    .help-panel {
+        box-shadow: none;
+        border: 1px solid #ddd;
+    }
+    
+    .help-item,
+    .viz-guide-card {
+        break-inside: avoid;
+    }
+}
