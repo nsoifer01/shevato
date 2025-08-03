@@ -7,8 +7,8 @@ Shevato is a modern, responsive web platform built with vanilla JavaScript, HTML
 ## Recent Updates
 
 - **Directory Reorganization**: `includes/` folder renamed to `partials/` for clarity
-- **New Tic-Tac-Toe Game**: Modularized game moved to its own directory under `/extras/tic-tac-toe/`
-- **Extras Landing Page**: Redesigned as a hub for all interactive applications
+- **New Tic-Tac-Toe Game**: Modularized game moved to its own directory under `/apps/tic-tac-toe/`
+- **Apps Landing Page**: Redesigned as a hub for all interactive applications
 - **Consistent Navigation**: All navigation links now use proper `.html` extensions
 - **JavaScript Consolidation**: Root-level JS files moved to `assets/js/`
 
@@ -19,7 +19,7 @@ shevato/
 │
 ├── assets/                    # Static assets and resources
 │   ├── css/                  # Stylesheets
-│   │   ├── extras.css        # Extras page styles (minimal)
+│   │   ├── apps.css          # Apps page styles (minimal)
 │   │   ├── font-awesome.min.css  # Icon library
 │   │   ├── main.css          # Primary stylesheet with dark background
 │   │   └── styles.css        # Component styles
@@ -44,7 +44,7 @@ shevato/
 │       ├── libs/             # SASS libraries
 │       └── main.scss         # Main SASS file
 │
-├── extras/                   # Interactive applications and games
+├── apps/                     # Interactive applications and games
 │   ├── mario-kart/          # Mario Kart race tracker (standalone app)
 │   │   ├── css/             # 19 tracker-specific stylesheets
 │   │   ├── js/              # 28 JavaScript modules
@@ -71,7 +71,7 @@ shevato/
 │
 ├── index.html               # Redirects to home.html
 ├── home.html                # Main landing page
-├── extras.html              # Games and extras hub (uses highlights layout)
+├── apps.html                # Games and apps hub (uses highlights layout)
 ├── product.html             # Product showcase
 ├── moadon-alef.html         # Medical services page (separate branding)
 ├── towerbound.html          # Icy Tower game (standalone)
@@ -82,7 +82,7 @@ shevato/
 
 - **Responsive Design**: Mobile-first approach with breakpoint handling
 - **Dark Theme**: Consistent dark background (`bg.jpg`) across all main pages
-- **Modular Architecture**: Clear separation between main site and extras
+- **Modular Architecture**: Clear separation between main site and apps
 - **Dynamic Content Loading**: Partials system for headers/footers
 - **Interactive Games**: 
   - Tic-Tac-Toe with AI opponent
@@ -92,8 +92,8 @@ shevato/
 
 ## Navigation Structure
 
-- **Main Site**: Home → Product → Extras
-- **Extras Hub**: Lists all available games and applications
+- **Main Site**: Home → Product → Apps
+- **Apps Hub**: Lists all available games and applications
 - **Standalone Apps**: Mario Kart tracker and Towerbound maintain their own UI
 
 ## Technical Details
