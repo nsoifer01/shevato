@@ -1,0 +1,232 @@
+# Project Rules for HTML, CSS, and JavaScript Development
+
+## Core Development Principles
+
+### Code Style and Structure
+- Write clean, semantic HTML5 with proper document structure
+- Use modern CSS with a mobile-first approach
+- Write ES6+ JavaScript with clear variable names and proper error handling
+- Follow consistent indentation (2 spaces) across all files
+- Keep files modular and well-organized
+
+### HTML Guidelines
+- Use semantic HTML elements (header, nav, main, section, article, aside, footer)
+- Include proper meta tags for SEO and responsiveness
+- Add meaningful alt attributes to all images
+- Use proper heading hierarchy (h1-h6)
+- Implement ARIA labels for accessibility when needed
+- Include lang attribute on html element
+
+### CSS Guidelines
+- Use CSS custom properties (variables) for colors, spacing, and typography
+- Implement a consistent spacing system (8px base unit recommended)
+- Use flexbox and CSS Grid for layouts
+- Write mobile-first media queries
+- Follow BEM naming convention for classes when appropriate
+- Avoid using !important unless absolutely necessary
+- Group related properties together
+- Use relative units (rem, em, %) where appropriate
+
+### JavaScript Guidelines
+- Use const by default, let when reassignment needed, avoid var
+- Write pure functions when possible
+- Use async/await for asynchronous operations
+- Implement proper error handling with try/catch blocks
+- Use descriptive variable and function names
+- Comment complex logic
+- Avoid global variables - use modules or IIFE
+- Use event delegation for dynamic content
+- Implement debouncing/throttling for performance-sensitive events
+
+## Project Structure
+project/
+├── index.html
+├── css/
+│   ├── reset.css
+│   ├── variables.css
+│   ├── components/
+│   └── main.css
+├── js/
+│   ├── utils/
+│   ├── components/
+│   └── main.js
+├── assets/
+│   ├── images/
+│   ├── fonts/
+│   └── icons/
+└── README.md
+
+## Best Practices
+
+### Performance
+- Optimize images (use WebP with fallbacks)
+- Minimize HTTP requests
+- Use lazy loading for images below the fold
+- Minify CSS and JavaScript for production
+- Use CSS animations instead of JavaScript when possible
+- Implement proper caching strategies
+
+### Accessibility
+- Ensure keyboard navigation works properly
+- Maintain proper color contrast (WCAG AA minimum)
+- Use focus indicators
+- Test with screen readers
+- Provide skip navigation links
+- Use proper form labels
+
+### Cross-browser Compatibility
+- Test in major browsers (Chrome, Firefox, Safari, Edge)
+- Use CSS prefixes when needed
+- Provide fallbacks for newer CSS features
+- Test on actual devices, not just browser dev tools
+
+### Security
+- Sanitize user inputs
+- Use HTTPS for external resources
+- Implement Content Security Policy headers
+- Avoid eval() and inline JavaScript
+- Validate data on both client and server side
+
+## Development Workflow
+1. Start with HTML structure
+2. Add CSS styling (mobile-first)
+3. Enhance with JavaScript (progressive enhancement)
+4. Test across devices and browsers
+5. Optimize performance
+6. Ensure accessibility compliance
+
+## Code Examples to Follow
+
+### HTML Template
+```html
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="description" content="Page description">
+    <title>Page Title</title>
+    <link rel="stylesheet" href="css/main.css">
+</head>
+<body>
+    <header>
+        <nav aria-label="Main navigation">
+            <!-- Navigation content -->
+        </nav>
+    </header>
+
+    <main>
+        <!-- Main content -->
+    </main>
+
+    <footer>
+        <!-- Footer content -->
+    </footer>
+
+    <script src="js/main.js" defer></script>
+</body>
+</html>
+
+
+CSS Pattern
+/* Custom Properties */
+:root {
+    --color-primary: #007bff;
+    --color-text: #333;
+    --spacing-unit: 8px;
+    --font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+}
+
+/* Base Styles */
+* {
+    box-sizing: border-box;
+}
+
+body {
+    margin: 0;
+    font-family: var(--font-family);
+    color: var(--color-text);
+    line-height: 1.6;
+}
+
+/* Component Example */
+.card {
+    padding: calc(var(--spacing-unit) * 2);
+    border-radius: calc(var(--spacing-unit) / 2);
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+}
+
+/* Responsive */
+@media (min-width: 768px) {
+    .card {
+        padding: calc(var(--spacing-unit) * 3);
+    }
+}
+
+
+JavaScript Pattern
+// Module pattern
+const App = (() => {
+    'use strict';
+
+    // Private variables
+    const config = {
+        apiUrl: '/api',
+        debounceDelay: 300
+    };
+
+    // Utility functions
+    const debounce = (func, delay) => {
+        let timeoutId;
+        return (...args) => {
+            clearTimeout(timeoutId);
+            timeoutId = setTimeout(() => func.apply(this, args), delay);
+        };
+    };
+
+    // Public methods
+    const init = () => {
+        // Event listeners
+        document.addEventListener('DOMContentLoaded', () => {
+            console.log('App initialized');
+        });
+    };
+
+    return {
+        init
+    };
+})();
+
+// Initialize
+App.init();
+
+
+Common Pitfalls to Avoid
+
+Don't use inline styles or JavaScript
+Avoid using IDs for styling (use classes)
+Don't rely on JavaScript for critical functionality
+Avoid deep nesting in CSS (max 3 levels)
+Don't forget to test without JavaScript enabled
+Avoid using px for font-sizes (use rem)
+Don't ignore console errors and warnings
+
+Testing Checklist
+
+ Valid HTML (W3C Validator)
+ Valid CSS (W3C CSS Validator)
+ No JavaScript errors in console
+ Works without JavaScript
+ Responsive on all screen sizes
+ Accessible (WAVE or axe DevTools)
+ Performance audit (Lighthouse)
+ Cross-browser tested
+ Forms work correctly
+ All links work
+
+ Resources
+
+ MDN Web Docs for reference
+ Can I Use for browser compatibility
+ A11y Project for accessibility
+ Web.dev for best practices

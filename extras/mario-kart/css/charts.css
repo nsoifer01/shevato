@@ -1,115 +1,37 @@
 /* Charts and Analysis Components */
 
-/* CSS Variables for Trends theming */
-:root {
-    --trends-bg-gradient: linear-gradient(135deg, #f8fafc 0%, #e2e8f0 100%);
-    --trends-card-shadow: 0 20px 40px rgba(0, 0, 0, 0.08);
-    --trends-hover-shadow: 0 25px 50px rgba(0, 0, 0, 0.12);
-    --trends-border: rgba(226, 232, 240, 0.8);
-    --trends-accent: #667eea;
-    --trends-accent-light: #7c3aed;
-    --trends-text-primary: #1a202c;
-    --trends-text-secondary: #4a5568;
-    --trends-canvas-bg: rgba(255, 255, 255, 0.5);
-}
-
-/* Modern Chart Container */
-.chart-container {
-    background: var(--trends-bg-gradient);
-    border-radius: 24px;
-    padding: 32px;
+/* Modern Trends Section */
+#trends {
+    padding: 2rem;
+    background-color: #1f2235;
+    border-radius: 12px;
     margin-bottom: 24px;
-    box-shadow: var(--trends-card-shadow);
-    position: relative;
-    min-height: 750px;
-    border: 1px solid var(--trends-border);
-    transition: all 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275);
-    overflow: visible;
 }
 
-/* Add subtle gradient overlay */
-.chart-container::before {
-    content: '';
-    position: absolute;
-    top: 0;
-    left: 0;
-    right: 0;
-    height: 100px;
-    background: linear-gradient(180deg, rgba(102, 126, 234, 0.03) 0%, transparent 100%);
-    pointer-events: none;
-    z-index: 1;
-}
-
-.chart-container:hover {
-    transform: translateY(-4px);
-    box-shadow: var(--trends-hover-shadow);
-    border-color: var(--trends-accent);
-}
-
-/* Modern Chart Title */
-.chart-title {
+#trends h2 {
     font-size: 1.5em;
-    font-weight: 800;
-    color: var(--trends-text-primary);
-    margin-bottom: 28px;
+    font-weight: 600;
+    margin-bottom: 1.5rem;
     text-align: center;
-    letter-spacing: -0.5px;
-    position: relative;
-    z-index: 2;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    gap: 12px;
+    color: #ffffff;
 }
 
-/* Add decorative line under title */
-.chart-title::after {
-    content: '';
-    position: absolute;
-    bottom: -8px;
-    left: 50%;
-    transform: translateX(-50%);
-    width: 60px;
-    height: 3px;
-    background: var(--trends-accent);
-    border-radius: 2px;
-    transition: width 0.3s ease;
-}
-
-.chart-container:hover .chart-title::after {
-    width: 100px;
-}
-
-/* Chart Info Section */
-.chart-info {
-    display: flex;
-    justify-content: center;
-    align-items: center;
-    gap: 16px;
-    margin-top: -8px;
-    margin-bottom: 24px;
-    font-size: 0.875em;
-    color: var(--trends-text-secondary);
-}
-
-.info-item {
-    display: flex;
-    align-items: center;
-    gap: 6px;
-    font-weight: 500;
-}
-
-.info-divider {
-    color: var(--trends-border);
-    font-weight: 300;
-}
-
-/* Trends Section Container */
-.trends-section {
+#trends-chart-container {
+    height: 500px;
     width: 100%;
-    overflow: visible;
     position: relative;
+    background: rgba(255, 255, 255, 0.05);
+    border-radius: 8px;
+    padding: 1.5rem 1.5rem 1.5rem 2rem;
 }
+
+#trendsChart {
+    width: 100% !important;
+    height: 100% !important;
+}
+
+
+
 
 /* Ensure stats display doesn't clip content */
 #stats-display {
@@ -117,193 +39,90 @@
     position: relative;
 }
 
-/* Add loading animation */
-@keyframes chartFadeIn {
-    from {
-        opacity: 0;
-        transform: translateY(20px);
-    }
-    to {
-        opacity: 1;
-        transform: translateY(0);
-    }
+
+
+/* Light theme support for Trends */
+body.light-mode #trends {
+    background-color: #ffffff;
+    border: 1px solid #e2e8f0;
 }
 
-.chart-container {
-    animation: chartFadeIn 0.6s ease-out;
+body.light-mode #trends h2 {
+    color: #1a202c;
 }
 
-/* Chart Legend Enhancement */
-.chart-container .chartjs-legend {
-    margin-top: 20px;
+body.light-mode #trends p {
+    color: #4a5568;
 }
 
-/* Default cursor for chart area */
-.chart-container canvas {
-    cursor: default !important;
-}
-
-/* Only legend items get pointer cursor */
-.chart-container .chartjs-legend li,
-.chart-container ul.chartjs-legend li,
-.chart-container div[role="navigation"] li,
-.chart-container li.chartjs-legend-item {
-    cursor: pointer !important;
-}
-
-/* Interactive states */
-.chart-canvas-wrapper canvas {
-    transition: opacity 0.3s ease;
-}
-
-.chart-canvas-wrapper:hover canvas {
-    opacity: 1;
-}
-
-/* Chart Canvas Wrapper */
-.chart-canvas-wrapper {
-    position: relative;
-    height: auto;
-    min-height: 500px;
-    background: var(--trends-canvas-bg);
-    border-radius: 16px;
-    padding: 16px;
-    backdrop-filter: blur(10px);
-    border: 1px solid rgba(255, 255, 255, 0.6);
-    box-sizing: border-box;
-    overflow: visible;
-    display: flex;
-    flex-direction: column;
-}
-
-/* Chart Scroll Container */
-.chart-scroll-container {
-    width: 100%;
-    height: 100%;
-    overflow-x: auto;
-    overflow-y: hidden;
-    scroll-behavior: smooth;
-    padding-bottom: 16px;
-}
-
-/* Pretty scrollbar for chart */
-.chart-scroll-container::-webkit-scrollbar {
-    height: 8px;
-}
-
-.chart-scroll-container::-webkit-scrollbar-track {
-    background: rgba(0, 0, 0, 0.05);
-    border-radius: 4px;
-    margin: 0 16px;
-}
-
-.chart-scroll-container::-webkit-scrollbar-thumb {
-    background: linear-gradient(90deg, #667eea 0%, #764ba2 100%);
-    border-radius: 4px;
-    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
-    transition: all 0.3s ease;
-}
-
-/* Note: :hover pseudo-class is not supported on scrollbar pseudo-elements in some browsers */
-
-/* Firefox scrollbar */
-.chart-scroll-container {
-    scrollbar-width: thin;
-    scrollbar-color: #667eea rgba(0, 0, 0, 0.05);
-}
-
-/* Update canvas styles */
-#trend-chart {
-    position: relative;
-    z-index: 2;
-    width: 100% !important;
-    height: 100% !important;
-    min-height: 450px;
-    display: block;
-    flex: 1;
-}
-
-/* Force chart container to respect height */
-.chart-container canvas {
-    max-width: 100%;
-    height: 100% !important;
+body.light-mode #trends-chart-container {
+    background: rgba(0, 0, 0, 0.02);
+    border: 1px solid #f1f5f9;
 }
 
 /* Dark theme support for Trends */
-body.dark-theme {
-    --trends-bg-gradient: linear-gradient(135deg, #2d3748 0%, #1a202c 100%);
-    --trends-card-shadow: 0 20px 40px rgba(0, 0, 0, 0.3);
-    --trends-hover-shadow: 0 25px 50px rgba(0, 0, 0, 0.4);
-    --trends-border: rgba(74, 85, 104, 0.6);
-    --trends-accent: #818cf8;
-    --trends-accent-light: #a78bfa;
-    --trends-text-primary: #f7fafc;
-    --trends-text-secondary: #e2e8f0;
-    --trends-canvas-bg: rgba(45, 55, 72, 0.5);
+body.dark-theme #trends {
+    background-color: #2d3748;
 }
 
-body.dark-theme .chart-container::before {
-    background: linear-gradient(180deg, rgba(129, 140, 248, 0.05) 0%, transparent 100%);
+body.dark-theme #trends h2 {
+    color: #f7fafc;
 }
 
-body.dark-theme .chart-canvas-wrapper {
-    background: var(--trends-canvas-bg);
-    border-color: rgba(255, 255, 255, 0.1);
+body.dark-theme #trends p {
+    color: #a0aec0;
 }
 
-/* Dark theme scrollbar */
-body.dark-theme .chart-scroll-container::-webkit-scrollbar-track {
+body.dark-theme #trends-chart-container {
     background: rgba(255, 255, 255, 0.05);
-}
-
-body.dark-theme .chart-scroll-container::-webkit-scrollbar-thumb {
-    background: linear-gradient(90deg, #818cf8 0%, #a78bfa 100%);
-    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.3);
-}
-
-/* Note: :hover pseudo-class is not supported on scrollbar pseudo-elements in some browsers */
-
-body.dark-theme .chart-scroll-container {
-    scrollbar-color: #818cf8 rgba(255, 255, 255, 0.05);
 }
 
 /* Responsive design for Trends */
 @media (max-width: 768px) {
-    .chart-container {
-        padding: 20px;
-        min-height: 650px;
-        border-radius: 16px;
+    #trends {
+        padding: 1.5rem;
     }
     
-    .chart-title {
-        font-size: 1.2em;
-        margin-bottom: 20px;
+    #trends h2 {
+        font-size: 1.25em;
+        margin-bottom: 1rem;
     }
     
-    .chart-canvas-wrapper {
-        padding: 12px;
-        border-radius: 12px;
-        height: auto;
-        min-height: 400px;
+    #trends-chart-container {
+        height: 450px;
+        padding: 0.75rem;
+    }
+}
+
+@media (max-width: 768px) {
+    #trends {
+        padding: 1.5rem;
+    }
+    
+    #trends h2 {
+        font-size: 1.25em;
+        margin-bottom: 1rem;
+    }
+    
+    #trends-chart-container {
+        height: 450px;
+        padding: 0.75rem;
     }
 }
 
 @media (max-width: 480px) {
-    .chart-container {
-        padding: 16px;
-        min-height: 550px;
-        margin-bottom: 16px;
+    #trends {
+        padding: 1rem;
     }
     
-    .chart-title {
+    #trends h2 {
         font-size: 1.1em;
-        margin-bottom: 16px;
+        margin-bottom: 0.75rem;
     }
     
-    .chart-canvas-wrapper {
-        padding: 8px;
-        height: auto;
-        min-height: 350px;
+    #trends-chart-container {
+        height: 400px;
+        padding: 0.5rem;
     }
 }
 
@@ -616,6 +435,21 @@ body.dark-theme .chart-scroll-container {
     transform: scale(1.2);
 }
 
+/* Light theme explicit overrides for Activity */
+body.light-mode {
+    --activity-bg-gradient: linear-gradient(135deg, #f8fafc 0%, #e2e8f0 100%);
+    --activity-card-shadow: 0 20px 40px rgba(0, 0, 0, 0.08);
+    --activity-hover-shadow: 0 25px 50px rgba(0, 0, 0, 0.12);
+    --activity-border: rgba(226, 232, 240, 0.8);
+    --activity-accent: #667eea;
+    --activity-accent-light: #7c3aed;
+    --activity-text-primary: #1a202c;
+    --activity-text-secondary: #4a5568;
+    --activity-chart-bg: rgba(255, 255, 255, 0.7);
+    --activity-bar-track: #f1f5f9;
+    --activity-bar-border: #e2e8f0;
+}
+
 /* Dark theme support for Activity */
 body.dark-theme {
     --activity-bg-gradient: linear-gradient(135deg, #2d3748 0%, #1a202c 100%);
@@ -681,24 +515,47 @@ body.dark-theme .weekly-breakdown-table tbody tr:hover {
     
     .activity-content {
         gap: 16px;
+        overflow-x: visible;
     }
     
-    .weekly-table-container,
+    .weekly-table-container {
+        padding: 12px;
+        border-radius: 12px;
+        width: 100%;
+        overflow-x: auto;
+        -webkit-overflow-scrolling: touch;
+    }
+    
     .activity-chart-wrapper {
         padding: 16px;
         border-radius: 12px;
         width: 100%;
         max-width: 350px;
         height: 350px;
+        margin: 0 auto;
     }
     
     .weekly-breakdown-table {
-        font-size: 0.75rem;
+        font-size: 0.7rem;
+        min-width: 500px;
+        white-space: nowrap;
     }
     
     .weekly-breakdown-table th,
     .weekly-breakdown-table td {
-        padding: 8px !important;
+        padding: 6px 4px !important;
+        min-width: 40px;
+        text-align: center !important;
+    }
+    
+    .weekly-breakdown-table th:first-child,
+    .weekly-breakdown-table td:first-child {
+        min-width: 80px;
+        text-align: left !important;
+        position: sticky;
+        left: 0;
+        background: var(--activity-chart-bg);
+        z-index: 2;
     }
     
     .heatmap-calendar {
@@ -710,7 +567,7 @@ body.dark-theme .weekly-breakdown-table tbody tr:hover {
 @media (max-width: 480px) {
     .activity-container,
     .heatmap-container {
-        padding: 16px;
+        padding: 12px;
         margin-bottom: 16px;
     }
     
@@ -719,7 +576,28 @@ body.dark-theme .weekly-breakdown-table tbody tr:hover {
         margin-bottom: 16px;
     }
     
-    .weekly-table-container,
+    .weekly-table-container {
+        padding: 8px;
+        margin: 0 -4px;
+    }
+    
+    .weekly-breakdown-table {
+        font-size: 0.65rem;
+        min-width: 450px;
+    }
+    
+    .weekly-breakdown-table th,
+    .weekly-breakdown-table td {
+        padding: 4px 2px !important;
+        min-width: 35px;
+    }
+    
+    .weekly-breakdown-table th:first-child,
+    .weekly-breakdown-table td:first-child {
+        min-width: 70px;
+        font-size: 0.6rem;
+    }
+    
     .activity-chart-wrapper {
         padding: 12px;
         width: 100%;

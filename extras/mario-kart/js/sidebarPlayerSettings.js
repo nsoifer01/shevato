@@ -248,18 +248,17 @@
             e.stopPropagation();
         });
         
-        // Position below the clicked element
+        // Position below the clicked element using fixed positioning
         const rect = element.getBoundingClientRect();
-        const containerRect = element.closest('.sidebar-player-item').getBoundingClientRect();
         
-        picker.style.position = 'absolute';
-        picker.style.left = '0';
-        picker.style.top = '100%';
-        picker.style.marginTop = '0.5rem';
-        picker.style.width = '100%';
+        picker.style.position = 'fixed';
+        picker.style.left = rect.left + 'px';
+        picker.style.top = (rect.bottom + 8) + 'px'; // 8px margin below element
+        picker.style.width = Math.max(200, rect.width) + 'px';
+        picker.style.minWidth = '200px';
         
-        element.closest('.sidebar-player-item').style.position = 'relative';
-        element.closest('.sidebar-player-item').appendChild(picker);
+        // Append to document.body to escape sidebar stacking context
+        document.body.appendChild(picker);
         
         activeIconPicker = picker;
         activePickerPlayer = playerKey;
