@@ -1,8 +1,18 @@
-let isDarkTheme = true;
+let isDarkTheme = true; // Default to dark mode
 
 function toggleTheme() {
     isDarkTheme = !isDarkTheme;
-    document.body.classList.toggle('dark-theme', isDarkTheme);
+    
+    // Remove both classes first
+    document.body.classList.remove('dark-theme', 'light-mode');
+    
+    // Add the appropriate class
+    if (isDarkTheme) {
+        document.body.classList.add('dark-theme');
+    } else {
+        document.body.classList.add('light-mode');
+    }
+    
     localStorage.setItem('darkTheme', isDarkTheme);
 
     // Update theme toggle icon
@@ -30,7 +40,7 @@ try {
         document.body.classList.add('dark-theme');
     } else {
         isDarkTheme = false;
-        document.body.classList.remove('dark-theme');
+        document.body.classList.add('light-mode');
     }
     // Note: theme toggle icon will be set in DOMContentLoaded
 } catch (e) {
