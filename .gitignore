@@ -6,3 +6,12 @@
 
 # Ignore temp files
 .*.sw*
+
+# Claude-related files and directories
+.claude/
+claude-*.json
+.claude-cache/
+*.claude.bak
+.claude-config/
+claude-session/
+.claude-history

@@ -97,7 +97,7 @@ mario-kart/
 
 ## 🚀 Getting Started
 
-1. **Access the Tracker**: Navigate to `https://www.shevato.com/extras/mario-kart/tracker.html`
+1. **Access the Tracker**: Navigate to `https://www.shevato.com/apps/mario-kart/tracker.html`
 2. **Set Up Players**: Click the 👤 button to configure player names and icons
 3. **Record a Race**: Enter finishing positions and click "Add Race"
 4. **View Statistics**: Explore different tabs to see various analyses
