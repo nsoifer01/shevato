@@ -18,14 +18,60 @@ document.addEventListener('DOMContentLoaded', () => {
   const winningMessageTextElement = document.querySelector('[data-winning-message-text]');
   const errorMessage = document.getElementById('errorMessage');
   const line = document.getElementById('line');
+  const startSelection = document.getElementById('startSelection');
+  const starterSelection = document.getElementById('starterSelection');
   let circleTurn;
+  let playerStartsFirst = true;
+  let difficulty = 'medium'; // Default difficulty
+  let isOpponentTurn = false; // Flag to prevent player moves during opponent's turn
 
-  startGame();
+  // Don't start the game automatically, wait for player selection
+  // startGame();
 
-  restartButton.addEventListener('click', startGame);
+  restartButton.addEventListener('click', resetToStartSelection);
+
+  // Handle difficulty selection
+  window.selectDifficulty = function(level) {
+    difficulty = level;
+    document.querySelector('.difficulty-options').style.display = 'none';
+    starterSelection.style.display = 'block';
+  }
+
+  // Handle starting player selection
+  window.selectStarter = function(starter) {
+    playerStartsFirst = starter === 'player';
+    startSelection.style.display = 'none';
+    board.style.display = 'grid';
+    document.getElementById('gameControls').style.display = 'block';
+    startGame();
+  }
+
+  // Handle mid-game restart
+  window.confirmRestart = function() {
+    document.getElementById('restartModal').style.display = 'flex';
+  }
+  
+  window.confirmRestartYes = function() {
+    document.getElementById('restartModal').style.display = 'none';
+    resetToStartSelection();
+  }
+  
+  window.confirmRestartNo = function() {
+    document.getElementById('restartModal').style.display = 'none';
+  }
+
+  function resetToStartSelection() {
+    winningMessageElement.classList.remove('show');
+    board.style.display = 'none';
+    document.getElementById('gameControls').style.display = 'none';
+    startSelection.style.display = 'flex';
+    document.querySelector('.difficulty-options').style.display = 'flex';
+    starterSelection.style.display = 'none';
+  }
 
   function startGame() {
-    circleTurn = false;
+    circleTurn = !playerStartsFirst;
+    isOpponentTurn = false; // Reset opponent turn flag
     cellElements.forEach(cell => {
       cell.classList.remove(X_CLASS);
       cell.classList.remove(CIRCLE_CLASS);
@@ -36,9 +82,22 @@ document.addEventListener('DOMContentLoaded', () => {
     winningMessageElement.classList.remove('show');
     errorMessage.style.display = 'none';
     line.style.display = 'none';
+    
+    // If Opponent starts first, make its move
+    if (!playerStartsFirst) {
+      isOpponentTurn = true; // Set flag when opponent starts first
+      setTimeout(() => {
+        bestMove();
+      }, 500);
+    }
   }
 
   function handleClick(e) {
+    // Prevent clicks during opponent's turn
+    if (isOpponentTurn) {
+      return;
+    }
+    
     const cell = e.target;
     const currentClass = circleTurn ? CIRCLE_CLASS : X_CLASS;
     if (cell.classList.contains(X_CLASS) || cell.classList.contains(CIRCLE_CLASS)) {
@@ -57,12 +116,15 @@ document.addEventListener('DOMContentLoaded', () => {
       swapTurns();
       setBoardHoverClass();
       if (circleTurn) {
-        setTimeout(bestMove, 300); // AI makes a move after a short delay
+        isOpponentTurn = true; // Set flag before opponent's move
+        setTimeout(bestMove, 300); // Opponent makes a move after a short delay
       }
     }
   }
 
   function endGame(draw, winningClass) {
+    isOpponentTurn = false; // Reset flag when game ends
+    document.getElementById('gameControls').style.display = 'none'; // Hide restart button when game ends
     if (draw) {
       winningMessageTextElement.innerText = 'Draw!';
       winningMessageTextElement.style.color = 'black';
@@ -131,7 +193,6 @@ document.addEventListener('DOMContentLoaded', () => {
   }
 
   function bestMove() {
-    // For the first move, choose center or corner for optimal play
     const emptyCells = [];
     cellElements.forEach((cell, index) => {
       if (!cell.classList.contains(X_CLASS) && !cell.classList.contains(CIRCLE_CLASS)) {
@@ -141,23 +202,23 @@ document.addEventListener('DOMContentLoaded', () => {
 
     let move;
     
-    // If it's the first move, prefer center
-    if (emptyCells.length === 8) {
-      move = cellElements[4].classList.contains(X_CLASS) ? 0 : 4;
+    if (difficulty === 'easy') {
+      // Easy: 70% random moves, 30% optimal moves
+      if (Math.random() < 0.7) {
+        move = emptyCells[Math.floor(Math.random() * emptyCells.length)];
+      } else {
+        move = getOptimalMove(emptyCells);
+      }
+    } else if (difficulty === 'medium') {
+      // Medium: 30% random moves, 70% optimal moves
+      if (Math.random() < 0.3) {
+        move = emptyCells[Math.floor(Math.random() * emptyCells.length)];
+      } else {
+        move = getOptimalMove(emptyCells);
+      }
     } else {
-      // Use minimax with alpha-beta pruning for other moves
-      let bestScore = -Infinity;
-      const maxDepth = emptyCells.length > 6 ? 4 : 10; // Limit depth for performance
-      
-      emptyCells.forEach(index => {
-        cellElements[index].classList.add(CIRCLE_CLASS);
-        let score = minimax(0, false, -Infinity, Infinity, maxDepth);
-        cellElements[index].classList.remove(CIRCLE_CLASS);
-        if (score > bestScore) {
-          bestScore = score;
-          move = index;
-        }
-      });
+      // Hard: Always optimal moves
+      move = getOptimalMove(emptyCells);
     }
     
     placeMark(cellElements[move], CIRCLE_CLASS);
@@ -169,6 +230,31 @@ document.addEventListener('DOMContentLoaded', () => {
       swapTurns();
       setBoardHoverClass();
     }
+    isOpponentTurn = false; // Reset flag after opponent's move
+  }
+
+  function getOptimalMove(emptyCells) {
+    // If it's the first move, prefer center
+    if (emptyCells.length === 8) {
+      return cellElements[4].classList.contains(X_CLASS) ? 0 : 4;
+    }
+    
+    // Use minimax with alpha-beta pruning for other moves
+    let bestScore = -Infinity;
+    let bestMove = emptyCells[0];
+    const maxDepth = emptyCells.length > 6 ? 4 : 10; // Limit depth for performance
+    
+    emptyCells.forEach(index => {
+      cellElements[index].classList.add(CIRCLE_CLASS);
+      let score = minimax(0, false, -Infinity, Infinity, maxDepth);
+      cellElements[index].classList.remove(CIRCLE_CLASS);
+      if (score > bestScore) {
+        bestScore = score;
+        bestMove = index;
+      }
+    });
+    
+    return bestMove;
   }
 
   function minimax(depth, isMaximizing, alpha, beta, maxDepth) {
