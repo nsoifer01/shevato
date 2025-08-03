@@ -207,7 +207,7 @@
                         <div class="help-icon">💾</div>
                         <div class="help-text">
                             <strong>Auto-Save & Backup</strong>
-                            <p>All data auto-saves to localStorage. Auto-backup every 10 minutes. Export/import JSON files for manual backups. Full undo/redo history.</p>
+                            <p>All data auto-saves to local storage. Auto-backup every 10 minutes. Export/import JSON files for manual backups. Full undo/redo history.</p>
                         </div>
                     </div>
                     
@@ -314,19 +314,19 @@
                         <div class="color-legend-grid" role="list">
                             <div class="color-item" role="listitem">
                                 <span class="color-box best" aria-hidden="true"></span>
-                                <span>Best performance (Green)</span>
+                                <span>Best (Green)</span>
                             </div>
                             <div class="color-item" role="listitem">
                                 <span class="color-box second" aria-hidden="true"></span>
-                                <span>Good performance (Yellow)</span>
+                                <span>Middle (Yellow)</span>
                             </div>
                             <div class="color-item" role="listitem">
                                 <span class="color-box worst" aria-hidden="true"></span>
-                                <span>Needs improvement (Red)</span>
+                                <span>Worst (Red)</span>
                             </div>
                             <div class="color-item" role="listitem">
                                 <span class="color-box middle" aria-hidden="true"></span>
-                                <span>Average/Tied (Gray)</span>
+                                <span>Tied (White)</span>
                             </div>
                         </div>
                     </aside>
@@ -338,66 +338,35 @@
                         <li><strong>Mobile View:</strong> The app is not fully optimized for mobile yet. The Trends chart in particular may not display correctly on smaller screens.</li>
                         <li><strong>Dark Mode Preferred:</strong> The app is designed with dark mode as the primary theme. Light mode is functional but may have minor visual inconsistencies.</li>
                         <li><strong>Player Count:</strong> The app is optimized for 3 players. Using 1, 2, or 4 players may result in some visual spacing issues.</li>
-                        <li><strong>Data Storage:</strong> All data is saved locally in your browser's localStorage. This means:
+                        <li><strong>Data Storage:</strong> All data is saved locally in your browser's local storage. This means:
                             <ul>
                                 <li>Data persists between sessions on the same device/browser</li>
                                 <li>Clearing browser data will delete all race history</li>
                                 <li>Data doesn't sync across devices</li>
-                                <li>Regular backups are recommended using the Export feature</li>
                             </ul>
                         </li>
                         <li><strong>Player Tracking:</strong> Players are saved based on their position slot (e.g., Player 1, Player 2) and not by name. This means that <strong>Player 1's results will always appear in the leftmost position</strong>, even if the name changes later. Player statistics and positions are tied to their assigned number, not their current name label. I intend to improve this in the future, but for now this works for my usage.</li>
                     </ul>
                 </div>
-                
-                <div class="help-section">
-                    <h4>✨ Features</h4>
-                    <ul class="help-features">
-                        <li><strong>Card Layouts:</strong> Clean, modern cards for stats, achievements, and analysis</li>
-                        <li><strong>Smooth Animations:</strong> Hover effects, transitions, and visual feedback</li>
-                        <li><strong>Dark Mode:</strong> Eye-friendly dark theme with automatic chart adaptation (recommended)</li>
-                        <li><strong>Touch Friendly:</strong> Large touch targets for mobile use (though not fully optimized)</li>
-                        <li><strong>Accessibility:</strong> ARIA labels, keyboard navigation, and screen reader support</li>
-                        <li><strong>Auto-save:</strong> All changes are automatically saved to localStorage</li>
-                        <li><strong>Data Portability:</strong> Export/Import JSON files for backup or sharing</li>
-                    </ul>
-                </div>
-                
+
                 <div class="help-section">
                     <h4>🔧 Technical Details</h4>
                     <ul class="help-features">
                         <li><strong>Data Format:</strong> Race data stored as JSON with date, timestamp, and player positions (1-24)</li>
-                        <li><strong>Browser Storage:</strong> Uses localStorage API - typically 5-10MB limit per domain</li>
+                        <li><strong>Browser Storage:</strong> Uses local storage</li>
                         <li><strong>Auto-Backup:</strong> Runs every 10 minutes, includes all races and player configurations</li>
-                        <li><strong>Version Control:</strong> Data format versioning for backward compatibility</li>
                         <li><strong>Validation:</strong> Real-time input validation, duplicate position detection, range checking</li>
-                        <li><strong>Architecture:</strong> Modular JavaScript with 25+ specialized modules</li>
-                        <li><strong>Charts:</strong> Powered by Chart.js for responsive data visualization</li>
                         <li><strong>No Server Required:</strong> Fully client-side application, no internet needed after loading</li>
                     </ul>
                 </div>
                 
-                <div class="help-section">
-                    <h4>⌨️ Keyboard Shortcuts</h4>
-                    <ul class="help-features">
-                        <li><strong>Tab:</strong> Navigate between position input fields</li>
-                        <li><strong>Enter:</strong> Submit race when in position field</li>
-                        <li><strong>Escape:</strong> Close sidebar or modal dialogs</li>
-                        <li><strong>Ctrl/Cmd + Z:</strong> Undo last action</li>
-                        <li><strong>Ctrl/Cmd + Y:</strong> Redo action</li>
-                        <li><strong>Arrow Keys:</strong> Navigate in position picker dropdown</li>
-                    </ul>
-                </div>
-                
                 <div class="help-footer">
-                    <p><strong>💡 Pro Tips:</strong></p>
+                    <p><strong>💡 Tips:</strong></p>
                     <ul>
-                        <li>Use Tab key for rapid position entry across multiple players</li>
                         <li>Click achievement bars to expand and see detailed progress</li>
                         <li>For 2-player games, stats automatically show green (winner) and red (loser)</li>
-                        <li>Click player initials/icons anywhere to customize with emojis</li>
-                        <li>Export your data regularly as backup - localStorage can be cleared by browsers</li>
-                        <li>Use date filters to analyze specific practice sessions or tournaments</li>
+                        <li>Export your data regularly as backup - local storage can be cleared by browsers</li>
+                        <li>Use date filters to analyze specific sessions</li>
                         <li>The "Expand Active" button shows only achievements with current streaks</li>
                         <li>Position picker in sidebar remembers your last selection for faster entry</li>
                         <li>Hold mouse over visualizations for detailed tooltips and counts</li>
