@@ -162,7 +162,60 @@
       display: none;
     }
     
+    /* Redesign header layout - icon above title */
+    .highlights .content header {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      margin-bottom: 1.5rem;
+    }
+    
+    .highlights .content header .icon {
+      display: block;
+      margin-bottom: 1rem;
+      font-size: 4rem !important;
+      color: #0066cc;
+      transition: transform 0.3s ease, color 0.3s ease;
+    }
+    
+    .highlights .content header .icon:hover {
+      transform: scale(1.1);
+      color: #004499;
+    }
+    
+    .highlights .content header h2 {
+      margin: 0;
+      font-family: 'Georgia', 'Times New Roman', serif;
+      font-weight: 600;
+      font-size: 1.4rem;
+      line-height: 1.3;
+      color: #333;
+      text-align: center;
+      letter-spacing: -0.02em;
+      max-width: 100%;
+    }
+    
+    /* Special styling for Russian titles to handle length */
+    .highlights .content header h2[lang="ru"] {
+      font-size: 1.2rem;
+      line-height: 1.25;
+    }
+    
     /* Responsive improvements */
+    @media (max-width: 980px) {
+      .highlights .content header .icon {
+        font-size: 3.5rem !important;
+      }
+      
+      .highlights .content header h2 {
+        font-size: 1.3rem;
+      }
+      
+      .highlights .content header h2[lang="ru"] {
+        font-size: 1.1rem;
+      }
+    }
+    
     @media (max-width: 736px) {
       .brand-title {
         font-size: 2.5rem;
@@ -175,6 +228,25 @@
       .lang-btn {
         padding: 10px 16px;
         font-size: 0.9rem;
+      }
+      
+      .highlights .content header {
+        margin-bottom: 1rem;
+      }
+      
+      .highlights .content header .icon {
+        font-size: 3rem !important;
+        margin-bottom: 0.8rem;
+      }
+      
+      .highlights .content header h2 {
+        font-size: 1.2rem;
+        line-height: 1.2;
+      }
+      
+      .highlights .content header h2[lang="ru"] {
+        font-size: 1rem;
+        line-height: 1.2;
       }
     }
   </style>
