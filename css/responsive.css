@@ -759,14 +759,7 @@ canvas {
         padding: 0.875rem 1rem;
     }
     
-    /* Ensure the sidebar toggle button is visible and accessible */
-    .sidebar-toggle {
-        width: 44px;
-        height: 44px;
-        padding: 10px;
-        top: 1rem;
-        left: 1rem;
-    }
+    /* Sidebar toggle styles are now handled in sidebar.css for better consistency */
     
     /* When sidebar is open on mobile */
     .sidebar.open + .container {
