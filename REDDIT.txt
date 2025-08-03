@@ -1,0 +1,57 @@
+I Made a Mario Kart Race Tracker Because I Couldn't Find a Good One
+
+Hey r/mariokart! (or wherever this gets posted)
+
+I've been playing Mario Kart with friends regularly and wanted a way to track our race results over time. I searched around but couldn't find a decent tracker that had all the features I wanted, so I decided to build my own.
+
+## What it does:
+
+**Basic Features:**
+- Track race results for 2-4 players
+- Record finishing positions (1-24) for each race
+- Automatic stat calculations (win rates, average positions, etc.)
+- Full undo/redo support
+- Date filtering to view specific time periods
+- Export/import data as JSON files
+- Dark/light mode (dark mode works better)
+
+**Cool Analytics:**
+- **Achievement System**: Track streaks and milestones like Win Streaks, Hot Streaks, Perfect Days, and more
+- **Head-to-Head Stats**: See detailed matchup data between any two players
+- **Performance Trends**: Charts showing how you're improving (or not 😅) over time
+- **Activity Heatmap**: Calendar view showing when you race and how well you did
+- **Position Analysis**: See which positions you finish in most often
+
+**UI Features:**
+- Clean, modern card-based design
+- Smooth animations and hover effects
+- Multiple input methods (quick add widget, dropdown, direct entry)
+- Customizable player names and emoji icons
+- Responsive design (though mobile needs work)
+
+## Try it out:
+**https://www.shevato.com/extras/mario-kart/tracker.html**
+
+## Some notes:
+- It saves everything in your browser's localStorage (no accounts needed)
+- Works best on desktop Chrome/Firefox
+- Mobile works but isn't perfect yet (especially the trends chart)
+- Optimized for 3 players but supports 2-4
+- Players are tracked by slot position, not name (explained in the help section)
+
+I've attached some screenshots showing the different views and a sample JSON file if you want to see how the data looks with some races already tracked.
+
+This is still a work in progress and I'm planning to improve it based on how my friends and I use it. Any feedback is appreciated! Let me know if you find it useful or if there are features you'd like to see added.
+
+Happy racing! 🏁
+
+---
+
+**Screenshots attached:**
+1. Main achievements view
+2. Statistics dashboard  
+3. Head-to-head comparison
+4. Performance trends chart
+5. Activity heatmap
+
+**Sample data:** mario_kart_sample.json (attached)
