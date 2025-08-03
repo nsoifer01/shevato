@@ -94,6 +94,22 @@ body.dark-theme #trends-chart-container {
     }
 }
 
+@media (max-width: 768px) {
+    #trends {
+        padding: 1.5rem;
+    }
+    
+    #trends h2 {
+        font-size: 1.25em;
+        margin-bottom: 1rem;
+    }
+    
+    #trends-chart-container {
+        height: 450px;
+        padding: 0.75rem;
+    }
+}
+
 @media (max-width: 480px) {
     #trends {
         padding: 1rem;
