@@ -1384,13 +1384,15 @@ body.dark-theme .sidebar-player-settings-btn.active {
 
 /* Icon Picker Styles */
 .sidebar-icon-picker {
-    position: absolute;
-    background: white;
+    position: fixed;
+    background: #ffffff;
+    background-color: #ffffff;
+    opacity: 1;
     border: 1px solid var(--border-color, #e2e8f0);
     border-radius: 0.5rem;
     padding: 0.5rem;
     box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
-    z-index: 100;
+    z-index: 10000;
     max-height: 200px;
     overflow-y: auto;
 }
@@ -1472,7 +1474,9 @@ body.dark-theme .sidebar-player-status.active {
 }
 
 body.dark-theme .sidebar-icon-picker {
-    background: rgba(45, 55, 72, 0.95);
+    background: #2d3748;
+    background-color: #2d3748;
+    opacity: 1;
     border-color: rgba(74, 85, 104, 0.5);
 }
 
