@@ -1,0 +1,107 @@
+<!DOCTYPE HTML>
+<html lang="en">
+<head>
+  <!-- Google Analytics -->
+  <script async src="https://www.googletagmanager.com/gtag/js?id=UA-140119780-1"></script>
+  <script>
+    window.dataLayer = window.dataLayer || [];
+    function gtag(){dataLayer.push(arguments);}
+    gtag('js', new Date());
+    gtag('config', 'UA-140119780-1');
+  </script>
+  <meta charset="utf-8" />
+  <title>Tic-Tac-Toe - Shevato Games</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=no" />
+  <meta name="description" content="Play Tic-Tac-Toe against an AI opponent. A classic game with a modern twist!" />
+  <meta name="keywords" content="Tic-Tac-Toe, Game, AI, Strategy, Shevato" />
+  <link rel="stylesheet" href="../../assets/css/main.css" />
+  <link rel="stylesheet" href="css/tic-tac-toe.css" />
+  <link rel="icon" type="image/png" href="../../images/white_icon_transparent.png">
+</head>
+<body class="is-preload">
+  <!-- Header -->
+  <header id="header">
+    <a class="logo" href="../../home.html">
+      <img src="../../images/logo-top.png" alt="Shevato Logo">
+    </a>
+    <nav>
+      <a href="#menu">Menu</a>
+    </nav>
+  </header>
+  
+  <nav id="menu">
+    <ul class="links">
+      <li><a href="../../home.html">Home</a></li>
+      <li><a href="../../product.html">Product</a></li>
+      <li><a href="../../extras.html">Extras</a></li>
+    </ul>
+  </nav>
+  
+  <section id="main" class="wrapper">
+    <div class="inner">
+      <div class="content">
+        <header>
+          <h2>Tic-Tac-Toe</h2>
+          <p>Challenge the AI! You play as X, computer plays as O.</p>
+        </header>
+        
+        <div class="tic-tac-toe">
+          <div class="board" id="board">
+            <div class="cell" data-cell></div>
+            <div class="cell" data-cell></div>
+            <div class="cell" data-cell></div>
+            <div class="cell" data-cell></div>
+            <div class="cell" data-cell></div>
+            <div class="cell" data-cell></div>
+            <div class="cell" data-cell></div>
+            <div class="cell" data-cell></div>
+            <div class="cell" data-cell></div>
+            <div id="line" class="line"></div>
+          </div>
+          
+          <div class="winning-message" id="winningMessage">
+            <div data-winning-message-text></div>
+            <button id="restartButton">Play Again</button>
+          </div>
+          
+          <div id="errorMessage" style="display: none;">Pick an empty square!</div>
+        </div>
+      </div>
+    </div>
+  </section>
+  
+  <!-- Footer -->
+  <footer id="footer">
+    <div class="inner">
+      <div class="content">
+        <section>
+          <h4>Contact Us</h4>
+          <ul class="plain">
+            <li><a href="mailto:nikita@shevato.com"><i class="icon fa-envelope">&nbsp;</i>nikita@shevato.com</a></li>
+            <li><a href="tel:+1504-638-3370"><i class="icon fa-phone">&nbsp;</i>+1 (504) 638-3370</a></li>
+            <li><a href="https://www.linkedin.com/in/nikitasoifer/"><i class="icon fa-linkedin">&nbsp;</i>LinkedIn</a></li>
+          </ul>
+        </section>
+      </div>
+      <div class="copyright">
+        &copy; Copyright <span id="year"></span>, Shevato LLC
+      </div>
+    </div>
+  </footer>
+  
+  <!-- Scripts -->
+  <script src="../../assets/js/jquery.min.js"></script>
+  <script src="../../assets/js/browser.min.js"></script>
+  <script src="../../assets/js/breakpoints.min.js"></script>
+  <script src="../../assets/js/util.js"></script>
+  <script src="../../assets/js/main.js"></script>
+  <script src="js/tic-tac-toe.js"></script>
+  
+  <script>
+    (function(){
+      const y = new Date().getFullYear();
+      document.getElementById('year').textContent = y;
+    })();
+  </script>
+</body>
+</html>

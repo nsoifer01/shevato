@@ -12,54 +12,59 @@
   <title>Extras - Shevato</title>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=no" />
-  <meta name="description" content="Extras page with fun and engaging content" />
-  <meta name="keywords" content="Tic-Tac-Toe, Extras, Fun, Game" />
+  <meta name="description" content="Explore games and interactive experiences on Shevato" />
+  <meta name="keywords" content="Games, Extras, Fun, Interactive, Shevato" />
   <link rel="stylesheet" href="assets/css/main.css" />
-  <link rel="stylesheet" href="assets/css/extras.css" />
   <link rel="icon" type="image/png" href="images/white_icon_transparent.png">
+  <style>
+    .content h3 {
+      min-height: 2em; /* Adjust as needed to ensure alignment */
+    }
+    .highlights .content p {
+      min-height: 4em;
+    }
+  </style>
 </head>
 <body class="is-preload">
-  <header id="header">
-    <a class="logo" href="home">
-      <img src="images/logo-top.png" alt="Shevato Logo">
-    </a>
-    <nav>
-      <a href="#menu">Menu</a>
-    </nav>
-  </header>
+  <div data-include="header"></div>
   <nav id="menu">
     <ul class="links">
-      <li><a href="home">Home</a></li>
-      <li><a href="product">Product</a></li>
-      <li><a href="extras">Extras</a></li>
+      <li><a href="home.html">Home</a></li>
+      <li><a href="product.html">Product</a></li>
+      <li><a href="extras.html">Extras</a></li>
     </ul>
   </nav>
-  <section id="main" class="wrapper">
+  <section class="wrapper" style="padding-top:inherit">
     <div class="inner">
-      <div class="content">
-        <header>
-          <h2>Extras</h2>
-          <p>Welcome to the extras section! Here, you can enjoy a classic game of Tic-Tac-Toe. Try your best to win!</p>
-        </header>
-        <div class="tic-tac-toe">
-          <div class="board" id="board">
-            <div class="cell" data-cell></div>
-            <div class="cell" data-cell></div>
-            <div class="cell" data-cell></div>
-            <div class="cell" data-cell></div>
-            <div class="cell" data-cell></div>
-            <div class="cell" data-cell></div>
-            <div class="cell" data-cell></div>
-            <div class="cell" data-cell></div>
-            <div class="cell" data-cell></div>
-            <div id="line" class="line"></div>
+      <header class="special">
+        <h2>Extras</h2>
+        <p>Explore our collection of games and interactive experiences. Take a break and enjoy these fun applications!</p>
+      </header>
+      <div class="highlights">
+        <section>
+          <div class="content">
+            <header>
+              <a href="extras/mario-kart/tracker.html" class="icon fa-gamepad" style="color: #0044cc"></a>
+              <h3>Mario Kart Tracker</h3>
+            </header>
+            <p>Track your Mario Kart races, manage player statistics, and analyze performance with comprehensive charts and achievements.</p>
+            <ul class="actions">
+              <li><a href="extras/mario-kart/tracker.html" class="button">Play Now</a></li>
+            </ul>
           </div>
-          <div class="winning-message" id="winningMessage">
-            <div data-winning-message-text></div>
-            <button id="restartButton">Restart Game</button>
+        </section>
+        <section>
+          <div class="content">
+            <header>
+              <a href="extras/tic-tac-toe/index.html" class="icon fa-th" style="color: #0044cc"></a>
+              <h3>Tic-Tac-Toe</h3>
+            </header>
+            <p>Challenge our AI in this classic strategy game. Can you outsmart the computer and claim victory?</p>
+            <ul class="actions">
+              <li><a href="extras/tic-tac-toe/index.html" class="button">Play Now</a></li>
+            </ul>
           </div>
-          <div id="errorMessage" style="color: red; display: none;">Pick an empty square!</div>
-        </div>
+        </section>
       </div>
     </div>
   </section>
@@ -70,6 +75,5 @@
   <script src="assets/js/breakpoints.min.js"></script>
   <script src="assets/js/util.js"></script>
   <script src="assets/js/main.js"></script>
-  <script src="assets/js/extras.js"></script>
 </body>
 </html>
