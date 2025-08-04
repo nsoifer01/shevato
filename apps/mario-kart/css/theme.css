@@ -215,17 +215,6 @@ body .achievement-bar.active-streak {
 }
 
 /* Light theme for achievement toggle buttons */
-body .achievement-toggle-all-btn {
-    background: rgba(245, 158, 11, 0.1);
-    border-color: rgba(245, 158, 11, 0.2);
-    color: var(--warning-color);
-}
-
-body .achievement-toggle-all-btn:hover {
-    background: rgba(245, 158, 11, 0.15);
-    border-color: rgba(245, 158, 11, 0.3);
-}
-
 body .achievement-toggle-active-btn {
     background: rgba(16, 185, 129, 0.1);
     border-color: rgba(16, 185, 129, 0.2);
@@ -665,17 +654,6 @@ body.dark-theme .achievement-bar.active-streak {
 
 
 /* Dark theme for achievement toggle buttons */
-body.dark-theme .achievement-toggle-all-btn {
-    background: rgba(245, 158, 11, 0.15);
-    border-color: rgba(245, 158, 11, 0.25);
-    color: #f59e0b;
-}
-
-body.dark-theme .achievement-toggle-all-btn:hover {
-    background: rgba(245, 158, 11, 0.2);
-    border-color: rgba(245, 158, 11, 0.35);
-}
-
 body.dark-theme .achievement-toggle-active-btn {
     background: rgba(52, 211, 153, 0.15);
     border-color: rgba(52, 211, 153, 0.25);

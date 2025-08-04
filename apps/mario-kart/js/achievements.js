@@ -92,20 +92,9 @@ function createAchievements() {
         });
         
         if (hasExpandableData) {
-            // Create button container for both buttons
+            // Create button container for active button
             const buttonContainer = document.createElement('div');
             buttonContainer.className = 'achievement-buttons-container';
-            
-            // Create expand/collapse all button
-            const toggleAllButton = document.createElement('div');
-            toggleAllButton.className = 'achievement-toggle-all-btn';
-            toggleAllButton.id = `${player}-toggle-all-achievements`;
-            toggleAllButton.innerHTML = `
-                <span class="toggle-all-text">Expand All</span>
-                <span class="toggle-all-icon">▼</span>
-            `;
-            toggleAllButton.onclick = () => toggleAllAchievements(player);
-            buttonContainer.appendChild(toggleAllButton);
             
             // Check if there are any active streaks before showing active button
             const hasActiveStreaks = Object.keys(ACHIEVEMENTS).some(achievementKey => {
@@ -491,8 +480,7 @@ function toggleAchievementDetails(player, achievementKey) {
         const mainAchievementBar = document.querySelector(`[data-player="${player}"][data-achievement="${achievementKey}"]`).closest('.achievement-bar');
         mainAchievementBar.classList.remove('achievement-expanded');
         
-        // Update button states
-        updateToggleAllButtonState(player);
+        // Update button state
         updateToggleActiveButtonState(player);
     } else {
         // Add to expanded section in correct order
@@ -528,8 +516,7 @@ function toggleAchievementDetails(player, achievementKey) {
         const mainAchievementBar = document.querySelector(`[data-player="${player}"][data-achievement="${achievementKey}"]`).closest('.achievement-bar');
         mainAchievementBar.classList.add('achievement-expanded');
         
-        // Update button states
-        updateToggleAllButtonState(player);
+        // Update button state
         updateToggleActiveButtonState(player);
     }
 }
@@ -567,91 +554,7 @@ function insertExpandedItemInOrder(expandedList, newItem) {
     }
 }
 
-function toggleAllAchievements(player) {
-    const expandedSection = document.getElementById(`${player}-expanded-achievements`);
-    if (!expandedSection) return;
-    const expandedList = expandedSection.querySelector('.expanded-achievements-list');
-    const toggleButton = document.getElementById(`${player}-toggle-all-achievements`);
-    const toggleText = toggleButton.querySelector('.toggle-all-text');
-    const toggleIcon = toggleButton.querySelector('.toggle-all-icon');
-    
-    // Get achievements that have data
-    const allAchievements = calculateAchievements(player, getFilteredRaces());
-    const expandableAchievements = Object.keys(ACHIEVEMENTS).filter(achievementKey => {
-        const achievementData = allAchievements[achievementKey];
-        return achievementData && achievementData.current > 0;
-    });
-    
-    const expandedCount = expandedList.children.length;
-    
-    if (expandedCount === 0) {
-        // Expand all achievements that have data
-        expandableAchievements.forEach(achievementKey => {
-            const existingExpanded = document.getElementById(`${player}-${achievementKey}-expanded`);
-            if (!existingExpanded) {
-                toggleAchievementDetails(player, achievementKey);
-            }
-        });
-        toggleText.textContent = 'Collapse All';
-        toggleIcon.textContent = '▲';
-    } else {
-        // Collapse all achievements (if any are expanded, collapse them all)
-        Object.keys(ACHIEVEMENTS).forEach(achievementKey => {
-            const existingExpanded = document.getElementById(`${player}-${achievementKey}-expanded`);
-            if (existingExpanded) {
-                toggleAchievementDetails(player, achievementKey);
-            }
-        });
-        toggleText.textContent = 'Expand All';
-        toggleIcon.textContent = '▼';
-    }
-    
-    // Update button state after a short delay to ensure DOM updates
-    setTimeout(() => updateToggleAllButtonState(player), 100);
-}
 
-function updateToggleAllButtonState(player) {
-    const expandedSection = document.getElementById(`${player}-expanded-achievements`);
-    if (!expandedSection) return;
-    
-    const expandedList = expandedSection.querySelector('.expanded-achievements-list');
-    const toggleButton = document.getElementById(`${player}-toggle-all-achievements`);
-    
-    // If button doesn't exist, return early
-    if (!toggleButton || !expandedList) {
-        return;
-    }
-    
-    const toggleText = toggleButton.querySelector('.toggle-all-text');
-    const toggleIcon = toggleButton.querySelector('.toggle-all-icon');
-    
-    // If button elements don't exist, return early
-    if (!toggleText || !toggleIcon) {
-        return;
-    }
-    
-    // Get achievements that have data
-    const allAchievements = calculateAchievements(player, getFilteredRaces());
-    const expandableAchievements = Object.keys(ACHIEVEMENTS).filter(achievementKey => {
-        const achievementData = allAchievements[achievementKey];
-        return achievementData && achievementData.current > 0;
-    });
-    
-    const expandedCount = expandedList.children.length;
-    const expandableCount = expandableAchievements.length;
-    
-    if (expandedCount === 0) {
-        toggleText.textContent = 'Expand All';
-        toggleIcon.textContent = '▼';
-    } else if (expandedCount === expandableCount) {
-        toggleText.textContent = 'Collapse All';
-        toggleIcon.textContent = '▲';
-    } else {
-        // Partial state - show collapse all if any are expanded, since user manually opened some
-        toggleText.textContent = 'Collapse All';
-        toggleIcon.textContent = '▲';
-    }
-}
 
 function toggleActiveStreaks(player) {
     const expandedSection = document.getElementById(`${player}-expanded-achievements`);
@@ -746,13 +649,10 @@ function smartUpdateExpandedAchievements(raceData) {
         const allAchievements = calculateAchievements(player, raceData);
         
         // Determine current button states to know what should be auto-expanded
-        const toggleAllButton = document.getElementById(`${player}-toggle-all-achievements`);
         const toggleActiveButton = document.getElementById(`${player}-toggle-active-achievements`);
         
-        const toggleAllText = toggleAllButton && toggleAllButton.querySelector('.toggle-all-text');
         const toggleActiveText = toggleActiveButton && toggleActiveButton.querySelector('.toggle-active-text');
         
-        const isExpandAllActive = toggleAllText && toggleAllText.textContent === 'Collapse All';
         const isExpandActiveActive = toggleActiveText && toggleActiveText.textContent === 'Collapse Active';
         
         // Check each achievement to update or auto-expand
@@ -784,7 +684,7 @@ function smartUpdateExpandedAchievements(raceData) {
                 }
             } else if (!existingExpanded && hasData) {
                 // Auto-expand newly available achievements based on button states
-                const shouldAutoExpand = isExpandAllActive || (isExpandActiveActive && hasActiveStreak);
+                const shouldAutoExpand = isExpandActiveActive && hasActiveStreak;
                 
                 if (shouldAutoExpand) {
                     toggleAchievementDetails(player, achievementKey);
@@ -793,7 +693,6 @@ function smartUpdateExpandedAchievements(raceData) {
         });
         
         // Update button states based on current data and expanded state
-        updateToggleAllButtonState(player);
         updateToggleActiveButtonState(player);
     });
 }
@@ -818,17 +717,7 @@ function collapseAllAchievements() {
             });
         }
         
-        // Reset button states
-        const toggleAllButton = document.getElementById(`${player}-toggle-all-achievements`);
-        if (toggleAllButton) {
-            const toggleText = toggleAllButton.querySelector('.toggle-all-text');
-            const toggleIcon = toggleAllButton.querySelector('.toggle-all-icon');
-            if (toggleText && toggleIcon) {
-                toggleText.textContent = 'Expand All';
-                toggleIcon.textContent = '▼';
-            }
-        }
-        
+        // Reset button state
         const toggleActiveButton = document.getElementById(`${player}-toggle-active-achievements`);
         if (toggleStreaksButton) {
             const toggleText = toggleStreaksButton.querySelector('.toggle-streaks-text');
@@ -901,19 +790,6 @@ function updateAchievementButtons(raceData) {
             }
         }
         
-        // Create or update expand/collapse all button
-        let toggleAllButton = document.getElementById(`${player}-toggle-all-achievements`);
-        if (!toggleAllButton) {
-            toggleAllButton = document.createElement('div');
-            toggleAllButton.className = 'achievement-toggle-all-btn';
-            toggleAllButton.id = `${player}-toggle-all-achievements`;
-            toggleAllButton.innerHTML = `
-                <span class="toggle-all-text">Expand All</span>
-                <span class="toggle-all-icon">▼</span>
-            `;
-            toggleAllButton.onclick = () => toggleAllAchievements(player);
-            buttonContainer.appendChild(toggleAllButton);
-        }
         
         // Handle active button
         let toggleActiveButton = document.getElementById(`${player}-toggle-active-achievements`);
@@ -937,7 +813,6 @@ function updateAchievementButtons(raceData) {
         }
         
         // Update button states to reflect current expanded state
-        updateToggleAllButtonState(player);
         updateToggleActiveButtonState(player);
     });
 }
