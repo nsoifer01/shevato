@@ -266,7 +266,7 @@ function createHeatmapView(raceData = null) {
                 
                 if (playerPositions.length > 0) {
                     const avg = playerPositions.reduce((sum, pos) => sum + pos, 0) / playerPositions.length;
-                    playerAverages[player] = avg % 1 === 0 ? avg.toString() : avg.toFixed(1);
+                    playerAverages[player] = formatDecimal(avg);
                 } else {
                     playerAverages[player] = '-';
                 }

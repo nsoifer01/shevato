@@ -88,6 +88,12 @@ function initializeSidebar() {
     // Add keyboard event listeners
     document.addEventListener('keydown', handleSidebarKeyboard);
     
+    // Add click listener to overlay to close sidebar when clicking outside
+    const overlay = document.getElementById('sidebar-overlay');
+    if (overlay) {
+        overlay.addEventListener('click', closeSidebar);
+    }
+    
     // Handle responsive behavior
     handleResponsiveSidebar();
     window.addEventListener('resize', handleResponsiveSidebar);
@@ -125,13 +131,6 @@ function openSidebar(animate = true) {
     
     // Save state
     localStorage.setItem('sidebarOpen', 'true');
-    
-    // Focus management
-    if (animate) {
-        setTimeout(() => {
-            sidebar.querySelector('.sidebar-close-btn').focus();
-        }, 300);
-    }
 }
 
 function closeSidebar() {
@@ -234,3 +233,7 @@ function handleSwipeGesture() {
 
 // Initialize sidebar when DOM is ready
 document.addEventListener('DOMContentLoaded', initializeSidebar);
+
+// Expose functions globally for inline onclick handlers
+window.toggleSidebar = toggleSidebar;
+window.closeSidebar = closeSidebar;
