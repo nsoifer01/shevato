@@ -66,6 +66,9 @@
     align-items: center;
     justify-content: center;
     gap: 12px;
+    width: 100%;
+    margin-left: auto;
+    margin-right: auto;
 }
 
 /* Add decorative line under heading */
