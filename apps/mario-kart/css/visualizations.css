@@ -130,31 +130,6 @@ body.light-mode .achievement-bar.achievement-expanded {
     justify-content: center;
 }
 
-/* Achievement Toggle All Button */
-.achievement-toggle-all-btn {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    gap: 6px;
-    padding: 4px 12px;
-    background: rgba(245, 158, 11, 0.1);
-    border: 1px solid rgba(245, 158, 11, 0.2);
-    border-radius: 12px;
-    font-size: 10px;
-    font-weight: 600;
-    color: #d97706;
-    cursor: pointer;
-    transition: all 0.2s ease;
-    width: fit-content;
-    user-select: none;
-}
-
-.achievement-toggle-all-btn:hover {
-    background: rgba(245, 158, 11, 0.15);
-    border-color: rgba(245, 158, 11, 0.3);
-    transform: translateY(-1px);
-}
-
 /* Achievement Toggle Active Button */
 .achievement-toggle-active-btn {
     display: flex;
@@ -180,13 +155,11 @@ body.light-mode .achievement-bar.achievement-expanded {
     transform: translateY(-1px);
 }
 
-.toggle-all-text,
 .toggle-active-text {
     font-size: 10px;
     font-weight: 600;
 }
 
-.toggle-all-icon,
 .toggle-active-icon {
     font-size: 8px;
     transition: transform 0.2s ease;
