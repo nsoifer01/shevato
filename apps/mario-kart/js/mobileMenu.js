@@ -59,7 +59,7 @@ function mobileRedoAction() {
 }
 
 function mobileToggleTheme() {
-    toggleTheme();
+    // Theme toggle disabled - dark mode only
     updateMobileMenuStates();
 }
 
@@ -107,11 +107,9 @@ function updateMobileMenuStates() {
         }
     }
     
-    // Update theme button icon
+    // Hide theme button - dark mode only
     if (themeBtn) {
-        const isDark = document.body.classList.contains('dark-theme');
-        themeBtn.innerHTML = isDark ? '☀️' : '🌙';
-        themeBtn.title = isDark ? 'Switch to light mode' : 'Switch to dark mode';
+        themeBtn.style.display = 'none';
     }
 }
 

@@ -41,24 +41,6 @@
 
 
 
-/* Light theme support for Trends */
-body.light-mode #trends {
-    background-color: #ffffff;
-    border: 1px solid #e2e8f0;
-}
-
-body.light-mode #trends h2 {
-    color: #1a202c;
-}
-
-body.light-mode #trends p {
-    color: #4a5568;
-}
-
-body.light-mode #trends-chart-container {
-    background: rgba(0, 0, 0, 0.02);
-    border: 1px solid #f1f5f9;
-}
 
 /* Dark theme support for Trends */
 body.dark-theme #trends {
@@ -128,19 +110,19 @@ body.dark-theme #trends-chart-container {
 
 /* Modern Activity Section Styles */
 
-/* CSS Variables for Activity theming */
+/* CSS Variables for Activity theming - Dark Theme Only */
 :root {
-    --activity-bg-gradient: linear-gradient(135deg, #f8fafc 0%, #e2e8f0 100%);
-    --activity-card-shadow: 0 20px 40px rgba(0, 0, 0, 0.08);
-    --activity-hover-shadow: 0 25px 50px rgba(0, 0, 0, 0.12);
-    --activity-border: rgba(226, 232, 240, 0.8);
-    --activity-accent: #667eea;
-    --activity-accent-light: #7c3aed;
-    --activity-text-primary: #1a202c;
-    --activity-text-secondary: #4a5568;
-    --activity-chart-bg: rgba(255, 255, 255, 0.7);
-    --activity-bar-track: #f1f5f9;
-    --activity-bar-border: #e2e8f0;
+    --activity-bg-gradient: linear-gradient(135deg, #2d3748 0%, #1a202c 100%);
+    --activity-card-shadow: 0 20px 40px rgba(0, 0, 0, 0.3);
+    --activity-hover-shadow: 0 25px 50px rgba(0, 0, 0, 0.4);
+    --activity-border: rgba(74, 85, 104, 0.6);
+    --activity-accent: #818cf8;
+    --activity-accent-light: #a78bfa;
+    --activity-text-primary: #f7fafc;
+    --activity-text-secondary: #e2e8f0;
+    --activity-chart-bg: rgba(45, 55, 72, 0.5);
+    --activity-bar-track: #4a5568;
+    --activity-bar-border: #6b7280;
 }
 
 /* Modern Activity Container */
@@ -435,20 +417,6 @@ body.dark-theme #trends-chart-container {
     transform: scale(1.2);
 }
 
-/* Light theme explicit overrides for Activity */
-body.light-mode {
-    --activity-bg-gradient: linear-gradient(135deg, #f8fafc 0%, #e2e8f0 100%);
-    --activity-card-shadow: 0 20px 40px rgba(0, 0, 0, 0.08);
-    --activity-hover-shadow: 0 25px 50px rgba(0, 0, 0, 0.12);
-    --activity-border: rgba(226, 232, 240, 0.8);
-    --activity-accent: #667eea;
-    --activity-accent-light: #7c3aed;
-    --activity-text-primary: #1a202c;
-    --activity-text-secondary: #4a5568;
-    --activity-chart-bg: rgba(255, 255, 255, 0.7);
-    --activity-bar-track: #f1f5f9;
-    --activity-bar-border: #e2e8f0;
-}
 
 /* Dark theme support for Activity */
 body.dark-theme {
@@ -618,19 +586,19 @@ body.dark-theme .weekly-breakdown-table tbody tr:hover {
 
 /* Modern Analysis Section Styles */
 
-/* CSS Variables for Analysis theming */
+/* CSS Variables for Analysis theming - Dark Theme Only */
 :root {
-    --analysis-bg-gradient: linear-gradient(135deg, #f8fafc 0%, #e2e8f0 100%);
-    --analysis-card-shadow: 0 10px 30px rgba(0, 0, 0, 0.08);
-    --analysis-hover-shadow: 0 20px 40px rgba(0, 0, 0, 0.12);
-    --analysis-border: rgba(226, 232, 240, 0.8);
-    --analysis-accent: #667eea;
-    --analysis-success: #10b981;
-    --analysis-danger: #ef4444;
-    --analysis-warning: #f59e0b;
-    --analysis-text-primary: #1a202c;
-    --analysis-text-secondary: #4a5568;
-    --analysis-item-bg: rgba(255, 255, 255, 0.8);
+    --analysis-bg-gradient: linear-gradient(135deg, #2d3748 0%, #1a202c 100%);
+    --analysis-card-shadow: 0 10px 30px rgba(0, 0, 0, 0.3);
+    --analysis-hover-shadow: 0 20px 40px rgba(0, 0, 0, 0.4);
+    --analysis-border: rgba(74, 85, 104, 0.6);
+    --analysis-accent: #818cf8;
+    --analysis-success: #34d399;
+    --analysis-danger: #f87171;
+    --analysis-warning: #fbbf24;
+    --analysis-text-primary: #f7fafc;
+    --analysis-text-secondary: #e2e8f0;
+    --analysis-item-bg: rgba(45, 55, 72, 0.8);
 }
 
 /* Analysis Container Grid */
