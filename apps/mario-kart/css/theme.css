@@ -1,28 +1,28 @@
-/* Light Mode CSS Variables */
+/* Dark Theme Only CSS Variables */
 :root {
     /* Page backgrounds */
-    --bg-page: #ffffff;
-    --bg-gradient: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-    --bg-container: rgba(255, 255, 255, 0.95);
+    --bg-page: #1a202c;
+    --bg-gradient: linear-gradient(135deg, #1a202c 0%, #2d3748 100%);
+    --bg-container: rgba(45, 55, 72, 0.95);
     
     /* Component backgrounds */
-    --bg-sidebar: #f8f9fa;
-    --bg-card: #ffffff;
-    --bg-input: #ffffff;
-    --bg-dropdown: #ffffff;
-    --bg-modal: #ffffff;
+    --bg-sidebar: #1a202c;
+    --bg-card: #2d3748;
+    --bg-input: #4a5568;
+    --bg-dropdown: #2d3748;
+    --bg-modal: #2d3748;
     --bg-tooltip: #1f2937;
     
     /* Text colors */
-    --text-primary: #1a202c;
-    --text-secondary: #4a5568;
+    --text-primary: #e2e8f0;
+    --text-secondary: #a0aec0;
     --text-tertiary: #718096;
-    --text-muted: #a0aec0;
+    --text-muted: #4a5568;
     --text-white: #ffffff;
-    --text-inverse: #ffffff;
+    --text-inverse: #1a202c;
     
     /* Border colors */
-    --border-color: #e2e8f0;
+    --border-color: #4a5568;
     --border-focus: #667eea;
     --border-error: #ef4444;
     --border-success: #10b981;
@@ -40,35 +40,35 @@
     --btn-warning-hover: #d97706;
     
     /* Interactive states */
-    --hover-bg: rgba(0, 0, 0, 0.05);
-    --hover-border: #cbd5e0;
-    --active-bg: rgba(0, 0, 0, 0.1);
+    --hover-bg: rgba(255, 255, 255, 0.05);
+    --hover-border: #6b7280;
+    --active-bg: rgba(255, 255, 255, 0.1);
     --focus-ring: rgba(102, 126, 234, 0.1);
     
     /* Status colors */
-    --success-color: #10b981;
+    --success-color: #34d399;
     --error-color: #ef4444;
     --warning-color: #f59e0b;
     --info-color: #3b82f6;
     
     /* Shadows */
-    --shadow-sm: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
-    --shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
-    --shadow-lg: 0 10px 15px -3px rgba(0, 0, 0, 0.1);
-    --shadow-xl: 0 20px 25px -5px rgba(0, 0, 0, 0.1);
+    --shadow-sm: 0 1px 2px 0 rgba(0, 0, 0, 0.25);
+    --shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.3);
+    --shadow-lg: 0 10px 15px -3px rgba(0, 0, 0, 0.3);
+    --shadow-xl: 0 20px 25px -5px rgba(0, 0, 0, 0.3);
     
     /* Gradients */
     --primary-gradient: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-    --success-gradient: linear-gradient(135deg, #10b981 0%, #059669 100%);
+    --success-gradient: linear-gradient(135deg, #34d399 0%, #059669 100%);
     --danger-gradient: linear-gradient(135deg, #ef4444 0%, #dc2626 100%);
     
     /* Scrollbar colors */
-    --scrollbar-track: rgba(0, 0, 0, 0.05);
+    --scrollbar-track: rgba(255, 255, 255, 0.05);
     --scrollbar-thumb: linear-gradient(180deg, #667eea 0%, #764ba2 100%);
     --scrollbar-thumb-hover: linear-gradient(180deg, #5a67d8 0%, #6b46c1 100%);
 }
 
-/* Light Mode Styles */
+/* Base Dark Theme Styles */
 body {
     background: var(--bg-gradient);
     color: var(--text-primary);
@@ -107,7 +107,7 @@ body #history-heading {
     color: var(--text-primary);
 }
 
-/* Light mode stepper styling */
+/* Stepper styling */
 body .stepper-display {
     background: var(--bg-input);
     color: var(--text-primary);
@@ -115,12 +115,12 @@ body .stepper-display {
 }
 
 body .stepper-btn {
-    background: var(--btn-primary-bg);
-    color: var(--text-white);
+    background: #667eea;
+    color: white;
 }
 
 body .stepper-btn:hover {
-    background: var(--btn-primary-hover);
+    background: #5a67d8;
 }
 
 body .input-field input[type="number"] {
@@ -130,42 +130,50 @@ body .input-field input[type="number"] {
 }
 
 body .input-field input[type="number"]:focus {
-    background: var(--bg-input);
+    background: var(--bg-card);
     border-color: var(--border-focus);
 }
 
-/* Light mode for visualization text elements */
+/* Visualization text elements */
 body .heat-percentage {
-    color: var(--text-secondary);
+    color: var(--text-muted);
+}
+
+body .heat-percentage.no-data {
+    color: var(--text-primary) !important;
 }
 
 body .achievement-number {
-    color: var(--text-secondary);
+    color: var(--text-muted);
 }
 
-/* Light theme for achievement and position heat bars */
+body .achievement-number.no-data {
+    color: var(--text-primary) !important;
+}
+
+/* Achievement and position heat bars */
 body .achievement-bar {
-    border-color: var(--border-color);
+    border-color: rgba(255, 255, 255, 0.1);
 }
 
 body .position-heat-bar {
-    border-color: var(--border-color);
+    border-color: rgba(255, 255, 255, 0.1);
 }
 
-/* Light theme for expanded achievements */
+/* Expanded achievements */
 body .achievement-bar.achievement-expanded {
-    background: rgba(102, 126, 234, 0.1);
-    border-color: rgba(102, 126, 234, 0.3);
+    background: rgba(102, 126, 234, 0.3);
+    border-color: rgba(102, 126, 234, 0.5);
 }
 
 body .expanded-achievement-item {
-    background: var(--bg-card);
-    border-color: var(--border-color);
+    background: rgba(45, 55, 72, 0.8);
+    border-color: rgba(74, 85, 104, 0.5);
 }
 
 body .expanded-achievement-item.active-streak-glow {
-    border-color: rgba(16, 185, 129, 0.4);
-    box-shadow: 0 0 10px rgba(16, 185, 129, 0.15);
+    border-color: rgba(52, 211, 153, 0.4);
+    box-shadow: 0 0 10px rgba(52, 211, 153, 0.25);
 }
 
 body .expanded-achievement-bar .achievement-number {
@@ -173,469 +181,31 @@ body .expanded-achievement-bar .achievement-number {
 }
 
 body .expanded-achievement-bar .achievement-name {
-    color: var(--text-primary);
-}
-
-body .achievement-close-icon {
-    background: var(--hover-bg);
-    color: var(--text-secondary);
-}
-
-body .achievement-close-icon:hover {
-    background: rgba(239, 68, 68, 0.1);
-    color: var(--error-color);
-}
-
-body .expanded-achievement-details {
-    color: var(--text-primary);
-    background: var(--hover-bg);
-    border-left-color: rgba(102, 126, 234, 0.3);
-}
-
-/* Light theme for active streak indicator */
-body .achievement-bar.active-streak::before {
-    background: var(--success-color);
-}
-
-body .achievement-bar.has-data::before {
-    background: var(--text-tertiary);
-}
-
-@keyframes activePulseLight {
-    0%, 100% {
-        box-shadow: 0 0 0 0 rgba(16, 185, 129, 0.4);
-    }
-    50% {
-        box-shadow: 0 0 0 3px rgba(16, 185, 129, 0.15);
-    }
-}
-
-body .achievement-bar.active-streak {
-    animation: activePulseLight 2s ease-in-out infinite;
-}
-
-/* Light theme for achievement toggle buttons */
-body .achievement-toggle-active-btn {
-    background: rgba(16, 185, 129, 0.1);
-    border-color: rgba(16, 185, 129, 0.2);
-    color: var(--success-color);
-}
-
-body .achievement-toggle-active-btn:hover {
-    background: rgba(16, 185, 129, 0.15);
-    border-color: rgba(16, 185, 129, 0.3);
-}
-
-/* Light theme for position heat expanded sections */
-body .position-heat-bar.position-heat-expanded {
-    background: rgba(102, 126, 234, 0.1);
-    border-color: rgba(102, 126, 234, 0.3);
-}
-
-body .expanded-position-heat-title {
-    color: var(--text-primary);
-}
-
-body .expanded-position-heat-item {
-    background: var(--bg-card);
-    border-color: var(--border-color);
-}
-
-body .expanded-position-heat-bar .position-heat-count {
-    color: var(--text-primary);
-}
-
-body .expanded-position-heat-bar .position-heat-avg {
-    color: var(--text-primary);
-}
-
-body .position-heat-close-icon {
-    background: var(--hover-bg);
-    color: var(--text-secondary);
-}
-
-body .position-heat-close-icon:hover {
-    background: rgba(239, 68, 68, 0.1);
-    color: var(--error-color);
-}
-
-body .expanded-position-heat-details {
-    color: var(--text-primary);
-    background: var(--hover-bg);
-    border-left-color: rgba(102, 126, 234, 0.3);
-}
-
-body .spot-number {
-    color: var(--text-secondary);
-}
-
-body tr:hover {
-    background: var(--hover-bg);
-}
-
-body input[type="number"],
-body input[type="date"] {
-    background: var(--bg-input);
-    color: var(--text-primary);
-    border-color: var(--border-color);
-}
-
-body input[type="number"]::placeholder,
-body input[type="date"]::placeholder {
-    color: var(--text-muted);
-}
-
-body .names-dropdown,
-body .fixed-names-dropdown {
-    background: var(--bg-dropdown);
-    border-color: var(--border-color);
-    color: var(--text-primary);
-}
-
-body .names-compact-grid input {
-    background: var(--bg-input);
-    color: var(--text-primary);
-    border-color: var(--border-color);
-}
-
-/* Light mode styles for filter and toggle buttons */
-body .filter-btn {
-    background: var(--bg-card);
-    color: var(--text-primary);
-    border: 1px solid var(--border-color);
-}
-
-body .filter-btn:hover {
-    background: var(--btn-primary-bg);
-    color: var(--text-white);
-}
-
-body .filter-btn.active {
-    background: var(--btn-primary-bg);
-    color: var(--text-white);
-}
-
-body .toggle-btn {
-    background: var(--bg-card);
-    color: var(--text-primary);
-    border: 1px solid var(--border-color);
-}
-
-body .toggle-btn:hover {
-    background: var(--btn-primary-bg);
-    color: var(--text-white);
-}
-
-body .toggle-btn.active {
-    background: var(--btn-primary-bg);
-    color: var(--text-white);
-}
-
-/* Light mode styles for visualization guide */
-body .bars-legend {
-    background: var(--bg-card);
-    color: var(--text-primary);
-}
-
-body .bars-legend h3 {
-    color: var(--text-primary);
-}
-
-body .legend-item {
-    background: var(--bg-sidebar);
-    color: var(--text-primary);
-}
-
-body .legend-text {
-    color: var(--text-primary);
-}
-
-body .legend-text strong {
-    color: var(--text-primary);
-}
-
-body .legend-text small {
-    color: var(--text-muted);
-}
-
-body .achievement-details h4 {
-    color: var(--text-primary);
-}
-
-body .achievement-info strong {
-    color: var(--text-primary);
-}
-
-body .achievement-info small {
-    color: var(--text-muted);
-}
-
-body .achievement-expanded-item {
-    background: var(--bg-sidebar);
-    color: var(--text-primary);
-}
-
-/* Light mode for position heat bars */
-body .heat-label {
-    color: var(--text-primary);
-}
-
-body .spot-number {
-    color: var(--text-primary);
-}
-
-/* Light mode for all headings */
-body h1 {
-    color: var(--text-primary);
-}
-
-body h2 {
-    color: var(--text-primary);
-}
-
-body h3 {
-    color: var(--text-primary);
-}
-
-body h4 {
-    color: var(--text-primary);
-}
-
-body label {
-    color: var(--text-primary);
-}
-
-/* Light Mode Explicit Class Styles */
-body.light-mode {
-    background: var(--bg-gradient);
-    color: var(--text-primary);
-}
-
-body.light-mode .container {
-    background: var(--bg-container);
-    color: var(--text-primary);
-}
-
-body.light-mode .sidebar {
-    background: var(--bg-sidebar);
-}
-
-body.light-mode .sidebar::-webkit-scrollbar-track {
-    background: var(--scrollbar-track);
-}
-
-body.light-mode .sidebar::-webkit-scrollbar-thumb {
-    background: var(--scrollbar-thumb);
-}
-
-body.light-mode .sidebar {
-    scrollbar-color: #667eea var(--scrollbar-track);
-}
-
-body.light-mode .sidebar-icon-picker {
-    background: var(--bg-card);
-    border-color: var(--border-color);
-}
-
-body.light-mode .sidebar-icon-picker::-webkit-scrollbar-track {
-    background: var(--scrollbar-track);
-}
-
-body.light-mode .sidebar-icon-picker::-webkit-scrollbar-thumb {
-    background: var(--scrollbar-thumb);
-}
-
-body.light-mode .sidebar-icon-picker {
-    scrollbar-color: #667eea var(--scrollbar-track);
-}
-
-body.light-mode .filter-btn {
-    background: var(--bg-card);
-    color: var(--text-primary);
-    border-color: var(--border-color);
-}
-
-body.light-mode .filter-btn:hover {
-    background: var(--btn-primary-bg);
-    color: var(--text-white);
-}
-
-body.light-mode .filter-btn.active {
-    background: var(--btn-primary-bg);
-    color: var(--text-white);
-}
-
-body.light-mode .toggle-btn {
-    background: var(--bg-card);
-    color: var(--text-primary);
-    border-color: var(--border-color);
-}
-
-body.light-mode .toggle-btn:hover {
-    background: var(--btn-primary-bg);
-    color: var(--text-white);
-}
-
-body.light-mode .toggle-btn.active {
-    background: var(--btn-primary-bg);
-    color: var(--text-white);
-}
-
-/* Ensure light mode overrides for all key elements */
-body.light-mode input[type="number"],
-body.light-mode input[type="date"] {
-    background: var(--bg-input);
-    color: var(--text-primary);
-    border-color: var(--border-color);
-}
-
-body.light-mode .stepper-btn {
-    background: var(--btn-primary-bg);
-    color: var(--text-white);
-}
-
-body.light-mode .stepper-btn:hover {
-    background: var(--btn-primary-hover);
-}
-
-/* Dark Theme Styles */
-body.dark-theme {
-    background: linear-gradient(135deg, #1a202c 0%, #2d3748 100%);
-    color: #e2e8f0;
-}
-
-body.dark-theme .container {
-    background: rgba(45, 55, 72, 0.95);
-    color: #e2e8f0;
-}
-
-body.dark-theme .input-section {
-    background: #2d3748;
-}
-
-body.dark-theme .stat-card,
-body.dark-theme .race-history,
-body.dark-theme #history-table {
-    background: #2d3748;
-    color: #e2e8f0;
-}
-
-body.dark-theme th,
-body.dark-theme #history-table th {
-    background: #1a202c;
-    color: #e2e8f0;
-}
-
-body.dark-theme td,
-body.dark-theme #history-table td {
-    background: #2d3748;
-    color: #e2e8f0;
-    border-color: #4a5568;
-}
-
-body.dark-theme #history-heading {
-    color: #e2e8f0;
-}
-
-/* Dark mode stepper styling */
-body.dark-theme .stepper-display {
-    background: #4a5568;
-    color: #e2e8f0;
-    border-color: #2d3748;
-}
-
-body.dark-theme .stepper-btn {
-    background: #667eea;
-    color: white;
-}
-
-body.dark-theme .stepper-btn:hover {
-    background: #5a67d8;
-}
-
-body.dark-theme .input-field input[type="number"] {
-    background: #4a5568;
-    color: #e2e8f0;
-    border-color: #2d3748;
-}
-
-body.dark-theme .input-field input[type="number"]:focus {
-    background: #2d3748;
-    border-color: #667eea;
-}
-
-/* Dark mode for visualization text elements - only when no data */
-body.dark-theme .heat-percentage {
-    color: #4a5568;
-}
-
-body.dark-theme .heat-percentage.no-data {
-    color: #e2e8f0 !important;
-}
-
-body.dark-theme .achievement-number {
-    color: #4a5568;
-}
-
-body.dark-theme .achievement-number.no-data {
-    color: #e2e8f0 !important;
-}
-
-/* Dark theme for achievement and position heat bars */
-body.dark-theme .achievement-bar {
-    border-color: rgba(255, 255, 255, 0.1);
-}
-
-body.dark-theme .position-heat-bar {
-    border-color: rgba(255, 255, 255, 0.1);
-}
-
-/* Dark theme for expanded achievements */
-body.dark-theme .achievement-bar.achievement-expanded {
-    background: rgba(102, 126, 234, 0.3);
-    border-color: rgba(102, 126, 234, 0.5);
-}
-
-body.dark-theme .expanded-achievement-item {
-    background: rgba(45, 55, 72, 0.8);
-    border-color: rgba(74, 85, 104, 0.5);
-}
-
-body.dark-theme .expanded-achievement-item.active-streak-glow {
-    border-color: rgba(52, 211, 153, 0.4);
-    box-shadow: 0 0 10px rgba(52, 211, 153, 0.25);
-}
-
-body.dark-theme .expanded-achievement-bar .achievement-number {
-    color: #e2e8f0;
-}
-
-body.dark-theme .expanded-achievement-bar .achievement-name {
     color: #f7fafc;
 }
 
-body.dark-theme .achievement-close-icon {
+body .achievement-close-icon {
     background: rgba(255, 255, 255, 0.1);
-    color: #e2e8f0;
+    color: var(--text-primary);
 }
 
-body.dark-theme .achievement-close-icon:hover {
+body .achievement-close-icon:hover {
     background: rgba(239, 68, 68, 0.3);
     color: #fca5a5;
 }
 
-body.dark-theme .expanded-achievement-details {
-    color: #e2e8f0;
+body .expanded-achievement-details {
+    color: var(--text-primary);
     background: rgba(45, 55, 72, 0.6);
     border-left-color: rgba(102, 126, 234, 0.6);
 }
 
-/* Dark theme for active streak indicator */
-body.dark-theme .achievement-bar.active-streak::before {
+/* Active streak indicator */
+body .achievement-bar.active-streak::before {
     background: #34d399;
 }
 
-body.dark-theme .achievement-bar.has-data::before {
+body .achievement-bar.has-data::before {
     background: rgba(226, 232, 240, 0.7);
 }
 
@@ -648,587 +218,499 @@ body.dark-theme .achievement-bar.has-data::before {
     }
 }
 
-body.dark-theme .achievement-bar.active-streak {
+body .achievement-bar.active-streak {
     animation: activePulseDark 2s ease-in-out infinite;
 }
 
-
-/* Dark theme for achievement toggle buttons */
-body.dark-theme .achievement-toggle-active-btn {
+/* Achievement toggle buttons */
+body .achievement-toggle-active-btn {
     background: rgba(52, 211, 153, 0.15);
     border-color: rgba(52, 211, 153, 0.25);
     color: #34d399;
 }
 
-body.dark-theme .achievement-toggle-active-btn:hover {
+body .achievement-toggle-active-btn:hover {
     background: rgba(52, 211, 153, 0.2);
     border-color: rgba(52, 211, 153, 0.35);
 }
 
-/* Dark theme for position heat expanded sections */
-body.dark-theme .position-heat-bar.position-heat-expanded {
+/* Position heat expanded sections */
+body .position-heat-bar.position-heat-expanded {
     background: rgba(102, 126, 234, 0.3);
     border-color: rgba(102, 126, 234, 0.5);
 }
 
-
-body.dark-theme .expanded-position-heat-title {
-    color: #e2e8f0;
+body .expanded-position-heat-title {
+    color: var(--text-primary);
 }
 
-body.dark-theme .expanded-position-heat-item {
+body .expanded-position-heat-item {
     background: rgba(45, 55, 72, 0.8);
     border-color: rgba(74, 85, 104, 0.5);
 }
 
-body.dark-theme .expanded-position-heat-bar .position-heat-count {
-    color: #e2e8f0;
+body .expanded-position-heat-bar .position-heat-count {
+    color: var(--text-primary);
 }
 
-body.dark-theme .expanded-position-heat-bar .position-heat-avg {
+body .expanded-position-heat-bar .position-heat-avg {
     color: #f7fafc;
 }
 
-body.dark-theme .position-heat-close-icon {
+body .position-heat-close-icon {
     background: rgba(255, 255, 255, 0.1);
-    color: #e2e8f0;
+    color: var(--text-primary);
 }
 
-body.dark-theme .position-heat-close-icon:hover {
+body .position-heat-close-icon:hover {
     background: rgba(239, 68, 68, 0.3);
     color: #fca5a5;
 }
 
-body.dark-theme .expanded-position-heat-details {
-    color: #e2e8f0;
+body .expanded-position-heat-details {
+    color: var(--text-primary);
     background: rgba(45, 55, 72, 0.6);
     border-left-color: rgba(102, 126, 234, 0.6);
 }
 
-
-body.dark-theme .spot-number {
-    color: #4a5568;
+body .spot-number {
+    color: var(--text-muted);
 }
 
-body.dark-theme tr:hover {
+body tr:hover {
     background: #4a5568;
 }
 
-body.dark-theme input[type="number"],
-body.dark-theme input[type="date"] {
-    background: #4a5568;
-    color: #e2e8f0;
+body input[type="number"],
+body input[type="date"] {
+    background: var(--bg-input);
+    color: var(--text-primary);
     border-color: #6b7280;
 }
 
-body.dark-theme input[type="number"]::placeholder,
-body.dark-theme input[type="date"]::placeholder {
+body input[type="number"]::placeholder,
+body input[type="date"]::placeholder {
     color: #cbd5e0 !important;
 }
 
-body.dark-theme .names-dropdown,
-body.dark-theme .fixed-names-dropdown {
-    background: #2d3748;
-    border-color: #4a5568;
-    color: #e2e8f0;
+body .names-dropdown,
+body .fixed-names-dropdown {
+    background: var(--bg-dropdown);
+    border-color: var(--border-color);
+    color: var(--text-primary);
 }
 
-body.dark-theme .names-compact-grid input {
-    background: #4a5568;
-    color: #e2e8f0;
+body .names-compact-grid input {
+    background: var(--bg-input);
+    color: var(--text-primary);
     border-color: #6b7280;
 }
 
-/* Dark mode styles for filter and toggle buttons */
-body.dark-theme .filter-btn {
+/* Filter and toggle buttons */
+body .filter-btn {
     background: #4a5568;
-    color: #e2e8f0;
+    color: var(--text-primary);
     border: 1px solid #6b7280;
 }
 
-body.dark-theme .filter-btn:hover {
+body .filter-btn:hover {
     background: #667eea;
     color: white;
 }
 
-body.dark-theme .filter-btn.active {
+body .filter-btn.active {
     background: #667eea;
     color: white;
 }
 
-body.dark-theme .toggle-btn {
+body .toggle-btn {
     background: #4a5568;
-    color: #e2e8f0;
+    color: var(--text-primary);
     border: 1px solid #6b7280;
 }
 
-body.dark-theme .toggle-btn:hover {
+body .toggle-btn:hover {
     background: #667eea;
     color: white;
 }
 
-body.dark-theme .toggle-btn.active {
+body .toggle-btn.active {
     background: #667eea;
     color: white;
 }
 
-/* Dark mode styles for visualization guide */
-body.dark-theme .bars-legend {
-    background: #2d3748;
-    color: #e2e8f0;
+/* Visualization guide */
+body .bars-legend {
+    background: var(--bg-card);
+    color: var(--text-primary);
 }
 
-body.dark-theme .bars-legend h3 {
-    color: #e2e8f0;
+body .bars-legend h3 {
+    color: var(--text-primary);
 }
 
-body.dark-theme .legend-item {
+body .legend-item {
     background: #4a5568;
-    color: #e2e8f0;
+    color: var(--text-primary);
 }
 
-body.dark-theme .legend-text {
-    color: #e2e8f0;
+body .legend-text {
+    color: var(--text-primary);
 }
 
-body.dark-theme .legend-text strong {
+body .legend-text strong {
     color: #f7fafc;
 }
 
-body.dark-theme .legend-text small {
+body .legend-text small {
     color: #a0aec0 !important;
 }
 
-body.dark-theme .achievement-details h4 {
-    color: #e2e8f0;
+body .achievement-details h4 {
+    color: var(--text-primary);
 }
 
-body.dark-theme .achievement-info strong {
+body .achievement-info strong {
     color: #f7fafc;
 }
 
-body.dark-theme .achievement-info small {
+body .achievement-info small {
     color: #a0aec0;
 }
 
-body.dark-theme .achievement-expanded-item {
+body .achievement-expanded-item {
     background: #4a5568;
-    color: #e2e8f0;
+    color: var(--text-primary);
 }
 
-/* Dark mode for position heat bars */
-body.dark-theme .heat-label {
-    color: #e2e8f0;
+/* Position heat bars */
+body .heat-label {
+    color: var(--text-primary);
 }
 
-body.dark-theme .spot-number {
+body .spot-number {
     color: #ffffff !important;
 }
 
-/* Dark mode for all headings */
-body.dark-theme h1 {
-    color: #e2e8f0 !important;
+/* All headings */
+body h1 {
+    color: var(--text-primary) !important;
 }
 
-body.dark-theme h2 {
-    color: #e2e8f0 !important;
+body h2 {
+    color: var(--text-primary) !important;
 }
 
-body.dark-theme h3 {
-    color: #e2e8f0 !important;
+body h3 {
+    color: var(--text-primary) !important;
 }
 
-body.dark-theme h4 {
-    color: #e2e8f0 !important;
+body h4 {
+    color: var(--text-primary) !important;
 }
 
-body.dark-theme label {
-    color: #e2e8f0 !important;
+body label {
+    color: var(--text-primary) !important;
 }
 
-/* General dark mode text color */
-body.dark-theme {
-    color: #e2e8f0 !important;
+/* General text color */
+body {
+    color: var(--text-primary) !important;
 }
 
-/* Dark mode for theme toggle */
-body.dark-theme .theme-toggle.fixed-toggle {
-    background: rgba(79, 70, 229, 0.9);
-    color: white;
-    border: 1px solid rgba(99, 102, 241, 0.5);
+/* Various components */
+body .date-filter-section {
+    background: var(--bg-card);
+    color: var(--text-primary);
 }
 
-body.dark-theme .theme-toggle.fixed-toggle:hover {
-    background: rgba(99, 102, 241, 0.95);
-    border-color: rgba(129, 140, 248, 0.7);
+body .date-filter-section h3 {
+    color: var(--text-primary);
 }
 
-/* Dark mode for fixed names widget */
-body.dark-theme .fixed-names-toggle {
-    background: rgba(79, 70, 229, 0.9);
-    color: white;
-    border: 1px solid rgba(99, 102, 241, 0.5);
+body .chart-container {
+    background: var(--bg-card);
 }
 
-body.dark-theme .fixed-names-toggle:hover {
-    background: rgba(99, 102, 241, 0.95);
-    border-color: rgba(129, 140, 248, 0.7);
+body .heatmap-container {
+    background: var(--bg-card);
 }
 
-/* Dark mode for various components */
-body.dark-theme .date-filter-section {
-    background: #2d3748;
-    color: #e2e8f0;
+body .analysis-card {
+    background: var(--bg-card);
+    color: var(--text-primary);
 }
 
-body.dark-theme .date-filter-section h3 {
-    color: #e2e8f0;
+body .analysis-title {
+    color: var(--text-primary);
 }
 
-body.dark-theme .chart-container {
-    background: #2d3748;
-}
-
-
-body.dark-theme .heatmap-container {
-    background: #2d3748;
-}
-
-body.dark-theme .analysis-card {
-    background: #2d3748;
-    color: #e2e8f0;
-}
-
-body.dark-theme .analysis-title {
-    color: #e2e8f0;
-}
-
-body.dark-theme .comeback-item,
-body.dark-theme .best-day-item {
+body .comeback-item,
+body .best-day-item {
     background: #4a5568;
 }
 
-body.dark-theme .worst-day-item {
+body .worst-day-item {
     background: rgba(239, 68, 68, 0.1);
     border-left-color: #ef4444;
 }
 
-body.dark-theme .worst-day-score {
+body .worst-day-score {
     color: #fca5a5;
 }
 
-/* Dark mode for player names and stats */
-body.dark-theme .player-name {
+/* Player names and stats */
+body .player-name {
     color: #ffffff !important;
 }
 
-body.dark-theme .stat-count {
+body .stat-count {
     color: #000000 !important;
 }
 
-body.dark-theme .stat-title {
+body .stat-title {
     color: white !important;
 }
 
-/* Dark mode for modern H2H elements */
-body.dark-theme .h2h-table-container {
-    background: #2d3748;
+/* Modern H2H elements */
+body .h2h-table-container {
+    background: var(--bg-card);
     border-color: rgba(255, 255, 255, 0.1);
 }
 
-body.dark-theme .h2h-table,
-body.dark-theme .h2h-daily-table {
-    background: #2d3748;
+body .h2h-table,
+body .h2h-daily-table {
+    background: var(--bg-card);
 }
 
-body.dark-theme .h2h-header-cell {
-    background: #2d3748 !important;
+body .h2h-header-cell {
+    background: var(--bg-card) !important;
     color: white !important;
 }
 
-body.dark-theme .h2h-header-cell.h2h-corner {
-    background: #2d3748 !important;
+body .h2h-header-cell.h2h-corner {
+    background: var(--bg-card) !important;
 }
 
-body.dark-theme .h2h-player-name {
+body .h2h-player-name {
     background: linear-gradient(135deg, #374151 0%, #1f2937 100%) !important;
     color: #d1d5db !important;
 }
 
-body.dark-theme .h2h-self {
+body .h2h-self {
     background: linear-gradient(135deg, #4b5563 0%, #374151 100%) !important;
 }
 
-body.dark-theme .h2h-self-text {
+body .h2h-self-text {
     color: rgba(255, 255, 255, 0.9) !important;
 }
 
-body.dark-theme .h2h-streak {
+body .h2h-streak {
     background: rgba(0, 0, 0, 0.3);
 }
 
-body.dark-theme .h2h-daily-label {
+body .h2h-daily-label {
     background: rgba(0, 0, 0, 0.3);
 }
 
-
-body.dark-theme .h2h-daily-table .h2h-cell {
+body .h2h-daily-table .h2h-cell {
     color: #1f2937 !important;
 }
 
-
-body.dark-theme .h2h-daily-table .h2h-winner-text {
+body .h2h-daily-table .h2h-winner-text {
     background: #34d399 !important;
     color: #1f2937 !important;
 }
 
-body.dark-theme .h2h-daily-table .h2h-loser-text {
+body .h2h-daily-table .h2h-loser-text {
     background: #ef4444 !important;
     color: #1f2937 !important;
 }
 
-body.dark-theme .h2h-daily-table .h2h-tie {
+body .h2h-daily-table .h2h-tie {
     background: #fbbf24 !important;
     color: #1f2937 !important;
 }
 
-body.dark-theme .h2h-daily-item {
+body .h2h-daily-item {
     border-bottom-color: #4b5563 !important;
 }
 
-body.dark-theme .h2h-date {
+body .h2h-date {
     color: #d1d5db !important;
 }
 
-body.dark-theme .h2h-daily-results {
+body .h2h-daily-results {
     color: #9ca3af !important;
 }
 
-body.dark-theme .h2h-cell.h2h-winner-text {
+body .h2h-cell.h2h-winner-text {
     background: #34d399 !important;
     color: #1f2937 !important;
 }
 
-body.dark-theme .h2h-cell.h2h-loser-text {
+body .h2h-cell.h2h-loser-text {
     background: #ef4444 !important;
     color: #1f2937 !important;
 }
 
-body.dark-theme .h2h-cell.h2h-tie {
+body .h2h-cell.h2h-tie {
     background: #fbbf24 !important;
     color: #1f2937 !important;
 }
 
-body.dark-theme .h2h-cell.h2h-no-data {
+body .h2h-cell.h2h-no-data {
     background: #4b5563 !important;
     color: #d1d5db !important;
 }
 
-body.dark-theme .h2h-matchup.win {
+body .h2h-matchup.win {
     color: #10b981 !important;
 }
 
-body.dark-theme .h2h-matchup.loss {
+body .h2h-matchup.loss {
     color: #ef4444 !important;
 }
 
-/* Dark mode calendar popup styling */
-body.dark-theme input[type="date"]::-webkit-datetime-edit {
-    background: #4a5568 !important;
-    color: #e2e8f0 !important;
+/* Calendar popup styling */
+body input[type="date"]::-webkit-datetime-edit {
+    background: var(--bg-input) !important;
+    color: var(--text-primary) !important;
 }
 
-body.dark-theme input[type="date"]::-webkit-datetime-edit-fields-wrapper {
-    background: #4a5568 !important;
+body input[type="date"]::-webkit-datetime-edit-fields-wrapper {
+    background: var(--bg-input) !important;
 }
 
-body.dark-theme input[type="date"]::-webkit-datetime-edit-text {
-    color: #e2e8f0 !important;
+body input[type="date"]::-webkit-datetime-edit-text {
+    color: var(--text-primary) !important;
 }
 
-body.dark-theme input[type="date"]::-webkit-datetime-edit-year-field {
-    background: #4a5568 !important;
-    color: #e2e8f0 !important;
+body input[type="date"]::-webkit-datetime-edit-year-field {
+    background: var(--bg-input) !important;
+    color: var(--text-primary) !important;
 }
 
-body.dark-theme input[type="date"]::-webkit-datetime-edit-month-field {
-    background: #4a5568 !important;
-    color: #e2e8f0 !important;
+body input[type="date"]::-webkit-datetime-edit-month-field {
+    background: var(--bg-input) !important;
+    color: var(--text-primary) !important;
 }
 
-body.dark-theme input[type="date"]::-webkit-datetime-edit-day-field {
-    background: #4a5568 !important;
-    color: #e2e8f0 !important;
+body input[type="date"]::-webkit-datetime-edit-day-field {
+    background: var(--bg-input) !important;
+    color: var(--text-primary) !important;
 }
 
 /* Force dark styling on the calendar picker */
-body.dark-theme .race-date-input {
+body .race-date-input {
     color-scheme: dark !important;
 }
 
-/* Dark mode for custom date range inputs */
-body.dark-theme #filter-start-date,
-body.dark-theme #filter-end-date {
+/* Custom date range inputs */
+body #filter-start-date,
+body #filter-end-date {
     color-scheme: dark !important;
-    background: #4a5568 !important;
-    color: #e2e8f0 !important;
+    background: var(--bg-input) !important;
+    color: var(--text-primary) !important;
     border-color: #6b7280 !important;
 }
 
-body.dark-theme #filter-start-date::-webkit-calendar-picker-indicator,
-body.dark-theme #filter-end-date::-webkit-calendar-picker-indicator {
+body #filter-start-date::-webkit-calendar-picker-indicator,
+body #filter-end-date::-webkit-calendar-picker-indicator {
     filter: invert(1);
 }
 
-/* Dark mode for player count selector */
-body.dark-theme .player-count-selector {
+/* Player count selector */
+body .player-count-selector {
     border-bottom-color: #4b5563;
 }
 
-body.dark-theme .player-count-selector label {
+body .player-count-selector label {
     color: #ffffff !important;
     font-weight: 700;
 }
 
-body.dark-theme .player-count-selector select {
+body .player-count-selector select {
     background: #374151;
     color: white;
     border-color: #4b5563;
 }
 
-/* Dark mode for race date section */
-body.dark-theme .race-date-section label {
-    color: #e2e8f0 !important;
+/* Race date section */
+body .race-date-section label {
+    color: var(--text-primary) !important;
 }
 
-body.dark-theme .race-date-input {
-    background: #4a5568;
-    color: #e2e8f0;
+body .race-date-input {
+    background: var(--bg-input);
+    color: var(--text-primary);
     border-color: #6b7280;
 }
 
-body.dark-theme .race-date-input:focus {
-    border-color: #667eea;
+body .race-date-input:focus {
+    border-color: var(--border-focus);
     box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
 }
 
-body.dark-theme .race-date-input::-webkit-calendar-picker-indicator {
+body .race-date-input::-webkit-calendar-picker-indicator {
     filter: invert(1);
 }
 
-/* Dark mode for fixed undo/redo buttons */
-body.dark-theme .fixed-undo-redo {
-    background: rgba(79, 70, 229, 0.9);
-    color: white;
-    border: 1px solid rgba(99, 102, 241, 0.5);
-}
-
-body.dark-theme .fixed-undo-redo:hover:not(:disabled) {
-    background: rgba(99, 102, 241, 0.95);
-    border-color: rgba(129, 140, 248, 0.7);
-}
-
-body.dark-theme .fixed-undo-redo:disabled {
-    background: rgba(75, 85, 99, 0.6);
-    color: rgba(226, 232, 240, 0.4);
-    border-color: rgba(75, 85, 99, 0.3);
-}
-
-/* Dark mode for frequency gradient display */
-body.dark-theme .frequency-gradient.light-mode {
+/* Frequency gradient display */
+body .frequency-gradient.light-mode {
     display: none !important;
 }
 
-body.dark-theme .frequency-gradient.dark-mode {
+body .frequency-gradient.dark-mode {
     display: inline !important;
 }
 
-/* Dark mode for fixed date button */
-body.dark-theme .fixed-date-btn {
-    background: rgba(79, 70, 229, 0.9);
-    color: white;
-    border: 1px solid rgba(99, 102, 241, 0.5);
+/* Sidebar */
+body .sidebar {
+    background: var(--bg-sidebar);
 }
 
-body.dark-theme .fixed-date-btn:hover {
-    background: rgba(99, 102, 241, 0.95);
-    border-color: rgba(129, 140, 248, 0.7);
+body #sidebar-player-settings .sidebar-players-form,
+body .position-picker {
+    background: var(--bg-sidebar);
 }
 
-/* Dark theme for sidebar */
-body.dark-theme .sidebar {
-    background: #1a202c;
+/* Fixed date dropdown */
+body .fixed-date-dropdown {
+    background: var(--bg-card);
+    border-color: var(--border-color);
+    color: var(--text-primary);
 }
 
-body.dark-theme .sidebar-header {
-    /* No background needed - inherit from parent sidebar */
-}
-
-body.dark-theme .sidebar-section {
-    /* No background needed - inherit from parent sidebar */
-}
-
-body.dark-theme .sidebar-content {
-    /* No background - inherit from parent sidebar */
-}
-
-body.dark-theme #sidebar-player-settings .sidebar-players-form,
-body.dark-theme .position-picker {
-    background: #1a202c;
-}
-
-/* Dark mode for fixed date dropdown */
-body.dark-theme .fixed-date-dropdown {
-    background: #2d3748;
-    border-color: #4a5568;
-    color: #e2e8f0;
-}
-
-body.dark-theme .race-date-input {
-    background: #4a5568;
-    color: #e2e8f0;
-    border-color: #6b7280;
-}
-
-body.dark-theme .race-date-input:focus {
-    border-color: #667eea;
-    box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
-}
-
-body.dark-theme .race-date-input::-webkit-calendar-picker-indicator {
-    filter: invert(1);
-}
-
-/* Dark theme for new H2H streak and biggest win styles */
-body.dark-theme .h2h-streak-main {
+/* H2H streak and biggest win styles */
+body .h2h-streak-main {
     color: #000000 !important;
 }
 
-body.dark-theme .h2h-streak-details {
+body .h2h-streak-details {
     color: #000000 !important;
 }
 
-body.dark-theme .h2h-biggest-win {
+body .h2h-biggest-win {
     color: #000000 !important;
 }
 
-/* Also override any other H2H text colors that might be light */
-body.dark-theme .h2h-score {
+body .h2h-score {
     color: #000000 !important;
 }
 
-body.dark-theme .h2h-streak-number {
+body .h2h-streak-number {
     color: #000000 !important;
 }
 
-body.dark-theme .h2h-streak-label {
+body .h2h-streak-label {
     color: #000000 !important;
 }
 
-body.dark-theme .h2h-streak-date {
+body .h2h-streak-date {
     color: #000000 !important;
 }
 
-body.dark-theme .h2h-daily-label {
+body .h2h-daily-label {
     color: #000000 !important;
 }

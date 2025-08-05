@@ -374,17 +374,6 @@ body.dark-theme .sidebar-toggle:hover {
     box-shadow: 0 8px 30px rgba(102, 126, 234, 0.5);
 }
 
-/* Light theme enhancements */
-body.light-mode .sidebar-toggle {
-    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-    border-color: rgba(0, 0, 0, 0.1);
-    box-shadow: 0 4px 20px rgba(102, 126, 234, 0.25);
-}
-
-body.light-mode .sidebar-toggle:hover {
-    background: linear-gradient(135deg, #5a67d8 0%, #6b46c1 100%);
-    box-shadow: 0 8px 30px rgba(102, 126, 234, 0.35);
-}
 
 /* Responsive adjustments */
 @media (min-width: 1024px) {
