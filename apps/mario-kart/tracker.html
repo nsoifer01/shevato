@@ -41,6 +41,51 @@
     <!-- Skip to main content link for accessibility -->
     <a href="#main-content" class="skip-to-main">Skip to main content</a>
     
+    <!-- Header -->
+    <header id="header">
+        <div class="header-left">
+            <a class="logo" href="../../home.html">
+                <img src="../../images/logo-top.png" alt="Shevato Software Engineering - Mario Kart Tracker">
+            </a>
+            
+            <!-- Authentication UI -->
+            <div id="auth-container" class="auth-container">
+                <div class="auth-main">
+                    <span id="user-info" class="user-info" style="display: none;">
+                        <i class="fa fa-user-circle"></i>
+                        <span class="user-email"></span>
+                    </span>
+                    <a href="#" id="sign-in-btn" class="auth-link sign-in-btn">
+                        <i class="fa fa-sign-in"></i> <span>Sign In</span>
+                    </a>
+                    <span class="auth-separator">|</span>
+                    <a href="#" id="sign-up-btn" class="auth-link sign-up-btn">
+                        <i class="fa fa-user-plus"></i> <span>Sign Up</span>
+                    </a>
+                    <a href="#" id="sign-out-btn" class="auth-link sign-out-btn" style="display: none;">
+                        <i class="fa fa-sign-out"></i> <span>Sign Out</span>
+                    </a>
+                </div>
+                <div id="auth-status" class="auth-status signed-out">
+                    <i class="fa fa-cloud-upload"></i> Optional - Sync across devices
+                </div>
+            </div>
+        </div>
+        
+        <nav>
+            <a href="#menu">Menu</a>
+        </nav>
+    </header>
+    
+    <!-- Navigation Menu -->
+    <nav id="menu">
+        <ul class="links">
+            <li><a href="../../home.html">Home</a></li>
+            <li><a href="../../product.html">Product</a></li>
+            <li><a href="../../apps.html">Apps</a></li>
+        </ul>
+    </nav>
+    
     <!-- Sidebar Toggle Button -->
     <button class="sidebar-toggle" id="sidebar-toggle" onclick="toggleSidebar()" aria-label="Toggle sidebar" aria-expanded="false" aria-controls="sidebar">
         <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
