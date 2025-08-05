@@ -1,0 +1,307 @@
+<!DOCTYPE HTML>
+<html>
+<head>
+  <title>Firebase Authentication Test - Shevato</title>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=no" />
+  
+  <!-- Include existing styles -->
+  <link rel="stylesheet" href="assets/css/main.css" />
+  <link rel="stylesheet" href="assets/css/firebase-auth.css" />
+  
+  <style>
+    .test-container {
+      max-width: 800px;
+      margin: 2rem auto;
+      padding: 2rem;
+      background: #f8f9fa;
+      border-radius: 8px;
+    }
+    
+    .test-section {
+      margin-bottom: 2rem;
+      padding: 1rem;
+      background: white;
+      border-radius: 6px;
+      border-left: 4px solid #77aaff;
+    }
+    
+    .test-result {
+      padding: 0.5rem;
+      margin: 0.5rem 0;
+      border-radius: 4px;
+      font-family: monospace;
+    }
+    
+    .success {
+      background: #d4edda;
+      color: #155724;
+      border: 1px solid #c3e6cb;
+    }
+    
+    .error {
+      background: #f8d7da;
+      color: #721c24;
+      border: 1px solid #f5c6cb;
+    }
+    
+    .info {
+      background: #e7f3ff;
+      color: #0c5460;
+      border: 1px solid #b8daff;
+    }
+  </style>
+</head>
+<body class="is-preload">
+  
+  <!-- Include header with auth UI -->
+  <div data-include="header"></div>
+  
+  <div class="test-container">
+    <h1>🔥 Firebase Authentication Test Page</h1>
+    <p>This page helps you test the Firebase Authentication integration.</p>
+    
+    <div class="test-section">
+      <h3>📋 Authentication Status</h3>
+      <div id="auth-test-results"></div>
+      <button onclick="runAuthTests()" class="button">Run Authentication Tests</button>
+    </div>
+    
+    <div class="test-section">
+      <h3>💾 LocalStorage Test</h3>
+      <div id="storage-test-results"></div>
+      <button onclick="runStorageTests()" class="button">Test LocalStorage</button>
+    </div>
+    
+    <div class="test-section">
+      <h3>🎮 Data Sync Example</h3>
+      <div id="sync-test-results"></div>
+      <button onclick="runSyncTests()" class="button">Test Data Sync</button>
+    </div>
+    
+    <div class="test-section">
+      <h3>📱 UI Tests</h3>
+      <div id="ui-test-results"></div>
+      <button onclick="runUITests()" class="button">Test UI Components</button>
+    </div>
+  </div>
+
+  <!-- Scripts -->
+  <script src="assets/js/passive-events-fix.js"></script>
+  <script src="assets/js/jquery.min.js"></script>
+  <script src="assets/js/browser.min.js"></script>
+  <script src="assets/js/breakpoints.min.js"></script>
+  <script src="assets/js/util.js"></script>
+  <script src="assets/js/main.js"></script>
+  
+  <!-- Firebase Authentication -->
+  <script type="module" src="assets/js/firebase-config.js"></script>
+  <script type="module" src="assets/js/firebase-auth.js"></script>
+  <script type="module" src="assets/js/auth-ui.js"></script>
+  <script type="module" src="assets/js/data-sync-example.js"></script>
+
+  <script type="module">
+    import firebaseAuth from './assets/js/firebase-auth.js';
+    import dataSyncManager from './assets/js/data-sync-example.js';
+
+    // Make available globally for test functions
+    window.firebaseAuth = firebaseAuth;
+    window.dataSyncManager = dataSyncManager;
+
+    // Test Functions
+    window.runAuthTests = function() {
+      const resultsDiv = document.getElementById('auth-test-results');
+      let results = '';
+
+      try {
+        // Test 1: Firebase Auth Instance
+        const isInitialized = firebaseAuth ? true : false;
+        results += `<div class="test-result ${isInitialized ? 'success' : 'error'}">
+          ✓ Firebase Auth Instance: ${isInitialized ? 'Initialized' : 'Not Found'}
+        </div>`;
+
+        // Test 2: Current User State
+        const currentUser = firebaseAuth.getCurrentUser();
+        const isSignedIn = firebaseAuth.isSignedIn();
+        results += `<div class="test-result info">
+          ℹ Current User: ${currentUser ? currentUser.email : 'Not signed in'}
+        </div>`;
+        results += `<div class="test-result info">
+          ℹ Signed In Status: ${isSignedIn}
+        </div>`;
+
+        // Test 3: Auth State Callback
+        let callbackWorking = false;
+        firebaseAuth.onAuthStateChange(() => {
+          callbackWorking = true;
+        });
+        results += `<div class="test-result ${callbackWorking ? 'success' : 'info'}">
+          ℹ Auth State Callback: Registered
+        </div>`;
+
+        // Test 4: UI Elements
+        const authContainer = document.getElementById('auth-container');
+        const signInBtn = document.getElementById('sign-in-btn');
+        const signUpBtn = document.getElementById('sign-up-btn');
+        
+        results += `<div class="test-result ${authContainer ? 'success' : 'error'}">
+          ${authContainer ? '✓' : '✗'} Auth Container: ${authContainer ? 'Found' : 'Missing'}
+        </div>`;
+        results += `<div class="test-result ${signInBtn ? 'success' : 'error'}">
+          ${signInBtn ? '✓' : '✗'} Sign In Button: ${signInBtn ? 'Found' : 'Missing'}
+        </div>`;
+        results += `<div class="test-result ${signUpBtn ? 'success' : 'error'}">
+          ${signUpBtn ? '✓' : '✗'} Sign Up Button: ${signUpBtn ? 'Found' : 'Missing'}
+        </div>`;
+
+      } catch (error) {
+        results += `<div class="test-result error">✗ Error: ${error.message}</div>`;
+      }
+
+      resultsDiv.innerHTML = results;
+    };
+
+    window.runStorageTests = function() {
+      const resultsDiv = document.getElementById('storage-test-results');
+      let results = '';
+
+      try {
+        // Test localStorage availability
+        const storageAvailable = typeof(Storage) !== "undefined";
+        results += `<div class="test-result ${storageAvailable ? 'success' : 'error'}">
+          ${storageAvailable ? '✓' : '✗'} LocalStorage: ${storageAvailable ? 'Available' : 'Not Available'}
+        </div>`;
+
+        if (storageAvailable) {
+          // Test write/read
+          const testKey = 'firebase-auth-test';
+          const testData = { test: true, timestamp: Date.now() };
+          localStorage.setItem(testKey, JSON.stringify(testData));
+          
+          const retrieved = JSON.parse(localStorage.getItem(testKey));
+          const writeReadWorking = retrieved && retrieved.test === true;
+          
+          results += `<div class="test-result ${writeReadWorking ? 'success' : 'error'}">
+            ${writeReadWorking ? '✓' : '✗'} Write/Read Test: ${writeReadWorking ? 'Working' : 'Failed'}
+          </div>`;
+
+          // Clean up test data
+          localStorage.removeItem(testKey);
+          
+          // Test data persistence message
+          results += `<div class="test-result info">
+            ℹ Data Persistence: LocalStorage data persists through sign-in/sign-out cycles
+          </div>`;
+        }
+
+      } catch (error) {
+        results += `<div class="test-result error">✗ Error: ${error.message}</div>`;
+      }
+
+      resultsDiv.innerHTML = results;
+    };
+
+    window.runSyncTests = function() {
+      const resultsDiv = document.getElementById('sync-test-results');
+      let results = '';
+
+      try {
+        // Test data sync manager
+        const syncManagerAvailable = dataSyncManager ? true : false;
+        results += `<div class="test-result ${syncManagerAvailable ? 'success' : 'error'}">
+          ${syncManagerAvailable ? '✓' : '✗'} Data Sync Manager: ${syncManagerAvailable ? 'Available' : 'Missing'}
+        </div>`;
+
+        if (syncManagerAvailable) {
+          // Test save/get functionality
+          const testProgress = {
+            level: 5,
+            score: 1200,
+            achievements: ['first-win', 'speed-demon']
+          };
+
+          const saveResult = dataSyncManager.saveProgress('test-app', testProgress);
+          results += `<div class="test-result ${saveResult ? 'success' : 'error'}">
+            ${saveResult ? '✓' : '✗'} Save Progress: ${saveResult ? 'Working' : 'Failed'}
+          </div>`;
+
+          const retrievedProgress = dataSyncManager.getProgress('test-app');
+          const retrieveWorking = retrievedProgress && retrievedProgress.level === 5;
+          results += `<div class="test-result ${retrieveWorking ? 'success' : 'error'}">
+            ${retrieveWorking ? '✓' : '✗'} Retrieve Progress: ${retrieveWorking ? 'Working' : 'Failed'}
+          </div>`;
+
+          // Test preferences
+          dataSyncManager.saveUserPreference('testPref', 'testValue');
+          const prefValue = dataSyncManager.getUserPreference('testPref');
+          const prefWorking = prefValue === 'testValue';
+          results += `<div class="test-result ${prefWorking ? 'success' : 'error'}">
+            ${prefWorking ? '✓' : '✗'} User Preferences: ${prefWorking ? 'Working' : 'Failed'}
+          </div>`;
+
+          results += `<div class="test-result info">
+            ℹ Sync Status: Data saves to localStorage immediately, cloud sync when authenticated
+          </div>`;
+        }
+
+      } catch (error) {
+        results += `<div class="test-result error">✗ Error: ${error.message}</div>`;
+      }
+
+      resultsDiv.innerHTML = results;
+    };
+
+    window.runUITests = function() {
+      const resultsDiv = document.getElementById('ui-test-results');
+      let results = '';
+
+      try {
+        // Test CSS loading
+        const authCSS = document.querySelector('link[href*="firebase-auth.css"]');
+        results += `<div class="test-result ${authCSS ? 'success' : 'error'}">
+          ${authCSS ? '✓' : '✗'} Auth CSS: ${authCSS ? 'Loaded' : 'Missing'}
+        </div>`;
+
+        // Test modal functionality
+        results += `<div class="test-result info">
+          ℹ Modal Test: Click "Sign In" or "Sign Up" buttons in header to test modals
+        </div>`;
+
+        // Test responsive design
+        const isMobile = window.innerWidth <= 768;
+        results += `<div class="test-result info">
+          ℹ Screen Size: ${window.innerWidth}px x ${window.innerHeight}px (${isMobile ? 'Mobile' : 'Desktop'} view)
+        </div>`;
+
+        // Test auth status display
+        const authStatus = document.getElementById('auth-status');
+        results += `<div class="test-result ${authStatus ? 'success' : 'error'}">
+          ${authStatus ? '✓' : '✗'} Auth Status Display: ${authStatus ? 'Found' : 'Missing'}
+        </div>`;
+
+        if (authStatus) {
+          results += `<div class="test-result info">
+            ℹ Current Status: "${authStatus.textContent.trim()}"
+          </div>`;
+        }
+
+      } catch (error) {
+        results += `<div class="test-result error">✗ Error: ${error.message}</div>`;
+      }
+
+      resultsDiv.innerHTML = results;
+    };
+
+    // Auto-run tests on page load
+    document.addEventListener('DOMContentLoaded', function() {
+      setTimeout(() => {
+        runAuthTests();
+        runStorageTests();
+        runSyncTests();
+        runUITests();
+      }, 1000); // Wait for Firebase to initialize
+    });
+
+  </script>
+</body>
+</html>

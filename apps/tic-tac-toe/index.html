@@ -15,15 +15,42 @@
   <meta name="description" content="Play Tic-Tac-Toe against an AI opponent. A classic game with a modern twist!" />
   <meta name="keywords" content="Tic-Tac-Toe, Game, AI, Strategy, Shevato" />
   <link rel="stylesheet" href="../../assets/css/main.css" />
+  <link rel="stylesheet" href="../../assets/css/firebase-auth-fixed.css" />
   <link rel="stylesheet" href="css/tic-tac-toe.css" />
   <link rel="icon" type="image/png" href="../../images/white_icon_transparent.png">
 </head>
 <body class="is-preload">
   <!-- Header -->
   <header id="header">
-    <a class="logo" href="../../home.html">
-      <img src="../../images/logo-top.png" alt="Shevato Software Engineering - Tic Tac Toe Game">
-    </a>
+    <div class="header-left">
+      <a class="logo" href="../../home.html">
+        <img src="../../images/logo-top.png" alt="Shevato Software Engineering - Tic Tac Toe Game">
+      </a>
+      
+      <!-- Authentication UI -->
+      <div id="auth-container" class="auth-container">
+        <div class="auth-main">
+          <span id="user-info" class="user-info" style="display: none;">
+            <i class="fa fa-user-circle"></i>
+            <span class="user-email"></span>
+          </span>
+          <a href="#" id="sign-in-btn" class="auth-link sign-in-btn">
+            <i class="fa fa-sign-in"></i> Sign In
+          </a>
+          <span class="auth-separator">|</span>
+          <a href="#" id="sign-up-btn" class="auth-link sign-up-btn">
+            <i class="fa fa-user-plus"></i> Sign Up
+          </a>
+          <a href="#" id="sign-out-btn" class="auth-link sign-out-btn" style="display: none;">
+            <i class="fa fa-sign-out"></i> Sign Out
+          </a>
+        </div>
+        <div id="auth-status" class="auth-status signed-out">
+          <i class="fa fa-cloud-upload"></i> Optional - Sync across devices
+        </div>
+      </div>
+    </div>
+    
     <nav>
       <a href="#menu">Menu</a>
     </nav>
@@ -129,6 +156,11 @@
   <script src="../../assets/js/util.js"></script>
   <script src="../../assets/js/main.js"></script>
   <script src="js/tic-tac-toe.js"></script>
+  
+  <!-- Firebase Authentication -->
+  <script type="module" src="../../assets/js/firebase-config.js"></script>
+  <script type="module" src="../../assets/js/firebase-auth.js"></script>
+  <script type="module" src="../../assets/js/auth-ui.js"></script>
   
   <script>
     (function(){

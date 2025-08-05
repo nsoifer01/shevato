@@ -1,0 +1,33 @@
+<!-- partials/header-fixed.html -->
+<header id="header">
+  <a class="logo" href="home.html">
+    <img src="images/logo-top.png" alt="Shevato Software Engineering - Home">
+  </a>
+  
+  <!-- Authentication UI -->
+  <div id="auth-container" class="auth-container">
+    <div class="auth-main">
+      <span id="user-info" class="user-info" style="display: none;">
+        <i class="fa fa-user-circle"></i>
+        <span class="user-email"></span>
+      </span>
+      <a href="#" id="sign-in-btn" class="auth-link sign-in-btn">
+        <i class="fa fa-sign-in"></i> <span>Sign In</span>
+      </a>
+      <span class="auth-separator">|</span>
+      <a href="#" id="sign-up-btn" class="auth-link sign-up-btn">
+        <i class="fa fa-user-plus"></i> <span>Sign Up</span>
+      </a>
+      <a href="#" id="sign-out-btn" class="auth-link sign-out-btn" style="display: none;">
+        <i class="fa fa-sign-out"></i> <span>Sign Out</span>
+      </a>
+    </div>
+    <div id="auth-status" class="auth-status signed-out">
+      <i class="fa fa-cloud-upload"></i> Optional - Sync across devices
+    </div>
+  </div>
+  
+  <nav>
+    <a href="#menu">Menu</a>
+  </nav>
+</header>
