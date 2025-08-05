@@ -35,6 +35,7 @@
     <link rel="stylesheet" href="css/sidebar.css">
     <link rel="stylesheet" href="css/tooltip.css">
     <link rel="stylesheet" href="css/help-styles.css">
+    <link rel="stylesheet" href="/assets/css/brand-colors.css">
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <script src="https://apis.google.com/js/api.js"></script>
 </head>
@@ -362,13 +363,13 @@
             
 
             <div class="action-buttons">
-                <button onclick="exportData()" style="background: #48BB78;" aria-describedby="export-help">
+                <button onclick="exportData()" class="btn-export" aria-describedby="export-help">
                     📤 Export Data
                 </button>
-                <button onclick="document.getElementById('importFile').click()" style="background: #38B2AC; margin-left: 10px;" aria-describedby="import-help">
+                <button onclick="document.getElementById('importFile').click()" class="btn-import" aria-describedby="import-help">
                     📥 Import Data
                 </button>
-                <button onclick="backupToGoogleDrive()" style="background: #4299E1; margin-left: 10px;" title="Download backup file (auto-backup runs every 10 minutes)">
+                <button onclick="backupToGoogleDrive()" class="btn-backup" title="Download backup file (auto-backup runs every 10 minutes)">
                     💻 Backup
                 </button>
                 <input type="file" id="importFile" accept=".json" style="display: none;" onchange="importData(event)">
@@ -471,10 +472,10 @@
                     <thead>
                         <tr>
                             <th>Race #</th>
-                            <th style="cursor: pointer;" onclick="sortTable('date')" tabindex="0" onkeydown="if(event.key==='Enter'||event.key===' ')sortTable('date')" aria-label="Sort by date">Date ↕</th>
-                            <th style="cursor: pointer;" onclick="sortTable('player1')" tabindex="0" onkeydown="if(event.key==='Enter'||event.key===' ')sortTable('player1')" aria-label="Sort by Player 1's position">Player 1 ↕</th>
-                            <th style="cursor: pointer;" onclick="sortTable('player2')" tabindex="0" onkeydown="if(event.key==='Enter'||event.key===' ')sortTable('player2')" aria-label="Sort by Player 2's position">Player 2 ↕</th>
-                            <th style="cursor: pointer;" onclick="sortTable('player3')" tabindex="0" onkeydown="if(event.key==='Enter'||event.key===' ')sortTable('player3')" aria-label="Sort by Player 3's position">Player 3 ↕</th>
+                            <th class="sortable-header" onclick="sortTable('date')" tabindex="0" onkeydown="if(event.key==='Enter'||event.key===' ')sortTable('date')" aria-label="Sort by date">Date ↕</th>
+                            <th class="sortable-header" onclick="sortTable('player1')" tabindex="0" onkeydown="if(event.key==='Enter'||event.key===' ')sortTable('player1')" aria-label="Sort by Player 1's position">Player 1 ↕</th>
+                            <th class="sortable-header" onclick="sortTable('player2')" tabindex="0" onkeydown="if(event.key==='Enter'||event.key===' ')sortTable('player2')" aria-label="Sort by Player 2's position">Player 2 ↕</th>
+                            <th class="sortable-header" onclick="sortTable('player3')" tabindex="0" onkeydown="if(event.key==='Enter'||event.key===' ')sortTable('player3')" aria-label="Sort by Player 3's position">Player 3 ↕</th>
                             <th>Action</th>
                         </tr>
                     </thead>
@@ -529,79 +530,7 @@
     <!-- Main script must load last -->
     <script src="js/main.js"></script>
     
-    <!-- Dynamic Layout Script -->
-    <script>
-        /**
-         * Adjusts the main content top margin and sidebar top position based on header height
-         */
-        function adjustContentForHeader() {
-            const header = document.getElementById('header');
-            const sidebar = document.getElementById('sidebar');
-            const mainContent = document.getElementById('main-content');
-            
-            if (!header || !sidebar || !mainContent) {
-                console.warn('Header, sidebar, or main content not found');
-                return;
-            }
-            
-            // Check if we're on desktop (width >= 1025px)
-            const isDesktop = window.innerWidth >= 1025;
-            
-            // Get the actual rendered height of the header
-            const headerHeight = header.getBoundingClientRect().height;
-            
-            if (isDesktop) {
-                // Desktop: Apply margins and sticky positioning
-                mainContent.style.marginTop = `${headerHeight}px`;
-                
-                // Update sidebar's sticky top position to account for header
-                sidebar.style.top = `${headerHeight}px`;
-                
-                // Adjust sidebar height to fill remaining viewport
-                const viewportHeight = window.innerHeight;
-                const remainingHeight = viewportHeight - headerHeight;
-                sidebar.style.height = `${remainingHeight}px`;
-                
-                // Ensure sidebar is always visible on desktop
-                sidebar.classList.add('open');
-                
-                console.log(`Desktop: Header height: ${headerHeight}px, adjusted content margin and sidebar position`);
-            } else {
-                // Mobile/tablet: Reset styles for mobile behavior
-                mainContent.style.marginTop = '';
-                sidebar.style.top = '';
-                sidebar.style.height = '';
-                
-                console.log(`Mobile: Reset layout styles`);
-            }
-        }
-        
-        /**
-         * Debounced resize handler to improve performance
-         */
-        let resizeTimeout;
-        function handleResize() {
-            clearTimeout(resizeTimeout);
-            resizeTimeout = setTimeout(adjustContentForHeader, 100);
-        }
-        
-        // Initialize on DOM content loaded
-        document.addEventListener('DOMContentLoaded', function() {
-            // Wait a bit for CSS to fully load and render
-            setTimeout(adjustContentForHeader, 100);
-        });
-        
-        // Handle window resize events
-        window.addEventListener('resize', handleResize);
-        
-        // Handle window load event as backup
-        window.addEventListener('load', function() {
-            setTimeout(adjustContentForHeader, 200);
-        });
-        
-        // Also adjust when images or other content loads that might affect header height
-        window.addEventListener('load', adjustContentForHeader);
-    </script>
+    <script src="js/header-adjustment.js"></script>
 
 </body>
 </html>
