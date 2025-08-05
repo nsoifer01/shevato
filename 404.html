@@ -1,0 +1,76 @@
+<!DOCTYPE HTML>
+<html>
+<head>
+    <!-- Google Analytics -->
+    <script async src="https://www.googletagmanager.com/gtag/js?id=UA-140119780-1"></script>
+    <script src="/assets/js/analytics.js"></script>
+
+    <title>404 – Page Not Found | Shevato</title>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=no" />
+
+    <link rel="stylesheet" href="/assets/css/main.css" />
+    <link rel="stylesheet" href="/assets/css/home-content-alignment.css" />
+    <link rel="stylesheet" href="/assets/css/brand-colors.css" />
+    <link rel="icon" type="image/png" href="/images/white_icon_transparent.png">
+
+    <!-- make body full-height flex so footer stays at bottom -->
+    <style>
+        body {
+          display: flex;
+          flex-direction: column;
+          min-height: 100vh;
+        }
+        .wrapper {
+          flex: 1;
+        }
+    </style>
+</head>
+<body class="is-preload">
+<!-- header include -->
+<div data-include="header"></div>
+
+<section class="wrapper wrapper-inherit-padding">
+    <div class="inner">
+        <header class="special">
+            <h2>
+                <img src="/images/full-logo.svg" alt="Shevato – Expert Software Engineering Services Logo">
+            </h2>
+            <p>Sorry, we couldn’t find that page.</p>
+            <p>
+                Redirecting to our <a href="/">home page</a> in
+                <strong><span id="redirect-countdown">5</span> seconds</strong>.
+            </p>
+        </header>
+    </div>
+</section>
+
+<!-- footer include -->
+<div data-include="footer"></div>
+
+<!-- countdown + redirect script -->
+<script>
+    (function() {
+      var sec = 5;
+      var el  = document.getElementById('redirect-countdown');
+      var timer = setInterval(function() {
+        sec--;
+        if (sec <= 0) {
+          clearInterval(timer);
+          window.location.href = '/';
+        } else {
+          el.textContent = sec;
+        }
+      }, 1000);
+    })();
+</script>
+
+<!-- Scripts (same as your other pages) -->
+<script src="/assets/js/passive-events-fix.js"></script>
+<script src="/assets/js/jquery.min.js"></script>
+<script src="/assets/js/browser.min.js"></script>
+<script src="/assets/js/breakpoints.min.js"></script>
+<script src="/assets/js/util.js"></script>
+<script src="/assets/js/main.js"></script>
+</body>
+</html>

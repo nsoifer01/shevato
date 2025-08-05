@@ -26,7 +26,6 @@
     <link rel="stylesheet" href="css/stats.css">
     <link rel="stylesheet" href="css/charts.css">
     <link rel="stylesheet" href="css/race-history.css">
-    <link rel="stylesheet" href="css/responsive.css">
     <link rel="stylesheet" href="css/add-race-dropdown.css">
     <link rel="stylesheet" href="css/player-display.css">
     <link rel="stylesheet" href="css/players-dropdown-new.css">
@@ -44,11 +43,12 @@
     <!-- Skip to main content link for accessibility -->
     <a href="#main-content" class="skip-to-main">Skip to main content</a>
     
-    <!-- Sidebar Toggle Button -->
-    <button class="sidebar-toggle" id="sidebar-toggle" onclick="toggleSidebar()" aria-label="Toggle sidebar" aria-expanded="false" aria-controls="sidebar">
-        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+    <!-- Modern Sidebar Toggle Button -->
+    <button class="sidebar-toggle" id="sidebar-toggle" onclick="toggleSidebar()" aria-label="Open navigation menu" aria-expanded="false" aria-controls="sidebar" title="Open sidebar navigation">
+        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true">
             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16" />
         </svg>
+        <span class="sr-only">Toggle navigation sidebar</span>
     </button>
     
     <!-- Sidebar Overlay -->
