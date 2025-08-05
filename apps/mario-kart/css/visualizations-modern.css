@@ -400,7 +400,7 @@
 }
 
 /* Dark Theme Support */
-body.dark-theme {
+body {
     --viz-bg-gradient: linear-gradient(135deg, #2d3748 0%, #1a202c 100%);
     --viz-card-shadow: 0 10px 30px rgba(0, 0, 0, 0.3);
     --viz-hover-shadow: 0 15px 40px rgba(0, 0, 0, 0.4);
@@ -417,13 +417,13 @@ body.dark-theme {
     --viz-active-glow: rgba(52, 211, 153, 0.3);
 }
 
-body.dark-theme .achievement-number,
-body.dark-theme .heat-percentage,
-body.dark-theme .spot-number {
+body .achievement-number,
+body .heat-percentage,
+body .spot-number {
     color: var(--viz-text-primary);
 }
 
-body.dark-theme .heat-label {
+body .heat-label {
     color: var(--viz-text-secondary);
 }
 
@@ -633,11 +633,11 @@ body.dark-theme .heat-label {
     box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08) !important;
 }
 
-body.dark-theme .bars-legend.visualization-guide-main {
+body .bars-legend.visualization-guide-main {
     background: var(--viz-bg-gradient) !important;
 }
 
-body.dark-theme .bars-legend.visualization-guide-main .viz-guide-card {
+body .bars-legend.visualization-guide-main .viz-guide-card {
     background: #374151 !important;
     border-color: #4a5568 !important;
 }
@@ -772,29 +772,29 @@ body.dark-theme .bars-legend.visualization-guide-main .viz-guide-card {
 }
 
 /* Dark theme adjustments for visualization guide */
-body.dark-theme .viz-guide-card {
+body .viz-guide-card {
     background: #374151;
     border-color: #4a5568;
 }
 
-body.dark-theme .viz-guide-card h4 {
+body .viz-guide-card h4 {
     color: #f7fafc;
 }
 
-body.dark-theme .viz-guide-card p,
-body.dark-theme .viz-guide-card ul li {
+body .viz-guide-card p,
+body .viz-guide-card ul li {
     color: #e2e8f0;
 }
 
-body.dark-theme .viz-color-legend {
+body .viz-color-legend {
     background: #2d3748;
 }
 
-body.dark-theme .viz-color-legend h4 {
+body .viz-color-legend h4 {
     color: #f7fafc;
 }
 
-body.dark-theme .color-item {
+body .color-item {
     color: #e2e8f0;
 }
 
@@ -963,25 +963,25 @@ body.dark-theme .color-item {
 }
 
 /* Dark theme support */
-body.dark-theme .achievement-details {
+body .achievement-details {
     background: var(--viz-bg-gradient);
     border-color: var(--viz-border);
 }
 
-body.dark-theme .achievement-details h4 {
+body .achievement-details h4 {
     color: var(--viz-text-primary);
 }
 
-body.dark-theme .achievement-expanded-item {
+body .achievement-expanded-item {
     background: #374151;
     border-color: #4a5568;
 }
 
-body.dark-theme .achievement-info strong {
+body .achievement-info strong {
     color: var(--viz-text-primary);
 }
 
-body.dark-theme .achievement-info small {
+body .achievement-info small {
     color: var(--viz-text-secondary);
 }
 

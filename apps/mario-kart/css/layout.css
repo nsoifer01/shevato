@@ -1,5 +1,64 @@
 /* Layout and Structure */
 
+/* Main layout wrapper for sticky sidebar */
+.layout-wrapper {
+    display: flex;
+    min-height: 100vh;
+    position: relative;
+}
+
+/* Main content container */
+.main-container {
+    flex: 1;
+    min-width: 0; /* Prevent flex item from growing beyond container */
+    padding-left: 20px;
+    padding-right: 20px;
+}
+
+/* Desktop layout - sidebar always visible */
+@media (min-width: 1025px) {
+    .layout-wrapper {
+        padding-left: 0; /* Remove any default padding */
+        align-items: flex-start; /* Align items to top */
+    }
+    
+    /* Move sidebar to be first child in layout wrapper */
+    .sidebar {
+        order: -1;
+        flex-shrink: 0;
+        position: sticky;
+        top: 0; /* Will be overridden by JavaScript */
+    }
+    
+    .main-container {
+        margin-left: 0;
+        padding-left: 30px;
+        padding-right: 30px;
+        min-height: 100vh; /* Ensure main content fills viewport */
+        width: calc(100% - 280px); /* Account for sidebar width */
+        max-width: none;
+    }
+    
+    /* Ensure content always starts below header */
+    .main-container .header-section {
+        margin-top: 0;
+        padding-top: 20px;
+    }
+}
+
+/* Mobile/tablet layout - sidebar slides over content */
+@media (max-width: 1024px) {
+    .layout-wrapper {
+        flex-direction: column;
+    }
+    
+    .main-container {
+        width: 100%;
+        padding-left: 15px;
+        padding-right: 15px;
+    }
+}
+
 /* Header section */
 .header-section {
     display: flex;
@@ -187,40 +246,40 @@
     text-align: center;
 }
 
-/* Dark theme support */
-body.dark-theme .help-panel {
+/* Theme styles */
+body .help-panel {
     background: linear-gradient(135deg, #2d3748 0%, #1a202c 100%);
     border-color: rgba(74, 85, 104, 0.5);
 }
 
-body.dark-theme .help-section h4,
-body.dark-theme .help-text strong,
-body.dark-theme .help-steps strong {
+body .help-section h4,
+body .help-text strong,
+body .help-steps strong {
     color: #e2e8f0;
 }
 
-body.dark-theme .help-section p,
-body.dark-theme .help-text p,
-body.dark-theme .help-steps li {
+body .help-section p,
+body .help-text p,
+body .help-steps li {
     color: #cbd5e0;
 }
 
-body.dark-theme .help-item {
+body .help-item {
     background: rgba(45, 55, 72, 0.8);
     border-color: rgba(74, 85, 104, 0.3);
 }
 
-body.dark-theme .help-steps {
+body .help-steps {
     background: rgba(45, 55, 72, 0.8);
     border-left-color: #667eea;
 }
 
-body.dark-theme .help-footer {
+body .help-footer {
     background: linear-gradient(135deg, #2d3748 0%, #4a5568 100%);
     border-color: #667eea;
 }
 
-body.dark-theme .help-footer p {
+body .help-footer p {
     color: #e2e8f0;
 }
 
@@ -230,43 +289,7 @@ body.dark-theme .help-footer p {
     gap: 12px;
 }
 
-/* Theme toggle */
-.theme-toggle {
-    background: #4a5568;
-    color: white;
-    border: none;
-    padding: 8px 12px;
-    border-radius: 6px;
-    font-size: 1.2em;
-    cursor: pointer;
-    transition: all 0.2s ease;
-    box-shadow: 0 2px 4px rgba(74, 85, 104, 0.3);
-}
-
-.theme-toggle.fixed-toggle {
-    position: fixed;
-    top: 20px;
-    right: 20px;
-    z-index: 1000;
-    padding: 10px 12px;
-    border-radius: 8px;
-    font-size: 1.1em;
-    backdrop-filter: blur(10px);
-    background: rgba(74, 85, 104, 0.9);
-    border: 1px solid rgba(107, 114, 128, 0.5);
-    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
-}
-
-.theme-toggle:hover {
-    background: #2d3748;
-    transform: translateY(-1px);
-}
-
-.theme-toggle.fixed-toggle:hover {
-    background: rgba(45, 55, 72, 0.95);
-    transform: translateY(-2px);
-    box-shadow: 0 6px 16px rgba(0, 0, 0, 0.2);
-}
+/* Theme toggle removed - single theme only */
 
 
 /* Player names widget */

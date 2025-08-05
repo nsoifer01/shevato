@@ -58,10 +58,7 @@ function mobileRedoAction() {
     updateMobileMenuStates();
 }
 
-function mobileToggleTheme() {
-    // Theme toggle disabled - dark mode only
-    updateMobileMenuStates();
-}
+// Theme functionality removed - single theme only
 
 function mobileToggleDate() {
     toggleDateWidget();
@@ -107,10 +104,7 @@ function updateMobileMenuStates() {
         }
     }
     
-    // Hide theme button - dark mode only
-    if (themeBtn) {
-        themeBtn.style.display = 'none';
-    }
+    // Theme button removed - single theme only
 }
 
 // Auto-close mobile menu on window resize to larger screens

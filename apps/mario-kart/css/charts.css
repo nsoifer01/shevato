@@ -43,19 +43,19 @@
 
 
 /* Dark theme support for Trends */
-body.dark-theme #trends {
+body #trends {
     background-color: #2d3748;
 }
 
-body.dark-theme #trends h2 {
+body #trends h2 {
     color: #f7fafc;
 }
 
-body.dark-theme #trends p {
+body #trends p {
     color: #a0aec0;
 }
 
-body.dark-theme #trends-chart-container {
+body #trends-chart-container {
     background: rgba(255, 255, 255, 0.05);
 }
 
@@ -419,7 +419,7 @@ body.dark-theme #trends-chart-container {
 
 
 /* Dark theme support for Activity */
-body.dark-theme {
+body {
     --activity-bg-gradient: linear-gradient(135deg, #2d3748 0%, #1a202c 100%);
     --activity-card-shadow: 0 20px 40px rgba(0, 0, 0, 0.3);
     --activity-hover-shadow: 0 25px 50px rgba(0, 0, 0, 0.4);
@@ -433,23 +433,23 @@ body.dark-theme {
     --activity-bar-border: #6b7280;
 }
 
-body.dark-theme .activity-container::before,
-body.dark-theme .heatmap-container::before {
+body .activity-container::before,
+body .heatmap-container::before {
     background: linear-gradient(180deg, rgba(129, 140, 248, 0.05) 0%, transparent 100%);
 }
 
-body.dark-theme .weekly-table-container,
-body.dark-theme .activity-chart-wrapper,
-body.dark-theme .heatmap-calendar {
+body .weekly-table-container,
+body .activity-chart-wrapper,
+body .heatmap-calendar {
     background: var(--activity-chart-bg);
     border-color: rgba(255, 255, 255, 0.1);
 }
 
-body.dark-theme .weekly-breakdown-table tbody tr {
+body .weekly-breakdown-table tbody tr {
     background: #374151 !important;
 }
 
-body.dark-theme .weekly-breakdown-table tbody tr:hover {
+body .weekly-breakdown-table tbody tr:hover {
     background: #4b5563 !important;
 }
 
@@ -840,7 +840,7 @@ body.dark-theme .weekly-breakdown-table tbody tr:hover {
 }
 
 /* Dark theme support for Analysis */
-body.dark-theme {
+body {
     --analysis-bg-gradient: linear-gradient(135deg, #2d3748 0%, #1a202c 100%);
     --analysis-card-shadow: 0 10px 30px rgba(0, 0, 0, 0.3);
     --analysis-hover-shadow: 0 20px 40px rgba(0, 0, 0, 0.4);
@@ -854,16 +854,16 @@ body.dark-theme {
     --analysis-item-bg: rgba(45, 55, 72, 0.8);
 }
 
-body.dark-theme .analysis-card::before {
+body .analysis-card::before {
     background: linear-gradient(180deg, rgba(129, 140, 248, 0.05) 0%, transparent 100%);
 }
 
-body.dark-theme .best-day-item {
+body .best-day-item {
     background: linear-gradient(135deg, rgba(52, 211, 153, 0.08) 0%, rgba(52, 211, 153, 0.04) 100%);
     border-color: rgba(52, 211, 153, 0.2);
 }
 
-body.dark-theme .worst-day-item {
+body .worst-day-item {
     background: linear-gradient(135deg, rgba(248, 113, 113, 0.08) 0%, rgba(248, 113, 113, 0.04) 100%);
     border-color: rgba(248, 113, 113, 0.2);
 }
@@ -897,17 +897,17 @@ body.dark-theme .worst-day-item {
 
 /* Note: :hover pseudo-class is not supported on scrollbar pseudo-elements in some browsers */
 
-body.dark-theme .comeback-list::-webkit-scrollbar-track,
-body.dark-theme .best-day-list::-webkit-scrollbar-track,
-body.dark-theme .worst-day-list::-webkit-scrollbar-track,
-body.dark-theme #pattern-analysis ul::-webkit-scrollbar-track {
+body .comeback-list::-webkit-scrollbar-track,
+body .best-day-list::-webkit-scrollbar-track,
+body .worst-day-list::-webkit-scrollbar-track,
+body #pattern-analysis ul::-webkit-scrollbar-track {
     background: rgba(255, 255, 255, 0.05);
 }
 
-body.dark-theme .comeback-list::-webkit-scrollbar-thumb,
-body.dark-theme .best-day-list::-webkit-scrollbar-thumb,
-body.dark-theme .worst-day-list::-webkit-scrollbar-thumb,
-body.dark-theme #pattern-analysis ul::-webkit-scrollbar-thumb {
+body .comeback-list::-webkit-scrollbar-thumb,
+body .best-day-list::-webkit-scrollbar-thumb,
+body .worst-day-list::-webkit-scrollbar-thumb,
+body #pattern-analysis ul::-webkit-scrollbar-thumb {
     background: linear-gradient(180deg, #818cf8 0%, #a78bfa 100%);
     box-shadow: 0 2px 4px rgba(0, 0, 0, 0.3);
 }
@@ -934,11 +934,11 @@ body.dark-theme #pattern-analysis ul::-webkit-scrollbar-thumb {
 
 /* Note: :hover pseudo-class is not supported on scrollbar pseudo-elements in some browsers */
 
-body.dark-theme .activity-content::-webkit-scrollbar-track {
+body .activity-content::-webkit-scrollbar-track {
     background: rgba(255, 255, 255, 0.05);
 }
 
-body.dark-theme .activity-content::-webkit-scrollbar-thumb {
+body .activity-content::-webkit-scrollbar-thumb {
     background: linear-gradient(90deg, #818cf8 0%, #a78bfa 100%);
     box-shadow: 0 2px 4px rgba(0, 0, 0, 0.3);
 }
@@ -951,7 +951,7 @@ body.dark-theme .activity-content::-webkit-scrollbar-thumb {
     scrollbar-color: #667eea rgba(0, 0, 0, 0.05);
 }
 
-body.dark-theme .activity-content {
+body .activity-content {
     scrollbar-color: #818cf8 rgba(255, 255, 255, 0.05);
 }
 
@@ -964,14 +964,14 @@ body.dark-theme .activity-content {
     scrollbar-color: #667eea rgba(0, 0, 0, 0.05);
 }
 
-body.dark-theme .comeback-list,
-body.dark-theme .best-day-list,
-body.dark-theme .worst-day-list,
-body.dark-theme #pattern-analysis ul {
+body .comeback-list,
+body .best-day-list,
+body .worst-day-list,
+body #pattern-analysis ul {
     scrollbar-color: #818cf8 rgba(255, 255, 255, 0.05);
 }
 
-body.dark-theme .comeback-item {
+body .comeback-item {
     background: linear-gradient(135deg, rgba(129, 140, 248, 0.08) 0%, rgba(129, 140, 248, 0.04) 100%);
     border-color: rgba(129, 140, 248, 0.2);
 }

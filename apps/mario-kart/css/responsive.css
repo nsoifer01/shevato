@@ -835,9 +835,9 @@ canvas {
 /* ========================================= */
 /* DARK MODE RESPONSIVE ADJUSTMENTS */
 /* ========================================= */
-body.dark-theme .input-section,
-body.dark-theme .stat-card,
-body.dark-theme .chart-container {
+body .input-section,
+body .stat-card,
+body .chart-container {
     background: var(--dark-card-bg, #2d3748);
 }
 

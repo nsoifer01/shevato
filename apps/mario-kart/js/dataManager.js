@@ -636,7 +636,7 @@ function confirmClearData() {
 
     const dialog = document.createElement('div');
     dialog.style.cssText = `
-        background: ${'#2d3748'};
+        background: #2d3748;
         border-radius: 1rem;
         padding: 2rem;
         box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
@@ -648,8 +648,8 @@ function confirmClearData() {
 
     dialog.innerHTML = `
         <div style="font-size: 3rem; margin-bottom: 1rem;">⚠️</div>
-        <h3 style="color: ${'#e2e8f0'}; margin-bottom: 1rem; font-size: 1.5rem;">Clear All Data?</h3>
-        <p style="color: ${isDarkTheme ? '#a0aec0' : '#4a5568'}; margin-bottom: 2rem; line-height: 1.5;">
+        <h3 style="color: #e2e8f0; margin-bottom: 1rem; font-size: 1.5rem;">Clear All Data?</h3>
+        <p style="color: #a0aec0; margin-bottom: 2rem; line-height: 1.5;">
             This will permanently delete all race data, statistics, automated backups, and history. This action cannot be undone.
         </p>
         <div style="display: flex; gap: 1rem; justify-content: center;">
@@ -664,8 +664,8 @@ function confirmClearData() {
                 transition: all 0.2s;
             ">Delete Everything</button>
             <button id="cancel-clear" style="
-                background: ${'#4a5568'};
-                color: ${'#e2e8f0'};
+                background: #4a5568;
+                color: #e2e8f0;
                 border: none;
                 padding: 0.75rem 1.5rem;
                 border-radius: 0.5rem;
