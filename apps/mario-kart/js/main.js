@@ -865,13 +865,12 @@ function createGuideView() {
         </div>
     `;
 
-    // Update theme-based gradients
-    const isDarkMode = document.body.classList.contains('dark-theme');
+    // Force dark mode gradients only
     const lightGradients = document.querySelectorAll('.frequency-gradient.light-mode');
     const darkGradients = document.querySelectorAll('.frequency-gradient.dark-mode');
 
-    lightGradients.forEach(el => el.style.display = isDarkMode ? 'none' : 'inline-flex');
-    darkGradients.forEach(el => el.style.display = isDarkMode ? 'inline-flex' : 'none');
+    lightGradients.forEach(el => el.style.display = 'none');
+    darkGradients.forEach(el => el.style.display = 'inline-flex');
 }
 
 function getPositionClass(position) {
@@ -1409,11 +1408,6 @@ document.addEventListener('DOMContentLoaded', function() {
         updateDateButtonText();
     }
 
-    // Set theme toggle icon based on current theme
-    const themeToggle = document.getElementById('theme-toggle');
-    if (themeToggle) {
-        themeToggle.textContent = isDarkTheme ? '☀️' : '🌙';
-    }
 
     // Initialize undo/redo button states
     updateUndoRedoButtons();

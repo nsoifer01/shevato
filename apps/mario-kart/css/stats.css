@@ -1,33 +1,33 @@
 /* Statistics and H2H Styles - Modern Redesign */
 
-/* CSS Variables for theming */
+/* CSS Variables for theming - Dark Theme Only */
 :root {
-    --stat-primary: #667eea;
-    --stat-primary-light: #7c3aed;
-    --stat-secondary: #10b981;
-    --stat-warning: #f59e0b;
-    --stat-danger: #ef4444;
-    --stat-neutral: #6b7280;
-    --stat-text-primary: #4a5568;
-    --stat-text-secondary: #718096;
-    --stat-bg-gradient: linear-gradient(135deg, #f8fafc 0%, #e2e8f0 100%);
-    --stat-card-shadow: 0 10px 30px rgba(0, 0, 0, 0.1);
-    --stat-hover-shadow: 0 20px 40px rgba(0, 0, 0, 0.15);
+    --stat-primary: #818cf8;
+    --stat-primary-light: #a78bfa;
+    --stat-secondary: #34d399;
+    --stat-warning: #fbbf24;
+    --stat-danger: #f87171;
+    --stat-neutral: #9ca3af;
+    --stat-text-primary: #f7fafc;
+    --stat-text-secondary: #e2e8f0;
+    --stat-bg-gradient: linear-gradient(135deg, #2d3748 0%, #1a202c 100%);
+    --stat-card-shadow: 0 10px 30px rgba(0, 0, 0, 0.3);
+    --stat-hover-shadow: 0 20px 40px rgba(0, 0, 0, 0.4);
     
     /* H2H Design Tokens */
-    --h2h-bg: #f5f7fa;
-    --h2h-card-bg: #ffffff;
-    --h2h-border: #e5e7eb;
-    --h2h-accent: #667eea;
-    --h2h-accent-hover: #7c3aed;
-    --h2h-text: #1f2937;
-    --h2h-text-secondary: #6b7280;
-    --h2h-muted: #9ca3af;
-    --h2h-success: #10b981;
-    --h2h-danger: #ef4444;
-    --h2h-warning: #f59e0b;
-    --h2h-card-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
-    --h2h-card-hover-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+    --h2h-bg: #1a202c;
+    --h2h-card-bg: #2d3748;
+    --h2h-border: #4a5568;
+    --h2h-accent: #818cf8;
+    --h2h-accent-hover: #a78bfa;
+    --h2h-text: #f7fafc;
+    --h2h-text-secondary: #e2e8f0;
+    --h2h-muted: #a0aec0;
+    --h2h-success: #34d399;
+    --h2h-danger: #f87171;
+    --h2h-warning: #fbbf24;
+    --h2h-card-shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
+    --h2h-card-hover-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
 }
 
 /* Smooth animations */
@@ -174,15 +174,6 @@
     opacity: 1;
 }
 
-/* Light mode player names should be dark */
-body.light-mode .player-name {
-    color: #1a202c !important;
-}
-
-body.light-mode .stat-item .player-name,
-body.light-mode .stat-card .player-name {
-    color: #1a202c !important;
-}
 
 /* Ensure player names in stat items are white */
 .stat-item .player-name,
