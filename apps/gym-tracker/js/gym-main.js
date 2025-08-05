@@ -21,10 +21,11 @@ class GymApp {
     console.log('Initializing Gym Tracker...');
     
     // Check for first time user
-    const hasData = gymData.getAllWorkouts().length > 0;
+    const hasSeenWelcome = localStorage.getItem('gymTrackerWelcomeShown');
     
-    if (!hasData) {
+    if (!hasSeenWelcome) {
       this.showWelcome();
+      localStorage.setItem('gymTrackerWelcomeShown', 'true');
     }
     
     // Set up error handling

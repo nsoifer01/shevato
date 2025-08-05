@@ -91,6 +91,43 @@
   font-weight: 700;
 }
 
+/* Sync Status Indicator */
+.sync-status {
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+  margin-left: auto;
+  padding: 0.25rem 0.75rem;
+  background: var(--bg-secondary);
+  border-radius: var(--radius-full);
+  font-size: 0.75rem;
+  font-weight: 500;
+  transition: all var(--transition-base);
+}
+
+.sync-status.connected {
+  background: rgba(46, 204, 113, 0.2);
+  color: #2ecc71;
+}
+
+.sync-status.synced {
+  background: rgba(52, 152, 219, 0.2);
+  color: #3498db;
+}
+
+.sync-status.error {
+  background: rgba(231, 76, 60, 0.2);
+  color: #e74c3c;
+}
+
+.sync-status .sync-icon {
+  font-size: 0.875rem;
+}
+
+.sync-status.connected .sync-icon {
+  animation: pulse 2s infinite;
+}
+
 .brand-icon {
   font-size: 1.5rem;
   animation: pulse 2s infinite;

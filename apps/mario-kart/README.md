@@ -5,7 +5,7 @@ A comprehensive web application for tracking Mario Kart race results, analyzing 
 ## 🎮 Overview
 
 Mario Kart Race Tracker is a feature-rich web application that allows you to:
-- Record race results for 2-4 players
+- Record race results for 1-4 players
 - Track detailed statistics and performance metrics
 - Compete for achievements and milestones
 - Analyze head-to-head matchups
