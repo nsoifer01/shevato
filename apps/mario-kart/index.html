@@ -1,0 +1,238 @@
+<!DOCTYPE HTML>
+<html lang="en">
+<head>
+  <!-- Google Analytics -->
+  <script async src="https://www.googletagmanager.com/gtag/js?id=UA-140119780-1"></script>
+  <script src="/assets/js/analytics.js"></script>
+  <meta charset="utf-8" />
+  <title>Mario Kart Race Tracker - Track Your Racing Statistics | Shevato</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=no" />
+  <meta name="description" content="Track your Mario Kart racing performance, analyze statistics, and compete with friends. Professional race tracking and performance analytics for Mario Kart tournaments." />
+  <meta name="keywords" content="Mario Kart Tracker, Racing Statistics, Tournament Tracking, Performance Analytics, Shevato Games" />
+  <link rel="stylesheet" href="../../assets/css/main.css" />
+  <link rel="stylesheet" href="/assets/css/brand-colors.css" />
+  <link rel="stylesheet" href="css/base.css" />
+  <link rel="stylesheet" href="css/theme.css" />
+  <link rel="stylesheet" href="css/mario-kart-app.css" />
+  <link rel="icon" type="image/png" href="../../images/white_icon_transparent.png">
+</head>
+<body class="is-preload mario-kart-app mario-kart-tracker">
+  <div data-include="header"></div>
+  
+  <!-- Mario Kart App Container -->
+  <div class="mario-kart-container">
+    <!-- Navigation Bar -->
+    <nav class="mk-nav">
+      <div class="nav-brand">
+        <span class="brand-icon">🏁</span>
+        <span class="brand-text">Mario Kart Tracker</span>
+      </div>
+      <div class="nav-links">
+        <button class="nav-link active" data-section="dashboard">
+          <i class="icon">📊</i>
+          <span>Dashboard</span>
+        </button>
+        <button class="nav-link" data-section="races">
+          <i class="icon">🏎️</i>
+          <span>Race History</span>
+        </button>
+        <button class="nav-link" data-section="statistics">
+          <i class="icon">📈</i>
+          <span>Statistics</span>
+        </button>
+        <button class="nav-link" data-section="players">
+          <i class="icon">👥</i>
+          <span>Players</span>
+        </button>
+        <button class="nav-link" data-section="tournaments">
+          <i class="icon">🏆</i>
+          <span>Tournaments</span>
+        </button>
+      </div>
+    </nav>
+
+    <!-- Main Content Area -->
+    <main class="mk-main-content">
+      <!-- Dashboard Section -->
+      <section id="dashboard" class="mk-section active">
+        <div class="section-header">
+          <h2>Racing Dashboard</h2>
+          <p>Welcome to your Mario Kart race tracking hub</p>
+        </div>
+        
+        <div class="stats-grid">
+          <div class="stat-card">
+            <div class="stat-icon">🏁</div>
+            <div class="stat-content">
+              <h3>Total Races</h3>
+              <span class="stat-number" id="total-races">0</span>
+            </div>
+          </div>
+          
+          <div class="stat-card">
+            <div class="stat-icon">🥇</div>
+            <div class="stat-content">
+              <h3>Wins</h3>
+              <span class="stat-number" id="total-wins">0</span>
+            </div>
+          </div>
+          
+          <div class="stat-card">
+            <div class="stat-icon">📊</div>
+            <div class="stat-content">
+              <h3>Win Rate</h3>
+              <span class="stat-number" id="win-rate">0%</span>
+            </div>
+          </div>
+          
+          <div class="stat-card">
+            <div class="stat-icon">⚡</div>
+            <div class="stat-content">
+              <h3>Avg Position</h3>
+              <span class="stat-number" id="avg-position">-</span>
+            </div>
+          </div>
+        </div>
+
+        <div class="dashboard-actions">
+          <button class="btn btn-primary" onclick="goToTracker()">
+            <i class="icon">🏎️</i>
+            Open Race Tracker
+          </button>
+          <button class="btn btn-secondary" onclick="showQuickStats()">
+            <i class="icon">📈</i>
+            View Statistics
+          </button>
+        </div>
+      </section>
+
+      <!-- Race History Section -->
+      <section id="races" class="mk-section">
+        <div class="section-header">
+          <h2>Recent Races</h2>
+          <p>Your latest racing performance</p>
+        </div>
+        <div class="races-list">
+          <div class="empty-state">
+            <div class="empty-icon">🏁</div>
+            <h3>No races yet!</h3>
+            <p>Start racing to see your history here</p>
+            <button class="btn btn-primary" onclick="goToTracker()">Add Your First Race</button>
+          </div>
+        </div>
+      </section>
+
+      <!-- Statistics Section -->
+      <section id="statistics" class="mk-section">
+        <div class="section-header">
+          <h2>Performance Statistics</h2>
+          <p>Detailed analysis of your racing performance</p>
+        </div>
+        <div class="charts-container">
+          <div class="chart-card">
+            <h3>Position Distribution</h3>
+            <div class="chart-placeholder">
+              <p>Charts will appear here when you have race data</p>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- Players Section -->
+      <section id="players" class="mk-section">
+        <div class="section-header">
+          <h2>Racing Opponents</h2>
+          <p>Manage your racing buddies and rivals</p>
+        </div>
+        <div class="players-grid">
+          <div class="empty-state">
+            <div class="empty-icon">👥</div>
+            <h3>No players configured</h3>
+            <p>Set up your racing group in the tracker</p>
+            <button class="btn btn-primary" onclick="goToTracker()">Configure Players</button>
+          </div>
+        </div>
+      </section>
+
+      <!-- Tournaments Section -->
+      <section id="tournaments" class="mk-section">
+        <div class="section-header">
+          <h2>Racing Tournaments</h2>
+          <p>Track tournament progress and championships</p>
+        </div>
+        <div class="tournaments-list">
+          <div class="empty-state">
+            <div class="empty-icon">🏆</div>
+            <h3>No tournaments yet</h3>
+            <p>Create tournaments to track championship progress</p>
+            <button class="btn btn-secondary">Coming Soon</button>
+          </div>
+        </div>
+      </section>
+    </main>
+  </div>
+
+  <!-- Footer -->
+  <div data-include="footer"></div>
+
+  <!-- Scripts -->
+  <script src="../../assets/js/passive-events-fix.js"></script>
+  <script src="../../assets/js/jquery.min.js"></script>
+  <script src="../../assets/js/browser.min.js"></script>
+  <script src="../../assets/js/breakpoints.min.js"></script>
+  <script src="../../assets/js/util.js"></script>
+  <script src="../../assets/js/main.js"></script>
+  
+  <script src="/assets/js/year-updater.js"></script>
+  
+  <!-- Mario Kart App Script -->
+  <script>
+    // Navigation functionality
+    function initMarioKartApp() {
+      const navLinks = document.querySelectorAll('.nav-link');
+      const sections = document.querySelectorAll('.mk-section');
+      
+      navLinks.forEach(link => {
+        link.addEventListener('click', () => {
+          const targetSection = link.dataset.section;
+          
+          // Update active nav link
+          navLinks.forEach(l => l.classList.remove('active'));
+          link.classList.add('active');
+          
+          // Update active section
+          sections.forEach(s => s.classList.remove('active'));
+          document.getElementById(targetSection).classList.add('active');
+        });
+      });
+      
+      // Load dashboard data
+      loadDashboardData();
+    }
+    
+    // Load dashboard statistics
+    function loadDashboardData() {
+      // This would normally load from localStorage or API
+      // For now, show placeholder data
+      document.getElementById('total-races').textContent = '0';
+      document.getElementById('total-wins').textContent = '0';
+      document.getElementById('win-rate').textContent = '0%';
+      document.getElementById('avg-position').textContent = '-';
+    }
+    
+    // Navigate to race tracker
+    function goToTracker() {
+      window.location.href = 'tracker.html';
+    }
+    
+    // Show quick statistics
+    function showQuickStats() {
+      // Switch to statistics tab
+      document.querySelector('[data-section="statistics"]').click();
+    }
+    
+    // Initialize when DOM is loaded
+    document.addEventListener('DOMContentLoaded', initMarioKartApp);
+  </script>
+</body>
+</html>
