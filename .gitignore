@@ -15,5 +15,4 @@ claude-*.json
 .claude-config/
 claude-session/
 .claude-history
-
-/assets/js/firebase/firebase-config.js
+.claude_rules
