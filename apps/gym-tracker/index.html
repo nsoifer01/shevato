@@ -68,6 +68,10 @@
           <i class="icon">📈</i>
           <span>Progress</span>
         </button>
+        <button class="nav-link" data-section="training-plans">
+          <i class="icon">📝</i>
+          <span>Plans</span>
+        </button>
         <button class="nav-link" data-section="settings">
           <i class="icon">⚙️</i>
           <span>Settings</span>
@@ -273,6 +277,69 @@
         </div>
       </section>
       
+      <!-- Training Plans Section -->
+      <section id="training-plans" class="content-section">
+        <div class="section-header">
+          <h1>Training Plans</h1>
+          <div class="header-actions">
+            <button class="btn-primary" id="exportPlanBtn">Export Plan</button>
+            <button class="btn-secondary" id="importPlanBtn">Import Plan</button>
+            <input type="file" id="importPlanFile" accept=".json" style="display: none;">
+          </div>
+        </div>
+        
+        <div class="training-plan-container">
+          <!-- Plan Builder -->
+          <div class="plan-builder card">
+            <h3 id="planBuilderTitle">Create Your Weekly Plan</h3>
+            
+            <div class="day-selector-form">
+              <label for="daySelect">Select Day:</label>
+              <select id="daySelect" class="form-select">
+                <option value="">Choose a day...</option>
+                <option value="Monday">Monday</option>
+                <option value="Tuesday">Tuesday</option>
+                <option value="Wednesday">Wednesday</option>
+                <option value="Thursday">Thursday</option>
+                <option value="Friday">Friday</option>
+                <option value="Saturday">Saturday</option>
+                <option value="Sunday">Sunday</option>
+              </select>
+            </div>
+            
+            <div id="exerciseInputs" class="exercise-inputs" style="display: none;">
+              <h4 id="selectedDayTitle">Exercises for <span id="selectedDayName"></span></h4>
+              
+              <div id="exerciseList" class="exercise-plan-list">
+                <!-- Dynamic exercise inputs will be added here -->
+              </div>
+              
+              <button class="btn-secondary" id="addExerciseToDay">+ Add Exercise</button>
+              <button class="btn-primary" id="saveDayPlan">Save Day Plan</button>
+              <button class="btn-secondary" id="clearDayExercises" style="display: none;">Clear All</button>
+            </div>
+          </div>
+          
+          <!-- Current Plan Display -->
+          <div class="current-plan card">
+            <h3>Your Weekly Training Plan</h3>
+            <div id="weeklyPlanDisplay" class="weekly-plan-display">
+              <p class="empty-state">No training plan created yet. Start by selecting a day above!</p>
+            </div>
+          </div>
+          
+          <!-- Plan Actions -->
+          <div class="plan-actions card">
+            <h3>Plan Management</h3>
+            <div class="action-buttons">
+              <button class="btn-secondary" id="clearPlanBtn">Clear All</button>
+              <button class="btn-secondary" id="backupPlanBtn">Backup to File</button>
+              <button class="btn-primary" id="loadSamplePlanBtn">Load Sample Plan</button>
+            </div>
+          </div>
+        </div>
+      </section>
+      
       <!-- Settings Section -->
       <section id="settings" class="content-section">
         <div class="section-header">
@@ -345,6 +412,12 @@
             <button class="btn-secondary" id="importDataBtn">Import Data</button>
             <button class="btn-danger" id="clearDataBtn">Clear All Data</button>
           </div>
+          
+          <div class="settings-group card">
+            <h3>Help & Info</h3>
+            <button class="btn-primary" id="showWelcomeBtn">Show Welcome Guide</button>
+          </div>
+          
         </div>
       </section>
     </main>
@@ -389,6 +462,34 @@
           <button type="button" class="btn-secondary modal-close">Cancel</button>
         </div>
       </form>
+    </div>
+  </div>
+  
+  <!-- Exercise Picker Modal for Training Plans -->
+  <div class="modal" id="exercisePickerModal">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h2>Select Exercise</h2>
+        <button class="modal-close">&times;</button>
+      </div>
+      <div class="modal-body">
+        <input type="text" id="exercisePickerSearch" class="search-input" placeholder="Search exercises...">
+        <div class="exercise-picker-filters">
+          <select id="exercisePickerMuscleFilter" class="filter-select">
+            <option value="">All Muscle Groups</option>
+            <option value="chest">Chest</option>
+            <option value="back">Back</option>
+            <option value="shoulders">Shoulders</option>
+            <option value="arms">Arms</option>
+            <option value="legs">Legs</option>
+            <option value="core">Core</option>
+            <option value="cardio">Cardio</option>
+          </select>
+        </div>
+        <div id="exercisePickerList" class="exercise-picker-list">
+          <!-- Exercise options will be loaded here -->
+        </div>
+      </div>
     </div>
   </div>
   
@@ -443,12 +544,16 @@
   <script src="../../assets/js/util.js"></script>
   <script src="../../assets/js/main.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-  <script src="js/gym-data.js"></script>
+  
+  <!-- Gym Tracker Scripts -->
+  <script src="js/exercise-database.js"></script>
+  <script src="js/gym-data-enhanced.js"></script>
   <script src="js/gym-exercises.js"></script>
   <script src="js/gym-workout.js"></script>
   <script src="js/gym-calendar.js"></script>
   <script src="js/gym-progress.js"></script>
   <script src="js/gym-ui.js"></script>
+  <script src="js/gym-training-plans.js"></script>
   <script src="js/gym-main.js"></script>
   
   <script>

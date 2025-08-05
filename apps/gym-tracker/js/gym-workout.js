@@ -62,6 +62,22 @@ class GymWorkout {
         this.saveSet();
       });
     }
+
+    // Modal close buttons
+    document.querySelectorAll('.modal-close').forEach(btn => {
+      btn.addEventListener('click', (e) => {
+        e.target.closest('.modal').classList.remove('active');
+      });
+    });
+
+    // Close modal on outside click
+    document.querySelectorAll('.modal').forEach(modal => {
+      modal.addEventListener('click', (e) => {
+        if (e.target === modal) {
+          modal.classList.remove('active');
+        }
+      });
+    });
   }
 
   startNewWorkout(templateId = null) {
@@ -230,6 +246,11 @@ class GymWorkout {
     this.currentExerciseIndex = exerciseIndex;
     const modal = document.getElementById('setModal');
     const form = document.getElementById('setForm');
+    
+    if (!modal || !form) {
+      console.error('Set modal or form not found');
+      return;
+    }
     
     // Reset form
     form.reset();
