@@ -69,8 +69,6 @@ body {
 mark {
   background-color: transparent;
   color: inherit; }
-
-
 input, select, textarea {
   -moz-appearance: none;
   -webkit-appearance: none;
@@ -475,8 +473,6 @@ input[type="radio"] + label:before {
 
 ::-moz-placeholder {
   opacity: 1.0; }
-
-
 label {
   color: #555555; }
 
@@ -532,8 +528,6 @@ input[type="radio"]:focus + label:before {
 
 ::-moz-placeholder {
   color: #bbbbbb !important; }
-
-
 /* List */
 ol {
   list-style: decimal;
