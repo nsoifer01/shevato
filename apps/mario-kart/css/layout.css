@@ -3,7 +3,7 @@
 /* Main layout wrapper for sticky sidebar */
 .layout-wrapper {
     display: flex;
-    min-height: 100vh;
+    min-height: calc(100vh - var(--footer-height, 80px));
     position: relative;
 }
 
@@ -34,9 +34,11 @@
         margin-left: 0;
         padding-left: 30px;
         padding-right: 30px;
-        min-height: 100vh; /* Ensure main content fills viewport */
-        width: calc(100% - 280px); /* Account for sidebar width */
+        min-height: calc(100vh - var(--footer-height, 80px));
+        width: calc(100% - var(--sidebar-width, 320px));
         max-width: none;
+        display: flex;
+        flex-direction: column;
     }
     
     /* Ensure content always starts below header */
