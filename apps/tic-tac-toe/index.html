@@ -3,12 +3,7 @@
 <head>
   <!-- Google Analytics -->
   <script async src="https://www.googletagmanager.com/gtag/js?id=UA-140119780-1"></script>
-  <script>
-    window.dataLayer = window.dataLayer || [];
-    function gtag(){dataLayer.push(arguments);}
-    gtag('js', new Date());
-    gtag('config', 'UA-140119780-1');
-  </script>
+  <script src="/assets/js/analytics.js"></script>
   <meta charset="utf-8" />
   <title>Tic-Tac-Toe - Shevato Games</title>
   <meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=no" />
@@ -114,11 +109,6 @@
   <script src="../../assets/js/main.js"></script>
   <script src="js/tic-tac-toe.js"></script>
   
-  <script>
-    (function(){
-      const y = new Date().getFullYear();
-      document.getElementById('year').textContent = y;
-    })();
-  </script>
+  <script src="/assets/js/year-updater.js"></script>
 </body>
 </html>
