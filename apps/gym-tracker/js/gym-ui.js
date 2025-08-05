@@ -8,7 +8,47 @@ class GymUI {
 
   init() {
     this.setupEventListeners();
+    this.setupSyncListeners();
     this.updateDashboard();
+  }
+
+  setupSyncListeners() {
+    // The universal sync UI handles status updates automatically
+    // We just need to listen for data updates specific to gym tracker
+    window.addEventListener('gymDataUpdated', () => {
+      // Refresh current view
+      if (this.currentSection === 'dashboard') {
+        this.updateDashboard();
+      }
+    });
+
+    // Update settings page sync info when Shevato sync status changes
+    window.addEventListener('shevatoSyncStatusChanged', (e) => {
+      const syncStatusTextEl = document.getElementById('syncStatusText');
+      const deviceIdTextEl = document.getElementById('deviceIdText');
+      
+      if (!syncStatusTextEl || !deviceIdTextEl) return;
+      
+      switch (e.detail.status) {
+        case 'connected':
+          syncStatusTextEl.textContent = 'Connected - Waiting for sync';
+          if (e.detail.userId) {
+            deviceIdTextEl.textContent = e.detail.userId;
+          }
+          break;
+        case 'synced':
+          syncStatusTextEl.textContent = 'Synced ✓';
+          break;
+        case 'error':
+          syncStatusTextEl.textContent = 'Error - Check console';
+          break;
+        case 'offline':
+        default:
+          syncStatusTextEl.textContent = 'Offline';
+          deviceIdTextEl.textContent = 'Not connected';
+          break;
+      }
+    });
   }
 
   setupEventListeners() {
@@ -82,6 +122,13 @@ class GymUI {
       }
     });
 
+    // Show welcome button
+    document.getElementById('showWelcomeBtn')?.addEventListener('click', () => {
+      if (window.gymApp && window.gymApp.showWelcome) {
+        window.gymApp.showWelcome();
+      }
+    });
+
     // Load current settings
     this.loadSettings();
   }
@@ -124,6 +171,11 @@ class GymUI {
         case 'calendar':
           window.gymCalendar.renderCalendar();
           window.gymCalendar.updateWeeklySchedule();
+          break;
+        case 'training-plans':
+          if (window.trainingPlans) {
+            window.trainingPlans.show();
+          }
           break;
       }
     }

@@ -76,9 +76,13 @@ class GymCalendar {
       workoutsByDate[date].push(workout);
     });
 
-    // Get scheduled workout days
+    // Get scheduled workout days from settings
     const settings = gymData.getSettings();
     const scheduledDays = settings.preferredDays || [];
+    
+    // Get training plan
+    const trainingPlan = window.trainingPlans ? window.trainingPlans.currentPlan : {};
+    const dayNames = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
 
     // Add previous month's trailing days
     for (let i = firstDay - 1; i >= 0; i--) {
@@ -94,6 +98,7 @@ class GymCalendar {
     for (let day = 1; day <= daysInMonth; day++) {
       const date = new Date(this.currentYear, this.currentMonth, day);
       const dayOfWeek = date.getDay();
+      const dayName = dayNames[dayOfWeek];
       const classes = [];
       
       // Check if today
@@ -101,9 +106,15 @@ class GymCalendar {
         classes.push('today');
       }
       
-      // Check if scheduled workout day
+      // Check if scheduled workout day from settings
       if (scheduledDays.includes(dayOfWeek)) {
         classes.push('scheduled');
+      }
+      
+      // Check if has training plan for this day
+      const planForDay = trainingPlan[dayName];
+      if (planForDay && planForDay.length > 0) {
+        classes.push('has-plan');
       }
       
       // Check if workout completed
@@ -111,7 +122,7 @@ class GymCalendar {
         classes.push('completed');
       }
       
-      const dayEl = this.createDayElement(day, classes.join(' '), workoutsByDate[day]);
+      const dayEl = this.createDayElement(day, classes.join(' '), workoutsByDate[day], planForDay);
       grid.appendChild(dayEl);
     }
 
@@ -125,7 +136,7 @@ class GymCalendar {
     }
   }
 
-  createDayElement(day, className = '', workouts = null) {
+  createDayElement(day, className = '', workouts = null, trainingPlan = null) {
     const dayEl = document.createElement('div');
     dayEl.className = `cal-date ${className}`;
     
@@ -134,28 +145,43 @@ class GymCalendar {
     dayNumber.textContent = day;
     dayEl.appendChild(dayNumber);
     
+    // Show indicators for workouts or plans
     if (workouts && workouts.length > 0) {
       const indicator = document.createElement('div');
       indicator.className = 'cal-date-indicator';
-      indicator.title = `${workouts.length} workout${workouts.length > 1 ? 's' : ''}`;
+      indicator.title = `${workouts.length} workout${workouts.length > 1 ? 's' : ''} completed`;
       dayEl.appendChild(indicator);
-      
-      // Add click handler
+    }
+    
+    if (trainingPlan && trainingPlan.length > 0) {
+      const planIndicator = document.createElement('div');
+      planIndicator.className = 'cal-date-plan-indicator';
+      planIndicator.title = `Training plan: ${trainingPlan.length} exercise${trainingPlan.length > 1 ? 's' : ''}`;
+      planIndicator.textContent = '📋';
+      dayEl.appendChild(planIndicator);
+    }
+    
+    // Add click handler if there's data to show
+    if ((workouts && workouts.length > 0) || (trainingPlan && trainingPlan.length > 0)) {
       dayEl.addEventListener('click', () => {
-        this.showDayDetails(day, workouts);
+        this.showDayDetails(day, workouts, trainingPlan);
       });
     }
     
     return dayEl;
   }
 
-  showDayDetails(day, workouts) {
+  showDayDetails(day, workouts, trainingPlan) {
     const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
                        'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
     
     const date = `${monthNames[this.currentMonth]} ${day}, ${this.currentYear}`;
+    const dayDate = new Date(this.currentYear, this.currentMonth, day);
+    const dayNames = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+    const dayName = dayNames[dayDate.getDay()];
     
-    const workoutDetails = workouts.map(workout => {
+    // Build workout details
+    const workoutDetails = workouts && workouts.length > 0 ? workouts.map(workout => {
       const duration = this.formatDuration(workout.duration);
       const exerciseCount = workout.exercises.length;
       const totalSets = workout.exercises.reduce((sum, ex) => sum + ex.sets.length, 0);
@@ -170,14 +196,38 @@ class GymCalendar {
           </div>
         </div>
       `;
-    }).join('');
+    }).join('') : '';
+    
+    // Build training plan details
+    const planDetails = trainingPlan && trainingPlan.length > 0 ? `
+      <div class="training-plan-section">
+        <h4>Training Plan (${dayName})</h4>
+        <div class="plan-exercises">
+          ${trainingPlan.map(exercise => `
+            <div class="plan-exercise-item">
+              <strong>${exercise.exercise}</strong>
+              ${exercise.sets && exercise.reps ? ` - ${exercise.sets} sets × ${exercise.reps} reps` : ''}
+            </div>
+          `).join('')}
+        </div>
+        <button class="btn-primary" onclick="window.gymCalendar.startWorkoutFromPlan('${dayName}')">
+          Start This Workout
+        </button>
+      </div>
+    ` : '';
     
     const modalContent = `
       <div class="day-details">
         <h3>${date}</h3>
-        <div class="day-workouts">
-          ${workoutDetails}
-        </div>
+        ${planDetails}
+        ${workoutDetails ? `
+          <div class="completed-workouts">
+            <h4>Completed Workouts</h4>
+            <div class="day-workouts">
+              ${workoutDetails}
+            </div>
+          </div>
+        ` : ''}
       </div>
     `;
     
@@ -248,6 +298,56 @@ class GymCalendar {
       return `${hours}h ${minutes}m`;
     }
     return `${minutes}m`;
+  }
+
+  startWorkoutFromPlan(dayName) {
+    const trainingPlan = window.trainingPlans ? window.trainingPlans.currentPlan : {};
+    const planForDay = trainingPlan[dayName];
+    
+    if (!planForDay || planForDay.length === 0) {
+      window.gymUI.showNotification('No training plan found for this day', 'error');
+      return;
+    }
+    
+    // Close the modal
+    const modal = document.querySelector('.modal.active');
+    if (modal) {
+      modal.remove();
+    }
+    
+    // Start a new workout with the exercises from the plan
+    window.gymUI.showSection('workout');
+    
+    // Create workout with plan exercises
+    const workout = {
+      id: window.gymData.generateId(),
+      date: new Date().toISOString(),
+      exercises: planForDay.map(planExercise => {
+        // Find matching exercise in database
+        const exercise = window.gymData.getAllExercises().find(
+          ex => ex.name.toLowerCase() === planExercise.exercise.toLowerCase()
+        );
+        
+        return {
+          exerciseId: exercise ? exercise.id : null,
+          exerciseName: planExercise.exercise,
+          sets: [],
+          targetSets: planExercise.sets,
+          targetReps: planExercise.reps
+        };
+      }),
+      duration: 0,
+      fromPlan: dayName
+    };
+    
+    // Start the workout
+    if (window.gymWorkout) {
+      window.gymWorkout.currentWorkout = workout;
+      window.gymWorkout.renderCurrentWorkout();
+      window.gymWorkout.startTimer();
+    }
+    
+    window.gymUI.showNotification(`Started ${dayName} workout from training plan`, 'success');
   }
 
   scheduleWorkout(date, workoutTemplate = null) {
