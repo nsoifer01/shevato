@@ -1,4 +1,4 @@
-/* Dark Theme Only CSS Variables */
+/* Theme CSS Variables */
 :root {
     /* Page backgrounds */
     --bg-page: #1a202c;
@@ -68,7 +68,7 @@
     --scrollbar-thumb-hover: linear-gradient(180deg, #5a67d8 0%, #6b46c1 100%);
 }
 
-/* Base Dark Theme Styles */
+/* Base Theme Styles */
 body {
     background: var(--bg-gradient);
     color: var(--text-primary);
@@ -657,11 +657,7 @@ body .race-date-input::-webkit-calendar-picker-indicator {
 }
 
 /* Frequency gradient display */
-body .frequency-gradient.light-mode {
-    display: none !important;
-}
-
-body .frequency-gradient.dark-mode {
+body .frequency-gradient {
     display: inline !important;
 }
 

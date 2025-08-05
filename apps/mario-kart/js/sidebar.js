@@ -108,58 +108,75 @@ function toggleSidebar() {
 }
 
 function openSidebar(animate = true) {
+    // On desktop, sidebar is always visible
+    if (window.innerWidth >= 1025) {
+        console.log('Sidebar is always visible on desktop');
+        return;
+    }
+    
     const sidebar = document.getElementById('sidebar');
     const overlay = document.getElementById('sidebar-overlay');
     const toggle = document.getElementById('sidebar-toggle');
-    const container = document.querySelector('.container');
+    const container = document.querySelector('.main-container');
     
     sidebarOpen = true;
     
-    // Update ARIA attributes
-    toggle.setAttribute('aria-expanded', 'true');
+    // Update ARIA attributes if toggle exists
+    if (toggle) {
+        toggle.setAttribute('aria-expanded', 'true');
+        // Hide toggle button
+        toggle.style.opacity = '0';
+        toggle.style.pointerEvents = 'none';
+    }
     
     // Open sidebar
     sidebar.classList.add('open');
-    overlay.classList.add('active');
+    if (overlay) {
+        overlay.classList.add('active');
+    }
     
     // Add class to prevent page scrolling
     document.body.classList.add('sidebar-open');
-    
-    // Hide toggle button
-    toggle.style.opacity = '0';
-    toggle.style.pointerEvents = 'none';
     
     // Save state
     localStorage.setItem('sidebarOpen', 'true');
 }
 
 function closeSidebar() {
+    // Don't close sidebar on desktop (width >= 1025px)
+    if (window.innerWidth >= 1025) {
+        console.log('Sidebar is always visible on desktop');
+        return;
+    }
+    
     const sidebar = document.getElementById('sidebar');
     const overlay = document.getElementById('sidebar-overlay');
     const toggle = document.getElementById('sidebar-toggle');
-    const container = document.querySelector('.container');
+    const container = document.querySelector('.main-container');
     
     sidebarOpen = false;
     
-    // Update ARIA attributes
-    toggle.setAttribute('aria-expanded', 'false');
+    // Update ARIA attributes if toggle exists
+    if (toggle) {
+        toggle.setAttribute('aria-expanded', 'false');
+        // Show toggle button
+        toggle.style.opacity = '1';
+        toggle.style.pointerEvents = 'auto';
+        // Return focus to toggle button
+        toggle.focus();
+    }
     
     // Close sidebar
     sidebar.classList.remove('open');
-    overlay.classList.remove('active');
+    if (overlay) {
+        overlay.classList.remove('active');
+    }
     
     // Remove class to restore page scrolling
     document.body.classList.remove('sidebar-open');
     
-    // Show toggle button
-    toggle.style.opacity = '1';
-    toggle.style.pointerEvents = 'auto';
-    
     // Save state
     localStorage.setItem('sidebarOpen', 'false');
-    
-    // Return focus to toggle button
-    toggle.focus();
 }
 
 function handleSidebarKeyboard(event) {
@@ -191,10 +208,17 @@ function handleSidebarKeyboard(event) {
 }
 
 function handleResponsiveSidebar() {
-    const container = document.querySelector('.container');
+    const container = document.querySelector('.main-container');
     const toggle = document.getElementById('sidebar-toggle');
+    const sidebar = document.getElementById('sidebar');
     
-    // Remove any container adjustments - sidebar should overlay
+    // On desktop, ensure sidebar is always visible
+    if (window.innerWidth >= 1025) {
+        if (sidebar) {
+            sidebar.classList.add('open');
+        }
+    }
+    // Remove any container adjustments - sidebar should overlay on mobile
 }
 
 // Touch gesture support for mobile
