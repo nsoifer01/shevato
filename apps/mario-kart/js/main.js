@@ -807,12 +807,7 @@ function createGuideView() {
                         <p>Color transparency shows finishing frequency</p>
                         <div class="viz-tip" style="display: flex; align-items: center; flex-wrap: wrap; gap: 4px;">
                             <span>💡 Frequency:</span>
-                            <span class="frequency-gradient light-mode" style="display: none; white-space: nowrap;">
-                                <span style="background-color: rgba(59, 130, 246, 0.3); padding: 2px 6px; border-radius: 3px; margin-right: 4px; display: inline-block; color: black;">Low</span>
-                                <span style="background-color: rgba(59, 130, 246, 0.65); padding: 2px 6px; border-radius: 3px; margin-right: 4px; display: inline-block; color: black;">Medium</span>
-                                <span style="background-color: rgba(59, 130, 246, 1.0); padding: 2px 6px; border-radius: 3px; color: black; display: inline-block;">High</span>
-                            </span>
-                            <span class="frequency-gradient dark-mode" style="display: inline-flex; align-items: center; gap: 4px; white-space: nowrap;">
+                            <span class="frequency-gradient" style="display: inline-flex; align-items: center; gap: 4px; white-space: nowrap;">
                                 <span style="background-color: rgba(6, 182, 212, 0.3); padding: 2px 6px; border-radius: 3px; display: inline-block; color: black;">Low</span>
                                 <span style="background-color: rgba(6, 182, 212, 0.65); padding: 2px 6px; border-radius: 3px; display: inline-block; color: black;">Medium</span>
                                 <span style="background-color: rgba(6, 182, 212, 1.0); padding: 2px 6px; border-radius: 3px; color: black; display: inline-block;">High</span>
@@ -865,12 +860,8 @@ function createGuideView() {
         </div>
     `;
 
-    // Force dark mode gradients only
-    const lightGradients = document.querySelectorAll('.frequency-gradient.light-mode');
-    const darkGradients = document.querySelectorAll('.frequency-gradient.dark-mode');
-
-    lightGradients.forEach(el => el.style.display = 'none');
-    darkGradients.forEach(el => el.style.display = 'inline-flex');
+    // Force theme gradients only
+    // Frequency gradients are always visible - single theme only
 }
 
 function getPositionClass(position) {

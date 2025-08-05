@@ -26,7 +26,7 @@
 }
 
 /* Dark theme support */
-body.dark-theme .player-name-label {
+body .player-name-label {
     color: #e2e8f0;
     background: linear-gradient(135deg, #2d3748 0%, #4a5568 100%);
     box-shadow: 0 2px 4px rgba(0, 0, 0, 0.3);
@@ -92,7 +92,7 @@ body.dark-theme .player-name-label {
     box-shadow: 0 6px 20px rgba(0, 0, 0, 0.08);
 }
 
-body.dark-theme .input-field {
+body .input-field {
     background: rgba(45, 55, 72, 0.5);
     box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
 }
@@ -114,7 +114,7 @@ body.dark-theme .input-field {
     box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05);
 }
 
-body.dark-theme .input-field .bar-container {
+body .input-field .bar-container {
     background: rgba(26, 32, 44, 0.6);
     box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
 }
@@ -134,7 +134,7 @@ body.dark-theme .input-field .bar-container {
     box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
 }
 
-body.dark-theme .input-field .bar-container:hover {
+body .input-field .bar-container:hover {
     box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
 }
 
@@ -168,7 +168,7 @@ body.dark-theme .input-field .bar-container:hover {
     /* Remove transition to prevent flickering */
 }
 
-body.dark-theme .player-icon.player-initial {
+body .player-icon.player-initial {
     background: rgba(255, 255, 255, 0.1);
     color: #e2e8f0;
 }

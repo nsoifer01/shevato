@@ -53,98 +53,98 @@
     <!-- Sidebar Overlay -->
     <div class="sidebar-overlay" id="sidebar-overlay" onclick="closeSidebar()"></div>
     
-    <!-- Sidebar -->
-    <aside class="sidebar" id="sidebar" role="complementary" aria-label="Filters and actions sidebar">
-        <div class="sidebar-header">
-            <h2 class="sidebar-title">Control Panel</h2>
-            <div class="sidebar-header-buttons">
-                <button id="sidebar-clear-btn" class="sidebar-header-clear" onclick="confirmClearData()" title="Clear all data" aria-label="Clear all data">
-                    🗑️
-                </button>
-                <button class="sidebar-close-btn" onclick="closeSidebar()" aria-label="Close sidebar">
-                    ×
-                </button>
-            </div>
-        </div>
-        
-        <div class="sidebar-content">
-            <!-- Player Settings Section -->
-            <div class="sidebar-section">
-                <h3 class="sidebar-section-title">Player Settings</h3>
-                <button id="sidebar-player-settings-btn" class="sidebar-player-settings-btn" onclick="toggleSidebarPlayerSettings()">
-                    <span class="settings-icon">👤</span>
-                    <span class="settings-text">Manage Players</span>
-                </button>
-                <div class="sidebar-player-settings" id="sidebar-player-settings" style="display: none;">
-                    <!-- Player settings will be generated here -->
+    <!-- Layout wrapper for desktop sticky sidebar -->
+    <div class="layout-wrapper" id="layout-wrapper">
+        <!-- Sidebar -->
+        <aside class="sidebar" id="sidebar" role="complementary" aria-label="Filters and actions sidebar">
+            <div class="sidebar-header">
+                <h2 class="sidebar-title">Control Panel</h2>
+                <div class="sidebar-header-buttons">
+                    <button id="sidebar-clear-btn" class="sidebar-header-clear" onclick="confirmClearData()" title="Clear all data" aria-label="Clear all data">
+                        🗑️
+                    </button>
+                    <button class="sidebar-close-btn" onclick="closeSidebar()" aria-label="Close sidebar">
+                        ×
+                    </button>
                 </div>
             </div>
             
-            <!-- Actions Section -->
-            <div class="sidebar-section">
-                <h3 class="sidebar-section-title">Actions</h3>
-                <button id="sidebar-add-race-btn" class="sidebar-add-race-btn" onclick="toggleSidebarRaceForm()">
-                    <span class="add-icon">🏁</span>
-                    <span class="add-text">Add Race</span>
-                </button>
-                <div class="sidebar-race-form" id="sidebar-race-form">
-                    <div class="sidebar-race-error" id="sidebar-race-error"></div>
-                    <div class="sidebar-race-inputs" id="sidebar-race-inputs">
-                        <!-- Player inputs will be generated dynamically -->
-                    </div>
-                    <div class="sidebar-race-actions">
-                        <button class="sidebar-submit-race" onclick="submitSidebarRace()">🏆 Save</button>
-                        <button class="sidebar-cancel-race" onclick="closeSidebarRaceForm()">Cancel</button>
+            <div class="sidebar-content">
+                <!-- Player Settings Section -->
+                <div class="sidebar-section">
+                    <h3 class="sidebar-section-title">Player Settings</h3>
+                    <button id="sidebar-player-settings-btn" class="sidebar-player-settings-btn" onclick="toggleSidebarPlayerSettings()">
+                        <span class="settings-icon">👤</span>
+                        <span class="settings-text">Manage Players</span>
+                    </button>
+                    <div class="sidebar-player-settings" id="sidebar-player-settings" style="display: none;">
+                        <!-- Player settings will be generated here -->
                     </div>
                 </div>
-                <div class="sidebar-action-buttons-group">
-                    <button id="sidebar-undo-btn" class="sidebar-action-btn undo-btn" onclick="undoLastAction()" disabled title="Undo last action">
-                        <span class="action-icon">↶</span>
-                        <span class="action-text">Undo</span>
+                
+                <!-- Actions Section -->
+                <div class="sidebar-section">
+                    <h3 class="sidebar-section-title">Actions</h3>
+                    <button id="sidebar-add-race-btn" class="sidebar-add-race-btn" onclick="toggleSidebarRaceForm()">
+                        <span class="add-icon">🏁</span>
+                        <span class="add-text">Add Race</span>
                     </button>
-                    <button id="sidebar-redo-btn" class="sidebar-action-btn redo-btn" onclick="redoLastAction()" disabled title="Redo last action">
-                        <span class="action-icon">↷</span>
-                        <span class="action-text">Redo</span>
-                    </button>
-                </div>
-                <div class="action-buttons" id="sidebar-action-buttons">
-                    <button class="sidebar-action-btn restore-btn" onclick="restoreFromBackup()" title="Restore from auto-backup">
-                        <span class="action-icon">🔄</span>
-                        <span class="action-text">Restore</span>
-                    </button>
-                </div>
-            </div>
-            
-            <!-- Date Filter Section -->
-            <div class="sidebar-section">
-                <h3 class="sidebar-section-title">Date Filter</h3>
-                <div id="sidebar-date-filter">
-                    <!-- Will be moved here by JavaScript -->
-                </div>
-            </div>
-            
-            <!-- Race Date Section -->
-            <div class="sidebar-section">
-                <h3 class="sidebar-section-title">Race Date</h3>
-                <div class="sidebar-race-date">
-                    <div class="sidebar-date-btn-container">
-                        <span class="date-text" id="sidebar-date-text">Today</span>
-                        <div class="sidebar-date-icon-wrapper">
-                            <input type="date" id="sidebar-date-input" class="sidebar-date-input-hidden" onchange="updateSidebarDate()">
-                            <label for="sidebar-date-input" class="sidebar-date-icon-btn" aria-label="Set default race date">
-                                <span class="date-icon">📅</span>
-                            </label>
+                    <div class="sidebar-race-form" id="sidebar-race-form">
+                        <div class="sidebar-race-error" id="sidebar-race-error"></div>
+                        <div class="sidebar-race-inputs" id="sidebar-race-inputs">
+                            <!-- Player inputs will be generated dynamically -->
+                        </div>
+                        <div class="sidebar-race-actions">
+                            <button class="sidebar-submit-race" onclick="submitSidebarRace()">🏆 Save</button>
+                            <button class="sidebar-cancel-race" onclick="closeSidebarRaceForm()">Cancel</button>
                         </div>
                     </div>
-                    <button class="sidebar-date-today-btn" onclick="setSidebarDateToday()">Set to Today</button>
+                    <div class="sidebar-action-buttons-group">
+                        <button id="sidebar-undo-btn" class="sidebar-action-btn undo-btn" onclick="undoLastAction()" disabled title="Undo last action">
+                            <span class="action-icon">↶</span>
+                            <span class="action-text">Undo</span>
+                        </button>
+                        <button id="sidebar-redo-btn" class="sidebar-action-btn redo-btn" onclick="redoLastAction()" disabled title="Redo last action">
+                            <span class="action-icon">↷</span>
+                            <span class="action-text">Redo</span>
+                        </button>
+                    </div>
+                    <div class="action-buttons" id="sidebar-action-buttons">
+                        <button class="sidebar-action-btn restore-btn" onclick="restoreFromBackup()" title="Restore from auto-backup">
+                            <span class="action-icon">🔄</span>
+                            <span class="action-text">Restore</span>
+                        </button>
+                    </div>
+                </div>
+                
+                <!-- Date Filter Section -->
+                <div class="sidebar-section">
+                    <h3 class="sidebar-section-title">Date Filter</h3>
+                    <div id="sidebar-date-filter">
+                        <!-- Will be moved here by JavaScript -->
+                    </div>
+                </div>
+                
+                <!-- Race Date Section -->
+                <div class="sidebar-section">
+                    <h3 class="sidebar-section-title">Race Date</h3>
+                    <div class="sidebar-race-date">
+                        <div class="sidebar-date-btn-container">
+                            <span class="date-text" id="sidebar-date-text">Today</span>
+                            <div class="sidebar-date-icon-wrapper">
+                                <input type="date" id="sidebar-date-input" class="sidebar-date-input-hidden" onchange="updateSidebarDate()">
+                                <label for="sidebar-date-input" class="sidebar-date-icon-btn" aria-label="Set default race date">
+                                    <span class="date-icon">📅</span>
+                                </label>
+                            </div>
+                        </div>
+                        <button class="sidebar-date-today-btn" onclick="setSidebarDateToday()">Set to Today</button>
+                    </div>
                 </div>
             </div>
-        </div>
-    </aside>
-    
-    
-    
-    <div class="container" role="main" id="main-content">
+        </aside>
+        
+        <div class="main-container" role="main" id="main-content">
         <div class="header-section">
             <h1>🏁 Mario Kart Race Tracker 🏁</h1>
         </div>
@@ -487,7 +487,11 @@
                 <!-- Mobile card view will be dynamically inserted here -->
             </div>
         </div>
+        </div>
     </div>
+
+    <!-- Footer -->
+    <div data-include="footer"></div>
 
     <!-- Shevato site framework scripts -->
     <script src="../../assets/js/passive-events-fix.js"></script>
@@ -512,7 +516,6 @@
     <script src="js/charts.js"></script>
     <script src="js/dataManager.js"></script>
     <script src="js/backup.js"></script>
-    <script src="js/theme.js"></script>
     <script src="js/steppers.js"></script>
     <script src="js/mobileMenu.js"></script>
     <script src="js/addRaceDropdown.js"></script>
@@ -525,6 +528,80 @@
     <script src="js/tooltip.js"></script>
     <!-- Main script must load last -->
     <script src="js/main.js"></script>
+    
+    <!-- Dynamic Layout Script -->
+    <script>
+        /**
+         * Adjusts the main content top margin and sidebar top position based on header height
+         */
+        function adjustContentForHeader() {
+            const header = document.getElementById('header');
+            const sidebar = document.getElementById('sidebar');
+            const mainContent = document.getElementById('main-content');
+            
+            if (!header || !sidebar || !mainContent) {
+                console.warn('Header, sidebar, or main content not found');
+                return;
+            }
+            
+            // Check if we're on desktop (width >= 1025px)
+            const isDesktop = window.innerWidth >= 1025;
+            
+            // Get the actual rendered height of the header
+            const headerHeight = header.getBoundingClientRect().height;
+            
+            if (isDesktop) {
+                // Desktop: Apply margins and sticky positioning
+                mainContent.style.marginTop = `${headerHeight}px`;
+                
+                // Update sidebar's sticky top position to account for header
+                sidebar.style.top = `${headerHeight}px`;
+                
+                // Adjust sidebar height to fill remaining viewport
+                const viewportHeight = window.innerHeight;
+                const remainingHeight = viewportHeight - headerHeight;
+                sidebar.style.height = `${remainingHeight}px`;
+                
+                // Ensure sidebar is always visible on desktop
+                sidebar.classList.add('open');
+                
+                console.log(`Desktop: Header height: ${headerHeight}px, adjusted content margin and sidebar position`);
+            } else {
+                // Mobile/tablet: Reset styles for mobile behavior
+                mainContent.style.marginTop = '';
+                sidebar.style.top = '';
+                sidebar.style.height = '';
+                
+                console.log(`Mobile: Reset layout styles`);
+            }
+        }
+        
+        /**
+         * Debounced resize handler to improve performance
+         */
+        let resizeTimeout;
+        function handleResize() {
+            clearTimeout(resizeTimeout);
+            resizeTimeout = setTimeout(adjustContentForHeader, 100);
+        }
+        
+        // Initialize on DOM content loaded
+        document.addEventListener('DOMContentLoaded', function() {
+            // Wait a bit for CSS to fully load and render
+            setTimeout(adjustContentForHeader, 100);
+        });
+        
+        // Handle window resize events
+        window.addEventListener('resize', handleResize);
+        
+        // Handle window load event as backup
+        window.addEventListener('load', function() {
+            setTimeout(adjustContentForHeader, 200);
+        });
+        
+        // Also adjust when images or other content loads that might affect header height
+        window.addEventListener('load', adjustContentForHeader);
+    </script>
 
 </body>
 </html>
