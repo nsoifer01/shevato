@@ -1,7 +1,24 @@
 // Sidebar functionality
 let sidebarOpen = false;
 
+function calculateLayoutHeights() {
+    // Calculate footer height
+    const footer = document.querySelector('[data-include="footer"]') || document.querySelector('footer');
+    let footerHeight = 0;
+    
+    if (footer) {
+        footerHeight = footer.offsetHeight;
+    }
+    
+    // Set CSS custom properties for height calculations
+    document.documentElement.style.setProperty('--footer-height', `${footerHeight}px`);
+    document.documentElement.style.setProperty('--sidebar-width', getComputedStyle(document.documentElement).getPropertyValue('--sidebar-width') || '320px');
+}
+
 function initializeSidebar() {
+    // Calculate layout heights first
+    calculateLayoutHeights();
+    
     // Prevent scroll propagation from sidebar
     const sidebar = document.getElementById('sidebar');
     if (sidebar) {
@@ -14,6 +31,27 @@ function initializeSidebar() {
             e.stopPropagation();
         }, { passive: true });
     }
+    
+    // Recalculate heights on window resize
+    window.addEventListener('resize', () => {
+        calculateLayoutHeights();
+    });
+    
+    // Show body after initial calculations to prevent flash
+    // Also wait for footer to load since it's included via data-include
+    const checkFooterAndShow = () => {
+        const footer = document.querySelector('[data-include="footer"]');
+        if (footer && footer.innerHTML.trim()) {
+            // Footer is loaded, recalculate heights
+            calculateLayoutHeights();
+            document.body.classList.add('loaded');
+        } else {
+            // Footer not loaded yet, check again
+            setTimeout(checkFooterAndShow, 100);
+        }
+    };
+    
+    setTimeout(checkFooterAndShow, 50);
     
     // Small delay to ensure DOM is fully ready
     setTimeout(() => {
