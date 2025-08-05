@@ -1,14 +1,15 @@
-// Gym Tracker - Data Management
+// Enhanced Gym Tracker - Data Management
+// Excludes static exercise data from storage, only saves user-specific data
 
-class GymData {
+class GymDataEnhanced {
   constructor() {
     this.storageKey = 'gymTrackerData';
     this.data = this.loadData();
     this.initializeDefaults();
-    this.registerWithShevatoSync();
   }
 
   initializeDefaults() {
+    // Initialize only user-specific data
     if (!this.data.settings) {
       this.data.settings = {
         workoutDaysPerWeek: 3,
@@ -19,34 +20,17 @@ class GymData {
       };
     }
 
-    if (!this.data.exercises) {
-      this.data.exercises = this.getDefaultExercises();
-    } else {
-      // Merge new exercises from database with existing ones
-      const defaultExercises = this.getDefaultExercises();
-      for (const exerciseId in defaultExercises) {
-        if (!this.data.exercises[exerciseId]) {
-          this.data.exercises[exerciseId] = defaultExercises[exerciseId];
-        }
-      }
-    }
-
     if (!this.data.workouts) {
       this.data.workouts = [];
-    }
-
-    if (!this.data.templates) {
-      this.data.templates = this.getDefaultTemplates();
-    }
-
-    if (!this.data.achievements) {
-      this.data.achievements = this.getDefaultAchievements();
     }
 
     if (!this.data.trainingPlan) {
       this.data.trainingPlan = {};
     }
 
+    // Note: We don't store exercises or achievements in user data
+    // They are loaded from static sources
+    
     this.saveData();
   }
 
@@ -62,13 +46,15 @@ class GymData {
 
   saveData() {
     try {
-      // Save using the universal sync system
-      if (window.shevatoSync) {
-        window.shevatoSync.saveAppData('gym-tracker', this.data);
-      } else {
-        // Fallback to local storage only
-        localStorage.setItem(this.storageKey, JSON.stringify(this.data));
-      }
+      // Filter out any static data that might have been saved before
+      const dataToSave = {
+        settings: this.data.settings,
+        workouts: this.data.workouts,
+        trainingPlan: this.data.trainingPlan
+      };
+      
+      // Save to local storage
+      localStorage.setItem(this.storageKey, JSON.stringify(dataToSave));
       
       return true;
     } catch (error) {
@@ -77,24 +63,6 @@ class GymData {
     }
   }
 
-  // Register with Shevato Sync
-  registerWithShevatoSync() {
-    if (window.shevatoSync) {
-      window.shevatoSync.registerApp('gym-tracker', {
-        collection: 'gym-tracker',
-        storageKey: this.storageKey,
-        onUpdate: (remoteData) => {
-          console.log('Gym Tracker: Received sync update');
-          this.data = remoteData;
-          
-          // Notify UI of data change
-          window.dispatchEvent(new Event('gymDataUpdated'));
-        }
-      });
-    } else {
-      console.log('Gym Tracker: ShevatoSync not available, running in offline mode');
-    }
-  }
 
   // Settings Management
   getSettings() {
@@ -103,44 +71,27 @@ class GymData {
 
   updateSettings(settings) {
     this.data.settings = { ...this.data.settings, ...settings };
-    this.saveData();
+    this.saveData(); // Immediate sync
   }
 
-  // Exercise Management
+  // Exercise Management - Now loads from static database
   getAllExercises() {
-    return Object.values(this.data.exercises);
+    // Load from static exercise database
+    if (typeof exerciseDatabase !== 'undefined') {
+      return Object.values(exerciseDatabase);
+    }
+    return [];
   }
 
   getExercise(id) {
-    return this.data.exercises[id];
-  }
-
-  addExercise(exercise) {
-    const id = this.generateId();
-    const newExercise = {
-      id,
-      ...exercise,
-      created: new Date().toISOString(),
-      personalRecord: 0
-    };
-    this.data.exercises[id] = newExercise;
-    this.saveData();
-    return newExercise;
-  }
-
-  updateExercise(id, updates) {
-    if (this.data.exercises[id]) {
-      this.data.exercises[id] = { ...this.data.exercises[id], ...updates };
-      this.saveData();
-      return true;
+    if (typeof exerciseDatabase !== 'undefined') {
+      return exerciseDatabase[id];
     }
-    return false;
+    return null;
   }
 
-  deleteExercise(id) {
-    delete this.data.exercises[id];
-    this.saveData();
-  }
+  // Note: We no longer support adding custom exercises to simplify sync
+  // All exercises come from the static database
 
   // Workout Management
   getAllWorkouts() {
@@ -162,7 +113,7 @@ class GymData {
       ...workout
     };
     this.data.workouts.push(newWorkout);
-    this.saveData();
+    this.saveData(); // Immediate sync
     this.checkAchievements();
     return newWorkout;
   }
@@ -171,7 +122,7 @@ class GymData {
     const index = this.data.workouts.findIndex(w => w.id === id);
     if (index !== -1) {
       this.data.workouts[index] = { ...this.data.workouts[index], ...updates };
-      this.saveData();
+      this.saveData(); // Immediate sync
       this.updatePersonalRecords(this.data.workouts[index]);
       this.checkAchievements();
       return true;
@@ -181,28 +132,35 @@ class GymData {
 
   deleteWorkout(id) {
     this.data.workouts = this.data.workouts.filter(w => w.id !== id);
-    this.saveData();
+    this.saveData(); // Immediate sync
   }
 
-  // Template Management
+  // Template Management - Templates are derived from training plans
   getAllTemplates() {
-    return Object.values(this.data.templates);
+    const templates = {};
+    
+    // Convert training plans to templates
+    Object.entries(this.data.trainingPlan).forEach(([day, exercises]) => {
+      templates[day.toLowerCase()] = {
+        id: day.toLowerCase(),
+        name: `${day} Training`,
+        exercises: exercises
+      };
+    });
+    
+    return Object.values(templates);
   }
 
   getTemplate(id) {
-    return this.data.templates[id];
-  }
-
-  addTemplate(template) {
-    const id = this.generateId();
-    const newTemplate = {
-      id,
-      ...template,
-      created: new Date().toISOString()
-    };
-    this.data.templates[id] = newTemplate;
-    this.saveData();
-    return newTemplate;
+    const day = Object.keys(this.data.trainingPlan).find(d => d.toLowerCase() === id);
+    if (day) {
+      return {
+        id: day.toLowerCase(),
+        name: `${day} Training`,
+        exercises: this.data.trainingPlan[day]
+      };
+    }
+    return null;
   }
 
   // Training Plans Management
@@ -215,14 +173,14 @@ class GymData {
 
   updateTrainingPlan(plan) {
     this.data.trainingPlan = plan;
-    this.saveData();
+    this.saveData(); // Immediate sync
   }
 
   // Convert training plan to template format for workout usage
   convertPlanDayToTemplate(dayPlan, dayName) {
     const exercises = dayPlan.map(exercise => {
       // Find matching exercise ID from the exercise library
-      const exerciseObj = Object.values(this.data.exercises).find(
+      const exerciseObj = Object.values(exerciseDatabase || {}).find(
         ex => ex.name.toLowerCase() === exercise.exercise.toLowerCase()
       );
       
@@ -331,22 +289,20 @@ class GymData {
   }
 
   updatePersonalRecords(workout) {
-    workout.exercises.forEach(exercise => {
-      const maxWeight = Math.max(...exercise.sets.map(s => parseFloat(s.weight) || 0));
-      if (maxWeight > 0 && this.data.exercises[exercise.exerciseId]) {
-        const currentPR = this.data.exercises[exercise.exerciseId].personalRecord || 0;
-        if (maxWeight > currentPR) {
-          this.data.exercises[exercise.exerciseId].personalRecord = maxWeight;
-        }
-      }
-    });
-    this.saveData();
+    // Personal records are calculated on-demand, not stored
+    // This method is kept for compatibility
   }
 
-  // Achievement System
+  // Achievement System - Achievements are calculated, not stored
   checkAchievements() {
+    // Achievements are calculated based on stats
+    // This method triggers UI updates but doesn't store data
+    window.dispatchEvent(new Event('achievementsUpdated'));
+  }
+
+  getAchievements() {
     const stats = this.getStats();
-    const achievements = this.data.achievements;
+    const achievements = this.getDefaultAchievements();
 
     // Check streak achievements
     if (stats.currentStreak >= 7) achievements.week_warrior.unlocked = true;
@@ -365,11 +321,7 @@ class GymData {
     const prs = this.getPersonalRecords();
     if (prs.length > 0) achievements.record_breaker.unlocked = true;
 
-    this.saveData();
-  }
-
-  getAchievements() {
-    return this.data.achievements;
+    return achievements;
   }
 
   // Utility Functions
@@ -392,10 +344,12 @@ class GymData {
   importData(jsonString) {
     try {
       const importedData = JSON.parse(jsonString);
-      // Validate the data structure
-      if (importedData.exercises && importedData.workouts) {
-        this.data = importedData;
-        this.saveData();
+      // Only import user-specific data
+      if (importedData.workouts) {
+        this.data.workouts = importedData.workouts;
+        this.data.settings = importedData.settings || this.data.settings;
+        this.data.trainingPlan = importedData.trainingPlan || this.data.trainingPlan;
+        this.saveData(); // Immediate sync
         return true;
       }
       return false;
@@ -407,7 +361,6 @@ class GymData {
 
   clearAllData() {
     if (confirm('Are you sure you want to delete all data? This cannot be undone.')) {
-      localStorage.removeItem(this.storageKey);
       this.data = {};
       this.initializeDefaults();
       return true;
@@ -416,146 +369,6 @@ class GymData {
   }
 
   // Default Data
-  getDefaultExercises() {
-    // Use the comprehensive exercise database if available
-    if (typeof exerciseDatabase !== 'undefined') {
-      return exerciseDatabase;
-    }
-    
-    // Fallback to basic exercises if database not loaded
-    const exercises = {
-      'bench_press': {
-        id: 'bench_press',
-        name: 'Bench Press',
-        muscleGroup: 'chest',
-        type: 'strength',
-        personalRecord: 0
-      },
-      'squat': {
-        id: 'squat',
-        name: 'Squat',
-        muscleGroup: 'legs',
-        type: 'strength',
-        personalRecord: 0
-      },
-      'deadlift': {
-        id: 'deadlift',
-        name: 'Deadlift',
-        muscleGroup: 'back',
-        type: 'strength',
-        personalRecord: 0
-      },
-      'overhead_press': {
-        id: 'overhead_press',
-        name: 'Overhead Press',
-        muscleGroup: 'shoulders',
-        type: 'strength',
-        personalRecord: 0
-      },
-      'barbell_row': {
-        id: 'barbell_row',
-        name: 'Barbell Row',
-        muscleGroup: 'back',
-        type: 'strength',
-        personalRecord: 0
-      },
-      'pull_up': {
-        id: 'pull_up',
-        name: 'Pull Up',
-        muscleGroup: 'back',
-        type: 'strength',
-        personalRecord: 0
-      },
-      'dip': {
-        id: 'dip',
-        name: 'Dip',
-        muscleGroup: 'chest',
-        type: 'strength',
-        personalRecord: 0
-      },
-      'bicep_curl': {
-        id: 'bicep_curl',
-        name: 'Bicep Curl',
-        muscleGroup: 'arms',
-        type: 'strength',
-        personalRecord: 0
-      },
-      'tricep_extension': {
-        id: 'tricep_extension',
-        name: 'Tricep Extension',
-        muscleGroup: 'arms',
-        type: 'strength',
-        personalRecord: 0
-      },
-      'leg_press': {
-        id: 'leg_press',
-        name: 'Leg Press',
-        muscleGroup: 'legs',
-        type: 'strength',
-        personalRecord: 0
-      },
-      'calf_raise': {
-        id: 'calf_raise',
-        name: 'Calf Raise',
-        muscleGroup: 'legs',
-        type: 'strength',
-        personalRecord: 0
-      },
-      'plank': {
-        id: 'plank',
-        name: 'Plank',
-        muscleGroup: 'core',
-        type: 'strength',
-        personalRecord: 0
-      },
-      'running': {
-        id: 'running',
-        name: 'Running',
-        muscleGroup: 'cardio',
-        type: 'cardio',
-        personalRecord: 0
-      },
-      'cycling': {
-        id: 'cycling',
-        name: 'Cycling',
-        muscleGroup: 'cardio',
-        type: 'cardio',
-        personalRecord: 0
-      }
-    };
-
-    return exercises;
-  }
-
-  getDefaultTemplates() {
-    return {
-      'push_day': {
-        id: 'push_day',
-        name: 'Push Day',
-        description: 'Chest, Shoulders, Triceps',
-        exercises: ['barbell_bench_press', 'barbell_overhead_press', 'chest_dips', 'overhead_tricep_extension', 'lateral_raises', 'cable_tricep_pushdown']
-      },
-      'pull_day': {
-        id: 'pull_day',
-        name: 'Pull Day',
-        description: 'Back, Biceps',
-        exercises: ['deadlift', 'barbell_row', 'pull_ups', 'barbell_curl', 'cable_row', 'hammer_curl']
-      },
-      'leg_day': {
-        id: 'leg_day',
-        name: 'Leg Day',
-        description: 'Quads, Hamstrings, Glutes, Calves',
-        exercises: ['back_squat', 'leg_press', 'romanian_deadlift', 'leg_curl', 'calf_raises', 'walking_lunges']
-      },
-      'full_body': {
-        id: 'full_body',
-        name: 'Full Body',
-        description: 'Complete workout',
-        exercises: ['back_squat', 'barbell_bench_press', 'barbell_row', 'barbell_overhead_press', 'plank']
-      }
-    };
-  }
-
   getDefaultAchievements() {
     return {
       'first_timer': {
@@ -613,24 +426,10 @@ class GymData {
         description: 'Set a personal record',
         icon: '🚀',
         unlocked: false
-      },
-      'early_bird': {
-        id: 'early_bird',
-        name: 'Early Bird',
-        description: '10 morning workouts',
-        icon: '🌅',
-        unlocked: false
-      },
-      'night_owl': {
-        id: 'night_owl',
-        name: 'Night Owl',
-        description: '10 evening workouts',
-        icon: '🦉',
-        unlocked: false
       }
     };
   }
 }
 
 // Create global instance
-window.gymData = new GymData();
+window.gymData = new GymDataEnhanced();
