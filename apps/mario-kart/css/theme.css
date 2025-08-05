@@ -393,19 +393,27 @@ body .spot-number {
 }
 
 /* All headings */
-body h1 {
+body main h1,
+body .main-content h1,
+body .mario-kart-container h1 {
     color: var(--text-primary) !important;
 }
 
-body h2 {
+body main h2,
+body .main-content h2,
+body .mario-kart-container h2 {
     color: var(--text-primary) !important;
 }
 
-body h3 {
+body main h3,
+body .main-content h3,
+body .mario-kart-container h3 {
     color: var(--text-primary) !important;
 }
 
-body h4 {
+body main h4,
+body .main-content h4,
+body .mario-kart-container h4 {
     color: var(--text-primary) !important;
 }
 
