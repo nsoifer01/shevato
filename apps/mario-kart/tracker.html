@@ -13,8 +13,6 @@
     <link rel="icon" type="image/png" href="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAACAAAAAgCAYAAABzenr0AAAABHNCSVQICAgIfAhkiAAAAAlwSFlzAAAAdgAAAHYBTnsmCAAAABl0RVh0U29mdHdhcmUAd3d3Lmlua3NjYXBlLm9yZ5vuPBoAAANCSURBVFiFtZdNaBNBFMd/k2zSpElN0kQtWqvWD1qwXvTgQRG8ePDgxYsHL168ePHixYsXL168ePHixYsXL168ePHixYsXL168ePHixYsXL168ePHixYsXL168ePHixYsXL168ePHixYsXL168ePHixYsXL168ePHixYsXL168ePHixYsXL168ePHixYsXL168ePHixYsXL168ePHixYsXL168ePHixYsXL168ePHixYsXL168ePHixYsXL168ePHixYsXL168ePHixYsXL168ePHixYsXL168ePHixYsXL168ePHi8D9gZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZg==">
     <link rel="apple-touch-icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><rect width=%22100%22 height=%22100%22 rx=%2220%22 fill=%22%23667eea%22/><text x=%2250%22 y=%2265%22 font-size=%2260%22 text-anchor=%22middle%22>🏁</text></svg>">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
-    <!-- Shevato site framework -->
-    <link rel="stylesheet" href="../../assets/css/main.css" />
     <!-- Import all CSS modules -->
     <link rel="stylesheet" href="css/utilities.css">
     <link rel="stylesheet" href="css/base.css">
@@ -26,6 +24,7 @@
     <link rel="stylesheet" href="css/stats.css">
     <link rel="stylesheet" href="css/charts.css">
     <link rel="stylesheet" href="css/race-history.css">
+    <link rel="stylesheet" href="css/responsive.css">
     <link rel="stylesheet" href="css/add-race-dropdown.css">
     <link rel="stylesheet" href="css/player-display.css">
     <link rel="stylesheet" href="css/players-dropdown-new.css">
@@ -34,118 +33,137 @@
     <link rel="stylesheet" href="css/sidebar.css">
     <link rel="stylesheet" href="css/tooltip.css">
     <link rel="stylesheet" href="css/help-styles.css">
-    <link rel="stylesheet" href="/assets/css/brand-colors.css">
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <script src="https://apis.google.com/js/api.js"></script>
 </head>
-<body class="is-preload mario-kart-tracker">
-    <div data-include="header"></div>
+<body>
     <!-- Skip to main content link for accessibility -->
     <a href="#main-content" class="skip-to-main">Skip to main content</a>
     
-    <!-- Modern Sidebar Toggle Button -->
-    <button class="sidebar-toggle" id="sidebar-toggle" onclick="toggleSidebar()" aria-label="Open navigation menu" aria-expanded="false" aria-controls="sidebar" title="Open sidebar navigation">
-        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true">
+    <!-- Sidebar Toggle Button -->
+    <button class="sidebar-toggle" id="sidebar-toggle" onclick="toggleSidebar()" aria-label="Toggle sidebar" aria-expanded="false" aria-controls="sidebar">
+        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16" />
         </svg>
-        <span class="sr-only">Toggle navigation sidebar</span>
     </button>
     
     <!-- Sidebar Overlay -->
     <div class="sidebar-overlay" id="sidebar-overlay" onclick="closeSidebar()"></div>
     
-    <!-- Layout wrapper for desktop sticky sidebar -->
-    <div class="layout-wrapper" id="layout-wrapper">
-        <!-- Sidebar -->
-        <aside class="sidebar" id="sidebar" role="complementary" aria-label="Filters and actions sidebar">
-            <div class="sidebar-header">
-                <h2 class="sidebar-title">Control Panel</h2>
-                <div class="sidebar-header-buttons">
-                    <button id="sidebar-clear-btn" class="sidebar-header-clear" onclick="confirmClearData()" title="Clear all data" aria-label="Clear all data">
-                        🗑️
+    <!-- Sidebar -->
+    <aside class="sidebar" id="sidebar" role="complementary" aria-label="Filters and actions sidebar">
+        <div class="sidebar-header">
+            <h2 class="sidebar-title">Control Panel</h2>
+            <div class="sidebar-header-buttons">
+                <button id="theme-toggle" class="sidebar-theme-toggle" onclick="toggleTheme()" title="Toggle theme" aria-label="Toggle theme">
+                    ☀️
+                </button>
+                <button id="sidebar-clear-btn" class="sidebar-header-clear" onclick="confirmClearData()" title="Clear all data" aria-label="Clear all data">
+                    🗑️
+                </button>
+                <button class="sidebar-close-btn" onclick="closeSidebar()" aria-label="Close sidebar">
+                    ×
+                </button>
+            </div>
+        </div>
+        
+        <div class="sidebar-content">
+            <!-- Player Settings Section -->
+            <div class="sidebar-section">
+                <h3 class="sidebar-section-title">Player Settings</h3>
+                <button id="sidebar-player-settings-btn" class="sidebar-player-settings-btn" onclick="toggleSidebarPlayerSettings()">
+                    <span class="settings-icon">👤</span>
+                    <span class="settings-text">Manage Players</span>
+                </button>
+                <div class="sidebar-player-settings" id="sidebar-player-settings" style="display: none;">
+                    <!-- Player settings will be generated here -->
+                </div>
+            </div>
+            
+            <!-- Actions Section -->
+            <div class="sidebar-section">
+                <h3 class="sidebar-section-title">Actions</h3>
+                <button id="sidebar-add-race-btn" class="sidebar-add-race-btn" onclick="toggleSidebarRaceForm()">
+                    <span class="add-icon">🏁</span>
+                    <span class="add-text">Add Race</span>
+                </button>
+                <div class="sidebar-race-form" id="sidebar-race-form">
+                    <div class="sidebar-race-error" id="sidebar-race-error"></div>
+                    <div class="sidebar-race-inputs" id="sidebar-race-inputs">
+                        <!-- Player inputs will be generated dynamically -->
+                    </div>
+                    <div class="sidebar-race-actions">
+                        <button class="sidebar-submit-race" onclick="submitSidebarRace()">🏆 Save</button>
+                        <button class="sidebar-cancel-race" onclick="closeSidebarRaceForm()">Cancel</button>
+                    </div>
+                </div>
+                <div class="sidebar-action-buttons-group">
+                    <button id="sidebar-undo-btn" class="sidebar-action-btn undo-btn" onclick="undoLastAction()" disabled title="Undo last action">
+                        <span class="action-icon">↶</span>
+                        <span class="action-text">Undo</span>
                     </button>
-                    <button class="sidebar-close-btn" onclick="closeSidebar()" aria-label="Close sidebar">
-                        ×
+                    <button id="sidebar-redo-btn" class="sidebar-action-btn redo-btn" onclick="redoLastAction()" disabled title="Redo last action">
+                        <span class="action-icon">↷</span>
+                        <span class="action-text">Redo</span>
+                    </button>
+                </div>
+                <div class="action-buttons" id="sidebar-action-buttons">
+                    <button class="sidebar-action-btn restore-btn" onclick="restoreFromBackup()" title="Restore from auto-backup">
+                        <span class="action-icon">🔄</span>
+                        <span class="action-text">Restore</span>
                     </button>
                 </div>
             </div>
             
-            <div class="sidebar-content">
-                <!-- Player Settings Section -->
-                <div class="sidebar-section">
-                    <h3 class="sidebar-section-title">Player Settings</h3>
-                    <button id="sidebar-player-settings-btn" class="sidebar-player-settings-btn" onclick="toggleSidebarPlayerSettings()">
-                        <span class="settings-icon">👤</span>
-                        <span class="settings-text">Manage Players</span>
-                    </button>
-                    <div class="sidebar-player-settings" id="sidebar-player-settings" style="display: none;">
-                        <!-- Player settings will be generated here -->
-                    </div>
-                </div>
-                
-                <!-- Actions Section -->
-                <div class="sidebar-section">
-                    <h3 class="sidebar-section-title">Actions</h3>
-                    <button id="sidebar-add-race-btn" class="sidebar-add-race-btn" onclick="toggleSidebarRaceForm()">
-                        <span class="add-icon">🏁</span>
-                        <span class="add-text">Add Race</span>
-                    </button>
-                    <div class="sidebar-race-form" id="sidebar-race-form">
-                        <div class="sidebar-race-error" id="sidebar-race-error"></div>
-                        <div class="sidebar-race-inputs" id="sidebar-race-inputs">
-                            <!-- Player inputs will be generated dynamically -->
-                        </div>
-                        <div class="sidebar-race-actions">
-                            <button class="sidebar-submit-race" onclick="submitSidebarRace()">🏆 Save</button>
-                            <button class="sidebar-cancel-race" onclick="closeSidebarRaceForm()">Cancel</button>
-                        </div>
-                    </div>
-                    <div class="sidebar-action-buttons-group">
-                        <button id="sidebar-undo-btn" class="sidebar-action-btn undo-btn" onclick="undoLastAction()" disabled title="Undo last action">
-                            <span class="action-icon">↶</span>
-                            <span class="action-text">Undo</span>
-                        </button>
-                        <button id="sidebar-redo-btn" class="sidebar-action-btn redo-btn" onclick="redoLastAction()" disabled title="Redo last action">
-                            <span class="action-icon">↷</span>
-                            <span class="action-text">Redo</span>
-                        </button>
-                    </div>
-                    <div class="action-buttons" id="sidebar-action-buttons">
-                        <button class="sidebar-action-btn restore-btn" onclick="restoreFromBackup()" title="Restore from auto-backup">
-                            <span class="action-icon">🔄</span>
-                            <span class="action-text">Restore</span>
-                        </button>
-                    </div>
-                </div>
-                
-                <!-- Date Filter Section -->
-                <div class="sidebar-section">
-                    <h3 class="sidebar-section-title">Date Filter</h3>
-                    <div id="sidebar-date-filter">
-                        <!-- Will be moved here by JavaScript -->
-                    </div>
-                </div>
-                
-                <!-- Race Date Section -->
-                <div class="sidebar-section">
-                    <h3 class="sidebar-section-title">Race Date</h3>
-                    <div class="sidebar-race-date">
-                        <div class="sidebar-date-btn-container">
-                            <span class="date-text" id="sidebar-date-text">Today</span>
-                            <div class="sidebar-date-icon-wrapper">
-                                <input type="date" id="sidebar-date-input" class="sidebar-date-input-hidden" onchange="updateSidebarDate()">
-                                <label for="sidebar-date-input" class="sidebar-date-icon-btn" aria-label="Set default race date">
-                                    <span class="date-icon">📅</span>
-                                </label>
-                            </div>
-                        </div>
-                        <button class="sidebar-date-today-btn" onclick="setSidebarDateToday()">Set to Today</button>
-                    </div>
+            <!-- Date Filter Section -->
+            <div class="sidebar-section">
+                <h3 class="sidebar-section-title">Date Filter</h3>
+                <div id="sidebar-date-filter">
+                    <!-- Will be moved here by JavaScript -->
                 </div>
             </div>
-        </aside>
-        
-        <div class="main-container" role="main" id="main-content">
+            
+            <!-- Race Date Section -->
+            <div class="sidebar-section">
+                <h3 class="sidebar-section-title">Race Date</h3>
+                <div class="sidebar-race-date">
+                    <div class="sidebar-date-btn-container">
+                        <span class="date-text" id="sidebar-date-text">Today</span>
+                        <div class="sidebar-date-icon-wrapper">
+                            <input type="date" id="sidebar-date-input" class="sidebar-date-input-hidden" onchange="updateSidebarDate()">
+                            <label for="sidebar-date-input" class="sidebar-date-icon-btn" aria-label="Set default race date">
+                                <span class="date-icon">📅</span>
+                            </label>
+                        </div>
+                    </div>
+                    <button class="sidebar-date-today-btn" onclick="setSidebarDateToday()">Set to Today</button>
+                </div>
+            </div>
+        </div>
+    </aside>
+    
+    
+    <!-- Floating Quick Add Race Widget -->
+    <div class="floating-race-widget" id="floating-race-widget">
+        <button class="fab-button" id="fab-button" onclick="toggleQuickRaceWidget()" title="Quick add race" style="display: none;">
+            🏁 +
+        </button>
+        <div class="quick-race-form" id="quick-race-form" style="display: none;">
+            <div class="quick-race-header">
+                <h4>Quick Add Race</h4>
+                <button class="close-btn" onclick="closeQuickRaceWidget()" title="Close">×</button>
+            </div>
+            <div class="quick-race-inputs" id="quick-race-inputs">
+                <!-- Player inputs will be generated by JavaScript -->
+            </div>
+            <div class="quick-race-actions">
+                <button class="save-race-btn" onclick="saveQuickRace()">💾 Save Race</button>
+                <div class="session-info" id="session-info">Today: 0 races</div>
+            </div>
+        </div>
+    </div>
+    
+    <div class="container" role="main" id="main-content">
         <div class="header-section">
             <h1>🏁 Mario Kart Race Tracker 🏁</h1>
         </div>
@@ -198,7 +216,7 @@
                         <div class="help-icon">🎮</div>
                         <div class="help-text">
                             <strong>Multiple Input Methods</strong>
-                            <p>Sidebar Add Race form, direct number entry (1-24), stepper buttons (+/-), or position picker dropdown.</p>
+                            <p>Quick Add widget (🏁+), sidebar Add Race form, direct number entry (1-24), stepper buttons (+/-), or position picker dropdown.</p>
                         </div>
                     </div>
                     
@@ -214,7 +232,7 @@
                         <div class="help-icon">🎨</div>
                         <div class="help-text">
                             <strong>Customization</strong>
-                            <p>Custom player icons/emojis, configurable player count (1-4, optimized for 3), and date filtering.</p>
+                            <p>Dark/light themes (dark recommended), custom player icons/emojis, configurable player count (1-4, optimized for 3), and date filtering.</p>
                         </div>
                     </div>
                 </div>
@@ -319,6 +337,7 @@
                     <h4>⚠️ Disclaimers</h4>
                     <ul class="help-features disclaimer-list">
                         <li><strong>Mobile View:</strong> The app is not fully optimized for mobile yet. The Trends chart in particular may not display correctly on smaller screens.</li>
+                        <li><strong>Dark Mode Preferred:</strong> The app is designed with dark mode as the primary theme. Light mode is functional but may have minor visual inconsistencies.</li>
                         <li><strong>Player Count:</strong> The app is optimized for 3 players. Using 1, 2, or 4 players may result in some visual spacing issues.</li>
                         <li><strong>Data Storage:</strong> All data is saved locally in your browser's local storage. This means:
                             <ul>
@@ -363,13 +382,13 @@
             
 
             <div class="action-buttons">
-                <button onclick="exportData()" class="btn-export" aria-describedby="export-help">
+                <button onclick="exportData()" style="background: #48BB78;" aria-describedby="export-help">
                     📤 Export Data
                 </button>
-                <button onclick="document.getElementById('importFile').click()" class="btn-import" aria-describedby="import-help">
+                <button onclick="document.getElementById('importFile').click()" style="background: #38B2AC; margin-left: 10px;" aria-describedby="import-help">
                     📥 Import Data
                 </button>
-                <button onclick="backupToGoogleDrive()" class="btn-backup" title="Download backup file (auto-backup runs every 10 minutes)">
+                <button onclick="backupToGoogleDrive()" style="background: #4299E1; margin-left: 10px;" title="Download backup file (auto-backup runs every 10 minutes)">
                     💻 Backup
                 </button>
                 <input type="file" id="importFile" accept=".json" style="display: none;" onchange="importData(event)">
@@ -472,10 +491,10 @@
                     <thead>
                         <tr>
                             <th>Race #</th>
-                            <th class="sortable-header" onclick="sortTable('date')" tabindex="0" onkeydown="if(event.key==='Enter'||event.key===' ')sortTable('date')" aria-label="Sort by date">Date ↕</th>
-                            <th class="sortable-header" onclick="sortTable('player1')" tabindex="0" onkeydown="if(event.key==='Enter'||event.key===' ')sortTable('player1')" aria-label="Sort by Player 1's position">Player 1 ↕</th>
-                            <th class="sortable-header" onclick="sortTable('player2')" tabindex="0" onkeydown="if(event.key==='Enter'||event.key===' ')sortTable('player2')" aria-label="Sort by Player 2's position">Player 2 ↕</th>
-                            <th class="sortable-header" onclick="sortTable('player3')" tabindex="0" onkeydown="if(event.key==='Enter'||event.key===' ')sortTable('player3')" aria-label="Sort by Player 3's position">Player 3 ↕</th>
+                            <th style="cursor: pointer;" onclick="sortTable('date')" tabindex="0" onkeydown="if(event.key==='Enter'||event.key===' ')sortTable('date')" aria-label="Sort by date">Date ↕</th>
+                            <th style="cursor: pointer;" onclick="sortTable('player1')" tabindex="0" onkeydown="if(event.key==='Enter'||event.key===' ')sortTable('player1')" aria-label="Sort by Player 1's position">Player 1 ↕</th>
+                            <th style="cursor: pointer;" onclick="sortTable('player2')" tabindex="0" onkeydown="if(event.key==='Enter'||event.key===' ')sortTable('player2')" aria-label="Sort by Player 2's position">Player 2 ↕</th>
+                            <th style="cursor: pointer;" onclick="sortTable('player3')" tabindex="0" onkeydown="if(event.key==='Enter'||event.key===' ')sortTable('player3')" aria-label="Sort by Player 3's position">Player 3 ↕</th>
                             <th>Action</th>
                         </tr>
                     </thead>
@@ -488,20 +507,8 @@
                 <!-- Mobile card view will be dynamically inserted here -->
             </div>
         </div>
-        </div>
     </div>
 
-    <!-- Footer -->
-    <div data-include="footer"></div>
-
-    <!-- Shevato site framework scripts -->
-    <script src="../../assets/js/passive-events-fix.js"></script>
-    <script src="../../assets/js/jquery.min.js"></script>
-    <script src="../../assets/js/browser.min.js"></script>
-    <script src="../../assets/js/breakpoints.min.js"></script>
-    <script src="../../assets/js/util.js"></script>
-    <script src="../../assets/js/main.js"></script>
-    
     <!-- Import all modules -->
     <script src="js/constants.js"></script>
     <script src="js/playerNameManager.js"></script>
@@ -517,8 +524,10 @@
     <script src="js/charts.js"></script>
     <script src="js/dataManager.js"></script>
     <script src="js/backup.js"></script>
+    <script src="js/theme.js"></script>
     <script src="js/steppers.js"></script>
     <script src="js/mobileMenu.js"></script>
+    <script src="js/quickRace.js"></script>
     <script src="js/addRaceDropdown.js"></script>
     <script src="js/playersDropdown.js"></script>
     <script src="js/updateInputLimits.js"></script>
@@ -529,8 +538,6 @@
     <script src="js/tooltip.js"></script>
     <!-- Main script must load last -->
     <script src="js/main.js"></script>
-    
-    <script src="js/header-adjustment.js"></script>
 
 </body>
 </html>

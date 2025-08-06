@@ -807,7 +807,12 @@ function createGuideView() {
                         <p>Color transparency shows finishing frequency</p>
                         <div class="viz-tip" style="display: flex; align-items: center; flex-wrap: wrap; gap: 4px;">
                             <span>💡 Frequency:</span>
-                            <span class="frequency-gradient" style="display: inline-flex; align-items: center; gap: 4px; white-space: nowrap;">
+                            <span class="frequency-gradient light-mode" style="display: none; white-space: nowrap;">
+                                <span style="background-color: rgba(59, 130, 246, 0.3); padding: 2px 6px; border-radius: 3px; margin-right: 4px; display: inline-block; color: black;">Low</span>
+                                <span style="background-color: rgba(59, 130, 246, 0.65); padding: 2px 6px; border-radius: 3px; margin-right: 4px; display: inline-block; color: black;">Medium</span>
+                                <span style="background-color: rgba(59, 130, 246, 1.0); padding: 2px 6px; border-radius: 3px; color: black; display: inline-block;">High</span>
+                            </span>
+                            <span class="frequency-gradient dark-mode" style="display: inline-flex; align-items: center; gap: 4px; white-space: nowrap;">
                                 <span style="background-color: rgba(6, 182, 212, 0.3); padding: 2px 6px; border-radius: 3px; display: inline-block; color: black;">Low</span>
                                 <span style="background-color: rgba(6, 182, 212, 0.65); padding: 2px 6px; border-radius: 3px; display: inline-block; color: black;">Medium</span>
                                 <span style="background-color: rgba(6, 182, 212, 1.0); padding: 2px 6px; border-radius: 3px; color: black; display: inline-block;">High</span>
@@ -860,8 +865,13 @@ function createGuideView() {
         </div>
     `;
 
-    // Force theme gradients only
-    // Frequency gradients are always visible - single theme only
+    // Update theme-based gradients
+    const isDarkMode = document.body.classList.contains('dark-theme');
+    const lightGradients = document.querySelectorAll('.frequency-gradient.light-mode');
+    const darkGradients = document.querySelectorAll('.frequency-gradient.dark-mode');
+
+    lightGradients.forEach(el => el.style.display = isDarkMode ? 'none' : 'inline-flex');
+    darkGradients.forEach(el => el.style.display = isDarkMode ? 'inline-flex' : 'none');
 }
 
 function getPositionClass(position) {
@@ -1399,6 +1409,11 @@ document.addEventListener('DOMContentLoaded', function() {
         updateDateButtonText();
     }
 
+    // Set theme toggle icon based on current theme
+    const themeToggle = document.getElementById('theme-toggle');
+    if (themeToggle) {
+        themeToggle.textContent = isDarkTheme ? '☀️' : '🌙';
+    }
 
     // Initialize undo/redo button states
     updateUndoRedoButtons();

@@ -93,7 +93,7 @@ function createTrendCharts(raceData = null) {
             plugins: {
                 legend: {
                     labels: {
-                        color: '#e2e8f0',
+                        color: isDarkTheme ? '#e2e8f0' : '#4a5568',
                         padding: 20,
                         font: {
                             size: 14,
@@ -105,10 +105,10 @@ function createTrendCharts(raceData = null) {
                     position: 'bottom'
                 },
                 tooltip: {
-                    backgroundColor: 'rgba(45, 55, 72, 0.95)',
-                    titleColor: '#f7fafc',
-                    bodyColor: '#e2e8f0',
-                    borderColor: '#4a5568',
+                    backgroundColor: isDarkTheme ? 'rgba(45, 55, 72, 0.95)' : 'rgba(255, 255, 255, 0.95)',
+                    titleColor: isDarkTheme ? '#f7fafc' : '#1a202c',
+                    bodyColor: isDarkTheme ? '#e2e8f0' : '#4a5568',
+                    borderColor: isDarkTheme ? '#4a5568' : '#e2e8f0',
                     borderWidth: 1,
                     padding: 12,
                     cornerRadius: 8,
@@ -123,7 +123,7 @@ function createTrendCharts(raceData = null) {
                     suggestedMin: MIN_POSITIONS - 0.5,
                     suggestedMax: MAX_POSITIONS + 0.5,
                     ticks: {
-                        color: '#e2e8f0',
+                        color: isDarkTheme ? '#e2e8f0' : '#4a5568',
                         padding: 8,
                         font: {
                             size: 12,
@@ -134,18 +134,18 @@ function createTrendCharts(raceData = null) {
                         includeBounds: true,
                     },
                     grid: {
-                        color: 'rgba(74, 85, 104, 0.3)',
+                        color: isDarkTheme ? 'rgba(74, 85, 104, 0.3)' : 'rgba(226, 232, 240, 0.5)',
                         drawBorder: true,
                         lineWidth: 1
                     },
                     border: {
                         display: true,
-                        color: '#4a5568',
+                        color: isDarkTheme ? '#4a5568' : '#e2e8f0',
                     },
                     title: {
                         display: true,
                         text: 'Position',
-                        color: '#e2e8f0',
+                        color: isDarkTheme ? '#e2e8f0' : '#4a5568',
                         font: {
                             size: 14,
                             weight: '600'
@@ -154,7 +154,7 @@ function createTrendCharts(raceData = null) {
                 },
                 x: {
                     ticks: {
-                        color: '#e2e8f0',
+                        color: isDarkTheme ? '#e2e8f0' : '#4a5568',
                         padding: 8,
                         font: {
                             size: 12,
@@ -162,7 +162,7 @@ function createTrendCharts(raceData = null) {
                         }
                     },
                     grid: {
-                        color: 'rgba(74, 85, 104, 0.3)',
+                        color: isDarkTheme ? 'rgba(74, 85, 104, 0.3)' : 'rgba(226, 232, 240, 0.5)',
                         drawBorder: false
                     }
                 }
@@ -330,9 +330,9 @@ function createHeatmapView(raceData = null) {
                     '#84cc16'  // Lime
                 ],
                 borderWidth: 4,
-                borderColor: '#374151',
+                borderColor: isDarkTheme ? '#374151' : '#ffffff',
                 hoverBorderWidth: 6,
-                hoverBorderColor: '#374151'
+                hoverBorderColor: isDarkTheme ? '#374151' : '#ffffff'
             }]
         },
         options: {
@@ -343,10 +343,10 @@ function createHeatmapView(raceData = null) {
                     display: false
                 },
                 tooltip: {
-                    backgroundColor: 'rgba(45, 55, 72, 0.95)',
-                    titleColor: '#f7fafc',
-                    bodyColor: '#e2e8f0',
-                    borderColor: '#4a5568',
+                    backgroundColor: isDarkTheme ? 'rgba(45, 55, 72, 0.95)' : 'rgba(255, 255, 255, 0.95)',
+                    titleColor: isDarkTheme ? '#f7fafc' : '#1a202c',
+                    bodyColor: isDarkTheme ? '#e2e8f0' : '#4a5568',
+                    borderColor: isDarkTheme ? '#4a5568' : '#e2e8f0',
                     borderWidth: 1,
                     padding: 12,
                     cornerRadius: 8,

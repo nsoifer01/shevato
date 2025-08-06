@@ -72,7 +72,7 @@ function restoreFromBackup() {
 
         const dialog = document.createElement('div');
         dialog.style.cssText = `
-            background: ${'#2d3748'};
+            background: ${isDarkTheme ? '#2d3748' : 'white'};
             border-radius: 1rem;
             padding: 2rem;
             box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
@@ -84,11 +84,11 @@ function restoreFromBackup() {
 
         dialog.innerHTML = `
             <div style="font-size: 3rem; margin-bottom: 1rem;">🔄</div>
-            <h3 style="color: ${'#e2e8f0'}; margin-bottom: 1rem; font-size: 1.5rem;">Restore from Backup?</h3>
-            <p style="color: ${'#a0aec0'}; margin-bottom: 2rem; line-height: 1.5;">
+            <h3 style="color: ${isDarkTheme ? '#e2e8f0' : '#2d3748'}; margin-bottom: 1rem; font-size: 1.5rem;">Restore from Backup?</h3>
+            <p style="color: ${isDarkTheme ? '#a0aec0' : '#4a5568'}; margin-bottom: 2rem; line-height: 1.5;">
                 Found backup with <strong>${raceCount} races</strong><br>
-                Created on: <strong style="color: ${'#e2e8f0'};">${backupDate}</strong><br><br>
-                <span style="color: ${'#fc8181'};">⚠️ Warning: This will replace all current data!</span>
+                Created on: <strong style="color: ${isDarkTheme ? '#e2e8f0' : '#2d3748'};">${backupDate}</strong><br><br>
+                <span style="color: ${isDarkTheme ? '#fc8181' : '#e53e3e'};">⚠️ Warning: This will replace all current data!</span>
             </p>
             <div style="display: flex; gap: 1rem; justify-content: center;">
                 <button id="confirm-restore" style="
@@ -102,8 +102,8 @@ function restoreFromBackup() {
                     transition: all 0.2s;
                 ">Restore Data</button>
                 <button id="cancel-restore" style="
-                    background: ${'#4a5568'};
-                    color: ${'#e2e8f0'};
+                    background: ${isDarkTheme ? '#4a5568' : '#e2e8f0'};
+                    color: ${isDarkTheme ? '#e2e8f0' : '#4a5568'};
                     border: none;
                     padding: 0.75rem 1.5rem;
                     border-radius: 0.5rem;

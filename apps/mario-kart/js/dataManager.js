@@ -143,7 +143,7 @@ function editRace(index) {
 
     const dialog = document.createElement('div');
     dialog.style.cssText = `
-        background: ${'#2d3748'};
+        background: ${isDarkTheme ? '#2d3748' : 'white'};
         border-radius: 1rem;
         padding: 2rem;
         box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
@@ -158,13 +158,13 @@ function editRace(index) {
         const currentValue = race[player] || '';
         return `
             <div style="margin-bottom: 1rem;">
-                <label style="display: block; margin-bottom: 0.5rem; color: ${'#e2e8f0'}; font-weight: 600;">
+                <label style="display: block; margin-bottom: 0.5rem; color: ${isDarkTheme ? '#e2e8f0' : '#4a5568'}; font-weight: 600;">
                     ${window.PlayerNameManager ? window.PlayerNameManager.get(player) : getPlayerName(player)}'s Position:
                 </label>
                 <input type="number" id="edit-${player}" min="${MIN_POSITIONS}" max="${MAX_POSITIONS}" value="${currentValue}" 
-                    style="width: 100%; padding: 0.75rem; border: 1px solid ${'#4a5568'}; 
-                    border-radius: 0.5rem; background: ${'#4a5568'}; 
-                    color: ${'#e2e8f0'};" placeholder="${MIN_POSITIONS}-${MAX_POSITIONS} or leave empty">
+                    style="width: 100%; padding: 0.75rem; border: 1px solid ${isDarkTheme ? '#4a5568' : '#e2e8f0'}; 
+                    border-radius: 0.5rem; background: ${isDarkTheme ? '#4a5568' : 'white'}; 
+                    color: ${isDarkTheme ? '#e2e8f0' : '#2d3748'};" placeholder="${MIN_POSITIONS}-${MAX_POSITIONS} or leave empty">
             </div>
         `;
     }).join('');
@@ -172,28 +172,28 @@ function editRace(index) {
     dialog.innerHTML = `
         <div style="text-align: center; margin-bottom: 1.5rem;">
             <div style="font-size: 2.5rem; margin-bottom: 0.5rem;">✏️</div>
-            <h3 style="color: ${'#e2e8f0'}; margin-bottom: 0.5rem; font-size: 1.5rem;">Edit Race</h3>
-            <p style="color: ${'#a0aec0'}; font-size: 0.9rem;">${race.date}${race.timestamp ? ' ' + race.timestamp : ''}</p>
+            <h3 style="color: ${isDarkTheme ? '#e2e8f0' : '#2d3748'}; margin-bottom: 0.5rem; font-size: 1.5rem;">Edit Race</h3>
+            <p style="color: ${isDarkTheme ? '#a0aec0' : '#6b7280'}; font-size: 0.9rem;">${race.date}${race.timestamp ? ' ' + race.timestamp : ''}</p>
         </div>
         
         <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; margin-bottom: 1.5rem;">
             <div>
-                <label style="display: block; margin-bottom: 0.5rem; color: ${'#e2e8f0'}; font-weight: 600;">
+                <label style="display: block; margin-bottom: 0.5rem; color: ${isDarkTheme ? '#e2e8f0' : '#4a5568'}; font-weight: 600;">
                     Race Date:
                 </label>
                 <input type="date" id="edit-date" value="${race.date}" 
-                    style="width: 100%; padding: 0.75rem; border: 1px solid ${'#4a5568'}; 
-                    border-radius: 0.5rem; background: ${'#4a5568'}; 
-                    color: ${'#e2e8f0'}; color-scheme: ${'dark'};">
+                    style="width: 100%; padding: 0.75rem; border: 1px solid ${isDarkTheme ? '#4a5568' : '#e2e8f0'}; 
+                    border-radius: 0.5rem; background: ${isDarkTheme ? '#4a5568' : 'white'}; 
+                    color: ${isDarkTheme ? '#e2e8f0' : '#2d3748'}; color-scheme: ${isDarkTheme ? 'dark' : 'light'};">
             </div>
             <div>
-                <label style="display: block; margin-bottom: 0.5rem; color: ${'#e2e8f0'}; font-weight: 600;">
+                <label style="display: block; margin-bottom: 0.5rem; color: ${isDarkTheme ? '#e2e8f0' : '#4a5568'}; font-weight: 600;">
                     Race Time:
                 </label>
                 <input type="time" id="edit-time" value="${race.timestamp ? race.timestamp.split(' ')[0] : ''}" step="1"
-                    style="width: 100%; padding: 0.75rem; border: 1px solid ${'#4a5568'}; 
-                    border-radius: 0.5rem; background: ${'#4a5568'}; 
-                    color: ${'#e2e8f0'}; color-scheme: ${'dark'};" placeholder="Optional">
+                    style="width: 100%; padding: 0.75rem; border: 1px solid ${isDarkTheme ? '#4a5568' : '#e2e8f0'}; 
+                    border-radius: 0.5rem; background: ${isDarkTheme ? '#4a5568' : 'white'}; 
+                    color: ${isDarkTheme ? '#e2e8f0' : '#2d3748'}; color-scheme: ${isDarkTheme ? 'dark' : 'light'};" placeholder="Optional">
             </div>
         </div>
 
@@ -211,8 +211,8 @@ function editRace(index) {
                 transition: all 0.2s;
             ">Save Changes</button>
             <button id="cancel-edit" style="
-                background: ${'#4a5568'};
-                color: ${'#e2e8f0'};
+                background: ${isDarkTheme ? '#4a5568' : '#e2e8f0'};
+                color: ${isDarkTheme ? '#e2e8f0' : '#4a5568'};
                 border: none;
                 padding: 0.75rem 1.5rem;
                 border-radius: 0.5rem;
@@ -636,7 +636,7 @@ function confirmClearData() {
 
     const dialog = document.createElement('div');
     dialog.style.cssText = `
-        background: #2d3748;
+        background: ${isDarkTheme ? '#2d3748' : 'white'};
         border-radius: 1rem;
         padding: 2rem;
         box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
@@ -648,8 +648,8 @@ function confirmClearData() {
 
     dialog.innerHTML = `
         <div style="font-size: 3rem; margin-bottom: 1rem;">⚠️</div>
-        <h3 style="color: #e2e8f0; margin-bottom: 1rem; font-size: 1.5rem;">Clear All Data?</h3>
-        <p style="color: #a0aec0; margin-bottom: 2rem; line-height: 1.5;">
+        <h3 style="color: ${isDarkTheme ? '#e2e8f0' : '#2d3748'}; margin-bottom: 1rem; font-size: 1.5rem;">Clear All Data?</h3>
+        <p style="color: ${isDarkTheme ? '#a0aec0' : '#4a5568'}; margin-bottom: 2rem; line-height: 1.5;">
             This will permanently delete all race data, statistics, automated backups, and history. This action cannot be undone.
         </p>
         <div style="display: flex; gap: 1rem; justify-content: center;">
@@ -664,8 +664,8 @@ function confirmClearData() {
                 transition: all 0.2s;
             ">Delete Everything</button>
             <button id="cancel-clear" style="
-                background: #4a5568;
-                color: #e2e8f0;
+                background: ${isDarkTheme ? '#4a5568' : '#e2e8f0'};
+                color: ${isDarkTheme ? '#e2e8f0' : '#4a5568'};
                 border: none;
                 padding: 0.75rem 1.5rem;
                 border-radius: 0.5rem;

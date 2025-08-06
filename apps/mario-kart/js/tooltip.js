@@ -87,6 +87,7 @@ class TooltipManager {
         // Default tooltips based on element type or class
         const tooltipMap = {
             // Buttons
+            '.theme-btn': 'Toggle light/dark theme',
             '.undo-btn': 'Undo last action',
             '.redo-btn': 'Redo last action',
             '.clear-btn': 'Clear all data',
