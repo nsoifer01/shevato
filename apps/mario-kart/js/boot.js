@@ -1,4 +1,5 @@
 import {
+  toggleTheme,
   addRace,
   undoLastAction,
   redoLastAction,
@@ -14,6 +15,7 @@ import {
 
 // expose as globals
 Object.assign(window, {
+  toggleTheme,
   addRace,
   undoLastAction,
   redoLastAction,

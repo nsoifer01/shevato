@@ -42,6 +42,16 @@
     transition: all 0.2s ease;
 }
 
+/* Light mode achievement bars should be dark gray for better text contrast */
+body.light-mode .achievement-bar {
+    background: rgba(0, 0, 0, 0.15);
+    border: 1px solid rgba(0, 0, 0, 0.1);
+}
+
+body.light-mode .achievement-bar:hover {
+    background: rgba(0, 0, 0, 0.25);
+    transform: translateY(-1px);
+}
 
 .achievement-bar:hover {
     background: rgba(255, 255, 255, 0.2);
@@ -58,6 +68,10 @@
     border: 1px solid rgba(102, 126, 234, 0.3);
 }
 
+body.light-mode .achievement-bar.achievement-expanded {
+    background: rgba(102, 126, 234, 0.15);
+    border: 1px solid rgba(102, 126, 234, 0.25);
+}
 
 .achievement-bar.active-streak {
     position: relative;

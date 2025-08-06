@@ -40,7 +40,7 @@
 }
 
 /* Dark theme support */
-body .custom-tooltip {
+body.dark-theme .custom-tooltip {
     background: rgba(255, 255, 255, 0.95);
     color: #1a202c;
     box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
@@ -154,7 +154,7 @@ body .custom-tooltip {
         border: 2px solid #fff;
     }
     
-    body .custom-tooltip {
+    body.dark-theme .custom-tooltip {
         background: #fff;
         color: #000;
         border: 2px solid #000;
