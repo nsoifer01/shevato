@@ -297,7 +297,8 @@ body.light-mode {
     padding: 0.75rem 1rem;
     margin-top: 1rem;
     font-size: var(--help-small-size);
-    color: var(--help-text-secondary);
+    color: white;
+    font-weight: bold;
     font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
 }
 
@@ -429,9 +430,9 @@ body.light-mode .help-disclaimers .disclaimer-list {
 }
 
 .help-footer p {
-    color: var(--help-text-primary);
+    color: white;
     font-size: 1.125rem;
-    font-weight: 600;
+    font-weight: bold;
     margin-bottom: 1rem;
     font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
 }

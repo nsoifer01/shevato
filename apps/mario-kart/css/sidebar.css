@@ -212,7 +212,7 @@ body.dark-theme .sidebar-header-clear:hover:not(:disabled) {
     font-size: 1.2rem;
     cursor: pointer;
     color: #dc2626;
-    padding: 8px;
+    padding: 0;
     border-radius: 8px;
     transition: all 0.2s ease;
     display: flex;
@@ -220,6 +220,8 @@ body.dark-theme .sidebar-header-clear:hover:not(:disabled) {
     justify-content: center;
     width: 36px;
     height: 36px;
+    text-align: center;
+    line-height: 1;
 }
 
 .sidebar-close-btn:hover {
@@ -273,7 +275,7 @@ body.dark-theme .sidebar-close-btn:hover {
     color: var(--text-white);
     border: none;
     border-radius: 12px;
-    padding: 14px;
+    padding: 0;
     cursor: pointer;
     box-shadow: 0 4px 20px rgba(102, 126, 234, 0.3);
     transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
@@ -307,6 +309,7 @@ body.dark-theme .sidebar-close-btn:hover {
     width: 20px;
     height: 20px;
     transition: transform 0.2s ease;
+    stroke: white;
 }
 
 .sidebar-toggle:hover svg {
@@ -318,7 +321,7 @@ body.dark-theme .sidebar-close-btn:hover {
     .sidebar-toggle {
         width: 52px;
         height: 52px;
-        padding: 16px;
+        padding: 0;
         top: 45px;
         left: 16px;
         border-radius: 14px;
@@ -340,7 +343,7 @@ body.dark-theme .sidebar-close-btn:hover {
     .sidebar-toggle {
         width: 56px;
         height: 56px;
-        padding: 18px;
+        padding: 0;
         top: 40px;
         left: 12px;
         border-radius: 16px;
@@ -366,7 +369,7 @@ body.dark-theme .sidebar-close-btn:hover {
     .sidebar-toggle {
         width: 48px;
         height: 48px;
-        padding: 14px;
+        padding: 0;
         top: 35px;
         left: 10px;
         border-radius: 14px;
