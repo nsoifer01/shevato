@@ -84,8 +84,8 @@ function restoreFromBackup() {
 
         dialog.innerHTML = `
             <div style="font-size: 3rem; margin-bottom: 1rem;">🔄</div>
-            <h3 style="color: ${isDarkTheme ? '#e2e8f0' : '#2d3748'}; margin-bottom: 1rem; font-size: 1.5rem;">Restore from Backup?</h3>
-            <p style="color: ${isDarkTheme ? '#a0aec0' : '#4a5568'}; margin-bottom: 2rem; line-height: 1.5;">
+            <h3 style="color: ${isDarkTheme ? '#e2e8f0' : '#2d3748'}; margin-bottom: 1rem; font-size: 1.5rem; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;">Restore from Backup?</h3>
+            <p style="color: ${isDarkTheme ? '#a0aec0' : '#4a5568'}; margin-bottom: 2rem; line-height: 1.5; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;">
                 Found backup with <strong>${raceCount} races</strong><br>
                 Created on: <strong style="color: ${isDarkTheme ? '#e2e8f0' : '#2d3748'};">${backupDate}</strong><br><br>
                 <span style="color: ${isDarkTheme ? '#fc8181' : '#e53e3e'};">⚠️ Warning: This will replace all current data!</span>
@@ -100,16 +100,28 @@ function restoreFromBackup() {
                     font-weight: 600;
                     cursor: pointer;
                     transition: all 0.2s;
+                    display: flex;
+                    align-items: center;
+                    justify-content: center;
+                    text-align: center;
+                    line-height: 1;
+                    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
                 ">Restore Data</button>
                 <button id="cancel-restore" style="
                     background: ${isDarkTheme ? '#4a5568' : '#e2e8f0'};
-                    color: ${isDarkTheme ? '#e2e8f0' : '#4a5568'};
+                    color: white;
                     border: none;
                     padding: 0.75rem 1.5rem;
                     border-radius: 0.5rem;
                     font-weight: 600;
                     cursor: pointer;
                     transition: all 0.2s;
+                    display: flex;
+                    align-items: center;
+                    justify-content: center;
+                    text-align: center;
+                    line-height: 1;
+                    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
                 ">Cancel</button>
             </div>
         `;
