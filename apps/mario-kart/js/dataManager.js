@@ -199,29 +199,9 @@ function editRace(index) {
 
         ${playerInputs}
 
-        <div style="display: flex; gap: 1rem; justify-content: center; margin-top: 2rem;">
-            <button id="save-edit" style="
-                background: #10b981;
-                color: white;
-                border: none;
-                padding: 0.75rem 1.5rem;
-                border-radius: 0.5rem;
-                font-weight: 600;
-                cursor: pointer;
-                transition: all 0.2s;
-                font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-            ">Save Changes</button>
-            <button id="cancel-edit" style="
-                background: ${isDarkTheme ? '#4a5568' : '#e2e8f0'};
-                color: ${isDarkTheme ? '#e2e8f0' : '#4a5568'};
-                border: none;
-                padding: 0.75rem 1.5rem;
-                border-radius: 0.5rem;
-                font-weight: 600;
-                cursor: pointer;
-                transition: all 0.2s;
-                font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-            ">Cancel</button>
+        <div class="modal-buttons">
+            <button id="save-edit" class="modal-btn-primary">Save Changes</button>
+            <button id="cancel-edit" class="modal-btn-secondary ${isDarkTheme ? '' : 'light-theme'}">Cancel</button>
         </div>
     `;
 
