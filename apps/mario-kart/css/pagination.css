@@ -16,10 +16,12 @@
 
 /* Pagination Info */
 .pagination-info {
-    font-size: 0.875rem;
+    font-size: 0.9375rem;
     color: var(--history-text-secondary);
     font-weight: 500;
     font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+    display: flex;
+    align-items: center;
 }
 
 /* Pagination Controls */
@@ -34,10 +36,10 @@
     padding: 8px 12px;
     min-width: 36px;
     height: 36px;
-    background: white;
-    border: 1px solid var(--history-border);
+    background: #667eea;
+    border: 1px solid #667eea;
     border-radius: 8px;
-    color: var(--history-text-primary);
+    color: white;
     font-size: 0.875rem;
     font-weight: 600;
     cursor: pointer;
@@ -49,10 +51,11 @@
 }
 
 .pagination-btn:hover:not(:disabled) {
-    background: var(--history-row-hover);
-    border-color: var(--history-accent);
+    background: #5a67d8;
+    border-color: #5a67d8;
     transform: translateY(-1px);
-    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+    box-shadow: 0 2px 8px rgba(102, 126, 234, 0.3);
+    color: white;
 }
 
 .pagination-btn:disabled {
@@ -62,15 +65,16 @@
 
 /* Active Page Button */
 .pagination-btn.active {
-    background: var(--history-accent);
+    background: #4c51bf;
     color: white;
-    border-color: var(--history-accent);
-    box-shadow: 0 2px 8px rgba(102, 126, 234, 0.3);
+    border-color: #4c51bf;
+    box-shadow: 0 2px 8px rgba(102, 126, 234, 0.4);
 }
 
 .pagination-btn.active:hover {
-    background: var(--history-accent-light);
-    border-color: var(--history-accent-light);
+    background: #434190;
+    border-color: #434190;
+    color: white;
 }
 
 /* Previous/Next Buttons */
@@ -102,6 +106,7 @@
     font-size: 0.75rem;
     font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
     white-space: nowrap;
+    height: 36px;
 }
 
 .pagination-size label {
@@ -112,7 +117,7 @@
 }
 
 .pagination-size select {
-    padding: 4px 28px 4px 8px;
+    padding: 6px 28px 6px 8px;
     border: 1px solid var(--history-border);
     border-radius: 6px;
     background: white;
@@ -127,6 +132,9 @@
     background-position: right 8px center;
     font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
     min-width: 50px;
+    height: 32px;
+    display: flex;
+    align-items: center;
 }
 
 .pagination-size select:hover {
