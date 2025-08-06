@@ -14,6 +14,11 @@
   --text-muted: #999999;
 }
 
+/* Global Font Family */
+*, *::before, *::after {
+  font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+}
+
 /* App Container */
 .mario-kart-app {
   background-color: var(--bg-primary);
