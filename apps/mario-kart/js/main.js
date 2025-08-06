@@ -178,13 +178,13 @@ function updateSidebarDateDisplay(dateStr) {
         dateText.textContent = 'Today';
         // Hide the "Set to Today" button when it's already today
         if (todayBtn) {
-            todayBtn.style.display = 'none';
+            todayBtn.classList.add('hidden');
         }
     } else {
         dateText.textContent = formatDateForDisplay(dateStr);
         // Show the "Set to Today" button when it's not today
         if (todayBtn) {
-            todayBtn.style.display = 'block';
+            todayBtn.classList.remove('hidden');
         }
     }
 }
