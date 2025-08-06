@@ -1057,6 +1057,11 @@ body.dark-theme .sidebar-race-error {
     transition: all 0.3s ease;
     letter-spacing: 0.025em;
     text-transform: uppercase;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    text-align: center;
+    line-height: 1;
 }
 
 .sidebar-submit-race {
@@ -1077,12 +1082,13 @@ body.dark-theme .sidebar-race-error {
 
 .sidebar-cancel-race {
     background: #f3f4f6;
-    color: #4b5563;
+    color: white !important;
     border: 2px solid #e5e7eb;
 }
 
 .sidebar-cancel-race:hover {
     background: #e5e7eb;
+    color: white !important;
     border-color: #d1d5db;
     transform: translateY(-1px);
 }
@@ -1129,15 +1135,14 @@ body.dark-theme .sidebar-submit-race:hover {
 
 body.dark-theme .sidebar-cancel-race {
     background: #374151;
-    color: #e2e8f0;
+    color: white !important;
     border-color: rgba(255, 255, 255, 0.1);
 }
 
 body.dark-theme .sidebar-cancel-race:hover {
     background: #4b5563;
+    color: white !important;
     border-color: rgba(255, 255, 255, 0.2);
-    border-color: rgba(107, 114, 128, 0.5);
-    color: #e2e8f0;
 }
 
 body.dark-theme .sidebar-position-input:focus {
@@ -1367,6 +1372,10 @@ body.dark-theme .position-picker-toggle:hover {
     background: #4b5563;
     border-color: #10b981;
     box-shadow: 0 2px 8px rgba(16, 185, 129, 0.2);
+}
+
+body.dark-theme .picker-icon {
+    color: white !important;
 }
 
 body.dark-theme .position-picker {
