@@ -1394,10 +1394,12 @@ body.dark-theme .sidebar-player-settings-btn.active {
 
 .player-count-label {
     display: block;
-    font-size: 0.875rem;
-    font-weight: 500;
-    color: var(--text-secondary, #6b7280);
+    font-size: 0.9rem;
+    font-weight: 600;
+    color: var(--text-primary, #2d3748);
     margin-bottom: 0.75rem;
+    text-align: center;
+    letter-spacing: 0.025em;
 }
 
 .player-count-selector {
@@ -1408,15 +1410,21 @@ body.dark-theme .sidebar-player-settings-btn.active {
 
 .player-count-btn {
     flex: 1;
-    padding: 0.5rem;
+    padding: 0.75rem 0.5rem;
     background: transparent;
     border: 1px solid var(--border-color, #e2e8f0);
-    border-radius: 0.375rem;
-    font-size: 0.875rem;
-    font-weight: 600;
+    border-radius: 0.5rem;
+    font-size: 0.9rem;
+    font-weight: 700;
     color: var(--text-primary, #2d3748);
     cursor: pointer;
-    transition: all 0.2s ease;
+    transition: all 0.3s ease;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    text-align: center;
+    letter-spacing: 0.025em;
+    line-height: 1;
 }
 
 .player-count-btn:hover {
@@ -1489,21 +1497,26 @@ body.dark-theme .sidebar-player-settings-btn.active {
 
 .sidebar-player-label {
     display: block;
-    font-size: 0.75rem;
+    font-size: 0.8rem;
     font-weight: 600;
-    color: var(--text-secondary, #6b7280);
-    margin-bottom: 0.25rem;
+    color: var(--text-primary, #2d3748);
+    margin-bottom: 0.375rem;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
 }
 
 .sidebar-player-name-input {
     width: 100%;
-    padding: 0.375rem 0.5rem;
+    padding: 0.5rem 0.75rem;
     background: transparent;
     border: 1px solid var(--border-color, #e2e8f0);
-    border-radius: 0.25rem;
-    font-size: 0.875rem;
+    border-radius: 0.375rem;
+    font-size: 0.9rem;
+    font-weight: 500;
     color: var(--text-primary, #2d3748);
-    transition: all 0.2s ease;
+    transition: all 0.3s ease;
+    text-align: center;
+    letter-spacing: 0.025em;
 }
 
 .sidebar-player-name-input:focus {
@@ -1529,6 +1542,39 @@ body.dark-theme .sidebar-player-settings-btn.active {
 .sidebar-player-status.active {
     color: #10b981;
     background: rgba(16, 185, 129, 0.1);
+}
+
+/* Enhanced dark theme support for Player Settings */
+body.dark-theme .player-count-label,
+body.dark-theme .sidebar-player-label {
+    color: white !important;
+}
+
+body.dark-theme .player-count-btn {
+    color: white !important;
+    border-color: rgba(255, 255, 255, 0.2) !important;
+}
+
+body.dark-theme .player-count-btn:hover {
+    background: rgba(255, 255, 255, 0.1) !important;
+    border-color: #10b981 !important;
+}
+
+body.dark-theme .player-count-btn.selected {
+    background: #10b981 !important;
+    color: white !important;
+    border-color: #059669 !important;
+}
+
+body.dark-theme .sidebar-player-name-input {
+    color: white !important;
+    border-color: rgba(255, 255, 255, 0.2) !important;
+    background: rgba(255, 255, 255, 0.05) !important;
+}
+
+body.dark-theme .sidebar-player-name-input:focus {
+    border-color: #667eea !important;
+    background: rgba(255, 255, 255, 0.1) !important;
 }
 
 /* Icon Picker Styles */
