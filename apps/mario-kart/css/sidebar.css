@@ -512,34 +512,37 @@ body.dark-theme .sidebar-overlay {
 /* Export button */
 .sidebar .action-buttons button[onclick*="exportData"] {
     background: #48BB78;
-    color: white;
+    color: black !important;
     border-color: #38a169;
 }
 
 .sidebar .action-buttons button[onclick*="exportData"]:hover {
     background: #38a169;
+    color: black !important;
 }
 
 /* Import button */
 .sidebar .action-buttons button[onclick*="importFile"] {
     background: #38B2AC;
-    color: white;
+    color: black !important;
     border-color: #319795;
 }
 
 .sidebar .action-buttons button[onclick*="importFile"]:hover {
     background: #319795;
+    color: black !important;
 }
 
 /* Backup button */
 .sidebar .action-buttons button[onclick*="backupToGoogleDrive"] {
     background: #4299E1;
-    color: white;
+    color: black !important;
     border-color: #3182ce;
 }
 
 .sidebar .action-buttons button[onclick*="backupToGoogleDrive"]:hover {
     background: #3182ce;
+    color: black !important;
 }
 
 .sidebar .custom-date-range {
@@ -831,7 +834,7 @@ body.dark-theme .sidebar-date-input-hidden::-webkit-calendar-picker-indicator {
     gap: 0.5rem;
     padding: 10px 16px;
     background: linear-gradient(135deg, #10b981 0%, #059669 100%);
-    color: white;
+    color: black !important;
     border: none;
     border-radius: 8px;
     font-size: 0.9rem;
@@ -1882,12 +1885,13 @@ body.dark-theme .sidebar-icon-option:hover {
 /* Undo button styling */
 .sidebar-action-btn.undo-btn {
     background: #3b82f6;
-    color: white;
+    color: black !important;
     border-color: #2563eb;
 }
 
 .sidebar-action-btn.undo-btn:hover:not(:disabled) {
     background: #2563eb;
+    color: black !important;
     transform: translateY(-1px);
     box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
 }
@@ -1895,12 +1899,13 @@ body.dark-theme .sidebar-icon-option:hover {
 /* Redo button styling */
 .sidebar-action-btn.redo-btn {
     background: #10b981;
-    color: white;
+    color: black !important;
     border-color: #059669;
 }
 
 .sidebar-action-btn.redo-btn:hover:not(:disabled) {
     background: #059669;
+    color: black !important;
     transform: translateY(-1px);
     box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
 }
@@ -1908,12 +1913,13 @@ body.dark-theme .sidebar-icon-option:hover {
 /* Restore button styling */
 .sidebar-action-btn.restore-btn {
     background: #f59e0b;
-    color: white;
+    color: black !important;
     border-color: #d97706;
 }
 
 .sidebar-action-btn.restore-btn:hover {
     background: #d97706;
+    color: black !important;
     transform: translateY(-1px);
     box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
 }
@@ -1949,36 +1955,39 @@ body.dark-theme .sidebar-action-btn:hover:not(:disabled) {
 
 body.dark-theme .sidebar-action-btn.undo-btn {
     background: #60a5fa;
-    color: white !important;
+    color: black !important;
     border-color: #3b82f6;
 }
 
 body.dark-theme .sidebar-action-btn.undo-btn:hover:not(:disabled) {
     background: #3b82f6;
+    color: black !important;
     transform: translateY(-1px);
     box-shadow: 0 2px 4px rgba(0, 0, 0, 0.3);
 }
 
 body.dark-theme .sidebar-action-btn.redo-btn {
     background: #34d399;
-    color: white !important;
+    color: black !important;
     border-color: #10b981;
 }
 
 body.dark-theme .sidebar-action-btn.redo-btn:hover:not(:disabled) {
     background: #10b981;
+    color: black !important;
     transform: translateY(-1px);
     box-shadow: 0 2px 4px rgba(0, 0, 0, 0.3);
 }
 
 body.dark-theme .sidebar-action-btn.restore-btn {
     background: #fbbf24;
-    color: white !important;
+    color: black !important;
     border-color: #f59e0b;
 }
 
 body.dark-theme .sidebar-action-btn.restore-btn:hover {
     background: #f59e0b;
+    color: black !important;
     transform: translateY(-1px);
     box-shadow: 0 2px 4px rgba(0, 0, 0, 0.3);
 }
@@ -1993,32 +2002,35 @@ body.dark-theme .sidebar-action-btn.restore-btn:hover {
 /* Dark theme support for export/import/backup buttons */
 body.dark-theme .sidebar .action-buttons button[onclick*="exportData"] {
     background: #68D391;
-    color: white !important;
+    color: black !important;
     border-color: #48BB78;
 }
 
 body.dark-theme .sidebar .action-buttons button[onclick*="exportData"]:hover {
     background: #48BB78;
+    color: black !important;
 }
 
 body.dark-theme .sidebar .action-buttons button[onclick*="importFile"] {
     background: #4FD1C5;
-    color: white !important;
+    color: black !important;
     border-color: #38B2AC;
 }
 
 body.dark-theme .sidebar .action-buttons button[onclick*="importFile"]:hover {
     background: #38B2AC;
+    color: black !important;
 }
 
 body.dark-theme .sidebar .action-buttons button[onclick*="backupToGoogleDrive"] {
     background: #63B3ED;
-    color: white !important;
+    color: black !important;
     border-color: #4299E1;
 }
 
 body.dark-theme .sidebar .action-buttons button[onclick*="backupToGoogleDrive"]:hover {
     background: #4299E1;
+    color: black !important;
 }
 
 /* Universal sidebar button styling - ensure all Control Panel buttons have white text and are centered */
@@ -2052,31 +2064,8 @@ body.dark-theme .sidebar .action-buttons button[onclick*="backupToGoogleDrive"]:
     text-align: center !important;
 }
 
-/* Special override for colored action buttons to ensure white text */
-.sidebar-action-btn.undo-btn,
-.sidebar-action-btn.redo-btn,
-.sidebar-action-btn.restore-btn {
-    color: white !important;
-}
-
-.sidebar-action-btn.undo-btn:hover:not(:disabled),
-.sidebar-action-btn.redo-btn:hover:not(:disabled),
-.sidebar-action-btn.restore-btn:hover {
-    color: white !important;
-}
-
-/* Dark theme specific overrides to ensure white text for colored buttons */
-body.dark-theme .sidebar-action-btn.undo-btn,
-body.dark-theme .sidebar-action-btn.redo-btn,
-body.dark-theme .sidebar-action-btn.restore-btn {
-    color: white !important;
-}
-
-body.dark-theme .sidebar-action-btn.undo-btn:hover:not(:disabled),
-body.dark-theme .sidebar-action-btn.redo-btn:hover:not(:disabled),
-body.dark-theme .sidebar-action-btn.restore-btn:hover {
-    color: white !important;
-}
+/* Removed conflicting white text overrides for undo/redo/restore buttons 
+   to allow black text as requested by user */
 
 /* Specific styling for Date Filter buttons to ensure proper contrast with white text */
 .sidebar .filter-btn:not(.active) {
