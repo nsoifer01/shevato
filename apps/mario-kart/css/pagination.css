@@ -22,6 +22,7 @@
     font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
     display: flex;
     align-items: center;
+    height: 36px;
 }
 
 /* Pagination Controls */
@@ -103,7 +104,7 @@
     display: flex;
     align-items: center;
     gap: 6px;
-    font-size: 0.75rem;
+    font-size: 0.9375rem;
     font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
     white-space: nowrap;
     height: 36px;
@@ -114,6 +115,8 @@
     font-weight: 500;
     font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
     white-space: nowrap;
+    line-height: 1;
+    margin: 0;
 }
 
 .pagination-size select {
