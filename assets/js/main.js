@@ -22,7 +22,8 @@
 			}, 100);
 		});
 
-	// Menu.
+	// Function to initialize menu
+	function initializeMenu() {
 		$('#menu')
 			.append('<a href="#menu" class="close"></a>')
 			.appendTo($body)
@@ -36,11 +37,25 @@
 				resetForms: true,
 				side: 'right'
 			});
+	}
 
   var includes = $('[data-include]');
+  var includesLoaded = 0;
+  var totalIncludes = includes.length;
+  
   jQuery.each(includes, function(){
-    var file = 'partials/' + $(this).data('include') + '.html';
-    $(this).load(file);
+    var includeFile = $(this).data('include') + '.html';
+    var basePath = window.location.pathname.includes('/apps/') ? '../../partials/' : 'partials/';
+    var file = basePath + includeFile;
+    var $element = $(this);
+    
+    $element.load(file, function() {
+      includesLoaded++;
+      // Initialize menu after header is loaded
+      if (includeFile === 'header.html' && $('#menu').length > 0) {
+        initializeMenu();
+      }
+    });
   });
 
 })(jQuery);

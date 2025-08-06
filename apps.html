@@ -3,17 +3,12 @@
 <head>
   <!-- Google Analytics -->
   <script async src="https://www.googletagmanager.com/gtag/js?id=UA-140119780-1"></script>
-  <script>
-    window.dataLayer = window.dataLayer || [];
-    function gtag(){dataLayer.push(arguments);}
-    gtag('js', new Date());
-    gtag('config', 'UA-140119780-1');
-  </script>
-  <title>Games & Interactive Apps | Mario Kart Tracker, Tic-Tac-Toe & Gym Tracker - Shevato</title>
+  <script src="/assets/js/analytics.js"></script>
+  <title>Games & Interactive Apps | Mario Kart Tracker & Gym Tracker - Shevato</title>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=no" />
-  <meta name="description" content="Play free online games and track your fitness journey with Mario Kart Tracker, Tic-Tac-Toe, and Gym Tracker. Monitor statistics, challenge AI opponents, and achieve your goals at Shevato." />
-  <meta name="keywords" content="online games, Mario Kart tracker, Tic-Tac-Toe game, gym tracker, fitness tracking, free browser games, interactive apps, racing statistics, strategy games, workout logging, Shevato apps" />
+  <meta name="description" content="Play free online games and track your fitness journey with Mario Kart Tracker and Gym Tracker. Monitor statistics and achieve your goals at Shevato." />
+  <meta name="keywords" content="online games, Mario Kart tracker, gym tracker, fitness tracking, free browser games, interactive apps, racing statistics, workout logging, Shevato apps" />
   <link rel="stylesheet" href="assets/css/main.css" />
   <link rel="icon" type="image/png" href="images/white_icon_transparent.png">
   
@@ -21,8 +16,8 @@
   <link rel="canonical" href="https://shevato.com/apps.html" />
   
   <!-- SEO Enhancement: Open Graph tags -->
-  <meta property="og:title" content="Games & Interactive Apps | Mario Kart Tracker, Tic-Tac-Toe & Gym Tracker" />
-  <meta property="og:description" content="Play free online games and track your fitness with Mario Kart Tracker, Tic-Tac-Toe, and Gym Tracker at Shevato." />
+  <meta property="og:title" content="Games & Interactive Apps | Mario Kart Tracker & Gym Tracker" />
+  <meta property="og:description" content="Play free online games and track your fitness with Mario Kart Tracker and Gym Tracker at Shevato." />
   <meta property="og:type" content="website" />
   <meta property="og:url" content="https://shevato.com/apps.html" />
   <meta property="og:image" content="https://shevato.com/images/full-logo.svg" />
@@ -51,19 +46,6 @@
       },
       {
         "@type": "SoftwareApplication",
-        "name": "Tic-Tac-Toe",
-        "description": "Classic strategy game with AI opponent",
-        "url": "https://shevato.com/apps/tic-tac-toe/index.html",
-        "applicationCategory": "GameApplication",
-        "operatingSystem": "Web Browser",
-        "offers": {
-          "@type": "Offer",
-          "price": "0",
-          "priceCurrency": "USD"
-        }
-      },
-      {
-        "@type": "SoftwareApplication",
         "name": "Gym Tracker",
         "description": "Track your fitness journey with workout logging, progress analytics, achievements, and personalized scheduling",
         "url": "https://shevato.com/apps/gym-tracker/index.html",
@@ -78,25 +60,12 @@
     ]
   }
   </script>
-  <style>
-    .content h3 {
-      min-height: 2em; /* Adjust as needed to ensure alignment */
-    }
-    .highlights .content p {
-      min-height: 4em;
-    }
-  </style>
+  <link rel="stylesheet" href="/assets/css/content-alignment.css" />
+  <link rel="stylesheet" href="/assets/css/brand-colors.css" />
 </head>
 <body class="is-preload">
   <div data-include="header"></div>
-  <nav id="menu">
-    <ul class="links">
-      <li><a href="home.html">Home</a></li>
-      <li><a href="product.html">Product</a></li>
-      <li><a href="apps.html">Apps</a></li>
-    </ul>
-  </nav>
-  <section class="wrapper" style="padding-top:inherit">
+  <section class="wrapper wrapper-inherit-padding">
     <div class="inner">
       <header class="special">
         <h2>Apps</h2>
@@ -106,7 +75,7 @@
         <section>
           <div class="content">
             <header>
-              <a href="apps/mario-kart/tracker.html" class="icon fa-gamepad" style="color: #0044cc"></a>
+              <a href="apps/mario-kart/tracker.html" class="icon fa-gamepad brand-color-primary"></a>
               <h3>Mario Kart Tracker</h3>
             </header>
             <p>Track your Mario Kart races, manage player statistics, and analyze performance with comprehensive charts and achievements.</p>
@@ -118,19 +87,7 @@
         <section>
           <div class="content">
             <header>
-              <a href="apps/tic-tac-toe/index.html" class="icon fa-th" style="color: #0044cc"></a>
-              <h3>Tic-Tac-Toe</h3>
-            </header>
-            <p>Challenge our opponent in this classic strategy game. Can you outsmart the computer and claim victory?</p>
-            <ul class="actions special">
-              <li><a href="apps/tic-tac-toe/index.html" class="button">Play Now</a></li>
-            </ul>
-          </div>
-        </section>
-        <section>
-          <div class="content">
-            <header>
-              <a href="apps/gym-tracker/index.html" class="icon fa-heartbeat" style="color: #0044cc"></a>
+              <a href="apps/gym-tracker/index.html" class="icon fa-heartbeat brand-color-primary"></a>
               <h3>Gym Tracker</h3>
             </header>
             <p>Track your fitness journey! Log workouts, monitor progress, unlock achievements, and stay consistent with your training.</p>
