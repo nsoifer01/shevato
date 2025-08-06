@@ -1,24 +1,7 @@
 // Sidebar functionality
 let sidebarOpen = false;
 
-function calculateLayoutHeights() {
-    // Calculate footer height
-    const footer = document.querySelector('[data-include="footer"]') || document.querySelector('footer');
-    let footerHeight = 0;
-    
-    if (footer) {
-        footerHeight = footer.offsetHeight;
-    }
-    
-    // Set CSS custom properties for height calculations
-    document.documentElement.style.setProperty('--footer-height', `${footerHeight}px`);
-    document.documentElement.style.setProperty('--sidebar-width', getComputedStyle(document.documentElement).getPropertyValue('--sidebar-width') || '320px');
-}
-
 function initializeSidebar() {
-    // Calculate layout heights first
-    calculateLayoutHeights();
-    
     // Prevent scroll propagation from sidebar
     const sidebar = document.getElementById('sidebar');
     if (sidebar) {
@@ -31,27 +14,6 @@ function initializeSidebar() {
             e.stopPropagation();
         }, { passive: true });
     }
-    
-    // Recalculate heights on window resize
-    window.addEventListener('resize', () => {
-        calculateLayoutHeights();
-    });
-    
-    // Show body after initial calculations to prevent flash
-    // Also wait for footer to load since it's included via data-include
-    const checkFooterAndShow = () => {
-        const footer = document.querySelector('[data-include="footer"]');
-        if (footer && footer.innerHTML.trim()) {
-            // Footer is loaded, recalculate heights
-            calculateLayoutHeights();
-            document.body.classList.add('loaded');
-        } else {
-            // Footer not loaded yet, check again
-            setTimeout(checkFooterAndShow, 100);
-        }
-    };
-    
-    setTimeout(checkFooterAndShow, 50);
     
     // Small delay to ensure DOM is fully ready
     setTimeout(() => {
@@ -146,75 +108,58 @@ function toggleSidebar() {
 }
 
 function openSidebar(animate = true) {
-    // On desktop, sidebar is always visible
-    if (window.innerWidth >= 1025) {
-        console.log('Sidebar is always visible on desktop');
-        return;
-    }
-    
     const sidebar = document.getElementById('sidebar');
     const overlay = document.getElementById('sidebar-overlay');
     const toggle = document.getElementById('sidebar-toggle');
-    const container = document.querySelector('.main-container');
+    const container = document.querySelector('.container');
     
     sidebarOpen = true;
     
-    // Update ARIA attributes if toggle exists
-    if (toggle) {
-        toggle.setAttribute('aria-expanded', 'true');
-        // Hide toggle button
-        toggle.style.opacity = '0';
-        toggle.style.pointerEvents = 'none';
-    }
+    // Update ARIA attributes
+    toggle.setAttribute('aria-expanded', 'true');
     
     // Open sidebar
     sidebar.classList.add('open');
-    if (overlay) {
-        overlay.classList.add('active');
-    }
+    overlay.classList.add('active');
     
     // Add class to prevent page scrolling
     document.body.classList.add('sidebar-open');
+    
+    // Hide toggle button
+    toggle.style.opacity = '0';
+    toggle.style.pointerEvents = 'none';
     
     // Save state
     localStorage.setItem('sidebarOpen', 'true');
 }
 
 function closeSidebar() {
-    // Don't close sidebar on desktop (width >= 1025px)
-    if (window.innerWidth >= 1025) {
-        console.log('Sidebar is always visible on desktop');
-        return;
-    }
-    
     const sidebar = document.getElementById('sidebar');
     const overlay = document.getElementById('sidebar-overlay');
     const toggle = document.getElementById('sidebar-toggle');
-    const container = document.querySelector('.main-container');
+    const container = document.querySelector('.container');
     
     sidebarOpen = false;
     
-    // Update ARIA attributes if toggle exists
-    if (toggle) {
-        toggle.setAttribute('aria-expanded', 'false');
-        // Show toggle button
-        toggle.style.opacity = '1';
-        toggle.style.pointerEvents = 'auto';
-        // Return focus to toggle button
-        toggle.focus();
-    }
+    // Update ARIA attributes
+    toggle.setAttribute('aria-expanded', 'false');
     
     // Close sidebar
     sidebar.classList.remove('open');
-    if (overlay) {
-        overlay.classList.remove('active');
-    }
+    overlay.classList.remove('active');
     
     // Remove class to restore page scrolling
     document.body.classList.remove('sidebar-open');
     
+    // Show toggle button
+    toggle.style.opacity = '1';
+    toggle.style.pointerEvents = 'auto';
+    
     // Save state
     localStorage.setItem('sidebarOpen', 'false');
+    
+    // Return focus to toggle button
+    toggle.focus();
 }
 
 function handleSidebarKeyboard(event) {
@@ -246,17 +191,10 @@ function handleSidebarKeyboard(event) {
 }
 
 function handleResponsiveSidebar() {
-    const container = document.querySelector('.main-container');
+    const container = document.querySelector('.container');
     const toggle = document.getElementById('sidebar-toggle');
-    const sidebar = document.getElementById('sidebar');
     
-    // On desktop, ensure sidebar is always visible
-    if (window.innerWidth >= 1025) {
-        if (sidebar) {
-            sidebar.classList.add('open');
-        }
-    }
-    // Remove any container adjustments - sidebar should overlay on mobile
+    // Remove any container adjustments - sidebar should overlay
 }
 
 // Touch gesture support for mobile

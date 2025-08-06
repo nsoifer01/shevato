@@ -1,22 +1,31 @@
-/* Mario Kart App Specific Styles */
+/* Reset and Base Styles */
+* {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+}
 
-/* Mario Kart Container Styling */
-.mario-kart-tracker .container {
+body {
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    color: #333;
+    transition: all 0.3s ease;
+}
+
+.container {
     background: rgba(255, 255, 255, 0.95);
     border-radius: 20px;
     box-shadow: 0 20px 40px rgba(0, 0, 0, 0.2);
 }
 
-/* Mario Kart specific headings */
-.mario-kart-tracker h1 {
+h1 {
     color: #5a67d8;
     font-size: 2.5em;
     text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.1);
     margin: 0;
 }
 
-/* Mario Kart form labels */
-.mario-kart-tracker label {
+label {
     font-weight: 600;
     color: #4a5568;
     margin-bottom: 5px;
@@ -38,20 +47,19 @@
 .worst { background: #ef4444; color: white; }   /* Red for 3rd+ */
 .middle { background: #9ca3af; color: white; }  /* Gray for ties */
 
-/* Mario Kart table styles */
-.mario-kart-tracker table {
+/* Basic table styles */
+table {
     width: 100%;
     border-collapse: collapse;
 }
 
-.mario-kart-tracker th, 
-.mario-kart-tracker td {
+th, td {
     padding: 12px;
     text-align: center;
     border-bottom: 1px solid #e2e8f0;
 }
 
-.mario-kart-tracker th {
+th {
     background: #f7fafc;
     font-weight: 700;
     color: #4a5568;
@@ -59,11 +67,11 @@
     top: 0;
 }
 
-.mario-kart-tracker tr:hover {
+tr:hover {
     background: #f7fafc;
 }
 
-.mario-kart-tracker .position-cell {
+.position-cell {
     font-weight: 600;
     border-radius: 6px;
     padding: 6px 12px;

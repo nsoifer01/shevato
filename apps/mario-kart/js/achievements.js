@@ -2018,8 +2018,8 @@ function updateSweetSpotBars(raceData) {
         const getColorForCount = (count) => {
             if (count === 0) return { color: 'transparent', opacity: 0 }; // Transparent for no data
 
-            // Use cyan color for dark mode
-            const baseColor = '#06b6d4';
+            // Use different colors for light and dark mode
+            const baseColor = isDarkTheme ? '#06b6d4' : '#3b82f6'; // Cyan for dark mode, blue for light mode
 
             // Calculate opacity based on frequency (0.3 minimum to 1.0 maximum)
             const percentage = count / Math.max(maxCount, 1);

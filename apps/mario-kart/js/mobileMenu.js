@@ -58,7 +58,10 @@ function mobileRedoAction() {
     updateMobileMenuStates();
 }
 
-// Theme functionality removed - single theme only
+function mobileToggleTheme() {
+    toggleTheme();
+    updateMobileMenuStates();
+}
 
 function mobileToggleDate() {
     toggleDateWidget();
@@ -104,7 +107,12 @@ function updateMobileMenuStates() {
         }
     }
     
-    // Theme button removed - single theme only
+    // Update theme button icon
+    if (themeBtn) {
+        const isDark = document.body.classList.contains('dark-theme');
+        themeBtn.innerHTML = isDark ? '☀️' : '🌙';
+        themeBtn.title = isDark ? 'Switch to light mode' : 'Switch to dark mode';
+    }
 }
 
 // Auto-close mobile menu on window resize to larger screens
