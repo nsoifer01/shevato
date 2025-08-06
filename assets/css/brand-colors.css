@@ -1,0 +1,25 @@
+.brand-color-primary {
+  color: #0044cc !important;
+}
+
+.btn-export {
+  background: #48BB78;
+}
+
+.btn-import {
+  background: #38B2AC;
+  margin-left: 10px;
+}
+
+.btn-backup {
+  background: #4299E1;
+  margin-left: 10px;
+}
+
+.wrapper-inherit-padding {
+  padding-top: inherit;
+}
+
+.sortable-header {
+  cursor: pointer;
+}
