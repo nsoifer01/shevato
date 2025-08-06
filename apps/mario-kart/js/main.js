@@ -1487,6 +1487,16 @@ document.addEventListener('DOMContentLoaded', function() {
         window.updateAllPlayerIcons();
     }
 
+    // Subscribe to player symbol changes to update H2H tables
+    if (window.PlayerSymbolManager) {
+        window.PlayerSymbolManager.subscribe(() => {
+            // Only refresh if we're currently viewing the H2H tab
+            if (currentView === 'h2h') {
+                createH2HView();
+            }
+        });
+    }
+
     // The date button already has onclick="toggleDateWidget()" in HTML,
     // so we don't need to add another listener
 });
