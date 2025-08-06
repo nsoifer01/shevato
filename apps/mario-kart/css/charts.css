@@ -154,6 +154,7 @@ body.dark-theme #trends-chart-container {
     border: 1px solid var(--activity-border);
     transition: all 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275);
     overflow: visible;
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
 }
 
 /* Add subtle gradient overlay */
@@ -189,6 +190,7 @@ body.dark-theme #trends-chart-container {
     align-items: center;
     justify-content: center;
     gap: 12px;
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
 }
 
 /* Add decorative line under title */
@@ -260,7 +262,8 @@ body.dark-theme #trends-chart-container {
     width: 100%;
     border-collapse: separate;
     border-spacing: 0 8px;
-    font-size: 0.875rem;
+    font-size: 0.9375rem;
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
 }
 
 .weekly-breakdown-table thead tr {
@@ -274,7 +277,7 @@ body.dark-theme #trends-chart-container {
     font-weight: 600 !important;
     text-transform: none;
     letter-spacing: 0.02em;
-    font-size: 0.875rem !important;
+    font-size: 0.9375rem !important;
     border: none !important;
     background: transparent !important;
     border-bottom: 2px solid var(--activity-border) !important;
@@ -344,7 +347,7 @@ body.dark-theme #trends-chart-container {
 .weekly-breakdown-table td:nth-child(n+3) {
     color: var(--activity-text-secondary);
     font-family: 'SF Mono', 'Monaco', 'Inconsolata', monospace;
-    font-size: 0.875rem;
+    font-size: 0.9375rem;
 }
 
 /* Heatmap styles */
@@ -356,6 +359,7 @@ body.dark-theme #trends-chart-container {
     box-shadow: var(--activity-card-shadow);
     border: 1px solid var(--activity-border);
     transition: all 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
 }
 
 .heatmap-container:hover {
@@ -374,6 +378,7 @@ body.dark-theme #trends-chart-container {
     border-radius: 16px;
     backdrop-filter: blur(10px);
     border: 1px solid rgba(255, 255, 255, 0.6);
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
 }
 
 .heatmap-day {
@@ -388,6 +393,7 @@ body.dark-theme #trends-chart-container {
     transition: all 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275);
     position: relative;
     overflow: hidden;
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
 }
 
 .heatmap-day::before {
@@ -656,6 +662,7 @@ body.dark-theme .weekly-breakdown-table tbody tr:hover {
     overflow: visible;
     display: flex;
     flex-direction: column;
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
 }
 
 /* Card gradient overlay */
@@ -698,11 +705,12 @@ body.dark-theme .weekly-breakdown-table tbody tr:hover {
     align-items: center;
     justify-content: center;
     gap: 10px;
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
 }
 
 /* Analysis Description */
 .analysis-description {
-    font-size: 0.875rem;
+    font-size: 0.9375rem;
     color: var(--analysis-text-secondary);
     text-align: center;
     margin-bottom: 20px;
@@ -710,6 +718,7 @@ body.dark-theme .weekly-breakdown-table tbody tr:hover {
     line-height: 1.5;
     position: relative;
     z-index: 2;
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
 }
 
 /* Modern List Containers */
@@ -728,6 +737,7 @@ body.dark-theme .weekly-breakdown-table tbody tr:hover {
     max-height: 380px;
     padding-right: 8px;
     margin: 0;
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
 }
 
 /* Base Item Style */
@@ -744,6 +754,7 @@ body.dark-theme .weekly-breakdown-table tbody tr:hover {
     border: 1px solid transparent;
     gap: 12px;
     min-height: fit-content;
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
 }
 
 /* Specific Item Styles */

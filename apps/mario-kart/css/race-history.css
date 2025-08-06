@@ -105,7 +105,7 @@
     width: 100%;
     border-collapse: separate;
     border-spacing: 0;
-    font-size: 0.875rem;
+    font-size: 0.9375rem;
     background: transparent;
 }
 
@@ -349,7 +349,7 @@
 }
 
 .race-date {
-    font-size: 0.875rem;
+    font-size: 0.9375rem;
     color: var(--history-text-secondary);
     font-family: 'SF Mono', 'Monaco', 'Inconsolata', monospace;
 }
@@ -368,7 +368,7 @@
 }
 
 .player-label {
-    font-size: 0.875rem;
+    font-size: 0.9375rem;
     color: var(--history-text-secondary);
     font-weight: 600;
 }
@@ -432,7 +432,7 @@ body.dark-theme .race-card:hover {
     .position-cell {
         width: 36px;
         height: 36px;
-        font-size: 0.875rem;
+        font-size: 0.9375rem;
     }
 }
 

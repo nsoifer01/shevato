@@ -64,6 +64,9 @@ body {
     margin: 0;
     line-height: 1.2;
     word-wrap: break-word;
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+    font-weight: bold;
+    text-transform: none;
 }
 
 
