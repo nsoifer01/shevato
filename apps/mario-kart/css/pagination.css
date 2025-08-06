@@ -158,12 +158,13 @@ body.dark-theme .pagination-container {
 body.dark-theme .pagination-btn {
     background: #374151;
     border-color: #4a5568;
-    color: var(--history-text-primary);
+    color: white;
 }
 
 body.dark-theme .pagination-btn:hover:not(:disabled) {
     background: #4b5563;
     border-color: var(--history-accent);
+    color: white;
 }
 
 body.dark-theme .pagination-btn.active {
