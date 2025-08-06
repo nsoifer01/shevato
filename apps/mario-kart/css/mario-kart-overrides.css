@@ -1,0 +1,510 @@
+/* Mario Kart Tracker CSS Overrides - Fixes for main.css conflicts */
+
+/* ===========================================
+   Text Color and Font-Weight Overrides
+   =========================================== */
+
+/* Override main.css global strong/b element styles */
+.mario-kart-tracker strong,
+.mario-kart-tracker b,
+.white-bold-text {
+    color: white !important;
+    font-weight: bold !important;
+}
+
+/* Tier range numbers styling */
+.tier-range-numbers {
+    color: white !important;
+    font-weight: bold !important;
+}
+
+/* Legend titles styling */
+.legend-title {
+    color: white !important;
+    font-weight: bold !important;
+}
+
+/* Tips text styling */
+.tips-text {
+    color: white !important;
+    font-weight: bold !important;
+}
+
+/* ===========================================
+   Button Overrides
+   =========================================== */
+
+/* Override main.css button styling for pagination */
+.pagination-btn {
+    color: white !important;
+    background: #667eea !important;
+    border: 1px solid #667eea !important;
+}
+
+.pagination-btn:hover:not(:disabled) {
+    color: white !important;
+    background: #5a67d8 !important;
+    border-color: #5a67d8 !important;
+}
+
+.pagination-btn.active {
+    color: white !important;
+    background: #4c51bf !important;
+    border-color: #4c51bf !important;
+}
+
+/* Dark theme pagination overrides */
+body.dark-theme .pagination-btn {
+    color: white !important;
+    background: #374151 !important;
+    border-color: #4a5568 !important;
+}
+
+body.dark-theme .pagination-btn:hover:not(:disabled) {
+    color: white !important;
+    background: #4b5563 !important;
+}
+
+/* Export/Import/Backup button classes */
+.export-btn {
+    background: #48BB78 !important;
+    color: white !important;
+    border: none;
+    padding: 0.75rem 1.5rem;
+    border-radius: 0.5rem;
+    cursor: pointer;
+    font-weight: 600;
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+}
+
+.import-btn {
+    background: #38B2AC !important;
+    color: white !important;
+    border: none;
+    padding: 0.75rem 1.5rem;
+    border-radius: 0.5rem;
+    cursor: pointer;
+    font-weight: 600;
+    margin-left: 10px;
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+}
+
+.backup-btn {
+    background: #4299E1 !important;
+    color: white !important;
+    border: none;
+    padding: 0.75rem 1.5rem;
+    border-radius: 0.5rem;
+    cursor: pointer;
+    font-weight: 600;
+    margin-left: 10px;
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+}
+
+/* ===========================================
+   Modal Styling Classes
+   =========================================== */
+
+.modal-overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: rgba(0, 0, 0, 0.5);
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    z-index: 1000;
+    backdrop-filter: blur(5px);
+}
+
+.modal-dialog {
+    background: var(--modal-bg, #2d3748);
+    border-radius: 1rem;
+    padding: 2rem;
+    box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+    max-width: 400px;
+    width: 90%;
+    text-align: center;
+    animation: modalSlideIn 0.3s ease;
+}
+
+.modal-dialog.light-theme {
+    background: white;
+}
+
+.modal-icon {
+    font-size: 3rem;
+    margin-bottom: 1rem;
+}
+
+.modal-title {
+    color: var(--modal-title-color, #e2e8f0);
+    margin-bottom: 1rem;
+    font-size: 1.5rem;
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+}
+
+.modal-title.light-theme {
+    color: #2d3748;
+}
+
+.modal-text {
+    color: var(--modal-text-color, #a0aec0);
+    margin-bottom: 2rem;
+    line-height: 1.5;
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+}
+
+.modal-text.light-theme {
+    color: #4a5568;
+}
+
+.modal-text strong {
+    color: var(--modal-strong-color, #e2e8f0) !important;
+}
+
+.modal-text strong.light-theme {
+    color: #2d3748 !important;
+}
+
+.modal-warning {
+    color: var(--modal-warning-color, #fc8181) !important;
+}
+
+.modal-warning.light-theme {
+    color: #e53e3e !important;
+}
+
+.modal-buttons {
+    display: flex;
+    gap: 1rem;
+    justify-content: center;
+}
+
+.modal-btn-primary {
+    background: #8b5cf6;
+    color: white !important;
+    border: none;
+    padding: 0.75rem 1.5rem;
+    border-radius: 0.5rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.2s;
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+}
+
+.modal-btn-secondary {
+    background: var(--modal-secondary-bg, #4a5568);
+    color: white !important;
+    border: none;
+    padding: 0.75rem 1.5rem;
+    border-radius: 0.5rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.2s;
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+}
+
+.modal-btn-secondary.light-theme {
+    background: #e2e8f0;
+    color: #2d3748 !important;
+}
+
+.modal-btn-danger {
+    background: #ef4444;
+    color: white !important;
+    border: none;
+    padding: 0.75rem 1.5rem;
+    border-radius: 0.5rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.2s;
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+}
+
+/* ===========================================
+   Form Styling Classes
+   =========================================== */
+
+.form-group {
+    margin-bottom: 1rem;
+}
+
+.form-label {
+    display: block;
+    margin-bottom: 0.5rem;
+    color: var(--form-label-color, #e2e8f0);
+    font-weight: 600;
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+}
+
+.form-label.light-theme {
+    color: #4a5568;
+}
+
+.form-input {
+    width: 100%;
+    padding: 0.75rem;
+    border: 1px solid var(--form-border-color, #4a5568);
+    border-radius: 0.5rem;
+    background: var(--form-bg, #374151);
+    color: var(--form-text-color, #e2e8f0);
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+}
+
+.form-input.light-theme {
+    border-color: #e2e8f0;
+    background: white;
+    color: #2d3748;
+}
+
+.form-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 1rem;
+    margin-bottom: 1.5rem;
+}
+
+/* ===========================================
+   Table Styling Classes
+   =========================================== */
+
+.sortable-header {
+    cursor: pointer;
+    user-select: none;
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+}
+
+.sortable-header:hover {
+    background-color: rgba(102, 126, 234, 0.1);
+}
+
+.sortable-header:focus {
+    outline: 2px solid #667eea;
+    outline-offset: -2px;
+}
+
+/* Empty state styling */
+.empty-state {
+    text-align: center;
+    padding: 60px 20px;
+    color: #718096;
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+}
+
+.empty-state h3 {
+    font-size: 1.5em;
+    margin-bottom: 10px;
+    color: #718096;
+}
+
+.empty-state-placeholder {
+    color: #718096;
+}
+
+/* ===========================================
+   Layout Classes
+   =========================================== */
+
+/* Sticky footer solution */
+.mario-kart-app {
+    display: flex;
+    flex-direction: column;
+    min-height: 100vh;
+}
+
+.mario-kart-content {
+    flex: 1;
+}
+
+.mario-kart-footer {
+    margin-top: auto;
+}
+
+/* Hidden elements */
+.hidden {
+    display: none !important;
+}
+
+.visually-hidden {
+    position: absolute !important;
+    width: 1px !important;
+    height: 1px !important;
+    padding: 0 !important;
+    margin: -1px !important;
+    overflow: hidden !important;
+    clip: rect(0, 0, 0, 0) !important;
+    white-space: nowrap !important;
+    border: 0 !important;
+}
+
+/* ===========================================
+   Sidebar and Tooltip Positioning
+   =========================================== */
+
+/* Ensure tooltips appear above everything */
+.sidebar-tooltip {
+    z-index: 10002 !important;
+    transform: translateY(8px) translateX(-50%) !important;
+}
+
+.sidebar-tooltip.visible {
+    transform: translateY(12px) translateX(-50%) !important;
+}
+
+/* Sidebar toggle perfect alignment */
+.sidebar-toggle {
+    display: flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    padding: 0 !important;
+}
+
+.sidebar-toggle svg {
+    stroke: white !important;
+}
+
+/* ===========================================
+   Visualization Styling
+   =========================================== */
+
+.viz-tip-content {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 4px;
+}
+
+.viz-color-indicator {
+    padding: 2px 6px;
+    border-radius: 3px;
+    margin-right: 4px;
+    display: inline-block;
+    font-weight: 600 !important;
+}
+
+.viz-color-green {
+    color: #10b981 !important;
+    font-weight: 600 !important;
+}
+
+.viz-color-yellow {
+    color: #f59e0b !important;
+    font-weight: 600 !important;
+}
+
+.viz-color-red {
+    color: #ef4444 !important;
+    font-weight: 600 !important;
+}
+
+.viz-color-gray {
+    color: #9ca3af !important;
+    font-weight: 600 !important;
+}
+
+/* Frequency gradient indicators */
+.frequency-low {
+    background-color: rgba(6, 182, 212, 0.3) !important;
+    color: black !important;
+}
+
+.frequency-medium {
+    background-color: rgba(6, 182, 212, 0.65) !important;
+    color: black !important;
+}
+
+.frequency-high {
+    background-color: rgba(6, 182, 212, 1.0) !important;
+    color: black !important;
+}
+
+/* Light theme frequency indicators */
+.light-theme .frequency-low {
+    background-color: rgba(59, 130, 246, 0.3) !important;
+}
+
+.light-theme .frequency-medium {
+    background-color: rgba(59, 130, 246, 0.65) !important;
+}
+
+.light-theme .frequency-high {
+    background-color: rgba(59, 130, 246, 1.0) !important;
+}
+
+/* ===========================================
+   Animation Classes
+   =========================================== */
+
+@keyframes modalSlideIn {
+    from { 
+        opacity: 0; 
+        transform: scale(0.9) translateY(-20px); 
+    }
+    to { 
+        opacity: 1; 
+        transform: scale(1) translateY(0); 
+    }
+}
+
+.fade-in {
+    animation: fadeIn 0.3s ease-out;
+}
+
+@keyframes fadeIn {
+    from {
+        opacity: 0;
+        transform: translateY(4px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+/* ===========================================
+   Responsive Design
+   =========================================== */
+
+@media (max-width: 768px) {
+    .modal-dialog {
+        padding: 1.5rem;
+        width: 95%;
+    }
+    
+    .modal-buttons {
+        flex-direction: column;
+        gap: 0.75rem;
+    }
+    
+    .form-grid {
+        grid-template-columns: 1fr;
+    }
+    
+    .export-btn,
+    .import-btn,
+    .backup-btn {
+        margin-left: 0;
+        margin-top: 0.5rem;
+        width: 100%;
+    }
+}
+
+/* ===========================================
+   Print Styles
+   =========================================== */
+
+@media print {
+    .modal-overlay,
+    .sidebar-toggle,
+    .sidebar {
+        display: none !important;
+    }
+    
+    .mario-kart-content {
+        margin: 0 !important;
+        padding: 0 !important;
+    }
+}
