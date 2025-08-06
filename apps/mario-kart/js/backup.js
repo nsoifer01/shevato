@@ -56,88 +56,25 @@ function restoreFromBackup() {
 
         // Create a beautiful confirmation modal
         const modal = document.createElement('div');
-        modal.style.cssText = `
-            position: fixed;
-            top: 0;
-            left: 0;
-            width: 100%;
-            height: 100%;
-            background: rgba(0, 0, 0, 0.5);
-            display: flex;
-            justify-content: center;
-            align-items: center;
-            z-index: 1000;
-            backdrop-filter: blur(5px);
-        `;
+        modal.className = 'modal-overlay';
 
         const dialog = document.createElement('div');
-        dialog.style.cssText = `
-            background: ${isDarkTheme ? '#2d3748' : 'white'};
-            border-radius: 1rem;
-            padding: 2rem;
-            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
-            max-width: 400px;
-            width: 90%;
-            text-align: center;
-            animation: modalSlideIn 0.3s ease;
-        `;
+        dialog.className = `modal-dialog ${isDarkTheme ? '' : 'light-theme'}`;
 
         dialog.innerHTML = `
-            <div style="font-size: 3rem; margin-bottom: 1rem;">🔄</div>
-            <h3 style="color: ${isDarkTheme ? '#e2e8f0' : '#2d3748'}; margin-bottom: 1rem; font-size: 1.5rem; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;">Restore from Backup?</h3>
-            <p style="color: ${isDarkTheme ? '#a0aec0' : '#4a5568'}; margin-bottom: 2rem; line-height: 1.5; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;">
-                Found backup with <strong>${raceCount} races</strong><br>
-                Created on: <strong style="color: ${isDarkTheme ? '#e2e8f0' : '#2d3748'};">${backupDate}</strong><br><br>
-                <span style="color: ${isDarkTheme ? '#fc8181' : '#e53e3e'};">⚠️ Warning: This will replace all current data!</span>
+            <div class="modal-icon">🔄</div>
+            <h3 class="modal-title ${isDarkTheme ? '' : 'light-theme'}">Restore from Backup?</h3>
+            <p class="modal-text ${isDarkTheme ? '' : 'light-theme'}">
+                Found backup with <strong class="${isDarkTheme ? '' : 'light-theme'}">${raceCount} races</strong><br>
+                Created on: <strong class="${isDarkTheme ? '' : 'light-theme'}">${backupDate}</strong><br><br>
+                <span class="modal-warning ${isDarkTheme ? '' : 'light-theme'}">⚠️ Warning: This will replace all current data!</span>
             </p>
-            <div style="display: flex; gap: 1rem; justify-content: center;">
-                <button id="confirm-restore" style="
-                    background: #8b5cf6;
-                    color: white;
-                    border: none;
-                    padding: 0.75rem 1.5rem;
-                    border-radius: 0.5rem;
-                    font-weight: 600;
-                    cursor: pointer;
-                    transition: all 0.2s;
-                    display: flex;
-                    align-items: center;
-                    justify-content: center;
-                    text-align: center;
-                    line-height: 1;
-                    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-                ">Restore Data</button>
-                <button id="cancel-restore" style="
-                    background: ${isDarkTheme ? '#4a5568' : '#e2e8f0'};
-                    color: white;
-                    border: none;
-                    padding: 0.75rem 1.5rem;
-                    border-radius: 0.5rem;
-                    font-weight: 600;
-                    cursor: pointer;
-                    transition: all 0.2s;
-                    display: flex;
-                    align-items: center;
-                    justify-content: center;
-                    text-align: center;
-                    line-height: 1;
-                    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-                ">Cancel</button>
+            <div class="modal-buttons">
+                <button id="confirm-restore" class="modal-btn-primary">Restore Data</button>
+                <button id="cancel-restore" class="modal-btn-secondary ${isDarkTheme ? '' : 'light-theme'}">Cancel</button>
             </div>
         `;
 
-        // Add CSS animation if not already added
-        if (!document.querySelector('#modal-animation-style')) {
-            const style = document.createElement('style');
-            style.id = 'modal-animation-style';
-            style.textContent = `
-                @keyframes modalSlideIn {
-                    from { opacity: 0; transform: scale(0.9) translateY(-20px); }
-                    to { opacity: 1; transform: scale(1) translateY(0); }
-                }
-            `;
-            document.head.appendChild(style);
-        }
 
         modal.appendChild(dialog);
         document.body.appendChild(modal);

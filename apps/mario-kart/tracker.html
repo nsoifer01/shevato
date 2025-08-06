@@ -34,10 +34,11 @@
     <link rel="stylesheet" href="css/tooltip.css">
     <link rel="stylesheet" href="css/help-styles.css">
     <link rel="stylesheet" href="../../assets/css/main.css" />
+    <link rel="stylesheet" href="css/mario-kart-overrides.css">
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <script src="https://apis.google.com/js/api.js"></script>
 </head>
-<body>
+<body class="mario-kart-app mario-kart-tracker">
     <div data-include="header"></div>
     
     <!-- Skip to main content link for accessibility -->
@@ -75,7 +76,7 @@
                     <span class="settings-icon">👤</span>
                     <span class="settings-text">Manage Players</span>
                 </button>
-                <div class="sidebar-player-settings" id="sidebar-player-settings" style="display: none;">
+                <div class="sidebar-player-settings hidden" id="sidebar-player-settings">
                     <!-- Player settings will be generated here -->
                 </div>
             </div>
@@ -143,6 +144,7 @@
     </aside>
     
     
+    <div class="mario-kart-content">
     <div class="container" role="main" id="main-content">
         <div class="header-section">
             <h1>🏁 Mario Kart Race Tracker 🏁</h1>
@@ -160,7 +162,7 @@
         </div>
         
         <!-- Help Information Panel (preserved for help tab content) -->
-        <div class="help-panel" id="help-panel" style="display: none;">
+        <div class="help-panel hidden" id="help-panel">
             <div class="help-content">
                 <div class="help-section">
                     <h4>🏆 What is this?</h4>
@@ -361,20 +363,20 @@
             
 
             <div class="action-buttons">
-                <button onclick="exportData()" style="background: #48BB78;" aria-describedby="export-help">
+                <button onclick="exportData()" class="export-btn" aria-describedby="export-help">
                     📤 Export Data
                 </button>
-                <button onclick="document.getElementById('importFile').click()" style="background: #38B2AC; margin-left: 10px;" aria-describedby="import-help">
+                <button onclick="document.getElementById('importFile').click()" class="import-btn" aria-describedby="import-help">
                     📥 Import Data
                 </button>
-                <button onclick="backupToGoogleDrive()" style="background: #4299E1; margin-left: 10px;" title="Download backup file (auto-backup runs every 10 minutes)">
+                <button onclick="backupToGoogleDrive()" class="backup-btn" title="Download backup file (auto-backup runs every 10 minutes)">
                     💻 Backup
                 </button>
-                <input type="file" id="importFile" accept=".json" style="display: none;" onchange="importData(event)">
+                <input type="file" id="importFile" accept=".json" class="hidden" onchange="importData(event)">
             </div>
             
             <!-- Hidden date input for addRace function -->
-            <input type="date" id="date" value="" style="display: none;">
+            <input type="date" id="date" value="" class="hidden">
             
             <div class="input-group">
                 <div class="input-field">
@@ -422,7 +424,7 @@
                         <div class="sweet-spot-bars" id="player3-sweet-spot"></div>
                     </div>
                 </div>
-                <div class="input-field" id="player4-field" style="display: none;">
+                <div class="input-field hidden" id="player4-field">
                     <label for="player4" class="player-name-label" id="player4-label">Player 4</label>
                     <input type="number" id="player4" min="1" max="24" placeholder="1-24" aria-describedby="player4-help">
                     <div class="input-stepper">
@@ -449,7 +451,7 @@
                 <button class="filter-btn" onclick="setDateFilter('month')">Last 30 Days</button>
                 <button class="filter-btn" onclick="setDateFilter('custom')">Custom Range</button>
             </div>
-            <div class="custom-date-range" id="custom-date-range" style="display: none;">
+            <div class="custom-date-range hidden" id="custom-date-range">
                 <input type="date" id="filter-start-date" placeholder="Start Date">
                 <span>to</span>
                 <input type="date" id="filter-end-date" placeholder="End Date">
@@ -470,10 +472,10 @@
                     <thead>
                         <tr>
                             <th>Race #</th>
-                            <th style="cursor: pointer;" onclick="sortTable('date')" tabindex="0" onkeydown="if(event.key==='Enter'||event.key===' ')sortTable('date')" aria-label="Sort by date">Date ↕</th>
-                            <th style="cursor: pointer;" onclick="sortTable('player1')" tabindex="0" onkeydown="if(event.key==='Enter'||event.key===' ')sortTable('player1')" aria-label="Sort by Player 1's position">Player 1 ↕</th>
-                            <th style="cursor: pointer;" onclick="sortTable('player2')" tabindex="0" onkeydown="if(event.key==='Enter'||event.key===' ')sortTable('player2')" aria-label="Sort by Player 2's position">Player 2 ↕</th>
-                            <th style="cursor: pointer;" onclick="sortTable('player3')" tabindex="0" onkeydown="if(event.key==='Enter'||event.key===' ')sortTable('player3')" aria-label="Sort by Player 3's position">Player 3 ↕</th>
+                            <th class="sortable-header" onclick="sortTable('date')" tabindex="0" onkeydown="if(event.key==='Enter'||event.key===' ')sortTable('date')" aria-label="Sort by date">Date ↕</th>
+                            <th class="sortable-header" onclick="sortTable('player1')" tabindex="0" onkeydown="if(event.key==='Enter'||event.key===' ')sortTable('player1')" aria-label="Sort by Player 1's position">Player 1 ↕</th>
+                            <th class="sortable-header" onclick="sortTable('player2')" tabindex="0" onkeydown="if(event.key==='Enter'||event.key===' ')sortTable('player2')" aria-label="Sort by Player 2's position">Player 2 ↕</th>
+                            <th class="sortable-header" onclick="sortTable('player3')" tabindex="0" onkeydown="if(event.key==='Enter'||event.key===' ')sortTable('player3')" aria-label="Sort by Player 3's position">Player 3 ↕</th>
                             <th>Action</th>
                         </tr>
                     </thead>
@@ -487,11 +489,13 @@
             </div>
         </div>
     </div>
+    </div>
     
-    <div data-include="footer"></div>
+    <div data-include="footer" class="mario-kart-footer"></div>
 
     <!-- Import all modules -->
     <script src="js/constants.js"></script>
+    <script src="js/modalUtils.js"></script>
     <script src="js/playerNameManager.js"></script>
     <script src="js/playerSymbolManager.js"></script>
     <script src="js/playerIconManager.js"></script>
