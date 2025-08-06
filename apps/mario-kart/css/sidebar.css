@@ -69,6 +69,7 @@ body.sidebar-open {
     /* Flexbox to ensure full height coverage */
     display: flex;
     flex-direction: column;
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
 }
 
 /* Pretty scrollbar for sidebar */
@@ -202,6 +203,7 @@ body.dark-theme .sidebar-header-clear:hover:not(:disabled) {
     font-weight: 600;
     color: var(--text-primary);
     margin: 0;
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
 }
 
 .sidebar-close-btn {
@@ -245,6 +247,7 @@ body.dark-theme .sidebar-close-btn:hover {
     padding: 20px;
     /* No background - inherit from parent sidebar */
     flex: 1; /* Take remaining space */
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
 }
 
 .sidebar-section {
@@ -258,6 +261,7 @@ body.dark-theme .sidebar-close-btn:hover {
     color: var(--text-secondary);
     margin-bottom: 15px;
     letter-spacing: 0.5px;
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
 }
 
 /* Sidebar Toggle Button */
@@ -1637,7 +1641,7 @@ body.dark-theme .sidebar-player-settings-btn.active {
 
 .sidebar-player-name-input {
     width: 100%;
-    padding: 0.5rem 0.75rem;
+    padding: 0.25rem 0.5rem;
     background: transparent;
     border: 1px solid var(--border-color, #e2e8f0);
     border-radius: 0.375rem;
@@ -1645,7 +1649,7 @@ body.dark-theme .sidebar-player-settings-btn.active {
     font-weight: 500;
     color: var(--text-primary, #2d3748);
     transition: all 0.3s ease;
-    text-align: center;
+    text-align: left;
     letter-spacing: 0.025em;
 }
 
