@@ -155,6 +155,11 @@ body.dark-theme .pagination-btn:hover:not(:disabled) {
     margin-bottom: 2rem;
     line-height: 1.5;
     font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    text-align: center;
 }
 
 .modal-text.light-theme {
@@ -193,6 +198,11 @@ body.dark-theme .pagination-btn:hover:not(:disabled) {
     cursor: pointer;
     transition: all 0.2s;
     font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 44px;
+    line-height: 1;
 }
 
 .modal-btn-secondary {
@@ -205,6 +215,11 @@ body.dark-theme .pagination-btn:hover:not(:disabled) {
     cursor: pointer;
     transition: all 0.2s;
     font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 44px;
+    line-height: 1;
 }
 
 .modal-btn-secondary.light-theme {
@@ -222,6 +237,33 @@ body.dark-theme .pagination-btn:hover:not(:disabled) {
     cursor: pointer;
     transition: all 0.2s;
     font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 44px;
+    line-height: 1;
+}
+
+/* Specific styling for Edit Race modal buttons */
+#save-edit {
+    background: #10b981 !important;
+    color: white !important;
+    display: flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    min-height: 44px !important;
+    line-height: 1 !important;
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif !important;
+}
+
+#cancel-edit {
+    color: white !important;
+    display: flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    min-height: 44px !important;
+    line-height: 1 !important;
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif !important;
 }
 
 /* ===========================================
@@ -323,9 +365,9 @@ body.dark-theme .pagination-btn:hover:not(:disabled) {
     margin-top: auto;
 }
 
-/* Hidden elements */
+/* Hidden elements - don't use !important to allow JavaScript overrides */
 .hidden {
-    display: none !important;
+    display: none;
 }
 
 .visually-hidden {
@@ -344,13 +386,26 @@ body.dark-theme .pagination-btn:hover:not(:disabled) {
    Sidebar and Tooltip Positioning
    =========================================== */
 
-/* Ensure tooltips appear above everything */
-.sidebar-tooltip {
+/* Fix sidebar button tooltip positioning - move below buttons */
+.sidebar-header-buttons .custom-tooltip {
     z-index: 10002 !important;
+    transform: translateY(45px) translateX(-50%) !important;
+    top: auto !important;
+    bottom: auto !important;
+}
+
+.sidebar-header-buttons .custom-tooltip.visible {
+    transform: translateY(50px) translateX(-50%) !important;
+}
+
+/* Alternative approach - keep existing positioning but higher z-index */
+.sidebar-header .custom-tooltip {
+    z-index: 10003 !important;
+    position: absolute !important;
     transform: translateY(8px) translateX(-50%) !important;
 }
 
-.sidebar-tooltip.visible {
+.sidebar-header .custom-tooltip.visible {
     transform: translateY(12px) translateX(-50%) !important;
 }
 
@@ -464,11 +519,26 @@ body.dark-theme .pagination-btn:hover:not(:disabled) {
     }
 }
 
+
 /* ===========================================
    Responsive Design
    =========================================== */
 
+/* Mobile sidebar toggle improvements */
 @media (max-width: 768px) {
+    .sidebar-toggle {
+        width: 48px !important;
+        height: 48px !important;
+        top: 60px !important;
+        font-size: 0.9rem !important;
+        padding: 0 !important;
+    }
+    
+    .sidebar-toggle svg {
+        width: 20px !important;
+        height: 20px !important;
+    }
+    
     .modal-dialog {
         padding: 1.5rem;
         width: 95%;
@@ -489,6 +559,28 @@ body.dark-theme .pagination-btn:hover:not(:disabled) {
         margin-left: 0;
         margin-top: 0.5rem;
         width: 100%;
+    }
+}
+
+@media (max-width: 480px) {
+    .sidebar-toggle {
+        width: 44px !important;
+        height: 44px !important;
+        top: 55px !important;
+        font-size: 0.8rem !important;
+    }
+    
+    .sidebar-toggle svg {
+        width: 18px !important;
+        height: 18px !important;
+    }
+    
+    .h2h-streak,
+    .h2h-biggest-win,
+    .h2h-player-name {
+        font-size: 1rem !important;
+        min-height: 45px !important;
+        padding: 0.5rem !important;
     }
 }
 
