@@ -33,10 +33,13 @@
     <link rel="stylesheet" href="css/sidebar.css">
     <link rel="stylesheet" href="css/tooltip.css">
     <link rel="stylesheet" href="css/help-styles.css">
+    <link rel="stylesheet" href="../../assets/css/main.css" />
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <script src="https://apis.google.com/js/api.js"></script>
 </head>
 <body>
+    <div data-include="header"></div>
+    
     <!-- Skip to main content link for accessibility -->
     <a href="#main-content" class="skip-to-main">Skip to main content</a>
     
@@ -508,6 +511,8 @@
             </div>
         </div>
     </div>
+    
+    <div data-include="footer"></div>
 
     <!-- Import all modules -->
     <script src="js/constants.js"></script>
@@ -536,6 +541,14 @@
     <script src="js/sidebar.js"></script>
     <script src="js/sidebarPlayerSettings.js"></script>
     <script src="js/tooltip.js"></script>
+    <!-- Global scripts for header/footer includes -->
+    <script src="../../assets/js/jquery.min.js"></script>
+    <script src="../../assets/js/browser.min.js"></script>
+    <script src="../../assets/js/breakpoints.min.js"></script>
+    <script src="../../assets/js/util.js"></script>
+    <script src="../../assets/js/main.js"></script>
+    <script src="../../assets/js/year-updater.js"></script>
+    
     <!-- Main script must load last -->
     <script src="js/main.js"></script>
 
