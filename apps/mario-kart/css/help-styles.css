@@ -24,8 +24,8 @@
     /* Help Section Typography */
     --help-heading-size: 2rem;
     --help-subheading-size: 1.5rem;
-    --help-text-size: 1rem;
-    --help-small-size: 0.875rem;
+    --help-text-size: 1.0625rem;
+    --help-small-size: 0.9375rem;
 }
 
 /* Light Theme Overrides */
@@ -50,6 +50,7 @@ body.light-mode {
     box-shadow: var(--help-shadow);
     margin: 2rem 0;
     animation: fadeIn 0.3s ease-out;
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
 }
 
 /* Help Content Wrapper */
@@ -79,6 +80,7 @@ body.light-mode {
     gap: 0.75rem;
     font-size: var(--help-subheading-size);
     letter-spacing: -0.025em;
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
 }
 
 .help-section h3 {
@@ -93,6 +95,7 @@ body.light-mode {
     font-size: var(--help-text-size);
     margin-bottom: 1.5rem;
     max-width: 80ch;
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
 }
 
 /* Help Grid Layout */
@@ -148,6 +151,7 @@ body.light-mode {
     font-weight: 600;
     margin-bottom: 0.5rem;
     letter-spacing: -0.015em;
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
 }
 
 .help-text p {
@@ -155,6 +159,7 @@ body.light-mode {
     line-height: 1.6;
     font-size: var(--help-small-size);
     margin: 0;
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
 }
 
 /* Quick Start Guide */
@@ -166,6 +171,7 @@ body.light-mode {
     list-style: none;
     margin: 0;
     border: 1px solid var(--help-border);
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
 }
 
 .help-steps li {
@@ -175,6 +181,7 @@ body.light-mode {
     color: var(--help-text-secondary);
     line-height: 1.7;
     counter-increment: step-counter;
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
 }
 
 .help-steps li:last-child {
@@ -226,6 +233,7 @@ body.light-mode {
     padding: 1.5rem;
     border: 1px solid var(--help-border);
     transition: all 0.3s ease;
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
 }
 
 .viz-guide-card:hover {
@@ -246,6 +254,7 @@ body.light-mode {
     display: flex;
     align-items: center;
     gap: 0.5rem;
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
 }
 
 .viz-guide-card p {
@@ -253,6 +262,7 @@ body.light-mode {
     line-height: 1.6;
     font-size: var(--help-small-size);
     margin-bottom: 0.75rem;
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
 }
 
 .viz-guide-card ul {
@@ -268,6 +278,7 @@ body.light-mode {
     padding-left: 1.25rem;
     position: relative;
     margin-bottom: 0.5rem;
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
 }
 
 .viz-guide-card ul li::before {
@@ -287,6 +298,7 @@ body.light-mode {
     margin-top: 1rem;
     font-size: var(--help-small-size);
     color: var(--help-text-secondary);
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
 }
 
 /* Color Legend */
@@ -358,6 +370,7 @@ body.light-mode {
     margin-bottom: 1rem;
     color: var(--help-text-secondary);
     line-height: 1.7;
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
 }
 
 .help-features li::before {
@@ -412,6 +425,7 @@ body.light-mode .help-disclaimers .disclaimer-list {
     padding: 2rem;
     margin-top: 2rem;
     border: 1px solid var(--help-border);
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
 }
 
 .help-footer p {
@@ -419,6 +433,7 @@ body.light-mode .help-disclaimers .disclaimer-list {
     font-size: 1.125rem;
     font-weight: 600;
     margin-bottom: 1rem;
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
 }
 
 .help-footer ul {
@@ -437,6 +452,7 @@ body.light-mode .help-disclaimers .disclaimer-list {
     font-size: var(--help-small-size);
     line-height: 1.6;
     break-inside: avoid;
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
 }
 
 .help-footer ul li::before {
