@@ -14,6 +14,21 @@
   --text-muted: #999999;
 }
 
+/* Sticky Footer Solution for Mario Kart */
+html, body {
+  height: 100%;
+}
+
+body {
+  display: flex;
+  flex-direction: column;
+  min-height: 100vh;
+}
+
+#footer {
+  margin-top: auto;
+}
+
 /* Global Font Family */
 *, *::before, *::after {
   font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
@@ -212,6 +227,7 @@
   text-align: center;
   padding: 4rem 2rem;
   color: var(--text-secondary);
+  font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
 }
 
 .empty-icon {
@@ -223,11 +239,13 @@
 .empty-state h3 {
   margin-bottom: 1rem;
   color: var(--text-primary);
+  font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
 }
 
 .empty-state p {
   margin-bottom: 2rem;
   font-size: 1.1rem;
+  font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
 }
 
 /* Charts and Lists */
