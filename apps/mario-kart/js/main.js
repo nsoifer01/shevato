@@ -624,7 +624,7 @@ function showMessage(message, isError = false) {
     const messageDiv = document.createElement('div');
     messageDiv.style.cssText = `
         position: fixed;
-        top: 20px;
+        top: 80px;
         left: 50%;
         transform: translateX(-50%);
         padding: 15px 30px;
@@ -633,7 +633,7 @@ function showMessage(message, isError = false) {
         border-radius: 8px;
         font-weight: 600;
         box-shadow: 0 4px 15px rgba(0, 0, 0, 0.2);
-        z-index: 1000;
+        z-index: 9999;
         animation: slideDown 0.3s ease;
     `;
     messageDiv.textContent = message;
