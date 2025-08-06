@@ -890,6 +890,24 @@ body.dark-theme .analysis-card::before {
     background: linear-gradient(180deg, rgba(129, 140, 248, 0.05) 0%, transparent 100%);
 }
 
+/* Dark theme text styling for analysis cards */
+body.dark-theme .analysis-title {
+    color: var(--analysis-text-primary) !important;
+}
+
+body.dark-theme .analysis-description {
+    color: var(--analysis-text-secondary) !important;
+}
+
+/* Ensure all analysis card text is readable in dark theme */
+body.dark-theme .analysis-card {
+    color: var(--analysis-text-primary) !important;
+}
+
+body.dark-theme .analysis-card * {
+    color: inherit;
+}
+
 body.dark-theme .best-day-item {
     background: linear-gradient(135deg, rgba(52, 211, 153, 0.08) 0%, rgba(52, 211, 153, 0.04) 100%);
     border-color: rgba(52, 211, 153, 0.2);
