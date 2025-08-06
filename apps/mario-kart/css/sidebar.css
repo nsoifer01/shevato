@@ -233,10 +233,12 @@ body.dark-theme .sidebar-header-clear:hover:not(:disabled) {
 
 body.dark-theme .sidebar-close-btn {
     border-color: rgba(107, 114, 128, 0.5);
+    color: #dc2626 !important;
 }
 
 body.dark-theme .sidebar-close-btn:hover {
     background: rgba(220, 38, 38, 0.2);
+    color: #b91c1c !important;
 }
 
 .sidebar-content {
