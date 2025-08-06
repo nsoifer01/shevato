@@ -483,11 +483,16 @@ body.dark-theme .help-footer p {
 .custom-date-range button {
     padding: 6px 12px;
     background: #667eea;
-    color: white;
+    color: white !important;
     border: none;
     border-radius: 6px;
     cursor: pointer;
     font-size: 0.9em;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    text-align: center;
+    line-height: 1;
 }
 
 /* Player count selector styling */
