@@ -563,7 +563,7 @@ body.dark-theme .sidebar-overlay {
     display: block;
     text-align: center;
     margin: 4px 0;
-    color: var(--text-secondary);
+    color: white !important;
     font-size: 0.85rem;
 }
 
@@ -659,11 +659,12 @@ body.dark-theme .sidebar-overlay {
     display: flex;
     align-items: center;
     justify-content: space-between;
-    padding: 0.75rem 1rem;
+    padding: 10px 16px;
     background: linear-gradient(135deg, #8b5cf6 0%, #7c3aed 100%);
-    border-radius: 0.5rem;
+    border-radius: 8px;
     gap: 0.5rem;
     box-shadow: 0 2px 8px rgba(139, 92, 246, 0.3);
+    min-height: 44px;
 }
 
 .sidebar-date-btn-container .date-text {
@@ -673,11 +674,17 @@ body.dark-theme .sidebar-overlay {
     cursor: default;
     user-select: none;
     flex: 1;
+    display: flex;
+    align-items: center;
+    line-height: 1;
 }
 
 /* Date icon wrapper */
 .sidebar-date-icon-wrapper {
     position: relative;
+    display: flex;
+    align-items: center;
+    justify-content: center;
 }
 
 /* Hidden date input */
@@ -731,6 +738,9 @@ body.dark-theme .sidebar-overlay {
     cursor: pointer;
     line-height: 1;
     pointer-events: none;
+    display: flex;
+    align-items: center;
+    justify-content: center;
 }
 
 /* Firefox-specific cursor fix for calendar icon */
@@ -744,8 +754,10 @@ body.dark-theme .sidebar-overlay {
 /* Today button */
 
 .sidebar-date-today-btn {
-    width: 100%;
-    padding: 0.5rem;
+    width: auto;
+    max-width: 120px;
+    margin: 0.5rem auto 0;
+    padding: 0.5rem 1rem;
     background: #10b981;
     color: white;
     border: none;
@@ -754,7 +766,11 @@ body.dark-theme .sidebar-overlay {
     font-weight: 500;
     cursor: pointer;
     transition: all 0.2s ease;
-    margin-top: 0.5rem;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    text-align: center;
+    line-height: 1;
 }
 
 .sidebar-date-today-btn:hover {
@@ -1837,7 +1853,6 @@ body.dark-theme .sidebar .action-buttons button[onclick*="backupToGoogleDrive"]:
 .sidebar .action-buttons button,
 .sidebar .filter-btn,
 .sidebar .filter-btn.active,
-.sidebar-date-today-btn,
 .sidebar-submit-race {
     color: white !important;
     display: flex !important;
@@ -1854,7 +1869,6 @@ body.dark-theme .sidebar .action-buttons button[onclick*="backupToGoogleDrive"]:
 .sidebar .action-buttons button:hover,
 .sidebar .filter-btn:hover,
 .sidebar .filter-btn.active:hover,
-.sidebar-date-today-btn:hover,
 .sidebar-submit-race:hover {
     color: white !important;
     display: flex !important;
