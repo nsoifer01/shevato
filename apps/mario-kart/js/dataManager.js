@@ -655,23 +655,33 @@ function confirmClearData() {
         <div style="display: flex; gap: 1rem; justify-content: center;">
             <button id="confirm-clear" style="
                 background: #ef4444;
-                color: white;
+                color: white !important;
                 border: none;
                 padding: 0.75rem 1.5rem;
                 border-radius: 0.5rem;
                 font-weight: 600;
                 cursor: pointer;
                 transition: all 0.2s;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                text-align: center;
+                line-height: 1;
             ">Delete Everything</button>
             <button id="cancel-clear" style="
-                background: ${isDarkTheme ? '#4a5568' : '#e2e8f0'};
-                color: ${isDarkTheme ? '#e2e8f0' : '#4a5568'};
+                background: ${isDarkTheme ? '#4a5568' : '#6b7280'};
+                color: white !important;
                 border: none;
                 padding: 0.75rem 1.5rem;
                 border-radius: 0.5rem;
                 font-weight: 600;
                 cursor: pointer;
                 transition: all 0.2s;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                text-align: center;
+                line-height: 1;
             ">Cancel</button>
         </div>
     `;
