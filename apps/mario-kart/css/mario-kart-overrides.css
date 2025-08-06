@@ -536,6 +536,57 @@ body.dark-theme .pagination-btn:hover:not(:disabled) {
 
 
 /* ===========================================
+   H2H Player Name Styling (Match Header Pills)
+   =========================================== */
+
+/* Make parent cell same color as pill */
+.h2h-player-name {
+    background: var(--h2h-accent) !important;
+    padding: 0 !important;
+}
+
+/* Dark theme support for parent cell */
+body.dark-theme .h2h-player-name {
+    background: #2d3748 !important;
+}
+
+.h2h-player-pill {
+    background: var(--h2h-accent);
+    color: white;
+    padding: 0.75rem 0.5rem;
+    border-radius: 8px;
+    font-weight: 700;
+    font-size: 0.9375rem;
+    white-space: nowrap;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.5rem;
+    width: 100%;
+    height: 100%;
+    box-sizing: border-box;
+}
+
+.h2h-player-avatar {
+    width: 20px;
+    height: 20px;
+    border-radius: 50%;
+    background: rgba(255, 255, 255, 0.2);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 12px;
+    font-weight: 600;
+    flex-shrink: 0;
+}
+
+/* Dark theme support */
+body.dark-theme .h2h-player-pill {
+    background: #2d3748;
+    color: white;
+}
+
+/* ===========================================
    Sidebar Button Hover Fix
    =========================================== */
 
