@@ -102,7 +102,7 @@ body.light-mode .achievement-bar.achievement-expanded {
 }
 
 .achievement-icon {
-    font-size: 12px;
+    font-size: 13px;
     margin-bottom: 2px;
     line-height: 1;
 }
@@ -116,6 +116,7 @@ body.light-mode .achievement-bar.achievement-expanded {
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
 }
 
 
@@ -272,14 +273,15 @@ body.light-mode .achievement-bar.achievement-expanded {
 }
 
 .expanded-achievement-bar .achievement-number {
-    font-size: 14px;
+    font-size: 15px;
     font-weight: 700;
     color: #4a5568;
     min-width: 22px;
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
 }
 
 .expanded-achievement-bar .achievement-name {
-    font-size: 13px;
+    font-size: 14px;
     font-weight: 600;
     color: #2d3748;
     flex: 1;
@@ -384,21 +386,21 @@ body.light-mode .achievement-bar.achievement-expanded {
 }
 
 .expanded-position-heat-bar .position-heat-range-label {
-    font-size: 13px;
+    font-size: 14px;
     font-weight: 700;
     min-width: 30px;
     flex-shrink: 0;
 }
 
 .expanded-position-heat-bar .position-heat-count {
-    font-size: 12px;
+    font-size: 13px;
     font-weight: 600;
     color: #4a5568;
     min-width: 60px;
 }
 
 .expanded-position-heat-bar .position-heat-avg {
-    font-size: 12px;
+    font-size: 13px;
     font-weight: 600;
     color: #2d3748;
     flex: 1;
@@ -639,14 +641,16 @@ body.light-mode .achievement-bar.achievement-expanded {
     font-weight: 600;
     color: #4a5568;
     margin-bottom: 2px;
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
 }
 
 .heat-percentage {
-    font-size: 12px;
+    font-size: 13px;
     font-weight: 600;
     color: #4a5568;
     text-align: center;
     transition: all 0.3s ease;
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
 }
 
 
@@ -691,6 +695,7 @@ body.light-mode .achievement-bar.achievement-expanded {
     font-size: 11px;
     font-weight: 600;
     color: white;
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
 }
 
 /* LATEST badge for recent streak */
@@ -746,6 +751,7 @@ body.light-mode .achievement-bar.achievement-expanded {
     color: #4a5568;
     z-index: 2;
     position: relative;
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
 }
 
 .spot-glow {
