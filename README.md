@@ -7,7 +7,6 @@ Shevato is a modern, responsive web platform built with vanilla JavaScript, HTML
 ## Recent Updates
 
 - **Directory Reorganization**: `includes/` folder renamed to `partials/` for clarity
-- **New Tic-Tac-Toe Game**: Modularized game moved to its own directory under `/apps/tic-tac-toe/`
 - **Apps Landing Page**: Redesigned as a hub for all interactive applications
 - **Consistent Navigation**: All navigation links now use proper `.html` extensions
 - **JavaScript Consolidation**: Root-level JS files moved to `assets/js/`
@@ -51,12 +50,6 @@ shevato/
 │   │   ├── tracker.html     # Main tracker interface
 │   │   └── README.md        # Tracker documentation
 │   │
-│   └── tic-tac-toe/         # Tic-Tac-Toe game
-│       ├── css/
-│       │   └── tic-tac-toe.css  # Game-specific styles
-│       ├── js/
-│       │   └── tic-tac-toe.js   # AI-powered game logic
-│       └── index.html            # Game interface
 │
 ├── images/                   # Image assets
 │   ├── bg.jpg               # Dark background image (site-wide)
@@ -85,7 +78,6 @@ shevato/
 - **Modular Architecture**: Clear separation between main site and apps
 - **Dynamic Content Loading**: Partials system for headers/footers
 - **Interactive Games**: 
-  - Tic-Tac-Toe with AI opponent
   - Mario Kart race tracker with extensive features
   - Towerbound (Icy Tower clone)
 - **Multi-language Support**: Moadon Alef page supports English, Russian, and Hebrew

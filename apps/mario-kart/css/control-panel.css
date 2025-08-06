@@ -1,0 +1,346 @@
+/* Control Panel Styles - Relocated from Sidebar */
+
+/* Control Panel Container */
+.control-panel {
+    background: linear-gradient(135deg, #f8fafc 0%, #e2e8f0 100%);
+    border-radius: 16px;
+    padding: 20px;
+    margin: 20px 0;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+    border: 1px solid rgba(255, 255, 255, 0.8);
+}
+
+/* Control Panel Row */
+.control-panel-row {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 12px;
+    align-items: center;
+    justify-content: center;
+}
+
+/* Control Buttons */
+.control-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    padding: 10px 16px;
+    background: white;
+    border: 1px solid #e2e8f0;
+    border-radius: 10px;
+    font-size: 0.9rem;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all 0.3s ease;
+    color: #2d3748;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
+}
+
+.control-btn:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+    background: #f7fafc;
+}
+
+.control-btn:active {
+    transform: translateY(0);
+}
+
+.control-btn:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
+.control-btn:disabled:hover {
+    transform: none;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
+}
+
+/* Button Icons */
+.btn-icon {
+    font-size: 1.2rem;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.btn-text {
+    font-size: 0.9rem;
+}
+
+/* Specific Button Styles */
+.player-settings-btn {
+    background: linear-gradient(135deg, #ec4899 0%, #8b5cf6 100%);
+    color: white;
+    border: none;
+}
+
+.player-settings-btn:hover {
+    background: linear-gradient(135deg, #db2777 0%, #7c3aed 100%);
+}
+
+.undo-btn {
+    background: #3b82f6;
+    color: white;
+    border: none;
+}
+
+.undo-btn:hover:not(:disabled) {
+    background: #2563eb;
+}
+
+.redo-btn {
+    background: #10b981;
+    color: white;
+    border: none;
+}
+
+.redo-btn:hover:not(:disabled) {
+    background: #059669;
+}
+
+.clear-btn {
+    background: #ef4444;
+    color: white;
+    border: none;
+}
+
+.clear-btn:hover {
+    background: #dc2626;
+}
+
+.restore-btn {
+    background: #f59e0b;
+    color: white;
+    border: none;
+}
+
+.restore-btn:hover {
+    background: #d97706;
+}
+
+/* Player Settings Panel */
+.player-settings-panel {
+    margin-top: 20px;
+    padding: 20px;
+    background: white;
+    border-radius: 12px;
+    border: 1px solid #e2e8f0;
+    animation: slideDown 0.3s ease;
+}
+
+@keyframes slideDown {
+    from {
+        opacity: 0;
+        transform: translateY(-10px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+/* Input Section Updates */
+.input-section {
+    background: white;
+    padding: 25px;
+    border-radius: 16px;
+    margin-bottom: 30px;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+}
+
+.section-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 20px;
+    padding-bottom: 15px;
+    border-bottom: 2px solid #e2e8f0;
+}
+
+.section-header h2 {
+    margin: 0;
+    color: #2d3748;
+    font-size: 1.5rem;
+    font-weight: 600;
+}
+
+/* Race Date Control */
+.race-date-control {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
+.race-date-control label {
+    font-weight: 500;
+    color: #4a5568;
+}
+
+.race-date-input {
+    padding: 8px 12px;
+    border: 1px solid #e2e8f0;
+    border-radius: 8px;
+    font-size: 0.9rem;
+    color: #2d3748;
+    background: white;
+    cursor: pointer;
+}
+
+.race-date-input:focus {
+    outline: none;
+    border-color: #3b82f6;
+    box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
+}
+
+.date-today-btn {
+    padding: 8px 16px;
+    background: #10b981;
+    color: white;
+    border: none;
+    border-radius: 8px;
+    font-size: 0.9rem;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all 0.2s ease;
+}
+
+.date-today-btn:hover {
+    background: #059669;
+    transform: translateY(-1px);
+}
+
+/* Add Race Section */
+.add-race-section {
+    display: flex;
+    justify-content: center;
+    margin-top: 20px;
+    padding-top: 20px;
+    border-top: 1px solid #e2e8f0;
+}
+
+.add-race-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    padding: 15px 30px;
+    background: linear-gradient(135deg, #10b981 0%, #059669 100%);
+    color: white;
+    border: none;
+    border-radius: 12px;
+    font-size: 1.1rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.3s ease;
+    box-shadow: 0 4px 12px rgba(16, 185, 129, 0.3);
+    text-decoration: none;
+}
+
+.add-race-btn:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 6px 16px rgba(16, 185, 129, 0.4);
+    background: linear-gradient(135deg, #059669 0%, #047857 100%);
+}
+
+.add-race-btn:active {
+    transform: translateY(0);
+    box-shadow: 0 2px 8px rgba(16, 185, 129, 0.3);
+}
+
+/* Responsive Design */
+@media (max-width: 768px) {
+    .control-panel-row {
+        flex-direction: column;
+        align-items: stretch;
+    }
+    
+    .control-btn {
+        width: 100%;
+        justify-content: center;
+    }
+    
+    .section-header {
+        flex-direction: column;
+        gap: 15px;
+    }
+    
+    .race-date-control {
+        width: 100%;
+        justify-content: space-between;
+    }
+    
+    .add-race-btn {
+        width: 100%;
+        justify-content: center;
+        padding: 18px;
+        font-size: 1.2rem;
+    }
+}
+
+@media (max-width: 480px) {
+    .control-panel {
+        padding: 15px;
+        margin: 15px 0;
+    }
+    
+    .control-btn {
+        padding: 12px;
+    }
+    
+    .btn-text {
+        display: none;
+    }
+    
+    .btn-icon {
+        font-size: 1.4rem;
+    }
+}
+
+/* Dark Theme Support */
+body.dark-theme .control-panel {
+    background: linear-gradient(135deg, #2d3748 0%, #1a202c 100%);
+    border-color: rgba(74, 85, 104, 0.5);
+}
+
+body.dark-theme .control-btn {
+    background: rgba(45, 55, 72, 0.8);
+    border-color: rgba(74, 85, 104, 0.5);
+    color: #e2e8f0;
+}
+
+body.dark-theme .control-btn:hover {
+    background: rgba(45, 55, 72, 1);
+}
+
+body.dark-theme .player-settings-panel {
+    background: rgba(45, 55, 72, 0.9);
+    border-color: rgba(74, 85, 104, 0.5);
+}
+
+body.dark-theme .input-section {
+    background: rgba(45, 55, 72, 0.9);
+}
+
+body.dark-theme .section-header h2 {
+    color: #e2e8f0;
+}
+
+body.dark-theme .race-date-input {
+    background: rgba(74, 85, 104, 0.8);
+    border-color: rgba(107, 114, 128, 0.5);
+    color: #e2e8f0;
+}
+
+body.dark-theme .add-race-section {
+    border-top-color: rgba(74, 85, 104, 0.5);
+}
+
+body.dark-theme .add-race-btn {
+    background: linear-gradient(135deg, #10b981 0%, #059669 100%);
+    box-shadow: 0 4px 12px rgba(16, 185, 129, 0.2);
+}
+
+body.dark-theme .add-race-btn:hover {
+    background: linear-gradient(135deg, #059669 0%, #047857 100%);
+    box-shadow: 0 6px 16px rgba(16, 185, 129, 0.3);
+}

@@ -1,0 +1,25 @@
+.content h3 {
+  min-height: 2em; /* Adjust as needed to ensure alignment */
+}
+.highlights .content p {
+  min-height: 4em;
+}
+
+/* Sticky Footer Solution */
+html, body {
+  height: 100%;
+}
+
+body {
+  display: flex;
+  flex-direction: column;
+  min-height: 100vh;
+}
+
+.wrapper {
+  flex: 1;
+}
+
+#footer {
+  margin-top: auto;
+}
