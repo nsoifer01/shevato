@@ -192,46 +192,33 @@
     }
 
     function updateDropdownWidth() {
-        const widgetPanel = document.querySelector('.widget-panel');
         const widgetContainer = dropdownElement.parentElement;
         
-        if (widgetPanel && widgetContainer) {
-            // Get the exact computed width of the widget panel
-            const widgetPanelStyles = window.getComputedStyle(widgetPanel);
-            const widgetPanelWidth = widgetPanel.offsetWidth;
-            
-            // Get the container's position for proper alignment
-            const containerRect = widgetContainer.getBoundingClientRect();
-            const widgetPanelRect = widgetPanel.getBoundingClientRect();
-            
-            // Calculate the exact width accounting for any transforms or scaling
-            dropdownElement.style.width = widgetPanelWidth + 'px';
-            dropdownElement.style.maxWidth = widgetPanelWidth + 'px';
-            dropdownElement.style.minWidth = widgetPanelWidth + 'px';
-            
-            // Ensure left position aligns with widget panel
-            const leftOffset = containerRect.left - widgetPanelRect.left;
-            dropdownElement.style.left = -leftOffset + 'px';
+        if (widgetContainer) {
+            // Use responsive width based on viewport and container
+            const maxWidth = Math.min(window.innerWidth * 0.9, 350);
+            dropdownElement.style.width = maxWidth + 'px';
+            dropdownElement.style.maxWidth = maxWidth + 'px';
+            dropdownElement.style.minWidth = '250px';
         }
     }
 
     function startResizeObserver() {
-        const widgetPanel = document.querySelector('.widget-panel');
-        if (!widgetPanel || !window.ResizeObserver) return;
-        
-        resizeObserver = new ResizeObserver(() => {
+        const resizeHandler = () => {
             if (isOpen) {
                 updateDropdownWidth();
             }
-        });
+        };
+        window.addEventListener('resize', resizeHandler);
         
-        resizeObserver.observe(widgetPanel);
+        // Store handler for cleanup if needed
+        window._playersDropdownResizeHandler = resizeHandler;
     }
 
     function stopResizeObserver() {
-        if (resizeObserver) {
-            resizeObserver.disconnect();
-            resizeObserver = null;
+        if (window._playersDropdownResizeHandler) {
+            window.removeEventListener('resize', window._playersDropdownResizeHandler);
+            window._playersDropdownResizeHandler = null;
         }
     }
 
