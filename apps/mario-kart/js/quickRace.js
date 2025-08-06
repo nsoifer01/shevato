@@ -250,7 +250,7 @@ function showMessage(message, isError = false) {
         const toast = document.createElement('div');
         toast.style.cssText = `
             position: fixed;
-            top: 2rem;
+            top: 5rem;
             right: 2rem;
             background: #10b981;
             color: white;
