@@ -1008,6 +1008,37 @@ body.dark-theme .comeback-item {
     border-color: rgba(129, 140, 248, 0.2);
 }
 
+/* Make dates white and bold in Analysis tables for dark theme */
+body.dark-theme .best-day-item small,
+body.dark-theme .worst-day-item small,
+body.dark-theme .comeback-item small {
+    color: white !important;
+    font-weight: bold !important;
+}
+
+/* Keep score colors but make them bold - best-day-score green, worst-day-score red */
+body.dark-theme .best-day-score {
+    color: var(--analysis-success) !important;
+    font-weight: bold !important;
+}
+
+body.dark-theme .worst-day-score {
+    color: var(--analysis-danger) !important;
+    font-weight: bold !important;
+}
+
+body.dark-theme .comeback-score {
+    color: white !important;
+    font-weight: bold !important;
+}
+
+/* Make dates white and bold in Global Performance Patterns for dark theme */
+body.dark-theme #pattern-analysis li,
+body.dark-theme .pattern-analysis li {
+    color: white !important;
+    font-weight: bold !important;
+}
+
 /* Responsive design for Analysis */
 @media (max-width: 768px) {
     .analysis-container {
