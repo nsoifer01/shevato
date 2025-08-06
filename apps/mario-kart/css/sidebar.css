@@ -571,12 +571,17 @@ body.dark-theme .sidebar-overlay {
     width: 100%;
     padding: 10px 16px;
     background: var(--primary-gradient);
-    color: white;
+    color: white !important;
     border: none;
     border-radius: 6px;
     font-weight: 500;
     cursor: pointer;
     transition: all 0.2s ease;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    text-align: center;
+    line-height: 1;
 }
 
 .sidebar .custom-date-range button:hover {
