@@ -910,14 +910,26 @@ body.dark-theme .sidebar-add-race-btn:hover {
 .sidebar-race-form {
     display: none;
     margin-top: 1rem;
-    padding: 1rem;
-    background: #f5f6f7;
-    border: 1px solid var(--border-color, #e2e8f0);
-    border-radius: 0.5rem;
-    box-shadow: inset 0 2px 4px rgba(0, 0, 0, 0.06);
+    padding: 1.25rem;
+    background: linear-gradient(135deg, #ffffff 0%, #f8fafc 100%);
+    border: 2px solid #e2e8f0;
+    border-radius: 12px;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
     opacity: 0;
     transform: translateY(-10px);
     transition: none;
+    position: relative;
+    overflow: hidden;
+}
+
+.sidebar-race-form::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: 3px;
+    background: linear-gradient(90deg, #10b981 0%, #059669 100%);
 }
 
 .sidebar-race-form.open {
@@ -990,25 +1002,36 @@ body.dark-theme .sidebar-race-error {
 
 .sidebar-player-input label {
     font-size: 0.875rem;
-    font-weight: 500;
-    color: var(--text-secondary, #4a5568);
+    font-weight: 600;
+    color: #2d3748;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    margin-bottom: 0.25rem;
 }
 
 .sidebar-position-input {
     width: 100%;
-    padding: 0.5rem;
-    border: 1px solid var(--border-color, #e2e8f0);
-    border-radius: 0.375rem;
-    font-size: 0.875rem;
+    padding: 0.625rem 0.75rem;
+    border: 2px solid #e2e8f0;
+    border-radius: 8px;
+    font-size: 0.9rem;
+    font-weight: 500;
     background: white;
-    color: var(--text-color, #2d3748);
-    transition: all 0.2s ease;
+    color: #2d3748;
+    transition: all 0.3s ease;
+    text-align: center;
 }
 
 .sidebar-position-input:focus {
     outline: none;
     border-color: #10b981;
-    box-shadow: 0 0 0 3px rgba(16, 185, 129, 0.1);
+    box-shadow: 0 0 0 3px rgba(16, 185, 129, 0.15);
+    transform: translateY(-1px);
+}
+
+.sidebar-position-input::placeholder {
+    color: #9ca3af;
+    font-style: italic;
 }
 
 .sidebar-position-input::-webkit-inner-spin-button,
@@ -1025,23 +1048,27 @@ body.dark-theme .sidebar-race-error {
 .sidebar-submit-race,
 .sidebar-cancel-race {
     flex: 1;
-    padding: 0.5rem;
-    border: none;
-    border-radius: 0.375rem;
+    padding: 0.625rem 0.75rem;
+    border: 2px solid transparent;
+    border-radius: 8px;
     font-size: 0.875rem;
-    font-weight: 500;
+    font-weight: 600;
     cursor: pointer;
-    transition: all 0.2s ease;
+    transition: all 0.3s ease;
+    letter-spacing: 0.025em;
+    text-transform: uppercase;
 }
 
 .sidebar-submit-race {
-    background: #3b82f6;
+    background: linear-gradient(135deg, #10b981 0%, #059669 100%);
     color: white;
+    box-shadow: 0 2px 8px rgba(16, 185, 129, 0.3);
 }
 
 .sidebar-submit-race:hover {
-    background: #2563eb;
-    transform: translateY(-1px);
+    background: linear-gradient(135deg, #059669 0%, #047857 100%);
+    transform: translateY(-2px);
+    box-shadow: 0 4px 12px rgba(16, 185, 129, 0.4);
 }
 
 .sidebar-submit-race:active {
@@ -1049,22 +1076,66 @@ body.dark-theme .sidebar-race-error {
 }
 
 .sidebar-cancel-race {
-    background: #e5e7eb;
-    color: #374151;
+    background: #f3f4f6;
+    color: #4b5563;
+    border: 2px solid #e5e7eb;
 }
 
 .sidebar-cancel-race:hover {
-    background: #d1d5db;
+    background: #e5e7eb;
+    border-color: #d1d5db;
+    transform: translateY(-1px);
 }
 
-/* Dark theme support */
+/* Dark theme support for Add Race form */
 body.dark-theme .sidebar-race-form {
-    background: rgba(45, 55, 72, 0.5);
-    border-color: rgba(74, 85, 104, 0.5);
+    background: linear-gradient(135deg, #2d3748 0%, #1a202c 100%);
+    border-color: rgba(255, 255, 255, 0.1);
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+}
+
+body.dark-theme .sidebar-race-form::before {
+    background: linear-gradient(90deg, #34d399 0%, #10b981 100%);
+}
+
+body.dark-theme .sidebar-player-input label {
+    color: #e2e8f0;
 }
 
 body.dark-theme .sidebar-position-input {
-    background: rgba(74, 85, 104, 0.8);
+    background: #374151;
+    border-color: rgba(255, 255, 255, 0.1);
+    color: white;
+}
+
+body.dark-theme .sidebar-position-input:focus {
+    border-color: #34d399;
+    box-shadow: 0 0 0 3px rgba(52, 211, 153, 0.15);
+}
+
+body.dark-theme .sidebar-position-input::placeholder {
+    color: #9ca3af;
+}
+
+body.dark-theme .sidebar-submit-race {
+    background: linear-gradient(135deg, #34d399 0%, #10b981 100%);
+    box-shadow: 0 2px 8px rgba(52, 211, 153, 0.3);
+}
+
+body.dark-theme .sidebar-submit-race:hover {
+    background: linear-gradient(135deg, #10b981 0%, #059669 100%);
+    box-shadow: 0 4px 12px rgba(52, 211, 153, 0.4);
+}
+
+body.dark-theme .sidebar-cancel-race {
+    background: #374151;
+    color: #e2e8f0;
+    border-color: rgba(255, 255, 255, 0.1);
+}
+
+body.dark-theme .sidebar-cancel-race:hover {
+    background: #4b5563;
+    border-color: rgba(255, 255, 255, 0.2);
     border-color: rgba(107, 114, 128, 0.5);
     color: #e2e8f0;
 }
@@ -1284,36 +1355,64 @@ body.dark-theme .sidebar-cancel-race:hover {
 }
 
 /* Dark theme support */
+/* Enhanced dark theme support for position picker */
 body.dark-theme .position-picker-toggle {
-    background: rgba(74, 85, 104, 0.8);
-    border-color: rgba(107, 114, 128, 0.5);
-    color: #e2e8f0;
+    background: #374151;
+    border: 2px solid rgba(255, 255, 255, 0.1);
+    color: white;
+    font-weight: 600;
 }
 
 body.dark-theme .position-picker-toggle:hover {
-    background: rgba(74, 85, 104, 1);
+    background: #4b5563;
+    border-color: #10b981;
+    box-shadow: 0 2px 8px rgba(16, 185, 129, 0.2);
 }
 
 body.dark-theme .position-picker {
-    background: rgba(45, 55, 72, 0.5);
-    border-color: rgba(74, 85, 104, 0.5);
+    background: linear-gradient(135deg, #2d3748 0%, #1a202c 100%);
+    border: 2px solid rgba(255, 255, 255, 0.1);
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+}
+
+body.dark-theme .picker-header {
+    color: #e2e8f0;
+    font-weight: 700;
 }
 
 body.dark-theme .position-btn {
-    background: rgba(74, 85, 104, 0.6);
-    border-color: rgba(107, 114, 128, 0.5);
-    color: #e2e8f0;
+    background: #374151;
+    border: 1.5px solid rgba(255, 255, 255, 0.1);
+    color: white !important;
+    font-weight: 600;
+}
+
+body.dark-theme .position-btn::before {
+    background: rgba(52, 211, 153, 0.2);
 }
 
 body.dark-theme .position-btn:hover {
-    background: rgba(74, 85, 104, 0.8);
-    border-color: #10b981;
+    background: #4b5563;
+    border-color: #34d399;
+    color: white !important;
+    box-shadow: 0 2px 8px rgba(52, 211, 153, 0.2);
 }
 
 body.dark-theme .position-btn.selected {
-    background: #10b981;
-    color: white;
-    border-color: #059669;
+    background: linear-gradient(135deg, #34d399 0%, #10b981 100%);
+    color: white !important;
+    border-color: #10b981;
+    font-weight: 700;
+    box-shadow: 0 2px 8px rgba(52, 211, 153, 0.3);
+}
+
+/* Dark theme scrollbar for position picker */
+body.dark-theme .position-picker::-webkit-scrollbar-track {
+    background: rgba(255, 255, 255, 0.05);
+}
+
+body.dark-theme .position-picker::-webkit-scrollbar-thumb {
+    background: linear-gradient(180deg, #34d399 0%, #10b981 100%);
 }
 
 /* Responsive adjustments */
