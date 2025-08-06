@@ -756,31 +756,50 @@ body.dark-theme .sidebar-overlay {
 /* Today button */
 
 .sidebar-date-today-btn {
-    width: auto;
-    max-width: 120px;
-    margin: 0.5rem auto 0;
-    padding: 0.5rem 1rem;
+    width: 100%;
+    margin: 0.75rem 0 0 0;
+    padding: 10px 16px;
     background: #10b981;
-    color: white;
-    border: none;
-    border-radius: 0.375rem;
-    font-size: 0.875rem;
-    font-weight: 500;
+    color: black !important;
+    border: 1px solid #059669;
+    border-radius: 8px;
+    font-size: 0.9rem;
+    font-weight: 600;
     cursor: pointer;
-    transition: all 0.2s ease;
+    transition: all 0.3s ease;
     display: flex;
     align-items: center;
     justify-content: center;
+    gap: 0.5rem;
     text-align: center;
     line-height: 1;
+    letter-spacing: 0.025em;
+    box-shadow: 0 2px 4px rgba(16, 185, 129, 0.2);
 }
 
 .sidebar-date-today-btn:hover {
     background: #059669;
+    color: black !important;
+    transform: translateY(-1px);
+    box-shadow: 0 4px 8px rgba(16, 185, 129, 0.3);
 }
 
 .sidebar-date-today-btn:active {
-    transform: scale(0.98);
+    transform: translateY(0);
+}
+
+/* Dark theme support for Set to Today button */
+body.dark-theme .sidebar-date-today-btn {
+    background: #34d399;
+    color: black !important;
+    border-color: #10b981;
+    box-shadow: 0 2px 4px rgba(52, 211, 153, 0.2);
+}
+
+body.dark-theme .sidebar-date-today-btn:hover {
+    background: #10b981;
+    color: black !important;
+    box-shadow: 0 4px 8px rgba(52, 211, 153, 0.3);
 }
 
 /* Dark theme support */
