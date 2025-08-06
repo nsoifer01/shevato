@@ -587,6 +587,26 @@ body.dark-theme .h2h-player-pill {
 }
 
 /* ===========================================
+   H2H Loss Card Text Color Fix
+   =========================================== */
+
+/* Ensure all text in loss cards (red background) is white */
+.h2h-cell.h2h-loser-text .h2h-content,
+.h2h-cell.h2h-loser-text .h2h-score,
+.h2h-cell.h2h-loser-text .h2h-separator,
+.h2h-cell.h2h-loser-text .h2h-streak,
+.h2h-cell.h2h-loser-text .h2h-streak-main,
+.h2h-cell.h2h-loser-text .h2h-streak-details,
+.h2h-cell.h2h-loser-text .h2h-biggest-win {
+    color: #fff !important;
+}
+
+/* Make dashes bold in all H2H cards */
+.h2h-separator {
+    font-weight: bold !important;
+}
+
+/* ===========================================
    Sidebar Button Hover Fix
    =========================================== */
 
