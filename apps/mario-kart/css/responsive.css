@@ -64,6 +64,9 @@ body {
     margin: 0;
     line-height: 1.2;
     word-wrap: break-word;
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+    font-weight: bold;
+    text-transform: none;
 }
 
 
@@ -387,7 +390,6 @@ canvas {
 
 /* Hide Desktop Elements on Mobile */
 @media (max-width: 767px) {
-    .floating-race-widget,
     .fab-button,
     .quick-race-form {
         display: none !important;
@@ -563,14 +565,6 @@ canvas {
         padding: 0;
     }
     
-    /* Show floating widgets */
-    .floating-race-widget {
-        display: flex !important;
-        position: fixed;
-        bottom: 2rem;
-        right: 2rem;
-        z-index: 999;
-    }
     
     /* Help panel tablet styles */
     .help-panel {
@@ -808,7 +802,6 @@ canvas {
 /* ========================================= */
 @media print {
     .action-buttons,
-    .floating-race-widget,
     .sidebar-toggle,
     .sidebar {
         display: none !important;

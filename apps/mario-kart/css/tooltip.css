@@ -174,6 +174,18 @@ body.dark-theme .custom-tooltip {
     z-index: 10001;
 }
 
+/* Special positioning for sidebar tooltips to avoid header overlap */
+.sidebar-header .custom-tooltip,
+.sidebar-header-buttons .custom-tooltip {
+    z-index: 10002;
+    transform: translateY(8px) translateX(-50%);
+}
+
+.sidebar-header .custom-tooltip.visible,
+.sidebar-header-buttons .custom-tooltip.visible {
+    transform: translateY(12px) translateX(-50%);
+}
+
 /* Ensure tooltips don't interfere with input fields */
 .input-field:focus-within ~ .custom-tooltip {
     pointer-events: none;
