@@ -31,6 +31,7 @@
     overflow: hidden;
     /* Ensure no horizontal scrollbar on hover */
     overflow-x: hidden !important;
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
 }
 
 /* Add subtle gradient overlay */
@@ -57,6 +58,7 @@
     font-size: 1.5em;
     font-weight: 800;
     color: var(--history-text-primary);
+    margin-top: 12px;
     margin-bottom: 28px;
     text-align: center;
     letter-spacing: -0.5px;
@@ -105,8 +107,9 @@
     width: 100%;
     border-collapse: separate;
     border-spacing: 0;
-    font-size: 0.875rem;
+    font-size: 0.9375rem;
     background: transparent;
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
 }
 
 /* Table Headers */
@@ -128,6 +131,7 @@
     cursor: pointer;
     transition: all 0.2s ease;
     user-select: none;
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
 }
 
 #history-table th:hover {
@@ -171,6 +175,7 @@
     font-weight: 500;
     color: var(--history-text-primary);
     position: relative;
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
 }
 
 /* Race Number Column */
@@ -178,11 +183,12 @@
     font-weight: 700;
     color: var(--history-accent);
     font-size: 1rem;
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
 }
 
 /* Date Column */
 #history-table td:nth-child(2) {
-    font-family: 'SF Mono', 'Monaco', 'Inconsolata', monospace;
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
     color: var(--history-text-secondary);
     text-align: center;
 }
@@ -193,6 +199,7 @@
     margin-top: 2px;
     opacity: 0.7;
     font-size: 0.75rem;
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
 }
 
 /* Position Cells - Updated Styling */
@@ -207,6 +214,7 @@
     font-size: 1rem;
     transition: all 0.3s ease;
     box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
 }
 
 .position-cell.best {
@@ -248,6 +256,7 @@
     display: inline-flex;
     align-items: center;
     justify-content: center;
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
 }
 
 .edit-btn {
@@ -325,6 +334,7 @@
     box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
     border: 1px solid var(--history-border);
     transition: all 0.3s ease;
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
 }
 
 .race-card:hover {
@@ -346,12 +356,13 @@
     font-size: 1.25rem;
     font-weight: 800;
     color: var(--history-accent);
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
 }
 
 .race-date {
-    font-size: 0.875rem;
+    font-size: 0.9375rem;
     color: var(--history-text-secondary);
-    font-family: 'SF Mono', 'Monaco', 'Inconsolata', monospace;
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
 }
 
 .race-positions {
@@ -368,9 +379,10 @@
 }
 
 .player-label {
-    font-size: 0.875rem;
+    font-size: 0.9375rem;
     color: var(--history-text-secondary);
     font-weight: 600;
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
 }
 
 .race-card-actions {
@@ -432,7 +444,7 @@ body.dark-theme .race-card:hover {
     .position-cell {
         width: 36px;
         height: 36px;
-        font-size: 0.875rem;
+        font-size: 0.9375rem;
     }
 }
 

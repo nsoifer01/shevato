@@ -158,13 +158,13 @@ function editRace(index) {
         const currentValue = race[player] || '';
         return `
             <div style="margin-bottom: 1rem;">
-                <label style="display: block; margin-bottom: 0.5rem; color: ${isDarkTheme ? '#e2e8f0' : '#4a5568'}; font-weight: 600;">
+                <label style="display: block; margin-bottom: 0.5rem; color: ${isDarkTheme ? '#e2e8f0' : '#4a5568'}; font-weight: 600; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;">
                     ${window.PlayerNameManager ? window.PlayerNameManager.get(player) : getPlayerName(player)}'s Position:
                 </label>
                 <input type="number" id="edit-${player}" min="${MIN_POSITIONS}" max="${MAX_POSITIONS}" value="${currentValue}" 
                     style="width: 100%; padding: 0.75rem; border: 1px solid ${isDarkTheme ? '#4a5568' : '#e2e8f0'}; 
                     border-radius: 0.5rem; background: ${isDarkTheme ? '#4a5568' : 'white'}; 
-                    color: ${isDarkTheme ? '#e2e8f0' : '#2d3748'};" placeholder="${MIN_POSITIONS}-${MAX_POSITIONS} or leave empty">
+                    color: ${isDarkTheme ? '#e2e8f0' : '#2d3748'}; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;" placeholder="${MIN_POSITIONS}-${MAX_POSITIONS} or leave empty">
             </div>
         `;
     }).join('');
@@ -172,54 +172,36 @@ function editRace(index) {
     dialog.innerHTML = `
         <div style="text-align: center; margin-bottom: 1.5rem;">
             <div style="font-size: 2.5rem; margin-bottom: 0.5rem;">✏️</div>
-            <h3 style="color: ${isDarkTheme ? '#e2e8f0' : '#2d3748'}; margin-bottom: 0.5rem; font-size: 1.5rem;">Edit Race</h3>
-            <p style="color: ${isDarkTheme ? '#a0aec0' : '#6b7280'}; font-size: 0.9rem;">${race.date}${race.timestamp ? ' ' + race.timestamp : ''}</p>
+            <h3 style="color: ${isDarkTheme ? '#e2e8f0' : '#2d3748'}; margin-bottom: 0.5rem; font-size: 1.5rem; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;">Edit Race</h3>
+            <p style="color: ${isDarkTheme ? '#a0aec0' : '#6b7280'}; font-size: 0.9rem; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;">${race.date}${race.timestamp ? ' ' + race.timestamp : ''}</p>
         </div>
         
         <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; margin-bottom: 1.5rem;">
             <div>
-                <label style="display: block; margin-bottom: 0.5rem; color: ${isDarkTheme ? '#e2e8f0' : '#4a5568'}; font-weight: 600;">
+                <label style="display: block; margin-bottom: 0.5rem; color: ${isDarkTheme ? '#e2e8f0' : '#4a5568'}; font-weight: 600; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;">
                     Race Date:
                 </label>
                 <input type="date" id="edit-date" value="${race.date}" 
                     style="width: 100%; padding: 0.75rem; border: 1px solid ${isDarkTheme ? '#4a5568' : '#e2e8f0'}; 
                     border-radius: 0.5rem; background: ${isDarkTheme ? '#4a5568' : 'white'}; 
-                    color: ${isDarkTheme ? '#e2e8f0' : '#2d3748'}; color-scheme: ${isDarkTheme ? 'dark' : 'light'};">
+                    color: ${isDarkTheme ? '#e2e8f0' : '#2d3748'}; color-scheme: ${isDarkTheme ? 'dark' : 'light'}; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;">
             </div>
             <div>
-                <label style="display: block; margin-bottom: 0.5rem; color: ${isDarkTheme ? '#e2e8f0' : '#4a5568'}; font-weight: 600;">
+                <label style="display: block; margin-bottom: 0.5rem; color: ${isDarkTheme ? '#e2e8f0' : '#4a5568'}; font-weight: 600; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;">
                     Race Time:
                 </label>
                 <input type="time" id="edit-time" value="${race.timestamp ? race.timestamp.split(' ')[0] : ''}" step="1"
                     style="width: 100%; padding: 0.75rem; border: 1px solid ${isDarkTheme ? '#4a5568' : '#e2e8f0'}; 
                     border-radius: 0.5rem; background: ${isDarkTheme ? '#4a5568' : 'white'}; 
-                    color: ${isDarkTheme ? '#e2e8f0' : '#2d3748'}; color-scheme: ${isDarkTheme ? 'dark' : 'light'};" placeholder="Optional">
+                    color: ${isDarkTheme ? '#e2e8f0' : '#2d3748'}; color-scheme: ${isDarkTheme ? 'dark' : 'light'}; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;" placeholder="Optional">
             </div>
         </div>
 
         ${playerInputs}
 
-        <div style="display: flex; gap: 1rem; justify-content: center; margin-top: 2rem;">
-            <button id="save-edit" style="
-                background: #10b981;
-                color: white;
-                border: none;
-                padding: 0.75rem 1.5rem;
-                border-radius: 0.5rem;
-                font-weight: 600;
-                cursor: pointer;
-                transition: all 0.2s;
-            ">Save Changes</button>
-            <button id="cancel-edit" style="
-                background: ${isDarkTheme ? '#4a5568' : '#e2e8f0'};
-                color: ${isDarkTheme ? '#e2e8f0' : '#4a5568'};
-                border: none;
-                padding: 0.75rem 1.5rem;
-                border-radius: 0.5rem;
-                font-weight: 600;
-                cursor: pointer;
-                transition: all 0.2s;
-            ">Cancel</button>
+        <div class="modal-buttons">
+            <button id="save-edit" class="modal-btn-primary">Save Changes</button>
+            <button id="cancel-edit" class="modal-btn-secondary ${isDarkTheme ? '' : 'light-theme'}">Cancel</button>
         </div>
     `;
 
@@ -620,71 +602,22 @@ function confirmClearData() {
     
     // Create a beautiful confirmation modal
     const modal = document.createElement('div');
-    modal.style.cssText = `
-        position: fixed;
-        top: 0;
-        left: 0;
-        width: 100%;
-        height: 100%;
-        background: rgba(0, 0, 0, 0.5);
-        display: flex;
-        justify-content: center;
-        align-items: center;
-        z-index: 1000;
-        backdrop-filter: blur(5px);
-    `;
+    modal.className = 'modal-overlay';
 
     const dialog = document.createElement('div');
-    dialog.style.cssText = `
-        background: ${isDarkTheme ? '#2d3748' : 'white'};
-        border-radius: 1rem;
-        padding: 2rem;
-        box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
-        max-width: 400px;
-        width: 90%;
-        text-align: center;
-        animation: modalSlideIn 0.3s ease;
-    `;
+    dialog.className = `modal-dialog ${isDarkTheme ? '' : 'light-theme'}`;
 
     dialog.innerHTML = `
-        <div style="font-size: 3rem; margin-bottom: 1rem;">⚠️</div>
-        <h3 style="color: ${isDarkTheme ? '#e2e8f0' : '#2d3748'}; margin-bottom: 1rem; font-size: 1.5rem;">Clear All Data?</h3>
-        <p style="color: ${isDarkTheme ? '#a0aec0' : '#4a5568'}; margin-bottom: 2rem; line-height: 1.5;">
+        <div class="modal-icon">⚠️</div>
+        <h3 class="modal-title ${isDarkTheme ? '' : 'light-theme'}">Clear All Data?</h3>
+        <p class="modal-text ${isDarkTheme ? '' : 'light-theme'}">
             This will permanently delete all race data, statistics, automated backups, and history. This action cannot be undone.
         </p>
-        <div style="display: flex; gap: 1rem; justify-content: center;">
-            <button id="confirm-clear" style="
-                background: #ef4444;
-                color: white;
-                border: none;
-                padding: 0.75rem 1.5rem;
-                border-radius: 0.5rem;
-                font-weight: 600;
-                cursor: pointer;
-                transition: all 0.2s;
-            ">Delete Everything</button>
-            <button id="cancel-clear" style="
-                background: ${isDarkTheme ? '#4a5568' : '#e2e8f0'};
-                color: ${isDarkTheme ? '#e2e8f0' : '#4a5568'};
-                border: none;
-                padding: 0.75rem 1.5rem;
-                border-radius: 0.5rem;
-                font-weight: 600;
-                cursor: pointer;
-                transition: all 0.2s;
-            ">Cancel</button>
+        <div class="modal-buttons">
+            <button id="confirm-clear" class="modal-btn-danger">Delete Everything</button>
+            <button id="cancel-clear" class="modal-btn-secondary ${isDarkTheme ? '' : 'light-theme'}">Cancel</button>
         </div>
     `;
-
-    // Add CSS animation
-    const style = document.createElement('style');
-    style.textContent = `
-        @keyframes modalSlideIn {
-            from { opacity: 0; transform: scale(0.9) translateY(-20px); }
-            to { opacity: 1; transform: scale(1) translateY(0); }
-        }
-    `;
-    document.head.appendChild(style);
 
     modal.appendChild(dialog);
     document.body.appendChild(modal);
@@ -692,12 +625,10 @@ function confirmClearData() {
     // Add event listeners
     document.getElementById('cancel-clear').onclick = () => {
         document.body.removeChild(modal);
-        document.head.removeChild(style);
     };
 
     document.getElementById('confirm-clear').onclick = () => {
         document.body.removeChild(modal);
-        document.head.removeChild(style);
         clearData();
     };
 

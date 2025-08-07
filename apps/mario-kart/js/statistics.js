@@ -365,9 +365,18 @@ function generateH2HTable(stats) {
             }
         }).join('');
 
+        const playerName = window.PlayerNameManager ? window.PlayerNameManager.get(rowPlayer) : getPlayerName(rowPlayer);
+        const symbol = window.PlayerSymbolManager ? window.PlayerSymbolManager.getSymbol(rowPlayer) : null;
+        const displaySymbol = symbol || playerName.charAt(0).toUpperCase() || 'P';
+        
         return `
             <tr>
-                <td class="h2h-player-name">${window.PlayerNameManager ? window.PlayerNameManager.get(rowPlayer) : getPlayerName(rowPlayer)}</td>
+                <td class="h2h-player-name">
+                    <div class="h2h-player-pill">
+                        <div class="h2h-player-avatar">${displaySymbol}</div>
+                        ${playerName}
+                    </div>
+                </td>
                 ${cells}
             </tr>
         `;
@@ -442,9 +451,18 @@ function generateDailyH2HTable(stats) {
             }
         }).join('');
 
+        const playerName = window.PlayerNameManager ? window.PlayerNameManager.get(rowPlayer) : getPlayerName(rowPlayer);
+        const symbol = window.PlayerSymbolManager ? window.PlayerSymbolManager.getSymbol(rowPlayer) : null;
+        const displaySymbol = symbol || playerName.charAt(0).toUpperCase() || 'P';
+        
         return `
             <tr>
-                <td class="h2h-player-name">${window.PlayerNameManager ? window.PlayerNameManager.get(rowPlayer) : getPlayerName(rowPlayer)}</td>
+                <td class="h2h-player-name">
+                    <div class="h2h-player-pill">
+                        <div class="h2h-player-avatar">${displaySymbol}</div>
+                        ${playerName}
+                    </div>
+                </td>
                 ${cells}
             </tr>
         `;

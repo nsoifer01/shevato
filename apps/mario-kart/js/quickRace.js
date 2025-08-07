@@ -225,15 +225,6 @@ function getPlayerName(playerId) {
     return input ? input.value : '';
 }
 
-// Close quick race widget when clicking outside
-document.addEventListener('click', function(event) {
-    if (!quickRaceOpen) return;
-    
-    const widget = document.querySelector('.floating-race-widget');
-    if (widget && !widget.contains(event.target)) {
-        closeQuickRaceWidget();
-    }
-});
 
 // Show success message (fallback if showMessage not available)
 function showMessage(message, isError = false) {
@@ -250,7 +241,7 @@ function showMessage(message, isError = false) {
         const toast = document.createElement('div');
         toast.style.cssText = `
             position: fixed;
-            top: 2rem;
+            top: 5rem;
             right: 2rem;
             background: #10b981;
             color: white;
