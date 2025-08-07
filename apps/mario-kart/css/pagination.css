@@ -16,9 +16,13 @@
 
 /* Pagination Info */
 .pagination-info {
-    font-size: 0.875rem;
+    font-size: 0.9375rem;
     color: var(--history-text-secondary);
     font-weight: 500;
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+    display: flex;
+    align-items: center;
+    height: 36px;
 }
 
 /* Pagination Controls */
@@ -33,10 +37,10 @@
     padding: 8px 12px;
     min-width: 36px;
     height: 36px;
-    background: white;
-    border: 1px solid var(--history-border);
+    background: #667eea;
+    border: 1px solid #667eea;
     border-radius: 8px;
-    color: var(--history-text-primary);
+    color: white;
     font-size: 0.875rem;
     font-weight: 600;
     cursor: pointer;
@@ -44,13 +48,15 @@
     display: inline-flex;
     align-items: center;
     justify-content: center;
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
 }
 
 .pagination-btn:hover:not(:disabled) {
-    background: var(--history-row-hover);
-    border-color: var(--history-accent);
+    background: #5a67d8;
+    border-color: #5a67d8;
     transform: translateY(-1px);
-    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+    box-shadow: 0 2px 8px rgba(102, 126, 234, 0.3);
+    color: white;
 }
 
 .pagination-btn:disabled {
@@ -60,15 +66,16 @@
 
 /* Active Page Button */
 .pagination-btn.active {
-    background: var(--history-accent);
+    background: #4c51bf;
     color: white;
-    border-color: var(--history-accent);
-    box-shadow: 0 2px 8px rgba(102, 126, 234, 0.3);
+    border-color: #4c51bf;
+    box-shadow: 0 2px 8px rgba(102, 126, 234, 0.4);
 }
 
 .pagination-btn.active:hover {
-    background: var(--history-accent-light);
-    border-color: var(--history-accent-light);
+    background: #434190;
+    border-color: #434190;
+    color: white;
 }
 
 /* Previous/Next Buttons */
@@ -96,29 +103,41 @@
 .pagination-size {
     display: flex;
     align-items: center;
-    gap: 8px;
-    font-size: 0.875rem;
+    gap: 6px;
+    font-size: 0.9375rem;
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+    white-space: nowrap;
+    height: 36px;
 }
 
 .pagination-size label {
     color: var(--history-text-secondary);
     font-weight: 500;
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+    white-space: nowrap;
+    line-height: 1;
+    margin: 0;
 }
 
 .pagination-size select {
-    padding: 6px 32px 6px 12px;
+    padding: 6px 28px 6px 8px;
     border: 1px solid var(--history-border);
-    border-radius: 8px;
+    border-radius: 6px;
     background: white;
     color: var(--history-text-primary);
-    font-size: 0.875rem;
+    font-size: 0.75rem;
     font-weight: 500;
     cursor: pointer;
     transition: all 0.2s ease;
     appearance: none;
-    background-image: url("data:image/svg+xml,%3Csvg width='12' height='8' viewBox='0 0 12 8' fill='none' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M1 1.5L6 6.5L11 1.5' stroke='%234A5568' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+    background-image: url("data:image/svg+xml,%3Csvg width='10' height='6' viewBox='0 0 10 6' fill='none' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M1 1L5 5L9 1' stroke='%234A5568' stroke-width='1.2' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
     background-repeat: no-repeat;
-    background-position: right 10px center;
+    background-position: right 8px center;
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+    min-width: 50px;
+    height: 32px;
+    display: flex;
+    align-items: center;
 }
 
 .pagination-size select:hover {
@@ -139,12 +158,13 @@ body.dark-theme .pagination-container {
 body.dark-theme .pagination-btn {
     background: #374151;
     border-color: #4a5568;
-    color: var(--history-text-primary);
+    color: white;
 }
 
 body.dark-theme .pagination-btn:hover:not(:disabled) {
     background: #4b5563;
     border-color: var(--history-accent);
+    color: white;
 }
 
 body.dark-theme .pagination-btn.active {

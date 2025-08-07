@@ -178,13 +178,13 @@ function updateSidebarDateDisplay(dateStr) {
         dateText.textContent = 'Today';
         // Hide the "Set to Today" button when it's already today
         if (todayBtn) {
-            todayBtn.style.display = 'none';
+            todayBtn.classList.add('hidden');
         }
     } else {
         dateText.textContent = formatDateForDisplay(dateStr);
         // Show the "Set to Today" button when it's not today
         if (todayBtn) {
-            todayBtn.style.display = 'block';
+            todayBtn.classList.remove('hidden');
         }
     }
 }
@@ -594,7 +594,7 @@ window.updatePositionPicker = updatePositionPicker;
 
 // Close dropdowns when clicking outside
 document.addEventListener('click', function(event) {
-    const widgetPanel = document.querySelector('.widget-panel');
+    const mainContainer = document.querySelector('.container');
     const actionButtons = document.querySelector('.action-buttons');
     
     // No longer needed - calendar opens directly
@@ -608,11 +608,11 @@ document.addEventListener('click', function(event) {
         }
     });
 
-    // If click is outside both the widget panel and action buttons, close all dropdowns
-    const isOutsideWidgetPanel = widgetPanel && !widgetPanel.contains(event.target);
+    // If click is outside both the main container and action buttons, close all dropdowns
+    const isOutsideMainContainer = mainContainer && !mainContainer.contains(event.target);
     const isOutsideActionButtons = actionButtons && !actionButtons.contains(event.target);
 
-    if (isOutsideWidgetPanel && isOutsideActionButtons) {
+    if (isOutsideMainContainer && isOutsideActionButtons) {
         closeAllDropdowns();
     }
 });
@@ -624,7 +624,7 @@ function showMessage(message, isError = false) {
     const messageDiv = document.createElement('div');
     messageDiv.style.cssText = `
         position: fixed;
-        top: 20px;
+        top: 80px;
         left: 50%;
         transform: translateX(-50%);
         padding: 15px 30px;
@@ -633,7 +633,7 @@ function showMessage(message, isError = false) {
         border-radius: 8px;
         font-weight: 600;
         box-shadow: 0 4px 15px rgba(0, 0, 0, 0.2);
-        z-index: 1000;
+        z-index: 9999;
         animation: slideDown 0.3s ease;
     `;
     messageDiv.textContent = message;
@@ -790,32 +790,32 @@ function createGuideView() {
                     <div class="viz-guide-card">
                         <h4>🌟 Achievements</h4>
                         <p>Compare racing milestones with friends</p>
-                        <p class="viz-tip">💡 <span style="color: #10b981; font-weight: 600;">Best (green)</span> • <span style="color: #f59e0b; font-weight: 600;">2nd (yellow, 3+ players)</span> • <span style="color: #ef4444; font-weight: 600;">Worst (red)</span> • <span style="color: #9ca3af; font-weight: 600;">Ties (gray)</span></p>
+                        <p class="viz-tip tips-text">💡 <span class="viz-color-green">Best (green)</span> • <span class="viz-color-yellow">2nd (yellow, 3+ players)</span> • <span class="viz-color-red">Worst (red)</span> • <span class="viz-color-gray">Ties (gray)</span></p>
                     </div>
                     <div class="viz-guide-card">
                         <h4>🌡️ Position Heat Map</h4>
                         <p>Percentage breakdown by finishing ranges</p>
-                        <p class="viz-tip">💡 <span style="color: #10b981; font-weight: 600;">1-6</span> • <span style="color: #f59e0b; font-weight: 600;">7-12</span> • <span style="color: #D26868; font-weight: 600;">13-18</span> • <span style="color: #ff0000; font-weight: 600;">19-24</span></p>
+                        <p class="viz-tip tips-text">💡 <span class="viz-color-green tier-range-numbers">1-6</span> • <span class="viz-color-yellow tier-range-numbers">7-12</span> • <span class="viz-color-red tier-range-numbers">13-18</span> • <span class="viz-color-red tier-range-numbers">19-24</span></p>
                     </div>
                     <div class="viz-guide-card">
                         <h4>🏁 Recent Streak</h4>
                         <p>Your last 10 races at a glance (left to right)</p>
-                        <p class="viz-tip">💡 Shows finishing positions with gradient colors: <span style="color: #10b981; font-weight: 600;">1st (green)</span> to <span style="color: #ef4444; font-weight: 600;">24th (red)</span></p>
+                        <p class="viz-tip tips-text">💡 Shows finishing positions with gradient colors: <span class="viz-color-green">1st (green)</span> to <span class="viz-color-red">24th (red)</span></p>
                     </div>
                     <div class="viz-guide-card">
                         <h4>🎯 Sweet Spots</h4>
                         <p>Color transparency shows finishing frequency</p>
-                        <div class="viz-tip" style="display: flex; align-items: center; flex-wrap: wrap; gap: 4px;">
+                        <div class="viz-tip viz-tip-content tips-text">
                             <span>💡 Frequency:</span>
-                            <span class="frequency-gradient light-mode" style="display: none; white-space: nowrap;">
-                                <span style="background-color: rgba(59, 130, 246, 0.3); padding: 2px 6px; border-radius: 3px; margin-right: 4px; display: inline-block; color: black;">Low</span>
-                                <span style="background-color: rgba(59, 130, 246, 0.65); padding: 2px 6px; border-radius: 3px; margin-right: 4px; display: inline-block; color: black;">Medium</span>
-                                <span style="background-color: rgba(59, 130, 246, 1.0); padding: 2px 6px; border-radius: 3px; color: black; display: inline-block;">High</span>
+                            <span class="frequency-gradient light-mode light-theme hidden">
+                                <span class="viz-color-indicator frequency-low">Low</span>
+                                <span class="viz-color-indicator frequency-medium">Medium</span>
+                                <span class="viz-color-indicator frequency-high">High</span>
                             </span>
-                            <span class="frequency-gradient dark-mode" style="display: inline-flex; align-items: center; gap: 4px; white-space: nowrap;">
-                                <span style="background-color: rgba(6, 182, 212, 0.3); padding: 2px 6px; border-radius: 3px; display: inline-block; color: black;">Low</span>
-                                <span style="background-color: rgba(6, 182, 212, 0.65); padding: 2px 6px; border-radius: 3px; display: inline-block; color: black;">Medium</span>
-                                <span style="background-color: rgba(6, 182, 212, 1.0); padding: 2px 6px; border-radius: 3px; color: black; display: inline-block;">High</span>
+                            <span class="frequency-gradient dark-mode">
+                                <span class="viz-color-indicator frequency-low">Low</span>
+                                <span class="viz-color-indicator frequency-medium">Medium</span>
+                                <span class="viz-color-indicator frequency-high">High</span>
                             </span>
                         </div>
                     </div>
@@ -827,35 +827,35 @@ function createGuideView() {
                         <article class="achievement-expanded-item" role="listitem" tabindex="0" aria-label="Win Streak achievement">
                             <span class="achievement-icon-big" aria-hidden="true">🏆</span>
                             <div class="achievement-info">
-                                <strong>Win Streak</strong>
+                                <strong class="legend-title">Win Streak</strong>
                                 <small>Consecutive 1st place finishes</small>
                             </div>
                         </article>
                         <article class="achievement-expanded-item" role="listitem" tabindex="0" aria-label="Hot Streak achievement">
                             <span class="achievement-icon-big" aria-hidden="true">🔥</span>
                             <div class="achievement-info">
-                                <strong>Hot Streak</strong>
+                                <strong class="legend-title">Hot Streak</strong>
                                 <small>Consecutive podium finishes</small>
                             </div>
                         </article>
                         <article class="achievement-expanded-item" role="listitem" tabindex="0" aria-label="Clutch Master achievement">
                             <span class="achievement-icon-big" aria-hidden="true">💪</span>
                             <div class="achievement-info">
-                                <strong>Clutch Master</strong>
+                                <strong class="legend-title">Clutch Master</strong>
                                 <small>Consecutive races finishing better than average</small>
                             </div>
                         </article>
                         <article class="achievement-expanded-item" role="listitem" tabindex="0" aria-label="Momentum Builder achievement">
                             <span class="achievement-icon-big" aria-hidden="true">🚀</span>
                             <div class="achievement-info">
-                                <strong>Momentum Builder</strong>
+                                <strong class="legend-title">Momentum Builder</strong>
                                 <small>Consecutive races with improving positions</small>
                             </div>
                         </article>
                         <article class="achievement-expanded-item" role="listitem" tabindex="0" aria-label="Perfect Day achievement">
                             <span class="achievement-icon-big" aria-hidden="true">📅</span>
                             <div class="achievement-info">
-                                <strong>Perfect Day</strong>
+                                <strong class="legend-title">Perfect Day</strong>
                                 <small>All races in a day were top-12 finishes</small>
                             </div>
                         </article>
@@ -1485,6 +1485,16 @@ document.addEventListener('DOMContentLoaded', function() {
     // Update player icons after all initialization is complete
     if (window.updateAllPlayerIcons) {
         window.updateAllPlayerIcons();
+    }
+
+    // Subscribe to player symbol changes to update H2H tables
+    if (window.PlayerSymbolManager) {
+        window.PlayerSymbolManager.subscribe(() => {
+            // Only refresh if we're currently viewing the H2H tab
+            if (currentView === 'h2h') {
+                createH2HView();
+            }
+        });
     }
 
     // The date button already has onclick="toggleDateWidget()" in HTML,

@@ -49,7 +49,7 @@
 }
 
 .viz-section-title {
-    font-size: 0.875rem;
+    font-size: 0.9375rem;
     font-weight: 700;
     color: var(--viz-text-primary);
     text-transform: uppercase;
@@ -248,7 +248,7 @@
 }
 
 .heat-percentage {
-    font-size: 14px;
+    font-size: 15px;
     font-weight: 800;
     color: var(--viz-text-primary);
     text-align: center;
@@ -481,7 +481,7 @@ body.dark-theme .heat-label {
     }
     
     .viz-guide-card h4 {
-        font-size: 0.9rem;
+        font-size: 0.975rem;
         margin-bottom: 8px;
     }
     
@@ -541,7 +541,7 @@ body.dark-theme .heat-label {
     }
     
     .achievement-icon {
-        font-size: 14px;
+        font-size: 15px;
     }
     
     .achievement-number {
@@ -729,7 +729,7 @@ body.dark-theme .bars-legend.visualization-guide-main .viz-guide-card {
 }
 
 .viz-color-legend h4 {
-    font-size: 0.9rem;
+    font-size: 0.975rem;
     color: #2d3748;
     margin-bottom: 12px;
 }

@@ -6,6 +6,7 @@
     background-color: #1f2235;
     border-radius: 12px;
     margin-bottom: 24px;
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
 }
 
 #trends h2 {
@@ -14,6 +15,7 @@
     margin-bottom: 1.5rem;
     text-align: center;
     color: #ffffff;
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
 }
 
 #trends-chart-container {
@@ -23,11 +25,13 @@
     background: rgba(255, 255, 255, 0.05);
     border-radius: 8px;
     padding: 1.5rem 1.5rem 1.5rem 2rem;
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
 }
 
 #trendsChart {
     width: 100% !important;
     height: 100% !important;
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
 }
 
 
@@ -154,6 +158,7 @@ body.dark-theme #trends-chart-container {
     border: 1px solid var(--activity-border);
     transition: all 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275);
     overflow: visible;
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
 }
 
 /* Add subtle gradient overlay */
@@ -189,6 +194,7 @@ body.dark-theme #trends-chart-container {
     align-items: center;
     justify-content: center;
     gap: 12px;
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
 }
 
 /* Add decorative line under title */
@@ -260,7 +266,8 @@ body.dark-theme #trends-chart-container {
     width: 100%;
     border-collapse: separate;
     border-spacing: 0 8px;
-    font-size: 0.875rem;
+    font-size: 0.9375rem;
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
 }
 
 .weekly-breakdown-table thead tr {
@@ -274,7 +281,7 @@ body.dark-theme #trends-chart-container {
     font-weight: 600 !important;
     text-transform: none;
     letter-spacing: 0.02em;
-    font-size: 0.875rem !important;
+    font-size: 0.9375rem !important;
     border: none !important;
     background: transparent !important;
     border-bottom: 2px solid var(--activity-border) !important;
@@ -344,7 +351,7 @@ body.dark-theme #trends-chart-container {
 .weekly-breakdown-table td:nth-child(n+3) {
     color: var(--activity-text-secondary);
     font-family: 'SF Mono', 'Monaco', 'Inconsolata', monospace;
-    font-size: 0.875rem;
+    font-size: 0.9375rem;
 }
 
 /* Heatmap styles */
@@ -356,6 +363,7 @@ body.dark-theme #trends-chart-container {
     box-shadow: var(--activity-card-shadow);
     border: 1px solid var(--activity-border);
     transition: all 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
 }
 
 .heatmap-container:hover {
@@ -374,6 +382,7 @@ body.dark-theme #trends-chart-container {
     border-radius: 16px;
     backdrop-filter: blur(10px);
     border: 1px solid rgba(255, 255, 255, 0.6);
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
 }
 
 .heatmap-day {
@@ -388,6 +397,7 @@ body.dark-theme #trends-chart-container {
     transition: all 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275);
     position: relative;
     overflow: hidden;
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
 }
 
 .heatmap-day::before {
@@ -656,6 +666,7 @@ body.dark-theme .weekly-breakdown-table tbody tr:hover {
     overflow: visible;
     display: flex;
     flex-direction: column;
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
 }
 
 /* Card gradient overlay */
@@ -698,11 +709,12 @@ body.dark-theme .weekly-breakdown-table tbody tr:hover {
     align-items: center;
     justify-content: center;
     gap: 10px;
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
 }
 
 /* Analysis Description */
 .analysis-description {
-    font-size: 0.875rem;
+    font-size: 0.9375rem;
     color: var(--analysis-text-secondary);
     text-align: center;
     margin-bottom: 20px;
@@ -710,6 +722,7 @@ body.dark-theme .weekly-breakdown-table tbody tr:hover {
     line-height: 1.5;
     position: relative;
     z-index: 2;
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
 }
 
 /* Modern List Containers */
@@ -728,6 +741,7 @@ body.dark-theme .weekly-breakdown-table tbody tr:hover {
     max-height: 380px;
     padding-right: 8px;
     margin: 0;
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
 }
 
 /* Base Item Style */
@@ -744,6 +758,7 @@ body.dark-theme .weekly-breakdown-table tbody tr:hover {
     border: 1px solid transparent;
     gap: 12px;
     min-height: fit-content;
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
 }
 
 /* Specific Item Styles */
@@ -890,6 +905,24 @@ body.dark-theme .analysis-card::before {
     background: linear-gradient(180deg, rgba(129, 140, 248, 0.05) 0%, transparent 100%);
 }
 
+/* Dark theme text styling for analysis cards */
+body.dark-theme .analysis-title {
+    color: var(--analysis-text-primary) !important;
+}
+
+body.dark-theme .analysis-description {
+    color: var(--analysis-text-secondary) !important;
+}
+
+/* Ensure all analysis card text is readable in dark theme */
+body.dark-theme .analysis-card {
+    color: var(--analysis-text-primary) !important;
+}
+
+body.dark-theme .analysis-card * {
+    color: inherit;
+}
+
 body.dark-theme .best-day-item {
     background: linear-gradient(135deg, rgba(52, 211, 153, 0.08) 0%, rgba(52, 211, 153, 0.04) 100%);
     border-color: rgba(52, 211, 153, 0.2);
@@ -1006,6 +1039,37 @@ body.dark-theme #pattern-analysis ul {
 body.dark-theme .comeback-item {
     background: linear-gradient(135deg, rgba(129, 140, 248, 0.08) 0%, rgba(129, 140, 248, 0.04) 100%);
     border-color: rgba(129, 140, 248, 0.2);
+}
+
+/* Make dates white and bold in Analysis tables for dark theme */
+body.dark-theme .best-day-item small,
+body.dark-theme .worst-day-item small,
+body.dark-theme .comeback-item small {
+    color: white !important;
+    font-weight: bold !important;
+}
+
+/* Keep score colors but make them bold - best-day-score green, worst-day-score red */
+body.dark-theme .best-day-score {
+    color: var(--analysis-success) !important;
+    font-weight: bold !important;
+}
+
+body.dark-theme .worst-day-score {
+    color: var(--analysis-danger) !important;
+    font-weight: bold !important;
+}
+
+body.dark-theme .comeback-score {
+    color: white !important;
+    font-weight: bold !important;
+}
+
+/* Make dates white and bold in Global Performance Patterns for dark theme */
+body.dark-theme #pattern-analysis li,
+body.dark-theme .pattern-analysis li {
+    color: white !important;
+    font-weight: bold !important;
 }
 
 /* Responsive design for Analysis */

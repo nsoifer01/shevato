@@ -528,39 +528,20 @@ document.addEventListener('DOMContentLoaded', () => {
 function updateDropdownWidth() {
     if (!dropdownElement) return;
     
-    const widgetPanel = document.querySelector('.widget-panel');
     const widgetContainer = dropdownElement.parentElement;
     
-    if (widgetPanel && widgetContainer) {
-        // Get the exact computed width of the widget panel
-        const widgetPanelStyles = window.getComputedStyle(widgetPanel);
-        const widgetPanelWidth = widgetPanel.offsetWidth;
-        
-        // Get the container's position for proper alignment
-        const containerRect = widgetContainer.getBoundingClientRect();
-        const widgetPanelRect = widgetPanel.getBoundingClientRect();
-        
-        // Calculate the exact width accounting for any transforms or scaling
-        dropdownElement.style.width = widgetPanelWidth + 'px';
-        dropdownElement.style.maxWidth = widgetPanelWidth + 'px';
-        dropdownElement.style.minWidth = widgetPanelWidth + 'px';
-        
-        // Ensure left position aligns with widget panel
-        const leftOffset = containerRect.left - widgetPanelRect.left;
-        dropdownElement.style.left = -leftOffset + 'px';
+    if (widgetContainer) {
+        // Use responsive width based on viewport and container
+        const maxWidth = Math.min(window.innerWidth * 0.9, 400);
+        dropdownElement.style.width = maxWidth + 'px';
+        dropdownElement.style.maxWidth = maxWidth + 'px';
+        dropdownElement.style.minWidth = '300px';
     }
 }
 
-// Start observing widget panel size changes
+// Start observing window size changes
 function startResizeObserver() {
-    const widgetPanel = document.querySelector('.widget-panel');
-    if (!widgetPanel) return;
-    
-    resizeObserver = new ResizeObserver(() => {
-        updateDropdownWidth();
-    });
-    
-    resizeObserver.observe(widgetPanel);
+    window.addEventListener('resize', updateDropdownWidth);
 }
 
 // Export functions for global access

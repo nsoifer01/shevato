@@ -18,7 +18,7 @@
     border: none;
     padding: 0.5rem 1rem;
     border-radius: 2rem;
-    font-size: 0.875rem;
+    font-size: 0.9375rem;
     font-weight: 600;
     cursor: pointer;
     transition: all 0.3s ease;
@@ -145,7 +145,7 @@
 
 .help-text p {
     color: #4a5568;
-    font-size: 0.9rem;
+    font-size: 0.975rem;
     line-height: 1.5;
     margin: 0;
 }
@@ -480,14 +480,25 @@ body.dark-theme .help-footer p {
     }
 }
 
+.custom-date-range span {
+    color: white !important;
+    font-size: 0.975rem;
+    font-weight: 500;
+}
+
 .custom-date-range button {
     padding: 6px 12px;
     background: #667eea;
-    color: white;
+    color: white !important;
     border: none;
     border-radius: 6px;
     cursor: pointer;
     font-size: 0.9em;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    text-align: center;
+    line-height: 1;
 }
 
 /* Player count selector styling */

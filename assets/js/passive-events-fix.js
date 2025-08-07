@@ -30,31 +30,19 @@
     return originalAddEventListener.call(this, type, listener, options);
   };
 
-  // jQuery specific fix for touch events
+  // jQuery-specific fix for passive touch events
   if (typeof jQuery !== 'undefined') {
-    // Store original jQuery.event.add
-    var originalEventAdd = jQuery.event.add;
-    
-    // Override jQuery event handling to support passive events
-    jQuery.event.add = function(elem, types, handler, data, selector) {
-      var handleObj = handler;
+    jQuery(document).ready(function($) {
+      // Only add passive listeners for scroll-related events
+      // Don't override jQuery methods as they might break functionality
       var passiveEvents = ['touchstart', 'touchmove', 'wheel', 'mousewheel'];
       
-      // Check if this is a touch event that should be passive
-      if (types && passiveEvents.indexOf(types) !== -1) {
-        // For jQuery 3.x, we need to handle this differently
-        if (jQuery.event.special[types]) {
-          var originalSetup = jQuery.event.special[types].setup;
-          jQuery.event.special[types].setup = function() {
-            this.addEventListener(types, function() {}, { passive: true });
-            if (originalSetup) {
-              return originalSetup.apply(this, arguments);
-            }
-          };
-        }
-      }
-      
-      return originalEventAdd.apply(this, arguments);
-    };
+      passiveEvents.forEach(function(eventType) {
+        // Add a passive dummy listener to satisfy browser requirements
+        document.addEventListener(eventType, function() {
+          // Empty function - just to register passive capability
+        }, { passive: true });
+      });
+    });
   }
 })();
