@@ -55,6 +55,10 @@
       if (includeFile === 'header.html' && $('#menu').length > 0) {
         initializeMenu();
       }
+      // Initialize auth UI after header is loaded
+      if (includeFile === 'header.html' && typeof window.authUI !== 'undefined' && window.authUI.onHeaderLoaded) {
+        window.authUI.onHeaderLoaded();
+      }
     });
   });
 
