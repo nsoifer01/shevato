@@ -1486,7 +1486,7 @@ body.dark-theme p.signout-modal__message {
   }
   
   .signout-modal__actions {
-    flex-direction: column-reverse;
+    flex-direction: column;
   }
   
   .signout-cancel-btn,
