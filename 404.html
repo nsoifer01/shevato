@@ -1,18 +1,31 @@
 <!DOCTYPE HTML>
-<html>
+<html lang="en">
 <head>
-    <!-- Google Analytics -->
-    <script async src="https://www.googletagmanager.com/gtag/js?id=UA-140119780-1"></script>
-    <script src="/assets/js/analytics.js"></script>
-
-    <title>404 – Page Not Found | Shevato</title>
-    <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=no" />
-
-    <link rel="stylesheet" href="/assets/css/main.css" />
-    <link rel="stylesheet" href="/assets/css/home-content-alignment.css" />
-    <link rel="stylesheet" href="/assets/css/brand-colors.css" />
-    <link rel="icon" type="image/png" href="/images/white_icon_transparent.png">
+  <!-- Performance: Preconnect to external domains -->
+  <link rel="preconnect" href="https://www.googletagmanager.com">
+  <link rel="preconnect" href="https://www.gstatic.com">
+  
+  <!-- Google Analytics -->
+  <script async src="https://www.googletagmanager.com/gtag/js?id=UA-140119780-1"></script>
+  <script src="/assets/js/analytics.js"></script>
+  
+  <!-- Primary Meta Tags -->
+  <title>404 – Page Not Found | Shevato</title>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=no" />
+  <meta name="description" content="Page not found. Redirecting to Shevato home page - expert software engineering services." />
+  <meta name="author" content="Shevato LLC" />
+  <meta name="theme-color" content="#007bff" />
+  
+  <!-- Favicon and Icons -->
+  <link rel="icon" type="image/png" href="/images/white_icon_transparent.png">
+  <link rel="apple-touch-icon" href="/images/white_icon_transparent.png">
+  
+  <!-- Stylesheets -->
+  <link rel="stylesheet" href="/assets/css/main.css" />
+  <link rel="stylesheet" href="/assets/css/home-content-alignment.css" />
+  <link rel="stylesheet" href="/assets/css/brand-colors.css" />
+  <link rel="stylesheet" href="/assets/css/global-enhanced.css" />
 
     <!-- make body full-height flex so footer stays at bottom -->
     <style>
@@ -27,10 +40,8 @@
     </style>
 </head>
 <body class="is-preload">
-<!-- header include -->
-<div data-include="header"></div>
-
-<section class="wrapper wrapper-inherit-padding">
+  <div data-include="header"></div>
+  <main id="main-content" class="wrapper wrapper-inherit-padding">
     <div class="inner">
         <header class="special">
             <h2>
@@ -43,10 +54,8 @@
             </p>
         </header>
     </div>
-</section>
-
-<!-- footer include -->
-<div data-include="footer"></div>
+  </main>
+  <div data-include="footer"></div>
 
 <!-- countdown + redirect script -->
 <script>
@@ -65,12 +74,21 @@
     })();
 </script>
 
-<!-- Scripts (same as your other pages) -->
-<script src="/assets/js/passive-events-fix.js"></script>
-<script src="/assets/js/jquery.min.js"></script>
-<script src="/assets/js/browser.min.js"></script>
-<script src="/assets/js/breakpoints.min.js"></script>
-<script src="/assets/js/util.js"></script>
-<script src="/assets/js/main.js"></script>
+  <!-- Essential Scripts -->
+  <script src="/assets/js/passive-events-fix.js"></script>
+  <script src="/assets/js/jquery.min.js"></script>
+  <script src="/assets/js/browser.min.js"></script>
+  <script src="/assets/js/breakpoints.min.js"></script>
+  <script src="/assets/js/util.js"></script>
+  
+  <!-- Firebase SDK (required for auth functionality) -->
+  <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-auth-compat.js"></script>
+  
+  <!-- Firebase Configuration (load before global-enhanced.js) -->
+  <script src="/assets/js/firebase-config-local.js"></script>
+  
+  <!-- Global Enhanced JavaScript (includes Firebase auth, main.js functionality, and more) -->
+  <script src="/assets/js/global-enhanced.js"></script>
 </body>
 </html>
