@@ -7,6 +7,14 @@
 # Ignore temp files
 .*.sw*
 
+# Environment variables (Firebase config)
+.env
+.env.local
+.env.production
+
+# Local Firebase config (contains secrets)
+assets/js/firebase-config-local.js
+
 # Claude-related files and directories
 .claude/
 claude-*.json
