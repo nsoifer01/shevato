@@ -53,7 +53,42 @@ class FirebaseConfig {
       return null;
     }
     
+    // Validate config format
+    if (!this.validateConfig(this.config)) {
+      console.error('Invalid Firebase configuration format');
+      return null;
+    }
+    
     return this.config;
+  }
+  
+  /**
+   * Validate Firebase configuration format
+   * @private
+   * @param {Object} config - Firebase configuration object
+   * @returns {boolean} True if valid
+   */
+  validateConfig(config) {
+    // Basic validation for security
+    const apiKeyPattern = /^AIza[0-9A-Za-z_-]{35}$/;
+    const projectIdPattern = /^[a-z0-9-]{6,30}$/;
+    
+    if (!apiKeyPattern.test(config.apiKey)) {
+      console.error('Invalid Firebase API key format');
+      return false;
+    }
+    
+    if (!projectIdPattern.test(config.projectId)) {
+      console.error('Invalid Firebase project ID format');
+      return false;
+    }
+    
+    if (!config.authDomain.includes(config.projectId)) {
+      console.error('Auth domain does not match project ID');
+      return false;
+    }
+    
+    return true;
   }
   
   isConfigured() {

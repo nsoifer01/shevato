@@ -1,6 +1,10 @@
 <!DOCTYPE HTML>
-<html>
+<html lang="he" dir="rtl">
 <head>
+  <!-- Performance: Preconnect to external domains -->
+  <link rel="preconnect" href="https://www.googletagmanager.com">
+  <link rel="preconnect" href="https://www.gstatic.com">
+  
   <!-- Google Analytics -->
   <script async src="https://www.googletagmanager.com/gtag/js?id=UA-140119780-1"></script>
   <script src="/assets/js/analytics.js"></script>
@@ -12,8 +16,9 @@
   <meta name="description" content="מועדון אלף - שירות רופא עד הבית 24/7 בישראל. טיפול רפואי מקצועי, בדיקות, חיסונים וטיפולי חירום בנוחות ביתכם. צוות רופאים מומחים זמין מסביב לשעון כולל שבתות וחגים. טלפון: 1-700-7011-03" />
   <!-- SEO Enhancement: Comprehensive Hebrew keywords for medical services -->
   <meta name="keywords" content="רופא עד הבית, שירות רפואי 24/7, רופא לילה, רופא שבת, ביקור רופא בבית, טיפול רפואי בבית, מועדון אלף, רופא חירום, בדיקות דם בבית, חיסונים בבית, רופא ילדים עד הבית, רופא קשישים, שירותי רפואה פרטיים, 1700701103" />
-  <link rel="stylesheet" href="assets/css/main.css" />
+  <!-- Favicon and Icons -->
   <link rel="icon" type="image/png" href="images/moadon-alef-header.png">
+  <link rel="apple-touch-icon" href="images/moadon-alef-header.png">
   
   <!-- SEO Enhancement: Canonical URL to prevent duplicate content issues -->
   <link rel="canonical" href="https://shevato.com/moadon-alef.html" />
@@ -44,8 +49,11 @@
   <meta name="geo.region" content="IL" />
   <meta name="geo.placename" content="ישראל" />
   <meta name="language" content="Hebrew" />
+  <!-- Stylesheets -->
+  <link rel="stylesheet" href="assets/css/main.css" />
   <link rel="stylesheet" href="/assets/css/moadon-alef-theme.css" />
   <link rel="stylesheet" href="/assets/css/brand-colors.css" />
+  <link rel="stylesheet" href="assets/css/global-enhanced.css" />
   
   <!-- SEO Enhancement: JSON-LD structured data for MedicalOrganization -->
   <script type="application/ld+json">
@@ -141,8 +149,8 @@
   </script>
 </head>
 <body class="is-preload">
-  <!-- Main -->
-  <section class="wrapper wrapper-inherit-padding">
+  <div data-include="header"></div>
+  <main id="main-content" class="wrapper wrapper-inherit-padding">
     <div class="inner">
       <div class="contact-header">
         <!-- SEO Enhancement: Main H1 heading for page topic -->
@@ -277,18 +285,25 @@
         </section>
       </div>
     </div>
-  </section>
-  
-  <!-- Use Moadon Alef specific footer -->
+  </main>
   <div data-include="footer-moadon-alef"></div>
   
-  <!-- Scripts -->
+  <!-- Essential Scripts -->
   <script src="assets/js/passive-events-fix.js"></script>
   <script src="assets/js/jquery.min.js"></script>
   <script src="assets/js/browser.min.js"></script>
   <script src="assets/js/breakpoints.min.js"></script>
   <script src="assets/js/util.js"></script>
-  <script src="assets/js/main.js"></script>
+  
+  <!-- Firebase SDK (required for auth functionality) -->
+  <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-auth-compat.js"></script>
+  
+  <!-- Firebase Configuration (load before global-enhanced.js) -->
+  <script src="assets/js/firebase-config-local.js"></script>
+  
+  <!-- Global Enhanced JavaScript (includes Firebase auth, main.js functionality, and more) -->
+  <script src="assets/js/global-enhanced.js"></script>
   <script src="/assets/js/language-switcher.js"></script>
 </body>
 </html>

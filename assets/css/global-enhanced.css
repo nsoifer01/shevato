@@ -1,0 +1,782 @@
+/**
+ * Global Enhanced Styles
+ * Consolidated CSS following .claude_rules guidelines
+ * Includes: Base styles, BEM components, Firebase Auth, and accessibility features
+ */
+
+/* ==========================================================================
+   CSS Custom Properties (Design Tokens)
+   ========================================================================== */
+
+:root {
+  /* Colors */
+  --color-primary: #007bff;
+  --color-primary-dark: #0056b3;
+  --color-primary-light: rgba(0, 123, 255, 0.1);
+  --color-secondary: #6c757d;
+  --color-secondary-dark: #545b62;
+  --color-success: #28a745;
+  --color-success-light: #d4edda;
+  --color-success-border: #c3e6cb;
+  --color-error: #dc3545;
+  --color-error-light: #f8d7da;
+  --color-error-border: #f5c6cb;
+  --color-warning: #ffc107;
+  --color-warning-light: #fff3cd;
+  --color-info: #17a2b8;
+  --color-info-light: #d1ecf1;
+  --color-text: #333333;
+  --color-text-light: #666666;
+  --color-text-muted: #999999;
+  --color-background: #ffffff;
+  --color-background-light: #f8f9fa;
+  --color-border: #dddddd;
+  --color-border-light: #eeeeee;
+  
+  /* Spacing */
+  --spacing-xs: 0.25rem;
+  --spacing-sm: 0.5rem;
+  --spacing-md: 1rem;
+  --spacing-lg: 1.5rem;
+  --spacing-xl: 2rem;
+  --spacing-xxl: 3rem;
+  
+  /* Typography */
+  --font-size-xs: 0.75rem;
+  --font-size-sm: 0.875rem;
+  --font-size-base: 1rem;
+  --font-size-lg: 1.125rem;
+  --font-size-xl: 1.25rem;
+  --font-size-xxl: 1.5rem;
+  --line-height-tight: 1.2;
+  --line-height-base: 1.5;
+  --line-height-relaxed: 1.65;
+  
+  /* Borders */
+  --border-radius-sm: 0.25rem;
+  --border-radius-base: 0.375rem;
+  --border-radius-lg: 0.5rem;
+  --border-width: 1px;
+  
+  /* Shadows */
+  --shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.1);
+  --shadow-md: 0 4px 6px rgba(0, 0, 0, 0.1);
+  --shadow-lg: 0 10px 25px rgba(0, 0, 0, 0.15);
+  --shadow-xl: 0 20px 40px rgba(0, 0, 0, 0.2);
+  
+  /* Transitions */
+  --transition-fast: 0.15s ease;
+  --transition-base: 0.2s ease;
+  --transition-slow: 0.3s ease;
+  
+  /* Z-index scale */
+  --z-dropdown: 1000;
+  --z-sticky: 1020;
+  --z-fixed: 1030;
+  --z-modal-backdrop: 1040;
+  --z-modal: 1050;
+  --z-tooltip: 1070;
+}
+
+/* ==========================================================================
+   Screen Reader Only Utility
+   ========================================================================== */
+
+.sr-only {
+  position: absolute !important;
+  width: 1px !important;
+  height: 1px !important;
+  padding: 0 !important;
+  margin: -1px !important;
+  overflow: hidden !important;
+  clip: rect(0, 0, 0, 0) !important;
+  white-space: nowrap !important;
+  border: 0 !important;
+  color: #000000 !important;
+}
+
+.sr-only-focusable:focus {
+  position: static !important;
+  width: auto !important;
+  height: auto !important;
+  padding: inherit !important;
+  margin: inherit !important;
+  overflow: visible !important;
+  clip: auto !important;
+  white-space: inherit !important;
+  color: #000000 !important;
+}
+
+/* ==========================================================================
+   Skip Navigation Link
+   ========================================================================== */
+
+.skip-link {
+  position: absolute;
+  top: -2.5rem;
+  left: var(--spacing-sm);
+  background: var(--color-text);
+  color: var(--color-background);
+  padding: var(--spacing-sm) var(--spacing-md);
+  text-decoration: none;
+  border-radius: 0 0 var(--border-radius-base) var(--border-radius-base);
+  font-weight: 500;
+  z-index: var(--z-modal);
+  transition: top var(--transition-base);
+  font-size: var(--font-size-sm);
+}
+
+.skip-link:focus {
+  top: 0;
+  outline: 2px solid var(--color-primary);
+  outline-offset: 2px;
+}
+
+/* ==========================================================================
+   Header Component (BEM)
+   ========================================================================== */
+
+.header {
+  /* Inherits from existing main.css styles */
+}
+
+.header__logo {
+  /* Inherits from existing main.css styles */
+}
+
+.header__nav {
+  display: flex;
+  align-items: center;
+}
+
+
+/* ==========================================================================
+   Auth Components (BEM)
+   ========================================================================== */
+
+/* Auth Container - positioned after logo */
+.auth-container {
+  display: inline-block;
+  padding-left: 0.75rem;
+}
+
+/* Auth User Info - styled to match header */
+.auth__user {
+  display: inline-block;
+}
+
+.auth__user-name {
+  color: inherit;
+  margin-right: 0.5rem;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 8rem;
+  display: inline;
+}
+
+/* Auth Sign-in Prompt - centered container */
+.auth__signin-prompt {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  text-align: center;
+}
+
+/* Auth Buttons - styled to match header nav links */
+.auth__button {
+  background: transparent;
+  color: inherit;
+  border: none;
+  outline: none;
+  box-shadow: none;
+  padding: 0 0.75rem;
+  font-size: inherit;
+  font-family: inherit;
+  cursor: pointer;
+  text-decoration: none;
+  display: inline-block;
+  white-space: nowrap;
+  -webkit-tap-highlight-color: rgba(0, 0, 0, 0);
+  
+  /* Transitions */
+  transition: color 0.2s ease;
+}
+
+.auth__button:hover {
+  color: #ffffff;
+}
+
+.auth__button:focus {
+  color: #ffffff;
+  outline: none;
+  box-shadow: none;
+}
+
+.auth__button:active {
+  color: #ffffff;
+}
+
+.auth__button--signout {
+  /* Uses the same styling as regular auth buttons */
+}
+
+/* Auth container positioning - ensure color inheritance */
+#header .auth-container {
+  color: inherit;
+}
+
+#header .auth-container .auth__button {
+  color: #ffffff !important;
+  background: transparent !important;
+  border: none !important;
+  box-shadow: none !important;
+  outline: none !important;
+}
+
+#header .auth-container .auth__user-name {
+  color: inherit !important;
+}
+
+/* ==========================================================================
+   Auth Modal Component (BEM)
+   ========================================================================== */
+
+.auth-modal {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.75);
+  backdrop-filter: blur(4px);
+  z-index: 10002;
+  display: none;
+  align-items: center;
+  justify-content: center;
+  padding: 1rem;
+  opacity: 0;
+  transition: opacity 0.3s ease;
+}
+
+.auth-modal--visible {
+  display: flex;
+  opacity: 1;
+}
+
+.auth-modal__content {
+  background: #ffffff;
+  border-radius: 1rem;
+  width: 100%;
+  max-width: 28rem;
+  max-height: 90vh;
+  overflow-y: auto;
+  box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.25);
+  position: relative;
+  transform: translateY(20px);
+  transition: transform 0.3s ease;
+}
+
+.auth-modal--visible .auth-modal__content {
+  transform: translateY(0);
+}
+
+.auth-modal__header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 2rem 2rem 0 2rem;
+  border-bottom: none;
+}
+
+.auth-modal__title {
+  margin: 0;
+  font-size: 1.125rem;
+  color: #1f2937;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  line-height: 1.2;
+}
+
+.auth-modal__close {
+  background: #f3f4f6;
+  border: none;
+  font-size: 1.125rem;
+  cursor: pointer;
+  color: #6b7280;
+  padding: 0;
+  width: 2rem;
+  height: 2rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 0.5rem;
+  transition: all 0.2s ease;
+}
+
+.auth-modal__close:hover,
+.auth-modal__close:focus {
+  background: #e5e7eb;
+  color: #374151;
+  outline: none;
+}
+
+/* Sync Message */
+.auth-sync {
+  padding: 1rem 2rem;
+  background: #f8fafc;
+  border-left: 4px solid #667eea;
+  margin: 0 2rem 1.5rem 2rem;
+  border-radius: 0 0.5rem 0.5rem 0;
+}
+
+.auth-sync__text {
+  margin: 0;
+  font-size: 0.875rem;
+  color: #475569;
+  line-height: 1.5;
+}
+
+/* Auth Tabs */
+.auth-tabs {
+  display: flex;
+  border-bottom: 1px solid #e5e7eb;
+  background: #f9fafb;
+  margin: 0 2rem;
+  border-radius: 0.5rem 0.5rem 0 0;
+}
+
+.auth-tab {
+  flex: 1;
+  background: none;
+  border: none;
+  padding: 1rem;
+  cursor: pointer;
+  font-size: 0.875rem;
+  font-weight: 500;
+  color: #6b7280;
+  transition: all 0.2s ease;
+  border-bottom: 2px solid transparent;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  line-height: 1;
+}
+
+.auth-tab:hover {
+  background: #f3f4f6;
+  color: #374151;
+}
+
+.auth-tab:focus {
+  outline: none;
+  background: #f3f4f6;
+}
+
+.auth-tab--active {
+  color: #667eea;
+  border-bottom-color: #667eea;
+  background: #ffffff;
+}
+
+/* Auth Forms */
+.auth-form {
+  display: none;
+  padding: 2rem;
+  background: #ffffff;
+}
+
+.auth-form--active {
+  display: block;
+}
+
+.auth-form__field {
+  margin-bottom: 1.5rem;
+  position: relative;
+}
+
+.auth-form__input {
+  width: 100%;
+  padding: 0.75rem 1rem;
+  border: 1px solid #d1d5db;
+  border-radius: 0.5rem;
+  font-size: 1rem;
+  font-family: inherit;
+  box-sizing: border-box;
+  background: #ffffff;
+  color: #000000;
+  transition: all 0.2s ease;
+}
+
+.auth-form__input::placeholder {
+  color: #000000;
+  opacity: 0.7;
+}
+
+.auth-form__input:focus {
+  outline: none;
+  border-color: #667eea;
+  box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
+}
+
+.auth-form__input--error {
+  border-color: #ef4444;
+  background-color: #fef2f2;
+}
+
+.auth-form__input--error:focus {
+  box-shadow: 0 0 0 3px rgba(239, 68, 68, 0.1);
+}
+
+.auth-form__error {
+  display: none;
+  color: #ef4444;
+  font-size: 0.875rem;
+  margin-top: 0.5rem;
+  padding-left: 0;
+}
+
+.auth-form__help {
+  color: #000000;
+  font-size: 0.875rem;
+  margin-top: 0.5rem;
+  padding-left: 0;
+}
+
+.auth-form__button {
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  color: #ffffff !important;
+  border: none;
+  border-bottom: none !important;
+  padding: 0.75rem 1.5rem;
+  border-radius: 0.5rem;
+  font-size: 1rem;
+  font-weight: 500;
+  font-family: inherit;
+  cursor: pointer;
+  text-decoration: none !important;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  white-space: nowrap;
+  transition: all 0.2s ease;
+  outline: none;
+  width: 100%;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+  text-align: center;
+  line-height: 1;
+}
+
+.auth-form__button:hover,
+.auth-form__button:focus {
+  background: linear-gradient(135deg, #5a67d8 0%, #6b46c1 100%);
+  color: #ffffff !important;
+  text-decoration: none !important;
+  border-bottom: none !important;
+  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.15);
+  transform: translateY(-1px);
+}
+
+.auth-form__button:focus {
+  box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.4);
+  color: #ffffff !important;
+  text-decoration: none !important;
+}
+
+.auth-form__button:active {
+  color: #ffffff !important;
+  text-decoration: none !important;
+  transform: translateY(0);
+}
+
+
+
+/* Auth Messages */
+.auth-message {
+  margin-top: var(--spacing-md);
+  padding: var(--spacing-sm) var(--spacing-md);
+  border-radius: var(--border-radius-base);
+  font-size: var(--font-size-sm);
+  display: none;
+}
+
+.auth-message--visible {
+  display: block;
+}
+
+.auth-message--success {
+  background: var(--color-success-light);
+  color: #155724;
+  border: var(--border-width) solid var(--color-success-border);
+}
+
+.auth-message--error {
+  background: var(--color-error-light);
+  color: #721c24;
+  border: var(--border-width) solid var(--color-error-border);
+}
+
+.auth-message--info {
+  background: var(--color-info-light);
+  color: #0c5460;
+  border: var(--border-width) solid #bee5eb;
+}
+
+.auth-message--warning {
+  background: var(--color-warning-light);
+  color: #856404;
+  border: var(--border-width) solid #ffeaa7;
+}
+
+/* ==========================================================================
+   Responsive Design (Mobile First)
+   ========================================================================== */
+
+/* Small devices (576px and up) */
+@media screen and (min-width: 36rem) {
+  .auth__user-name {
+    max-width: 8rem;
+  }
+}
+
+/* Medium devices (768px and up) */
+@media screen and (min-width: 48rem) {
+  .auth__user-name {
+    max-width: 10rem;
+  }
+}
+
+/* Large devices (992px and up) */
+@media screen and (min-width: 62rem) {
+  .auth__user-name {
+    max-width: 12rem;
+  }
+}
+
+/* Mobile specific adjustments */
+@media screen and (max-width: 48rem) {
+  .auth-modal__content {
+    margin: 0;
+    border-radius: 0;
+    height: 100vh;
+    max-height: none;
+  }
+  
+  .auth-modal {
+    padding: 0;
+  }
+  
+  .auth__button {
+    padding: 0 0.5rem;
+  }
+}
+
+@media screen and (max-width: 30rem) {
+  .auth__user-name {
+    display: none;
+  }
+  
+  .auth__button {
+    padding: 0 0.5rem;
+  }
+}
+
+/* ==========================================================================
+   Body State Classes
+   ========================================================================== */
+
+.auth-modal-open,
+.signout-modal-open {
+  overflow: hidden;
+}
+
+/* ==========================================================================
+   Sign Out Confirmation Modal
+   ========================================================================== */
+
+.signout-modal {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.75);
+  backdrop-filter: blur(4px);
+  z-index: 10003;
+  display: none;
+  align-items: center;
+  justify-content: center;
+  padding: 1rem;
+  opacity: 0;
+  transition: opacity 0.3s ease;
+}
+
+.signout-modal--visible {
+  display: flex;
+  opacity: 1;
+}
+
+.signout-modal__content {
+  background: #ffffff;
+  border-radius: 1rem;
+  width: 100%;
+  max-width: 24rem;
+  box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.25);
+  position: relative;
+  transform: translateY(20px);
+  transition: transform 0.3s ease;
+}
+
+.signout-modal--visible .signout-modal__content {
+  transform: translateY(0);
+}
+
+.signout-modal__header {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  padding: 2rem 2rem 0 2rem;
+}
+
+.signout-modal__icon {
+  width: 3rem;
+  height: 3rem;
+  border-radius: 50%;
+  background: linear-gradient(135deg, #fee2e2 0%, #fecaca 100%);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #dc2626;
+  flex-shrink: 0;
+}
+
+.signout-modal__title {
+  margin: 0;
+  font-size: 1.25rem;
+  color: #1f2937;
+  font-weight: 700;
+  letter-spacing: -0.025em;
+}
+
+.signout-modal__body {
+  padding: 1rem 2rem;
+}
+
+.signout-modal__message {
+  margin: 0;
+  color: #000000;
+  line-height: 1.5;
+  font-size: 0.875rem;
+}
+
+.signout-modal__actions {
+  display: flex;
+  gap: 0.75rem;
+  padding: 0 2rem 2rem 2rem;
+  justify-content: center;
+}
+
+.signout-cancel-btn,
+.signout-confirm-btn {
+  padding: 0.5rem 1rem;
+  border-radius: 0.5rem;
+  font-size: 0.875rem;
+  font-weight: 500;
+  font-family: inherit;
+  cursor: pointer;
+  text-decoration: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.2s ease;
+  outline: none;
+  border: none;
+  min-width: 5rem;
+}
+
+.signout-cancel-btn {
+  background: #f3f4f6;
+  color: #374151;
+}
+
+.signout-cancel-btn:hover,
+.signout-cancel-btn:focus {
+  background: #e5e7eb;
+}
+
+.signout-confirm-btn {
+  background: linear-gradient(135deg, #ef4444 0%, #dc2626 100%);
+  color: #ffffff !important;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+}
+
+.signout-confirm-btn:hover,
+.signout-confirm-btn:focus {
+  background: linear-gradient(135deg, #dc2626 0%, #b91c1c 100%);
+  color: #ffffff !important;
+  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.15);
+  transform: translateY(-1px);
+}
+
+.signout-confirm-btn:active {
+  color: #ffffff !important;
+  transform: translateY(0);
+}
+
+/* Mobile adjustments */
+@media screen and (max-width: 30rem) {
+  .signout-modal__content {
+    margin: 0;
+    border-radius: 0.5rem;
+  }
+  
+  .signout-modal__actions {
+    flex-direction: column-reverse;
+  }
+  
+  .signout-cancel-btn,
+  .signout-confirm-btn {
+    width: 100%;
+  }
+}
+
+/* ==========================================================================
+   Accessibility Preferences
+   ========================================================================== */
+
+/* High contrast mode support */
+@media (prefers-contrast: high) {
+  .auth__button {
+    border: 2px solid currentColor;
+  }
+  
+  .auth-form__input {
+    border: 2px solid var(--color-text);
+  }
+}
+
+/* Reduced motion support */
+@media (prefers-reduced-motion: reduce) {
+  .auth__button,
+  .auth-form__input,
+  .auth-tab,
+  .auth-modal__close,
+  .skip-link {
+    transition: none;
+  }
+}
+
+/* Dark mode support (if needed) */
+@media (prefers-color-scheme: dark) {
+  :root {
+    --color-background: #1a1a1a;
+    --color-text: #ffffff;
+    --color-text-light: #cccccc;
+    --color-text-muted: #888888;
+    --color-background-light: #2a2a2a;
+    --color-border: #444444;
+    --color-border-light: #333333;
+  }
+}
