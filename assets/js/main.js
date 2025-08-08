@@ -55,22 +55,6 @@
       if (includeFile === 'header.html' && $('#menu').length > 0) {
         initializeMenu();
       }
-      // Initialize auth UI after header is loaded
-      if (includeFile === 'header.html' && typeof window.authUI !== 'undefined' && window.authUI.onHeaderLoaded) {
-        window.authUI.onHeaderLoaded();
-      }
-      
-      // Update menu toggle accessibility attributes
-      if (includeFile === 'header.html') {
-        const menuToggle = $('[data-js="menu-toggle"]');
-        const menu = $('#menu');
-        
-        if (menuToggle.length && menu.length) {
-          // Set initial ARIA attributes
-          menuToggle.attr('aria-expanded', 'false');
-          menu.attr('aria-hidden', 'true');
-        }
-      }
     });
   });
 

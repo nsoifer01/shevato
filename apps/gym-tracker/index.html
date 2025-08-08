@@ -10,7 +10,6 @@
   <meta name="description" content="Track your gym progress, set workout schedules, monitor gains, and achieve your fitness goals with our modern gym tracking app." />
   <meta name="keywords" content="Gym Tracker, Fitness App, Workout Log, Exercise Tracking, Progress Monitoring, Shevato" />
   <link rel="stylesheet" href="../../assets/css/main.css" />
-  <link rel="stylesheet" href="../../assets/css/global-enhanced.css" />
   <link rel="stylesheet" href="css/gym-base.css" />
   <link rel="stylesheet" href="css/gym-theme.css" />
   <link rel="stylesheet" href="css/gym-animations.css" />
@@ -522,26 +521,7 @@
   <script src="../../assets/js/browser.min.js"></script>
   <script src="../../assets/js/breakpoints.min.js"></script>
   <script src="../../assets/js/util.js"></script>
-  
-  <!-- Firebase SDK (required for auth functionality) -->
-  <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
-  <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-auth-compat.js"></script>
-  
-  <!-- Firebase Configuration (load before global-enhanced.js) -->
-  <script>
-    // Try to load local config, but don't fail if it doesn't exist
-    (function() {
-      var script = document.createElement('script');
-      script.src = '../../assets/js/firebase-config-local.js';
-      script.onerror = function() {
-        console.log('Local Firebase config not found, using production config');
-      };
-      document.head.appendChild(script);
-    })();
-  </script>
-  
-  <!-- Global Enhanced JavaScript (includes Firebase auth, main.js functionality, and more) -->
-  <script src="../../assets/js/global-enhanced.js"></script>
+  <script src="../../assets/js/main.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
   
   <!-- Gym Tracker Scripts -->
