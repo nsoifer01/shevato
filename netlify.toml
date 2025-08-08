@@ -1,8 +1,8 @@
 # Netlify Configuration
 
 [build]
-  # Build command - generate Firebase config then build
-  command = "node scripts/generate-firebase-config.js"
+  # Build command - generate Firebase config
+  command = "chmod +x scripts/generate-firebase-config.sh && ./scripts/generate-firebase-config.sh"
   
   # Directory to publish
   publish = "."
