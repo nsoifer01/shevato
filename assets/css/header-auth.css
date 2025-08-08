@@ -1,0 +1,79 @@
+/* Header Authentication Integration Styles */
+
+/* Make nav a flex container to accommodate auth container alongside menu */
+#header > nav {
+  display: flex;
+  align-items: center;
+}
+
+/* Style the auth container to fit within the nav */
+#header .auth-container {
+  display: flex;
+  align-items: center;
+  margin-right: 0.5rem;
+}
+
+/* Override auth button styles to match header theme */
+#header .auth-container .auth-button {
+  background: transparent;
+  color: inherit;
+  border: 1px solid rgba(255, 255, 255, 0.25);
+  font-size: 0.8rem;
+  padding: 0.3rem 0.6rem;
+  border-radius: 3px;
+}
+
+#header .auth-container .auth-button:hover {
+  background: rgba(255, 255, 255, 0.1);
+  color: #ffffff;
+}
+
+#header .auth-container .user-name {
+  color: inherit;
+  font-size: 0.8rem;
+  margin-right: 0.5rem;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 120px;
+}
+
+/* Ensure the menu link still gets proper spacing when auth is present */
+#header .auth-container + a[href="#menu"] {
+  border-left: solid 1px rgba(255, 255, 255, 0.25);
+  margin-left: 0.5rem;
+  padding-left: 1.25rem;
+}
+
+/* Responsive adjustments */
+@media screen and (max-width: 736px) {
+  #header .auth-container {
+    margin-right: 0.25rem;
+  }
+  
+  #header .auth-container .user-name {
+    max-width: 80px;
+    font-size: 0.75rem;
+  }
+  
+  #header .auth-container .auth-button {
+    font-size: 0.75rem;
+    padding: 0.25rem 0.5rem;
+  }
+  
+  #header .auth-container + a[href="#menu"] {
+    margin-left: 0.25rem;
+    padding-left: 1rem;
+  }
+}
+
+@media screen and (max-width: 480px) {
+  #header .auth-container .user-name {
+    display: none; /* Hide username on very small screens */
+  }
+  
+  #header .auth-container .auth-button {
+    font-size: 0.7rem;
+    padding: 0.2rem 0.4rem;
+  }
+}
