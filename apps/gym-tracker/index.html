@@ -528,7 +528,17 @@
   <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-auth-compat.js"></script>
   
   <!-- Firebase Configuration (load before global-enhanced.js) -->
-  <script src="../../assets/js/firebase-config-local.js"></script>
+  <script>
+    // Try to load local config, but don't fail if it doesn't exist
+    (function() {
+      var script = document.createElement('script');
+      script.src = '../../assets/js/firebase-config-local.js';
+      script.onerror = function() {
+        console.log('Local Firebase config not found, using production config');
+      };
+      document.head.appendChild(script);
+    })();
+  </script>
   
   <!-- Global Enhanced JavaScript (includes Firebase auth, main.js functionality, and more) -->
   <script src="../../assets/js/global-enhanced.js"></script>
