@@ -1,35 +1,46 @@
 <!DOCTYPE HTML>
-<html>
+<html lang="en">
 <head>
+  <!-- Performance: Preconnect to external domains -->
+  <link rel="preconnect" href="https://www.googletagmanager.com">
+  <link rel="preconnect" href="https://www.gstatic.com">
+  
   <!-- Google Analytics -->
   <script async src="https://www.googletagmanager.com/gtag/js?id=UA-140119780-1"></script>
   <script src="/assets/js/analytics.js"></script>
+  
+  <!-- Primary Meta Tags -->
   <title>Shevato - Expert Software Engineering Services | REST APIs & Microservices</title>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=no" />
   <meta name="description" content="Shevato provides expert software engineering services specializing in REST APIs, microservices, and web applications. Trusted by industry leaders for reliable, scalable solutions." />
   <meta name="keywords" content="software engineering services, REST API development, microservices architecture, Spring Boot, Java development, web applications, scalable software, Tire Rack, software consulting" />
-  <link rel="stylesheet" href="assets/css/main.css" />
+  <meta name="author" content="Shevato LLC" />
+  <meta name="theme-color" content="#007bff" />
+  
+  <!-- Favicon and Icons -->
   <link rel="icon" type="image/png" href="images/white_icon_transparent.png">
+  <link rel="apple-touch-icon" href="images/white_icon_transparent.png">
   
   <!-- SEO Enhancement: Canonical URL -->
   <link rel="canonical" href="https://shevato.com/home.html" />
   
-  <!-- SEO Enhancement: Open Graph tags -->
+  <!-- Open Graph Meta Tags -->
   <meta property="og:title" content="Shevato - Expert Software Engineering Services" />
   <meta property="og:description" content="Expert software engineering services specializing in REST APIs, microservices, and web applications. Trusted by industry leaders." />
   <meta property="og:type" content="website" />
   <meta property="og:url" content="https://shevato.com/home.html" />
   <meta property="og:image" content="https://shevato.com/images/full-logo.svg" />
   <meta property="og:site_name" content="Shevato" />
+  <meta property="og:locale" content="en_US" />
   
-  <!-- SEO Enhancement: Twitter Card tags -->
+  <!-- Twitter Card Meta Tags -->
   <meta name="twitter:card" content="summary_large_image" />
   <meta name="twitter:title" content="Shevato - Expert Software Engineering Services" />
   <meta name="twitter:description" content="Expert software engineering services specializing in REST APIs and microservices." />
   <meta name="twitter:image" content="https://shevato.com/images/full-logo.svg" />
   
-  <!-- SEO Enhancement: JSON-LD structured data -->
+  <!-- Structured Data -->
   <script type="application/ld+json">
   {
     "@context": "https://schema.org",
@@ -86,12 +97,16 @@
     }
   }
   </script>
-  <link rel="stylesheet" href="/assets/css/home-content-alignment.css" />
-  <link rel="stylesheet" href="/assets/css/brand-colors.css" />
+  
+  <!-- Stylesheets -->
+  <link rel="stylesheet" href="assets/css/main.css" />
+  <link rel="stylesheet" href="assets/css/home-content-alignment.css" />
+  <link rel="stylesheet" href="assets/css/brand-colors.css" />
+  <link rel="stylesheet" href="assets/css/global-enhanced.css" />
 </head>
 <body class="is-preload">
   <div data-include="header"></div>
-  <section class="wrapper wrapper-inherit-padding">
+  <main id="main-content" class="wrapper wrapper-inherit-padding">
     <div class="inner">
       <header class="special">
         <h2>
@@ -156,14 +171,23 @@
         </section>
       </div>
     </div>
-  </section>
+  </main>
   <div data-include="footer"></div>
-  <!-- Scripts -->
+  <!-- Essential Scripts -->
   <script src="assets/js/passive-events-fix.js"></script>
   <script src="assets/js/jquery.min.js"></script>
   <script src="assets/js/browser.min.js"></script>
   <script src="assets/js/breakpoints.min.js"></script>
   <script src="assets/js/util.js"></script>
-  <script src="assets/js/main.js"></script>
+  
+  <!-- Firebase SDK (required for auth functionality) -->
+  <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-auth-compat.js"></script>
+  
+  <!-- Firebase Configuration (load before global-enhanced.js) -->
+  <script src="assets/js/firebase-config-local.js"></script>
+  
+  <!-- Global Enhanced JavaScript (includes Firebase auth, main.js functionality, and more) -->
+  <script src="assets/js/global-enhanced.js"></script>
 </body>
 </html>

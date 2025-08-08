@@ -34,6 +34,7 @@
     <link rel="stylesheet" href="css/tooltip.css">
     <link rel="stylesheet" href="css/help-styles.css">
     <link rel="stylesheet" href="../../assets/css/main.css" />
+    <link rel="stylesheet" href="../../assets/css/global-enhanced.css" />
     <link rel="stylesheet" href="css/mario-kart-overrides.css">
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <script src="https://apis.google.com/js/api.js"></script>
@@ -527,7 +528,16 @@
     <script src="../../assets/js/browser.min.js"></script>
     <script src="../../assets/js/breakpoints.min.js"></script>
     <script src="../../assets/js/util.js"></script>
-    <script src="../../assets/js/main.js"></script>
+    
+    <!-- Firebase SDK (required for auth functionality) -->
+    <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-auth-compat.js"></script>
+    
+    <!-- Firebase Configuration (load before global-enhanced.js) -->
+    <script src="../../assets/js/firebase-config-local.js"></script>
+    
+    <!-- Global Enhanced JavaScript (includes Firebase auth, main.js functionality, and more) -->
+    <script src="../../assets/js/global-enhanced.js"></script>
     <script src="../../assets/js/year-updater.js"></script>
     
     <!-- Main script must load last -->
