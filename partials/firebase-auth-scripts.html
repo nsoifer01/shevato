@@ -1,0 +1,38 @@
+<!-- Firebase SDK -->
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-auth-compat.js"></script>
+
+<!-- Firebase Auth Scripts -->
+<script>
+// Dynamic path resolution and configuration loading
+(function() {
+  var basePath = window.location.pathname.includes('/apps/') ? '../../assets/js/' : 'assets/js/';
+  
+  // Load configuration first (local or generated)
+  var configScript = document.createElement('script');
+  configScript.src = basePath + 'firebase-config-local.js';
+  configScript.async = false;
+  
+  // Fallback to production config if local fails
+  configScript.onerror = function() {
+    var prodConfigScript = document.createElement('script');
+    prodConfigScript.src = basePath + 'firebase-config.js';
+    prodConfigScript.async = false;
+    document.head.appendChild(prodConfigScript);
+  };
+  
+  document.head.appendChild(configScript);
+  
+  // Load other Firebase scripts after a brief delay to ensure config is loaded
+  setTimeout(function() {
+    var scripts = ['firebase-auth.js', 'auth-ui.js'];
+    
+    scripts.forEach(function(script) {
+      var scriptEl = document.createElement('script');
+      scriptEl.src = basePath + script;
+      scriptEl.async = false;
+      document.head.appendChild(scriptEl);
+    });
+  }, 100);
+})();
+</script>

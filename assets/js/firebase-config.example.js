@@ -1,6 +1,7 @@
 // Firebase configuration template
-// Copy this file to firebase-config.js and fill in your Firebase project details
-// DO NOT commit firebase-config.js to version control
+// Copy this file to firebase-config-local.js for local development
+// In production, this is generated from environment variables
+// DO NOT commit firebase-config-local.js to version control
 
 window.firebaseConfig = {
   apiKey: "your-api-key-here",
