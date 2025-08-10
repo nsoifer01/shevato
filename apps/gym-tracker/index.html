@@ -528,9 +528,8 @@
   <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-auth-compat.js"></script>
   
   <!-- Firebase Configuration -->
-  <script src="../../assets/js/firebase-config.js"></script>
-  <!-- Local config (optional, for development only) -->
-  <script src="../../assets/js/firebase-config-local.js" onerror="console.info('Local Firebase config not found. Using environment config.')"></script>
+  <!-- Try local config first, fallback to prod config -->
+  <script src="../../assets/js/firebase-config-local.js" onerror="this.onerror=null;this.src='../../assets/js/firebase-config-prod.js';"></script>
   
   <!-- Main JavaScript -->
   <script src="../../assets/js/main.js"></script>
