@@ -25,3 +25,4 @@ claude-*.json
 claude-session/
 .claude-history
 .claude_rules
+assets/js/firebase-config-generated.js

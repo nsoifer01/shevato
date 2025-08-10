@@ -1,0 +1,14 @@
+[build]
+  publish = "."
+  command = "node scripts/generate-firebase-config.js"
+
+[build.environment]
+  NODE_VERSION = "18"
+
+# Custom headers for security
+[[headers]]
+  for = "/*"
+  [headers.values]
+    X-Frame-Options = "SAMEORIGIN"
+    X-Content-Type-Options = "nosniff"
+    Referrer-Policy = "strict-origin-when-cross-origin"
