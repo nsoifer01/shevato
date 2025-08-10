@@ -78,8 +78,9 @@
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-auth-compat.js"></script>
 
 <!-- Firebase Configuration -->
-<!-- Try local config first, fallback to prod config -->
-<script src="/assets/js/firebase-config-local.js" onerror="this.onerror=null;this.src='/assets/js/firebase-config-prod.js';"></script>
+<!-- Production: Load from Netlify Function, Local: Load from local file -->
+<script src="/.netlify/functions/firebase-config" onerror="console.info('Netlify function not available (local dev)');"></script>
+<script src="/assets/js/firebase-config-local.js" onerror="console.info('Local config not found');"></script>
 
 <!-- Main JavaScript -->
 <script src="/assets/js/main.js"></script>
