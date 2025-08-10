@@ -1,26 +1,31 @@
 /**
  * Firebase Configuration for Production
- * This file will be used in production with Netlify snippet injection
- * 
- * To set up:
- * 1. In Netlify dashboard, go to Site Settings > Build & Deploy > Post processing > Snippet injection
- * 2. Add "Before </body>" snippet with:
- * 
- * <script>
- * window.firebaseConfig = {
- *   apiKey: "YOUR_API_KEY",
- *   authDomain: "YOUR_AUTH_DOMAIN",
- *   projectId: "YOUR_PROJECT_ID",
- *   storageBucket: "YOUR_STORAGE_BUCKET",
- *   messagingSenderId: "YOUR_SENDER_ID",
- *   appId: "YOUR_APP_ID"
- * };
- * </script>
+ * This file provides a placeholder that will be populated by Netlify Edge Function
+ * or can be modified post-deployment
  */
 
-// This file intentionally left mostly empty
-// The actual config will be injected by Netlify snippet
-if (!window.firebaseConfig) {
-  window.firebaseConfig = {};
-  console.info('Waiting for Firebase config from Netlify snippet injection...');
+// Initialize empty config - will be populated by environment
+window.firebaseConfig = window.firebaseConfig || {};
+
+// Check if config was already set (by Netlify snippet or other means)
+if (!window.firebaseConfig.apiKey) {
+  console.warn('Firebase config not yet loaded. Waiting for environment configuration...');
+  
+  // Try to wait for Netlify snippet injection
+  let retryCount = 0;
+  const checkConfig = setInterval(() => {
+    retryCount++;
+    if (window.firebaseConfig && window.firebaseConfig.apiKey) {
+      console.log('Firebase config loaded successfully');
+      clearInterval(checkConfig);
+      
+      // Re-initialize Firebase if it was waiting
+      if (window.firebaseAuth && window.firebaseAuth.initialize) {
+        window.firebaseAuth.initialize();
+      }
+    } else if (retryCount > 20) {
+      console.error('Firebase config not available after 2 seconds');
+      clearInterval(checkConfig);
+    }
+  }, 100);
 }
