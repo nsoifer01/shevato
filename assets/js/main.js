@@ -100,9 +100,12 @@
     static loadConfigScript() {
       if (typeof window === 'undefined') return;
       
+      // Dynamic path resolution based on current location
+      var basePath = window.location.pathname.includes('/apps/') ? '../../assets/js/' : 'assets/js/';
+      
       // Try local config first, fallback to Netlify function
       const localScript = document.createElement('script');
-      localScript.src = 'assets/js/firebase-config-local.js';
+      localScript.src = basePath + 'firebase-config-local.js';
       localScript.async = false;
       
       localScript.onerror = function() {
