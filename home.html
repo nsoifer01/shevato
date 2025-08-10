@@ -88,6 +88,7 @@
   </script>
   <link rel="stylesheet" href="/assets/css/home-content-alignment.css" />
   <link rel="stylesheet" href="/assets/css/brand-colors.css" />
+  <link rel="stylesheet" href="assets/css/global-enhanced.css" />
 </head>
 <body class="is-preload">
   <div data-include="header"></div>
@@ -164,6 +165,15 @@
   <script src="assets/js/browser.min.js"></script>
   <script src="assets/js/breakpoints.min.js"></script>
   <script src="assets/js/util.js"></script>
+  
+  <!-- Firebase SDK (required for auth functionality) -->
+  <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-auth-compat.js"></script>
+  
+  <!-- Firebase Configuration (load before main.js) -->
+  <script src="assets/js/firebase-config-local.js" onerror="window.firebaseConfig = window.firebaseConfig || {}"></script>
+  
+  <!-- Main JavaScript -->
   <script src="assets/js/main.js"></script>
 </body>
 </html>

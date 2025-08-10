@@ -10,6 +10,9 @@
   <meta name="description" content="Expert software development services specializing in REST APIs, microservices architecture, and custom solutions. Trusted by industry leaders like Tire Rack. Contact us for scalable, reliable software." />
   <meta name="keywords" content="software development services, REST API development, microservices architecture, custom software development, Spring Boot, Java, scalable software solutions, Tire Rack, software engineering consulting" />
   <link rel="stylesheet" href="assets/css/main.css" />
+  <link rel="stylesheet" href="assets/css/content-alignment.css" />
+  <link rel="stylesheet" href="assets/css/brand-colors.css" />
+  <link rel="stylesheet" href="assets/css/global-enhanced.css" />
   <link rel="icon" type="image/png" href="images/white_icon_transparent.png">
   
   <!-- SEO Enhancement: Canonical URL -->
@@ -108,6 +111,15 @@
   <script src="assets/js/browser.min.js"></script>
   <script src="assets/js/breakpoints.min.js"></script>
   <script src="assets/js/util.js"></script>
+  
+  <!-- Firebase SDK (required for auth functionality) -->
+  <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-auth-compat.js"></script>
+  
+  <!-- Firebase Configuration (load before main.js) -->
+  <script src="assets/js/firebase-config-local.js" onerror="window.firebaseConfig = window.firebaseConfig || {}"></script>
+  
+  <!-- Main JavaScript -->
   <script src="assets/js/main.js"></script>
 </body>
 </html>
