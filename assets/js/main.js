@@ -94,6 +94,31 @@
     }
 
     /**
+     * Dynamically load Firebase config from appropriate source
+     * @static
+     */
+    static loadConfigScript() {
+      if (typeof window === 'undefined') return;
+      
+      // Try local config first, fallback to Netlify function
+      const localScript = document.createElement('script');
+      localScript.src = 'assets/js/firebase-config-local.js';
+      localScript.async = false;
+      
+      localScript.onerror = function() {
+        const netlifyScript = document.createElement('script');
+        netlifyScript.src = '/.netlify/functions/firebase-config';
+        netlifyScript.async = false;
+        netlifyScript.onerror = function() {
+          console.warn('Firebase config could not be loaded from any source');
+        };
+        document.head.appendChild(netlifyScript);
+      };
+      
+      document.head.appendChild(localScript);
+    }
+
+    /**
      * Load configuration from environment variables
      * @private
      */
@@ -1151,6 +1176,9 @@
   /* ==========================================================================
      Global Initialization
      ========================================================================== */
+
+  // Load Firebase config first
+  FirebaseConfig.loadConfigScript();
 
   // Initialize all components when DOM is ready
   $(document).ready(() => {
