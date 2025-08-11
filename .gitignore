@@ -24,8 +24,6 @@ claude-*.json
 claude-session/
 .claude-history
 .claude_rules
-<<<<<<< HEAD
-<<<<<<< HEAD
 
 # Firebase related files
 .env
