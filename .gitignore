@@ -24,3 +24,6 @@ claude-*.json
 claude-session/
 .claude-history
 .claude_rules
+
+# Local Netlify folder
+.netlify
