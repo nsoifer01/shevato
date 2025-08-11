@@ -1161,7 +1161,10 @@
    * Initialize menu functionality
    */
   function initializeMenu() {
-    $('#menu')
+    const $menu = $('#menu');
+    const $menuToggle = $(SELECTORS.menuToggle);
+    
+    $menu
       .append('<a href="#menu" class="close"></a>')
       .appendTo($body)
       .panel({
@@ -1174,6 +1177,42 @@
         resetForms: true,
         side: 'right'
       });
+    
+    // Add proper accessibility handling
+    const handleMenuVisibility = () => {
+      const isVisible = $body.hasClass('is-menu-visible');
+      
+      // Update aria attributes
+      $menuToggle.attr('aria-expanded', isVisible);
+      $menu.attr('aria-hidden', !isVisible);
+      
+      if (!isVisible) {
+        // When hiding menu, remove focus from any focused elements inside
+        const focusedElement = $menu.find(':focus');
+        if (focusedElement.length) {
+          focusedElement.blur();
+          // Optionally return focus to menu toggle
+          $menuToggle.focus();
+        }
+      }
+    };
+    
+    // Watch for visibility changes
+    const observer = new MutationObserver((mutations) => {
+      mutations.forEach((mutation) => {
+        if (mutation.attributeName === 'class') {
+          handleMenuVisibility();
+        }
+      });
+    });
+    
+    observer.observe($body[0], {
+      attributes: true,
+      attributeFilter: ['class']
+    });
+    
+    // Initial state
+    handleMenuVisibility();
   }
 
   /* ==========================================================================
