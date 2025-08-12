@@ -1,4 +1,13 @@
 (function($) {
+	
+	// TEST NETLIFY ENV VARIABLES - REMOVE AFTER TESTING
+	console.log('=== NETLIFY ENV TEST ===');
+	console.log('1. process.env:', typeof process !== 'undefined' ? process.env : 'process not defined');
+	console.log('2. window.env:', window.env || 'window.env not defined');
+	console.log('3. Checking common Netlify patterns...');
+	console.log('   - window.NETLIFY_ENV:', window.NETLIFY_ENV || 'not found');
+	console.log('   - window._env_:', window._env_ || 'not found');
+	console.log('=== END ENV TEST ===');
 
 	var	$window = $(window),
 		$banner = $('#banner'),
