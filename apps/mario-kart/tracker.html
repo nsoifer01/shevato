@@ -147,7 +147,18 @@
     <div class="mario-kart-content">
     <div class="container" role="main" id="main-content">
         <div class="header-section">
-            <h1>🏁 Mario Kart Race Tracker 🏁</h1>
+            <h1>🏎️ Mario Kart 8 Deluxe Tracker 🏎️</h1>
+            <!-- Game Version Toggle -->
+            <div class="game-version-toggle">
+                <button class="version-btn active" id="mk8d-btn" onclick="switchGameVersion('mk8d')">
+                    <span class="version-icon">🏎️</span>
+                    <span class="version-text">MK8 Deluxe</span>
+                </button>
+                <button class="version-btn" id="mkworld-btn" onclick="switchGameVersion('mkworld')">
+                    <span class="version-icon">🌍</span>
+                    <span class="version-text">MK World</span>
+                </button>
+            </div>
         </div>
         
         <div class="toggle-section" role="tablist" aria-label="Statistics view toggle">
@@ -495,6 +506,7 @@
 
     <!-- Import all modules -->
     <script src="js/constants.js"></script>
+    <script src="js/gameVersionManager.js"></script>
     <script src="js/modalUtils.js"></script>
     <script src="js/playerNameManager.js"></script>
     <script src="js/playerSymbolManager.js"></script>
@@ -524,6 +536,7 @@
     <!-- Global scripts for header/footer includes -->
     <script src="../../assets/js/passive-events-fix.js"></script>
     <script src="../../assets/js/jquery.min.js"></script>
+    <script src="../../assets/js/global-icons.js"></script>
     <script src="../../assets/js/browser.min.js"></script>
     <script src="../../assets/js/breakpoints.min.js"></script>
     <script src="../../assets/js/util.js"></script>
