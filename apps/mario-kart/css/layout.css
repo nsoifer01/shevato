@@ -3,12 +3,13 @@
 /* Header section */
 .header-section {
     display: flex;
+    flex-direction: column;
     justify-content: center;
     align-items: center;
     margin-bottom: 30px;
     position: relative;
     gap: 1rem;
-    flex-wrap: wrap;
+    text-align: center;
 }
 
 /* Help toggle button */

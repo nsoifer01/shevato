@@ -64,7 +64,8 @@ function undoLastAction() {
             break;
     }
 
-    localStorage.setItem('marioKartRaces', JSON.stringify(races));
+    const storageKey = window.getStorageKey ? window.getStorageKey('Races') : 'marioKartRaces';
+    localStorage.setItem(storageKey, JSON.stringify(races));
     updateDisplay();
     updateAchievements();
     updateUndoRedoButtons();
@@ -92,7 +93,8 @@ function redoLastAction() {
             break;
     }
 
-    localStorage.setItem('marioKartRaces', JSON.stringify(races));
+    const storageKey = window.getStorageKey ? window.getStorageKey('Races') : 'marioKartRaces';
+    localStorage.setItem(storageKey, JSON.stringify(races));
     updateDisplay();
     updateAchievements();
     updateUndoRedoButtons();

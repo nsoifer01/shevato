@@ -84,7 +84,8 @@ function updatePlayerCount(newCount) {
 
     // Save to localStorage
     try {
-        localStorage.setItem('marioKartPlayerCount', playerCount.toString());
+        const storageKey = window.getStorageKey ? window.getStorageKey('PlayerCount') : 'marioKartPlayerCount';
+        localStorage.setItem(storageKey, playerCount.toString());
     } catch (e) {
         console.error('Error saving player count:', e);
     }

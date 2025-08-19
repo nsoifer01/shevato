@@ -1394,6 +1394,11 @@ function createAchievementsView(raceData = null) {
 
 // Set today's date as default and create number buttons
 document.addEventListener('DOMContentLoaded', function() {
+    // Initialize game version manager first
+    if (window.initializeGameVersion) {
+        window.initializeGameVersion();
+    }
+    
     // Set date to user's local timezone
     const localDate = new Date().toLocaleDateString('en-CA');
     const dateInput = document.getElementById('date');
@@ -1419,7 +1424,13 @@ document.addEventListener('DOMContentLoaded', function() {
     updateUndoRedoButtons();
 
     // Load saved data first
-    loadSavedData();
+    // Make loadSavedData available globally and call it
+    if (window.loadSavedData) {
+        window.loadData = window.loadSavedData;
+        window.loadSavedData();
+    } else {
+        console.error('loadSavedData function not found - dataManager.js may not be loaded');
+    }
 
     // Update clear button state after loading data
     updateClearButtonState();

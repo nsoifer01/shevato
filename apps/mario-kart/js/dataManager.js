@@ -104,7 +104,8 @@ function addRace() {
     saveAction('ADD_RACE', { race: raceObject });
     
     try {
-        localStorage.setItem('marioKartRaces', JSON.stringify(races));
+        const storageKey = window.getStorageKey ? window.getStorageKey('Races') : 'marioKartRaces';
+        localStorage.setItem(storageKey, JSON.stringify(races));
     } catch (e) {
         console.error('Error saving to localStorage:', e);
     }
@@ -319,7 +320,8 @@ function editRace(index) {
         saveAction('EDIT_RACE', { originalRace, newRace: races[index], index });
 
         try {
-            localStorage.setItem('marioKartRaces', JSON.stringify(races));
+            const storageKey = window.getStorageKey ? window.getStorageKey('Races') : 'marioKartRaces';
+            localStorage.setItem(storageKey, JSON.stringify(races));
         } catch (e) {
             console.error('Error saving to localStorage:', e);
         }
@@ -357,7 +359,8 @@ function deleteRace(index) {
     
     races.splice(index, 1);
     try {
-        localStorage.setItem('marioKartRaces', JSON.stringify(races));
+        const storageKey = window.getStorageKey ? window.getStorageKey('Races') : 'marioKartRaces';
+        localStorage.setItem(storageKey, JSON.stringify(races));
     } catch (e) {
         console.error('Error saving to localStorage:', e);
     }
@@ -388,7 +391,8 @@ function migrateRaceData(races) {
 
     if (migrationNeeded) {
         console.log('Migrating race data from old format to new format');
-        localStorage.setItem('marioKartRaces', JSON.stringify(migratedRaces));
+        const storageKey = window.getStorageKey ? window.getStorageKey('Races') : 'marioKartRaces';
+        localStorage.setItem(storageKey, JSON.stringify(migratedRaces));
     }
 
     return migratedRaces;
@@ -396,7 +400,8 @@ function migrateRaceData(races) {
 
 function loadSavedData() {
     try {
-        const savedRaces = localStorage.getItem('marioKartRaces');
+        const storageKey = window.getStorageKey ? window.getStorageKey('Races') : 'marioKartRaces';
+        const savedRaces = localStorage.getItem(storageKey);
         // console.log('Loading saved races:', savedRaces); // Debug log
         if (savedRaces && savedRaces !== '[]') {
             races = JSON.parse(savedRaces);
@@ -415,7 +420,8 @@ function loadSavedData() {
     } else {
         // Fallback to direct localStorage
         try {
-            const savedNames = localStorage.getItem('marioKartPlayerNames');
+            const storageKey = window.getStorageKey ? window.getStorageKey('PlayerNames') : 'marioKartPlayerNames';
+            const savedNames = localStorage.getItem(storageKey);
             if (savedNames) {
                 playerNames = JSON.parse(savedNames);
             }
@@ -426,7 +432,8 @@ function loadSavedData() {
 
     // Load player count from localStorage
     try {
-        const savedPlayerCount = localStorage.getItem('marioKartPlayerCount');
+        const storageKey = window.getStorageKey ? window.getStorageKey('PlayerCount') : 'marioKartPlayerCount';
+        const savedPlayerCount = localStorage.getItem(storageKey);
         if (savedPlayerCount) {
             playerCount = parseInt(savedPlayerCount);
             const allPlayers = ['player1', 'player2', 'player3', 'player4'];
@@ -501,7 +508,8 @@ function importData(event) {
             }
 
             races = migratedRaces;
-            localStorage.setItem('marioKartRaces', JSON.stringify(races));
+            const storageKey = window.getStorageKey ? window.getStorageKey('Races') : 'marioKartRaces';
+            localStorage.setItem(storageKey, JSON.stringify(races));
             
             // Detect active players from race data
             const activePlayerCount = detectActivePlayersFromRaces(races);
@@ -524,7 +532,8 @@ function importData(event) {
                     };
                     
                     // Save to localStorage
-                    localStorage.setItem('marioKartPlayerNames', JSON.stringify(playerNames));
+                    const storageKey = window.getStorageKey ? window.getStorageKey('PlayerNames') : 'marioKartPlayerNames';
+                    localStorage.setItem(storageKey, JSON.stringify(playerNames));
                     
                     // Update all labels and inputs
                     updatePlayerLabels();
@@ -658,22 +667,28 @@ function clearData() {
     // Clear only race-related data from localStorage, preserving player names and symbols
     try {
         // Save player names and symbols before clearing
-        const playerNames = localStorage.getItem('marioKartPlayerNames');
-        const playerSymbols = localStorage.getItem('marioKartPlayerSymbols');
-        const playerCount = localStorage.getItem('marioKartPlayerCount');
+        const namesKey = window.getStorageKey ? window.getStorageKey('PlayerNames') : 'marioKartPlayerNames';
+        const symbolsKey = window.getStorageKey ? window.getStorageKey('PlayerSymbols') : 'marioKartPlayerSymbols';
+        const countKey = window.getStorageKey ? window.getStorageKey('PlayerCount') : 'marioKartPlayerCount';
+        const playerNames = localStorage.getItem(namesKey);
+        const playerSymbols = localStorage.getItem(symbolsKey);
+        const playerCount = localStorage.getItem(countKey);
         
         // Clear race data
-        localStorage.removeItem('marioKartRaces');
-        localStorage.removeItem('marioKartAutoBackup');
-        localStorage.removeItem('marioKartActionHistory');
+        const racesKey = window.getStorageKey ? window.getStorageKey('Races') : 'marioKartRaces';
+        const backupKey = window.getStorageKey ? window.getStorageKey('AutoBackup') : 'marioKartAutoBackup';
+        const historyKey = window.getStorageKey ? window.getStorageKey('ActionHistory') : 'marioKartActionHistory';
+        localStorage.removeItem(racesKey);
+        localStorage.removeItem(backupKey);
+        localStorage.removeItem(historyKey);
         
         // Set empty races array
-        localStorage.setItem('marioKartRaces', '[]');
+        localStorage.setItem(racesKey, '[]');
         
         // Restore player-related data
-        if (playerNames) localStorage.setItem('marioKartPlayerNames', playerNames);
-        if (playerSymbols) localStorage.setItem('marioKartPlayerSymbols', playerSymbols);
-        if (playerCount) localStorage.setItem('marioKartPlayerCount', playerCount);
+        if (playerNames) localStorage.setItem(namesKey, playerNames);
+        if (playerSymbols) localStorage.setItem(symbolsKey, playerSymbols);
+        if (playerCount) localStorage.setItem(countKey, playerCount);
     } catch (e) {
         console.error('Error clearing localStorage:', e);
     }
@@ -725,3 +740,6 @@ function updateClearButtonState() {
         sidebarClearBtn.disabled = !hasData;
     }
 }
+
+// Export loadSavedData globally for game version switching
+window.loadSavedData = loadSavedData;
