@@ -4,13 +4,19 @@
     let activePickerPlayer = null;
     let isOpen = false;
     
-    // Available icons for selection
-    const AVAILABLE_ICONS = [
-        '🐱', '🚀', '🎮', '🧠', '🐸',
-        '🦊', '🧊', '🌈', '👾', '🪐',
-        '🐢', '🔮', '🍕', '💎', '⚡',
-        '🎲', '🧃', '🐉', '☕', '🛸'
-    ];
+    // Get available icons from global database
+    function getAvailableIcons() {
+        if (window.GlobalIcons) {
+            return window.GlobalIcons.getAllIcons();
+        }
+        // Fallback icons if global icons not available
+        return [
+            '🐱', '🚀', '🎮', '🧠', '🐸',
+            '🦊', '🧊', '🌈', '👾', '🪐',
+            '🐢', '🔮', '🍕', '💎', '⚡',
+            '🎲', '🧃', '🐉', '☕', '🛸'
+        ];
+    }
 
     // Initialize on DOM load
     document.addEventListener('DOMContentLoaded', initSidebarPlayerSettings);
@@ -230,9 +236,10 @@
         // Create icon picker
         const picker = document.createElement('div');
         picker.className = 'sidebar-icon-picker';
+        const availableIcons = getAvailableIcons();
         picker.innerHTML = `
             <div class="sidebar-icon-picker-grid">
-                ${AVAILABLE_ICONS.map(icon => `
+                ${availableIcons.map(icon => `
                     <button class="sidebar-icon-option" 
                             onclick="selectSidebarPlayerIcon('${playerKey}', '${icon}', event)"
                             aria-label="Select ${icon}"
