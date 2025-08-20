@@ -144,7 +144,7 @@ function editRace(index) {
 
     const dialog = document.createElement('div');
     dialog.style.cssText = `
-        background: ${isDarkTheme ? '#2d3748' : 'white'};
+        background: #2d3748;
         border-radius: 1rem;
         padding: 2rem;
         box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
@@ -159,13 +159,13 @@ function editRace(index) {
         const currentValue = race[player] || '';
         return `
             <div style="margin-bottom: 1rem;">
-                <label style="display: block; margin-bottom: 0.5rem; color: ${isDarkTheme ? '#e2e8f0' : '#4a5568'}; font-weight: 600; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;">
+                <label style="display: block; margin-bottom: 0.5rem; color: #e2e8f0; font-weight: 600; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;">
                     ${window.PlayerNameManager ? window.PlayerNameManager.get(player) : getPlayerName(player)}'s Position:
                 </label>
                 <input type="number" id="edit-${player}" min="${MIN_POSITIONS}" max="${MAX_POSITIONS}" value="${currentValue}" 
-                    style="width: 100%; padding: 0.75rem; border: 1px solid ${isDarkTheme ? '#4a5568' : '#e2e8f0'}; 
-                    border-radius: 0.5rem; background: ${isDarkTheme ? '#4a5568' : 'white'}; 
-                    color: ${isDarkTheme ? '#e2e8f0' : '#2d3748'}; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;" placeholder="${MIN_POSITIONS}-${MAX_POSITIONS} or leave empty">
+                    style="width: 100%; padding: 0.75rem; border: 1px solid #4a5568; 
+                    border-radius: 0.5rem; background: #4a5568; 
+                    color: #e2e8f0; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;" placeholder="${MIN_POSITIONS}-${MAX_POSITIONS} or leave empty">
             </div>
         `;
     }).join('');
@@ -173,28 +173,28 @@ function editRace(index) {
     dialog.innerHTML = `
         <div style="text-align: center; margin-bottom: 1.5rem;">
             <div style="font-size: 2.5rem; margin-bottom: 0.5rem;">✏️</div>
-            <h3 style="color: ${isDarkTheme ? '#e2e8f0' : '#2d3748'}; margin-bottom: 0.5rem; font-size: 1.5rem; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;">Edit Race</h3>
-            <p style="color: ${isDarkTheme ? '#a0aec0' : '#6b7280'}; font-size: 0.9rem; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;">${race.date}${race.timestamp ? ' ' + race.timestamp : ''}</p>
+            <h3 style="color: #e2e8f0; margin-bottom: 0.5rem; font-size: 1.5rem; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;">Edit Race</h3>
+            <p style="color: #a0aec0; font-size: 0.9rem; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;">${race.date}${race.timestamp ? ' ' + race.timestamp : ''}</p>
         </div>
         
         <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; margin-bottom: 1.5rem;">
             <div>
-                <label style="display: block; margin-bottom: 0.5rem; color: ${isDarkTheme ? '#e2e8f0' : '#4a5568'}; font-weight: 600; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;">
+                <label style="display: block; margin-bottom: 0.5rem; color: #e2e8f0; font-weight: 600; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;">
                     Race Date:
                 </label>
                 <input type="date" id="edit-date" value="${race.date}" 
-                    style="width: 100%; padding: 0.75rem; border: 1px solid ${isDarkTheme ? '#4a5568' : '#e2e8f0'}; 
-                    border-radius: 0.5rem; background: ${isDarkTheme ? '#4a5568' : 'white'}; 
-                    color: ${isDarkTheme ? '#e2e8f0' : '#2d3748'}; color-scheme: ${isDarkTheme ? 'dark' : 'light'}; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;">
+                    style="width: 100%; padding: 0.75rem; border: 1px solid #4a5568; 
+                    border-radius: 0.5rem; background: #4a5568; 
+                    color: #e2e8f0; color-scheme: dark; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;">
             </div>
             <div>
-                <label style="display: block; margin-bottom: 0.5rem; color: ${isDarkTheme ? '#e2e8f0' : '#4a5568'}; font-weight: 600; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;">
+                <label style="display: block; margin-bottom: 0.5rem; color: #e2e8f0; font-weight: 600; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;">
                     Race Time:
                 </label>
                 <input type="time" id="edit-time" value="${race.timestamp ? race.timestamp.split(' ')[0] : ''}" step="1"
-                    style="width: 100%; padding: 0.75rem; border: 1px solid ${isDarkTheme ? '#4a5568' : '#e2e8f0'}; 
-                    border-radius: 0.5rem; background: ${isDarkTheme ? '#4a5568' : 'white'}; 
-                    color: ${isDarkTheme ? '#e2e8f0' : '#2d3748'}; color-scheme: ${isDarkTheme ? 'dark' : 'light'}; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;" placeholder="Optional">
+                    style="width: 100%; padding: 0.75rem; border: 1px solid #4a5568; 
+                    border-radius: 0.5rem; background: #4a5568; 
+                    color: #e2e8f0; color-scheme: dark; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;" placeholder="Optional">
             </div>
         </div>
 
@@ -202,7 +202,7 @@ function editRace(index) {
 
         <div class="modal-buttons">
             <button id="save-edit" class="modal-btn-primary">Save Changes</button>
-            <button id="cancel-edit" class="modal-btn-secondary ${isDarkTheme ? '' : 'light-theme'}">Cancel</button>
+            <button id="cancel-edit" class="modal-btn-secondary ">Cancel</button>
         </div>
     `;
 
@@ -614,17 +614,17 @@ function confirmClearData() {
     modal.className = 'modal-overlay';
 
     const dialog = document.createElement('div');
-    dialog.className = `modal-dialog ${isDarkTheme ? '' : 'light-theme'}`;
+    dialog.className = `modal-dialog `;
 
     dialog.innerHTML = `
         <div class="modal-icon">⚠️</div>
-        <h3 class="modal-title ${isDarkTheme ? '' : 'light-theme'}">Clear All Data?</h3>
-        <p class="modal-text ${isDarkTheme ? '' : 'light-theme'}">
+        <h3 class="modal-title ">Clear All Data?</h3>
+        <p class="modal-text ">
             This will permanently delete all race data, statistics, automated backups, and history. This action cannot be undone.
         </p>
         <div class="modal-buttons">
             <button id="confirm-clear" class="modal-btn-danger">Delete Everything</button>
-            <button id="cancel-clear" class="modal-btn-secondary ${isDarkTheme ? '' : 'light-theme'}">Cancel</button>
+            <button id="cancel-clear" class="modal-btn-secondary ">Cancel</button>
         </div>
     `;
 

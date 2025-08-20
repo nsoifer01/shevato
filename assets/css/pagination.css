@@ -151,36 +151,36 @@
 }
 
 /* Dark Theme Support */
-body.dark-theme .pagination-container {
+body.theme .pagination-container {
     background: var(--history-bg-white);
 }
 
-body.dark-theme .pagination-btn {
+body.theme .pagination-btn {
     background: #374151;
     border-color: #4a5568;
     color: white;
 }
 
-body.dark-theme .pagination-btn:hover:not(:disabled) {
+body.theme .pagination-btn:hover:not(:disabled) {
     background: #4b5563;
     border-color: var(--history-accent);
     color: white;
 }
 
-body.dark-theme .pagination-btn.active {
+body.theme .pagination-btn.active {
     background: var(--history-accent);
     color: white;
     border-color: var(--history-accent);
 }
 
-body.dark-theme .pagination-size select {
+body.theme .pagination-size select {
     background-color: #374151;
     border-color: #4a5568;
     color: var(--history-text-primary);
     background-image: url("data:image/svg+xml,%3Csvg width='12' height='8' viewBox='0 0 12 8' fill='none' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M1 1.5L6 6.5L11 1.5' stroke='%23E2E8F0' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
 }
 
-body.dark-theme .pagination-size select:hover {
+body.theme .pagination-size select:hover {
     border-color: var(--history-accent);
 }
 

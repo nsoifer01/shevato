@@ -39,8 +39,8 @@
     pointer-events: none;
 }
 
-/* Dark theme support */
-body.dark-theme .custom-tooltip {
+/* Theme support */
+body.theme .custom-tooltip {
     background: rgba(255, 255, 255, 0.95);
     color: #1a202c;
     box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
@@ -154,7 +154,7 @@ body.dark-theme .custom-tooltip {
         border: 2px solid #fff;
     }
     
-    body.dark-theme .custom-tooltip {
+    body.theme .custom-tooltip {
         background: #fff;
         color: #000;
         border: 2px solid #000;

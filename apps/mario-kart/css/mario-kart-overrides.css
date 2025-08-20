@@ -104,14 +104,14 @@
     border-color: #4c51bf !important;
 }
 
-/* Dark theme pagination overrides */
-body.dark-theme .pagination-btn {
+/* Theme pagination overrides */
+body.theme .pagination-btn {
     color: white !important;
     background: #374151 !important;
     border-color: #4a5568 !important;
 }
 
-body.dark-theme .pagination-btn:hover:not(:disabled) {
+body.theme .pagination-btn:hover:not(:disabled) {
     color: white !important;
     background: #4b5563 !important;
 }
@@ -543,27 +543,7 @@ body.dark-theme .pagination-btn:hover:not(:disabled) {
 }
 
 /* Light theme frequency indicators */
-.light-theme .frequency-low {
-    background-color: rgba(59, 130, 246, 0.3) !important;
-}
 
-.light-theme .frequency-medium {
-    background-color: rgba(59, 130, 246, 0.65) !important;
-}
-
-.light-theme .frequency-high {
-    background-color: rgba(59, 130, 246, 1.0) !important;
-}
-
-/* ===========================================
-   Animation Classes
-   =========================================== */
-
-@keyframes modalSlideIn {
-    from { 
-        opacity: 0; 
-        transform: scale(0.9) translateY(-20px); 
-    }
     to { 
         opacity: 1; 
         transform: scale(1) translateY(0); 
@@ -596,8 +576,8 @@ body.dark-theme .pagination-btn:hover:not(:disabled) {
     padding: 0 !important;
 }
 
-/* Dark theme support for parent cell */
-body.dark-theme .h2h-player-name {
+/* Theme support for parent cell */
+body.theme .h2h-player-name {
     background: #2d3748 !important;
 }
 
@@ -631,8 +611,8 @@ body.dark-theme .h2h-player-name {
     flex-shrink: 0;
 }
 
-/* Dark theme support */
-body.dark-theme .h2h-player-pill {
+/* Theme support */
+body.theme .h2h-player-pill {
     background: #2d3748;
     color: white;
 }
