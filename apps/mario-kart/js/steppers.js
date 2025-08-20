@@ -7,7 +7,7 @@ function incrementPlayer(playerId) {
     
     let currentValue = parseInt(input.value) || 0;
     
-    if (currentValue < 24) {
+    if (currentValue < window.MAX_POSITIONS) {
         currentValue++;
         input.value = currentValue;
         display.textContent = currentValue;
@@ -74,8 +74,8 @@ document.addEventListener('DOMContentLoaded', function() {
                 if (value < 1) {
                     this.value = 1;
                     updateStepperDisplay(playerId);
-                } else if (value > 24) {
-                    this.value = 24;
+                } else if (value > window.MAX_POSITIONS) {
+                    this.value = window.MAX_POSITIONS;
                     updateStepperDisplay(playerId);
                 }
             });

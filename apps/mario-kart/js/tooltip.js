@@ -161,7 +161,7 @@ class TooltipManager {
             '🏆': 'Win Streak: Consecutive first place finishes', 
             '💪': 'Clutch Master: Consecutive races finishing better than average',
             '🚀': 'Momentum: Consecutive races with improving positions',
-            '📅': 'Perfect Day: All races in a day were top-12 finishes'
+            '📅': `Perfect Day: All races in a day were top-${window.getGoodFinishThreshold ? window.getGoodFinishThreshold() : 12} finishes`
         };
         return achievementMap[icon] || 'Achievement progress';
     }
