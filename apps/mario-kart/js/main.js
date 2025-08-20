@@ -309,9 +309,9 @@ function generateSidebarRaceInputs() {
                     <input 
                         type="number" 
                         id="sidebar-${player}" 
-                        min="${MIN_POSITIONS}" 
-                        max="${MAX_POSITIONS}" 
-                        placeholder="1-24"
+                        min="${window.MIN_POSITIONS}" 
+                        max="${window.MAX_POSITIONS}" 
+                        placeholder="${window.MIN_POSITIONS}-${window.MAX_POSITIONS}"
                         class="sidebar-position-input"
                         onchange="updatePositionPicker('${player}', this.value)"
                         oninput="updatePositionPicker('${player}', this.value)"
@@ -371,6 +371,9 @@ function generateSidebarRaceInputs() {
         });
     }, 100);
 }
+
+// Export for use in other modules
+window.generateSidebarRaceInputs = generateSidebarRaceInputs;
 
 function submitSidebarRace() {
     // Clear any previous errors
@@ -496,7 +499,7 @@ function refreshSidebarRaceForm() {
 // Position picker functions
 function generatePositionButtons(player) {
     let buttons = '';
-    for (let i = 1; i <= 24; i++) {
+    for (let i = 1; i <= window.MAX_POSITIONS; i++) {
         buttons += `
             <button 
                 type="button" 
@@ -575,7 +578,7 @@ function updatePickerSelection(player, position) {
     buttons.forEach(btn => btn.classList.remove('selected'));
     
     // Add selected state to current position
-    if (position && position >= 1 && position <= 24) {
+    if (position && position >= 1 && position <= window.MAX_POSITIONS) {
         const selectedBtn = picker.querySelector(`[data-position="${position}"]`);
         if (selectedBtn) {
             selectedBtn.classList.add('selected');
@@ -675,8 +678,8 @@ function toggleView(view) {
     currentView = view;
 
     // Reset pagination when view changes
-    if (window.PaginationManager) {
-        window.PaginationManager.reset();
+    if (window.GlobalPaginationManager) {
+        window.GlobalPaginationManager.reset('mario-kart-races');
     }
 
     document.querySelectorAll('.toggle-btn').forEach(btn => {
@@ -795,12 +798,12 @@ function createGuideView() {
                     <div class="viz-guide-card">
                         <h4>🌡️ Position Heat Map</h4>
                         <p>Percentage breakdown by finishing ranges</p>
-                        <p class="viz-tip tips-text">💡 <span class="viz-color-green tier-range-numbers">1-6</span> • <span class="viz-color-yellow tier-range-numbers">7-12</span> • <span class="viz-color-red tier-range-numbers">13-18</span> • <span class="viz-color-red tier-range-numbers">19-24</span></p>
+                        <p class="viz-tip tips-text" id="position-heat-tip">💡 <span class="viz-color-green tier-range-numbers">Loading...</span></p>
                     </div>
                     <div class="viz-guide-card">
                         <h4>🏁 Recent Streak</h4>
                         <p>Your last 10 races at a glance (left to right)</p>
-                        <p class="viz-tip tips-text">💡 Shows finishing positions with gradient colors: <span class="viz-color-green">1st (green)</span> to <span class="viz-color-red">24th (red)</span></p>
+                        <p class="viz-tip tips-text" id="recent-streak-tip">💡 Shows finishing positions with gradient colors: <span class="viz-color-green">1st (green)</span> to <span class="viz-color-red" id="max-position-text">Loading...</span></p>
                     </div>
                     <div class="viz-guide-card">
                         <h4>🎯 Sweet Spots</h4>
@@ -856,7 +859,7 @@ function createGuideView() {
                             <span class="achievement-icon-big" aria-hidden="true">📅</span>
                             <div class="achievement-info">
                                 <strong class="legend-title">Perfect Day</strong>
-                                <small>All races in a day were top-12 finishes</small>
+                                <small id="perfect-day-description">All races in a day were good finishes</small>
                             </div>
                         </article>
                     </div>
@@ -875,14 +878,84 @@ function createGuideView() {
 }
 
 function getPositionClass(position) {
+    // Use dynamic position ranges from achievements.js
+    const ranges = window.getPositionRanges ? window.getPositionRanges() : getDefaultPositionRanges();
+    
+    // Special handling for podium positions
     if (position === 1) return 'pos-1';
     if (position === 2) return 'pos-2';
     if (position === 3) return 'pos-3';
-    if (position <= 8) return 'pos-4-8';
-    if (position <= 12) return 'pos-9-12';
-    if (position <= 18) return 'pos-13-18';
-    return 'pos-19-24';
+    
+    // Find the range this position belongs to
+    for (const range of ranges) {
+        const [min, max] = range.range;
+        if (position >= min && position <= max) {
+            return `pos-${range.label.replace('-', '-')}`.replace(/\s/g, '-');
+        }
+    }
+    
+    // Fallback to last range
+    return `pos-${ranges[ranges.length - 1].label.replace('-', '-')}`.replace(/\s/g, '-');
 }
+
+function getDefaultPositionRanges() {
+    // Fallback ranges for MK World
+    return [
+        { label: '1-6', range: [1, 6] },
+        { label: '7-12', range: [7, 12] },
+        { label: '13-18', range: [13, 18] },
+        { label: '19-24', range: [19, 24] }
+    ];
+}
+
+// Update dynamic UI text based on current game version
+function updateDynamicUIText() {
+    // Update position heat map tip
+    const heatTip = document.getElementById('position-heat-tip');
+    if (heatTip && window.getPositionRanges) {
+        const ranges = window.getPositionRanges();
+        let rangeText = '';
+        ranges.forEach((range, index) => {
+            const colorClass = index === 0 ? 'viz-color-green' : 
+                             index === 1 ? 'viz-color-yellow' : 
+                             'viz-color-red';
+            rangeText += `<span class="${colorClass} tier-range-numbers">${range.label}</span>`;
+            if (index < ranges.length - 1) rangeText += ' • ';
+        });
+        heatTip.innerHTML = `💡 ${rangeText}`;
+    }
+    
+    // Update recent streak tip
+    const maxPosText = document.getElementById('max-position-text');
+    if (maxPosText && window.MAX_POSITIONS) {
+        maxPosText.textContent = `${window.MAX_POSITIONS}th (red)`;
+    }
+    
+    // Update perfect day description
+    const perfectDayDesc = document.getElementById('perfect-day-description');
+    if (perfectDayDesc && window.getGoodFinishThreshold) {
+        const threshold = window.getGoodFinishThreshold();
+        perfectDayDesc.textContent = `All races in a day were top-${threshold} finishes`;
+    }
+    
+    // Update position ranges help text
+    const positionRangesHelp = document.getElementById('position-ranges-help');
+    if (positionRangesHelp && window.getPositionRanges) {
+        const ranges = window.getPositionRanges();
+        let helpHTML = '<ul role="list">';
+        ranges.forEach((range, index) => {
+            const tierName = index === 0 ? 'Top tier' : 
+                           index === 1 ? 'Mid-tier' : 
+                           index === ranges.length - 1 ? 'Bottom tier' : 'Lower tier';
+            helpHTML += `<li><strong>${range.label}:</strong> ${tierName} finishes</li>`;
+        });
+        helpHTML += '</ul>';
+        positionRangesHelp.innerHTML = helpHTML;
+    }
+}
+
+// Make function available globally
+window.updateDynamicUIText = updateDynamicUIText;
 
 function getRelativePositionClass(playerPosition, allPositions) {
     // Filter out null positions and sort to get relative rankings
@@ -906,8 +979,8 @@ function sortTable(column) {
     }
 
     // Reset pagination when sorting changes
-    if (window.PaginationManager) {
-        window.PaginationManager.reset();
+    if (window.GlobalPaginationManager) {
+        window.GlobalPaginationManager.reset('mario-kart-races');
     }
 
     // For trends, activity, and analysis views, only update race history table
@@ -983,8 +1056,8 @@ function updateRaceHistoryTable(filteredRaces) {
     const reversedRaces = filteredRaces.slice().reverse();
 
     // Get paginated subset if pagination is available
-    const racesToDisplay = window.PaginationManager
-        ? window.PaginationManager.getPaginatedRaces(reversedRaces)
+    const racesToDisplay = window.GlobalPaginationManager
+        ? window.GlobalPaginationManager.getPaginatedItems('mario-kart-races', reversedRaces)
         : reversedRaces;
 
     // Update history table
@@ -1016,8 +1089,8 @@ function updateRaceHistoryTable(filteredRaces) {
     document.getElementById('history-body').innerHTML = historyHtml;
 
     // Add pagination controls if available
-    if (window.PaginationManager && filteredRaces.length > 0) {
-        const paginationHtml = window.PaginationManager.createPaginationControls();
+    if (window.GlobalPaginationManager && filteredRaces.length > 0) {
+        const paginationHtml = window.GlobalPaginationManager.createPaginationControls('mario-kart-races');
         const tableContainer = document.querySelector('.table-container');
 
         // Remove existing pagination if any
@@ -1149,12 +1222,20 @@ function updateDisplay() {
         return;
     } else if (currentView === 'guide') {
         createGuideView();
+        // Update dynamic text after creating the guide view
+        if (window.updateDynamicUIText) {
+            window.updateDynamicUIText();
+        }
         return;
     } else if (currentView === 'achievements') {
         createAchievementsView(filteredRaces);
         return;
     } else if (currentView === 'help') {
         createHelpView();
+        // Update dynamic text after creating the help view
+        if (window.updateDynamicUIText) {
+            window.updateDynamicUIText();
+        }
         return;
     }
 
@@ -1394,6 +1475,19 @@ function createAchievementsView(raceData = null) {
 
 // Set today's date as default and create number buttons
 document.addEventListener('DOMContentLoaded', function() {
+    // Initialize game version manager first
+    if (window.initializeGameVersion) {
+        window.initializeGameVersion();
+    }
+    
+    // Initialize global pagination instance for Mario Kart
+    if (window.GlobalPaginationManager) {
+        window.GlobalPaginationManager.createInstance('mario-kart-races', {
+            localStorageKey: 'raceHistoryPageSize',
+            updateCallback: updateDisplay
+        });
+    }
+    
     // Set date to user's local timezone
     const localDate = new Date().toLocaleDateString('en-CA');
     const dateInput = document.getElementById('date');
@@ -1417,9 +1511,23 @@ document.addEventListener('DOMContentLoaded', function() {
 
     // Initialize undo/redo button states
     updateUndoRedoButtons();
+    
+    // Initialize dynamic UI text based on current game version
+    if (window.updateDynamicUIText) {
+        // Delay to ensure all dependencies are loaded
+        setTimeout(() => {
+            window.updateDynamicUIText();
+        }, 100);
+    }
 
     // Load saved data first
-    loadSavedData();
+    // Make loadSavedData available globally and call it
+    if (window.loadSavedData) {
+        window.loadData = window.loadSavedData;
+        window.loadSavedData();
+    } else {
+        console.error('loadSavedData function not found - dataManager.js may not be loaded');
+    }
 
     // Update clear button state after loading data
     updateClearButtonState();

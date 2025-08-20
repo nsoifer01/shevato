@@ -109,7 +109,7 @@ function handleQuickInputEnter(event, playerIndex) {
 
 function validateQuickInput(input) {
     const value = parseInt(input.value);
-    if (value < 1 || value > 24 || isNaN(value)) {
+    if (value < 1 || value > window.MAX_POSITIONS || isNaN(value)) {
         input.style.borderColor = '#ef4444';
     } else {
         input.style.borderColor = '#10b981';

@@ -34,6 +34,57 @@
    Button Overrides
    =========================================== */
 
+/* Game version toggle buttons - inactive state */
+.game-version-toggle button.version-btn {
+    background: #4a5568 !important;
+    border: 1px solid #6b7280 !important;
+    color: white !important;
+}
+
+.game-version-toggle button.version-btn:not(.active) {
+    background: #4a5568 !important;
+    border: 1px solid #6b7280 !important;
+}
+
+.game-version-toggle button.version-btn span {
+    color: white !important;
+}
+
+.game-version-toggle button.version-btn .version-text {
+    color: white !important;
+}
+
+.game-version-toggle button.version-btn .version-icon {
+    color: white !important;
+}
+
+/* Ensure active state styles are applied */
+.game-version-toggle button.version-btn.active,
+.game-version-toggle button#mk8d-btn.active,
+.game-version-toggle button#mkworld-btn.active {
+    background: #667eea !important;
+    border-color: #667eea !important;
+}
+
+.game-version-toggle button.version-btn.active:hover,
+.game-version-toggle button#mk8d-btn.active:hover,
+.game-version-toggle button#mkworld-btn.active:hover {
+    background: #5a67d8 !important;
+    border-color: #5a67d8 !important;
+}
+
+.game-version-toggle button.version-btn.active span {
+    color: white !important;
+}
+
+.game-version-toggle button.version-btn.active .version-text {
+    color: white !important;
+}
+
+.game-version-toggle button.version-btn.active .version-icon {
+    color: white !important;
+}
+
 /* Override main.css button styling for pagination */
 .pagination-btn {
     color: white !important;

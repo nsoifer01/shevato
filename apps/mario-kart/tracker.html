@@ -29,7 +29,7 @@
     <link rel="stylesheet" href="css/player-display.css">
     <link rel="stylesheet" href="css/players-dropdown-new.css">
     <link rel="stylesheet" href="css/player-icons.css">
-    <link rel="stylesheet" href="css/pagination.css">
+    <link rel="stylesheet" href="../../assets/css/pagination.css">
     <link rel="stylesheet" href="css/sidebar.css">
     <link rel="stylesheet" href="css/tooltip.css">
     <link rel="stylesheet" href="css/help-styles.css">
@@ -147,7 +147,18 @@
     <div class="mario-kart-content">
     <div class="container" role="main" id="main-content">
         <div class="header-section">
-            <h1>🏁 Mario Kart Race Tracker 🏁</h1>
+            <h1>🏎️ Mario Kart 8 Deluxe Tracker 🏎️</h1>
+            <!-- Game Version Toggle -->
+            <div class="game-version-toggle">
+                <button class="version-btn active" id="mk8d-btn" onclick="switchGameVersion('mk8d')">
+                    <span class="version-icon">🏎️</span>
+                    <span class="version-text">MK8 Deluxe</span>
+                </button>
+                <button class="version-btn" id="mkworld-btn" onclick="switchGameVersion('mkworld')">
+                    <span class="version-icon">🌍</span>
+                    <span class="version-text">MK World</span>
+                </button>
+            </div>
         </div>
         
         <div class="toggle-section" role="tablist" aria-label="Statistics view toggle">
@@ -182,7 +193,7 @@
                         <div class="help-icon">🏆</div>
                         <div class="help-text">
                             <strong>5 Achievement Categories</strong>
-                            <p>Win Streak (consecutive 1st), Hot Streak (consecutive podiums), Clutch Master (better than average), Momentum Builder (improving positions), Perfect Day (all top-12 in a day).</p>
+                            <p>Win Streak (consecutive 1st), Hot Streak (consecutive podiums), Clutch Master (better than average), Momentum Builder (improving positions), Perfect Day (all good finishes in a day).</p>
                         </div>
                     </div>
                     
@@ -198,7 +209,7 @@
                         <div class="help-icon">🎮</div>
                         <div class="help-text">
                             <strong>Multiple Input Methods</strong>
-                            <p>Quick Add widget (🏁+), sidebar Add Race form, direct number entry (1-24), stepper buttons (+/-), or position picker dropdown.</p>
+                            <p>Quick Add widget (🏁+), sidebar Add Race form, direct number entry, stepper buttons (+/-), or position picker dropdown.</p>
                         </div>
                     </div>
                     
@@ -223,7 +234,7 @@
                     <h4>🚀 Quick Start Guide</h4>
                     <ol class="help-steps">
                         <li><strong>Configure Players:</strong> Open sidebar (☰) → Click 👤 Manage Players → Set 1-4 player names and feel free picking icons</li>
-                        <li><strong>Add First Race:</strong> Enter positions (1-24) for each player → Click "🏁 Add Race"</li>
+                        <li><strong>Add First Race:</strong> Enter positions for each player → Click "🏁 Add Race"</li>
                         <li><strong>Explore Views:</strong> Click tabs at top - Achievements shows progress, Stats compares players, H2H shows matchups, etc.</li>
                         <li><strong>Filter by Date:</strong> Use sidebar date controls - All Time, Today, Last 7/30 days, or custom date ranges</li>
                         <li><strong>Backup Data:</strong> 📤 Export to save JSON file. 📥 Import a JSON file. Auto-backup runs every 10 minutes</li>
@@ -243,7 +254,7 @@
                                 <li><strong>🔥 Hot Streak:</strong> Consecutive podium finishes</li>
                                 <li><strong>💥 Clutch Master:</strong> Consecutive races finishing better than average</li>
                                 <li><strong>🚀 Momentum Builder:</strong> Consecutive races with improving positions</li>
-                                <li><strong>📅 Perfect Day:</strong> All races in a day were top-12 finishes</li>
+                                <li><strong>📅 Perfect Day:</strong> All races in a day were good finishes</li>
                             </ul>
                             <aside class="viz-tip" role="note">
                                 💡 Click any achievement to see detailed progress!
@@ -254,13 +265,10 @@
                             <header>
                                 <h4>🌡️ Position Heat Map</h4>
                             </header>
-                            <p>Shows frequency of finishing positions in ranges:</p>
-                            <ul role="list">
-                                <li><strong>1-6:</strong> Top tier finishes</li>
-                                <li><strong>7-12:</strong> Mid-tier finishes</li>
-                                <li><strong>13-18:</strong> Lower tier finishes</li>
-                                <li><strong>19-24:</strong> Bottom tier finishes</li>
-                            </ul>
+                            <p>Shows frequency of finishing positions in ranges</p>
+                            <div id="position-ranges-help">
+                                <p><em>Position ranges vary by game mode</em></p>
+                            </div>
                             <aside class="viz-tip" role="note">
                                 💡 Darker colors = more frequent finishes in that range
                             </aside>
@@ -280,7 +288,7 @@
                             <header>
                                 <h4>🎯 Sweet Spots</h4>
                             </header>
-                            <p>Visualizes frequency for each specific position (1-24):</p>
+                            <p>Visualizes frequency for each specific position:</p>
                             <ul role="list">
                                 <li>Each bar represents one position</li>
                                 <li>Brighter colors = more frequent finishes</li>
@@ -334,7 +342,7 @@
                 <div class="help-section help-technical">
                     <h4>🔧 Technical Details</h4>
                     <ul class="help-features technical-list">
-                        <li><strong>Data Format:</strong> Race data stored as JSON with date, timestamp, and player positions (1-24)</li>
+                        <li><strong>Data Format:</strong> Race data stored as JSON with date, timestamp, and player positions</li>
                         <li><strong>Browser Storage:</strong> Uses local storage</li>
                         <li><strong>Auto-Backup:</strong> Runs every 10 minutes, includes all races and player configurations</li>
                         <li><strong>Validation:</strong> Real-time input validation, duplicate position detection, range checking</li>
@@ -381,7 +389,7 @@
             <div class="input-group">
                 <div class="input-field">
                     <label for="player1" class="player-name-label" id="player1-label">Player 1</label>
-                    <input type="number" id="player1" min="1" max="24" placeholder="1-24" aria-describedby="player1-help">
+                    <input type="number" id="player1" aria-describedby="player1-help">
                     <div class="input-stepper">
                         <button type="button" class="stepper-btn" onclick="decrementPlayer('player1')" aria-label="Decrease position">−</button>
                         <div class="stepper-display" id="player1-display">-</div>
@@ -396,7 +404,7 @@
                 </div>
                 <div class="input-field">
                     <label for="player2" class="player-name-label" id="player2-label">Player 2</label>
-                    <input type="number" id="player2" min="1" max="24" placeholder="1-24" aria-describedby="player2-help">
+                    <input type="number" id="player2" aria-describedby="player2-help">
                     <div class="input-stepper">
                         <button type="button" class="stepper-btn" onclick="decrementPlayer('player2')" aria-label="Decrease position">−</button>
                         <div class="stepper-display" id="player2-display">-</div>
@@ -411,7 +419,7 @@
                 </div>
                 <div class="input-field">
                     <label for="player3" class="player-name-label" id="player3-label">Player 3</label>
-                    <input type="number" id="player3" min="1" max="24" placeholder="1-24" aria-describedby="player3-help">
+                    <input type="number" id="player3" aria-describedby="player3-help">
                     <div class="input-stepper">
                         <button type="button" class="stepper-btn" onclick="decrementPlayer('player3')" aria-label="Decrease position">−</button>
                         <div class="stepper-display" id="player3-display">-</div>
@@ -426,7 +434,7 @@
                 </div>
                 <div class="input-field hidden" id="player4-field">
                     <label for="player4" class="player-name-label" id="player4-label">Player 4</label>
-                    <input type="number" id="player4" min="1" max="24" placeholder="1-24" aria-describedby="player4-help">
+                    <input type="number" id="player4" aria-describedby="player4-help">
                     <div class="input-stepper">
                         <button type="button" class="stepper-btn" onclick="decrementPlayer('player4')" aria-label="Decrease position">−</button>
                         <div class="stepper-display" id="player4-display">-</div>
@@ -495,6 +503,7 @@
 
     <!-- Import all modules -->
     <script src="js/constants.js"></script>
+    <script src="js/gameVersionManager.js"></script>
     <script src="js/modalUtils.js"></script>
     <script src="js/playerNameManager.js"></script>
     <script src="js/playerSymbolManager.js"></script>
@@ -517,13 +526,14 @@
     <script src="js/playersDropdown.js"></script>
     <script src="js/updateInputLimits.js"></script>
     <script src="js/updatePlayerLabels.js"></script>
-    <script src="js/pagination.js"></script>
+    <script src="../../assets/js/pagination.js"></script>
     <script src="js/sidebar.js"></script>
     <script src="js/sidebarPlayerSettings.js"></script>
     <script src="js/tooltip.js"></script>
     <!-- Global scripts for header/footer includes -->
     <script src="../../assets/js/passive-events-fix.js"></script>
     <script src="../../assets/js/jquery.min.js"></script>
+    <script src="../../assets/js/global-icons.js"></script>
     <script src="../../assets/js/browser.min.js"></script>
     <script src="../../assets/js/breakpoints.min.js"></script>
     <script src="../../assets/js/util.js"></script>
