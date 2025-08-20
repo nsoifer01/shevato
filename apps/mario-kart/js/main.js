@@ -810,12 +810,12 @@ function createGuideView() {
                         <p>Color transparency shows finishing frequency</p>
                         <div class="viz-tip viz-tip-content tips-text">
                             <span>💡 Frequency:</span>
-                            <span class="frequency-gradient light-mode hidden">
+                            <span class="frequency-gradient alternate-theme hidden">
                                 <span class="viz-color-indicator frequency-low">Low</span>
                                 <span class="viz-color-indicator frequency-medium">Medium</span>
                                 <span class="viz-color-indicator frequency-high">High</span>
                             </span>
-                            <span class="frequency-gradient dark-mode">
+                            <span class="frequency-gradient theme-variant">
                                 <span class="viz-color-indicator frequency-low">Low</span>
                                 <span class="viz-color-indicator frequency-medium">Medium</span>
                                 <span class="viz-color-indicator frequency-high">High</span>
@@ -868,9 +868,9 @@ function createGuideView() {
         </div>
     `;
 
-    // Show only theme gradients, hide light theme variants
-    const lightGradients = document.querySelectorAll('.frequency-gradient.light-mode');
-    const darkGradients = document.querySelectorAll('.frequency-gradient.dark-mode');
+    // Theme styling
+    const lightGradients = document.querySelectorAll('.frequency-gradient.alternate-theme');
+    const darkGradients = document.querySelectorAll('.frequency-gradient.theme-variant');
 
     lightGradients.forEach(el => el.style.display = 'none');
     darkGradients.forEach(el => el.style.display = 'inline-flex');
@@ -1477,6 +1477,11 @@ document.addEventListener('DOMContentLoaded', function() {
     // Initialize game version manager first
     if (window.initializeGameVersion) {
         window.initializeGameVersion();
+    }
+    
+    // Ensure MAX_POSITIONS is updated for the current game version
+    if (window.updateMaxPositions) {
+        window.updateMaxPositions();
     }
     
     // Initialize global pagination instance for Mario Kart

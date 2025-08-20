@@ -111,7 +111,7 @@ function updateMobileMenuStates() {
     if (themeBtn) {
         const isDark = document.body.classList.contains('theme');
         themeBtn.innerHTML = isDark ? '☀️' : '🌙';
-        themeBtn.title = isDark ? 'Switch to light mode' : 'Switch to dark mode';
+        themeBtn.title = isDark ? 'Switch theme' : 'Switch theme';
     }
 }
 

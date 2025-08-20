@@ -251,7 +251,7 @@ function createSweetSpotBars() {
         const spotContainer = document.createElement('div');
         spotContainer.className = 'sweet-spot-grid';
 
-        // Create highlights for positions based on current game mode
+        // Theme styling
         for (let i = window.MIN_POSITIONS; i <= window.MAX_POSITIONS; i++) {
             const spotElement = document.createElement('div');
             spotElement.className = 'sweet-spot-bar';
@@ -1436,7 +1436,7 @@ function updateAchievements(raceData = null) {
                 }
             }
             
-            // Add/remove no-data class for dark mode styling
+            // Theme styling
             // For relative-colored achievements, never add no-data class (we handle colors in getRelativeColor)
             const isRelativeColoredAchievement = ['winStreak', 'clutchMaster', 'hotStreak', 'momentumBuilder', 'perfectDay'].includes(achievementKey);
             if (isRelativeColoredAchievement) {
@@ -1722,7 +1722,7 @@ function clearAllVisualizationBars() {
                 positionElement.style.color = '#9ca3af';
                 positionElement.style.fontWeight = '400';
                 
-                // Remove LATEST badge when clearing data
+                // Remove latest race indicator when clearing data
                 const existingBadge = positionElement.parentElement.querySelector('.latest-badge');
                 if (existingBadge) {
                     existingBadge.remove();
@@ -1896,7 +1896,7 @@ function updatePositionHeatBars(raceData) {
                     }
                 }
                 
-                // Add/remove no-data class for dark mode styling
+                // Theme styling
                 if (percentage === 0) {
                     percentageElement.classList.add('no-data');
                 } else {
@@ -1960,31 +1960,18 @@ function updateRecentStreakBars(raceData) {
                     }
                 }
                 
-                // Add LATEST badge to first tile only if there's data
+                // Add latest race indicator to first tile only if there's data
                 if (i === 0 && playerRaces.length > 0) {
-                    // Remove any existing LATEST badge first
+                    // Remove any existing latest race indicator first
                     const existingBadge = positionElement.parentElement.querySelector('.latest-badge');
                     if (existingBadge) {
                         existingBadge.remove();
                     }
                     
-                    // Create LATEST badge
+                    // Create latest race indicator
                     const latestBadge = document.createElement('span');
                     latestBadge.className = 'latest-badge';
-                    latestBadge.textContent = 'LATEST';
-                    latestBadge.style.cssText = `
-                        position: absolute;
-                        top: -2px;
-                        right: -2px;
-                        background: #ef4444;
-                        color: white;
-                        font-size: 6px;
-                        font-weight: 700;
-                        padding: 1px 3px;
-                        border-radius: 2px;
-                        z-index: 10;
-                        line-height: 1;
-                    `;
+                    latestBadge.title = 'Latest race';
                     positionElement.parentElement.appendChild(latestBadge);
                 }
             } else {
@@ -2001,7 +1988,7 @@ function updateRecentStreakBars(raceData) {
                     }
                 }
                 
-                // Remove LATEST badge if no data
+                // Remove latest race indicator if no data
                 const existingBadge = positionElement.parentElement.querySelector('.latest-badge');
                 if (existingBadge) {
                     existingBadge.remove();
@@ -2030,7 +2017,7 @@ function updateSweetSpotBars(raceData) {
         const getColorForCount = (count) => {
             if (count === 0) return { color: 'transparent', opacity: 0 }; // Transparent for no data
 
-            // Use different colors for light and dark mode
+            // Theme styling
             const baseColor = '#06b6d4'; // Cyan for theme
 
             // Calculate opacity based on frequency (0.3 minimum to 1.0 maximum)
