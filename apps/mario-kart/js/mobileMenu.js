@@ -109,7 +109,7 @@ function updateMobileMenuStates() {
     
     // Update theme button icon
     if (themeBtn) {
-        const isDark = document.body.classList.contains('dark-theme');
+        const isDark = document.body.classList.contains('theme');
         themeBtn.innerHTML = isDark ? '☀️' : '🌙';
         themeBtn.title = isDark ? 'Switch to light mode' : 'Switch to dark mode';
     }

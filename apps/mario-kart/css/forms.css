@@ -135,7 +135,7 @@ button:hover {
 
 /* Strong override to ensure toggle buttons are always white and centered */
 body .toggle-btn,
-body.dark-theme .toggle-btn,
+body.theme .toggle-btn,
 body.light-mode .toggle-btn {
     color: white !important;
     display: flex !important;
@@ -145,7 +145,7 @@ body.light-mode .toggle-btn {
 }
 
 body .toggle-btn.active,
-body.dark-theme .toggle-btn.active,
+body.theme .toggle-btn.active,
 body.light-mode .toggle-btn.active {
     color: white !important;
     display: flex !important;
@@ -155,7 +155,7 @@ body.light-mode .toggle-btn.active {
 }
 
 body .toggle-btn:hover,
-body.dark-theme .toggle-btn:hover,
+body.theme .toggle-btn:hover,
 body.light-mode .toggle-btn:hover {
     color: white !important;
     display: flex !important;

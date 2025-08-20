@@ -59,19 +59,19 @@ function restoreFromBackup() {
         modal.className = 'modal-overlay';
 
         const dialog = document.createElement('div');
-        dialog.className = `modal-dialog ${isDarkTheme ? '' : 'light-theme'}`;
+        dialog.className = `modal-dialog `;
 
         dialog.innerHTML = `
             <div class="modal-icon">🔄</div>
-            <h3 class="modal-title ${isDarkTheme ? '' : 'light-theme'}">Restore from Backup?</h3>
-            <p class="modal-text ${isDarkTheme ? '' : 'light-theme'}">
-                Found backup with <strong class="${isDarkTheme ? '' : 'light-theme'}">${raceCount} races</strong><br>
-                Created on: <strong class="${isDarkTheme ? '' : 'light-theme'}">${backupDate}</strong><br><br>
-                <span class="modal-warning ${isDarkTheme ? '' : 'light-theme'}">⚠️ Warning: This will replace all current data!</span>
+            <h3 class="modal-title ">Restore from Backup?</h3>
+            <p class="modal-text ">
+                Found backup with <strong class="">${raceCount} races</strong><br>
+                Created on: <strong class="">${backupDate}</strong><br><br>
+                <span class="modal-warning ">⚠️ Warning: This will replace all current data!</span>
             </p>
             <div class="modal-buttons">
                 <button id="confirm-restore" class="modal-btn-primary">Restore Data</button>
-                <button id="cancel-restore" class="modal-btn-secondary ${isDarkTheme ? '' : 'light-theme'}">Cancel</button>
+                <button id="cancel-restore" class="modal-btn-secondary ">Cancel</button>
             </div>
         `;
 

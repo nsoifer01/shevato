@@ -1753,43 +1753,13 @@
     font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
 }
 
-.form-label.light-theme {
-    color: #4a5568;
-}
 
-.form-input {
-    width: 100%;
-    padding: 0.75rem;
-    border: 1px solid #4a5568;
-    border-radius: 0.5rem;
-    background: #4a5568;
-    color: #e2e8f0;
-    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-    transition: all 0.2s ease;
-    box-sizing: border-box;
-}
-
-.form-input.light-theme {
-    border: 1px solid #e2e8f0;
-    background: white;
-    color: #2d3748;
-}
-
-.form-input:focus {
-    outline: none;
-    border-color: #8b5cf6;
-    box-shadow: 0 0 0 3px rgba(139, 92, 246, 0.2);
-}
 
 .form-input[type="date"],
 .form-input[type="time"] {
     color-scheme: dark;
 }
 
-.form-input[type="date"].light-theme,
-.form-input[type="time"].light-theme {
-    color-scheme: light;
-}
 
 /* Grid layout for date/time inputs */
 .form-grid-2 {

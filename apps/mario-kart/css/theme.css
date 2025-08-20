@@ -498,144 +498,144 @@ body.light-mode .stepper-btn:hover {
     background: var(--btn-primary-hover);
 }
 
-/* Dark Theme Styles */
-body.dark-theme {
+/* Theme Styles */
+body.theme {
     background: linear-gradient(135deg, #1a202c 0%, #2d3748 100%);
     color: #e2e8f0;
 }
 
-body.dark-theme .container {
+body.theme .container {
     background: rgba(45, 55, 72, 0.95);
     color: #e2e8f0;
 }
 
-body.dark-theme .input-section {
+body.theme .input-section {
     background: #2d3748;
 }
 
-body.dark-theme .stat-card,
-body.dark-theme .race-history,
-body.dark-theme #history-table {
+body.theme .stat-card,
+body.theme .race-history,
+body.theme #history-table {
     background: #2d3748;
     color: #e2e8f0;
 }
 
-body.dark-theme th,
-body.dark-theme #history-table th {
+body.theme th,
+body.theme #history-table th {
     background: #1a202c;
     color: #e2e8f0;
 }
 
-body.dark-theme td,
-body.dark-theme #history-table td {
+body.theme td,
+body.theme #history-table td {
     background: #2d3748;
     color: #e2e8f0;
     border-color: #4a5568;
 }
 
-body.dark-theme #history-heading {
+body.theme #history-heading {
     color: #e2e8f0;
 }
 
 /* Dark mode stepper styling */
-body.dark-theme .stepper-display {
+body.theme .stepper-display {
     background: #4a5568;
     color: #e2e8f0;
     border-color: #2d3748;
 }
 
-body.dark-theme .stepper-btn {
+body.theme .stepper-btn {
     background: #667eea;
     color: white;
 }
 
-body.dark-theme .stepper-btn:hover {
+body.theme .stepper-btn:hover {
     background: #5a67d8;
 }
 
-body.dark-theme .input-field input[type="number"] {
+body.theme .input-field input[type="number"] {
     background: #4a5568;
     color: #e2e8f0;
     border-color: #2d3748;
 }
 
-body.dark-theme .input-field input[type="number"]:focus {
+body.theme .input-field input[type="number"]:focus {
     background: #2d3748;
     border-color: #667eea;
 }
 
 /* Dark mode for visualization text elements - only when no data */
-body.dark-theme .heat-percentage {
+body.theme .heat-percentage {
     color: #4a5568;
 }
 
-body.dark-theme .heat-percentage.no-data {
+body.theme .heat-percentage.no-data {
     color: #e2e8f0 !important;
 }
 
-body.dark-theme .achievement-number {
+body.theme .achievement-number {
     color: #4a5568;
 }
 
-body.dark-theme .achievement-number.no-data {
+body.theme .achievement-number.no-data {
     color: #e2e8f0 !important;
 }
 
 /* Dark theme for achievement and position heat bars */
-body.dark-theme .achievement-bar {
+body.theme .achievement-bar {
     border-color: rgba(255, 255, 255, 0.1);
 }
 
-body.dark-theme .position-heat-bar {
+body.theme .position-heat-bar {
     border-color: rgba(255, 255, 255, 0.1);
 }
 
 /* Dark theme for expanded achievements */
-body.dark-theme .achievement-bar.achievement-expanded {
+body.theme .achievement-bar.achievement-expanded {
     background: rgba(102, 126, 234, 0.3);
     border-color: rgba(102, 126, 234, 0.5);
 }
 
-body.dark-theme .expanded-achievement-item {
+body.theme .expanded-achievement-item {
     background: rgba(45, 55, 72, 0.8);
     border-color: rgba(74, 85, 104, 0.5);
 }
 
-body.dark-theme .expanded-achievement-item.active-streak-glow {
+body.theme .expanded-achievement-item.active-streak-glow {
     border-color: rgba(52, 211, 153, 0.4);
     box-shadow: 0 0 10px rgba(52, 211, 153, 0.25);
 }
 
-body.dark-theme .expanded-achievement-bar .achievement-number {
+body.theme .expanded-achievement-bar .achievement-number {
     color: #e2e8f0;
 }
 
-body.dark-theme .expanded-achievement-bar .achievement-name {
+body.theme .expanded-achievement-bar .achievement-name {
     color: #f7fafc;
 }
 
-body.dark-theme .achievement-close-icon {
+body.theme .achievement-close-icon {
     background: rgba(255, 255, 255, 0.1);
     color: #e2e8f0;
 }
 
-body.dark-theme .achievement-close-icon:hover {
+body.theme .achievement-close-icon:hover {
     background: rgba(239, 68, 68, 0.3);
     color: #fca5a5;
 }
 
-body.dark-theme .expanded-achievement-details {
+body.theme .expanded-achievement-details {
     color: #e2e8f0;
     background: rgba(45, 55, 72, 0.6);
     border-left-color: rgba(102, 126, 234, 0.6);
 }
 
 /* Dark theme for active streak indicator */
-body.dark-theme .achievement-bar.active-streak::before {
+body.theme .achievement-bar.active-streak::before {
     background: #34d399;
 }
 
-body.dark-theme .achievement-bar.has-data::before {
+body.theme .achievement-bar.has-data::before {
     background: rgba(226, 232, 240, 0.7);
 }
 
@@ -648,587 +648,587 @@ body.dark-theme .achievement-bar.has-data::before {
     }
 }
 
-body.dark-theme .achievement-bar.active-streak {
+body.theme .achievement-bar.active-streak {
     animation: activePulseDark 2s ease-in-out infinite;
 }
 
 
 /* Dark theme for achievement toggle buttons */
-body.dark-theme .achievement-toggle-active-btn {
+body.theme .achievement-toggle-active-btn {
     background: rgba(52, 211, 153, 0.15);
     border-color: rgba(52, 211, 153, 0.25);
     color: #34d399;
 }
 
-body.dark-theme .achievement-toggle-active-btn:hover {
+body.theme .achievement-toggle-active-btn:hover {
     background: rgba(52, 211, 153, 0.2);
     border-color: rgba(52, 211, 153, 0.35);
 }
 
 /* Dark theme for position heat expanded sections */
-body.dark-theme .position-heat-bar.position-heat-expanded {
+body.theme .position-heat-bar.position-heat-expanded {
     background: rgba(102, 126, 234, 0.3);
     border-color: rgba(102, 126, 234, 0.5);
 }
 
 
-body.dark-theme .expanded-position-heat-title {
+body.theme .expanded-position-heat-title {
     color: #e2e8f0;
 }
 
-body.dark-theme .expanded-position-heat-item {
+body.theme .expanded-position-heat-item {
     background: rgba(45, 55, 72, 0.8);
     border-color: rgba(74, 85, 104, 0.5);
 }
 
-body.dark-theme .expanded-position-heat-bar .position-heat-count {
+body.theme .expanded-position-heat-bar .position-heat-count {
     color: #e2e8f0;
 }
 
-body.dark-theme .expanded-position-heat-bar .position-heat-avg {
+body.theme .expanded-position-heat-bar .position-heat-avg {
     color: #f7fafc;
 }
 
-body.dark-theme .position-heat-close-icon {
+body.theme .position-heat-close-icon {
     background: rgba(255, 255, 255, 0.1);
     color: #e2e8f0;
 }
 
-body.dark-theme .position-heat-close-icon:hover {
+body.theme .position-heat-close-icon:hover {
     background: rgba(239, 68, 68, 0.3);
     color: #fca5a5;
 }
 
-body.dark-theme .expanded-position-heat-details {
+body.theme .expanded-position-heat-details {
     color: #e2e8f0;
     background: rgba(45, 55, 72, 0.6);
     border-left-color: rgba(102, 126, 234, 0.6);
 }
 
 
-body.dark-theme .spot-number {
+body.theme .spot-number {
     color: #4a5568;
 }
 
-body.dark-theme tr:hover {
+body.theme tr:hover {
     background: #4a5568;
 }
 
-body.dark-theme input[type="number"],
-body.dark-theme input[type="date"] {
+body.theme input[type="number"],
+body.theme input[type="date"] {
     background: #4a5568;
     color: #e2e8f0;
     border-color: #6b7280;
 }
 
-body.dark-theme input[type="number"]::placeholder,
-body.dark-theme input[type="date"]::placeholder {
+body.theme input[type="number"]::placeholder,
+body.theme input[type="date"]::placeholder {
     color: #cbd5e0 !important;
 }
 
-body.dark-theme .names-dropdown,
-body.dark-theme .fixed-names-dropdown {
+body.theme .names-dropdown,
+body.theme .fixed-names-dropdown {
     background: #2d3748;
     border-color: #4a5568;
     color: #e2e8f0;
 }
 
-body.dark-theme .names-compact-grid input {
+body.theme .names-compact-grid input {
     background: #4a5568;
     color: #e2e8f0;
     border-color: #6b7280;
 }
 
 /* Dark mode styles for filter and toggle buttons */
-body.dark-theme .filter-btn {
+body.theme .filter-btn {
     background: #4a5568;
     color: #e2e8f0;
     border: 1px solid #6b7280;
 }
 
-body.dark-theme .filter-btn:hover {
+body.theme .filter-btn:hover {
     background: #667eea;
     color: white;
 }
 
-body.dark-theme .filter-btn.active {
+body.theme .filter-btn.active {
     background: #667eea;
     color: white;
 }
 
-body.dark-theme .toggle-btn {
+body.theme .toggle-btn {
     background: #4a5568;
     color: #e2e8f0;
     border: 1px solid #6b7280;
 }
 
-body.dark-theme .toggle-btn:hover {
+body.theme .toggle-btn:hover {
     background: #667eea;
     color: white;
 }
 
-body.dark-theme .toggle-btn.active {
+body.theme .toggle-btn.active {
     background: #667eea;
     color: white;
 }
 
 /* Dark mode styles for visualization guide */
-body.dark-theme .bars-legend {
+body.theme .bars-legend {
     background: #2d3748;
     color: #e2e8f0;
 }
 
-body.dark-theme .bars-legend h3 {
+body.theme .bars-legend h3 {
     color: #e2e8f0;
 }
 
-body.dark-theme .legend-item {
+body.theme .legend-item {
     background: #4a5568;
     color: #e2e8f0;
 }
 
-body.dark-theme .legend-text {
+body.theme .legend-text {
     color: #e2e8f0;
 }
 
-body.dark-theme .legend-text strong {
+body.theme .legend-text strong {
     color: #f7fafc;
 }
 
-body.dark-theme .legend-text small {
+body.theme .legend-text small {
     color: #a0aec0 !important;
 }
 
-body.dark-theme .achievement-details h4 {
+body.theme .achievement-details h4 {
     color: #e2e8f0;
 }
 
-body.dark-theme .achievement-info strong {
+body.theme .achievement-info strong {
     color: #f7fafc;
 }
 
-body.dark-theme .achievement-info small {
+body.theme .achievement-info small {
     color: #a0aec0;
 }
 
-body.dark-theme .achievement-expanded-item {
+body.theme .achievement-expanded-item {
     background: #4a5568;
     color: #e2e8f0;
 }
 
 /* Dark mode for position heat bars */
-body.dark-theme .heat-label {
+body.theme .heat-label {
     color: #e2e8f0;
 }
 
-body.dark-theme .spot-number {
+body.theme .spot-number {
     color: #ffffff !important;
 }
 
 /* Dark mode for all headings */
-body.dark-theme h1 {
+body.theme h1 {
     color: #e2e8f0 !important;
 }
 
-body.dark-theme h2 {
+body.theme h2 {
     color: #e2e8f0 !important;
 }
 
-body.dark-theme h3 {
+body.theme h3 {
     color: #e2e8f0 !important;
 }
 
-body.dark-theme h4 {
+body.theme h4 {
     color: #e2e8f0 !important;
 }
 
-body.dark-theme label {
+body.theme label {
     color: #e2e8f0 !important;
 }
 
 /* General dark mode text color */
-body.dark-theme {
+body.theme {
     color: #e2e8f0 !important;
 }
 
 /* Dark mode for theme toggle */
-body.dark-theme .theme-toggle.fixed-toggle {
+body.theme .theme-toggle.fixed-toggle {
     background: rgba(79, 70, 229, 0.9);
     color: white;
     border: 1px solid rgba(99, 102, 241, 0.5);
 }
 
-body.dark-theme .theme-toggle.fixed-toggle:hover {
+body.theme .theme-toggle.fixed-toggle:hover {
     background: rgba(99, 102, 241, 0.95);
     border-color: rgba(129, 140, 248, 0.7);
 }
 
 /* Dark mode for fixed names widget */
-body.dark-theme .fixed-names-toggle {
+body.theme .fixed-names-toggle {
     background: rgba(79, 70, 229, 0.9);
     color: white;
     border: 1px solid rgba(99, 102, 241, 0.5);
 }
 
-body.dark-theme .fixed-names-toggle:hover {
+body.theme .fixed-names-toggle:hover {
     background: rgba(99, 102, 241, 0.95);
     border-color: rgba(129, 140, 248, 0.7);
 }
 
 /* Dark mode for various components */
-body.dark-theme .date-filter-section {
+body.theme .date-filter-section {
     background: #2d3748;
     color: #e2e8f0;
 }
 
-body.dark-theme .date-filter-section h3 {
+body.theme .date-filter-section h3 {
     color: #e2e8f0;
 }
 
-body.dark-theme .chart-container {
+body.theme .chart-container {
     background: #2d3748;
 }
 
 
-body.dark-theme .heatmap-container {
+body.theme .heatmap-container {
     background: #2d3748;
 }
 
-body.dark-theme .analysis-card {
+body.theme .analysis-card {
     background: #2d3748;
     color: #e2e8f0;
 }
 
-body.dark-theme .analysis-title {
+body.theme .analysis-title {
     color: #e2e8f0;
 }
 
-body.dark-theme .comeback-item,
-body.dark-theme .best-day-item {
+body.theme .comeback-item,
+body.theme .best-day-item {
     background: #4a5568;
 }
 
-body.dark-theme .worst-day-item {
+body.theme .worst-day-item {
     background: rgba(239, 68, 68, 0.1);
     border-left-color: #ef4444;
 }
 
-body.dark-theme .worst-day-score {
+body.theme .worst-day-score {
     color: #fca5a5;
 }
 
 /* Dark mode for player names and stats */
-body.dark-theme .player-name {
+body.theme .player-name {
     color: #ffffff !important;
 }
 
-body.dark-theme .stat-count {
+body.theme .stat-count {
     color: #000000 !important;
 }
 
-body.dark-theme .stat-title {
+body.theme .stat-title {
     color: white !important;
 }
 
 /* Dark mode for modern H2H elements */
-body.dark-theme .h2h-table-container {
+body.theme .h2h-table-container {
     background: #2d3748;
     border-color: rgba(255, 255, 255, 0.1);
 }
 
-body.dark-theme .h2h-table,
-body.dark-theme .h2h-daily-table {
+body.theme .h2h-table,
+body.theme .h2h-daily-table {
     background: #2d3748;
 }
 
-body.dark-theme .h2h-header-cell {
+body.theme .h2h-header-cell {
     background: #2d3748 !important;
     color: white !important;
 }
 
-body.dark-theme .h2h-header-cell.h2h-corner {
+body.theme .h2h-header-cell.h2h-corner {
     background: #2d3748 !important;
 }
 
-body.dark-theme .h2h-player-name {
+body.theme .h2h-player-name {
     background: linear-gradient(135deg, #374151 0%, #1f2937 100%) !important;
     color: #d1d5db !important;
 }
 
-body.dark-theme .h2h-self {
+body.theme .h2h-self {
     background: linear-gradient(135deg, #4b5563 0%, #374151 100%) !important;
 }
 
-body.dark-theme .h2h-self-text {
+body.theme .h2h-self-text {
     color: rgba(255, 255, 255, 0.9) !important;
 }
 
-body.dark-theme .h2h-streak {
+body.theme .h2h-streak {
     background: rgba(0, 0, 0, 0.3);
 }
 
-body.dark-theme .h2h-daily-label {
+body.theme .h2h-daily-label {
     background: rgba(0, 0, 0, 0.3);
 }
 
 
-body.dark-theme .h2h-daily-table .h2h-cell {
+body.theme .h2h-daily-table .h2h-cell {
     color: #1f2937 !important;
 }
 
 
-body.dark-theme .h2h-daily-table .h2h-winner-text {
+body.theme .h2h-daily-table .h2h-winner-text {
     background: #34d399 !important;
     color: #1f2937 !important;
 }
 
-body.dark-theme .h2h-daily-table .h2h-loser-text {
+body.theme .h2h-daily-table .h2h-loser-text {
     background: #ef4444 !important;
     color: #1f2937 !important;
 }
 
-body.dark-theme .h2h-daily-table .h2h-tie {
+body.theme .h2h-daily-table .h2h-tie {
     background: #fbbf24 !important;
     color: #1f2937 !important;
 }
 
-body.dark-theme .h2h-daily-item {
+body.theme .h2h-daily-item {
     border-bottom-color: #4b5563 !important;
 }
 
-body.dark-theme .h2h-date {
+body.theme .h2h-date {
     color: #d1d5db !important;
 }
 
-body.dark-theme .h2h-daily-results {
+body.theme .h2h-daily-results {
     color: #9ca3af !important;
 }
 
-body.dark-theme .h2h-cell.h2h-winner-text {
+body.theme .h2h-cell.h2h-winner-text {
     background: #34d399 !important;
     color: #1f2937 !important;
 }
 
-body.dark-theme .h2h-cell.h2h-loser-text {
+body.theme .h2h-cell.h2h-loser-text {
     background: #ef4444 !important;
     color: #1f2937 !important;
 }
 
-body.dark-theme .h2h-cell.h2h-tie {
+body.theme .h2h-cell.h2h-tie {
     background: #fbbf24 !important;
     color: #1f2937 !important;
 }
 
-body.dark-theme .h2h-cell.h2h-no-data {
+body.theme .h2h-cell.h2h-no-data {
     background: #4b5563 !important;
     color: #d1d5db !important;
 }
 
-body.dark-theme .h2h-matchup.win {
+body.theme .h2h-matchup.win {
     color: #10b981 !important;
 }
 
-body.dark-theme .h2h-matchup.loss {
+body.theme .h2h-matchup.loss {
     color: #ef4444 !important;
 }
 
 /* Dark mode calendar popup styling */
-body.dark-theme input[type="date"]::-webkit-datetime-edit {
+body.theme input[type="date"]::-webkit-datetime-edit {
     background: #4a5568 !important;
     color: #e2e8f0 !important;
 }
 
-body.dark-theme input[type="date"]::-webkit-datetime-edit-fields-wrapper {
+body.theme input[type="date"]::-webkit-datetime-edit-fields-wrapper {
     background: #4a5568 !important;
 }
 
-body.dark-theme input[type="date"]::-webkit-datetime-edit-text {
+body.theme input[type="date"]::-webkit-datetime-edit-text {
     color: #e2e8f0 !important;
 }
 
-body.dark-theme input[type="date"]::-webkit-datetime-edit-year-field {
-    background: #4a5568 !important;
-    color: #e2e8f0 !important;
-}
-
-body.dark-theme input[type="date"]::-webkit-datetime-edit-month-field {
+body.theme input[type="date"]::-webkit-datetime-edit-year-field {
     background: #4a5568 !important;
     color: #e2e8f0 !important;
 }
 
-body.dark-theme input[type="date"]::-webkit-datetime-edit-day-field {
+body.theme input[type="date"]::-webkit-datetime-edit-month-field {
+    background: #4a5568 !important;
+    color: #e2e8f0 !important;
+}
+
+body.theme input[type="date"]::-webkit-datetime-edit-day-field {
     background: #4a5568 !important;
     color: #e2e8f0 !important;
 }
 
 /* Force dark styling on the calendar picker */
-body.dark-theme .race-date-input {
+body.theme .race-date-input {
     color-scheme: dark !important;
 }
 
 /* Dark mode for custom date range inputs */
-body.dark-theme #filter-start-date,
-body.dark-theme #filter-end-date {
+body.theme #filter-start-date,
+body.theme #filter-end-date {
     color-scheme: dark !important;
     background: #4a5568 !important;
     color: #e2e8f0 !important;
     border-color: #6b7280 !important;
 }
 
-body.dark-theme #filter-start-date::-webkit-calendar-picker-indicator,
-body.dark-theme #filter-end-date::-webkit-calendar-picker-indicator {
+body.theme #filter-start-date::-webkit-calendar-picker-indicator,
+body.theme #filter-end-date::-webkit-calendar-picker-indicator {
     filter: invert(1);
 }
 
 /* Dark mode for player count selector */
-body.dark-theme .player-count-selector {
+body.theme .player-count-selector {
     border-bottom-color: #4b5563;
 }
 
-body.dark-theme .player-count-selector label {
+body.theme .player-count-selector label {
     color: #ffffff !important;
     font-weight: 700;
 }
 
-body.dark-theme .player-count-selector select {
+body.theme .player-count-selector select {
     background: #374151;
     color: white;
     border-color: #4b5563;
 }
 
 /* Dark mode for race date section */
-body.dark-theme .race-date-section label {
+body.theme .race-date-section label {
     color: #e2e8f0 !important;
 }
 
-body.dark-theme .race-date-input {
+body.theme .race-date-input {
     background: #4a5568;
     color: #e2e8f0;
     border-color: #6b7280;
 }
 
-body.dark-theme .race-date-input:focus {
+body.theme .race-date-input:focus {
     border-color: #667eea;
     box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
 }
 
-body.dark-theme .race-date-input::-webkit-calendar-picker-indicator {
+body.theme .race-date-input::-webkit-calendar-picker-indicator {
     filter: invert(1);
 }
 
 /* Dark mode for fixed undo/redo buttons */
-body.dark-theme .fixed-undo-redo {
+body.theme .fixed-undo-redo {
     background: rgba(79, 70, 229, 0.9);
     color: white;
     border: 1px solid rgba(99, 102, 241, 0.5);
 }
 
-body.dark-theme .fixed-undo-redo:hover:not(:disabled) {
+body.theme .fixed-undo-redo:hover:not(:disabled) {
     background: rgba(99, 102, 241, 0.95);
     border-color: rgba(129, 140, 248, 0.7);
 }
 
-body.dark-theme .fixed-undo-redo:disabled {
+body.theme .fixed-undo-redo:disabled {
     background: rgba(75, 85, 99, 0.6);
     color: rgba(226, 232, 240, 0.4);
     border-color: rgba(75, 85, 99, 0.3);
 }
 
 /* Dark mode for frequency gradient display */
-body.dark-theme .frequency-gradient.light-mode {
+body.theme .frequency-gradient.light-mode {
     display: none !important;
 }
 
-body.dark-theme .frequency-gradient.dark-mode {
+body.theme .frequency-gradient.dark-mode {
     display: inline !important;
 }
 
 /* Dark mode for fixed date button */
-body.dark-theme .fixed-date-btn {
+body.theme .fixed-date-btn {
     background: rgba(79, 70, 229, 0.9);
     color: white;
     border: 1px solid rgba(99, 102, 241, 0.5);
 }
 
-body.dark-theme .fixed-date-btn:hover {
+body.theme .fixed-date-btn:hover {
     background: rgba(99, 102, 241, 0.95);
     border-color: rgba(129, 140, 248, 0.7);
 }
 
 /* Dark theme for sidebar */
-body.dark-theme .sidebar {
+body.theme .sidebar {
     background: #1a202c;
 }
 
-body.dark-theme .sidebar-header {
+body.theme .sidebar-header {
     /* No background needed - inherit from parent sidebar */
 }
 
-body.dark-theme .sidebar-section {
+body.theme .sidebar-section {
     /* No background needed - inherit from parent sidebar */
 }
 
-body.dark-theme .sidebar-content {
+body.theme .sidebar-content {
     /* No background - inherit from parent sidebar */
 }
 
-body.dark-theme #sidebar-player-settings .sidebar-players-form,
-body.dark-theme .position-picker {
+body.theme #sidebar-player-settings .sidebar-players-form,
+body.theme .position-picker {
     background: #1a202c;
 }
 
 /* Dark mode for fixed date dropdown */
-body.dark-theme .fixed-date-dropdown {
+body.theme .fixed-date-dropdown {
     background: #2d3748;
     border-color: #4a5568;
     color: #e2e8f0;
 }
 
-body.dark-theme .race-date-input {
+body.theme .race-date-input {
     background: #4a5568;
     color: #e2e8f0;
     border-color: #6b7280;
 }
 
-body.dark-theme .race-date-input:focus {
+body.theme .race-date-input:focus {
     border-color: #667eea;
     box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
 }
 
-body.dark-theme .race-date-input::-webkit-calendar-picker-indicator {
+body.theme .race-date-input::-webkit-calendar-picker-indicator {
     filter: invert(1);
 }
 
 /* Dark theme for new H2H streak and biggest win styles */
-body.dark-theme .h2h-streak-main {
+body.theme .h2h-streak-main {
     color: #000000 !important;
 }
 
-body.dark-theme .h2h-streak-details {
+body.theme .h2h-streak-details {
     color: #000000 !important;
 }
 
-body.dark-theme .h2h-biggest-win {
+body.theme .h2h-biggest-win {
     color: #000000 !important;
 }
 
 /* Also override any other H2H text colors that might be light */
-body.dark-theme .h2h-score {
+body.theme .h2h-score {
     color: #000000 !important;
 }
 
-body.dark-theme .h2h-streak-number {
+body.theme .h2h-streak-number {
     color: #000000 !important;
 }
 
-body.dark-theme .h2h-streak-label {
+body.theme .h2h-streak-label {
     color: #000000 !important;
 }
 
-body.dark-theme .h2h-streak-date {
+body.theme .h2h-streak-date {
     color: #000000 !important;
 }
 
-body.dark-theme .h2h-daily-label {
+body.theme .h2h-daily-label {
     color: #000000 !important;
 }
