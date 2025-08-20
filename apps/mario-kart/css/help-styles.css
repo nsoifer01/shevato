@@ -28,30 +28,7 @@
     --help-small-size: 0.9375rem;
 }
 
-/* Light Theme Overrides */
-body.light-mode {
-    --help-bg: #f8fafc;
-    --help-card-bg: #ffffff;
-    --help-card-hover: #f1f5f9;
-    --help-text-primary: #1e293b;
-    --help-text-secondary: #64748b;
-    --help-accent: #6366f1;
-    --help-accent-light: #818cf8;
-    --help-border: rgba(99, 102, 241, 0.2);
-    --help-shadow: 0 4px 20px rgba(0, 0, 0, 0.08);
-    --help-shadow-hover: 0 8px 30px rgba(99, 102, 241, 0.15);
-}
-
-/* Help Panel Container */
-.help-panel {
-    background: var(--help-bg);
-    border-radius: 16px;
-    overflow: hidden;
-    box-shadow: var(--help-shadow);
-    margin: 2rem 0;
-    animation: fadeIn 0.3s ease-out;
-    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-}
+/* Theme support */
 
 /* Help Content Wrapper */
 .help-content {
@@ -414,20 +391,6 @@ body.light-mode {
     padding: 1.5rem;
 }
 
-body.light-mode .help-disclaimers .disclaimer-list {
-    background: rgba(239, 68, 68, 0.02);
-    border-color: rgba(239, 68, 68, 0.15);
-}
-
-/* Help Footer */
-.help-footer {
-    background: var(--help-card-bg);
-    border-radius: 12px;
-    padding: 2rem;
-    margin-top: 2rem;
-    border: 1px solid var(--help-border);
-    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-}
 
 .help-footer p {
     color: white;
@@ -531,19 +494,6 @@ body.light-mode .help-disclaimers .disclaimer-list {
     padding: 1.5rem;
 }
 
-body.light-mode .help-technical .technical-list {
-    background: linear-gradient(135deg, rgba(99, 102, 241, 0.02), rgba(129, 140, 248, 0.02));
-    border-color: rgba(99, 102, 241, 0.15);
-}
-
-/* What is this Section Enhancement */
-.help-section:first-child {
-    text-align: center;
-    padding: 2rem;
-    background: linear-gradient(135deg, var(--help-card-bg), transparent);
-    border-radius: 16px;
-    margin-bottom: 3rem;
-}
 
 .help-section:first-child h4 {
     font-size: 2rem;

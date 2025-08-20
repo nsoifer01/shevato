@@ -178,15 +178,7 @@
     font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
 }
 
-/* Light mode player names should be dark */
-body.light-mode .player-name {
-    color: #1a202c !important;
-}
-
-body.light-mode .stat-item .player-name,
-body.light-mode .stat-card .player-name {
-    color: #1a202c !important;
-}
+/* Theme support */
 
 /* Ensure player names in stat items are white */
 .stat-item .player-name,
@@ -616,7 +608,7 @@ body.theme {
     --stat-card-shadow: 0 10px 30px rgba(0, 0, 0, 0.3);
     --stat-hover-shadow: 0 20px 40px rgba(0, 0, 0, 0.4);
     
-    /* H2H Dark Theme Tokens */
+    /* H2H Theme Tokens */
     --h2h-bg: #1f2937;
     --h2h-card-bg: #374151;
     --h2h-border: #4b5563;

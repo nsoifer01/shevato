@@ -181,14 +181,6 @@ body.theme .pagination-btn:hover:not(:disabled) {
     animation: modalSlideIn 0.3s ease;
 }
 
-.modal-dialog.light-theme {
-    background: white;
-}
-
-.modal-icon {
-    font-size: 3rem;
-    margin-bottom: 1rem;
-}
 
 .modal-title {
     color: var(--modal-title-color, #e2e8f0);
@@ -197,47 +189,9 @@ body.theme .pagination-btn:hover:not(:disabled) {
     font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
 }
 
-.modal-title.light-theme {
-    color: #2d3748;
-}
 
-.modal-text {
-    color: var(--modal-text-color, #a0aec0);
-    margin-bottom: 2rem;
-    line-height: 1.5;
-    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    justify-content: center;
-    text-align: center;
-}
 
-.modal-text.light-theme {
-    color: #4a5568;
-}
 
-.modal-text strong {
-    color: var(--modal-strong-color, #e2e8f0) !important;
-}
-
-.modal-text strong.light-theme {
-    color: #2d3748 !important;
-}
-
-.modal-warning {
-    color: var(--modal-warning-color, #fc8181) !important;
-}
-
-.modal-warning.light-theme {
-    color: #e53e3e !important;
-}
-
-.modal-buttons {
-    display: flex;
-    gap: 1rem;
-    justify-content: center;
-}
 
 .modal-btn-primary {
     background: #8b5cf6;
@@ -273,27 +227,6 @@ body.theme .pagination-btn:hover:not(:disabled) {
     line-height: 1;
 }
 
-.modal-btn-secondary.light-theme {
-    background: #e2e8f0;
-    color: #2d3748 !important;
-}
-
-.modal-btn-danger {
-    background: #ef4444;
-    color: white !important;
-    border: none;
-    padding: 0.75rem 1.5rem;
-    border-radius: 0.5rem;
-    font-weight: 600;
-    cursor: pointer;
-    transition: all 0.2s;
-    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    min-height: 44px;
-    line-height: 1;
-}
 
 /* Specific styling for Edit Race modal buttons */
 #save-edit {
@@ -333,32 +266,7 @@ body.theme .pagination-btn:hover:not(:disabled) {
     font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
 }
 
-.form-label.light-theme {
-    color: #4a5568;
-}
 
-.form-input {
-    width: 100%;
-    padding: 0.75rem;
-    border: 1px solid var(--form-border-color, #4a5568);
-    border-radius: 0.5rem;
-    background: var(--form-bg, #374151);
-    color: var(--form-text-color, #e2e8f0);
-    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-}
-
-.form-input.light-theme {
-    border-color: #e2e8f0;
-    background: white;
-    color: #2d3748;
-}
-
-.form-grid {
-    display: grid;
-    grid-template-columns: 1fr 1fr;
-    gap: 1rem;
-    margin-bottom: 1.5rem;
-}
 
 /* ===========================================
    Table Styling Classes
@@ -542,7 +450,7 @@ body.theme .pagination-btn:hover:not(:disabled) {
     color: black !important;
 }
 
-/* Light theme frequency indicators */
+/* Theme support */
 
     to { 
         opacity: 1; 
