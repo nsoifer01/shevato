@@ -6,8 +6,8 @@ function setDateFilter(filter) {
     currentDateFilter = filter;
     
     // Reset pagination when filter changes
-    if (window.PaginationManager) {
-        window.PaginationManager.reset();
+    if (window.GlobalPaginationManager) {
+        window.GlobalPaginationManager.reset('mario-kart-races');
     }
 
     // Update active button - use the passed event or find the button

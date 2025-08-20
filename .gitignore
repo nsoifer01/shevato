@@ -16,3 +16,8 @@ claude-*.json
 claude-session/
 .claude-history
 .claude_rules
+
+# Firebase related files
+.env
+.netlify/
+assets/js/firebase-config-local.js

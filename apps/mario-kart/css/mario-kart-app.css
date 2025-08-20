@@ -290,6 +290,66 @@ body {
   color: var(--text-muted);
 }
 
+/* Game Version Toggle */
+.game-version-toggle {
+    display: inline-flex;
+    gap: 0.5rem;
+    justify-content: center;
+    align-items: center;
+    margin: 0.5rem 0 0 0;
+}
+
+.game-version-toggle * {
+    color: white !important;
+}
+
+.version-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.75rem 1.5rem;
+    border: 1px solid #6b7280;
+    background: #4a5568;
+    color: #e2e8f0 !important;
+    border-radius: 20px;
+    font-size: 0.95rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.3s ease;
+    min-width: 130px;
+    justify-content: center;
+    position: relative;
+    white-space: nowrap;
+}
+
+.version-btn span {
+    color: white !important;
+}
+
+.version-btn .version-text {
+    color: white !important;
+}
+
+.version-btn .version-icon {
+    color: white !important;
+}
+
+.version-btn:hover:not(.active) {
+    background: #667eea;
+    color: white !important;
+    transform: translateY(-1px);
+}
+
+/* Active state - just change background */
+.version-btn.active {
+    background: #667eea;
+}
+
+.version-btn .version-icon {
+    font-size: 1.2rem;
+    color: white !important;
+}
+
 /* Responsive Design */
 @media (max-width: 768px) {
   .mk-nav {
@@ -323,4 +383,53 @@ body {
   .charts-container {
     grid-template-columns: 1fr;
   }
+}
+
+/* Header styling based on active version */
+.header-section {
+    transition: background 0.3s ease;
+    padding: 1.5rem 2rem;
+    border-radius: 15px;
+    margin-bottom: 1.5rem;
+}
+
+.header-section h1 {
+    margin: 0 0 0.75rem 0;
+    line-height: 1.2;
+}
+
+/* Style for MK8 Deluxe mode */
+body.mk8d-mode .header-section {
+    background: linear-gradient(135deg, rgba(102, 126, 234, 0.1), rgba(118, 75, 162, 0.1));
+    border: 1px solid rgba(102, 126, 234, 0.2);
+}
+
+/* Style for MK World mode */
+body.mkworld-mode .header-section {
+    background: linear-gradient(135deg, rgba(78, 205, 196, 0.1), rgba(68, 160, 141, 0.1));
+    border: 1px solid rgba(78, 205, 196, 0.2);
+}
+
+/* Mobile responsive for game toggle */
+@media (max-width: 480px) {
+    .game-version-toggle {
+        display: flex;
+        flex-direction: row;
+        width: auto;
+        gap: 0.5rem;
+    }
+    
+    .version-btn {
+        min-width: 100px;
+        padding: 0.625rem 1rem;
+        font-size: 0.875rem;
+    }
+    
+    .header-section {
+        padding: 1rem;
+    }
+    
+    .header-section h1 {
+        font-size: 1.75rem;
+    }
 }

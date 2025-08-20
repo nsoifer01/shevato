@@ -1,0 +1,328 @@
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+    <meta name="description" content="Track head-to-head football games between players">
+    <meta name="theme-color" content="#667eea">
+    <meta name="mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="default">
+    <title>Football H2H League</title>
+    <!-- Favicon -->
+    <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>⚽</text></svg>">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <!-- Import shared CSS modules -->
+    <link rel="stylesheet" href="../mario-kart/css/utilities.css">
+    <link rel="stylesheet" href="../mario-kart/css/base.css">
+    <link rel="stylesheet" href="../mario-kart/css/theme.css">
+    <link rel="stylesheet" href="../mario-kart/css/layout.css">
+    <link rel="stylesheet" href="../mario-kart/css/forms.css">
+    <link rel="stylesheet" href="../../assets/css/main.css" />
+    <link rel="stylesheet" href="../mario-kart/css/mario-kart-overrides.css">
+    <!-- Football H2H specific CSS -->
+    <link rel="stylesheet" href="css/sidebar.css">
+    <link rel="stylesheet" href="../../assets/css/pagination.css">
+    <link rel="stylesheet" href="css/football-h2h.css">
+</head>
+<body class="mario-kart-app football-h2h-tracker">
+    <div data-include="header"></div>
+    
+    <!-- Sidebar Toggle Button -->
+    <button class="sidebar-toggle" id="sidebar-toggle" onclick="toggleSidebar()" aria-label="Toggle sidebar" aria-expanded="false" aria-controls="sidebar">
+        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16" />
+        </svg>
+    </button>
+    
+    <!-- Sidebar Overlay -->
+    <div class="sidebar-overlay" id="sidebar-overlay" onclick="closeSidebar()"></div>
+    
+    <!-- Sidebar -->
+    <aside class="sidebar" id="sidebar" role="complementary" aria-label="Filters and actions sidebar">
+        <div class="sidebar-header">
+            <h2 class="sidebar-title">Control Panel</h2>
+            <div class="sidebar-header-buttons">
+                <button id="sidebar-clear-btn" class="sidebar-header-clear" onclick="confirmClearData()" title="Clear all data" aria-label="Clear all data">
+                    🗑️
+                </button>
+                <button class="sidebar-close-btn" onclick="closeSidebar()" aria-label="Close sidebar">
+                    ×
+                </button>
+            </div>
+        </div>
+        
+        <div class="sidebar-content">
+            <!-- Player Settings Section -->
+            <div class="sidebar-section">
+                <h3 class="sidebar-section-title">Player Settings</h3>
+                <button id="sidebar-player-settings-btn" class="sidebar-player-settings-btn" onclick="toggleSidebarPlayerSettings()">
+                    <span class="settings-icon">👤</span>
+                    <span class="settings-text">Manage Players</span>
+                </button>
+                <div class="sidebar-player-settings hidden" id="sidebar-player-settings">
+                    <!-- Player settings will be generated here -->
+                </div>
+            </div>
+            
+            <!-- Actions Section -->
+            <div class="sidebar-section">
+                <h3 class="sidebar-section-title">Actions</h3>
+                <button id="sidebar-add-game-btn" class="sidebar-add-game-btn" onclick="toggleSidebarGameForm()">
+                    <span class="add-icon">⚽</span>
+                    <span class="add-text">Add Game</span>
+                </button>
+                <div class="sidebar-game-form" id="sidebar-game-form">
+                    <div class="sidebar-game-error" id="sidebar-game-error"></div>
+                    <div class="sidebar-game-inputs" id="sidebar-game-inputs">
+                        <!-- Game inputs will be generated dynamically -->
+                    </div>
+                    <div class="sidebar-game-actions">
+                        <button class="sidebar-submit-game" onclick="submitSidebarGame()">⚽ Save</button>
+                        <button class="sidebar-cancel-game" onclick="closeSidebarGameForm()">Cancel</button>
+                    </div>
+                </div>
+                <div class="sidebar-action-buttons-group">
+                    <button id="sidebar-undo-btn" class="sidebar-action-btn undo-btn" onclick="undoLastAction()" disabled title="Undo last action">
+                        <span class="action-icon">↶</span>
+                        <span class="action-text">Undo</span>
+                    </button>
+                    <button id="sidebar-redo-btn" class="sidebar-action-btn redo-btn" onclick="redoLastAction()" disabled title="Redo last action">
+                        <span class="action-icon">↷</span>
+                        <span class="action-text">Redo</span>
+                    </button>
+                </div>
+                <div class="action-buttons" id="sidebar-action-buttons">
+                    <button class="sidebar-action-btn export-btn" onclick="exportData()" title="Export data">
+                        <span class="action-icon">📤</span>
+                        <span class="action-text">Export</span>
+                    </button>
+                    <button class="sidebar-action-btn import-btn" onclick="importData()" title="Import data">
+                        <span class="action-icon">📥</span>
+                        <span class="action-text">Import</span>
+                    </button>
+                    <button class="sidebar-action-btn backup-btn" onclick="toggleBackupMenu(this)" title="Download backup file (auto-backup runs every 10 minutes)">
+                        <span class="action-icon">💾</span>
+                        <span class="action-text">Backup</span>
+                    </button>
+                    <button class="sidebar-action-btn restore-btn" onclick="restoreFromBackup()" title="Restore from auto-backup">
+                        <span class="action-icon">🔄</span>
+                        <span class="action-text">Restore</span>
+                    </button>
+                </div>
+            </div>
+            
+            <!-- Date Filter Section -->
+            <div class="sidebar-section">
+                <h3 class="sidebar-section-title">Date Filter</h3>
+                <div id="sidebar-date-filter">
+                    <div class="date-filter-controls">
+                        <button class="date-filter-btn active" onclick="setDateFilter('all')" data-filter="all">All</button>
+                        <button class="date-filter-btn" onclick="setDateFilter('today')" data-filter="today">Today</button>
+                        <button class="date-filter-btn" onclick="setDateFilter('week')" data-filter="week">This Week</button>
+                        <button class="date-filter-btn" onclick="setDateFilter('month')" data-filter="month">This Month</button>
+                        <button class="date-filter-btn" onclick="setDateFilter('custom')" data-filter="custom">Custom</button>
+                    </div>
+                    <div class="custom-date-range" id="custom-date-range" style="display: none;">
+                        <input type="date" id="date-from" placeholder="Start Date">
+                        <span>to</span>
+                        <input type="date" id="date-to" placeholder="End Date">
+                        <button onclick="applyCustomDateFilter()">Apply</button>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Game Date Section -->
+            <div class="sidebar-section">
+                <h3 class="sidebar-section-title">Game Date</h3>
+                <div class="sidebar-game-date">
+                    <div class="sidebar-date-btn-container">
+                        <span class="date-text" id="sidebar-date-text">Today</span>
+                        <div class="sidebar-date-icon-wrapper">
+                            <input type="date" id="sidebar-date-input" class="sidebar-date-input-hidden" onchange="updateSidebarDate()">
+                            <label for="sidebar-date-input" class="sidebar-date-icon-btn" aria-label="Set default game date">
+                                <span class="date-icon">📅</span>
+                            </label>
+                        </div>
+                    </div>
+                    <button class="sidebar-date-today-btn" onclick="setSidebarDateToday()">Set to Today</button>
+                </div>
+            </div>
+        </div>
+    </aside>
+    
+    <!-- Main Container -->
+    <div class="app-container">
+        <div class="main-wrapper">
+            <!-- Header Section -->
+            <header class="app-header">
+                <h1 class="app-title">
+                    <span class="football-icon">⚽</span>
+                    Football H2H League
+                    <span class="football-icon">⚽</span>
+                </h1>
+            </header>
+
+
+
+
+
+            <!-- Icon Selector Modal -->
+            <div class="modal" id="iconSelectorModal">
+                <div class="modal-content">
+                    <div class="modal-header">
+                        <h2 class="modal-title" id="iconModalTitle">Select Player Icon</h2>
+                        <button class="modal-close" onclick="closeIconSelector()">&times;</button>
+                    </div>
+                    <div class="modal-body">
+                        <div class="icon-categories">
+                            <button class="category-btn active" onclick="showIconCategory('sports')" id="sportsTab">Sports</button>
+                            <button class="category-btn" onclick="showIconCategory('animals')" id="animalsTab">Animals</button>
+                            <button class="category-btn" onclick="showIconCategory('general')" id="generalTab">General</button>
+                        </div>
+                        
+                        <div class="icon-grid" id="sportsIconGrid">
+                            <!-- Sports icons will be populated by JavaScript -->
+                        </div>
+                        
+                        <div class="icon-grid" id="animalsIconGrid" style="display: none;">
+                            <!-- Animal icons will be populated by JavaScript -->
+                        </div>
+                        
+                        <div class="icon-grid" id="generalIconGrid" style="display: none;">
+                            <!-- General icons will be populated by JavaScript -->
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Statistics Overview -->
+            <section class="stats-overview">
+                <div class="stats-grid">
+                    <div class="stat-card">
+                        <div class="stat-label">Total Games</div>
+                        <div class="stat-value" id="totalGames">0</div>
+                    </div>
+                    <div class="stat-card player1-card">
+                        <div class="stat-label"><span id="player1StatsName">Player 1</span> Wins</div>
+                        <div class="stat-value" id="player1Wins">0</div>
+                    </div>
+                    <div class="stat-card draws-card">
+                        <div class="stat-label">Draws</div>
+                        <div class="stat-value" id="totalDraws">0</div>
+                    </div>
+                    <div class="stat-card player2-card">
+                        <div class="stat-label"><span id="player2StatsName">Player 2</span> Wins</div>
+                        <div class="stat-value" id="player2Wins">0</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-label">Goals Per Game</div>
+                        <div class="stat-value" id="goalsPerGame">0.0</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-label">Penalty Shootouts</div>
+                        <div class="stat-value" id="penaltyShootouts">0</div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Game History Table -->
+            <section class="game-history">
+                <h2 class="section-title">Game History</h2>
+                <div class="table-container">
+                    <table class="games-table" id="gamesTable">
+                        <thead>
+                            <tr>
+                                <th class="sortable-header" onclick="sortGames('game')">
+                                    Game # <span class="sort-indicator" id="sort-game"></span>
+                                </th>
+                                <th class="sortable-header" onclick="sortGames('date')">
+                                    Date & Time <span class="sort-indicator" id="sort-date"></span>
+                                </th>
+                                <th class="sortable-header" id="player1Header" onclick="sortGames('player1')">
+                                    Player 1 <span class="sort-indicator" id="sort-player1"></span>
+                                </th>
+                                <th class="sortable-header" id="player2Header" onclick="sortGames('player2')">
+                                    Player 2 <span class="sort-indicator" id="sort-player2"></span>
+                                </th>
+                                <th id="player1TeamHeader">Player 1's Team</th>
+                                <th id="player2TeamHeader">Player 2's Team</th>
+                                <th>Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody id="gamesTableBody">
+                            <!-- Games will be populated here -->
+                        </tbody>
+                    </table>
+                    <div class="no-games" id="noGames">
+                        <p>No games recorded yet. Click "Add Game" to start tracking!</p>
+                    </div>
+                </div>
+            </section>
+        </div>
+    </div>
+
+
+    <div data-include="footer"></div>
+    
+    <!-- Include Scripts -->
+    <script src="../../assets/js/passive-events-fix.js"></script>
+    <script src="../../assets/js/jquery.min.js"></script>
+    <script src="../../assets/js/global-icons.js"></script>
+    <script src="../../assets/js/browser.min.js"></script>
+    <script src="../../assets/js/breakpoints.min.js"></script>
+    <script src="../../assets/js/util.js"></script>
+    <script src="../../assets/js/main.js"></script>
+    <script>
+        // Minimal include functionality for Football H2H app
+        jQuery(document).ready(function($) {
+            var includes = $('[data-include]');
+            
+            jQuery.each(includes, function(){
+                var includeFile = $(this).data('include') + '.html';
+                var basePath = '../../partials/';
+                var file = basePath + includeFile;
+                var $element = $(this);
+                
+                $.ajax({
+                    url: file,
+                    type: 'GET',
+                    success: function(data) {
+                        $element.html(data);
+                    },
+                    error: function() {
+                        // Silently fail if header/footer not found
+                        $element.remove();
+                    }
+                });
+            });
+        });
+    </script>
+    <script>
+        // Theme initialization - copied from Mario Kart
+        let isDarkTheme = true;
+        try {
+            const savedTheme = localStorage.getItem('darkTheme');
+            if (savedTheme === null) {
+                isDarkTheme = true;
+                document.body.classList.add('dark-theme');
+                localStorage.setItem('darkTheme', true);
+            } else if (savedTheme === 'true') {
+                isDarkTheme = true;
+                document.body.classList.add('dark-theme');
+            } else {
+                isDarkTheme = false;
+                document.body.classList.add('light-mode');
+            }
+        } catch (e) {
+            isDarkTheme = true;
+            document.body.classList.add('dark-theme');
+        }
+    </script>
+    <script src="js/modalUtils.js"></script>
+    <script src="../../assets/js/pagination.js"></script>
+    <script src="js/sidebar.js"></script>
+    <script src="js/football-h2h.js"></script>
+    <script src="js/backup.js"></script>
+</body>
+</html>
