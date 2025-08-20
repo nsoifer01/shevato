@@ -810,7 +810,7 @@ function createGuideView() {
                         <p>Color transparency shows finishing frequency</p>
                         <div class="viz-tip viz-tip-content tips-text">
                             <span>💡 Frequency:</span>
-                            <span class="frequency-gradient light-mode light-theme hidden">
+                            <span class="frequency-gradient light-mode hidden">
                                 <span class="viz-color-indicator frequency-low">Low</span>
                                 <span class="viz-color-indicator frequency-medium">Medium</span>
                                 <span class="viz-color-indicator frequency-high">High</span>
@@ -868,13 +868,12 @@ function createGuideView() {
         </div>
     `;
 
-    // Update theme-based gradients
-    const isDarkMode = document.body.classList.contains('dark-theme');
+    // Show only theme gradients, hide light theme variants
     const lightGradients = document.querySelectorAll('.frequency-gradient.light-mode');
     const darkGradients = document.querySelectorAll('.frequency-gradient.dark-mode');
 
-    lightGradients.forEach(el => el.style.display = isDarkMode ? 'none' : 'inline-flex');
-    darkGradients.forEach(el => el.style.display = isDarkMode ? 'inline-flex' : 'none');
+    lightGradients.forEach(el => el.style.display = 'none');
+    darkGradients.forEach(el => el.style.display = 'inline-flex');
 }
 
 function getPositionClass(position) {
@@ -1503,10 +1502,10 @@ document.addEventListener('DOMContentLoaded', function() {
         updateDateButtonText();
     }
 
-    // Set theme toggle icon based on current theme
+    // Hide theme toggle since we only have one theme
     const themeToggle = document.getElementById('theme-toggle');
     if (themeToggle) {
-        themeToggle.textContent = isDarkTheme ? '☀️' : '🌙';
+        themeToggle.style.display = 'none';
     }
 
     // Initialize undo/redo button states

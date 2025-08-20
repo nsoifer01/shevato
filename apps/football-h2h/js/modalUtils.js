@@ -172,7 +172,7 @@ function createWarningModal({ icon = '⚠️', title, message, onConfirm, onCanc
 /**
  * Creates a form modal
  */
-function createFormModal({ icon, title, fields, onSave, onCancel, isDarkTheme = true }) {
+function createFormModal({ icon, title, fields, onSave, onCancel }) {
     // Group fields for grid layout
     const gridFields = fields.filter(field => field.grid);
     const regularFields = fields.filter(field => !field.grid);
@@ -187,32 +187,32 @@ function createFormModal({ icon, title, fields, onSave, onCancel, isDarkTheme = 
 
             switch (field.type) {
                 case 'date':
-                    inputHtml = `<input type="date" id="${fieldId}" value="${field.value || ''}" class="form-input ${isDarkTheme ? '' : 'light-theme'}">`;
+                    inputHtml = `<input type="date" id="${fieldId}" value="${field.value || ''}" class="form-input ">`;
                     break;
                 case 'time':
-                    inputHtml = `<input type="time" id="${fieldId}" value="${field.value || ''}" step="1" class="form-input ${isDarkTheme ? '' : 'light-theme'}" placeholder="${field.placeholder || ''}">`;
+                    inputHtml = `<input type="time" id="${fieldId}" value="${field.value || ''}" step="1" class="form-input " placeholder="${field.placeholder || ''}">`;
                     break;
                 case 'number':
                     const numberChangeHandler = field.onChange ? `onchange="${field.onChange}"` : '';
                     const numberValue = field.value !== undefined && field.value !== null ? field.value : '';
-                    inputHtml = `<input type="number" id="${fieldId}" value="${numberValue}" min="${field.min || ''}" max="${field.max || ''}" class="form-input ${isDarkTheme ? '' : 'light-theme'}" placeholder="${field.placeholder || ''}" ${numberChangeHandler}>`;
+                    inputHtml = `<input type="number" id="${fieldId}" value="${numberValue}" min="${field.min || ''}" max="${field.max || ''}" class="form-input " placeholder="${field.placeholder || ''}" ${numberChangeHandler}>`;
                     break;
                 case 'select':
                     const optionsHtml = field.options.map(option => 
                         `<option value="${option.value}" ${option.value === field.value ? 'selected' : ''}>${option.text}</option>`
                     ).join('');
                     const changeHandler = field.onChange ? `onchange="${field.onChange}"` : '';
-                    inputHtml = `<select id="${fieldId}" class="form-input ${isDarkTheme ? '' : 'light-theme'}" ${changeHandler}>${optionsHtml}</select>`;
+                    inputHtml = `<select id="${fieldId}" class="form-input " ${changeHandler}>${optionsHtml}</select>`;
                     break;
                 default:
                     const maxLengthAttr = field.maxlength ? `maxlength="${field.maxlength}"` : '';
-                inputHtml = `<input type="text" id="${fieldId}" value="${field.value || ''}" class="form-input ${isDarkTheme ? '' : 'light-theme'}" placeholder="${field.placeholder || ''}" ${maxLengthAttr}>`;
+                inputHtml = `<input type="text" id="${fieldId}" value="${field.value || ''}" class="form-input " placeholder="${field.placeholder || ''}" ${maxLengthAttr}>`;
             }
 
             const hideStyle = field.hidden ? 'style="display: none;"' : '';
             return `
                 <div class="form-group" ${hideStyle}>
-                    <label class="form-label ${isDarkTheme ? '' : 'light-theme'}" for="${fieldId}">${field.label}:</label>
+                    <label class="form-label " for="${fieldId}">${field.label}:</label>
                     ${inputHtml}
                 </div>
             `;
@@ -228,32 +228,32 @@ function createFormModal({ icon, title, fields, onSave, onCancel, isDarkTheme = 
 
         switch (field.type) {
             case 'date':
-                inputHtml = `<input type="date" id="${fieldId}" value="${field.value || ''}" class="form-input ${isDarkTheme ? '' : 'light-theme'}">`;
+                inputHtml = `<input type="date" id="${fieldId}" value="${field.value || ''}" class="form-input ">`;
                 break;
             case 'time':
-                inputHtml = `<input type="time" id="${fieldId}" value="${field.value || ''}" step="1" class="form-input ${isDarkTheme ? '' : 'light-theme'}" placeholder="${field.placeholder || ''}">`;
+                inputHtml = `<input type="time" id="${fieldId}" value="${field.value || ''}" step="1" class="form-input " placeholder="${field.placeholder || ''}">`;
                 break;
             case 'number':
                 const numberChangeHandler = field.onChange ? `onchange="${field.onChange}"` : '';
                 const numberValue = field.value !== undefined && field.value !== null ? field.value : '';
-                inputHtml = `<input type="number" id="${fieldId}" value="${numberValue}" min="${field.min || ''}" max="${field.max || ''}" class="form-input ${isDarkTheme ? '' : 'light-theme'}" placeholder="${field.placeholder || ''}" ${numberChangeHandler}>`;
+                inputHtml = `<input type="number" id="${fieldId}" value="${numberValue}" min="${field.min || ''}" max="${field.max || ''}" class="form-input " placeholder="${field.placeholder || ''}" ${numberChangeHandler}>`;
                 break;
             case 'select':
                 const optionsHtml = field.options.map(option => 
                     `<option value="${option.value}" ${option.value === field.value ? 'selected' : ''}>${option.text}</option>`
                 ).join('');
                 const changeHandler = field.onChange ? `onchange="${field.onChange}"` : '';
-                inputHtml = `<select id="${fieldId}" class="form-input ${isDarkTheme ? '' : 'light-theme'}" ${changeHandler}>${optionsHtml}</select>`;
+                inputHtml = `<select id="${fieldId}" class="form-input " ${changeHandler}>${optionsHtml}</select>`;
                 break;
             default:
                 const maxLengthAttr = field.maxlength ? `maxlength="${field.maxlength}"` : '';
-                inputHtml = `<input type="text" id="${fieldId}" value="${field.value || ''}" class="form-input ${isDarkTheme ? '' : 'light-theme'}" placeholder="${field.placeholder || ''}" ${maxLengthAttr}>`;
+                inputHtml = `<input type="text" id="${fieldId}" value="${field.value || ''}" class="form-input " placeholder="${field.placeholder || ''}" ${maxLengthAttr}>`;
         }
 
         const hideStyle = field.hidden ? 'style="display: none;"' : '';
         return `
             <div class="form-group" ${hideStyle}>
-                <label class="form-label ${isDarkTheme ? '' : 'light-theme'}" for="${fieldId}">${field.label}:</label>
+                <label class="form-label " for="${fieldId}">${field.label}:</label>
                 ${inputHtml}
             </div>
         `;
@@ -295,7 +295,6 @@ function createFormModal({ icon, title, fields, onSave, onCancel, isDarkTheme = 
         title,
         content,
         buttons,
-        isDarkTheme
     });
     
     // Add event listeners for dynamic penalty field visibility (for Football H2H edit modal)
