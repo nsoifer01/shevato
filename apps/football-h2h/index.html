@@ -255,7 +255,7 @@
                         </tbody>
                     </table>
                     <div class="no-games" id="noGames">
-                        <p>No games recorded yet. Click "Add Game" to start tracking!</p>
+                        <p>No games recorded yet. Click "Add Game" from sidebar to start tracking!</p>
                     </div>
                 </div>
             </section>
@@ -299,25 +299,9 @@
         });
     </script>
     <script>
-        // Theme initialization - copied from Mario Kart
-        let isDarkTheme = true;
-        try {
-            const savedTheme = localStorage.getItem('darkTheme');
-            if (savedTheme === null) {
-                isDarkTheme = true;
-                document.body.classList.add('dark-theme');
-                localStorage.setItem('darkTheme', true);
-            } else if (savedTheme === 'true') {
-                isDarkTheme = true;
-                document.body.classList.add('dark-theme');
-            } else {
-                isDarkTheme = false;
-                document.body.classList.add('light-mode');
-            }
-        } catch (e) {
-            isDarkTheme = true;
-            document.body.classList.add('dark-theme');
-        }
+        // Apply consistent theme
+        document.body.classList.add('theme');
+        localStorage.setItem('theme', 'true');
     </script>
     <script src="js/modalUtils.js"></script>
     <script src="../../assets/js/pagination.js"></script>

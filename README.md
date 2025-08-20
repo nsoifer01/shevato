@@ -74,7 +74,7 @@ shevato/
 ## Key Features
 
 - **Responsive Design**: Mobile-first approach with breakpoint handling
-- **Dark Theme**: Consistent dark background (`bg.jpg`) across all main pages
+- **Theme**: Consistent themed background (`bg.jpg`) across all main pages
 - **Modular Architecture**: Clear separation between main site and apps
 - **Dynamic Content Loading**: Partials system for headers/footers
 - **Interactive Games**: 
