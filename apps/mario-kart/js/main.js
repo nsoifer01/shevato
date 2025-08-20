@@ -678,8 +678,8 @@ function toggleView(view) {
     currentView = view;
 
     // Reset pagination when view changes
-    if (window.PaginationManager) {
-        window.PaginationManager.reset();
+    if (window.GlobalPaginationManager) {
+        window.GlobalPaginationManager.reset('mario-kart-races');
     }
 
     document.querySelectorAll('.toggle-btn').forEach(btn => {
@@ -979,8 +979,8 @@ function sortTable(column) {
     }
 
     // Reset pagination when sorting changes
-    if (window.PaginationManager) {
-        window.PaginationManager.reset();
+    if (window.GlobalPaginationManager) {
+        window.GlobalPaginationManager.reset('mario-kart-races');
     }
 
     // For trends, activity, and analysis views, only update race history table
@@ -1056,8 +1056,8 @@ function updateRaceHistoryTable(filteredRaces) {
     const reversedRaces = filteredRaces.slice().reverse();
 
     // Get paginated subset if pagination is available
-    const racesToDisplay = window.PaginationManager
-        ? window.PaginationManager.getPaginatedRaces(reversedRaces)
+    const racesToDisplay = window.GlobalPaginationManager
+        ? window.GlobalPaginationManager.getPaginatedItems('mario-kart-races', reversedRaces)
         : reversedRaces;
 
     // Update history table
@@ -1089,8 +1089,8 @@ function updateRaceHistoryTable(filteredRaces) {
     document.getElementById('history-body').innerHTML = historyHtml;
 
     // Add pagination controls if available
-    if (window.PaginationManager && filteredRaces.length > 0) {
-        const paginationHtml = window.PaginationManager.createPaginationControls();
+    if (window.GlobalPaginationManager && filteredRaces.length > 0) {
+        const paginationHtml = window.GlobalPaginationManager.createPaginationControls('mario-kart-races');
         const tableContainer = document.querySelector('.table-container');
 
         // Remove existing pagination if any
@@ -1478,6 +1478,14 @@ document.addEventListener('DOMContentLoaded', function() {
     // Initialize game version manager first
     if (window.initializeGameVersion) {
         window.initializeGameVersion();
+    }
+    
+    // Initialize global pagination instance for Mario Kart
+    if (window.GlobalPaginationManager) {
+        window.GlobalPaginationManager.createInstance('mario-kart-races', {
+            localStorageKey: 'raceHistoryPageSize',
+            updateCallback: updateDisplay
+        });
     }
     
     // Set date to user's local timezone

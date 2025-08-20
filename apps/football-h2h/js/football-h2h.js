@@ -76,6 +76,14 @@ let currentPlayerForIcon = null;
 
 // Initialize app on page load
 document.addEventListener('DOMContentLoaded', function() {
+    // Initialize global pagination instance for Football H2H
+    if (window.GlobalPaginationManager) {
+        window.GlobalPaginationManager.createInstance('football-h2h-games', {
+            localStorageKey: 'gameHistoryPageSize',
+            updateCallback: updateUI
+        });
+    }
+    
     loadPlayers();
     loadPlayerIcons();
     loadGames();
@@ -1521,8 +1529,8 @@ function renderGamesTableWithData(gamesData) {
     if (noGamesDiv) noGamesDiv.style.display = 'none';
     
     // Get paginated subset if pagination is available (data is already sorted)
-    const gamesToDisplay = window.PaginationManager
-        ? window.PaginationManager.getPaginatedRaces(gamesData)
+    const gamesToDisplay = window.GlobalPaginationManager
+        ? window.GlobalPaginationManager.getPaginatedItems('football-h2h-games', gamesData)
         : gamesData;
     
     tbody.innerHTML = '';
@@ -1609,8 +1617,8 @@ function renderGamesTableWithData(gamesData) {
     });
     
     // Add pagination controls if available
-    if (window.PaginationManager && gamesData.length > 0) {
-        const paginationHtml = window.PaginationManager.createPaginationControls();
+    if (window.GlobalPaginationManager && gamesData.length > 0) {
+        const paginationHtml = window.GlobalPaginationManager.createPaginationControls('football-h2h-games');
         const tableContainer = document.querySelector('.table-container');
 
         // Remove existing pagination if any
