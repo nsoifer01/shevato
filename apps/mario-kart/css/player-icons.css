@@ -11,8 +11,8 @@
     background: #f0f0f0;
 }
 
-/* Dark theme support */
-body.dark-theme .player-icon {
+/* Theme support */
+body.theme .player-icon {
     box-shadow: 0 1px 3px rgba(0, 0, 0, 0.4);
     background: #2d3748;
 }

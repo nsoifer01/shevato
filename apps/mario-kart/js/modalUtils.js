@@ -7,27 +7,27 @@
  * @param {string} config.title - Modal title
  * @param {string} config.content - Modal HTML content
  * @param {Array} config.buttons - Array of button configurations
- * @param {boolean} config.isDarkTheme - Whether to use dark theme styling
+ * Modal styling uses consistent theme
  * @returns {HTMLElement} - The modal element
  */
-function createModal({ icon, title, content, buttons = [], isDarkTheme = true }) {
+function createModal({ icon, title, content, buttons = [] }) {
     const modal = document.createElement('div');
     modal.className = 'modal-overlay';
 
     const dialog = document.createElement('div');
-    dialog.className = `modal-dialog ${isDarkTheme ? '' : 'light-theme'}`;
+    dialog.className = 'modal-dialog';
 
     const buttonHtml = buttons.map(btn => {
         const classes = ['modal-btn-primary', 'modal-btn-secondary', 'modal-btn-danger'];
         const buttonClass = classes[btn.type] || 'modal-btn-primary';
-        const themeClass = (!isDarkTheme && btn.type === 1) ? 'light-theme' : '';
+        const themeClass = '';
         return `<button id="${btn.id}" class="${buttonClass} ${themeClass}">${btn.text}</button>`;
     }).join('');
 
     dialog.innerHTML = `
         <div class="modal-icon">${icon}</div>
-        <h3 class="modal-title ${isDarkTheme ? '' : 'light-theme'}">${title}</h3>
-        <div class="modal-content ${isDarkTheme ? '' : 'light-theme'}">${content}</div>
+        <h3 class="modal-title">${title}</h3>
+        <div class="modal-content">${content}</div>
         <div class="modal-buttons">${buttonHtml}</div>
     `;
 
@@ -69,7 +69,7 @@ function createModal({ icon, title, content, buttons = [], isDarkTheme = true })
 /**
  * Creates a confirmation modal
  */
-function createConfirmationModal({ icon, title, message, onConfirm, onCancel, isDarkTheme = true, isDestructive = false }) {
+function createConfirmationModal({ icon, title, message, onConfirm, onCancel, isDestructive = false }) {
     const buttons = [
         {
             id: 'confirm-btn',
@@ -85,43 +85,42 @@ function createConfirmationModal({ icon, title, message, onConfirm, onCancel, is
         }
     ];
 
-    const content = `<p class="modal-text ${isDarkTheme ? '' : 'light-theme'}">${message}</p>`;
+    const content = `<p class="modal-text">${message}</p>`;
 
     return createModal({
         icon,
         title,
         content,
         buttons,
-        isDarkTheme
     });
 }
 
 /**
  * Creates a form modal
  */
-function createFormModal({ icon, title, fields, onSave, onCancel, isDarkTheme = true }) {
+function createFormModal({ icon, title, fields, onSave, onCancel }) {
     const fieldsHtml = fields.map(field => {
         const fieldId = `form-${field.id}`;
         let inputHtml;
 
         switch (field.type) {
             case 'date':
-                inputHtml = `<input type="date" id="${fieldId}" value="${field.value || ''}" class="form-input ${isDarkTheme ? '' : 'light-theme'}">`;
+                inputHtml = `<input type="date" id="${fieldId}" value="${field.value || ''}" class="form-input ">`;
                 break;
             case 'time':
-                inputHtml = `<input type="time" id="${fieldId}" value="${field.value || ''}" step="1" class="form-input ${isDarkTheme ? '' : 'light-theme'}" placeholder="${field.placeholder || ''}">`;
+                inputHtml = `<input type="time" id="${fieldId}" value="${field.value || ''}" step="1" class="form-input " placeholder="${field.placeholder || ''}">`;
                 break;
             case 'number':
-                inputHtml = `<input type="number" id="${fieldId}" value="${field.value || ''}" min="${field.min || ''}" max="${field.max || ''}" class="form-input ${isDarkTheme ? '' : 'light-theme'}" placeholder="${field.placeholder || ''}">`;
+                inputHtml = `<input type="number" id="${fieldId}" value="${field.value || ''}" min="${field.min || ''}" max="${field.max || ''}" class="form-input " placeholder="${field.placeholder || ''}">`;
                 break;
             default:
-                inputHtml = `<input type="text" id="${fieldId}" value="${field.value || ''}" class="form-input ${isDarkTheme ? '' : 'light-theme'}" placeholder="${field.placeholder || ''}">`;
+                inputHtml = `<input type="text" id="${fieldId}" value="${field.value || ''}" class="form-input " placeholder="${field.placeholder || ''}">`;
         }
 
         if (field.grid) {
             return `
                 <div class="form-group">
-                    <label class="form-label ${isDarkTheme ? '' : 'light-theme'}" for="${fieldId}">${field.label}:</label>
+                    <label class="form-label " for="${fieldId}">${field.label}:</label>
                     ${inputHtml}
                 </div>
             `;
@@ -129,7 +128,7 @@ function createFormModal({ icon, title, fields, onSave, onCancel, isDarkTheme = 
 
         return `
             <div class="form-group">
-                <label class="form-label ${isDarkTheme ? '' : 'light-theme'}" for="${fieldId}">${field.label}:</label>
+                <label class="form-label " for="${fieldId}">${field.label}:</label>
                 ${inputHtml}
             </div>
         `;
@@ -164,7 +163,6 @@ function createFormModal({ icon, title, fields, onSave, onCancel, isDarkTheme = 
         title,
         content,
         buttons,
-        isDarkTheme
     });
 }
 

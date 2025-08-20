@@ -840,11 +840,11 @@ canvas {
 }
 
 /* ========================================= */
-/* DARK MODE RESPONSIVE ADJUSTMENTS */
+/* THEME RESPONSIVE ADJUSTMENTS */
 /* ========================================= */
-body.dark-theme .input-section,
-body.dark-theme .stat-card,
-body.dark-theme .chart-container {
+body.theme .input-section,
+body.theme .stat-card,
+body.theme .chart-container {
     background: var(--dark-card-bg, #2d3748);
 }
 

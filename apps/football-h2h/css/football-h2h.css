@@ -1,6 +1,6 @@
-/* Football H2H Tracker Specific Styles - Dark Theme Override */
+/* Football H2H Tracker Specific Styles - Theme Override */
 
-/* Override any inherited light theme variables */
+/* Override any inherited theme variables */
 .football-h2h-tracker {
     --bg-card: #374151;
     --bg-input: #374151;
@@ -14,7 +14,7 @@
     --hover-bg: rgba(75, 85, 99, 0.5);
 }
 
-/* Dark theme scrollbars */
+/* Theme support */
 .football-h2h-tracker ::-webkit-scrollbar {
     width: 12px;
     height: 12px;
@@ -147,7 +147,7 @@
     margin-left: 0.5rem;
 }
 
-/* App Container - Dark Theme */
+/* App Container - Theme */
 .football-h2h-tracker {
     background: linear-gradient(135deg, #1a202c 0%, #2d3748 100%);
     min-height: 100vh;
@@ -695,7 +695,7 @@
     color: initial !important;
 }
 
-/* Players Section - Dark Theme */
+/* Players Section - Theme */
 .players-section {
     margin-bottom: 2rem;
     padding: 1.5rem;
@@ -812,7 +812,7 @@
     border-color: rgba(251, 191, 36, 0.6);
 }
 
-/* Game History Section - Dark Theme */
+/* Game History Section - Theme */
 .game-history {
     background: linear-gradient(135deg, #2d3748 0%, #1a202c 100%);
     border-radius: 24px;
@@ -882,7 +882,7 @@
     width: 100px;
 }
 
-/* Modern Table Container - Dark Theme */
+/* Modern Table Container - Theme */
 .table-container {
     background: rgba(45, 55, 72, 0.95);
     border-radius: 16px;
@@ -979,7 +979,7 @@
     background: rgba(255, 255, 255, 0.2);
 }
 
-/* Table Body - Dark Theme */
+/* Table Body - Theme */
 .games-table tbody tr {
     background: #374151;
     transition: all 0.2s ease;
@@ -1442,7 +1442,7 @@
     box-shadow: 0 0 0 3px rgba(129, 140, 248, 0.2);
 }
 
-/* Dark theme selects and inputs */
+/* Theme support */
 .dark-select {
     width: 100%;
     padding: 0.75rem;
@@ -1753,43 +1753,13 @@
     font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
 }
 
-.form-label.light-theme {
-    color: #4a5568;
-}
 
-.form-input {
-    width: 100%;
-    padding: 0.75rem;
-    border: 1px solid #4a5568;
-    border-radius: 0.5rem;
-    background: #4a5568;
-    color: #e2e8f0;
-    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-    transition: all 0.2s ease;
-    box-sizing: border-box;
-}
-
-.form-input.light-theme {
-    border: 1px solid #e2e8f0;
-    background: white;
-    color: #2d3748;
-}
-
-.form-input:focus {
-    outline: none;
-    border-color: #8b5cf6;
-    box-shadow: 0 0 0 3px rgba(139, 92, 246, 0.2);
-}
 
 .form-input[type="date"],
 .form-input[type="time"] {
     color-scheme: dark;
 }
 
-.form-input[type="date"].light-theme,
-.form-input[type="time"].light-theme {
-    color-scheme: light;
-}
 
 /* Grid layout for date/time inputs */
 .form-grid-2 {

@@ -124,7 +124,7 @@ const originalRemoveItem = localStorage.removeItem.bind(localStorage);
 // Wrapper for localStorage.getItem
 function getFromStorage(key) {
     // Special keys that should not be prefixed
-    const unprefixedKeys = ['selectedGameVersion', 'theme', 'isDarkTheme'];
+    const unprefixedKeys = ['selectedGameVersion', 'theme'];
     if (unprefixedKeys.includes(key)) {
         return originalGetItem(key);
     }
@@ -142,7 +142,7 @@ function getFromStorage(key) {
 // Wrapper for localStorage.setItem
 function saveToStorage(key, value) {
     // Special keys that should not be prefixed
-    const unprefixedKeys = ['selectedGameVersion', 'theme', 'isDarkTheme'];
+    const unprefixedKeys = ['selectedGameVersion', 'theme'];
     if (unprefixedKeys.includes(key)) {
         return originalSetItem(key, value);
     }
@@ -160,7 +160,7 @@ function saveToStorage(key, value) {
 // Wrapper for localStorage.removeItem
 function removeFromStorage(key) {
     // Special keys that should not be prefixed
-    const unprefixedKeys = ['selectedGameVersion', 'theme', 'isDarkTheme'];
+    const unprefixedKeys = ['selectedGameVersion', 'theme'];
     if (unprefixedKeys.includes(key)) {
         return originalRemoveItem(key);
     }

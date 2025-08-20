@@ -98,19 +98,19 @@ body.sidebar-open {
     scrollbar-color: #667eea var(--scrollbar-track);
 }
 
-/* Dark theme scrollbar */
-body.dark-theme .sidebar::-webkit-scrollbar-track {
+/* Theme scrollbar */
+body.theme .sidebar::-webkit-scrollbar-track {
     background: rgba(255, 255, 255, 0.05);
 }
 
-body.dark-theme .sidebar::-webkit-scrollbar-thumb {
+body.theme .sidebar::-webkit-scrollbar-thumb {
     background: linear-gradient(180deg, #818cf8 0%, #a78bfa 100%);
     box-shadow: 0 2px 4px rgba(0, 0, 0, 0.3);
 }
 
 /* Note: :hover pseudo-class is not supported on scrollbar pseudo-elements in some browsers */
 
-body.dark-theme .sidebar {
+body.theme .sidebar {
     scrollbar-color: #818cf8 rgba(255, 255, 255, 0.05);
     background: #1a202c;
 }
@@ -156,11 +156,11 @@ body.dark-theme .sidebar {
     transform: scale(1.05);
 }
 
-body.dark-theme .sidebar-theme-toggle {
+body.theme .sidebar-theme-toggle {
     border-color: rgba(107, 114, 128, 0.5);
 }
 
-body.dark-theme .sidebar-theme-toggle:hover {
+body.theme .sidebar-theme-toggle:hover {
     background: rgba(255, 255, 255, 0.05);
 }
 
@@ -190,11 +190,11 @@ body.dark-theme .sidebar-theme-toggle:hover {
     cursor: not-allowed;
 }
 
-body.dark-theme .sidebar-header-clear {
+body.theme .sidebar-header-clear {
     border-color: rgba(107, 114, 128, 0.5);
 }
 
-body.dark-theme .sidebar-header-clear:hover:not(:disabled) {
+body.theme .sidebar-header-clear:hover:not(:disabled) {
     background: rgba(239, 68, 68, 0.2);
     border-color: #ef4444;
 }
@@ -236,12 +236,12 @@ body.dark-theme .sidebar-header-clear:hover:not(:disabled) {
     outline-offset: 2px;
 }
 
-body.dark-theme .sidebar-close-btn {
+body.theme .sidebar-close-btn {
     border-color: rgba(107, 114, 128, 0.5);
     color: #dc2626 !important;
 }
 
-body.dark-theme .sidebar-close-btn:hover {
+body.theme .sidebar-close-btn:hover {
     background: rgba(220, 38, 38, 0.2);
     color: #b91c1c !important;
 }
@@ -387,28 +387,16 @@ body.dark-theme .sidebar-close-btn:hover {
     }
 }
 
-/* Dark theme enhancements */
-body.dark-theme .sidebar-toggle {
+/* Theme enhancements */
+body.theme .sidebar-toggle {
     background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
     border-color: rgba(255, 255, 255, 0.15);
     box-shadow: 0 4px 20px rgba(102, 126, 234, 0.4);
 }
 
-body.dark-theme .sidebar-toggle:hover {
+body.theme .sidebar-toggle:hover {
     background: linear-gradient(135deg, #5a67d8 0%, #6b46c1 100%);
     box-shadow: 0 8px 30px rgba(102, 126, 234, 0.5);
-}
-
-/* Light theme enhancements */
-body.light-mode .sidebar-toggle {
-    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-    border-color: rgba(0, 0, 0, 0.1);
-    box-shadow: 0 4px 20px rgba(102, 126, 234, 0.25);
-}
-
-body.light-mode .sidebar-toggle:hover {
-    background: linear-gradient(135deg, #5a67d8 0%, #6b46c1 100%);
-    box-shadow: 0 8px 30px rgba(102, 126, 234, 0.35);
 }
 
 /* Responsive adjustments */
@@ -424,13 +412,13 @@ body.light-mode .sidebar-toggle:hover {
     }
 }
 
-/* Dark theme adjustments */
-body.dark-theme .sidebar {
+/* Theme adjustments */
+body.theme .sidebar {
     background: #1a202c;
     box-shadow: 2px 0 10px rgba(0, 0, 0, 0.3);
 }
 
-body.dark-theme .sidebar-overlay {
+body.theme .sidebar-overlay {
     background-color: rgba(0, 0, 0, 0.7);
 }
 
@@ -812,37 +800,37 @@ body.dark-theme .sidebar-overlay {
     transform: translateY(0);
 }
 
-/* Dark theme support for Set to Today button */
-body.dark-theme .sidebar-date-today-btn {
+/* Theme support for Set to Today button */
+body.theme .sidebar-date-today-btn {
     background: #34d399;
     color: black !important;
     border-color: #10b981;
     box-shadow: 0 2px 4px rgba(52, 211, 153, 0.2);
 }
 
-body.dark-theme .sidebar-date-today-btn:hover {
+body.theme .sidebar-date-today-btn:hover {
     background: #10b981;
     color: black !important;
     box-shadow: 0 4px 8px rgba(52, 211, 153, 0.3);
 }
 
-/* Dark theme support */
-body.dark-theme .sidebar-date-icon-btn {
+/* Theme support */
+body.theme .sidebar-date-icon-btn {
     background: rgba(255, 255, 255, 0.1);
     border-color: rgba(255, 255, 255, 0.2);
 }
 
-body.dark-theme .sidebar-date-icon-btn:hover {
+body.theme .sidebar-date-icon-btn:hover {
     background: rgba(255, 255, 255, 0.2);
 }
 
-/* Dark mode for hidden date input */
-body.dark-theme .sidebar-date-input-hidden {
+/* Theme support */
+body.theme .sidebar-date-input-hidden {
     color-scheme: dark;
 }
 
-/* Ensure calendar picker works in dark mode */
-body.dark-theme .sidebar-date-input-hidden::-webkit-calendar-picker-indicator {
+/* Ensure calendar picker works with theme */
+body.theme .sidebar-date-input-hidden::-webkit-calendar-picker-indicator {
     cursor: pointer;
 }
 
@@ -921,12 +909,12 @@ body.dark-theme .sidebar-date-input-hidden::-webkit-calendar-picker-indicator {
     background: #9ca3af;
 }
 
-/* Dark theme support */
-body.dark-theme .sidebar-add-game-btn {
+/* Theme support */
+body.theme .sidebar-add-game-btn {
     box-shadow: 0 2px 4px rgba(16, 185, 129, 0.2);
 }
 
-body.dark-theme .sidebar-add-game-btn:hover {
+body.theme .sidebar-add-game-btn:hover {
     box-shadow: 0 4px 8px rgba(16, 185, 129, 0.3);
 }
 
@@ -971,18 +959,18 @@ body.dark-theme .sidebar-add-game-btn:hover {
     font-size: 0.9rem;
 }
 
-/* Dark theme support */
-body.dark-theme .sidebar-player-settings-btn {
+/* Theme support */
+body.theme .sidebar-player-settings-btn {
     background: linear-gradient(135deg, #f472b6 0%, #a78bfa 100%);
     box-shadow: 0 2px 8px rgba(244, 114, 182, 0.3);
 }
 
-body.dark-theme .sidebar-player-settings-btn:hover {
+body.theme .sidebar-player-settings-btn:hover {
     background: linear-gradient(135deg, #ec4899 0%, #9333ea 100%);
     box-shadow: 0 4px 12px rgba(244, 114, 182, 0.4);
 }
 
-body.dark-theme .sidebar-player-settings-btn.active {
+body.theme .sidebar-player-settings-btn.active {
     background: linear-gradient(135deg, #db2777 0%, #7c3aed 100%);
 }
 
@@ -1093,51 +1081,51 @@ body.dark-theme .sidebar-player-settings-btn.active {
     font-size: 0.9rem;
 }
 
-/* Dark theme support for action buttons */
-body.dark-theme .sidebar-action-btn {
+/* Theme support for action buttons */
+body.theme .sidebar-action-btn {
     background: transparent;
     color: #e2e8f0;
     border-color: rgba(107, 114, 128, 0.5);
 }
 
-body.dark-theme .sidebar-action-btn:hover:not(:disabled) {
+body.theme .sidebar-action-btn:hover:not(:disabled) {
     background: rgba(255, 255, 255, 0.05);
     border-color: rgba(107, 114, 128, 0.8);
 }
 
-body.dark-theme .sidebar-action-btn.undo-btn {
+body.theme .sidebar-action-btn.undo-btn {
     background: #60a5fa;
     color: black !important;
     border-color: #3b82f6;
 }
 
-body.dark-theme .sidebar-action-btn.undo-btn:hover:not(:disabled) {
+body.theme .sidebar-action-btn.undo-btn:hover:not(:disabled) {
     background: #3b82f6;
     color: black !important;
     transform: translateY(-1px);
     box-shadow: 0 2px 4px rgba(0, 0, 0, 0.3);
 }
 
-body.dark-theme .sidebar-action-btn.redo-btn {
+body.theme .sidebar-action-btn.redo-btn {
     background: #34d399;
     color: black !important;
     border-color: #10b981;
 }
 
-body.dark-theme .sidebar-action-btn.redo-btn:hover:not(:disabled) {
+body.theme .sidebar-action-btn.redo-btn:hover:not(:disabled) {
     background: #10b981;
     color: black !important;
     transform: translateY(-1px);
     box-shadow: 0 2px 4px rgba(0, 0, 0, 0.3);
 }
 
-body.dark-theme .sidebar-action-btn.restore-btn {
+body.theme .sidebar-action-btn.restore-btn {
     background: #fbbf24;
     color: black !important;
     border-color: #f59e0b;
 }
 
-body.dark-theme .sidebar-action-btn.restore-btn:hover {
+body.theme .sidebar-action-btn.restore-btn:hover {
     background: #f59e0b;
     color: black !important;
     transform: translateY(-1px);
@@ -1202,63 +1190,63 @@ body.dark-theme .sidebar-action-btn.restore-btn:hover {
     box-shadow: var(--shadow-md);
 }
 
-/* Dark theme for custom date range */
-body.dark-theme .sidebar .custom-date-range {
+/* Theme for custom date range */
+body.theme .sidebar .custom-date-range {
     background: rgba(45, 55, 72, 0.8);
     border-color: rgba(255, 255, 255, 0.1);
 }
 
-body.dark-theme .sidebar .custom-date-range input {
+body.theme .sidebar .custom-date-range input {
     background: #374151;
     border-color: rgba(255, 255, 255, 0.1);
     color: #f7fafc;
 }
 
-body.dark-theme .sidebar .custom-date-range span {
+body.theme .sidebar .custom-date-range span {
     color: #e2e8f0 !important;
 }
 
-/* Dark theme support for export/import/backup buttons */
-body.dark-theme .sidebar .action-buttons button[onclick*="exportData"] {
+/* Theme support for export/import/backup buttons */
+body.theme .sidebar .action-buttons button[onclick*="exportData"] {
     background: #68D391;
     color: black !important;
     border-color: #48BB78;
 }
 
-body.dark-theme .sidebar .action-buttons button[onclick*="exportData"]:hover {
+body.theme .sidebar .action-buttons button[onclick*="exportData"]:hover {
     background: #48BB78;
     color: black !important;
 }
 
-body.dark-theme .sidebar .action-buttons button[onclick*="importData"] {
+body.theme .sidebar .action-buttons button[onclick*="importData"] {
     background: #4FD1C5;
     color: black !important;
     border-color: #38B2AC;
 }
 
-body.dark-theme .sidebar .action-buttons button[onclick*="importData"]:hover {
+body.theme .sidebar .action-buttons button[onclick*="importData"]:hover {
     background: #38B2AC;
     color: black !important;
 }
 
-body.dark-theme .sidebar .action-buttons button[onclick*="toggleBackupMenu"] {
+body.theme .sidebar .action-buttons button[onclick*="toggleBackupMenu"] {
     background: #63B3ED;
     color: black !important;
     border-color: #4299E1;
 }
 
-body.dark-theme .sidebar .action-buttons button[onclick*="toggleBackupMenu"]:hover {
+body.theme .sidebar .action-buttons button[onclick*="toggleBackupMenu"]:hover {
     background: #4299E1;
     color: black !important;
 }
 
-body.dark-theme .sidebar .action-buttons button[onclick*="restoreFromBackup"] {
+body.theme .sidebar .action-buttons button[onclick*="restoreFromBackup"] {
     background: #fbbf24;
     color: black !important;
     border-color: #f59e0b;
 }
 
-body.dark-theme .sidebar .action-buttons button[onclick*="restoreFromBackup"]:hover {
+body.theme .sidebar .action-buttons button[onclick*="restoreFromBackup"]:hover {
     background: #f59e0b;
     color: black !important;
 }
@@ -1310,14 +1298,14 @@ body.dark-theme .sidebar .action-buttons button[onclick*="restoreFromBackup"]:ho
     border-color: #374151 !important;
 }
 
-/* Dark theme specific overrides for filter buttons */
-body.dark-theme .sidebar .filter-btn:not(.active) {
+/* Theme specific overrides for filter buttons */
+body.theme .sidebar .filter-btn:not(.active) {
     background: #4b5563 !important;
     color: white !important;
     border-color: #374151 !important;
 }
 
-body.dark-theme .sidebar .filter-btn:not(.active):hover {
+body.theme .sidebar .filter-btn:not(.active):hover {
     background: #374151 !important;
     color: white !important;
     border-color: #1f2937 !important;

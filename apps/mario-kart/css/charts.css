@@ -45,39 +45,23 @@
 
 
 
-/* Light theme support for Trends */
-body.light-mode #trends {
-    background-color: #ffffff;
-    border: 1px solid #e2e8f0;
-}
+/* Theme support */
 
-body.light-mode #trends h2 {
-    color: #1a202c;
-}
 
-body.light-mode #trends p {
-    color: #4a5568;
-}
-
-body.light-mode #trends-chart-container {
-    background: rgba(0, 0, 0, 0.02);
-    border: 1px solid #f1f5f9;
-}
-
-/* Dark theme support for Trends */
-body.dark-theme #trends {
+/* Theme support for Trends */
+body.theme #trends {
     background-color: #2d3748;
 }
 
-body.dark-theme #trends h2 {
+body.theme #trends h2 {
     color: #f7fafc;
 }
 
-body.dark-theme #trends p {
+body.theme #trends p {
     color: #a0aec0;
 }
 
-body.dark-theme #trends-chart-container {
+body.theme #trends-chart-container {
     background: rgba(255, 255, 255, 0.05);
 }
 
@@ -445,53 +429,38 @@ body.dark-theme #trends-chart-container {
     transform: scale(1.2);
 }
 
-/* Light theme explicit overrides for Activity */
-body.light-mode {
-    --activity-bg-gradient: linear-gradient(135deg, #f8fafc 0%, #e2e8f0 100%);
-    --activity-card-shadow: 0 20px 40px rgba(0, 0, 0, 0.08);
-    --activity-hover-shadow: 0 25px 50px rgba(0, 0, 0, 0.12);
-    --activity-border: rgba(226, 232, 240, 0.8);
-    --activity-accent: #667eea;
-    --activity-accent-light: #7c3aed;
-    --activity-text-primary: #1a202c;
-    --activity-text-secondary: #4a5568;
-    --activity-chart-bg: rgba(255, 255, 255, 0.7);
-    --activity-bar-track: #f1f5f9;
-    --activity-bar-border: #e2e8f0;
-}
-
-/* Dark theme support for Activity */
-body.dark-theme {
+/* Theme support */
+body.theme {
     --activity-bg-gradient: linear-gradient(135deg, #2d3748 0%, #1a202c 100%);
-    --activity-card-shadow: 0 20px 40px rgba(0, 0, 0, 0.3);
-    --activity-hover-shadow: 0 25px 50px rgba(0, 0, 0, 0.4);
+    --activity-card-shadow: 0 10px 30px rgba(0, 0, 0, 0.3);
+    --activity-hover-shadow: 0 15px 40px rgba(0, 0, 0, 0.4);
     --activity-border: rgba(74, 85, 104, 0.6);
     --activity-accent: #818cf8;
     --activity-accent-light: #a78bfa;
     --activity-text-primary: #f7fafc;
     --activity-text-secondary: #e2e8f0;
-    --activity-chart-bg: rgba(45, 55, 72, 0.5);
+    --activity-chart-bg: rgba(45, 55, 72, 0.95);
     --activity-bar-track: #4a5568;
     --activity-bar-border: #6b7280;
 }
 
-body.dark-theme .activity-container::before,
-body.dark-theme .heatmap-container::before {
+body.theme .activity-container::before,
+body.theme .heatmap-container::before {
     background: linear-gradient(180deg, rgba(129, 140, 248, 0.05) 0%, transparent 100%);
 }
 
-body.dark-theme .weekly-table-container,
-body.dark-theme .activity-chart-wrapper,
-body.dark-theme .heatmap-calendar {
+body.theme .weekly-table-container,
+body.theme .activity-chart-wrapper,
+body.theme .heatmap-calendar {
     background: var(--activity-chart-bg);
     border-color: rgba(255, 255, 255, 0.1);
 }
 
-body.dark-theme .weekly-breakdown-table tbody tr {
+body.theme .weekly-breakdown-table tbody tr {
     background: #374151 !important;
 }
 
-body.dark-theme .weekly-breakdown-table tbody tr:hover {
+body.theme .weekly-breakdown-table tbody tr:hover {
     background: #4b5563 !important;
 }
 
@@ -886,8 +855,8 @@ body.dark-theme .weekly-breakdown-table tbody tr:hover {
     box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
 }
 
-/* Dark theme support for Analysis */
-body.dark-theme {
+/* Theme support for Analysis */
+body.theme {
     --analysis-bg-gradient: linear-gradient(135deg, #2d3748 0%, #1a202c 100%);
     --analysis-card-shadow: 0 10px 30px rgba(0, 0, 0, 0.3);
     --analysis-hover-shadow: 0 20px 40px rgba(0, 0, 0, 0.4);
@@ -901,34 +870,34 @@ body.dark-theme {
     --analysis-item-bg: rgba(45, 55, 72, 0.8);
 }
 
-body.dark-theme .analysis-card::before {
+body.theme .analysis-card::before {
     background: linear-gradient(180deg, rgba(129, 140, 248, 0.05) 0%, transparent 100%);
 }
 
-/* Dark theme text styling for analysis cards */
-body.dark-theme .analysis-title {
+/* Theme text styling for analysis cards */
+body.theme .analysis-title {
     color: var(--analysis-text-primary) !important;
 }
 
-body.dark-theme .analysis-description {
+body.theme .analysis-description {
     color: var(--analysis-text-secondary) !important;
 }
 
-/* Ensure all analysis card text is readable in dark theme */
-body.dark-theme .analysis-card {
+/* Ensure all analysis card text is readable in theme */
+body.theme .analysis-card {
     color: var(--analysis-text-primary) !important;
 }
 
-body.dark-theme .analysis-card * {
+body.theme .analysis-card * {
     color: inherit;
 }
 
-body.dark-theme .best-day-item {
+body.theme .best-day-item {
     background: linear-gradient(135deg, rgba(52, 211, 153, 0.08) 0%, rgba(52, 211, 153, 0.04) 100%);
     border-color: rgba(52, 211, 153, 0.2);
 }
 
-body.dark-theme .worst-day-item {
+body.theme .worst-day-item {
     background: linear-gradient(135deg, rgba(248, 113, 113, 0.08) 0%, rgba(248, 113, 113, 0.04) 100%);
     border-color: rgba(248, 113, 113, 0.2);
 }
@@ -962,17 +931,17 @@ body.dark-theme .worst-day-item {
 
 /* Note: :hover pseudo-class is not supported on scrollbar pseudo-elements in some browsers */
 
-body.dark-theme .comeback-list::-webkit-scrollbar-track,
-body.dark-theme .best-day-list::-webkit-scrollbar-track,
-body.dark-theme .worst-day-list::-webkit-scrollbar-track,
-body.dark-theme #pattern-analysis ul::-webkit-scrollbar-track {
+body.theme .comeback-list::-webkit-scrollbar-track,
+body.theme .best-day-list::-webkit-scrollbar-track,
+body.theme .worst-day-list::-webkit-scrollbar-track,
+body.theme #pattern-analysis ul::-webkit-scrollbar-track {
     background: rgba(255, 255, 255, 0.05);
 }
 
-body.dark-theme .comeback-list::-webkit-scrollbar-thumb,
-body.dark-theme .best-day-list::-webkit-scrollbar-thumb,
-body.dark-theme .worst-day-list::-webkit-scrollbar-thumb,
-body.dark-theme #pattern-analysis ul::-webkit-scrollbar-thumb {
+body.theme .comeback-list::-webkit-scrollbar-thumb,
+body.theme .best-day-list::-webkit-scrollbar-thumb,
+body.theme .worst-day-list::-webkit-scrollbar-thumb,
+body.theme #pattern-analysis ul::-webkit-scrollbar-thumb {
     background: linear-gradient(180deg, #818cf8 0%, #a78bfa 100%);
     box-shadow: 0 2px 4px rgba(0, 0, 0, 0.3);
 }
@@ -999,11 +968,11 @@ body.dark-theme #pattern-analysis ul::-webkit-scrollbar-thumb {
 
 /* Note: :hover pseudo-class is not supported on scrollbar pseudo-elements in some browsers */
 
-body.dark-theme .activity-content::-webkit-scrollbar-track {
+body.theme .activity-content::-webkit-scrollbar-track {
     background: rgba(255, 255, 255, 0.05);
 }
 
-body.dark-theme .activity-content::-webkit-scrollbar-thumb {
+body.theme .activity-content::-webkit-scrollbar-thumb {
     background: linear-gradient(90deg, #818cf8 0%, #a78bfa 100%);
     box-shadow: 0 2px 4px rgba(0, 0, 0, 0.3);
 }
@@ -1016,7 +985,7 @@ body.dark-theme .activity-content::-webkit-scrollbar-thumb {
     scrollbar-color: #667eea rgba(0, 0, 0, 0.05);
 }
 
-body.dark-theme .activity-content {
+body.theme .activity-content {
     scrollbar-color: #818cf8 rgba(255, 255, 255, 0.05);
 }
 
@@ -1029,45 +998,45 @@ body.dark-theme .activity-content {
     scrollbar-color: #667eea rgba(0, 0, 0, 0.05);
 }
 
-body.dark-theme .comeback-list,
-body.dark-theme .best-day-list,
-body.dark-theme .worst-day-list,
-body.dark-theme #pattern-analysis ul {
+body.theme .comeback-list,
+body.theme .best-day-list,
+body.theme .worst-day-list,
+body.theme #pattern-analysis ul {
     scrollbar-color: #818cf8 rgba(255, 255, 255, 0.05);
 }
 
-body.dark-theme .comeback-item {
+body.theme .comeback-item {
     background: linear-gradient(135deg, rgba(129, 140, 248, 0.08) 0%, rgba(129, 140, 248, 0.04) 100%);
     border-color: rgba(129, 140, 248, 0.2);
 }
 
-/* Make dates white and bold in Analysis tables for dark theme */
-body.dark-theme .best-day-item small,
-body.dark-theme .worst-day-item small,
-body.dark-theme .comeback-item small {
+/* Make dates white and bold in Analysis tables for theme */
+body.theme .best-day-item small,
+body.theme .worst-day-item small,
+body.theme .comeback-item small {
     color: white !important;
     font-weight: bold !important;
 }
 
 /* Keep score colors but make them bold - best-day-score green, worst-day-score red */
-body.dark-theme .best-day-score {
+body.theme .best-day-score {
     color: var(--analysis-success) !important;
     font-weight: bold !important;
 }
 
-body.dark-theme .worst-day-score {
+body.theme .worst-day-score {
     color: var(--analysis-danger) !important;
     font-weight: bold !important;
 }
 
-body.dark-theme .comeback-score {
+body.theme .comeback-score {
     color: white !important;
     font-weight: bold !important;
 }
 
-/* Make dates white and bold in Global Performance Patterns for dark theme */
-body.dark-theme #pattern-analysis li,
-body.dark-theme .pattern-analysis li {
+/* Make dates white and bold in Global Performance Patterns for theme */
+body.theme #pattern-analysis li,
+body.theme .pattern-analysis li {
     color: white !important;
     font-weight: bold !important;
 }
