@@ -45,6 +45,38 @@
     scrollbar-color: #4a5568 #1a202c;
 }
 
+/* Goal Score Circle Styling */
+.player-score .score-number {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 32px;
+    height: 32px;
+    border-radius: 50%;
+    font-weight: bold;
+    font-size: 16px;
+    color: white;
+    background-color: #4a5568; /* Default gray */
+}
+
+/* Penalty winner styling - green circle */
+.player-score.penalty-winner .score-number {
+    background-color: #10b981; /* Green */
+    color: white;
+}
+
+/* Penalty loser styling - red circle */
+.player-score.penalty-loser .score-number {
+    background-color: #ef4444; /* Red */
+    color: white;
+}
+
+/* Penalty draw styling - yellow circle */
+.player-score.penalty-draw .score-number {
+    background-color: #f59e0b; /* Yellow */
+    color: white;
+}
+
 /* Force dark backgrounds on any missed elements */
 .football-h2h-tracker * {
     box-sizing: border-box;
@@ -66,6 +98,53 @@
 /* Ensure proper text colors */
 .football-h2h-tracker .app-header {
     border-bottom-color: #4a5568 !important;
+}
+
+/* Penalty Color Coding */
+.penalty-winner .score-number {
+    display: inline-block;
+    background-color: #22c55e;
+    color: white;
+    border-radius: 50%;
+    width: 24px;
+    height: 24px;
+    line-height: 24px;
+    text-align: center;
+    font-weight: bold;
+    font-size: 0.9rem;
+}
+
+.penalty-loser .score-number {
+    display: inline-block;
+    background-color: #ef4444;
+    color: white;
+    border-radius: 50%;
+    width: 24px;
+    height: 24px;
+    line-height: 24px;
+    text-align: center;
+    font-weight: bold;
+    font-size: 0.9rem;
+}
+
+.penalty-draw .score-number {
+    display: inline-block;
+    background-color: #eab308;
+    color: white;
+    border-radius: 50%;
+    width: 24px;
+    height: 24px;
+    line-height: 24px;
+    text-align: center;
+    font-weight: bold;
+    font-size: 0.9rem;
+}
+
+.penalty-note {
+    font-style: italic;
+    font-size: 0.85rem;
+    color: #9ca3af;
+    margin-left: 0.5rem;
 }
 
 /* App Container - Dark Theme */
@@ -113,7 +192,7 @@
 .football-icon {
     font-size: 2.5rem;
     display: inline-block;
-    animation: footballBounce 2s ease-in-out infinite;
+    /* animation: footballBounce 2s ease-in-out infinite; */
     filter: drop-shadow(0 2px 4px rgba(0, 0, 0, 0.3));
     /* Override the parent gradient text styling */
     background: none !important;
@@ -243,6 +322,297 @@
 .btn-sm {
     padding: 0.5rem 1rem;
     font-size: 0.875rem;
+}
+
+
+/* Sidebar Game Form Styles - Adapted from Mario Kart */
+.sidebar-game-form {
+    display: none;
+    margin-top: 1rem;
+    padding: 1.25rem;
+    background: linear-gradient(135deg, #2d3748 0%, #1a202c 100%);
+    border: 2px solid rgba(255, 255, 255, 0.1);
+    border-radius: 12px;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+    opacity: 0;
+    transform: translateY(-10px);
+    transition: none;
+    position: relative;
+    overflow: hidden;
+}
+
+.sidebar-game-form::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: 3px;
+    background: linear-gradient(90deg, #34d399 0%, #10b981 100%);
+}
+
+.sidebar-game-form.open {
+    display: block;
+    opacity: 1;
+    transform: translateY(0);
+    transition: opacity 0.3s ease, transform 0.3s ease;
+}
+
+/* Sidebar Game Error Styles */
+.sidebar-game-error {
+    display: none;
+    padding: 0.75rem;
+    background: #fee;
+    border: 1px solid #fcc;
+    border-radius: 0.375rem;
+    color: #c53030;
+    font-size: 0.875rem;
+    font-weight: 500;
+    margin-bottom: 0.75rem;
+    animation: errorShake 0.3s ease;
+}
+
+.sidebar-game-error.show {
+    display: block;
+}
+
+@keyframes errorShake {
+    0%, 100% { transform: translateX(0); }
+    25% { transform: translateX(-5px); }
+    75% { transform: translateX(5px); }
+}
+
+/* Sidebar Game Actions */
+.sidebar-game-actions {
+    display: flex;
+    gap: 0.75rem;
+    margin-top: 1.25rem;
+    flex-wrap: wrap;
+}
+
+.sidebar-submit-game {
+    background: linear-gradient(135deg, #34d399 0%, #10b981 100%);
+    color: white;
+    border: none;
+    border-radius: 0.5rem;
+    padding: 0.75rem 1rem;
+    font-size: 1rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.3s ease;
+    box-shadow: 0 2px 8px rgba(52, 211, 153, 0.3);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.5rem;
+    flex: 1;
+    min-width: 120px;
+}
+
+.sidebar-submit-game:hover {
+    background: linear-gradient(135deg, #10b981 0%, #059669 100%);
+    box-shadow: 0 4px 12px rgba(52, 211, 153, 0.4);
+    transform: translateY(-1px);
+}
+
+.sidebar-cancel-game {
+    background: #6b7280;
+    color: white;
+    border: none;
+    border-radius: 0.5rem;
+    padding: 0.75rem 1rem;
+    font-size: 1rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.3s ease;
+    box-shadow: 0 2px 8px rgba(107, 114, 128, 0.3);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex: 1;
+    min-width: 100px;
+}
+
+.sidebar-cancel-game:hover {
+    background: #4b5563;
+    box-shadow: 0 4px 8px rgba(107, 114, 128, 0.4);
+    transform: translateY(-1px);
+}
+
+/* Player Settings Container Animation */
+.sidebar-player-settings {
+    opacity: 0;
+    transform: translateY(-10px);
+    transition: opacity 0.3s ease, transform 0.3s ease;
+    margin-top: 1rem;
+}
+
+.sidebar-player-settings.open {
+    opacity: 1;
+    transform: translateY(0);
+}
+
+/* Sidebar Player Settings Styles */
+.sidebar-players-form {
+    background: linear-gradient(135deg, #2d3748 0%, #1a202c 100%);
+    border: 2px solid rgba(255, 255, 255, 0.1);
+    border-radius: 12px;
+    padding: 1.25rem;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+    position: relative;
+    overflow: hidden;
+}
+
+.sidebar-players-form::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: 3px;
+    background: linear-gradient(90deg, #f472b6 0%, #a78bfa 100%);
+}
+
+.player-settings-section {
+    margin-bottom: 1.5rem;
+}
+
+.player-settings-section:last-child {
+    margin-bottom: 0;
+}
+
+.player-settings-section .section-title {
+    font-size: 1rem;
+    font-weight: 600;
+    color: #f7fafc;
+    margin-bottom: 1rem;
+    border-bottom: 1px solid #4a5568;
+    padding-bottom: 0.5rem;
+}
+
+.player-input-group {
+    margin-bottom: 1rem;
+}
+
+.player-input-group label {
+    display: block;
+    font-size: 0.875rem;
+    font-weight: 600;
+    color: #e2e8f0;
+    margin-bottom: 0.5rem;
+}
+
+.sidebar-player-input {
+    width: 100%;
+    padding: 0.75rem;
+    border: 2px solid #4a5568;
+    border-radius: 0.5rem;
+    background: #374151;
+    color: #f7fafc !important;
+    font-size: 1rem;
+    transition: all 0.3s ease;
+}
+
+.sidebar-player-input:focus {
+    outline: none;
+    border-color: #f472b6;
+    box-shadow: 0 0 0 3px rgba(244, 114, 182, 0.15);
+}
+
+.sidebar-player-input::placeholder {
+    color: #9ca3af;
+}
+
+.player-icon-row {
+    display: flex;
+    gap: 1rem;
+    justify-content: space-around;
+}
+
+.player-icon-item {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 0.5rem;
+}
+
+.player-label {
+    font-size: 0.875rem;
+    color: #e2e8f0;
+    font-weight: 500;
+}
+
+/* Sidebar Game Form Input Styles */
+.sidebar-game-goals {
+    margin-bottom: 1rem;
+}
+
+.sidebar-game-teams {
+    margin-bottom: 1rem;
+}
+
+.sidebar-player-input {
+    margin-bottom: 1rem;
+}
+
+.sidebar-player-input label {
+    display: block;
+    font-size: 0.875rem;
+    font-weight: 600;
+    color: #e2e8f0;
+    margin-bottom: 0.5rem;
+}
+
+.sidebar-goals-input {
+    width: 100%;
+    padding: 0.75rem;
+    border: 2px solid #4a5568;
+    border-radius: 0.5rem;
+    background: #374151;
+    color: #f7fafc !important;
+    font-size: 1rem;
+    transition: all 0.3s ease;
+    appearance: none;
+    -webkit-appearance: none;
+    -moz-appearance: none;
+    cursor: text;
+}
+
+.sidebar-team-select {
+    width: 100%;
+    padding: 0.75rem;
+    border: 2px solid #4a5568;
+    border-radius: 0.5rem;
+    background: #374151;
+    color: #f7fafc !important;
+    font-size: 1rem;
+    transition: all 0.3s ease;
+    appearance: none;
+    -webkit-appearance: none;
+    -moz-appearance: none;
+    cursor: pointer;
+}
+
+.sidebar-goals-input:focus,
+.sidebar-team-select:focus {
+    outline: none;
+    border-color: #34d399;
+    box-shadow: 0 0 0 3px rgba(52, 211, 153, 0.15);
+}
+
+.sidebar-goals-input::placeholder {
+    color: #9ca3af;
+}
+
+.sidebar-team-select option {
+    background: #374151;
+    color: #f7fafc;
+    padding: 0.5rem;
+}
+
+/* Special class to hide Set to Today button when date is today */
+.sidebar-date-today-btn.hidden {
+    display: none !important;
 }
 
 /* Icon Selector Modal */
@@ -442,8 +812,8 @@
     border-color: rgba(251, 191, 36, 0.6);
 }
 
-/* Match History Section - Dark Theme */
-.match-history {
+/* Game History Section - Dark Theme */
+.game-history {
     background: linear-gradient(135deg, #2d3748 0%, #1a202c 100%);
     border-radius: 24px;
     padding: 32px;
@@ -457,7 +827,7 @@
 }
 
 /* Add subtle gradient overlay */
-.match-history::before {
+.game-history::before {
     content: '';
     position: absolute;
     top: 0;
@@ -469,7 +839,7 @@
     z-index: 1;
 }
 
-.match-history:hover {
+.game-history:hover {
     transform: translateY(-4px);
     box-shadow: 0 25px 50px rgba(0, 0, 0, 0.4);
     border-color: #818cf8;
@@ -508,7 +878,7 @@
     transition: width 0.3s ease;
 }
 
-.match-history:hover .section-title::after {
+.game-history:hover .section-title::after {
     width: 100px;
 }
 
@@ -524,7 +894,7 @@
 }
 
 /* Modern Table Styles */
-.matches-table {
+.games-table {
     width: 100%;
     border-collapse: separate;
     border-spacing: 0;
@@ -534,12 +904,12 @@
 }
 
 /* Table Headers */
-.matches-table thead {
+.games-table thead {
     background: linear-gradient(135deg, #4c1d95 0%, #5b21b6 100%);
     color: white;
 }
 
-.matches-table thead th {
+.games-table thead th {
     padding: 20px 16px;
     text-align: center;
     font-weight: 600;
@@ -557,21 +927,21 @@
 }
 
 /* Sortable headers */
-.matches-table thead th.sortable-header {
+.games-table thead th.sortable-header {
     cursor: pointer;
 }
 
-.matches-table thead th.sortable-header:hover {
+.games-table thead th.sortable-header:hover {
     background: #2d3748;
     transform: translateY(-1px);
     box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
 }
 
-.matches-table thead th:not(.sortable-header) {
+.games-table thead th:not(.sortable-header) {
     cursor: default;
 }
 
-.matches-table thead th:not(.sortable-header):hover {
+.games-table thead th:not(.sortable-header):hover {
     background: #252b36;
 }
 
@@ -598,7 +968,7 @@
 }
 
 /* Add subtle dividers between headers */
-.matches-table thead th:not(:last-child)::after {
+.games-table thead th:not(:last-child)::after {
     content: '';
     position: absolute;
     right: 0;
@@ -610,24 +980,24 @@
 }
 
 /* Table Body - Dark Theme */
-.matches-table tbody tr {
+.games-table tbody tr {
     background: #374151;
     transition: all 0.2s ease;
     border-bottom: 1px solid #4a5568;
     animation: fadeInUp 0.3s ease-out;
 }
 
-.matches-table tbody tr:hover {
+.games-table tbody tr:hover {
     background: #4b5563;
     box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
 }
 
-.matches-table tbody tr:last-child {
+.games-table tbody tr:last-child {
     border-bottom: none;
 }
 
 /* Table Cells */
-.matches-table tbody td {
+.games-table tbody td {
     padding: 18px 16px;
     text-align: center;
     vertical-align: middle;
@@ -638,7 +1008,7 @@
 }
 
 /* Game Number Column */
-.matches-table tbody td:first-child {
+.games-table tbody td:first-child {
     font-weight: 700;
     color: #818cf8;
     font-size: 1rem;
@@ -646,7 +1016,7 @@
 }
 
 /* Date Column */
-.matches-table tbody td:nth-child(2) {
+.games-table tbody td:nth-child(2) {
     font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
     color: #e2e8f0;
     text-align: center;
@@ -689,15 +1059,15 @@
 }
 
 /* Goals Columns */
-.matches-table tbody td:nth-child(3),
-.matches-table tbody td:nth-child(4) {
+.games-table tbody td:nth-child(3),
+.games-table tbody td:nth-child(4) {
     text-align: center;
     vertical-align: middle;
 }
 
 /* Team Columns */
-.matches-table tbody td:nth-child(5),
-.matches-table tbody td:nth-child(6) {
+.games-table tbody td:nth-child(5),
+.games-table tbody td:nth-child(6) {
     text-align: center;
     vertical-align: middle;
     font-weight: 500;
@@ -760,7 +1130,7 @@
     color: white !important;
 }
 
-.no-matches {
+.no-games {
     padding: 60px 20px;
     text-align: center;
     color: #e2e8f0;
@@ -1241,12 +1611,12 @@
 
 /* Responsive Design */
 @media (max-width: 1200px) {
-    .matches-table {
+    .games-table {
         font-size: 0.8rem;
     }
     
-    .matches-table th,
-    .matches-table td {
+    .games-table th,
+    .games-table td {
         padding: 14px 12px;
     }
     
@@ -1291,7 +1661,7 @@
         grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
     }
 
-    .match-history {
+    .game-history {
         padding: 20px;
         border-radius: 16px;
     }
@@ -1301,12 +1671,12 @@
         margin-bottom: 20px;
     }
 
-    .matches-table {
+    .games-table {
         font-size: 0.8rem;
     }
 
-    .matches-table thead th,
-    .matches-table tbody td {
+    .games-table thead th,
+    .games-table tbody td {
         padding: 12px 8px;
     }
 
@@ -1318,10 +1688,28 @@
         width: 95%;
         margin: 1rem;
     }
+
+    /* Sidebar Forms Mobile */
+    .sidebar-game-actions {
+        flex-direction: column;
+        gap: 0.5rem;
+    }
+
+    .sidebar-submit-game,
+    .sidebar-cancel-game {
+        min-width: auto;
+        width: 100%;
+    }
+
+    .player-icon-row {
+        flex-direction: column;
+        gap: 1rem;
+        align-items: center;
+    }
 }
 
 @media (max-width: 480px) {
-    .match-history {
+    .game-history {
         padding: 16px;
         margin-top: 20px;
     }
@@ -1331,8 +1719,8 @@
         margin-bottom: 16px;
     }
 
-    .matches-table thead th,
-    .matches-table tbody td {
+    .games-table thead th,
+    .games-table tbody td {
         padding: 10px 6px;
         font-size: 0.75rem;
     }
@@ -1341,5 +1729,152 @@
         width: 32px;
         height: 32px;
         font-size: 0.8rem;
+    }
+}
+
+/* Modal Form Styles */
+.form-container {
+    margin: 1.5rem 0;
+}
+
+.form-container .form-group {
+    margin-bottom: 1rem;
+}
+
+.form-container .form-group:last-child {
+    margin-bottom: 0;
+}
+
+.form-label {
+    display: block;
+    margin-bottom: 0.5rem;
+    color: #e2e8f0;
+    font-weight: 600;
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+}
+
+.form-label.light-theme {
+    color: #4a5568;
+}
+
+.form-input {
+    width: 100%;
+    padding: 0.75rem;
+    border: 1px solid #4a5568;
+    border-radius: 0.5rem;
+    background: #4a5568;
+    color: #e2e8f0;
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+    transition: all 0.2s ease;
+    box-sizing: border-box;
+}
+
+.form-input.light-theme {
+    border: 1px solid #e2e8f0;
+    background: white;
+    color: #2d3748;
+}
+
+.form-input:focus {
+    outline: none;
+    border-color: #8b5cf6;
+    box-shadow: 0 0 0 3px rgba(139, 92, 246, 0.2);
+}
+
+.form-input[type="date"],
+.form-input[type="time"] {
+    color-scheme: dark;
+}
+
+.form-input[type="date"].light-theme,
+.form-input[type="time"].light-theme {
+    color-scheme: light;
+}
+
+/* Grid layout for date/time inputs */
+.form-grid-2 {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 1rem;
+}
+
+/* Modal max width adjustment for form modals */
+.modal-dialog:has(.form-container) {
+    max-width: 600px;
+}
+
+/* Edit Game Modal Specific Styling */
+.modal-dialog .form-container {
+    max-height: 70vh;
+    overflow-y: auto;
+    padding-right: 0.5rem;
+}
+
+/* Improved form group spacing for edit modal */
+.modal-dialog .form-group {
+    margin-bottom: 1.25rem;
+}
+
+/* Better label styling */
+.modal-dialog .form-label {
+    font-weight: 600;
+    color: #e2e8f0;
+    margin-bottom: 0.5rem;
+    font-size: 0.875rem;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+/* Improved input styling */
+.modal-dialog .form-input {
+    padding: 0.875rem;
+    font-size: 1rem;
+    border: 2px solid #4a5568;
+    background: #374151;
+    color: #f7fafc;
+    border-radius: 0.5rem;
+    transition: all 0.2s ease;
+}
+
+.modal-dialog .form-input:focus {
+    outline: none;
+    border-color: #818cf8;
+    background: #4a5568;
+    box-shadow: 0 0 0 3px rgba(129, 140, 248, 0.2);
+}
+
+/* Team section grouping */
+.form-team-section {
+    background: rgba(74, 85, 104, 0.2);
+    border-radius: 0.75rem;
+    padding: 1rem;
+    margin-bottom: 1rem;
+    border: 1px solid #4a5568;
+}
+
+.form-team-section .form-label:first-child {
+    color: #818cf8;
+    margin-bottom: 0.75rem;
+}
+
+/* Penalty field styling */
+.form-group[style*="display: none"] {
+    display: none !important;
+}
+
+/* Grid improvements */
+.form-grid-2 {
+    gap: 1.25rem;
+}
+
+@media (max-width: 768px) {
+    .modal-dialog:has(.form-container) {
+        max-width: 95%;
+        margin: 1rem auto;
+    }
+    
+    .form-grid-2 {
+        grid-template-columns: 1fr;
+        gap: 1rem;
     }
 }

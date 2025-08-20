@@ -1,3 +1,32 @@
+// Helper function to get "good finish" threshold (top half)
+function getGoodFinishThreshold() {
+    return Math.floor(window.MAX_POSITIONS / 2);
+}
+
+// Helper function to get position ranges for current game mode
+function getPositionRanges() {
+    // Get current game version from the getter function or window property
+    const currentGameVersion = (window.getCurrentGameVersion && window.getCurrentGameVersion()) || window.currentGameVersion || 'mk8d';
+    
+    if (currentGameVersion === 'mkworld') {
+        // MK World ranges (24 positions)
+        return [
+            { label: '1-6', range: [1, 6], color: '#10b981' },
+            { label: '7-12', range: [7, 12], color: '#3b82f6' },
+            { label: '13-18', range: [13, 18], color: '#f59e0b' },
+            { label: '19-24', range: [19, 24], color: '#ef4444' }
+        ];
+    } else {
+        // MK8 Deluxe ranges (12 positions) - default
+        return [
+            { label: '1-3', range: [1, 3], color: '#10b981' },
+            { label: '4-6', range: [4, 6], color: '#3b82f6' },
+            { label: '7-9', range: [7, 9], color: '#f59e0b' },
+            { label: '10-12', range: [10, 12], color: '#ef4444' }
+        ];
+    }
+}
+
 const ACHIEVEMENTS = {
     winStreak: {
         name: 'Win Streak',
@@ -32,7 +61,7 @@ const ACHIEVEMENTS = {
         icon: '📅',
         targets: [1, 3, 5],
         colors: ['#34d399', '#10b981', '#059669'],
-        description: 'All races in a day were top-12 finishes'
+        description: 'All races in a day were good finishes (top half)'
     }
 };
 
@@ -142,13 +171,8 @@ function createPositionHeatBars() {
         const heatContainer = document.createElement('div');
         heatContainer.className = 'position-heat-grid';
 
-        // Create bars for position ranges (updated ranges)
-        const ranges = [
-            { label: '1-6', range: [1, 6], color: '#10b981' },
-            { label: '7-12', range: [7, 12], color: '#f59e0b' },
-            { label: '13-18', range: [13, 18], color: '#D26868' },
-            { label: '19-24', range: [19, 24], color: '#ff0000' }
-        ];
+        // Create bars for position ranges (dynamic ranges based on game mode)
+        const ranges = getPositionRanges();
 
         ranges.forEach((rangeData, index) => {
             const barElement = document.createElement('div');
@@ -227,8 +251,8 @@ function createSweetSpotBars() {
         const spotContainer = document.createElement('div');
         spotContainer.className = 'sweet-spot-grid';
 
-        // Create highlights for positions MIN_POSITIONS-MAX_POSITIONS
-        for (let i = MIN_POSITIONS; i <= MAX_POSITIONS; i++) {
+        // Create highlights for positions based on current game mode
+        for (let i = window.MIN_POSITIONS; i <= window.MAX_POSITIONS; i++) {
             const spotElement = document.createElement('div');
             spotElement.className = 'sweet-spot-bar';
             spotElement.setAttribute('aria-label', `Position ${i}: Never finished here`);
@@ -432,7 +456,7 @@ function calculateAchievements(player, raceData) {
     } : null;
 
 
-    // Perfect Day (all races in a day were top-12 finishes)
+    // Perfect Day (all races in a day were good finishes)
     let perfectDays = 0;
     const dayGroups = {};
     let perfectDayDetails = { days: [] };
@@ -447,9 +471,10 @@ function calculateAchievements(player, raceData) {
         }
     });
 
-    // Check each day for perfect days (2+ races, all top-12)
+    // Check each day for perfect days (2+ races, all good finishes)
     Object.entries(dayGroups).forEach(([date, dayRaces]) => {
-        if (dayRaces.length >= 2 && dayRaces.every(position => position <= 12)) {
+        const threshold = getGoodFinishThreshold();
+        if (dayRaces.length >= 2 && dayRaces.every(position => position <= threshold)) {
             perfectDays++;
             perfectDayDetails.days.push({
                 date: date,
@@ -835,12 +860,7 @@ function togglePositionHeatDetails(player, rangeIndex) {
         mainHeatBar.classList.remove('position-heat-expanded');
     } else {
         // Add to expanded section in correct order
-        const ranges = [
-            { label: '1-6', range: [1, 6], color: '#10b981' },
-            { label: '7-12', range: [7, 12], color: '#f59e0b' },
-            { label: '13-18', range: [13, 18], color: '#D26868' },
-            { label: '19-24', range: [19, 24], color: '#ff0000' }
-        ];
+        const ranges = getPositionRanges();
         
         const rangeData = ranges[rangeIndex];
         const raceData = getFilteredRaces();
@@ -1141,14 +1161,15 @@ function generateAchievementDetail(achievementKey, achievement, player) {
         case 'perfectDay':
             if (achievement.details.days.length === 0) return 'No perfect days achieved';
             
-            // All perfect days already have all positions <= 12 (that's the definition)
+            // All perfect days already have all positions <= threshold (that's the definition)
             const perfectDays = achievement.details.days;
             
             // Check if today is an active perfect day
             const today = new Date().toLocaleDateString('en-CA');
             const allRaces = getFilteredRaces();
             const todayRaces = allRaces.filter(race => race[player] !== null && race.date === today);
-            const isActiveToday = todayRaces.length > 0 && todayRaces.every(race => race[player] <= 12);
+            const threshold = getGoodFinishThreshold();
+            const isActiveToday = todayRaces.length > 0 && todayRaces.every(race => race[player] <= threshold);
             
             let bestDay = null;
             
@@ -1514,12 +1535,13 @@ function checkForActiveStreak(achievementKey, achievement, player, raceData) {
             return achievement.details.currentActiveStreak && achievement.details.currentActiveStreak.count > 0;
             
         case 'perfectDay':
-            // Check if player is playing today and hasn't finished outside the top 12 yet
+            // Check if player is playing today and hasn't finished outside the top half yet
             const today = new Date().toLocaleDateString('en-CA');
             const todayRaces = playerRaces.filter(race => race.date === today);
             
-            // Must have at least 1 race today and all races today must be top-12
-            if (todayRaces.length > 0 && todayRaces.every(race => race[player] <= 12)) {
+            // Must have at least 1 race today and all races today must be good finishes
+            const threshold = getGoodFinishThreshold();
+            if (todayRaces.length > 0 && todayRaces.every(race => race[player] <= threshold)) {
                 return true;
             }
             return false;
@@ -1709,7 +1731,7 @@ function clearAllVisualizationBars() {
         }
 
         // Clear sweet spot bars
-        for (let i = 1; i <= 24; i++) {
+        for (let i = 1; i <= window.MAX_POSITIONS; i++) {
             const glowElement = document.querySelector(`[data-player="${player}"][data-position="${i}"]`);
             if (glowElement) {
                 glowElement.style.opacity = '0';
@@ -1724,12 +1746,7 @@ function clearAllVisualizationBars() {
 }
 
 function updateExpandedPositionHeat(raceData) {
-    const ranges = [
-        { label: '1-6', range: [1, 6], color: '#10b981' },
-        { label: '7-12', range: [7, 12], color: '#f59e0b' },
-        { label: '13-18', range: [13, 18], color: '#D26868' },
-        { label: '19-24', range: [19, 24], color: '#ff0000' }
-    ];
+    const ranges = getPositionRanges();
 
     players.forEach(player => {
         const expandedSection = document.getElementById(`${player}-expanded-position-heat`);
@@ -1789,13 +1806,8 @@ function updateExpandedPositionHeat(raceData) {
 }
 
 function updatePositionHeatBars(raceData) {
-    // Match the data structure used in creation function (updated ranges)
-    const ranges = [
-        { label: '1-6', range: [1, 6], color: '#10b981' },
-        { label: '7-12', range: [7, 12], color: '#f59e0b' },
-        { label: '13-18', range: [13, 18], color: '#D26868' },
-        { label: '19-24', range: [19, 24], color: '#ff0000' }
-    ];
+    // Use dynamic position ranges based on current game mode
+    const ranges = getPositionRanges();
 
     players.forEach(player => {
         const playerRaces = raceData.filter(race => race[player] !== null);
@@ -1907,10 +1919,10 @@ function updateRecentStreakBars(raceData) {
                 return dateB - dateA; // Most recent first
             });
 
-        // Helper function to get gradient color based on position (1-24)
+        // Helper function to get gradient color based on position
         const getPositionColor = (position) => {
-            // Normalize position to 0-1 range (1st = 0, 24th = 1)
-            const normalizedPos = (position - 1) / 23;
+            // Normalize position to 0-1 range (1st = 0, MAX_POSITIONS = 1)
+            const normalizedPos = (position - 1) / (window.MAX_POSITIONS - 1);
             
             // Interpolate between green (#10b981) and red (#ef4444)
             const startR = 16, startG = 185, startB = 129;  // #10b981 (green)
@@ -2028,7 +2040,7 @@ function updateSweetSpotBars(raceData) {
             return { color: baseColor, opacity: opacity };
         };
 
-        for (let i = 1; i <= 24; i++) {
+        for (let i = 1; i <= window.MAX_POSITIONS; i++) {
             const glowElement = document.querySelector(`[data-player="${player}"][data-position="${i}"]`);
             if (!glowElement) continue;
 
@@ -2064,3 +2076,8 @@ function updateSweetSpotBars(raceData) {
         }
     });
 }
+
+// Export functions for global use
+window.getGoodFinishThreshold = getGoodFinishThreshold;
+window.getPositionRanges = getPositionRanges;
+window.createAllBars = createAllBars;
