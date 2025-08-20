@@ -119,68 +119,30 @@ button:hover {
 
 .toggle-btn {
     padding: 8px 20px;
-    background: #10b981;
     border: none;
     border-radius: 20px;
     cursor: pointer;
     font-weight: 600;
     transition: all 0.3s ease;
-    color: white !important;
     display: flex;
     align-items: center;
     justify-content: center;
     text-align: center;
     line-height: 1;
-}
-
-/* Strong override to ensure toggle buttons are always white and centered */
-body .toggle-btn,
-body.dark-theme .toggle-btn,
-body.light-mode .toggle-btn {
+    background: #4a5568 !important;
     color: white !important;
-    display: flex !important;
-    align-items: center !important;
-    justify-content: center !important;
-    text-align: center !important;
-}
-
-body .toggle-btn.active,
-body.dark-theme .toggle-btn.active,
-body.light-mode .toggle-btn.active {
-    color: white !important;
-    display: flex !important;
-    align-items: center !important;
-    justify-content: center !important;
-    text-align: center !important;
-}
-
-body .toggle-btn:hover,
-body.dark-theme .toggle-btn:hover,
-body.light-mode .toggle-btn:hover {
-    color: white !important;
-    display: flex !important;
-    align-items: center !important;
-    justify-content: center !important;
-    text-align: center !important;
-}
-
-.toggle-btn.active {
-    background: #059669;
-    color: white !important;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    text-align: center;
+    border: 1px solid #6b7280 !important;
 }
 
 .toggle-btn:hover {
-    background: #0d9488;
+    background: #667eea !important;
     color: white !important;
     transform: translateY(-1px);
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    text-align: center;
+}
+
+.toggle-btn.active {
+    background: #667eea !important;
+    color: white !important;
 }
 
 .clear-btn {

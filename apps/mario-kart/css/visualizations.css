@@ -42,16 +42,7 @@
     transition: all 0.2s ease;
 }
 
-/* Light mode achievement bars should be dark gray for better text contrast */
-body.light-mode .achievement-bar {
-    background: rgba(0, 0, 0, 0.15);
-    border: 1px solid rgba(0, 0, 0, 0.1);
-}
-
-body.light-mode .achievement-bar:hover {
-    background: rgba(0, 0, 0, 0.25);
-    transform: translateY(-1px);
-}
+/* Theme support */
 
 .achievement-bar:hover {
     background: rgba(255, 255, 255, 0.2);
@@ -68,15 +59,6 @@ body.light-mode .achievement-bar:hover {
     border: 1px solid rgba(102, 126, 234, 0.3);
 }
 
-body.light-mode .achievement-bar.achievement-expanded {
-    background: rgba(102, 126, 234, 0.15);
-    border: 1px solid rgba(102, 126, 234, 0.25);
-}
-
-.achievement-bar.active-streak {
-    position: relative;
-    animation: activePulse 2s ease-in-out infinite;
-}
 
 .achievement-bar.active-streak::before {
     content: '';
@@ -698,22 +680,18 @@ body.light-mode .achievement-bar.achievement-expanded {
     font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
 }
 
-/* LATEST badge for recent streak */
+/* Latest race indicator */
 .latest-badge {
     position: absolute;
-    top: -2px;
-    left: -1px;
-    right: -1px;
-    background: #ef4444;
-    color: white;
-    font-size: 6px;
-    font-weight: 700;
-    padding: 1px 0;
-    border-radius: 2px;
+    top: -3px;
+    left: 0;
+    right: 0;
+    width: 100%;
+    height: 3px;
+    background: #667eea;
     z-index: 10;
-    line-height: 1;
-    text-align: center;
-    width: calc(100% + 2px);
+    border-radius: 1px;
+    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.2);
 }
 
 /* Sweet Spot Bars */

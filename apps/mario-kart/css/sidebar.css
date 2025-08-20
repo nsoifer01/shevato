@@ -98,19 +98,19 @@ body.sidebar-open {
     scrollbar-color: #667eea var(--scrollbar-track);
 }
 
-/* Dark theme scrollbar */
-body.dark-theme .sidebar::-webkit-scrollbar-track {
+/* Theme scrollbar */
+body.theme .sidebar::-webkit-scrollbar-track {
     background: rgba(255, 255, 255, 0.05);
 }
 
-body.dark-theme .sidebar::-webkit-scrollbar-thumb {
+body.theme .sidebar::-webkit-scrollbar-thumb {
     background: linear-gradient(180deg, #818cf8 0%, #a78bfa 100%);
     box-shadow: 0 2px 4px rgba(0, 0, 0, 0.3);
 }
 
 /* Note: :hover pseudo-class is not supported on scrollbar pseudo-elements in some browsers */
 
-body.dark-theme .sidebar {
+body.theme .sidebar {
     scrollbar-color: #818cf8 rgba(255, 255, 255, 0.05);
 }
 
@@ -155,11 +155,11 @@ body.dark-theme .sidebar {
     transform: scale(1.05);
 }
 
-body.dark-theme .sidebar-theme-toggle {
+body.theme .sidebar-theme-toggle {
     border-color: rgba(107, 114, 128, 0.5);
 }
 
-body.dark-theme .sidebar-theme-toggle:hover {
+body.theme .sidebar-theme-toggle:hover {
     background: rgba(255, 255, 255, 0.05);
 }
 
@@ -189,11 +189,11 @@ body.dark-theme .sidebar-theme-toggle:hover {
     cursor: not-allowed;
 }
 
-body.dark-theme .sidebar-header-clear {
+body.theme .sidebar-header-clear {
     border-color: rgba(107, 114, 128, 0.5);
 }
 
-body.dark-theme .sidebar-header-clear:hover:not(:disabled) {
+body.theme .sidebar-header-clear:hover:not(:disabled) {
     background: rgba(239, 68, 68, 0.2);
     border-color: #ef4444;
 }
@@ -235,12 +235,12 @@ body.dark-theme .sidebar-header-clear:hover:not(:disabled) {
     outline-offset: 2px;
 }
 
-body.dark-theme .sidebar-close-btn {
+body.theme .sidebar-close-btn {
     border-color: rgba(107, 114, 128, 0.5);
     color: #dc2626 !important;
 }
 
-body.dark-theme .sidebar-close-btn:hover {
+body.theme .sidebar-close-btn:hover {
     background: rgba(220, 38, 38, 0.2);
     color: #b91c1c !important;
 }
@@ -386,29 +386,19 @@ body.dark-theme .sidebar-close-btn:hover {
     }
 }
 
-/* Dark theme enhancements */
-body.dark-theme .sidebar-toggle {
+/* Theme enhancements */
+body.theme .sidebar-toggle {
     background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
     border-color: rgba(255, 255, 255, 0.15);
     box-shadow: 0 4px 20px rgba(102, 126, 234, 0.4);
 }
 
-body.dark-theme .sidebar-toggle:hover {
+body.theme .sidebar-toggle:hover {
     background: linear-gradient(135deg, #5a67d8 0%, #6b46c1 100%);
     box-shadow: 0 8px 30px rgba(102, 126, 234, 0.5);
 }
 
-/* Light theme enhancements */
-body.light-mode .sidebar-toggle {
-    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-    border-color: rgba(0, 0, 0, 0.1);
-    box-shadow: 0 4px 20px rgba(102, 126, 234, 0.25);
-}
-
-body.light-mode .sidebar-toggle:hover {
-    background: linear-gradient(135deg, #5a67d8 0%, #6b46c1 100%);
-    box-shadow: 0 8px 30px rgba(102, 126, 234, 0.35);
-}
+/* Theme support */
 
 /* Responsive adjustments */
 @media (min-width: 1024px) {
@@ -423,12 +413,12 @@ body.light-mode .sidebar-toggle:hover {
     }
 }
 
-/* Dark theme adjustments */
-body.dark-theme .sidebar {
+/* Theme adjustments */
+body.theme .sidebar {
     box-shadow: 2px 0 10px rgba(0, 0, 0, 0.3);
 }
 
-body.dark-theme .sidebar-overlay {
+body.theme .sidebar-overlay {
     background-color: rgba(0, 0, 0, 0.7);
 }
 
@@ -798,37 +788,37 @@ body.dark-theme .sidebar-overlay {
     transform: translateY(0);
 }
 
-/* Dark theme support for Set to Today button */
-body.dark-theme .sidebar-date-today-btn {
+/* Theme support for Set to Today button */
+body.theme .sidebar-date-today-btn {
     background: #34d399;
     color: black !important;
     border-color: #10b981;
     box-shadow: 0 2px 4px rgba(52, 211, 153, 0.2);
 }
 
-body.dark-theme .sidebar-date-today-btn:hover {
+body.theme .sidebar-date-today-btn:hover {
     background: #10b981;
     color: black !important;
     box-shadow: 0 4px 8px rgba(52, 211, 153, 0.3);
 }
 
-/* Dark theme support */
-body.dark-theme .sidebar-date-icon-btn {
+/* Theme support */
+body.theme .sidebar-date-icon-btn {
     background: rgba(255, 255, 255, 0.1);
     border-color: rgba(255, 255, 255, 0.2);
 }
 
-body.dark-theme .sidebar-date-icon-btn:hover {
+body.theme .sidebar-date-icon-btn:hover {
     background: rgba(255, 255, 255, 0.2);
 }
 
-/* Dark mode for hidden date input */
-body.dark-theme .sidebar-date-input-hidden {
+/* Theme support */
+body.theme .sidebar-date-input-hidden {
     color-scheme: dark;
 }
 
-/* Ensure calendar picker works in dark mode */
-body.dark-theme .sidebar-date-input-hidden::-webkit-calendar-picker-indicator {
+/* Ensure calendar picker works with theme */
+body.theme .sidebar-date-input-hidden::-webkit-calendar-picker-indicator {
     cursor: pointer;
 }
 
@@ -907,12 +897,12 @@ body.dark-theme .sidebar-date-input-hidden::-webkit-calendar-picker-indicator {
     background: #9ca3af;
 }
 
-/* Dark theme support */
-body.dark-theme .sidebar-add-race-btn {
+/* Theme support */
+body.theme .sidebar-add-race-btn {
     box-shadow: 0 2px 4px rgba(16, 185, 129, 0.2);
 }
 
-body.dark-theme .sidebar-add-race-btn:hover {
+body.theme .sidebar-add-race-btn:hover {
     box-shadow: 0 4px 8px rgba(16, 185, 129, 0.3);
 }
 
@@ -973,8 +963,8 @@ body.dark-theme .sidebar-add-race-btn:hover {
     75% { transform: translateX(5px); }
 }
 
-/* Dark theme error styles */
-body.dark-theme .sidebar-race-error {
+/* Theme error styles */
+body.theme .sidebar-race-error {
     background: rgba(254, 202, 202, 0.1);
     border-color: rgba(252, 129, 129, 0.3);
     color: #fc8181;
@@ -1103,68 +1093,68 @@ body.dark-theme .sidebar-race-error {
     transform: translateY(-1px);
 }
 
-/* Dark theme support for Add Race form */
-body.dark-theme .sidebar-race-form {
+/* Theme support for Add Race form */
+body.theme .sidebar-race-form {
     background: linear-gradient(135deg, #2d3748 0%, #1a202c 100%);
     border-color: rgba(255, 255, 255, 0.1);
     box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
 }
 
-body.dark-theme .sidebar-race-form::before {
+body.theme .sidebar-race-form::before {
     background: linear-gradient(90deg, #34d399 0%, #10b981 100%);
 }
 
-body.dark-theme .sidebar-player-input label {
+body.theme .sidebar-player-input label {
     color: #e2e8f0;
 }
 
-body.dark-theme .sidebar-position-input {
+body.theme .sidebar-position-input {
     background: #374151;
     border-color: rgba(255, 255, 255, 0.1);
     color: white;
 }
 
-body.dark-theme .sidebar-position-input:focus {
+body.theme .sidebar-position-input:focus {
     border-color: #34d399;
     box-shadow: 0 0 0 3px rgba(52, 211, 153, 0.15);
 }
 
-body.dark-theme .sidebar-position-input::placeholder {
+body.theme .sidebar-position-input::placeholder {
     color: #9ca3af;
 }
 
-body.dark-theme .sidebar-submit-race {
+body.theme .sidebar-submit-race {
     background: linear-gradient(135deg, #34d399 0%, #10b981 100%);
     box-shadow: 0 2px 8px rgba(52, 211, 153, 0.3);
 }
 
-body.dark-theme .sidebar-submit-race:hover {
+body.theme .sidebar-submit-race:hover {
     background: linear-gradient(135deg, #10b981 0%, #059669 100%);
     box-shadow: 0 4px 12px rgba(52, 211, 153, 0.4);
 }
 
-body.dark-theme .sidebar-cancel-race {
+body.theme .sidebar-cancel-race {
     background: #374151;
     color: white !important;
     border-color: rgba(255, 255, 255, 0.1);
 }
 
-body.dark-theme .sidebar-cancel-race:hover {
+body.theme .sidebar-cancel-race:hover {
     background: #4b5563;
     color: white !important;
     border-color: rgba(255, 255, 255, 0.2);
 }
 
-body.dark-theme .sidebar-position-input:focus {
+body.theme .sidebar-position-input:focus {
     border-color: #34d399;
 }
 
-body.dark-theme .sidebar-cancel-race {
+body.theme .sidebar-cancel-race {
     background: rgba(74, 85, 104, 0.8);
     color: #e2e8f0;
 }
 
-body.dark-theme .sidebar-cancel-race:hover {
+body.theme .sidebar-cancel-race:hover {
     background: rgba(74, 85, 104, 1);
 }
 
@@ -1369,55 +1359,55 @@ body.dark-theme .sidebar-cancel-race:hover {
     border-color: #ea580c;
 }
 
-/* Dark theme support */
-/* Enhanced dark theme support for position picker */
-body.dark-theme .position-picker-toggle {
+/* Theme support */
+/* Enhanced theme support for position picker */
+body.theme .position-picker-toggle {
     background: #374151;
     border: 2px solid rgba(255, 255, 255, 0.1);
     color: white;
     font-weight: 600;
 }
 
-body.dark-theme .position-picker-toggle:hover {
+body.theme .position-picker-toggle:hover {
     background: #4b5563;
     border-color: #10b981;
     box-shadow: 0 2px 8px rgba(16, 185, 129, 0.2);
 }
 
-body.dark-theme .picker-icon {
+body.theme .picker-icon {
     color: white !important;
 }
 
-body.dark-theme .position-picker {
+body.theme .position-picker {
     background: linear-gradient(135deg, #2d3748 0%, #1a202c 100%);
     border: 2px solid rgba(255, 255, 255, 0.1);
     box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
 }
 
-body.dark-theme .picker-header {
+body.theme .picker-header {
     color: #e2e8f0;
     font-weight: 700;
 }
 
-body.dark-theme .position-btn {
+body.theme .position-btn {
     background: #374151;
     border: 1.5px solid rgba(255, 255, 255, 0.1);
     color: white !important;
     font-weight: 600;
 }
 
-body.dark-theme .position-btn::before {
+body.theme .position-btn::before {
     background: rgba(52, 211, 153, 0.2);
 }
 
-body.dark-theme .position-btn:hover {
+body.theme .position-btn:hover {
     background: #4b5563;
     border-color: #34d399;
     color: white !important;
     box-shadow: 0 2px 8px rgba(52, 211, 153, 0.2);
 }
 
-body.dark-theme .position-btn.selected {
+body.theme .position-btn.selected {
     background: linear-gradient(135deg, #34d399 0%, #10b981 100%);
     color: white !important;
     border-color: #10b981;
@@ -1425,12 +1415,12 @@ body.dark-theme .position-btn.selected {
     box-shadow: 0 2px 8px rgba(52, 211, 153, 0.3);
 }
 
-/* Dark theme scrollbar for position picker */
-body.dark-theme .position-picker::-webkit-scrollbar-track {
+/* Theme scrollbar for position picker */
+body.theme .position-picker::-webkit-scrollbar-track {
     background: rgba(255, 255, 255, 0.05);
 }
 
-body.dark-theme .position-picker::-webkit-scrollbar-thumb {
+body.theme .position-picker::-webkit-scrollbar-thumb {
     background: linear-gradient(180deg, #34d399 0%, #10b981 100%);
 }
 
@@ -1492,18 +1482,18 @@ body.dark-theme .position-picker::-webkit-scrollbar-thumb {
     font-size: 0.9rem;
 }
 
-/* Dark theme support */
-body.dark-theme .sidebar-player-settings-btn {
+/* Theme support */
+body.theme .sidebar-player-settings-btn {
     background: linear-gradient(135deg, #f472b6 0%, #a78bfa 100%);
     box-shadow: 0 2px 8px rgba(244, 114, 182, 0.3);
 }
 
-body.dark-theme .sidebar-player-settings-btn:hover {
+body.theme .sidebar-player-settings-btn:hover {
     background: linear-gradient(135deg, #ec4899 0%, #9333ea 100%);
     box-shadow: 0 4px 12px rgba(244, 114, 182, 0.4);
 }
 
-body.dark-theme .sidebar-player-settings-btn.active {
+body.theme .sidebar-player-settings-btn.active {
     background: linear-gradient(135deg, #db2777 0%, #7c3aed 100%);
 }
 
@@ -1681,35 +1671,35 @@ body.dark-theme .sidebar-player-settings-btn.active {
     background: rgba(16, 185, 129, 0.1);
 }
 
-/* Enhanced dark theme support for Player Settings */
-body.dark-theme .player-count-label,
-body.dark-theme .sidebar-player-label {
+/* Enhanced theme support for Player Settings */
+body.theme .player-count-label,
+body.theme .sidebar-player-label {
     color: white !important;
 }
 
-body.dark-theme .player-count-btn {
+body.theme .player-count-btn {
     color: white !important;
     border-color: rgba(255, 255, 255, 0.2) !important;
 }
 
-body.dark-theme .player-count-btn:hover {
+body.theme .player-count-btn:hover {
     background: rgba(255, 255, 255, 0.1) !important;
     border-color: #10b981 !important;
 }
 
-body.dark-theme .player-count-btn.selected {
+body.theme .player-count-btn.selected {
     background: #10b981 !important;
     color: white !important;
     border-color: #059669 !important;
 }
 
-body.dark-theme .sidebar-player-name-input {
+body.theme .sidebar-player-name-input {
     color: white !important;
     border-color: rgba(255, 255, 255, 0.2) !important;
     background: rgba(255, 255, 255, 0.05) !important;
 }
 
-body.dark-theme .sidebar-player-name-input:focus {
+body.theme .sidebar-player-name-input:focus {
     border-color: #667eea !important;
     background: rgba(255, 255, 255, 0.1) !important;
 }
@@ -1779,57 +1769,57 @@ body.dark-theme .sidebar-player-name-input:focus {
     transform: scale(1.1);
 }
 
-/* Dark theme support */
-body.dark-theme .player-count-btn {
+/* Theme support */
+body.theme .player-count-btn {
     background: transparent;
     color: #e2e8f0;
     border-color: rgba(107, 114, 128, 0.5);
 }
 
-body.dark-theme .player-count-btn:hover {
+body.theme .player-count-btn:hover {
     background: rgba(255, 255, 255, 0.05);
     border-color: #34d399;
 }
 
-body.dark-theme .player-count-btn.selected {
+body.theme .player-count-btn.selected {
     background: #10b981;
     color: white;
     border-color: #059669;
 }
 
-body.dark-theme .sidebar-player-item {
+body.theme .sidebar-player-item {
     border-color: rgba(107, 114, 128, 0.5);
 }
 
-body.dark-theme .sidebar-player-initial {
+body.theme .sidebar-player-initial {
     background: linear-gradient(135deg, #818cf8 0%, #a78bfa 100%);
 }
 
-body.dark-theme .sidebar-player-name-input {
+body.theme .sidebar-player-name-input {
     background: transparent;
     border-color: rgba(107, 114, 128, 0.5);
     color: #e2e8f0;
 }
 
-body.dark-theme .sidebar-player-name-input:focus {
+body.theme .sidebar-player-name-input:focus {
     border-color: #818cf8;
 }
 
-body.dark-theme .sidebar-player-name-input:disabled {
+body.theme .sidebar-player-name-input:disabled {
     background: rgba(255, 255, 255, 0.05);
 }
 
-body.dark-theme .sidebar-player-status {
+body.theme .sidebar-player-status {
     background: rgba(255, 255, 255, 0.05);
     color: #6b7280;
 }
 
-body.dark-theme .sidebar-player-status.active {
+body.theme .sidebar-player-status.active {
     color: #34d399;
     background: rgba(52, 211, 153, 0.1);
 }
 
-body.dark-theme .sidebar-icon-picker {
+body.theme .sidebar-icon-picker {
     background: #2d3748;
     background-color: #2d3748;
     opacity: 1;
@@ -1837,17 +1827,17 @@ body.dark-theme .sidebar-icon-picker {
     scrollbar-color: #818cf8 rgba(255, 255, 255, 0.05);
 }
 
-/* Dark theme scrollbar for icon picker */
-body.dark-theme .sidebar-icon-picker::-webkit-scrollbar-track {
+/* Theme scrollbar for icon picker */
+body.theme .sidebar-icon-picker::-webkit-scrollbar-track {
     background: rgba(255, 255, 255, 0.05);
 }
 
-body.dark-theme .sidebar-icon-picker::-webkit-scrollbar-thumb {
+body.theme .sidebar-icon-picker::-webkit-scrollbar-thumb {
     background: linear-gradient(180deg, #818cf8 0%, #a78bfa 100%);
     box-shadow: 0 2px 4px rgba(0, 0, 0, 0.3);
 }
 
-body.dark-theme .sidebar-icon-option:hover {
+body.theme .sidebar-icon-option:hover {
     background: rgba(255, 255, 255, 0.1);
     border-color: #818cf8;
 }
@@ -1948,51 +1938,51 @@ body.dark-theme .sidebar-icon-option:hover {
     font-size: 0.9rem;
 }
 
-/* Dark theme support for action buttons */
-body.dark-theme .sidebar-action-btn {
+/* Theme support for action buttons */
+body.theme .sidebar-action-btn {
     background: transparent;
     color: #e2e8f0;
     border-color: rgba(107, 114, 128, 0.5);
 }
 
-body.dark-theme .sidebar-action-btn:hover:not(:disabled) {
+body.theme .sidebar-action-btn:hover:not(:disabled) {
     background: rgba(255, 255, 255, 0.05);
     border-color: rgba(107, 114, 128, 0.8);
 }
 
-body.dark-theme .sidebar-action-btn.undo-btn {
+body.theme .sidebar-action-btn.undo-btn {
     background: #60a5fa;
     color: black !important;
     border-color: #3b82f6;
 }
 
-body.dark-theme .sidebar-action-btn.undo-btn:hover:not(:disabled) {
+body.theme .sidebar-action-btn.undo-btn:hover:not(:disabled) {
     background: #3b82f6;
     color: black !important;
     transform: translateY(-1px);
     box-shadow: 0 2px 4px rgba(0, 0, 0, 0.3);
 }
 
-body.dark-theme .sidebar-action-btn.redo-btn {
+body.theme .sidebar-action-btn.redo-btn {
     background: #34d399;
     color: black !important;
     border-color: #10b981;
 }
 
-body.dark-theme .sidebar-action-btn.redo-btn:hover:not(:disabled) {
+body.theme .sidebar-action-btn.redo-btn:hover:not(:disabled) {
     background: #10b981;
     color: black !important;
     transform: translateY(-1px);
     box-shadow: 0 2px 4px rgba(0, 0, 0, 0.3);
 }
 
-body.dark-theme .sidebar-action-btn.restore-btn {
+body.theme .sidebar-action-btn.restore-btn {
     background: #fbbf24;
     color: black !important;
     border-color: #f59e0b;
 }
 
-body.dark-theme .sidebar-action-btn.restore-btn:hover {
+body.theme .sidebar-action-btn.restore-btn:hover {
     background: #f59e0b;
     color: black !important;
     transform: translateY(-1px);
@@ -2006,36 +1996,36 @@ body.dark-theme .sidebar-action-btn.restore-btn:hover {
 
 /* Clear button moved to header */
 
-/* Dark theme support for export/import/backup buttons */
-body.dark-theme .sidebar .action-buttons button[onclick*="exportData"] {
+/* Theme support for export/import/backup buttons */
+body.theme .sidebar .action-buttons button[onclick*="exportData"] {
     background: #68D391;
     color: black !important;
     border-color: #48BB78;
 }
 
-body.dark-theme .sidebar .action-buttons button[onclick*="exportData"]:hover {
+body.theme .sidebar .action-buttons button[onclick*="exportData"]:hover {
     background: #48BB78;
     color: black !important;
 }
 
-body.dark-theme .sidebar .action-buttons button[onclick*="importFile"] {
+body.theme .sidebar .action-buttons button[onclick*="importFile"] {
     background: #4FD1C5;
     color: black !important;
     border-color: #38B2AC;
 }
 
-body.dark-theme .sidebar .action-buttons button[onclick*="importFile"]:hover {
+body.theme .sidebar .action-buttons button[onclick*="importFile"]:hover {
     background: #38B2AC;
     color: black !important;
 }
 
-body.dark-theme .sidebar .action-buttons button[onclick*="backupToGoogleDrive"] {
+body.theme .sidebar .action-buttons button[onclick*="backupToGoogleDrive"] {
     background: #63B3ED;
     color: black !important;
     border-color: #4299E1;
 }
 
-body.dark-theme .sidebar .action-buttons button[onclick*="backupToGoogleDrive"]:hover {
+body.theme .sidebar .action-buttons button[onclick*="backupToGoogleDrive"]:hover {
     background: #4299E1;
     color: black !important;
 }
@@ -2087,14 +2077,14 @@ body.dark-theme .sidebar .action-buttons button[onclick*="backupToGoogleDrive"]:
     border-color: #374151 !important;
 }
 
-/* Dark theme specific overrides for filter buttons */
-body.dark-theme .sidebar .filter-btn:not(.active) {
+/* Theme specific overrides for filter buttons */
+body.theme .sidebar .filter-btn:not(.active) {
     background: #4b5563 !important;
     color: white !important;
     border-color: #374151 !important;
 }
 
-body.dark-theme .sidebar .filter-btn:not(.active):hover {
+body.theme .sidebar .filter-btn:not(.active):hover {
     background: #374151 !important;
     color: white !important;
     border-color: #1f2937 !important;
