@@ -501,7 +501,7 @@ function importData(event) {
                 // Validate player positions
                 ['player1', 'player2', 'player3', 'player4'].forEach(player => {
                     if (race[player] !== null && race[player] !== undefined &&
-                        (typeof race[player] !== 'number' || race[player] < 1 || race[player] > 24)) {
+                        (typeof race[player] !== 'number' || race[player] < 1 || race[player] > window.MAX_POSITIONS)) {
                         throw new Error(`Invalid race data: invalid ${player} position`);
                     }
                 });

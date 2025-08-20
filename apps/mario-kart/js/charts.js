@@ -592,7 +592,7 @@ function calculateComebackAnalysis(raceData) {
             const prevPosition = playerRaces[i-1][player];
             const currentPosition = playerRaces[i][player];
 
-            if (prevPosition >= 12) {
+            if (prevPosition >= (window.getGoodFinishThreshold ? window.getGoodFinishThreshold() + 1 : 13)) {
                 badPositions++;
                 if (currentPosition <= 5) {
                     comebacks++;
@@ -794,8 +794,8 @@ function generatePatternAnalysis(raceData) {
         
         // Find the most common range (group positions into ranges of 4)
         const ranges = [];
-        for (let start = 1; start <= 24; start += 4) {
-            const end = Math.min(start + 3, 24);
+        for (let start = 1; start <= window.MAX_POSITIONS; start += 4) {
+            const end = Math.min(start + 3, window.MAX_POSITIONS);
             const count = allPositions.filter(pos => pos >= start && pos <= end).length;
             if (count > 0) {
                 ranges.push({

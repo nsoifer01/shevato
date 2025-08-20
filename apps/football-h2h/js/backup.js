@@ -6,7 +6,7 @@ function initializeAutoBackup() {
     if (backupInterval) clearInterval(backupInterval);
 
     backupInterval = setInterval(() => {
-        if (matches && matches.length > 0) {
+        if (games && games.length > 0) {
             autoBackupToLocalStorage();
         }
     }, 600000); // 10 minutes
@@ -15,7 +15,7 @@ function initializeAutoBackup() {
 function autoBackupToLocalStorage() {
     try {
         const backupData = {
-            matches: matches,
+            games: games,
             players: {
                 player1: document.getElementById('player1Name') ? document.getElementById('player1Name').value : '',
                 player2: document.getElementById('player2Name') ? document.getElementById('player2Name').value : ''
@@ -39,7 +39,7 @@ function restoreFromBackup() {
             createWarningModal({
                 icon: '📦',
                 title: 'No Backup Found',
-                message: 'No automatic backup found. Backups are created every 10 minutes when you have match data.',
+                message: 'No automatic backup found. Backups are created every 10 minutes when you have game data.',
                 onConfirm: () => {},
                 onCancel: () => {}
             });
@@ -59,27 +59,27 @@ function restoreFromBackup() {
             return;
         }
 
-        if (!backupData.matches || !Array.isArray(backupData.matches)) {
+        if (!backupData.games || !Array.isArray(backupData.games)) {
             createErrorModal({
                 icon: '❌',
                 title: 'Invalid Backup',
-                message: 'Backup data is invalid - no matches found.'
+                message: 'Backup data is invalid - no games found.'
             });
             return;
         }
 
-        const backupDate = new Date(backupData.backupDate).toLocaleString();
-        const matchCount = backupData.matches.length;
+        const backupDate = new Date(backupData.backupDate).toLocaleString(undefined, { hour12: false });
+        const gameCount = backupData.games.length;
 
         createConfirmationModal({
             icon: '🔄',
             title: 'Restore from Backup?',
-            message: `Found backup with <strong>${matchCount} matches</strong><br>
+            message: `Found backup with <strong>${gameCount} games</strong><br>
                      Created on: <strong>${backupDate}</strong><br><br>
                      <span style="color: #fc8181;">⚠️ Warning: This will replace all current data!</span>`,
             onConfirm: () => {
                 // Perform the restore
-                matches = backupData.matches || [];
+                games = backupData.games || [];
                 
                 // Restore player names
                 if (backupData.players) {
@@ -101,12 +101,12 @@ function restoreFromBackup() {
                     updatePlayerIconDisplays();
                 }
                 
-                // Save matches and update UI
-                saveMatches();
+                // Save games and update UI
+                saveGames();
                 updateUI();
                 
                 // Show success toast
-                showToast(`Successfully restored ${matchCount} matches from backup!`, 'success');
+                showToast(`Successfully restored ${gameCount} games from backup!`, 'success');
             },
             onCancel: () => {
                 // Modal closes automatically
@@ -129,7 +129,7 @@ function backupToFile() {
         const player2Name = document.getElementById('player2Name') ? document.getElementById('player2Name').value : 'Player 2';
         
         const data = {
-            matches: matches,
+            games: games,
             players: {
                 player1: player1Name,
                 player2: player2Name
@@ -181,7 +181,7 @@ function restoreFromFile() {
                 const backupData = JSON.parse(e.target.result);
                 
                 // Validate backup data
-                if (!backupData.matches || !Array.isArray(backupData.matches)) {
+                if (!backupData.games || !Array.isArray(backupData.games)) {
                     createErrorModal({
                         icon: '❌',
                         title: 'Invalid Backup File',
@@ -190,18 +190,18 @@ function restoreFromFile() {
                     return;
                 }
                 
-                const backupDate = backupData.backupDate ? new Date(backupData.backupDate).toLocaleString() : 'Unknown';
-                const matchCount = backupData.matches.length;
+                const backupDate = backupData.backupDate ? new Date(backupData.backupDate).toLocaleString(undefined, { hour12: false }) : 'Unknown';
+                const gameCount = backupData.games.length;
                 
                 createConfirmationModal({
                     icon: '📥',
                     title: 'Restore from File?',
-                    message: `Found backup with <strong>${matchCount} matches</strong><br>
+                    message: `Found backup with <strong>${gameCount} games</strong><br>
                              Created on: <strong>${backupDate}</strong><br><br>
                              <span style="color: #fc8181;">⚠️ Warning: This will replace all current data!</span>`,
                     onConfirm: () => {
                         // Perform the restore
-                        matches = backupData.matches || [];
+                        games = backupData.games || [];
                         
                         // Restore player names
                         if (backupData.players) {
@@ -223,12 +223,12 @@ function restoreFromFile() {
                             updatePlayerIconDisplays();
                         }
                         
-                        // Save matches and update UI
-                        saveMatches();
+                        // Save games and update UI
+                        saveGames();
                         updateUI();
                         
                         // Show success toast
-                        showToast(`Successfully restored ${matchCount} matches from file!`, 'success');
+                        showToast(`Successfully restored ${gameCount} games from file!`, 'success');
                     },
                     onCancel: () => {
                         // Modal closes automatically

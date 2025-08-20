@@ -37,8 +37,9 @@ function createModal({ icon, title, content, buttons = [] }) {
         const buttonEl = document.getElementById(btn.id);
         if (buttonEl && btn.onClick) {
             buttonEl.onclick = () => {
-                btn.onClick();
-                if (btn.closeOnClick !== false) {
+                const result = btn.onClick();
+                // Only close if onClick doesn't return false and closeOnClick is not false
+                if (result !== false && btn.closeOnClick !== false) {
                     document.body.removeChild(modal);
                 }
             };
@@ -169,6 +170,188 @@ function createWarningModal({ icon = '⚠️', title, message, onConfirm, onCanc
 }
 
 /**
+ * Creates a form modal
+ */
+function createFormModal({ icon, title, fields, onSave, onCancel, isDarkTheme = true }) {
+    // Group fields for grid layout
+    const gridFields = fields.filter(field => field.grid);
+    const regularFields = fields.filter(field => !field.grid);
+    
+    let fieldsHtml = '';
+    
+    // Add grid fields first (date/time)
+    if (gridFields.length > 0) {
+        const gridFieldsHtml = gridFields.map(field => {
+            const fieldId = `form-${field.id}`;
+            let inputHtml;
+
+            switch (field.type) {
+                case 'date':
+                    inputHtml = `<input type="date" id="${fieldId}" value="${field.value || ''}" class="form-input ${isDarkTheme ? '' : 'light-theme'}">`;
+                    break;
+                case 'time':
+                    inputHtml = `<input type="time" id="${fieldId}" value="${field.value || ''}" step="1" class="form-input ${isDarkTheme ? '' : 'light-theme'}" placeholder="${field.placeholder || ''}">`;
+                    break;
+                case 'number':
+                    const numberChangeHandler = field.onChange ? `onchange="${field.onChange}"` : '';
+                    const numberValue = field.value !== undefined && field.value !== null ? field.value : '';
+                    inputHtml = `<input type="number" id="${fieldId}" value="${numberValue}" min="${field.min || ''}" max="${field.max || ''}" class="form-input ${isDarkTheme ? '' : 'light-theme'}" placeholder="${field.placeholder || ''}" ${numberChangeHandler}>`;
+                    break;
+                case 'select':
+                    const optionsHtml = field.options.map(option => 
+                        `<option value="${option.value}" ${option.value === field.value ? 'selected' : ''}>${option.text}</option>`
+                    ).join('');
+                    const changeHandler = field.onChange ? `onchange="${field.onChange}"` : '';
+                    inputHtml = `<select id="${fieldId}" class="form-input ${isDarkTheme ? '' : 'light-theme'}" ${changeHandler}>${optionsHtml}</select>`;
+                    break;
+                default:
+                    const maxLengthAttr = field.maxlength ? `maxlength="${field.maxlength}"` : '';
+                inputHtml = `<input type="text" id="${fieldId}" value="${field.value || ''}" class="form-input ${isDarkTheme ? '' : 'light-theme'}" placeholder="${field.placeholder || ''}" ${maxLengthAttr}>`;
+            }
+
+            const hideStyle = field.hidden ? 'style="display: none;"' : '';
+            return `
+                <div class="form-group" ${hideStyle}>
+                    <label class="form-label ${isDarkTheme ? '' : 'light-theme'}" for="${fieldId}">${field.label}:</label>
+                    ${inputHtml}
+                </div>
+            `;
+        }).join('');
+        
+        fieldsHtml += `<div class="form-grid-2">${gridFieldsHtml}</div>`;
+    }
+    
+    // Add regular fields
+    const regularFieldsHtml = regularFields.map(field => {
+        const fieldId = `form-${field.id}`;
+        let inputHtml;
+
+        switch (field.type) {
+            case 'date':
+                inputHtml = `<input type="date" id="${fieldId}" value="${field.value || ''}" class="form-input ${isDarkTheme ? '' : 'light-theme'}">`;
+                break;
+            case 'time':
+                inputHtml = `<input type="time" id="${fieldId}" value="${field.value || ''}" step="1" class="form-input ${isDarkTheme ? '' : 'light-theme'}" placeholder="${field.placeholder || ''}">`;
+                break;
+            case 'number':
+                const numberChangeHandler = field.onChange ? `onchange="${field.onChange}"` : '';
+                const numberValue = field.value !== undefined && field.value !== null ? field.value : '';
+                inputHtml = `<input type="number" id="${fieldId}" value="${numberValue}" min="${field.min || ''}" max="${field.max || ''}" class="form-input ${isDarkTheme ? '' : 'light-theme'}" placeholder="${field.placeholder || ''}" ${numberChangeHandler}>`;
+                break;
+            case 'select':
+                const optionsHtml = field.options.map(option => 
+                    `<option value="${option.value}" ${option.value === field.value ? 'selected' : ''}>${option.text}</option>`
+                ).join('');
+                const changeHandler = field.onChange ? `onchange="${field.onChange}"` : '';
+                inputHtml = `<select id="${fieldId}" class="form-input ${isDarkTheme ? '' : 'light-theme'}" ${changeHandler}>${optionsHtml}</select>`;
+                break;
+            default:
+                const maxLengthAttr = field.maxlength ? `maxlength="${field.maxlength}"` : '';
+                inputHtml = `<input type="text" id="${fieldId}" value="${field.value || ''}" class="form-input ${isDarkTheme ? '' : 'light-theme'}" placeholder="${field.placeholder || ''}" ${maxLengthAttr}>`;
+        }
+
+        const hideStyle = field.hidden ? 'style="display: none;"' : '';
+        return `
+            <div class="form-group" ${hideStyle}>
+                <label class="form-label ${isDarkTheme ? '' : 'light-theme'}" for="${fieldId}">${field.label}:</label>
+                ${inputHtml}
+            </div>
+        `;
+    }).join('');
+    
+    fieldsHtml += regularFieldsHtml;
+
+    const buttons = [
+        {
+            id: 'save-btn',
+            text: 'Save Changes',
+            type: 0, // primary
+            onClick: () => {
+                const formData = {};
+                fields.forEach(field => {
+                    const input = document.getElementById(`form-${field.id}`);
+                    formData[field.id] = input ? input.value : '';
+                });
+                return onSave(formData);
+            }
+        },
+        {
+            id: 'cancel-btn',
+            text: 'Cancel',
+            type: 1, // secondary
+            onClick: onCancel
+        }
+    ];
+
+    const content = `
+        <div class="form-error-container" id="form-error-container" style="display: none; background: #fef2f2; border: 1px solid #fecaca; color: #dc2626; padding: 12px; border-radius: 6px; margin-bottom: 16px; font-size: 14px;">
+            <span id="form-error-message"></span>
+        </div>
+        <div class="form-container">${fieldsHtml}</div>
+    `;
+
+    const modal = createModal({
+        icon,
+        title,
+        content,
+        buttons,
+        isDarkTheme
+    });
+    
+    // Add event listeners for dynamic penalty field visibility (for Football H2H edit modal)
+    setTimeout(() => {
+        const player1Input = document.getElementById('form-player1Goals');
+        const player2Input = document.getElementById('form-player2Goals');
+        const penaltyGroup = document.querySelector('[for="form-penaltyWinner"]')?.parentElement;
+        
+        if (player1Input && player2Input && penaltyGroup) {
+            function checkForDraw() {
+                const player1Goals = player1Input.value;
+                const player2Goals = player2Input.value;
+                
+                if (player1Goals !== '' && player2Goals !== '' && player1Goals === player2Goals) {
+                    penaltyGroup.style.display = 'block';
+                } else {
+                    penaltyGroup.style.display = 'none';
+                    // Clear penalty selection when hiding
+                    const penaltySelect = document.getElementById('form-penaltyWinner');
+                    if (penaltySelect) penaltySelect.value = '';
+                }
+            }
+            
+            // Initial check
+            checkForDraw();
+            
+            // Add event listeners
+            player1Input.addEventListener('input', checkForDraw);
+            player2Input.addEventListener('input', checkForDraw);
+        }
+    }, 100);
+    
+    return modal;
+}
+
+// Show error in form modal
+function showFormError(message) {
+    const errorContainer = document.getElementById('form-error-container');
+    const errorMessage = document.getElementById('form-error-message');
+    
+    if (errorContainer && errorMessage) {
+        errorMessage.textContent = message;
+        errorContainer.style.display = 'block';
+    }
+}
+
+// Hide error in form modal
+function hideFormError() {
+    const errorContainer = document.getElementById('form-error-container');
+    
+    if (errorContainer) {
+        errorContainer.style.display = 'none';
+    }
+}
+
+/**
  * Creates a toast notification that appears at the top of the page and auto-disappears
  */
 function showToast(message, type = 'success', duration = 3000) {
@@ -238,4 +421,7 @@ window.createConfirmationModal = createConfirmationModal;
 window.createSuccessModal = createSuccessModal;
 window.createErrorModal = createErrorModal;
 window.createWarningModal = createWarningModal;
+window.createFormModal = createFormModal;
 window.showToast = showToast;
+window.showFormError = showFormError;
+window.hideFormError = hideFormError;
