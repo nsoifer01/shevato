@@ -27,6 +27,9 @@ function initializeGameVersion() {
     const savedVersion = localStorage.getItem('selectedGameVersion');
     if (savedVersion && STORAGE_PREFIXES[savedVersion]) {
         currentGameVersion = savedVersion;
+        window.currentGameVersion = savedVersion; // Update global reference
+    } else {
+        window.currentGameVersion = currentGameVersion; // Set initial global reference
     }
     updateVersionUI();
 }
@@ -40,10 +43,36 @@ function switchGameVersion(version) {
     
     // Save current version preference
     currentGameVersion = version;
+    window.currentGameVersion = version; // Update global reference
     localStorage.setItem('selectedGameVersion', version);
     
     // Update UI
     updateVersionUI();
+    
+    // Update max positions constant for the new game version
+    if (window.updateMaxPositions) {
+        window.updateMaxPositions();
+    }
+    
+    // Update input limits for the new max positions
+    if (window.updateInputLimits) {
+        window.updateInputLimits();
+    }
+    
+    // Update dynamic UI text for the new version
+    if (window.updateDynamicUIText) {
+        window.updateDynamicUIText();
+    }
+    
+    // Regenerate sidebar race inputs with new max positions
+    if (window.generateSidebarRaceInputs) {
+        window.generateSidebarRaceInputs();
+    }
+    
+    // Recreate visualization bars with new position limits
+    if (window.createAllBars) {
+        window.createAllBars();
+    }
     
     // Reload data for the new version
     loadData();
@@ -151,3 +180,8 @@ window.switchGameVersion = switchGameVersion;
 window.initializeGameVersion = initializeGameVersion;
 window.getStorageKey = getStorageKey;
 window.currentGameVersion = currentGameVersion;
+
+// Function to get current game version
+window.getCurrentGameVersion = function() {
+    return currentGameVersion;
+};
