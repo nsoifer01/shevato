@@ -824,12 +824,12 @@ body.theme .sidebar-date-icon-btn:hover {
     background: rgba(255, 255, 255, 0.2);
 }
 
-/* Dark mode for hidden date input */
+/* Theme support */
 body.theme .sidebar-date-input-hidden {
     color-scheme: dark;
 }
 
-/* Ensure calendar picker works in dark mode */
+/* Ensure calendar picker works with theme */
 body.theme .sidebar-date-input-hidden::-webkit-calendar-picker-indicator {
     cursor: pointer;
 }
