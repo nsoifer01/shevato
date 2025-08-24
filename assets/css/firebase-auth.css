@@ -1384,8 +1384,7 @@ body.dark-theme p.signout-modal__message {
   #auth-modal .auth-tab,
   .auth-modal__close,
   body .auth-modal__close,
-  body.dark-theme .auth-modal__close,
-  .skip-link {
+  body.dark-theme .auth-modal__close {
     transition: none !important;
   }
 }
