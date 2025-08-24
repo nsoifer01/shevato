@@ -75,7 +75,6 @@
   </script>
   <link rel="stylesheet" href="/assets/css/content-alignment.css" />
   <link rel="stylesheet" href="/assets/css/brand-colors.css" />
-  <link rel="stylesheet" href="assets/css/global-enhanced.css" />
 </head>
 <body class="is-preload">
   <div data-include="header"></div>
@@ -137,7 +136,8 @@
   <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-auth-compat.js"></script>
   
-  <!-- Firebase Configuration is loaded by main.js -->
+  <!-- Firebase Configuration (loads from local file or Netlify function) -->
+  <script src="assets/js/firebase-config.js"></script>
   
   <!-- Main JavaScript -->
   <script src="assets/js/main.js"></script>

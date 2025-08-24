@@ -15,7 +15,7 @@ window.firebaseConfig = {
 
 // Example with actual format (DO NOT use real values here):
 // window.firebaseConfig = {
-//   apiKey: "AIzaSyD-xxxxxxxxxxxxxxxxxxxx",
+//   apiKey: "Dxxxxxxxxxxxxxxxxxxxxx",
 //   authDomain: "my-project.firebaseapp.com",
 //   projectId: "my-project",
 //   storageBucket: "my-project.appspot.com",

@@ -34,8 +34,7 @@
     <link rel="stylesheet" href="css/tooltip.css">
     <link rel="stylesheet" href="css/help-styles.css">
     <link rel="stylesheet" href="../../assets/css/main.css" />
-    <link rel="stylesheet" href="../../assets/css/global-enhanced.css" />
-    <link rel="stylesheet" href="css/mario-kart-overrides.css">
+      <link rel="stylesheet" href="css/mario-kart-overrides.css">
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <script src="https://apis.google.com/js/api.js"></script>
 </head>
@@ -543,7 +542,8 @@
     <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-auth-compat.js"></script>
     
-    <!-- Firebase Configuration is loaded by main.js -->
+    <!-- Firebase Configuration (loads from local file or Netlify function) -->
+    <script src="../../assets/js/firebase-config.js"></script>
     
     <!-- Main JavaScript -->
     <script src="../../assets/js/main.js"></script>
