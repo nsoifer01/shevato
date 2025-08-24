@@ -1,0 +1,1391 @@
+.auth-container {
+  display: inline-block;
+  padding-left: 0.75rem;
+}
+
+/* Auth User Info - styled to match header */
+.auth__user {
+  display: inline-block;
+}
+
+.auth__user-name {
+  color: inherit;
+  margin-right: 0.5rem;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 8rem;
+  display: inline;
+}
+
+/* Auth Sign-in Prompt - centered container */
+.auth__signin-prompt {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  text-align: center;
+}
+
+/* Auth Buttons - styled to match header nav links */
+.auth__button {
+  background: transparent;
+  color: inherit;
+  border: none;
+  outline: none;
+  box-shadow: none;
+  padding: 0 0.75rem;
+  font-size: inherit;
+  font-family: inherit;
+  cursor: pointer;
+  text-decoration: none;
+  display: inline-block;
+  white-space: nowrap;
+  -webkit-tap-highlight-color: rgba(0, 0, 0, 0);
+  
+  /* Transitions */
+  transition: color 0.2s ease;
+}
+
+.auth__button:hover {
+  color: #ffffff;
+}
+
+.auth__button:focus {
+  color: #ffffff;
+  outline: none;
+  box-shadow: none;
+}
+
+.auth__button:active {
+  color: #ffffff;
+}
+
+.auth__button--signout {
+  /* Uses the same styling as regular auth buttons */
+}
+
+/* Auth container positioning - ensure color inheritance */
+#header .auth-container {
+  color: inherit;
+}
+
+#header .auth-container .auth__button {
+  color: #ffffff !important;
+  background: transparent !important;
+  border: none !important;
+  box-shadow: none !important;
+  outline: none !important;
+}
+
+#header .auth-container .auth__user-name {
+  color: inherit !important;
+}
+
+/* ==========================================================================
+   Auth Modal Component - Completely Isolated Styling
+   ========================================================================== */
+
+/* MODAL BACKDROP - Isolated from all page styles */
+.auth-modal,
+#auth-modal,
+body .auth-modal,
+body #auth-modal,
+body.dark-theme .auth-modal,
+body.dark-theme #auth-modal,
+html .auth-modal,
+html #auth-modal {
+  /* Reset all possible inherited properties */
+  all: unset !important;
+  /* Reapply essential modal properties */
+  position: fixed !important;
+  top: 0 !important;
+  left: 0 !important;
+  right: 0 !important;
+  bottom: 0 !important;
+  background: rgba(0, 0, 0, 0.75) !important;
+  backdrop-filter: blur(4px) !important;
+  z-index: 10002 !important;
+  display: none !important;
+  align-items: center !important;
+  justify-content: center !important;
+  padding: 1rem !important;
+  opacity: 0 !important;
+  transition: opacity 0.3s ease !important;
+  box-sizing: border-box !important;
+  margin: 0 !important;
+  border: none !important;
+  outline: none !important;
+  text-decoration: none !important;
+  font-style: normal !important;
+  font-variant: normal !important;
+  text-transform: none !important;
+  text-shadow: none !important;
+}
+
+.auth-modal--visible,
+#auth-modal.auth-modal--visible,
+body .auth-modal--visible,
+body #auth-modal.auth-modal--visible,
+body.dark-theme .auth-modal--visible,
+body.dark-theme #auth-modal.auth-modal--visible {
+  display: flex !important;
+  opacity: 1 !important;
+}
+
+/* MODAL CONTENT - Complete reset and isolation */
+.auth-modal__content,
+.auth-modal .auth-modal__content,
+#auth-modal .auth-modal__content,
+body .auth-modal__content,
+body .auth-modal .auth-modal__content,
+body #auth-modal .auth-modal__content,
+body.dark-theme .auth-modal__content,
+body.dark-theme .auth-modal .auth-modal__content,
+body.dark-theme #auth-modal .auth-modal__content,
+html .auth-modal__content,
+html .auth-modal .auth-modal__content,
+html #auth-modal .auth-modal__content,
+* .auth-modal__content {
+  /* Complete reset */
+  all: unset !important;
+  /* Reapply all modal content properties */
+  display: block !important;
+  position: relative !important;
+  background: #ffffff !important;
+  background-color: #ffffff !important;
+  color: #333333 !important;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif !important;
+  font-size: 16px !important;
+  font-weight: 400 !important;
+  line-height: 1.5 !important;
+  text-align: left !important;
+  text-decoration: none !important;
+  text-transform: none !important;
+  text-shadow: none !important;
+  letter-spacing: normal !important;
+  word-spacing: normal !important;
+  white-space: normal !important;
+  vertical-align: baseline !important;
+  border: none !important;
+  border-radius: 1rem !important;
+  outline: none !important;
+  box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.25) !important;
+  box-sizing: border-box !important;
+  margin: 0 !important;
+  padding: 0 !important;
+  width: 100% !important;
+  max-width: 28rem !important;
+  min-width: 0 !important;
+  height: auto !important;
+  max-height: 90vh !important;
+  min-height: 0 !important;
+  overflow-y: auto !important;
+  overflow-x: hidden !important;
+  transform: translateY(20px) !important;
+  transition: transform 0.3s ease !important;
+  opacity: 1 !important;
+  visibility: visible !important;
+  z-index: auto !important;
+  cursor: default !important;
+}
+
+/* Modal visibility animation */
+.auth-modal--visible .auth-modal__content,
+.auth-modal.auth-modal--visible .auth-modal__content,
+#auth-modal.auth-modal--visible .auth-modal__content,
+body .auth-modal--visible .auth-modal__content,
+body.dark-theme .auth-modal--visible .auth-modal__content {
+  transform: translateY(0) !important;
+}
+
+/* COMPLETE RESET FOR ALL MODAL DESCENDANTS */
+.auth-modal *,
+.auth-modal *:before,
+.auth-modal *:after,
+#auth-modal *,
+#auth-modal *:before,
+#auth-modal *:after,
+body .auth-modal *,
+body .auth-modal *:before,
+body .auth-modal *:after,
+body.dark-theme .auth-modal *,
+body.dark-theme .auth-modal *:before,
+body.dark-theme .auth-modal *:after {
+  box-sizing: border-box !important;
+  margin: 0 !important;
+  padding: 0 !important;
+  border: 0 !important;
+  outline: 0 !important;
+  background: transparent !important;
+  color: inherit !important;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif !important;
+  font-size: inherit !important;
+  font-weight: inherit !important;
+  line-height: inherit !important;
+  text-align: inherit !important;
+  text-decoration: none !important;
+  text-transform: none !important;
+  text-shadow: none !important;
+  letter-spacing: normal !important;
+  word-spacing: normal !important;
+  white-space: normal !important;
+  vertical-align: baseline !important;
+  list-style: none !important;
+  quotes: none !important;
+  border-collapse: collapse !important;
+  border-spacing: 0 !important;
+}
+
+/* MODAL HEADER */
+.auth-modal__header,
+.auth-modal .auth-modal__header,
+#auth-modal .auth-modal__header,
+body .auth-modal__header,
+body .auth-modal .auth-modal__header,
+body #auth-modal .auth-modal__header,
+body.dark-theme .auth-modal__header,
+body.dark-theme .auth-modal .auth-modal__header,
+body.dark-theme #auth-modal .auth-modal__header {
+  /* Reset all */
+  all: unset !important;
+  /* Reapply specific properties */
+  display: flex !important;
+  justify-content: space-between !important;
+  align-items: center !important;
+  padding: 1.5rem 1.5rem 1rem 1.5rem !important;
+  margin: 0 !important;
+  border: none !important;
+  border-bottom: 1px solid #e5e7eb !important;
+  background: transparent !important;
+  box-sizing: border-box !important;
+  width: 100% !important;
+  min-height: 0 !important;
+  max-height: none !important;
+}
+
+/* MODAL TITLE - Complete isolation */
+.auth-modal__title,
+.auth-modal .auth-modal__title,
+#auth-modal .auth-modal__title,
+body .auth-modal__title,
+body .auth-modal .auth-modal__title,
+body #auth-modal .auth-modal__title,
+body.dark-theme .auth-modal__title,
+body.dark-theme .auth-modal .auth-modal__title,
+body.dark-theme #auth-modal .auth-modal__title,
+body h1.auth-modal__title,
+body h2.auth-modal__title,
+body h3.auth-modal__title,
+body.dark-theme h1.auth-modal__title,
+body.dark-theme h2.auth-modal__title,
+body.dark-theme h3.auth-modal__title {
+  /* Reset all */
+  all: unset !important;
+  /* Reapply specific properties */
+  display: block !important;
+  margin: 0 !important;
+  padding: 0 !important;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif !important;
+  font-size: 1.125rem !important;
+  font-weight: 600 !important;
+  line-height: 1.2 !important;
+  color: #000000 !important;
+  text-align: left !important;
+  letter-spacing: -0.01em !important;
+  text-decoration: none !important;
+  text-transform: none !important;
+  text-shadow: none !important;
+  background: transparent !important;
+  border: none !important;
+  outline: none !important;
+  box-shadow: none !important;
+}
+
+/* MODAL CLOSE BUTTON - Complete isolation */
+.auth-modal__close {
+  /* Reset all */
+  all: unset !important;
+  /* Reapply specific properties */
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  width: 2rem !important;
+  height: 2rem !important;
+  background: #f3f4f6 !important;
+  color: #6b7280 !important;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif !important;
+  font-size: 1.125rem !important;
+  font-weight: 400 !important;
+  line-height: 1 !important;
+  text-align: center !important;
+  cursor: pointer !important;
+  border: none !important;
+  border-radius: 0.5rem !important;
+  outline: none !important;
+  padding: 0 !important;
+  margin: 0 !important;
+  box-sizing: border-box !important;
+  transition: all 0.2s ease !important;
+  text-decoration: none !important;
+  text-transform: none !important;
+  text-shadow: none !important;
+  letter-spacing: normal !important;
+  word-spacing: normal !important;
+  white-space: nowrap !important;
+  vertical-align: baseline !important;
+}
+
+.auth-modal__close:hover,
+.auth-modal__close:focus,
+body .auth-modal__close:hover,
+body .auth-modal__close:focus,
+body.dark-theme .auth-modal__close:hover,
+body.dark-theme .auth-modal__close:focus {
+  background: #e5e7eb !important;
+  color: #374151 !important;
+  outline: none !important;
+}
+
+/* SYNC MESSAGE - Complete isolation */
+.auth-sync,
+.auth-modal .auth-sync,
+#auth-modal .auth-sync,
+body .auth-sync,
+body .auth-modal .auth-sync,
+body #auth-modal .auth-sync,
+body.dark-theme .auth-sync,
+body.dark-theme .auth-modal .auth-sync,
+body.dark-theme #auth-modal .auth-sync {
+  /* Reset all */
+  all: unset !important;
+  /* Reapply specific properties */
+  display: block !important;
+  padding: 1rem 1.5rem !important;
+  background: #f8fafc !important;
+  border: none !important;
+  border-left: 4px solid #667eea !important;
+  margin: 0 1.5rem 1.5rem 1.5rem !important;
+  border-radius: 0 0.5rem 0.5rem 0 !important;
+  box-sizing: border-box !important;
+  width: auto !important;
+  min-width: 0 !important;
+  max-width: none !important;
+  min-height: 0 !important;
+  max-height: none !important;
+}
+
+.auth-sync__text,
+body .auth-sync__text,
+body.dark-theme .auth-sync__text,
+.auth-modal .auth-sync__text,
+#auth-modal .auth-sync__text {
+  /* Reset all */
+  all: unset !important;
+  /* Reapply specific properties */
+  display: block !important;
+  margin: 0 !important;
+  padding: 0 !important;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif !important;
+  font-size: 0.875rem !important;
+  font-weight: 400 !important;
+  line-height: 1.5 !important;
+  color: #475569 !important;
+  text-align: left !important;
+  text-decoration: none !important;
+  text-transform: none !important;
+  text-shadow: none !important;
+  letter-spacing: normal !important;
+  word-spacing: normal !important;
+  white-space: normal !important;
+  vertical-align: baseline !important;
+  background: transparent !important;
+  border: none !important;
+  outline: none !important;
+  box-shadow: none !important;
+}
+
+/* AUTH TABS - Complete isolation */
+.auth-tabs,
+.auth-modal .auth-tabs,
+#auth-modal .auth-tabs,
+body .auth-tabs,
+body .auth-modal .auth-tabs,
+body #auth-modal .auth-tabs,
+body.dark-theme .auth-tabs,
+body.dark-theme .auth-modal .auth-tabs,
+body.dark-theme #auth-modal .auth-tabs {
+  /* Reset all */
+  all: unset !important;
+  /* Reapply specific properties */
+  display: flex !important;
+  background: #f9fafb !important;
+  margin: 0 1.5rem !important;
+  border: none !important;
+  border-bottom: 1px solid #e5e7eb !important;
+  border-radius: 0.5rem 0.5rem 0 0 !important;
+  box-sizing: border-box !important;
+  width: auto !important;
+  height: auto !important;
+  min-width: 0 !important;
+  max-width: none !important;
+  min-height: 0 !important;
+  max-height: none !important;
+}
+
+.auth-tab,
+body .auth-tab,
+body.dark-theme .auth-tab,
+.auth-modal .auth-tab,
+#auth-modal .auth-tab {
+  /* Reset all */
+  all: unset !important;
+  /* Reapply specific properties */
+  display: flex !important;
+  flex: 1 !important;
+  align-items: center !important;
+  justify-content: center !important;
+  padding: 1rem !important;
+  background: none !important;
+  color: #6b7280 !important;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif !important;
+  font-size: 0.875rem !important;
+  font-weight: 500 !important;
+  line-height: 1 !important;
+  text-align: center !important;
+  text-decoration: none !important;
+  text-transform: none !important;
+  text-shadow: none !important;
+  letter-spacing: normal !important;
+  word-spacing: normal !important;
+  white-space: nowrap !important;
+  vertical-align: baseline !important;
+  cursor: pointer !important;
+  border: none !important;
+  border-bottom: 2px solid transparent !important;
+  outline: none !important;
+  box-sizing: border-box !important;
+  margin: 0 !important;
+  transition: all 0.2s ease !important;
+}
+
+.auth-tab:hover,
+body .auth-tab:hover,
+body.dark-theme .auth-tab:hover,
+.auth-modal .auth-tab:hover,
+#auth-modal .auth-tab:hover {
+  background: #f3f4f6 !important;
+  color: #374151 !important;
+}
+
+.auth-tab:focus,
+body .auth-tab:focus,
+body.dark-theme .auth-tab:focus,
+.auth-modal .auth-tab:focus,
+#auth-modal .auth-tab:focus {
+  outline: none !important;
+  background: #f3f4f6 !important;
+}
+
+.auth-tab--active,
+body .auth-tab--active,
+body.dark-theme .auth-tab--active,
+.auth-modal .auth-tab--active,
+#auth-modal .auth-tab--active {
+  color: #667eea !important;
+  border-bottom-color: #667eea !important;
+  background: #ffffff !important;
+}
+
+/* AUTH FORMS - Complete isolation */
+.auth-form,
+.auth-modal .auth-form,
+#auth-modal .auth-form,
+body .auth-form,
+body .auth-modal .auth-form,
+body #auth-modal .auth-form,
+body.dark-theme .auth-form,
+body.dark-theme .auth-modal .auth-form,
+body.dark-theme #auth-modal .auth-form {
+  /* Reset all */
+  all: unset !important;
+  /* Reapply specific properties */
+  display: none !important;
+  padding: 1.5rem !important;
+  background: #ffffff !important;
+  box-sizing: border-box !important;
+  width: 100% !important;
+  margin: 0 !important;
+  border: none !important;
+  outline: none !important;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif !important;
+  min-width: 0 !important;
+  max-width: none !important;
+  min-height: 0 !important;
+  max-height: none !important;
+}
+
+.auth-form--active,
+.auth-modal .auth-form--active,
+#auth-modal .auth-form--active,
+body .auth-form--active,
+body .auth-modal .auth-form--active,
+body #auth-modal .auth-form--active,
+body.dark-theme .auth-form--active,
+body.dark-theme .auth-modal .auth-form--active,
+body.dark-theme #auth-modal .auth-form--active {
+  display: block !important;
+}
+
+/* AUTH FORM FIELDS - Complete isolation */
+.auth-form__field,
+.auth-modal .auth-form__field,
+#auth-modal .auth-form__field,
+body .auth-form__field,
+body .auth-modal .auth-form__field,
+body #auth-modal .auth-form__field,
+body.dark-theme .auth-form__field,
+body.dark-theme .auth-modal .auth-form__field,
+body.dark-theme #auth-modal .auth-form__field {
+  /* Reset all */
+  all: unset !important;
+  /* Reapply specific properties */
+  display: block !important;
+  margin-bottom: 1rem !important;
+  position: relative !important;
+  width: 100% !important;
+  box-sizing: border-box !important;
+  margin-top: 0 !important;
+  margin-left: 0 !important;
+  margin-right: 0 !important;
+  padding: 0 !important;
+  border: none !important;
+  outline: none !important;
+  background: transparent !important;
+  min-width: 0 !important;
+  max-width: none !important;
+  min-height: 0 !important;
+  max-height: none !important;
+}
+
+/* Last field should not have bottom margin */
+.auth-form__field:last-child,
+.auth-modal .auth-form__field:last-child,
+#auth-modal .auth-form__field:last-child,
+body .auth-form__field:last-child,
+body .auth-modal .auth-form__field:last-child,
+body #auth-modal .auth-form__field:last-child,
+body.dark-theme .auth-form__field:last-child,
+body.dark-theme .auth-modal .auth-form__field:last-child,
+body.dark-theme #auth-modal .auth-form__field:last-child {
+  margin-bottom: 1.5rem !important;
+}
+
+/* AUTH FORM INPUTS - Complete isolation */
+.auth-form__input,
+.auth-modal .auth-form__input,
+#auth-modal .auth-form__input,
+body .auth-form__input,
+body .auth-modal .auth-form__input,
+body #auth-modal .auth-form__input,
+body.dark-theme .auth-form__input,
+body.dark-theme .auth-modal .auth-form__input,
+body.dark-theme #auth-modal .auth-form__input,
+input.auth-form__input,
+body input.auth-form__input,
+body.dark-theme input.auth-form__input {
+  /* Reset all */
+  all: unset !important;
+  /* Reapply specific properties */
+  display: block !important;
+  width: 100% !important;
+  padding: 0.75rem 1rem !important;
+  border: 1px solid #d1d5db !important;
+  border-radius: 0.5rem !important;
+  font-size: 1rem !important;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif !important;
+  font-weight: 400 !important;
+  line-height: 1.5 !important;
+  color: #000000 !important;
+  background: #ffffff !important;
+  background-color: #ffffff !important;
+  box-sizing: border-box !important;
+  transition: all 0.2s ease !important;
+  text-align: left !important;
+  text-decoration: none !important;
+  text-transform: none !important;
+  text-shadow: none !important;
+  letter-spacing: normal !important;
+  word-spacing: normal !important;
+  white-space: normal !important;
+  vertical-align: baseline !important;
+  margin: 0 !important;
+  outline: none !important;
+  cursor: text !important;
+  min-height: 0 !important;
+  max-height: none !important;
+  resize: none !important;
+}
+
+.auth-form__input::placeholder,
+.auth-modal .auth-form__input::placeholder,
+#auth-modal .auth-form__input::placeholder,
+body .auth-form__input::placeholder,
+body .auth-modal .auth-form__input::placeholder,
+body #auth-modal .auth-form__input::placeholder,
+body.dark-theme .auth-form__input::placeholder,
+body.dark-theme .auth-modal .auth-form__input::placeholder,
+body.dark-theme #auth-modal .auth-form__input::placeholder {
+  color: #000000 !important;
+  opacity: 0.7 !important;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif !important;
+  font-size: 1rem !important;
+  font-weight: 400 !important;
+  text-decoration: none !important;
+  text-transform: none !important;
+  letter-spacing: normal !important;
+}
+
+.auth-form__input:focus,
+.auth-modal .auth-form__input:focus,
+#auth-modal .auth-form__input:focus,
+body .auth-form__input:focus,
+body .auth-modal .auth-form__input:focus,
+body #auth-modal .auth-form__input:focus,
+body.dark-theme .auth-form__input:focus,
+body.dark-theme .auth-modal .auth-form__input:focus,
+body.dark-theme #auth-modal .auth-form__input:focus {
+  outline: none !important;
+  border-color: #667eea !important;
+  box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1) !important;
+  background: #ffffff !important;
+  color: #000000 !important;
+}
+
+.auth-form__input--error,
+.auth-modal .auth-form__input--error,
+#auth-modal .auth-form__input--error,
+body .auth-form__input--error,
+body .auth-modal .auth-form__input--error,
+body #auth-modal .auth-form__input--error,
+body.dark-theme .auth-form__input--error,
+body.dark-theme .auth-modal .auth-form__input--error,
+body.dark-theme #auth-modal .auth-form__input--error {
+  border-color: #ef4444 !important;
+  background-color: #fef2f2 !important;
+}
+
+.auth-form__input--error:focus,
+.auth-modal .auth-form__input--error:focus,
+#auth-modal .auth-form__input--error:focus,
+body .auth-form__input--error:focus,
+body .auth-modal .auth-form__input--error:focus,
+body #auth-modal .auth-form__input--error:focus,
+body.dark-theme .auth-form__input--error:focus,
+body.dark-theme .auth-modal .auth-form__input--error:focus,
+body.dark-theme #auth-modal .auth-form__input--error:focus {
+  box-shadow: 0 0 0 3px rgba(239, 68, 68, 0.1) !important;
+}
+
+/* AUTH FORM ERROR MESSAGES - Complete isolation */
+.auth-form__error,
+.auth-modal .auth-form__error,
+#auth-modal .auth-form__error,
+body .auth-form__error,
+body .auth-modal .auth-form__error,
+body #auth-modal .auth-form__error,
+body.dark-theme .auth-form__error,
+body.dark-theme .auth-modal .auth-form__error,
+body.dark-theme #auth-modal .auth-form__error {
+  /* Reset all */
+  all: unset !important;
+  /* Reapply specific properties */
+  display: none !important;
+  color: #ef4444 !important;
+  font-size: 0.875rem !important;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif !important;
+  font-weight: 400 !important;
+  line-height: 1.5 !important;
+  margin-top: 0.5rem !important;
+  margin-bottom: 0 !important;
+  margin-left: 0 !important;
+  margin-right: 0 !important;
+  padding: 0.25rem 0.75rem !important;
+  text-align: left !important;
+  text-decoration: none !important;
+  text-transform: none !important;
+  text-shadow: none !important;
+  letter-spacing: normal !important;
+  word-spacing: normal !important;
+  white-space: normal !important;
+  vertical-align: baseline !important;
+  background: transparent !important;
+  border: none !important;
+  outline: none !important;
+  box-sizing: border-box !important;
+  width: 100% !important;
+  min-width: 0 !important;
+  max-width: none !important;
+  min-height: 0 !important;
+  max-height: none !important;
+}
+
+/* Show error messages when they have visible class or when parent field has error state */
+.auth-form__error--visible,
+.auth-form__field--error .auth-form__error,
+.auth-modal .auth-form__error--visible,
+.auth-modal .auth-form__field--error .auth-form__error,
+#auth-modal .auth-form__error--visible,
+#auth-modal .auth-form__field--error .auth-form__error,
+body .auth-form__error--visible,
+body .auth-form__field--error .auth-form__error,
+body .auth-modal .auth-form__error--visible,
+body .auth-modal .auth-form__field--error .auth-form__error,
+body #auth-modal .auth-form__error--visible,
+body #auth-modal .auth-form__field--error .auth-form__error,
+body.dark-theme .auth-form__error--visible,
+body.dark-theme .auth-form__field--error .auth-form__error,
+body.dark-theme .auth-modal .auth-form__error--visible,
+body.dark-theme .auth-modal .auth-form__field--error .auth-form__error,
+body.dark-theme #auth-modal .auth-form__error--visible,
+body.dark-theme #auth-modal .auth-form__field--error .auth-form__error {
+  display: block !important;
+}
+
+/* AUTH FORM HELP TEXT - Complete isolation */
+.auth-form__help,
+.auth-modal .auth-form__help,
+#auth-modal .auth-form__help,
+body .auth-form__help,
+body .auth-modal .auth-form__help,
+body #auth-modal .auth-form__help,
+body.dark-theme .auth-form__help,
+body.dark-theme .auth-modal .auth-form__help,
+body.dark-theme #auth-modal .auth-form__help {
+  /* Reset all */
+  all: unset !important;
+  /* Reapply specific properties */
+  display: block !important;
+  color: #6b7280 !important;
+  font-size: 0.875rem !important;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif !important;
+  font-weight: 400 !important;
+  line-height: 1.5 !important;
+  margin-top: 0.5rem !important;
+  margin-bottom: 0 !important;
+  margin-left: 0 !important;
+  margin-right: 0 !important;
+  padding: 0.25rem 0.75rem !important;
+  text-align: left !important;
+  text-decoration: none !important;
+  text-transform: none !important;
+  text-shadow: none !important;
+  letter-spacing: normal !important;
+  word-spacing: normal !important;
+  white-space: normal !important;
+  vertical-align: baseline !important;
+  background: transparent !important;
+  border: none !important;
+  outline: none !important;
+  box-sizing: border-box !important;
+  width: 100% !important;
+  min-width: 0 !important;
+  max-width: none !important;
+  min-height: 0 !important;
+  max-height: none !important;
+}
+
+/* AUTH FORM BUTTONS - Complete isolation */
+.auth-form__button,
+.auth-modal .auth-form__button,
+#auth-modal .auth-form__button,
+body .auth-form__button,
+body .auth-modal .auth-form__button,
+body #auth-modal .auth-form__button,
+body.dark-theme .auth-form__button,
+body.dark-theme .auth-modal .auth-form__button,
+body.dark-theme #auth-modal .auth-form__button,
+button.auth-form__button,
+body button.auth-form__button,
+body.dark-theme button.auth-form__button,
+input[type="submit"].auth-form__button,
+body input[type="submit"].auth-form__button,
+body.dark-theme input[type="submit"].auth-form__button {
+  /* Reset all */
+  all: unset !important;
+  /* Reapply specific properties */
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  width: 100% !important;
+  padding: 0.875rem 1.5rem !important;
+  margin-top: 1rem !important;
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%) !important;
+  color: #ffffff !important;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif !important;
+  font-size: 1rem !important;
+  font-weight: 500 !important;
+  line-height: 1.2 !important;
+  text-align: center !important;
+  text-decoration: none !important;
+  text-transform: none !important;
+  text-shadow: none !important;
+  letter-spacing: normal !important;
+  word-spacing: normal !important;
+  white-space: nowrap !important;
+  vertical-align: baseline !important;
+  cursor: pointer !important;
+  border: none !important;
+  border-radius: 0.5rem !important;
+  outline: none !important;
+  box-sizing: border-box !important;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1) !important;
+  transition: all 0.2s ease !important;
+  gap: 0.5rem !important;
+  margin-bottom: 0 !important;
+  margin-left: 0 !important;
+  margin-right: 0 !important;
+  min-width: 0 !important;
+  max-width: none !important;
+  min-height: 3rem !important;
+  max-height: none !important;
+}
+
+.auth-form__button:hover,
+.auth-form__button:focus,
+.auth-modal .auth-form__button:hover,
+.auth-modal .auth-form__button:focus,
+#auth-modal .auth-form__button:hover,
+#auth-modal .auth-form__button:focus,
+body .auth-form__button:hover,
+body .auth-form__button:focus,
+body .auth-modal .auth-form__button:hover,
+body .auth-modal .auth-form__button:focus,
+body #auth-modal .auth-form__button:hover,
+body #auth-modal .auth-form__button:focus,
+body.dark-theme .auth-form__button:hover,
+body.dark-theme .auth-form__button:focus,
+body.dark-theme .auth-modal .auth-form__button:hover,
+body.dark-theme .auth-modal .auth-form__button:focus,
+body.dark-theme #auth-modal .auth-form__button:hover,
+body.dark-theme #auth-modal .auth-form__button:focus {
+  background: linear-gradient(135deg, #5a67d8 0%, #6b46c1 100%) !important;
+  color: #ffffff !important;
+  text-decoration: none !important;
+  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.15) !important;
+  transform: translateY(-1px) !important;
+  outline: none !important;
+}
+
+.auth-form__button:focus,
+.auth-modal .auth-form__button:focus,
+#auth-modal .auth-form__button:focus,
+body .auth-form__button:focus,
+body .auth-modal .auth-form__button:focus,
+body #auth-modal .auth-form__button:focus,
+body.dark-theme .auth-form__button:focus,
+body.dark-theme .auth-modal .auth-form__button:focus,
+body.dark-theme #auth-modal .auth-form__button:focus {
+  box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.4) !important;
+  color: #ffffff !important;
+  text-decoration: none !important;
+}
+
+.auth-form__button:active,
+.auth-modal .auth-form__button:active,
+#auth-modal .auth-form__button:active,
+body .auth-form__button:active,
+body .auth-modal .auth-form__button:active,
+body #auth-modal .auth-form__button:active,
+body.dark-theme .auth-form__button:active,
+body.dark-theme .auth-modal .auth-form__button:active,
+body.dark-theme #auth-modal .auth-form__button:active {
+  color: #ffffff !important;
+  text-decoration: none !important;
+  transform: translateY(0) !important;
+}
+
+/* AUTH FORM LABELS - Complete isolation */
+.auth-form__label,
+label.auth-form__label,
+.auth-modal .auth-form__label,
+.auth-modal label.auth-form__label,
+#auth-modal .auth-form__label,
+#auth-modal label.auth-form__label,
+body .auth-form__label,
+body label.auth-form__label,
+body .auth-modal .auth-form__label,
+body .auth-modal label.auth-form__label,
+body #auth-modal .auth-form__label,
+body #auth-modal label.auth-form__label,
+body.dark-theme .auth-form__label,
+body.dark-theme label.auth-form__label,
+body.dark-theme .auth-modal .auth-form__label,
+body.dark-theme .auth-modal label.auth-form__label,
+body.dark-theme #auth-modal .auth-form__label,
+body.dark-theme #auth-modal label.auth-form__label {
+  /* Reset all */
+  all: unset !important;
+  /* Reapply specific properties */
+  display: block !important;
+  color: #000000 !important;
+  font-size: 0.875rem !important;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif !important;
+  font-weight: 600 !important;
+  line-height: 1.5 !important;
+  margin-bottom: 0.5rem !important;
+  margin-top: 0 !important;
+  margin-left: 0 !important;
+  margin-right: 0 !important;
+  padding: 0 !important;
+  text-align: left !important;
+  text-decoration: none !important;
+  text-transform: none !important;
+  text-shadow: none !important;
+  letter-spacing: normal !important;
+  word-spacing: normal !important;
+  white-space: normal !important;
+  vertical-align: baseline !important;
+  background: transparent !important;
+  border: none !important;
+  outline: none !important;
+  box-sizing: border-box !important;
+  width: 100% !important;
+  min-width: 0 !important;
+  max-width: none !important;
+  min-height: 0 !important;
+  max-height: none !important;
+  cursor: default !important;
+}
+
+
+
+/* AUTH MESSAGES - Complete isolation */
+.auth-message,
+.auth-modal .auth-message,
+#auth-modal .auth-message,
+body .auth-message,
+body .auth-modal .auth-message,
+body #auth-modal .auth-message,
+body.dark-theme .auth-message,
+body.dark-theme .auth-modal .auth-message,
+body.dark-theme #auth-modal .auth-message {
+  /* Reset all */
+  all: unset !important;
+  /* Reapply specific properties */
+  display: none !important;
+  margin: 1rem 1.5rem 1.5rem 1.5rem !important;
+  padding: 0.75rem 1rem !important;
+  border-radius: 0.5rem !important;
+  font-size: 0.875rem !important;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif !important;
+  font-weight: 400 !important;
+  line-height: 1.5 !important;
+  text-align: left !important;
+  text-decoration: none !important;
+  text-transform: none !important;
+  text-shadow: none !important;
+  letter-spacing: normal !important;
+  word-spacing: normal !important;
+  white-space: normal !important;
+  vertical-align: baseline !important;
+  box-sizing: border-box !important;
+  width: auto !important;
+  min-width: 0 !important;
+  max-width: none !important;
+  min-height: 0 !important;
+  max-height: none !important;
+  outline: none !important;
+  border: 1px solid transparent !important;
+}
+
+.auth-message--visible,
+.auth-modal .auth-message--visible,
+#auth-modal .auth-message--visible,
+body .auth-message--visible,
+body .auth-modal .auth-message--visible,
+body #auth-modal .auth-message--visible,
+body.dark-theme .auth-message--visible,
+body.dark-theme .auth-modal .auth-message--visible,
+body.dark-theme #auth-modal .auth-message--visible {
+  display: block !important;
+}
+
+.auth-message--success,
+.auth-modal .auth-message--success,
+#auth-modal .auth-message--success,
+body .auth-message--success,
+body .auth-modal .auth-message--success,
+body #auth-modal .auth-message--success,
+body.dark-theme .auth-message--success,
+body.dark-theme .auth-modal .auth-message--success,
+body.dark-theme #auth-modal .auth-message--success {
+  background: #d4edda !important;
+  color: #155724 !important;
+  border: 1px solid #c3e6cb !important;
+}
+
+.auth-message--error,
+.auth-modal .auth-message--error,
+#auth-modal .auth-message--error,
+body .auth-message--error,
+body .auth-modal .auth-message--error,
+body #auth-modal .auth-message--error,
+body.dark-theme .auth-message--error,
+body.dark-theme .auth-modal .auth-message--error,
+body.dark-theme #auth-modal .auth-message--error {
+  background: #f8d7da !important;
+  color: #721c24 !important;
+  border: 1px solid #f5c6cb !important;
+}
+
+.auth-message--info,
+.auth-modal .auth-message--info,
+#auth-modal .auth-message--info,
+body .auth-message--info,
+body .auth-modal .auth-message--info,
+body #auth-modal .auth-message--info,
+body.dark-theme .auth-message--info,
+body.dark-theme .auth-modal .auth-message--info,
+body.dark-theme #auth-modal .auth-message--info {
+  background: #d1ecf1 !important;
+  color: #0c5460 !important;
+  border: 1px solid #bee5eb !important;
+}
+
+.auth-message--warning,
+.auth-modal .auth-message--warning,
+#auth-modal .auth-message--warning,
+body .auth-message--warning,
+body .auth-modal .auth-message--warning,
+body #auth-modal .auth-message--warning,
+body.dark-theme .auth-message--warning,
+body.dark-theme .auth-modal .auth-message--warning,
+body.dark-theme #auth-modal .auth-message--warning {
+  background: #fff3cd !important;
+  color: #856404 !important;
+  border: 1px solid #ffeaa7 !important;
+}
+
+/* ==========================================================================
+   Responsive Design (Mobile First)
+   ========================================================================== */
+
+/* Small devices (576px and up) */
+@media screen and (min-width: 36rem) {
+  .auth__user-name {
+    max-width: 8rem;
+  }
+}
+
+/* Medium devices (768px and up) */
+@media screen and (min-width: 48rem) {
+  .auth__user-name {
+    max-width: 10rem;
+  }
+}
+
+/* Large devices (992px and up) */
+@media screen and (min-width: 62rem) {
+  .auth__user-name {
+    max-width: 12rem;
+  }
+}
+
+/* MOBILE RESPONSIVE - Complete isolation */
+@media screen and (max-width: 48rem) {
+  .auth-modal .auth-modal__content,
+  #auth-modal .auth-modal__content,
+  body .auth-modal .auth-modal__content,
+  body #auth-modal .auth-modal__content,
+  body.dark-theme .auth-modal .auth-modal__content,
+  body.dark-theme #auth-modal .auth-modal__content,
+  div.auth-modal__content,
+  body div.auth-modal__content,
+  body.dark-theme div.auth-modal__content {
+    /* Override all mobile styles with isolation */
+    margin: 0 !important;
+    border-radius: 0 !important;
+    height: 100vh !important;
+    max-height: none !important;
+    width: 100% !important;
+    max-width: none !important;
+    background: #ffffff !important;
+    background-color: #ffffff !important;
+    color: #333333 !important;
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif !important;
+    font-size: 16px !important;
+    font-weight: 400 !important;
+    line-height: 1.5 !important;
+    text-align: left !important;
+    text-decoration: none !important;
+    text-transform: none !important;
+    text-shadow: none !important;
+    letter-spacing: normal !important;
+    word-spacing: normal !important;
+    white-space: normal !important;
+    vertical-align: baseline !important;
+    box-sizing: border-box !important;
+    position: relative !important;
+    display: block !important;
+    overflow-y: auto !important;
+    overflow-x: hidden !important;
+    transform: none !important;
+    transition: none !important;
+    opacity: 1 !important;
+    visibility: visible !important;
+    z-index: auto !important;
+    cursor: default !important;
+  }
+  
+  .auth-modal,
+  #auth-modal,
+  body .auth-modal,
+  body #auth-modal,
+  body.dark-theme .auth-modal,
+  body.dark-theme #auth-modal {
+    padding: 0 !important;
+  }
+  
+  .auth__button,
+  body .auth__button,
+  body.dark-theme .auth__button {
+    padding: 0 0.5rem !important;
+  }
+}
+
+@media screen and (max-width: 30rem) {
+  .auth__user-name,
+  body .auth__user-name,
+  body.dark-theme .auth__user-name {
+    display: none !important;
+  }
+  
+  .auth__button,
+  body .auth__button,
+  body.dark-theme .auth__button {
+    padding: 0 0.5rem !important;
+  }
+}
+
+/* ==========================================================================
+   Body State Classes
+   ========================================================================== */
+
+.auth-modal-open,
+.signout-modal-open {
+  overflow: hidden;
+}
+
+/* ==========================================================================
+   Sign Out Confirmation Modal
+   ========================================================================== */
+
+.signout-modal {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.75);
+  backdrop-filter: blur(4px);
+  z-index: 10003;
+  display: none;
+  align-items: center;
+  justify-content: center;
+  padding: 1rem;
+  opacity: 0;
+  transition: opacity 0.3s ease;
+}
+
+.signout-modal--visible {
+  display: flex;
+  opacity: 1;
+}
+
+.signout-modal__content {
+  background: #ffffff;
+  border-radius: 1rem;
+  width: 100%;
+  max-width: 24rem;
+  box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.25);
+  position: relative;
+  transform: translateY(20px);
+  transition: transform 0.3s ease;
+}
+
+.signout-modal--visible .signout-modal__content {
+  transform: translateY(0);
+}
+
+.signout-modal__header {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  padding: 2rem 2rem 0 2rem;
+}
+
+.signout-modal__icon {
+  width: 3rem;
+  height: 3rem;
+  border-radius: 50%;
+  background: linear-gradient(135deg, #fee2e2 0%, #fecaca 100%);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #dc2626;
+  flex-shrink: 0;
+}
+
+.signout-modal__title {
+  margin: 0;
+  font-size: 1.25rem;
+  color: #000000 !important;
+  font-weight: 700;
+  letter-spacing: -0.025em;
+}
+
+/* Override dark theme for signout modal */
+body.dark-theme .signout-modal__title,
+body.dark-theme h2.signout-modal__title {
+  color: #000000 !important;
+}
+
+.signout-modal__body {
+  padding: 1rem 2rem;
+}
+
+.signout-modal__message {
+  margin: 0;
+  color: #000000 !important;
+  line-height: 1.5;
+  font-size: 0.875rem;
+}
+
+/* Override dark theme for signout modal message */
+body.dark-theme .signout-modal__message,
+body.dark-theme p.signout-modal__message {
+  color: #000000 !important;
+}
+
+.signout-modal__actions {
+  display: flex;
+  gap: 0.75rem;
+  padding: 0 2rem 2rem 2rem;
+  justify-content: center;
+}
+
+.signout-cancel-btn,
+.signout-confirm-btn {
+  padding: 0.5rem 1rem;
+  border-radius: 0.5rem;
+  font-size: 0.875rem;
+  font-weight: 500;
+  font-family: inherit;
+  cursor: pointer;
+  text-decoration: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.2s ease;
+  outline: none;
+  border: none;
+  min-width: 5rem;
+}
+
+.signout-cancel-btn {
+  background: #f3f4f6;
+  color: #374151;
+}
+
+.signout-cancel-btn:hover,
+.signout-cancel-btn:focus {
+  background: #e5e7eb;
+}
+
+.signout-confirm-btn {
+  background: linear-gradient(135deg, #ef4444 0%, #dc2626 100%);
+  color: #ffffff !important;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+}
+
+.signout-confirm-btn:hover,
+.signout-confirm-btn:focus {
+  background: linear-gradient(135deg, #dc2626 0%, #b91c1c 100%);
+  color: #ffffff !important;
+  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.15);
+  transform: translateY(-1px);
+}
+
+.signout-confirm-btn:active {
+  color: #ffffff !important;
+  transform: translateY(0);
+}
+
+/* Mobile adjustments */
+@media screen and (max-width: 30rem) {
+  .signout-modal__content {
+    margin: 0;
+    border-radius: 0.5rem;
+  }
+  
+  .signout-modal__actions {
+    flex-direction: column;
+  }
+  
+  .signout-cancel-btn,
+  .signout-confirm-btn {
+    width: 100%;
+  }
+}
+
+/* ==========================================================================
+   Accessibility Preferences
+   ========================================================================== */
+
+/* ACCESSIBILITY - High contrast mode support with isolation */
+@media (prefers-contrast: high) {
+  .auth__button,
+  body .auth__button,
+  body.dark-theme .auth__button {
+    border: 2px solid currentColor !important;
+  }
+  
+  .auth-form__input,
+  .auth-modal .auth-form__input,
+  #auth-modal .auth-form__input,
+  body .auth-form__input,
+  body .auth-modal .auth-form__input,
+  body #auth-modal .auth-form__input,
+  body.dark-theme .auth-form__input,
+  body.dark-theme .auth-modal .auth-form__input,
+  body.dark-theme #auth-modal .auth-form__input {
+    border: 2px solid #333333 !important;
+  }
+}
+
+/* ACCESSIBILITY - Reduced motion support with isolation */
+@media (prefers-reduced-motion: reduce) {
+  .auth__button,
+  body .auth__button,
+  body.dark-theme .auth__button,
+  .auth-form__input,
+  .auth-modal .auth-form__input,
+  #auth-modal .auth-form__input,
+  body .auth-form__input,
+  body .auth-modal .auth-form__input,
+  body #auth-modal .auth-form__input,
+  body.dark-theme .auth-form__input,
+  body.dark-theme .auth-modal .auth-form__input,
+  body.dark-theme #auth-modal .auth-form__input,
+  .auth-tab,
+  body .auth-tab,
+  body.dark-theme .auth-tab,
+  .auth-modal .auth-tab,
+  #auth-modal .auth-tab,
+  .auth-modal__close,
+  body .auth-modal__close,
+  body.dark-theme .auth-modal__close,
+  .skip-link {
+    transition: none !important;
+  }
+}
