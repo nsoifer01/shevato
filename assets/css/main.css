@@ -1,5 +1,6 @@
 @import url(font-awesome.min.css);
 @import url("https://fonts.googleapis.com/css?family=Raleway:200,300,400,500,600");
+@import url(firebase-auth.css);
 /* Basic */
 body {
   -ms-overflow-style: scrollbar; }
