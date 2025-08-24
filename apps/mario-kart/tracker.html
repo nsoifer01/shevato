@@ -34,15 +34,13 @@
     <link rel="stylesheet" href="css/tooltip.css">
     <link rel="stylesheet" href="css/help-styles.css">
     <link rel="stylesheet" href="../../assets/css/main.css" />
-    <link rel="stylesheet" href="css/mario-kart-overrides.css">
+      <link rel="stylesheet" href="css/mario-kart-overrides.css">
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <script src="https://apis.google.com/js/api.js"></script>
 </head>
 <body class="mario-kart-app mario-kart-tracker">
     <div data-include="header"></div>
     
-    <!-- Skip to main content link for accessibility -->
-    <a href="#main-content" class="skip-to-main">Skip to main content</a>
     
     <!-- Sidebar Toggle Button -->
     <button class="sidebar-toggle" id="sidebar-toggle" onclick="toggleSidebar()" aria-label="Toggle sidebar" aria-expanded="false" aria-controls="sidebar">
@@ -537,6 +535,13 @@
     <script src="../../assets/js/browser.min.js"></script>
     <script src="../../assets/js/breakpoints.min.js"></script>
     <script src="../../assets/js/util.js"></script>
+    
+    <!-- Firebase SDK (required for auth functionality) -->
+    <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-auth-compat.js"></script>
+    
+    
+    <!-- Main JavaScript -->
     <script src="../../assets/js/main.js"></script>
     <script src="../../assets/js/year-updater.js"></script>
     

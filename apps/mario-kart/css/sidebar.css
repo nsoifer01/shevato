@@ -639,21 +639,6 @@ body.theme .sidebar-overlay {
     outline-offset: -2px;
 }
 
-/* Skip to main content link for screen readers */
-.skip-to-main {
-    position: absolute;
-    top: -40px;
-    left: 0;
-    background: var(--primary-color);
-    color: white;
-    padding: 8px;
-    text-decoration: none;
-    border-radius: 0 0 4px 0;
-}
-
-.skip-to-main:focus {
-    top: 0;
-}
 
 /* Sidebar Race Date Styles */
 .sidebar-race-date {
