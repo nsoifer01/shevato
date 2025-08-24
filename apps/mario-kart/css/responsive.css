@@ -750,7 +750,8 @@ canvas {
     
     /* Ensure date controls are touch-friendly */
     .sidebar-date-btn-container {
-        padding: 0.875rem 1rem;
+        padding: 12px 16px;
+        min-height: 48px;
     }
     
     /* Sidebar toggle styles are now handled in sidebar.css for better consistency */
