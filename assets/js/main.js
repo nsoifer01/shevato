@@ -6,6 +6,57 @@
  * Dependencies: jQuery, Firebase SDK (loaded from CDN)
  */
 
+// Firebase Configuration Loader - Executed immediately
+(function() {
+  'use strict';
+
+  // Initialize with empty config
+  window.firebaseConfig = {};
+
+  // Check if running locally or in production
+  const isLocal = window.location.hostname === 'localhost' || 
+                  window.location.hostname === '127.0.0.1' || 
+                  window.location.hostname === '0.0.0.0';
+
+  if (isLocal) {
+    console.info('Local environment detected. Config will be loaded from firebase-config-local.js');
+    
+    // For local development, dynamically load the local config file
+    const script = document.createElement('script');
+    script.src = window.location.pathname.includes('/apps/') ? '../../assets/js/firebase-config-local.js' : 'assets/js/firebase-config-local.js';
+    script.onerror = function() {
+      console.warn('firebase-config-local.js not found. Firebase auth will not work locally.');
+    };
+    document.head.appendChild(script);
+  } else {
+    console.info('Production environment detected. Loading config from Netlify Function...');
+    
+    // For production, load config from Netlify Function
+    fetch('/.netlify/functions/firebase-config')
+      .then(response => {
+        if (!response.ok) {
+          throw new Error(`HTTP error! status: ${response.status}`);
+        }
+        return response.text();
+      })
+      .then(configScript => {
+        // Execute the returned JavaScript which sets window.firebaseConfig
+        eval(configScript);
+        console.info('Firebase config loaded successfully from Netlify Function');
+        
+        // Dispatch a custom event to notify that config is ready
+        window.dispatchEvent(new CustomEvent('firebaseConfigReady', {
+          detail: window.firebaseConfig
+        }));
+      })
+      .catch(error => {
+        console.error('Failed to load Firebase config from Netlify Function:', error);
+        console.warn('Firebase authentication will not work without proper configuration.');
+      });
+  }
+})();
+
+// Main Application JavaScript
 (function($) {
   'use strict';
 
