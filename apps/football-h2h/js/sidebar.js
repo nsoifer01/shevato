@@ -238,26 +238,39 @@ function updateSidebarDate() {
         );
         const today = new Date();
         
-        // Format the date
-        const options = { 
-            weekday: 'short', 
-            month: 'short', 
-            day: 'numeric' 
-        };
-        
         if (selectedDate.toDateString() === today.toDateString()) {
+            // Display "Today" when it's today's date
             if (dateText) dateText.textContent = 'Today';
             // Hide the "Set to Today" button when it's already today
             if (todayBtn) {
                 todayBtn.classList.add('hidden');
             }
         } else {
-            if (dateText) dateText.textContent = selectedDate.toLocaleDateString('en-US', options);
+            // Display the actual date in YYYY-MM-DD format when it's not today
+            if (dateText) dateText.textContent = dateInput.value;
             // Show the "Set to Today" button when it's not today
             if (todayBtn) {
                 todayBtn.classList.remove('hidden');
             }
         }
+    }
+}
+
+function formatDateForDisplay(dateStr) {
+    if (!dateStr) return 'No date';
+    
+    try {
+        const [year, month, day] = dateStr.split('-');
+        const date = new Date(parseInt(year), parseInt(month) - 1, parseInt(day));
+        
+        // Format as M/D/YYYY (e.g., 8/20/2025)
+        const displayMonth = parseInt(month);
+        const displayDay = parseInt(day);
+        const displayYear = parseInt(year);
+        
+        return `${displayMonth}/${displayDay}/${displayYear}`;
+    } catch (e) {
+        return dateStr;
     }
 }
 
@@ -421,6 +434,9 @@ function initializeSidebar() {
     
     // Initialize undo/redo buttons
     updateUndoRedoButtons();
+    
+    // Open sidebar automatically on page load
+    openSidebar();
 }
 
 // Initialize sidebar on page load (fallback)

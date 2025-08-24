@@ -181,7 +181,7 @@ function updateSidebarDateDisplay(dateStr) {
             todayBtn.classList.add('hidden');
         }
     } else {
-        dateText.textContent = formatDateForDisplay(dateStr);
+        dateText.textContent = dateStr;
         // Show the "Set to Today" button when it's not today
         if (todayBtn) {
             todayBtn.classList.remove('hidden');
@@ -196,9 +196,12 @@ function formatDateForDisplay(dateStr) {
         const [year, month, day] = dateStr.split('-');
         const date = new Date(parseInt(year), parseInt(month) - 1, parseInt(day));
         
-        // Format as "Jan 1, 2024" or similar
-        const options = { year: 'numeric', month: 'short', day: 'numeric' };
-        return date.toLocaleDateString('en-US', options);
+        // Format as M/D/YYYY (e.g., 8/20/2025)
+        const displayMonth = parseInt(month);
+        const displayDay = parseInt(day);
+        const displayYear = parseInt(year);
+        
+        return `${displayMonth}/${displayDay}/${displayYear}`;
     } catch (e) {
         return dateStr;
     }
