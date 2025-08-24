@@ -434,6 +434,9 @@ function initializeSidebar() {
     
     // Initialize undo/redo buttons
     updateUndoRedoButtons();
+    
+    // Open sidebar automatically on page load
+    openSidebar();
 }
 
 // Initialize sidebar on page load (fallback)
