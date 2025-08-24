@@ -41,8 +41,10 @@
       })
       .then(configScript => {
         // Execute the returned JavaScript which sets window.firebaseConfig
+        console.log('Raw config script from Netlify Function:', configScript);
         eval(configScript);
         console.info('Firebase config loaded successfully from Netlify Function');
+        console.log('window.firebaseConfig after eval:', window.firebaseConfig);
         
         // Dispatch a custom event to notify that config is ready
         window.dispatchEvent(new CustomEvent('firebaseConfigReady', {
@@ -338,17 +340,27 @@
           this.initialize();
         }, 500);
       } else {
-        // For production, listen for the firebaseConfigReady event
-        window.addEventListener('firebaseConfigReady', () => {
+        // For production, check if config is already loaded
+        if (window.firebaseConfig && Object.keys(window.firebaseConfig).length > 0) {
+          // Config is already available, initialize immediately
           this.initialize();
-        });
-
-        // Also set a timeout fallback in case the event doesn't fire
-        setTimeout(() => {
-          if (!this.initialized && window.firebaseConfig && Object.keys(window.firebaseConfig).length > 0) {
+        } else {
+          // Listen for the firebaseConfigReady event
+          window.addEventListener('firebaseConfigReady', () => {
             this.initialize();
-          }
-        }, 2000);
+          });
+
+          // Also set a timeout fallback to check periodically
+          const checkConfig = () => {
+            if (window.firebaseConfig && Object.keys(window.firebaseConfig).length > 0 && !this.initialized) {
+              console.log('Firebase config found via polling, initializing...');
+              this.initialize();
+            } else if (!this.initialized) {
+              setTimeout(checkConfig, 500);
+            }
+          };
+          setTimeout(checkConfig, 1000);
+        }
       }
     }
 
@@ -366,9 +378,18 @@
 
         // Use window.firebaseConfig directly
         const config = window.firebaseConfig;
+        
+        console.log('Firebase config check:', {
+          configExists: !!config,
+          hasApiKey: !!(config && config.apiKey),
+          hasAuthDomain: !!(config && config.authDomain),
+          hasProjectId: !!(config && config.projectId),
+          configKeys: config ? Object.keys(config) : []
+        });
 
         if (!config || !config.apiKey || !config.authDomain || !config.projectId) {
           console.warn('Firebase configuration not available or incomplete. Authentication disabled.');
+          console.warn('Current config:', config);
           return;
         }
 
