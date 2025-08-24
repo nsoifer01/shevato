@@ -426,6 +426,9 @@ body.theme .sidebar-overlay {
 .sidebar .date-filter-section {
     margin: 0;
     padding: 0;
+    background: transparent !important;
+    box-shadow: none !important;
+    border-radius: 0 !important;
 }
 
 .sidebar .date-filter-section h3 {
@@ -442,9 +445,9 @@ body.theme .sidebar-overlay {
     width: 100%;
     justify-content: center;
     padding: 10px 16px;
-    background: var(--button-bg);
-    color: var(--text-primary);
-    border: 1px solid var(--border-color);
+    background: #6b7280 !important;
+    color: white !important;
+    border: 1px solid #4b5563 !important;
     border-radius: 8px;
     font-size: 0.9rem;
     font-weight: 500;
@@ -457,15 +460,17 @@ body.theme .sidebar-overlay {
 }
 
 .sidebar .filter-btn:hover {
-    background: var(--hover-bg);
+    background: #4b5563 !important;
+    color: white !important;
+    border-color: #374151 !important;
     transform: translateY(-1px);
-    box-shadow: var(--shadow-sm);
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
 }
 
 .sidebar .filter-btn.active {
-    background: var(--primary-gradient);
-    color: white;
-    border-color: transparent;
+    background: #3b82f6 !important;
+    color: white !important;
+    border-color: #2563eb !important;
 }
 
 .sidebar .filter-btn:disabled {
@@ -545,7 +550,7 @@ body.theme .sidebar-overlay {
 .sidebar .custom-date-range {
     margin-top: 10px;
     padding: 15px;
-    background: var(--hover-bg);
+    background: transparent;
     border-radius: 8px;
     border: 1px solid var(--border-color);
 }
@@ -2112,4 +2117,10 @@ body.theme .sidebar .filter-btn:not(.active):hover {
     background: #374151 !important;
     color: white !important;
     border-color: #1f2937 !important;
+}
+
+body.theme .sidebar .filter-btn.active {
+    background: #60a5fa !important;
+    color: white !important;
+    border-color: #3b82f6 !important;
 }
