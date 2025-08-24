@@ -267,10 +267,38 @@
       this.initialized = false;
       this.authStateChangeListeners = [];
       
-      // Initialize after delay to ensure dependencies are loaded
-      setTimeout(() => {
-        this.initialize();
-      }, 500);
+      // Wait for Firebase config to be ready before initializing
+      this.waitForConfigAndInitialize();
+    }
+
+    /**
+     * Wait for Firebase config to be ready and then initialize
+     * @async
+     */
+    async waitForConfigAndInitialize() {
+      // Check if we're in local environment
+      const isLocal = window.location.hostname === 'localhost' || 
+                      window.location.hostname === '127.0.0.1' || 
+                      window.location.hostname === '0.0.0.0';
+
+      if (isLocal) {
+        // For local, wait a bit for the local config file to load
+        setTimeout(() => {
+          this.initialize();
+        }, 500);
+      } else {
+        // For production, listen for the firebaseConfigReady event
+        window.addEventListener('firebaseConfigReady', () => {
+          this.initialize();
+        });
+
+        // Also set a timeout fallback in case the event doesn't fire
+        setTimeout(() => {
+          if (!this.initialized && window.firebaseConfig && Object.keys(window.firebaseConfig).length > 0) {
+            this.initialize();
+          }
+        }, 2000);
+      }
     }
 
     /**
@@ -279,24 +307,17 @@
      */
     async initialize() {
       try {
-        // Check dependencies
-        if (typeof window.FirebaseConfig === 'undefined') {
-          console.warn('FirebaseConfig not available. Retrying...');
-          setTimeout(() => this.initialize(), 1000);
-          return;
-        }
-
         if (typeof firebase === 'undefined') {
           console.warn('Firebase SDK not available. Retrying...');
           setTimeout(() => this.initialize(), 1000);
           return;
         }
 
-        const firebaseConfig = new window.FirebaseConfig();
-        const config = firebaseConfig.getConfig();
+        // Use window.firebaseConfig directly
+        const config = window.firebaseConfig;
 
-        if (!config) {
-          console.warn('Firebase configuration not available. Authentication disabled.');
+        if (!config || !config.apiKey || !config.authDomain || !config.projectId) {
+          console.warn('Firebase configuration not available or incomplete. Authentication disabled.');
           return;
         }
 
