@@ -1,14 +1,17 @@
 <!-- partials/header.html -->
-<header id="header">
-  <a class="logo" href="/home.html">
-    <img src="/images/logo-top.png" alt="Shevato Software Engineering - Home">
+<header id="header" role="banner">
+  <a class="logo" href="/home.html" aria-label="Shevato Software Engineering - Return to Home">
+    <img src="/images/logo-top.png" alt="Shevato Software Engineering Logo" width="40" height="30">
   </a>
-  <nav>
-    <a href="#menu">Menu</a>
+  <div id="auth-container" class="auth-container" data-js="auth-container">
+    <!-- Auth UI will be inserted here by JavaScript -->
+  </div>
+  <nav role="navigation" aria-label="Main navigation">
+    <a href="#menu" aria-label="Open main menu" aria-expanded="false" aria-controls="menu" data-js="menu-toggle">Menu</a>
   </nav>
 </header>
 
-<nav id="menu">
+<nav id="menu" aria-label="Main menu">
   <ul class="links">
     <li><a href="/home.html">Home</a></li>
     <li><a href="/product.html">Product</a></li>
