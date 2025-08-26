@@ -451,7 +451,7 @@
       const safeDisplayName = escapeHtml(displayName);
 
       this.elements.authContainer.html(`
-        <div class="auth__user" role="group" aria-label="User account">
+        <div class="auth__user" role="group">
           <span class="auth__user-name" title="${safeDisplayName}">${safeDisplayName}</span>
           <button 
             id="auth-signout-btn" 
