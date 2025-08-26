@@ -6,57 +6,8 @@
  * Dependencies: jQuery, Firebase SDK (loaded from CDN)
  */
 
-// Firebase Configuration Loader - Executed immediately
-(function() {
-  'use strict';
-
-  // Initialize with empty config
-  window.firebaseConfig = {};
-
-  // Check if running locally or in production
-  const isLocal = window.location.hostname === 'localhost' || 
-                  window.location.hostname === '127.0.0.1' || 
-                  window.location.hostname === '0.0.0.0';
-
-  if (isLocal) {
-    console.info('Local environment detected. Config will be loaded from firebase-config-local.js');
-    
-    // For local development, dynamically load the local config file
-    const script = document.createElement('script');
-    script.src = window.location.pathname.includes('/apps/') ? '../../assets/js/firebase-config-local.js' : 'assets/js/firebase-config-local.js';
-    script.onerror = function() {
-      console.warn('firebase-config-local.js not found. Firebase auth will not work locally.');
-    };
-    document.head.appendChild(script);
-  } else {
-    console.info('Production environment detected. Loading config from Netlify Function...');
-    
-    // Load config from Netlify Function
-    fetch('/.netlify/functions/firebase-config')
-      .then(response => {
-        if (!response.ok) {
-          throw new Error(`HTTP error! status: ${response.status}`);
-        }
-        return response.text();
-      })
-      .then(configScript => {
-        // Execute the returned JavaScript which sets window.firebaseConfig
-        console.log('Raw config script from Netlify Function:', configScript);
-        eval(configScript);
-        console.info('Firebase config loaded successfully from Netlify Function');
-        console.log('window.firebaseConfig after eval:', window.firebaseConfig);
-        
-        // Dispatch a custom event to notify that config is ready
-        window.dispatchEvent(new CustomEvent('firebaseConfigReady', {
-          detail: window.firebaseConfig
-        }));
-      })
-      .catch(error => {
-        console.error('Failed to load Firebase config from Netlify Function:', error);
-        console.warn('Firebase authentication will not work without proper configuration.');
-      });
-  }
-})();
+// Firebase Configuration is now loaded directly from firebase-config.js
+// The config file is included in all HTML pages before main.js
 
 // Main Application JavaScript
 (function($) {
@@ -320,48 +271,8 @@
       this.initialized = false;
       this.authStateChangeListeners = [];
       
-      // Wait for Firebase config to be ready before initializing
-      this.waitForConfigAndInitialize();
-    }
-
-    /**
-     * Wait for Firebase config to be ready and then initialize
-     * @async
-     */
-    async waitForConfigAndInitialize() {
-      // Check if we're in local environment
-      const isLocal = window.location.hostname === 'localhost' || 
-                      window.location.hostname === '127.0.0.1' || 
-                      window.location.hostname === '0.0.0.0';
-
-      if (isLocal) {
-        // For local, wait a bit for the local config file to load
-        setTimeout(() => {
-          this.initialize();
-        }, 500);
-      } else {
-        // For production, check if config is already loaded
-        if (window.firebaseConfig && Object.keys(window.firebaseConfig).length > 0) {
-          // Config is already available, initialize immediately
-          this.initialize();
-        } else {
-          // Listen for the firebaseConfigReady event
-          window.addEventListener('firebaseConfigReady', () => {
-            this.initialize();
-          });
-
-          // Also set a timeout fallback to check periodically
-          const checkConfig = () => {
-            if (window.firebaseConfig && Object.keys(window.firebaseConfig).length > 0 && !this.initialized) {
-              console.log('Firebase config found via polling, initializing...');
-              this.initialize();
-            } else if (!this.initialized) {
-              setTimeout(checkConfig, 500);
-            }
-          };
-          setTimeout(checkConfig, 1000);
-        }
-      }
+      // Initialize immediately - config is already loaded from firebase-config.js
+      this.initialize();
     }
 
     /**
@@ -370,13 +281,14 @@
      */
     async initialize() {
       try {
+        // Wait for Firebase SDK if not ready
         if (typeof firebase === 'undefined') {
           console.warn('Firebase SDK not available. Retrying...');
-          setTimeout(() => this.initialize(), 1000);
+          setTimeout(() => this.initialize(), 100);
           return;
         }
 
-        // Use window.firebaseConfig directly
+        // Use window.firebaseConfig directly (loaded from firebase-config.js)
         const config = window.firebaseConfig;
         
         console.log('Firebase config check:', {
