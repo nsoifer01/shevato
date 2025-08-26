@@ -291,14 +291,6 @@
         // Use window.firebaseConfig directly (loaded from firebase-config.js)
         const config = window.firebaseConfig;
         
-        console.log('Firebase config check:', {
-          configExists: !!config,
-          hasApiKey: !!(config && config.apiKey),
-          hasAuthDomain: !!(config && config.authDomain),
-          hasProjectId: !!(config && config.projectId),
-          configKeys: config ? Object.keys(config) : []
-        });
-
         if (!config || !config.apiKey || !config.authDomain || !config.projectId) {
           console.warn('Firebase configuration not available or incomplete. Authentication disabled.');
           console.warn('Current config:', config);
