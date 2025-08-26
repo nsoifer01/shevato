@@ -85,7 +85,20 @@
     };
   }
 
-  // Firebase config is now loaded directly from firebase-config.js
+  /* ==========================================================================
+     Firebase Configuration (Embedded)
+     ========================================================================== */
+
+  // Firebase configuration - embedded directly to avoid extra HTTP requests
+  window.firebaseConfig = {
+    apiKey: "AIzaSyDlawczS-pufHS_Oi5LUeU_EzcwTFyU_2I",
+    authDomain: "shevato-site.firebaseapp.com",
+    projectId: "shevato-site",
+    storageBucket: "shevato-site.firebasestorage.app",
+    messagingSenderId: "1082724320778",
+    appId: "1:1082724320778:web:e374cbaeeae1bdaeee81f3",
+    measurementId: "G-2C9F2PCXHP"
+  };
 
   /* ==========================================================================
      Firebase Authentication Class
