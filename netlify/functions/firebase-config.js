@@ -13,6 +13,7 @@ exports.handler = async (event, context) => {
   }
 
   // Build config from environment variables
+  // Note: Netlify environment variables are available in process.env
   const config = {
     apiKey: process.env.FIREBASE_API_KEY || '',
     authDomain: process.env.FIREBASE_AUTH_DOMAIN || '',
@@ -31,15 +32,27 @@ exports.handler = async (event, context) => {
     FIREBASE_STORAGE_BUCKET: !!process.env.FIREBASE_STORAGE_BUCKET,
     FIREBASE_MESSAGING_SENDER_ID: !!process.env.FIREBASE_MESSAGING_SENDER_ID,
     FIREBASE_APP_ID: !!process.env.FIREBASE_APP_ID,
-    FIREBASE_MEASUREMENT_ID: !!process.env.FIREBASE_MEASUREMENT_ID
+    FIREBASE_MEASUREMENT_ID: !!process.env.FIREBASE_MEASUREMENT_ID,
+    // Also log total env vars count to debug
+    totalEnvVars: Object.keys(process.env).length,
+    // Check if ANY Firebase env vars exist
+    anyFirebaseVars: Object.keys(process.env).some(key => key.startsWith('FIREBASE_'))
   });
+
+  // If no config is available, return a more informative error
+  const hasConfig = config.apiKey && config.authDomain && config.projectId;
+  
+  if (!hasConfig) {
+    console.error('Firebase configuration is incomplete. Please check environment variables in Netlify dashboard.');
+    console.log('Available environment variable keys:', Object.keys(process.env).filter(key => !key.includes('SECRET')).join(', '));
+  }
 
   // Return as JavaScript that sets window.firebaseConfig
   return {
     statusCode: 200,
     headers: {
       'Content-Type': 'application/javascript',
-      'Cache-Control': 'public, max-age=3600'
+      'Cache-Control': 'no-cache, no-store, must-revalidate'  // Disable caching for debugging
     },
     body: `window.firebaseConfig = ${JSON.stringify(config, null, 2)};`
   };
