@@ -61,7 +61,7 @@
 }
 
 .auth__button--signout {
-  /* Uses the same styling as regular auth buttons */
+  color: #000000 !important;
 }
 
 /* Auth container positioning - ensure color inheritance */
@@ -75,6 +75,10 @@
   border: none !important;
   box-shadow: none !important;
   outline: none !important;
+}
+
+#header .auth-container .auth__button--signout {
+  color: #000000 !important;
 }
 
 #header .auth-container .auth__user-name {
