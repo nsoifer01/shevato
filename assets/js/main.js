@@ -31,7 +31,7 @@
   } else {
     console.info('Production environment detected. Loading config from Netlify Function...');
     
-    // For production, load config from Netlify Function
+    // Load config from Netlify Function
     fetch('/.netlify/functions/firebase-config')
       .then(response => {
         if (!response.ok) {

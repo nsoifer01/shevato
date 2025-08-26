@@ -30,3 +30,5 @@ claude-session/
 .netlify/
 assets/js/firebase-config-local.js
 assets/js/firebase-config-generated.js
+# Don't commit the auto-generated production config
+# assets/js/firebase-config.js  # Uncomment this if you want to exclude it
