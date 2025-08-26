@@ -1,8 +1,15 @@
 /**
  * Firebase Configuration
- * This file is auto-generated during build time
- * DO NOT EDIT - Run 'node scripts/generate-firebase-config.js' to regenerate
+ * These are public client-side keys protected by Firebase security rules
+ * and domain restrictions in the Firebase Console
  */
 
-// Placeholder - will be replaced during build
-window.firebaseConfig = window.firebaseConfig || {};
+window.firebaseConfig = {
+  apiKey: "AIzaSyDlawczS-pufHS_Oi5LUeU_EzcwTFyU_2I",
+  authDomain: "shevato-site.firebaseapp.com",
+  projectId: "shevato-site",
+  storageBucket: "shevato-site.firebasestorage.app",
+  messagingSenderId: "1082724320778",
+  appId: "1:1082724320778:web:e374cbaeeae1bdaeee81f3",
+  measurementId: "G-2C9F2PCXHP"
+};

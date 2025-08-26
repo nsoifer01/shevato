@@ -7,12 +7,15 @@
 # Ignore temp files
 .*.sw*
 
-# Environment variables (Firebase config)
+# Environment variables
 .env
 .env.local
 .env.production
 
-# Firebase config files (contain secrets)
+# Netlify
+.netlify/
+
+# Firebase local config (if you want a different local config)
 assets/js/firebase-config-local.js
 
 # Claude-related files and directories
@@ -24,11 +27,3 @@ claude-*.json
 claude-session/
 .claude-history
 .claude_rules
-
-# Firebase related files
-.env
-.netlify/
-assets/js/firebase-config-local.js
-assets/js/firebase-config-generated.js
-# Don't commit the auto-generated production config
-# assets/js/firebase-config.js  # Uncomment this if you want to exclude it
