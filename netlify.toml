@@ -1,5 +1,6 @@
 [build]
   functions = "netlify/functions"
+  command = "node scripts/generate-firebase-config.js"
 
 [functions]
   node_bundler = "esbuild"
