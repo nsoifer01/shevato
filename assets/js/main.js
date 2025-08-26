@@ -85,180 +85,7 @@
     };
   }
 
-  /* ==========================================================================
-     Firebase Configuration Class
-     ========================================================================== */
-
-  class FirebaseConfig {
-    constructor() {
-      this.config = {};
-      
-      // Try to get from environment variables or window object
-      this.loadFromEnvironment();
-    }
-
-    /**
-     * Dynamically load Firebase config from appropriate source
-     * @static
-     */
-    static loadConfigScript() {
-      if (typeof window === 'undefined') return;
-      
-      // Dynamic path resolution based on current location
-      var basePath = window.location.pathname.includes('/apps/') ? '../../assets/js/' : 'assets/js/';
-      
-      // Try local config first, fallback to Netlify function
-      const localScript = document.createElement('script');
-      localScript.src = basePath + 'firebase-config-local.js';
-      localScript.async = false;
-      
-      localScript.onerror = function() {
-        const netlifyScript = document.createElement('script');
-        netlifyScript.src = '/.netlify/functions/firebase-config';
-        netlifyScript.async = false;
-        netlifyScript.onerror = function() {
-          console.warn('Firebase config could not be loaded from any source');
-        };
-        document.head.appendChild(netlifyScript);
-      };
-      
-      document.head.appendChild(localScript);
-    }
-
-    /**
-     * Load configuration from environment variables
-     * @private
-     */
-    loadFromEnvironment() {
-      const envVars = [
-        'VITE_FIREBASE_API_KEY', 'FIREBASE_API_KEY',
-        'VITE_FIREBASE_AUTH_DOMAIN', 'FIREBASE_AUTH_DOMAIN',
-        'VITE_FIREBASE_PROJECT_ID', 'FIREBASE_PROJECT_ID',
-        'VITE_FIREBASE_STORAGE_BUCKET', 'FIREBASE_STORAGE_BUCKET',
-        'VITE_FIREBASE_MESSAGING_SENDER_ID', 'FIREBASE_MESSAGING_SENDER_ID',
-        'VITE_FIREBASE_APP_ID', 'FIREBASE_APP_ID',
-        'VITE_FIREBASE_MEASUREMENT_ID', 'FIREBASE_MEASUREMENT_ID'
-      ];
-
-      // Try different ways to access environment variables
-      envVars.forEach(varName => {
-        const value = this.getEnvVar(varName);
-        if (value) {
-          const configKey = this.getConfigKey(varName);
-          if (configKey) {
-            this.config[configKey] = value;
-          }
-        }
-      });
-
-      // Fallback to window.firebaseConfig if available
-      if (typeof window !== 'undefined' && window.firebaseConfig) {
-        this.config = { ...this.config, ...window.firebaseConfig };
-      }
-    }
-
-    /**
-     * Get environment variable value
-     * @private
-     * @param {string} name - Variable name
-     * @returns {string|null} Variable value or null
-     */
-    getEnvVar(name) {
-      if (typeof process !== 'undefined' && process.env) {
-        return process.env[name];
-      }
-      if (typeof window !== 'undefined' && window.env) {
-        return window.env[name];
-      }
-      if (typeof window !== 'undefined' && window.__env) {
-        return window.__env[name];
-      }
-      return null;
-    }
-
-    /**
-     * Map environment variable name to config key
-     * @private
-     * @param {string} envName - Environment variable name
-     * @returns {string|null} Config key or null
-     */
-    getConfigKey(envName) {
-      const mapping = {
-        'VITE_FIREBASE_API_KEY': 'apiKey',
-        'FIREBASE_API_KEY': 'apiKey',
-        'VITE_FIREBASE_AUTH_DOMAIN': 'authDomain',
-        'FIREBASE_AUTH_DOMAIN': 'authDomain',
-        'VITE_FIREBASE_PROJECT_ID': 'projectId',
-        'FIREBASE_PROJECT_ID': 'projectId',
-        'VITE_FIREBASE_STORAGE_BUCKET': 'storageBucket',
-        'FIREBASE_STORAGE_BUCKET': 'storageBucket',
-        'VITE_FIREBASE_MESSAGING_SENDER_ID': 'messagingSenderId',
-        'FIREBASE_MESSAGING_SENDER_ID': 'messagingSenderId',
-        'VITE_FIREBASE_APP_ID': 'appId',
-        'FIREBASE_APP_ID': 'appId',
-        'VITE_FIREBASE_MEASUREMENT_ID': 'measurementId',
-        'FIREBASE_MEASUREMENT_ID': 'measurementId'
-      };
-      return mapping[envName] || null;
-    }
-
-    /**
-     * Validate Firebase configuration format
-     * @private
-     * @param {Object} config - Firebase configuration object
-     * @returns {boolean} True if valid
-     */
-    validateConfig(config) {
-      const apiKeyPattern = /^AIza[0-9A-Za-z_-]{35}$/;
-      const projectIdPattern = /^[a-z0-9-]{6,30}$/;
-
-      if (!apiKeyPattern.test(config.apiKey)) {
-        console.error('Invalid Firebase API key format');
-        return false;
-      }
-
-      if (!projectIdPattern.test(config.projectId)) {
-        console.error('Invalid Firebase project ID format');
-        return false;
-      }
-
-      if (!config.authDomain.includes(config.projectId)) {
-        console.error('Auth domain does not match project ID');
-        return false;
-      }
-
-      return true;
-    }
-
-    /**
-     * Get validated Firebase configuration
-     * @returns {Object|null} Firebase config or null if invalid
-     */
-    getConfig() {
-      const requiredFields = ['apiKey', 'authDomain', 'projectId'];
-      const missingFields = requiredFields.filter(field => !this.config[field]);
-
-      if (missingFields.length > 0) {
-        console.warn('Firebase config missing required fields:', missingFields);
-        return null;
-      }
-
-      if (!this.validateConfig(this.config)) {
-        console.error('Invalid Firebase configuration format');
-        return null;
-      }
-
-      return this.config;
-    }
-
-    /**
-     * Check if Firebase is configured
-     * @returns {boolean} True if configured
-     */
-    isConfigured() {
-      return this.getConfig() !== null;
-    }
-  }
+  // Firebase config is now loaded directly from firebase-config.js
 
   /* ==========================================================================
      Firebase Authentication Class
@@ -283,7 +110,6 @@
       try {
         // Wait for Firebase SDK if not ready
         if (typeof firebase === 'undefined') {
-          console.warn('Firebase SDK not available. Retrying...');
           setTimeout(() => this.initialize(), 100);
           return;
         }
@@ -292,8 +118,6 @@
         const config = window.firebaseConfig;
         
         if (!config || !config.apiKey || !config.authDomain || !config.projectId) {
-          console.warn('Firebase configuration not available or incomplete. Authentication disabled.');
-          console.warn('Current config:', config);
           return;
         }
 
@@ -308,7 +132,6 @@
         });
 
         this.initialized = true;
-        console.log('Firebase Auth initialized successfully');
 
       } catch (error) {
         console.error('Failed to initialize Firebase Auth:', error);
@@ -1216,13 +1039,9 @@
      Global Initialization
      ========================================================================== */
 
-  // Load Firebase config first
-  FirebaseConfig.loadConfigScript();
-
   // Initialize all components when DOM is ready
   $(document).ready(() => {
     // Initialize global instances
-    window.FirebaseConfig = FirebaseConfig;
     window.firebaseAuth = new FirebaseAuth();
     window.authUI = new AuthUI();
 
@@ -1286,5 +1105,5 @@
    ========================================================================== */
 
 if (typeof module !== 'undefined' && module.exports) {
-  module.exports = { FirebaseConfig, FirebaseAuth, AuthUI };
+  module.exports = { FirebaseAuth, AuthUI };
 }
