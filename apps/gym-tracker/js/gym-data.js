@@ -632,5 +632,5 @@ class GymData {
   }
 }
 
-// Create global instance
-window.gymData = new GymData();
+// Global instance will be created by gym-init.js
+// window.gymData = new GymData();

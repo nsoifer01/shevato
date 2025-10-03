@@ -53,8 +53,11 @@ class GymDataEnhanced {
         trainingPlan: this.data.trainingPlan
       };
       
-      // Save to local storage
+      // Save to local storage (Firebase sync should intercept this)
+      console.log('🏋️ GymDataEnhanced: Saving data to localStorage with key:', this.storageKey);
+      console.log('🏋️ Data being saved:', dataToSave);
       localStorage.setItem(this.storageKey, JSON.stringify(dataToSave));
+      console.log('✅ GymDataEnhanced: Data saved to localStorage');
       
       return true;
     } catch (error) {
@@ -431,5 +434,6 @@ class GymDataEnhanced {
   }
 }
 
-// Create global instance
-window.gymData = new GymDataEnhanced();
+// Export class to global scope for initialization
+window.GymDataEnhanced = GymDataEnhanced;
+// Note: Actual instantiation happens in gym-init.js to ensure proper timing with Firebase sync
