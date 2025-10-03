@@ -619,5 +619,6 @@ const workoutStyles = `
 
 document.head.insertAdjacentHTML('beforeend', workoutStyles);
 
-// Create global instance
-window.gymWorkout = new GymWorkout();
+// Export class to global scope for initialization
+window.GymWorkout = GymWorkout;
+// Note: Actual instantiation happens in gym-init.js

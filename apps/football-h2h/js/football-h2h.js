@@ -84,10 +84,28 @@ document.addEventListener('DOMContentLoaded', function() {
         });
     }
     
-    loadPlayers();
-    loadPlayerIcons();
-    loadGames();
-    updateUI();
+    // Initialize app data - always load, sync system will handle updates
+    function initializeAppData() {
+        loadPlayers();
+        loadPlayerIcons();
+        loadGames();
+        updateUI();
+    }
+    
+    // Always initialize data immediately
+    // The sync system will handle keeping data up to date
+    initializeAppData();
+    
+    // Also refresh data when sync system becomes ready (for first-time setup)
+    if (!window.syncSystemInitialized) {
+        window.addEventListener('syncSystemReady', () => {
+            console.log('🔄 Sync system ready, refreshing Football data');
+            // Give sync a moment to pull latest data, then refresh UI
+            setTimeout(() => {
+                initializeAppData();
+            }, 1000);
+        }, { once: true });
+    }
     
     // Initialize sidebar after everything else is loaded
     setTimeout(() => {
@@ -667,7 +685,8 @@ function editGame(id) {
     const formattedDate = `${year}-${month}-${day}`;
     const hours = String(gameDate.getHours()).padStart(2, '0');
     const minutes = String(gameDate.getMinutes()).padStart(2, '0');
-    const formattedTime = `${hours}:${minutes}`;
+    const seconds = String(gameDate.getSeconds()).padStart(2, '0');
+    const formattedTime = `${hours}:${minutes}:${seconds}`;
     
     // Create penalty options
     const penaltyOptions = [
@@ -724,6 +743,7 @@ function editGame(id) {
             label: 'Game Time',
             value: formattedTime,
             placeholder: 'Optional',
+            step: '1',
             grid: true
         },
         {
@@ -857,17 +877,33 @@ function editGame(id) {
             // Save the original game for undo/redo
             const originalGame = { ...game };
             
-            // Create the new date/time - parse manually to avoid timezone issues
-            const [year, month, day] = formData.date.split('-');
-            let newDateTime = new Date(
-                parseInt(year),
-                parseInt(month) - 1, // Months are 0-based
-                parseInt(day)
-            );
+            // Check if date/time was actually changed
+            const originalDate = game.dateTime ? new Date(game.dateTime) : new Date();
+            const originalDateStr = `${originalDate.getFullYear()}-${String(originalDate.getMonth() + 1).padStart(2, '0')}-${String(originalDate.getDate()).padStart(2, '0')}`;
+            const originalTimeStr = `${String(originalDate.getHours()).padStart(2, '0')}:${String(originalDate.getMinutes()).padStart(2, '0')}:${String(originalDate.getSeconds()).padStart(2, '0')}`;
             
-            if (formData.time) {
-                const [hours, minutes, seconds] = formData.time.split(':');
-                newDateTime.setHours(parseInt(hours), parseInt(minutes), parseInt(seconds || 0));
+            let newDateTime;
+            
+            // Only update date/time if it was actually changed
+            if (formData.date !== originalDateStr || (formData.time && formData.time !== originalTimeStr)) {
+                // Date or time was changed - create new date/time
+                const [year, month, day] = formData.date.split('-');
+                newDateTime = new Date(
+                    parseInt(year),
+                    parseInt(month) - 1, // Months are 0-based
+                    parseInt(day)
+                );
+                
+                if (formData.time) {
+                    const [hours, minutes, seconds] = formData.time.split(':');
+                    newDateTime.setHours(parseInt(hours), parseInt(minutes), parseInt(seconds || 0));
+                } else {
+                    // If time field is empty but date was changed, keep the original time
+                    newDateTime.setHours(originalDate.getHours(), originalDate.getMinutes(), originalDate.getSeconds());
+                }
+            } else {
+                // Date/time wasn't changed - keep the original
+                newDateTime = originalDate;
             }
             
             // Update the game

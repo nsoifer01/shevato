@@ -361,5 +361,6 @@ canvas {
 
 document.head.insertAdjacentHTML('beforeend', progressStyles);
 
-// Create global instance
-window.gymProgress = new GymProgress();
+// Export class to global scope for initialization
+window.GymProgress = GymProgress;
+// Note: Actual instantiation happens in gym-init.js

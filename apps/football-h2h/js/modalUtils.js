@@ -190,7 +190,8 @@ function createFormModal({ icon, title, fields, onSave, onCancel }) {
                     inputHtml = `<input type="date" id="${fieldId}" value="${field.value || ''}" class="form-input ">`;
                     break;
                 case 'time':
-                    inputHtml = `<input type="time" id="${fieldId}" value="${field.value || ''}" step="1" class="form-input " placeholder="${field.placeholder || ''}">`;
+                    const stepAttr = field.step ? `step="${field.step}"` : 'step="1"';
+                    inputHtml = `<input type="time" id="${fieldId}" value="${field.value || ''}" ${stepAttr} class="form-input " placeholder="${field.placeholder || ''}">`;
                     break;
                 case 'number':
                     const numberChangeHandler = field.onChange ? `onchange="${field.onChange}"` : '';
@@ -231,7 +232,8 @@ function createFormModal({ icon, title, fields, onSave, onCancel }) {
                 inputHtml = `<input type="date" id="${fieldId}" value="${field.value || ''}" class="form-input ">`;
                 break;
             case 'time':
-                inputHtml = `<input type="time" id="${fieldId}" value="${field.value || ''}" step="1" class="form-input " placeholder="${field.placeholder || ''}">`;
+                const stepAttr2 = field.step ? `step="${field.step}"` : 'step="1"';
+                inputHtml = `<input type="time" id="${fieldId}" value="${field.value || ''}" ${stepAttr2} class="form-input " placeholder="${field.placeholder || ''}">`;
                 break;
             case 'number':
                 const numberChangeHandler = field.onChange ? `onchange="${field.onChange}"` : '';

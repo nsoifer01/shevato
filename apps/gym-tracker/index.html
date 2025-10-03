@@ -1,19 +1,29 @@
 <!DOCTYPE HTML>
 <html lang="en">
 <head>
+  <!-- CRITICAL: Load immediate sync FIRST to catch all localStorage calls -->
+  <script src="../../sync-immediate.js"></script>
+  
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  <meta name="description" content="Track your gym progress, set workout schedules, monitor gains, and achieve your fitness goals">
+  <meta name="theme-color" content="#667eea">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="default">
+  <title>Gym Tracker - Fitness Progress</title>
+  
+  <!-- Favicon -->
+  <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>💪</text></svg>">
+  <link rel="apple-touch-icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><rect width=%22100%22 height=%22100%22 rx=%2220%22 fill=%22%23667eea%22/><text x=%2250%22 y=%2265%22 font-size=%2260%22 text-anchor=%22middle%22>💪</text></svg>">
+  
   <!-- Google Analytics -->
   <script async src="https://www.googletagmanager.com/gtag/js?id=UA-140119780-1"></script>
   <script src="/assets/js/analytics.js"></script>
-  <meta charset="utf-8" />
-  <title>Gym Tracker - Track Your Fitness Journey | Shevato</title>
-  <meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=no" />
-  <meta name="description" content="Track your gym progress, set workout schedules, monitor gains, and achieve your fitness goals with our modern gym tracking app." />
-  <meta name="keywords" content="Gym Tracker, Fitness App, Workout Log, Exercise Tracking, Progress Monitoring, Shevato" />
+  
   <link rel="stylesheet" href="../../assets/css/main.css" />
   <link rel="stylesheet" href="css/gym-base.css" />
   <link rel="stylesheet" href="css/gym-theme.css" />
   <link rel="stylesheet" href="css/gym-animations.css" />
-  <link rel="icon" type="image/png" href="../../images/white_icon_transparent.png">
 </head>
 <body class="is-preload gym-tracker">
   <div data-include="header"></div>
@@ -525,7 +535,17 @@
   <!-- Firebase SDK (required for auth functionality) -->
   <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-auth-compat.js"></script>
+
+  <!-- Firebase Storage Sync System (ES Modules) -->
+  <script type="module" src="../../firebase-config.js"></script>
+  <script type="module" src="../../firebase-persistence.js"></script>
+  <script type="module" src="../../storage-sync-robust.js"></script>
+  <script type="module" src="../../app-sync-init.js"></script>
+  <script src="../../sync-debug.js"></script>
   
+  <!-- Sync Loading Modal (after Firebase is initialized) -->
+  <script src="../../sync-loading-modal.js"></script>
+  <script src="../../sync-modal-integration.js"></script>
   
   <!-- Main JavaScript -->
   <script src="../../assets/js/main.js"></script>
@@ -541,6 +561,9 @@
   <script src="js/gym-ui.js"></script>
   <script src="js/gym-training-plans.js"></script>
   <script src="js/gym-main.js"></script>
+  
+  <!-- Unified initialization - must be loaded LAST -->
+  <script src="js/gym-init.js"></script>
   
   <script src="/assets/js/year-updater.js"></script>
 </body>
