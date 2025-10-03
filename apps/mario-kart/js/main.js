@@ -1595,11 +1595,29 @@ document.addEventListener('DOMContentLoaded', function() {
         steppers.forEach(stepper => stepper.style.display = 'none');
     }
 
-    updateDisplay();
-
-    // Update player icons after all initialization is complete
-    if (window.updateAllPlayerIcons) {
-        window.updateAllPlayerIcons();
+    // Wait for sync system before loading data
+    function initializeMarioKartData() {
+        updateDisplay();
+        
+        // Update player icons after all initialization is complete
+        if (window.updateAllPlayerIcons) {
+            window.updateAllPlayerIcons();
+        }
+    }
+    
+    // Always initialize data immediately
+    // The sync system will handle keeping data up to date
+    initializeMarioKartData();
+    
+    // Also refresh data when sync system becomes ready (for first-time setup)
+    if (!window.syncSystemInitialized) {
+        window.addEventListener('syncSystemReady', () => {
+            console.log('🔄 Sync system ready, refreshing Mario Kart data');
+            // Give sync a moment to pull latest data, then refresh UI
+            setTimeout(() => {
+                initializeMarioKartData();
+            }, 1000);
+        }, { once: true });
     }
 
     // Subscribe to player symbol changes to update H2H tables

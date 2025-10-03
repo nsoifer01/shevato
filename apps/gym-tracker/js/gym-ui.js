@@ -377,5 +377,6 @@ class GymUI {
   }
 }
 
-// Create global instance
-window.gymUI = new GymUI();
+// Export class to global scope for initialization
+window.GymUI = GymUI;
+// Note: Actual instantiation happens in gym-init.js to ensure proper timing
