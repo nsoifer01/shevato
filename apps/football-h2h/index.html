@@ -2,13 +2,16 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
+    <!-- CRITICAL: Load immediate sync FIRST to catch all localStorage calls -->
+    <script src="../../sync-system/sync-immediate.js"></script>
+    
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
     <meta name="description" content="Track head-to-head football games between players">
     <meta name="theme-color" content="#667eea">
     <meta name="mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="default">
-    <title>Football H2H League</title>
+    <title>Football H2H - Head to Head Tracker</title>
     <!-- Favicon -->
     <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>⚽</text></svg>">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
@@ -196,35 +199,81 @@
                 </div>
             </div>
 
-            <!-- Statistics Overview -->
-            <section class="stats-overview">
-                <div class="stats-grid">
-                    <div class="stat-card">
-                        <div class="stat-label">Total Games</div>
-                        <div class="stat-value" id="totalGames">0</div>
-                    </div>
-                    <div class="stat-card player1-card">
-                        <div class="stat-label"><span id="player1StatsName">Player 1</span> Wins</div>
-                        <div class="stat-value" id="player1Wins">0</div>
-                    </div>
-                    <div class="stat-card draws-card">
-                        <div class="stat-label">Draws</div>
-                        <div class="stat-value" id="totalDraws">0</div>
-                    </div>
-                    <div class="stat-card player2-card">
-                        <div class="stat-label"><span id="player2StatsName">Player 2</span> Wins</div>
-                        <div class="stat-value" id="player2Wins">0</div>
-                    </div>
-                    <div class="stat-card">
-                        <div class="stat-label">Goals Per Game</div>
-                        <div class="stat-value" id="goalsPerGame">0.0</div>
-                    </div>
-                    <div class="stat-card">
-                        <div class="stat-label">Penalty Shootouts</div>
-                        <div class="stat-value" id="penaltyShootouts">0</div>
-                    </div>
+            <!-- Statistics Tabs -->
+            <div class="stats-tabs-section">
+                <div class="stats-tabs" role="tablist">
+                    <button class="stats-tab active" onclick="switchStatsTab('h2h')" role="tab" aria-selected="true" aria-controls="h2h-stats">
+                        ⚔️ H2H Stats
+                    </button>
+                    <button class="stats-tab" onclick="switchStatsTab('general')" role="tab" aria-selected="false" aria-controls="general-stats">
+                        📊 General Stats
+                    </button>
                 </div>
-            </section>
+
+                <!-- H2H Stats Tab Content -->
+                <section class="stats-overview stats-tab-content active" id="h2h-stats" role="tabpanel">
+                    <!-- Total Wins Row -->
+                    <h3 class="h2h-section-title">Total Wins</h3>
+                    <div class="stats-grid h2h-row">
+                        <div class="stat-card player1-card">
+                            <div class="stat-label"><span id="player1StatsName">Player 1</span></div>
+                            <div class="stat-value" id="player1Wins">0</div>
+                        </div>
+                        <div class="stat-card player2-card">
+                            <div class="stat-label"><span id="player2StatsName">Player 2</span></div>
+                            <div class="stat-value" id="player2Wins">0</div>
+                        </div>
+                        <div class="stat-card draws-card">
+                            <div class="stat-label">Draws</div>
+                            <div class="stat-value" id="totalDraws">0</div>
+                        </div>
+                    </div>
+
+                    <!-- 90 Minute Wins Row -->
+                    <h3 class="h2h-section-title">90 Minute Wins</h3>
+                    <div class="stats-grid h2h-row">
+                        <div class="stat-card player1-90min-card">
+                            <div class="stat-label"><span id="player1StatsName90">Player 1</span></div>
+                            <div class="stat-value" id="player1Wins90">0</div>
+                        </div>
+                        <div class="stat-card player2-90min-card">
+                            <div class="stat-label"><span id="player2StatsName90">Player 2</span></div>
+                            <div class="stat-value" id="player2Wins90">0</div>
+                        </div>
+                    </div>
+
+                    <!-- Penalty Wins Row -->
+                    <h3 class="h2h-section-title">Penalty Wins</h3>
+                    <div class="stats-grid h2h-row">
+                        <div class="stat-card player1-penalty-card">
+                            <div class="stat-label"><span id="player1StatsNamePen">Player 1</span></div>
+                            <div class="stat-value" id="player1PenaltyWins">0</div>
+                        </div>
+                        <div class="stat-card player2-penalty-card">
+                            <div class="stat-label"><span id="player2StatsNamePen">Player 2</span></div>
+                            <div class="stat-value" id="player2PenaltyWins">0</div>
+                        </div>
+                    </div>
+                </section>
+
+                <!-- General Stats Tab Content -->
+                <section class="stats-overview stats-tab-content" id="general-stats" role="tabpanel" style="display: none;">
+                    <div class="stats-grid">
+                        <div class="stat-card">
+                            <div class="stat-label">Total Games</div>
+                            <div class="stat-value" id="totalGames">0</div>
+                        </div>
+                        <div class="stat-card">
+                            <div class="stat-label">Goals Per Game</div>
+                            <div class="stat-value" id="goalsPerGame">0.0</div>
+                        </div>
+                        <div class="stat-card">
+                            <div class="stat-label">Penalty Shootouts</div>
+                            <div class="stat-value" id="penaltyShootouts">0</div>
+                        </div>
+                    </div>
+                </section>
+            </div>
 
             <!-- Game History Table -->
             <section class="game-history">
@@ -277,6 +326,16 @@
     <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-auth-compat.js"></script>
 
+    <!-- Firebase Storage Sync System (ES Modules) -->
+    <script type="module" src="../../firebase-config.js"></script>
+    <script type="module" src="../../sync-system/firebase-persistence.js"></script>
+    <script type="module" src="../../sync-system/storage-sync-robust.js"></script>
+    <script type="module" src="../../sync-system/app-sync-init.js"></script>
+    <script src="../../sync-system/sync-debug.js"></script>
+
+    <!-- Sync Loading Modal (after Firebase is initialized) -->
+    <script src="../../sync-system/sync-loading-modal.js"></script>
+    <script src="../../sync-system/sync-modal-integration.js"></script>
     
     <!-- Main JavaScript (includes Firebase config and auth) -->
     <script src="../../assets/js/main.js"></script>

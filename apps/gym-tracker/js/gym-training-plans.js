@@ -562,7 +562,6 @@ class TrainingPlansManager {
   }
 }
 
-// Initialize when DOM is ready
-document.addEventListener('DOMContentLoaded', () => {
-  window.trainingPlans = new TrainingPlansManager();
-});
+// Export class to global scope for initialization
+window.GymTrainingPlans = TrainingPlansManager;
+// Note: Actual instantiation happens in gym-init.js

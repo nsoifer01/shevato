@@ -432,5 +432,6 @@ const calendarStyles = `
 
 document.head.insertAdjacentHTML('beforeend', calendarStyles);
 
-// Create global instance
-window.gymCalendar = new GymCalendar();
+// Export class to global scope for initialization
+window.GymCalendar = GymCalendar;
+// Note: Actual instantiation happens in gym-init.js
