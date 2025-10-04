@@ -21,7 +21,7 @@ import {
   off
 } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-database.js";
 
-import { db, rtdb, auth } from './firebase-config.js';
+import { db, rtdb, auth } from '../firebase-config.js';
 
 // Configuration
 const DEBOUNCE_MS = 500;

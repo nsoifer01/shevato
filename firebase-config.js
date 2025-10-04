@@ -32,6 +32,9 @@ export const auth = getAuth(app);
 export const db = getFirestore(app);
 export const rtdb = getDatabase(app);
 
+// Expose config to window for compat SDK (used by main.js auth)
+window.firebaseConfig = firebaseConfig;
+
 // Optional: Connect to emulators in development
 if (window.location.hostname === 'localhost') {
   try {

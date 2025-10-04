@@ -168,8 +168,10 @@
   <!-- Firebase SDK (required for auth functionality) -->
   <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-auth-compat.js"></script>
-  
-  
+
+  <!-- Firebase Configuration (loads before main.js) -->
+  <script type="module" src="firebase-config.js"></script>
+
   <!-- Main JavaScript -->
   <script src="assets/js/main.js"></script>
 </body>
