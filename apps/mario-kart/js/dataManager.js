@@ -191,7 +191,7 @@ function editRace(index) {
                 <label style="display: block; margin-bottom: 0.5rem; color: #e2e8f0; font-weight: 600; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;">
                     Race Time:
                 </label>
-                <input type="time" id="edit-time" value="${race.timestamp ? race.timestamp.split(' ')[0] : ''}" step="1"
+                <input type="time" id="edit-time" value="${race.timestamp ? (race.timestamp.includes(':') ? race.timestamp.split(' ')[0] : '') : ''}" step="1"
                     style="width: 100%; padding: 0.75rem; border: 1px solid #4a5568; 
                     border-radius: 0.5rem; background: #4a5568; 
                     color: #e2e8f0; color-scheme: dark; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;" placeholder="Optional">
@@ -239,6 +239,11 @@ function editRace(index) {
         // Save the original race for undo/redo
         const originalRace = { ...race };
         
+        // Check if date/time actually changed
+        const originalTime = race.timestamp ? race.timestamp.split(' ')[0] : '';
+        const dateChanged = newDate !== race.date;
+        const timeChanged = newTime !== originalTime;
+        
         // Collect new position data
         const newPositions = {};
         let hasValidData = false;
@@ -282,35 +287,42 @@ function editRace(index) {
             return;
         }
 
-        // Create timestamp if time is provided
-        let newTimestamp = null;
-        if (newTime) {
-            // Get timezone info from the original timestamp or generate new one
-            const originalTz = race.timestamp ? race.timestamp.split(' ').slice(1).join(' ') : null;
-            if (originalTz) {
-                newTimestamp = `${newTime} ${originalTz}`;
+        // Handle timestamp updates
+        let newTimestamp = race.timestamp; // Keep original by default
+        
+        if (timeChanged) {
+            if (newTime) {
+                // Time was changed to a new value
+                // Get timezone info from the original timestamp or generate new one
+                const originalTz = race.timestamp ? race.timestamp.split(' ').slice(1).join(' ') : null;
+                if (originalTz) {
+                    newTimestamp = `${newTime} ${originalTz}`;
+                } else {
+                    // Generate new timezone info
+                    const now = new Date();
+                    const timeZone = Intl.DateTimeFormat().resolvedOptions().timeZone;
+                    const tzAbbr = new Intl.DateTimeFormat('en-US', {
+                        timeZoneName: 'short'
+                    }).formatToParts(now).find(part => part.type === 'timeZoneName')?.value || timeZone;
+                    newTimestamp = `${newTime} ${tzAbbr}`;
+                }
             } else {
-                // Generate new timezone info
-                const now = new Date();
-                const timeZone = Intl.DateTimeFormat().resolvedOptions().timeZone;
-                const tzAbbr = new Intl.DateTimeFormat('en-US', {
-                    timeZoneName: 'short'
-                }).formatToParts(now).find(part => part.type === 'timeZoneName')?.value || timeZone;
-                newTimestamp = `${newTime} ${tzAbbr}`;
+                // Time was cleared
+                newTimestamp = null;
             }
         }
 
         // Update the race
         const updatedRace = {
             ...race,
-            date: newDate,
+            date: dateChanged ? newDate : race.date,
             ...newPositions
         };
 
-        // Add or remove timestamp
+        // Handle timestamp
         if (newTimestamp) {
             updatedRace.timestamp = newTimestamp;
-        } else {
+        } else if (newTimestamp === null) {
             delete updatedRace.timestamp;
         }
 
