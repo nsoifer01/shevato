@@ -3,7 +3,7 @@
 
 import { startStorageSync, stopAllSyncs, getSyncStatus, getGlobalSyncStatus } from './storage-sync-robust.js';
 import { enablePersistence } from './firebase-persistence.js';
-import { db } from './firebase-config.js';
+import { db } from '../firebase-config.js';
 
 // Track active syncs
 let activeSyncs = [];
