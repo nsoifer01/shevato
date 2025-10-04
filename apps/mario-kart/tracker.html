@@ -38,7 +38,7 @@
     <script src="https://apis.google.com/js/api.js"></script>
     
     <!-- CRITICAL: Load immediate sync FIRST to catch all localStorage calls -->
-    <script src="../../sync-immediate.js"></script>
+    <script src="../../sync-system/sync-immediate.js"></script>
 </head>
 <body class="mario-kart-app mario-kart-tracker">
     <div data-include="header"></div>
@@ -545,15 +545,15 @@
 
     <!-- Firebase Storage Sync System (ES Modules) -->
     <script type="module" src="../../firebase-config.js"></script>
-    <script type="module" src="../../firebase-persistence.js"></script>
-    <script type="module" src="../../storage-sync-robust.js"></script>
-    <script type="module" src="../../app-sync-init.js"></script>
-    <script src="../../sync-debug.js"></script>
-    <script src="../../initial-sync-debug.js"></script>
-    
+    <script type="module" src="../../sync-system/firebase-persistence.js"></script>
+    <script type="module" src="../../sync-system/storage-sync-robust.js"></script>
+    <script type="module" src="../../sync-system/app-sync-init.js"></script>
+    <script src="../../sync-system/sync-debug.js"></script>
+    <script src="../../sync-system/initial-sync-debug.js"></script>
+
     <!-- Sync Loading Modal (after Firebase is initialized) -->
-    <script src="../../sync-loading-modal.js"></script>
-    <script src="../../sync-modal-integration.js"></script>
+    <script src="../../sync-system/sync-loading-modal.js"></script>
+    <script src="../../sync-system/sync-modal-integration.js"></script>
     
     <!-- Main JavaScript -->
     <script src="../../assets/js/main.js"></script>

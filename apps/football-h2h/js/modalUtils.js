@@ -173,95 +173,88 @@ function createWarningModal({ icon = '⚠️', title, message, onConfirm, onCanc
  * Creates a form modal
  */
 function createFormModal({ icon, title, fields, onSave, onCancel }) {
-    // Group fields for grid layout
-    const gridFields = fields.filter(field => field.grid);
-    const regularFields = fields.filter(field => !field.grid);
-    
-    let fieldsHtml = '';
-    
-    // Add grid fields first (date/time)
-    if (gridFields.length > 0) {
-        const gridFieldsHtml = gridFields.map(field => {
-            const fieldId = `form-${field.id}`;
-            let inputHtml;
-
-            switch (field.type) {
-                case 'date':
-                    inputHtml = `<input type="date" id="${fieldId}" value="${field.value || ''}" class="form-input ">`;
-                    break;
-                case 'time':
-                    const stepAttr = field.step ? `step="${field.step}"` : 'step="1"';
-                    inputHtml = `<input type="time" id="${fieldId}" value="${field.value || ''}" ${stepAttr} class="form-input " placeholder="${field.placeholder || ''}">`;
-                    break;
-                case 'number':
-                    const numberChangeHandler = field.onChange ? `onchange="${field.onChange}"` : '';
-                    const numberValue = field.value !== undefined && field.value !== null ? field.value : '';
-                    inputHtml = `<input type="number" id="${fieldId}" value="${numberValue}" min="${field.min || ''}" max="${field.max || ''}" class="form-input " placeholder="${field.placeholder || ''}" ${numberChangeHandler}>`;
-                    break;
-                case 'select':
-                    const optionsHtml = field.options.map(option => 
-                        `<option value="${option.value}" ${option.value === field.value ? 'selected' : ''}>${option.text}</option>`
-                    ).join('');
-                    const changeHandler = field.onChange ? `onchange="${field.onChange}"` : '';
-                    inputHtml = `<select id="${fieldId}" class="form-input " ${changeHandler}>${optionsHtml}</select>`;
-                    break;
-                default:
-                    const maxLengthAttr = field.maxlength ? `maxlength="${field.maxlength}"` : '';
-                inputHtml = `<input type="text" id="${fieldId}" value="${field.value || ''}" class="form-input " placeholder="${field.placeholder || ''}" ${maxLengthAttr}>`;
-            }
-
-            const hideStyle = field.hidden ? 'style="display: none;"' : '';
-            return `
-                <div class="form-group" ${hideStyle}>
-                    <label class="form-label " for="${fieldId}">${field.label}:</label>
-                    ${inputHtml}
-                </div>
-            `;
-        }).join('');
-        
-        fieldsHtml += `<div class="form-grid-2">${gridFieldsHtml}</div>`;
-    }
-    
-    // Add regular fields
-    const regularFieldsHtml = regularFields.map(field => {
+    // Helper function to render a field
+    function renderField(field) {
         const fieldId = `form-${field.id}`;
         let inputHtml;
 
         switch (field.type) {
             case 'date':
-                inputHtml = `<input type="date" id="${fieldId}" value="${field.value || ''}" class="form-input ">`;
+                inputHtml = `<input type="date" id="${fieldId}" value="${field.value || ''}" class="form-input">`;
                 break;
             case 'time':
-                const stepAttr2 = field.step ? `step="${field.step}"` : 'step="1"';
-                inputHtml = `<input type="time" id="${fieldId}" value="${field.value || ''}" ${stepAttr2} class="form-input " placeholder="${field.placeholder || ''}">`;
+                const stepAttr = field.step ? `step="${field.step}"` : 'step="1"';
+                inputHtml = `<input type="time" id="${fieldId}" value="${field.value || ''}" ${stepAttr} class="form-input" placeholder="${field.placeholder || ''}">`;
                 break;
             case 'number':
                 const numberChangeHandler = field.onChange ? `onchange="${field.onChange}"` : '';
                 const numberValue = field.value !== undefined && field.value !== null ? field.value : '';
-                inputHtml = `<input type="number" id="${fieldId}" value="${numberValue}" min="${field.min || ''}" max="${field.max || ''}" class="form-input " placeholder="${field.placeholder || ''}" ${numberChangeHandler}>`;
+                inputHtml = `<input type="number" id="${fieldId}" value="${numberValue}" min="${field.min || ''}" max="${field.max || ''}" class="form-input" placeholder="${field.placeholder || ''}" ${numberChangeHandler}>`;
                 break;
             case 'select':
-                const optionsHtml = field.options.map(option => 
+                const optionsHtml = field.options.map(option =>
                     `<option value="${option.value}" ${option.value === field.value ? 'selected' : ''}>${option.text}</option>`
                 ).join('');
                 const changeHandler = field.onChange ? `onchange="${field.onChange}"` : '';
-                inputHtml = `<select id="${fieldId}" class="form-input " ${changeHandler}>${optionsHtml}</select>`;
+                inputHtml = `<select id="${fieldId}" class="form-input" ${changeHandler}>${optionsHtml}</select>`;
                 break;
             default:
                 const maxLengthAttr = field.maxlength ? `maxlength="${field.maxlength}"` : '';
-                inputHtml = `<input type="text" id="${fieldId}" value="${field.value || ''}" class="form-input " placeholder="${field.placeholder || ''}" ${maxLengthAttr}>`;
+                inputHtml = `<input type="text" id="${fieldId}" value="${field.value || ''}" class="form-input" placeholder="${field.placeholder || ''}" ${maxLengthAttr}>`;
         }
 
         const hideStyle = field.hidden ? 'style="display: none;"' : '';
+        // Remove trailing colon from label if present
+        const labelText = field.label.endsWith(':') ? field.label.slice(0, -1) : field.label;
         return `
             <div class="form-group" ${hideStyle}>
-                <label class="form-label " for="${fieldId}">${field.label}:</label>
+                <label class="form-label" for="${fieldId}">${labelText}</label>
                 ${inputHtml}
             </div>
         `;
-    }).join('');
-    
-    fieldsHtml += regularFieldsHtml;
+    }
+
+    // Group fields by type
+    const gridFields = fields.filter(field => field.grid);
+    const player1Fields = fields.filter(field => field.id.includes('player1'));
+    const player2Fields = fields.filter(field => field.id.includes('player2'));
+    const otherFields = fields.filter(field => !field.grid && !field.id.includes('player1') && !field.id.includes('player2'));
+
+    let fieldsHtml = '';
+
+    // Add grid fields first (date/time)
+    if (gridFields.length > 0) {
+        const gridFieldsHtml = gridFields.map(renderField).join('');
+        fieldsHtml += `<div class="form-grid-2">${gridFieldsHtml}</div>`;
+    }
+
+    // Add other fields (like penalty winner)
+    if (otherFields.length > 0) {
+        fieldsHtml += otherFields.map(renderField).join('');
+    }
+
+    // Add Player 1 section
+    if (player1Fields.length > 0) {
+        const player1Name = player1Fields[0].label.split("'")[0] || 'Player 1';
+        fieldsHtml += `
+            <div class="form-divider"></div>
+            <div class="player-section">
+                <div class="player-section-title">⚽ ${player1Name}</div>
+                ${player1Fields.map(renderField).join('')}
+            </div>
+        `;
+    }
+
+    // Add Player 2 section
+    if (player2Fields.length > 0) {
+        const player2Name = player2Fields[0].label.split("'")[0] || 'Player 2';
+        fieldsHtml += `
+            <div class="player-section">
+                <div class="player-section-title">⚽ ${player2Name}</div>
+                ${player2Fields.map(renderField).join('')}
+            </div>
+        `;
+    }
 
     const buttons = [
         {
