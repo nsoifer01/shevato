@@ -1,0 +1,42 @@
+{
+  "rules": {
+    "users": {
+      "$uid": {
+        ".read": "$uid === auth.uid",
+        ".write": "$uid === auth.uid",
+        
+        "apps": {
+          "$namespace": {
+            ".read": "$uid === auth.uid",
+            ".write": "$uid === auth.uid",
+            
+            "data": {
+              "$key": {
+                ".validate": "newData.hasChildren(['value', 'updatedAt', 'rev'])",
+                
+                "value": {
+                  ".validate": true
+                },
+                "updatedAt": {
+                  ".validate": "newData.isNumber() || newData.val() === '.sv'"
+                },
+                "rev": {
+                  ".validate": "newData.isNumber() && newData.val() >= 0"
+                }
+              }
+            },
+            
+            "meta": {
+              "lastUpdated": {
+                ".validate": "newData.isNumber() || newData.val() === '.sv'"
+              }
+            }
+          }
+        }
+      }
+    },
+    
+    ".read": false,
+    ".write": false
+  }
+}

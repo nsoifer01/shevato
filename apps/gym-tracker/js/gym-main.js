@@ -232,8 +232,9 @@ const appStyles = `
 
 document.head.insertAdjacentHTML('beforeend', appStyles);
 
-// Create global instance
-window.gymApp = new GymApp();
+// Export class to global scope for initialization
+window.GymApp = GymApp;
+// Note: Actual instantiation happens in gym-init.js
 
 // Keyboard shortcuts
 document.addEventListener('keydown', (e) => {
