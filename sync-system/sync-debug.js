@@ -188,8 +188,3 @@ window.syncDebug = {
   }
 };
 
-// Auto-start monitoring if this file is loaded
-if (window.location.pathname.includes('/apps/')) {
-  console.log('🔧 Sync Debug loaded - use window.syncDebug.* for debugging');
-  console.log('💡 Try: syncDebug.fullDiagnostic() or syncDebug.testEditSync()');
-}

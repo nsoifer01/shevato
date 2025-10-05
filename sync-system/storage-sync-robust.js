@@ -42,10 +42,8 @@ class StorageSyncManager {
     
     // Check if immediate sync override is already installed
     if (window.immediateDebug) {
-      console.log('🔗 Using immediate sync override');
       this.useImmediateOverride();
     } else {
-      console.log('⚠️  Immediate override not found, installing fallback');
       this.installGlobalOverride();
     }
   }
@@ -71,9 +69,8 @@ class StorageSyncManager {
     // Signal that sync system is ready
     window.syncSystemInitialized = true;
     window.dispatchEvent(new CustomEvent('syncSystemReady'));
-    
+
     this.isOverrideInstalled = true;
-    console.log('🔧 Integrated with immediate localStorage override');
   }
 
   /**
@@ -112,7 +109,6 @@ class StorageSyncManager {
     });
 
     this.isOverrideInstalled = true;
-    console.log('🔧 Global localStorage override installed');
   }
 
   /**
@@ -175,7 +171,6 @@ class StorageSyncManager {
       // Wait for auth state to be ready
       const unsubscribe = auth.onAuthStateChanged((authUser) => {
         if (authUser && !actualSync) {
-          console.log('🔄 Auth ready, starting delayed sync for', namespace);
           actualSync = this._startSyncForUser(authUser, { namespace, keys, useFirestore });
           unsubscribe(); // Only need this once
         }
@@ -226,8 +221,6 @@ class StorageSyncManager {
     // Perform initial merge after a short delay
     setTimeout(() => this.performInitialMerge(state), 500);
 
-    console.log(`✅ Sync started for ${namespace} (${keys.length} keys)`);
-
     return {
       stop: () => this.stopSync(namespace),
       getStatus: () => this.getSyncStatus(namespace)
@@ -246,19 +239,17 @@ class StorageSyncManager {
       const unsubscribe = onSnapshot(docRef, 
         (snapshot) => {
           if (state.stopped) return;
-          
+
           const data = snapshot.data();
           if (!data || !data.data) return;
 
-          console.log(`🔄 Firebase → Local sync for ${state.namespace}`);
-          
           // Apply remote changes to localStorage
           for (const [key, info] of Object.entries(data.data)) {
             if (!state.keys.has(key)) continue;
-            
+
             this.applyRemoteChange(key, info);
           }
-          
+
           retryAttempts = 0; // Reset on success
         }, 
         (error) => {
@@ -301,11 +292,9 @@ class StorageSyncManager {
 
     const callback = (snapshot) => {
       if (state.stopped) return;
-      
+
       const data = snapshot.val();
       if (!data || !data.data) return;
-
-      console.log(`🔄 RTDB → Local sync for ${state.namespace}`);
 
       for (const [key, info] of Object.entries(data.data)) {
         if (!state.keys.has(key)) continue;
@@ -348,8 +337,6 @@ class StorageSyncManager {
     }
     
     if (shouldApply) {
-      console.log(`📥 Applying remote change for ${key}`);
-      
       // Set sync lock to prevent echo
       this.syncLocks.set(key, true);
       
@@ -439,8 +426,6 @@ class StorageSyncManager {
     state.writeTimer = setTimeout(() => {
       this.flushWrites(state);
     }, delay);
-
-    console.log(`📤 Queued write for ${key} (rev: ${newRev})`);
   }
 
   /**
@@ -455,18 +440,14 @@ class StorageSyncManager {
     queue.clear();
 
     try {
-      console.log(`🚀 Flushing ${writes.size} writes for ${state.namespace}`);
-      
       if (state.useFirestore) {
         await this.flushToFirestore(state, writes);
       } else {
         await this.flushToRealtimeDb(state, writes);
       }
-      
+
       state.retryCount = 0;
       state.lastSyncTime = Date.now();
-      
-      console.log(`✅ Successfully synced ${writes.size} changes for ${state.namespace}`);
       
     } catch (error) {
       console.error(`❌ Failed to flush writes for ${state.namespace}:`, error);
@@ -565,8 +546,6 @@ class StorageSyncManager {
    */
   async performInitialMerge(state) {
     try {
-      console.log(`🔄 Performing initial merge for ${state.namespace}`);
-      
       let remoteData;
       
       if (state.useFirestore) {
@@ -582,23 +561,13 @@ class StorageSyncManager {
       const localWrites = new Map();
       const keysToApply = [];
 
-      console.log(`🔄 Analyzing ${state.keys.size} keys for initial merge...`);
-
       for (const key of state.keys) {
-        const localValue = this.originalMethods?.getItem ? 
+        const localValue = this.originalMethods?.getItem ?
           this.originalMethods.getItem(key) : localStorage.getItem(key);
         const remoteInfo = remoteData?.data?.[key];
 
-        console.log(`🔍 Key "${key}":`, {
-          hasLocal: localValue !== null,
-          hasRemote: !!remoteInfo,
-          localLength: localValue ? localValue.length : 0,
-          remoteValue: remoteInfo ? 'present' : 'missing'
-        });
-
         if (!remoteInfo && localValue !== null) {
           // Local only - queue for upload
-          console.log(`⬆️  Local only: ${key} - will upload`);
           localWrites.set(key, {
             value: this.parseValue(localValue),
             rev: 1,
@@ -606,49 +575,33 @@ class StorageSyncManager {
             hash: this.hashValue(this.parseValue(localValue))
           });
         } else if (remoteInfo && localValue === null) {
-          // Remote only - apply locally  
-          console.log(`⬇️  Remote only: ${key} - will download`);
+          // Remote only - apply locally
           keysToApply.push({ key, info: remoteInfo });
         } else if (remoteInfo && localValue !== null) {
           // Both exist - resolve conflict
           const remoteTimestamp = this.getTimestamp(remoteInfo.updatedAt);
           const localHash = this.hashValue(this.parseValue(localValue));
-          
-          console.log(`⚖️  Conflict: ${key}`, {
-            remoteHash: remoteInfo.hash,
-            localHash: localHash,
-            different: remoteInfo.hash !== localHash
-          });
-          
+
           if (remoteInfo.hash !== localHash) {
             // Values are different - prefer remote for safety on initial merge
-            console.log(`⬇️  Using remote version of: ${key}`);
             keysToApply.push({ key, info: remoteInfo });
           }
-        } else {
-          console.log(`➖ No data for key: ${key}`);
         }
       }
 
-      console.log(`📊 Initial merge plan: ${keysToApply.length} to download, ${localWrites.size} to upload`);
-
       // Apply remote changes
       for (const { key, info } of keysToApply) {
-        console.log(`📥 Applying remote data for: ${key}`);
         this.applyRemoteChange(key, info);
       }
 
       // Upload local changes
       if (localWrites.size > 0) {
-        console.log(`📤 Uploading ${localWrites.size} local keys to Firebase...`);
         if (state.useFirestore) {
           await this.flushToFirestore(state, localWrites);
         } else {
           await this.flushToRealtimeDb(state, localWrites);
         }
       }
-
-      console.log(`✅ Initial merge complete for ${state.namespace}: ${keysToApply.length} downloaded, ${localWrites.size} uploaded`);
       
     } catch (error) {
       // Check if this is an authentication/permission error
@@ -707,8 +660,6 @@ class StorageSyncManager {
     const state = this.syncStates.get(namespace);
     if (!state) return;
 
-    console.log(`🛑 Stopping sync for ${namespace}`);
-    
     state.stopped = true;
 
     if (state.writeTimer) {
@@ -731,7 +682,6 @@ class StorageSyncManager {
    * Stop all syncs
    */
   stopAllSyncs() {
-    console.log('🛑 Stopping all syncs');
     for (const namespace of this.syncStates.keys()) {
       this.stopSync(namespace);
     }
@@ -813,8 +763,7 @@ window._debugSync = {
       console.error(`❌ Namespace "${namespace}" not found`);
       return;
     }
-    
-    console.log(`🔄 Manually triggering initial merge for ${namespace}...`);
+
     await syncManager.performInitialMerge(state);
   },
   
@@ -823,5 +772,3 @@ window._debugSync = {
     return Array.from(syncManager.syncStates.keys());
   }
 };
-
-console.log('🔧 Robust Storage Sync loaded - use window._debugSync for debugging');

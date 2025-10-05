@@ -3,11 +3,61 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
-    <meta name="description" content="Track your Mario Kart race results, view statistics, and analyze your performance">
+    <meta name="description" content="Free Mario Kart 8 Deluxe race tracker. Track races, analyze statistics, compare player performance, and view detailed race history with comprehensive charts and achievements.">
+    <meta name="keywords" content="Mario Kart tracker, Mario Kart 8 Deluxe, race tracker, gaming statistics, player stats, race history, Mario Kart analytics, free game tracker">
     <meta name="theme-color" content="#667eea">
     <meta name="mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="default">
-    <title>Mario Kart - Race Tracker</title>
+    <title>Mario Kart 8 Deluxe Race Tracker | Free Statistics & Analytics</title>
+
+    <!-- Canonical URL -->
+    <link rel="canonical" href="https://shevato.com/apps/mario-kart/tracker.html" />
+
+    <!-- Open Graph tags -->
+    <meta property="og:title" content="Mario Kart 8 Deluxe Race Tracker | Free Statistics & Analytics" />
+    <meta property="og:description" content="Track Mario Kart 8 Deluxe races with comprehensive statistics, player performance analysis, and detailed race history." />
+    <meta property="og:type" content="website" />
+    <meta property="og:url" content="https://shevato.com/apps/mario-kart/tracker.html" />
+    <meta property="og:image" content="https://shevato.com/images/full-logo.svg" />
+    <meta property="og:site_name" content="Shevato" />
+
+    <!-- Twitter Card tags -->
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content="Mario Kart 8 Deluxe Race Tracker" />
+    <meta name="twitter:description" content="Free race tracker with statistics and analytics for Mario Kart 8 Deluxe" />
+    <meta name="twitter:image" content="https://shevato.com/images/full-logo.svg" />
+
+    <!-- JSON-LD Structured Data -->
+    <script type="application/ld+json">
+    {
+      "@context": "https://schema.org",
+      "@type": "WebApplication",
+      "name": "Mario Kart 8 Deluxe Race Tracker",
+      "description": "Free race tracking application for Mario Kart 8 Deluxe with comprehensive statistics, player performance analysis, achievements, and race history",
+      "url": "https://shevato.com/apps/mario-kart/tracker.html",
+      "applicationCategory": "GameApplication",
+      "operatingSystem": "Web Browser",
+      "browserRequirements": "Requires JavaScript. Works on all modern browsers.",
+      "offers": {
+        "@type": "Offer",
+        "price": "0",
+        "priceCurrency": "USD"
+      },
+      "featureList": [
+        "Race tracking and recording",
+        "Player statistics and performance analysis",
+        "Detailed race history",
+        "Achievement system",
+        "Data export and import",
+        "Automatic cloud sync"
+      ],
+      "author": {
+        "@type": "Organization",
+        "name": "Shevato LLC",
+        "url": "https://shevato.com"
+      }
+    }
+    </script>
     <!-- Favicon -->
     <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>🏁</text></svg>">
     <link rel="apple-touch-icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><rect width=%22100%22 height=%22100%22 rx=%2220%22 fill=%22%23667eea%22/><text x=%2250%22 y=%2265%22 font-size=%2260%22 text-anchor=%22middle%22>🏁</text></svg>">
@@ -549,7 +599,6 @@
     <script type="module" src="../../sync-system/storage-sync-robust.js"></script>
     <script type="module" src="../../sync-system/app-sync-init.js"></script>
     <script src="../../sync-system/sync-debug.js"></script>
-    <script src="../../sync-system/initial-sync-debug.js"></script>
 
     <!-- Sync Loading Modal (after Firebase is initialized) -->
     <script src="../../sync-system/sync-loading-modal.js"></script>
