@@ -38,7 +38,7 @@ const APP_SYNC_CONFIG = {
   },
   
   'football-h2h': {
-    namespace: 'footballH2HApp', 
+    namespace: 'footballH2HApp',
     keys: [
       'footballH2HGames',         // Main game data
       'footballH2HPlayers',       // Player data
@@ -46,13 +46,11 @@ const APP_SYNC_CONFIG = {
       'footballH2HAutoBackup'     // Backup data
     ]
   },
-  
+
   'gym-tracker': {
     namespace: 'gymTrackerApp',
     keys: [
-      'gymTrackerData',           // Workout data
-      'gymTrainingPlan'           // Training plans
-      // Note: Excluded gymTrackerWelcomeShown (UI state)
+      'gymTrackerWorkouts'        // Workout data
     ]
   }
 };
@@ -64,8 +62,7 @@ const APP_SYNC_CONFIG = {
 export async function initAppSync() {
   // Enable offline persistence once globally
   try {
-    const result = await enablePersistence(db, true);
-    console.log('Firebase persistence:', result.message);
+    await enablePersistence(db, true);
   } catch (error) {
     console.warn('Firebase persistence failed:', error.message);
   }
@@ -89,33 +86,27 @@ export async function initAppSync() {
   // Start sync for current app first
   if (currentApp && APP_SYNC_CONFIG[currentApp]) {
     const config = APP_SYNC_CONFIG[currentApp];
-    
-    console.log(`Starting sync for ${currentApp} with keys:`, config.keys);
-    
+
     const sync = startStorageSync({
       namespace: config.namespace,
       keys: config.keys,
       useFirestore: true
     });
-    
+
     activeSyncs.push({ app: currentApp, sync });
-    console.log(`✅ Sync active for ${currentApp}`);
   }
-  
+
   // Also start sync for other apps so they're ready when user navigates
   // This ensures all app data is available when switching between apps
   for (const [appName, config] of Object.entries(APP_SYNC_CONFIG)) {
     if (appName !== currentApp) { // Don't double-sync current app
-      console.log(`Pre-loading sync for ${appName} with keys:`, config.keys);
-      
       const sync = startStorageSync({
         namespace: config.namespace,
         keys: config.keys,
         useFirestore: true
       });
-      
+
       activeSyncs.push({ app: appName, sync });
-      console.log(`✅ Background sync active for ${appName}`);
     }
   }
 
@@ -126,9 +117,8 @@ export async function initAppSync() {
       keys: ['theme'], // Theme is used across apps
       useFirestore: true
     });
-    
+
     activeSyncs.push({ app: 'global', sync: globalSync });
-    console.log('✅ Global preferences sync active');
   }
 
   return activeSyncs.length;
@@ -140,7 +130,6 @@ export async function initAppSync() {
 export function stopAppSync() {
   stopAllSyncs();
   activeSyncs = [];
-  console.log('🛑 All app syncs stopped');
 }
 
 /**
@@ -168,19 +157,13 @@ export function setupAppSyncIntegration() {
       // Hook into existing auth state changes
       window.firebaseAuth.onAuthStateChange((user) => {
         if (user) {
-          console.log('🔄 User signed in - starting app sync...');
-          initAppSync().then(syncCount => {
-            console.log(`✅ App sync initialized with ${syncCount} active syncs`);
-          }).catch(error => {
+          initAppSync().catch(error => {
             console.error('❌ App sync initialization failed:', error);
           });
         } else {
-          console.log('🔄 User signed out - stopping app sync...');
           stopAppSync();
         }
       });
-      
-      console.log('🔗 App sync integration ready');
     } else {
       // Retry if Firebase Auth not ready yet
       setTimeout(waitForAuth, 100);

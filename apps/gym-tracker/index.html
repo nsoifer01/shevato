@@ -1,570 +1,187 @@
-<!DOCTYPE HTML>
+<!DOCTYPE html>
 <html lang="en">
 <head>
-  <!-- CRITICAL: Load immediate sync FIRST to catch all localStorage calls -->
-  <script src="../../sync-system/sync-immediate.js"></script>
-  
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
-  <meta name="description" content="Track your gym progress, set workout schedules, monitor gains, and achieve your fitness goals">
-  <meta name="theme-color" content="#667eea">
-  <meta name="mobile-web-app-capable" content="yes">
-  <meta name="apple-mobile-web-app-status-bar-style" content="default">
-  <title>Gym Tracker - Fitness Progress</title>
-  
-  <!-- Favicon -->
-  <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>💪</text></svg>">
-  <link rel="apple-touch-icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><rect width=%22100%22 height=%22100%22 rx=%2220%22 fill=%22%23667eea%22/><text x=%2250%22 y=%2265%22 font-size=%2260%22 text-anchor=%22middle%22>💪</text></svg>">
-  
-  <!-- Google Analytics -->
-  <script async src="https://www.googletagmanager.com/gtag/js?id=UA-140119780-1"></script>
-  <script src="/assets/js/analytics.js"></script>
-  
-  <link rel="stylesheet" href="../../assets/css/main.css" />
-  <link rel="stylesheet" href="css/gym-base.css" />
-  <link rel="stylesheet" href="css/gym-theme.css" />
-  <link rel="stylesheet" href="css/gym-animations.css" />
+    <!-- CRITICAL: Load immediate sync FIRST to catch all localStorage calls -->
+    <script src="../../sync-system/sync-immediate.js"></script>
+
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+    <meta name="description" content="Track your gym workouts and monitor your progress">
+    <meta name="theme-color" content="#667eea">
+    <meta name="mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="default">
+    <title>Gym Tracker - Track Your Workouts</title>
+    <!-- Favicon -->
+    <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>💪</text></svg>">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <!-- Import shared CSS modules -->
+    <link rel="stylesheet" href="../mario-kart/css/utilities.css">
+    <link rel="stylesheet" href="../mario-kart/css/base.css">
+    <link rel="stylesheet" href="../mario-kart/css/theme.css">
+    <link rel="stylesheet" href="../mario-kart/css/layout.css">
+    <link rel="stylesheet" href="../mario-kart/css/forms.css">
+    <link rel="stylesheet" href="../../assets/css/main.css" />
+    <link rel="stylesheet" href="../mario-kart/css/mario-kart-overrides.css">
+    <!-- Gym Tracker specific CSS -->
+    <link rel="stylesheet" href="css/gym-tracker.css">
 </head>
-<body class="is-preload gym-tracker">
-  <div data-include="header"></div>
-  
-  <!-- Main App Container -->
-  <div class="gym-app-container">
-    <!-- Navigation Bar -->
-    <nav class="gym-nav">
-      <div class="nav-brand">
-        <span class="brand-icon">💪</span>
-        <span class="brand-text">GymTracker</span>
-      </div>
-      <div class="nav-links">
-        <button class="nav-link active" data-section="dashboard">
-          <i class="icon">📊</i>
-          <span>Dashboard</span>
-        </button>
-        <button class="nav-link" data-section="workout">
-          <i class="icon">🏋️</i>
-          <span>Workout</span>
-        </button>
-        <button class="nav-link" data-section="exercises">
-          <i class="icon">📋</i>
-          <span>Exercises</span>
-        </button>
-        <button class="nav-link" data-section="calendar">
-          <i class="icon">📅</i>
-          <span>Calendar</span>
-        </button>
-        <button class="nav-link" data-section="progress">
-          <i class="icon">📈</i>
-          <span>Progress</span>
-        </button>
-        <button class="nav-link" data-section="training-plans">
-          <i class="icon">📝</i>
-          <span>Plans</span>
-        </button>
-        <button class="nav-link" data-section="settings">
-          <i class="icon">⚙️</i>
-          <span>Settings</span>
-        </button>
-      </div>
-      <button class="nav-toggle" id="navToggle">☰</button>
-    </nav>
-    
-    <!-- Main Content Area -->
-    <main class="gym-main">
-      <!-- Dashboard Section -->
-      <section id="dashboard" class="content-section active">
-        <div class="section-header">
-          <h1>Welcome Back! 👋</h1>
-          <p class="subtitle">Let's crush your fitness goals today!</p>
-        </div>
-        
-        <!-- Quick Stats -->
-        <div class="stats-grid">
-          <div class="stat-card pulse-animation">
-            <div class="stat-icon">🔥</div>
-            <div class="stat-content">
-              <h3>Current Streak</h3>
-              <p class="stat-value" id="currentStreak">0 days</p>
-            </div>
-          </div>
-          <div class="stat-card slide-in">
-            <div class="stat-icon">📅</div>
-            <div class="stat-content">
-              <h3>This Week</h3>
-              <p class="stat-value" id="weeklyWorkouts">0/0 workouts</p>
-            </div>
-          </div>
-          <div class="stat-card slide-in">
-            <div class="stat-icon">🏆</div>
-            <div class="stat-content">
-              <h3>Total Workouts</h3>
-              <p class="stat-value" id="totalWorkouts">0</p>
-            </div>
-          </div>
-          <div class="stat-card slide-in">
-            <div class="stat-icon">💯</div>
-            <div class="stat-content">
-              <h3>Consistency</h3>
-              <p class="stat-value" id="consistency">0%</p>
-            </div>
-          </div>
-        </div>
-        
-        <!-- Quick Actions -->
-        <div class="quick-actions">
-          <button class="action-btn primary" id="startWorkoutBtn">
-            <span class="btn-icon">🚀</span>
-            Start Today's Workout
-          </button>
-          <button class="action-btn secondary" id="quickLogBtn">
-            <span class="btn-icon">⚡</span>
-            Quick Log
-          </button>
-        </div>
-        
-        <!-- Recent Activity -->
-        <div class="recent-activity card">
-          <h2>Recent Activity</h2>
-          <div id="recentActivityList" class="activity-list">
-            <p class="empty-state">No recent workouts. Let's get started! 💪</p>
-          </div>
-        </div>
-      </section>
-      
-      <!-- Workout Section -->
-      <section id="workout" class="content-section">
-        <div class="section-header">
-          <h1>Today's Workout</h1>
-          <button class="btn-secondary" id="changeWorkoutBtn">Change Template</button>
-        </div>
-        
-        <div class="workout-container">
-          <div class="workout-timer card">
-            <h3>Workout Timer</h3>
-            <div class="timer-display" id="workoutTimer">00:00:00</div>
-            <div class="timer-controls">
-              <button class="timer-btn" id="timerStartBtn">Start</button>
-              <button class="timer-btn" id="timerPauseBtn" disabled>Pause</button>
-              <button class="timer-btn" id="timerResetBtn" disabled>Reset</button>
-            </div>
-          </div>
-          
-          <div class="exercise-list card">
-            <h3>Exercises</h3>
-            <div id="currentWorkoutExercises" class="exercises-container">
-              <p class="empty-state">Select a workout template or add exercises</p>
-            </div>
-            <button class="add-exercise-btn" id="addExerciseBtn">+ Add Exercise</button>
-          </div>
-          
-          <div class="workout-actions">
-            <button class="action-btn success" id="completeWorkoutBtn">
-              <span class="btn-icon">✅</span>
-              Complete Workout
-            </button>
-            <button class="action-btn danger" id="cancelWorkoutBtn">
-              <span class="btn-icon">❌</span>
-              Cancel
-            </button>
-          </div>
-        </div>
-      </section>
-      
-      <!-- Exercises Section -->
-      <section id="exercises" class="content-section">
-        <div class="section-header">
-          <h1>Exercise Library</h1>
-          <button class="btn-primary" id="createExerciseBtn">+ Create Exercise</button>
-        </div>
-        
-        <div class="exercise-filters">
-          <input type="text" class="search-input" id="exerciseSearch" placeholder="Search exercises...">
-          <select class="filter-select" id="muscleGroupFilter">
-            <option value="">All Muscle Groups</option>
-            <option value="chest">Chest</option>
-            <option value="back">Back</option>
-            <option value="shoulders">Shoulders</option>
-            <option value="arms">Arms</option>
-            <option value="legs">Legs</option>
-            <option value="core">Core</option>
-            <option value="cardio">Cardio</option>
-          </select>
-        </div>
-        
-        <div class="exercise-grid" id="exerciseGrid">
-          <!-- Exercises will be loaded here -->
-        </div>
-      </section>
-      
-      <!-- Calendar Section -->
-      <section id="calendar" class="content-section">
-        <div class="section-header">
-          <h1>Workout Calendar</h1>
-          <div class="calendar-controls">
-            <button class="cal-nav-btn" id="prevMonthBtn">←</button>
-            <span class="current-month" id="currentMonth">January 2025</span>
-            <button class="cal-nav-btn" id="nextMonthBtn">→</button>
-          </div>
-        </div>
-        
-        <div class="calendar-container card">
-          <div class="calendar-header">
-            <div class="cal-day">Sun</div>
-            <div class="cal-day">Mon</div>
-            <div class="cal-day">Tue</div>
-            <div class="cal-day">Wed</div>
-            <div class="cal-day">Thu</div>
-            <div class="cal-day">Fri</div>
-            <div class="cal-day">Sat</div>
-          </div>
-          <div class="calendar-grid" id="calendarGrid">
-            <!-- Calendar days will be generated here -->
-          </div>
-        </div>
-        
-        <div class="schedule-summary card">
-          <h3>Weekly Schedule</h3>
-          <div id="weeklySchedule" class="schedule-list">
-            <!-- Weekly schedule will be shown here -->
-          </div>
-        </div>
-      </section>
-      
-      <!-- Progress Section -->
-      <section id="progress" class="content-section">
-        <div class="section-header">
-          <h1>Your Progress</h1>
-          <select class="time-filter" id="progressTimeFilter">
-            <option value="week">Last Week</option>
-            <option value="month">Last Month</option>
-            <option value="3months">Last 3 Months</option>
-            <option value="year">Last Year</option>
-          </select>
-        </div>
-        
-        <div class="progress-stats">
-          <div class="progress-card">
-            <h3>Workout Frequency</h3>
-            <canvas id="frequencyChart"></canvas>
-          </div>
-          <div class="progress-card">
-            <h3>Volume Progress</h3>
-            <canvas id="volumeChart"></canvas>
-          </div>
-          <div class="progress-card">
-            <h3>Personal Records</h3>
-            <div id="personalRecords" class="pr-list">
-              <!-- PRs will be listed here -->
-            </div>
-          </div>
-          <div class="progress-card">
-            <h3>Achievements</h3>
-            <div id="achievements" class="achievement-grid">
-              <!-- Achievements will be shown here -->
-            </div>
-          </div>
-        </div>
-      </section>
-      
-      <!-- Training Plans Section -->
-      <section id="training-plans" class="content-section">
-        <div class="section-header">
-          <h1>Training Plans</h1>
-          <div class="header-actions">
-            <button class="btn-primary" id="exportPlanBtn">Export Plan</button>
-            <button class="btn-secondary" id="importPlanBtn">Import Plan</button>
-            <input type="file" id="importPlanFile" accept=".json" style="display: none;">
-          </div>
-        </div>
-        
-        <div class="training-plan-container">
-          <!-- Plan Builder -->
-          <div class="plan-builder card">
-            <h3 id="planBuilderTitle">Create Your Weekly Plan</h3>
-            
-            <div class="day-selector-form">
-              <label for="daySelect">Select Day:</label>
-              <select id="daySelect" class="form-select">
-                <option value="">Choose a day...</option>
-                <option value="Monday">Monday</option>
-                <option value="Tuesday">Tuesday</option>
-                <option value="Wednesday">Wednesday</option>
-                <option value="Thursday">Thursday</option>
-                <option value="Friday">Friday</option>
-                <option value="Saturday">Saturday</option>
-                <option value="Sunday">Sunday</option>
-              </select>
-            </div>
-            
-            <div id="exerciseInputs" class="exercise-inputs" style="display: none;">
-              <h4 id="selectedDayTitle">Exercises for <span id="selectedDayName"></span></h4>
-              
-              <div id="exerciseList" class="exercise-plan-list">
-                <!-- Dynamic exercise inputs will be added here -->
-              </div>
-              
-              <button class="btn-secondary" id="addExerciseToDay">+ Add Exercise</button>
-              <button class="btn-primary" id="saveDayPlan">Save Day Plan</button>
-              <button class="btn-secondary" id="clearDayExercises" style="display: none;">Clear All</button>
-            </div>
-          </div>
-          
-          <!-- Current Plan Display -->
-          <div class="current-plan card">
-            <h3>Your Weekly Training Plan</h3>
-            <div id="weeklyPlanDisplay" class="weekly-plan-display">
-              <p class="empty-state">No training plan created yet. Start by selecting a day above!</p>
-            </div>
-          </div>
-          
-          <!-- Plan Actions -->
-          <div class="plan-actions card">
-            <h3>Plan Management</h3>
-            <div class="action-buttons">
-              <button class="btn-secondary" id="clearPlanBtn">Clear All</button>
-              <button class="btn-secondary" id="backupPlanBtn">Backup to File</button>
-              <button class="btn-primary" id="loadSamplePlanBtn">Load Sample Plan</button>
-            </div>
-          </div>
-        </div>
-      </section>
-      
-      <!-- Settings Section -->
-      <section id="settings" class="content-section">
-        <div class="section-header">
-          <h1>Settings</h1>
-        </div>
-        
-        <div class="settings-container">
-          <div class="settings-group card">
-            <h3>Workout Schedule</h3>
-            <div class="setting-item">
-              <label for="workoutDaysPerWeek">Days per week</label>
-              <input type="number" id="workoutDaysPerWeek" min="1" max="7" value="3">
-            </div>
-            <div class="setting-item">
-              <label>Preferred workout days</label>
-              <div class="day-selector">
-                <label class="day-checkbox">
-                  <input type="checkbox" name="workoutDay" value="0">
-                  <span>Sun</span>
-                </label>
-                <label class="day-checkbox">
-                  <input type="checkbox" name="workoutDay" value="1">
-                  <span>Mon</span>
-                </label>
-                <label class="day-checkbox">
-                  <input type="checkbox" name="workoutDay" value="2">
-                  <span>Tue</span>
-                </label>
-                <label class="day-checkbox">
-                  <input type="checkbox" name="workoutDay" value="3">
-                  <span>Wed</span>
-                </label>
-                <label class="day-checkbox">
-                  <input type="checkbox" name="workoutDay" value="4">
-                  <span>Thu</span>
-                </label>
-                <label class="day-checkbox">
-                  <input type="checkbox" name="workoutDay" value="5">
-                  <span>Fri</span>
-                </label>
-                <label class="day-checkbox">
-                  <input type="checkbox" name="workoutDay" value="6">
-                  <span>Sat</span>
-                </label>
-              </div>
-            </div>
-          </div>
-          
-          <div class="settings-group card">
-            <h3>Personal Info</h3>
-            <div class="setting-item">
-              <label for="userName">Name</label>
-              <input type="text" id="userName" placeholder="Your name">
-            </div>
-            <div class="setting-item">
-              <label for="userWeight">Weight</label>
-              <div class="input-group">
-                <input type="number" id="userWeight" placeholder="0">
-                <select id="weightUnit">
-                  <option value="lbs">lbs</option>
-                  <option value="kg">kg</option>
-                </select>
-              </div>
-            </div>
-          </div>
-          
-          <div class="settings-group card">
-            <h3>Data Management</h3>
-            <button class="btn-secondary" id="exportDataBtn">Export Data</button>
-            <button class="btn-secondary" id="importDataBtn">Import Data</button>
-            <button class="btn-danger" id="clearDataBtn">Clear All Data</button>
-          </div>
-          
-          <div class="settings-group card">
-            <h3>Help & Info</h3>
-            <button class="btn-primary" id="showWelcomeBtn">Show Welcome Guide</button>
-          </div>
-          
-        </div>
-      </section>
-    </main>
-  </div>
-  
-  <!-- Modals -->
-  <!-- Exercise Modal -->
-  <div class="modal" id="exerciseModal">
-    <div class="modal-content">
-      <div class="modal-header">
-        <h2 id="exerciseModalTitle">Add Exercise</h2>
-        <button class="modal-close">&times;</button>
-      </div>
-      <form id="exerciseForm">
-        <div class="form-group">
-          <label for="exerciseName">Exercise Name</label>
-          <input type="text" id="exerciseName" required>
-        </div>
-        <div class="form-group">
-          <label for="exerciseMuscleGroup">Muscle Group</label>
-          <select id="exerciseMuscleGroup" required>
-            <option value="">Select muscle group</option>
-            <option value="chest">Chest</option>
-            <option value="back">Back</option>
-            <option value="shoulders">Shoulders</option>
-            <option value="arms">Arms</option>
-            <option value="legs">Legs</option>
-            <option value="core">Core</option>
-            <option value="cardio">Cardio</option>
-          </select>
-        </div>
-        <div class="form-group">
-          <label for="exerciseType">Exercise Type</label>
-          <select id="exerciseType" required>
-            <option value="strength">Strength</option>
-            <option value="cardio">Cardio</option>
-            <option value="flexibility">Flexibility</option>
-          </select>
-        </div>
-        <div class="form-actions">
-          <button type="submit" class="btn-primary">Save Exercise</button>
-          <button type="button" class="btn-secondary modal-close">Cancel</button>
-        </div>
-      </form>
-    </div>
-  </div>
-  
-  <!-- Exercise Picker Modal for Training Plans -->
-  <div class="modal" id="exercisePickerModal">
-    <div class="modal-content">
-      <div class="modal-header">
-        <h2>Select Exercise</h2>
-        <button class="modal-close">&times;</button>
-      </div>
-      <div class="modal-body">
-        <input type="text" id="exercisePickerSearch" class="search-input" placeholder="Search exercises...">
-        <div class="exercise-picker-filters">
-          <select id="exercisePickerMuscleFilter" class="filter-select">
-            <option value="">All Muscle Groups</option>
-            <option value="chest">Chest</option>
-            <option value="back">Back</option>
-            <option value="shoulders">Shoulders</option>
-            <option value="arms">Arms</option>
-            <option value="legs">Legs</option>
-            <option value="core">Core</option>
-            <option value="cardio">Cardio</option>
-          </select>
-        </div>
-        <div id="exercisePickerList" class="exercise-picker-list">
-          <!-- Exercise options will be loaded here -->
-        </div>
-      </div>
-    </div>
-  </div>
-  
-  <!-- Workout Set Modal -->
-  <div class="modal" id="setModal">
-    <div class="modal-content small">
-      <div class="modal-header">
-        <h2>Log Set</h2>
-        <button class="modal-close">&times;</button>
-      </div>
-      <form id="setForm">
-        <div class="form-group">
-          <label for="setWeight">Weight</label>
-          <input type="number" id="setWeight" step="0.5" placeholder="0">
-        </div>
-        <div class="form-group">
-          <label for="setReps">Reps</label>
-          <input type="number" id="setReps" min="1" placeholder="0">
-        </div>
-        <div class="form-actions">
-          <button type="submit" class="btn-primary">Save Set</button>
-          <button type="button" class="btn-secondary modal-close">Cancel</button>
-        </div>
-      </form>
-    </div>
-  </div>
-  
-  <!-- Footer -->
-  <footer id="footer">
-    <div class="inner">
-      <div class="content">
-        <section>
-          <h4>Contact Us</h4>
-          <ul class="plain">
-            <li><a href="mailto:nikita@shevato.com"><i class="icon fa-envelope">&nbsp;</i>nikita@shevato.com</a></li>
-            <li><a href="tel:+1504-638-3370"><i class="icon fa-phone">&nbsp;</i>+1 (504) 638-3370</a></li>
-            <li><a href="https://www.linkedin.com/in/nikitasoifer/"><i class="icon fa-linkedin">&nbsp;</i>LinkedIn</a></li>
-          </ul>
-        </section>
-      </div>
-      <div class="copyright">
-        &copy; Copyright <span id="year"></span>, Shevato LLC
-      </div>
-    </div>
-  </footer>
-  
-  <!-- Scripts -->
-  <script src="../../assets/js/passive-events-fix.js"></script>
-  <script src="../../assets/js/jquery.min.js"></script>
-  <script src="../../assets/js/browser.min.js"></script>
-  <script src="../../assets/js/breakpoints.min.js"></script>
-  <script src="../../assets/js/util.js"></script>
-  
-  <!-- Firebase SDK (required for auth functionality) -->
-  <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
-  <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-auth-compat.js"></script>
+<body class="mario-kart-app gym-tracker">
+    <div data-include="header"></div>
 
-  <!-- Firebase Storage Sync System (ES Modules) -->
-  <script type="module" src="../../firebase-config.js"></script>
-  <script type="module" src="../../sync-system/firebase-persistence.js"></script>
-  <script type="module" src="../../sync-system/storage-sync-robust.js"></script>
-  <script type="module" src="../../sync-system/app-sync-init.js"></script>
-  <script src="../../sync-system/sync-debug.js"></script>
+    <!-- Main Container -->
+    <div class="app-container">
+        <div class="main-wrapper">
+            <!-- Header Section -->
+            <header class="app-header">
+                <h1 class="app-title">
+                    <span class="gym-icon">💪</span>
+                    Gym Tracker
+                    <span class="gym-icon">🏋️</span>
+                </h1>
+            </header>
 
-  <!-- Sync Loading Modal (after Firebase is initialized) -->
-  <script src="../../sync-system/sync-loading-modal.js"></script>
-  <script src="../../sync-system/sync-modal-integration.js"></script>
-  
-  <!-- Main JavaScript -->
-  <script src="../../assets/js/main.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-  
-  <!-- Gym Tracker Scripts -->
-  <script src="js/exercise-database.js"></script>
-  <script src="js/gym-data-enhanced.js"></script>
-  <script src="js/gym-exercises.js"></script>
-  <script src="js/gym-workout.js"></script>
-  <script src="js/gym-calendar.js"></script>
-  <script src="js/gym-progress.js"></script>
-  <script src="js/gym-ui.js"></script>
-  <script src="js/gym-training-plans.js"></script>
-  <script src="js/gym-main.js"></script>
-  
-  <!-- Unified initialization - must be loaded LAST -->
-  <script src="js/gym-init.js"></script>
-  
-  <script src="/assets/js/year-updater.js"></script>
+            <!-- Quick Add Workout Form -->
+            <section class="quick-add-section">
+                <h2 class="section-title">Quick Add Workout</h2>
+                <form class="quick-add-form" id="quickAddForm">
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label for="exerciseName">Exercise</label>
+                            <input type="text" id="exerciseName" placeholder="Bench Press" required autocomplete="off">
+                        </div>
+                        <div class="form-group small">
+                            <label for="sets">Sets</label>
+                            <input type="number" id="sets" min="1" value="3" required>
+                        </div>
+                        <div class="form-group small">
+                            <label for="reps">Reps</label>
+                            <input type="number" id="reps" min="1" value="10" required>
+                        </div>
+                        <div class="form-group small">
+                            <label for="weight">Weight (kg)</label>
+                            <input type="number" id="weight" min="0" step="0.5" value="0" required>
+                        </div>
+                    </div>
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label for="notes">Notes (optional)</label>
+                            <input type="text" id="notes" placeholder="Optional notes">
+                        </div>
+                        <div class="form-group small">
+                            <label for="workoutDate">Date</label>
+                            <input type="date" id="workoutDate" required>
+                        </div>
+                        <div class="form-group action">
+                            <button type="submit" class="add-btn">💪 Add</button>
+                        </div>
+                    </div>
+                    <div class="form-error" id="formError"></div>
+                </form>
+            </section>
+
+            <!-- Statistics Section -->
+            <section class="stats-overview">
+                <div class="stats-grid">
+                    <div class="stat-card">
+                        <div class="stat-label">Total Workouts</div>
+                        <div class="stat-value" id="totalWorkouts">0</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-label">Total Exercises</div>
+                        <div class="stat-value" id="totalExercises">0</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-label">Total Volume (kg)</div>
+                        <div class="stat-value" id="totalVolume">0</div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Workout History Table -->
+            <section class="game-history">
+                <h2 class="section-title">Workout History</h2>
+                <div class="table-container">
+                    <table class="games-table" id="workoutsTable">
+                        <thead>
+                            <tr>
+                                <th>Date</th>
+                                <th>Exercise</th>
+                                <th>Sets</th>
+                                <th>Reps</th>
+                                <th>Weight (kg)</th>
+                                <th>Volume (kg)</th>
+                                <th>Notes</th>
+                                <th>Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody id="workoutsTableBody">
+                            <!-- Workouts will be populated here -->
+                        </tbody>
+                    </table>
+                    <div class="no-games" id="noWorkouts">
+                        <p>No workouts recorded yet. Add your first workout above!</p>
+                    </div>
+                </div>
+            </section>
+        </div>
+    </div>
+
+    <div data-include="footer"></div>
+
+    <!-- Include Scripts -->
+    <script src="../../assets/js/passive-events-fix.js"></script>
+    <script src="../../assets/js/jquery.min.js"></script>
+    <script src="../../assets/js/browser.min.js"></script>
+    <script src="../../assets/js/breakpoints.min.js"></script>
+    <script src="../../assets/js/util.js"></script>
+
+    <!-- Firebase SDK (required for auth functionality) -->
+    <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-auth-compat.js"></script>
+
+    <!-- Firebase Storage Sync System (ES Modules) -->
+    <script type="module" src="../../firebase-config.js"></script>
+    <script type="module" src="../../sync-system/firebase-persistence.js"></script>
+    <script type="module" src="../../sync-system/storage-sync-robust.js"></script>
+    <script type="module" src="../../sync-system/app-sync-init.js"></script>
+    <script src="../../sync-system/sync-debug.js"></script>
+
+    <!-- Sync Loading Modal (after Firebase is initialized) -->
+    <script src="../../sync-system/sync-loading-modal.js"></script>
+    <script src="../../sync-system/sync-modal-integration.js"></script>
+
+    <!-- Main JavaScript (includes Firebase config and auth) -->
+    <script src="../../assets/js/main.js"></script>
+    <script>
+        // Minimal include functionality for Gym Tracker app
+        jQuery(document).ready(function($) {
+            var includes = $('[data-include]');
+
+            jQuery.each(includes, function(){
+                var includeFile = $(this).data('include') + '.html';
+                var basePath = '../../partials/';
+                var file = basePath + includeFile;
+                var $element = $(this);
+
+                $.ajax({
+                    url: file,
+                    type: 'GET',
+                    success: function(data) {
+                        $element.html(data);
+                    },
+                    error: function() {
+                        // Silently fail if header/footer not found
+                        $element.remove();
+                    }
+                });
+            });
+        });
+    </script>
+    <script>
+        // Apply consistent theme
+        document.body.classList.add('theme');
+        localStorage.setItem('theme', 'true');
+    </script>
+    <script src="js/gym-tracker.js"></script>
 </body>
 </html>
