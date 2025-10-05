@@ -17,8 +17,6 @@
   
   // Immediate override - captures ALL changes
   localStorage.setItem = function(key, value) {
-    console.log(`🟡 IMMEDIATE: localStorage.setItem("${key}", ...)`);
-    
     // Call original first
     originalSetItem.call(this, key, value);
     
@@ -36,8 +34,6 @@
   };
   
   localStorage.removeItem = function(key) {
-    console.log(`🟡 IMMEDIATE: localStorage.removeItem("${key}")`);
-    
     originalRemoveItem.call(this, key);
     
     pendingChanges.set(key, {

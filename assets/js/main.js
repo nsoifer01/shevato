@@ -1,6 +1,5 @@
 /**
  * Global Enhanced JavaScript
- * Consolidated JavaScript following .claude_rules guidelines
  * Includes: Firebase Config, Auth, UI, and Main site functionality
  * 
  * Dependencies: jQuery, Firebase SDK (loaded from CDN)
