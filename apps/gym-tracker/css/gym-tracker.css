@@ -363,3 +363,28 @@
         -webkit-overflow-scrolling: touch;
     }
 }
+
+/* Sticky Footer Solution for Gym Tracker */
+html, body {
+  height: 100%;
+}
+
+body.gym-tracker {
+  display: flex;
+  flex-direction: column;
+  min-height: 100vh;
+}
+
+.gym-tracker .app-container {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+}
+
+.gym-tracker .main-wrapper {
+  flex: 1;
+}
+
+#footer {
+  margin-top: auto;
+}
