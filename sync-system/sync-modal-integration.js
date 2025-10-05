@@ -19,7 +19,6 @@
   const SYNC_REFRESH_KEY = 'syncModalJustRefreshed';
   const justRefreshed = sessionStorage.getItem(SYNC_REFRESH_KEY);
   if (justRefreshed) {
-    console.log('🔄 Page was just refreshed by sync modal, skipping modal for this session');
     sessionStorage.removeItem(SYNC_REFRESH_KEY);
     isInitialPageLoad = false; // Treat as if modal already handled
   }
@@ -52,23 +51,19 @@
   function setupAuthListener() {
     // Wait for both Firebase compat and the modern auth system
     if (!window.firebase || !window.firebase.auth) {
-      console.log('⏳ Waiting for Firebase auth to be available...');
       setTimeout(setupAuthListener, 200);
       return;
     }
-    
+
     // Additional check for Firebase app initialization
     try {
       const auth = window.firebase.auth();
-      
+
       // Check if Firebase app is properly initialized
       if (!auth.app || !auth.app.options) {
-        console.log('⏳ Firebase app not fully initialized, waiting...');
         setTimeout(setupAuthListener, 200);
         return;
       }
-      
-      console.log('✅ Firebase auth ready, setting up listener');
       
       auth.onAuthStateChanged((user) => {
         const currentUserId = user ? user.uid : null;
@@ -87,20 +82,17 @@
             
             // Store when we last showed the modal
             sessionStorage.setItem('lastSyncModalTime', now.toString());
-            
-            console.log('🔐 New user sign-in detected, showing sync modal');
+
             showSyncModal();
-            
+
             // Start checking for sync completion
             checkForSyncCompletion();
           } else {
-            console.log('🕐 Sync modal shown recently, skipping to prevent spam');
             lastKnownUserId = currentUserId;
           }
-          
+
         } else if (user && isInitialPageLoad) {
           // User was already signed in on page load - no modal needed
-          console.log('👤 User already authenticated on page load, skipping sync modal');
           lastKnownUserId = currentUserId;
           
         } else if (!user && userJustSignedIn) {
@@ -119,7 +111,6 @@
       
     } catch (error) {
       console.warn('Firebase auth setup error:', error.message);
-      console.log('⏳ Retrying Firebase auth setup...');
       setTimeout(setupAuthListener, 500);
     }
   }
@@ -137,11 +128,10 @@
     
     function monitorChanges(key, value) {
       // Count meaningful changes (not just auth tokens or UI state)
-      if (key && !key.includes('firebase:') && !key.includes('Auth') && 
+      if (key && !key.includes('firebase:') && !key.includes('Auth') &&
           !key.includes('Welcome') && !key.includes('theme')) {
         changeCount++;
-        console.log(`📦 Sync change detected: ${key} (${changeCount} total changes)`);
-        
+
         // If we've seen some changes, consider sync complete
         if (changeCount >= 1) {
           completeSyncProcess();
@@ -165,22 +155,18 @@
     // Timeout fallback
     setTimeout(() => {
       if (awaitingInitialSync) {
-        console.log('🕐 Sync timeout reached, completing sync process');
         completeSyncProcess();
       }
     }, maxWaitTime);
-    
+
     function completeSyncProcess() {
       if (!awaitingInitialSync) return;
-      
+
       awaitingInitialSync = false;
       syncCompleted = true;
-      
+
       // Restore original setItem
       localStorage.setItem = originalSetItem;
-      
-      const syncDuration = Date.now() - startTime;
-      console.log(`✅ Sync completed after ${syncDuration}ms with ${changeCount} changes`);
       
       // Show completion message briefly, then refresh
       if (window.SyncLoadingModal) {
@@ -201,7 +187,6 @@
   function delayedInitialization() {
     // Give Firebase scripts time to load and initialize
     setTimeout(() => {
-      console.log('🚀 Starting sync modal auth listener setup');
       setupAuthListener();
     }, 1000);
   }
@@ -219,14 +204,11 @@
     isAwaitingSync: () => awaitingInitialSync,
     markSyncComplete: () => {
       if (awaitingInitialSync) {
-        console.log('🎯 Sync manually marked as complete');
         awaitingInitialSync = false;
         hideSyncModal();
         setTimeout(() => window.location.reload(), 500);
       }
     }
   };
-  
-  console.log('✅ Sync modal integration initialized');
   
 })();
