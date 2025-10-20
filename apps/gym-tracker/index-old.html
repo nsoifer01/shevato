@@ -1,0 +1,187 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <!-- CRITICAL: Load immediate sync FIRST to catch all localStorage calls -->
+    <script src="../../sync-system/sync-immediate.js"></script>
+
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+    <meta name="description" content="Track your gym workouts and monitor your progress">
+    <meta name="theme-color" content="#667eea">
+    <meta name="mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="default">
+    <title>Gym Tracker - Track Your Workouts</title>
+    <!-- Favicon -->
+    <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>💪</text></svg>">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <!-- Import shared CSS modules -->
+    <link rel="stylesheet" href="../mario-kart/css/utilities.css">
+    <link rel="stylesheet" href="../mario-kart/css/base.css">
+    <link rel="stylesheet" href="../mario-kart/css/theme.css">
+    <link rel="stylesheet" href="../mario-kart/css/layout.css">
+    <link rel="stylesheet" href="../mario-kart/css/forms.css">
+    <link rel="stylesheet" href="../../assets/css/main.css" />
+    <link rel="stylesheet" href="../mario-kart/css/mario-kart-overrides.css">
+    <!-- Gym Tracker specific CSS -->
+    <link rel="stylesheet" href="css/gym-tracker.css">
+</head>
+<body class="mario-kart-app gym-tracker">
+    <div data-include="header"></div>
+
+    <!-- Main Container -->
+    <div class="app-container">
+        <div class="main-wrapper">
+            <!-- Header Section -->
+            <header class="app-header">
+                <h1 class="app-title">
+                    <span class="gym-icon">💪</span>
+                    Gym Tracker
+                    <span class="gym-icon">🏋️</span>
+                </h1>
+            </header>
+
+            <!-- Quick Add Workout Form -->
+            <section class="quick-add-section">
+                <h2 class="section-title">Quick Add Workout</h2>
+                <form class="quick-add-form" id="quickAddForm">
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label for="exerciseName">Exercise</label>
+                            <input type="text" id="exerciseName" placeholder="Bench Press" required autocomplete="off">
+                        </div>
+                        <div class="form-group small">
+                            <label for="sets">Sets</label>
+                            <input type="number" id="sets" min="1" value="3" required>
+                        </div>
+                        <div class="form-group small">
+                            <label for="reps">Reps</label>
+                            <input type="number" id="reps" min="1" value="10" required>
+                        </div>
+                        <div class="form-group small">
+                            <label for="weight">Weight (kg)</label>
+                            <input type="number" id="weight" min="0" step="0.5" value="0" required>
+                        </div>
+                    </div>
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label for="notes">Notes (optional)</label>
+                            <input type="text" id="notes" placeholder="Optional notes">
+                        </div>
+                        <div class="form-group small">
+                            <label for="workoutDate">Date</label>
+                            <input type="date" id="workoutDate" required>
+                        </div>
+                        <div class="form-group action">
+                            <button type="submit" class="add-btn">💪 Add</button>
+                        </div>
+                    </div>
+                    <div class="form-error" id="formError"></div>
+                </form>
+            </section>
+
+            <!-- Statistics Section -->
+            <section class="stats-overview">
+                <div class="stats-grid">
+                    <div class="stat-card">
+                        <div class="stat-label">Total Workouts</div>
+                        <div class="stat-value" id="totalWorkouts">0</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-label">Total Exercises</div>
+                        <div class="stat-value" id="totalExercises">0</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-label">Total Volume (kg)</div>
+                        <div class="stat-value" id="totalVolume">0</div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Workout History Table -->
+            <section class="game-history">
+                <h2 class="section-title">Workout History</h2>
+                <div class="table-container">
+                    <table class="games-table" id="workoutsTable">
+                        <thead>
+                            <tr>
+                                <th>Date</th>
+                                <th>Exercise</th>
+                                <th>Sets</th>
+                                <th>Reps</th>
+                                <th>Weight (kg)</th>
+                                <th>Volume (kg)</th>
+                                <th>Notes</th>
+                                <th>Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody id="workoutsTableBody">
+                            <!-- Workouts will be populated here -->
+                        </tbody>
+                    </table>
+                    <div class="no-games" id="noWorkouts">
+                        <p>No workouts recorded yet. Add your first workout above!</p>
+                    </div>
+                </div>
+            </section>
+        </div>
+    </div>
+
+    <div data-include="footer"></div>
+
+    <!-- Include Scripts -->
+    <script src="../../assets/js/passive-events-fix.js"></script>
+    <script src="../../assets/js/jquery.min.js"></script>
+    <script src="../../assets/js/browser.min.js"></script>
+    <script src="../../assets/js/breakpoints.min.js"></script>
+    <script src="../../assets/js/util.js"></script>
+
+    <!-- Firebase SDK (required for auth functionality) -->
+    <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-auth-compat.js"></script>
+
+    <!-- Firebase Storage Sync System (ES Modules) -->
+    <script type="module" src="../../firebase-config.js"></script>
+    <script type="module" src="../../sync-system/firebase-persistence.js"></script>
+    <script type="module" src="../../sync-system/storage-sync-robust.js"></script>
+    <script type="module" src="../../sync-system/app-sync-init.js"></script>
+    <script src="../../sync-system/sync-debug.js"></script>
+
+    <!-- Sync Loading Modal (after Firebase is initialized) -->
+    <script src="../../sync-system/sync-loading-modal.js"></script>
+    <script src="../../sync-system/sync-modal-integration.js"></script>
+
+    <!-- Main JavaScript (includes Firebase config and auth) -->
+    <script src="../../assets/js/main.js"></script>
+    <script>
+        // Minimal include functionality for Gym Tracker app
+        jQuery(document).ready(function($) {
+            var includes = $('[data-include]');
+
+            jQuery.each(includes, function(){
+                var includeFile = $(this).data('include') + '.html';
+                var basePath = '../../partials/';
+                var file = basePath + includeFile;
+                var $element = $(this);
+
+                $.ajax({
+                    url: file,
+                    type: 'GET',
+                    success: function(data) {
+                        $element.html(data);
+                    },
+                    error: function() {
+                        // Silently fail if header/footer not found
+                        $element.remove();
+                    }
+                });
+            });
+        });
+    </script>
+    <script>
+        // Apply consistent theme
+        document.body.classList.add('theme');
+        localStorage.setItem('theme', 'true');
+    </script>
+    <script src="js/gym-tracker.js"></script>
+</body>
+</html>

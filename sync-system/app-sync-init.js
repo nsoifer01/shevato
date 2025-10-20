@@ -50,7 +50,12 @@ const APP_SYNC_CONFIG = {
   'gym-tracker': {
     namespace: 'gymTrackerApp',
     keys: [
-      'gymTrackerWorkouts'        // Workout data
+      'gymTrackerPrograms',       // Workout programs
+      'gymTrackerSessions',       // Workout sessions/history
+      'gymTrackerSettings',       // User settings
+      'gymTrackerAchievements',   // Unlocked achievements
+      'gymTrackerActiveProgram',  // Currently active program ID
+      'gymTrackerCustomExercises' // User-created custom exercises
     ]
   }
 };
