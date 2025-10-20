@@ -7,126 +7,699 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
     <meta name="description" content="Track your gym workouts and monitor your progress">
-    <meta name="theme-color" content="#667eea">
+    <meta name="theme-color" content="#1a1a2e">
     <meta name="mobile-web-app-capable" content="yes">
-    <meta name="apple-mobile-web-app-status-bar-style" content="default">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     <title>Gym Tracker - Track Your Workouts</title>
+
     <!-- Favicon -->
     <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>💪</text></svg>">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+
     <!-- Import shared CSS modules -->
     <link rel="stylesheet" href="../mario-kart/css/utilities.css">
     <link rel="stylesheet" href="../mario-kart/css/base.css">
-    <link rel="stylesheet" href="../mario-kart/css/theme.css">
-    <link rel="stylesheet" href="../mario-kart/css/layout.css">
-    <link rel="stylesheet" href="../mario-kart/css/forms.css">
     <link rel="stylesheet" href="../../assets/css/main.css" />
-    <link rel="stylesheet" href="../mario-kart/css/mario-kart-overrides.css">
+
     <!-- Gym Tracker specific CSS -->
     <link rel="stylesheet" href="css/gym-tracker.css">
 </head>
-<body class="mario-kart-app gym-tracker">
+<body class="gym-tracker">
     <div data-include="header"></div>
 
-    <!-- Main Container -->
+    <!-- Main App Container -->
     <div class="app-container">
-        <div class="main-wrapper">
-            <!-- Header Section -->
-            <header class="app-header">
-                <h1 class="app-title">
-                    <span class="gym-icon">💪</span>
-                    Gym Tracker
-                    <span class="gym-icon">🏋️</span>
-                </h1>
-            </header>
+        <!-- Bottom Navigation (Mobile) -->
+        <nav class="bottom-nav">
+            <button class="nav-item active" data-view="home">
+                <i class="fas fa-home"></i>
+                <span>Home</span>
+            </button>
+            <button class="nav-item" data-view="programs">
+                <i class="fas fa-list"></i>
+                <span>Programs</span>
+            </button>
+            <button class="nav-item workout-btn" data-view="workout">
+                <i class="fas fa-dumbbell"></i>
+                <span>Workout</span>
+            </button>
+            <button class="nav-item" data-view="history">
+                <i class="fas fa-chart-line"></i>
+                <span>History</span>
+            </button>
+            <button class="nav-item" data-view="more">
+                <i class="fas fa-ellipsis-h"></i>
+                <span>More</span>
+            </button>
+        </nav>
 
-            <!-- Quick Add Workout Form -->
-            <section class="quick-add-section">
-                <h2 class="section-title">Quick Add Workout</h2>
-                <form class="quick-add-form" id="quickAddForm">
-                    <div class="form-row">
-                        <div class="form-group">
-                            <label for="exerciseName">Exercise</label>
-                            <input type="text" id="exerciseName" placeholder="Bench Press" required autocomplete="off">
-                        </div>
-                        <div class="form-group small">
-                            <label for="sets">Sets</label>
-                            <input type="number" id="sets" min="1" value="3" required>
-                        </div>
-                        <div class="form-group small">
-                            <label for="reps">Reps</label>
-                            <input type="number" id="reps" min="1" value="10" required>
-                        </div>
-                        <div class="form-group small">
-                            <label for="weight">Weight (kg)</label>
-                            <input type="number" id="weight" min="0" step="0.5" value="0" required>
+        <!-- Side Navigation (Desktop) -->
+        <nav class="side-nav">
+            <div class="nav-header">
+                <h2>💪 Gym Tracker</h2>
+            </div>
+            <div class="nav-links">
+                <button class="nav-link active" data-view="home">
+                    <i class="fas fa-home"></i>
+                    <span>Dashboard</span>
+                </button>
+                <button class="nav-link" data-view="programs">
+                    <i class="fas fa-list"></i>
+                    <span>Programs</span>
+                </button>
+                <button class="nav-link" data-view="workout">
+                    <i class="fas fa-dumbbell"></i>
+                    <span>Workout</span>
+                </button>
+                <button class="nav-link" data-view="history">
+                    <i class="fas fa-chart-line"></i>
+                    <span>History</span>
+                </button>
+                <button class="nav-link" data-view="exercises">
+                    <i class="fas fa-running"></i>
+                    <span>Exercises</span>
+                </button>
+                <button class="nav-link" data-view="calendar">
+                    <i class="fas fa-calendar"></i>
+                    <span>Calendar</span>
+                </button>
+                <button class="nav-link" data-view="achievements">
+                    <i class="fas fa-trophy"></i>
+                    <span>Achievements</span>
+                </button>
+                <button class="nav-link" data-view="settings">
+                    <i class="fas fa-cog"></i>
+                    <span>Settings</span>
+                </button>
+            </div>
+        </nav>
+
+        <!-- Main Content Area -->
+        <main class="main-content">
+            <!-- HOME / DASHBOARD VIEW -->
+            <div id="home-view" class="view active">
+                <div class="view-header">
+                    <h1>Dashboard</h1>
+                    <p class="subtitle">Track your fitness journey</p>
+                </div>
+
+                <!-- Active Program -->
+                <section class="section">
+                    <div id="active-program-card" class="program-card">
+                        <div class="empty-state">
+                            <i class="fas fa-folder-open"></i>
+                            <p>No active program</p>
+                            <button class="btn btn-primary" data-view="programs">Create Program</button>
                         </div>
                     </div>
-                    <div class="form-row">
-                        <div class="form-group">
-                            <label for="notes">Notes (optional)</label>
-                            <input type="text" id="notes" placeholder="Optional notes">
-                        </div>
-                        <div class="form-group small">
-                            <label for="workoutDate">Date</label>
-                            <input type="date" id="workoutDate" required>
-                        </div>
-                        <div class="form-group action">
-                            <button type="submit" class="add-btn">💪 Add</button>
+                </section>
+
+                <!-- Recent Workouts -->
+                <section class="section">
+                    <div class="section-header">
+                        <h2>Recent Workouts</h2>
+                        <button class="btn-text" data-view="history">View All</button>
+                    </div>
+                    <div id="recent-workouts" class="workout-list">
+                        <div class="empty-state">
+                            <i class="fas fa-dumbbell"></i>
+                            <p>No workouts yet</p>
+                            <button class="btn btn-primary" data-view="workout">Start Workout</button>
                         </div>
                     </div>
-                    <div class="form-error" id="formError"></div>
+                </section>
+
+                <!-- Recent Achievements -->
+                <section class="section">
+                    <div class="section-header">
+                        <h2>Recent Achievements</h2>
+                        <button class="btn-text" data-view="achievements">View All</button>
+                    </div>
+                    <div id="recent-achievements" class="achievement-list">
+                        <!-- Will be populated by JS -->
+                    </div>
+                </section>
+            </div>
+
+            <!-- PROGRAMS VIEW -->
+            <div id="programs-view" class="view">
+                <div class="view-header">
+                    <h1>Programs</h1>
+                    <button class="btn btn-primary" id="create-program-btn">
+                        <i class="fas fa-plus"></i> Create Program
+                    </button>
+                </div>
+
+                <div id="programs-list" class="programs-grid">
+                    <!-- Will be populated by JS -->
+                </div>
+
+                <!-- Create/Edit Program Modal -->
+                <div id="program-modal" class="modal">
+                    <div class="modal-content">
+                        <div class="modal-header">
+                            <h2 id="program-modal-title">Create Program</h2>
+                            <button class="modal-close">&times;</button>
+                        </div>
+                        <div class="modal-body">
+                            <form id="program-form">
+                                <div class="form-group">
+                                    <label for="program-name">Program Name</label>
+                                    <input type="text" id="program-name" placeholder="e.g., Full Body Workout" required>
+                                </div>
+                                <div class="form-group">
+                                    <label for="program-description">Description (Optional)</label>
+                                    <textarea id="program-description" placeholder="Program details..." rows="3"></textarea>
+                                </div>
+
+                                <h3>Exercises</h3>
+                                <div id="program-exercises-list">
+                                    <!-- Exercises will be added here -->
+                                </div>
+                                <button type="button" class="btn btn-secondary" id="add-exercise-to-program-btn">
+                                    <i class="fas fa-plus"></i> Add Exercise
+                                </button>
+
+                                <div class="form-actions">
+                                    <button type="button" class="btn btn-secondary modal-close">Cancel</button>
+                                    <button type="submit" class="btn btn-primary">Save Program</button>
+                                </div>
+                            </form>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Exercise Picker Modal -->
+                <div id="exercise-picker-modal" class="modal">
+                    <div class="modal-content large">
+                        <div class="modal-header">
+                            <h2>Select Exercise</h2>
+                            <button class="modal-close">&times;</button>
+                        </div>
+                        <div class="modal-body">
+                            <div class="exercise-picker-search">
+                                <input type="text" id="exercise-search" placeholder="Search exercises...">
+                                <div class="exercise-filters">
+                                    <select id="exercise-category-filter">
+                                        <option value="">All Categories</option>
+                                        <option value="chest">Chest</option>
+                                        <option value="back">Back</option>
+                                        <option value="shoulders">Shoulders</option>
+                                        <option value="quads">Quads</option>
+                                        <option value="hamstrings">Hamstrings</option>
+                                        <option value="calves">Calves</option>
+                                        <option value="biceps">Biceps</option>
+                                        <option value="triceps">Triceps</option>
+                                        <option value="core">Core</option>
+                                        <option value="full-body">Full Body</option>
+                                    </select>
+                                    <select id="exercise-equipment-filter">
+                                        <option value="">All Equipment</option>
+                                        <option value="barbell">Barbell</option>
+                                        <option value="dumbbell">Dumbbell</option>
+                                        <option value="cable">Cable</option>
+                                        <option value="machine">Machine</option>
+                                        <option value="bodyweight">Bodyweight</option>
+                                    </select>
+                                </div>
+                            </div>
+                            <div id="exercise-picker-list" class="exercise-grid">
+                                <!-- Will be populated by JS -->
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- WORKOUT VIEW (Mobile-Optimized) -->
+            <div id="workout-view" class="view">
+                <!-- Workout Selection Screen -->
+                <div id="workout-selection" class="workout-screen active">
+                    <div class="view-header">
+                        <h1>Start Workout</h1>
+                        <p class="subtitle">Choose a program to begin</p>
+                    </div>
+                    <div id="workout-program-list">
+                        <!-- Will be populated by JS -->
+                    </div>
+                </div>
+
+                <!-- Active Workout Screen -->
+                <div id="active-workout" class="workout-screen">
+                    <div class="workout-header">
+                        <button class="btn-icon" id="end-workout-btn">
+                            <i class="fas fa-times"></i>
+                        </button>
+                        <div class="workout-info">
+                            <h2 id="workout-title">Workout</h2>
+                            <div class="workout-timer">
+                                <i class="fas fa-clock"></i>
+                                <span id="workout-time">0:00</span>
+                            </div>
+                        </div>
+                        <button class="btn-icon" id="finish-workout-btn">
+                            <i class="fas fa-check"></i>
+                        </button>
+                    </div>
+
+                    <div class="workout-content">
+                        <div id="workout-exercises-list">
+                            <!-- Exercises will be populated dynamically -->
+                        </div>
+                    </div>
+
+                    <!-- Rest Timer Modal -->
+                    <div id="rest-timer-modal" class="modal">
+                        <div class="modal-content small">
+                            <div class="rest-timer-content">
+                                <h3>Rest Timer</h3>
+                                <div class="rest-timer-display">
+                                    <div id="rest-timer-value">90</div>
+                                    <div class="rest-timer-label">seconds</div>
+                                </div>
+                                <div class="rest-timer-actions">
+                                    <button class="btn btn-secondary" id="skip-rest-btn">Skip</button>
+                                    <button class="btn btn-primary" id="add-time-btn">+30s</button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Finish Workout Modal -->
+                    <div id="finish-workout-modal" class="modal">
+                        <div class="modal-content">
+                            <div class="modal-header">
+                                <h2>Finish Workout</h2>
+                                <button class="modal-close">&times;</button>
+                            </div>
+                            <div class="modal-body">
+                                <form id="finish-workout-form">
+                                    <div class="workout-summary">
+                                        <div class="summary-stat">
+                                            <span class="label">Duration</span>
+                                            <span class="value" id="summary-duration">0 min</span>
+                                        </div>
+                                        <div class="summary-stat">
+                                            <span class="label">Total Volume</span>
+                                            <span class="value" id="summary-volume">0 kg</span>
+                                        </div>
+                                        <div class="summary-stat">
+                                            <span class="label">Sets Completed</span>
+                                            <span class="value" id="summary-sets">0</span>
+                                        </div>
+                                    </div>
+
+                                    <h3>Post-Workout Metrics (Optional)</h3>
+                                    <div class="form-row">
+                                        <div class="form-group">
+                                            <label for="avg-heart-rate">Avg Heart Rate</label>
+                                            <input type="number" id="avg-heart-rate" placeholder="bpm" min="30" max="250">
+                                        </div>
+                                        <div class="form-group">
+                                            <label for="max-heart-rate">Max Heart Rate</label>
+                                            <input type="number" id="max-heart-rate" placeholder="bpm" min="30" max="250">
+                                        </div>
+                                    </div>
+                                    <div class="form-group">
+                                        <label for="calories-burned">Calories Burned</label>
+                                        <input type="number" id="calories-burned" placeholder="kcal" min="0" max="5000">
+                                    </div>
+                                    <div class="form-group">
+                                        <label for="workout-notes">Notes (Optional)</label>
+                                        <textarea id="workout-notes" placeholder="How did the workout go?" rows="3"></textarea>
+                                    </div>
+
+                                    <div class="form-actions">
+                                        <button type="button" class="btn btn-secondary modal-close">Cancel</button>
+                                        <button type="submit" class="btn btn-primary">Complete Workout</button>
+                                    </div>
+                                </form>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- HISTORY VIEW -->
+            <div id="history-view" class="view">
+                <div class="view-header">
+                    <h1>Workout History</h1>
+                    <div class="view-actions">
+                        <select id="history-sort">
+                            <option value="date-desc">Newest First</option>
+                            <option value="date-asc">Oldest First</option>
+                            <option value="volume-desc">Highest Volume</option>
+                        </select>
+                    </div>
+                </div>
+
+                <div class="history-filters">
+                    <input type="date" id="history-date-from" placeholder="From">
+                    <input type="date" id="history-date-to" placeholder="To">
+                    <button class="btn btn-secondary" id="clear-filters-btn">Clear</button>
+                </div>
+
+                <div id="history-list" class="history-grid">
+                    <!-- Will be populated by JS -->
+                </div>
+
+                <!-- Workout Detail Modal -->
+                <div id="workout-detail-modal" class="modal">
+                    <div class="modal-content">
+                        <div class="modal-header">
+                            <h2 id="workout-detail-title">Workout Details</h2>
+                            <button class="modal-close">&times;</button>
+                        </div>
+                        <div class="modal-body">
+                            <div id="workout-detail-content">
+                                <!-- Will be populated by JS -->
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- EXERCISES VIEW -->
+            <div id="exercises-view" class="view">
+                <div class="view-header">
+                    <h1>Exercise Database</h1>
+                    <p class="subtitle" id="exercise-count-text">Loading exercises...</p>
+                    <button class="btn btn-primary" id="create-custom-exercise-btn">
+                        <i class="fas fa-plus"></i> Create Custom Exercise
+                    </button>
+                </div>
+
+                <div class="exercise-search-bar">
+                    <input type="text" id="exercise-db-search" placeholder="Search exercises...">
+                    <select id="exercise-db-category">
+                        <option value="">All Categories</option>
+                        <option value="chest">Chest</option>
+                        <option value="back">Back</option>
+                        <option value="shoulders">Shoulders</option>
+                        <option value="quads">Quads</option>
+                        <option value="hamstrings">Hamstrings</option>
+                        <option value="calves">Calves</option>
+                        <option value="biceps">Biceps</option>
+                        <option value="triceps">Triceps</option>
+                        <option value="core">Core</option>
+                    </select>
+                    <select id="exercise-db-history-filter">
+                        <option value="all">All Exercises</option>
+                        <option value="with-history">With History</option>
+                        <option value="without-history">Without History</option>
+                    </select>
+                </div>
+
+                <div id="exercise-db-list" class="exercise-db-grid">
+                    <!-- Will be populated by JS -->
+                </div>
+
+                <!-- Exercise Detail Modal -->
+                <div id="exercise-detail-modal" class="modal">
+                    <div class="modal-content">
+                        <div class="modal-header">
+                            <h2 id="exercise-detail-name">Exercise</h2>
+                            <button class="modal-close">&times;</button>
+                        </div>
+                        <div class="modal-body">
+                            <div id="exercise-detail-content">
+                                <!-- Will be populated by JS -->
+                            </div>
+                            <div id="exercise-history-chart">
+                                <!-- Exercise progression chart -->
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Create Custom Exercise Modal -->
+                <div id="custom-exercise-modal" class="modal">
+                    <div class="modal-content">
+                        <div class="modal-header">
+                            <h2>Create Custom Exercise</h2>
+                            <button class="modal-close">&times;</button>
+                        </div>
+                        <div class="modal-body">
+                            <form id="custom-exercise-form">
+                                <div class="form-group">
+                                    <label for="custom-exercise-name">Exercise Name *</label>
+                                    <input type="text" id="custom-exercise-name" placeholder="e.g., Bulgarian Split Squat" required>
+                                </div>
+                                <div class="form-group">
+                                    <label for="custom-exercise-category">Category *</label>
+                                    <select id="custom-exercise-category" required>
+                                        <option value="">Select category...</option>
+                                        <option value="chest">Chest</option>
+                                        <option value="back">Back</option>
+                                        <option value="shoulders">Shoulders</option>
+                                        <option value="quads">Quads</option>
+                                        <option value="hamstrings">Hamstrings</option>
+                                        <option value="calves">Calves</option>
+                                        <option value="biceps">Biceps</option>
+                                        <option value="triceps">Triceps</option>
+                                        <option value="core">Core</option>
+                                        <option value="full-body">Full Body</option>
+                                    </select>
+                                </div>
+                                <div class="form-group">
+                                    <label for="custom-exercise-muscle">Primary Muscle Group *</label>
+                                    <select id="custom-exercise-muscle" required>
+                                        <option value="">Select muscle group...</option>
+                                        <optgroup label="Chest">
+                                            <option value="Chest">Chest (General)</option>
+                                            <option value="Upper Chest">Upper Chest</option>
+                                            <option value="Lower Chest">Lower Chest</option>
+                                        </optgroup>
+                                        <optgroup label="Back">
+                                            <option value="Back">Back (General)</option>
+                                            <option value="Lats">Lats</option>
+                                            <option value="Upper Back">Upper Back</option>
+                                            <option value="Lower Back">Lower Back</option>
+                                            <option value="Traps">Traps</option>
+                                        </optgroup>
+                                        <optgroup label="Shoulders">
+                                            <option value="Shoulders">Shoulders (General)</option>
+                                            <option value="Front Delts">Front Delts</option>
+                                            <option value="Side Delts">Side Delts</option>
+                                            <option value="Rear Delts">Rear Delts</option>
+                                        </optgroup>
+                                        <optgroup label="Arms">
+                                            <option value="Biceps">Biceps</option>
+                                            <option value="Triceps">Triceps</option>
+                                            <option value="Forearms">Forearms</option>
+                                        </optgroup>
+                                        <optgroup label="Legs">
+                                            <option value="Legs">Legs (General)</option>
+                                            <option value="Quadriceps">Quadriceps</option>
+                                            <option value="Hamstrings">Hamstrings</option>
+                                            <option value="Glutes">Glutes</option>
+                                            <option value="Calves">Calves</option>
+                                        </optgroup>
+                                        <optgroup label="Core">
+                                            <option value="Abs">Abs</option>
+                                            <option value="Obliques">Obliques</option>
+                                            <option value="Core">Core (General)</option>
+                                        </optgroup>
+                                        <optgroup label="Other">
+                                            <option value="Full Body">Full Body</option>
+                                            <option value="Cardio">Cardio</option>
+                                        </optgroup>
+                                    </select>
+                                </div>
+                                <div class="form-group">
+                                    <label for="custom-exercise-equipment">Equipment *</label>
+                                    <select id="custom-exercise-equipment" required>
+                                        <option value="">Select equipment...</option>
+                                        <option value="barbell">Barbell</option>
+                                        <option value="dumbbell">Dumbbell</option>
+                                        <option value="cable">Cable</option>
+                                        <option value="machine">Machine</option>
+                                        <option value="bodyweight">Bodyweight</option>
+                                        <option value="kettlebell">Kettlebell</option>
+                                        <option value="resistance-band">Resistance Band</option>
+                                        <option value="other">Other</option>
+                                    </select>
+                                </div>
+                                <div class="form-actions">
+                                    <button type="button" class="btn btn-secondary modal-close">Cancel</button>
+                                    <button type="submit" class="btn btn-primary">Create Exercise</button>
+                                </div>
+                            </form>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- CALENDAR VIEW -->
+            <div id="calendar-view" class="view">
+                <div class="view-header">
+                    <h1>Calendar</h1>
+                </div>
+
+                <div class="calendar-controls">
+                    <button class="btn-icon" id="prev-month-btn">
+                        <i class="fas fa-chevron-left"></i>
+                    </button>
+                    <h2 id="calendar-month-year">December 2024</h2>
+                    <button class="btn-icon" id="next-month-btn">
+                        <i class="fas fa-chevron-right"></i>
+                    </button>
+                </div>
+
+                <div id="calendar-grid" class="calendar">
+                    <!-- Will be populated by JS -->
+                </div>
+
+                <div class="calendar-legend">
+                    <div class="legend-item">
+                        <span class="legend-dot workout"></span>
+                        <span>Workout Day</span>
+                    </div>
+                    <div class="legend-item">
+                        <span class="legend-dot gains"></span>
+                        <span>Progress Made</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- ACHIEVEMENTS VIEW -->
+            <div id="achievements-view" class="view">
+                <div class="view-header">
+                    <h1>Achievements</h1>
+                    <div class="achievement-progress">
+                        <span id="unlocked-count">0</span> / <span id="total-achievements">0</span> Unlocked
+                    </div>
+                </div>
+
+                <div class="achievement-tabs">
+                    <button class="tab-btn active" data-tab="all">All</button>
+                    <button class="tab-btn" data-tab="daily">Daily</button>
+                    <button class="tab-btn" data-tab="weekly">Weekly</button>
+                    <button class="tab-btn" data-tab="monthly">Monthly</button>
+                    <button class="tab-btn" data-tab="global">Lifetime</button>
+                </div>
+
+                <div id="achievements-list" class="achievements-grid">
+                    <!-- Will be populated by JS -->
+                </div>
+            </div>
+
+            <!-- SETTINGS VIEW -->
+            <div id="settings-view" class="view">
+                <div class="view-header">
+                    <h1>Settings</h1>
+                </div>
+
+                <form id="settings-form">
+                    <section class="settings-section">
+                        <h2>Units</h2>
+                        <div class="setting-item">
+                            <label for="weight-unit">Weight Unit</label>
+                            <select id="weight-unit">
+                                <option value="kg">Kilograms (kg)</option>
+                                <option value="lb">Pounds (lb)</option>
+                            </select>
+                        </div>
+                    </section>
+
+                    <section class="settings-section">
+                        <h2>Workout</h2>
+                        <div class="setting-item">
+                            <label for="enable-rest-timer">Enable Rest Timer</label>
+                            <input type="checkbox" id="enable-rest-timer" class="toggle">
+                        </div>
+                        <div class="setting-item">
+                            <label for="default-rest-time">Default Rest Time (seconds)</label>
+                            <input type="number" id="default-rest-time" min="30" max="600" step="15">
+                        </div>
+                    </section>
+
+                    <section class="settings-section">
+                        <h2>Notifications</h2>
+                        <div class="setting-item">
+                            <label for="enable-notifications">Enable Notifications</label>
+                            <input type="checkbox" id="enable-notifications" class="toggle">
+                        </div>
+                        <div class="setting-item">
+                            <label for="enable-sound">Enable Sound</label>
+                            <input type="checkbox" id="enable-sound" class="toggle">
+                        </div>
+                    </section>
+
+                    <section class="settings-section">
+                        <h2>Data Management</h2>
+                        <div class="setting-actions">
+                            <button type="button" class="btn btn-secondary" id="export-data-btn">
+                                <i class="fas fa-download"></i> Export Data
+                            </button>
+                            <button type="button" class="btn btn-secondary" id="import-data-btn">
+                                <i class="fas fa-upload"></i> Import Data
+                            </button>
+                            <button type="button" class="btn btn-danger" id="clear-data-btn">
+                                <i class="fas fa-trash"></i> Clear All Data
+                            </button>
+                        </div>
+                        <input type="file" id="import-file-input" accept=".json" style="display: none;">
+                    </section>
+
+                    <div class="form-actions">
+                        <button type="submit" class="btn btn-primary">Save Settings</button>
+                    </div>
                 </form>
-            </section>
+            </div>
 
-            <!-- Statistics Section -->
-            <section class="stats-overview">
-                <div class="stats-grid">
-                    <div class="stat-card">
-                        <div class="stat-label">Total Workouts</div>
-                        <div class="stat-value" id="totalWorkouts">0</div>
-                    </div>
-                    <div class="stat-card">
-                        <div class="stat-label">Total Exercises</div>
-                        <div class="stat-value" id="totalExercises">0</div>
-                    </div>
-                    <div class="stat-card">
-                        <div class="stat-label">Total Volume (kg)</div>
-                        <div class="stat-value" id="totalVolume">0</div>
-                    </div>
+            <!-- MORE VIEW (Mobile Only) -->
+            <div id="more-view" class="view">
+                <div class="view-header">
+                    <h1>More</h1>
                 </div>
-            </section>
 
-            <!-- Workout History Table -->
-            <section class="game-history">
-                <h2 class="section-title">Workout History</h2>
-                <div class="table-container">
-                    <table class="games-table" id="workoutsTable">
-                        <thead>
-                            <tr>
-                                <th>Date</th>
-                                <th>Exercise</th>
-                                <th>Sets</th>
-                                <th>Reps</th>
-                                <th>Weight (kg)</th>
-                                <th>Volume (kg)</th>
-                                <th>Notes</th>
-                                <th>Actions</th>
-                            </tr>
-                        </thead>
-                        <tbody id="workoutsTableBody">
-                            <!-- Workouts will be populated here -->
-                        </tbody>
-                    </table>
-                    <div class="no-games" id="noWorkouts">
-                        <p>No workouts recorded yet. Add your first workout above!</p>
-                    </div>
+                <div class="more-menu">
+                    <button class="more-item" data-view="exercises">
+                        <i class="fas fa-running"></i>
+                        <span>Exercise Database</span>
+                        <i class="fas fa-chevron-right"></i>
+                    </button>
+                    <button class="more-item" data-view="calendar">
+                        <i class="fas fa-calendar"></i>
+                        <span>Calendar</span>
+                        <i class="fas fa-chevron-right"></i>
+                    </button>
+                    <button class="more-item" data-view="achievements">
+                        <i class="fas fa-trophy"></i>
+                        <span>Achievements</span>
+                        <i class="fas fa-chevron-right"></i>
+                    </button>
+                    <button class="more-item" data-view="settings">
+                        <i class="fas fa-cog"></i>
+                        <span>Settings</span>
+                        <i class="fas fa-chevron-right"></i>
+                    </button>
                 </div>
-            </section>
-        </div>
+            </div>
+        </main>
     </div>
 
     <div data-include="footer"></div>
+
+    <!-- Toast Container -->
+    <div id="toast-container"></div>
+
+    <!-- Confirmation Modal -->
+    <div id="confirm-modal" class="modal">
+        <div class="modal-content small">
+            <div class="modal-header">
+                <h2 id="confirm-modal-title">Confirm Action</h2>
+            </div>
+            <div class="modal-body">
+                <p id="confirm-modal-message">Are you sure?</p>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-secondary" id="confirm-modal-cancel">Cancel</button>
+                <button class="btn btn-danger" id="confirm-modal-confirm">Delete</button>
+            </div>
+        </div>
+    </div>
 
     <!-- Include Scripts -->
     <script src="../../assets/js/passive-events-fix.js"></script>
@@ -146,17 +719,17 @@
     <script type="module" src="../../sync-system/app-sync-init.js"></script>
     <script src="../../sync-system/sync-debug.js"></script>
 
-    <!-- Sync Loading Modal (after Firebase is initialized) -->
+    <!-- Sync Loading Modal -->
     <script src="../../sync-system/sync-loading-modal.js"></script>
     <script src="../../sync-system/sync-modal-integration.js"></script>
 
     <!-- Main JavaScript (includes Firebase config and auth) -->
     <script src="../../assets/js/main.js"></script>
+
+    <!-- Header/Footer Include Script -->
     <script>
-        // Minimal include functionality for Gym Tracker app
         jQuery(document).ready(function($) {
             var includes = $('[data-include]');
-
             jQuery.each(includes, function(){
                 var includeFile = $(this).data('include') + '.html';
                 var basePath = '../../partials/';
@@ -170,18 +743,22 @@
                         $element.html(data);
                     },
                     error: function() {
-                        // Silently fail if header/footer not found
                         $element.remove();
                     }
                 });
             });
         });
     </script>
-    <script>
-        // Apply consistent theme
-        document.body.classList.add('theme');
-        localStorage.setItem('theme', 'true');
-    </script>
-    <script src="js/gym-tracker.js"></script>
+
+    <!-- App Initialization -->
+    <script type="module" src="js/app.js"></script>
+    <script type="module" src="js/views/home-view.js"></script>
+    <script type="module" src="js/views/programs-view.js"></script>
+    <script type="module" src="js/views/workout-view.js"></script>
+    <script type="module" src="js/views/history-view.js"></script>
+    <script type="module" src="js/views/exercises-view.js"></script>
+    <script type="module" src="js/views/calendar-view.js"></script>
+    <script type="module" src="js/views/achievements-view.js"></script>
+    <script type="module" src="js/views/settings-view.js"></script>
 </body>
 </html>
