@@ -40,17 +40,16 @@ class HomeView {
             <div class="program-summary">
                 <h3>Your Programs</h3>
                 <div class="quick-programs">
-                    ${programs.slice(0, 3).map(program => `
+                    ${programs.map(program => `
                         <div class="quick-program-item" ${program.exercises.length > 0 ? `onclick="window.gymApp.viewControllers.home.startWorkoutWithProgram(${program.id})"` : ''}>
                             <div class="program-info">
                                 <strong>${program.name}</strong>
-                                <span class="text-muted">${program.exercises.length} exercises</span>
+                                <span>${program.exercises.length} exercises</span>
                             </div>
                             ${program.exercises.length > 0 ? '<i class="fas fa-play-circle"></i>' : '<i class="fas fa-edit" onclick="event.stopPropagation(); window.gymApp.viewControllers.programs.editProgram(' + program.id + ')"></i>'}
                         </div>
                     `).join('')}
                 </div>
-                ${programs.length > 3 ? '<button class="btn btn-secondary btn-small" data-view="workout">View All Programs</button>' : ''}
             </div>
         `;
     }

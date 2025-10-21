@@ -59,20 +59,12 @@ class SettingsView {
 
         // Populate form with current settings
         document.getElementById('weight-unit').value = settings.weightUnit;
-        document.getElementById('enable-rest-timer').checked = settings.enableRestTimer;
-        document.getElementById('default-rest-time').value = settings.defaultRestTime;
-        document.getElementById('enable-notifications').checked = settings.enableNotifications;
-        document.getElementById('enable-sound').checked = settings.enableSound;
     }
 
     saveSettings() {
         const settings = this.app.settings;
 
         settings.weightUnit = document.getElementById('weight-unit').value;
-        settings.enableRestTimer = document.getElementById('enable-rest-timer').checked;
-        settings.defaultRestTime = parseInt(document.getElementById('default-rest-time').value);
-        settings.enableNotifications = document.getElementById('enable-notifications').checked;
-        settings.enableSound = document.getElementById('enable-sound').checked;
 
         this.app.saveSettings();
         showToast('Settings saved successfully', 'success');
