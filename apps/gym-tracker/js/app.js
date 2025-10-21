@@ -19,7 +19,7 @@ import { showToast } from './utils/helpers.js';
 
 class GymTrackerApp {
     constructor() {
-        this.currentView = 'home';
+        this.currentView = null;
         this.currentWorkoutSession = null;
         this.programs = [];
         this.workoutSessions = [];
@@ -187,14 +187,18 @@ class GymTrackerApp {
      * Set up event listeners
      */
     setupEventListeners() {
-        // Navigation
+        // Navigation - only respond to clicks on actual navigation elements
         document.addEventListener('click', (e) => {
-            const navBtn = e.target.closest('[data-view]');
-            if (navBtn) {
-                e.preventDefault();
-                const view = navBtn.dataset.view;
-                this.showView(view);
+            // Only process clicks on navigation elements
+            const navBtn = e.target.closest('.nav-item[data-view], .nav-link[data-view], .btn-text[data-view], .more-item[data-view]');
+            if (!navBtn) {
+                // If not clicking on navigation, do nothing
+                return;
             }
+
+            e.preventDefault();
+            const view = navBtn.dataset.view;
+            this.showView(view);
         });
 
         // Handle back button
@@ -220,6 +224,12 @@ class GymTrackerApp {
     showView(viewName, pushState = true) {
         console.log(`Showing view: ${viewName}`);
 
+        // If we're already on this view, don't do anything
+        if (this.currentView === viewName) {
+            console.log(`Already on ${viewName}, skipping navigation update`);
+            return;
+        }
+
         // Hide all views
         document.querySelectorAll('.view').forEach(view => {
             view.classList.remove('active');
@@ -233,15 +243,6 @@ class GymTrackerApp {
             viewElement.style.display = 'block';
         }
 
-        // Update navigation (both mobile nav-item and desktop nav-link)
-        document.querySelectorAll('.nav-item, .nav-link').forEach(item => {
-            item.classList.remove('active');
-        });
-        const navItems = document.querySelectorAll(`[data-view="${viewName}"]`);
-        navItems.forEach(item => {
-            item.classList.add('active');
-        });
-
         this.currentView = viewName;
 
         // Update browser history
@@ -251,6 +252,18 @@ class GymTrackerApp {
 
         // Trigger view-specific initialization
         this.onViewChange(viewName);
+
+        // Update navigation AFTER view renders (both mobile nav-item and desktop nav-link)
+        // Use setTimeout to ensure this happens after any synchronous render code
+        setTimeout(() => {
+            document.querySelectorAll('.nav-item, .nav-link').forEach(item => {
+                item.classList.remove('active');
+            });
+            const navItems = document.querySelectorAll(`.nav-item[data-view="${viewName}"], .nav-link[data-view="${viewName}"]`);
+            navItems.forEach(item => {
+                item.classList.add('active');
+            });
+        }, 0);
     }
 
     /**
@@ -405,7 +418,7 @@ window.debugGymTracker = {
             { id: 'first', name: 'First Workout', description: 'Complete your first workout', type: 'global', icon: '🌟', unlocked: false, progress: 0, target: 1 }
         ];
         app.achievements = defaultAchievements;
-        app.settings = { weightUnit: 'kg', enableRestTimer: true, defaultRestTime: 90, enableNotifications: true, enableSound: true };
+        app.settings = { weightUnit: 'kg', showPostWorkoutMetrics: true };
         app.savePrograms();
         app.saveWorkoutSessions();
         app.saveAchievements();

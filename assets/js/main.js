@@ -421,17 +421,42 @@
 
       if (!this.isAuthAvailable()) {
         this.renderSignInButton();
+        this.updateHeaderEmail(null);
         this.bindHeaderEvents();
         return;
       }
 
       if (this.state.currentUser) {
         this.renderUserInfo();
+        this.updateHeaderEmail(this.state.currentUser);
       } else {
         this.renderSignInButton();
+        this.updateHeaderEmail(null);
       }
 
       this.bindHeaderEvents();
+    }
+
+    /**
+     * Update header email display
+     * @private
+     * @param {Object|null} user - Firebase user object
+     */
+    updateHeaderEmail(user) {
+      const emailContainer = document.getElementById('user-email-header');
+      const emailSpan = document.getElementById('header-user-email');
+
+      if (!emailContainer || !emailSpan) {
+        return;
+      }
+
+      if (user && user.email) {
+        emailSpan.textContent = user.email;
+        emailContainer.classList.add('signed-in');
+      } else {
+        emailSpan.textContent = '';
+        emailContainer.classList.remove('signed-in');
+      }
     }
 
     /**

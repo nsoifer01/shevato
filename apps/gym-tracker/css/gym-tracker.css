@@ -62,13 +62,26 @@
 
 body.gym-tracker {
     background: var(--bg-primary);
-    color: var(--text-primary);
+    color: white;
     font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
     margin: 0;
     padding: 0;
     padding-top: 3.25rem; /* Account for fixed header */
     min-height: 100vh;
     overflow-x: hidden;
+}
+
+body.gym-tracker h1,
+body.gym-tracker h2,
+body.gym-tracker h3,
+body.gym-tracker h4,
+body.gym-tracker h5,
+body.gym-tracker h6,
+body.gym-tracker p,
+body.gym-tracker span,
+body.gym-tracker div,
+body.gym-tracker label {
+    color: white;
 }
 
 /* App Container */
@@ -109,7 +122,7 @@ body.gym-tracker #footer {
     border-top: 1px solid var(--border-color);
     display: flex;
     justify-content: space-around;
-    padding: 0.5rem 0;
+    padding: 0.5rem 0 0.75rem 0;
     z-index: 1000;
     box-shadow: 0 -2px 10px rgba(0, 0, 0, 0.3);
 }
@@ -119,10 +132,10 @@ body.gym-tracker #footer {
     flex-direction: column;
     align-items: center;
     gap: 0.25rem;
-    padding: 0.5rem 0.75rem;
+    padding: 0.5rem 0.75rem 0.25rem 0.75rem;
     background: none;
     border: none;
-    color: var(--text-secondary);
+    color: white;
     font-size: 0.75rem;
     cursor: pointer;
     transition: color var(--transition-base);
@@ -130,16 +143,30 @@ body.gym-tracker #footer {
     max-width: 80px;
 }
 
+.bottom-nav .nav-item span {
+    line-height: 1.2;
+    white-space: nowrap;
+    color: white;
+}
+
 .bottom-nav .nav-item i {
     font-size: 1.25rem;
+    color: white;
 }
 
 .bottom-nav .nav-item.active {
-    color: var(--accent-primary);
+    color: white !important;
+    border-top: 3px solid var(--accent-error) !important;
+    padding-top: calc(0.5rem - 3px);
+}
+
+.bottom-nav .nav-item.active i,
+.bottom-nav .nav-item.active span {
+    color: white !important;
 }
 
 .bottom-nav .nav-item.workout-btn {
-    color: var(--accent-success);
+    color: white;
 }
 
 @media (min-width: 768px) {
@@ -196,7 +223,7 @@ body.gym-tracker #footer {
         background: none;
         border: none;
         border-radius: var(--radius-md);
-        color: var(--text-secondary);
+        color: white;
         font-size: 0.95rem;
         cursor: pointer;
         transition: all var(--transition-base);
@@ -207,15 +234,30 @@ body.gym-tracker #footer {
     .side-nav .nav-link i {
         font-size: 1.25rem;
         width: 24px;
+        color: white;
+    }
+
+    .side-nav .nav-link span {
+        color: white;
     }
 
     .side-nav .nav-link:hover {
         background: var(--bg-hover);
-        color: var(--text-primary);
+        color: white;
+    }
+
+    .side-nav .nav-link:hover span,
+    .side-nav .nav-link:hover i {
+        color: white;
     }
 
     .side-nav .nav-link.active {
         background: var(--accent-primary);
+        color: white;
+    }
+
+    .side-nav .nav-link.active span,
+    .side-nav .nav-link.active i {
         color: white;
     }
 }
@@ -224,6 +266,7 @@ body.gym-tracker #footer {
 .main-content {
     flex: 1;
     padding: var(--spacing-lg);
+    padding-bottom: 90px; /* Extra space for bottom nav on mobile */
     max-width: 1400px;
     margin: 0 auto;
     width: 100%;
@@ -232,6 +275,7 @@ body.gym-tracker #footer {
 @media (min-width: 768px) {
     .main-content {
         padding: var(--spacing-xl);
+        padding-bottom: var(--spacing-xl); /* Reset on desktop */
     }
 }
 
@@ -261,7 +305,7 @@ body.gym-tracker #footer {
 }
 
 .view-header .subtitle {
-    color: var(--text-secondary);
+    color: var(--text-primary);
     margin: 0;
     font-size: 1rem;
 }
@@ -341,7 +385,7 @@ body.gym-tracker #footer {
 
 .stat-value .unit {
     font-size: 1rem;
-    color: var(--text-muted);
+    color: var(--text-primary);
     margin-left: 0.25rem;
 }
 
@@ -373,13 +417,15 @@ body.gym-tracker #footer {
     transition: all var(--transition-base);
     display: inline-flex;
     align-items: center;
+    justify-content: center;
     gap: var(--spacing-sm);
     text-decoration: none;
+    color: var(--text-primary);
 }
 
 .btn-primary {
     background: var(--gradient-primary);
-    color: white;
+    color: white !important;
 }
 
 .btn-primary:hover {
@@ -389,7 +435,7 @@ body.gym-tracker #footer {
 
 .btn-secondary {
     background: var(--bg-card);
-    color: var(--text-primary);
+    color: white !important;
     border: 1px solid var(--border-color);
 }
 
@@ -400,7 +446,7 @@ body.gym-tracker #footer {
 
 .btn-danger {
     background: var(--accent-error);
-    color: white;
+    color: white !important;
 }
 
 .btn-danger:hover {
@@ -410,15 +456,18 @@ body.gym-tracker #footer {
 .btn-text {
     background: none;
     border: none;
-    color: var(--accent-primary);
+    color: white !important;
     cursor: pointer;
     font-size: 0.9rem;
     padding: 0.5rem;
     transition: color var(--transition-base);
+    display: flex;
+    align-items: center;
+    justify-content: center;
 }
 
 .btn-text:hover {
-    color: var(--accent-secondary);
+    color: rgba(255, 255, 255, 0.8) !important;
     text-decoration: underline;
 }
 
@@ -434,11 +483,24 @@ body.gym-tracker #footer {
     justify-content: center;
     cursor: pointer;
     transition: all var(--transition-base);
+    padding: 0;
+    flex-shrink: 0;
 }
 
 .btn-icon:hover {
     background: var(--bg-hover);
     border-color: var(--accent-primary);
+}
+
+/* Make all trash/delete icons red */
+.fa-trash {
+    color: var(--accent-error) !important;
+}
+
+/* White trash icon during workout */
+.btn-set-delete .fa-trash,
+#active-workout .fa-trash {
+    color: white !important;
 }
 
 .btn-sm {
@@ -469,6 +531,29 @@ body.gym-tracker #footer {
     box-shadow: var(--shadow-lg);
 }
 
+.program-actions {
+    display: flex;
+    gap: var(--spacing-sm);
+    margin-top: var(--spacing-md);
+    flex-wrap: wrap;
+}
+
+.program-actions .btn {
+    flex: 1;
+    min-width: 100px;
+}
+
+@media (min-width: 768px) {
+    .program-actions {
+        gap: var(--spacing-md);
+    }
+
+    .program-actions .btn {
+        flex: 0 1 auto;
+        min-width: 120px;
+    }
+}
+
 .program-header,
 .workout-card-header {
     display: flex;
@@ -485,13 +570,14 @@ body.gym-tracker #footer {
 }
 
 .delete-workout-btn {
-    opacity: 0.6;
+    opacity: 0.8;
     transition: all 0.2s ease;
+    color: var(--accent-error);
 }
 
 .delete-workout-btn:hover {
     opacity: 1;
-    color: var(--accent-danger);
+    color: var(--accent-error);
 }
 
 .program-header h3,
@@ -515,7 +601,7 @@ body.gym-tracker #footer {
     display: flex;
     align-items: center;
     gap: var(--spacing-xs);
-    color: var(--text-secondary);
+    color: var(--text-primary);
     font-size: 0.9rem;
 }
 
@@ -529,7 +615,7 @@ body.gym-tracker #footer {
 
 .stat .sublabel {
     font-size: 0.75rem;
-    color: var(--text-muted);
+    color: var(--text-primary);
     display: block;
     text-align: center;
 }
@@ -550,7 +636,7 @@ body.gym-tracker #footer {
 }
 
 .workout-card-header .date {
-    color: var(--text-secondary);
+    color: var(--text-primary);
     font-size: 0.9rem;
 }
 
@@ -576,7 +662,7 @@ body.gym-tracker #footer {
 .empty-state {
     text-align: center;
     padding: var(--spacing-xl);
-    color: var(--text-secondary);
+    color: var(--text-primary);
 }
 
 .empty-state i {
@@ -663,12 +749,13 @@ body.gym-tracker #footer {
 .modal-header h2 {
     margin: 0;
     font-size: 1.5rem;
+    color: white;
 }
 
 .modal-close {
     background: none;
     border: none;
-    color: var(--text-secondary);
+    color: var(--text-primary);
     font-size: 1.5rem;
     cursor: pointer;
     width: 32px;
@@ -687,6 +774,13 @@ body.gym-tracker #footer {
 
 .modal-body {
     padding: var(--spacing-lg);
+    color: white;
+}
+
+.modal-body strong,
+.modal-body p,
+.modal-body span {
+    color: white;
 }
 
 /* Forms */
@@ -727,7 +821,7 @@ body.gym-tracker #footer {
 
 .form-group input::placeholder,
 .form-group textarea::placeholder {
-    color: var(--text-muted);
+    color: var(--text-primary);
 }
 
 .form-row {
@@ -746,8 +840,16 @@ body.gym-tracker #footer {
 .modal-footer {
     display: flex;
     gap: var(--spacing-md);
-    justify-content: flex-end;
+    justify-content: center;
     margin-top: var(--spacing-xl);
+    flex-wrap: wrap;
+}
+
+.form-actions .btn,
+.modal-footer .btn {
+    min-width: 140px;
+    padding: 1rem 2rem;
+    font-size: 1rem;
 }
 
 .modal-footer {
@@ -755,34 +857,85 @@ body.gym-tracker #footer {
     border-top: 1px solid var(--border-color);
 }
 
+/* Mobile modal improvements */
+@media (max-width: 767px) {
+    .modal {
+        padding: var(--spacing-sm);
+        align-items: flex-end;
+    }
+
+    .modal-content {
+        max-width: 100%;
+        max-height: 85vh;
+        border-radius: var(--radius-xl) var(--radius-xl) 0 0;
+    }
+
+    .modal-header {
+        padding: var(--spacing-lg) var(--spacing-md);
+    }
+
+    .modal-body {
+        padding: var(--spacing-md);
+    }
+
+    .form-actions,
+    .modal-footer {
+        flex-direction: column;
+        gap: var(--spacing-sm);
+    }
+
+    .form-actions .btn,
+    .modal-footer .btn {
+        width: 100%;
+        min-width: unset;
+        padding: 1rem;
+        font-size: 1.05rem;
+    }
+}
+
 #confirm-modal-message {
-    color: var(--text-primary);
+    color: white;
     line-height: 1.6;
     margin: 0;
 }
 
 .toggle {
-    width: 48px;
-    height: 24px;
-    appearance: none;
-    background: var(--bg-tertiary);
-    border: 1px solid var(--border-color);
-    border-radius: 12px;
-    position: relative;
+    width: 56px;
+    height: 30px;
+    appearance: none !important;
+    -webkit-appearance: none !important;
+    -moz-appearance: none !important;
+    background: #4a4a5e !important;
+    border: 2px solid #666 !important;
+    border-radius: 15px !important;
+    position: relative !important;
     cursor: pointer;
-    transition: all var(--transition-base);
+    transition: all 0.3s ease;
+    flex-shrink: 0;
+    margin: 0;
+    padding: 0;
+    display: inline-block !important;
+    vertical-align: middle;
+    outline: none;
+    opacity: 1 !important;
+    visibility: visible !important;
+    z-index: 1;
 }
 
 .toggle::before {
-    content: '';
-    position: absolute;
-    width: 18px;
-    height: 18px;
-    border-radius: 50%;
-    background: var(--text-secondary);
-    left: 2px;
-    top: 2px;
-    transition: all var(--transition-base);
+    content: '' !important;
+    position: absolute !important;
+    width: 22px !important;
+    height: 22px !important;
+    border-radius: 50% !important;
+    background: white !important;
+    left: 3px !important;
+    top: 2px !important;
+    transition: all 0.3s ease;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.3) !important;
+    display: block !important;
+    opacity: 1 !important;
+    visibility: visible !important;
 }
 
 .toggle:checked {
@@ -791,7 +944,7 @@ body.gym-tracker #footer {
 }
 
 .toggle:checked::before {
-    left: 26px;
+    left: 28px;
     background: white;
 }
 
@@ -826,12 +979,18 @@ body.gym-tracker #footer {
     display: flex;
     align-items: center;
     gap: var(--spacing-sm);
-    color: var(--text-secondary);
+    color: var(--text-primary);
     font-size: 0.9rem;
 }
 
 .workout-content {
-    padding-bottom: var(--spacing-xl);
+    padding-bottom: 90px; /* Extra space for bottom nav on mobile */
+}
+
+@media (min-width: 768px) {
+    .workout-content {
+        padding-bottom: var(--spacing-xl);
+    }
 }
 
 .workout-day-list {
@@ -870,7 +1029,7 @@ body.gym-tracker #footer {
 
 .workout-day-card p {
     margin: 0.5rem 0;
-    color: var(--text-secondary);
+    color: var(--text-primary);
 }
 
 /* Exercise Entry Card (Mobile-Optimized) */
@@ -892,26 +1051,94 @@ body.gym-tracker #footer {
 .exercise-entry-header h3 {
     margin: 0;
     font-size: 1.1rem;
+    color: var(--text-primary);
+    font-weight: 600;
 }
 
 .previous-data {
     background: var(--bg-tertiary);
-    padding: var(--spacing-sm) var(--spacing-md);
-    border-radius: var(--radius-sm);
+    padding: var(--spacing-md);
+    border-radius: var(--radius-md);
     margin-bottom: var(--spacing-md);
-    font-size: 0.85rem;
-    color: var(--text-primary);
 }
 
-.previous-data strong {
-    color: var(--accent-primary);
-    font-weight: 600;
+.previous-sets-label {
+    font-size: 0.85rem;
+    color: var(--text-primary);
+    margin-bottom: var(--spacing-sm);
+    font-weight: 500;
+}
+
+.previous-sets-row {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--spacing-sm);
+}
+
+.previous-set-badge {
+    display: flex;
+    align-items: center;
+    gap: 0.35rem;
+    background: var(--bg-card);
+    border: 1px solid var(--border-light);
+    border-radius: var(--radius-md);
+    padding: 0.35rem 0.5rem;
+    transition: all var(--transition-base);
+    cursor: pointer;
+    user-select: none;
+}
+
+.previous-set-badge:hover {
+    border-color: var(--accent-primary);
+    background: var(--bg-hover);
+    transform: translateY(-2px);
+    box-shadow: 0 4px 8px rgba(108, 99, 255, 0.2);
+}
+
+.previous-set-badge:active {
+    transform: translateY(0);
+}
+
+.previous-set-number {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 20px;
+    height: 20px;
+    background: var(--accent-primary);
+    color: white;
+    border-radius: 50%;
+    font-size: 0.65rem;
+    font-weight: 700;
+    flex-shrink: 0;
+}
+
+.previous-set-value {
+    color: var(--text-primary);
+    font-size: 0.8rem;
+    font-weight: 500;
+    white-space: nowrap;
 }
 
 .set-inputs {
     display: flex;
     gap: var(--spacing-sm);
     margin-bottom: var(--spacing-sm);
+    align-items: stretch;
+}
+
+.input-group {
+    display: flex;
+    flex-direction: column;
+    gap: 0.25rem;
+    flex: 1;
+}
+
+.input-label {
+    font-size: 0.75rem;
+    color: var(--text-primary);
+    font-weight: 500;
+    padding-left: 0.25rem;
 }
 
 .set-inputs input {
@@ -933,6 +1160,93 @@ body.gym-tracker #footer {
     border-radius: var(--radius-md);
     font-weight: 600;
     cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    white-space: nowrap;
+}
+
+.set-inputs button:hover {
+    background: var(--accent-success);
+    filter: brightness(1.1);
+    transform: translateY(-1px);
+}
+
+.set-inputs button:active {
+    transform: translateY(0);
+}
+
+/* Duration inputs */
+.duration-input {
+    flex: 2;
+}
+
+.duration-inputs {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    background: var(--bg-tertiary);
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-md);
+    padding: 0.5rem;
+}
+
+.duration-min,
+.duration-sec {
+    flex: 1;
+    padding: 0.5rem !important;
+    background: var(--bg-card) !important;
+    border: 1px solid var(--border-color) !important;
+    border-radius: var(--radius-sm) !important;
+    color: white !important;
+    font-size: 1.1rem !important;
+    text-align: center !important;
+    font-weight: 600;
+    min-width: 0;
+}
+
+.duration-separator {
+    font-size: 1.5rem;
+    font-weight: 700;
+    color: var(--accent-primary);
+    padding: 0 0.25rem;
+}
+
+.duration-edit-min,
+.duration-edit-sec {
+    width: 60px !important;
+    padding: 0.5rem !important;
+    background: var(--bg-card) !important;
+    border: 1px solid var(--border-color) !important;
+    border-radius: var(--radius-sm) !important;
+    color: white !important;
+    font-size: 1rem !important;
+    text-align: center !important;
+    font-weight: 600;
+}
+
+/* Mobile optimization for set inputs */
+@media (max-width: 767px) {
+    .set-inputs {
+        flex-wrap: wrap;
+        gap: var(--spacing-sm);
+    }
+
+    .input-group {
+        min-width: 0;
+        flex: 1 1 calc(50% - var(--spacing-sm) / 2);
+    }
+
+    .duration-input {
+        flex: 1 1 100%;
+    }
+
+    .set-inputs button {
+        flex: 1 1 100%;
+        width: 100%;
+        padding: 0.875rem;
+    }
 }
 
 .completed-sets {
@@ -947,10 +1261,179 @@ body.gym-tracker #footer {
     background: var(--bg-tertiary);
     border-radius: var(--radius-sm);
     margin-bottom: var(--spacing-xs);
+    gap: var(--spacing-sm);
 }
 
 .completed-set.improved {
     border-left: 3px solid var(--accent-success);
+}
+
+.set-info {
+    flex: 1;
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+}
+
+.set-number {
+    font-weight: 600;
+    color: var(--text-primary);
+    font-size: 0.9rem;
+}
+
+.set-details {
+    color: var(--text-primary);
+    font-size: 1rem;
+    font-weight: 500;
+}
+
+.duration-value {
+    font-weight: 700;
+    color: var(--accent-primary);
+    font-size: 1rem;
+}
+
+.duration-label {
+    font-size: 0.8rem;
+    color: #aaa;
+    margin-left: 0.25rem;
+}
+
+.set-actions {
+    display: flex;
+    gap: 0.25rem;
+    flex-shrink: 0;
+}
+
+.btn-set-action {
+    width: 36px;
+    height: 36px;
+    border-radius: var(--radius-sm);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    transition: all var(--transition-base);
+    padding: 0;
+    border: none;
+    font-size: 0.9rem;
+}
+
+.btn-set-action i {
+    color: white;
+}
+
+.btn-set-action:active {
+    transform: scale(0.95);
+}
+
+/* Edit button - Blue/Purple */
+.btn-set-action:not(.btn-set-delete):not(.btn-set-save):not(.btn-set-cancel) {
+    background: var(--accent-primary);
+    color: white;
+}
+
+.btn-set-action:not(.btn-set-delete):not(.btn-set-save):not(.btn-set-cancel):hover {
+    background: var(--accent-secondary);
+    transform: translateY(-1px);
+    box-shadow: 0 4px 8px rgba(108, 99, 255, 0.3);
+}
+
+/* Delete button - Red */
+.btn-set-delete {
+    background: var(--accent-error);
+    color: white;
+}
+
+.btn-set-delete:hover {
+    background: #ff3838;
+    transform: translateY(-1px);
+    box-shadow: 0 4px 8px rgba(255, 82, 82, 0.3);
+}
+
+/* Save button - Green */
+.btn-set-save {
+    background: var(--accent-success);
+    color: white;
+}
+
+.btn-set-save:hover {
+    background: #00c48c;
+    transform: translateY(-1px);
+    box-shadow: 0 4px 8px rgba(0, 217, 163, 0.3);
+}
+
+/* Cancel button - Gray */
+.btn-set-cancel {
+    background: var(--bg-card);
+    border: 1px solid var(--border-color);
+    color: var(--text-primary);
+}
+
+.btn-set-cancel:hover {
+    background: var(--bg-hover);
+    color: var(--text-primary);
+}
+
+/* Set editing form */
+.set-edit-form {
+    flex: 1;
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    flex-wrap: wrap;
+}
+
+.set-edit-input {
+    width: 70px;
+    padding: 0.5rem;
+    background: var(--bg-card);
+    border: 2px solid var(--accent-primary);
+    border-radius: var(--radius-sm);
+    color: var(--text-primary);
+    font-size: 0.95rem;
+    text-align: center;
+    font-weight: 500;
+}
+
+.set-edit-input:focus {
+    outline: none;
+    border-color: var(--accent-secondary);
+    background: var(--bg-hover);
+}
+
+.set-edit-x {
+    color: var(--text-primary);
+    font-weight: 600;
+    font-size: 1rem;
+}
+
+.set-edit-unit {
+    color: var(--text-primary);
+    font-size: 0.85rem;
+    font-weight: 500;
+}
+
+/* Mobile optimization for completed sets */
+@media (max-width: 767px) {
+    .completed-set {
+        padding: var(--spacing-md);
+    }
+
+    .set-info {
+        min-width: 0;
+    }
+
+    .btn-set-action {
+        width: 40px;
+        height: 40px;
+        font-size: 1rem;
+    }
+
+    .set-edit-input {
+        width: 65px;
+        padding: 0.6rem 0.4rem;
+    }
 }
 
 /* Toast Notifications */
@@ -1023,36 +1506,111 @@ body.gym-tracker #footer {
 .exercise-search-bar,
 .exercise-picker-search {
     display: flex;
+    flex-direction: column;
     gap: var(--spacing-md);
-    margin-bottom: var(--spacing-lg);
-    flex-wrap: wrap;
+    margin-bottom: var(--spacing-xl);
+    background: var(--bg-tertiary);
+    padding: var(--spacing-lg);
+    border-radius: var(--radius-lg);
+    border: 1px solid var(--border-color);
+}
+
+.search-input-wrapper {
+    position: relative;
+    width: 100%;
+}
+
+.search-icon {
+    position: absolute;
+    left: 1rem;
+    top: 50%;
+    transform: translateY(-50%);
+    color: #888;
+    font-size: 1rem;
+    pointer-events: none;
+    z-index: 1;
 }
 
 .exercise-search-bar input,
 .exercise-picker-search input {
-    flex: 2;
-    min-width: 200px;
-    padding: 0.75rem;
+    width: 100%;
+    padding: 1rem 1rem 1rem 3rem;
     background: var(--bg-card);
-    border: 1px solid var(--border-color);
-    border-radius: var(--radius-md);
-    color: var(--text-primary);
+    border: 2px solid var(--border-color);
+    border-radius: var(--radius-lg);
+    color: white;
+    font-size: 1rem;
+    transition: all var(--transition-base);
+}
+
+.exercise-search-bar input:focus,
+.exercise-picker-search input:focus {
+    outline: none;
+    border-color: var(--accent-primary);
+    box-shadow: 0 0 0 3px rgba(139, 92, 246, 0.1);
+}
+
+.exercise-search-bar input:focus ~ .search-icon,
+.exercise-picker-search input:focus ~ .search-icon {
+    color: var(--accent-primary);
+}
+
+.exercise-search-bar input::placeholder,
+.exercise-picker-search input::placeholder {
+    color: #888;
 }
 
 .exercise-search-bar select,
 .exercise-picker-search select {
     flex: 1;
     min-width: 150px;
-    padding: 0.75rem;
+    padding: 0.875rem;
     background: var(--bg-card);
-    border: 1px solid var(--border-color);
-    border-radius: var(--radius-md);
-    color: var(--text-primary);
+    border: 2px solid var(--border-color);
+    border-radius: var(--radius-lg);
+    color: white;
+    font-size: 0.95rem;
+    cursor: pointer;
+    transition: all var(--transition-base);
+}
+
+.exercise-search-bar select:hover,
+.exercise-picker-search select:hover {
+    border-color: var(--accent-primary);
+}
+
+.exercise-search-bar select:focus,
+.exercise-picker-search select:focus {
+    outline: none;
+    border-color: var(--accent-primary);
+    box-shadow: 0 0 0 3px rgba(139, 92, 246, 0.1);
+}
+
+.exercise-search-bar select option:disabled,
+.exercise-picker-search select option:disabled {
+    color: #444 !important;
+    opacity: 0.3 !important;
+    text-decoration: line-through;
+    background: #1a1a1a !important;
+    font-style: italic;
 }
 
 .exercise-filters {
-    display: flex;
-    gap: var(--spacing-sm);
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: var(--spacing-md);
+}
+
+@media (min-width: 640px) {
+    .exercise-filters {
+        grid-template-columns: repeat(2, 1fr);
+    }
+}
+
+@media (min-width: 1024px) {
+    .exercise-search-bar .exercise-filters {
+        grid-template-columns: repeat(3, 1fr);
+    }
 }
 
 .exercise-db-grid {
@@ -1123,14 +1681,15 @@ body.gym-tracker #footer {
 }
 
 .delete-exercise-btn {
-    opacity: 0.6;
+    opacity: 0.8;
     transition: all 0.2s ease;
     flex-shrink: 0;
+    color: var(--accent-error);
 }
 
 .delete-exercise-btn:hover {
     opacity: 1;
-    color: var(--accent-danger);
+    color: var(--accent-error);
 }
 
 .exercise-db-card .exercise-meta {
@@ -1151,36 +1710,107 @@ body.gym-tracker #footer {
 
 /* Exercise Picker */
 .exercise-picker-card {
-    background: var(--bg-card);
+    background: linear-gradient(135deg, var(--bg-card) 0%, rgba(74, 74, 94, 0.3) 100%);
     border-radius: var(--radius-lg);
     padding: var(--spacing-lg);
-    border: 1px solid var(--border-color);
+    border: 2px solid var(--border-color);
     cursor: pointer;
-    transition: all var(--transition-base);
+    transition: all 0.2s ease;
+    position: relative;
+    overflow: hidden;
+}
+
+.exercise-picker-card::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 4px;
+    background: linear-gradient(90deg, var(--accent-primary), var(--accent-secondary));
+    opacity: 0;
+    transition: opacity 0.2s ease;
+}
+
+.exercise-picker-card:hover::before {
+    opacity: 1;
 }
 
 .exercise-picker-card:hover {
     border-color: var(--accent-primary);
+    transform: translateY(-4px);
+    box-shadow: 0 8px 24px rgba(139, 92, 246, 0.2);
+}
+
+.exercise-picker-card:active {
     transform: translateY(-2px);
-    box-shadow: var(--shadow-md);
 }
 
 .exercise-picker-card h4 {
-    margin: 0 0 var(--spacing-sm) 0;
-    font-size: 1.1rem;
+    margin: 0 0 var(--spacing-md) 0;
+    font-size: 1.15rem;
+    font-weight: 600;
+    color: white;
+    letter-spacing: 0.3px;
+}
+
+.exercise-picker-card .exercise-meta {
+    display: flex;
+    gap: var(--spacing-sm);
+    flex-wrap: wrap;
+    margin: var(--spacing-sm) 0;
+}
+
+.exercise-picker-card .badge {
+    padding: 0.375rem 0.75rem;
+    background: linear-gradient(135deg, rgba(139, 92, 246, 0.2), rgba(168, 85, 247, 0.2));
+    border: 1px solid rgba(139, 92, 246, 0.3);
+    border-radius: var(--radius-md);
+    font-size: 0.8rem;
+    color: var(--accent-primary);
+    font-weight: 600;
+    text-transform: capitalize;
+    letter-spacing: 0.3px;
+}
+
+.exercise-picker-card p {
+    color: #bbb;
+    margin: var(--spacing-sm) 0 0 0;
+    font-size: 0.9rem;
+    font-weight: 500;
 }
 
 .exercise-picker-list {
     display: grid;
     grid-template-columns: 1fr;
-    gap: var(--spacing-md);
+    gap: var(--spacing-lg);
     max-height: 60vh;
     overflow-y: auto;
+    padding: var(--spacing-xs);
+}
+
+.exercise-picker-list::-webkit-scrollbar {
+    width: 8px;
+}
+
+.exercise-picker-list::-webkit-scrollbar-track {
+    background: var(--bg-tertiary);
+    border-radius: 4px;
+}
+
+.exercise-picker-list::-webkit-scrollbar-thumb {
+    background: var(--accent-primary);
+    border-radius: 4px;
+}
+
+.exercise-picker-list::-webkit-scrollbar-thumb:hover {
+    background: var(--accent-secondary);
 }
 
 @media (min-width: 768px) {
     .exercise-picker-list {
         grid-template-columns: repeat(2, 1fr);
+        gap: var(--spacing-lg);
     }
 }
 
@@ -1264,7 +1894,7 @@ body.gym-tracker #footer {
 
 .workout-day-item p {
     margin: 0.25rem 0;
-    color: var(--text-secondary);
+    color: var(--text-primary);
     font-size: 0.9rem;
 }
 
@@ -1297,7 +1927,7 @@ body.gym-tracker #footer {
     align-items: center;
     gap: var(--spacing-sm);
     font-size: 0.9rem;
-    color: var(--text-secondary);
+    color: var(--text-primary);
 }
 
 .legend-dot {
@@ -1325,7 +1955,7 @@ body.gym-tracker #footer {
     padding: var(--spacing-sm);
     text-align: center;
     font-weight: 600;
-    color: var(--text-secondary);
+    color: var(--text-primary);
     font-size: 0.85rem;
 }
 
@@ -1378,7 +2008,7 @@ body.gym-tracker #footer {
     padding: var(--spacing-md) var(--spacing-lg);
     background: none;
     border: none;
-    color: var(--text-secondary);
+    color: var(--text-primary);
     font-size: 0.95rem;
     font-weight: 600;
     cursor: pointer;
@@ -1452,7 +2082,7 @@ body.gym-tracker #footer {
 .achievement-card .achievement-info p {
     margin: 0;
     font-size: 0.85rem;
-    color: var(--text-secondary);
+    color: var(--text-primary);
 }
 
 .achievement-progress {
@@ -1486,18 +2116,27 @@ body.gym-tracker #footer {
 }
 
 .setting-item {
-    display: flex;
+    display: flex !important;
     justify-content: space-between;
     align-items: center;
     padding: var(--spacing-md);
     background: var(--bg-card);
     border-radius: var(--radius-md);
     margin-bottom: var(--spacing-sm);
+    min-height: 60px;
 }
 
 .setting-item label {
     flex: 1;
     margin: 0;
+    color: white;
+    font-size: 1rem;
+}
+
+.setting-item input[type="checkbox"],
+.setting-item .toggle {
+    flex-shrink: 0;
+    margin-left: var(--spacing-md);
 }
 
 .setting-actions {
@@ -1550,7 +2189,7 @@ body.gym-tracker #footer {
 }
 
 .more-item i:last-child {
-    color: var(--text-muted);
+    color: var(--text-primary);
 }
 
 /* Utility Classes */
@@ -1563,7 +2202,7 @@ body.gym-tracker #footer {
 }
 
 .text-muted {
-    color: var(--text-muted);
+    color: var(--text-primary);
 }
 
 .text-warning {
@@ -1597,6 +2236,11 @@ body.gym-tracker #footer {
     text-align: center;
 }
 
+.program-summary h3 {
+    color: var(--text-primary);
+    font-weight: 600;
+}
+
 .quick-programs {
     margin: var(--spacing-lg) 0;
     display: flex;
@@ -1627,6 +2271,8 @@ body.gym-tracker #footer {
     display: flex;
     flex-direction: column;
     gap: 0.25rem;
+    text-align: left;
+    align-items: flex-start;
 }
 
 .quick-program-item .fa-play-circle {
@@ -1635,7 +2281,7 @@ body.gym-tracker #footer {
 }
 
 .quick-program-item .fa-edit {
-    color: var(--text-secondary);
+    color: var(--text-primary);
     font-size: 1.2rem;
     cursor: pointer;
     padding: 0.25rem;
@@ -1646,7 +2292,7 @@ body.gym-tracker #footer {
 }
 
 .text-secondary {
-    color: var(--text-secondary);
+    color: var(--text-primary);
 }
 
 /* Exercise History Modal */
@@ -1785,7 +2431,7 @@ body.gym-tracker #footer {
     align-items: center;
     gap: var(--spacing-xs);
     font-size: 0.85rem;
-    color: var(--text-secondary);
+    color: var(--text-primary);
     padding: var(--spacing-xs) var(--spacing-sm);
     background: var(--bg-tertiary);
     border-radius: var(--radius-sm);
@@ -1817,7 +2463,7 @@ body.gym-tracker #footer {
 
 .detail-date {
     font-size: 1.1rem;
-    color: var(--text-secondary);
+    color: var(--text-primary);
     margin-bottom: var(--spacing-md);
 }
 
@@ -1839,7 +2485,7 @@ body.gym-tracker #footer {
 
 .detail-stat .label {
     font-size: 0.85rem;
-    color: var(--text-secondary);
+    color: var(--text-primary);
     text-transform: uppercase;
     letter-spacing: 0.5px;
     font-weight: 500;
@@ -1877,15 +2523,19 @@ body.gym-tracker #footer {
 .sets-table th {
     text-align: left;
     padding: var(--spacing-sm);
-    color: var(--text-muted);
-    font-weight: 500;
-    border-bottom: 1px solid var(--border-color);
+    color: var(--accent-primary);
+    font-weight: 600;
+    border-bottom: 2px solid var(--accent-primary);
+    text-transform: uppercase;
+    font-size: 0.85rem;
+    letter-spacing: 0.5px;
 }
 
 .sets-table td {
     padding: var(--spacing-sm);
-    color: var(--text-secondary);
+    color: var(--text-primary);
     border-bottom: 1px solid var(--border-color);
+    text-align: left;
 }
 
 .sets-table tbody tr:last-child td {
@@ -1900,7 +2550,7 @@ body.gym-tracker #footer {
     background: var(--bg-tertiary);
     padding: var(--spacing-md);
     border-radius: var(--radius-md);
-    color: var(--text-secondary);
+    color: var(--text-primary);
     line-height: 1.6;
     white-space: pre-wrap;
 }

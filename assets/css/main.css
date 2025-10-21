@@ -2443,6 +2443,21 @@ body {
 @media screen and (max-width: 480px) {
   #header {
     min-width: 320px; } }
+
+/* User Email in Header */
+.user-email-header {
+  display: none; }
+  @media screen and (max-width: 736px) {
+    .user-email-header.signed-in {
+      display: block;
+      color: rgba(255, 255, 255, 0.7);
+      font-size: 0.75rem;
+      padding: 0 0.5rem;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      max-width: 150px; } }
+
 /* Heading */
 #heading {
   -ms-flex-align: center;
