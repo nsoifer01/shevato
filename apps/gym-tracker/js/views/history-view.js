@@ -217,6 +217,8 @@ class HistoryView {
             const completedSets = exercise.sets ? exercise.sets.filter(s => s.completed) : [];
 
             if (completedSets.length > 0) {
+                const isDuration = completedSets[0].duration > 0;
+
                 html += `
                     <div class="detail-exercise">
                         <h4>${exerciseName}</h4>
@@ -224,23 +226,42 @@ class HistoryView {
                             <thead>
                                 <tr>
                                     <th>Set</th>
+                `;
+
+                if (isDuration) {
+                    html += `
+                                    <th>Duration</th>
+                    `;
+                } else {
+                    html += `
                                     <th>Weight</th>
                                     <th>Reps</th>
                                     <th>Volume</th>
+                    `;
+                }
+
+                html += `
                                 </tr>
                             </thead>
                             <tbody>
                 `;
 
                 completedSets.forEach((set, index) => {
-                    html += `
-                        <tr>
-                            <td>${index + 1}</td>
+                    html += `<tr><td>${index + 1}</td>`;
+
+                    if (set.duration > 0) {
+                        const mins = Math.floor(set.duration / 60);
+                        const secs = set.duration % 60;
+                        html += `<td>${mins}:${secs.toString().padStart(2, '0')}</td>`;
+                    } else {
+                        html += `
                             <td>${set.weight}${unit}</td>
                             <td>${set.reps}</td>
                             <td>${Math.round(set.volume)}${unit}</td>
-                        </tr>
-                    `;
+                        `;
+                    }
+
+                    html += `</tr>`;
                 });
 
                 html += `
@@ -328,6 +349,31 @@ class HistoryView {
                 showToast('Workout deleted', 'info');
             }
         }
+    }
+
+    goToProgramDetails(programId) {
+        // Check if program exists
+        const program = this.app.getProgramById(programId);
+        if (!program) {
+            showToast('Program not found', 'error');
+            return;
+        }
+
+        // Navigate to programs view
+        this.app.showView('programs');
+
+        // Open program edit modal after a short delay to ensure view is loaded and rendered
+        setTimeout(() => {
+            if (this.app.viewControllers.programs) {
+                // Ensure programs list is rendered first
+                this.app.viewControllers.programs.render();
+                // Then open the edit modal
+                this.app.viewControllers.programs.editProgram(programId);
+            } else {
+                showToast('Programs view not initialized', 'error');
+                console.error('Programs view controller not found');
+            }
+        }, 250);
     }
 }
 
