@@ -85,6 +85,12 @@ class ProgramsView {
                     </div>
                 </div>
                 <div class="program-actions">
+                    ${program.exercises.length > 0
+                        ? `<button class="btn btn-primary" onclick="window.gymApp.viewControllers.programs.startWorkout(${program.id})">
+                            <i class="fas fa-play"></i> Start
+                        </button>`
+                        : '<button class="btn btn-secondary" disabled title="Add exercises first">No Exercises</button>'
+                    }
                     <button class="btn btn-secondary" onclick="window.gymApp.viewControllers.programs.editProgram(${program.id})">Edit</button>
                     <button class="btn btn-danger" onclick="window.gymApp.viewControllers.programs.deleteProgram(${program.id})">Delete</button>
                 </div>
@@ -120,7 +126,7 @@ class ProgramsView {
     renderProgramExercises() {
         const container = document.getElementById('program-exercises-list');
         if (!this.currentProgram || this.currentProgram.exercises.length === 0) {
-            container.innerHTML = '<p class="text-muted">No exercises added yet</p>';
+            container.innerHTML = '<p>No exercises added yet</p>';
             return;
         }
 
@@ -281,6 +287,9 @@ class ProgramsView {
             exercises = exercises.filter(ex => ex.equipment === equipment);
         }
 
+        // Update dropdown states
+        this.updatePickerDropdownStates(searchTerm, category, equipment);
+
         if (exercises.length === 0) {
             container.innerHTML = '<div class="empty-state"><p>No exercises found</p></div>';
             return;
@@ -293,9 +302,54 @@ class ProgramsView {
                     <span class="badge">${exercise.category}</span>
                     <span class="badge">${exercise.equipment}</span>
                 </div>
-                <p class="text-muted">${exercise.muscleGroup}</p>
+                <p>${exercise.muscleGroup}</p>
             </div>
         `).join('');
+    }
+
+    updatePickerDropdownStates(searchTerm, currentCategory, currentEquipment) {
+        const categorySelect = document.getElementById('exercise-category-filter');
+        const equipmentSelect = document.getElementById('exercise-equipment-filter');
+
+        if (categorySelect) {
+            Array.from(categorySelect.options).forEach(option => {
+                if (!option.value) {
+                    option.disabled = false;
+                    return;
+                }
+
+                // Count exercises that would match if this category was selected
+                const count = this.app.exerciseDatabase.filter(ex => {
+                    const matchesSearch = !searchTerm || ex.name.toLowerCase().includes(searchTerm) || ex.muscleGroup.toLowerCase().includes(searchTerm);
+                    const matchesThisCategory = ex.category === option.value;
+                    const matchesEquipment = !currentEquipment || ex.equipment === currentEquipment;
+
+                    return matchesSearch && matchesThisCategory && matchesEquipment;
+                }).length;
+
+                option.disabled = count === 0;
+            });
+        }
+
+        if (equipmentSelect) {
+            Array.from(equipmentSelect.options).forEach(option => {
+                if (!option.value) {
+                    option.disabled = false;
+                    return;
+                }
+
+                // Count exercises that would match if this equipment was selected
+                const count = this.app.exerciseDatabase.filter(ex => {
+                    const matchesSearch = !searchTerm || ex.name.toLowerCase().includes(searchTerm) || ex.muscleGroup.toLowerCase().includes(searchTerm);
+                    const matchesCategory = !currentCategory || ex.category === currentCategory;
+                    const matchesThisEquipment = ex.equipment === option.value;
+
+                    return matchesSearch && matchesCategory && matchesThisEquipment;
+                }).length;
+
+                option.disabled = count === 0;
+            });
+        }
     }
 
     selectExercise(exerciseId) {
@@ -355,6 +409,32 @@ class ProgramsView {
         [exercises[index], exercises[index + 1]] = [exercises[index + 1], exercises[index]];
 
         this.renderProgramExercises();
+    }
+
+    startWorkout(programId) {
+        const program = this.app.getProgramById(programId);
+        if (!program) {
+            showToast('Program not found', 'error');
+            return;
+        }
+
+        if (!program.exercises || program.exercises.length === 0) {
+            showToast('This program has no exercises', 'error');
+            return;
+        }
+
+        // Navigate to workout view
+        this.app.showView('workout');
+
+        // Start the workout after a short delay to ensure view is loaded
+        setTimeout(() => {
+            if (this.app.viewControllers.workout) {
+                this.app.viewControllers.workout.startWorkout(programId);
+            } else {
+                showToast('Workout view not initialized', 'error');
+                console.error('Workout view controller not found');
+            }
+        }, 100);
     }
 }
 

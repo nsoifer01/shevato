@@ -39,10 +39,6 @@
                 <i class="fas fa-list"></i>
                 <span>Programs</span>
             </button>
-            <button class="nav-item workout-btn" data-view="workout">
-                <i class="fas fa-dumbbell"></i>
-                <span>Workout</span>
-            </button>
             <button class="nav-item" data-view="history">
                 <i class="fas fa-chart-line"></i>
                 <span>History</span>
@@ -66,10 +62,6 @@
                 <button class="nav-link" data-view="programs">
                     <i class="fas fa-list"></i>
                     <span>Programs</span>
-                </button>
-                <button class="nav-link" data-view="workout">
-                    <i class="fas fa-dumbbell"></i>
-                    <span>Workout</span>
                 </button>
                 <button class="nav-link" data-view="history">
                     <i class="fas fa-chart-line"></i>
@@ -198,20 +190,30 @@
                         </div>
                         <div class="modal-body">
                             <div class="exercise-picker-search">
-                                <input type="text" id="exercise-search" placeholder="Search exercises...">
+                                <div class="search-input-wrapper">
+                                    <i class="fas fa-search search-icon"></i>
+                                    <input type="text" id="exercise-search" placeholder="Search exercises by name or muscle group...">
+                                </div>
                                 <div class="exercise-filters">
                                     <select id="exercise-category-filter">
                                         <option value="">All Categories</option>
                                         <option value="chest">Chest</option>
                                         <option value="back">Back</option>
                                         <option value="shoulders">Shoulders</option>
-                                        <option value="quads">Quads</option>
-                                        <option value="hamstrings">Hamstrings</option>
-                                        <option value="calves">Calves</option>
                                         <option value="biceps">Biceps</option>
                                         <option value="triceps">Triceps</option>
+                                        <option value="forearms">Forearms</option>
+                                        <option value="quads">Quads</option>
+                                        <option value="hamstrings">Hamstrings</option>
+                                        <option value="glutes">Glutes</option>
+                                        <option value="calves">Calves</option>
                                         <option value="core">Core</option>
+                                        <option value="abs">Abs</option>
+                                        <option value="obliques">Obliques</option>
+                                        <option value="traps">Traps</option>
+                                        <option value="neck">Neck</option>
                                         <option value="full-body">Full Body</option>
+                                        <option value="cardio">Cardio</option>
                                     </select>
                                     <select id="exercise-equipment-filter">
                                         <option value="">All Equipment</option>
@@ -220,6 +222,18 @@
                                         <option value="cable">Cable</option>
                                         <option value="machine">Machine</option>
                                         <option value="bodyweight">Bodyweight</option>
+                                        <option value="kettlebell">Kettlebell</option>
+                                        <option value="resistance-band">Resistance Band</option>
+                                        <option value="plate">Plate</option>
+                                        <option value="trap-bar">Trap Bar</option>
+                                        <option value="medicine-ball">Medicine Ball</option>
+                                        <option value="battle-ropes">Battle Ropes</option>
+                                        <option value="ab-wheel">Ab Wheel</option>
+                                        <option value="sled">Sled</option>
+                                        <option value="tire">Tire</option>
+                                        <option value="gripper">Gripper</option>
+                                        <option value="towel">Towel</option>
+                                        <option value="various">Various</option>
                                     </select>
                                 </div>
                             </div>
@@ -309,24 +323,26 @@
                                         </div>
                                     </div>
 
-                                    <h3>Post-Workout Metrics (Optional)</h3>
-                                    <div class="form-row">
-                                        <div class="form-group">
-                                            <label for="avg-heart-rate">Avg Heart Rate</label>
-                                            <input type="number" id="avg-heart-rate" placeholder="bpm" min="30" max="250">
+                                    <div id="post-workout-metrics-section">
+                                        <h3>Post-Workout Metrics (Optional)</h3>
+                                        <div class="form-row">
+                                            <div class="form-group">
+                                                <label for="avg-heart-rate">Avg Heart Rate</label>
+                                                <input type="number" id="avg-heart-rate" placeholder="bpm" min="30" max="250">
+                                            </div>
+                                            <div class="form-group">
+                                                <label for="max-heart-rate">Max Heart Rate</label>
+                                                <input type="number" id="max-heart-rate" placeholder="bpm" min="30" max="250">
+                                            </div>
                                         </div>
                                         <div class="form-group">
-                                            <label for="max-heart-rate">Max Heart Rate</label>
-                                            <input type="number" id="max-heart-rate" placeholder="bpm" min="30" max="250">
+                                            <label for="calories-burned">Calories Burned</label>
+                                            <input type="number" id="calories-burned" placeholder="kcal" min="0" max="5000">
                                         </div>
-                                    </div>
-                                    <div class="form-group">
-                                        <label for="calories-burned">Calories Burned</label>
-                                        <input type="number" id="calories-burned" placeholder="kcal" min="0" max="5000">
-                                    </div>
-                                    <div class="form-group">
-                                        <label for="workout-notes">Notes (Optional)</label>
-                                        <textarea id="workout-notes" placeholder="How did the workout go?" rows="3"></textarea>
+                                        <div class="form-group">
+                                            <label for="workout-notes">Notes (Optional)</label>
+                                            <textarea id="workout-notes" placeholder="How did the workout go?" rows="3"></textarea>
+                                        </div>
                                     </div>
 
                                     <div class="form-actions">
@@ -390,24 +406,57 @@
                 </div>
 
                 <div class="exercise-search-bar">
-                    <input type="text" id="exercise-db-search" placeholder="Search exercises...">
-                    <select id="exercise-db-category">
-                        <option value="">All Categories</option>
-                        <option value="chest">Chest</option>
-                        <option value="back">Back</option>
-                        <option value="shoulders">Shoulders</option>
-                        <option value="quads">Quads</option>
-                        <option value="hamstrings">Hamstrings</option>
-                        <option value="calves">Calves</option>
-                        <option value="biceps">Biceps</option>
-                        <option value="triceps">Triceps</option>
-                        <option value="core">Core</option>
-                    </select>
-                    <select id="exercise-db-history-filter">
-                        <option value="all">All Exercises</option>
-                        <option value="with-history">With History</option>
-                        <option value="without-history">Without History</option>
-                    </select>
+                    <div class="search-input-wrapper">
+                        <i class="fas fa-search search-icon"></i>
+                        <input type="text" id="exercise-db-search" placeholder="Search exercises by name or muscle group...">
+                    </div>
+                    <div class="exercise-filters">
+                        <select id="exercise-db-category">
+                            <option value="">All Categories</option>
+                            <option value="chest">Chest</option>
+                            <option value="back">Back</option>
+                            <option value="shoulders">Shoulders</option>
+                            <option value="biceps">Biceps</option>
+                            <option value="triceps">Triceps</option>
+                            <option value="forearms">Forearms</option>
+                            <option value="quads">Quads</option>
+                            <option value="hamstrings">Hamstrings</option>
+                            <option value="glutes">Glutes</option>
+                            <option value="calves">Calves</option>
+                            <option value="core">Core</option>
+                            <option value="abs">Abs</option>
+                            <option value="obliques">Obliques</option>
+                            <option value="traps">Traps</option>
+                            <option value="neck">Neck</option>
+                            <option value="full-body">Full Body</option>
+                            <option value="cardio">Cardio</option>
+                        </select>
+                        <select id="exercise-db-equipment">
+                            <option value="">All Equipment</option>
+                            <option value="barbell">Barbell</option>
+                            <option value="dumbbell">Dumbbell</option>
+                            <option value="cable">Cable</option>
+                            <option value="machine">Machine</option>
+                            <option value="bodyweight">Bodyweight</option>
+                            <option value="kettlebell">Kettlebell</option>
+                            <option value="resistance-band">Resistance Band</option>
+                            <option value="plate">Plate</option>
+                            <option value="trap-bar">Trap Bar</option>
+                            <option value="medicine-ball">Medicine Ball</option>
+                            <option value="battle-ropes">Battle Ropes</option>
+                            <option value="ab-wheel">Ab Wheel</option>
+                            <option value="sled">Sled</option>
+                            <option value="tire">Tire</option>
+                            <option value="gripper">Gripper</option>
+                            <option value="towel">Towel</option>
+                            <option value="various">Various</option>
+                        </select>
+                        <select id="exercise-db-history-filter">
+                            <option value="all">All Exercises</option>
+                            <option value="with-history">With History</option>
+                            <option value="without-history">Without History</option>
+                        </select>
+                    </div>
                 </div>
 
                 <div id="exercise-db-list" class="exercise-db-grid">
@@ -603,30 +652,6 @@
                     </section>
 
                     <section class="settings-section">
-                        <h2>Workout</h2>
-                        <div class="setting-item">
-                            <label for="enable-rest-timer">Enable Rest Timer</label>
-                            <input type="checkbox" id="enable-rest-timer" class="toggle">
-                        </div>
-                        <div class="setting-item">
-                            <label for="default-rest-time">Default Rest Time (seconds)</label>
-                            <input type="number" id="default-rest-time" min="30" max="600" step="15">
-                        </div>
-                    </section>
-
-                    <section class="settings-section">
-                        <h2>Notifications</h2>
-                        <div class="setting-item">
-                            <label for="enable-notifications">Enable Notifications</label>
-                            <input type="checkbox" id="enable-notifications" class="toggle">
-                        </div>
-                        <div class="setting-item">
-                            <label for="enable-sound">Enable Sound</label>
-                            <input type="checkbox" id="enable-sound" class="toggle">
-                        </div>
-                    </section>
-
-                    <section class="settings-section">
                         <h2>Data Management</h2>
                         <div class="setting-actions">
                             <button type="button" class="btn btn-secondary" id="export-data-btn">
@@ -760,5 +785,6 @@
     <script type="module" src="js/views/calendar-view.js"></script>
     <script type="module" src="js/views/achievements-view.js"></script>
     <script type="module" src="js/views/settings-view.js"></script>
+
 </body>
 </html>

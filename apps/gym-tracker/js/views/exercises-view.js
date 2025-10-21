@@ -19,6 +19,7 @@ class ExercisesView {
     setupEventListeners() {
         const searchInput = document.getElementById('exercise-db-search');
         const categoryFilter = document.getElementById('exercise-db-category');
+        const equipmentFilter = document.getElementById('exercise-db-equipment');
         const historyFilter = document.getElementById('exercise-db-history-filter');
         const createBtn = document.getElementById('create-custom-exercise-btn');
 
@@ -28,6 +29,10 @@ class ExercisesView {
 
         if (categoryFilter) {
             categoryFilter.addEventListener('change', () => this.filterExercises());
+        }
+
+        if (equipmentFilter) {
+            equipmentFilter.addEventListener('change', () => this.filterExercises());
         }
 
         if (historyFilter) {
@@ -62,12 +67,14 @@ class ExercisesView {
     filterExercises() {
         const searchTerm = document.getElementById('exercise-db-search')?.value.toLowerCase() || '';
         const category = document.getElementById('exercise-db-category')?.value || '';
+        const equipment = document.getElementById('exercise-db-equipment')?.value || '';
         const historyFilter = document.getElementById('exercise-db-history-filter')?.value || 'all';
 
         this.filteredExercises = this.app.exerciseDatabase.filter(ex => {
             const matchesSearch = ex.name.toLowerCase().includes(searchTerm) ||
                 ex.muscleGroup.toLowerCase().includes(searchTerm);
             const matchesCategory = !category || ex.category === category;
+            const matchesEquipment = !equipment || ex.equipment === equipment;
 
             // Check history filter
             const hasHistory = this.exerciseHasHistory(ex.id);
@@ -78,10 +85,66 @@ class ExercisesView {
                 matchesHistory = !hasHistory;
             }
 
-            return matchesSearch && matchesCategory && matchesHistory;
+            return matchesSearch && matchesCategory && matchesEquipment && matchesHistory;
         });
 
+        // Update dropdown states
+        this.updateDropdownStates(searchTerm, category, equipment, historyFilter);
+
         this.renderExerciseList();
+    }
+
+    updateDropdownStates(searchTerm, currentCategory, currentEquipment, historyFilter) {
+        const categorySelect = document.getElementById('exercise-db-category');
+        const equipmentSelect = document.getElementById('exercise-db-equipment');
+
+        if (categorySelect) {
+            Array.from(categorySelect.options).forEach(option => {
+                if (!option.value) {
+                    option.disabled = false;
+                    return;
+                }
+
+                // Count exercises that would match if this category was selected
+                const count = this.app.exerciseDatabase.filter(ex => {
+                    const matchesSearch = !searchTerm || ex.name.toLowerCase().includes(searchTerm) || ex.muscleGroup.toLowerCase().includes(searchTerm);
+                    const matchesThisCategory = ex.category === option.value;
+                    const matchesEquipment = !currentEquipment || ex.equipment === currentEquipment;
+                    const hasHistory = this.exerciseHasHistory(ex.id);
+                    let matchesHistory = true;
+                    if (historyFilter === 'with-history') matchesHistory = hasHistory;
+                    else if (historyFilter === 'without-history') matchesHistory = !hasHistory;
+
+                    return matchesSearch && matchesThisCategory && matchesEquipment && matchesHistory;
+                }).length;
+
+                option.disabled = count === 0;
+            });
+        }
+
+        if (equipmentSelect) {
+            Array.from(equipmentSelect.options).forEach(option => {
+                if (!option.value) {
+                    option.disabled = false;
+                    return;
+                }
+
+                // Count exercises that would match if this equipment was selected
+                const count = this.app.exerciseDatabase.filter(ex => {
+                    const matchesSearch = !searchTerm || ex.name.toLowerCase().includes(searchTerm) || ex.muscleGroup.toLowerCase().includes(searchTerm);
+                    const matchesCategory = !currentCategory || ex.category === currentCategory;
+                    const matchesThisEquipment = ex.equipment === option.value;
+                    const hasHistory = this.exerciseHasHistory(ex.id);
+                    let matchesHistory = true;
+                    if (historyFilter === 'with-history') matchesHistory = hasHistory;
+                    else if (historyFilter === 'without-history') matchesHistory = !hasHistory;
+
+                    return matchesSearch && matchesCategory && matchesThisEquipment && matchesHistory;
+                }).length;
+
+                option.disabled = count === 0;
+            });
+        }
     }
 
     exerciseHasHistory(exerciseId) {
@@ -107,6 +170,7 @@ class ExercisesView {
                             date: session.date,
                             weight: set.weight,
                             reps: set.reps,
+                            duration: set.duration || 0,
                             volume: set.volume
                         });
                     }
@@ -199,7 +263,7 @@ class ExercisesView {
                         <span class="badge">${exercise.category}</span>
                         <span class="badge">${exercise.equipment}</span>
                     </div>
-                    <p class="text-muted">${exercise.muscleGroup}</p>
+                    <p>${exercise.muscleGroup}</p>
                     ${hasHistory ? '<p class="history-hint"><i class="fas fa-info-circle"></i> Click to view history</p>' : ''}
                 </div>
             `;
@@ -217,20 +281,44 @@ class ExercisesView {
         document.getElementById('exercise-detail-name').textContent = exercise.name;
 
         const unit = this.app.settings.weightUnit;
+        const isDuration = history[0].duration > 0;
 
-        // Calculate stats
-        const maxWeight = Math.max(...history.map(h => h.weight));
-        const maxReps = Math.max(...history.map(h => h.reps));
-        const maxVolume = Math.max(...history.map(h => h.volume));
-        // Find the date of the best workout (highest volume)
-        const bestWorkout = history.reduce((best, current) =>
-            current.volume > best.volume ? current : best
-        );
-        const bestWorkoutDate = parseLocalDate(bestWorkout.date).toLocaleDateString();
+        let statsHTML = '';
+        if (isDuration) {
+            // Calculate stats for duration-based exercise
+            const maxDuration = Math.max(...history.map(h => h.duration));
+            const maxMins = Math.floor(maxDuration / 60);
+            const maxSecs = maxDuration % 60;
+            const avgDuration = history.reduce((sum, h) => sum + h.duration, 0) / history.length;
+            const avgMins = Math.floor(avgDuration / 60);
+            const avgSecs = Math.floor(avgDuration % 60);
+            const totalSets = history.length;
 
-        document.getElementById('exercise-detail-content').innerHTML = `
-            <h3>Best Set</h3>
-            <div class="exercise-stats-summary">
+            statsHTML = `
+                <div class="stat-box">
+                    <span class="stat-label">Max Duration</span>
+                    <span class="stat-value">${maxMins}:${maxSecs.toString().padStart(2, '0')}</span>
+                </div>
+                <div class="stat-box">
+                    <span class="stat-label">Avg Duration</span>
+                    <span class="stat-value">${avgMins}:${avgSecs.toString().padStart(2, '0')}</span>
+                </div>
+                <div class="stat-box">
+                    <span class="stat-label">Total Sets</span>
+                    <span class="stat-value">${totalSets}</span>
+                </div>
+            `;
+        } else {
+            // Calculate stats for reps-based exercise
+            const maxWeight = Math.max(...history.map(h => h.weight));
+            const maxReps = Math.max(...history.map(h => h.reps));
+            const maxVolume = Math.max(...history.map(h => h.volume));
+            const bestWorkout = history.reduce((best, current) =>
+                current.volume > best.volume ? current : best
+            );
+            const bestWorkoutDate = parseLocalDate(bestWorkout.date).toLocaleDateString();
+
+            statsHTML = `
                 <div class="stat-box">
                     <span class="stat-label">Max Weight</span>
                     <span class="stat-value">${maxWeight}${unit}</span>
@@ -247,6 +335,50 @@ class ExercisesView {
                     <span class="stat-label">Date</span>
                     <span class="stat-value">${bestWorkoutDate}</span>
                 </div>
+            `;
+        }
+
+        let tableHeaderHTML = '';
+        if (isDuration) {
+            tableHeaderHTML = `
+                <th>Date</th>
+                <th>Duration</th>
+            `;
+        } else {
+            tableHeaderHTML = `
+                <th>Date</th>
+                <th>Weight</th>
+                <th>Reps</th>
+                <th>Volume</th>
+            `;
+        }
+
+        let tableBodyHTML = history.map(record => {
+            if (record.duration > 0) {
+                const mins = Math.floor(record.duration / 60);
+                const secs = record.duration % 60;
+                return `
+                    <tr>
+                        <td>${parseLocalDate(record.date).toLocaleDateString()}</td>
+                        <td>${mins}:${secs.toString().padStart(2, '0')}</td>
+                    </tr>
+                `;
+            } else {
+                return `
+                    <tr>
+                        <td>${parseLocalDate(record.date).toLocaleDateString()}</td>
+                        <td>${record.weight}${unit}</td>
+                        <td>${record.reps}</td>
+                        <td>${Math.round(record.volume)}${unit}</td>
+                    </tr>
+                `;
+            }
+        }).join('');
+
+        document.getElementById('exercise-detail-content').innerHTML = `
+            <h3>Best Set</h3>
+            <div class="exercise-stats-summary">
+                ${statsHTML}
             </div>
 
             <h3>History</h3>
@@ -254,21 +386,11 @@ class ExercisesView {
                 <table>
                     <thead>
                         <tr>
-                            <th>Date</th>
-                            <th>Weight</th>
-                            <th>Reps</th>
-                            <th>Volume</th>
+                            ${tableHeaderHTML}
                         </tr>
                     </thead>
                     <tbody>
-                        ${history.map(record => `
-                            <tr>
-                                <td>${parseLocalDate(record.date).toLocaleDateString()}</td>
-                                <td>${record.weight}${unit}</td>
-                                <td>${record.reps}</td>
-                                <td>${Math.round(record.volume)}${unit}</td>
-                            </tr>
-                        `).join('')}
+                        ${tableBodyHTML}
                     </tbody>
                 </table>
             </div>
