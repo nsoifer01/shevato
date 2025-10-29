@@ -1,0 +1,42 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>💪</text></svg>" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+    <meta name="description" content="Track your gym workouts and monitor your progress" />
+    <meta name="theme-color" content="#1a1a2e" />
+    <title>Gym Tracker - Track Your Workouts</title>
+
+    <!-- FontAwesome -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" />
+
+    <!-- Main site CSS -->
+    <link rel="stylesheet" href="/assets/css/main.css" />
+  </head>
+  <body class="gym-tracker">
+    <!-- Include site header -->
+    <div data-include="header"></div>
+
+    <!-- Svelte App -->
+    <div id="app"></div>
+
+    <!-- Include site footer -->
+    <div data-include="footer"></div>
+
+    <!-- jQuery for loading partials -->
+    <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+    <script>
+      // Load header and footer partials
+      $(function() {
+        $('[data-include]').each(function() {
+          var file = '/partials/' + $(this).data('include') + '.html';
+          $(this).load(file);
+        });
+      });
+    </script>
+
+    <!-- Svelte App -->
+    <script type="module" src="/src/main.js"></script>
+  </body>
+</html>
