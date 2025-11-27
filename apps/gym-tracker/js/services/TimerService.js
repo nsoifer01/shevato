@@ -61,13 +61,14 @@ export class TimerService {
     }
 
     // Workout Timer
-    startWorkoutTimer(onTick) {
+    startWorkoutTimer(onTick, initialElapsed = 0) {
         if (this.workoutTimer) {
             this.stopWorkoutTimer();
         }
 
-        const startTime = Date.now();
-        let elapsed = 0;
+        // Adjust startTime to account for any previously elapsed time
+        const startTime = Date.now() - (initialElapsed * 1000);
+        let elapsed = initialElapsed;
 
         const interval = setInterval(() => {
             elapsed = Math.floor((Date.now() - startTime) / 1000);
@@ -81,6 +82,11 @@ export class TimerService {
             startTime,
             elapsed
         };
+
+        // Immediately call onTick to show correct time
+        if (onTick && initialElapsed > 0) {
+            onTick(initialElapsed);
+        }
 
         return startTime;
     }

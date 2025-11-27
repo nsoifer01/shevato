@@ -10,7 +10,8 @@ export class StorageService {
             SETTINGS: 'gymTrackerSettings',
             ACHIEVEMENTS: 'gymTrackerAchievements',
             ACTIVE_PROGRAM: 'gymTrackerActiveProgram',
-            CUSTOM_EXERCISES: 'gymTrackerCustomExercises'
+            CUSTOM_EXERCISES: 'gymTrackerCustomExercises',
+            ACTIVE_WORKOUT: 'gymTrackerActiveWorkout'
         };
     }
 
@@ -175,6 +176,23 @@ export class StorageService {
         const exercises = this.getCustomExercises();
         const filtered = exercises.filter(e => e.id !== id);
         return this.saveCustomExercises(filtered);
+    }
+
+    // Active Workout (in-progress workout that can be resumed)
+    getActiveWorkout() {
+        return this.get(this.keys.ACTIVE_WORKOUT, null);
+    }
+
+    saveActiveWorkout(workoutData) {
+        return this.set(this.keys.ACTIVE_WORKOUT, workoutData);
+    }
+
+    clearActiveWorkout() {
+        return this.remove(this.keys.ACTIVE_WORKOUT);
+    }
+
+    hasActiveWorkout() {
+        return this.getActiveWorkout() !== null;
     }
 
     // Data Management
