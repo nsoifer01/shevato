@@ -127,7 +127,7 @@ class HistoryView {
                     <div class="workout-card-stats">
                         <div class="stat">
                             <i class="fas fa-weight"></i>
-                            ${Math.round(session.totalVolume)}${unit}
+                            ${Math.round(session.totalVolume).toLocaleString()}${unit}
                         </div>
                         <div class="stat">
                             <i class="fas fa-list"></i>
@@ -194,7 +194,7 @@ class HistoryView {
                     </div>
                     <div class="detail-stat">
                         <span class="label">Total Volume</span>
-                        <span class="value">${Math.round(session.totalVolume)}${unit}</span>
+                        <span class="value">${Math.round(session.totalVolume).toLocaleString()}${unit}</span>
                     </div>
                     <div class="detail-stat">
                         <span class="label">Total Sets</span>
@@ -255,9 +255,9 @@ class HistoryView {
                         html += `<td>${mins}:${secs.toString().padStart(2, '0')}</td>`;
                     } else {
                         html += `
-                            <td>${set.weight}${unit}</td>
+                            <td>${set.weight.toLocaleString()}${unit}</td>
                             <td>${set.reps}</td>
-                            <td>${Math.round(set.volume)}${unit}</td>
+                            <td>${Math.round(set.volume).toLocaleString()}${unit}</td>
                         `;
                     }
 
@@ -323,7 +323,7 @@ class HistoryView {
         const session = this.app.workoutSessions.find(s => s.id === sessionId);
         if (!session) return;
 
-        const message = `Are you sure you want to delete this workout?<br><br><strong>${session.workoutDayName}</strong><br>${formatDate(session.date)}<br><br>This workout included ${session.exercises.length} exercise${session.exercises.length !== 1 ? 's' : ''} and ${Math.round(session.totalVolume)}${this.app.settings.weightUnit} total volume.<br><br><strong>This action cannot be undone.</strong>`;
+        const message = `Are you sure you want to delete this workout?<br><br><strong>${session.workoutDayName}</strong><br>${formatDate(session.date)}<br><br>This workout included ${session.exercises.length} exercise${session.exercises.length !== 1 ? 's' : ''} and ${Math.round(session.totalVolume).toLocaleString()}${this.app.settings.weightUnit} total volume.<br><br><strong>This action cannot be undone.</strong>`;
 
         const confirmed = await showConfirmModal({
             title: 'Delete Workout',

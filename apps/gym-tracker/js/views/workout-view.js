@@ -7,18 +7,21 @@ import { WorkoutSession } from '../models/WorkoutSession.js';
 import { WorkoutExercise } from '../models/WorkoutExercise.js';
 import { Set } from '../models/Set.js';
 import { timerService } from '../services/TimerService.js';
+import { storageService } from '../services/StorageService.js';
 import { showToast, showConfirmModal } from '../utils/helpers.js';
 
 class WorkoutView {
     constructor() {
         this.app = app;
         this.currentWorkoutSession = null;
+        this.navigationBlocked = false;
         this.init();
     }
 
     init() {
         this.app.viewControllers.workout = this;
         this.setupEventListeners();
+        this.setupNavigationGuard();
     }
 
     setupEventListeners() {
@@ -44,26 +47,305 @@ class WorkoutView {
         }
     }
 
+    setupNavigationGuard() {
+        // Intercept browser back button and page unload
+        window.addEventListener('beforeunload', (e) => {
+            if (this.currentWorkoutSession && !this.currentWorkoutSession.completed) {
+                // Check if any sets were added
+                const hasAnySets = this.currentWorkoutSession.exercises.some(ex =>
+                    ex.sets && ex.sets.length > 0
+                );
+
+                if (hasAnySets) {
+                    // Save workout state before leaving
+                    this.pauseAndSaveWorkout();
+                    // Show browser's native confirmation
+                    e.preventDefault();
+                    e.returnValue = '';
+                    return '';
+                }
+            }
+        });
+
+        // Handle visibility change (tab switch, app switch on mobile)
+        document.addEventListener('visibilitychange', () => {
+            if (document.visibilityState === 'hidden' && this.currentWorkoutSession && !this.currentWorkoutSession.completed) {
+                // Check if any sets were added before saving
+                const hasAnySets = this.currentWorkoutSession.exercises.some(ex =>
+                    ex.sets && ex.sets.length > 0
+                );
+
+                if (hasAnySets) {
+                    this.pauseAndSaveWorkout();
+                }
+            }
+        });
+
+        // Intercept in-app navigation
+        this.interceptNavigation();
+    }
+
+    interceptNavigation() {
+        // Store original showView
+        const originalShowView = this.app.showView.bind(this.app);
+
+        // Override showView to check for active workout
+        this.app.showView = async (viewName, pushState = true) => {
+            // If there's an active workout and trying to navigate away from workout view
+            if (this.currentWorkoutSession &&
+                !this.currentWorkoutSession.completed &&
+                this.app.currentView === 'workout' &&
+                viewName !== 'workout') {
+
+                // Count total sets added across all exercises
+                let totalSets = 0;
+                for (const ex of this.currentWorkoutSession.exercises) {
+                    if (ex.sets && Array.isArray(ex.sets)) {
+                        totalSets += ex.sets.length;
+                    }
+                }
+
+                if (totalSets > 0) {
+                    const result = await this.showLeaveWorkoutModal();
+
+                    if (result === 'cancel') {
+                        // User wants to stay
+                        return;
+                    } else if (result === 'pause') {
+                        // Pause and save, then navigate
+                        this.pauseAndSaveWorkout();
+                        showToast('Workout paused. You can resume later.', 'info');
+                    } else if (result === 'discard') {
+                        // Discard workout
+                        this.discardWorkout();
+                    }
+                } else {
+                    // No sets added, just discard silently
+                    this.discardWorkout();
+                }
+            }
+
+            // Proceed with navigation
+            originalShowView(viewName, pushState);
+        };
+    }
+
+    async showLeaveWorkoutModal() {
+        return new Promise((resolve) => {
+            const modal = document.getElementById('confirm-modal');
+            const titleEl = document.getElementById('confirm-modal-title');
+            const messageEl = document.getElementById('confirm-modal-message');
+            const confirmBtn = document.getElementById('confirm-modal-confirm');
+            const cancelBtn = document.getElementById('confirm-modal-cancel');
+
+            // Set content
+            titleEl.textContent = 'Workout In Progress';
+            messageEl.innerHTML = `
+                You have an active workout. What would you like to do?
+                <div style="margin-top: 16px; display: flex; flex-direction: column; gap: 8px;">
+                    <button id="leave-workout-pause" class="btn btn-primary" style="width: 100%;">
+                        <i class="fas fa-pause"></i> Pause & Save Progress
+                    </button>
+                    <button id="leave-workout-discard" class="btn btn-danger" style="width: 100%;">
+                        <i class="fas fa-trash"></i> Discard Workout
+                    </button>
+                </div>
+            `;
+
+            // Hide default buttons, we're using custom ones
+            confirmBtn.style.display = 'none';
+            cancelBtn.textContent = 'Continue Workout';
+
+            // Show modal
+            modal.classList.add('active');
+
+            const cleanup = () => {
+                modal.classList.remove('active');
+                confirmBtn.style.display = '';
+                pauseBtn.removeEventListener('click', handlePause);
+                discardBtn.removeEventListener('click', handleDiscard);
+                cancelBtn.removeEventListener('click', handleCancel);
+            };
+
+            const pauseBtn = document.getElementById('leave-workout-pause');
+            const discardBtn = document.getElementById('leave-workout-discard');
+
+            const handlePause = () => {
+                cleanup();
+                resolve('pause');
+            };
+
+            const handleDiscard = () => {
+                cleanup();
+                resolve('discard');
+            };
+
+            const handleCancel = () => {
+                cleanup();
+                resolve('cancel');
+            };
+
+            pauseBtn.addEventListener('click', handlePause);
+            discardBtn.addEventListener('click', handleDiscard);
+            cancelBtn.addEventListener('click', handleCancel);
+        });
+    }
+
+    pauseAndSaveWorkout() {
+        if (!this.currentWorkoutSession || this.currentWorkoutSession.completed) {
+            return;
+        }
+
+        // Get current elapsed time
+        const elapsed = timerService.getWorkoutElapsed();
+
+        // Mark workout as paused
+        this.currentWorkoutSession.pauseWorkout(elapsed);
+
+        // Save to storage
+        storageService.saveActiveWorkout(this.currentWorkoutSession.toJSON());
+
+        // Stop the timer
+        timerService.stopWorkoutTimer();
+
+        console.log('Workout paused and saved', this.currentWorkoutSession.toJSON());
+
+        // Reset UI state so the paused banner shows when returning
+        document.getElementById('active-workout').classList.remove('active');
+        document.getElementById('workout-selection').classList.add('active');
+        this.currentWorkoutSession = null;
+    }
+
+    discardWorkout() {
+        timerService.stopWorkoutTimer();
+        storageService.clearActiveWorkout();
+        document.getElementById('active-workout').classList.remove('active');
+        document.getElementById('workout-selection').classList.add('active');
+        this.currentWorkoutSession = null;
+    }
+
+    hasActiveWorkout() {
+        return this.currentWorkoutSession !== null && !this.currentWorkoutSession.completed;
+    }
+
     render() {
         this.renderProgramSelection();
+    }
+
+    formatTimeAgo(date) {
+        const now = new Date();
+        const diffMs = now - date;
+        const diffMins = Math.floor(diffMs / 60000);
+        const diffHours = Math.floor(diffMins / 60);
+        const diffDays = Math.floor(diffHours / 24);
+
+        if (diffMins < 1) return 'just now';
+        if (diffMins < 60) return `${diffMins} min ago`;
+        if (diffHours < 24) return `${diffHours} hour${diffHours > 1 ? 's' : ''} ago`;
+        return `${diffDays} day${diffDays > 1 ? 's' : ''} ago`;
+    }
+
+    async resumeWorkout() {
+        const pausedWorkout = storageService.getActiveWorkout();
+        if (!pausedWorkout) {
+            showToast('No paused workout found', 'error');
+            return;
+        }
+
+        // Restore the workout session
+        this.currentWorkoutSession = WorkoutSession.fromJSON(pausedWorkout);
+        this.currentWorkoutSession.resumeWorkout();
+
+        // Start timer with saved elapsed time
+        timerService.startWorkoutTimer((elapsed) => {
+            this.updateWorkoutTimer(elapsed);
+        }, pausedWorkout.elapsedBeforePause);
+
+        // Switch to active workout screen
+        document.getElementById('workout-selection').classList.remove('active');
+        document.getElementById('active-workout').classList.add('active');
+
+        // Render workout
+        this.renderActiveWorkout();
+
+        showToast('Workout resumed!', 'success');
+    }
+
+    async discardPausedWorkout() {
+        const confirmed = await showConfirmModal({
+            title: 'Discard Paused Workout',
+            message: 'Are you sure you want to discard this paused workout?<br><br><strong>All progress will be lost.</strong>',
+            confirmText: 'Discard',
+            cancelText: 'Keep',
+            isDangerous: true
+        });
+
+        if (confirmed) {
+            storageService.clearActiveWorkout();
+            this.render();
+            showToast('Paused workout discarded', 'info');
+        }
     }
 
     renderProgramSelection() {
         const container = document.getElementById('workout-program-list');
         const programs = this.app.programs;
+        const pausedWorkout = storageService.getActiveWorkout();
+
+        // Start fresh - don't double-add the banner
+        let html = '';
+
+        // Add paused workout banner if exists
+        if (pausedWorkout && pausedWorkout.paused) {
+            const pausedAt = new Date(pausedWorkout.pausedAt);
+            const elapsed = pausedWorkout.elapsedBeforePause;
+            const minutes = Math.floor(elapsed / 60);
+            const seconds = elapsed % 60;
+
+            // Count total sets saved
+            const totalSets = pausedWorkout.exercises.reduce((sum, ex) =>
+                sum + (ex.sets ? ex.sets.length : 0), 0
+            );
+
+            html += `
+                <div class="paused-workout-banner">
+                    <div class="paused-workout-icon">
+                        <i class="fas fa-pause-circle"></i>
+                    </div>
+                    <div class="paused-workout-info">
+                        <h3>Paused Workout</h3>
+                        <p><strong>${pausedWorkout.workoutDayName}</strong></p>
+                        <p class="paused-workout-meta">
+                            <span><i class="fas fa-clock"></i> ${minutes}:${String(seconds).padStart(2, '0')} elapsed</span>
+                            <span><i class="fas fa-dumbbell"></i> ${totalSets} set${totalSets !== 1 ? 's' : ''} completed</span>
+                            <span><i class="fas fa-calendar"></i> Paused ${this.formatTimeAgo(pausedAt)}</span>
+                        </p>
+                    </div>
+                    <div class="paused-workout-actions">
+                        <button class="btn btn-primary" onclick="window.gymApp.viewControllers.workout.resumeWorkout()">
+                            <i class="fas fa-play"></i> Resume
+                        </button>
+                        <button class="btn btn-outline btn-danger-outline" onclick="window.gymApp.viewControllers.workout.discardPausedWorkout()">
+                            <i class="fas fa-trash"></i> Discard
+                        </button>
+                    </div>
+                </div>
+            `;
+        }
 
         if (programs.length === 0) {
-            container.innerHTML = `
+            html += `
                 <div class="empty-state">
                     <i class="fas fa-folder-open"></i>
                     <p>No programs yet. Create a program first.</p>
                     <button class="btn btn-primary" data-view="programs">Create Program</button>
                 </div>
             `;
+            container.innerHTML = html;
             return;
         }
 
-        container.innerHTML = `
+        html += `
             <h2>Select a Program</h2>
             <p class="subtitle">Choose which program you want to do today</p>
             <div class="program-selection-grid">
@@ -89,6 +371,8 @@ class WorkoutView {
                 `).join('')}
             </div>
         `;
+
+        container.innerHTML = html;
     }
 
     startWorkout(programId) {
@@ -167,7 +451,7 @@ class WorkoutView {
                             ${previousSets.map((set, i) => `
                                 <div class="previous-set-badge" onclick="window.gymApp.viewControllers.workout.usePreviousSet(${index}, ${set.weight}, ${set.reps})" title="Click to use these values">
                                     <span class="previous-set-number">${i + 1}</span>
-                                    <span class="previous-set-value">${set.weight}${unit} × ${set.reps}</span>
+                                    <span class="previous-set-value">${set.weight.toLocaleString()}${unit} × ${set.reps}</span>
                                 </div>
                             `).join('')}
                         </div>
@@ -247,10 +531,11 @@ class WorkoutView {
                 // Get all completed sets
                 const completedSets = exercise.sets.filter(set => set.completed);
                 if (completedSets.length > 0) {
-                    // Return all completed sets with their weight and reps
+                    // Return all completed sets with their weight, reps, and duration
                     return completedSets.map(set => ({
                         weight: set.weight,
-                        reps: set.reps
+                        reps: set.reps,
+                        duration: set.duration
                     }));
                 }
             }
@@ -274,7 +559,7 @@ class WorkoutView {
             } else {
                 // Reps-based set
                 setLabel = `Set ${setIndex + 1}:`;
-                setDetails = `${set.weight}${unit} × ${set.reps} reps`;
+                setDetails = `${set.weight.toLocaleString()}${unit} × ${set.reps} reps`;
             }
 
             return `
@@ -311,7 +596,7 @@ class WorkoutView {
         weightInput.select();
 
         const unit = this.app.settings.weightUnit;
-        showToast(`Loaded: ${weight}${unit} × ${reps} reps`, 'info');
+        showToast(`Loaded: ${weight.toLocaleString()}${unit} × ${reps} reps`, 'info');
     }
 
     usePreviousDuration(exerciseIndex, durationSeconds) {
@@ -555,7 +840,7 @@ class WorkoutView {
 
         document.getElementById('summary-duration').textContent = `${minutes} min`;
         document.getElementById('summary-volume').textContent =
-            `${Math.round(this.currentWorkoutSession.totalVolume)} ${unit}`;
+            `${Math.round(this.currentWorkoutSession.totalVolume).toLocaleString()} ${unit}`;
         document.getElementById('summary-sets').textContent =
             this.currentWorkoutSession.totalSets;
 
@@ -594,6 +879,9 @@ class WorkoutView {
         this.app.workoutSessions.push(this.currentWorkoutSession);
         this.app.saveWorkoutSessions();
 
+        // Clear any paused workout from storage since we're finishing
+        storageService.clearActiveWorkout();
+
         // Update achievements
         this.app.updateAchievements();
 
@@ -607,7 +895,7 @@ class WorkoutView {
 
         this.currentWorkoutSession = null;
 
-        showToast('Workout completed! Great job! 💪', 'success', 5000);
+        showToast('Workout completed! Great job!', 'success', 5000);
         this.render();
     }
 
@@ -622,6 +910,7 @@ class WorkoutView {
 
         if (confirmed) {
             timerService.stopWorkoutTimer();
+            storageService.clearActiveWorkout();
             document.getElementById('active-workout').classList.remove('active');
             document.getElementById('workout-selection').classList.add('active');
             this.currentWorkoutSession = null;
