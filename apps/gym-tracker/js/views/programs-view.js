@@ -85,14 +85,12 @@ class ProgramsView {
                     </div>
                 </div>
                 <div class="program-actions">
-                    ${program.exercises.length > 0
-                        ? `<button class="btn btn-primary" onclick="window.gymApp.viewControllers.programs.startWorkout(${program.id})">
-                            <i class="fas fa-play"></i> Start
-                        </button>`
-                        : '<button class="btn btn-secondary" disabled title="Add exercises first">No Exercises</button>'
-                    }
-                    <button class="btn btn-secondary" onclick="window.gymApp.viewControllers.programs.editProgram(${program.id})">Edit</button>
-                    <button class="btn btn-danger" onclick="window.gymApp.viewControllers.programs.deleteProgram(${program.id})">Delete</button>
+                    <button class="btn btn-secondary" onclick="window.gymApp.viewControllers.programs.editProgram(${program.id})">
+                        <i class="fas fa-edit"></i> Edit
+                    </button>
+                    <button class="btn btn-danger" onclick="window.gymApp.viewControllers.programs.deleteProgram(${program.id})">
+                        <i class="fas fa-trash"></i> Delete
+                    </button>
                 </div>
             </div>
         `).join('');
