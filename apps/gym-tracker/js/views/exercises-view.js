@@ -158,6 +158,20 @@ class ExercisesView {
         );
     }
 
+    getExerciseHistoryCount(exerciseId) {
+        let count = 0;
+        this.app.workoutSessions.forEach(session => {
+            const exercise = session.exercises.find(ex => ex.exerciseId === exerciseId);
+            if (exercise && exercise.sets && exercise.sets.length > 0) {
+                const completedSets = exercise.sets.filter(set => set.completed);
+                if (completedSets.length > 0) {
+                    count++;
+                }
+            }
+        });
+        return count;
+    }
+
     getExerciseHistory(exerciseId) {
         const history = [];
 
@@ -180,6 +194,38 @@ class ExercisesView {
 
         // Sort by date (most recent first) using local date parsing
         return history.sort((a, b) => parseLocalDate(b.date) - parseLocalDate(a.date));
+    }
+
+    getExerciseHistoryGroupedByDate(exerciseId) {
+        const groupedHistory = {};
+
+        this.app.workoutSessions.forEach(session => {
+            const exercise = session.exercises.find(ex => ex.exerciseId === exerciseId);
+            if (exercise && exercise.sets && exercise.sets.length > 0) {
+                const completedSets = exercise.sets.filter(set => set.completed);
+                if (completedSets.length > 0) {
+                    if (!groupedHistory[session.date]) {
+                        groupedHistory[session.date] = {
+                            date: session.date,
+                            sets: []
+                        };
+                    }
+                    completedSets.forEach(set => {
+                        groupedHistory[session.date].sets.push({
+                            weight: set.weight,
+                            reps: set.reps,
+                            duration: set.duration || 0,
+                            volume: set.volume
+                        });
+                    });
+                }
+            }
+        });
+
+        // Convert to array and sort by date (most recent first)
+        return Object.values(groupedHistory).sort((a, b) =>
+            parseLocalDate(b.date) - parseLocalDate(a.date)
+        );
     }
 
     openCustomExerciseModal() {
@@ -241,6 +287,7 @@ class ExercisesView {
 
         container.innerHTML = this.filteredExercises.map(exercise => {
             const hasHistory = this.exerciseHasHistory(exercise.id);
+            const historyCount = hasHistory ? this.getExerciseHistoryCount(exercise.id) : 0;
             const clickHandler = hasHistory
                 ? `onclick="window.gymApp.viewControllers.exercises.showExerciseHistory(${exercise.id})"`
                 : '';
@@ -249,11 +296,11 @@ class ExercisesView {
 
             return `
                 <div class="exercise-db-card ${cursorClass}" ${clickHandler}>
+                    ${hasHistory ? `<span class="history-count-badge">${historyCount}</span>` : ''}
                     <div class="exercise-card-header">
                         <h3>
                             ${exercise.name}
                             ${exercise.isCustom ? '<span class="badge badge-custom">Custom</span>' : ''}
-                            ${hasHistory ? '<i class="fas fa-chart-line history-icon"></i>' : ''}
                         </h3>
                         ${canDelete ? `<button class="btn-icon delete-exercise-btn" onclick="event.stopPropagation(); window.gymApp.viewControllers.exercises.deleteCustomExercise(${exercise.id})" title="Delete custom exercise">
                             <i class="fas fa-trash"></i>
@@ -275,6 +322,7 @@ class ExercisesView {
         if (!exercise) return;
 
         const history = this.getExerciseHistory(exerciseId);
+        const groupedHistory = this.getExerciseHistoryGroupedByDate(exerciseId);
         if (history.length === 0) return;
 
         const modal = document.getElementById('exercise-detail-modal');
@@ -321,15 +369,15 @@ class ExercisesView {
             statsHTML = `
                 <div class="stat-box">
                     <span class="stat-label">Max Weight</span>
-                    <span class="stat-value">${maxWeight}${unit}</span>
+                    <span class="stat-value">${maxWeight.toLocaleString()}${unit}</span>
                 </div>
                 <div class="stat-box">
                     <span class="stat-label">Max Reps</span>
-                    <span class="stat-value">${maxReps}</span>
+                    <span class="stat-value">${maxReps.toLocaleString()}</span>
                 </div>
                 <div class="stat-box">
                     <span class="stat-label">Max Volume</span>
-                    <span class="stat-value">${Math.round(maxVolume)}${unit}</span>
+                    <span class="stat-value">${Math.round(maxVolume).toLocaleString()}${unit}</span>
                 </div>
                 <div class="stat-box">
                     <span class="stat-label">Date</span>
@@ -338,42 +386,88 @@ class ExercisesView {
             `;
         }
 
+        // Build table with grouped sets per date
         let tableHeaderHTML = '';
+        let tableBodyHTML = '';
+
         if (isDuration) {
             tableHeaderHTML = `
                 <th>Date</th>
-                <th>Duration</th>
+                <th>Sets</th>
             `;
+
+            tableBodyHTML = groupedHistory.map((record, recordIdx) => {
+                // Get the previous workout's sets for comparison (next in array since sorted most recent first)
+                const previousRecord = groupedHistory[recordIdx + 1];
+
+                const setsDisplay = record.sets.map((set, idx) => {
+                    const mins = Math.floor(set.duration / 60);
+                    const secs = set.duration % 60;
+
+                    // Compare with same set index from previous workout
+                    let colorClass = '';
+                    if (previousRecord && previousRecord.sets[idx]) {
+                        const prevDuration = previousRecord.sets[idx].duration;
+                        if (set.duration > prevDuration) {
+                            colorClass = 'set-improved';
+                        } else if (set.duration < prevDuration) {
+                            colorClass = 'set-worse';
+                        }
+                    }
+
+                    return `<span class="set-badge ${colorClass}">${idx + 1}: ${mins}:${secs.toString().padStart(2, '0')}</span>`;
+                }).join(' ');
+
+                return `
+                    <tr>
+                        <td>${parseLocalDate(record.date).toLocaleDateString()}</td>
+                        <td class="sets-cell">${setsDisplay}</td>
+                    </tr>
+                `;
+            }).join('');
         } else {
             tableHeaderHTML = `
                 <th>Date</th>
-                <th>Weight</th>
-                <th>Reps</th>
-                <th>Volume</th>
+                <th>Sets</th>
             `;
-        }
 
-        let tableBodyHTML = history.map(record => {
-            if (record.duration > 0) {
-                const mins = Math.floor(record.duration / 60);
-                const secs = record.duration % 60;
+            tableBodyHTML = groupedHistory.map((record, recordIdx) => {
+                // Get the previous workout's sets for comparison (next in array since sorted most recent first)
+                const previousRecord = groupedHistory[recordIdx + 1];
+
+                const setsDisplay = record.sets.map((set, idx) => {
+                    // Compare with same set index from previous workout
+                    // Primary comparison: weight. If weight is same, compare reps.
+                    let colorClass = '';
+                    if (previousRecord && previousRecord.sets[idx]) {
+                        const prevWeight = previousRecord.sets[idx].weight;
+                        const prevReps = previousRecord.sets[idx].reps;
+
+                        if (set.weight > prevWeight) {
+                            colorClass = 'set-improved';
+                        } else if (set.weight < prevWeight) {
+                            colorClass = 'set-worse';
+                        } else {
+                            // Weight is the same, compare reps
+                            if (set.reps > prevReps) {
+                                colorClass = 'set-improved';
+                            } else if (set.reps < prevReps) {
+                                colorClass = 'set-worse';
+                            }
+                        }
+                    }
+
+                    return `<span class="set-badge ${colorClass}">${idx + 1}: ${set.weight.toLocaleString()}${unit} x ${set.reps}</span>`;
+                }).join(' ');
+
                 return `
                     <tr>
                         <td>${parseLocalDate(record.date).toLocaleDateString()}</td>
-                        <td>${mins}:${secs.toString().padStart(2, '0')}</td>
+                        <td class="sets-cell">${setsDisplay}</td>
                     </tr>
                 `;
-            } else {
-                return `
-                    <tr>
-                        <td>${parseLocalDate(record.date).toLocaleDateString()}</td>
-                        <td>${record.weight}${unit}</td>
-                        <td>${record.reps}</td>
-                        <td>${Math.round(record.volume)}${unit}</td>
-                    </tr>
-                `;
-            }
-        }).join('');
+            }).join('');
+        }
 
         document.getElementById('exercise-detail-content').innerHTML = `
             <h3>Best Set</h3>

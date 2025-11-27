@@ -25,6 +25,11 @@ export class WorkoutSession {
         this.maxHeartRate = data.maxHeartRate || null;
         this.caloriesBurned = data.caloriesBurned || null;
 
+        // Pause/Resume state
+        this.paused = data.paused || false;
+        this.pausedAt = data.pausedAt || null;
+        this.elapsedBeforePause = data.elapsedBeforePause || 0; // Seconds elapsed before pause
+
         // Metadata
         this.timestamp = data.timestamp || new Date().toISOString();
     }
@@ -55,6 +60,18 @@ export class WorkoutSession {
         this.completed = true;
     }
 
+    pauseWorkout(elapsedSeconds) {
+        this.paused = true;
+        this.pausedAt = new Date().toISOString();
+        this.elapsedBeforePause = elapsedSeconds;
+    }
+
+    resumeWorkout() {
+        this.paused = false;
+        this.pausedAt = null;
+        // elapsedBeforePause is kept to restore timer state
+    }
+
     toJSON() {
         return {
             id: this.id,
@@ -70,6 +87,9 @@ export class WorkoutSession {
             avgHeartRate: this.avgHeartRate,
             maxHeartRate: this.maxHeartRate,
             caloriesBurned: this.caloriesBurned,
+            paused: this.paused,
+            pausedAt: this.pausedAt,
+            elapsedBeforePause: this.elapsedBeforePause,
             timestamp: this.timestamp
         };
     }
