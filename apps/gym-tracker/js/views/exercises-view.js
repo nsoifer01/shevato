@@ -21,6 +21,7 @@ class ExercisesView {
         const categoryFilter = document.getElementById('exercise-db-category');
         const equipmentFilter = document.getElementById('exercise-db-equipment');
         const historyFilter = document.getElementById('exercise-db-history-filter');
+        const historySort = document.getElementById('exercise-db-history-sort');
         const createBtn = document.getElementById('create-custom-exercise-btn');
 
         if (searchInput) {
@@ -36,7 +37,21 @@ class ExercisesView {
         }
 
         if (historyFilter) {
-            historyFilter.addEventListener('change', () => this.filterExercises());
+            historyFilter.addEventListener('change', () => {
+                // Show/hide sort dropdown based on history filter
+                if (historySort) {
+                    historySort.style.display = historyFilter.value === 'with-history' ? '' : 'none';
+                    // Reset to default sort when hiding
+                    if (historyFilter.value !== 'with-history') {
+                        historySort.value = 'name';
+                    }
+                }
+                this.filterExercises();
+            });
+        }
+
+        if (historySort) {
+            historySort.addEventListener('change', () => this.filterExercises());
         }
 
         if (createBtn) {
@@ -69,6 +84,7 @@ class ExercisesView {
         const category = document.getElementById('exercise-db-category')?.value || '';
         const equipment = document.getElementById('exercise-db-equipment')?.value || '';
         const historyFilter = document.getElementById('exercise-db-history-filter')?.value || 'all';
+        const historySort = document.getElementById('exercise-db-history-sort')?.value || 'name';
 
         this.filteredExercises = this.app.exerciseDatabase.filter(ex => {
             const matchesSearch = ex.name.toLowerCase().includes(searchTerm) ||
@@ -87,6 +103,26 @@ class ExercisesView {
 
             return matchesSearch && matchesCategory && matchesEquipment && matchesHistory;
         });
+
+        // Apply sorting when showing exercises with history
+        if (historyFilter === 'with-history') {
+            if (historySort === 'most-history') {
+                this.filteredExercises.sort((a, b) => {
+                    const countDiff = this.getExerciseHistoryCount(b.id) - this.getExerciseHistoryCount(a.id);
+                    // Secondary sort by name if counts are equal
+                    return countDiff !== 0 ? countDiff : a.name.localeCompare(b.name);
+                });
+            } else if (historySort === 'least-history') {
+                this.filteredExercises.sort((a, b) => {
+                    const countDiff = this.getExerciseHistoryCount(a.id) - this.getExerciseHistoryCount(b.id);
+                    // Secondary sort by name if counts are equal
+                    return countDiff !== 0 ? countDiff : a.name.localeCompare(b.name);
+                });
+            } else {
+                // Default: sort by name
+                this.filteredExercises.sort((a, b) => a.name.localeCompare(b.name));
+            }
+        }
 
         // Update dropdown states
         this.updateDropdownStates(searchTerm, category, equipment, historyFilter);
@@ -331,12 +367,16 @@ class ExercisesView {
         const unit = this.app.settings.weightUnit;
         const isDuration = history[0].duration > 0;
 
+        // Find best set (used for both stats display and table highlighting)
+        const bestSet = isDuration
+            ? history.reduce((best, current) => current.duration > best.duration ? current : best)
+            : history.reduce((best, current) => current.volume > best.volume ? current : best);
+
         let statsHTML = '';
         if (isDuration) {
             // Calculate stats for duration-based exercise
-            const maxDuration = Math.max(...history.map(h => h.duration));
-            const maxMins = Math.floor(maxDuration / 60);
-            const maxSecs = maxDuration % 60;
+            const maxMins = Math.floor(bestSet.duration / 60);
+            const maxSecs = bestSet.duration % 60;
             const avgDuration = history.reduce((sum, h) => sum + h.duration, 0) / history.length;
             const avgMins = Math.floor(avgDuration / 60);
             const avgSecs = Math.floor(avgDuration % 60);
@@ -357,31 +397,25 @@ class ExercisesView {
                 </div>
             `;
         } else {
-            // Calculate stats for reps-based exercise
-            const maxWeight = Math.max(...history.map(h => h.weight));
-            const maxReps = Math.max(...history.map(h => h.reps));
-            const maxVolume = Math.max(...history.map(h => h.volume));
-            const bestWorkout = history.reduce((best, current) =>
-                current.volume > best.volume ? current : best
-            );
-            const bestWorkoutDate = parseLocalDate(bestWorkout.date).toLocaleDateString();
+            // Stats for reps-based exercise
+            const bestSetDate = parseLocalDate(bestSet.date).toLocaleDateString();
 
             statsHTML = `
                 <div class="stat-box">
-                    <span class="stat-label">Max Weight</span>
-                    <span class="stat-value">${maxWeight.toLocaleString()}${unit}</span>
+                    <span class="stat-label">Weight</span>
+                    <span class="stat-value">${bestSet.weight.toLocaleString()}${unit}</span>
                 </div>
                 <div class="stat-box">
-                    <span class="stat-label">Max Reps</span>
-                    <span class="stat-value">${maxReps.toLocaleString()}</span>
+                    <span class="stat-label">Reps</span>
+                    <span class="stat-value">${bestSet.reps.toLocaleString()}</span>
                 </div>
                 <div class="stat-box">
-                    <span class="stat-label">Max Volume</span>
-                    <span class="stat-value">${Math.round(maxVolume).toLocaleString()}${unit}</span>
+                    <span class="stat-label">Volume</span>
+                    <span class="stat-value">${Math.round(bestSet.volume).toLocaleString()}${unit}</span>
                 </div>
                 <div class="stat-box">
                     <span class="stat-label">Date</span>
-                    <span class="stat-value">${bestWorkoutDate}</span>
+                    <span class="stat-value">${bestSetDate}</span>
                 </div>
             `;
         }
@@ -404,9 +438,12 @@ class ExercisesView {
                     const mins = Math.floor(set.duration / 60);
                     const secs = set.duration % 60;
 
+                    // Check if this is the best set
+                    const isBestSet = set.duration === bestSet.duration && record.date === bestSet.date;
+
                     // Compare with same set index from previous workout
-                    let colorClass = '';
-                    if (previousRecord && previousRecord.sets[idx]) {
+                    let colorClass = isBestSet ? 'set-best' : '';
+                    if (!isBestSet && previousRecord && previousRecord.sets[idx]) {
                         const prevDuration = previousRecord.sets[idx].duration;
                         if (set.duration > prevDuration) {
                             colorClass = 'set-improved';
@@ -436,10 +473,14 @@ class ExercisesView {
                 const previousRecord = groupedHistory[recordIdx + 1];
 
                 const setsDisplay = record.sets.map((set, idx) => {
+                    // Check if this is the best set (by volume)
+                    const setVolume = set.weight * set.reps;
+                    const isBestSet = setVolume === bestSet.volume && record.date === bestSet.date;
+
                     // Compare with same set index from previous workout
                     // Primary comparison: weight. If weight is same, compare reps.
-                    let colorClass = '';
-                    if (previousRecord && previousRecord.sets[idx]) {
+                    let colorClass = isBestSet ? 'set-best' : '';
+                    if (!isBestSet && previousRecord && previousRecord.sets[idx]) {
                         const prevWeight = previousRecord.sets[idx].weight;
                         const prevReps = previousRecord.sets[idx].reps;
 
