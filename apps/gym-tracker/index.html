@@ -261,7 +261,7 @@
                 <!-- Active Workout Screen -->
                 <div id="active-workout" class="workout-screen">
                     <div class="workout-header">
-                        <button class="btn-icon" id="end-workout-btn">
+                        <button class="btn-icon btn-icon-end" id="end-workout-btn" title="Discard Workout">
                             <i class="fas fa-times"></i>
                         </button>
                         <div class="workout-info">
@@ -271,9 +271,14 @@
                                 <span id="workout-time">0:00</span>
                             </div>
                         </div>
-                        <button class="btn-icon" id="finish-workout-btn">
-                            <i class="fas fa-check"></i>
-                        </button>
+                        <div class="workout-header-actions">
+                            <button class="btn-icon btn-icon-pause" id="pause-workout-btn" title="Pause Workout">
+                                <i class="fas fa-pause"></i>
+                            </button>
+                            <button class="btn-icon btn-icon-finish" id="finish-workout-btn" title="Finish Workout">
+                                <i class="fas fa-check"></i>
+                            </button>
+                        </div>
                     </div>
 
                     <div class="workout-content">
@@ -455,6 +460,11 @@
                             <option value="all">All Exercises</option>
                             <option value="with-history">With History</option>
                             <option value="without-history">Without History</option>
+                        </select>
+                        <select id="exercise-db-history-sort" style="display: none;">
+                            <option value="name">Sort: A-Z</option>
+                            <option value="most-history">Sort: Most History</option>
+                            <option value="least-history">Sort: Least History</option>
                         </select>
                     </div>
                 </div>

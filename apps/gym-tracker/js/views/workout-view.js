@@ -37,6 +37,12 @@ class WorkoutView {
             finishBtn.addEventListener('click', () => this.openFinishWorkoutModal());
         }
 
+        // Pause workout button
+        const pauseBtn = document.getElementById('pause-workout-btn');
+        if (pauseBtn) {
+            pauseBtn.addEventListener('click', () => this.manualPauseWorkout());
+        }
+
         // Finish workout form
         const finishForm = document.getElementById('finish-workout-form');
         if (finishForm) {
@@ -63,20 +69,6 @@ class WorkoutView {
                     e.preventDefault();
                     e.returnValue = '';
                     return '';
-                }
-            }
-        });
-
-        // Handle visibility change (tab switch, app switch on mobile)
-        document.addEventListener('visibilitychange', () => {
-            if (document.visibilityState === 'hidden' && this.currentWorkoutSession && !this.currentWorkoutSession.completed) {
-                // Check if any sets were added before saving
-                const hasAnySets = this.currentWorkoutSession.exercises.some(ex =>
-                    ex.sets && ex.sets.length > 0
-                );
-
-                if (hasAnySets) {
-                    this.pauseAndSaveWorkout();
                 }
             }
         });
@@ -214,6 +206,25 @@ class WorkoutView {
         document.getElementById('active-workout').classList.remove('active');
         document.getElementById('workout-selection').classList.add('active');
         this.currentWorkoutSession = null;
+    }
+
+    manualPauseWorkout() {
+        if (!this.currentWorkoutSession || this.currentWorkoutSession.completed) {
+            return;
+        }
+
+        // Check if any sets were added
+        const hasAnySets = this.currentWorkoutSession.exercises.some(ex =>
+            ex.sets && ex.sets.length > 0
+        );
+
+        if (!hasAnySets) {
+            showToast('Add at least one set before pausing', 'error');
+            return;
+        }
+
+        this.pauseAndSaveWorkout();
+        showToast('Workout paused. You can resume later.', 'info');
     }
 
     discardWorkout() {
@@ -412,10 +423,35 @@ class WorkoutView {
         this.renderActiveWorkout();
     }
 
+    adjustWorkoutTitleSize() {
+        const titleEl = document.getElementById('workout-title');
+        if (!titleEl) return;
+
+        const text = titleEl.textContent;
+        const length = text.length;
+
+        // Adjust font size based on text length
+        let fontSize;
+        if (length <= 12) {
+            fontSize = '1.25rem';
+        } else if (length <= 18) {
+            fontSize = '1.1rem';
+        } else if (length <= 24) {
+            fontSize = '1rem';
+        } else if (length <= 30) {
+            fontSize = '0.9rem';
+        } else {
+            fontSize = '0.8rem';
+        }
+
+        titleEl.style.fontSize = fontSize;
+    }
+
     renderActiveWorkout() {
         if (!this.currentWorkoutSession) return;
 
         document.getElementById('workout-title').textContent = this.currentWorkoutSession.workoutDayName;
+        this.adjustWorkoutTitleSize();
 
         const container = document.getElementById('workout-exercises-list');
         container.innerHTML = this.currentWorkoutSession.exercises.map((exercise, index) => {
@@ -545,7 +581,7 @@ class WorkoutView {
     }
 
     renderCompletedSets(sets, exerciseIndex) {
-        if (sets.length === 0) return '<p>No sets completed</p>';
+        if (sets.length === 0) return '<p class="no-sets-message"><i class="fas fa-circle-notch"></i> No sets yet - add your first set above</p>';
 
         const unit = this.app.settings.weightUnit;
         return sets.map((set, setIndex) => {
@@ -564,6 +600,9 @@ class WorkoutView {
 
             return `
                 <div class="completed-set">
+                    <div class="set-check">
+                        <i class="fas fa-check-circle"></i>
+                    </div>
                     <div class="set-info">
                         <span class="set-number">${setLabel}</span>
                         <span class="set-details">${setDetails}</span>
@@ -657,7 +696,7 @@ class WorkoutView {
             const weight = parseFloat(weightInput.value);
             const reps = parseInt(repsInput.value);
 
-            if (!weight || !reps) {
+            if (isNaN(weight) || weight < 0 || !reps) {
                 showToast('Please enter weight and reps', 'error');
                 return;
             }
@@ -770,7 +809,7 @@ class WorkoutView {
             const weight = parseFloat(weightInput.value);
             const reps = parseInt(repsInput.value);
 
-            if (!weight || !reps) {
+            if (isNaN(weight) || weight < 0 || !reps) {
                 showToast('Please enter valid weight and reps', 'error');
                 return;
             }
