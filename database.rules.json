@@ -4,16 +4,16 @@
       "$uid": {
         ".read": "$uid === auth.uid",
         ".write": "$uid === auth.uid",
-        
+
         "apps": {
           "$namespace": {
             ".read": "$uid === auth.uid",
             ".write": "$uid === auth.uid",
-            
+
             "data": {
               "$key": {
                 ".validate": "newData.hasChildren(['value', 'updatedAt', 'rev'])",
-                
+
                 "value": {
                   ".validate": true
                 },
@@ -25,7 +25,7 @@
                 }
               }
             },
-            
+
             "meta": {
               "lastUpdated": {
                 ".validate": "newData.isNumber() || newData.val() === '.sv'"
@@ -35,7 +35,7 @@
         }
       }
     },
-    
+
     ".read": false,
     ".write": false
   }

@@ -7,5 +7,5 @@ localStorage.setItem('theme', 'true');
 // If there's a theme toggle button, hide it since we only have one theme
 const themeToggle = document.getElementById('theme-toggle');
 if (themeToggle) {
-    themeToggle.style.display = 'none';
+  themeToggle.style.display = 'none';
 }

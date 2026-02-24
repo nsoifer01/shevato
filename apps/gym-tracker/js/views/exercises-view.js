@@ -5,332 +5,341 @@ import { app } from '../app.js';
 import { showToast, parseLocalDate, showConfirmModal } from '../utils/helpers.js';
 
 class ExercisesView {
-    constructor() {
-        this.app = app;
-        this.filteredExercises = [];
-        this.init();
+  constructor() {
+    this.app = app;
+    this.filteredExercises = [];
+    this.init();
+  }
+
+  init() {
+    this.app.viewControllers.exercises = this;
+    this.setupEventListeners();
+  }
+
+  setupEventListeners() {
+    const searchInput = document.getElementById('exercise-db-search');
+    const categoryFilter = document.getElementById('exercise-db-category');
+    const equipmentFilter = document.getElementById('exercise-db-equipment');
+    const historyFilter = document.getElementById('exercise-db-history-filter');
+    const historySort = document.getElementById('exercise-db-history-sort');
+    const createBtn = document.getElementById('create-custom-exercise-btn');
+
+    if (searchInput) {
+      searchInput.addEventListener('input', () => this.filterExercises());
     }
 
-    init() {
-        this.app.viewControllers.exercises = this;
-        this.setupEventListeners();
+    if (categoryFilter) {
+      categoryFilter.addEventListener('change', () => this.filterExercises());
     }
 
-    setupEventListeners() {
-        const searchInput = document.getElementById('exercise-db-search');
-        const categoryFilter = document.getElementById('exercise-db-category');
-        const equipmentFilter = document.getElementById('exercise-db-equipment');
-        const historyFilter = document.getElementById('exercise-db-history-filter');
-        const historySort = document.getElementById('exercise-db-history-sort');
-        const createBtn = document.getElementById('create-custom-exercise-btn');
+    if (equipmentFilter) {
+      equipmentFilter.addEventListener('change', () => this.filterExercises());
+    }
 
-        if (searchInput) {
-            searchInput.addEventListener('input', () => this.filterExercises());
-        }
-
-        if (categoryFilter) {
-            categoryFilter.addEventListener('change', () => this.filterExercises());
-        }
-
-        if (equipmentFilter) {
-            equipmentFilter.addEventListener('change', () => this.filterExercises());
-        }
-
-        if (historyFilter) {
-            historyFilter.addEventListener('change', () => {
-                // Show/hide sort dropdown based on history filter
-                if (historySort) {
-                    historySort.style.display = historyFilter.value === 'with-history' ? '' : 'none';
-                    // Reset to default sort when hiding
-                    if (historyFilter.value !== 'with-history') {
-                        historySort.value = 'name';
-                    }
-                }
-                this.filterExercises();
-            });
-        }
-
+    if (historyFilter) {
+      historyFilter.addEventListener('change', () => {
+        // Show/hide sort dropdown based on history filter
         if (historySort) {
-            historySort.addEventListener('change', () => this.filterExercises());
+          historySort.style.display = historyFilter.value === 'with-history' ? '' : 'none';
+          // Reset to default sort when hiding
+          if (historyFilter.value !== 'with-history') {
+            historySort.value = 'name';
+          }
         }
-
-        if (createBtn) {
-            createBtn.addEventListener('click', () => this.openCustomExerciseModal());
-        }
-
-        // Custom exercise form
-        const customForm = document.getElementById('custom-exercise-form');
-        if (customForm) {
-            customForm.addEventListener('submit', (e) => {
-                e.preventDefault();
-                this.createCustomExercise();
-            });
-        }
-    }
-
-    render() {
-        // Update exercise count
-        const totalExercises = this.app.exerciseDatabase.length;
-        const countText = document.getElementById('exercise-count-text');
-        if (countText) {
-            countText.textContent = `Browse ${totalExercises} exercise${totalExercises !== 1 ? 's' : ''}`;
-        }
-
         this.filterExercises();
+      });
     }
 
-    filterExercises() {
-        const searchTerm = document.getElementById('exercise-db-search')?.value.toLowerCase() || '';
-        const category = document.getElementById('exercise-db-category')?.value || '';
-        const equipment = document.getElementById('exercise-db-equipment')?.value || '';
-        const historyFilter = document.getElementById('exercise-db-history-filter')?.value || 'all';
-        const historySort = document.getElementById('exercise-db-history-sort')?.value || 'name';
+    if (historySort) {
+      historySort.addEventListener('change', () => this.filterExercises());
+    }
 
-        this.filteredExercises = this.app.exerciseDatabase.filter(ex => {
-            const matchesSearch = ex.name.toLowerCase().includes(searchTerm) ||
-                ex.muscleGroup.toLowerCase().includes(searchTerm);
-            const matchesCategory = !category || ex.category === category;
-            const matchesEquipment = !equipment || ex.equipment === equipment;
+    if (createBtn) {
+      createBtn.addEventListener('click', () => this.openCustomExerciseModal());
+    }
 
-            // Check history filter
-            const hasHistory = this.exerciseHasHistory(ex.id);
-            let matchesHistory = true;
-            if (historyFilter === 'with-history') {
-                matchesHistory = hasHistory;
-            } else if (historyFilter === 'without-history') {
-                matchesHistory = !hasHistory;
-            }
+    // Custom exercise form
+    const customForm = document.getElementById('custom-exercise-form');
+    if (customForm) {
+      customForm.addEventListener('submit', (e) => {
+        e.preventDefault();
+        this.createCustomExercise();
+      });
+    }
+  }
 
-            return matchesSearch && matchesCategory && matchesEquipment && matchesHistory;
+  render() {
+    // Update exercise count
+    const totalExercises = this.app.exerciseDatabase.length;
+    const countText = document.getElementById('exercise-count-text');
+    if (countText) {
+      countText.textContent = `Browse ${totalExercises} exercise${totalExercises !== 1 ? 's' : ''}`;
+    }
+
+    this.filterExercises();
+  }
+
+  filterExercises() {
+    const searchTerm = document.getElementById('exercise-db-search')?.value.toLowerCase() || '';
+    const category = document.getElementById('exercise-db-category')?.value || '';
+    const equipment = document.getElementById('exercise-db-equipment')?.value || '';
+    const historyFilter = document.getElementById('exercise-db-history-filter')?.value || 'all';
+    const historySort = document.getElementById('exercise-db-history-sort')?.value || 'name';
+
+    this.filteredExercises = this.app.exerciseDatabase.filter((ex) => {
+      const matchesSearch =
+        ex.name.toLowerCase().includes(searchTerm) ||
+        ex.muscleGroup.toLowerCase().includes(searchTerm);
+      const matchesCategory = !category || ex.category === category;
+      const matchesEquipment = !equipment || ex.equipment === equipment;
+
+      // Check history filter
+      const hasHistory = this.exerciseHasHistory(ex.id);
+      let matchesHistory = true;
+      if (historyFilter === 'with-history') {
+        matchesHistory = hasHistory;
+      } else if (historyFilter === 'without-history') {
+        matchesHistory = !hasHistory;
+      }
+
+      return matchesSearch && matchesCategory && matchesEquipment && matchesHistory;
+    });
+
+    // Apply sorting when showing exercises with history
+    if (historyFilter === 'with-history') {
+      if (historySort === 'most-history') {
+        this.filteredExercises.sort((a, b) => {
+          const countDiff = this.getExerciseHistoryCount(b.id) - this.getExerciseHistoryCount(a.id);
+          // Secondary sort by name if counts are equal
+          return countDiff !== 0 ? countDiff : a.name.localeCompare(b.name);
         });
+      } else if (historySort === 'least-history') {
+        this.filteredExercises.sort((a, b) => {
+          const countDiff = this.getExerciseHistoryCount(a.id) - this.getExerciseHistoryCount(b.id);
+          // Secondary sort by name if counts are equal
+          return countDiff !== 0 ? countDiff : a.name.localeCompare(b.name);
+        });
+      } else {
+        // Default: sort by name
+        this.filteredExercises.sort((a, b) => a.name.localeCompare(b.name));
+      }
+    }
 
-        // Apply sorting when showing exercises with history
-        if (historyFilter === 'with-history') {
-            if (historySort === 'most-history') {
-                this.filteredExercises.sort((a, b) => {
-                    const countDiff = this.getExerciseHistoryCount(b.id) - this.getExerciseHistoryCount(a.id);
-                    // Secondary sort by name if counts are equal
-                    return countDiff !== 0 ? countDiff : a.name.localeCompare(b.name);
-                });
-            } else if (historySort === 'least-history') {
-                this.filteredExercises.sort((a, b) => {
-                    const countDiff = this.getExerciseHistoryCount(a.id) - this.getExerciseHistoryCount(b.id);
-                    // Secondary sort by name if counts are equal
-                    return countDiff !== 0 ? countDiff : a.name.localeCompare(b.name);
-                });
-            } else {
-                // Default: sort by name
-                this.filteredExercises.sort((a, b) => a.name.localeCompare(b.name));
-            }
+    // Update dropdown states
+    this.updateDropdownStates(searchTerm, category, equipment, historyFilter);
+
+    this.renderExerciseList();
+  }
+
+  updateDropdownStates(searchTerm, currentCategory, currentEquipment, historyFilter) {
+    const categorySelect = document.getElementById('exercise-db-category');
+    const equipmentSelect = document.getElementById('exercise-db-equipment');
+
+    if (categorySelect) {
+      Array.from(categorySelect.options).forEach((option) => {
+        if (!option.value) {
+          option.disabled = false;
+          return;
         }
 
-        // Update dropdown states
-        this.updateDropdownStates(searchTerm, category, equipment, historyFilter);
+        // Count exercises that would match if this category was selected
+        const count = this.app.exerciseDatabase.filter((ex) => {
+          const matchesSearch =
+            !searchTerm ||
+            ex.name.toLowerCase().includes(searchTerm) ||
+            ex.muscleGroup.toLowerCase().includes(searchTerm);
+          const matchesThisCategory = ex.category === option.value;
+          const matchesEquipment = !currentEquipment || ex.equipment === currentEquipment;
+          const hasHistory = this.exerciseHasHistory(ex.id);
+          let matchesHistory = true;
+          if (historyFilter === 'with-history') matchesHistory = hasHistory;
+          else if (historyFilter === 'without-history') matchesHistory = !hasHistory;
 
-        this.renderExerciseList();
+          return matchesSearch && matchesThisCategory && matchesEquipment && matchesHistory;
+        }).length;
+
+        option.disabled = count === 0;
+      });
     }
 
-    updateDropdownStates(searchTerm, currentCategory, currentEquipment, historyFilter) {
-        const categorySelect = document.getElementById('exercise-db-category');
-        const equipmentSelect = document.getElementById('exercise-db-equipment');
+    if (equipmentSelect) {
+      Array.from(equipmentSelect.options).forEach((option) => {
+        if (!option.value) {
+          option.disabled = false;
+          return;
+        }
 
-        if (categorySelect) {
-            Array.from(categorySelect.options).forEach(option => {
-                if (!option.value) {
-                    option.disabled = false;
-                    return;
-                }
+        // Count exercises that would match if this equipment was selected
+        const count = this.app.exerciseDatabase.filter((ex) => {
+          const matchesSearch =
+            !searchTerm ||
+            ex.name.toLowerCase().includes(searchTerm) ||
+            ex.muscleGroup.toLowerCase().includes(searchTerm);
+          const matchesCategory = !currentCategory || ex.category === currentCategory;
+          const matchesThisEquipment = ex.equipment === option.value;
+          const hasHistory = this.exerciseHasHistory(ex.id);
+          let matchesHistory = true;
+          if (historyFilter === 'with-history') matchesHistory = hasHistory;
+          else if (historyFilter === 'without-history') matchesHistory = !hasHistory;
 
-                // Count exercises that would match if this category was selected
-                const count = this.app.exerciseDatabase.filter(ex => {
-                    const matchesSearch = !searchTerm || ex.name.toLowerCase().includes(searchTerm) || ex.muscleGroup.toLowerCase().includes(searchTerm);
-                    const matchesThisCategory = ex.category === option.value;
-                    const matchesEquipment = !currentEquipment || ex.equipment === currentEquipment;
-                    const hasHistory = this.exerciseHasHistory(ex.id);
-                    let matchesHistory = true;
-                    if (historyFilter === 'with-history') matchesHistory = hasHistory;
-                    else if (historyFilter === 'without-history') matchesHistory = !hasHistory;
+          return matchesSearch && matchesCategory && matchesThisEquipment && matchesHistory;
+        }).length;
 
-                    return matchesSearch && matchesThisCategory && matchesEquipment && matchesHistory;
-                }).length;
+        option.disabled = count === 0;
+      });
+    }
+  }
 
-                option.disabled = count === 0;
+  exerciseHasHistory(exerciseId) {
+    return this.app.workoutSessions.some((session) =>
+      session.exercises.some(
+        (ex) =>
+          ex.exerciseId === exerciseId &&
+          ex.sets &&
+          ex.sets.length > 0 &&
+          ex.sets.some((set) => set.completed),
+      ),
+    );
+  }
+
+  getExerciseHistoryCount(exerciseId) {
+    let count = 0;
+    this.app.workoutSessions.forEach((session) => {
+      const exercise = session.exercises.find((ex) => ex.exerciseId === exerciseId);
+      if (exercise && exercise.sets && exercise.sets.length > 0) {
+        const completedSets = exercise.sets.filter((set) => set.completed);
+        if (completedSets.length > 0) {
+          count++;
+        }
+      }
+    });
+    return count;
+  }
+
+  getExerciseHistory(exerciseId) {
+    const history = [];
+
+    this.app.workoutSessions.forEach((session) => {
+      const exercise = session.exercises.find((ex) => ex.exerciseId === exerciseId);
+      if (exercise && exercise.sets && exercise.sets.length > 0) {
+        exercise.sets.forEach((set) => {
+          if (set.completed) {
+            history.push({
+              date: session.date,
+              weight: set.weight,
+              reps: set.reps,
+              duration: set.duration || 0,
+              volume: set.volume,
             });
-        }
+          }
+        });
+      }
+    });
 
-        if (equipmentSelect) {
-            Array.from(equipmentSelect.options).forEach(option => {
-                if (!option.value) {
-                    option.disabled = false;
-                    return;
-                }
+    // Sort by date (most recent first) using local date parsing
+    return history.sort((a, b) => parseLocalDate(b.date) - parseLocalDate(a.date));
+  }
 
-                // Count exercises that would match if this equipment was selected
-                const count = this.app.exerciseDatabase.filter(ex => {
-                    const matchesSearch = !searchTerm || ex.name.toLowerCase().includes(searchTerm) || ex.muscleGroup.toLowerCase().includes(searchTerm);
-                    const matchesCategory = !currentCategory || ex.category === currentCategory;
-                    const matchesThisEquipment = ex.equipment === option.value;
-                    const hasHistory = this.exerciseHasHistory(ex.id);
-                    let matchesHistory = true;
-                    if (historyFilter === 'with-history') matchesHistory = hasHistory;
-                    else if (historyFilter === 'without-history') matchesHistory = !hasHistory;
+  getExerciseHistoryGroupedByDate(exerciseId) {
+    const groupedHistory = {};
 
-                    return matchesSearch && matchesCategory && matchesThisEquipment && matchesHistory;
-                }).length;
-
-                option.disabled = count === 0;
+    this.app.workoutSessions.forEach((session) => {
+      const exercise = session.exercises.find((ex) => ex.exerciseId === exerciseId);
+      if (exercise && exercise.sets && exercise.sets.length > 0) {
+        const completedSets = exercise.sets.filter((set) => set.completed);
+        if (completedSets.length > 0) {
+          if (!groupedHistory[session.date]) {
+            groupedHistory[session.date] = {
+              date: session.date,
+              sets: [],
+            };
+          }
+          completedSets.forEach((set) => {
+            groupedHistory[session.date].sets.push({
+              weight: set.weight,
+              reps: set.reps,
+              duration: set.duration || 0,
+              volume: set.volume,
             });
+          });
         }
+      }
+    });
+
+    // Convert to array and sort by date (most recent first)
+    return Object.values(groupedHistory).sort(
+      (a, b) => parseLocalDate(b.date) - parseLocalDate(a.date),
+    );
+  }
+
+  openCustomExerciseModal() {
+    const modal = document.getElementById('custom-exercise-modal');
+
+    // Clear form
+    document.getElementById('custom-exercise-name').value = '';
+    document.getElementById('custom-exercise-category').value = '';
+    document.getElementById('custom-exercise-muscle').value = '';
+    document.getElementById('custom-exercise-equipment').value = '';
+
+    modal.classList.add('active');
+  }
+
+  createCustomExercise() {
+    const name = document.getElementById('custom-exercise-name').value.trim();
+    const category = document.getElementById('custom-exercise-category').value;
+    const muscleGroup = document.getElementById('custom-exercise-muscle').value;
+    const equipment = document.getElementById('custom-exercise-equipment').value;
+
+    if (!name || !category || !muscleGroup || !equipment) {
+      showToast('Please fill in all required fields', 'error');
+      return;
     }
 
-    exerciseHasHistory(exerciseId) {
-        return this.app.workoutSessions.some(session =>
-            session.exercises.some(ex =>
-                ex.exerciseId === exerciseId &&
-                ex.sets &&
-                ex.sets.length > 0 &&
-                ex.sets.some(set => set.completed)
-            )
-        );
-    }
+    // Generate unique ID (using timestamp + random)
+    const id = Date.now() + Math.floor(Math.random() * 1000) + 10000;
 
-    getExerciseHistoryCount(exerciseId) {
-        let count = 0;
-        this.app.workoutSessions.forEach(session => {
-            const exercise = session.exercises.find(ex => ex.exerciseId === exerciseId);
-            if (exercise && exercise.sets && exercise.sets.length > 0) {
-                const completedSets = exercise.sets.filter(set => set.completed);
-                if (completedSets.length > 0) {
-                    count++;
-                }
-            }
-        });
-        return count;
-    }
+    const newExercise = {
+      id,
+      name,
+      category,
+      muscleGroup,
+      equipment,
+      isCustom: true,
+    };
 
-    getExerciseHistory(exerciseId) {
-        const history = [];
+    this.app.addCustomExercise(newExercise);
 
-        this.app.workoutSessions.forEach(session => {
-            const exercise = session.exercises.find(ex => ex.exerciseId === exerciseId);
-            if (exercise && exercise.sets && exercise.sets.length > 0) {
-                exercise.sets.forEach(set => {
-                    if (set.completed) {
-                        history.push({
-                            date: session.date,
-                            weight: set.weight,
-                            reps: set.reps,
-                            duration: set.duration || 0,
-                            volume: set.volume
-                        });
-                    }
-                });
-            }
-        });
+    showToast(`Created custom exercise: ${name}`, 'success');
+    document.getElementById('custom-exercise-modal').classList.remove('active');
 
-        // Sort by date (most recent first) using local date parsing
-        return history.sort((a, b) => parseLocalDate(b.date) - parseLocalDate(a.date));
-    }
+    // Refresh the exercise list and count
+    this.render();
+  }
 
-    getExerciseHistoryGroupedByDate(exerciseId) {
-        const groupedHistory = {};
+  renderExerciseList() {
+    const container = document.getElementById('exercise-db-list');
 
-        this.app.workoutSessions.forEach(session => {
-            const exercise = session.exercises.find(ex => ex.exerciseId === exerciseId);
-            if (exercise && exercise.sets && exercise.sets.length > 0) {
-                const completedSets = exercise.sets.filter(set => set.completed);
-                if (completedSets.length > 0) {
-                    if (!groupedHistory[session.date]) {
-                        groupedHistory[session.date] = {
-                            date: session.date,
-                            sets: []
-                        };
-                    }
-                    completedSets.forEach(set => {
-                        groupedHistory[session.date].sets.push({
-                            weight: set.weight,
-                            reps: set.reps,
-                            duration: set.duration || 0,
-                            volume: set.volume
-                        });
-                    });
-                }
-            }
-        });
-
-        // Convert to array and sort by date (most recent first)
-        return Object.values(groupedHistory).sort((a, b) =>
-            parseLocalDate(b.date) - parseLocalDate(a.date)
-        );
-    }
-
-    openCustomExerciseModal() {
-        const modal = document.getElementById('custom-exercise-modal');
-
-        // Clear form
-        document.getElementById('custom-exercise-name').value = '';
-        document.getElementById('custom-exercise-category').value = '';
-        document.getElementById('custom-exercise-muscle').value = '';
-        document.getElementById('custom-exercise-equipment').value = '';
-
-        modal.classList.add('active');
-    }
-
-    createCustomExercise() {
-        const name = document.getElementById('custom-exercise-name').value.trim();
-        const category = document.getElementById('custom-exercise-category').value;
-        const muscleGroup = document.getElementById('custom-exercise-muscle').value;
-        const equipment = document.getElementById('custom-exercise-equipment').value;
-
-        if (!name || !category || !muscleGroup || !equipment) {
-            showToast('Please fill in all required fields', 'error');
-            return;
-        }
-
-        // Generate unique ID (using timestamp + random)
-        const id = Date.now() + Math.floor(Math.random() * 1000) + 10000;
-
-        const newExercise = {
-            id,
-            name,
-            category,
-            muscleGroup,
-            equipment,
-            isCustom: true
-        };
-
-        this.app.addCustomExercise(newExercise);
-
-        showToast(`Created custom exercise: ${name}`, 'success');
-        document.getElementById('custom-exercise-modal').classList.remove('active');
-
-        // Refresh the exercise list and count
-        this.render();
-    }
-
-    renderExerciseList() {
-        const container = document.getElementById('exercise-db-list');
-
-        if (this.filteredExercises.length === 0) {
-            container.innerHTML = `
+    if (this.filteredExercises.length === 0) {
+      container.innerHTML = `
                 <div class="empty-state">
                     <i class="fas fa-search"></i>
                     <p>No exercises found</p>
                 </div>
             `;
-            return;
-        }
+      return;
+    }
 
-        container.innerHTML = this.filteredExercises.map(exercise => {
-            const hasHistory = this.exerciseHasHistory(exercise.id);
-            const historyCount = hasHistory ? this.getExerciseHistoryCount(exercise.id) : 0;
-            const clickHandler = hasHistory
-                ? `onclick="window.gymApp.viewControllers.exercises.showExerciseHistory(${exercise.id})"`
-                : '';
-            const cursorClass = hasHistory ? 'has-history' : 'no-history';
-            const canDelete = exercise.isCustom && !hasHistory;
+    container.innerHTML = this.filteredExercises
+      .map((exercise) => {
+        const hasHistory = this.exerciseHasHistory(exercise.id);
+        const historyCount = hasHistory ? this.getExerciseHistoryCount(exercise.id) : 0;
+        const clickHandler = hasHistory
+          ? `onclick="window.gymApp.viewControllers.exercises.showExerciseHistory(${exercise.id})"`
+          : '';
+        const cursorClass = hasHistory ? 'has-history' : 'no-history';
+        const canDelete = exercise.isCustom && !hasHistory;
 
-            return `
+        return `
                 <div class="exercise-db-card ${cursorClass}" ${clickHandler}>
                     ${hasHistory ? `<span class="history-count-badge">${historyCount}</span>` : ''}
                     <div class="exercise-card-header">
@@ -338,9 +347,13 @@ class ExercisesView {
                             ${exercise.name}
                             ${exercise.isCustom ? '<span class="badge badge-custom">Custom</span>' : ''}
                         </h3>
-                        ${canDelete ? `<button class="btn-icon delete-exercise-btn" onclick="event.stopPropagation(); window.gymApp.viewControllers.exercises.deleteCustomExercise(${exercise.id})" title="Delete custom exercise">
+                        ${
+                          canDelete
+                            ? `<button class="btn-icon delete-exercise-btn" onclick="event.stopPropagation(); window.gymApp.viewControllers.exercises.deleteCustomExercise(${exercise.id})" title="Delete custom exercise">
                             <i class="fas fa-trash"></i>
-                        </button>` : ''}
+                        </button>`
+                            : ''
+                        }
                     </div>
                     <div class="exercise-meta">
                         <span class="badge">${exercise.category}</span>
@@ -350,39 +363,40 @@ class ExercisesView {
                     ${hasHistory ? '<p class="history-hint"><i class="fas fa-info-circle"></i> Click to view history</p>' : ''}
                 </div>
             `;
-        }).join('');
-    }
+      })
+      .join('');
+  }
 
-    showExerciseHistory(exerciseId) {
-        const exercise = this.app.getExerciseById(exerciseId);
-        if (!exercise) return;
+  showExerciseHistory(exerciseId) {
+    const exercise = this.app.getExerciseById(exerciseId);
+    if (!exercise) return;
 
-        const history = this.getExerciseHistory(exerciseId);
-        const groupedHistory = this.getExerciseHistoryGroupedByDate(exerciseId);
-        if (history.length === 0) return;
+    const history = this.getExerciseHistory(exerciseId);
+    const groupedHistory = this.getExerciseHistoryGroupedByDate(exerciseId);
+    if (history.length === 0) return;
 
-        const modal = document.getElementById('exercise-detail-modal');
-        document.getElementById('exercise-detail-name').textContent = exercise.name;
+    const modal = document.getElementById('exercise-detail-modal');
+    document.getElementById('exercise-detail-name').textContent = exercise.name;
 
-        const unit = this.app.settings.weightUnit;
-        const isDuration = history[0].duration > 0;
+    const unit = this.app.settings.weightUnit;
+    const isDuration = history[0].duration > 0;
 
-        // Find best set (used for both stats display and table highlighting)
-        const bestSet = isDuration
-            ? history.reduce((best, current) => current.duration > best.duration ? current : best)
-            : history.reduce((best, current) => current.volume > best.volume ? current : best);
+    // Find best set (used for both stats display and table highlighting)
+    const bestSet = isDuration
+      ? history.reduce((best, current) => (current.duration > best.duration ? current : best))
+      : history.reduce((best, current) => (current.volume > best.volume ? current : best));
 
-        let statsHTML = '';
-        if (isDuration) {
-            // Calculate stats for duration-based exercise
-            const maxMins = Math.floor(bestSet.duration / 60);
-            const maxSecs = bestSet.duration % 60;
-            const avgDuration = history.reduce((sum, h) => sum + h.duration, 0) / history.length;
-            const avgMins = Math.floor(avgDuration / 60);
-            const avgSecs = Math.floor(avgDuration % 60);
-            const totalSets = history.length;
+    let statsHTML = '';
+    if (isDuration) {
+      // Calculate stats for duration-based exercise
+      const maxMins = Math.floor(bestSet.duration / 60);
+      const maxSecs = bestSet.duration % 60;
+      const avgDuration = history.reduce((sum, h) => sum + h.duration, 0) / history.length;
+      const avgMins = Math.floor(avgDuration / 60);
+      const avgSecs = Math.floor(avgDuration % 60);
+      const totalSets = history.length;
 
-            statsHTML = `
+      statsHTML = `
                 <div class="stat-box">
                     <span class="stat-label">Max Duration</span>
                     <span class="stat-value">${maxMins}:${maxSecs.toString().padStart(2, '0')}</span>
@@ -396,11 +410,11 @@ class ExercisesView {
                     <span class="stat-value">${totalSets}</span>
                 </div>
             `;
-        } else {
-            // Stats for reps-based exercise
-            const bestSetDate = parseLocalDate(bestSet.date).toLocaleDateString();
+    } else {
+      // Stats for reps-based exercise
+      const bestSetDate = parseLocalDate(bestSet.date).toLocaleDateString();
 
-            statsHTML = `
+      statsHTML = `
                 <div class="stat-box">
                     <span class="stat-label">Weight</span>
                     <span class="stat-value">${bestSet.weight.toLocaleString()}${unit}</span>
@@ -418,99 +432,107 @@ class ExercisesView {
                     <span class="stat-value">${bestSetDate}</span>
                 </div>
             `;
-        }
+    }
 
-        // Build table with grouped sets per date
-        let tableHeaderHTML = '';
-        let tableBodyHTML = '';
+    // Build table with grouped sets per date
+    let tableHeaderHTML = '';
+    let tableBodyHTML = '';
 
-        if (isDuration) {
-            tableHeaderHTML = `
+    if (isDuration) {
+      tableHeaderHTML = `
                 <th>Date</th>
                 <th>Sets</th>
             `;
 
-            tableBodyHTML = groupedHistory.map((record, recordIdx) => {
-                // Get the previous workout's sets for comparison (next in array since sorted most recent first)
-                const previousRecord = groupedHistory[recordIdx + 1];
+      tableBodyHTML = groupedHistory
+        .map((record, recordIdx) => {
+          // Get the previous workout's sets for comparison (next in array since sorted most recent first)
+          const previousRecord = groupedHistory[recordIdx + 1];
 
-                const setsDisplay = record.sets.map((set, idx) => {
-                    const mins = Math.floor(set.duration / 60);
-                    const secs = set.duration % 60;
+          const setsDisplay = record.sets
+            .map((set, idx) => {
+              const mins = Math.floor(set.duration / 60);
+              const secs = set.duration % 60;
 
-                    // Check if this is the best set
-                    const isBestSet = set.duration === bestSet.duration && record.date === bestSet.date;
+              // Check if this is the best set
+              const isBestSet = set.duration === bestSet.duration && record.date === bestSet.date;
 
-                    // Compare with same set index from previous workout
-                    let colorClass = isBestSet ? 'set-best' : '';
-                    if (!isBestSet && previousRecord && previousRecord.sets[idx]) {
-                        const prevDuration = previousRecord.sets[idx].duration;
-                        if (set.duration > prevDuration) {
-                            colorClass = 'set-improved';
-                        } else if (set.duration < prevDuration) {
-                            colorClass = 'set-worse';
-                        }
-                    }
+              // Compare with same set index from previous workout
+              let colorClass = isBestSet ? 'set-best' : '';
+              if (!isBestSet && previousRecord && previousRecord.sets[idx]) {
+                const prevDuration = previousRecord.sets[idx].duration;
+                if (set.duration > prevDuration) {
+                  colorClass = 'set-improved';
+                } else if (set.duration < prevDuration) {
+                  colorClass = 'set-worse';
+                }
+              }
 
-                    return `<span class="set-badge ${colorClass}">${idx + 1}: ${mins}:${secs.toString().padStart(2, '0')}</span>`;
-                }).join(' ');
+              return `<span class="set-badge ${colorClass}">${idx + 1}: ${mins}:${secs.toString().padStart(2, '0')}</span>`;
+            })
+            .join(' ');
 
-                return `
+          return `
                     <tr>
                         <td>${parseLocalDate(record.date).toLocaleDateString()}</td>
                         <td class="sets-cell">${setsDisplay}</td>
                     </tr>
                 `;
-            }).join('');
-        } else {
-            tableHeaderHTML = `
+        })
+        .join('');
+    } else {
+      tableHeaderHTML = `
                 <th>Date</th>
                 <th>Sets</th>
             `;
 
-            tableBodyHTML = groupedHistory.map((record, recordIdx) => {
-                // Get the previous workout's sets for comparison (next in array since sorted most recent first)
-                const previousRecord = groupedHistory[recordIdx + 1];
+      tableBodyHTML = groupedHistory
+        .map((record, recordIdx) => {
+          // Get the previous workout's sets for comparison (next in array since sorted most recent first)
+          const previousRecord = groupedHistory[recordIdx + 1];
 
-                const setsDisplay = record.sets.map((set, idx) => {
-                    // Check if this is the best set (by volume)
-                    const setVolume = set.weight * set.reps;
-                    const isBestSet = setVolume === bestSet.volume && record.date === bestSet.date;
+          const setsDisplay = record.sets
+            .map((set, idx) => {
+              // Check if this is the best set (by volume)
+              const setVolume = set.weight * set.reps;
+              const isBestSet = setVolume === bestSet.volume && record.date === bestSet.date;
 
-                    // Compare with same set index from previous workout
-                    // Primary comparison: weight. If weight is same, compare reps.
-                    let colorClass = isBestSet ? 'set-best' : '';
-                    if (!isBestSet && previousRecord && previousRecord.sets[idx]) {
-                        const prevWeight = previousRecord.sets[idx].weight;
-                        const prevReps = previousRecord.sets[idx].reps;
+              // Compare with same set index from previous workout
+              // Primary comparison: weight. If weight is same, compare reps.
+              let colorClass = isBestSet ? 'set-best' : '';
+              if (!isBestSet && previousRecord && previousRecord.sets[idx]) {
+                const prevWeight = previousRecord.sets[idx].weight;
+                const prevReps = previousRecord.sets[idx].reps;
 
-                        if (set.weight > prevWeight) {
-                            colorClass = 'set-improved';
-                        } else if (set.weight < prevWeight) {
-                            colorClass = 'set-worse';
-                        } else {
-                            // Weight is the same, compare reps
-                            if (set.reps > prevReps) {
-                                colorClass = 'set-improved';
-                            } else if (set.reps < prevReps) {
-                                colorClass = 'set-worse';
-                            }
-                        }
-                    }
+                if (set.weight > prevWeight) {
+                  colorClass = 'set-improved';
+                } else if (set.weight < prevWeight) {
+                  colorClass = 'set-worse';
+                } else {
+                  // Weight is the same, compare reps
+                  if (set.reps > prevReps) {
+                    colorClass = 'set-improved';
+                  } else if (set.reps < prevReps) {
+                    colorClass = 'set-worse';
+                  }
+                }
+              }
 
-                    return `<span class="set-badge ${colorClass}">${idx + 1}: ${set.weight.toLocaleString()}${unit} x ${set.reps}</span>`;
-                }).join(' ');
+              return `<span class="set-badge ${colorClass}">${idx + 1}: ${set.weight.toLocaleString()}${unit} x ${set.reps}</span>`;
+            })
+            .join(' ');
 
-                return `
+          return `
                     <tr>
                         <td>${parseLocalDate(record.date).toLocaleDateString()}</td>
                         <td class="sets-cell">${setsDisplay}</td>
                     </tr>
                 `;
-            }).join('');
-        }
+        })
+        .join('');
+    }
 
-        document.getElementById('exercise-detail-content').innerHTML = `
+    document.getElementById('exercise-detail-content').innerHTML = `
             <h3>Best Set</h3>
             <div class="exercise-stats-summary">
                 ${statsHTML}
@@ -531,44 +553,44 @@ class ExercisesView {
             </div>
         `;
 
-        modal.classList.add('active');
+    modal.classList.add('active');
+  }
+
+  async deleteCustomExercise(exerciseId) {
+    const exercise = this.app.getExerciseById(exerciseId);
+    if (!exercise || !exercise.isCustom) {
+      showToast('Cannot delete this exercise', 'error');
+      return;
     }
 
-    async deleteCustomExercise(exerciseId) {
-        const exercise = this.app.getExerciseById(exerciseId);
-        if (!exercise || !exercise.isCustom) {
-            showToast('Cannot delete this exercise', 'error');
-            return;
-        }
-
-        const hasHistory = this.exerciseHasHistory(exerciseId);
-        if (hasHistory) {
-            showToast('Cannot delete exercise with workout history', 'error');
-            return;
-        }
-
-        const message = `Are you sure you want to delete <strong>"${exercise.name}"</strong>?<br><br>This custom exercise will be permanently removed.<br><br><strong>This action cannot be undone.</strong>`;
-
-        const confirmed = await showConfirmModal({
-            title: 'Delete Custom Exercise',
-            message: message,
-            confirmText: 'Delete Exercise',
-            cancelText: 'Cancel',
-            isDangerous: true
-        });
-
-        if (confirmed) {
-            const index = this.app.customExercises.findIndex(ex => ex.id === exerciseId);
-            if (index >= 0) {
-                this.app.customExercises.splice(index, 1);
-                this.app.saveCustomExercises();
-                showToast('Custom exercise deleted successfully', 'info');
-
-                // Re-render to update the list and count
-                this.render();
-            }
-        }
+    const hasHistory = this.exerciseHasHistory(exerciseId);
+    if (hasHistory) {
+      showToast('Cannot delete exercise with workout history', 'error');
+      return;
     }
+
+    const message = `Are you sure you want to delete <strong>"${exercise.name}"</strong>?<br><br>This custom exercise will be permanently removed.<br><br><strong>This action cannot be undone.</strong>`;
+
+    const confirmed = await showConfirmModal({
+      title: 'Delete Custom Exercise',
+      message: message,
+      confirmText: 'Delete Exercise',
+      cancelText: 'Cancel',
+      isDangerous: true,
+    });
+
+    if (confirmed) {
+      const index = this.app.customExercises.findIndex((ex) => ex.id === exerciseId);
+      if (index >= 0) {
+        this.app.customExercises.splice(index, 1);
+        this.app.saveCustomExercises();
+        showToast('Custom exercise deleted successfully', 'info');
+
+        // Re-render to update the list and count
+        this.render();
+      }
+    }
+  }
 }
 
 // Initialize

@@ -1,21 +1,33 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
-    <meta name="description" content="Free Mario Kart 8 Deluxe race tracker. Track races, analyze statistics, compare player performance, and view detailed race history with comprehensive charts and achievements.">
-    <meta name="keywords" content="Mario Kart tracker, Mario Kart 8 Deluxe, race tracker, gaming statistics, player stats, race history, Mario Kart analytics, free game tracker">
-    <meta name="theme-color" content="#667eea">
-    <meta name="mobile-web-app-capable" content="yes">
-    <meta name="apple-mobile-web-app-status-bar-style" content="default">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+    <meta
+      name="description"
+      content="Free Mario Kart 8 Deluxe race tracker. Track races, analyze statistics, compare player performance, and view detailed race history with comprehensive charts and achievements."
+    />
+    <meta
+      name="keywords"
+      content="Mario Kart tracker, Mario Kart 8 Deluxe, race tracker, gaming statistics, player stats, race history, Mario Kart analytics, free game tracker"
+    />
+    <meta name="theme-color" content="#667eea" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="default" />
     <title>Mario Kart 8 Deluxe Race Tracker | Free Statistics & Analytics</title>
 
     <!-- Canonical URL -->
     <link rel="canonical" href="https://shevato.com/apps/mario-kart/tracker.html" />
 
     <!-- Open Graph tags -->
-    <meta property="og:title" content="Mario Kart 8 Deluxe Race Tracker | Free Statistics & Analytics" />
-    <meta property="og:description" content="Track Mario Kart 8 Deluxe races with comprehensive statistics, player performance analysis, and detailed race history." />
+    <meta
+      property="og:title"
+      content="Mario Kart 8 Deluxe Race Tracker | Free Statistics & Analytics"
+    />
+    <meta
+      property="og:description"
+      content="Track Mario Kart 8 Deluxe races with comprehensive statistics, player performance analysis, and detailed race history."
+    />
     <meta property="og:type" content="website" />
     <meta property="og:url" content="https://shevato.com/apps/mario-kart/tracker.html" />
     <meta property="og:image" content="https://shevato.com/images/full-logo.svg" />
@@ -24,531 +36,843 @@
     <!-- Twitter Card tags -->
     <meta name="twitter:card" content="summary_large_image" />
     <meta name="twitter:title" content="Mario Kart 8 Deluxe Race Tracker" />
-    <meta name="twitter:description" content="Free race tracker with statistics and analytics for Mario Kart 8 Deluxe" />
+    <meta
+      name="twitter:description"
+      content="Free race tracker with statistics and analytics for Mario Kart 8 Deluxe"
+    />
     <meta name="twitter:image" content="https://shevato.com/images/full-logo.svg" />
 
     <!-- JSON-LD Structured Data -->
     <script type="application/ld+json">
-    {
-      "@context": "https://schema.org",
-      "@type": "WebApplication",
-      "name": "Mario Kart 8 Deluxe Race Tracker",
-      "description": "Free race tracking application for Mario Kart 8 Deluxe with comprehensive statistics, player performance analysis, achievements, and race history",
-      "url": "https://shevato.com/apps/mario-kart/tracker.html",
-      "applicationCategory": "GameApplication",
-      "operatingSystem": "Web Browser",
-      "browserRequirements": "Requires JavaScript. Works on all modern browsers.",
-      "offers": {
-        "@type": "Offer",
-        "price": "0",
-        "priceCurrency": "USD"
-      },
-      "featureList": [
-        "Race tracking and recording",
-        "Player statistics and performance analysis",
-        "Detailed race history",
-        "Achievement system",
-        "Data export and import",
-        "Automatic cloud sync"
-      ],
-      "author": {
-        "@type": "Organization",
-        "name": "Shevato LLC",
-        "url": "https://shevato.com"
+      {
+        "@context": "https://schema.org",
+        "@type": "WebApplication",
+        "name": "Mario Kart 8 Deluxe Race Tracker",
+        "description": "Free race tracking application for Mario Kart 8 Deluxe with comprehensive statistics, player performance analysis, achievements, and race history",
+        "url": "https://shevato.com/apps/mario-kart/tracker.html",
+        "applicationCategory": "GameApplication",
+        "operatingSystem": "Web Browser",
+        "browserRequirements": "Requires JavaScript. Works on all modern browsers.",
+        "offers": {
+          "@type": "Offer",
+          "price": "0",
+          "priceCurrency": "USD"
+        },
+        "featureList": [
+          "Race tracking and recording",
+          "Player statistics and performance analysis",
+          "Detailed race history",
+          "Achievement system",
+          "Data export and import",
+          "Automatic cloud sync"
+        ],
+        "author": {
+          "@type": "Organization",
+          "name": "Shevato LLC",
+          "url": "https://shevato.com"
+        }
       }
-    }
     </script>
     <!-- Favicon -->
-    <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>🏁</text></svg>">
-    <link rel="apple-touch-icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><rect width=%22100%22 height=%22100%22 rx=%2220%22 fill=%22%23667eea%22/><text x=%2250%22 y=%2265%22 font-size=%2260%22 text-anchor=%22middle%22>🏁</text></svg>">
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link
+      rel="icon"
+      type="image/svg+xml"
+      href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>🏁</text></svg>"
+    />
+    <link
+      rel="apple-touch-icon"
+      href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><rect width=%22100%22 height=%22100%22 rx=%2220%22 fill=%22%23667eea%22/><text x=%2250%22 y=%2265%22 font-size=%2260%22 text-anchor=%22middle%22>🏁</text></svg>"
+    />
+    <link
+      rel="stylesheet"
+      href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css"
+    />
     <!-- Import all CSS modules -->
-    <link rel="stylesheet" href="css/utilities.css">
-    <link rel="stylesheet" href="css/base.css">
-    <link rel="stylesheet" href="css/theme.css">
-    <link rel="stylesheet" href="css/layout.css">
-    <link rel="stylesheet" href="css/forms.css">
-    <link rel="stylesheet" href="css/visualizations.css">
-    <link rel="stylesheet" href="css/visualizations-modern.css">
-    <link rel="stylesheet" href="css/stats.css">
-    <link rel="stylesheet" href="css/charts.css">
-    <link rel="stylesheet" href="css/race-history.css">
-    <link rel="stylesheet" href="css/responsive.css">
-    <link rel="stylesheet" href="css/add-race-dropdown.css">
-    <link rel="stylesheet" href="css/player-display.css">
-    <link rel="stylesheet" href="css/players-dropdown-new.css">
-    <link rel="stylesheet" href="css/player-icons.css">
-    <link rel="stylesheet" href="../../assets/css/pagination.css">
-    <link rel="stylesheet" href="css/sidebar.css">
-    <link rel="stylesheet" href="css/tooltip.css">
-    <link rel="stylesheet" href="css/help-styles.css">
+    <link rel="stylesheet" href="css/utilities.css" />
+    <link rel="stylesheet" href="css/base.css" />
+    <link rel="stylesheet" href="css/theme.css" />
+    <link rel="stylesheet" href="css/layout.css" />
+    <link rel="stylesheet" href="css/forms.css" />
+    <link rel="stylesheet" href="css/visualizations.css" />
+    <link rel="stylesheet" href="css/visualizations-modern.css" />
+    <link rel="stylesheet" href="css/stats.css" />
+    <link rel="stylesheet" href="css/charts.css" />
+    <link rel="stylesheet" href="css/race-history.css" />
+    <link rel="stylesheet" href="css/responsive.css" />
+    <link rel="stylesheet" href="css/add-race-dropdown.css" />
+    <link rel="stylesheet" href="css/player-display.css" />
+    <link rel="stylesheet" href="css/players-dropdown-new.css" />
+    <link rel="stylesheet" href="css/player-icons.css" />
+    <link rel="stylesheet" href="../../assets/css/pagination.css" />
+    <link rel="stylesheet" href="css/sidebar.css" />
+    <link rel="stylesheet" href="css/tooltip.css" />
+    <link rel="stylesheet" href="css/help-styles.css" />
     <link rel="stylesheet" href="../../assets/css/main.css" />
-      <link rel="stylesheet" href="css/mario-kart-overrides.css">
+    <link rel="stylesheet" href="css/mario-kart-overrides.css" />
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <script src="https://apis.google.com/js/api.js"></script>
-    
+
     <!-- CRITICAL: Load immediate sync FIRST to catch all localStorage calls -->
     <script src="../../sync-system/sync-immediate.js"></script>
-</head>
-<body class="mario-kart-app mario-kart-tracker">
+  </head>
+  <body class="mario-kart-app mario-kart-tracker">
     <div data-include="header"></div>
-    
-    
+
     <!-- Sidebar Toggle Button -->
-    <button class="sidebar-toggle" id="sidebar-toggle" onclick="toggleSidebar()" aria-label="Toggle sidebar" aria-expanded="false" aria-controls="sidebar">
-        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16" />
-        </svg>
+    <button
+      class="sidebar-toggle"
+      id="sidebar-toggle"
+      onclick="toggleSidebar()"
+      aria-label="Toggle sidebar"
+      aria-expanded="false"
+      aria-controls="sidebar"
+    >
+      <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+        <path
+          stroke-linecap="round"
+          stroke-linejoin="round"
+          stroke-width="2"
+          d="M4 6h16M4 12h16M4 18h16"
+        />
+      </svg>
     </button>
-    
+
     <!-- Sidebar Overlay -->
     <div class="sidebar-overlay" id="sidebar-overlay" onclick="closeSidebar()"></div>
-    
+
     <!-- Sidebar -->
-    <aside class="sidebar" id="sidebar" role="complementary" aria-label="Filters and actions sidebar">
-        <div class="sidebar-header">
-            <h2 class="sidebar-title">Control Panel</h2>
-            <div class="sidebar-header-buttons">
-                <button id="sidebar-clear-btn" class="sidebar-header-clear" onclick="confirmClearData()" title="Clear all data" aria-label="Clear all data">
-                    🗑️
-                </button>
-                <button class="sidebar-close-btn" onclick="closeSidebar()" aria-label="Close sidebar">
-                    ×
-                </button>
-            </div>
+    <aside
+      class="sidebar"
+      id="sidebar"
+      role="complementary"
+      aria-label="Filters and actions sidebar"
+    >
+      <div class="sidebar-header">
+        <h2 class="sidebar-title">Control Panel</h2>
+        <div class="sidebar-header-buttons">
+          <button
+            id="sidebar-clear-btn"
+            class="sidebar-header-clear"
+            onclick="confirmClearData()"
+            title="Clear all data"
+            aria-label="Clear all data"
+          >
+            🗑️
+          </button>
+          <button class="sidebar-close-btn" onclick="closeSidebar()" aria-label="Close sidebar">
+            ×
+          </button>
         </div>
-        
-        <div class="sidebar-content">
-            <!-- Player Settings Section -->
-            <div class="sidebar-section">
-                <h3 class="sidebar-section-title">Player Settings</h3>
-                <button id="sidebar-player-settings-btn" class="sidebar-player-settings-btn" onclick="toggleSidebarPlayerSettings()">
-                    <span class="settings-icon">👤</span>
-                    <span class="settings-text">Manage Players</span>
-                </button>
-                <div class="sidebar-player-settings hidden" id="sidebar-player-settings">
-                    <!-- Player settings will be generated here -->
-                </div>
-            </div>
-            
-            <!-- Actions Section -->
-            <div class="sidebar-section">
-                <h3 class="sidebar-section-title">Actions</h3>
-                <button id="sidebar-add-race-btn" class="sidebar-add-race-btn" onclick="toggleSidebarRaceForm()">
-                    <span class="add-icon">🏁</span>
-                    <span class="add-text">Add Race</span>
-                </button>
-                <div class="sidebar-race-form" id="sidebar-race-form">
-                    <div class="sidebar-race-error" id="sidebar-race-error"></div>
-                    <div class="sidebar-race-inputs" id="sidebar-race-inputs">
-                        <!-- Player inputs will be generated dynamically -->
-                    </div>
-                    <div class="sidebar-race-actions">
-                        <button class="sidebar-submit-race" onclick="submitSidebarRace()">🏆 Save</button>
-                        <button class="sidebar-cancel-race" onclick="closeSidebarRaceForm()">Cancel</button>
-                    </div>
-                </div>
-                <div class="sidebar-action-buttons-group">
-                    <button id="sidebar-undo-btn" class="sidebar-action-btn undo-btn" onclick="undoLastAction()" disabled title="Undo last action">
-                        <span class="action-icon">↶</span>
-                        <span class="action-text">Undo</span>
-                    </button>
-                    <button id="sidebar-redo-btn" class="sidebar-action-btn redo-btn" onclick="redoLastAction()" disabled title="Redo last action">
-                        <span class="action-icon">↷</span>
-                        <span class="action-text">Redo</span>
-                    </button>
-                </div>
-                <div class="action-buttons" id="sidebar-action-buttons">
-                    <button class="sidebar-action-btn restore-btn" onclick="restoreFromBackup()" title="Restore from auto-backup">
-                        <span class="action-icon">🔄</span>
-                        <span class="action-text">Restore</span>
-                    </button>
-                </div>
-            </div>
-            
-            <!-- Date Filter Section -->
-            <div class="sidebar-section">
-                <h3 class="sidebar-section-title">Date Filter</h3>
-                <div id="sidebar-date-filter">
-                    <!-- Will be moved here by JavaScript -->
-                </div>
-            </div>
-            
-            <!-- Race Date Section -->
-            <div class="sidebar-section">
-                <h3 class="sidebar-section-title">Race Date</h3>
-                <div class="sidebar-race-date">
-                    <div class="sidebar-date-btn-container">
-                        <span class="date-text" id="sidebar-date-text">Today</span>
-                        <div class="sidebar-date-icon-wrapper">
-                            <input type="date" id="sidebar-date-input" class="sidebar-date-input-hidden" onchange="updateSidebarDate()">
-                            <label for="sidebar-date-input" class="sidebar-date-icon-btn" aria-label="Set default race date">
-                                <span class="date-icon">📅</span>
-                            </label>
-                        </div>
-                    </div>
-                    <button class="sidebar-date-today-btn" onclick="setSidebarDateToday()">Set to Today</button>
-                </div>
-            </div>
+      </div>
+
+      <div class="sidebar-content">
+        <!-- Player Settings Section -->
+        <div class="sidebar-section">
+          <h3 class="sidebar-section-title">Player Settings</h3>
+          <button
+            id="sidebar-player-settings-btn"
+            class="sidebar-player-settings-btn"
+            onclick="toggleSidebarPlayerSettings()"
+          >
+            <span class="settings-icon">👤</span>
+            <span class="settings-text">Manage Players</span>
+          </button>
+          <div class="sidebar-player-settings hidden" id="sidebar-player-settings">
+            <!-- Player settings will be generated here -->
+          </div>
         </div>
+
+        <!-- Actions Section -->
+        <div class="sidebar-section">
+          <h3 class="sidebar-section-title">Actions</h3>
+          <button
+            id="sidebar-add-race-btn"
+            class="sidebar-add-race-btn"
+            onclick="toggleSidebarRaceForm()"
+          >
+            <span class="add-icon">🏁</span>
+            <span class="add-text">Add Race</span>
+          </button>
+          <div class="sidebar-race-form" id="sidebar-race-form">
+            <div class="sidebar-race-error" id="sidebar-race-error"></div>
+            <div class="sidebar-race-inputs" id="sidebar-race-inputs">
+              <!-- Player inputs will be generated dynamically -->
+            </div>
+            <div class="sidebar-race-actions">
+              <button class="sidebar-submit-race" onclick="submitSidebarRace()">🏆 Save</button>
+              <button class="sidebar-cancel-race" onclick="closeSidebarRaceForm()">Cancel</button>
+            </div>
+          </div>
+          <div class="sidebar-action-buttons-group">
+            <button
+              id="sidebar-undo-btn"
+              class="sidebar-action-btn undo-btn"
+              onclick="undoLastAction()"
+              disabled
+              title="Undo last action"
+            >
+              <span class="action-icon">↶</span>
+              <span class="action-text">Undo</span>
+            </button>
+            <button
+              id="sidebar-redo-btn"
+              class="sidebar-action-btn redo-btn"
+              onclick="redoLastAction()"
+              disabled
+              title="Redo last action"
+            >
+              <span class="action-icon">↷</span>
+              <span class="action-text">Redo</span>
+            </button>
+          </div>
+          <div class="action-buttons" id="sidebar-action-buttons">
+            <button
+              class="sidebar-action-btn restore-btn"
+              onclick="restoreFromBackup()"
+              title="Restore from auto-backup"
+            >
+              <span class="action-icon">🔄</span>
+              <span class="action-text">Restore</span>
+            </button>
+          </div>
+        </div>
+
+        <!-- Date Filter Section -->
+        <div class="sidebar-section">
+          <h3 class="sidebar-section-title">Date Filter</h3>
+          <div id="sidebar-date-filter">
+            <!-- Will be moved here by JavaScript -->
+          </div>
+        </div>
+
+        <!-- Race Date Section -->
+        <div class="sidebar-section">
+          <h3 class="sidebar-section-title">Race Date</h3>
+          <div class="sidebar-race-date">
+            <div class="sidebar-date-btn-container">
+              <span class="date-text" id="sidebar-date-text">Today</span>
+              <div class="sidebar-date-icon-wrapper">
+                <input
+                  type="date"
+                  id="sidebar-date-input"
+                  class="sidebar-date-input-hidden"
+                  onchange="updateSidebarDate()"
+                />
+                <label
+                  for="sidebar-date-input"
+                  class="sidebar-date-icon-btn"
+                  aria-label="Set default race date"
+                >
+                  <span class="date-icon">📅</span>
+                </label>
+              </div>
+            </div>
+            <button class="sidebar-date-today-btn" onclick="setSidebarDateToday()">
+              Set to Today
+            </button>
+          </div>
+        </div>
+      </div>
     </aside>
-    
-    
+
     <div class="mario-kart-content">
-    <div class="container" role="main" id="main-content">
+      <div class="container" role="main" id="main-content">
         <div class="header-section">
-            <h1>🏎️ Mario Kart 8 Deluxe Tracker 🏎️</h1>
-            <!-- Game Version Toggle -->
-            <div class="game-version-toggle">
-                <button class="version-btn active" id="mk8d-btn" onclick="switchGameVersion('mk8d')">
-                    <span class="version-icon">🏎️</span>
-                    <span class="version-text">MK8 Deluxe</span>
-                </button>
-                <button class="version-btn" id="mkworld-btn" onclick="switchGameVersion('mkworld')">
-                    <span class="version-icon">🌍</span>
-                    <span class="version-text">MK World</span>
-                </button>
-            </div>
+          <h1>🏎️ Mario Kart 8 Deluxe Tracker 🏎️</h1>
+          <!-- Game Version Toggle -->
+          <div class="game-version-toggle">
+            <button class="version-btn active" id="mk8d-btn" onclick="switchGameVersion('mk8d')">
+              <span class="version-icon">🏎️</span>
+              <span class="version-text">MK8 Deluxe</span>
+            </button>
+            <button class="version-btn" id="mkworld-btn" onclick="switchGameVersion('mkworld')">
+              <span class="version-icon">🌍</span>
+              <span class="version-text">MK World</span>
+            </button>
+          </div>
         </div>
-        
+
         <div class="toggle-section" role="tablist" aria-label="Statistics view toggle">
-            <button class="toggle-btn" onclick="toggleView('help')" role="tab" aria-selected="false" aria-controls="stats-display">❓ Help</button>
-            <button class="toggle-btn" onclick="toggleView('guide')" role="tab" aria-selected="false" aria-controls="stats-display">📖 Guide</button>
-            <button class="toggle-btn active" onclick="toggleView('achievements')" role="tab" aria-selected="true" aria-controls="stats-display">🏆 Achievements</button>
-            <button class="toggle-btn" onclick="toggleView('stats')" role="tab" aria-selected="false" aria-controls="stats-display">📊 Stats</button>
-            <button class="toggle-btn" onclick="toggleView('h2h')" role="tab" aria-selected="false" aria-controls="stats-display">⚔️ H2H</button>
-            <button class="toggle-btn" onclick="toggleView('analysis')" role="tab" aria-selected="false" aria-controls="stats-display">🔍 Analysis</button>
-            <button class="toggle-btn" onclick="toggleView('activity')" role="tab" aria-selected="false" aria-controls="stats-display">📅 Activity</button>
-            <button class="toggle-btn" onclick="toggleView('trends')" role="tab" aria-selected="false" aria-controls="stats-display">📈 Trends</button>
+          <button
+            class="toggle-btn"
+            onclick="toggleView('help')"
+            role="tab"
+            aria-selected="false"
+            aria-controls="stats-display"
+          >
+            ❓ Help
+          </button>
+          <button
+            class="toggle-btn"
+            onclick="toggleView('guide')"
+            role="tab"
+            aria-selected="false"
+            aria-controls="stats-display"
+          >
+            📖 Guide
+          </button>
+          <button
+            class="toggle-btn active"
+            onclick="toggleView('achievements')"
+            role="tab"
+            aria-selected="true"
+            aria-controls="stats-display"
+          >
+            🏆 Achievements
+          </button>
+          <button
+            class="toggle-btn"
+            onclick="toggleView('stats')"
+            role="tab"
+            aria-selected="false"
+            aria-controls="stats-display"
+          >
+            📊 Stats
+          </button>
+          <button
+            class="toggle-btn"
+            onclick="toggleView('h2h')"
+            role="tab"
+            aria-selected="false"
+            aria-controls="stats-display"
+          >
+            ⚔️ H2H
+          </button>
+          <button
+            class="toggle-btn"
+            onclick="toggleView('analysis')"
+            role="tab"
+            aria-selected="false"
+            aria-controls="stats-display"
+          >
+            🔍 Analysis
+          </button>
+          <button
+            class="toggle-btn"
+            onclick="toggleView('activity')"
+            role="tab"
+            aria-selected="false"
+            aria-controls="stats-display"
+          >
+            📅 Activity
+          </button>
+          <button
+            class="toggle-btn"
+            onclick="toggleView('trends')"
+            role="tab"
+            aria-selected="false"
+            aria-controls="stats-display"
+          >
+            📈 Trends
+          </button>
         </div>
-        
+
         <!-- Help Information Panel (preserved for help tab content) -->
         <div class="help-panel hidden" id="help-panel">
-            <div class="help-content">
-                <div class="help-section">
-                    <h4>🏆 What is this?</h4>
-                    <p>A comprehensive Mario Kart race tracking application that records race results, calculates detailed statistics, tracks achievements, and provides in-depth performance analysis for up to 4 players. All data is stored locally in your browser.</p>
-                </div>
-                
-                <div class="help-grid">
-                    <div class="help-item">
-                        <div class="help-icon">📊</div>
-                        <div class="help-text">
-                            <strong>6 Different Views</strong>
-                            <p>Navigate between Achievements, Stats, H2H, Analysis, Activity, and Trends tabs. Each provides insights into your racing performance.</p>
-                        </div>
-                    </div>
-                    
-                    <div class="help-item">
-                        <div class="help-icon">🏆</div>
-                        <div class="help-text">
-                            <strong>5 Achievement Categories</strong>
-                            <p>Win Streak (consecutive 1st), Hot Streak (consecutive podiums), Clutch Master (better than average), Momentum Builder (improving positions), Perfect Day (all good finishes in a day).</p>
-                        </div>
-                    </div>
-                    
-                    <div class="help-item">
-                        <div class="help-icon">💾</div>
-                        <div class="help-text">
-                            <strong>Auto-Save & Backup</strong>
-                            <p>All data auto-saves to local storage. Auto-backup every 10 minutes. Export/import JSON files for manual backups. Full undo/redo history.</p>
-                        </div>
-                    </div>
-                    
-                    <div class="help-item">
-                        <div class="help-icon">🎮</div>
-                        <div class="help-text">
-                            <strong>Multiple Input Methods</strong>
-                            <p>Quick Add widget (🏁+), sidebar Add Race form, direct number entry, stepper buttons (+/-), or position picker dropdown.</p>
-                        </div>
-                    </div>
-                    
-                    <div class="help-item">
-                        <div class="help-icon">📈</div>
-                        <div class="help-text">
-                            <strong>Advanced Analytics</strong>
-                            <p>Position heat maps, recent streak visualization, sweet spot analysis, performance trends chart, activity calendar, and H2H statistics.</p>
-                        </div>
-                    </div>
-                    
-                    <div class="help-item">
-                        <div class="help-icon">🎨</div>
-                        <div class="help-text">
-                            <strong>Customization</strong>
-                            <p>Consistent theme styling, custom player icons/emojis, configurable player count (1-4, optimized for 3), and date filtering.</p>
-                        </div>
-                    </div>
-                </div>
-                
-                <div class="help-section">
-                    <h4>🚀 Quick Start Guide</h4>
-                    <ol class="help-steps">
-                        <li><strong>Configure Players:</strong> Open sidebar (☰) → Click 👤 Manage Players → Set 1-4 player names and feel free picking icons</li>
-                        <li><strong>Add First Race:</strong> Enter positions for each player → Click "🏁 Add Race"</li>
-                        <li><strong>Explore Views:</strong> Click tabs at top - Achievements shows progress, Stats compares players, H2H shows matchups, etc.</li>
-                        <li><strong>Filter by Date:</strong> Use sidebar date controls - All Time, Today, Last 7/30 days, or custom date ranges</li>
-                        <li><strong>Backup Data:</strong> 📤 Export to save JSON file. 📥 Import a JSON file. Auto-backup runs every 10 minutes</li>
-                    </ol>
-                </div>
-
-                <section class="help-section visualization-guide" aria-labelledby="viz-guide-heading">
-                    <h3 id="viz-guide-heading">📊 Visualization Guide</h3>
-                    <div class="viz-guide-grid" role="grid">
-                        <article class="viz-guide-card" role="gridcell">
-                            <header>
-                                <h4>🏆 Achievements</h4>
-                            </header>
-                            <p>Track milestones and streaks across 5 categories:</p>
-                            <ul role="list">
-                                <li><strong>🏅 Win Streak:</strong> Consecutive first place finishes</li>
-                                <li><strong>🔥 Hot Streak:</strong> Consecutive podium finishes</li>
-                                <li><strong>💥 Clutch Master:</strong> Consecutive races finishing better than average</li>
-                                <li><strong>🚀 Momentum Builder:</strong> Consecutive races with improving positions</li>
-                                <li><strong>📅 Perfect Day:</strong> All races in a day were good finishes</li>
-                            </ul>
-                            <aside class="viz-tip" role="note">
-                                💡 Click any achievement to see detailed progress!
-                            </aside>
-                        </article>
-                        
-                        <article class="viz-guide-card" role="gridcell">
-                            <header>
-                                <h4>🌡️ Position Heat Map</h4>
-                            </header>
-                            <p>Shows frequency of finishing positions in ranges</p>
-                            <div id="position-ranges-help">
-                                <p><em>Position ranges vary by game mode</em></p>
-                            </div>
-                            <aside class="viz-tip" role="note">
-                                💡 Darker colors = more frequent finishes in that range
-                            </aside>
-                        </article>
-                        
-                        <article class="viz-guide-card" role="gridcell">
-                            <header>
-                                <h4>📈 Recent Streak</h4>
-                            </header>
-                            <p>Your last 10 race positions at a glance with gradient colors</p>
-                            <aside class="viz-tip" role="note">
-                                💡 Blue dot indicates your most recent race
-                            </aside>
-                        </article>
-                        
-                        <article class="viz-guide-card" role="gridcell">
-                            <header>
-                                <h4>🎯 Sweet Spots</h4>
-                            </header>
-                            <p>Visualizes frequency for each specific position:</p>
-                            <ul role="list">
-                                <li>Each bar represents one position</li>
-                                <li>Brighter colors = more frequent finishes</li>
-                                <li>Helps identify your most common positions</li>
-                            </ul>
-                            <aside class="viz-tip" role="note">
-                                💡 Hover over bars to see exact counts
-                            </aside>
-                        </article>
-                    </div>
-                    
-                    <aside class="viz-color-legend" role="complementary" aria-labelledby="color-coding-heading">
-                        <h4 id="color-coding-heading">Color Coding</h4>
-                        <div class="color-legend-grid" role="list">
-                            <div class="color-item" role="listitem">
-                                <span class="color-box best" aria-hidden="true"></span>
-                                <span>Best (Green)</span>
-                            </div>
-                            <div class="color-item" role="listitem">
-                                <span class="color-box second" aria-hidden="true"></span>
-                                <span>Middle (Yellow)</span>
-                            </div>
-                            <div class="color-item" role="listitem">
-                                <span class="color-box worst" aria-hidden="true"></span>
-                                <span>Worst (Red)</span>
-                            </div>
-                            <div class="color-item" role="listitem">
-                                <span class="color-box middle" aria-hidden="true"></span>
-                                <span>Tied (White)</span>
-                            </div>
-                        </div>
-                    </aside>
-                </section>
-                
-                <div class="help-section help-disclaimers">
-                    <h4>⚠️ Disclaimers</h4>
-                    <ul class="help-features disclaimer-list">
-                        <li><strong>Mobile View:</strong> The app is not fully optimized for mobile yet. The Trends chart in particular may not display correctly on smaller screens.</li>
-                        <li><strong>Player Count:</strong> The app is optimized for 3 players. Using 1, 2, or 4 players may result in some visual spacing issues.</li>
-                        <li><strong>Data Storage:</strong> All data is saved locally in your browser's local storage. This means:
-                            <ul>
-                                <li>Data persists between sessions on the same device/browser</li>
-                                <li>Clearing browser data will delete all race history</li>
-                                <li>Data doesn't sync across devices (yet)</li>
-                            </ul>
-                        </li>
-                        <li><strong>Player Tracking:</strong> Players are saved based on their position slot (e.g., Player 1, Player 2) and not by name. This means that <strong>Player 1's results will always appear in the leftmost position</strong>, even if the name changes later. Player statistics and positions are tied to their assigned number, not their current name label. I intend to improve this in the future, but for now this works for my usage.</li>
-                    </ul>
-                </div>
-
-                <div class="help-section help-technical">
-                    <h4>🔧 Technical Details</h4>
-                    <ul class="help-features technical-list">
-                        <li><strong>Data Format:</strong> Race data stored as JSON with date, timestamp, and player positions</li>
-                        <li><strong>Browser Storage:</strong> Uses local storage</li>
-                        <li><strong>Auto-Backup:</strong> Runs every 10 minutes, includes all races and player configurations</li>
-                        <li><strong>Validation:</strong> Real-time input validation, duplicate position detection, range checking</li>
-                        <li><strong>No Server Required:</strong> Fully client-side application, no internet needed after loading</li>
-                    </ul>
-                </div>
-                
-                <div class="help-footer">
-                    <p><strong>💡 Tips:</strong></p>
-                    <ul>
-                        <li>Click achievement bars to expand and see detailed progress</li>
-                        <li>For 2-player games, stats automatically show green (winner) and red (loser)</li>
-                        <li>Export your data regularly as backup - local storage can be cleared by browsers</li>
-                        <li>Use date filters to analyze specific sessions</li>
-                        <li>The "Expand Active" button shows only achievements with current streaks</li>
-                        <li>Position picker in sidebar remembers your last selection for faster entry</li>
-                        <li>Hold mouse over visualizations for detailed tooltips and counts</li>
-                        <li>Charts and stats update immediately after adding each race</li>
-                    </ul>
-                </div>
+          <div class="help-content">
+            <div class="help-section">
+              <h4>🏆 What is this?</h4>
+              <p>
+                A comprehensive Mario Kart race tracking application that records race results,
+                calculates detailed statistics, tracks achievements, and provides in-depth
+                performance analysis for up to 4 players. All data is stored locally in your
+                browser.
+              </p>
             </div>
+
+            <div class="help-grid">
+              <div class="help-item">
+                <div class="help-icon">📊</div>
+                <div class="help-text">
+                  <strong>6 Different Views</strong>
+                  <p>
+                    Navigate between Achievements, Stats, H2H, Analysis, Activity, and Trends tabs.
+                    Each provides insights into your racing performance.
+                  </p>
+                </div>
+              </div>
+
+              <div class="help-item">
+                <div class="help-icon">🏆</div>
+                <div class="help-text">
+                  <strong>5 Achievement Categories</strong>
+                  <p>
+                    Win Streak (consecutive 1st), Hot Streak (consecutive podiums), Clutch Master
+                    (better than average), Momentum Builder (improving positions), Perfect Day (all
+                    good finishes in a day).
+                  </p>
+                </div>
+              </div>
+
+              <div class="help-item">
+                <div class="help-icon">💾</div>
+                <div class="help-text">
+                  <strong>Auto-Save & Backup</strong>
+                  <p>
+                    All data auto-saves to local storage. Auto-backup every 10 minutes.
+                    Export/import JSON files for manual backups. Full undo/redo history.
+                  </p>
+                </div>
+              </div>
+
+              <div class="help-item">
+                <div class="help-icon">🎮</div>
+                <div class="help-text">
+                  <strong>Multiple Input Methods</strong>
+                  <p>
+                    Quick Add widget (🏁+), sidebar Add Race form, direct number entry, stepper
+                    buttons (+/-), or position picker dropdown.
+                  </p>
+                </div>
+              </div>
+
+              <div class="help-item">
+                <div class="help-icon">📈</div>
+                <div class="help-text">
+                  <strong>Advanced Analytics</strong>
+                  <p>
+                    Position heat maps, recent streak visualization, sweet spot analysis,
+                    performance trends chart, activity calendar, and H2H statistics.
+                  </p>
+                </div>
+              </div>
+
+              <div class="help-item">
+                <div class="help-icon">🎨</div>
+                <div class="help-text">
+                  <strong>Customization</strong>
+                  <p>
+                    Consistent theme styling, custom player icons/emojis, configurable player count
+                    (1-4, optimized for 3), and date filtering.
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            <div class="help-section">
+              <h4>🚀 Quick Start Guide</h4>
+              <ol class="help-steps">
+                <li>
+                  <strong>Configure Players:</strong> Open sidebar (☰) → Click 👤 Manage Players →
+                  Set 1-4 player names and feel free picking icons
+                </li>
+                <li>
+                  <strong>Add First Race:</strong> Enter positions for each player → Click "🏁 Add
+                  Race"
+                </li>
+                <li>
+                  <strong>Explore Views:</strong> Click tabs at top - Achievements shows progress,
+                  Stats compares players, H2H shows matchups, etc.
+                </li>
+                <li>
+                  <strong>Filter by Date:</strong> Use sidebar date controls - All Time, Today, Last
+                  7/30 days, or custom date ranges
+                </li>
+                <li>
+                  <strong>Backup Data:</strong> 📤 Export to save JSON file. 📥 Import a JSON file.
+                  Auto-backup runs every 10 minutes
+                </li>
+              </ol>
+            </div>
+
+            <section class="help-section visualization-guide" aria-labelledby="viz-guide-heading">
+              <h3 id="viz-guide-heading">📊 Visualization Guide</h3>
+              <div class="viz-guide-grid" role="grid">
+                <article class="viz-guide-card" role="gridcell">
+                  <header>
+                    <h4>🏆 Achievements</h4>
+                  </header>
+                  <p>Track milestones and streaks across 5 categories:</p>
+                  <ul role="list">
+                    <li><strong>🏅 Win Streak:</strong> Consecutive first place finishes</li>
+                    <li><strong>🔥 Hot Streak:</strong> Consecutive podium finishes</li>
+                    <li>
+                      <strong>💥 Clutch Master:</strong> Consecutive races finishing better than
+                      average
+                    </li>
+                    <li>
+                      <strong>🚀 Momentum Builder:</strong> Consecutive races with improving
+                      positions
+                    </li>
+                    <li><strong>📅 Perfect Day:</strong> All races in a day were good finishes</li>
+                  </ul>
+                  <aside class="viz-tip" role="note">
+                    💡 Click any achievement to see detailed progress!
+                  </aside>
+                </article>
+
+                <article class="viz-guide-card" role="gridcell">
+                  <header>
+                    <h4>🌡️ Position Heat Map</h4>
+                  </header>
+                  <p>Shows frequency of finishing positions in ranges</p>
+                  <div id="position-ranges-help">
+                    <p><em>Position ranges vary by game mode</em></p>
+                  </div>
+                  <aside class="viz-tip" role="note">
+                    💡 Darker colors = more frequent finishes in that range
+                  </aside>
+                </article>
+
+                <article class="viz-guide-card" role="gridcell">
+                  <header>
+                    <h4>📈 Recent Streak</h4>
+                  </header>
+                  <p>Your last 10 race positions at a glance with gradient colors</p>
+                  <aside class="viz-tip" role="note">
+                    💡 Blue dot indicates your most recent race
+                  </aside>
+                </article>
+
+                <article class="viz-guide-card" role="gridcell">
+                  <header>
+                    <h4>🎯 Sweet Spots</h4>
+                  </header>
+                  <p>Visualizes frequency for each specific position:</p>
+                  <ul role="list">
+                    <li>Each bar represents one position</li>
+                    <li>Brighter colors = more frequent finishes</li>
+                    <li>Helps identify your most common positions</li>
+                  </ul>
+                  <aside class="viz-tip" role="note">💡 Hover over bars to see exact counts</aside>
+                </article>
+              </div>
+
+              <aside
+                class="viz-color-legend"
+                role="complementary"
+                aria-labelledby="color-coding-heading"
+              >
+                <h4 id="color-coding-heading">Color Coding</h4>
+                <div class="color-legend-grid" role="list">
+                  <div class="color-item" role="listitem">
+                    <span class="color-box best" aria-hidden="true"></span>
+                    <span>Best (Green)</span>
+                  </div>
+                  <div class="color-item" role="listitem">
+                    <span class="color-box second" aria-hidden="true"></span>
+                    <span>Middle (Yellow)</span>
+                  </div>
+                  <div class="color-item" role="listitem">
+                    <span class="color-box worst" aria-hidden="true"></span>
+                    <span>Worst (Red)</span>
+                  </div>
+                  <div class="color-item" role="listitem">
+                    <span class="color-box middle" aria-hidden="true"></span>
+                    <span>Tied (White)</span>
+                  </div>
+                </div>
+              </aside>
+            </section>
+
+            <div class="help-section help-disclaimers">
+              <h4>⚠️ Disclaimers</h4>
+              <ul class="help-features disclaimer-list">
+                <li>
+                  <strong>Mobile View:</strong> The app is not fully optimized for mobile yet. The
+                  Trends chart in particular may not display correctly on smaller screens.
+                </li>
+                <li>
+                  <strong>Player Count:</strong> The app is optimized for 3 players. Using 1, 2, or
+                  4 players may result in some visual spacing issues.
+                </li>
+                <li>
+                  <strong>Data Storage:</strong> All data is saved locally in your browser's local
+                  storage. This means:
+                  <ul>
+                    <li>Data persists between sessions on the same device/browser</li>
+                    <li>Clearing browser data will delete all race history</li>
+                    <li>Data doesn't sync across devices (yet)</li>
+                  </ul>
+                </li>
+                <li>
+                  <strong>Player Tracking:</strong> Players are saved based on their position slot
+                  (e.g., Player 1, Player 2) and not by name. This means that
+                  <strong>Player 1's results will always appear in the leftmost position</strong>,
+                  even if the name changes later. Player statistics and positions are tied to their
+                  assigned number, not their current name label. I intend to improve this in the
+                  future, but for now this works for my usage.
+                </li>
+              </ul>
+            </div>
+
+            <div class="help-section help-technical">
+              <h4>🔧 Technical Details</h4>
+              <ul class="help-features technical-list">
+                <li>
+                  <strong>Data Format:</strong> Race data stored as JSON with date, timestamp, and
+                  player positions
+                </li>
+                <li><strong>Browser Storage:</strong> Uses local storage</li>
+                <li>
+                  <strong>Auto-Backup:</strong> Runs every 10 minutes, includes all races and player
+                  configurations
+                </li>
+                <li>
+                  <strong>Validation:</strong> Real-time input validation, duplicate position
+                  detection, range checking
+                </li>
+                <li>
+                  <strong>No Server Required:</strong> Fully client-side application, no internet
+                  needed after loading
+                </li>
+              </ul>
+            </div>
+
+            <div class="help-footer">
+              <p><strong>💡 Tips:</strong></p>
+              <ul>
+                <li>Click achievement bars to expand and see detailed progress</li>
+                <li>For 2-player games, stats automatically show green (winner) and red (loser)</li>
+                <li>
+                  Export your data regularly as backup - local storage can be cleared by browsers
+                </li>
+                <li>Use date filters to analyze specific sessions</li>
+                <li>The "Expand Active" button shows only achievements with current streaks</li>
+                <li>Position picker in sidebar remembers your last selection for faster entry</li>
+                <li>Hold mouse over visualizations for detailed tooltips and counts</li>
+                <li>Charts and stats update immediately after adding each race</li>
+              </ul>
+            </div>
+          </div>
         </div>
-        
-        
-        <div class="input-section" role="form" aria-labelledby="add-race-heading">
-            
 
-            <div class="action-buttons">
-                <button onclick="exportData()" class="export-btn" aria-describedby="export-help">
-                    📤 Export Data
+        <div class="input-section" role="form" aria-labelledby="add-race-heading">
+          <div class="action-buttons">
+            <button onclick="exportData()" class="export-btn" aria-describedby="export-help">
+              📤 Export Data
+            </button>
+            <button
+              onclick="document.getElementById('importFile').click()"
+              class="import-btn"
+              aria-describedby="import-help"
+            >
+              📥 Import Data
+            </button>
+            <button
+              onclick="backupToGoogleDrive()"
+              class="backup-btn"
+              title="Download backup file (auto-backup runs every 10 minutes)"
+            >
+              💻 Backup
+            </button>
+            <input
+              type="file"
+              id="importFile"
+              accept=".json"
+              class="hidden"
+              onchange="importData(event)"
+            />
+          </div>
+
+          <!-- Hidden date input for addRace function -->
+          <input type="date" id="date" value="" class="hidden" />
+
+          <div class="input-group">
+            <div class="input-field">
+              <label for="player1" class="player-name-label" id="player1-label">Player 1</label>
+              <input type="number" id="player1" aria-describedby="player1-help" />
+              <div class="input-stepper">
+                <button
+                  type="button"
+                  class="stepper-btn"
+                  onclick="decrementPlayer('player1')"
+                  aria-label="Decrease position"
+                >
+                  −
                 </button>
-                <button onclick="document.getElementById('importFile').click()" class="import-btn" aria-describedby="import-help">
-                    📥 Import Data
+                <div class="stepper-display" id="player1-display">-</div>
+                <button
+                  type="button"
+                  class="stepper-btn"
+                  onclick="incrementPlayer('player1')"
+                  aria-label="Increase position"
+                >
+                  +
                 </button>
-                <button onclick="backupToGoogleDrive()" class="backup-btn" title="Download backup file (auto-backup runs every 10 minutes)">
-                    💻 Backup
-                </button>
-                <input type="file" id="importFile" accept=".json" class="hidden" onchange="importData(event)">
+              </div>
+              <div class="bar-container">
+                <div class="achievement-bars" id="player1-achievements"></div>
+                <div class="position-heat-bars" id="player1-position-heat"></div>
+                <div class="recent-streak-bars" id="player1-recent-streak"></div>
+                <div class="sweet-spot-bars" id="player1-sweet-spot"></div>
+              </div>
             </div>
-            
-            <!-- Hidden date input for addRace function -->
-            <input type="date" id="date" value="" class="hidden">
-            
-            <div class="input-group">
-                <div class="input-field">
-                    <label for="player1" class="player-name-label" id="player1-label">Player 1</label>
-                    <input type="number" id="player1" aria-describedby="player1-help">
-                    <div class="input-stepper">
-                        <button type="button" class="stepper-btn" onclick="decrementPlayer('player1')" aria-label="Decrease position">−</button>
-                        <div class="stepper-display" id="player1-display">-</div>
-                        <button type="button" class="stepper-btn" onclick="incrementPlayer('player1')" aria-label="Increase position">+</button>
-                    </div>
-                    <div class="bar-container">
-                        <div class="achievement-bars" id="player1-achievements"></div>
-                        <div class="position-heat-bars" id="player1-position-heat"></div>
-                        <div class="recent-streak-bars" id="player1-recent-streak"></div>
-                        <div class="sweet-spot-bars" id="player1-sweet-spot"></div>
-                    </div>
-                </div>
-                <div class="input-field">
-                    <label for="player2" class="player-name-label" id="player2-label">Player 2</label>
-                    <input type="number" id="player2" aria-describedby="player2-help">
-                    <div class="input-stepper">
-                        <button type="button" class="stepper-btn" onclick="decrementPlayer('player2')" aria-label="Decrease position">−</button>
-                        <div class="stepper-display" id="player2-display">-</div>
-                        <button type="button" class="stepper-btn" onclick="incrementPlayer('player2')" aria-label="Increase position">+</button>
-                    </div>
-                    <div class="bar-container">
-                        <div class="achievement-bars" id="player2-achievements"></div>
-                        <div class="position-heat-bars" id="player2-position-heat"></div>
-                        <div class="recent-streak-bars" id="player2-recent-streak"></div>
-                        <div class="sweet-spot-bars" id="player2-sweet-spot"></div>
-                    </div>
-                </div>
-                <div class="input-field">
-                    <label for="player3" class="player-name-label" id="player3-label">Player 3</label>
-                    <input type="number" id="player3" aria-describedby="player3-help">
-                    <div class="input-stepper">
-                        <button type="button" class="stepper-btn" onclick="decrementPlayer('player3')" aria-label="Decrease position">−</button>
-                        <div class="stepper-display" id="player3-display">-</div>
-                        <button type="button" class="stepper-btn" onclick="incrementPlayer('player3')" aria-label="Increase position">+</button>
-                    </div>
-                    <div class="bar-container">
-                        <div class="achievement-bars" id="player3-achievements"></div>
-                        <div class="position-heat-bars" id="player3-position-heat"></div>
-                        <div class="recent-streak-bars" id="player3-recent-streak"></div>
-                        <div class="sweet-spot-bars" id="player3-sweet-spot"></div>
-                    </div>
-                </div>
-                <div class="input-field hidden" id="player4-field">
-                    <label for="player4" class="player-name-label" id="player4-label">Player 4</label>
-                    <input type="number" id="player4" aria-describedby="player4-help">
-                    <div class="input-stepper">
-                        <button type="button" class="stepper-btn" onclick="decrementPlayer('player4')" aria-label="Decrease position">−</button>
-                        <div class="stepper-display" id="player4-display">-</div>
-                        <button type="button" class="stepper-btn" onclick="incrementPlayer('player4')" aria-label="Increase position">+</button>
-                    </div>
-                    <div class="bar-container">
-                        <div class="achievement-bars" id="player4-achievements"></div>
-                        <div class="position-heat-bars" id="player4-position-heat"></div>
-                        <div class="recent-streak-bars" id="player4-recent-streak"></div>
-                        <div class="sweet-spot-bars" id="player4-sweet-spot"></div>
-                    </div>
-                </div>
+            <div class="input-field">
+              <label for="player2" class="player-name-label" id="player2-label">Player 2</label>
+              <input type="number" id="player2" aria-describedby="player2-help" />
+              <div class="input-stepper">
+                <button
+                  type="button"
+                  class="stepper-btn"
+                  onclick="decrementPlayer('player2')"
+                  aria-label="Decrease position"
+                >
+                  −
+                </button>
+                <div class="stepper-display" id="player2-display">-</div>
+                <button
+                  type="button"
+                  class="stepper-btn"
+                  onclick="incrementPlayer('player2')"
+                  aria-label="Increase position"
+                >
+                  +
+                </button>
+              </div>
+              <div class="bar-container">
+                <div class="achievement-bars" id="player2-achievements"></div>
+                <div class="position-heat-bars" id="player2-position-heat"></div>
+                <div class="recent-streak-bars" id="player2-recent-streak"></div>
+                <div class="sweet-spot-bars" id="player2-sweet-spot"></div>
+              </div>
             </div>
+            <div class="input-field">
+              <label for="player3" class="player-name-label" id="player3-label">Player 3</label>
+              <input type="number" id="player3" aria-describedby="player3-help" />
+              <div class="input-stepper">
+                <button
+                  type="button"
+                  class="stepper-btn"
+                  onclick="decrementPlayer('player3')"
+                  aria-label="Decrease position"
+                >
+                  −
+                </button>
+                <div class="stepper-display" id="player3-display">-</div>
+                <button
+                  type="button"
+                  class="stepper-btn"
+                  onclick="incrementPlayer('player3')"
+                  aria-label="Increase position"
+                >
+                  +
+                </button>
+              </div>
+              <div class="bar-container">
+                <div class="achievement-bars" id="player3-achievements"></div>
+                <div class="position-heat-bars" id="player3-position-heat"></div>
+                <div class="recent-streak-bars" id="player3-recent-streak"></div>
+                <div class="sweet-spot-bars" id="player3-sweet-spot"></div>
+              </div>
+            </div>
+            <div class="input-field hidden" id="player4-field">
+              <label for="player4" class="player-name-label" id="player4-label">Player 4</label>
+              <input type="number" id="player4" aria-describedby="player4-help" />
+              <div class="input-stepper">
+                <button
+                  type="button"
+                  class="stepper-btn"
+                  onclick="decrementPlayer('player4')"
+                  aria-label="Decrease position"
+                >
+                  −
+                </button>
+                <div class="stepper-display" id="player4-display">-</div>
+                <button
+                  type="button"
+                  class="stepper-btn"
+                  onclick="incrementPlayer('player4')"
+                  aria-label="Increase position"
+                >
+                  +
+                </button>
+              </div>
+              <div class="bar-container">
+                <div class="achievement-bars" id="player4-achievements"></div>
+                <div class="position-heat-bars" id="player4-position-heat"></div>
+                <div class="recent-streak-bars" id="player4-recent-streak"></div>
+                <div class="sweet-spot-bars" id="player4-sweet-spot"></div>
+              </div>
+            </div>
+          </div>
         </div>
 
         <div class="date-filter-section">
-            <h3>📅 Date Filter</h3>
-            <div class="date-filter-controls">
-                <button class="filter-btn active" onclick="setDateFilter('all')">All Time</button>
-                <button class="filter-btn" onclick="setDateFilter('today')">Today</button>
-                <button class="filter-btn" onclick="setDateFilter('week')">Last 7 Days</button>
-                <button class="filter-btn" onclick="setDateFilter('month')">Last 30 Days</button>
-                <button class="filter-btn" onclick="setDateFilter('custom')">Custom Range</button>
-            </div>
-            <div class="custom-date-range hidden" id="custom-date-range">
-                <input type="date" id="filter-start-date" placeholder="Start Date">
-                <span>to</span>
-                <input type="date" id="filter-end-date" placeholder="End Date">
-                <button onclick="applyCustomDateFilter()">Apply</button>
-            </div>
+          <h3>📅 Date Filter</h3>
+          <div class="date-filter-controls">
+            <button class="filter-btn active" onclick="setDateFilter('all')">All Time</button>
+            <button class="filter-btn" onclick="setDateFilter('today')">Today</button>
+            <button class="filter-btn" onclick="setDateFilter('week')">Last 7 Days</button>
+            <button class="filter-btn" onclick="setDateFilter('month')">Last 30 Days</button>
+            <button class="filter-btn" onclick="setDateFilter('custom')">Custom Range</button>
+          </div>
+          <div class="custom-date-range hidden" id="custom-date-range">
+            <input type="date" id="filter-start-date" placeholder="Start Date" />
+            <span>to</span>
+            <input type="date" id="filter-end-date" placeholder="End Date" />
+            <button onclick="applyCustomDateFilter()">Apply</button>
+          </div>
         </div>
 
-
-
         <div id="stats-display" role="tabpanel" aria-live="polite">
-            <!-- Stats will be dynamically inserted here -->
+          <!-- Stats will be dynamically inserted here -->
         </div>
 
         <div class="race-history" role="region" aria-labelledby="history-heading">
-            <h2 id="history-heading">🔎 Race History</h2>
-            <div class="table-container">
-                <table id="history-table" role="table" aria-describedby="history-help">
-                    <thead>
-                        <tr>
-                            <th>Race #</th>
-                            <th class="sortable-header" onclick="sortTable('date')" tabindex="0" onkeydown="if(event.key==='Enter'||event.key===' ')sortTable('date')" aria-label="Sort by date">Date ↕</th>
-                            <th class="sortable-header" onclick="sortTable('player1')" tabindex="0" onkeydown="if(event.key==='Enter'||event.key===' ')sortTable('player1')" aria-label="Sort by Player 1's position">Player 1 ↕</th>
-                            <th class="sortable-header" onclick="sortTable('player2')" tabindex="0" onkeydown="if(event.key==='Enter'||event.key===' ')sortTable('player2')" aria-label="Sort by Player 2's position">Player 2 ↕</th>
-                            <th class="sortable-header" onclick="sortTable('player3')" tabindex="0" onkeydown="if(event.key==='Enter'||event.key===' ')sortTable('player3')" aria-label="Sort by Player 3's position">Player 3 ↕</th>
-                            <th>Action</th>
-                        </tr>
-                    </thead>
-                    <tbody id="history-body">
-                        <!-- Race history will be dynamically inserted here -->
-                    </tbody>
-                </table>
-            </div>
-            <div class="mobile-cards" id="mobile-history">
-                <!-- Mobile card view will be dynamically inserted here -->
-            </div>
+          <h2 id="history-heading">🔎 Race History</h2>
+          <div class="table-container">
+            <table id="history-table" role="table" aria-describedby="history-help">
+              <thead>
+                <tr>
+                  <th>Race #</th>
+                  <th
+                    class="sortable-header"
+                    onclick="sortTable('date')"
+                    tabindex="0"
+                    onkeydown="if (event.key === 'Enter' || event.key === ' ') sortTable('date');"
+                    aria-label="Sort by date"
+                  >
+                    Date ↕
+                  </th>
+                  <th
+                    class="sortable-header"
+                    onclick="sortTable('player1')"
+                    tabindex="0"
+                    onkeydown="
+                      if (event.key === 'Enter' || event.key === ' ') sortTable('player1');
+                    "
+                    aria-label="Sort by Player 1's position"
+                  >
+                    Player 1 ↕
+                  </th>
+                  <th
+                    class="sortable-header"
+                    onclick="sortTable('player2')"
+                    tabindex="0"
+                    onkeydown="
+                      if (event.key === 'Enter' || event.key === ' ') sortTable('player2');
+                    "
+                    aria-label="Sort by Player 2's position"
+                  >
+                    Player 2 ↕
+                  </th>
+                  <th
+                    class="sortable-header"
+                    onclick="sortTable('player3')"
+                    tabindex="0"
+                    onkeydown="
+                      if (event.key === 'Enter' || event.key === ' ') sortTable('player3');
+                    "
+                    aria-label="Sort by Player 3's position"
+                  >
+                    Player 3 ↕
+                  </th>
+                  <th>Action</th>
+                </tr>
+              </thead>
+              <tbody id="history-body">
+                <!-- Race history will be dynamically inserted here -->
+              </tbody>
+            </table>
+          </div>
+          <div class="mobile-cards" id="mobile-history">
+            <!-- Mobile card view will be dynamically inserted here -->
+          </div>
         </div>
+      </div>
     </div>
-    </div>
-    
+
     <div data-include="footer" class="mario-kart-footer"></div>
 
     <!-- Import all modules -->
@@ -580,7 +904,7 @@
     <script src="js/sidebar.js"></script>
     <script src="js/sidebarPlayerSettings.js"></script>
     <script src="js/tooltip.js"></script>
-    
+
     <!-- Global scripts for header/footer includes -->
     <script src="../../assets/js/passive-events-fix.js"></script>
     <script src="../../assets/js/jquery.min.js"></script>
@@ -588,7 +912,7 @@
     <script src="../../assets/js/browser.min.js"></script>
     <script src="../../assets/js/breakpoints.min.js"></script>
     <script src="../../assets/js/util.js"></script>
-    
+
     <!-- Firebase SDK (required for auth functionality) -->
     <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-auth-compat.js"></script>
@@ -603,13 +927,12 @@
     <!-- Sync Loading Modal (after Firebase is initialized) -->
     <script src="../../sync-system/sync-loading-modal.js"></script>
     <script src="../../sync-system/sync-modal-integration.js"></script>
-    
+
     <!-- Main JavaScript -->
     <script src="../../assets/js/main.js"></script>
     <script src="../../assets/js/year-updater.js"></script>
-    
+
     <!-- Main script must load last -->
     <script src="js/main.js"></script>
-
-</body>
+  </body>
 </html>

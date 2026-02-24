@@ -77,7 +77,7 @@ shevato/
 - **Theme**: Consistent themed background (`bg.jpg`) across all main pages
 - **Modular Architecture**: Clear separation between main site and apps
 - **Dynamic Content Loading**: Partials system for headers/footers
-- **Interactive Games**: 
+- **Interactive Games**:
   - Mario Kart race tracker with extensive features
   - Towerbound (Icy Tower clone)
 - **Multi-language Support**: Moadon Alef page supports English, Russian, and Hebrew
@@ -91,17 +91,21 @@ shevato/
 ## Technical Details
 
 ### Partials System
+
 The site uses jQuery to dynamically load header and footer components:
+
 ```javascript
 var includes = $('[data-include]');
-jQuery.each(includes, function(){
+jQuery.each(includes, function () {
   var file = 'partials/' + $(this).data('include') + '.html';
   $(this).load(file);
 });
 ```
 
 ### Background Implementation
+
 Dark background applied via CSS pseudo-element:
+
 ```css
 body:before {
   background-image: url(../../images/bg.jpg);
@@ -113,6 +117,7 @@ body:before {
 ## Installation
 
 1. Clone the repository:
+
    ```bash
    git clone https://github.com/yourusername/shevato.git
    cd shevato
@@ -121,10 +126,11 @@ body:before {
 2. No build process required - this is a static site. Simply open `index.html` in a web browser or serve the directory with any static file server.
 
 3. For development with SASS:
+
    ```bash
    # Install SASS if not already installed
    npm install -g sass
-   
+
    # Watch for SASS changes
    sass --watch assets/sass/main.scss:assets/css/main.css
    ```
@@ -134,12 +140,14 @@ body:before {
 ### Local Development
 
 Using Python's built-in server:
+
 ```bash
 python -m http.server 8000
 # Visit http://localhost:8000
 ```
 
 Using Node.js http-server:
+
 ```bash
 npx http-server
 # Visit http://localhost:8080
@@ -148,6 +156,7 @@ npx http-server
 ### Deployment
 
 The project can be deployed to any static hosting service:
+
 - GitHub Pages
 - Netlify
 - Vercel
@@ -187,6 +196,7 @@ This project is proprietary. All rights reserved.
 ## Contact
 
 For questions or support, please contact:
+
 - Email: nikita@shevato.com
 - Phone: +1 (504) 638-3370
 - LinkedIn: [nikitasoifer](https://www.linkedin.com/in/nikitasoifer/)

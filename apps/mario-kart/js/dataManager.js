@@ -2,133 +2,139 @@ let races = [];
 
 // Detect active players from race data
 function detectActivePlayersFromRaces(raceData) {
-    if (!raceData || !Array.isArray(raceData) || raceData.length === 0) {
-        return 3; // Default to 3 players
+  if (!raceData || !Array.isArray(raceData) || raceData.length === 0) {
+    return 3; // Default to 3 players
+  }
+
+  // Track which players have non-null values
+  const playerActivity = {
+    player1: false,
+    player2: false,
+    player3: false,
+    player4: false,
+  };
+
+  // Check each race for non-null player values
+  raceData.forEach((race) => {
+    if (race.player1 !== null && race.player1 !== undefined) playerActivity.player1 = true;
+    if (race.player2 !== null && race.player2 !== undefined) playerActivity.player2 = true;
+    if (race.player3 !== null && race.player3 !== undefined) playerActivity.player3 = true;
+    if (race.player4 !== null && race.player4 !== undefined) playerActivity.player4 = true;
+  });
+
+  // Count active players - find the highest player number with activity
+  let activeCount = 0;
+  for (let i = 4; i >= 1; i--) {
+    if (playerActivity[`player${i}`]) {
+      activeCount = i;
+      break;
     }
-    
-    // Track which players have non-null values
-    const playerActivity = {
-        player1: false,
-        player2: false,
-        player3: false,
-        player4: false
-    };
-    
-    // Check each race for non-null player values
-    raceData.forEach(race => {
-        if (race.player1 !== null && race.player1 !== undefined) playerActivity.player1 = true;
-        if (race.player2 !== null && race.player2 !== undefined) playerActivity.player2 = true;
-        if (race.player3 !== null && race.player3 !== undefined) playerActivity.player3 = true;
-        if (race.player4 !== null && race.player4 !== undefined) playerActivity.player4 = true;
-    });
-    
-    // Count active players - find the highest player number with activity
-    let activeCount = 0;
-    for (let i = 4; i >= 1; i--) {
-        if (playerActivity[`player${i}`]) {
-            activeCount = i;
-            break;
-        }
-    }
-    
-    // Return at least 1 player, max 4
-    return Math.max(1, Math.min(4, activeCount));
+  }
+
+  // Return at least 1 player, max 4
+  return Math.max(1, Math.min(4, activeCount));
 }
 
 function addRace() {
-    const date = document.getElementById('date').value;
-    // Dynamic player data collection
-    const raceData = {};
-    const allPlayers = ['player1', 'player2', 'player3', 'player4'];
+  const date = document.getElementById('date').value;
+  // Dynamic player data collection
+  const raceData = {};
+  const allPlayers = ['player1', 'player2', 'player3', 'player4'];
 
-    allPlayers.forEach(player => {
-        const input = document.getElementById(player);
-        const value = input ? input.value : '';
-        raceData[player] = value ? parseInt(value) : null;
-    });
+  allPlayers.forEach((player) => {
+    const input = document.getElementById(player);
+    const value = input ? input.value : '';
+    raceData[player] = value ? parseInt(value) : null;
+  });
 
-    // Generate local time timestamp with timezone
-    const now = new Date();
-    const localTime = new Intl.DateTimeFormat('en-US', {
-        hour: '2-digit',
-        minute: '2-digit',
-        second: '2-digit',
-        hour12: false
-    }).format(now);
+  // Generate local time timestamp with timezone
+  const now = new Date();
+  const localTime = new Intl.DateTimeFormat('en-US', {
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
+    hour12: false,
+  }).format(now);
 
-    // Get user's timezone abbreviation
-    const timeZone = Intl.DateTimeFormat().resolvedOptions().timeZone;
-    const tzAbbr = new Intl.DateTimeFormat('en-US', {
-        timeZoneName: 'short'
-    }).formatToParts(now).find(part => part.type === 'timeZoneName')?.value || timeZone;
+  // Get user's timezone abbreviation
+  const timeZone = Intl.DateTimeFormat().resolvedOptions().timeZone;
+  const tzAbbr =
+    new Intl.DateTimeFormat('en-US', {
+      timeZoneName: 'short',
+    })
+      .formatToParts(now)
+      .find((part) => part.type === 'timeZoneName')?.value || timeZone;
 
-    const timestamp = `${localTime} ${tzAbbr}`;
+  const timestamp = `${localTime} ${tzAbbr}`;
 
-    if (!date) {
-        showMessage('Please select a date', true);
-        return;
-    }
+  if (!date) {
+    showMessage('Please select a date', true);
+    return;
+  }
 
-    // Check that at least 2 players have positions (or 1 for single player mode)
-    const activePlayers = players.map(p => raceData[p]).filter(pos => pos !== null);
-    const minPlayers = playerCount === 1 ? 1 : 2;
+  // Check that at least 2 players have positions (or 1 for single player mode)
+  const activePlayers = players.map((p) => raceData[p]).filter((pos) => pos !== null);
+  const minPlayers = playerCount === 1 ? 1 : 2;
 
-    if (activePlayers.length < minPlayers) {
-        showMessage(`At least ${minPlayers} player${minPlayers > 1 ? 's' : ''} must have positions`, true);
-        return;
-    }
+  if (activePlayers.length < minPlayers) {
+    showMessage(
+      `At least ${minPlayers} player${minPlayers > 1 ? 's' : ''} must have positions`,
+      true,
+    );
+    return;
+  }
 
-    // Validate positions are in range
-    if (activePlayers.some(pos => pos < MIN_POSITIONS || pos > MAX_POSITIONS)) {
-        showMessage(`Positions must be between ${MIN_POSITIONS} and ${MAX_POSITIONS}`, true);
-        return;
-    }
+  // Validate positions are in range
+  if (activePlayers.some((pos) => pos < MIN_POSITIONS || pos > MAX_POSITIONS)) {
+    showMessage(`Positions must be between ${MIN_POSITIONS} and ${MAX_POSITIONS}`, true);
+    return;
+  }
 
-    // Check for duplicate positions
-    const positions = activePlayers;
-    const uniquePositions = [...new Set(positions)];
-    if (positions.length !== uniquePositions.length) {
-        showMessage('Players cannot have the same position in a race', true);
-        return;
-    }
+  // Check for duplicate positions
+  const positions = activePlayers;
+  const uniquePositions = [...new Set(positions)];
+  if (positions.length !== uniquePositions.length) {
+    showMessage('Players cannot have the same position in a race', true);
+    return;
+  }
 
-    // Create race object with all player data
-    const raceObject = { date, timestamp };
-    allPlayers.forEach(player => {
-        raceObject[player] = raceData[player];
-    });
+  // Create race object with all player data
+  const raceObject = { date, timestamp };
+  allPlayers.forEach((player) => {
+    raceObject[player] = raceData[player];
+  });
 
-    races.push(raceObject);
-    
-    // Save action for undo/redo
-    saveAction('ADD_RACE', { race: raceObject });
-    
-    try {
-        const storageKey = window.getStorageKey ? window.getStorageKey('Races') : 'marioKartRaces';
-        localStorage.setItem(storageKey, JSON.stringify(races));
-    } catch (e) {
-        console.error('Error saving to localStorage:', e);
-    }
+  races.push(raceObject);
 
-    // Clear inputs for all players
-    allPlayers.forEach(player => {
-        const input = document.getElementById(player);
-        if (input) input.value = '';
-    });
+  // Save action for undo/redo
+  saveAction('ADD_RACE', { race: raceObject });
 
-    updateDisplay();
-    updateAchievements();
-    updateClearButtonState();
-    showMessage('Race added successfully!');
+  try {
+    const storageKey = window.getStorageKey ? window.getStorageKey('Races') : 'marioKartRaces';
+    localStorage.setItem(storageKey, JSON.stringify(races));
+  } catch (e) {
+    console.error('Error saving to localStorage:', e);
+  }
+
+  // Clear inputs for all players
+  allPlayers.forEach((player) => {
+    const input = document.getElementById(player);
+    if (input) input.value = '';
+  });
+
+  updateDisplay();
+  updateAchievements();
+  updateClearButtonState();
+  showMessage('Race added successfully!');
 }
 
 function editRace(index) {
-    const race = races[index];
-    if (!race) return;
+  const race = races[index];
+  if (!race) return;
 
-    // Create a beautiful edit modal
-    const modal = document.createElement('div');
-    modal.style.cssText = `
+  // Create a beautiful edit modal
+  const modal = document.createElement('div');
+  modal.style.cssText = `
         position: fixed;
         top: 0;
         left: 0;
@@ -142,8 +148,8 @@ function editRace(index) {
         backdrop-filter: blur(5px);
     `;
 
-    const dialog = document.createElement('div');
-    dialog.style.cssText = `
+  const dialog = document.createElement('div');
+  dialog.style.cssText = `
         background: #2d3748;
         border-radius: 1rem;
         padding: 2rem;
@@ -155,9 +161,10 @@ function editRace(index) {
         animation: modalSlideIn 0.3s ease;
     `;
 
-    const playerInputs = players.map(player => {
-        const currentValue = race[player] || '';
-        return `
+  const playerInputs = players
+    .map((player) => {
+      const currentValue = race[player] || '';
+      return `
             <div style="margin-bottom: 1rem;">
                 <label style="display: block; margin-bottom: 0.5rem; color: #e2e8f0; font-weight: 600; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;">
                     ${window.PlayerNameManager ? window.PlayerNameManager.get(player) : getPlayerName(player)}'s Position:
@@ -168,9 +175,10 @@ function editRace(index) {
                     color: #e2e8f0; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;" placeholder="${MIN_POSITIONS}-${MAX_POSITIONS} or leave empty">
             </div>
         `;
-    }).join('');
+    })
+    .join('');
 
-    dialog.innerHTML = `
+  dialog.innerHTML = `
         <div style="text-align: center; margin-bottom: 1.5rem;">
             <div style="font-size: 2.5rem; margin-bottom: 0.5rem;">✏️</div>
             <h3 style="color: #e2e8f0; margin-bottom: 0.5rem; font-size: 1.5rem; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;">Edit Race</h3>
@@ -206,429 +214,451 @@ function editRace(index) {
         </div>
     `;
 
-    // Add CSS animation if not already added
-    if (!document.querySelector('#modal-animation-style')) {
-        const style = document.createElement('style');
-        style.id = 'modal-animation-style';
-        style.textContent = `
+  // Add CSS animation if not already added
+  if (!document.querySelector('#modal-animation-style')) {
+    const style = document.createElement('style');
+    style.id = 'modal-animation-style';
+    style.textContent = `
             @keyframes modalSlideIn {
                 from { opacity: 0; transform: scale(0.9) translateY(-20px); }
                 to { opacity: 1; transform: scale(1) translateY(0); }
             }
         `;
-        document.head.appendChild(style);
+    document.head.appendChild(style);
+  }
+
+  modal.appendChild(dialog);
+  document.body.appendChild(modal);
+
+  // Add event listeners
+  document.getElementById('cancel-edit').onclick = () => {
+    document.body.removeChild(modal);
+  };
+
+  document.getElementById('save-edit').onclick = () => {
+    const newDate = document.getElementById('edit-date').value;
+    const newTime = document.getElementById('edit-time').value;
+
+    if (!newDate) {
+      showMessage('Please select a date', true);
+      return;
     }
 
-    modal.appendChild(dialog);
-    document.body.appendChild(modal);
+    // Save the original race for undo/redo
+    const originalRace = { ...race };
 
-    // Add event listeners
-    document.getElementById('cancel-edit').onclick = () => {
-        document.body.removeChild(modal);
+    // Check if date/time actually changed
+    const originalTime = race.timestamp ? race.timestamp.split(' ')[0] : '';
+    const dateChanged = newDate !== race.date;
+    const timeChanged = newTime !== originalTime;
+
+    // Collect new position data
+    const newPositions = {};
+    let hasValidData = false;
+    let validPositions = [];
+    let validationError = false;
+
+    players.forEach((player) => {
+      const input = document.getElementById(`edit-${player}`);
+      const value = input.value.trim();
+      if (value === '') {
+        newPositions[player] = null;
+      } else {
+        const position = parseInt(value);
+        if (position < MIN_POSITIONS || position > MAX_POSITIONS) {
+          validationError = true;
+          return;
+        }
+        newPositions[player] = position;
+        hasValidData = true;
+        validPositions.push(position);
+      }
+    });
+
+    // Check if validation failed
+    if (validationError) {
+      showMessage(`Positions must be between ${MIN_POSITIONS} and ${MAX_POSITIONS}`, true);
+      return;
+    }
+
+    // Check for duplicate positions
+    const uniquePositions = [...new Set(validPositions)];
+    if (validPositions.length !== uniquePositions.length) {
+      showMessage('Players cannot have the same position in a race', true);
+      return;
+    }
+
+    // Check minimum players
+    const minPlayers = playerCount === 1 ? 1 : 2;
+    if (validPositions.length < minPlayers) {
+      showMessage(
+        `At least ${minPlayers} player${minPlayers > 1 ? 's' : ''} must have positions`,
+        true,
+      );
+      return;
+    }
+
+    // Handle timestamp updates
+    let newTimestamp = race.timestamp; // Keep original by default
+
+    if (timeChanged) {
+      if (newTime) {
+        // Time was changed to a new value
+        // Get timezone info from the original timestamp or generate new one
+        const originalTz = race.timestamp ? race.timestamp.split(' ').slice(1).join(' ') : null;
+        if (originalTz) {
+          newTimestamp = `${newTime} ${originalTz}`;
+        } else {
+          // Generate new timezone info
+          const now = new Date();
+          const timeZone = Intl.DateTimeFormat().resolvedOptions().timeZone;
+          const tzAbbr =
+            new Intl.DateTimeFormat('en-US', {
+              timeZoneName: 'short',
+            })
+              .formatToParts(now)
+              .find((part) => part.type === 'timeZoneName')?.value || timeZone;
+          newTimestamp = `${newTime} ${tzAbbr}`;
+        }
+      } else {
+        // Time was cleared
+        newTimestamp = null;
+      }
+    }
+
+    // Update the race
+    const updatedRace = {
+      ...race,
+      date: dateChanged ? newDate : race.date,
+      ...newPositions,
     };
 
-    document.getElementById('save-edit').onclick = () => {
-        const newDate = document.getElementById('edit-date').value;
-        const newTime = document.getElementById('edit-time').value;
-        
-        if (!newDate) {
-            showMessage('Please select a date', true);
-            return;
-        }
+    // Handle timestamp
+    if (newTimestamp) {
+      updatedRace.timestamp = newTimestamp;
+    } else if (newTimestamp === null) {
+      delete updatedRace.timestamp;
+    }
 
-        // Save the original race for undo/redo
-        const originalRace = { ...race };
-        
-        // Check if date/time actually changed
-        const originalTime = race.timestamp ? race.timestamp.split(' ')[0] : '';
-        const dateChanged = newDate !== race.date;
-        const timeChanged = newTime !== originalTime;
-        
-        // Collect new position data
-        const newPositions = {};
-        let hasValidData = false;
-        let validPositions = [];
-        let validationError = false;
+    races[index] = updatedRace;
 
-        players.forEach(player => {
-            const input = document.getElementById(`edit-${player}`);
-            const value = input.value.trim();
-            if (value === '') {
-                newPositions[player] = null;
-            } else {
-                const position = parseInt(value);
-                if (position < MIN_POSITIONS || position > MAX_POSITIONS) {
-                    validationError = true;
-                    return;
-                }
-                newPositions[player] = position;
-                hasValidData = true;
-                validPositions.push(position);
-            }
-        });
+    // Save action for undo/redo
+    saveAction('EDIT_RACE', { originalRace, newRace: races[index], index });
 
-        // Check if validation failed
-        if (validationError) {
-            showMessage(`Positions must be between ${MIN_POSITIONS} and ${MAX_POSITIONS}`, true);
-            return;
-        }
+    try {
+      const storageKey = window.getStorageKey ? window.getStorageKey('Races') : 'marioKartRaces';
+      localStorage.setItem(storageKey, JSON.stringify(races));
+    } catch (e) {
+      console.error('Error saving to localStorage:', e);
+    }
 
-        // Check for duplicate positions
-        const uniquePositions = [...new Set(validPositions)];
-        if (validPositions.length !== uniquePositions.length) {
-            showMessage('Players cannot have the same position in a race', true);
-            return;
-        }
+    updateDisplay();
+    // Explicitly pass fresh filtered data to ensure achievements use updated race data
+    const freshFilteredRaces = getFilteredRaces();
+    updateAchievements(freshFilteredRaces);
+    updateClearButtonState();
+    showMessage('Race updated successfully!');
+    document.body.removeChild(modal);
+  };
 
-        // Check minimum players
-        const minPlayers = playerCount === 1 ? 1 : 2;
-        if (validPositions.length < minPlayers) {
-            showMessage(`At least ${minPlayers} player${minPlayers > 1 ? 's' : ''} must have positions`, true);
-            return;
-        }
+  // Close on background click
+  modal.onclick = (e) => {
+    if (e.target === modal) {
+      document.body.removeChild(modal);
+    }
+  };
 
-        // Handle timestamp updates
-        let newTimestamp = race.timestamp; // Keep original by default
-        
-        if (timeChanged) {
-            if (newTime) {
-                // Time was changed to a new value
-                // Get timezone info from the original timestamp or generate new one
-                const originalTz = race.timestamp ? race.timestamp.split(' ').slice(1).join(' ') : null;
-                if (originalTz) {
-                    newTimestamp = `${newTime} ${originalTz}`;
-                } else {
-                    // Generate new timezone info
-                    const now = new Date();
-                    const timeZone = Intl.DateTimeFormat().resolvedOptions().timeZone;
-                    const tzAbbr = new Intl.DateTimeFormat('en-US', {
-                        timeZoneName: 'short'
-                    }).formatToParts(now).find(part => part.type === 'timeZoneName')?.value || timeZone;
-                    newTimestamp = `${newTime} ${tzAbbr}`;
-                }
-            } else {
-                // Time was cleared
-                newTimestamp = null;
-            }
-        }
-
-        // Update the race
-        const updatedRace = {
-            ...race,
-            date: dateChanged ? newDate : race.date,
-            ...newPositions
-        };
-
-        // Handle timestamp
-        if (newTimestamp) {
-            updatedRace.timestamp = newTimestamp;
-        } else if (newTimestamp === null) {
-            delete updatedRace.timestamp;
-        }
-
-        races[index] = updatedRace;
-
-        // Save action for undo/redo
-        saveAction('EDIT_RACE', { originalRace, newRace: races[index], index });
-
-        try {
-            const storageKey = window.getStorageKey ? window.getStorageKey('Races') : 'marioKartRaces';
-            localStorage.setItem(storageKey, JSON.stringify(races));
-        } catch (e) {
-            console.error('Error saving to localStorage:', e);
-        }
-
-        updateDisplay();
-        // Explicitly pass fresh filtered data to ensure achievements use updated race data
-        const freshFilteredRaces = getFilteredRaces();
-        updateAchievements(freshFilteredRaces);
-        updateClearButtonState();
-        showMessage('Race updated successfully!');
-        document.body.removeChild(modal);
-    };
-
-    // Close on background click
-    modal.onclick = (e) => {
-        if (e.target === modal) {
-            document.body.removeChild(modal);
-        }
-    };
-
-    // Close on Escape key
-    const escapeHandler = (e) => {
-        if (e.key === 'Escape') {
-            document.body.removeChild(modal);
-            document.removeEventListener('keydown', escapeHandler);
-        }
-    };
-    document.addEventListener('keydown', escapeHandler);
+  // Close on Escape key
+  const escapeHandler = (e) => {
+    if (e.key === 'Escape') {
+      document.body.removeChild(modal);
+      document.removeEventListener('keydown', escapeHandler);
+    }
+  };
+  document.addEventListener('keydown', escapeHandler);
 }
 
 function deleteRace(index) {
-    // Save action for undo/redo before deleting
-    const raceToDelete = races[index];
-    saveAction('DELETE_RACE', { race: raceToDelete, index });
-    
-    races.splice(index, 1);
-    try {
-        const storageKey = window.getStorageKey ? window.getStorageKey('Races') : 'marioKartRaces';
-        localStorage.setItem(storageKey, JSON.stringify(races));
-    } catch (e) {
-        console.error('Error saving to localStorage:', e);
-    }
-    updateDisplay();
-    updateClearButtonState();
-    showMessage('Race removed successfully!');
+  // Save action for undo/redo before deleting
+  const raceToDelete = races[index];
+  saveAction('DELETE_RACE', { race: raceToDelete, index });
+
+  races.splice(index, 1);
+  try {
+    const storageKey = window.getStorageKey ? window.getStorageKey('Races') : 'marioKartRaces';
+    localStorage.setItem(storageKey, JSON.stringify(races));
+  } catch (e) {
+    console.error('Error saving to localStorage:', e);
+  }
+  updateDisplay();
+  updateClearButtonState();
+  showMessage('Race removed successfully!');
 }
 
 function migrateRaceData(races) {
-    let migrationNeeded = false;
+  let migrationNeeded = false;
 
-    const migratedRaces = races.map(race => {
-        // Check if this race has old format (slav, mike, nikita)
-        if (race.hasOwnProperty('slav') || race.hasOwnProperty('mike') || race.hasOwnProperty('nikita')) {
-            migrationNeeded = true;
-            const migratedRace = {
-                date: race.date,
-                timestamp: race.timestamp,
-                player1: race.slav || null,
-                player2: race.mike || null,
-                player3: race.nikita || null,
-                player4: race.player4 || null
-            };
-            return migratedRace;
-        }
-        return race; // Already in new format
-    });
-
-    if (migrationNeeded) {
-        console.log('Migrating race data from old format to new format');
-        const storageKey = window.getStorageKey ? window.getStorageKey('Races') : 'marioKartRaces';
-        localStorage.setItem(storageKey, JSON.stringify(migratedRaces));
+  const migratedRaces = races.map((race) => {
+    // Check if this race has old format (slav, mike, nikita)
+    if (
+      race.hasOwnProperty('slav') ||
+      race.hasOwnProperty('mike') ||
+      race.hasOwnProperty('nikita')
+    ) {
+      migrationNeeded = true;
+      const migratedRace = {
+        date: race.date,
+        timestamp: race.timestamp,
+        player1: race.slav || null,
+        player2: race.mike || null,
+        player3: race.nikita || null,
+        player4: race.player4 || null,
+      };
+      return migratedRace;
     }
+    return race; // Already in new format
+  });
 
-    return migratedRaces;
+  if (migrationNeeded) {
+    console.warn('Migrating race data from old format to new format');
+    const storageKey = window.getStorageKey ? window.getStorageKey('Races') : 'marioKartRaces';
+    localStorage.setItem(storageKey, JSON.stringify(migratedRaces));
+  }
+
+  return migratedRaces;
 }
 
 function loadSavedData() {
-    try {
-        const storageKey = window.getStorageKey ? window.getStorageKey('Races') : 'marioKartRaces';
-        const savedRaces = localStorage.getItem(storageKey);
-        // console.log('Loading saved races:', savedRaces); // Debug log
-        if (savedRaces && savedRaces !== '[]') {
-            races = JSON.parse(savedRaces);
-            races = migrateRaceData(races);
-        } else {
-            races = [];
-        }
-    } catch (e) {
-        console.error('Error loading saved races:', e);
-        races = [];
-    }
-
-    // Load player names using centralized manager
-    if (window.PlayerNameManager) {
-        playerNames = window.PlayerNameManager.getAll();
+  try {
+    const storageKey = window.getStorageKey ? window.getStorageKey('Races') : 'marioKartRaces';
+    const savedRaces = localStorage.getItem(storageKey);
+    if (savedRaces && savedRaces !== '[]') {
+      races = JSON.parse(savedRaces);
+      races = migrateRaceData(races);
     } else {
-        // Fallback to direct localStorage
-        try {
-            const storageKey = window.getStorageKey ? window.getStorageKey('PlayerNames') : 'marioKartPlayerNames';
-            const savedNames = localStorage.getItem(storageKey);
-            if (savedNames) {
-                playerNames = JSON.parse(savedNames);
-            }
-        } catch (e) {
-            console.error('Error loading player names:', e);
-        }
+      races = [];
     }
+  } catch (e) {
+    console.error('Error loading saved races:', e);
+    races = [];
+  }
 
-    // Load player count from localStorage
+  // Load player names using centralized manager
+  if (window.PlayerNameManager) {
+    playerNames = window.PlayerNameManager.getAll();
+  } else {
+    // Fallback to direct localStorage
     try {
-        const storageKey = window.getStorageKey ? window.getStorageKey('PlayerCount') : 'marioKartPlayerCount';
-        const savedPlayerCount = localStorage.getItem(storageKey);
-        if (savedPlayerCount) {
-            playerCount = parseInt(savedPlayerCount);
-            const allPlayers = ['player1', 'player2', 'player3', 'player4'];
-            players = allPlayers.slice(0, playerCount);
-
-            // Update the select dropdown
-            const playerCountSelect = document.getElementById('player-count');
-            if (playerCountSelect) {
-                playerCountSelect.value = playerCount.toString();
-            }
-        }
+      const storageKey = window.getStorageKey
+        ? window.getStorageKey('PlayerNames')
+        : 'marioKartPlayerNames';
+      const savedNames = localStorage.getItem(storageKey);
+      if (savedNames) {
+        playerNames = JSON.parse(savedNames);
+      }
     } catch (e) {
-        console.error('Error loading player count:', e);
+      console.error('Error loading player names:', e);
     }
+  }
+
+  // Load player count from localStorage
+  try {
+    const storageKey = window.getStorageKey
+      ? window.getStorageKey('PlayerCount')
+      : 'marioKartPlayerCount';
+    const savedPlayerCount = localStorage.getItem(storageKey);
+    if (savedPlayerCount) {
+      playerCount = parseInt(savedPlayerCount);
+      const allPlayers = ['player1', 'player2', 'player3', 'player4'];
+      players = allPlayers.slice(0, playerCount);
+
+      // Update the select dropdown
+      const playerCountSelect = document.getElementById('player-count');
+      if (playerCountSelect) {
+        playerCountSelect.value = playerCount.toString();
+      }
+    }
+  } catch (e) {
+    console.error('Error loading player count:', e);
+  }
 }
 
 function exportData() {
-    const data = {
-        races: races,
-        playerNames: window.PlayerNameManager ? window.PlayerNameManager.getAll() : playerNames,  // Include player names in export
-        playerSymbols: window.PlayerSymbolManager ? window.PlayerSymbolManager.getAllSymbols() : {},  // Include player symbols
-        exportDate: new Date().toISOString(),
-        version: '1.4'  // Updated version
-    };
+  const data = {
+    races: races,
+    playerNames: window.PlayerNameManager ? window.PlayerNameManager.getAll() : playerNames, // Include player names in export
+    playerSymbols: window.PlayerSymbolManager ? window.PlayerSymbolManager.getAllSymbols() : {}, // Include player symbols
+    exportDate: new Date().toISOString(),
+    version: '1.4', // Updated version
+  };
 
-    const dataStr = JSON.stringify(data, null, 2);
-    const dataBlob = new Blob([dataStr], {type: 'application/json'});
+  const dataStr = JSON.stringify(data, null, 2);
+  const dataBlob = new Blob([dataStr], { type: 'application/json' });
 
-    const link = document.createElement('a');
-    link.href = URL.createObjectURL(dataBlob);
-    link.download = `mario-kart-data-${new Date().toISOString().split('T')[0]}.json`;
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
+  const link = document.createElement('a');
+  link.href = URL.createObjectURL(dataBlob);
+  link.download = `mario-kart-data-${new Date().toISOString().split('T')[0]}.json`;
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
 
-    showMessage('Data exported successfully!');
+  showMessage('Data exported successfully!');
 }
 
 function importData(event) {
-    const file = event.target.files[0];
-    if (!file) return;
+  const file = event.target.files[0];
+  if (!file) return;
 
-    const reader = new FileReader();
-    reader.onload = function(e) {
-        try {
-            const importedData = JSON.parse(e.target.result);
+  const reader = new FileReader();
+  reader.onload = function (e) {
+    try {
+      const importedData = JSON.parse(e.target.result);
 
-            // Validate the data structure
-            if (!importedData.races || !Array.isArray(importedData.races)) {
-                throw new Error('Invalid file format');
-            }
+      // Validate the data structure
+      if (!importedData.races || !Array.isArray(importedData.races)) {
+        throw new Error('Invalid file format');
+      }
 
-            // Migration for old format data before validation
-            const migratedRaces = migrateRaceData(importedData.races);
+      // Migration for old format data before validation
+      const migratedRaces = migrateRaceData(importedData.races);
 
-            // Validate each race entry after migration
-            for (const race of migratedRaces) {
-                if (!race.date || typeof race.date !== 'string') {
-                    throw new Error('Invalid race data: missing or invalid date');
-                }
-                // timestamp is optional for backward compatibility
-                if (race.timestamp && typeof race.timestamp !== 'string') {
-                    throw new Error('Invalid race data: invalid timestamp');
-                }
-                // Validate player positions
-                ['player1', 'player2', 'player3', 'player4'].forEach(player => {
-                    if (race[player] !== null && race[player] !== undefined &&
-                        (typeof race[player] !== 'number' || race[player] < 1 || race[player] > window.MAX_POSITIONS)) {
-                        throw new Error(`Invalid race data: invalid ${player} position`);
-                    }
-                });
-            }
-
-            races = migratedRaces;
-            const storageKey = window.getStorageKey ? window.getStorageKey('Races') : 'marioKartRaces';
-            localStorage.setItem(storageKey, JSON.stringify(races));
-            
-            // Detect active players from race data
-            const activePlayerCount = detectActivePlayersFromRaces(races);
-            if (activePlayerCount > 0 && typeof updatePlayerCount === 'function') {
-                updatePlayerCount(activePlayerCount);
-            }
-            
-            // Import player names if present (backward compatible)
-            if (importedData.playerNames && typeof importedData.playerNames === 'object') {
-                // Use centralized PlayerNameManager
-                if (window.PlayerNameManager) {
-                    window.PlayerNameManager.setAll(importedData.playerNames);
-                } else {
-                    // Fallback
-                    playerNames = {
-                        player1: importedData.playerNames.player1 || 'Player 1',
-                        player2: importedData.playerNames.player2 || 'Player 2',
-                        player3: importedData.playerNames.player3 || 'Player 3',
-                        player4: importedData.playerNames.player4 || 'Player 4'
-                    };
-                    
-                    // Save to localStorage
-                    const storageKey = window.getStorageKey ? window.getStorageKey('PlayerNames') : 'marioKartPlayerNames';
-                    localStorage.setItem(storageKey, JSON.stringify(playerNames));
-                    
-                    // Update all labels and inputs
-                    updatePlayerLabels();
-                    
-                    // Update the name inputs in the widget
-                    const nameInputs = ['player1-name', 'player2-name', 'player3-name', 'player4-name'];
-                    nameInputs.forEach((inputId, index) => {
-                        const input = document.getElementById(inputId);
-                        if (input) {
-                            input.value = playerNames[`player${index + 1}`];
-                        }
-                    });
-                }
-            }
-            
-            // Import player icons if present (version 1.2+)
-            if (importedData.playerIcons && typeof importedData.playerIcons === 'object') {
-                if (window.PlayerIconManager) {
-                    // Clear existing icons and set new ones
-                    window.PlayerIconManager.clearAllIcons();
-                    Object.entries(importedData.playerIcons).forEach(([playerKey, iconData]) => {
-                        if (iconData) {
-                            window.PlayerIconManager.setIcon(playerKey, iconData);
-                        }
-                    });
-                }
-            }
-            
-            // Import player symbols if present (version 1.3+)
-            if (importedData.playerSymbols && typeof importedData.playerSymbols === 'object') {
-                if (window.PlayerSymbolManager) {
-                    window.PlayerSymbolManager.setAllSymbols(importedData.playerSymbols);
-                }
-            }
-            
-            // If we're on Help or Guide view and just imported data, switch to Achievements
-            if (typeof currentView !== 'undefined' && (currentView === 'help' || currentView === 'guide')) {
-                // Switch to achievements view
-                if (typeof toggleView === 'function') {
-                    toggleView('achievements');
-                }
-            } else {
-                // Otherwise just update the current view
-                updateDisplay();
-            }
-            
-            updateAchievements();
-            updateClearButtonState();
-            
-            // Always update player icons after import, regardless of what was imported
-            if (window.updateAllPlayerIcons) {
-                setTimeout(() => {
-                    window.updateAllPlayerIcons();
-                }, 100); // Small delay to ensure DOM is ready
-            }
-            
-            showMessage(`Successfully imported ${races.length} races!`);
-
-        } catch (error) {
-            showMessage(`Import failed: ${error.message}`, true);
+      // Validate each race entry after migration
+      for (const race of migratedRaces) {
+        if (!race.date || typeof race.date !== 'string') {
+          throw new Error('Invalid race data: missing or invalid date');
         }
-    };
-    reader.readAsText(file);
+        // timestamp is optional for backward compatibility
+        if (race.timestamp && typeof race.timestamp !== 'string') {
+          throw new Error('Invalid race data: invalid timestamp');
+        }
+        // Validate player positions
+        ['player1', 'player2', 'player3', 'player4'].forEach((player) => {
+          if (
+            race[player] !== null &&
+            race[player] !== undefined &&
+            (typeof race[player] !== 'number' ||
+              race[player] < 1 ||
+              race[player] > window.MAX_POSITIONS)
+          ) {
+            throw new Error(`Invalid race data: invalid ${player} position`);
+          }
+        });
+      }
 
-    // Reset the file input
-    event.target.value = '';
+      races = migratedRaces;
+      const storageKey = window.getStorageKey ? window.getStorageKey('Races') : 'marioKartRaces';
+      localStorage.setItem(storageKey, JSON.stringify(races));
+
+      // Detect active players from race data
+      const activePlayerCount = detectActivePlayersFromRaces(races);
+      if (activePlayerCount > 0 && typeof updatePlayerCount === 'function') {
+        updatePlayerCount(activePlayerCount);
+      }
+
+      // Import player names if present (backward compatible)
+      if (importedData.playerNames && typeof importedData.playerNames === 'object') {
+        // Use centralized PlayerNameManager
+        if (window.PlayerNameManager) {
+          window.PlayerNameManager.setAll(importedData.playerNames);
+        } else {
+          // Fallback
+          playerNames = {
+            player1: importedData.playerNames.player1 || 'Player 1',
+            player2: importedData.playerNames.player2 || 'Player 2',
+            player3: importedData.playerNames.player3 || 'Player 3',
+            player4: importedData.playerNames.player4 || 'Player 4',
+          };
+
+          // Save to localStorage
+          const storageKey = window.getStorageKey
+            ? window.getStorageKey('PlayerNames')
+            : 'marioKartPlayerNames';
+          localStorage.setItem(storageKey, JSON.stringify(playerNames));
+
+          // Update all labels and inputs
+          updatePlayerLabels();
+
+          // Update the name inputs in the widget
+          const nameInputs = ['player1-name', 'player2-name', 'player3-name', 'player4-name'];
+          nameInputs.forEach((inputId, index) => {
+            const input = document.getElementById(inputId);
+            if (input) {
+              input.value = playerNames[`player${index + 1}`];
+            }
+          });
+        }
+      }
+
+      // Import player icons if present (version 1.2+)
+      if (importedData.playerIcons && typeof importedData.playerIcons === 'object') {
+        if (window.PlayerIconManager) {
+          // Clear existing icons and set new ones
+          window.PlayerIconManager.clearAllIcons();
+          Object.entries(importedData.playerIcons).forEach(([playerKey, iconData]) => {
+            if (iconData) {
+              window.PlayerIconManager.setIcon(playerKey, iconData);
+            }
+          });
+        }
+      }
+
+      // Import player symbols if present (version 1.3+)
+      if (importedData.playerSymbols && typeof importedData.playerSymbols === 'object') {
+        if (window.PlayerSymbolManager) {
+          window.PlayerSymbolManager.setAllSymbols(importedData.playerSymbols);
+        }
+      }
+
+      // If we're on Help or Guide view and just imported data, switch to Achievements
+      if (
+        typeof currentView !== 'undefined' &&
+        (currentView === 'help' || currentView === 'guide')
+      ) {
+        // Switch to achievements view
+        if (typeof toggleView === 'function') {
+          toggleView('achievements');
+        }
+      } else {
+        // Otherwise just update the current view
+        updateDisplay();
+      }
+
+      updateAchievements();
+      updateClearButtonState();
+
+      // Always update player icons after import, regardless of what was imported
+      if (window.updateAllPlayerIcons) {
+        setTimeout(() => {
+          window.updateAllPlayerIcons();
+        }, 100); // Small delay to ensure DOM is ready
+      }
+
+      showMessage(`Successfully imported ${races.length} races!`);
+    } catch (error) {
+      showMessage(`Import failed: ${error.message}`, true);
+    }
+  };
+  reader.readAsText(file);
+
+  // Reset the file input
+  event.target.value = '';
 }
 
 function confirmClearData() {
-    // This function should only be called when there is data to clear
-    // The button should be disabled when there's no data
-    if (!races || races.length === 0) {
-        return;
-    }
-    
-    // Create a beautiful confirmation modal
-    const modal = document.createElement('div');
-    modal.className = 'modal-overlay';
+  // This function should only be called when there is data to clear
+  // The button should be disabled when there's no data
+  if (!races || races.length === 0) {
+    return;
+  }
 
-    const dialog = document.createElement('div');
-    dialog.className = `modal-dialog `;
+  // Create a beautiful confirmation modal
+  const modal = document.createElement('div');
+  modal.className = 'modal-overlay';
 
-    dialog.innerHTML = `
+  const dialog = document.createElement('div');
+  dialog.className = `modal-dialog `;
+
+  dialog.innerHTML = `
         <div class="modal-icon">⚠️</div>
         <h3 class="modal-title ">Clear All Data?</h3>
         <p class="modal-text ">
@@ -640,117 +670,127 @@ function confirmClearData() {
         </div>
     `;
 
-    modal.appendChild(dialog);
-    document.body.appendChild(modal);
+  modal.appendChild(dialog);
+  document.body.appendChild(modal);
 
-    // Add event listeners
-    document.getElementById('cancel-clear').onclick = () => {
-        document.body.removeChild(modal);
-    };
+  // Add event listeners
+  document.getElementById('cancel-clear').onclick = () => {
+    document.body.removeChild(modal);
+  };
 
-    document.getElementById('confirm-clear').onclick = () => {
-        document.body.removeChild(modal);
-        clearData();
-    };
+  document.getElementById('confirm-clear').onclick = () => {
+    document.body.removeChild(modal);
+    clearData();
+  };
 
-    // Close on background click
-    modal.onclick = (e) => {
-        if (e.target === modal) {
-            document.body.removeChild(modal);
-            document.head.removeChild(style);
-        }
-    };
+  // Close on background click
+  modal.onclick = (e) => {
+    if (e.target === modal) {
+      document.body.removeChild(modal);
+      document.head.removeChild(style);
+    }
+  };
 
-    // Close on Escape key
-    const escapeHandler = (e) => {
-        if (e.key === 'Escape') {
-            document.body.removeChild(modal);
-            document.head.removeChild(style);
-            document.removeEventListener('keydown', escapeHandler);
-        }
-    };
-    document.addEventListener('keydown', escapeHandler);
+  // Close on Escape key
+  const escapeHandler = (e) => {
+    if (e.key === 'Escape') {
+      document.body.removeChild(modal);
+      document.head.removeChild(style);
+      document.removeEventListener('keydown', escapeHandler);
+    }
+  };
+  document.addEventListener('keydown', escapeHandler);
 }
 
 function clearData() {
-    // Direct clear without confirmation dialog (called from confirmClearData)
-    races = [];
+  // Direct clear without confirmation dialog (called from confirmClearData)
+  races = [];
 
-    // Clear only race-related data from localStorage, preserving player names and symbols
-    try {
-        // Save player names and symbols before clearing
-        const namesKey = window.getStorageKey ? window.getStorageKey('PlayerNames') : 'marioKartPlayerNames';
-        const symbolsKey = window.getStorageKey ? window.getStorageKey('PlayerSymbols') : 'marioKartPlayerSymbols';
-        const countKey = window.getStorageKey ? window.getStorageKey('PlayerCount') : 'marioKartPlayerCount';
-        const playerNames = localStorage.getItem(namesKey);
-        const playerSymbols = localStorage.getItem(symbolsKey);
-        const playerCount = localStorage.getItem(countKey);
-        
-        // Clear race data
-        const racesKey = window.getStorageKey ? window.getStorageKey('Races') : 'marioKartRaces';
-        const backupKey = window.getStorageKey ? window.getStorageKey('AutoBackup') : 'marioKartAutoBackup';
-        const historyKey = window.getStorageKey ? window.getStorageKey('ActionHistory') : 'marioKartActionHistory';
-        localStorage.removeItem(racesKey);
-        localStorage.removeItem(backupKey);
-        localStorage.removeItem(historyKey);
-        
-        // Set empty races array
-        localStorage.setItem(racesKey, '[]');
-        
-        // Restore player-related data
-        if (playerNames) localStorage.setItem(namesKey, playerNames);
-        if (playerSymbols) localStorage.setItem(symbolsKey, playerSymbols);
-        if (playerCount) localStorage.setItem(countKey, playerCount);
-    } catch (e) {
-        console.error('Error clearing localStorage:', e);
-    }
+  // Clear only race-related data from localStorage, preserving player names and symbols
+  try {
+    // Save player names and symbols before clearing
+    const namesKey = window.getStorageKey
+      ? window.getStorageKey('PlayerNames')
+      : 'marioKartPlayerNames';
+    const symbolsKey = window.getStorageKey
+      ? window.getStorageKey('PlayerSymbols')
+      : 'marioKartPlayerSymbols';
+    const countKey = window.getStorageKey
+      ? window.getStorageKey('PlayerCount')
+      : 'marioKartPlayerCount';
+    const playerNames = localStorage.getItem(namesKey);
+    const playerSymbols = localStorage.getItem(symbolsKey);
+    const playerCount = localStorage.getItem(countKey);
 
-    // Don't directly update innerHTML here - let updateDisplay handle it based on current view
-    // This prevents destroying the achievements view structure
-    
-    // Update display to ensure everything is cleared properly for the current view
-    updateDisplay();
-    updateAchievements();
+    // Clear race data
+    const racesKey = window.getStorageKey ? window.getStorageKey('Races') : 'marioKartRaces';
+    const backupKey = window.getStorageKey
+      ? window.getStorageKey('AutoBackup')
+      : 'marioKartAutoBackup';
+    const historyKey = window.getStorageKey
+      ? window.getStorageKey('ActionHistory')
+      : 'marioKartActionHistory';
+    localStorage.removeItem(racesKey);
+    localStorage.removeItem(backupKey);
+    localStorage.removeItem(historyKey);
 
-    showMessage('All data has been cleared successfully!');
-    
-    // Update clear button state after clearing
-    updateClearButtonState();
+    // Set empty races array
+    localStorage.setItem(racesKey, '[]');
+
+    // Restore player-related data
+    if (playerNames) localStorage.setItem(namesKey, playerNames);
+    if (playerSymbols) localStorage.setItem(symbolsKey, playerSymbols);
+    if (playerCount) localStorage.setItem(countKey, playerCount);
+  } catch (e) {
+    console.error('Error clearing localStorage:', e);
+  }
+
+  // Don't directly update innerHTML here - let updateDisplay handle it based on current view
+  // This prevents destroying the achievements view structure
+
+  // Update display to ensure everything is cleared properly for the current view
+  updateDisplay();
+  updateAchievements();
+
+  showMessage('All data has been cleared successfully!');
+
+  // Update clear button state after clearing
+  updateClearButtonState();
 }
 
 function updateClearButtonState() {
-    const hasData = races && races.length > 0;
-    
-    // Update widget clear button
-    const clearBtn = document.getElementById('clear-btn');
-    if (clearBtn) {
-        const isFirstUpdate = !clearBtn.classList.contains('initialized');
-        
-        if (hasData) {
-            // Enable the button
-            clearBtn.disabled = false;
-            clearBtn.onclick = confirmClearData;
-            clearBtn.classList.remove('disabled');
-        } else {
-            // Disable the button (matches undo/redo behavior)
-            clearBtn.disabled = true;
-            clearBtn.onclick = null;
-            clearBtn.classList.add('disabled');
-        }
-        
-        // Mark as initialized to make button visible and enable transitions
-        if (isFirstUpdate) {
-            // Force layout to ensure styles are applied before making visible
-            clearBtn.offsetHeight; // Force reflow
-            clearBtn.classList.add('initialized');
-        }
+  const hasData = races && races.length > 0;
+
+  // Update widget clear button
+  const clearBtn = document.getElementById('clear-btn');
+  if (clearBtn) {
+    const isFirstUpdate = !clearBtn.classList.contains('initialized');
+
+    if (hasData) {
+      // Enable the button
+      clearBtn.disabled = false;
+      clearBtn.onclick = confirmClearData;
+      clearBtn.classList.remove('disabled');
+    } else {
+      // Disable the button (matches undo/redo behavior)
+      clearBtn.disabled = true;
+      clearBtn.onclick = null;
+      clearBtn.classList.add('disabled');
     }
-    
-    // Update sidebar clear button
-    const sidebarClearBtn = document.getElementById('sidebar-clear-btn');
-    if (sidebarClearBtn) {
-        sidebarClearBtn.disabled = !hasData;
+
+    // Mark as initialized to make button visible and enable transitions
+    if (isFirstUpdate) {
+      // Force layout to ensure styles are applied before making visible
+      clearBtn.offsetHeight; // Force reflow
+      clearBtn.classList.add('initialized');
     }
+  }
+
+  // Update sidebar clear button
+  const sidebarClearBtn = document.getElementById('sidebar-clear-btn');
+  if (sidebarClearBtn) {
+    sidebarClearBtn.disabled = !hasData;
+  }
 }
 
 // Export loadSavedData globally for game version switching

@@ -1,15 +1,15 @@
 // Bidirectional localStorage ↔ Firebase sync module
 // Supports both Firestore and Realtime Database backends
 
-import { 
-  doc, 
-  getDoc, 
-  setDoc, 
-  onSnapshot, 
+import {
+  doc,
+  getDoc,
+  setDoc,
+  onSnapshot,
   serverTimestamp,
   runTransaction,
-  deleteField
-} from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
+  deleteField,
+} from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js';
 
 import {
   ref,
@@ -18,8 +18,8 @@ import {
   onValue,
   serverTimestamp as rtdbServerTimestamp,
   runTransaction as rtdbTransaction,
-  off
-} from "https://www.gstatic.com/firebasejs/10.7.1/firebase-database.js";
+  off,
+} from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-database.js';
 
 import { db, rtdb, auth } from '../firebase-config.js';
 
@@ -55,11 +55,11 @@ export function startStorageSync({ namespace, keys, useFirestore = USE_FIRESTORE
     useFirestore,
     listeners: [],
     writeTimer: null,
-    stopped: false
+    stopped: false,
   };
-  
+
   syncState.set(namespace, state);
-  
+
   // Initialize write queue
   if (!writeQueues.has(namespace)) {
     writeQueues.set(namespace, new Map());
@@ -80,7 +80,7 @@ export function startStorageSync({ namespace, keys, useFirestore = USE_FIRESTORE
 
   // Return control object
   return {
-    stop: () => stopSync(namespace)
+    stop: () => stopSync(namespace),
   };
 }
 
@@ -92,24 +92,28 @@ function initFirestoreSync(state) {
   const docRef = doc(db, docPath);
 
   // Set up real-time listener
-  const unsubscribe = onSnapshot(docRef, (snapshot) => {
-    if (state.stopped) return;
-    
-    const data = snapshot.data();
-    if (!data || !data.data) return;
+  const unsubscribe = onSnapshot(
+    docRef,
+    (snapshot) => {
+      if (state.stopped) return;
 
-    // Apply remote changes to localStorage
-    for (const [key, info] of Object.entries(data.data)) {
-      if (!state.keys.has(key)) continue;
-      
-      // Check if remote version is newer
-      if (shouldApplyRemoteChange(key, info)) {
-        applyToLocalStorage(key, info);
+      const data = snapshot.data();
+      if (!data || !data.data) return;
+
+      // Apply remote changes to localStorage
+      for (const [key, info] of Object.entries(data.data)) {
+        if (!state.keys.has(key)) continue;
+
+        // Check if remote version is newer
+        if (shouldApplyRemoteChange(key, info)) {
+          applyToLocalStorage(key, info);
+        }
       }
-    }
-  }, (error) => {
-    console.error(`Firestore sync error for ${state.namespace}:`, error);
-  });
+    },
+    (error) => {
+      console.error(`Firestore sync error for ${state.namespace}:`, error);
+    },
+  );
 
   state.listeners.push(() => unsubscribe());
 }
@@ -124,14 +128,14 @@ function initRealtimeDbSync(state) {
   // Set up real-time listener
   const callback = (snapshot) => {
     if (state.stopped) return;
-    
+
     const data = snapshot.val();
     if (!data || !data.data) return;
 
     // Apply remote changes to localStorage
     for (const [key, info] of Object.entries(data.data)) {
       if (!state.keys.has(key)) continue;
-      
+
       // Check if remote version is newer
       if (shouldApplyRemoteChange(key, info)) {
         applyToLocalStorage(key, info);
@@ -162,7 +166,7 @@ function initLocalStorageWatcher(state) {
     }
   };
 
-  // Create custom removeItem  
+  // Create custom removeItem
   const customRemoveItem = (key) => {
     originalRemoveItem(key);
     if (state.keys.has(key) && !state.stopped) {
@@ -173,7 +177,7 @@ function initLocalStorageWatcher(state) {
   // Store original methods for cleanup
   state._originalSetItem = originalSetItem;
   state._originalRemoveItem = originalRemoveItem;
-  
+
   // Apply overrides
   localStorage.setItem = customSetItem;
   localStorage.removeItem = customRemoveItem;
@@ -184,7 +188,7 @@ function initLocalStorageWatcher(state) {
       queueWrite(state, e.key, e.newValue);
     }
   };
-  
+
   window.addEventListener('storage', storageHandler);
   state.listeners.push(() => {
     window.removeEventListener('storage', storageHandler);
@@ -199,7 +203,7 @@ function initLocalStorageWatcher(state) {
  */
 function queueWrite(state, key, value) {
   const queue = writeQueues.get(state.namespace);
-  
+
   // Parse value if it's a string JSON
   let parsedValue = value;
   if (value !== null && value !== undefined) {
@@ -213,12 +217,12 @@ function queueWrite(state, key, value) {
   // Update revision
   const currentRev = localRevisions.get(key) || { rev: 0 };
   const newRev = currentRev.rev + 1;
-  
+
   queue.set(key, {
     value: parsedValue,
     rev: newRev,
     updatedAt: Date.now(), // Client timestamp for immediate tracking
-    deleted: value === null
+    deleted: value === null,
   });
 
   localRevisions.set(key, { rev: newRev, updatedAt: Date.now() });
@@ -276,8 +280,8 @@ async function flushToFirestore(state, writes) {
       data: { ...currentData.data },
       meta: {
         ...currentData.meta,
-        lastUpdated: serverTimestamp()
-      }
+        lastUpdated: serverTimestamp(),
+      },
     };
 
     // Apply each write
@@ -288,7 +292,7 @@ async function flushToFirestore(state, writes) {
         updates.data[key] = {
           value: info.value,
           rev: info.rev,
-          updatedAt: serverTimestamp()
+          updatedAt: serverTimestamp(),
         };
       }
     }
@@ -315,14 +319,14 @@ async function flushToRealtimeDb(state, writes) {
         data.data[key] = {
           value: info.value,
           rev: info.rev,
-          updatedAt: rtdbServerTimestamp()
+          updatedAt: rtdbServerTimestamp(),
         };
       }
     }
 
     data.meta = {
       ...data.meta,
-      lastUpdated: rtdbServerTimestamp()
+      lastUpdated: rtdbServerTimestamp(),
     };
 
     return data;
@@ -335,7 +339,7 @@ async function flushToRealtimeDb(state, writes) {
 async function performInitialMerge(state) {
   try {
     let remoteData;
-    
+
     if (state.useFirestore) {
       const docRef = doc(db, `users/${state.userId}/apps/${state.namespace}`);
       const snapshot = await getDoc(docRef);
@@ -355,7 +359,7 @@ async function performInitialMerge(state) {
           localWrites.set(key, {
             value: JSON.parse(value),
             rev: 1,
-            updatedAt: Date.now()
+            updatedAt: Date.now(),
           });
           localRevisions.set(key, { rev: 1, updatedAt: Date.now() });
         }
@@ -368,7 +372,7 @@ async function performInitialMerge(state) {
 
     // Merge remote with local
     const mergeWrites = new Map();
-    
+
     for (const key of state.keys) {
       const localValue = localStorage.getItem(key);
       const remoteInfo = remoteData.data[key];
@@ -378,7 +382,7 @@ async function performInitialMerge(state) {
         mergeWrites.set(key, {
           value: JSON.parse(localValue),
           rev: 1,
-          updatedAt: Date.now()
+          updatedAt: Date.now(),
         });
       } else if (remoteInfo && localValue === null) {
         // Remote only - apply to local
@@ -411,9 +415,10 @@ function shouldApplyRemoteChange(key, remoteInfo) {
 
   // Compare timestamps first (if available)
   if (remoteInfo.updatedAt && localRev.updatedAt) {
-    const remoteTime = remoteInfo.updatedAt.toMillis ? 
-      remoteInfo.updatedAt.toMillis() : remoteInfo.updatedAt;
-    
+    const remoteTime = remoteInfo.updatedAt.toMillis
+      ? remoteInfo.updatedAt.toMillis()
+      : remoteInfo.updatedAt;
+
     if (remoteTime > localRev.updatedAt) return true;
     if (remoteTime < localRev.updatedAt) return false;
   }
@@ -427,23 +432,24 @@ function shouldApplyRemoteChange(key, remoteInfo) {
  */
 function applyToLocalStorage(key, info) {
   // Temporarily disable watcher to avoid echo
-  const state = Array.from(syncState.values()).find(s => s.keys.has(key));
+  const state = Array.from(syncState.values()).find((s) => s.keys.has(key));
   if (state) {
     const originalSetItem = state._originalSetItem || localStorage.setItem.bind(localStorage);
-    
+
     if (info.deleted || info.value === undefined || info.value === null) {
       localStorage.removeItem(key);
     } else {
-      const value = typeof info.value === 'object' ? 
-        JSON.stringify(info.value) : String(info.value);
+      const value =
+        typeof info.value === 'object' ? JSON.stringify(info.value) : String(info.value);
       originalSetItem(key, value);
     }
-    
+
     // Update local revision tracking
     localRevisions.set(key, {
       rev: info.rev || 0,
-      updatedAt: info.updatedAt?.toMillis ? 
-        info.updatedAt.toMillis() : info.updatedAt || Date.now()
+      updatedAt: info.updatedAt?.toMillis
+        ? info.updatedAt.toMillis()
+        : info.updatedAt || Date.now(),
     });
   }
 }
@@ -463,12 +469,12 @@ function stopSync(namespace) {
   }
 
   // Clean up listeners
-  state.listeners.forEach(cleanup => cleanup());
+  state.listeners.forEach((cleanup) => cleanup());
 
   // Clean up state
   syncState.delete(namespace);
   writeQueues.delete(namespace);
-  
+
   // Clear local revisions for this namespace's keys
   for (const key of state.keys) {
     localRevisions.delete(key);

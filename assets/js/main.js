@@ -1,7 +1,7 @@
 /**
  * Global Enhanced JavaScript
  * Includes: Firebase Config, Auth, UI, and Main site functionality
- * 
+ *
  * Dependencies: jQuery, Firebase SDK (loaded from CDN)
  */
 
@@ -9,7 +9,7 @@
 // The config file is included in all HTML pages before main.js
 
 // Main Application JavaScript
-(function($) {
+(function ($) {
   'use strict';
 
   /* ==========================================================================
@@ -26,7 +26,7 @@
     signinForm: '#auth-signin-form',
     signupForm: '#auth-signup-form',
     messageContainer: '#auth-message',
-    skipLink: '.skip-link'
+    skipLink: '.skip-link',
   };
 
   const CSS_CLASSES = {
@@ -35,7 +35,7 @@
     tabActive: 'auth-tab--active',
     formActive: 'auth-form--active',
     messageVisible: 'auth-message--visible',
-    inputError: 'auth-form__input--error'
+    inputError: 'auth-form__input--error',
   };
 
   // Firebase config will be loaded from external file (firebase-config-local.js)
@@ -102,7 +102,7 @@
       this.user = null;
       this.initialized = false;
       this.authStateChangeListeners = [];
-      
+
       // Initialize immediately - config is already loaded from firebase-config.js
       this.initialize();
     }
@@ -121,7 +121,7 @@
 
         // Use window.firebaseConfig directly (loaded from firebase-config.js)
         const config = window.firebaseConfig;
-        
+
         if (!config || !config.apiKey || !config.authDomain || !config.projectId) {
           return;
         }
@@ -137,7 +137,6 @@
         });
 
         this.initialized = true;
-
       } catch (error) {
         console.error('Failed to initialize Firebase Auth:', error);
       }
@@ -160,7 +159,7 @@
      * @param {Object|null} user - Firebase user object
      */
     notifyAuthStateChange(user) {
-      this.authStateChangeListeners.forEach(callback => {
+      this.authStateChangeListeners.forEach((callback) => {
         try {
           callback(user);
         } catch (error) {
@@ -211,8 +210,6 @@
       }
     }
 
-
-
     /**
      * Sign out current user
      * @async
@@ -256,7 +253,8 @@
       const errorMessages = {
         'auth/user-not-found': 'No account found with this email address.',
         'auth/wrong-password': 'Incorrect password.',
-        'auth/invalid-login-credentials': 'Invalid email or password. Please check your credentials and try again.',
+        'auth/invalid-login-credentials':
+          'Invalid email or password. Please check your credentials and try again.',
         'auth/email-already-in-use': 'An account with this email already exists.',
         'auth/weak-password': 'Password should be at least 6 characters.',
         'auth/invalid-email': 'Please enter a valid email address.',
@@ -285,7 +283,7 @@
         isModalOpen: false,
         currentUser: null,
         headerLoaded: false,
-        currentTab: 'signin'
+        currentTab: 'signin',
       };
 
       this.elements = {};
@@ -301,7 +299,7 @@
       this.waitForHeader();
 
       if (window.firebaseAuth) {
-        window.firebaseAuth.onAuthStateChange(user => this.handleAuthStateChange(user));
+        window.firebaseAuth.onAuthStateChange((user) => this.handleAuthStateChange(user));
       }
     }
 
@@ -345,7 +343,7 @@
       if (!modal) return;
 
       const focusableElements = modal.querySelectorAll(
-        'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])'
+        'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])',
       );
       const firstElement = focusableElements[0];
       const lastElement = focusableElements[focusableElements.length - 1];
@@ -384,7 +382,7 @@
     cacheElements() {
       this.elements = {
         authContainer: $(SELECTORS.authContainer),
-        menuToggle: $(SELECTORS.menuToggle)
+        menuToggle: $(SELECTORS.menuToggle),
       };
     }
 
@@ -506,15 +504,19 @@
      * @private
      */
     bindHeaderEvents() {
-      $('#auth-signin-btn').off('click.authui').on('click.authui', (event) => {
-        event.preventDefault();
-        this.showAuthModal();
-      });
+      $('#auth-signin-btn')
+        .off('click.authui')
+        .on('click.authui', (event) => {
+          event.preventDefault();
+          this.showAuthModal();
+        });
 
-      $('#auth-signout-btn').off('click.authui').on('click.authui', async (event) => {
-        event.preventDefault();
-        await this.handleSignOut();
-      });
+      $('#auth-signout-btn')
+        .off('click.authui')
+        .on('click.authui', async (event) => {
+          event.preventDefault();
+          await this.handleSignOut();
+        });
     }
 
     /**
@@ -535,7 +537,7 @@
       this.createSignOutModal();
       $('.signout-modal').addClass('signout-modal--visible');
       $('body').addClass('signout-modal-open');
-      
+
       setTimeout(() => {
         const confirmButton = $('.signout-modal').find('.signout-confirm-btn');
         if (confirmButton.length) {
@@ -569,7 +571,7 @@
       $('.signout-modal').removeClass('signout-modal--visible');
       $('body').removeClass('signout-modal-open');
       $(document).off('keydown.signout');
-      
+
       // Remove modal after animation
       setTimeout(() => {
         $('.signout-modal').remove();
@@ -583,7 +585,7 @@
     createSignOutModal() {
       // Remove existing modal if present
       $('.signout-modal').remove();
-      
+
       const modalHtml = `
         <div class="signout-modal" role="dialog" aria-modal="true" aria-labelledby="signout-modal-title">
           <div class="signout-modal__content">
@@ -607,20 +609,20 @@
           </div>
         </div>
       `;
-      
+
       $('body').append(modalHtml);
-      
+
       // Bind events
       $('.signout-cancel-btn, .signout-modal').on('click', (event) => {
         if (event.target === event.currentTarget) {
           this.hideSignOutConfirmation();
         }
       });
-      
+
       $('.signout-confirm-btn').on('click', () => {
         this.performSignOut();
       });
-      
+
       // Keyboard handler
       $(document).on('keydown.signout', (event) => {
         if (event.key === 'Escape') {
@@ -739,7 +741,6 @@
         event.preventDefault();
         await this.handleSignUp(event.target);
       });
-
     }
 
     /**
@@ -751,22 +752,14 @@
       this.state.currentTab = tabName;
 
       // Update tab buttons
-      $(SELECTORS.tabButtons)
-        .removeClass(CSS_CLASSES.tabActive)
-        .attr('aria-selected', 'false');
-      
-      $(`[data-tab="${tabName}"]`)
-        .addClass(CSS_CLASSES.tabActive)
-        .attr('aria-selected', 'true');
+      $(SELECTORS.tabButtons).removeClass(CSS_CLASSES.tabActive).attr('aria-selected', 'false');
+
+      $(`[data-tab="${tabName}"]`).addClass(CSS_CLASSES.tabActive).attr('aria-selected', 'true');
 
       // Update forms
-      $(SELECTORS.forms)
-        .removeClass(CSS_CLASSES.formActive)
-        .attr('aria-hidden', 'true');
-      
-      $(`#auth-${tabName}-form`)
-        .addClass(CSS_CLASSES.formActive)
-        .attr('aria-hidden', 'false');
+      $(SELECTORS.forms).removeClass(CSS_CLASSES.formActive).attr('aria-hidden', 'true');
+
+      $(`#auth-${tabName}-form`).addClass(CSS_CLASSES.formActive).attr('aria-hidden', 'false');
 
       // Clear messages and focus first input
       this.clearMessages();
@@ -826,7 +819,6 @@
         this.showMessage(error.message, 'error');
       }
     }
-
 
     /**
      * Validate sign in form
@@ -904,7 +896,9 @@
      */
     showAuthModal() {
       if (!this.isAuthAvailable()) {
-        alert('Firebase authentication is not configured yet. Please see setup-firebase.md for instructions.');
+        alert(
+          'Firebase authentication is not configured yet. Please see setup-firebase.md for instructions.',
+        );
         return;
       }
 
@@ -928,7 +922,7 @@
       this.state.isModalOpen = false;
       $(SELECTORS.modal).removeClass(CSS_CLASSES.modalVisible);
       $('body').removeClass(CSS_CLASSES.modalOpen);
-      
+
       this.clearMessages();
       this.clearForms();
       $('#auth-signin-btn').focus();
@@ -945,7 +939,9 @@
       const safeMessage = escapeHtml(message);
 
       messageEl
-        .removeClass('auth-message--success auth-message--error auth-message--info auth-message--warning')
+        .removeClass(
+          'auth-message--success auth-message--error auth-message--info auth-message--warning',
+        )
         .addClass(`auth-message--${type} ${CSS_CLASSES.messageVisible}`)
         .text(safeMessage)
         .show();
@@ -956,10 +952,7 @@
      * @private
      */
     clearMessages() {
-      $(SELECTORS.messageContainer)
-        .removeClass(CSS_CLASSES.messageVisible)
-        .hide()
-        .text('');
+      $(SELECTORS.messageContainer).removeClass(CSS_CLASSES.messageVisible).hide().text('');
     }
 
     /**
@@ -997,12 +990,12 @@
     medium: ['737px', '980px'],
     small: ['481px', '736px'],
     xsmall: ['361px', '480px'],
-    xxsmall: [null, '360px']
+    xxsmall: [null, '360px'],
   });
 
   // Play initial animations on page load
-  $window.on('load', function() {
-    window.setTimeout(function() {
+  $window.on('load', function () {
+    window.setTimeout(function () {
       $body.removeClass('is-preload');
     }, 100);
   });
@@ -1013,29 +1006,26 @@
   function initializeMenu() {
     const $menu = $('#menu');
     const $menuToggle = $(SELECTORS.menuToggle);
-    
-    $menu
-      .append('<a href="#menu" class="close"></a>')
-      .appendTo($body)
-      .panel({
-        target: $body,
-        visibleClass: 'is-menu-visible',
-        delay: 500,
-        hideOnClick: true,
-        hideOnSwipe: true,
-        resetScroll: true,
-        resetForms: true,
-        side: 'right'
-      });
-    
+
+    $menu.append('<a href="#menu" class="close"></a>').appendTo($body).panel({
+      target: $body,
+      visibleClass: 'is-menu-visible',
+      delay: 500,
+      hideOnClick: true,
+      hideOnSwipe: true,
+      resetScroll: true,
+      resetForms: true,
+      side: 'right',
+    });
+
     // Add proper accessibility handling
     const handleMenuVisibility = () => {
       const isVisible = $body.hasClass('is-menu-visible');
-      
+
       // Update aria attributes
       $menuToggle.attr('aria-expanded', isVisible);
       $menu.attr('aria-hidden', !isVisible);
-      
+
       if (!isVisible) {
         // When hiding menu, remove focus from any focused elements inside
         const focusedElement = $menu.find(':focus');
@@ -1046,7 +1036,7 @@
         }
       }
     };
-    
+
     // Watch for visibility changes
     const observer = new MutationObserver((mutations) => {
       mutations.forEach((mutation) => {
@@ -1055,12 +1045,12 @@
         }
       });
     });
-    
+
     observer.observe($body[0], {
       attributes: true,
-      attributeFilter: ['class']
+      attributeFilter: ['class'],
     });
-    
+
     // Initial state
     handleMenuVisibility();
   }
@@ -1079,13 +1069,15 @@
     const includes = $('[data-include]');
     const includesLoaded = 0;
 
-    jQuery.each(includes, function() {
+    jQuery.each(includes, function () {
       const includeFile = $(this).data('include') + '.html';
-      const basePath = window.location.pathname.includes('/apps/') ? '../../partials/' : 'partials/';
+      const basePath = window.location.pathname.includes('/apps/')
+        ? '../../partials/'
+        : 'partials/';
       const file = basePath + includeFile;
       const $element = $(this);
 
-      $element.load(file, function() {
+      $element.load(file, function () {
         // Initialize menu after header is loaded
         if (includeFile === 'header.html' && $('#menu').length > 0) {
           initializeMenu();
@@ -1111,7 +1103,12 @@
 
     // Additional auth UI initialization after delay
     setTimeout(() => {
-      if (window.authUI && window.authUI.state && $(SELECTORS.authContainer).length > 0 && !window.authUI.state.headerLoaded) {
+      if (
+        window.authUI &&
+        window.authUI.state &&
+        $(SELECTORS.authContainer).length > 0 &&
+        !window.authUI.state.headerLoaded
+      ) {
         window.authUI.onHeaderLoaded();
       }
     }, 1000);
@@ -1127,7 +1124,6 @@
   }, 250);
 
   $window.on('resize', debouncedResize);
-
 })(jQuery);
 
 /* ==========================================================================

@@ -5,115 +5,117 @@ import { app } from '../app.js';
 import { formatDate, showToast, showConfirmModal } from '../utils/helpers.js';
 
 class HistoryView {
-    constructor() {
-        this.app = app;
-        this.init();
+  constructor() {
+    this.app = app;
+    this.init();
+  }
+
+  init() {
+    this.app.viewControllers.history = this;
+    this.currentSort = 'date-desc';
+    this.dateFrom = null;
+    this.dateTo = null;
+    this.setupEventListeners();
+  }
+
+  setupEventListeners() {
+    // Modal close button
+    const modalCloseBtn = document.querySelector('#workout-detail-modal .modal-close');
+    if (modalCloseBtn) {
+      modalCloseBtn.addEventListener('click', () => {
+        document.getElementById('workout-detail-modal').classList.remove('active');
+      });
     }
 
-    init() {
-        this.app.viewControllers.history = this;
-        this.currentSort = 'date-desc';
+    // Sort dropdown
+    const sortSelect = document.getElementById('history-sort');
+    if (sortSelect) {
+      sortSelect.addEventListener('change', (e) => {
+        this.currentSort = e.target.value;
+        this.render();
+      });
+    }
+
+    // Date filters
+    const dateFromInput = document.getElementById('history-date-from');
+    const dateToInput = document.getElementById('history-date-to');
+
+    if (dateFromInput) {
+      dateFromInput.addEventListener('change', (e) => {
+        this.dateFrom = e.target.value;
+        this.render();
+      });
+    }
+
+    if (dateToInput) {
+      dateToInput.addEventListener('change', (e) => {
+        this.dateTo = e.target.value;
+        this.render();
+      });
+    }
+
+    // Clear filters button
+    const clearBtn = document.getElementById('clear-filters-btn');
+    if (clearBtn) {
+      clearBtn.addEventListener('click', () => {
         this.dateFrom = null;
         this.dateTo = null;
-        this.setupEventListeners();
+        if (dateFromInput) dateFromInput.value = '';
+        if (dateToInput) dateToInput.value = '';
+        this.render();
+      });
+    }
+  }
+
+  render() {
+    this.renderHistoryList();
+  }
+
+  renderHistoryList() {
+    const container = document.getElementById('history-list');
+    let sessions = [...this.app.workoutSessions];
+
+    // Apply date filters
+    if (this.dateFrom) {
+      sessions = sessions.filter((session) => session.date >= this.dateFrom);
+    }
+    if (this.dateTo) {
+      sessions = sessions.filter((session) => session.date <= this.dateTo);
     }
 
-    setupEventListeners() {
-        // Modal close button
-        const modalCloseBtn = document.querySelector('#workout-detail-modal .modal-close');
-        if (modalCloseBtn) {
-            modalCloseBtn.addEventListener('click', () => {
-                document.getElementById('workout-detail-modal').classList.remove('active');
-            });
-        }
+    // Apply sorting
+    sessions.sort((a, b) => {
+      switch (this.currentSort) {
+        case 'date-asc':
+          return new Date(a.date) - new Date(b.date);
+        case 'date-desc':
+          return new Date(b.date) - new Date(a.date);
+        case 'volume-desc':
+          return b.totalVolume - a.totalVolume;
+        default:
+          return new Date(b.date) - new Date(a.date);
+      }
+    });
 
-        // Sort dropdown
-        const sortSelect = document.getElementById('history-sort');
-        if (sortSelect) {
-            sortSelect.addEventListener('change', (e) => {
-                this.currentSort = e.target.value;
-                this.render();
-            });
-        }
-
-        // Date filters
-        const dateFromInput = document.getElementById('history-date-from');
-        const dateToInput = document.getElementById('history-date-to');
-
-        if (dateFromInput) {
-            dateFromInput.addEventListener('change', (e) => {
-                this.dateFrom = e.target.value;
-                this.render();
-            });
-        }
-
-        if (dateToInput) {
-            dateToInput.addEventListener('change', (e) => {
-                this.dateTo = e.target.value;
-                this.render();
-            });
-        }
-
-        // Clear filters button
-        const clearBtn = document.getElementById('clear-filters-btn');
-        if (clearBtn) {
-            clearBtn.addEventListener('click', () => {
-                this.dateFrom = null;
-                this.dateTo = null;
-                if (dateFromInput) dateFromInput.value = '';
-                if (dateToInput) dateToInput.value = '';
-                this.render();
-            });
-        }
-    }
-
-    render() {
-        this.renderHistoryList();
-    }
-
-    renderHistoryList() {
-        const container = document.getElementById('history-list');
-        let sessions = [...this.app.workoutSessions];
-
-        // Apply date filters
-        if (this.dateFrom) {
-            sessions = sessions.filter(session => session.date >= this.dateFrom);
-        }
-        if (this.dateTo) {
-            sessions = sessions.filter(session => session.date <= this.dateTo);
-        }
-
-        // Apply sorting
-        sessions.sort((a, b) => {
-            switch (this.currentSort) {
-                case 'date-asc':
-                    return new Date(a.date) - new Date(b.date);
-                case 'date-desc':
-                    return new Date(b.date) - new Date(a.date);
-                case 'volume-desc':
-                    return b.totalVolume - a.totalVolume;
-                default:
-                    return new Date(b.date) - new Date(a.date);
-            }
-        });
-
-        if (sessions.length === 0) {
-            container.innerHTML = `
+    if (sessions.length === 0) {
+      container.innerHTML = `
                 <div class="empty-state">
                     <i class="fas fa-dumbbell"></i>
                     <p>No workout history yet</p>
                     <button class="btn btn-primary" data-view="workout">Start Workout</button>
                 </div>
             `;
-            return;
-        }
+      return;
+    }
 
-        const unit = this.app.settings.weightUnit;
-        container.innerHTML = sessions.map(session => {
-            // Check for additional metrics
-            const hasAdditionalMetrics = session.avgHeartRate || session.maxHeartRate || session.caloriesBurned;
+    const unit = this.app.settings.weightUnit;
+    container.innerHTML = sessions
+      .map((session) => {
+        // Check for additional metrics
+        const hasAdditionalMetrics =
+          session.avgHeartRate || session.maxHeartRate || session.caloriesBurned;
 
-            return `
+        return `
                 <div class="workout-card clickable" onclick="window.gymApp.viewControllers.history.showWorkoutDetails(${session.id})">
                     <div class="workout-card-header">
                         <div class="workout-header-info">
@@ -137,54 +139,75 @@ class HistoryView {
                             <i class="fas fa-chart-bar"></i>
                             ${session.totalSets} sets
                         </div>
-                        ${session.duration ? `
+                        ${
+                          session.duration
+                            ? `
                             <div class="stat">
                                 <i class="fas fa-clock"></i>
                                 ${session.duration} min
                             </div>
-                        ` : ''}
+                        `
+                            : ''
+                        }
                     </div>
-                    ${hasAdditionalMetrics ? `
+                    ${
+                      hasAdditionalMetrics
+                        ? `
                         <div class="workout-card-additional-stats">
-                            ${session.avgHeartRate ? `
+                            ${
+                              session.avgHeartRate
+                                ? `
                                 <div class="additional-stat">
                                     <i class="fas fa-heartbeat"></i>
                                     Avg HR: ${session.avgHeartRate} bpm
                                 </div>
-                            ` : ''}
-                            ${session.maxHeartRate ? `
+                            `
+                                : ''
+                            }
+                            ${
+                              session.maxHeartRate
+                                ? `
                                 <div class="additional-stat">
                                     <i class="fas fa-heart"></i>
                                     Max HR: ${session.maxHeartRate} bpm
                                 </div>
-                            ` : ''}
-                            ${session.caloriesBurned ? `
+                            `
+                                : ''
+                            }
+                            ${
+                              session.caloriesBurned
+                                ? `
                                 <div class="additional-stat">
                                     <i class="fas fa-fire"></i>
                                     ${session.caloriesBurned} cal
                                 </div>
-                            ` : ''}
+                            `
+                                : ''
+                            }
                         </div>
-                    ` : ''}
+                    `
+                        : ''
+                    }
                     ${session.notes ? `<p class="workout-notes">${session.notes}</p>` : ''}
                 </div>
             `;
-        }).join('');
-    }
+      })
+      .join('');
+  }
 
-    showWorkoutDetails(sessionId) {
-        const session = this.app.workoutSessions.find(s => s.id === sessionId);
-        if (!session) return;
+  showWorkoutDetails(sessionId) {
+    const session = this.app.workoutSessions.find((s) => s.id === sessionId);
+    if (!session) return;
 
-        const unit = this.app.settings.weightUnit;
-        const modal = document.getElementById('workout-detail-modal');
-        const title = document.getElementById('workout-detail-title');
-        const content = document.getElementById('workout-detail-content');
+    const unit = this.app.settings.weightUnit;
+    const modal = document.getElementById('workout-detail-modal');
+    const title = document.getElementById('workout-detail-title');
+    const content = document.getElementById('workout-detail-content');
 
-        title.textContent = session.workoutDayName;
+    title.textContent = session.workoutDayName;
 
-        // Build the detailed content
-        let html = `
+    // Build the detailed content
+    let html = `
             <div class="workout-detail-summary">
                 <div class="detail-date">${formatDate(session.date)}</div>
                 <div class="detail-stats">
@@ -211,15 +234,17 @@ class HistoryView {
             <div class="workout-detail-exercises">
         `;
 
-        session.exercises.forEach(exercise => {
-            const exerciseData = this.app.getExerciseById(exercise.exerciseId);
-            const exerciseName = exerciseData ? exerciseData.name : exercise.exerciseName || 'Unknown Exercise';
-            const completedSets = exercise.sets ? exercise.sets.filter(s => s.completed) : [];
+    session.exercises.forEach((exercise) => {
+      const exerciseData = this.app.getExerciseById(exercise.exerciseId);
+      const exerciseName = exerciseData
+        ? exerciseData.name
+        : exercise.exerciseName || 'Unknown Exercise';
+      const completedSets = exercise.sets ? exercise.sets.filter((s) => s.completed) : [];
 
-            if (completedSets.length > 0) {
-                const isDuration = completedSets[0].duration > 0;
+      if (completedSets.length > 0) {
+        const isDuration = completedSets[0].duration > 0;
 
-                html += `
+        html += `
                     <div class="detail-exercise">
                         <h4>${exerciseName}</h4>
                         <table class="sets-table">
@@ -228,153 +253,153 @@ class HistoryView {
                                     <th>Set</th>
                 `;
 
-                if (isDuration) {
-                    html += `
+        if (isDuration) {
+          html += `
                                     <th>Duration</th>
                     `;
-                } else {
-                    html += `
+        } else {
+          html += `
                                     <th>Weight</th>
                                     <th>Reps</th>
                                     <th>Volume</th>
                     `;
-                }
+        }
 
-                html += `
+        html += `
                                 </tr>
                             </thead>
                             <tbody>
                 `;
 
-                completedSets.forEach((set, index) => {
-                    html += `<tr><td>${index + 1}</td>`;
+        completedSets.forEach((set, index) => {
+          html += `<tr><td>${index + 1}</td>`;
 
-                    if (set.duration > 0) {
-                        const mins = Math.floor(set.duration / 60);
-                        const secs = set.duration % 60;
-                        html += `<td>${mins}:${secs.toString().padStart(2, '0')}</td>`;
-                    } else {
-                        html += `
+          if (set.duration > 0) {
+            const mins = Math.floor(set.duration / 60);
+            const secs = set.duration % 60;
+            html += `<td>${mins}:${secs.toString().padStart(2, '0')}</td>`;
+          } else {
+            html += `
                             <td>${set.weight.toLocaleString()}${unit}</td>
                             <td>${set.reps}</td>
                             <td>${Math.round(set.volume).toLocaleString()}${unit}</td>
                         `;
-                    }
+          }
 
-                    html += `</tr>`;
-                });
+          html += `</tr>`;
+        });
 
-                html += `
+        html += `
                             </tbody>
                         </table>
                     </div>
                 `;
-            }
-        });
+      }
+    });
 
-        html += '</div>';
+    html += '</div>';
 
-        // Add additional metrics if available
-        if (session.avgHeartRate || session.maxHeartRate || session.caloriesBurned) {
-            html += `
+    // Add additional metrics if available
+    if (session.avgHeartRate || session.maxHeartRate || session.caloriesBurned) {
+      html += `
                 <h3>Additional Metrics</h3>
                 <div class="detail-stats">
             `;
-            if (session.avgHeartRate) {
-                html += `
+      if (session.avgHeartRate) {
+        html += `
                     <div class="detail-stat">
                         <span class="label">Avg Heart Rate</span>
                         <span class="value">${session.avgHeartRate} bpm</span>
                     </div>
                 `;
-            }
-            if (session.maxHeartRate) {
-                html += `
+      }
+      if (session.maxHeartRate) {
+        html += `
                     <div class="detail-stat">
                         <span class="label">Max Heart Rate</span>
                         <span class="value">${session.maxHeartRate} bpm</span>
                     </div>
                 `;
-            }
-            if (session.caloriesBurned) {
-                html += `
+      }
+      if (session.caloriesBurned) {
+        html += `
                     <div class="detail-stat">
                         <span class="label">Calories Burned</span>
                         <span class="value">${session.caloriesBurned} cal</span>
                     </div>
                 `;
-            }
-            html += '</div>';
-        }
+      }
+      html += '</div>';
+    }
 
-        // Add notes if available
-        if (session.notes) {
-            html += `
+    // Add notes if available
+    if (session.notes) {
+      html += `
                 <h3>Notes</h3>
                 <p class="workout-detail-notes">${session.notes}</p>
             `;
-        }
-
-        content.innerHTML = html;
-        modal.classList.add('active');
     }
 
-    async deleteWorkout(sessionId) {
-        const session = this.app.workoutSessions.find(s => s.id === sessionId);
-        if (!session) return;
+    content.innerHTML = html;
+    modal.classList.add('active');
+  }
 
-        const message = `Are you sure you want to delete this workout?<br><br><strong>${session.workoutDayName}</strong><br>${formatDate(session.date)}<br><br>This workout included ${session.exercises.length} exercise${session.exercises.length !== 1 ? 's' : ''} and ${Math.round(session.totalVolume).toLocaleString()}${this.app.settings.weightUnit} total volume.<br><br><strong>This action cannot be undone.</strong>`;
+  async deleteWorkout(sessionId) {
+    const session = this.app.workoutSessions.find((s) => s.id === sessionId);
+    if (!session) return;
 
-        const confirmed = await showConfirmModal({
-            title: 'Delete Workout',
-            message: message,
-            confirmText: 'Delete Workout',
-            cancelText: 'Cancel',
-            isDangerous: true
-        });
+    const message = `Are you sure you want to delete this workout?<br><br><strong>${session.workoutDayName}</strong><br>${formatDate(session.date)}<br><br>This workout included ${session.exercises.length} exercise${session.exercises.length !== 1 ? 's' : ''} and ${Math.round(session.totalVolume).toLocaleString()}${this.app.settings.weightUnit} total volume.<br><br><strong>This action cannot be undone.</strong>`;
 
-        if (confirmed) {
-            const index = this.app.workoutSessions.findIndex(s => s.id === sessionId);
-            if (index >= 0) {
-                this.app.workoutSessions.splice(index, 1);
-                this.app.saveWorkoutSessions();
+    const confirmed = await showConfirmModal({
+      title: 'Delete Workout',
+      message: message,
+      confirmText: 'Delete Workout',
+      cancelText: 'Cancel',
+      isDangerous: true,
+    });
 
-                // Update achievements since workout data changed
-                this.app.updateAchievements();
+    if (confirmed) {
+      const index = this.app.workoutSessions.findIndex((s) => s.id === sessionId);
+      if (index >= 0) {
+        this.app.workoutSessions.splice(index, 1);
+        this.app.saveWorkoutSessions();
 
-                // Re-render the list
-                this.render();
+        // Update achievements since workout data changed
+        this.app.updateAchievements();
 
-                // Show confirmation
-                showToast('Workout deleted', 'info');
-            }
-        }
+        // Re-render the list
+        this.render();
+
+        // Show confirmation
+        showToast('Workout deleted', 'info');
+      }
+    }
+  }
+
+  goToProgramDetails(programId) {
+    // Check if program exists
+    const program = this.app.getProgramById(programId);
+    if (!program) {
+      showToast('Program not found', 'error');
+      return;
     }
 
-    goToProgramDetails(programId) {
-        // Check if program exists
-        const program = this.app.getProgramById(programId);
-        if (!program) {
-            showToast('Program not found', 'error');
-            return;
-        }
+    // Navigate to programs view
+    this.app.showView('programs');
 
-        // Navigate to programs view
-        this.app.showView('programs');
-
-        // Open program edit modal after a short delay to ensure view is loaded and rendered
-        setTimeout(() => {
-            if (this.app.viewControllers.programs) {
-                // Ensure programs list is rendered first
-                this.app.viewControllers.programs.render();
-                // Then open the edit modal
-                this.app.viewControllers.programs.editProgram(programId);
-            } else {
-                showToast('Programs view not initialized', 'error');
-                console.error('Programs view controller not found');
-            }
-        }, 250);
-    }
+    // Open program edit modal after a short delay to ensure view is loaded and rendered
+    setTimeout(() => {
+      if (this.app.viewControllers.programs) {
+        // Ensure programs list is rendered first
+        this.app.viewControllers.programs.render();
+        // Then open the edit modal
+        this.app.viewControllers.programs.editProgram(programId);
+      } else {
+        showToast('Programs view not initialized', 'error');
+        console.error('Programs view controller not found');
+      }
+    }, 250);
+  }
 }
 
 // Initialize

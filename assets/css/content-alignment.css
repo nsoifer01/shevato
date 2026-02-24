@@ -6,7 +6,8 @@
 }
 
 /* Sticky Footer Solution */
-html, body {
+html,
+body {
   height: 100%;
 }
 

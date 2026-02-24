@@ -11,128 +11,129 @@ import { storageService } from '../services/StorageService.js';
 import { showToast, showConfirmModal } from '../utils/helpers.js';
 
 class WorkoutView {
-    constructor() {
-        this.app = app;
-        this.currentWorkoutSession = null;
-        this.navigationBlocked = false;
-        this.init();
+  constructor() {
+    this.app = app;
+    this.currentWorkoutSession = null;
+    this.navigationBlocked = false;
+    this.init();
+  }
+
+  init() {
+    this.app.viewControllers.workout = this;
+    this.setupEventListeners();
+    this.setupNavigationGuard();
+  }
+
+  setupEventListeners() {
+    // End workout button
+    const endBtn = document.getElementById('end-workout-btn');
+    if (endBtn) {
+      endBtn.addEventListener('click', () => this.endWorkout());
     }
 
-    init() {
-        this.app.viewControllers.workout = this;
-        this.setupEventListeners();
-        this.setupNavigationGuard();
+    // Finish workout button
+    const finishBtn = document.getElementById('finish-workout-btn');
+    if (finishBtn) {
+      finishBtn.addEventListener('click', () => this.openFinishWorkoutModal());
     }
 
-    setupEventListeners() {
-        // End workout button
-        const endBtn = document.getElementById('end-workout-btn');
-        if (endBtn) {
-            endBtn.addEventListener('click', () => this.endWorkout());
+    // Pause workout button
+    const pauseBtn = document.getElementById('pause-workout-btn');
+    if (pauseBtn) {
+      pauseBtn.addEventListener('click', () => this.manualPauseWorkout());
+    }
+
+    // Finish workout form
+    const finishForm = document.getElementById('finish-workout-form');
+    if (finishForm) {
+      finishForm.addEventListener('submit', (e) => {
+        e.preventDefault();
+        this.finishWorkout();
+      });
+    }
+  }
+
+  setupNavigationGuard() {
+    // Intercept browser back button and page unload
+    window.addEventListener('beforeunload', (e) => {
+      if (this.currentWorkoutSession && !this.currentWorkoutSession.completed) {
+        // Check if any sets were added
+        const hasAnySets = this.currentWorkoutSession.exercises.some(
+          (ex) => ex.sets && ex.sets.length > 0,
+        );
+
+        if (hasAnySets) {
+          // Save workout state before leaving
+          this.pauseAndSaveWorkout();
+          // Show browser's native confirmation
+          e.preventDefault();
+          e.returnValue = '';
+          return '';
+        }
+      }
+    });
+
+    // Intercept in-app navigation
+    this.interceptNavigation();
+  }
+
+  interceptNavigation() {
+    // Store original showView
+    const originalShowView = this.app.showView.bind(this.app);
+
+    // Override showView to check for active workout
+    this.app.showView = async (viewName, pushState = true) => {
+      // If there's an active workout and trying to navigate away from workout view
+      if (
+        this.currentWorkoutSession &&
+        !this.currentWorkoutSession.completed &&
+        this.app.currentView === 'workout' &&
+        viewName !== 'workout'
+      ) {
+        // Count total sets added across all exercises
+        let totalSets = 0;
+        for (const ex of this.currentWorkoutSession.exercises) {
+          if (ex.sets && Array.isArray(ex.sets)) {
+            totalSets += ex.sets.length;
+          }
         }
 
-        // Finish workout button
-        const finishBtn = document.getElementById('finish-workout-btn');
-        if (finishBtn) {
-            finishBtn.addEventListener('click', () => this.openFinishWorkoutModal());
+        if (totalSets > 0) {
+          const result = await this.showLeaveWorkoutModal();
+
+          if (result === 'cancel') {
+            // User wants to stay
+            return;
+          } else if (result === 'pause') {
+            // Pause and save, then navigate
+            this.pauseAndSaveWorkout();
+            showToast('Workout paused. You can resume later.', 'info');
+          } else if (result === 'discard') {
+            // Discard workout
+            this.discardWorkout();
+          }
+        } else {
+          // No sets added, just discard silently
+          this.discardWorkout();
         }
+      }
 
-        // Pause workout button
-        const pauseBtn = document.getElementById('pause-workout-btn');
-        if (pauseBtn) {
-            pauseBtn.addEventListener('click', () => this.manualPauseWorkout());
-        }
+      // Proceed with navigation
+      originalShowView(viewName, pushState);
+    };
+  }
 
-        // Finish workout form
-        const finishForm = document.getElementById('finish-workout-form');
-        if (finishForm) {
-            finishForm.addEventListener('submit', (e) => {
-                e.preventDefault();
-                this.finishWorkout();
-            });
-        }
-    }
+  async showLeaveWorkoutModal() {
+    return new Promise((resolve) => {
+      const modal = document.getElementById('confirm-modal');
+      const titleEl = document.getElementById('confirm-modal-title');
+      const messageEl = document.getElementById('confirm-modal-message');
+      const confirmBtn = document.getElementById('confirm-modal-confirm');
+      const cancelBtn = document.getElementById('confirm-modal-cancel');
 
-    setupNavigationGuard() {
-        // Intercept browser back button and page unload
-        window.addEventListener('beforeunload', (e) => {
-            if (this.currentWorkoutSession && !this.currentWorkoutSession.completed) {
-                // Check if any sets were added
-                const hasAnySets = this.currentWorkoutSession.exercises.some(ex =>
-                    ex.sets && ex.sets.length > 0
-                );
-
-                if (hasAnySets) {
-                    // Save workout state before leaving
-                    this.pauseAndSaveWorkout();
-                    // Show browser's native confirmation
-                    e.preventDefault();
-                    e.returnValue = '';
-                    return '';
-                }
-            }
-        });
-
-        // Intercept in-app navigation
-        this.interceptNavigation();
-    }
-
-    interceptNavigation() {
-        // Store original showView
-        const originalShowView = this.app.showView.bind(this.app);
-
-        // Override showView to check for active workout
-        this.app.showView = async (viewName, pushState = true) => {
-            // If there's an active workout and trying to navigate away from workout view
-            if (this.currentWorkoutSession &&
-                !this.currentWorkoutSession.completed &&
-                this.app.currentView === 'workout' &&
-                viewName !== 'workout') {
-
-                // Count total sets added across all exercises
-                let totalSets = 0;
-                for (const ex of this.currentWorkoutSession.exercises) {
-                    if (ex.sets && Array.isArray(ex.sets)) {
-                        totalSets += ex.sets.length;
-                    }
-                }
-
-                if (totalSets > 0) {
-                    const result = await this.showLeaveWorkoutModal();
-
-                    if (result === 'cancel') {
-                        // User wants to stay
-                        return;
-                    } else if (result === 'pause') {
-                        // Pause and save, then navigate
-                        this.pauseAndSaveWorkout();
-                        showToast('Workout paused. You can resume later.', 'info');
-                    } else if (result === 'discard') {
-                        // Discard workout
-                        this.discardWorkout();
-                    }
-                } else {
-                    // No sets added, just discard silently
-                    this.discardWorkout();
-                }
-            }
-
-            // Proceed with navigation
-            originalShowView(viewName, pushState);
-        };
-    }
-
-    async showLeaveWorkoutModal() {
-        return new Promise((resolve) => {
-            const modal = document.getElementById('confirm-modal');
-            const titleEl = document.getElementById('confirm-modal-title');
-            const messageEl = document.getElementById('confirm-modal-message');
-            const confirmBtn = document.getElementById('confirm-modal-confirm');
-            const cancelBtn = document.getElementById('confirm-modal-cancel');
-
-            // Set content
-            titleEl.textContent = 'Workout In Progress';
-            messageEl.innerHTML = `
+      // Set content
+      titleEl.textContent = 'Workout In Progress';
+      messageEl.innerHTML = `
                 You have an active workout. What would you like to do?
                 <div style="margin-top: 16px; display: flex; flex-direction: column; gap: 8px;">
                     <button id="leave-workout-pause" class="btn btn-primary" style="width: 100%;">
@@ -144,181 +145,181 @@ class WorkoutView {
                 </div>
             `;
 
-            // Hide default buttons, we're using custom ones
-            confirmBtn.style.display = 'none';
-            cancelBtn.textContent = 'Continue Workout';
+      // Hide default buttons, we're using custom ones
+      confirmBtn.style.display = 'none';
+      cancelBtn.textContent = 'Continue Workout';
 
-            // Show modal
-            modal.classList.add('active');
+      // Show modal
+      modal.classList.add('active');
 
-            const cleanup = () => {
-                modal.classList.remove('active');
-                confirmBtn.style.display = '';
-                pauseBtn.removeEventListener('click', handlePause);
-                discardBtn.removeEventListener('click', handleDiscard);
-                cancelBtn.removeEventListener('click', handleCancel);
-            };
+      const cleanup = () => {
+        modal.classList.remove('active');
+        confirmBtn.style.display = '';
+        pauseBtn.removeEventListener('click', handlePause);
+        discardBtn.removeEventListener('click', handleDiscard);
+        cancelBtn.removeEventListener('click', handleCancel);
+      };
 
-            const pauseBtn = document.getElementById('leave-workout-pause');
-            const discardBtn = document.getElementById('leave-workout-discard');
+      const pauseBtn = document.getElementById('leave-workout-pause');
+      const discardBtn = document.getElementById('leave-workout-discard');
 
-            const handlePause = () => {
-                cleanup();
-                resolve('pause');
-            };
+      const handlePause = () => {
+        cleanup();
+        resolve('pause');
+      };
 
-            const handleDiscard = () => {
-                cleanup();
-                resolve('discard');
-            };
+      const handleDiscard = () => {
+        cleanup();
+        resolve('discard');
+      };
 
-            const handleCancel = () => {
-                cleanup();
-                resolve('cancel');
-            };
+      const handleCancel = () => {
+        cleanup();
+        resolve('cancel');
+      };
 
-            pauseBtn.addEventListener('click', handlePause);
-            discardBtn.addEventListener('click', handleDiscard);
-            cancelBtn.addEventListener('click', handleCancel);
-        });
+      pauseBtn.addEventListener('click', handlePause);
+      discardBtn.addEventListener('click', handleDiscard);
+      cancelBtn.addEventListener('click', handleCancel);
+    });
+  }
+
+  pauseAndSaveWorkout() {
+    if (!this.currentWorkoutSession || this.currentWorkoutSession.completed) {
+      return;
     }
 
-    pauseAndSaveWorkout() {
-        if (!this.currentWorkoutSession || this.currentWorkoutSession.completed) {
-            return;
-        }
+    // Get current elapsed time
+    const elapsed = timerService.getWorkoutElapsed();
 
-        // Get current elapsed time
-        const elapsed = timerService.getWorkoutElapsed();
+    // Mark workout as paused
+    this.currentWorkoutSession.pauseWorkout(elapsed);
 
-        // Mark workout as paused
-        this.currentWorkoutSession.pauseWorkout(elapsed);
+    // Save to storage
+    storageService.saveActiveWorkout(this.currentWorkoutSession.toJSON());
 
-        // Save to storage
-        storageService.saveActiveWorkout(this.currentWorkoutSession.toJSON());
+    // Stop the timer
+    timerService.stopWorkoutTimer();
 
-        // Stop the timer
-        timerService.stopWorkoutTimer();
+    // Reset UI state so the paused banner shows when returning
+    document.getElementById('active-workout').classList.remove('active');
+    document.getElementById('workout-selection').classList.add('active');
+    this.currentWorkoutSession = null;
+  }
 
-        console.log('Workout paused and saved', this.currentWorkoutSession.toJSON());
-
-        // Reset UI state so the paused banner shows when returning
-        document.getElementById('active-workout').classList.remove('active');
-        document.getElementById('workout-selection').classList.add('active');
-        this.currentWorkoutSession = null;
+  manualPauseWorkout() {
+    if (!this.currentWorkoutSession || this.currentWorkoutSession.completed) {
+      return;
     }
 
-    manualPauseWorkout() {
-        if (!this.currentWorkoutSession || this.currentWorkoutSession.completed) {
-            return;
-        }
+    // Check if any sets were added
+    const hasAnySets = this.currentWorkoutSession.exercises.some(
+      (ex) => ex.sets && ex.sets.length > 0,
+    );
 
-        // Check if any sets were added
-        const hasAnySets = this.currentWorkoutSession.exercises.some(ex =>
-            ex.sets && ex.sets.length > 0
-        );
-
-        if (!hasAnySets) {
-            showToast('Add at least one set before pausing', 'error');
-            return;
-        }
-
-        this.pauseAndSaveWorkout();
-        showToast('Workout paused. You can resume later.', 'info');
+    if (!hasAnySets) {
+      showToast('Add at least one set before pausing', 'error');
+      return;
     }
 
-    discardWorkout() {
-        timerService.stopWorkoutTimer();
-        storageService.clearActiveWorkout();
-        document.getElementById('active-workout').classList.remove('active');
-        document.getElementById('workout-selection').classList.add('active');
-        this.currentWorkoutSession = null;
+    this.pauseAndSaveWorkout();
+    showToast('Workout paused. You can resume later.', 'info');
+  }
+
+  discardWorkout() {
+    timerService.stopWorkoutTimer();
+    storageService.clearActiveWorkout();
+    document.getElementById('active-workout').classList.remove('active');
+    document.getElementById('workout-selection').classList.add('active');
+    this.currentWorkoutSession = null;
+  }
+
+  hasActiveWorkout() {
+    return this.currentWorkoutSession !== null && !this.currentWorkoutSession.completed;
+  }
+
+  render() {
+    this.renderProgramSelection();
+  }
+
+  formatTimeAgo(date) {
+    const now = new Date();
+    const diffMs = now - date;
+    const diffMins = Math.floor(diffMs / 60000);
+    const diffHours = Math.floor(diffMins / 60);
+    const diffDays = Math.floor(diffHours / 24);
+
+    if (diffMins < 1) return 'just now';
+    if (diffMins < 60) return `${diffMins} min ago`;
+    if (diffHours < 24) return `${diffHours} hour${diffHours > 1 ? 's' : ''} ago`;
+    return `${diffDays} day${diffDays > 1 ? 's' : ''} ago`;
+  }
+
+  async resumeWorkout() {
+    const pausedWorkout = storageService.getActiveWorkout();
+    if (!pausedWorkout) {
+      showToast('No paused workout found', 'error');
+      return;
     }
 
-    hasActiveWorkout() {
-        return this.currentWorkoutSession !== null && !this.currentWorkoutSession.completed;
+    // Restore the workout session
+    this.currentWorkoutSession = WorkoutSession.fromJSON(pausedWorkout);
+    this.currentWorkoutSession.resumeWorkout();
+
+    // Start timer with saved elapsed time
+    timerService.startWorkoutTimer((elapsed) => {
+      this.updateWorkoutTimer(elapsed);
+    }, pausedWorkout.elapsedBeforePause);
+
+    // Switch to active workout screen
+    document.getElementById('workout-selection').classList.remove('active');
+    document.getElementById('active-workout').classList.add('active');
+
+    // Render workout
+    this.renderActiveWorkout();
+
+    showToast('Workout resumed!', 'success');
+  }
+
+  async discardPausedWorkout() {
+    const confirmed = await showConfirmModal({
+      title: 'Discard Paused Workout',
+      message:
+        'Are you sure you want to discard this paused workout?<br><br><strong>All progress will be lost.</strong>',
+      confirmText: 'Discard',
+      cancelText: 'Keep',
+      isDangerous: true,
+    });
+
+    if (confirmed) {
+      storageService.clearActiveWorkout();
+      this.render();
+      showToast('Paused workout discarded', 'info');
     }
+  }
 
-    render() {
-        this.renderProgramSelection();
-    }
+  renderProgramSelection() {
+    const container = document.getElementById('workout-program-list');
+    const programs = this.app.programs;
+    const pausedWorkout = storageService.getActiveWorkout();
 
-    formatTimeAgo(date) {
-        const now = new Date();
-        const diffMs = now - date;
-        const diffMins = Math.floor(diffMs / 60000);
-        const diffHours = Math.floor(diffMins / 60);
-        const diffDays = Math.floor(diffHours / 24);
+    // Start fresh - don't double-add the banner
+    let html = '';
 
-        if (diffMins < 1) return 'just now';
-        if (diffMins < 60) return `${diffMins} min ago`;
-        if (diffHours < 24) return `${diffHours} hour${diffHours > 1 ? 's' : ''} ago`;
-        return `${diffDays} day${diffDays > 1 ? 's' : ''} ago`;
-    }
+    // Add paused workout banner if exists
+    if (pausedWorkout && pausedWorkout.paused) {
+      const pausedAt = new Date(pausedWorkout.pausedAt);
+      const elapsed = pausedWorkout.elapsedBeforePause;
+      const minutes = Math.floor(elapsed / 60);
+      const seconds = elapsed % 60;
 
-    async resumeWorkout() {
-        const pausedWorkout = storageService.getActiveWorkout();
-        if (!pausedWorkout) {
-            showToast('No paused workout found', 'error');
-            return;
-        }
+      // Count total sets saved
+      const totalSets = pausedWorkout.exercises.reduce(
+        (sum, ex) => sum + (ex.sets ? ex.sets.length : 0),
+        0,
+      );
 
-        // Restore the workout session
-        this.currentWorkoutSession = WorkoutSession.fromJSON(pausedWorkout);
-        this.currentWorkoutSession.resumeWorkout();
-
-        // Start timer with saved elapsed time
-        timerService.startWorkoutTimer((elapsed) => {
-            this.updateWorkoutTimer(elapsed);
-        }, pausedWorkout.elapsedBeforePause);
-
-        // Switch to active workout screen
-        document.getElementById('workout-selection').classList.remove('active');
-        document.getElementById('active-workout').classList.add('active');
-
-        // Render workout
-        this.renderActiveWorkout();
-
-        showToast('Workout resumed!', 'success');
-    }
-
-    async discardPausedWorkout() {
-        const confirmed = await showConfirmModal({
-            title: 'Discard Paused Workout',
-            message: 'Are you sure you want to discard this paused workout?<br><br><strong>All progress will be lost.</strong>',
-            confirmText: 'Discard',
-            cancelText: 'Keep',
-            isDangerous: true
-        });
-
-        if (confirmed) {
-            storageService.clearActiveWorkout();
-            this.render();
-            showToast('Paused workout discarded', 'info');
-        }
-    }
-
-    renderProgramSelection() {
-        const container = document.getElementById('workout-program-list');
-        const programs = this.app.programs;
-        const pausedWorkout = storageService.getActiveWorkout();
-
-        // Start fresh - don't double-add the banner
-        let html = '';
-
-        // Add paused workout banner if exists
-        if (pausedWorkout && pausedWorkout.paused) {
-            const pausedAt = new Date(pausedWorkout.pausedAt);
-            const elapsed = pausedWorkout.elapsedBeforePause;
-            const minutes = Math.floor(elapsed / 60);
-            const seconds = elapsed % 60;
-
-            // Count total sets saved
-            const totalSets = pausedWorkout.exercises.reduce((sum, ex) =>
-                sum + (ex.sets ? ex.sets.length : 0), 0
-            );
-
-            html += `
+      html += `
                 <div class="paused-workout-banner">
                     <div class="paused-workout-icon">
                         <i class="fas fa-pause-circle"></i>
@@ -342,25 +343,27 @@ class WorkoutView {
                     </div>
                 </div>
             `;
-        }
+    }
 
-        if (programs.length === 0) {
-            html += `
+    if (programs.length === 0) {
+      html += `
                 <div class="empty-state">
                     <i class="fas fa-folder-open"></i>
                     <p>No programs yet. Create a program first.</p>
                     <button class="btn btn-primary" data-view="programs">Create Program</button>
                 </div>
             `;
-            container.innerHTML = html;
-            return;
-        }
+      container.innerHTML = html;
+      return;
+    }
 
-        html += `
+    html += `
             <h2>Select a Program</h2>
             <p class="subtitle">Choose which program you want to do today</p>
             <div class="program-selection-grid">
-                ${programs.map(program => `
+                ${programs
+                  .map(
+                    (program) => `
                     <div class="program-card">
                         <div class="program-header">
                             <h3>${program.name}</h3>
@@ -372,102 +375,111 @@ class WorkoutView {
                                 ${program.exercises.length} exercises
                             </div>
                         </div>
-                        ${program.exercises.length === 0
+                        ${
+                          program.exercises.length === 0
                             ? `<p class="text-warning"><i class="fas fa-exclamation-triangle"></i> No exercises in this program</p>`
                             : `<button class="btn btn-primary btn-large" onclick="window.gymApp.viewControllers.workout.startWorkout(${program.id})">
                                 <i class="fas fa-play"></i> Start Workout
                             </button>`
                         }
                     </div>
-                `).join('')}
+                `,
+                  )
+                  .join('')}
             </div>
         `;
 
-        container.innerHTML = html;
+    container.innerHTML = html;
+  }
+
+  startWorkout(programId) {
+    const program = this.app.getProgramById(programId);
+    if (!program) return;
+
+    if (!program.exercises || program.exercises.length === 0) {
+      showToast('This program has no exercises', 'error');
+      return;
     }
 
-    startWorkout(programId) {
-        const program = this.app.getProgramById(programId);
-        if (!program) return;
+    // Create new workout session
+    this.currentWorkoutSession = new WorkoutSession({
+      programId: program.id,
+      workoutDayId: null,
+      workoutDayName: program.name,
+      exercises: program.exercises.map(
+        (ex) =>
+          new WorkoutExercise({
+            exerciseId: ex.exerciseId,
+            exerciseName: ex.exerciseName,
+            targetSets: ex.targetSets,
+            order: ex.order,
+          }),
+      ),
+    });
 
-        if (!program.exercises || program.exercises.length === 0) {
-            showToast('This program has no exercises', 'error');
-            return;
-        }
+    this.currentWorkoutSession.startWorkout();
 
-        // Create new workout session
-        this.currentWorkoutSession = new WorkoutSession({
-            programId: program.id,
-            workoutDayId: null,
-            workoutDayName: program.name,
-            exercises: program.exercises.map(ex => new WorkoutExercise({
-                exerciseId: ex.exerciseId,
-                exerciseName: ex.exerciseName,
-                targetSets: ex.targetSets,
-                order: ex.order
-            }))
-        });
+    // Start workout timer
+    timerService.startWorkoutTimer((elapsed) => {
+      this.updateWorkoutTimer(elapsed);
+    });
 
-        this.currentWorkoutSession.startWorkout();
+    // Switch to active workout screen
+    document.getElementById('workout-selection').classList.remove('active');
+    document.getElementById('active-workout').classList.add('active');
 
-        // Start workout timer
-        timerService.startWorkoutTimer((elapsed) => {
-            this.updateWorkoutTimer(elapsed);
-        });
+    // Render workout
+    this.renderActiveWorkout();
+  }
 
-        // Switch to active workout screen
-        document.getElementById('workout-selection').classList.remove('active');
-        document.getElementById('active-workout').classList.add('active');
+  adjustWorkoutTitleSize() {
+    const titleEl = document.getElementById('workout-title');
+    if (!titleEl) return;
 
-        // Render workout
-        this.renderActiveWorkout();
+    const text = titleEl.textContent;
+    const length = text.length;
+
+    // Adjust font size based on text length
+    let fontSize;
+    if (length <= 12) {
+      fontSize = '1.25rem';
+    } else if (length <= 18) {
+      fontSize = '1.1rem';
+    } else if (length <= 24) {
+      fontSize = '1rem';
+    } else if (length <= 30) {
+      fontSize = '0.9rem';
+    } else {
+      fontSize = '0.8rem';
     }
 
-    adjustWorkoutTitleSize() {
-        const titleEl = document.getElementById('workout-title');
-        if (!titleEl) return;
+    titleEl.style.fontSize = fontSize;
+  }
 
-        const text = titleEl.textContent;
-        const length = text.length;
+  renderActiveWorkout() {
+    if (!this.currentWorkoutSession) return;
 
-        // Adjust font size based on text length
-        let fontSize;
-        if (length <= 12) {
-            fontSize = '1.25rem';
-        } else if (length <= 18) {
-            fontSize = '1.1rem';
-        } else if (length <= 24) {
-            fontSize = '1rem';
-        } else if (length <= 30) {
-            fontSize = '0.9rem';
-        } else {
-            fontSize = '0.8rem';
-        }
+    document.getElementById('workout-title').textContent =
+      this.currentWorkoutSession.workoutDayName;
+    this.adjustWorkoutTitleSize();
 
-        titleEl.style.fontSize = fontSize;
-    }
+    const container = document.getElementById('workout-exercises-list');
+    container.innerHTML = this.currentWorkoutSession.exercises
+      .map((exercise, index) => {
+        const exerciseData = this.app.getExerciseById(exercise.exerciseId);
+        const isDuration = exerciseData && exerciseData.exerciseType === 'duration';
+        const previousSets = this.getPreviousExerciseData(exercise.exerciseId);
+        const unit = this.app.settings.weightUnit;
 
-    renderActiveWorkout() {
-        if (!this.currentWorkoutSession) return;
-
-        document.getElementById('workout-title').textContent = this.currentWorkoutSession.workoutDayName;
-        this.adjustWorkoutTitleSize();
-
-        const container = document.getElementById('workout-exercises-list');
-        container.innerHTML = this.currentWorkoutSession.exercises.map((exercise, index) => {
-            const exerciseData = this.app.getExerciseById(exercise.exerciseId);
-            const isDuration = exerciseData && exerciseData.exerciseType === 'duration';
-            const previousSets = this.getPreviousExerciseData(exercise.exerciseId);
-            const unit = this.app.settings.weightUnit;
-
-            let previousDataHTML = '';
-            if (previousSets && previousSets.length > 0) {
-                if (isDuration) {
-                    // Show duration for time-based exercises
-                    previousDataHTML = `
+        let previousDataHTML = '';
+        if (previousSets && previousSets.length > 0) {
+          if (isDuration) {
+            // Show duration for time-based exercises
+            previousDataHTML = `
                         <div class="previous-sets-label">Last time:</div>
                         <div class="previous-sets-row">
-                            ${previousSets.map((set, i) => {
+                            ${previousSets
+                              .map((set, i) => {
                                 const mins = Math.floor(set.duration / 60);
                                 const secs = set.duration % 60;
                                 return `
@@ -476,36 +488,42 @@ class WorkoutView {
                                         <span class="previous-set-value">${mins}:${secs.toString().padStart(2, '0')}</span>
                                     </div>
                                 `;
-                            }).join('')}
+                              })
+                              .join('')}
                         </div>
                     `;
-                } else {
-                    // Show weight × reps for reps-based exercises
-                    previousDataHTML = `
+          } else {
+            // Show weight × reps for reps-based exercises
+            previousDataHTML = `
                         <div class="previous-sets-label">Last time:</div>
                         <div class="previous-sets-row">
-                            ${previousSets.map((set, i) => `
+                            ${previousSets
+                              .map(
+                                (set, i) => `
                                 <div class="previous-set-badge" onclick="window.gymApp.viewControllers.workout.usePreviousSet(${index}, ${set.weight}, ${set.reps})" title="Click to use these values">
                                     <span class="previous-set-number">${i + 1}</span>
                                     <span class="previous-set-value">${set.weight.toLocaleString()}${unit} × ${set.reps}</span>
                                 </div>
-                            `).join('')}
+                            `,
+                              )
+                              .join('')}
                         </div>
                     `;
-                }
-            } else {
-                previousDataHTML = '<div class="previous-sets-label">Last time: <span>No previous data</span></div>';
-            }
+          }
+        } else {
+          previousDataHTML =
+            '<div class="previous-sets-label">Last time: <span>No previous data</span></div>';
+        }
 
-            // Pre-fill with first set data if available
-            const firstSet = previousSets && previousSets.length > 0 ? previousSets[0] : null;
+        // Pre-fill with first set data if available
+        const firstSet = previousSets && previousSets.length > 0 ? previousSets[0] : null;
 
-            // Render inputs based on exercise type
-            let setInputsHTML = '';
-            if (isDuration) {
-                const defaultMins = firstSet ? Math.floor(firstSet.duration / 60) : 0;
-                const defaultSecs = firstSet ? firstSet.duration % 60 : 0;
-                setInputsHTML = `
+        // Render inputs based on exercise type
+        let setInputsHTML = '';
+        if (isDuration) {
+          const defaultMins = firstSet ? Math.floor(firstSet.duration / 60) : 0;
+          const defaultSecs = firstSet ? firstSet.duration % 60 : 0;
+          setInputsHTML = `
                     <div class="set-inputs">
                         <div class="input-group duration-input">
                             <label class="input-label">Duration</label>
@@ -518,8 +536,8 @@ class WorkoutView {
                         <button onclick="window.gymApp.viewControllers.workout.addSet(${index})">Add Set</button>
                     </div>
                 `;
-            } else {
-                setInputsHTML = `
+        } else {
+          setInputsHTML = `
                     <div class="set-inputs">
                         <div class="input-group">
                             <label class="input-label">Weight</label>
@@ -532,9 +550,9 @@ class WorkoutView {
                         <button onclick="window.gymApp.viewControllers.workout.addSet(${index})">Add Set</button>
                     </div>
                 `;
-            }
+        }
 
-            return `
+        return `
                 <div class="exercise-entry" id="exercise-${index}" data-exercise-type="${isDuration ? 'duration' : 'reps'}">
                     <div class="exercise-entry-header">
                         <h3>${exercise.exerciseName}</h3>
@@ -551,54 +569,57 @@ class WorkoutView {
                     </div>
                 </div>
             `;
-        }).join('');
+      })
+      .join('');
+  }
+
+  getPreviousExerciseData(exerciseId) {
+    // Get all workout sessions sorted by date (most recent first)
+    const sortedSessions = [...this.app.workoutSessions].sort(
+      (a, b) => new Date(b.date) - new Date(a.date),
+    );
+
+    // Find the most recent workout that has this exercise with completed sets
+    for (const session of sortedSessions) {
+      const exercise = session.exercises.find((ex) => ex.exerciseId === exerciseId);
+      if (exercise && exercise.sets && exercise.sets.length > 0) {
+        // Get all completed sets
+        const completedSets = exercise.sets.filter((set) => set.completed);
+        if (completedSets.length > 0) {
+          // Return all completed sets with their weight, reps, and duration
+          return completedSets.map((set) => ({
+            weight: set.weight,
+            reps: set.reps,
+            duration: set.duration,
+          }));
+        }
+      }
     }
 
-    getPreviousExerciseData(exerciseId) {
-        // Get all workout sessions sorted by date (most recent first)
-        const sortedSessions = [...this.app.workoutSessions].sort((a, b) =>
-            new Date(b.date) - new Date(a.date)
-        );
+    return null;
+  }
 
-        // Find the most recent workout that has this exercise with completed sets
-        for (const session of sortedSessions) {
-            const exercise = session.exercises.find(ex => ex.exerciseId === exerciseId);
-            if (exercise && exercise.sets && exercise.sets.length > 0) {
-                // Get all completed sets
-                const completedSets = exercise.sets.filter(set => set.completed);
-                if (completedSets.length > 0) {
-                    // Return all completed sets with their weight, reps, and duration
-                    return completedSets.map(set => ({
-                        weight: set.weight,
-                        reps: set.reps,
-                        duration: set.duration
-                    }));
-                }
-            }
+  renderCompletedSets(sets, exerciseIndex) {
+    if (sets.length === 0)
+      return '<p class="no-sets-message"><i class="fas fa-circle-notch"></i> No sets yet - add your first set above</p>';
+
+    const unit = this.app.settings.weightUnit;
+    return sets
+      .map((set, setIndex) => {
+        let setLabel, setDetails;
+        if (set.duration > 0) {
+          // Duration-based set
+          const mins = Math.floor(set.duration / 60);
+          const secs = set.duration % 60;
+          setLabel = `Round ${setIndex + 1}:`;
+          setDetails = `<span class="duration-value">${mins}:${secs.toString().padStart(2, '0')}</span> <span class="duration-label">min</span>`;
+        } else {
+          // Reps-based set
+          setLabel = `Set ${setIndex + 1}:`;
+          setDetails = `${set.weight.toLocaleString()}${unit} × ${set.reps} reps`;
         }
 
-        return null;
-    }
-
-    renderCompletedSets(sets, exerciseIndex) {
-        if (sets.length === 0) return '<p class="no-sets-message"><i class="fas fa-circle-notch"></i> No sets yet - add your first set above</p>';
-
-        const unit = this.app.settings.weightUnit;
-        return sets.map((set, setIndex) => {
-            let setLabel, setDetails;
-            if (set.duration > 0) {
-                // Duration-based set
-                const mins = Math.floor(set.duration / 60);
-                const secs = set.duration % 60;
-                setLabel = `Round ${setIndex + 1}:`;
-                setDetails = `<span class="duration-value">${mins}:${secs.toString().padStart(2, '0')}</span> <span class="duration-label">min</span>`;
-            } else {
-                // Reps-based set
-                setLabel = `Set ${setIndex + 1}:`;
-                setDetails = `${set.weight.toLocaleString()}${unit} × ${set.reps} reps`;
-            }
-
-            return `
+        return `
                 <div class="completed-set">
                     <div class="set-check">
                         <i class="fas fa-check-circle"></i>
@@ -617,125 +638,130 @@ class WorkoutView {
                     </div>
                 </div>
             `;
-        }).join('');
+      })
+      .join('');
+  }
+
+  usePreviousSet(exerciseIndex, weight, reps) {
+    if (!this.currentWorkoutSession) return;
+
+    const weightInput = document.getElementById(`weight-${exerciseIndex}`);
+    const repsInput = document.getElementById(`reps-${exerciseIndex}`);
+
+    // Fill in the values
+    weightInput.value = weight;
+    repsInput.value = reps;
+
+    // Focus the weight input for easy modification if needed
+    weightInput.focus();
+    weightInput.select();
+
+    const unit = this.app.settings.weightUnit;
+    showToast(`Loaded: ${weight.toLocaleString()}${unit} × ${reps} reps`, 'info');
+  }
+
+  usePreviousDuration(exerciseIndex, durationSeconds) {
+    if (!this.currentWorkoutSession) return;
+
+    const minInput = document.getElementById(`duration-min-${exerciseIndex}`);
+    const secInput = document.getElementById(`duration-sec-${exerciseIndex}`);
+
+    const minutes = Math.floor(durationSeconds / 60);
+    const seconds = durationSeconds % 60;
+
+    // Fill in the values
+    minInput.value = minutes;
+    secInput.value = seconds;
+
+    // Focus the minutes input for easy modification if needed
+    minInput.focus();
+    minInput.select();
+
+    showToast(`Loaded: ${minutes}:${seconds.toString().padStart(2, '0')}`, 'info');
+  }
+
+  addSet(exerciseIndex) {
+    if (!this.currentWorkoutSession) return;
+
+    const exercise = this.currentWorkoutSession.exercises[exerciseIndex];
+    const exerciseEntry = document.getElementById(`exercise-${exerciseIndex}`);
+    const isDuration = exerciseEntry.getAttribute('data-exercise-type') === 'duration';
+
+    let set;
+    if (isDuration) {
+      // Handle duration-based exercise
+      const minInput = document.getElementById(`duration-min-${exerciseIndex}`);
+      const secInput = document.getElementById(`duration-sec-${exerciseIndex}`);
+
+      const minutes = parseInt(minInput.value) || 0;
+      const seconds = parseInt(secInput.value) || 0;
+      const totalSeconds = minutes * 60 + seconds;
+
+      if (totalSeconds === 0) {
+        showToast('Please enter a duration', 'error');
+        return;
+      }
+
+      set = new Set({ duration: totalSeconds, weight: 0, reps: 0, completed: true });
+
+      // Keep values for next set
+      minInput.value = minutes;
+      secInput.value = seconds;
+      minInput.focus();
+
+      showToast('Set added!', 'success');
+    } else {
+      // Handle reps-based exercise
+      const weightInput = document.getElementById(`weight-${exerciseIndex}`);
+      const repsInput = document.getElementById(`reps-${exerciseIndex}`);
+
+      const weight = parseFloat(weightInput.value);
+      const reps = parseInt(repsInput.value);
+
+      if (isNaN(weight) || weight < 0 || !reps) {
+        showToast('Please enter weight and reps', 'error');
+        return;
+      }
+
+      set = new Set({ weight, reps, completed: true });
+
+      // Keep values for next set
+      weightInput.value = weight;
+      repsInput.value = reps;
+      weightInput.focus();
+
+      showToast('Set added!', 'success');
     }
 
-    usePreviousSet(exerciseIndex, weight, reps) {
-        if (!this.currentWorkoutSession) return;
+    exercise.addSet(set);
 
-        const weightInput = document.getElementById(`weight-${exerciseIndex}`);
-        const repsInput = document.getElementById(`reps-${exerciseIndex}`);
+    // Re-render completed sets
+    document.getElementById(`completed-sets-${exerciseIndex}`).innerHTML = this.renderCompletedSets(
+      exercise.sets,
+      exerciseIndex,
+    );
+  }
 
-        // Fill in the values
-        weightInput.value = weight;
-        repsInput.value = reps;
+  editSet(exerciseIndex, setIndex) {
+    if (!this.currentWorkoutSession) return;
 
-        // Focus the weight input for easy modification if needed
-        weightInput.focus();
-        weightInput.select();
+    const exercise = this.currentWorkoutSession.exercises[exerciseIndex];
+    const set = exercise.sets[setIndex];
 
-        const unit = this.app.settings.weightUnit;
-        showToast(`Loaded: ${weight.toLocaleString()}${unit} × ${reps} reps`, 'info');
-    }
+    // Show inline editing UI for this set
+    const setElement = document.querySelector(
+      `#completed-sets-${exerciseIndex} .completed-set:nth-child(${setIndex + 1})`,
+    );
+    if (!setElement) return;
 
-    usePreviousDuration(exerciseIndex, durationSeconds) {
-        if (!this.currentWorkoutSession) return;
+    const unit = this.app.settings.weightUnit;
+    const isDuration = set.duration > 0;
 
-        const minInput = document.getElementById(`duration-min-${exerciseIndex}`);
-        const secInput = document.getElementById(`duration-sec-${exerciseIndex}`);
-
-        const minutes = Math.floor(durationSeconds / 60);
-        const seconds = durationSeconds % 60;
-
-        // Fill in the values
-        minInput.value = minutes;
-        secInput.value = seconds;
-
-        // Focus the minutes input for easy modification if needed
-        minInput.focus();
-        minInput.select();
-
-        showToast(`Loaded: ${minutes}:${seconds.toString().padStart(2, '0')}`, 'info');
-    }
-
-    addSet(exerciseIndex) {
-        if (!this.currentWorkoutSession) return;
-
-        const exercise = this.currentWorkoutSession.exercises[exerciseIndex];
-        const exerciseEntry = document.getElementById(`exercise-${exerciseIndex}`);
-        const isDuration = exerciseEntry.getAttribute('data-exercise-type') === 'duration';
-
-        let set;
-        if (isDuration) {
-            // Handle duration-based exercise
-            const minInput = document.getElementById(`duration-min-${exerciseIndex}`);
-            const secInput = document.getElementById(`duration-sec-${exerciseIndex}`);
-
-            const minutes = parseInt(minInput.value) || 0;
-            const seconds = parseInt(secInput.value) || 0;
-            const totalSeconds = (minutes * 60) + seconds;
-
-            if (totalSeconds === 0) {
-                showToast('Please enter a duration', 'error');
-                return;
-            }
-
-            set = new Set({ duration: totalSeconds, weight: 0, reps: 0, completed: true });
-
-            // Keep values for next set
-            minInput.value = minutes;
-            secInput.value = seconds;
-            minInput.focus();
-
-            showToast('Set added!', 'success');
-        } else {
-            // Handle reps-based exercise
-            const weightInput = document.getElementById(`weight-${exerciseIndex}`);
-            const repsInput = document.getElementById(`reps-${exerciseIndex}`);
-
-            const weight = parseFloat(weightInput.value);
-            const reps = parseInt(repsInput.value);
-
-            if (isNaN(weight) || weight < 0 || !reps) {
-                showToast('Please enter weight and reps', 'error');
-                return;
-            }
-
-            set = new Set({ weight, reps, completed: true });
-
-            // Keep values for next set
-            weightInput.value = weight;
-            repsInput.value = reps;
-            weightInput.focus();
-
-            showToast('Set added!', 'success');
-        }
-
-        exercise.addSet(set);
-
-        // Re-render completed sets
-        document.getElementById(`completed-sets-${exerciseIndex}`).innerHTML =
-            this.renderCompletedSets(exercise.sets, exerciseIndex);
-    }
-
-    editSet(exerciseIndex, setIndex) {
-        if (!this.currentWorkoutSession) return;
-
-        const exercise = this.currentWorkoutSession.exercises[exerciseIndex];
-        const set = exercise.sets[setIndex];
-
-        // Show inline editing UI for this set
-        const setElement = document.querySelector(`#completed-sets-${exerciseIndex} .completed-set:nth-child(${setIndex + 1})`);
-        if (!setElement) return;
-
-        const unit = this.app.settings.weightUnit;
-        const isDuration = set.duration > 0;
-
-        let editFormHTML;
-        if (isDuration) {
-            const mins = Math.floor(set.duration / 60);
-            const secs = set.duration % 60;
-            editFormHTML = `
+    let editFormHTML;
+    if (isDuration) {
+      const mins = Math.floor(set.duration / 60);
+      const secs = set.duration % 60;
+      editFormHTML = `
                 <div class="set-edit-form">
                     <span class="set-number">Round ${setIndex + 1}:</span>
                     <input type="number" class="set-edit-input duration-edit-min" id="edit-duration-min-${exerciseIndex}-${setIndex}" value="${mins}" min="0" placeholder="Min">
@@ -743,8 +769,8 @@ class WorkoutView {
                     <input type="number" class="set-edit-input duration-edit-sec" id="edit-duration-sec-${exerciseIndex}-${setIndex}" value="${secs}" min="0" max="59" placeholder="Sec">
                 </div>
             `;
-        } else {
-            editFormHTML = `
+    } else {
+      editFormHTML = `
                 <div class="set-edit-form">
                     <span class="set-number">Set ${setIndex + 1}:</span>
                     <input type="number" class="set-edit-input" id="edit-weight-${exerciseIndex}-${setIndex}" value="${set.weight}" step="0.5" min="0" placeholder="Weight">
@@ -752,9 +778,9 @@ class WorkoutView {
                     <input type="number" class="set-edit-input" id="edit-reps-${exerciseIndex}-${setIndex}" value="${set.reps}" min="1" placeholder="Reps">
                 </div>
             `;
-        }
+    }
 
-        setElement.innerHTML = `
+    setElement.innerHTML = `
             ${editFormHTML}
             <div class="set-actions">
                 <button class="btn-set-action btn-set-save" onclick="window.gymApp.viewControllers.workout.saveSetEdit(${exerciseIndex}, ${setIndex})" title="Save">
@@ -766,197 +792,203 @@ class WorkoutView {
             </div>
         `;
 
-        // Focus the first input
-        if (isDuration) {
-            const minInput = document.getElementById(`edit-duration-min-${exerciseIndex}-${setIndex}`);
-            minInput.focus();
-            minInput.select();
-        } else {
-            const weightInput = document.getElementById(`edit-weight-${exerciseIndex}-${setIndex}`);
-            weightInput.focus();
-            weightInput.select();
-        }
+    // Focus the first input
+    if (isDuration) {
+      const minInput = document.getElementById(`edit-duration-min-${exerciseIndex}-${setIndex}`);
+      minInput.focus();
+      minInput.select();
+    } else {
+      const weightInput = document.getElementById(`edit-weight-${exerciseIndex}-${setIndex}`);
+      weightInput.focus();
+      weightInput.select();
+    }
+  }
+
+  saveSetEdit(exerciseIndex, setIndex) {
+    if (!this.currentWorkoutSession) return;
+
+    const exercise = this.currentWorkoutSession.exercises[exerciseIndex];
+    const set = exercise.sets[setIndex];
+    const isDuration = set.duration > 0;
+
+    if (isDuration) {
+      // Handle duration-based set
+      const minInput = document.getElementById(`edit-duration-min-${exerciseIndex}-${setIndex}`);
+      const secInput = document.getElementById(`edit-duration-sec-${exerciseIndex}-${setIndex}`);
+
+      const minutes = parseInt(minInput.value) || 0;
+      const seconds = parseInt(secInput.value) || 0;
+      const totalSeconds = minutes * 60 + seconds;
+
+      if (totalSeconds === 0) {
+        showToast('Please enter a valid duration', 'error');
+        return;
+      }
+
+      // Update the set
+      set.duration = totalSeconds;
+    } else {
+      // Handle reps-based set
+      const weightInput = document.getElementById(`edit-weight-${exerciseIndex}-${setIndex}`);
+      const repsInput = document.getElementById(`edit-reps-${exerciseIndex}-${setIndex}`);
+
+      const weight = parseFloat(weightInput.value);
+      const reps = parseInt(repsInput.value);
+
+      if (isNaN(weight) || weight < 0 || !reps) {
+        showToast('Please enter valid weight and reps', 'error');
+        return;
+      }
+
+      // Update the set
+      set.weight = weight;
+      set.reps = reps;
     }
 
-    saveSetEdit(exerciseIndex, setIndex) {
-        if (!this.currentWorkoutSession) return;
+    // Re-render completed sets
+    document.getElementById(`completed-sets-${exerciseIndex}`).innerHTML = this.renderCompletedSets(
+      exercise.sets,
+      exerciseIndex,
+    );
 
-        const exercise = this.currentWorkoutSession.exercises[exerciseIndex];
-        const set = exercise.sets[setIndex];
-        const isDuration = set.duration > 0;
+    showToast('Set updated!', 'success');
+  }
 
-        if (isDuration) {
-            // Handle duration-based set
-            const minInput = document.getElementById(`edit-duration-min-${exerciseIndex}-${setIndex}`);
-            const secInput = document.getElementById(`edit-duration-sec-${exerciseIndex}-${setIndex}`);
+  cancelSetEdit(exerciseIndex) {
+    if (!this.currentWorkoutSession) return;
 
-            const minutes = parseInt(minInput.value) || 0;
-            const seconds = parseInt(secInput.value) || 0;
-            const totalSeconds = (minutes * 60) + seconds;
+    const exercise = this.currentWorkoutSession.exercises[exerciseIndex];
 
-            if (totalSeconds === 0) {
-                showToast('Please enter a valid duration', 'error');
-                return;
-            }
+    // Re-render completed sets to cancel edit
+    document.getElementById(`completed-sets-${exerciseIndex}`).innerHTML = this.renderCompletedSets(
+      exercise.sets,
+      exerciseIndex,
+    );
+  }
 
-            // Update the set
-            set.duration = totalSeconds;
-        } else {
-            // Handle reps-based set
-            const weightInput = document.getElementById(`edit-weight-${exerciseIndex}-${setIndex}`);
-            const repsInput = document.getElementById(`edit-reps-${exerciseIndex}-${setIndex}`);
+  deleteSet(exerciseIndex, setIndex) {
+    if (!this.currentWorkoutSession) return;
 
-            const weight = parseFloat(weightInput.value);
-            const reps = parseInt(repsInput.value);
+    const exercise = this.currentWorkoutSession.exercises[exerciseIndex];
 
-            if (isNaN(weight) || weight < 0 || !reps) {
-                showToast('Please enter valid weight and reps', 'error');
-                return;
-            }
+    // Remove the set
+    exercise.sets.splice(setIndex, 1);
 
-            // Update the set
-            set.weight = weight;
-            set.reps = reps;
-        }
+    // Re-render completed sets
+    document.getElementById(`completed-sets-${exerciseIndex}`).innerHTML = this.renderCompletedSets(
+      exercise.sets,
+      exerciseIndex,
+    );
 
-        // Re-render completed sets
-        document.getElementById(`completed-sets-${exerciseIndex}`).innerHTML =
-            this.renderCompletedSets(exercise.sets, exerciseIndex);
+    showToast('Set deleted', 'success');
+  }
 
-        showToast('Set updated!', 'success');
+  updateWorkoutTimer(elapsed) {
+    const minutes = Math.floor(elapsed / 60);
+    const seconds = elapsed % 60;
+    document.getElementById('workout-time').textContent =
+      `${minutes}:${String(seconds).padStart(2, '0')}`;
+  }
+
+  openFinishWorkoutModal() {
+    if (!this.currentWorkoutSession) return;
+
+    // Check if any sets were completed
+    const hasCompletedSets = this.currentWorkoutSession.exercises.some(
+      (ex) => ex.sets && ex.sets.length > 0 && ex.sets.some((set) => set.completed),
+    );
+
+    if (!hasCompletedSets) {
+      showToast('Cannot finish workout - no sets completed', 'error');
+      return;
     }
 
-    cancelSetEdit(exerciseIndex) {
-        if (!this.currentWorkoutSession) return;
+    // Update summary
+    const duration = timerService.getWorkoutElapsed();
+    const minutes = Math.floor(duration / 60);
 
-        const exercise = this.currentWorkoutSession.exercises[exerciseIndex];
+    const unit = this.app.settings.weightUnit;
 
-        // Re-render completed sets to cancel edit
-        document.getElementById(`completed-sets-${exerciseIndex}`).innerHTML =
-            this.renderCompletedSets(exercise.sets, exerciseIndex);
+    document.getElementById('summary-duration').textContent = `${minutes} min`;
+    document.getElementById('summary-volume').textContent =
+      `${Math.round(this.currentWorkoutSession.totalVolume).toLocaleString()} ${unit}`;
+    document.getElementById('summary-sets').textContent = this.currentWorkoutSession.totalSets;
+
+    document.getElementById('finish-workout-modal').classList.add('active');
+  }
+
+  finishWorkout() {
+    if (!this.currentWorkoutSession) return;
+
+    // Check if any sets were completed
+    const hasCompletedSets = this.currentWorkoutSession.exercises.some(
+      (ex) => ex.sets && ex.sets.length > 0 && ex.sets.some((set) => set.completed),
+    );
+
+    if (!hasCompletedSets) {
+      showToast('Cannot save workout - no sets completed', 'error');
+      document.getElementById('finish-workout-modal').classList.remove('active');
+      return;
     }
 
-    deleteSet(exerciseIndex, setIndex) {
-        if (!this.currentWorkoutSession) return;
+    // End the workout
+    this.currentWorkoutSession.endWorkout();
 
-        const exercise = this.currentWorkoutSession.exercises[exerciseIndex];
+    // Get post-workout metrics
+    const avgHR = document.getElementById('avg-heart-rate').value;
+    const maxHR = document.getElementById('max-heart-rate').value;
+    const calories = document.getElementById('calories-burned').value;
+    const notes = document.getElementById('workout-notes').value;
 
-        // Remove the set
-        exercise.sets.splice(setIndex, 1);
+    if (avgHR) this.currentWorkoutSession.avgHeartRate = parseInt(avgHR);
+    if (maxHR) this.currentWorkoutSession.maxHeartRate = parseInt(maxHR);
+    if (calories) this.currentWorkoutSession.caloriesBurned = parseInt(calories);
+    if (notes) this.currentWorkoutSession.notes = notes;
 
-        // Re-render completed sets
-        document.getElementById(`completed-sets-${exerciseIndex}`).innerHTML =
-            this.renderCompletedSets(exercise.sets, exerciseIndex);
+    // Save workout session
+    this.app.workoutSessions.push(this.currentWorkoutSession);
+    this.app.saveWorkoutSessions();
 
-        showToast('Set deleted', 'success');
+    // Clear any paused workout from storage since we're finishing
+    storageService.clearActiveWorkout();
+
+    // Update achievements
+    this.app.updateAchievements();
+
+    // Stop timer
+    timerService.stopWorkoutTimer();
+
+    // Close modal and reset
+    document.getElementById('finish-workout-modal').classList.remove('active');
+    document.getElementById('active-workout').classList.remove('active');
+    document.getElementById('workout-selection').classList.add('active');
+
+    this.currentWorkoutSession = null;
+
+    showToast('Workout completed! Great job!', 'success', 5000);
+    this.render();
+  }
+
+  async endWorkout() {
+    const confirmed = await showConfirmModal({
+      title: 'End Workout',
+      message:
+        'Are you sure you want to end this workout?<br><br><strong>Your progress will not be saved.</strong>',
+      confirmText: 'End Workout',
+      cancelText: 'Continue Workout',
+      isDangerous: true,
+    });
+
+    if (confirmed) {
+      timerService.stopWorkoutTimer();
+      storageService.clearActiveWorkout();
+      document.getElementById('active-workout').classList.remove('active');
+      document.getElementById('workout-selection').classList.add('active');
+      this.currentWorkoutSession = null;
+      this.render();
+      showToast('Workout ended', 'info');
     }
-
-    updateWorkoutTimer(elapsed) {
-        const minutes = Math.floor(elapsed / 60);
-        const seconds = elapsed % 60;
-        document.getElementById('workout-time').textContent =
-            `${minutes}:${String(seconds).padStart(2, '0')}`;
-    }
-
-    openFinishWorkoutModal() {
-        if (!this.currentWorkoutSession) return;
-
-        // Check if any sets were completed
-        const hasCompletedSets = this.currentWorkoutSession.exercises.some(ex =>
-            ex.sets && ex.sets.length > 0 && ex.sets.some(set => set.completed)
-        );
-
-        if (!hasCompletedSets) {
-            showToast('Cannot finish workout - no sets completed', 'error');
-            return;
-        }
-
-        // Update summary
-        const duration = timerService.getWorkoutElapsed();
-        const minutes = Math.floor(duration / 60);
-
-        const unit = this.app.settings.weightUnit;
-
-        document.getElementById('summary-duration').textContent = `${minutes} min`;
-        document.getElementById('summary-volume').textContent =
-            `${Math.round(this.currentWorkoutSession.totalVolume).toLocaleString()} ${unit}`;
-        document.getElementById('summary-sets').textContent =
-            this.currentWorkoutSession.totalSets;
-
-        document.getElementById('finish-workout-modal').classList.add('active');
-    }
-
-    finishWorkout() {
-        if (!this.currentWorkoutSession) return;
-
-        // Check if any sets were completed
-        const hasCompletedSets = this.currentWorkoutSession.exercises.some(ex =>
-            ex.sets && ex.sets.length > 0 && ex.sets.some(set => set.completed)
-        );
-
-        if (!hasCompletedSets) {
-            showToast('Cannot save workout - no sets completed', 'error');
-            document.getElementById('finish-workout-modal').classList.remove('active');
-            return;
-        }
-
-        // End the workout
-        this.currentWorkoutSession.endWorkout();
-
-        // Get post-workout metrics
-        const avgHR = document.getElementById('avg-heart-rate').value;
-        const maxHR = document.getElementById('max-heart-rate').value;
-        const calories = document.getElementById('calories-burned').value;
-        const notes = document.getElementById('workout-notes').value;
-
-        if (avgHR) this.currentWorkoutSession.avgHeartRate = parseInt(avgHR);
-        if (maxHR) this.currentWorkoutSession.maxHeartRate = parseInt(maxHR);
-        if (calories) this.currentWorkoutSession.caloriesBurned = parseInt(calories);
-        if (notes) this.currentWorkoutSession.notes = notes;
-
-        // Save workout session
-        this.app.workoutSessions.push(this.currentWorkoutSession);
-        this.app.saveWorkoutSessions();
-
-        // Clear any paused workout from storage since we're finishing
-        storageService.clearActiveWorkout();
-
-        // Update achievements
-        this.app.updateAchievements();
-
-        // Stop timer
-        timerService.stopWorkoutTimer();
-
-        // Close modal and reset
-        document.getElementById('finish-workout-modal').classList.remove('active');
-        document.getElementById('active-workout').classList.remove('active');
-        document.getElementById('workout-selection').classList.add('active');
-
-        this.currentWorkoutSession = null;
-
-        showToast('Workout completed! Great job!', 'success', 5000);
-        this.render();
-    }
-
-    async endWorkout() {
-        const confirmed = await showConfirmModal({
-            title: 'End Workout',
-            message: 'Are you sure you want to end this workout?<br><br><strong>Your progress will not be saved.</strong>',
-            confirmText: 'End Workout',
-            cancelText: 'Continue Workout',
-            isDangerous: true
-        });
-
-        if (confirmed) {
-            timerService.stopWorkoutTimer();
-            storageService.clearActiveWorkout();
-            document.getElementById('active-workout').classList.remove('active');
-            document.getElementById('workout-selection').classList.add('active');
-            this.currentWorkoutSession = null;
-            this.render();
-            showToast('Workout ended', 'info');
-        }
-    }
+  }
 }
 
 // Initialize

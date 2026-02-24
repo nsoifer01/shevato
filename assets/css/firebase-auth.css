@@ -41,7 +41,7 @@
   display: inline-block;
   white-space: nowrap;
   -webkit-tap-highlight-color: rgba(0, 0, 0, 0);
-  
+
   /* Transitions */
   transition: color 0.2s ease;
 }
@@ -154,7 +154,8 @@ html #auth-modal .auth-modal__content,
   background: #ffffff !important;
   background-color: #ffffff !important;
   color: #333333 !important;
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif !important;
+  font-family:
+    -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif !important;
   font-size: 16px !important;
   font-weight: 400 !important;
   line-height: 1.5 !important;
@@ -218,7 +219,8 @@ body.dark-theme .auth-modal *:after {
   outline: 0 !important;
   background: transparent !important;
   color: inherit !important;
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif !important;
+  font-family:
+    -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif !important;
   font-size: inherit !important;
   font-weight: inherit !important;
   line-height: inherit !important;
@@ -285,7 +287,8 @@ body.dark-theme h3.auth-modal__title {
   display: block !important;
   margin: 0 !important;
   padding: 0 !important;
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif !important;
+  font-family:
+    -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif !important;
   font-size: 1.125rem !important;
   font-weight: 600 !important;
   line-height: 1.2 !important;
@@ -313,7 +316,8 @@ body.dark-theme h3.auth-modal__title {
   height: 2rem !important;
   background: #f3f4f6 !important;
   color: #6b7280 !important;
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif !important;
+  font-family:
+    -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif !important;
   font-size: 1.125rem !important;
   font-weight: 400 !important;
   line-height: 1 !important;
@@ -385,7 +389,8 @@ body.dark-theme .auth-sync__text,
   display: block !important;
   margin: 0 !important;
   padding: 0 !important;
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif !important;
+  font-family:
+    -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif !important;
   font-size: 0.875rem !important;
   font-weight: 400 !important;
   line-height: 1.5 !important;
@@ -447,7 +452,8 @@ body.dark-theme .auth-tab,
   padding: 1rem !important;
   background: none !important;
   color: #6b7280 !important;
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif !important;
+  font-family:
+    -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif !important;
   font-size: 0.875rem !important;
   font-weight: 500 !important;
   line-height: 1 !important;
@@ -517,7 +523,8 @@ body.dark-theme #auth-modal .auth-form {
   margin: 0 !important;
   border: none !important;
   outline: none !important;
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif !important;
+  font-family:
+    -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif !important;
   min-width: 0 !important;
   max-width: none !important;
   min-height: 0 !important;
@@ -602,7 +609,8 @@ body.dark-theme input.auth-form__input {
   border: 1px solid #d1d5db !important;
   border-radius: 0.5rem !important;
   font-size: 1rem !important;
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif !important;
+  font-family:
+    -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif !important;
   font-weight: 400 !important;
   line-height: 1.5 !important;
   color: #000000 !important;
@@ -637,7 +645,8 @@ body.dark-theme .auth-modal .auth-form__input::placeholder,
 body.dark-theme #auth-modal .auth-form__input::placeholder {
   color: #000000 !important;
   opacity: 0.7 !important;
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif !important;
+  font-family:
+    -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif !important;
   font-size: 1rem !important;
   font-weight: 400 !important;
   text-decoration: none !important;
@@ -702,7 +711,8 @@ body.dark-theme #auth-modal .auth-form__error {
   display: none !important;
   color: #ef4444 !important;
   font-size: 0.875rem !important;
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif !important;
+  font-family:
+    -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif !important;
   font-weight: 400 !important;
   line-height: 1.5 !important;
   margin-top: 0.5rem !important;
@@ -767,7 +777,8 @@ body.dark-theme #auth-modal .auth-form__help {
   display: block !important;
   color: #6b7280 !important;
   font-size: 0.875rem !important;
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif !important;
+  font-family:
+    -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif !important;
   font-weight: 400 !important;
   line-height: 1.5 !important;
   margin-top: 0.5rem !important;
@@ -807,9 +818,9 @@ body.dark-theme #auth-modal .auth-form__button,
 button.auth-form__button,
 body button.auth-form__button,
 body.dark-theme button.auth-form__button,
-input[type="submit"].auth-form__button,
-body input[type="submit"].auth-form__button,
-body.dark-theme input[type="submit"].auth-form__button {
+input[type='submit'].auth-form__button,
+body input[type='submit'].auth-form__button,
+body.dark-theme input[type='submit'].auth-form__button {
   /* Reset all */
   all: unset !important;
   /* Reapply specific properties */
@@ -821,7 +832,8 @@ body.dark-theme input[type="submit"].auth-form__button {
   margin-top: 1rem !important;
   background: linear-gradient(135deg, #667eea 0%, #764ba2 100%) !important;
   color: #ffffff !important;
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif !important;
+  font-family:
+    -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif !important;
   font-size: 1rem !important;
   font-weight: 500 !important;
   line-height: 1.2 !important;
@@ -929,7 +941,8 @@ body.dark-theme #auth-modal label.auth-form__label {
   display: block !important;
   color: #000000 !important;
   font-size: 0.875rem !important;
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif !important;
+  font-family:
+    -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif !important;
   font-weight: 600 !important;
   line-height: 1.5 !important;
   margin-bottom: 0.5rem !important;
@@ -957,8 +970,6 @@ body.dark-theme #auth-modal label.auth-form__label {
   cursor: default !important;
 }
 
-
-
 /* AUTH MESSAGES - Complete isolation */
 .auth-message,
 .auth-modal .auth-message,
@@ -977,7 +988,8 @@ body.dark-theme #auth-modal .auth-message {
   padding: 0.75rem 1rem !important;
   border-radius: 0.5rem !important;
   font-size: 0.875rem !important;
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif !important;
+  font-family:
+    -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif !important;
   font-weight: 400 !important;
   line-height: 1.5 !important;
   text-align: left !important;
@@ -1112,7 +1124,8 @@ body.dark-theme #auth-modal .auth-message--warning {
     background: #ffffff !important;
     background-color: #ffffff !important;
     color: #333333 !important;
-    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif !important;
+    font-family:
+      -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif !important;
     font-size: 16px !important;
     font-weight: 400 !important;
     line-height: 1.5 !important;
@@ -1136,7 +1149,7 @@ body.dark-theme #auth-modal .auth-message--warning {
     z-index: auto !important;
     cursor: default !important;
   }
-  
+
   .auth-modal,
   #auth-modal,
   body .auth-modal,
@@ -1145,7 +1158,7 @@ body.dark-theme #auth-modal .auth-message--warning {
   body.dark-theme #auth-modal {
     padding: 0 !important;
   }
-  
+
   .auth__button,
   body .auth__button,
   body.dark-theme .auth__button {
@@ -1159,7 +1172,7 @@ body.dark-theme #auth-modal .auth-message--warning {
   body.dark-theme .auth__user-name {
     display: none !important;
   }
-  
+
   .auth__button,
   body .auth__button,
   body.dark-theme .auth__button {
@@ -1371,11 +1384,11 @@ body.dark-theme .signout-confirm-btn:active {
     margin: 0;
     border-radius: 0.5rem;
   }
-  
+
   .signout-modal__actions {
     flex-direction: column;
   }
-  
+
   .signout-cancel-btn,
   .signout-confirm-btn {
     width: 100%;
@@ -1393,7 +1406,7 @@ body.dark-theme .signout-confirm-btn:active {
   body.dark-theme .auth__button {
     border: 2px solid currentColor !important;
   }
-  
+
   .auth-form__input,
   .auth-modal .auth-form__input,
   #auth-modal .auth-form__input,

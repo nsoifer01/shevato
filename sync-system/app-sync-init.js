@@ -1,7 +1,12 @@
 // App-wide storage sync initialization
 // Integrates with existing Firebase Auth in main.js
 
-import { startStorageSync, stopAllSyncs, getSyncStatus, getGlobalSyncStatus } from './storage-sync-robust.js';
+import {
+  startStorageSync,
+  stopAllSyncs,
+  getSyncStatus,
+  getGlobalSyncStatus,
+} from './storage-sync-robust.js';
 import { enablePersistence } from './firebase-persistence.js';
 import { db } from '../firebase-config.js';
 
@@ -14,50 +19,50 @@ const APP_SYNC_CONFIG = {
     namespace: 'marioKartApp',
     keys: [
       // Base keys (MK8 Deluxe)
-      'marioKartRaces',           // Main race data (mk8d)
-      'marioKartPlayerNames',     // Player names (mk8d)
-      'marioKartPlayerSymbols',   // Player symbols (mk8d) 
-      'marioKartPlayerIcons',     // Player icons (mk8d)
-      'marioKartPlayerCount',     // Number of players (mk8d)
-      'marioKartAutoBackup',      // Backup data (mk8d)
-      
+      'marioKartRaces', // Main race data (mk8d)
+      'marioKartPlayerNames', // Player names (mk8d)
+      'marioKartPlayerSymbols', // Player symbols (mk8d)
+      'marioKartPlayerIcons', // Player icons (mk8d)
+      'marioKartPlayerCount', // Number of players (mk8d)
+      'marioKartAutoBackup', // Backup data (mk8d)
+
       // Mario Kart World keys (mkworld)
-      'marioKartWorldRaces',      // Main race data (mkworld)
+      'marioKartWorldRaces', // Main race data (mkworld)
       'marioKartWorldPlayerNames', // Player names (mkworld)
       'marioKartWorldPlayerSymbols', // Player symbols (mkworld)
       'marioKartWorldPlayerIcons', // Player icons (mkworld)
       'marioKartWorldPlayerCount', // Number of players (mkworld)
       'marioKartWorldAutoBackup', // Backup data (mkworld)
-      
+
       // Shared keys
-      'selectedGameVersion',      // Game version (mk8d/mkworld)
-      'sidebarOpen',              // UI state (shared)
-      'marioKartActionHistory'    // Undo/redo history
+      'selectedGameVersion', // Game version (mk8d/mkworld)
+      'sidebarOpen', // UI state (shared)
+      'marioKartActionHistory', // Undo/redo history
       // Note: Including all keys to ensure complete sync
-    ]
+    ],
   },
-  
+
   'football-h2h': {
     namespace: 'footballH2HApp',
     keys: [
-      'footballH2HGames',         // Main game data
-      'footballH2HPlayers',       // Player data
-      'footballH2HPlayerIcons',   // Player icons
-      'footballH2HAutoBackup'     // Backup data
-    ]
+      'footballH2HGames', // Main game data
+      'footballH2HPlayers', // Player data
+      'footballH2HPlayerIcons', // Player icons
+      'footballH2HAutoBackup', // Backup data
+    ],
   },
 
   'gym-tracker': {
     namespace: 'gymTrackerApp',
     keys: [
-      'gymTrackerPrograms',       // Workout programs
-      'gymTrackerSessions',       // Workout sessions/history
-      'gymTrackerSettings',       // User settings
-      'gymTrackerAchievements',   // Unlocked achievements
-      'gymTrackerActiveProgram',  // Currently active program ID
-      'gymTrackerCustomExercises' // User-created custom exercises
-    ]
-  }
+      'gymTrackerPrograms', // Workout programs
+      'gymTrackerSessions', // Workout sessions/history
+      'gymTrackerSettings', // User settings
+      'gymTrackerAchievements', // Unlocked achievements
+      'gymTrackerActiveProgram', // Currently active program ID
+      'gymTrackerCustomExercises', // User-created custom exercises
+    ],
+  },
 };
 
 /**
@@ -79,7 +84,7 @@ export async function initAppSync() {
   // Determine which app we're in based on URL
   const currentPath = window.location.pathname;
   let currentApp = null;
-  
+
   if (currentPath.includes('/mario-kart/')) {
     currentApp = 'mario-kart';
   } else if (currentPath.includes('/football-h2h/')) {
@@ -95,7 +100,7 @@ export async function initAppSync() {
     const sync = startStorageSync({
       namespace: config.namespace,
       keys: config.keys,
-      useFirestore: true
+      useFirestore: true,
     });
 
     activeSyncs.push({ app: currentApp, sync });
@@ -104,11 +109,12 @@ export async function initAppSync() {
   // Also start sync for other apps so they're ready when user navigates
   // This ensures all app data is available when switching between apps
   for (const [appName, config] of Object.entries(APP_SYNC_CONFIG)) {
-    if (appName !== currentApp) { // Don't double-sync current app
+    if (appName !== currentApp) {
+      // Don't double-sync current app
       const sync = startStorageSync({
         namespace: config.namespace,
         keys: config.keys,
-        useFirestore: true
+        useFirestore: true,
       });
 
       activeSyncs.push({ app: appName, sync });
@@ -120,7 +126,7 @@ export async function initAppSync() {
     const globalSync = startStorageSync({
       namespace: 'globalPrefs',
       keys: ['theme'], // Theme is used across apps
-      useFirestore: true
+      useFirestore: true,
     });
 
     activeSyncs.push({ app: 'global', sync: globalSync });
@@ -143,11 +149,11 @@ export function stopAppSync() {
 export function getAppSyncStatus() {
   return {
     activeCount: activeSyncs.length,
-    activeSyncs: activeSyncs.map(s => ({ 
-      app: s.app, 
-      status: getSyncStatus(s.sync?.namespace || s.app + 'App') 
+    activeSyncs: activeSyncs.map((s) => ({
+      app: s.app,
+      status: getSyncStatus(s.sync?.namespace || s.app + 'App'),
     })),
-    global: getGlobalSyncStatus()
+    global: getGlobalSyncStatus(),
   };
 }
 
@@ -162,7 +168,7 @@ export function setupAppSyncIntegration() {
       // Hook into existing auth state changes
       window.firebaseAuth.onAuthStateChange((user) => {
         if (user) {
-          initAppSync().catch(error => {
+          initAppSync().catch((error) => {
             console.error('❌ App sync initialization failed:', error);
           });
         } else {
@@ -174,7 +180,7 @@ export function setupAppSyncIntegration() {
       setTimeout(waitForAuth, 100);
     }
   };
-  
+
   waitForAuth();
 }
 

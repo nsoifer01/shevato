@@ -1,0 +1,13 @@
+node_modules/
+dist/
+assets/js/jquery.min.js
+assets/js/browser.min.js
+assets/js/breakpoints.min.js
+report_assets/
+report.html
+report.pdf
+*.min.js
+*.min.css
+
+# CSS file with syntax error (to be fixed in later phase)
+apps/mario-kart/css/mario-kart-overrides.css

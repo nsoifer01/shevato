@@ -1,18 +1,18 @@
 // Global sync loading modal - shows while waiting for Firebase data to sync
 // This modal appears when user signs in and waits for data to load
 
-(function() {
+(function () {
   'use strict';
-  
+
   const MODAL_ID = 'syncLoadingModal';
   let modalElement = null;
   let isShowing = false;
   let syncStartTime = null;
-  
+
   // Create modal HTML and CSS
   function createModal() {
     if (modalElement) return;
-    
+
     // Create modal container
     modalElement = document.createElement('div');
     modalElement.id = MODAL_ID;
@@ -36,7 +36,7 @@
         </div>
       </div>
     `;
-    
+
     // Add CSS styles
     const styles = `
       <style id="syncModalStyles">
@@ -274,66 +274,59 @@
         }
       </style>
     `;
-    
+
     // Add styles to head
     document.head.insertAdjacentHTML('beforeend', styles);
-    
+
     // Add modal to body
     document.body.appendChild(modalElement);
   }
-  
+
   // Show the modal
   function showModal() {
     if (isShowing) return;
-    
+
     createModal();
     isShowing = true;
     syncStartTime = Date.now();
-    
+
     modalElement.style.display = 'block';
-    
+
     // Prevent body scrolling
     document.body.style.overflow = 'hidden';
-    
-    console.log('🔄 Sync loading modal shown');
   }
-  
+
   // Hide the modal
   function hideModal() {
     if (!isShowing || !modalElement) return;
-    
+
     isShowing = false;
     modalElement.style.display = 'none';
-    
+
     // Restore body scrolling
     document.body.style.overflow = '';
-    
+
     if (syncStartTime) {
-      const duration = Date.now() - syncStartTime;
-      console.log(`✅ Sync loading modal hidden after ${duration}ms`);
       syncStartTime = null;
     }
   }
-  
+
   // Update modal message
   function updateMessage(title, message) {
     if (!modalElement) return;
-    
+
     const titleEl = modalElement.querySelector('.sync-modal-title');
     const messageEl = modalElement.querySelector('.sync-modal-message');
-    
+
     if (titleEl && title) titleEl.textContent = title;
     if (messageEl && message) messageEl.textContent = message;
   }
-  
+
   // Global API
   window.SyncLoadingModal = {
     show: showModal,
     hide: hideModal,
     updateMessage: updateMessage,
-    isVisible: () => isShowing
+    isVisible: () => isShowing,
   };
-  
-  console.log('✅ Global sync loading modal initialized');
-  
 })();

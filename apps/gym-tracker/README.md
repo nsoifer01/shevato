@@ -79,31 +79,37 @@ gym-tracker/
 ### Data Models
 
 #### Program
+
 - Workout program with exercises
 - Contains list of exercises with target sets/reps
 - Supports exercise reordering
 
 #### WorkoutDay
+
 - Template for a day's workout
 - Contains list of exercises with target sets/reps
 - Part of a Program
 
 #### WorkoutSession
+
 - Actual workout execution record
 - Contains WorkoutExercise objects with completed sets
 - Tracks duration, volume, and post-workout metrics
 
 #### WorkoutExercise
+
 - Exercise within a workout session
 - Contains array of Set objects
 - Tracks completion status
 
 #### Set
+
 - Single set of an exercise
 - Records weight, reps, and completion status
 - Calculates volume (weight × reps)
 
 #### Achievement
+
 - Unlockable objectives
 - Types: daily, weekly, monthly, global
 - Tracks progress and unlock status
@@ -111,23 +117,27 @@ gym-tracker/
 ### Services
 
 #### StorageService
+
 - Manages localStorage and Firebase sync
 - CRUD operations for all data types
 - Import/export functionality
 - Backup/restore capabilities
 
 #### TimerService
+
 - Workout duration tracking
 - Rest timer between sets
 - Background timer support
 
 #### AnalyticsService
+
 - Calculates statistics and trends
 - Personal records tracking
 - Exercise progression analysis
 - Volume calculations
 
 #### AchievementService
+
 - Achievement definition and tracking
 - Progress calculation
 - Unlock detection
@@ -137,6 +147,7 @@ gym-tracker/
 The app is optimized for mobile use during workouts:
 
 ### Mobile Features
+
 - Large touch targets (44×44px minimum)
 - Bottom navigation for one-handed use
 - Quick data entry (weight/reps only)
@@ -145,6 +156,7 @@ The app is optimized for mobile use during workouts:
 - Rest timer with notifications
 
 ### Desktop Features
+
 - Side navigation for easy access
 - Comprehensive analytics dashboard
 - Program builder with drag-drop (planned)
@@ -155,6 +167,7 @@ The app is optimized for mobile use during workouts:
 ## Dark Theme
 
 Designed for gym environments with low lighting:
+
 - Deep dark backgrounds (#0f0f23)
 - High contrast text
 - Purple accent colors (#6c63ff)
@@ -164,17 +177,20 @@ Designed for gym environments with low lighting:
 ## Data Persistence
 
 ### Local Storage
+
 - Primary data store for instant access
 - Works offline
 - Syncs automatically when online
 
 ### Firebase Integration
+
 - Real-time database sync
 - User authentication
 - Cross-device synchronization
 - Automatic conflict resolution
 
 ### Export/Import
+
 - JSON format
 - Complete data backup
 - Transfer between devices
@@ -183,6 +199,7 @@ Designed for gym environments with low lighting:
 ## User Workflow
 
 ### Desktop/Mobile (Program Creation)
+
 1. Create program with exercises
 2. Add exercises from 500+ exercise database or create custom
 3. Reorder exercises as needed
@@ -190,6 +207,7 @@ Designed for gym environments with low lighting:
 5. Sync to Firebase or export JSON
 
 ### Mobile (Workout Execution)
+
 1. Open app → Select program to start workout
 2. For each exercise:
    - View all previous sets from last workout
@@ -201,6 +219,7 @@ Designed for gym environments with low lighting:
 5. View progress and unlocked achievements
 
 ### Analysis (Desktop or Mobile)
+
 1. View calendar with workout history
 2. Check analytics dashboard
 3. Review exercise progression
@@ -210,6 +229,7 @@ Designed for gym environments with low lighting:
 ## Exercise Database
 
 500+ exercises across categories:
+
 - **Chest**: Barbell, dumbbell, machine, cable, and bodyweight variations
 - **Back**: Pull-ups, rows, deadlifts, machine, and cable exercises
 - **Shoulders**: Pressing, raises, machine, and cable variations
@@ -222,6 +242,7 @@ Designed for gym environments with low lighting:
 - **Full Body**: Compound movements and functional exercises
 
 Each exercise includes:
+
 - Name
 - Category (muscle group based)
 - Primary muscle group
@@ -229,7 +250,9 @@ Each exercise includes:
 - Equipment required
 
 ### Custom Exercises
+
 Users can create custom exercises with:
+
 - Custom name
 - Category selection
 - Muscle group selection
@@ -239,18 +262,22 @@ Users can create custom exercises with:
 ## Achievements System
 
 ### Daily Achievements
+
 - Complete a workout today
 - Reach volume milestones
 
 ### Weekly Achievements
+
 - Workout frequency goals
 - Consistency tracking
 
 ### Monthly Achievements
+
 - Total workouts per month
 - Volume milestones
 
 ### Lifetime Achievements
+
 - Total workout count milestones
 - Exercise variety goals
 - Workout streaks
@@ -283,17 +310,20 @@ Users can create custom exercises with:
 ## Development
 
 ### Prerequisites
+
 - Node.js (for development server)
 - Firebase account (for cloud sync)
 - Modern web browser
 
 ### Setup
+
 1. Clone repository
 2. Configure Firebase credentials
 3. Open `index.html` in browser or serve with local server
 4. Create account and start tracking!
 
 ### Testing
+
 - Test on actual mobile devices for best experience
 - Use Chrome DevTools device emulation
 - Test offline functionality
@@ -302,6 +332,7 @@ Users can create custom exercises with:
 ## Credits
 
 Built with:
+
 - Vanilla JavaScript (ES6 modules)
 - CSS3 (Grid, Flexbox)
 - Firebase (Authentication, Realtime Database)

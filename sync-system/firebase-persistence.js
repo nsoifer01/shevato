@@ -1,12 +1,12 @@
 // Firebase offline persistence module
 // Enables IndexedDB caching for Firestore with graceful fallbacks
 
-import { 
+import {
   enableIndexedDbPersistence,
   enableMultiTabIndexedDbPersistence,
   disableNetwork,
-  enableNetwork
-} from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
+  enableNetwork,
+} from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js';
 
 /**
  * Enable offline persistence for Firestore
@@ -38,17 +38,16 @@ export async function enablePersistence(db, multiTab = true) {
     await enableIndexedDbPersistence(db);
     window._firestorePersistenceEnabled = true;
     return { success: true, message: 'Single-tab persistence enabled (deprecated API)' };
-
   } catch (err) {
     // Handle common errors
     let message = 'Persistence not available: ';
-    
+
     if (err.code === 'failed-precondition') {
       // Multiple tabs open
       message += 'Multiple tabs open. Close other tabs and reload.';
     } else if (err.code === 'unimplemented') {
       // Browser doesn't support persistence
-      message += 'Browser doesn\'t support offline persistence.';
+      message += "Browser doesn't support offline persistence.";
     } else if (err.name === 'QuotaExceededError') {
       // Storage quota exceeded
       message += 'Storage quota exceeded. Clear browser data.';
@@ -73,10 +72,8 @@ export async function toggleNetwork(db, online) {
   try {
     if (online) {
       await enableNetwork(db);
-      console.log('Network enabled');
     } else {
       await disableNetwork(db);
-      console.log('Network disabled - offline mode');
     }
   } catch (err) {
     console.error('Failed to toggle network:', err);
@@ -89,5 +86,5 @@ export const PERSISTENCE_CAVEATS = {
   firefox: 'Firefox in Private Mode has limited IndexedDB quota.',
   chrome: 'Chrome works best with multi-tab persistence.',
   mobile: 'Mobile browsers may clear IndexedDB when storage is low.',
-  quota: 'Default quota is ~50MB. Monitor usage to avoid data loss.'
+  quota: 'Default quota is ~50MB. Monitor usage to avoid data loss.',
 };

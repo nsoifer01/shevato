@@ -11,7 +11,7 @@ import {
   updatePlayerCount,
   updatePlayerName,
   backupToGoogleDrive,
-} from './main.js';   // or wherever you actually export them
+} from './main.js'; // or wherever you actually export them
 
 // expose as globals
 Object.assign(window, {

@@ -1,6 +1,5 @@
 /* Override some styles for medical theme */
 
-
 .highlights section {
   transition: all 0.3s ease;
   border: 2px solid transparent;
@@ -47,13 +46,11 @@
   transform: translateY(-2px);
 }
 
-
 .lang-btn.active {
   background: #28a745;
   color: white;
   border-color: #28a745;
 }
-
 
 /* Contact header styles */
 .contact-header {
@@ -84,13 +81,11 @@
   transform: scale(1.05);
 }
 
-
 .service-tagline {
   font-size: 1.3rem;
   color: #666;
   margin: 10px 0;
 }
-
 
 /* Emergency banner */
 .emergency-banner {
@@ -105,13 +100,19 @@
 }
 
 @keyframes pulse {
-  0% { transform: scale(1); }
-  50% { transform: scale(1.02); }
-  100% { transform: scale(1); }
+  0% {
+    transform: scale(1);
+  }
+  50% {
+    transform: scale(1.02);
+  }
+  100% {
+    transform: scale(1);
+  }
 }
 
 /* Hide language-specific content by default */
-[lang]:not([lang="en"]) {
+[lang]:not([lang='en']) {
   display: none;
 }
 
@@ -128,7 +129,9 @@
   margin-bottom: 1rem;
   font-size: 4rem !important;
   color: #0066cc;
-  transition: transform 0.3s ease, color 0.3s ease;
+  transition:
+    transform 0.3s ease,
+    color 0.3s ease;
 }
 
 .highlights .content header .icon:hover {
@@ -149,7 +152,7 @@
 }
 
 /* Special styling for Russian titles to handle length */
-.highlights .content header h2[lang="ru"] {
+.highlights .content header h2[lang='ru'] {
   font-size: 1.2rem;
   line-height: 1.25;
 }
@@ -159,12 +162,12 @@
   .highlights .content header .icon {
     font-size: 3.5rem !important;
   }
-  
+
   .highlights .content header h2 {
     font-size: 1.3rem;
   }
-  
-  .highlights .content header h2[lang="ru"] {
+
+  .highlights .content header h2[lang='ru'] {
     font-size: 1.1rem;
   }
 }
@@ -173,31 +176,31 @@
   .brand-title {
     font-size: 2.5rem;
   }
-  
+
   .main-phone {
     font-size: 2rem;
   }
-  
+
   .lang-btn {
     padding: 10px 16px;
     font-size: 0.9rem;
   }
-  
+
   .highlights .content header {
     margin-bottom: 1rem;
   }
-  
+
   .highlights .content header .icon {
     font-size: 3rem !important;
     margin-bottom: 0.8rem;
   }
-  
+
   .highlights .content header h2 {
     font-size: 1.2rem;
     line-height: 1.2;
   }
-  
-  .highlights .content header h2[lang="ru"] {
+
+  .highlights .content header h2[lang='ru'] {
     font-size: 1rem;
     line-height: 1.2;
   }
