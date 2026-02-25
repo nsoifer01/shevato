@@ -1,5 +1,5 @@
 // Custom Tooltip System for Mario Kart Race Tracker
-class TooltipManager {
+export class TooltipManager {
   constructor() {
     this.tooltipElement = null;
     this.currentTarget = null;
@@ -378,11 +378,13 @@ class TooltipManager {
   }
 }
 
-// Initialize tooltip manager when DOM is ready
-let tooltipManager;
-document.addEventListener('DOMContentLoaded', () => {
+// Tooltip manager instance
+export let tooltipManager;
+
+// Initialize tooltip manager
+export function initTooltips() {
   tooltipManager = new TooltipManager();
 
-  // Export for use in other modules
+  // Expose for use in other modules
   window.tooltipManager = tooltipManager;
-});
+}

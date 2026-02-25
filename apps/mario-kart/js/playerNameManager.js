@@ -133,7 +133,7 @@ function getDisplayName(playerKey) {
 }
 
 // Export functions for global access
-window.PlayerNameManager = {
+export const PlayerNameManager = {
   initialize: initializePlayerNames,
   get: getPlayerName,
   getAll: getAllPlayerNames,
@@ -143,5 +143,5 @@ window.PlayerNameManager = {
   subscribe: addNameChangeListener,
 };
 
-// Auto-initialize on load
-document.addEventListener('DOMContentLoaded', initializePlayerNames);
+// Keep on window for runtime access by other modules
+window.PlayerNameManager = PlayerNameManager;

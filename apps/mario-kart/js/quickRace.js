@@ -1,8 +1,9 @@
 // Quick Add Race Widget Functionality
+import { state } from './store.js';
 
 let quickRaceOpen = false;
 
-function toggleQuickRaceWidget() {
+export function toggleQuickRaceWidget() {
   const form = document.getElementById('quick-race-form');
   const fab = document.getElementById('fab-button');
 
@@ -13,13 +14,13 @@ function toggleQuickRaceWidget() {
   }
 }
 
-function openQuickRaceWidget() {
+export function openQuickRaceWidget() {
   const form = document.getElementById('quick-race-form');
   const fab = document.getElementById('fab-button');
 
   // Close other dropdowns first
-  if (typeof closeAllDropdowns === 'function') {
-    closeAllDropdowns();
+  if (typeof window.closeAllDropdowns === 'function') {
+    window.closeAllDropdowns();
   }
 
   // Generate player inputs
@@ -47,7 +48,7 @@ function openQuickRaceWidget() {
   }, 300);
 }
 
-function closeQuickRaceWidget() {
+export function closeQuickRaceWidget() {
   const form = document.getElementById('quick-race-form');
   const fab = document.getElementById('fab-button');
 
@@ -64,7 +65,7 @@ function closeQuickRaceWidget() {
   quickRaceOpen = false;
 }
 
-function generateQuickPlayerInputs() {
+export function generateQuickPlayerInputs() {
   const container = document.getElementById('quick-race-inputs');
   container.innerHTML = '';
 
@@ -82,9 +83,9 @@ function generateQuickPlayerInputs() {
             <input type="number" 
                    class="quick-position-input" 
                    id="quick-player${i}" 
-                   min="${MIN_POSITIONS}" 
-                   max="${MAX_POSITIONS}" 
-                   placeholder="${MIN_POSITIONS}-${MAX_POSITIONS}"
+                   min="${window.MIN_POSITIONS}"
+                   max="${window.MAX_POSITIONS}"
+                   placeholder="${window.MIN_POSITIONS}-${window.MAX_POSITIONS}"
                    onkeypress="handleQuickInputEnter(event, ${i})"
                    oninput="validateQuickInput(this)">
         `;
@@ -93,7 +94,7 @@ function generateQuickPlayerInputs() {
   }
 }
 
-function handleQuickInputEnter(event, playerIndex) {
+export function handleQuickInputEnter(event, playerIndex) {
   if (event.key === 'Enter') {
     const currentPlayers = getCurrentPlayerCount();
     if (playerIndex < currentPlayers) {
@@ -107,7 +108,7 @@ function handleQuickInputEnter(event, playerIndex) {
   }
 }
 
-function validateQuickInput(input) {
+export function validateQuickInput(input) {
   const value = parseInt(input.value);
   if (value < 1 || value > window.MAX_POSITIONS || isNaN(value)) {
     input.style.borderColor = '#ef4444';
@@ -116,7 +117,7 @@ function validateQuickInput(input) {
   }
 }
 
-function saveQuickRace() {
+export function saveQuickRace() {
   const currentPlayers = getCurrentPlayerCount();
   const positions = {};
   let allValid = true;
@@ -126,7 +127,7 @@ function saveQuickRace() {
     const input = document.getElementById(`quick-player${i}`);
     const value = parseInt(input.value);
 
-    if (!value || value < MIN_POSITIONS || value > MAX_POSITIONS) {
+    if (!value || value < window.MIN_POSITIONS || value > window.MAX_POSITIONS) {
       allValid = false;
       input.style.borderColor = '#ef4444';
       input.focus();
@@ -138,7 +139,7 @@ function saveQuickRace() {
 
   if (!allValid) {
     showMessage(
-      `Please enter valid positions (${MIN_POSITIONS}-${MAX_POSITIONS}) for all players`,
+      `Please enter valid positions (${window.MIN_POSITIONS}-${window.MAX_POSITIONS}) for all players`,
       true,
     );
     return;
@@ -159,18 +160,18 @@ function saveQuickRace() {
       ...positions,
     };
 
-    // Add to races array (assuming it exists globally)
-    if (typeof races !== 'undefined') {
-      races.push(race);
-      localStorage.setItem('marioKartRaces', JSON.stringify(races));
+    // Add to races array
+    if (state.races) {
+      state.races.push(race);
+      localStorage.setItem('marioKartRaces', JSON.stringify(state.races));
 
       // Update displays
-      if (typeof updateAchievements === 'function') updateAchievements();
-      if (typeof updateRaceHistory === 'function') updateRaceHistory();
-      if (typeof updateStatistics === 'function') updateStatistics();
+      if (typeof window.updateAchievements === 'function') window.updateAchievements();
+      if (typeof window.updateRaceHistory === 'function') window.updateRaceHistory();
+      if (typeof window.updateStatistics === 'function') window.updateStatistics();
 
       // Show success message
-      const raceCount = races.length;
+      const raceCount = state.races.length;
       showMessage(`Race #${raceCount} saved successfully! 🏁`);
 
       // Clear inputs
@@ -192,7 +193,7 @@ function saveQuickRace() {
   }
 }
 
-function clearQuickInputs() {
+export function clearQuickInputs() {
   const inputs = document.querySelectorAll('.quick-position-input');
   inputs.forEach((input) => {
     input.value = '';
@@ -200,13 +201,13 @@ function clearQuickInputs() {
   });
 }
 
-function updateSessionInfo() {
+export function updateSessionInfo() {
   const info = document.getElementById('session-info');
   if (!info) return;
 
   const today = new Date().toLocaleDateString('en-CA');
-  const todayRaces = races ? races.filter((race) => race.date === today).length : 0;
-  const totalRaces = races ? races.length : 0;
+  const todayRaces = state.races ? state.races.filter((race) => race.date === today).length : 0;
+  const totalRaces = state.races ? state.races.length : 0;
 
   info.textContent = `Today: ${todayRaces} races • Total: ${totalRaces}`;
 }

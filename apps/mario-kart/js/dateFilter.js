@@ -1,8 +1,10 @@
-let currentDateFilter = 'all';
+import { state } from './store.js';
+
+export let currentDateFilter = 'all';
 let customStartDate = null;
 let customEndDate = null;
 
-function setDateFilter(filter) {
+export function setDateFilter(filter) {
   currentDateFilter = filter;
 
   // Reset pagination when filter changes
@@ -43,8 +45,8 @@ function setDateFilter(filter) {
       activityButton.disabled = true;
 
       // If currently on activity view and switching to today filter, switch to stats view
-      if (currentView === 'activity') {
-        toggleView('stats');
+      if (state.currentView === 'activity') {
+        window.toggleView('stats');
       }
     } else {
       activityButton.style.background = '';
@@ -53,16 +55,16 @@ function setDateFilter(filter) {
     }
   }
 
-  showMessage(
+  window.showMessage(
     `Filter set to: ${filter === 'all' ? 'All Time' : filter === 'today' ? 'Today' : filter === 'week' ? 'Last 7 Days' : filter === 'month' ? 'Last 30 Days' : 'Custom Range'}`,
   );
 
   if (filter !== 'custom') {
-    updateDisplay();
+    window.updateDisplay();
   }
 }
 
-function showCustomDateError(message) {
+export function showCustomDateError(message) {
   // Remove any existing error message
   clearCustomDateError();
 
@@ -92,14 +94,14 @@ function showCustomDateError(message) {
   }
 }
 
-function clearCustomDateError() {
+export function clearCustomDateError() {
   const existingError = document.getElementById('custom-date-error');
   if (existingError) {
     existingError.remove();
   }
 }
 
-function applyCustomDateFilter() {
+export function applyCustomDateFilter() {
   const startDate = document.getElementById('filter-start-date').value;
   const endDate = document.getElementById('filter-end-date').value;
 
@@ -119,40 +121,40 @@ function applyCustomDateFilter() {
 
   customStartDate = startDate;
   customEndDate = endDate;
-  updateDisplay();
+  window.updateDisplay();
 
   // Show success message
-  showMessage(`Filter set to: ${startDate} to ${endDate}`);
+  window.showMessage(`Filter set to: ${startDate} to ${endDate}`);
 }
 
-function getFilteredRaces() {
-  let filtered = races;
+export function getFilteredRaces() {
+  let filtered = state.races;
   // Get today's date in user's local timezone
   const today = new Date().toLocaleDateString('en-CA');
 
   switch (currentDateFilter) {
     case 'today':
-      filtered = races.filter((race) => race.date === today);
+      filtered = state.races.filter((race) => race.date === today);
       break;
     case 'week':
       const weekAgo = new Date();
       weekAgo.setDate(weekAgo.getDate() - 7);
-      filtered = races.filter((race) => new Date(race.date) >= weekAgo);
+      filtered = state.races.filter((race) => new Date(race.date) >= weekAgo);
       break;
     case 'month':
       const monthAgo = new Date();
       monthAgo.setDate(monthAgo.getDate() - 30);
-      filtered = races.filter((race) => new Date(race.date) >= monthAgo);
+      filtered = state.races.filter((race) => new Date(race.date) >= monthAgo);
       break;
     case 'custom':
       if (customStartDate && customEndDate) {
-        filtered = races.filter(
+        filtered = state.races.filter(
           (race) => race.date >= customStartDate && race.date <= customEndDate,
         );
       }
       break;
     default: // 'all'
-      filtered = races;
+      filtered = state.races;
   }
 
   return filtered;

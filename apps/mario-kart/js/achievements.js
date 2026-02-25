@@ -1,10 +1,12 @@
+import { state } from './store.js';
+
 // Helper function to get "good finish" threshold (top half)
-function getGoodFinishThreshold() {
+export function getGoodFinishThreshold() {
   return Math.floor(window.MAX_POSITIONS / 2);
 }
 
 // Helper function to get position ranges for current game mode
-function getPositionRanges() {
+export function getPositionRanges() {
   // Get current game version from the getter function or window property
   const currentGameVersion =
     (window.getCurrentGameVersion && window.getCurrentGameVersion()) ||
@@ -68,7 +70,7 @@ const ACHIEVEMENTS = {
   },
 };
 
-function createAllBars() {
+export function createAllBars() {
   createAchievements();
   createPositionHeatBars();
   createRecentStreakBars();
@@ -76,7 +78,7 @@ function createAllBars() {
 }
 
 function createAchievements() {
-  players.forEach((player) => {
+  state.players.forEach((player) => {
     const container = document.getElementById(player + '-achievements');
     // Skip if container doesn't exist (e.g., player field is hidden)
     if (!container) return;
@@ -118,7 +120,7 @@ function createAchievements() {
     // Check if there are any achievements with data
     const hasExpandableData = Object.keys(ACHIEVEMENTS).some((achievementKey) => {
       const achievement = ACHIEVEMENTS[achievementKey];
-      const allAchievements = calculateAchievements(player, getFilteredRaces());
+      const allAchievements = calculateAchievements(player, window.getFilteredRaces());
       const achievementData = allAchievements[achievementKey];
       return achievementData && achievementData.current > 0;
     });
@@ -130,9 +132,14 @@ function createAchievements() {
 
       // Check if there are any active streaks before showing active button
       const hasActiveStreaks = Object.keys(ACHIEVEMENTS).some((achievementKey) => {
-        const allAchievements = calculateAchievements(player, getFilteredRaces());
+        const allAchievements = calculateAchievements(player, window.getFilteredRaces());
         const achievementData = allAchievements[achievementKey];
-        return checkForActiveStreak(achievementKey, achievementData, player, getFilteredRaces());
+        return checkForActiveStreak(
+          achievementKey,
+          achievementData,
+          player,
+          window.getFilteredRaces(),
+        );
       });
 
       if (hasActiveStreaks) {
@@ -165,7 +172,7 @@ function createAchievements() {
 }
 
 function createPositionHeatBars() {
-  players.forEach((player) => {
+  state.players.forEach((player) => {
     const container = document.getElementById(player + '-position-heat');
     // Skip if container doesn't exist
     if (!container) return;
@@ -215,7 +222,7 @@ function createPositionHeatBars() {
 }
 
 function createRecentStreakBars() {
-  players.forEach((player) => {
+  state.players.forEach((player) => {
     const container = document.getElementById(player + '-recent-streak');
     // Skip if container doesn't exist
     if (!container) return;
@@ -245,7 +252,7 @@ function createRecentStreakBars() {
 }
 
 function createSweetSpotBars() {
-  players.forEach((player) => {
+  state.players.forEach((player) => {
     const container = document.getElementById(player + '-sweet-spot');
     // Skip if container doesn't exist
     if (!container) return;
@@ -507,7 +514,7 @@ function calculateAchievements(player, raceData) {
   return achievements;
 }
 
-function toggleAchievementDetails(player, achievementKey) {
+export function toggleAchievementDetails(player, achievementKey) {
   const expandedSection = document.getElementById(`${player}-expanded-achievements`);
   if (!expandedSection) return;
 
@@ -530,7 +537,7 @@ function toggleAchievementDetails(player, achievementKey) {
   } else {
     // Add to expanded section in correct order
     const achievement = ACHIEVEMENTS[achievementKey];
-    const allAchievements = calculateAchievements(player, getFilteredRaces());
+    const allAchievements = calculateAchievements(player, window.getFilteredRaces());
     const achievementData = allAchievements[achievementKey];
 
     // Create expanded achievement item
@@ -544,7 +551,7 @@ function toggleAchievementDetails(player, achievementKey) {
       achievementKey,
       achievementData,
       player,
-      getFilteredRaces(),
+      window.getFilteredRaces(),
     );
     if (hasActiveStreak) {
       expandedItem.classList.add('active-streak-glow');
@@ -606,7 +613,7 @@ function insertExpandedItemInOrder(expandedList, newItem) {
   }
 }
 
-function toggleActiveStreaks(player) {
+export function toggleActiveStreaks(player) {
   const expandedSection = document.getElementById(`${player}-expanded-achievements`);
   if (!expandedSection) return;
   const expandedList = expandedSection.querySelector('.expanded-achievements-list');
@@ -691,8 +698,8 @@ function updateToggleActiveButtonState(player) {
   }
 }
 
-function smartUpdateExpandedAchievements(raceData) {
-  players.forEach((player) => {
+export function smartUpdateExpandedAchievements(raceData) {
+  state.players.forEach((player) => {
     const expandedSection = document.getElementById(`${player}-expanded-achievements`);
     if (!expandedSection) return;
 
@@ -760,8 +767,8 @@ function smartUpdateExpandedAchievements(raceData) {
   });
 }
 
-function collapseAllAchievements() {
-  players.forEach((player) => {
+export function collapseAllAchievements() {
+  state.players.forEach((player) => {
     // Collapse all expanded achievements
     const expandedSection = document.getElementById(`${player}-expanded-achievements`);
     if (!expandedSection) return;
@@ -796,7 +803,7 @@ function collapseAllAchievements() {
 }
 
 function clearAchievementButtons() {
-  players.forEach((player) => {
+  state.players.forEach((player) => {
     const container = document.getElementById(player + '-achievements');
     // Skip if container doesn't exist
     if (!container) return;
@@ -809,7 +816,7 @@ function clearAchievementButtons() {
 }
 
 function updateAchievementButtons(raceData) {
-  players.forEach((player) => {
+  state.players.forEach((player) => {
     const container = document.getElementById(player + '-achievements');
 
     // Skip if container doesn't exist (e.g., when switching tabs)
@@ -881,7 +888,7 @@ function updateAchievementButtons(raceData) {
   });
 }
 
-function togglePositionHeatDetails(player, rangeIndex) {
+export function togglePositionHeatDetails(player, rangeIndex) {
   const expandedSection = document.getElementById(`${player}-expanded-position-heat`);
   if (!expandedSection) return;
 
@@ -904,7 +911,7 @@ function togglePositionHeatDetails(player, rangeIndex) {
     const ranges = getPositionRanges();
 
     const rangeData = ranges[rangeIndex];
-    const raceData = getFilteredRaces();
+    const raceData = window.getFilteredRaces();
     const playerRaces = raceData.filter((race) => race[player] !== null);
     const [min, max] = rangeData.range;
     const racesInRange = playerRaces.filter((race) => race[player] >= min && race[player] <= max);
@@ -923,7 +930,7 @@ function togglePositionHeatDetails(player, rangeIndex) {
     expandedItem.innerHTML = `
             <div class="expanded-position-heat-bar">
                 <div class="position-heat-count">${racesInRange.length} ${racesInRange.length === 1 ? 'race' : 'races'}</div>
-                <div class="position-heat-avg">Avg Position: ${formatDecimal(avgPosition)}</div>
+                <div class="position-heat-avg">Avg Position: ${window.formatDecimal(avgPosition)}</div>
                 <div class="position-heat-close-icon" onclick="togglePositionHeatDetails('${player}', ${rangeIndex})">✕</div>
             </div>
         `;
@@ -986,7 +993,7 @@ function generateAchievementDetail(achievementKey, achievement, player) {
   const getStreakStatus = (streakRaces) => {
     if (streakRaces.length === 0) return { isActive: false, breakingPosition: null };
 
-    const allRaces = getFilteredRaces();
+    const allRaces = window.getFilteredRaces();
     const playerRaces = allRaces
       .filter((race) => race[player] !== null)
       .sort((a, b) => {
@@ -1020,7 +1027,7 @@ function generateAchievementDetail(achievementKey, achievement, player) {
   };
 
   const getRaceNumbers = (races) => {
-    const allRaces = getFilteredRaces();
+    const allRaces = window.getFilteredRaces();
     return races.map((race) => {
       const index = allRaces.findIndex(
         (r) => r.date === race.date && r.timestamp === race.timestamp,
@@ -1092,24 +1099,24 @@ function generateAchievementDetail(achievementKey, achievement, player) {
         const activeRaceLabel = active.races.length === 1 ? 'Race' : 'Races';
 
         clutchResult = `${activeRaceLabel}: ${formatRaceRange(activeRaceNumbers)}<br>`;
-        clutchResult += `Active streak (${active.count}). Current avg position: ${formatDecimal(active.overallAverage)}`;
+        clutchResult += `Active streak (${active.count}). Current avg position: ${window.formatDecimal(active.overallAverage)}`;
       } else {
         // Show best streak info
         clutchResult = `${clutchRaceLabel}: ${formatRaceRange(clutchRaceNumbers)}<br>`;
         clutchResult += `Ended: ${formatDateTime(achievement.details.endDate, lastClutchRace.timestamp)}`;
         if (clutchStatus.breakingPosition) {
           clutchResult += `<br>Position that ended the streak: ${clutchStatus.breakingPosition}`;
-          clutchResult += `<br>Avg position at streak end: ${formatDecimal(achievement.details.overallAverage)}`;
+          clutchResult += `<br>Avg position at streak end: ${window.formatDecimal(achievement.details.overallAverage)}`;
         }
 
         // If there's a current active streak (but not better), show that info too
         if (achievement.details.currentActiveStreak) {
           const active = achievement.details.currentActiveStreak;
-          const allRaces = getFilteredRaces();
+          const allRaces = window.getFilteredRaces();
           const currentRaceNumber = allRaces.length;
 
           //clutchResult += `<br><br>Race: #${currentRaceNumber}<br>`;
-          clutchResult += `<br><br>Active streak (${active.count}). Current avg position: ${formatDecimal(active.overallAverage)}`;
+          clutchResult += `<br><br>Active streak (${active.count}). Current avg position: ${window.formatDecimal(active.overallAverage)}`;
         }
       }
 
@@ -1187,7 +1194,7 @@ function generateAchievementDetail(achievementKey, achievement, player) {
         // If there's a current active streak (but not better), show that info too
         if (achievement.details.currentActiveStreak) {
           const active = achievement.details.currentActiveStreak;
-          const allRaces = getFilteredRaces();
+          const allRaces = window.getFilteredRaces();
           const currentRaceNumber = allRaces.length;
           const activeLastRace = active.races[active.races.length - 1];
           const lastPosition = activeLastRace[player];
@@ -1212,7 +1219,7 @@ function generateAchievementDetail(achievementKey, achievement, player) {
 
       // Check if today is an active perfect day
       const today = new Date().toLocaleDateString('en-CA');
-      const allRaces = getFilteredRaces();
+      const allRaces = window.getFilteredRaces();
       const todayRaces = allRaces.filter((race) => race[player] !== null && race.date === today);
       const threshold = getGoodFinishThreshold();
       const isActiveToday =
@@ -1348,9 +1355,9 @@ function getRelativeFontWeight(player, achievementValues) {
   return isTied ? '900' : '700'; // Extra bold for ties
 }
 
-function updateAchievements(raceData = null) {
+export function updateAchievements(raceData = null) {
   if (raceData === null) {
-    raceData = getFilteredRaces();
+    raceData = window.getFilteredRaces();
   }
 
   // Smart update: preserve expanded state for achievements that still have data
@@ -1369,13 +1376,13 @@ function updateAchievements(raceData = null) {
 
   // Calculate achievements for all players first
   const allAchievements = {};
-  players.forEach((player) => {
+  state.players.forEach((player) => {
     allAchievements[player] = calculateAchievements(player, raceData);
   });
 
   // Get Win Streak, Clutch Master, Hot Streak, and Momentum Builder values for relative comparison
   // Only include players with race data (non-null values)
-  const winStreakValues = players
+  const winStreakValues = state.players
     .map((player) => ({
       player: player,
       value: allAchievements[player].winStreak.current,
@@ -1383,7 +1390,7 @@ function updateAchievements(raceData = null) {
     .filter((p) => p.value !== null)
     .sort((a, b) => b.value - a.value); // Sort highest to lowest
 
-  const clutchMasterValues = players
+  const clutchMasterValues = state.players
     .map((player) => ({
       player: player,
       value: allAchievements[player].clutchMaster.current,
@@ -1391,7 +1398,7 @@ function updateAchievements(raceData = null) {
     .filter((p) => p.value !== null)
     .sort((a, b) => b.value - a.value); // Sort highest to lowest
 
-  const hotStreakValues = players
+  const hotStreakValues = state.players
     .map((player) => ({
       player: player,
       value: allAchievements[player].hotStreak.current,
@@ -1399,7 +1406,7 @@ function updateAchievements(raceData = null) {
     .filter((p) => p.value !== null)
     .sort((a, b) => b.value - a.value); // Sort highest to lowest
 
-  const momentumBuilderValues = players
+  const momentumBuilderValues = state.players
     .map((player) => ({
       player: player,
       value: allAchievements[player].momentumBuilder.current,
@@ -1407,7 +1414,7 @@ function updateAchievements(raceData = null) {
     .filter((p) => p.value !== null)
     .sort((a, b) => b.value - a.value); // Sort highest to lowest
 
-  const perfectDayValues = players
+  const perfectDayValues = state.players
     .map((player) => ({
       player: player,
       value: allAchievements[player].perfectDay.current,
@@ -1415,7 +1422,7 @@ function updateAchievements(raceData = null) {
     .filter((p) => p.value !== null)
     .sort((a, b) => b.value - a.value); // Sort highest to lowest
 
-  players.forEach((player) => {
+  state.players.forEach((player) => {
     const achievements = allAchievements[player];
 
     // Check if player has no data and close expanded achievements if needed
@@ -1695,7 +1702,7 @@ function closeAllExpandedPositionHeat(player) {
 }
 
 function updateExpandedAchievements(raceData) {
-  players.forEach((player) => {
+  state.players.forEach((player) => {
     const expandedSection = document.getElementById(`${player}-expanded-achievements`);
     if (!expandedSection) return;
 
@@ -1737,7 +1744,7 @@ function updateExpandedAchievements(raceData) {
 }
 
 function clearAllVisualizationBars() {
-  players.forEach((player) => {
+  state.players.forEach((player) => {
     // Clear expanded achievements and position heat
     const expandedSection = document.getElementById(`${player}-expanded-achievements`);
     if (expandedSection) {
@@ -1859,7 +1866,7 @@ function clearAllVisualizationBars() {
 function updateExpandedPositionHeat(raceData) {
   const ranges = getPositionRanges();
 
-  players.forEach((player) => {
+  state.players.forEach((player) => {
     const expandedSection = document.getElementById(`${player}-expanded-position-heat`);
     if (!expandedSection) return;
 
@@ -1903,7 +1910,7 @@ function updateExpandedPositionHeat(raceData) {
           countElement.textContent = `${racesInRange.length} ${racesInRange.length === 1 ? 'race' : 'races'}`;
         }
         if (avgElement) {
-          avgElement.textContent = `Avg Position: ${formatDecimal(avgPosition)}`;
+          avgElement.textContent = `Avg Position: ${window.formatDecimal(avgPosition)}`;
         }
       }
     });
@@ -1921,7 +1928,7 @@ function updatePositionHeatBars(raceData) {
   // Use dynamic position ranges based on current game mode
   const ranges = getPositionRanges();
 
-  players.forEach((player) => {
+  state.players.forEach((player) => {
     const playerRaces = raceData.filter((race) => race[player] !== null);
     const totalRaces = playerRaces.length;
 
@@ -1959,7 +1966,7 @@ function updatePositionHeatBars(raceData) {
       } else {
         // Update percentage text and color
         // Show rounded percentage for display, but keep precise value in title
-        const precisePercentage = formatDecimal(percentage);
+        const precisePercentage = window.formatDecimal(percentage);
         const roundedPercentage = Math.round(percentage);
 
         percentageElement.textContent = roundedPercentage + '%';
@@ -2025,7 +2032,7 @@ function updatePositionHeatBars(raceData) {
 }
 
 function updateRecentStreakBars(raceData) {
-  players.forEach((player) => {
+  state.players.forEach((player) => {
     const playerRaces = raceData
       .filter((race) => race[player] !== null)
       .sort((a, b) => {
@@ -2118,7 +2125,7 @@ function updateRecentStreakBars(raceData) {
 }
 
 function updateSweetSpotBars(raceData) {
-  players.forEach((player) => {
+  state.players.forEach((player) => {
     const playerRaces = raceData.filter((race) => race[player] !== null);
     const positionCounts = {};
 
@@ -2159,7 +2166,7 @@ function updateSweetSpotBars(raceData) {
         glowElement.style.opacity = colorData.opacity;
         glowElement.style.backgroundColor = colorData.color;
         glowElement.style.transition = 'all 0.3s ease';
-        const percentage = formatDecimal((count / playerRaces.length) * 100);
+        const percentage = window.formatDecimal((count / playerRaces.length) * 100);
         const raceText = count === 1 ? 'race' : 'races';
         glowElement.parentElement.title = `${count} ${raceText} (${percentage}%)`;
         glowElement.parentElement.classList.add('has-data');
@@ -2192,3 +2199,8 @@ function updateSweetSpotBars(raceData) {
 window.getGoodFinishThreshold = getGoodFinishThreshold;
 window.getPositionRanges = getPositionRanges;
 window.createAllBars = createAllBars;
+window.updateAchievements = updateAchievements;
+window.toggleAchievementDetails = toggleAchievementDetails;
+window.toggleActiveStreaks = toggleActiveStreaks;
+window.togglePositionHeatDetails = togglePositionHeatDetails;
+window.smartUpdateExpandedAchievements = smartUpdateExpandedAchievements;

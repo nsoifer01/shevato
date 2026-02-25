@@ -1,6 +1,8 @@
-function calculateStats(raceData = null) {
+import { state } from './store.js';
+
+export function calculateStats(raceData = null) {
   if (raceData === null) {
-    raceData = getFilteredRaces();
+    raceData = window.getFilteredRaces();
   }
   // Use the global dynamic players array
   const stats = {
@@ -22,7 +24,7 @@ function calculateStats(raceData = null) {
   };
 
   // Initialize dynamic H2H structures
-  players.forEach((player) => {
+  state.players.forEach((player) => {
     stats.h2h[player] = {};
     stats.h2hLongestStreaks[player] = {};
     stats.h2hLongestStreakDates[player] = {};
@@ -32,7 +34,7 @@ function calculateStats(raceData = null) {
     stats.h2hDaysWon[player] = {};
     stats.h2hBiggestDailyWins[player] = {};
 
-    players.forEach((opponent) => {
+    state.players.forEach((opponent) => {
       if (player !== opponent) {
         stats.h2h[player][opponent] = 0;
         stats.h2hLongestStreaks[player][opponent] = 0;
@@ -57,7 +59,7 @@ function calculateStats(raceData = null) {
     });
   });
 
-  players.forEach((player) => {
+  state.players.forEach((player) => {
     stats.averageFinish[player] = 0;
     stats.firstPlace[player] = 0;
     stats.podiumFinish[player] = 0;
@@ -68,7 +70,7 @@ function calculateStats(raceData = null) {
   if (raceData.length === 0) return stats;
 
   raceData.forEach((race) => {
-    players.forEach((player) => {
+    state.players.forEach((player) => {
       if (race[player] !== null) {
         stats.racesPlayed[player]++;
         stats.averageFinish[player] += race[player];
@@ -81,9 +83,9 @@ function calculateStats(raceData = null) {
     // Initialize day tracking if not exists
     if (!stats.h2hByDay[race.date]) {
       stats.h2hByDay[race.date] = {};
-      players.forEach((player) => {
+      state.players.forEach((player) => {
         stats.h2hByDay[race.date][player] = {};
-        players.forEach((opponent) => {
+        state.players.forEach((opponent) => {
           if (player !== opponent) {
             stats.h2hByDay[race.date][player][opponent] = 0;
           }
@@ -92,10 +94,10 @@ function calculateStats(raceData = null) {
     }
 
     // Compare all player pairs dynamically
-    for (let i = 0; i < players.length; i++) {
-      for (let j = i + 1; j < players.length; j++) {
-        const player1 = players[i];
-        const player2 = players[j];
+    for (let i = 0; i < state.players.length; i++) {
+      for (let j = i + 1; j < state.players.length; j++) {
+        const player1 = state.players[i];
+        const player2 = state.players[j];
 
         if (race[player1] !== null && race[player2] !== null) {
           if (race[player1] < race[player2]) {
@@ -116,10 +118,10 @@ function calculateStats(raceData = null) {
   // Calculate daily H2H wins dynamically
   Object.entries(stats.h2hByDay).forEach(([date, dayStats]) => {
     // Check each matchup for that day dynamically
-    for (let i = 0; i < players.length; i++) {
-      for (let j = i + 1; j < players.length; j++) {
-        const player1 = players[i];
-        const player2 = players[j];
+    for (let i = 0; i < state.players.length; i++) {
+      for (let j = i + 1; j < state.players.length; j++) {
+        const player1 = state.players[i];
+        const player2 = state.players[j];
 
         const player1Wins = dayStats[player1][player2] || 0;
         const player2Wins = dayStats[player2][player1] || 0;
@@ -155,9 +157,9 @@ function calculateStats(raceData = null) {
     }
   });
 
-  players.forEach((player) => {
+  state.players.forEach((player) => {
     if (stats.racesPlayed[player] > 0) {
-      stats.averageFinish[player] = formatDecimal(
+      stats.averageFinish[player] = window.formatDecimal(
         stats.averageFinish[player] / stats.racesPlayed[player],
       );
     } else {
@@ -166,7 +168,7 @@ function calculateStats(raceData = null) {
   });
 
   // Calculate best streak (consecutive podium finishes) - sort by chronological order first
-  players.forEach((player) => {
+  state.players.forEach((player) => {
     let currentStreak = 0;
     let maxStreak = 0;
 
@@ -194,7 +196,7 @@ function calculateStats(raceData = null) {
   return stats;
 }
 
-function calculateLongestStreaks(raceData, stats) {
+export function calculateLongestStreaks(raceData, stats) {
   // Sort races chronologically
   const chronologicalRaces = [...raceData].sort((a, b) => {
     const dateA = new Date(a.date + (a.timestamp ? ' ' + a.timestamp : ''));
@@ -205,10 +207,10 @@ function calculateLongestStreaks(raceData, stats) {
   // Track current streaks for each player pair dynamically
   const currentStreaks = {};
   const currentStreakDetails = {};
-  players.forEach((player) => {
+  state.players.forEach((player) => {
     currentStreaks[player] = {};
     currentStreakDetails[player] = {};
-    players.forEach((opponent) => {
+    state.players.forEach((opponent) => {
       if (player !== opponent) {
         currentStreaks[player][opponent] = 0;
         currentStreakDetails[player][opponent] = [];
@@ -218,10 +220,10 @@ function calculateLongestStreaks(raceData, stats) {
 
   chronologicalRaces.forEach((race, raceIndex) => {
     // Compare all player pairs dynamically
-    for (let i = 0; i < players.length; i++) {
-      for (let j = i + 1; j < players.length; j++) {
-        const player1 = players[i];
-        const player2 = players[j];
+    for (let i = 0; i < state.players.length; i++) {
+      for (let j = i + 1; j < state.players.length; j++) {
+        const player1 = state.players[i];
+        const player2 = state.players[j];
 
         if (race[player1] !== null && race[player2] !== null) {
           const gap1v2 = race[player2] - race[player1];
@@ -284,8 +286,8 @@ function calculateLongestStreaks(raceData, stats) {
   });
 
   // Store current streaks at the end
-  players.forEach((player) => {
-    players.forEach((opponent) => {
+  state.players.forEach((player) => {
+    state.players.forEach((opponent) => {
       if (player !== opponent) {
         stats.h2hCurrentStreaks[player][opponent] = currentStreaks[player][opponent];
       }
@@ -293,19 +295,19 @@ function calculateLongestStreaks(raceData, stats) {
   });
 }
 
-function generateH2HTable(stats) {
+export function generateH2HTable(stats) {
   // Generate header row
-  const headerCells = players
+  const headerCells = state.players
     .map(
       (player) =>
-        `<th class="h2h-header-cell">vs ${window.PlayerNameManager ? window.PlayerNameManager.get(player) : getPlayerName(player)}</th>`,
+        `<th class="h2h-header-cell">vs ${window.PlayerNameManager ? window.PlayerNameManager.get(player) : window.getPlayerName(player)}</th>`,
     )
     .join('');
 
   // Generate data rows
-  const dataRows = players
+  const dataRows = state.players
     .map((rowPlayer) => {
-      const cells = players
+      const cells = state.players
         .map((colPlayer) => {
           if (rowPlayer === colPlayer) {
             return '<td class="h2h-cell h2h-self h2h-fixed-width"><span class="h2h-self-text">N/A</span></td>';
@@ -404,7 +406,7 @@ function generateH2HTable(stats) {
 
       const playerName = window.PlayerNameManager
         ? window.PlayerNameManager.get(rowPlayer)
-        : getPlayerName(rowPlayer);
+        : window.getPlayerName(rowPlayer);
       const symbol = window.PlayerSymbolManager
         ? window.PlayerSymbolManager.getSymbol(rowPlayer)
         : null;
@@ -441,19 +443,19 @@ function generateH2HTable(stats) {
     `;
 }
 
-function generateDailyH2HTable(stats) {
+export function generateDailyH2HTable(stats) {
   // Generate header row
-  const headerCells = players
+  const headerCells = state.players
     .map(
       (player) =>
-        `<th class="h2h-header-cell">vs ${window.PlayerNameManager ? window.PlayerNameManager.get(player) : getPlayerName(player)}</th>`,
+        `<th class="h2h-header-cell">vs ${window.PlayerNameManager ? window.PlayerNameManager.get(player) : window.getPlayerName(player)}</th>`,
     )
     .join('');
 
   // Generate data rows
-  const dataRows = players
+  const dataRows = state.players
     .map((rowPlayer) => {
-      const cells = players
+      const cells = state.players
         .map((colPlayer) => {
           if (rowPlayer === colPlayer) {
             return '<td class="h2h-cell h2h-self h2h-fixed-width"><span class="h2h-self-text">N/A</span></td>';
@@ -509,7 +511,7 @@ function generateDailyH2HTable(stats) {
 
       const playerName = window.PlayerNameManager
         ? window.PlayerNameManager.get(rowPlayer)
-        : getPlayerName(rowPlayer);
+        : window.getPlayerName(rowPlayer);
       const symbol = window.PlayerSymbolManager
         ? window.PlayerSymbolManager.getSymbol(rowPlayer)
         : null;
@@ -546,7 +548,7 @@ function generateDailyH2HTable(stats) {
     `;
 }
 
-function getStatClass(value, values, isHigherBetter = false) {
+export function getStatClass(value, values, isHigherBetter = false) {
   // Filter out non-numeric values and convert to numbers for consistency
   const numericValues = values.filter((v) => v !== '-' && !isNaN(v)).map((v) => Number(v));
   const numericValue = Number(value);
@@ -588,3 +590,8 @@ function getStatClass(value, values, isHigherBetter = false) {
     return 'worst'; // Red for 3rd+ place
   }
 }
+
+window.calculateStats = calculateStats;
+window.generateH2HTable = generateH2HTable;
+window.generateDailyH2HTable = generateDailyH2HTable;
+window.getStatClass = getStatClass;

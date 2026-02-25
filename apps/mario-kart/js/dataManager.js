@@ -1,7 +1,7 @@
-let races = [];
+import { state } from './store.js';
 
 // Detect active players from race data
-function detectActivePlayersFromRaces(raceData) {
+export function detectActivePlayersFromRaces(raceData) {
   if (!raceData || !Array.isArray(raceData) || raceData.length === 0) {
     return 3; // Default to 3 players
   }
@@ -35,7 +35,7 @@ function detectActivePlayersFromRaces(raceData) {
   return Math.max(1, Math.min(4, activeCount));
 }
 
-function addRace() {
+export function addRace() {
   const date = document.getElementById('date').value;
   // Dynamic player data collection
   const raceData = {};
@@ -68,16 +68,16 @@ function addRace() {
   const timestamp = `${localTime} ${tzAbbr}`;
 
   if (!date) {
-    showMessage('Please select a date', true);
+    window.showMessage('Please select a date', true);
     return;
   }
 
   // Check that at least 2 players have positions (or 1 for single player mode)
-  const activePlayers = players.map((p) => raceData[p]).filter((pos) => pos !== null);
-  const minPlayers = playerCount === 1 ? 1 : 2;
+  const activePlayers = state.players.map((p) => raceData[p]).filter((pos) => pos !== null);
+  const minPlayers = state.playerCount === 1 ? 1 : 2;
 
   if (activePlayers.length < minPlayers) {
-    showMessage(
+    window.showMessage(
       `At least ${minPlayers} player${minPlayers > 1 ? 's' : ''} must have positions`,
       true,
     );
@@ -86,7 +86,7 @@ function addRace() {
 
   // Validate positions are in range
   if (activePlayers.some((pos) => pos < MIN_POSITIONS || pos > MAX_POSITIONS)) {
-    showMessage(`Positions must be between ${MIN_POSITIONS} and ${MAX_POSITIONS}`, true);
+    window.showMessage(`Positions must be between ${MIN_POSITIONS} and ${MAX_POSITIONS}`, true);
     return;
   }
 
@@ -94,7 +94,7 @@ function addRace() {
   const positions = activePlayers;
   const uniquePositions = [...new Set(positions)];
   if (positions.length !== uniquePositions.length) {
-    showMessage('Players cannot have the same position in a race', true);
+    window.showMessage('Players cannot have the same position in a race', true);
     return;
   }
 
@@ -104,14 +104,14 @@ function addRace() {
     raceObject[player] = raceData[player];
   });
 
-  races.push(raceObject);
+  state.races.push(raceObject);
 
   // Save action for undo/redo
-  saveAction('ADD_RACE', { race: raceObject });
+  window.saveAction('ADD_RACE', { race: raceObject });
 
   try {
     const storageKey = window.getStorageKey ? window.getStorageKey('Races') : 'marioKartRaces';
-    localStorage.setItem(storageKey, JSON.stringify(races));
+    localStorage.setItem(storageKey, JSON.stringify(state.races));
   } catch (e) {
     console.error('Error saving to localStorage:', e);
   }
@@ -122,14 +122,14 @@ function addRace() {
     if (input) input.value = '';
   });
 
-  updateDisplay();
-  updateAchievements();
-  updateClearButtonState();
-  showMessage('Race added successfully!');
+  window.updateDisplay();
+  window.updateAchievements();
+  window.updateClearButtonState();
+  window.showMessage('Race added successfully!');
 }
 
-function editRace(index) {
-  const race = races[index];
+export function editRace(index) {
+  const race = state.races[index];
   if (!race) return;
 
   // Create a beautiful edit modal
@@ -161,13 +161,13 @@ function editRace(index) {
         animation: modalSlideIn 0.3s ease;
     `;
 
-  const playerInputs = players
+  const playerInputs = state.players
     .map((player) => {
       const currentValue = race[player] || '';
       return `
             <div style="margin-bottom: 1rem;">
                 <label style="display: block; margin-bottom: 0.5rem; color: #e2e8f0; font-weight: 600; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;">
-                    ${window.PlayerNameManager ? window.PlayerNameManager.get(player) : getPlayerName(player)}'s Position:
+                    ${window.PlayerNameManager ? window.PlayerNameManager.get(player) : window.getPlayerName(player)}'s Position:
                 </label>
                 <input type="number" id="edit-${player}" min="${MIN_POSITIONS}" max="${MAX_POSITIONS}" value="${currentValue}" 
                     style="width: 100%; padding: 0.75rem; border: 1px solid #4a5568; 
@@ -240,7 +240,7 @@ function editRace(index) {
     const newTime = document.getElementById('edit-time').value;
 
     if (!newDate) {
-      showMessage('Please select a date', true);
+      window.showMessage('Please select a date', true);
       return;
     }
 
@@ -258,7 +258,7 @@ function editRace(index) {
     let validPositions = [];
     let validationError = false;
 
-    players.forEach((player) => {
+    state.players.forEach((player) => {
       const input = document.getElementById(`edit-${player}`);
       const value = input.value.trim();
       if (value === '') {
@@ -277,21 +277,21 @@ function editRace(index) {
 
     // Check if validation failed
     if (validationError) {
-      showMessage(`Positions must be between ${MIN_POSITIONS} and ${MAX_POSITIONS}`, true);
+      window.showMessage(`Positions must be between ${MIN_POSITIONS} and ${MAX_POSITIONS}`, true);
       return;
     }
 
     // Check for duplicate positions
     const uniquePositions = [...new Set(validPositions)];
     if (validPositions.length !== uniquePositions.length) {
-      showMessage('Players cannot have the same position in a race', true);
+      window.showMessage('Players cannot have the same position in a race', true);
       return;
     }
 
     // Check minimum players
-    const minPlayers = playerCount === 1 ? 1 : 2;
+    const minPlayers = state.playerCount === 1 ? 1 : 2;
     if (validPositions.length < minPlayers) {
-      showMessage(
+      window.showMessage(
         `At least ${minPlayers} player${minPlayers > 1 ? 's' : ''} must have positions`,
         true,
       );
@@ -340,24 +340,24 @@ function editRace(index) {
       delete updatedRace.timestamp;
     }
 
-    races[index] = updatedRace;
+    state.races[index] = updatedRace;
 
     // Save action for undo/redo
-    saveAction('EDIT_RACE', { originalRace, newRace: races[index], index });
+    window.saveAction('EDIT_RACE', { originalRace, newRace: state.races[index], index });
 
     try {
       const storageKey = window.getStorageKey ? window.getStorageKey('Races') : 'marioKartRaces';
-      localStorage.setItem(storageKey, JSON.stringify(races));
+      localStorage.setItem(storageKey, JSON.stringify(state.races));
     } catch (e) {
       console.error('Error saving to localStorage:', e);
     }
 
-    updateDisplay();
+    window.updateDisplay();
     // Explicitly pass fresh filtered data to ensure achievements use updated race data
-    const freshFilteredRaces = getFilteredRaces();
-    updateAchievements(freshFilteredRaces);
-    updateClearButtonState();
-    showMessage('Race updated successfully!');
+    const freshFilteredRaces = window.getFilteredRaces();
+    window.updateAchievements(freshFilteredRaces);
+    window.updateClearButtonState();
+    window.showMessage('Race updated successfully!');
     document.body.removeChild(modal);
   };
 
@@ -378,24 +378,24 @@ function editRace(index) {
   document.addEventListener('keydown', escapeHandler);
 }
 
-function deleteRace(index) {
+export function deleteRace(index) {
   // Save action for undo/redo before deleting
-  const raceToDelete = races[index];
-  saveAction('DELETE_RACE', { race: raceToDelete, index });
+  const raceToDelete = state.races[index];
+  window.saveAction('DELETE_RACE', { race: raceToDelete, index });
 
-  races.splice(index, 1);
+  state.races.splice(index, 1);
   try {
     const storageKey = window.getStorageKey ? window.getStorageKey('Races') : 'marioKartRaces';
-    localStorage.setItem(storageKey, JSON.stringify(races));
+    localStorage.setItem(storageKey, JSON.stringify(state.races));
   } catch (e) {
     console.error('Error saving to localStorage:', e);
   }
-  updateDisplay();
-  updateClearButtonState();
-  showMessage('Race removed successfully!');
+  window.updateDisplay();
+  window.updateClearButtonState();
+  window.showMessage('Race removed successfully!');
 }
 
-function migrateRaceData(races) {
+export function migrateRaceData(races) {
   let migrationNeeded = false;
 
   const migratedRaces = races.map((race) => {
@@ -428,24 +428,24 @@ function migrateRaceData(races) {
   return migratedRaces;
 }
 
-function loadSavedData() {
+export function loadSavedData() {
   try {
     const storageKey = window.getStorageKey ? window.getStorageKey('Races') : 'marioKartRaces';
     const savedRaces = localStorage.getItem(storageKey);
     if (savedRaces && savedRaces !== '[]') {
-      races = JSON.parse(savedRaces);
-      races = migrateRaceData(races);
+      state.races = JSON.parse(savedRaces);
+      state.races = migrateRaceData(state.races);
     } else {
-      races = [];
+      state.races = [];
     }
   } catch (e) {
     console.error('Error loading saved races:', e);
-    races = [];
+    state.races = [];
   }
 
   // Load player names using centralized manager
   if (window.PlayerNameManager) {
-    playerNames = window.PlayerNameManager.getAll();
+    window.playerNames = window.PlayerNameManager.getAll();
   } else {
     // Fallback to direct localStorage
     try {
@@ -454,7 +454,7 @@ function loadSavedData() {
         : 'marioKartPlayerNames';
       const savedNames = localStorage.getItem(storageKey);
       if (savedNames) {
-        playerNames = JSON.parse(savedNames);
+        window.playerNames = JSON.parse(savedNames);
       }
     } catch (e) {
       console.error('Error loading player names:', e);
@@ -468,14 +468,14 @@ function loadSavedData() {
       : 'marioKartPlayerCount';
     const savedPlayerCount = localStorage.getItem(storageKey);
     if (savedPlayerCount) {
-      playerCount = parseInt(savedPlayerCount);
+      state.playerCount = parseInt(savedPlayerCount);
       const allPlayers = ['player1', 'player2', 'player3', 'player4'];
-      players = allPlayers.slice(0, playerCount);
+      state.players = allPlayers.slice(0, state.playerCount);
 
       // Update the select dropdown
       const playerCountSelect = document.getElementById('player-count');
       if (playerCountSelect) {
-        playerCountSelect.value = playerCount.toString();
+        playerCountSelect.value = state.playerCount.toString();
       }
     }
   } catch (e) {
@@ -483,10 +483,10 @@ function loadSavedData() {
   }
 }
 
-function exportData() {
+export function exportData() {
   const data = {
-    races: races,
-    playerNames: window.PlayerNameManager ? window.PlayerNameManager.getAll() : playerNames, // Include player names in export
+    races: state.races,
+    playerNames: window.PlayerNameManager ? window.PlayerNameManager.getAll() : window.playerNames, // Include player names in export
     playerSymbols: window.PlayerSymbolManager ? window.PlayerSymbolManager.getAllSymbols() : {}, // Include player symbols
     exportDate: new Date().toISOString(),
     version: '1.4', // Updated version
@@ -502,10 +502,10 @@ function exportData() {
   link.click();
   document.body.removeChild(link);
 
-  showMessage('Data exported successfully!');
+  window.showMessage('Data exported successfully!');
 }
 
-function importData(event) {
+export function importData(event) {
   const file = event.target.files[0];
   if (!file) return;
 
@@ -545,14 +545,14 @@ function importData(event) {
         });
       }
 
-      races = migratedRaces;
+      state.races = migratedRaces;
       const storageKey = window.getStorageKey ? window.getStorageKey('Races') : 'marioKartRaces';
-      localStorage.setItem(storageKey, JSON.stringify(races));
+      localStorage.setItem(storageKey, JSON.stringify(state.races));
 
       // Detect active players from race data
-      const activePlayerCount = detectActivePlayersFromRaces(races);
-      if (activePlayerCount > 0 && typeof updatePlayerCount === 'function') {
-        updatePlayerCount(activePlayerCount);
+      const activePlayerCount = detectActivePlayersFromRaces(state.races);
+      if (activePlayerCount > 0 && typeof window.updatePlayerCount === 'function') {
+        window.updatePlayerCount(activePlayerCount);
       }
 
       // Import player names if present (backward compatible)
@@ -562,7 +562,7 @@ function importData(event) {
           window.PlayerNameManager.setAll(importedData.playerNames);
         } else {
           // Fallback
-          playerNames = {
+          window.playerNames = {
             player1: importedData.playerNames.player1 || 'Player 1',
             player2: importedData.playerNames.player2 || 'Player 2',
             player3: importedData.playerNames.player3 || 'Player 3',
@@ -573,17 +573,17 @@ function importData(event) {
           const storageKey = window.getStorageKey
             ? window.getStorageKey('PlayerNames')
             : 'marioKartPlayerNames';
-          localStorage.setItem(storageKey, JSON.stringify(playerNames));
+          localStorage.setItem(storageKey, JSON.stringify(window.playerNames));
 
           // Update all labels and inputs
-          updatePlayerLabels();
+          window.updatePlayerLabels();
 
           // Update the name inputs in the widget
           const nameInputs = ['player1-name', 'player2-name', 'player3-name', 'player4-name'];
           nameInputs.forEach((inputId, index) => {
             const input = document.getElementById(inputId);
             if (input) {
-              input.value = playerNames[`player${index + 1}`];
+              input.value = window.playerNames[`player${index + 1}`];
             }
           });
         }
@@ -610,21 +610,18 @@ function importData(event) {
       }
 
       // If we're on Help or Guide view and just imported data, switch to Achievements
-      if (
-        typeof currentView !== 'undefined' &&
-        (currentView === 'help' || currentView === 'guide')
-      ) {
+      if (state.currentView === 'help' || state.currentView === 'guide') {
         // Switch to achievements view
-        if (typeof toggleView === 'function') {
-          toggleView('achievements');
+        if (typeof window.toggleView === 'function') {
+          window.toggleView('achievements');
         }
       } else {
         // Otherwise just update the current view
-        updateDisplay();
+        window.updateDisplay();
       }
 
-      updateAchievements();
-      updateClearButtonState();
+      window.updateAchievements();
+      window.updateClearButtonState();
 
       // Always update player icons after import, regardless of what was imported
       if (window.updateAllPlayerIcons) {
@@ -633,9 +630,9 @@ function importData(event) {
         }, 100); // Small delay to ensure DOM is ready
       }
 
-      showMessage(`Successfully imported ${races.length} races!`);
+      window.showMessage(`Successfully imported ${state.races.length} races!`);
     } catch (error) {
-      showMessage(`Import failed: ${error.message}`, true);
+      window.showMessage(`Import failed: ${error.message}`, true);
     }
   };
   reader.readAsText(file);
@@ -644,10 +641,10 @@ function importData(event) {
   event.target.value = '';
 }
 
-function confirmClearData() {
+export function confirmClearData() {
   // This function should only be called when there is data to clear
   // The button should be disabled when there's no data
-  if (!races || races.length === 0) {
+  if (!state.races || state.races.length === 0) {
     return;
   }
 
@@ -702,9 +699,9 @@ function confirmClearData() {
   document.addEventListener('keydown', escapeHandler);
 }
 
-function clearData() {
+export function clearData() {
   // Direct clear without confirmation dialog (called from confirmClearData)
-  races = [];
+  state.races = [];
 
   // Clear only race-related data from localStorage, preserving player names and symbols
   try {
@@ -749,17 +746,17 @@ function clearData() {
   // This prevents destroying the achievements view structure
 
   // Update display to ensure everything is cleared properly for the current view
-  updateDisplay();
-  updateAchievements();
+  window.updateDisplay();
+  window.updateAchievements();
 
-  showMessage('All data has been cleared successfully!');
+  window.showMessage('All data has been cleared successfully!');
 
   // Update clear button state after clearing
-  updateClearButtonState();
+  window.updateClearButtonState();
 }
 
-function updateClearButtonState() {
-  const hasData = races && races.length > 0;
+export function updateClearButtonState() {
+  const hasData = state.races && state.races.length > 0;
 
   // Update widget clear button
   const clearBtn = document.getElementById('clear-btn');

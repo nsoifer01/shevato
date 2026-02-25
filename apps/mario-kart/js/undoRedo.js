@@ -1,8 +1,10 @@
-let actionHistory = [];
+import { state } from './store.js';
+
+export let actionHistory = [];
 let historyPosition = -1;
 const MAX_HISTORY = 50;
 
-function saveAction(actionType, data) {
+export function saveAction(actionType, data) {
   // Remove any actions after current position
   actionHistory = actionHistory.slice(0, historyPosition + 1);
 
@@ -23,7 +25,7 @@ function saveAction(actionType, data) {
   updateUndoRedoButtons();
 }
 
-function updateUndoRedoButtons() {
+export function updateUndoRedoButtons() {
   // Update widget buttons
   const undoBtn = document.getElementById('undo-btn');
   const redoBtn = document.getElementById('redo-btn');
@@ -43,7 +45,7 @@ function updateUndoRedoButtons() {
   }
 }
 
-function undoLastAction() {
+export function undoLastAction() {
   if (historyPosition < 0) return;
 
   const action = actionHistory[historyPosition];
@@ -51,28 +53,28 @@ function undoLastAction() {
 
   switch (action.type) {
     case 'ADD_RACE':
-      races.pop();
+      state.races.pop();
       break;
     case 'DELETE_RACE':
-      races.splice(action.data.index, 0, action.data.race);
+      state.races.splice(action.data.index, 0, action.data.race);
       break;
     case 'EDIT_RACE':
-      races[action.data.index] = action.data.originalRace;
+      state.races[action.data.index] = action.data.originalRace;
       break;
     case 'CLEAR_DATA':
-      races = action.data.races;
+      state.races = action.data.races;
       break;
   }
 
   const storageKey = window.getStorageKey ? window.getStorageKey('Races') : 'marioKartRaces';
-  localStorage.setItem(storageKey, JSON.stringify(races));
-  updateDisplay();
-  updateAchievements();
+  localStorage.setItem(storageKey, JSON.stringify(state.races));
+  window.updateDisplay();
+  window.updateAchievements();
   updateUndoRedoButtons();
-  showMessage('Action undone');
+  window.showMessage('Action undone');
 }
 
-function redoLastAction() {
+export function redoLastAction() {
   if (historyPosition >= actionHistory.length - 1) return;
 
   historyPosition++;
@@ -80,23 +82,23 @@ function redoLastAction() {
 
   switch (action.type) {
     case 'ADD_RACE':
-      races.push(action.data.race);
+      state.races.push(action.data.race);
       break;
     case 'DELETE_RACE':
-      races.splice(action.data.index, 1);
+      state.races.splice(action.data.index, 1);
       break;
     case 'EDIT_RACE':
-      races[action.data.index] = action.data.newRace;
+      state.races[action.data.index] = action.data.newRace;
       break;
     case 'CLEAR_DATA':
-      races = [];
+      state.races = [];
       break;
   }
 
   const storageKey = window.getStorageKey ? window.getStorageKey('Races') : 'marioKartRaces';
-  localStorage.setItem(storageKey, JSON.stringify(races));
-  updateDisplay();
-  updateAchievements();
+  localStorage.setItem(storageKey, JSON.stringify(state.races));
+  window.updateDisplay();
+  window.updateAchievements();
   updateUndoRedoButtons();
-  showMessage('Action redone');
+  window.showMessage('Action redone');
 }

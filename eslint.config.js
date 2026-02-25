@@ -100,8 +100,6 @@ export default [
   {
     // Legacy script files (IIFEs, global functions, no import/export)
     files: [
-      'apps/mario-kart/js/!(boot).js',
-      'apps/mario-kart/js/*/**/*.js',
       'apps/gym-tracker/js/gym-tracker-old.js',
       'assets/js/util.js',
       'assets/js/main.js',

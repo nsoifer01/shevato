@@ -1,25 +1,29 @@
+import { state } from './store.js';
+
 let backupInterval = null;
 
-function initializeAutoBackup() {
+export function initializeAutoBackup() {
   // Auto-backup every 10 minutes
   if (backupInterval) clearInterval(backupInterval);
 
   backupInterval = setInterval(() => {
-    if (races.length > 0) {
+    if (state.races.length > 0) {
       autoBackupToLocalStorage();
     }
   }, 600000); // 10 minutes
 }
 
-function autoBackupToLocalStorage() {
+export function autoBackupToLocalStorage() {
   try {
     const backupData = {
-      races: races,
-      playerNames: window.PlayerNameManager ? window.PlayerNameManager.getAll() : playerNames,
+      races: state.races,
+      playerNames: window.PlayerNameManager
+        ? window.PlayerNameManager.getAll()
+        : window.playerNames,
       playerSymbols: window.PlayerSymbolManager ? window.PlayerSymbolManager.getAllSymbols() : {},
       backupDate: new Date().toISOString(),
       version: '2.2',
-      actionHistory: actionHistory.slice(-10), // Keep last 10 for recovery
+      actionHistory: window.actionHistory.slice(-10), // Keep last 10 for recovery
     };
 
     localStorage.setItem('marioKartAutoBackup', JSON.stringify(backupData));
@@ -28,11 +32,11 @@ function autoBackupToLocalStorage() {
   }
 }
 
-function restoreFromBackup() {
+export function restoreFromBackup() {
   try {
     const backup = localStorage.getItem('marioKartAutoBackup');
     if (!backup) {
-      showMessage(
+      window.showMessage(
         'No automatic backup found. Backups are created every 10 minutes when you have race data.',
         true,
       );
@@ -43,13 +47,13 @@ function restoreFromBackup() {
     try {
       backupData = JSON.parse(backup);
     } catch (parseError) {
-      showMessage('Backup data is corrupted and cannot be restored.', true);
+      window.showMessage('Backup data is corrupted and cannot be restored.', true);
       console.error('Backup parse error:', parseError);
       return;
     }
 
     if (!backupData.races || !Array.isArray(backupData.races)) {
-      showMessage('Backup data is invalid - no races found.', true);
+      window.showMessage('Backup data is invalid - no races found.', true);
       return;
     }
 
@@ -89,28 +93,25 @@ function restoreFromBackup() {
       document.body.removeChild(modal);
 
       // Perform the restore
-      races = backupData.races || [];
+      state.races = backupData.races || [];
 
       // Use centralized PlayerNameManager for player names
       if (window.PlayerNameManager && backupData.playerNames) {
         window.PlayerNameManager.setAll(backupData.playerNames);
       } else {
         // Fallback
-        playerNames = backupData.playerNames || playerNames;
-        localStorage.setItem('marioKartPlayerNames', JSON.stringify(playerNames));
+        window.playerNames = backupData.playerNames || window.playerNames;
+        localStorage.setItem('marioKartPlayerNames', JSON.stringify(window.playerNames));
 
         // Update all player-related UI
-        updatePlayerLabels();
-        if (window.updatePlayerLabels) {
-          window.updatePlayerLabels();
-        }
+        window.updatePlayerLabels();
 
         // Update the name inputs in the widget
         const nameInputs = ['player1-name', 'player2-name', 'player3-name', 'player4-name'];
         nameInputs.forEach((inputId, index) => {
           const input = document.getElementById(inputId);
           if (input) {
-            input.value = playerNames[`player${index + 1}`];
+            input.value = window.playerNames[`player${index + 1}`];
           }
         });
       }
@@ -139,12 +140,12 @@ function restoreFromBackup() {
         }
       }
 
-      localStorage.setItem('marioKartRaces', JSON.stringify(races));
+      localStorage.setItem('marioKartRaces', JSON.stringify(state.races));
 
-      updateDisplay();
-      updateAchievements();
-      updateClearButtonState();
-      showMessage('Data restored from backup!');
+      window.updateDisplay();
+      window.updateAchievements();
+      window.updateClearButtonState();
+      window.showMessage('Data restored from backup!');
     };
 
     // Close on background click
@@ -163,21 +164,21 @@ function restoreFromBackup() {
     };
     document.addEventListener('keydown', escapeHandler);
   } catch (e) {
-    showMessage('Failed to restore backup', true);
+    window.showMessage('Failed to restore backup', true);
     console.error('Backup restore error:', e);
   }
 }
 
 // Function no longer needed - restore button is now in the sidebar HTML
 
-function backupToGoogleDrive() {
+export function backupToGoogleDrive() {
   const data = {
-    races: races,
-    playerNames: window.PlayerNameManager ? window.PlayerNameManager.getAll() : playerNames,
+    races: state.races,
+    playerNames: window.PlayerNameManager ? window.PlayerNameManager.getAll() : window.playerNames,
     playerSymbols: window.PlayerSymbolManager ? window.PlayerSymbolManager.getAllSymbols() : {},
     backupDate: new Date().toISOString(),
     version: '2.2',
-    actionHistory: actionHistory,
+    actionHistory: window.actionHistory,
   };
 
   const fileContent = JSON.stringify(data, null, 2);
@@ -195,7 +196,7 @@ function backupToGoogleDrive() {
   // Also save to auto-backup
   autoBackupToLocalStorage();
 
-  showMessage('Backup downloaded and auto-backup updated!');
+  window.showMessage('Backup downloaded and auto-backup updated!');
 }
 
 // Export functions to global scope

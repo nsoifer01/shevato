@@ -1,7 +1,7 @@
 // Sidebar functionality
 let sidebarOpen = false;
 
-function initializeSidebar() {
+export function initializeSidebar() {
   // Prevent scroll propagation from sidebar
   const sidebar = document.getElementById('sidebar');
   if (sidebar) {
@@ -51,7 +51,7 @@ function initializeSidebar() {
       const exportButton = buttonsClone.querySelector('button[onclick*="exportData"]');
       if (exportButton) {
         exportButton.onclick = () => {
-          if (typeof exportData === 'function') exportData();
+          if (typeof window.exportData === 'function') window.exportData();
         };
       }
 
@@ -59,7 +59,7 @@ function initializeSidebar() {
       const backupButton = buttonsClone.querySelector('button[onclick*="backupToGoogleDrive"]');
       if (backupButton) {
         backupButton.onclick = () => {
-          if (typeof backupToGoogleDrive === 'function') backupToGoogleDrive();
+          if (typeof window.backupToGoogleDrive === 'function') window.backupToGoogleDrive();
         };
       }
 
@@ -81,7 +81,7 @@ function initializeSidebar() {
         }
         // Re-attach change event to import input
         importInput.onchange = (event) => {
-          if (typeof importData === 'function') importData(event);
+          if (typeof window.importData === 'function') window.importData(event);
         };
       }
 
@@ -107,7 +107,7 @@ function initializeSidebar() {
   window.addEventListener('resize', handleResponsiveSidebar);
 }
 
-function toggleSidebar() {
+export function toggleSidebar() {
   if (sidebarOpen) {
     closeSidebar();
   } else {
@@ -115,7 +115,7 @@ function toggleSidebar() {
   }
 }
 
-function openSidebar(animate = true) {
+export function openSidebar(animate = true) {
   const sidebar = document.getElementById('sidebar');
   const overlay = document.getElementById('sidebar-overlay');
   const toggle = document.getElementById('sidebar-toggle');
@@ -141,7 +141,7 @@ function openSidebar(animate = true) {
   localStorage.setItem('sidebarOpen', 'true');
 }
 
-function closeSidebar() {
+export function closeSidebar() {
   const sidebar = document.getElementById('sidebar');
   const overlay = document.getElementById('sidebar-overlay');
   const toggle = document.getElementById('sidebar-toggle');
@@ -246,9 +246,6 @@ function handleSwipeGesture() {
   touchStartX = null;
   touchEndX = null;
 }
-
-// Initialize sidebar when DOM is ready
-document.addEventListener('DOMContentLoaded', initializeSidebar);
 
 // Expose functions globally for inline onclick handlers
 window.toggleSidebar = toggleSidebar;

@@ -1,5 +1,5 @@
 // Update all position inputs to use global constants
-function updateInputLimits() {
+export function updateInputLimits() {
   // Update all player position inputs
   const playerInputs = ['player1', 'player2', 'player3', 'player4'];
 
@@ -22,10 +22,10 @@ function updateInputLimits() {
   });
 }
 
-// Initialize on page load
-document.addEventListener('DOMContentLoaded', function () {
+// Initialize input limits
+export function initInputLimits() {
   updateInputLimits();
-});
+}
 
-// Export for global use
+// Expose for global use
 window.updateInputLimits = updateInputLimits;

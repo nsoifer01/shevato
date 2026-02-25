@@ -1,7 +1,7 @@
 // Mobile Stepper Controls for Position Inputs
 
 // Function to increment player position
-function incrementPlayer(playerId) {
+export function incrementPlayer(playerId) {
   const input = document.getElementById(playerId);
   const display = document.getElementById(playerId + '-display');
 
@@ -19,7 +19,7 @@ function incrementPlayer(playerId) {
 }
 
 // Function to decrement player position
-function decrementPlayer(playerId) {
+export function decrementPlayer(playerId) {
   const input = document.getElementById(playerId);
   const display = document.getElementById(playerId + '-display');
 
@@ -37,7 +37,7 @@ function decrementPlayer(playerId) {
 }
 
 // Function to update stepper display when input changes
-function updateStepperDisplay(playerId) {
+export function updateStepperDisplay(playerId) {
   const input = document.getElementById(playerId);
   const display = document.getElementById(playerId + '-display');
 
@@ -47,8 +47,8 @@ function updateStepperDisplay(playerId) {
   }
 }
 
-// Initialize steppers when page loads
-document.addEventListener('DOMContentLoaded', function () {
+// Initialize steppers
+export function initSteppers() {
   // Get all player inputs
   const playerInputs = ['player1', 'player2', 'player3', 'player4'];
 
@@ -81,29 +81,7 @@ document.addEventListener('DOMContentLoaded', function () {
       });
     }
   });
-});
 
-// Add haptic feedback for mobile (if supported)
-function addHapticFeedback() {
-  if (navigator.vibrate) {
-    navigator.vibrate(10); // Very short vibration
-  }
-}
-
-// Enhanced increment with haptic feedback
-function incrementPlayerWithFeedback(playerId) {
-  incrementPlayer(playerId);
-  addHapticFeedback();
-}
-
-// Enhanced decrement with haptic feedback
-function decrementPlayerWithFeedback(playerId) {
-  decrementPlayer(playerId);
-  addHapticFeedback();
-}
-
-// Update the button onclick handlers to use feedback versions
-document.addEventListener('DOMContentLoaded', function () {
   // Update all stepper buttons to use haptic feedback
   const stepperButtons = document.querySelectorAll('.stepper-btn');
   stepperButtons.forEach((button) => {
@@ -118,4 +96,29 @@ document.addEventListener('DOMContentLoaded', function () {
       }
     }
   });
-});
+}
+
+// Add haptic feedback for mobile (if supported)
+export function addHapticFeedback() {
+  if (navigator.vibrate) {
+    navigator.vibrate(10); // Very short vibration
+  }
+}
+
+// Enhanced increment with haptic feedback
+export function incrementPlayerWithFeedback(playerId) {
+  incrementPlayer(playerId);
+  addHapticFeedback();
+}
+
+// Enhanced decrement with haptic feedback
+export function decrementPlayerWithFeedback(playerId) {
+  decrementPlayer(playerId);
+  addHapticFeedback();
+}
+
+// Expose functions globally for inline onclick handlers
+window.incrementPlayer = incrementPlayer;
+window.decrementPlayer = decrementPlayer;
+window.incrementPlayerWithFeedback = incrementPlayerWithFeedback;
+window.decrementPlayerWithFeedback = decrementPlayerWithFeedback;

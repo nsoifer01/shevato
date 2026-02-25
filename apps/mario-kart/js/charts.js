@@ -1,8 +1,10 @@
+import { state } from './store.js';
+
 let trendChart = null;
 
-function createTrendCharts(raceData = null) {
+export function createTrendCharts(raceData = null) {
   if (raceData === null) {
-    raceData = getFilteredRaces();
+    raceData = window.getFilteredRaces();
   }
 
   const statsDisplay = document.getElementById('stats-display');
@@ -51,8 +53,10 @@ function createTrendCharts(raceData = null) {
   // Use global dynamic players array
   const colors = ['#ef4444', '#3b82f6', '#10b981', '#f59e0b'];
 
-  const datasets = players.map((player, index) => ({
-    label: window.PlayerNameManager ? window.PlayerNameManager.get(player) : getPlayerName(player),
+  const datasets = state.players.map((player, index) => ({
+    label: window.PlayerNameManager
+      ? window.PlayerNameManager.get(player)
+      : window.getPlayerName(player),
     data: sortedRaces.map((race) => race[player]),
     borderColor: colors[index],
     backgroundColor: colors[index] + '20',
@@ -170,9 +174,9 @@ function createTrendCharts(raceData = null) {
   });
 }
 
-function createHeatmapView(raceData = null) {
+export function createHeatmapView(raceData = null) {
   if (raceData === null) {
-    raceData = getFilteredRaces();
+    raceData = window.getFilteredRaces();
   }
 
   const statsDisplay = document.getElementById('stats-display');
@@ -201,7 +205,7 @@ function createHeatmapView(raceData = null) {
                             <tr>
                                 <th>Day</th>
                                 <th>Activity</th>
-                                ${players.map((player) => `<th>${window.PlayerNameManager ? window.PlayerNameManager.get(player) : getPlayerName(player)}<span class="subtitle">Avg Pos</span></th>`).join('')}
+                                ${state.players.map((player) => `<th>${window.PlayerNameManager ? window.PlayerNameManager.get(player) : window.getPlayerName(player)}<span class="subtitle">Avg Pos</span></th>`).join('')}
                             </tr>
                         </thead>
                         <tbody id="weekly-breakdown-body">
@@ -263,17 +267,19 @@ function createHeatmapView(raceData = null) {
         });
 
         const percentage =
-          dayRaces.length > 0 ? formatDecimal((dayRaces.length / raceData.length) * 100) : '0';
+          dayRaces.length > 0
+            ? window.formatDecimal((dayRaces.length / raceData.length) * 100)
+            : '0';
         const playerAverages = {};
 
-        players.forEach((player) => {
+        state.players.forEach((player) => {
           const playerPositions = dayRaces
             .filter((race) => race[player] !== null)
             .map((race) => race[player]);
 
           if (playerPositions.length > 0) {
             const avg = playerPositions.reduce((sum, pos) => sum + pos, 0) / playerPositions.length;
-            playerAverages[player] = formatDecimal(avg);
+            playerAverages[player] = window.formatDecimal(avg);
           } else {
             playerAverages[player] = '-';
           }
@@ -324,7 +330,7 @@ function createHeatmapView(raceData = null) {
                                 ${data.percentage}%
                             </div>
                         </td>
-                        ${players.map((player) => `<td>${data.playerAverages[player]}</td>`).join('')}
+                        ${state.players.map((player) => `<td>${data.playerAverages[player]}</td>`).join('')}
                     </tr>
                 `;
           })
@@ -476,16 +482,17 @@ function calculateWeeklyActivityData(raceData) {
   const result = dayNames.map((name, index) => ({
     name,
     races: weeklyRaces[index],
-    percentage: totalRaces > 0 ? formatDecimal((weeklyRaces[index] / totalRaces) * 100) : '0',
+    percentage:
+      totalRaces > 0 ? window.formatDecimal((weeklyRaces[index] / totalRaces) * 100) : '0',
     barHeight: (weeklyRaces[index] / maxRaces) * 100,
   }));
 
   return result;
 }
 
-function createAnalysisView(raceData = null) {
+export function createAnalysisView(raceData = null) {
   if (raceData === null) {
-    raceData = getFilteredRaces();
+    raceData = window.getFilteredRaces();
   }
 
   const statsDisplay = document.getElementById('stats-display');
@@ -518,7 +525,7 @@ function createAnalysisView(raceData = null) {
                         if (!data.date || data.averagePosition === null) {
                           return `
                                 <div class="worst-day-item">
-                                    <span>${window.PlayerNameManager ? window.PlayerNameManager.get(player) : getPlayerName(player)}</span>
+                                    <span>${window.PlayerNameManager ? window.PlayerNameManager.get(player) : window.getPlayerName(player)}</span>
                                     <div>
                                         <div class="worst-day-score">—</div>
                                     </div>
@@ -546,9 +553,9 @@ function createAnalysisView(raceData = null) {
 
                         return `
                             <div class="worst-day-item">
-                                <span>${window.PlayerNameManager ? window.PlayerNameManager.get(player) : getPlayerName(player)}</span>
+                                <span>${window.PlayerNameManager ? window.PlayerNameManager.get(player) : window.getPlayerName(player)}</span>
                                 <div>
-                                    <div class="worst-day-score">Avg ${formatDecimal(data.averagePosition)}</div>
+                                    <div class="worst-day-score">Avg ${window.formatDecimal(data.averagePosition)}</div>
                                     <small>${formattedDate} (${data.raceCount} races)</small>
                                 </div>
                             </div>
@@ -569,7 +576,7 @@ function createAnalysisView(raceData = null) {
                         if (!data.date || data.averagePosition === null) {
                           return `
                                 <div class="best-day-item">
-                                    <span>${window.PlayerNameManager ? window.PlayerNameManager.get(player) : getPlayerName(player)}</span>
+                                    <span>${window.PlayerNameManager ? window.PlayerNameManager.get(player) : window.getPlayerName(player)}</span>
                                     <div>
                                         <div class="best-day-score">—</div>
                                     </div>
@@ -597,9 +604,9 @@ function createAnalysisView(raceData = null) {
 
                         return `
                             <div class="best-day-item">
-                                <span>${window.PlayerNameManager ? window.PlayerNameManager.get(player) : getPlayerName(player)}</span>
+                                <span>${window.PlayerNameManager ? window.PlayerNameManager.get(player) : window.getPlayerName(player)}</span>
                                 <div>
-                                    <div class="best-day-score">Avg ${formatDecimal(data.averagePosition)}</div>
+                                    <div class="best-day-score">Avg ${window.formatDecimal(data.averagePosition)}</div>
                                     <small>${formattedDate} (${data.raceCount} races)</small>
                                 </div>
                             </div>
@@ -627,7 +634,7 @@ function createAnalysisView(raceData = null) {
 function calculateComebackAnalysis(raceData) {
   const analysis = {};
 
-  players.forEach((player) => {
+  state.players.forEach((player) => {
     const playerRaces = raceData
       .filter((race) => race[player] !== null)
       .sort((a, b) => {
@@ -665,7 +672,7 @@ function calculateComebackAnalysis(raceData) {
 function calculateBestRacingDay(raceData) {
   const bestDays = {};
 
-  players.forEach((player) => {
+  state.players.forEach((player) => {
     // Group races by date for this player
     const racesByDate = {};
     raceData
@@ -706,7 +713,7 @@ function calculateBestRacingDay(raceData) {
 function calculateWorstRacingDay(raceData) {
   const worstDays = {};
 
-  players.forEach((player) => {
+  state.players.forEach((player) => {
     // Group races by date for this player
     const racesByDate = {};
     raceData
@@ -756,7 +763,7 @@ function generatePatternAnalysis(raceData) {
       datePerformance[race.date] = { races: 0, totalPos: 0 };
     }
 
-    players.forEach((player) => {
+    state.players.forEach((player) => {
       if (race[player] !== null) {
         datePerformance[race.date].races++;
         datePerformance[race.date].totalPos += race[player];
@@ -782,7 +789,7 @@ function generatePatternAnalysis(raceData) {
   });
 
   if (bestDate) {
-    analysis += `<li>🌟 Best racing day: <strong>${bestDate}</strong> (avg position ${formatDecimal(bestAvg)})</li>`;
+    analysis += `<li>🌟 Best racing day: <strong>${bestDate}</strong> (avg position ${window.formatDecimal(bestAvg)})</li>`;
   }
 
   // Collective Worst Day
@@ -803,13 +810,13 @@ function generatePatternAnalysis(raceData) {
   });
 
   if (worstDate) {
-    analysis += `<li>📉 Worst racing day: <strong>${worstDate}</strong> (avg position ${formatDecimal(worstAvg)})</li>`;
+    analysis += `<li>📉 Worst racing day: <strong>${worstDate}</strong> (avg position ${window.formatDecimal(worstAvg)})</li>`;
   }
 
   // Average Finish Spread
   const spreadData = raceData
     .map((race) => {
-      const positions = players.map((player) => race[player]).filter((p) => p !== null);
+      const positions = state.players.map((player) => race[player]).filter((p) => p !== null);
       if (positions.length < 2) return null;
       return Math.max(...positions) - Math.min(...positions);
     })
@@ -817,25 +824,25 @@ function generatePatternAnalysis(raceData) {
 
   if (spreadData.length > 0) {
     const avgSpread = spreadData.reduce((sum, spread) => sum + spread, 0) / spreadData.length;
-    analysis += `<li>📊 Average finish spread: <strong>${formatDecimal(avgSpread)} positions</strong></li>`;
+    analysis += `<li>📊 Average finish spread: <strong>${window.formatDecimal(avgSpread)} positions</strong></li>`;
   }
 
   // Most competitive races (only show for multiple players)
   if (playerCount > 1) {
     const competitiveRaces = raceData.filter((race) => {
-      const positions = players.map((player) => race[player]).filter((p) => p !== null);
+      const positions = state.players.map((player) => race[player]).filter((p) => p !== null);
       if (positions.length < 2) return false;
       const range = Math.max(...positions) - Math.min(...positions);
       return range <= 5; // Close races
     });
 
-    analysis += `<li>🤏 Close races: <strong>${formatDecimal((competitiveRaces.length / raceData.length) * 100)}%</strong> - races where position spread ≤ 5 places</li>`;
+    analysis += `<li>🤏 Close races: <strong>${window.formatDecimal((competitiveRaces.length / raceData.length) * 100)}%</strong> - races where position spread ≤ 5 places</li>`;
   }
 
   // Sweet Spot Frequency
   const allPositions = [];
   raceData.forEach((race) => {
-    players.forEach((player) => {
+    state.players.forEach((player) => {
       if (race[player] !== null) {
         allPositions.push(race[player]);
       }
@@ -872,10 +879,15 @@ function generatePatternAnalysis(raceData) {
           ? `position ${mostFrequentRange.start}`
           : `positions ${mostFrequentRange.start}-${mostFrequentRange.end}`;
 
-      analysis += `<li>🎯 Sweet spot frequency: <strong>${formatDecimal(mostFrequentRange.percentage)}%</strong> of finishes in ${rangeText}</li>`;
+      analysis += `<li>🎯 Sweet spot frequency: <strong>${window.formatDecimal(mostFrequentRange.percentage)}%</strong> of finishes in ${rangeText}</li>`;
     }
   }
 
   analysis += '</ul>';
   return analysis;
 }
+
+// Export functions for global use
+window.createTrendCharts = createTrendCharts;
+window.createHeatmapView = createHeatmapView;
+window.createAnalysisView = createAnalysisView;

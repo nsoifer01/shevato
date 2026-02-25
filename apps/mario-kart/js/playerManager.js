@@ -1,6 +1,4 @@
-let playerCount = 3;
-let players = ['player1', 'player2', 'player3'];
-const maxPlayers = 4;
+import { state } from './store.js';
 
 // Use centralized player name manager
 let playerNames = window.PlayerNameManager
@@ -20,7 +18,7 @@ if (window.PlayerNameManager) {
   });
 }
 
-function updatePlayerLabels() {
+export function updatePlayerLabels() {
   // Update input labels for all possible players - now just shows names
   const label1 = document.getElementById('player1-label');
   const label2 = document.getElementById('player2-label');
@@ -54,7 +52,7 @@ function updatePlayerLabels() {
   }
 }
 
-function updatePlayerName(playerKey, newName) {
+export function updatePlayerName(playerKey, newName) {
   if (newName.trim() === '') return;
 
   // Use centralized manager
@@ -65,20 +63,20 @@ function updatePlayerName(playerKey, newName) {
     playerNames[playerKey] = newName.trim();
   }
 
-  updateDisplay(); // Refresh display to show new names
-  showMessage('Player name updated!');
+  window.updateDisplay(); // Refresh display to show new names
+  window.showMessage('Player name updated!');
 }
 
-function updatePlayerCount(newCount) {
+export function updatePlayerCount(newCount) {
   newCount = parseInt(newCount);
-  if (newCount < 1 || newCount > maxPlayers) return;
+  if (newCount < 1 || newCount > 4) return;
 
-  const oldCount = playerCount;
-  playerCount = newCount;
+  const oldCount = state.playerCount;
+  state.playerCount = newCount;
 
   // Update players array
   const allPlayers = ['player1', 'player2', 'player3', 'player4'];
-  players = allPlayers.slice(0, playerCount);
+  state.players = allPlayers.slice(0, state.playerCount);
 
   // Update UI visibility
   updatePlayerFieldsVisibility();
@@ -89,7 +87,7 @@ function updatePlayerCount(newCount) {
     const storageKey = window.getStorageKey
       ? window.getStorageKey('PlayerCount')
       : 'marioKartPlayerCount';
-    localStorage.setItem(storageKey, playerCount.toString());
+    localStorage.setItem(storageKey, state.playerCount.toString());
   } catch (e) {
     console.error('Error saving player count:', e);
   }
@@ -105,25 +103,25 @@ function updatePlayerCount(newCount) {
 
   // Recreate number buttons for new player count
   // createNumberButtons(); // Position buttons removed - using dropdown only
-  createAllBars();
-  updateDisplay();
-  updateAchievements();
+  window.createAllBars();
+  window.updateDisplay();
+  window.updateAchievements();
 
   // Refresh sidebar race form if it's open
   if (window.refreshSidebarRaceForm) {
     window.refreshSidebarRaceForm();
   }
 
-  showMessage(`Updated to ${newCount} player${newCount !== 1 ? 's' : ''}!`);
+  window.showMessage(`Updated to ${newCount} player${newCount !== 1 ? 's' : ''}!`);
 }
 
-function updatePlayerFieldsVisibility() {
+export function updatePlayerFieldsVisibility() {
   // Update name inputs
   const nameInputs = ['player1-name', 'player2-name', 'player3-name', 'player4-name'];
   nameInputs.forEach((id, index) => {
     const input = document.getElementById(id);
     if (input) {
-      input.style.display = index < playerCount ? 'block' : 'none';
+      input.style.display = index < state.playerCount ? 'block' : 'none';
     }
   });
 
@@ -134,33 +132,33 @@ function updatePlayerFieldsVisibility() {
       document.getElementById(`${player}-field`) ||
       document.querySelector(`.input-field:nth-child(${index + 1})`);
     if (field) {
-      field.style.display = index < playerCount ? 'block' : 'none';
+      field.style.display = index < state.playerCount ? 'block' : 'none';
     }
   });
 
   // Update player4 specific field
   const player4Field = document.getElementById('player4-field');
   if (player4Field) {
-    player4Field.style.display = playerCount >= 4 ? 'block' : 'none';
+    player4Field.style.display = state.playerCount >= 4 ? 'block' : 'none';
   }
 }
 
-function updateInputGroupClass() {
+export function updateInputGroupClass() {
   const inputGroup = document.querySelector('.input-group');
   if (inputGroup) {
     // Remove all player count classes
     inputGroup.className = inputGroup.className.replace(/players-\d+/g, '');
     // Add current player count class
-    inputGroup.classList.add(`players-${playerCount}`);
+    inputGroup.classList.add(`players-${state.playerCount}`);
   }
 }
 
-function getPlayerKey(playerIndex) {
+export function getPlayerKey(playerIndex) {
   const keyMap = { 0: 'player1', 1: 'player2', 2: 'player3', 3: 'player4' };
   return keyMap[playerIndex];
 }
 
-function getPlayerName(playerKey) {
+export function getPlayerName(playerKey) {
   const nameMap = {
     player1: playerNames.player1,
     player2: playerNames.player2,

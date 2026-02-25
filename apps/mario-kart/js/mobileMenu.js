@@ -1,7 +1,7 @@
 // Mobile Menu Management
 let mobileMenuOpen = false;
 
-function toggleMobileMenu() {
+export function toggleMobileMenu() {
   const panel = document.getElementById('mobile-menu-panel');
   const toggle = document.querySelector('.mobile-menu-toggle');
 
@@ -24,7 +24,7 @@ function toggleMobileMenu() {
   }
 }
 
-function closeMobileMenu() {
+export function closeMobileMenu() {
   const panel = document.getElementById('mobile-menu-panel');
   const toggle = document.querySelector('.mobile-menu-toggle');
 
@@ -47,24 +47,24 @@ function closeMobileMenuOnClickOutside(event) {
 
 // Mobile menu wrapper functions
 function mobileUndoAction() {
-  undoLastAction();
+  window.undoLastAction();
   closeMobileMenu();
   updateMobileMenuStates();
 }
 
 function mobileRedoAction() {
-  redoLastAction();
+  window.redoLastAction();
   closeMobileMenu();
   updateMobileMenuStates();
 }
 
 function mobileToggleTheme() {
-  toggleTheme();
+  window.toggleTheme();
   updateMobileMenuStates();
 }
 
 function mobileToggleDate() {
-  toggleDateWidget();
+  window.toggleDateWidget();
   closeMobileMenu();
 }
 
@@ -74,7 +74,7 @@ function mobileTogglePlayers() {
 }
 
 // Update mobile menu button states based on other UI states
-function updateMobileMenuStates() {
+export function updateMobileMenuStates() {
   const undoBtn = document.querySelector('.mobile-menu-panel .undo-btn');
   const redoBtn = document.querySelector('.mobile-menu-panel .redo-btn');
   const themeBtn = document.querySelector('.mobile-menu-panel .theme-btn');
@@ -124,7 +124,7 @@ window.addEventListener('resize', () => {
 });
 
 // Initialize mobile menu state updates
-document.addEventListener('DOMContentLoaded', () => {
+export function initMobileMenu() {
   updateMobileMenuStates();
 
   // Update states when actions are performed
@@ -139,4 +139,13 @@ document.addEventListener('DOMContentLoaded', () => {
     observer.observe(undoBtn, { attributes: true, attributeFilter: ['disabled'] });
     observer.observe(redoBtn, { attributes: true, attributeFilter: ['disabled'] });
   }
-});
+}
+
+// Expose functions globally for inline onclick handlers
+window.toggleMobileMenu = toggleMobileMenu;
+window.closeMobileMenu = closeMobileMenu;
+window.mobileUndoAction = mobileUndoAction;
+window.mobileRedoAction = mobileRedoAction;
+window.mobileToggleTheme = mobileToggleTheme;
+window.mobileToggleDate = mobileToggleDate;
+window.mobileTogglePlayers = mobileTogglePlayers;

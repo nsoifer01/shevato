@@ -11,7 +11,7 @@
  * Modal styling uses consistent theme
  * @returns {HTMLElement} - The modal element
  */
-function createModal({ icon, title, content, buttons = [] }) {
+export function createModal({ icon, title, content, buttons = [] }) {
   const modal = document.createElement('div');
   modal.className = 'modal-overlay';
 
@@ -72,7 +72,7 @@ function createModal({ icon, title, content, buttons = [] }) {
 /**
  * Creates a confirmation modal
  */
-function createConfirmationModal({
+export function createConfirmationModal({
   icon,
   title,
   message,
@@ -108,7 +108,7 @@ function createConfirmationModal({
 /**
  * Creates a form modal
  */
-function createFormModal({ icon, title, fields, onSave, onCancel }) {
+export function createFormModal({ icon, title, fields, onSave, onCancel }) {
   const fieldsHtml = fields
     .map((field) => {
       const fieldId = `form-${field.id}`;
@@ -177,8 +177,3 @@ function createFormModal({ icon, title, fields, onSave, onCancel }) {
     buttons,
   });
 }
-
-// Export functions to global scope for compatibility
-window.createModal = createModal;
-window.createConfirmationModal = createConfirmationModal;
-window.createFormModal = createFormModal;

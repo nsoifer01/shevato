@@ -1,5 +1,6 @@
 // Add Race Dropdown Functionality
 // All functions and variables are isolated to prevent conflicts with main page
+import { state } from './store.js';
 
 let dropdownOpen = false;
 let selectedPositions = {};
@@ -9,7 +10,7 @@ let resizeObserver = null;
 let nameChangeUnsubscribe = null;
 
 // Toggle dropdown
-function toggleAddRaceDropdown(event) {
+export function toggleAddRaceDropdown(event) {
   if (event) {
     event.stopPropagation();
   }
@@ -22,13 +23,13 @@ function toggleAddRaceDropdown(event) {
 }
 
 // Open dropdown
-function openAddRaceDropdown() {
+export function openAddRaceDropdown() {
   dropdownElement = document.getElementById('add-race-dropdown');
   if (!dropdownElement) return;
 
   // Close players dropdown if open
-  if (typeof closePlayersDropdown === 'function') {
-    closePlayersDropdown();
+  if (typeof window.closePlayersDropdown === 'function') {
+    window.closePlayersDropdown();
   }
 
   const overlay = document.createElement('div');
@@ -86,7 +87,7 @@ function openAddRaceDropdown() {
 }
 
 // Close dropdown
-function closeAddRaceDropdown() {
+export function closeAddRaceDropdown() {
   if (!dropdownElement) {
     dropdownElement = document.getElementById('add-race-dropdown');
   }
@@ -147,7 +148,7 @@ function initializeDropdownForm() {
   newForm.id = 'dropdown-race-form';
 
   // Get current player count and names
-  const currentPlayerCount = playerCount || 3;
+  const currentPlayerCount = state.playerCount || 3;
   const allPlayers = ['player1', 'player2', 'player3', 'player4'];
 
   // Create input for each active player
@@ -171,9 +172,9 @@ function initializeDropdownForm() {
     const input = document.createElement('input');
     input.type = 'number';
     input.id = `dropdown-${playerId}`;
-    input.min = String(MIN_POSITIONS);
-    input.max = String(MAX_POSITIONS);
-    input.placeholder = `${MIN_POSITIONS}-${MAX_POSITIONS}`;
+    input.min = String(window.MIN_POSITIONS);
+    input.max = String(window.MAX_POSITIONS);
+    input.placeholder = `${window.MIN_POSITIONS}-${window.MAX_POSITIONS}`;
     input.value = selectedPositions[playerId] || '';
 
     // Add input listeners with validation
@@ -187,15 +188,15 @@ function initializeDropdownForm() {
       if (e.target.value === '') {
         selectedPositions[playerId] = null;
         updatePositionButtons(playerId, null);
-      } else if (value > MAX_POSITIONS) {
-        showPositionError(playerId, `Position cannot be higher than ${MAX_POSITIONS}`);
+      } else if (value > window.MAX_POSITIONS) {
+        showPositionError(playerId, `Position cannot be higher than ${window.MAX_POSITIONS}`);
         selectedPositions[playerId] = null;
         updatePositionButtons(playerId, null);
-      } else if (value < MIN_POSITIONS) {
-        showPositionError(playerId, `Position must be at least ${MIN_POSITIONS}`);
+      } else if (value < window.MIN_POSITIONS) {
+        showPositionError(playerId, `Position must be at least ${window.MIN_POSITIONS}`);
         selectedPositions[playerId] = null;
         updatePositionButtons(playerId, null);
-      } else if (value >= MIN_POSITIONS && value <= MAX_POSITIONS) {
+      } else if (value >= window.MIN_POSITIONS && value <= window.MAX_POSITIONS) {
         selectedPositions[playerId] = value;
         updatePositionButtons(playerId, value);
       }
@@ -215,7 +216,7 @@ function initializeDropdownForm() {
     buttonsGrid.setAttribute('data-player-grid', playerId);
 
     // Create buttons for positions 1-MAX_POSITIONS
-    for (let pos = MIN_POSITIONS; pos <= MAX_POSITIONS; pos++) {
+    for (let pos = window.MIN_POSITIONS; pos <= window.MAX_POSITIONS; pos++) {
       const btn = document.createElement('button');
       btn.type = 'button';
       btn.className = 'position-btn';
@@ -294,7 +295,7 @@ function updatePositionButtons(playerId, selectedPos) {
 }
 
 // Save race from dropdown
-function saveRaceFromDropdown() {
+export function saveRaceFromDropdown() {
   const errorDiv = document.getElementById('dropdown-error');
   const saveBtn = dropdownElement
     ? dropdownElement.querySelector('.dropdown-save-btn')
@@ -313,7 +314,7 @@ function saveRaceFromDropdown() {
   // Collect race data
   const raceData = {};
   const allPlayers = ['player1', 'player2', 'player3', 'player4'];
-  const currentPlayerCount = playerCount || 3;
+  const currentPlayerCount = state.playerCount || 3;
 
   for (let i = 0; i < currentPlayerCount; i++) {
     const playerId = allPlayers[i];
@@ -332,8 +333,10 @@ function saveRaceFromDropdown() {
   }
 
   // Validate positions are in range
-  if (activePlayers.some((pos) => pos < MIN_POSITIONS || pos > MAX_POSITIONS)) {
-    showDropdownError(`Positions must be between ${MIN_POSITIONS} and ${MAX_POSITIONS}`);
+  if (activePlayers.some((pos) => pos < window.MIN_POSITIONS || pos > window.MAX_POSITIONS)) {
+    showDropdownError(
+      `Positions must be between ${window.MIN_POSITIONS} and ${window.MAX_POSITIONS}`,
+    );
     return;
   }
 
@@ -370,14 +373,14 @@ function saveRaceFromDropdown() {
   });
 
   // Add race to array
-  races.push(raceObject);
+  state.races.push(raceObject);
 
   // Save action for undo/redo
-  saveAction('ADD_RACE', { race: raceObject });
+  window.saveAction('ADD_RACE', { race: raceObject });
 
   // Save to localStorage
   try {
-    localStorage.setItem('marioKartRaces', JSON.stringify(races));
+    localStorage.setItem('marioKartRaces', JSON.stringify(state.races));
   } catch (e) {
     console.error('Error saving to localStorage:', e);
   }
@@ -390,10 +393,10 @@ function saveRaceFromDropdown() {
 
   // Update displays and close dropdown
   setTimeout(() => {
-    updateDisplay();
-    updateAchievements();
-    updateClearButtonState();
-    showMessage('Race added successfully!');
+    window.updateDisplay();
+    window.updateAchievements();
+    window.updateClearButtonState();
+    window.showMessage('Race added successfully!');
 
     // Close dropdown after successful save
     closeAddRaceDropdown();
@@ -504,7 +507,7 @@ document.addEventListener('keydown', (e) => {
 });
 
 // Prevent dropdown clicks from propagating to main page
-document.addEventListener('DOMContentLoaded', () => {
+export function initAddRaceDropdown() {
   const dropdown = document.getElementById('add-race-dropdown');
   if (dropdown) {
     // Only stop propagation to parent elements, not within dropdown
@@ -535,7 +538,7 @@ document.addEventListener('DOMContentLoaded', () => {
       );
     }
   }
-});
+}
 
 // Update dropdown width to match widget panel exactly
 function updateDropdownWidth() {

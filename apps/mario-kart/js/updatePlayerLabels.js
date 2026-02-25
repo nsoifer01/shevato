@@ -1,5 +1,5 @@
 // Update player labels to show actual player names
-function updatePlayerLabels() {
+export function updatePlayerLabels() {
   const allPlayers = ['player1', 'player2', 'player3', 'player4'];
 
   allPlayers.forEach((playerId) => {
@@ -29,7 +29,7 @@ function updatePlayerLabels() {
 }
 
 // Listen for player name changes
-document.addEventListener('DOMContentLoaded', function () {
+export function initPlayerLabels() {
   // Subscribe to centralized name changes
   if (window.PlayerNameManager) {
     window.PlayerNameManager.subscribe(() => {
@@ -58,7 +58,7 @@ document.addEventListener('DOMContentLoaded', function () {
 
   // Initial update
   updatePlayerLabels();
-});
+}
 
-// Export for external use
+// Expose for external use
 window.updatePlayerLabels = updatePlayerLabels;

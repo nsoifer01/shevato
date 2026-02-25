@@ -1,19 +1,21 @@
+import { updateMaxPositions } from './constants.js';
+
 // Game Version Management
-let currentGameVersion = 'mk8d'; // Default to MK8 Deluxe
+export let currentGameVersion = 'mk8d'; // Default to MK8 Deluxe
 
 // Storage key prefixes for each game version
-const STORAGE_PREFIXES = {
+export const STORAGE_PREFIXES = {
   mk8d: 'marioKart',
   mkworld: 'marioKartWorld',
 };
 
 // Get the current storage prefix
-function getStoragePrefix() {
+export function getStoragePrefix() {
   return STORAGE_PREFIXES[currentGameVersion];
 }
 
 // Get storage key for current game version
-function getStorageKey(key) {
+export function getStorageKey(key) {
   const prefix = getStoragePrefix();
   // Handle existing keys that already have 'marioKart' prefix
   if (key.startsWith('marioKart')) {
@@ -23,7 +25,7 @@ function getStorageKey(key) {
 }
 
 // Initialize game version from localStorage
-function initializeGameVersion() {
+export function initializeGameVersion() {
   const savedVersion = localStorage.getItem('selectedGameVersion');
   if (savedVersion && STORAGE_PREFIXES[savedVersion]) {
     currentGameVersion = savedVersion;
@@ -35,7 +37,7 @@ function initializeGameVersion() {
 }
 
 // Switch between game versions
-function switchGameVersion(version) {
+export function switchGameVersion(version) {
   if (!STORAGE_PREFIXES[version]) {
     console.error('Invalid game version:', version);
     return;
@@ -82,7 +84,7 @@ function switchGameVersion(version) {
 }
 
 // Update UI to reflect current game version
-function updateVersionUI() {
+export function updateVersionUI() {
   // Update button states
   const mk8dBtn = document.getElementById('mk8d-btn');
   const mkworldBtn = document.getElementById('mkworld-btn');
@@ -122,7 +124,7 @@ const originalSetItem = localStorage.setItem.bind(localStorage);
 const originalRemoveItem = localStorage.removeItem.bind(localStorage);
 
 // Wrapper for localStorage.getItem
-function getFromStorage(key) {
+export function getFromStorage(key) {
   // Special keys that should not be prefixed
   const unprefixedKeys = ['selectedGameVersion', 'theme'];
   if (unprefixedKeys.includes(key)) {
@@ -140,7 +142,7 @@ function getFromStorage(key) {
 }
 
 // Wrapper for localStorage.setItem
-function saveToStorage(key, value) {
+export function saveToStorage(key, value) {
   // Special keys that should not be prefixed
   const unprefixedKeys = ['selectedGameVersion', 'theme'];
   if (unprefixedKeys.includes(key)) {
@@ -158,7 +160,7 @@ function saveToStorage(key, value) {
 }
 
 // Wrapper for localStorage.removeItem
-function removeFromStorage(key) {
+export function removeFromStorage(key) {
   // Special keys that should not be prefixed
   const unprefixedKeys = ['selectedGameVersion', 'theme'];
   if (unprefixedKeys.includes(key)) {
@@ -175,13 +177,11 @@ function removeFromStorage(key) {
   return originalRemoveItem(key);
 }
 
-// Export functions for global use
+// Keep on window for HTML onclick handlers and runtime access
 window.switchGameVersion = switchGameVersion;
 window.initializeGameVersion = initializeGameVersion;
 window.getStorageKey = getStorageKey;
 window.currentGameVersion = currentGameVersion;
-
-// Function to get current game version
 window.getCurrentGameVersion = function () {
   return currentGameVersion;
 };
