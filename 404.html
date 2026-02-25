@@ -13,6 +13,9 @@
     <link rel="stylesheet" href="/assets/css/home-content-alignment.css" />
     <link rel="stylesheet" href="/assets/css/brand-colors.css" />
     <link rel="icon" type="image/png" href="/images/white_icon_transparent.png" />
+    <link rel="manifest" href="/manifest.json" />
+    <meta name="theme-color" content="#667eea" />
+    <link rel="apple-touch-icon" href="/icons/icon-192x192.png" />
 
     <!-- make body full-height flex so footer stays at bottom -->
     <style>
@@ -75,5 +78,10 @@
 
     <!-- Main JavaScript (no Firebase needed on 404 page) -->
     <script type="module" src="/assets/js/main.js"></script>
+    <script>
+      if ('serviceWorker' in navigator) {
+        navigator.serviceWorker.register('/sw.js');
+      }
+    </script>
   </body>
 </html>

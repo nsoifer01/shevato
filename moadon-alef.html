@@ -20,6 +20,9 @@
     />
     <link rel="stylesheet" href="assets/css/main.css" />
     <link rel="icon" type="image/png" href="images/moadon-alef-header.png" />
+    <link rel="manifest" href="/manifest.json" />
+    <meta name="theme-color" content="#667eea" />
+    <link rel="apple-touch-icon" href="/icons/icon-192x192.png" />
 
     <!-- SEO Enhancement: Canonical URL to prevent duplicate content issues -->
     <link rel="canonical" href="https://shevato.com/moadon-alef.html" />
@@ -367,5 +370,10 @@
     <script src="assets/js/breakpoints.min.js"></script>
     <script type="module" src="assets/js/main.js"></script>
     <script src="/assets/js/language-switcher.js"></script>
+    <script>
+      if ('serviceWorker' in navigator) {
+        navigator.serviceWorker.register('/sw.js');
+      }
+    </script>
   </body>
 </html>
