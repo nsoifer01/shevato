@@ -48,32 +48,56 @@ class HomeView {
       0,
     );
 
-    const bannerHTML = `
-            <div class="paused-workout-banner">
-                <div class="paused-workout-icon">
-                    <i class="fas fa-pause-circle"></i>
-                </div>
-                <div class="paused-workout-info">
-                    <h3>Paused Workout</h3>
-                    <p><strong>${pausedWorkout.workoutDayName}</strong></p>
-                    <p class="paused-workout-meta">
-                        <span><i class="fas fa-clock"></i> ${minutes}:${String(seconds).padStart(2, '0')} elapsed</span>
-                        <span><i class="fas fa-dumbbell"></i> ${totalSets} set${totalSets !== 1 ? 's' : ''}</span>
-                    </p>
-                </div>
-                <div class="paused-workout-actions">
-                    <button class="btn btn-primary" onclick="window.gymApp.viewControllers.home.resumeWorkout()">
-                        <i class="fas fa-play"></i> Resume
-                    </button>
-                    <button class="btn btn-outline btn-danger-outline" onclick="window.gymApp.viewControllers.home.discardPausedWorkout()">
-                        <i class="fas fa-trash"></i> Discard
-                    </button>
-                </div>
-            </div>
-        `;
+    const banner = document.createElement('div');
+    banner.className = 'paused-workout-banner';
+
+    const iconDiv = document.createElement('div');
+    iconDiv.className = 'paused-workout-icon';
+    const iconI = document.createElement('i');
+    iconI.className = 'fas fa-pause-circle';
+    iconDiv.appendChild(iconI);
+
+    const infoDiv = document.createElement('div');
+    infoDiv.className = 'paused-workout-info';
+    const h3 = document.createElement('h3');
+    h3.textContent = 'Paused Workout';
+    const nameP = document.createElement('p');
+    const nameStrong = document.createElement('strong');
+    nameStrong.textContent = pausedWorkout.workoutDayName;
+    nameP.appendChild(nameStrong);
+    const metaP = document.createElement('p');
+    metaP.className = 'paused-workout-meta';
+    const timeSpan = document.createElement('span');
+    const clockIcon = document.createElement('i');
+    clockIcon.className = 'fas fa-clock';
+    timeSpan.append(clockIcon, ` ${minutes}:${String(seconds).padStart(2, '0')} elapsed`);
+    const setsSpan = document.createElement('span');
+    const dumbbellIcon = document.createElement('i');
+    dumbbellIcon.className = 'fas fa-dumbbell';
+    setsSpan.append(dumbbellIcon, ` ${totalSets} set${totalSets !== 1 ? 's' : ''}`);
+    metaP.append(timeSpan, setsSpan);
+    infoDiv.append(h3, nameP, metaP);
+
+    const actionsDiv = document.createElement('div');
+    actionsDiv.className = 'paused-workout-actions';
+    const resumeBtn = document.createElement('button');
+    resumeBtn.className = 'btn btn-primary';
+    const playIcon = document.createElement('i');
+    playIcon.className = 'fas fa-play';
+    resumeBtn.append(playIcon, ' Resume');
+    resumeBtn.addEventListener('click', () => this.resumeWorkout());
+    const discardBtn = document.createElement('button');
+    discardBtn.className = 'btn btn-outline btn-danger-outline';
+    const trashIcon = document.createElement('i');
+    trashIcon.className = 'fas fa-trash';
+    discardBtn.append(trashIcon, ' Discard');
+    discardBtn.addEventListener('click', () => this.discardPausedWorkout());
+    actionsDiv.append(resumeBtn, discardBtn);
+
+    banner.append(iconDiv, infoDiv, actionsDiv);
 
     // Insert banner before the container
-    container.insertAdjacentHTML('beforebegin', bannerHTML);
+    container.parentNode.insertBefore(banner, container);
   }
 
   resumeWorkout() {
@@ -110,64 +134,78 @@ class HomeView {
     const pausedWorkout = storageService.getActiveWorkout();
 
     if (programs.length === 0) {
-      container.innerHTML = `
-                <div class="empty-state">
-                    <i class="fas fa-folder-open"></i>
-                    <p>No programs yet</p>
-                    <button class="btn btn-primary" data-view="programs">Create Program</button>
-                </div>
-            `;
+      container.textContent = '';
+      const empty = document.createElement('div');
+      empty.className = 'empty-state';
+      const icon = document.createElement('i');
+      icon.className = 'fas fa-folder-open';
+      const p = document.createElement('p');
+      p.textContent = 'No programs yet';
+      const btn = document.createElement('button');
+      btn.className = 'btn btn-primary';
+      btn.dataset.view = 'programs';
+      btn.textContent = 'Create Program';
+      empty.append(icon, p, btn);
+      container.appendChild(empty);
       return;
     }
 
-    container.innerHTML = `
-            <div class="program-summary">
-                <h3>Your Programs</h3>
-                <div class="quick-programs">
-                    ${programs
-                      .map((program) => {
-                        const isPaused =
-                          pausedWorkout &&
-                          pausedWorkout.paused &&
-                          pausedWorkout.programId === program.id;
-                        const hasExercises = program.exercises.length > 0;
+    container.textContent = '';
+    const summary = document.createElement('div');
+    summary.className = 'program-summary';
+    const h3 = document.createElement('h3');
+    h3.textContent = 'Your Programs';
+    const quickPrograms = document.createElement('div');
+    quickPrograms.className = 'quick-programs';
 
-                        if (isPaused) {
-                          return `
-                                <div class="quick-program-item paused" onclick="window.gymApp.viewControllers.home.resumeWorkout()">
-                                    <div class="program-info">
-                                        <strong>${program.name}</strong>
-                                        <span class="paused-label"><i class="fas fa-pause"></i> Paused</span>
-                                    </div>
-                                    <i class="fas fa-play-circle"></i>
-                                </div>
-                            `;
-                        } else if (hasExercises) {
-                          return `
-                                <div class="quick-program-item" onclick="window.gymApp.viewControllers.home.startWorkoutWithProgram(${program.id})">
-                                    <div class="program-info">
-                                        <strong>${program.name}</strong>
-                                        <span>${program.exercises.length} exercises</span>
-                                    </div>
-                                    <i class="fas fa-play-circle"></i>
-                                </div>
-                            `;
-                        } else {
-                          return `
-                                <div class="quick-program-item">
-                                    <div class="program-info">
-                                        <strong>${program.name}</strong>
-                                        <span>${program.exercises.length} exercises</span>
-                                    </div>
-                                    <i class="fas fa-edit" onclick="event.stopPropagation(); window.gymApp.viewControllers.programs.editProgram(${program.id})"></i>
-                                </div>
-                            `;
-                        }
-                      })
-                      .join('')}
-                </div>
-            </div>
-        `;
+    programs.forEach((program) => {
+      const isPaused =
+        pausedWorkout && pausedWorkout.paused && pausedWorkout.programId === program.id;
+      const hasExercises = program.exercises.length > 0;
+
+      const item = document.createElement('div');
+      item.className = 'quick-program-item' + (isPaused ? ' paused' : '');
+
+      const info = document.createElement('div');
+      info.className = 'program-info';
+      const strong = document.createElement('strong');
+      strong.textContent = program.name;
+      info.appendChild(strong);
+
+      const actionIcon = document.createElement('i');
+
+      if (isPaused) {
+        const span = document.createElement('span');
+        span.className = 'paused-label';
+        const pauseIcon = document.createElement('i');
+        pauseIcon.className = 'fas fa-pause';
+        span.append(pauseIcon, ' Paused');
+        info.appendChild(span);
+        actionIcon.className = 'fas fa-play-circle';
+        item.addEventListener('click', () => this.resumeWorkout());
+      } else if (hasExercises) {
+        const span = document.createElement('span');
+        span.textContent = `${program.exercises.length} exercises`;
+        info.appendChild(span);
+        actionIcon.className = 'fas fa-play-circle';
+        item.addEventListener('click', () => this.startWorkoutWithProgram(program.id));
+      } else {
+        const span = document.createElement('span');
+        span.textContent = `${program.exercises.length} exercises`;
+        info.appendChild(span);
+        actionIcon.className = 'fas fa-edit';
+        actionIcon.addEventListener('click', (e) => {
+          e.stopPropagation();
+          window.gymApp.viewControllers.programs.editProgram(program.id);
+        });
+      }
+
+      item.append(info, actionIcon);
+      quickPrograms.appendChild(item);
+    });
+
+    summary.append(h3, quickPrograms);
+    container.appendChild(summary);
   }
 
   renderRecentWorkouts() {
@@ -177,49 +215,68 @@ class HomeView {
       .slice(0, 5);
 
     if (recentSessions.length === 0) {
-      container.innerHTML = `
-                <div class="empty-state">
-                    <i class="fas fa-dumbbell"></i>
-                    <p>No workouts yet</p>
-                    <button class="btn btn-primary" data-view="workout">Start Workout</button>
-                </div>
-            `;
+      container.textContent = '';
+      const empty = document.createElement('div');
+      empty.className = 'empty-state';
+      const icon = document.createElement('i');
+      icon.className = 'fas fa-dumbbell';
+      const p = document.createElement('p');
+      p.textContent = 'No workouts yet';
+      const btn = document.createElement('button');
+      btn.className = 'btn btn-primary';
+      btn.dataset.view = 'workout';
+      btn.textContent = 'Start Workout';
+      empty.append(icon, p, btn);
+      container.appendChild(empty);
       return;
     }
 
     const unit = this.app.settings.weightUnit;
-    container.innerHTML = recentSessions
-      .map(
-        (session) => `
-            <div class="workout-card clickable" onclick="window.gymApp.viewControllers.home.showWorkoutDetails(${session.id})">
-                <div class="workout-card-header">
-                    <h4>${session.workoutDayName}</h4>
-                    <span class="date">${formatDate(session.date)}</span>
-                </div>
-                <div class="workout-card-stats">
-                    <div class="stat">
-                        <i class="fas fa-weight"></i>
-                        ${Math.round(session.totalVolume).toLocaleString()}${unit}
-                    </div>
-                    <div class="stat">
-                        <i class="fas fa-list"></i>
-                        ${session.exercises.length} exercises
-                    </div>
-                    ${
-                      session.duration
-                        ? `
-                        <div class="stat">
-                            <i class="fas fa-clock"></i>
-                            ${session.duration} min
-                        </div>
-                    `
-                        : ''
-                    }
-                </div>
-            </div>
-        `,
-      )
-      .join('');
+    container.textContent = '';
+
+    recentSessions.forEach((session) => {
+      const card = document.createElement('div');
+      card.className = 'workout-card clickable';
+      card.addEventListener('click', () => this.showWorkoutDetails(session.id));
+
+      const header = document.createElement('div');
+      header.className = 'workout-card-header';
+      const h4 = document.createElement('h4');
+      h4.textContent = session.workoutDayName;
+      const dateSpan = document.createElement('span');
+      dateSpan.className = 'date';
+      dateSpan.textContent = formatDate(session.date);
+      header.append(h4, dateSpan);
+
+      const stats = document.createElement('div');
+      stats.className = 'workout-card-stats';
+
+      const volStat = document.createElement('div');
+      volStat.className = 'stat';
+      const weightIcon = document.createElement('i');
+      weightIcon.className = 'fas fa-weight';
+      volStat.append(weightIcon, ` ${Math.round(session.totalVolume).toLocaleString()}${unit}`);
+
+      const exStat = document.createElement('div');
+      exStat.className = 'stat';
+      const listIcon = document.createElement('i');
+      listIcon.className = 'fas fa-list';
+      exStat.append(listIcon, ` ${session.exercises.length} exercises`);
+
+      stats.append(volStat, exStat);
+
+      if (session.duration) {
+        const durStat = document.createElement('div');
+        durStat.className = 'stat';
+        const clockIcon = document.createElement('i');
+        clockIcon.className = 'fas fa-clock';
+        durStat.append(clockIcon, ` ${session.duration} min`);
+        stats.appendChild(durStat);
+      }
+
+      card.append(header, stats);
+      container.appendChild(card);
+    });
   }
 
   showWorkoutDetails(sessionId) {
@@ -241,29 +298,40 @@ class HomeView {
       .slice(0, 3);
 
     if (unlockedAchievements.length === 0) {
-      container.innerHTML = `
-                <div class="empty-state">
-                    <i class="fas fa-trophy"></i>
-                    <p>No achievements unlocked yet</p>
-                </div>
-            `;
+      container.textContent = '';
+      const empty = document.createElement('div');
+      empty.className = 'empty-state';
+      const icon = document.createElement('i');
+      icon.className = 'fas fa-trophy';
+      const p = document.createElement('p');
+      p.textContent = 'No achievements unlocked yet';
+      empty.append(icon, p);
+      container.appendChild(empty);
       return;
     }
 
-    container.innerHTML = unlockedAchievements
-      .map(
-        (achievement) => `
-            <div class="achievement-card unlocked">
-                <div class="achievement-icon">${achievement.icon}</div>
-                <div class="achievement-info">
-                    <h3>${achievement.name}</h3>
-                    <p>${achievement.description}</p>
-                    <small>Unlocked ${formatDate(achievement.unlockedAt)}</small>
-                </div>
-            </div>
-        `,
-      )
-      .join('');
+    container.textContent = '';
+    unlockedAchievements.forEach((achievement) => {
+      const card = document.createElement('div');
+      card.className = 'achievement-card unlocked';
+
+      const iconDiv = document.createElement('div');
+      iconDiv.className = 'achievement-icon';
+      iconDiv.textContent = achievement.icon;
+
+      const infoDiv = document.createElement('div');
+      infoDiv.className = 'achievement-info';
+      const h3 = document.createElement('h3');
+      h3.textContent = achievement.name;
+      const p = document.createElement('p');
+      p.textContent = achievement.description;
+      const small = document.createElement('small');
+      small.textContent = `Unlocked ${formatDate(achievement.unlockedAt)}`;
+      infoDiv.append(h3, p, small);
+
+      card.append(iconDiv, infoDiv);
+      container.appendChild(card);
+    });
   }
 
   async startWorkoutWithProgram(programId) {

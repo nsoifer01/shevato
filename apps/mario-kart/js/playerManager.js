@@ -33,9 +33,21 @@ export function updatePlayerLabels() {
   // Update table headers
   const headers = document.querySelectorAll('#history-table th');
   if (headers.length >= 5) {
-    headers[2].innerHTML = `<span style="cursor: pointer;" onclick="sortTable('player1')" tabindex="0" onkeydown="if(event.key==='Enter'||event.key===' ')sortTable('player1')" aria-label="Sort by ${playerNames.player1}'s position">${playerNames.player1} ↕</span>`;
-    headers[3].innerHTML = `<span style="cursor: pointer;" onclick="sortTable('player2')" tabindex="0" onkeydown="if(event.key==='Enter'||event.key===' ')sortTable('player2')" aria-label="Sort by ${playerNames.player2}'s position">${playerNames.player2} ↕</span>`;
-    headers[4].innerHTML = `<span style="cursor: pointer;" onclick="sortTable('player3')" tabindex="0" onkeydown="if(event.key==='Enter'||event.key===' ')sortTable('player3')" aria-label="Sort by ${playerNames.player3}'s position">${playerNames.player3} ↕</span>`;
+    const playerKeys = ['player1', 'player2', 'player3'];
+    playerKeys.forEach((key, i) => {
+      const th = headers[i + 2];
+      th.textContent = '';
+      const span = document.createElement('span');
+      span.style.cursor = 'pointer';
+      span.setAttribute('tabindex', '0');
+      span.setAttribute('aria-label', `Sort by ${playerNames[key]}'s position`);
+      span.textContent = playerNames[key] + ' \u2195';
+      span.addEventListener('click', () => window.sortTable(key));
+      span.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter' || e.key === ' ') window.sortTable(key);
+      });
+      th.appendChild(span);
+    });
   }
 
   // Update player name inputs if they exist

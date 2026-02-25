@@ -29,10 +29,13 @@ export function showToast(message, type = 'success', duration = 3000) {
     info: 'ℹ️',
   };
 
-  toast.innerHTML = `
-    <span class="toast-icon">${icons[type] || icons.success}</span>
-    <span class="toast-message">${message}</span>
-  `;
+  const iconSpan = document.createElement('span');
+  iconSpan.className = 'toast-icon';
+  iconSpan.textContent = icons[type] || icons.success;
+  const msgSpan = document.createElement('span');
+  msgSpan.className = 'toast-message';
+  msgSpan.textContent = message;
+  toast.append(iconSpan, msgSpan);
 
   document.body.appendChild(toast);
 

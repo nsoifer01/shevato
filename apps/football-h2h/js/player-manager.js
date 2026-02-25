@@ -37,6 +37,16 @@ export function updatePlayerName(playerNumber, newName) {
   showToast(`Player ${playerNumber} name updated`, 'success');
 }
 
+function setPlayerHeader(headerEl, icon, name) {
+  if (!headerEl) return;
+  headerEl.textContent = '';
+  const iconSpan = document.createElement('span');
+  iconSpan.className = 'player-header-icon';
+  iconSpan.textContent = icon;
+  headerEl.appendChild(iconSpan);
+  headerEl.appendChild(document.createTextNode(' ' + name));
+}
+
 export function applyPlayerNameChanges(newPlayer1Name, newPlayer2Name) {
   state.player1Name = newPlayer1Name;
   state.player2Name = newPlayer2Name;
@@ -55,15 +65,8 @@ export function applyPlayerNameChanges(newPlayer1Name, newPlayer2Name) {
   const player1Header = document.getElementById('player1Header');
   const player2Header = document.getElementById('player2Header');
 
-  if (player1Header) {
-    const player1IconDisplay = state.playerIcons.player1 || '\u26BD';
-    player1Header.innerHTML = `<span class="player-header-icon">${player1IconDisplay}</span> ${state.player1Name}`;
-  }
-
-  if (player2Header) {
-    const player2IconDisplay = state.playerIcons.player2 || '\u26BD';
-    player2Header.innerHTML = `<span class="player-header-icon">${player2IconDisplay}</span> ${state.player2Name}`;
-  }
+  setPlayerHeader(player1Header, state.playerIcons.player1 || '\u26BD', state.player1Name);
+  setPlayerHeader(player2Header, state.playerIcons.player2 || '\u26BD', state.player2Name);
 
   const modalPlayer1Name = document.getElementById('modalPlayer1Name');
   const modalPlayer2Name = document.getElementById('modalPlayer2Name');
@@ -92,10 +95,20 @@ export function updatePlayerIconDisplays() {
   const player1IconDisplay = document.getElementById('player1IconDisplay');
   const player2IconDisplay = document.getElementById('player2IconDisplay');
 
-  if (player1IconDisplay)
-    player1IconDisplay.innerHTML = `<span class="team-logo">${state.playerIcons.player1}</span>`;
-  if (player2IconDisplay)
-    player2IconDisplay.innerHTML = `<span class="team-logo">${state.playerIcons.player2}</span>`;
+  if (player1IconDisplay) {
+    player1IconDisplay.textContent = '';
+    const span = document.createElement('span');
+    span.className = 'team-logo';
+    span.textContent = state.playerIcons.player1;
+    player1IconDisplay.appendChild(span);
+  }
+  if (player2IconDisplay) {
+    player2IconDisplay.textContent = '';
+    const span = document.createElement('span');
+    span.className = 'team-logo';
+    span.textContent = state.playerIcons.player2;
+    player2IconDisplay.appendChild(span);
+  }
 
   const player1DisplayName = document.getElementById('player1DisplayName');
   const player2DisplayName = document.getElementById('player2DisplayName');
@@ -105,15 +118,8 @@ export function updatePlayerIconDisplays() {
   const player1Header = document.getElementById('player1Header');
   const player2Header = document.getElementById('player2Header');
 
-  if (player1Header) {
-    const p1Icon = state.playerIcons.player1 || '\u26BD';
-    player1Header.innerHTML = `<span class="player-header-icon">${p1Icon}</span> ${state.player1Name}`;
-  }
-
-  if (player2Header) {
-    const p2Icon = state.playerIcons.player2 || '\u26BD';
-    player2Header.innerHTML = `<span class="player-header-icon">${p2Icon}</span> ${state.player2Name}`;
-  }
+  setPlayerHeader(player1Header, state.playerIcons.player1 || '\u26BD', state.player1Name);
+  setPlayerHeader(player2Header, state.playerIcons.player2 || '\u26BD', state.player2Name);
 
   const playerModal = document.getElementById('playerManagementModal');
   if (playerModal && playerModal.classList.contains('active')) {

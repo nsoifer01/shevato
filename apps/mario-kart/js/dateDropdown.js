@@ -139,10 +139,10 @@
           month: 'short',
           day: 'numeric',
         }).format(date);
-        window.mobileDateButton.innerHTML = `📅 ${mobileFormat}`;
-        window.mobileDateButton.title = formattedDate.replace('📅 ', '');
+        window.mobileDateButton.textContent = `\u{1f4c5} ${mobileFormat}`;
+        window.mobileDateButton.title = formattedDate.replace('\u{1f4c5} ', '');
       } else {
-        window.mobileDateButton.innerHTML = '📅';
+        window.mobileDateButton.textContent = '\u{1f4c5}';
         window.mobileDateButton.title = 'Date';
       }
     }

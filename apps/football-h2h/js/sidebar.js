@@ -5,6 +5,7 @@ import { TEAMS_DATA } from './teams-data.js';
 import { showToast } from './modalUtils.js';
 import { addToHistory } from './undo-redo.js';
 import { updateUndoRedoButtons } from './undo-redo.js';
+import { escapeHtml } from '../../../shared/utils/dom.js';
 
 // Sidebar state
 let sidebarOpen = false;
@@ -303,10 +304,10 @@ export function generateSidebarPlayerSettings() {
   const container = document.getElementById('sidebar-player-settings');
   if (!container) return;
 
-  const currentPlayer1Name = state.player1Name;
-  const currentPlayer2Name = state.player2Name;
-  const currentPlayer1Icon = state.playerIcons?.player1 || '\u26BD';
-  const currentPlayer2Icon = state.playerIcons?.player2 || '\u26BD';
+  const p1Name = escapeHtml(state.player1Name);
+  const p2Name = escapeHtml(state.player2Name);
+  const p1Icon = escapeHtml(state.playerIcons?.player1 || '\u26BD');
+  const p2Icon = escapeHtml(state.playerIcons?.player2 || '\u26BD');
 
   container.innerHTML = `
     <div class="sidebar-players-form">
@@ -315,14 +316,12 @@ export function generateSidebarPlayerSettings() {
         <div class="player-input-group">
           <label for="sidebar-player1-name">Player 1</label>
           <input type="text" id="sidebar-player1-name" class="sidebar-player-input"
-                 placeholder="Enter player 1 name" value="${currentPlayer1Name}"
-                 onchange="updatePlayerName(1, this.value)">
+                 placeholder="Enter player 1 name" value="${p1Name}">
         </div>
         <div class="player-input-group">
           <label for="sidebar-player2-name">Player 2</label>
           <input type="text" id="sidebar-player2-name" class="sidebar-player-input"
-                 placeholder="Enter player 2 name" value="${currentPlayer2Name}"
-                 onchange="updatePlayerName(2, this.value)">
+                 placeholder="Enter player 2 name" value="${p2Name}">
         </div>
       </div>
 
@@ -330,21 +329,35 @@ export function generateSidebarPlayerSettings() {
         <h4 class="section-title">Player Icons</h4>
         <div class="player-icon-row">
           <div class="player-icon-item">
-            <div class="player-icon-display clickable-icon" onclick="openIconSelector(1)">
-              <span class="team-logo">${currentPlayer1Icon}</span>
+            <div class="player-icon-display clickable-icon" id="sidebar-icon-selector-1">
+              <span class="team-logo">${p1Icon}</span>
             </div>
-            <span class="player-label">${currentPlayer1Name}</span>
+            <span class="player-label">${p1Name}</span>
           </div>
           <div class="player-icon-item">
-            <div class="player-icon-display clickable-icon" onclick="openIconSelector(2)">
-              <span class="team-logo">${currentPlayer2Icon}</span>
+            <div class="player-icon-display clickable-icon" id="sidebar-icon-selector-2">
+              <span class="team-logo">${p2Icon}</span>
             </div>
-            <span class="player-label">${currentPlayer2Name}</span>
+            <span class="player-label">${p2Name}</span>
           </div>
         </div>
       </div>
     </div>
   `;
+
+  // Bind events via addEventListener instead of inline onclick
+  document.getElementById('sidebar-player1-name')?.addEventListener('change', function () {
+    window.updatePlayerName(1, this.value);
+  });
+  document.getElementById('sidebar-player2-name')?.addEventListener('change', function () {
+    window.updatePlayerName(2, this.value);
+  });
+  document.getElementById('sidebar-icon-selector-1')?.addEventListener('click', () => {
+    window.openIconSelector(1);
+  });
+  document.getElementById('sidebar-icon-selector-2')?.addEventListener('click', () => {
+    window.openIconSelector(2);
+  });
 }
 
 // --- Game Form ---
@@ -404,35 +417,35 @@ function generateSidebarGameInputs() {
   const container = document.getElementById('sidebar-game-inputs');
   if (!container) return;
 
-  const currentPlayer1Name = state.player1Name;
-  const currentPlayer2Name = state.player2Name;
+  const p1 = escapeHtml(state.player1Name);
+  const p2 = escapeHtml(state.player2Name);
 
   container.innerHTML = `
     <div class="sidebar-game-goals">
       <div class="sidebar-player-input">
-        <label for="sidebar-player1-goals">${currentPlayer1Name} Goals:</label>
+        <label for="sidebar-player1-goals">${p1} Goals:</label>
         <input type="number" id="sidebar-player1-goals" class="sidebar-goals-input"
-               min="0" max="99" placeholder="" onchange="checkSidebarForDraw()">
+               min="0" max="99" placeholder="">
       </div>
       <div class="sidebar-player-input">
-        <label for="sidebar-player2-goals">${currentPlayer2Name} Goals:</label>
+        <label for="sidebar-player2-goals">${p2} Goals:</label>
         <input type="number" id="sidebar-player2-goals" class="sidebar-goals-input"
-               min="0" max="99" placeholder="" onchange="checkSidebarForDraw()">
+               min="0" max="99" placeholder="">
       </div>
       <div class="sidebar-penalty-section" id="sidebar-penalty-section" style="display: none;">
         <label for="sidebar-penalty-winner">Penalty Result:</label>
         <select id="sidebar-penalty-winner" class="sidebar-team-select">
           <option value="">Select Result</option>
-          <option value="1">${currentPlayer1Name} Won</option>
-          <option value="2">${currentPlayer2Name} Won</option>
+          <option value="1">${p1} Won</option>
+          <option value="2">${p2} Won</option>
           <option value="draw">No Winner (Draw)</option>
         </select>
       </div>
     </div>
     <div class="sidebar-game-teams">
       <div class="sidebar-player-input">
-        <label for="sidebar-player1-team-type">${currentPlayer1Name} Team Type:</label>
-        <select id="sidebar-player1-team-type" class="sidebar-team-select" onchange="updateSidebarTeamOptions(1)">
+        <label for="sidebar-player1-team-type">${p1} Team Type:</label>
+        <select id="sidebar-player1-team-type" class="sidebar-team-select">
           <option value="Ultimate Team">Ultimate Team</option>
           <option value="Premier League">Premier League</option>
           <option value="La Liga">La Liga</option>
@@ -454,8 +467,8 @@ function generateSidebarGameInputs() {
         </div>
       </div>
       <div class="sidebar-player-input">
-        <label for="sidebar-player2-team-type">${currentPlayer2Name} Team Type:</label>
-        <select id="sidebar-player2-team-type" class="sidebar-team-select" onchange="updateSidebarTeamOptions(2)">
+        <label for="sidebar-player2-team-type">${p2} Team Type:</label>
+        <select id="sidebar-player2-team-type" class="sidebar-team-select">
           <option value="Ultimate Team">Ultimate Team</option>
           <option value="Premier League">Premier League</option>
           <option value="La Liga">La Liga</option>
@@ -478,6 +491,20 @@ function generateSidebarGameInputs() {
       </div>
     </div>
   `;
+
+  // Bind events via addEventListener instead of inline handlers
+  document
+    .getElementById('sidebar-player1-goals')
+    ?.addEventListener('change', () => window.checkSidebarForDraw());
+  document
+    .getElementById('sidebar-player2-goals')
+    ?.addEventListener('change', () => window.checkSidebarForDraw());
+  document
+    .getElementById('sidebar-player1-team-type')
+    ?.addEventListener('change', () => updateSidebarTeamOptions(1));
+  document
+    .getElementById('sidebar-player2-team-type')
+    ?.addEventListener('change', () => updateSidebarTeamOptions(2));
 
   setTimeout(() => {
     updateSidebarTeamOptions(1);

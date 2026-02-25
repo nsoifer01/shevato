@@ -57,19 +57,42 @@ export function updateHistoryTableHeaders() {
   const headerRow = document.querySelector('#history-table thead tr');
   if (!headerRow) return;
 
-  const playerHeaders = state.players
-    .map(
-      (player) =>
-        `<th style="cursor: pointer;" onclick="sortTable('${player}')" tabindex="0" onkeydown="if(event.key==='Enter'||event.key===' ')sortTable('${player}')" aria-label="Sort by ${window.PlayerNameManager ? window.PlayerNameManager.get(player) : window.getPlayerName(player)}'s position">${window.PlayerNameManager ? window.PlayerNameManager.get(player) : window.getPlayerName(player)} \u2195</th>`,
-    )
-    .join('');
+  headerRow.textContent = '';
 
-  headerRow.innerHTML = `
-        <th>Race #</th>
-        <th style="cursor: pointer;" onclick="sortTable('date')" tabindex="0" onkeydown="if(event.key==='Enter'||event.key===' ')sortTable('date')" aria-label="Sort by date">Date \u2195</th>
-        ${playerHeaders}
-        <th>Action</th>
-    `;
+  const thRace = document.createElement('th');
+  thRace.textContent = 'Race #';
+
+  const thDate = document.createElement('th');
+  thDate.style.cursor = 'pointer';
+  thDate.setAttribute('tabindex', '0');
+  thDate.setAttribute('aria-label', 'Sort by date');
+  thDate.textContent = 'Date \u2195';
+  thDate.addEventListener('click', () => window.sortTable('date'));
+  thDate.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter' || e.key === ' ') window.sortTable('date');
+  });
+
+  headerRow.append(thRace, thDate);
+
+  state.players.forEach((player) => {
+    const playerName = window.PlayerNameManager
+      ? window.PlayerNameManager.get(player)
+      : window.getPlayerName(player);
+    const th = document.createElement('th');
+    th.style.cursor = 'pointer';
+    th.setAttribute('tabindex', '0');
+    th.setAttribute('aria-label', `Sort by ${playerName}'s position`);
+    th.textContent = playerName + ' \u2195';
+    th.addEventListener('click', () => window.sortTable(player));
+    th.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter' || e.key === ' ') window.sortTable(player);
+    });
+    headerRow.appendChild(th);
+  });
+
+  const thAction = document.createElement('th');
+  thAction.textContent = 'Action';
+  headerRow.appendChild(thAction);
 }
 
 export function updateRaceHistoryTable(filteredRaces) {
@@ -92,35 +115,62 @@ export function updateRaceHistoryTable(filteredRaces) {
     ? window.GlobalPaginationManager.getPaginatedItems('mario-kart-races', reversedRaces)
     : reversedRaces;
 
-  const historyHtml = racesToDisplay
-    .map((race) => {
-      const positions = state.players.map((player) => race[player]).filter((pos) => pos !== null);
-      const originalIndex = filteredRaces.indexOf(race);
-      const raceNumber = originalIndex + 1;
-      const playerCells = state.players
-        .map((player) => {
-          const position = race[player];
-          return position !== null
-            ? `<td><span class="position-cell ${getRelativePositionClass(position, positions)}">${position}</span></td>`
-            : '<td><span style="color: #718096;">\u2014</span></td>';
-        })
-        .join('');
+  const historyBody = document.getElementById('history-body');
+  historyBody.textContent = '';
 
-      return `
-        <tr>
-            <td>${raceNumber}</td>
-            <td>${race.date}${race.timestamp ? '<br><small>' + race.timestamp + '</small>' : ''}</td>
-            ${playerCells}
-            <td>
-                <button class="edit-btn" onclick="editRace(${state.races.indexOf(race)})" title="Edit race">\u270f\ufe0f</button>
-                <button class="delete-btn" onclick="deleteRace(${state.races.indexOf(race)})" title="Delete race">\u{1f5d1}\ufe0f</button>
-            </td>
-        </tr>
-    `;
-    })
-    .join('');
+  racesToDisplay.forEach((race) => {
+    const positions = state.players.map((player) => race[player]).filter((pos) => pos !== null);
+    const originalIndex = filteredRaces.indexOf(race);
+    const raceNumber = originalIndex + 1;
+    const raceIndex = state.races.indexOf(race);
 
-  document.getElementById('history-body').innerHTML = historyHtml;
+    const tr = document.createElement('tr');
+
+    const tdNum = document.createElement('td');
+    tdNum.textContent = raceNumber;
+
+    const tdDate = document.createElement('td');
+    tdDate.textContent = race.date;
+    if (race.timestamp) {
+      tdDate.appendChild(document.createElement('br'));
+      const small = document.createElement('small');
+      small.textContent = race.timestamp;
+      tdDate.appendChild(small);
+    }
+
+    tr.append(tdNum, tdDate);
+
+    state.players.forEach((player) => {
+      const td = document.createElement('td');
+      const position = race[player];
+      const span = document.createElement('span');
+      if (position !== null) {
+        span.className = `position-cell ${getRelativePositionClass(position, positions)}`;
+        span.textContent = position;
+      } else {
+        span.style.color = '#718096';
+        span.textContent = '\u2014';
+      }
+      td.appendChild(span);
+      tr.appendChild(td);
+    });
+
+    const tdActions = document.createElement('td');
+    const editBtn = document.createElement('button');
+    editBtn.className = 'edit-btn';
+    editBtn.title = 'Edit race';
+    editBtn.textContent = '\u270f\ufe0f';
+    editBtn.addEventListener('click', () => window.editRace(raceIndex));
+    const deleteBtn = document.createElement('button');
+    deleteBtn.className = 'delete-btn';
+    deleteBtn.title = 'Delete race';
+    deleteBtn.textContent = '\u{1f5d1}\ufe0f';
+    deleteBtn.addEventListener('click', () => window.deleteRace(raceIndex));
+    tdActions.append(editBtn, deleteBtn);
+    tr.appendChild(tdActions);
+
+    historyBody.appendChild(tr);
+  });
 
   if (window.GlobalPaginationManager && filteredRaces.length > 0) {
     const paginationHtml =
@@ -158,51 +208,69 @@ export function updateMobileRaceCards(filteredRaces) {
     raceHistorySection.style.display = 'block';
   }
 
-  const mobileHtml = filteredRaces
-    .slice()
-    .reverse()
-    .map((race, index) => {
-      const positions = state.players.map((player) => race[player]).filter((pos) => pos !== null);
-      const raceNumber = filteredRaces.length - index;
+  const mobileHistory = document.getElementById('mobile-history');
+  if (mobileHistory) {
+    mobileHistory.textContent = '';
 
-      const playerPositions = state.players
-        .map((player) => {
+    filteredRaces
+      .slice()
+      .reverse()
+      .forEach((race, index) => {
+        const positions = state.players
+          .map((player) => race[player])
+          .filter((pos) => pos !== null);
+        const raceNumber = filteredRaces.length - index;
+        const raceIndex = state.races.indexOf(race);
+
+        const card = document.createElement('div');
+        card.className = 'race-card';
+
+        const header = document.createElement('div');
+        header.className = 'race-card-header';
+        const numSpan = document.createElement('span');
+        numSpan.className = 'race-number';
+        numSpan.textContent = `Race #${raceNumber}`;
+        const dateSpan = document.createElement('span');
+        dateSpan.className = 'race-date';
+        dateSpan.textContent = race.date + (race.timestamp ? ' ' + race.timestamp : '');
+        header.append(numSpan, dateSpan);
+
+        const positionsDiv = document.createElement('div');
+        positionsDiv.className = 'race-positions';
+        state.players.forEach((player) => {
           const position = race[player];
+          if (position === null) return;
           const playerName = window.PlayerNameManager
             ? window.PlayerNameManager.get(player)
             : window.getPlayerName(player);
-          return position !== null
-            ? `
-                    <div class="position-item">
-                        <span class="player-label">${playerName}:</span>
-                        <span class="position-cell ${getRelativePositionClass(position, positions)}">${position}</span>
-                    </div>
-                `
-            : '';
-        })
-        .filter((html) => html !== '')
-        .join('');
+          const item = document.createElement('div');
+          item.className = 'position-item';
+          const label = document.createElement('span');
+          label.className = 'player-label';
+          label.textContent = playerName + ':';
+          const posSpan = document.createElement('span');
+          posSpan.className = `position-cell ${getRelativePositionClass(position, positions)}`;
+          posSpan.textContent = position;
+          item.append(label, posSpan);
+          positionsDiv.appendChild(item);
+        });
 
-      return `
-        <div class="race-card">
-            <div class="race-card-header">
-                <span class="race-number">Race #${raceNumber}</span>
-                <span class="race-date">${race.date}${race.timestamp ? ' ' + race.timestamp : ''}</span>
-            </div>
-            <div class="race-positions">
-                ${playerPositions}
-            </div>
-            <div class="race-card-actions">
-                <button class="edit-btn" onclick="editRace(${state.races.indexOf(race)})" title="Edit race">\u270f\ufe0f</button>
-                <button class="delete-btn" onclick="deleteRace(${state.races.indexOf(race)})" title="Delete race">\u{1f5d1}\ufe0f</button>
-            </div>
-        </div>
-    `;
-    })
-    .join('');
+        const actions = document.createElement('div');
+        actions.className = 'race-card-actions';
+        const editBtn = document.createElement('button');
+        editBtn.className = 'edit-btn';
+        editBtn.title = 'Edit race';
+        editBtn.textContent = '\u270f\ufe0f';
+        editBtn.addEventListener('click', () => window.editRace(raceIndex));
+        const deleteBtn = document.createElement('button');
+        deleteBtn.className = 'delete-btn';
+        deleteBtn.title = 'Delete race';
+        deleteBtn.textContent = '\u{1f5d1}\ufe0f';
+        deleteBtn.addEventListener('click', () => window.deleteRace(raceIndex));
+        actions.append(editBtn, deleteBtn);
 
-  const mobileHistory = document.getElementById('mobile-history');
-  if (mobileHistory) {
-    mobileHistory.innerHTML = mobileHtml;
+        card.append(header, positionsDiv, actions);
+        mobileHistory.appendChild(card);
+      });
   }
 }

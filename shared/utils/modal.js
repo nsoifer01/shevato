@@ -8,7 +8,7 @@
  * @param {Object} config - Modal configuration
  * @param {string} config.icon - Emoji icon for the modal
  * @param {string} config.title - Modal title
- * @param {string} config.content - Modal HTML content
+ * @param {string} config.content - Modal text content (plain text, not HTML)
  * @param {Array} config.buttons - Array of button configurations
  * @returns {HTMLElement} The modal overlay element
  */
@@ -19,28 +19,37 @@ export function createModal({ icon, title, content, buttons = [] }) {
   const dialog = document.createElement('div');
   dialog.className = 'modal-dialog';
 
-  const buttonHtml = buttons
-    .map((btn) => {
-      const classes = ['modal-btn-primary', 'modal-btn-secondary', 'modal-btn-danger'];
-      const buttonClass = classes[btn.type] || 'modal-btn-primary';
-      return `<button id="${btn.id}" class="${buttonClass}">${btn.text}</button>`;
-    })
-    .join('');
+  const iconDiv = document.createElement('div');
+  iconDiv.className = 'modal-icon';
+  iconDiv.textContent = icon;
 
-  dialog.innerHTML = `
-    <div class="modal-icon">${icon}</div>
-    <h3 class="modal-title">${title}</h3>
-    <div class="modal-content">${content}</div>
-    <div class="modal-buttons">${buttonHtml}</div>
-  `;
+  const titleEl = document.createElement('h3');
+  titleEl.className = 'modal-title';
+  titleEl.textContent = title;
 
-  modal.appendChild(dialog);
-  document.body.appendChild(modal);
+  const contentDiv = document.createElement('div');
+  contentDiv.className = 'modal-content';
+  if (typeof content === 'string') {
+    const p = document.createElement('p');
+    p.className = 'modal-text';
+    p.textContent = content;
+    contentDiv.appendChild(p);
+  } else if (content instanceof HTMLElement) {
+    contentDiv.appendChild(content);
+  }
 
-  // Add event listeners for buttons
+  const buttonsDiv = document.createElement('div');
+  buttonsDiv.className = 'modal-buttons';
+
+  const buttonClasses = ['modal-btn-primary', 'modal-btn-secondary', 'modal-btn-danger'];
+
   buttons.forEach((btn) => {
-    const buttonEl = document.getElementById(btn.id);
-    if (buttonEl && btn.onClick) {
+    const buttonEl = document.createElement('button');
+    buttonEl.id = btn.id;
+    buttonEl.className = buttonClasses[btn.type] || 'modal-btn-primary';
+    buttonEl.textContent = btn.text;
+
+    if (btn.onClick) {
       buttonEl.onclick = () => {
         const result = btn.onClick();
         if (result !== false && btn.closeOnClick !== false) {
@@ -48,7 +57,16 @@ export function createModal({ icon, title, content, buttons = [] }) {
         }
       };
     }
+
+    buttonsDiv.appendChild(buttonEl);
   });
+
+  dialog.appendChild(iconDiv);
+  dialog.appendChild(titleEl);
+  dialog.appendChild(contentDiv);
+  dialog.appendChild(buttonsDiv);
+  modal.appendChild(dialog);
+  document.body.appendChild(modal);
 
   // Close on background click
   modal.onclick = (e) => {
@@ -74,7 +92,7 @@ export function createModal({ icon, title, content, buttons = [] }) {
  * @param {Object} config
  * @param {string} config.icon - Emoji icon
  * @param {string} config.title - Modal title
- * @param {string} config.message - Confirmation message
+ * @param {string} config.message - Confirmation message (plain text)
  * @param {Function} config.onConfirm - Confirm callback
  * @param {Function} config.onCancel - Cancel callback
  * @param {boolean} config.isDestructive - Use danger styling
@@ -103,19 +121,17 @@ export function createConfirmationModal({
     },
   ];
 
-  const content = `<p class="modal-text">${message}</p>`;
-
-  return createModal({ icon, title, content, buttons });
+  return createModal({ icon, title, content: message, buttons });
 }
 
 /**
  * Creates a success notification modal
  */
-export function createSuccessModal({ icon = '✅', title, message, onClose }) {
+export function createSuccessModal({ icon = '\u2705', title, message, onClose }) {
   return createModal({
     icon,
     title,
-    content: `<p class="modal-text">${message}</p>`,
+    content: message,
     buttons: [{ id: 'ok-btn', text: 'OK', type: 0, onClick: onClose || (() => {}) }],
   });
 }
@@ -123,11 +139,11 @@ export function createSuccessModal({ icon = '✅', title, message, onClose }) {
 /**
  * Creates an error notification modal
  */
-export function createErrorModal({ icon = '❌', title, message, onClose }) {
+export function createErrorModal({ icon = '\u274C', title, message, onClose }) {
   return createModal({
     icon,
     title,
-    content: `<p class="modal-text">${message}</p>`,
+    content: message,
     buttons: [{ id: 'ok-btn', text: 'OK', type: 2, onClick: onClose || (() => {}) }],
   });
 }
@@ -135,11 +151,11 @@ export function createErrorModal({ icon = '❌', title, message, onClose }) {
 /**
  * Creates a warning modal with confirm/cancel
  */
-export function createWarningModal({ icon = '⚠️', title, message, onConfirm, onCancel }) {
+export function createWarningModal({ icon = '\u26A0\uFE0F', title, message, onConfirm, onCancel }) {
   return createModal({
     icon,
     title,
-    content: `<p class="modal-text modal-warning">${message}</p>`,
+    content: message,
     buttons: [
       { id: 'proceed-btn', text: 'Proceed', type: 0, onClick: onConfirm },
       { id: 'cancel-btn', text: 'Cancel', type: 1, onClick: onCancel },

@@ -267,14 +267,17 @@ export function updateDynamicUIText() {
   const heatTip = document.getElementById('position-heat-tip');
   if (heatTip && window.getPositionRanges) {
     const ranges = window.getPositionRanges();
-    let rangeText = '';
+    heatTip.textContent = '';
+    heatTip.appendChild(document.createTextNode('\u{1f4a1} '));
     ranges.forEach((range, index) => {
       const colorClass =
         index === 0 ? 'viz-color-green' : index === 1 ? 'viz-color-yellow' : 'viz-color-red';
-      rangeText += `<span class="${colorClass} tier-range-numbers">${range.label}</span>`;
-      if (index < ranges.length - 1) rangeText += ' \u2022 ';
+      const span = document.createElement('span');
+      span.className = `${colorClass} tier-range-numbers`;
+      span.textContent = range.label;
+      heatTip.appendChild(span);
+      if (index < ranges.length - 1) heatTip.appendChild(document.createTextNode(' \u2022 '));
     });
-    heatTip.innerHTML = `\u{1f4a1} ${rangeText}`;
   }
 
   const maxPosText = document.getElementById('max-position-text');
@@ -291,7 +294,8 @@ export function updateDynamicUIText() {
   const positionRangesHelp = document.getElementById('position-ranges-help');
   if (positionRangesHelp && window.getPositionRanges) {
     const ranges = window.getPositionRanges();
-    let helpHTML = '<ul role="list">';
+    const ul = document.createElement('ul');
+    ul.setAttribute('role', 'list');
     ranges.forEach((range, index) => {
       const tierName =
         index === 0
@@ -301,10 +305,15 @@ export function updateDynamicUIText() {
             : index === ranges.length - 1
               ? 'Bottom tier'
               : 'Lower tier';
-      helpHTML += `<li><strong>${range.label}:</strong> ${tierName} finishes</li>`;
+      const li = document.createElement('li');
+      const strong = document.createElement('strong');
+      strong.textContent = range.label + ':';
+      li.appendChild(strong);
+      li.appendChild(document.createTextNode(' ' + tierName + ' finishes'));
+      ul.appendChild(li);
     });
-    helpHTML += '</ul>';
-    positionRangesHelp.innerHTML = helpHTML;
+    positionRangesHelp.textContent = '';
+    positionRangesHelp.appendChild(ul);
   }
 }
 

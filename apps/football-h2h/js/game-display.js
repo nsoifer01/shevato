@@ -170,22 +170,58 @@ export function renderGamesTableWithData(gamesData) {
       }
     }
 
-    row.innerHTML = `
-      <td class="game-number">${game.gameNumber}</td>
-      <td class="game-date">${formattedDate}<br><small>${formattedTime}</small></td>
-      <td class="player-score player1-score ${player1ScoreClass}">
-        <span class="score-number">${game.player1Goals}</span>${player1PenaltyText}
-      </td>
-      <td class="player-score player2-score ${player2ScoreClass}">
-        <span class="score-number">${game.player2Goals}</span>${player2PenaltyText}
-      </td>
-      <td class="team-name">${game.player1Team}</td>
-      <td class="team-name">${game.player2Team}</td>
-      <td class="actions">
-        <button class="edit-btn" onclick="editGame(${game.id})" title="Edit game">\u270F\uFE0F</button>
-        <button class="delete-btn" onclick="deleteGame(${game.id})" title="Delete game">\uD83D\uDDD1\uFE0F</button>
-      </td>
-    `;
+    const tdNum = document.createElement('td');
+    tdNum.className = 'game-number';
+    tdNum.textContent = game.gameNumber;
+
+    const tdDate = document.createElement('td');
+    tdDate.className = 'game-date';
+    tdDate.textContent = formattedDate;
+    tdDate.appendChild(document.createElement('br'));
+    const small = document.createElement('small');
+    small.textContent = formattedTime;
+    tdDate.appendChild(small);
+
+    const tdP1 = document.createElement('td');
+    tdP1.className = `player-score player1-score ${player1ScoreClass}`;
+    const p1Score = document.createElement('span');
+    p1Score.className = 'score-number';
+    p1Score.textContent = game.player1Goals;
+    tdP1.appendChild(p1Score);
+    if (player1PenaltyText) tdP1.appendChild(document.createTextNode(player1PenaltyText));
+
+    const tdP2 = document.createElement('td');
+    tdP2.className = `player-score player2-score ${player2ScoreClass}`;
+    const p2Score = document.createElement('span');
+    p2Score.className = 'score-number';
+    p2Score.textContent = game.player2Goals;
+    tdP2.appendChild(p2Score);
+    if (player2PenaltyText) tdP2.appendChild(document.createTextNode(player2PenaltyText));
+
+    const tdTeam1 = document.createElement('td');
+    tdTeam1.className = 'team-name';
+    tdTeam1.textContent = game.player1Team;
+
+    const tdTeam2 = document.createElement('td');
+    tdTeam2.className = 'team-name';
+    tdTeam2.textContent = game.player2Team;
+
+    const tdActions = document.createElement('td');
+    tdActions.className = 'actions';
+    const editBtn = document.createElement('button');
+    editBtn.className = 'edit-btn';
+    editBtn.title = 'Edit game';
+    editBtn.textContent = '\u270F\uFE0F';
+    editBtn.addEventListener('click', () => window.editGame(game.id));
+    const deleteBtn = document.createElement('button');
+    deleteBtn.className = 'delete-btn';
+    deleteBtn.title = 'Delete game';
+    deleteBtn.textContent = '\uD83D\uDDD1\uFE0F';
+    deleteBtn.addEventListener('click', () => window.deleteGame(game.id));
+    tdActions.appendChild(editBtn);
+    tdActions.appendChild(deleteBtn);
+
+    row.append(tdNum, tdDate, tdP1, tdP2, tdTeam1, tdTeam2, tdActions);
 
     tbody.appendChild(row);
   });

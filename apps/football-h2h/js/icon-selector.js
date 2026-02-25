@@ -44,44 +44,27 @@ export function selectIcon(icon) {
   }
 }
 
+function buildIconGrid(gridEl, icons) {
+  if (!gridEl) return;
+  gridEl.innerHTML = '';
+  icons.forEach((icon) => {
+    const iconDiv = document.createElement('div');
+    iconDiv.className = 'icon-item';
+    const span = document.createElement('span');
+    span.className = 'team-logo';
+    span.textContent = icon;
+    iconDiv.appendChild(span);
+    iconDiv.onclick = () => selectIcon(icon);
+    gridEl.appendChild(iconDiv);
+  });
+}
+
 export function initializeIconGrids() {
   if (!window.GlobalIcons) {
     return;
   }
 
-  const sportsGrid = document.getElementById('sportsIconGrid');
-  if (sportsGrid) {
-    sportsGrid.innerHTML = '';
-    window.GlobalIcons.SPORTS.forEach((icon) => {
-      const iconDiv = document.createElement('div');
-      iconDiv.className = 'icon-item';
-      iconDiv.innerHTML = `<span class="team-logo">${icon}</span>`;
-      iconDiv.onclick = () => selectIcon(icon);
-      sportsGrid.appendChild(iconDiv);
-    });
-  }
-
-  const animalsGrid = document.getElementById('animalsIconGrid');
-  if (animalsGrid) {
-    animalsGrid.innerHTML = '';
-    window.GlobalIcons.ANIMALS.forEach((icon) => {
-      const iconDiv = document.createElement('div');
-      iconDiv.className = 'icon-item';
-      iconDiv.innerHTML = `<span class="team-logo">${icon}</span>`;
-      iconDiv.onclick = () => selectIcon(icon);
-      animalsGrid.appendChild(iconDiv);
-    });
-  }
-
-  const generalGrid = document.getElementById('generalIconGrid');
-  if (generalGrid) {
-    generalGrid.innerHTML = '';
-    window.GlobalIcons.GENERAL.forEach((icon) => {
-      const iconDiv = document.createElement('div');
-      iconDiv.className = 'icon-item';
-      iconDiv.innerHTML = `<span class="team-logo">${icon}</span>`;
-      iconDiv.onclick = () => selectIcon(icon);
-      generalGrid.appendChild(iconDiv);
-    });
-  }
+  buildIconGrid(document.getElementById('sportsIconGrid'), window.GlobalIcons.SPORTS);
+  buildIconGrid(document.getElementById('animalsIconGrid'), window.GlobalIcons.ANIMALS);
+  buildIconGrid(document.getElementById('generalIconGrid'), window.GlobalIcons.GENERAL);
 }
