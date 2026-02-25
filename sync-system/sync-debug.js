@@ -2,7 +2,7 @@
 // Add this to any app page to monitor sync behavior
 
 // Enhanced debug tools for sync monitoring
-window.syncDebug = {
+export const syncDebug = {
   // Monitor all localStorage changes in real-time
   startMonitoring() {
     console.log('🔍 Starting localStorage sync monitoring...');
@@ -191,3 +191,6 @@ window.syncDebug = {
     console.log('✅ Diagnostic complete - check outputs above');
   },
 };
+
+// Expose on window for browser console access
+window.syncDebug = syncDebug;

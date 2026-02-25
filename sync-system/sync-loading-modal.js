@@ -1,22 +1,19 @@
 // Global sync loading modal - shows while waiting for Firebase data to sync
 // This modal appears when user signs in and waits for data to load
 
-(function () {
-  'use strict';
+const MODAL_ID = 'syncLoadingModal';
+let modalElement = null;
+let isShowing = false;
+let syncStartTime = null;
 
-  const MODAL_ID = 'syncLoadingModal';
-  let modalElement = null;
-  let isShowing = false;
-  let syncStartTime = null;
+// Create modal HTML and CSS
+function createModal() {
+  if (modalElement) return;
 
-  // Create modal HTML and CSS
-  function createModal() {
-    if (modalElement) return;
-
-    // Create modal container
-    modalElement = document.createElement('div');
-    modalElement.id = MODAL_ID;
-    modalElement.innerHTML = `
+  // Create modal container
+  modalElement = document.createElement('div');
+  modalElement.id = MODAL_ID;
+  modalElement.innerHTML = `
       <div class="sync-modal-backdrop">
         <div class="sync-modal-container">
           <div class="sync-modal-content">
@@ -37,8 +34,8 @@
       </div>
     `;
 
-    // Add CSS styles
-    const styles = `
+  // Add CSS styles
+  const styles = `
       <style id="syncModalStyles">
         #${MODAL_ID} {
           position: fixed;
@@ -275,58 +272,60 @@
       </style>
     `;
 
-    // Add styles to head
-    document.head.insertAdjacentHTML('beforeend', styles);
+  // Add styles to head
+  document.head.insertAdjacentHTML('beforeend', styles);
 
-    // Add modal to body
-    document.body.appendChild(modalElement);
+  // Add modal to body
+  document.body.appendChild(modalElement);
+}
+
+// Show the modal
+function showModal() {
+  if (isShowing) return;
+
+  createModal();
+  isShowing = true;
+  syncStartTime = Date.now();
+
+  modalElement.style.display = 'block';
+
+  // Prevent body scrolling
+  document.body.style.overflow = 'hidden';
+}
+
+// Hide the modal
+function hideModal() {
+  if (!isShowing || !modalElement) return;
+
+  isShowing = false;
+  modalElement.style.display = 'none';
+
+  // Restore body scrolling
+  document.body.style.overflow = '';
+
+  if (syncStartTime) {
+    syncStartTime = null;
   }
+}
 
-  // Show the modal
-  function showModal() {
-    if (isShowing) return;
+// Update modal message
+function updateMessage(title, message) {
+  if (!modalElement) return;
 
-    createModal();
-    isShowing = true;
-    syncStartTime = Date.now();
+  const titleEl = modalElement.querySelector('.sync-modal-title');
+  const messageEl = modalElement.querySelector('.sync-modal-message');
 
-    modalElement.style.display = 'block';
+  if (titleEl && title) titleEl.textContent = title;
+  if (messageEl && message) messageEl.textContent = message;
+}
 
-    // Prevent body scrolling
-    document.body.style.overflow = 'hidden';
-  }
+// Public API
+export const SyncLoadingModal = {
+  show: showModal,
+  hide: hideModal,
+  updateMessage: updateMessage,
+  isVisible: () => isShowing,
+};
 
-  // Hide the modal
-  function hideModal() {
-    if (!isShowing || !modalElement) return;
-
-    isShowing = false;
-    modalElement.style.display = 'none';
-
-    // Restore body scrolling
-    document.body.style.overflow = '';
-
-    if (syncStartTime) {
-      syncStartTime = null;
-    }
-  }
-
-  // Update modal message
-  function updateMessage(title, message) {
-    if (!modalElement) return;
-
-    const titleEl = modalElement.querySelector('.sync-modal-title');
-    const messageEl = modalElement.querySelector('.sync-modal-message');
-
-    if (titleEl && title) titleEl.textContent = title;
-    if (messageEl && message) messageEl.textContent = message;
-  }
-
-  // Global API
-  window.SyncLoadingModal = {
-    show: showModal,
-    hide: hideModal,
-    updateMessage: updateMessage,
-    isVisible: () => isShowing,
-  };
-})();
+// Expose on window for cross-module and HTML access
+window.SyncLoadingModal = SyncLoadingModal;

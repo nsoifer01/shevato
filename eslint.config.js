@@ -109,10 +109,7 @@ export default [
       'assets/js/year-updater.js',
       'assets/js/passive-events-fix.js',
       'assets/js/analytics.js',
-      'sync-system/sync-debug.js',
-      'sync-system/sync-loading-modal.js',
       'sync-system/sync-immediate.js',
-      'sync-system/sync-modal-integration.js',
     ],
     languageOptions: {
       sourceType: 'script',
