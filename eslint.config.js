@@ -7,6 +7,7 @@ export default [
     ignores: [
       'node_modules/',
       'dist/',
+      'public/',
       'assets/js/jquery.min.js',
       'assets/js/browser.min.js',
       'assets/js/breakpoints.min.js',
