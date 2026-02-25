@@ -102,7 +102,6 @@ export default [
     files: [
       'apps/gym-tracker/js/gym-tracker-old.js',
       'assets/js/util.js',
-      'assets/js/main.js',
       'assets/js/scripts.js',
       'assets/js/pagination.js',
       'assets/js/language-switcher.js',
