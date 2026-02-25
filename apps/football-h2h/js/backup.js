@@ -1,21 +1,30 @@
-// Backup functionality for Football H2H Tracker
+// Backup functionality for Football H2H
+
+import { state, saveGames, savePlayers, savePlayerIcons } from './store.js';
+import { updatePlayerIconDisplays } from './player-manager.js';
+import {
+  createConfirmationModal,
+  createErrorModal,
+  createWarningModal,
+  showToast,
+} from './modalUtils.js';
+
 let backupInterval = null;
 
-function initializeAutoBackup() {
-  // Auto-backup every 10 minutes
+export function initializeAutoBackup() {
   if (backupInterval) clearInterval(backupInterval);
 
   backupInterval = setInterval(() => {
-    if (games && games.length > 0) {
+    if (state.games && state.games.length > 0) {
       autoBackupToLocalStorage();
     }
-  }, 600000); // 10 minutes
+  }, 600000);
 }
 
-function autoBackupToLocalStorage() {
+export function autoBackupToLocalStorage() {
   try {
     const backupData = {
-      games: games,
+      games: state.games,
       players: {
         player1: document.getElementById('player1Name')
           ? document.getElementById('player1Name').value
@@ -24,7 +33,7 @@ function autoBackupToLocalStorage() {
           ? document.getElementById('player2Name').value
           : '',
       },
-      playerIcons: playerIcons,
+      playerIcons: state.playerIcons,
       backupDate: new Date().toISOString(),
       version: '1.0',
     };
@@ -35,12 +44,12 @@ function autoBackupToLocalStorage() {
   }
 }
 
-function restoreFromBackup() {
+export function restoreFromBackup() {
   try {
     const backup = localStorage.getItem('footballH2HAutoBackup');
     if (!backup) {
       createWarningModal({
-        icon: '📦',
+        icon: '\uD83D\uDCE6',
         title: 'No Backup Found',
         message:
           'No automatic backup found. Backups are created every 10 minutes when you have game data.',
@@ -55,17 +64,16 @@ function restoreFromBackup() {
       backupData = JSON.parse(backup);
     } catch (parseError) {
       createErrorModal({
-        icon: '❌',
+        icon: '\u274C',
         title: 'Backup Error',
         message: 'Backup data is corrupted and cannot be restored.',
       });
-      console.error('Backup parse error:', parseError);
       return;
     }
 
     if (!backupData.games || !Array.isArray(backupData.games)) {
       createErrorModal({
-        icon: '❌',
+        icon: '\u274C',
         title: 'Invalid Backup',
         message: 'Backup data is invalid - no games found.',
       });
@@ -76,57 +84,51 @@ function restoreFromBackup() {
     const gameCount = backupData.games.length;
 
     createConfirmationModal({
-      icon: '🔄',
+      icon: '\uD83D\uDD04',
       title: 'Restore from Backup?',
       message: `Found backup with <strong>${gameCount} games</strong><br>
-                     Created on: <strong>${backupDate}</strong><br><br>
-                     <span style="color: #fc8181;">⚠️ Warning: This will replace all current data!</span>`,
+                   Created on: <strong>${backupDate}</strong><br><br>
+                   <span style="color: #fc8181;">\u26A0\uFE0F Warning: This will replace all current data!</span>`,
       onConfirm: () => {
-        // Perform the restore
-        games = backupData.games || [];
+        state.games = backupData.games || [];
 
-        // Restore player names
         if (backupData.players) {
           if (backupData.players.player1 !== undefined) {
+            state.player1Name = backupData.players.player1;
             const player1Input = document.getElementById('player1Name');
             if (player1Input) player1Input.value = backupData.players.player1;
           }
           if (backupData.players.player2 !== undefined) {
+            state.player2Name = backupData.players.player2;
             const player2Input = document.getElementById('player2Name');
             if (player2Input) player2Input.value = backupData.players.player2;
           }
           savePlayers();
         }
 
-        // Restore player icons
         if (backupData.playerIcons && typeof backupData.playerIcons === 'object') {
-          playerIcons = backupData.playerIcons;
+          state.playerIcons = backupData.playerIcons;
           savePlayerIcons();
           updatePlayerIconDisplays();
         }
 
-        // Save games and update UI
         saveGames();
-        updateUI();
+        window.updateUI();
 
-        // Show success toast
         showToast(`Successfully restored ${gameCount} games from backup!`, 'success');
       },
-      onCancel: () => {
-        // Modal closes automatically
-      },
+      onCancel: () => {},
     });
   } catch (e) {
     createErrorModal({
-      icon: '❌',
+      icon: '\u274C',
       title: 'Restore Failed',
       message: 'Failed to restore backup. Please try again.',
     });
-    console.error('Backup restore error:', e);
   }
 }
 
-function backupToFile() {
+export function backupToFile() {
   try {
     const player1Name = document.getElementById('player1Name')
       ? document.getElementById('player1Name').value
@@ -136,12 +138,12 @@ function backupToFile() {
       : 'Player 2';
 
     const data = {
-      games: games,
+      games: state.games,
       players: {
         player1: player1Name,
         player2: player2Name,
       },
-      playerIcons: playerIcons,
+      playerIcons: state.playerIcons,
       backupDate: new Date().toISOString(),
       version: '1.0',
     };
@@ -149,7 +151,6 @@ function backupToFile() {
     const fileContent = JSON.stringify(data, null, 2);
     const fileName = `football-h2h-backup-${new Date().toISOString().split('T')[0]}.json`;
 
-    // Create downloadable backup
     const blob = new Blob([fileContent], { type: 'application/json' });
     const link = document.createElement('a');
     link.href = URL.createObjectURL(blob);
@@ -158,22 +159,19 @@ function backupToFile() {
     link.click();
     document.body.removeChild(link);
 
-    // Also save to auto-backup
     autoBackupToLocalStorage();
 
-    // Show success toast
     showToast(`Backup saved as ${fileName}`, 'success');
   } catch (e) {
     createErrorModal({
-      icon: '❌',
+      icon: '\u274C',
       title: 'Backup Failed',
       message: 'Failed to create backup. Please try again.',
     });
-    console.error('Backup error:', e);
   }
 }
 
-function restoreFromFile() {
+export function restoreFromFile() {
   const input = document.createElement('input');
   input.type = 'file';
   input.accept = '.json';
@@ -187,10 +185,9 @@ function restoreFromFile() {
       try {
         const backupData = JSON.parse(e.target.result);
 
-        // Validate backup data
         if (!backupData.games || !Array.isArray(backupData.games)) {
           createErrorModal({
-            icon: '❌',
+            icon: '\u274C',
             title: 'Invalid Backup File',
             message: 'The selected file is not a valid Football H2H backup.',
           });
@@ -203,53 +200,47 @@ function restoreFromFile() {
         const gameCount = backupData.games.length;
 
         createConfirmationModal({
-          icon: '📥',
+          icon: '\uD83D\uDCE5',
           title: 'Restore from File?',
           message: `Found backup with <strong>${gameCount} games</strong><br>
-                             Created on: <strong>${backupDate}</strong><br><br>
-                             <span style="color: #fc8181;">⚠️ Warning: This will replace all current data!</span>`,
+                           Created on: <strong>${backupDate}</strong><br><br>
+                           <span style="color: #fc8181;">\u26A0\uFE0F Warning: This will replace all current data!</span>`,
           onConfirm: () => {
-            // Perform the restore
-            games = backupData.games || [];
+            state.games = backupData.games || [];
 
-            // Restore player names
             if (backupData.players) {
               if (backupData.players.player1 !== undefined) {
+                state.player1Name = backupData.players.player1;
                 const player1Input = document.getElementById('player1Name');
                 if (player1Input) player1Input.value = backupData.players.player1;
               }
               if (backupData.players.player2 !== undefined) {
+                state.player2Name = backupData.players.player2;
                 const player2Input = document.getElementById('player2Name');
                 if (player2Input) player2Input.value = backupData.players.player2;
               }
               savePlayers();
             }
 
-            // Restore player icons
             if (backupData.playerIcons && typeof backupData.playerIcons === 'object') {
-              playerIcons = backupData.playerIcons;
+              state.playerIcons = backupData.playerIcons;
               savePlayerIcons();
               updatePlayerIconDisplays();
             }
 
-            // Save games and update UI
             saveGames();
-            updateUI();
+            window.updateUI();
 
-            // Show success toast
             showToast(`Successfully restored ${gameCount} games from file!`, 'success');
           },
-          onCancel: () => {
-            // Modal closes automatically
-          },
+          onCancel: () => {},
         });
       } catch (error) {
         createErrorModal({
-          icon: '❌',
+          icon: '\u274C',
           title: 'File Read Error',
           message: "Error reading the backup file. Please make sure it's a valid JSON file.",
         });
-        console.error('File read error:', error);
       }
     };
     reader.readAsText(file);
@@ -257,12 +248,3 @@ function restoreFromFile() {
 
   input.click();
 }
-
-// Auto-backup initialization is handled in football-h2h.js
-
-// Export functions to global scope
-window.initializeAutoBackup = initializeAutoBackup;
-window.restoreFromBackup = restoreFromBackup;
-window.autoBackupToLocalStorage = autoBackupToLocalStorage;
-window.backupToFile = backupToFile;
-window.restoreFromFile = restoreFromFile;

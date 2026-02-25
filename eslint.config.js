@@ -100,7 +100,6 @@ export default [
   {
     // Legacy script files (IIFEs, global functions, no import/export)
     files: [
-      'apps/football-h2h/js/**/*.js',
       'apps/mario-kart/js/!(boot).js',
       'apps/mario-kart/js/*/**/*.js',
       'apps/gym-tracker/js/gym-tracker-old.js',
@@ -120,14 +119,6 @@ export default [
     ],
     languageOptions: {
       sourceType: 'script',
-    },
-  },
-  {
-    // Football H2H main file - has known duplicate code (Phase 4 will fix)
-    files: ['apps/football-h2h/js/football-h2h.js'],
-    rules: {
-      'no-redeclare': 'warn',
-      'no-func-assign': 'warn',
     },
   },
   {
