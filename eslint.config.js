@@ -8,7 +8,6 @@ export default [
       'node_modules/',
       'dist/',
       'public/',
-      'assets/js/jquery.min.js',
       'assets/js/browser.min.js',
       'assets/js/breakpoints.min.js',
       'report_assets/',
@@ -101,7 +100,6 @@ export default [
     // Legacy script files (IIFEs, global functions, no import/export)
     files: [
       'apps/gym-tracker/js/gym-tracker-old.js',
-      'assets/js/util.js',
       'assets/js/scripts.js',
       'assets/js/pagination.js',
       'assets/js/language-switcher.js',

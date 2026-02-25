@@ -2,10 +2,8 @@
  * Authentication UI Class
  * Handles auth modal, sign in/up forms, header UI, and sign out confirmation.
  *
- * Dependencies: jQuery (global $), FirebaseAuth (window.firebaseAuth)
+ * Dependencies: FirebaseAuth (window.firebaseAuth)
  */
-
-const $ = window.jQuery;
 
 export const SELECTORS = {
   authContainer: '[data-js="auth-container"]',
@@ -60,6 +58,7 @@ export class AuthUI {
     };
 
     this.elements = {};
+    this._abortControllers = {};
     this.init();
   }
 
@@ -81,7 +80,7 @@ export class AuthUI {
    * @private
    */
   setupEventListeners() {
-    $(document).ready(() => {
+    document.addEventListener('DOMContentLoaded', () => {
       this.createAuthModal();
       this.bindModalEvents();
       this.setupKeyboardHandlers();
@@ -93,13 +92,13 @@ export class AuthUI {
    * @private
    */
   setupKeyboardHandlers() {
-    $(document).on('keydown', (event) => {
+    document.addEventListener('keydown', (event) => {
       if (event.key === 'Escape' && this.state.isModalOpen) {
         this.hideAuthModal();
       }
     });
 
-    $(document).on('keydown', (event) => {
+    document.addEventListener('keydown', (event) => {
       if (this.state.isModalOpen && event.key === 'Tab') {
         this.trapFocus(event);
       }
@@ -136,8 +135,8 @@ export class AuthUI {
    */
   waitForHeader() {
     const checkHeader = () => {
-      const authContainer = $(SELECTORS.authContainer);
-      if (authContainer.length > 0) {
+      const authContainer = document.querySelector(SELECTORS.authContainer);
+      if (authContainer) {
         this.state.headerLoaded = true;
         this.cacheElements();
         this.updateHeaderUI();
@@ -154,8 +153,8 @@ export class AuthUI {
    */
   cacheElements() {
     this.elements = {
-      authContainer: $(SELECTORS.authContainer),
-      menuToggle: $(SELECTORS.menuToggle),
+      authContainer: document.querySelector(SELECTORS.authContainer),
+      menuToggle: document.querySelector(SELECTORS.menuToggle),
     };
   }
 
@@ -186,7 +185,7 @@ export class AuthUI {
    * @private
    */
   updateHeaderUI() {
-    if (!this.elements.authContainer?.length || !this.state.headerLoaded) {
+    if (!this.elements.authContainer || !this.state.headerLoaded) {
       return;
     }
 
@@ -238,7 +237,7 @@ export class AuthUI {
     const displayName = this.state.currentUser.displayName || this.state.currentUser.email;
     const safeDisplayName = escapeHtml(displayName);
 
-    this.elements.authContainer.html(`
+    this.elements.authContainer.innerHTML = `
       <div class="auth__user" role="group">
         <span class="auth__user-name" title="${safeDisplayName}">${safeDisplayName}</span>
         <button
@@ -250,7 +249,7 @@ export class AuthUI {
           Sign Out
         </button>
       </div>
-    `);
+    `;
   }
 
   /**
@@ -258,7 +257,7 @@ export class AuthUI {
    * @private
    */
   renderSignInButton() {
-    this.elements.authContainer.html(`
+    this.elements.authContainer.innerHTML = `
       <div class="auth__signin-prompt">
         <button
           id="auth-signin-btn"
@@ -269,7 +268,7 @@ export class AuthUI {
           Sign In
         </button>
       </div>
-    `);
+    `;
   }
 
   /**
@@ -277,19 +276,35 @@ export class AuthUI {
    * @private
    */
   bindHeaderEvents() {
-    $('#auth-signin-btn')
-      .off('click.authui')
-      .on('click.authui', (event) => {
-        event.preventDefault();
-        this.showAuthModal();
-      });
+    const signinBtn = document.getElementById('auth-signin-btn');
+    const signoutBtn = document.getElementById('auth-signout-btn');
 
-    $('#auth-signout-btn')
-      .off('click.authui')
-      .on('click.authui', async (event) => {
-        event.preventDefault();
-        await this.handleSignOut();
-      });
+    // Abort previous listeners
+    this._abortControllers.header?.abort();
+    this._abortControllers.header = new AbortController();
+    const { signal } = this._abortControllers.header;
+
+    if (signinBtn) {
+      signinBtn.addEventListener(
+        'click',
+        (event) => {
+          event.preventDefault();
+          this.showAuthModal();
+        },
+        { signal },
+      );
+    }
+
+    if (signoutBtn) {
+      signoutBtn.addEventListener(
+        'click',
+        async (event) => {
+          event.preventDefault();
+          await this.handleSignOut();
+        },
+        { signal },
+      );
+    }
   }
 
   /**
@@ -307,14 +322,13 @@ export class AuthUI {
    */
   showSignOutConfirmation() {
     this.createSignOutModal();
-    $('.signout-modal').addClass('signout-modal--visible');
-    $('body').addClass('signout-modal-open');
+    const modal = document.querySelector('.signout-modal');
+    if (modal) modal.classList.add('signout-modal--visible');
+    document.body.classList.add('signout-modal-open');
 
     setTimeout(() => {
-      const confirmButton = $('.signout-modal').find('.signout-confirm-btn');
-      if (confirmButton.length) {
-        confirmButton.focus();
-      }
+      const confirmButton = document.querySelector('.signout-confirm-btn');
+      if (confirmButton) confirmButton.focus();
     }, 100);
   }
 
@@ -339,13 +353,17 @@ export class AuthUI {
    * @private
    */
   hideSignOutConfirmation() {
-    $('.signout-modal').removeClass('signout-modal--visible');
-    $('body').removeClass('signout-modal-open');
-    $(document).off('keydown.signout');
+    const modal = document.querySelector('.signout-modal');
+    if (modal) modal.classList.remove('signout-modal--visible');
+    document.body.classList.remove('signout-modal-open');
+
+    // Abort signout keyboard handler
+    this._abortControllers.signout?.abort();
 
     // Remove modal after animation
     setTimeout(() => {
-      $('.signout-modal').remove();
+      const m = document.querySelector('.signout-modal');
+      if (m) m.remove();
     }, 300);
   }
 
@@ -355,7 +373,8 @@ export class AuthUI {
    */
   createSignOutModal() {
     // Remove existing modal if present
-    $('.signout-modal').remove();
+    const existing = document.querySelector('.signout-modal');
+    if (existing) existing.remove();
 
     const modalHtml = `
       <div class="signout-modal" role="dialog" aria-modal="true" aria-labelledby="signout-modal-title">
@@ -381,26 +400,48 @@ export class AuthUI {
       </div>
     `;
 
-    $('body').append(modalHtml);
+    document.body.insertAdjacentHTML('beforeend', modalHtml);
+
+    // Abort previous signout controller
+    this._abortControllers.signout?.abort();
+    this._abortControllers.signout = new AbortController();
+    const { signal } = this._abortControllers.signout;
 
     // Bind events
-    $('.signout-cancel-btn, .signout-modal').on('click', (event) => {
-      if (event.target === event.currentTarget) {
-        this.hideSignOutConfirmation();
-      }
-    });
+    const cancelBtn = document.querySelector('.signout-cancel-btn');
+    const confirmBtn = document.querySelector('.signout-confirm-btn');
+    const backdrop = document.querySelector('.signout-modal');
 
-    $('.signout-confirm-btn').on('click', () => {
-      this.performSignOut();
-    });
+    if (cancelBtn) {
+      cancelBtn.addEventListener('click', () => this.hideSignOutConfirmation(), { signal });
+    }
+
+    if (backdrop) {
+      backdrop.addEventListener(
+        'click',
+        (event) => {
+          if (event.target === event.currentTarget) {
+            this.hideSignOutConfirmation();
+          }
+        },
+        { signal },
+      );
+    }
+
+    if (confirmBtn) {
+      confirmBtn.addEventListener('click', () => this.performSignOut(), { signal });
+    }
 
     // Keyboard handler
-    $(document).on('keydown.signout', (event) => {
-      if (event.key === 'Escape') {
-        this.hideSignOutConfirmation();
-        $(document).off('keydown.signout');
-      }
-    });
+    document.addEventListener(
+      'keydown',
+      (event) => {
+        if (event.key === 'Escape') {
+          this.hideSignOutConfirmation();
+        }
+      },
+      { signal },
+    );
   }
 
   /**
@@ -471,7 +512,7 @@ export class AuthUI {
       </div>
     `;
 
-    $('body').append(modalHtml);
+    document.body.insertAdjacentHTML('beforeend', modalHtml);
   }
 
   /**
@@ -480,34 +521,43 @@ export class AuthUI {
    */
   bindModalEvents() {
     // Tab switching
-    $(document).on('click.authui', SELECTORS.tabButtons, (event) => {
-      const $tab = $(event.currentTarget);
-      const tabName = $tab.data('tab');
+    document.addEventListener('click', (event) => {
+      const tab = event.target.closest(SELECTORS.tabButtons);
+      if (!tab) return;
+      const tabName = tab.dataset.tab;
       this.switchTab(tabName);
     });
 
     // Modal close
-    $(document).on('click.authui', SELECTORS.modalClose, (event) => {
-      event.preventDefault();
-      this.hideAuthModal();
+    document.addEventListener('click', (event) => {
+      if (event.target.closest(SELECTORS.modalClose)) {
+        event.preventDefault();
+        this.hideAuthModal();
+      }
     });
 
     // Modal backdrop close
-    $(document).on('click.authui', SELECTORS.modal, (event) => {
-      if (event.target === event.currentTarget) {
+    document.addEventListener('click', (event) => {
+      const modal = document.querySelector(SELECTORS.modal);
+      if (event.target === modal) {
         this.hideAuthModal();
       }
     });
 
     // Form submissions
-    $(document).on('submit.authui', SELECTORS.signinForm + ' form', async (event) => {
-      event.preventDefault();
-      await this.handleSignIn(event.target);
-    });
+    document.addEventListener('submit', async (event) => {
+      const signinForm = event.target.closest(SELECTORS.signinForm + ' form');
+      if (signinForm) {
+        event.preventDefault();
+        await this.handleSignIn(signinForm);
+        return;
+      }
 
-    $(document).on('submit.authui', SELECTORS.signupForm + ' form', async (event) => {
-      event.preventDefault();
-      await this.handleSignUp(event.target);
+      const signupForm = event.target.closest(SELECTORS.signupForm + ' form');
+      if (signupForm) {
+        event.preventDefault();
+        await this.handleSignUp(signupForm);
+      }
     });
   }
 
@@ -520,22 +570,34 @@ export class AuthUI {
     this.state.currentTab = tabName;
 
     // Update tab buttons
-    $(SELECTORS.tabButtons).removeClass(CSS_CLASSES.tabActive).attr('aria-selected', 'false');
+    document.querySelectorAll(SELECTORS.tabButtons).forEach((btn) => {
+      btn.classList.remove(CSS_CLASSES.tabActive);
+      btn.setAttribute('aria-selected', 'false');
+    });
 
-    $(`[data-tab="${tabName}"]`).addClass(CSS_CLASSES.tabActive).attr('aria-selected', 'true');
+    const activeTab = document.querySelector(`[data-tab="${tabName}"]`);
+    if (activeTab) {
+      activeTab.classList.add(CSS_CLASSES.tabActive);
+      activeTab.setAttribute('aria-selected', 'true');
+    }
 
     // Update forms
-    $(SELECTORS.forms).removeClass(CSS_CLASSES.formActive).attr('aria-hidden', 'true');
+    document.querySelectorAll(SELECTORS.forms).forEach((form) => {
+      form.classList.remove(CSS_CLASSES.formActive);
+      form.setAttribute('aria-hidden', 'true');
+    });
 
-    $(`#auth-${tabName}-form`).addClass(CSS_CLASSES.formActive).attr('aria-hidden', 'false');
+    const activeForm = document.getElementById(`auth-${tabName}-form`);
+    if (activeForm) {
+      activeForm.classList.add(CSS_CLASSES.formActive);
+      activeForm.setAttribute('aria-hidden', 'false');
+    }
 
     // Clear messages and focus first input
     this.clearMessages();
     setTimeout(() => {
-      const firstInput = $(`#auth-${tabName}-form input:first`);
-      if (firstInput.length) {
-        firstInput.focus();
-      }
+      const firstInput = activeForm?.querySelector('input');
+      if (firstInput) firstInput.focus();
     }, 100);
   }
 
@@ -543,11 +605,13 @@ export class AuthUI {
    * Handle sign in form submission
    * @private
    * @async
-   * @param {HTMLFormElement} form - Sign in form element
+   * @param {HTMLFormElement} _form - Sign in form element
    */
   async handleSignIn(_form) {
-    const email = $('#signin-email').val().trim();
-    const password = $('#signin-password').val();
+    const emailEl = document.getElementById('signin-email');
+    const passwordEl = document.getElementById('signin-password');
+    const email = emailEl.value.trim();
+    const password = passwordEl.value;
 
     if (!this.validateSignInForm(email, password)) {
       return;
@@ -567,11 +631,13 @@ export class AuthUI {
    * Handle sign up form submission
    * @private
    * @async
-   * @param {HTMLFormElement} form - Sign up form element
+   * @param {HTMLFormElement} _form - Sign up form element
    */
   async handleSignUp(_form) {
-    const email = $('#signup-email').val().trim();
-    const password = $('#signup-password').val();
+    const emailEl = document.getElementById('signup-email');
+    const passwordEl = document.getElementById('signup-password');
+    const email = emailEl.value.trim();
+    const password = passwordEl.value;
 
     if (!this.validateSignUpForm(email, password)) {
       return;
@@ -598,22 +664,39 @@ export class AuthUI {
     let isValid = true;
 
     // Clear previous errors
-    $('.auth-form__input').removeClass(CSS_CLASSES.inputError);
-    $('.auth-form__error').text('').hide();
+    document
+      .querySelectorAll('.auth-form__input')
+      .forEach((el) => el.classList.remove(CSS_CLASSES.inputError));
+    document.querySelectorAll('.auth-form__error').forEach((el) => {
+      el.textContent = '';
+      el.style.display = 'none';
+    });
 
     if (!email) {
-      $('#signin-email').addClass(CSS_CLASSES.inputError);
-      $('#signin-email-error').text('Email is required').show();
+      document.getElementById('signin-email')?.classList.add(CSS_CLASSES.inputError);
+      const err = document.getElementById('signin-email-error');
+      if (err) {
+        err.textContent = 'Email is required';
+        err.style.display = '';
+      }
       isValid = false;
     } else if (!isValidEmail(email)) {
-      $('#signin-email').addClass(CSS_CLASSES.inputError);
-      $('#signin-email-error').text('Please enter a valid email address').show();
+      document.getElementById('signin-email')?.classList.add(CSS_CLASSES.inputError);
+      const err = document.getElementById('signin-email-error');
+      if (err) {
+        err.textContent = 'Please enter a valid email address';
+        err.style.display = '';
+      }
       isValid = false;
     }
 
     if (!password) {
-      $('#signin-password').addClass(CSS_CLASSES.inputError);
-      $('#signin-password-error').text('Password is required').show();
+      document.getElementById('signin-password')?.classList.add(CSS_CLASSES.inputError);
+      const err = document.getElementById('signin-password-error');
+      if (err) {
+        err.textContent = 'Password is required';
+        err.style.display = '';
+      }
       isValid = false;
     }
 
@@ -631,26 +714,47 @@ export class AuthUI {
     let isValid = true;
 
     // Clear previous errors
-    $('.auth-form__input').removeClass(CSS_CLASSES.inputError);
-    $('.auth-form__error').text('').hide();
+    document
+      .querySelectorAll('.auth-form__input')
+      .forEach((el) => el.classList.remove(CSS_CLASSES.inputError));
+    document.querySelectorAll('.auth-form__error').forEach((el) => {
+      el.textContent = '';
+      el.style.display = 'none';
+    });
 
     if (!email) {
-      $('#signup-email').addClass(CSS_CLASSES.inputError);
-      $('#signup-email-error').text('Email is required').show();
+      document.getElementById('signup-email')?.classList.add(CSS_CLASSES.inputError);
+      const err = document.getElementById('signup-email-error');
+      if (err) {
+        err.textContent = 'Email is required';
+        err.style.display = '';
+      }
       isValid = false;
     } else if (!isValidEmail(email)) {
-      $('#signup-email').addClass(CSS_CLASSES.inputError);
-      $('#signup-email-error').text('Please enter a valid email address').show();
+      document.getElementById('signup-email')?.classList.add(CSS_CLASSES.inputError);
+      const err = document.getElementById('signup-email-error');
+      if (err) {
+        err.textContent = 'Please enter a valid email address';
+        err.style.display = '';
+      }
       isValid = false;
     }
 
     if (!password) {
-      $('#signup-password').addClass(CSS_CLASSES.inputError);
-      $('#signup-password-error').text('Password is required').show();
+      document.getElementById('signup-password')?.classList.add(CSS_CLASSES.inputError);
+      const err = document.getElementById('signup-password-error');
+      if (err) {
+        err.textContent = 'Password is required';
+        err.style.display = '';
+      }
       isValid = false;
     } else if (password.length < 6) {
-      $('#signup-password').addClass(CSS_CLASSES.inputError);
-      $('#signup-password-error').text('Password must be at least 6 characters long').show();
+      document.getElementById('signup-password')?.classList.add(CSS_CLASSES.inputError);
+      const err = document.getElementById('signup-password-error');
+      if (err) {
+        err.textContent = 'Password must be at least 6 characters long';
+        err.style.display = '';
+      }
       isValid = false;
     }
 
@@ -670,14 +774,13 @@ export class AuthUI {
     }
 
     this.state.isModalOpen = true;
-    $(SELECTORS.modal).addClass(CSS_CLASSES.modalVisible);
-    $('body').addClass(CSS_CLASSES.modalOpen);
+    const modal = document.querySelector(SELECTORS.modal);
+    if (modal) modal.classList.add(CSS_CLASSES.modalVisible);
+    document.body.classList.add(CSS_CLASSES.modalOpen);
 
     setTimeout(() => {
-      const firstInput = $(SELECTORS.modal).find('input:visible').first();
-      if (firstInput.length) {
-        firstInput.focus();
-      }
+      const firstInput = modal?.querySelector('.auth-form--active input');
+      if (firstInput) firstInput.focus();
     }, 100);
   }
 
@@ -687,12 +790,13 @@ export class AuthUI {
    */
   hideAuthModal() {
     this.state.isModalOpen = false;
-    $(SELECTORS.modal).removeClass(CSS_CLASSES.modalVisible);
-    $('body').removeClass(CSS_CLASSES.modalOpen);
+    const modal = document.querySelector(SELECTORS.modal);
+    if (modal) modal.classList.remove(CSS_CLASSES.modalVisible);
+    document.body.classList.remove(CSS_CLASSES.modalOpen);
 
     this.clearMessages();
     this.clearForms();
-    $('#auth-signin-btn').focus();
+    document.getElementById('auth-signin-btn')?.focus();
   }
 
   /**
@@ -702,16 +806,14 @@ export class AuthUI {
    * @param {string} type - Message type
    */
   showMessage(message, type = 'info') {
-    const messageEl = $(SELECTORS.messageContainer);
+    const messageEl = document.querySelector(SELECTORS.messageContainer);
+    if (!messageEl) return;
     const safeMessage = escapeHtml(message);
 
-    messageEl
-      .removeClass(
-        'auth-message--success auth-message--error auth-message--info auth-message--warning',
-      )
-      .addClass(`auth-message--${type} ${CSS_CLASSES.messageVisible}`)
-      .text(safeMessage)
-      .show();
+    messageEl.className = 'auth-message';
+    messageEl.classList.add(`auth-message--${type}`, CSS_CLASSES.messageVisible);
+    messageEl.textContent = safeMessage;
+    messageEl.style.display = '';
   }
 
   /**
@@ -719,7 +821,11 @@ export class AuthUI {
    * @private
    */
   clearMessages() {
-    $(SELECTORS.messageContainer).removeClass(CSS_CLASSES.messageVisible).hide().text('');
+    const messageEl = document.querySelector(SELECTORS.messageContainer);
+    if (!messageEl) return;
+    messageEl.classList.remove(CSS_CLASSES.messageVisible);
+    messageEl.style.display = 'none';
+    messageEl.textContent = '';
   }
 
   /**
@@ -727,8 +833,8 @@ export class AuthUI {
    * @private
    */
   clearForms() {
-    $(SELECTORS.signinForm + ' form')[0]?.reset();
-    $(SELECTORS.signupForm + ' form')[0]?.reset();
+    document.querySelector(SELECTORS.signinForm + ' form')?.reset();
+    document.querySelector(SELECTORS.signupForm + ' form')?.reset();
   }
 
   /**

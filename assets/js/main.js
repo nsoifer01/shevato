@@ -2,21 +2,16 @@
  * Global Site Entry Point (ES Module)
  * Imports Firebase Auth, Auth UI, and handles site-wide initialization.
  *
- * Dependencies: jQuery (global), breakpoints.js (global), util.js (global)
+ * Dependencies: breakpoints.js (global)
  */
 
 import { FirebaseAuth } from './firebase-auth.js';
 import { AuthUI, SELECTORS } from './auth-ui.js';
-
-const $ = window.jQuery;
+import { Panel } from './util.js';
 
 /* ==========================================================================
    Site-wide Main Functionality
    ========================================================================== */
-
-// Site variables
-const $window = $(window);
-const $body = $('body');
 
 // Breakpoints configuration
 breakpoints({
@@ -30,9 +25,9 @@ breakpoints({
 });
 
 // Play initial animations on page load
-$window.on('load', function () {
-  window.setTimeout(function () {
-    $body.removeClass('is-preload');
+window.addEventListener('load', () => {
+  setTimeout(() => {
+    document.body.classList.remove('is-preload');
   }, 100);
 });
 
@@ -58,39 +53,48 @@ function debounce(func, wait) {
  * Initialize menu functionality
  */
 function initializeMenu() {
-  const $menu = $('#menu');
-  const $menuToggle = $(SELECTORS.menuToggle);
+  const menu = document.getElementById('menu');
+  const menuToggle = document.querySelector(SELECTORS.menuToggle);
+  if (!menu) return;
 
-  $menu.append('<a href="#menu" class="close"></a>').appendTo($body).panel({
-    target: $body,
+  // Append close link and move menu to body
+  const closeLink = document.createElement('a');
+  closeLink.href = '#menu';
+  closeLink.className = 'close';
+  menu.appendChild(closeLink);
+  document.body.appendChild(menu);
+
+  // Create panel
+  new Panel(menu, {
+    target: document.body,
     visibleClass: 'is-menu-visible',
     delay: 500,
     hideOnClick: true,
     hideOnSwipe: true,
+    hideOnEscape: true,
     resetScroll: true,
     resetForms: true,
     side: 'right',
   });
 
-  // Add proper accessibility handling
+  // Accessibility handling
   const handleMenuVisibility = () => {
-    const isVisible = $body.hasClass('is-menu-visible');
+    const isVisible = document.body.classList.contains('is-menu-visible');
 
-    // Update aria attributes
-    $menuToggle.attr('aria-expanded', isVisible);
-    $menu.attr('aria-hidden', !isVisible);
+    if (menuToggle) {
+      menuToggle.setAttribute('aria-expanded', isVisible);
+    }
+    menu.setAttribute('aria-hidden', !isVisible);
 
     if (!isVisible) {
-      // When hiding menu, remove focus from any focused elements inside
-      const focusedElement = $menu.find(':focus');
-      if (focusedElement.length) {
+      const focusedElement = menu.querySelector(':focus');
+      if (focusedElement) {
         focusedElement.blur();
-        $menuToggle.focus();
+        if (menuToggle) menuToggle.focus();
       }
     }
   };
 
-  // Watch for visibility changes
   const observer = new MutationObserver((mutations) => {
     mutations.forEach((mutation) => {
       if (mutation.attributeName === 'class') {
@@ -99,12 +103,11 @@ function initializeMenu() {
     });
   });
 
-  observer.observe($body[0], {
+  observer.observe(document.body, {
     attributes: true,
     attributeFilter: ['class'],
   });
 
-  // Initial state
   handleMenuVisibility();
 }
 
@@ -112,43 +115,51 @@ function initializeMenu() {
    Global Initialization
    ========================================================================== */
 
-// Initialize all components when DOM is ready
-$(document).ready(() => {
+document.addEventListener('DOMContentLoaded', () => {
   // Initialize global instances
   window.firebaseAuth = new FirebaseAuth();
   window.authUI = new AuthUI();
 
   // Handle includes system
-  const includes = $('[data-include]');
+  const includes = document.querySelectorAll('[data-include]');
 
-  jQuery.each(includes, function () {
-    const includeFile = $(this).data('include') + '.html';
+  includes.forEach((el) => {
+    const includeFile = el.dataset.include + '.html';
     const basePath = window.location.pathname.includes('/apps/') ? '../../partials/' : 'partials/';
     const file = basePath + includeFile;
-    const $element = $(this);
 
-    $element.load(file, function () {
-      // Initialize menu after header is loaded
-      if (includeFile === 'header.html' && $('#menu').length > 0) {
-        initializeMenu();
-      }
+    fetch(file)
+      .then((r) => {
+        if (!r.ok) throw new Error(r.statusText);
+        return r.text();
+      })
+      .then((html) => {
+        el.innerHTML = html;
 
-      // Initialize auth UI after header is loaded
-      if (includeFile === 'header.html' && window.authUI && window.authUI.onHeaderLoaded) {
-        window.authUI.onHeaderLoaded();
-      }
-
-      // Update menu toggle accessibility attributes
-      if (includeFile === 'header.html') {
-        const menuToggle = $(SELECTORS.menuToggle);
-        const menu = $('#menu');
-
-        if (menuToggle.length && menu.length) {
-          menuToggle.attr('aria-expanded', 'false');
-          menu.attr('aria-hidden', 'true');
+        // Initialize menu after header is loaded
+        if (includeFile === 'header.html' && document.getElementById('menu')) {
+          initializeMenu();
         }
-      }
-    });
+
+        // Initialize auth UI after header is loaded
+        if (includeFile === 'header.html' && window.authUI && window.authUI.onHeaderLoaded) {
+          window.authUI.onHeaderLoaded();
+        }
+
+        // Update menu toggle accessibility attributes
+        if (includeFile === 'header.html') {
+          const menuToggle = document.querySelector(SELECTORS.menuToggle);
+          const menu = document.getElementById('menu');
+
+          if (menuToggle && menu) {
+            menuToggle.setAttribute('aria-expanded', 'false');
+            menu.setAttribute('aria-hidden', 'true');
+          }
+        }
+      })
+      .catch(() => {
+        // Silently fail - partial not found
+      });
   });
 
   // Additional auth UI initialization after delay
@@ -156,7 +167,7 @@ $(document).ready(() => {
     if (
       window.authUI &&
       window.authUI.state &&
-      $(SELECTORS.authContainer).length > 0 &&
+      document.querySelector(SELECTORS.authContainer) &&
       !window.authUI.state.headerLoaded
     ) {
       window.authUI.onHeaderLoaded();
@@ -166,10 +177,9 @@ $(document).ready(() => {
 
 // Handle resize events (debounced for performance)
 const debouncedResize = debounce(() => {
-  // Handle responsive adjustments
   if (window.authUI && window.authUI.state.isModalOpen) {
     window.authUI.trapFocus = window.authUI.trapFocus.bind(window.authUI);
   }
 }, 250);
 
-$window.on('resize', debouncedResize);
+window.addEventListener('resize', debouncedResize);

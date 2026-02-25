@@ -1,6 +1,5 @@
 node_modules/
 dist/
-assets/js/jquery.min.js
 assets/js/browser.min.js
 assets/js/breakpoints.min.js
 report_assets/
