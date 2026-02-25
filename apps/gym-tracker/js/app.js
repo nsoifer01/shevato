@@ -14,8 +14,17 @@ import { timerService } from './services/TimerService.js';
 import { AnalyticsService } from './services/AnalyticsService.js';
 import { AchievementService } from './services/AchievementService.js';
 
-import { EXERCISE_DATABASE } from '../data/exercises-db.js';
 import { showToast } from './utils/helpers.js';
+
+// Exercise database loaded lazily on first use (~124KB)
+let _exerciseDB = null;
+async function getExerciseDatabase() {
+  if (!_exerciseDB) {
+    const { EXERCISE_DATABASE } = await import('../data/exercises-db.js');
+    _exerciseDB = EXERCISE_DATABASE;
+  }
+  return _exerciseDB;
+}
 
 class GymTrackerApp {
   constructor() {
@@ -26,7 +35,7 @@ class GymTrackerApp {
     this.settings = null;
     this.achievements = [];
     this.customExercises = [];
-    this.exerciseDatabase = EXERCISE_DATABASE;
+    this.exerciseDatabase = [];
 
     this.viewControllers = {};
   }
@@ -35,6 +44,10 @@ class GymTrackerApp {
    * Initialize the application
    */
   async init() {
+    // Load exercise database (lazy, ~124KB)
+    const db = await getExerciseDatabase();
+    this.exerciseDatabase = [...db];
+
     // Load data from storage
     this.loadAllData();
 
@@ -100,7 +113,7 @@ class GymTrackerApp {
       }
 
       // Merge default and custom exercises
-      this.exerciseDatabase = [...EXERCISE_DATABASE, ...this.customExercises];
+      this.exerciseDatabase = [...(_exerciseDB || []), ...this.customExercises];
 
       // Load settings
       this.settings = storageService.getSettings();
