@@ -1,4 +1,5 @@
 // Modal utility functions for Mario Kart Tracker
+// TODO: Phase 4 - Replace with imports from shared/utils/modal.js
 
 /**
  * Creates a standardized modal with CSS classes instead of inline styles

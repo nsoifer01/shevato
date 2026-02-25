@@ -47,6 +47,7 @@
 
   /**
    * Escape HTML entities to prevent XSS
+   * TODO: Phase 4 - Replace with import from shared/utils/dom.js
    * @param {string} text - Text to escape
    * @returns {string} Escaped text
    */
@@ -68,6 +69,7 @@
 
   /**
    * Debounce function to limit function calls
+   * TODO: Phase 4 - Replace with import from shared/utils/debounce.js
    * @param {Function} func - Function to debounce
    * @param {number} wait - Wait time in milliseconds
    * @returns {Function} Debounced function

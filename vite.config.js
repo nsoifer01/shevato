@@ -19,6 +19,8 @@ function copyStaticAssets() {
     'apps/football-h2h/js',
     'apps/gym-tracker/js',
     'apps/gym-tracker/data',
+    // Shared utilities - imported by gym-tracker ES modules
+    'shared',
     // Images - needed un-hashed for AJAX-loaded partials (/images/logo-top.png)
     'images',
   ];

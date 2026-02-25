@@ -251,6 +251,7 @@ function updateSidebarDate() {
   }
 }
 
+// TODO: Phase 4 - Replace with import from shared/utils/date.js
 function formatDateForDisplay(dateStr) {
   if (!dateStr) return 'No date';
 

@@ -1,64 +1,16 @@
 /**
  * Helper Utilities
- * Common utility functions used throughout the app
+ * Common utility functions used throughout the gym tracker app.
+ * Shared utilities are re-exported from shared/utils/.
  */
 
-/**
- * Get today's date in YYYY-MM-DD format (local timezone)
- */
-export function getTodayDateString() {
-  const now = new Date();
-  const year = now.getFullYear();
-  const month = String(now.getMonth() + 1).padStart(2, '0');
-  const day = String(now.getDate()).padStart(2, '0');
-  return `${year}-${month}-${day}`;
-}
+// Re-export shared utilities
+export { getTodayDateString, parseLocalDate, formatDate } from '../../../../shared/utils/date.js';
+export { debounce } from '../../../../shared/utils/debounce.js';
+export { escapeHtml } from '../../../../shared/utils/dom.js';
+export { showToast } from '../../../../shared/utils/toast.js';
 
-/**
- * Parse date string in local timezone (avoids UTC conversion)
- */
-export function parseLocalDate(dateString) {
-  // If dateString is just YYYY-MM-DD, parse it as local time
-  if (/^\d{4}-\d{2}-\d{2}$/.test(dateString)) {
-    const [year, month, day] = dateString.split('-').map(Number);
-    return new Date(year, month - 1, day);
-  }
-  // Otherwise use standard Date parsing
-  return new Date(dateString);
-}
-
-/**
- * Format date for display
- */
-export function formatDate(dateString, format = 'short') {
-  const date = parseLocalDate(dateString);
-
-  if (format === 'short') {
-    return date.toLocaleDateString('en-US', {
-      month: 'short',
-      day: 'numeric',
-      year: 'numeric',
-    });
-  }
-
-  if (format === 'long') {
-    return date.toLocaleDateString('en-US', {
-      weekday: 'long',
-      year: 'numeric',
-      month: 'long',
-      day: 'numeric',
-    });
-  }
-
-  if (format === 'time') {
-    return date.toLocaleTimeString('en-US', {
-      hour: '2-digit',
-      minute: '2-digit',
-    });
-  }
-
-  return date.toLocaleDateString('en-US');
-}
+// --- Gym-tracker-specific utilities below ---
 
 /**
  * Format weight with unit
@@ -85,30 +37,6 @@ export function convertWeight(weight, fromUnit, toUnit) {
 }
 
 /**
- * Escape HTML to prevent XSS
- */
-export function escapeHtml(text) {
-  const div = document.createElement('div');
-  div.textContent = text;
-  return div.innerHTML;
-}
-
-/**
- * Debounce function
- */
-export function debounce(func, wait) {
-  let timeout;
-  return function executedFunction(...args) {
-    const later = () => {
-      clearTimeout(timeout);
-      func(...args);
-    };
-    clearTimeout(timeout);
-    timeout = setTimeout(later, wait);
-  };
-}
-
-/**
  * Generate unique ID
  */
 export function generateId() {
@@ -116,7 +44,7 @@ export function generateId() {
 }
 
 /**
- * Get today's date in YYYY-MM-DD format
+ * Get today's date in YYYY-MM-DD format (ISO)
  */
 export function getTodayString() {
   return new Date().toISOString().split('T')[0];
@@ -135,7 +63,6 @@ export function isToday(dateString) {
 export function getWeekStart(date = new Date()) {
   const d = new Date(date);
   const day = d.getDay();
-  // Convert Sunday (0) to 7, then calculate days back to Monday
   const diff = day === 0 ? 6 : day - 1;
   const weekStart = new Date(d.setDate(d.getDate() - diff));
   weekStart.setHours(0, 0, 0, 0);
@@ -182,39 +109,6 @@ export function downloadJSON(data, filename) {
 }
 
 /**
- * Show toast notification
- */
-export function showToast(message, type = 'info', duration = 3000) {
-  const toast = document.createElement('div');
-  toast.className = `toast toast-${type}`;
-  toast.textContent = message;
-
-  document.body.appendChild(toast);
-
-  // Stack toasts vertically by calculating offset based on existing toasts
-  const existingToasts = document.querySelectorAll('.toast.show');
-  let offset = 80; // Initial top position
-  existingToasts.forEach((existingToast) => {
-    const rect = existingToast.getBoundingClientRect();
-    offset = Math.max(offset, rect.bottom + 10);
-  });
-  toast.style.top = `${offset}px`;
-
-  setTimeout(() => {
-    toast.classList.add('show');
-  }, 10);
-
-  setTimeout(() => {
-    toast.classList.remove('show');
-    setTimeout(() => {
-      if (toast.parentNode) {
-        document.body.removeChild(toast);
-      }
-    }, 300);
-  }, duration);
-}
-
-/**
  * Confirm dialog (browser default)
  */
 export function confirmDialog(message) {
@@ -240,38 +134,30 @@ export function showConfirmModal(options = {}) {
     const confirmBtn = document.getElementById('confirm-modal-confirm');
     const cancelBtn = document.getElementById('confirm-modal-cancel');
 
-    // Set content
     titleEl.textContent = title;
     messageEl.innerHTML = message.replace(/\n/g, '<br>');
     confirmBtn.textContent = confirmText;
     cancelBtn.textContent = cancelText;
-
-    // Update button style
     confirmBtn.className = isDangerous ? 'btn btn-danger' : 'btn btn-primary';
 
-    // Show modal
     modal.classList.add('active');
 
-    // Handle confirm
     const handleConfirm = () => {
       cleanup();
       resolve(true);
     };
 
-    // Handle cancel
     const handleCancel = () => {
       cleanup();
       resolve(false);
     };
 
-    // Cleanup function
     const cleanup = () => {
       modal.classList.remove('active');
       confirmBtn.removeEventListener('click', handleConfirm);
       cancelBtn.removeEventListener('click', handleCancel);
     };
 
-    // Add event listeners
     confirmBtn.addEventListener('click', handleConfirm);
     cancelBtn.addEventListener('click', handleCancel);
   });
@@ -343,5 +229,4 @@ export function vibrate(duration = 50) {
  */
 export function playSound(_soundType = 'success') {
   // Placeholder for sound functionality
-  // Can be implemented with audio files if needed
 }

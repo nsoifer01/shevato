@@ -192,6 +192,7 @@ function updateSidebarDateDisplay(dateStr) {
   }
 }
 
+// TODO: Phase 4 - Replace with import from shared/utils/date.js
 function formatDateForDisplay(dateStr) {
   if (!dateStr) return 'No date';
 
@@ -640,6 +641,7 @@ document.addEventListener('click', function (event) {
 
 // Old position button functions removed - now using modern position picker in sidebar
 
+// TODO: Phase 4 - Replace with import from shared/utils/toast.js (showToast)
 function showMessage(message, isError = false) {
   // Create a message div
   const messageDiv = document.createElement('div');
