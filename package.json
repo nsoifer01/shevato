@@ -11,6 +11,9 @@
     "lint": "eslint .",
     "lint:fix": "eslint . --fix",
     "format": "prettier --write .",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:coverage": "vitest run --coverage",
     "format:check": "prettier --check .",
     "prepare": "husky"
   },
@@ -20,10 +23,12 @@
     "eslint-config-prettier": "^10.1.8",
     "globals": "^17.3.0",
     "husky": "^9.1.7",
+    "jsdom": "^28.1.0",
     "lint-staged": "^16.2.7",
     "prettier": "^3.8.1",
     "vite": "^7.3.1",
-    "vite-plugin-compression2": "^2.4.0"
+    "vite-plugin-compression2": "^2.4.0",
+    "vitest": "^4.0.18"
   },
   "lint-staged": {
     "*.js": [
