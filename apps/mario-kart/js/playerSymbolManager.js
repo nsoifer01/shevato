@@ -1,11 +1,13 @@
 // Player Symbol Manager - Centralized management of player symbols
-const STORAGE_KEY = 'marioKartPlayerSymbols';
+function getStorageKeyForSymbols() {
+  return window.getStorageKey ? window.getStorageKey('PlayerSymbols') : 'marioKartPlayerSymbols';
+}
 let playerSymbols = {};
 let listeners = new Set();
 
 function loadSymbols() {
   try {
-    const saved = localStorage.getItem(STORAGE_KEY);
+    const saved = localStorage.getItem(getStorageKeyForSymbols());
     if (saved) {
       playerSymbols = JSON.parse(saved);
     }
@@ -17,7 +19,7 @@ function loadSymbols() {
 
 function saveSymbols() {
   try {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(playerSymbols));
+    localStorage.setItem(getStorageKeyForSymbols(), JSON.stringify(playerSymbols));
   } catch (e) {
     console.error('Error saving player symbols:', e);
   }
@@ -72,6 +74,7 @@ function notifyListeners(playerKey) {
 loadSymbols();
 
 export const PlayerSymbolManager = {
+  reload: loadSymbols,
   getSymbol,
   setSymbol,
   getAllSymbols,

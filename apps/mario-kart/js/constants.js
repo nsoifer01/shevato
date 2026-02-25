@@ -22,6 +22,9 @@ export function getMaxPositions() {
   return GAME_MAX_POSITIONS[currentGameVersion] || GAME_MAX_POSITIONS.mk8d;
 }
 
+// Set MIN_POSITIONS on window immediately (constant, never changes)
+window.MIN_POSITIONS = MIN_POSITIONS;
+
 // Dynamic MAX_POSITIONS that updates based on game version
 export function updateMaxPositions() {
   window.MAX_POSITIONS = getMaxPositions();

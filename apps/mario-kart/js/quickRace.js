@@ -163,7 +163,7 @@ export function saveQuickRace() {
     // Add to races array
     if (state.races) {
       state.races.push(race);
-      localStorage.setItem('marioKartRaces', JSON.stringify(state.races));
+      localStorage.setItem(window.getStorageKey('Races'), JSON.stringify(state.races));
 
       // Update displays
       if (typeof window.updateAchievements === 'function') window.updateAchievements();

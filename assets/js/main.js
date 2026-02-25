@@ -156,6 +156,15 @@ document.addEventListener('DOMContentLoaded', () => {
             menu.setAttribute('aria-hidden', 'true');
           }
         }
+
+        // Set footer year after footer partial is loaded
+        if (includeFile.startsWith('footer')) {
+          const year = new Date().getFullYear();
+          ['year', 'year-ru', 'year-he'].forEach((id) => {
+            const el = document.getElementById(id);
+            if (el) el.textContent = year;
+          });
+        }
       })
       .catch(() => {
         // Silently fail - partial not found

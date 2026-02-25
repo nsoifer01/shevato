@@ -1,5 +1,7 @@
 // Player Icon Manager - Handles storage and retrieval of player icons
-const STORAGE_KEY = 'marioKartPlayerIcons';
+function getStorageKeyForIcons() {
+  return window.getStorageKey ? window.getStorageKey('PlayerIcons') : 'marioKartPlayerIcons';
+}
 const MAX_ICON_SIZE = 1024 * 1024; // 1MB
 const ALLOWED_FORMATS = ['image/png', 'image/jpeg', 'image/jpg', 'image/svg+xml'];
 
@@ -14,7 +16,7 @@ function init() {
 // Load icons from localStorage
 function loadIcons() {
   try {
-    const stored = localStorage.getItem(STORAGE_KEY);
+    const stored = localStorage.getItem(getStorageKeyForIcons());
     if (stored) {
       iconCache = JSON.parse(stored);
     }
@@ -27,7 +29,7 @@ function loadIcons() {
 // Save icons to localStorage
 function saveIcons() {
   try {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(iconCache));
+    localStorage.setItem(getStorageKeyForIcons(), JSON.stringify(iconCache));
   } catch (e) {
     console.error('Error saving player icons:', e);
     // Handle quota exceeded error
@@ -161,6 +163,7 @@ init();
 
 // Export API
 export const PlayerIconManager = {
+  reload: loadIcons,
   getIcon,
   setIcon,
   removeIcon,

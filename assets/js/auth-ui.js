@@ -80,11 +80,11 @@ export class AuthUI {
    * @private
    */
   setupEventListeners() {
-    document.addEventListener('DOMContentLoaded', () => {
-      this.createAuthModal();
-      this.bindModalEvents();
-      this.setupKeyboardHandlers();
-    });
+    // AuthUI is constructed after DOMContentLoaded (from main.js),
+    // so the DOM is already ready — call directly.
+    this.createAuthModal();
+    this.bindModalEvents();
+    this.setupKeyboardHandlers();
   }
 
   /**

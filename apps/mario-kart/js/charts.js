@@ -1,4 +1,5 @@
 import { state } from './store.js';
+import { MIN_POSITIONS } from './constants.js';
 
 let trendChart = null;
 
@@ -124,7 +125,7 @@ export function createTrendCharts(raceData = null) {
           type: 'linear',
           reverse: true,
           suggestedMin: MIN_POSITIONS - 0.5,
-          suggestedMax: MAX_POSITIONS + 0.5,
+          suggestedMax: window.MAX_POSITIONS + 0.5,
           ticks: {
             color: '#e2e8f0',
             padding: 8,
@@ -828,7 +829,7 @@ function generatePatternAnalysis(raceData) {
   }
 
   // Most competitive races (only show for multiple players)
-  if (playerCount > 1) {
+  if (state.playerCount > 1) {
     const competitiveRaces = raceData.filter((race) => {
       const positions = state.players.map((player) => race[player]).filter((p) => p !== null);
       if (positions.length < 2) return false;

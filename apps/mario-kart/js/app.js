@@ -30,6 +30,7 @@ import {
   updatePlayerFieldsVisibility,
   updateInputGroupClass,
   getPlayerName,
+  updatePlayerName,
 } from './playerManager.js';
 
 // Data and statistics
@@ -175,6 +176,7 @@ window.backupToGoogleDrive = backupToGoogleDrive;
 
 // Player management
 window.updatePlayerCount = updatePlayerCount;
+window.updatePlayerName = updatePlayerName;
 window.updatePlayerLabels = updatePlayerLabels;
 
 // Undo/redo

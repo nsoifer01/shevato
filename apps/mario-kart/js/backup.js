@@ -26,7 +26,7 @@ export function autoBackupToLocalStorage() {
       actionHistory: window.actionHistory.slice(-10), // Keep last 10 for recovery
     };
 
-    localStorage.setItem('marioKartAutoBackup', JSON.stringify(backupData));
+    localStorage.setItem(window.getStorageKey('AutoBackup'), JSON.stringify(backupData));
   } catch (e) {
     console.error('Auto-backup failed:', e);
   }
@@ -34,7 +34,7 @@ export function autoBackupToLocalStorage() {
 
 export function restoreFromBackup() {
   try {
-    const backup = localStorage.getItem('marioKartAutoBackup');
+    const backup = localStorage.getItem(window.getStorageKey('AutoBackup'));
     if (!backup) {
       window.showMessage(
         'No automatic backup found. Backups are created every 10 minutes when you have race data.',
@@ -101,7 +101,10 @@ export function restoreFromBackup() {
       } else {
         // Fallback
         window.playerNames = backupData.playerNames || window.playerNames;
-        localStorage.setItem('marioKartPlayerNames', JSON.stringify(window.playerNames));
+        localStorage.setItem(
+          window.getStorageKey('PlayerNames'),
+          JSON.stringify(window.playerNames),
+        );
 
         // Update all player-related UI
         window.updatePlayerLabels();
@@ -140,7 +143,7 @@ export function restoreFromBackup() {
         }
       }
 
-      localStorage.setItem('marioKartRaces', JSON.stringify(state.races));
+      localStorage.setItem(window.getStorageKey('Races'), JSON.stringify(state.races));
 
       window.updateDisplay();
       window.updateAchievements();

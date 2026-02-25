@@ -76,11 +76,17 @@ export function switchGameVersion(version) {
     window.createAllBars();
   }
 
+  // Reload player managers with new version's storage keys
+  if (window.PlayerNameManager?.reload) window.PlayerNameManager.reload();
+  if (window.PlayerSymbolManager?.reload) window.PlayerSymbolManager.reload();
+  if (window.PlayerIconManager?.reload) window.PlayerIconManager.reload();
+
   // Reload data for the new version
-  loadData();
-  updateDisplay();
-  updateAchievements();
-  updateClearButtonState();
+  if (window.loadSavedData) window.loadSavedData();
+  if (window.updateDisplay) window.updateDisplay();
+  if (window.updateAchievements) window.updateAchievements();
+  if (window.updateClearButtonState) window.updateClearButtonState();
+  if (window.updateAllPlayerIcons) window.updateAllPlayerIcons();
 }
 
 // Update UI to reflect current game version

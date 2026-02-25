@@ -1,8 +1,10 @@
 // Centralized Player Name Management System
 // This module provides a single source of truth for player names across the app
 
-// Storage key for localStorage
-const PLAYER_NAMES_KEY = 'marioKartPlayerNames';
+// Storage key for localStorage (version-aware)
+function getPlayerNamesKey() {
+  return window.getStorageKey ? window.getStorageKey('PlayerNames') : 'marioKartPlayerNames';
+}
 
 // Default player names
 const DEFAULT_PLAYER_NAMES = {
@@ -21,7 +23,7 @@ const nameChangeListeners = new Set();
 // Initialize player names from localStorage or defaults
 function initializePlayerNames() {
   try {
-    const saved = localStorage.getItem(PLAYER_NAMES_KEY);
+    const saved = localStorage.getItem(getPlayerNamesKey());
     if (saved) {
       currentPlayerNames = JSON.parse(saved);
       // Ensure all keys exist
@@ -99,7 +101,7 @@ function setAllPlayerNames(names) {
 // Save current names to localStorage
 function savePlayerNames() {
   try {
-    localStorage.setItem(PLAYER_NAMES_KEY, JSON.stringify(currentPlayerNames));
+    localStorage.setItem(getPlayerNamesKey(), JSON.stringify(currentPlayerNames));
   } catch (e) {
     console.error('Error saving player names:', e);
   }
@@ -135,6 +137,7 @@ function getDisplayName(playerKey) {
 // Export functions for global access
 export const PlayerNameManager = {
   initialize: initializePlayerNames,
+  reload: initializePlayerNames,
   get: getPlayerName,
   getAll: getAllPlayerNames,
   set: setPlayerName,

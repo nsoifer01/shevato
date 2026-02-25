@@ -1,4 +1,5 @@
 import { state } from './store.js';
+import { MIN_POSITIONS } from './constants.js';
 
 // Detect active players from race data
 export function detectActivePlayersFromRaces(raceData) {
@@ -85,8 +86,11 @@ export function addRace() {
   }
 
   // Validate positions are in range
-  if (activePlayers.some((pos) => pos < MIN_POSITIONS || pos > MAX_POSITIONS)) {
-    window.showMessage(`Positions must be between ${MIN_POSITIONS} and ${MAX_POSITIONS}`, true);
+  if (activePlayers.some((pos) => pos < MIN_POSITIONS || pos > window.MAX_POSITIONS)) {
+    window.showMessage(
+      `Positions must be between ${MIN_POSITIONS} and ${window.MAX_POSITIONS}`,
+      true,
+    );
     return;
   }
 
@@ -169,10 +173,10 @@ export function editRace(index) {
                 <label style="display: block; margin-bottom: 0.5rem; color: #e2e8f0; font-weight: 600; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;">
                     ${window.PlayerNameManager ? window.PlayerNameManager.get(player) : window.getPlayerName(player)}'s Position:
                 </label>
-                <input type="number" id="edit-${player}" min="${MIN_POSITIONS}" max="${MAX_POSITIONS}" value="${currentValue}" 
+                <input type="number" id="edit-${player}" min="${MIN_POSITIONS}" max="${window.MAX_POSITIONS}" value="${currentValue}" 
                     style="width: 100%; padding: 0.75rem; border: 1px solid #4a5568; 
                     border-radius: 0.5rem; background: #4a5568; 
-                    color: #e2e8f0; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;" placeholder="${MIN_POSITIONS}-${MAX_POSITIONS} or leave empty">
+                    color: #e2e8f0; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;" placeholder="${MIN_POSITIONS}-${window.MAX_POSITIONS} or leave empty">
             </div>
         `;
     })
@@ -265,7 +269,7 @@ export function editRace(index) {
         newPositions[player] = null;
       } else {
         const position = parseInt(value);
-        if (position < MIN_POSITIONS || position > MAX_POSITIONS) {
+        if (position < MIN_POSITIONS || position > window.MAX_POSITIONS) {
           validationError = true;
           return;
         }
@@ -277,7 +281,10 @@ export function editRace(index) {
 
     // Check if validation failed
     if (validationError) {
-      window.showMessage(`Positions must be between ${MIN_POSITIONS} and ${MAX_POSITIONS}`, true);
+      window.showMessage(
+        `Positions must be between ${MIN_POSITIONS} and ${window.MAX_POSITIONS}`,
+        true,
+      );
       return;
     }
 
@@ -684,7 +691,6 @@ export function confirmClearData() {
   modal.onclick = (e) => {
     if (e.target === modal) {
       document.body.removeChild(modal);
-      document.head.removeChild(style);
     }
   };
 
@@ -692,7 +698,6 @@ export function confirmClearData() {
   const escapeHandler = (e) => {
     if (e.key === 'Escape') {
       document.body.removeChild(modal);
-      document.head.removeChild(style);
       document.removeEventListener('keydown', escapeHandler);
     }
   };

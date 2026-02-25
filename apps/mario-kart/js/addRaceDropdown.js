@@ -380,7 +380,7 @@ export function saveRaceFromDropdown() {
 
   // Save to localStorage
   try {
-    localStorage.setItem('marioKartRaces', JSON.stringify(state.races));
+    localStorage.setItem(window.getStorageKey('Races'), JSON.stringify(state.races));
   } catch (e) {
     console.error('Error saving to localStorage:', e);
   }
