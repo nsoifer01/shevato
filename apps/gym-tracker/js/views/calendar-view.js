@@ -6,6 +6,7 @@
 import { app } from '../app.js';
 import { AnalyticsService } from '../services/AnalyticsService.js';
 import { formatDate } from '../utils/helpers.js';
+import { DarkSelect } from '../utils/dark-select.js';
 
 const MONTH_NAMES = [
     'January', 'February', 'March', 'April', 'May', 'June',
@@ -44,10 +45,16 @@ class CalendarView {
         if (prevBtn) prevBtn.addEventListener('click', () => this.shiftMonth(-1));
         if (nextBtn) nextBtn.addEventListener('click', () => this.shiftMonth(1));
         if (todayBtn) todayBtn.addEventListener('click', () => this.jumpToToday());
-        if (filterSel) filterSel.addEventListener('change', (e) => {
-            this.filterMode = e.target.value;
-            this.render();
-        });
+        if (filterSel) {
+            if (!filterSel.dataset.darkSelectInit) {
+                this.filterDropdown = new DarkSelect(filterSel);
+                filterSel.dataset.darkSelectInit = '1';
+            }
+            filterSel.addEventListener('change', (e) => {
+                this.filterMode = e.target.value;
+                this.render();
+            });
+        }
     }
 
     shiftMonth(delta) {
@@ -104,7 +111,7 @@ class CalendarView {
             ${this.statCard('dumbbell', 'Workouts', summary.sessionCount, summary.workoutDays === summary.sessionCount ? null : `${summary.workoutDays} days`)}
             ${this.statCard('weight-hanging', 'Volume', `${Math.round(summary.totalVolume).toLocaleString()} ${unit}`)}
             ${this.statCard('clock', 'Time', summary.totalDuration > 0 ? (hours > 0 ? `${hours}h ${mins}m` : `${mins}m`) : '—')}
-            ${this.statCard('fire', 'Streak', `${streak} day${streak === 1 ? '' : 's'}`, 'current', streak > 0 ? 'is-hot' : '')}
+            ${this.statCard('fire', 'Streak', `${streak} day${streak === 1 ? '' : 's'}`, null, streak > 0 ? 'is-hot' : '')}
             ${this.statCard('chart-line', 'PR days', summary.prDays)}
         `;
     }
@@ -260,6 +267,23 @@ class CalendarView {
         `;
     }
 
+    /**
+     * Open the Workout History modal for the given session and, when closed,
+     * return to the Calendar view with the same month + selected date intact.
+     * The modal lives inside `#history-view` so we have to switch views first.
+     */
+    openWorkoutHistory(sessionId) {
+        const historyCtrl = this.app.viewControllers.history;
+        if (!historyCtrl) return;
+        // Tell the history view to return to the calendar when the modal closes
+        historyCtrl.returnToView = 'calendar';
+        this.app.showView('history');
+        // Delay so history view gets rendered before we trigger its modal
+        setTimeout(() => {
+            historyCtrl.showWorkoutDetails(sessionId);
+        }, 100);
+    }
+
     renderSessionSummary(session, unit) {
         const totalVolume = Math.round(session.totalVolume || 0).toLocaleString();
         const totalSets = session.totalSets || (session.exercises || []).reduce((n, ex) => n + (ex.sets?.length || 0), 0);
@@ -268,9 +292,15 @@ class CalendarView {
         const exerciseCount = (session.exercises || []).length;
 
         return `
-            <div class="cal-session">
+            <div class="cal-session"
+                 role="button"
+                 tabindex="0"
+                 title="View workout details"
+                 onclick="window.gymApp.viewControllers.calendar.openWorkoutHistory(${session.id})"
+                 onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();window.gymApp.viewControllers.calendar.openWorkoutHistory(${session.id});}">
                 <div class="cal-session-header">
                     <strong>${session.workoutDayName || 'Workout'}</strong>
+                    <span class="cal-session-chevron" aria-hidden="true"><i class="fas fa-chevron-right"></i></span>
                 </div>
                 <div class="cal-session-stats">
                     <span><i class="fas fa-dumbbell"></i> ${exerciseCount} exercise${exerciseCount === 1 ? '' : 's'}</span>

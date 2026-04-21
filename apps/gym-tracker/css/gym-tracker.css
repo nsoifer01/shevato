@@ -113,7 +113,7 @@ body.gym-tracker #footer {
 
 /* Navigation Styles */
 
-/* Bottom Navigation (Mobile) — single dark bar, soft, no boxes */
+/* Bottom Navigation (Mobile) — single dark bar with clear active state */
 .bottom-nav {
     position: fixed;
     bottom: 0;
@@ -127,6 +127,15 @@ body.gym-tracker #footer {
     padding: 0.55rem 0.4rem calc(0.65rem + env(safe-area-inset-bottom, 0px));
     z-index: 1000;
     box-shadow: 0 -4px 16px rgba(0, 0, 0, 0.4);
+    /* Subtle purple top glow line — visual separator from content */
+    background-image:
+        linear-gradient(to right,
+            transparent 0%,
+            rgba(108, 99, 255, 0.35) 50%,
+            transparent 100%);
+    background-repeat: no-repeat;
+    background-size: 100% 1px;
+    background-position: top;
 }
 
 .bottom-nav .nav-item {
@@ -134,12 +143,15 @@ body.gym-tracker #footer {
     flex-direction: column;
     align-items: center;
     justify-content: center;
-    gap: 0.25rem;
+    gap: 0.3rem;
     padding: 0.5rem 0.35rem;
     background: transparent;
     border: none;
     border-radius: var(--radius-md);
-    color: #ffffff;
+    /* Inactive — medium-light gray so it's clearly secondary but still readable.
+       !important needed because the shared assets/css/main.css applies
+       `button { color: #555555 !important; }` with higher cascade priority. */
+    color: rgba(255, 255, 255, 0.65) !important;
     font-size: 0.7rem;
     font-weight: 500;
     cursor: pointer;
@@ -151,19 +163,21 @@ body.gym-tracker #footer {
     -webkit-tap-highlight-color: transparent;
 }
 
-.bottom-nav .nav-item:hover {
-    color: #ffffff;
+.bottom-nav .nav-item:hover:not(.active) {
+    color: #ffffff !important;
+    background: rgba(255, 255, 255, 0.04);
 }
 
 .bottom-nav .nav-item:active {
     transform: scale(0.94);
+    opacity: 0.85;
 }
 
 .bottom-nav .nav-item span {
     line-height: 1.1;
     white-space: nowrap;
     color: inherit;
-    transition: color var(--transition-base);
+    transition: color var(--transition-base), font-weight var(--transition-base);
 }
 
 .bottom-nav .nav-item i {
@@ -172,10 +186,10 @@ body.gym-tracker #footer {
     transition: color var(--transition-base), transform var(--transition-base);
 }
 
-/* Active tab — soft purple pill behind icon+label, accent text */
+/* Active tab — soft purple pill + accent text + bolder label */
 .bottom-nav .nav-item.active {
     color: var(--accent-primary) !important;
-    background: rgba(108, 99, 255, 0.14);
+    background: rgba(108, 99, 255, 0.16);
     border-top: none !important;
     padding-top: 0.5rem;
 }
@@ -567,7 +581,7 @@ body.gym-tracker #footer {
     word-break: break-word;
 }
 
-.program-card > p {
+.program-card .program-description {
     margin: 0;
     color: var(--text-secondary);
     line-height: 1.5;
@@ -575,6 +589,14 @@ body.gym-tracker #footer {
     -webkit-line-clamp: 3;
     -webkit-box-orient: vertical;
     overflow: hidden;
+}
+
+/* When a card has no description, lean slightly into the exercise count so
+   the layout still feels intentional rather than sparse. */
+.program-card:not(:has(.program-description)) .program-stats .stat {
+    font-size: 1rem;
+    font-weight: 600;
+    color: var(--text-primary);
 }
 
 .program-card .program-header h3 {
@@ -595,27 +617,112 @@ body.gym-tracker #footer {
     box-shadow: var(--shadow-lg);
 }
 
+/* Program card actions — compact, single-row, visually secondary to the card
+   content. Overrides the bulky global .btn defaults (height 3.25rem, heavy
+   padding) and the saturated .btn-danger red so the actions don't dominate. */
 .program-actions {
     display: flex;
-    gap: var(--spacing-sm);
+    flex-direction: row;
+    flex-wrap: nowrap;
+    gap: 0.5rem;
     margin-top: auto;
-    padding-top: var(--spacing-md);
-    flex-wrap: wrap;
+    padding-top: 0.75rem;
+    align-items: stretch;
 }
 
 .program-actions .btn {
-    flex: 1;
-    min-width: 100px;
+    flex: 1 1 0;
+    min-width: 0;
+    height: 34px !important;
+    min-height: 0 !important;
+    padding: 0 0.85rem !important;
+    font-size: 0.82rem !important;
+    font-weight: 600 !important;
+    line-height: 1 !important;
+    font-family: inherit !important;
+    border-radius: var(--radius-md);
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.4rem;
+    letter-spacing: 0;
+    transition: background var(--transition-base), border-color var(--transition-base),
+                color var(--transition-base), box-shadow var(--transition-base),
+                transform var(--transition-base);
 }
 
-@media (min-width: 768px) {
-    .program-actions {
-        gap: var(--spacing-md);
-    }
+.program-actions .btn i {
+    font-size: 0.78rem;
+}
 
+/* Edit — ghost/outline. Secondary to the card, but still clearly clickable. */
+.program-actions .btn-secondary {
+    background: transparent !important;
+    border: 1px solid var(--border-color) !important;
+    color: var(--text-primary) !important;
+    box-shadow: none !important;
+}
+
+.program-actions .btn-secondary:hover {
+    background: rgba(108, 99, 255, 0.12) !important;
+    border-color: var(--accent-primary) !important;
+    color: #ffffff !important;
+    transform: translateY(-1px);
+    box-shadow: 0 3px 10px rgba(108, 99, 255, 0.22);
+}
+
+.program-actions .btn-secondary:active {
+    transform: translateY(0);
+    background: rgba(108, 99, 255, 0.18) !important;
+    box-shadow: inset 0 2px 4px rgba(0, 0, 0, 0.25);
+}
+
+.program-actions .btn-secondary:focus-visible {
+    outline: none;
+    box-shadow: 0 0 0 3px rgba(108, 99, 255, 0.3);
+}
+
+/* Delete — smaller, desaturated destructive fill at rest; intensifies on hover. */
+.program-actions .btn-danger {
+    background: rgba(239, 68, 68, 0.14) !important;
+    border: 1px solid rgba(239, 68, 68, 0.4) !important;
+    color: #ff9a9a !important;
+    box-shadow: none !important;
+}
+
+.program-actions .btn-danger i {
+    color: inherit !important;
+}
+
+.program-actions .btn-danger:hover {
+    background: #ef4444 !important;
+    border-color: #ef4444 !important;
+    color: #ffffff !important;
+    transform: translateY(-1px);
+    box-shadow: 0 3px 10px rgba(239, 68, 68, 0.35);
+}
+
+.program-actions .btn-danger:hover i {
+    color: #ffffff !important;
+}
+
+.program-actions .btn-danger:active {
+    transform: translateY(0);
+    background: #dc2626 !important;
+    box-shadow: inset 0 2px 4px rgba(0, 0, 0, 0.3);
+}
+
+.program-actions .btn-danger:focus-visible {
+    outline: none;
+    box-shadow: 0 0 0 3px rgba(239, 68, 68, 0.35);
+}
+
+/* On narrow cards (very small phones) we still keep the row, but relax the
+   padding a touch so the two buttons comfortably share the width. */
+@media (max-width: 360px) {
     .program-actions .btn {
-        flex: 0 1 auto;
-        min-width: 120px;
+        padding: 0 0.6rem !important;
+        font-size: 0.78rem !important;
     }
 }
 
@@ -653,6 +760,14 @@ body.gym-tracker #footer {
     font-size: 1.25rem;
 }
 
+/* Scope: history-list workout cards get a tighter, more intentional header */
+#history-list .workout-card-header h3 {
+    font-size: 1.1rem;
+    font-weight: 700;
+    letter-spacing: -0.015em;
+    line-height: 1.25;
+}
+
 .program-stats,
 .workout-card-stats {
     display: flex;
@@ -668,6 +783,35 @@ body.gym-tracker #footer {
     gap: var(--spacing-xs);
     color: var(--text-primary);
     font-size: 0.9rem;
+}
+
+/* History card metric row — tabular numbers + muted icon so stats scan fast */
+#history-list .workout-card-stats {
+    gap: 0.9rem 1.1rem;
+    margin: 0.65rem 0 0;
+}
+
+#history-list .workout-card-stats .stat {
+    font-size: 0.85rem;
+    font-weight: 600;
+    color: var(--text-secondary);
+    font-variant-numeric: tabular-nums;
+    gap: 0.35rem;
+}
+
+#history-list .workout-card-stats .stat i {
+    color: var(--accent-primary);
+    font-size: 0.8rem;
+    opacity: 0.85;
+}
+
+#history-list .workout-card {
+    padding: 0.95rem 1rem;
+}
+
+#history-list .workout-card-header {
+    margin-bottom: 0;
+    align-items: flex-start;
 }
 
 .stat .label {
@@ -705,6 +849,19 @@ body.gym-tracker #footer {
     font-size: 0.9rem;
 }
 
+#history-list .workout-card-header .date {
+    color: var(--text-muted);
+    font-size: 0.75rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    margin-top: 0.15rem;
+}
+
+#history-list .workout-header-info {
+    gap: 0.1rem;
+}
+
 .workout-notes {
     margin-top: var(--spacing-sm);
     padding: var(--spacing-sm);
@@ -712,6 +869,14 @@ body.gym-tracker #footer {
     border-radius: var(--radius-sm);
     font-size: 0.9rem;
     color: var(--text-primary);
+    line-height: 1.5;
+}
+
+#history-list .workout-notes {
+    margin-top: 0.7rem;
+    padding: 0.55rem 0.7rem;
+    font-size: 0.82rem;
+    color: var(--text-secondary);
     line-height: 1.5;
 }
 
@@ -1232,85 +1397,122 @@ body.gym-tracker #footer {
     display: flex;
     justify-content: space-between;
     align-items: center;
-    padding: 0.6rem 0.75rem;
+    padding: 0.55rem 0.7rem;
     background: var(--bg-card);
     border-radius: var(--radius-lg);
     margin-bottom: var(--spacing-md);
     position: sticky;
     top: 0;
     z-index: 100;
-    gap: 0.6rem;
+    gap: 0.55rem;
     border: 1px solid var(--border-color);
 }
 
 .workout-header-actions {
     display: flex;
     align-items: center;
-    gap: 0.4rem;
+    gap: 0.35rem;
 }
 
-/* Workout header button styles — unified sizing & treatment */
+/* Unified sizing for every header control — creates one visual system */
 .workout-header .btn-icon {
-    width: 40px;
-    height: 40px;
+    width: 38px !important;
+    height: 38px !important;
+    padding: 0 !important;
     border-radius: var(--radius-md);
-    font-size: 1rem;
+    font-size: 0.95rem !important;
+    line-height: 1 !important;
+    font-family: inherit !important;
+    font-weight: 500 !important;
     border: 1px solid var(--border-color);
     background: var(--bg-elevated);
-    color: var(--text-secondary);
-    transition: all var(--transition-base);
+    color: var(--text-secondary) !important;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    transition: background var(--transition-base), border-color var(--transition-base),
+                color var(--transition-base), box-shadow var(--transition-base),
+                transform var(--transition-base);
+}
+
+.workout-header .btn-icon i {
+    color: inherit;
+    font-size: inherit;
 }
 
 .workout-header .btn-icon:hover {
     border-color: var(--border-light);
     background: var(--bg-hover);
-    color: var(--text-primary);
+    color: var(--text-primary) !important;
 }
 
+/* End/Close — most subtle. Muted outline, reads as "cancel/exit" */
 .workout-header .btn-icon-end {
-    background: transparent;
-    border-color: rgba(239, 68, 68, 0.25);
-    color: rgba(239, 68, 68, 0.85);
+    background: transparent !important;
+    border-color: var(--border-color) !important;
+    color: var(--text-muted) !important;
 }
 
 .workout-header .btn-icon-end:hover {
-    background: rgba(239, 68, 68, 0.12);
-    border-color: rgba(239, 68, 68, 0.5);
-    color: #ef4444;
+    background: rgba(239, 68, 68, 0.1) !important;
+    border-color: rgba(239, 68, 68, 0.45) !important;
+    color: #ef4444 !important;
 }
 
+/* Pause — neutral/secondary. Softer amber so it doesn't fight with Finish */
 .workout-header .btn-icon-pause {
-    background: rgba(251, 191, 36, 0.1);
-    border-color: rgba(251, 191, 36, 0.25);
-    color: #fbbf24;
+    background: rgba(251, 191, 36, 0.08) !important;
+    border-color: rgba(251, 191, 36, 0.28) !important;
+    color: #f0b429 !important;
 }
 
 .workout-header .btn-icon-pause:hover {
-    background: rgba(251, 191, 36, 0.2);
-    border-color: rgba(251, 191, 36, 0.5);
+    background: rgba(251, 191, 36, 0.18) !important;
+    border-color: rgba(251, 191, 36, 0.5) !important;
+    color: #fbbf24 !important;
 }
 
+/* Finish — primary action. Filled green gradient so it reads as the CTA */
 .workout-header .btn-icon-finish {
-    background: rgba(34, 197, 94, 0.1);
-    border-color: rgba(34, 197, 94, 0.3);
-    color: #22c55e;
+    background: linear-gradient(135deg, #22c55e 0%, #16a34a 100%) !important;
+    border-color: transparent !important;
+    color: #ffffff !important;
+    box-shadow: 0 3px 10px rgba(34, 197, 94, 0.35) !important;
 }
 
 .workout-header .btn-icon-finish:hover {
-    background: rgba(34, 197, 94, 0.2);
-    border-color: rgba(34, 197, 94, 0.55);
+    border-color: transparent !important;
+    color: #ffffff !important;
+    box-shadow: 0 5px 14px rgba(34, 197, 94, 0.5) !important;
+    transform: translateY(-1px);
+    filter: brightness(1.06);
+}
+
+.workout-header .btn-icon-finish:active {
+    transform: translateY(0);
+    filter: brightness(0.95);
+}
+
+.workout-header .btn-icon:focus-visible {
+    outline: none;
+    box-shadow: 0 0 0 3px rgba(108, 99, 255, 0.35);
+}
+
+.workout-header .btn-icon-finish:focus-visible {
+    box-shadow: 0 0 0 3px rgba(34, 197, 94, 0.4),
+                0 3px 10px rgba(34, 197, 94, 0.35) !important;
 }
 
 /* Mobile adjustments for workout header */
 @media (max-width: 400px) {
     .workout-header {
-        padding: 0.5rem 0.6rem;
+        padding: 0.45rem 0.55rem;
     }
 
     .workout-header .btn-icon {
-        width: 38px;
-        height: 38px;
-        font-size: 0.95rem;
+        width: 36px !important;
+        height: 36px !important;
+        font-size: 0.9rem !important;
     }
 
     .workout-header-actions {
@@ -1318,11 +1520,11 @@ body.gym-tracker #footer {
     }
 
     .workout-info h2 {
-        font-size: 1rem;
+        font-size: 0.98rem;
     }
 
     .workout-timer {
-        font-size: 0.85rem;
+        font-size: 0.82rem;
     }
 }
 
@@ -1418,7 +1620,7 @@ body.gym-tracker #footer {
 .exercise-entry {
     background: var(--bg-card);
     border-radius: var(--radius-lg);
-    padding: 0.85rem 0.9rem;
+    padding: 0.9rem 0.95rem;
     margin-bottom: 0.75rem;
     border: 1px solid var(--border-color);
 }
@@ -1427,57 +1629,79 @@ body.gym-tracker #footer {
     display: flex;
     justify-content: space-between;
     align-items: center;
-    margin-bottom: 0.6rem;
+    margin-bottom: 0.7rem;
 }
 
 .exercise-entry-header h3 {
     margin: 0;
-    font-size: 1rem;
+    font-size: 1.08rem;
     color: var(--text-primary);
     font-weight: 700;
-    letter-spacing: -0.01em;
+    letter-spacing: -0.015em;
+    display: inline-flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    gap: 0.4rem;
+    line-height: 1.25;
 }
 
+.exercise-name-main {
+    color: var(--text-primary);
+    font-weight: 700;
+}
+
+.exercise-name-sub {
+    color: var(--text-muted);
+    font-size: 0.76rem;
+    font-weight: 500;
+    white-space: nowrap;
+    opacity: 0.75;
+}
+
+/* Last-time reference section — deferential styling so the active inputs
+   remain the focal point. */
 .previous-data {
-    background: var(--bg-tertiary);
-    padding: 0.6rem 0.7rem;
-    border-radius: var(--radius-md);
-    margin-bottom: 0.75rem;
+    background: transparent;
+    padding: 0.4rem 0;
+    border-radius: 0;
+    margin-bottom: 0.65rem;
+    opacity: 0.88;
 }
 
 .previous-sets-label {
-    font-size: 0.75rem;
-    color: var(--text-secondary);
-    margin-bottom: 0.4rem;
-    font-weight: 600;
+    font-size: 0.68rem;
+    color: var(--text-muted);
+    margin-bottom: 0.35rem;
+    font-weight: 700;
     text-transform: uppercase;
-    letter-spacing: 0.04em;
+    letter-spacing: 0.06em;
 }
 
 .previous-sets-row {
     display: flex;
     flex-wrap: wrap;
-    gap: 0.4rem;
+    gap: 0.35rem;
 }
 
 .previous-set-badge {
     display: inline-flex;
     align-items: center;
     gap: 0.3rem;
-    background: var(--bg-card);
+    background: rgba(255, 255, 255, 0.03);
     border: 1px solid var(--border-color);
     border-radius: 999px;
-    padding: 0.25rem 0.55rem 0.25rem 0.3rem;
-    transition: all var(--transition-base);
+    padding: 0.22rem 0.55rem 0.22rem 0.28rem;
+    transition: background var(--transition-base), border-color var(--transition-base),
+                transform var(--transition-base), box-shadow var(--transition-base);
     cursor: pointer;
     user-select: none;
 }
 
 .previous-set-badge:hover {
-    border-color: var(--accent-primary);
-    background: var(--bg-hover);
-    transform: translateY(-2px);
-    box-shadow: 0 4px 8px rgba(108, 99, 255, 0.2);
+    border-color: rgba(108, 99, 255, 0.5);
+    background: rgba(108, 99, 255, 0.08);
+    transform: translateY(-1px);
+    box-shadow: 0 3px 8px rgba(108, 99, 255, 0.18);
 }
 
 .previous-set-badge:active {
@@ -1488,22 +1712,30 @@ body.gym-tracker #footer {
     display: flex;
     align-items: center;
     justify-content: center;
-    width: 18px;
-    height: 18px;
-    background: var(--accent-primary);
-    color: white;
+    width: 16px;
+    height: 16px;
+    background: rgba(108, 99, 255, 0.4);
+    color: #ffffff;
     border-radius: 50%;
-    font-size: 0.6rem;
+    font-size: 0.58rem;
     font-weight: 700;
     flex-shrink: 0;
 }
 
+.previous-set-badge:hover .previous-set-number {
+    background: var(--accent-primary);
+}
+
 .previous-set-value {
-    color: var(--text-primary);
-    font-size: 0.78rem;
-    font-weight: 600;
+    color: var(--text-secondary);
+    font-size: 0.74rem;
+    font-weight: 500;
     white-space: nowrap;
     font-variant-numeric: tabular-nums;
+}
+
+.previous-set-badge:hover .previous-set-value {
+    color: var(--text-primary);
 }
 
 .set-inputs {
@@ -1521,69 +1753,108 @@ body.gym-tracker #footer {
 }
 
 .input-label {
-    font-size: 0.7rem;
-    color: var(--text-secondary);
-    font-weight: 600;
+    font-size: 0.68rem;
+    color: var(--text-muted);
+    font-weight: 700;
     text-transform: uppercase;
-    letter-spacing: 0.05em;
+    letter-spacing: 0.06em;
     padding-left: 0.1rem;
 }
 
 .set-inputs input {
     flex: 1;
-    padding: 0.7rem 0.5rem;
+    padding: 0.75rem 0.6rem;
     background: var(--bg-tertiary);
-    border: 1px solid var(--border-color);
+    border: 1.5px solid var(--border-color);
     border-radius: var(--radius-md);
     color: var(--text-primary);
-    font-size: 1.05rem;
+    font-size: 1.1rem;
     font-weight: 600;
     line-height: 1.2;
     text-align: center;
     font-variant-numeric: tabular-nums;
-    transition: border-color var(--transition-base);
+    transition: border-color var(--transition-base), background var(--transition-base),
+                box-shadow var(--transition-base);
+}
+
+.set-inputs input::placeholder {
+    color: var(--text-muted);
+    opacity: 0.6;
+    font-weight: 500;
+}
+
+.set-inputs input:hover {
+    border-color: var(--border-light);
 }
 
 .set-inputs input:focus {
     outline: none;
     border-color: var(--accent-primary);
+    background: var(--bg-elevated);
+    box-shadow: 0 0 0 3px rgba(108, 99, 255, 0.2);
 }
 
+/* Add Set — primary positive action. !important beats the global
+   `button { color: #555 !important; height: 3.25rem; font-weight: 600 }` rule
+   that was making the text read dark/muddy on the teal gradient. */
+.set-inputs .btn-add-set,
 .set-inputs button {
-    padding: 0.75rem 1.1rem;
-    background: linear-gradient(135deg, #00d9a3 0%, #00b386 100%);
-    color: #ffffff;
-    border: 1px solid transparent;
+    padding: 0.75rem 1.1rem !important;
+    height: auto !important;
+    min-height: 0 !important;
+    background: linear-gradient(135deg, #00d9a3 0%, #00b386 100%) !important;
+    color: #ffffff !important;
+    border: 1px solid transparent !important;
     border-radius: var(--radius-md);
-    font-weight: 700;
-    font-size: 0.95rem;
-    letter-spacing: 0.01em;
+    font-weight: 700 !important;
+    font-size: 0.95rem !important;
+    letter-spacing: 0.01em !important;
+    line-height: 1 !important;
+    font-family: inherit !important;
     cursor: pointer;
     display: flex;
     align-items: center;
     justify-content: center;
+    gap: 0.45rem;
     flex-shrink: 0;
     white-space: nowrap;
-    box-shadow: 0 2px 8px rgba(0, 217, 163, 0.3);
-    transition: all var(--transition-base);
+    box-shadow: 0 3px 10px rgba(0, 217, 163, 0.32) !important;
+    transition: background var(--transition-base), box-shadow var(--transition-base),
+                transform var(--transition-base), filter var(--transition-base);
 }
 
+.set-inputs .btn-add-set i,
+.set-inputs button i {
+    color: #ffffff !important;
+    font-size: 0.82rem;
+}
+
+.set-inputs .btn-add-set:hover,
 .set-inputs button:hover {
     filter: brightness(1.08);
-    box-shadow: 0 4px 14px rgba(0, 217, 163, 0.45);
+    box-shadow: 0 6px 18px rgba(0, 217, 163, 0.5) !important;
     transform: translateY(-1px);
 }
 
+.set-inputs .btn-add-set:active,
 .set-inputs button:active {
     transform: translateY(0) scale(0.98);
     filter: brightness(0.95);
-    box-shadow: 0 1px 4px rgba(0, 217, 163, 0.3);
+    box-shadow: 0 1px 4px rgba(0, 217, 163, 0.3) !important;
 }
 
+.set-inputs .btn-add-set:focus-visible,
+.set-inputs button:focus-visible {
+    outline: none;
+    box-shadow: 0 0 0 3px rgba(0, 217, 163, 0.4),
+                0 3px 10px rgba(0, 217, 163, 0.32) !important;
+}
+
+.set-inputs .btn-add-set:disabled,
 .set-inputs button:disabled {
-    background: rgba(0, 217, 163, 0.25);
-    color: rgba(255, 255, 255, 0.85);
-    box-shadow: none;
+    background: rgba(0, 217, 163, 0.25) !important;
+    color: rgba(255, 255, 255, 0.85) !important;
+    box-shadow: none !important;
     cursor: not-allowed;
     filter: none;
     transform: none;
@@ -1689,43 +1960,48 @@ body.gym-tracker #footer {
     display: flex;
     justify-content: space-between;
     align-items: center;
-    padding: var(--spacing-md);
-    background: linear-gradient(135deg, rgba(34, 197, 94, 0.1) 0%, rgba(34, 197, 94, 0.05) 100%);
-    border: 1px solid rgba(34, 197, 94, 0.3);
-    border-left: 4px solid #22c55e;
+    padding: 0.55rem 0.65rem 0.55rem 0.7rem;
+    background: rgba(34, 197, 94, 0.06);
+    border: 1px solid rgba(34, 197, 94, 0.22);
+    border-left: 3px solid rgba(34, 197, 94, 0.75);
     border-radius: var(--radius-md);
-    gap: var(--spacing-sm);
+    gap: 0.5rem;
 }
 
 .completed-set.improved {
-    background: linear-gradient(135deg, rgba(34, 197, 94, 0.2) 0%, rgba(34, 197, 94, 0.1) 100%);
-    border-color: rgba(34, 197, 94, 0.5);
-    border-left: 4px solid #22c55e;
+    background: rgba(34, 197, 94, 0.12);
+    border-color: rgba(34, 197, 94, 0.4);
+    border-left: 3px solid #22c55e;
 }
 
 .set-check {
     color: #22c55e;
-    font-size: 1.1rem;
+    font-size: 1rem;
     flex-shrink: 0;
+    opacity: 0.9;
 }
 
 .set-info {
     flex: 1;
     display: flex;
-    align-items: center;
-    gap: 0.5rem;
+    align-items: baseline;
+    gap: 0.45rem;
+    min-width: 0;
 }
 
 .set-number {
     font-weight: 600;
-    color: var(--text-primary);
-    font-size: 0.9rem;
+    color: var(--text-secondary);
+    font-size: 0.8rem;
+    flex-shrink: 0;
 }
 
 .set-details {
     color: var(--text-primary);
-    font-size: 1rem;
-    font-weight: 500;
+    font-size: 0.98rem;
+    font-weight: 600;
+    font-variant-numeric: tabular-nums;
+    letter-spacing: -0.005em;
 }
 
 .duration-value {
@@ -1742,54 +2018,78 @@ body.gym-tracker #footer {
 
 .set-actions {
     display: flex;
-    gap: 0.25rem;
+    gap: 0.2rem;
     flex-shrink: 0;
+    align-items: center;
+    margin-left: 0.25rem;
 }
 
+/* Tertiary tap targets — low-contrast at rest, reveal on hover/focus so the
+   set content stays primary. !important beats the global button rule. */
 .btn-set-action {
-    width: 36px;
-    height: 36px;
+    width: 30px !important;
+    height: 30px !important;
+    min-height: 0 !important;
+    padding: 0 !important;
     border-radius: var(--radius-sm);
-    display: flex;
+    display: inline-flex;
     align-items: center;
     justify-content: center;
     cursor: pointer;
-    transition: all var(--transition-base);
-    padding: 0;
-    border: none;
-    font-size: 0.9rem;
+    border: 1px solid transparent !important;
+    background: transparent !important;
+    color: var(--text-muted) !important;
+    font-size: 0.78rem !important;
+    font-weight: 500 !important;
+    line-height: 1 !important;
+    font-family: inherit !important;
+    box-shadow: none !important;
+    opacity: 0.65;
+    transition: background var(--transition-base), color var(--transition-base),
+                border-color var(--transition-base), opacity var(--transition-base),
+                transform var(--transition-base);
 }
 
 .btn-set-action i {
-    color: white;
+    color: inherit !important;
+    font-size: inherit;
+}
+
+.completed-set:hover .btn-set-action {
+    opacity: 1;
 }
 
 .btn-set-action:active {
-    transform: scale(0.95);
+    transform: scale(0.92);
 }
 
-/* Edit button - Blue/Purple */
-.btn-set-action:not(.btn-set-delete):not(.btn-set-save):not(.btn-set-cancel) {
-    background: var(--accent-primary);
-    color: white;
+.btn-set-action:focus-visible {
+    outline: none;
+    opacity: 1;
+    box-shadow: 0 0 0 2px rgba(108, 99, 255, 0.4) !important;
 }
 
+/* Edit — accent tint on hover */
 .btn-set-action:not(.btn-set-delete):not(.btn-set-save):not(.btn-set-cancel):hover {
-    background: var(--accent-secondary);
-    transform: translateY(-1px);
-    box-shadow: 0 4px 8px rgba(108, 99, 255, 0.3);
+    background: rgba(108, 99, 255, 0.18) !important;
+    border-color: rgba(108, 99, 255, 0.4) !important;
+    color: #ffffff !important;
+    opacity: 1;
 }
 
-/* Delete button - Red */
-.btn-set-delete {
-    background: var(--accent-error);
-    color: white;
-}
-
+/* Delete — destructive red on hover only; muted at rest */
 .btn-set-delete:hover {
-    background: #ff3838;
+    background: rgba(239, 68, 68, 0.85) !important;
+    border-color: rgba(239, 68, 68, 0.9) !important;
+    color: #ffffff !important;
+    opacity: 1;
     transform: translateY(-1px);
-    box-shadow: 0 4px 8px rgba(255, 82, 82, 0.3);
+    box-shadow: 0 4px 10px rgba(239, 68, 68, 0.35) !important;
+}
+
+.btn-set-delete:active {
+    transform: scale(0.92);
+    background: #dc2626 !important;
 }
 
 /* Save button - Green */
@@ -1858,7 +2158,7 @@ body.gym-tracker #footer {
 /* Mobile optimization for completed sets */
 @media (max-width: 767px) {
     .completed-set {
-        padding: var(--spacing-md);
+        padding: 0.55rem 0.6rem 0.55rem 0.7rem;
     }
 
     .set-info {
@@ -1866,9 +2166,9 @@ body.gym-tracker #footer {
     }
 
     .btn-set-action {
-        width: 40px;
-        height: 40px;
-        font-size: 1rem;
+        width: 32px !important;
+        height: 32px !important;
+        font-size: 0.8rem !important;
     }
 
     .set-edit-input {
@@ -1925,33 +2225,137 @@ body.gym-tracker #footer {
     }
 }
 
+/* Unified filter + sort toolbar for Workout History */
 .history-filters {
     display: flex;
-    gap: 0.6rem;
+    gap: 0.55rem;
     margin-bottom: var(--spacing-lg);
     flex-wrap: wrap;
     align-items: center;
-    padding: 0.6rem;
+    padding: 0.55rem 0.7rem;
     background: var(--bg-secondary);
     border: 1px solid var(--border-color);
     border-radius: var(--radius-lg);
 }
 
-.history-filters input,
-.history-filters select {
-    flex: 1;
-    min-width: 150px;
-    padding: 0.7rem;
-    background: var(--bg-card);
-    border: 1px solid var(--border-color);
-    border-radius: var(--radius-md);
-    color: var(--text-primary);
+.history-filters input[type="date"] {
+    /* The date inputs are replaced by DarkCalendar; hide the native fallback
+       so there's no FOUC before JS runs. */
+    display: none;
 }
 
-.history-filters .btn {
-    height: 42px;
-    padding: 0 1rem;
+/* Clear button — neutral ghost style, compact height matched to dropdowns */
+.history-filters .history-clear-btn {
+    height: 36px !important;
+    padding: 0 0.85rem !important;
+    background: transparent !important;
+    border: 1px solid var(--border-color) !important;
+    border-radius: var(--radius-md);
+    color: var(--text-secondary) !important;
+    font-size: 0.82rem !important;
+    font-weight: 600 !important;
+    font-family: inherit !important;
+    line-height: 1 !important;
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
+    box-shadow: none !important;
+    transition: background var(--transition-base), border-color var(--transition-base),
+                color var(--transition-base);
+}
+
+.history-filters .history-clear-btn i {
+    font-size: 0.72rem;
+    color: inherit;
+}
+
+.history-filters .history-clear-btn:hover {
+    background: var(--bg-elevated) !important;
+    border-color: var(--border-light) !important;
+    color: var(--text-primary) !important;
+}
+
+.history-filters .history-clear-btn:focus-visible {
+    outline: none;
+    box-shadow: 0 0 0 3px rgba(108, 99, 255, 0.3) !important;
+}
+
+/* Sort wrap — icon + DarkSelect, mirroring the Calendar filter pattern */
+.history-sort-wrap {
+    position: relative;
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+    min-width: 200px;
+    margin-left: auto;
+}
+
+.history-sort-icon {
+    color: var(--text-muted);
+    font-size: 0.8rem;
     flex-shrink: 0;
+}
+
+.history-filters select { display: none; }
+
+.history-sort-wrap .dark-select {
+    width: auto;
+    min-width: 180px;
+    flex: 1;
+}
+
+.history-sort-wrap .dark-select-trigger {
+    height: 36px !important;
+    padding: 0 0.85rem !important;
+    font-size: 0.85rem !important;
+    font-weight: 500 !important;
+    line-height: 1 !important;
+    font-family: inherit !important;
+    gap: 0.55rem;
+}
+
+.history-sort-wrap .dark-select-trigger .dark-select-chevron {
+    font-size: 0.7rem !important;
+}
+
+.history-sort-wrap .dark-select.is-open .dark-select-trigger {
+    border-bottom-left-radius: 0;
+    border-bottom-right-radius: 0;
+    border-color: var(--accent-primary);
+    background: var(--bg-hover);
+    box-shadow: 0 0 0 3px rgba(108, 99, 255, 0.22);
+}
+
+.history-sort-wrap .dark-select-popup {
+    top: calc(100% - 1px);
+    border-top-left-radius: 0;
+    border-top-right-radius: 0;
+    border-top: 1px solid var(--accent-primary);
+    padding: 0.35rem;
+}
+
+/* Match the date calendars to the 36px toolbar height */
+.history-filters .dark-calendar {
+    min-width: 160px;
+}
+
+.history-filters .dark-calendar-trigger {
+    height: 36px !important;
+    padding: 0 0.85rem !important;
+    font-size: 0.85rem !important;
+    gap: 0.5rem;
+}
+
+@media (max-width: 520px) {
+    .history-sort-wrap,
+    .history-sort-wrap .dark-select {
+        width: 100%;
+        margin-left: 0;
+        min-width: 0;
+    }
+    .history-filters { gap: 0.5rem; }
+    .history-filters .dark-calendar { flex: 1 1 calc(50% - 0.25rem); }
 }
 
 /* ============================================================
@@ -1970,13 +2374,16 @@ body.gym-tracker #footer {
     display: inline-flex;
     align-items: center;
     gap: 0.55rem;
-    padding: 0.7rem 0.85rem;
+    padding: 0.7rem 0.85rem !important;
     background: var(--bg-card);
     border: 1px solid var(--border-color);
     border-radius: var(--radius-md);
-    color: var(--text-muted);
-    font-size: 0.9rem;
-    font-weight: 500;
+    color: var(--text-muted) !important;
+    font-size: 0.9rem !important;
+    font-weight: 500 !important;
+    font-family: inherit !important;
+    height: auto !important;
+    line-height: 1.3 !important;
     cursor: pointer;
     transition: all var(--transition-base);
     text-align: left;
@@ -1985,16 +2392,19 @@ body.gym-tracker #footer {
 .dark-calendar-trigger:hover {
     border-color: var(--accent-primary);
     background: var(--bg-elevated);
+    color: var(--text-secondary) !important;
 }
 
 .dark-calendar.is-open .dark-calendar-trigger {
     border-color: var(--accent-primary);
-    box-shadow: 0 0 0 3px rgba(108, 99, 255, 0.18);
+    background: var(--bg-elevated);
+    color: var(--text-primary) !important;
+    box-shadow: 0 0 0 3px rgba(108, 99, 255, 0.22);
 }
 
 .dark-calendar-trigger.has-value {
-    color: var(--text-primary);
-    font-weight: 600;
+    color: var(--text-primary) !important;
+    font-weight: 600 !important;
 }
 
 .dark-calendar-trigger > i {
@@ -2021,21 +2431,60 @@ body.gym-tracker #footer {
     color: var(--accent-primary) !important;
 }
 
+.dark-calendar-backdrop {
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.55);
+    backdrop-filter: blur(4px);
+    -webkit-backdrop-filter: blur(4px);
+    z-index: 1490;
+    opacity: 0;
+    transition: opacity 0.18s ease;
+    pointer-events: none;
+}
+
+.dark-calendar-backdrop.is-visible {
+    opacity: 1;
+    pointer-events: auto;
+}
+
+.dark-calendar-backdrop[hidden] {
+    display: none;
+}
+
 .dark-calendar-popup {
     position: absolute;
     top: calc(100% + 6px);
     left: 0;
     z-index: 1500;
-    width: 250px;
+    width: 280px;
     max-width: calc(100vw - 24px);
     background: var(--bg-card);
     border: 1px solid var(--border-light);
     border-radius: var(--radius-lg);
-    padding: 0.7rem;
+    padding: 0.85rem;
     box-shadow: 0 24px 48px -12px rgba(0, 0, 0, 0.85),
                 0 8px 24px -8px rgba(0, 0, 0, 0.6),
                 0 0 0 1px rgba(108, 99, 255, 0.08);
     animation: darkCalFade 0.16s ease;
+}
+
+@media (max-width: 520px) {
+    .dark-calendar-popup {
+        position: fixed;
+        top: 50%;
+        left: 50%;
+        right: auto;
+        transform: translate(-50%, -50%);
+        width: min(340px, calc(100vw - 32px));
+        max-width: none;
+        animation: darkCalFadeMobile 0.18s ease;
+    }
+
+    @keyframes darkCalFadeMobile {
+        from { opacity: 0; transform: translate(-50%, -50%) scale(0.96); }
+        to   { opacity: 1; transform: translate(-50%, -50%) scale(1); }
+    }
 }
 
 @keyframes darkCalFade {
@@ -2051,31 +2500,41 @@ body.gym-tracker #footer {
 }
 
 .dark-calendar-title {
-    font-size: 0.92rem;
+    font-size: 0.95rem;
     font-weight: 700;
     color: var(--text-primary);
     letter-spacing: -0.01em;
+    font-family: inherit;
 }
 
 .dark-calendar-nav {
-    width: 26px;
-    height: 26px;
+    width: 28px !important;
+    height: 28px !important;
+    padding: 0 !important;
     background: var(--bg-elevated);
     border: 1px solid var(--border-color);
     border-radius: var(--radius-sm);
-    color: var(--text-secondary);
+    color: var(--text-secondary) !important;
     cursor: pointer;
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    font-size: 0.7rem;
+    font-size: 0.72rem !important;
+    font-weight: 500 !important;
+    line-height: 1 !important;
+    font-family: inherit !important;
     transition: all var(--transition-base);
 }
 
 .dark-calendar-nav:hover {
-    color: var(--accent-primary);
+    color: var(--accent-primary) !important;
     border-color: var(--accent-primary);
     background: var(--bg-hover);
+}
+
+.dark-calendar-nav i {
+    color: inherit;
+    font-size: inherit;
 }
 
 .dark-calendar-weekdays {
@@ -2087,56 +2546,102 @@ body.gym-tracker #footer {
 
 .dark-calendar-weekdays span {
     text-align: center;
-    font-size: 0.6rem;
+    font-size: 0.65rem;
     font-weight: 700;
     text-transform: uppercase;
-    letter-spacing: 0.05em;
-    color: var(--text-muted);
-    padding: 0.2rem 0;
+    letter-spacing: 0.06em;
+    color: var(--text-secondary);
+    padding: 0.3rem 0;
+    font-family: inherit;
 }
 
 .dark-calendar-grid {
     display: grid;
     grid-template-columns: repeat(7, 1fr);
-    gap: 0.1rem;
+    gap: 2px;
 }
 
 .dark-calendar-day {
     aspect-ratio: 1;
     background: transparent;
     border: 1px solid transparent;
-    border-radius: 50%;
-    color: var(--text-primary);
-    font-size: 0.78rem;
-    font-weight: 500;
+    border-radius: var(--radius-sm) !important;
+    color: #ffffff !important;
+    font-size: 0.82rem !important;
+    font-weight: 500 !important;
     cursor: pointer;
     transition: background var(--transition-fast), color var(--transition-fast),
                 border-color var(--transition-fast), transform var(--transition-fast);
     font-variant-numeric: tabular-nums;
+    font-family: inherit !important;
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    padding: 0;
-    line-height: 1;
+    padding: 0 !important;
+    height: auto !important;
+    line-height: 1 !important;
+    position: relative;
+    z-index: 1;
 }
 
 .dark-calendar-day:hover {
-    background: var(--bg-elevated);
-    color: var(--text-primary);
+    background: rgba(108, 99, 255, 0.18);
+    color: #ffffff !important;
 }
 
 .dark-calendar-day.other {
-    color: var(--text-disabled);
+    color: rgba(255, 255, 255, 0.25) !important;
 }
 
 .dark-calendar-day.today {
-    border-color: rgba(108, 99, 255, 0.55);
-    color: var(--accent-primary);
-    font-weight: 700;
+    border-color: rgba(108, 99, 255, 0.65);
+    color: var(--accent-primary) !important;
+    font-weight: 700 !important;
 }
 
 .dark-calendar-day.today:hover {
-    background: rgba(108, 99, 255, 0.1);
+    background: rgba(108, 99, 255, 0.18);
+}
+
+/* Range highlighting — subtle fill for dates between endpoints */
+.dark-calendar-day.in-range {
+    background: rgba(108, 99, 255, 0.18);
+    color: #ffffff !important;
+    border-radius: 0 !important;
+}
+
+.dark-calendar-day.in-range:hover {
+    background: rgba(108, 99, 255, 0.28);
+}
+
+.dark-calendar-day.in-range.other {
+    color: rgba(255, 255, 255, 0.45) !important;
+}
+
+/* Range endpoints — stronger fill, square inside edge to visually connect to fill */
+.dark-calendar-day.range-start,
+.dark-calendar-day.range-end {
+    background: var(--gradient-primary);
+    border-color: var(--accent-primary);
+    color: #ffffff !important;
+    font-weight: 700 !important;
+    box-shadow: 0 4px 12px rgba(108, 99, 255, 0.4);
+    z-index: 2;
+}
+
+.dark-calendar-day.range-start {
+    border-top-right-radius: 0 !important;
+    border-bottom-right-radius: 0 !important;
+}
+
+.dark-calendar-day.range-end {
+    border-top-left-radius: 0 !important;
+    border-bottom-left-radius: 0 !important;
+}
+
+/* When only one endpoint exists (range-start without range-end), stay fully rounded */
+.dark-calendar-day.range-start.range-end {
+    border-radius: var(--radius-sm) !important;
 }
 
 .dark-calendar-day.selected,
@@ -2144,7 +2649,7 @@ body.gym-tracker #footer {
     background: var(--gradient-primary);
     border-color: var(--accent-primary);
     color: #ffffff !important;
-    font-weight: 700;
+    font-weight: 700 !important;
     box-shadow: 0 4px 12px rgba(108, 99, 255, 0.4);
 }
 
@@ -2159,40 +2664,61 @@ body.gym-tracker #footer {
 .dark-calendar-footer {
     display: flex;
     gap: 0.4rem;
-    margin-top: 0.55rem;
-    padding-top: 0.5rem;
+    margin-top: 0.65rem;
+    padding-top: 0.6rem;
     border-top: 1px solid var(--border-color);
 }
 
 .dark-calendar-action {
-    flex: 1;
-    padding: 0.45rem 0.5rem;
+    padding: 0.5rem 0.85rem !important;
     background: var(--bg-elevated);
     border: 1px solid var(--border-color);
     border-radius: var(--radius-sm);
-    color: var(--text-secondary);
-    font-size: 0.78rem;
-    font-weight: 600;
+    color: var(--text-secondary) !important;
+    font-size: 0.8rem !important;
+    font-weight: 600 !important;
+    font-family: inherit !important;
     cursor: pointer;
     transition: all var(--transition-base);
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
+    height: auto !important;
+    line-height: 1 !important;
+}
+
+.dark-calendar-action:first-child {
+    margin-right: auto;
 }
 
 .dark-calendar-action:hover {
     background: var(--bg-hover);
-    color: var(--text-primary);
+    color: var(--text-primary) !important;
     border-color: var(--border-light);
 }
 
+.dark-calendar-action i {
+    font-size: 0.75rem;
+    opacity: 0.85;
+}
+
 .dark-calendar-action.primary {
-    color: var(--accent-primary);
-    border-color: rgba(108, 99, 255, 0.4);
-    background: rgba(108, 99, 255, 0.08);
+    color: #ffffff !important;
+    border-color: var(--accent-primary);
+    background: var(--gradient-primary);
+    box-shadow: 0 4px 12px rgba(108, 99, 255, 0.25);
 }
 
 .dark-calendar-action.primary:hover {
-    background: rgba(108, 99, 255, 0.18);
+    background: var(--gradient-primary);
     border-color: var(--accent-primary);
-    color: #ffffff;
+    color: #ffffff !important;
+    box-shadow: 0 6px 16px rgba(108, 99, 255, 0.4);
+    transform: translateY(-1px);
+}
+
+.dark-calendar-action.primary i {
+    opacity: 1;
 }
 
 /* Exercise Database */
@@ -2703,7 +3229,8 @@ body.gym-tracker #footer {
 
 #program-form .form-group input::placeholder,
 #program-form .form-group textarea::placeholder {
-    color: rgba(184, 184, 209, 0.6);
+    color: rgba(184, 184, 209, 0.78);
+    opacity: 1;
 }
 
 #program-form .form-group input:focus,
@@ -2809,14 +3336,20 @@ body.gym-tracker #footer {
     display: grid;
     grid-template-columns: auto auto 1fr auto;
     align-items: center;
-    gap: 0.7rem;
-    padding: 0.55rem 0.7rem;
+    column-gap: 0.55rem;
+    padding: 0.45rem 0.6rem;
     background: var(--bg-card);
     border: 1px solid var(--border-color);
     border-radius: var(--radius-md);
     box-shadow: var(--shadow-sm);
     transition: transform var(--transition-fast), background var(--transition-fast),
                 border-color var(--transition-fast), box-shadow var(--transition-fast);
+}
+
+/* Tighter gap specifically between the number badge and the exercise name,
+   so the badge reads as attached to the name it belongs to. */
+.program-exercise-row .pex-position + .pex-name {
+    margin-left: -0.15rem;
 }
 
 .program-exercise-row:hover {
@@ -2827,8 +3360,8 @@ body.gym-tracker #footer {
 }
 
 .pex-position {
-    width: 24px;
-    height: 24px;
+    width: 22px;
+    height: 22px;
     flex-shrink: 0;
     display: inline-flex;
     align-items: center;
@@ -2837,85 +3370,138 @@ body.gym-tracker #footer {
     border: 1px solid rgba(108, 99, 255, 0.25);
     border-radius: 50%;
     color: var(--accent-primary);
-    font-size: 0.7rem;
+    font-size: 0.68rem;
     font-weight: 700;
     font-variant-numeric: tabular-nums;
 }
 
-/* Reorder controls — vertical stack inside a small container */
-.pex-reorder {
-    display: flex;
-    flex-direction: column;
-    gap: 1px;
-    background: var(--bg-elevated);
-    border: 1px solid var(--border-color);
-    border-radius: var(--radius-sm);
-    padding: 1px;
-}
-
-.pex-reorder-btn {
-    width: 26px;
-    height: 22px;
-    padding: 0;
-    display: flex;
+/* Drag handle — low-emphasis grip icon; the whole row is draggable, this is
+   just the visual affordance. Brightens on row hover. */
+.pex-drag-handle {
+    display: inline-flex;
     align-items: center;
     justify-content: center;
-    background: transparent;
-    border: none;
-    color: var(--text-primary);
-    font-size: 0.78rem;
-    border-radius: var(--radius-sm);
-    cursor: pointer;
-    transition: all var(--transition-fast);
+    width: 18px;
+    height: 24px;
+    color: var(--text-muted);
+    opacity: 0.5;
+    cursor: grab;
+    font-size: 0.85rem;
+    transition: color var(--transition-fast), opacity var(--transition-fast);
+    flex-shrink: 0;
 }
 
-.pex-reorder-btn:hover:not(:disabled) {
-    color: var(--accent-primary);
-    background: rgba(108, 99, 255, 0.22);
-    transform: scale(1.05);
+.program-exercise-row:hover .pex-drag-handle {
+    color: var(--text-secondary);
+    opacity: 1;
 }
 
-.pex-reorder-btn:disabled {
-    opacity: 0.3;
-    cursor: not-allowed;
+.pex-drag-handle:active {
+    cursor: grabbing;
+}
+
+/* Row drag states */
+.program-exercise-row {
+    cursor: grab;
+}
+
+.program-exercise-row:active {
+    cursor: grabbing;
+}
+
+.program-exercise-row.is-dragging {
+    opacity: 0.4;
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
+    border-color: var(--accent-primary);
+}
+
+/* Drop indicator — accent bar on the edge the dragged row would land on */
+.program-exercise-row.is-drop-above {
+    box-shadow: 0 -2px 0 0 var(--accent-primary);
+}
+
+.program-exercise-row.is-drop-below {
+    box-shadow: 0 2px 0 0 var(--accent-primary);
 }
 
 .pex-name {
     font-size: 0.95rem;
-    font-weight: 700;
     color: var(--text-primary);
     letter-spacing: -0.005em;
     min-width: 0;
     overflow: hidden;
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    gap: 0.35rem;
+    line-height: 1.25;
+}
+
+.pex-name-main {
+    font-weight: 700;
+    font-size: 1rem;
+    color: var(--text-primary);
+    overflow: hidden;
     text-overflow: ellipsis;
+    white-space: nowrap;
+    min-width: 0;
+    letter-spacing: -0.01em;
+}
+
+.pex-name-sub {
+    font-weight: 500;
+    color: var(--text-muted);
+    font-size: 0.72rem;
+    opacity: 0.7;
     white-space: nowrap;
 }
 
-/* Delete — visible red icon at rest, intensifies on hover */
+/* Delete — small, low-contrast at rest; clear red on hover without heavy glow */
 .pex-delete {
-    width: 32px;
-    height: 32px;
-    padding: 0;
+    width: 26px !important;
+    height: 26px !important;
+    padding: 0 !important;
     display: flex;
     align-items: center;
     justify-content: center;
-    background: rgba(255, 82, 82, 0.12);
-    border: 1px solid rgba(255, 82, 82, 0.35);
-    color: #ff7676;
+    background: transparent;
+    border: 1px solid transparent !important;
+    color: var(--text-muted) !important;
+    opacity: 0.65;
     border-radius: var(--radius-sm);
-    font-size: 0.95rem;
+    font-size: 0.78rem !important;
+    font-weight: 500 !important;
+    line-height: 1 !important;
     cursor: pointer;
-    transition: all var(--transition-fast);
+    box-shadow: none !important;
+    font-family: inherit !important;
+    transition: color var(--transition-fast), background var(--transition-fast),
+                border-color var(--transition-fast), opacity var(--transition-fast),
+                transform var(--transition-fast);
 }
 
-.pex-delete:hover {
-    color: #ffffff;
-    background: var(--accent-error);
-    border-color: var(--accent-error);
-    box-shadow: 0 0 12px rgba(255, 82, 82, 0.45);
+.program-exercise-row:hover .pex-delete {
+    opacity: 1;
+    border-color: var(--border-color) !important;
 }
 
-/* Add Exercise — full-width inside the Exercises section */
+.pex-delete:hover,
+.pex-delete:focus-visible {
+    color: #ffffff !important;
+    background: rgba(239, 68, 68, 0.85);
+    border-color: rgba(239, 68, 68, 0.9) !important;
+    opacity: 1;
+    outline: none;
+    transform: scale(1.05);
+}
+
+.pex-delete:active {
+    transform: scale(0.94);
+    background: #dc2626;
+}
+
+/* Add Exercise — full-width secondary action. Subtle tinted surface at rest,
+   brightens on hover. !important beats the global button overrides. */
 .btn-add-exercise {
     display: flex;
     align-items: center;
@@ -2923,80 +3509,130 @@ body.gym-tracker #footer {
     gap: 0.5rem;
     width: 100%;
     margin: 0;
-    padding: 0.65rem 1rem;
-    background: rgba(108, 99, 255, 0.16);
-    border: 1px solid rgba(108, 99, 255, 0.5);
+    height: auto !important;
+    min-height: 0 !important;
+    padding: 0.55rem 1rem !important;
+    background: rgba(108, 99, 255, 0.1) !important;
+    border: 1px dashed rgba(108, 99, 255, 0.4) !important;
     border-radius: var(--radius-md);
-    color: #ffffff;
-    font-weight: 700;
-    font-size: 0.88rem;
+    color: #ffffff !important;
+    font-family: inherit !important;
+    font-weight: 600 !important;
+    font-size: 0.85rem !important;
+    line-height: 1 !important;
     cursor: pointer;
-    transition: all var(--transition-base);
+    box-shadow: none !important;
+    transition: background var(--transition-base), border-color var(--transition-base),
+                transform var(--transition-base), box-shadow var(--transition-base);
 }
 
 .btn-add-exercise:hover {
-    background: rgba(108, 99, 255, 0.28);
-    border-color: var(--accent-primary);
+    background: rgba(108, 99, 255, 0.2) !important;
+    border-color: var(--accent-primary) !important;
+    border-style: solid !important;
     transform: translateY(-1px);
-    box-shadow: 0 4px 12px rgba(108, 99, 255, 0.25);
+    box-shadow: 0 3px 10px rgba(108, 99, 255, 0.22) !important;
 }
 
 .btn-add-exercise:active {
     transform: translateY(0);
+    background: rgba(108, 99, 255, 0.28) !important;
+    box-shadow: inset 0 2px 4px rgba(0, 0, 0, 0.25) !important;
 }
 
 .btn-add-exercise i {
-    font-size: 0.8rem;
-    color: var(--accent-primary);
+    font-size: 0.78rem;
+    color: var(--accent-primary) !important;
+    transition: color var(--transition-base);
 }
 
 .btn-add-exercise:hover i {
-    color: #ffffff;
+    color: #ffffff !important;
 }
 
-/* Bottom action row — Cancel + Save grouped tightly, balanced widths */
+/* Bottom action row — Cancel (ghost) + Save (primary CTA) grouped tightly */
 .program-form-actions {
     display: flex;
     align-items: center;
     justify-content: flex-end;
-    gap: 0.5rem;
+    gap: 0.6rem;
     margin-top: 0.85rem;
     padding-top: 0.85rem;
     border-top: 1px solid var(--border-color);
 }
 
 .program-form-actions .btn {
-    height: 40px;
-    min-width: 120px;
-    padding: 0 1rem;
+    height: 38px !important;
+    min-height: 0 !important;
+    min-width: 110px;
+    padding: 0 1.1rem !important;
     border-radius: var(--radius-md);
-    font-size: 0.88rem;
-    font-weight: 600;
+    font-size: 0.86rem !important;
+    font-weight: 600 !important;
+    font-family: inherit !important;
     display: inline-flex;
     align-items: center;
     justify-content: center;
     gap: 0.4rem;
-    line-height: 1;
+    line-height: 1 !important;
+    transition: background var(--transition-base), border-color var(--transition-base),
+                color var(--transition-base), box-shadow var(--transition-base),
+                transform var(--transition-base), filter var(--transition-base);
 }
 
+/* Cancel — ghost/outline, clearly secondary */
+.program-form-actions .btn-ghost {
+    background: transparent !important;
+    border: 1px solid var(--border-color) !important;
+    color: var(--text-secondary) !important;
+    box-shadow: none !important;
+}
+
+.program-form-actions .btn-ghost:hover {
+    background: var(--bg-elevated) !important;
+    border-color: var(--border-light) !important;
+    color: var(--text-primary) !important;
+}
+
+.program-form-actions .btn-ghost:active {
+    background: var(--bg-hover) !important;
+    box-shadow: inset 0 2px 4px rgba(0, 0, 0, 0.25) !important;
+}
+
+.program-form-actions .btn-ghost:focus-visible {
+    outline: none;
+    box-shadow: 0 0 0 3px rgba(108, 99, 255, 0.25) !important;
+}
+
+/* Save — primary CTA, strong contrast */
 .btn-save-program {
-    background: var(--gradient-primary);
-    border: 1px solid transparent;
-    color: #ffffff;
-    box-shadow: 0 2px 6px rgba(108, 99, 255, 0.25);
-    transition: all var(--transition-base);
+    background: var(--gradient-primary) !important;
+    border: 1px solid transparent !important;
+    color: #ffffff !important;
+    box-shadow: 0 3px 10px rgba(108, 99, 255, 0.3) !important;
+}
+
+.btn-save-program i {
+    color: #ffffff !important;
+    font-size: 0.8rem;
 }
 
 .btn-save-program:hover {
     transform: translateY(-1px);
-    box-shadow: 0 4px 12px rgba(108, 99, 255, 0.4);
-    filter: brightness(1.05);
+    box-shadow: 0 6px 16px rgba(108, 99, 255, 0.45) !important;
+    filter: brightness(1.06);
 }
 
 .btn-save-program:active {
     transform: translateY(0);
     filter: brightness(0.95);
-    box-shadow: 0 1px 3px rgba(108, 99, 255, 0.25);
+    box-shadow: 0 1px 3px rgba(108, 99, 255, 0.25) !important;
+}
+
+.btn-save-program:focus-visible {
+    outline: none;
+    box-shadow: 0 0 0 3px rgba(108, 99, 255, 0.4),
+                0 3px 10px rgba(108, 99, 255, 0.3) !important;
 }
 
 @media (max-width: 520px) {
@@ -3156,6 +3792,7 @@ body.gym-tracker #footer {
 }
 
 .cal-stat-value {
+    font-family: inherit;
     font-size: 1.05rem;
     font-weight: 800;
     color: var(--text-primary);
@@ -3168,6 +3805,7 @@ body.gym-tracker #footer {
 }
 
 .cal-stat-label {
+    font-family: inherit;
     font-size: 0.68rem;
     color: var(--text-muted);
     font-weight: 600;
@@ -3178,15 +3816,16 @@ body.gym-tracker #footer {
     text-overflow: ellipsis;
 }
 
-/* Controls bar */
+/* Controls bar — single cohesive toolbar: month nav + today on the left,
+   activity filter on the right. Shared component language across children. */
 .calendar-controls {
     display: flex;
     justify-content: space-between;
     align-items: center;
     margin-bottom: 0.6rem;
-    gap: 0.75rem;
+    gap: 0.85rem;
     flex-wrap: wrap;
-    padding: 0.5rem 0.6rem;
+    padding: 0.55rem 0.7rem;
     background: var(--bg-secondary);
     border: 1px solid var(--border-color);
     border-radius: var(--radius-lg);
@@ -3195,11 +3834,23 @@ body.gym-tracker #footer {
 .calendar-nav {
     display: inline-flex;
     align-items: center;
-    gap: 0.5rem;
+    gap: 0.4rem;
+}
+
+/* Subtle divider between month nav and the Today utility — keeps the toolbar
+   cohesive while signaling that Today is a separate action. */
+.calendar-nav-sep {
+    width: 1px;
+    height: 22px;
+    background: var(--border-color);
+    margin: 0 0.2rem;
+    display: inline-block;
+    flex-shrink: 0;
 }
 
 .calendar-controls h2 {
     margin: 0;
+    font-family: inherit;
     font-size: 1rem;
     font-weight: 700;
     color: var(--text-primary);
@@ -3207,90 +3858,188 @@ body.gym-tracker #footer {
     min-width: 10.5ch;
     text-align: center;
     font-variant-numeric: tabular-nums;
+    line-height: 1.2;
 }
 
+/* Calendar control buttons — armored against the global
+   `button { height: 3.25rem; color: #555 !important; padding: 0 1.75rem; }`
+   rule in assets/css/main.css. Use !important and explicit overrides. */
 .calendar-nav-btn {
-    width: 36px;
-    height: 36px;
+    width: 36px !important;
+    height: 36px !important;
+    padding: 0 !important;
     background: var(--bg-elevated);
-    border: 1px solid var(--border-color);
+    border: 1px solid var(--border-color) !important;
     border-radius: var(--radius-md);
-    color: var(--text-secondary);
+    color: #ffffff !important;
     display: inline-flex;
     align-items: center;
     justify-content: center;
     cursor: pointer;
     font-size: 0.85rem;
+    line-height: 1 !important;
+    box-shadow: none !important;
+    font-family: inherit;
     transition: all var(--transition-base);
+}
+
+.calendar-nav-btn i {
+    line-height: 1;
+    display: inline-block;
 }
 
 .calendar-nav-btn:hover {
     background: var(--bg-hover);
-    border-color: var(--accent-primary);
-    color: var(--accent-primary);
+    border-color: var(--accent-primary) !important;
+    color: var(--accent-primary) !important;
 }
 
-.calendar-controls-actions {
+/* Activity filter — wraps a DarkSelect-styled dropdown. Width is controlled
+   here (DarkSelect defaults to 100%). Filter icon sits just to the left of
+   the trigger for a clearer "this is a filter" affordance. */
+.calendar-filter-wrap {
+    position: relative;
     display: inline-flex;
     align-items: center;
     gap: 0.5rem;
-    flex-wrap: wrap;
+    min-width: 180px;
 }
 
-.calendar-filter {
-    padding: 0.5rem 2.2rem 0.5rem 0.75rem;
-    background-color: var(--bg-elevated);
-    background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'><path fill='none' stroke='%23b8b8d1' stroke-width='2' stroke-linecap='round' stroke-linejoin='round' d='M1 1.5l5 5 5-5'/></svg>");
-    background-repeat: no-repeat;
-    background-position: right 0.75rem center;
-    border: 1px solid var(--border-color);
-    border-radius: var(--radius-md);
-    color: var(--text-primary);
-    font-size: 0.85rem;
-    font-weight: 500;
-    cursor: pointer;
-    appearance: none;
-    -webkit-appearance: none;
-    -moz-appearance: none;
+.calendar-filter-icon {
+    color: var(--text-muted);
+    font-size: 0.78rem;
+    flex-shrink: 0;
 }
 
-.calendar-filter:hover { border-color: var(--accent-primary); }
+/* Native <select> is hidden by DarkSelect; this only matters before
+   the JS upgrade has run (prevents FOUC flashing the browser styles). */
+.calendar-filter { display: none; }
 
+/* Scope DarkSelect styling for the calendar toolbar — compact 36px trigger
+   that visually matches .calendar-nav-btn and the Today button. */
+.calendar-filter-wrap .dark-select {
+    width: auto;
+    min-width: 160px;
+    flex: 1;
+}
+
+.calendar-filter-wrap .dark-select-trigger {
+    height: 36px !important;
+    padding: 0 0.85rem !important;
+    font-size: 0.85rem !important;
+    font-weight: 500 !important;
+    line-height: 1 !important;
+    font-family: inherit !important;
+    gap: 0.6rem;
+}
+
+.calendar-filter-wrap .dark-select-trigger .dark-select-chevron {
+    font-size: 0.7rem !important;
+}
+
+/* Open state visually "attaches" the popup to the trigger by flattening
+   the shared edge and letting the accent ring wrap both pieces. */
+.calendar-filter-wrap .dark-select.is-open .dark-select-trigger {
+    border-bottom-left-radius: 0;
+    border-bottom-right-radius: 0;
+    border-color: var(--accent-primary);
+    background: var(--bg-hover);
+    box-shadow: 0 0 0 3px rgba(108, 99, 255, 0.22);
+}
+
+.calendar-filter-wrap .dark-select-popup {
+    top: calc(100% - 1px);
+    border-top-left-radius: 0;
+    border-top-right-radius: 0;
+    border-top: 1px solid var(--accent-primary);
+    padding: 0.35rem;
+}
+
+/* Today — compact utility pill, lives inline with the month nav. Smaller
+   than a full secondary button but clearly still an interactive action. */
 .calendar-today-btn {
-    padding: 0.5rem 0.85rem;
-    background: rgba(108, 99, 255, 0.12);
-    border: 1px solid rgba(108, 99, 255, 0.4);
+    height: 36px !important;
+    padding: 0 0.8rem !important;
+    background: rgba(108, 99, 255, 0.14);
+    border: 1px solid rgba(108, 99, 255, 0.45) !important;
     border-radius: var(--radius-md);
-    color: var(--accent-primary);
-    font-size: 0.85rem;
-    font-weight: 600;
+    color: #ffffff !important;
+    font-size: 0.82rem !important;
+    font-weight: 600 !important;
+    line-height: 1 !important;
+    font-family: inherit !important;
+    letter-spacing: 0.005em;
     cursor: pointer;
     display: inline-flex;
     align-items: center;
     gap: 0.4rem;
-    transition: all var(--transition-base);
+    box-shadow: none !important;
+    transition: background var(--transition-base), border-color var(--transition-base),
+                color var(--transition-base), box-shadow var(--transition-base),
+                transform var(--transition-base);
+}
+
+.calendar-today-btn i {
+    color: var(--accent-primary);
+    font-size: 0.78rem;
+    transition: color var(--transition-base);
 }
 
 .calendar-today-btn:hover:not(:disabled) {
-    background: rgba(108, 99, 255, 0.25);
-    border-color: var(--accent-primary);
+    background: rgba(108, 99, 255, 0.26);
+    border-color: var(--accent-primary) !important;
+    color: #ffffff !important;
+    box-shadow: 0 4px 12px rgba(108, 99, 255, 0.3);
+    transform: translateY(-1px);
+}
+
+.calendar-today-btn:hover:not(:disabled) i {
     color: #ffffff;
 }
 
 .calendar-today-btn:active:not(:disabled) {
-    transform: scale(0.97);
+    transform: translateY(0);
+    box-shadow: inset 0 2px 5px rgba(0, 0, 0, 0.28);
+    background: rgba(108, 99, 255, 0.32);
+}
+
+.calendar-today-btn:focus-visible {
+    outline: none;
+    box-shadow: 0 0 0 3px rgba(108, 99, 255, 0.35);
 }
 
 .calendar-today-btn:disabled {
     background: transparent;
-    border-color: var(--border-color);
-    color: var(--text-muted);
-    opacity: 0.55;
+    border-color: var(--border-color) !important;
+    color: var(--text-muted) !important;
+    opacity: 0.5;
     cursor: not-allowed;
     pointer-events: none;
+    transform: none;
+    box-shadow: none !important;
 }
 
-.calendar-today-btn:disabled i { color: var(--text-muted); }
+.calendar-today-btn:disabled i { color: var(--text-muted) !important; }
+
+/* Mobile: let the filter take its own row underneath the nav */
+@media (max-width: 520px) {
+    .calendar-controls {
+        gap: 0.6rem;
+    }
+    .calendar-nav {
+        width: 100%;
+        justify-content: center;
+        flex-wrap: wrap;
+    }
+    .calendar-filter-wrap {
+        width: 100%;
+        min-width: 0;
+    }
+    .calendar-filter-wrap .dark-select {
+        width: 100%;
+        min-width: 0;
+    }
+}
 
 /* Legend */
 .calendar-legend {
@@ -3333,10 +4082,10 @@ body.gym-tracker #footer {
     font-size: 0.7rem;
 }
 
-/* Calendar grid */
+/* Calendar grid — 7 equal columns, equal gap horizontal + vertical */
 .calendar {
     display: grid;
-    grid-template-columns: repeat(7, 1fr);
+    grid-template-columns: repeat(7, minmax(0, 1fr));
     gap: 0.3rem;
     margin-bottom: 0.2rem;
     padding: 0.6rem;
@@ -3346,21 +4095,21 @@ body.gym-tracker #footer {
 }
 
 .calendar-day-header {
-    padding: 0.25rem 0 0.4rem;
+    padding: 0.2rem 0 0.35rem;
     text-align: center;
     font-weight: 700;
     color: var(--text-muted);
     font-size: 0.68rem;
     text-transform: uppercase;
     letter-spacing: 0.06em;
+    font-family: inherit;
+    line-height: 1.2;
 }
 
 .calendar-day {
     aspect-ratio: 1;
-    display: flex;
-    align-items: flex-start;
-    justify-content: flex-end;
-    padding: 0.35rem;
+    display: block;
+    padding: 0;
     background: var(--bg-card);
     border-radius: var(--radius-md);
     border: 1px solid transparent;
@@ -3372,7 +4121,17 @@ body.gym-tracker #footer {
     font-size: 0.85rem;
     font-weight: 500;
     font-variant-numeric: tabular-nums;
+    font-family: inherit;
+    line-height: 1 !important;
     overflow: hidden;
+    /* Beat main.css `button { height: 3.25rem; padding: 0 1.75rem; }` */
+    height: auto !important;
+}
+
+/* Buttons — the <button> tag for day cells — armor against global button rule */
+button.calendar-day {
+    box-shadow: none !important;
+    color: var(--text-primary) !important;
 }
 
 .calendar-day-num {
@@ -3380,6 +4139,7 @@ body.gym-tracker #footer {
     top: 0.4rem;
     right: 0.45rem;
     line-height: 1;
+    font-family: inherit;
 }
 
 .calendar-day:hover {
@@ -3389,7 +4149,7 @@ body.gym-tracker #footer {
 }
 
 .calendar-day.future {
-    color: var(--text-disabled);
+    color: var(--text-disabled) !important;
     cursor: default;
     opacity: 0.65;
 }
@@ -3407,16 +4167,23 @@ body.gym-tracker #footer {
     pointer-events: none;
 }
 
-/* Days that have a workout — gentle accent tint (purple wash) */
+/* Days that have a workout — clearly accented so they pop at-a-glance */
 .calendar-day.has-workout {
-    background: linear-gradient(135deg, var(--bg-card) 0%, rgba(108, 99, 255, 0.1) 100%);
+    background: linear-gradient(135deg, rgba(108, 99, 255, 0.18) 0%, rgba(108, 99, 255, 0.32) 100%);
+    border-color: rgba(108, 99, 255, 0.4);
+    box-shadow: inset 0 0 0 1px rgba(108, 99, 255, 0.18);
+}
+
+.calendar-day.has-workout:hover {
+    background: linear-gradient(135deg, rgba(108, 99, 255, 0.25) 0%, rgba(108, 99, 255, 0.4) 100%);
+    border-color: rgba(108, 99, 255, 0.6);
 }
 
 /* Today — purple ring outline (second priority) */
 .calendar-day.today {
     border-color: var(--accent-primary);
-    box-shadow: inset 0 0 0 1px var(--accent-primary);
-    color: var(--accent-primary);
+    box-shadow: inset 0 0 0 1px var(--accent-primary) !important;
+    color: var(--accent-primary) !important;
     font-weight: 700;
 }
 
@@ -3439,17 +4206,18 @@ body.gym-tracker #footer {
     color: var(--text-disabled);
 }
 
-/* Workout indicator dot — bottom-center */
+/* Workout indicator dot — bottom-center, brighter for visibility */
 .calendar-day-dot {
     position: absolute;
     bottom: 0.4rem;
     left: 50%;
     transform: translateX(-50%);
-    width: 6px;
-    height: 6px;
+    width: 7px;
+    height: 7px;
     border-radius: 50%;
-    background: var(--accent-primary);
-    box-shadow: 0 0 6px rgba(108, 99, 255, 0.55);
+    background: #ffffff;
+    box-shadow: 0 0 8px rgba(255, 255, 255, 0.8),
+                0 0 12px rgba(108, 99, 255, 0.6);
 }
 
 .calendar-day.selected .calendar-day-dot {
@@ -3512,15 +4280,17 @@ body.gym-tracker #footer {
 }
 
 .calendar-detail-title {
+    font-family: inherit;
     font-size: 1rem;
     font-weight: 700;
     color: var(--text-primary);
     letter-spacing: -0.01em;
-    line-height: 1.3;
+    line-height: 1.35;
 }
 
 .calendar-detail-sub {
-    font-size: 0.78rem;
+    font-family: inherit;
+    font-size: 0.75rem;
     color: var(--text-muted);
     margin-top: 4px;
     font-weight: 600;
@@ -3530,6 +4300,7 @@ body.gym-tracker #footer {
     align-items: center;
     gap: 0.45rem;
     flex-wrap: wrap;
+    line-height: 1.3;
 }
 
 .calendar-detail-sub .pr-tag {
@@ -3570,14 +4341,52 @@ body.gym-tracker #footer {
     border-radius: var(--radius-md);
     padding: 0.7rem 0.85rem;
     margin-top: 0.55rem;
+    cursor: pointer;
+    transition: background var(--transition-base), border-color var(--transition-base),
+                transform var(--transition-fast), box-shadow var(--transition-base);
+    outline: none;
+}
+
+.cal-session:hover {
+    background: var(--bg-hover);
+    border-color: var(--accent-primary);
+    transform: translateY(-1px);
+    box-shadow: var(--shadow-sm);
+}
+
+.cal-session:hover .cal-session-chevron {
+    color: var(--accent-primary);
+    transform: translateX(2px);
+}
+
+.cal-session:active {
+    transform: translateY(0) scale(0.99);
+}
+
+.cal-session:focus-visible {
+    border-color: var(--accent-primary);
+    box-shadow: 0 0 0 3px rgba(108, 99, 255, 0.25);
 }
 
 .cal-session:first-of-type { margin-top: 0; }
+
+.cal-session-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.5rem;
+}
 
 .cal-session-header strong {
     color: var(--text-primary);
     font-weight: 700;
     font-size: 0.95rem;
+}
+
+.cal-session-chevron {
+    color: var(--text-muted);
+    font-size: 0.75rem;
+    transition: color var(--transition-base), transform var(--transition-fast);
 }
 
 .cal-session-stats {
@@ -3827,41 +4636,72 @@ body.gym-tracker #footer {
 .achievement-bulk-btn {
     display: inline-flex;
     align-items: center;
-    gap: 0.4rem;
-    padding: 0.55rem 0.75rem;
-    background: var(--bg-elevated);
-    border: 1px solid var(--border-color);
+    justify-content: center;
+    gap: 0.5rem;
+    padding: 0.65rem 1.1rem !important;
+    height: auto !important;
+    min-height: 2.55rem;
+    line-height: 1.2 !important;
+    background: rgba(108, 99, 255, 0.1);
+    border: 1px solid rgba(108, 99, 255, 0.35);
     border-radius: var(--radius-md);
-    color: #ffffff;
-    font-size: 0.78rem;
-    font-weight: 600;
+    color: #ffffff !important;
+    font-size: 0.88rem !important;
+    font-weight: 600 !important;
+    font-family: inherit !important;
     cursor: pointer;
-    transition: all var(--transition-base);
+    transition: background var(--transition-base), border-color var(--transition-base),
+                color var(--transition-base), box-shadow var(--transition-base),
+                transform var(--transition-base);
     white-space: nowrap;
+    letter-spacing: 0.005em;
 }
 
 .achievement-bulk-btn:hover:not(:disabled) {
-    background: var(--bg-hover);
+    background: rgba(108, 99, 255, 0.2);
     border-color: var(--accent-primary);
-    color: #ffffff;
+    color: #ffffff !important;
+    box-shadow: 0 4px 14px rgba(108, 99, 255, 0.28);
+    transform: translateY(-1px);
+}
+
+.achievement-bulk-btn:active:not(:disabled) {
+    background: rgba(108, 99, 255, 0.28);
+    box-shadow: inset 0 2px 6px rgba(0, 0, 0, 0.28);
+    transform: translateY(0);
+}
+
+.achievement-bulk-btn:focus-visible {
+    outline: none;
+    box-shadow: 0 0 0 3px rgba(108, 99, 255, 0.35);
 }
 
 .achievement-bulk-btn:disabled {
     background: transparent;
     border-color: var(--border-color);
-    color: var(--text-muted);
+    color: var(--text-muted) !important;
     cursor: not-allowed;
-    opacity: 0.5;
+    opacity: 0.45;
     pointer-events: none;
+    box-shadow: none;
+    transform: none;
 }
 
 .achievement-bulk-btn i {
-    font-size: 0.7rem;
-    color: var(--accent-primary);
+    font-size: 0.78rem;
+    color: #ffffff;
+    opacity: 0.95;
+    transition: opacity var(--transition-base), color var(--transition-base);
+}
+
+.achievement-bulk-btn:hover:not(:disabled) i {
+    opacity: 1;
+    color: #ffffff;
 }
 
 .achievement-bulk-btn:disabled i {
     color: var(--text-muted);
+    opacity: 0.6;
 }
 
 @media (max-width: 600px) {
@@ -4482,45 +5322,62 @@ body.gym-tracker #footer {
     align-items: center;
     justify-content: center;
     gap: 0.45rem;
-    height: 42px;
+    height: 42px !important;
     min-width: 140px;
-    padding: 0 1.1rem;
+    padding: 0 1.1rem !important;
     background: var(--gradient-primary);
-    border: 1px solid transparent;
+    border: 1px solid transparent !important;
     border-radius: var(--radius-md);
-    color: #ffffff;
+    /* !important to beat the global `button { color: #555 !important }` in
+       assets/css/main.css — without it the text renders dim gray on the
+       purple gradient. */
+    color: #ffffff !important;
+    font-family: inherit;
     font-size: 0.9rem;
-    font-weight: 600;
+    font-weight: 600 !important;
+    line-height: 1 !important;
     cursor: pointer;
-    box-shadow: 0 2px 6px rgba(108, 99, 255, 0.22);
+    box-shadow: 0 2px 6px rgba(108, 99, 255, 0.22) !important;
     transition: transform var(--transition-base), box-shadow var(--transition-base),
                 filter var(--transition-base), opacity var(--transition-base);
 }
 
+.btn-save-settings i,
+.btn-save-settings span,
+.btn-save-settings svg {
+    color: #ffffff !important;
+    fill: currentColor;
+    stroke: currentColor;
+    opacity: 1;
+}
+
 .btn-save-settings:hover:not(:disabled) {
     transform: translateY(-1px);
-    box-shadow: 0 4px 12px rgba(108, 99, 255, 0.4);
+    box-shadow: 0 4px 12px rgba(108, 99, 255, 0.4) !important;
     filter: brightness(1.06);
+    color: #ffffff !important;
 }
 
 .btn-save-settings:active:not(:disabled) {
     transform: translateY(0);
     filter: brightness(0.96);
-    box-shadow: 0 1px 3px rgba(108, 99, 255, 0.25);
+    box-shadow: 0 1px 3px rgba(108, 99, 255, 0.25) !important;
 }
 
 .btn-save-settings:disabled {
     background: var(--bg-elevated);
-    border-color: var(--border-color);
-    color: var(--text-muted);
-    box-shadow: none;
+    border-color: var(--border-color) !important;
+    color: var(--text-muted) !important;
+    box-shadow: none !important;
     opacity: 0.65;
     cursor: not-allowed;
     pointer-events: none;
 }
 
-.btn-save-settings:disabled i {
-    color: var(--text-muted);
+.btn-save-settings:disabled i,
+.btn-save-settings:disabled span {
+    color: var(--text-muted) !important;
+    opacity: 1;
 }
 
 @media (max-width: 639px) {
@@ -4795,14 +5652,14 @@ body.gym-tracker #footer {
 }
 
 .exercise-history-table th {
-    background: var(--bg-secondary);
+    background-color: var(--bg-secondary) !important;
     padding: 0.55rem 0.85rem;
     text-align: left;
     font-weight: 700;
     font-size: 0.7rem;
     text-transform: uppercase;
     letter-spacing: 0.06em;
-    color: var(--text-secondary);
+    color: var(--text-secondary) !important;
     position: sticky;
     top: 0;
     z-index: 1;
@@ -4811,18 +5668,39 @@ body.gym-tracker #footer {
 
 .exercise-history-table th.col-date { width: 32%; min-width: 110px; }
 
+/* Lock header row — no hover effect, ever. */
+.exercise-history-table thead tr,
+.exercise-history-table thead tr:hover,
+.exercise-history-table thead tr:hover th,
+.exercise-history-table th:hover {
+    background-color: var(--bg-secondary) !important;
+    color: var(--text-secondary) !important;
+    cursor: default;
+}
+
 .exercise-history-table td {
     padding: 0.55rem 0.85rem;
     border-bottom: 1px solid rgba(58, 58, 94, 0.4); /* lighter divider */
     vertical-align: middle;
+    transition: background-color 0.15s ease;
+}
+
+/* Neutralize marketing-site zebra striping — see notes on .sets-table */
+.exercise-history-table tbody tr,
+.exercise-history-table tbody tr:nth-child(2n + 1),
+.exercise-history-table tbody tr:nth-child(2n) {
+    background-color: transparent !important;
 }
 
 .exercise-history-table tr:last-child td {
     border-bottom: none;
 }
 
-.exercise-history-table tr:hover td {
-    background: rgba(108, 99, 255, 0.04);
+.exercise-history-table tbody tr:hover td,
+.exercise-history-table tbody tr:nth-child(2n + 1):hover td,
+.exercise-history-table tbody tr:nth-child(2n):hover td {
+    background-color: rgba(108, 99, 255, 0.08) !important;
+    color: var(--text-primary);
 }
 
 .exercise-history-table .col-date {
@@ -4836,13 +5714,14 @@ body.gym-tracker #footer {
     font-weight: 600;
 }
 
-/* "Best" row — subtle tint + small badge */
+/* "Best" row — subtle gold tint + small badge. !important beats both the
+   marketing-site zebra stripe and the purple hover rule above. */
 .exercise-history-table tr.is-best-row td {
-    background: rgba(245, 185, 66, 0.06);
+    background-color: rgba(245, 185, 66, 0.06) !important;
 }
 
 .exercise-history-table tr.is-best-row:hover td {
-    background: rgba(245, 185, 66, 0.1);
+    background-color: rgba(245, 185, 66, 0.12) !important;
 }
 
 .best-row-badge {
@@ -4918,30 +5797,33 @@ body.gym-tracker #footer {
     background: var(--bg-hover);
 }
 
-/* Workout Card Additional Stats */
+/* Workout Card Additional Stats — pill chips with consistent rhythm */
 .workout-card-additional-stats {
     display: flex;
     flex-wrap: wrap;
-    gap: var(--spacing-sm);
-    margin-top: var(--spacing-md);
-    padding-top: var(--spacing-md);
+    gap: 0.4rem;
+    margin-top: 0.7rem;
+    padding-top: 0.7rem;
     border-top: 1px solid var(--border-color);
 }
 
 .additional-stat {
-    display: flex;
+    display: inline-flex;
     align-items: center;
-    gap: var(--spacing-xs);
-    font-size: 0.85rem;
-    color: var(--text-primary);
-    padding: var(--spacing-xs) var(--spacing-sm);
+    gap: 0.35rem;
+    font-size: 0.78rem;
+    font-weight: 600;
+    color: var(--text-secondary);
+    padding: 0.25rem 0.55rem;
     background: var(--bg-tertiary);
-    border-radius: var(--radius-sm);
+    border: 1px solid var(--border-color);
+    border-radius: 999px;
+    font-variant-numeric: tabular-nums;
 }
 
 .additional-stat i {
     color: var(--accent-primary);
-    font-size: 0.9rem;
+    font-size: 0.75rem;
 }
 
 /* Clickable Cards */
@@ -4958,103 +5840,276 @@ body.gym-tracker #footer {
     transform: translateY(0);
 }
 
-/* Workout Detail Modal */
+/* ============================================================
+   Workout Detail Modal — refinement pass
+   Goal: less nested boxes, stronger exercise anchors, dark-themed
+   table, comfortable scroll rhythm.
+   ============================================================ */
+
+/* Slightly narrower than the default 600px modal is actually wider than
+   needed for this layout; bump to 680px for desktop comfort. */
+#workout-detail-modal .modal-content {
+    max-width: 680px;
+}
+
+/* Summary block — date + inline stat strip, not a boxy grid */
 .workout-detail-summary {
-    margin-bottom: var(--spacing-lg);
+    margin-bottom: 1.25rem;
+    padding-bottom: 1rem;
+    border-bottom: 1px solid var(--border-color);
 }
 
 .detail-date {
-    font-size: 1.1rem;
-    color: var(--text-primary);
-    margin-bottom: var(--spacing-md);
+    font-size: 0.82rem;
+    color: var(--text-muted);
+    margin-bottom: 0.85rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
 }
 
 .detail-stats {
     display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
-    gap: var(--spacing-md);
-    margin-bottom: var(--spacing-lg);
+    grid-template-columns: repeat(4, 1fr);
+    gap: 0.5rem;
+    margin-bottom: 0;
+    background: var(--bg-tertiary);
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-md);
+    padding: 0.55rem 0.4rem;
+}
+
+@media (max-width: 480px) {
+    .detail-stats {
+        grid-template-columns: repeat(2, 1fr);
+        gap: 0.35rem 0.5rem;
+    }
 }
 
 .detail-stat {
     display: flex;
     flex-direction: column;
-    gap: var(--spacing-xs);
-    padding: var(--spacing-md);
-    background: var(--bg-tertiary);
-    border-radius: var(--radius-md);
+    gap: 0.15rem;
+    padding: 0.35rem 0.55rem;
+    background: transparent;
+    border-radius: 0;
+    position: relative;
+    text-align: left;
+}
+
+.detail-stat + .detail-stat::before {
+    content: '';
+    position: absolute;
+    left: 0;
+    top: 20%;
+    bottom: 20%;
+    width: 1px;
+    background: var(--border-color);
+}
+
+@media (max-width: 480px) {
+    .detail-stat + .detail-stat::before { display: none; }
 }
 
 .detail-stat .label {
-    font-size: 0.85rem;
-    color: var(--text-primary);
+    font-size: 0.65rem;
+    color: var(--text-muted);
     text-transform: uppercase;
-    letter-spacing: 0.5px;
-    font-weight: 500;
+    letter-spacing: 0.06em;
+    font-weight: 700;
 }
 
 .detail-stat .value {
-    font-size: 1.25rem;
-    font-weight: 600;
+    font-size: 1.05rem;
+    font-weight: 700;
     color: var(--text-primary);
+    font-variant-numeric: tabular-nums;
+    letter-spacing: -0.01em;
+    line-height: 1.2;
+}
+
+/* Exercises section — flat, divider-based layout (no nested panels) */
+#workout-detail-modal .modal-body > h3 {
+    font-size: 0.7rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: var(--text-muted);
+    margin: 1rem 0 0.6rem 0;
 }
 
 .workout-detail-exercises {
     display: flex;
     flex-direction: column;
-    gap: var(--spacing-lg);
+    gap: 0.85rem;
 }
 
 .detail-exercise {
-    background: var(--bg-tertiary);
-    border-radius: var(--radius-md);
-    padding: var(--spacing-md);
+    background: transparent;
+    border-radius: 0;
+    padding: 0 0 0.85rem 0;
+    border-bottom: 1px solid var(--border-color);
+}
+
+.detail-exercise:last-child {
+    border-bottom: none;
+    padding-bottom: 0;
 }
 
 .detail-exercise h4 {
-    margin: 0 0 var(--spacing-md) 0;
-    color: var(--accent-primary);
+    margin: 0 0 0.6rem 0;
+    color: var(--text-primary);
+    font-size: 1rem;
+    font-weight: 700;
+    letter-spacing: -0.01em;
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
 }
 
+.detail-exercise h4::before {
+    content: '';
+    display: inline-block;
+    width: 3px;
+    height: 16px;
+    background: var(--accent-primary);
+    border-radius: 2px;
+    flex-shrink: 0;
+}
+
+/* Dark-themed table */
 .sets-table {
     width: 100%;
-    border-collapse: collapse;
-    font-size: 0.9rem;
+    border-collapse: separate;
+    border-spacing: 0;
+    font-size: 0.88rem;
+    background: var(--bg-tertiary);
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-md);
+    overflow: hidden;
 }
 
 .sets-table th {
     text-align: left;
-    padding: var(--spacing-sm);
-    color: var(--accent-primary);
-    font-weight: 600;
-    border-bottom: 2px solid var(--accent-primary);
+    padding: 0.5rem 0.75rem;
+    color: var(--text-muted) !important;
+    font-weight: 700;
+    background-color: rgba(255, 255, 255, 0.02) !important;
+    border-bottom: 1px solid var(--border-color);
     text-transform: uppercase;
-    font-size: 0.85rem;
-    letter-spacing: 0.5px;
+    font-size: 0.66rem;
+    letter-spacing: 0.08em;
+}
+
+/* Lock the header row — no hover effect. Overrides any inherited rule that
+   might set a light background when hovering over <thead>. */
+.sets-table thead tr,
+.sets-table thead tr:hover,
+.sets-table thead tr:hover th,
+.sets-table th:hover {
+    background-color: rgba(255, 255, 255, 0.02) !important;
+    color: var(--text-muted) !important;
+    cursor: default;
+}
+
+/* Right-align numeric columns (every column except the Set/Round col) */
+.sets-table th:not(:first-child),
+.sets-table td:not(:first-child) {
+    text-align: right;
 }
 
 .sets-table td {
-    padding: var(--spacing-sm);
+    padding: 0.55rem 0.75rem;
     color: var(--text-primary);
     border-bottom: 1px solid var(--border-color);
-    text-align: left;
+    font-variant-numeric: tabular-nums;
+    transition: background-color 0.15s ease;
+}
+
+/* Neutralize the marketing-site zebra stripe that bleeds in from
+   assets/css/main.css: `table tbody tr:nth-child(2n + 1) { background: rgba(0,0,0,0.075) }`.
+   We do NOT want alternating rows here — the modal uses a uniform dark theme. */
+.sets-table tbody tr,
+.sets-table tbody tr:nth-child(2n + 1),
+.sets-table tbody tr:nth-child(2n) {
+    background-color: transparent !important;
 }
 
 .sets-table tbody tr:last-child td {
     border-bottom: none;
 }
 
-.sets-table tbody tr:hover {
-    background: var(--bg-hover);
+/* Dark-themed hover: subtle tint applied to the cells of every row
+   (not the <tr>), so it always reads the same regardless of stripe state. */
+.sets-table tbody tr:hover td,
+.sets-table tbody tr:nth-child(2n + 1):hover td,
+.sets-table tbody tr:nth-child(2n):hover td {
+    background-color: rgba(108, 99, 255, 0.08) !important;
+    color: var(--text-primary);
+}
+
+.sets-table td:first-child {
+    color: var(--text-muted);
+    font-weight: 600;
+    font-size: 0.82rem;
+    width: 2.5rem;
+}
+
+/* Additional Metrics — consistent with the summary strip at the top */
+#workout-detail-modal .modal-body > h3:not(:first-of-type) {
+    margin-top: 1.25rem;
 }
 
 .workout-detail-notes {
     background: var(--bg-tertiary);
-    padding: var(--spacing-md);
+    border: 1px solid var(--border-color);
+    padding: 0.7rem 0.85rem;
     border-radius: var(--radius-md);
     color: var(--text-primary);
-    line-height: 1.6;
+    font-size: 0.88rem;
+    line-height: 1.55;
     white-space: pre-wrap;
+    margin: 0;
+}
+
+/* Close button — scoped polish so it matches the rest of the app */
+#workout-detail-modal .modal-close {
+    width: 34px;
+    height: 34px;
+    border-radius: var(--radius-md);
+    background: transparent;
+    border: 1px solid transparent;
+    color: var(--text-muted);
+    font-size: 1.35rem;
+    line-height: 1;
+    transition: background var(--transition-base), color var(--transition-base),
+                border-color var(--transition-base);
+}
+
+#workout-detail-modal .modal-close:hover {
+    background: var(--bg-elevated);
+    color: var(--text-primary);
+    border-color: var(--border-color);
+}
+
+#workout-detail-modal .modal-close:focus-visible {
+    outline: none;
+    border-color: var(--accent-primary);
+    box-shadow: 0 0 0 3px rgba(108, 99, 255, 0.3);
+}
+
+#workout-detail-modal .modal-header {
+    padding: 1rem 1.1rem;
+}
+
+#workout-detail-modal .modal-header h2 {
+    font-size: 1.15rem;
+    font-weight: 700;
+    letter-spacing: -0.015em;
+}
+
+#workout-detail-modal .modal-body {
+    padding: 1rem 1.1rem 1.1rem;
 }
 
 /* Paused Workout Banner */
@@ -5202,6 +6257,24 @@ body.gym-tracker #footer {
     border-color: rgba(245, 185, 66, 0.5);
     color: #f5b942;
     font-weight: 700;
+}
+
+/* Improved vs previous session — soft green tint */
+.set-badge.set-improved {
+    background: rgba(93, 189, 149, 0.14);
+    border-color: rgba(93, 189, 149, 0.45);
+    color: #5dbd95;
+    font-weight: 600;
+    cursor: help;
+}
+
+/* Worse vs previous session — soft red tint (calm, not alarming) */
+.set-badge.set-worse {
+    background: rgba(255, 122, 122, 0.12);
+    border-color: rgba(255, 122, 122, 0.4);
+    color: #ff7a7a;
+    font-weight: 600;
+    cursor: help;
 }
 
 /* Exercise History Count Badge */

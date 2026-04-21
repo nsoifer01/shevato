@@ -385,19 +385,22 @@
             <div id="history-view" class="view">
                 <div class="view-header">
                     <h1>Workout History</h1>
-                    <div class="view-actions">
+                </div>
+
+                <div class="history-filters">
+                    <input type="date" id="history-date-from" placeholder="Start date" data-placeholder="Start date">
+                    <input type="date" id="history-date-to" placeholder="End date" data-placeholder="End date">
+                    <button type="button" class="history-clear-btn" id="clear-filters-btn">
+                        <i class="fas fa-xmark"></i> Clear
+                    </button>
+                    <div class="history-sort-wrap">
+                        <i class="fas fa-arrow-down-wide-short history-sort-icon" aria-hidden="true"></i>
                         <select id="history-sort">
                             <option value="date-desc">Newest First</option>
                             <option value="date-asc">Oldest First</option>
                             <option value="volume-desc">Highest Volume</option>
                         </select>
                     </div>
-                </div>
-
-                <div class="history-filters">
-                    <input type="date" id="history-date-from" placeholder="From" data-placeholder="From">
-                    <input type="date" id="history-date-to" placeholder="To" data-placeholder="To">
-                    <button class="btn btn-secondary" id="clear-filters-btn">Clear</button>
                 </div>
 
                 <div id="history-list" class="history-grid">
@@ -633,16 +636,18 @@
                         <button class="calendar-nav-btn" id="next-month-btn" aria-label="Next month">
                             <i class="fas fa-chevron-right"></i>
                         </button>
+                        <span class="calendar-nav-sep" aria-hidden="true"></span>
+                        <button class="calendar-today-btn" id="calendar-today-btn" title="Jump to today">
+                            <i class="fas fa-location-crosshairs"></i> Today
+                        </button>
                     </div>
-                    <div class="calendar-controls-actions">
+                    <div class="calendar-filter-wrap">
+                        <i class="fas fa-filter calendar-filter-icon" aria-hidden="true"></i>
                         <select id="calendar-filter" class="calendar-filter">
                             <option value="all">All activity</option>
                             <option value="workouts">Workouts only</option>
                             <option value="pr">Progress days</option>
                         </select>
-                        <button class="calendar-today-btn" id="calendar-today-btn">
-                            <i class="fas fa-location-crosshairs"></i> Today
-                        </button>
                     </div>
                 </div>
 
