@@ -76,7 +76,27 @@ class ProgramsView {
     }
 
     render() {
+        // Re-read the sort mode + saved order from storage on every render so
+        // cross-device sync updates (via the storage-sync layer writing to
+        // localStorage) are picked up next time this view paints.
+        this.syncFromStorage();
         this.renderProgramsList();
+    }
+
+    /** Pull the latest sort/order from storage into the controller's cache,
+     *  and keep the sort dropdown in sync if the mode changed remotely. */
+    syncFromStorage() {
+        const storedSort = storageService.getProgramSort() || 'custom';
+        const storedOrder = storageService.getProgramOrder() || [];
+        if (storedSort !== this.sortMode) {
+            this.sortMode = storedSort;
+            const sel = document.getElementById('programs-sort');
+            if (sel) {
+                sel.value = storedSort;
+                if (this.sortDropdown) this.sortDropdown.sync();
+            }
+        }
+        this.programOrder = storedOrder;
     }
 
     // --- Sorting / ordering ---
