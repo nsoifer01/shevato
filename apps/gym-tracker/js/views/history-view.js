@@ -4,6 +4,7 @@
 import { app } from '../app.js';
 import { formatDate, showToast, showConfirmModal } from '../utils/helpers.js';
 import { DarkCalendar } from '../utils/dark-calendar.js';
+import { DarkSelect } from '../utils/dark-select.js';
 
 class HistoryView {
     constructor() {
@@ -23,14 +24,16 @@ class HistoryView {
         // Modal close button
         const modalCloseBtn = document.querySelector('#workout-detail-modal .modal-close');
         if (modalCloseBtn) {
-            modalCloseBtn.addEventListener('click', () => {
-                document.getElementById('workout-detail-modal').classList.remove('active');
-            });
+            modalCloseBtn.addEventListener('click', () => this.closeWorkoutDetailModal());
         }
 
-        // Sort dropdown
+        // Sort dropdown — wrap with DarkSelect for consistent styling
         const sortSelect = document.getElementById('history-sort');
         if (sortSelect) {
+            if (!sortSelect.dataset.darkSelectInit) {
+                this.sortDropdown = new DarkSelect(sortSelect);
+                sortSelect.dataset.darkSelectInit = '1';
+            }
             sortSelect.addEventListener('change', (e) => {
                 this.currentSort = e.target.value;
                 this.render();
@@ -42,7 +45,7 @@ class HistoryView {
         const dateToInput = document.getElementById('history-date-to');
 
         if (dateFromInput && !dateFromInput.dataset.darkCalendarInit) {
-            this.fromCalendar = new DarkCalendar(dateFromInput);
+            this.fromCalendar = new DarkCalendar(dateFromInput, { role: 'from' });
             dateFromInput.dataset.darkCalendarInit = '1';
             dateFromInput.addEventListener('change', (e) => {
                 this.dateFrom = e.target.value || null;
@@ -50,12 +53,17 @@ class HistoryView {
             });
         }
         if (dateToInput && !dateToInput.dataset.darkCalendarInit) {
-            this.toCalendar = new DarkCalendar(dateToInput);
+            this.toCalendar = new DarkCalendar(dateToInput, { role: 'to' });
             dateToInput.dataset.darkCalendarInit = '1';
             dateToInput.addEventListener('change', (e) => {
                 this.dateTo = e.target.value || null;
                 this.render();
             });
+        }
+        // Link the two calendars so they share range-selection state
+        if (this.fromCalendar && this.toCalendar) {
+            this.fromCalendar.rangePartner = this.toCalendar;
+            this.toCalendar.rangePartner = this.fromCalendar;
         }
 
         // Clear filters button
@@ -176,6 +184,20 @@ class HistoryView {
                 </div>
             `;
         }).join('');
+    }
+
+    /**
+     * Close the Workout Detail modal. If the modal was opened from another
+     * view (e.g. the Calendar's selected-day panel sets `this.returnToView`),
+     * navigate back there so the caller returns to its original context.
+     */
+    closeWorkoutDetailModal() {
+        document.getElementById('workout-detail-modal').classList.remove('active');
+        if (this.returnToView) {
+            const target = this.returnToView;
+            this.returnToView = null;
+            this.app.showView(target);
+        }
     }
 
     showWorkoutDetails(sessionId) {
