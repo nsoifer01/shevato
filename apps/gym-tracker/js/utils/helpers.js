@@ -4,6 +4,70 @@
  */
 
 /**
+ * Convert a raw muscleGroup string from the exercise database into a
+ * friendly display label. The database uses two styles — lowercase-hyphenated
+ * (e.g. "upper-pectorals") and already-title-cased (e.g. "Upper Chest") —
+ * plus a few technical anatomical names we want to translate for humans.
+ * Returns '' for missing/empty input.
+ */
+export function formatMuscleGroup(raw) {
+    if (!raw) return '';
+    const key = String(raw).trim().toLowerCase();
+    const FRIENDLY = {
+        // Chest
+        'pectorals': 'Chest',
+        'upper-pectorals': 'Upper Chest',
+        'lower-pectorals': 'Lower Chest',
+        'inner-pectorals': 'Inner Chest',
+        'outer-pectorals': 'Outer Chest',
+        // Back
+        'lats': 'Lats',
+        'outer-lats': 'Outer Lats',
+        'lower-lats': 'Lower Lats',
+        'upper-back': 'Upper Back',
+        'mid-back': 'Mid Back',
+        'lower-back': 'Lower Back',
+        // Shoulders
+        'front-deltoids': 'Front Delts',
+        'rear-deltoids': 'Rear Delts',
+        'side-deltoids': 'Side Delts',
+        'rotator-cuff': 'Rotator Cuff',
+        // Arms
+        'biceps': 'Biceps',
+        'triceps': 'Triceps',
+        'brachialis': 'Brachialis',
+        'forearms': 'Forearms',
+        // Legs
+        'quads': 'Quads',
+        'quadriceps': 'Quads',
+        'hamstrings': 'Hamstrings',
+        'glutes': 'Glutes',
+        'calves': 'Calves',
+        'adductors': 'Adductors',
+        'hip-adductors': 'Adductors',
+        'abductors': 'Abductors',
+        'hip-flexors': 'Hip Flexors',
+        'tibialis': 'Tibialis',
+        // Core / trunk / traps / neck
+        'core': 'Core',
+        'abs': 'Abs',
+        'obliques': 'Obliques',
+        'traps': 'Traps',
+        'neck': 'Neck',
+        'full-body': 'Full Body',
+        'legs': 'Legs',
+    };
+    if (FRIENDLY[key]) return FRIENDLY[key];
+    // Fallback: if already title-cased with spaces, return as-is; otherwise
+    // convert "foo-bar" / "foo_bar" to "Foo Bar".
+    return String(raw)
+        .replace(/[-_]+/g, ' ')
+        .replace(/\s+/g, ' ')
+        .trim()
+        .replace(/\b\w/g, c => c.toUpperCase());
+}
+
+/**
  * Get today's date in YYYY-MM-DD format (local timezone)
  */
 export function getTodayDateString() {

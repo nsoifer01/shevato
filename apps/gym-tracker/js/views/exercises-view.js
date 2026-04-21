@@ -466,27 +466,62 @@ class ExercisesView {
             <th class="col-sets">Sets</th>
         `;
 
-        const renderSetChip = (label, isBest) => `
-            <span class="set-badge ${isBest ? 'set-best' : ''}">${label}</span>
+        const renderSetChip = (label, stateClass, title) => `
+            <span class="set-badge ${stateClass || ''}"${title ? ` title="${title}"` : ''}>${label}</span>
         `;
 
-        const tableBodyHTML = groupedHistory.map((record) => {
+        // groupedHistory is sorted newest-first, so the previous session for
+        // each row is at the next index.
+        const tableBodyHTML = groupedHistory.map((record, recordIdx) => {
             const isBestRow = record.date === bestSet.date;
+            const previousRecord = groupedHistory[recordIdx + 1];
 
             const setsDisplay = record.sets.map((set, idx) => {
-                let isBestChip = false;
+                const prevSet = previousRecord?.sets?.[idx];
                 let label = '';
+                let stateClass = '';
+                let title = '';
+
                 if (isDuration) {
                     const mins = Math.floor(set.duration / 60);
                     const secs = set.duration % 60;
-                    isBestChip = isBestRow && set.duration === bestSet.duration;
                     label = `Set ${idx + 1} · ${mins}:${secs.toString().padStart(2, '0')}`;
+
+                    if (isBestRow && set.duration === bestSet.duration) {
+                        stateClass = 'set-best';
+                    } else if (prevSet) {
+                        if (set.duration > prevSet.duration) {
+                            stateClass = 'set-improved';
+                            title = `Up from ${Math.floor(prevSet.duration / 60)}:${(prevSet.duration % 60).toString().padStart(2, '0')} last time`;
+                        } else if (set.duration < prevSet.duration) {
+                            stateClass = 'set-worse';
+                            title = `Down from ${Math.floor(prevSet.duration / 60)}:${(prevSet.duration % 60).toString().padStart(2, '0')} last time`;
+                        }
+                    }
                 } else {
                     const setVolume = set.weight * set.reps;
-                    isBestChip = isBestRow && setVolume === bestSet.volume;
                     label = `Set ${idx + 1} · ${set.weight.toLocaleString()} ${unit} × ${set.reps}`;
+
+                    if (isBestRow && setVolume === bestSet.volume) {
+                        stateClass = 'set-best';
+                    } else if (prevSet) {
+                        // Primary: weight. If weight equal: compare reps.
+                        if (set.weight > prevSet.weight) {
+                            stateClass = 'set-improved';
+                            title = `Up from ${prevSet.weight.toLocaleString()} ${unit} last time`;
+                        } else if (set.weight < prevSet.weight) {
+                            stateClass = 'set-worse';
+                            title = `Down from ${prevSet.weight.toLocaleString()} ${unit} last time`;
+                        } else if (set.reps > prevSet.reps) {
+                            stateClass = 'set-improved';
+                            title = `+${set.reps - prevSet.reps} reps vs last time`;
+                        } else if (set.reps < prevSet.reps) {
+                            stateClass = 'set-worse';
+                            title = `${set.reps - prevSet.reps} reps vs last time`;
+                        }
+                    }
                 }
-                return renderSetChip(label, isBestChip);
+                return renderSetChip(label, stateClass, title);
             }).join('');
 
             return `
