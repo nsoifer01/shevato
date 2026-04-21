@@ -4,7 +4,7 @@
  */
 import { app } from '../app.js';
 import { Program } from '../models/Program.js';
-import { showToast, showConfirmModal } from '../utils/helpers.js';
+import { showToast, showConfirmModal, formatMuscleGroup } from '../utils/helpers.js';
 import { storageService } from '../services/StorageService.js';
 import { DarkSelect } from '../utils/dark-select.js';
 import { orderPrograms } from '../utils/program-order.js';
@@ -230,7 +230,7 @@ class ProgramsView {
                 <div class="program-header">
                     <h3>${program.name}</h3>
                 </div>
-                <p>${program.description || 'No description'}</p>
+                ${program.description && program.description.trim() ? `<p class="program-description">${program.description}</p>` : ''}
                 <div class="program-stats">
                     <div class="stat">
                         <i class="fas fa-dumbbell"></i>
@@ -305,31 +305,83 @@ class ProgramsView {
             return;
         }
 
-        container.innerHTML = this.currentProgram.exercises.map((exercise, index) => `
-            <div class="program-exercise-row">
-                <div class="pex-reorder" aria-label="Reorder">
-                    <button class="pex-reorder-btn"
-                        onclick="window.gymApp.viewControllers.programs.moveExerciseUp(${index})"
-                        ${index === 0 ? 'disabled' : ''}
-                        title="Move up" type="button">
-                        <i class="fas fa-chevron-up"></i>
-                    </button>
-                    <button class="pex-reorder-btn"
-                        onclick="window.gymApp.viewControllers.programs.moveExerciseDown(${index})"
-                        ${index === totalExercises - 1 ? 'disabled' : ''}
-                        title="Move down" type="button">
-                        <i class="fas fa-chevron-down"></i>
-                    </button>
-                </div>
+        container.innerHTML = this.currentProgram.exercises.map((exercise, index) => {
+            const details = this.app.getExerciseById(exercise.exerciseId);
+            const muscle = formatMuscleGroup(details?.muscleGroup);
+            return `
+            <div class="program-exercise-row" draggable="true" data-exercise-index="${index}">
+                <span class="pex-drag-handle" aria-hidden="true" title="Drag to reorder">
+                    <i class="fas fa-grip-vertical"></i>
+                </span>
                 <div class="pex-position" aria-hidden="true">${index + 1}</div>
-                <div class="pex-name">${exercise.exerciseName}</div>
+                <div class="pex-name">
+                    <span class="pex-name-main">${exercise.exerciseName}</span>${muscle ? `
+                    <span class="pex-name-sub">(${muscle})</span>` : ''}
+                </div>
                 <button class="pex-delete"
                     onclick="window.gymApp.viewControllers.programs.removeExerciseFromProgram(${index})"
                     title="Remove exercise" type="button">
                     <i class="fas fa-xmark"></i>
                 </button>
             </div>
-        `).join('');
+        `;}).join('');
+
+        this.wireExerciseDragAndDrop(container);
+    }
+
+    wireExerciseDragAndDrop(container) {
+        container.querySelectorAll('.program-exercise-row').forEach(row => {
+            row.addEventListener('dragstart', (e) => this.handleExerciseDragStart(e, row));
+            row.addEventListener('dragend',   ()  => this.handleExerciseDragEnd());
+            row.addEventListener('dragover',  (e) => this.handleExerciseDragOver(e, row));
+            row.addEventListener('dragleave', ()  => row.classList.remove('is-drop-above', 'is-drop-below'));
+            row.addEventListener('drop',      (e) => this.handleExerciseDrop(e, row));
+        });
+    }
+
+    handleExerciseDragStart(e, row) {
+        this.draggedExerciseIndex = Number(row.dataset.exerciseIndex);
+        row.classList.add('is-dragging');
+        e.dataTransfer.effectAllowed = 'move';
+        // Firefox needs some payload for the drag to start at all
+        try { e.dataTransfer.setData('text/plain', String(this.draggedExerciseIndex)); } catch {}
+    }
+
+    handleExerciseDragEnd() {
+        this.draggedExerciseIndex = null;
+        document.querySelectorAll('.program-exercise-row').forEach(r => {
+            r.classList.remove('is-dragging', 'is-drop-above', 'is-drop-below');
+        });
+    }
+
+    handleExerciseDragOver(e, row) {
+        if (this.draggedExerciseIndex == null) return;
+        e.preventDefault();
+        e.dataTransfer.dropEffect = 'move';
+        const rect = row.getBoundingClientRect();
+        const isAbove = (e.clientY - rect.top) < rect.height / 2;
+        row.classList.toggle('is-drop-above', isAbove);
+        row.classList.toggle('is-drop-below', !isAbove);
+    }
+
+    handleExerciseDrop(e, row) {
+        e.preventDefault();
+        if (!this.currentProgram || this.draggedExerciseIndex == null) return;
+        const from = this.draggedExerciseIndex;
+        const targetIndex = Number(row.dataset.exerciseIndex);
+        const rect = row.getBoundingClientRect();
+        const isAbove = (e.clientY - rect.top) < rect.height / 2;
+        let to = isAbove ? targetIndex : targetIndex + 1;
+        if (from === to || from === to - 1) {
+            this.handleExerciseDragEnd();
+            return;
+        }
+        const exercises = this.currentProgram.exercises;
+        const [moved] = exercises.splice(from, 1);
+        if (from < to) to--;
+        exercises.splice(to, 0, moved);
+        this.handleExerciseDragEnd();
+        this.renderProgramExercises();
     }
 
     saveProgram() {
@@ -569,26 +621,6 @@ class ProgramsView {
             this.currentProgram.removeExercise(index);
             this.renderProgramExercises();
         }
-    }
-
-    moveExerciseUp(index) {
-        if (!this.currentProgram || index === 0) return;
-
-        const exercises = this.currentProgram.exercises;
-        // Swap with previous exercise
-        [exercises[index - 1], exercises[index]] = [exercises[index], exercises[index - 1]];
-
-        this.renderProgramExercises();
-    }
-
-    moveExerciseDown(index) {
-        if (!this.currentProgram || index >= this.currentProgram.exercises.length - 1) return;
-
-        const exercises = this.currentProgram.exercises;
-        // Swap with next exercise
-        [exercises[index], exercises[index + 1]] = [exercises[index + 1], exercises[index]];
-
-        this.renderProgramExercises();
     }
 
     startWorkout(programId) {
