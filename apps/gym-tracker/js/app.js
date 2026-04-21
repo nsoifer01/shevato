@@ -409,7 +409,7 @@ window.gymApp = app;
 window.debugGymTracker = {
     clearLocalStorage: () => {
         console.log('Clearing all gym tracker localStorage...');
-        const keys = ['gymTrackerPrograms', 'gymTrackerSessions', 'gymTrackerSettings', 'gymTrackerAchievements', 'gymTrackerActiveProgram', 'gymTrackerCustomExercises'];
+        const keys = ['gymTrackerPrograms', 'gymTrackerProgramOrder', 'gymTrackerProgramSort', 'gymTrackerSessions', 'gymTrackerSettings', 'gymTrackerAchievements', 'gymTrackerActiveProgram', 'gymTrackerCustomExercises'];
         keys.forEach(key => localStorage.removeItem(key));
         console.log('✅ Cleared. Reload the page to start fresh.');
     },
@@ -439,7 +439,7 @@ window.debugGymTracker = {
     },
     checkSync: () => {
         console.log('🔍 Checking Firebase sync status...');
-        const keys = ['gymTrackerPrograms', 'gymTrackerSessions', 'gymTrackerSettings', 'gymTrackerAchievements', 'gymTrackerActiveProgram', 'gymTrackerCustomExercises'];
+        const keys = ['gymTrackerPrograms', 'gymTrackerProgramOrder', 'gymTrackerProgramSort', 'gymTrackerSessions', 'gymTrackerSettings', 'gymTrackerAchievements', 'gymTrackerActiveProgram', 'gymTrackerCustomExercises'];
 
         if (window.syncDebug) {
             keys.forEach(key => {
@@ -456,7 +456,7 @@ window.debugGymTracker = {
     },
     forceSyncAll: () => {
         console.log('🚀 Force syncing all gym tracker data...');
-        const keys = ['gymTrackerPrograms', 'gymTrackerSessions', 'gymTrackerSettings', 'gymTrackerAchievements', 'gymTrackerActiveProgram', 'gymTrackerCustomExercises'];
+        const keys = ['gymTrackerPrograms', 'gymTrackerProgramOrder', 'gymTrackerProgramSort', 'gymTrackerSessions', 'gymTrackerSettings', 'gymTrackerAchievements', 'gymTrackerActiveProgram', 'gymTrackerCustomExercises'];
 
         if (window.syncDebug) {
             keys.forEach(key => {
