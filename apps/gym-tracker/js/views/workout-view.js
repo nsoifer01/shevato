@@ -225,6 +225,7 @@ class WorkoutView {
 
         this.pauseAndSaveWorkout();
         showToast('Workout paused. You can resume later.', 'info');
+        this.app.showView('home');
     }
 
     discardWorkout() {
@@ -295,6 +296,7 @@ class WorkoutView {
             storageService.clearActiveWorkout();
             this.render();
             showToast('Paused workout discarded', 'info');
+            this.app.showView('home');
         }
     }
 
@@ -955,6 +957,7 @@ class WorkoutView {
             this.currentWorkoutSession = null;
             this.render();
             showToast('Workout ended', 'info');
+            this.app.showView('home');
         }
     }
 }

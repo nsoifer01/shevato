@@ -40,10 +40,19 @@ class GymTrackerApp {
         // Load data from storage
         this.loadAllData();
 
-        // Initialize achievements if empty
+        // Initialize achievements if empty; otherwise merge in any new defaults
+        // that were added in later releases so existing users see them.
         if (this.achievements.length === 0) {
             this.achievements = AchievementService.getDefaultAchievements();
             this.saveAchievements();
+        } else {
+            const existingIds = new Set(this.achievements.map(a => a.id));
+            const missing = AchievementService.getDefaultAchievements()
+                .filter(a => !existingIds.has(a.id));
+            if (missing.length > 0) {
+                this.achievements.push(...missing);
+                this.saveAchievements();
+            }
         }
 
         // Update achievement progress
@@ -55,8 +64,10 @@ class GymTrackerApp {
         // Initialize view controllers
         await this.initializeViews();
 
-        // Show initial view
-        this.showView('home');
+        // Show initial view — honor URL hash so refresh keeps the user's page
+        const validViews = new Set(['home', 'programs', 'calendar', 'workout', 'exercises', 'history', 'achievements', 'settings', 'more']);
+        const hashView = window.location.hash.slice(1);
+        this.showView(validViews.has(hashView) ? hashView : 'home');
 
         // Listen for sync system ready
         this.setupSyncListeners();
