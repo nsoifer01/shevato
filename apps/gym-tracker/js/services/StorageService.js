@@ -6,6 +6,8 @@ export class StorageService {
     constructor() {
         this.keys = {
             PROGRAMS: 'gymTrackerPrograms',
+            PROGRAM_ORDER: 'gymTrackerProgramOrder',
+            PROGRAM_SORT: 'gymTrackerProgramSort',
             WORKOUT_SESSIONS: 'gymTrackerSessions',
             SETTINGS: 'gymTrackerSettings',
             ACHIEVEMENTS: 'gymTrackerAchievements',
@@ -13,6 +15,20 @@ export class StorageService {
             CUSTOM_EXERCISES: 'gymTrackerCustomExercises',
             ACTIVE_WORKOUT: 'gymTrackerActiveWorkout'
         };
+    }
+
+    // Program ordering preferences
+    getProgramOrder() {
+        return this.get(this.keys.PROGRAM_ORDER, []);
+    }
+    saveProgramOrder(orderedIds) {
+        return this.set(this.keys.PROGRAM_ORDER, orderedIds);
+    }
+    getProgramSort() {
+        return this.get(this.keys.PROGRAM_SORT, 'custom');
+    }
+    saveProgramSort(mode) {
+        return this.set(this.keys.PROGRAM_SORT, mode);
     }
 
     // Generic storage methods

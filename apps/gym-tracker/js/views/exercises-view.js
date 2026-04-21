@@ -3,6 +3,7 @@
  */
 import { app } from '../app.js';
 import { showToast, parseLocalDate, showConfirmModal } from '../utils/helpers.js';
+import { DarkSelect } from '../utils/dark-select.js';
 
 class ExercisesView {
     constructor() {
@@ -58,6 +59,21 @@ class ExercisesView {
             createBtn.addEventListener('click', () => this.openCustomExerciseModal());
         }
 
+        const resetBtn = document.getElementById('exercise-db-reset');
+        if (resetBtn) {
+            resetBtn.addEventListener('click', () => {
+                if (searchInput) searchInput.value = '';
+                if (categoryFilter) categoryFilter.value = '';
+                if (equipmentFilter) equipmentFilter.value = '';
+                if (historyFilter) historyFilter.value = 'all';
+                if (historySort) {
+                    historySort.value = 'name';
+                    historySort.style.display = 'none';
+                }
+                this.filterExercises();
+            });
+        }
+
         // Custom exercise form
         const customForm = document.getElementById('custom-exercise-form');
         if (customForm) {
@@ -66,17 +82,33 @@ class ExercisesView {
                 this.createCustomExercise();
             });
         }
+
+        // Custom-exercise modal — wrap the three native selects with DarkSelect
+        this.customExerciseDropdowns = {};
+        ['custom-exercise-category', 'custom-exercise-muscle', 'custom-exercise-equipment']
+            .forEach(id => {
+                const sel = document.getElementById(id);
+                if (sel && !sel.dataset.darkSelectInit) {
+                    this.customExerciseDropdowns[id] = new DarkSelect(sel);
+                    sel.dataset.darkSelectInit = '1';
+                }
+            });
     }
 
     render() {
-        // Update exercise count
-        const totalExercises = this.app.exerciseDatabase.length;
-        const countText = document.getElementById('exercise-count-text');
-        if (countText) {
-            countText.textContent = `Browse ${totalExercises} exercise${totalExercises !== 1 ? 's' : ''}`;
-        }
-
+        // Count text is updated dynamically by filterExercises()
         this.filterExercises();
+    }
+
+    updateCountText(filteredCount, totalCount) {
+        const countText = document.getElementById('exercise-count-text');
+        if (!countText) return;
+        const word = totalCount === 1 ? 'exercise' : 'exercises';
+        if (filteredCount === totalCount) {
+            countText.textContent = `${totalCount.toLocaleString()} ${word} available`;
+        } else {
+            countText.textContent = `Showing ${filteredCount.toLocaleString()} of ${totalCount.toLocaleString()} ${word}`;
+        }
     }
 
     filterExercises() {
@@ -126,6 +158,17 @@ class ExercisesView {
 
         // Update dropdown states
         this.updateDropdownStates(searchTerm, category, equipment, historyFilter);
+
+        // Enable/disable the reset button based on whether any filter is active
+        const resetBtn = document.getElementById('exercise-db-reset');
+        if (resetBtn) {
+            const anyActive = Boolean(searchTerm) || Boolean(category) || Boolean(equipment)
+                || historyFilter !== 'all' || historySort !== 'name';
+            resetBtn.disabled = !anyActive;
+        }
+
+        // Update header count text (reflects current filtered view)
+        this.updateCountText(this.filteredExercises.length, this.app.exerciseDatabase.length);
 
         this.renderExerciseList();
     }
@@ -273,6 +316,14 @@ class ExercisesView {
         document.getElementById('custom-exercise-muscle').value = '';
         document.getElementById('custom-exercise-equipment').value = '';
 
+        // Sync the DarkSelect triggers so they show placeholders, not stale labels
+        if (this.customExerciseDropdowns) {
+            Object.values(this.customExerciseDropdowns).forEach(d => d.sync());
+        }
+
+        // Clear any leftover error states from the previous attempt
+        modal.querySelectorAll('.has-error').forEach(el => el.classList.remove('has-error'));
+
         modal.classList.add('active');
     }
 
@@ -342,12 +393,17 @@ class ExercisesView {
                             <i class="fas fa-trash"></i>
                         </button>` : ''}
                     </div>
+                    <p class="exercise-muscle"><i class="fas fa-bullseye"></i> ${exercise.muscleGroup}</p>
                     <div class="exercise-meta">
-                        <span class="badge">${exercise.category}</span>
-                        <span class="badge">${exercise.equipment}</span>
+                        <span class="badge badge-category"><i class="fas fa-layer-group"></i> ${exercise.category}</span>
+                        <span class="badge badge-equipment"><i class="fas fa-dumbbell"></i> ${exercise.equipment}</span>
                     </div>
-                    <p>${exercise.muscleGroup}</p>
-                    ${hasHistory ? '<p class="history-hint"><i class="fas fa-info-circle"></i> Click to view history</p>' : ''}
+                    ${hasHistory ? `
+                        <span class="btn-view-history">
+                            <i class="fas fa-chart-line"></i> View history
+                            <i class="fas fa-arrow-right view-history-arrow"></i>
+                        </span>
+                    ` : ''}
                 </div>
             `;
         }).join('');
@@ -372,9 +428,16 @@ class ExercisesView {
             ? history.reduce((best, current) => current.duration > best.duration ? current : best)
             : history.reduce((best, current) => current.volume > best.volume ? current : best);
 
+        // Friendly date helpers — "Mar 25, 2026" instead of "3/25/2026"
+        const fmtDate = (dateStr) => parseLocalDate(dateStr).toLocaleDateString(undefined, {
+            year: 'numeric', month: 'short', day: 'numeric',
+        });
+
+        // Caption that explains what makes the best set "best"
+        const bestCaption = isDuration ? 'Longest duration' : 'Highest volume (weight × reps)';
+
         let statsHTML = '';
         if (isDuration) {
-            // Calculate stats for duration-based exercise
             const maxMins = Math.floor(bestSet.duration / 60);
             const maxSecs = bestSet.duration % 60;
             const avgDuration = history.reduce((sum, h) => sum + h.duration, 0) / history.length;
@@ -383,155 +446,99 @@ class ExercisesView {
             const totalSets = history.length;
 
             statsHTML = `
-                <div class="stat-box">
-                    <span class="stat-label">Max Duration</span>
-                    <span class="stat-value">${maxMins}:${maxSecs.toString().padStart(2, '0')}</span>
-                </div>
-                <div class="stat-box">
-                    <span class="stat-label">Avg Duration</span>
-                    <span class="stat-value">${avgMins}:${avgSecs.toString().padStart(2, '0')}</span>
-                </div>
-                <div class="stat-box">
-                    <span class="stat-label">Total Sets</span>
-                    <span class="stat-value">${totalSets}</span>
-                </div>
+                ${this.statBox('Max duration', `${maxMins}:${maxSecs.toString().padStart(2, '0')}`)}
+                ${this.statBox('Avg duration', `${avgMins}:${avgSecs.toString().padStart(2, '0')}`)}
+                ${this.statBox('Total sets', totalSets.toLocaleString())}
+                ${this.statBox('On', fmtDate(bestSet.date))}
             `;
         } else {
-            // Stats for reps-based exercise
-            const bestSetDate = parseLocalDate(bestSet.date).toLocaleDateString();
-
             statsHTML = `
-                <div class="stat-box">
-                    <span class="stat-label">Weight</span>
-                    <span class="stat-value">${bestSet.weight.toLocaleString()}${unit}</span>
-                </div>
-                <div class="stat-box">
-                    <span class="stat-label">Reps</span>
-                    <span class="stat-value">${bestSet.reps.toLocaleString()}</span>
-                </div>
-                <div class="stat-box">
-                    <span class="stat-label">Volume</span>
-                    <span class="stat-value">${Math.round(bestSet.volume).toLocaleString()}${unit}</span>
-                </div>
-                <div class="stat-box">
-                    <span class="stat-label">Date</span>
-                    <span class="stat-value">${bestSetDate}</span>
-                </div>
+                ${this.statBox('Weight', `${bestSet.weight.toLocaleString()} ${unit}`)}
+                ${this.statBox('Reps', bestSet.reps.toLocaleString())}
+                ${this.statBox('Volume', `${Math.round(bestSet.volume).toLocaleString()} ${unit}`)}
+                ${this.statBox('On', fmtDate(bestSet.date))}
             `;
         }
 
         // Build table with grouped sets per date
-        let tableHeaderHTML = '';
-        let tableBodyHTML = '';
+        const tableHeaderHTML = `
+            <th class="col-date">Date</th>
+            <th class="col-sets">Sets</th>
+        `;
 
-        if (isDuration) {
-            tableHeaderHTML = `
-                <th>Date</th>
-                <th>Sets</th>
-            `;
+        const renderSetChip = (label, isBest) => `
+            <span class="set-badge ${isBest ? 'set-best' : ''}">${label}</span>
+        `;
 
-            tableBodyHTML = groupedHistory.map((record, recordIdx) => {
-                // Get the previous workout's sets for comparison (next in array since sorted most recent first)
-                const previousRecord = groupedHistory[recordIdx + 1];
+        const tableBodyHTML = groupedHistory.map((record) => {
+            const isBestRow = record.date === bestSet.date;
 
-                const setsDisplay = record.sets.map((set, idx) => {
+            const setsDisplay = record.sets.map((set, idx) => {
+                let isBestChip = false;
+                let label = '';
+                if (isDuration) {
                     const mins = Math.floor(set.duration / 60);
                     const secs = set.duration % 60;
-
-                    // Check if this is the best set
-                    const isBestSet = set.duration === bestSet.duration && record.date === bestSet.date;
-
-                    // Compare with same set index from previous workout
-                    let colorClass = isBestSet ? 'set-best' : '';
-                    if (!isBestSet && previousRecord && previousRecord.sets[idx]) {
-                        const prevDuration = previousRecord.sets[idx].duration;
-                        if (set.duration > prevDuration) {
-                            colorClass = 'set-improved';
-                        } else if (set.duration < prevDuration) {
-                            colorClass = 'set-worse';
-                        }
-                    }
-
-                    return `<span class="set-badge ${colorClass}">${idx + 1}: ${mins}:${secs.toString().padStart(2, '0')}</span>`;
-                }).join(' ');
-
-                return `
-                    <tr>
-                        <td>${parseLocalDate(record.date).toLocaleDateString()}</td>
-                        <td class="sets-cell">${setsDisplay}</td>
-                    </tr>
-                `;
-            }).join('');
-        } else {
-            tableHeaderHTML = `
-                <th>Date</th>
-                <th>Sets</th>
-            `;
-
-            tableBodyHTML = groupedHistory.map((record, recordIdx) => {
-                // Get the previous workout's sets for comparison (next in array since sorted most recent first)
-                const previousRecord = groupedHistory[recordIdx + 1];
-
-                const setsDisplay = record.sets.map((set, idx) => {
-                    // Check if this is the best set (by volume)
+                    isBestChip = isBestRow && set.duration === bestSet.duration;
+                    label = `Set ${idx + 1} · ${mins}:${secs.toString().padStart(2, '0')}`;
+                } else {
                     const setVolume = set.weight * set.reps;
-                    const isBestSet = setVolume === bestSet.volume && record.date === bestSet.date;
-
-                    // Compare with same set index from previous workout
-                    // Primary comparison: weight. If weight is same, compare reps.
-                    let colorClass = isBestSet ? 'set-best' : '';
-                    if (!isBestSet && previousRecord && previousRecord.sets[idx]) {
-                        const prevWeight = previousRecord.sets[idx].weight;
-                        const prevReps = previousRecord.sets[idx].reps;
-
-                        if (set.weight > prevWeight) {
-                            colorClass = 'set-improved';
-                        } else if (set.weight < prevWeight) {
-                            colorClass = 'set-worse';
-                        } else {
-                            // Weight is the same, compare reps
-                            if (set.reps > prevReps) {
-                                colorClass = 'set-improved';
-                            } else if (set.reps < prevReps) {
-                                colorClass = 'set-worse';
-                            }
-                        }
-                    }
-
-                    return `<span class="set-badge ${colorClass}">${idx + 1}: ${set.weight.toLocaleString()}${unit} x ${set.reps}</span>`;
-                }).join(' ');
-
-                return `
-                    <tr>
-                        <td>${parseLocalDate(record.date).toLocaleDateString()}</td>
-                        <td class="sets-cell">${setsDisplay}</td>
-                    </tr>
-                `;
+                    isBestChip = isBestRow && setVolume === bestSet.volume;
+                    label = `Set ${idx + 1} · ${set.weight.toLocaleString()} ${unit} × ${set.reps}`;
+                }
+                return renderSetChip(label, isBestChip);
             }).join('');
-        }
+
+            return `
+                <tr class="${isBestRow ? 'is-best-row' : ''}">
+                    <td class="col-date">
+                        <span class="history-date">${fmtDate(record.date)}</span>
+                        ${isBestRow ? '<span class="best-row-badge"><i class="fas fa-star"></i> Best</span>' : ''}
+                    </td>
+                    <td class="col-sets sets-cell">${setsDisplay}</td>
+                </tr>
+            `;
+        }).join('');
 
         document.getElementById('exercise-detail-content').innerHTML = `
-            <h3>Best Set</h3>
-            <div class="exercise-stats-summary">
-                ${statsHTML}
-            </div>
+            <section class="exercise-detail-section">
+                <header class="exercise-detail-section-header">
+                    <h3><i class="fas fa-star"></i> Best Set</h3>
+                    <span class="exercise-detail-section-caption">${bestCaption}</span>
+                </header>
+                <div class="exercise-stats-summary">
+                    ${statsHTML}
+                </div>
+            </section>
 
-            <h3>History</h3>
-            <div class="exercise-history-table">
-                <table>
-                    <thead>
-                        <tr>
-                            ${tableHeaderHTML}
-                        </tr>
-                    </thead>
-                    <tbody>
-                        ${tableBodyHTML}
-                    </tbody>
-                </table>
-            </div>
+            <section class="exercise-detail-section">
+                <header class="exercise-detail-section-header">
+                    <h3><i class="fas fa-clock-rotate-left"></i> History</h3>
+                    <span class="exercise-detail-section-caption">${groupedHistory.length} session${groupedHistory.length === 1 ? '' : 's'}</span>
+                </header>
+                <div class="exercise-history-table">
+                    <table>
+                        <thead>
+                            <tr>${tableHeaderHTML}</tr>
+                        </thead>
+                        <tbody>
+                            ${tableBodyHTML}
+                        </tbody>
+                    </table>
+                </div>
+            </section>
         `;
 
         modal.classList.add('active');
+    }
+
+    statBox(label, value) {
+        return `
+            <div class="stat-box">
+                <span class="stat-label">${label}</span>
+                <span class="stat-value">${value}</span>
+            </div>
+        `;
     }
 
     async deleteCustomExercise(exerciseId) {

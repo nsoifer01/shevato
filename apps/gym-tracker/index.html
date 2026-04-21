@@ -142,6 +142,17 @@
                     </button>
                 </div>
 
+                <div class="programs-toolbar" id="programs-toolbar">
+                    <label class="programs-sort-label" for="programs-sort">Sort</label>
+                    <select id="programs-sort" class="programs-sort-select">
+                        <option value="custom">Custom (drag to reorder)</option>
+                        <option value="name-asc">Name (A → Z)</option>
+                        <option value="name-desc">Name (Z → A)</option>
+                        <option value="exercises-desc">Exercise count (high → low)</option>
+                        <option value="exercises-asc">Exercise count (low → high)</option>
+                    </select>
+                </div>
+
                 <div id="programs-list" class="programs-grid">
                     <!-- Will be populated by JS -->
                 </div>
@@ -164,17 +175,26 @@
                                     <textarea id="program-description" placeholder="Program details..." rows="3"></textarea>
                                 </div>
 
-                                <h3>Exercises</h3>
-                                <div id="program-exercises-list">
-                                    <!-- Exercises will be added here -->
-                                </div>
-                                <button type="button" class="btn btn-secondary" id="add-exercise-to-program-btn">
-                                    <i class="fas fa-plus"></i> Add Exercise
-                                </button>
+                                <section class="program-exercises-section">
+                                    <header class="program-exercises-header">
+                                        <h3 class="program-exercises-heading">
+                                            <i class="fas fa-dumbbell"></i> Exercises
+                                        </h3>
+                                        <span id="program-exercises-count" class="program-exercises-count"></span>
+                                    </header>
+                                    <div id="program-exercises-list">
+                                        <!-- Exercises will be added here -->
+                                    </div>
+                                    <button type="button" class="btn-add-exercise" id="add-exercise-to-program-btn">
+                                        <i class="fas fa-plus"></i> Add Exercise
+                                    </button>
+                                </section>
 
-                                <div class="form-actions">
-                                    <button type="button" class="btn btn-secondary modal-close">Cancel</button>
-                                    <button type="submit" class="btn btn-primary">Save Program</button>
+                                <div class="form-actions program-form-actions">
+                                    <button type="button" class="btn btn-ghost modal-close">Cancel</button>
+                                    <button type="submit" class="btn btn-primary btn-save-program">
+                                        <i class="fas fa-check"></i> Save Program
+                                    </button>
                                 </div>
                             </form>
                         </div>
@@ -375,8 +395,8 @@
                 </div>
 
                 <div class="history-filters">
-                    <input type="date" id="history-date-from" placeholder="From">
-                    <input type="date" id="history-date-to" placeholder="To">
+                    <input type="date" id="history-date-from" placeholder="From" data-placeholder="From">
+                    <input type="date" id="history-date-to" placeholder="To" data-placeholder="To">
                     <button class="btn btn-secondary" id="clear-filters-btn">Clear</button>
                 </div>
 
@@ -466,6 +486,9 @@
                             <option value="most-history">Sort: Most History</option>
                             <option value="least-history">Sort: Least History</option>
                         </select>
+                        <button type="button" id="exercise-db-reset" class="btn-filter-reset" disabled>
+                            <i class="fas fa-rotate-left"></i> Reset
+                        </button>
                     </div>
                 </div>
 
@@ -493,10 +516,10 @@
 
                 <!-- Create Custom Exercise Modal -->
                 <div id="custom-exercise-modal" class="modal">
-                    <div class="modal-content">
+                    <div class="modal-content custom-exercise-modal-content">
                         <div class="modal-header">
                             <h2>Create Custom Exercise</h2>
-                            <button class="modal-close">&times;</button>
+                            <button class="modal-close" aria-label="Close">&times;</button>
                         </div>
                         <div class="modal-body">
                             <form id="custom-exercise-form">
@@ -579,9 +602,11 @@
                                         <option value="other">Other</option>
                                     </select>
                                 </div>
-                                <div class="form-actions">
-                                    <button type="button" class="btn btn-secondary modal-close">Cancel</button>
-                                    <button type="submit" class="btn btn-primary">Create Exercise</button>
+                                <div class="form-actions custom-exercise-form-actions">
+                                    <button type="button" class="btn btn-ghost modal-close">Cancel</button>
+                                    <button type="submit" class="btn btn-primary btn-create-exercise">
+                                        <i class="fas fa-check"></i> Create Exercise
+                                    </button>
                                 </div>
                             </form>
                         </div>
@@ -595,29 +620,42 @@
                     <h1>Calendar</h1>
                 </div>
 
+                <div id="calendar-stats" class="calendar-stats">
+                    <!-- Populated by JS: this-month workouts / volume / time / streak / PR days -->
+                </div>
+
                 <div class="calendar-controls">
-                    <button class="btn-icon" id="prev-month-btn">
-                        <i class="fas fa-chevron-left"></i>
-                    </button>
-                    <h2 id="calendar-month-year">December 2024</h2>
-                    <button class="btn-icon" id="next-month-btn">
-                        <i class="fas fa-chevron-right"></i>
-                    </button>
+                    <div class="calendar-nav">
+                        <button class="calendar-nav-btn" id="prev-month-btn" aria-label="Previous month">
+                            <i class="fas fa-chevron-left"></i>
+                        </button>
+                        <h2 id="calendar-month-year">—</h2>
+                        <button class="calendar-nav-btn" id="next-month-btn" aria-label="Next month">
+                            <i class="fas fa-chevron-right"></i>
+                        </button>
+                    </div>
+                    <div class="calendar-controls-actions">
+                        <select id="calendar-filter" class="calendar-filter">
+                            <option value="all">All activity</option>
+                            <option value="workouts">Workouts only</option>
+                            <option value="pr">Progress days</option>
+                        </select>
+                        <button class="calendar-today-btn" id="calendar-today-btn">
+                            <i class="fas fa-location-crosshairs"></i> Today
+                        </button>
+                    </div>
                 </div>
 
                 <div id="calendar-grid" class="calendar">
                     <!-- Will be populated by JS -->
                 </div>
 
-                <div class="calendar-legend">
-                    <div class="legend-item">
-                        <span class="legend-dot workout"></span>
-                        <span>Workout Day</span>
-                    </div>
-                    <div class="legend-item">
-                        <span class="legend-dot gains"></span>
-                        <span>Progress Made</span>
-                    </div>
+                <div class="calendar-legend" id="calendar-legend">
+                    <!-- Populated by JS only with cues that are currently visible -->
+                </div>
+
+                <div id="calendar-detail" class="calendar-detail">
+                    <!-- Selected day detail panel -->
                 </div>
             </div>
 
@@ -625,20 +663,40 @@
             <div id="achievements-view" class="view">
                 <div class="view-header">
                     <h1>Achievements</h1>
-                    <div class="achievement-progress">
+                    <div class="achievement-summary">
                         <span id="unlocked-count">0</span> / <span id="total-achievements">0</span> Unlocked
                     </div>
                 </div>
 
-                <div class="achievement-tabs">
-                    <button class="tab-btn active" data-tab="all">All</button>
-                    <button class="tab-btn" data-tab="daily">Daily</button>
-                    <button class="tab-btn" data-tab="weekly">Weekly</button>
-                    <button class="tab-btn" data-tab="monthly">Monthly</button>
-                    <button class="tab-btn" data-tab="global">Lifetime</button>
+                <div class="achievement-controls">
+                    <div class="achievement-control-group">
+                        <label for="achievement-filter">Status</label>
+                        <select id="achievement-filter">
+                            <option value="all">All</option>
+                            <option value="completed">Completed</option>
+                            <option value="in-progress">In progress</option>
+                            <option value="not-started">Not started</option>
+                        </select>
+                    </div>
+                    <div class="achievement-control-group">
+                        <label for="achievement-sort">Sort</label>
+                        <select id="achievement-sort">
+                            <option value="category">Category</option>
+                            <option value="closest">Closest to completion</option>
+                            <option value="recent">Recently unlocked</option>
+                        </select>
+                    </div>
+                    <div class="achievement-bulk-toggle">
+                        <button type="button" id="achievement-expand-all" class="achievement-bulk-btn" title="Expand all categories">
+                            <i class="fas fa-chevron-down"></i> Expand all
+                        </button>
+                        <button type="button" id="achievement-collapse-all" class="achievement-bulk-btn" title="Collapse all categories">
+                            <i class="fas fa-chevron-up"></i> Collapse all
+                        </button>
+                    </div>
                 </div>
 
-                <div id="achievements-list" class="achievements-grid">
+                <div id="achievements-list" class="achievements-list">
                     <!-- Will be populated by JS -->
                 </div>
             </div>
@@ -649,9 +707,15 @@
                     <h1>Settings</h1>
                 </div>
 
-                <form id="settings-form">
+                <form id="settings-form" class="settings-form">
                     <section class="settings-section">
-                        <h2>Units</h2>
+                        <header class="settings-section-header">
+                            <i class="fas fa-ruler settings-section-icon"></i>
+                            <div>
+                                <h2>Units</h2>
+                                <p class="settings-section-sub">Choose how weight values are displayed throughout the app.</p>
+                            </div>
+                        </header>
                         <div class="setting-item">
                             <label for="weight-unit">Weight Unit</label>
                             <select id="weight-unit">
@@ -662,7 +726,13 @@
                     </section>
 
                     <section class="settings-section">
-                        <h2>Data Management</h2>
+                        <header class="settings-section-header">
+                            <i class="fas fa-database settings-section-icon"></i>
+                            <div>
+                                <h2>Data Management</h2>
+                                <p class="settings-section-sub">Back up, restore, or wipe your workout data.</p>
+                            </div>
+                        </header>
                         <div class="setting-actions">
                             <button type="button" class="btn btn-secondary" id="export-data-btn">
                                 <i class="fas fa-download"></i> Export Data
@@ -677,8 +747,10 @@
                         <input type="file" id="import-file-input" accept=".json" style="display: none;">
                     </section>
 
-                    <div class="form-actions">
-                        <button type="submit" class="btn btn-primary">Save Settings</button>
+                    <div class="settings-actions">
+                        <button type="submit" class="btn btn-save-settings" id="save-settings-btn" disabled>
+                            <i class="fas fa-check"></i> Save Settings
+                        </button>
                     </div>
                 </form>
             </div>
@@ -722,15 +794,22 @@
 
     <!-- Confirmation Modal -->
     <div id="confirm-modal" class="modal">
-        <div class="modal-content small">
+        <div class="modal-content small confirm-modal-content">
+            <div class="confirm-modal-icon" id="confirm-modal-icon">
+                <i class="fas fa-triangle-exclamation"></i>
+            </div>
             <div class="modal-header">
                 <h2 id="confirm-modal-title">Confirm Action</h2>
             </div>
             <div class="modal-body">
                 <p id="confirm-modal-message">Are you sure?</p>
+                <div class="confirm-modal-warning" id="confirm-modal-warning" hidden>
+                    <i class="fas fa-circle-exclamation"></i>
+                    <span id="confirm-modal-warning-text">This action cannot be undone.</span>
+                </div>
             </div>
             <div class="modal-footer">
-                <button class="btn btn-secondary" id="confirm-modal-cancel">Cancel</button>
+                <button class="btn btn-ghost" id="confirm-modal-cancel">Cancel</button>
                 <button class="btn btn-danger" id="confirm-modal-confirm">Delete</button>
             </div>
         </div>
