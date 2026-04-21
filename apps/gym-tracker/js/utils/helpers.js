@@ -228,6 +228,7 @@ export function showConfirmModal(options = {}) {
     const {
         title = 'Confirm Action',
         message = 'Are you sure?',
+        warning = '',
         confirmText = 'Delete',
         cancelText = 'Cancel',
         isDangerous = true
@@ -235,8 +236,12 @@ export function showConfirmModal(options = {}) {
 
     return new Promise((resolve) => {
         const modal = document.getElementById('confirm-modal');
+        const modalContent = modal.querySelector('.modal-content');
+        const iconEl = document.getElementById('confirm-modal-icon');
         const titleEl = document.getElementById('confirm-modal-title');
         const messageEl = document.getElementById('confirm-modal-message');
+        const warningEl = document.getElementById('confirm-modal-warning');
+        const warningTextEl = document.getElementById('confirm-modal-warning-text');
         const confirmBtn = document.getElementById('confirm-modal-confirm');
         const cancelBtn = document.getElementById('confirm-modal-cancel');
 
@@ -246,8 +251,24 @@ export function showConfirmModal(options = {}) {
         confirmBtn.textContent = confirmText;
         cancelBtn.textContent = cancelText;
 
-        // Update button style
-        confirmBtn.className = isDangerous ? 'btn btn-danger' : 'btn btn-primary';
+        // Warning strip
+        if (warning) {
+            warningTextEl.textContent = warning;
+            warningEl.hidden = false;
+        } else {
+            warningEl.hidden = true;
+        }
+
+        // Danger vs non-danger styling
+        if (isDangerous) {
+            modalContent.classList.add('confirm-modal-danger');
+            iconEl.hidden = false;
+            confirmBtn.className = 'btn btn-danger';
+        } else {
+            modalContent.classList.remove('confirm-modal-danger');
+            iconEl.hidden = true;
+            confirmBtn.className = 'btn btn-primary';
+        }
 
         // Show modal
         modal.classList.add('active');

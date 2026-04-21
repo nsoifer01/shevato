@@ -284,13 +284,119 @@ export class AnalyticsService {
                 const data = calendarData.get(key);
                 data.workouts += 1;
                 data.totalVolume += session.totalVolume;
-
-                // Check for gains (simplified - compare to previous workout)
-                // In real implementation, this would compare to last time the same workout was done
-                data.hasGains = true; // Placeholder
             }
         });
 
         return calendarData;
+    }
+
+    /**
+     * Compute the set of date strings (YYYY-MM-DD) where the user beat their
+     * previous best total session volume for the same workout type.
+     *
+     * Definition:
+     *   - Group sessions by workoutDayName (fallback: workoutDayId).
+     *   - For each session in chronological order, compare its total volume
+     *     against the running max for that group.
+     *   - The first session of a workout type SEEDS the baseline; it does
+     *     NOT count as a PR (no previous attempt to beat).
+     *   - If today's session volume > group's previous max → PR for today.
+     *
+     * Why session-level (not per-exercise): users compare workout-to-workout,
+     * not set-to-set. "I lifted more total today than last time on this
+     * workout" is the intuitive PR signal.
+     */
+    static getProgressDates(sessions) {
+        const sorted = [...sessions].sort((a, b) => {
+            const ad = new Date(a.date).getTime();
+            const bd = new Date(b.date).getTime();
+            if (ad !== bd) return ad - bd;
+            return (a.timestamp || '').localeCompare(b.timestamp || '');
+        });
+
+        const bestVolumeByWorkout = new Map(); // groupKey -> max total volume
+        const progressDates = new Set();
+
+        sorted.forEach(session => {
+            const groupKey = (session.workoutDayName && session.workoutDayName.trim())
+                || (session.workoutDayId != null ? `id:${session.workoutDayId}` : '__unnamed__');
+
+            const totalVolume = session.totalVolume
+                || (session.exercises || []).reduce((sum, ex) => {
+                    return sum + (ex.sets || []).reduce(
+                        (s, set) => s + (set.weight || 0) * (set.reps || 0), 0
+                    );
+                }, 0);
+
+            if (totalVolume <= 0) return;
+
+            const prev = bestVolumeByWorkout.get(groupKey);
+            if (prev === undefined) {
+                bestVolumeByWorkout.set(groupKey, totalVolume);
+                return; // first session of this workout type — seed only
+            }
+            if (totalVolume > prev) {
+                bestVolumeByWorkout.set(groupKey, totalVolume);
+                progressDates.add(session.date);
+            }
+        });
+
+        return progressDates;
+    }
+
+    /**
+     * Group sessions by their YYYY-MM-DD date.
+     */
+    static getSessionsByDate(sessions) {
+        const map = new Map();
+        sessions.forEach(s => {
+            if (!map.has(s.date)) map.set(s.date, []);
+            map.get(s.date).push(s);
+        });
+        return map;
+    }
+
+    /**
+     * Summary stats for a given (year, month).
+     */
+    static getMonthSummary(sessions, year, month) {
+        const monthSessions = sessions.filter(s => {
+            const d = new Date(s.date);
+            return d.getFullYear() === year && d.getMonth() === month;
+        });
+        const totalVolume = this.getTotalVolume(monthSessions);
+        const totalDuration = monthSessions.reduce((sum, s) => sum + (s.duration || 0), 0);
+        const progress = this.getProgressDates(monthSessions);
+        const workoutDays = new Set(monthSessions.map(s => s.date)).size;
+        return {
+            sessionCount: monthSessions.length,
+            workoutDays,
+            totalVolume,
+            totalDuration, // minutes
+            prDays: progress.size,
+        };
+    }
+
+    /**
+     * Current consecutive-day streak ending today (or yesterday — see logic).
+     */
+    static getCurrentStreak(sessions) {
+        if (!sessions.length) return 0;
+        const dates = new Set(sessions.map(s => s.date));
+        let streak = 0;
+        const cursor = new Date();
+        // If no workout today, allow streak that ended yesterday
+        const todayKey = cursor.toISOString().split('T')[0];
+        if (!dates.has(todayKey)) cursor.setDate(cursor.getDate() - 1);
+        while (true) {
+            const key = cursor.toISOString().split('T')[0];
+            if (dates.has(key)) {
+                streak++;
+                cursor.setDate(cursor.getDate() - 1);
+            } else {
+                break;
+            }
+        }
+        return streak;
     }
 }
