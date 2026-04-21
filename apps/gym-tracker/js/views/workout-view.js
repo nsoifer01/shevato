@@ -8,7 +8,7 @@ import { WorkoutExercise } from '../models/WorkoutExercise.js';
 import { Set } from '../models/Set.js';
 import { timerService } from '../services/TimerService.js';
 import { storageService } from '../services/StorageService.js';
-import { showToast, showConfirmModal } from '../utils/helpers.js';
+import { showToast, showConfirmModal, formatMuscleGroup } from '../utils/helpers.js';
 
 class WorkoutView {
     constructor() {
@@ -512,12 +512,14 @@ class WorkoutView {
                         <div class="input-group duration-input">
                             <label class="input-label">Duration</label>
                             <div class="duration-inputs">
-                                <input type="number" placeholder="Min" id="duration-min-${index}" min="0" value="${defaultMins}" class="duration-min">
+                                <input type="number" inputmode="numeric" placeholder="Min" id="duration-min-${index}" min="0" value="${defaultMins}" class="duration-min">
                                 <span class="duration-separator">:</span>
-                                <input type="number" placeholder="Sec" id="duration-sec-${index}" min="0" max="59" value="${defaultSecs.toString().padStart(2, '0')}" class="duration-sec">
+                                <input type="number" inputmode="numeric" placeholder="Sec" id="duration-sec-${index}" min="0" max="59" value="${defaultSecs.toString().padStart(2, '0')}" class="duration-sec">
                             </div>
                         </div>
-                        <button onclick="window.gymApp.viewControllers.workout.addSet(${index})">Add Set</button>
+                        <button type="button" class="btn-add-set" onclick="window.gymApp.viewControllers.workout.addSet(${index})">
+                            <i class="fas fa-plus"></i> Add Set
+                        </button>
                     </div>
                 `;
             } else {
@@ -525,21 +527,28 @@ class WorkoutView {
                     <div class="set-inputs">
                         <div class="input-group">
                             <label class="input-label">Weight</label>
-                            <input type="number" placeholder="Weight" id="weight-${index}" step="0.5" min="0" ${firstSet ? `value="${firstSet.weight}"` : ''}>
+                            <input type="number" inputmode="decimal" placeholder="Weight" id="weight-${index}" step="0.5" min="0" ${firstSet ? `value="${firstSet.weight}"` : ''}>
                         </div>
                         <div class="input-group">
                             <label class="input-label">Reps</label>
-                            <input type="number" placeholder="Reps" id="reps-${index}" min="1" ${firstSet ? `value="${firstSet.reps}"` : ''}>
+                            <input type="number" inputmode="numeric" placeholder="Reps" id="reps-${index}" min="1" ${firstSet ? `value="${firstSet.reps}"` : ''}>
                         </div>
-                        <button onclick="window.gymApp.viewControllers.workout.addSet(${index})">Add Set</button>
+                        <button type="button" class="btn-add-set" onclick="window.gymApp.viewControllers.workout.addSet(${index})">
+                            <i class="fas fa-plus"></i> Add Set
+                        </button>
                     </div>
                 `;
             }
 
+            const muscle = formatMuscleGroup(exerciseData?.muscleGroup);
+
             return `
                 <div class="exercise-entry" id="exercise-${index}" data-exercise-type="${isDuration ? 'duration' : 'reps'}">
                     <div class="exercise-entry-header">
-                        <h3>${exercise.exerciseName}</h3>
+                        <h3>
+                            <span class="exercise-name-main">${exercise.exerciseName}</span>${muscle ? `
+                            <span class="exercise-name-sub">(${muscle})</span>` : ''}
+                        </h3>
                     </div>
 
                     <div class="previous-data">
@@ -610,10 +619,10 @@ class WorkoutView {
                         <span class="set-details">${setDetails}</span>
                     </div>
                     <div class="set-actions">
-                        <button class="btn-set-action" onclick="window.gymApp.viewControllers.workout.editSet(${exerciseIndex}, ${setIndex})" title="Edit set">
+                        <button type="button" class="btn-set-action" onclick="window.gymApp.viewControllers.workout.editSet(${exerciseIndex}, ${setIndex})" title="Edit set" aria-label="Edit set">
                             <i class="fas fa-edit"></i>
                         </button>
-                        <button class="btn-set-action btn-set-delete" onclick="window.gymApp.viewControllers.workout.deleteSet(${exerciseIndex}, ${setIndex})" title="Delete set">
+                        <button type="button" class="btn-set-action btn-set-delete" onclick="window.gymApp.viewControllers.workout.deleteSet(${exerciseIndex}, ${setIndex})" title="Delete set" aria-label="Delete set">
                             <i class="fas fa-trash"></i>
                         </button>
                     </div>
@@ -663,6 +672,12 @@ class WorkoutView {
     addSet(exerciseIndex) {
         if (!this.currentWorkoutSession) return;
 
+        // Dismiss the mobile keyboard before adding the set — otherwise iOS/Android
+        // keep the keyboard open because a weight/reps input is still focused.
+        if (document.activeElement instanceof HTMLElement && typeof document.activeElement.blur === 'function') {
+            document.activeElement.blur();
+        }
+
         const exercise = this.currentWorkoutSession.exercises[exerciseIndex];
         const exerciseEntry = document.getElementById(`exercise-${exerciseIndex}`);
         const isDuration = exerciseEntry.getAttribute('data-exercise-type') === 'duration';
@@ -684,10 +699,9 @@ class WorkoutView {
 
             set = new Set({ duration: totalSeconds, weight: 0, reps: 0, completed: true });
 
-            // Keep values for next set
+            // Keep values visible for the next set, but do not refocus the input
             minInput.value = minutes;
             secInput.value = seconds;
-            minInput.focus();
 
             showToast('Set added!', 'success');
         } else {
@@ -705,10 +719,9 @@ class WorkoutView {
 
             set = new Set({ weight, reps, completed: true });
 
-            // Keep values for next set
+            // Keep values visible for the next set, but do not refocus the input
             weightInput.value = weight;
             repsInput.value = reps;
-            weightInput.focus();
 
             showToast('Set added!', 'success');
         }

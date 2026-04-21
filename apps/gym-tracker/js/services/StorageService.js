@@ -33,12 +33,16 @@ export class StorageService {
 
     // Generic storage methods
     get(key, defaultValue = null) {
+        const item = localStorage.getItem(key);
+        if (item === null || item === undefined) return defaultValue;
         try {
-            const item = localStorage.getItem(key);
-            return item ? JSON.parse(item) : defaultValue;
-        } catch (error) {
-            console.error(`Error reading ${key}:`, error);
-            return defaultValue;
+            return JSON.parse(item);
+        } catch {
+            // The sync layer can deposit primitive values un-stringified
+            // (e.g. writes a string "custom" where our writer would have
+            // written "\"custom\""). Treat un-parseable values as raw strings
+            // instead of throwing + falling back to the default.
+            return item;
         }
     }
 

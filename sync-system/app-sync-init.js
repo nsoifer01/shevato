@@ -51,6 +51,8 @@ const APP_SYNC_CONFIG = {
     namespace: 'gymTrackerApp',
     keys: [
       'gymTrackerPrograms',       // Workout programs
+      'gymTrackerProgramOrder',   // User's custom program ordering
+      'gymTrackerProgramSort',    // Program sort preference (custom / name / etc.)
       'gymTrackerSessions',       // Workout sessions/history
       'gymTrackerSettings',       // User settings
       'gymTrackerAchievements',   // Unlocked achievements
