@@ -4,6 +4,7 @@
 import { app } from '../app.js';
 import { showToast, downloadJSON } from '../utils/helpers.js';
 import { validateImportData } from '../utils/validators.js';
+import { DarkSelect } from '../utils/dark-select.js';
 
 class SettingsView {
     constructor() {
@@ -17,6 +18,17 @@ class SettingsView {
     }
 
     setupEventListeners() {
+        // Mount the custom dark dropdown for the weight unit
+        const weightUnitSelect = document.getElementById('weight-unit');
+        if (weightUnitSelect && !weightUnitSelect.dataset.darkSelectInit) {
+            this.weightUnitDropdown = new DarkSelect(weightUnitSelect);
+            weightUnitSelect.dataset.darkSelectInit = '1';
+        }
+        // React to weight-unit changes so we can enable/disable Save
+        if (weightUnitSelect) {
+            weightUnitSelect.addEventListener('change', () => this.checkDirty());
+        }
+
         // Settings form submission
         const settingsForm = document.getElementById('settings-form');
         if (settingsForm) {
@@ -59,6 +71,28 @@ class SettingsView {
 
         // Populate form with current settings
         document.getElementById('weight-unit').value = settings.weightUnit;
+        if (this.weightUnitDropdown) this.weightUnitDropdown.sync();
+
+        // Snapshot current values for dirty-state comparison
+        this.savedSnapshot = this.snapshotForm();
+        this.checkDirty();
+    }
+
+    /** Build a snapshot of all form values used for dirty-state checking. */
+    snapshotForm() {
+        return {
+            weightUnit: document.getElementById('weight-unit')?.value ?? '',
+        };
+    }
+
+    /** Compare current form against saved snapshot and toggle Save button. */
+    checkDirty() {
+        const btn = document.getElementById('save-settings-btn');
+        if (!btn || !this.savedSnapshot) return;
+        const current = this.snapshotForm();
+        const dirty = Object.keys(this.savedSnapshot)
+            .some(k => this.savedSnapshot[k] !== current[k]);
+        btn.disabled = !dirty;
     }
 
     saveSettings() {
@@ -68,6 +102,10 @@ class SettingsView {
 
         this.app.saveSettings();
         showToast('Settings saved successfully', 'success');
+
+        // Form is now clean again — snapshot the just-saved values and disable Save
+        this.savedSnapshot = this.snapshotForm();
+        this.checkDirty();
     }
 
     exportData() {
