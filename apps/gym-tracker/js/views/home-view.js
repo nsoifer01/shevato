@@ -5,6 +5,7 @@
 import { app } from '../app.js';
 import { storageService } from '../services/StorageService.js';
 import { formatDate, formatWeight } from '../utils/helpers.js';
+import { orderPrograms } from '../utils/program-order.js';
 
 class HomeView {
     constructor() {
@@ -104,7 +105,10 @@ class HomeView {
 
     renderActiveProgram() {
         const container = document.getElementById('active-program-card');
-        const programs = this.app.programs;
+        // Use the same sort mode + saved drag-order as the Programs page
+        const sortMode = storageService.getProgramSort() || 'custom';
+        const savedOrder = storageService.getProgramOrder() || [];
+        const programs = orderPrograms(this.app.programs, sortMode, savedOrder);
         const pausedWorkout = storageService.getActiveWorkout();
 
         if (programs.length === 0) {
@@ -148,12 +152,12 @@ class HomeView {
                             `;
                         } else {
                             return `
-                                <div class="quick-program-item">
+                                <div class="quick-program-item is-empty" onclick="window.gymApp.viewControllers.programs.editProgram(${program.id})" title="Add exercises to this program">
                                     <div class="program-info">
                                         <strong>${program.name}</strong>
-                                        <span>${program.exercises.length} exercises</span>
+                                        <span>0 exercises · Tap to add</span>
                                     </div>
-                                    <i class="fas fa-edit" onclick="event.stopPropagation(); window.gymApp.viewControllers.programs.editProgram(${program.id})"></i>
+                                    <i class="fas fa-edit"></i>
                                 </div>
                             `;
                         }

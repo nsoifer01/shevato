@@ -3,6 +3,7 @@
  */
 import { app } from '../app.js';
 import { formatDate, showToast, showConfirmModal } from '../utils/helpers.js';
+import { DarkCalendar } from '../utils/dark-calendar.js';
 
 class HistoryView {
     constructor() {
@@ -36,20 +37,23 @@ class HistoryView {
             });
         }
 
-        // Date filters
+        // Date filters — wrap native inputs with the dark calendar widget
         const dateFromInput = document.getElementById('history-date-from');
         const dateToInput = document.getElementById('history-date-to');
 
-        if (dateFromInput) {
+        if (dateFromInput && !dateFromInput.dataset.darkCalendarInit) {
+            this.fromCalendar = new DarkCalendar(dateFromInput);
+            dateFromInput.dataset.darkCalendarInit = '1';
             dateFromInput.addEventListener('change', (e) => {
-                this.dateFrom = e.target.value;
+                this.dateFrom = e.target.value || null;
                 this.render();
             });
         }
-
-        if (dateToInput) {
+        if (dateToInput && !dateToInput.dataset.darkCalendarInit) {
+            this.toCalendar = new DarkCalendar(dateToInput);
+            dateToInput.dataset.darkCalendarInit = '1';
             dateToInput.addEventListener('change', (e) => {
-                this.dateTo = e.target.value;
+                this.dateTo = e.target.value || null;
                 this.render();
             });
         }
@@ -60,8 +64,10 @@ class HistoryView {
             clearBtn.addEventListener('click', () => {
                 this.dateFrom = null;
                 this.dateTo = null;
-                if (dateFromInput) dateFromInput.value = '';
-                if (dateToInput) dateToInput.value = '';
+                if (this.fromCalendar) this.fromCalendar.clearDate();
+                else if (dateFromInput) dateFromInput.value = '';
+                if (this.toCalendar) this.toCalendar.clearDate();
+                else if (dateToInput) dateToInput.value = '';
                 this.render();
             });
         }
