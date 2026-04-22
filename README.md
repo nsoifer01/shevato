@@ -189,4 +189,4 @@ This project is proprietary. All rights reserved.
 For questions or support, please contact:
 - Email: nikita@shevato.com
 - Phone: +1 (504) 638-3370
-- LinkedIn: [nikitasoifer](https://www.linkedin.com/in/nikitasoifer/)
+- LinkedIn: [nikita-soifer](https://www.linkedin.com/in/nikita-soifer/)
