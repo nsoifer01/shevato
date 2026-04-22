@@ -7,20 +7,31 @@ export class Program {
         this.id = data.id || Date.now();
         this.name = data.name || '';
         this.description = data.description || '';
-        this.exercises = data.exercises || []; // Array of { exerciseId, exerciseName, targetSets, targetReps, notes, order }
+        // Array of { exerciseId, exerciseName, targetSets, targetReps, restSeconds, notes, order }
+        this.exercises = (data.exercises || []).map(normalizeExercise);
         this.createdAt = data.createdAt || new Date().toISOString();
         this.updatedAt = data.updatedAt || new Date().toISOString();
     }
 
-    addExercise(exerciseId, exerciseName, targetSets = 3, targetReps = 10, notes = '') {
+    addExercise(exerciseId, exerciseName, targetSets = 3, targetReps = 10, notes = '', restSeconds = null) {
         const order = this.exercises.length;
-        this.exercises.push({
+        this.exercises.push(normalizeExercise({
             exerciseId,
             exerciseName,
             targetSets,
             targetReps,
+            restSeconds,
             notes,
-            order
+            order,
+        }));
+        this.updatedAt = new Date().toISOString();
+    }
+
+    updateExercise(index, patch = {}) {
+        if (index < 0 || index >= this.exercises.length) return;
+        this.exercises[index] = normalizeExercise({
+            ...this.exercises[index],
+            ...patch,
         });
         this.updatedAt = new Date().toISOString();
     }
@@ -59,4 +70,56 @@ export class Program {
     static fromJSON(json) {
         return new Program(json);
     }
+}
+
+/**
+ * Default rest (seconds) by equipment type. Heavy compound movements need
+ * more rest; accessory/bodyweight work needs less. Callers pass `null` to
+ * let us choose the default for the exercise's equipment.
+ */
+const REST_DEFAULTS_BY_EQUIPMENT = {
+    barbell: 180,
+    'trap-bar': 180,
+    dumbbell: 90,
+    kettlebell: 90,
+    cable: 75,
+    machine: 75,
+    'resistance-band': 60,
+    bodyweight: 60,
+    plate: 90,
+    'medicine-ball': 60,
+    'battle-ropes': 60,
+    'ab-wheel': 60,
+    sled: 120,
+    tire: 120,
+    gripper: 45,
+    towel: 60,
+    various: 90,
+};
+
+export function defaultRestForEquipment(equipment) {
+    return REST_DEFAULTS_BY_EQUIPMENT[equipment] ?? 90;
+}
+
+/**
+ * Coerce a raw exercise entry into the canonical program-exercise shape.
+ * Guarantees every row has targetSets/targetReps/restSeconds so the UI
+ * can render steppers without null-checks on older saved data.
+ */
+function normalizeExercise(ex) {
+    return {
+        exerciseId: ex.exerciseId,
+        exerciseName: ex.exerciseName,
+        targetSets: clampInt(ex.targetSets, 1, 20, 3),
+        targetReps: clampInt(ex.targetReps, 1, 100, 10),
+        restSeconds: clampInt(ex.restSeconds, 0, 900, 90),
+        notes: ex.notes || '',
+        order: Number.isFinite(ex.order) ? ex.order : 0,
+    };
+}
+
+function clampInt(value, min, max, fallback) {
+    const n = Number(value);
+    if (!Number.isFinite(n)) return fallback;
+    return Math.max(min, Math.min(max, Math.round(n)));
 }
