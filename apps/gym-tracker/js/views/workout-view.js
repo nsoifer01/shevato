@@ -8,13 +8,16 @@ import { WorkoutExercise } from '../models/WorkoutExercise.js';
 import { Set } from '../models/Set.js';
 import { timerService } from '../services/TimerService.js';
 import { storageService } from '../services/StorageService.js';
-import { showToast, showConfirmModal, formatMuscleGroup } from '../utils/helpers.js';
+import { showToast, showConfirmModal, formatMuscleGroup, vibrate } from '../utils/helpers.js';
+import { renderPausedBannerHTML, wirePausedBannerActions } from './paused-banner.js';
 
 class WorkoutView {
     constructor() {
         this.app = app;
         this.currentWorkoutSession = null;
         this.navigationBlocked = false;
+        this.activeRestTimerId = null;
+        this.restTimerDuration = 0;
         this.init();
     }
 
@@ -51,6 +54,12 @@ class WorkoutView {
                 this.finishWorkout();
             });
         }
+
+        // Rest timer bar controls
+        const restSkipBtn = document.getElementById('rest-skip-btn');
+        if (restSkipBtn) restSkipBtn.addEventListener('click', () => this.skipRest());
+        const restAddBtn = document.getElementById('rest-add-btn');
+        if (restAddBtn) restAddBtn.addEventListener('click', () => this.extendRest(30));
     }
 
     setupNavigationGuard() {
@@ -230,6 +239,7 @@ class WorkoutView {
 
     discardWorkout() {
         timerService.stopWorkoutTimer();
+        this.skipRest();
         storageService.clearActiveWorkout();
         document.getElementById('active-workout').classList.remove('active');
         document.getElementById('workout-selection').classList.add('active');
@@ -242,19 +252,6 @@ class WorkoutView {
 
     render() {
         this.renderProgramSelection();
-    }
-
-    formatTimeAgo(date) {
-        const now = new Date();
-        const diffMs = now - date;
-        const diffMins = Math.floor(diffMs / 60000);
-        const diffHours = Math.floor(diffMins / 60);
-        const diffDays = Math.floor(diffHours / 24);
-
-        if (diffMins < 1) return 'just now';
-        if (diffMins < 60) return `${diffMins} min ago`;
-        if (diffHours < 24) return `${diffHours} hour${diffHours > 1 ? 's' : ''} ago`;
-        return `${diffDays} day${diffDays > 1 ? 's' : ''} ago`;
     }
 
     async resumeWorkout() {
@@ -303,48 +300,13 @@ class WorkoutView {
     renderProgramSelection() {
         const container = document.getElementById('workout-program-list');
         const programs = this.app.programs;
-        const pausedWorkout = storageService.getActiveWorkout();
 
         // Start fresh - don't double-add the banner
         let html = '';
 
         // Add paused workout banner if exists
-        if (pausedWorkout && pausedWorkout.paused) {
-            const pausedAt = new Date(pausedWorkout.pausedAt);
-            const elapsed = pausedWorkout.elapsedBeforePause;
-            const minutes = Math.floor(elapsed / 60);
-            const seconds = elapsed % 60;
-
-            // Count total sets saved
-            const totalSets = pausedWorkout.exercises.reduce((sum, ex) =>
-                sum + (ex.sets ? ex.sets.length : 0), 0
-            );
-
-            html += `
-                <div class="paused-workout-banner">
-                    <div class="paused-workout-icon">
-                        <i class="fas fa-pause-circle"></i>
-                    </div>
-                    <div class="paused-workout-info">
-                        <h3>Paused Workout</h3>
-                        <p><strong>${pausedWorkout.workoutDayName}</strong></p>
-                        <p class="paused-workout-meta">
-                            <span><i class="fas fa-clock"></i> ${minutes}:${String(seconds).padStart(2, '0')} elapsed</span>
-                            <span><i class="fas fa-dumbbell"></i> ${totalSets} set${totalSets !== 1 ? 's' : ''} completed</span>
-                            <span><i class="fas fa-calendar"></i> Paused ${this.formatTimeAgo(pausedAt)}</span>
-                        </p>
-                    </div>
-                    <div class="paused-workout-actions">
-                        <button class="btn btn-primary" onclick="window.gymApp.viewControllers.workout.resumeWorkout()">
-                            <i class="fas fa-play"></i> Resume
-                        </button>
-                        <button class="btn btn-outline btn-danger-outline" onclick="window.gymApp.viewControllers.workout.discardPausedWorkout()">
-                            <i class="fas fa-trash"></i> Discard
-                        </button>
-                    </div>
-                </div>
-            `;
-        }
+        const bannerHTML = renderPausedBannerHTML({ location: 'workout', withCalendarMeta: true });
+        if (bannerHTML) html += bannerHTML;
 
         if (programs.length === 0) {
             html += `
@@ -386,6 +348,14 @@ class WorkoutView {
         `;
 
         container.innerHTML = html;
+
+        const banner = container.querySelector('.paused-workout-banner');
+        if (banner) {
+            wirePausedBannerActions(banner, {
+                onResume: () => this.resumeWorkout(),
+                onDiscard: () => this.discardPausedWorkout(),
+            });
+        }
     }
 
     startWorkout(programId) {
@@ -406,6 +376,8 @@ class WorkoutView {
                 exerciseId: ex.exerciseId,
                 exerciseName: ex.exerciseName,
                 targetSets: ex.targetSets,
+                targetReps: ex.targetReps,
+                restSeconds: ex.restSeconds,
                 order: ex.order
             }))
         });
@@ -456,119 +428,271 @@ class WorkoutView {
         this.adjustWorkoutTitleSize();
 
         const container = document.getElementById('workout-exercises-list');
-        container.innerHTML = this.currentWorkoutSession.exercises.map((exercise, index) => {
-            const exerciseData = this.app.getExerciseById(exercise.exerciseId);
-            const isDuration = exerciseData && exerciseData.exerciseType === 'duration';
-            const previousSets = this.getPreviousExerciseData(exercise.exerciseId);
-            const unit = this.app.settings.weightUnit;
+        container.innerHTML = this.currentWorkoutSession.exercises
+            .map((exercise, index) => this.renderExerciseEntry(exercise, index))
+            .join('');
+    }
 
-            let previousDataHTML = '';
-            if (previousSets && previousSets.length > 0) {
-                if (isDuration) {
-                    // Show duration for time-based exercises
-                    previousDataHTML = `
-                        <div class="previous-sets-label">Last time:</div>
-                        <div class="previous-sets-row">
-                            ${previousSets.map((set, i) => {
-                                const mins = Math.floor(set.duration / 60);
-                                const secs = set.duration % 60;
-                                return `
-                                    <div class="previous-set-badge" onclick="window.gymApp.viewControllers.workout.usePreviousDuration(${index}, ${set.duration})" title="Click to use this duration">
-                                        <span class="previous-set-number">${i + 1}</span>
-                                        <span class="previous-set-value">${mins}:${secs.toString().padStart(2, '0')}</span>
-                                    </div>
-                                `;
-                            }).join('')}
-                        </div>
-                    `;
-                } else {
-                    // Show weight × reps for reps-based exercises
-                    previousDataHTML = `
-                        <div class="previous-sets-label">Last time:</div>
-                        <div class="previous-sets-row">
-                            ${previousSets.map((set, i) => `
-                                <div class="previous-set-badge" onclick="window.gymApp.viewControllers.workout.usePreviousSet(${index}, ${set.weight}, ${set.reps})" title="Click to use these values">
-                                    <span class="previous-set-number">${i + 1}</span>
-                                    <span class="previous-set-value">${set.weight.toLocaleString()}${unit} × ${set.reps}</span>
-                                </div>
-                            `).join('')}
-                        </div>
-                    `;
-                }
+    /**
+     * Render a single exercise block: progress header, last-time reference,
+     * and a list of N planned set rows where N = max(targetSets, sets.length).
+     */
+    renderExerciseEntry(exercise, index) {
+        const exerciseData = this.app.getExerciseById(exercise.exerciseId);
+        const isDuration = !!(exerciseData && exerciseData.exerciseType === 'duration');
+        const previousSets = this.getPreviousExerciseData(exercise.exerciseId) || [];
+        const unit = this.app.settings.weightUnit;
+
+        const targetSets = Math.max(1, exercise.targetSets || 3);
+        const completedCount = exercise.sets.length;
+        const totalRows = Math.max(targetSets, completedCount);
+        const isComplete = completedCount >= targetSets && targetSets > 0;
+
+        const muscle = formatMuscleGroup(exerciseData?.muscleGroup);
+        const progressLabel = `${completedCount} / ${targetSets} sets`;
+
+        let rowsHTML = '';
+        for (let i = 0; i < totalRows; i++) {
+            if (i < exercise.sets.length) {
+                rowsHTML += this.renderCompletedRow(exercise.sets[i], index, i, isDuration, unit);
             } else {
-                previousDataHTML = '<div class="previous-sets-label">Last time: <span>No previous data</span></div>';
+                // Default priority for a planned row:
+                //   1. sticky — values the user already typed/committed for this
+                //      slot in this session (survives toggle-off without loss).
+                //   2. prior[i] — matching-index set from the last workout.
+                //   3. prior[last] — global fallback to the most recent set.
+                const sticky = exercise.stickyValues && exercise.stickyValues[i];
+                const prior = sticky
+                    || previousSets[i]
+                    || previousSets[previousSets.length - 1]
+                    || null;
+                rowsHTML += this.renderPlannedRow(index, i, prior, isDuration, unit, exercise.targetReps);
             }
+        }
 
-            // Pre-fill with first set data if available
-            const firstSet = previousSets && previousSets.length > 0 ? previousSets[0] : null;
+        const lastTimeHTML = this.renderLastTimeStrip(previousSets, isDuration, unit);
 
-            // Render inputs based on exercise type
-            let setInputsHTML = '';
-            if (isDuration) {
-                const defaultMins = firstSet ? Math.floor(firstSet.duration / 60) : 0;
-                const defaultSecs = firstSet ? firstSet.duration % 60 : 0;
-                setInputsHTML = `
-                    <div class="set-inputs">
-                        <div class="input-group duration-input">
-                            <label class="input-label">Duration</label>
-                            <div class="duration-inputs">
-                                <input type="number" inputmode="numeric" placeholder="Min" id="duration-min-${index}" min="0" value="${defaultMins}" class="duration-min">
-                                <span class="duration-separator">:</span>
-                                <input type="number" inputmode="numeric" placeholder="Sec" id="duration-sec-${index}" min="0" max="59" value="${defaultSecs.toString().padStart(2, '0')}" class="duration-sec">
-                            </div>
-                        </div>
-                        <button type="button" class="btn-add-set" onclick="window.gymApp.viewControllers.workout.addSet(${index})">
-                            <i class="fas fa-plus"></i> Add Set
-                        </button>
-                    </div>
-                `;
-            } else {
-                setInputsHTML = `
-                    <div class="set-inputs">
-                        <div class="input-group">
-                            <label class="input-label">Weight</label>
-                            <input type="number" inputmode="decimal" placeholder="Weight" id="weight-${index}" step="0.5" min="0" ${firstSet ? `value="${firstSet.weight}"` : ''}>
-                        </div>
-                        <div class="input-group">
-                            <label class="input-label">Reps</label>
-                            <input type="number" inputmode="numeric" placeholder="Reps" id="reps-${index}" min="1" ${firstSet ? `value="${firstSet.reps}"` : ''}>
-                        </div>
-                        <button type="button" class="btn-add-set" onclick="window.gymApp.viewControllers.workout.addSet(${index})">
-                            <i class="fas fa-plus"></i> Add Set
-                        </button>
-                    </div>
-                `;
-            }
-
-            const muscle = formatMuscleGroup(exerciseData?.muscleGroup);
-
-            return `
-                <div class="exercise-entry" id="exercise-${index}" data-exercise-type="${isDuration ? 'duration' : 'reps'}">
-                    <div class="exercise-entry-header">
-                        <h3>
-                            <span class="exercise-name-main">${exercise.exerciseName}</span>${muscle ? `
-                            <span class="exercise-name-sub">(${muscle})</span>` : ''}
-                        </h3>
-                    </div>
-
-                    <div class="previous-data">
-                        ${previousDataHTML}
-                    </div>
-
-                    ${setInputsHTML}
-
-                    <div class="completed-sets" id="completed-sets-${index}">
-                        ${this.renderCompletedSets(exercise.sets, index)}
-                    </div>
+        return `
+            <div class="exercise-entry ${isComplete ? 'exercise-complete' : ''}"
+                 id="exercise-${index}" data-exercise-type="${isDuration ? 'duration' : 'reps'}">
+                <div class="exercise-entry-header">
+                    <h3>
+                        <span class="exercise-name-main">${exercise.exerciseName}</span>${muscle ? `
+                        <span class="exercise-name-sub">(${muscle})</span>` : ''}
+                    </h3>
+                    <span class="exercise-progress ${isComplete ? 'is-complete' : ''}" aria-label="Sets ${progressLabel}">
+                        ${isComplete ? '<i class="fas fa-check"></i>' : ''}
+                        ${progressLabel}
+                    </span>
                 </div>
-            `;
+
+                ${lastTimeHTML}
+
+                <ol class="set-row-list" id="set-row-list-${index}">
+                    ${rowsHTML}
+                </ol>
+
+                <div class="set-row-footer">
+                    ${totalRows > Math.max(1, completedCount) ? `
+                        <button type="button" class="btn-remove-set"
+                            onclick="window.gymApp.viewControllers.workout.removePlannedRow(${index})"
+                            title="Remove last empty set"
+                            aria-label="Remove last empty set row">
+                            <i class="fas fa-minus"></i>
+                        </button>
+                    ` : ''}
+                    <button type="button" class="btn-add-set btn-add-set--extra"
+                        onclick="window.gymApp.viewControllers.workout.addPlannedRow(${index})"
+                        aria-label="Add another set row">
+                        <i class="fas fa-plus"></i> Add set
+                    </button>
+                </div>
+            </div>
+        `;
+    }
+
+    /**
+     * Compact read-only reference strip: "Last time: 60×8 · 60×8 · 55×8".
+     * Purely informational — per-set defaults live inside each planned row.
+     */
+    renderLastTimeStrip(previousSets, isDuration, unit) {
+        if (!previousSets || previousSets.length === 0) {
+            return '<div class="previous-sets-label">Last time: <span>No previous data</span></div>';
+        }
+
+        const chips = previousSets.map((set, i) => {
+            if (isDuration) {
+                const mins = Math.floor(set.duration / 60);
+                const secs = set.duration % 60;
+                return `<span class="prev-chip"><b>${i + 1}</b> ${mins}:${secs.toString().padStart(2, '0')}</span>`;
+            }
+            return `<span class="prev-chip"><b>${i + 1}</b> ${set.weight.toLocaleString()}${unit}×${set.reps}</span>`;
         }).join('');
+
+        return `
+            <div class="previous-data">
+                <div class="previous-sets-label">Last time</div>
+                <div class="previous-sets-row">${chips}</div>
+            </div>
+        `;
+    }
+
+    /**
+     * A set that has not yet been logged. Shows empty (or prefilled-from-prior)
+     * inputs and a pill toggle on the right — tapping the toggle commits the
+     * set and starts the rest timer. The row itself is NOT tappable — users
+     * deliberately flick the toggle to complete.
+     */
+    renderPlannedRow(exerciseIndex, slot, prior, isDuration, unit, targetReps) {
+        const setLabel = `${slot + 1}`;
+        const toggle = this.renderSetToggle(false,
+            `window.gymApp.viewControllers.workout.commitPlannedSet(${exerciseIndex}, ${slot})`,
+            'Mark set complete');
+
+        if (isDuration) {
+            const mins = prior ? Math.floor(prior.duration / 60) : 0;
+            const secs = prior ? prior.duration % 60 : 0;
+            return `
+                <li class="set-row set-row-planned" data-slot="${slot}">
+                    <span class="set-row-num">${setLabel}</span>
+                    <div class="set-row-inputs">
+                        <input type="number" inputmode="numeric" class="duration-min"
+                            id="duration-min-${exerciseIndex}-${slot}" min="0"
+                            value="${mins}" placeholder="Min" aria-label="Minutes">
+                        <span class="duration-separator">:</span>
+                        <input type="number" inputmode="numeric" class="duration-sec"
+                            id="duration-sec-${exerciseIndex}-${slot}" min="0" max="59"
+                            value="${secs.toString().padStart(2, '0')}" placeholder="Sec" aria-label="Seconds">
+                    </div>
+                    ${toggle}
+                </li>
+            `;
+        }
+
+        const weight = prior ? prior.weight : '';
+        const reps = prior ? prior.reps : (targetReps || '');
+        return `
+            <li class="set-row set-row-planned" data-slot="${slot}">
+                <span class="set-row-num">${setLabel}</span>
+                <div class="set-row-inputs">
+                    <input type="number" inputmode="decimal" class="set-weight"
+                        id="weight-${exerciseIndex}-${slot}" min="0" step="0.5"
+                        value="${weight === '' ? '' : weight}" placeholder="Weight" aria-label="Weight">
+                    <span class="set-row-x">×</span>
+                    <input type="number" inputmode="numeric" class="set-reps"
+                        id="reps-${exerciseIndex}-${slot}" min="1"
+                        value="${reps === '' ? '' : reps}" placeholder="Reps" aria-label="Reps">
+                </div>
+                ${toggle}
+            </li>
+        `;
+    }
+
+    /**
+     * Shared pill-toggle markup used for both the "not yet completed" state
+     * (knob-left, muted pill) and the "completed" state (knob-right, green
+     * gradient pill with a crisp check inside the knob). CSS drives the
+     * visuals from `aria-pressed` so the DOM stays identical between states.
+     */
+    renderSetToggle(pressed, onClickExpression, ariaLabel) {
+        return `
+            <button type="button" class="set-toggle"
+                aria-pressed="${pressed ? 'true' : 'false'}"
+                aria-label="${ariaLabel}"
+                onclick="${onClickExpression}">
+                <span class="set-toggle-knob" aria-hidden="true">
+                    <i class="fas fa-check"></i>
+                </span>
+            </button>
+        `;
+    }
+
+    /**
+     * A committed set — shown locked with edit/delete controls and a filled check.
+     */
+    renderCompletedRow(set, exerciseIndex, slot, isDuration, unit) {
+        const setLabel = `${slot + 1}`;
+        let details;
+        if (set.duration > 0) {
+            const mins = Math.floor(set.duration / 60);
+            const secs = set.duration % 60;
+            details = `<span class="duration-value">${mins}:${secs.toString().padStart(2, '0')}</span>`;
+        } else {
+            details = `${set.weight.toLocaleString()}${unit} × ${set.reps}`;
+        }
+
+        const toggle = this.renderSetToggle(true,
+            `window.gymApp.viewControllers.workout.deleteSet(${exerciseIndex}, ${slot}, { silent: true })`,
+            'Unmark set');
+
+        return `
+            <li class="set-row set-row-complete" data-slot="${slot}">
+                <span class="set-row-num">${setLabel}</span>
+                <div class="set-row-details">${details}</div>
+                <div class="set-row-actions">
+                    <button type="button" class="btn-set-action" title="Edit set" aria-label="Edit set"
+                        onclick="window.gymApp.viewControllers.workout.editSet(${exerciseIndex}, ${slot})">
+                        <i class="fas fa-edit"></i>
+                    </button>
+                    <button type="button" class="btn-set-action btn-set-delete" title="Delete set" aria-label="Delete set"
+                        onclick="window.gymApp.viewControllers.workout.deleteSet(${exerciseIndex}, ${slot})">
+                        <i class="fas fa-trash"></i>
+                    </button>
+                </div>
+                ${toggle}
+            </li>
+        `;
+    }
+
+    /**
+     * Add an extra planned row beyond the program's target. Useful when a user
+     * wants to do a drop set or extra backoff set. The new row pulls defaults
+     * from the matching prior-session set (if any) or the last completed set.
+     */
+    addPlannedRow(exerciseIndex) {
+        if (!this.currentWorkoutSession) return;
+        const exercise = this.currentWorkoutSession.exercises[exerciseIndex];
+        if (!exercise) return;
+        exercise.targetSets = Math.max(exercise.targetSets || 0, exercise.sets.length) + 1;
+        this.rerenderExercise(exerciseIndex);
+    }
+
+    /**
+     * Remove the last planned (uncommitted) set row for this exercise. Committed
+     * sets are never touched — users delete those via the row's trash button.
+     * Floors at max(1, sets.length) so we never drop below what's logged and
+     * never leave the exercise with zero visible slots.
+     */
+    removePlannedRow(exerciseIndex) {
+        if (!this.currentWorkoutSession) return;
+        const exercise = this.currentWorkoutSession.exercises[exerciseIndex];
+        if (!exercise) return;
+        const floor = Math.max(1, exercise.sets.length);
+        if ((exercise.targetSets || 0) <= floor) return;
+        exercise.targetSets -= 1;
+        this.rerenderExercise(exerciseIndex);
+    }
+
+    /** Re-render just the given exercise block without touching the others. */
+    rerenderExercise(exerciseIndex) {
+        const exercise = this.currentWorkoutSession.exercises[exerciseIndex];
+        const host = document.getElementById(`exercise-${exerciseIndex}`);
+        if (!exercise || !host) {
+            this.renderActiveWorkout();
+            return;
+        }
+        const wrapper = document.createElement('div');
+        wrapper.innerHTML = this.renderExerciseEntry(exercise, exerciseIndex);
+        const fresh = wrapper.firstElementChild;
+        if (fresh && host.parentNode) host.parentNode.replaceChild(fresh, host);
     }
 
     getPreviousExerciseData(exerciseId) {
-        // Get all workout sessions sorted by date (most recent first)
+        // Sort by full timestamp (not just calendar date) so that two workouts
+        // on the same day order by time-of-day — a 6 PM session supersedes a
+        // 9 AM session when computing "Last Time" for the same exercise.
         const sortedSessions = [...this.app.workoutSessions].sort((a, b) =>
-            new Date(b.date) - new Date(a.date)
+            new Date(b.sortTimestamp) - new Date(a.sortTimestamp)
         );
 
         // Find the most recent workout that has this exercise with completed sets
@@ -591,159 +715,74 @@ class WorkoutView {
         return null;
     }
 
-    renderCompletedSets(sets, exerciseIndex) {
-        if (sets.length === 0) return '<p class="no-sets-message"><i class="fas fa-circle-notch"></i> No sets yet - add your first set above</p>';
-
-        const unit = this.app.settings.weightUnit;
-        return sets.map((set, setIndex) => {
-            let setLabel, setDetails;
-            if (set.duration > 0) {
-                // Duration-based set
-                const mins = Math.floor(set.duration / 60);
-                const secs = set.duration % 60;
-                setLabel = `Round ${setIndex + 1}:`;
-                setDetails = `<span class="duration-value">${mins}:${secs.toString().padStart(2, '0')}</span> <span class="duration-label">min</span>`;
-            } else {
-                // Reps-based set
-                setLabel = `Set ${setIndex + 1}:`;
-                setDetails = `${set.weight.toLocaleString()}${unit} × ${set.reps} reps`;
-            }
-
-            return `
-                <div class="completed-set">
-                    <div class="set-check">
-                        <i class="fas fa-check-circle"></i>
-                    </div>
-                    <div class="set-info">
-                        <span class="set-number">${setLabel}</span>
-                        <span class="set-details">${setDetails}</span>
-                    </div>
-                    <div class="set-actions">
-                        <button type="button" class="btn-set-action" onclick="window.gymApp.viewControllers.workout.editSet(${exerciseIndex}, ${setIndex})" title="Edit set" aria-label="Edit set">
-                            <i class="fas fa-edit"></i>
-                        </button>
-                        <button type="button" class="btn-set-action btn-set-delete" onclick="window.gymApp.viewControllers.workout.deleteSet(${exerciseIndex}, ${setIndex})" title="Delete set" aria-label="Delete set">
-                            <i class="fas fa-trash"></i>
-                        </button>
-                    </div>
-                </div>
-            `;
-        }).join('');
-    }
-
-    usePreviousSet(exerciseIndex, weight, reps) {
+    /**
+     * Commit a planned set row: read inputs, push a new Set into the exercise,
+     * then start the rest timer and re-render only this exercise.
+     *
+     * The rest timer is THE feature that makes a gym tracker useful mid-workout.
+     * The equipment-based default lives on the program entry; if a user hasn't
+     * customized it, we fall back to 90s.
+     */
+    commitPlannedSet(exerciseIndex, slot) {
         if (!this.currentWorkoutSession) return;
 
-        const weightInput = document.getElementById(`weight-${exerciseIndex}`);
-        const repsInput = document.getElementById(`reps-${exerciseIndex}`);
-
-        // Fill in the values
-        weightInput.value = weight;
-        repsInput.value = reps;
-
-        // Focus the weight input for easy modification if needed
-        weightInput.focus();
-        weightInput.select();
-
-        const unit = this.app.settings.weightUnit;
-        showToast(`Loaded: ${weight.toLocaleString()}${unit} × ${reps} reps`, 'info');
-    }
-
-    usePreviousDuration(exerciseIndex, durationSeconds) {
-        if (!this.currentWorkoutSession) return;
-
-        const minInput = document.getElementById(`duration-min-${exerciseIndex}`);
-        const secInput = document.getElementById(`duration-sec-${exerciseIndex}`);
-
-        const minutes = Math.floor(durationSeconds / 60);
-        const seconds = durationSeconds % 60;
-
-        // Fill in the values
-        minInput.value = minutes;
-        secInput.value = seconds;
-
-        // Focus the minutes input for easy modification if needed
-        minInput.focus();
-        minInput.select();
-
-        showToast(`Loaded: ${minutes}:${seconds.toString().padStart(2, '0')}`, 'info');
-    }
-
-    addSet(exerciseIndex) {
-        if (!this.currentWorkoutSession) return;
-
-        // Dismiss the mobile keyboard before adding the set — otherwise iOS/Android
-        // keep the keyboard open because a weight/reps input is still focused.
+        // Dismiss the mobile keyboard so the rest bar doesn't get covered.
         if (document.activeElement instanceof HTMLElement && typeof document.activeElement.blur === 'function') {
             document.activeElement.blur();
         }
 
         const exercise = this.currentWorkoutSession.exercises[exerciseIndex];
-        const exerciseEntry = document.getElementById(`exercise-${exerciseIndex}`);
-        const isDuration = exerciseEntry.getAttribute('data-exercise-type') === 'duration';
+        if (!exercise) return;
+        const host = document.getElementById(`exercise-${exerciseIndex}`);
+        const isDuration = host?.getAttribute('data-exercise-type') === 'duration';
 
         let set;
         if (isDuration) {
-            // Handle duration-based exercise
-            const minInput = document.getElementById(`duration-min-${exerciseIndex}`);
-            const secInput = document.getElementById(`duration-sec-${exerciseIndex}`);
-
-            const minutes = parseInt(minInput.value) || 0;
-            const seconds = parseInt(secInput.value) || 0;
+            const minInput = document.getElementById(`duration-min-${exerciseIndex}-${slot}`);
+            const secInput = document.getElementById(`duration-sec-${exerciseIndex}-${slot}`);
+            const minutes = parseInt(minInput?.value, 10) || 0;
+            const seconds = parseInt(secInput?.value, 10) || 0;
             const totalSeconds = (minutes * 60) + seconds;
-
             if (totalSeconds === 0) {
                 showToast('Please enter a duration', 'error');
                 return;
             }
-
             set = new Set({ duration: totalSeconds, weight: 0, reps: 0, completed: true });
-
-            // Keep values visible for the next set, but do not refocus the input
-            minInput.value = minutes;
-            secInput.value = seconds;
-
-            showToast('Set added!', 'success');
         } else {
-            // Handle reps-based exercise
-            const weightInput = document.getElementById(`weight-${exerciseIndex}`);
-            const repsInput = document.getElementById(`reps-${exerciseIndex}`);
-
-            const weight = parseFloat(weightInput.value);
-            const reps = parseInt(repsInput.value);
-
+            const weightInput = document.getElementById(`weight-${exerciseIndex}-${slot}`);
+            const repsInput = document.getElementById(`reps-${exerciseIndex}-${slot}`);
+            const weight = parseFloat(weightInput?.value);
+            const reps = parseInt(repsInput?.value, 10);
             if (isNaN(weight) || weight < 0 || !reps) {
                 showToast('Please enter weight and reps', 'error');
                 return;
             }
-
             set = new Set({ weight, reps, completed: true });
-
-            // Keep values visible for the next set, but do not refocus the input
-            weightInput.value = weight;
-            repsInput.value = reps;
-
-            showToast('Set added!', 'success');
         }
 
-        exercise.addSet(set);
+        // Insert into the exact slot index so the UI mirrors the user's plan.
+        // Sets beyond the current list length just append naturally.
+        if (slot >= exercise.sets.length) {
+            exercise.addSet(set);
+        } else {
+            exercise.sets.splice(slot, 0, set);
+        }
 
-        // Re-render completed sets
-        document.getElementById(`completed-sets-${exerciseIndex}`).innerHTML =
-            this.renderCompletedSets(exercise.sets, exerciseIndex);
+        vibrate(30);
+        this.rerenderExercise(exerciseIndex);
+        this.startRest(exercise.restSeconds || 90);
     }
 
     editSet(exerciseIndex, setIndex) {
         if (!this.currentWorkoutSession) return;
 
         const exercise = this.currentWorkoutSession.exercises[exerciseIndex];
-        const set = exercise.sets[setIndex];
+        const set = exercise?.sets[setIndex];
+        if (!set) return;
 
-        // Show inline editing UI for this set
-        const setElement = document.querySelector(`#completed-sets-${exerciseIndex} .completed-set:nth-child(${setIndex + 1})`);
-        if (!setElement) return;
+        const setRowEl = document.querySelector(`#set-row-list-${exerciseIndex} .set-row[data-slot="${setIndex}"]`);
+        if (!setRowEl) return;
 
-        const unit = this.app.settings.weightUnit;
         const isDuration = set.duration > 0;
 
         let editFormHTML;
@@ -751,45 +790,48 @@ class WorkoutView {
             const mins = Math.floor(set.duration / 60);
             const secs = set.duration % 60;
             editFormHTML = `
-                <div class="set-edit-form">
-                    <span class="set-number">Round ${setIndex + 1}:</span>
-                    <input type="number" class="set-edit-input duration-edit-min" id="edit-duration-min-${exerciseIndex}-${setIndex}" value="${mins}" min="0" placeholder="Min">
-                    <span class="set-edit-x">:</span>
-                    <input type="number" class="set-edit-input duration-edit-sec" id="edit-duration-sec-${exerciseIndex}-${setIndex}" value="${secs}" min="0" max="59" placeholder="Sec">
+                <div class="set-row-inputs">
+                    <input type="number" class="set-edit-input duration-edit-min"
+                        id="edit-duration-min-${exerciseIndex}-${setIndex}" value="${mins}" min="0" placeholder="Min" aria-label="Minutes">
+                    <span class="duration-separator">:</span>
+                    <input type="number" class="set-edit-input duration-edit-sec"
+                        id="edit-duration-sec-${exerciseIndex}-${setIndex}" value="${secs}" min="0" max="59" placeholder="Sec" aria-label="Seconds">
                 </div>
             `;
         } else {
             editFormHTML = `
-                <div class="set-edit-form">
-                    <span class="set-number">Set ${setIndex + 1}:</span>
-                    <input type="number" class="set-edit-input" id="edit-weight-${exerciseIndex}-${setIndex}" value="${set.weight}" step="0.5" min="0" placeholder="Weight">
-                    <span class="set-edit-x">×</span>
-                    <input type="number" class="set-edit-input" id="edit-reps-${exerciseIndex}-${setIndex}" value="${set.reps}" min="1" placeholder="Reps">
+                <div class="set-row-inputs">
+                    <input type="number" class="set-edit-input"
+                        id="edit-weight-${exerciseIndex}-${setIndex}" value="${set.weight}" step="0.5" min="0" placeholder="Weight" aria-label="Weight">
+                    <span class="set-row-x">×</span>
+                    <input type="number" class="set-edit-input"
+                        id="edit-reps-${exerciseIndex}-${setIndex}" value="${set.reps}" min="1" placeholder="Reps" aria-label="Reps">
                 </div>
             `;
         }
 
-        setElement.innerHTML = `
+        setRowEl.classList.remove('set-row-complete');
+        setRowEl.classList.add('set-row-editing');
+        setRowEl.innerHTML = `
+            <span class="set-row-num">${setIndex + 1}</span>
             ${editFormHTML}
-            <div class="set-actions">
-                <button class="btn-set-action btn-set-save" onclick="window.gymApp.viewControllers.workout.saveSetEdit(${exerciseIndex}, ${setIndex})" title="Save">
+            <div class="set-row-actions">
+                <button type="button" class="btn-set-action btn-set-save" title="Save" aria-label="Save set"
+                    onclick="window.gymApp.viewControllers.workout.saveSetEdit(${exerciseIndex}, ${setIndex})">
                     <i class="fas fa-check"></i>
                 </button>
-                <button class="btn-set-action btn-set-cancel" onclick="window.gymApp.viewControllers.workout.cancelSetEdit(${exerciseIndex})" title="Cancel">
+                <button type="button" class="btn-set-action btn-set-cancel" title="Cancel" aria-label="Cancel edit"
+                    onclick="window.gymApp.viewControllers.workout.cancelSetEdit(${exerciseIndex})">
                     <i class="fas fa-times"></i>
                 </button>
             </div>
         `;
 
         // Focus the first input
-        if (isDuration) {
-            const minInput = document.getElementById(`edit-duration-min-${exerciseIndex}-${setIndex}`);
-            minInput.focus();
-            minInput.select();
-        } else {
-            const weightInput = document.getElementById(`edit-weight-${exerciseIndex}-${setIndex}`);
-            weightInput.focus();
-            weightInput.select();
+        const firstInput = setRowEl.querySelector('input');
+        if (firstInput) {
+            firstInput.focus();
+            firstInput.select();
         }
     }
 
@@ -801,69 +843,65 @@ class WorkoutView {
         const isDuration = set.duration > 0;
 
         if (isDuration) {
-            // Handle duration-based set
             const minInput = document.getElementById(`edit-duration-min-${exerciseIndex}-${setIndex}`);
             const secInput = document.getElementById(`edit-duration-sec-${exerciseIndex}-${setIndex}`);
-
-            const minutes = parseInt(minInput.value) || 0;
-            const seconds = parseInt(secInput.value) || 0;
+            const minutes = parseInt(minInput.value, 10) || 0;
+            const seconds = parseInt(secInput.value, 10) || 0;
             const totalSeconds = (minutes * 60) + seconds;
-
             if (totalSeconds === 0) {
                 showToast('Please enter a valid duration', 'error');
                 return;
             }
-
-            // Update the set
             set.duration = totalSeconds;
         } else {
-            // Handle reps-based set
             const weightInput = document.getElementById(`edit-weight-${exerciseIndex}-${setIndex}`);
             const repsInput = document.getElementById(`edit-reps-${exerciseIndex}-${setIndex}`);
-
             const weight = parseFloat(weightInput.value);
-            const reps = parseInt(repsInput.value);
-
+            const reps = parseInt(repsInput.value, 10);
             if (isNaN(weight) || weight < 0 || !reps) {
                 showToast('Please enter valid weight and reps', 'error');
                 return;
             }
-
-            // Update the set
             set.weight = weight;
             set.reps = reps;
         }
 
-        // Re-render completed sets
-        document.getElementById(`completed-sets-${exerciseIndex}`).innerHTML =
-            this.renderCompletedSets(exercise.sets, exerciseIndex);
-
-        showToast('Set updated!', 'success');
+        this.rerenderExercise(exerciseIndex);
+        showToast('Set updated', 'success');
     }
 
     cancelSetEdit(exerciseIndex) {
         if (!this.currentWorkoutSession) return;
-
-        const exercise = this.currentWorkoutSession.exercises[exerciseIndex];
-
-        // Re-render completed sets to cancel edit
-        document.getElementById(`completed-sets-${exerciseIndex}`).innerHTML =
-            this.renderCompletedSets(exercise.sets, exerciseIndex);
+        this.rerenderExercise(exerciseIndex);
     }
 
-    deleteSet(exerciseIndex, setIndex) {
+    /**
+     * Remove a committed set from an exercise. `opts.silent` suppresses the
+     * "Set deleted" toast — used by the pill-toggle un-check flow, where
+     * the knob animation already gives clear visual confirmation and a
+     * duplicate toast would be noise.
+     */
+    deleteSet(exerciseIndex, setIndex, opts = {}) {
         if (!this.currentWorkoutSession) return;
-
         const exercise = this.currentWorkoutSession.exercises[exerciseIndex];
+        const removed = exercise?.sets[setIndex];
+        if (!exercise || !removed) return;
 
-        // Remove the set
         exercise.sets.splice(setIndex, 1);
 
-        // Re-render completed sets
-        document.getElementById(`completed-sets-${exerciseIndex}`).innerHTML =
-            this.renderCompletedSets(exercise.sets, exerciseIndex);
+        // Preserve the deleted set's values so the user's typed edits don't
+        // vanish when a set is unchecked. The values stick to whatever slot
+        // becomes the first planned row after the deletion (the new tail).
+        // This makes toggle-off → re-check flows non-destructive.
+        if (!exercise.stickyValues) exercise.stickyValues = {};
+        exercise.stickyValues[exercise.sets.length] = {
+            weight: removed.weight,
+            reps: removed.reps,
+            duration: removed.duration,
+        };
 
-        showToast('Set deleted', 'success');
+        this.rerenderExercise(exerciseIndex);
+        if (!opts.silent) showToast('Set deleted', 'info');
     }
 
     updateWorkoutTimer(elapsed) {
@@ -871,6 +909,105 @@ class WorkoutView {
         const seconds = elapsed % 60;
         document.getElementById('workout-time').textContent =
             `${minutes}:${String(seconds).padStart(2, '0')}`;
+    }
+
+    // --- Rest timer ---
+
+    /** Start (or restart) the persistent rest bar for `seconds` seconds. */
+    startRest(seconds) {
+        const duration = Math.max(0, Math.floor(seconds || 0));
+        if (duration === 0) return;
+
+        if (this.activeRestTimerId != null) {
+            timerService.stopRestTimer(this.activeRestTimerId);
+        }
+
+        this.restTimerDuration = duration;
+        this.showRestBar(duration);
+
+        this.activeRestTimerId = timerService.startRestTimer(
+            duration,
+            (remaining) => this.onRestTick(remaining),
+            () => this.onRestComplete(),
+        );
+    }
+
+    /** Add N seconds to the in-flight rest timer without restarting it. */
+    extendRest(seconds) {
+        if (this.activeRestTimerId == null) return;
+        const current = timerService.getRestTimerRemaining(this.activeRestTimerId);
+        const newTotal = Math.max(1, current + seconds);
+        // Simplest correct approach: restart with the new remaining duration.
+        timerService.stopRestTimer(this.activeRestTimerId);
+        this.restTimerDuration += seconds;
+        this.showRestBar(newTotal, { resetFillBase: false });
+        this.activeRestTimerId = timerService.startRestTimer(
+            newTotal,
+            (remaining) => this.onRestTick(remaining),
+            () => this.onRestComplete(),
+        );
+    }
+
+    skipRest() {
+        if (this.activeRestTimerId == null) return this.hideRestBar();
+        timerService.stopRestTimer(this.activeRestTimerId);
+        this.activeRestTimerId = null;
+        this.hideRestBar();
+    }
+
+    showRestBar(total) {
+        const bar = document.getElementById('rest-timer-bar');
+        if (!bar) return;
+        bar.hidden = false;
+        bar.classList.remove('rest-timer-done');
+        const valueEl = document.getElementById('rest-timer-value');
+        const fill = document.getElementById('rest-timer-progress-fill');
+        if (valueEl) valueEl.textContent = this.formatRest(total);
+        if (fill) {
+            // Reset transition so the starting frame is 100% width before shrinking.
+            fill.style.transition = 'none';
+            fill.style.transform = 'scaleX(1)';
+            // Force reflow so the next transform transitions smoothly.
+            // eslint-disable-next-line no-unused-expressions
+            fill.offsetHeight;
+            fill.style.transition = 'transform 1s linear';
+        }
+    }
+
+    hideRestBar() {
+        const bar = document.getElementById('rest-timer-bar');
+        if (bar) {
+            bar.hidden = true;
+            bar.classList.remove('rest-timer-done');
+        }
+    }
+
+    onRestTick(remaining) {
+        const valueEl = document.getElementById('rest-timer-value');
+        const fill = document.getElementById('rest-timer-progress-fill');
+        if (valueEl) valueEl.textContent = this.formatRest(remaining);
+        if (fill && this.restTimerDuration > 0) {
+            const ratio = Math.max(0, Math.min(1, remaining / this.restTimerDuration));
+            fill.style.transform = `scaleX(${ratio})`;
+        }
+    }
+
+    onRestComplete() {
+        this.activeRestTimerId = null;
+        const bar = document.getElementById('rest-timer-bar');
+        const valueEl = document.getElementById('rest-timer-value');
+        if (bar) bar.classList.add('rest-timer-done');
+        if (valueEl) valueEl.textContent = 'Done';
+        vibrate([120, 60, 120]);
+        // Auto-hide after a short celebration so the bar doesn't linger.
+        setTimeout(() => this.hideRestBar(), 2500);
+    }
+
+    formatRest(seconds) {
+        const s = Math.max(0, seconds | 0);
+        const m = Math.floor(s / 60);
+        const r = s % 60;
+        return `${m}:${String(r).padStart(2, '0')}`;
     }
 
     openFinishWorkoutModal() {
@@ -939,8 +1076,9 @@ class WorkoutView {
         // Update achievements
         this.app.updateAchievements();
 
-        // Stop timer
+        // Stop timer + rest bar
         timerService.stopWorkoutTimer();
+        this.skipRest();
 
         // Close modal and reset
         document.getElementById('finish-workout-modal').classList.remove('active');
@@ -955,21 +1093,22 @@ class WorkoutView {
 
     async endWorkout() {
         const confirmed = await showConfirmModal({
-            title: 'End Workout',
-            message: 'Are you sure you want to end this workout?<br><br><strong>Your progress will not be saved.</strong>',
-            confirmText: 'End Workout',
+            title: 'Discard Workout',
+            message: 'Are you sure you want to discard this workout?<br><br><strong>Your progress will not be saved.</strong>',
+            confirmText: 'Discard Workout',
             cancelText: 'Continue Workout',
             isDangerous: true
         });
 
         if (confirmed) {
             timerService.stopWorkoutTimer();
+            this.skipRest();
             storageService.clearActiveWorkout();
             document.getElementById('active-workout').classList.remove('active');
             document.getElementById('workout-selection').classList.add('active');
             this.currentWorkoutSession = null;
             this.render();
-            showToast('Workout ended', 'info');
+            showToast('Workout discarded', 'info');
             this.app.showView('home');
         }
     }

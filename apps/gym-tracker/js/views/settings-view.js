@@ -2,7 +2,7 @@
  * Settings View Controller
  */
 import { app } from '../app.js';
-import { showToast, downloadJSON } from '../utils/helpers.js';
+import { showToast, downloadJSON, showConfirmModal } from '../utils/helpers.js';
 import { validateImportData } from '../utils/validators.js';
 import { DarkSelect } from '../utils/dark-select.js';
 
@@ -60,8 +60,16 @@ class SettingsView {
         // Clear data
         const clearBtn = document.getElementById('clear-data-btn');
         if (clearBtn) {
-            clearBtn.addEventListener('click', () => {
-                this.app.clearAllData();
+            clearBtn.addEventListener('click', async () => {
+                const confirmed = await showConfirmModal({
+                    title: 'Clear All Data',
+                    message: 'This will permanently delete every program, workout, achievement, custom exercise, and setting.',
+                    warning: 'This cannot be undone.',
+                    confirmText: 'Delete Everything',
+                    cancelText: 'Cancel',
+                    isDangerous: true,
+                });
+                if (confirmed) this.app.clearAllData();
             });
         }
     }
@@ -119,7 +127,7 @@ class SettingsView {
         if (!file) return;
 
         const reader = new FileReader();
-        reader.onload = (e) => {
+        reader.onload = async (e) => {
             try {
                 const data = JSON.parse(e.target.result);
                 const validationError = validateImportData(data);
@@ -129,7 +137,14 @@ class SettingsView {
                     return;
                 }
 
-                if (confirm('Import this data? This will merge with your existing data.')) {
+                const confirmed = await showConfirmModal({
+                    title: 'Import Data',
+                    message: 'Import this data? It will be merged with your existing programs, workouts, and settings.',
+                    confirmText: 'Import',
+                    cancelText: 'Cancel',
+                    isDangerous: false,
+                });
+                if (confirmed) {
                     this.app.importData(data);
                 }
             } catch (error) {

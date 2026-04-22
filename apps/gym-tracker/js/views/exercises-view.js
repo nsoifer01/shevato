@@ -261,6 +261,7 @@ class ExercisesView {
                     if (set.completed) {
                         history.push({
                             date: session.date,
+                            sortKey: session.sortTimestamp,
                             weight: set.weight,
                             reps: set.reps,
                             duration: set.duration || 0,
@@ -271,40 +272,40 @@ class ExercisesView {
             }
         });
 
-        // Sort by date (most recent first) using local date parsing
-        return history.sort((a, b) => parseLocalDate(b.date) - parseLocalDate(a.date));
+        // Sort by full session timestamp (most recent first) so multiple
+        // sessions on the same day order by time-of-day.
+        return history.sort((a, b) => new Date(b.sortKey) - new Date(a.sortKey));
     }
 
+    /**
+     * Group by session (not by calendar date) so two workouts on the same day
+     * remain distinct in the exercise-history table. Sorted newest-first by
+     * full timestamp.
+     */
     getExerciseHistoryGroupedByDate(exerciseId) {
-        const groupedHistory = {};
+        const groups = [];
 
         this.app.workoutSessions.forEach(session => {
             const exercise = session.exercises.find(ex => ex.exerciseId === exerciseId);
             if (exercise && exercise.sets && exercise.sets.length > 0) {
                 const completedSets = exercise.sets.filter(set => set.completed);
                 if (completedSets.length > 0) {
-                    if (!groupedHistory[session.date]) {
-                        groupedHistory[session.date] = {
-                            date: session.date,
-                            sets: []
-                        };
-                    }
-                    completedSets.forEach(set => {
-                        groupedHistory[session.date].sets.push({
+                    groups.push({
+                        date: session.date,
+                        sortKey: session.sortTimestamp,
+                        sessionId: session.id,
+                        sets: completedSets.map(set => ({
                             weight: set.weight,
                             reps: set.reps,
                             duration: set.duration || 0,
-                            volume: set.volume
-                        });
+                            volume: set.volume,
+                        })),
                     });
                 }
             }
         });
 
-        // Convert to array and sort by date (most recent first)
-        return Object.values(groupedHistory).sort((a, b) =>
-            parseLocalDate(b.date) - parseLocalDate(a.date)
-        );
+        return groups.sort((a, b) => new Date(b.sortKey) - new Date(a.sortKey));
     }
 
     openCustomExerciseModal() {
@@ -433,6 +434,17 @@ class ExercisesView {
             year: 'numeric', month: 'short', day: 'numeric',
         });
 
+        // "6:42 PM" from an ISO timestamp. Used to disambiguate two sessions
+        // on the same calendar day.
+        const fmtTime = (iso) => {
+            if (!iso) return '';
+            const d = new Date(iso);
+            if (Number.isNaN(d.getTime())) return '';
+            return d.toLocaleTimeString(undefined, {
+                hour: 'numeric', minute: '2-digit', hour12: true,
+            });
+        };
+
         // Caption that explains what makes the best set "best"
         const bestCaption = isDuration ? 'Longest duration' : 'Highest volume (weight × reps)';
 
@@ -470,11 +482,23 @@ class ExercisesView {
             <span class="set-badge ${stateClass || ''}"${title ? ` title="${title}"` : ''}>${label}</span>
         `;
 
+        // Which calendar dates have more than one session? When they do, we
+        // add the time-of-day to the row label so multiple same-day sessions
+        // remain distinguishable at a glance.
+        const sessionsPerDate = groupedHistory.reduce((acc, r) => {
+            acc[r.date] = (acc[r.date] || 0) + 1;
+            return acc;
+        }, {});
+
         // groupedHistory is sorted newest-first, so the previous session for
         // each row is at the next index.
         const tableBodyHTML = groupedHistory.map((record, recordIdx) => {
-            const isBestRow = record.date === bestSet.date;
+            // Match the "best" session uniquely by timestamp — `date` alone
+            // would flag every session on the best-performance day.
+            const isBestRow = record.sortKey === bestSet.sortKey;
             const previousRecord = groupedHistory[recordIdx + 1];
+            const showTime = sessionsPerDate[record.date] > 1;
+            const timeLabel = showTime ? fmtTime(record.sortKey) : '';
 
             const setsDisplay = record.sets.map((set, idx) => {
                 const prevSet = previousRecord?.sets?.[idx];
@@ -527,7 +551,7 @@ class ExercisesView {
             return `
                 <tr class="${isBestRow ? 'is-best-row' : ''}">
                     <td class="col-date">
-                        <span class="history-date">${fmtDate(record.date)}</span>
+                        <span class="history-date">${fmtDate(record.date)}${timeLabel ? ` · ${timeLabel}` : ''}</span>
                         ${isBestRow ? '<span class="best-row-badge"><i class="fas fa-star"></i> Best</span>' : ''}
                     </td>
                     <td class="col-sets sets-cell">${setsDisplay}</td>

@@ -43,6 +43,21 @@ export class WorkoutSession {
         return 0;
     }
 
+    /**
+     * Canonical chronological key for sorting/comparison. Uses the most
+     * precise timestamp available so two workouts on the same calendar day
+     * order correctly by time-of-day, not by insertion order.
+     *
+     * Priority:
+     *   endTime (actual completion)
+     *     → startTime (session began)
+     *     → timestamp (created-at)
+     *     → date (last-resort midnight-local)
+     */
+    get sortTimestamp() {
+        return this.endTime || this.startTime || this.timestamp || this.date;
+    }
+
     get totalVolume() {
         return this.exercises.reduce((sum, ex) => sum + ex.totalVolume, 0);
     }
