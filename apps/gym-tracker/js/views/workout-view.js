@@ -10,6 +10,7 @@ import { timerService } from '../services/TimerService.js';
 import { storageService } from '../services/StorageService.js';
 import { showToast, showConfirmModal, formatMuscleGroup, vibrate } from '../utils/helpers.js';
 import { renderPausedBannerHTML, wirePausedBannerActions } from './paused-banner.js';
+import { orderPrograms } from '../utils/program-order.js';
 
 class WorkoutView {
     constructor() {
@@ -299,7 +300,13 @@ class WorkoutView {
 
     renderProgramSelection() {
         const container = document.getElementById('workout-program-list');
-        const programs = this.app.programs;
+        // Same ordering source-of-truth as Home + Programs: the user's chosen
+        // sort mode + saved custom order are read from storage on every render,
+        // so a reorder on the Programs screen reflects here without any extra
+        // plumbing. `orderPrograms` is the single place that applies sorting.
+        const sortMode = storageService.getProgramSort() || 'custom';
+        const savedOrder = storageService.getProgramOrder() || [];
+        const programs = orderPrograms(this.app.programs, sortMode, savedOrder);
 
         // Start fresh - don't double-add the banner
         let html = '';
