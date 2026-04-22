@@ -3,7 +3,7 @@
  * Program builder and management
  */
 import { app } from '../app.js';
-import { Program } from '../models/Program.js';
+import { Program, defaultRestForEquipment } from '../models/Program.js';
 import { showToast, showConfirmModal, formatMuscleGroup } from '../utils/helpers.js';
 import { storageService } from '../services/StorageService.js';
 import { DarkSelect } from '../utils/dark-select.js';
@@ -308,6 +308,7 @@ class ProgramsView {
         container.innerHTML = this.currentProgram.exercises.map((exercise, index) => {
             const details = this.app.getExerciseById(exercise.exerciseId);
             const muscle = formatMuscleGroup(details?.muscleGroup);
+            const restLabel = formatRestLabel(exercise.restSeconds);
             return `
             <div class="program-exercise-row" draggable="true" data-exercise-index="${index}">
                 <span class="pex-drag-handle" aria-hidden="true" title="Drag to reorder">
@@ -318,15 +319,58 @@ class ProgramsView {
                     <span class="pex-name-main">${exercise.exerciseName}</span>${muscle ? `
                     <span class="pex-name-sub">(${muscle})</span>` : ''}
                 </div>
+                <div class="pex-targets">
+                    ${stepperHTML('sets', index, exercise.targetSets, 1, 20, 'Sets')}
+                    ${stepperHTML('reps', index, exercise.targetReps, 1, 100, 'Reps')}
+                    ${stepperHTML('rest', index, exercise.restSeconds, 0, 600, 'Rest', 15, restLabel)}
+                </div>
                 <button class="pex-delete"
-                    onclick="window.gymApp.viewControllers.programs.removeExerciseFromProgram(${index})"
-                    title="Remove exercise" type="button">
+                    data-action="remove-exercise"
+                    data-index="${index}"
+                    title="Remove exercise" type="button" aria-label="Remove exercise">
                     <i class="fas fa-xmark"></i>
                 </button>
             </div>
         `;}).join('');
 
         this.wireExerciseDragAndDrop(container);
+        this.wireExerciseRowActions(container);
+    }
+
+    /**
+     * Wire up delete + stepper interactions on each program-exercise row.
+     * Uses data-action delegation so we don't paint inline onclicks (safer
+     * + re-renderable).
+     */
+    wireExerciseRowActions(container) {
+        container.querySelectorAll('[data-action="remove-exercise"]').forEach(btn => {
+            btn.addEventListener('click', () => {
+                const idx = Number(btn.dataset.index);
+                this.removeExerciseFromProgram(idx);
+            });
+        });
+
+        container.querySelectorAll('[data-stepper]').forEach(btn => {
+            btn.addEventListener('click', () => {
+                const idx = Number(btn.dataset.index);
+                const field = btn.dataset.field; // 'sets' | 'reps' | 'rest'
+                const delta = Number(btn.dataset.delta);
+                this.adjustExerciseTarget(idx, field, delta);
+            });
+        });
+    }
+
+    adjustExerciseTarget(index, field, delta) {
+        if (!this.currentProgram) return;
+        const ex = this.currentProgram.exercises[index];
+        if (!ex) return;
+        const patch = {};
+        if (field === 'sets') patch.targetSets = ex.targetSets + delta;
+        else if (field === 'reps') patch.targetReps = ex.targetReps + delta;
+        else if (field === 'rest') patch.restSeconds = ex.restSeconds + delta;
+        else return;
+        this.currentProgram.updateExercise(index, patch);
+        this.renderProgramExercises();
     }
 
     wireExerciseDragAndDrop(container) {
@@ -481,7 +525,11 @@ class ProgramsView {
 
     openExercisePicker() {
         const modal = document.getElementById('exercise-picker-modal');
+        // Start each picker session with an empty selection — fresh picks,
+        // not leftover state from a previous open.
+        this.pickerSelection = new Map();
         this.renderExercisePicker();
+        this.renderExercisePickerTray();
         modal.classList.add('active');
 
         // Set up search and filter listeners
@@ -503,6 +551,62 @@ class ProgramsView {
         categoryFilter.addEventListener('change', filterExercises);
         equipmentFilter.removeEventListener('change', filterExercises);
         equipmentFilter.addEventListener('change', filterExercises);
+
+        // One-time wire-up for tray controls (idempotent via dataset guard).
+        this.wireExercisePickerTray();
+    }
+
+    wireExercisePickerTray() {
+        const commitBtn = document.getElementById('exercise-picker-commit');
+        const clearBtn = document.getElementById('exercise-picker-tray-clear');
+        const trayList = document.getElementById('exercise-picker-tray-list');
+
+        if (commitBtn && !commitBtn.dataset.wired) {
+            commitBtn.addEventListener('click', () => this.commitExercisePickerSelection());
+            commitBtn.dataset.wired = '1';
+        }
+        if (clearBtn && !clearBtn.dataset.wired) {
+            clearBtn.addEventListener('click', () => {
+                this.pickerSelection = new Map();
+                this.renderExercisePicker(
+                    document.getElementById('exercise-search')?.value || '',
+                    document.getElementById('exercise-category-filter')?.value || '',
+                    document.getElementById('exercise-equipment-filter')?.value || '',
+                );
+                this.renderExercisePickerTray();
+            });
+            clearBtn.dataset.wired = '1';
+        }
+        if (trayList && !trayList.dataset.wired) {
+            // Event delegation: remove buttons + steppers inside the tray.
+            trayList.addEventListener('click', (e) => {
+                const remove = e.target.closest('[data-tray-action="remove"]');
+                if (remove) {
+                    const id = Number(remove.dataset.exerciseId);
+                    this.pickerSelection.delete(id);
+                    this.renderExercisePicker(
+                        document.getElementById('exercise-search')?.value || '',
+                        document.getElementById('exercise-category-filter')?.value || '',
+                        document.getElementById('exercise-equipment-filter')?.value || '',
+                    );
+                    this.renderExercisePickerTray();
+                    return;
+                }
+                const stepper = e.target.closest('[data-tray-stepper]');
+                if (stepper) {
+                    const id = Number(stepper.dataset.exerciseId);
+                    const field = stepper.dataset.field;
+                    const delta = Number(stepper.dataset.delta);
+                    const item = this.pickerSelection.get(id);
+                    if (!item) return;
+                    if (field === 'sets') item.targetSets = clampTray(item.targetSets + delta, 1, 20);
+                    else if (field === 'reps') item.targetReps = clampTray(item.targetReps + delta, 1, 100);
+                    else if (field === 'rest') item.restSeconds = clampTray(item.restSeconds + delta, 0, 600);
+                    this.renderExercisePickerTray();
+                }
+            });
+            trayList.dataset.wired = '1';
+        }
     }
 
     renderExercisePicker(searchTerm = '', category = '', equipment = '') {
@@ -537,16 +641,123 @@ class ProgramsView {
             return;
         }
 
-        container.innerHTML = exercises.map(exercise => `
-            <div class="exercise-picker-card" onclick="window.gymApp.viewControllers.programs.selectExercise(${exercise.id})">
-                <h4>${exercise.name}</h4>
-                <div class="exercise-meta">
-                    <span class="badge">${exercise.category}</span>
-                    <span class="badge">${exercise.equipment}</span>
+        const selection = this.pickerSelection || new Map();
+
+        container.innerHTML = exercises.map(exercise => {
+            const picked = selection.has(exercise.id);
+            return `
+                <div class="exercise-picker-card ${picked ? 'is-picked' : ''}"
+                     data-exercise-id="${exercise.id}"
+                     role="button" tabindex="0" aria-pressed="${picked ? 'true' : 'false'}">
+                    <span class="exercise-picker-check" aria-hidden="true">
+                        <i class="fas ${picked ? 'fa-check-circle' : 'fa-circle'}"></i>
+                    </span>
+                    <h4>${exercise.name}</h4>
+                    <div class="exercise-meta">
+                        <span class="badge">${exercise.category}</span>
+                        <span class="badge">${exercise.equipment}</span>
+                    </div>
+                    <p>${exercise.muscleGroup}</p>
                 </div>
-                <p>${exercise.muscleGroup}</p>
-            </div>
+            `;
+        }).join('');
+
+        // Delegate click/keyboard toggle for picker cards.
+        container.querySelectorAll('.exercise-picker-card').forEach(card => {
+            const id = Number(card.dataset.exerciseId);
+            card.addEventListener('click', () => this.togglePickerExercise(id));
+            card.addEventListener('keydown', (e) => {
+                if (e.key === 'Enter' || e.key === ' ') {
+                    e.preventDefault();
+                    this.togglePickerExercise(id);
+                }
+            });
+        });
+    }
+
+    togglePickerExercise(exerciseId) {
+        if (!this.pickerSelection) this.pickerSelection = new Map();
+        const exercise = this.app.getExerciseById(exerciseId);
+        if (!exercise) return;
+
+        if (this.pickerSelection.has(exerciseId)) {
+            this.pickerSelection.delete(exerciseId);
+        } else {
+            this.pickerSelection.set(exerciseId, {
+                id: exercise.id,
+                name: exercise.name,
+                targetSets: 3,
+                targetReps: 10,
+                restSeconds: defaultRestForEquipment(exercise.equipment),
+            });
+        }
+
+        // Update just the card + tray (not whole list re-render, which kills scroll).
+        const card = document.querySelector(`.exercise-picker-card[data-exercise-id="${exerciseId}"]`);
+        if (card) {
+            const picked = this.pickerSelection.has(exerciseId);
+            card.classList.toggle('is-picked', picked);
+            card.setAttribute('aria-pressed', picked ? 'true' : 'false');
+            const checkIcon = card.querySelector('.exercise-picker-check i');
+            if (checkIcon) {
+                checkIcon.classList.toggle('fa-check-circle', picked);
+                checkIcon.classList.toggle('fa-circle', !picked);
+            }
+        }
+        this.renderExercisePickerTray();
+    }
+
+    renderExercisePickerTray() {
+        const tray = document.getElementById('exercise-picker-tray');
+        const list = document.getElementById('exercise-picker-tray-list');
+        const count = document.getElementById('exercise-picker-tray-count');
+        if (!tray || !list || !count) return;
+
+        const items = Array.from((this.pickerSelection || new Map()).values());
+        const n = items.length;
+
+        tray.hidden = n === 0;
+        count.textContent = `Added ${n}`;
+
+        list.innerHTML = items.map((item) => `
+            <li class="exercise-picker-tray-row" data-exercise-id="${item.id}">
+                <div class="tray-name">${item.name}</div>
+                <div class="tray-steppers">
+                    ${trayStepperHTML(item.id, 'sets', item.targetSets, 'Sets')}
+                    ${trayStepperHTML(item.id, 'reps', item.targetReps, 'Reps')}
+                    ${trayStepperHTML(item.id, 'rest', item.restSeconds, 'Rest', 15, formatRestLabel(item.restSeconds))}
+                </div>
+                <button type="button" class="tray-remove"
+                    data-tray-action="remove" data-exercise-id="${item.id}"
+                    title="Remove from selection" aria-label="Remove from selection">
+                    <i class="fas fa-xmark"></i>
+                </button>
+            </li>
         `).join('');
+    }
+
+    commitExercisePickerSelection() {
+        const items = Array.from((this.pickerSelection || new Map()).values());
+        if (items.length === 0) {
+            showToast('Pick at least one exercise first', 'error');
+            return;
+        }
+        items.forEach(item => {
+            this.currentProgram.addExercise(
+                item.id,
+                item.name,
+                item.targetSets,
+                item.targetReps,
+                '',
+                item.restSeconds,
+            );
+        });
+
+        document.getElementById('exercise-picker-modal').classList.remove('active');
+        this.pickerSelection = new Map();
+        this.renderExercisePickerTray();
+        this.renderProgramExercises();
+        showToast(`Added ${items.length} exercise${items.length === 1 ? '' : 's'}`, 'success');
     }
 
     updatePickerDropdownStates(searchTerm, currentCategory, currentEquipment) {
@@ -594,28 +805,6 @@ class ProgramsView {
         }
     }
 
-    selectExercise(exerciseId) {
-        const exercise = this.app.getExerciseById(exerciseId);
-        if (!exercise) return;
-
-        // Add exercise to current program
-        this.currentProgram.addExercise(
-            exercise.id,
-            exercise.name,
-            3, // default target sets
-            10, // default target reps
-            ''
-        );
-
-        // Close exercise picker
-        document.getElementById('exercise-picker-modal').classList.remove('active');
-
-        // Update the exercise list display
-        this.renderProgramExercises();
-
-        showToast(`Added ${exercise.name}`, 'success');
-    }
-
     removeExerciseFromProgram(index) {
         if (this.currentProgram) {
             this.currentProgram.removeExercise(index);
@@ -648,6 +837,76 @@ class ProgramsView {
             }
         }, 100);
     }
+}
+
+/**
+ * Compact +/- stepper for program-exercise target values.
+ * `valueLabel` overrides the displayed label (used by rest which shows "1:30").
+ */
+function stepperHTML(field, index, value, min, max, label, step = 1, valueLabel = null) {
+    const displayed = valueLabel ?? String(value);
+    const atMin = value <= min;
+    const atMax = value >= max;
+    return `
+        <div class="pex-stepper" data-field="${field}">
+            <span class="pex-stepper-label">${label}</span>
+            <span class="pex-stepper-controls">
+                <button type="button" class="pex-stepper-btn"
+                    data-stepper data-index="${index}" data-field="${field}" data-delta="${-step}"
+                    ${atMin ? 'disabled' : ''}
+                    aria-label="Decrease ${label.toLowerCase()}">
+                    <i class="fas fa-minus"></i>
+                </button>
+                <span class="pex-stepper-value">${displayed}</span>
+                <button type="button" class="pex-stepper-btn"
+                    data-stepper data-index="${index}" data-field="${field}" data-delta="${step}"
+                    ${atMax ? 'disabled' : ''}
+                    aria-label="Increase ${label.toLowerCase()}">
+                    <i class="fas fa-plus"></i>
+                </button>
+            </span>
+        </div>
+    `;
+}
+
+/**
+ * Compact stepper used inside the exercise-picker tray. Differs from the
+ * program-builder stepper in markup (no per-index lookup; keyed by exercise id).
+ */
+function trayStepperHTML(exerciseId, field, value, label, step = 1, valueLabel = null) {
+    const display = valueLabel ?? String(value);
+    return `
+        <span class="pex-stepper" data-field="${field}">
+            <span class="pex-stepper-label">${label}</span>
+            <span class="pex-stepper-controls">
+                <button type="button" class="pex-stepper-btn"
+                    data-tray-stepper data-exercise-id="${exerciseId}" data-field="${field}" data-delta="${-step}"
+                    aria-label="Decrease ${label.toLowerCase()}">
+                    <i class="fas fa-minus"></i>
+                </button>
+                <span class="pex-stepper-value">${display}</span>
+                <button type="button" class="pex-stepper-btn"
+                    data-tray-stepper data-exercise-id="${exerciseId}" data-field="${field}" data-delta="${step}"
+                    aria-label="Increase ${label.toLowerCase()}">
+                    <i class="fas fa-plus"></i>
+                </button>
+            </span>
+        </span>
+    `;
+}
+
+function clampTray(n, min, max) {
+    if (!Number.isFinite(n)) return min;
+    return Math.max(min, Math.min(max, Math.round(n)));
+}
+
+/** "1:30", "45s", "0s" — short display optimized for the stepper pill. */
+function formatRestLabel(seconds) {
+    if (!Number.isFinite(seconds) || seconds <= 0) return '0s';
+    if (seconds < 60) return `${seconds}s`;
+    const m = Math.floor(seconds / 60);
+    const s = seconds % 60;
+    return s === 0 ? `${m}m` : `${m}:${String(s).padStart(2, '0')}`;
 }
 
 // Initialize
