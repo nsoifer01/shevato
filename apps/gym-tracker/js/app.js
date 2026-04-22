@@ -329,32 +329,30 @@ class GymTrackerApp {
     }
 
     /**
-     * Clear all data
+     * Clear all data. Caller is responsible for confirming with the user first.
      */
     clearAllData() {
-        if (confirm('Are you sure you want to delete ALL data? This cannot be undone!')) {
-            storageService.clearAllData();
-            this.programs = [];
-            this.workoutSessions = [];
-            this.achievements = AchievementService.getDefaultAchievements();
-            this.customExercises = [];
-            this.settings = Settings.getDefault();
-            this.currentWorkoutSession = null;
+        storageService.clearAllData();
+        this.programs = [];
+        this.workoutSessions = [];
+        this.achievements = AchievementService.getDefaultAchievements();
+        this.customExercises = [];
+        this.settings = Settings.getDefault();
+        this.currentWorkoutSession = null;
 
-            this.savePrograms();
-            this.saveWorkoutSessions();
-            this.saveAchievements();
-            this.saveCustomExercises();
-            this.saveSettings();
+        this.savePrograms();
+        this.saveWorkoutSessions();
+        this.saveAchievements();
+        this.saveCustomExercises();
+        this.saveSettings();
 
-            showToast('All data cleared', 'info');
-            this.showView('home');
+        showToast('All data cleared', 'info');
+        this.showView('home');
 
-            // Reload to ensure clean state
-            setTimeout(() => {
-                location.reload();
-            }, 1000);
-        }
+        // Reload to ensure clean state
+        setTimeout(() => {
+            location.reload();
+        }, 1000);
     }
 
     /**
