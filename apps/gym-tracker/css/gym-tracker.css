@@ -54,6 +54,9 @@
     --transition-fast: 150ms ease;
     --transition-base: 200ms ease;
     --transition-slow: 300ms ease;
+
+    /* Layout */
+    --bottom-nav-height: 64px;  /* Used by FAB + rest timer bar to clear the mobile nav */
 }
 
 /* Base Styles */
@@ -208,6 +211,102 @@ body.gym-tracker #footer {
 
 .bottom-nav .nav-item.workout-btn {
     color: var(--text-muted);
+}
+
+/* Center "Workout" item: raised pill, always readable so the primary
+   action is visually obvious even when inactive. */
+.bottom-nav .nav-item.nav-item-primary {
+    color: #ffffff !important;
+    background: linear-gradient(135deg, rgba(108, 99, 255, 0.9), rgba(139, 92, 246, 0.95));
+    box-shadow: 0 4px 14px rgba(108, 99, 255, 0.45);
+    margin: -0.4rem 0.25rem 0;
+    padding: 0.55rem 0.5rem;
+    border-radius: 999px;
+}
+
+.bottom-nav .nav-item.nav-item-primary i,
+.bottom-nav .nav-item.nav-item-primary span {
+    color: #ffffff !important;
+}
+
+.bottom-nav .nav-item.nav-item-primary.active {
+    background: linear-gradient(135deg, #7c6cff, #9a6cff);
+    box-shadow: 0 6px 18px rgba(108, 99, 255, 0.6);
+}
+
+/* Floating action button — one-tap Start/Resume workout on Home. */
+.workout-fab {
+    position: fixed;
+    right: 1rem;
+    bottom: calc(76px + env(safe-area-inset-bottom, 0px));
+    display: inline-flex;
+    align-items: center;
+    gap: 0.55rem;
+    padding: 0.85rem 1.25rem;
+    border-radius: 999px;
+    border: none;
+    background: linear-gradient(135deg, var(--accent-primary), #8b5cf6);
+    color: #ffffff;
+    font-weight: 700;
+    font-size: 0.95rem;
+    letter-spacing: 0.01em;
+    box-shadow: 0 12px 26px rgba(108, 99, 255, 0.45);
+    cursor: pointer;
+    z-index: 950;
+    transition: transform var(--transition-fast), box-shadow var(--transition-fast), background var(--transition-base);
+    animation: fab-in 260ms ease-out;
+}
+
+.workout-fab i {
+    font-size: 1.05rem;
+    color: #ffffff;
+}
+
+.workout-fab:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 16px 30px rgba(108, 99, 255, 0.6);
+}
+
+.workout-fab:active { transform: scale(0.97); }
+
+.workout-fab:focus-visible {
+    outline: none;
+    box-shadow: 0 0 0 4px rgba(108, 99, 255, 0.45), 0 12px 26px rgba(108, 99, 255, 0.45);
+}
+
+.workout-fab[hidden] { display: none; }
+
+.workout-fab--resume {
+    background: linear-gradient(135deg, #22c55e, #16a34a);
+    box-shadow: 0 12px 26px rgba(34, 197, 94, 0.45);
+}
+
+.workout-fab--resume:hover {
+    box-shadow: 0 16px 30px rgba(34, 197, 94, 0.6);
+}
+
+.workout-fab--resume:focus-visible {
+    box-shadow: 0 0 0 4px rgba(34, 197, 94, 0.45), 0 12px 26px rgba(34, 197, 94, 0.45);
+}
+
+@keyframes fab-in {
+    from { opacity: 0; transform: translateY(16px) scale(0.92); }
+    to   { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+@media (min-width: 768px) {
+    .workout-fab { bottom: 1.5rem; right: 1.5rem; }
+}
+
+@media (max-width: 360px) {
+    .workout-fab .workout-fab-label { display: none; }
+    .workout-fab {
+        width: 56px;
+        height: 56px;
+        padding: 0;
+        justify-content: center;
+    }
+    .workout-fab i { font-size: 1.25rem; }
 }
 
 @media (min-width: 768px) {
@@ -1411,13 +1510,15 @@ body.gym-tracker #footer {
 .workout-header-actions {
     display: flex;
     align-items: center;
-    gap: 0.35rem;
+    gap: 0.6rem;
 }
 
-/* Unified sizing for every header control — creates one visual system */
+/* Unified sizing for every header control — creates one visual system.
+   Minimum 44px tap target (WCAG 2.2 AA) so sweaty mid-workout fingers
+   can't accidentally trigger Discard instead of Pause/Finish. */
 .workout-header .btn-icon {
-    width: 38px !important;
-    height: 38px !important;
+    width: 44px !important;
+    height: 44px !important;
     padding: 0 !important;
     border-radius: var(--radius-md);
     font-size: 0.95rem !important;
@@ -1510,13 +1611,14 @@ body.gym-tracker #footer {
     }
 
     .workout-header .btn-icon {
-        width: 36px !important;
-        height: 36px !important;
-        font-size: 0.9rem !important;
+        /* Keep 44px even on small phones — accessibility minimum */
+        width: 44px !important;
+        height: 44px !important;
+        font-size: 0.95rem !important;
     }
 
     .workout-header-actions {
-        gap: 0.3rem;
+        gap: 0.55rem;
     }
 
     .workout-info h2 {
@@ -1577,6 +1679,218 @@ body.gym-tracker #footer {
     }
 }
 
+/* Rest timer — persistent floating pill above the bottom nav.
+   Sits well clear of the nav (20px gap + drop shadow) so it always reads
+   as an elevated, separate layer. Uses a contained palette that matches
+   the app's purple/green language without overwhelming the workout content. */
+.rest-timer-bar {
+    position: fixed;
+    left: 50%;
+    transform: translateX(-50%);
+    bottom: calc(var(--bottom-nav-height, 64px) + env(safe-area-inset-bottom, 0px) + 20px);
+    width: calc(100% - 1rem);
+    max-width: 520px;
+    background:
+        linear-gradient(180deg, rgba(255, 255, 255, 0.04), rgba(255, 255, 255, 0) 40%),
+        linear-gradient(135deg, rgba(40, 32, 95, 0.92) 0%, rgba(30, 24, 75, 0.92) 100%);
+    border: 1px solid rgba(108, 99, 255, 0.45);
+    border-radius: 18px;
+    backdrop-filter: blur(14px) saturate(140%);
+    -webkit-backdrop-filter: blur(14px) saturate(140%);
+    box-shadow:
+        0 1px 0 rgba(255, 255, 255, 0.08) inset,
+        0 12px 32px rgba(0, 0, 0, 0.55),
+        0 0 0 1px rgba(108, 99, 255, 0.08);
+    z-index: 90;
+    animation: rest-bar-in 260ms cubic-bezier(0.2, 0.8, 0.2, 1);
+    overflow: hidden;
+}
+
+.rest-timer-bar[hidden] { display: none; }
+
+@keyframes rest-bar-in {
+    from { opacity: 0; transform: translate(-50%, 16px) scale(0.97); }
+    to   { opacity: 1; transform: translate(-50%, 0) scale(1); }
+}
+
+.rest-timer-bar.rest-timer-done {
+    background:
+        linear-gradient(180deg, rgba(255, 255, 255, 0.05), rgba(255, 255, 255, 0) 40%),
+        linear-gradient(135deg, rgba(20, 83, 45, 0.92) 0%, rgba(15, 60, 35, 0.92) 100%);
+    border-color: rgba(34, 197, 94, 0.6);
+    box-shadow:
+        0 1px 0 rgba(255, 255, 255, 0.08) inset,
+        0 12px 32px rgba(0, 0, 0, 0.55),
+        0 0 0 1px rgba(34, 197, 94, 0.18),
+        0 0 24px rgba(34, 197, 94, 0.25);
+}
+
+.rest-timer-bar-inner {
+    position: relative;
+    display: grid;
+    grid-template-columns: 1fr auto;
+    align-items: center;
+    gap: 0.8rem;
+    padding: 0.7rem 0.9rem 0.85rem;
+}
+
+.rest-timer-info {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.6rem;
+    color: var(--text-primary);
+    font-weight: 600;
+    font-size: 0.92rem;
+    min-width: 0;
+}
+
+.rest-timer-info i {
+    color: var(--accent-primary);
+    font-size: 0.95rem;
+    width: 22px;
+    height: 22px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    background: rgba(108, 99, 255, 0.18);
+    border-radius: 50%;
+    flex-shrink: 0;
+}
+
+.rest-timer-bar.rest-timer-done .rest-timer-info i {
+    color: #4ade80;
+    background: rgba(34, 197, 94, 0.22);
+}
+
+.rest-timer-label {
+    color: var(--text-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+    font-size: 0.64rem;
+    font-weight: 700;
+    line-height: 1;
+}
+
+.rest-timer-value {
+    font-variant-numeric: tabular-nums;
+    font-size: 1.3rem;
+    font-weight: 700;
+    color: #ffffff;
+    letter-spacing: -0.02em;
+    line-height: 1;
+    margin-left: auto;
+    padding-left: 0.3rem;
+}
+
+.rest-timer-bar.rest-timer-done .rest-timer-value {
+    color: #4ade80;
+}
+
+.rest-timer-actions {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
+    flex-shrink: 0;
+}
+
+/* Uniform 38px pills. +30s uses an accent tint to hint "add time," while
+   Skip stays quiet so "end rest early" doesn't feel like the primary CTA.
+   !important on `color` is required because assets/css/main.css applies
+   `button { color: #555555 !important; }` globally with higher priority. */
+.rest-timer-action-btn {
+    background: rgba(255, 255, 255, 0.08);
+    color: #ffffff !important;
+    border: 1px solid rgba(255, 255, 255, 0.14);
+    border-radius: 999px;
+    padding: 0 0.95rem;
+    font-weight: 700;
+    font-size: 0.82rem;
+    letter-spacing: 0.01em;
+    cursor: pointer;
+    height: 38px;
+    min-width: 52px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    font-family: inherit;
+    font-variant-numeric: tabular-nums;
+    transition: background var(--transition-fast), border-color var(--transition-fast),
+                transform var(--transition-fast), color var(--transition-fast);
+    -webkit-tap-highlight-color: transparent;
+}
+
+.rest-timer-action-btn:hover {
+    background: rgba(108, 99, 255, 0.3);
+    border-color: rgba(108, 99, 255, 0.6);
+    color: #ffffff !important;
+}
+
+.rest-timer-action-btn:active { transform: scale(0.96); }
+
+.rest-timer-action-btn:focus-visible {
+    outline: none;
+    box-shadow: 0 0 0 3px rgba(108, 99, 255, 0.45);
+}
+
+.rest-timer-action-btn.rest-timer-skip {
+    background: transparent;
+    color: #e5e7eb !important;
+    border-color: rgba(255, 255, 255, 0.18);
+}
+
+.rest-timer-action-btn.rest-timer-skip:hover {
+    background: rgba(255, 255, 255, 0.06);
+    color: #ffffff !important;
+    border-color: rgba(255, 255, 255, 0.3);
+}
+
+.rest-timer-bar.rest-timer-done .rest-timer-action-btn {
+    border-color: rgba(34, 197, 94, 0.35);
+}
+
+.rest-timer-bar.rest-timer-done .rest-timer-action-btn:hover {
+    background: rgba(34, 197, 94, 0.25);
+    border-color: rgba(34, 197, 94, 0.65);
+}
+
+/* Thicker, unbroken progress line anchored to the bar's bottom edge so it
+   reads as part of the pill itself — not a floating extra element. */
+.rest-timer-progress {
+    position: absolute;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    height: 4px;
+    background: rgba(255, 255, 255, 0.08);
+    overflow: hidden;
+}
+
+.rest-timer-progress-fill {
+    display: block;
+    height: 100%;
+    width: 100%;
+    background: linear-gradient(90deg, var(--accent-primary) 0%, #a78bfa 70%, #c4b5fd 100%);
+    transform-origin: left center;
+    transition: transform 1s linear;
+    box-shadow: 0 0 12px rgba(167, 139, 250, 0.55);
+}
+
+.rest-timer-bar.rest-timer-done .rest-timer-progress-fill {
+    background: linear-gradient(90deg, #22c55e 0%, #4ade80 100%);
+    box-shadow: 0 0 12px rgba(74, 222, 128, 0.6);
+}
+
+@media (min-width: 768px) {
+    .rest-timer-bar {
+        bottom: 20px;
+    }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .rest-timer-bar { animation: none; }
+    .rest-timer-progress-fill { transition: none; }
+}
+
 .workout-day-list {
     display: grid;
     grid-template-columns: 1fr;
@@ -1620,29 +1934,34 @@ body.gym-tracker #footer {
 .exercise-entry {
     background: var(--bg-card);
     border-radius: var(--radius-lg);
-    padding: 0.9rem 0.95rem;
-    margin-bottom: 0.75rem;
+    padding: 0.95rem 0.95rem 0.85rem;
+    margin-bottom: 0.85rem;
     border: 1px solid var(--border-color);
+    box-shadow: 0 1px 0 rgba(255, 255, 255, 0.02) inset, var(--shadow-sm);
+    transition: border-color var(--transition-base), box-shadow var(--transition-base);
 }
 
 .exercise-entry-header {
     display: flex;
     justify-content: space-between;
-    align-items: center;
-    margin-bottom: 0.7rem;
+    align-items: flex-start;
+    gap: 0.6rem;
+    margin-bottom: 0.6rem;
 }
 
 .exercise-entry-header h3 {
     margin: 0;
-    font-size: 1.08rem;
+    font-size: 1.05rem;
     color: var(--text-primary);
     font-weight: 700;
     letter-spacing: -0.015em;
     display: inline-flex;
     flex-wrap: wrap;
     align-items: baseline;
-    gap: 0.4rem;
+    gap: 0.45rem;
     line-height: 1.25;
+    min-width: 0;
+    flex: 1;
 }
 
 .exercise-name-main {
@@ -1652,35 +1971,55 @@ body.gym-tracker #footer {
 
 .exercise-name-sub {
     color: var(--text-muted);
-    font-size: 0.76rem;
+    font-size: 0.74rem;
     font-weight: 500;
     white-space: nowrap;
-    opacity: 0.75;
+    opacity: 0.7;
+    letter-spacing: 0.005em;
 }
 
 /* Last-time reference section — deferential styling so the active inputs
-   remain the focal point. */
+   remain the focal point. Rendered as a contained rail with a muted label
+   so the chips read as quiet reference material, not part of the active UI. */
 .previous-data {
-    background: transparent;
-    padding: 0.4rem 0;
-    border-radius: 0;
-    margin-bottom: 0.65rem;
-    opacity: 0.88;
+    background: rgba(255, 255, 255, 0.02);
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-md);
+    padding: 0.55rem 0.7rem;
+    margin-bottom: 0.75rem;
+    display: flex;
+    align-items: center;
+    gap: 0.7rem;
+    flex-wrap: wrap;
 }
 
 .previous-sets-label {
-    font-size: 0.68rem;
+    font-size: 0.64rem;
     color: var(--text-muted);
-    margin-bottom: 0.35rem;
+    margin: 0;
     font-weight: 700;
     text-transform: uppercase;
-    letter-spacing: 0.06em;
+    letter-spacing: 0.08em;
+    flex-shrink: 0;
+}
+
+.previous-sets-label span {
+    color: var(--text-muted);
+    opacity: 0.7;
+    text-transform: none;
+    letter-spacing: 0;
+    font-weight: 500;
+    font-size: 0.74rem;
+    margin-left: 0.3rem;
 }
 
 .previous-sets-row {
     display: flex;
     flex-wrap: wrap;
+    /* Matching horizontal + vertical gap so multi-line wrapping stays even. */
     gap: 0.35rem;
+    flex: 1;
+    min-width: 0;
 }
 
 .previous-set-badge {
@@ -2177,6 +2516,571 @@ body.gym-tracker #footer {
     }
 }
 
+/* --- Planned set rows ---
+   Each exercise renders an <ol> of rows where `i < sets.length` is a
+   committed set (locked, edit/delete) and later rows are planned inputs
+   with a tap-to-complete button. */
+.exercise-progress {
+    flex-shrink: 0;
+    font-size: 0.72rem;
+    font-weight: 700;
+    color: var(--text-secondary);
+    font-variant-numeric: tabular-nums;
+    background: var(--bg-elevated);
+    border: 1px solid var(--border-color);
+    border-radius: 999px;
+    padding: 0.25rem 0.7rem;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
+    line-height: 1;
+    transition: background var(--transition-base), border-color var(--transition-base),
+                color var(--transition-base);
+}
+
+.exercise-progress.is-complete {
+    background: rgba(34, 197, 94, 0.16);
+    border-color: rgba(34, 197, 94, 0.5);
+    color: #4ade80;
+}
+
+.exercise-progress.is-complete i {
+    font-size: 0.68rem;
+}
+
+.exercise-entry.exercise-complete {
+    border-color: rgba(34, 197, 94, 0.38);
+    box-shadow: 0 0 0 1px rgba(34, 197, 94, 0.2) inset,
+                0 6px 16px rgba(34, 197, 94, 0.1);
+}
+
+.set-row-list {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+}
+
+/* Horizontal three-zone layout: [ num ] [ content ] [ actions + check ].
+   Flex with align-items:center gives bulletproof vertical centering so the
+   set number, the "55lb × 8" text, and the right-side icons always share
+   the same baseline — no matter how tall the row grows. */
+.set-row {
+    display: flex;
+    align-items: center;
+    gap: 0.6rem;
+    padding: 0.7rem 0.6rem 0.7rem 0.6rem;
+    background: rgba(255, 255, 255, 0.02);
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-md);
+    min-height: 60px;
+    transition: background var(--transition-fast), border-color var(--transition-fast),
+                box-shadow var(--transition-fast);
+}
+
+.set-row-planned {
+    background: rgba(255, 255, 255, 0.02);
+    border-style: dashed;
+    border-color: rgba(74, 74, 117, 0.7);
+}
+
+.set-row-planned:focus-within {
+    background: var(--bg-card);
+    border-style: solid;
+    border-color: rgba(108, 99, 255, 0.5);
+    box-shadow: 0 0 0 3px rgba(108, 99, 255, 0.12);
+}
+
+.set-row-complete {
+    background: rgba(34, 197, 94, 0.08);
+    border-color: rgba(34, 197, 94, 0.3);
+    border-left: 3px solid rgba(34, 197, 94, 0.7);
+    /* Border-left adds 2px — compensate so text alignment with planned rows stays flush. */
+    padding-left: calc(0.6rem - 2px);
+}
+
+.set-row-editing {
+    background: var(--bg-card);
+    border-color: var(--accent-primary);
+    box-shadow: 0 0 0 2px rgba(108, 99, 255, 0.2);
+}
+
+.set-row-num {
+    flex-shrink: 0;
+    width: 28px;
+    height: 28px;
+    border-radius: 50%;
+    background: rgba(108, 99, 255, 0.12);
+    border: 1px solid rgba(108, 99, 255, 0.28);
+    color: var(--accent-primary);
+    font-weight: 700;
+    font-size: 0.76rem;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    font-variant-numeric: tabular-nums;
+    letter-spacing: -0.01em;
+    transition: background var(--transition-base), border-color var(--transition-base),
+                color var(--transition-base);
+}
+
+.set-row-planned .set-row-num {
+    background: transparent;
+    border-color: var(--border-color);
+    color: var(--text-muted);
+}
+
+.set-row-complete .set-row-num {
+    background: rgba(34, 197, 94, 0.2);
+    border-color: rgba(34, 197, 94, 0.55);
+    color: #4ade80;
+}
+
+.set-row-inputs {
+    flex: 1;
+    min-width: 0;
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
+    flex-wrap: wrap;
+}
+
+.set-row-inputs input {
+    width: 76px;
+    padding: 0.5rem 0.55rem;
+    background: var(--bg-tertiary);
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-md);
+    color: var(--text-primary);
+    font-size: 1rem;
+    font-weight: 700;
+    text-align: center;
+    font-variant-numeric: tabular-nums;
+    letter-spacing: -0.01em;
+    transition: border-color var(--transition-fast), background var(--transition-fast),
+                box-shadow var(--transition-fast);
+}
+
+.set-row-inputs input::placeholder {
+    color: var(--text-muted);
+    opacity: 0.5;
+    font-weight: 500;
+}
+
+.set-row-inputs input:hover { border-color: var(--border-light); }
+
+.set-row-inputs input:focus {
+    outline: none;
+    border-color: var(--accent-primary);
+    background: var(--bg-hover);
+    box-shadow: 0 0 0 3px rgba(108, 99, 255, 0.16);
+}
+
+.set-row-x,
+.set-row-inputs .duration-separator {
+    color: var(--text-muted);
+    font-weight: 700;
+    font-size: 0.9rem;
+    opacity: 0.8;
+}
+
+.set-row-details {
+    flex: 1;
+    min-width: 0;
+    color: var(--text-primary);
+    font-weight: 700;
+    font-variant-numeric: tabular-nums;
+    font-size: 1rem;
+    letter-spacing: -0.01em;
+    line-height: 1.2;
+}
+
+/* ===== Pill toggle — the sole "mark set complete" control =====
+   iOS/premium-fitness-app feel: horizontal pill track + circular knob that
+   slides from left (incomplete) to right (completed). The knob's checkmark
+   fades in as it lands, and a soft green glow confirms the ON state.
+   Driven purely by `aria-pressed` so the DOM stays identical between states. */
+.set-toggle {
+    --toggle-width: 54px;
+    --toggle-height: 30px;
+    --toggle-pad: 3px;
+    --toggle-knob: calc(var(--toggle-height) - (var(--toggle-pad) * 2));
+    --toggle-travel: calc(var(--toggle-width) - var(--toggle-knob) - (var(--toggle-pad) * 2));
+
+    flex-shrink: 0;
+    position: relative;
+    width: var(--toggle-width);
+    height: var(--toggle-height);
+    padding: 0;
+    border-radius: 999px;
+    border: 1px solid var(--border-light);
+    background: var(--bg-tertiary);
+    cursor: pointer;
+    box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.35);
+    transition: background 220ms cubic-bezier(0.2, 0.8, 0.2, 1),
+                border-color 220ms ease,
+                box-shadow 220ms ease;
+    -webkit-tap-highlight-color: transparent;
+    font-family: inherit;
+}
+
+.set-toggle-knob {
+    position: absolute;
+    top: var(--toggle-pad);
+    left: var(--toggle-pad);
+    width: var(--toggle-knob);
+    height: var(--toggle-knob);
+    border-radius: 50%;
+    background: linear-gradient(180deg, #c7c7d8 0%, #8a8aa6 100%);
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.45),
+                0 0 0 1px rgba(0, 0, 0, 0.1);
+    transition: transform 180ms cubic-bezier(0.2, 0.8, 0.2, 1),
+                background 200ms ease;
+    will-change: transform;
+}
+
+.set-toggle-knob i {
+    color: #ffffff !important;
+    font-size: 0.62rem;
+    font-weight: 900;
+    opacity: 0;
+    transform: scale(0.7);
+    transition: opacity 150ms ease 40ms, transform 180ms cubic-bezier(0.2, 0.8, 0.2, 1) 40ms;
+    line-height: 1;
+}
+
+/* ---- ON state: completed ---- */
+.set-toggle[aria-pressed="true"] {
+    background: linear-gradient(135deg, #22c55e 0%, #16a34a 100%);
+    border-color: rgba(34, 197, 94, 0.85);
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.18),
+                0 0 0 1px rgba(34, 197, 94, 0.3),
+                0 2px 10px rgba(34, 197, 94, 0.35);
+}
+
+.set-toggle[aria-pressed="true"] .set-toggle-knob {
+    transform: translateX(var(--toggle-travel));
+    background: linear-gradient(180deg, #ffffff 0%, #e8eae7 100%);
+    box-shadow: 0 2px 6px rgba(0, 0, 0, 0.35),
+                0 0 0 1px rgba(0, 0, 0, 0.08);
+}
+
+.set-toggle[aria-pressed="true"] .set-toggle-knob i {
+    /* Dark green check reads cleanly on the white knob. */
+    color: #15803d !important;
+    opacity: 1;
+    transform: scale(1);
+}
+
+/* ---- Affordances on pointer devices ---- */
+@media (hover: hover) {
+    .set-toggle:hover {
+        border-color: var(--text-muted);
+    }
+    .set-toggle[aria-pressed="true"]:hover {
+        filter: brightness(1.06);
+        box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.2),
+                    0 0 0 1px rgba(34, 197, 94, 0.4),
+                    0 4px 14px rgba(34, 197, 94, 0.5);
+    }
+}
+
+.set-toggle:active .set-toggle-knob {
+    /* Subtle squish on press — communicates tactile feedback. */
+    transform: translateX(0) scale(0.92);
+}
+
+.set-toggle[aria-pressed="true"]:active .set-toggle-knob {
+    transform: translateX(var(--toggle-travel)) scale(0.92);
+}
+
+.set-toggle:focus-visible {
+    outline: none;
+    box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.35),
+                0 0 0 3px rgba(108, 99, 255, 0.45);
+}
+
+.set-toggle[aria-pressed="true"]:focus-visible {
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.18),
+                0 0 0 3px rgba(34, 197, 94, 0.45),
+                0 2px 10px rgba(34, 197, 94, 0.35);
+}
+
+/* Highlight the toggle when the user is entering weight/reps — subtle hint
+   about what to do next, without switching state. */
+.set-row-planned:focus-within .set-toggle:not([aria-pressed="true"]) {
+    border-color: rgba(34, 197, 94, 0.55);
+    background: rgba(34, 197, 94, 0.1);
+    box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.25),
+                0 0 0 3px rgba(34, 197, 94, 0.12);
+}
+
+.set-row-planned:focus-within .set-toggle:not([aria-pressed="true"]) .set-toggle-knob {
+    background: linear-gradient(180deg, #e5e7eb 0%, #9ca3af 100%);
+}
+
+/* Celebratory pulse when a row transitions to the completed state. Triggers
+   whenever the exercise re-renders with a new committed set — short, subtle,
+   and skipped entirely for users who prefer reduced motion. */
+@keyframes set-row-complete-pop {
+    0%   { background: rgba(34, 197, 94, 0.3);
+           box-shadow: 0 0 0 4px rgba(34, 197, 94, 0.2); }
+    60%  { background: rgba(34, 197, 94, 0.15); }
+    100% { background: rgba(34, 197, 94, 0.08);
+           box-shadow: none; }
+}
+
+/* Knob entrance — CSS transitions don't fire on freshly-mounted elements,
+   so play the slide explicitly when a completed row is first rendered. */
+@keyframes set-toggle-knob-in {
+    0%   { transform: translateX(0) scale(0.85); }
+    60%  { transform: translateX(var(--toggle-travel)) scale(1.05); }
+    100% { transform: translateX(var(--toggle-travel)) scale(1); }
+}
+
+@keyframes set-toggle-check-in {
+    0%   { opacity: 0; transform: scale(0.5); }
+    100% { opacity: 1; transform: scale(1); }
+}
+
+.set-row-complete {
+    animation: set-row-complete-pop 480ms cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+
+.set-row-complete .set-toggle[aria-pressed="true"] .set-toggle-knob {
+    animation: set-toggle-knob-in 260ms cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+
+.set-row-complete .set-toggle[aria-pressed="true"] .set-toggle-knob i {
+    animation: set-toggle-check-in 200ms ease-out 100ms both;
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .set-row-complete,
+    .set-row-complete .set-toggle[aria-pressed="true"] .set-toggle-knob,
+    .set-row-complete .set-toggle[aria-pressed="true"] .set-toggle-knob i {
+        animation: none;
+    }
+    .set-toggle, .set-toggle-knob, .set-toggle-knob i {
+        transition: none;
+    }
+}
+
+/* Group edit/delete so they share the right-side zone with the check mark.
+   Consistent gap between all three icons = even rhythm. */
+.set-row-actions {
+    flex-shrink: 0;
+    display: inline-flex;
+    gap: 0.35rem;
+    align-items: center;
+    justify-content: flex-end;
+}
+
+/* Edit/delete icons on completed set rows: always at least readable on
+   touch screens (where :hover never fires), slightly bigger tap target. */
+.set-row .btn-set-action {
+    width: 34px !important;
+    height: 34px !important;
+    opacity: 0.85;
+}
+
+.set-row-complete .btn-set-action {
+    color: rgba(74, 222, 128, 0.75) !important;
+}
+
+.set-row-complete .btn-set-delete {
+    color: rgba(239, 68, 68, 0.7) !important;
+}
+
+.set-row .btn-set-action:hover,
+.set-row .btn-set-action:focus-visible {
+    opacity: 1;
+}
+
+/* Row of add/remove controls under the set list. Remove is a compact square
+   icon button that only renders when there's an uncommitted row to drop. */
+.set-row-footer {
+    margin-top: 0.6rem;
+    display: flex;
+    align-items: stretch;
+    gap: 0.5rem;
+}
+
+.set-row-footer .btn-add-set--extra {
+    margin-top: 0;
+    flex: 1;
+}
+
+.btn-remove-set {
+    flex: 0 0 auto;
+    width: 44px;
+    min-height: 44px;
+    padding: 0;
+    background: rgba(239, 68, 68, 0.07);
+    border: 1px dashed rgba(239, 68, 68, 0.4);
+    border-radius: var(--radius-md);
+    color: #fca5a5 !important;
+    font-family: inherit;
+    font-size: 0.85rem;
+    font-weight: 700;
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    transition: background var(--transition-fast), color var(--transition-fast),
+                border-color var(--transition-fast), transform var(--transition-fast),
+                box-shadow var(--transition-fast);
+    -webkit-tap-highlight-color: transparent;
+}
+
+.btn-remove-set i {
+    color: inherit !important;
+    font-size: 0.85rem;
+}
+
+.btn-remove-set:hover {
+    background: rgba(239, 68, 68, 0.18);
+    color: #ffffff !important;
+    border-color: rgba(239, 68, 68, 0.7);
+    border-style: solid;
+    box-shadow: 0 0 0 3px rgba(239, 68, 68, 0.12);
+}
+
+.btn-remove-set:active {
+    transform: translateY(1px);
+    background: rgba(239, 68, 68, 0.28);
+    box-shadow: inset 0 2px 4px rgba(0, 0, 0, 0.2);
+}
+
+.btn-remove-set:focus-visible {
+    outline: none;
+    box-shadow: 0 0 0 3px rgba(239, 68, 68, 0.4);
+}
+
+/* Secondary CTA — reads as clearly clickable at rest (primary-text color,
+   visible tinted surface). Hover ramps brightness + border solidifies so the
+   affordance upgrade feels tactile.
+   !important on `color` is required because assets/css/main.css applies
+   `button { color: #555555 !important; }` globally with higher cascade
+   priority than our variable reference. */
+.btn-add-set--extra {
+    margin-top: 0.6rem;
+    width: 100%;
+    min-height: 44px;
+    padding: 0.7rem 1rem;
+    background: rgba(108, 99, 255, 0.12);
+    border: 1px dashed rgba(108, 99, 255, 0.55);
+    border-radius: var(--radius-md);
+    color: #ffffff !important;
+    font-family: inherit;
+    font-size: 0.9rem;
+    font-weight: 700;
+    letter-spacing: 0.01em;
+    line-height: 1;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.5rem;
+    transition: background var(--transition-fast), color var(--transition-fast),
+                border-color var(--transition-fast), transform var(--transition-fast),
+                box-shadow var(--transition-fast);
+    -webkit-tap-highlight-color: transparent;
+}
+
+.btn-add-set--extra i {
+    font-size: 0.8rem;
+    color: var(--accent-primary) !important;
+    transition: transform var(--transition-fast), color var(--transition-fast);
+}
+
+.btn-add-set--extra:hover {
+    background: rgba(108, 99, 255, 0.22);
+    color: #ffffff !important;
+    border-color: var(--accent-primary);
+    border-style: solid;
+    box-shadow: 0 0 0 3px rgba(108, 99, 255, 0.15), 0 4px 12px rgba(108, 99, 255, 0.2);
+}
+
+.btn-add-set--extra:hover i {
+    transform: scale(1.15);
+    color: #ffffff !important;
+}
+
+.btn-add-set--extra:active {
+    transform: translateY(1px);
+    background: rgba(108, 99, 255, 0.3);
+    color: #ffffff !important;
+    box-shadow: inset 0 2px 4px rgba(0, 0, 0, 0.2);
+}
+
+.btn-add-set--extra:focus-visible {
+    outline: none;
+    box-shadow: 0 0 0 3px rgba(108, 99, 255, 0.45);
+}
+
+@media (max-width: 480px) {
+    .set-row {
+        gap: 0.5rem;
+        padding: 0.7rem 0.5rem 0.7rem 0.55rem;
+    }
+    .set-row-complete {
+        padding-left: calc(0.55rem - 2px);
+    }
+    /* Slightly smaller input width so the planned-row [weight × reps] line
+       doesn't wrap on narrow phones. */
+    .set-row-inputs input { width: 70px; }
+    /* Tighter action spacing on phones to keep the right cluster compact. */
+    .set-row-actions { gap: 0.25rem; }
+}
+
+/* Last-time chips — self-contained compact pills so wrapping always looks
+   clean (each chip keeps its own padding/background; no cross-chip dividers
+   that would snap awkwardly when the row breaks). Fixed height guarantees
+   uniform visual weight regardless of content length (e.g. `72.5lb × 15`
+   sits at the same height as `60lb × 8`). */
+.previous-sets-row .prev-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.3rem;
+    height: 22px;
+    padding: 0 0.45rem 0 0.3rem;
+    background: rgba(255, 255, 255, 0.03);
+    border: 1px solid var(--border-color);
+    border-radius: 999px;
+    color: var(--text-secondary);
+    font-size: 0.75rem;
+    font-weight: 600;
+    font-variant-numeric: tabular-nums;
+    line-height: 1;
+    letter-spacing: -0.005em;
+    white-space: nowrap;
+}
+
+.previous-sets-row .prev-chip b {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 15px;
+    height: 15px;
+    padding: 0 0.22rem;
+    background: rgba(108, 99, 255, 0.18);
+    border-radius: 999px;
+    color: var(--accent-primary);
+    font-weight: 700;
+    font-size: 0.6rem;
+    letter-spacing: 0;
+    font-variant-numeric: tabular-nums;
+    line-height: 1;
+}
+
 /* Toast Notifications */
 .toast {
     position: fixed;
@@ -2210,6 +3114,35 @@ body.gym-tracker #footer {
 
 .toast.toast-warning {
     border-left-color: var(--accent-warning);
+}
+
+.toast.toast-has-action {
+    display: flex;
+    align-items: center;
+    gap: var(--spacing-md);
+}
+
+.toast .toast-action {
+    flex-shrink: 0;
+    background: transparent;
+    color: var(--accent-primary);
+    border: 1px solid var(--accent-primary);
+    padding: 0.3rem 0.75rem;
+    border-radius: var(--radius-md);
+    font-weight: 600;
+    font-size: 0.85rem;
+    cursor: pointer;
+    transition: background var(--transition-base), color var(--transition-base);
+}
+
+.toast .toast-action:hover {
+    background: var(--accent-primary);
+    color: #fff;
+}
+
+.toast .toast-action:focus-visible {
+    outline: none;
+    box-shadow: 0 0 0 3px rgba(108, 99, 255, 0.35);
 }
 
 /* History Grid */
@@ -3156,6 +4089,143 @@ body.gym-tracker #footer {
     font-weight: 500;
 }
 
+/* Picked state for multi-select — card stays visible so the user can unselect. */
+.exercise-picker-card.is-picked {
+    border-color: var(--accent-primary);
+    background: linear-gradient(135deg, rgba(108, 99, 255, 0.18), rgba(139, 92, 246, 0.22));
+    box-shadow: 0 0 0 1px rgba(108, 99, 255, 0.45) inset;
+}
+
+.exercise-picker-card.is-picked::before { opacity: 1; }
+
+.exercise-picker-check {
+    position: absolute;
+    top: 0.55rem;
+    right: 0.65rem;
+    font-size: 1.1rem;
+    color: var(--text-muted);
+    opacity: 0.65;
+    transition: color var(--transition-fast), opacity var(--transition-fast);
+}
+
+.exercise-picker-card.is-picked .exercise-picker-check {
+    color: #22c55e;
+    opacity: 1;
+}
+
+/* Sticky tray pinned to the bottom of the picker modal body. */
+.exercise-picker-tray {
+    position: sticky;
+    bottom: 0;
+    margin-top: var(--spacing-lg);
+    background: var(--bg-card);
+    border: 1px solid var(--border-light);
+    border-radius: var(--radius-lg);
+    padding: 0.7rem 0.9rem;
+    box-shadow: 0 -8px 24px rgba(0, 0, 0, 0.35);
+    z-index: 2;
+}
+
+.exercise-picker-tray[hidden] { display: none; }
+
+.exercise-picker-tray-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 0.55rem;
+}
+
+.exercise-picker-tray-count {
+    font-weight: 700;
+    color: var(--text-primary);
+    font-size: 0.88rem;
+    letter-spacing: 0.02em;
+}
+
+.exercise-picker-tray-list {
+    list-style: none;
+    margin: 0 0 0.65rem 0;
+    padding: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 0.4rem;
+    max-height: 240px;
+    overflow-y: auto;
+}
+
+.exercise-picker-tray-row {
+    display: grid;
+    grid-template-columns: 1fr auto auto;
+    align-items: center;
+    gap: 0.55rem;
+    background: var(--bg-elevated);
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-md);
+    padding: 0.45rem 0.6rem;
+}
+
+.exercise-picker-tray-row .tray-name {
+    font-weight: 600;
+    color: var(--text-primary);
+    font-size: 0.92rem;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.exercise-picker-tray-row .tray-steppers {
+    display: inline-flex;
+    gap: 0.3rem;
+    flex-wrap: wrap;
+    justify-content: flex-end;
+}
+
+.exercise-picker-tray-row .tray-remove {
+    width: 28px;
+    height: 28px;
+    border-radius: 50%;
+    border: 1px solid var(--border-color);
+    background: transparent;
+    color: var(--text-muted);
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 0.85rem;
+    transition: background var(--transition-fast), color var(--transition-fast),
+                border-color var(--transition-fast);
+}
+
+.exercise-picker-tray-row .tray-remove:hover {
+    background: rgba(239, 68, 68, 0.18);
+    border-color: rgba(239, 68, 68, 0.5);
+    color: #ef4444;
+}
+
+.exercise-picker-tray-actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: 0.5rem;
+}
+
+@media (max-width: 600px) {
+    .exercise-picker-tray-row {
+        grid-template-columns: 1fr auto;
+        grid-template-areas:
+            "name remove"
+            "steppers remove";
+    }
+    .exercise-picker-tray-row .tray-name { grid-area: name; }
+    .exercise-picker-tray-row .tray-steppers {
+        grid-area: steppers;
+        justify-content: flex-start;
+    }
+    .exercise-picker-tray-row .tray-remove {
+        grid-area: remove;
+        align-self: center;
+    }
+}
+
 .exercise-picker-list {
     display: grid;
     grid-template-columns: 1fr;
@@ -3332,18 +4402,206 @@ body.gym-tracker #footer {
     line-height: 1.4;
 }
 
+/* Two-row layout at every breakpoint so exercise identity never competes with
+   the numeric controls. The drag handle + index badge span both rows so the
+   whole card reads as a single draggable unit; identity + delete occupy the
+   top row; the Sets/Reps/Rest cluster sits below as a secondary control row. */
 .program-exercise-row {
     display: grid;
     grid-template-columns: auto auto 1fr auto;
+    grid-template-areas:
+        "handle position name   delete"
+        "handle position targets targets";
     align-items: center;
     column-gap: 0.55rem;
-    padding: 0.45rem 0.6rem;
+    row-gap: 0.45rem;
+    padding: 0.55rem 0.7rem;
     background: var(--bg-card);
     border: 1px solid var(--border-color);
     border-radius: var(--radius-md);
     box-shadow: var(--shadow-sm);
     transition: transform var(--transition-fast), background var(--transition-fast),
                 border-color var(--transition-fast), box-shadow var(--transition-fast);
+}
+
+.program-exercise-row .pex-drag-handle { grid-area: handle; align-self: center; }
+.program-exercise-row .pex-position    { grid-area: position; align-self: center; }
+.program-exercise-row .pex-name        { grid-area: name; align-self: center; }
+.program-exercise-row .pex-delete      { grid-area: delete; align-self: center; justify-self: end; }
+
+.pex-targets {
+    grid-area: targets;
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    flex-wrap: wrap;
+    justify-content: flex-start;
+}
+
+/* Desktop refinement — left-aligned card, tighter title/control connection,
+   and a structured CSS Grid for Sets / Reps / Rest. Each stepper lives
+   inside a bounded grid cell so siblings can NEVER overlap.
+   Mobile keeps its existing flex-wrap layout via the media query boundary. */
+@media (min-width: 641px) {
+    /* Wider program modal so there's real horizontal space for three
+       stepper cells + padding without crowding. */
+    #program-modal .modal-content { max-width: 760px; }
+
+    /* Left-aligned, full-width: the list fills the modal body instead of
+       centering a narrow column. */
+    #program-exercises-list {
+        max-width: none;
+        margin-inline: 0;
+    }
+
+    .program-exercise-row {
+        padding: 0.75rem 1rem;
+        column-gap: 0.75rem;
+        /* Tight row-gap + dashed divider = "title and controls are one unit." */
+        row-gap: 0.4rem;
+        border-radius: var(--radius-lg);
+    }
+
+    .program-exercise-row .pex-name-main { font-size: 1.05rem; }
+
+    .program-exercise-row .pex-name-sub {
+        font-size: 0.78rem;
+        opacity: 0.75;
+    }
+
+    /* CSS Grid with auto-fit: three 170px-floor cells fit on one row at
+       normal desktop widths. If the container gets too narrow (narrow window,
+       user-shrunk modal), cells automatically wrap to the next row instead of
+       overlapping. Grid bounds each stepper so they CANNOT spill into one
+       another the way `flex: 1; min-width: 0` allowed. */
+    .pex-targets {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
+        gap: 0.55rem;
+        padding-top: 0.45rem;
+        margin-top: 0;
+        border-top: 1px dashed var(--border-color);
+    }
+
+    /* Stepper fills its grid cell. No flex:1 or min-width:0 overrides —
+       the grid container owns the sizing, and the stepper's natural content
+       width (~150px) fits comfortably inside the 170px cell floor. */
+    .program-exercise-row .pex-stepper {
+        padding: 0.3rem 0.6rem 0.3rem 0.75rem;
+        min-height: 34px;
+        gap: 0.6rem;
+    }
+
+    /* Slightly larger value floor so "2:15"/"10:30" sit cleanly without
+       crowding the +/- buttons. Tabular numerals keep widths stable. */
+    .program-exercise-row .pex-stepper-value {
+        min-width: 3ch;
+        font-size: 0.9rem;
+    }
+
+    .program-exercise-row .pex-stepper-controls {
+        gap: 0.4rem;
+    }
+
+    .program-exercise-row .pex-stepper-btn {
+        width: 26px;
+        height: 26px;
+        font-size: 0.75rem;
+    }
+
+    /* Drag handle + index badge — more presence on the taller card. */
+    .program-exercise-row .pex-drag-handle {
+        height: 28px;
+        font-size: 0.9rem;
+    }
+    .program-exercise-row .pex-position {
+        width: 24px;
+        height: 24px;
+        font-size: 0.7rem;
+    }
+
+    /* Delete stays tertiary at rest; aligned to the identity row's right edge. */
+    .program-exercise-row .pex-delete {
+        width: 28px !important;
+        height: 28px !important;
+        font-size: 0.82rem !important;
+    }
+}
+
+/* Stepper — two zones separated by space-between:
+     [ LABEL ]                   [ - value + ]
+   The inner .pex-stepper-controls owns its own fixed inter-element gap so
+   the spacing between minus, value, and plus is ALWAYS identical, no matter
+   how long the value string is ("3", "10", "1:30", "2:15", "10:30"). */
+.pex-stepper {
+    display: inline-flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.5rem;
+    background: var(--bg-elevated);
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-md);
+    padding: 0.15rem 0.35rem;
+    font-size: 0.78rem;
+}
+
+.pex-stepper-label {
+    flex-shrink: 0;
+    font-weight: 600;
+    color: var(--text-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    font-size: 0.65rem;
+}
+
+/* Right-side group: [-] value [+]. Fixed gap guarantees visual rhythm. */
+.pex-stepper-controls {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
+    flex-shrink: 0;
+}
+
+.pex-stepper-value {
+    min-width: 2.6ch;
+    padding: 0 0.1rem;
+    text-align: center;
+    color: var(--text-primary);
+    font-variant-numeric: tabular-nums;
+    font-weight: 600;
+    letter-spacing: -0.005em;
+    white-space: nowrap;
+}
+
+.pex-stepper-btn {
+    flex-shrink: 0;
+    background: transparent;
+    border: none;
+    color: var(--text-secondary);
+    cursor: pointer;
+    width: 22px;
+    height: 22px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: var(--radius-sm);
+    font-size: 0.7rem;
+    transition: background var(--transition-fast), color var(--transition-fast);
+}
+
+.pex-stepper-btn:hover:not(:disabled) {
+    background: var(--bg-hover);
+    color: var(--text-primary);
+}
+
+.pex-stepper-btn:disabled {
+    opacity: 0.4;
+    cursor: not-allowed;
+}
+
+.pex-stepper-btn:focus-visible {
+    outline: none;
+    box-shadow: 0 0 0 2px rgba(108, 99, 255, 0.45);
 }
 
 /* Tighter gap specifically between the number badge and the exercise name,

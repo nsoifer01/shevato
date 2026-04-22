@@ -4,8 +4,9 @@
  */
 import { app } from '../app.js';
 import { storageService } from '../services/StorageService.js';
-import { formatDate, formatWeight } from '../utils/helpers.js';
+import { formatDate, formatWeight, showConfirmModal, showToast, formatSessionDateTime } from '../utils/helpers.js';
 import { orderPrograms } from '../utils/program-order.js';
+import { renderPausedBannerHTML, wirePausedBannerActions } from './paused-banner.js';
 
 class HomeView {
     constructor() {
@@ -15,6 +16,14 @@ class HomeView {
 
     init() {
         this.app.viewControllers.home = this;
+        this.wireFab();
+    }
+
+    wireFab() {
+        const fab = document.getElementById('home-workout-fab');
+        if (!fab || fab.dataset.wired) return;
+        fab.addEventListener('click', () => this.handleFabClick());
+        fab.dataset.wired = '1';
     }
 
     render() {
@@ -22,58 +31,87 @@ class HomeView {
         this.renderActiveProgram();
         this.renderRecentWorkouts();
         this.renderRecentAchievements();
+        this.renderFab();
+    }
+
+    /**
+     * The FAB has three states:
+     *   - Hidden when there are no programs yet (nothing to start).
+     *   - "Resume workout" (green) when a paused session exists.
+     *   - "Start workout" (primary) otherwise.
+     * Clicking either state jumps to the workout view; resume re-hydrates.
+     */
+    renderFab() {
+        const fab = document.getElementById('home-workout-fab');
+        if (!fab) return;
+        const hasPrograms = this.app.programs.length > 0;
+        const paused = storageService.getActiveWorkout();
+
+        if (!hasPrograms) {
+            fab.hidden = true;
+            return;
+        }
+
+        fab.hidden = false;
+        const label = fab.querySelector('.workout-fab-label');
+        const icon = fab.querySelector('i');
+
+        if (paused && paused.paused) {
+            fab.classList.add('workout-fab--resume');
+            if (label) label.textContent = 'Resume workout';
+            if (icon) {
+                icon.classList.remove('fa-play');
+                icon.classList.add('fa-play-circle');
+            }
+            fab.setAttribute('aria-label', 'Resume paused workout');
+        } else {
+            fab.classList.remove('workout-fab--resume');
+            if (label) label.textContent = 'Start workout';
+            if (icon) {
+                icon.classList.remove('fa-play-circle');
+                icon.classList.add('fa-play');
+            }
+            fab.setAttribute('aria-label', 'Start workout');
+        }
+    }
+
+    /**
+     * If paused → go to workout view and let it resume automatically.
+     * If exactly one program → auto-start it.
+     * Otherwise → route to the workout view's program picker.
+     */
+    handleFabClick() {
+        const paused = storageService.getActiveWorkout();
+        if (paused && paused.paused) {
+            this.resumeWorkout();
+            return;
+        }
+        if (this.app.programs.length === 1) {
+            const only = this.app.programs[0];
+            if (only.exercises && only.exercises.length > 0) {
+                this.startWorkoutWithProgram(only.id);
+                return;
+            }
+        }
+        this.app.showView('workout');
     }
 
     renderPausedWorkoutBanner() {
         const container = document.getElementById('active-program-card');
-        const pausedWorkout = storageService.getActiveWorkout();
 
         // Remove any existing banner first
         const existingBanner = document.querySelector('.paused-workout-banner');
-        if (existingBanner) {
-            existingBanner.remove();
-        }
+        if (existingBanner) existingBanner.remove();
 
-        if (!pausedWorkout || !pausedWorkout.paused) {
-            return;
-        }
+        const bannerHTML = renderPausedBannerHTML({ location: 'home', withCalendarMeta: false });
+        if (!bannerHTML) return;
 
-        const pausedAt = new Date(pausedWorkout.pausedAt);
-        const elapsed = pausedWorkout.elapsedBeforePause;
-        const minutes = Math.floor(elapsed / 60);
-        const seconds = elapsed % 60;
-
-        // Count total sets saved
-        const totalSets = pausedWorkout.exercises.reduce((sum, ex) =>
-            sum + (ex.sets ? ex.sets.length : 0), 0
-        );
-
-        const bannerHTML = `
-            <div class="paused-workout-banner">
-                <div class="paused-workout-icon">
-                    <i class="fas fa-pause-circle"></i>
-                </div>
-                <div class="paused-workout-info">
-                    <h3>Paused Workout</h3>
-                    <p><strong>${pausedWorkout.workoutDayName}</strong></p>
-                    <p class="paused-workout-meta">
-                        <span><i class="fas fa-clock"></i> ${minutes}:${String(seconds).padStart(2, '0')} elapsed</span>
-                        <span><i class="fas fa-dumbbell"></i> ${totalSets} set${totalSets !== 1 ? 's' : ''}</span>
-                    </p>
-                </div>
-                <div class="paused-workout-actions">
-                    <button class="btn btn-primary" onclick="window.gymApp.viewControllers.home.resumeWorkout()">
-                        <i class="fas fa-play"></i> Resume
-                    </button>
-                    <button class="btn btn-outline btn-danger-outline" onclick="window.gymApp.viewControllers.home.discardPausedWorkout()">
-                        <i class="fas fa-trash"></i> Discard
-                    </button>
-                </div>
-            </div>
-        `;
-
-        // Insert banner before the container
         container.insertAdjacentHTML('beforebegin', bannerHTML);
+        const banner = document.querySelector('.paused-workout-banner');
+        wirePausedBannerActions(banner, {
+            onResume: () => this.resumeWorkout(),
+            onDiscard: () => this.discardPausedWorkout(),
+        });
     }
 
     resumeWorkout() {
@@ -86,7 +124,6 @@ class HomeView {
     }
 
     async discardPausedWorkout() {
-        const { showConfirmModal } = await import('../utils/helpers.js');
         const confirmed = await showConfirmModal({
             title: 'Discard Paused Workout',
             message: 'Are you sure you want to discard this paused workout?<br><br><strong>All progress will be lost.</strong>',
@@ -98,7 +135,6 @@ class HomeView {
         if (confirmed) {
             storageService.clearActiveWorkout();
             this.render();
-            const { showToast } = await import('../utils/helpers.js');
             showToast('Paused workout discarded', 'info');
         }
     }
@@ -169,8 +205,9 @@ class HomeView {
 
     renderRecentWorkouts() {
         const container = document.getElementById('recent-workouts');
+        // Full-timestamp sort so same-day sessions order by time-of-day.
         const recentSessions = [...this.app.workoutSessions]
-            .sort((a, b) => new Date(b.date) - new Date(a.date))
+            .sort((a, b) => new Date(b.sortTimestamp) - new Date(a.sortTimestamp))
             .slice(0, 5);
 
         if (recentSessions.length === 0) {
@@ -189,7 +226,7 @@ class HomeView {
             <div class="workout-card clickable" onclick="window.gymApp.viewControllers.home.showWorkoutDetails(${session.id})">
                 <div class="workout-card-header">
                     <h4>${session.workoutDayName}</h4>
-                    <span class="date">${formatDate(session.date)}</span>
+                    <span class="date">${formatSessionDateTime(session)}</span>
                 </div>
                 <div class="workout-card-stats">
                     <div class="stat">
@@ -256,7 +293,6 @@ class HomeView {
 
         // Check if there's a paused workout
         if (pausedWorkout && pausedWorkout.paused) {
-            const { showConfirmModal } = await import('../utils/helpers.js');
             const confirmed = await showConfirmModal({
                 title: 'Workout In Progress',
                 message: `You have a paused workout "<strong>${pausedWorkout.workoutDayName}</strong>" with saved progress.<br><br>Starting a new workout will <strong>discard</strong> your paused workout.<br><br>Do you want to continue?`,

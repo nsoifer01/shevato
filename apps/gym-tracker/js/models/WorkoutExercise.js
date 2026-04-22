@@ -10,9 +10,15 @@ export class WorkoutExercise {
         this.exerciseName = data.exerciseName || '';
         this.sets = (data.sets || []).map(s => s instanceof Set ? s : new Set(s));
         this.targetSets = data.targetSets || 3;
+        this.targetReps = data.targetReps || 10;
+        this.restSeconds = Number.isFinite(data.restSeconds) ? data.restSeconds : 90;
         this.notes = data.notes || '';
         this.order = data.order || 0;
         this.completed = data.completed || false;
+        // stickyValues: per-slot defaults for planned rows, populated when a
+        // user unchecks a previously-completed set. Keys are slot indices,
+        // values are {weight, reps, duration} — same shape as a prior-set entry.
+        this.stickyValues = data.stickyValues || {};
     }
 
     get totalVolume() {
@@ -39,9 +45,12 @@ export class WorkoutExercise {
             exerciseName: this.exerciseName,
             sets: this.sets.map(s => s.toJSON()),
             targetSets: this.targetSets,
+            targetReps: this.targetReps,
+            restSeconds: this.restSeconds,
             notes: this.notes,
             order: this.order,
-            completed: this.completed
+            completed: this.completed,
+            stickyValues: this.stickyValues,
         };
     }
 

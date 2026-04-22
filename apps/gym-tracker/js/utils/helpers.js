@@ -132,6 +132,27 @@ export function formatWeight(weight, unit = 'kg') {
 }
 
 /**
+ * Format a workout session's date + time-of-day for display.
+ * Returns e.g. "Apr 20, 2026 • 6:42 PM". Falls back to just the date when
+ * no precise timestamp is available (very old data).
+ */
+export function formatSessionDateTime(session) {
+    if (!session) return '';
+    const datePart = formatDate(session.date);
+    // Prefer endTime; fall back through startTime then timestamp.
+    const timeSrc = session.endTime || session.startTime || session.timestamp;
+    if (!timeSrc) return datePart;
+    const d = new Date(timeSrc);
+    if (Number.isNaN(d.getTime())) return datePart;
+    const time = d.toLocaleTimeString('en-US', {
+        hour: 'numeric',
+        minute: '2-digit',
+        hour12: true,
+    });
+    return `${datePart} • ${time}`;
+}
+
+/**
  * Convert weight between units
  */
 export function convertWeight(weight, fromUnit, toUnit) {
@@ -246,12 +267,39 @@ export function downloadJSON(data, filename) {
 }
 
 /**
- * Show toast notification
+ * Show toast notification.
+ *
+ * Accepts either `showToast(message, type, duration)` or
+ * `showToast(message, type, duration, { action: { label, onClick } })`.
+ * When `action` is provided, the toast renders an inline button. Clicking
+ * the button invokes `onClick` and dismisses the toast.
  */
-export function showToast(message, type = 'info', duration = 3000) {
+export function showToast(message, type = 'info', duration = 3000, opts = {}) {
     const toast = document.createElement('div');
     toast.className = `toast toast-${type}`;
-    toast.textContent = message;
+
+    const msg = document.createElement('span');
+    msg.className = 'toast-message';
+    msg.textContent = message;
+    toast.appendChild(msg);
+
+    let dismiss;
+
+    if (opts.action && opts.action.label) {
+        toast.classList.add('toast-has-action');
+        const btn = document.createElement('button');
+        btn.type = 'button';
+        btn.className = 'toast-action';
+        btn.textContent = opts.action.label;
+        btn.addEventListener('click', () => {
+            try {
+                if (typeof opts.action.onClick === 'function') opts.action.onClick();
+            } finally {
+                dismiss && dismiss();
+            }
+        });
+        toast.appendChild(btn);
+    }
 
     document.body.appendChild(toast);
 
@@ -264,18 +312,21 @@ export function showToast(message, type = 'info', duration = 3000) {
     });
     toast.style.top = `${offset}px`;
 
-    setTimeout(() => {
-        toast.classList.add('show');
-    }, 10);
+    setTimeout(() => { toast.classList.add('show'); }, 10);
 
-    setTimeout(() => {
+    let removed = false;
+    dismiss = () => {
+        if (removed) return;
+        removed = true;
         toast.classList.remove('show');
         setTimeout(() => {
-            if (toast.parentNode) {
-                document.body.removeChild(toast);
-            }
+            if (toast.parentNode) toast.parentNode.removeChild(toast);
         }, 300);
-    }, duration);
+    };
+
+    setTimeout(dismiss, duration);
+
+    return { dismiss };
 }
 
 /**

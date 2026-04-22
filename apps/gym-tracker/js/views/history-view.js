@@ -2,7 +2,7 @@
  * History View Controller
  */
 import { app } from '../app.js';
-import { formatDate, showToast, showConfirmModal } from '../utils/helpers.js';
+import { formatDate, showToast, formatSessionDateTime } from '../utils/helpers.js';
 import { DarkCalendar } from '../utils/dark-calendar.js';
 import { DarkSelect } from '../utils/dark-select.js';
 
@@ -97,17 +97,18 @@ class HistoryView {
             sessions = sessions.filter(session => session.date <= this.dateTo);
         }
 
-        // Apply sorting
+        // Apply sorting. Date-asc/date-desc use the full session timestamp so
+        // two workouts on the same calendar day are ordered by time-of-day.
         sessions.sort((a, b) => {
             switch (this.currentSort) {
                 case 'date-asc':
-                    return new Date(a.date) - new Date(b.date);
+                    return new Date(a.sortTimestamp) - new Date(b.sortTimestamp);
                 case 'date-desc':
-                    return new Date(b.date) - new Date(a.date);
+                    return new Date(b.sortTimestamp) - new Date(a.sortTimestamp);
                 case 'volume-desc':
                     return b.totalVolume - a.totalVolume;
                 default:
-                    return new Date(b.date) - new Date(a.date);
+                    return new Date(b.sortTimestamp) - new Date(a.sortTimestamp);
             }
         });
 
@@ -132,9 +133,9 @@ class HistoryView {
                     <div class="workout-card-header">
                         <div class="workout-header-info">
                             <h3>${session.workoutDayName}</h3>
-                            <span class="date">${formatDate(session.date)}</span>
+                            <span class="date">${formatSessionDateTime(session)}</span>
                         </div>
-                        <button class="btn-icon delete-workout-btn" onclick="event.stopPropagation(); window.gymApp.viewControllers.history.deleteWorkout(${session.id})" title="Delete workout">
+                        <button class="btn-icon delete-workout-btn" onclick="event.stopPropagation(); window.gymApp.viewControllers.history.deleteWorkout(${session.id})" title="Delete workout" aria-label="Delete workout">
                             <i class="fas fa-trash"></i>
                         </button>
                     </div>
@@ -214,7 +215,7 @@ class HistoryView {
         // Build the detailed content
         let html = `
             <div class="workout-detail-summary">
-                <div class="detail-date">${formatDate(session.date)}</div>
+                <div class="detail-date">${formatSessionDateTime(session)}</div>
                 <div class="detail-stats">
                     <div class="detail-stat">
                         <span class="label">Duration</span>
@@ -347,36 +348,44 @@ class HistoryView {
         modal.classList.add('active');
     }
 
-    async deleteWorkout(sessionId) {
-        const session = this.app.workoutSessions.find(s => s.id === sessionId);
-        if (!session) return;
+    deleteWorkout(sessionId) {
+        const index = this.app.workoutSessions.findIndex(s => s.id === sessionId);
+        if (index < 0) return;
 
-        const message = `Are you sure you want to delete this workout?<br><br><strong>${session.workoutDayName}</strong><br>${formatDate(session.date)}<br><br>This workout included ${session.exercises.length} exercise${session.exercises.length !== 1 ? 's' : ''} and ${Math.round(session.totalVolume).toLocaleString()}${this.app.settings.weightUnit} total volume.<br><br><strong>This action cannot be undone.</strong>`;
+        // Snapshot the session + its original position so Undo can restore it exactly.
+        const session = this.app.workoutSessions[index];
+        const snapshot = { session, index };
 
-        const confirmed = await showConfirmModal({
-            title: 'Delete Workout',
-            message: message,
-            confirmText: 'Delete Workout',
-            cancelText: 'Cancel',
-            isDangerous: true
-        });
+        this.app.workoutSessions.splice(index, 1);
+        this.app.saveWorkoutSessions();
+        this.app.updateAchievements();
+        this.render();
 
-        if (confirmed) {
-            const index = this.app.workoutSessions.findIndex(s => s.id === sessionId);
-            if (index >= 0) {
-                this.app.workoutSessions.splice(index, 1);
-                this.app.saveWorkoutSessions();
-
-                // Update achievements since workout data changed
-                this.app.updateAchievements();
-
-                // Re-render the list
-                this.render();
-
-                // Show confirmation
-                showToast('Workout deleted', 'info');
+        // 7s gives enough time to notice the toast and tap Undo without being
+        // long enough to be intrusive. Matches the Material "snackbar" guidance.
+        showToast(
+            `Deleted "${session.workoutDayName}" · ${formatSessionDateTime(session)}`,
+            'info',
+            7000,
+            {
+                action: {
+                    label: 'Undo',
+                    onClick: () => this.restoreDeletedWorkout(snapshot),
+                },
             }
-        }
+        );
+    }
+
+    restoreDeletedWorkout(snapshot) {
+        if (!snapshot || !snapshot.session) return;
+        const { session, index } = snapshot;
+        // Clamp to current list length in case other sessions were deleted meanwhile.
+        const insertAt = Math.min(index, this.app.workoutSessions.length);
+        this.app.workoutSessions.splice(insertAt, 0, session);
+        this.app.saveWorkoutSessions();
+        this.app.updateAchievements();
+        this.render();
+        showToast('Workout restored', 'success');
     }
 
     goToProgramDetails(programId) {
