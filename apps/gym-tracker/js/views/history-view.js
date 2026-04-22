@@ -2,7 +2,7 @@
  * History View Controller
  */
 import { app } from '../app.js';
-import { formatDate, showToast, formatSessionDateTime } from '../utils/helpers.js';
+import { formatDate, showToast, showConfirmModal, formatSessionDateTime } from '../utils/helpers.js';
 import { DarkCalendar } from '../utils/dark-calendar.js';
 import { DarkSelect } from '../utils/dark-select.js';
 
@@ -348,44 +348,32 @@ class HistoryView {
         modal.classList.add('active');
     }
 
-    deleteWorkout(sessionId) {
+    async deleteWorkout(sessionId) {
+        const session = this.app.workoutSessions.find(s => s.id === sessionId);
+        if (!session) return;
+
+        const exerciseCount = session.exercises.length;
+        const exerciseLabel = exerciseCount === 1 ? 'exercise' : 'exercises';
+        const message = `Are you sure you want to delete this workout?<br><br><strong>${session.workoutDayName}</strong><br>${formatSessionDateTime(session)}<br><br>This workout included ${exerciseCount} ${exerciseLabel} and ${Math.round(session.totalVolume).toLocaleString()}${this.app.settings.weightUnit} total volume.<br><br><strong>This action cannot be undone.</strong>`;
+
+        const confirmed = await showConfirmModal({
+            title: 'Delete Workout',
+            message,
+            confirmText: 'Delete Workout',
+            cancelText: 'Cancel',
+            isDangerous: true,
+        });
+
+        if (!confirmed) return;
+
         const index = this.app.workoutSessions.findIndex(s => s.id === sessionId);
         if (index < 0) return;
-
-        // Snapshot the session + its original position so Undo can restore it exactly.
-        const session = this.app.workoutSessions[index];
-        const snapshot = { session, index };
 
         this.app.workoutSessions.splice(index, 1);
         this.app.saveWorkoutSessions();
         this.app.updateAchievements();
         this.render();
-
-        // 7s gives enough time to notice the toast and tap Undo without being
-        // long enough to be intrusive. Matches the Material "snackbar" guidance.
-        showToast(
-            `Deleted "${session.workoutDayName}" · ${formatSessionDateTime(session)}`,
-            'info',
-            7000,
-            {
-                action: {
-                    label: 'Undo',
-                    onClick: () => this.restoreDeletedWorkout(snapshot),
-                },
-            }
-        );
-    }
-
-    restoreDeletedWorkout(snapshot) {
-        if (!snapshot || !snapshot.session) return;
-        const { session, index } = snapshot;
-        // Clamp to current list length in case other sessions were deleted meanwhile.
-        const insertAt = Math.min(index, this.app.workoutSessions.length);
-        this.app.workoutSessions.splice(insertAt, 0, session);
-        this.app.saveWorkoutSessions();
-        this.app.updateAchievements();
-        this.render();
-        showToast('Workout restored', 'success');
+        showToast('Workout deleted', 'info');
     }
 
     goToProgramDetails(programId) {
