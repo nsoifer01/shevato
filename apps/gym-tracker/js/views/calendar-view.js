@@ -227,7 +227,11 @@ class CalendarView {
         if (!container) return;
 
         const sessions = this.app.workoutSessions || [];
-        const daySessions = sessions.filter(s => s.date === this.selectedDate);
+        // Sort same-day sessions by time-of-day, latest first, so an evening
+        // workout shows above a morning one on the same calendar day.
+        const daySessions = sessions
+            .filter(s => s.date === this.selectedDate)
+            .sort((a, b) => new Date(b.sortTimestamp) - new Date(a.sortTimestamp));
         const dateObj = new Date(this.selectedDate);
         const headerLabel = dateObj.toLocaleDateString(undefined, {
             weekday: 'long', month: 'long', day: 'numeric', year: 'numeric',

@@ -39,6 +39,10 @@
                 <i class="fas fa-list"></i>
                 <span>Programs</span>
             </button>
+            <button class="nav-item nav-item-primary" data-view="workout" aria-label="Start or resume workout">
+                <i class="fas fa-dumbbell"></i>
+                <span>Workout</span>
+            </button>
             <button class="nav-item" data-view="history">
                 <i class="fas fa-chart-line"></i>
                 <span>History</span>
@@ -94,6 +98,11 @@
                     <h1>Dashboard</h1>
                     <p class="subtitle">Track your fitness journey</p>
                 </div>
+
+                <button type="button" id="home-workout-fab" class="workout-fab" hidden aria-label="Start workout">
+                    <i class="fas fa-play" aria-hidden="true"></i>
+                    <span class="workout-fab-label">Start workout</span>
+                </button>
 
                 <!-- Active Program -->
                 <section class="section">
@@ -205,7 +214,7 @@
                 <div id="exercise-picker-modal" class="modal">
                     <div class="modal-content large">
                         <div class="modal-header">
-                            <h2>Select Exercise</h2>
+                            <h2>Select Exercises</h2>
                             <button class="modal-close">&times;</button>
                         </div>
                         <div class="modal-body">
@@ -260,6 +269,24 @@
                             <div id="exercise-picker-list" class="exercise-grid">
                                 <!-- Will be populated by JS -->
                             </div>
+
+                            <!-- Sticky tray of picked exercises; appears once at least one is selected -->
+                            <div id="exercise-picker-tray" class="exercise-picker-tray" hidden>
+                                <div class="exercise-picker-tray-header">
+                                    <span class="exercise-picker-tray-count" id="exercise-picker-tray-count">Added 0</span>
+                                    <button type="button" class="btn btn-ghost btn-sm" id="exercise-picker-tray-clear">
+                                        <i class="fas fa-rotate-left"></i> Clear
+                                    </button>
+                                </div>
+                                <ul id="exercise-picker-tray-list" class="exercise-picker-tray-list">
+                                    <!-- populated by JS -->
+                                </ul>
+                                <div class="exercise-picker-tray-actions">
+                                    <button type="button" class="btn btn-primary" id="exercise-picker-commit">
+                                        <i class="fas fa-check"></i> Add to program
+                                    </button>
+                                </div>
+                            </div>
                         </div>
                     </div>
                 </div>
@@ -281,8 +308,8 @@
                 <!-- Active Workout Screen -->
                 <div id="active-workout" class="workout-screen">
                     <div class="workout-header">
-                        <button class="btn-icon btn-icon-end" id="end-workout-btn" title="Discard Workout">
-                            <i class="fas fa-times"></i>
+                        <button class="btn-icon btn-icon-end" id="end-workout-btn" title="Discard Workout" aria-label="Discard workout without saving">
+                            <i class="fas fa-trash-can"></i>
                         </button>
                         <div class="workout-info">
                             <h2 id="workout-title">Workout</h2>
@@ -292,10 +319,10 @@
                             </div>
                         </div>
                         <div class="workout-header-actions">
-                            <button class="btn-icon btn-icon-pause" id="pause-workout-btn" title="Pause Workout">
+                            <button class="btn-icon btn-icon-pause" id="pause-workout-btn" title="Pause Workout" aria-label="Pause workout and save progress">
                                 <i class="fas fa-pause"></i>
                             </button>
-                            <button class="btn-icon btn-icon-finish" id="finish-workout-btn" title="Finish Workout">
+                            <button class="btn-icon btn-icon-finish" id="finish-workout-btn" title="Finish Workout" aria-label="Finish workout and save">
                                 <i class="fas fa-check"></i>
                             </button>
                         </div>
@@ -307,19 +334,24 @@
                         </div>
                     </div>
 
-                    <!-- Rest Timer Modal -->
-                    <div id="rest-timer-modal" class="modal">
-                        <div class="modal-content small">
-                            <div class="rest-timer-content">
-                                <h3>Rest Timer</h3>
-                                <div class="rest-timer-display">
-                                    <div id="rest-timer-value">90</div>
-                                    <div class="rest-timer-label">seconds</div>
-                                </div>
-                                <div class="rest-timer-actions">
-                                    <button class="btn btn-secondary" id="skip-rest-btn">Skip</button>
-                                    <button class="btn btn-primary" id="add-time-btn">+30s</button>
-                                </div>
+                    <!-- Rest Timer Bar (persistent; appears after a set is logged) -->
+                    <div id="rest-timer-bar" class="rest-timer-bar" role="status" aria-live="polite" hidden>
+                        <div class="rest-timer-bar-inner">
+                            <div class="rest-timer-info">
+                                <i class="fas fa-hourglass-half" aria-hidden="true"></i>
+                                <span class="rest-timer-label">Rest</span>
+                                <span id="rest-timer-value" class="rest-timer-value">0:00</span>
+                            </div>
+                            <div class="rest-timer-progress" aria-hidden="true">
+                                <span id="rest-timer-progress-fill" class="rest-timer-progress-fill"></span>
+                            </div>
+                            <div class="rest-timer-actions">
+                                <button type="button" class="rest-timer-action-btn" id="rest-add-btn" aria-label="Add 30 seconds">
+                                    +30s
+                                </button>
+                                <button type="button" class="rest-timer-action-btn rest-timer-skip" id="rest-skip-btn" aria-label="Skip rest">
+                                    Skip
+                                </button>
                             </div>
                         </div>
                     </div>
