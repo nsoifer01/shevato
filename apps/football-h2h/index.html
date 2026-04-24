@@ -260,6 +260,9 @@
                     <button class="stats-tab" onclick="switchStatsTab('general')" role="tab" aria-selected="false" aria-controls="general-stats">
                         📊 General Stats
                     </button>
+                    <button class="stats-tab" onclick="switchStatsTab('player')" role="tab" aria-selected="false" aria-controls="player-stats">
+                        👤 Player Stats
+                    </button>
                 </div>
 
                 <!-- H2H Stats Tab Content -->
@@ -323,6 +326,22 @@
                             <div class="stat-label">Penalty Shootouts</div>
                             <div class="stat-value" id="penaltyShootouts">0</div>
                         </div>
+                    </div>
+                </section>
+
+                <!-- Player Stats Tab Content -->
+                <section class="stats-overview stats-tab-content" id="player-stats" role="tabpanel" style="display: none;">
+                    <div class="player-comparison-wrap">
+                        <table class="player-comparison-table">
+                            <thead>
+                                <tr>
+                                    <th class="pc-col-stat">Stat</th>
+                                    <th class="pc-col-player" id="playerComparisonP1Header">Player 1</th>
+                                    <th class="pc-col-player" id="playerComparisonP2Header">Player 2</th>
+                                </tr>
+                            </thead>
+                            <tbody id="playerComparisonBody"></tbody>
+                        </table>
                     </div>
                 </section>
             </div>
@@ -421,6 +440,7 @@
         document.body.classList.add('theme');
         localStorage.setItem('theme', 'true');
     </script>
+    <script src="js/playerStats.js"></script>
     <script src="js/modalUtils.js"></script>
     <script src="../../assets/js/pagination.js"></script>
     <script src="js/sidebar.js"></script>

@@ -8,9 +8,10 @@ import { WorkoutExercise } from '../models/WorkoutExercise.js';
 import { Set } from '../models/Set.js';
 import { timerService } from '../services/TimerService.js';
 import { storageService } from '../services/StorageService.js';
-import { showToast, showConfirmModal, formatMuscleGroup, vibrate } from '../utils/helpers.js';
+import { showToast, showConfirmModal, formatMuscleGroup, vibrate, playSound } from '../utils/helpers.js';
 import { renderPausedBannerHTML, wirePausedBannerActions } from './paused-banner.js';
 import { orderPrograms } from '../utils/program-order.js';
+import { AnalyticsService } from '../services/AnalyticsService.js';
 
 class WorkoutView {
     constructor() {
@@ -19,6 +20,13 @@ class WorkoutView {
         this.navigationBlocked = false;
         this.activeRestTimerId = null;
         this.restTimerDuration = 0;
+        // PRs logged during the current session — surfaced in the finish modal.
+        this.sessionPrCount = 0;
+        // Slot-keyed record of sets that triggered a PR this session so the
+        // row can render a gold outline even after rerender. Plain object
+        // on purpose: this module imports `Set` from models/Set.js, which
+        // shadows the built-in Set.
+        this.sessionPrSlots = {};
         this.init();
     }
 
@@ -320,7 +328,7 @@ class WorkoutView {
                 <div class="empty-state">
                     <i class="fas fa-folder-open"></i>
                     <p>No programs yet. Create a program first.</p>
-                    <button class="btn btn-primary" data-view="programs">Create Program</button>
+                    <button type="button" class="btn btn-primary" data-home-action="create-program">Create Program</button>
                 </div>
             `;
             container.innerHTML = html;
@@ -336,7 +344,7 @@ class WorkoutView {
                         <div class="program-header">
                             <h3>${program.name}</h3>
                         </div>
-                        <p>${program.description || 'No description'}</p>
+                        ${program.description && program.description.trim() ? `<p>${program.description}</p>` : ''}
                         <div class="program-stats">
                             <div class="stat">
                                 <i class="fas fa-dumbbell"></i>
@@ -390,6 +398,10 @@ class WorkoutView {
         });
 
         this.currentWorkoutSession.startWorkout();
+
+        // Reset PR counters for the new session.
+        this.sessionPrCount = 0;
+        this.sessionPrSlots = {};
 
         // Start workout timer
         timerService.startWorkoutTimer((elapsed) => {
@@ -450,9 +462,21 @@ class WorkoutView {
         const previousSets = this.getPreviousExerciseData(exercise.exerciseId) || [];
         const unit = this.app.settings.weightUnit;
 
+        // Build a slot → Set lookup so rendering is driven by each set's
+        // stable `slot` rather than its position in the dense array. This
+        // keeps Set 1 visually Set 1 even after un-toggling another row.
+        const setsBySlot = new Map();
+        exercise.sets.forEach((set, arrIdx) => {
+            const slot = set.slot != null ? set.slot : arrIdx;
+            setsBySlot.set(slot, set);
+        });
+        const maxCommittedSlot = setsBySlot.size === 0
+            ? -1
+            : Math.max(...setsBySlot.keys());
+
         const targetSets = Math.max(1, exercise.targetSets || 3);
         const completedCount = exercise.sets.length;
-        const totalRows = Math.max(targetSets, completedCount);
+        const totalRows = Math.max(targetSets, maxCommittedSlot + 1);
         const isComplete = completedCount >= targetSets && targetSets > 0;
 
         const muscle = formatMuscleGroup(exerciseData?.muscleGroup);
@@ -460,8 +484,9 @@ class WorkoutView {
 
         let rowsHTML = '';
         for (let i = 0; i < totalRows; i++) {
-            if (i < exercise.sets.length) {
-                rowsHTML += this.renderCompletedRow(exercise.sets[i], index, i, isDuration, unit);
+            const committed = setsBySlot.get(i);
+            if (committed) {
+                rowsHTML += this.renderCompletedRow(committed, index, i, isDuration, unit);
             } else {
                 // Default priority for a planned row:
                 //   1. sticky — values the user already typed/committed for this
@@ -632,10 +657,14 @@ class WorkoutView {
             `window.gymApp.viewControllers.workout.deleteSet(${exerciseIndex}, ${slot}, { silent: true })`,
             'Unmark set');
 
+        const pr = this.sessionPrSlots?.[`${exerciseIndex}:${slot}`];
+        const prBadge = pr
+            ? `<span class="pr-badge" aria-label="Personal record, ${this.formatPrDelta(pr, unit)}"><i class="fas fa-trophy" aria-hidden="true"></i> PR ${this.formatPrDelta(pr, unit)}</span>`
+            : '';
         return `
-            <li class="set-row set-row-complete" data-slot="${slot}">
+            <li class="set-row set-row-complete${pr ? ' set-row--pr' : ''}" data-slot="${slot}">
                 <span class="set-row-num">${setLabel}</span>
-                <div class="set-row-details">${details}</div>
+                <div class="set-row-details">${details}${prBadge}</div>
                 <div class="set-row-actions">
                     <button type="button" class="btn-set-action" title="Edit set" aria-label="Edit set"
                         onclick="window.gymApp.viewControllers.workout.editSet(${exerciseIndex}, ${slot})">
@@ -674,7 +703,14 @@ class WorkoutView {
         if (!this.currentWorkoutSession) return;
         const exercise = this.currentWorkoutSession.exercises[exerciseIndex];
         if (!exercise) return;
-        const floor = Math.max(1, exercise.sets.length);
+        // Floor on the highest committed slot + 1 (or 1 if nothing committed),
+        // not on array length — a committed set in slot 4 with slot 0–3 still
+        // empty should still prevent shrinking below 5 visible rows.
+        const maxSlot = exercise.sets.reduce((m, s, i) => {
+            const slot = s.slot != null ? s.slot : i;
+            return slot > m ? slot : m;
+        }, -1);
+        const floor = Math.max(1, maxSlot + 1);
         if ((exercise.targetSets || 0) <= floor) return;
         exercise.targetSets -= 1;
         this.rerenderExercise(exerciseIndex);
@@ -754,7 +790,7 @@ class WorkoutView {
                 showToast('Please enter a duration', 'error');
                 return;
             }
-            set = new Set({ duration: totalSeconds, weight: 0, reps: 0, completed: true });
+            set = new Set({ duration: totalSeconds, weight: 0, reps: 0, completed: true, slot });
         } else {
             const weightInput = document.getElementById(`weight-${exerciseIndex}-${slot}`);
             const repsInput = document.getElementById(`reps-${exerciseIndex}-${slot}`);
@@ -764,30 +800,74 @@ class WorkoutView {
                 showToast('Please enter weight and reps', 'error');
                 return;
             }
-            set = new Set({ weight, reps, completed: true });
+            set = new Set({ weight, reps, completed: true, slot });
         }
 
-        // Insert into the exact slot index so the UI mirrors the user's plan.
-        // Sets beyond the current list length just append naturally.
-        if (slot >= exercise.sets.length) {
-            exercise.addSet(set);
-        } else {
-            exercise.sets.splice(slot, 0, set);
+        // Append to the dense array — visual position is driven by `set.slot`,
+        // not by array index, so order-of-insertion doesn't matter.
+        exercise.sets.push(set);
+
+        if (this.app.settings?.vibrationAlerts !== false) vibrate(30);
+
+        // PR check — compare the just-logged set against all prior sets of
+        // this exercise (from completed sessions, not the in-progress one).
+        const pr = AnalyticsService.isSetPR(exercise.exerciseId, set, this.app.workoutSessions);
+        if (pr) {
+            this.sessionPrCount += 1;
+            // Store the PR payload so the row can render a badge showing
+            // the improvement amount (e.g. "PR +40 lb").
+            this.sessionPrSlots[`${exerciseIndex}:${slot}`] = pr;
+            this.announcePR(pr);
         }
 
-        vibrate(30);
         this.rerenderExercise(exerciseIndex);
         this.startRest(exercise.restSeconds || 90);
     }
 
-    editSet(exerciseIndex, setIndex) {
+    /**
+     * Show a celebratory toast for the given PR + play the chime cue.
+     * Respects the user's restAlerts preference for audio (always vibrates
+     * and always shows the toast — the toast is the actual info).
+     */
+    announcePR(pr) {
+        const unit = this.app.settings.weightUnit;
+        const label = `🏆 New PR  ${this.formatPrDelta(pr, unit)}`;
+        showToast(label, 'success', 4000);
+        if (this.app.settings?.vibrationAlerts !== false) vibrate([40, 60, 120]);
+        if (this.app.settings?.soundAlerts !== false) playSound('pr');
+    }
+
+    /**
+     * Format the "+40 lb" / "+0:12" improvement string shown in the toast
+     * and the inline PR badge on the completed set row.
+     */
+    formatPrDelta(pr, unit) {
+        if (pr.kind === 'duration') {
+            const mins = Math.floor(pr.delta / 60);
+            const secs = pr.delta % 60;
+            return `+${mins}:${String(secs).padStart(2, '0')}`;
+        }
+        return `+${Math.round(pr.delta)} ${unit}`;
+    }
+
+    /**
+     * Find a committed set in the exercise by its stable slot. Legacy sets
+     * (no `slot` field yet) fall back to their array index so sessions
+     * saved before this change still behave correctly.
+     */
+    findSetBySlot(exercise, slot) {
+        if (!exercise || !exercise.sets) return null;
+        return exercise.sets.find((s, i) => (s.slot != null ? s.slot : i) === slot) || null;
+    }
+
+    editSet(exerciseIndex, slot) {
         if (!this.currentWorkoutSession) return;
 
         const exercise = this.currentWorkoutSession.exercises[exerciseIndex];
-        const set = exercise?.sets[setIndex];
+        const set = this.findSetBySlot(exercise, slot);
         if (!set) return;
 
-        const setRowEl = document.querySelector(`#set-row-list-${exerciseIndex} .set-row[data-slot="${setIndex}"]`);
+        const setRowEl = document.querySelector(`#set-row-list-${exerciseIndex} .set-row[data-slot="${slot}"]`);
         if (!setRowEl) return;
 
         const isDuration = set.duration > 0;
@@ -799,20 +879,20 @@ class WorkoutView {
             editFormHTML = `
                 <div class="set-row-inputs">
                     <input type="number" class="set-edit-input duration-edit-min"
-                        id="edit-duration-min-${exerciseIndex}-${setIndex}" value="${mins}" min="0" placeholder="Min" aria-label="Minutes">
+                        id="edit-duration-min-${exerciseIndex}-${slot}" value="${mins}" min="0" placeholder="Min" aria-label="Minutes">
                     <span class="duration-separator">:</span>
                     <input type="number" class="set-edit-input duration-edit-sec"
-                        id="edit-duration-sec-${exerciseIndex}-${setIndex}" value="${secs}" min="0" max="59" placeholder="Sec" aria-label="Seconds">
+                        id="edit-duration-sec-${exerciseIndex}-${slot}" value="${secs}" min="0" max="59" placeholder="Sec" aria-label="Seconds">
                 </div>
             `;
         } else {
             editFormHTML = `
                 <div class="set-row-inputs">
                     <input type="number" class="set-edit-input"
-                        id="edit-weight-${exerciseIndex}-${setIndex}" value="${set.weight}" step="0.5" min="0" placeholder="Weight" aria-label="Weight">
+                        id="edit-weight-${exerciseIndex}-${slot}" value="${set.weight}" step="0.5" min="0" placeholder="Weight" aria-label="Weight">
                     <span class="set-row-x">×</span>
                     <input type="number" class="set-edit-input"
-                        id="edit-reps-${exerciseIndex}-${setIndex}" value="${set.reps}" min="1" placeholder="Reps" aria-label="Reps">
+                        id="edit-reps-${exerciseIndex}-${slot}" value="${set.reps}" min="1" placeholder="Reps" aria-label="Reps">
                 </div>
             `;
         }
@@ -820,11 +900,11 @@ class WorkoutView {
         setRowEl.classList.remove('set-row-complete');
         setRowEl.classList.add('set-row-editing');
         setRowEl.innerHTML = `
-            <span class="set-row-num">${setIndex + 1}</span>
+            <span class="set-row-num">${slot + 1}</span>
             ${editFormHTML}
             <div class="set-row-actions">
                 <button type="button" class="btn-set-action btn-set-save" title="Save" aria-label="Save set"
-                    onclick="window.gymApp.viewControllers.workout.saveSetEdit(${exerciseIndex}, ${setIndex})">
+                    onclick="window.gymApp.viewControllers.workout.saveSetEdit(${exerciseIndex}, ${slot})">
                     <i class="fas fa-check"></i>
                 </button>
                 <button type="button" class="btn-set-action btn-set-cancel" title="Cancel" aria-label="Cancel edit"
@@ -842,16 +922,17 @@ class WorkoutView {
         }
     }
 
-    saveSetEdit(exerciseIndex, setIndex) {
+    saveSetEdit(exerciseIndex, slot) {
         if (!this.currentWorkoutSession) return;
 
         const exercise = this.currentWorkoutSession.exercises[exerciseIndex];
-        const set = exercise.sets[setIndex];
+        const set = this.findSetBySlot(exercise, slot);
+        if (!set) return;
         const isDuration = set.duration > 0;
 
         if (isDuration) {
-            const minInput = document.getElementById(`edit-duration-min-${exerciseIndex}-${setIndex}`);
-            const secInput = document.getElementById(`edit-duration-sec-${exerciseIndex}-${setIndex}`);
+            const minInput = document.getElementById(`edit-duration-min-${exerciseIndex}-${slot}`);
+            const secInput = document.getElementById(`edit-duration-sec-${exerciseIndex}-${slot}`);
             const minutes = parseInt(minInput.value, 10) || 0;
             const seconds = parseInt(secInput.value, 10) || 0;
             const totalSeconds = (minutes * 60) + seconds;
@@ -861,8 +942,8 @@ class WorkoutView {
             }
             set.duration = totalSeconds;
         } else {
-            const weightInput = document.getElementById(`edit-weight-${exerciseIndex}-${setIndex}`);
-            const repsInput = document.getElementById(`edit-reps-${exerciseIndex}-${setIndex}`);
+            const weightInput = document.getElementById(`edit-weight-${exerciseIndex}-${slot}`);
+            const repsInput = document.getElementById(`edit-reps-${exerciseIndex}-${slot}`);
             const weight = parseFloat(weightInput.value);
             const reps = parseInt(repsInput.value, 10);
             if (isNaN(weight) || weight < 0 || !reps) {
@@ -873,8 +954,55 @@ class WorkoutView {
             set.reps = reps;
         }
 
+        // Edits can turn a set into a PR, out of a PR, or just update the
+        // delta on an already-PR row. Re-evaluate once here instead of
+        // forcing users to toggle off/on.
+        const prTransition = this.reevaluatePrForSlot(exerciseIndex, slot, set, exercise);
+
         this.rerenderExercise(exerciseIndex);
-        showToast('Set updated', 'success');
+
+        // Suppress the generic "Set updated" toast when a new PR fires —
+        // the PR toast already communicates that the save happened, and
+        // stacking two toasts drowns the celebration.
+        if (prTransition !== 'new') {
+            showToast('Set updated', 'success');
+        }
+    }
+
+    /**
+     * Recompute PR status for a single set and update the session record
+     * accordingly. Called after any mutation to a committed set's values.
+     *
+     * Returns one of:
+     *   'new'    — wasn't a PR before, is now (fires toast + sound + haptic)
+     *   'update' — was a PR, still is; badge delta refreshed silently
+     *   'lost'   — was a PR, no longer is; badge + count cleared
+     *   'none'   — wasn't a PR, still isn't
+     *
+     * Never re-announces a PR that was already celebrated — "still PR" is
+     * silent so the user isn't chimed at every tiny edit.
+     */
+    reevaluatePrForSlot(exerciseIndex, slot, set, exercise) {
+        const prKey = `${exerciseIndex}:${slot}`;
+        const hadPr = !!(this.sessionPrSlots && this.sessionPrSlots[prKey]);
+        const pr = AnalyticsService.isSetPR(exercise.exerciseId, set, this.app.workoutSessions);
+
+        if (pr && !hadPr) {
+            this.sessionPrCount += 1;
+            this.sessionPrSlots[prKey] = pr;
+            this.announcePR(pr);
+            return 'new';
+        }
+        if (pr && hadPr) {
+            this.sessionPrSlots[prKey] = pr;
+            return 'update';
+        }
+        if (!pr && hadPr) {
+            delete this.sessionPrSlots[prKey];
+            this.sessionPrCount = Math.max(0, this.sessionPrCount - 1);
+            return 'lost';
+        }
+        return 'none';
     }
 
     cancelSetEdit(exerciseIndex) {
@@ -888,24 +1016,40 @@ class WorkoutView {
      * the knob animation already gives clear visual confirmation and a
      * duplicate toast would be noise.
      */
-    deleteSet(exerciseIndex, setIndex, opts = {}) {
+    deleteSet(exerciseIndex, slot, opts = {}) {
         if (!this.currentWorkoutSession) return;
         const exercise = this.currentWorkoutSession.exercises[exerciseIndex];
-        const removed = exercise?.sets[setIndex];
-        if (!exercise || !removed) return;
+        if (!exercise) return;
 
-        exercise.sets.splice(setIndex, 1);
+        // Find by stable slot (not by array index). Legacy sets without a
+        // `slot` field fall back to their array position so old sessions
+        // loaded mid-workout still un-toggle correctly.
+        const arrIdx = exercise.sets.findIndex((s, i) => {
+            const key = s.slot != null ? s.slot : i;
+            return key === slot;
+        });
+        if (arrIdx < 0) return;
+        const removed = exercise.sets[arrIdx];
 
-        // Preserve the deleted set's values so the user's typed edits don't
-        // vanish when a set is unchecked. The values stick to whatever slot
-        // becomes the first planned row after the deletion (the new tail).
-        // This makes toggle-off → re-check flows non-destructive.
+        exercise.sets.splice(arrIdx, 1);
+
+        // Preserve the deleted values on the same slot so the planned row
+        // repopulates with what the user just typed — toggle-off → re-check
+        // must be non-destructive.
         if (!exercise.stickyValues) exercise.stickyValues = {};
-        exercise.stickyValues[exercise.sets.length] = {
+        exercise.stickyValues[slot] = {
             weight: removed.weight,
             reps: removed.reps,
             duration: removed.duration,
         };
+
+        // If this set held a PR for the current session, clear the badge
+        // and decrement the counter. Re-committing recomputes PR fresh.
+        const prKey = `${exerciseIndex}:${slot}`;
+        if (this.sessionPrSlots && this.sessionPrSlots[prKey]) {
+            delete this.sessionPrSlots[prKey];
+            this.sessionPrCount = Math.max(0, this.sessionPrCount - 1);
+        }
 
         this.rerenderExercise(exerciseIndex);
         if (!opts.silent) showToast('Set deleted', 'info');
@@ -1005,7 +1149,9 @@ class WorkoutView {
         const valueEl = document.getElementById('rest-timer-value');
         if (bar) bar.classList.add('rest-timer-done');
         if (valueEl) valueEl.textContent = 'Done';
-        vibrate([120, 60, 120]);
+        // Audio and haptic cues — each opt-outable independently in Settings.
+        if (this.app.settings?.vibrationAlerts !== false) vibrate([120, 60, 120]);
+        if (this.app.settings?.soundAlerts !== false) playSound('rest-done');
         // Auto-hide after a short celebration so the bar doesn't linger.
         setTimeout(() => this.hideRestBar(), 2500);
     }
@@ -1041,6 +1187,13 @@ class WorkoutView {
             `${Math.round(this.currentWorkoutSession.totalVolume).toLocaleString()} ${unit}`;
         document.getElementById('summary-sets').textContent =
             this.currentWorkoutSession.totalSets;
+
+        const prsStat = document.getElementById('summary-prs-stat');
+        const prsValue = document.getElementById('summary-prs');
+        if (prsStat && prsValue) {
+            prsStat.hidden = this.sessionPrCount === 0;
+            prsValue.textContent = `🏆 ${this.sessionPrCount}`;
+        }
 
         document.getElementById('finish-workout-modal').classList.add('active');
     }

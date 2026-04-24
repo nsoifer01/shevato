@@ -72,7 +72,43 @@ class GymTrackerApp {
         // Listen for sync system ready
         this.setupSyncListeners();
 
+        // First-run onboarding — only when the user has absolutely no data
+        // and has never dismissed the welcome. If sync later pulls data in,
+        // the modal stays dismissed (flag persists).
+        this.maybeShowOnboarding();
+
         console.log('✅ Gym Tracker App initialized');
+    }
+
+    /**
+     * Show the welcome modal to first-time users. A user is "first-time"
+     * if they have no programs, no sessions, and have never dismissed
+     * the modal before. Running sync listeners can't retroactively
+     * trigger this — the modal is strictly day-one.
+     */
+    maybeShowOnboarding() {
+        const seen = storageService.hasSeenOnboarding();
+        const hasData = this.programs.length > 0 || this.workoutSessions.length > 0;
+        if (seen || hasData) return;
+
+        const modal = document.getElementById('onboarding-modal');
+        if (!modal) return;
+
+        const close = () => {
+            modal.classList.remove('active');
+            modal.setAttribute('aria-hidden', 'true');
+            storageService.markOnboardingSeen();
+        };
+
+        modal.setAttribute('aria-hidden', 'false');
+        modal.classList.add('active');
+
+        document.getElementById('onboarding-dismiss')?.addEventListener('click', close, { once: true });
+        document.getElementById('onboarding-skip')?.addEventListener('click', close, { once: true });
+        document.getElementById('onboarding-go-programs')?.addEventListener('click', () => {
+            close();
+            this.showView('programs');
+        }, { once: true });
     }
 
     /**
@@ -210,6 +246,29 @@ class GymTrackerApp {
             e.preventDefault();
             const view = navBtn.dataset.view;
             this.showView(view);
+        });
+
+        // Empty-state CTAs across views (Dashboard, History, Workout) are
+        // wired via `data-home-action` so they share one source of truth.
+        // "Start Workout" falls back to the Create Program flow when no
+        // programs exist — dropping first-time users on a blank Workout
+        // view was the original bug.
+        document.addEventListener('click', (e) => {
+            const btn = e.target.closest('[data-home-action]');
+            if (!btn) return;
+            e.preventDefault();
+            e.stopPropagation();
+            const action = btn.dataset.homeAction;
+            if (action === 'create-program') {
+                this.viewControllers.programs?.createProgramFromElsewhere();
+            } else if (action === 'start-workout') {
+                if (this.programs.length === 0) {
+                    showToast('Create a program first — then pick it to start a workout.', 'info', 4000);
+                    this.viewControllers.programs?.createProgramFromElsewhere();
+                } else {
+                    this.showView('workout');
+                }
+            }
         });
 
         // Handle back button
