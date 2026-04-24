@@ -466,19 +466,62 @@ export function isMobile() {
 }
 
 /**
- * Vibrate device (if supported)
+ * Vibrate device (if supported). Defensive against non-browser contexts
+ * where `navigator` is undefined (Node tests, Workers without DOM, etc.)
+ * so importing this module never throws at load.
  */
 export function vibrate(duration = 50) {
-    if ('vibrate' in navigator) {
+    if (typeof navigator !== 'undefined' && 'vibrate' in navigator) {
         navigator.vibrate(duration);
     }
 }
 
 /**
- * Play sound (if enabled in settings)
+ * Play a short beep using Web Audio. No assets, no network, and safely
+ * no-ops in browsers that don't expose AudioContext (older iOS WebView).
+ *
+ * Sound types:
+ *   'rest-done' → two quick ascending tones (800 → 1200 Hz)
+ *   'pr'        → a single bright chime (1400 Hz)
+ *   other       → a single 800 Hz blip
+ *
+ * Autoplay policy: browsers block AudioContext until a user gesture,
+ * but the Start-Workout tap already satisfies that by the time any of
+ * this would fire. Users who have never tapped anything get silence.
  */
+let _audioCtx = null;
 export function playSound(soundType = 'success') {
-    // Placeholder for sound functionality
-    // Can be implemented with audio files if needed
-    console.log(`Playing sound: ${soundType}`);
+    try {
+        const Ctx = window.AudioContext || window.webkitAudioContext;
+        if (!Ctx) return;
+        if (!_audioCtx) _audioCtx = new Ctx();
+        if (_audioCtx.state === 'suspended') _audioCtx.resume();
+
+        const now = _audioCtx.currentTime;
+        const play = (freq, startAt, dur = 0.15, vol = 0.18) => {
+            const osc = _audioCtx.createOscillator();
+            const gain = _audioCtx.createGain();
+            osc.type = 'sine';
+            osc.frequency.value = freq;
+            // Short attack/decay envelope so it doesn't click.
+            gain.gain.setValueAtTime(0, now + startAt);
+            gain.gain.linearRampToValueAtTime(vol, now + startAt + 0.01);
+            gain.gain.linearRampToValueAtTime(0, now + startAt + dur);
+            osc.connect(gain).connect(_audioCtx.destination);
+            osc.start(now + startAt);
+            osc.stop(now + startAt + dur + 0.02);
+        };
+
+        if (soundType === 'rest-done') {
+            play(800, 0);
+            play(1200, 0.18);
+        } else if (soundType === 'pr') {
+            play(1400, 0, 0.22, 0.22);
+            play(1800, 0.12, 0.18, 0.18);
+        } else {
+            play(800, 0);
+        }
+    } catch {
+        // Intentionally swallow — audio is a nice-to-have, never critical.
+    }
 }

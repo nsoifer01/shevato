@@ -4,6 +4,7 @@
 import { app } from '../app.js';
 import { showToast, parseLocalDate, showConfirmModal } from '../utils/helpers.js';
 import { DarkSelect } from '../utils/dark-select.js';
+import { AnalyticsService } from '../services/AnalyticsService.js';
 
 class ExercisesView {
     constructor() {
@@ -588,7 +589,131 @@ class ExercisesView {
             </section>
         `;
 
+        this.renderProgressionChart(exerciseId, isDuration);
+
         modal.classList.add('active');
+    }
+
+    /**
+     * Render the per-exercise progression chart into the #exercise-history-chart
+     * placeholder. Inline SVG — no chart library, no network.
+     *
+     * For weighted exercises we plot top-set weight and estimated 1RM (Epley).
+     * For duration exercises we plot longest set per session.
+     */
+    renderProgressionChart(exerciseId, isDuration) {
+        const host = document.getElementById('exercise-history-chart');
+        if (!host) return;
+        host.innerHTML = '';
+
+        const points = AnalyticsService.getExerciseProgression(
+            exerciseId,
+            this.app.workoutSessions,
+            { limit: 12 },
+        );
+        if (points.length < 2) return; // need ≥2 points to draw a trend
+
+        const unit = this.app.settings.weightUnit;
+        const fmtDate = (dateStr) => parseLocalDate(dateStr).toLocaleDateString(undefined, {
+            month: 'short', day: 'numeric',
+        });
+
+        const series = isDuration
+            ? points.map(p => ({ x: p.date, y: p.maxDuration }))
+            : points.map(p => ({ x: p.date, y: p.maxWeight }));
+
+        const e1rmSeries = isDuration
+            ? null
+            : points.map(p => ({ x: p.date, y: Math.round(p.e1rm) }));
+
+        const yMin = Math.min(...series.map(p => p.y), e1rmSeries ? Math.min(...e1rmSeries.map(p => p.y)) : Infinity);
+        const yMax = Math.max(...series.map(p => p.y), e1rmSeries ? Math.max(...e1rmSeries.map(p => p.y)) : -Infinity);
+        const yRange = Math.max(yMax - yMin, 1);
+        const pad = yRange * 0.15;
+        const yLo = Math.max(0, yMin - pad);
+        const yHi = yMax + pad;
+
+        const W = 520;
+        const H = 160;
+        const mx = 32;
+        const my = 16;
+        const plotW = W - mx * 2;
+        const plotH = H - my * 2;
+
+        const xAt = (i) => mx + (series.length === 1 ? plotW / 2 : (i / (series.length - 1)) * plotW);
+        const yAt = (v) => my + plotH - ((v - yLo) / (yHi - yLo)) * plotH;
+
+        const toPath = (pts) => pts.map((p, i) => `${i === 0 ? 'M' : 'L'}${xAt(i).toFixed(1)},${yAt(p.y).toFixed(1)}`).join(' ');
+
+        const fmtY = (v) => isDuration
+            ? `${Math.floor(v / 60)}:${String(Math.floor(v % 60)).padStart(2, '0')}`
+            : `${Math.round(v)} ${unit}`;
+
+        const firstLabel = fmtDate(series[0].x);
+        const lastLabel = fmtDate(series[series.length - 1].x);
+
+        const bestWeight = Math.max(...points.map(p => p.maxWeight));
+        const bestE1rm = Math.max(...points.map(p => p.e1rm));
+        const bestDuration = Math.max(...points.map(p => p.maxDuration));
+
+        const firstY = series[0].y;
+        const lastY = series[series.length - 1].y;
+        const trendDelta = lastY - firstY;
+        const trendPct = firstY > 0 ? Math.round((trendDelta / firstY) * 100) : 0;
+        const trendClass = trendDelta > 0 ? 'is-up' : trendDelta < 0 ? 'is-down' : '';
+        const trendSign = trendDelta > 0 ? '+' : '';
+
+        const primaryLabel = isDuration ? 'Longest set' : 'Top-set weight';
+        const caption = isDuration
+            ? `${points.length} sessions · ${trendSign}${fmtY(trendDelta)} vs ${points.length} ago`
+            : `${points.length} sessions · ${trendSign}${trendPct}% vs ${points.length} ago`;
+
+        const statTiles = isDuration
+            ? `<div class="stat-box"><span class="stat-label">Best</span><span class="stat-value">${fmtY(bestDuration)}</span></div>`
+            : `<div class="stat-box"><span class="stat-label">Top weight</span><span class="stat-value">${Math.round(bestWeight)} ${unit}</span></div>
+               <div class="stat-box"><span class="stat-label">Best e1RM</span><span class="stat-value">${Math.round(bestE1rm)} ${unit}</span></div>`;
+
+        const dotsPrimary = series.map((p, i) =>
+            `<circle cx="${xAt(i).toFixed(1)}" cy="${yAt(p.y).toFixed(1)}" r="3" class="progression-dot"><title>${fmtDate(p.x)}: ${fmtY(p.y)}</title></circle>`
+        ).join('');
+
+        const e1rmLine = e1rmSeries
+            ? `<path d="${toPath(e1rmSeries)}" class="progression-line progression-line-e1rm"/>`
+            : '';
+
+        const xTicks = `
+            <text x="${mx}" y="${H - 2}" class="progression-axis" text-anchor="start">${firstLabel}</text>
+            <text x="${W - mx}" y="${H - 2}" class="progression-axis" text-anchor="end">${lastLabel}</text>
+        `;
+        const yTicks = `
+            <text x="${mx - 6}" y="${yAt(yHi).toFixed(1) + 4}" class="progression-axis" text-anchor="end">${fmtY(yHi)}</text>
+            <text x="${mx - 6}" y="${yAt(yLo).toFixed(1) + 4}" class="progression-axis" text-anchor="end">${fmtY(yLo)}</text>
+        `;
+
+        host.innerHTML = `
+            <section class="exercise-detail-section exercise-progression">
+                <header class="exercise-detail-section-header">
+                    <h3><i class="fas fa-chart-line"></i> Progression</h3>
+                    <span class="exercise-detail-section-caption ${trendClass}">${caption}</span>
+                </header>
+                <div class="exercise-stats-summary">${statTiles}</div>
+                <div class="progression-chart-wrap">
+                    <svg viewBox="0 0 ${W} ${H}" class="progression-chart" role="img" aria-label="${primaryLabel} over the last ${points.length} sessions">
+                        <line x1="${mx}" y1="${my}" x2="${mx}" y2="${H - my}" class="progression-axis-line"/>
+                        <line x1="${mx}" y1="${H - my}" x2="${W - mx}" y2="${H - my}" class="progression-axis-line"/>
+                        ${e1rmLine}
+                        <path d="${toPath(series)}" class="progression-line progression-line-primary"/>
+                        ${dotsPrimary}
+                        ${xTicks}
+                        ${yTicks}
+                    </svg>
+                    <div class="progression-legend">
+                        <span class="progression-legend-item"><span class="dot dot-primary"></span>${primaryLabel}</span>
+                        ${e1rmSeries ? '<span class="progression-legend-item"><span class="dot dot-e1rm"></span>Est. 1RM</span>' : ''}
+                    </div>
+                </div>
+            </section>
+        `;
     }
 
     statBox(label, value) {

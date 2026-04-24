@@ -10,6 +10,11 @@ export class Set {
         this.completed = data.completed !== undefined ? data.completed : false;
         this.restTime = data.restTime || 0; // in seconds
         this.notes = data.notes || '';
+        // Stable user-facing slot index (0-based) within its exercise. The
+        // renderer addresses rows by slot so un-toggling a middle set doesn't
+        // visually renumber the others. May be null on legacy sessions — the
+        // render layer falls back to array position when slot is unset.
+        this.slot = data.slot != null ? data.slot : null;
     }
 
     get volume() {
@@ -28,7 +33,8 @@ export class Set {
             duration: this.duration,
             completed: this.completed,
             restTime: this.restTime,
-            notes: this.notes
+            notes: this.notes,
+            slot: this.slot
         };
     }
 
