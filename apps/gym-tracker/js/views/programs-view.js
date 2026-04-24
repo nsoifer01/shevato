@@ -53,6 +53,15 @@ class ProgramsView {
             });
         }
 
+        // Clear the program-name inline error as soon as the user starts
+        // fixing it — no need to re-submit just to dismiss stale validation.
+        const nameInput = document.getElementById('program-name');
+        if (nameInput) {
+            nameInput.addEventListener('input', () => {
+                if (nameInput.value.trim()) this.showNameError(false);
+            });
+        }
+
         // Add exercise to program button
         const addExerciseBtn = document.getElementById('add-exercise-to-program-btn');
         if (addExerciseBtn) {
@@ -265,6 +274,11 @@ class ProgramsView {
         const modal = document.getElementById('program-modal');
         const title = document.getElementById('program-modal-title');
 
+        // Always open with a clean validation state — stale errors from a
+        // prior session would be confusing before the user has done anything.
+        this.showNameError(false);
+        this.showExercisesError(false);
+
         if (programId) {
             this.currentProgram = this.app.getProgramById(programId);
             title.textContent = 'Edit Program';
@@ -293,6 +307,11 @@ class ProgramsView {
         if (countEl) countEl.textContent = totalExercises > 0
             ? `${totalExercises} ${totalExercises === 1 ? 'exercise' : 'exercises'}`
             : '';
+
+        // Adding an exercise clears the section error; removing the last one
+        // doesn't auto-warn (the user sees the empty state), they'll get the
+        // error on the next save attempt if it's still empty.
+        if (totalExercises > 0) this.showExercisesError(false);
 
         if (!this.currentProgram || totalExercises === 0) {
             container.innerHTML = `
@@ -438,8 +457,23 @@ class ProgramsView {
         const name = document.getElementById('program-name').value.trim();
         const description = document.getElementById('program-description').value.trim();
 
-        if (!name) {
-            showToast('Program name is required', 'error');
+        // Inline validation — name required, ≥1 exercise required. Show all
+        // failures at once so the user doesn't fix name → click → see "now
+        // add exercises" on a second round-trip.
+        const nameMissing = !name;
+        const noExercises = !this.currentProgram
+            || !this.currentProgram.exercises
+            || this.currentProgram.exercises.length === 0;
+
+        this.showNameError(nameMissing);
+        this.showExercisesError(noExercises);
+
+        if (nameMissing || noExercises) {
+            const firstInvalid = nameMissing
+                ? document.getElementById('program-name')
+                : document.getElementById('program-exercises-section');
+            firstInvalid?.focus?.();
+            firstInvalid?.scrollIntoView?.({ behavior: 'smooth', block: 'center' });
             this.isSaving = false;
             return;
         }
@@ -480,6 +514,57 @@ class ProgramsView {
             this.app.showView('programs');
         }
         this.openProgramModal(programId);
+    }
+
+    /**
+     * Open the Create Program modal from anywhere. Mirrors editProgram() but
+     * starts a fresh program. Used by the Dashboard empty-state CTAs so the
+     * user doesn't have to hunt for the Programs tab.
+     */
+    createProgramFromElsewhere() {
+        if (this.app.currentView !== 'programs') {
+            this.returnToView = this.app.currentView;
+            this.app.showView('programs');
+        }
+        this.openProgramModal();
+    }
+
+    /**
+     * Toggle the inline "name required" error on the Program Name field.
+     * Drives both the label message and the red-border state on the input
+     * (aria-invalid for screen readers, .is-invalid for styling).
+     */
+    showNameError(show) {
+        const input = document.getElementById('program-name');
+        const err = document.getElementById('program-name-error');
+        if (!input || !err) return;
+        if (show) {
+            input.classList.add('is-invalid');
+            input.setAttribute('aria-invalid', 'true');
+            err.hidden = false;
+        } else {
+            input.classList.remove('is-invalid');
+            input.setAttribute('aria-invalid', 'false');
+            err.hidden = true;
+        }
+    }
+
+    /**
+     * Toggle the inline "add at least one exercise" error banner on the
+     * Exercises section. Also outlines the container so the user can spot
+     * the problem without reading the message first.
+     */
+    showExercisesError(show) {
+        const section = document.getElementById('program-exercises-section');
+        const err = document.getElementById('program-exercises-error');
+        if (!section || !err) return;
+        if (show) {
+            section.classList.add('is-invalid-section');
+            err.hidden = false;
+        } else {
+            section.classList.remove('is-invalid-section');
+            err.hidden = true;
+        }
     }
 
     /**

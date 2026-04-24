@@ -1822,6 +1822,163 @@ function updateStatisticsWithData(gamesData) {
             player2CardPen.classList.add('tied');
         }
     }
+
+    renderPlayerStatsTab(gamesData);
+}
+
+// Descriptor for each row in the Player Stats comparison table. `direction`
+// drives the green/red/amber tinting in compareStat; `format` tells the
+// renderer how to stringify the raw numeric stat values.
+// Only uses fields already produced by computePlayerStats — no new data.
+const PLAYER_STAT_ROWS = [
+    { key: 'totalGoals',              label: 'Total Goals',            direction: 'higher',  format: 'count' },
+    { key: 'goalsPerGame',            label: 'Goals / Game',           direction: 'higher',  format: 'decimal' },
+    { key: 'highestScore',            label: 'Highest Score',          direction: 'higher',  format: 'count', matchKey: 'highestScoreGame' },
+    { key: 'median',                  label: 'Median Score',           direction: 'higher',  format: 'decimal1' },
+    { key: 'scoringRate',             label: 'Scoring Rate',           direction: 'higher',  format: 'percent' },
+    { key: 'multiGoalRate',           label: 'Multi-Goal Games',       direction: 'higher',  format: 'percent', hint: '(% with 2+ goals)' },
+    { key: 'currentWinningStreak',    label: 'Current Winning Streak', direction: 'higher', format: 'count' },
+    { key: 'currentLosingStreak',     label: 'Current Losing Streak',  direction: 'lower',  format: 'count' },
+    { key: 'currentScoringStreak',    label: 'Current Scoring Streak', direction: 'higher', format: 'count' },
+    { key: 'currentScorelessStreak',  label: 'Current Scoreless Streak', direction: 'lower', format: 'count' },
+    { key: 'longestWinningStreak',    label: 'Longest Winning Streak', direction: 'higher', format: 'count', rangeKey: 'longestWinningRun' },
+    { key: 'longestScoringStreak',    label: 'Longest Scoring Streak', direction: 'higher', format: 'count', rangeKey: 'longestScoringRun' },
+    { key: 'longestScorelessStreak',  label: 'Longest Scoreless Streak', direction: 'lower', format: 'count', rangeKey: 'longestScorelessRun' },
+    { key: 'recentFormLast3',         label: 'Last 3 Avg',             direction: 'higher',  format: 'decimal' },
+    { key: 'recentFormLast5',         label: 'Last 5 Avg',             direction: 'higher',  format: 'decimal' },
+    { key: 'stddev',                  label: 'Consistency',            direction: 'lower',   format: 'decimal', hint: '(σ, lower = steadier)' }
+];
+
+function formatStatValue(format, value) {
+    const api = window.FootballPlayerStats;
+    switch (format) {
+        case 'count':    return String(Math.round(Number(value) || 0));
+        case 'decimal':  return api.formatNumber(value, 2);
+        case 'decimal1': return api.formatNumber(value, 1);
+        case 'percent':  return api.formatPercent(value);
+        default:         return String(value);
+    }
+}
+
+function renderPlayerStatsTab(gamesData) {
+    const api = window.FootballPlayerStats;
+    if (!api) return;
+    const tbody = document.getElementById('playerComparisonBody');
+    if (!tbody) return;
+
+    const p1Header = document.getElementById('playerComparisonP1Header');
+    const p2Header = document.getElementById('playerComparisonP2Header');
+    if (p1Header) p1Header.textContent = (playerIcons.player1 || '') + ' ' + player1Name;
+    if (p2Header) p2Header.textContent = (playerIcons.player2 || '') + ' ' + player2Name;
+
+    const stats1 = api.computePlayerStats(api.scoresInOrder(gamesData, 'player1Goals'));
+    const stats2 = api.computePlayerStats(api.scoresInOrder(gamesData, 'player2Goals'));
+
+    // Match-based current streaks. matchResultsInOrder applies the penalty
+    // rule per game (regulation tie + penalty winner counts as the match
+    // winner) so streaks reflect actual outcomes, not just regulation scores.
+    const p1Results = api.matchResultsInOrder(gamesData, 'player1Goals', 'player2Goals', 1);
+    const p2Results = api.matchResultsInOrder(gamesData, 'player2Goals', 'player1Goals', 2);
+    Object.assign(stats1, api.computeMatchStreaks(p1Results));
+    Object.assign(stats2, api.computeMatchStreaks(p2Results));
+
+    // Longest match-based winning runs (penalty-aware) with date spans.
+    const isWin = (r) => r === 'W';
+    stats1.longestWinningRun = api.longestMatchRun(gamesData, 'player1Goals', 'player2Goals', 1, isWin);
+    stats2.longestWinningRun = api.longestMatchRun(gamesData, 'player2Goals', 'player1Goals', 2, isWin);
+    stats1.longestWinningStreak = stats1.longestWinningRun.length;
+    stats2.longestWinningStreak = stats2.longestWinningRun.length;
+
+    // Longest goal-based runs (still useful as a separate stat — independent
+    // of who won the match — so they remain alongside the match-based rows).
+    const isScoring = (s) => s > 0;
+    const isScoreless = (s) => s === 0;
+    stats1.longestScoringRun   = api.longestRun(gamesData, 'player1Goals', isScoring);
+    stats1.longestScorelessRun = api.longestRun(gamesData, 'player1Goals', isScoreless);
+    stats2.longestScoringRun   = api.longestRun(gamesData, 'player2Goals', isScoring);
+    stats2.longestScorelessRun = api.longestRun(gamesData, 'player2Goals', isScoreless);
+
+    // Best single game (highest score + opponent score + date) for the Highest
+    // Score row. Second key is the opponent's score field from this player's
+    // perspective so the displayed "me–opp" pair matches who the row is about.
+    stats1.highestScoreGame = api.highestScoreGame(gamesData, 'player1Goals', 'player2Goals');
+    stats2.highestScoreGame = api.highestScoreGame(gamesData, 'player2Goals', 'player1Goals');
+
+    tbody.replaceChildren();
+    for (const row of PLAYER_STAT_ROWS) {
+        tbody.appendChild(buildComparisonRow(row, stats1, stats2));
+    }
+}
+
+function buildComparisonRow(rowDef, stats1, stats2) {
+    const api = window.FootballPlayerStats;
+    const tr = document.createElement('tr');
+    tr.className = 'pc-row';
+
+    const statCell = document.createElement('td');
+    statCell.className = 'pc-cell-stat';
+    const label = document.createElement('span');
+    label.className = 'pc-stat-label';
+    label.textContent = rowDef.label;
+    statCell.appendChild(label);
+    if (rowDef.hint) {
+        // Inline span so the hint flows on the same line as the label,
+        // keeping every body row at the same height. Falls back to wrapping
+        // gracefully on very narrow screens.
+        const hint = document.createElement('span');
+        hint.className = 'pc-stat-hint';
+        hint.textContent = rowDef.hint;
+        statCell.appendChild(hint);
+    }
+    tr.appendChild(statCell);
+
+    const rawP1 = stats1[rowDef.key];
+    const rawP2 = stats2[rowDef.key];
+    const cmp = api.compareStat(rowDef.direction, rawP1, rawP2);
+
+    // Neutral and tie both render amber per task spec; only clear win/loss
+    // earns green/red.
+    const p1Class = cmp.winner === 'p1' ? 'pc-cell-winning'
+        : cmp.winner === 'p2' ? 'pc-cell-losing'
+        : 'pc-cell-tied';
+    const p2Class = cmp.winner === 'p2' ? 'pc-cell-winning'
+        : cmp.winner === 'p1' ? 'pc-cell-losing'
+        : 'pc-cell-tied';
+
+    // A row can optionally carry a parenthesised detail string next to the
+    // value: either a date range (longest-streak rows) or a match score
+    // (highest-score row). Both paths return null on missing data so the
+    // display falls back to the bare value.
+    let detailP1 = null;
+    let detailP2 = null;
+    if (rowDef.rangeKey) {
+        detailP1 = api.formatRangeText(stats1[rowDef.rangeKey]);
+        detailP2 = api.formatRangeText(stats2[rowDef.rangeKey]);
+    } else if (rowDef.matchKey) {
+        detailP1 = api.formatMatchText(stats1[rowDef.matchKey]);
+        detailP2 = api.formatMatchText(stats2[rowDef.matchKey]);
+    }
+    tr.appendChild(buildValueCell(formatStatValue(rowDef.format, rawP1), p1Class, detailP1));
+    tr.appendChild(buildValueCell(formatStatValue(rowDef.format, rawP2), p2Class, detailP2));
+    return tr;
+}
+
+function buildValueCell(mainText, className, rangeText) {
+    const td = document.createElement('td');
+    td.className = 'pc-cell-value ' + className;
+
+    const mainSpan = document.createElement('span');
+    mainSpan.className = 'pc-value-main';
+    mainSpan.textContent = mainText;
+    td.appendChild(mainSpan);
+
+    if (rangeText) {
+        const rangeSpan = document.createElement('span');
+        rangeSpan.className = 'pc-value-range';
+        rangeSpan.textContent = rangeText;
+        td.appendChild(rangeSpan);
+    }
+    return td;
 }
 
 // Switch between stats tabs

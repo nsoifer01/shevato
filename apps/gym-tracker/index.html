@@ -110,7 +110,20 @@
                         <div class="empty-state">
                             <i class="fas fa-folder-open"></i>
                             <p>No active program</p>
-                            <button class="btn btn-primary" data-view="programs">Create Program</button>
+                            <button type="button" class="btn btn-primary" data-home-action="create-program">Create Program</button>
+                        </div>
+                    </div>
+                </section>
+
+                <!-- This Week summary (populated by JS; hidden when no sessions yet) -->
+                <section class="section" id="week-summary-section" hidden>
+                    <div class="week-summary-card">
+                        <div class="week-summary-header">
+                            <h2>This Week</h2>
+                            <span class="week-summary-caption" id="week-summary-caption"></span>
+                        </div>
+                        <div class="week-summary-grid" id="week-summary-grid">
+                            <!-- Will be populated by JS -->
                         </div>
                     </div>
                 </section>
@@ -125,7 +138,7 @@
                         <div class="empty-state">
                             <i class="fas fa-dumbbell"></i>
                             <p>No workouts yet</p>
-                            <button class="btn btn-primary" data-view="workout">Start Workout</button>
+                            <button type="button" class="btn btn-primary" data-home-action="start-workout">Start Workout</button>
                         </div>
                     </div>
                 </section>
@@ -167,24 +180,31 @@
                 </div>
 
                 <!-- Create/Edit Program Modal -->
-                <div id="program-modal" class="modal">
+                <div id="program-modal" class="modal" role="dialog" aria-modal="true" aria-labelledby="program-modal-title">
                     <div class="modal-content">
                         <div class="modal-header">
                             <h2 id="program-modal-title">Create Program</h2>
-                            <button class="modal-close">&times;</button>
+                            <button class="modal-close" aria-label="Close">&times;</button>
                         </div>
                         <div class="modal-body">
-                            <form id="program-form">
-                                <div class="form-group">
+                            <form id="program-form" novalidate>
+                                <div class="form-group" id="program-name-group">
                                     <label for="program-name">Program Name</label>
-                                    <input type="text" id="program-name" placeholder="e.g., Full Body Workout" required>
+                                    <input type="text" id="program-name"
+                                        placeholder="e.g., Full Body Workout"
+                                        aria-describedby="program-name-error"
+                                        aria-invalid="false">
+                                    <p id="program-name-error" class="form-error" hidden>
+                                        <i class="fas fa-circle-exclamation" aria-hidden="true"></i>
+                                        <span>Enter a name for this program.</span>
+                                    </p>
                                 </div>
                                 <div class="form-group">
                                     <label for="program-description">Description (Optional)</label>
                                     <textarea id="program-description" placeholder="Program details..." rows="3"></textarea>
                                 </div>
 
-                                <section class="program-exercises-section">
+                                <section class="program-exercises-section" id="program-exercises-section">
                                     <header class="program-exercises-header">
                                         <h3 class="program-exercises-heading">
                                             <i class="fas fa-dumbbell"></i> Exercises
@@ -197,6 +217,10 @@
                                     <button type="button" class="btn-add-exercise" id="add-exercise-to-program-btn">
                                         <i class="fas fa-plus"></i> Add Exercise
                                     </button>
+                                    <p id="program-exercises-error" class="form-error form-error-section" hidden>
+                                        <i class="fas fa-circle-exclamation" aria-hidden="true"></i>
+                                        <span>Add at least one exercise before saving this program.</span>
+                                    </p>
                                 </section>
 
                                 <div class="form-actions program-form-actions">
@@ -211,11 +235,11 @@
                 </div>
 
                 <!-- Exercise Picker Modal -->
-                <div id="exercise-picker-modal" class="modal">
+                <div id="exercise-picker-modal" class="modal" role="dialog" aria-modal="true" aria-labelledby="exercise-picker-title">
                     <div class="modal-content large">
                         <div class="modal-header">
-                            <h2>Select Exercises</h2>
-                            <button class="modal-close">&times;</button>
+                            <h2 id="exercise-picker-title">Select Exercises</h2>
+                            <button class="modal-close" aria-label="Close">&times;</button>
                         </div>
                         <div class="modal-body">
                             <div class="exercise-picker-search">
@@ -357,11 +381,11 @@
                     </div>
 
                     <!-- Finish Workout Modal -->
-                    <div id="finish-workout-modal" class="modal">
+                    <div id="finish-workout-modal" class="modal" role="dialog" aria-modal="true" aria-labelledby="finish-workout-title">
                         <div class="modal-content">
                             <div class="modal-header">
-                                <h2>Finish Workout</h2>
-                                <button class="modal-close">&times;</button>
+                                <h2 id="finish-workout-title">Finish Workout</h2>
+                                <button class="modal-close" aria-label="Close">&times;</button>
                             </div>
                             <div class="modal-body">
                                 <form id="finish-workout-form">
@@ -377,6 +401,10 @@
                                         <div class="summary-stat">
                                             <span class="label">Sets Completed</span>
                                             <span class="value" id="summary-sets">0</span>
+                                        </div>
+                                        <div class="summary-stat" id="summary-prs-stat" hidden>
+                                            <span class="label">PRs Hit</span>
+                                            <span class="value" id="summary-prs">0</span>
                                         </div>
                                     </div>
 
@@ -440,11 +468,11 @@
                 </div>
 
                 <!-- Workout Detail Modal -->
-                <div id="workout-detail-modal" class="modal">
+                <div id="workout-detail-modal" class="modal" role="dialog" aria-modal="true" aria-labelledby="workout-detail-title">
                     <div class="modal-content">
                         <div class="modal-header">
                             <h2 id="workout-detail-title">Workout Details</h2>
-                            <button class="modal-close">&times;</button>
+                            <button class="modal-close" aria-label="Close">&times;</button>
                         </div>
                         <div class="modal-body">
                             <div id="workout-detail-content">
@@ -532,11 +560,11 @@
                 </div>
 
                 <!-- Exercise Detail Modal -->
-                <div id="exercise-detail-modal" class="modal">
+                <div id="exercise-detail-modal" class="modal" role="dialog" aria-modal="true" aria-labelledby="exercise-detail-name">
                     <div class="modal-content">
                         <div class="modal-header">
                             <h2 id="exercise-detail-name">Exercise</h2>
-                            <button class="modal-close">&times;</button>
+                            <button class="modal-close" aria-label="Close">&times;</button>
                         </div>
                         <div class="modal-body">
                             <div id="exercise-detail-content">
@@ -550,10 +578,10 @@
                 </div>
 
                 <!-- Create Custom Exercise Modal -->
-                <div id="custom-exercise-modal" class="modal">
+                <div id="custom-exercise-modal" class="modal" role="dialog" aria-modal="true" aria-labelledby="custom-exercise-title">
                     <div class="modal-content custom-exercise-modal-content">
                         <div class="modal-header">
-                            <h2>Create Custom Exercise</h2>
+                            <h2 id="custom-exercise-title">Create Custom Exercise</h2>
                             <button class="modal-close" aria-label="Close">&times;</button>
                         </div>
                         <div class="modal-body">
@@ -764,6 +792,30 @@
 
                     <section class="settings-section">
                         <header class="settings-section-header">
+                            <i class="fas fa-bell settings-section-icon"></i>
+                            <div>
+                                <h2>Alerts</h2>
+                                <p class="settings-section-sub">Cues that fire when you hit a PR or the rest timer ends.</p>
+                            </div>
+                        </header>
+                        <div class="setting-item setting-item-toggle">
+                            <label for="sound-alerts" class="setting-toggle-label">Sound</label>
+                            <label class="toggle-switch" aria-label="Sound toggle">
+                                <input type="checkbox" id="sound-alerts">
+                                <span class="toggle-slider" aria-hidden="true"></span>
+                            </label>
+                        </div>
+                        <div class="setting-item setting-item-toggle">
+                            <label for="vibration-alerts" class="setting-toggle-label">Vibration</label>
+                            <label class="toggle-switch" aria-label="Vibration toggle">
+                                <input type="checkbox" id="vibration-alerts">
+                                <span class="toggle-slider" aria-hidden="true"></span>
+                            </label>
+                        </div>
+                    </section>
+
+                    <section class="settings-section">
+                        <header class="settings-section-header">
                             <i class="fas fa-database settings-section-icon"></i>
                             <div>
                                 <h2>Data Management</h2>
@@ -829,8 +881,50 @@
     <!-- Toast Container -->
     <div id="toast-container"></div>
 
+    <!-- Onboarding Welcome Modal (first launch) -->
+    <div id="onboarding-modal" class="modal" role="dialog" aria-modal="true" aria-labelledby="onboarding-title" aria-hidden="true">
+        <div class="modal-content onboarding-modal-content">
+            <div class="modal-header">
+                <h2 id="onboarding-title">Welcome to Gym Tracker 💪</h2>
+                <button class="modal-close" id="onboarding-dismiss" aria-label="Close welcome">&times;</button>
+            </div>
+            <div class="modal-body">
+                <p style="margin-top:0">Three quick steps to log your first workout:</p>
+                <ol class="onboarding-steps">
+                    <li class="onboarding-step">
+                        <span class="onboarding-step-number">1</span>
+                        <div class="onboarding-step-body">
+                            <p class="onboarding-step-title">Create a program</p>
+                            <p class="onboarding-step-desc">Name it (e.g. "Push Day") — it's a reusable template.</p>
+                        </div>
+                        <div class="onboarding-step-cta">
+                            <button class="btn btn-primary" id="onboarding-go-programs">Go</button>
+                        </div>
+                    </li>
+                    <li class="onboarding-step">
+                        <span class="onboarding-step-number">2</span>
+                        <div class="onboarding-step-body">
+                            <p class="onboarding-step-title">Add exercises</p>
+                            <p class="onboarding-step-desc">Pick from the built-in database or create your own.</p>
+                        </div>
+                    </li>
+                    <li class="onboarding-step">
+                        <span class="onboarding-step-number">3</span>
+                        <div class="onboarding-step-body">
+                            <p class="onboarding-step-title">Start a workout</p>
+                            <p class="onboarding-step-desc">Log sets, track progress, celebrate PRs 🏆</p>
+                        </div>
+                    </li>
+                </ol>
+            </div>
+            <div class="modal-footer" style="display:flex;justify-content:flex-end;padding:var(--spacing-md) var(--spacing-lg);gap:var(--spacing-sm);">
+                <button class="btn btn-ghost" id="onboarding-skip">Skip tour</button>
+            </div>
+        </div>
+    </div>
+
     <!-- Confirmation Modal -->
-    <div id="confirm-modal" class="modal">
+    <div id="confirm-modal" class="modal" role="dialog" aria-modal="true" aria-labelledby="confirm-modal-title">
         <div class="modal-content small confirm-modal-content">
             <div class="confirm-modal-icon" id="confirm-modal-icon">
                 <i class="fas fa-triangle-exclamation"></i>

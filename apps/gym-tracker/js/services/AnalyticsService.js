@@ -1,8 +1,39 @@
 /**
  * AnalyticsService
- * Calculates statistics, progress, and analytics from workout data
+ * Calculates statistics, progress, and analytics from workout data.
+ *
+ * Dates in session data are persisted as local YYYY-MM-DD strings (that's
+ * what the user sees on their calendar). Parsing those strings with the
+ * naked `new Date("YYYY-MM-DD")` constructor treats them as UTC midnight,
+ * which is *before* local midnight for any user west of UTC. That shifts
+ * workouts into the wrong day/week/month on the dashboard, calendar,
+ * streaks, etc. Use `toLocalDate()` / `toLocalDateKey()` below instead.
  */
 export class AnalyticsService {
+    /**
+     * Parse a local YYYY-MM-DD (or full timestamp) into a Date anchored
+     * to local midnight. Falls back to the native constructor for any
+     * non-matching input so full ISO timestamps still parse correctly.
+     */
+    static toLocalDate(dateStr) {
+        if (typeof dateStr !== 'string') return new Date(dateStr);
+        const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(dateStr);
+        if (!m) return new Date(dateStr);
+        return new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3]));
+    }
+
+    /**
+     * Format a Date as local YYYY-MM-DD. Matches the storage format the
+     * rest of the app uses; avoids the UTC shift of `toISOString()`.
+     */
+    static toLocalDateKey(date) {
+        const d = date instanceof Date ? date : new Date(date);
+        const y = d.getFullYear();
+        const m = String(d.getMonth() + 1).padStart(2, '0');
+        const day = String(d.getDate()).padStart(2, '0');
+        return `${y}-${m}-${day}`;
+    }
+
     /**
      * Calculate total volume for a date range
      */
@@ -63,15 +94,16 @@ export class AnalyticsService {
         );
 
         if (beforeDate) {
+            const cutoff = this.toLocalDate(beforeDate);
             filteredSessions = filteredSessions.filter(s =>
-                new Date(s.date) < new Date(beforeDate)
+                this.toLocalDate(s.date) < cutoff
             );
         }
 
         if (filteredSessions.length === 0) return null;
 
         // Sort by date descending
-        filteredSessions.sort((a, b) => new Date(b.date) - new Date(a.date));
+        filteredSessions.sort((a, b) => this.toLocalDate(b.date) - this.toLocalDate(a.date));
 
         const lastSession = filteredSessions[0];
         const exercise = lastSession.exercises.find(e => e.exerciseId === exerciseId);
@@ -103,9 +135,10 @@ export class AnalyticsService {
     static getWorkoutFrequency(sessions, days = 30) {
         const cutoffDate = new Date();
         cutoffDate.setDate(cutoffDate.getDate() - days);
+        cutoffDate.setHours(0, 0, 0, 0);
 
         const recentSessions = sessions.filter(s =>
-            new Date(s.date) >= cutoffDate
+            this.toLocalDate(s.date) >= cutoffDate
         );
 
         return {
@@ -119,20 +152,17 @@ export class AnalyticsService {
      * Get volume trends over time
      */
     static getVolumeTrends(sessions, groupBy = 'week') {
-        const sorted = [...sessions].sort((a, b) => new Date(a.date) - new Date(b.date));
+        const sorted = [...sessions].sort((a, b) => this.toLocalDate(a.date) - this.toLocalDate(b.date));
 
         const groups = new Map();
 
         sorted.forEach(session => {
-            const date = new Date(session.date);
+            const date = this.toLocalDate(session.date);
             let key;
 
             if (groupBy === 'week') {
-                const weekStart = new Date(date);
-                const day = date.getDay();
-                const diff = day === 0 ? 6 : day - 1; // Monday as start of week
-                weekStart.setDate(date.getDate() - diff);
-                key = weekStart.toISOString().split('T')[0];
+                const weekStart = this.startOfIsoWeek(date);
+                key = this.toLocalDateKey(weekStart);
             } else if (groupBy === 'month') {
                 key = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
             } else {
@@ -197,27 +227,171 @@ export class AnalyticsService {
     }
 
     /**
-     * Get progression for an exercise over time
+     * Get progression for an exercise over time.
+     *
+     * `limit` — if provided, returns only the N most-recent sessions
+     * (still in chronological order). Used by the exercise-detail chart
+     * to keep the visual bounded on users with long histories.
      */
-    static getExerciseProgression(exerciseId, sessions) {
+    static getExerciseProgression(exerciseId, sessions, { limit } = {}) {
         const exerciseSessions = sessions
             .filter(s => s.exercises.some(e => e.exerciseId === exerciseId))
-            .sort((a, b) => new Date(a.date) - new Date(b.date));
+            .sort((a, b) => this.toLocalDate(a.date) - this.toLocalDate(b.date));
 
-        return exerciseSessions.map(session => {
+        const points = exerciseSessions.map(session => {
             const exercise = session.exercises.find(e => e.exerciseId === exerciseId);
-            const maxWeight = Math.max(...exercise.sets.map(s => s.weight), 0);
-            const totalVolume = exercise.totalVolume;
-            const totalReps = exercise.sets.reduce((sum, s) => sum + s.reps, 0);
+            const sets = exercise.sets || [];
+            const maxWeight = Math.max(...sets.map(s => s.weight || 0), 0);
+            const maxDuration = Math.max(...sets.map(s => s.duration || 0), 0);
+            const totalVolume = exercise.totalVolume || 0;
+            const totalReps = sets.reduce((sum, s) => sum + (s.reps || 0), 0);
+            // Estimated 1-rep max via Epley: w * (1 + r/30) across all sets, take peak.
+            const e1rm = sets.reduce((best, s) => {
+                if (!s.weight || !s.reps) return best;
+                const est = s.weight * (1 + s.reps / 30);
+                return est > best ? est : best;
+            }, 0);
 
             return {
                 date: session.date,
                 maxWeight,
+                maxDuration,
                 totalVolume,
                 totalReps,
-                sets: exercise.sets.length
+                e1rm,
+                sets: sets.length,
             };
         });
+
+        if (limit && points.length > limit) {
+            return points.slice(points.length - limit);
+        }
+        return points;
+    }
+
+    /**
+     * Epley estimated 1-rep max. Returned as a number of the same unit as
+     * the input weight (kg or lb).
+     */
+    static epley1rm(weight, reps) {
+        if (!weight || !reps) return 0;
+        return weight * (1 + reps / 30);
+    }
+
+    /**
+     * Decide whether a just-logged set qualifies as a personal record.
+     *
+     * PR rule (single, simple):
+     *   Weighted exercises → set volume = weight × reps, new > prior best.
+     *   Duration exercises → new hold > prior longest.
+     *
+     * Notably this means heavier weight at fewer reps is NOT a PR unless
+     * the total (weight × reps) still beats the prior best. This matches
+     * the intuitive "I moved more total load in one set" signal.
+     *
+     * Returns null (not a PR) or:
+     *   { kind: 'volume' | 'duration',
+     *     value: number, previous: number, delta: number }
+     *
+     * A set is only a PR if there is at least one prior set for the
+     * exercise — the first session seeds the baseline and never counts.
+     */
+    static isSetPR(exerciseId, newSet, sessions) {
+        if (!newSet) return null;
+        const priorSets = [];
+        sessions.forEach(s => {
+            s.exercises.forEach(ex => {
+                if (ex.exerciseId === exerciseId) {
+                    (ex.sets || []).forEach(set => priorSets.push(set));
+                }
+            });
+        });
+        if (priorSets.length === 0) return null;
+
+        const isDuration = (newSet.duration || 0) > 0 && (newSet.weight || 0) === 0;
+
+        if (isDuration) {
+            const prevMax = priorSets.reduce((m, s) => Math.max(m, s.duration || 0), 0);
+            if ((newSet.duration || 0) > prevMax) {
+                return {
+                    kind: 'duration',
+                    value: newSet.duration,
+                    previous: prevMax,
+                    delta: newSet.duration - prevMax,
+                };
+            }
+            return null;
+        }
+
+        const prevMaxVolume = priorSets.reduce(
+            (m, s) => Math.max(m, (s.weight || 0) * (s.reps || 0)), 0
+        );
+        const newVolume = (newSet.weight || 0) * (newSet.reps || 0);
+        if (newVolume > prevMaxVolume) {
+            return {
+                kind: 'volume',
+                value: newVolume,
+                previous: prevMaxVolume,
+                delta: newVolume - prevMaxVolume,
+            };
+        }
+
+        return null;
+    }
+
+    /**
+     * Weekly summary stats for the Home dashboard.
+     *
+     * Returns totals for the current ISO week (Mon–Sun) plus deltas vs
+     * the prior week. "Volume" sums weight*reps across all sets.
+     */
+    static getWeekStats(sessions) {
+        const now = new Date();
+        const thisMonday = this.startOfIsoWeek(now);
+        const lastMonday = new Date(thisMonday);
+        lastMonday.setDate(thisMonday.getDate() - 7);
+        const nextMonday = new Date(thisMonday);
+        nextMonday.setDate(thisMonday.getDate() + 7);
+
+        const within = (s, start, end) => {
+            const d = this.toLocalDate(s.date);
+            return d >= start && d < end;
+        };
+
+        const agg = (slice) => {
+            const workouts = slice.length;
+            const volume = slice.reduce((sum, s) => sum + (s.totalVolume || 0), 0);
+            const durationMin = slice.reduce((sum, s) => sum + (s.duration || 0), 0);
+            return { workouts, volume, durationMin };
+        };
+
+        const thisWeek = sessions.filter(s => within(s, thisMonday, nextMonday));
+        const lastWeek = sessions.filter(s => within(s, lastMonday, thisMonday));
+
+        const cur = agg(thisWeek);
+        const prev = agg(lastWeek);
+
+        return {
+            workouts: cur.workouts,
+            volume: cur.volume,
+            durationMin: cur.durationMin,
+            streak: this.getCurrentStreak(sessions),
+            workoutsDelta: cur.workouts - prev.workouts,
+            volumeDelta: cur.volume - prev.volume,
+            weekStart: this.toLocalDateKey(thisMonday),
+        };
+    }
+
+    /**
+     * Monday 00:00 of the week containing `date`. Used by week stats.
+     */
+    static startOfIsoWeek(date) {
+        const d = new Date(date);
+        const day = d.getDay();
+        const diff = day === 0 ? 6 : day - 1;
+        d.setDate(d.getDate() - diff);
+        d.setHours(0, 0, 0, 0);
+        return d;
     }
 
     /**
@@ -232,22 +406,11 @@ export class AnalyticsService {
                 return this.getTotalVolume(sessions);
 
             case 'workout-streak': {
-                const sorted = [...sessions].sort((a, b) => new Date(b.date) - new Date(a.date));
-                let streak = 0;
-                let currentDate = new Date();
-
-                for (const session of sorted) {
-                    const sessionDate = new Date(session.date);
-                    const diffDays = Math.floor((currentDate - sessionDate) / (1000 * 60 * 60 * 24));
-
-                    if (diffDays <= 1 + streak) {
-                        streak++;
-                        currentDate = sessionDate;
-                    } else {
-                        break;
-                    }
-                }
-                return streak;
+                // Reuse the canonical streak logic — avoids a second
+                // slightly-different implementation drifting out of sync
+                // (and inheriting the same UTC-midnight bugs this file is
+                // fixing).
+                return this.getCurrentStreak(sessions);
             }
 
             case 'exercises-completed': {
@@ -270,7 +433,7 @@ export class AnalyticsService {
         const calendarData = new Map();
 
         sessions.forEach(session => {
-            const date = new Date(session.date);
+            const date = this.toLocalDate(session.date);
             if (date.getFullYear() === year && date.getMonth() === month) {
                 const key = session.date;
                 if (!calendarData.has(key)) {
@@ -308,8 +471,8 @@ export class AnalyticsService {
      */
     static getProgressDates(sessions) {
         const sorted = [...sessions].sort((a, b) => {
-            const ad = new Date(a.date).getTime();
-            const bd = new Date(b.date).getTime();
+            const ad = this.toLocalDate(a.date).getTime();
+            const bd = this.toLocalDate(b.date).getTime();
             if (ad !== bd) return ad - bd;
             return (a.timestamp || '').localeCompare(b.timestamp || '');
         });
@@ -361,7 +524,7 @@ export class AnalyticsService {
      */
     static getMonthSummary(sessions, year, month) {
         const monthSessions = sessions.filter(s => {
-            const d = new Date(s.date);
+            const d = this.toLocalDate(s.date);
             return d.getFullYear() === year && d.getMonth() === month;
         });
         const totalVolume = this.getTotalVolume(monthSessions);
@@ -384,13 +547,17 @@ export class AnalyticsService {
         if (!sessions.length) return 0;
         const dates = new Set(sessions.map(s => s.date));
         let streak = 0;
+        // Walk backwards from today in LOCAL time. Using toISOString() here
+        // would give UTC dates, which misattribute late-evening sessions
+        // (stored by local date) and skip them from the streak.
         const cursor = new Date();
+        cursor.setHours(0, 0, 0, 0);
         // If no workout today, allow streak that ended yesterday
-        const todayKey = cursor.toISOString().split('T')[0];
-        if (!dates.has(todayKey)) cursor.setDate(cursor.getDate() - 1);
+        if (!dates.has(this.toLocalDateKey(cursor))) {
+            cursor.setDate(cursor.getDate() - 1);
+        }
         while (true) {
-            const key = cursor.toISOString().split('T')[0];
-            if (dates.has(key)) {
+            if (dates.has(this.toLocalDateKey(cursor))) {
                 streak++;
                 cursor.setDate(cursor.getDate() - 1);
             } else {

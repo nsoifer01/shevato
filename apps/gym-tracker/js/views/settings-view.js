@@ -29,6 +29,16 @@ class SettingsView {
             weightUnitSelect.addEventListener('change', () => this.checkDirty());
         }
 
+        // Alert toggles (sound + vibration, independent)
+        const soundAlertsInput = document.getElementById('sound-alerts');
+        if (soundAlertsInput) {
+            soundAlertsInput.addEventListener('change', () => this.checkDirty());
+        }
+        const vibrationAlertsInput = document.getElementById('vibration-alerts');
+        if (vibrationAlertsInput) {
+            vibrationAlertsInput.addEventListener('change', () => this.checkDirty());
+        }
+
         // Settings form submission
         const settingsForm = document.getElementById('settings-form');
         if (settingsForm) {
@@ -81,6 +91,11 @@ class SettingsView {
         document.getElementById('weight-unit').value = settings.weightUnit;
         if (this.weightUnitDropdown) this.weightUnitDropdown.sync();
 
+        const soundAlertsInput = document.getElementById('sound-alerts');
+        if (soundAlertsInput) soundAlertsInput.checked = settings.soundAlerts !== false;
+        const vibrationAlertsInput = document.getElementById('vibration-alerts');
+        if (vibrationAlertsInput) vibrationAlertsInput.checked = settings.vibrationAlerts !== false;
+
         // Snapshot current values for dirty-state comparison
         this.savedSnapshot = this.snapshotForm();
         this.checkDirty();
@@ -90,6 +105,8 @@ class SettingsView {
     snapshotForm() {
         return {
             weightUnit: document.getElementById('weight-unit')?.value ?? '',
+            soundAlerts: document.getElementById('sound-alerts')?.checked ? '1' : '0',
+            vibrationAlerts: document.getElementById('vibration-alerts')?.checked ? '1' : '0',
         };
     }
 
@@ -107,6 +124,10 @@ class SettingsView {
         const settings = this.app.settings;
 
         settings.weightUnit = document.getElementById('weight-unit').value;
+        const soundAlertsInput = document.getElementById('sound-alerts');
+        if (soundAlertsInput) settings.soundAlerts = soundAlertsInput.checked;
+        const vibrationAlertsInput = document.getElementById('vibration-alerts');
+        if (vibrationAlertsInput) settings.vibrationAlerts = vibrationAlertsInput.checked;
 
         this.app.saveSettings();
         showToast('Settings saved successfully', 'success');

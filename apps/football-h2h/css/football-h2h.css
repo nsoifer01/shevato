@@ -2428,3 +2428,158 @@ body.football-h2h-tracker {
 #footer {
   margin-top: auto;
 }
+
+/* Player Stats tab — side-by-side comparison table. Flat, clipped to rounded
+   corners so tinted cells end cleanly at the last row with no visible gap. */
+.player-comparison-wrap {
+    background: #374151;
+    border-radius: 0.75rem;
+    overflow: hidden;
+}
+
+.player-comparison-table {
+    width: 100%;
+    border-collapse: collapse;
+    color: #f7fafc;
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+    table-layout: fixed;
+    margin: 0;
+}
+
+.player-comparison-table thead th {
+    background: #2d3748;
+    color: #e2e8f0;
+    font-size: 0.8rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    padding: 0.75rem 0.9rem;
+    text-align: center;
+    white-space: nowrap;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.10);
+}
+
+.player-comparison-table thead th.pc-col-stat {
+    text-align: left;
+    width: 40%;
+}
+
+.player-comparison-table thead th.pc-col-player {
+    width: 30%;
+}
+
+/* Neutralize global zebra-stripe + tr borders from assets/css/main.css so the
+   per-cell comparison tints aren't washed out by the row-level background. */
+.player-comparison-table tbody tr,
+.player-comparison-table tbody tr:nth-child(2n + 1) {
+    background: transparent;
+    border: 0;
+}
+
+.player-comparison-table td {
+    padding: 0.65rem 0.9rem;
+    vertical-align: middle;
+    border: 0;
+}
+
+/* Horizontal-only row dividers. Soft white-alpha reads consistently whether
+   the cell behind is plain wrap bg or a tinted comparison cell. Skips the
+   first body row since the thead's border-bottom already separates it. */
+.player-comparison-table tbody tr + tr td {
+    border-top: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.pc-cell-stat {
+    text-align: left;
+}
+
+.pc-stat-label {
+    font-size: 0.88rem;
+    font-weight: 600;
+    color: #e2e8f0;
+}
+
+/* Inline with the label so rows stay uniform height. Margin-left gives a
+   little breathing room; muted color keeps the helper text secondary. */
+.pc-stat-hint {
+    margin-left: 0.4em;
+    font-size: 0.72rem;
+    font-weight: 400;
+    color: rgba(255, 255, 255, 0.5);
+    letter-spacing: 0.2px;
+}
+
+.pc-cell-value {
+    text-align: center;
+    font-size: 1.1rem;
+    font-weight: 700;
+    font-variant-numeric: tabular-nums;
+    color: #f7fafc;
+    white-space: normal;
+    word-break: break-word;
+    line-height: 1.3;
+}
+
+/* Longest-streak cells split the value (prominent number) from the date range
+   (secondary, muted). Range wraps below on narrow screens to avoid crowding. */
+.pc-value-main {
+    display: inline;
+}
+
+.pc-value-range {
+    margin-left: 0.4em;
+    font-size: 0.78em;
+    font-weight: 500;
+    color: rgba(255, 255, 255, 0.55);
+    letter-spacing: 0;
+}
+
+@media (max-width: 600px) {
+    .pc-value-range {
+        display: block;
+        margin-left: 0;
+        margin-top: 0.15rem;
+        font-size: 0.72em;
+    }
+}
+
+/* Full-cell fills for the comparison table. Selectors are intentionally
+   scoped to .player-comparison-table td.* so specificity (0,2,2) beats the
+   page-wide `body.theme td { background: #2d3748 }` override from
+   apps/mario-kart/css/theme.css — without that scope, the global paints over
+   the tint. Opacity 0.18 keeps the tints soft but unambiguously visible over
+   the #374151 wrap bg. */
+.player-comparison-table td.pc-cell-winning {
+    background: rgba(34, 197, 94, 0.18);
+}
+
+.player-comparison-table td.pc-cell-losing {
+    background: rgba(239, 68, 68, 0.18);
+}
+
+.player-comparison-table td.pc-cell-tied {
+    background: rgba(245, 158, 11, 0.18);
+}
+
+@media (max-width: 600px) {
+    .player-comparison-table thead th {
+        font-size: 0.72rem;
+        padding: 0.55rem 0.6rem;
+    }
+
+    .player-comparison-table td {
+        padding: 0.55rem 0.6rem;
+    }
+
+    .pc-stat-label {
+        font-size: 0.82rem;
+    }
+
+    .pc-stat-hint {
+        font-size: 0.65rem;
+    }
+
+    .pc-cell-value {
+        font-size: 1rem;
+    }
+}
