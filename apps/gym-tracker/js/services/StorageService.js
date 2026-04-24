@@ -13,8 +13,17 @@ export class StorageService {
             ACHIEVEMENTS: 'gymTrackerAchievements',
             ACTIVE_PROGRAM: 'gymTrackerActiveProgram',
             CUSTOM_EXERCISES: 'gymTrackerCustomExercises',
-            ACTIVE_WORKOUT: 'gymTrackerActiveWorkout'
+            ACTIVE_WORKOUT: 'gymTrackerActiveWorkout',
+            ONBOARDING_SEEN: 'gymTrackerOnboardingSeen'
         };
+    }
+
+    // Onboarding
+    hasSeenOnboarding() {
+        return this.get(this.keys.ONBOARDING_SEEN) === true;
+    }
+    markOnboardingSeen() {
+        return this.set(this.keys.ONBOARDING_SEEN, true);
     }
 
     // Program ordering preferences

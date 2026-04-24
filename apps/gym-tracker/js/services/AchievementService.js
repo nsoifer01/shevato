@@ -360,21 +360,17 @@ export class AchievementService {
             }
 
             case 'daily-volume': {
-                const today = new Date().toISOString().split('T')[0];
+                // Use LOCAL today — toISOString() gives UTC, which is a day
+                // off for late-evening users west of UTC.
+                const today = AnalyticsService.toLocalDateKey(new Date());
                 const todaySessions = sessions.filter(s => s.date === today);
                 return AnalyticsService.getTotalVolume(todaySessions);
             }
 
             case 'weekly-workouts': {
-                const now = new Date();
-                const weekStart = new Date(now);
-                const day = now.getDay();
-                const diff = day === 0 ? 6 : day - 1; // Monday as start of week
-                weekStart.setDate(now.getDate() - diff);
-                weekStart.setHours(0, 0, 0, 0);
-
+                const weekStart = AnalyticsService.startOfIsoWeek(new Date());
                 const weeklySessions = sessions.filter(s =>
-                    new Date(s.date) >= weekStart
+                    AnalyticsService.toLocalDate(s.date) >= weekStart
                 );
                 return weeklySessions.length;
             }
@@ -384,7 +380,7 @@ export class AchievementService {
                 const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
 
                 const monthlySessions = sessions.filter(s =>
-                    new Date(s.date) >= monthStart
+                    AnalyticsService.toLocalDate(s.date) >= monthStart
                 );
                 return monthlySessions.length;
             }

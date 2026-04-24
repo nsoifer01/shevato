@@ -117,7 +117,7 @@ class HistoryView {
                 <div class="empty-state">
                     <i class="fas fa-dumbbell"></i>
                     <p>No workout history yet</p>
-                    <button class="btn btn-primary" data-view="workout">Start Workout</button>
+                    <button type="button" class="btn btn-primary" data-home-action="start-workout">Start Workout</button>
                 </div>
             `;
             return;
@@ -212,6 +212,44 @@ class HistoryView {
 
         title.textContent = session.workoutDayName;
 
+        // Build the Additional Metrics block up front so it can render
+        // just below the summary (more prominent, no scrolling). Empty
+        // when the user didn't record any — keeps the modal tight.
+        let additionalMetricsHTML = '';
+        if (session.avgHeartRate || session.maxHeartRate || session.caloriesBurned) {
+            let metricsInner = '';
+            if (session.avgHeartRate) {
+                metricsInner += `
+                    <div class="detail-stat">
+                        <span class="label">Avg Heart Rate</span>
+                        <span class="value">${session.avgHeartRate} bpm</span>
+                    </div>
+                `;
+            }
+            if (session.maxHeartRate) {
+                metricsInner += `
+                    <div class="detail-stat">
+                        <span class="label">Max Heart Rate</span>
+                        <span class="value">${session.maxHeartRate} bpm</span>
+                    </div>
+                `;
+            }
+            if (session.caloriesBurned) {
+                metricsInner += `
+                    <div class="detail-stat">
+                        <span class="label">Calories Burned</span>
+                        <span class="value">${session.caloriesBurned} cal</span>
+                    </div>
+                `;
+            }
+            additionalMetricsHTML = `
+                <section class="workout-detail-metrics">
+                    <h3>Additional Metrics</h3>
+                    <div class="detail-stats">${metricsInner}</div>
+                </section>
+            `;
+        }
+
         // Build the detailed content
         let html = `
             <div class="workout-detail-summary">
@@ -235,6 +273,8 @@ class HistoryView {
                     </div>
                 </div>
             </div>
+
+            ${additionalMetricsHTML}
 
             <h3>Exercises</h3>
             <div class="workout-detail-exercises">
@@ -302,39 +342,6 @@ class HistoryView {
         });
 
         html += '</div>';
-
-        // Add additional metrics if available
-        if (session.avgHeartRate || session.maxHeartRate || session.caloriesBurned) {
-            html += `
-                <h3>Additional Metrics</h3>
-                <div class="detail-stats">
-            `;
-            if (session.avgHeartRate) {
-                html += `
-                    <div class="detail-stat">
-                        <span class="label">Avg Heart Rate</span>
-                        <span class="value">${session.avgHeartRate} bpm</span>
-                    </div>
-                `;
-            }
-            if (session.maxHeartRate) {
-                html += `
-                    <div class="detail-stat">
-                        <span class="label">Max Heart Rate</span>
-                        <span class="value">${session.maxHeartRate} bpm</span>
-                    </div>
-                `;
-            }
-            if (session.caloriesBurned) {
-                html += `
-                    <div class="detail-stat">
-                        <span class="label">Calories Burned</span>
-                        <span class="value">${session.caloriesBurned} cal</span>
-                    </div>
-                `;
-            }
-            html += '</div>';
-        }
 
         // Add notes if available
         if (session.notes) {

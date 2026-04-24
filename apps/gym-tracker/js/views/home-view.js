@@ -4,9 +4,10 @@
  */
 import { app } from '../app.js';
 import { storageService } from '../services/StorageService.js';
-import { formatDate, formatWeight, showConfirmModal, showToast, formatSessionDateTime } from '../utils/helpers.js';
+import { formatDate, formatWeight, showConfirmModal, showToast, formatSessionDateTime, parseLocalDate } from '../utils/helpers.js';
 import { orderPrograms } from '../utils/program-order.js';
 import { renderPausedBannerHTML, wirePausedBannerActions } from './paused-banner.js';
+import { AnalyticsService } from '../services/AnalyticsService.js';
 
 class HomeView {
     constructor() {
@@ -29,9 +30,73 @@ class HomeView {
     render() {
         this.renderPausedWorkoutBanner();
         this.renderActiveProgram();
+        this.renderWeekSummary();
         this.renderRecentWorkouts();
         this.renderRecentAchievements();
         this.renderFab();
+    }
+
+    /**
+     * Render the "This Week" tile grid. Hidden entirely when the user has
+     * no sessions at all (nothing to aggregate → no signal worth showing).
+     */
+    renderWeekSummary() {
+        const section = document.getElementById('week-summary-section');
+        const grid = document.getElementById('week-summary-grid');
+        const caption = document.getElementById('week-summary-caption');
+        if (!section || !grid) return;
+
+        if (this.app.workoutSessions.length === 0) {
+            section.hidden = true;
+            return;
+        }
+        section.hidden = false;
+
+        const stats = AnalyticsService.getWeekStats(this.app.workoutSessions);
+        const unit = this.app.settings.weightUnit;
+
+        const fmtDelta = (n, { positiveBetter = true, suffix = '' } = {}) => {
+            if (n === 0) return '<span class="week-tile-delta">— vs last week</span>';
+            const isUp = n > 0;
+            const isGood = positiveBetter ? isUp : !isUp;
+            const klass = isGood ? 'is-up' : 'is-down';
+            const sign = isUp ? '+' : '';
+            return `<span class="week-tile-delta ${klass}">${sign}${n.toLocaleString()}${suffix} vs last week</span>`;
+        };
+
+        const hours = Math.floor(stats.durationMin / 60);
+        const mins = stats.durationMin % 60;
+        const durationValue = hours > 0 ? `${hours}h ${mins}m` : `${mins}m`;
+
+        grid.innerHTML = `
+            <div class="week-tile">
+                <span class="week-tile-label">Workouts</span>
+                <span class="week-tile-value">${stats.workouts}</span>
+                ${fmtDelta(stats.workoutsDelta)}
+            </div>
+            <div class="week-tile">
+                <span class="week-tile-label">Volume</span>
+                <span class="week-tile-value">${Math.round(stats.volume).toLocaleString()} ${unit}</span>
+                ${fmtDelta(Math.round(stats.volumeDelta), { suffix: ` ${unit}` })}
+            </div>
+            <div class="week-tile">
+                <span class="week-tile-label">Time</span>
+                <span class="week-tile-value">${durationValue}</span>
+                <span class="week-tile-delta">this week</span>
+            </div>
+            <div class="week-tile">
+                <span class="week-tile-label">Streak</span>
+                <span class="week-tile-value">${stats.streak} ${stats.streak === 1 ? 'day' : 'days'}</span>
+                <span class="week-tile-delta">${stats.streak > 0 ? '🔥 keep it going' : 'log today to start'}</span>
+            </div>
+        `;
+
+        if (caption) {
+            // parseLocalDate avoids the UTC shift that `new Date("YYYY-MM-DD")`
+            // introduces, so the Monday we computed is the Monday we render.
+            const startDate = parseLocalDate(stats.weekStart);
+            caption.textContent = `Week of ${startDate.toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}`;
+        }
     }
 
     /**
@@ -152,7 +217,7 @@ class HomeView {
                 <div class="empty-state">
                     <i class="fas fa-folder-open"></i>
                     <p>No programs yet</p>
-                    <button class="btn btn-primary" data-view="programs">Create Program</button>
+                    <button type="button" class="btn btn-primary" data-home-action="create-program">Create Program</button>
                 </div>
             `;
             return;
@@ -215,7 +280,7 @@ class HomeView {
                 <div class="empty-state">
                     <i class="fas fa-dumbbell"></i>
                     <p>No workouts yet</p>
-                    <button class="btn btn-primary" data-view="workout">Start Workout</button>
+                    <button type="button" class="btn btn-primary" data-home-action="start-workout">Start Workout</button>
                 </div>
             `;
             return;
