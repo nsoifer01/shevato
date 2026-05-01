@@ -23,7 +23,12 @@ import { generateNumericId, getTodayDateString } from '../utils/helpers.js';
 
 export class Measurement {
     constructor(data = {}) {
-        this.id = data.id || generateNumericId();
+        // Coerce to a finite number when present so a Firestore round-trip
+        // that hands back a string id ("7212…") doesn't break strict-eq
+        // filters in the views (delete / edit). Falls back to a fresh id
+        // when missing or unparseable.
+        const incoming = data.id != null ? Number(data.id) : NaN;
+        this.id = Number.isFinite(incoming) ? incoming : generateNumericId();
         this.date = data.date || getTodayDateString();
         this.weight = num(data.weight);
         this.bodyFat = num(data.bodyFat);

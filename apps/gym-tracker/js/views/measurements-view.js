@@ -217,7 +217,10 @@ class MeasurementsView {
         if (!modal || !titleEl) return;
 
         this.editingId = id;
-        const m = id ? (this.app.measurements || []).find(x => x.id === id) : null;
+        const target = id != null ? Number(id) : null;
+        const m = target != null
+            ? (this.app.measurements || []).find(x => Number(x.id) === target)
+            : null;
         titleEl.textContent = m ? 'Edit measurements' : 'Log measurements';
 
         const setVal = (selector, value) => {
@@ -264,8 +267,9 @@ class MeasurementsView {
             return;
         }
 
-        if (this.editingId) {
-            const idx = (this.app.measurements || []).findIndex(m => m.id === this.editingId);
+        if (this.editingId != null) {
+            const target = Number(this.editingId);
+            const idx = (this.app.measurements || []).findIndex(m => Number(m.id) === target);
             if (idx === -1) return;
             const updated = new Measurement({
                 ...this.app.measurements[idx].toJSON(),
@@ -285,7 +289,8 @@ class MeasurementsView {
     }
 
     async confirmDelete(id) {
-        const m = (this.app.measurements || []).find(x => x.id === id);
+        const target = Number(id);
+        const m = (this.app.measurements || []).find(x => Number(x.id) === target);
         if (!m) return;
         const confirmed = await showConfirmModal({
             title: 'Delete measurement',
