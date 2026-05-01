@@ -60,26 +60,6 @@ test('Measurement: notes default to empty string', () => {
     assert.equal(m.notes, '');
 });
 
-test('Measurement: photos default to empty array', () => {
-    const m = new Measurement({});
-    assert.deepEqual(m.photos, []);
-});
-
-test('Measurement: photos round-trip via toJSON/fromJSON', () => {
-    const original = new Measurement({
-        date: '2026-04-24',
-        weight: 80,
-        photos: ['https://example.com/a.jpg', 'https://example.com/b.jpg'],
-    });
-    const restored = Measurement.fromJSON(original.toJSON());
-    assert.deepEqual(restored.photos, original.photos);
-});
-
-test('Measurement: photos must be an array — non-array input collapses to []', () => {
-    const m = new Measurement({ date: '2026-04-24', photos: 'not an array' });
-    assert.deepEqual(m.photos, []);
-});
-
 test('Measurement: id stays numeric after Number() coercion (string ids are accepted)', () => {
     const m = new Measurement({ id: '12345', date: '2026-04-24', weight: 80 });
     assert.equal(typeof m.id, 'number');

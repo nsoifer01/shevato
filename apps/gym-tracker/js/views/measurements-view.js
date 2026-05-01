@@ -21,7 +21,6 @@ import {
 } from '../utils/helpers.js';
 import { trapModalFocus } from '../utils/modal-focus.js';
 import { on, EVENTS } from '../utils/event-bus.js';
-import { uploadMeasurementPhoto, deleteMeasurementPhoto } from '../utils/photo-store.js';
 import { DarkCalendar } from '../utils/dark-calendar.js';
 
 const METRICS = [
@@ -49,10 +48,6 @@ class MeasurementsView {
 
     /** One-time DOM wiring. The view is rendered every show via render(). */
     bindOnce() {
-        // Buffer of photo URLs while the modal is open. Persisted into the
-        // Measurement record on save; trashed on cancel-without-save.
-        this.modalPhotos = [];
-
         const addBtn = document.getElementById('add-measurement-btn');
         if (addBtn) addBtn.addEventListener('click', () => this.openModal());
 
@@ -64,22 +59,6 @@ class MeasurementsView {
         if (dateInput && !dateInput.dataset.darkCalendarInit) {
             this.dateCalendar = new DarkCalendar(dateInput);
             dateInput.dataset.darkCalendarInit = '1';
-        }
-
-        const photoBtn = document.getElementById('m-photos-add-btn');
-        const photoInput = document.getElementById('m-photos-input');
-        if (photoBtn && photoInput) {
-            photoBtn.addEventListener('click', () => photoInput.click());
-            photoInput.addEventListener('change', (e) => this.uploadPickedPhotos(e.target.files));
-        }
-        const photoGrid = document.getElementById('m-photos-grid');
-        if (photoGrid) {
-            photoGrid.addEventListener('click', (e) => {
-                const btn = e.target.closest('[data-action="remove-photo"]');
-                if (!btn) return;
-                const idx = Number(btn.dataset.index);
-                this.removeModalPhoto(idx);
-            });
         }
 
         const modal = document.getElementById('measurement-modal');
@@ -237,10 +216,6 @@ class MeasurementsView {
                         </div>
                     </header>
                     <div class="measurement-row-stats">${stats || '<em>(no values)</em>'}</div>
-                    ${Array.isArray(m.photos) && m.photos.length > 0 ? `
-                        <div class="measurement-row-photos">
-                            ${m.photos.map((url, i) => `<a href="${escapeHtml(url)}" target="_blank" rel="noopener" aria-label="Photo ${i + 1}"><img src="${escapeHtml(url)}" alt="Progress photo ${i + 1}" loading="lazy"></a>`).join('')}
-                        </div>` : ''}
                     ${m.notes ? `<p class="measurement-row-notes">${escapeHtml(m.notes)}</p>` : ''}
                 </article>
             `;
@@ -279,83 +254,8 @@ class MeasurementsView {
         setVal('#m-thighright', m?.thighRight);
         setVal('#m-notes', m?.notes || '');
 
-        // Photo buffer: clone existing URLs (so cancel reverts) and render.
-        this.modalPhotos = Array.isArray(m?.photos) ? m.photos.slice() : [];
-        this.renderModalPhotos();
-        const status = document.getElementById('m-photos-status');
-        if (status) status.textContent = '';
-
         modal.classList.add('active');
         trapModalFocus(modal);
-    }
-
-    /** Re-render the thumbnail strip inside the open modal. */
-    renderModalPhotos() {
-        const grid = document.getElementById('m-photos-grid');
-        if (!grid) return;
-        if (this.modalPhotos.length === 0) {
-            grid.innerHTML = '<p class="settings-help-text">No photos yet — tap below to add.</p>';
-            return;
-        }
-        grid.innerHTML = this.modalPhotos.map((url, i) => `
-            <div class="m-photo-tile">
-                <img src="${escapeHtml(url)}" alt="Progress photo ${i + 1}" loading="lazy">
-                <button type="button" class="m-photo-remove" data-action="remove-photo" data-index="${i}" aria-label="Remove photo ${i + 1}" title="Remove">
-                    <i class="fas fa-xmark"></i>
-                </button>
-            </div>
-        `).join('');
-    }
-
-    /**
-     * Upload selected files (compressing client-side) and append the
-     * resulting download URLs to modalPhotos. Bails out with a toast if
-     * the user is signed out — Storage rules require auth.
-     */
-    async uploadPickedPhotos(fileList) {
-        if (!fileList || fileList.length === 0) return;
-        const user = window.firebaseAuth?.getCurrentUser?.()
-            || (typeof firebase !== 'undefined' && firebase.auth?.().currentUser)
-            || null;
-        if (!user) {
-            showToast('Sign in to upload photos', 'error');
-            return;
-        }
-        // Use the editing measurement's id as the storage folder so
-        // photos for unrelated entries don't collide. For brand-new
-        // entries pre-save, mint a temporary id and stick it on the
-        // Measurement we'll write at save time.
-        if (!this.editingId) {
-            this.editingId = `tmp-${Date.now()}`;
-        }
-        const status = document.getElementById('m-photos-status');
-        if (status) status.textContent = `Uploading ${fileList.length} photo${fileList.length === 1 ? '' : 's'}…`;
-        try {
-            for (const file of fileList) {
-                const url = await uploadMeasurementPhoto(this.editingId, file, user.uid);
-                this.modalPhotos.push(url);
-                this.renderModalPhotos();
-            }
-            if (status) status.textContent = `Added ${fileList.length} photo${fileList.length === 1 ? '' : 's'}.`;
-        } catch (err) {
-            console.error('Photo upload failed', err);
-            if (status) status.textContent = 'Upload failed — try again.';
-            showToast('Photo upload failed', 'error');
-        } finally {
-            // Reset the input so picking the same file twice still fires change.
-            const input = document.getElementById('m-photos-input');
-            if (input) input.value = '';
-        }
-    }
-
-    /** Drop a photo from the modal buffer + best-effort delete from Storage. */
-    removeModalPhoto(index) {
-        if (index < 0 || index >= this.modalPhotos.length) return;
-        const [removed] = this.modalPhotos.splice(index, 1);
-        this.renderModalPhotos();
-        // Fire-and-forget — we don't surface failures because the URL is
-        // already detached from the measurement.
-        deleteMeasurementPhoto(removed);
     }
 
     saveFromForm() {
@@ -372,24 +272,15 @@ class MeasurementsView {
             thighLeft: get('m-thighleft'),
             thighRight: get('m-thighright'),
             notes: get('m-notes').trim(),
-            photos: this.modalPhotos.slice(),
         };
 
-        // Allow saves with no metrics if photos were attached — a "today
-        // I felt like recording a photo" entry is legitimate.
-        const hasAnyValue = METRICS.some(({ key }) => data[key] !== '' && data[key] != null)
-            || data.photos.length > 0;
+        const hasAnyValue = METRICS.some(({ key }) => data[key] !== '' && data[key] != null);
         if (!hasAnyValue) {
-            showToast('Enter at least one measurement or photo', 'error');
+            showToast('Enter at least one measurement', 'error');
             return;
         }
 
-        // If editingId is a temp string ("tmp-..."), this is a brand-new
-        // entry that minted an id during photo upload. Drop the temp,
-        // let the constructor mint a real numeric id.
-        const isTemp = typeof this.editingId === 'string' && this.editingId.startsWith('tmp-');
-
-        if (this.editingId != null && !isTemp) {
+        if (this.editingId != null) {
             const target = Number(this.editingId);
             const idx = (this.app.measurements || []).findIndex(m => Number(m.id) === target);
             if (idx === -1) return;
@@ -407,7 +298,6 @@ class MeasurementsView {
 
         document.getElementById('measurement-modal').classList.remove('active');
         this.editingId = null;
-        this.modalPhotos = [];
         this.render();
     }
 
