@@ -414,12 +414,41 @@ class ProgramsView {
             return;
         }
 
-        container.innerHTML = this.currentProgram.exercises.map((exercise, index) => {
+        const exercises = this.currentProgram.exercises;
+        container.innerHTML = exercises.map((exercise, index) => {
             const details = this.app.getExerciseById(exercise.exerciseId);
             const muscle = formatMuscleGroup(details?.muscleGroup);
             const restLabel = formatRestLabel(exercise.restSeconds);
+            // Visual cues for supersets. Group membership is computed from
+            // adjacent rows: if this row shares groupId with the previous,
+            // it's "linked above"; if with the next, "linked below". Used
+            // only for styling (rounded corners on first / last of group,
+            // squared in between).
+            const prev = index > 0 ? exercises[index - 1] : null;
+            const next = index < exercises.length - 1 ? exercises[index + 1] : null;
+            const linkedAbove = !!(exercise.groupId && prev && prev.groupId === exercise.groupId);
+            const linkedBelow = !!(exercise.groupId && next && next.groupId === exercise.groupId);
+            const groupClasses = [
+                exercise.groupId ? 'is-grouped' : '',
+                linkedAbove ? 'is-linked-above' : '',
+                linkedBelow ? 'is-linked-below' : '',
+            ].filter(Boolean).join(' ');
+            const linkBtnLabel = linkedAbove ? 'Unlink from previous' : 'Link with previous as superset';
+            const linkBtnIcon = linkedAbove ? 'fa-link-slash' : 'fa-link';
+            // First row can't link upward — there's nothing above it.
+            const linkBtnHTML = index === 0 ? '' : `
+                <button type="button" class="btn-icon btn-icon-link${linkedAbove ? ' is-on' : ''}"
+                    data-action="${linkedAbove ? 'unlink-superset' : 'link-superset'}"
+                    data-index="${index}"
+                    aria-pressed="${linkedAbove ? 'true' : 'false'}"
+                    aria-label="${linkBtnLabel}"
+                    title="${linkBtnLabel}">
+                    <i class="fas ${linkBtnIcon}" aria-hidden="true"></i>
+                </button>
+            `;
             return `
-            <div class="program-exercise-row" draggable="true" data-exercise-index="${index}">
+            <div class="program-exercise-row ${groupClasses}" draggable="true" data-exercise-index="${index}">
+                ${linkedAbove ? `<span class="pex-superset-tag" aria-hidden="true">SUPERSET</span>` : ''}
                 <span class="pex-drag-handle" aria-hidden="true" title="Drag to reorder">
                     <i class="fas fa-grip-vertical"></i>
                 </span>
@@ -451,12 +480,15 @@ class ProgramsView {
                     ${stepperHTML('reps', index, exercise.targetReps, 1, 100, 'Reps')}
                     ${stepperHTML('rest', index, exercise.restSeconds, 0, 600, 'Rest', 15, restLabel)}
                 </div>
-                <button class="pex-delete"
-                    data-action="remove-exercise"
-                    data-index="${index}"
-                    title="Remove exercise" type="button" aria-label="Remove exercise">
-                    <i class="fas fa-xmark"></i>
-                </button>
+                <div class="pex-row-actions">
+                    ${linkBtnHTML}
+                    <button class="pex-delete"
+                        data-action="remove-exercise"
+                        data-index="${index}"
+                        title="Remove exercise" type="button" aria-label="Remove exercise">
+                        <i class="fas fa-xmark"></i>
+                    </button>
+                </div>
             </div>
         `;}).join('');
 
@@ -487,6 +519,16 @@ class ProgramsView {
                 this.moveExerciseInProgram(Number(btn.dataset.index), +1);
             });
         });
+        container.querySelectorAll('[data-action="link-superset"]').forEach(btn => {
+            btn.addEventListener('click', () => {
+                this.toggleSupersetLink(Number(btn.dataset.index), true);
+            });
+        });
+        container.querySelectorAll('[data-action="unlink-superset"]').forEach(btn => {
+            btn.addEventListener('click', () => {
+                this.toggleSupersetLink(Number(btn.dataset.index), false);
+            });
+        });
 
         container.querySelectorAll('[data-stepper]').forEach(btn => {
             btn.addEventListener('click', () => {
@@ -504,6 +546,45 @@ class ProgramsView {
      * the modal body and restores focus to the same arrow on the moved
      * row so repeated presses keep working without re-tabbing.
      */
+    /**
+     * Link the row at `index` into a superset with the row immediately
+     * above it (link === true), or break the link upward (link === false).
+     *
+     * Linking rules:
+     *   - The link button is hidden on row 0 (no row above).
+     *   - Linking adopts the previous row's groupId. If the previous row
+     *     wasn't in a group, a new groupId is created and assigned to
+     *     both rows so they form a fresh 2-exercise superset.
+     *   - Unlinking just clears this row's groupId. Any rows below us
+     *     that share the same group keep their group intact (i.e. we
+     *     split the group at this row).
+     *
+     * After mutating, re-renders the modal body and restores focus to
+     * this row's link button so keyboard users can keep toggling.
+     */
+    toggleSupersetLink(index, link) {
+        if (!this.currentProgram) return;
+        const list = this.currentProgram.exercises;
+        if (index <= 0 || index >= list.length) return;
+        const cur = list[index];
+        const prev = list[index - 1];
+
+        if (link) {
+            const groupId = prev.groupId || `g-${Date.now().toString(36)}-${Math.floor(Math.random() * 1e6).toString(36)}`;
+            this.currentProgram.updateExercise(index - 1, { groupId });
+            this.currentProgram.updateExercise(index, { groupId });
+        } else {
+            this.currentProgram.updateExercise(index, { groupId: null });
+        }
+
+        this.renderProgramExercises();
+        const action = link ? 'unlink-superset' : 'link-superset';
+        const btn = document.querySelector(
+            `#program-exercises-list [data-action="${action}"][data-index="${index}"]`
+        );
+        if (btn) btn.focus();
+    }
+
     moveExerciseInProgram(fromIndex, delta) {
         if (!this.currentProgram) return;
         const list = this.currentProgram.exercises;

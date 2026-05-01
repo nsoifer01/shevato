@@ -531,9 +531,46 @@ class WorkoutView {
         this.adjustWorkoutTitleSize();
 
         const container = document.getElementById('workout-exercises-list');
-        container.innerHTML = this.currentWorkoutSession.exercises
-            .map((exercise, index) => this.renderExerciseEntry(exercise, index))
-            .join('');
+        container.innerHTML = this.renderExerciseList(this.currentWorkoutSession.exercises);
+    }
+
+    /**
+     * Render the exercise stream, wrapping any consecutive run of exercises
+     * that share a `groupId` in a single `.superset-block` card. Solo
+     * exercises render with no wrapping element so existing CSS for
+     * `.exercise-entry` keeps working unchanged.
+     */
+    renderExerciseList(exercises) {
+        let html = '';
+        let i = 0;
+        while (i < exercises.length) {
+            const ex = exercises[i];
+            if (!ex.groupId) {
+                html += this.renderExerciseEntry(ex, i);
+                i += 1;
+                continue;
+            }
+            // Walk forward while the run shares the same groupId.
+            const groupId = ex.groupId;
+            const start = i;
+            while (i < exercises.length && exercises[i].groupId === groupId) i += 1;
+            const groupItems = exercises.slice(start, i);
+            // A "group" of one isn't really a superset — render solo.
+            if (groupItems.length < 2) {
+                html += this.renderExerciseEntry(ex, start);
+                continue;
+            }
+            html += `
+                <div class="superset-block" role="group" aria-label="Superset of ${groupItems.length} exercises">
+                    <div class="superset-block-header">
+                        <i class="fas fa-link" aria-hidden="true"></i>
+                        <span>Superset · ${groupItems.length} exercises</span>
+                    </div>
+                    ${groupItems.map((g, k) => this.renderExerciseEntry(g, start + k)).join('')}
+                </div>
+            `;
+        }
+        return html;
     }
 
     /**
@@ -944,7 +981,37 @@ class WorkoutView {
         }
 
         this.rerenderExercise(exerciseIndex);
-        this.startRest(exercise.restSeconds || 90);
+
+        // Superset rest rule: only fire the rest timer once the entire
+        // round of the superset is complete. While the user is mid-round
+        // (i.e. another exercise in the same group still has fewer
+        // committed sets than the just-finished one), skip rest entirely
+        // — they should move straight to the next exercise.
+        if (this.shouldStartRestForSet(exerciseIndex, exercise)) {
+            this.startRest(exercise.restSeconds || 90);
+        } else {
+            this.skipRest();
+        }
+    }
+
+    /**
+     * Return true when a rest timer should fire after the just-committed
+     * set on the given exercise. Always true for solo exercises. For an
+     * exercise inside a superset, only true if every other exercise in
+     * the same group already has at least as many committed sets — i.e.
+     * the round is complete.
+     */
+    shouldStartRestForSet(exerciseIndex, exercise) {
+        if (!exercise.groupId) return true;
+        const list = this.currentWorkoutSession?.exercises || [];
+        const me = exercise.sets.length;
+        for (let i = 0; i < list.length; i++) {
+            if (i === exerciseIndex) continue;
+            const other = list[i];
+            if (!other || other.groupId !== exercise.groupId) continue;
+            if ((other.sets?.length || 0) < me) return false;
+        }
+        return true;
     }
 
     /**
