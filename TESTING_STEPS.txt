@@ -65,3 +65,29 @@ Files touched:
 ### Automated checks
 - `for f in apps/gym-tracker/js/views/*.js; do node --check "$f"; done` exits with no errors.
 - `grep -RnE 'innerHTML.*\$\{(session\.workoutDayName|session\.notes|program\.name|program\.description|exercise\.exerciseName|exercise\.name|exercise\.muscleGroup|exercise\.category|exercise\.equipment|achievement\.(icon|name|description)|a\.(icon|name))\}' apps/gym-tracker/js/views/` should return no results — every interpolation should be wrapped with `escapeHtml(...)`.
+
+
+## Change 3: Delete dead backup files committed to git
+### What changed
+Removed four backup artifacts that were committed alongside the live source:
+- `apps/gym-tracker/index-old.html`
+- `apps/gym-tracker/css/gym-tracker-old.css`
+- `apps/gym-tracker/js/gym-tracker-old.js`
+- `apps/gym-tracker/data/exercises-db.js.backup` (~100 KB)
+
+Verified by grep that no live HTML/JS/CSS/JSON/TOML references any of these files. Git history retains the originals if needed.
+
+### Setup
+- None.
+
+### Test steps
+1. Run `git ls-files apps/gym-tracker | grep -E 'old|backup'` — should return no results.
+2. Open `http://localhost:8000/apps/gym-tracker/` and confirm the app loads (no missing-file 404 in the network tab or console).
+3. Click through every nav tab (Home, Programs, Workout, History, Exercises, Calendar, Achievements, Settings) and confirm no broken styling or broken script loads.
+
+### Regression checks
+1. `git log --diff-filter=D --summary | grep -E 'old|backup'` should show the four deletions on this branch.
+2. `du -sh apps/gym-tracker/data/` should be smaller by ~100 KB compared to before this change.
+
+### Automated checks
+- `grep -rn "gym-tracker-old\|exercises-db.js.backup\|index-old" --include="*.html" --include="*.js" --include="*.css" --include="*.toml" --include="*.json" .` should return no matches.
