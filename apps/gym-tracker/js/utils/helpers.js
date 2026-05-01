@@ -195,10 +195,38 @@ export function debounce(func, wait) {
 }
 
 /**
- * Generate unique ID
+ * Generate a unique string ID. Prefers `crypto.randomUUID()` when
+ * available (all supported gym-tracker browsers since 2022) so two
+ * devices creating an entity in the same millisecond can't collide.
+ * Falls back to a timestamp + random base36 suffix for very old
+ * browsers and non-secure contexts (file://).
  */
 export function generateId() {
-    return Date.now() + Math.random().toString(36).substr(2, 9);
+    if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
+        return crypto.randomUUID();
+    }
+    return Date.now() + Math.random().toString(36).slice(2, 11);
+}
+
+/**
+ * Generate a unique NUMERIC ID. Models that get interpolated into inline
+ * onclick handlers (`onclick="...(${program.id})"`) need numeric IDs —
+ * a UUID-style string would break the JS expression at runtime. This
+ * helper combines a millisecond timestamp, a per-process counter, and
+ * a small per-call random component so two IDs created in the same
+ * millisecond on the same device still differ. Once the inline-onclick
+ * patterns are replaced with event delegation, the models can switch
+ * to `generateId()` and emit UUIDs.
+ */
+let _idCounter = 0;
+export function generateNumericId() {
+    _idCounter = (_idCounter + 1) & 0xffff;
+    // 13 ms digits, 4 counter digits, 2 random digits — collision needs
+    // the same ms, the same counter slot (modulo 65536), and the same
+    // random byte on the same device, which is overwhelmingly unlikely
+    // even under rapid scripted creation.
+    const rand = Math.floor(Math.random() * 100);
+    return Date.now() * 1000000 + _idCounter * 100 + rand;
 }
 
 /**

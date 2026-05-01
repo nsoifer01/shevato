@@ -2,9 +2,11 @@
  * WorkoutDay Model
  * Represents a day's workout template within a program
  */
+import { generateNumericId } from '../utils/helpers.js';
+
 export class WorkoutDay {
     constructor(data = {}) {
-        this.id = data.id || Date.now() + Math.random();
+        this.id = data.id || generateNumericId();
         this.name = data.name || '';
         this.description = data.description || '';
         this.exercises = data.exercises || []; // Array of { exerciseId, exerciseName, targetSets, targetReps, notes, order }
