@@ -233,13 +233,16 @@ export function generateId() {
  */
 let _idCounter = 0;
 export function generateNumericId() {
-    _idCounter = (_idCounter + 1) & 0xffff;
-    // 13 ms digits, 4 counter digits, 2 random digits — collision needs
-    // the same ms, the same counter slot (modulo 65536), and the same
-    // random byte on the same device, which is overwhelmingly unlikely
-    // even under rapid scripted creation.
-    const rand = Math.floor(Math.random() * 100);
-    return Date.now() * 1000000 + _idCounter * 100 + rand;
+    _idCounter = (_idCounter + 1) & 0xfff; // 12 bits → 4096 slots / ms
+    // Stay inside JS Number's safe-integer range (2^53) so the bottom
+    // digits don't round off.
+    //   - 41 bits for the ms timestamp (~year 2065 worst case)
+    //   - 12 bits for the per-ms entropy (counter)
+    // = 53 bits total. Two IDs created in the same ms only collide if
+    // both land in the same counter slot — by then the counter has
+    // already cycled 4095 times, so for any realistic single-page rate
+    // this is collision-free.
+    return Date.now() * 0x1000 + _idCounter;
 }
 
 /**
