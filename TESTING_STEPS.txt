@@ -340,3 +340,42 @@ Files touched (delegated dispatchers added in each view's init):
 ### Automated checks
 - `grep -RnE 'onclick="' apps/gym-tracker/js/views/` returns no matches outside of comments.
 - `for f in apps/gym-tracker/js/views/*.js; do node --check "$f"; done` exits 0 for every file.
+
+
+## Change 11: Baseline security headers + CSP (Report-Only)
+### What changed
+`netlify.toml` now sets baseline security headers on every response:
+- `X-Frame-Options: DENY`
+- `X-Content-Type-Options: nosniff`
+- `Referrer-Policy: strict-origin-when-cross-origin`
+- `Permissions-Policy: geolocation=(), microphone=(), camera=()`
+- `Strict-Transport-Security: max-age=31536000; includeSubDomains`
+- `Content-Security-Policy-Report-Only` — allow `'self'`, `gstatic.com`, `cdnjs.cloudflare.com` for scripts; allow `'unsafe-inline'` for now (the bundled jQuery partials loader at the bottom of `index.html` is still inline). Connect to Google APIs and Firebase RTDB / WSS endpoints. Block `object-src` entirely.
+
+CSP is intentionally **Report-Only** at first so the deploy can't break in production while we observe whether real traffic generates violations. Once the inline script is moved to an external file (or hashed), graduate by renaming the directive to `Content-Security-Policy`.
+
+Also added cache-control hints for the gym-tracker JS/CSS/data folders (5 min for code, 1 hour for the exercise DB) and confirmed Firebase SDK versions are already pinned (10.7.1 modular / 9.23.0 compat).
+
+Files touched:
+- `netlify.toml`
+
+### Setup
+- A Netlify deploy preview or local `netlify dev`. (Local file:// won't exercise the headers.)
+
+### Test steps
+1. Run `netlify dev` locally (or push the branch to a deploy preview).
+2. Open the gym tracker URL.
+3. Open DevTools → Network → click `index.html` → Headers tab. Verify all six security headers are present.
+4. Open Console — confirm there are no real script/style failures (the Report-Only CSP must not block anything; only log violations).
+5. Inspect the Console for any `[Report Only]` CSP violation messages. Expected: none from the gym tracker code itself; FontAwesome `font-src` may emit a violation if `fonts.googleapis.com` redirects to a different host — verify the listed domains cover it.
+6. Confirm Firebase auth still works (sign in / sign out) — `firebase-auth-compat.js` and `firebase-app-compat.js` (gstatic) load and execute.
+
+### Regression checks
+1. The site is not framed elsewhere — no broken iframe embeds.
+2. After signing in, sync still operates (writes via `connect-src https://*.firebaseio.com / wss://*.firebaseio.com`).
+3. CDN font icons still render (`https://cdnjs.cloudflare.com` allowed in script-src + style-src + font-src).
+4. The favicon (data: URI) renders (data: in `img-src`).
+
+### Automated checks
+- `grep -n "Content-Security-Policy-Report-Only" netlify.toml` returns the new directive.
+- `grep -nE "firebasejs/(10\\.7\\.1|9\\.23\\.0)" firebase-config.js sync-system/*.js apps/gym-tracker/index.html` confirms pinned versions.
