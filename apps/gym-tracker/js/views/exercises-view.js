@@ -2,7 +2,7 @@
  * Exercises View Controller
  */
 import { app } from '../app.js';
-import { showToast, parseLocalDate, showConfirmModal, escapeHtml } from '../utils/helpers.js';
+import { showToast, parseLocalDate, showConfirmModal, escapeHtml, generateNumericId } from '../utils/helpers.js';
 import { DarkSelect } from '../utils/dark-select.js';
 import { AnalyticsService } from '../services/AnalyticsService.js';
 
@@ -340,8 +340,11 @@ class ExercisesView {
             return;
         }
 
-        // Generate unique ID (using timestamp + random)
-        const id = Date.now() + Math.floor(Math.random() * 1000) + 10000;
+        // High-entropy numeric ID — generateNumericId combines timestamp,
+        // a process counter, and a random tail so two custom exercises
+        // created in the same millisecond can't collide. Stays numeric so
+        // existing inline-onclick interpolations keep working.
+        const id = generateNumericId();
 
         const newExercise = {
             id,
