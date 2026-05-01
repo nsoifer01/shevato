@@ -57,7 +57,8 @@ const APP_SYNC_CONFIG = {
       'gymTrackerSettings',       // User settings
       'gymTrackerAchievements',   // Unlocked achievements
       'gymTrackerActiveProgram',  // Currently active program ID
-      'gymTrackerCustomExercises' // User-created custom exercises
+      'gymTrackerCustomExercises', // User-created custom exercises
+      'gymTrackerMeasurements'    // Body measurements log
     ]
   }
 };
