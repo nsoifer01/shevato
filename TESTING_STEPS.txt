@@ -673,3 +673,73 @@ Files touched:
 - `node --check apps/gym-tracker/js/views/settings-view.js` exits 0.
 - `grep -n "replay-onboarding-btn\|delete-cloud-data-btn" apps/gym-tracker/index.html` finds both buttons.
 - `npm test` exits 0.
+
+
+## Change 19 (improvement #26 in audit): GitHub Actions CI
+### What changed
+New `.github/workflows/test.yml` runs on every push to master and every pull request:
+1. Checks out the repo.
+2. Installs Node from `.nvmrc` (currently 20).
+3. Syntax-checks every gym-tracker `.js` and `sw.js` (the scoped `apps/gym-tracker/package.json` declares `type: module` so the files are recognized as ESM).
+4. Runs `npm test` (gym + football suites).
+
+No npm dependencies — Node's built-in `node:test` runs straight from `package.json`'s test script.
+
+`sync-system/*.js` is intentionally excluded from the syntax sweep: it mixes ESM modules and classic-script IIFEs that the browser tag-loads, and Node's `--check` would misclassify them. They're still exercised by the rest of the test surface that imports them.
+
+Files touched / added:
+- `.github/workflows/test.yml` (new)
+
+### Setup
+- Push the branch (or create the PR).
+
+### Test steps
+1. After pushing to GitHub, open the PR.
+2. Verify the "tests" check appears under the PR.
+3. The check should pass on the current branch (locally `npm test` passes 138/138 and the syntax sweep is clean).
+4. To deliberately break it: push a commit that introduces `const x =;` into `apps/gym-tracker/js/app.js`. Push. Verify the CI run goes red on the syntax-check step. Revert.
+
+### Regression checks
+1. The workflow runs on PR opens, syncs, reopens, and pushes to PR branches.
+2. It also runs on direct pushes to master so post-merge breakage is caught.
+3. Local `npm test` still works exactly as before.
+
+### Automated checks
+- `cat .github/workflows/test.yml` shows the file present.
+- Local: `set -e; for f in $(git ls-files 'apps/gym-tracker/js/**/*.js' 'apps/gym-tracker/sw.js'); do node --check "$f"; done && npm test` exits 0.
+
+
+## BLOCKER: Improvements #19–25 (Larger strategic) deferred
+### What was attempted
+The audit's "Larger strategic improvements" cluster — items 19 through 25 — are each multi-day undertakings that change architecture or add significant product surface. Trying to land any of them in the same branch as the previous mechanical fixes would either:
+- Introduce regressions in stable code paths (item 19's bundler / lazy-load / partial split rewrites the whole module graph).
+- Ship a half-done feature that's worse than nothing (items 22–25 are all UI features that need design + manual QA cycles).
+- Add new infrastructure with no rollback story in this branch (item 24 needs a Firebase Cloud Messaging server key + push subscription flow on the user's account).
+
+### Items not implemented in this branch
+- **#19 Bundle JS with esbuild + lazy-load exercise DB + split index.html into per-view partials.** Requires: a build step (esbuild config or Netlify-side transform), an `await import()`-based loader for the exercise DB, plus extracting ~700 lines of inline modal markup into per-view HTML files loaded by the existing `data-include` partial loader. Hard part: every view today calls `app.exerciseDatabase` synchronously; lazy-loading needs a guard / loader Promise, then every consumer awaiting it.
+- **#20 Restructure persistence: per-session keys, per-program keys; subcollections in Firestore.** Requires: schema migration with versioned upgrade, a new sync layer adapter that mirrors a Firestore subcollection rather than a single doc, and a roll-forward path for existing single-blob users.
+- **#21 Adopt event-bus / proxy-based observable; remove view↔view reach-throughs.** Requires: choosing an observable shape (event emitter vs Proxy vs RxJS), refactoring every view's `app.programs.push(...) ; app.savePrograms() ; this.render()` triplet into a single mutation entry point, then auditing every other view to subscribe.
+- **#22 Muscle-group volume dashboard + calendar heatmap.** Requires: AnalyticsService extensions (volume per muscle per week), a new "Dashboard" view, and an inline-SVG heatmap render. ~1 sprint of work + design.
+- **#23 Plate calculator + supersets + progressive-overload suggestions.** Three separate features each with their own UX:
+  - Plate calculator: a settings entry for available plates + bar weight, a popover next to weight inputs.
+  - Supersets: a `groupId` field on `WorkoutExercise`, a "group with previous" UI, render block grouping in the workout view, and rest-timer logic that fires after the second exercise of the pair.
+  - Progressive overload: extend AnalyticsService.getExerciseProgression to suggest next weights/reps based on prior RPE/leftover sets, surface as a "Suggest" pill on planned rows.
+- **#24 Web-push reminders + background rest-timer notifications via FCM.** Requires:
+  - Firebase Cloud Messaging server key and `apps/gym-tracker/firebase-messaging-sw.js`.
+  - A user-facing prompt for notification permission.
+  - A scheduled-notification scheduler (the browser doesn't have one — needs an FCM topic with cron, or a Firebase Function).
+  - Deep-link routing into the workout view.
+- **#25 Body measurements + progress photos.** Requires: new model types (Measurement, Photo), new view, IndexedDB layer for photos (localStorage is too small), Firebase Storage integration for cross-device photo sync.
+
+### What info is needed to proceed on each
+- **#19**: Decision on whether Netlify build step is acceptable. If yes, what bundler config (esbuild via netlify.toml `[build] command`?). If no, the lazy-load can ship without bundling but then the 87 KB DB still ships separately.
+- **#20**: A clear migration window — if user data is large, the one-blob-per-namespace → subcollection migration must be careful. Need to confirm whether existing users would be acceptable with a "migrating, please wait" loading state once.
+- **#21**: User pick between RxJS-style (heavyweight, lots of operators) vs a tiny custom emitter (~30 lines). I'd lean custom — but want confirmation before adding an event-bus pattern that other contributors will copy.
+- **#22**: Scope of the dashboard — full new tab vs annotations to the existing Calendar / Achievements? Affects design budget.
+- **#23**: Pick which one to do first. Plate calculator is smallest (~half day); supersets is moderate (~1 day); progressive overload is largest because the suggestion algorithm is the entire product (~2-3 days plus user research).
+- **#24**: Confirmation that we have FCM enabled on `shevato-site` and that the user is OK with a server-side scheduler (Firebase Functions free-tier is fine for this volume).
+- **#25**: Decision on photo storage — Firebase Storage costs vs IndexedDB-only (which means photos don't sync, defeating much of the point).
+
+### What HAS been completed in this branch
+Improvements #1 through #18 from the original audit roadmap are implemented and committed. See changes 1–19 in this file.

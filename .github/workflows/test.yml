@@ -1,0 +1,32 @@
+name: tests
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Use Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version-file: '.nvmrc'
+
+      # No npm dependencies — node:test is built in.
+      # Syntax-check only the gym-tracker tree (scoped to type=module via
+      # apps/gym-tracker/package.json). The sync-system files mix module
+      # styles and load in the browser as classic scripts — Node's --check
+      # would misclassify them.
+      - name: Syntax check (gym-tracker)
+        run: |
+          set -e
+          for f in $(git ls-files 'apps/gym-tracker/js/**/*.js' 'apps/gym-tracker/sw.js'); do
+            node --check "$f"
+          done
+
+      - name: Run tests
+        run: npm test
