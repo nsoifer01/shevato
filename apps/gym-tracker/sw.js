@@ -16,7 +16,7 @@
  * Old caches are pruned automatically on activate.
  */
 
-const CACHE_VERSION = '1.3.3';
+const CACHE_VERSION = '1.4.0';
 const PRECACHE = `gym-precache-${CACHE_VERSION}`;
 const RUNTIME = `gym-runtime-${CACHE_VERSION}`;
 
@@ -46,7 +46,6 @@ const PRECACHE_URLS = [
   './js/utils/event-bus.js',
   './js/utils/helpers.js',
   './js/utils/modal-focus.js',
-  './js/utils/photo-store.js',
   './js/utils/plate-calculator.js',
   './js/utils/program-order.js',
   './js/utils/progression.js',

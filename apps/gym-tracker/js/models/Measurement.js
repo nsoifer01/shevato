@@ -40,10 +40,6 @@ export class Measurement {
         this.thighLeft = num(data.thighLeft);
         this.thighRight = num(data.thighRight);
         this.notes = data.notes || '';
-        // Array of download-URL strings for progress photos uploaded via
-        // utils/photo-store.js. Round-trips through Firestore as a plain
-        // JSON array of strings — no special storage handling needed.
-        this.photos = Array.isArray(data.photos) ? data.photos.slice() : [];
         this.createdAt = data.createdAt || new Date().toISOString();
     }
 
@@ -61,7 +57,6 @@ export class Measurement {
             thighLeft: this.thighLeft,
             thighRight: this.thighRight,
             notes: this.notes,
-            photos: this.photos.slice(),
             createdAt: this.createdAt,
         };
     }
