@@ -508,3 +508,43 @@ Files touched:
 - `npm test` exits 0.
 - `grep -n "totalQueueSize" sync-system/storage-sync-robust.js` finds the new field.
 - `grep -n "gymGetGlobalSyncStatus" sync-system/storage-sync-robust.js apps/gym-tracker/js/utils/sync-status.js` finds both the export and the consumer.
+
+
+## Change 15: Keyboard reorder for programs + program-exercises
+### What changed
+Both reorderable lists in the gym tracker — the Programs grid and the program-exercises list inside the Edit Program modal — only supported HTML5 drag-and-drop. Keyboard users and many touch users (long-press not always reliable) had no way to reorder.
+
+Each row now also shows two small chevron buttons (up / down). They:
+- Are real `<button type="button">`s with proper `aria-label`s naming the row being moved.
+- Are disabled at the boundaries (no "move first item up").
+- Keep focus on the same arrow after the row moves so the user can press Up/Down repeatedly without re-tabbing.
+
+For programs, pressing Up/Down on a row also forces sortMode = 'custom' (the only mode where ordering is persisted); this matches the behavior of dragging a card from a sorted list.
+
+Files touched:
+- `apps/gym-tracker/js/views/programs-view.js`
+- `apps/gym-tracker/css/gym-tracker.css`
+
+### Setup
+- A program with 2+ exercises.
+- 2+ programs total.
+
+### Test steps
+1. Programs tab → focus the first program card. Press Tab until the up-chevron focuses (purple ring).
+2. Press Enter → program shifts up. Verify focus stays on the up-chevron of the moved row.
+3. If the program is now at top, the up-chevron is disabled and Tab moves to the down-chevron.
+4. Press Down chevron → the program moves back. Sort dropdown auto-switches to "Custom (drag to reorder)" if it wasn't already.
+5. Reload the page — verify the new order persists.
+6. Open Edit Program on a program with 2+ exercises. Tab to the first exercise row's up-chevron.
+7. Press Enter → exercise moves up. Position counter (`1`/`2`/...) updates.
+8. Press Down → moves back.
+
+### Regression checks
+1. Drag-to-reorder still works on the Programs page when sortMode === 'custom'.
+2. Exercises within the modal still reorder correctly via drag.
+3. Sort modes other than 'custom' (Name A-Z etc.) hide the move buttons (they only render in the `isCustom` branch on programs).
+4. Mouse users see the buttons but can ignore them — they don't interfere with the existing drag handles.
+
+### Automated checks
+- `node --check apps/gym-tracker/js/views/programs-view.js` exits 0.
+- `npm test` exits 0.
