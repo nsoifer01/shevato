@@ -8183,11 +8183,11 @@ button.calendar-day {
 
 /* ------------------------------------------------------------------
    Keyboard reorder buttons — sit alongside the drag handle on programs
-   and program-exercise rows so users without DnD (keyboard / touch
-   without long-press) can still reorder. Same up/down icon pair, two
-   sizes (program card vs in-modal exercise row).
+   and program-exercise rows (in the Program edit modal). The card-
+   level arrows on the Programs grid were removed in favour of drag-
+   only reorder; the in-modal exercise-row arrows stay because there's
+   no drag handle inside the modal.
    ------------------------------------------------------------------ */
-.program-card-move-buttons,
 .pex-move-buttons {
     display: inline-flex;
     flex-direction: column;
