@@ -18,6 +18,7 @@ class HomeView {
     init() {
         this.app.viewControllers.home = this;
         this.wireFab();
+        this.wireHomeActions();
     }
 
     wireFab() {
@@ -25,6 +26,57 @@ class HomeView {
         if (!fab || fab.dataset.wired) return;
         fab.addEventListener('click', () => this.handleFabClick());
         fab.dataset.wired = '1';
+    }
+
+    /**
+     * Single delegated click+keyboard listener on the home view. Replaces
+     * the inline onclick handlers that used to live on each card. Card
+     * elements declare their behavior via `data-action` + `data-*-id`
+     * so we can ship a strict CSP and keep IDs out of JS strings.
+     * Idempotent — guarded by a dataset flag so re-renders don't stack.
+     */
+    wireHomeActions() {
+        const view = document.getElementById('home-view');
+        if (!view || view.dataset.actionsWired) return;
+        view.dataset.actionsWired = '1';
+
+        const dispatch = (e) => {
+            const target = e.target.closest('[data-action]');
+            if (!target || !view.contains(target)) return;
+            const action = target.dataset.action;
+            // Don't hijack clicks on real buttons inside an action card —
+            // the data-home-action global handler in app.js owns those.
+            if (target.matches('[data-home-action]')) return;
+            switch (action) {
+                case 'resume-paused':
+                    e.preventDefault();
+                    this.resumeWorkout();
+                    break;
+                case 'start-program':
+                    e.preventDefault();
+                    this.startWorkoutWithProgram(Number(target.dataset.programId));
+                    break;
+                case 'edit-program':
+                    e.preventDefault();
+                    this.app.viewControllers.programs?.editProgram(Number(target.dataset.programId));
+                    break;
+                case 'show-session':
+                    e.preventDefault();
+                    this.showWorkoutDetails(Number(target.dataset.sessionId));
+                    break;
+            }
+        };
+
+        view.addEventListener('click', dispatch);
+        view.addEventListener('keydown', (e) => {
+            if (e.key !== 'Enter' && e.key !== ' ') return;
+            const target = e.target.closest('[data-action]');
+            if (!target) return;
+            // Only intercept on role=button cards — real <button>s already
+            // get Enter/Space activation natively.
+            if (target.tagName === 'BUTTON') return;
+            dispatch(e);
+        });
     }
 
     render() {
@@ -233,7 +285,7 @@ class HomeView {
 
                         if (isPaused) {
                             return `
-                                <div class="quick-program-item paused" onclick="window.gymApp.viewControllers.home.resumeWorkout()">
+                                <div class="quick-program-item paused" data-action="resume-paused" role="button" tabindex="0">
                                     <div class="program-info">
                                         <strong>${escapeHtml(program.name)}</strong>
                                         <span class="paused-label"><i class="fas fa-pause"></i> Paused</span>
@@ -243,7 +295,7 @@ class HomeView {
                             `;
                         } else if (hasExercises) {
                             return `
-                                <div class="quick-program-item" onclick="window.gymApp.viewControllers.home.startWorkoutWithProgram(${program.id})">
+                                <div class="quick-program-item" data-action="start-program" data-program-id="${program.id}" role="button" tabindex="0">
                                     <div class="program-info">
                                         <strong>${escapeHtml(program.name)}</strong>
                                         <span>${program.exercises.length} exercises</span>
@@ -253,7 +305,7 @@ class HomeView {
                             `;
                         } else {
                             return `
-                                <div class="quick-program-item is-empty" onclick="window.gymApp.viewControllers.programs.editProgram(${program.id})" title="Add exercises to this program">
+                                <div class="quick-program-item is-empty" data-action="edit-program" data-program-id="${program.id}" role="button" tabindex="0" title="Add exercises to this program">
                                     <div class="program-info">
                                         <strong>${escapeHtml(program.name)}</strong>
                                         <span>0 exercises · Tap to add</span>
@@ -288,7 +340,7 @@ class HomeView {
 
         const unit = this.app.settings.weightUnit;
         container.innerHTML = recentSessions.map(session => `
-            <div class="workout-card clickable" onclick="window.gymApp.viewControllers.home.showWorkoutDetails(${session.id})">
+            <div class="workout-card clickable" data-action="show-session" data-session-id="${session.id}" role="button" tabindex="0">
                 <div class="workout-card-header">
                     <h4>${escapeHtml(session.workoutDayName)}</h4>
                     <span class="date">${formatSessionDateTime(session)}</span>

@@ -247,10 +247,10 @@ class ProgramsView {
                     </div>
                 </div>
                 <div class="program-actions">
-                    <button class="btn btn-secondary" onclick="window.gymApp.viewControllers.programs.editProgram(${program.id})">
+                    <button class="btn btn-secondary" data-action="edit-program" data-program-id="${program.id}">
                         <i class="fas fa-edit"></i> Edit
                     </button>
-                    <button class="btn btn-danger" onclick="window.gymApp.viewControllers.programs.deleteProgram(${program.id})">
+                    <button class="btn btn-danger" data-action="delete-program" data-program-id="${program.id}">
                         <i class="fas fa-trash"></i> Delete
                     </button>
                 </div>
@@ -267,6 +267,36 @@ class ProgramsView {
             card.addEventListener('dragover',  (e) => this.handleDragOver(e, id));
             card.addEventListener('dragleave', (e) => this.handleDragLeave(e));
             card.addEventListener('drop',      (e) => this.handleDrop(e, id));
+        });
+
+        this.wireProgramListActions(container);
+    }
+
+    /**
+     * Single delegated click listener on the programs list container.
+     * Replaces inline onclick="...editProgram(${id})" handlers with
+     * data-action / data-program-id pairs so we can ship a strict CSP
+     * later and avoid string-interpolating IDs into JS expressions.
+     * Idempotent — guarded by a dataset flag so re-renders don't stack
+     * listeners.
+     */
+    wireProgramListActions(container) {
+        if (container.dataset.actionsWired) return;
+        container.dataset.actionsWired = '1';
+        container.addEventListener('click', (e) => {
+            const btn = e.target.closest('[data-action]');
+            if (!btn || !container.contains(btn)) return;
+            const id = Number(btn.dataset.programId);
+            switch (btn.dataset.action) {
+                case 'edit-program':
+                    e.preventDefault();
+                    this.editProgram(id);
+                    break;
+                case 'delete-program':
+                    e.preventDefault();
+                    this.deleteProgram(id);
+                    break;
+            }
         });
     }
 

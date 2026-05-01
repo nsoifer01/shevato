@@ -16,6 +16,41 @@ class ExercisesView {
     init() {
         this.app.viewControllers.exercises = this;
         this.setupEventListeners();
+        this.wireListActions();
+    }
+
+    /**
+     * Single delegated click+keyboard listener on the exercise grid.
+     * Replaces inline onclick handlers that interpolated exercise.id into
+     * JS strings.
+     */
+    wireListActions() {
+        const list = document.getElementById('exercise-db-list');
+        if (!list || list.dataset.actionsWired) return;
+        list.dataset.actionsWired = '1';
+
+        const dispatch = (e, fromKeyboard = false) => {
+            const target = e.target.closest('[data-action]');
+            if (!target || !list.contains(target)) return;
+            const id = Number(target.dataset.exerciseId);
+            switch (target.dataset.action) {
+                case 'delete-custom-exercise':
+                    e.preventDefault();
+                    e.stopPropagation();
+                    this.deleteCustomExercise(id);
+                    break;
+                case 'show-exercise-history':
+                    if (fromKeyboard && target.tagName === 'BUTTON') return;
+                    e.preventDefault();
+                    this.showExerciseHistory(id);
+                    break;
+            }
+        };
+
+        list.addEventListener('click', (e) => dispatch(e));
+        list.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter' || e.key === ' ') dispatch(e, true);
+        });
     }
 
     setupEventListeners() {
@@ -380,21 +415,21 @@ class ExercisesView {
         container.innerHTML = this.filteredExercises.map(exercise => {
             const hasHistory = this.exerciseHasHistory(exercise.id);
             const historyCount = hasHistory ? this.getExerciseHistoryCount(exercise.id) : 0;
-            const clickHandler = hasHistory
-                ? `onclick="window.gymApp.viewControllers.exercises.showExerciseHistory(${exercise.id})"`
+            const cardActionAttrs = hasHistory
+                ? `data-action="show-exercise-history" data-exercise-id="${exercise.id}" role="button" tabindex="0"`
                 : '';
             const cursorClass = hasHistory ? 'has-history' : 'no-history';
             const canDelete = exercise.isCustom && !hasHistory;
 
             return `
-                <div class="exercise-db-card ${cursorClass}" ${clickHandler}>
+                <div class="exercise-db-card ${cursorClass}" ${cardActionAttrs}>
                     ${hasHistory ? `<span class="history-count-badge">${historyCount}</span>` : ''}
                     <div class="exercise-card-header">
                         <h3>
                             ${escapeHtml(exercise.name)}
                             ${exercise.isCustom ? '<span class="badge badge-custom">Custom</span>' : ''}
                         </h3>
-                        ${canDelete ? `<button class="btn-icon delete-exercise-btn" onclick="event.stopPropagation(); window.gymApp.viewControllers.exercises.deleteCustomExercise(${exercise.id})" title="Delete custom exercise">
+                        ${canDelete ? `<button class="btn-icon delete-exercise-btn" data-action="delete-custom-exercise" data-exercise-id="${exercise.id}" title="Delete custom exercise">
                             <i class="fas fa-trash"></i>
                         </button>` : ''}
                     </div>
