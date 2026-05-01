@@ -1039,6 +1039,7 @@ body.gym-tracker #footer {
     display: grid;
     grid-template-columns: minmax(0, 1fr);
     gap: var(--spacing-lg);
+    align-items: stretch;
 }
 
 @media (min-width: 768px) {
@@ -1051,6 +1052,31 @@ body.gym-tracker #footer {
     .programs-grid {
         grid-template-columns: repeat(3, minmax(0, 1fr));
     }
+}
+
+/* Mirror the workout-picker alignment: lock card geometry so titles
+   that wrap to two lines, optional descriptions, and the bottom
+   Edit/Delete actions all line up across the row. */
+.programs-grid .program-card {
+    min-height: 260px;
+    padding: var(--spacing-lg);
+}
+
+.programs-grid .program-card .program-header {
+    min-height: 2.4em;
+    display: flex;
+    align-items: flex-start;
+}
+
+.programs-grid .program-card .program-header h3 {
+    margin: 0;
+    line-height: 1.2;
+}
+
+/* Pin the action cluster to the card foot so Edit/Delete pairs line
+   up horizontally regardless of upper content. */
+.programs-grid .program-card .program-actions {
+    margin-top: auto;
 }
 
 /* Drag handle (only shown when sort mode is custom) */
