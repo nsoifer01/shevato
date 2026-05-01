@@ -379,3 +379,43 @@ Files touched:
 ### Automated checks
 - `grep -n "Content-Security-Policy-Report-Only" netlify.toml` returns the new directive.
 - `grep -nE "firebasejs/(10\\.7\\.1|9\\.23\\.0)" firebase-config.js sync-system/*.js apps/gym-tracker/index.html` confirms pinned versions.
+
+
+## Change 12: PWA manifest + offline service worker
+### What changed
+- New `apps/gym-tracker/manifest.webmanifest` with app name, theme color (matching the existing dark UI), standalone display mode, and SVG icons (192/512). Linked from `index.html` via `<link rel="manifest">`.
+- New `apps/gym-tracker/sw.js` service worker that:
+  - Precaches the entire app shell on install (index.html, every JS module, the CSS, and the static exercise DB) so the workout flow keeps working offline.
+  - Uses stale-while-revalidate for everything else under our origin so loads stay instant and the cache refreshes in the background.
+  - Skips cross-origin requests (Firebase / gstatic / fontawesome handle their own caching).
+  - Prunes old caches on activate.
+- Tiny inline registration script in `index.html` registers `sw.js` with scope `/apps/gym-tracker/`.
+
+Files touched / added:
+- `apps/gym-tracker/manifest.webmanifest` (new)
+- `apps/gym-tracker/sw.js` (new)
+- `apps/gym-tracker/index.html`
+
+### Setup
+- Serve over HTTPS (or localhost) — service workers don't register on `file://`.
+
+### Test steps
+1. `python3 -m http.server 8000` from the repo root.
+2. Open `http://localhost:8000/apps/gym-tracker/` in Chrome.
+3. DevTools → Application → Manifest. Verify name = "Gym Tracker", theme color `#1a1a2e`, two icons render in the preview.
+4. DevTools → Application → Service Workers. Verify `sw.js` is "activated and is running" with scope `/apps/gym-tracker/`.
+5. DevTools → Application → Cache Storage. Verify `gym-precache-gym-v2` exists with all listed files.
+6. DevTools → Network → check "Offline" → reload. Verify the app loads from cache, you can navigate every tab, view existing workouts, and start a workout (sync writes will queue in localStorage and replay when you go back online).
+7. Uncheck Offline. Refresh. Verify normal sync resumes.
+8. On a mobile device (iOS Safari or Android Chrome), tap "Add to Home Screen". Verify the app installs with the dumbbell icon.
+
+### Regression checks
+1. First-time visitors with no service worker still get the app exactly as before (registration is best-effort, scoped to a `load` event, and wrapped in `'serviceWorker' in navigator`).
+2. Firebase auth still works on a hard reload — the SW does not intercept off-origin requests so `gstatic.com` Firebase scripts go straight to the network.
+3. Updating any cached JS file: open the browser → DevTools → Application → Service Workers → "Update on reload" → reload. Verify the new code runs (stale-while-revalidate updates the runtime cache; for the precache list, bump CACHE_VERSION in `sw.js`).
+
+### Automated checks
+- `node --check apps/gym-tracker/sw.js` exits 0.
+- `python3 -c "import json; json.load(open('apps/gym-tracker/manifest.webmanifest'))"` exits 0 (valid JSON).
+- `grep -n "rel=\"manifest\"" apps/gym-tracker/index.html` finds the link.
+- `grep -n "navigator.serviceWorker.register" apps/gym-tracker/index.html` finds the registration.
