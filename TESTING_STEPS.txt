@@ -193,3 +193,35 @@ Files touched:
 ### Automated checks
 - `node --check sync-system/app-sync-init.js` exits 0.
 - `grep -n "appName !== currentApp" sync-system/app-sync-init.js` returns no matches (the cross-app loop has been removed).
+
+
+## Change 7: High-entropy numeric IDs for entities (collision fix)
+### What changed
+- `helpers.generateId()` now returns `crypto.randomUUID()` when available (replacing the deprecated `substr` fallback). Available for future code.
+- Added `helpers.generateNumericId()` — combines `Date.now() * 1e6 + counter * 100 + random` so two entities created in the same millisecond on the same device still differ. Returns a number so it stays compatible with the existing inline-onclick interpolations like `onclick="...startWorkout(${program.id})"`.
+- Wired `generateNumericId()` into `Program`, `WorkoutSession`, `WorkoutDay`, and the custom-exercise creation path. Replaces the previous `Date.now()` / `Date.now() + Math.random()` IDs.
+
+Files touched:
+- `apps/gym-tracker/js/utils/helpers.js`
+- `apps/gym-tracker/js/models/Program.js`
+- `apps/gym-tracker/js/models/WorkoutSession.js`
+- `apps/gym-tracker/js/models/WorkoutDay.js`
+- `apps/gym-tracker/js/views/exercises-view.js`
+
+### Setup
+- A clean local profile (or `debugGymTracker.clearLocalStorage()` after).
+
+### Test steps
+1. Open the app. Programs → Create Program "A". Save. Immediately Create Program "B". Save.
+2. Open DevTools console: `gymApp.programs.map(p => p.id)`. Verify both IDs are large integers, both unique, and neither equals an obvious `Date.now()` from the past second alone (they should be ~13 ms digits + 6 trailing digits, so 19-digit numbers).
+3. Start a workout, finish it. `gymApp.workoutSessions.map(s => s.id)` should also show 19-digit numeric IDs unique per session.
+4. Create a custom exercise. `gymApp.customExercises.map(e => e.id)` shows large numeric IDs.
+5. Edit / Delete programs and sessions and confirm the click handlers still work — the inline `onclick="...(${id})"` still resolves to a valid JS expression because IDs remain numeric.
+
+### Regression checks
+1. Existing legacy data with shorter `Date.now()` IDs still loads — `gymApp.programs[?].id` for pre-change data is unchanged (we only generate new IDs at construction).
+2. Sync: edit a program on one device, observe it on another — `id` field is preserved end-to-end.
+
+### Automated checks
+- `node --check apps/gym-tracker/js/utils/helpers.js apps/gym-tracker/js/models/Program.js apps/gym-tracker/js/models/WorkoutSession.js apps/gym-tracker/js/models/WorkoutDay.js apps/gym-tracker/js/views/exercises-view.js` exits 0 for all files.
+- `grep -nE "Date\.now\(\)\s*\+\s*Math\." apps/gym-tracker/js/models/ apps/gym-tracker/js/views/exercises-view.js` returns no matches.
