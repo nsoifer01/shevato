@@ -13,7 +13,7 @@
  * pruned automatically.
  */
 
-const CACHE_VERSION = 'gym-v2';
+const CACHE_VERSION = 'gym-v3';
 const PRECACHE = `gym-precache-${CACHE_VERSION}`;
 const RUNTIME = `gym-runtime-${CACHE_VERSION}`;
 
@@ -40,6 +40,7 @@ const PRECACHE_URLS = [
   './js/utils/dark-select.js',
   './js/utils/helpers.js',
   './js/utils/program-order.js',
+  './js/utils/sync-status.js',
   './js/utils/validators.js',
   './js/views/achievements-view.js',
   './js/views/calendar-view.js',

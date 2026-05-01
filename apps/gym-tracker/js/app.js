@@ -16,6 +16,7 @@ import { AchievementService } from './services/AchievementService.js';
 
 import { EXERCISE_DATABASE } from '../data/exercises-db.js';
 import { showToast, debugLog } from './utils/helpers.js';
+import { mountSyncStatusPill } from './utils/sync-status.js';
 
 class GymTrackerApp {
     constructor() {
@@ -71,6 +72,9 @@ class GymTrackerApp {
 
         // Listen for sync system ready
         this.setupSyncListeners();
+
+        // Mount the floating sync-status pill (Synced / Saving / Offline).
+        mountSyncStatusPill();
 
         // First-run onboarding — only when the user has absolutely no data
         // and has never dismissed the welcome. If sync later pulls data in,
