@@ -112,59 +112,73 @@ class GymTrackerApp {
     }
 
     /**
-     * Load all data from storage
+     * Load all data from storage.
+     *
+     * Each key is loaded in its own try/catch so a single corrupt blob
+     * (rare but possible after a sync glitch or a partial migration)
+     * doesn't wipe the user's other entities. When a key fails to parse,
+     * we toast the user, keep the rest of their data intact, and reset
+     * just that one slice to its empty default.
      */
     loadAllData() {
-        try {
-            // Load programs with safety check
-            const programsData = storageService.getPrograms();
-            this.programs = Array.isArray(programsData) ? programsData.map(p => Program.fromJSON(p)) : [];
-            if (!Array.isArray(programsData) && programsData !== null) {
-                console.warn('Programs data was not an array, resetting to empty array');
-            }
+        this.programs = this._safeLoad('programs',
+            () => storageService.getPrograms(),
+            (data) => Array.isArray(data) ? data.map(p => Program.fromJSON(p)) : [],
+            []
+        );
 
-            // Load workout sessions with safety check
-            const sessionsData = storageService.getWorkoutSessions();
-            this.workoutSessions = Array.isArray(sessionsData) ? sessionsData.map(s => WorkoutSession.fromJSON(s)) : [];
-            if (!Array.isArray(sessionsData) && sessionsData !== null) {
-                console.warn('Sessions data was not an array, resetting to empty array');
-            }
+        this.workoutSessions = this._safeLoad('workout sessions',
+            () => storageService.getWorkoutSessions(),
+            (data) => Array.isArray(data) ? data.map(s => WorkoutSession.fromJSON(s)) : [],
+            []
+        );
 
-            // Load achievements with safety check
-            const achievementsData = storageService.getAchievements();
-            this.achievements = Array.isArray(achievementsData) ? achievementsData.map(a => Achievement.fromJSON(a)) : [];
-            if (!Array.isArray(achievementsData) && achievementsData !== null) {
-                console.warn('Achievements data was not an array, resetting to empty array');
-            }
+        this.achievements = this._safeLoad('achievements',
+            () => storageService.getAchievements(),
+            (data) => Array.isArray(data) ? data.map(a => Achievement.fromJSON(a)) : [],
+            []
+        );
 
-            // Load custom exercises with safety check
-            const customExercisesData = storageService.getCustomExercises();
-            this.customExercises = Array.isArray(customExercisesData) ? customExercisesData : [];
-            if (!Array.isArray(customExercisesData) && customExercisesData !== null) {
-                console.warn('Custom exercises data was not an array, resetting to empty array');
-            }
+        this.customExercises = this._safeLoad('custom exercises',
+            () => storageService.getCustomExercises(),
+            (data) => Array.isArray(data) ? data : [],
+            []
+        );
 
-            // Merge default and custom exercises
-            this.exerciseDatabase = [...EXERCISE_DATABASE, ...this.customExercises];
+        // Merge default and custom exercises
+        this.exerciseDatabase = [...EXERCISE_DATABASE, ...this.customExercises];
 
-            // Load settings
-            this.settings = storageService.getSettings();
-        } catch (error) {
-            console.error('Error loading data:', error);
-            // Reset to defaults on error
-            this.programs = [];
-            this.workoutSessions = [];
-            this.achievements = [];
-            this.customExercises = [];
-            this.settings = null;
-        }
-
-        // Load settings or create default
-        if (!this.settings) {
+        // Settings is a single object, not an array — handled separately.
+        const rawSettings = this._safeLoad('settings',
+            () => storageService.getSettings(),
+            (data) => data,
+            null
+        );
+        if (!rawSettings) {
             this.settings = Settings.getDefault();
             this.saveSettings();
         } else {
-            this.settings = Settings.fromJSON(this.settings);
+            this.settings = Settings.fromJSON(rawSettings);
+        }
+    }
+
+    /**
+     * Private: load one storage slice with isolated error handling. If the
+     * read or parse throws, surface a toast naming the slice so the user
+     * understands which part of their data is being reset, and continue
+     * loading the remaining slices.
+     */
+    _safeLoad(label, read, parse, fallback) {
+        try {
+            const raw = read();
+            return parse(raw);
+        } catch (error) {
+            console.error(`Failed to load ${label}:`, error);
+            // Lazily import-free toast — helpers.showToast is already in scope.
+            try {
+                showToast(`Could not load ${label} — that section reset to empty.`, 'error', 5000);
+            } catch (_) { /* toast layer not ready yet on first paint */ }
+            return fallback;
         }
     }
 
