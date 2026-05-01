@@ -40,6 +40,22 @@ class SettingsView {
             vibrationAlertsInput.addEventListener('change', () => this.checkDirty());
         }
 
+        // Plate calculator inputs — react on input, refresh preview, mark dirty.
+        const barInput = document.getElementById('bar-weight');
+        if (barInput) {
+            barInput.addEventListener('input', () => {
+                this.refreshPlatesPreview();
+                this.checkDirty();
+            });
+        }
+        const platesInput = document.getElementById('plates-input');
+        if (platesInput) {
+            platesInput.addEventListener('input', () => {
+                this.refreshPlatesPreview();
+                this.checkDirty();
+            });
+        }
+
         // Settings form submission
         const settingsForm = document.getElementById('settings-form');
         if (settingsForm) {
@@ -157,6 +173,13 @@ class SettingsView {
         const vibrationAlertsInput = document.getElementById('vibration-alerts');
         if (vibrationAlertsInput) vibrationAlertsInput.checked = settings.vibrationAlerts !== false;
 
+        // Plate calculator
+        const barInput = document.getElementById('bar-weight');
+        if (barInput) barInput.value = settings.barWeight ?? '';
+        const platesInput = document.getElementById('plates-input');
+        if (platesInput) platesInput.value = (settings.plates || []).join(', ');
+        this.refreshPlatesPreview();
+
         // Snapshot current values for dirty-state comparison
         this.savedSnapshot = this.snapshotForm();
         this.checkDirty();
@@ -168,7 +191,34 @@ class SettingsView {
             weightUnit: document.getElementById('weight-unit')?.value ?? '',
             soundAlerts: document.getElementById('sound-alerts')?.checked ? '1' : '0',
             vibrationAlerts: document.getElementById('vibration-alerts')?.checked ? '1' : '0',
+            barWeight: document.getElementById('bar-weight')?.value ?? '',
+            plates: document.getElementById('plates-input')?.value ?? '',
         };
+    }
+
+    /**
+     * Parse the comma-separated plate input into a sorted, validated array.
+     * Drops zero / negative / non-numeric entries silently — the live
+     * preview shows what we actually accepted.
+     */
+    parsePlatesInput(raw) {
+        if (!raw || typeof raw !== 'string') return [];
+        return raw.split(/[,\s]+/)
+            .map((s) => Number(s))
+            .filter((n) => Number.isFinite(n) && n > 0)
+            .sort((a, b) => b - a);
+    }
+
+    /** Render the live preview line under the plates input. */
+    refreshPlatesPreview() {
+        const previewEl = document.getElementById('plates-preview');
+        if (!previewEl) return;
+        const raw = document.getElementById('plates-input')?.value ?? '';
+        const parsed = this.parsePlatesInput(raw);
+        const unit = this.app.settings?.weightUnit || 'kg';
+        previewEl.textContent = parsed.length === 0
+            ? 'No plates configured.'
+            : `Accepted: ${parsed.map(p => `${p}${unit}`).join(', ')}`;
     }
 
     /** Compare current form against saved snapshot and toggle Save button. */
@@ -189,6 +239,14 @@ class SettingsView {
         if (soundAlertsInput) settings.soundAlerts = soundAlertsInput.checked;
         const vibrationAlertsInput = document.getElementById('vibration-alerts');
         if (vibrationAlertsInput) settings.vibrationAlerts = vibrationAlertsInput.checked;
+
+        const barInput = document.getElementById('bar-weight');
+        if (barInput && barInput.value !== '') {
+            const bar = Number(barInput.value);
+            if (Number.isFinite(bar) && bar >= 0) settings.barWeight = bar;
+        }
+        const platesInput = document.getElementById('plates-input');
+        if (platesInput) settings.plates = this.parsePlatesInput(platesInput.value);
 
         this.app.saveSettings();
         showToast('Settings saved successfully', 'success');
