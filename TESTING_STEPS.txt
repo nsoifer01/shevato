@@ -458,3 +458,53 @@ Files touched / added:
 - `npm test` exits 0.
 - `node --test apps/gym-tracker/tests/` exits 0.
 - `node --test apps/football-h2h/tests/` exits 0.
+
+
+## Change 14: Sync-status pill + fix sync-immediate double-pipeline
+### What changed
+**Two changes in one commit because they're entwined:**
+
+1. **Sync status pill.** Tiny bottom-right indicator that shows one of:
+   - **Synced** (green) — no pending writes, sync layer is healthy.
+   - **Saving…** (amber) — debounced writes still in-flight, or sync layer is connecting.
+   - **Offline** (gray) — `navigator.onLine` is false; we keep recording locally.
+
+   Lives in `apps/gym-tracker/js/utils/sync-status.js`, mounted by `app.js` once during init. Polls `window.gymGetGlobalSyncStatus()` every 2 s plus listens for online/offline events. Styled in `gym-tracker.css`. Pill collapses above the bottom nav on mobile, sits in the page corner on desktop.
+
+2. **Fixed sync-immediate's double pipeline.** `sync-immediate.js` used to keep its `localStorage.setItem` override permanently active, even after `storage-sync-robust.js` installed its own override. Every write therefore fired through both pipelines (buffer + processChange in this file, AND the queueWrite path in storage-sync). Now `sync-immediate.js` only buffers writes during the bootstrap window — once `syncSystemReady` fires, it restores the native methods so only the robust sync layer remains active. Idempotent (won't re-install if loaded twice). Replays buffered writes via the now-existent `window.syncManager.processChange` so any writes that happened before robust sync was ready still propagate.
+
+`storage-sync-robust.js` got two small additions:
+- `getGlobalStatus()` now reports `totalQueueSize` so the pill can distinguish "saving" from "synced."
+- Exposes `window.gymGetGlobalSyncStatus()` so non-module code can read status.
+
+Files touched:
+- `sync-system/sync-immediate.js` (rewritten — minimal buffer with handoff)
+- `sync-system/storage-sync-robust.js` (added totalQueueSize + window export)
+- `apps/gym-tracker/js/utils/sync-status.js` (new)
+- `apps/gym-tracker/js/app.js` (mount call)
+- `apps/gym-tracker/css/gym-tracker.css` (pill styles)
+- `apps/gym-tracker/sw.js` (precache the new file, bump CACHE_VERSION)
+
+### Setup
+- Sign in to a Firebase-enabled gym tracker.
+- DevTools → Network panel.
+
+### Test steps
+1. Reload the gym tracker. Within ~3 seconds you should see a green "Synced" pill bottom-right.
+2. Add a new program → save. The pill should briefly flash amber "Saving…" then return to green "Synced" within a second or two.
+3. Open DevTools → Network → check "Offline." The pill flips to gray "Offline" within 2 s.
+4. Click around the app while offline. New writes should NOT show "Synced" (they'll show "Saving…" once you uncheck Offline).
+5. Uncheck "Offline." The pill should return to green within a second.
+6. Sign out — pill shows "Signed out" (the `activeNamespaces === 0` branch).
+7. Sign back in — returns to green.
+
+### Regression checks
+1. Open DevTools → Network → filter `firestore`. Make a single write (save a program). Verify only ONE Firestore transaction fires (previously two — sync-immediate's pipeline doubled the work).
+2. Pre-bootstrap writes still propagate: in console, run `localStorage.setItem('gymTrackerPrograms', JSON.stringify([{id:1,name:'X',exercises:[],createdAt:'',updatedAt:''}]))` immediately on page load before sign-in completes. After sign-in, verify the program appears on a second device (i.e. the sync-immediate buffer was replayed).
+3. `npm test` still 132/132.
+
+### Automated checks
+- `node --check sync-system/sync-immediate.js sync-system/storage-sync-robust.js apps/gym-tracker/js/utils/sync-status.js apps/gym-tracker/js/app.js` exits 0.
+- `npm test` exits 0.
+- `grep -n "totalQueueSize" sync-system/storage-sync-robust.js` finds the new field.
+- `grep -n "gymGetGlobalSyncStatus" sync-system/storage-sync-robust.js apps/gym-tracker/js/utils/sync-status.js` finds both the export and the consumer.
