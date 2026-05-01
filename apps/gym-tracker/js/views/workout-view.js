@@ -14,7 +14,6 @@ import { renderPausedBannerHTML, wirePausedBannerActions } from './paused-banner
 import { orderPrograms } from '../utils/program-order.js';
 import { AnalyticsService } from '../services/AnalyticsService.js';
 import { calculatePlates, formatPlateStack } from '../utils/plate-calculator.js';
-import { suggestNextSet } from '../utils/progression.js';
 
 class WorkoutView {
     constructor() {
@@ -83,15 +82,6 @@ class WorkoutView {
                 case 'start-workout':
                     e.preventDefault();
                     this.startWorkout(Number(target.dataset.programId));
-                    break;
-                case 'apply-suggestion':
-                    e.preventDefault();
-                    this.applySuggestionToRow(
-                        Number(target.dataset.exerciseIndex),
-                        Number(target.dataset.slot),
-                        Number(target.dataset.suggestWeight),
-                        Number(target.dataset.suggestReps),
-                    );
                     break;
                 case 'commit-planned-set':
                     e.preventDefault();
@@ -637,16 +627,7 @@ class WorkoutView {
                     || previousSets[i]
                     || previousSets[previousSets.length - 1]
                     || null;
-                // Compute the suggestion for this exercise once and pass
-                // it to every planned row — they all share the same
-                // recommendation. Only meaningful on weighted (non-
-                // duration) exercises.
-                const suggestion = isDuration ? null : suggestNextSet({
-                    exerciseId: exercise.exerciseId,
-                    sessions: this.app.workoutSessions,
-                    targetReps: exercise.targetReps,
-                });
-                rowsHTML += this.renderPlannedRow(index, i, prior, isDuration, unit, exercise.targetReps, isBarbell, suggestion);
+                rowsHTML += this.renderPlannedRow(index, i, prior, isDuration, unit, exercise.targetReps, isBarbell);
             }
         }
 
@@ -725,7 +706,7 @@ class WorkoutView {
      * set and starts the rest timer. The row itself is NOT tappable — users
      * deliberately flick the toggle to complete.
      */
-    renderPlannedRow(exerciseIndex, slot, prior, isDuration, unit, targetReps, isBarbell = false, suggestion = null) {
+    renderPlannedRow(exerciseIndex, slot, prior, isDuration, unit, targetReps, isBarbell = false) {
         const setLabel = `${slot + 1}`;
         const toggle = this.renderSetToggle(false, 'commit-planned-set', exerciseIndex, slot, 'Mark set complete');
 
@@ -752,7 +733,6 @@ class WorkoutView {
         const weight = prior ? prior.weight : '';
         const reps = prior ? prior.reps : (targetReps || '');
         const plateHintHTML = isBarbell ? this.renderPlateHint(weight, unit) : '';
-        const suggestPillHTML = this.renderSuggestPill(exerciseIndex, slot, suggestion, unit);
         return `
             <li class="set-row set-row-planned" data-slot="${slot}">
                 <span class="set-row-num">${setLabel}</span>
@@ -767,47 +747,9 @@ class WorkoutView {
                         value="${reps === '' ? '' : reps}" placeholder="Reps" aria-label="Reps">
                 </div>
                 ${toggle}
-                ${suggestPillHTML}
                 ${plateHintHTML ? `<div class="plate-hint" id="plate-hint-${exerciseIndex}-${slot}">${plateHintHTML}</div>` : ''}
             </li>
         `;
-    }
-
-    /**
-     * Inline suggestion pill rendered next to a planned set's inputs.
-     * Tapping the pill writes the suggested weight/reps into the inputs
-     * and updates the plate hint immediately. Hidden for the 'none' kind.
-     */
-    renderSuggestPill(exerciseIndex, slot, suggestion, unit) {
-        if (!suggestion || suggestion.kind === 'none') return '';
-        const isBump = suggestion.kind === 'suggest';
-        const icon = isBump ? 'fa-arrow-trend-up' : 'fa-rotate-right';
-        const klass = isBump ? 'suggest-pill suggest-pill--up' : 'suggest-pill suggest-pill--repeat';
-        const label = isBump
-            ? `Try ${suggestion.weight}${unit} × ${suggestion.reps}`
-            : `Repeat ${suggestion.weight}${unit} × ${suggestion.reps}`;
-        const reason = escapeHtml(suggestion.reason || '');
-        return `
-            <button type="button" class="${klass}"
-                data-action="apply-suggestion"
-                data-exercise-index="${exerciseIndex}"
-                data-slot="${slot}"
-                data-suggest-weight="${suggestion.weight}"
-                data-suggest-reps="${suggestion.reps}"
-                title="${reason}"
-                aria-label="${escapeHtml(label)} — ${reason}">
-                <i class="fas ${icon}" aria-hidden="true"></i> ${escapeHtml(label)}
-            </button>
-        `;
-    }
-
-    /** Apply the suggestion to the inputs in the matching planned row. */
-    applySuggestionToRow(exerciseIndex, slot, weight, reps) {
-        const wEl = document.getElementById(`weight-${exerciseIndex}-${slot}`);
-        const rEl = document.getElementById(`reps-${exerciseIndex}-${slot}`);
-        if (wEl) wEl.value = weight;
-        if (rEl) rEl.value = reps;
-        this.refreshPlateHint(exerciseIndex, slot, weight);
     }
 
     /**
