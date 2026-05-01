@@ -227,7 +227,7 @@ class ProgramsView {
 
         container.classList.toggle('is-custom-order', isCustom);
 
-        container.innerHTML = ordered.map(program => `
+        container.innerHTML = ordered.map((program, index) => `
             <div class="program-card ${isCustom ? 'is-draggable' : ''}"
                  data-program-id="${program.id}"
                  ${isCustom ? 'draggable="true"' : ''}>
@@ -235,6 +235,24 @@ class ProgramsView {
                     <span class="program-card-handle" title="Drag to reorder" aria-hidden="true">
                         <i class="fas fa-grip-vertical"></i>
                     </span>
+                    <div class="program-card-move-buttons" role="group" aria-label="Reorder program">
+                        <button type="button" class="btn-icon btn-icon-move"
+                            data-action="move-program-up"
+                            data-program-id="${program.id}"
+                            ${index === 0 ? 'disabled' : ''}
+                            aria-label="Move ${escapeHtml(program.name)} up"
+                            title="Move up">
+                            <i class="fas fa-chevron-up"></i>
+                        </button>
+                        <button type="button" class="btn-icon btn-icon-move"
+                            data-action="move-program-down"
+                            data-program-id="${program.id}"
+                            ${index === ordered.length - 1 ? 'disabled' : ''}
+                            aria-label="Move ${escapeHtml(program.name)} down"
+                            title="Move down">
+                            <i class="fas fa-chevron-down"></i>
+                        </button>
+                    </div>
                 ` : ''}
                 <div class="program-header">
                     <h3>${escapeHtml(program.name)}</h3>
@@ -296,8 +314,48 @@ class ProgramsView {
                     e.preventDefault();
                     this.deleteProgram(id);
                     break;
+                case 'move-program-up':
+                    e.preventDefault();
+                    this.moveProgram(id, -1);
+                    break;
+                case 'move-program-down':
+                    e.preventDefault();
+                    this.moveProgram(id, +1);
+                    break;
             }
         });
+    }
+
+    /**
+     * Reorder a program by `delta` (-1 = up, +1 = down) within the current
+     * displayed order. Forces sortMode = 'custom' (since drag-then-keyboard
+     * always lands users in custom anyway), persists the new order, and
+     * re-renders. Keyboard equivalent of drag-to-reorder.
+     */
+    moveProgram(programId, delta) {
+        // Switch to custom and pull the current ordered list.
+        if (this.sortMode !== 'custom') {
+            this.sortMode = 'custom';
+            storageService.saveProgramSort('custom');
+            const sortSelect = document.getElementById('programs-sort');
+            if (sortSelect) sortSelect.value = 'custom';
+        }
+
+        const ordered = this.getDisplayedPrograms();
+        const fromIdx = ordered.findIndex(p => p.id === programId);
+        const toIdx = fromIdx + delta;
+        if (fromIdx < 0 || toIdx < 0 || toIdx >= ordered.length) return;
+
+        const [moved] = ordered.splice(fromIdx, 1);
+        ordered.splice(toIdx, 0, moved);
+        storageService.saveProgramOrder(ordered.map(p => p.id));
+        this.render();
+
+        // Restore focus on the move button so a keyboard user can keep
+        // pressing Up/Down without re-tabbing into the card.
+        const action = delta < 0 ? 'move-program-up' : 'move-program-down';
+        const btn = document.querySelector(`[data-action="${action}"][data-program-id="${programId}"]`);
+        if (btn && !btn.disabled) btn.focus();
     }
 
     openProgramModal(programId = null) {
@@ -363,6 +421,24 @@ class ProgramsView {
                 <span class="pex-drag-handle" aria-hidden="true" title="Drag to reorder">
                     <i class="fas fa-grip-vertical"></i>
                 </span>
+                <div class="pex-move-buttons" role="group" aria-label="Reorder exercise">
+                    <button type="button" class="btn-icon btn-icon-move btn-icon-move-mini"
+                        data-action="move-exercise-up"
+                        data-index="${index}"
+                        ${index === 0 ? 'disabled' : ''}
+                        aria-label="Move ${escapeHtml(exercise.exerciseName)} up"
+                        title="Move up">
+                        <i class="fas fa-chevron-up"></i>
+                    </button>
+                    <button type="button" class="btn-icon btn-icon-move btn-icon-move-mini"
+                        data-action="move-exercise-down"
+                        data-index="${index}"
+                        ${index === this.currentProgram.exercises.length - 1 ? 'disabled' : ''}
+                        aria-label="Move ${escapeHtml(exercise.exerciseName)} down"
+                        title="Move down">
+                        <i class="fas fa-chevron-down"></i>
+                    </button>
+                </div>
                 <div class="pex-position" aria-hidden="true">${index + 1}</div>
                 <div class="pex-name">
                     <span class="pex-name-main">${escapeHtml(exercise.exerciseName)}</span>${muscle ? `
@@ -399,6 +475,17 @@ class ProgramsView {
             });
         });
 
+        container.querySelectorAll('[data-action="move-exercise-up"]').forEach(btn => {
+            btn.addEventListener('click', () => {
+                this.moveExerciseInProgram(Number(btn.dataset.index), -1);
+            });
+        });
+        container.querySelectorAll('[data-action="move-exercise-down"]').forEach(btn => {
+            btn.addEventListener('click', () => {
+                this.moveExerciseInProgram(Number(btn.dataset.index), +1);
+            });
+        });
+
         container.querySelectorAll('[data-stepper]').forEach(btn => {
             btn.addEventListener('click', () => {
                 const idx = Number(btn.dataset.index);
@@ -407,6 +494,26 @@ class ProgramsView {
                 this.adjustExerciseTarget(idx, field, delta);
             });
         });
+    }
+
+    /**
+     * Keyboard-accessible reorder for exercises inside the open Edit
+     * Program modal. Equivalent to dragging the row up/down. Re-renders
+     * the modal body and restores focus to the same arrow on the moved
+     * row so repeated presses keep working without re-tabbing.
+     */
+    moveExerciseInProgram(fromIndex, delta) {
+        if (!this.currentProgram) return;
+        const list = this.currentProgram.exercises;
+        const toIndex = fromIndex + delta;
+        if (fromIndex < 0 || toIndex < 0 || toIndex >= list.length) return;
+        this.currentProgram.reorderExercise(fromIndex, toIndex);
+        this.renderProgramExercises();
+        const action = delta < 0 ? 'move-exercise-up' : 'move-exercise-down';
+        const btn = document.querySelector(
+            `#program-exercises-list [data-action="${action}"][data-index="${toIndex}"]`
+        );
+        if (btn && !btn.disabled) btn.focus();
     }
 
     adjustExerciseTarget(index, field, delta) {
