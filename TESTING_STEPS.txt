@@ -164,3 +164,32 @@ Files touched:
 ### Automated checks
 - `node --check apps/gym-tracker/data/exercises-db.js` exits 0.
 - `node --check apps/gym-tracker/js/utils/helpers.js` exits 0.
+
+
+## Change 6: Stop cross-app sync on every page load
+### What changed
+`sync-system/app-sync-init.js` used to open Firestore listeners and run an initial-merge transaction for every app's namespace (`marioKartApp`, `footballH2HApp`, `gymTrackerApp`) on every app page load, "so they're ready when user navigates." Each app is a separate static HTML page so navigating between them is a hard reload — the warm-cache argument doesn't hold, and the cross-app sync was pure cost.
+
+Now `initAppSync` only opens listeners for (a) the current page's namespace and (b) the shared `globalPrefs` namespace.
+
+Files touched:
+- `sync-system/app-sync-init.js`
+
+### Setup
+- Sign in to the gym tracker (Firebase Auth via the existing flow).
+- Open DevTools → Network tab → filter by `firestore`.
+
+### Test steps
+1. Reload `apps/gym-tracker/index.html`.
+2. Inspect the WebSocket / `Listen` requests in the Network tab. You should see one Firestore listener path containing `users/{uid}/apps/gymTrackerApp` and one containing `users/{uid}/apps/globalPrefs`.
+3. Verify there are NO listeners for `marioKartApp` or `footballH2HApp`.
+4. Make a change (start a workout, commit a set) and confirm sync still works — open the same account on another device and verify the change appears within a couple of seconds.
+5. Sign out then sign in again — verify there are still only two listeners on the gym page.
+
+### Regression checks
+1. Mario Kart page (`apps/mario-kart/`) and Football H2H page each still open exactly their own namespace + globalPrefs.
+2. Theme preference still syncs cross-app (because `globalPrefs.theme` is still in the keep list).
+
+### Automated checks
+- `node --check sync-system/app-sync-init.js` exits 0.
+- `grep -n "appName !== currentApp" sync-system/app-sync-init.js` returns no matches (the cross-app loop has been removed).
