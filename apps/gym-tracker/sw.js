@@ -9,11 +9,14 @@
  *   - Do NOT intercept Firebase / cross-origin auth + sync requests.
  *   - On every activate, drop old precaches.
  *
- * Bump CACHE_VERSION whenever the precache list changes; old caches are
- * pruned automatically.
+ * CACHE_VERSION uses semver (MAJOR.MINOR.PATCH). Bump:
+ *   - PATCH when the precache list contents change (file edits / additions).
+ *   - MINOR when the precache list shape or runtime cache strategy changes.
+ *   - MAJOR for a fundamental SW behavior change that breaks back-compat.
+ * Old caches are pruned automatically on activate.
  */
 
-const CACHE_VERSION = 'gym-v10';
+const CACHE_VERSION = '1.0.0';
 const PRECACHE = `gym-precache-${CACHE_VERSION}`;
 const RUNTIME = `gym-runtime-${CACHE_VERSION}`;
 
