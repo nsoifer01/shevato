@@ -195,6 +195,19 @@ export function debounce(func, wait) {
 }
 
 /**
+ * Verbose logging gate. Routine init/navigation logs inside the app
+ * are noisy in production; gate them behind `localStorage.gymTrackerDebug`
+ * (set to "true") or a `window.GYM_DEBUG = true` flag the user can set
+ * from the console. Errors and warnings stay un-gated.
+ */
+export function debugLog(...args) {
+    let on = false;
+    try { on = localStorage.getItem('gymTrackerDebug') === 'true'; } catch (_) { /* private mode */ }
+    if (!on && typeof window !== 'undefined' && window.GYM_DEBUG === true) on = true;
+    if (on) console.log(...args);
+}
+
+/**
  * Generate a unique string ID. Prefers `crypto.randomUUID()` when
  * available (all supported gym-tracker browsers since 2022) so two
  * devices creating an entity in the same millisecond can't collide.

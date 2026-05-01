@@ -15,7 +15,7 @@ import { AnalyticsService } from './services/AnalyticsService.js';
 import { AchievementService } from './services/AchievementService.js';
 
 import { EXERCISE_DATABASE } from '../data/exercises-db.js';
-import { showToast } from './utils/helpers.js';
+import { showToast, debugLog } from './utils/helpers.js';
 
 class GymTrackerApp {
     constructor() {
@@ -35,7 +35,7 @@ class GymTrackerApp {
      * Initialize the application
      */
     async init() {
-        console.log('🏋️ Initializing Gym Tracker App...');
+        debugLog('🏋️ Initializing Gym Tracker App...');
 
         // Load data from storage
         this.loadAllData();
@@ -77,7 +77,7 @@ class GymTrackerApp {
         // the modal stays dismissed (flag persists).
         this.maybeShowOnboarding();
 
-        console.log('✅ Gym Tracker App initialized');
+        debugLog('✅ Gym Tracker App initialized');
     }
 
     /**
@@ -299,18 +299,18 @@ class GymTrackerApp {
     async initializeViews() {
         // View controllers will be initialized here
         // This is a placeholder for the actual view initialization
-        console.log('Initializing views...');
+        debugLog('Initializing views...');
     }
 
     /**
      * Show a specific view
      */
     showView(viewName, pushState = true) {
-        console.log(`Showing view: ${viewName}`);
+        debugLog(`Showing view: ${viewName}`);
 
         // If we're already on this view, don't do anything
         if (this.currentView === viewName) {
-            console.log(`Already on ${viewName}, skipping navigation update`);
+            debugLog(`Already on ${viewName}, skipping navigation update`);
             return;
         }
 
@@ -366,7 +366,7 @@ class GymTrackerApp {
     setupSyncListeners() {
         if (!window.syncSystemInitialized) {
             window.addEventListener('syncSystemReady', () => {
-                console.log('🔄 Sync system ready, refreshing data');
+                debugLog('🔄 Sync system ready, refreshing data');
                 setTimeout(() => {
                     this.loadAllData();
                     this.updateAchievements();

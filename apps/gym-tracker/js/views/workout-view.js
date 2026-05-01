@@ -8,7 +8,7 @@ import { WorkoutExercise } from '../models/WorkoutExercise.js';
 import { Set } from '../models/Set.js';
 import { timerService } from '../services/TimerService.js';
 import { storageService } from '../services/StorageService.js';
-import { showToast, showConfirmModal, formatMuscleGroup, vibrate, playSound, escapeHtml } from '../utils/helpers.js';
+import { showToast, showConfirmModal, formatMuscleGroup, vibrate, playSound, escapeHtml, debugLog } from '../utils/helpers.js';
 import { renderPausedBannerHTML, wirePausedBannerActions } from './paused-banner.js';
 import { orderPrograms } from '../utils/program-order.js';
 import { AnalyticsService } from '../services/AnalyticsService.js';
@@ -218,7 +218,7 @@ class WorkoutView {
         // Stop the timer
         timerService.stopWorkoutTimer();
 
-        console.log('Workout paused and saved', this.currentWorkoutSession.toJSON());
+        debugLog('Workout paused and saved', this.currentWorkoutSession.toJSON());
 
         // Reset UI state so the paused banner shows when returning
         document.getElementById('active-workout').classList.remove('active');
