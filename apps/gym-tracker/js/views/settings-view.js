@@ -5,6 +5,7 @@ import { app } from '../app.js';
 import { showToast, downloadJSON, showConfirmModal } from '../utils/helpers.js';
 import { validateImportData } from '../utils/validators.js';
 import { DarkSelect } from '../utils/dark-select.js';
+import { storageService } from '../services/StorageService.js';
 
 class SettingsView {
     constructor() {
@@ -81,6 +82,66 @@ class SettingsView {
                 });
                 if (confirmed) this.app.clearAllData();
             });
+        }
+
+        // Replay onboarding — clear the seen flag and reload so the
+        // welcome modal fires again (the boot path in app.js gates on
+        // `hasSeenOnboarding()` AND a clean data state, so this is mostly
+        // useful for users who skipped the tour and want a refresher).
+        const replayBtn = document.getElementById('replay-onboarding-btn');
+        if (replayBtn) {
+            replayBtn.addEventListener('click', async () => {
+                const confirmed = await showConfirmModal({
+                    title: 'Replay welcome tour',
+                    message: 'Reload the app and show the first-run welcome again? Your data is unaffected.',
+                    confirmText: 'Replay',
+                    cancelText: 'Cancel',
+                    isDangerous: false,
+                });
+                if (confirmed) {
+                    storageService.remove(storageService.keys.ONBOARDING_SEEN);
+                    location.reload();
+                }
+            });
+        }
+
+        // Delete cloud data — wipes the user's Firestore document so
+        // signing in on a fresh device is a clean slate. Local data
+        // remains untouched (the user can wipe that with Clear All Data
+        // separately, or keep it as a personal backup).
+        const cloudBtn = document.getElementById('delete-cloud-data-btn');
+        if (cloudBtn) {
+            cloudBtn.addEventListener('click', () => this.deleteCloudData());
+        }
+    }
+
+    async deleteCloudData() {
+        const user = window.firebaseAuth?.getCurrentUser?.()
+            || (typeof firebase !== 'undefined' && firebase.auth?.().currentUser)
+            || null;
+        if (!user) {
+            showToast('Sign in first to delete cloud data', 'error');
+            return;
+        }
+        const confirmed = await showConfirmModal({
+            title: 'Delete cloud data',
+            message: 'Wipe the gym tracker data stored in the cloud for this account. Your local data stays on this device.',
+            warning: 'This cannot be undone — other devices that sync will also lose this data on their next sync.',
+            confirmText: 'Delete from cloud',
+            cancelText: 'Cancel',
+            isDangerous: true,
+        });
+        if (!confirmed) return;
+
+        try {
+            const { db } = await import('../../../../firebase-config.js');
+            const { doc, deleteDoc } = await import('https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js');
+            const ref = doc(db, `users/${user.uid}/apps/gymTrackerApp`);
+            await deleteDoc(ref);
+            showToast('Cloud data deleted. Sign out + back in to re-sync.', 'success', 5000);
+        } catch (error) {
+            console.error('Failed to delete cloud data:', error);
+            showToast('Could not delete cloud data — check your connection.', 'error', 5000);
         }
     }
 

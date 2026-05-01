@@ -12,6 +12,10 @@
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     <title>Gym Tracker - Track Your Workouts</title>
 
+    <!-- PWA manifest + offline support -->
+    <link rel="manifest" href="manifest.webmanifest">
+    <link rel="apple-touch-icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 192 192'%3E%3Crect width='192' height='192' rx='32' fill='%231a1a2e'/%3E%3Ctext x='50%25' y='58%25' dominant-baseline='middle' text-anchor='middle' font-size='128'%3E💪%3C/text%3E%3C/svg%3E">
+
     <!-- Favicon -->
     <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>💪</text></svg>">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
@@ -829,8 +833,14 @@
                             <button type="button" class="btn btn-secondary" id="import-data-btn">
                                 <i class="fas fa-upload"></i> Import Data
                             </button>
+                            <button type="button" class="btn btn-secondary" id="replay-onboarding-btn">
+                                <i class="fas fa-circle-info"></i> Replay welcome tour
+                            </button>
                             <button type="button" class="btn btn-danger" id="clear-data-btn">
                                 <i class="fas fa-trash"></i> Clear All Data
+                            </button>
+                            <button type="button" class="btn btn-danger" id="delete-cloud-data-btn">
+                                <i class="fas fa-cloud-arrow-down"></i> Delete cloud data
                             </button>
                         </div>
                         <input type="file" id="import-file-input" accept=".json" style="display: none;">
@@ -993,6 +1003,18 @@
                 });
             });
         });
+    </script>
+
+    <!-- Register the service worker so the app shell + JS modules + the
+         exercise database are cached on first load and the user can
+         continue logging sets even after the network drops. -->
+    <script>
+        if ('serviceWorker' in navigator) {
+            window.addEventListener('load', function () {
+                navigator.serviceWorker.register('sw.js', { scope: '/apps/gym-tracker/' })
+                    .catch(function () { /* registration is best-effort */ });
+            });
+        }
     </script>
 
     <!-- App Initialization -->

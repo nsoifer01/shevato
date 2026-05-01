@@ -2,9 +2,11 @@
  * Program Model
  * Represents a workout program with exercises
  */
+import { generateNumericId } from '../utils/helpers.js';
+
 export class Program {
     constructor(data = {}) {
-        this.id = data.id || Date.now();
+        this.id = data.id || generateNumericId();
         this.name = data.name || '';
         this.description = data.description || '';
         // Array of { exerciseId, exerciseName, targetSets, targetReps, restSeconds, notes, order }
