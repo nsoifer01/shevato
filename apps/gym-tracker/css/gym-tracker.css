@@ -8062,3 +8062,45 @@ button.calendar-day {
     box-shadow: 0 0 0 2px rgba(239, 68, 68, 0.08);
 }
 
+
+/* ------------------------------------------------------------------
+   Sync status pill — floating bottom-right indicator that reflects the
+   storage sync layer's state. See js/utils/sync-status.js for state
+   logic. Sits above the bottom nav on mobile and the page content on
+   desktop. Reduces to a dot on small screens to stay out of the way.
+   ------------------------------------------------------------------ */
+.sync-status-pill {
+    position: fixed;
+    z-index: 50;
+    bottom: 84px;
+    right: 12px;
+    padding: 6px 12px;
+    border-radius: 999px;
+    font-size: 12px;
+    font-weight: 600;
+    line-height: 1;
+    color: #fff;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.4);
+    pointer-events: none;
+    user-select: none;
+    transition: background 200ms ease, color 200ms ease;
+}
+.sync-status-pill::before {
+    content: '';
+    display: inline-block;
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    margin-right: 6px;
+    vertical-align: 1px;
+    background: currentColor;
+}
+.sync-status-pill[data-state="synced"]   { background: rgba(34, 197, 94, 0.85); }
+.sync-status-pill[data-state="pending"]  { background: rgba(245, 158, 11, 0.85); }
+.sync-status-pill[data-state="offline"]  { background: rgba(148, 163, 184, 0.85); }
+
+@media (min-width: 900px) {
+    .sync-status-pill {
+        bottom: 16px;
+    }
+}
