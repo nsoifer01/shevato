@@ -3,6 +3,7 @@
  */
 import { app } from '../app.js';
 import { formatDate, showToast, showConfirmModal, formatSessionDateTime, escapeHtml } from '../utils/helpers.js';
+import { trapModalFocus } from '../utils/modal-focus.js';
 import { DarkCalendar } from '../utils/dark-calendar.js';
 import { DarkSelect } from '../utils/dark-select.js';
 
@@ -388,6 +389,7 @@ class HistoryView {
 
         content.innerHTML = html;
         modal.classList.add('active');
+        trapModalFocus(modal);
     }
 
     async deleteWorkout(sessionId) {

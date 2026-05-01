@@ -5,6 +5,7 @@
 import { app } from '../app.js';
 import { Program, defaultRestForEquipment } from '../models/Program.js';
 import { showToast, showConfirmModal, formatMuscleGroup, escapeHtml } from '../utils/helpers.js';
+import { trapModalFocus } from '../utils/modal-focus.js';
 import { storageService } from '../services/StorageService.js';
 import { DarkSelect } from '../utils/dark-select.js';
 import { orderPrograms } from '../utils/program-order.js';
@@ -386,6 +387,7 @@ class ProgramsView {
         }
 
         modal.classList.add('active');
+        trapModalFocus(modal);
     }
 
     renderProgramExercises() {
@@ -753,6 +755,7 @@ class ProgramsView {
         this.renderExercisePicker();
         this.renderExercisePickerTray();
         modal.classList.add('active');
+        trapModalFocus(modal);
 
         // Set up search and filter listeners
         const searchInput = document.getElementById('exercise-search');
