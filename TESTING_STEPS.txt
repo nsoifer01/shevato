@@ -825,3 +825,60 @@ Files touched:
 - `node --check sync-system/sync-immediate.js` exits 0.
 - `grep -n "localStorage.setItem = originalSetItem\|localStorage.removeItem = originalRemoveItem" sync-system/sync-immediate.js` returns no matches (those lines are deleted).
 - `npm test` exits 0 with `# pass 157`.
+
+
+## Change 22 (followup hotfix #2): Forward writes post-handoff to processChange
+### What changed
+**Bug remained after Change 21.** Symptom: create a program → it shows up → reload (still there) → reload again → gone.
+
+**Real root cause:** I missed how the robust sync manager picks its install path. `StorageSyncManager`'s constructor checks for `window.immediateDebug`:
+
+```js
+if (window.immediateDebug) {
+    this.useImmediateOverride();   // does NOT install customB
+} else {
+    this.installGlobalOverride();  // installs customB
+}
+```
+
+Because sync-immediate.js sets `window.immediateDebug` on load, the robust manager always takes the `useImmediateOverride()` branch and **never installs its own override.** All localStorage writes therefore go through the chain:
+
+  `localStorage.setItem` → sync-immediate's customA → native
+
+Post-handoff, the previous version of customA early-returned without forwarding. So writes landed in localStorage but `window.syncManager.processChange` (which queues the Firestore flush) was never called. Firebase never received the write. On the second reload, the Firestore listener pulled the stale remote document and overwrote local with whatever was last successfully synced (which was nothing for the new program).
+
+The "first reload still works" symptom is exactly consistent: localStorage is read first; the Firestore listener overwrite happens a beat later, and the in-memory copy got built before the overwrite.
+
+**Fix:** removed the `if (handedOff) return;` early-return. Both setItem and removeItem now always call native, then call `forward(key, value)` (post-handoff) or buffer (pre-handoff). `forward()` invokes `window.syncManager.processChange` if it exists. That's the canonical path the robust layer expects.
+
+Bumped `CACHE_VERSION` in `sw.js` to `gym-v5` so users with a stale precache get the new sync-immediate on their next install.
+
+Files touched:
+- `sync-system/sync-immediate.js` (rewritten — post-handoff forwards instead of dropping)
+- `apps/gym-tracker/sw.js` (CACHE_VERSION bump)
+
+### Setup
+- A signed-in account.
+- Hard reload to pick up the new SW (DevTools → Application → Service Workers → Update on reload, then Ctrl+Shift+R).
+
+### Test steps
+1. Hard reload the gym tracker until the sync pill is green.
+2. Create a program "Persist Test 2". Add an exercise. Save.
+3. Watch the sync pill: amber "Saving…" briefly, then green "Synced."
+4. **Open DevTools → Network → filter `firestore`.** Make a small change (rename the program). Verify a Firestore POST/PATCH appears within ~1 second.
+5. Reload. Program is there.
+6. **Reload again.** Program is still there.
+7. Reload a third time. Still there.
+8. Sign in on a second device with the same account. Verify the program shows up there too.
+9. (Optional) `gymApp.programs.length` in the console matches what's on disk: `JSON.parse(localStorage.gymTrackerPrograms).length`.
+
+### Regression checks
+1. Pre-bootstrap writes (anything that lands before `syncSystemReady` fires) still get replayed. Run `localStorage.setItem('gymTrackerPrograms', JSON.stringify([{id:1,name:'X'}]))` in the console *immediately* after page load (before sign-in completes). After sign-in finishes, that data should reach Firebase.
+2. Sync pill still goes amber on writes, green on idle, gray on offline.
+3. `npm test` still 157/157.
+
+### Automated checks
+- `node --check sync-system/sync-immediate.js` exits 0.
+- `grep -n "if (handedOff) return;" sync-system/sync-immediate.js` returns no matches (the early-return is gone — both branches now forward).
+- `grep -n "forward(key" sync-system/sync-immediate.js` shows two call sites (setItem + removeItem).
+- `npm test` exits 0.
