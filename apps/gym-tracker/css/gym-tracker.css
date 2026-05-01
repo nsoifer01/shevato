@@ -529,6 +529,15 @@ body.gym-tracker #footer {
     margin-left: 0.25rem;
 }
 
+/* Restore spec behavior for the [hidden] attribute. The shared
+   assets/css/main.css resets every section/article/etc. to
+   `display: block`, which beats the user-agent default of
+   `[hidden] { display: none }`. Without this rule, setting
+   `el.hidden = true` on a <section> stays visible. */
+[hidden] {
+    display: none !important;
+}
+
 /* Sections */
 .section {
     margin-bottom: var(--spacing-xl);
