@@ -8156,10 +8156,61 @@ button.calendar-day {
     align-items: stretch;
     gap: 6px;
 }
-.setting-item-stack input[type="text"] {
+
+/* Settings form was relying on browser default styling for plain
+   <input>s, which renders as a glaring white box on this dark UI.
+   Match the same dark-on-dark treatment .form-group inputs already
+   use elsewhere in the app: subtle border, deep-blue surface, soft
+   purple focus ring, and inset shadow for tactility. */
+.settings-form .setting-item input[type="text"],
+.settings-form .setting-item input[type="number"],
+.settings-form .setting-item input[type="date"] {
     width: 100%;
     box-sizing: border-box;
+    appearance: none;
+    -webkit-appearance: none;
+    padding: 0.7rem 0.85rem;
+    background: var(--bg-tertiary);
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-md);
+    color: var(--text-primary);
+    font: inherit;
+    font-size: 0.95rem;
+    line-height: 1.2;
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.02);
+    transition: border-color var(--transition-base),
+                background var(--transition-base),
+                box-shadow var(--transition-base);
 }
+.settings-form .setting-item input[type="text"]::placeholder,
+.settings-form .setting-item input[type="number"]::placeholder {
+    color: rgba(255, 255, 255, 0.35);
+}
+.settings-form .setting-item input[type="text"]:hover,
+.settings-form .setting-item input[type="number"]:hover {
+    border-color: rgba(108, 99, 255, 0.45);
+}
+.settings-form .setting-item input[type="text"]:focus,
+.settings-form .setting-item input[type="number"]:focus,
+.settings-form .setting-item input[type="text"]:focus-visible,
+.settings-form .setting-item input[type="number"]:focus-visible {
+    outline: none;
+    border-color: var(--accent-primary);
+    background: var(--bg-card);
+    box-shadow: 0 0 0 3px rgba(108, 99, 255, 0.18),
+                inset 0 1px 0 rgba(255, 255, 255, 0.03);
+}
+/* Hide the spinner on number inputs in the settings form — the value
+   range is wide and the up/down arrows clutter the dark surface. */
+.settings-form .setting-item input[type="number"] {
+    -moz-appearance: textfield;
+}
+.settings-form .setting-item input[type="number"]::-webkit-outer-spin-button,
+.settings-form .setting-item input[type="number"]::-webkit-inner-spin-button {
+    -webkit-appearance: none;
+    margin: 0;
+}
+
 .settings-help-text {
     margin: 4px 0 0;
     font-size: 0.85rem;
