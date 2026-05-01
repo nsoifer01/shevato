@@ -27,3 +27,4 @@ claude-*.json
 claude-session/
 .claude-history
 .claude_rules
+TESTING_STEPS.txt
