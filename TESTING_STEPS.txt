@@ -1,0 +1,23 @@
+# Testing Steps
+
+## Change 1: Fix firestore.rules syntax error
+### What changed
+Removed the literal text `Sorry,` that was wedged into the Firestore rules file at line 5, breaking the rules grammar. Without this fix, `firebase deploy --only firestore:rules` would fail and live rules could drift from source.
+
+### Setup
+- Firebase CLI installed and authenticated to the `shevato-site` project (`firebase login`).
+
+### Test steps
+1. Run `firebase deploy --only firestore:rules --project shevato-site --dry-run` (or, if dry-run unsupported, run `firebase deploy --only firestore:rules`).
+2. Verify the deploy completes without a "Compilation error" message.
+3. Open the Firebase console → Firestore → Rules and confirm the published rules match `firestore.rules`.
+4. Sign in to the gym tracker app at the deployed URL.
+5. Verify reading and writing programs/sessions still works (create a program, add a set, finish workout).
+
+### Regression checks
+1. Verify rules still deny read/write access to other users' documents — sign in as user A, attempt to read `users/{userB-uid}/apps/gymTrackerApp` via the Firebase console "Rules Playground" and confirm DENY.
+2. Verify the granular rule for `users/{uid}/apps/{namespace}` still enforces presence of `data` and `meta.lastUpdated` fields (Rules Playground with a write missing `meta` should DENY).
+
+### Automated checks
+- `git diff --check` should pass (no whitespace errors).
+- `firebase deploy --only firestore:rules --project shevato-site` should compile and deploy successfully.
