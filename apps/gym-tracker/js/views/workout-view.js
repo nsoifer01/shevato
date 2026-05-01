@@ -8,7 +8,7 @@ import { WorkoutExercise } from '../models/WorkoutExercise.js';
 import { Set } from '../models/Set.js';
 import { timerService } from '../services/TimerService.js';
 import { storageService } from '../services/StorageService.js';
-import { showToast, showConfirmModal, formatMuscleGroup, vibrate, playSound } from '../utils/helpers.js';
+import { showToast, showConfirmModal, formatMuscleGroup, vibrate, playSound, escapeHtml } from '../utils/helpers.js';
 import { renderPausedBannerHTML, wirePausedBannerActions } from './paused-banner.js';
 import { orderPrograms } from '../utils/program-order.js';
 import { AnalyticsService } from '../services/AnalyticsService.js';
@@ -342,9 +342,9 @@ class WorkoutView {
                 ${programs.map(program => `
                     <div class="program-card">
                         <div class="program-header">
-                            <h3>${program.name}</h3>
+                            <h3>${escapeHtml(program.name)}</h3>
                         </div>
-                        ${program.description && program.description.trim() ? `<p>${program.description}</p>` : ''}
+                        ${program.description && program.description.trim() ? `<p>${escapeHtml(program.description)}</p>` : ''}
                         <div class="program-stats">
                             <div class="stat">
                                 <i class="fas fa-dumbbell"></i>
@@ -509,8 +509,8 @@ class WorkoutView {
                  id="exercise-${index}" data-exercise-type="${isDuration ? 'duration' : 'reps'}">
                 <div class="exercise-entry-header">
                     <h3>
-                        <span class="exercise-name-main">${exercise.exerciseName}</span>${muscle ? `
-                        <span class="exercise-name-sub">(${muscle})</span>` : ''}
+                        <span class="exercise-name-main">${escapeHtml(exercise.exerciseName)}</span>${muscle ? `
+                        <span class="exercise-name-sub">(${escapeHtml(muscle)})</span>` : ''}
                     </h3>
                     <span class="exercise-progress ${isComplete ? 'is-complete' : ''}" aria-label="Sets ${progressLabel}">
                         ${isComplete ? '<i class="fas fa-check"></i>' : ''}

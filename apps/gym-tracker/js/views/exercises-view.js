@@ -2,7 +2,7 @@
  * Exercises View Controller
  */
 import { app } from '../app.js';
-import { showToast, parseLocalDate, showConfirmModal } from '../utils/helpers.js';
+import { showToast, parseLocalDate, showConfirmModal, escapeHtml } from '../utils/helpers.js';
 import { DarkSelect } from '../utils/dark-select.js';
 import { AnalyticsService } from '../services/AnalyticsService.js';
 
@@ -388,17 +388,17 @@ class ExercisesView {
                     ${hasHistory ? `<span class="history-count-badge">${historyCount}</span>` : ''}
                     <div class="exercise-card-header">
                         <h3>
-                            ${exercise.name}
+                            ${escapeHtml(exercise.name)}
                             ${exercise.isCustom ? '<span class="badge badge-custom">Custom</span>' : ''}
                         </h3>
                         ${canDelete ? `<button class="btn-icon delete-exercise-btn" onclick="event.stopPropagation(); window.gymApp.viewControllers.exercises.deleteCustomExercise(${exercise.id})" title="Delete custom exercise">
                             <i class="fas fa-trash"></i>
                         </button>` : ''}
                     </div>
-                    <p class="exercise-muscle"><i class="fas fa-bullseye"></i> ${exercise.muscleGroup}</p>
+                    <p class="exercise-muscle"><i class="fas fa-bullseye"></i> ${escapeHtml(exercise.muscleGroup)}</p>
                     <div class="exercise-meta">
-                        <span class="badge badge-category"><i class="fas fa-layer-group"></i> ${exercise.category}</span>
-                        <span class="badge badge-equipment"><i class="fas fa-dumbbell"></i> ${exercise.equipment}</span>
+                        <span class="badge badge-category"><i class="fas fa-layer-group"></i> ${escapeHtml(exercise.category)}</span>
+                        <span class="badge badge-equipment"><i class="fas fa-dumbbell"></i> ${escapeHtml(exercise.equipment)}</span>
                     </div>
                     ${hasHistory ? `
                         <span class="btn-view-history">
@@ -738,7 +738,7 @@ class ExercisesView {
             return;
         }
 
-        const message = `Are you sure you want to delete <strong>"${exercise.name}"</strong>?<br><br>This custom exercise will be permanently removed.<br><br><strong>This action cannot be undone.</strong>`;
+        const message = `Are you sure you want to delete <strong>"${escapeHtml(exercise.name)}"</strong>?<br><br>This custom exercise will be permanently removed.<br><br><strong>This action cannot be undone.</strong>`;
 
         const confirmed = await showConfirmModal({
             title: 'Delete Custom Exercise',
