@@ -20,6 +20,7 @@ import {
     getTodayDateString,
 } from '../utils/helpers.js';
 import { trapModalFocus } from '../utils/modal-focus.js';
+import { on, EVENTS } from '../utils/event-bus.js';
 
 const METRICS = [
     { key: 'weight',     label: 'Body weight', unitFromSettings: true },
@@ -39,6 +40,9 @@ class MeasurementsView {
         this.app.viewControllers.measurements = this;
         this.editingId = null;
         this.bindOnce();
+        on(EVENTS.MEASUREMENTS_CHANGED, () => {
+            if (this.app.currentView === 'measurements') this.render();
+        });
     }
 
     /** One-time DOM wiring. The view is rendered every show via render(). */

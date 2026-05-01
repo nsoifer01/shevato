@@ -13,6 +13,7 @@
 import { app } from '../app.js';
 import { AnalyticsService } from '../services/AnalyticsService.js';
 import { escapeHtml, parseLocalDate } from '../utils/helpers.js';
+import { on, EVENTS } from '../utils/event-bus.js';
 
 const CATEGORY_LABEL = {
     chest: 'Chest', back: 'Back', shoulders: 'Shoulders',
@@ -26,6 +27,13 @@ class InsightsView {
     constructor() {
         this.app = app;
         this.app.viewControllers.insights = this;
+        // Re-render when the underlying data changes — but only when this
+        // view is currently visible. Off-screen renders are pure waste.
+        const refresh = () => {
+            if (this.app.currentView === 'insights') this.render();
+        };
+        on(EVENTS.SESSIONS_CHANGED, refresh);
+        on(EVENTS.CUSTOM_EXERCISES_CHANGED, refresh);
     }
 
     render() {
