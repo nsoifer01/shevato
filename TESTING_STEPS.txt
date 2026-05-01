@@ -91,3 +91,35 @@ Verified by grep that no live HTML/JS/CSS/JSON/TOML references any of these file
 
 ### Automated checks
 - `grep -rn "gym-tracker-old\|exercises-db.js.backup\|index-old" --include="*.html" --include="*.js" --include="*.css" --include="*.toml" --include="*.json" .` should return no matches.
+
+
+## Change 4: Wall-clock-based rest timer
+### What changed
+`TimerService.startRestTimer` no longer drives its countdown by decrementing a counter inside `setInterval(1000)`. Mobile browsers throttle background tabs and locked-screen tabs, which used to cause real drift — committing a set, locking the phone for 30s, and unlocking would show ~55s remaining instead of ~25s.
+
+The timer now stores `endTime = Date.now() + duration*1000` and recomputes `remaining = ceil((endTime - Date.now())/1000)` on every tick. Tick interval increased to 4 Hz (250 ms) so the visible second-rollover stays smooth. Added `TimerService.extendRestTimer(id, extra)` so `+30s` doesn't have to stop+restart the timer; `workout-view.extendRest` now uses it.
+
+Files touched:
+- `apps/gym-tracker/js/services/TimerService.js`
+- `apps/gym-tracker/js/views/workout-view.js`
+
+### Setup
+- A program with at least one exercise.
+- A device or browser tab where you can safely lock the screen / switch tabs.
+
+### Test steps
+1. Start a workout and commit a set so the rest bar appears (default 90s).
+2. Lock your phone (or switch to a different desktop tab) for 30 seconds.
+3. Return to the app. Verify the rest bar shows roughly `0:60` (give or take a second), not `0:90` or some midpoint.
+4. Commit another set. Tap `+30s` and verify the value jumps by 30 instantly without the bar refilling to a fresh 100% width — fill should reflect the new remaining/new total.
+5. Tap `Skip` mid-rest. Verify the bar disappears.
+6. Let a rest timer naturally count down to 0. Verify the bar enters the `Done` state with chime/vibration (per Settings → Alerts).
+
+### Regression checks
+1. Foreground rest timer with the tab visible still ticks once per second visually (no flicker, no missed seconds).
+2. Workout duration timer (the top header `0:00` clock) is unchanged — it was already wall-clock based.
+3. Commit a set, immediately commit the next set before rest ends — the new rest replaces the old one cleanly.
+
+### Automated checks
+- `node --check apps/gym-tracker/js/services/TimerService.js` exits 0.
+- `node --check apps/gym-tracker/js/views/workout-view.js` exits 0.
