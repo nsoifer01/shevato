@@ -15,7 +15,7 @@ import { timerService } from './services/TimerService.js';
 import { AnalyticsService } from './services/AnalyticsService.js';
 import { AchievementService } from './services/AchievementService.js';
 
-import { EXERCISE_DATABASE } from '../data/exercises-db.js';
+import { EXERCISE_DATABASE, loadExerciseDatabase } from '../data/exercises-db.js';
 import { showToast, debugLog } from './utils/helpers.js';
 import { mountSyncStatusPill } from './utils/sync-status.js';
 
@@ -39,6 +39,12 @@ class GymTrackerApp {
      */
     async init() {
         debugLog('🏋️ Initializing Gym Tracker App...');
+
+        // Fetch the static exercise catalog up front. The loader is
+        // memoized so any later view that calls it (or imports
+        // EXERCISE_DATABASE directly) hits the same array without a
+        // second network round trip.
+        await loadExerciseDatabase();
 
         // Load data from storage
         this.loadAllData();
