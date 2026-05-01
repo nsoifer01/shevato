@@ -596,3 +596,40 @@ Files touched / added:
 - `for f in apps/gym-tracker/js/views/*.js; do node --check "$f"; done` exits 0.
 - `npm test` exits 0.
 - `grep -rn "trapModalFocus" apps/gym-tracker/js/` shows the helper consumed in every view that opens modals.
+
+
+## Change 17: Versioned import migrations
+### What changed
+`StorageService.exportAllData` used to write `version: '1.0'` but `importAllData` ignored the field. Schema evolutions (the `slot` field added to sets, the `soundAlerts`/`vibrationAlerts` settings added later) silently relied on the in-memory model defaults — so re-importing an old export would skip those fields and the renderer's slot-based addressing would fall back to array index.
+
+Now:
+- `StorageService.SCHEMA_VERSION` is the canonical "current" version (`'2.0'`).
+- `migrateImport(data)` walks a registry of `from-version` migrators in order until the payload reaches the current version. Each migrator is a pure function that upgrades and bumps `data.version`.
+- `importAllData(data)` calls `migrateImport(data)` first.
+- The 1.0 → 2.0 migrator backfills `set.slot` positionally and fills missing `soundAlerts`/`vibrationAlerts` defaults.
+- A bounded loop + warning for unknown versions ensures importing a *newer* export from a future build doesn't silently drop data — at worst it ignores fields it doesn't know about.
+- 6 new unit tests covering the migration paths.
+
+Files touched / added:
+- `apps/gym-tracker/js/services/StorageService.js`
+- `apps/gym-tracker/tests/storage-migrations.test.mjs` (new)
+
+### Setup
+- A populated app with at least one workout session.
+
+### Test steps
+1. In the running app, Settings → Export Data. Save the JSON. Open it; `version` should now be `"2.0"`.
+2. Edit the JSON: change `"version": "2.0"` to `"version": "1.0"` and remove a few `slot` fields from set objects. Re-save.
+3. Settings → Import Data. Pick the edited file. Verify the toast says success.
+4. Open Workout, start the relevant program — verify each set displays in the correct slot (1, 2, 3...) with no slot collisions.
+5. Settings → toggle Sound Alerts / Vibration Alerts. They should be present and default-on.
+6. Now construct a "future" export by hand: copy the working export, change `"version": "99.0"`, add a `futureField`. Import. Verify the toast still says success and existing data still loads correctly (the migrator passes future versions through with a console warning).
+
+### Regression checks
+1. A round-trip Export → Import on the current schema preserves every field exactly.
+2. Existing localStorage data on disk is untouched by this change (migrations only run on Import).
+3. `npm test` shows 138 passes (was 132 before).
+
+### Automated checks
+- `node --check apps/gym-tracker/js/services/StorageService.js` exits 0.
+- `npm test` exits 0 with `# pass 138`.

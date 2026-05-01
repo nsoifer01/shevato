@@ -224,6 +224,12 @@ export class StorageService {
         return this.getActiveWorkout() !== null;
     }
 
+    // Current schema version. Bump whenever a model gains/changes a field
+    // that older exports won't have. Migrations run by `migrateImport()`
+    // upgrade older payloads in place; current version always returned by
+    // `exportAllData()`.
+    static get SCHEMA_VERSION() { return '2.0'; }
+
     // Data Management
     exportAllData() {
         return {
@@ -234,12 +240,68 @@ export class StorageService {
             customExercises: this.getCustomExercises(),
             activeProgram: this.get(this.keys.ACTIVE_PROGRAM),
             exportDate: new Date().toISOString(),
-            version: '1.0'
+            version: StorageService.SCHEMA_VERSION
         };
+    }
+
+    /**
+     * Run schema migrations on an imported payload, in order, until the
+     * payload's `version` field matches the current SCHEMA_VERSION. Each
+     * migrator is a pure function `(data) => upgradedData` and bumps the
+     * version field. Unknown / future versions are passed through with
+     * a warning so importing a newer export from a more recent build
+     * doesn't lose user data — at worst it ignores fields it can't read.
+     */
+    migrateImport(data) {
+        if (!data || typeof data !== 'object') return data;
+        let cur = data.version || '1.0';
+
+        // Migrators registry. Keys are the FROM version; each function
+        // upgrades to the next version and updates the version field.
+        const migrators = {
+            '1.0': (d) => {
+                // 1.0 → 2.0: add stable `slot` to every set (positional
+                // fallback) and add `soundAlerts`/`vibrationAlerts` to
+                // settings if missing. Both fields were added quietly in
+                // earlier releases without bumping the export version.
+                if (Array.isArray(d.sessions)) {
+                    d.sessions.forEach(s => {
+                        (s.exercises || []).forEach(ex => {
+                            (ex.sets || []).forEach((set, i) => {
+                                if (set.slot == null) set.slot = i;
+                            });
+                        });
+                    });
+                }
+                if (d.settings && typeof d.settings === 'object') {
+                    if (d.settings.soundAlerts === undefined) d.settings.soundAlerts = true;
+                    if (d.settings.vibrationAlerts === undefined) d.settings.vibrationAlerts = true;
+                }
+                d.version = '2.0';
+                return d;
+            },
+        };
+
+        let safety = 0;
+        while (cur !== StorageService.SCHEMA_VERSION) {
+            if (safety++ > 10) {
+                console.warn(`Aborting migration loop at version ${cur}`);
+                break;
+            }
+            const migrate = migrators[cur];
+            if (!migrate) {
+                console.warn(`No migrator for version ${cur}; importing as-is.`);
+                break;
+            }
+            data = migrate(data);
+            cur = data.version || cur;
+        }
+        return data;
     }
 
     importAllData(data) {
         try {
+            data = this.migrateImport(data);
             if (data.programs) this.savePrograms(data.programs);
             if (data.sessions) this.saveWorkoutSessions(data.sessions);
             if (data.settings) this.saveSettings(data.settings);
