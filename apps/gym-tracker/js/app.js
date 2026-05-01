@@ -18,6 +18,7 @@ import { AchievementService } from './services/AchievementService.js';
 import { EXERCISE_DATABASE, loadExerciseDatabase } from '../data/exercises-db.js';
 import { showToast, debugLog } from './utils/helpers.js';
 import { mountSyncStatusPill } from './utils/sync-status.js';
+import { emit, EVENTS } from './utils/event-bus.js';
 
 class GymTrackerApp {
     constructor() {
@@ -205,28 +206,34 @@ class GymTrackerApp {
      */
     savePrograms() {
         storageService.savePrograms(this.programs.map(p => p.toJSON()));
+        emit(EVENTS.PROGRAMS_CHANGED, this.programs);
     }
 
     saveWorkoutSessions() {
         storageService.saveWorkoutSessions(this.workoutSessions.map(s => s.toJSON()));
+        emit(EVENTS.SESSIONS_CHANGED, this.workoutSessions);
     }
 
     saveSettings() {
         storageService.saveSettings(this.settings.toJSON());
+        emit(EVENTS.SETTINGS_CHANGED, this.settings);
     }
 
     saveAchievements() {
         storageService.saveAchievements(this.achievements.map(a => a.toJSON()));
+        emit(EVENTS.ACHIEVEMENTS_CHANGED, this.achievements);
     }
 
     saveCustomExercises() {
         storageService.saveCustomExercises(this.customExercises);
         // Re-merge exercise database
         this.exerciseDatabase = [...EXERCISE_DATABASE, ...this.customExercises];
+        emit(EVENTS.CUSTOM_EXERCISES_CHANGED, this.customExercises);
     }
 
     saveMeasurements() {
         storageService.saveMeasurements(this.measurements.map(m => m.toJSON()));
+        emit(EVENTS.MEASUREMENTS_CHANGED, this.measurements);
     }
 
     addMeasurement(measurement) {
