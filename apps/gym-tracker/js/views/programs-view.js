@@ -4,7 +4,7 @@
  */
 import { app } from '../app.js';
 import { Program, defaultRestForEquipment } from '../models/Program.js';
-import { showToast, showConfirmModal, formatMuscleGroup } from '../utils/helpers.js';
+import { showToast, showConfirmModal, formatMuscleGroup, escapeHtml } from '../utils/helpers.js';
 import { storageService } from '../services/StorageService.js';
 import { DarkSelect } from '../utils/dark-select.js';
 import { orderPrograms } from '../utils/program-order.js';
@@ -237,9 +237,9 @@ class ProgramsView {
                     </span>
                 ` : ''}
                 <div class="program-header">
-                    <h3>${program.name}</h3>
+                    <h3>${escapeHtml(program.name)}</h3>
                 </div>
-                ${program.description && program.description.trim() ? `<p class="program-description">${program.description}</p>` : ''}
+                ${program.description && program.description.trim() ? `<p class="program-description">${escapeHtml(program.description)}</p>` : ''}
                 <div class="program-stats">
                     <div class="stat">
                         <i class="fas fa-dumbbell"></i>
@@ -335,7 +335,7 @@ class ProgramsView {
                 </span>
                 <div class="pex-position" aria-hidden="true">${index + 1}</div>
                 <div class="pex-name">
-                    <span class="pex-name-main">${exercise.exerciseName}</span>${muscle ? `
+                    <span class="pex-name-main">${escapeHtml(exercise.exerciseName)}</span>${muscle ? `
                     <span class="pex-name-sub">(${muscle})</span>` : ''}
                 </div>
                 <div class="pex-targets">
@@ -586,7 +586,7 @@ class ProgramsView {
         if (!program) return;
 
         const exerciseCount = program.exercises.length;
-        const message = `Are you sure you want to delete <strong>"${program.name}"</strong>? This will remove the program and its ${exerciseCount} exercise${exerciseCount !== 1 ? 's' : ''}.`;
+        const message = `Are you sure you want to delete <strong>"${escapeHtml(program.name)}"</strong>? This will remove the program and its ${exerciseCount} exercise${exerciseCount !== 1 ? 's' : ''}.`;
 
         const confirmed = await showConfirmModal({
             title: 'Delete Program',
@@ -737,12 +737,12 @@ class ProgramsView {
                     <span class="exercise-picker-check" aria-hidden="true">
                         <i class="fas ${picked ? 'fa-check-circle' : 'fa-circle'}"></i>
                     </span>
-                    <h4>${exercise.name}</h4>
+                    <h4>${escapeHtml(exercise.name)}</h4>
                     <div class="exercise-meta">
-                        <span class="badge">${exercise.category}</span>
-                        <span class="badge">${exercise.equipment}</span>
+                        <span class="badge">${escapeHtml(exercise.category)}</span>
+                        <span class="badge">${escapeHtml(exercise.equipment)}</span>
                     </div>
-                    <p>${exercise.muscleGroup}</p>
+                    <p>${escapeHtml(exercise.muscleGroup)}</p>
                 </div>
             `;
         }).join('');
@@ -806,7 +806,7 @@ class ProgramsView {
 
         list.innerHTML = items.map((item) => `
             <li class="exercise-picker-tray-row" data-exercise-id="${item.id}">
-                <div class="tray-name">${item.name}</div>
+                <div class="tray-name">${escapeHtml(item.name)}</div>
                 <div class="tray-steppers">
                     ${trayStepperHTML(item.id, 'sets', item.targetSets, 'Sets')}
                     ${trayStepperHTML(item.id, 'reps', item.targetReps, 'Reps')}

@@ -21,3 +21,47 @@ Removed the literal text `Sorry,` that was wedged into the Firestore rules file 
 ### Automated checks
 - `git diff --check` should pass (no whitespace errors).
 - `firebase deploy --only firestore:rules --project shevato-site` should compile and deploy successfully.
+
+
+## Change 2: Escape user-supplied strings in innerHTML (XSS hardening)
+### What changed
+Wrapped every user-controlled string interpolation inside `innerHTML` template literals with `escapeHtml(...)` across all gym-tracker views. Affects program names/descriptions, workout day names, exercise names, custom exercise fields, achievement icon/name/description, and session notes. The helper already existed (`utils/helpers.js:175`) but was only used in `paused-banner.js`.
+
+Files touched:
+- `apps/gym-tracker/js/views/history-view.js`
+- `apps/gym-tracker/js/views/home-view.js`
+- `apps/gym-tracker/js/views/programs-view.js`
+- `apps/gym-tracker/js/views/exercises-view.js`
+- `apps/gym-tracker/js/views/workout-view.js`
+- `apps/gym-tracker/js/views/calendar-view.js`
+- `apps/gym-tracker/js/views/achievements-view.js`
+
+### Setup
+- Local web server pointing at the repo root (e.g. `python3 -m http.server 8000`).
+- A clean browser profile (or `debugGymTracker.clearLocalStorage()` in console).
+
+### Test steps
+1. Run `python3 -m http.server 8000` from the repo root.
+2. Open `http://localhost:8000/apps/gym-tracker/`.
+3. Click `Programs` → `Create Program`.
+4. Enter `Program Name`: `<img src=x onerror=alert('xss-name')>`.
+5. Enter `Description`: `<script>alert('xss-desc')</script>`.
+6. Add at least one exercise (e.g. `Barbell Bench Press`).
+7. Click `Save Program`.
+8. Verify the Programs list renders the literal text including angle brackets — NO alert dialog appears.
+9. Open `Workout` tab → confirm the program card shows the literal title and description text.
+10. Start a workout. Add a custom exercise via `Exercises → Create Custom Exercise` named `<svg/onload=alert(1)>` and add it to a program. Verify it renders as text.
+11. Finish a workout. In `Finish Workout` modal, enter `Notes`: `</p><img src=x onerror=alert(2)>`. Save.
+12. Open `History` → click the new card → verify notes render as escaped text only.
+13. Open `Calendar` → tap a day with sessions → verify the workout day name and notes render escaped.
+14. Open `Home` dashboard → verify recent workouts and recent achievements render escaped.
+
+### Regression checks
+1. Plain non-HTML names (e.g. `Push Day`, `Bench Press`) still render normally with no extra escaping artifacts (no double-escaped `&amp;` for an `&` already in storage).
+2. Achievement icons that are emoji (e.g. `🏋️`) still render as emoji (escapeHtml passes emoji through unchanged).
+3. Paused-workout banner still resumes correctly with a name containing an apostrophe (e.g. `Leg's Day`).
+4. Delete-confirmation modal correctly shows the program/workout name in bold without HTML artifacts.
+
+### Automated checks
+- `for f in apps/gym-tracker/js/views/*.js; do node --check "$f"; done` exits with no errors.
+- `grep -RnE 'innerHTML.*\$\{(session\.workoutDayName|session\.notes|program\.name|program\.description|exercise\.exerciseName|exercise\.name|exercise\.muscleGroup|exercise\.category|exercise\.equipment|achievement\.(icon|name|description)|a\.(icon|name))\}' apps/gym-tracker/js/views/` should return no results — every interpolation should be wrapped with `escapeHtml(...)`.
