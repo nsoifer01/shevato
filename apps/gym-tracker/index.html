@@ -858,6 +858,15 @@
                                     <label for="m-notes">Notes (optional)</label>
                                     <textarea id="m-notes" rows="2" placeholder="Anything worth remembering today"></textarea>
                                 </div>
+                                <div class="form-group">
+                                    <label>Progress photos</label>
+                                    <div class="m-photos-grid" id="m-photos-grid"></div>
+                                    <input type="file" id="m-photos-input" accept="image/*" multiple style="display:none;">
+                                    <button type="button" class="btn btn-ghost btn-add-photo" id="m-photos-add-btn">
+                                        <i class="fas fa-camera"></i> Add photo
+                                    </button>
+                                    <p class="settings-help-text" id="m-photos-status"></p>
+                                </div>
                                 <div class="form-actions">
                                     <button type="button" class="btn btn-ghost modal-close">Cancel</button>
                                     <button type="submit" class="btn btn-primary">Save</button>
