@@ -2,7 +2,7 @@
  * History View Controller
  */
 import { app } from '../app.js';
-import { formatDate, showToast, showConfirmModal, formatSessionDateTime } from '../utils/helpers.js';
+import { formatDate, showToast, showConfirmModal, formatSessionDateTime, escapeHtml } from '../utils/helpers.js';
 import { DarkCalendar } from '../utils/dark-calendar.js';
 import { DarkSelect } from '../utils/dark-select.js';
 
@@ -132,7 +132,7 @@ class HistoryView {
                 <div class="workout-card clickable" onclick="window.gymApp.viewControllers.history.showWorkoutDetails(${session.id})">
                     <div class="workout-card-header">
                         <div class="workout-header-info">
-                            <h3>${session.workoutDayName}</h3>
+                            <h3>${escapeHtml(session.workoutDayName)}</h3>
                             <span class="date">${formatSessionDateTime(session)}</span>
                         </div>
                         <button class="btn-icon delete-workout-btn" onclick="event.stopPropagation(); window.gymApp.viewControllers.history.deleteWorkout(${session.id})" title="Delete workout" aria-label="Delete workout">
@@ -181,7 +181,7 @@ class HistoryView {
                             ` : ''}
                         </div>
                     ` : ''}
-                    ${session.notes ? `<p class="workout-notes">${session.notes}</p>` : ''}
+                    ${session.notes ? `<p class="workout-notes">${escapeHtml(session.notes)}</p>` : ''}
                 </div>
             `;
         }).join('');
@@ -290,7 +290,7 @@ class HistoryView {
 
                 html += `
                     <div class="detail-exercise">
-                        <h4>${exerciseName}</h4>
+                        <h4>${escapeHtml(exerciseName)}</h4>
                         <table class="sets-table">
                             <thead>
                                 <tr>
@@ -347,7 +347,7 @@ class HistoryView {
         if (session.notes) {
             html += `
                 <h3>Notes</h3>
-                <p class="workout-detail-notes">${session.notes}</p>
+                <p class="workout-detail-notes">${escapeHtml(session.notes)}</p>
             `;
         }
 
@@ -361,7 +361,7 @@ class HistoryView {
 
         const exerciseCount = session.exercises.length;
         const exerciseLabel = exerciseCount === 1 ? 'exercise' : 'exercises';
-        const message = `Are you sure you want to delete this workout?<br><br><strong>${session.workoutDayName}</strong><br>${formatSessionDateTime(session)}<br><br>This workout included ${exerciseCount} ${exerciseLabel} and ${Math.round(session.totalVolume).toLocaleString()}${this.app.settings.weightUnit} total volume.<br><br><strong>This action cannot be undone.</strong>`;
+        const message = `Are you sure you want to delete this workout?<br><br><strong>${escapeHtml(session.workoutDayName)}</strong><br>${formatSessionDateTime(session)}<br><br>This workout included ${exerciseCount} ${exerciseLabel} and ${Math.round(session.totalVolume).toLocaleString()}${this.app.settings.weightUnit} total volume.<br><br><strong>This action cannot be undone.</strong>`;
 
         const confirmed = await showConfirmModal({
             title: 'Delete Workout',

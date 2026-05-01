@@ -5,7 +5,7 @@
  */
 import { app } from '../app.js';
 import { AnalyticsService } from '../services/AnalyticsService.js';
-import { formatDate } from '../utils/helpers.js';
+import { formatDate, escapeHtml } from '../utils/helpers.js';
 import { DarkSelect } from '../utils/dark-select.js';
 
 const MONTH_NAMES = [
@@ -303,7 +303,7 @@ class CalendarView {
                  onclick="window.gymApp.viewControllers.calendar.openWorkoutHistory(${session.id})"
                  onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();window.gymApp.viewControllers.calendar.openWorkoutHistory(${session.id});}">
                 <div class="cal-session-header">
-                    <strong>${session.workoutDayName || 'Workout'}</strong>
+                    <strong>${escapeHtml(session.workoutDayName || 'Workout')}</strong>
                     <span class="cal-session-chevron" aria-hidden="true"><i class="fas fa-chevron-right"></i></span>
                 </div>
                 <div class="cal-session-stats">
@@ -312,7 +312,7 @@ class CalendarView {
                     <span><i class="fas fa-weight-hanging"></i> ${totalVolume} ${unit}</span>
                     <span><i class="fas fa-clock"></i> ${durStr}</span>
                 </div>
-                ${session.notes ? `<p class="cal-session-notes">${session.notes}</p>` : ''}
+                ${session.notes ? `<p class="cal-session-notes">${escapeHtml(session.notes)}</p>` : ''}
             </div>
         `;
     }

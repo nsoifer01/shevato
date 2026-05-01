@@ -5,6 +5,7 @@
 import { app } from '../app.js';
 import { AchievementService } from '../services/AchievementService.js';
 import { DarkSelect } from '../utils/dark-select.js';
+import { escapeHtml } from '../utils/helpers.js';
 
 const VOLUME_TYPES = new Set(['total-volume', 'daily-volume']);
 
@@ -276,15 +277,15 @@ class AchievementsView {
 
         return `
             <div class="achievement-card ${stateClass}">
-                <div class="achievement-icon">${a.icon}</div>
+                <div class="achievement-icon">${escapeHtml(a.icon)}</div>
                 <div class="achievement-info">
                     <div class="achievement-title-row">
-                        <h3>${a.name}</h3>
+                        <h3>${escapeHtml(a.name)}</h3>
                         ${a.unlocked
                             ? '<span class="achievement-checkmark" aria-label="Unlocked"><i class="fas fa-check"></i></span>'
                             : ''}
                     </div>
-                    <p>${description}</p>
+                    <p>${escapeHtml(description)}</p>
                     ${statusHtml}
                 </div>
             </div>
