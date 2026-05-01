@@ -254,3 +254,41 @@ Files touched:
 
 ### Automated checks
 - `node --check apps/gym-tracker/js/app.js` exits 0.
+
+
+## Change 9: Gate routine console.log behind a debug flag
+### What changed
+The app emitted a dozen routine `console.log` calls on every page load and every navigation ("Showing view: home", "Initializing views...", etc.). They drown signal-level errors and inflate Sentry/Replay noise in production.
+
+Added `helpers.debugLog(...)` that only forwards to `console.log` when:
+- `localStorage.gymTrackerDebug === 'true'`, OR
+- `window.GYM_DEBUG === true` (set live from the console).
+
+Migrated the noisy routine logs in `app.js` (init, view show, sync-ready) and `workout-view.js` (pause-save) to `debugLog`. Errors (`console.error`) and warnings (`console.warn`) are unchanged. The user-invoked `debugGymTracker.*` helpers keep their visible logs since they're explicit debugging tools.
+
+Note: `substr` (deprecated) was already replaced in change 7 by the rewrite of `generateId` — no remaining `.substr(` calls in the gym-tracker tree.
+
+Files touched:
+- `apps/gym-tracker/js/utils/helpers.js`
+- `apps/gym-tracker/js/app.js`
+- `apps/gym-tracker/js/views/workout-view.js`
+
+### Setup
+- A clean browser tab.
+
+### Test steps
+1. Open the gym tracker. Open DevTools console.
+2. Reload. Verify no `🏋️ Initializing...`, `Initializing views...`, `Showing view:`, or `Already on …` logs appear. (Errors/warnings still show normally.)
+3. Click between Home, Programs, History — verify no per-navigation log noise.
+4. In the console, run `localStorage.setItem('gymTrackerDebug', 'true')`. Reload.
+5. Verify the routine logs are now back: `🏋️ Initializing...`, `Showing view: home`, `✅ Gym Tracker App initialized`, etc.
+6. Run `localStorage.removeItem('gymTrackerDebug'); window.GYM_DEBUG = true;` then click between tabs — confirm logs reappear.
+7. Run `window.GYM_DEBUG = false;` and click around — verify logs go quiet again.
+
+### Regression checks
+1. `console.error('Error loading data:', ...)` and `console.warn(...)` calls still print regardless of the debug flag (these were not migrated).
+2. `gymApp.debugGymTracker.inspectData()` still prints program/session/achievement summaries (it uses raw `console.log` deliberately).
+3. `grep -n "\\.substr(" apps/gym-tracker/` returns no matches.
+
+### Automated checks
+- `node --check apps/gym-tracker/js/utils/helpers.js apps/gym-tracker/js/app.js apps/gym-tracker/js/views/workout-view.js` exits 0.
