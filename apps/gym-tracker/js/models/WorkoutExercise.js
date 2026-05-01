@@ -19,6 +19,10 @@ export class WorkoutExercise {
         // user unchecks a previously-completed set. Keys are slot indices,
         // values are {weight, reps, duration} — same shape as a prior-set entry.
         this.stickyValues = data.stickyValues || {};
+        // Carries the program's groupId through to the in-progress
+        // session so the workout view's render + rest-timer logic can
+        // tell which exercises are linked into a superset.
+        this.groupId = data.groupId || null;
     }
 
     get totalVolume() {
