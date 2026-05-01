@@ -13,7 +13,7 @@
  * pruned automatically.
  */
 
-const CACHE_VERSION = 'gym-v4';
+const CACHE_VERSION = 'gym-v5';
 const PRECACHE = `gym-precache-${CACHE_VERSION}`;
 const RUNTIME = `gym-runtime-${CACHE_VERSION}`;
 
