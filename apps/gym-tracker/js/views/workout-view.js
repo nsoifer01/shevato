@@ -13,6 +13,7 @@ import { trapModalFocus } from '../utils/modal-focus.js';
 import { renderPausedBannerHTML, wirePausedBannerActions } from './paused-banner.js';
 import { orderPrograms } from '../utils/program-order.js';
 import { AnalyticsService } from '../services/AnalyticsService.js';
+import { calculatePlates, formatPlateStack } from '../utils/plate-calculator.js';
 
 class WorkoutView {
     constructor() {
@@ -50,6 +51,18 @@ class WorkoutView {
         const view = document.getElementById('workout-view');
         if (!view || view.dataset.actionsWired) return;
         view.dataset.actionsWired = '1';
+
+        // Live plate-hint updates as the user types into a barbell weight
+        // input. Cheap — calculatePlates is O(plates) and the hint only
+        // exists on barbell rows.
+        view.addEventListener('input', (e) => {
+            const t = e.target;
+            if (!(t instanceof HTMLInputElement)) return;
+            const target = t.dataset.plateHintTarget;
+            if (!target) return;
+            const [eIdx, slot] = target.split('-').map(Number);
+            this.refreshPlateHint(eIdx, slot, t.value);
+        });
 
         view.addEventListener('click', (e) => {
             const target = e.target.closest('[data-action]');
@@ -532,6 +545,9 @@ class WorkoutView {
         const isDuration = !!(exerciseData && exerciseData.exerciseType === 'duration');
         const previousSets = this.getPreviousExerciseData(exercise.exerciseId) || [];
         const unit = this.app.settings.weightUnit;
+        // Plate calculator only meaningful for loaded-bar exercises.
+        const equipment = exerciseData?.equipment || '';
+        const isBarbell = equipment === 'barbell' || equipment === 'trap-bar';
 
         // Build a slot → Set lookup so rendering is driven by each set's
         // stable `slot` rather than its position in the dense array. This
@@ -569,7 +585,7 @@ class WorkoutView {
                     || previousSets[i]
                     || previousSets[previousSets.length - 1]
                     || null;
-                rowsHTML += this.renderPlannedRow(index, i, prior, isDuration, unit, exercise.targetReps);
+                rowsHTML += this.renderPlannedRow(index, i, prior, isDuration, unit, exercise.targetReps, isBarbell);
             }
         }
 
@@ -648,7 +664,7 @@ class WorkoutView {
      * set and starts the rest timer. The row itself is NOT tappable — users
      * deliberately flick the toggle to complete.
      */
-    renderPlannedRow(exerciseIndex, slot, prior, isDuration, unit, targetReps) {
+    renderPlannedRow(exerciseIndex, slot, prior, isDuration, unit, targetReps, isBarbell = false) {
         const setLabel = `${slot + 1}`;
         const toggle = this.renderSetToggle(false, 'commit-planned-set', exerciseIndex, slot, 'Mark set complete');
 
@@ -674,21 +690,57 @@ class WorkoutView {
 
         const weight = prior ? prior.weight : '';
         const reps = prior ? prior.reps : (targetReps || '');
+        const plateHintHTML = isBarbell ? this.renderPlateHint(weight, unit) : '';
         return `
             <li class="set-row set-row-planned" data-slot="${slot}">
                 <span class="set-row-num">${setLabel}</span>
                 <div class="set-row-inputs">
                     <input type="number" inputmode="decimal" class="set-weight"
                         id="weight-${exerciseIndex}-${slot}" min="0" step="0.5"
-                        value="${weight === '' ? '' : weight}" placeholder="Weight" aria-label="Weight">
+                        value="${weight === '' ? '' : weight}" placeholder="Weight" aria-label="Weight"
+                        data-plate-hint-target="${exerciseIndex}-${slot}">
                     <span class="set-row-x">×</span>
                     <input type="number" inputmode="numeric" class="set-reps"
                         id="reps-${exerciseIndex}-${slot}" min="1"
                         value="${reps === '' ? '' : reps}" placeholder="Reps" aria-label="Reps">
                 </div>
                 ${toggle}
+                ${plateHintHTML ? `<div class="plate-hint" id="plate-hint-${exerciseIndex}-${slot}">${plateHintHTML}</div>` : ''}
             </li>
         `;
+    }
+
+    /**
+     * Compute the per-side plate breakdown text for a given weight using
+     * the user's plate-calculator settings. Returns '' (suppress) when
+     * either the weight is empty or the user hasn't configured plates.
+     */
+    renderPlateHint(weight, unit) {
+        const settings = this.app.settings;
+        const bar = Number(settings?.barWeight);
+        const plates = Array.isArray(settings?.plates) ? settings.plates : [];
+        if (!Number.isFinite(bar) || plates.length === 0) return '';
+        // The "Plates per side:" wording is wrapped in .plate-hint-label-text
+        // so the mobile media query can hide it; the dumbbell icon alone
+        // carries the meaning on small screens.
+        if (weight === '' || weight === null || weight === undefined) {
+            return `<span class="plate-hint-label"><i class="fas fa-dumbbell" aria-hidden="true"></i><span class="plate-hint-label-text"> Plates per side: </span><em>—</em></span>`;
+        }
+        const result = calculatePlates(Number(weight), bar, plates);
+        const text = formatPlateStack(result, unit);
+        return `<span class="plate-hint-label"><i class="fas fa-dumbbell" aria-hidden="true"></i><span class="plate-hint-label-text"> Plates per side: </span><em>${escapeHtml(text)}</em></span>`;
+    }
+
+    /**
+     * Live-update the plate hint underneath a planned weight input as the
+     * user types. Wired in `wireWorkoutActions`.
+     */
+    refreshPlateHint(exerciseIndex, slot, weight) {
+        const hintEl = document.getElementById(`plate-hint-${exerciseIndex}-${slot}`);
+        if (!hintEl) return;
+        const unit = this.app.settings.weightUnit;
+        const html = this.renderPlateHint(weight, unit);
+        if (html) hintEl.innerHTML = html;
     }
 
     /**
