@@ -430,8 +430,12 @@ export function showConfirmModal(options = {}) {
             confirmBtn.className = 'btn btn-primary';
         }
 
-        // Show modal
+        // Show modal with focus trap (Tab cycles inside, Esc cancels,
+        // focus restores on close).
         modal.classList.add('active');
+        // Lazy import to avoid a hard dependency cycle in helpers.js.
+        import('./modal-focus.js').then(({ trapModalFocus }) => trapModalFocus(modal))
+            .catch(() => { /* trap is best-effort */ });
 
         // Handle confirm
         const handleConfirm = () => {
@@ -450,7 +454,14 @@ export function showConfirmModal(options = {}) {
             modal.classList.remove('active');
             confirmBtn.removeEventListener('click', handleConfirm);
             cancelBtn.removeEventListener('click', handleCancel);
+            modal.removeEventListener('keydown', escHandler);
         };
+
+        // Esc cancels (mirrors the focus-trap's Esc → close behavior, but
+        // here we resolve false rather than just removing the active class
+        // so the awaiting Promise is settled).
+        const escHandler = (e) => { if (e.key === 'Escape') handleCancel(); };
+        modal.addEventListener('keydown', escHandler);
 
         // Add event listeners
         confirmBtn.addEventListener('click', handleConfirm);

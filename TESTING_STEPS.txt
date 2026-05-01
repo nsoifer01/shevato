@@ -548,3 +548,51 @@ Files touched:
 ### Automated checks
 - `node --check apps/gym-tracker/js/views/programs-view.js` exits 0.
 - `npm test` exits 0.
+
+
+## Change 16: Modal focus trap + return-focus
+### What changed
+Modals previously didn't trap focus or restore it on close — keyboard users could Tab past the modal into the obscured page underneath, and the modal couldn't be dismissed with Esc.
+
+Added `apps/gym-tracker/js/utils/modal-focus.js`:
+- `trapModalFocus(modalEl)` saves the currently-focused element, moves focus to the modal's first focusable child (or `[autofocus]`), keeps Tab cycling inside, listens for Esc, and tears down via a MutationObserver when the modal's `.active` class is removed (restoring focus to the original element).
+- `openModal(modalEl)` is a convenience wrapper.
+- Idempotent (can't double-install on the same modal).
+
+Wired into every modal-open site:
+- Programs view: program create/edit modal, exercise picker.
+- Exercises view: custom exercise modal, exercise detail modal.
+- History view: workout detail modal.
+- Workout view: leave-workout confirmation, finish-workout modal.
+- Helpers: `showConfirmModal()` opt-in via lazy import; also added Esc → cancel resolution so the awaiting Promise actually settles.
+
+Files touched / added:
+- `apps/gym-tracker/js/utils/modal-focus.js` (new)
+- `apps/gym-tracker/js/utils/helpers.js`
+- `apps/gym-tracker/js/views/programs-view.js`
+- `apps/gym-tracker/js/views/exercises-view.js`
+- `apps/gym-tracker/js/views/history-view.js`
+- `apps/gym-tracker/js/views/workout-view.js`
+- `apps/gym-tracker/sw.js` (precache the new file, bump CACHE_VERSION)
+
+### Setup
+- A program and at least one workout session.
+
+### Test steps
+1. Programs tab → click Create Program. Verify the cursor lands inside the modal (in the program-name input).
+2. Press Shift+Tab repeatedly. Verify focus stays inside the modal — it cycles back to the last focusable element instead of escaping into the page.
+3. Press Esc. Verify the modal closes AND focus returns to the Create Program button.
+4. Repeat with: Edit Program → exercise picker → custom exercise modal → exercise detail modal → workout detail (from History) → leave-workout confirmation (start a workout, add a set, navigate away) → finish-workout modal.
+5. Open any delete-confirmation (Delete Program / Delete Workout) → press Esc → verify the modal closes AND the awaited Promise resolves to `false` (no deletion happens).
+
+### Regression checks
+1. Mouse users still close modals via the X / Cancel button as before.
+2. Modals that have form fields keep their first input as the auto-focused element.
+3. The body scroll position is unchanged after modal close.
+4. `npm test` still passes.
+
+### Automated checks
+- `node --check apps/gym-tracker/js/utils/modal-focus.js` exits 0.
+- `for f in apps/gym-tracker/js/views/*.js; do node --check "$f"; done` exits 0.
+- `npm test` exits 0.
+- `grep -rn "trapModalFocus" apps/gym-tracker/js/` shows the helper consumed in every view that opens modals.

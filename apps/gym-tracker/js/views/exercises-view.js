@@ -3,6 +3,7 @@
  */
 import { app } from '../app.js';
 import { showToast, parseLocalDate, showConfirmModal, escapeHtml, generateNumericId } from '../utils/helpers.js';
+import { trapModalFocus } from '../utils/modal-focus.js';
 import { DarkSelect } from '../utils/dark-select.js';
 import { AnalyticsService } from '../services/AnalyticsService.js';
 
@@ -362,6 +363,7 @@ class ExercisesView {
         modal.querySelectorAll('.has-error').forEach(el => el.classList.remove('has-error'));
 
         modal.classList.add('active');
+        trapModalFocus(modal);
     }
 
     createCustomExercise() {
@@ -630,6 +632,7 @@ class ExercisesView {
         this.renderProgressionChart(exerciseId, isDuration);
 
         modal.classList.add('active');
+        trapModalFocus(modal);
     }
 
     /**

@@ -9,6 +9,7 @@ import { Set } from '../models/Set.js';
 import { timerService } from '../services/TimerService.js';
 import { storageService } from '../services/StorageService.js';
 import { showToast, showConfirmModal, formatMuscleGroup, vibrate, playSound, escapeHtml, debugLog } from '../utils/helpers.js';
+import { trapModalFocus } from '../utils/modal-focus.js';
 import { renderPausedBannerHTML, wirePausedBannerActions } from './paused-banner.js';
 import { orderPrograms } from '../utils/program-order.js';
 import { AnalyticsService } from '../services/AnalyticsService.js';
@@ -237,6 +238,7 @@ class WorkoutView {
 
             // Show modal
             modal.classList.add('active');
+            trapModalFocus(modal);
 
             const cleanup = () => {
                 modal.classList.remove('active');
@@ -1258,7 +1260,9 @@ class WorkoutView {
             prsValue.textContent = `🏆 ${this.sessionPrCount}`;
         }
 
-        document.getElementById('finish-workout-modal').classList.add('active');
+        const finishModal = document.getElementById('finish-workout-modal');
+        finishModal.classList.add('active');
+        trapModalFocus(finishModal);
     }
 
     finishWorkout() {
