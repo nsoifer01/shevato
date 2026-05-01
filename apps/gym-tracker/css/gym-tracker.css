@@ -8251,3 +8251,107 @@ button.calendar-day {
     .plate-hint-label-text { display: none; }
     .plate-hint { font-size: 0.78rem; }
 }
+
+/* ------------------------------------------------------------------
+   Supersets — Program edit link button + workout-view group card.
+   ------------------------------------------------------------------ */
+
+/* Row-level link/unlink button in the program-edit modal. Sits in the
+   same trailing actions cluster as the delete (×) button. */
+.pex-row-actions {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    margin-left: auto;
+}
+.btn-icon-link {
+    width: 30px;
+    height: 30px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    background: rgba(255, 255, 255, 0.04);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    border-radius: 6px;
+    color: rgba(255, 255, 255, 0.7);
+    cursor: pointer;
+    transition: background 120ms ease, color 120ms ease, border-color 120ms ease;
+}
+.btn-icon-link:hover,
+.btn-icon-link:focus-visible {
+    background: rgba(108, 99, 255, 0.18);
+    border-color: rgba(108, 99, 255, 0.45);
+    color: #fff;
+}
+.btn-icon-link.is-on {
+    background: rgba(108, 99, 255, 0.28);
+    border-color: rgba(108, 99, 255, 0.7);
+    color: #fff;
+}
+
+/* Visual cohesion for adjacent rows in the same superset: collapse the
+   bottom border of the row above and the top border of the row below
+   so they read as one unit, plus a subtle accent stripe. */
+.program-exercise-row.is-grouped {
+    border-color: rgba(108, 99, 255, 0.45);
+    background: rgba(108, 99, 255, 0.05);
+}
+.program-exercise-row.is-linked-above {
+    border-top-color: transparent;
+    border-top-left-radius: 0;
+    border-top-right-radius: 0;
+    margin-top: 0;
+}
+.program-exercise-row.is-linked-below {
+    border-bottom-left-radius: 0;
+    border-bottom-right-radius: 0;
+    margin-bottom: 0;
+}
+.pex-superset-tag {
+    position: absolute;
+    top: -8px;
+    left: 12px;
+    padding: 1px 6px;
+    background: var(--bg-card);
+    border: 1px solid rgba(108, 99, 255, 0.55);
+    border-radius: 4px;
+    color: var(--accent-primary);
+    font-size: 0.6rem;
+    font-weight: 700;
+    letter-spacing: 0.06em;
+}
+.program-exercise-row { position: relative; }
+
+/* Workout-view group card — wraps consecutive .exercise-entry blocks
+   that share a groupId. The wrapper provides the outer purple frame +
+   header; the inner exercise-entries keep their own dashed/solid look
+   but lose their outer margin so they sit flush. */
+.superset-block {
+    position: relative;
+    margin: 1rem 0;
+    padding: 8px;
+    background: rgba(108, 99, 255, 0.05);
+    border: 1px solid rgba(108, 99, 255, 0.4);
+    border-radius: var(--radius-md);
+}
+.superset-block-header {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 4px 10px;
+    margin: -16px 0 8px;
+    background: var(--bg-card);
+    border: 1px solid rgba(108, 99, 255, 0.55);
+    border-radius: 999px;
+    font-size: 0.7rem;
+    font-weight: 700;
+    letter-spacing: 0.06em;
+    color: var(--accent-primary);
+    text-transform: uppercase;
+}
+.superset-block .exercise-entry {
+    margin: 0 0 8px;
+}
+.superset-block .exercise-entry:last-child {
+    margin-bottom: 0;
+}
