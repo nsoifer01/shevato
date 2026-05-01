@@ -487,7 +487,12 @@ class WorkoutView {
                 targetSets: ex.targetSets,
                 targetReps: ex.targetReps,
                 restSeconds: ex.restSeconds,
-                order: ex.order
+                order: ex.order,
+                // Carry the program's superset link through to the live
+                // session so renderExerciseList can wrap consecutive
+                // grouped exercises in a single .superset-block card and
+                // shouldStartRestForSet can suppress mid-round rest.
+                groupId: ex.groupId,
             }))
         });
 
