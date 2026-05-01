@@ -66,7 +66,7 @@ class GymTrackerApp {
         await this.initializeViews();
 
         // Show initial view — honor URL hash so refresh keeps the user's page
-        const validViews = new Set(['home', 'programs', 'calendar', 'workout', 'exercises', 'history', 'achievements', 'settings', 'more']);
+        const validViews = new Set(['home', 'programs', 'calendar', 'workout', 'exercises', 'history', 'achievements', 'settings', 'more', 'insights']);
         const hashView = window.location.hash.slice(1);
         this.showView(validViews.has(hashView) ? hashView : 'home');
 
