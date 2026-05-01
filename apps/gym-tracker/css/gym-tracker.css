@@ -8598,3 +8598,54 @@ button.calendar-day {
         grid-template-columns: 1fr;
     }
 }
+
+/* ------------------------------------------------------------------
+   Progressive-overload suggestion pill — sits below the inputs/toggle
+   row on each planned set when there's prior history to base a bump
+   or repeat on. Two variants colored by intent: green = bump, amber
+   = repeat (you missed reps last time, stay there).
+   ------------------------------------------------------------------ */
+.suggest-pill {
+    flex: 1 0 100%;
+    margin: 4px 0 0;
+    padding: 5px 9px;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 0.72rem;
+    font-weight: 600;
+    line-height: 1.2;
+    border-radius: 999px;
+    background: rgba(108, 99, 255, 0.12);
+    border: 1px solid rgba(108, 99, 255, 0.4);
+    color: rgba(255, 255, 255, 0.85);
+    cursor: pointer;
+    align-self: flex-start;
+    transition: background 120ms ease, border-color 120ms ease, transform 80ms ease;
+}
+.suggest-pill:hover,
+.suggest-pill:focus-visible {
+    background: rgba(108, 99, 255, 0.22);
+    border-color: rgba(108, 99, 255, 0.7);
+}
+.suggest-pill:active { transform: translateY(1px); }
+.suggest-pill--up {
+    background: rgba(34, 197, 94, 0.12);
+    border-color: rgba(34, 197, 94, 0.45);
+    color: #4ade80;
+}
+.suggest-pill--up:hover,
+.suggest-pill--up:focus-visible {
+    background: rgba(34, 197, 94, 0.22);
+    border-color: rgba(34, 197, 94, 0.7);
+}
+.suggest-pill--repeat {
+    background: rgba(245, 158, 11, 0.1);
+    border-color: rgba(245, 158, 11, 0.4);
+    color: #f59e0b;
+}
+.suggest-pill--repeat:hover,
+.suggest-pill--repeat:focus-visible {
+    background: rgba(245, 158, 11, 0.2);
+    border-color: rgba(245, 158, 11, 0.7);
+}
