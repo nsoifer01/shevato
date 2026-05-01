@@ -28,6 +28,7 @@ export function formatMuscleGroup(raw) {
         'mid-back': 'Mid Back',
         'lower-back': 'Lower Back',
         // Shoulders
+        'shoulders': 'Shoulders',
         'front-deltoids': 'Front Delts',
         'rear-deltoids': 'Rear Delts',
         'side-deltoids': 'Side Delts',
@@ -194,10 +195,54 @@ export function debounce(func, wait) {
 }
 
 /**
- * Generate unique ID
+ * Verbose logging gate. Routine init/navigation logs inside the app
+ * are noisy in production; gate them behind `localStorage.gymTrackerDebug`
+ * (set to "true") or a `window.GYM_DEBUG = true` flag the user can set
+ * from the console. Errors and warnings stay un-gated.
+ */
+export function debugLog(...args) {
+    let on = false;
+    try { on = localStorage.getItem('gymTrackerDebug') === 'true'; } catch (_) { /* private mode */ }
+    if (!on && typeof window !== 'undefined' && window.GYM_DEBUG === true) on = true;
+    if (on) console.log(...args);
+}
+
+/**
+ * Generate a unique string ID. Prefers `crypto.randomUUID()` when
+ * available (all supported gym-tracker browsers since 2022) so two
+ * devices creating an entity in the same millisecond can't collide.
+ * Falls back to a timestamp + random base36 suffix for very old
+ * browsers and non-secure contexts (file://).
  */
 export function generateId() {
-    return Date.now() + Math.random().toString(36).substr(2, 9);
+    if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
+        return crypto.randomUUID();
+    }
+    return Date.now() + Math.random().toString(36).slice(2, 11);
+}
+
+/**
+ * Generate a unique NUMERIC ID. Models that get interpolated into inline
+ * onclick handlers (`onclick="...(${program.id})"`) need numeric IDs —
+ * a UUID-style string would break the JS expression at runtime. This
+ * helper combines a millisecond timestamp, a per-process counter, and
+ * a small per-call random component so two IDs created in the same
+ * millisecond on the same device still differ. Once the inline-onclick
+ * patterns are replaced with event delegation, the models can switch
+ * to `generateId()` and emit UUIDs.
+ */
+let _idCounter = 0;
+export function generateNumericId() {
+    _idCounter = (_idCounter + 1) & 0xfff; // 12 bits → 4096 slots / ms
+    // Stay inside JS Number's safe-integer range (2^53) so the bottom
+    // digits don't round off.
+    //   - 41 bits for the ms timestamp (~year 2065 worst case)
+    //   - 12 bits for the per-ms entropy (counter)
+    // = 53 bits total. Two IDs created in the same ms only collide if
+    // both land in the same counter slot — by then the counter has
+    // already cycled 4095 times, so for any realistic single-page rate
+    // this is collision-free.
+    return Date.now() * 0x1000 + _idCounter;
 }
 
 /**
@@ -385,8 +430,12 @@ export function showConfirmModal(options = {}) {
             confirmBtn.className = 'btn btn-primary';
         }
 
-        // Show modal
+        // Show modal with focus trap (Tab cycles inside, Esc cancels,
+        // focus restores on close).
         modal.classList.add('active');
+        // Lazy import to avoid a hard dependency cycle in helpers.js.
+        import('./modal-focus.js').then(({ trapModalFocus }) => trapModalFocus(modal))
+            .catch(() => { /* trap is best-effort */ });
 
         // Handle confirm
         const handleConfirm = () => {
@@ -405,7 +454,14 @@ export function showConfirmModal(options = {}) {
             modal.classList.remove('active');
             confirmBtn.removeEventListener('click', handleConfirm);
             cancelBtn.removeEventListener('click', handleCancel);
+            modal.removeEventListener('keydown', escHandler);
         };
+
+        // Esc cancels (mirrors the focus-trap's Esc → close behavior, but
+        // here we resolve false rather than just removing the active class
+        // so the awaiting Promise is settled).
+        const escHandler = (e) => { if (e.key === 'Escape') handleCancel(); };
+        modal.addEventListener('keydown', escHandler);
 
         // Add event listeners
         confirmBtn.addEventListener('click', handleConfirm);

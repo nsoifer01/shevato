@@ -708,9 +708,14 @@ class StorageSyncManager {
    * Get global status
    */
   getGlobalStatus() {
+    let totalQueueSize = 0;
+    for (const queue of this.writeQueues.values()) {
+      totalQueueSize += queue.size;
+    }
     return {
       activeNamespaces: this.syncStates.size,
       totalKeys: Array.from(this.syncStates.values()).reduce((sum, state) => sum + state.keys.size, 0),
+      totalQueueSize,
       syncLocks: this.syncLocks.size,
       overrideInstalled: this.isOverrideInstalled
     };
@@ -747,6 +752,13 @@ export function getSyncStatus(namespace) {
 
 export function getGlobalSyncStatus() {
   return syncManager.getGlobalStatus();
+}
+
+// Expose the global-status getter to non-module code (e.g. the gym
+// tracker's sync status pill, which is loaded as an ES module but reads
+// state through window because the sync layer is loaded before it).
+if (typeof window !== 'undefined') {
+  window.gymGetGlobalSyncStatus = () => syncManager.getGlobalStatus();
 }
 
 // Debug helpers
