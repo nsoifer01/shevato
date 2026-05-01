@@ -179,6 +179,19 @@ class GymTrackerApp {
         } else {
             this.settings = Settings.fromJSON(rawSettings);
         }
+
+        // Broadcast the post-load state. Sync arrivals re-call loadAllData
+        // and the views subscribed to these events need to know that
+        // their data slice has changed even though no save() was invoked
+        // locally. Without this, a view rendered while workoutSessions
+        // was empty (cold load + pending sync) keeps showing its empty
+        // state after the sessions arrive from Firestore.
+        emit(EVENTS.PROGRAMS_CHANGED, this.programs);
+        emit(EVENTS.SESSIONS_CHANGED, this.workoutSessions);
+        emit(EVENTS.ACHIEVEMENTS_CHANGED, this.achievements);
+        emit(EVENTS.CUSTOM_EXERCISES_CHANGED, this.customExercises);
+        emit(EVENTS.MEASUREMENTS_CHANGED, this.measurements);
+        emit(EVENTS.SETTINGS_CHANGED, this.settings);
     }
 
     /**
@@ -242,7 +255,11 @@ class GymTrackerApp {
     }
 
     deleteMeasurement(id) {
-        this.measurements = this.measurements.filter(m => m.id !== id);
+        // Coerce both sides — entries loaded from a Firestore doc whose
+        // numeric ids were stringified would otherwise never match the
+        // numeric click-handler id and the entry would silently survive.
+        const target = Number(id);
+        this.measurements = this.measurements.filter(m => Number(m.id) !== target);
         this.saveMeasurements();
     }
 
