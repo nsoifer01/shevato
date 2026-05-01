@@ -3,11 +3,11 @@
  * Represents an actual workout session (execution of a workout day)
  */
 import { WorkoutExercise } from './WorkoutExercise.js';
-import { getTodayDateString } from '../utils/helpers.js';
+import { getTodayDateString, generateNumericId } from '../utils/helpers.js';
 
 export class WorkoutSession {
     constructor(data = {}) {
-        this.id = data.id || Date.now();
+        this.id = data.id || generateNumericId();
         this.programId = data.programId || null;
         this.workoutDayId = data.workoutDayId || null;
         this.workoutDayName = data.workoutDayName || '';

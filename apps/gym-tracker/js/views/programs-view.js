@@ -4,7 +4,8 @@
  */
 import { app } from '../app.js';
 import { Program, defaultRestForEquipment } from '../models/Program.js';
-import { showToast, showConfirmModal, formatMuscleGroup } from '../utils/helpers.js';
+import { showToast, showConfirmModal, formatMuscleGroup, escapeHtml } from '../utils/helpers.js';
+import { trapModalFocus } from '../utils/modal-focus.js';
 import { storageService } from '../services/StorageService.js';
 import { DarkSelect } from '../utils/dark-select.js';
 import { orderPrograms } from '../utils/program-order.js';
@@ -227,7 +228,7 @@ class ProgramsView {
 
         container.classList.toggle('is-custom-order', isCustom);
 
-        container.innerHTML = ordered.map(program => `
+        container.innerHTML = ordered.map((program, index) => `
             <div class="program-card ${isCustom ? 'is-draggable' : ''}"
                  data-program-id="${program.id}"
                  ${isCustom ? 'draggable="true"' : ''}>
@@ -235,11 +236,29 @@ class ProgramsView {
                     <span class="program-card-handle" title="Drag to reorder" aria-hidden="true">
                         <i class="fas fa-grip-vertical"></i>
                     </span>
+                    <div class="program-card-move-buttons" role="group" aria-label="Reorder program">
+                        <button type="button" class="btn-icon btn-icon-move"
+                            data-action="move-program-up"
+                            data-program-id="${program.id}"
+                            ${index === 0 ? 'disabled' : ''}
+                            aria-label="Move ${escapeHtml(program.name)} up"
+                            title="Move up">
+                            <i class="fas fa-chevron-up"></i>
+                        </button>
+                        <button type="button" class="btn-icon btn-icon-move"
+                            data-action="move-program-down"
+                            data-program-id="${program.id}"
+                            ${index === ordered.length - 1 ? 'disabled' : ''}
+                            aria-label="Move ${escapeHtml(program.name)} down"
+                            title="Move down">
+                            <i class="fas fa-chevron-down"></i>
+                        </button>
+                    </div>
                 ` : ''}
                 <div class="program-header">
-                    <h3>${program.name}</h3>
+                    <h3>${escapeHtml(program.name)}</h3>
                 </div>
-                ${program.description && program.description.trim() ? `<p class="program-description">${program.description}</p>` : ''}
+                ${program.description && program.description.trim() ? `<p class="program-description">${escapeHtml(program.description)}</p>` : ''}
                 <div class="program-stats">
                     <div class="stat">
                         <i class="fas fa-dumbbell"></i>
@@ -247,10 +266,10 @@ class ProgramsView {
                     </div>
                 </div>
                 <div class="program-actions">
-                    <button class="btn btn-secondary" onclick="window.gymApp.viewControllers.programs.editProgram(${program.id})">
+                    <button class="btn btn-secondary" data-action="edit-program" data-program-id="${program.id}">
                         <i class="fas fa-edit"></i> Edit
                     </button>
-                    <button class="btn btn-danger" onclick="window.gymApp.viewControllers.programs.deleteProgram(${program.id})">
+                    <button class="btn btn-danger" data-action="delete-program" data-program-id="${program.id}">
                         <i class="fas fa-trash"></i> Delete
                     </button>
                 </div>
@@ -268,6 +287,76 @@ class ProgramsView {
             card.addEventListener('dragleave', (e) => this.handleDragLeave(e));
             card.addEventListener('drop',      (e) => this.handleDrop(e, id));
         });
+
+        this.wireProgramListActions(container);
+    }
+
+    /**
+     * Single delegated click listener on the programs list container.
+     * Replaces inline onclick="...editProgram(${id})" handlers with
+     * data-action / data-program-id pairs so we can ship a strict CSP
+     * later and avoid string-interpolating IDs into JS expressions.
+     * Idempotent — guarded by a dataset flag so re-renders don't stack
+     * listeners.
+     */
+    wireProgramListActions(container) {
+        if (container.dataset.actionsWired) return;
+        container.dataset.actionsWired = '1';
+        container.addEventListener('click', (e) => {
+            const btn = e.target.closest('[data-action]');
+            if (!btn || !container.contains(btn)) return;
+            const id = Number(btn.dataset.programId);
+            switch (btn.dataset.action) {
+                case 'edit-program':
+                    e.preventDefault();
+                    this.editProgram(id);
+                    break;
+                case 'delete-program':
+                    e.preventDefault();
+                    this.deleteProgram(id);
+                    break;
+                case 'move-program-up':
+                    e.preventDefault();
+                    this.moveProgram(id, -1);
+                    break;
+                case 'move-program-down':
+                    e.preventDefault();
+                    this.moveProgram(id, +1);
+                    break;
+            }
+        });
+    }
+
+    /**
+     * Reorder a program by `delta` (-1 = up, +1 = down) within the current
+     * displayed order. Forces sortMode = 'custom' (since drag-then-keyboard
+     * always lands users in custom anyway), persists the new order, and
+     * re-renders. Keyboard equivalent of drag-to-reorder.
+     */
+    moveProgram(programId, delta) {
+        // Switch to custom and pull the current ordered list.
+        if (this.sortMode !== 'custom') {
+            this.sortMode = 'custom';
+            storageService.saveProgramSort('custom');
+            const sortSelect = document.getElementById('programs-sort');
+            if (sortSelect) sortSelect.value = 'custom';
+        }
+
+        const ordered = this.getDisplayedPrograms();
+        const fromIdx = ordered.findIndex(p => p.id === programId);
+        const toIdx = fromIdx + delta;
+        if (fromIdx < 0 || toIdx < 0 || toIdx >= ordered.length) return;
+
+        const [moved] = ordered.splice(fromIdx, 1);
+        ordered.splice(toIdx, 0, moved);
+        storageService.saveProgramOrder(ordered.map(p => p.id));
+        this.render();
+
+        // Restore focus on the move button so a keyboard user can keep
+        // pressing Up/Down without re-tabbing into the card.
+        const action = delta < 0 ? 'move-program-up' : 'move-program-down';
+        const btn = document.querySelector(`[data-action="${action}"][data-program-id="${programId}"]`);
+        if (btn && !btn.disabled) btn.focus();
     }
 
     openProgramModal(programId = null) {
@@ -298,6 +387,7 @@ class ProgramsView {
         }
 
         modal.classList.add('active');
+        trapModalFocus(modal);
     }
 
     renderProgramExercises() {
@@ -333,9 +423,27 @@ class ProgramsView {
                 <span class="pex-drag-handle" aria-hidden="true" title="Drag to reorder">
                     <i class="fas fa-grip-vertical"></i>
                 </span>
+                <div class="pex-move-buttons" role="group" aria-label="Reorder exercise">
+                    <button type="button" class="btn-icon btn-icon-move btn-icon-move-mini"
+                        data-action="move-exercise-up"
+                        data-index="${index}"
+                        ${index === 0 ? 'disabled' : ''}
+                        aria-label="Move ${escapeHtml(exercise.exerciseName)} up"
+                        title="Move up">
+                        <i class="fas fa-chevron-up"></i>
+                    </button>
+                    <button type="button" class="btn-icon btn-icon-move btn-icon-move-mini"
+                        data-action="move-exercise-down"
+                        data-index="${index}"
+                        ${index === this.currentProgram.exercises.length - 1 ? 'disabled' : ''}
+                        aria-label="Move ${escapeHtml(exercise.exerciseName)} down"
+                        title="Move down">
+                        <i class="fas fa-chevron-down"></i>
+                    </button>
+                </div>
                 <div class="pex-position" aria-hidden="true">${index + 1}</div>
                 <div class="pex-name">
-                    <span class="pex-name-main">${exercise.exerciseName}</span>${muscle ? `
+                    <span class="pex-name-main">${escapeHtml(exercise.exerciseName)}</span>${muscle ? `
                     <span class="pex-name-sub">(${muscle})</span>` : ''}
                 </div>
                 <div class="pex-targets">
@@ -369,6 +477,17 @@ class ProgramsView {
             });
         });
 
+        container.querySelectorAll('[data-action="move-exercise-up"]').forEach(btn => {
+            btn.addEventListener('click', () => {
+                this.moveExerciseInProgram(Number(btn.dataset.index), -1);
+            });
+        });
+        container.querySelectorAll('[data-action="move-exercise-down"]').forEach(btn => {
+            btn.addEventListener('click', () => {
+                this.moveExerciseInProgram(Number(btn.dataset.index), +1);
+            });
+        });
+
         container.querySelectorAll('[data-stepper]').forEach(btn => {
             btn.addEventListener('click', () => {
                 const idx = Number(btn.dataset.index);
@@ -377,6 +496,26 @@ class ProgramsView {
                 this.adjustExerciseTarget(idx, field, delta);
             });
         });
+    }
+
+    /**
+     * Keyboard-accessible reorder for exercises inside the open Edit
+     * Program modal. Equivalent to dragging the row up/down. Re-renders
+     * the modal body and restores focus to the same arrow on the moved
+     * row so repeated presses keep working without re-tabbing.
+     */
+    moveExerciseInProgram(fromIndex, delta) {
+        if (!this.currentProgram) return;
+        const list = this.currentProgram.exercises;
+        const toIndex = fromIndex + delta;
+        if (fromIndex < 0 || toIndex < 0 || toIndex >= list.length) return;
+        this.currentProgram.reorderExercise(fromIndex, toIndex);
+        this.renderProgramExercises();
+        const action = delta < 0 ? 'move-exercise-up' : 'move-exercise-down';
+        const btn = document.querySelector(
+            `#program-exercises-list [data-action="${action}"][data-index="${toIndex}"]`
+        );
+        if (btn && !btn.disabled) btn.focus();
     }
 
     adjustExerciseTarget(index, field, delta) {
@@ -586,7 +725,7 @@ class ProgramsView {
         if (!program) return;
 
         const exerciseCount = program.exercises.length;
-        const message = `Are you sure you want to delete <strong>"${program.name}"</strong>? This will remove the program and its ${exerciseCount} exercise${exerciseCount !== 1 ? 's' : ''}.`;
+        const message = `Are you sure you want to delete <strong>"${escapeHtml(program.name)}"</strong>? This will remove the program and its ${exerciseCount} exercise${exerciseCount !== 1 ? 's' : ''}.`;
 
         const confirmed = await showConfirmModal({
             title: 'Delete Program',
@@ -616,6 +755,7 @@ class ProgramsView {
         this.renderExercisePicker();
         this.renderExercisePickerTray();
         modal.classList.add('active');
+        trapModalFocus(modal);
 
         // Set up search and filter listeners
         const searchInput = document.getElementById('exercise-search');
@@ -737,12 +877,12 @@ class ProgramsView {
                     <span class="exercise-picker-check" aria-hidden="true">
                         <i class="fas ${picked ? 'fa-check-circle' : 'fa-circle'}"></i>
                     </span>
-                    <h4>${exercise.name}</h4>
+                    <h4>${escapeHtml(exercise.name)}</h4>
                     <div class="exercise-meta">
-                        <span class="badge">${exercise.category}</span>
-                        <span class="badge">${exercise.equipment}</span>
+                        <span class="badge">${escapeHtml(exercise.category)}</span>
+                        <span class="badge">${escapeHtml(exercise.equipment)}</span>
                     </div>
-                    <p>${exercise.muscleGroup}</p>
+                    <p>${escapeHtml(exercise.muscleGroup)}</p>
                 </div>
             `;
         }).join('');
@@ -806,7 +946,7 @@ class ProgramsView {
 
         list.innerHTML = items.map((item) => `
             <li class="exercise-picker-tray-row" data-exercise-id="${item.id}">
-                <div class="tray-name">${item.name}</div>
+                <div class="tray-name">${escapeHtml(item.name)}</div>
                 <div class="tray-steppers">
                     ${trayStepperHTML(item.id, 'sets', item.targetSets, 'Sets')}
                     ${trayStepperHTML(item.id, 'reps', item.targetReps, 'Reps')}

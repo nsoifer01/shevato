@@ -356,41 +356,9 @@ function sortGames(column) {
 
 // Get sorted games
 function getSortedGames() {
-    
-    return [...games].sort((a, b) => {
-        let valueA, valueB;
-        
-        switch(currentSortColumn) {
-            case 'game':
-                // Sort by game ID (chronological order)
-                valueA = a.id;
-                valueB = b.id;
-                break;
-                
-            case 'date':
-                valueA = a.dateTime ? new Date(a.dateTime) : new Date(0);
-                valueB = b.dateTime ? new Date(b.dateTime) : new Date(0);
-                break;
-                
-            case 'player1':
-                valueA = a.player1Goals;
-                valueB = b.player1Goals;
-                break;
-                
-            case 'player2':
-                valueA = a.player2Goals;
-                valueB = b.player2Goals;
-                break;
-                
-                
-            default:
-                return 0;
-        }
-        
-        if (valueA < valueB) return currentSortDirection === 'asc' ? -1 : 1;
-        if (valueA > valueB) return currentSortDirection === 'asc' ? 1 : -1;
-        return 0;
-    });
+    // Delegate to the pure helper so the unit tests in match-logic.test.js
+    // cover the same comparator the UI uses.
+    return window.FootballMatchLogic.sortGames(games, currentSortColumn, currentSortDirection);
 }
 
 // Update sort indicators
@@ -646,7 +614,7 @@ function saveGame(event) {
         // Add new game with current date and time
         const newGame = {
             ...gameData,
-            id: games.length > 0 ? Math.max(...games.map(m => m.id)) + 1 : 1,
+            id: window.FootballMatchLogic.nextGameId(games),
             dateTime: new Date().toISOString(),
             lastModified: new Date().toISOString()
         };
@@ -1112,40 +1080,44 @@ function importData() {
         
         const reader = new FileReader();
         reader.onload = function(e) {
+            let importedData;
             try {
-                const importedData = JSON.parse(e.target.result);
-                
-                if (importedData.players) {
-                    player1Name = importedData.players.player1 || 'Player 1';
-                    player2Name = importedData.players.player2 || 'Player 2';
-                    savePlayers();
-                    applyPlayerNameChanges(player1Name, player2Name);
-                }
-                
-                if (importedData.games && Array.isArray(importedData.games)) {
-                    games = importedData.games;
-                    saveGames();
-                    updateUI();
-                    
-                    createSuccessModal({
-                        icon: '📥',
-                        title: 'Import Successful',
-                        message: `Successfully imported ${games.length} games!`
-                    });
-                } else {
-                    createErrorModal({
-                        icon: '❌',
-                        title: 'Import Failed',
-                        message: 'Invalid file format. Please select a valid Football H2H export file.'
-                    });
-                }
+                importedData = JSON.parse(e.target.result);
             } catch (error) {
                 createErrorModal({
                     icon: '❌',
                     title: 'Import Error',
                     message: 'Error importing file. Please make sure it\'s a valid JSON file.'
                 });
+                return;
             }
+
+            // Validate via the pure helper so the test suite covers the
+            // same shape check the UI runs.
+            const parsed = window.FootballMatchLogic.parseImportPayload(importedData);
+            if (!parsed.ok) {
+                createErrorModal({
+                    icon: '❌',
+                    title: 'Import Failed',
+                    message: 'Invalid file format. Please select a valid Football H2H export file.'
+                });
+                return;
+            }
+
+            player1Name = parsed.players.player1;
+            player2Name = parsed.players.player2;
+            savePlayers();
+            applyPlayerNameChanges(player1Name, player2Name);
+
+            games = parsed.games;
+            saveGames();
+            updateUI();
+
+            createSuccessModal({
+                icon: '📥',
+                title: 'Import Successful',
+                message: `Successfully imported ${games.length} games!`
+            });
         };
         reader.readAsText(file);
     };

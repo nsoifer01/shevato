@@ -8,7 +8,8 @@ import { WorkoutExercise } from '../models/WorkoutExercise.js';
 import { Set } from '../models/Set.js';
 import { timerService } from '../services/TimerService.js';
 import { storageService } from '../services/StorageService.js';
-import { showToast, showConfirmModal, formatMuscleGroup, vibrate, playSound } from '../utils/helpers.js';
+import { showToast, showConfirmModal, formatMuscleGroup, vibrate, playSound, escapeHtml, debugLog } from '../utils/helpers.js';
+import { trapModalFocus } from '../utils/modal-focus.js';
 import { renderPausedBannerHTML, wirePausedBannerActions } from './paused-banner.js';
 import { orderPrograms } from '../utils/program-order.js';
 import { AnalyticsService } from '../services/AnalyticsService.js';
@@ -34,6 +35,75 @@ class WorkoutView {
         this.app.viewControllers.workout = this;
         this.setupEventListeners();
         this.setupNavigationGuard();
+        this.wireWorkoutActions();
+    }
+
+    /**
+     * Single delegated click listener on the workout view. Replaces the
+     * inline onclick handlers used to live on every set row, planned-row
+     * footer button, set-toggle pill, edit/save/cancel button, and
+     * program-pick "Start Workout" button. Each element declares its
+     * intent via `data-action` plus optional `data-exercise-index`,
+     * `data-slot`, and `data-program-id` attributes.
+     */
+    wireWorkoutActions() {
+        const view = document.getElementById('workout-view');
+        if (!view || view.dataset.actionsWired) return;
+        view.dataset.actionsWired = '1';
+
+        view.addEventListener('click', (e) => {
+            const target = e.target.closest('[data-action]');
+            if (!target || !view.contains(target)) return;
+            // Don't hijack the global data-home-action handler.
+            if (target.matches('[data-home-action]')) return;
+
+            const action = target.dataset.action;
+            const exerciseIndex = target.dataset.exerciseIndex !== undefined
+                ? Number(target.dataset.exerciseIndex)
+                : null;
+            const slot = target.dataset.slot !== undefined
+                ? Number(target.dataset.slot)
+                : null;
+
+            switch (action) {
+                case 'start-workout':
+                    e.preventDefault();
+                    this.startWorkout(Number(target.dataset.programId));
+                    break;
+                case 'commit-planned-set':
+                    e.preventDefault();
+                    this.commitPlannedSet(exerciseIndex, slot);
+                    break;
+                case 'unmark-set':
+                    e.preventDefault();
+                    this.deleteSet(exerciseIndex, slot, { silent: true });
+                    break;
+                case 'edit-set':
+                    e.preventDefault();
+                    this.editSet(exerciseIndex, slot);
+                    break;
+                case 'delete-set':
+                    e.preventDefault();
+                    this.deleteSet(exerciseIndex, slot);
+                    break;
+                case 'save-set-edit':
+                    e.preventDefault();
+                    this.saveSetEdit(exerciseIndex, slot);
+                    break;
+                case 'cancel-set-edit':
+                    e.preventDefault();
+                    this.cancelSetEdit(exerciseIndex);
+                    break;
+                case 'add-planned-row':
+                    e.preventDefault();
+                    this.addPlannedRow(exerciseIndex);
+                    break;
+                case 'remove-planned-row':
+                    e.preventDefault();
+                    this.removePlannedRow(exerciseIndex);
+                    break;
+            }
+        });
     }
 
     setupEventListeners() {
@@ -168,6 +238,7 @@ class WorkoutView {
 
             // Show modal
             modal.classList.add('active');
+            trapModalFocus(modal);
 
             const cleanup = () => {
                 modal.classList.remove('active');
@@ -218,7 +289,7 @@ class WorkoutView {
         // Stop the timer
         timerService.stopWorkoutTimer();
 
-        console.log('Workout paused and saved', this.currentWorkoutSession.toJSON());
+        debugLog('Workout paused and saved', this.currentWorkoutSession.toJSON());
 
         // Reset UI state so the paused banner shows when returning
         document.getElementById('active-workout').classList.remove('active');
@@ -342,9 +413,9 @@ class WorkoutView {
                 ${programs.map(program => `
                     <div class="program-card">
                         <div class="program-header">
-                            <h3>${program.name}</h3>
+                            <h3>${escapeHtml(program.name)}</h3>
                         </div>
-                        ${program.description && program.description.trim() ? `<p>${program.description}</p>` : ''}
+                        ${program.description && program.description.trim() ? `<p>${escapeHtml(program.description)}</p>` : ''}
                         <div class="program-stats">
                             <div class="stat">
                                 <i class="fas fa-dumbbell"></i>
@@ -353,7 +424,7 @@ class WorkoutView {
                         </div>
                         ${program.exercises.length === 0
                             ? `<p class="text-warning"><i class="fas fa-exclamation-triangle"></i> No exercises in this program</p>`
-                            : `<button class="btn btn-primary btn-large" onclick="window.gymApp.viewControllers.workout.startWorkout(${program.id})">
+                            : `<button class="btn btn-primary btn-large" data-action="start-workout" data-program-id="${program.id}">
                                 <i class="fas fa-play"></i> Start Workout
                             </button>`
                         }
@@ -509,8 +580,8 @@ class WorkoutView {
                  id="exercise-${index}" data-exercise-type="${isDuration ? 'duration' : 'reps'}">
                 <div class="exercise-entry-header">
                     <h3>
-                        <span class="exercise-name-main">${exercise.exerciseName}</span>${muscle ? `
-                        <span class="exercise-name-sub">(${muscle})</span>` : ''}
+                        <span class="exercise-name-main">${escapeHtml(exercise.exerciseName)}</span>${muscle ? `
+                        <span class="exercise-name-sub">(${escapeHtml(muscle)})</span>` : ''}
                     </h3>
                     <span class="exercise-progress ${isComplete ? 'is-complete' : ''}" aria-label="Sets ${progressLabel}">
                         ${isComplete ? '<i class="fas fa-check"></i>' : ''}
@@ -527,14 +598,16 @@ class WorkoutView {
                 <div class="set-row-footer">
                     ${totalRows > Math.max(1, completedCount) ? `
                         <button type="button" class="btn-remove-set"
-                            onclick="window.gymApp.viewControllers.workout.removePlannedRow(${index})"
+                            data-action="remove-planned-row"
+                            data-exercise-index="${index}"
                             title="Remove last empty set"
                             aria-label="Remove last empty set row">
                             <i class="fas fa-minus"></i>
                         </button>
                     ` : ''}
                     <button type="button" class="btn-add-set btn-add-set--extra"
-                        onclick="window.gymApp.viewControllers.workout.addPlannedRow(${index})"
+                        data-action="add-planned-row"
+                        data-exercise-index="${index}"
                         aria-label="Add another set row">
                         <i class="fas fa-plus"></i> Add set
                     </button>
@@ -577,9 +650,7 @@ class WorkoutView {
      */
     renderPlannedRow(exerciseIndex, slot, prior, isDuration, unit, targetReps) {
         const setLabel = `${slot + 1}`;
-        const toggle = this.renderSetToggle(false,
-            `window.gymApp.viewControllers.workout.commitPlannedSet(${exerciseIndex}, ${slot})`,
-            'Mark set complete');
+        const toggle = this.renderSetToggle(false, 'commit-planned-set', exerciseIndex, slot, 'Mark set complete');
 
         if (isDuration) {
             const mins = prior ? Math.floor(prior.duration / 60) : 0;
@@ -626,12 +697,14 @@ class WorkoutView {
      * gradient pill with a crisp check inside the knob). CSS drives the
      * visuals from `aria-pressed` so the DOM stays identical between states.
      */
-    renderSetToggle(pressed, onClickExpression, ariaLabel) {
+    renderSetToggle(pressed, action, exerciseIndex, slot, ariaLabel) {
         return `
             <button type="button" class="set-toggle"
                 aria-pressed="${pressed ? 'true' : 'false'}"
                 aria-label="${ariaLabel}"
-                onclick="${onClickExpression}">
+                data-action="${action}"
+                data-exercise-index="${exerciseIndex}"
+                data-slot="${slot}">
                 <span class="set-toggle-knob" aria-hidden="true">
                     <i class="fas fa-check"></i>
                 </span>
@@ -653,9 +726,7 @@ class WorkoutView {
             details = `${set.weight.toLocaleString()}${unit} × ${set.reps}`;
         }
 
-        const toggle = this.renderSetToggle(true,
-            `window.gymApp.viewControllers.workout.deleteSet(${exerciseIndex}, ${slot}, { silent: true })`,
-            'Unmark set');
+        const toggle = this.renderSetToggle(true, 'unmark-set', exerciseIndex, slot, 'Unmark set');
 
         const pr = this.sessionPrSlots?.[`${exerciseIndex}:${slot}`];
         const prBadge = pr
@@ -667,11 +738,11 @@ class WorkoutView {
                 <div class="set-row-details">${details}${prBadge}</div>
                 <div class="set-row-actions">
                     <button type="button" class="btn-set-action" title="Edit set" aria-label="Edit set"
-                        onclick="window.gymApp.viewControllers.workout.editSet(${exerciseIndex}, ${slot})">
+                        data-action="edit-set" data-exercise-index="${exerciseIndex}" data-slot="${slot}">
                         <i class="fas fa-edit"></i>
                     </button>
                     <button type="button" class="btn-set-action btn-set-delete" title="Delete set" aria-label="Delete set"
-                        onclick="window.gymApp.viewControllers.workout.deleteSet(${exerciseIndex}, ${slot})">
+                        data-action="delete-set" data-exercise-index="${exerciseIndex}" data-slot="${slot}">
                         <i class="fas fa-trash"></i>
                     </button>
                 </div>
@@ -904,11 +975,11 @@ class WorkoutView {
             ${editFormHTML}
             <div class="set-row-actions">
                 <button type="button" class="btn-set-action btn-set-save" title="Save" aria-label="Save set"
-                    onclick="window.gymApp.viewControllers.workout.saveSetEdit(${exerciseIndex}, ${slot})">
+                    data-action="save-set-edit" data-exercise-index="${exerciseIndex}" data-slot="${slot}">
                     <i class="fas fa-check"></i>
                 </button>
                 <button type="button" class="btn-set-action btn-set-cancel" title="Cancel" aria-label="Cancel edit"
-                    onclick="window.gymApp.viewControllers.workout.cancelSetEdit(${exerciseIndex})">
+                    data-action="cancel-set-edit" data-exercise-index="${exerciseIndex}">
                     <i class="fas fa-times"></i>
                 </button>
             </div>
@@ -1086,17 +1157,11 @@ class WorkoutView {
     /** Add N seconds to the in-flight rest timer without restarting it. */
     extendRest(seconds) {
         if (this.activeRestTimerId == null) return;
-        const current = timerService.getRestTimerRemaining(this.activeRestTimerId);
-        const newTotal = Math.max(1, current + seconds);
-        // Simplest correct approach: restart with the new remaining duration.
-        timerService.stopRestTimer(this.activeRestTimerId);
+        // The wall-clock-based timer can be extended in place; we just bump
+        // the total used as the progress-bar denominator so the fill ratio
+        // stays sensible.
         this.restTimerDuration += seconds;
-        this.showRestBar(newTotal, { resetFillBase: false });
-        this.activeRestTimerId = timerService.startRestTimer(
-            newTotal,
-            (remaining) => this.onRestTick(remaining),
-            () => this.onRestComplete(),
-        );
+        timerService.extendRestTimer(this.activeRestTimerId, seconds);
     }
 
     skipRest() {
@@ -1195,7 +1260,9 @@ class WorkoutView {
             prsValue.textContent = `🏆 ${this.sessionPrCount}`;
         }
 
-        document.getElementById('finish-workout-modal').classList.add('active');
+        const finishModal = document.getElementById('finish-workout-modal');
+        finishModal.classList.add('active');
+        trapModalFocus(finishModal);
     }
 
     finishWorkout() {

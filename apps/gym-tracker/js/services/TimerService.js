@@ -10,33 +10,63 @@ export class TimerService {
     }
 
     // Rest Timer
+    //
+    // Driven by wall-clock deltas (Date.now() - startTime), not by a
+    // decrement counter. setInterval is throttled by mobile browsers and
+    // backgrounded tabs, which used to cause the rest timer to drift —
+    // committing a set, locking the phone for 30s, and unlocking would
+    // show "55s remaining" instead of the true ~25s. Each tick now reads
+    // the true elapsed time and recomputes `remaining` from `endTime`.
     startRestTimer(duration, onTick, onComplete) {
         const timerId = Date.now();
-        let remaining = duration;
+        const startTime = Date.now();
+        let endTime = startTime + duration * 1000;
 
-        const interval = setInterval(() => {
-            remaining--;
+        const tick = () => {
+            const remaining = Math.max(0, Math.ceil((endTime - Date.now()) / 1000));
+            const entry = this.restTimers.get(timerId);
+            if (entry) entry.remaining = remaining;
 
-            if (onTick) {
-                onTick(remaining);
-            }
+            if (onTick) onTick(remaining);
 
             if (remaining <= 0) {
                 this.stopRestTimer(timerId);
-                if (onComplete) {
-                    onComplete();
-                }
+                if (onComplete) onComplete();
             }
-        }, 1000);
+        };
+
+        const interval = setInterval(tick, 250);
 
         this.restTimers.set(timerId, {
             interval,
-            startTime: Date.now(),
+            startTime,
+            endTime,
             duration,
-            remaining
+            remaining: duration,
+            // Mutator used by extendRest so callers don't need to know the
+            // internal endTime field.
+            extend: (extraSeconds) => {
+                endTime += extraSeconds * 1000;
+                const entry = this.restTimers.get(timerId);
+                if (entry) entry.endTime = endTime;
+                tick();
+            }
         });
 
         return timerId;
+    }
+
+    /**
+     * Add seconds to an in-flight rest timer (e.g. user taps "+30s").
+     * No-op if the timer has already elapsed.
+     */
+    extendRestTimer(timerId, extraSeconds) {
+        const timer = this.restTimers.get(timerId);
+        if (timer && typeof timer.extend === 'function') {
+            timer.extend(extraSeconds);
+            return true;
+        }
+        return false;
     }
 
     stopRestTimer(timerId) {

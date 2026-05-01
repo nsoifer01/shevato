@@ -5,7 +5,7 @@
  */
 import { app } from '../app.js';
 import { AnalyticsService } from '../services/AnalyticsService.js';
-import { formatDate } from '../utils/helpers.js';
+import { formatDate, escapeHtml } from '../utils/helpers.js';
 import { DarkSelect } from '../utils/dark-select.js';
 
 const MONTH_NAMES = [
@@ -34,6 +34,30 @@ class CalendarView {
     init() {
         this.app.viewControllers.calendar = this;
         this.setupEventListeners();
+        this.wireSessionActions();
+    }
+
+    /**
+     * Single delegated click+keyboard listener for the selected-day session
+     * cards. Replaces the inline onclick + onkeydown that interpolated
+     * session.id into JS expressions inside the rendered HTML.
+     */
+    wireSessionActions() {
+        const view = document.getElementById('calendar-view');
+        if (!view || view.dataset.actionsWired) return;
+        view.dataset.actionsWired = '1';
+
+        const dispatch = (e) => {
+            const target = e.target.closest('[data-action="open-session"]');
+            if (!target || !view.contains(target)) return;
+            e.preventDefault();
+            this.openWorkoutHistory(Number(target.dataset.sessionId));
+        };
+
+        view.addEventListener('click', dispatch);
+        view.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter' || e.key === ' ') dispatch(e);
+        });
     }
 
     setupEventListeners() {
@@ -300,10 +324,10 @@ class CalendarView {
                  role="button"
                  tabindex="0"
                  title="View workout details"
-                 onclick="window.gymApp.viewControllers.calendar.openWorkoutHistory(${session.id})"
-                 onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();window.gymApp.viewControllers.calendar.openWorkoutHistory(${session.id});}">
+                 data-action="open-session"
+                 data-session-id="${session.id}">
                 <div class="cal-session-header">
-                    <strong>${session.workoutDayName || 'Workout'}</strong>
+                    <strong>${escapeHtml(session.workoutDayName || 'Workout')}</strong>
                     <span class="cal-session-chevron" aria-hidden="true"><i class="fas fa-chevron-right"></i></span>
                 </div>
                 <div class="cal-session-stats">
@@ -312,7 +336,7 @@ class CalendarView {
                     <span><i class="fas fa-weight-hanging"></i> ${totalVolume} ${unit}</span>
                     <span><i class="fas fa-clock"></i> ${durStr}</span>
                 </div>
-                ${session.notes ? `<p class="cal-session-notes">${session.notes}</p>` : ''}
+                ${session.notes ? `<p class="cal-session-notes">${escapeHtml(session.notes)}</p>` : ''}
             </div>
         `;
     }

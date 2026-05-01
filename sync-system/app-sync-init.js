@@ -90,7 +90,14 @@ export async function initAppSync() {
     currentApp = 'gym-tracker';
   }
 
-  // Start sync for current app first
+  // Only sync the current app's namespace plus shared global prefs.
+  //
+  // Previously every app page also opened Firestore listeners + ran initial
+  // merges for the other two apps "so they're ready when user navigates."
+  // Navigation between apps is a full page load (each app is a separate
+  // static HTML), so the warm-cache argument doesn't hold — those listeners
+  // were just extra Firestore reads, extra bandwidth, and an extra race
+  // against the UI on every gym/football/mario-kart page load.
   if (currentApp && APP_SYNC_CONFIG[currentApp]) {
     const config = APP_SYNC_CONFIG[currentApp];
 
@@ -103,21 +110,7 @@ export async function initAppSync() {
     activeSyncs.push({ app: currentApp, sync });
   }
 
-  // Also start sync for other apps so they're ready when user navigates
-  // This ensures all app data is available when switching between apps
-  for (const [appName, config] of Object.entries(APP_SYNC_CONFIG)) {
-    if (appName !== currentApp) { // Don't double-sync current app
-      const sync = startStorageSync({
-        namespace: config.namespace,
-        keys: config.keys,
-        useFirestore: true
-      });
-
-      activeSyncs.push({ app: appName, sync });
-    }
-  }
-
-  // Also sync global/shared preferences if on any app page
+  // Sync global/shared preferences if on any app page
   if (currentApp) {
     const globalSync = startStorageSync({
       namespace: 'globalPrefs',
