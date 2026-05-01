@@ -22,6 +22,7 @@ import {
 import { trapModalFocus } from '../utils/modal-focus.js';
 import { on, EVENTS } from '../utils/event-bus.js';
 import { uploadMeasurementPhoto, deleteMeasurementPhoto } from '../utils/photo-store.js';
+import { DarkCalendar } from '../utils/dark-calendar.js';
 
 const METRICS = [
     { key: 'weight',     label: 'Body weight', unitFromSettings: true },
@@ -54,6 +55,16 @@ class MeasurementsView {
 
         const addBtn = document.getElementById('add-measurement-btn');
         if (addBtn) addBtn.addEventListener('click', () => this.openModal());
+
+        // Wrap the modal date input with DarkCalendar so it visually
+        // matches the History view's date filters (and any other calendar
+        // surface). Idempotent — guarded by the same dataset flag the
+        // History view uses.
+        const dateInput = document.getElementById('m-date');
+        if (dateInput && !dateInput.dataset.darkCalendarInit) {
+            this.dateCalendar = new DarkCalendar(dateInput);
+            dateInput.dataset.darkCalendarInit = '1';
+        }
 
         const photoBtn = document.getElementById('m-photos-add-btn');
         const photoInput = document.getElementById('m-photos-input');
@@ -252,7 +263,11 @@ class MeasurementsView {
             const el = document.querySelector(selector);
             if (el) el.value = value === null || value === undefined ? '' : value;
         };
-        setVal('#m-date', m?.date || getTodayDateString());
+        const dateValue = m?.date || getTodayDateString();
+        setVal('#m-date', dateValue);
+        // Push the value through the wrapped DarkCalendar so its trigger
+        // label shows the same date as the underlying input.
+        if (this.dateCalendar) this.dateCalendar.selectDate(parseLocalDate(dateValue));
         setVal('#m-weight', m?.weight);
         setVal('#m-bodyfat', m?.bodyFat);
         setVal('#m-chest', m?.chest);
