@@ -6790,6 +6790,9 @@ button.calendar-day {
     grid-template-columns: 1fr;
     gap: var(--spacing-lg);
     margin-top: var(--spacing-xl);
+    /* `stretch` is the grid default but spelled out so future tweaks
+       can't accidentally shrink-fit cards to their own content height. */
+    align-items: stretch;
 }
 
 @media (min-width: 768px) {
@@ -6802,6 +6805,43 @@ button.calendar-day {
     .program-selection-grid {
         grid-template-columns: repeat(3, 1fr);
     }
+}
+
+/* Lock the workout-picker cards into the same vertical rhythm so
+   single-line titles, two-line titles, and titles with descriptions
+   all line their bottom action up. Scoped to .program-selection-grid
+   so the Programs page (which has a different bottom action cluster)
+   is unaffected. */
+.program-selection-grid .program-card {
+    min-height: 260px;
+    padding: var(--spacing-lg);
+}
+
+/* Reserve room for ~2 lines of title so a 1-line and 2-line title
+   produce the same gap to the next row. ~2.4em with the h3 line-height
+   covers two lines of the typical title without forcing extra space
+   when the title is short. */
+.program-selection-grid .program-card .program-header {
+    min-height: 2.4em;
+    display: flex;
+    align-items: flex-start;
+}
+.program-selection-grid .program-card .program-header h3 {
+    margin: 0;
+    line-height: 1.2;
+}
+
+/* Push the trailing element (Start Workout button OR the
+   "no exercises" warning) to the foot so every card's primary action
+   lines up horizontally across the row. */
+.program-selection-grid .program-card > :last-child {
+    margin-top: auto;
+}
+
+/* Consistent button height across cards regardless of inner content. */
+.program-selection-grid .program-card .btn-large {
+    width: 100%;
+    min-height: 52px;
 }
 
 /* Quick Programs on Home */
