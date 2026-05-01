@@ -785,3 +785,43 @@ Files touched / added:
 - `node --check apps/football-h2h/js/match-logic.js` exits 0.
 - `npm run test:football` exits 0 with `# pass 112`.
 - `npm test` exits 0 with `# pass 157`.
+
+
+## Change 21 (followup hotfix): Stop sync-immediate from clobbering robust override
+### What changed
+**Bug:** Change 14 broke persistence. On refresh, any program / session / setting added since the previous sync-ready event would silently disappear.
+
+**Root cause:** the override chain at runtime is
+
+  `localStorage.setItem` → robust customB → (its own `originalMethods.setItem`, which is bound to) sync-immediate customA → native originalSetItem
+
+When `syncSystemReady` fired, Change 14 ran `localStorage.setItem = originalSetItem`. That overwrites customB at the top of the chain — every subsequent write went straight to the native setter and the robust sync layer's `notifyLocalChange()` never fired. Writes landed in localStorage but never reached Firebase. On refresh, the Firestore listener pulled the (stale) remote document and wiped local changes.
+
+**Fix:** removed the two `localStorage.setItem = originalSetItem` / `localStorage.removeItem = originalRemoveItem` restores. The `handedOff` flag is still flipped, so sync-immediate's customA becomes a thin pass-through (its body early-returns after the native call when `handedOff === true`). Robust customB stays at the top of the chain and continues to call `notifyLocalChange()` for every write. The double-pipeline issue Change 14 was meant to fix doesn't exist anymore — customA no longer buffers or forwards to anything once handed off, so the only behavior post-handoff is: customB → customA pass-through → native.
+
+Files touched:
+- `sync-system/sync-immediate.js`
+
+### Setup
+- A signed-in account with active Firestore sync.
+- Two tabs / devices on the same account (optional, for cross-device verification).
+
+### Test steps
+1. Hard reload the gym tracker. Wait until the sync pill goes green ("Synced").
+2. Programs → Create Program "Test Persist" → save. Add an exercise. Save.
+3. Watch the sync pill: should briefly flash amber ("Saving…") then return to green.
+4. Hard reload (Ctrl+Shift+R). Verify the program "Test Persist" is still there.
+5. Open DevTools → Network → filter `firestore`. Make another change (rename the program). Verify a Firestore write fires within ~1 second (the 500ms debounce window plus tx round-trip).
+6. On a second device with the same account, verify the renamed program appears within a few seconds.
+7. Repeat with a workout session: start a workout, log 2 sets, finish. Refresh. Verify the session is in History.
+8. Repeat with Settings: change weight unit kg → lb. Save. Refresh. Verify the setting persisted.
+
+### Regression checks
+1. Sync pill still functions: green when idle, amber when writes are flushing, gray when offline.
+2. Writes that happen during the bootstrap window (before `syncSystemReady`) still get replayed via `window.syncManager.processChange` — the buffer / replay path in sync-immediate is unchanged.
+3. `npm test` still 157/157.
+
+### Automated checks
+- `node --check sync-system/sync-immediate.js` exits 0.
+- `grep -n "localStorage.setItem = originalSetItem\|localStorage.removeItem = originalRemoveItem" sync-system/sync-immediate.js` returns no matches (those lines are deleted).
+- `npm test` exits 0 with `# pass 157`.

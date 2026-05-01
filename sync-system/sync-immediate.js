@@ -46,11 +46,20 @@
   window.addEventListener('syncSystemReady', function onReady() {
     log('✅ Sync system ready — handing off to robust sync layer');
 
-    // Step out of the way: restore the real native methods. The robust
-    // sync layer captured these as its "original" when it installed its
-    // own override, so writes will continue to be intercepted by it.
-    localStorage.setItem = originalSetItem;
-    localStorage.removeItem = originalRemoveItem;
+    // CRITICAL: do NOT restore localStorage.setItem here. By the time
+    // syncSystemReady fires, the override chain looks like:
+    //   localStorage.setItem  →  storage-sync-robust's customB
+    //                            (whose `originalMethods.setItem` is
+    //                             a bound reference to OUR override)
+    // If we wrote `localStorage.setItem = originalSetItem` we'd
+    // overwrite customB and silently bypass the robust sync layer —
+    // writes would land in localStorage but never reach Firebase, and
+    // the next refresh would pull stale remote state and wipe local
+    // changes. Instead, we just flip `handedOff` so this module's
+    // override becomes a thin pass-through (early-returns after calling
+    // the native original). The robust layer's customB stays at the
+    // top of the chain and continues to call `notifyLocalChange()`
+    // for every write.
     handedOff = true;
 
     // Replay anything that landed before the handoff so the robust layer
