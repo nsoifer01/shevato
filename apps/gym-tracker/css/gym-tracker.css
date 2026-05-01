@@ -2571,6 +2571,7 @@ body.gym-tracker #footer {
 .set-row {
     display: flex;
     align-items: center;
+    flex-wrap: wrap;
     gap: 0.6rem;
     padding: 0.7rem 0.6rem 0.7rem 0.6rem;
     background: rgba(255, 255, 255, 0.02);
@@ -8145,4 +8146,57 @@ button.calendar-day {
     width: 24px;
     height: 18px;
     font-size: 10px;
+}
+
+/* ------------------------------------------------------------------
+   Plate calculator UI — Settings input stack + per-row inline hint.
+   ------------------------------------------------------------------ */
+.setting-item-stack {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 6px;
+}
+.setting-item-stack input[type="text"] {
+    width: 100%;
+    box-sizing: border-box;
+}
+.settings-help-text {
+    margin: 4px 0 0;
+    font-size: 0.85rem;
+    color: var(--text-muted, #a8a8c8);
+}
+
+/* Forces the plate hint onto its own line under the inputs/toggle row.
+   .set-row is now flex-wrap: wrap, so flex-basis: 100% pushes us below
+   the main row instead of competing with it for horizontal space. */
+.plate-hint {
+    flex: 1 0 100%;
+    margin: 2px 0 0;
+    padding: 4px 0 0;
+    border-top: 1px dashed rgba(255, 255, 255, 0.06);
+    font-size: 0.72rem;
+    line-height: 1.2;
+    color: rgba(255, 255, 255, 0.55);
+    /* Don't let a long stack push the row width — single-line ellipsis. */
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+.plate-hint-label i {
+    margin-right: 4px;
+    opacity: 0.7;
+}
+.plate-hint em {
+    font-style: normal;
+    color: rgba(255, 255, 255, 0.85);
+    font-weight: 500;
+}
+/* On phones, shorten the leading label to a dumbbell icon + breakdown so
+   "Plates per side:" doesn't eat half the row. The .plate-hint-label-text
+   span carries the words; we hide that on small screens and the icon
+   alone communicates intent. */
+.plate-hint-label-text { display: inline; }
+@media (max-width: 600px) {
+    .plate-hint-label-text { display: none; }
+    .plate-hint { font-size: 0.78rem; }
 }
