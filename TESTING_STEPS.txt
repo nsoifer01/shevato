@@ -225,3 +225,32 @@ Files touched:
 ### Automated checks
 - `node --check apps/gym-tracker/js/utils/helpers.js apps/gym-tracker/js/models/Program.js apps/gym-tracker/js/models/WorkoutSession.js apps/gym-tracker/js/models/WorkoutDay.js apps/gym-tracker/js/views/exercises-view.js` exits 0 for all files.
 - `grep -nE "Date\.now\(\)\s*\+\s*Math\." apps/gym-tracker/js/models/ apps/gym-tracker/js/views/exercises-view.js` returns no matches.
+
+
+## Change 8: Per-key error handling in loadAllData
+### What changed
+`app.js:loadAllData` used to wrap every storage read in a single try/catch. One corrupt blob (e.g. a sync glitch or a partial migration) caused the whole catch to fire and reset programs + sessions + achievements + custom exercises + settings to defaults — silently.
+
+Refactored into a `_safeLoad(label, read, parse, fallback)` helper that wraps each slice independently. If a slice fails to parse, we keep every other slice intact, reset just that one to its empty default, and toast the user with the slice name so they know what was affected.
+
+Files touched:
+- `apps/gym-tracker/js/app.js`
+
+### Setup
+- A populated localStorage (a few programs, a session, custom exercises).
+
+### Test steps
+1. Open DevTools console.
+2. Run `localStorage.setItem('gymTrackerSessions', '{not valid json')`.
+3. Reload the page.
+4. Verify a red toast appears reading `Could not load workout sessions — that section reset to empty.`
+5. Verify Programs and Custom Exercises STILL load correctly (previous data intact). Only Workout History is empty.
+6. Repeat with a different corrupt key, e.g. `localStorage.setItem('gymTrackerPrograms', 'broken')`. Reload. Verify the toast names "programs" specifically and other slices remain intact.
+
+### Regression checks
+1. Normal load with all valid keys: no toast appears, all slices populate as before.
+2. Settings still defaults correctly when storage is empty (first-launch flow).
+3. After the corrupt-key recovery, saving a new program writes back valid JSON (no perpetual error loop).
+
+### Automated checks
+- `node --check apps/gym-tracker/js/app.js` exits 0.
