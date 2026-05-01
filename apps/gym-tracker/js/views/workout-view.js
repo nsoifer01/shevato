@@ -1086,17 +1086,11 @@ class WorkoutView {
     /** Add N seconds to the in-flight rest timer without restarting it. */
     extendRest(seconds) {
         if (this.activeRestTimerId == null) return;
-        const current = timerService.getRestTimerRemaining(this.activeRestTimerId);
-        const newTotal = Math.max(1, current + seconds);
-        // Simplest correct approach: restart with the new remaining duration.
-        timerService.stopRestTimer(this.activeRestTimerId);
+        // The wall-clock-based timer can be extended in place; we just bump
+        // the total used as the progress-bar denominator so the fill ratio
+        // stays sensible.
         this.restTimerDuration += seconds;
-        this.showRestBar(newTotal, { resetFillBase: false });
-        this.activeRestTimerId = timerService.startRestTimer(
-            newTotal,
-            (remaining) => this.onRestTick(remaining),
-            () => this.onRestComplete(),
-        );
+        timerService.extendRestTimer(this.activeRestTimerId, seconds);
     }
 
     skipRest() {
