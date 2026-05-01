@@ -8472,3 +8472,129 @@ button.calendar-day {
     text-transform: none;
     letter-spacing: 0;
 }
+
+/* ------------------------------------------------------------------
+   Measurements — trends grid (tiles + sparklines), history rows.
+   ------------------------------------------------------------------ */
+.measurements-trends-grid {
+    display: grid;
+    gap: 12px;
+    grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+}
+.measurement-tile {
+    background: var(--bg-card);
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-md);
+    padding: 12px 14px;
+    color: var(--text-primary);
+    display: grid;
+    gap: 4px;
+}
+.measurement-tile-label {
+    font-size: 0.72rem;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: var(--text-muted);
+}
+.measurement-tile-value {
+    font-size: 1.5rem;
+    font-weight: 700;
+    line-height: 1.1;
+    font-variant-numeric: tabular-nums;
+}
+.measurement-tile-value small {
+    font-size: 0.75rem;
+    font-weight: 500;
+    color: var(--text-muted);
+    margin-left: 2px;
+}
+.measurement-tile-delta {
+    font-size: 0.78rem;
+    color: var(--text-muted);
+    font-variant-numeric: tabular-nums;
+}
+.measurement-tile-delta.is-up   { color: #4ade80; }
+.measurement-tile-delta.is-down { color: #fb7185; }
+.measurement-tile-delta span    { color: var(--text-muted); margin-left: 2px; }
+.measurement-spark {
+    margin-top: 6px;
+    width: 100%;
+    height: 32px;
+    color: var(--accent-primary);
+    opacity: 0.85;
+}
+
+.measurements-history {
+    display: grid;
+    gap: 10px;
+}
+.measurement-row {
+    background: var(--bg-card);
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-md);
+    padding: 12px 14px;
+}
+.measurement-row-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 8px;
+}
+.measurement-row-header h3 {
+    margin: 0;
+    font-size: 1rem;
+}
+.measurement-row-actions {
+    display: inline-flex;
+    gap: 4px;
+}
+.measurement-row-actions .btn-icon {
+    width: 30px;
+    height: 30px;
+    border-radius: 6px;
+    background: rgba(255, 255, 255, 0.04);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    color: rgba(255, 255, 255, 0.7);
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+}
+.measurement-row-actions .btn-icon:hover {
+    background: rgba(108, 99, 255, 0.18);
+    border-color: rgba(108, 99, 255, 0.45);
+    color: #fff;
+}
+.measurement-row-actions .btn-icon-danger:hover {
+    background: rgba(239, 68, 68, 0.18);
+    border-color: rgba(239, 68, 68, 0.45);
+    color: #fff;
+}
+.measurement-row-stats {
+    margin-top: 8px;
+    display: flex;
+    gap: 12px;
+    flex-wrap: wrap;
+    font-size: 0.85rem;
+    color: var(--text-secondary);
+}
+.measurement-row-stats .m-stat b {
+    color: var(--text-muted);
+    font-weight: 600;
+}
+.measurement-row-notes {
+    margin: 8px 0 0;
+    font-size: 0.85rem;
+    color: var(--text-muted);
+    font-style: italic;
+}
+
+/* The .form-row-2 grid utility stacks two form-groups in two columns
+   on wide viewports, falling back to one column on phones. */
+.form-row.form-row-2 {
+    grid-template-columns: 1fr 1fr;
+}
+@media (max-width: 600px) {
+    .form-row.form-row-2 {
+        grid-template-columns: 1fr;
+    }
+}

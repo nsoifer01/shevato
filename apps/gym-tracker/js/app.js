@@ -8,6 +8,7 @@ import { WorkoutDay } from './models/WorkoutDay.js';
 import { WorkoutSession } from './models/WorkoutSession.js';
 import { Settings } from './models/Settings.js';
 import { Achievement } from './models/Achievement.js';
+import { Measurement } from './models/Measurement.js';
 
 import { storageService } from './services/StorageService.js';
 import { timerService } from './services/TimerService.js';
@@ -27,6 +28,7 @@ class GymTrackerApp {
         this.settings = null;
         this.achievements = [];
         this.customExercises = [];
+        this.measurements = [];
         this.exerciseDatabase = EXERCISE_DATABASE;
 
         this.viewControllers = {};
@@ -66,7 +68,7 @@ class GymTrackerApp {
         await this.initializeViews();
 
         // Show initial view — honor URL hash so refresh keeps the user's page
-        const validViews = new Set(['home', 'programs', 'calendar', 'workout', 'exercises', 'history', 'achievements', 'settings', 'more', 'insights']);
+        const validViews = new Set(['home', 'programs', 'calendar', 'workout', 'exercises', 'history', 'achievements', 'settings', 'more', 'insights', 'measurements']);
         const hashView = window.location.hash.slice(1);
         this.showView(validViews.has(hashView) ? hashView : 'home');
 
@@ -149,6 +151,12 @@ class GymTrackerApp {
             []
         );
 
+        this.measurements = this._safeLoad('measurements',
+            () => storageService.getMeasurements(),
+            (data) => Array.isArray(data) ? data.map(m => Measurement.fromJSON(m)) : [],
+            []
+        );
+
         // Merge default and custom exercises
         this.exerciseDatabase = [...EXERCISE_DATABASE, ...this.customExercises];
 
@@ -209,6 +217,20 @@ class GymTrackerApp {
         storageService.saveCustomExercises(this.customExercises);
         // Re-merge exercise database
         this.exerciseDatabase = [...EXERCISE_DATABASE, ...this.customExercises];
+    }
+
+    saveMeasurements() {
+        storageService.saveMeasurements(this.measurements.map(m => m.toJSON()));
+    }
+
+    addMeasurement(measurement) {
+        this.measurements.push(measurement);
+        this.saveMeasurements();
+    }
+
+    deleteMeasurement(id) {
+        this.measurements = this.measurements.filter(m => m.id !== id);
+        this.saveMeasurements();
     }
 
     addCustomExercise(exercise) {
@@ -414,6 +436,7 @@ class GymTrackerApp {
         this.workoutSessions = [];
         this.achievements = AchievementService.getDefaultAchievements();
         this.customExercises = [];
+        this.measurements = [];
         this.settings = Settings.getDefault();
         this.currentWorkoutSession = null;
 
@@ -421,6 +444,7 @@ class GymTrackerApp {
         this.saveWorkoutSessions();
         this.saveAchievements();
         this.saveCustomExercises();
+        this.saveMeasurements();
         this.saveSettings();
 
         showToast('All data cleared', 'info');

@@ -16,7 +16,7 @@
  * Old caches are pruned automatically on activate.
  */
 
-const CACHE_VERSION = '1.0.0';
+const CACHE_VERSION = '1.0.1';
 const PRECACHE = `gym-precache-${CACHE_VERSION}`;
 const RUNTIME = `gym-runtime-${CACHE_VERSION}`;
 
@@ -29,6 +29,7 @@ const PRECACHE_URLS = [
   './js/app.js',
   './js/models/Achievement.js',
   './js/models/Exercise.js',
+  './js/models/Measurement.js',
   './js/models/Program.js',
   './js/models/Set.js',
   './js/models/Settings.js',
@@ -53,6 +54,7 @@ const PRECACHE_URLS = [
   './js/views/history-view.js',
   './js/views/home-view.js',
   './js/views/insights-view.js',
+  './js/views/measurements-view.js',
   './js/views/paused-banner.js',
   './js/views/programs-view.js',
   './js/views/settings-view.js',
