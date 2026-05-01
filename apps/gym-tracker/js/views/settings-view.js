@@ -30,6 +30,16 @@ class SettingsView {
             weightUnitSelect.addEventListener('change', () => this.checkDirty());
         }
 
+        // Time format dropdown — same DarkSelect treatment.
+        const timeFormatSelect = document.getElementById('time-format');
+        if (timeFormatSelect && !timeFormatSelect.dataset.darkSelectInit) {
+            this.timeFormatDropdown = new DarkSelect(timeFormatSelect);
+            timeFormatSelect.dataset.darkSelectInit = '1';
+        }
+        if (timeFormatSelect) {
+            timeFormatSelect.addEventListener('change', () => this.checkDirty());
+        }
+
         // Alert toggles (sound + vibration, independent)
         const soundAlertsInput = document.getElementById('sound-alerts');
         if (soundAlertsInput) {
@@ -167,6 +177,11 @@ class SettingsView {
         // Populate form with current settings
         document.getElementById('weight-unit').value = settings.weightUnit;
         if (this.weightUnitDropdown) this.weightUnitDropdown.sync();
+        const timeFormatEl = document.getElementById('time-format');
+        if (timeFormatEl) {
+            timeFormatEl.value = settings.timeFormat || '12';
+            if (this.timeFormatDropdown) this.timeFormatDropdown.sync();
+        }
 
         const soundAlertsInput = document.getElementById('sound-alerts');
         if (soundAlertsInput) soundAlertsInput.checked = settings.soundAlerts !== false;
@@ -189,6 +204,7 @@ class SettingsView {
     snapshotForm() {
         return {
             weightUnit: document.getElementById('weight-unit')?.value ?? '',
+            timeFormat: document.getElementById('time-format')?.value ?? '',
             soundAlerts: document.getElementById('sound-alerts')?.checked ? '1' : '0',
             vibrationAlerts: document.getElementById('vibration-alerts')?.checked ? '1' : '0',
             barWeight: document.getElementById('bar-weight')?.value ?? '',
@@ -235,6 +251,11 @@ class SettingsView {
         const settings = this.app.settings;
 
         settings.weightUnit = document.getElementById('weight-unit').value;
+        const timeFormatEl = document.getElementById('time-format');
+        if (timeFormatEl) {
+            const v = timeFormatEl.value === '24' ? '24' : '12';
+            settings.timeFormat = v;
+        }
         const soundAlertsInput = document.getElementById('sound-alerts');
         if (soundAlertsInput) settings.soundAlerts = soundAlertsInput.checked;
         const vibrationAlertsInput = document.getElementById('vibration-alerts');
