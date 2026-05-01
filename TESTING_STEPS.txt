@@ -123,3 +123,44 @@ Files touched:
 ### Automated checks
 - `node --check apps/gym-tracker/js/services/TimerService.js` exits 0.
 - `node --check apps/gym-tracker/js/views/workout-view.js` exits 0.
+
+
+## Change 5: Normalize muscle-group casing & strip dead `difficulty` field
+### What changed
+The exercise database used to mix two `muscleGroup` styles — lowercase-hyphenated (e.g. `'upper-pectorals'`) and Title Case (e.g. `'Upper Chest'`) — and `formatMuscleGroup` papered over both at render time. All Title Case values are now rewritten to their canonical lowercase-hyphenated equivalents. Mappings used:
+- `'Chest'` → `'pectorals'`, `'Upper/Lower/Inner/Outer Chest'` → `'upper/lower/inner/outer-pectorals'`
+- `'Back'` → `'mid-back'`, `'Lats/Lower Back/Mid Back/Upper Back'` → kebab equivalents
+- `'Front/Rear/Side Delts'` → `'front/rear/side-deltoids'`, `'Rotator Cuff'` → `'rotator-cuff'`, `'Shoulders'` → `'shoulders'`
+- `'Biceps/Triceps/Forearms/Quadriceps/Hamstrings/Glutes/Calves'` → lowercase
+- `'Hip Flexors'` → `'hip-flexors'`, `'Inner Thighs'` → `'adductors'`, `'Tibialis'` → `'tibialis'`
+- `'Traps/Neck/Core/Abs/Lower Abs/Obliques/Full Body/Legs'` → lowercase (Lower Abs collapses to abs)
+
+The README claimed the `difficulty` field was removed; it was still present on 278 entries (and unused by any JS). Stripped from every entry.
+
+`formatMuscleGroup` gets one new explicit entry for `'shoulders'` so the Exercises tab subtitle stays predictable.
+
+Files touched:
+- `apps/gym-tracker/data/exercises-db.js` (~278 difficulty fields removed, ~30 muscle group values rewritten)
+- `apps/gym-tracker/js/utils/helpers.js`
+
+### Setup
+- None.
+
+### Test steps
+1. Reload the app.
+2. Open `Exercises` tab. Filter by category `Chest`. Verify cards show muscle labels like "Chest", "Upper Chest", etc. — same wording as before, no `'pectorals'` raw values leaking.
+3. Filter by category `Shoulders` → verify `Shoulders`, `Front Delts`, `Side Delts`, `Rear Delts`, `Rotator Cuff` all render in title case.
+4. Open an exercise (e.g. `Barbell Bench Press`). Verify the detail modal still shows muscle group correctly.
+5. Filter by `Back` → verify `Lats`, `Mid Back`, `Lower Back`, `Upper Back`, `Outer Lats` are all human-readable.
+6. Filter by `Quads` → verify the Quadriceps-mapped exercises now show `Quads`.
+7. In the Programs tab, edit any program and verify each exercise row's muscle subtitle is rendered the same as before.
+
+### Regression checks
+1. `grep -E "difficulty:" apps/gym-tracker/data/exercises-db.js` returns no matches.
+2. `grep -oE "muscleGroup: '[^']+'" apps/gym-tracker/data/exercises-db.js | sort -u` returns only lowercase-hyphenated values.
+3. Custom exercises with user-typed muscle groups (free-text) still render via the fallback path (`formatMuscleGroup`'s string-massage at the bottom).
+4. Existing user data continues to work — sessions stored under old display names use `exerciseName` (denormalized) so they're unaffected.
+
+### Automated checks
+- `node --check apps/gym-tracker/data/exercises-db.js` exits 0.
+- `node --check apps/gym-tracker/js/utils/helpers.js` exits 0.
