@@ -633,3 +633,43 @@ Files touched / added:
 ### Automated checks
 - `node --check apps/gym-tracker/js/services/StorageService.js` exits 0.
 - `npm test` exits 0 with `# pass 138`.
+
+
+## Change 18: Settings — Replay welcome tour + Delete cloud data
+### What changed
+Two new buttons in Settings → Data Management:
+1. **Replay welcome tour** — clears the `gymTrackerOnboardingSeen` flag and reloads. Lets a user who skipped the first-run modal see it again. Existing data is untouched.
+2. **Delete cloud data** — calls `deleteDoc(users/{uid}/apps/gymTrackerApp)` to wipe just the gym-tracker namespace from Firestore. Local data on the current device stays intact (run "Clear All Data" alongside if a full wipe is wanted). Confirms via the danger modal before firing.
+
+The cloud delete uses Firebase v10's modular SDK already loaded via `firebase-config.js`. Auth resolution falls back through `window.firebaseAuth.getCurrentUser()` and the compat global so it works regardless of which auth helper layer is mounted on the page.
+
+Files touched:
+- `apps/gym-tracker/index.html` (two new buttons)
+- `apps/gym-tracker/js/views/settings-view.js`
+
+### Setup
+- A signed-in account with at least one workout session synced.
+- A second device or browser profile signed in to the same account (optional, for cross-device verification).
+
+### Test steps for Replay welcome tour
+1. Settings → Data Management → click "Replay welcome tour".
+2. Confirm dialog appears. Click Replay.
+3. The app reloads. The welcome modal appears with the 3-step tour.
+4. Skip or dismiss it. Reload — modal does NOT reappear (flag re-saved).
+
+### Test steps for Delete cloud data
+1. With sync working (sync pill green), Settings → click "Delete cloud data". Confirm.
+2. Toast: "Cloud data deleted. Sign out + back in to re-sync."
+3. Open Firebase console → Firestore → users/{your-uid}/apps. Verify `gymTrackerApp` document is gone.
+4. On another signed-in device, force a refresh — local data should populate from THAT device into the (now empty) cloud doc, NOT the reverse. (This is correct sync behavior — cloud was the empty side; the "earliest" local wins on first re-sync.)
+5. If signed out, click the button — toast: "Sign in first to delete cloud data" (no Firestore call attempted).
+
+### Regression checks
+1. Clear All Data still works on its own (deletes only localStorage; cloud may re-populate it on next sync if sync is active).
+2. The two new buttons live alongside the existing Export / Import / Clear All Data buttons without altering their behavior.
+3. The confirm modal for "Delete cloud data" includes the danger warning ("This cannot be undone — other devices that sync will also lose this data on their next sync.").
+
+### Automated checks
+- `node --check apps/gym-tracker/js/views/settings-view.js` exits 0.
+- `grep -n "replay-onboarding-btn\|delete-cloud-data-btn" apps/gym-tracker/index.html` finds both buttons.
+- `npm test` exits 0.
