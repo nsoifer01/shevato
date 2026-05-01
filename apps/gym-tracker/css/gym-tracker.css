@@ -8104,3 +8104,45 @@ button.calendar-day {
         bottom: 16px;
     }
 }
+
+/* ------------------------------------------------------------------
+   Keyboard reorder buttons — sit alongside the drag handle on programs
+   and program-exercise rows so users without DnD (keyboard / touch
+   without long-press) can still reorder. Same up/down icon pair, two
+   sizes (program card vs in-modal exercise row).
+   ------------------------------------------------------------------ */
+.program-card-move-buttons,
+.pex-move-buttons {
+    display: inline-flex;
+    flex-direction: column;
+    gap: 2px;
+    margin-right: 4px;
+}
+.btn-icon-move {
+    width: 28px;
+    height: 22px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    background: rgba(255, 255, 255, 0.04);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    border-radius: 6px;
+    color: rgba(255, 255, 255, 0.7);
+    cursor: pointer;
+    transition: background 120ms ease, color 120ms ease, border-color 120ms ease;
+}
+.btn-icon-move:hover:not(:disabled),
+.btn-icon-move:focus-visible {
+    background: rgba(108, 99, 255, 0.18);
+    border-color: rgba(108, 99, 255, 0.45);
+    color: #fff;
+}
+.btn-icon-move:disabled {
+    opacity: 0.3;
+    cursor: not-allowed;
+}
+.btn-icon-move-mini {
+    width: 24px;
+    height: 18px;
+    font-size: 10px;
+}
