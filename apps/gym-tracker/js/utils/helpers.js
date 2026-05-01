@@ -28,6 +28,7 @@ export function formatMuscleGroup(raw) {
         'mid-back': 'Mid Back',
         'lower-back': 'Lower Back',
         // Shoulders
+        'shoulders': 'Shoulders',
         'front-deltoids': 'Front Delts',
         'rear-deltoids': 'Rear Delts',
         'side-deltoids': 'Side Delts',
