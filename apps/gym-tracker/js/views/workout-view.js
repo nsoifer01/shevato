@@ -34,6 +34,75 @@ class WorkoutView {
         this.app.viewControllers.workout = this;
         this.setupEventListeners();
         this.setupNavigationGuard();
+        this.wireWorkoutActions();
+    }
+
+    /**
+     * Single delegated click listener on the workout view. Replaces the
+     * inline onclick handlers used to live on every set row, planned-row
+     * footer button, set-toggle pill, edit/save/cancel button, and
+     * program-pick "Start Workout" button. Each element declares its
+     * intent via `data-action` plus optional `data-exercise-index`,
+     * `data-slot`, and `data-program-id` attributes.
+     */
+    wireWorkoutActions() {
+        const view = document.getElementById('workout-view');
+        if (!view || view.dataset.actionsWired) return;
+        view.dataset.actionsWired = '1';
+
+        view.addEventListener('click', (e) => {
+            const target = e.target.closest('[data-action]');
+            if (!target || !view.contains(target)) return;
+            // Don't hijack the global data-home-action handler.
+            if (target.matches('[data-home-action]')) return;
+
+            const action = target.dataset.action;
+            const exerciseIndex = target.dataset.exerciseIndex !== undefined
+                ? Number(target.dataset.exerciseIndex)
+                : null;
+            const slot = target.dataset.slot !== undefined
+                ? Number(target.dataset.slot)
+                : null;
+
+            switch (action) {
+                case 'start-workout':
+                    e.preventDefault();
+                    this.startWorkout(Number(target.dataset.programId));
+                    break;
+                case 'commit-planned-set':
+                    e.preventDefault();
+                    this.commitPlannedSet(exerciseIndex, slot);
+                    break;
+                case 'unmark-set':
+                    e.preventDefault();
+                    this.deleteSet(exerciseIndex, slot, { silent: true });
+                    break;
+                case 'edit-set':
+                    e.preventDefault();
+                    this.editSet(exerciseIndex, slot);
+                    break;
+                case 'delete-set':
+                    e.preventDefault();
+                    this.deleteSet(exerciseIndex, slot);
+                    break;
+                case 'save-set-edit':
+                    e.preventDefault();
+                    this.saveSetEdit(exerciseIndex, slot);
+                    break;
+                case 'cancel-set-edit':
+                    e.preventDefault();
+                    this.cancelSetEdit(exerciseIndex);
+                    break;
+                case 'add-planned-row':
+                    e.preventDefault();
+                    this.addPlannedRow(exerciseIndex);
+                    break;
+                case 'remove-planned-row':
+                    e.preventDefault();
+                    this.removePlannedRow(exerciseIndex);
+                    break;
+            }
+        });
     }
 
     setupEventListeners() {
@@ -353,7 +422,7 @@ class WorkoutView {
                         </div>
                         ${program.exercises.length === 0
                             ? `<p class="text-warning"><i class="fas fa-exclamation-triangle"></i> No exercises in this program</p>`
-                            : `<button class="btn btn-primary btn-large" onclick="window.gymApp.viewControllers.workout.startWorkout(${program.id})">
+                            : `<button class="btn btn-primary btn-large" data-action="start-workout" data-program-id="${program.id}">
                                 <i class="fas fa-play"></i> Start Workout
                             </button>`
                         }
@@ -527,14 +596,16 @@ class WorkoutView {
                 <div class="set-row-footer">
                     ${totalRows > Math.max(1, completedCount) ? `
                         <button type="button" class="btn-remove-set"
-                            onclick="window.gymApp.viewControllers.workout.removePlannedRow(${index})"
+                            data-action="remove-planned-row"
+                            data-exercise-index="${index}"
                             title="Remove last empty set"
                             aria-label="Remove last empty set row">
                             <i class="fas fa-minus"></i>
                         </button>
                     ` : ''}
                     <button type="button" class="btn-add-set btn-add-set--extra"
-                        onclick="window.gymApp.viewControllers.workout.addPlannedRow(${index})"
+                        data-action="add-planned-row"
+                        data-exercise-index="${index}"
                         aria-label="Add another set row">
                         <i class="fas fa-plus"></i> Add set
                     </button>
@@ -577,9 +648,7 @@ class WorkoutView {
      */
     renderPlannedRow(exerciseIndex, slot, prior, isDuration, unit, targetReps) {
         const setLabel = `${slot + 1}`;
-        const toggle = this.renderSetToggle(false,
-            `window.gymApp.viewControllers.workout.commitPlannedSet(${exerciseIndex}, ${slot})`,
-            'Mark set complete');
+        const toggle = this.renderSetToggle(false, 'commit-planned-set', exerciseIndex, slot, 'Mark set complete');
 
         if (isDuration) {
             const mins = prior ? Math.floor(prior.duration / 60) : 0;
@@ -626,12 +695,14 @@ class WorkoutView {
      * gradient pill with a crisp check inside the knob). CSS drives the
      * visuals from `aria-pressed` so the DOM stays identical between states.
      */
-    renderSetToggle(pressed, onClickExpression, ariaLabel) {
+    renderSetToggle(pressed, action, exerciseIndex, slot, ariaLabel) {
         return `
             <button type="button" class="set-toggle"
                 aria-pressed="${pressed ? 'true' : 'false'}"
                 aria-label="${ariaLabel}"
-                onclick="${onClickExpression}">
+                data-action="${action}"
+                data-exercise-index="${exerciseIndex}"
+                data-slot="${slot}">
                 <span class="set-toggle-knob" aria-hidden="true">
                     <i class="fas fa-check"></i>
                 </span>
@@ -653,9 +724,7 @@ class WorkoutView {
             details = `${set.weight.toLocaleString()}${unit} × ${set.reps}`;
         }
 
-        const toggle = this.renderSetToggle(true,
-            `window.gymApp.viewControllers.workout.deleteSet(${exerciseIndex}, ${slot}, { silent: true })`,
-            'Unmark set');
+        const toggle = this.renderSetToggle(true, 'unmark-set', exerciseIndex, slot, 'Unmark set');
 
         const pr = this.sessionPrSlots?.[`${exerciseIndex}:${slot}`];
         const prBadge = pr
@@ -667,11 +736,11 @@ class WorkoutView {
                 <div class="set-row-details">${details}${prBadge}</div>
                 <div class="set-row-actions">
                     <button type="button" class="btn-set-action" title="Edit set" aria-label="Edit set"
-                        onclick="window.gymApp.viewControllers.workout.editSet(${exerciseIndex}, ${slot})">
+                        data-action="edit-set" data-exercise-index="${exerciseIndex}" data-slot="${slot}">
                         <i class="fas fa-edit"></i>
                     </button>
                     <button type="button" class="btn-set-action btn-set-delete" title="Delete set" aria-label="Delete set"
-                        onclick="window.gymApp.viewControllers.workout.deleteSet(${exerciseIndex}, ${slot})">
+                        data-action="delete-set" data-exercise-index="${exerciseIndex}" data-slot="${slot}">
                         <i class="fas fa-trash"></i>
                     </button>
                 </div>
@@ -904,11 +973,11 @@ class WorkoutView {
             ${editFormHTML}
             <div class="set-row-actions">
                 <button type="button" class="btn-set-action btn-set-save" title="Save" aria-label="Save set"
-                    onclick="window.gymApp.viewControllers.workout.saveSetEdit(${exerciseIndex}, ${slot})">
+                    data-action="save-set-edit" data-exercise-index="${exerciseIndex}" data-slot="${slot}">
                     <i class="fas fa-check"></i>
                 </button>
                 <button type="button" class="btn-set-action btn-set-cancel" title="Cancel" aria-label="Cancel edit"
-                    onclick="window.gymApp.viewControllers.workout.cancelSetEdit(${exerciseIndex})">
+                    data-action="cancel-set-edit" data-exercise-index="${exerciseIndex}">
                     <i class="fas fa-times"></i>
                 </button>
             </div>

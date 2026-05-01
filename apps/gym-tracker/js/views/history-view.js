@@ -18,6 +18,41 @@ class HistoryView {
         this.dateFrom = null;
         this.dateTo = null;
         this.setupEventListeners();
+        this.wireListActions();
+    }
+
+    /**
+     * Single delegated click+keyboard listener on the history list. Replaces
+     * the inline onclick handlers that interpolated session.id into JS
+     * strings. Cards declare behavior via `data-action` + `data-session-id`.
+     */
+    wireListActions() {
+        const list = document.getElementById('history-list');
+        if (!list || list.dataset.actionsWired) return;
+        list.dataset.actionsWired = '1';
+
+        const dispatch = (e, fromKeyboard = false) => {
+            const target = e.target.closest('[data-action]');
+            if (!target || !list.contains(target)) return;
+            const id = Number(target.dataset.sessionId);
+            switch (target.dataset.action) {
+                case 'delete-session':
+                    e.preventDefault();
+                    e.stopPropagation();
+                    this.deleteWorkout(id);
+                    break;
+                case 'show-session':
+                    if (fromKeyboard && target.tagName === 'BUTTON') return;
+                    e.preventDefault();
+                    this.showWorkoutDetails(id);
+                    break;
+            }
+        };
+
+        list.addEventListener('click', (e) => dispatch(e));
+        list.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter' || e.key === ' ') dispatch(e, true);
+        });
     }
 
     setupEventListeners() {
@@ -129,13 +164,13 @@ class HistoryView {
             const hasAdditionalMetrics = session.avgHeartRate || session.maxHeartRate || session.caloriesBurned;
 
             return `
-                <div class="workout-card clickable" onclick="window.gymApp.viewControllers.history.showWorkoutDetails(${session.id})">
+                <div class="workout-card clickable" data-action="show-session" data-session-id="${session.id}" role="button" tabindex="0">
                     <div class="workout-card-header">
                         <div class="workout-header-info">
                             <h3>${escapeHtml(session.workoutDayName)}</h3>
                             <span class="date">${formatSessionDateTime(session)}</span>
                         </div>
-                        <button class="btn-icon delete-workout-btn" onclick="event.stopPropagation(); window.gymApp.viewControllers.history.deleteWorkout(${session.id})" title="Delete workout" aria-label="Delete workout">
+                        <button class="btn-icon delete-workout-btn" data-action="delete-session" data-session-id="${session.id}" title="Delete workout" aria-label="Delete workout">
                             <i class="fas fa-trash"></i>
                         </button>
                     </div>
