@@ -83,6 +83,10 @@
                     <i class="fas fa-calendar"></i>
                     <span>Calendar</span>
                 </button>
+                <button class="nav-link" data-view="insights">
+                    <i class="fas fa-chart-pie"></i>
+                    <span>Insights</span>
+                </button>
                 <button class="nav-link" data-view="achievements">
                     <i class="fas fa-trophy"></i>
                     <span>Achievements</span>
@@ -728,6 +732,34 @@
                 </div>
             </div>
 
+            <!-- INSIGHTS VIEW -->
+            <div id="insights-view" class="view">
+                <div class="view-header">
+                    <h1>Insights</h1>
+                    <p class="subtitle">Volume by muscle group and a year-at-a-glance heatmap.</p>
+                </div>
+                <section class="section insights-empty" id="insights-empty" hidden>
+                    <div class="empty-state">
+                        <i class="fas fa-chart-pie"></i>
+                        <p>Log a few workouts to unlock insights.</p>
+                    </div>
+                </section>
+                <section class="section" id="insights-volume-section" hidden>
+                    <div class="section-header">
+                        <h2>Volume by muscle group</h2>
+                        <span class="section-caption" id="insights-volume-caption"></span>
+                    </div>
+                    <div class="insights-volume-grid" id="insights-volume-grid"></div>
+                </section>
+                <section class="section" id="insights-heatmap-section" hidden>
+                    <div class="section-header">
+                        <h2>Workout heatmap</h2>
+                        <span class="section-caption" id="insights-heatmap-caption"></span>
+                    </div>
+                    <div class="insights-heatmap" id="insights-heatmap"></div>
+                </section>
+            </div>
+
             <!-- ACHIEVEMENTS VIEW -->
             <div id="achievements-view" class="view">
                 <div class="view-header">
@@ -890,6 +922,11 @@
                         <span>Calendar</span>
                         <i class="fas fa-chevron-right"></i>
                     </button>
+                    <button class="more-item" data-view="insights">
+                        <i class="fas fa-chart-pie"></i>
+                        <span>Insights</span>
+                        <i class="fas fa-chevron-right"></i>
+                    </button>
                     <button class="more-item" data-view="achievements">
                         <i class="fas fa-trophy"></i>
                         <span>Achievements</span>
@@ -1045,6 +1082,7 @@
     <script type="module" src="js/views/exercises-view.js"></script>
     <script type="module" src="js/views/calendar-view.js"></script>
     <script type="module" src="js/views/achievements-view.js"></script>
+    <script type="module" src="js/views/insights-view.js"></script>
     <script type="module" src="js/views/settings-view.js"></script>
 
 </body>

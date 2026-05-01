@@ -13,7 +13,7 @@
  * pruned automatically.
  */
 
-const CACHE_VERSION = 'gym-v8';
+const CACHE_VERSION = 'gym-v9';
 const PRECACHE = `gym-precache-${CACHE_VERSION}`;
 const RUNTIME = `gym-runtime-${CACHE_VERSION}`;
 
@@ -49,6 +49,7 @@ const PRECACHE_URLS = [
   './js/views/exercises-view.js',
   './js/views/history-view.js',
   './js/views/home-view.js',
+  './js/views/insights-view.js',
   './js/views/paused-banner.js',
   './js/views/programs-view.js',
   './js/views/settings-view.js',
