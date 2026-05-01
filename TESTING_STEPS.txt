@@ -743,3 +743,45 @@ The audit's "Larger strategic improvements" cluster — items 19 through 25 — 
 
 ### What HAS been completed in this branch
 Improvements #1 through #18 from the original audit roadmap are implemented and committed. See changes 1–19 in this file.
+
+
+## Change 20 (followup): Football H2H — extracted match-logic helpers + tests
+### What changed
+Three pure helpers extracted from `apps/football-h2h/js/football-h2h.js` into a new module so they can be unit-tested:
+- `compareGames(a, b, column, direction)` — pure sort comparator. Replaces the inline switch statement inside `getSortedGames`.
+- `sortGames(games, column, direction)` — non-mutating wrapper.
+- `nextGameId(games)` — `max(id) + 1`, with safe handling of non-numeric / missing IDs (so a partial / corrupt import can't yield NaN).
+- `parseImportPayload(payload)` — validates the shape of an imported JSON export, returns `{ ok: true, games, players }` or `{ ok: false, error }`. Never throws.
+
+The helpers live in `apps/football-h2h/js/match-logic.js` using the same UMD wrapper as `playerStats.js` (browser `window.FootballMatchLogic` + `module.exports`). The live UI (`football-h2h.js`) was rewired to call through these helpers so the production code path is the one the tests exercise.
+
+19 new tests in `apps/football-h2h/tests/matchLogic.test.js`. Football suite: 93 → 112 tests. Total `npm test`: 138 → 157 passing.
+
+Files touched / added:
+- `apps/football-h2h/js/match-logic.js` (new)
+- `apps/football-h2h/tests/matchLogic.test.js` (new)
+- `apps/football-h2h/index.html` (load the new script)
+- `apps/football-h2h/js/football-h2h.js` (route through helpers)
+
+### Setup
+- None.
+
+### Test steps
+1. Run `npm test` — expect `# pass 157`.
+2. Open `apps/football-h2h/index.html` locally.
+3. Add a few games. Click each column header (Date, Game, Player 1, Player 2). Verify sort still works in both directions.
+4. Add a game when there are no games yet — its id should be 1.
+5. Add another — id should be 2.
+6. Export → edit the JSON to omit the `players` block → import. Verify the import succeeds and player names default to "Player 1" / "Player 2".
+7. Edit the JSON to remove `games` (or set it to a non-array). Import. Verify the error modal appears.
+8. Edit the JSON to be invalid JSON syntax. Import. Verify a separate "Import Error" modal appears (the JSON parse failure path).
+
+### Regression checks
+1. Existing 93 playerStats tests still pass unchanged.
+2. The team picker, score validation, and edit-game flow are untouched — these are still inline inside `football-h2h.js`.
+3. `gameId` collisions impossible in practice now: even if user manually edits the imported JSON to give two games the same id, the next-id helper still picks `max + 1`.
+
+### Automated checks
+- `node --check apps/football-h2h/js/match-logic.js` exits 0.
+- `npm run test:football` exits 0 with `# pass 112`.
+- `npm test` exits 0 with `# pass 157`.
