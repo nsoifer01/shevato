@@ -419,3 +419,42 @@ Files touched / added:
 - `python3 -c "import json; json.load(open('apps/gym-tracker/manifest.webmanifest'))"` exits 0 (valid JSON).
 - `grep -n "rel=\"manifest\"" apps/gym-tracker/index.html` finds the link.
 - `grep -n "navigator.serviceWorker.register" apps/gym-tracker/index.html` finds the registration.
+
+
+## Change 13: Test runner + tests for AnalyticsService, helpers, program-order
+### What changed
+- Repo root now has a `package.json` with `npm test` that runs both gym-tracker and football-h2h test suites via Node's built-in `node:test` runner (no new npm dependencies, no Vitest install — keeps the repo dependency-free).
+- `apps/gym-tracker/package.json` adds `{"type":"module"}` so the gym-tracker `.js` files (which already use ES module syntax) are recognized as ESM by the test runner. The football tests remain CommonJS — that's untouched.
+- Three new test files in `apps/gym-tracker/tests/`:
+  - `program-order.test.mjs` — 9 tests covering every sort mode plus immutability and unknown-mode fallback.
+  - `helpers.test.mjs` — 11 tests for `formatMuscleGroup`, `parseLocalDate`, `convertWeight`, `generateId` (UUID), `generateNumericId` (1000-call collision sweep).
+  - `analytics.test.mjs` — 19 tests for `AnalyticsService.toLocalDate`, `toLocalDateKey`, `epley1rm`, `isSetPR` (volume + duration), `getCurrentStreak`, `startOfIsoWeek`, `getProgressDates`, `getExerciseProgression`.
+
+Total: 39 new gym tests + 93 existing football tests = 132 passing.
+
+This also flushed out a real bug in `generateNumericId`: the original formula `Date.now() * 1e6 + counter * 100 + rand` overflowed JS's 53-bit safe-integer range and lost precision on the bottom digits, producing collisions. Replaced with `Date.now() * 0x1000 + (counter & 0xfff)` — 41 bits ms + 12 bits entropy = exactly 53 bits, collision-proof for any realistic single-page rate.
+
+Files touched / added:
+- `package.json` (new, root)
+- `apps/gym-tracker/package.json` (new)
+- `apps/gym-tracker/tests/program-order.test.mjs` (new)
+- `apps/gym-tracker/tests/helpers.test.mjs` (new)
+- `apps/gym-tracker/tests/analytics.test.mjs` (new)
+- `apps/gym-tracker/js/utils/helpers.js` (numeric ID formula tweak)
+
+### Setup
+- Node 20+ already in use (`.nvmrc`).
+
+### Test steps
+1. Run `npm test` at the repo root. Expect: `# pass 132 # fail 0`.
+2. Run `npm run test:gym` — expect 39 passes.
+3. Run `npm run test:football` — expect 93 passes.
+
+### Regression checks
+1. Existing football-h2h tests still pass via `node --test apps/football-h2h/tests/` (untouched, still CommonJS).
+2. App bundle still loads in the browser — the `apps/gym-tracker/package.json` is informational for Node only and doesn't affect static-file serving.
+
+### Automated checks
+- `npm test` exits 0.
+- `node --test apps/gym-tracker/tests/` exits 0.
+- `node --test apps/football-h2h/tests/` exits 0.
