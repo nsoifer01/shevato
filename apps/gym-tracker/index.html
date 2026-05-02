@@ -83,6 +83,14 @@
                     <i class="fas fa-calendar"></i>
                     <span>Calendar</span>
                 </button>
+                <button class="nav-link" data-view="insights">
+                    <i class="fas fa-chart-pie"></i>
+                    <span>Insights</span>
+                </button>
+                <button class="nav-link" data-view="measurements">
+                    <i class="fas fa-ruler-vertical"></i>
+                    <span>Measurements</span>
+                </button>
                 <button class="nav-link" data-view="achievements">
                     <i class="fas fa-trophy"></i>
                     <span>Achievements</span>
@@ -728,6 +736,138 @@
                 </div>
             </div>
 
+            <!-- INSIGHTS VIEW -->
+            <div id="insights-view" class="view">
+                <div class="view-header">
+                    <h1>Insights</h1>
+                    <p class="subtitle">Volume by muscle group and a year-at-a-glance heatmap.</p>
+                </div>
+                <section class="section insights-empty" id="insights-empty" hidden>
+                    <div class="empty-state">
+                        <i class="fas fa-chart-pie"></i>
+                        <p>Log a few workouts to unlock insights.</p>
+                    </div>
+                </section>
+                <section class="section" id="insights-volume-section" hidden>
+                    <div class="section-header">
+                        <h2>Volume by muscle group</h2>
+                        <span class="section-caption" id="insights-volume-caption"></span>
+                    </div>
+                    <div class="insights-volume-grid" id="insights-volume-grid"></div>
+                </section>
+                <section class="section" id="insights-heatmap-section" hidden>
+                    <div class="section-header">
+                        <h2>Workout heatmap</h2>
+                        <span class="section-caption" id="insights-heatmap-caption"></span>
+                    </div>
+                    <div class="insights-heatmap" id="insights-heatmap"></div>
+                </section>
+            </div>
+
+            <!-- MEASUREMENTS VIEW -->
+            <div id="measurements-view" class="view">
+                <div class="view-header">
+                    <h1>Body measurements</h1>
+                    <button class="btn btn-primary" id="add-measurement-btn">
+                        <i class="fas fa-plus"></i> Log measurements
+                    </button>
+                </div>
+
+                <section class="section" id="measurements-empty" hidden>
+                    <div class="empty-state">
+                        <i class="fas fa-ruler-vertical"></i>
+                        <p>No measurements yet — log your first entry to start tracking trends.</p>
+                    </div>
+                </section>
+
+                <section class="section" id="measurements-trends-section" hidden>
+                    <div class="section-header">
+                        <h2>Trends</h2>
+                        <span class="section-caption" id="measurements-trends-caption"></span>
+                    </div>
+                    <div id="measurements-trends-grid" class="measurements-trends-grid"></div>
+                </section>
+
+                <section class="section" id="measurements-history-section" hidden>
+                    <div class="section-header">
+                        <h2>History</h2>
+                    </div>
+                    <div id="measurements-history" class="measurements-history"></div>
+                </section>
+
+                <!-- Add / Edit modal -->
+                <div id="measurement-modal" class="modal" role="dialog" aria-modal="true" aria-labelledby="measurement-modal-title">
+                    <div class="modal-content">
+                        <div class="modal-header">
+                            <h2 id="measurement-modal-title">Log measurements</h2>
+                            <button class="modal-close" aria-label="Close">&times;</button>
+                        </div>
+                        <div class="modal-body">
+                            <form id="measurement-form" novalidate>
+                                <div class="form-group">
+                                    <label for="m-date">Date</label>
+                                    <input type="date" id="m-date" required>
+                                </div>
+                                <div class="form-row form-row-2">
+                                    <div class="form-group">
+                                        <label for="m-weight">Body weight</label>
+                                        <input type="number" id="m-weight" step="0.1" min="0" placeholder="—">
+                                    </div>
+                                    <div class="form-group">
+                                        <label for="m-bodyfat">Body fat %</label>
+                                        <input type="number" id="m-bodyfat" step="0.1" min="0" max="100" placeholder="—">
+                                    </div>
+                                </div>
+                                <div class="form-row form-row-2">
+                                    <div class="form-group">
+                                        <label for="m-chest">Chest</label>
+                                        <input type="number" id="m-chest" step="0.1" min="0" placeholder="—">
+                                    </div>
+                                    <div class="form-group">
+                                        <label for="m-waist">Waist</label>
+                                        <input type="number" id="m-waist" step="0.1" min="0" placeholder="—">
+                                    </div>
+                                </div>
+                                <div class="form-row form-row-2">
+                                    <div class="form-group">
+                                        <label for="m-hips">Hips</label>
+                                        <input type="number" id="m-hips" step="0.1" min="0" placeholder="—">
+                                    </div>
+                                    <div class="form-group">
+                                        <label for="m-armleft">Arm (L)</label>
+                                        <input type="number" id="m-armleft" step="0.1" min="0" placeholder="—">
+                                    </div>
+                                </div>
+                                <div class="form-row form-row-2">
+                                    <div class="form-group">
+                                        <label for="m-armright">Arm (R)</label>
+                                        <input type="number" id="m-armright" step="0.1" min="0" placeholder="—">
+                                    </div>
+                                    <div class="form-group">
+                                        <label for="m-thighleft">Thigh (L)</label>
+                                        <input type="number" id="m-thighleft" step="0.1" min="0" placeholder="—">
+                                    </div>
+                                </div>
+                                <div class="form-row form-row-2">
+                                    <div class="form-group">
+                                        <label for="m-thighright">Thigh (R)</label>
+                                        <input type="number" id="m-thighright" step="0.1" min="0" placeholder="—">
+                                    </div>
+                                </div>
+                                <div class="form-group">
+                                    <label for="m-notes">Notes (optional)</label>
+                                    <textarea id="m-notes" rows="2" placeholder="Anything worth remembering today"></textarea>
+                                </div>
+                                <div class="form-actions">
+                                    <button type="button" class="btn btn-ghost modal-close">Cancel</button>
+                                    <button type="submit" class="btn btn-primary">Save</button>
+                                </div>
+                            </form>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
             <!-- ACHIEVEMENTS VIEW -->
             <div id="achievements-view" class="view">
                 <div class="view-header">
@@ -792,6 +932,13 @@
                                 <option value="lb">Pounds (lb)</option>
                             </select>
                         </div>
+                        <div class="setting-item">
+                            <label for="time-format">Time format</label>
+                            <select id="time-format">
+                                <option value="12">12-hour (6:42 PM)</option>
+                                <option value="24">24-hour (18:42)</option>
+                            </select>
+                        </div>
                     </section>
 
                     <section class="settings-section">
@@ -815,6 +962,25 @@
                                 <input type="checkbox" id="vibration-alerts">
                                 <span class="toggle-slider" aria-hidden="true"></span>
                             </label>
+                        </div>
+                    </section>
+
+                    <section class="settings-section">
+                        <header class="settings-section-header">
+                            <i class="fas fa-dumbbell settings-section-icon"></i>
+                            <div>
+                                <h2>Plate calculator</h2>
+                                <p class="settings-section-sub">Bar weight + available plates for the per-side breakdown shown next to the weight inputs in workouts.</p>
+                            </div>
+                        </header>
+                        <div class="setting-item">
+                            <label for="bar-weight">Bar weight</label>
+                            <input type="number" id="bar-weight" min="0" step="0.5" placeholder="20">
+                        </div>
+                        <div class="setting-item setting-item-stack">
+                            <label for="plates-input">Available plate sizes <small>(comma-separated, per-side selection)</small></label>
+                            <input type="text" id="plates-input" placeholder="e.g. 25, 20, 15, 10, 5, 2.5">
+                            <p class="settings-help-text" id="plates-preview"></p>
                         </div>
                     </section>
 
@@ -869,6 +1035,16 @@
                     <button class="more-item" data-view="calendar">
                         <i class="fas fa-calendar"></i>
                         <span>Calendar</span>
+                        <i class="fas fa-chevron-right"></i>
+                    </button>
+                    <button class="more-item" data-view="insights">
+                        <i class="fas fa-chart-pie"></i>
+                        <span>Insights</span>
+                        <i class="fas fa-chevron-right"></i>
+                    </button>
+                    <button class="more-item" data-view="measurements">
+                        <i class="fas fa-ruler-vertical"></i>
+                        <span>Measurements</span>
                         <i class="fas fa-chevron-right"></i>
                     </button>
                     <button class="more-item" data-view="achievements">
@@ -1026,6 +1202,8 @@
     <script type="module" src="js/views/exercises-view.js"></script>
     <script type="module" src="js/views/calendar-view.js"></script>
     <script type="module" src="js/views/achievements-view.js"></script>
+    <script type="module" src="js/views/insights-view.js"></script>
+    <script type="module" src="js/views/measurements-view.js"></script>
     <script type="module" src="js/views/settings-view.js"></script>
 
 </body>

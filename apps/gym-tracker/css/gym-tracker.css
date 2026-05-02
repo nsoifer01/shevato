@@ -529,6 +529,15 @@ body.gym-tracker #footer {
     margin-left: 0.25rem;
 }
 
+/* Restore spec behavior for the [hidden] attribute. The shared
+   assets/css/main.css resets every section/article/etc. to
+   `display: block`, which beats the user-agent default of
+   `[hidden] { display: none }`. Without this rule, setting
+   `el.hidden = true` on a <section> stays visible. */
+[hidden] {
+    display: none !important;
+}
+
 /* Sections */
 .section {
     margin-bottom: var(--spacing-xl);
@@ -1030,6 +1039,7 @@ body.gym-tracker #footer {
     display: grid;
     grid-template-columns: minmax(0, 1fr);
     gap: var(--spacing-lg);
+    align-items: stretch;
 }
 
 @media (min-width: 768px) {
@@ -1042,6 +1052,31 @@ body.gym-tracker #footer {
     .programs-grid {
         grid-template-columns: repeat(3, minmax(0, 1fr));
     }
+}
+
+/* Mirror the workout-picker alignment: lock card geometry so titles
+   that wrap to two lines, optional descriptions, and the bottom
+   Edit/Delete actions all line up across the row. */
+.programs-grid .program-card {
+    min-height: 260px;
+    padding: var(--spacing-lg);
+}
+
+.programs-grid .program-card .program-header {
+    min-height: 2.4em;
+    display: flex;
+    align-items: flex-start;
+}
+
+.programs-grid .program-card .program-header h3 {
+    margin: 0;
+    line-height: 1.2;
+}
+
+/* Pin the action cluster to the card foot so Edit/Delete pairs line
+   up horizontally regardless of upper content. */
+.programs-grid .program-card .program-actions {
+    margin-top: auto;
 }
 
 /* Drag handle (only shown when sort mode is custom) */
@@ -2571,6 +2606,7 @@ body.gym-tracker #footer {
 .set-row {
     display: flex;
     align-items: center;
+    flex-wrap: wrap;
     gap: 0.6rem;
     padding: 0.7rem 0.6rem 0.7rem 0.6rem;
     background: rgba(255, 255, 255, 0.02);
@@ -6780,6 +6816,9 @@ button.calendar-day {
     grid-template-columns: 1fr;
     gap: var(--spacing-lg);
     margin-top: var(--spacing-xl);
+    /* `stretch` is the grid default but spelled out so future tweaks
+       can't accidentally shrink-fit cards to their own content height. */
+    align-items: stretch;
 }
 
 @media (min-width: 768px) {
@@ -6792,6 +6831,43 @@ button.calendar-day {
     .program-selection-grid {
         grid-template-columns: repeat(3, 1fr);
     }
+}
+
+/* Lock the workout-picker cards into the same vertical rhythm so
+   single-line titles, two-line titles, and titles with descriptions
+   all line their bottom action up. Scoped to .program-selection-grid
+   so the Programs page (which has a different bottom action cluster)
+   is unaffected. */
+.program-selection-grid .program-card {
+    min-height: 260px;
+    padding: var(--spacing-lg);
+}
+
+/* Reserve room for ~2 lines of title so a 1-line and 2-line title
+   produce the same gap to the next row. ~2.4em with the h3 line-height
+   covers two lines of the typical title without forcing extra space
+   when the title is short. */
+.program-selection-grid .program-card .program-header {
+    min-height: 2.4em;
+    display: flex;
+    align-items: flex-start;
+}
+.program-selection-grid .program-card .program-header h3 {
+    margin: 0;
+    line-height: 1.2;
+}
+
+/* Push the trailing element (Start Workout button OR the
+   "no exercises" warning) to the foot so every card's primary action
+   lines up horizontally across the row. */
+.program-selection-grid .program-card > :last-child {
+    margin-top: auto;
+}
+
+/* Consistent button height across cards regardless of inner content. */
+.program-selection-grid .program-card .btn-large {
+    width: 100%;
+    min-height: 52px;
 }
 
 /* Quick Programs on Home */
@@ -8107,11 +8183,11 @@ button.calendar-day {
 
 /* ------------------------------------------------------------------
    Keyboard reorder buttons — sit alongside the drag handle on programs
-   and program-exercise rows so users without DnD (keyboard / touch
-   without long-press) can still reorder. Same up/down icon pair, two
-   sizes (program card vs in-modal exercise row).
+   and program-exercise rows (in the Program edit modal). The card-
+   level arrows on the Programs grid were removed in favour of drag-
+   only reorder; the in-modal exercise-row arrows stay because there's
+   no drag handle inside the modal.
    ------------------------------------------------------------------ */
-.program-card-move-buttons,
 .pex-move-buttons {
     display: inline-flex;
     flex-direction: column;
@@ -8146,3 +8222,455 @@ button.calendar-day {
     height: 18px;
     font-size: 10px;
 }
+
+/* ------------------------------------------------------------------
+   Plate calculator UI — Settings input stack + per-row inline hint.
+   ------------------------------------------------------------------ */
+.setting-item-stack {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 6px;
+}
+
+/* Settings form was relying on browser default styling for plain
+   <input>s, which renders as a glaring white box on this dark UI.
+   Match the same dark-on-dark treatment .form-group inputs already
+   use elsewhere in the app: subtle border, deep-blue surface, soft
+   purple focus ring, and inset shadow for tactility. */
+.settings-form .setting-item input[type="text"],
+.settings-form .setting-item input[type="number"],
+.settings-form .setting-item input[type="date"] {
+    width: 100%;
+    box-sizing: border-box;
+    appearance: none;
+    -webkit-appearance: none;
+    padding: 0.7rem 0.85rem;
+    background: var(--bg-tertiary);
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-md);
+    color: var(--text-primary);
+    font: inherit;
+    font-size: 0.95rem;
+    line-height: 1.2;
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.02);
+    transition: border-color var(--transition-base),
+                background var(--transition-base),
+                box-shadow var(--transition-base);
+}
+.settings-form .setting-item input[type="text"]::placeholder,
+.settings-form .setting-item input[type="number"]::placeholder {
+    color: rgba(255, 255, 255, 0.35);
+}
+.settings-form .setting-item input[type="text"]:hover,
+.settings-form .setting-item input[type="number"]:hover {
+    border-color: rgba(108, 99, 255, 0.45);
+}
+.settings-form .setting-item input[type="text"]:focus,
+.settings-form .setting-item input[type="number"]:focus,
+.settings-form .setting-item input[type="text"]:focus-visible,
+.settings-form .setting-item input[type="number"]:focus-visible {
+    outline: none;
+    border-color: var(--accent-primary);
+    background: var(--bg-card);
+    box-shadow: 0 0 0 3px rgba(108, 99, 255, 0.18),
+                inset 0 1px 0 rgba(255, 255, 255, 0.03);
+}
+/* Hide the spinner on number inputs in the settings form — the value
+   range is wide and the up/down arrows clutter the dark surface. */
+.settings-form .setting-item input[type="number"] {
+    -moz-appearance: textfield;
+}
+.settings-form .setting-item input[type="number"]::-webkit-outer-spin-button,
+.settings-form .setting-item input[type="number"]::-webkit-inner-spin-button {
+    -webkit-appearance: none;
+    margin: 0;
+}
+
+.settings-help-text {
+    margin: 4px 0 0;
+    font-size: 0.85rem;
+    color: var(--text-muted, #a8a8c8);
+}
+
+/* Forces the plate hint onto its own line under the inputs/toggle row.
+   .set-row is now flex-wrap: wrap, so flex-basis: 100% pushes us below
+   the main row instead of competing with it for horizontal space. */
+.plate-hint {
+    flex: 1 0 100%;
+    margin: 2px 0 0;
+    padding: 4px 0 0;
+    border-top: 1px dashed rgba(255, 255, 255, 0.06);
+    font-size: 0.72rem;
+    line-height: 1.2;
+    color: rgba(255, 255, 255, 0.55);
+    /* Don't let a long stack push the row width — single-line ellipsis. */
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+.plate-hint-label i {
+    margin-right: 4px;
+    opacity: 0.7;
+}
+.plate-hint em {
+    font-style: normal;
+    color: rgba(255, 255, 255, 0.85);
+    font-weight: 500;
+}
+/* On phones, shorten the leading label to a dumbbell icon + breakdown so
+   "Plates per side:" doesn't eat half the row. The .plate-hint-label-text
+   span carries the words; we hide that on small screens and the icon
+   alone communicates intent. */
+.plate-hint-label-text { display: inline; }
+@media (max-width: 600px) {
+    .plate-hint-label-text { display: none; }
+    .plate-hint { font-size: 0.78rem; }
+}
+
+/* ------------------------------------------------------------------
+   Supersets — Program edit link button + workout-view group card.
+   ------------------------------------------------------------------ */
+
+/* Row-level link/unlink button in the program-edit modal. Sits in the
+   same trailing actions cluster as the delete (×) button. */
+.pex-row-actions {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    margin-left: auto;
+}
+.btn-icon-link {
+    width: 30px;
+    height: 30px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    background: rgba(255, 255, 255, 0.04);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    border-radius: 6px;
+    color: rgba(255, 255, 255, 0.7);
+    cursor: pointer;
+    transition: background 120ms ease, color 120ms ease, border-color 120ms ease;
+}
+.btn-icon-link:hover,
+.btn-icon-link:focus-visible {
+    background: rgba(108, 99, 255, 0.18);
+    border-color: rgba(108, 99, 255, 0.45);
+    color: #fff;
+}
+.btn-icon-link.is-on {
+    background: rgba(108, 99, 255, 0.28);
+    border-color: rgba(108, 99, 255, 0.7);
+    color: #fff;
+}
+
+/* Visual cohesion for adjacent rows in the same superset: collapse the
+   bottom border of the row above and the top border of the row below
+   so they read as one unit, plus a subtle accent stripe. */
+.program-exercise-row.is-grouped {
+    border-color: rgba(108, 99, 255, 0.45);
+    background: rgba(108, 99, 255, 0.05);
+}
+.program-exercise-row.is-linked-above {
+    border-top-color: transparent;
+    border-top-left-radius: 0;
+    border-top-right-radius: 0;
+    margin-top: 0;
+}
+.program-exercise-row.is-linked-below {
+    border-bottom-left-radius: 0;
+    border-bottom-right-radius: 0;
+    margin-bottom: 0;
+}
+.pex-superset-tag {
+    position: absolute;
+    top: -8px;
+    left: 12px;
+    padding: 1px 6px;
+    background: var(--bg-card);
+    border: 1px solid rgba(108, 99, 255, 0.55);
+    border-radius: 4px;
+    color: var(--accent-primary);
+    font-size: 0.6rem;
+    font-weight: 700;
+    letter-spacing: 0.06em;
+}
+.program-exercise-row { position: relative; }
+
+/* Workout-view group card — wraps consecutive .exercise-entry blocks
+   that share a groupId. The wrapper provides the outer purple frame +
+   header; the inner exercise-entries keep their own dashed/solid look
+   but lose their outer margin so they sit flush. */
+.superset-block {
+    position: relative;
+    margin: 1rem 0;
+    padding: 8px;
+    background: rgba(108, 99, 255, 0.05);
+    border: 1px solid rgba(108, 99, 255, 0.4);
+    border-radius: var(--radius-md);
+}
+.superset-block-header {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 4px 10px;
+    margin: -16px 0 8px;
+    background: var(--bg-card);
+    border: 1px solid rgba(108, 99, 255, 0.55);
+    border-radius: 999px;
+    font-size: 0.7rem;
+    font-weight: 700;
+    letter-spacing: 0.06em;
+    color: var(--accent-primary);
+    text-transform: uppercase;
+}
+.superset-block .exercise-entry {
+    margin: 0 0 8px;
+}
+.superset-block .exercise-entry:last-child {
+    margin-bottom: 0;
+}
+
+/* ------------------------------------------------------------------
+   Insights view — volume bars + 12-month heatmap.
+   ------------------------------------------------------------------ */
+.insights-empty-line {
+    color: var(--text-muted);
+    font-size: 0.9rem;
+}
+
+.insights-volume-grid {
+    display: grid;
+    gap: 8px;
+}
+.insights-bar-row {
+    display: grid;
+    grid-template-columns: 100px 1fr 90px;
+    align-items: center;
+    gap: 10px;
+}
+.insights-bar-label {
+    font-size: 0.85rem;
+    color: var(--text-secondary);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+.insights-bar-track {
+    height: 10px;
+    background: rgba(255, 255, 255, 0.05);
+    border-radius: 999px;
+    overflow: hidden;
+}
+.insights-bar-fill {
+    display: block;
+    height: 100%;
+    background: linear-gradient(90deg, rgba(108, 99, 255, 0.85), rgba(139, 92, 246, 0.85));
+    border-radius: 999px;
+    transition: width 200ms ease;
+}
+.insights-bar-value {
+    text-align: right;
+    font-size: 0.78rem;
+    color: var(--text-muted);
+    font-variant-numeric: tabular-nums;
+}
+@media (max-width: 600px) {
+    .insights-bar-row {
+        grid-template-columns: 80px 1fr 80px;
+        gap: 8px;
+    }
+    .insights-bar-value { font-size: 0.72rem; }
+}
+
+/* Heatmap: month labels above, week-column grid below. Each week is a
+   stack of 7 day cells; the grid is one column per week. */
+.insights-heatmap {
+    overflow-x: auto;
+    padding: 4px 2px 6px;
+}
+.hm-month-row {
+    display: grid;
+    column-gap: 2px;
+    margin-bottom: 4px;
+    height: 14px;
+    position: relative;
+}
+.hm-month-label {
+    grid-row: 1;
+    font-size: 0.65rem;
+    color: var(--text-muted);
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+}
+.hm-grid {
+    display: grid;
+    column-gap: 2px;
+}
+.hm-week {
+    display: grid;
+    grid-template-rows: repeat(7, 1fr);
+    row-gap: 2px;
+}
+.hm-cell {
+    width: 100%;
+    aspect-ratio: 1 / 1;
+    border-radius: 2px;
+    background: rgba(255, 255, 255, 0.04);
+    transition: filter 120ms ease;
+}
+.hm-cell:hover { filter: brightness(1.3); }
+.hm-cell-out { visibility: hidden; }
+.hm-cell-l1 { background: rgba(108, 99, 255, 0.25); }
+.hm-cell-l2 { background: rgba(108, 99, 255, 0.5); }
+.hm-cell-l3 { background: rgba(108, 99, 255, 0.75); }
+.hm-cell-l4 { background: rgba(139, 92, 246, 0.95); }
+
+.hm-legend {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    margin-top: 12px;
+    font-size: 0.7rem;
+    color: var(--text-muted);
+}
+.hm-legend .hm-cell {
+    width: 12px;
+    height: 12px;
+    aspect-ratio: auto;
+}
+.hm-legend-label { margin: 0 4px; }
+
+.section-caption {
+    font-size: 0.78rem;
+    color: var(--text-muted);
+    text-transform: none;
+    letter-spacing: 0;
+}
+
+/* ------------------------------------------------------------------
+   Measurements — trends grid (tiles + sparklines), history rows.
+   ------------------------------------------------------------------ */
+.measurements-trends-grid {
+    display: grid;
+    gap: 12px;
+    grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+}
+.measurement-tile {
+    background: var(--bg-card);
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-md);
+    padding: 12px 14px;
+    color: var(--text-primary);
+    display: grid;
+    gap: 4px;
+}
+.measurement-tile-label {
+    font-size: 0.72rem;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: var(--text-muted);
+}
+.measurement-tile-value {
+    font-size: 1.5rem;
+    font-weight: 700;
+    line-height: 1.1;
+    font-variant-numeric: tabular-nums;
+}
+.measurement-tile-value small {
+    font-size: 0.75rem;
+    font-weight: 500;
+    color: var(--text-muted);
+    margin-left: 2px;
+}
+.measurement-tile-delta {
+    font-size: 0.78rem;
+    color: var(--text-muted);
+    font-variant-numeric: tabular-nums;
+}
+.measurement-tile-delta.is-up   { color: #4ade80; }
+.measurement-tile-delta.is-down { color: #fb7185; }
+.measurement-tile-delta span    { color: var(--text-muted); margin-left: 2px; }
+.measurement-spark {
+    margin-top: 6px;
+    width: 100%;
+    height: 32px;
+    color: var(--accent-primary);
+    opacity: 0.85;
+}
+
+.measurements-history {
+    display: grid;
+    gap: 10px;
+}
+.measurement-row {
+    background: var(--bg-card);
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-md);
+    padding: 12px 14px;
+}
+.measurement-row-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 8px;
+}
+.measurement-row-header h3 {
+    margin: 0;
+    font-size: 1rem;
+}
+.measurement-row-actions {
+    display: inline-flex;
+    gap: 4px;
+}
+.measurement-row-actions .btn-icon {
+    width: 30px;
+    height: 30px;
+    border-radius: 6px;
+    background: rgba(255, 255, 255, 0.04);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    color: rgba(255, 255, 255, 0.7);
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+}
+.measurement-row-actions .btn-icon:hover {
+    background: rgba(108, 99, 255, 0.18);
+    border-color: rgba(108, 99, 255, 0.45);
+    color: #fff;
+}
+.measurement-row-actions .btn-icon-danger:hover {
+    background: rgba(239, 68, 68, 0.18);
+    border-color: rgba(239, 68, 68, 0.45);
+    color: #fff;
+}
+.measurement-row-stats {
+    margin-top: 8px;
+    display: flex;
+    gap: 12px;
+    flex-wrap: wrap;
+    font-size: 0.85rem;
+    color: var(--text-secondary);
+}
+.measurement-row-stats .m-stat b {
+    color: var(--text-muted);
+    font-weight: 600;
+}
+.measurement-row-notes {
+    margin: 8px 0 0;
+    font-size: 0.85rem;
+    color: var(--text-muted);
+    font-style: italic;
+}
+
+/* The .form-row-2 grid utility stacks two form-groups in two columns
+   on wide viewports, falling back to one column on phones. */
+.form-row.form-row-2 {
+    grid-template-columns: 1fr 1fr;
+}
+@media (max-width: 600px) {
+    .form-row.form-row-2 {
+        grid-template-columns: 1fr;
+    }
+}
+
