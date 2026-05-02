@@ -8,15 +8,17 @@ import { WorkoutDay } from './models/WorkoutDay.js';
 import { WorkoutSession } from './models/WorkoutSession.js';
 import { Settings } from './models/Settings.js';
 import { Achievement } from './models/Achievement.js';
+import { Measurement } from './models/Measurement.js';
 
 import { storageService } from './services/StorageService.js';
 import { timerService } from './services/TimerService.js';
 import { AnalyticsService } from './services/AnalyticsService.js';
 import { AchievementService } from './services/AchievementService.js';
 
-import { EXERCISE_DATABASE } from '../data/exercises-db.js';
+import { EXERCISE_DATABASE, loadExerciseDatabase } from '../data/exercises-db.js';
 import { showToast, debugLog } from './utils/helpers.js';
 import { mountSyncStatusPill } from './utils/sync-status.js';
+import { emit, EVENTS } from './utils/event-bus.js';
 
 class GymTrackerApp {
     constructor() {
@@ -27,6 +29,7 @@ class GymTrackerApp {
         this.settings = null;
         this.achievements = [];
         this.customExercises = [];
+        this.measurements = [];
         this.exerciseDatabase = EXERCISE_DATABASE;
 
         this.viewControllers = {};
@@ -37,6 +40,12 @@ class GymTrackerApp {
      */
     async init() {
         debugLog('🏋️ Initializing Gym Tracker App...');
+
+        // Fetch the static exercise catalog up front. The loader is
+        // memoized so any later view that calls it (or imports
+        // EXERCISE_DATABASE directly) hits the same array without a
+        // second network round trip.
+        await loadExerciseDatabase();
 
         // Load data from storage
         this.loadAllData();
@@ -66,7 +75,7 @@ class GymTrackerApp {
         await this.initializeViews();
 
         // Show initial view — honor URL hash so refresh keeps the user's page
-        const validViews = new Set(['home', 'programs', 'calendar', 'workout', 'exercises', 'history', 'achievements', 'settings', 'more']);
+        const validViews = new Set(['home', 'programs', 'calendar', 'workout', 'exercises', 'history', 'achievements', 'settings', 'more', 'insights', 'measurements']);
         const hashView = window.location.hash.slice(1);
         this.showView(validViews.has(hashView) ? hashView : 'home');
 
@@ -149,6 +158,12 @@ class GymTrackerApp {
             []
         );
 
+        this.measurements = this._safeLoad('measurements',
+            () => storageService.getMeasurements(),
+            (data) => Array.isArray(data) ? data.map(m => Measurement.fromJSON(m)) : [],
+            []
+        );
+
         // Merge default and custom exercises
         this.exerciseDatabase = [...EXERCISE_DATABASE, ...this.customExercises];
 
@@ -164,6 +179,19 @@ class GymTrackerApp {
         } else {
             this.settings = Settings.fromJSON(rawSettings);
         }
+
+        // Broadcast the post-load state. Sync arrivals re-call loadAllData
+        // and the views subscribed to these events need to know that
+        // their data slice has changed even though no save() was invoked
+        // locally. Without this, a view rendered while workoutSessions
+        // was empty (cold load + pending sync) keeps showing its empty
+        // state after the sessions arrive from Firestore.
+        emit(EVENTS.PROGRAMS_CHANGED, this.programs);
+        emit(EVENTS.SESSIONS_CHANGED, this.workoutSessions);
+        emit(EVENTS.ACHIEVEMENTS_CHANGED, this.achievements);
+        emit(EVENTS.CUSTOM_EXERCISES_CHANGED, this.customExercises);
+        emit(EVENTS.MEASUREMENTS_CHANGED, this.measurements);
+        emit(EVENTS.SETTINGS_CHANGED, this.settings);
     }
 
     /**
@@ -191,24 +219,48 @@ class GymTrackerApp {
      */
     savePrograms() {
         storageService.savePrograms(this.programs.map(p => p.toJSON()));
+        emit(EVENTS.PROGRAMS_CHANGED, this.programs);
     }
 
     saveWorkoutSessions() {
         storageService.saveWorkoutSessions(this.workoutSessions.map(s => s.toJSON()));
+        emit(EVENTS.SESSIONS_CHANGED, this.workoutSessions);
     }
 
     saveSettings() {
         storageService.saveSettings(this.settings.toJSON());
+        emit(EVENTS.SETTINGS_CHANGED, this.settings);
     }
 
     saveAchievements() {
         storageService.saveAchievements(this.achievements.map(a => a.toJSON()));
+        emit(EVENTS.ACHIEVEMENTS_CHANGED, this.achievements);
     }
 
     saveCustomExercises() {
         storageService.saveCustomExercises(this.customExercises);
         // Re-merge exercise database
         this.exerciseDatabase = [...EXERCISE_DATABASE, ...this.customExercises];
+        emit(EVENTS.CUSTOM_EXERCISES_CHANGED, this.customExercises);
+    }
+
+    saveMeasurements() {
+        storageService.saveMeasurements(this.measurements.map(m => m.toJSON()));
+        emit(EVENTS.MEASUREMENTS_CHANGED, this.measurements);
+    }
+
+    addMeasurement(measurement) {
+        this.measurements.push(measurement);
+        this.saveMeasurements();
+    }
+
+    deleteMeasurement(id) {
+        // Coerce both sides — entries loaded from a Firestore doc whose
+        // numeric ids were stringified would otherwise never match the
+        // numeric click-handler id and the entry would silently survive.
+        const target = Number(id);
+        this.measurements = this.measurements.filter(m => Number(m.id) !== target);
+        this.saveMeasurements();
     }
 
     addCustomExercise(exercise) {
@@ -414,6 +466,7 @@ class GymTrackerApp {
         this.workoutSessions = [];
         this.achievements = AchievementService.getDefaultAchievements();
         this.customExercises = [];
+        this.measurements = [];
         this.settings = Settings.getDefault();
         this.currentWorkoutSession = null;
 
@@ -421,6 +474,7 @@ class GymTrackerApp {
         this.saveWorkoutSessions();
         this.saveAchievements();
         this.saveCustomExercises();
+        this.saveMeasurements();
         this.saveSettings();
 
         showToast('All data cleared', 'info');

@@ -13,6 +13,7 @@ import { trapModalFocus } from '../utils/modal-focus.js';
 import { renderPausedBannerHTML, wirePausedBannerActions } from './paused-banner.js';
 import { orderPrograms } from '../utils/program-order.js';
 import { AnalyticsService } from '../services/AnalyticsService.js';
+import { calculatePlates, formatPlateStack } from '../utils/plate-calculator.js';
 
 class WorkoutView {
     constructor() {
@@ -50,6 +51,18 @@ class WorkoutView {
         const view = document.getElementById('workout-view');
         if (!view || view.dataset.actionsWired) return;
         view.dataset.actionsWired = '1';
+
+        // Live plate-hint updates as the user types into a barbell weight
+        // input. Cheap — calculatePlates is O(plates) and the hint only
+        // exists on barbell rows.
+        view.addEventListener('input', (e) => {
+            const t = e.target;
+            if (!(t instanceof HTMLInputElement)) return;
+            const target = t.dataset.plateHintTarget;
+            if (!target) return;
+            const [eIdx, slot] = target.split('-').map(Number);
+            this.refreshPlateHint(eIdx, slot, t.value);
+        });
 
         view.addEventListener('click', (e) => {
             const target = e.target.closest('[data-action]');
@@ -464,7 +477,12 @@ class WorkoutView {
                 targetSets: ex.targetSets,
                 targetReps: ex.targetReps,
                 restSeconds: ex.restSeconds,
-                order: ex.order
+                order: ex.order,
+                // Carry the program's superset link through to the live
+                // session so renderExerciseList can wrap consecutive
+                // grouped exercises in a single .superset-block card and
+                // shouldStartRestForSet can suppress mid-round rest.
+                groupId: ex.groupId,
             }))
         });
 
@@ -518,9 +536,46 @@ class WorkoutView {
         this.adjustWorkoutTitleSize();
 
         const container = document.getElementById('workout-exercises-list');
-        container.innerHTML = this.currentWorkoutSession.exercises
-            .map((exercise, index) => this.renderExerciseEntry(exercise, index))
-            .join('');
+        container.innerHTML = this.renderExerciseList(this.currentWorkoutSession.exercises);
+    }
+
+    /**
+     * Render the exercise stream, wrapping any consecutive run of exercises
+     * that share a `groupId` in a single `.superset-block` card. Solo
+     * exercises render with no wrapping element so existing CSS for
+     * `.exercise-entry` keeps working unchanged.
+     */
+    renderExerciseList(exercises) {
+        let html = '';
+        let i = 0;
+        while (i < exercises.length) {
+            const ex = exercises[i];
+            if (!ex.groupId) {
+                html += this.renderExerciseEntry(ex, i);
+                i += 1;
+                continue;
+            }
+            // Walk forward while the run shares the same groupId.
+            const groupId = ex.groupId;
+            const start = i;
+            while (i < exercises.length && exercises[i].groupId === groupId) i += 1;
+            const groupItems = exercises.slice(start, i);
+            // A "group" of one isn't really a superset — render solo.
+            if (groupItems.length < 2) {
+                html += this.renderExerciseEntry(ex, start);
+                continue;
+            }
+            html += `
+                <div class="superset-block" role="group" aria-label="Superset of ${groupItems.length} exercises">
+                    <div class="superset-block-header">
+                        <i class="fas fa-link" aria-hidden="true"></i>
+                        <span>Superset · ${groupItems.length} exercises</span>
+                    </div>
+                    ${groupItems.map((g, k) => this.renderExerciseEntry(g, start + k)).join('')}
+                </div>
+            `;
+        }
+        return html;
     }
 
     /**
@@ -532,6 +587,9 @@ class WorkoutView {
         const isDuration = !!(exerciseData && exerciseData.exerciseType === 'duration');
         const previousSets = this.getPreviousExerciseData(exercise.exerciseId) || [];
         const unit = this.app.settings.weightUnit;
+        // Plate calculator only meaningful for loaded-bar exercises.
+        const equipment = exerciseData?.equipment || '';
+        const isBarbell = equipment === 'barbell' || equipment === 'trap-bar';
 
         // Build a slot → Set lookup so rendering is driven by each set's
         // stable `slot` rather than its position in the dense array. This
@@ -569,7 +627,7 @@ class WorkoutView {
                     || previousSets[i]
                     || previousSets[previousSets.length - 1]
                     || null;
-                rowsHTML += this.renderPlannedRow(index, i, prior, isDuration, unit, exercise.targetReps);
+                rowsHTML += this.renderPlannedRow(index, i, prior, isDuration, unit, exercise.targetReps, isBarbell);
             }
         }
 
@@ -648,7 +706,7 @@ class WorkoutView {
      * set and starts the rest timer. The row itself is NOT tappable — users
      * deliberately flick the toggle to complete.
      */
-    renderPlannedRow(exerciseIndex, slot, prior, isDuration, unit, targetReps) {
+    renderPlannedRow(exerciseIndex, slot, prior, isDuration, unit, targetReps, isBarbell = false) {
         const setLabel = `${slot + 1}`;
         const toggle = this.renderSetToggle(false, 'commit-planned-set', exerciseIndex, slot, 'Mark set complete');
 
@@ -674,21 +732,57 @@ class WorkoutView {
 
         const weight = prior ? prior.weight : '';
         const reps = prior ? prior.reps : (targetReps || '');
+        const plateHintHTML = isBarbell ? this.renderPlateHint(weight, unit) : '';
         return `
             <li class="set-row set-row-planned" data-slot="${slot}">
                 <span class="set-row-num">${setLabel}</span>
                 <div class="set-row-inputs">
                     <input type="number" inputmode="decimal" class="set-weight"
                         id="weight-${exerciseIndex}-${slot}" min="0" step="0.5"
-                        value="${weight === '' ? '' : weight}" placeholder="Weight" aria-label="Weight">
+                        value="${weight === '' ? '' : weight}" placeholder="Weight" aria-label="Weight"
+                        data-plate-hint-target="${exerciseIndex}-${slot}">
                     <span class="set-row-x">×</span>
                     <input type="number" inputmode="numeric" class="set-reps"
                         id="reps-${exerciseIndex}-${slot}" min="1"
                         value="${reps === '' ? '' : reps}" placeholder="Reps" aria-label="Reps">
                 </div>
                 ${toggle}
+                ${plateHintHTML ? `<div class="plate-hint" id="plate-hint-${exerciseIndex}-${slot}">${plateHintHTML}</div>` : ''}
             </li>
         `;
+    }
+
+    /**
+     * Compute the per-side plate breakdown text for a given weight using
+     * the user's plate-calculator settings. Returns '' (suppress) when
+     * either the weight is empty or the user hasn't configured plates.
+     */
+    renderPlateHint(weight, unit) {
+        const settings = this.app.settings;
+        const bar = Number(settings?.barWeight);
+        const plates = Array.isArray(settings?.plates) ? settings.plates : [];
+        if (!Number.isFinite(bar) || plates.length === 0) return '';
+        // The "Plates per side:" wording is wrapped in .plate-hint-label-text
+        // so the mobile media query can hide it; the dumbbell icon alone
+        // carries the meaning on small screens.
+        if (weight === '' || weight === null || weight === undefined) {
+            return `<span class="plate-hint-label"><i class="fas fa-dumbbell" aria-hidden="true"></i><span class="plate-hint-label-text"> Plates per side: </span><em>—</em></span>`;
+        }
+        const result = calculatePlates(Number(weight), bar, plates);
+        const text = formatPlateStack(result, unit);
+        return `<span class="plate-hint-label"><i class="fas fa-dumbbell" aria-hidden="true"></i><span class="plate-hint-label-text"> Plates per side: </span><em>${escapeHtml(text)}</em></span>`;
+    }
+
+    /**
+     * Live-update the plate hint underneath a planned weight input as the
+     * user types. Wired in `wireWorkoutActions`.
+     */
+    refreshPlateHint(exerciseIndex, slot, weight) {
+        const hintEl = document.getElementById(`plate-hint-${exerciseIndex}-${slot}`);
+        if (!hintEl) return;
+        const unit = this.app.settings.weightUnit;
+        const html = this.renderPlateHint(weight, unit);
+        if (html) hintEl.innerHTML = html;
     }
 
     /**
@@ -892,7 +986,37 @@ class WorkoutView {
         }
 
         this.rerenderExercise(exerciseIndex);
-        this.startRest(exercise.restSeconds || 90);
+
+        // Superset rest rule: only fire the rest timer once the entire
+        // round of the superset is complete. While the user is mid-round
+        // (i.e. another exercise in the same group still has fewer
+        // committed sets than the just-finished one), skip rest entirely
+        // — they should move straight to the next exercise.
+        if (this.shouldStartRestForSet(exerciseIndex, exercise)) {
+            this.startRest(exercise.restSeconds || 90);
+        } else {
+            this.skipRest();
+        }
+    }
+
+    /**
+     * Return true when a rest timer should fire after the just-committed
+     * set on the given exercise. Always true for solo exercises. For an
+     * exercise inside a superset, only true if every other exercise in
+     * the same group already has at least as many committed sets — i.e.
+     * the round is complete.
+     */
+    shouldStartRestForSet(exerciseIndex, exercise) {
+        if (!exercise.groupId) return true;
+        const list = this.currentWorkoutSession?.exercises || [];
+        const me = exercise.sets.length;
+        for (let i = 0; i < list.length; i++) {
+            if (i === exerciseIndex) continue;
+            const other = list[i];
+            if (!other || other.groupId !== exercise.groupId) continue;
+            if ((other.sets?.length || 0) < me) return false;
+        }
+        return true;
     }
 
     /**

@@ -2,7 +2,7 @@
  * Exercises View Controller
  */
 import { app } from '../app.js';
-import { showToast, parseLocalDate, showConfirmModal, escapeHtml, generateNumericId } from '../utils/helpers.js';
+import { showToast, parseLocalDate, showConfirmModal, escapeHtml, generateNumericId, formatTimeOfDay } from '../utils/helpers.js';
 import { trapModalFocus } from '../utils/modal-focus.js';
 import { DarkSelect } from '../utils/dark-select.js';
 import { AnalyticsService } from '../services/AnalyticsService.js';
@@ -477,14 +477,7 @@ class ExercisesView {
 
         // "6:42 PM" from an ISO timestamp. Used to disambiguate two sessions
         // on the same calendar day.
-        const fmtTime = (iso) => {
-            if (!iso) return '';
-            const d = new Date(iso);
-            if (Number.isNaN(d.getTime())) return '';
-            return d.toLocaleTimeString(undefined, {
-                hour: 'numeric', minute: '2-digit', hour12: true,
-            });
-        };
+        const fmtTime = (iso) => formatTimeOfDay(iso);
 
         // Caption that explains what makes the best set "best"
         const bestCaption = isDuration ? 'Longest duration' : 'Highest volume (weight × reps)';

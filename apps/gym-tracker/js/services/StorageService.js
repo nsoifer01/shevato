@@ -14,7 +14,8 @@ export class StorageService {
             ACTIVE_PROGRAM: 'gymTrackerActiveProgram',
             CUSTOM_EXERCISES: 'gymTrackerCustomExercises',
             ACTIVE_WORKOUT: 'gymTrackerActiveWorkout',
-            ONBOARDING_SEEN: 'gymTrackerOnboardingSeen'
+            ONBOARDING_SEEN: 'gymTrackerOnboardingSeen',
+            MEASUREMENTS: 'gymTrackerMeasurements'
         };
     }
 
@@ -186,6 +187,15 @@ export class StorageService {
         return this.set(this.keys.ACHIEVEMENTS, achievements);
     }
 
+    // Measurements
+    getMeasurements() {
+        return this.get(this.keys.MEASUREMENTS, []);
+    }
+
+    saveMeasurements(measurements) {
+        return this.set(this.keys.MEASUREMENTS, measurements);
+    }
+
     // Custom Exercises
     getCustomExercises() {
         return this.get(this.keys.CUSTOM_EXERCISES, []);
@@ -238,6 +248,7 @@ export class StorageService {
             settings: this.getSettings(),
             achievements: this.getAchievements(),
             customExercises: this.getCustomExercises(),
+            measurements: this.getMeasurements(),
             activeProgram: this.get(this.keys.ACTIVE_PROGRAM),
             exportDate: new Date().toISOString(),
             version: StorageService.SCHEMA_VERSION
@@ -307,6 +318,7 @@ export class StorageService {
             if (data.settings) this.saveSettings(data.settings);
             if (data.achievements) this.saveAchievements(data.achievements);
             if (data.customExercises) this.saveCustomExercises(data.customExercises);
+            if (Array.isArray(data.measurements)) this.saveMeasurements(data.measurements);
             if (data.activeProgram) this.set(this.keys.ACTIVE_PROGRAM, data.activeProgram);
             return true;
         } catch (error) {

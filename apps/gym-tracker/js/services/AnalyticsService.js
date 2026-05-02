@@ -205,6 +205,62 @@ export class AnalyticsService {
     }
 
     /**
+     * Sum lifted volume per muscle category (chest, back, …) for sessions
+     * inside `[startDate, endDate)` (both YYYY-MM-DD strings or Date).
+     * Volume is the same `weight × reps` (or `duration` for time-based)
+     * exposed by Set.volume / WorkoutExercise.totalVolume.
+     *
+     * `exerciseDatabase` is the merged default + custom catalog. We look
+     * up `category` rather than the more granular `muscleGroup` because
+     * the dashboard wants a small, stable axis (chest, back, legs, …)
+     * rather than 30+ sub-muscles. Exercises whose category is unknown
+     * (e.g. legacy custom entries with a free-text muscle) bucket into
+     * 'other' so they aren't silently dropped.
+     */
+    static getVolumeByCategoryInRange(sessions, exerciseDatabase, startDate, endDate) {
+        const start = startDate instanceof Date ? startDate : this.toLocalDate(startDate);
+        const end = endDate instanceof Date ? endDate : this.toLocalDate(endDate);
+        const byId = new Map((exerciseDatabase || []).map(e => [e.id, e]));
+        const totals = new Map();
+        sessions.forEach(s => {
+            const d = this.toLocalDate(s.date);
+            if (d < start || d >= end) return;
+            (s.exercises || []).forEach(ex => {
+                const data = byId.get(ex.exerciseId);
+                const category = (data && data.category) || 'other';
+                const vol = (ex.sets || []).reduce(
+                    (sum, set) => sum + ((set.weight || 0) * (set.reps || 0)) + (set.duration || 0),
+                    0,
+                );
+                if (vol <= 0) return;
+                totals.set(category, (totals.get(category) || 0) + vol);
+            });
+        });
+        return Array.from(totals.entries())
+            .map(([category, volume]) => ({ category, volume }))
+            .sort((a, b) => b.volume - a.volume);
+    }
+
+    /**
+     * Total daily volume across all sessions, keyed by YYYY-MM-DD. Used
+     * by the calendar heatmap so an O(sessions) sweep can light up the
+     * full year in one render. Sessions with the same date sum together.
+     */
+    static getDailyVolumeMap(sessions) {
+        const out = new Map();
+        sessions.forEach(s => {
+            const key = s.date;
+            if (!key) return;
+            const vol = (s.totalVolume != null)
+                ? s.totalVolume
+                : (s.exercises || []).reduce((sum, ex) => sum + (ex.sets || []).reduce(
+                    (k, set) => k + ((set.weight || 0) * (set.reps || 0)) + (set.duration || 0), 0), 0);
+            out.set(key, (out.get(key) || 0) + vol);
+        });
+        return out;
+    }
+
+    /**
      * Get muscle group distribution
      */
     static getMuscleGroupDistribution(sessions, exerciseDatabase) {
