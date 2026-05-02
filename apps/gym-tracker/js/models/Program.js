@@ -117,6 +117,12 @@ function normalizeExercise(ex) {
         restSeconds: clampInt(ex.restSeconds, 0, 900, 90),
         notes: ex.notes || '',
         order: Number.isFinite(ex.order) ? ex.order : 0,
+        // Superset grouping. Exercises sharing the same string `groupId`
+        // are performed back-to-back with no inter-exercise rest. null /
+        // undefined → solo exercise. Stored as a string so future fields
+        // (label, color) can hang off a separate group registry without
+        // colliding with positional indices.
+        groupId: ex.groupId || null,
     };
 }
 

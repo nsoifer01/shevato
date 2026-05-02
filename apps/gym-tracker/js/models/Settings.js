@@ -21,6 +21,24 @@ export class Settings {
         this.vibrationAlerts = data.vibrationAlerts !== undefined
             ? data.vibrationAlerts
             : (legacy !== undefined ? legacy : true);
+
+        // Plate calculator config. `barWeight` and `plates` are stored in
+        // the user's `weightUnit`. Defaults match the most common gym
+        // setup: a 20 kg / 45 lb bar plus a standard plate stack.
+        this.barWeight = typeof data.barWeight === 'number'
+            ? data.barWeight
+            : (this.weightUnit === 'lb' ? 45 : 20);
+        this.plates = Array.isArray(data.plates)
+            ? data.plates.slice().sort((a, b) => b - a)
+            : (this.weightUnit === 'lb'
+                ? [45, 35, 25, 10, 5, 2.5]
+                : [25, 20, 15, 10, 5, 2.5, 1.25]);
+
+        // Time-of-day display preference. '12' renders "6:42 PM";
+        // '24' renders "18:42". Used everywhere the app shows a time
+        // (history cards, calendar selected-day rows, workout timer
+        // displays). Defaults to 12-hour to match the existing format.
+        this.timeFormat = data.timeFormat === '24' ? '24' : '12';
     }
 
     toJSON() {
@@ -30,7 +48,10 @@ export class Settings {
             dateFormat: this.dateFormat,
             firstDayOfWeek: this.firstDayOfWeek,
             soundAlerts: this.soundAlerts,
-            vibrationAlerts: this.vibrationAlerts
+            vibrationAlerts: this.vibrationAlerts,
+            barWeight: this.barWeight,
+            plates: this.plates,
+            timeFormat: this.timeFormat
         };
     }
 

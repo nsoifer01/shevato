@@ -9,11 +9,14 @@
  *   - Do NOT intercept Firebase / cross-origin auth + sync requests.
  *   - On every activate, drop old precaches.
  *
- * Bump CACHE_VERSION whenever the precache list changes; old caches are
- * pruned automatically.
+ * CACHE_VERSION uses semver (MAJOR.MINOR.PATCH). Bump:
+ *   - PATCH when the precache list contents change (file edits / additions).
+ *   - MINOR when the precache list shape or runtime cache strategy changes.
+ *   - MAJOR for a fundamental SW behavior change that breaks back-compat.
+ * Old caches are pruned automatically on activate.
  */
 
-const CACHE_VERSION = 'gym-v5';
+const CACHE_VERSION = '1.5.0';
 const PRECACHE = `gym-precache-${CACHE_VERSION}`;
 const RUNTIME = `gym-runtime-${CACHE_VERSION}`;
 
@@ -23,9 +26,11 @@ const PRECACHE_URLS = [
   './manifest.webmanifest',
   './css/gym-tracker.css',
   './data/exercises-db.js',
+  './data/exercises-db.json',
   './js/app.js',
   './js/models/Achievement.js',
   './js/models/Exercise.js',
+  './js/models/Measurement.js',
   './js/models/Program.js',
   './js/models/Set.js',
   './js/models/Settings.js',
@@ -38,8 +43,10 @@ const PRECACHE_URLS = [
   './js/services/TimerService.js',
   './js/utils/dark-calendar.js',
   './js/utils/dark-select.js',
+  './js/utils/event-bus.js',
   './js/utils/helpers.js',
   './js/utils/modal-focus.js',
+  './js/utils/plate-calculator.js',
   './js/utils/program-order.js',
   './js/utils/sync-status.js',
   './js/utils/validators.js',
@@ -48,6 +55,8 @@ const PRECACHE_URLS = [
   './js/views/exercises-view.js',
   './js/views/history-view.js',
   './js/views/home-view.js',
+  './js/views/insights-view.js',
+  './js/views/measurements-view.js',
   './js/views/paused-banner.js',
   './js/views/programs-view.js',
   './js/views/settings-view.js',

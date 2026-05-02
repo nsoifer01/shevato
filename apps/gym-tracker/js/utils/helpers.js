@@ -117,12 +117,49 @@ export function formatDate(dateString, format = 'short') {
 
     if (format === 'time') {
         return date.toLocaleTimeString('en-US', {
-            hour: '2-digit',
-            minute: '2-digit'
+            ...timeFormatOptions(),
         });
     }
 
     return date.toLocaleDateString('en-US');
+}
+
+/**
+ * Read the user's time-format preference from the live app singleton
+ * (window.gymApp.settings.timeFormat). Defaults to 12-hour for the
+ * very early boot window before the app has loaded settings, and any
+ * call paths outside the gym tracker.
+ */
+export function getTimeFormat() {
+    try {
+        const tf = window.gymApp?.settings?.timeFormat;
+        return tf === '24' ? '24' : '12';
+    } catch (_) {
+        return '12';
+    }
+}
+
+/**
+ * Build the toLocaleTimeString options for the user's preferred clock.
+ * 12-hour: "6:42 PM" / 24-hour: "18:42". Always shows minutes,
+ * hides seconds.
+ */
+export function timeFormatOptions() {
+    if (getTimeFormat() === '24') {
+        return { hour: '2-digit', minute: '2-digit', hour12: false };
+    }
+    return { hour: 'numeric', minute: '2-digit', hour12: true };
+}
+
+/**
+ * Format a Date or ISO-ish string as time-of-day in the user's chosen
+ * 12/24h clock. Returns '' for unparseable input.
+ */
+export function formatTimeOfDay(value) {
+    if (!value) return '';
+    const d = value instanceof Date ? value : new Date(value);
+    if (Number.isNaN(d.getTime())) return '';
+    return d.toLocaleTimeString(undefined, timeFormatOptions());
 }
 
 /**
@@ -143,14 +180,8 @@ export function formatSessionDateTime(session) {
     // Prefer endTime; fall back through startTime then timestamp.
     const timeSrc = session.endTime || session.startTime || session.timestamp;
     if (!timeSrc) return datePart;
-    const d = new Date(timeSrc);
-    if (Number.isNaN(d.getTime())) return datePart;
-    const time = d.toLocaleTimeString('en-US', {
-        hour: 'numeric',
-        minute: '2-digit',
-        hour12: true,
-    });
-    return `${datePart} • ${time}`;
+    const time = formatTimeOfDay(timeSrc);
+    return time ? `${datePart} • ${time}` : datePart;
 }
 
 /**

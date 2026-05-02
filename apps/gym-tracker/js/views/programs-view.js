@@ -236,24 +236,6 @@ class ProgramsView {
                     <span class="program-card-handle" title="Drag to reorder" aria-hidden="true">
                         <i class="fas fa-grip-vertical"></i>
                     </span>
-                    <div class="program-card-move-buttons" role="group" aria-label="Reorder program">
-                        <button type="button" class="btn-icon btn-icon-move"
-                            data-action="move-program-up"
-                            data-program-id="${program.id}"
-                            ${index === 0 ? 'disabled' : ''}
-                            aria-label="Move ${escapeHtml(program.name)} up"
-                            title="Move up">
-                            <i class="fas fa-chevron-up"></i>
-                        </button>
-                        <button type="button" class="btn-icon btn-icon-move"
-                            data-action="move-program-down"
-                            data-program-id="${program.id}"
-                            ${index === ordered.length - 1 ? 'disabled' : ''}
-                            aria-label="Move ${escapeHtml(program.name)} down"
-                            title="Move down">
-                            <i class="fas fa-chevron-down"></i>
-                        </button>
-                    </div>
                 ` : ''}
                 <div class="program-header">
                     <h3>${escapeHtml(program.name)}</h3>
@@ -315,48 +297,8 @@ class ProgramsView {
                     e.preventDefault();
                     this.deleteProgram(id);
                     break;
-                case 'move-program-up':
-                    e.preventDefault();
-                    this.moveProgram(id, -1);
-                    break;
-                case 'move-program-down':
-                    e.preventDefault();
-                    this.moveProgram(id, +1);
-                    break;
             }
         });
-    }
-
-    /**
-     * Reorder a program by `delta` (-1 = up, +1 = down) within the current
-     * displayed order. Forces sortMode = 'custom' (since drag-then-keyboard
-     * always lands users in custom anyway), persists the new order, and
-     * re-renders. Keyboard equivalent of drag-to-reorder.
-     */
-    moveProgram(programId, delta) {
-        // Switch to custom and pull the current ordered list.
-        if (this.sortMode !== 'custom') {
-            this.sortMode = 'custom';
-            storageService.saveProgramSort('custom');
-            const sortSelect = document.getElementById('programs-sort');
-            if (sortSelect) sortSelect.value = 'custom';
-        }
-
-        const ordered = this.getDisplayedPrograms();
-        const fromIdx = ordered.findIndex(p => p.id === programId);
-        const toIdx = fromIdx + delta;
-        if (fromIdx < 0 || toIdx < 0 || toIdx >= ordered.length) return;
-
-        const [moved] = ordered.splice(fromIdx, 1);
-        ordered.splice(toIdx, 0, moved);
-        storageService.saveProgramOrder(ordered.map(p => p.id));
-        this.render();
-
-        // Restore focus on the move button so a keyboard user can keep
-        // pressing Up/Down without re-tabbing into the card.
-        const action = delta < 0 ? 'move-program-up' : 'move-program-down';
-        const btn = document.querySelector(`[data-action="${action}"][data-program-id="${programId}"]`);
-        if (btn && !btn.disabled) btn.focus();
     }
 
     openProgramModal(programId = null) {
@@ -414,12 +356,41 @@ class ProgramsView {
             return;
         }
 
-        container.innerHTML = this.currentProgram.exercises.map((exercise, index) => {
+        const exercises = this.currentProgram.exercises;
+        container.innerHTML = exercises.map((exercise, index) => {
             const details = this.app.getExerciseById(exercise.exerciseId);
             const muscle = formatMuscleGroup(details?.muscleGroup);
             const restLabel = formatRestLabel(exercise.restSeconds);
+            // Visual cues for supersets. Group membership is computed from
+            // adjacent rows: if this row shares groupId with the previous,
+            // it's "linked above"; if with the next, "linked below". Used
+            // only for styling (rounded corners on first / last of group,
+            // squared in between).
+            const prev = index > 0 ? exercises[index - 1] : null;
+            const next = index < exercises.length - 1 ? exercises[index + 1] : null;
+            const linkedAbove = !!(exercise.groupId && prev && prev.groupId === exercise.groupId);
+            const linkedBelow = !!(exercise.groupId && next && next.groupId === exercise.groupId);
+            const groupClasses = [
+                exercise.groupId ? 'is-grouped' : '',
+                linkedAbove ? 'is-linked-above' : '',
+                linkedBelow ? 'is-linked-below' : '',
+            ].filter(Boolean).join(' ');
+            const linkBtnLabel = linkedAbove ? 'Unlink from previous' : 'Link with previous as superset';
+            const linkBtnIcon = linkedAbove ? 'fa-link-slash' : 'fa-link';
+            // First row can't link upward — there's nothing above it.
+            const linkBtnHTML = index === 0 ? '' : `
+                <button type="button" class="btn-icon btn-icon-link${linkedAbove ? ' is-on' : ''}"
+                    data-action="${linkedAbove ? 'unlink-superset' : 'link-superset'}"
+                    data-index="${index}"
+                    aria-pressed="${linkedAbove ? 'true' : 'false'}"
+                    aria-label="${linkBtnLabel}"
+                    title="${linkBtnLabel}">
+                    <i class="fas ${linkBtnIcon}" aria-hidden="true"></i>
+                </button>
+            `;
             return `
-            <div class="program-exercise-row" draggable="true" data-exercise-index="${index}">
+            <div class="program-exercise-row ${groupClasses}" draggable="true" data-exercise-index="${index}">
+                ${linkedAbove ? `<span class="pex-superset-tag" aria-hidden="true">SUPERSET</span>` : ''}
                 <span class="pex-drag-handle" aria-hidden="true" title="Drag to reorder">
                     <i class="fas fa-grip-vertical"></i>
                 </span>
@@ -451,12 +422,15 @@ class ProgramsView {
                     ${stepperHTML('reps', index, exercise.targetReps, 1, 100, 'Reps')}
                     ${stepperHTML('rest', index, exercise.restSeconds, 0, 600, 'Rest', 15, restLabel)}
                 </div>
-                <button class="pex-delete"
-                    data-action="remove-exercise"
-                    data-index="${index}"
-                    title="Remove exercise" type="button" aria-label="Remove exercise">
-                    <i class="fas fa-xmark"></i>
-                </button>
+                <div class="pex-row-actions">
+                    ${linkBtnHTML}
+                    <button class="pex-delete"
+                        data-action="remove-exercise"
+                        data-index="${index}"
+                        title="Remove exercise" type="button" aria-label="Remove exercise">
+                        <i class="fas fa-xmark"></i>
+                    </button>
+                </div>
             </div>
         `;}).join('');
 
@@ -487,6 +461,16 @@ class ProgramsView {
                 this.moveExerciseInProgram(Number(btn.dataset.index), +1);
             });
         });
+        container.querySelectorAll('[data-action="link-superset"]').forEach(btn => {
+            btn.addEventListener('click', () => {
+                this.toggleSupersetLink(Number(btn.dataset.index), true);
+            });
+        });
+        container.querySelectorAll('[data-action="unlink-superset"]').forEach(btn => {
+            btn.addEventListener('click', () => {
+                this.toggleSupersetLink(Number(btn.dataset.index), false);
+            });
+        });
 
         container.querySelectorAll('[data-stepper]').forEach(btn => {
             btn.addEventListener('click', () => {
@@ -504,6 +488,45 @@ class ProgramsView {
      * the modal body and restores focus to the same arrow on the moved
      * row so repeated presses keep working without re-tabbing.
      */
+    /**
+     * Link the row at `index` into a superset with the row immediately
+     * above it (link === true), or break the link upward (link === false).
+     *
+     * Linking rules:
+     *   - The link button is hidden on row 0 (no row above).
+     *   - Linking adopts the previous row's groupId. If the previous row
+     *     wasn't in a group, a new groupId is created and assigned to
+     *     both rows so they form a fresh 2-exercise superset.
+     *   - Unlinking just clears this row's groupId. Any rows below us
+     *     that share the same group keep their group intact (i.e. we
+     *     split the group at this row).
+     *
+     * After mutating, re-renders the modal body and restores focus to
+     * this row's link button so keyboard users can keep toggling.
+     */
+    toggleSupersetLink(index, link) {
+        if (!this.currentProgram) return;
+        const list = this.currentProgram.exercises;
+        if (index <= 0 || index >= list.length) return;
+        const cur = list[index];
+        const prev = list[index - 1];
+
+        if (link) {
+            const groupId = prev.groupId || `g-${Date.now().toString(36)}-${Math.floor(Math.random() * 1e6).toString(36)}`;
+            this.currentProgram.updateExercise(index - 1, { groupId });
+            this.currentProgram.updateExercise(index, { groupId });
+        } else {
+            this.currentProgram.updateExercise(index, { groupId: null });
+        }
+
+        this.renderProgramExercises();
+        const action = link ? 'unlink-superset' : 'link-superset';
+        const btn = document.querySelector(
+            `#program-exercises-list [data-action="${action}"][data-index="${index}"]`
+        );
+        if (btn) btn.focus();
+    }
+
     moveExerciseInProgram(fromIndex, delta) {
         if (!this.currentProgram) return;
         const list = this.currentProgram.exercises;
