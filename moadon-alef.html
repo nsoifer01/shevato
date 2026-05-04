@@ -2,7 +2,7 @@
 <html>
 <head>
   <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=no" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
 
   <!-- Resource hints -->
   <link rel="preconnect" href="https://www.gstatic.com" crossorigin>
@@ -18,6 +18,7 @@
   <meta name="description" content="מועדון אלף - שירות רופא עד הבית 24/7 בישראל. טיפול רפואי מקצועי, בדיקות, חיסונים וטיפולי חירום בנוחות ביתכם. צוות רופאים מומחים זמין מסביב לשעון כולל שבתות וחגים. טלפון: 1-700-7011-03" />
   <!-- SEO Enhancement: Comprehensive Hebrew keywords for medical services -->
   <meta name="keywords" content="רופא עד הבית, שירות רפואי 24/7, רופא לילה, רופא שבת, ביקור רופא בבית, טיפול רפואי בבית, מועדון אלף, רופא חירום, בדיקות דם בבית, חיסונים בבית, רופא ילדים עד הבית, רופא קשישים, שירותי רפואה פרטיים, 1700701103" />
+  <meta name="author" content="Moadon Alef" />
   <link rel="stylesheet" href="assets/css/main.css" />
   <link rel="icon" type="image/png" href="images/moadon-alef-header.png">
   
@@ -29,7 +30,7 @@
   <link rel="alternate" hreflang="x-default" href="https://shevato.com/moadon-alef.html" />
   
   <!-- SEO Enhancement: Robots meta tag for search engine crawling -->
-  <meta name="robots" content="index, follow" />
+  <meta name="robots" content="index, follow, max-image-preview:large" />
   
   <!-- SEO Enhancement: Open Graph tags for social media sharing -->
   <meta property="og:title" content="מועדון אלף - רופא עד הבית 24/7 | שירות רפואי מקצועי" />
@@ -37,14 +38,17 @@
   <meta property="og:type" content="website" />
   <meta property="og:url" content="https://shevato.com/moadon-alef.html" />
   <meta property="og:image" content="https://shevato.com/images/moadon-alef-header.png" />
+  <meta property="og:image:type" content="image/png" />
+  <meta property="og:image:alt" content="מועדון אלף - רופא עד הבית 24/7" />
   <meta property="og:locale" content="he_IL" />
   <meta property="og:site_name" content="מועדון אלף" />
-  
+
   <!-- SEO Enhancement: Twitter Card tags -->
   <meta name="twitter:card" content="summary_large_image" />
   <meta name="twitter:title" content="מועדון אלף - רופא עד הבית 24/7" />
   <meta name="twitter:description" content="שירות רופא עד הבית המוביל בישראל. זמינים 24/7 לטיפול רפואי מקצועי בביתכם." />
   <meta name="twitter:image" content="https://shevato.com/images/moadon-alef-header.png" />
+  <meta name="twitter:image:alt" content="מועדון אלף - רופא עד הבית 24/7" />
   
   <!-- SEO Enhancement: Additional meta tags for local Israeli searches -->
   <meta name="geo.region" content="IL" />
@@ -178,14 +182,14 @@
         <p lang="ru">Добро пожаловать в Моадон Алеф - ваш надежный партнер в области профессиональных медицинских услуг на дому. Мы предоставляем качественную медицинскую помощь прямо у вас дома с нашей командой опытных врачей, доступных 24/7.</p>
         <p lang="he">ברוכים הבאים למועדון אלף, השותף המהימן שלכם לשירותי רפואה מקצועיים עד הבית. אנו מביאים טיפול רפואי איכותי ישירות לביתכם עם צוות רופאים מנוסים הזמינים 24/7.</p>
         
-        <div class="lang-switcher">
-          <button class="lang-btn active" onclick="switchLanguage('en')">
+        <div class="lang-switcher" role="group" aria-label="Language selection">
+          <button type="button" class="lang-btn active" onclick="switchLanguage('en')" data-lang="en" aria-pressed="true">
             🇬🇧 English
           </button>
-          <button class="lang-btn" onclick="switchLanguage('ru')">
+          <button type="button" class="lang-btn" onclick="switchLanguage('ru')" data-lang="ru" aria-pressed="false">
             🇷🇺 Русский
           </button>
-          <button class="lang-btn" onclick="switchLanguage('he')">
+          <button type="button" class="lang-btn" onclick="switchLanguage('he')" data-lang="he" aria-pressed="false">
             🇮🇱 עברית
           </button>
         </div>
@@ -288,13 +292,13 @@
   <!-- Use Moadon Alef specific footer -->
   <div data-include="footer-moadon-alef"></div>
   
-  <!-- Scripts -->
-  <script src="assets/js/passive-events-fix.js"></script>
-  <script src="assets/js/jquery.min.js"></script>
-  <script src="assets/js/browser.min.js"></script>
-  <script src="assets/js/breakpoints.min.js"></script>
-  <script src="assets/js/util.js"></script>
-  <script src="assets/js/main.js"></script>
-  <script src="/assets/js/language-switcher.js"></script>
+  <!-- Scripts: deferred so they run in document order after parse, before DOMContentLoaded. -->
+  <script defer src="assets/js/passive-events-fix.js"></script>
+  <script defer src="assets/js/jquery.min.js"></script>
+  <script defer src="assets/js/browser.min.js"></script>
+  <script defer src="assets/js/breakpoints.min.js"></script>
+  <script defer src="assets/js/util.js"></script>
+  <script defer src="assets/js/main.js"></script>
+  <script defer src="/assets/js/language-switcher.js"></script>
 </body>
 </html>
