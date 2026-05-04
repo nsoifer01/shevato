@@ -28,5 +28,25 @@ jobs:
             node --check "$f"
           done
 
+      # Site-wide classic scripts that ship to the browser. These are
+      # plain (non-module) JS, so node --check parses them as scripts.
+      # jQuery and the vendored *.min.js bundles are skipped — they're
+      # already minified and Node's parser chokes on some legacy syntax
+      # they use.
+      - name: Syntax check (site scripts)
+        run: |
+          set -e
+          for f in assets/js/analytics.js \
+                   assets/js/apex-redirect.js \
+                   assets/js/global-icons.js \
+                   assets/js/language-switcher.js \
+                   assets/js/main.js \
+                   assets/js/pagination.js \
+                   assets/js/passive-events-fix.js \
+                   assets/js/redirect-countdown.js \
+                   assets/js/year-updater.js; do
+            node --check "$f"
+          done
+
       - name: Run tests
         run: npm test
