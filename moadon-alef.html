@@ -2,7 +2,7 @@
 <html>
 <head>
   <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=no" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
 
   <!-- Resource hints -->
   <link rel="preconnect" href="https://www.gstatic.com" crossorigin>
@@ -178,14 +178,14 @@
         <p lang="ru">Добро пожаловать в Моадон Алеф - ваш надежный партнер в области профессиональных медицинских услуг на дому. Мы предоставляем качественную медицинскую помощь прямо у вас дома с нашей командой опытных врачей, доступных 24/7.</p>
         <p lang="he">ברוכים הבאים למועדון אלף, השותף המהימן שלכם לשירותי רפואה מקצועיים עד הבית. אנו מביאים טיפול רפואי איכותי ישירות לביתכם עם צוות רופאים מנוסים הזמינים 24/7.</p>
         
-        <div class="lang-switcher">
-          <button class="lang-btn active" onclick="switchLanguage('en')">
+        <div class="lang-switcher" role="group" aria-label="Language selection">
+          <button type="button" class="lang-btn active" onclick="switchLanguage('en')" data-lang="en" aria-pressed="true">
             🇬🇧 English
           </button>
-          <button class="lang-btn" onclick="switchLanguage('ru')">
+          <button type="button" class="lang-btn" onclick="switchLanguage('ru')" data-lang="ru" aria-pressed="false">
             🇷🇺 Русский
           </button>
-          <button class="lang-btn" onclick="switchLanguage('he')">
+          <button type="button" class="lang-btn" onclick="switchLanguage('he')" data-lang="he" aria-pressed="false">
             🇮🇱 עברית
           </button>
         </div>
