@@ -904,7 +904,11 @@
      */
     showAuthModal() {
       if (!this.isAuthAvailable()) {
-        alert('Firebase authentication is not configured yet. Please see setup-firebase.md for instructions.');
+        // Misconfiguration is a developer-facing problem, not a user-facing
+        // one. The Sign In button is hidden via updateHeaderUI when auth
+        // isn't initialized, so this branch should only fire when something
+        // unusual has gone wrong — log instead of blocking the page.
+        console.warn('Firebase authentication is not configured; cannot open sign-in modal.');
         return;
       }
 
