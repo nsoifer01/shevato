@@ -2,14 +2,8 @@
 // Uses modular v9+ SDK via CDN imports
 
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
-import { 
-  getFirestore, 
-  connectFirestoreEmulator 
-} from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
-import { 
-  getDatabase, 
-  connectDatabaseEmulator 
-} from "https://www.gstatic.com/firebasejs/10.7.1/firebase-database.js";
+import { getFirestore } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
+import { getDatabase } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-database.js";
 import { getAuth } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js";
 
 // Your Firebase config - using actual project credentials
@@ -34,16 +28,5 @@ export const rtdb = getDatabase(app);
 
 // Expose config to window for compat SDK (used by main.js auth)
 window.firebaseConfig = firebaseConfig;
-
-// Optional: Connect to emulators in development
-if (window.location.hostname === 'localhost') {
-  try {
-    // Uncomment to use emulators
-    // connectFirestoreEmulator(db, 'localhost', 8080);
-    // connectDatabaseEmulator(rtdb, 'localhost', 9000);
-  } catch (e) {
-    // Already connected or emulator not running
-  }
-}
 
 export { app };

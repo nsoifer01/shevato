@@ -31,8 +31,7 @@ shevato/
 ├── partials/                         # Header/footer fragments loaded by main.js
 │   ├── header.html
 │   ├── footer.html
-│   ├── footer-moadon-alef.html       # Tri-lingual footer for Moadon Alef
-│   └── firebase-auth-scripts.html
+│   └── footer-moadon-alef.html       # Tri-lingual footer for Moadon Alef
 │
 ├── images/                           # Logos, backgrounds, and app artwork
 ├── netlify/, .netlify/               # Netlify functions and build artifacts
