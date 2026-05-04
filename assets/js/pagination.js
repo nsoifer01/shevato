@@ -23,10 +23,16 @@ const GlobalPaginationManager = (function() {
             config: finalConfig
         };
         
-        // Load saved page size from localStorage
-        const savedPageSize = localStorage.getItem(finalConfig.localStorageKey);
-        if (savedPageSize && finalConfig.pageSizeOptions.includes(parseInt(savedPageSize))) {
-            instances[instanceId].rowsPerPage = parseInt(savedPageSize);
+        // Load saved page size from localStorage. Wrapped because some
+        // private-browsing contexts throw on access — failing here would
+        // abort the whole instance and leave the table unpaginated.
+        try {
+            const savedPageSize = localStorage.getItem(finalConfig.localStorageKey);
+            if (savedPageSize && finalConfig.pageSizeOptions.includes(parseInt(savedPageSize))) {
+                instances[instanceId].rowsPerPage = parseInt(savedPageSize);
+            }
+        } catch (_) {
+            // localStorage unavailable — fall back to the default rowsPerPage.
         }
         
         return instanceId;
@@ -96,7 +102,12 @@ const GlobalPaginationManager = (function() {
         if (instance.config.pageSizeOptions.includes(newSize)) {
             instance.rowsPerPage = newSize;
             instance.currentPage = 1; // Reset to first page
-            localStorage.setItem(instance.config.localStorageKey, newSize);
+            try {
+                localStorage.setItem(instance.config.localStorageKey, newSize);
+            } catch (_) {
+                // localStorage unavailable (e.g. private browsing) —
+                // the new size still applies for this session.
+            }
             if (instance.config.updateCallback) {
                 instance.config.updateCallback();
             }
