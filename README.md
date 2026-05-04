@@ -2,191 +2,127 @@
 
 ## Overview
 
-Shevato is a modern, responsive web platform built with vanilla JavaScript, HTML5, and CSS3. The project features a modular architecture with reusable components, responsive design, and multiple interactive applications including games and utilities.
-
-## Recent Updates
-
-- **Directory Reorganization**: `includes/` folder renamed to `partials/` for clarity
-- **Apps Landing Page**: Redesigned as a hub for all interactive applications
-- **Consistent Navigation**: All navigation links now use proper `.html` extensions
-- **JavaScript Consolidation**: Root-level JS files moved to `assets/js/`
+Shevato is a static, multi-page web platform built with vanilla HTML5, CSS3, and JavaScript. The marketing site (home, product, apps) coexists with a small set of free browser apps and a separately-branded medical services page (Moadon Alef). The repo has no build step at the root; CSS is plain, JS is loaded with `<script defer>`, and partials are stitched together client-side via jQuery.
 
 ## Directory Structure
 
 ```
 shevato/
+├── assets/
+│   ├── css/                          # Stylesheets (main.css, brand-colors.css, theming, etc.)
+│   ├── fonts/                        # FontAwesome web fonts
+│   ├── js/                           # Site-wide JavaScript modules
+│   │   ├── main.js                   # Auth UI + partials loader (jQuery)
+│   │   ├── jquery.min.js             # jQuery (vendored)
+│   │   ├── analytics.js              # Google Analytics bootstrap
+│   │   ├── language-switcher.js      # Moadon Alef tri-lingual switcher
+│   │   ├── year-updater.js           # Footer copyright year
+│   │   ├── passive-events-fix.js     # Passive listeners polyfill
+│   │   ├── breakpoints.min.js, browser.min.js, util.js  # Responsive helpers
+│   │   └── pagination.js, global-icons.js
+│   ├── sass/                         # SASS sources for main.css
+│   └── seo/                          # Reference JSON-LD fragments + metadata checklist
 │
-├── assets/                    # Static assets and resources
-│   ├── css/                  # Stylesheets
-│   │   ├── apps.css          # Apps page styles (minimal)
-│   │   ├── font-awesome.min.css  # Icon library
-│   │   ├── main.css          # Primary stylesheet with dark background
-│   │   └── styles.css        # Component styles
-│   │
-│   ├── fonts/                # Web fonts
-│   │   └── fontawesome-*     # FontAwesome font files
-│   │
-│   ├── js/                   # JavaScript files
-│   │   ├── breakpoints.min.js    # Responsive breakpoint handler
-│   │   ├── browser.min.js        # Browser detection utilities
-│   │   ├── fetch_historical_data.js  # Data fetching utilities
-│   │   ├── fpl_predictor.js      # FPL prediction module
-│   │   ├── jquery.min.js         # jQuery library
-│   │   ├── main.js               # Main application logic (includes partials loader)
-│   │   ├── scripts.js            # Utility scripts
-│   │   └── util.js               # Helper functions
-│   │
-│   └── sass/                 # SASS source files
-│       ├── base/             # Base styles
-│       ├── components/       # Component styles
-│       ├── layout/           # Layout styles
-│       ├── libs/             # SASS libraries
-│       └── main.scss         # Main SASS file
+├── apps/                             # Browser apps (each is self-contained)
+│   ├── mario-kart/                   # Mario Kart 8 Deluxe race tracker
+│   ├── gym-tracker/                  # Gym workout tracker (PWA, manifest + service worker)
+│   └── football-h2h/                 # Head-to-head football league manager
 │
-├── apps/                     # Interactive applications and games
-│   ├── mario-kart/          # Mario Kart race tracker (standalone app)
-│   │   ├── css/             # 19 tracker-specific stylesheets
-│   │   ├── js/              # 28 JavaScript modules
-│   │   ├── tracker.html     # Main tracker interface
-│   │   └── README.md        # Tracker documentation
-│   │
+├── partials/                         # Header/footer fragments loaded by main.js
+│   ├── header.html
+│   ├── footer.html
+│   ├── footer-moadon-alef.html       # Tri-lingual footer for Moadon Alef
+│   └── firebase-auth-scripts.html
 │
-├── images/                   # Image assets
-│   ├── bg.jpg               # Dark background image (site-wide)
-│   ├── background.png       # Alternative background
-│   ├── logo*.svg/png        # Various logo formats
-│   ├── player.png/webp      # Game assets
-│   └── moadon-alef*         # Moadon Alef branding
+├── images/                           # Logos, backgrounds, and app artwork
+├── netlify/, .netlify/               # Netlify functions and build artifacts
+├── sync-system/                      # localStorage ↔ Firestore sync used by the apps
 │
-├── partials/                # Reusable HTML components
-│   ├── header.html          # Site header with navigation
-│   └── footer.html          # Site footer with contact info
-│
-├── index.html               # Redirects to home.html
-├── home.html                # Main landing page
-├── apps.html                # Games and apps hub (uses highlights layout)
-├── product.html             # Product showcase
-├── moadon-alef.html         # Medical services page (separate branding)
-├── towerbound.html          # Icy Tower game (standalone)
-└── historical_data.json     # Data storage file
+├── index.html                        # Apex shell — redirects to /home.html (noindex)
+├── home.html                         # Main landing page
+├── product.html                      # Services / product overview
+├── apps.html                         # Apps hub
+├── moadon-alef.html                  # Medical services landing (Hebrew/Russian/English)
+├── 404.html                          # Friendly not-found page (noindex, follow)
+├── sitemap.xml                       # Indexable URL list
+├── robots.txt                        # Crawler policy
+├── netlify.toml                      # Netlify build, headers, and CSP-Report-Only config
+├── firebase-config.js                # Firebase v10 modular SDK bootstrap
+├── firestore.rules, database.rules.json
+└── package.json                      # Test runner only (no build step)
 ```
+
+## Apps
+
+| App | Path | Category | Notes |
+|-----|------|----------|-------|
+| Mario Kart Tracker | `apps/mario-kart/tracker.html` | Game stats | Race log, charts, achievements |
+| Gym Tracker | `apps/gym-tracker/index.html` | Health | Installable PWA, offline support |
+| Football H2H League | `apps/football-h2h/index.html` | Sports stats | Match log, penalties, player stats |
 
 ## Key Features
 
-- **Responsive Design**: Mobile-first approach with breakpoint handling
-- **Theme**: Consistent themed background (`bg.jpg`) across all main pages
-- **Modular Architecture**: Clear separation between main site and apps
-- **Dynamic Content Loading**: Partials system for headers/footers
-- **Interactive Games**: 
-  - Mario Kart race tracker with extensive features
-  - Towerbound (Icy Tower clone)
-- **Multi-language Support**: Moadon Alef page supports English, Russian, and Hebrew
+- Responsive design with breakpoint-driven layout.
+- Consistent themed background (`bg.jpg`) across the marketing pages.
+- Dynamic header/footer injection via the partials system.
+- Optional Firebase email/password auth for cross-device sync (apps work fine signed-out via localStorage).
+- Multi-language support on Moadon Alef (English, Russian, Hebrew) via per-element `lang` attributes and a small switcher.
+- Reference SEO assets under `assets/seo/` (canonical Organization/WebSite JSON-LD plus a per-page metadata checklist).
 
-## Navigation Structure
+## Local Development
 
-- **Main Site**: Home → Product → Apps
-- **Apps Hub**: Lists all available games and applications
-- **Standalone Apps**: Mario Kart tracker and Towerbound maintain their own UI
+This is a static site. Any local HTTP server works:
 
-## Technical Details
-
-### Partials System
-The site uses jQuery to dynamically load header and footer components:
-```javascript
-var includes = $('[data-include]');
-jQuery.each(includes, function(){
-  var file = 'partials/' + $(this).data('include') + '.html';
-  $(this).load(file);
-});
-```
-
-### Background Implementation
-Dark background applied via CSS pseudo-element:
-```css
-body:before {
-  background-image: url(../../images/bg.jpg);
-  background-attachment: fixed;
-  /* ... */
-}
-```
-
-## Installation
-
-1. Clone the repository:
-   ```bash
-   git clone https://github.com/yourusername/shevato.git
-   cd shevato
-   ```
-
-2. No build process required - this is a static site. Simply open `index.html` in a web browser or serve the directory with any static file server.
-
-3. For development with SASS:
-   ```bash
-   # Install SASS if not already installed
-   npm install -g sass
-   
-   # Watch for SASS changes
-   sass --watch assets/sass/main.scss:assets/css/main.css
-   ```
-
-## Usage
-
-### Local Development
-
-Using Python's built-in server:
 ```bash
-python -m http.server 8000
-# Visit http://localhost:8000
+python3 -m http.server 8080
+# or
+npx http-server -p 8080 .
+# or
+npx serve -l 8080 .
 ```
 
-Using Node.js http-server:
+Then open `http://127.0.0.1:8080/`.
+
+For SASS edits:
+
 ```bash
-npx http-server
-# Visit http://localhost:8080
+npm install -g sass
+sass --watch assets/sass/main.scss:assets/css/main.css
 ```
 
-### Deployment
+## Tests
 
-The project can be deployed to any static hosting service:
-- GitHub Pages
-- Netlify
-- Vercel
-- AWS S3
-- Traditional web hosting
+Node's built-in test runner is used for the gym tracker and football-h2h modules:
 
-Simply upload all files maintaining the directory structure.
+```bash
+npm test            # runs both suites
+npm run test:gym
+npm run test:football
+```
+
+## Deployment
+
+The site is deployed to Netlify. `netlify.toml` defines security headers (HSTS, X-Frame-Options, Permissions-Policy, CSP-Report-Only) and long-cache directives for the gym-tracker assets. Any other static host works identically — just keep the directory layout intact.
 
 ## Browser Support
 
-- Chrome/Edge (latest)
-- Firefox (latest)
-- Safari (latest)
-- Mobile browsers (iOS Safari, Chrome Mobile)
+Latest two versions of Chrome, Edge, Firefox, and Safari (desktop and mobile).
 
-## Technologies Used
+## Technologies
 
-- **HTML5**: Semantic markup
-- **CSS3/SASS**: Modern styling with preprocessing
-- **JavaScript**: Vanilla JS with jQuery for DOM manipulation
-- **FontAwesome**: Icon library (v6.4.0 and v4.7.0)
-- **Chart.js**: Used in Mario Kart tracker
-- **Google Analytics**: Site tracking (UA-140119780-1)
-
-## Contributing
-
-1. Fork the repository
-2. Create your feature branch (`git checkout -b feature/AmazingFeature`)
-3. Commit your changes (`git commit -m 'Add some AmazingFeature'`)
-4. Push to the branch (`git push origin feature/AmazingFeature`)
-5. Open a Pull Request
-
-## License
-
-This project is proprietary. All rights reserved.
+- HTML5, CSS3 (with optional SASS preprocessing).
+- Vanilla JavaScript with jQuery for the partials/auth UI.
+- FontAwesome (4.x and 6.x).
+- Chart.js (Mario Kart tracker only).
+- Firebase Auth + Firestore + Realtime Database (optional sync).
+- Netlify Functions (`firebase-config` endpoint).
 
 ## Contact
 
-For questions or support, please contact:
 - Email: nikita@shevato.com
 - Phone: +1 (504) 638-3370
 - LinkedIn: [nikita-soifer](https://www.linkedin.com/in/nikita-soifer/)
+
+## License
+
+Proprietary. All rights reserved.
