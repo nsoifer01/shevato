@@ -61,8 +61,7 @@ gym-tracker/
 │   │   ├── AnalyticsService.js
 │   │   └── AchievementService.js
 │   ├── utils/                 # Helper functions
-│   │   ├── helpers.js
-│   │   └── validators.js
+│   │   └── helpers.js
 │   └── views/                 # View controllers
 │       ├── home-view.js
 │       ├── programs-view.js

@@ -3,9 +3,29 @@
  */
 import { app } from '../app.js';
 import { showToast, downloadJSON, showConfirmModal } from '../utils/helpers.js';
-import { validateImportData } from '../utils/validators.js';
 import { DarkSelect } from '../utils/dark-select.js';
 import { storageService } from '../services/StorageService.js';
+
+function validateImportData(data) {
+    if (!data) {
+        return 'No data provided';
+    }
+
+    if (typeof data !== 'object') {
+        return 'Invalid data format';
+    }
+
+    const hasValidStructure =
+        data.hasOwnProperty('programs') ||
+        data.hasOwnProperty('sessions') ||
+        data.hasOwnProperty('settings');
+
+    if (!hasValidStructure) {
+        return 'Invalid data structure';
+    }
+
+    return null;
+}
 
 class SettingsView {
     constructor() {
