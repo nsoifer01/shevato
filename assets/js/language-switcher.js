@@ -1,8 +1,9 @@
 /**
  * Moadon Alef language switcher.
- * Buttons declare their language via `data-lang`. The function avoids
- * the non-standard global `event` object so it works under strict mode
- * and in non-Chromium browsers.
+ * Buttons declare their language via `data-lang`. Click handling is
+ * delegated from `document` so the buttons need no inline `onclick`
+ * attribute, which keeps the markup compatible with strict CSPs that
+ * disallow inline event handlers.
  *
  * Note: the page's `<html>` element intentionally has NO `lang` attribute.
  * A CSS rule (`[lang]:not([lang="en"]) { display: none; }`) hides per-element
@@ -12,8 +13,12 @@
  */
 
 const LANG_BLOCK_ELEMENTS = new Set(['P', 'H1', 'H2', 'H3', 'H4', 'H5', 'H6', 'DIV', 'SECTION']);
+const SUPPORTED_LANGS = new Set(['en', 'ru', 'he']);
+const STORAGE_KEY = 'moadon-alef-lang';
 
 function switchLanguage(lang) {
+  if (!SUPPORTED_LANGS.has(lang)) return;
+
   document.querySelectorAll('.lang-btn').forEach(btn => {
     const isActive = btn.dataset.lang === lang;
     btn.classList.toggle('active', isActive);
@@ -34,18 +39,28 @@ function switchLanguage(lang) {
   document.body.dir = (lang === 'he') ? 'rtl' : 'ltr';
 
   try {
-    localStorage.setItem('moadon-alef-lang', lang);
+    localStorage.setItem(STORAGE_KEY, lang);
   } catch (_) {
     // localStorage may be unavailable in private browsing modes.
   }
 }
 
-document.addEventListener('DOMContentLoaded', function() {
+// Expose for legacy callers / tests.
+window.switchLanguage = switchLanguage;
+
+document.addEventListener('DOMContentLoaded', () => {
   let savedLang = 'en';
   try {
-    savedLang = localStorage.getItem('moadon-alef-lang') || 'en';
+    const stored = localStorage.getItem(STORAGE_KEY);
+    if (stored && SUPPORTED_LANGS.has(stored)) savedLang = stored;
   } catch (_) {
     // ignore
   }
   switchLanguage(savedLang);
+
+  document.addEventListener('click', (event) => {
+    const btn = event.target.closest('.lang-btn');
+    if (!btn || !btn.dataset.lang) return;
+    switchLanguage(btn.dataset.lang);
+  });
 });
