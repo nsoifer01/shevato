@@ -1132,11 +1132,3 @@
   $window.on('resize', debouncedResize);
 
 })(jQuery);
-
-/* ==========================================================================
-   Export for Module Systems (if needed)
-   ========================================================================== */
-
-if (typeof module !== 'undefined' && module.exports) {
-  module.exports = { FirebaseAuth, AuthUI };
-}
