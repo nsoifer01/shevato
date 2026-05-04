@@ -262,20 +262,6 @@ export function generateNumericId() {
 }
 
 /**
- * Get today's date in YYYY-MM-DD format
- */
-export function getTodayString() {
-    return new Date().toISOString().split('T')[0];
-}
-
-/**
- * Check if date is today
- */
-export function isToday(dateString) {
-    return dateString === getTodayString();
-}
-
-/**
  * Download JSON file
  */
 export function downloadJSON(data, filename) {
