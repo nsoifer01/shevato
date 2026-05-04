@@ -48,7 +48,6 @@ const PRECACHE_URLS = [
   './js/utils/plate-calculator.js',
   './js/utils/program-order.js',
   './js/utils/sync-status.js',
-  './js/utils/validators.js',
   './js/views/achievements-view.js',
   './js/views/calendar-view.js',
   './js/views/exercises-view.js',
