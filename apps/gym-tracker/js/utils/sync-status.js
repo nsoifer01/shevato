@@ -53,10 +53,3 @@ export function mountSyncStatusPill() {
     window.addEventListener('online', render);
     window.addEventListener('offline', render);
 }
-
-export function unmountSyncStatusPill() {
-    if (timer) { clearInterval(timer); timer = null; }
-    if (pillEl && pillEl.parentNode) pillEl.parentNode.removeChild(pillEl);
-    pillEl = null;
-    mounted = false;
-}

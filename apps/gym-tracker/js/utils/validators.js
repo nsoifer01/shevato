@@ -82,59 +82,6 @@ export function validateWeight(weight) {
 }
 
 /**
- * Validate date
- */
-export function validateDate(dateString) {
-    if (!dateString) {
-        return 'Date is required';
-    }
-    const date = new Date(dateString);
-    if (isNaN(date.getTime())) {
-        return 'Invalid date format';
-    }
-    return null;
-}
-
-/**
- * Validate heart rate
- */
-export function validateHeartRate(hr) {
-    if (hr === null || hr === undefined || hr === '') {
-        return null; // Optional field
-    }
-    if (hr < 30 || hr > 250) {
-        return 'Heart rate must be between 30 and 250';
-    }
-    return null;
-}
-
-/**
- * Validate calories
- */
-export function validateCalories(calories) {
-    if (calories === null || calories === undefined || calories === '') {
-        return null; // Optional field
-    }
-    if (calories < 0 || calories > 5000) {
-        return 'Calories must be between 0 and 5000';
-    }
-    return null;
-}
-
-/**
- * Validate rest time
- */
-export function validateRestTime(seconds) {
-    if (seconds === null || seconds === undefined) {
-        return null; // Optional
-    }
-    if (seconds < 0 || seconds > 600) {
-        return 'Rest time must be between 0 and 600 seconds';
-    }
-    return null;
-}
-
-/**
  * Validate JSON import data
  */
 export function validateImportData(data) {
