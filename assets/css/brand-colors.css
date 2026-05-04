@@ -23,3 +23,25 @@
 .sortable-header {
   cursor: pointer;
 }
+
+/* Skip-to-content link — visually offscreen until keyboard-focused.
+   Required by WCAG 2.4.1 (Bypass Blocks) so keyboard users can jump
+   over the partial-loaded header/nav and land on the page's main
+   region. The link's target (#main-content) already exists on every
+   top-level page that loads this stylesheet. */
+.skip-link {
+  position: absolute;
+  top: -40px;
+  left: 0;
+  z-index: 1000;
+  padding: 8px 16px;
+  background: #0044cc;
+  color: #ffffff;
+  text-decoration: none;
+  font-weight: 600;
+}
+.skip-link:focus {
+  top: 0;
+  outline: 2px solid #ffffff;
+  outline-offset: -2px;
+}
