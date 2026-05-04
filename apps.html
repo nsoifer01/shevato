@@ -164,23 +164,21 @@
     </div>
   </section>
   <div data-include="footer"></div>
-  <!-- Scripts -->
-  <script src="assets/js/passive-events-fix.js"></script>
-  <script src="assets/js/jquery.min.js"></script>
-  <script src="assets/js/browser.min.js"></script>
-  <script src="assets/js/breakpoints.min.js"></script>
-  <script src="assets/js/util.js"></script>
-  
+  <!-- Scripts: deferred so they run in document order after parse, before DOMContentLoaded. -->
+  <script defer src="assets/js/passive-events-fix.js"></script>
+  <script defer src="assets/js/jquery.min.js"></script>
+  <script defer src="assets/js/browser.min.js"></script>
+  <script defer src="assets/js/breakpoints.min.js"></script>
+  <script defer src="assets/js/util.js"></script>
+
   <!-- Firebase SDK (required for auth functionality) -->
-  <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
-  <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-auth-compat.js"></script>
+  <script defer src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+  <script defer src="https://www.gstatic.com/firebasejs/9.23.0/firebase-auth-compat.js"></script>
 
   <!-- Firebase Configuration (loads before main.js) -->
   <script type="module" src="firebase-config.js"></script>
 
   <!-- Main JavaScript -->
-  <script src="assets/js/main.js"></script>
+  <script defer src="assets/js/main.js"></script>
 </body>
 </html>
-
-
