@@ -51,21 +51,7 @@
 <div data-include="footer"></div>
 
 <!-- countdown + redirect script -->
-<script>
-    (function() {
-      var sec = 5;
-      var el  = document.getElementById('redirect-countdown');
-      var timer = setInterval(function() {
-        sec--;
-        if (sec <= 0) {
-          clearInterval(timer);
-          window.location.href = '/';
-        } else {
-          el.textContent = sec;
-        }
-      }, 1000);
-    })();
-</script>
+<script defer src="/assets/js/redirect-countdown.js"></script>
 
 <!-- Scripts: deferred so they run in document order after parse, before DOMContentLoaded. -->
 <script defer src="/assets/js/passive-events-fix.js"></script>
