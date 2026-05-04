@@ -5,10 +5,11 @@
   node_bundler = "esbuild"
 
 # Baseline security headers for every response. The CSP is intentionally
-# Report-Only at first so we can deploy without breaking the existing
-# inline jQuery-partials script in index.html. Once that inline script
-# is moved to an external file (or hashed), graduate to a real
-# Content-Security-Policy header by renaming the directive below.
+# Report-Only because main.js (jQuery + the auth modal) sets element
+# styles at runtime and writes inline event-style attributes via
+# jQuery internals, so style-src 'unsafe-inline' is still required.
+# Once that path is removed (or every offender is hashed), graduate to
+# a real Content-Security-Policy header by renaming the directive below.
 [[headers]]
   for = "/*"
   [headers.values]
