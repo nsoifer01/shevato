@@ -1,32 +1,51 @@
+/**
+ * Moadon Alef language switcher.
+ * Buttons declare their language via `data-lang`. The function avoids
+ * the non-standard global `event` object so it works under strict mode
+ * and in non-Chromium browsers.
+ *
+ * Note: the page's `<html>` element intentionally has NO `lang` attribute.
+ * A CSS rule (`[lang]:not([lang="en"]) { display: none; }`) hides per-element
+ * lang variants by default; setting `<html lang="he">` would hide the
+ * entire page. The chosen language is reflected via `dir` and the
+ * Open Graph / hreflang tags in <head> still signal targeting to crawlers.
+ */
+
+const LANG_BLOCK_ELEMENTS = new Set(['P', 'H1', 'H2', 'H3', 'H4', 'H5', 'H6', 'DIV', 'SECTION']);
+
 function switchLanguage(lang) {
-  // Update button states
-  document.querySelectorAll('.lang-btn').forEach(btn => btn.classList.remove('active'));
-  event.target.classList.add('active');
-  
-  // Hide all language content
-  document.querySelectorAll('[lang]').forEach(el => el.style.display = 'none');
-  
-  // Show selected language content
-  document.querySelectorAll(`[lang="${lang}"]`).forEach(el => {
-    if (el.tagName === 'P' || el.tagName === 'H3' || el.tagName === 'DIV') {
-      el.style.display = 'block';
-    } else {
-      el.style.display = 'inline';
-    }
+  document.querySelectorAll('.lang-btn').forEach(btn => {
+    const isActive = btn.dataset.lang === lang;
+    btn.classList.toggle('active', isActive);
+    btn.setAttribute('aria-pressed', isActive ? 'true' : 'false');
   });
-  
-  // Set page direction for Hebrew
+
+  // Hide every per-language element except the buttons themselves.
+  document.querySelectorAll('[lang]').forEach(el => {
+    if (el.classList.contains('lang-btn')) return;
+    el.style.display = 'none';
+  });
+
+  document.querySelectorAll(`[lang="${lang}"]`).forEach(el => {
+    if (el.classList.contains('lang-btn')) return;
+    el.style.display = LANG_BLOCK_ELEMENTS.has(el.tagName) ? 'block' : 'inline';
+  });
+
   document.body.dir = (lang === 'he') ? 'rtl' : 'ltr';
-  
-  // Save preference
-  localStorage.setItem('moadon-alef-lang', lang);
+
+  try {
+    localStorage.setItem('moadon-alef-lang', lang);
+  } catch (_) {
+    // localStorage may be unavailable in private browsing modes.
+  }
 }
 
-// Load saved language preference
 document.addEventListener('DOMContentLoaded', function() {
-  const savedLang = localStorage.getItem('moadon-alef-lang') || 'en';
-  const langBtn = document.querySelector(`.lang-btn:nth-child(${savedLang === 'en' ? 1 : savedLang === 'ru' ? 2 : 3})`);
-  if (langBtn) {
-    langBtn.click();
+  let savedLang = 'en';
+  try {
+    savedLang = localStorage.getItem('moadon-alef-lang') || 'en';
+  } catch (_) {
+    // ignore
   }
+  switchLanguage(savedLang);
 });

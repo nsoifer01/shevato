@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
     <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=no" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>404 – Page Not Found | Shevato</title>
     <meta name="description" content="The page you requested could not be found on shevato.com. You will be redirected to the home page." />
     <meta name="robots" content="noindex, follow" />
@@ -36,7 +36,7 @@
     <div class="inner">
         <header class="special">
             <h2>
-                <img src="/images/full-logo.svg" alt="Shevato – Expert Software Engineering Services Logo">
+                <img src="/images/full-logo.svg" alt="Shevato – Expert Software Engineering Services Logo" fetchpriority="high" decoding="async">
             </h2>
             <p>Sorry, we couldn’t find that page.</p>
             <p>
@@ -67,19 +67,18 @@
     })();
 </script>
 
-<!-- Scripts (same as your other pages) -->
-<script src="/assets/js/passive-events-fix.js"></script>
-<script src="/assets/js/jquery.min.js"></script>
-<script src="/assets/js/browser.min.js"></script>
-<script src="/assets/js/breakpoints.min.js"></script>
-<script src="/assets/js/util.js"></script>
+<!-- Scripts: deferred so they run in document order after parse, before DOMContentLoaded. -->
+<script defer src="/assets/js/passive-events-fix.js"></script>
+<script defer src="/assets/js/jquery.min.js"></script>
+<script defer src="/assets/js/browser.min.js"></script>
+<script defer src="/assets/js/breakpoints.min.js"></script>
+<script defer src="/assets/js/util.js"></script>
 
 <!-- Firebase SDK (required for auth functionality) -->
-<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
-<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-auth-compat.js"></script>
-
+<script defer src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+<script defer src="https://www.gstatic.com/firebasejs/9.23.0/firebase-auth-compat.js"></script>
 
 <!-- Main JavaScript -->
-<script src="/assets/js/main.js"></script>
+<script defer src="/assets/js/main.js"></script>
 </body>
 </html>

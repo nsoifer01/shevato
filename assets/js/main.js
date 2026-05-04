@@ -1077,7 +1077,6 @@
 
     // Handle includes system
     const includes = $('[data-include]');
-    const includesLoaded = 0;
 
     jQuery.each(includes, function() {
       const includeFile = $(this).data('include') + '.html';
