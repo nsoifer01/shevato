@@ -211,21 +211,6 @@ export function escapeHtml(text) {
 }
 
 /**
- * Debounce function
- */
-export function debounce(func, wait) {
-    let timeout;
-    return function executedFunction(...args) {
-        const later = () => {
-            clearTimeout(timeout);
-            func(...args);
-        };
-        clearTimeout(timeout);
-        timeout = setTimeout(later, wait);
-    };
-}
-
-/**
  * Verbose logging gate. Routine init/navigation logs inside the app
  * are noisy in production; gate them behind `localStorage.gymTrackerDebug`
  * (set to "true") or a `window.GYM_DEBUG = true` flag the user can set
@@ -288,43 +273,6 @@ export function getTodayString() {
  */
 export function isToday(dateString) {
     return dateString === getTodayString();
-}
-
-/**
- * Get week start date (Monday)
- */
-export function getWeekStart(date = new Date()) {
-    const d = new Date(date);
-    const day = d.getDay();
-    // Convert Sunday (0) to 7, then calculate days back to Monday
-    const diff = day === 0 ? 6 : day - 1;
-    const weekStart = new Date(d.setDate(d.getDate() - diff));
-    weekStart.setHours(0, 0, 0, 0);
-    return weekStart;
-}
-
-/**
- * Get month start date
- */
-export function getMonthStart(date = new Date()) {
-    return new Date(date.getFullYear(), date.getMonth(), 1);
-}
-
-/**
- * Format duration in seconds to readable string
- */
-export function formatDuration(seconds) {
-    const hours = Math.floor(seconds / 3600);
-    const minutes = Math.floor((seconds % 3600) / 60);
-    const secs = seconds % 60;
-
-    if (hours > 0) {
-        return `${hours}h ${minutes}m`;
-    }
-    if (minutes > 0) {
-        return `${minutes}m ${secs}s`;
-    }
-    return `${secs}s`;
 }
 
 /**
@@ -403,13 +351,6 @@ export function showToast(message, type = 'info', duration = 3000, opts = {}) {
     setTimeout(dismiss, duration);
 
     return { dismiss };
-}
-
-/**
- * Confirm dialog (browser default)
- */
-export function confirmDialog(message) {
-    return confirm(message);
 }
 
 /**
@@ -501,22 +442,6 @@ export function showConfirmModal(options = {}) {
 }
 
 /**
- * Sort array by key
- */
-export function sortBy(array, key, order = 'asc') {
-    return [...array].sort((a, b) => {
-        const aVal = typeof a[key] === 'string' ? a[key].toLowerCase() : a[key];
-        const bVal = typeof b[key] === 'string' ? b[key].toLowerCase() : b[key];
-
-        if (order === 'asc') {
-            return aVal > bVal ? 1 : -1;
-        } else {
-            return aVal < bVal ? 1 : -1;
-        }
-    });
-}
-
-/**
  * Group array by key
  */
 export function groupBy(array, key) {
@@ -536,20 +461,6 @@ export function groupBy(array, key) {
 export function percentage(value, total) {
     if (total === 0) return 0;
     return Math.round((value / total) * 100);
-}
-
-/**
- * Clamp value between min and max
- */
-export function clamp(value, min, max) {
-    return Math.min(Math.max(value, min), max);
-}
-
-/**
- * Check if device is mobile
- */
-export function isMobile() {
-    return window.innerWidth < 768;
 }
 
 /**
