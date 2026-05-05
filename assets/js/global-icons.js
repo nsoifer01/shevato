@@ -23,31 +23,6 @@ window.GlobalIcons = {
     // Utility function to get all icons
     getAllIcons: function() {
         return [...this.SPORTS, ...this.ANIMALS, ...this.GENERAL];
-    },
-    
-    // Utility function to get icons by category
-    getIconsByCategory: function(category) {
-        switch(category.toUpperCase()) {
-            case 'SPORTS':
-                return this.SPORTS;
-            case 'ANIMALS':
-                return this.ANIMALS;
-            case 'GENERAL':
-                return this.GENERAL;
-            default:
-                return [];
-        }
-    },
-    
-    // Utility function to get random icon from a category
-    getRandomIcon: function(category = null) {
-        let iconArray;
-        if (category) {
-            iconArray = this.getIconsByCategory(category);
-        } else {
-            iconArray = this.getAllIcons();
-        }
-        return iconArray[Math.floor(Math.random() * iconArray.length)];
     }
 };
 
