@@ -104,6 +104,10 @@
 <body class="gym-tracker">
     <div data-include="header"></div>
 
+    <!-- Live sync banner — only shown when offline, and briefly on the
+         offline→synced transition. Mounted/managed by js/utils/sync-status.js. -->
+    <div id="sync-banner" class="sync-banner" role="status" aria-live="polite" hidden></div>
+
     <!-- Main App Container -->
     <div class="app-container">
         <!-- Bottom Navigation (Mobile) -->
@@ -127,6 +131,7 @@
             <button class="nav-item" data-view="more">
                 <i class="fas fa-ellipsis-h"></i>
                 <span>More</span>
+                <span class="nav-sync-dot" data-sync-status-dot aria-hidden="true"></span>
             </button>
         </nav>
 
@@ -173,6 +178,7 @@
                     <span>Settings</span>
                 </button>
             </div>
+            <div class="side-nav-footer" data-sync-status-slot></div>
         </nav>
 
         <!-- Main Content Area -->
@@ -535,7 +541,7 @@
                 <div class="history-filters">
                     <input type="date" id="history-date-from" placeholder="Start date" data-placeholder="Start date">
                     <input type="date" id="history-date-to" placeholder="End date" data-placeholder="End date">
-                    <button type="button" class="history-clear-btn" id="clear-filters-btn">
+                    <button type="button" class="history-clear-btn" id="clear-filters-btn" disabled aria-disabled="true">
                         <i class="fas fa-xmark"></i> Clear
                     </button>
                     <div class="history-sort-wrap">
@@ -1211,10 +1217,6 @@
     <script src="../../assets/js/browser.min.js"></script>
     <script src="../../assets/js/breakpoints.min.js"></script>
     <script src="../../assets/js/util.js"></script>
-
-    <!-- Firebase SDK (required for auth functionality) -->
-    <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
-    <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-auth-compat.js"></script>
 
     <!-- Firebase Storage Sync System (ES Modules) -->
     <script type="module" src="../../firebase-config.js"></script>

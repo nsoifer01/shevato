@@ -1,20 +1,16 @@
 // Robust bidirectional localStorage ↔ Firebase sync module
 // Improved version with better conflict resolution and reliability
 
-import { 
-  doc, 
-  getDoc, 
-  setDoc, 
-  onSnapshot, 
+import {
+  doc,
+  setDoc,
+  onSnapshot,
   serverTimestamp,
-  runTransaction,
   deleteField
 } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
 
 import {
   ref,
-  get,
-  set,
   onValue,
   serverTimestamp as rtdbServerTimestamp,
   runTransaction as rtdbTransaction,
@@ -154,40 +150,66 @@ class StorageSyncManager {
   }
 
   /**
-   * Start sync for a namespace
+   * Start sync for a namespace.
+   *
+   * Single auth source — the modular SDK auth instance imported from
+   * firebase-config.js. The previous version maintained a compat-SDK
+   * fallback because the site loaded both SDKs simultaneously and the
+   * mobile auth iframe race could leave `auth.currentUser` null. The
+   * compat SDK has been removed entirely (see firebase-config.js for
+   * the full story) so this path is now straightforward: try
+   * `auth.currentUser` immediately, fall back to a one-shot
+   * `onAuthStateChanged` if not yet available.
    */
   startStorageSync({ namespace, keys, useFirestore = USE_FIRESTORE }) {
     const user = auth.currentUser;
-    if (!user) {
-      console.warn('❌ No authenticated user - sync will retry when user signs in');
-      // Return a sync object that will start when auth is ready
-      let actualSync = null;
-      const delayedSync = {
-        stop: () => {
-          if (actualSync) actualSync.stop();
-        }
-      };
-      
-      // Wait for auth state to be ready
-      const unsubscribe = auth.onAuthStateChanged((authUser) => {
-        if (authUser && !actualSync) {
-          actualSync = this._startSyncForUser(authUser, { namespace, keys, useFirestore });
-          unsubscribe(); // Only need this once
-        }
-      });
-      
-      return delayedSync;
+    if (user) {
+      return this._startSyncForUser(user, { namespace, keys, useFirestore });
     }
-    
-    return this._startSyncForUser(user, { namespace, keys, useFirestore });
+
+    console.warn('❌ No authenticated user — sync will start once auth is ready');
+    let actualSync = null;
+    const delayedSync = {
+      stop: () => { if (actualSync) actualSync.stop(); }
+    };
+
+    const unsubscribe = auth.onAuthStateChanged((authUser) => {
+      if (authUser?.uid && !actualSync) {
+        actualSync = this._startSyncForUser(authUser, { namespace, keys, useFirestore });
+        unsubscribe();
+      }
+    });
+
+    return delayedSync;
   }
   
   /**
-   * Internal method to start sync for an authenticated user
+   * Internal method to start sync for an authenticated user.
+   *
+   * Idempotent against duplicate calls. `auth.onAuthStateChanged` fires
+   * on every Firebase token refresh, not just on real sign-in/out, so
+   * `initAppSync()` was being called repeatedly during a normal
+   * session. Each call previously tore down the active sync and rebuilt
+   * it — fresh `onSnapshot` attach plus a fresh `getDoc` for the
+   * initial merge. Across multiple tabs and an hour-long session that
+   * was enough cumulative read traffic to trip Firestore's per-user
+   * rate limit (`429 Too Many Requests` on `/documents:batchGet`). We
+   * now skip the rebuild when the existing sync already matches the
+   * incoming user+namespace+keys.
    */
   _startSyncForUser(user, { namespace, keys, useFirestore = USE_FIRESTORE }) {
-    // Stop existing sync for this namespace
-    if (this.syncStates.has(namespace)) {
+    const existing = this.syncStates.get(namespace);
+    if (existing && !existing.stopped
+        && existing.userId === user.uid
+        && existing.useFirestore === useFirestore
+        && this._sameKeySet(existing.keys, keys)) {
+      return {
+        stop: () => this.stopSync(namespace),
+        getStatus: () => this.getSyncStatus(namespace)
+      };
+    }
+
+    if (existing) {
       this.stopSync(namespace);
     }
 
@@ -201,25 +223,25 @@ class StorageSyncManager {
       writeTimer: null,
       stopped: false,
       retryCount: 0,
-      lastSyncTime: Date.now()
+      lastSyncTime: Date.now(),
+      initialMergeDone: false
     };
-    
+
     this.syncStates.set(namespace, state);
-    
+
     // Initialize write queue
     if (!this.writeQueues.has(namespace)) {
       this.writeQueues.set(namespace, new Map());
     }
 
-    // Start Firebase listener
+    // Start Firebase listener — the listener's first snapshot doubles
+    // as the initial merge, so we no longer need a separate `getDoc`
+    // (that was the read costing us 429s on auth-state churn).
     if (useFirestore) {
       this.initFirestoreSync(state);
     } else {
       this.initRealtimeDbSync(state);
     }
-
-    // Perform initial merge after a short delay
-    setTimeout(() => this.performInitialMerge(state), 500);
 
     return {
       stop: () => this.stopSync(namespace),
@@ -227,59 +249,100 @@ class StorageSyncManager {
     };
   }
 
+  /** True iff the existing key set matches the incoming list exactly. */
+  _sameKeySet(existingSet, incomingKeys) {
+    if (existingSet.size !== incomingKeys.length) return false;
+    for (const k of incomingKeys) if (!existingSet.has(k)) return false;
+    return true;
+  }
+
   /**
-   * Enhanced Firestore sync with retry logic
+   * Firestore listener with retry logic.
+   *
+   * Important: any error path must tear down the previous `onSnapshot`
+   * before reattaching. Earlier versions skipped that step and pushed
+   * a fresh `unsubscribe` onto `state.listeners` on every retry, so
+   * each transient blip stacked another long-poll connection on top of
+   * the dead one. Google's Listen gateway then started returning 404
+   * for the orphaned session IDs (`/Listen/channel ... 404 (Not Found)`
+   * in the browser console) and the duplicate live listeners produced
+   * redundant `applyRemoteChange` calls that re-rendered views under
+   * the cursor — the source of the hover flicker.
+   *
+   * We now keep a single `state.unsubscribe` slot, swap it on every
+   * (re)attach, and only register one cleanup callback in
+   * `state.listeners` for `stopSync()` to invoke.
    */
   initFirestoreSync(state) {
     const docPath = `users/${state.userId}/apps/${state.namespace}`;
     const docRef = doc(db, docPath);
 
     let retryAttempts = 0;
+
+    const tearDown = () => {
+      if (state.unsubscribe) {
+        try { state.unsubscribe(); } catch (_) { /* SDK already gone */ }
+        state.unsubscribe = null;
+      }
+    };
+
     const setupListener = () => {
-      const unsubscribe = onSnapshot(docRef, 
+      tearDown();
+      if (state.stopped) return;
+
+      const unsubscribe = onSnapshot(docRef,
         (snapshot) => {
           if (state.stopped) return;
 
           const data = snapshot.data();
-          if (!data || !data.data) return;
+          const remoteData = data?.data || {};
 
-          // Apply remote changes to localStorage
-          for (const [key, info] of Object.entries(data.data)) {
+          for (const [key, info] of Object.entries(remoteData)) {
             if (!state.keys.has(key)) continue;
-
             this.applyRemoteChange(key, info);
           }
 
-          retryAttempts = 0; // Reset on success
-        }, 
+          // First snapshot doubles as the initial merge: any keys we
+          // have locally but Firestore doesn't are queued for upload.
+          // This replaces the old separate `getDoc` round-trip in
+          // `performInitialMerge`, which was the chief contributor to
+          // the 429s under auth-state churn.
+          if (!state.initialMergeDone) {
+            state.initialMergeDone = true;
+            this.uploadLocalOnlyKeys(state, remoteData);
+          }
+
+          retryAttempts = 0;
+        },
         (error) => {
-          // Better error classification and handling
           if (error.code === 'permission-denied' || error.code === 'unauthenticated') {
             console.error(`🔐 Authentication error for ${state.namespace}:`, error.message);
-            console.log('💡 User may need to sign in again');
-            return; // Don't retry auth errors
+            tearDown();
+            return;
           }
-          
+
           if (error.code === 'unavailable' || error.message?.includes('offline') || error.code === 'failed-precondition') {
             console.warn(`📡 Network/connection error for ${state.namespace}:`, error.message);
           } else {
             console.error(`❌ Firestore sync error for ${state.namespace}:`, error);
           }
-          
+
           if (retryAttempts < MAX_RETRY_ATTEMPTS) {
             retryAttempts++;
-            const delay = RETRY_DELAY_MS * Math.pow(2, retryAttempts - 1); // Exponential backoff
+            const delay = RETRY_DELAY_MS * Math.pow(2, retryAttempts - 1);
             console.log(`🔄 Retrying Firestore listener in ${delay}ms (${retryAttempts}/${MAX_RETRY_ATTEMPTS})`);
             setTimeout(setupListener, delay);
           } else {
             console.error(`💥 Max retries exceeded for ${state.namespace} - sync disabled`);
+            tearDown();
           }
         }
       );
 
-      state.listeners.push(() => unsubscribe());
+      state.unsubscribe = unsubscribe;
     };
 
+    state.listeners.push(tearDown);
     setupListener();
   }
 
@@ -294,11 +357,16 @@ class StorageSyncManager {
       if (state.stopped) return;
 
       const data = snapshot.val();
-      if (!data || !data.data) return;
+      const remoteData = data?.data || {};
 
-      for (const [key, info] of Object.entries(data.data)) {
+      for (const [key, info] of Object.entries(remoteData)) {
         if (!state.keys.has(key)) continue;
         this.applyRemoteChange(key, info);
+      }
+
+      if (!state.initialMergeDone) {
+        state.initialMergeDone = true;
+        this.uploadLocalOnlyKeys(state, remoteData);
       }
     };
 
@@ -316,15 +384,27 @@ class StorageSyncManager {
     const localRev = this.localRevisions.get(key);
     const remoteTimestamp = this.getTimestamp(remoteInfo.updatedAt);
     const lastRemoteUpdate = this.lastRemoteUpdates.get(key) || 0;
-    
+
     // Skip if we just processed this change
     if (remoteTimestamp <= lastRemoteUpdate) {
       return;
     }
-    
+
+    // Hash-equality short-circuit. Firestore re-emits the same document
+    // body whenever a listener reattaches (network blip, tab focus, SDK
+    // session refresh). The timestamp on those re-emits is fresher even
+    // though the value is byte-identical. Without this guard the app
+    // re-loads localStorage and re-renders every view on every reattach,
+    // which the user sees as flicker on hover when the cursor is over a
+    // card whose DOM gets rebuilt mid-interaction.
+    if (localRev && remoteInfo.hash && remoteInfo.hash === localRev.hash) {
+      this.lastRemoteUpdates.set(key, remoteTimestamp);
+      return;
+    }
+
     // Conflict resolution logic
     let shouldApply = true;
-    
+
     if (localRev) {
       // Compare timestamps first
       if (remoteTimestamp < localRev.updatedAt) {
@@ -472,40 +552,57 @@ class StorageSyncManager {
   }
 
   /**
-   * Enhanced Firestore flush with better transaction handling
+   * Firestore flush — surgical merge of only the keys this flush owns.
+   *
+   * Earlier versions wrapped this in `runTransaction` and spread the
+   * whole `currentData.data` back into the write payload (to bump a
+   * never-read `syncVersion`). When two browsers were signed into the
+   * same account, that pattern reliably produced a `400 Bad Request`
+   * at `/documents:commit`: the spread re-included field paths whose
+   * values had just been touched by `serverTimestamp()` on the other
+   * browser, and Firestore rejects a literal + transform on the same
+   * field path in a single commit. The spread also bloated payloads
+   * toward the 1 MiB doc limit. We now write only the changed keys,
+   * letting `merge: true` preserve everything else, and drop the
+   * unused syncVersion bookkeeping.
+   *
+   * Each value is sanitised through `JSON.parse(JSON.stringify(...))`
+   * to strip any `undefined` fields — Firestore rejects undefined and
+   * the override path can hand us them via `JSON.parse` round-trips.
    */
   async flushToFirestore(state, writes) {
     const docPath = `users/${state.userId}/apps/${state.namespace}`;
     const docRef = doc(db, docPath);
 
-    await runTransaction(db, async (transaction) => {
-      const snapshot = await transaction.get(docRef);
-      const currentData = snapshot.data() || { data: {}, meta: {} };
-
-      const updates = {
-        data: { ...currentData.data },
-        meta: {
-          ...currentData.meta,
-          lastUpdated: serverTimestamp(),
-          syncVersion: (currentData.meta?.syncVersion || 0) + 1
-        }
-      };
-
-      for (const [key, info] of writes) {
-        if (info.deleted) {
-          updates.data[key] = deleteField();
-        } else {
-          updates.data[key] = {
-            value: info.value,
-            rev: info.rev,
-            updatedAt: serverTimestamp(),
-            hash: info.hash
-          };
-        }
+    const dataPayload = {};
+    for (const [key, info] of writes) {
+      if (info.deleted) {
+        dataPayload[key] = deleteField();
+      } else {
+        dataPayload[key] = {
+          value: this.sanitiseForFirestore(info.value),
+          rev: info.rev,
+          updatedAt: serverTimestamp(),
+          hash: info.hash
+        };
       }
+    }
 
-      transaction.set(docRef, updates, { merge: true });
-    });
+    await setDoc(docRef, {
+      data: dataPayload,
+      meta: { lastUpdated: serverTimestamp() }
+    }, { merge: true });
+  }
+
+  /**
+   * Strip `undefined` values from a payload so Firestore accepts it.
+   * Strings/numbers/booleans/null pass through unchanged. Objects and
+   * arrays are deep-cloned via JSON, which drops undefined fields.
+   */
+  sanitiseForFirestore(value) {
+    if (value === null || value === undefined) return null;
+    if (typeof value !== 'object') return value;
+    return JSON.parse(JSON.stringify(value));
   }
 
   /**
@@ -542,92 +639,56 @@ class StorageSyncManager {
   }
 
   /**
-   * Enhanced initial merge with better conflict resolution
+   * Upload any keys we have in localStorage that are missing from the
+   * remote document. Invoked exactly once per sync session, from the
+   * first snapshot the realtime listener delivers — that snapshot
+   * gives us the same remote view that a separate `getDoc` used to
+   * fetch, so this replaces the read-heavy `performInitialMerge` that
+   * previously triggered `429 Too Many Requests` on auth-state churn.
+   *
+   * Conflicts where both sides exist are deliberately left to
+   * `applyRemoteChange` (which the snapshot loop already invoked):
+   * remote wins on a fresh state because the local revision map is
+   * empty at that moment, matching the previous "prefer remote on
+   * initial merge" behaviour without a second code path.
    */
-  async performInitialMerge(state) {
-    try {
-      let remoteData;
-      
-      if (state.useFirestore) {
-        const docRef = doc(db, `users/${state.userId}/apps/${state.namespace}`);
-        const snapshot = await getDoc(docRef);
-        remoteData = snapshot.data();
-      } else {
-        const dbRef = ref(rtdb, `users/${state.userId}/apps/${state.namespace}`);
-        const snapshot = await get(dbRef);
-        remoteData = snapshot.val();
-      }
+  uploadLocalOnlyKeys(state, remoteData) {
+    const localWrites = new Map();
+    const getItem = this.originalMethods?.getItem
+      ? this.originalMethods.getItem
+      : localStorage.getItem.bind(localStorage);
 
-      const localWrites = new Map();
-      const keysToApply = [];
+    for (const key of state.keys) {
+      const localValue = getItem(key);
+      if (localValue === null || localValue === undefined) continue;
+      if (remoteData[key] !== undefined) continue;
 
-      for (const key of state.keys) {
-        const localValue = this.originalMethods?.getItem ?
-          this.originalMethods.getItem(key) : localStorage.getItem(key);
-        const remoteInfo = remoteData?.data?.[key];
-
-        if (!remoteInfo && localValue !== null) {
-          // Local only - queue for upload
-          localWrites.set(key, {
-            value: this.parseValue(localValue),
-            rev: 1,
-            updatedAt: Date.now(),
-            hash: this.hashValue(this.parseValue(localValue))
-          });
-        } else if (remoteInfo && localValue === null) {
-          // Remote only - apply locally
-          keysToApply.push({ key, info: remoteInfo });
-        } else if (remoteInfo && localValue !== null) {
-          // Both exist - resolve conflict
-          const remoteTimestamp = this.getTimestamp(remoteInfo.updatedAt);
-          const localHash = this.hashValue(this.parseValue(localValue));
-
-          if (remoteInfo.hash !== localHash) {
-            // Values are different - prefer remote for safety on initial merge
-            keysToApply.push({ key, info: remoteInfo });
-          }
-        }
-      }
-
-      // Apply remote changes
-      for (const { key, info } of keysToApply) {
-        this.applyRemoteChange(key, info);
-      }
-
-      // Upload local changes
-      if (localWrites.size > 0) {
-        if (state.useFirestore) {
-          await this.flushToFirestore(state, localWrites);
-        } else {
-          await this.flushToRealtimeDb(state, localWrites);
-        }
-      }
-      
-    } catch (error) {
-      // Check if this is an authentication/permission error
-      if (error.code === 'permission-denied' || error.code === 'unauthenticated') {
-        console.error(`🔐 Auth error for ${state.namespace}:`, error.message);
-        console.log('💡 Waiting for user to sign in...');
-        return; // Don't retry auth errors
-      }
-      
-      // Check if this is a network/offline error
-      if (error.code === 'unavailable' || error.message?.includes('offline')) {
-        console.warn(`📡 Network error for ${state.namespace} - will retry when online:`, error.message);
-      } else {
-        console.error(`❌ Initial merge failed for ${state.namespace}:`, error);
-      }
-      
-      // Retry initial merge with exponential backoff
-      if (state.retryCount < 3) {
-        state.retryCount++;
-        const backoffDelay = RETRY_DELAY_MS * Math.pow(2, state.retryCount - 1);
-        console.log(`🔄 Retrying initial merge in ${backoffDelay}ms (attempt ${state.retryCount}/3)`);
-        setTimeout(() => this.performInitialMerge(state), backoffDelay);
-      } else {
-        console.error(`❌ Initial merge gave up for ${state.namespace} after 3 attempts`);
-      }
+      const parsed = this.parseValue(localValue);
+      localWrites.set(key, {
+        value: parsed,
+        rev: 1,
+        updatedAt: Date.now(),
+        hash: this.hashValue(parsed),
+        deleted: false
+      });
     }
+
+    if (localWrites.size === 0) return;
+
+    const flush = state.useFirestore
+      ? this.flushToFirestore(state, localWrites)
+      : this.flushToRealtimeDb(state, localWrites);
+
+    flush.catch((error) => {
+      if (error.code === 'permission-denied' || error.code === 'unauthenticated') {
+        console.error(`🔐 Auth error uploading local-only keys for ${state.namespace}:`, error.message);
+        return;
+      }
+      // Don't retry-loop here; the next user write will requeue these
+      // through the normal flush path. Retrying would re-hit the same
+      // rate limit that motivated this rewrite.
+      console.warn(`⚠️ Initial upload of local-only keys failed for ${state.namespace}:`, error.message);
+    });
   }
 
   /**

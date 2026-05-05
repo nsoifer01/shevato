@@ -85,6 +85,7 @@ class HistoryView {
             dateFromInput.dataset.darkCalendarInit = '1';
             dateFromInput.addEventListener('change', (e) => {
                 this.dateFrom = e.target.value || null;
+                this._updateClearButtonState();
                 this.render();
             });
         }
@@ -93,6 +94,7 @@ class HistoryView {
             dateToInput.dataset.darkCalendarInit = '1';
             dateToInput.addEventListener('change', (e) => {
                 this.dateTo = e.target.value || null;
+                this._updateClearButtonState();
                 this.render();
             });
         }
@@ -102,19 +104,37 @@ class HistoryView {
             this.toCalendar.rangePartner = this.fromCalendar;
         }
 
-        // Clear filters button
+        // Clear filters button — disabled while no date filter is set so
+        // the user doesn't get a clickable affordance for a no-op.
         const clearBtn = document.getElementById('clear-filters-btn');
         if (clearBtn) {
             clearBtn.addEventListener('click', () => {
+                if (clearBtn.disabled) return;
                 this.dateFrom = null;
                 this.dateTo = null;
                 if (this.fromCalendar) this.fromCalendar.clearDate();
                 else if (dateFromInput) dateFromInput.value = '';
                 if (this.toCalendar) this.toCalendar.clearDate();
                 else if (dateToInput) dateToInput.value = '';
+                this._updateClearButtonState();
                 this.render();
             });
         }
+
+        this._updateClearButtonState();
+    }
+
+    /**
+     * Reflect the live date-filter state on the Clear button. Disabled
+     * when neither dateFrom nor dateTo is set, since the click would be
+     * a no-op. `aria-disabled` mirrors `disabled` for assistive tech.
+     */
+    _updateClearButtonState() {
+        const clearBtn = document.getElementById('clear-filters-btn');
+        if (!clearBtn) return;
+        const hasFilter = !!(this.dateFrom || this.dateTo);
+        clearBtn.disabled = !hasFilter;
+        clearBtn.setAttribute('aria-disabled', String(!hasFilter));
     }
 
     render() {
