@@ -262,20 +262,6 @@ export function generateNumericId() {
 }
 
 /**
- * Get today's date in YYYY-MM-DD format
- */
-export function getTodayString() {
-    return new Date().toISOString().split('T')[0];
-}
-
-/**
- * Check if date is today
- */
-export function isToday(dateString) {
-    return dateString === getTodayString();
-}
-
-/**
  * Download JSON file
  */
 export function downloadJSON(data, filename) {
@@ -439,28 +425,6 @@ export function showConfirmModal(options = {}) {
         confirmBtn.addEventListener('click', handleConfirm);
         cancelBtn.addEventListener('click', handleCancel);
     });
-}
-
-/**
- * Group array by key
- */
-export function groupBy(array, key) {
-    return array.reduce((groups, item) => {
-        const group = item[key];
-        if (!groups[group]) {
-            groups[group] = [];
-        }
-        groups[group].push(item);
-        return groups;
-    }, {});
-}
-
-/**
- * Calculate percentage
- */
-export function percentage(value, total) {
-    if (total === 0) return 0;
-    return Math.round((value / total) * 100);
 }
 
 /**
