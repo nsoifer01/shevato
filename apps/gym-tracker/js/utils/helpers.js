@@ -428,28 +428,6 @@ export function showConfirmModal(options = {}) {
 }
 
 /**
- * Group array by key
- */
-export function groupBy(array, key) {
-    return array.reduce((groups, item) => {
-        const group = item[key];
-        if (!groups[group]) {
-            groups[group] = [];
-        }
-        groups[group].push(item);
-        return groups;
-    }, {});
-}
-
-/**
- * Calculate percentage
- */
-export function percentage(value, total) {
-    if (total === 0) return 0;
-    return Math.round((value / total) * 100);
-}
-
-/**
  * Vibrate device (if supported). Defensive against non-browser contexts
  * where `navigator` is undefined (Node tests, Workers without DOM, etc.)
  * so importing this module never throws at load.
