@@ -47,72 +47,54 @@
     }
   }
   
-  // Listen for Firebase auth state changes
+  // Listen for Firebase auth state changes via the modular adapter
+  // exposed by firebase-config.js. The compat SDK and `window.firebase`
+  // are gone (they caused the mobile `__iframefcb` race); this path
+  // now waits on the `firebaseAuthReady` event or polls the global.
   function setupAuthListener() {
-    // Wait for both Firebase compat and the modern auth system
-    if (!window.firebase || !window.firebase.auth) {
-      setTimeout(setupAuthListener, 200);
+    if (!window.firebaseAuth?.onAuthStateChange) {
+      window.addEventListener('firebaseAuthReady', setupAuthListener, { once: true });
+      // Also poll as a safety net in case the event fired before this
+      // script was registered. Bounded by the auth-ready resolve so it
+      // doesn't loop forever.
+      setTimeout(() => {
+        if (window.firebaseAuth?.onAuthStateChange) setupAuthListener();
+      }, 500);
       return;
     }
 
-    // Additional check for Firebase app initialization
-    try {
-      const auth = window.firebase.auth();
+    window.firebaseAuth.onAuthStateChange((user) => {
+      const currentUserId = user ? user.uid : null;
 
-      // Check if Firebase app is properly initialized
-      if (!auth.app || !auth.app.options) {
-        setTimeout(setupAuthListener, 200);
-        return;
-      }
-      
-      auth.onAuthStateChanged((user) => {
-        const currentUserId = user ? user.uid : null;
-        
-        if (user && currentUserId !== lastKnownUserId && !isInitialPageLoad) {
-          // This is a genuinely new sign-in (not a page reload with existing auth)
-          // Additional check: make sure we haven't shown modal recently
-          const lastModalTime = sessionStorage.getItem('lastSyncModalTime');
-          const now = Date.now();
-          
-          if (!lastModalTime || (now - parseInt(lastModalTime)) > 30000) { // 30 second cooldown
-            userJustSignedIn = true;
-            awaitingInitialSync = true;
-            syncCompleted = false;
-            lastKnownUserId = currentUserId;
-            
-            // Store when we last showed the modal
-            sessionStorage.setItem('lastSyncModalTime', now.toString());
+      if (user && currentUserId !== lastKnownUserId && !isInitialPageLoad) {
+        const lastModalTime = sessionStorage.getItem('lastSyncModalTime');
+        const now = Date.now();
 
-            showSyncModal();
-
-            // Start checking for sync completion
-            checkForSyncCompletion();
-          } else {
-            lastKnownUserId = currentUserId;
-          }
-
-        } else if (user && isInitialPageLoad) {
-          // User was already signed in on page load - no modal needed
+        if (!lastModalTime || (now - parseInt(lastModalTime)) > 30000) {
+          userJustSignedIn = true;
+          awaitingInitialSync = true;
+          syncCompleted = false;
           lastKnownUserId = currentUserId;
-          
-        } else if (!user && userJustSignedIn) {
-          // User signed out
-          userJustSignedIn = false;
-          awaitingInitialSync = false;
-          lastKnownUserId = null;
-          hideSyncModal();
+          sessionStorage.setItem('lastSyncModalTime', now.toString());
+
+          showSyncModal();
+          checkForSyncCompletion();
+        } else {
+          lastKnownUserId = currentUserId;
         }
-        
-        // Mark initial page load as complete after first auth state change
-        if (isInitialPageLoad) {
-          isInitialPageLoad = false;
-        }
-      });
-      
-    } catch (error) {
-      console.warn('Firebase auth setup error:', error.message);
-      setTimeout(setupAuthListener, 500);
-    }
+      } else if (user && isInitialPageLoad) {
+        lastKnownUserId = currentUserId;
+      } else if (!user && userJustSignedIn) {
+        userJustSignedIn = false;
+        awaitingInitialSync = false;
+        lastKnownUserId = null;
+        hideSyncModal();
+      }
+
+      if (isInitialPageLoad) {
+        isInitialPageLoad = false;
+      }
+    });
   }
   
   // Check if sync has completed by monitoring localStorage changes
