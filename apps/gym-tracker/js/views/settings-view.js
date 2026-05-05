@@ -162,9 +162,7 @@ class SettingsView {
     }
 
     async deleteCloudData() {
-        const user = window.firebaseAuth?.getCurrentUser?.()
-            || (typeof firebase !== 'undefined' && firebase.auth?.().currentUser)
-            || null;
+        const user = window.firebaseAuth?.getCurrentUser?.() || null;
         if (!user) {
             showToast('Sign in first to delete cloud data', 'error');
             return;
