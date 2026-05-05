@@ -234,12 +234,15 @@ body.gym-tracker #footer {
     box-shadow: 0 6px 18px rgba(108, 99, 255, 0.6);
 }
 
-/* Floating action button — one-tap Start/Resume workout on Home. */
+/* Floating action button — one-tap Start/Resume workout on Home.
+   Hidden on mobile because the bottom-nav already has a Workout
+   button in its primary slot, so a fixed FAB just duplicates that
+   action and competes with workout content for screen space. Still
+   shown on desktop (≥768px) where the side-nav has no one-tap
+   workout entry point. */
 .workout-fab {
     position: fixed;
-    right: 1rem;
-    bottom: calc(76px + env(safe-area-inset-bottom, 0px));
-    display: inline-flex;
+    display: none;
     align-items: center;
     gap: 0.55rem;
     padding: 0.85rem 1.25rem;
@@ -295,18 +298,11 @@ body.gym-tracker #footer {
 }
 
 @media (min-width: 768px) {
-    .workout-fab { bottom: 1.5rem; right: 1.5rem; }
-}
-
-@media (max-width: 360px) {
-    .workout-fab .workout-fab-label { display: none; }
     .workout-fab {
-        width: 56px;
-        height: 56px;
-        padding: 0;
-        justify-content: center;
+        display: inline-flex;
+        bottom: 1.5rem;
+        right: 1.5rem;
     }
-    .workout-fab i { font-size: 1.25rem; }
 }
 
 @media (min-width: 768px) {
@@ -3238,7 +3234,7 @@ body.gym-tracker #footer {
     color: inherit;
 }
 
-.history-filters .history-clear-btn:hover {
+.history-filters .history-clear-btn:hover:not(:disabled) {
     background: var(--bg-elevated) !important;
     border-color: var(--border-light) !important;
     color: var(--text-primary) !important;
@@ -3247,6 +3243,13 @@ body.gym-tracker #footer {
 .history-filters .history-clear-btn:focus-visible {
     outline: none;
     box-shadow: 0 0 0 3px rgba(108, 99, 255, 0.3) !important;
+}
+
+.history-filters .history-clear-btn:disabled,
+.history-filters .history-clear-btn[aria-disabled="true"] {
+    opacity: 0.45;
+    cursor: not-allowed;
+    pointer-events: none;
 }
 
 /* Sort wrap — icon + DarkSelect, mirroring the Calendar filter pattern */
@@ -8140,26 +8143,26 @@ button.calendar-day {
 
 
 /* ------------------------------------------------------------------
-   Sync status pill — floating bottom-right indicator that reflects the
-   storage sync layer's state. See js/utils/sync-status.js for state
-   logic. Sits above the bottom nav on mobile and the page content on
-   desktop. Reduces to a dot on small screens to stay out of the way.
+   Sync status pill — inline indicator rendered into
+   `[data-sync-status-slot]` placeholders (one in the desktop side-nav
+   footer, one in the mobile More view header). Was previously a
+   floating bottom-right element that overlapped the workout FAB and
+   bottom nav and flickered green↔amber as debounced writes flushed
+   between sets. Lives inside layout flow now so it never covers
+   workout controls. State logic: js/utils/sync-status.js.
    ------------------------------------------------------------------ */
 .sync-status-pill {
-    position: fixed;
-    z-index: 50;
-    bottom: 84px;
-    right: 12px;
-    padding: 6px 12px;
+    display: inline-flex;
+    align-items: center;
+    padding: 4px 10px;
     border-radius: 999px;
     font-size: 12px;
     font-weight: 600;
-    line-height: 1;
+    line-height: 1.2;
     color: #fff;
-    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.4);
-    pointer-events: none;
     user-select: none;
     transition: background 200ms ease, color 200ms ease;
+    white-space: nowrap;
 }
 .sync-status-pill::before {
     content: '';
@@ -8168,17 +8171,88 @@ button.calendar-day {
     height: 7px;
     border-radius: 50%;
     margin-right: 6px;
-    vertical-align: 1px;
     background: currentColor;
+    /* Shape doubles as a non-color signal so users with low color
+       perception still get state from the dot's position + label. */
+    flex: none;
 }
-.sync-status-pill[data-state="synced"]   { background: rgba(34, 197, 94, 0.85); }
-.sync-status-pill[data-state="pending"]  { background: rgba(245, 158, 11, 0.85); }
-.sync-status-pill[data-state="offline"]  { background: rgba(148, 163, 184, 0.85); }
+.sync-status-pill[data-state="synced"]     { background: rgba(34, 197, 94, 0.85); }
+.sync-status-pill[data-state="syncing"]    { background: rgba(245, 158, 11, 0.85); }
+.sync-status-pill[data-state="connecting"] { background: rgba(245, 158, 11, 0.6); }
+.sync-status-pill[data-state="offline"]    { background: rgba(148, 163, 184, 0.85); }
+.sync-status-pill[data-state="idle"]       { background: rgba(100, 116, 139, 0.7); }
 
-@media (min-width: 900px) {
-    .sync-status-pill {
-        bottom: 16px;
-    }
+/* Mobile compact sync dot — a tiny colored circle pinned to the upper
+   corner of the "More" tab in the bottom nav. Always visible on
+   mobile so the user gets an at-a-glance "everything's synced"
+   confirmation without needing to navigate anywhere. Hidden on desktop
+   (the side-nav pill already covers that surface). Decorative only —
+   `aria-hidden` in HTML keeps it out of the SR tree, the offline
+   banner handles real announcements. */
+.nav-sync-dot {
+    position: absolute;
+    top: 6px;
+    right: 14px;
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: rgba(148, 163, 184, 0.85); /* default = slate (idle) */
+    box-shadow: 0 0 0 2px var(--bg-secondary); /* halo against nav bg */
+    pointer-events: none;
+    transition: background 200ms ease;
+}
+.nav-sync-dot[data-state="synced"]     { background: rgba(34, 197, 94, 0.95); }
+.nav-sync-dot[data-state="syncing"]    { background: rgba(245, 158, 11, 0.95); }
+.nav-sync-dot[data-state="connecting"] { background: rgba(245, 158, 11, 0.55); }
+.nav-sync-dot[data-state="offline"]    { background: rgba(148, 163, 184, 0.95); }
+.nav-sync-dot[data-state="idle"]       { background: rgba(100, 116, 139, 0.85); }
+
+@media (min-width: 768px) {
+    .nav-sync-dot { display: none; }
+}
+
+/* Side-nav footer — pushed to the bottom of the sidebar so it sits
+   below all nav links like a system tray. .nav-links uses flex:1, so
+   this element naturally docks at the bottom without absolute
+   positioning. */
+.side-nav-footer {
+    padding: var(--spacing-md) var(--spacing-lg);
+    border-top: 1px solid var(--border-color);
+    display: flex;
+    justify-content: flex-start;
+}
+
+/* Mobile sync banner — pinned to the top of the viewport, full width,
+   only visible when sync state is offline (or briefly on the
+   offline→synced transition). Hidden in all other states so it never
+   competes with workout content. The desktop side-nav pill above is
+   the equivalent surface for desktop users. */
+.sync-banner {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    z-index: 1100; /* Above bottom-nav (1000), below modals (~2000). */
+    padding: 8px 14px calc(8px + env(safe-area-inset-top, 0px));
+    padding-top: calc(8px + env(safe-area-inset-top, 0px));
+    text-align: center;
+    font-size: 13px;
+    font-weight: 600;
+    line-height: 1.2;
+    color: #fff;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.35);
+    transition: background 200ms ease, opacity 200ms ease, transform 200ms ease;
+    transform: translateY(0);
+}
+.sync-banner[hidden] { display: none; }
+.sync-banner[data-state="offline"] { background: rgba(100, 116, 139, 0.95); }
+.sync-banner[data-state="synced"]  { background: rgba(34, 197, 94, 0.95); }
+.sync-banner[data-fading="true"]   { opacity: 0; transform: translateY(-4px); }
+
+/* Hide the banner on desktop — the side-nav pill already shows status
+   and a top banner would shove the layout down for no reason. */
+@media (min-width: 768px) {
+    .sync-banner { display: none !important; }
 }
 
 /* ------------------------------------------------------------------

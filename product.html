@@ -165,11 +165,7 @@
   <script defer src="assets/js/breakpoints.min.js"></script>
   <script defer src="assets/js/util.js"></script>
 
-  <!-- Firebase SDK (required for auth functionality) -->
-  <script defer src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
-  <script defer src="https://www.gstatic.com/firebasejs/9.23.0/firebase-auth-compat.js"></script>
-
-  <!-- Firebase Configuration (loads before main.js) -->
+  <!-- Firebase modular SDK + auth adapter (single source of auth state) -->
   <script type="module" src="firebase-config.js"></script>
 
   <!-- Main JavaScript -->

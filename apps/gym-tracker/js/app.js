@@ -417,20 +417,60 @@ class GymTrackerApp {
     }
 
     /**
-     * Set up sync system listeners
+     * Set up sync system listeners.
+     *
+     * Two channels:
+     *   1. `syncSystemReady` — fires once after Firebase auth + initial
+     *      merge. Pulls data into memory for the first time.
+     *   2. `localStorageSync` — fires every time the storage-sync layer
+     *      writes a remote update into localStorage (i.e., another
+     *      device pushed a change). Without this, post-boot remote
+     *      updates only became visible after a manual page refresh.
+     *
+     * The remote-change handler is debounced because the initial
+     * post-sign-in burst applies all ~9 gym-tracker keys back-to-back
+     * and we only want to rebuild in-memory state and re-render once.
      */
     setupSyncListeners() {
         if (!window.syncSystemInitialized) {
             window.addEventListener('syncSystemReady', () => {
                 debugLog('🔄 Sync system ready, refreshing data');
                 setTimeout(() => {
-                    this.loadAllData();
-                    this.updateAchievements();
-                    if (this.currentView && this.viewControllers[this.currentView]) {
-                        this.onViewChange(this.currentView);
-                    }
+                    this.refreshFromStorage();
                 }, 1000);
             }, { once: true });
+        }
+
+        // Live remote-update channel. The 750 ms debounce coalesces the
+        // ~9-key burst that the storage layer emits when another device
+        // pushes changes, and gives the user time to finish a hover/click
+        // interaction before the active view re-renders. Earlier versions
+        // used 250 ms which was tight enough that any background listener
+        // chatter could rebuild DOM mid-hover and visibly flicker.
+        let remoteRefreshTimer = null;
+        window.addEventListener('localStorageSync', (e) => {
+            const key = e.detail?.key;
+            if (typeof key !== 'string' || !key.startsWith('gymTracker')) return;
+            if (e.detail?.source !== 'remote') return;
+
+            clearTimeout(remoteRefreshTimer);
+            remoteRefreshTimer = setTimeout(() => {
+                debugLog('🔄 Remote sync update — refreshing data');
+                this.refreshFromStorage();
+            }, 750);
+        });
+    }
+
+    /**
+     * Reload all data from storage and re-render the active view.
+     * Shared by the initial-sync handler and the live remote-update
+     * handler so both paths stay in lockstep.
+     */
+    refreshFromStorage() {
+        this.loadAllData();
+        this.updateAchievements();
+        if (this.currentView && this.viewControllers[this.currentView]) {
+            this.onViewChange(this.currentView);
         }
     }
 
