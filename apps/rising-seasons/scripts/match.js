@@ -97,7 +97,11 @@ function detectShapes(episodes) {
 }
 
 // Walk the (series -> season -> episodes) map and return one record per
-// season that matches at least one shape.
+// qualifying season. A *series* qualifies if at least one of its seasons
+// matches a shape pattern; once a series qualifies, ALL of its seasons
+// that pass the vote/episode floor are included (even ones with shapes:
+// []). This way searching for "The Office" returns every season, not
+// just the few that fit a curve pattern.
 //
 // Filters:
 //   minEpisodes — skip seasons with fewer rated episodes than this.
@@ -106,12 +110,15 @@ function detectShapes(episodes) {
 function findMatches(seriesById, episodesBySeries, opts = {}) {
   const minEpisodes = opts.minEpisodes ?? 4;
   const minVotes = opts.minVotes ?? 100;
-  const matches = [];
+
+  // Pass 1: precompute (sorted, voted, shaped) info for every season that
+  // passes the vote/episode floor. Mark which series have at least one
+  // shape-matching season.
+  const seasons = []; // { seriesId, season, eps, shapes, minSeasonVotes }
+  const qualifyingSeries = new Set();
 
   for (const [seriesId, bySeason] of episodesBySeries) {
-    const meta = seriesById.get(seriesId);
-    if (!meta) continue;
-
+    if (!seriesById.has(seriesId)) continue;
     for (const [season, eps] of bySeason) {
       if (eps.length < minEpisodes) continue;
       eps.sort((a, b) => a.episode - b.episode);
@@ -123,29 +130,39 @@ function findMatches(seriesById, episodesBySeries, opts = {}) {
       if (minSeasonVotes < minVotes) continue;
 
       const shapes = detectShapes(eps);
-      if (shapes.length === 0) continue;
-
-      const ratings = eps.map((e) => e.rating);
-      const seasonAvg = ratings.reduce((s, r) => s + r, 0) / ratings.length;
-
-      matches.push({
-        seriesId,
-        title: meta.title,
-        year: meta.year,
-        type: meta.type,
-        genres: meta.genres || [],
-        season,
-        episodes: eps.map(({ episode, rating, votes, tconst }) => ({
-          episode, rating, votes, tconst,
-        })),
-        firstRating: ratings[0],
-        lastRating: ratings[ratings.length - 1],
-        avgRating: Math.round(seasonAvg * 100) / 100,
-        minVotes: minSeasonVotes,
-        shapes,
-      });
+      seasons.push({ seriesId, season, eps, shapes, minSeasonVotes });
+      if (shapes.length > 0) qualifyingSeries.add(seriesId);
     }
   }
+
+  // Pass 2: emit every season belonging to a qualifying series. Shape-less
+  // seasons get shapes: [] — they're searchable but won't appear under any
+  // specific shape tab.
+  const matches = [];
+  for (const { seriesId, season, eps, shapes, minSeasonVotes } of seasons) {
+    if (!qualifyingSeries.has(seriesId)) continue;
+    const meta = seriesById.get(seriesId);
+    const ratings = eps.map((e) => e.rating);
+    const seasonAvg = ratings.reduce((s, r) => s + r, 0) / ratings.length;
+
+    matches.push({
+      seriesId,
+      title: meta.title,
+      year: meta.year,
+      type: meta.type,
+      genres: meta.genres || [],
+      season,
+      episodes: eps.map(({ episode, rating, votes, tconst }) => ({
+        episode, rating, votes, tconst,
+      })),
+      firstRating: ratings[0],
+      lastRating: ratings[ratings.length - 1],
+      avgRating: Math.round(seasonAvg * 100) / 100,
+      minVotes: minSeasonVotes,
+      shapes,
+    });
+  }
+
   return matches;
 }
 

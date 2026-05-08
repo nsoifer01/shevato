@@ -8,7 +8,7 @@ const SHAPE_LABELS = {
   rebound: 'Rebound',
 };
 
-const STORAGE_NS = 'imdb-rising';
+const STORAGE_NS = 'rising-seasons';
 const KEY_WATCHED = `${STORAGE_NS}:watched`;
 const KEY_VIEW = `${STORAGE_NS}:view`;
 const PAGE_SIZE = 24;
@@ -21,10 +21,15 @@ const els = {
   shapes: document.getElementById('shapes'),
   search: document.getElementById('search'),
   minEpisodes: document.getElementById('minEpisodes'),
+  maxEpisodes: document.getElementById('maxEpisodes'),
   minVotes: document.getElementById('minVotes'),
+  minAvg: document.getElementById('minAvg'),
+  minClimb: document.getElementById('minClimb'),
   minYear: document.getElementById('minYear'),
   maxYear: document.getElementById('maxYear'),
+  seriesType: document.getElementById('seriesType'),
   watchedFilter: document.getElementById('watchedFilter'),
+  posterFilter: document.getElementById('posterFilter'),
   sort: document.getElementById('sort'),
   surprise: document.getElementById('surprise'),
   resetFilters: document.getElementById('resetFilters'),
@@ -57,11 +62,16 @@ const state = {
   shape: 'all',
   search: '',
   minEpisodes: 4,
+  maxEpisodes: null,
   minVotes: 1000,
+  minAvg: null,
+  minClimb: null,
   minYear: null,
   maxYear: null,
-  sort: 'popularity',
+  seriesType: 'all',
   watched: 'all',
+  poster: 'all',
+  sort: 'popularity',
   genres: new Set(),
   view: 'grid',
   page: 1,
@@ -110,12 +120,7 @@ const ViewPref = {
   },
 };
 
-// --- chrome (header / footer / menu) ---
-//
-// Vanilla loader for the shared site partials. We deliberately don't load
-// main.js / jQuery for chrome because that path drags AuthUI + Firebase +
-// breakpoints + a panel plugin and any failure leaves the chrome blank.
-// This loader does the same job in 30 lines and degrades cleanly.
+// --- chrome (header / footer / menu) — vanilla loader ---
 
 async function loadChrome() {
   const slots = document.querySelectorAll('[data-include]');
@@ -126,7 +131,7 @@ async function loadChrome() {
       if (!res.ok) return;
       slot.innerHTML = await res.text();
     } catch {
-      // network failed, slot stays empty (degrades to no chrome — no error UI)
+      /* network failed — chrome stays empty rather than blocking the app */
     }
   }));
   setFooterYear();
@@ -144,8 +149,6 @@ function wireMenu() {
   const menu = document.getElementById('menu');
   if (!toggle || !menu) return;
 
-  // main.css handles the slide-in transform via body.is-menu-visible — we
-  // just toggle that class.
   toggle.addEventListener('click', (e) => {
     e.preventDefault();
     document.body.classList.toggle('is-menu-visible');
@@ -153,7 +156,6 @@ function wireMenu() {
   });
   menu.addEventListener('click', (e) => {
     if (e.target.tagName === 'A') {
-      // give the link's natural navigation a beat, then close
       setTimeout(() => document.body.classList.remove('is-menu-visible'), 50);
     }
   });
@@ -169,7 +171,6 @@ function wireMenu() {
 
 async function load() {
   showSkeletons(8);
-  // Kick off chrome load + data fetch in parallel.
   const chromeP = loadChrome();
   try {
     const res = await fetch('data.json', { cache: 'no-store' });
@@ -196,24 +197,34 @@ async function load() {
 
 function applyStateFromURL() {
   const p = new URLSearchParams(location.hash.replace(/^#/, ''));
-  if (p.has('shape')) state.shape = p.get('shape');
-  if (p.has('q')) state.search = p.get('q');
-  if (p.has('minEps')) state.minEpisodes = parseInt(p.get('minEps'), 10) || state.minEpisodes;
-  if (p.has('minVotes')) state.minVotes = parseInt(p.get('minVotes'), 10) || state.minVotes;
-  if (p.has('minYear')) state.minYear = parseInt(p.get('minYear'), 10) || null;
-  if (p.has('maxYear')) state.maxYear = parseInt(p.get('maxYear'), 10) || null;
-  if (p.has('sort')) state.sort = p.get('sort');
-  if (p.has('watched')) state.watched = p.get('watched');
-  if (p.has('g')) state.genres = new Set(p.get('g').split(',').filter(Boolean));
-  if (p.has('page')) state.page = Math.max(1, parseInt(p.get('page'), 10) || 1);
+  if (p.has('shape'))     state.shape = p.get('shape');
+  if (p.has('q'))         state.search = p.get('q');
+  if (p.has('minEps'))    state.minEpisodes = parseInt(p.get('minEps'), 10) || state.minEpisodes;
+  if (p.has('maxEps'))    state.maxEpisodes = parseInt(p.get('maxEps'), 10) || null;
+  if (p.has('minVotes'))  state.minVotes = parseInt(p.get('minVotes'), 10) || state.minVotes;
+  if (p.has('minAvg'))    state.minAvg = parseFloat(p.get('minAvg')) || null;
+  if (p.has('minClimb'))  state.minClimb = parseFloat(p.get('minClimb')) || null;
+  if (p.has('minYear'))   state.minYear = parseInt(p.get('minYear'), 10) || null;
+  if (p.has('maxYear'))   state.maxYear = parseInt(p.get('maxYear'), 10) || null;
+  if (p.has('type'))      state.seriesType = p.get('type');
+  if (p.has('sort'))      state.sort = p.get('sort');
+  if (p.has('watched'))   state.watched = p.get('watched');
+  if (p.has('poster'))    state.poster = p.get('poster');
+  if (p.has('g'))         state.genres = new Set(p.get('g').split(',').filter(Boolean));
+  if (p.has('page'))      state.page = Math.max(1, parseInt(p.get('page'), 10) || 1);
 
   els.search.value = state.search;
   els.minEpisodes.value = state.minEpisodes;
+  els.maxEpisodes.value = state.maxEpisodes ?? '';
   els.minVotes.value = state.minVotes;
+  els.minAvg.value = state.minAvg ?? '';
+  els.minClimb.value = state.minClimb ?? '';
   els.minYear.value = state.minYear ?? '';
   els.maxYear.value = state.maxYear ?? '';
+  els.seriesType.value = state.seriesType;
   els.sort.value = state.sort;
   els.watchedFilter.value = state.watched;
+  els.posterFilter.value = state.poster;
   for (const btn of els.shapes.querySelectorAll('.shape-chip')) {
     btn.setAttribute('aria-pressed', btn.dataset.shape === state.shape ? 'true' : 'false');
   }
@@ -227,11 +238,16 @@ function writeStateToURL() {
   if (state.shape !== 'all') p.set('shape', state.shape);
   if (state.search) p.set('q', state.search);
   if (state.minEpisodes !== 4) p.set('minEps', state.minEpisodes);
+  if (state.maxEpisodes) p.set('maxEps', state.maxEpisodes);
   if (state.minVotes !== 1000) p.set('minVotes', state.minVotes);
+  if (state.minAvg) p.set('minAvg', state.minAvg);
+  if (state.minClimb) p.set('minClimb', state.minClimb);
   if (state.minYear) p.set('minYear', state.minYear);
   if (state.maxYear) p.set('maxYear', state.maxYear);
+  if (state.seriesType !== 'all') p.set('type', state.seriesType);
   if (state.sort !== 'popularity') p.set('sort', state.sort);
   if (state.watched !== 'all') p.set('watched', state.watched);
+  if (state.poster !== 'all') p.set('poster', state.poster);
   if (state.genres.size) p.set('g', [...state.genres].join(','));
   if (state.page > 1) p.set('page', state.page);
   const hash = p.toString();
@@ -275,16 +291,23 @@ function renderGenreChips() {
 function filterAndSort() {
   const q = state.search.trim().toLowerCase();
   const minEps = state.minEpisodes;
+  const maxEps = state.maxEpisodes;
   const minVotes = state.minVotes;
-  const { minYear, maxYear, watched: watchedFilter } = state;
+  const minAvg = state.minAvg;
+  const minClimb = state.minClimb;
+  const { minYear, maxYear, seriesType, watched: watchedFilter, poster: posterFilter } = state;
   const wantGenres = state.genres;
 
   let rows = dataset.matches.filter((m) => {
     if (state.shape !== 'all' && !m.shapes.includes(state.shape)) return false;
     if (m.episodes.length < minEps) return false;
+    if (maxEps && m.episodes.length > maxEps) return false;
     if (m.minVotes < minVotes) return false;
+    if (minAvg && m.avgRating < minAvg) return false;
+    if (minClimb && (m.lastRating - m.firstRating) < minClimb) return false;
     if (minYear && m.year && m.year < minYear) return false;
     if (maxYear && m.year && m.year > maxYear) return false;
+    if (seriesType !== 'all' && m.type !== seriesType) return false;
     if (q && !m.title.toLowerCase().includes(q)) return false;
     if (wantGenres.size) {
       let ok = false;
@@ -295,6 +318,11 @@ function filterAndSort() {
       const isWatched = Watched.has(m);
       if (watchedFilter === 'watched' && !isWatched) return false;
       if (watchedFilter === 'unwatched' && isWatched) return false;
+    }
+    if (posterFilter !== 'all') {
+      const has = !!m.poster;
+      if (posterFilter === 'with' && !has) return false;
+      if (posterFilter === 'without' && has) return false;
     }
     return true;
   });
@@ -343,8 +371,13 @@ function render() {
   els.results.replaceChildren(frag);
 
   renderPager(totalPages, state.page);
+  els.footerMeta.textContent = `Last updated: ${formatBuiltAt(dataset.builtAt)}`;
+}
 
-  els.footerMeta.textContent = `Built ${new Date(dataset.builtAt).toLocaleDateString()} · ${dataset.count.toLocaleString()} seasons indexed across all of IMDb`;
+function formatBuiltAt(iso) {
+  if (!iso) return 'unknown';
+  const d = new Date(iso);
+  return d.toLocaleDateString(undefined, { year: 'numeric', month: 'long', day: 'numeric' });
 }
 
 function buildItem(m) {
@@ -418,8 +451,8 @@ function renderStatsBar() {
   if (stale) {
     const warn = document.createElement('span');
     warn.className = 'stale';
-    warn.title = `Data is over ${STALE_DAYS} days old. Re-run npm run build:imdb-rising or wait for the weekly auto-refresh.`;
-    warn.textContent = '⚠ data may be outdated';
+    warn.title = `Data is over ${STALE_DAYS} days old. Re-run npm run build:rising-seasons or wait for the weekly auto-refresh.`;
+    warn.textContent = 'data may be outdated';
     frag.appendChild(warn);
   }
 
@@ -443,7 +476,7 @@ function renderPager(totalPages, current) {
   els.pager.hidden = false;
 
   const frag = document.createDocumentFragment();
-  frag.appendChild(pageButton('‹ Prev', current - 1, current === 1));
+  frag.appendChild(pageButton('Prev', current - 1, current === 1));
 
   for (const n of pageNumbers(current, totalPages)) {
     if (n === '…') {
@@ -454,16 +487,13 @@ function renderPager(totalPages, current) {
       frag.appendChild(span);
     } else {
       const btn = pageButton(String(n), n, false);
-      if (n === current) {
-        btn.setAttribute('aria-current', 'page');
-      }
+      if (n === current) btn.setAttribute('aria-current', 'page');
       btn.setAttribute('aria-label', `Page ${n}`);
       frag.appendChild(btn);
     }
   }
 
-  frag.appendChild(pageButton('Next ›', current + 1, current === totalPages));
-
+  frag.appendChild(pageButton('Next', current + 1, current === totalPages));
   els.pager.replaceChildren(frag);
 }
 
@@ -482,12 +512,10 @@ function pageButton(label, target, disabled) {
 }
 
 function pageNumbers(current, total) {
-  // Window of pages to always show: 1, current-1, current, current+1, total
   const set = new Set([1, total]);
   for (let i = current - 1; i <= current + 1; i++) {
     if (i >= 1 && i <= total) set.add(i);
   }
-  // For small page counts, show a few extras at the edges so the bar isn't sparse.
   if (total <= 7) {
     for (let i = 1; i <= total; i++) set.add(i);
   }
@@ -506,7 +534,6 @@ function goToPage(n) {
   state.page = n;
   writeStateToURL();
   render();
-  // Scroll the top of the results back into view, accounting for the fixed header.
   const top = els.results.getBoundingClientRect().top + window.scrollY - 70;
   window.scrollTo({ top, behavior: 'smooth' });
 }
@@ -528,11 +555,19 @@ function buildCard(m) {
   node.querySelector('.card-genres').textContent = m.genres.slice(0, 3).join(' · ');
 
   const shapesEl = node.querySelector('.card-shapes');
-  for (const s of m.shapes) {
+  if (m.shapes.length === 0) {
     const tag = document.createElement('span');
-    tag.className = 'shape-tag' + (s === state.shape ? ' active' : '');
-    tag.textContent = SHAPE_LABELS[s] || s;
+    tag.className = 'shape-tag';
+    tag.textContent = 'No pattern';
+    tag.title = 'This season does not match any of the five shape patterns.';
     shapesEl.appendChild(tag);
+  } else {
+    for (const s of m.shapes) {
+      const tag = document.createElement('span');
+      tag.className = 'shape-tag' + (s === state.shape ? ' active' : '');
+      tag.textContent = SHAPE_LABELS[s] || s;
+      shapesEl.appendChild(tag);
+    }
   }
 
   drawCurve(node.querySelector('.curve'), m.episodes, 300, 70);
@@ -540,8 +575,8 @@ function buildCard(m) {
   const climb = m.lastRating - m.firstRating;
   const climbStr = climb >= 0 ? `+${climb.toFixed(1)}` : climb.toFixed(1);
   node.querySelector('.stat-climb').textContent = `${m.firstRating.toFixed(1)} → ${m.lastRating.toFixed(1)} (${climbStr})`;
-  node.querySelector('.stat-avg').textContent = `avg ${m.avgRating.toFixed(1)}`;
-  node.querySelector('.stat-votes').textContent = `${m.minVotes.toLocaleString()}+ votes/ep`;
+  node.querySelector('.stat-avg').textContent = `Avg ${m.avgRating.toFixed(1)}`;
+  node.querySelector('.stat-votes').textContent = `${m.minVotes.toLocaleString()} votes/ep min`;
 
   const posterEl = node.querySelector('.card-poster');
   if (m.poster) {
@@ -580,18 +615,25 @@ function buildRow(m) {
   node.querySelector('.row-year').textContent = m.year || '';
 
   const shapesEl = node.querySelector('.row-shapes');
-  for (const s of m.shapes) {
+  if (m.shapes.length === 0) {
     const tag = document.createElement('span');
-    tag.className = 'shape-tag' + (s === state.shape ? ' active' : '');
-    tag.textContent = SHAPE_LABELS[s] || s;
+    tag.className = 'shape-tag';
+    tag.textContent = 'No pattern';
     shapesEl.appendChild(tag);
+  } else {
+    for (const s of m.shapes) {
+      const tag = document.createElement('span');
+      tag.className = 'shape-tag' + (s === state.shape ? ' active' : '');
+      tag.textContent = SHAPE_LABELS[s] || s;
+      shapesEl.appendChild(tag);
+    }
   }
 
   const climb = m.lastRating - m.firstRating;
   const climbStr = climb >= 0 ? `+${climb.toFixed(1)}` : climb.toFixed(1);
   node.querySelector('.stat-climb').textContent = `${m.firstRating.toFixed(1)} → ${m.lastRating.toFixed(1)} (${climbStr})`;
-  node.querySelector('.stat-avg').textContent = `avg ${m.avgRating.toFixed(1)}`;
-  node.querySelector('.stat-votes').textContent = `${m.minVotes.toLocaleString()}+ votes/ep`;
+  node.querySelector('.stat-avg').textContent = `Avg ${m.avgRating.toFixed(1)}`;
+  node.querySelector('.stat-votes').textContent = `${m.minVotes.toLocaleString()} votes/ep min`;
 
   drawCurve(node.querySelector('.row-curve'), m.episodes, 200, 56);
 
@@ -637,10 +679,7 @@ function onToggleWatched(m, cardOrRow) {
   Watched.toggle(m);
   applyWatchedState(cardOrRow, cardOrRow.querySelector('.watch-toggle'), m);
   renderStatsBar();
-  if (state.watched !== 'all') {
-    // The card may now need to leave the visible page.
-    render();
-  }
+  if (state.watched !== 'all') render();
 }
 
 // --- curve drawing (shared) ---
@@ -694,18 +733,25 @@ function openModal(m) {
 
   const shapesEl = els.modalShapes;
   shapesEl.replaceChildren();
-  for (const s of m.shapes) {
+  if (m.shapes.length === 0) {
     const tag = document.createElement('span');
-    tag.className = 'shape-tag' + (s === state.shape ? ' active' : '');
-    tag.textContent = SHAPE_LABELS[s] || s;
+    tag.className = 'shape-tag';
+    tag.textContent = 'No pattern';
     shapesEl.appendChild(tag);
+  } else {
+    for (const s of m.shapes) {
+      const tag = document.createElement('span');
+      tag.className = 'shape-tag' + (s === state.shape ? ' active' : '');
+      tag.textContent = SHAPE_LABELS[s] || s;
+      shapesEl.appendChild(tag);
+    }
   }
 
   const climb = m.lastRating - m.firstRating;
   const climbStr = climb >= 0 ? `+${climb.toFixed(1)}` : climb.toFixed(1);
   els.modalStats.textContent =
     `Climb ${m.firstRating.toFixed(1)} → ${m.lastRating.toFixed(1)} (${climbStr}) · ` +
-    `avg ${m.avgRating.toFixed(1)} · ${m.minVotes.toLocaleString()}+ votes/episode`;
+    `avg ${m.avgRating.toFixed(1)} · ${m.minVotes.toLocaleString()} votes per episode (min)`;
 
   els.modalOverview.textContent = m.overview || '';
 
@@ -731,7 +777,7 @@ function openModal(m) {
     num.textContent = `Ep ${e.episode}`;
     const rating = document.createElement('span');
     rating.className = 'ep-rating';
-    rating.textContent = `★ ${e.rating.toFixed(1)}`;
+    rating.textContent = e.rating.toFixed(1);
     const votes = document.createElement('span');
     votes.className = 'ep-votes';
     votes.textContent = `${e.votes.toLocaleString()} votes`;
@@ -768,7 +814,7 @@ function syncModalWatchBtn() {
   if (!modalState.season) return;
   const isWatched = Watched.has(modalState.season);
   els.modalWatchBtn.classList.toggle('is-watched', isWatched);
-  els.modalWatchBtn.textContent = isWatched ? '✓ Watched' : 'Mark as watched';
+  els.modalWatchBtn.textContent = isWatched ? 'Watched ✓' : 'Mark as watched';
 }
 
 function trapModalFocus(e) {
@@ -809,21 +855,30 @@ function warnIfStale() {
   if (isStale()) {
     console.warn(
       `Rising Seasons data is older than ${STALE_DAYS} days (built ${dataset.builtAt}). ` +
-      `Run npm run build:imdb-rising or wait for the next scheduled refresh.`,
+      `Run npm run build:rising-seasons or wait for the next scheduled refresh.`,
     );
   }
 }
 
 // --- events ---
 
-function onToolbarChange() {
+function readToolbarInputs() {
   state.search = els.search.value.trim();
   state.minEpisodes = parseInt(els.minEpisodes.value, 10) || 1;
+  state.maxEpisodes = parseInt(els.maxEpisodes.value, 10) || null;
   state.minVotes = parseInt(els.minVotes.value, 10) || 0;
+  state.minAvg = parseFloat(els.minAvg.value) || null;
+  state.minClimb = parseFloat(els.minClimb.value) || null;
   state.minYear = parseInt(els.minYear.value, 10) || null;
   state.maxYear = parseInt(els.maxYear.value, 10) || null;
+  state.seriesType = els.seriesType.value;
   state.sort = els.sort.value;
   state.watched = els.watchedFilter.value;
+  state.poster = els.posterFilter.value;
+}
+
+function onToolbarChange() {
+  readToolbarInputs();
   onFilterChange();
 }
 
@@ -838,7 +893,11 @@ function bindEvents() {
     });
   }
 
-  for (const id of ['search', 'minEpisodes', 'minVotes', 'minYear', 'maxYear', 'sort', 'watchedFilter']) {
+  const inputIds = [
+    'search', 'minEpisodes', 'maxEpisodes', 'minVotes', 'minAvg', 'minClimb',
+    'minYear', 'maxYear', 'seriesType', 'sort', 'watchedFilter', 'posterFilter',
+  ];
+  for (const id of inputIds) {
     els[id].addEventListener('input', onToolbarChange);
     els[id].addEventListener('change', onToolbarChange);
   }
@@ -853,20 +912,30 @@ function bindEvents() {
     state.shape = 'all';
     state.search = '';
     state.minEpisodes = 4;
+    state.maxEpisodes = null;
     state.minVotes = 1000;
+    state.minAvg = null;
+    state.minClimb = null;
     state.minYear = null;
     state.maxYear = null;
+    state.seriesType = 'all';
     state.sort = 'popularity';
     state.watched = 'all';
+    state.poster = 'all';
     state.genres = new Set();
     state.page = 1;
     els.search.value = '';
     els.minEpisodes.value = 4;
+    els.maxEpisodes.value = '';
     els.minVotes.value = 1000;
+    els.minAvg.value = '';
+    els.minClimb.value = '';
     els.minYear.value = '';
     els.maxYear.value = '';
+    els.seriesType.value = 'all';
     els.sort.value = 'popularity';
     els.watchedFilter.value = 'all';
+    els.posterFilter.value = 'all';
     for (const b of els.shapes.querySelectorAll('.shape-chip')) {
       b.setAttribute('aria-pressed', b.dataset.shape === 'all' ? 'true' : 'false');
     }
@@ -886,7 +955,6 @@ function bindEvents() {
     });
   }
 
-  // Modal close handlers.
   for (const closer of els.modal.querySelectorAll('[data-close="modal"]')) {
     closer.addEventListener('click', closeModal);
   }

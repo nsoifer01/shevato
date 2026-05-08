@@ -8,7 +8,7 @@ Find TV shows by the **shape** of their IMDb episode ratings, not the average. B
 2. An optional second script (`scripts/enrich-tmdb.js`) fetches posters + plot overviews from TMDB and caches them so they survive rebuilds.
 3. `index.html` loads `data.json` in the browser and renders shape chips, filters, an SVG curve per season, and a per-season detail modal. The browser app supports grid + list views, watched tracking (localStorage), pagination via IntersectionObserver, and shareable URL state.
 
-`data.json` is committed to the repo and refreshed weekly by GitHub Actions — no manual updates needed. See [`IMDB_DATA_README.md`](IMDB_DATA_README.md) for the auto-refresh details.
+`data.json` is committed to the repo and refreshed weekly by GitHub Actions — no manual updates needed. See [`DATA_README.md`](DATA_README.md) for the auto-refresh details.
 
 ## Shapes
 
@@ -24,10 +24,10 @@ A season can match more than one shape — the card shows all of them.
 
 ## One-time setup
 
-1. Download the three dataset files from <https://datasets.imdbws.com/> into `apps/imdb-rising/data/`:
+1. Download the three dataset files from <https://datasets.imdbws.com/> into `apps/rising-seasons/data/`:
 
    ```sh
-   cd apps/imdb-rising/data
+   cd apps/rising-seasons/data
    curl -O https://datasets.imdbws.com/title.basics.tsv.gz
    curl -O https://datasets.imdbws.com/title.episode.tsv.gz
    curl -O https://datasets.imdbws.com/title.ratings.tsv.gz
@@ -38,10 +38,10 @@ A season can match more than one shape — the card shows all of them.
 2. From the repo root:
 
    ```sh
-   npm run build:imdb-rising
+   npm run build:rising-seasons
    ```
 
-   ~20 seconds. Writes `apps/imdb-rising/data.json` (also git-ignored — it's a build artifact). IMDb republishes the dumps daily, so re-running picks up new ratings.
+   ~20 seconds. Writes `apps/rising-seasons/data.json` (also git-ignored — it's a build artifact). IMDb republishes the dumps daily, so re-running picks up new ratings.
 
 ## Optional: poster + overview enrichment
 
@@ -52,8 +52,8 @@ To add posters and plot summaries to each card, get a free TMDB v4 read access t
 3. Run the enrichment, then rebuild so `data.json` picks up the cache:
 
    ```sh
-   TMDB_TOKEN=eyJh...your_token... npm run enrich:imdb-rising
-   npm run build:imdb-rising
+   TMDB_TOKEN=eyJh...your_token... npm run enrich:rising-seasons
+   npm run build:rising-seasons
    ```
 
    First run takes a few minutes (one HTTP request per unique series, throttled to ~10/s). Subsequent runs reuse `data/tmdb-cache.json` and only fetch new series.
@@ -76,7 +76,7 @@ The browser UI applies its own (stricter) defaults on top, so building wide and 
 The page loads `data.json` via `fetch`, so serve the directory rather than opening `file://`:
 
 ```sh
-cd apps/imdb-rising
+cd apps/rising-seasons
 python3 -m http.server 8000
 # open http://localhost:8000
 ```
@@ -86,5 +86,5 @@ The browser URL preserves your shape/genre/sort/search selection — paste a lin
 ## Running tests
 
 ```sh
-npm run test:imdb-rising
+npm run test:rising-seasons
 ```

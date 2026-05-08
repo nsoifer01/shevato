@@ -6,10 +6,10 @@
 //
 //   1. Sign up at https://www.themoviedb.org/signup
 //   2. Get a v4 read access token at https://www.themoviedb.org/settings/api
-//   3. Run: TMDB_TOKEN=eyJh... npm run enrich:imdb-rising
+//   3. Run: TMDB_TOKEN=eyJh... npm run enrich:rising-seasons
 //
 // Results are cached in data/tmdb-cache.json so re-runs only fetch new
-// series. Re-run after each `npm run build:imdb-rising` if your dataset's
+// series. Re-run after each `npm run build:rising-seasons` if your dataset's
 // list of unique series changed.
 
 const fs = require('fs');
@@ -53,7 +53,7 @@ async function findByImdbId(imdbId) {
     process.exit(1);
   }
   if (!fs.existsSync(DATA_FILE)) {
-    console.error(`Missing ${DATA_FILE}. Run \`npm run build:imdb-rising\` first.`);
+    console.error(`Missing ${DATA_FILE}. Run \`npm run build:rising-seasons\` first.`);
     process.exit(1);
   }
 
@@ -94,5 +94,5 @@ async function findByImdbId(imdbId) {
 
   fs.writeFileSync(CACHE_FILE, JSON.stringify(cache));
   console.log(`\nWrote ${CACHE_FILE} — ${Object.keys(cache).length.toLocaleString()} entries (${failed.toLocaleString()} errors)`);
-  console.log('Re-run `npm run build:imdb-rising` to merge into data.json.');
+  console.log('Re-run `npm run build:rising-seasons` to merge into data.json.');
 })();

@@ -132,17 +132,45 @@ test('findMatches tags shapes and includes one record per qualifying season', ()
   assert.deepEqual(s1.genres, ['Drama']);
 });
 
-test('findMatches drops seasons that match no shapes', () => {
+test('findMatches drops series whose seasons all match no shapes', () => {
   const series = new Map([
     ['tt500', { title: 'Choppy', year: 2024, type: 'tvSeries' }],
   ]);
   const episodes = new Map([
     ['tt500', new Map([
       // Bouncy, mid-range, no rebound, no consistent floor — matches nothing.
+      // Series has no shape-matching season, so it's excluded entirely.
       [1, [ep(1, 7.5), ep(2, 7.7), ep(3, 7.4), ep(4, 7.6)]],
     ])],
   ]);
   assert.equal(findMatches(series, episodes).length, 0);
+});
+
+test('findMatches includes shape-less seasons of qualifying series', () => {
+  // Real-world example: shows like The Office have some seasons that fit
+  // a shape pattern and some that don't. Once any season qualifies the
+  // series, every season is included so search results are complete.
+  const series = new Map([
+    ['tt600', { title: 'Mixed Bag', year: 2010, type: 'tvSeries', genres: ['Drama'] }],
+  ]);
+  const episodes = new Map([
+    ['tt600', new Map([
+      // Season 1 — bouncy, no shape match.
+      [1, [ep(1, 7.5), ep(2, 7.7), ep(3, 7.4), ep(4, 7.6)]],
+      // Season 2 — non-decreasing, qualifies the series.
+      [2, [ep(1, 7.0), ep(2, 7.2), ep(3, 7.4), ep(4, 7.5)]],
+      // Season 3 — bouncy again, no shape match.
+      [3, [ep(1, 8.0), ep(2, 7.8), ep(3, 8.1), ep(4, 7.9)]],
+    ])],
+  ]);
+  const matches = findMatches(series, episodes);
+  assert.equal(matches.length, 3);
+  const s1 = matches.find((m) => m.season === 1);
+  const s2 = matches.find((m) => m.season === 2);
+  const s3 = matches.find((m) => m.season === 3);
+  assert.deepEqual(s1.shapes, []);
+  assert.ok(s2.shapes.includes('rising'));
+  assert.deepEqual(s3.shapes, []);
 });
 
 test('findMatches sorts episodes by episode number before checking', () => {

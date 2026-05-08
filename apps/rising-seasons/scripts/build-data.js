@@ -8,14 +8,14 @@
 //
 // See ../README.md for download instructions.
 //
-// Inputs (place in apps/imdb-rising/data/):
+// Inputs (place in apps/rising-seasons/data/):
 //   title.basics.tsv.gz
 //   title.episode.tsv.gz
 //   title.ratings.tsv.gz
 // Optional:
-//   tmdb-cache.json  — produced by `npm run enrich:imdb-rising`
+//   tmdb-cache.json  — produced by `npm run enrich:rising-seasons`
 //
-// Output: apps/imdb-rising/data.json
+// Output: apps/rising-seasons/data.json
 //
 // Tunables (env vars):
 //   MIN_EPISODES (default 4)   — minimum rated episodes per season
@@ -41,7 +41,7 @@ function openTsv(filename) {
   if (!fs.existsSync(filePath)) {
     throw new Error(
       `Missing dataset file: ${filePath}\n` +
-      `Download from https://datasets.imdbws.com/ — see apps/imdb-rising/README.md`,
+      `Download from https://datasets.imdbws.com/ — see apps/rising-seasons/README.md`,
     );
   }
   const stream = fs.createReadStream(filePath).pipe(zlib.createGunzip());
@@ -182,7 +182,7 @@ function loadTmdbCache() {
     }
     console.log(`Enriched ${enriched.toLocaleString()} of ${matches.length.toLocaleString()} matches with TMDB metadata`);
   } else {
-    console.log('(No TMDB cache present — run `npm run enrich:imdb-rising` to add posters/overviews.)');
+    console.log('(No TMDB cache present — run `npm run enrich:rising-seasons` to add posters/overviews.)');
   }
 
   // Sort by minimum vote count desc — most-watched matches first.

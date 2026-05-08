@@ -1,6 +1,6 @@
-# IMDB Rising — data refresh
+# Rising Seasons — data refresh
 
-The Rising Seasons app is powered by `apps/imdb-rising/data.json`, a build
+The Rising Seasons app is powered by `apps/rising-seasons/data.json`, a build
 artifact regenerated from IMDb's daily TSV dumps (and optionally enriched
 with TMDB posters + overviews). The data file is committed to the repo
 so the static site has zero runtime dependencies.
@@ -11,7 +11,7 @@ The workflow `.github/workflows/refresh-imdb.yml` runs every **Monday at
 06:00 UTC** (and on demand via the *Run workflow* button on GitHub):
 
 1. Downloads the three IMDb gzipped TSV dumps.
-2. Runs `node apps/imdb-rising/scripts/build-data.js` to regenerate
+2. Runs `node apps/rising-seasons/scripts/build-data.js` to regenerate
    `data.json`.
 3. If the `TMDB_TOKEN` secret is set, runs the TMDB enrichment script
    and rebuilds so posters and overviews are merged in. The TMDB cache
@@ -43,23 +43,23 @@ From the repo root:
 
 ```sh
 # 1. Download the three IMDb dumps (~250 MB).
-cd apps/imdb-rising/data
+cd apps/rising-seasons/data
 curl -O https://datasets.imdbws.com/title.basics.tsv.gz
 curl -O https://datasets.imdbws.com/title.episode.tsv.gz
 curl -O https://datasets.imdbws.com/title.ratings.tsv.gz
 cd ../../..
 
 # 2. Build data.json from the dumps.
-npm run build:imdb-rising
+npm run build:rising-seasons
 
 # 3. (Optional) Enrich with posters + overviews.
-TMDB_TOKEN='eyJh...' npm run enrich:imdb-rising
-npm run build:imdb-rising   # re-run to merge the cache into data.json
+TMDB_TOKEN='eyJh...' npm run enrich:rising-seasons
+npm run build:rising-seasons   # re-run to merge the cache into data.json
 
 # 4. Commit if anything changed.
-git diff --stat apps/imdb-rising/data.json
-git add apps/imdb-rising/data.json
-git commit -m "chore(imdb-rising): manual data refresh"
+git diff --stat apps/rising-seasons/data.json
+git add apps/rising-seasons/data.json
+git commit -m "chore(rising-seasons): manual data refresh"
 ```
 
 Or trigger the workflow from the CLI:

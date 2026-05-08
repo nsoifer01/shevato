@@ -1,9 +1,9 @@
-name: Refresh IMDB Rising data
+name: Refresh Rising Seasons data
 
 # Pulls IMDb's daily TSV dumps, runs the build, optionally enriches with
-# TMDB metadata, and commits the regenerated apps/imdb-rising/data.json
+# TMDB metadata, and commits the regenerated apps/rising-seasons/data.json
 # back to the repo if anything changed. Runs weekly so the static site
-# never needs manual updates. See apps/imdb-rising/IMDB_DATA_README.md.
+# never needs manual updates. See apps/rising-seasons/DATA_README.md.
 
 on:
   schedule:
@@ -18,7 +18,7 @@ on:
         default: false
 
 concurrency:
-  group: refresh-imdb
+  group: refresh-rising-seasons
   cancel-in-progress: false
 
 permissions:
@@ -38,7 +38,7 @@ jobs:
           node-version: '20'
 
       - name: Download IMDb datasets
-        working-directory: apps/imdb-rising/data
+        working-directory: apps/rising-seasons/data
         run: |
           curl -fsSL -o title.basics.tsv.gz https://datasets.imdbws.com/title.basics.tsv.gz
           curl -fsSL -o title.episode.tsv.gz https://datasets.imdbws.com/title.episode.tsv.gz
@@ -50,13 +50,13 @@ jobs:
       - name: Restore TMDB cache
         uses: actions/cache/restore@v4
         with:
-          path: apps/imdb-rising/data/tmdb-cache.json
+          path: apps/rising-seasons/data/tmdb-cache.json
           key: tmdb-cache-${{ github.run_id }}
           restore-keys: |
             tmdb-cache-
 
       - name: Initial build
-        run: node --max-old-space-size=4096 apps/imdb-rising/scripts/build-data.js
+        run: node --max-old-space-size=4096 apps/rising-seasons/scripts/build-data.js
 
       - name: Enrich with TMDB
         if: ${{ inputs.skip_tmdb != true }}
@@ -67,8 +67,8 @@ jobs:
             echo "::warning::TMDB_TOKEN secret not configured — skipping enrichment."
             exit 0
           fi
-          node apps/imdb-rising/scripts/enrich-tmdb.js
-          node --max-old-space-size=4096 apps/imdb-rising/scripts/build-data.js
+          node apps/rising-seasons/scripts/enrich-tmdb.js
+          node --max-old-space-size=4096 apps/rising-seasons/scripts/build-data.js
 
       # Persist the cache for the next run regardless of whether the
       # enrichment step ran (we still want to keep what we had).
@@ -76,7 +76,7 @@ jobs:
         if: always()
         uses: actions/cache/save@v4
         with:
-          path: apps/imdb-rising/data/tmdb-cache.json
+          path: apps/rising-seasons/data/tmdb-cache.json
           key: tmdb-cache-${{ github.run_id }}
 
       - name: Run tests
@@ -85,12 +85,12 @@ jobs:
       - name: Commit data.json if changed
         run: |
           set -e
-          if git diff --quiet apps/imdb-rising/data.json; then
+          if git diff --quiet apps/rising-seasons/data.json; then
             echo "No changes — nothing to commit."
             exit 0
           fi
           git config user.name "shevato-bot"
           git config user.email "actions@users.noreply.github.com"
-          git add apps/imdb-rising/data.json
-          git commit -m "chore(imdb-rising): refresh data $(date -u +%Y-%m-%d)"
+          git add apps/rising-seasons/data.json
+          git commit -m "chore(rising-seasons): refresh data $(date -u +%Y-%m-%d)"
           git push

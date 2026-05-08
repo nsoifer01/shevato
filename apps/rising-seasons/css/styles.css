@@ -9,6 +9,9 @@
  */
 
 :root {
+  /* Tells the browser to use dark UI for native widgets — scrollbars,
+     <select> popup menus, calendar pickers — so dropdowns aren't white. */
+  color-scheme: dark;
   --bg: #0b0d12;
   --bg-grad: radial-gradient(circle at 20% 0%, rgba(245, 197, 24, 0.06), transparent 50%),
              radial-gradient(circle at 80% 0%, rgba(74, 222, 128, 0.05), transparent 50%);
@@ -109,7 +112,13 @@ body.rising-seasons-app button {
 /* ---------- Buttons (single source of truth) ----------
    Every interactive control in the app uses one of: .btn, .shape-chip,
    .genre-chip, .watch-toggle. They share the same height tokens and use
-   flex for true horizontal+vertical centering so text never drifts. */
+   flex for true horizontal+vertical centering so text never drifts.
+
+   IMPORTANT — main.css line ~322 has `button:hover { color: #ce1b28
+   !important }` (the site's red link colour). To stop our buttons
+   turning red on hover, every color rule below uses !important so the
+   class-scoped colour wins. The hover declaration must also be
+   !important — without it, only the default state survives. */
 
 .btn {
   display: inline-flex;
@@ -121,7 +130,7 @@ body.rising-seasons-app button {
   border: 1px solid var(--border);
   border-radius: var(--ctrl-radius);
   background: var(--surface);
-  color: var(--text);
+  color: var(--text) !important;
   font: inherit;
   font-size: var(--ctrl-font);
   font-weight: 500;
@@ -129,10 +138,16 @@ body.rising-seasons-app button {
   cursor: pointer;
   user-select: none;
   white-space: nowrap;
+  box-shadow: none !important;
   transition: background 0.15s, border-color 0.15s, color 0.15s, transform 0.05s;
 }
 
-.btn:hover { background: var(--surface-2); border-color: var(--border-strong); }
+.btn:hover {
+  background: var(--surface-2);
+  border-color: var(--border-strong);
+  color: var(--text) !important;
+  box-shadow: none !important;
+}
 .btn:active { transform: translateY(1px); }
 .btn:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 .btn:disabled,
@@ -142,21 +157,23 @@ body.rising-seasons-app button {
   pointer-events: none;
 }
 
-/* Primary (yellow CTA) — IMDb yellow with high-contrast dark text */
-.btn-primary {
+/* Primary (yellow CTA) — high-contrast dark text on yellow */
+.btn-primary,
+.btn-primary:hover {
   background: linear-gradient(135deg, var(--accent), #d4a514);
-  color: var(--accent-ink);
+  color: var(--accent-ink) !important;
   border-color: transparent;
   font-weight: 600;
 }
-.btn-primary:hover { filter: brightness(1.08); background: linear-gradient(135deg, var(--accent), #d4a514); border-color: transparent; }
+.btn-primary:hover { filter: brightness(1.08); }
 
-/* Ghost (secondary action) */
-.btn-ghost {
+/* Ghost (secondary action) — white text per the site's light-on-dark rule */
+.btn-ghost,
+.btn-ghost:hover {
   background: var(--surface-2);
-  color: var(--muted);
+  color: var(--text) !important;
 }
-.btn-ghost:hover { background: var(--surface-3); color: var(--text); }
+.btn-ghost:hover { background: var(--surface-3); }
 
 /* View-toggle buttons live inside a wrapper that draws the border, so they
    reset their own border to look like a single segmented control. */
@@ -169,42 +186,52 @@ body.rising-seasons-app button {
   overflow: hidden;
   align-self: stretch;
 }
-.view-btn {
+.view-btn,
+.view-btn:hover {
   border: none;
   border-radius: 0;
   background: transparent;
-  color: var(--muted);
+  color: var(--text) !important;
   width: 2.5rem;
   height: 100%;
   font-size: 1rem;
+  box-shadow: none !important;
 }
-.view-btn:hover { background: var(--surface-2); color: var(--text); }
-.view-btn[aria-pressed="true"] { background: var(--accent-soft); color: var(--accent); }
+.view-btn:hover { background: var(--surface-2); }
+.view-btn[aria-pressed="true"],
+.view-btn[aria-pressed="true"]:hover {
+  background: var(--accent-soft);
+  color: var(--accent) !important;
+}
 
-/* The modal close X — circular, fixed size, aligned with other 40px controls */
-.modal-close {
+/* Modal close X — circular, fixed size, aligned with other 40px controls.
+   White text in all states (no red hover) per the site's light-on-dark rule. */
+.modal-close,
+.modal-close:hover {
   width: var(--ctrl-h);
   height: var(--ctrl-h);
   padding: 0;
   border-radius: 50%;
   background: var(--surface-3);
-  color: var(--text);
+  color: var(--text) !important;
   font-size: 1.4rem;
   font-weight: 400;
+  box-shadow: none !important;
 }
 .modal-close:hover { background: var(--surface-2); }
 
-/* Modal "Mark as watched" button */
-.watch-btn { /* extends .btn */ }
-.watch-btn.is-watched {
+/* Modal "Mark as watched" button — extends .btn (white text by default). */
+.watch-btn.is-watched,
+.watch-btn.is-watched:hover {
   background: var(--good);
-  color: var(--good-ink);
+  color: var(--good-ink) !important;
   border-color: var(--good);
 }
-.watch-btn.is-watched:hover { filter: brightness(1.05); background: var(--good); border-color: var(--good); }
+.watch-btn.is-watched:hover { filter: brightness(1.05); }
 
 /* Card/row corner watched toggle — circular pill, smaller height */
-.watch-toggle {
+.watch-toggle,
+.watch-toggle:hover {
   position: absolute;
   top: 0.5rem;
   right: 0.5rem;
@@ -214,21 +241,23 @@ body.rising-seasons-app button {
   border-radius: 50%;
   border: 1px solid rgba(255, 255, 255, 0.4);
   background: rgba(0, 0, 0, 0.6);
-  color: rgba(255, 255, 255, 0.85);
+  color: #ffffff !important;
   font-size: 0.95rem;
   cursor: pointer;
   display: inline-flex;
   align-items: center;
   justify-content: center;
   backdrop-filter: blur(4px);
+  box-shadow: none !important;
   transition: background 0.15s, color 0.15s, transform 0.1s, border-color 0.15s;
   z-index: 2;
 }
 .watch-toggle:hover { transform: scale(1.08); background: rgba(0, 0, 0, 0.75); }
 .watch-toggle:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
-.watch-toggle[aria-pressed="true"] {
+.watch-toggle[aria-pressed="true"],
+.watch-toggle[aria-pressed="true"]:hover {
   background: var(--good);
-  color: var(--good-ink);
+  color: var(--good-ink) !important;
   border-color: var(--good);
 }
 
@@ -271,7 +300,8 @@ body.rising-seasons-app button {
   padding: 1.25rem 0 0.5rem;
 }
 
-.shape-chip {
+.shape-chip,
+.shape-chip:hover {
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -281,21 +311,23 @@ body.rising-seasons-app button {
   background: var(--surface);
   border: 1px solid var(--border);
   border-radius: 999px;
-  color: var(--text);
+  color: var(--text) !important;
   font: inherit;
   font-size: 0.85rem;
   font-weight: 500;
   line-height: 1;
   cursor: pointer;
   white-space: nowrap;
+  box-shadow: none !important;
   transition: background 0.15s, border-color 0.15s;
 }
 .shape-chip:hover { background: var(--surface-2); border-color: var(--border-strong); }
 .shape-chip:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
-.shape-chip[aria-pressed="true"] {
+.shape-chip[aria-pressed="true"],
+.shape-chip[aria-pressed="true"]:hover {
   background: var(--accent-soft);
   border-color: var(--accent);
-  color: var(--text);
+  color: var(--text) !important;
 }
 .shape-icon { color: var(--accent); font-weight: 700; }
 .shape-desc { display: none; color: var(--muted); font-size: 0.78rem; }
@@ -363,6 +395,16 @@ body.rising-seasons-app button {
   width: 100%;
   appearance: none;
   -webkit-appearance: none;
+  /* Tell the browser this control is dark so the native popup menu uses
+     a dark theme too instead of the OS default light. */
+  color-scheme: dark;
+}
+
+/* Some browsers (Firefox in particular) render <option> with the OS
+   light theme even with color-scheme: dark — force dark explicitly. */
+.filter-row select option {
+  background: var(--surface);
+  color: var(--text);
 }
 
 .search input { padding: 0 0.85rem; font-size: 1rem; }
@@ -415,7 +457,8 @@ body.rising-seasons-app button {
   margin-top: 0.75rem;
 }
 
-.genre-chip {
+.genre-chip,
+.genre-chip:hover {
   display: inline-flex;
   align-items: center;
   height: var(--ctrl-h-sm);
@@ -423,19 +466,21 @@ body.rising-seasons-app button {
   background: var(--surface-2);
   border: 1px solid var(--border);
   border-radius: 999px;
-  color: var(--muted);
+  color: var(--text) !important;
   font: inherit;
   font-size: 0.78rem;
   cursor: pointer;
   user-select: none;
   white-space: nowrap;
   line-height: 1;
+  box-shadow: none !important;
 }
-.genre-chip:hover { background: var(--surface-3); color: var(--text); }
-.genre-chip[aria-pressed="true"] {
+.genre-chip:hover { background: var(--surface-3); border-color: var(--border-strong); }
+.genre-chip[aria-pressed="true"],
+.genre-chip[aria-pressed="true"]:hover {
   background: var(--accent-soft);
   border-color: var(--accent);
-  color: var(--accent);
+  color: var(--accent) !important;
 }
 .genre-chip:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 
@@ -732,7 +777,8 @@ body.rising-seasons-app button {
 }
 .pager[hidden] { display: none; }
 
-.pager .page-btn {
+.pager .page-btn,
+.pager .page-btn:hover {
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -740,13 +786,14 @@ body.rising-seasons-app button {
   height: var(--ctrl-h);
   padding: 0 0.7rem;
   background: var(--surface);
-  color: var(--text);
+  color: var(--text) !important;
   border: 1px solid var(--border);
   border-radius: var(--ctrl-radius);
   font: inherit;
   font-size: 0.85rem;
   font-variant-numeric: tabular-nums;
   cursor: pointer;
+  box-shadow: none !important;
   transition: background 0.15s, border-color 0.15s;
 }
 .pager .page-btn:hover {
@@ -757,16 +804,18 @@ body.rising-seasons-app button {
   outline: 2px solid var(--accent);
   outline-offset: 2px;
 }
-.pager .page-btn[aria-current="page"] {
+.pager .page-btn[aria-current="page"],
+.pager .page-btn[aria-current="page"]:hover {
   background: var(--accent);
-  color: var(--accent-ink);
+  color: var(--accent-ink) !important;
   border-color: var(--accent);
   font-weight: 600;
 }
 .pager .page-btn:disabled,
 .pager .page-btn[aria-disabled="true"] {
-  opacity: 0.35;
+  opacity: 0.4;
   cursor: not-allowed;
+  color: var(--text) !important;
 }
 .pager .page-ellipsis {
   display: inline-flex;
