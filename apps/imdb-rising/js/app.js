@@ -11,8 +11,9 @@ const SHAPE_LABELS = {
 const STORAGE_NS = 'imdb-rising';
 const KEY_WATCHED = `${STORAGE_NS}:watched`;
 const KEY_VIEW = `${STORAGE_NS}:view`;
-const PAGE_SIZE = 60;
+const PAGE_SIZE = 24;
 const STALE_DAYS = 30;
+const PARTIALS_BASE = '../../partials/';
 
 // --- DOM refs ---
 
@@ -29,6 +30,7 @@ const els = {
   resetFilters: document.getElementById('resetFilters'),
   genres: document.getElementById('genres'),
   results: document.getElementById('results'),
+  pager: document.getElementById('pager'),
   meta: document.getElementById('meta'),
   footerMeta: document.getElementById('footer-meta'),
   statsBar: document.getElementById('statsBar'),
@@ -62,12 +64,11 @@ const state = {
   watched: 'all',
   genres: new Set(),
   view: 'grid',
+  page: 1,
 };
 
 let dataset = null;
 let filtered = [];
-let renderedCount = 0;
-let lazyObserver = null;
 let modalState = { season: null, lastFocus: null };
 
 // --- localStorage helpers ---
@@ -109,10 +110,67 @@ const ViewPref = {
   },
 };
 
+// --- chrome (header / footer / menu) ---
+//
+// Vanilla loader for the shared site partials. We deliberately don't load
+// main.js / jQuery for chrome because that path drags AuthUI + Firebase +
+// breakpoints + a panel plugin and any failure leaves the chrome blank.
+// This loader does the same job in 30 lines and degrades cleanly.
+
+async function loadChrome() {
+  const slots = document.querySelectorAll('[data-include]');
+  await Promise.all([...slots].map(async (slot) => {
+    const name = slot.dataset.include;
+    try {
+      const res = await fetch(`${PARTIALS_BASE}${name}.html`);
+      if (!res.ok) return;
+      slot.innerHTML = await res.text();
+    } catch {
+      // network failed, slot stays empty (degrades to no chrome — no error UI)
+    }
+  }));
+  setFooterYear();
+  wireMenu();
+}
+
+function setFooterYear() {
+  for (const el of document.querySelectorAll('#year')) {
+    el.textContent = new Date().getFullYear();
+  }
+}
+
+function wireMenu() {
+  const toggle = document.querySelector('[data-js="menu-toggle"]');
+  const menu = document.getElementById('menu');
+  if (!toggle || !menu) return;
+
+  // main.css handles the slide-in transform via body.is-menu-visible — we
+  // just toggle that class.
+  toggle.addEventListener('click', (e) => {
+    e.preventDefault();
+    document.body.classList.toggle('is-menu-visible');
+    toggle.setAttribute('aria-expanded', document.body.classList.contains('is-menu-visible') ? 'true' : 'false');
+  });
+  menu.addEventListener('click', (e) => {
+    if (e.target.tagName === 'A') {
+      // give the link's natural navigation a beat, then close
+      setTimeout(() => document.body.classList.remove('is-menu-visible'), 50);
+    }
+  });
+  document.addEventListener('click', (e) => {
+    if (!document.body.classList.contains('is-menu-visible')) return;
+    if (e.target.closest('#menu') || e.target.closest('[data-js="menu-toggle"]')) return;
+    document.body.classList.remove('is-menu-visible');
+    toggle.setAttribute('aria-expanded', 'false');
+  });
+}
+
 // --- bootstrap ---
 
 async function load() {
   showSkeletons(8);
+  // Kick off chrome load + data fetch in parallel.
+  const chromeP = loadChrome();
   try {
     const res = await fetch('data.json', { cache: 'no-store' });
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
@@ -131,6 +189,7 @@ async function load() {
   bindEvents();
   bindKeyboard();
   render();
+  await chromeP;
 }
 
 // --- URL state ---
@@ -146,6 +205,7 @@ function applyStateFromURL() {
   if (p.has('sort')) state.sort = p.get('sort');
   if (p.has('watched')) state.watched = p.get('watched');
   if (p.has('g')) state.genres = new Set(p.get('g').split(',').filter(Boolean));
+  if (p.has('page')) state.page = Math.max(1, parseInt(p.get('page'), 10) || 1);
 
   els.search.value = state.search;
   els.minEpisodes.value = state.minEpisodes;
@@ -173,6 +233,7 @@ function writeStateToURL() {
   if (state.sort !== 'popularity') p.set('sort', state.sort);
   if (state.watched !== 'all') p.set('watched', state.watched);
   if (state.genres.size) p.set('g', [...state.genres].join(','));
+  if (state.page > 1) p.set('page', state.page);
   const hash = p.toString();
   history.replaceState(null, '', hash ? `#${hash}` : location.pathname);
 }
@@ -202,8 +263,7 @@ function renderGenreChips() {
       if (state.genres.has(g.name)) state.genres.delete(g.name);
       else state.genres.add(g.name);
       btn.setAttribute('aria-pressed', state.genres.has(g.name) ? 'true' : 'false');
-      writeStateToURL();
-      render();
+      onFilterChange();
     });
     frag.appendChild(btn);
   }
@@ -258,56 +318,33 @@ function filterAndSort() {
 
 function render() {
   filtered = filterAndSort();
-  renderedCount = 0;
-  els.results.replaceChildren();
-  disconnectLazy();
+
+  const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
+  if (state.page > totalPages) state.page = totalPages;
+  if (state.page < 1) state.page = 1;
 
   renderStatsBar();
-  els.meta.textContent = `${filtered.length.toLocaleString()} of ${dataset.count.toLocaleString()} seasons match your filters`;
+  els.meta.textContent = filtered.length
+    ? `${filtered.length.toLocaleString()} of ${dataset.count.toLocaleString()} seasons match your filters · page ${state.page} of ${totalPages.toLocaleString()}`
+    : `0 of ${dataset.count.toLocaleString()} seasons match your filters`;
 
   if (filtered.length === 0) {
     showEmptyState();
+    renderPager(0, 1);
     els.footerMeta.textContent = '';
     return;
   }
 
-  renderNextPage();
-  els.footerMeta.textContent = `Built ${new Date(dataset.builtAt).toLocaleDateString()} · ${dataset.count.toLocaleString()} seasons indexed across all of IMDb`;
-}
+  const start = (state.page - 1) * PAGE_SIZE;
+  const end = Math.min(start + PAGE_SIZE, filtered.length);
 
-function renderNextPage() {
-  const end = Math.min(renderedCount + PAGE_SIZE, filtered.length);
   const frag = document.createDocumentFragment();
-  for (let i = renderedCount; i < end; i++) {
-    frag.appendChild(buildItem(filtered[i]));
-  }
-  els.results.appendChild(frag);
-  renderedCount = end;
+  for (let i = start; i < end; i++) frag.appendChild(buildItem(filtered[i]));
+  els.results.replaceChildren(frag);
 
-  // (Re)create the sentinel that triggers the next page.
-  let sentinel = els.results.querySelector('.lazy-sentinel');
-  if (sentinel) sentinel.remove();
-  if (renderedCount < filtered.length) {
-    sentinel = document.createElement('div');
-    sentinel.className = 'lazy-sentinel';
-    sentinel.style.cssText = 'grid-column:1/-1;height:1px;';
-    els.results.appendChild(sentinel);
-    if (!lazyObserver) {
-      lazyObserver = new IntersectionObserver((entries) => {
-        if (entries.some((e) => e.isIntersecting)) renderNextPage();
-      }, { rootMargin: '600px 0px' });
-    }
-    lazyObserver.observe(sentinel);
-  } else if (lazyObserver) {
-    disconnectLazy();
-  }
-}
+  renderPager(totalPages, state.page);
 
-function disconnectLazy() {
-  if (lazyObserver) {
-    lazyObserver.disconnect();
-    lazyObserver = null;
-  }
+  els.footerMeta.textContent = `Built ${new Date(dataset.builtAt).toLocaleDateString()} · ${dataset.count.toLocaleString()} seasons indexed across all of IMDb`;
 }
 
 function buildItem(m) {
@@ -318,7 +355,7 @@ function showEmptyState() {
   const div = document.createElement('div');
   div.className = 'empty';
   div.innerHTML = '<p>No seasons match these filters.</p><p>Try lowering minimum votes, removing genre filters, or pressing Reset.</p>';
-  els.results.appendChild(div);
+  els.results.replaceChildren(div);
 }
 
 function showSkeletons(n) {
@@ -332,12 +369,18 @@ function showSkeletons(n) {
 function showError(err) {
   const div = document.createElement('div');
   div.className = 'empty';
-  div.innerHTML = `
-    <p>Couldn't load season data.</p>
-    <p style="font-size:0.85em;color:var(--muted-2);">${escapeHtml(err.message || String(err))}</p>
-    <button type="button" class="retry-btn">Retry</button>
-  `;
-  div.querySelector('.retry-btn').addEventListener('click', load);
+  const p1 = document.createElement('p');
+  p1.textContent = "Couldn't load season data.";
+  const p2 = document.createElement('p');
+  p2.style.cssText = 'font-size:0.85em;color:var(--muted-2);';
+  p2.textContent = err.message || String(err);
+  const btn = document.createElement('button');
+  btn.type = 'button';
+  btn.className = 'btn btn-primary';
+  btn.style.marginTop = '0.75rem';
+  btn.textContent = 'Retry';
+  btn.addEventListener('click', load);
+  div.append(p1, p2, btn);
   els.results.replaceChildren(div);
 }
 
@@ -389,6 +432,91 @@ function stat(html) {
   return span;
 }
 
+// --- pagination ---
+
+function renderPager(totalPages, current) {
+  if (totalPages <= 1) {
+    els.pager.replaceChildren();
+    els.pager.hidden = true;
+    return;
+  }
+  els.pager.hidden = false;
+
+  const frag = document.createDocumentFragment();
+  frag.appendChild(pageButton('‹ Prev', current - 1, current === 1));
+
+  for (const n of pageNumbers(current, totalPages)) {
+    if (n === '…') {
+      const span = document.createElement('span');
+      span.className = 'page-ellipsis';
+      span.textContent = '…';
+      span.setAttribute('aria-hidden', 'true');
+      frag.appendChild(span);
+    } else {
+      const btn = pageButton(String(n), n, false);
+      if (n === current) {
+        btn.setAttribute('aria-current', 'page');
+      }
+      btn.setAttribute('aria-label', `Page ${n}`);
+      frag.appendChild(btn);
+    }
+  }
+
+  frag.appendChild(pageButton('Next ›', current + 1, current === totalPages));
+
+  els.pager.replaceChildren(frag);
+}
+
+function pageButton(label, target, disabled) {
+  const btn = document.createElement('button');
+  btn.type = 'button';
+  btn.className = 'page-btn';
+  btn.textContent = label;
+  if (disabled) {
+    btn.disabled = true;
+    btn.setAttribute('aria-disabled', 'true');
+  } else {
+    btn.addEventListener('click', () => goToPage(target));
+  }
+  return btn;
+}
+
+function pageNumbers(current, total) {
+  // Window of pages to always show: 1, current-1, current, current+1, total
+  const set = new Set([1, total]);
+  for (let i = current - 1; i <= current + 1; i++) {
+    if (i >= 1 && i <= total) set.add(i);
+  }
+  // For small page counts, show a few extras at the edges so the bar isn't sparse.
+  if (total <= 7) {
+    for (let i = 1; i <= total; i++) set.add(i);
+  }
+  const sorted = [...set].sort((a, b) => a - b);
+  const out = [];
+  let prev = 0;
+  for (const n of sorted) {
+    if (n - prev > 1) out.push('…');
+    out.push(n);
+    prev = n;
+  }
+  return out;
+}
+
+function goToPage(n) {
+  state.page = n;
+  writeStateToURL();
+  render();
+  // Scroll the top of the results back into view, accounting for the fixed header.
+  const top = els.results.getBoundingClientRect().top + window.scrollY - 70;
+  window.scrollTo({ top, behavior: 'smooth' });
+}
+
+function onFilterChange() {
+  state.page = 1;
+  writeStateToURL();
+  render();
+}
+
 // --- card builder (grid view) ---
 
 function buildCard(m) {
@@ -407,27 +535,25 @@ function buildCard(m) {
     shapesEl.appendChild(tag);
   }
 
-  drawCurve(node.querySelector('.curve'), m.episodes, 300, 80);
+  drawCurve(node.querySelector('.curve'), m.episodes, 300, 70);
 
   const climb = m.lastRating - m.firstRating;
   const climbStr = climb >= 0 ? `+${climb.toFixed(1)}` : climb.toFixed(1);
   node.querySelector('.stat-climb').textContent = `${m.firstRating.toFixed(1)} → ${m.lastRating.toFixed(1)} (${climbStr})`;
   node.querySelector('.stat-avg').textContent = `avg ${m.avgRating.toFixed(1)}`;
   node.querySelector('.stat-votes').textContent = `${m.minVotes.toLocaleString()}+ votes/ep`;
-  node.querySelector('.card-overview').textContent = m.overview || '';
 
   const posterEl = node.querySelector('.card-poster');
   if (m.poster) {
     const img = document.createElement('img');
-    img.src = `https://image.tmdb.org/t/p/w500${m.poster}`;
-    img.alt = '';
+    img.src = `https://image.tmdb.org/t/p/w342${m.poster}`;
+    img.alt = `${m.title} poster`;
     img.loading = 'lazy';
     posterEl.appendChild(img);
   }
 
   applyWatchedState(node, node.querySelector('.watch-toggle'), m);
 
-  // Card click → modal; watch button click → toggle (and stop propagation).
   node.addEventListener('click', () => openModal(m));
   node.addEventListener('keydown', (e) => {
     if (e.key === 'Enter' || e.key === ' ') {
@@ -473,7 +599,7 @@ function buildRow(m) {
   if (m.poster) {
     const img = document.createElement('img');
     img.src = `https://image.tmdb.org/t/p/w185${m.poster}`;
-    img.alt = '';
+    img.alt = `${m.title} poster`;
     img.loading = 'lazy';
     posterEl.appendChild(img);
   }
@@ -511,8 +637,10 @@ function onToggleWatched(m, cardOrRow) {
   Watched.toggle(m);
   applyWatchedState(cardOrRow, cardOrRow.querySelector('.watch-toggle'), m);
   renderStatsBar();
-  // Re-filter if we're hiding watched/unwatched, the card may need to leave.
-  if (state.watched !== 'all') render();
+  if (state.watched !== 'all') {
+    // The card may now need to leave the visible page.
+    render();
+  }
 }
 
 // --- curve drawing (shared) ---
@@ -581,7 +709,6 @@ function openModal(m) {
 
   els.modalOverview.textContent = m.overview || '';
 
-  // Poster.
   els.modalPoster.replaceChildren();
   if (m.poster) {
     const img = document.createElement('img');
@@ -596,7 +723,6 @@ function openModal(m) {
 
   drawCurve(els.modalCurve, m.episodes, 600, 180);
 
-  // Episode list.
   const epFrag = document.createDocumentFragment();
   for (const e of m.episodes) {
     const li = document.createElement('li');
@@ -620,7 +746,6 @@ function openModal(m) {
   els.modal.hidden = false;
   els.modal.setAttribute('aria-hidden', 'false');
   document.body.style.overflow = 'hidden';
-  // Focus close button after the next paint so the modal is visible.
   requestAnimationFrame(() => {
     const close = els.modal.querySelector('.modal-close');
     if (close) close.focus();
@@ -691,7 +816,7 @@ function warnIfStale() {
 
 // --- events ---
 
-function onChange() {
+function onToolbarChange() {
   state.search = els.search.value.trim();
   state.minEpisodes = parseInt(els.minEpisodes.value, 10) || 1;
   state.minVotes = parseInt(els.minVotes.value, 10) || 0;
@@ -699,8 +824,7 @@ function onChange() {
   state.maxYear = parseInt(els.maxYear.value, 10) || null;
   state.sort = els.sort.value;
   state.watched = els.watchedFilter.value;
-  writeStateToURL();
-  render();
+  onFilterChange();
 }
 
 function bindEvents() {
@@ -710,14 +834,13 @@ function bindEvents() {
       for (const b of els.shapes.querySelectorAll('.shape-chip')) {
         b.setAttribute('aria-pressed', b === btn ? 'true' : 'false');
       }
-      writeStateToURL();
-      render();
+      onFilterChange();
     });
   }
 
   for (const id of ['search', 'minEpisodes', 'minVotes', 'minYear', 'maxYear', 'sort', 'watchedFilter']) {
-    els[id].addEventListener('input', onChange);
-    els[id].addEventListener('change', onChange);
+    els[id].addEventListener('input', onToolbarChange);
+    els[id].addEventListener('change', onToolbarChange);
   }
 
   els.surprise.addEventListener('click', () => {
@@ -736,6 +859,7 @@ function bindEvents() {
     state.sort = 'popularity';
     state.watched = 'all';
     state.genres = new Set();
+    state.page = 1;
     els.search.value = '';
     els.minEpisodes.value = 4;
     els.minVotes.value = 1000;
@@ -772,27 +896,26 @@ function bindEvents() {
     Watched.toggle(modalState.season);
     syncModalWatchBtn();
     renderStatsBar();
-    // Re-render so the card behind the modal reflects the new watched state.
     render();
   });
 }
 
 function bindKeyboard() {
   document.addEventListener('keydown', (e) => {
-    // Slash focuses search (unless already typing).
     if (e.key === '/' && !isTypingTarget(e.target)) {
       e.preventDefault();
       els.search.focus();
       els.search.select();
       return;
     }
-    // Escape: close modal first, otherwise clear search.
     if (e.key === 'Escape') {
       if (!els.modal.hidden) {
         closeModal();
+      } else if (document.body.classList.contains('is-menu-visible')) {
+        document.body.classList.remove('is-menu-visible');
       } else if (document.activeElement === els.search && els.search.value) {
         els.search.value = '';
-        onChange();
+        onToolbarChange();
       }
       return;
     }
@@ -804,14 +927,6 @@ function isTypingTarget(el) {
   if (!el) return false;
   const tag = el.tagName;
   return tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || el.isContentEditable;
-}
-
-// --- utilities ---
-
-function escapeHtml(s) {
-  return String(s).replace(/[&<>"']/g, (c) => ({
-    '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;',
-  })[c]);
 }
 
 load();
