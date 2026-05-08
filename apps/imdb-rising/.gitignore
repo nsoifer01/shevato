@@ -1,1 +1,1 @@
-data.json
+# data.json is now committed and refreshed weekly by .github/workflows/refresh-imdb.yml
