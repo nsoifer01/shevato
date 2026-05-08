@@ -1,0 +1,96 @@
+name: Refresh IMDB Rising data
+
+# Pulls IMDb's daily TSV dumps, runs the build, optionally enriches with
+# TMDB metadata, and commits the regenerated apps/imdb-rising/data.json
+# back to the repo if anything changed. Runs weekly so the static site
+# never needs manual updates. See apps/imdb-rising/IMDB_DATA_README.md.
+
+on:
+  schedule:
+    # Mondays at 06:00 UTC.
+    - cron: '0 6 * * 1'
+  workflow_dispatch:
+    inputs:
+      skip_tmdb:
+        description: 'Skip TMDB enrichment (faster, no posters/overviews)'
+        required: false
+        type: boolean
+        default: false
+
+concurrency:
+  group: refresh-imdb
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+
+jobs:
+  refresh:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Download IMDb datasets
+        working-directory: apps/imdb-rising/data
+        run: |
+          curl -fsSL -o title.basics.tsv.gz https://datasets.imdbws.com/title.basics.tsv.gz
+          curl -fsSL -o title.episode.tsv.gz https://datasets.imdbws.com/title.episode.tsv.gz
+          curl -fsSL -o title.ratings.tsv.gz https://datasets.imdbws.com/title.ratings.tsv.gz
+          ls -lh
+
+      # Restore the TMDB cache from the most recent successful run so we
+      # only fetch newly-discovered series, not the whole catalogue.
+      - name: Restore TMDB cache
+        uses: actions/cache/restore@v4
+        with:
+          path: apps/imdb-rising/data/tmdb-cache.json
+          key: tmdb-cache-${{ github.run_id }}
+          restore-keys: |
+            tmdb-cache-
+
+      - name: Initial build
+        run: node --max-old-space-size=4096 apps/imdb-rising/scripts/build-data.js
+
+      - name: Enrich with TMDB
+        if: ${{ inputs.skip_tmdb != true }}
+        env:
+          TMDB_TOKEN: ${{ secrets.TMDB_TOKEN }}
+        run: |
+          if [ -z "$TMDB_TOKEN" ]; then
+            echo "::warning::TMDB_TOKEN secret not configured — skipping enrichment."
+            exit 0
+          fi
+          node apps/imdb-rising/scripts/enrich-tmdb.js
+          node --max-old-space-size=4096 apps/imdb-rising/scripts/build-data.js
+
+      # Persist the cache for the next run regardless of whether the
+      # enrichment step ran (we still want to keep what we had).
+      - name: Save TMDB cache
+        if: always()
+        uses: actions/cache/save@v4
+        with:
+          path: apps/imdb-rising/data/tmdb-cache.json
+          key: tmdb-cache-${{ github.run_id }}
+
+      - name: Run tests
+        run: npm test
+
+      - name: Commit data.json if changed
+        run: |
+          set -e
+          if git diff --quiet apps/imdb-rising/data.json; then
+            echo "No changes — nothing to commit."
+            exit 0
+          fi
+          git config user.name "shevato-bot"
+          git config user.email "actions@users.noreply.github.com"
+          git add apps/imdb-rising/data.json
+          git commit -m "chore(imdb-rising): refresh data $(date -u +%Y-%m-%d)"
+          git push
