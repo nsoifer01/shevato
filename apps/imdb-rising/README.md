@@ -6,7 +6,9 @@ Find TV shows by the **shape** of their IMDb episode ratings, not the average. B
 
 1. A Node script (`scripts/build-data.js`) streams three gzipped TSV dumps from IMDb, joins episodes with their ratings, runs each season through five shape detectors, and writes `data.json` with all matching seasons (tagged with every shape they fit).
 2. An optional second script (`scripts/enrich-tmdb.js`) fetches posters + plot overviews from TMDB and caches them so they survive rebuilds.
-3. `index.html` loads `data.json` in the browser and renders shape chips, filters, and an SVG curve per season. No backend.
+3. `index.html` loads `data.json` in the browser and renders shape chips, filters, an SVG curve per season, and a per-season detail modal. The browser app supports grid + list views, watched tracking (localStorage), pagination via IntersectionObserver, and shareable URL state.
+
+`data.json` is committed to the repo and refreshed weekly by GitHub Actions — no manual updates needed. See [`IMDB_DATA_README.md`](IMDB_DATA_README.md) for the auto-refresh details.
 
 ## Shapes
 
