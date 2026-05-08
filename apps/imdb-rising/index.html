@@ -1,0 +1,135 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Rising Seasons — find TV shows by the shape of their ratings</title>
+  <link rel="stylesheet" href="css/styles.css">
+</head>
+<body>
+  <header class="hero">
+    <h1>Rising Seasons</h1>
+    <p class="tagline">Discover TV by the <em>shape</em> of its IMDb ratings — not the average.</p>
+  </header>
+
+  <nav class="shapes" id="shapes" aria-label="Rating shape">
+    <button class="shape-chip" data-shape="all" aria-pressed="true">
+      <span class="shape-name">All</span>
+      <span class="shape-count" data-count="all"></span>
+    </button>
+    <button class="shape-chip" data-shape="rising" aria-pressed="false">
+      <span class="shape-icon" aria-hidden="true">↗</span>
+      <span class="shape-name">Rising</span>
+      <span class="shape-desc">Each episode at least as good as the last</span>
+      <span class="shape-count" data-count="rising"></span>
+    </button>
+    <button class="shape-chip" data-shape="consistent" aria-pressed="false">
+      <span class="shape-icon" aria-hidden="true">═</span>
+      <span class="shape-name">Consistent</span>
+      <span class="shape-desc">Excellent throughout, no weak link</span>
+      <span class="shape-count" data-count="consistent"></span>
+    </button>
+    <button class="shape-chip" data-shape="slow-burn" aria-pressed="false">
+      <span class="shape-icon" aria-hidden="true">⤴</span>
+      <span class="shape-name">Slow burn</span>
+      <span class="shape-desc">Second half lifts off</span>
+      <span class="shape-count" data-count="slow-burn"></span>
+    </button>
+    <button class="shape-chip" data-shape="big-finale" aria-pressed="false">
+      <span class="shape-icon" aria-hidden="true">⇧</span>
+      <span class="shape-name">Big finale</span>
+      <span class="shape-desc">The last episode is the peak</span>
+      <span class="shape-count" data-count="big-finale"></span>
+    </button>
+    <button class="shape-chip" data-shape="rebound" aria-pressed="false">
+      <span class="shape-icon" aria-hidden="true">∪</span>
+      <span class="shape-name">Rebound</span>
+      <span class="shape-desc">Dips, then comes back stronger</span>
+      <span class="shape-count" data-count="rebound"></span>
+    </button>
+  </nav>
+
+  <section class="filters">
+    <div class="filter-row">
+      <label class="search">
+        <input type="search" id="search" placeholder="Search title…" autocomplete="off">
+      </label>
+      <button class="surprise" id="surprise" type="button" title="Pick one at random">
+        <span aria-hidden="true">🎲</span> Surprise me
+      </button>
+    </div>
+
+    <details class="advanced">
+      <summary>More filters</summary>
+      <div class="filter-row">
+        <label>
+          Min episodes
+          <input type="number" id="minEpisodes" min="1" value="4">
+        </label>
+        <label>
+          Min votes / episode
+          <input type="number" id="minVotes" min="0" step="100" value="1000">
+        </label>
+        <label>
+          Year ≥
+          <input type="number" id="minYear" min="1950" max="2100" placeholder="any">
+        </label>
+        <label>
+          Year ≤
+          <input type="number" id="maxYear" min="1950" max="2100" placeholder="any">
+        </label>
+        <label>
+          Sort by
+          <select id="sort">
+            <option value="popularity">Popularity (min votes)</option>
+            <option value="length">Season length</option>
+            <option value="climb">Rating climb (last − first)</option>
+            <option value="finale">Finale rating</option>
+            <option value="avg">Season average rating</option>
+            <option value="recent">Most recent</option>
+          </select>
+        </label>
+      </div>
+      <div class="genre-row" id="genres"></div>
+    </details>
+  </section>
+
+  <p class="meta" id="meta"></p>
+
+  <main id="results"></main>
+  <p class="footer-meta" id="footer-meta"></p>
+
+  <template id="card-template">
+    <article class="card">
+      <div class="card-poster">
+        <div class="poster-fallback" aria-hidden="true"></div>
+      </div>
+      <div class="card-body">
+        <header class="card-head">
+          <h2 class="card-title"></h2>
+          <span class="card-season"></span>
+        </header>
+        <div class="card-meta">
+          <span class="card-year"></span>
+          <span class="card-genres"></span>
+        </div>
+        <div class="card-shapes"></div>
+        <svg class="curve" viewBox="0 0 300 80" preserveAspectRatio="none" aria-hidden="true">
+          <path class="curve-area" />
+          <path class="curve-line" />
+          <g class="curve-dots"></g>
+        </svg>
+        <div class="card-stats">
+          <span class="stat-climb"></span>
+          <span class="stat-avg"></span>
+          <span class="stat-votes"></span>
+        </div>
+        <p class="card-overview"></p>
+        <a class="card-imdb" target="_blank" rel="noopener">View on IMDb →</a>
+      </div>
+    </article>
+  </template>
+
+  <script src="js/app.js"></script>
+</body>
+</html>
