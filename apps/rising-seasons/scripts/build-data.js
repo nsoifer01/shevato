@@ -167,6 +167,17 @@ function loadTmdbCache() {
     console.log(`  ${shape.padEnd(12)} ${count.toLocaleString()}`);
   }
 
+  // Attach the series-level IMDb rating (the show's overall score on IMDb,
+  // not the average of episode ratings). Available for free in the same
+  // ratings TSV we already loaded — series have their own tconst entry.
+  for (const m of matches) {
+    const r = ratings.get(m.seriesId);
+    if (r) {
+      m.seriesRating = r.rating;
+      m.seriesVotes = r.votes;
+    }
+  }
+
   // Optional TMDB enrichment.
   const tmdb = loadTmdbCache();
   if (tmdb) {

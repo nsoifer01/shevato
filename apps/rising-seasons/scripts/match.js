@@ -15,6 +15,16 @@ const DEFAULTS = {
   bigFinale: { aboveAvg: 0.5 },
   // "Rebound" — has a real dip in the middle but recovers past the start.
   rebound: { dipDepth: 0.4, recoveryAboveStart: 0.2 },
+  // "Front-loaded" — first half meaningfully better than second half.
+  frontLoaded: { delta: 0.6 },
+  // "Declining" — non-increasing across the season AND first strictly > last.
+  declining: {},
+  // "Bad finale" — finale is the trough AND well below the season average.
+  badFinale: { belowAvg: 0.5 },
+  // "Rollercoaster" — many large adjacent-direction flips with wide range.
+  rollercoaster: { minFlips: 4, minRange: 1.2, minAvgDiff: 0.4, ignoreBelow: 0.2 },
+  // "Mid-peak" — peak sits in the interior; both edges sit well below it.
+  midPeak: { peakAboveStart: 0.7, peakAboveEnd: 0.7 },
 };
 
 function isRising(episodes) {
@@ -86,6 +96,80 @@ function isRebound(episodes, opts = DEFAULTS.rebound) {
   return dip >= opts.dipDepth && (end - start) >= opts.recoveryAboveStart;
 }
 
+function isFrontLoaded(episodes, opts = DEFAULTS.frontLoaded) {
+  const h = halves(episodes);
+  if (!h) return false;
+  return avg(h.first) - avg(h.second) >= opts.delta;
+}
+
+function isDeclining(episodes) {
+  if (episodes.length < 2) return false;
+  for (let i = 1; i < episodes.length; i++) {
+    if (episodes[i].rating > episodes[i - 1].rating) return false;
+  }
+  // Must actually decline overall — flat seasons don't count.
+  return episodes[0].rating > episodes[episodes.length - 1].rating;
+}
+
+function isBadFinale(episodes, opts = DEFAULTS.badFinale) {
+  if (episodes.length < 4) return false;
+  const finale = episodes[episodes.length - 1].rating;
+  let min = Infinity;
+  for (const e of episodes) {
+    if (e.rating < min) min = e.rating;
+  }
+  // Finale must be (tied for) the trough.
+  if (finale > min) return false;
+  return avg(episodes) - finale >= opts.belowAvg;
+}
+
+function isRollercoaster(episodes, opts = DEFAULTS.rollercoaster) {
+  const n = episodes.length;
+  if (n < 6) return false;
+  let flips = 0;
+  let prevSign = 0;
+  let totalAbs = 0;
+  for (let i = 1; i < n; i++) {
+    const diff = episodes[i].rating - episodes[i - 1].rating;
+    totalAbs += Math.abs(diff);
+    if (Math.abs(diff) < opts.ignoreBelow) continue;
+    const sign = diff > 0 ? 1 : -1;
+    if (prevSign !== 0 && sign !== prevSign) flips++;
+    prevSign = sign;
+  }
+  let min = Infinity;
+  let max = -Infinity;
+  for (const e of episodes) {
+    if (e.rating < min) min = e.rating;
+    if (e.rating > max) max = e.rating;
+  }
+  const avgAbsDiff = totalAbs / (n - 1);
+  return flips >= opts.minFlips
+      && avgAbsDiff >= opts.minAvgDiff
+      && (max - min) >= opts.minRange;
+}
+
+function isMidPeak(episodes, opts = DEFAULTS.midPeak) {
+  const n = episodes.length;
+  if (n < 5) return false;
+  let maxIdx = 0;
+  let max = -Infinity;
+  for (let i = 0; i < n; i++) {
+    if (episodes[i].rating > max) {
+      max = episodes[i].rating;
+      maxIdx = i;
+    }
+  }
+  // Peak must sit in the middle half of the season — not just "interior",
+  // since a peak at episode 2 of 7 is technically interior but visually
+  // front-loaded, not mid.
+  const pos = maxIdx / (n - 1);
+  if (pos <= 0.25 || pos >= 0.75) return false;
+  const start = episodes[0].rating;
+  const end = episodes[n - 1].rating;
+  return (max - start) >= opts.peakAboveStart && (max - end) >= opts.peakAboveEnd;
+}
+
 function detectShapes(episodes) {
   const tags = [];
   if (isRising(episodes)) tags.push('rising');
@@ -93,6 +177,11 @@ function detectShapes(episodes) {
   if (isSlowBurn(episodes)) tags.push('slow-burn');
   if (isBigFinale(episodes)) tags.push('big-finale');
   if (isRebound(episodes)) tags.push('rebound');
+  if (isFrontLoaded(episodes)) tags.push('front-loaded');
+  if (isDeclining(episodes)) tags.push('declining');
+  if (isBadFinale(episodes)) tags.push('bad-finale');
+  if (isRollercoaster(episodes)) tags.push('rollercoaster');
+  if (isMidPeak(episodes)) tags.push('mid-peak');
   return tags;
 }
 
@@ -172,6 +261,11 @@ module.exports = {
   isSlowBurn,
   isBigFinale,
   isRebound,
+  isFrontLoaded,
+  isDeclining,
+  isBadFinale,
+  isRollercoaster,
+  isMidPeak,
   detectShapes,
   findMatches,
   // Back-compat with earlier API name.

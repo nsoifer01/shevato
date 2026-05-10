@@ -1,11 +1,164 @@
-.content h3 {
-  min-height: 2em; /* Adjust as needed to ensure alignment */
-}
-.highlights .content p {
-  min-height: 4em;
+/* ============================================================================
+   App-cards grid (apps.html)
+   ----------------------------------------------------------------------------
+   Replaces main.css's flex+nth-child-padding-hack with a proper CSS Grid so
+   every card lands on a perfectly even grid, shares equal heights, and has
+   its CTA button anchored to a shared baseline regardless of how long the
+   description text runs.
+   ========================================================================= */
+
+/* Flexbox (not Grid) so incomplete rows center themselves naturally via
+   justify-content: center. Cards share equal height across all rows via
+   the explicit min-height on .content below. */
+.highlights {
+  display: flex !important;
+  flex-wrap: wrap;
+  justify-content: center;
+  align-items: stretch;
+  gap: 1.5rem;
+  margin: 2.5rem 0;
+  width: 100%;
 }
 
-/* Sticky Footer Solution */
+/* Wipe legacy per-child width/padding rules from main.css. Flex-basis is
+   computed so exactly three cards fit per row at typical widths — 4 cards
+   would never fit, so a 5-card layout always reads as 3 + 2 (centered). */
+.highlights > *,
+.highlights > section,
+.highlights > :nth-child(-n + 3),
+.highlights > :nth-last-child(-n + 3),
+.highlights > :nth-child(3n + 1),
+.highlights > :nth-child(3n) {
+  width: auto !important;
+  padding: 0 !important;
+  margin: 0 !important;
+  display: block;
+  flex: 0 1 calc((100% - 3rem) / 3);
+  min-width: 240px;
+  max-width: 360px;
+}
+
+.highlights .content {
+  height: 100%;
+  min-height: 22rem;          /* enforce equal heights across rows */
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  padding: 2.25rem 1.5rem;
+  gap: 1.1rem;
+}
+
+/* Header: icon + title stacked, fixed slot heights so titles align across
+   cards even when names wrap to two lines. */
+.highlights .content > header {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.85rem;
+  width: 100%;
+  margin: 0;
+  padding: 0;
+  background: transparent !important;
+}
+
+.highlights .content .icon {
+  font-size: 2.85rem;
+  line-height: 1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 4.5rem;
+  height: 4.5rem;
+  margin: 0;
+  flex-shrink: 0;
+}
+
+.highlights .content h3 {
+  margin: 0;
+  font-size: 1.08rem;
+  font-weight: 600;
+  line-height: 1.3;
+  letter-spacing: -0.005em;
+  min-height: 2.6em;       /* reserve room for up to 2 lines so all titles share a baseline */
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* Description: takes all remaining space so the actions list is pushed to
+   the same bottom across every card. */
+.highlights .content p {
+  flex: 1 1 auto;
+  margin: 0;
+  font-size: 0.92rem;
+  line-height: 1.55;
+  min-height: 0;
+}
+
+/* Actions: anchored at bottom of the card, centered, normalized width. */
+.highlights .content .actions {
+  margin: 0;
+  padding: 0;
+  width: 100%;
+  display: flex;
+  justify-content: center;
+  flex-shrink: 0;
+}
+.highlights .content .actions li {
+  margin: 0;
+  padding: 0;
+}
+.highlights .content .actions .button {
+  width: 100%;
+  max-width: 13.5rem;
+}
+
+/* Tablet — drop to 2-up. With justify-content: center, a 5-card list
+   becomes 2 + 2 + 1, and every row is centered. */
+@media screen and (max-width: 880px) {
+  .highlights {
+    gap: 1rem;
+  }
+  .highlights > *,
+  .highlights > section {
+    flex: 0 1 calc((100% - 1rem) / 2);
+    min-width: 220px;
+    max-width: 360px;
+  }
+  .highlights .content {
+    min-height: 20rem;
+    padding: 1.85rem 1.25rem;
+    gap: 0.95rem;
+  }
+  .highlights .content .icon {
+    font-size: 2.5rem;
+    width: 3.75rem;
+    height: 3.75rem;
+  }
+  .highlights .content h3 {
+    font-size: 1.02rem;
+    min-height: 2.6em;
+  }
+}
+
+/* Mobile — single column. Each card centered (only one per row). */
+@media screen and (max-width: 480px) {
+  .highlights > *,
+  .highlights > section {
+    flex: 0 1 100%;
+    max-width: 100%;
+  }
+  .highlights .content {
+    min-height: 0;
+  }
+  .highlights .content h3 { min-height: 0; }
+}
+
+/* ============================================================================
+   Sticky footer (keeps #footer pinned to viewport bottom on short pages)
+   ========================================================================= */
+
 html, body {
   height: 100%;
 }
