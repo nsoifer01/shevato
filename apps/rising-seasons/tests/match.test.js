@@ -8,6 +8,11 @@ const {
   isSlowBurn,
   isBigFinale,
   isRebound,
+  isFrontLoaded,
+  isDeclining,
+  isBadFinale,
+  isRollercoaster,
+  isMidPeak,
   detectShapes,
   findMatches,
   isNonDecreasing,
@@ -96,6 +101,91 @@ test('isRebound rejects monotonic-up seasons (no real dip)', () => {
 
 test('isRebound rejects when end is not above start', () => {
   assert.equal(isRebound(season(8.5, 7.5, 7.4, 7.8, 8.4)), false);
+});
+
+// --- isFrontLoaded ---
+
+test('isFrontLoaded matches when the first half is much better than the second', () => {
+  assert.equal(isFrontLoaded(season(8.5, 8.4, 8.6, 7.5, 7.4, 7.6)), true);
+});
+
+test('isFrontLoaded rejects flat seasons', () => {
+  assert.equal(isFrontLoaded(season(7.5, 7.6, 7.5, 7.6, 7.5, 7.6)), false);
+});
+
+test('isFrontLoaded rejects slow-burn shaped seasons', () => {
+  assert.equal(isFrontLoaded(season(7.0, 7.0, 7.0, 8.0, 8.2, 8.1)), false);
+});
+
+// --- isDeclining ---
+
+test('isDeclining accepts strictly decreasing ratings', () => {
+  assert.equal(isDeclining(season(8.5, 8.2, 7.8, 7.4)), true);
+});
+
+test('isDeclining accepts ties between adjacent episodes when overall direction is down', () => {
+  assert.equal(isDeclining(season(8.0, 8.0, 7.5, 7.5, 7.0)), true);
+});
+
+test('isDeclining rejects any single climb', () => {
+  assert.equal(isDeclining(season(8.0, 7.5, 7.7, 7.0)), false);
+});
+
+test('isDeclining rejects perfectly flat seasons', () => {
+  assert.equal(isDeclining(season(7.5, 7.5, 7.5)), false);
+});
+
+// --- isBadFinale ---
+
+test('isBadFinale matches when the finale is the trough and well below average', () => {
+  assert.equal(isBadFinale(season(8.5, 8.4, 8.5, 6.5)), true);
+});
+
+test('isBadFinale rejects when the finale is not the low point', () => {
+  assert.equal(isBadFinale(season(8.5, 6.0, 8.4, 7.5)), false);
+});
+
+test('isBadFinale rejects when the finale is only marginally below average', () => {
+  assert.equal(isBadFinale(season(8.0, 8.1, 8.0, 7.9)), false);
+});
+
+// --- isRollercoaster ---
+
+test('isRollercoaster matches a season with many large swings', () => {
+  assert.equal(isRollercoaster(season(8.5, 7.0, 8.6, 7.1, 8.7, 7.2)), true);
+});
+
+test('isRollercoaster rejects a smoothly rising season', () => {
+  assert.equal(isRollercoaster(season(7.0, 7.2, 7.4, 7.6, 7.8, 8.0)), false);
+});
+
+test('isRollercoaster rejects a season whose range is too narrow', () => {
+  assert.equal(isRollercoaster(season(7.5, 7.4, 7.5, 7.4, 7.5, 7.4)), false);
+});
+
+// --- isMidPeak ---
+
+test('isMidPeak matches when the peak sits in the interior', () => {
+  assert.equal(isMidPeak(season(7.0, 7.5, 8.5, 7.6, 7.0)), true);
+});
+
+test('isMidPeak rejects when the peak is the finale', () => {
+  assert.equal(isMidPeak(season(7.0, 7.5, 8.0, 8.5)), false);
+});
+
+test('isMidPeak rejects when the peak is the opener', () => {
+  assert.equal(isMidPeak(season(8.5, 8.0, 7.5, 7.0)), false);
+});
+
+test('isMidPeak rejects a peak in the first quarter (Last of Us S2 case)', () => {
+  // Peak at ep 2 of 7 is interior but in the first quarter — visually a
+  // front-loaded curve, not mid-peak.
+  assert.equal(isMidPeak(season(7.2, 9.1, 6.7, 6.1, 7.1, 8.4, 6.2)), false);
+});
+
+test('isMidPeak rejects a peak in the last quarter', () => {
+  // Peak at ep 6 of 7 is interior but in the last quarter.
+  assert.equal(isMidPeak(season(6.2, 7.1, 6.7, 6.1, 7.0, 9.0, 7.5)), false);
 });
 
 // --- detectShapes ---

@@ -12,38 +12,60 @@
   /* Tells the browser to use dark UI for native widgets — scrollbars,
      <select> popup menus, calendar pickers — so dropdowns aren't white. */
   color-scheme: dark;
-  --bg: #0b0d12;
-  --bg-grad: radial-gradient(circle at 20% 0%, rgba(245, 197, 24, 0.06), transparent 50%),
-             radial-gradient(circle at 80% 0%, rgba(74, 222, 128, 0.05), transparent 50%);
-  --surface: #161922;
-  --surface-2: #1f232f;
-  --surface-3: #2a2f3d;
-  --text: #e7e9ee;
-  --muted: #9aa3b2;
-  --muted-2: #6b7280;
+
+  /* Cinematic dark palette. The base is a near-black with a slight blue
+     hue; surfaces step up through warm dark greys for tactile depth. */
+  --bg: #07090f;
+  --bg-grad:
+    radial-gradient(ellipse 90% 60% at 50% -10%, rgba(245, 197, 24, 0.08), transparent 60%),
+    radial-gradient(ellipse 60% 40% at 10% 10%, rgba(245, 197, 24, 0.04), transparent 70%),
+    radial-gradient(ellipse 50% 50% at 90% 30%, rgba(74, 222, 128, 0.025), transparent 70%),
+    linear-gradient(180deg, #0a0c14 0%, #07090f 60%, #050609 100%);
+  --surface: #12151d;
+  --surface-2: #181c26;
+  --surface-3: #232836;
+  --surface-glass: rgba(24, 28, 38, 0.65);
+
+  --text: #f1f3f8;
+  --muted: #a4adbd;
+  --muted-2: #6f7785;
+
   --accent: #f5c518;     /* IMDb yellow */
+  --accent-warm: #ffd24a;
   --accent-ink: #1a1500; /* high-contrast text on yellow */
-  --accent-soft: rgba(245, 197, 24, 0.15);
-  --accent-strong: rgba(245, 197, 24, 0.35);
-  --good: #4ade80;
-  --good-ink: #052e1c;
+  --accent-soft: rgba(245, 197, 24, 0.12);
+  --accent-strong: rgba(245, 197, 24, 0.32);
+  --accent-glow: 0 0 0 1px rgba(245, 197, 24, 0.4), 0 0 18px rgba(245, 197, 24, 0.15);
+
+  --good: #34d39e;
+  --good-soft: rgba(52, 211, 158, 0.14);
+  --good-ink: #04231a;
+
   --warn: #fb923c;
   --danger: #f87171;
-  --border: #252938;
-  --border-strong: #353a4b;
-  --radius: 14px;
-  --radius-sm: 8px;
+
+  --border: #232838;
+  --border-strong: #343a4f;
+
+  --radius: 16px;
+  --radius-sm: 10px;
+  --radius-xs: 6px;
   --header-h: 3.25rem;
 
   /* Uniform interactive sizing — every button, input, and chip respects
      these so the filter toolbar lines up cleanly. */
   --ctrl-h: 40px;
   --ctrl-h-sm: 32px;
-  --ctrl-radius: 8px;
+  --ctrl-radius: 10px;
   --ctrl-pad-x: 0.95rem;
   --ctrl-font: 0.9rem;
 
-  font-family: -apple-system, BlinkMacSystemFont, "Inter", "Segoe UI", system-ui, sans-serif;
+  --shadow-lift: 0 6px 22px -8px rgba(0, 0, 0, 0.55), 0 2px 4px rgba(0, 0, 0, 0.3);
+  --shadow-modal: 0 30px 80px -10px rgba(0, 0, 0, 0.7), 0 8px 24px -4px rgba(0, 0, 0, 0.4);
+
+  --ease: cubic-bezier(0.2, 0.7, 0.2, 1);
+
+  font-family: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
 }
 
 * { box-sizing: border-box; }
@@ -70,10 +92,13 @@ body.rising-seasons-app {
   /* main.css adds padding-top: 3.25rem for the fixed header — keep that. */
 }
 
-/* main.css applies a faint bg.jpg overlay via body:before — hide it here so
-   our gradients land cleanly on the dark background. */
+/* Shared site texture: main.css already applies the faint bg.jpg overlay
+   via body::before at 5% opacity. We keep it (matches every other app)
+   and just guarantee it sits BEHIND our dark gradients so the dark theme
+   stays dominant and the overlay reads as subtle grain on top of the
+   indigo/green corner washes. */
 body.rising-seasons-app::before {
-  display: none !important;
+  z-index: -1;
 }
 
 body.rising-seasons-app a {
@@ -120,11 +145,13 @@ body.rising-seasons-app button {
    class-scoped colour wins. The hover declaration must also be
    !important — without it, only the default state survives. */
 
+.btn[hidden] { display: none; }
+
 .btn {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  gap: 0.4rem;
+  gap: 0.45rem;
   height: var(--ctrl-h);
   padding: 0 var(--ctrl-pad-x);
   border: 1px solid var(--border);
@@ -139,7 +166,8 @@ body.rising-seasons-app button {
   user-select: none;
   white-space: nowrap;
   box-shadow: none !important;
-  transition: background 0.15s, border-color 0.15s, color 0.15s, transform 0.05s;
+  transition: background 0.18s var(--ease), border-color 0.18s var(--ease),
+              color 0.18s var(--ease), transform 0.1s var(--ease), filter 0.18s var(--ease);
 }
 
 .btn:hover {
@@ -149,7 +177,10 @@ body.rising-seasons-app button {
   box-shadow: none !important;
 }
 .btn:active { transform: translateY(1px); }
-.btn:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.btn:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 3px var(--accent-soft), 0 0 0 1px var(--accent) !important;
+}
 .btn:disabled,
 .btn[aria-disabled="true"] {
   opacity: 0.4;
@@ -160,65 +191,98 @@ body.rising-seasons-app button {
 /* Primary (yellow CTA) — high-contrast dark text on yellow */
 .btn-primary,
 .btn-primary:hover {
-  background: linear-gradient(135deg, var(--accent), #d4a514);
+  background: linear-gradient(135deg, var(--accent-warm), var(--accent) 55%, #e0b00f);
   color: var(--accent-ink) !important;
   border-color: transparent;
   font-weight: 600;
+  letter-spacing: 0.01em;
 }
-.btn-primary:hover { filter: brightness(1.08); }
+.btn-primary:hover {
+  filter: brightness(1.06);
+  transform: translateY(-1px);
+  box-shadow: 0 8px 20px -8px rgba(245, 197, 24, 0.45) !important;
+}
+.btn-primary:active { transform: translateY(0); }
 
 /* Ghost (secondary action) — white text per the site's light-on-dark rule */
 .btn-ghost,
 .btn-ghost:hover {
-  background: var(--surface-2);
+  background: transparent;
   color: var(--text) !important;
+  border-color: var(--border-strong);
 }
-.btn-ghost:hover { background: var(--surface-3); }
+.btn-ghost:hover { background: var(--surface-2); border-color: var(--border-strong); }
 
 /* View-toggle buttons live inside a wrapper that draws the border, so they
    reset their own border to look like a single segmented control. */
 .view-toggle {
   display: inline-flex;
   height: var(--ctrl-h);
-  background: var(--surface);
+  background: rgba(255, 255, 255, 0.03);
   border: 1px solid var(--border);
   border-radius: var(--ctrl-radius);
   overflow: hidden;
   align-self: stretch;
+  padding: 3px;
+  gap: 2px;
 }
 .view-btn,
 .view-btn:hover {
   border: none;
-  border-radius: 0;
+  border-radius: 7px;
   background: transparent;
-  color: var(--text) !important;
-  width: 2.5rem;
+  color: var(--muted) !important;
+  width: 2.4rem;
   height: 100%;
   font-size: 1rem;
   box-shadow: none !important;
+  transition: background 0.18s var(--ease), color 0.18s var(--ease);
 }
-.view-btn:hover { background: var(--surface-2); }
+.view-btn:hover { background: var(--surface-3); color: var(--text) !important; }
 .view-btn[aria-pressed="true"],
 .view-btn[aria-pressed="true"]:hover {
-  background: var(--accent-soft);
-  color: var(--accent) !important;
+  background: var(--accent);
+  color: var(--accent-ink) !important;
 }
 
-/* Modal close X — circular, fixed size, aligned with other 40px controls.
-   White text in all states (no red hover) per the site's light-on-dark rule. */
+/* Modal close X — small circular glass button. Smaller than the
+   surrounding controls (32 px) so it doesn't read as a primary action,
+   uses backdrop-blur + a hairline border to feel like a deliberate
+   floating overlay rather than a misplaced grey square. Icon sized in
+   px and lined up with `line-height: 1` so the × is mathematically
+   centred regardless of font metrics. */
 .modal-close,
 .modal-close:hover {
-  width: var(--ctrl-h);
-  height: var(--ctrl-h);
+  width: 32px;
+  height: 32px;
   padding: 0;
   border-radius: 50%;
-  background: var(--surface-3);
-  color: var(--text) !important;
-  font-size: 1.4rem;
+  background: rgba(20, 24, 35, 0.62);
+  -webkit-backdrop-filter: blur(8px);
+  backdrop-filter: blur(8px);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  color: rgba(255, 255, 255, 0.85) !important;
+  font-size: 18px;
+  line-height: 1;
   font-weight: 400;
-  box-shadow: none !important;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow:
+    0 4px 14px rgba(0, 0, 0, 0.35),
+    0 0 0 1px rgba(0, 0, 0, 0.4) inset !important;
+  transition: background 0.18s var(--ease), border-color 0.18s var(--ease), color 0.18s var(--ease), transform 0.08s var(--ease);
 }
-.modal-close:hover { background: var(--surface-2); }
+.modal-close:hover {
+  background: rgba(36, 41, 56, 0.85);
+  border-color: rgba(255, 255, 255, 0.18);
+  color: #ffffff !important;
+}
+.modal-close:active { transform: scale(0.94); }
+.modal-close:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
 
 /* Modal "Mark as watched" button — extends .btn (white text by default). */
 .watch-btn.is-watched,
@@ -266,38 +330,61 @@ body.rising-seasons-app button {
 .page {
   max-width: 1200px;
   margin: 0 auto;
-  padding: 0 1.5rem 2rem;
+  padding: 0 1.5rem 3rem;
 }
 
 .hero {
-  padding: 2.5rem 0 0.5rem;
+  padding: 3.25rem 0 0.75rem;
   text-align: center;
   background: none !important;
+  position: relative;
 }
 
 .hero h1 {
-  font-size: clamp(2rem, 5vw, 3rem);
-  background: linear-gradient(135deg, var(--accent), var(--good));
+  font-size: clamp(2.25rem, 5.5vw, 3.75rem);
+  font-weight: 700;
+  letter-spacing: -0.035em;
+  line-height: 1.05;
+  background: linear-gradient(135deg, #ffe169 0%, var(--accent) 45%, #f5c518 100%);
   -webkit-background-clip: text;
   background-clip: text;
   color: transparent;
+  filter: drop-shadow(0 4px 24px rgba(245, 197, 24, 0.18));
 }
 
 .tagline {
-  margin: 0.25rem 0 0;
+  margin: 0.65rem auto 0;
+  max-width: 38rem;
   color: var(--muted);
-  font-size: 1.05rem;
+  font-size: 1.02rem;
+  letter-spacing: -0.005em;
+  line-height: 1.45;
 }
-.tagline em { color: var(--text); font-style: italic; }
+.tagline em {
+  color: var(--text);
+  font-style: normal;
+  font-weight: 500;
+  background: linear-gradient(135deg, var(--text) 0%, var(--accent-warm) 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
 
-/* ---------- Shape chips ---------- */
+/* ---------- Shape chips ----------
+   Editorial discovery chips: a real subtle surface that defines each
+   pill, a visible-but-soft outline, full white name + readable
+   description + tertiary count. Compact, uniform, intentional.
+   Active state lifts to a soft yellow wash + accent border + accent
+   text without resorting to a bright slab. */
 
 .shapes {
   display: flex;
   flex-wrap: wrap;
-  gap: 0.5rem;
+  gap: 0.45rem 0.5rem;
   justify-content: center;
-  padding: 1.25rem 0 0.5rem;
+  padding: 1.6rem 0 0.75rem;
+  max-width: 56rem;
+  margin: 0 auto;
 }
 
 .shape-chip,
@@ -305,63 +392,164 @@ body.rising-seasons-app button {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  gap: 0.4rem;
-  height: var(--ctrl-h);
-  padding: 0 0.95rem;
-  background: var(--surface);
-  border: 1px solid var(--border);
+  gap: 0.45rem;
+  height: 32px;
+  padding: 0 0.85rem;
+  /* Subtle surface — clearly lighter than the page bg so each chip
+     reads as an object, never as floating text. */
+  background: rgba(255, 255, 255, 0.035);
+  border: 1px solid rgba(255, 255, 255, 0.09);
   border-radius: 999px;
   color: var(--text) !important;
   font: inherit;
-  font-size: 0.85rem;
-  font-weight: 500;
+  font-size: 0.8rem;
+  font-weight: 600;
   line-height: 1;
+  letter-spacing: 0.005em;
   cursor: pointer;
   white-space: nowrap;
-  box-shadow: none !important;
-  transition: background 0.15s, border-color 0.15s;
+  box-shadow: 0 1px 0 rgba(255, 255, 255, 0.02) inset !important;
+  transition: background 0.18s var(--ease), border-color 0.18s var(--ease),
+              color 0.18s var(--ease);
 }
-.shape-chip:hover { background: var(--surface-2); border-color: var(--border-strong); }
-.shape-chip:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.shape-chip:hover {
+  background: rgba(255, 255, 255, 0.06);
+  border-color: rgba(255, 255, 255, 0.18);
+}
+.shape-chip:focus-visible {
+  outline: 2px solid rgba(245, 197, 24, 0.65);
+  outline-offset: 2px;
+}
 .shape-chip[aria-pressed="true"],
 .shape-chip[aria-pressed="true"]:hover {
-  background: var(--accent-soft);
-  border-color: var(--accent);
-  color: var(--text) !important;
+  background: rgba(245, 197, 24, 0.12);
+  border-color: rgba(245, 197, 24, 0.45);
+  color: var(--accent) !important;
+  box-shadow: 0 1px 0 rgba(255, 255, 255, 0.02) inset !important;
 }
-.shape-icon { color: var(--accent); font-weight: 700; }
-.shape-desc { display: none; color: var(--muted); font-size: 0.78rem; }
+
+.shape-icon {
+  color: var(--accent);
+  font-weight: 700;
+  font-size: 0.9rem;
+  line-height: 1;
+  opacity: 0.95;
+}
+.shape-name {
+  font-weight: 600;
+  /* Stronger than description so the pattern name reads first. */
+}
+
+.shape-desc {
+  display: none;
+  color: rgba(231, 233, 238, 0.62);
+  font-size: 0.72rem;
+  font-weight: 400;
+  letter-spacing: 0;
+}
 @media (min-width: 760px) {
   .shape-desc { display: inline; }
 }
+.shape-chip[aria-pressed="true"] .shape-desc {
+  color: rgba(245, 197, 24, 0.7);
+}
+
 .shape-count {
   display: inline-flex;
   align-items: center;
-  height: 1.4rem;
-  padding: 0 0.5rem;
-  background: var(--surface-3);
+  height: 17px;
+  padding: 0 0.45rem;
+  /* Tertiary badge — a real container so the number sits in a defined
+     slot rather than floating loose, but quiet enough that the name
+     still owns the chip. */
+  background: rgba(255, 255, 255, 0.05);
   border-radius: 999px;
-  font-size: 0.7rem;
-  color: var(--muted);
+  font-size: 0.68rem;
+  color: rgba(231, 233, 238, 0.6);
   font-variant-numeric: tabular-nums;
+  font-weight: 500;
+  margin-left: 0.1rem;
+}
+.shape-chip:hover .shape-count {
+  background: rgba(255, 255, 255, 0.08);
+  color: rgba(231, 233, 238, 0.75);
 }
 .shape-chip[aria-pressed="true"] .shape-count {
-  background: var(--accent-strong);
+  background: rgba(245, 197, 24, 0.18);
   color: var(--accent);
+}
+
+.shape-chip:disabled,
+.shape-chip.is-disabled {
+  opacity: 0.3;
+  cursor: not-allowed;
+  pointer-events: none;
 }
 
 /* ---------- Filter toolbar ---------- */
 
-.filters { padding: 1rem 0; }
+.filters {
+  padding: 1.5rem 0 0.5rem;
+}
 
 .filter-row {
   display: flex;
   flex-wrap: wrap;
-  gap: 0.6rem;
+  gap: 0.5rem;
   align-items: stretch;
 }
 
-.filter-row.primary { align-items: stretch; }
+/* Primary row reads as one connected toolbar: glassy surface, single
+   rounded shell, with controls visually grouped inside it.
+   IMPORTANT: backdrop-filter creates a stacking context. The search
+   dropdown (.search-suggestions) lives inside this row and can't escape
+   that context. Lifting the whole row with position:relative + z-index
+   guarantees the dropdown paints above .label-filters and .stats-bar
+   below. The row has no visible overlap of its own — sibling content
+   only appears once the dropdown is open. */
+.filter-row.primary {
+  position: relative;
+  z-index: 50;
+  isolation: isolate;
+  /* Scoped control height — overrides the global 40 px just for this
+     toolbar. The custom property cascades to every descendant that uses
+     `var(--ctrl-h)` (search input, view-toggle rail, view buttons, the
+     Surprise primary button), so they all shrink to 32 px in one shot
+     while keeping the rest of the app (modal close, modal buttons, etc.)
+     untouched. */
+  --ctrl-h: 32px;
+  align-items: center;
+  background: var(--surface-glass);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  border: 1px solid var(--border);
+  /* Top half of a unified two-row toolbar — fully rounded on top,
+     squared off at the bottom, no bottom border. The filter row below
+     extends the same surface and closes the shell. */
+  border-radius: 12px 12px 0 0;
+  border-bottom: 0;
+  padding: 3px 3px 1px;
+  gap: 0.3rem;
+  box-shadow: 0 1px 0 rgba(255, 255, 255, 0.02) inset, var(--shadow-lift);
+}
+
+/* Soften the Surprise CTA — was the heaviest element on the bar,
+   competing with active filter pills. Now reads as a secondary action
+   that's still clearly the primary yellow surface, just less shouty. */
+.filter-row.primary .surprise {
+  font-size: 0.8rem;
+  font-weight: 600;
+  letter-spacing: 0;
+  padding: 0 0.85rem;
+  filter: saturate(0.92);
+}
+.filter-row.primary .surprise:hover { filter: saturate(1) brightness(1.04); }
+
+/* Tighter horizontal padding on the buttons inside the slimmer toolbar
+   so the labels don't crowd the rounded edges at the smaller height. */
+.filter-row.primary .btn { padding: 0 0.85rem; font-size: 0.85rem; }
+.filter-row.primary .surprise { font-weight: 600; }
+.filter-row.primary .view-btn { width: 2.1rem; font-size: 0.95rem; }
 
 .filter-row label {
   display: flex;
@@ -376,9 +564,126 @@ body.rising-seasons-app button {
 .search {
   flex: 1 1 100% !important;
   min-width: 0 !important;
+  position: relative;
 }
 @media (min-width: 760px) {
   .search { flex: 1 1 240px !important; }
+}
+
+.search > label { display: block; }
+
+.search-suggestions {
+  position: absolute;
+  top: calc(100% + 8px);
+  left: 0;
+  right: 0;
+  z-index: 100;
+  margin: 0;
+  padding: 0.3rem;
+  list-style: none;
+  /* Explicit solid color (not the theme alias) so the panel is never
+     semi-transparent — content underneath must never bleed through. */
+  background-color: #161922;
+  background-image: linear-gradient(180deg, rgba(255,255,255,0.025), rgba(255,255,255,0));
+  border: 1px solid var(--border-strong);
+  border-radius: 12px;
+  box-shadow:
+    0 14px 36px rgba(0, 0, 0, 0.55),
+    0 2px 8px rgba(0, 0, 0, 0.35),
+    0 0 0 1px rgba(255, 255, 255, 0.03) inset;
+  max-height: 380px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-width: thin;
+  scrollbar-color: var(--border-strong) transparent;
+}
+.search-suggestions::-webkit-scrollbar {
+  width: 10px;
+}
+.search-suggestions::-webkit-scrollbar-track {
+  background: transparent;
+  margin: 6px 0;
+}
+.search-suggestions::-webkit-scrollbar-thumb {
+  background-color: var(--border-strong);
+  background-clip: content-box;
+  border: 3px solid transparent;
+  border-radius: 999px;
+}
+.search-suggestions::-webkit-scrollbar-thumb:hover {
+  background-color: var(--muted-2);
+  background-clip: content-box;
+}
+
+.search-suggestion {
+  display: flex;
+  align-items: center;
+  gap: 0.7rem;
+  padding: 0.45rem 0.6rem;
+  min-height: 44px;
+  cursor: pointer;
+  color: var(--text);
+  font-size: 0.9rem;
+  border: 0;
+  background: transparent;
+  border-radius: 8px;
+  transition: background 0.12s var(--ease);
+}
+
+.search-suggestion + .search-suggestion { margin-top: 1px; }
+
+.search-suggestion:hover,
+.search-suggestion[aria-selected="true"] {
+  background: var(--surface-2);
+}
+
+.search-suggestion .ss-poster {
+  flex: 0 0 32px;
+  width: 32px;
+  height: 48px;
+  background: var(--border);
+  border-radius: 3px;
+  overflow: hidden;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--muted-2);
+  font-size: 0.7rem;
+}
+
+.search-suggestion .ss-poster img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+.search-suggestion .ss-text {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  flex: 1 1 auto;
+}
+
+.search-suggestion .ss-title {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.search-suggestion .ss-meta {
+  font-size: 0.75rem;
+  color: var(--muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.search-suggestion mark {
+  background: transparent;
+  color: var(--accent);
+  font-weight: 600;
+  padding: 0;
 }
 
 .search input,
@@ -395,6 +700,7 @@ body.rising-seasons-app button {
   width: 100%;
   appearance: none;
   -webkit-appearance: none;
+  transition: border-color 0.2s var(--ease), background 0.2s var(--ease), box-shadow 0.2s var(--ease);
   /* Tell the browser this control is dark so the native popup menu uses
      a dark theme too instead of the OS default light. */
   color-scheme: dark;
@@ -407,7 +713,27 @@ body.rising-seasons-app button {
   color: var(--text);
 }
 
+/* Inside the glassy primary toolbar the search field needs a transparent
+   look so the surface reads as one piece, not nested boxes. */
+.filter-row.primary .search input {
+  background: transparent;
+  border-color: transparent;
+  padding: 0 0.8rem 0 2.15rem;
+  font-size: 0.88rem;
+  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23a4adbd' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'><circle cx='11' cy='11' r='7'/><path d='M21 21l-4.35-4.35'/></svg>");
+  background-repeat: no-repeat;
+  background-position: 0.7rem center;
+  background-size: 0.9rem 0.9rem;
+}
+.filter-row.primary .search input:hover { background-color: rgba(255, 255, 255, 0.025); }
+.filter-row.primary .search input:focus {
+  background-color: rgba(255, 255, 255, 0.04);
+  border-color: var(--accent);
+  outline: none;
+  box-shadow: 0 0 0 3px var(--accent-soft);
+}
 .search input { padding: 0 0.85rem; font-size: 1rem; }
+.search input::placeholder { color: var(--muted-2); }
 
 .filter-row select {
   padding-right: 2rem;
@@ -421,73 +747,251 @@ body.rising-seasons-app button {
 .filter-row input:focus,
 .filter-row select:focus,
 .search input:focus {
-  outline: 2px solid var(--accent);
-  outline-offset: 1px;
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-soft);
 }
 
-.advanced { margin-top: 0.75rem; }
+/* ---------- "More filters" panel ----------
+   Editorial filter sheet: caption-style labels, dense grid of slim
+   inputs, soft hairline-divided sub-sections, integrated Reset link.
+   Surface is just a hint above the page bg, not a strong card. */
 
+.advanced { margin-top: 0.5rem; }
+
+/* Trigger: small, quiet, refined. A "+" rotates to "×" when open. */
 .advanced summary {
   cursor: pointer;
-  color: var(--muted);
-  font-size: 0.85rem;
-  padding: 0.4rem 0;
   list-style: none;
   user-select: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+  padding: 0.35rem 0.7rem;
+  border-radius: 7px;
+  font-size: 0.66rem;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: rgba(231, 233, 238, 0.6);
+  transition: color 0.15s var(--ease), background 0.15s var(--ease);
 }
 .advanced summary::-webkit-details-marker { display: none; }
-.advanced summary::before {
-  content: '▸';
-  display: inline-block;
-  margin-right: 0.4rem;
-  transition: transform 0.15s;
+.advanced summary:hover {
+  color: var(--text);
+  background: rgba(255, 255, 255, 0.035);
 }
-.advanced[open] summary::before { transform: rotate(90deg); }
-.advanced[open] {
-  background: var(--surface);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-sm);
-  padding: 0.75rem 1rem;
+.advanced summary::before {
+  content: '+';
+  display: inline-block;
+  width: 0.9rem;
+  text-align: center;
+  font-size: 0.95rem;
+  font-weight: 400;
+  color: rgba(231, 233, 238, 0.5);
+  transition: transform 0.2s var(--ease), color 0.2s var(--ease);
+}
+.advanced[open] summary {
+  color: var(--text);
+  margin: 0 0 0.65rem;
+}
+.advanced[open] summary::before {
+  transform: rotate(45deg);  /* + → × */
+  color: var(--accent);
 }
 
+/* Panel: a real (but quiet) editorial surface — subtle top-down
+   gradient + soft inset highlight + hairline border. Sits clearly on
+   the page without feeling like a heavy card. */
+.advanced[open] {
+  margin-top: 0.6rem;
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.045), rgba(255, 255, 255, 0.018));
+  border: 1px solid rgba(255, 255, 255, 0.085);
+  border-radius: 12px;
+  padding: 0.9rem 1.1rem 0.9rem;
+  box-shadow:
+    0 1px 0 rgba(255, 255, 255, 0.04) inset,
+    var(--shadow-lift);
+}
+
+/* Numeric inputs + Sort: 4-column grid for an even rhythm, caption
+   labels above slim 32 px controls. */
+.advanced .filter-row {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 0.7rem 0.7rem;
+  align-items: end;
+}
+.advanced .filter-row label {
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+  min-width: 0;
+  flex: 0 1 auto;
+  font-size: 0.6rem;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  /* Captions in supporting role above the input — bright enough to
+     scan cleanly against the dark panel without competing with the
+     input value in full white. */
+  color: rgba(231, 233, 238, 0.78);
+}
+.advanced .filter-row input,
+.advanced .filter-row select {
+  width: 100%;
+  height: 32px;
+  padding: 0 0.7rem;
+  /* Stronger contrast than the panel itself so inputs read as
+     defined slots, not the same plane as the panel surface. */
+  background: rgba(255, 255, 255, 0.055);
+  border: 1px solid rgba(255, 255, 255, 0.11);
+  border-radius: 7px;
+  color: var(--text);
+  font-size: 0.85rem;
+  font-weight: 500;
+  letter-spacing: 0;
+  text-transform: none;
+  font-family: inherit;
+  appearance: none;
+  -webkit-appearance: none;
+  color-scheme: dark;
+  /* Subtle inner depth so each input sits like a small pressed slot. */
+  box-shadow: 0 1px 0 rgba(0, 0, 0, 0.18) inset;
+  transition: background 0.15s var(--ease), border-color 0.15s var(--ease),
+              box-shadow 0.15s var(--ease);
+}
+.advanced .filter-row input:hover,
+.advanced .filter-row select:hover {
+  background: rgba(255, 255, 255, 0.075);
+  border-color: rgba(255, 255, 255, 0.18);
+}
+.advanced .filter-row input:focus,
+.advanced .filter-row select:focus {
+  outline: none;
+  background: rgba(255, 255, 255, 0.09);
+  border-color: rgba(245, 197, 24, 0.55);
+  box-shadow:
+    0 0 0 2px rgba(245, 197, 24, 0.14),
+    0 1px 0 rgba(0, 0, 0, 0.18) inset;
+}
+.advanced .filter-row input::placeholder {
+  color: rgba(231, 233, 238, 0.55);
+  font-weight: 400;
+}
+/* Restore the chevron on the slim Sort select (the default arrow gets
+   stripped by appearance:none). Same dark SVG the toolbar uses. */
+.advanced .filter-row select {
+  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 12' fill='none' stroke='%23a4adbd' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'><polyline points='3,5 6,8 9,5'/></svg>");
+  background-repeat: no-repeat;
+  background-position: right 0.55rem center;
+  background-size: 12px 12px;
+  padding-right: 1.75rem;
+}
+
+/* Genres: editorial sub-section with its own caption + visible
+   divider above. Chips are bigger and brighter than the inputs so
+   the section reads as "tap a chip" rather than another row of
+   form fields. */
 .genre-row {
+  position: relative;
   display: flex;
   flex-wrap: wrap;
-  gap: 0.4rem;
-  margin-top: 0.75rem;
+  gap: 0.4rem 0.4rem;
+  margin-top: 1.15rem;
+  padding-top: 1rem;
+  border-top: 1px solid rgba(255, 255, 255, 0.075);
 }
+.genre-row::before {
+  content: 'Genres';
+  display: block;
+  flex: 1 0 100%;
+  font-size: 0.62rem;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: rgba(231, 233, 238, 0.85);
+  margin-bottom: 0.25rem;
+}
+.genre-row:empty { display: none; }
 
 .genre-chip,
 .genre-chip:hover {
   display: inline-flex;
   align-items: center;
-  height: var(--ctrl-h-sm);
-  padding: 0 0.7rem;
-  background: var(--surface-2);
-  border: 1px solid var(--border);
+  height: 28px;
+  padding: 0 0.8rem;
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.12);
   border-radius: 999px;
   color: var(--text) !important;
   font: inherit;
-  font-size: 0.78rem;
+  font-size: 0.74rem;
+  font-weight: 600;
   cursor: pointer;
   user-select: none;
   white-space: nowrap;
   line-height: 1;
-  box-shadow: none !important;
+  /* Subtle top-edge lift gives each chip a sense of object */
+  box-shadow: 0 1px 0 rgba(255, 255, 255, 0.03) inset !important;
+  transition: background 0.18s var(--ease), border-color 0.18s var(--ease), color 0.18s var(--ease);
 }
-.genre-chip:hover { background: var(--surface-3); border-color: var(--border-strong); }
+.genre-chip:hover {
+  background: rgba(255, 255, 255, 0.09);
+  border-color: rgba(255, 255, 255, 0.22);
+  color: var(--text) !important;
+}
 .genre-chip[aria-pressed="true"],
 .genre-chip[aria-pressed="true"]:hover {
-  background: var(--accent-soft);
-  border-color: var(--accent);
+  background: rgba(245, 197, 24, 0.13);
+  border-color: rgba(245, 197, 24, 0.5);
   color: var(--accent) !important;
 }
-.genre-chip:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.genre-chip:focus-visible {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow:
+    0 0 0 2px rgba(245, 197, 24, 0.18),
+    0 1px 0 rgba(255, 255, 255, 0.03) inset !important;
+}
 
+/* Reset link: integrated, not a stranded button. */
 .filter-actions {
-  margin-top: 0.75rem;
   display: flex;
   justify-content: flex-end;
+  align-items: center;
+  margin-top: 1rem;
+  padding-top: 0.8rem;
+  border-top: 1px solid rgba(255, 255, 255, 0.075);
+}
+.filter-actions .btn,
+.filter-actions .btn:hover {
+  height: 26px;
+  padding: 0 0.6rem;
+  background: transparent;
+  border: 0;
+  color: rgba(231, 233, 238, 0.85) !important;
+  font-size: 0.7rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  box-shadow: none !important;
+  transition: color 0.15s var(--ease);
+}
+.filter-actions .btn:hover { color: var(--accent) !important; background: transparent; }
+.filter-actions .btn:disabled,
+.filter-actions .btn[disabled] {
+  opacity: 0.4;
+  pointer-events: none;
+}
+
+/* Mobile: collapse the 4-up grid to 2 so inputs don't get squished. */
+@media (max-width: 540px) {
+  .advanced[open] { padding: 0.75rem 0.85rem; }
+  .advanced .filter-row { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .genre-row { margin-top: 0.9rem; padding-top: 0.8rem; }
+  .filter-actions { margin-top: 0.85rem; padding-top: 0.7rem; }
 }
 
 /* ---------- Stats bar ---------- */
@@ -495,45 +999,68 @@ body.rising-seasons-app button {
 .stats-bar {
   display: flex;
   flex-wrap: wrap;
-  gap: 0.75rem 1.5rem;
-  padding: 0.75rem 1rem;
-  background: var(--surface);
+  gap: 0.75rem 2rem;
+  padding: 0.85rem 1.1rem;
+  background: var(--surface-glass);
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
   border: 1px solid var(--border);
-  border-radius: var(--radius-sm);
-  margin: 0.5rem 0;
+  border-radius: 12px;
+  margin: 1rem 0 0.5rem;
   font-size: 0.85rem;
   color: var(--muted);
   align-items: center;
+  letter-spacing: 0.005em;
 }
 .stats-bar:empty { display: none; }
-.stats-bar strong { color: var(--text); font-weight: 600; margin-right: 0.3rem; }
+.stats-bar > span { display: inline-flex; align-items: baseline; gap: 0.35rem; }
+.stats-bar strong {
+  color: var(--text);
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
 
 .stats-bar .progress {
   flex: 1 1 200px;
   min-width: 160px;
-  height: 8px;
-  background: var(--surface-3);
+  height: 6px;
+  background: rgba(255, 255, 255, 0.06);
   border-radius: 999px;
   overflow: hidden;
   position: relative;
 }
 .stats-bar .progress-fill {
   position: absolute; inset: 0;
-  background: linear-gradient(90deg, var(--accent), var(--good));
+  background: linear-gradient(90deg, var(--accent) 0%, var(--accent-warm) 50%, var(--good) 100%);
   border-radius: 999px;
-  transition: width 0.3s ease;
+  transition: width 0.4s var(--ease);
   width: 0;
 }
-.stats-bar .stale { color: var(--warn); }
+.stats-bar .stale {
+  color: var(--warn);
+  font-size: 0.78rem;
+  padding: 0.15rem 0.55rem;
+  background: rgba(251, 146, 60, 0.12);
+  border-radius: 999px;
+}
 
 /* ---------- Meta + results ---------- */
 
 .meta, .footer-meta {
   color: var(--muted);
   font-size: 0.85rem;
+  letter-spacing: 0.005em;
 }
-.meta { margin: 0.75rem 0; }
-.footer-meta { padding: 1rem 0 0; text-align: center; }
+.meta {
+  margin: 1rem 0 0.75rem;
+  padding-left: 0.15rem;
+}
+.footer-meta {
+  padding: 1.5rem 0 0.5rem;
+  text-align: center;
+  font-size: 0.78rem;
+  color: var(--muted-2);
+}
 
 .results-grid {
   display: grid;
@@ -562,12 +1089,32 @@ body.rising-seasons-app button {
   overflow: hidden;
   display: flex;
   flex-direction: column;
-  transition: border-color 0.15s, transform 0.15s;
+  transition: border-color 0.2s var(--ease), transform 0.25s var(--ease),
+              box-shadow 0.25s var(--ease);
   cursor: pointer;
+  position: relative;
 }
-.card:hover { border-color: var(--border-strong); transform: translateY(-2px); }
-.card:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
-.card.is-watched { border-color: var(--good); }
+.card:hover {
+  border-color: var(--border-strong);
+  transform: translateY(-3px);
+  box-shadow: var(--shadow-lift);
+}
+.card:focus-visible {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: var(--accent-glow);
+}
+.card.is-watched {
+  border-color: rgba(52, 211, 158, 0.4);
+}
+.card.is-watched::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: var(--radius);
+  pointer-events: none;
+  box-shadow: inset 0 0 0 1px rgba(52, 211, 158, 0.25);
+}
 .card.is-watched .card-poster img { opacity: 0.55; }
 
 /* Posters: TMDB poster_path images are 2:3 — match the natural aspect so
@@ -638,20 +1185,290 @@ body.rising-seasons-app button {
 
 .shape-tag {
   background: var(--surface-3);
-  color: var(--muted);
+  color: var(--text);
   font-size: 0.68rem;
   padding: 0.1rem 0.5rem;
   border-radius: 999px;
+  border: 1px solid transparent;
+  font-family: inherit;
+  line-height: 1.4;
+}
+button.shape-tag.is-clickable {
+  cursor: pointer;
+  transition: background-color 0.12s, color 0.12s, border-color 0.12s;
+}
+button.shape-tag.is-clickable:hover {
+  background: var(--accent-soft);
+  color: var(--accent);
+  border-color: var(--accent-strong);
 }
 .shape-tag.active {
   background: var(--accent-soft);
   color: var(--accent);
 }
 
+.best-badge {
+  display: inline-block;
+  margin-left: 0.4rem;
+  padding: 0.05rem 0.4rem;
+  font-size: 0.7rem;
+  color: var(--accent);
+  background: var(--accent-soft);
+  border-radius: 999px;
+  vertical-align: middle;
+  font-weight: 600;
+}
+
+.above-imdb {
+  display: inline-block;
+  margin-left: 0.3rem;
+  color: var(--good);
+  font-weight: 700;
+  font-size: 0.85em;
+  cursor: help;
+  vertical-align: middle;
+}
+.above-imdb-pill {
+  padding: 0.05rem 0.5rem;
+  background: rgba(74, 222, 128, 0.15);
+  border-radius: 999px;
+  font-size: 0.75rem;
+  font-weight: 600;
+  cursor: default;
+}
+
+/* ---------- Quick label filters ----------
+   Bottom half of the unified toolbar — same glass surface as the
+   search row above, separated only by a near-invisible hairline. No
+   per-group boxes, no per-pill borders, no extra container. The shared
+   shell anchors the filters to the toolbar so they read as part of it,
+   not floating below it. */
+.label-filters {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  /* Horizontal gap between groups (~1rem) does the work of dividers. */
+  gap: 0.3rem 1rem;
+  /* Snug interior — close to the search row above, just enough room
+     for the pills not to touch the bottom of the shell. */
+  padding: 0.3rem 0.5rem 0.32rem;
+  background: var(--surface-glass);
+  -webkit-backdrop-filter: blur(10px);
+  backdrop-filter: blur(10px);
+  border: 1px solid var(--border);
+  /* Inner hairline divider only — perimeter shares the search row's
+     border, top is the seam between rows. */
+  border-top: 1px solid rgba(255, 255, 255, 0.04);
+  border-radius: 0 0 12px 12px;
+  /* Generous spacing AFTER the toolbar before the shape chips. */
+  margin-bottom: 0.85rem;
+}
+
+/* Group = just a flex line of [tiny caption] [chips]. No surface, no
+   border, no fixed height. */
+.label-group {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  height: auto;
+  padding: 0;
+  background: transparent;
+  border: 0;
+  border-radius: 0;
+  box-shadow: none;
+}
+.label-group:hover,
+.label-group:focus-within {
+  background: transparent;
+  border: 0;
+  box-shadow: none;
+}
+
+/* Section caption: quiet, low-contrast, no divider. Just a label. */
+.label-group-name {
+  display: inline-flex;
+  align-items: center;
+  height: auto;
+  padding: 0;
+  margin: 0 0.05rem 0 0;
+  font-size: 0.62rem;
+  line-height: 1;
+  text-transform: uppercase;
+  letter-spacing: 0.14em;
+  color: rgba(231, 233, 238, 0.55);
+  font-weight: 600;
+  border: 0;
+  user-select: none;
+  white-space: nowrap;
+}
+
+/* Chips: invisible until you hover or activate. No border, no shadow,
+   no container — they read as tokens on the page. */
+.label-chip {
+  appearance: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  height: 26px;
+  padding: 0 0.65rem;
+  border: 0;
+  background: transparent;
+  /* Full body-text white (no opacity reduction) so inactive chips —
+     TV series, Mini-series, Watched, Unwatched, ↑ Above IMDb — read
+     crisp against the dark background. Active state overrides to the
+     accent colour below. */
+  color: var(--text);
+  font: inherit;
+  font-size: 0.76rem;
+  font-weight: 600;
+  line-height: 1;
+  border-radius: 7px;
+  cursor: pointer;
+  transition:
+    background 0.18s var(--ease),
+    color 0.18s var(--ease);
+  white-space: nowrap;
+}
+.label-chip + .label-chip { margin-left: 0.1rem; }
+.label-chip:hover {
+  color: #ffffff;
+  background: rgba(255, 255, 255, 0.045);
+}
+.label-chip:focus-visible {
+  outline: 2px solid rgba(245, 197, 24, 0.55);
+  outline-offset: 2px;
+}
+
+/* Active = a soft accent wash + accent text. No ring, no shadow.
+   Reads as a quietly highlighted token rather than a button. Tinted
+   one notch quieter than the shape chips above so the toolbar pills
+   don't draw attention away from the editorial pattern chips. */
+.label-chip[aria-pressed="true"] {
+  background: rgba(245, 197, 24, 0.085);
+  color: rgba(245, 197, 24, 0.92);
+  box-shadow: none;
+}
+.label-chip[aria-pressed="true"]:hover {
+  background: rgba(245, 197, 24, 0.14);
+  color: var(--accent);
+}
+.label-chip-good[aria-pressed="true"] {
+  background: rgba(74, 222, 128, 0.085);
+  color: rgba(74, 222, 128, 0.92);
+}
+.label-chip-good[aria-pressed="true"]:hover {
+  background: rgba(74, 222, 128, 0.14);
+  color: var(--good);
+}
+
+.search-suggestion-empty {
+  cursor: default;
+  color: var(--muted-2);
+  font-style: italic;
+  padding: 0.5rem 0.7rem;
+}
+.search-suggestion-empty:hover {
+  background: transparent;
+}
+
+.show-seasons {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.show-season {
+  display: grid;
+  grid-template-columns: 56px 1fr 110px auto;
+  gap: 0.85rem;
+  align-items: center;
+  padding: 0.7rem 0.9rem;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  cursor: pointer;
+  transition: background 0.18s var(--ease), border-color 0.18s var(--ease), transform 0.18s var(--ease);
+}
+.show-season:hover {
+  background: var(--surface-3);
+  border-color: var(--border-strong);
+  transform: translateX(2px);
+}
+.show-season:focus-visible {
+  background: var(--surface-3);
+  border-color: var(--accent);
+  outline: none;
+  box-shadow: 0 0 0 3px var(--accent-soft);
+}
+.show-season.is-watched {
+  border-color: rgba(52, 211, 158, 0.35);
+}
+
+.show-season .ss-num {
+  font-weight: 600;
+  font-size: 1rem;
+  color: var(--text);
+  font-variant-numeric: tabular-nums;
+}
+
+.show-season .ss-meta {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+.show-season .ss-eps {
+  font-size: 0.78rem;
+  color: var(--muted);
+}
+.show-season .ss-shape-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.25rem;
+  margin-top: 0.2rem;
+}
+
+.show-season .ss-spark {
+  width: 100%;
+  height: 36px;
+  background: var(--surface);
+  border-radius: 4px;
+  display: block;
+}
+
+.show-season .ss-stats {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  font-size: 0.78rem;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.show-season .ss-avg {
+  color: var(--text);
+  font-weight: 600;
+}
+.show-season .ss-watched-tag {
+  color: var(--good);
+  font-size: 0.7rem;
+}
+
+@media (max-width: 560px) {
+  .show-season {
+    grid-template-columns: 48px 1fr auto;
+  }
+  .show-season .ss-spark { display: none; }
+}
+
 .curve {
   width: 100%;
   height: 70px;
-  background: var(--surface-2);
+  background:
+    radial-gradient(ellipse 60% 50% at 50% 100%, rgba(245, 197, 24, 0.06), transparent 70%),
+    var(--surface-2);
   border-radius: var(--radius-sm);
   display: block;
 }
@@ -663,10 +1480,21 @@ body.rising-seasons-app button {
   stroke-linecap: round;
   stroke-linejoin: round;
   vector-effect: non-scaling-stroke;
+  filter: drop-shadow(0 0 4px rgba(245, 197, 24, 0.35));
 }
 .curve-dots circle {
   fill: var(--accent);
   cursor: help;
+}
+
+.modal-curve {
+  width: 100%;
+  height: 180px;
+  background:
+    radial-gradient(ellipse 60% 50% at 50% 100%, rgba(245, 197, 24, 0.08), transparent 70%),
+    var(--surface-2);
+  border-radius: 12px;
+  padding: 0.5rem;
 }
 
 .card-stats {
@@ -686,17 +1514,24 @@ body.rising-seasons-app button {
   grid-template-columns: 56px 1fr 200px 36px;
   gap: 1rem;
   align-items: center;
-  padding: 0.6rem 0.85rem;
+  padding: 0.7rem 0.95rem;
   background: var(--surface);
   border: 1px solid var(--border);
   border-radius: var(--radius-sm);
   cursor: pointer;
-  transition: border-color 0.15s;
+  transition: border-color 0.2s var(--ease), background 0.2s var(--ease), transform 0.2s var(--ease);
   position: relative;
 }
-.row:hover { border-color: var(--border-strong); }
-.row:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
-.row.is-watched { border-color: var(--good); }
+.row:hover {
+  border-color: var(--border-strong);
+  background: var(--surface-2);
+}
+.row:focus-visible {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-soft);
+}
+.row.is-watched { border-color: rgba(52, 211, 158, 0.4); }
 .row.is-watched .row-poster img { opacity: 0.55; }
 
 .row-poster {
@@ -785,8 +1620,8 @@ body.rising-seasons-app button {
   min-width: var(--ctrl-h);
   height: var(--ctrl-h);
   padding: 0 0.7rem;
-  background: var(--surface);
-  color: var(--text) !important;
+  background: transparent;
+  color: var(--muted) !important;
   border: 1px solid var(--border);
   border-radius: var(--ctrl-radius);
   font: inherit;
@@ -794,15 +1629,17 @@ body.rising-seasons-app button {
   font-variant-numeric: tabular-nums;
   cursor: pointer;
   box-shadow: none !important;
-  transition: background 0.15s, border-color 0.15s;
+  transition: background 0.18s var(--ease), border-color 0.18s var(--ease), color 0.18s var(--ease);
 }
 .pager .page-btn:hover {
   background: var(--surface-2);
   border-color: var(--border-strong);
+  color: var(--text) !important;
 }
 .pager .page-btn:focus-visible {
-  outline: 2px solid var(--accent);
-  outline-offset: 2px;
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-soft);
 }
 .pager .page-btn[aria-current="page"],
 .pager .page-btn[aria-current="page"]:hover {
@@ -833,11 +1670,17 @@ body.rising-seasons-app button {
   grid-column: 1 / -1;
   text-align: center;
   color: var(--muted);
-  padding: 3rem 1.5rem;
-  background: var(--surface);
-  border: 1px dashed var(--border);
-  border-radius: var(--radius);
+  padding: 4rem 1.5rem;
+  background:
+    radial-gradient(ellipse 80% 60% at 50% 0%, rgba(245, 197, 24, 0.04), transparent 70%),
+    var(--surface);
+  border: 1px dashed var(--border-strong);
+  border-radius: 14px;
+  font-size: 0.95rem;
+  line-height: 1.5;
 }
+.empty p { margin: 0.35rem 0; }
+.empty p:first-child { color: var(--text); font-size: 1.05rem; font-weight: 500; }
 .empty code {
   background: var(--surface-2);
   padding: 0.1rem 0.4rem;
@@ -900,31 +1743,95 @@ body.rising-seasons-app button {
 .modal-backdrop {
   position: absolute;
   inset: 0;
-  background: rgba(0, 0, 0, 0.7);
-  backdrop-filter: blur(4px);
+  background: rgba(0, 0, 0, 0.72);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
 }
 
 .modal-panel {
   position: relative;
-  background: var(--surface);
+  background:
+    radial-gradient(ellipse 80% 50% at 50% 0%, rgba(245, 197, 24, 0.05), transparent 60%),
+    linear-gradient(180deg, #15192257, #0f121b 30%, #0c0f17 100%),
+    var(--surface);
   border: 1px solid var(--border-strong);
-  border-radius: var(--radius);
+  border-radius: 18px;
   max-width: 720px;
   width: 100%;
   max-height: calc(100vh - 2rem);
   overflow-y: auto;
-  padding: 1.5rem;
+  padding: 1.75rem;
   display: flex;
   flex-direction: column;
-  gap: 1rem;
-  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5);
+  gap: 1.1rem;
+  box-shadow: var(--shadow-modal);
+}
+.modal-panel::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: 18px;
+  pointer-events: none;
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.04), transparent 25%);
 }
 
 .modal-close {
   align-self: flex-end;
   margin-bottom: -1.5rem;  /* sit on top of header */
   position: relative;
-  z-index: 1;
+  z-index: 2;
+}
+
+/* Roll-again is anchored directly above the poster — same width, slim
+   height, square-ish corners — so it reads as part of the poster card
+   rather than a floating CTA. The shared --modal-poster-w token keeps
+   it locked to the poster on every breakpoint. */
+.modal-panel { --modal-poster-w: 120px; }
+.modal-reroll {
+  position: absolute;
+  top: 1.75rem;            /* matches .modal-panel padding */
+  left: 1.75rem;           /* matches .modal-panel padding */
+  width: var(--modal-poster-w);
+  height: 30px;
+  z-index: 3;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.4rem;
+  padding: 0 0.55rem;
+  border: 1px solid rgba(245, 197, 24, 0.55);
+  border-radius: 8px;
+  background: linear-gradient(180deg, var(--accent) 0%, #d8a912 100%);
+  color: var(--accent-ink) !important;
+  font-size: 0.78rem;
+  font-weight: 700;
+  line-height: 1;
+  letter-spacing: 0.02em;
+  cursor: pointer;
+  box-shadow:
+    0 4px 14px rgba(245, 197, 24, 0.22),
+    0 0 0 1px rgba(0, 0, 0, 0.18) inset !important;
+  transition: filter 0.18s var(--ease), transform 0.08s var(--ease), box-shadow 0.18s var(--ease);
+}
+.modal-reroll:hover {
+  filter: brightness(1.06);
+  box-shadow:
+    0 6px 18px rgba(245, 197, 24, 0.32),
+    0 0 0 1px rgba(0, 0, 0, 0.18) inset !important;
+}
+.modal-reroll:active { transform: translateY(1px); }
+.modal-reroll:focus-visible {
+  outline: 2px solid #fff8d2;
+  outline-offset: 2px;
+}
+.modal-reroll[hidden] { display: none !important; }
+
+/* When Roll-again is visible (surprise pick), shift the modal header
+   down by the button's height + a small breathing gap so the poster
+   sits flush beneath it. Sibling combinator works because the reroll
+   button precedes .modal-header in DOM order. */
+.modal-reroll:not([hidden]) ~ .modal-header {
+  margin-top: calc(30px - 0.4rem);
 }
 
 .modal-header {
@@ -952,51 +1859,84 @@ body.rising-seasons-app button {
   flex: 1 1 240px;
   display: flex;
   flex-direction: column;
-  gap: 0.4rem;
+  gap: 0.5rem;
+  min-width: 0;
 }
-.modal-heading h2 { font-size: 1.4rem; }
-.modal-subtitle { margin: 0; color: var(--muted); font-size: 0.9rem; }
-.modal-shapes { display: flex; gap: 0.3rem; flex-wrap: wrap; }
-.modal-stats { margin: 0; color: var(--muted); font-size: 0.85rem; font-variant-numeric: tabular-nums; }
+.modal-heading h2 {
+  font-size: 1.55rem;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  line-height: 1.2;
+}
+.modal-subtitle {
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.92rem;
+  letter-spacing: 0.005em;
+}
+.modal-shapes { display: flex; gap: 0.35rem; flex-wrap: wrap; margin-top: 0.15rem; }
+.modal-stats {
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.85rem;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.005em;
+}
 
-.modal-overview { margin: 0; color: var(--text); font-size: 0.95rem; }
+.modal-overview {
+  margin: 0;
+  color: var(--text);
+  font-size: 0.95rem;
+  line-height: 1.55;
+  opacity: 0.92;
+}
 .modal-overview:empty { display: none; }
 
 .modal-section {
-  font-size: 0.78rem;
+  font-size: 0.72rem;
   text-transform: uppercase;
-  letter-spacing: 0.08em;
+  letter-spacing: 0.14em;
   color: var(--muted);
+  font-weight: 600;
+  margin: 0.2rem 0 -0.3rem;
 }
 
-.modal-curve {
-  width: 100%;
-  height: 180px;
-  background: var(--surface-2);
-  border-radius: var(--radius-sm);
-}
 
 .modal-episodes {
   list-style: none;
   margin: 0;
   padding: 0;
   display: grid;
-  gap: 0.4rem;
+  gap: 0.35rem;
 }
 .modal-episodes li {
   display: grid;
   grid-template-columns: 3rem 1fr auto;
   gap: 0.75rem;
   align-items: center;
-  padding: 0.5rem 0.75rem;
-  background: var(--surface-2);
-  border-radius: var(--radius-sm);
+  padding: 0.55rem 0.85rem;
+  background: rgba(255, 255, 255, 0.02);
+  border: 1px solid var(--border);
+  border-radius: 10px;
   font-variant-numeric: tabular-nums;
   font-size: 0.9rem;
 }
-.modal-episodes .ep-number { color: var(--muted); font-size: 0.85rem; }
-.modal-episodes .ep-rating { color: var(--accent); font-weight: 600; }
-.modal-episodes .ep-votes  { color: var(--muted-2); font-size: 0.8rem; }
+.modal-episodes .ep-number {
+  color: var(--muted);
+  font-size: 0.8rem;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+.modal-episodes .ep-rating {
+  color: var(--accent);
+  font-weight: 700;
+  font-size: 1rem;
+}
+.modal-episodes .ep-votes  {
+  color: var(--muted-2);
+  font-size: 0.78rem;
+}
 
 .modal-actions {
   display: flex;
@@ -1017,16 +1957,32 @@ body.rising-seasons-app button {
 
 @media (max-width: 760px) {
   .page { padding: 0 1rem 2rem; }
-  .hero { padding: 1.5rem 0 0.5rem; }
-  .hero h1 { font-size: 2rem; }
+  .hero { padding: 2rem 0 0.5rem; }
+  .hero h1 { font-size: clamp(1.85rem, 8vw, 2.5rem); }
+  .tagline { font-size: 0.95rem; }
+  .shapes { padding: 1.25rem 0 0.25rem; }
   .results-grid { grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 0.75rem; }
   .filter-row label { min-width: 100%; flex: 1 1 100%; }
+  .filter-row.primary {
+    padding: 3px 3px 1px;
+    gap: 0.35rem;
+  }
   .filter-row.primary .view-toggle { align-self: stretch; }
   .filter-row.primary .surprise { flex: 1 1 100%; }
+  .label-filters { gap: 0.5rem; }
   .pager { gap: 0.25rem; }
   .pager .page-btn { padding: 0 0.45rem; min-width: 36px; height: 36px; font-size: 0.8rem; }
-  .modal-panel { padding: 1.25rem; }
-  .modal-poster { width: 96px; }
+  .modal-panel { padding: 1.25rem; --modal-poster-w: 96px; }
+  .modal-poster { width: var(--modal-poster-w); }
+  .modal-reroll {
+    top: 1.25rem;
+    left: 1.25rem;
+    height: 26px;
+    font-size: 0.72rem;
+  }
+  .modal-reroll:not([hidden]) ~ .modal-header {
+    margin-top: calc(26px - 0.4rem);
+  }
 }
 
 @media (max-width: 460px) {
