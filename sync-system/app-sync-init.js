@@ -60,6 +60,27 @@ const APP_SYNC_CONFIG = {
       'gymTrackerCustomExercises', // User-created custom exercises
       'gymTrackerMeasurements'    // Body measurements log
     ]
+  },
+
+  'rising-seasons': {
+    namespace: 'risingSeasonsApp',
+    keys: [
+      'rising-seasons:watched',     // Set of watched (seriesId, season) keys
+      'rising-seasons:view'         // UI view preference (grid / list)
+    ]
+  },
+
+  'maptap-rivals': {
+    namespace: 'maptapRivalsApp',
+    keys: [
+      'maptapRivalsRivals',         // Rival list (id, name, color, icon, maptapUsername, createdAt)
+      'maptapRivalsGames',          // All daily games (id, rivalId, date, myScore, theirScore, note)
+      'maptapRivalsMe',             // Owner display name
+      'maptapRivalsMyMapTap',       // Your maptap.gg username (for syncing)
+      'maptapRivalsMyProfile',      // Verified profile snapshot (nickname/joinDate/avg/best)
+      'maptapRivalsSettings',       // UI prefs (last-selected rival, etc.)
+      'maptapRivalsSelectedRivalId' // Currently focused rival on detail view
+    ]
   }
 };
 
@@ -89,6 +110,10 @@ export async function initAppSync() {
     currentApp = 'football-h2h';
   } else if (currentPath.includes('/gym-tracker/')) {
     currentApp = 'gym-tracker';
+  } else if (currentPath.includes('/maptap-rivals/')) {
+    currentApp = 'maptap-rivals';
+  } else if (currentPath.includes('/rising-seasons/')) {
+    currentApp = 'rising-seasons';
   }
 
   // Only sync the current app's namespace plus shared global prefs.

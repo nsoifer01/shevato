@@ -1,0 +1,527 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <!-- CRITICAL: immediate sync override must run before any localStorage call -->
+  <script src="../../sync-system/sync-immediate.js"></script>
+
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  <meta name="description" content="Track your daily MapTap.gg scores against named friends. Win/loss records, streaks, averages, score trends, per-round breakdowns, continent stats, and per-rival head-to-head dashboards.">
+  <meta name="keywords" content="MapTap, MapTap.gg, MapTap rivals, daily map tap, head to head game tracker, geo game tracker, MapTap score tracker, MapTap leaderboard, MapTap stats, win streak tracker, game rivalry tracker">
+  <meta name="author" content="Shevato LLC">
+  <meta name="robots" content="index, follow, max-image-preview:large">
+  <meta name="theme-color" content="#0b0d12">
+  <meta name="color-scheme" content="dark">
+  <link rel="canonical" href="https://shevato.com/apps/maptap-rivals/index.html" />
+  <title>MapTap Rivals | Daily MapTap H2H tracker - Shevato</title>
+
+  <!-- Open Graph -->
+  <meta property="og:title" content="MapTap Rivals | Daily MapTap.gg head-to-head tracker" />
+  <meta property="og:description" content="Log your daily MapTap.gg scores against named friends. Streaks, averages, score trends, continent breakdowns, and per-rival dashboards." />
+  <meta property="og:type" content="website" />
+  <meta property="og:url" content="https://shevato.com/apps/maptap-rivals/index.html" />
+  <meta property="og:image" content="https://shevato.com/images/full-logo.svg" />
+  <meta property="og:image:type" content="image/svg+xml" />
+  <meta property="og:image:alt" content="MapTap Rivals — daily MapTap.gg head-to-head tracker" />
+  <meta property="og:site_name" content="Shevato" />
+  <meta property="og:locale" content="en_US" />
+
+  <!-- Twitter Card -->
+  <meta name="twitter:card" content="summary_large_image" />
+  <meta name="twitter:title" content="MapTap Rivals | Daily MapTap.gg head-to-head tracker" />
+  <meta name="twitter:description" content="Log daily MapTap.gg scores against rivals. Streaks, averages, trends, and per-rival dashboards." />
+  <meta name="twitter:image" content="https://shevato.com/images/full-logo.svg" />
+  <meta name="twitter:site" content="@shevato" />
+
+  <!-- Breadcrumbs -->
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@type": "BreadcrumbList",
+    "itemListElement": [
+      { "@type": "ListItem", "position": 1, "name": "Home", "item": "https://shevato.com/home.html" },
+      { "@type": "ListItem", "position": 2, "name": "Apps", "item": "https://shevato.com/apps.html" },
+      { "@type": "ListItem", "position": 3, "name": "MapTap Rivals", "item": "https://shevato.com/apps/maptap-rivals/index.html" }
+    ]
+  }
+  </script>
+
+  <!-- WebApplication -->
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@type": "WebApplication",
+    "name": "MapTap Rivals",
+    "description": "Daily MapTap.gg head-to-head tracker — log scores against named friends and see win/loss records, streaks, averages, score trends, round-by-round breakdowns, continent stats, and per-rival dashboards.",
+    "url": "https://shevato.com/apps/maptap-rivals/index.html",
+    "applicationCategory": "GameApplication",
+    "operatingSystem": "Web Browser",
+    "browserRequirements": "Requires JavaScript. Works on all modern browsers.",
+    "offers": {
+      "@type": "Offer",
+      "price": "0",
+      "priceCurrency": "USD"
+    },
+    "featureList": [
+      "Daily MapTap.gg score logging per rival",
+      "Win/loss/tie records and current/longest streaks",
+      "Score trends and per-game differential charts",
+      "Round-by-round and continent-level breakdowns",
+      "Auto-sync from a MapTap profile URL",
+      "WhatsApp chat import for paired games",
+      "Full game history with filters and pagination",
+      "Leaderboard across all rivals",
+      "Data export and import"
+    ],
+    "author": {
+      "@type": "Organization",
+      "name": "Shevato LLC",
+      "url": "https://shevato.com"
+    }
+  }
+  </script>
+
+  <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>🗺️</text></svg>">
+
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+  <link rel="stylesheet" href="../../assets/css/main.css">
+  <link rel="stylesheet" href="css/styles.css">
+</head>
+<body class="maptap-rivals-app">
+  <div data-include="header"></div>
+
+  <main class="page">
+    <header class="hero">
+      <h1>MapTap Rivals</h1>
+      <p class="tagline">Daily MapTap.gg head-to-head — track every rival, every streak, every comeback.</p>
+    </header>
+
+    <!-- View tabs -->
+    <nav class="view-tabs" role="tablist" aria-label="View">
+      <button class="view-tab is-active" data-view="dashboard" role="tab" aria-selected="true">
+        <span aria-hidden="true">📊</span> Dashboard
+      </button>
+      <button class="view-tab" data-view="rival" role="tab" aria-selected="false">
+        <span aria-hidden="true">⚔️</span> Rival
+      </button>
+      <button class="view-tab" data-view="leaderboard" role="tab" aria-selected="false">
+        <span aria-hidden="true">🏆</span> Leaderboard
+      </button>
+      <button class="view-tab" data-view="history" role="tab" aria-selected="false">
+        <span aria-hidden="true">📜</span> History
+      </button>
+    </nav>
+
+
+    <!-- DASHBOARD VIEW -->
+    <section class="view view-dashboard is-active" data-view-panel="dashboard">
+      <!-- Your MapTap profile card. Foundational: once verified, it sits
+           quietly with a sync-all button. When unverified or the username
+           changes, the input opens up for editing. -->
+      <section class="profile-card" id="profile-card">
+        <header class="profile-card-head">
+          <div class="profile-card-title">
+            <span class="profile-card-icon" aria-hidden="true">👤</span>
+            <h2>Your MapTap profile</h2>
+          </div>
+          <div class="profile-card-actions" id="profile-card-actions"></div>
+        </header>
+        <div class="profile-card-body" id="profile-card-body"></div>
+      </section>
+
+      <!-- Paste-mode entry: paste your daily MapTap share, then paste each
+           rival's share. No rival picker — every rival shows up below as
+           its own row, with a live W/L/T preview against your score. -->
+      <section class="paste-section">
+        <div class="paste-head">
+          <h2 class="section-title">Paste daily scores</h2>
+          <label class="paste-date-field">
+            <span>Date</span>
+            <input type="date" id="paste-date">
+          </label>
+        </div>
+
+        <div class="paste-mine">
+          <div class="paste-mine-head">
+            <span class="paste-mine-label" id="paste-mine-label">Your score</span>
+            <span class="paste-status" id="paste-mine-status">Paste your MapTap result anywhere on the page</span>
+          </div>
+          <textarea id="paste-mine-input" rows="3" spellcheck="false" autocomplete="off"
+            placeholder="May 10&#10;95🏅 89✨ 91🎉 9🤢 64🙃&#10;Final score: 585"></textarea>
+          <div class="paste-mine-rounds" id="paste-mine-rounds" hidden></div>
+        </div>
+
+        <div class="paste-rivals" id="paste-rivals"></div>
+
+        <p class="paste-empty" id="paste-empty" hidden>
+          Add at least one rival to use paste mode.
+        </p>
+
+        <div class="paste-actions" id="paste-actions" hidden>
+          <span class="paste-summary" id="paste-summary">Paste your score and at least one rival's to save.</span>
+          <button type="button" class="btn btn-primary paste-save-all" id="paste-save-all" disabled>
+            Save day's games
+          </button>
+        </div>
+      </section>
+
+      <div class="dash-summary" id="dash-summary"></div>
+
+      <div class="dash-controls">
+        <h2 class="section-title">Rivalries</h2>
+        <button type="button" class="btn btn-ghost" id="add-rival-btn">+ Add rival</button>
+      </div>
+
+      <div class="rival-grid" id="rival-grid"></div>
+
+      <p class="empty-state" id="dash-empty" hidden>
+        No rivals yet. Add a friend to start tracking your daily MapTap battles.
+      </p>
+    </section>
+
+    <!-- RIVAL DETAIL VIEW -->
+    <section class="view view-rival" data-view-panel="rival" hidden>
+      <div class="rival-header" id="rival-header"></div>
+
+      <div class="stat-cards" id="rival-stat-cards"></div>
+
+      <div class="charts-grid">
+        <div class="chart-card">
+          <div class="chart-card-head">
+            <h3>Score over time</h3>
+            <span class="chart-sub">Your score vs theirs, last 30 games</span>
+          </div>
+          <div class="chart-canvas-wrap"><canvas id="chart-trend"></canvas></div>
+        </div>
+        <div class="chart-card">
+          <div class="chart-card-head">
+            <h3>Win distribution</h3>
+            <span class="chart-sub">Head-to-head all-time</span>
+          </div>
+          <div class="chart-canvas-wrap"><canvas id="chart-wins"></canvas></div>
+        </div>
+        <div class="chart-card chart-card-wide">
+          <div class="chart-card-head">
+            <h3>Score differential per game</h3>
+            <span class="chart-sub">Positive = you won</span>
+          </div>
+          <div class="chart-canvas-wrap"><canvas id="chart-diff"></canvas></div>
+        </div>
+      </div>
+
+      <!-- Per-location breakdown -->
+      <section class="loc-section" id="loc-section" hidden>
+        <header class="loc-section-head">
+          <h2 class="section-title">Round-by-round breakdown</h2>
+          <span class="loc-section-sub" id="loc-section-sub"></span>
+        </header>
+        <div class="loc-callouts" id="loc-callouts"></div>
+        <div class="charts-grid">
+          <div class="chart-card">
+            <div class="chart-card-head">
+              <h3>Average per round</h3>
+              <span class="chart-sub">Raw 0–100 score, you vs rival</span>
+            </div>
+            <div class="chart-canvas-wrap is-tall"><canvas id="chart-radar"></canvas></div>
+          </div>
+          <div class="chart-card">
+            <div class="chart-card-head">
+              <h3>Win rate per round</h3>
+              <span class="chart-sub">% of games you scored higher at each round</span>
+            </div>
+            <div class="chart-canvas-wrap is-tall"><canvas id="chart-loc-winrate"></canvas></div>
+          </div>
+          <div class="chart-card chart-card-wide">
+            <div class="chart-card-head">
+              <h3>Round-by-round heatmap</h3>
+              <span class="chart-sub">Last 10 games · color = your raw 0–100</span>
+            </div>
+            <div class="loc-heatmap" id="loc-heatmap"></div>
+          </div>
+        </div>
+        <div class="loc-card-grid" id="loc-card-grid"></div>
+      </section>
+
+      <!-- Continent breakdown (only games with synced geo data contribute) -->
+      <section class="continent-section" id="continent-section" hidden>
+        <header class="loc-section-head">
+          <h2 class="section-title">Continent breakdown</h2>
+          <span class="loc-section-sub" id="continent-section-sub"></span>
+        </header>
+        <div class="continent-grid" id="continent-grid"></div>
+      </section>
+
+      <div class="rival-detail-extra">
+        <div class="callouts" id="rival-callouts"></div>
+      </div>
+
+      <div class="recent-games">
+        <h3 class="section-title">Recent games</h3>
+        <div class="games-table-wrap">
+          <table class="games-table" id="rival-games-table">
+            <thead>
+              <tr>
+                <th>Date</th>
+                <th>You</th>
+                <th>Them</th>
+                <th>Margin</th>
+                <th>Rounds</th>
+                <th>Result</th>
+                <th>Note</th>
+                <th></th>
+              </tr>
+            </thead>
+            <tbody></tbody>
+          </table>
+        </div>
+        <nav class="pagination" id="rival-games-pagination" aria-label="Rival games pagination" hidden>
+          <div class="pagination-meta" id="rival-games-pagination-meta"></div>
+          <div class="pagination-controls">
+            <label class="pagination-pagesize">
+              <span>Per page</span>
+              <select id="rival-games-page-size">
+                <option value="10">10</option>
+                <option value="25" selected>25</option>
+                <option value="50">50</option>
+                <option value="100">100</option>
+                <option value="0">All</option>
+              </select>
+            </label>
+            <div class="pagination-pager">
+              <button type="button" class="pagination-btn" id="rival-games-prev" aria-label="Previous page">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><polyline points="15 18 9 12 15 6"/></svg>
+              </button>
+              <span class="pagination-current" id="rival-games-pagination-current"></span>
+              <button type="button" class="pagination-btn" id="rival-games-next" aria-label="Next page">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><polyline points="9 18 15 12 9 6"/></svg>
+              </button>
+            </div>
+          </div>
+        </nav>
+      </div>
+    </section>
+
+    <!-- LEADERBOARD VIEW -->
+    <section class="view view-leaderboard" data-view-panel="leaderboard" hidden>
+      <h2 class="section-title">Leaderboard — your win % against each rival</h2>
+      <div class="leaderboard-wrap">
+        <table class="leaderboard-table" id="leaderboard-table">
+          <thead>
+            <tr>
+              <th>#</th>
+              <th>Rival</th>
+              <th>Games</th>
+              <th>W</th>
+              <th>L</th>
+              <th>T</th>
+              <th>Win %</th>
+              <th>Avg Δ</th>
+              <th>Streak</th>
+            </tr>
+          </thead>
+          <tbody></tbody>
+        </table>
+      </div>
+      <p class="empty-state" id="leaderboard-empty" hidden>
+        Nothing on the board yet — log a game to populate.
+      </p>
+    </section>
+
+    <!-- HISTORY VIEW (all games, all rivals) -->
+    <section class="view view-history" data-view-panel="history" hidden>
+      <div class="history-controls">
+        <h2 class="section-title">Full game history</h2>
+        <div class="history-filters">
+          <select id="history-rival-filter">
+            <option value="all">All rivals</option>
+          </select>
+          <select id="history-result-filter">
+            <option value="all">All results</option>
+            <option value="win">Wins</option>
+            <option value="loss">Losses</option>
+            <option value="tie">Ties</option>
+          </select>
+        </div>
+      </div>
+      <div class="games-table-wrap">
+        <table class="games-table" id="history-table">
+          <thead>
+            <tr>
+              <th>Date</th>
+              <th>Rival</th>
+              <th>You</th>
+              <th>Them</th>
+              <th>Δ</th>
+              <th>Rounds</th>
+              <th>Result</th>
+              <th>Note</th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody></tbody>
+        </table>
+      </div>
+      <nav class="pagination" id="history-pagination" aria-label="History pagination" hidden>
+        <div class="pagination-meta" id="history-pagination-meta"></div>
+        <div class="pagination-controls">
+          <label class="pagination-pagesize">
+            <span>Per page</span>
+            <select id="history-page-size">
+              <option value="10">10</option>
+              <option value="25" selected>25</option>
+              <option value="50">50</option>
+              <option value="100">100</option>
+              <option value="0">All</option>
+            </select>
+          </label>
+          <div class="pagination-pager">
+            <button type="button" class="pagination-btn" id="history-prev" aria-label="Previous page">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><polyline points="15 18 9 12 15 6"/></svg>
+            </button>
+            <span class="pagination-current" id="history-pagination-current"></span>
+            <button type="button" class="pagination-btn" id="history-next" aria-label="Next page">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><polyline points="9 18 15 12 9 6"/></svg>
+            </button>
+          </div>
+        </div>
+      </nav>
+      <p class="empty-state" id="history-empty" hidden>No games yet.</p>
+    </section>
+
+    <!-- Settings strip (compact) -->
+    <section class="settings-strip" aria-label="Settings">
+      <div class="settings-field" role="group" aria-label="Your name">
+        <svg class="settings-field-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <circle cx="12" cy="8" r="3.6"/>
+          <path d="M4.5 20c1.2-3.5 4.2-5.5 7.5-5.5s6.3 2 7.5 5.5"/>
+        </svg>
+        <input type="text" id="my-name" maxlength="24" placeholder="Your name" aria-label="Your name">
+      </div>
+
+      <span class="settings-divider" aria-hidden="true"></span>
+
+      <div class="settings-actions" role="group" aria-label="Data">
+        <button type="button" class="settings-btn" id="export-btn" title="Download a JSON backup">
+          <svg class="settings-btn-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <path d="M12 4v11"/><path d="M7 10l5 5 5-5"/><path d="M5 19h14"/>
+          </svg>
+          <span>Export</span>
+        </button>
+        <button type="button" class="settings-btn" id="import-btn" title="Import a JSON backup">
+          <svg class="settings-btn-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <path d="M12 15V4"/><path d="M7 9l5-5 5 5"/><path d="M5 19h14"/>
+          </svg>
+          <span>Import</span>
+        </button>
+        <input type="file" id="import-file" accept="application/json" hidden>
+        <button type="button" class="settings-btn" id="wa-import-btn" title="Import paired games from a WhatsApp chat export (.txt)">
+          <svg class="settings-btn-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <path d="M4 19l1.4-3.6A8 8 0 1 1 8.5 19L4 19z"/>
+          </svg>
+          <span>WhatsApp</span>
+        </button>
+        <input type="file" id="wa-import-file" accept=".txt,text/plain" hidden>
+      </div>
+
+      <button type="button" class="settings-btn settings-btn-danger" id="clear-games-btn" title="Delete every logged game. Rivals and settings are kept.">
+        <svg class="settings-btn-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <path d="M4 7h16"/><path d="M9 7V5a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/><path d="M6 7l1 12a2 2 0 0 0 2 2h6a2 2 0 0 0 2-2l1-12"/><path d="M10 11v6"/><path d="M14 11v6"/>
+        </svg>
+        <span>Clear games</span>
+      </button>
+    </section>
+  </main>
+
+  <!-- Add/Edit rival modal -->
+  <div class="modal" id="rival-modal" role="dialog" aria-modal="true" aria-labelledby="rival-modal-title" hidden>
+    <div class="modal-backdrop" data-close="modal"></div>
+    <article class="modal-panel modal-panel-sm">
+      <button type="button" class="modal-close" data-close="modal" aria-label="Close">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.85" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M6 6l12 12"/><path d="M18 6L6 18"/></svg>
+      </button>
+      <h2 id="rival-modal-title">Add rival</h2>
+      <label class="modal-field">
+        <span>Name</span>
+        <input type="text" id="rival-name" maxlength="32" placeholder="Friend's name">
+      </label>
+      <label class="modal-field">
+        <span>Accent color</span>
+        <div class="color-swatches" id="color-swatches"></div>
+      </label>
+      <label class="modal-field">
+        <span>Icon</span>
+        <div class="icon-swatches" id="icon-swatches"></div>
+      </label>
+      <label class="modal-field">
+        <span>MapTap username (optional)</span>
+        <input type="text" id="rival-maptap-username" maxlength="32" placeholder="e.g. susmabit" autocomplete="off" spellcheck="false">
+        <span class="modal-field-hint">From their profile URL: <code>maptap.gg/u/<b>username</b></code>. Used to sync games automatically.</span>
+      </label>
+      <div class="modal-actions">
+        <button type="button" class="btn btn-ghost" data-close="modal">Cancel</button>
+        <button type="button" class="btn btn-danger" id="rival-delete-btn" hidden>Delete</button>
+        <button type="button" class="btn btn-primary" id="rival-save-btn">Save</button>
+      </div>
+    </article>
+  </div>
+
+  <!-- WhatsApp import modal -->
+  <div class="modal" id="wa-modal" role="dialog" aria-modal="true" aria-labelledby="wa-modal-title" hidden>
+    <div class="modal-backdrop" data-close="modal"></div>
+    <article class="modal-panel modal-panel-wa">
+      <button type="button" class="modal-close" data-close="modal" aria-label="Close">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.85" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M6 6l12 12"/><path d="M18 6L6 18"/></svg>
+      </button>
+      <h2 id="wa-modal-title">Import WhatsApp chat</h2>
+      <p class="wa-overview" id="wa-overview"></p>
+
+      <h3 class="wa-step-title">1 · Map senders</h3>
+      <p class="wa-hint">Tell me who's who. Senders left as <em>Skip</em> are ignored. Multiple senders can map to the same rival (e.g. an old name + a phone-number version).</p>
+      <div class="wa-sender-list" id="wa-sender-list"></div>
+
+      <h3 class="wa-step-title">2 · Preview</h3>
+      <div class="wa-preview" id="wa-preview"></div>
+
+      <div class="modal-actions">
+        <button type="button" class="btn btn-ghost" data-close="modal">Cancel</button>
+        <button type="button" class="btn btn-primary" id="wa-commit-btn" disabled>Import 0 games</button>
+      </div>
+    </article>
+  </div>
+
+  <div data-include="footer"></div>
+
+  <!-- Site JS deps (same set the other apps load before main.js).
+       breakpoints.min.js exposes a global `breakpoints()` that main.js
+       calls at file-scope; without it main.js throws `ReferenceError:
+       breakpoints is not defined` and the auth-UI / partial-include
+       wiring never runs. -->
+  <script src="../../assets/js/passive-events-fix.js"></script>
+  <script src="../../assets/js/jquery.min.js"></script>
+  <script src="../../assets/js/browser.min.js"></script>
+  <script src="../../assets/js/breakpoints.min.js"></script>
+  <script src="../../assets/js/util.js"></script>
+
+  <!-- Firebase storage sync (matches other apps) -->
+  <script type="module" src="../../firebase-config.js"></script>
+  <script type="module" src="../../sync-system/firebase-persistence.js"></script>
+  <script type="module" src="../../sync-system/storage-sync-robust.js"></script>
+  <script type="module" src="../../sync-system/app-sync-init.js"></script>
+  <script src="../../sync-system/sync-debug.js"></script>
+  <script src="../../sync-system/sync-loading-modal.js"></script>
+  <script src="../../sync-system/sync-modal-integration.js"></script>
+
+  <!-- Site main JS — injects header/footer partials via $.fn.load and, in
+       the same callback, mounts the AuthUI (sign-in / sign-out) into
+       #auth-container. We deliberately do NOT add a second include path
+       here: a parallel AJAX include would race main.js and overwrite the
+       just-injected auth UI. -->
+  <script src="../../assets/js/main.js"></script>
+
+  <!-- Charts -->
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+
+  <!-- App -->
+  <script src="js/app.js" defer></script>
+</body>
+</html>
