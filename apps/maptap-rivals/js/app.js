@@ -1,0 +1,3159 @@
+/* MapTap Rivals — daily MapTap.gg head-to-head tracker.
+ *
+ * Data model (all JSON-stringified into localStorage so the storage-sync
+ * module mirrors it to Firestore the same way the other apps do):
+ *
+ *   maptapRivalsRivals  : Rival[] = { id, name, color, icon, createdAt }
+ *   maptapRivalsGames   : Game[]  = {
+ *     id, rivalId, date (YYYY-MM-DD), note, createdAt,
+ *     myScores:    number[5]  // raw 0-100 per location (new games)
+ *     theirScores: number[5]  // raw 0-100 per location (new games)
+ *     myScore, theirScore     // weighted totals; for old games these are
+ *                             // the only scores present (myScores absent).
+ *   }
+ *   maptapRivalsMe      : string (display name for "you")
+ *   maptapRivalsSettings: { lastRivalId?: string }
+ *   maptapRivalsSelectedRivalId : string (currently focused rival)
+ *
+ * Scoring: each location is 0-100 raw. Round weights are [1, 1, 2, 3, 3]
+ * so the daily total is 0-1000. Helpers compute totals on demand and treat
+ * older games (no myScores array) as totals-only — they're included in
+ * total/streak metrics but skipped from per-location breakdowns.
+ */
+
+(function () {
+  'use strict';
+
+  // ---------- storage helpers ----------
+  const KEY = {
+    RIVALS: 'maptapRivalsRivals',
+    GAMES: 'maptapRivalsGames',
+    ME: 'maptapRivalsMe',
+    MY_MAPTAP: 'maptapRivalsMyMapTap',
+    MY_PROFILE: 'maptapRivalsMyProfile',
+    SETTINGS: 'maptapRivalsSettings',
+    SELECTED: 'maptapRivalsSelectedRivalId',
+  };
+
+  // Public MapTap Cloud Function — returns gameHistory keyed by YYYY-MM-DD.
+  // CORS allows https://shevato.com so we can call this directly from the
+  // browser without a proxy.
+  const MAPTAP_PROFILE_URL =
+    'https://us-central1-jjexperiment-12af6.cloudfunctions.net/getPublicProfile';
+
+  const COLORS = [
+    '#6366f1', '#22d3ee', '#4ade80', '#f97316', '#f43f5e',
+    '#a855f7', '#facc15', '#10b981', '#ec4899', '#0ea5e9',
+  ];
+  const ICONS = ['🦊','🐺','🐻','🦁','🐯','🐲','🦅','🐙','🦈','🚀','⚡','🔥','🎯','🗺️','💀'];
+
+  // Inline stroke SVGs for compact icon buttons. Single visual weight,
+  // currentColor for theming, no platform-specific emoji rendering quirks.
+  const ICON_SYNC =
+    '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false">' +
+    '<path d="M3 12a9 9 0 0 1 15-6.7L21 8"/>' +
+    '<path d="M21 3v5h-5"/>' +
+    '<path d="M21 12a9 9 0 0 1-15 6.7L3 16"/>' +
+    '<path d="M3 21v-5h5"/>' +
+    '</svg>';
+  const ICON_EDIT =
+    '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false">' +
+    '<path d="M12 20h9"/>' +
+    '<path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/>' +
+    '</svg>';
+  const ICON_TRASH =
+    '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false">' +
+    '<path d="M4 7h16"/>' +
+    '<path d="M9 7V5a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/>' +
+    '<path d="M6 7l1 12a2 2 0 0 0 2 2h6a2 2 0 0 0 2-2l1-12"/>' +
+    '<path d="M10 11v6"/>' +
+    '<path d="M14 11v6"/>' +
+    '</svg>';
+  const ICON_SYNC_BADGE =
+    '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false">' +
+    '<path d="M3 12a9 9 0 0 1 15-6.7L21 8"/>' +
+    '<path d="M21 3v5h-5"/>' +
+    '<path d="M21 12a9 9 0 0 1-15 6.7L3 16"/>' +
+    '<path d="M3 21v-5h5"/>' +
+    '</svg>';
+
+  // Render the Note cell. "synced from MapTap" — which would otherwise repeat
+  // on most rows — collapses to a tiny sync icon with a tooltip. Manual
+  // notes render as quiet muted text.
+  function noteCell(g) {
+    if (g.note === 'synced from MapTap') {
+      return el('td', { class: 'row-note-cell' }, [
+        el('span', {
+          class: 'row-note-pill',
+          title: 'Synced from MapTap',
+          'aria-label': 'Synced from MapTap',
+          html: ICON_SYNC_BADGE,
+        }),
+      ]);
+    }
+    if (g.note) return el('td', { class: 'row-note-cell row-note' }, g.note);
+    return el('td', { class: 'row-note-cell' }, '');
+  }
+
+  function deleteCell(g) {
+    return el('td', { class: 'row-action-cell' }, [
+      el('button', {
+        type: 'button',
+        class: 'icon-btn icon-btn-danger',
+        title: 'Delete game',
+        'aria-label': 'Delete game',
+        html: ICON_TRASH,
+        onclick: () => deleteGame(g.id),
+      }),
+    ]);
+  }
+
+  // MapTap scoring: 5 locations × 0-100 raw, multipliers [1,1,2,3,3] → 0-1000 daily total.
+  const N_LOCS = 5;
+  const WEIGHTS = [1, 1, 2, 3, 3];
+  const MAX_RAW = 100;
+  const LOC_LABELS = ['R1', 'R2', 'R3', 'R4', 'R5'];
+  const LOC_NAMES = ['Round 1', 'Round 2', 'Round 3', 'Round 4', 'Round 5'];
+
+  function weightedTotal(scores) {
+    if (!Array.isArray(scores) || scores.length !== N_LOCS) return 0;
+    let t = 0;
+    for (let i = 0; i < N_LOCS; i++) t += (scores[i] || 0) * WEIGHTS[i];
+    return t;
+  }
+  function hasLocs(g) { return Array.isArray(g.myScores) && Array.isArray(g.theirScores); }
+
+  function arrEq(a, b) {
+    if (a === b) return true;
+    if (!Array.isArray(a) || !Array.isArray(b) || a.length !== b.length) return false;
+    for (let i = 0; i < a.length; i++) if (a[i] !== b[i]) return false;
+    return true;
+  }
+  function getMyTotal(g) { return hasLocs(g) ? weightedTotal(g.myScores) : (g.myScore || 0); }
+  function getTheirTotal(g) { return hasLocs(g) ? weightedTotal(g.theirScores) : (g.theirScore || 0); }
+
+  // ---------- paste parser ----------
+  // MapTap shareable format looks like:
+  //
+  //   May 10
+  //   95🏅 89✨ 91🎉 9🤢 64🙃
+  //   Final score: 585
+  //
+  // We're tolerant: any line with exactly 5 numbers each in 0-100 is taken
+  // as the round line; "Final score: N" anywhere validates the total; a
+  // "Month Day" line yields the date. Order doesn't matter.
+  const MONTHS = ['jan', 'feb', 'mar', 'apr', 'may', 'jun', 'jul', 'aug', 'sep', 'oct', 'nov', 'dec'];
+
+  function parseMapTapScore(text) {
+    if (!text || !text.trim()) return null;
+    const lines = text.split(/\r?\n/);
+    let rounds = null;
+    let finalScore = null;
+    let date = null;
+
+    for (const rawLine of lines) {
+      const line = rawLine.trim();
+      if (!line) continue;
+
+      // "Final score: N"  (also accepts "final: N", "total: N")
+      const finalMatch = line.match(/(?:final\s*score|final|total)\s*[:=]?\s*(\d{1,4})/i);
+      if (finalMatch) { finalScore = Number(finalMatch[1]); continue; }
+
+      // "Month Day" or "Day Month"
+      if (!date) {
+        const md = line.match(/\b(jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|jun(?:e)?|jul(?:y)?|aug(?:ust)?|sept?(?:ember)?|oct(?:ober)?|nov(?:ember)?|dec(?:ember)?)\b\s*\.?\s*(\d{1,2})/i);
+        const dm = !md && line.match(/\b(\d{1,2})\s+(jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|jun(?:e)?|jul(?:y)?|aug(?:ust)?|sept?(?:ember)?|oct(?:ober)?|nov(?:ember)?|dec(?:ember)?)\b/i);
+        const monthName = md ? md[1] : dm ? dm[2] : null;
+        const dayStr = md ? md[2] : dm ? dm[1] : null;
+        if (monthName && dayStr) {
+          const monthIdx = MONTHS.findIndex(m => monthName.toLowerCase().startsWith(m));
+          const day = Number(dayStr);
+          if (monthIdx >= 0 && day >= 1 && day <= 31) {
+            const year = new Date().getFullYear();
+            const d = new Date(year, monthIdx, day);
+            const tz = d.getTimezoneOffset();
+            date = new Date(d.getTime() - tz * 60000).toISOString().slice(0, 10);
+          }
+        }
+      }
+
+      // Round line: exactly 5 numbers, each 0–100
+      if (!rounds) {
+        const nums = (line.match(/-?\d+/g) || []).map(Number);
+        if (nums.length === 5 && nums.every(n => n >= 0 && n <= MAX_RAW)) {
+          rounds = nums;
+        }
+      }
+    }
+
+    if (!rounds) return null;
+    const computedTotal = weightedTotal(rounds);
+    const totalMismatch = finalScore != null && Math.abs(finalScore - computedTotal) >= 1;
+    return { rounds, finalScore, computedTotal, date, totalMismatch };
+  }
+
+  function uid() {
+    return Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
+  }
+
+  function load(key, fallback) {
+    try {
+      const raw = localStorage.getItem(key);
+      if (raw == null) return fallback;
+      return JSON.parse(raw);
+    } catch (_) {
+      return fallback;
+    }
+  }
+
+  function save(key, value) {
+    if (value == null) localStorage.removeItem(key);
+    else localStorage.setItem(key, JSON.stringify(value));
+  }
+
+  function loadString(key, fallback) {
+    const raw = localStorage.getItem(key);
+    if (raw == null) return fallback;
+    try {
+      const parsed = JSON.parse(raw);
+      return typeof parsed === 'string' ? parsed : raw;
+    } catch (_) {
+      return raw;
+    }
+  }
+
+  function saveString(key, value) {
+    if (!value) localStorage.removeItem(key);
+    else localStorage.setItem(key, JSON.stringify(value));
+  }
+
+  // ---------- state ----------
+  const state = {
+    rivals: load(KEY.RIVALS, []),
+    games: load(KEY.GAMES, []),
+    me: loadString(KEY.ME, 'Me'),
+    myMapTap: loadString(KEY.MY_MAPTAP, ''),
+    myProfile: load(KEY.MY_PROFILE, null),
+    profileEditMode: false,        // true → username input is shown
+    profileVerifying: false,
+    profileError: null,
+    syncAllInFlight: false,
+    settings: load(KEY.SETTINGS, {}),
+    selectedRivalId: loadString(KEY.SELECTED, null),
+    view: 'dashboard',
+    historyFilters: { rival: 'all', result: 'all' },
+    historyPage: 1,
+    historyPageSize: 25,
+    rivalGamesPage: 1,
+    rivalGamesPageSize: 25,
+    lastRenderedRivalId: null,
+    editingRivalId: null,
+    pickedColor: COLORS[0],
+    pickedIcon: ICONS[0],
+    charts: { trend: null, wins: null, diff: null, radar: null, locWinrate: null },
+    syncing: new Set(),       // rivalIds currently fetching from MapTap
+    syncStatus: new Map(),    // rivalId -> { kind: 'ok'|'flat'|'err', msg }
+  };
+
+  function persistRivals() { save(KEY.RIVALS, state.rivals); }
+  function persistGames() { save(KEY.GAMES, state.games); }
+  function persistSettings() { save(KEY.SETTINGS, state.settings); }
+  function persistMe() { saveString(KEY.ME, state.me); }
+  function persistMyMapTap() { saveString(KEY.MY_MAPTAP, state.myMapTap); }
+  function persistMyProfile() { save(KEY.MY_PROFILE, state.myProfile); }
+  function persistSelected() { saveString(KEY.SELECTED, state.selectedRivalId); }
+
+  // ---------- date utils ----------
+  function todayISO() {
+    const d = new Date();
+    const tz = d.getTimezoneOffset();
+    return new Date(d.getTime() - tz * 60000).toISOString().slice(0, 10);
+  }
+  function daysBetween(aISO, bISO) {
+    const a = new Date(aISO + 'T00:00:00');
+    const b = new Date(bISO + 'T00:00:00');
+    return Math.round((b - a) / 86400000);
+  }
+  function fmtDateShort(iso) {
+    if (!iso) return '—';
+    const d = new Date(iso + 'T00:00:00');
+    return d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+  }
+  function fmtDateLong(iso) {
+    if (!iso) return '—';
+    const d = new Date(iso + 'T00:00:00');
+    return d.toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' });
+  }
+
+  // ---------- analytics ----------
+  function gamesFor(rivalId) {
+    return state.games
+      .filter(g => g.rivalId === rivalId)
+      .sort((a, b) => a.date.localeCompare(b.date) || a.createdAt - b.createdAt);
+  }
+
+  function resultOf(g) {
+    const m = getMyTotal(g);
+    const t = getTheirTotal(g);
+    if (m > t) return 'W';
+    if (m < t) return 'L';
+    return 'T';
+  }
+  function resultLoc(myRaw, theirRaw) {
+    if (myRaw > theirRaw) return 'W';
+    if (myRaw < theirRaw) return 'L';
+    return 'T';
+  }
+
+  function stdDev(values) {
+    if (values.length < 2) return 0;
+    const mean = values.reduce((a, b) => a + b, 0) / values.length;
+    const variance = values.reduce((s, v) => s + (v - mean) ** 2, 0) / values.length;
+    return Math.sqrt(variance);
+  }
+
+  function average(values) {
+    if (!values.length) return 0;
+    return values.reduce((a, b) => a + b, 0) / values.length;
+  }
+
+  function lastNDaysGames(games, n) {
+    const cutoff = new Date();
+    cutoff.setDate(cutoff.getDate() - (n - 1));
+    const cutoffISO = cutoff.toISOString().slice(0, 10);
+    return games.filter(g => g.date >= cutoffISO);
+  }
+
+  // Per-location aggregates over a set of games (only those with location data).
+  function locationStats(games, locIdx) {
+    const withLocs = games.filter(hasLocs);
+    if (!withLocs.length) return null;
+    let myWins = 0, theirWins = 0, ties = 0;
+    let myBest = -Infinity, myWorst = Infinity;
+    let theirBest = -Infinity, theirWorst = Infinity;
+    let myPerfects = 0, theirPerfects = 0;
+    let myZeros = 0, theirZeros = 0;
+    let biggestGap = 0;
+    const myRaws = [];
+    const theirRaws = [];
+    for (const g of withLocs) {
+      const m = g.myScores[locIdx] || 0;
+      const t = g.theirScores[locIdx] || 0;
+      myRaws.push(m);
+      theirRaws.push(t);
+      const r = resultLoc(m, t);
+      if (r === 'W') myWins++; else if (r === 'L') theirWins++; else ties++;
+      if (m > myBest) myBest = m;
+      if (m < myWorst) myWorst = m;
+      if (t > theirBest) theirBest = t;
+      if (t < theirWorst) theirWorst = t;
+      if (m === MAX_RAW) myPerfects++;
+      if (t === MAX_RAW) theirPerfects++;
+      if (m === 0) myZeros++;
+      if (t === 0) theirZeros++;
+      const gap = Math.abs(m - t);
+      if (gap > biggestGap) biggestGap = gap;
+    }
+    const total = withLocs.length;
+    return {
+      total,
+      locIdx,
+      label: LOC_LABELS[locIdx],
+      name: LOC_NAMES[locIdx],
+      weight: WEIGHTS[locIdx],
+      myAvg: average(myRaws),
+      theirAvg: average(theirRaws),
+      avgDiff: average(myRaws) - average(theirRaws),
+      myWins, theirWins, ties,
+      winPct: total ? myWins / total : 0,
+      myBest, myWorst,
+      theirBest, theirWorst,
+      myConsistency: stdDev(myRaws),
+      theirConsistency: stdDev(theirRaws),
+      myPerfects, theirPerfects,
+      myZeros, theirZeros,
+      biggestGap,
+      // Recent trend slope on my raw scores at this round (last 10 instances)
+      trendSlope: linearTrend(myRaws.slice(-10)),
+    };
+  }
+
+  // "Carry" / "Choke" analysis: for each game, find which location contributed
+  // the largest weighted differential (mine − theirs). Aggregate counts of how
+  // often each location was the carry (in wins) and the choke (in losses).
+  function carryChoke(games) {
+    const counts = {
+      carryInWins: Array(N_LOCS).fill(0),
+      chokeInLosses: Array(N_LOCS).fill(0),
+      decisive: Array(N_LOCS).fill(0), // largest |weighted diff| per game, any result
+    };
+    for (const g of games.filter(hasLocs)) {
+      let bestPos = -Infinity, bestPosIdx = -1;
+      let bestNeg = Infinity, bestNegIdx = -1;
+      let bestAbs = -Infinity, bestAbsIdx = -1;
+      for (let i = 0; i < N_LOCS; i++) {
+        const wd = ((g.myScores[i] || 0) - (g.theirScores[i] || 0)) * WEIGHTS[i];
+        if (wd > bestPos) { bestPos = wd; bestPosIdx = i; }
+        if (wd < bestNeg) { bestNeg = wd; bestNegIdx = i; }
+        if (Math.abs(wd) > bestAbs) { bestAbs = Math.abs(wd); bestAbsIdx = i; }
+      }
+      const r = resultOf(g);
+      if (r === 'W' && bestPosIdx >= 0) counts.carryInWins[bestPosIdx]++;
+      if (r === 'L' && bestNegIdx >= 0) counts.chokeInLosses[bestNegIdx]++;
+      if (bestAbsIdx >= 0) counts.decisive[bestAbsIdx]++;
+    }
+    return counts;
+  }
+
+  function streaks(games) {
+    let curMine = 0, curTheirs = 0, longestMine = 0, longestTheirs = 0;
+    let runMine = 0, runTheirs = 0;
+
+    for (const g of games) {
+      const r = resultOf(g);
+      if (r === 'W') {
+        runMine += 1;
+        runTheirs = 0;
+      } else if (r === 'L') {
+        runTheirs += 1;
+        runMine = 0;
+      } else {
+        runMine = 0;
+        runTheirs = 0;
+      }
+      longestMine = Math.max(longestMine, runMine);
+      longestTheirs = Math.max(longestTheirs, runTheirs);
+    }
+    curMine = runMine;
+    curTheirs = runTheirs;
+    return { curMine, curTheirs, longestMine, longestTheirs };
+  }
+
+  function linearTrend(values) {
+    // Returns slope of linear regression (positive = improving).
+    const n = values.length;
+    if (n < 2) return 0;
+    const xs = values.map((_, i) => i);
+    const meanX = (n - 1) / 2;
+    const meanY = average(values);
+    let num = 0, den = 0;
+    for (let i = 0; i < n; i++) {
+      num += (xs[i] - meanX) * (values[i] - meanY);
+      den += (xs[i] - meanX) ** 2;
+    }
+    return den === 0 ? 0 : num / den;
+  }
+
+  function projectNext(values) {
+    const n = values.length;
+    if (n === 0) return 0;
+    if (n === 1) return values[0];
+    const slope = linearTrend(values);
+    const intercept = average(values) - slope * (n - 1) / 2;
+    return Math.max(0, Math.min(1000, Math.round(slope * n + intercept)));
+  }
+
+  function rivalSummary(rival) {
+    const games = gamesFor(rival.id);
+    const total = games.length;
+    let wins = 0, losses = 0, ties = 0;
+    let myCum = 0, theirCum = 0;
+    let bestMine = -Infinity, worstMine = Infinity;
+    let bestTheirs = -Infinity, worstTheirs = Infinity;
+    let biggestWinMargin = 0, biggestLossMargin = 0;
+    let biggestWinGame = null, biggestLossGame = null;
+
+    for (const g of games) {
+      const r = resultOf(g);
+      const myT = getMyTotal(g);
+      const theirT = getTheirTotal(g);
+      if (r === 'W') wins++;
+      else if (r === 'L') losses++;
+      else ties++;
+      myCum += myT;
+      theirCum += theirT;
+      if (myT > bestMine) bestMine = myT;
+      if (myT < worstMine) worstMine = myT;
+      if (theirT > bestTheirs) bestTheirs = theirT;
+      if (theirT < worstTheirs) worstTheirs = theirT;
+      const diff = myT - theirT;
+      if (diff > biggestWinMargin) { biggestWinMargin = diff; biggestWinGame = g; }
+      if (diff < biggestLossMargin) { biggestLossMargin = diff; biggestLossGame = g; }
+    }
+
+    const last7 = lastNDaysGames(games, 7);
+    const last30 = lastNDaysGames(games, 30);
+    const recent5 = games.slice(-5);
+
+    const s = streaks(games);
+    const myTotals = games.map(getMyTotal);
+    const theirTotals = games.map(getTheirTotal);
+
+    // Per-location aggregates
+    const gamesWithLocs = games.filter(hasLocs);
+    const locStats = gamesWithLocs.length
+      ? Array.from({ length: N_LOCS }, (_, i) => locationStats(games, i))
+      : null;
+    const cc = gamesWithLocs.length ? carryChoke(games) : null;
+
+    let strongest = null, weakest = null;
+    let bestRoundWinPct = null, worstRoundWinPct = null;
+    let mostVolatile = null;
+    let mostPerfects = null;
+    let myTotalPerfects = 0, theirTotalPerfects = 0;
+    if (locStats) {
+      strongest = locStats.slice().sort((a, b) => b.myAvg - a.myAvg)[0];
+      weakest = locStats.slice().sort((a, b) => a.myAvg - b.myAvg)[0];
+      bestRoundWinPct = locStats.slice().sort((a, b) => b.winPct - a.winPct)[0];
+      worstRoundWinPct = locStats.slice().sort((a, b) => a.winPct - b.winPct)[0];
+      mostVolatile = locStats.slice().sort((a, b) => b.myConsistency - a.myConsistency)[0];
+      mostPerfects = locStats.slice().sort((a, b) => b.myPerfects - a.myPerfects)[0];
+      myTotalPerfects = locStats.reduce((a, l) => a + l.myPerfects, 0);
+      theirTotalPerfects = locStats.reduce((a, l) => a + l.theirPerfects, 0);
+    }
+
+    return {
+      rival,
+      games,
+      total,
+      wins, losses, ties,
+      winPct: total ? wins / total : 0,
+      myAvgAll: average(myTotals),
+      theirAvgAll: average(theirTotals),
+      myAvg7: average(last7.map(getMyTotal)),
+      theirAvg7: average(last7.map(getTheirTotal)),
+      myAvg30: average(last30.map(getMyTotal)),
+      theirAvg30: average(last30.map(getTheirTotal)),
+      cumDiff: myCum - theirCum,
+      bestMine: total ? bestMine : 0,
+      worstMine: total ? worstMine : 0,
+      bestTheirs: total ? bestTheirs : 0,
+      worstTheirs: total ? worstTheirs : 0,
+      biggestWinMargin,
+      biggestLossMargin: Math.abs(biggestLossMargin),
+      biggestWinGame,
+      biggestLossGame,
+      consistencyMine: stdDev(myTotals),
+      consistencyTheirs: stdDev(theirTotals),
+      streak: s,
+      hot: s.curMine >= 3,
+      onColdStreak: s.curTheirs >= 3,
+      recent5,
+      recentForm: recent5.map(resultOf),
+      trendSlope: linearTrend(myTotals.slice(-10)),
+      projection: projectNext(myTotals.slice(-10)),
+      // Location breakdown
+      gamesWithLocsCount: gamesWithLocs.length,
+      locStats,
+      strongest, weakest,
+      bestRoundWinPct, worstRoundWinPct,
+      mostVolatile, mostPerfects,
+      myTotalPerfects, theirTotalPerfects,
+      carryChoke: cc,
+    };
+  }
+
+  // ---------- DOM helpers ----------
+  const $ = (sel, root = document) => root.querySelector(sel);
+  const $$ = (sel, root = document) => Array.from(root.querySelectorAll(sel));
+
+  function el(tag, attrs = {}, children = []) {
+    const node = document.createElement(tag);
+    for (const [k, v] of Object.entries(attrs)) {
+      if (k === 'class') node.className = v;
+      else if (k === 'style') node.style.cssText = v;
+      else if (k === 'html') node.innerHTML = v;
+      else if (k.startsWith('on') && typeof v === 'function') node.addEventListener(k.slice(2), v);
+      else if (v !== false && v != null) node.setAttribute(k, v);
+    }
+    for (const c of [].concat(children)) {
+      if (c == null || c === false) continue;
+      node.appendChild(typeof c === 'string' ? document.createTextNode(c) : c);
+    }
+    return node;
+  }
+
+  // ---------- view switching ----------
+  function setView(view) {
+    state.view = view;
+    $$('.view-tab').forEach(tab => {
+      const active = tab.dataset.view === view;
+      tab.classList.toggle('is-active', active);
+      tab.setAttribute('aria-selected', active ? 'true' : 'false');
+    });
+    $$('.view').forEach(panel => {
+      const active = panel.dataset.viewPanel === view;
+      panel.classList.toggle('is-active', active);
+      panel.hidden = !active;
+    });
+
+    if (view === 'dashboard') renderDashboard();
+    else if (view === 'rival') renderRival();
+    else if (view === 'leaderboard') renderLeaderboard();
+    else if (view === 'history') renderHistory();
+  }
+
+  // ---------- rival modal ----------
+  function openRivalModal(rivalId) {
+    state.editingRivalId = rivalId || null;
+    const modal = $('#rival-modal');
+    const title = $('#rival-modal-title');
+    const nameInput = $('#rival-name');
+    const deleteBtn = $('#rival-delete-btn');
+
+    let rival = null;
+    if (rivalId) rival = state.rivals.find(r => r.id === rivalId);
+
+    title.textContent = rival ? 'Edit rival' : 'Add rival';
+    nameInput.value = rival ? rival.name : '';
+    $('#rival-maptap-username').value = rival ? (rival.maptapUsername || '') : '';
+    state.pickedColor = rival ? rival.color : COLORS[state.rivals.length % COLORS.length];
+    state.pickedIcon = rival ? rival.icon : ICONS[state.rivals.length % ICONS.length];
+    deleteBtn.hidden = !rival;
+
+    renderColorSwatches();
+    renderIconSwatches();
+
+    modal.hidden = false;
+    setTimeout(() => nameInput.focus(), 30);
+  }
+
+  function closeRivalModal() {
+    $('#rival-modal').hidden = true;
+    state.editingRivalId = null;
+  }
+
+  function renderColorSwatches() {
+    const wrap = $('#color-swatches');
+    wrap.innerHTML = '';
+    COLORS.forEach(c => {
+      const sw = el('button', {
+        type: 'button',
+        class: 'color-swatch' + (c === state.pickedColor ? ' is-selected' : ''),
+        style: `background:${c}`,
+        'aria-label': `Color ${c}`,
+        onclick: () => { state.pickedColor = c; renderColorSwatches(); },
+      });
+      wrap.appendChild(sw);
+    });
+  }
+
+  function renderIconSwatches() {
+    const wrap = $('#icon-swatches');
+    wrap.innerHTML = '';
+    ICONS.forEach(ic => {
+      const sw = el('button', {
+        type: 'button',
+        class: 'icon-swatch' + (ic === state.pickedIcon ? ' is-selected' : ''),
+        onclick: () => { state.pickedIcon = ic; renderIconSwatches(); },
+      }, ic);
+      wrap.appendChild(sw);
+    });
+  }
+
+  function saveRivalFromModal() {
+    const name = $('#rival-name').value.trim();
+    if (!name) {
+      $('#rival-name').focus();
+      return;
+    }
+    const maptapUsername = normalizeMapTapUsername($('#rival-maptap-username').value);
+    if (state.editingRivalId) {
+      const r = state.rivals.find(x => x.id === state.editingRivalId);
+      if (r) {
+        r.name = name;
+        r.color = state.pickedColor;
+        r.icon = state.pickedIcon;
+        r.maptapUsername = maptapUsername;
+      }
+    } else {
+      state.rivals.push({
+        id: uid(),
+        name,
+        color: state.pickedColor,
+        icon: state.pickedIcon,
+        maptapUsername,
+        createdAt: Date.now(),
+      });
+    }
+    persistRivals();
+    closeRivalModal();
+    refreshRivalSelects();
+    if (state.view === 'dashboard') renderDashboard();
+    else if (state.view === 'rival') renderRival();
+    else if (state.view === 'leaderboard') renderLeaderboard();
+  }
+
+  function deleteRivalFromModal() {
+    if (!state.editingRivalId) return;
+    const r = state.rivals.find(x => x.id === state.editingRivalId);
+    if (!r) return;
+    const gameCount = state.games.filter(g => g.rivalId === r.id).length;
+    const msg = gameCount
+      ? `Delete ${r.name} and all ${gameCount} game${gameCount === 1 ? '' : 's'}? This cannot be undone.`
+      : `Delete ${r.name}?`;
+    if (!confirm(msg)) return;
+    state.rivals = state.rivals.filter(x => x.id !== r.id);
+    state.games = state.games.filter(g => g.rivalId !== r.id);
+    if (state.selectedRivalId === r.id) {
+      state.selectedRivalId = null;
+      persistSelected();
+    }
+    persistRivals();
+    persistGames();
+    closeRivalModal();
+    refreshRivalSelects();
+    if (state.view === 'rival') setView('dashboard');
+    else if (state.view === 'dashboard') renderDashboard();
+    else if (state.view === 'leaderboard') renderLeaderboard();
+    else if (state.view === 'history') renderHistory();
+  }
+
+  // Refresh dependent dropdowns/selectors when the rival list changes.
+  function refreshRivalSelects() {
+    const opts = state.rivals
+      .slice()
+      .sort((a, b) => a.name.localeCompare(b.name))
+      .map(r => `<option value="${r.id}">${escapeHtml(r.name)}</option>`)
+      .join('');
+
+    const hf = $('#history-rival-filter');
+    if (hf) {
+      const prevH = hf.value;
+      hf.innerHTML = '<option value="all">All rivals</option>' + opts;
+      hf.value = state.rivals.some(r => r.id === prevH) ? prevH : 'all';
+    }
+  }
+
+  function deleteGame(id) {
+    const g = state.games.find(x => x.id === id);
+    if (!g) return;
+    if (!confirm(`Delete this game (${fmtDateShort(g.date)}, ${getMyTotal(g)} vs ${getTheirTotal(g)})?`)) return;
+    state.games = state.games.filter(x => x.id !== id);
+    persistGames();
+    if (state.view === 'dashboard') renderDashboard();
+    else if (state.view === 'rival') renderRival();
+    else if (state.view === 'leaderboard') renderLeaderboard();
+    else if (state.view === 'history') renderHistory();
+  }
+
+  // ---------- dashboard view ----------
+  function renderDashboard() {
+    renderProfileCard();
+    renderPasteSection();
+    renderDashSummary();
+    renderRivalGrid();
+    $('#dash-empty').hidden = state.rivals.length > 0;
+  }
+
+  // ---------- paste-mode entry on dashboard ----------
+  // State holding raw text + parsed result for me and per rival. Survives
+  // dashboard re-renders so an in-progress paste isn't lost when, e.g., a
+  // game gets saved.
+  const pasteState = {
+    meText: '',
+    me: null,                       // ParseResult | null
+    byRivalIdText: new Map(),       // rivalId -> raw text
+    byRivalId: new Map(),           // rivalId -> ParseResult | null
+  };
+
+  function renderPasteSection() {
+    const wrap = $('#paste-rivals');
+    wrap.innerHTML = '';
+    $('#paste-empty').hidden = state.rivals.length > 0;
+
+    // Drop entries for rivals that no longer exist (after a delete)
+    const liveIds = new Set(state.rivals.map(r => r.id));
+    for (const id of Array.from(pasteState.byRivalId.keys())) {
+      if (!liveIds.has(id)) {
+        pasteState.byRivalId.delete(id);
+        pasteState.byRivalIdText.delete(id);
+      }
+    }
+
+    if (!state.rivals.length) return;
+
+    state.rivals
+      .slice()
+      .sort((a, b) => a.name.localeCompare(b.name))
+      .forEach(r => wrap.appendChild(makePasteRivalRow(r)));
+
+    // Restore "mine" textarea from preserved state
+    const mineInput = $('#paste-mine-input');
+    if (mineInput && pasteState.meText && mineInput.value !== pasteState.meText) {
+      mineInput.value = pasteState.meText;
+    }
+    refreshPasteMineUI();
+    refreshAllPasteResults();
+  }
+
+  function makePasteRivalRow(rival) {
+    const row = el('article', {
+      class: 'paste-rival-row',
+      style: `--rival-color:${rival.color}`,
+      'data-rival-id': rival.id,
+    });
+
+    const info = el('div', { class: 'paste-rival-info' }, [
+      el('span', { class: 'pri-icon tinted' }, rival.icon),
+      el('div', {}, [
+        el('div', { class: 'pri-name' }, rival.name),
+        el('div', { class: 'pri-meta', 'data-pri-meta': '' }, ''),
+      ]),
+    ]);
+    row.appendChild(info);
+
+    const textarea = el('textarea', {
+      class: 'paste-rival-textarea',
+      rows: '2',
+      spellcheck: 'false',
+      autocomplete: 'off',
+      placeholder: `Paste ${rival.name}'s MapTap result…`,
+      'aria-label': `Paste ${rival.name}'s score`,
+    });
+    // Restore preserved text after a re-render
+    const preservedText = pasteState.byRivalIdText.get(rival.id);
+    if (preservedText) textarea.value = preservedText;
+    textarea.addEventListener('input', () => {
+      pasteState.byRivalIdText.set(rival.id, textarea.value);
+      pasteState.byRivalId.set(rival.id, parseMapTapScore(textarea.value));
+      refreshPasteRivalRow(rival.id);
+    });
+    row.appendChild(textarea);
+
+    const side = el('div', { class: 'paste-rival-side' });
+    const result = el('div', { class: 'paste-rival-result', 'data-result': '' }, '—');
+    side.appendChild(result);
+    row.appendChild(side);
+
+    // Round-by-round chips appear when both sides parse
+    row.appendChild(el('div', { class: 'paste-rival-rounds', 'data-rounds-strip': '', hidden: 'hidden' }));
+
+    return row;
+  }
+
+  function refreshAllPasteResults() {
+    state.rivals.forEach(r => refreshPasteRivalRow(r.id));
+    refreshPasteSaveBar();
+  }
+
+  // Update the single bottom Save-day button + summary line based on what's
+  // currently parsed. Disabled if my score is missing or no rival is parsed.
+  function refreshPasteSaveBar() {
+    const bar = $('#paste-actions');
+    const summary = $('#paste-summary');
+    const btn = $('#paste-save-all');
+    if (!bar || !summary || !btn) return;
+
+    bar.hidden = state.rivals.length === 0;
+    summary.classList.remove('is-ready', 'is-success', 'is-error');
+
+    const mine = pasteState.me;
+    const parsedRivals = state.rivals.filter(r => pasteState.byRivalId.get(r.id));
+    const typedNotParsed = state.rivals.filter(r => {
+      const text = pasteState.byRivalIdText.get(r.id);
+      return text && text.trim() && !pasteState.byRivalId.get(r.id);
+    });
+
+    if (!mine) {
+      btn.disabled = true;
+      btn.innerHTML = "Save day's games";
+      summary.textContent = parsedRivals.length
+        ? `Paste your score above to log ${parsedRivals.length} game${parsedRivals.length === 1 ? '' : 's'}.`
+        : "Paste your daily score, then your rivals'.";
+      return;
+    }
+
+    if (!parsedRivals.length) {
+      btn.disabled = true;
+      btn.innerHTML = "Save day's games";
+      summary.textContent = typedNotParsed.length
+        ? `Couldn't parse ${typedNotParsed.length} rival paste${typedNotParsed.length === 1 ? '' : 's'}.`
+        : 'Paste at least one rival’s score to save.';
+      return;
+    }
+
+    btn.disabled = false;
+    btn.innerHTML = `Save day's games <span class="pill-count">${parsedRivals.length}</span>`;
+    summary.classList.add('is-ready');
+
+    let w = 0, l = 0, t = 0;
+    for (const r of parsedRivals) {
+      const theirs = pasteState.byRivalId.get(r.id);
+      const diff = mine.computedTotal - theirs.computedTotal;
+      if (diff > 0) w++; else if (diff < 0) l++; else t++;
+    }
+    const parts = [];
+    parts.push(`Will save ${parsedRivals.length} game${parsedRivals.length === 1 ? '' : 's'}`);
+    const wlt = [];
+    if (w) wlt.push(`${w}W`);
+    if (l) wlt.push(`${l}L`);
+    if (t) wlt.push(`${t}T`);
+    if (wlt.length) parts.push(wlt.join(' · '));
+    if (typedNotParsed.length) parts.push(`(${typedNotParsed.length} skipped — can't parse)`);
+    summary.textContent = parts.join(' · ');
+  }
+
+  function refreshPasteRivalRow(rivalId) {
+    const row = document.querySelector(`.paste-rival-row[data-rival-id="${rivalId}"]`);
+    if (!row) return;
+    const result = row.querySelector('.paste-rival-result');
+    const meta = row.querySelector('[data-pri-meta]');
+    const textarea = row.querySelector('.paste-rival-textarea');
+    const roundsStrip = row.querySelector('[data-rounds-strip]');
+
+    const theirs = pasteState.byRivalId.get(rivalId) || null;
+    const mine = pasteState.me;
+
+    // Style the textarea border
+    textarea.classList.remove('is-parsed', 'is-error');
+    if (textarea.value.trim() && !theirs) textarea.classList.add('is-error');
+    else if (theirs) textarea.classList.add('is-parsed');
+
+    // Meta line: their parsed total
+    if (theirs) {
+      const noteParts = [`R1 ${theirs.rounds[0]} · R2 ${theirs.rounds[1]} · R3 ${theirs.rounds[2]} · R4 ${theirs.rounds[3]} · R5 ${theirs.rounds[4]}`];
+      noteParts.push(`= ${theirs.computedTotal}`);
+      if (theirs.totalMismatch) noteParts.push(`(shared total ${theirs.finalScore})`);
+      meta.textContent = noteParts.join(' ');
+    } else if (textarea.value.trim()) {
+      meta.textContent = "Couldn't find 5 round scores in that paste.";
+    } else {
+      meta.textContent = '';
+    }
+
+    // Result chip
+    result.classList.remove('W', 'L', 'T', 'error');
+    if (mine && theirs) {
+      const diff = mine.computedTotal - theirs.computedTotal;
+      const r = diff > 0 ? 'W' : diff < 0 ? 'L' : 'T';
+      result.classList.add(r);
+      const sign = diff > 0 ? '+' : diff < 0 ? '−' : '±';
+      result.textContent = `${r} ${sign}${Math.abs(diff)}`;
+    } else if (mine && textarea.value.trim() && !theirs) {
+      result.classList.add('error');
+      result.textContent = "can't parse";
+    } else if (!mine && theirs) {
+      result.textContent = 'paste yours ↑';
+    } else {
+      result.textContent = '—';
+    }
+
+    // Per-round W/L chips when both sides are parsed
+    if (mine && theirs) {
+      roundsStrip.innerHTML = '';
+      for (let i = 0; i < N_LOCS; i++) {
+        const m = mine.rounds[i], t = theirs.rounds[i];
+        const r = resultLoc(m, t);
+        roundsStrip.appendChild(el('span', {
+          class: 'prr-chip ' + r,
+          title: `${LOC_LABELS[i]} (×${WEIGHTS[i]}): ${m} vs ${t}`,
+        }, `${LOC_LABELS[i]} ${m}–${t}`));
+      }
+      roundsStrip.hidden = false;
+    } else {
+      roundsStrip.hidden = true;
+      roundsStrip.innerHTML = '';
+    }
+  }
+
+  function refreshPasteMineUI() {
+    const textarea = $('#paste-mine-input');
+    if (!textarea) return;
+    const status = $('#paste-mine-status');
+    const roundsBox = $('#paste-mine-rounds');
+    const text = textarea.value;
+    const parsed = parseMapTapScore(text);
+    pasteState.meText = text;
+    pasteState.me = parsed;
+
+    textarea.classList.remove('is-parsed', 'is-error');
+    if (text.trim() && !parsed) textarea.classList.add('is-error');
+    else if (parsed) textarea.classList.add('is-parsed');
+
+    // Status line
+    status.classList.remove('is-success', 'is-error', 'is-warn');
+    if (!text.trim()) {
+      status.textContent = 'Paste your MapTap result anywhere on the page';
+      roundsBox.hidden = true;
+      roundsBox.innerHTML = '';
+    } else if (!parsed) {
+      status.classList.add('is-error');
+      status.textContent = "Couldn't find 5 round scores in that paste.";
+      roundsBox.hidden = true;
+      roundsBox.innerHTML = '';
+    } else {
+      const parts = [`Parsed total ${parsed.computedTotal}`];
+      if (parsed.totalMismatch) parts.push(`shared said ${parsed.finalScore}`);
+      status.classList.add(parsed.totalMismatch ? 'is-warn' : 'is-success');
+      status.textContent = parts.join(' · ');
+
+      // Round chip preview
+      roundsBox.innerHTML = '';
+      for (let i = 0; i < N_LOCS; i++) {
+        const v = parsed.rounds[i];
+        const cls = ['paste-round-chip'];
+        if (v === MAX_RAW) cls.push('is-perfect');
+        if (v === 0) cls.push('is-zero');
+        roundsBox.appendChild(el('div', { class: cls.join(' '), title: `${LOC_NAMES[i]} (×${WEIGHTS[i]})` }, [
+          el('span', { class: 'pc-label' }, `${LOC_LABELS[i]}·×${WEIGHTS[i]}`),
+          el('span', { class: 'pc-val' }, String(v)),
+        ]));
+      }
+      roundsBox.appendChild(el('div', { class: 'paste-total-chip' }, [
+        el('span', { class: 'pc-label' }, 'Total'),
+        el('span', { class: 'pc-val' }, String(parsed.computedTotal)),
+      ]));
+      roundsBox.hidden = false;
+
+      // Auto-fill date if the paste contained one
+      if (parsed.date) $('#paste-date').value = parsed.date;
+    }
+
+    refreshAllPasteResults();
+  }
+
+  function saveDay() {
+    const mine = pasteState.me;
+    if (!mine) return;
+    const date = $('#paste-date').value || todayISO();
+
+    const targets = state.rivals
+      .map(r => ({ rival: r, theirs: pasteState.byRivalId.get(r.id) }))
+      .filter(x => x.theirs);
+    if (!targets.length) return;
+
+    let w = 0, l = 0, t = 0;
+    const now = Date.now();
+    for (const { rival, theirs } of targets) {
+      const myT = mine.computedTotal;
+      const theirT = theirs.computedTotal;
+      const diff = myT - theirT;
+      if (diff > 0) w++; else if (diff < 0) l++; else t++;
+
+      state.games.push({
+        id: uid(),
+        rivalId: rival.id,
+        date,
+        myScores: mine.rounds.slice(),
+        theirScores: theirs.rounds.slice(),
+        myScore: myT,
+        theirScore: theirT,
+        note: '',
+        createdAt: now,
+      });
+    }
+    persistGames();
+
+    // Briefly highlight the rows that just saved before we clear them.
+    const savedIds = new Set(targets.map(x => x.rival.id));
+    document.querySelectorAll('.paste-rival-row').forEach(row => {
+      if (savedIds.has(row.dataset.rivalId)) {
+        row.classList.add('is-saved-flash');
+        setTimeout(() => row.classList.remove('is-saved-flash'), 600);
+      }
+    });
+
+    // Clear all paste state — fresh slate for tomorrow.
+    pasteState.me = null;
+    pasteState.meText = '';
+    pasteState.byRivalId.clear();
+    pasteState.byRivalIdText.clear();
+    const mineInput = $('#paste-mine-input');
+    if (mineInput) mineInput.value = '';
+    document.querySelectorAll('.paste-rival-textarea').forEach(ta => {
+      ta.value = '';
+      ta.classList.remove('is-parsed', 'is-error');
+    });
+    refreshPasteMineUI();
+    refreshAllPasteResults();
+
+    // Confirmation summary on the bottom bar
+    const summary = $('#paste-summary');
+    if (summary) {
+      summary.classList.remove('is-ready', 'is-error');
+      summary.classList.add('is-success');
+      const wlt = [];
+      if (w) wlt.push(`${w}W`);
+      if (l) wlt.push(`${l}L`);
+      if (t) wlt.push(`${t}T`);
+      summary.textContent = `Saved ${targets.length} game${targets.length === 1 ? '' : 's'} · ${wlt.join(' · ') || 'no result'}`;
+    }
+
+    // Refresh the dashboard tiles + summary so saved games land immediately.
+    renderDashSummary();
+    renderRivalGrid();
+  }
+
+  function renderDashSummary() {
+    const wrap = $('#dash-summary');
+    if (!state.rivals.length) {
+      wrap.innerHTML = '';
+      return;
+    }
+
+    const totalGames = state.games.length;
+    let wins = 0, losses = 0, ties = 0;
+    state.games.forEach(g => {
+      const r = resultOf(g);
+      if (r === 'W') wins++;
+      else if (r === 'L') losses++;
+      else ties++;
+    });
+    const winPct = totalGames ? (wins / totalGames * 100) : 0;
+    const myAvg = average(state.games.map(getMyTotal));
+
+    // best rival = highest win % with at least 1 game
+    let bestRival = null, worstRival = null;
+    state.rivals.forEach(r => {
+      const s = rivalSummary(r);
+      if (!s.total) return;
+      if (!bestRival || s.winPct > bestRival.winPct) bestRival = s;
+      if (!worstRival || s.winPct < worstRival.winPct) worstRival = s;
+    });
+
+    const todayGames = state.games.filter(g => g.date === todayISO()).length;
+
+    wrap.innerHTML = '';
+    wrap.appendChild(makeSummaryCard('Total games', totalGames, `${wins}W · ${losses}L · ${ties}T`));
+    wrap.appendChild(makeSummaryCard('Overall win %', `${winPct.toFixed(0)}%`, totalGames ? `over ${totalGames} games` : '—'));
+    wrap.appendChild(makeSummaryCard('Avg score', myAvg ? myAvg.toFixed(0) : '—', 'all-time'));
+    wrap.appendChild(makeSummaryCard('Today', todayGames, todayGames === 1 ? 'game logged' : 'games logged'));
+    if (bestRival) wrap.appendChild(makeSummaryCard('Best matchup', bestRival.rival.name, `${(bestRival.winPct * 100).toFixed(0)}% win rate`));
+    if (worstRival && worstRival !== bestRival) wrap.appendChild(makeSummaryCard('Toughest rival', worstRival.rival.name, `${(worstRival.winPct * 100).toFixed(0)}% win rate`));
+  }
+
+  function makeSummaryCard(label, value, sub) {
+    return el('div', { class: 'dash-summary-card' }, [
+      el('div', { class: 'label' }, label),
+      el('div', { class: 'value' }, String(value)),
+      sub ? el('div', { class: 'sub' }, sub) : null,
+    ]);
+  }
+
+  function renderRivalGrid() {
+    const grid = $('#rival-grid');
+    grid.innerHTML = '';
+    const sorted = state.rivals.slice().sort((a, b) => {
+      // Most-played rivalries first; ties broken alphabetically.
+      const sa = rivalSummary(a);
+      const sb = rivalSummary(b);
+      if (sb.total !== sa.total) return sb.total - sa.total;
+      return a.name.localeCompare(b.name);
+    });
+
+    sorted.forEach(r => grid.appendChild(makeRivalCard(rivalSummary(r))));
+
+    // Re-apply any in-flight sync/spinner state after the grid is rebuilt
+    sorted.forEach(r => refreshRivalCardSyncUI(r.id));
+  }
+
+  function makeRivalCard(s) {
+    const r = s.rival;
+    const card = el('article', {
+      class: 'rival-card',
+      style: `--rival-color:${r.color}`,
+      'data-rival-id': r.id,
+      onclick: (e) => {
+        if (e.target.closest('.rival-card-edit')) return;
+        if (e.target.closest('.rival-card-sync')) return;
+        state.selectedRivalId = r.id;
+        persistSelected();
+        setView('rival');
+      },
+    });
+
+    const actions = el('div', { class: 'rival-card-actions' }, [
+      el('button', {
+        type: 'button',
+        class: 'rival-card-sync',
+        title: r.maptapUsername
+          ? `Sync games from maptap.gg/u/${r.maptapUsername}`
+          : 'Add a MapTap username for this rival to sync',
+        'aria-label': `Sync ${r.name} from MapTap`,
+        html: ICON_SYNC,
+        onclick: (e) => { e.stopPropagation(); syncMapTapForRival(r.id); },
+      }),
+      el('button', {
+        type: 'button',
+        class: 'rival-card-edit',
+        title: 'Edit rival',
+        'aria-label': `Edit ${r.name}`,
+        html: ICON_EDIT,
+        onclick: (e) => { e.stopPropagation(); openRivalModal(r.id); },
+      }),
+    ]);
+
+    const head = el('div', { class: 'rival-card-head' }, [
+      el('div', { class: 'rival-icon', style: `background:${r.color}33` }, r.icon),
+      el('div', {}, [
+        el('div', { class: 'rival-card-name' }, r.name),
+        el('div', { class: 'rival-card-meta' },
+          s.total ? `${s.total} game${s.total === 1 ? '' : 's'} played` : 'No games yet'
+        ),
+      ]),
+      actions,
+    ]);
+    card.appendChild(head);
+
+    if (s.total === 0) {
+      card.appendChild(el('p', { class: 'rival-card-meta', style: 'margin-top:.4rem' },
+        'Log your first game to see stats.'));
+      return card;
+    }
+
+    card.appendChild(el('div', { class: 'rival-card-stats' }, [
+      el('div', { class: 'rival-stat win' }, [
+        el('div', { class: 'v' }, String(s.wins)),
+        el('div', { class: 'k' }, 'Wins'),
+      ]),
+      el('div', { class: 'rival-stat loss' }, [
+        el('div', { class: 'v' }, String(s.losses)),
+        el('div', { class: 'k' }, 'Losses'),
+      ]),
+      el('div', { class: 'rival-stat tie' }, [
+        el('div', { class: 'v' }, String(s.ties)),
+        el('div', { class: 'k' }, 'Ties'),
+      ]),
+    ]));
+
+    const pctBar = el('div', { class: 'win-pct-bar' }, [
+      el('span', { style: `width:${(s.winPct * 100).toFixed(1)}%` }),
+    ]);
+    card.appendChild(pctBar);
+
+    const foot = el('div', { class: 'rival-card-foot' });
+    const formPills = el('div', { class: 'form-pills', title: 'Last 5 games (oldest → newest)' });
+    s.recentForm.forEach(r => {
+      formPills.appendChild(el('span', { class: 'form-pill ' + r }, r));
+    });
+    foot.appendChild(formPills);
+
+    if (s.hot) {
+      foot.appendChild(el('span', { class: 'streak-tag hot', title: 'Hot streak: 3+ wins in a row' },
+        `🔥 ${s.streak.curMine} W streak`));
+    } else if (s.streak.curMine > 0) {
+      foot.appendChild(el('span', { class: 'streak-tag win' }, `+${s.streak.curMine} W`));
+    } else if (s.streak.curTheirs >= 2) {
+      foot.appendChild(el('span', { class: 'streak-tag loss' }, `${s.streak.curTheirs} L streak`));
+    } else {
+      foot.appendChild(el('span', { class: 'streak-tag', style: 'color:var(--muted)' },
+        `${(s.winPct * 100).toFixed(0)}% win`));
+    }
+    card.appendChild(foot);
+
+    return card;
+  }
+
+  // ---------- rival detail view ----------
+  function renderRival() {
+    const headerHost = $('#rival-header');
+    const cardsHost = $('#rival-stat-cards');
+    const calloutsHost = $('#rival-callouts');
+    const tableBody = $('#rival-games-table tbody');
+
+    let rival = state.rivals.find(r => r.id === state.selectedRivalId);
+    if (!rival && state.rivals.length) {
+      rival = state.rivals[0];
+      state.selectedRivalId = rival.id;
+      persistSelected();
+    }
+    if (!rival) {
+      headerHost.innerHTML = '<p class="empty-state" style="margin:0">Add a rival to see detailed stats.</p>';
+      cardsHost.innerHTML = '';
+      calloutsHost.innerHTML = '';
+      tableBody.innerHTML = '';
+      $('#loc-section').hidden = true;
+      $('#continent-section').hidden = true;
+      destroyAllCharts();
+      return;
+    }
+
+    // Switching rivals should rewind the games table to page 1 — otherwise
+    // a rival with fewer games leaves you on an empty out-of-range page.
+    if (state.lastRenderedRivalId !== rival.id) {
+      state.rivalGamesPage = 1;
+      state.lastRenderedRivalId = rival.id;
+    }
+
+    const s = rivalSummary(rival);
+
+    // header
+    headerHost.innerHTML = '';
+    headerHost.style.setProperty('--rival-color', rival.color);
+    headerHost.appendChild(el('div', { class: 'rival-icon', style: `background:${rival.color}33` }, rival.icon));
+    headerHost.appendChild(el('div', {}, [
+      el('h2', {}, rival.name),
+      el('div', { class: 'meta' },
+        s.total
+          ? `${s.total} games · ${s.wins}W ${s.losses}L ${s.ties}T · ${(s.winPct * 100).toFixed(1)}% win rate`
+          : 'No games yet — log your first one above.'
+      ),
+    ]));
+    const actions = el('div', { class: 'rival-header-actions' });
+    if (state.rivals.length > 1) {
+      const switcher = el('select', {
+        'aria-label': 'Switch rival',
+        style: 'height:var(--ctrl-h);padding:0 .65rem;border:1px solid var(--border);border-radius:var(--ctrl-radius);background:var(--surface-2);color:var(--text);font-size:.9rem;',
+        onchange: (e) => {
+          state.selectedRivalId = e.target.value;
+          persistSelected();
+          renderRival();
+        },
+      });
+      state.rivals.forEach(r => {
+        switcher.appendChild(el('option', { value: r.id, selected: r.id === rival.id || undefined }, r.name));
+      });
+      actions.appendChild(switcher);
+    }
+    const syncBtn = el('button', {
+      type: 'button',
+      class: 'btn btn-ghost rival-detail-sync',
+      'data-rival-id': rival.id,
+      title: rival.maptapUsername
+        ? `Sync games from maptap.gg/u/${rival.maptapUsername}`
+        : 'Add a MapTap username for this rival to sync',
+      onclick: () => syncMapTapForRival(rival.id),
+    }, '🔄 Sync');
+    actions.appendChild(syncBtn);
+    actions.appendChild(el('button', {
+      type: 'button', class: 'btn btn-ghost',
+      onclick: () => openRivalModal(rival.id),
+    }, '✎ Edit'));
+    actions.appendChild(el('button', {
+      type: 'button', class: 'btn btn-ghost',
+      onclick: () => setView('dashboard'),
+    }, '← Back'));
+    headerHost.appendChild(actions);
+
+    // Reflect any in-flight sync state on the freshly rendered button.
+    refreshRivalCardSyncUI(rival.id);
+
+    // stat cards
+    cardsHost.innerHTML = '';
+    if (!s.total) {
+      destroyAllCharts();
+      calloutsHost.innerHTML = '';
+      tableBody.innerHTML = '';
+      $('#rival-games-pagination').hidden = true;
+      $('#loc-section').hidden = true;
+      $('#continent-section').hidden = true;
+      return;
+    }
+
+    cardsHost.appendChild(makeStatCard('Win rate', `${(s.winPct * 100).toFixed(1)}%`, `${s.wins}W · ${s.losses}L · ${s.ties}T`, s.winPct >= 0.5 ? 'is-good' : 'is-bad'));
+    cardsHost.appendChild(makeStatCard('Cumulative Δ', (s.cumDiff > 0 ? '+' : '') + s.cumDiff, 'your points − theirs', s.cumDiff >= 0 ? 'is-good' : 'is-bad'));
+    cardsHost.appendChild(makeStatCard('Avg score (you)', s.myAvgAll.toFixed(0), `7d ${s.myAvg7 ? s.myAvg7.toFixed(0) : '—'} · 30d ${s.myAvg30 ? s.myAvg30.toFixed(0) : '—'}`));
+    cardsHost.appendChild(makeStatCard(`Avg score (${rival.name})`, s.theirAvgAll.toFixed(0), `7d ${s.theirAvg7 ? s.theirAvg7.toFixed(0) : '—'} · 30d ${s.theirAvg30 ? s.theirAvg30.toFixed(0) : '—'}`));
+    cardsHost.appendChild(makeStatCard('Current streak',
+      s.streak.curMine > 0 ? `${s.streak.curMine} W` : s.streak.curTheirs > 0 ? `${s.streak.curTheirs} L` : '—',
+      `Longest: ${s.streak.longestMine} W / ${s.streak.longestTheirs} L`,
+      s.streak.curMine > 0 ? 'is-good' : s.streak.curTheirs > 0 ? 'is-bad' : ''));
+    cardsHost.appendChild(makeStatCard('Best score (you)', s.bestMine, `Worst: ${s.worstMine}`, 'is-accent'));
+    cardsHost.appendChild(makeStatCard(`Best score (${rival.name})`, s.bestTheirs, `Worst: ${s.worstTheirs}`));
+    cardsHost.appendChild(makeStatCard('Consistency (you)', s.consistencyMine.toFixed(1), 'σ — lower = steadier'));
+    cardsHost.appendChild(makeStatCard('Biggest win', s.biggestWinGame ? `+${s.biggestWinMargin}` : '—',
+      s.biggestWinGame ? `${s.biggestWinGame.myScore}–${s.biggestWinGame.theirScore} on ${fmtDateShort(s.biggestWinGame.date)}` : '—',
+      s.biggestWinGame ? 'is-good' : ''));
+    cardsHost.appendChild(makeStatCard('Biggest loss', s.biggestLossGame ? `−${s.biggestLossMargin}` : '—',
+      s.biggestLossGame ? `${s.biggestLossGame.myScore}–${s.biggestLossGame.theirScore} on ${fmtDateShort(s.biggestLossGame.date)}` : '—',
+      s.biggestLossGame ? 'is-bad' : ''));
+    cardsHost.appendChild(makeStatCard('Projected next', s.projection,
+      s.trendSlope > 0.5 ? '↗ improving' : s.trendSlope < -0.5 ? '↘ declining' : '→ flat',
+      s.trendSlope > 0.5 ? 'is-good' : s.trendSlope < -0.5 ? 'is-bad' : ''));
+
+    // callouts
+    calloutsHost.innerHTML = '';
+    if (s.hot) calloutsHost.appendChild(callout('good', '🔥', `Hot streak: <strong>${s.streak.curMine} wins in a row</strong> against ${rival.name}.`));
+    if (s.onColdStreak) calloutsHost.appendChild(callout('bad', '❄️', `${rival.name} has won the last <strong>${s.streak.curTheirs} games</strong>. Time to bounce back.`));
+    if (s.total >= 3) {
+      const pb = s.games.find(g => getMyTotal(g) === s.bestMine);
+      if (pb) calloutsHost.appendChild(callout('good', '⭐', `Personal best <strong>${s.bestMine}</strong> set vs ${rival.name} on ${fmtDateShort(pb.date)}.`));
+    }
+    // games table (most recent first), paginated
+    tableBody.innerHTML = '';
+    const allGames = s.games.slice().reverse();
+    const total = allGames.length;
+    const size = state.rivalGamesPageSize;
+    const totalPages = size === 0 ? 1 : Math.max(1, Math.ceil(total / size));
+    if (state.rivalGamesPage > totalPages) state.rivalGamesPage = totalPages;
+    if (state.rivalGamesPage < 1) state.rivalGamesPage = 1;
+    const startIdx = size === 0 ? 0 : (state.rivalGamesPage - 1) * size;
+    const endIdx = size === 0 ? total : Math.min(total, startIdx + size);
+    const pageGames = allGames.slice(startIdx, endIdx);
+
+    renderRivalGamesPagination(total, totalPages, startIdx, endIdx);
+
+    pageGames.forEach(g => {
+      const r = resultOf(g);
+      const myT = getMyTotal(g);
+      const theirT = getTheirTotal(g);
+      const diff = myT - theirT;
+      tableBody.appendChild(el('tr', {}, [
+        el('td', {}, fmtDateShort(g.date)),
+        el('td', { style: 'font-weight:600', title: hasLocs(g) ? `Rounds: ${g.myScores.join(' / ')}` : '' }, String(myT)),
+        el('td', { style: 'font-weight:600', title: hasLocs(g) ? `Rounds: ${g.theirScores.join(' / ')}` : '' }, String(theirT)),
+        el('td', { class: diff > 0 ? 'delta-pos' : diff < 0 ? 'delta-neg' : 'delta-zero' },
+          (diff > 0 ? '+' : '') + diff),
+        el('td', { class: 'rounds-cell' }, [makeRoundDots(g)]),
+        el('td', {}, [el('span', { class: 'result-badge ' + r }, r)]),
+        noteCell(g),
+        deleteCell(g),
+      ]));
+    });
+
+    // charts (defer one tick to ensure canvases are visible)
+    requestAnimationFrame(() => renderCharts(s));
+
+    // Per-location section (handles its own visibility based on data presence)
+    renderLocationSection(s);
+    renderContinentSection(s);
+  }
+
+  function renderContinentSection(s) {
+    const section = $('#continent-section');
+    const grid = $('#continent-grid');
+    const sub = $('#continent-section-sub');
+    const { rows, totalRounds } = continentBreakdown(s.games);
+
+    if (!rows.length) {
+      section.hidden = true;
+      grid.innerHTML = '';
+      return;
+    }
+    section.hidden = false;
+    const gamesWithGeo = s.games.filter(g => Array.isArray(g.cities) && g.cities.length === N_LOCS).length;
+    const total = s.games.length;
+    const missing = total - gamesWithGeo;
+    sub.textContent =
+      `${totalRounds} rounds across ${rows.length} continent${rows.length === 1 ? '' : 's'}` +
+      (missing > 0 ? ` · ${missing} game${missing === 1 ? '' : 's'} have no geo data (re-sync to backfill)` : '');
+
+    grid.innerHTML = '';
+    for (const r of rows) {
+      const meta = CONTINENT_META[r.continent] || CONTINENT_META['Other'];
+      const winPctLabel = (r.winPct * 100).toFixed(0) + '%';
+      const winPctClass = r.winPct > 0.5 ? 'good' : r.winPct < 0.5 ? 'bad' : '';
+      grid.appendChild(el('article', {
+        class: 'continent-card',
+        style: `--cont-color:${meta.color}`,
+        title: `${r.continent}: ${r.rounds} rounds`,
+      }, [
+        el('header', { class: 'continent-head' }, [
+          el('span', { class: 'continent-icon' }, meta.icon),
+          el('span', { class: 'continent-name' }, r.continent),
+          el('span', { class: 'continent-rounds' }, `${r.rounds} ${r.rounds === 1 ? 'round' : 'rounds'}`),
+        ]),
+        el('div', { class: 'continent-scores' }, [
+          el('div', { class: 'col me' }, [
+            el('div', { class: 'k' }, 'You avg'),
+            el('div', { class: 'v' }, r.myAvg.toFixed(1)),
+          ]),
+          el('div', { class: 'col them' }, [
+            el('div', { class: 'k' }, `${s.rival.name} avg`),
+            el('div', { class: 'v' }, r.theirAvg.toFixed(1)),
+          ]),
+        ]),
+        el('div', { class: 'continent-record' }, [
+          el('span', { class: 'gw' }, `${r.myWins}W`),
+          ' · ',
+          el('span', { class: 'gl' }, `${r.theirWins}L`),
+          ' · ',
+          el('span', { class: 'gt' }, `${r.ties}T`),
+          `  ·  Δ ${r.avgDiff >= 0 ? '+' : ''}${r.avgDiff.toFixed(1)} per round  ·  best ${r.myBest}`,
+        ]),
+        el('div', { class: 'continent-winbar' }, [
+          el('span', { style: `width:${(r.winPct * 100).toFixed(1)}%` }),
+        ]),
+        el('span', { class: 'continent-winpct ' + winPctClass }, `Round win rate ${winPctLabel}`),
+      ]));
+    }
+  }
+
+  function makeStatCard(label, value, sub, mod) {
+    return el('div', { class: 'stat-card ' + (mod || '') }, [
+      el('div', { class: 'label' }, label),
+      el('div', { class: 'value' }, String(value)),
+      sub ? el('div', { class: 'sub' }, sub) : null,
+    ]);
+  }
+
+  function callout(kind, icon, html) {
+    return el('div', { class: 'callout ' + kind }, [
+      el('span', { class: 'ic' }, icon),
+      el('span', { class: 'txt', html }),
+    ]);
+  }
+
+  function makeRoundDots(g) {
+    const wrap = el('span', { class: 'round-dots' });
+    if (!hasLocs(g)) {
+      for (let i = 0; i < N_LOCS; i++) {
+        wrap.appendChild(el('span', { class: 'round-dot empty', title: 'No round data' }));
+      }
+      return wrap;
+    }
+    for (let i = 0; i < N_LOCS; i++) {
+      const m = g.myScores[i] || 0;
+      const t = g.theirScores[i] || 0;
+      const r = resultLoc(m, t);
+      wrap.appendChild(el('span', {
+        class: 'round-dot ' + r,
+        title: `${LOC_LABELS[i]} (×${WEIGHTS[i]}) — you ${m}, them ${t}`,
+      }));
+    }
+    return wrap;
+  }
+
+  // ---------- location breakdown ----------
+
+  function renderLocationSection(s) {
+    const section = $('#loc-section');
+    if (!s.locStats || !s.gamesWithLocsCount) {
+      section.hidden = true;
+      destroyChart('radar');
+      destroyChart('locWinrate');
+      return;
+    }
+    section.hidden = false;
+    $('#loc-section-sub').textContent =
+      `${s.gamesWithLocsCount}/${s.total} games have round-by-round data` +
+      (s.gamesWithLocsCount === s.total ? '' : ' (older games skipped)');
+
+    // Callouts
+    const cWrap = $('#loc-callouts');
+    cWrap.innerHTML = '';
+    if (s.strongest && s.weakest && s.strongest.locIdx !== s.weakest.locIdx) {
+      cWrap.appendChild(callout('good', '💪',
+        `Strongest at <strong>${s.strongest.label}</strong> — avg <strong>${s.strongest.myAvg.toFixed(1)}</strong> (rival: ${s.strongest.theirAvg.toFixed(1)}).`));
+      cWrap.appendChild(callout('bad', '🪤',
+        `Weakest at <strong>${s.weakest.label}</strong> — avg <strong>${s.weakest.myAvg.toFixed(1)}</strong> (rival: ${s.weakest.theirAvg.toFixed(1)}).`));
+    }
+    if (s.bestRoundWinPct && s.bestRoundWinPct.total >= 2) {
+      cWrap.appendChild(callout('good', '🎯',
+        `Best round win rate: <strong>${s.bestRoundWinPct.label}</strong> — won ${s.bestRoundWinPct.myWins}/${s.bestRoundWinPct.total} (${(s.bestRoundWinPct.winPct * 100).toFixed(0)}%).`));
+    }
+    if (s.worstRoundWinPct && s.worstRoundWinPct.total >= 2 && s.worstRoundWinPct !== s.bestRoundWinPct) {
+      cWrap.appendChild(callout('bad', '⚠️',
+        `Lowest round win rate: <strong>${s.worstRoundWinPct.label}</strong> — won ${s.worstRoundWinPct.myWins}/${s.worstRoundWinPct.total} (${(s.worstRoundWinPct.winPct * 100).toFixed(0)}%).`));
+    }
+    if (s.myTotalPerfects > 0 || s.theirTotalPerfects > 0) {
+      cWrap.appendChild(callout('', '💯',
+        `Perfect 100s — <strong>you ${s.myTotalPerfects}</strong>, ${s.rival.name} ${s.theirTotalPerfects}.`));
+    }
+    if (s.mostVolatile && s.mostVolatile.total >= 3) {
+      cWrap.appendChild(callout('', '🎲',
+        `Most volatile round: <strong>${s.mostVolatile.label}</strong> — σ ${s.mostVolatile.myConsistency.toFixed(1)}.`));
+    }
+    if (s.carryChoke) {
+      const carryIdx = argmax(s.carryChoke.carryInWins);
+      const chokeIdx = argmax(s.carryChoke.chokeInLosses);
+      if (carryIdx >= 0 && s.carryChoke.carryInWins[carryIdx] >= 2) {
+        cWrap.appendChild(callout('good', '🛡️',
+          `Carry round: <strong>${LOC_LABELS[carryIdx]}</strong> bailed you out in ${s.carryChoke.carryInWins[carryIdx]} wins.`));
+      }
+      if (chokeIdx >= 0 && s.carryChoke.chokeInLosses[chokeIdx] >= 2) {
+        cWrap.appendChild(callout('bad', '😬',
+          `Choke round: <strong>${LOC_LABELS[chokeIdx]}</strong> sank you in ${s.carryChoke.chokeInLosses[chokeIdx]} losses.`));
+      }
+    }
+
+    renderLocationCards(s);
+    renderHeatmap(s);
+    requestAnimationFrame(() => renderLocationCharts(s));
+  }
+
+  function argmax(arr) {
+    let best = -Infinity, idx = -1;
+    for (let i = 0; i < arr.length; i++) if (arr[i] > best) { best = arr[i]; idx = i; }
+    return idx;
+  }
+
+  // Soft accent palette per round (visual anchor across radar / cards / dots)
+  const LOC_COLORS = ['#60a5fa', '#22d3ee', '#a855f7', '#f97316', '#f43f5e'];
+
+  function renderLocationCards(s) {
+    const grid = $('#loc-card-grid');
+    grid.innerHTML = '';
+    s.locStats.forEach(loc => {
+      const card = el('div', {
+        class: 'loc-card',
+        style: `--loc-color:${LOC_COLORS[loc.locIdx]}`,
+        title: `${loc.name} · ×${loc.weight} weight`,
+      }, [
+        el('div', { class: 'lc-label' }, `${loc.label} · ×${loc.weight}`),
+        el('div', { class: 'lc-avg', title: 'Your average raw score' }, loc.myAvg.toFixed(1)),
+        el('div', { class: 'lc-avg-them', title: `${s.rival.name}'s average raw score` },
+          `vs ${loc.theirAvg.toFixed(1)}`),
+        el('div', { class: 'lc-rate' }, [
+          'Win rate',
+          el('strong', {}, `${(loc.winPct * 100).toFixed(0)}%`),
+          el('div', { class: 'lc-pct-bar' }, [el('span', { style: `width:${(loc.winPct * 100).toFixed(1)}%` })]),
+        ]),
+        el('div', { class: 'lc-record' },
+          `Best ${loc.myBest} · σ ${loc.myConsistency.toFixed(1)}`),
+        el('div', { class: 'lc-record' },
+          `${loc.myWins}W · ${loc.theirWins}L · ${loc.ties}T`),
+      ]);
+      grid.appendChild(card);
+    });
+  }
+
+  function renderHeatmap(s) {
+    const wrap = $('#loc-heatmap');
+    wrap.innerHTML = '';
+    const recent = s.games.slice(-10).filter(hasLocs);
+    if (!recent.length) {
+      wrap.innerHTML = '<p style="color:var(--muted);font-size:.85rem;text-align:center;padding:.6rem 0;">No round-by-round games yet.</p>';
+      return;
+    }
+
+    // header row
+    const header = el('div', { class: 'heatmap-row is-header' }, [
+      el('span', { class: 'heatmap-rowlabel' }, 'Game'),
+      ...LOC_LABELS.map(l => el('span', {}, l)),
+      el('span', { class: 'heatmap-totalcol', style: 'background:transparent;padding:0' }, 'Total'),
+    ]);
+    wrap.appendChild(header);
+
+    // newest at top
+    recent.slice().reverse().forEach(g => {
+      const row = el('div', { class: 'heatmap-row' });
+      row.appendChild(el('span', { class: 'heatmap-rowlabel' }, fmtDateShort(g.date)));
+      for (let i = 0; i < N_LOCS; i++) {
+        const m = g.myScores[i] || 0;
+        const t = g.theirScores[i] || 0;
+        const r = resultLoc(m, t);
+        const cell = el('span', {
+          class: 'heatmap-cell ' + (r === 'L' ? 'lost' : r === 'T' ? 'tied' : ''),
+          style: `background:${heatColor(m)}`,
+          title: `${LOC_LABELS[i]} — you ${m}, ${s.rival.name} ${t} (${r})`,
+        }, String(m));
+        row.appendChild(cell);
+      }
+      const tr = resultOf(g);
+      const total = getMyTotal(g);
+      row.appendChild(el('span', {
+        class: 'heatmap-totalcol ' + (tr === 'W' ? 'win' : tr === 'L' ? 'loss' : 'tie'),
+      }, String(total)));
+      wrap.appendChild(row);
+    });
+  }
+
+  function heatColor(v) {
+    // 0 → red, 50 → yellow, 100 → green
+    const t = Math.max(0, Math.min(100, v)) / 100;
+    let r, g, b;
+    if (t < 0.5) {
+      const k = t / 0.5;
+      r = Math.round(248 + (250 - 248) * k);
+      g = Math.round(113 + (204 - 113) * k);
+      b = Math.round(113 + (21 - 113) * k);
+    } else {
+      const k = (t - 0.5) / 0.5;
+      r = Math.round(250 + (74 - 250) * k);
+      g = Math.round(204 + (222 - 204) * k);
+      b = Math.round(21 + (128 - 21) * k);
+    }
+    return `rgb(${r},${g},${b})`;
+  }
+
+  function renderLocationCharts(s) {
+    if (!window.Chart || !s.locStats) return;
+    const labels = s.locStats.map((l, i) => `${l.label} (×${WEIGHTS[i]})`);
+
+    destroyChart('radar');
+    state.charts.radar = new Chart($('#chart-radar'), {
+      type: 'radar',
+      data: {
+        labels,
+        datasets: [
+          {
+            label: 'You',
+            data: s.locStats.map(l => l.myAvg),
+            borderColor: '#4ade80',
+            backgroundColor: 'rgba(74,222,128,0.18)',
+            pointBackgroundColor: '#4ade80',
+            pointRadius: 3,
+          },
+          {
+            label: s.rival.name,
+            data: s.locStats.map(l => l.theirAvg),
+            borderColor: s.rival.color,
+            backgroundColor: hexToRgba(s.rival.color, 0.18),
+            pointBackgroundColor: s.rival.color,
+            pointRadius: 3,
+          },
+        ],
+      },
+      options: chartCommon({
+        scales: {
+          r: {
+            beginAtZero: true,
+            min: 0,
+            max: 100,
+            ticks: { color: '#9aa3b2', backdropColor: 'transparent', stepSize: 25 },
+            grid: { color: '#252938' },
+            angleLines: { color: '#252938' },
+            pointLabels: { color: '#e7e9ee', font: { size: 11 } },
+          },
+        },
+      }),
+    });
+
+    destroyChart('locWinrate');
+    const winrates = s.locStats.map(l => +(l.winPct * 100).toFixed(1));
+    state.charts.locWinrate = new Chart($('#chart-loc-winrate'), {
+      type: 'bar',
+      data: {
+        labels,
+        datasets: [{
+          label: 'Win rate %',
+          data: winrates,
+          backgroundColor: winrates.map(w => w >= 50 ? 'rgba(74,222,128,0.7)' : 'rgba(248,113,113,0.7)'),
+          borderColor: winrates.map(w => w >= 50 ? '#4ade80' : '#f87171'),
+          borderWidth: 1,
+        }],
+      },
+      options: chartCommon({
+        indexAxis: 'y',
+        scales: {
+          x: { min: 0, max: 100, ticks: { color: '#9aa3b2', callback: v => v + '%' }, grid: { color: '#252938' } },
+          y: { ticks: { color: '#9aa3b2' }, grid: { color: '#1f232f' } },
+        },
+        plugins: { legend: { display: false } },
+      }),
+    });
+  }
+
+  // ---------- charts ----------
+  function destroyChart(name) {
+    if (state.charts[name]) {
+      state.charts[name].destroy();
+      state.charts[name] = null;
+    }
+  }
+  function destroyAllCharts() {
+    destroyChart('trend');
+    destroyChart('wins');
+    destroyChart('diff');
+    destroyChart('radar');
+    destroyChart('locWinrate');
+  }
+
+  function renderCharts(s) {
+    if (!window.Chart) return;
+    const last30 = s.games.slice(-30);
+
+    // Trend line: my score vs theirs
+    destroyChart('trend');
+    state.charts.trend = new Chart($('#chart-trend'), {
+      type: 'line',
+      data: {
+        labels: last30.map(g => fmtDateShort(g.date)),
+        datasets: [
+          {
+            label: 'You',
+            data: last30.map(getMyTotal),
+            borderColor: '#4ade80',
+            backgroundColor: 'rgba(74,222,128,0.12)',
+            tension: 0.3,
+            fill: true,
+            pointRadius: 3,
+          },
+          {
+            label: s.rival.name,
+            data: last30.map(getTheirTotal),
+            borderColor: s.rival.color,
+            backgroundColor: hexToRgba(s.rival.color, 0.12),
+            tension: 0.3,
+            fill: true,
+            pointRadius: 3,
+          },
+        ],
+      },
+      options: chartCommon({
+        scales: {
+          y: { beginAtZero: false, suggestedMin: 0, suggestedMax: 1000, ticks: { color: '#9aa3b2' }, grid: { color: '#252938' } },
+          x: { ticks: { color: '#9aa3b2', maxRotation: 0, autoSkip: true }, grid: { color: '#1f232f' } },
+        },
+      }),
+    });
+
+    // Win pie
+    destroyChart('wins');
+    state.charts.wins = new Chart($('#chart-wins'), {
+      type: 'doughnut',
+      data: {
+        labels: ['Wins', 'Losses', 'Ties'],
+        datasets: [{
+          data: [s.wins, s.losses, s.ties],
+          backgroundColor: ['#4ade80', '#f87171', '#9aa3b2'],
+          borderColor: '#161922',
+          borderWidth: 2,
+        }],
+      },
+      options: chartCommon({ cutout: '60%' }),
+    });
+
+    // Differential bars
+    destroyChart('diff');
+    const diffs = last30.map(g => getMyTotal(g) - getTheirTotal(g));
+    state.charts.diff = new Chart($('#chart-diff'), {
+      type: 'bar',
+      data: {
+        labels: last30.map(g => fmtDateShort(g.date)),
+        datasets: [{
+          label: 'Score Δ',
+          data: diffs,
+          backgroundColor: diffs.map(d => d > 0 ? 'rgba(74,222,128,0.7)' : d < 0 ? 'rgba(248,113,113,0.7)' : 'rgba(154,163,178,0.7)'),
+          borderColor: diffs.map(d => d > 0 ? '#4ade80' : d < 0 ? '#f87171' : '#9aa3b2'),
+          borderWidth: 1,
+        }],
+      },
+      options: chartCommon({
+        scales: {
+          y: { ticks: { color: '#9aa3b2' }, grid: { color: '#252938' } },
+          x: { ticks: { color: '#9aa3b2', maxRotation: 0, autoSkip: true }, grid: { color: '#1f232f' } },
+        },
+        plugins: { legend: { display: false } },
+      }),
+    });
+  }
+
+  function chartCommon(extra) {
+    const base = {
+      responsive: true,
+      maintainAspectRatio: false,
+      plugins: {
+        legend: { labels: { color: '#e7e9ee', font: { size: 11 } } },
+        tooltip: { backgroundColor: '#1f232f', borderColor: '#353a4b', borderWidth: 1, titleColor: '#e7e9ee', bodyColor: '#e7e9ee' },
+      },
+    };
+    return Object.assign(base, extra || {});
+  }
+
+  function hexToRgba(hex, a) {
+    const h = hex.replace('#', '');
+    const bigint = parseInt(h.length === 3 ? h.split('').map(c => c + c).join('') : h, 16);
+    const r = (bigint >> 16) & 255;
+    const g = (bigint >> 8) & 255;
+    const b = bigint & 255;
+    return `rgba(${r},${g},${b},${a})`;
+  }
+
+  // ---------- leaderboard ----------
+  function renderLeaderboard() {
+    const tbody = $('#leaderboard-table tbody');
+    tbody.innerHTML = '';
+    const summaries = state.rivals.map(rivalSummary).filter(s => s.total > 0);
+    if (!summaries.length) {
+      $('#leaderboard-empty').hidden = false;
+      return;
+    }
+    $('#leaderboard-empty').hidden = true;
+    summaries.sort((a, b) => b.winPct - a.winPct || b.total - a.total);
+
+    summaries.forEach((s, i) => {
+      const avgDiff = s.total ? (s.cumDiff / s.total) : 0;
+      const streakHtml =
+        s.streak.curMine > 0 ? `<span class="streak-tag ${s.hot ? 'hot' : 'win'}">${s.hot ? '🔥 ' : '+'}${s.streak.curMine} W</span>`
+        : s.streak.curTheirs > 0 ? `<span class="streak-tag loss">${s.streak.curTheirs} L</span>`
+        : '<span style="color:var(--muted)">—</span>';
+
+      const tr = el('tr', {
+        style: 'cursor:pointer',
+        onclick: () => {
+          state.selectedRivalId = s.rival.id;
+          persistSelected();
+          setView('rival');
+        },
+      });
+      tr.appendChild(el('td', { style: 'font-weight:700;color:var(--muted)' }, '#' + (i + 1)));
+      tr.appendChild(el('td', {}, [
+        el('span', { style: `display:inline-block;width:.6rem;height:.6rem;border-radius:50%;background:${s.rival.color};margin-right:.45rem;vertical-align:middle` }),
+        s.rival.icon + ' ' + s.rival.name,
+      ]));
+      tr.appendChild(el('td', {}, String(s.total)));
+      tr.appendChild(el('td', { style: 'color:var(--good);font-weight:600' }, String(s.wins)));
+      tr.appendChild(el('td', { style: 'color:var(--bad);font-weight:600' }, String(s.losses)));
+      tr.appendChild(el('td', { style: 'color:var(--tie)' }, String(s.ties)));
+      tr.appendChild(el('td', { style: 'font-weight:600' }, `${(s.winPct * 100).toFixed(1)}%`));
+      tr.appendChild(el('td', { class: avgDiff > 0 ? 'delta-pos' : avgDiff < 0 ? 'delta-neg' : 'delta-zero' },
+        (avgDiff > 0 ? '+' : '') + avgDiff.toFixed(1)));
+      const streakCell = el('td', {});
+      streakCell.innerHTML = streakHtml;
+      tr.appendChild(streakCell);
+      tbody.appendChild(tr);
+    });
+  }
+
+  function renderRivalGamesPagination(total, totalPages, startIdx, endIdx) {
+    const nav = $('#rival-games-pagination');
+    nav.hidden = false;
+    const size = state.rivalGamesPageSize;
+
+    $('#rival-games-pagination-meta').textContent =
+      size === 0
+        ? `Showing all ${total} game${total === 1 ? '' : 's'}`
+        : `Showing ${startIdx + 1}–${endIdx} of ${total}`;
+    $('#rival-games-pagination-current').textContent =
+      size === 0 ? '—' : `${state.rivalGamesPage} / ${totalPages}`;
+
+    const prev = $('#rival-games-prev');
+    const next = $('#rival-games-next');
+    prev.disabled = size === 0 || state.rivalGamesPage <= 1;
+    next.disabled = size === 0 || state.rivalGamesPage >= totalPages;
+  }
+
+  // ---------- history ----------
+  function renderHistory() {
+    const tbody = $('#history-table tbody');
+    tbody.innerHTML = '';
+    const rivalById = Object.fromEntries(state.rivals.map(r => [r.id, r]));
+
+    let games = state.games.slice().sort((a, b) => b.date.localeCompare(a.date) || b.createdAt - a.createdAt);
+    if (state.historyFilters.rival !== 'all') {
+      games = games.filter(g => g.rivalId === state.historyFilters.rival);
+    }
+    if (state.historyFilters.result !== 'all') {
+      const want = state.historyFilters.result === 'win' ? 'W' : state.historyFilters.result === 'loss' ? 'L' : 'T';
+      games = games.filter(g => resultOf(g) === want);
+    }
+
+    if (!games.length) {
+      $('#history-empty').hidden = false;
+      $('#history-pagination').hidden = true;
+      return;
+    }
+    $('#history-empty').hidden = true;
+
+    // Pagination — pageSize 0 means "All"
+    const total = games.length;
+    const size = state.historyPageSize;
+    const totalPages = size === 0 ? 1 : Math.max(1, Math.ceil(total / size));
+    if (state.historyPage > totalPages) state.historyPage = totalPages;
+    if (state.historyPage < 1) state.historyPage = 1;
+    const startIdx = size === 0 ? 0 : (state.historyPage - 1) * size;
+    const endIdx = size === 0 ? total : Math.min(total, startIdx + size);
+    const pageGames = games.slice(startIdx, endIdx);
+
+    renderHistoryPagination(total, totalPages, startIdx, endIdx);
+
+    pageGames.forEach(g => {
+      const rival = rivalById[g.rivalId];
+      const r = resultOf(g);
+      const myT = getMyTotal(g);
+      const theirT = getTheirTotal(g);
+      const diff = myT - theirT;
+      tbody.appendChild(el('tr', {}, [
+        el('td', {}, fmtDateShort(g.date)),
+        el('td', {}, rival ? `${rival.icon} ${rival.name}` : '—'),
+        el('td', { style: 'font-weight:600', title: hasLocs(g) ? `Rounds: ${g.myScores.join(' / ')}` : '' }, String(myT)),
+        el('td', { style: 'font-weight:600', title: hasLocs(g) ? `Rounds: ${g.theirScores.join(' / ')}` : '' }, String(theirT)),
+        el('td', { class: diff > 0 ? 'delta-pos' : diff < 0 ? 'delta-neg' : 'delta-zero' },
+          (diff > 0 ? '+' : '') + diff),
+        el('td', { class: 'rounds-cell' }, [makeRoundDots(g)]),
+        el('td', {}, [el('span', { class: 'result-badge ' + r }, r)]),
+        noteCell(g),
+        deleteCell(g),
+      ]));
+    });
+  }
+
+  function renderHistoryPagination(total, totalPages, startIdx, endIdx) {
+    const nav = $('#history-pagination');
+    nav.hidden = false;
+    const size = state.historyPageSize;
+
+    $('#history-pagination-meta').textContent =
+      size === 0
+        ? `Showing all ${total} game${total === 1 ? '' : 's'}`
+        : `Showing ${startIdx + 1}–${endIdx} of ${total}`;
+    $('#history-pagination-current').textContent =
+      size === 0 ? '—' : `${state.historyPage} / ${totalPages}`;
+
+    const prev = $('#history-prev');
+    const next = $('#history-next');
+    prev.disabled = size === 0 || state.historyPage <= 1;
+    next.disabled = size === 0 || state.historyPage >= totalPages;
+  }
+
+  // ---------- MapTap profile sync ----------
+  // Accept the full URL ("https://maptap.gg/u/susmabit") or just the
+  // username, and normalize to the username segment.
+  function normalizeMapTapUsername(raw) {
+    if (!raw) return '';
+    const s = String(raw).trim();
+    if (!s) return '';
+    const m = s.match(/maptap\.gg\/u\/([^/?#\s]+)/i);
+    return (m ? m[1] : s).replace(/^@/, '').trim();
+  }
+
+  async function fetchMapTapProfile(nickname) {
+    const res = await fetch(MAPTAP_PROFILE_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ data: { nickname } }),
+    });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const json = await res.json();
+    const result = json.result || json;
+    if (!result || !result.success) {
+      throw new Error((result && result.error) || 'profile not found');
+    }
+    return result.user;
+  }
+
+  // Summarize a fetched profile down to a small, JSON-stringifiable
+  // snapshot the card displays. Keeps localStorage payload tiny vs
+  // storing the whole gameHistory tree.
+  //
+  // Counts every entry with a finite finalScore — same view MapTap's own
+  // profile page uses. (Note: the per-game sync still requires a clean
+  // 5-round breakdown; those are different concerns.)
+  function summarizeMapTapProfile(user) {
+    const gh = user.gameHistory || {};
+    const dates = Object.keys(gh);
+    let total = 0, sum = 0, best = -Infinity, worst = Infinity;
+    let mostRecent = null;
+    for (const d of dates) {
+      const entry = gh[d];
+      if (!entry) continue;
+      if (mostRecent === null || d > mostRecent) mostRecent = d;
+      const finalScore = Number(entry.finalScore);
+      if (!Number.isFinite(finalScore)) continue;
+      total++;
+      sum += finalScore;
+      if (finalScore > best) best = finalScore;
+      if (finalScore < worst) worst = finalScore;
+    }
+    return {
+      userId: user.userId || null,
+      nickname: user.nickname || null,
+      joinDate: user.joinDate || null,
+      totalGames: total,
+      avgScore: total > 0 ? sum / total : 0,
+      bestScore: total > 0 ? best : 0,
+      worstScore: total > 0 ? worst : 0,
+      mostRecentDate: mostRecent,
+      verifiedAt: new Date().toISOString(),
+    };
+  }
+
+  async function verifyMyProfile() {
+    const username = normalizeMapTapUsername(state.myMapTap);
+    if (!username) {
+      state.profileError = 'Enter your MapTap username first.';
+      renderProfileCard();
+      return;
+    }
+    state.profileVerifying = true;
+    state.profileError = null;
+    renderProfileCard();
+    try {
+      const user = await fetchMapTapProfile(username);
+      // Snap the username to whatever the server returned (case-correct)
+      state.myMapTap = username;
+      persistMyMapTap();
+      state.myProfile = summarizeMapTapProfile(user);
+      persistMyProfile();
+      state.profileEditMode = false;
+    } catch (err) {
+      state.profileError = err.message || 'Could not verify profile';
+    } finally {
+      state.profileVerifying = false;
+      renderProfileCard();
+    }
+  }
+
+  async function syncAllRivals() {
+    if (state.syncAllInFlight) return;
+    const targets = state.rivals.filter(r => r.maptapUsername && r.maptapUsername.trim());
+    if (!targets.length) {
+      alert('No rivals have a MapTap username yet. Edit a rival to add one.');
+      return;
+    }
+    if (!state.myMapTap) {
+      alert('Set your MapTap username first.');
+      return;
+    }
+    state.syncAllInFlight = true;
+    renderProfileCard();
+    try {
+      // Sequential so we never see partial double-pulls of "me" data
+      for (const r of targets) {
+        // eslint-disable-next-line no-await-in-loop
+        await syncMapTapForRival(r.id);
+      }
+    } finally {
+      state.syncAllInFlight = false;
+      renderProfileCard();
+    }
+  }
+
+  function renderProfileCard() {
+    const card = $('#profile-card');
+    const actions = $('#profile-card-actions');
+    const body = $('#profile-card-body');
+    if (!card || !actions || !body) return;
+    actions.innerHTML = '';
+    body.innerHTML = '';
+
+    const hasUsername = !!state.myMapTap;
+    const hasProfile = !!state.myProfile;
+    const editing = state.profileEditMode || !hasUsername;
+    card.classList.toggle('is-unverified', !hasProfile);
+
+    // ---- Actions area ----
+    if (editing) {
+      actions.appendChild(el('button', {
+        type: 'button',
+        class: 'btn btn-primary',
+        disabled: state.profileVerifying ? 'disabled' : null,
+        onclick: () => {
+          // Pull the current value from the input before verifying
+          const inp = $('#profile-username-input');
+          if (inp) {
+            state.myMapTap = normalizeMapTapUsername(inp.value);
+            persistMyMapTap();
+          }
+          verifyMyProfile();
+        },
+      }, state.profileVerifying ? 'Verifying…' : 'Verify'));
+      if (hasProfile) {
+        actions.appendChild(el('button', {
+          type: 'button', class: 'btn btn-ghost',
+          onclick: () => { state.profileEditMode = false; renderProfileCard(); },
+        }, 'Cancel'));
+      }
+    } else {
+      const targets = state.rivals.filter(r => r.maptapUsername && r.maptapUsername.trim());
+      const syncAllBtn = el('button', {
+        type: 'button',
+        class: 'btn btn-primary',
+        disabled: state.syncAllInFlight || targets.length === 0 ? 'disabled' : null,
+        title: targets.length === 0
+          ? 'No rivals with a MapTap username yet'
+          : `Sync ${targets.length} rival${targets.length === 1 ? '' : 's'}: ${targets.map(r=>r.name).join(', ')}`,
+        onclick: syncAllRivals,
+      }, state.syncAllInFlight
+        ? 'Syncing all…'
+        : `🔄 Sync all rivals${targets.length ? ` (${targets.length})` : ''}`);
+      actions.appendChild(syncAllBtn);
+      actions.appendChild(el('button', {
+        type: 'button', class: 'btn btn-ghost',
+        title: 'Re-verify or change username',
+        onclick: () => { state.profileEditMode = true; renderProfileCard(); setTimeout(()=>{const i=$('#profile-username-input'); if(i)i.focus();},30); },
+      }, '⋯ Change'));
+    }
+
+    // ---- Body ----
+    if (editing) {
+      const prompt = el('div', { class: 'profile-prompt' });
+      prompt.appendChild(el('label', {
+        class: 'profile-prompt-label',
+        for: 'profile-username-input',
+      }, 'Username or profile URL:'));
+      const inp = el('input', {
+        type: 'text',
+        id: 'profile-username-input',
+        maxlength: '128',
+        placeholder: 'susmabit or https://maptap.gg/u/susmabit',
+        autocomplete: 'off',
+        spellcheck: 'false',
+        value: state.myMapTap || '',
+      });
+      inp.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') {
+          e.preventDefault();
+          state.myMapTap = normalizeMapTapUsername(inp.value);
+          persistMyMapTap();
+          verifyMyProfile();
+        }
+      });
+      prompt.appendChild(inp);
+      body.appendChild(prompt);
+    }
+
+    // Status / verified info
+    if (state.profileError) {
+      body.appendChild(el('div', { class: 'profile-status-line' }, [
+        el('span', { class: 'tag err' }, '✗ Verification failed'),
+        el('span', { style: 'color:var(--muted)' }, state.profileError),
+      ]));
+    }
+    if (state.profileVerifying) {
+      body.appendChild(el('div', { class: 'profile-status-line' }, [
+        el('span', { class: 'syncing-spinner' }, '⟳'),
+        el('span', { style: 'color:var(--muted)' }, `Fetching profile for "${state.myMapTap}"…`),
+      ]));
+    }
+
+    if (hasProfile && !editing) {
+      const p = state.myProfile;
+      const verifiedLine = el('div', { class: 'profile-status-line' }, [
+        el('span', { class: 'tag ok' }, '✓ Verified'),
+        el('span', {}, 'Profile: '),
+        el('a', {
+          class: 'username',
+          href: `https://maptap.gg/u/${state.myMapTap}`,
+          target: '_blank',
+          rel: 'noopener',
+        }, p.nickname || state.myMapTap),
+      ]);
+      body.appendChild(verifiedLine);
+
+      const info = el('div', { class: 'profile-info' });
+      info.appendChild(infoCell('Total games on MapTap', String(p.totalGames),
+        p.joinDate ? `joined ${shortDate(p.joinDate)}` : ''));
+      info.appendChild(infoCell('MapTap avg score', p.avgScore ? p.avgScore.toFixed(0) : '—',
+        p.totalGames ? `best ${p.bestScore} · worst ${p.worstScore}` : ''));
+      // App-side stats for direct comparison
+      const tracked = state.games.length;
+      const myAppAvg = tracked ? state.games.map(getMyTotal).reduce((a,b)=>a+b,0) / tracked : 0;
+      info.appendChild(infoCell('Tracked H2H games', String(tracked),
+        tracked ? 'games where both players played' : 'log a game to compare'));
+      info.appendChild(infoCell('Your H2H avg', tracked ? myAppAvg.toFixed(0) : '—',
+        tracked ? 'across tracked games only' : ''));
+      body.appendChild(info);
+
+      // Explain the gap up-front so it doesn't look like a bug
+      const diff = Math.round(Math.abs((myAppAvg || 0) - (p.avgScore || 0)));
+      if (tracked > 0 && diff >= 5) {
+        body.appendChild(el('div', { class: 'profile-hint' }, [
+          el('strong', {}, 'Different averages by design. '),
+          `MapTap (${p.avgScore.toFixed(0)}) averages every daily game you've ever played. The app's H2H avg (${myAppAvg.toFixed(0)}) only includes the ${tracked} days a tracked rival also played — solo days aren't counted here. The gap (~${diff}) is usually because some of your best/worst days had no rival paired.`,
+        ]));
+      }
+
+      // Sub-line: when last verified
+      if (p.verifiedAt) {
+        body.appendChild(el('div', { style: 'margin-top:.45rem;font-size:.72rem;color:var(--muted-2)' },
+          `Last verified ${shortDate(p.verifiedAt)}${p.mostRecentDate ? ` · most recent MapTap game ${shortDate(p.mostRecentDate)}` : ''}`));
+      }
+    } else if (!editing && hasUsername) {
+      body.appendChild(el('div', { class: 'profile-status-line' }, [
+        el('span', { class: 'tag warn' }, '⚠ Not verified yet'),
+        el('span', { style: 'color:var(--muted)' }, `Username "${state.myMapTap}" hasn't been checked against maptap.gg.`),
+      ]));
+    } else if (editing && !hasUsername) {
+      body.appendChild(el('div', { class: 'profile-hint' }, [
+        el('strong', {}, 'Why this matters: '),
+        'your username is the key the app uses to pull your daily MapTap games so it can pair them against each rival. Once verified, click ',
+        el('strong', {}, 'Sync all rivals'),
+        ' to update every rivalry in one shot.',
+      ]));
+    }
+  }
+
+  function infoCell(k, v, s) {
+    return el('div', { class: 'profile-info-cell' }, [
+      el('div', { class: 'k' }, k),
+      el('div', { class: 'v' }, v),
+      s ? el('div', { class: 's' }, s) : null,
+    ]);
+  }
+  function shortDate(iso) {
+    if (!iso) return '';
+    const d = new Date(iso);
+    if (isNaN(d)) return '';
+    return d.toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' });
+  }
+
+  // Convert profile.gameHistory into { "YYYY-MM-DD": { scores: number[5], cities: {lat,lng,name}[5] } }.
+  // Rejects entries missing a clean 5-round breakdown so we never store
+  // partial data — those days just won't pair.
+  function mapTapHistoryToRounds(gameHistory) {
+    const out = {};
+    for (const [date, entry] of Object.entries(gameHistory || {})) {
+      if (!entry || !Array.isArray(entry.roundData) || entry.roundData.length !== 5) continue;
+      const scores = entry.roundData.map(r => Number(r.score));
+      if (!scores.every(s => Number.isFinite(s) && s >= 0 && s <= 100)) continue;
+      const cities = entry.roundData.map(r => ({
+        lat: Number(r.cityLat),
+        lng: Number(r.cityLng),
+        name: typeof r.cityName === 'string' ? r.cityName : '',
+      }));
+      out[date] = { scores, cities };
+    }
+    return out;
+  }
+
+  // Geographic continent from (lat, lng). Order matters — overlapping
+  // bounding boxes are resolved by the first matching rule (Africa
+  // checked before Europe so Egypt isn't misclassified, etc.). Russia
+  // splits at the Ural meridian (~60°E); Anatolia and Pacific islands
+  // get explicit carve-outs. Verified against 250 real MapTap rounds.
+  function classifyContinent(lat, lng) {
+    if (!Number.isFinite(lat) || !Number.isFinite(lng)) return 'Unknown';
+    if (lat < -60) return 'Antarctica';
+    // Northern Pacific islands (Hawaii) — strict lng cutoff so Mexican
+    // Baja (e.g. Cabo at -110) stays in North America below.
+    if (lat >= 0 && lat < 30 && lng < -140) return 'Oceania';
+    // Southern Pacific islands (Easter Island at -109, French Polynesia,
+    // Pitcairn, Cook Islands) — no mainland this far south so safe.
+    if (lat > -30 && lat < 0 && lng < -100) return 'Oceania';
+    if (lat > 60 && lng > -75 && lng < -10) return 'North America'; // Greenland
+    if (lat > 63 && lat < 67 && lng > -25 && lng < -13) return 'Europe'; // Iceland
+    if (lat >= 7 && lat <= 84 && lng >= -170 && lng <= -52) return 'North America';
+    // South America — widened west to include Galápagos (-91°)
+    if (lat >= -56 && lat <= 13 && lng >= -92 && lng <= -34) return 'South America';
+    if (lat >= -50 && lat <= -10 && lng >= 110 && lng <= 180) return 'Oceania';   // Aus
+    if (lat >= -47 && lat <= -34 && lng >= 165 && lng <= 180) return 'Oceania';   // NZ
+    if (lat >= -25 && lat <= 5 && lng >= 140 && lng <= 180) return 'Oceania';     // PNG/Fiji
+    if (lat >= -35 && lat <= 38 && lng >= -20 && lng <= 52) return 'Africa';
+    if (lat >= 36 && lat <= 42 && lng >= 26 && lng <= 45) return 'Asia';          // Anatolia
+    // Svalbard / arctic European islands (above the 72° Europe ceiling)
+    if (lat > 72 && lat <= 82 && lng >= -10 && lng <= 60) return 'Europe';
+    // Europe — widened west to -32° to include the Azores at -25.2°
+    if (lat >= 36 && lat <= 72 && lng >= -32 && lng <= 60) return 'Europe';
+    if (lat >= -10 && lat <= 80 && lng >= 25 && lng <= 180) return 'Asia';
+    return 'Other';
+  }
+
+  // Visual tokens per continent — used by the rival-detail breakdown.
+  const CONTINENT_META = {
+    'Africa':        { icon: '🌍', color: '#f59e0b' },
+    'Europe':        { icon: '🇪🇺', color: '#3b82f6' },
+    'Asia':          { icon: '🌏', color: '#ef4444' },
+    'Oceania':       { icon: '🦘', color: '#10b981' },
+    'North America': { icon: '🌎', color: '#8b5cf6' },
+    'South America': { icon: '🏔️', color: '#06b6d4' },
+    'Antarctica':    { icon: '🧊', color: '#94a3b8' },
+    'Other':         { icon: '🌐', color: '#6b7280' },
+    'Unknown':       { icon: '❓', color: '#6b7280' },
+  };
+
+  // Continent-level aggregates over a rival's games. Only games that have
+  // a `cities` array (i.e. synced from MapTap) contribute; manually-paste
+  // games are silently skipped, with the calling UI explaining the gap.
+  function continentBreakdown(games) {
+    const buckets = new Map();
+    let totalRounds = 0;
+    for (const g of games) {
+      if (!Array.isArray(g.cities) || g.cities.length !== N_LOCS) continue;
+      if (!Array.isArray(g.myScores) || !Array.isArray(g.theirScores)) continue;
+      for (let i = 0; i < N_LOCS; i++) {
+        const c = g.cities[i] || {};
+        const continent = classifyContinent(Number(c.lat), Number(c.lng));
+        if (!buckets.has(continent)) {
+          buckets.set(continent, {
+            continent, rounds: 0,
+            mySum: 0, theirSum: 0,
+            myWins: 0, theirWins: 0, ties: 0,
+            myBest: -Infinity, myWorst: Infinity,
+          });
+        }
+        const b = buckets.get(continent);
+        const my = Number(g.myScores[i]) || 0;
+        const them = Number(g.theirScores[i]) || 0;
+        b.rounds++;
+        totalRounds++;
+        b.mySum += my;
+        b.theirSum += them;
+        if (my > them) b.myWins++;
+        else if (my < them) b.theirWins++;
+        else b.ties++;
+        if (my > b.myBest) b.myBest = my;
+        if (my < b.myWorst) b.myWorst = my;
+      }
+    }
+    const out = Array.from(buckets.values()).map(b => ({
+      continent: b.continent,
+      rounds: b.rounds,
+      myAvg: b.mySum / b.rounds,
+      theirAvg: b.theirSum / b.rounds,
+      avgDiff: (b.mySum - b.theirSum) / b.rounds,
+      myWins: b.myWins,
+      theirWins: b.theirWins,
+      ties: b.ties,
+      winPct: b.myWins / b.rounds,
+      myBest: b.myBest,
+      myWorst: b.myWorst,
+    }));
+    out.sort((a, b) => b.rounds - a.rounds);
+    return { rows: out, totalRounds };
+  }
+
+  async function syncMapTapForRival(rivalId) {
+    const rival = state.rivals.find(r => r.id === rivalId);
+    if (!rival) return;
+
+    if (!state.myMapTap) {
+      const me = $('#my-maptap-username');
+      setRivalSyncStatus(rivalId, 'err', 'set your username in Settings');
+      if (me) me.focus();
+      return;
+    }
+    if (!rival.maptapUsername) {
+      setRivalSyncStatus(rivalId, 'err', 'add their MapTap username');
+      openRivalModal(rival.id);
+      setTimeout(() => $('#rival-maptap-username').focus(), 60);
+      return;
+    }
+    if (state.syncing.has(rivalId)) return;
+
+    state.syncing.add(rivalId);
+    setRivalSyncStatus(rivalId, 'loading');
+    refreshRivalCardSyncUI(rivalId);
+
+    try {
+      const [mineProfile, theirsProfile] = await Promise.all([
+        fetchMapTapProfile(state.myMapTap),
+        fetchMapTapProfile(rival.maptapUsername),
+      ]);
+      // Keep the cached "Your profile" card snapshot fresh on every sync —
+      // no need to wait for the user to click Verify again.
+      state.myProfile = summarizeMapTapProfile(mineProfile);
+      persistMyProfile();
+      const mineByDate = mapTapHistoryToRounds(mineProfile.gameHistory);
+      const theirsByDate = mapTapHistoryToRounds(theirsProfile.gameHistory);
+
+      const existingGameByDate = new Map();
+      for (const g of state.games) {
+        if (g.rivalId === rival.id) existingGameByDate.set(g.date, g);
+      }
+
+      let added = 0;
+      let backfilled = 0;
+      let updated = 0;
+      const now = Date.now();
+      const sortedDates = Object.keys(theirsByDate).sort();
+      for (const date of sortedDates) {
+        const mine = mineByDate[date];
+        const theirs = theirsByDate[date];
+        if (!mine || !theirs) continue;
+        // Cities are identical for both players each day — take ours.
+        const cities = mine.cities;
+
+        const existingGame = existingGameByDate.get(date);
+        if (existingGame) {
+          // Backfill: older imports (paste / WhatsApp / pre-cities sync)
+          // don't have geo info. If we have it now, attach it so the
+          // continent breakdown lights up retroactively.
+          if (!Array.isArray(existingGame.cities) || existingGame.cities.length !== N_LOCS) {
+            existingGame.cities = cities.slice();
+            backfilled++;
+          }
+          // Refresh scores for games that originally came from MapTap sync.
+          // This covers the case where the user pointed `myMapTap` at a
+          // different MapTap profile — the stored rows still reflect the
+          // previous user and need to be replaced. Manually entered games
+          // (different `note`) are left alone so we don't clobber hand-
+          // entered data.
+          if (existingGame.note === 'synced from MapTap') {
+            const newMy = mine.scores.slice();
+            const newTheir = theirs.scores.slice();
+            if (!arrEq(existingGame.myScores, newMy) || !arrEq(existingGame.theirScores, newTheir)) {
+              existingGame.myScores = newMy;
+              existingGame.theirScores = newTheir;
+              existingGame.myScore = weightedTotal(newMy);
+              existingGame.theirScore = weightedTotal(newTheir);
+              updated++;
+            }
+          }
+          continue;
+        }
+        state.games.push({
+          id: uid(),
+          rivalId: rival.id,
+          date,
+          myScores: mine.scores.slice(),
+          theirScores: theirs.scores.slice(),
+          cities: cities.slice(),
+          myScore: weightedTotal(mine.scores),
+          theirScore: weightedTotal(theirs.scores),
+          note: 'synced from MapTap',
+          createdAt: now + added,
+        });
+        added++;
+      }
+      if (added || backfilled || updated) persistGames();
+
+      const parts = [];
+      if (added)      parts.push(`${added} new`);
+      if (updated)    parts.push(`${updated} updated`);
+      if (backfilled) parts.push(`${backfilled} backfilled`);
+      const statusMsg = parts.length ? parts.join(' · ') : 'Already up to date';
+      const status = parts.length
+        ? { kind: 'ok', msg: statusMsg }
+        : { kind: 'flat', msg: statusMsg };
+      setRivalSyncStatus(rivalId, status.kind, status.msg);
+
+      // Refresh whichever view we're on so the new games show up
+      if (state.view === 'dashboard') renderDashboard();
+      else if (state.view === 'rival') renderRival();
+      else if (state.view === 'leaderboard') renderLeaderboard();
+      else if (state.view === 'history') renderHistory();
+    } catch (err) {
+      setRivalSyncStatus(rivalId, 'err', err.message || 'sync failed');
+    } finally {
+      state.syncing.delete(rivalId);
+      refreshRivalCardSyncUI(rivalId);
+    }
+  }
+
+  function setRivalSyncStatus(rivalId, kind, msg) {
+    if (kind === 'loading') {
+      state.syncStatus.set(rivalId, { kind: 'loading' });
+    } else {
+      state.syncStatus.set(rivalId, { kind, msg });
+      // Clear non-error status after a few seconds so it doesn't linger
+      if (kind !== 'err') {
+        setTimeout(() => {
+          const cur = state.syncStatus.get(rivalId);
+          if (cur && cur.kind === kind) {
+            state.syncStatus.delete(rivalId);
+            refreshRivalCardSyncUI(rivalId);
+          }
+        }, 5000);
+      }
+    }
+    refreshRivalCardSyncUI(rivalId);
+  }
+
+  // Targeted DOM refresh so we don't repaint the whole dashboard on every
+  // sync tick. Updates the sync button + status pill on the matching card
+  // (and the rival detail header button if we're on that view).
+  function refreshRivalCardSyncUI(rivalId) {
+    const cards = document.querySelectorAll(`.rival-card[data-rival-id="${rivalId}"]`);
+    cards.forEach(card => updateSyncSpinner(card.querySelector('.rival-card-sync'), rivalId));
+    cards.forEach(card => updateSyncStatusPill(card, rivalId));
+    document.querySelectorAll(`.rival-detail-sync[data-rival-id="${rivalId}"]`).forEach(btn => {
+      updateSyncSpinner(btn, rivalId);
+    });
+  }
+
+  function updateSyncSpinner(btn, rivalId) {
+    if (!btn) return;
+    const loading = state.syncing.has(rivalId);
+    btn.classList.toggle('is-loading', loading);
+    // The .is-loading CSS class rotates the SVG via @keyframes spin, so we
+    // don't swap textContent (which would clobber the inline SVG icon).
+    btn.disabled = loading;
+  }
+
+  function updateSyncStatusPill(card, rivalId) {
+    if (!card) return;
+    const existing = card.querySelector('.rival-sync-status');
+    const st = state.syncStatus.get(rivalId);
+    if (!st || st.kind === 'loading') {
+      if (existing) existing.remove();
+      return;
+    }
+    const pill = existing || el('span', { class: 'rival-sync-status' });
+    pill.className = 'rival-sync-status ' + st.kind;
+    pill.textContent = st.msg;
+    if (!existing) {
+      const foot = card.querySelector('.rival-card-foot');
+      if (foot) foot.appendChild(pill);
+      else card.appendChild(pill);
+    }
+  }
+
+  // ---------- WhatsApp chat import ----------
+  // The exported chat is plain text. Each message starts with a timestamp
+  // line "M/D/YY, HH:MM - Sender: body…" and may continue across lines
+  // with no prefix. We pull out (date, sender, body), find ones whose body
+  // looks like a MapTap share (must mention "maptap" or "final score" so
+  // random 5-number messages don't false-positive), and pair shares from
+  // the same body-date between mapped senders to create games.
+  const WA_HEADER_RE = /^(\d{1,2})\/(\d{1,2})\/(\d{2,4}),\s+(\d{1,2}):(\d{2})\s+-\s+([^:]+?):\s?(.*)$/;
+
+  function parseWhatsAppText(text) {
+    const lines = text.split(/\r?\n/);
+    const messages = [];
+    let cur = null;
+    for (const ln of lines) {
+      const m = ln.match(WA_HEADER_RE);
+      if (m) {
+        if (cur) messages.push(cur);
+        const [, mo, d, yRaw, hh, mm, sender, body] = m;
+        const yy = yRaw.length === 2
+          ? (Number(yRaw) >= 70 ? 1900 + Number(yRaw) : 2000 + Number(yRaw))
+          : Number(yRaw);
+        cur = {
+          year: yy,
+          monthIdx: Number(mo) - 1,
+          day: Number(d),
+          hour: Number(hh),
+          minute: Number(mm),
+          sender: sender.trim(),
+          body: body,
+        };
+      } else if (cur) {
+        cur.body += '\n' + ln;
+      }
+    }
+    if (cur) messages.push(cur);
+    return messages;
+  }
+
+  // Strict variant of parseMapTapScore that rejects bodies without a
+  // MapTap-share marker. Avoids false-matching on chat messages that just
+  // happen to contain five small numbers.
+  function parseMapTapShareStrict(body) {
+    if (!body) return null;
+    if (!/maptap|final\s*score/i.test(body)) return null;
+    return parseMapTapScore(body);
+  }
+
+  function dayBucketDate(msg, parsed) {
+    // Prefer the date in the message body (e.g. "March 5") since that's
+    // the share's actual game date, even if the user sent it at 1am the
+    // next morning. Fall back to the message's own date.
+    //
+    // parseMapTapScore stamps `parsed.date` as a "YYYY-MM-DD" string built
+    // off the *current* year. For our import we want the year that the
+    // chat actually has — adjust if the body's month is far from the
+    // message's month (i.e. the timezone parser fell off the end of the
+    // year, or the chat is from an earlier year entirely).
+    if (parsed.date && /^\d{4}-\d{2}-\d{2}$/.test(parsed.date)) {
+      const bodyMonthIdx = Number(parsed.date.slice(5, 7)) - 1;
+      const bodyDay = Number(parsed.date.slice(8, 10));
+      let year = msg.year;
+      // "December 30" delivered in early January → previous calendar year
+      if (bodyMonthIdx > msg.monthIdx + 1) year = msg.year - 1;
+      // "January 5" delivered in late December → next calendar year
+      else if (bodyMonthIdx + 1 < msg.monthIdx - 9) year = msg.year + 1;
+      return isoDateLocalFromYMD(year, bodyMonthIdx, bodyDay);
+    }
+    return isoDateLocalFromYMD(msg.year, msg.monthIdx, msg.day);
+  }
+  function isoDateLocalFromYMD(year, monthIdx, day) {
+    // Build "YYYY-MM-DD" directly from numeric parts so we never go
+    // through Date.toISOString — that throws if any component is NaN.
+    const m = String(monthIdx + 1).padStart(2, '0');
+    const d = String(day).padStart(2, '0');
+    return `${year}-${m}-${d}`;
+  }
+
+  // Module-level state for the open import modal session.
+  const waImport = {
+    messages: [],
+    senders: [],            // [{ name, count, hasShares }]
+    mapping: new Map(),     // sender -> 'me' | 'skip' | 'rival:<id>' | 'new:<sender>'
+    fileName: '',
+  };
+
+  function openWhatsAppImport(file) {
+    const reader = new FileReader();
+    reader.onload = () => {
+      try {
+        const text = String(reader.result || '');
+        const messages = parseWhatsAppText(text);
+        if (!messages.length) {
+          alert('No WhatsApp messages found in that file. Make sure it\'s a chat export (.txt).');
+          return;
+        }
+        // Tally senders + flag the ones with at least one MapTap-shaped body
+        const counts = new Map();
+        const hasShares = new Map();
+        for (const m of messages) {
+          counts.set(m.sender, (counts.get(m.sender) || 0) + 1);
+          if (parseMapTapShareStrict(m.body)) hasShares.set(m.sender, true);
+        }
+        waImport.messages = messages;
+        waImport.fileName = file.name;
+        waImport.senders = Array.from(counts.entries())
+          .map(([name, count]) => ({ name, count, hasShares: !!hasShares.get(name) }))
+          .sort((a, b) => Number(b.hasShares) - Number(a.hasShares) || b.count - a.count);
+        waImport.mapping = new Map();
+
+        // Pre-fill obvious mappings: if a sender's name matches an existing
+        // rival exactly (case-insensitive), suggest that rival.
+        for (const s of waImport.senders) {
+          const r = state.rivals.find(r => r.name.toLowerCase() === s.name.toLowerCase());
+          if (r) waImport.mapping.set(s.name, 'rival:' + r.id);
+        }
+
+        renderWhatsAppModal();
+        $('#wa-modal').hidden = false;
+      } catch (e) {
+        alert('Could not read the file: ' + e.message);
+      }
+    };
+    reader.readAsText(file);
+  }
+
+  function closeWhatsAppModal() {
+    $('#wa-modal').hidden = true;
+    waImport.messages = [];
+    waImport.senders = [];
+    waImport.mapping.clear();
+    waImport.fileName = '';
+  }
+
+  function renderWhatsAppModal() {
+    const overview = $('#wa-overview');
+    const list = $('#wa-sender-list');
+
+    let totalShares = 0;
+    for (const m of waImport.messages) if (parseMapTapShareStrict(m.body)) totalShares++;
+
+    overview.textContent = `${waImport.fileName || 'WhatsApp export'} · ${waImport.messages.length.toLocaleString()} messages · ${waImport.senders.length} senders · ${totalShares} MapTap share${totalShares === 1 ? '' : 's'} detected`;
+
+    list.innerHTML = '';
+    waImport.senders.forEach(s => {
+      const row = el('div', { class: 'wa-sender-row', 'data-sender': s.name });
+      const left = el('span', { class: 'wa-sender-name', title: s.name }, s.name);
+      const msgs = el('span', { class: 'wa-sender-msgs' }, [
+        `${s.count.toLocaleString()} msg`,
+        s.hasShares ? el('span', { class: 'pill' }, 'shares') : null,
+      ]);
+      const sel = el('select', {
+        class: 'wa-sender-map',
+        'aria-label': `Map sender ${s.name}`,
+        onchange: (e) => {
+          if (e.target.value === 'skip') waImport.mapping.delete(s.name);
+          else waImport.mapping.set(s.name, e.target.value);
+          updateWASenderRowStyle(row, e.target.value);
+          refreshWAPreview();
+        },
+      });
+      sel.appendChild(el('option', { value: 'skip' }, 'Skip'));
+      sel.appendChild(el('option', { value: 'me' }, 'Me'));
+      // existing rivals
+      state.rivals.slice().sort((a, b) => a.name.localeCompare(b.name)).forEach(r => {
+        sel.appendChild(el('option', { value: 'rival:' + r.id }, `Rival: ${r.name}`));
+      });
+      // new rival from sender's name
+      sel.appendChild(el('option', { value: 'new:' + s.name }, `+ Create new rival "${s.name}"`));
+
+      const current = waImport.mapping.get(s.name) || 'skip';
+      sel.value = current;
+      updateWASenderRowStyle(row, current);
+
+      row.appendChild(left);
+      row.appendChild(msgs);
+      row.appendChild(sel);
+      list.appendChild(row);
+    });
+
+    refreshWAPreview();
+  }
+
+  function updateWASenderRowStyle(row, mappingValue) {
+    row.classList.remove('is-me', 'is-rival');
+    if (mappingValue === 'me') row.classList.add('is-me');
+    else if (mappingValue && mappingValue !== 'skip') row.classList.add('is-rival');
+  }
+
+  // Resolve the current mapping into actual {meSenderSet, rivalIdBySender, newRivalNames}.
+  function resolveWAMapping() {
+    const meSenders = new Set();
+    const senderToRivalKey = new Map(); // sender -> 'rival:id' | 'new:name'
+    for (const s of waImport.senders) {
+      const v = waImport.mapping.get(s.name);
+      if (v === 'me') meSenders.add(s.name);
+      else if (v && v !== 'skip') senderToRivalKey.set(s.name, v);
+    }
+    return { meSenders, senderToRivalKey };
+  }
+
+  // Compute the set of (rivalKey -> games) that would be imported with the
+  // current mapping. rivalKey is either 'rival:<id>' or 'new:<name>'. Same-day
+  // strict pairing only.
+  function computeWAImport() {
+    const { meSenders, senderToRivalKey } = resolveWAMapping();
+    if (!meSenders.size || !senderToRivalKey.size) {
+      return { perRival: new Map(), totalNew: 0, totalDup: 0 };
+    }
+
+    // Collect parsed shares per (rivalKey, dateISO) and per (me, dateISO)
+    const myByDate = new Map();         // dateISO -> parsed
+    const theirByKeyDate = new Map();   // rivalKey -> Map(dateISO -> parsed)
+
+    for (const m of waImport.messages) {
+      const parsed = parseMapTapShareStrict(m.body);
+      if (!parsed) continue;
+      const dateISO = dayBucketDate(m, parsed);
+      if (meSenders.has(m.sender)) {
+        if (!myByDate.has(dateISO)) myByDate.set(dateISO, parsed);
+      } else if (senderToRivalKey.has(m.sender)) {
+        const key = senderToRivalKey.get(m.sender);
+        if (!theirByKeyDate.has(key)) theirByKeyDate.set(key, new Map());
+        const inner = theirByKeyDate.get(key);
+        if (!inner.has(dateISO)) inner.set(dateISO, parsed);
+      }
+    }
+
+    // For each rival key, pair each (their, dateISO) with my same-date share.
+    // Detect duplicates against existing state.games (same rival id + date).
+    const existingByRivalDate = new Set();
+    for (const g of state.games) existingByRivalDate.add(g.rivalId + '|' + g.date);
+
+    const perRival = new Map(); // rivalKey -> { rivalLabel, add: [game], dup: [{date}] }
+    let totalNew = 0, totalDup = 0;
+    for (const [key, inner] of theirByKeyDate) {
+      const label = waLabelForKey(key);
+      const add = [];
+      const dup = [];
+      for (const [dateISO, theirParsed] of inner) {
+        const mine = myByDate.get(dateISO);
+        if (!mine) continue;
+        // Dedupe only against EXISTING rivals; new-rival keys can't have dups yet.
+        if (key.startsWith('rival:')) {
+          const rivalId = key.slice('rival:'.length);
+          if (existingByRivalDate.has(rivalId + '|' + dateISO)) { dup.push({ date: dateISO }); continue; }
+        }
+        const myT = weightedTotal(mine.rounds);
+        const theirT = weightedTotal(theirParsed.rounds);
+        add.push({
+          date: dateISO,
+          myScores: mine.rounds.slice(),
+          theirScores: theirParsed.rounds.slice(),
+          myScore: myT,
+          theirScore: theirT,
+        });
+      }
+      perRival.set(key, { rivalLabel: label, add, dup });
+      totalNew += add.length;
+      totalDup += dup.length;
+    }
+    return { perRival, totalNew, totalDup };
+  }
+
+  function waLabelForKey(key) {
+    if (key.startsWith('rival:')) {
+      const r = state.rivals.find(r => r.id === key.slice('rival:'.length));
+      return r ? r.name : 'Rival';
+    }
+    if (key.startsWith('new:')) return key.slice('new:'.length) + ' (new rival)';
+    return key;
+  }
+
+  function refreshWAPreview() {
+    const wrap = $('#wa-preview');
+    const btn = $('#wa-commit-btn');
+    const { perRival, totalNew, totalDup } = computeWAImport();
+
+    if (!totalNew && !totalDup) {
+      wrap.innerHTML = '<p class="wa-preview-empty">Map at least one sender as <em>Me</em> and one as a rival to see games. Strict same-day pairing only.</p>';
+      btn.disabled = true;
+      btn.textContent = 'Import 0 games';
+      return;
+    }
+
+    wrap.innerHTML = '';
+    const sortedKeys = Array.from(perRival.keys()).sort((a, b) =>
+      perRival.get(b).add.length - perRival.get(a).add.length
+    );
+    for (const key of sortedKeys) {
+      const entry = perRival.get(key);
+      if (!entry.add.length && !entry.dup.length) continue;
+      const head = el('div', { class: 'wa-preview-rival' }, [
+        entry.rivalLabel,
+        entry.add.length ? el('span', { class: 'ct add' }, `+${entry.add.length} new`) : null,
+        entry.dup.length ? el('span', { class: 'ct dup' }, `${entry.dup.length} skipped (already logged)`) : null,
+      ]);
+      wrap.appendChild(head);
+
+      // Show up to 12 sample games per rival; collapse the rest into a "+N more"
+      const addList = entry.add.slice().sort((a, b) => a.date.localeCompare(b.date));
+      const samples = addList.slice(0, 12);
+      const list = el('div', { class: 'wa-preview-list' });
+      for (const g of samples) {
+        const diff = g.myScore - g.theirScore;
+        const r = diff > 0 ? 'gw' : diff < 0 ? 'gl' : 'gt';
+        list.appendChild(el('div', {}, [
+          `${fmtDateShort(g.date)} — `,
+          el('span', { class: r }, `${g.myScore} vs ${g.theirScore}`),
+          ` (Δ${diff > 0 ? '+' : ''}${diff})`,
+        ]));
+      }
+      if (addList.length > samples.length) {
+        list.appendChild(el('div', { style: 'color:var(--muted-2)' }, `…and ${addList.length - samples.length} more`));
+      }
+      wrap.appendChild(list);
+    }
+
+    btn.disabled = totalNew === 0;
+    const label = totalNew === 1 ? '1 game' : `${totalNew} games`;
+    btn.textContent = totalDup
+      ? `Import ${label} (skip ${totalDup} duplicate${totalDup === 1 ? '' : 's'})`
+      : `Import ${label}`;
+  }
+
+  function commitWAImport() {
+    const { perRival, totalNew } = computeWAImport();
+    if (!totalNew) return;
+
+    // Materialize new rivals first (so we have IDs to reference)
+    const colorPool = ['#6366f1', '#22d3ee', '#4ade80', '#f97316', '#f43f5e', '#a855f7', '#facc15', '#10b981', '#ec4899', '#0ea5e9'];
+    const iconPool = ['🦊','🐺','🐻','🦁','🐯','🐲','🦅','🐙','🦈','🚀','⚡','🔥','🎯','🗺️','💀'];
+    const keyToRivalId = new Map();
+    for (const [key, entry] of perRival) {
+      if (!entry.add.length) continue;
+      if (key.startsWith('rival:')) {
+        keyToRivalId.set(key, key.slice('rival:'.length));
+      } else if (key.startsWith('new:')) {
+        const name = key.slice('new:'.length);
+        const idx = state.rivals.length;
+        const newRival = {
+          id: uid(),
+          name,
+          color: colorPool[idx % colorPool.length],
+          icon: iconPool[idx % iconPool.length],
+          createdAt: Date.now(),
+        };
+        state.rivals.push(newRival);
+        keyToRivalId.set(key, newRival.id);
+      }
+    }
+
+    // Then push games (merge — preserve existing).
+    const now = Date.now();
+    let pushed = 0;
+    for (const [key, entry] of perRival) {
+      const rivalId = keyToRivalId.get(key);
+      if (!rivalId) continue;
+      for (const g of entry.add) {
+        state.games.push({
+          id: uid(),
+          rivalId,
+          date: g.date,
+          myScores: g.myScores,
+          theirScores: g.theirScores,
+          myScore: g.myScore,
+          theirScore: g.theirScore,
+          note: 'imported from WhatsApp',
+          createdAt: now + pushed,
+        });
+        pushed++;
+      }
+    }
+
+    persistRivals();
+    persistGames();
+    closeWhatsAppModal();
+
+    alert(`Imported ${pushed} game${pushed === 1 ? '' : 's'}.`);
+
+    // Refresh whichever view we're on
+    refreshRivalSelects();
+    if (state.view === 'dashboard') renderDashboard();
+    else if (state.view === 'rival') renderRival();
+    else if (state.view === 'leaderboard') renderLeaderboard();
+    else if (state.view === 'history') renderHistory();
+  }
+
+  function clearAllGames() {
+    const n = state.games.length;
+    if (n === 0) {
+      alert('No games to clear.');
+      return;
+    }
+    const ok = confirm(
+      `Delete all ${n} game${n === 1 ? '' : 's'}?\n\n` +
+      `Your rivals and their MapTap usernames will be kept, so you can ` +
+      `re-sync fresh. This can't be undone.`
+    );
+    if (!ok) return;
+    state.games = [];
+    persistGames();
+    if (state.view === 'dashboard') renderDashboard();
+    else if (state.view === 'rival') renderRival();
+    else if (state.view === 'leaderboard') renderLeaderboard();
+    else if (state.view === 'history') renderHistory();
+  }
+
+  // ---------- export / import ----------
+  function exportData() {
+    const blob = new Blob([JSON.stringify({
+      version: 1,
+      exportedAt: new Date().toISOString(),
+      me: state.me,
+      rivals: state.rivals,
+      games: state.games,
+    }, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `maptap-rivals-${todayISO()}.json`;
+    a.click();
+    URL.revokeObjectURL(url);
+  }
+
+  function importData(file) {
+    const reader = new FileReader();
+    reader.onload = () => {
+      try {
+        const parsed = JSON.parse(reader.result);
+        if (!parsed || !Array.isArray(parsed.rivals) || !Array.isArray(parsed.games)) {
+          alert('Invalid backup file.');
+          return;
+        }
+        if (!confirm(`Replace current data with ${parsed.rivals.length} rivals and ${parsed.games.length} games?`)) return;
+        state.rivals = parsed.rivals;
+        state.games = parsed.games;
+        if (typeof parsed.me === 'string') state.me = parsed.me;
+        persistRivals();
+        persistGames();
+        persistMe();
+        $('#my-name').value = state.me;
+        refreshRivalSelects();
+        if (state.view === 'dashboard') renderDashboard();
+        else if (state.view === 'rival') renderRival();
+        else if (state.view === 'leaderboard') renderLeaderboard();
+        else if (state.view === 'history') renderHistory();
+      } catch (e) {
+        alert('Could not parse backup file.');
+      }
+    };
+    reader.readAsText(file);
+  }
+
+  // ---------- misc ----------
+  function escapeHtml(s) {
+    return String(s).replace(/[&<>"']/g, ch => ({
+      '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
+    }[ch]));
+  }
+
+  // Refresh dashboard / current view when storage changes from sync (other device)
+  function onExternalStorage(e) {
+    if (!e.key) return;
+    if (e.key === KEY.RIVALS) state.rivals = load(KEY.RIVALS, []);
+    else if (e.key === KEY.GAMES) state.games = load(KEY.GAMES, []);
+    else if (e.key === KEY.ME) {
+      state.me = loadString(KEY.ME, 'Me');
+      const me = $('#my-name'); if (me) me.value = state.me;
+    }
+    else if (e.key === KEY.MY_MAPTAP) {
+      state.myMapTap = loadString(KEY.MY_MAPTAP, '');
+    }
+    else if (e.key === KEY.MY_PROFILE) {
+      state.myProfile = load(KEY.MY_PROFILE, null);
+    }
+    else if (e.key === KEY.SETTINGS) state.settings = load(KEY.SETTINGS, {});
+    else return;
+
+    refreshRivalSelects();
+    if (state.view === 'dashboard') renderDashboard();
+    else if (state.view === 'rival') renderRival();
+    else if (state.view === 'leaderboard') renderLeaderboard();
+    else if (state.view === 'history') renderHistory();
+  }
+
+  // ---------- init ----------
+  function init() {
+    // wire view tabs
+    $$('.view-tab').forEach(tab => {
+      tab.addEventListener('click', () => setView(tab.dataset.view));
+    });
+
+    refreshRivalSelects();
+
+    // Paste-mode entry (the one entry method)
+    $('#paste-date').value = todayISO();
+    $('#paste-mine-input').addEventListener('input', refreshPasteMineUI);
+    $('#paste-save-all').addEventListener('click', saveDay);
+
+    // add rival
+    $('#add-rival-btn').addEventListener('click', () => openRivalModal(null));
+
+    // Rival modal close — scoped to #rival-modal so it doesn't also fire
+    // for clicks on the WhatsApp import modal.
+    $('#rival-modal').querySelectorAll('[data-close="modal"]').forEach(node => {
+      node.addEventListener('click', closeRivalModal);
+    });
+    $('#rival-save-btn').addEventListener('click', saveRivalFromModal);
+    $('#rival-delete-btn').addEventListener('click', deleteRivalFromModal);
+    $('#rival-name').addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') { e.preventDefault(); saveRivalFromModal(); }
+    });
+    document.addEventListener('keydown', (e) => {
+      if (e.key !== 'Escape') return;
+      if (!$('#wa-modal').hidden) closeWhatsAppModal();
+      else if (!$('#rival-modal').hidden) closeRivalModal();
+    });
+
+    // settings strip
+    const meInput = $('#my-name');
+    meInput.value = state.me;
+    meInput.addEventListener('input', () => {
+      state.me = meInput.value.trim() || 'Me';
+      persistMe();
+    });
+
+
+    $('#clear-games-btn').addEventListener('click', clearAllGames);
+
+    $('#export-btn').addEventListener('click', exportData);
+    $('#import-btn').addEventListener('click', () => $('#import-file').click());
+    $('#import-file').addEventListener('change', (e) => {
+      const f = e.target.files[0];
+      if (f) importData(f);
+      e.target.value = '';
+    });
+
+    // WhatsApp chat import
+    $('#wa-import-btn').addEventListener('click', () => $('#wa-import-file').click());
+    $('#wa-import-file').addEventListener('change', (e) => {
+      const f = e.target.files[0];
+      if (f) openWhatsAppImport(f);
+      e.target.value = '';
+    });
+    $('#wa-commit-btn').addEventListener('click', commitWAImport);
+    $('#wa-modal').querySelectorAll('[data-close="modal"]').forEach(node => {
+      node.addEventListener('click', closeWhatsAppModal);
+    });
+
+    // history filters — changing a filter rewinds to page 1 so users don't
+    // land on an empty page when the result set shrinks.
+    $('#history-rival-filter').addEventListener('change', (e) => {
+      state.historyFilters.rival = e.target.value;
+      state.historyPage = 1;
+      renderHistory();
+    });
+    $('#history-result-filter').addEventListener('change', (e) => {
+      state.historyFilters.result = e.target.value;
+      state.historyPage = 1;
+      renderHistory();
+    });
+
+    // history pagination
+    $('#history-page-size').value = String(state.historyPageSize);
+    $('#history-page-size').addEventListener('change', (e) => {
+      state.historyPageSize = Number(e.target.value);
+      state.historyPage = 1;
+      renderHistory();
+    });
+    $('#history-prev').addEventListener('click', () => {
+      if (state.historyPage > 1) { state.historyPage--; renderHistory(); }
+    });
+    $('#history-next').addEventListener('click', () => {
+      state.historyPage++;
+      renderHistory();
+    });
+
+    // rival-detail games pagination
+    $('#rival-games-page-size').value = String(state.rivalGamesPageSize);
+    $('#rival-games-page-size').addEventListener('change', (e) => {
+      state.rivalGamesPageSize = Number(e.target.value);
+      state.rivalGamesPage = 1;
+      renderRival();
+    });
+    $('#rival-games-prev').addEventListener('click', () => {
+      if (state.rivalGamesPage > 1) { state.rivalGamesPage--; renderRival(); }
+    });
+    $('#rival-games-next').addEventListener('click', () => {
+      state.rivalGamesPage++;
+      renderRival();
+    });
+
+    // cross-tab / sync changes
+    window.addEventListener('storage', onExternalStorage);
+
+    // first paint
+    setView('dashboard');
+  }
+
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', init);
+  } else {
+    init();
+  }
+})();
