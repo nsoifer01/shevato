@@ -454,8 +454,13 @@ function buildNonShapeChecker() {
     if (minVotes && m.minVotes < minVotes) return false;
     if (minAvg && m.avgRating < minAvg) return false;
     if (minClimb && (m.lastRating - m.firstRating) < minClimb) return false;
-    if (minYear && m.year && m.year < minYear) return false;
-    if (maxYear && m.year && m.year > maxYear) return false;
+    // Year filter compares against the season's own air year (falls back
+    // to the show's start year if the season year is missing) so users
+    // searching "year >= 2020" see the seasons that actually aired in 2020+,
+    // not just shows that PREMIERED before then.
+    const yearForFilter = m.seasonYear || m.year;
+    if (minYear && yearForFilter && yearForFilter < minYear) return false;
+    if (maxYear && yearForFilter && yearForFilter > maxYear) return false;
     if (seriesType !== 'all' && m.type !== seriesType) return false;
     if (q) {
       const titleHit = m.title.toLowerCase().includes(q);
@@ -501,7 +506,7 @@ function filterAndSort() {
       case 'climb':  primary = (b.lastRating - b.firstRating) - (a.lastRating - a.firstRating); break;
       case 'finale': primary = b.lastRating - a.lastRating; break;
       case 'avg':    primary = b.avgRating - a.avgRating; break;
-      case 'recent': primary = (b.year || 0) - (a.year || 0); break;
+      case 'recent': primary = ((b.seasonYear || b.year) || 0) - ((a.seasonYear || a.year) || 0); break;
       case 'popularity':
       default:       primary = b.minVotes - a.minVotes; break;
     }
@@ -814,7 +819,7 @@ function buildCard(m) {
 
   node.querySelector('.card-title').textContent = m.title;
   node.querySelector('.card-season').textContent = `S${m.season} · ${m.episodes.length} eps`;
-  node.querySelector('.card-year').textContent = m.year || 'year unknown';
+  node.querySelector('.card-year').textContent = (m.seasonYear || m.year) || 'year unknown';
   node.querySelector('.card-genres').textContent = m.genres.slice(0, 3).join(' · ');
 
   const badge = maybeBestBadge(m);
@@ -867,7 +872,7 @@ function buildRow(m) {
 
   node.querySelector('.row-title').textContent = m.title;
   node.querySelector('.row-season').textContent = `S${m.season} · ${m.episodes.length} eps`;
-  node.querySelector('.row-year').textContent = m.year || '';
+  node.querySelector('.row-year').textContent = (m.seasonYear || m.year) || '';
 
   const badge = maybeBestBadge(m);
   if (badge) node.querySelector('.row-head').appendChild(badge);
@@ -989,7 +994,8 @@ function openModal(m, opts = {}) {
   modalState.surprise = !!opts.surprise;
 
   els.modalTitle.textContent = m.title;
-  const yearStr = m.year ? ` · ${m.year}` : '';
+  const seasonYearStr = (m.seasonYear || m.year);
+  const yearStr = seasonYearStr ? ` · ${seasonYearStr}` : '';
   els.modalSubtitle.textContent = `Season ${m.season} · ${m.episodes.length} episodes${yearStr} · ${m.genres.join(', ') || 'No genre listed'}`;
 
   fillShapeTags(els.modalShapes, m.shapes, { clickable: false });
@@ -1214,7 +1220,8 @@ function buildShowSeasonRow(m, bestSeason) {
   meta.className = 'ss-meta';
   const eps = document.createElement('span');
   eps.className = 'ss-eps';
-  const yearStr = m.year ? ` · ${m.year}` : '';
+  const ssYear = m.seasonYear || m.year;
+  const yearStr = ssYear ? ` · ${ssYear}` : '';
   eps.textContent = `${m.episodes.length} eps${yearStr}`;
   meta.appendChild(eps);
   if (m.shapes.length) {
