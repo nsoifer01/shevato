@@ -32,7 +32,11 @@ const DATA_DIR = path.join(__dirname, '..', 'data');
 const OUT_FILE = path.join(__dirname, '..', 'data.json');
 const TMDB_CACHE = path.join(DATA_DIR, 'tmdb-cache.json');
 
-const MIN_EPISODES = parseInt(process.env.MIN_EPISODES || '4', 10);
+// Default 3 (was 4) so short-season formats like BBC Sherlock (3 eps/season)
+// are included. Most shape detectors require >= 4 episodes internally, so
+// short seasons will be emitted as shape-less rows under the parent show
+// rather than appearing as their own pattern hits.
+const MIN_EPISODES = parseInt(process.env.MIN_EPISODES || '3', 10);
 const MIN_VOTES = parseInt(process.env.MIN_VOTES || '100', 10);
 const SERIES_TYPES = new Set(['tvSeries', 'tvMiniSeries']);
 
