@@ -76,6 +76,13 @@ const els = {
 const state = {
   shapes: new Set(),
   search: '',
+  // When the user picks a series from the search suggestions, we lock the
+  // results to that exact seriesId. The displayed search value is the
+  // title ("Sherlock"), but the filter ignores `search` and exact-matches
+  // `lockedSeriesId` so we don't fuzzy-match other shows that share a
+  // word in the title (e.g., "Sherlock Holmes"). Cleared the moment the
+  // user edits the search input again.
+  lockedSeriesId: null,
   minEpisodes: null,
   maxEpisodes: null,
   minVotes: null,
@@ -462,7 +469,12 @@ function buildNonShapeChecker() {
     if (minYear && yearForFilter && yearForFilter < minYear) return false;
     if (maxYear && yearForFilter && yearForFilter > maxYear) return false;
     if (seriesType !== 'all' && m.type !== seriesType) return false;
-    if (q) {
+    if (state.lockedSeriesId) {
+      // Suggestion-locked: exact-match the chosen series; ignore the
+      // (display-only) search text. The lock is cleared the moment the
+      // user edits the search input.
+      if (m.seriesId !== state.lockedSeriesId) return false;
+    } else if (q) {
       const titleHit = m.title.toLowerCase().includes(q);
       const idHit = m.seriesId.toLowerCase().includes(q);
       if (!titleHit && !idHit) return false;
@@ -1513,6 +1525,11 @@ function selectSuggestion(i) {
   if (!s) return;
   els.search.value = s.title;
   state.search = s.title;
+  // Pin the results to this exact series — substring-match on title
+  // would otherwise pull in unrelated shows that share a word
+  // (e.g., picking BBC "Sherlock" would also surface "Sherlock Holmes"
+  // and "The Case-Book of Sherlock Holmes").
+  state.lockedSeriesId = s.seriesId;
   closeSuggestions();
   state.page = 1;
   writeStateToURL();
@@ -1557,6 +1574,9 @@ function bindEvents() {
     els[id].addEventListener('input', onToolbarChange);
     els[id].addEventListener('change', onToolbarChange);
   }
+  // Any direct keystroke in the search box releases the suggestion lock —
+  // the user is now searching freeform, not riding a picked series.
+  els.search.addEventListener('input', () => { state.lockedSeriesId = null; });
 
   if (els.labelFilters) {
     for (const btn of els.labelFilters.querySelectorAll('.label-chip')) {
@@ -1610,6 +1630,7 @@ function bindEvents() {
   els.resetFilters.addEventListener('click', () => {
     state.shapes.clear();
     state.search = '';
+    state.lockedSeriesId = null;
     state.minEpisodes = null;
     state.maxEpisodes = null;
     state.minVotes = null;
@@ -1691,6 +1712,7 @@ function bindKeyboard() {
         document.body.classList.remove('is-menu-visible');
       } else if (document.activeElement === els.search && els.search.value) {
         els.search.value = '';
+        state.lockedSeriesId = null;
         onToolbarChange();
       }
       return;
