@@ -178,6 +178,7 @@ async function load() {
   renderGenreChips();
   bindEvents();
   bindKeyboard();
+  bindAdvancedDrawer();
   // Initial reset-button state: disabled unless the URL pre-populated some filters.
   syncResetButton();
   render();
@@ -1026,16 +1027,32 @@ function openModal(m, opts = {}) {
   const epFrag = document.createDocumentFragment();
   for (const e of m.episodes) {
     const li = document.createElement('li');
+
     const num = document.createElement('span');
     num.className = 'ep-number';
     num.textContent = `Ep ${e.episode}`;
+
+    // Episode title — populated by build-data.js from IMDb's
+    // title.basics.tsv. Falls back to empty (hidden via CSS) when the
+    // data was built without title support.
+    const name = document.createElement('span');
+    name.className = 'ep-name';
+    if (e.name) {
+      name.textContent = e.name;
+      name.title = e.name;     // tooltip when truncated
+    }
+
+    const meta = document.createElement('span');
+    meta.className = 'ep-meta';
     const rating = document.createElement('span');
     rating.className = 'ep-rating';
     rating.textContent = e.rating.toFixed(1);
     const votes = document.createElement('span');
     votes.className = 'ep-votes';
     votes.textContent = `${e.votes.toLocaleString()} votes`;
-    li.append(num, rating, votes);
+    meta.append(rating, votes);
+
+    li.append(num, name, meta);
     epFrag.appendChild(li);
   }
   els.modalEpisodes.replaceChildren(epFrag);
@@ -1120,10 +1137,33 @@ function openShowModal(seriesId) {
     els.showModalStats.appendChild(aboveBadge);
   }
 
-  // Aggregate shapes — every distinct shape that appears across any season.
-  const allShapes = new Set();
-  for (const s of seasons) for (const sh of s.shapes) allShapes.add(sh);
-  fillShapeTags(els.showModalShapes, [...allShapes], { clickable: false });
+  // Show-level shapes = INTERSECTION across seasons. A shape only belongs
+  // at the show level if it's true of every season — anything else is a
+  // per-season pattern (still rendered on each ss-shape-row below).
+  let commonShapes = null;
+  for (const s of seasons) {
+    const set = new Set(s.shapes);
+    if (commonShapes === null) {
+      commonShapes = set;
+    } else {
+      for (const sh of [...commonShapes]) {
+        if (!set.has(sh)) commonShapes.delete(sh);
+      }
+    }
+  }
+  const shapeList = commonShapes ? [...commonShapes] : [];
+  els.showModalShapes.replaceChildren();
+  if (shapeList.length > 0) {
+    fillShapeTags(els.showModalShapes, shapeList, { clickable: false });
+  } else if (seasons.length > 1) {
+    // No single shape applies to every season — render a muted hint so the
+    // header doesn't read as "no shape information" (which would be wrong).
+    const hint = document.createElement('span');
+    hint.className = 'shape-tag varied-hint';
+    hint.textContent = 'Varied across seasons';
+    hint.title = 'Each season has its own pattern — see per-season chips below';
+    els.showModalShapes.appendChild(hint);
+  }
 
   els.showModalOverview.textContent = meta.overview || '';
 
@@ -1638,6 +1678,8 @@ function bindKeyboard() {
         closeModal();
       } else if (!els.showModal.hidden) {
         closeShowModal();
+      } else if (document.body.classList.contains('advanced-drawer-open')) {
+        closeAdvancedDrawer();
       } else if (document.body.classList.contains('is-menu-visible')) {
         document.body.classList.remove('is-menu-visible');
       } else if (document.activeElement === els.search && els.search.value) {
@@ -1648,6 +1690,65 @@ function bindKeyboard() {
     }
     if (!els.modal.hidden) trapModalFocus(e);
   });
+}
+
+/* Advanced-filters drawer (mobile only).
+   The <details class="advanced"> element is styled as a slide-up bottom
+   sheet under 600px. This wires up:
+     - body class so CSS can lock body scroll + show the backdrop
+     - a real backdrop div so taps on the dimmed area close the drawer
+     - ESC (handled in bindKeyboard above)
+   Desktop keeps the original inline expand — the body class is only set
+   when the viewport actually matches the mobile media query. */
+const drawerMobileMQ = window.matchMedia('(max-width: 600px)');
+
+function isDrawerMobile() {
+  return drawerMobileMQ.matches;
+}
+
+function closeAdvancedDrawer() {
+  const adv = document.querySelector('details.advanced');
+  if (adv && adv.open) adv.open = false;
+}
+
+function bindAdvancedDrawer() {
+  const adv = document.querySelector('details.advanced');
+  if (!adv) return;
+
+  const backdrop = document.createElement('div');
+  backdrop.className = 'advanced-backdrop';
+  backdrop.setAttribute('aria-hidden', 'true');
+  backdrop.addEventListener('click', closeAdvancedDrawer);
+  document.body.appendChild(backdrop);
+
+  // iOS-safe body scroll-lock. `overflow: hidden` alone doesn't stop the
+  // page rubber-banding behind the drawer on iOS Safari, so we capture
+  // the scroll position, pin <body> via position:fixed (CSS reads this
+  // via the --scroll-lock-y custom property), and restore on close.
+  let savedScrollY = 0;
+  function lockScroll() {
+    savedScrollY = window.scrollY || document.documentElement.scrollTop || 0;
+    document.body.style.setProperty('--scroll-lock-y', `-${savedScrollY}px`);
+  }
+  function unlockScroll() {
+    document.body.style.removeProperty('--scroll-lock-y');
+    // Restore scroll position once the position:fixed is removed.
+    window.scrollTo(0, savedScrollY);
+  }
+
+  function syncBodyClass() {
+    const shouldLock = adv.open && isDrawerMobile();
+    const isLocked = document.body.classList.contains('advanced-drawer-open');
+    if (shouldLock && !isLocked) lockScroll();
+    document.body.classList.toggle('advanced-drawer-open', shouldLock);
+    if (!shouldLock && isLocked) unlockScroll();
+  }
+
+  adv.addEventListener('toggle', syncBodyClass);
+
+  // If the viewport changes from mobile → desktop while open, drop the
+  // body class so scroll-lock doesn't strand the user on the desktop view.
+  drawerMobileMQ.addEventListener('change', syncBodyClass);
 }
 
 function isTypingTarget(el) {
