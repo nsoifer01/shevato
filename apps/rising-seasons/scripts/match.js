@@ -234,10 +234,23 @@ function findMatches(seriesById, episodesBySeries, opts = {}) {
     const ratings = eps.map((e) => e.rating);
     const seasonAvg = ratings.reduce((s, r) => s + r, 0) / ratings.length;
 
+    // seasonYear = earliest air year across the season's episodes. We use
+    // min (rather than the first episode's year) so an out-of-order ep
+    // doesn't pull the year forward; if no episode carries a year, we
+    // fall back to null and the UI uses the show's start year (`year`).
+    let seasonYear = null;
+    for (const e of eps) {
+      if (e.year && (!seasonYear || e.year < seasonYear)) seasonYear = e.year;
+    }
+
     matches.push({
       seriesId,
       title: meta.title,
       year: meta.year,
+      // Per-season air year — distinct from `year` (show start year). The
+      // UI prefers seasonYear everywhere a single season is displayed and
+      // falls back to `year` when the build pipeline didn't supply one.
+      seasonYear,
       type: meta.type,
       genres: meta.genres || [],
       season,
@@ -245,6 +258,8 @@ function findMatches(seriesById, episodesBySeries, opts = {}) {
       // drop `tconst` — it's the IMDb episode ID we used to join the ratings
       // and titles tables during build, but the front-end never reads it,
       // so shipping it inflates data.json by ~1.5MB across ~126K episodes.
+      // We also drop the per-episode `year` because seasonYear above
+      // captures the only year the UI needs.
       episodes: eps.map(({ episode, rating, votes, name }) => {
         const ep = { episode, rating, votes };
         if (name) ep.name = name;

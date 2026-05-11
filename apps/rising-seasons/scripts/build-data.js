@@ -68,12 +68,13 @@ async function loadRatings() {
 }
 
 async function loadSeries(ratings) {
-  // Single pass: collect series basics AND episode titles. We skip
-  // unrated episodes because they can never appear in our matches —
-  // that keeps the episodeTitles map roughly bounded to the size of the
-  // ratings map (~1.5M entries) instead of every tvEpisode ever (~6M+).
+  // Single pass: collect series basics AND episode titles + air years.
+  // We skip unrated episodes because they can never appear in our matches —
+  // that keeps the maps roughly bounded to the size of the ratings map
+  // (~1.5M entries) instead of every tvEpisode ever (~6M+).
   const series = new Map();
   const episodeTitles = new Map();
+  const episodeYears = new Map();
   const rl = openTsv('title.basics.tsv.gz');
   let header = true;
   for await (const line of rl) {
@@ -89,6 +90,11 @@ async function loadSeries(ratings) {
       if (primaryTitle && primaryTitle !== '\\N') {
         episodeTitles.set(tconst, primaryTitle);
       }
+      const startYear = cols[5];
+      if (startYear && startYear !== '\\N') {
+        const y = parseInt(startYear, 10);
+        if (Number.isFinite(y)) episodeYears.set(tconst, y);
+      }
       continue;
     }
 
@@ -103,10 +109,10 @@ async function loadSeries(ratings) {
       genres,
     });
   }
-  return { series, episodeTitles };
+  return { series, episodeTitles, episodeYears };
 }
 
-async function loadEpisodes(series, ratings, episodeTitles) {
+async function loadEpisodes(series, ratings, episodeTitles, episodeYears) {
   // Map<seriesId, Map<seasonNumber, Array<{episode, tconst, rating, votes, name}>>>
   const result = new Map();
   const rl = openTsv('title.episode.tsv.gz');
@@ -138,6 +144,10 @@ async function loadEpisodes(series, ratings, episodeTitles) {
     const ep = { episode, tconst, rating: r.rating, votes: r.votes };
     const name = episodeTitles && episodeTitles.get(tconst);
     if (name) ep.name = name;
+    const year = episodeYears && episodeYears.get(tconst);
+    // Year is build-internal — match.js consumes it to compute the
+    // per-season `seasonYear` and then drops it from the projection.
+    if (year) ep.year = year;
     arr.push(ep);
   }
   return result;
@@ -160,15 +170,16 @@ function loadTmdbCache() {
   const ratings = await loadRatings();
   console.log(`${ratings.size.toLocaleString()} rated titles`);
 
-  process.stdout.write('Loading series basics + episode titles... ');
-  const { series, episodeTitles } = await loadSeries(ratings);
+  process.stdout.write('Loading series basics + episode titles + air years... ');
+  const { series, episodeTitles, episodeYears } = await loadSeries(ratings);
   console.log(
     `${series.size.toLocaleString()} TV series + mini-series, ` +
-    `${episodeTitles.size.toLocaleString()} episode titles`,
+    `${episodeTitles.size.toLocaleString()} episode titles, ` +
+    `${episodeYears.size.toLocaleString()} episode air years`,
   );
 
   process.stdout.write('Loading episodes... ');
-  const episodes = await loadEpisodes(series, ratings, episodeTitles);
+  const episodes = await loadEpisodes(series, ratings, episodeTitles, episodeYears);
   console.log(`${episodes.size.toLocaleString()} series have rated episodes`);
 
   process.stdout.write('Detecting shape matches... ');
