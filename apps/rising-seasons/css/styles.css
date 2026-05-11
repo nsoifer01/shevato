@@ -1206,16 +1206,6 @@ button.shape-tag.is-clickable:hover {
   background: var(--accent-soft);
   color: var(--accent);
 }
-/* "Varied across seasons" hint — rendered when the show-level shape
-   intersection is empty. Reads as a quiet note, not a tag claim. */
-.shape-tag.varied-hint {
-  background: transparent;
-  color: var(--muted);
-  border: 1px dashed rgba(255, 255, 255, 0.18);
-  font-style: italic;
-  font-weight: 500;
-  letter-spacing: 0.005em;
-}
 
 .best-badge {
   display: inline-block;
