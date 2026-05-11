@@ -1206,6 +1206,16 @@ button.shape-tag.is-clickable:hover {
   background: var(--accent-soft);
   color: var(--accent);
 }
+/* "Varied across seasons" hint — rendered when the show-level shape
+   intersection is empty. Reads as a quiet note, not a tag claim. */
+.shape-tag.varied-hint {
+  background: transparent;
+  color: var(--muted);
+  border: 1px dashed rgba(255, 255, 255, 0.18);
+  font-style: italic;
+  font-weight: 500;
+  letter-spacing: 0.005em;
+}
 
 .best-badge {
   display: inline-block;
@@ -1457,10 +1467,26 @@ button.shape-tag.is-clickable:hover {
 }
 
 @media (max-width: 560px) {
+  /* The season-trend sparkline is the whole point of the app — restore
+     it on mobile by stacking the row into two grid rows. Top row keeps
+     S# / meta / stats compact; bottom row is a full-width spark. */
   .show-season {
     grid-template-columns: 48px 1fr auto;
+    grid-template-areas:
+      "num   meta  stats"
+      "spark spark spark";
+    row-gap: 0.45rem;
+    align-items: start;
   }
-  .show-season .ss-spark { display: none; }
+  .show-season .ss-num   { grid-area: num; }
+  .show-season .ss-meta  { grid-area: meta; }
+  .show-season .ss-stats { grid-area: stats; }
+  .show-season .ss-spark {
+    grid-area: spark;
+    display: block;
+    width: 100%;
+    height: 44px;
+  }
 }
 
 .curve {
@@ -1595,8 +1621,26 @@ button.shape-tag.is-clickable:hover {
 }
 
 @media (max-width: 760px) {
-  .row { grid-template-columns: 48px 1fr 36px; }
-  .row-curve { display: none; }
+  /* Stack the row into two rows so the season-trend curve — the whole
+     point of the app — stays visible on mobile instead of being dropped
+     for layout space. Top row: poster + title block + watch toggle.
+     Bottom row: full-width curve. */
+  .row {
+    grid-template-columns: 48px 1fr 36px;
+    grid-template-areas:
+      "poster main   watch"
+      "curve  curve  curve";
+    row-gap: 0.5rem;
+  }
+  .row-poster { grid-area: poster; }
+  .row-main   { grid-area: main; }
+  .row-watch  { grid-area: watch; }
+  .row-curve {
+    grid-area: curve;
+    display: block;
+    height: 44px;
+    width: 100%;
+  }
 }
 
 /* ---------- Pagination (prev / numbers / next) ---------- */
@@ -1758,7 +1802,10 @@ button.shape-tag.is-clickable:hover {
   border-radius: 18px;
   max-width: 720px;
   width: 100%;
+  /* 100dvh fixes iOS Safari over-counting the URL bar height. The vh
+     line is a fallback for older browsers that don't know dvh. */
   max-height: calc(100vh - 2rem);
+  max-height: calc(100dvh - 2rem);
   overflow-y: auto;
   padding: 1.75rem;
   display: flex;
@@ -1928,6 +1975,26 @@ button.shape-tag.is-clickable:hover {
   letter-spacing: 0.04em;
   text-transform: uppercase;
 }
+.modal-episodes .ep-name {
+  color: var(--text);
+  font-weight: 500;
+  font-size: 0.92rem;
+  letter-spacing: -0.005em;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+/* When the build pipeline didn't include episode titles, hide the
+   empty slot entirely so the layout collapses to ep# | rating cleanly. */
+.modal-episodes .ep-name:empty { display: none; }
+.modal-episodes .ep-meta {
+  display: inline-flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 0.1rem;
+  line-height: 1.15;
+}
 .modal-episodes .ep-rating {
   color: var(--accent);
   font-weight: 700;
@@ -1935,7 +2002,8 @@ button.shape-tag.is-clickable:hover {
 }
 .modal-episodes .ep-votes  {
   color: var(--muted-2);
-  font-size: 0.78rem;
+  font-size: 0.74rem;
+  white-space: nowrap;
 }
 
 .modal-actions {
@@ -1951,44 +2019,525 @@ button.shape-tag.is-clickable:hover {
     animation: none;
   }
   .card, .row { transition: none; }
+  /* The mobile drawer's slide-up and backdrop fade-in can feel abrupt
+     for motion-sensitive users — disable both and just show/hide. */
+  .advanced-backdrop,
+  details.advanced[open] { animation: none; }
 }
 
-/* ---------- Responsive tightening ---------- */
+/* ============================================================================
+   Mobile redesign — phones-first refinements that make the app feel
+   intentional on a small screen, not a squeezed desktop layout.
+
+   Targeted breakpoints:
+     - 760px — large phones / small tablets in portrait
+     - 600px — phone portrait (the main mobile experience)
+     - 430px — small phones (iPhone SE / mini class)
+
+   Anti-overflow guarantees:
+   - the page never scrolls horizontally
+   - long titles, chip labels, and poster captions wrap or ellipsis
+   - the shape-chip strip wraps instead of forcing a horizontal scroll
+   ========================================================================= */
+
+/* No horizontal scroll, ever — long unbreakable text inside a control
+   should reflow or ellipsis instead of pushing the viewport wide. */
+html, body { overflow-x: hidden; }
+
+/* Backdrop element for the mobile "advanced filters" drawer. Inserted
+   into <body> by app.js; only visible while the drawer is open on a
+   phone-sized viewport. Sits above the site header (z 10001) so the
+   whole screen dims behind the drawer panel (z 10500). */
+.advanced-backdrop {
+  display: none;
+  position: fixed;
+  inset: 0;
+  z-index: 10400;
+  background: rgba(4, 6, 12, 0.62);
+  -webkit-backdrop-filter: blur(4px);
+  backdrop-filter: blur(4px);
+  animation: backdrop-fade-in 0.18s var(--ease);
+}
+body.advanced-drawer-open .advanced-backdrop { display: block; }
+
+/* Body scroll-lock — iOS-safe. The `position: fixed` + width preserve the
+   visual position while preventing the page from scrolling under the
+   drawer. JS captures and restores scroll position; the top offset is
+   set as a CSS custom property at the moment the drawer opens. */
+body.advanced-drawer-open {
+  position: fixed;
+  top: var(--scroll-lock-y, 0);
+  left: 0;
+  right: 0;
+  width: 100%;
+  overflow: hidden;
+}
+
+@keyframes backdrop-fade-in {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+@keyframes drawer-slide-up {
+  from { transform: translateY(100%); }
+  to   { transform: translateY(0); }
+}
+
+
+/* ----------------------------------------------------------------------------
+   ≤ 760px — large phones and small tablets
+   ------------------------------------------------------------------------- */
 
 @media (max-width: 760px) {
-  .page { padding: 0 1rem 2rem; }
-  .hero { padding: 2rem 0 0.5rem; }
-  .hero h1 { font-size: clamp(1.85rem, 8vw, 2.5rem); }
-  .tagline { font-size: 0.95rem; }
-  .shapes { padding: 1.25rem 0 0.25rem; }
-  .results-grid { grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 0.75rem; }
-  .filter-row label { min-width: 100%; flex: 1 1 100%; }
-  .filter-row.primary {
-    padding: 3px 3px 1px;
-    gap: 0.35rem;
+  .page { padding: 0 1rem 1.5rem; }
+
+  /* Compact hero — claim less vertical space so results show above fold. */
+  .hero { padding: 1.5rem 0 0.35rem; }
+  .hero h1 { font-size: clamp(1.75rem, 8vw, 2.4rem); }
+  .tagline { font-size: 0.92rem; max-width: 100%; line-height: 1.4; }
+
+  /* Shape chips: tighter strip, but still readable and tappable. */
+  .shapes {
+    padding: 0.75rem 0 0.25rem;
+    gap: 0.4rem 0.4rem;
   }
-  .filter-row.primary .view-toggle { align-self: stretch; }
-  .filter-row.primary .surprise { flex: 1 1 100%; }
-  .label-filters { gap: 0.5rem; }
-  .pager { gap: 0.25rem; }
-  .pager .page-btn { padding: 0 0.45rem; min-width: 36px; height: 36px; font-size: 0.8rem; }
-  .modal-panel { padding: 1.25rem; --modal-poster-w: 96px; }
+  .shape-chip,
+  .shape-chip:hover {
+    height: 36px;
+    padding: 0 0.8rem;
+    font-size: 0.8rem;
+  }
+  .shape-count { height: 18px; font-size: 0.68rem; }
+
+  /* Filters block: extra breathing room between sections so the toolbar,
+     label pills, and shape strip don't all crowd against each other. */
+  .filters { padding: 0.75rem 0 0.25rem; }
+
+  /* Primary toolbar — turn into a flexible two-row layout:
+       row 1: search (full width)
+       row 2: view-toggle + surprise (side by side)
+     Inputs sized for thumb taps. */
+  .filter-row.primary {
+    --ctrl-h: 44px;
+    padding: 4px 4px 4px;
+    gap: 0.35rem;
+    border-radius: 12px;
+    align-items: stretch;
+  }
+  .filter-row.primary .search { flex: 1 1 100% !important; order: 1; }
+  .filter-row.primary .search input {
+    font-size: 16px;          /* prevents iOS auto-zoom on focus */
+    padding-left: 2.4rem;
+  }
+  .filter-row.primary .view-toggle {
+    order: 2;
+    flex: 0 0 auto;
+    align-self: stretch;
+  }
+  .filter-row.primary .view-btn { width: 2.6rem; font-size: 1rem; }
+  .filter-row.primary .surprise {
+    order: 3;
+    flex: 1 1 auto;
+    font-size: 0.88rem;
+    padding: 0 1rem;
+  }
+
+  /* Quick label filters — keep glass surface but stack each group on its
+     own line so the captions never collide with their pills. */
+  .label-filters {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 0.15rem;
+    padding: 0.55rem 0.65rem;
+    margin-bottom: 0.75rem;
+  }
+  .label-group {
+    flex-wrap: wrap;
+    gap: 0.25rem 0.35rem;
+    padding: 0.2rem 0;
+  }
+  .label-group + .label-group {
+    border-top: 1px solid rgba(255, 255, 255, 0.045);
+    padding-top: 0.45rem;
+    margin-top: 0.1rem;
+  }
+  .label-group-name {
+    flex: 0 0 100%;
+    margin: 0 0 0.15rem;
+    font-size: 0.6rem;
+  }
+  .label-chip {
+    height: 36px;
+    padding: 0 0.85rem;
+    font-size: 0.82rem;
+    border-radius: 8px;
+  }
+  .label-chip + .label-chip { margin-left: 0; }
+
+  /* List rows already shed the curve here — also bump tap height. */
+  .row-watch { width: 2.25rem; height: 2.25rem; }
+
+  /* Stats bar: shorter font + larger gap-rhythm. */
+  .stats-bar {
+    padding: 0.65rem 0.9rem;
+    font-size: 0.8rem;
+    gap: 0.5rem 1.25rem;
+  }
+  .stats-bar .progress { flex-basis: 100%; }
+
+  /* Pager — tighter, taller tap targets. */
+  .pager { gap: 0.3rem; }
+  .pager .page-btn {
+    padding: 0 0.55rem;
+    min-width: 40px;
+    height: 40px;
+    font-size: 0.85rem;
+  }
+
+  /* Modal becomes a bottom sheet on phones — full width, rounded only
+     at the top, anchored to the bottom of the viewport with safe-area
+     padding so the action buttons don't sit under the home indicator. */
+  .modal {
+    padding: 0;
+    align-items: flex-end;
+  }
+  .modal-panel {
+    width: 100%;
+    max-width: 100%;
+    max-height: calc(100vh - 1rem);
+    max-height: calc(100dvh - 1rem);
+    border-radius: 18px 18px 0 0;
+    border-bottom: 0;
+    padding: 1rem 1rem 1.1rem;
+    padding-bottom: max(1rem, env(safe-area-inset-bottom));
+    gap: 0.85rem;
+    --modal-poster-w: 92px;
+  }
+  .modal-panel::before { border-radius: 18px 18px 0 0; }
   .modal-poster { width: var(--modal-poster-w); }
+  .modal-close {
+    margin-bottom: -1.5rem;
+    /* Float the close button over the header — it stays reachable at
+       the top of the sheet without consuming a full row of padding. */
+  }
   .modal-reroll {
-    top: 1.25rem;
-    left: 1.25rem;
-    height: 26px;
+    top: 1rem;
+    left: 1rem;
+    height: 28px;
     font-size: 0.72rem;
   }
   .modal-reroll:not([hidden]) ~ .modal-header {
-    margin-top: calc(26px - 0.4rem);
+    margin-top: calc(28px - 0.4rem);
+  }
+  .modal-header { gap: 0.85rem; }
+  .modal-heading h2 { font-size: 1.35rem; line-height: 1.2; }
+  .modal-curve { height: 150px; padding: 0.4rem; }
+  .modal-episodes li {
+    grid-template-columns: 2.6rem 1fr auto;
+    gap: 0.6rem;
+    padding: 0.55rem 0.7rem;
+    font-size: 0.88rem;
+  }
+
+  /* Action buttons stack to be each full-width tappable bars. */
+  .modal-actions {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 0.55rem;
+  }
+  .modal-actions .btn {
+    width: 100%;
+    height: 44px;
+  }
+  .modal-imdb { margin-left: 0; }
+}
+
+/* ----------------------------------------------------------------------------
+   ≤ 600px — phone portrait (the main mobile experience)
+
+   Major changes here:
+   - Result cards in GRID view flip to full-width horizontal cards
+   - The "More filters" details element becomes a bottom-sheet drawer
+   - Tap targets uniformly meet the 40-44px guidance
+   ------------------------------------------------------------------------- */
+
+@media (max-width: 600px) {
+
+  /* --- Cards in grid view: full-width horizontal layout ---------------- */
+
+  .results-grid {
+    grid-template-columns: 1fr;
+    gap: 0.7rem;
+  }
+  .results-grid.list-view { gap: 0.55rem; }
+
+  .card {
+    flex-direction: row;
+    align-items: stretch;
+    min-height: 156px;
+  }
+  .card-poster {
+    flex: 0 0 104px;
+    width: 104px;
+    aspect-ratio: 2 / 3;
+  }
+  .card-body {
+    flex: 1 1 auto;
+    min-width: 0;
+    padding: 0.7rem 0.85rem 0.8rem;
+    gap: 0.45rem;
+  }
+  .card-head { gap: 0.4rem; }
+  .card-title {
+    font-size: 0.98rem;
+    -webkit-line-clamp: 2;
+  }
+  .card-season { font-size: 0.74rem; }
+  .card-meta { font-size: 0.72rem; gap: 0.45rem; }
+  .card-shapes { gap: 0.25rem; }
+  .card .curve { height: 48px; }
+  .card-stats {
+    gap: 0.55rem;
+    font-size: 0.72rem;
+  }
+  /* Watch toggle is roomier so it's easier to thumb-tap on the corner. */
+  .card .watch-toggle {
+    width: 2.25rem;
+    height: 2.25rem;
+    top: 0.4rem;
+    right: 0.4rem;
+  }
+
+  /* List view rows — already tight; just give the watch button a
+     bigger circular tap target. */
+  .row {
+    grid-template-columns: 56px 1fr 40px;
+    column-gap: 0.85rem;
+    row-gap: 0.55rem;
+    padding: 0.7rem 0.85rem;
+  }
+  .row-curve { height: 48px; }
+  .row-watch {
+    width: 2.5rem;
+    height: 2.5rem;
+  }
+
+  /* --- Shape chips: keep the descriptions hidden (already), but pad the
+       tap area a touch more so they meet ~38-40px. -------------------- */
+  .shape-chip,
+  .shape-chip:hover {
+    height: 38px;
+    padding: 0 0.9rem;
+    font-size: 0.82rem;
+  }
+
+  /* --- Advanced "More filters" — becomes a slide-up bottom sheet ----- */
+
+  /* The trigger button: when CLOSED, render as a full-width pill so it
+     reads as a clear action, not a tiny inline link. */
+  .advanced summary {
+    width: 100%;
+    height: 44px;
+    margin: 0;
+    padding: 0 1rem;
+    border-radius: 10px;
+    background: rgba(255, 255, 255, 0.04);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    color: var(--text);
+    font-size: 0.78rem;
+    letter-spacing: 0.1em;
+    justify-content: center;
+  }
+  .advanced summary:hover { background: rgba(255, 255, 255, 0.06); }
+
+  /* When OPEN: the entire <details> becomes a fixed bottom sheet. The
+     summary stays at the top of the sheet (sticky) and acts as the
+     close handle ("×" replaces "+" via the existing transform). */
+  details.advanced[open] {
+    position: fixed;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    top: auto;
+    width: 100%;
+    /* 100dvh accounts for the iOS URL bar — 100vh over-counts and the
+       sheet would extend below the visible viewport. */
+    max-height: 85vh;
+    max-height: 85dvh;
+    z-index: 10500;
+    margin: 0;
+    padding: 0;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    background:
+      linear-gradient(180deg, #181c26 0%, #12151d 100%);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    border-bottom: 0;
+    border-radius: 18px 18px 0 0;
+    box-shadow:
+      0 -20px 60px rgba(0, 0, 0, 0.55),
+      0 -2px 8px rgba(0, 0, 0, 0.35);
+    animation: drawer-slide-up 0.25s var(--ease);
+  }
+  details.advanced[open] > summary {
+    position: sticky;
+    top: 0;
+    z-index: 2;
+    width: 100%;
+    height: 52px;
+    margin: 0;
+    padding: 0 1.1rem;
+    background: rgba(18, 21, 29, 0.92);
+    -webkit-backdrop-filter: blur(8px);
+    backdrop-filter: blur(8px);
+    border: 0;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+    border-radius: 18px 18px 0 0;
+    color: var(--text);
+    font-size: 0.78rem;
+    font-weight: 700;
+    letter-spacing: 0.12em;
+    justify-content: space-between;
+  }
+  details.advanced[open] > summary::before { order: 2; font-size: 1.4rem; }
+  details.advanced[open] > summary:hover { background: rgba(24, 28, 38, 0.95); }
+
+  /* A subtle drag-handle bar at the very top of the sheet — signals
+     "this is a sheet you can dismiss," even though we close via tap. */
+  details.advanced[open] > summary::after {
+    content: '';
+    position: absolute;
+    top: 6px;
+    left: 50%;
+    transform: translateX(-50%);
+    width: 36px;
+    height: 4px;
+    border-radius: 4px;
+    background: rgba(255, 255, 255, 0.15);
+  }
+
+  /* Strip the open-panel chrome the desktop layout adds — the fixed
+     sheet provides its own background, border, and rounding. */
+  .advanced[open] {
+    background: transparent;
+    border: 0;
+    box-shadow: none;
+  }
+  .advanced[open] .filter-row {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 0.7rem 0.7rem;
+    padding: 0.9rem 1.1rem 0;
+  }
+  .advanced[open] .filter-row input,
+  .advanced[open] .filter-row select {
+    height: 44px;
+    font-size: 16px;          /* prevents iOS zoom on focus */
+    border-radius: 9px;
+  }
+  .genre-row {
+    padding: 1rem 1.1rem;
+    margin-top: 0.5rem;
+    gap: 0.4rem 0.4rem;
+  }
+  .genre-row::before { font-size: 0.62rem; margin-bottom: 0.3rem; }
+  .genre-chip,
+  .genre-chip:hover {
+    height: 38px;
+    padding: 0 0.95rem;
+    font-size: 0.8rem;
+  }
+  .filter-actions {
+    margin: 0;
+    padding: 0.85rem 1.1rem 1.1rem;
+    padding-bottom: max(0.85rem, env(safe-area-inset-bottom));
+    border-top: 1px solid rgba(255, 255, 255, 0.075);
+    justify-content: stretch;
+  }
+  .filter-actions .btn,
+  .filter-actions .btn:hover {
+    width: 100%;
+    height: 40px;
+    font-size: 0.75rem;
+    color: var(--accent) !important;
+  }
+
+  /* --- Search dropdown: aligned to the toolbar but full-bleed inside
+       the screen edges with a slightly taller row. ------------------ */
+  .search-suggestions {
+    max-height: 60vh;
+    border-radius: 12px;
+  }
+  .search-suggestion {
+    min-height: 48px;
+    padding: 0.55rem 0.7rem;
+    font-size: 0.92rem;
+  }
+  .search-suggestion .ss-poster {
+    flex: 0 0 36px;
+    width: 36px;
+    height: 54px;
   }
 }
 
-@media (max-width: 460px) {
-  .results-grid { grid-template-columns: repeat(auto-fill, minmax(130px, 1fr)); }
+/* ----------------------------------------------------------------------------
+   ≤ 430px — small phones (iPhone SE / mini / Pixel 4a)
+   ------------------------------------------------------------------------- */
+
+@media (max-width: 430px) {
+  .page { padding: 0 0.75rem 1.25rem; }
+
+  .hero { padding: 1.1rem 0 0.2rem; }
+  .hero h1 { font-size: clamp(1.5rem, 8vw, 1.95rem); }
+  .tagline { font-size: 0.85rem; }
+
+  /* Narrower cards: poster shrinks just enough that the title can fit
+     two lines of ~22 characters without ellipsising mid-word. */
+  .card { min-height: 140px; }
+  .card-poster { flex: 0 0 92px; width: 92px; }
+  .card-body { padding: 0.6rem 0.7rem 0.7rem; gap: 0.4rem; }
   .card-title { font-size: 0.92rem; }
-  .card-body { padding: 0.65rem 0.75rem 0.85rem; }
+  .card .curve { height: 42px; }
+  /* Votes column is the lowest-value stat in the trio; drop it on the
+     tightest screens so climb + avg get full room. */
+  .card .stat-votes { display: none; }
+
+  /* List view: drop the season label inline (year stays). */
+  .row-poster { width: 48px; }
+  .row { grid-template-columns: 48px 1fr 40px; }
+  .row-curve { height: 40px; }
+
+  /* Drawer rows go single-column at this width so the input labels and
+     values both have full breathing room. */
+  .advanced[open] .filter-row {
+    grid-template-columns: 1fr;
+    gap: 0.55rem;
+  }
+
+  /* Modal sheet: slightly taller and tighter so episodes show in full. */
+  .modal-panel {
+    --modal-poster-w: 84px;
+    padding: 0.9rem 0.85rem 1rem;
+    padding-bottom: max(0.85rem, env(safe-area-inset-bottom));
+  }
+  .modal-heading h2 { font-size: 1.2rem; }
+  .modal-subtitle, .modal-stats { font-size: 0.8rem; }
+  .modal-curve { height: 130px; }
+  .modal-episodes li {
+    grid-template-columns: 2.4rem 1fr auto;
+    padding: 0.5rem 0.6rem;
+    font-size: 0.85rem;
+  }
+
+  /* Pager: drop ellipsis tokens and lean on prev/next for navigation. */
+  .pager .page-ellipsis { display: none; }
+  .pager .page-btn { min-width: 38px; height: 38px; font-size: 0.8rem; padding: 0 0.45rem; }
+
+  /* Stats bar collapses to a stacked, scannable line list. */
+  .stats-bar {
+    gap: 0.4rem 0;
+    flex-direction: column;
+    align-items: stretch;
+  }
+  .stats-bar > span { justify-content: space-between; }
 }
 
 /* ---------- Tweak shared chrome (#header, #footer, #menu) for our theme ----
