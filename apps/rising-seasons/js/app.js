@@ -76,6 +76,13 @@ const els = {
 const state = {
   shapes: new Set(),
   search: '',
+  // When the user picks a series from the search suggestions, we lock the
+  // results to that exact seriesId. The displayed search value is the
+  // title ("Sherlock"), but the filter ignores `search` and exact-matches
+  // `lockedSeriesId` so we don't fuzzy-match other shows that share a
+  // word in the title (e.g., "Sherlock Holmes"). Cleared the moment the
+  // user edits the search input again.
+  lockedSeriesId: null,
   minEpisodes: null,
   maxEpisodes: null,
   minVotes: null,
@@ -454,10 +461,20 @@ function buildNonShapeChecker() {
     if (minVotes && m.minVotes < minVotes) return false;
     if (minAvg && m.avgRating < minAvg) return false;
     if (minClimb && (m.lastRating - m.firstRating) < minClimb) return false;
-    if (minYear && m.year && m.year < minYear) return false;
-    if (maxYear && m.year && m.year > maxYear) return false;
+    // Year filter compares against the season's own air year (falls back
+    // to the show's start year if the season year is missing) so users
+    // searching "year >= 2020" see the seasons that actually aired in 2020+,
+    // not just shows that PREMIERED before then.
+    const yearForFilter = m.seasonYear || m.year;
+    if (minYear && yearForFilter && yearForFilter < minYear) return false;
+    if (maxYear && yearForFilter && yearForFilter > maxYear) return false;
     if (seriesType !== 'all' && m.type !== seriesType) return false;
-    if (q) {
+    if (state.lockedSeriesId) {
+      // Suggestion-locked: exact-match the chosen series; ignore the
+      // (display-only) search text. The lock is cleared the moment the
+      // user edits the search input.
+      if (m.seriesId !== state.lockedSeriesId) return false;
+    } else if (q) {
       const titleHit = m.title.toLowerCase().includes(q);
       const idHit = m.seriesId.toLowerCase().includes(q);
       if (!titleHit && !idHit) return false;
@@ -501,7 +518,7 @@ function filterAndSort() {
       case 'climb':  primary = (b.lastRating - b.firstRating) - (a.lastRating - a.firstRating); break;
       case 'finale': primary = b.lastRating - a.lastRating; break;
       case 'avg':    primary = b.avgRating - a.avgRating; break;
-      case 'recent': primary = (b.year || 0) - (a.year || 0); break;
+      case 'recent': primary = ((b.seasonYear || b.year) || 0) - ((a.seasonYear || a.year) || 0); break;
       case 'popularity':
       default:       primary = b.minVotes - a.minVotes; break;
     }
@@ -814,7 +831,7 @@ function buildCard(m) {
 
   node.querySelector('.card-title').textContent = m.title;
   node.querySelector('.card-season').textContent = `S${m.season} · ${m.episodes.length} eps`;
-  node.querySelector('.card-year').textContent = m.year || 'year unknown';
+  node.querySelector('.card-year').textContent = (m.seasonYear || m.year) || 'year unknown';
   node.querySelector('.card-genres').textContent = m.genres.slice(0, 3).join(' · ');
 
   const badge = maybeBestBadge(m);
@@ -867,7 +884,7 @@ function buildRow(m) {
 
   node.querySelector('.row-title').textContent = m.title;
   node.querySelector('.row-season').textContent = `S${m.season} · ${m.episodes.length} eps`;
-  node.querySelector('.row-year').textContent = m.year || '';
+  node.querySelector('.row-year').textContent = (m.seasonYear || m.year) || '';
 
   const badge = maybeBestBadge(m);
   if (badge) node.querySelector('.row-head').appendChild(badge);
@@ -989,7 +1006,8 @@ function openModal(m, opts = {}) {
   modalState.surprise = !!opts.surprise;
 
   els.modalTitle.textContent = m.title;
-  const yearStr = m.year ? ` · ${m.year}` : '';
+  const seasonYearStr = (m.seasonYear || m.year);
+  const yearStr = seasonYearStr ? ` · ${seasonYearStr}` : '';
   els.modalSubtitle.textContent = `Season ${m.season} · ${m.episodes.length} episodes${yearStr} · ${m.genres.join(', ') || 'No genre listed'}`;
 
   fillShapeTags(els.modalShapes, m.shapes, { clickable: false });
@@ -1151,19 +1169,7 @@ function openShowModal(seriesId) {
       }
     }
   }
-  const shapeList = commonShapes ? [...commonShapes] : [];
-  els.showModalShapes.replaceChildren();
-  if (shapeList.length > 0) {
-    fillShapeTags(els.showModalShapes, shapeList, { clickable: false });
-  } else if (seasons.length > 1) {
-    // No single shape applies to every season — render a muted hint so the
-    // header doesn't read as "no shape information" (which would be wrong).
-    const hint = document.createElement('span');
-    hint.className = 'shape-tag varied-hint';
-    hint.textContent = 'Varied across seasons';
-    hint.title = 'Each season has its own pattern — see per-season chips below';
-    els.showModalShapes.appendChild(hint);
-  }
+  fillShapeTags(els.showModalShapes, commonShapes ? [...commonShapes] : [], { clickable: false });
 
   els.showModalOverview.textContent = meta.overview || '';
 
@@ -1214,7 +1220,8 @@ function buildShowSeasonRow(m, bestSeason) {
   meta.className = 'ss-meta';
   const eps = document.createElement('span');
   eps.className = 'ss-eps';
-  const yearStr = m.year ? ` · ${m.year}` : '';
+  const ssYear = m.seasonYear || m.year;
+  const yearStr = ssYear ? ` · ${ssYear}` : '';
   eps.textContent = `${m.episodes.length} eps${yearStr}`;
   meta.appendChild(eps);
   if (m.shapes.length) {
@@ -1506,6 +1513,11 @@ function selectSuggestion(i) {
   if (!s) return;
   els.search.value = s.title;
   state.search = s.title;
+  // Pin the results to this exact series — substring-match on title
+  // would otherwise pull in unrelated shows that share a word
+  // (e.g., picking BBC "Sherlock" would also surface "Sherlock Holmes"
+  // and "The Case-Book of Sherlock Holmes").
+  state.lockedSeriesId = s.seriesId;
   closeSuggestions();
   state.page = 1;
   writeStateToURL();
@@ -1550,6 +1562,9 @@ function bindEvents() {
     els[id].addEventListener('input', onToolbarChange);
     els[id].addEventListener('change', onToolbarChange);
   }
+  // Any direct keystroke in the search box releases the suggestion lock —
+  // the user is now searching freeform, not riding a picked series.
+  els.search.addEventListener('input', () => { state.lockedSeriesId = null; });
 
   if (els.labelFilters) {
     for (const btn of els.labelFilters.querySelectorAll('.label-chip')) {
@@ -1603,6 +1618,7 @@ function bindEvents() {
   els.resetFilters.addEventListener('click', () => {
     state.shapes.clear();
     state.search = '';
+    state.lockedSeriesId = null;
     state.minEpisodes = null;
     state.maxEpisodes = null;
     state.minVotes = null;
@@ -1684,6 +1700,7 @@ function bindKeyboard() {
         document.body.classList.remove('is-menu-visible');
       } else if (document.activeElement === els.search && els.search.value) {
         els.search.value = '';
+        state.lockedSeriesId = null;
         onToolbarChange();
       }
       return;
