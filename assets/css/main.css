@@ -2793,4 +2793,21 @@ body.is-menu-visible #menu {
   box-shadow: 0 0 1.5rem 0 rgba(0, 0, 0, 0.2);
   visibility: visible; }
 
+/* Sticky footer — keeps the data-include="footer" partial pinned to the
+   viewport bottom on short pages. Scoped via :has so unrelated pages
+   (redirects, etc.) keep normal block layout. */
+html {
+  height: 100%; }
+
+body:has(> [data-include="footer"]) {
+  display: -webkit-flex;
+  display: -ms-flexbox;
+  display: flex;
+  -webkit-flex-direction: column;
+  -ms-flex-direction: column;
+  flex-direction: column;
+  min-height: 100vh; }
+
+body > [data-include="footer"] {
+  margin-top: auto; }
 
