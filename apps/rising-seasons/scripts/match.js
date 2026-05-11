@@ -241,9 +241,15 @@ function findMatches(seriesById, episodesBySeries, opts = {}) {
       type: meta.type,
       genres: meta.genres || [],
       season,
-      episodes: eps.map(({ episode, rating, votes, tconst }) => ({
-        episode, rating, votes, tconst,
-      })),
+      // Project to the minimal shape the UI actually reads. We deliberately
+      // drop `tconst` — it's the IMDb episode ID we used to join the ratings
+      // and titles tables during build, but the front-end never reads it,
+      // so shipping it inflates data.json by ~1.5MB across ~126K episodes.
+      episodes: eps.map(({ episode, rating, votes, name }) => {
+        const ep = { episode, rating, votes };
+        if (name) ep.name = name;
+        return ep;
+      }),
       firstRating: ratings[0],
       lastRating: ratings[ratings.length - 1],
       avgRating: Math.round(seasonAvg * 100) / 100,
