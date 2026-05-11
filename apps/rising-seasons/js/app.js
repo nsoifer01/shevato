@@ -1169,19 +1169,7 @@ function openShowModal(seriesId) {
       }
     }
   }
-  const shapeList = commonShapes ? [...commonShapes] : [];
-  els.showModalShapes.replaceChildren();
-  if (shapeList.length > 0) {
-    fillShapeTags(els.showModalShapes, shapeList, { clickable: false });
-  } else if (seasons.length > 1) {
-    // No single shape applies to every season — render a muted hint so the
-    // header doesn't read as "no shape information" (which would be wrong).
-    const hint = document.createElement('span');
-    hint.className = 'shape-tag varied-hint';
-    hint.textContent = 'Varied across seasons';
-    hint.title = 'Each season has its own pattern — see per-season chips below';
-    els.showModalShapes.appendChild(hint);
-  }
+  fillShapeTags(els.showModalShapes, commonShapes ? [...commonShapes] : [], { clickable: false });
 
   els.showModalOverview.textContent = meta.overview || '';
 
