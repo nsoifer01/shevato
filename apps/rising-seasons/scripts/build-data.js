@@ -67,31 +67,47 @@ async function loadRatings() {
   return ratings;
 }
 
-async function loadSeries() {
+async function loadSeries(ratings) {
+  // Single pass: collect series basics AND episode titles. We skip
+  // unrated episodes because they can never appear in our matches —
+  // that keeps the episodeTitles map roughly bounded to the size of the
+  // ratings map (~1.5M entries) instead of every tvEpisode ever (~6M+).
   const series = new Map();
+  const episodeTitles = new Map();
   const rl = openTsv('title.basics.tsv.gz');
   let header = true;
   for await (const line of rl) {
     if (header) { header = false; continue; }
     const cols = line.split('\t');
     // tconst, titleType, primaryTitle, originalTitle, isAdult, startYear, endYear, runtimeMinutes, genres
+    const tconst = cols[0];
     const titleType = cols[1];
+
+    if (titleType === 'tvEpisode') {
+      if (!ratings.has(tconst)) continue;
+      const primaryTitle = cols[2];
+      if (primaryTitle && primaryTitle !== '\\N') {
+        episodeTitles.set(tconst, primaryTitle);
+      }
+      continue;
+    }
+
     if (!SERIES_TYPES.has(titleType)) continue;
     const startYear = cols[5];
     const genresRaw = cols[8];
     const genres = (!genresRaw || genresRaw === '\\N') ? [] : genresRaw.split(',');
-    series.set(cols[0], {
+    series.set(tconst, {
       title: cols[2],
       year: startYear === '\\N' ? null : parseInt(startYear, 10),
       type: titleType,
       genres,
     });
   }
-  return series;
+  return { series, episodeTitles };
 }
 
-async function loadEpisodes(series, ratings) {
-  // Map<seriesId, Map<seasonNumber, Array<{episode, tconst, rating, votes}>>>
+async function loadEpisodes(series, ratings, episodeTitles) {
+  // Map<seriesId, Map<seasonNumber, Array<{episode, tconst, rating, votes, name}>>>
   const result = new Map();
   const rl = openTsv('title.episode.tsv.gz');
   let header = true;
@@ -119,7 +135,10 @@ async function loadEpisodes(series, ratings) {
       arr = [];
       bySeason.set(season, arr);
     }
-    arr.push({ episode, tconst, rating: r.rating, votes: r.votes });
+    const ep = { episode, tconst, rating: r.rating, votes: r.votes };
+    const name = episodeTitles && episodeTitles.get(tconst);
+    if (name) ep.name = name;
+    arr.push(ep);
   }
   return result;
 }
@@ -141,12 +160,15 @@ function loadTmdbCache() {
   const ratings = await loadRatings();
   console.log(`${ratings.size.toLocaleString()} rated titles`);
 
-  process.stdout.write('Loading series basics... ');
-  const series = await loadSeries();
-  console.log(`${series.size.toLocaleString()} TV series + mini-series`);
+  process.stdout.write('Loading series basics + episode titles... ');
+  const { series, episodeTitles } = await loadSeries(ratings);
+  console.log(
+    `${series.size.toLocaleString()} TV series + mini-series, ` +
+    `${episodeTitles.size.toLocaleString()} episode titles`,
+  );
 
   process.stdout.write('Loading episodes... ');
-  const episodes = await loadEpisodes(series, ratings);
+  const episodes = await loadEpisodes(series, ratings, episodeTitles);
   console.log(`${episodes.size.toLocaleString()} series have rated episodes`);
 
   process.stdout.write('Detecting shape matches... ');
