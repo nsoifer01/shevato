@@ -203,7 +203,7 @@ test('detectShapes returns empty array when nothing matches', () => {
 
 // --- findMatches integration ---
 
-test('findMatches tags shapes and includes one record per qualifying season', () => {
+test('findMatches tags shapes and emits one record per season passing the floor', () => {
   const series = new Map([
     ['tt100', { title: 'Climber', year: 2020, type: 'tvSeries', genres: ['Drama'] }],
   ]);
@@ -222,24 +222,23 @@ test('findMatches tags shapes and includes one record per qualifying season', ()
   assert.deepEqual(s1.genres, ['Drama']);
 });
 
-test('findMatches drops series whose seasons all match no shapes', () => {
+test('findMatches keeps shape-less seasons with shapes: []', () => {
   const series = new Map([
-    ['tt500', { title: 'Choppy', year: 2024, type: 'tvSeries' }],
+    ['tt500', { title: 'Choppy', year: 2024, type: 'tvSeries', genres: [] }],
   ]);
   const episodes = new Map([
     ['tt500', new Map([
       // Bouncy, mid-range, no rebound, no consistent floor — matches nothing.
-      // Series has no shape-matching season, so it's excluded entirely.
+      // Still emitted so the full IMDb catalog is searchable.
       [1, [ep(1, 7.5), ep(2, 7.7), ep(3, 7.4), ep(4, 7.6)]],
     ])],
   ]);
-  assert.equal(findMatches(series, episodes).length, 0);
+  const matches = findMatches(series, episodes);
+  assert.equal(matches.length, 1);
+  assert.deepEqual(matches[0].shapes, []);
 });
 
-test('findMatches includes shape-less seasons of qualifying series', () => {
-  // Real-world example: shows like The Office have some seasons that fit
-  // a shape pattern and some that don't. Once any season qualifies the
-  // series, every season is included so search results are complete.
+test('findMatches emits every season passing the floor regardless of shape', () => {
   const series = new Map([
     ['tt600', { title: 'Mixed Bag', year: 2010, type: 'tvSeries', genres: ['Drama'] }],
   ]);
@@ -247,7 +246,7 @@ test('findMatches includes shape-less seasons of qualifying series', () => {
     ['tt600', new Map([
       // Season 1 — bouncy, no shape match.
       [1, [ep(1, 7.5), ep(2, 7.7), ep(3, 7.4), ep(4, 7.6)]],
-      // Season 2 — non-decreasing, qualifies the series.
+      // Season 2 — non-decreasing.
       [2, [ep(1, 7.0), ep(2, 7.2), ep(3, 7.4), ep(4, 7.5)]],
       // Season 3 — bouncy again, no shape match.
       [3, [ep(1, 8.0), ep(2, 7.8), ep(3, 8.1), ep(4, 7.9)]],
@@ -301,6 +300,40 @@ test('findMatches drops seasons whose lowest-vote episode is under minVotes', ()
   ]);
   assert.equal(findMatches(series, episodes, { minVotes: 100 }).length, 0);
   assert.equal(findMatches(series, episodes, { minVotes: 25 }).length, 1);
+});
+
+test('findMatches applies relaxedMinVotes only to series in relaxedGenres', () => {
+  const series = new Map([
+    ['ttReal',   { title: 'Cook-Off',  year: 2020, type: 'tvSeries', genres: ['Reality-TV'] }],
+    ['ttDrama',  { title: 'Big Drama', year: 2020, type: 'tvSeries', genres: ['Drama'] }],
+  ]);
+  // Both seasons have a low-vote episode (15) — well below the standard 100.
+  const episodes = new Map([
+    ['ttReal',  new Map([[1, [ep(1, 7.0, 15), ep(2, 7.2, 5000), ep(3, 7.4, 5000), ep(4, 7.5, 5000)]]])],
+    ['ttDrama', new Map([[1, [ep(1, 7.0, 15), ep(2, 7.2, 5000), ep(3, 7.4, 5000), ep(4, 7.5, 5000)]]])],
+  ]);
+  const matches = findMatches(series, episodes, {
+    minVotes: 100,
+    relaxedGenres: new Set(['Reality-TV']),
+    relaxedMinVotes: 10,
+  });
+  assert.equal(matches.length, 1);
+  assert.equal(matches[0].seriesId, 'ttReal');
+});
+
+test('findMatches accepts relaxedGenres as an array', () => {
+  const series = new Map([
+    ['ttGame', { title: 'Quiz Show', year: 2021, type: 'tvSeries', genres: ['Game-Show'] }],
+  ]);
+  const episodes = new Map([
+    ['ttGame', new Map([[1, [ep(1, 7.0, 20), ep(2, 7.2, 20), ep(3, 7.4, 20), ep(4, 7.5, 20)]]])],
+  ]);
+  const matches = findMatches(series, episodes, {
+    minVotes: 100,
+    relaxedGenres: ['Game-Show'],
+    relaxedMinVotes: 10,
+  });
+  assert.equal(matches.length, 1);
 });
 
 test('findMatches skips series missing from the metadata map', () => {
