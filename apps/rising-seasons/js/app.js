@@ -16,6 +16,8 @@ const SHAPE_LABELS = {
 const STORAGE_NS = 'rising-seasons';
 const KEY_WATCHED = `${STORAGE_NS}:watched`;
 const KEY_VIEW = `${STORAGE_NS}:view`;
+const KEY_COMPARE = `${STORAGE_NS}:compare`;
+const COMPARE_LIMIT = 5;
 const PAGE_SIZE = 24;
 const STALE_DAYS = 30;
 const MAX_SUGGESTIONS = 10;
@@ -37,6 +39,9 @@ const els = {
   surprise: document.getElementById('surprise'),
   resetFilters: document.getElementById('resetFilters'),
   genres: document.getElementById('genres'),
+  languages: document.getElementById('languages'),
+  providers: document.getElementById('providers'),
+  showModalProviders: document.getElementById('showModalProviders'),
   results: document.getElementById('results'),
   pager: document.getElementById('pager'),
   meta: document.getElementById('meta'),
@@ -67,6 +72,16 @@ const els = {
   showModalSeasons: document.getElementById('showModalSeasons'),
   showModalPoster: document.getElementById('showModalPoster'),
   showModalImdb: document.getElementById('showModalImdb'),
+  showModalOverlay: document.getElementById('showModalOverlay'),
+  showModalOverlayCurve: document.getElementById('showModalOverlayCurve'),
+  showModalOverlayLegend: document.getElementById('showModalOverlayLegend'),
+  showModalCompare: document.getElementById('showModalCompare'),
+  compareModal: document.getElementById('compareModal'),
+  compareModalCurve: document.getElementById('compareModalCurve'),
+  compareModalLegend: document.getElementById('compareModalLegend'),
+  compareModalClear: document.getElementById('compareModalClear'),
+  compareFab: document.getElementById('compareFab'),
+  compareFabCount: document.getElementById('compareFabCount'),
   viewToggle: document.querySelector('.view-toggle'),
   suggestions: document.getElementById('searchSuggestions'),
 };
@@ -93,8 +108,12 @@ const state = {
   seriesType: 'all',
   watched: 'all',
   aboveImdb: 'all',
+  hiddenGems: 'all',
   sort: 'popularity',
   genres: new Set(),
+  excludeGenres: new Set(),
+  languages: new Set(),
+  providers: new Set(),
   view: 'grid',
   page: 1,
 };
@@ -103,6 +122,7 @@ let dataset = null;
 let filtered = [];
 let seriesIndex = [];
 let bestSeasonBySeries = new Map();
+let worstSeasonBySeries = new Map();
 let aboveImdbBySeries = new Map();
 let pendingModalKey = null;
 let pendingShowKey = null;
@@ -157,6 +177,42 @@ const ViewPref = {
   },
 };
 
+// Selected series for the "Compare" overlay. Stored as an array (preserves
+// insertion order so the legend reads in the order the user added shows).
+const Compare = {
+  ids: [],
+  load() {
+    try {
+      const raw = localStorage.getItem(KEY_COMPARE);
+      if (raw) this.ids = JSON.parse(raw).slice(0, COMPARE_LIMIT);
+    } catch { /* corrupt or unavailable — start empty */ }
+  },
+  save() {
+    try { localStorage.setItem(KEY_COMPARE, JSON.stringify(this.ids)); }
+    catch { /* quota or disabled — silent */ }
+  },
+  has(seriesId) { return this.ids.includes(seriesId); },
+  size() { return this.ids.length; },
+  add(seriesId) {
+    if (this.ids.includes(seriesId)) return false;
+    if (this.ids.length >= COMPARE_LIMIT) return false;
+    this.ids.push(seriesId);
+    this.save();
+    return true;
+  },
+  remove(seriesId) {
+    const i = this.ids.indexOf(seriesId);
+    if (i < 0) return false;
+    this.ids.splice(i, 1);
+    this.save();
+    return true;
+  },
+  clear() {
+    this.ids = [];
+    this.save();
+  },
+};
+
 // Chrome (header / footer / menu / auth UI) is loaded by
 // ../../assets/js/main.js — see the script block in index.html. We
 // deliberately do not run a second include loader here: parallel AJAX
@@ -175,6 +231,7 @@ async function load() {
     return;
   }
   Watched.load();
+  Compare.load();
   state.view = ViewPref.load();
   applyViewClasses();
   applyStateFromURL();
@@ -183,6 +240,9 @@ async function load() {
   buildBestSeasonMap();
   buildAboveImdbMap();
   renderGenreChips();
+  renderLanguageChips();
+  renderProviderChips();
+  syncCompareFab();
   bindEvents();
   bindKeyboard();
   bindAdvancedDrawer();
@@ -230,13 +290,18 @@ function buildAboveImdbMap() {
 }
 
 function buildBestSeasonMap() {
-  // For each series with 2+ qualifying seasons, identify the highest-avg one.
-  // Single-season series get no badge — there's no "best" without a contest.
+  // For each series with 2+ qualifying seasons, identify the highest- and
+  // lowest-avg one. Single-season series get no badge — there's no "best" or
+  // "worst" without a contest.
   const byId = new Map();
   for (const m of dataset.matches) {
     let entry = byId.get(m.seriesId);
     if (!entry) {
-      entry = { count: 0, bestSeason: m.season, bestAvg: m.avgRating };
+      entry = {
+        count: 0,
+        bestSeason: m.season, bestAvg: m.avgRating,
+        worstSeason: m.season, worstAvg: m.avgRating,
+      };
       byId.set(m.seriesId, entry);
     }
     entry.count++;
@@ -244,10 +309,21 @@ function buildBestSeasonMap() {
       entry.bestAvg = m.avgRating;
       entry.bestSeason = m.season;
     }
+    if (m.avgRating < entry.worstAvg) {
+      entry.worstAvg = m.avgRating;
+      entry.worstSeason = m.season;
+    }
   }
   bestSeasonBySeries = new Map();
+  worstSeasonBySeries = new Map();
   for (const [seriesId, info] of byId) {
-    if (info.count >= 2) bestSeasonBySeries.set(seriesId, info.bestSeason);
+    if (info.count < 2) continue;
+    bestSeasonBySeries.set(seriesId, info.bestSeason);
+    // Skip when best === worst (all seasons tied on avg) — single badge is
+    // meaningless in that case.
+    if (info.bestSeason !== info.worstSeason) {
+      worstSeasonBySeries.set(seriesId, info.worstSeason);
+    }
   }
 }
 
@@ -293,7 +369,11 @@ function applyStateFromURL() {
   if (p.has('sort'))      state.sort = p.get('sort');
   if (p.has('watched'))   state.watched = p.get('watched');
   if (p.has('above'))     state.aboveImdb = p.get('above');
+  if (p.has('gems'))      state.hiddenGems = p.get('gems');
   if (p.has('g'))         state.genres = new Set(p.get('g').split(',').filter(Boolean));
+  if (p.has('xg'))        state.excludeGenres = new Set(p.get('xg').split(',').filter(Boolean));
+  if (p.has('l'))         state.languages = new Set(p.get('l').split(',').filter(Boolean));
+  if (p.has('p'))         state.providers = new Set(p.get('p').split(',').filter(Boolean));
   if (p.has('page'))      state.page = Math.max(1, parseInt(p.get('page'), 10) || 1);
 
   els.search.value = state.search;
@@ -308,7 +388,13 @@ function applyStateFromURL() {
   syncLabelFiltersAria();
   syncShapeChipsAria();
   for (const chip of els.genres.querySelectorAll('.genre-chip')) {
-    chip.setAttribute('aria-pressed', state.genres.has(chip.dataset.genre) ? 'true' : 'false');
+    syncGenreChipTriState(chip);
+  }
+  for (const chip of els.languages.querySelectorAll('.genre-chip')) {
+    chip.setAttribute('aria-pressed', state.languages.has(chip.dataset.language) ? 'true' : 'false');
+  }
+  for (const chip of els.providers.querySelectorAll('.genre-chip')) {
+    chip.setAttribute('aria-pressed', state.providers.has(chip.dataset.provider) ? 'true' : 'false');
   }
 }
 
@@ -318,6 +404,7 @@ function syncLabelFiltersAria() {
     seriesType: state.seriesType,
     watched: state.watched,
     aboveImdb: state.aboveImdb,
+    hiddenGems: state.hiddenGems,
   };
   for (const btn of els.labelFilters.querySelectorAll('.label-chip')) {
     const filter = btn.dataset.filter;
@@ -361,7 +448,11 @@ function writeStateToURL() {
   if (state.sort !== 'popularity') p.set('sort', state.sort);
   if (state.watched !== 'all') p.set('watched', state.watched);
   if (state.aboveImdb !== 'all') p.set('above', state.aboveImdb);
+  if (state.hiddenGems !== 'all') p.set('gems', state.hiddenGems);
   if (state.genres.size) p.set('g', [...state.genres].join(','));
+  if (state.excludeGenres.size) p.set('xg', [...state.excludeGenres].join(','));
+  if (state.languages.size) p.set('l', [...state.languages].join(','));
+  if (state.providers.size) p.set('p', [...state.providers].join(','));
   if (state.page > 1) p.set('page', state.page);
   if (els.modal && !els.modal.hidden && modalState.season) {
     p.set('season', `${modalState.season.seriesId}:${modalState.season.season}`);
@@ -422,6 +513,37 @@ function updateShapeChipCounts() {
   }
 }
 
+// Three click states per genre chip: off → include → exclude → off. The
+// "exclude" state hides any series carrying that genre, which is useful
+// for filters like "Crime AND NOT Reality-TV".
+function syncGenreChipTriState(btn) {
+  const name = btn.dataset.genre;
+  if (state.excludeGenres.has(name)) {
+    btn.setAttribute('aria-pressed', 'false');
+    btn.dataset.exclude = 'true';
+    btn.title = `Excluded — click to clear (currently hiding ${name})`;
+  } else if (state.genres.has(name)) {
+    btn.setAttribute('aria-pressed', 'true');
+    btn.dataset.exclude = 'false';
+    btn.title = `Required — click again to exclude ${name}`;
+  } else {
+    btn.setAttribute('aria-pressed', 'false');
+    btn.dataset.exclude = 'false';
+    btn.title = `Click to require ${name}; click again to exclude it`;
+  }
+}
+
+function cycleGenreState(name) {
+  if (!state.genres.has(name) && !state.excludeGenres.has(name)) {
+    state.genres.add(name);
+  } else if (state.genres.has(name)) {
+    state.genres.delete(name);
+    state.excludeGenres.add(name);
+  } else {
+    state.excludeGenres.delete(name);
+  }
+}
+
 function renderGenreChips() {
   const top = (dataset.genres || []).slice(0, 14);
   const frag = document.createDocumentFragment();
@@ -430,17 +552,77 @@ function renderGenreChips() {
     btn.type = 'button';
     btn.className = 'genre-chip';
     btn.dataset.genre = g.name;
-    btn.setAttribute('aria-pressed', state.genres.has(g.name) ? 'true' : 'false');
     btn.textContent = g.name;
+    syncGenreChipTriState(btn);
     btn.addEventListener('click', () => {
-      if (state.genres.has(g.name)) state.genres.delete(g.name);
-      else state.genres.add(g.name);
-      btn.setAttribute('aria-pressed', state.genres.has(g.name) ? 'true' : 'false');
+      cycleGenreState(g.name);
+      syncGenreChipTriState(btn);
       onFilterChange();
     });
     frag.appendChild(btn);
   }
   els.genres.replaceChildren(frag);
+}
+
+// TMDB stores `original_language` as ISO 639-1 codes (en, ja, ko, ...).
+// The UI shows the English name so users don't need to know codes.
+const LANGUAGE_NAMES = {
+  en: 'English', ja: 'Japanese', ko: 'Korean', es: 'Spanish', zh: 'Chinese',
+  fr: 'French', de: 'German', it: 'Italian', pt: 'Portuguese', ru: 'Russian',
+  tr: 'Turkish', hi: 'Hindi', ar: 'Arabic', th: 'Thai', id: 'Indonesian',
+  pl: 'Polish', nl: 'Dutch', sv: 'Swedish', da: 'Danish', no: 'Norwegian',
+  fi: 'Finnish', he: 'Hebrew', cs: 'Czech', el: 'Greek', hu: 'Hungarian',
+  ro: 'Romanian', uk: 'Ukrainian', vi: 'Vietnamese', tl: 'Filipino',
+  ms: 'Malay', fa: 'Persian', bn: 'Bengali', ta: 'Tamil', te: 'Telugu',
+  ur: 'Urdu', ml: 'Malayalam', mr: 'Marathi', is: 'Icelandic', sk: 'Slovak',
+  bg: 'Bulgarian', hr: 'Croatian', sr: 'Serbian', sl: 'Slovenian',
+  ca: 'Catalan', et: 'Estonian', lv: 'Latvian', lt: 'Lithuanian', ga: 'Irish',
+  cy: 'Welsh', mt: 'Maltese', sq: 'Albanian',
+};
+function languageLabel(code) {
+  return LANGUAGE_NAMES[code] || code.toUpperCase();
+}
+
+function renderProviderChips() {
+  const top = (dataset.providers || []).slice(0, 10);
+  const frag = document.createDocumentFragment();
+  for (const p of top) {
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'genre-chip';
+    btn.dataset.provider = p.name;
+    btn.setAttribute('aria-pressed', state.providers.has(p.name) ? 'true' : 'false');
+    btn.textContent = p.name;
+    btn.addEventListener('click', () => {
+      if (state.providers.has(p.name)) state.providers.delete(p.name);
+      else state.providers.add(p.name);
+      btn.setAttribute('aria-pressed', state.providers.has(p.name) ? 'true' : 'false');
+      onFilterChange();
+    });
+    frag.appendChild(btn);
+  }
+  els.providers.replaceChildren(frag);
+}
+
+function renderLanguageChips() {
+  const top = (dataset.languages || []).slice(0, 12);
+  const frag = document.createDocumentFragment();
+  for (const l of top) {
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'genre-chip';
+    btn.dataset.language = l.code;
+    btn.setAttribute('aria-pressed', state.languages.has(l.code) ? 'true' : 'false');
+    btn.textContent = languageLabel(l.code);
+    btn.addEventListener('click', () => {
+      if (state.languages.has(l.code)) state.languages.delete(l.code);
+      else state.languages.add(l.code);
+      btn.setAttribute('aria-pressed', state.languages.has(l.code) ? 'true' : 'false');
+      onFilterChange();
+    });
+    frag.appendChild(btn);
+  }
+  els.languages.replaceChildren(frag);
 }
 
 // --- filter + sort ---
@@ -454,6 +636,9 @@ function buildNonShapeChecker() {
   const minClimb = state.minClimb;
   const { minYear, maxYear, seriesType, watched: watchedFilter } = state;
   const wantGenres = state.genres;
+  const excludeGenres = state.excludeGenres;
+  const wantLanguages = state.languages;
+  const wantProviders = state.providers;
 
   return function (m) {
     if (minEps && m.episodes.length < minEps) return false;
@@ -477,12 +662,37 @@ function buildNonShapeChecker() {
     } else if (q) {
       const titleHit = m.title.toLowerCase().includes(q);
       const idHit = m.seriesId.toLowerCase().includes(q);
-      if (!titleHit && !idHit) return false;
+      let epHit = false;
+      // Episode-title fallback — only run when the cheaper title/id checks
+      // missed, since this scans every episode in the season.
+      if (!titleHit && !idHit && q.length >= 3) {
+        for (const ep of m.episodes) {
+          if (ep.name && ep.name.toLowerCase().includes(q)) { epHit = true; break; }
+        }
+      }
+      if (!titleHit && !idHit && !epHit) return false;
+    }
+    if (wantLanguages.size && (!m.language || !wantLanguages.has(m.language))) {
+      return false;
+    }
+    if (wantProviders.size) {
+      if (!m.providers || m.providers.length === 0) return false;
+      let ok = false;
+      for (const p of m.providers) if (wantProviders.has(p)) { ok = true; break; }
+      if (!ok) return false;
     }
     if (wantGenres.size) {
-      let ok = false;
-      for (const g of m.genres) if (wantGenres.has(g)) { ok = true; break; }
-      if (!ok) return false;
+      // AND across selected genres: the season's series must carry every
+      // selected genre (e.g. "Drama" + "Crime" returns only crime-dramas,
+      // not anything that's just one or the other).
+      for (const g of wantGenres) {
+        if (!m.genres.includes(g)) return false;
+      }
+    }
+    if (excludeGenres.size) {
+      for (const g of m.genres) {
+        if (excludeGenres.has(g)) return false;
+      }
     }
     if (watchedFilter !== 'all') {
       const isWatched = Watched.has(m);
@@ -490,6 +700,12 @@ function buildNonShapeChecker() {
       if (watchedFilter === 'unwatched' && isWatched) return false;
     }
     if (state.aboveImdb === 'above' && !aboveImdbBySeries.get(m.seriesId)) return false;
+    if (state.hiddenGems === 'on') {
+      // High-rated (avg >= 8.0) and under the radar (each episode has fewer
+      // than 1,000 votes, i.e. minVotes < 1000 across the season).
+      if (m.avgRating < 8.0) return false;
+      if (m.minVotes >= 1000) return false;
+    }
     return true;
   };
 }
@@ -751,8 +967,12 @@ function hasActiveFilters() {
   if (state.seriesType && state.seriesType !== 'all') return true;
   if (state.watched && state.watched !== 'all') return true;
   if (state.aboveImdb && state.aboveImdb !== 'all') return true;
+  if (state.hiddenGems && state.hiddenGems !== 'all') return true;
   if (state.sort && state.sort !== 'popularity') return true;
   if (state.genres && state.genres.size > 0) return true;
+  if (state.excludeGenres && state.excludeGenres.size > 0) return true;
+  if (state.languages && state.languages.size > 0) return true;
+  if (state.providers && state.providers.size > 0) return true;
   return false;
 }
 
@@ -804,13 +1024,31 @@ function fillShapeTags(container, shapes, { clickable = true } = {}) {
   }
 }
 
+function buildRankBadge(className, glyph, label, title) {
+  const badge = document.createElement('span');
+  badge.className = className;
+  badge.title = title;
+  const icon = document.createElement('span');
+  icon.className = 'rank-badge-icon';
+  icon.setAttribute('aria-hidden', 'true');
+  icon.textContent = glyph;
+  const text = document.createElement('span');
+  text.className = 'rank-badge-label';
+  text.textContent = label;
+  badge.append(icon, text);
+  return badge;
+}
+
 function maybeBestBadge(m) {
   if (bestSeasonBySeries.get(m.seriesId) !== m.season) return null;
-  const badge = document.createElement('span');
-  badge.className = 'best-badge';
-  badge.textContent = '★ best';
-  badge.title = "Highest-rated season of this series in our dataset";
-  return badge;
+  return buildRankBadge('best-badge', '★', 'Best',
+    "Highest-rated season of this series in our dataset");
+}
+
+function maybeWorstBadge(m) {
+  if (worstSeasonBySeries.get(m.seriesId) !== m.season) return null;
+  return buildRankBadge('worst-badge', '▼', 'Worst',
+    'Lowest-rated season of this series in our dataset');
 }
 
 function aboveImdbBadge(m) {
@@ -834,8 +1072,11 @@ function buildCard(m) {
   node.querySelector('.card-year').textContent = (m.seasonYear || m.year) || 'year unknown';
   node.querySelector('.card-genres').textContent = m.genres.slice(0, 3).join(' · ');
 
-  const badge = maybeBestBadge(m);
-  if (badge) node.querySelector('.card-head').appendChild(badge);
+  const badge = maybeBestBadge(m) || maybeWorstBadge(m);
+  // Live next to the season metadata ("S2 · 10 eps") rather than at the
+  // far end of the title row — keeps the title clean and aligns the badge
+  // with the smaller-typography row it visually belongs in.
+  if (badge) node.querySelector('.card-season').appendChild(badge);
 
   fillShapeTags(node.querySelector('.card-shapes'), m.shapes, { clickable: false });
 
@@ -886,8 +1127,8 @@ function buildRow(m) {
   node.querySelector('.row-season').textContent = `S${m.season} · ${m.episodes.length} eps`;
   node.querySelector('.row-year').textContent = (m.seasonYear || m.year) || '';
 
-  const badge = maybeBestBadge(m);
-  if (badge) node.querySelector('.row-head').appendChild(badge);
+  const badge = maybeBestBadge(m) || maybeWorstBadge(m);
+  if (badge) node.querySelector('.row-season').appendChild(badge);
 
   fillShapeTags(node.querySelector('.row-shapes'), m.shapes, { clickable: false });
 
@@ -900,7 +1141,7 @@ function buildRow(m) {
   if (rowBadge) rowAvgEl.appendChild(rowBadge);
   node.querySelector('.stat-votes').textContent = `${m.minVotes.toLocaleString()} votes/ep min`;
 
-  drawCurve(node.querySelector('.row-curve'), m.episodes, 200, 56);
+  drawCurve(node.querySelector('.row-curve'), m.episodes, 200, 56, 0);
 
   const posterEl = node.querySelector('.row-poster');
   if (m.poster) {
@@ -949,18 +1190,24 @@ function onToggleWatched(m, cardOrRow) {
 
 // --- curve drawing (shared) ---
 
-function drawCurve(svg, episodes, W, H) {
-  const pad = 6;
+function drawCurve(svg, episodes, W, H, padXOverride) {
+  // Charts with hover dots need a small inset so the dots don't get
+  // clipped at the viewport edge. Sparklines without dots (the list-view
+  // row and the show-modal per-season mini-spark) pass padX=0 so the
+  // line/fill plot literally edge-to-edge — symmetric by construction,
+  // no perceived left-bias from a 2-6 px gap on the left.
+  const padX = typeof padXOverride === 'number' ? padXOverride : 4;
+  const padY = 6;
   const ratings = episodes.map((e) => e.rating);
   const lo = Math.max(0, Math.min(...ratings) - 0.3);
   const hi = Math.min(10, Math.max(...ratings) + 0.3);
   const span = Math.max(0.1, hi - lo);
   const n = episodes.length;
-  const xStep = n > 1 ? (W - pad * 2) / (n - 1) : 0;
+  const xStep = n > 1 ? (W - padX * 2) / (n - 1) : 0;
 
   const points = episodes.map((e, i) => {
-    const x = pad + (n > 1 ? i * xStep : (W - pad * 2) / 2);
-    const y = pad + (1 - (e.rating - lo) / span) * (H - pad * 2);
+    const x = padX + (n > 1 ? i * xStep : (W - padX * 2) / 2);
+    const y = padY + (1 - (e.rating - lo) / span) * (H - padY * 2);
     return [x, y];
   });
 
@@ -984,6 +1231,230 @@ function drawCurve(svg, episodes, W, H) {
       dots.appendChild(c);
     }
   }
+}
+
+// Picks a visually distinct stroke color per season. HSL spread across the
+// hue wheel keeps adjacent seasons easy to tell apart even at 10+ seasons.
+function seasonColor(i, total) {
+  const hue = (i * 360) / Math.max(total, 1);
+  return `hsl(${hue.toFixed(0)} 80% 62%)`;
+}
+
+// Draw every season's curve on a shared chart so the user can visually
+// compare per-season shape, slope, and absolute rating. X is normalized to
+// 0..1 (episode index / season length) so seasons of different lengths align.
+// Y range spans the global min/max across all seasons (slightly padded).
+function drawSeasonOverlay(svg, seasons, W, H) {
+  const padX = 10;
+  const padY = 12;
+  // Wipe previous content — this SVG is reused across openShowModal calls.
+  while (svg.firstChild) svg.removeChild(svg.firstChild);
+  if (!seasons.length) return [];
+
+  let lo = Infinity, hi = -Infinity;
+  for (const s of seasons) for (const e of s.episodes) {
+    if (e.rating < lo) lo = e.rating;
+    if (e.rating > hi) hi = e.rating;
+  }
+  lo = Math.max(0, lo - 0.3);
+  hi = Math.min(10, hi + 0.3);
+  const span = Math.max(0.1, hi - lo);
+
+  const NS = 'http://www.w3.org/2000/svg';
+  const colors = [];
+  seasons.forEach((s, idx) => {
+    const color = seasonColor(idx, seasons.length);
+    colors.push({ season: s.season, color });
+    const n = s.episodes.length;
+    const xStep = n > 1 ? (W - padX * 2) / (n - 1) : 0;
+    const points = s.episodes.map((e, i) => {
+      const x = padX + (n > 1 ? i * xStep : (W - padX * 2) / 2);
+      const y = padY + (1 - (e.rating - lo) / span) * (H - padY * 2);
+      return [x, y];
+    });
+    const d = points.map(([x, y], i) => `${i === 0 ? 'M' : 'L'}${x.toFixed(1)},${y.toFixed(1)}`).join(' ');
+    const path = document.createElementNS(NS, 'path');
+    path.setAttribute('d', d);
+    path.setAttribute('fill', 'none');
+    path.setAttribute('stroke', color);
+    path.setAttribute('stroke-width', '2');
+    path.setAttribute('stroke-linecap', 'round');
+    path.setAttribute('stroke-linejoin', 'round');
+    path.setAttribute('vector-effect', 'non-scaling-stroke');
+    path.setAttribute('opacity', '0.85');
+    const title = document.createElementNS(NS, 'title');
+    title.textContent = `Season ${s.season} — avg ${s.avgRating.toFixed(1)}`;
+    path.appendChild(title);
+    svg.appendChild(path);
+  });
+  return colors;
+}
+
+// --- compare set ---
+
+function syncCompareFab() {
+  if (!els.compareFab) return;
+  const n = Compare.size();
+  els.compareFab.hidden = n === 0;
+  els.compareFabCount.textContent = String(n);
+  els.compareFab.setAttribute('aria-label', `Compare ${n} show${n === 1 ? '' : 's'}`);
+}
+
+function syncCompareButton() {
+  if (!els.showModalCompare || !showModalState.seriesId) return;
+  const inSet = Compare.has(showModalState.seriesId);
+  const atLimit = !inSet && Compare.size() >= COMPARE_LIMIT;
+  els.showModalCompare.textContent = inSet ? '✓ In compare' : '＋ Add to compare';
+  els.showModalCompare.disabled = atLimit;
+  els.showModalCompare.title = atLimit
+    ? `Compare set is full (${COMPARE_LIMIT} max) — remove one first`
+    : inSet ? 'Remove this show from the compare set' : 'Add this show to the compare set';
+}
+
+// Trajectory chart: for each selected series, plot one polyline whose x is
+// the season index (1..N for that show) and y is that season's avg rating.
+// Series with different season counts share a normalized x so they overlay
+// cleanly. Hover the line for series + season detail.
+function drawCompareChart(svg, seriesEntries, W, H) {
+  while (svg.firstChild) svg.removeChild(svg.firstChild);
+  if (!seriesEntries.length) return;
+
+  const padX = 14;
+  const padY = 16;
+  const NS = 'http://www.w3.org/2000/svg';
+
+  let lo = Infinity, hi = -Infinity;
+  for (const { seasons } of seriesEntries) {
+    for (const s of seasons) {
+      if (s.avgRating < lo) lo = s.avgRating;
+      if (s.avgRating > hi) hi = s.avgRating;
+    }
+  }
+  lo = Math.max(0, lo - 0.3);
+  hi = Math.min(10, hi + 0.3);
+  const span = Math.max(0.1, hi - lo);
+
+  seriesEntries.forEach(({ title, seasons }, idx) => {
+    const color = seasonColor(idx, seriesEntries.length);
+    const n = seasons.length;
+    const xStep = n > 1 ? (W - padX * 2) / (n - 1) : 0;
+    const points = seasons.map((s, i) => {
+      const x = padX + (n > 1 ? i * xStep : (W - padX * 2) / 2);
+      const y = padY + (1 - (s.avgRating - lo) / span) * (H - padY * 2);
+      return [x, y, s];
+    });
+    const d = points.map(([x, y], i) => `${i === 0 ? 'M' : 'L'}${x.toFixed(1)},${y.toFixed(1)}`).join(' ');
+    const path = document.createElementNS(NS, 'path');
+    path.setAttribute('d', d);
+    path.setAttribute('fill', 'none');
+    path.setAttribute('stroke', color);
+    path.setAttribute('stroke-width', '2.5');
+    path.setAttribute('stroke-linecap', 'round');
+    path.setAttribute('stroke-linejoin', 'round');
+    path.setAttribute('vector-effect', 'non-scaling-stroke');
+    path.setAttribute('opacity', '0.9');
+    const title2 = document.createElementNS(NS, 'title');
+    title2.textContent = title;
+    path.appendChild(title2);
+    svg.appendChild(path);
+    for (const [x, y, s] of points) {
+      const dot = document.createElementNS(NS, 'circle');
+      dot.setAttribute('cx', x.toFixed(1));
+      dot.setAttribute('cy', y.toFixed(1));
+      dot.setAttribute('r', '3.5');
+      dot.setAttribute('fill', color);
+      const dotTitle = document.createElementNS(NS, 'title');
+      dotTitle.textContent = `${title} — S${s.season}: avg ${s.avgRating.toFixed(1)}`;
+      dot.appendChild(dotTitle);
+      svg.appendChild(dot);
+    }
+  });
+}
+
+function buildCompareEntries() {
+  const out = [];
+  for (const id of Compare.ids) {
+    const seasons = dataset.matches
+      .filter((m) => m.seriesId === id)
+      .sort((a, b) => a.season - b.season);
+    if (!seasons.length) continue;
+    out.push({ seriesId: id, title: seasons[0].title, seasons });
+  }
+  return out;
+}
+
+function renderCompareLegend(entries) {
+  const colors = entries.map((_, i) => seasonColor(i, entries.length));
+  const frag = document.createDocumentFragment();
+  entries.forEach((e, i) => {
+    const item = document.createElement('button');
+    item.type = 'button';
+    item.className = 'overlay-legend-item compare-legend-remove';
+    item.title = 'Remove from compare';
+    const swatch = document.createElement('span');
+    swatch.className = 'overlay-legend-swatch';
+    swatch.style.background = colors[i];
+    const label = document.createElement('span');
+    label.textContent = e.title;
+    const x = document.createElement('span');
+    x.className = 'compare-legend-x';
+    x.textContent = '×';
+    item.append(swatch, label, x);
+    item.addEventListener('click', () => {
+      Compare.remove(e.seriesId);
+      syncCompareFab();
+      if (Compare.size() === 0) {
+        closeCompareModal();
+      } else {
+        renderCompareModal();
+      }
+    });
+    frag.appendChild(item);
+  });
+  els.compareModalLegend.replaceChildren(frag);
+}
+
+function renderCompareModal() {
+  const entries = buildCompareEntries();
+  if (entries.length === 0) {
+    closeCompareModal();
+    return;
+  }
+  drawCompareChart(els.compareModalCurve, entries, 600, 240);
+  renderCompareLegend(entries);
+}
+
+let compareModalState = { lastFocus: null };
+
+function openCompareModal() {
+  if (!els.compareModal.hidden) return;
+  if (Compare.size() === 0) return;
+  compareModalState.lastFocus = document.activeElement;
+  renderCompareModal();
+  els.compareModal.hidden = false;
+  els.compareModal.setAttribute('aria-hidden', 'false');
+  document.documentElement.style.overflow = 'hidden';
+  document.body.style.overflow = 'hidden';
+  syncModalInert();
+  requestAnimationFrame(() => {
+    const close = els.compareModal.querySelector('.modal-close');
+    if (close) close.focus();
+  });
+}
+
+function closeCompareModal() {
+  if (els.compareModal.hidden) return;
+  els.compareModal.hidden = true;
+  els.compareModal.setAttribute('aria-hidden', 'true');
+  if (els.modal.hidden && els.showModal.hidden) {
+    document.documentElement.style.overflow = '';
+    document.body.style.overflow = '';
+  }
+  syncModalInert();
+  if (compareModalState.lastFocus && typeof compareModalState.lastFocus.focus === 'function') {
+    compareModalState.lastFocus.focus();
+  }
+  compareModalState.lastFocus = null;
 }
 
 // --- modal ---
@@ -1081,7 +1552,9 @@ function openModal(m, opts = {}) {
 
   els.modal.hidden = false;
   els.modal.setAttribute('aria-hidden', 'false');
+  document.documentElement.style.overflow = 'hidden';
   document.body.style.overflow = 'hidden';
+  syncModalInert();
   writeStateToURL();
   if (!wasOpen) {
     requestAnimationFrame(() => {
@@ -1095,7 +1568,11 @@ function closeModal() {
   if (els.modal.hidden) return;
   els.modal.hidden = true;
   els.modal.setAttribute('aria-hidden', 'true');
-  document.body.style.overflow = '';
+  if (els.showModal.hidden) {
+    document.documentElement.style.overflow = '';
+    document.body.style.overflow = '';
+  }
+  syncModalInert();
   if (modalState.lastFocus && typeof modalState.lastFocus.focus === 'function') {
     modalState.lastFocus.focus();
   }
@@ -1117,6 +1594,7 @@ function openShowModal(seriesId) {
   const meta = seasons[0];
   showModalState.seriesId = seriesId;
   if (els.showModal.hidden) showModalState.lastFocus = document.activeElement;
+  syncCompareButton();
 
   els.showModalTitle.textContent = meta.title;
 
@@ -1171,6 +1649,18 @@ function openShowModal(seriesId) {
   }
   fillShapeTags(els.showModalShapes, commonShapes ? [...commonShapes] : [], { clickable: false });
 
+  // Providers badges (TMDB watch providers, US). Hidden when no data.
+  const providersList = meta.providers || [];
+  els.showModalProviders.replaceChildren();
+  if (providersList.length) {
+    for (const name of providersList) {
+      const badge = document.createElement('span');
+      badge.className = 'provider-badge';
+      badge.textContent = name;
+      els.showModalProviders.appendChild(badge);
+    }
+  }
+
   els.showModalOverview.textContent = meta.overview || '';
 
   els.showModalPoster.replaceChildren();
@@ -1186,17 +1676,41 @@ function openShowModal(seriesId) {
   }
 
   const bestSeason = bestSeasonBySeries.get(seriesId);
+  const worstSeason = worstSeasonBySeries.get(seriesId);
   const seasonsFrag = document.createDocumentFragment();
   for (const s of seasons) {
-    seasonsFrag.appendChild(buildShowSeasonRow(s, bestSeason));
+    seasonsFrag.appendChild(buildShowSeasonRow(s, bestSeason, worstSeason));
   }
   els.showModalSeasons.replaceChildren(seasonsFrag);
+
+  // Overlay chart: only useful when there's >1 season to compare.
+  if (seasons.length > 1) {
+    els.showModalOverlay.hidden = false;
+    const colors = drawSeasonOverlay(els.showModalOverlayCurve, seasons, 600, 200);
+    const legendFrag = document.createDocumentFragment();
+    for (const { season, color } of colors) {
+      const item = document.createElement('span');
+      item.className = 'overlay-legend-item';
+      const swatch = document.createElement('span');
+      swatch.className = 'overlay-legend-swatch';
+      swatch.style.background = color;
+      const label = document.createElement('span');
+      label.textContent = `S${season}`;
+      item.append(swatch, label);
+      legendFrag.appendChild(item);
+    }
+    els.showModalOverlayLegend.replaceChildren(legendFrag);
+  } else {
+    els.showModalOverlay.hidden = true;
+  }
 
   els.showModalImdb.href = `https://www.imdb.com/title/${seriesId}/`;
 
   els.showModal.hidden = false;
   els.showModal.setAttribute('aria-hidden', 'false');
+  document.documentElement.style.overflow = 'hidden';
   document.body.style.overflow = 'hidden';
+  syncModalInert();
   writeStateToURL();
   requestAnimationFrame(() => {
     const close = els.showModal.querySelector('.modal-close');
@@ -1204,7 +1718,7 @@ function openShowModal(seriesId) {
   });
 }
 
-function buildShowSeasonRow(m, bestSeason) {
+function buildShowSeasonRow(m, bestSeason, worstSeason) {
   const li = document.createElement('li');
   li.className = 'show-season';
   if (Watched.has(m)) li.classList.add('is-watched');
@@ -1245,7 +1759,7 @@ function buildShowSeasonRow(m, bestSeason) {
     path.setAttribute('class', cls);
     sparkSvg.appendChild(path);
   }
-  drawCurve(sparkSvg, m.episodes, 200, 36);
+  drawCurve(sparkSvg, m.episodes, 200, 36, 0);
 
   const stats = document.createElement('div');
   stats.className = 'ss-stats';
@@ -1261,6 +1775,12 @@ function buildShowSeasonRow(m, bestSeason) {
     best.style.color = 'var(--accent)';
     best.textContent = '★ best';
     stats.appendChild(best);
+  } else if (worstSeason === m.season) {
+    const worst = document.createElement('span');
+    worst.className = 'ss-watched-tag';
+    worst.style.color = 'var(--danger)';
+    worst.textContent = '▼ worst';
+    stats.appendChild(worst);
   }
   if (Watched.has(m)) {
     const w = document.createElement('span');
@@ -1284,7 +1804,11 @@ function closeShowModal() {
   if (els.showModal.hidden) return;
   els.showModal.hidden = true;
   els.showModal.setAttribute('aria-hidden', 'true');
-  if (els.modal.hidden) document.body.style.overflow = '';
+  if (els.modal.hidden) {
+    document.documentElement.style.overflow = '';
+    document.body.style.overflow = '';
+  }
+  syncModalInert();
   if (showModalState.lastFocus && typeof showModalState.lastFocus.focus === 'function') {
     showModalState.lastFocus.focus();
   }
@@ -1300,20 +1824,21 @@ function syncModalWatchBtn() {
   els.modalWatchBtn.textContent = isWatched ? 'Watched ✓' : 'Mark as watched';
 }
 
-function trapModalFocus(e) {
-  if (els.modal.hidden || e.key !== 'Tab') return;
-  const focusable = els.modal.querySelectorAll(
-    'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])',
-  );
-  if (focusable.length === 0) return;
-  const first = focusable[0];
-  const last = focusable[focusable.length - 1];
-  if (e.shiftKey && document.activeElement === first) {
-    last.focus();
-    e.preventDefault();
-  } else if (!e.shiftKey && document.activeElement === last) {
-    first.focus();
-    e.preventDefault();
+// Mark everything outside the open modal as `inert` so Tab can't reach
+// background controls (and assistive tech / pointer events are blocked too).
+// When both modals are closed, clears inert from all body children.
+function syncModalInert() {
+  const openModal = !els.compareModal.hidden
+    ? els.compareModal
+    : !els.modal.hidden
+      ? els.modal
+      : !els.showModal.hidden
+        ? els.showModal
+        : null;
+  for (const node of document.body.children) {
+    if (node.tagName === 'TEMPLATE' || node.tagName === 'SCRIPT') continue;
+    if (openModal && node !== openModal) node.setAttribute('inert', '');
+    else node.removeAttribute('inert');
   }
 }
 
@@ -1354,23 +1879,52 @@ function computeSuggestions(rawQuery) {
   const titleStarts = [];
   const titleContains = [];
   const idMatches = [];
+  const matchedIds = new Set();
   for (const s of seriesIndex) {
     const titleL = s.title.toLowerCase();
     const idL = s.seriesId.toLowerCase();
     if (titleL === q || idL === q || idL === `tt${q}`) {
-      exact.push(s);
+      exact.push(s); matchedIds.add(s.seriesId);
     } else if (titleL.startsWith(q)) {
-      titleStarts.push(s);
+      titleStarts.push(s); matchedIds.add(s.seriesId);
     } else if (titleL.includes(q)) {
-      titleContains.push(s);
+      titleContains.push(s); matchedIds.add(s.seriesId);
     } else if (idL.includes(q)) {
-      idMatches.push(s);
+      idMatches.push(s); matchedIds.add(s.seriesId);
     }
     if (exact.length + titleStarts.length + titleContains.length + idMatches.length >= MAX_SUGGESTIONS * 4) {
       break;
     }
   }
-  return [...exact, ...titleStarts, ...titleContains, ...idMatches].slice(0, MAX_SUGGESTIONS);
+  // Episode-name fallback: if the title pass didn't fill the dropdown and
+  // the query is specific (>= 3 chars), surface series whose episode list
+  // contains the query (e.g. "Gray Matter" → Breaking Bad).
+  const epHits = [];
+  const titleHits = exact.length + titleStarts.length + titleContains.length + idMatches.length;
+  if (q.length >= 3 && titleHits < MAX_SUGGESTIONS) {
+    const seriesById = new Map(seriesIndex.map((s) => [s.seriesId, s]));
+    const seen = new Set();
+    for (const m of dataset.matches) {
+      if (matchedIds.has(m.seriesId) || seen.has(m.seriesId)) continue;
+      for (const ep of m.episodes) {
+        if (ep.name && ep.name.toLowerCase().includes(q)) {
+          seen.add(m.seriesId);
+          const base = seriesById.get(m.seriesId);
+          if (base) {
+            epHits.push({
+              ...base,
+              episodeMatch: ep.name,
+              episodeSeason: m.season,
+              episodeNumber: ep.episode,
+            });
+          }
+          break;
+        }
+      }
+      if (epHits.length + titleHits >= MAX_SUGGESTIONS * 2) break;
+    }
+  }
+  return [...exact, ...titleStarts, ...titleContains, ...idMatches, ...epHits].slice(0, MAX_SUGGESTIONS);
 }
 
 function highlightFragment(text, q) {
@@ -1427,6 +1981,17 @@ function renderSuggestionItems() {
     for (const node of highlightFragment(s.seriesId, q)) meta.appendChild(node);
 
     text.append(title, meta);
+
+    // If this match came from an episode-name hit, append a small line
+    // explaining which episode caused the match — so the user understands
+    // why Breaking Bad shows up when they typed "Gray Matter".
+    if (s.episodeMatch) {
+      const epHint = document.createElement('span');
+      epHint.className = 'ss-ep-hint';
+      epHint.appendChild(document.createTextNode(`S${s.episodeSeason}E${s.episodeNumber} · `));
+      for (const node of highlightFragment(s.episodeMatch, q)) epHint.appendChild(node);
+      text.appendChild(epHint);
+    }
     li.append(poster, text);
 
     li.addEventListener('mousedown', (e) => e.preventDefault());
@@ -1520,9 +2085,11 @@ function selectSuggestion(i) {
   state.lockedSeriesId = s.seriesId;
   closeSuggestions();
   state.page = 1;
-  writeStateToURL();
   render();
-  els.search.focus();
+  // Open the show modal directly — the user picked a specific series, so
+  // they want to see it. openShowModal calls writeStateToURL itself and
+  // grabs focus, so we skip both here.
+  openShowModal(s.seriesId);
 }
 
 function readToolbarInputs() {
@@ -1574,6 +2141,7 @@ function bindEvents() {
         if (filter === 'seriesType') state.seriesType = val;
         else if (filter === 'watched') state.watched = val;
         else if (filter === 'aboveImdb') state.aboveImdb = val;
+        else if (filter === 'hiddenGems') state.hiddenGems = val;
         syncLabelFiltersAria();
         onFilterChange();
       });
@@ -1630,7 +2198,11 @@ function bindEvents() {
     state.sort = 'popularity';
     state.watched = 'all';
     state.aboveImdb = 'all';
+    state.hiddenGems = 'all';
     state.genres = new Set();
+    state.excludeGenres = new Set();
+    state.languages = new Set();
+    state.providers = new Set();
     state.page = 1;
     els.search.value = '';
     els.minEpisodes.value = '';
@@ -1644,6 +2216,13 @@ function bindEvents() {
     syncLabelFiltersAria();
     syncShapeChipsAria();
     for (const c of els.genres.querySelectorAll('.genre-chip')) {
+      c.setAttribute('aria-pressed', 'false');
+      c.dataset.exclude = 'false';
+    }
+    for (const c of els.languages.querySelectorAll('.genre-chip')) {
+      c.setAttribute('aria-pressed', 'false');
+    }
+    for (const c of els.providers.querySelectorAll('.genre-chip')) {
       c.setAttribute('aria-pressed', 'false');
     }
     closeSuggestions();
@@ -1667,6 +2246,22 @@ function bindEvents() {
   for (const closer of els.showModal.querySelectorAll('[data-close="show-modal"]')) {
     closer.addEventListener('click', closeShowModal);
   }
+  for (const closer of els.compareModal.querySelectorAll('[data-close="compare-modal"]')) {
+    closer.addEventListener('click', closeCompareModal);
+  }
+  els.showModalCompare.addEventListener('click', () => {
+    if (!showModalState.seriesId) return;
+    if (Compare.has(showModalState.seriesId)) Compare.remove(showModalState.seriesId);
+    else Compare.add(showModalState.seriesId);
+    syncCompareButton();
+    syncCompareFab();
+  });
+  els.compareFab.addEventListener('click', openCompareModal);
+  els.compareModalClear.addEventListener('click', () => {
+    Compare.clear();
+    syncCompareFab();
+    closeCompareModal();
+  });
   els.modalViewShow.addEventListener('click', () => {
     if (!modalState.season) return;
     openShowModal(modalState.season.seriesId);
@@ -1690,7 +2285,9 @@ function bindKeyboard() {
       return;
     }
     if (e.key === 'Escape') {
-      if (!els.modal.hidden) {
+      if (!els.compareModal.hidden) {
+        closeCompareModal();
+      } else if (!els.modal.hidden) {
         closeModal();
       } else if (!els.showModal.hidden) {
         closeShowModal();
@@ -1705,7 +2302,6 @@ function bindKeyboard() {
       }
       return;
     }
-    if (!els.modal.hidden) trapModalFocus(e);
   });
 }
 

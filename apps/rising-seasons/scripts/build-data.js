@@ -18,8 +18,13 @@
 // Output: apps/rising-seasons/data.json
 //
 // Tunables (env vars):
-//   MIN_EPISODES (default 4)   — minimum rated episodes per season
-//   MIN_VOTES    (default 100) — every episode must have at least this many votes
+//   MIN_EPISODES     (default 4)   — minimum rated episodes per season
+//   MIN_VOTES        (default 100) — every episode must have at least this many votes
+//   RELAX_GENRES     (default "Reality-TV,Game-Show,Talk-Show") — comma-list of
+//                                    IMDb genres whose series get the lower floor below
+//   RELAX_MIN_VOTES  (default 10)  — per-episode vote floor for the relaxed-genre series.
+//                                    Reality/competition episodes typically draw 10-50
+//                                    IMDb votes, so the standard 100 wipes them out.
 
 const fs = require('fs');
 const path = require('path');
@@ -38,6 +43,11 @@ const TMDB_CACHE = path.join(DATA_DIR, 'tmdb-cache.json');
 // rather than appearing as their own pattern hits.
 const MIN_EPISODES = parseInt(process.env.MIN_EPISODES || '3', 10);
 const MIN_VOTES = parseInt(process.env.MIN_VOTES || '100', 10);
+const RELAX_GENRES = (process.env.RELAX_GENRES ?? 'Reality-TV,Game-Show,Talk-Show')
+  .split(',')
+  .map((s) => s.trim())
+  .filter(Boolean);
+const RELAX_MIN_VOTES = parseInt(process.env.RELAX_MIN_VOTES || '10', 10);
 const SERIES_TYPES = new Set(['tvSeries', 'tvMiniSeries']);
 
 function openTsv(filename) {
@@ -157,6 +167,27 @@ async function loadEpisodes(series, ratings, episodeTitles, episodeYears) {
   return result;
 }
 
+// TMDB returns each plan as a separate provider ("Netflix" / "Netflix
+// Standard with Ads", "Peacock Premium" / "Peacock Premium Plus", channel
+// variants like "HBO Max Amazon Channel"). Users care about the brand, so
+// collapse to the parent. Anything we don't recognize passes through.
+function normalizeProvider(name) {
+  if (/^Netflix/i.test(name)) return 'Netflix';
+  if (/^Amazon Prime Video/i.test(name)) return 'Amazon Prime Video';
+  if (/^HBO Max/i.test(name)) return 'HBO Max';
+  if (/^Max\b/i.test(name)) return 'HBO Max';
+  if (/^Peacock/i.test(name)) return 'Peacock';
+  if (/^Hulu/i.test(name)) return 'Hulu';
+  if (/^Disney( Plus|\+)/i.test(name)) return 'Disney+';
+  if (/^Apple TV/i.test(name)) return 'Apple TV+';
+  if (/^Paramount( Plus|\+)/i.test(name)) return 'Paramount+';
+  if (/^Crunchyroll/i.test(name)) return 'Crunchyroll';
+  if (/^Starz/i.test(name)) return 'Starz';
+  if (/^Showtime/i.test(name)) return 'Showtime';
+  if (/^AMC\+/i.test(name) || /^AMC Plus/i.test(name)) return 'AMC+';
+  return name;
+}
+
 function loadTmdbCache() {
   if (!fs.existsSync(TMDB_CACHE)) return null;
   try {
@@ -190,8 +221,11 @@ function loadTmdbCache() {
   const matches = findMatches(series, episodes, {
     minEpisodes: MIN_EPISODES,
     minVotes: MIN_VOTES,
+    relaxedGenres: new Set(RELAX_GENRES),
+    relaxedMinVotes: RELAX_MIN_VOTES,
   });
-  console.log(`${matches.length.toLocaleString()} matching seasons`);
+  const shapedCount = matches.reduce((n, m) => n + (m.shapes.length > 0 ? 1 : 0), 0);
+  console.log(`${matches.length.toLocaleString()} seasons (${shapedCount.toLocaleString()} with at least one shape)`);
 
   // Tally per-shape counts for the build summary.
   const shapeCounts = {};
@@ -225,6 +259,18 @@ function loadTmdbCache() {
         m.poster = t.poster_path || null;
         m.overview = t.overview || null;
         m.tmdbId = t.id || null;
+        if (t.original_language) m.language = t.original_language;
+        if (Array.isArray(t.providers) && t.providers.length) {
+          const seen = new Set();
+          const norm = [];
+          for (const p of t.providers) {
+            const key = normalizeProvider(p.name);
+            if (seen.has(key)) continue;
+            seen.add(key);
+            norm.push(key);
+          }
+          if (norm.length) m.providers = norm;
+        }
         enriched++;
       }
     }
@@ -247,13 +293,48 @@ function loadTmdbCache() {
     .sort((a, b) => b[1] - a[1])
     .map(([name, count]) => ({ name, count }));
 
+  // Same for languages — counted per unique series (not per season) so a
+  // long-running English show doesn't dominate the chip count by virtue of
+  // having more seasons than a foreign-language show.
+  const languageCounts = new Map();
+  const seenSeries = new Set();
+  for (const m of matches) {
+    if (seenSeries.has(m.seriesId)) continue;
+    seenSeries.add(m.seriesId);
+    if (!m.language) continue;
+    languageCounts.set(m.language, (languageCounts.get(m.language) || 0) + 1);
+  }
+  const languages = [...languageCounts.entries()]
+    .sort((a, b) => b[1] - a[1])
+    .map(([code, count]) => ({ code, count }));
+
+  // Same: providers counted per unique series. A series streamed on Netflix +
+  // Hulu contributes one count to each. Skip series with no provider info.
+  const providerCounts = new Map();
+  const seenForProviders = new Set();
+  for (const m of matches) {
+    if (seenForProviders.has(m.seriesId)) continue;
+    seenForProviders.add(m.seriesId);
+    if (!m.providers) continue;
+    for (const p of m.providers) {
+      providerCounts.set(p, (providerCounts.get(p) || 0) + 1);
+    }
+  }
+  const providers = [...providerCounts.entries()]
+    .sort((a, b) => b[1] - a[1])
+    .map(([name, count]) => ({ name, count }));
+
   fs.writeFileSync(OUT_FILE, JSON.stringify({
     builtAt: new Date().toISOString(),
     minEpisodes: MIN_EPISODES,
     minVotes: MIN_VOTES,
+    relaxedGenres: RELAX_GENRES,
+    relaxedMinVotes: RELAX_MIN_VOTES,
     count: matches.length,
     shapeCounts,
     genres,
+    languages,
+    providers,
     matches,
   }));
   const seconds = ((Date.now() - t0) / 1000).toFixed(1);
