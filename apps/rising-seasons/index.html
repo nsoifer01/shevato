@@ -212,6 +212,11 @@
           <button type="button" class="label-chip" data-filter="aboveImdb" data-value="all" aria-pressed="true">All</button>
           <button type="button" class="label-chip label-chip-good" data-filter="aboveImdb" data-value="above" aria-pressed="false" title="Only seasons whose avg episode rating is higher than the show's IMDb rating">↑ Above IMDb</button>
         </div>
+        <div class="label-group" role="radiogroup" aria-label="Hidden gems">
+          <span class="label-group-name">Gems</span>
+          <button type="button" class="label-chip" data-filter="hiddenGems" data-value="all" aria-pressed="true">All</button>
+          <button type="button" class="label-chip label-chip-good" data-filter="hiddenGems" data-value="on" aria-pressed="false" title="High-rated seasons most people haven't watched (avg ≥ 8.0, fewer than 1,000 votes per episode)">💎 Hidden gems</button>
+        </div>
       </div>
 
       <details class="advanced">
@@ -257,7 +262,18 @@
             </select>
           </label>
         </div>
-        <div class="genre-row" id="genres" role="group" aria-label="Filter by genre"></div>
+        <div class="chip-section">
+          <span class="chip-section-title">Genres</span>
+          <div class="genre-row" id="genres" role="group" aria-label="Filter by genre"></div>
+        </div>
+        <div class="chip-section">
+          <span class="chip-section-title">Language</span>
+          <div class="genre-row" id="languages" role="group" aria-label="Filter by language"></div>
+        </div>
+        <div class="chip-section">
+          <span class="chip-section-title">Streaming</span>
+          <div class="genre-row" id="providers" role="group" aria-label="Filter by streaming provider"></div>
+        </div>
         <div class="filter-actions">
           <button type="button" class="btn btn-ghost" id="resetFilters">Reset all filters</button>
         </div>
@@ -323,16 +339,45 @@
           <p class="modal-subtitle" id="showModalSubtitle"></p>
           <p class="modal-stats" id="showModalStats"></p>
           <div class="modal-shapes" id="showModalShapes"></div>
+          <div class="provider-badges" id="showModalProviders"></div>
         </div>
       </div>
       <p class="modal-overview" id="showModalOverview"></p>
+      <section class="season-overlay" id="showModalOverlay" hidden>
+        <h3 class="modal-section">Seasons overlay</h3>
+        <svg class="overlay-curve" id="showModalOverlayCurve" viewBox="0 0 600 200" preserveAspectRatio="none" aria-hidden="true"></svg>
+        <div class="overlay-legend" id="showModalOverlayLegend"></div>
+      </section>
       <h3 class="modal-section">All seasons</h3>
       <ol class="show-seasons" id="showModalSeasons"></ol>
       <div class="modal-actions">
+        <button type="button" class="btn btn-ghost" id="showModalCompare">＋ Add to compare</button>
         <a class="btn btn-ghost" id="showModalImdb" target="_blank" rel="noopener">View show on IMDb →</a>
       </div>
     </article>
   </div>
+
+  <!-- Compare modal (overlay trajectory across multiple series) -->
+  <div class="modal" id="compareModal" role="dialog" aria-modal="true" aria-labelledby="compareModalTitle" aria-hidden="true" hidden>
+    <div class="modal-backdrop" data-close="compare-modal"></div>
+    <article class="modal-panel">
+      <button type="button" class="btn modal-close" data-close="compare-modal" aria-label="Close">×</button>
+      <h2 id="compareModalTitle">Compare shows</h2>
+      <p class="modal-subtitle">Season-average rating trajectory for each show. Click a show name to remove.</p>
+      <svg class="overlay-curve" id="compareModalCurve" viewBox="0 0 600 240" preserveAspectRatio="none" aria-hidden="true"></svg>
+      <div class="overlay-legend" id="compareModalLegend"></div>
+      <div class="modal-actions">
+        <button type="button" class="btn btn-ghost" id="compareModalClear">Clear all</button>
+      </div>
+    </article>
+  </div>
+
+  <!-- Floating button: opens compare modal when compareSet has entries -->
+  <button type="button" class="compare-fab" id="compareFab" hidden aria-label="Open compare modal">
+    <span class="compare-fab-icon" aria-hidden="true">⇄</span>
+    <span class="compare-fab-label">Compare</span>
+    <span class="compare-fab-count" id="compareFabCount">0</span>
+  </button>
 
   <!-- Card template (grid view) -->
   <template id="card-template">

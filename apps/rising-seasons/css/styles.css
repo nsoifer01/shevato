@@ -80,6 +80,18 @@ html {
   background-attachment: fixed;
   background-color: var(--bg);
   min-height: 100%;
+  /* Hide the vertical scrollbar visually so the .page content box is
+     always at full viewport width — opening / closing the More-filters
+     panel (or the mobile drawer's body scroll-lock) can't shift the
+     layout horizontally because there's no scrollbar gutter to gain
+     or lose. Vertical scrolling still works via wheel / keyboard /
+     touch; only the scrollbar's visible track is suppressed. */
+  scrollbar-width: none;          /* Firefox */
+}
+html::-webkit-scrollbar {
+  width: 0;
+  height: 0;
+  display: none;                  /* Chromium / WebKit */
 }
 
 body.rising-seasons-app {
@@ -679,6 +691,17 @@ body.rising-seasons-app button {
   text-overflow: ellipsis;
 }
 
+.search-suggestion .ss-ep-hint {
+  display: block;
+  font-size: 0.72rem;
+  color: var(--accent);
+  font-style: italic;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  margin-top: 0.1rem;
+}
+
 .search-suggestion mark {
   background: transparent;
   color: var(--accent);
@@ -757,7 +780,21 @@ body.rising-seasons-app button {
    inputs, soft hairline-divided sub-sections, integrated Reset link.
    Surface is just a hint above the page bg, not a strong card. */
 
-.advanced { margin-top: 0.5rem; }
+/* Always-on panel chrome — keeps the section the same outer width whether
+   the user has expanded the additional filters or not. Previously the
+   background/border/padding only applied with [open], so opening the
+   section made it appear to widen. */
+.advanced {
+  margin-top: 0.6rem;
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.045), rgba(255, 255, 255, 0.018));
+  border: 1px solid rgba(255, 255, 255, 0.085);
+  border-radius: 12px;
+  padding: 0.9rem 1.1rem;
+  box-shadow:
+    0 1px 0 rgba(255, 255, 255, 0.04) inset,
+    var(--shadow-lift);
+}
 
 /* Trigger: small, quiet, refined. A "+" rotates to "×" when open. */
 .advanced summary {
@@ -800,20 +837,6 @@ body.rising-seasons-app button {
   color: var(--accent);
 }
 
-/* Panel: a real (but quiet) editorial surface — subtle top-down
-   gradient + soft inset highlight + hairline border. Sits clearly on
-   the page without feeling like a heavy card. */
-.advanced[open] {
-  margin-top: 0.6rem;
-  background:
-    linear-gradient(180deg, rgba(255, 255, 255, 0.045), rgba(255, 255, 255, 0.018));
-  border: 1px solid rgba(255, 255, 255, 0.085);
-  border-radius: 12px;
-  padding: 0.9rem 1.1rem 0.9rem;
-  box-shadow:
-    0 1px 0 rgba(255, 255, 255, 0.04) inset,
-    var(--shadow-lift);
-}
 
 /* Numeric inputs + Sort: 4-column grid for an even rhythm, caption
    labels above slim 32 px controls. */
@@ -894,25 +917,29 @@ body.rising-seasons-app button {
    divider above. Chips are bigger and brighter than the inputs so
    the section reads as "tap a chip" rather than another row of
    form fields. */
-.genre-row {
+.chip-section {
   position: relative;
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.4rem 0.4rem;
   margin-top: 1.15rem;
   padding-top: 1rem;
   border-top: 1px solid rgba(255, 255, 255, 0.075);
 }
-.genre-row::before {
-  content: 'Genres';
+.chip-section-title {
   display: block;
-  flex: 1 0 100%;
   font-size: 0.62rem;
   font-weight: 700;
   letter-spacing: 0.14em;
   text-transform: uppercase;
   color: rgba(231, 233, 238, 0.85);
-  margin-bottom: 0.25rem;
+  margin-bottom: 0.5rem;
+}
+/* Hide the whole section when its chip row is empty (e.g. providers
+   before the cache has been populated). :has() saves a JS toggle. */
+.chip-section:has(.genre-row:empty) { display: none; }
+
+.genre-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem 0.4rem;
 }
 .genre-row:empty { display: none; }
 
@@ -947,6 +974,16 @@ body.rising-seasons-app button {
   background: rgba(245, 197, 24, 0.13);
   border-color: rgba(245, 197, 24, 0.5);
   color: var(--accent) !important;
+}
+/* Tri-state for genre chips only — clicking a green chip again flips it to
+   "exclude" (red). Click once more to clear. */
+.genre-chip[data-exclude="true"],
+.genre-chip[data-exclude="true"]:hover {
+  background: rgba(248, 113, 113, 0.12);
+  border-color: rgba(248, 113, 113, 0.55);
+  color: var(--danger) !important;
+  text-decoration: line-through;
+  text-decoration-thickness: 1.5px;
 }
 .genre-chip:focus-visible {
   outline: none;
@@ -988,9 +1025,9 @@ body.rising-seasons-app button {
 
 /* Mobile: collapse the 4-up grid to 2 so inputs don't get squished. */
 @media (max-width: 540px) {
-  .advanced[open] { padding: 0.75rem 0.85rem; }
+  .advanced { padding: 0.75rem 0.85rem; }
   .advanced .filter-row { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-  .genre-row { margin-top: 0.9rem; padding-top: 0.8rem; }
+  .chip-section { margin-top: 0.9rem; padding-top: 0.8rem; }
   .filter-actions { margin-top: 0.85rem; padding-top: 0.7rem; }
 }
 
@@ -1207,17 +1244,53 @@ button.shape-tag.is-clickable:hover {
   color: var(--accent);
 }
 
-.best-badge {
-  display: inline-block;
-  margin-left: 0.4rem;
-  padding: 0.05rem 0.4rem;
-  font-size: 0.7rem;
-  color: var(--accent);
-  background: var(--accent-soft);
+/* Best / Worst season rank badges. Designed to sit inline with the
+   season-metadata line ("S2 · 10 eps") rather than the title — compact
+   pill, no wrap, subtle tinted surface. Icon + uppercase label give a
+   premium streaming-app feel without competing with the title. */
+.best-badge,
+.worst-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.2rem;
+  margin-left: 0.45rem;
+  padding: 0 0.42rem;
+  height: 1.05rem;
+  line-height: 1;
   border-radius: 999px;
+  border: 1px solid transparent;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  white-space: nowrap;
   vertical-align: middle;
-  font-weight: 600;
+  /* Small badge shouldn't visually dominate; keep typography compact. */
+  font-size: 0.62rem;
+  text-transform: uppercase;
+  /* Don't shrink in tight flex containers (e.g. when title is long). */
+  flex-shrink: 0;
 }
+.best-badge {
+  color: var(--accent);
+  background: rgba(245, 197, 24, 0.12);
+  border-color: rgba(245, 197, 24, 0.28);
+}
+.worst-badge {
+  color: var(--danger);
+  background: rgba(248, 113, 113, 0.10);
+  border-color: rgba(248, 113, 113, 0.28);
+}
+.rank-badge-icon {
+  font-size: 0.72rem;
+  line-height: 1;
+  /* Slight optical lift — symbols sit lower than baseline. */
+  transform: translateY(-0.04em);
+}
+.worst-badge .rank-badge-icon {
+  /* The ▼ symbol is bottom-heavy; shift the opposite way. */
+  transform: translateY(0.02em);
+  font-size: 0.58rem;
+}
+.rank-badge-label { line-height: 1; }
 
 .above-imdb {
   display: inline-block;
@@ -1506,11 +1579,124 @@ button.shape-tag.is-clickable:hover {
 .modal-curve {
   width: 100%;
   height: 180px;
+  /* Modal-panel is a flex column with overflow-y: auto. Without flex-shrink: 0,
+     the SVG (which has no intrinsic content height) collapses when the modal's
+     other content pushes the panel past its max-height, squashing the curve
+     into a thin strip even though the viewBox math is correct. */
+  flex-shrink: 0;
   background:
     radial-gradient(ellipse 60% 50% at 50% 100%, rgba(245, 197, 24, 0.08), transparent 70%),
     var(--surface-2);
   border-radius: 12px;
   padding: 0.5rem;
+}
+
+.season-overlay {
+  display: flex;
+  flex-direction: column;
+  gap: 0.55rem;
+  flex-shrink: 0;
+}
+.season-overlay[hidden] { display: none; }
+.overlay-curve {
+  width: 100%;
+  height: 200px;
+  flex-shrink: 0;
+  background: var(--surface-2);
+  border-radius: 12px;
+  padding: 0.5rem;
+}
+.overlay-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem 0.8rem;
+  font-size: 0.78rem;
+  color: var(--muted);
+}
+.overlay-legend-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+}
+.overlay-legend-swatch {
+  display: inline-block;
+  width: 0.7rem;
+  height: 0.7rem;
+  border-radius: 2px;
+}
+
+.compare-fab {
+  position: fixed;
+  bottom: 1.25rem;
+  right: 1.25rem;
+  z-index: 9000;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.55rem 1rem;
+  border-radius: 999px;
+  border: 1px solid var(--accent);
+  background: var(--accent);
+  color: #1a1300;
+  font-weight: 700;
+  font-size: 0.9rem;
+  cursor: pointer;
+  box-shadow:
+    0 10px 24px rgba(0, 0, 0, 0.45),
+    0 2px 8px rgba(245, 197, 24, 0.35);
+  transition: transform 0.12s var(--ease), box-shadow 0.2s var(--ease);
+}
+.compare-fab[hidden] { display: none; }
+.compare-fab:hover { transform: translateY(-1px); }
+.compare-fab-icon { font-size: 1.05rem; }
+.compare-fab-count {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 1.35rem;
+  height: 1.35rem;
+  padding: 0 0.4rem;
+  border-radius: 999px;
+  background: rgba(26, 19, 0, 0.18);
+  font-size: 0.8rem;
+}
+
+.compare-legend-remove {
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  padding: 0.2rem 0.55rem;
+  color: var(--text);
+  cursor: pointer;
+  font-size: 0.78rem;
+  transition: border-color 0.15s, background 0.15s;
+}
+.compare-legend-remove:hover {
+  border-color: var(--danger);
+  background: rgba(248, 113, 113, 0.08);
+}
+.compare-legend-x {
+  margin-left: 0.15rem;
+  color: var(--muted);
+  font-weight: 700;
+}
+
+.provider-badges {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.3rem;
+  margin-top: 0.35rem;
+}
+.provider-badges:empty { display: none; }
+.provider-badge {
+  display: inline-block;
+  padding: 0.15rem 0.55rem;
+  font-size: 0.72rem;
+  font-weight: 600;
+  border-radius: 999px;
+  color: var(--text);
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid var(--border);
 }
 
 .card-stats {
@@ -1599,13 +1785,23 @@ button.shape-tag.is-clickable:hover {
   flex-wrap: wrap;
 }
 .row-curve {
+  display: block;
   width: 100%;
   height: 56px;
   background: var(--surface-2);
   border-radius: var(--radius-sm);
+  /* Clip the sparkline path to the rounded shape — without this the
+     stroke endcaps drawn at x=0 / x=W bleed past the rounded corner
+     and read as an unbalanced inset on one side. */
+  overflow: hidden;
 }
-.row-watch {
+/* Stay in the grid cell — must override the base + :hover absolute
+   positioning that .watch-toggle sets for the card corner overlay. */
+.row-watch,
+.row-watch:hover {
   position: static;
+  top: auto;
+  right: auto;
   width: 2rem;
   height: 2rem;
 }
@@ -1797,6 +1993,7 @@ button.shape-tag.is-clickable:hover {
   max-height: calc(100vh - 2rem);
   max-height: calc(100dvh - 2rem);
   overflow-y: auto;
+  overscroll-behavior: contain;
   padding: 1.75rem;
   display: flex;
   flex-direction: column;
@@ -2013,6 +2210,46 @@ button.shape-tag.is-clickable:hover {
      for motion-sensitive users — disable both and just show/hide. */
   .advanced-backdrop,
   details.advanced[open] { animation: none; }
+}
+
+/* ---------- Content-width alignment guard ----------
+   Every top-level block under <main class="page"> — the unified toolbar,
+   the expanded More-filters panel, the stats bar, the results count, and
+   the list/grid of results — has to share the same horizontal box so the
+   left/right border edges stack vertically. Without this, intrinsic
+   sizing from a <select>'s longest option, a long row title, or the
+   advanced-panel's grid can grow a single block past .page's content
+   area and the page reads as misaligned.
+
+   The fix has three parts:
+   1. Lock each block to width:100% inside .page's content box with
+      box-sizing:border-box so border+padding live INSIDE the width.
+   2. Set min-width:0 so flex/grid intrinsic minimums don't expand the
+      box (default min-width:auto would let a wide <select> push a track
+      out, even with minmax(0, 1fr) on the column).
+   3. Belt-and-braces on the advanced-panel form controls themselves —
+      their label parents already have min-width:0, but locking the
+      input/select to min-width:0 guarantees they can't drag the 4-up
+      grid wider than its container on any browser. */
+.filter-row.primary,
+.label-filters,
+.advanced,
+.advanced[open],
+.stats-bar,
+.meta,
+.results-grid,
+.row {
+  box-sizing: border-box;
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
+  margin-left: 0;
+  margin-right: 0;
+}
+
+.advanced .filter-row input,
+.advanced .filter-row select {
+  min-width: 0;
 }
 
 /* ============================================================================
