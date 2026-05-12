@@ -33,10 +33,10 @@ jobs:
     timeout-minutes: 75
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: Setup Node
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v6
         with:
           node-version: '20'
 
@@ -51,7 +51,7 @@ jobs:
       # Restore the TMDB cache from the most recent successful run so we
       # only fetch newly-discovered series, not the whole catalogue.
       - name: Restore TMDB cache
-        uses: actions/cache/restore@v4
+        uses: actions/cache/restore@v5
         with:
           path: apps/rising-seasons/data/tmdb-cache.json
           key: tmdb-cache-${{ github.run_id }}
@@ -81,7 +81,7 @@ jobs:
       # enrichment step ran (we still want to keep what we had).
       - name: Save TMDB cache
         if: always()
-        uses: actions/cache/save@v4
+        uses: actions/cache/save@v5
         with:
           path: apps/rising-seasons/data/tmdb-cache.json
           key: tmdb-cache-${{ github.run_id }}
