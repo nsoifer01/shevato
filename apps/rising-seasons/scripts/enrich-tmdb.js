@@ -47,6 +47,7 @@ async function findByImdbId(imdbId) {
     id: tv.id,
     poster_path: tv.poster_path || null,
     overview: tv.overview || null,
+    original_language: tv.original_language || null,
     name: tv.name,
     via: 'imdb',
   };
@@ -70,6 +71,7 @@ async function searchByTitle(title) {
     id: tv.id,
     poster_path: tv.poster_path || null,
     overview: tv.overview || null,
+    original_language: tv.original_language || null,
     name: tv.name,
     via: 'search',
     searchQuery: title,
@@ -133,6 +135,10 @@ async function resolveSeries(imdbId, info) {
     if (e.notFound) return true;
     if (e.error) return true;
     if (!e.poster_path) return true; // matched but no poster — try harder
+    // Back-fill: cache entries written before the language field was added
+    // lack `original_language`. Force a refetch so the language filter has
+    // data for every series, not just newly-added ones.
+    if (!('original_language' in e)) return true;
     return false;
   });
   const retrying = todo.filter((id) => id in cache).length;
