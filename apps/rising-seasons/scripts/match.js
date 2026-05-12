@@ -186,28 +186,38 @@ function detectShapes(episodes) {
 }
 
 // Walk the (series -> season -> episodes) map and return one record per
-// qualifying season. A *series* qualifies if at least one of its seasons
-// matches a shape pattern; once a series qualifies, ALL of its seasons
-// that pass the vote/episode floor are included (even ones with shapes:
-// []). This way searching for "The Office" returns every season, not
-// just the few that fit a curve pattern.
+// season that passes the vote/episode floor. Shape matching is descriptive,
+// not gating — seasons with no shape match are still emitted with shapes: []
+// so the app can search the full IMDb catalog.
 //
 // Filters:
 //   minEpisodes — skip seasons with fewer rated episodes than this.
 //   minVotes    — every episode must have at least this many votes (low-vote
 //                 ratings are noisy and not meaningful).
+//   relaxedGenres / relaxedMinVotes — apply a lower per-episode vote floor
+//                 when the series is tagged with any of these genres.
+//                 Reality/competition shows get a fraction of the per-episode
+//                 votes scripted shows do, so the standard floor wipes them
+//                 out entirely; a relaxed floor lets them surface.
 function findMatches(seriesById, episodesBySeries, opts = {}) {
   const minEpisodes = opts.minEpisodes ?? 4;
   const minVotes = opts.minVotes ?? 100;
+  const relaxedGenres = opts.relaxedGenres instanceof Set
+    ? opts.relaxedGenres
+    : new Set(opts.relaxedGenres || []);
+  const relaxedMinVotes = opts.relaxedMinVotes ?? minVotes;
 
-  // Pass 1: precompute (sorted, voted, shaped) info for every season that
-  // passes the vote/episode floor. Mark which series have at least one
-  // shape-matching season.
   const seasons = []; // { seriesId, season, eps, shapes, minSeasonVotes }
-  const qualifyingSeries = new Set();
 
   for (const [seriesId, bySeason] of episodesBySeries) {
-    if (!seriesById.has(seriesId)) continue;
+    const meta = seriesById.get(seriesId);
+    if (!meta) continue;
+    let floor = minVotes;
+    if (relaxedGenres.size > 0 && meta.genres) {
+      for (const g of meta.genres) {
+        if (relaxedGenres.has(g)) { floor = relaxedMinVotes; break; }
+      }
+    }
     for (const [season, eps] of bySeason) {
       if (eps.length < minEpisodes) continue;
       eps.sort((a, b) => a.episode - b.episode);
@@ -216,20 +226,15 @@ function findMatches(seriesById, episodesBySeries, opts = {}) {
       for (const e of eps) {
         if (e.votes < minSeasonVotes) minSeasonVotes = e.votes;
       }
-      if (minSeasonVotes < minVotes) continue;
+      if (minSeasonVotes < floor) continue;
 
       const shapes = detectShapes(eps);
       seasons.push({ seriesId, season, eps, shapes, minSeasonVotes });
-      if (shapes.length > 0) qualifyingSeries.add(seriesId);
     }
   }
 
-  // Pass 2: emit every season belonging to a qualifying series. Shape-less
-  // seasons get shapes: [] — they're searchable but won't appear under any
-  // specific shape tab.
   const matches = [];
   for (const { seriesId, season, eps, shapes, minSeasonVotes } of seasons) {
-    if (!qualifyingSeries.has(seriesId)) continue;
     const meta = seriesById.get(seriesId);
     const ratings = eps.map((e) => e.rating);
     const seasonAvg = ratings.reduce((s, r) => s + r, 0) / ratings.length;
