@@ -67,7 +67,11 @@ jobs:
             echo "::warning::TMDB_TOKEN secret not configured — skipping enrichment."
             exit 0
           fi
+          # Step 1: posters / overviews / original language.
           node apps/rising-seasons/scripts/enrich-tmdb.js
+          # Step 2: US watch providers (separate call per series; incremental).
+          node apps/rising-seasons/scripts/enrich-providers.js
+          # Merge both into data.json.
           node --max-old-space-size=4096 apps/rising-seasons/scripts/build-data.js
 
       # Persist the cache for the next run regardless of whether the
