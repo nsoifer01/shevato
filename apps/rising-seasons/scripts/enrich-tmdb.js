@@ -92,6 +92,20 @@ async function resolveSeries(imdbId, info) {
   return byId || bySearch || { notFound: true, triedTitle: info.title };
 }
 
+// External-ID lookup so we can link a series to TVDB (in addition to IMDb
+// and TMDB) in the UI. The endpoint returns { imdb_id, tvdb_id, ... };
+// we only persist tvdb_id since the others are already known or unused.
+// Returns null on any failure so the caller can keep going.
+async function fetchTvdbId(tmdbId) {
+  try {
+    const body = await tmdbFetch(`https://api.themoviedb.org/3/tv/${tmdbId}/external_ids`);
+    const v = body && body.tvdb_id;
+    return Number.isFinite(v) ? v : null;
+  } catch (_) {
+    return null;
+  }
+}
+
 (async () => {
   if (!TOKEN) {
     console.error('Set TMDB_TOKEN env var (a v4 read access token from https://www.themoviedb.org/settings/api)');
@@ -153,6 +167,12 @@ async function resolveSeries(imdbId, info) {
     try {
       const result = await resolveSeries(imdbId, seriesInfo[imdbId]);
       const wasNotFound = cache[imdbId] && cache[imdbId].notFound;
+      // Capture TVDB id while we already have the TMDB id in hand — saves
+      // a second pass later. Costs one extra request per resolved series.
+      if (result && result.id && !result.notFound) {
+        await sleep(REQUEST_INTERVAL_MS);
+        result.tvdbId = await fetchTvdbId(result.id);
+      }
       cache[imdbId] = result;
       if (wasNotFound && result && !result.notFound) recoveredViaSearch++;
     } catch (err) {
@@ -170,18 +190,44 @@ async function resolveSeries(imdbId, info) {
     await sleep(REQUEST_INTERVAL_MS);
   }
 
+  // Back-fill tvdbId for cache entries that were resolved before the field
+  // was added. One request per series; cheap incrementally and only runs
+  // once per entry (subsequent runs skip anything with `tvdbId` set).
+  const tvdbBackfill = uniqueSeries.filter((id) => {
+    const e = cache[id];
+    return e && e.id && !e.notFound && !e.error && !('tvdbId' in e);
+  });
+  if (tvdbBackfill.length > 0) {
+    console.log(`\nBack-filling tvdbId for ${tvdbBackfill.length.toLocaleString()} cached entries`);
+    let bdone = 0;
+    const bt0 = Date.now();
+    for (const imdbId of tvdbBackfill) {
+      cache[imdbId].tvdbId = await fetchTvdbId(cache[imdbId].id);
+      bdone++;
+      if (bdone % 50 === 0) {
+        const rate = (bdone / ((Date.now() - bt0) / 1000)).toFixed(1);
+        const eta = ((tvdbBackfill.length - bdone) / parseFloat(rate)).toFixed(0);
+        process.stdout.write(`  ${bdone}/${tvdbBackfill.length}  (${rate}/s, ~${eta}s left)\r`);
+        fs.writeFileSync(CACHE_FILE, JSON.stringify(cache));
+      }
+      await sleep(REQUEST_INTERVAL_MS);
+    }
+  }
+
   fs.writeFileSync(CACHE_FILE, JSON.stringify(cache));
   // Tally cache health so it's obvious what the run accomplished.
-  let withPoster = 0, noPoster = 0, notFoundFinal = 0, errored = 0;
+  let withPoster = 0, noPoster = 0, notFoundFinal = 0, errored = 0, withTvdb = 0;
   for (const e of Object.values(cache)) {
     if (!e || e.error) { errored++; continue; }
     if (e.notFound) { notFoundFinal++; continue; }
     if (e.poster_path) withPoster++;
     else noPoster++;
+    if (e.tvdbId) withTvdb++;
   }
   console.log(`\nWrote ${CACHE_FILE} — ${Object.keys(cache).length.toLocaleString()} entries`);
   console.log(`  with poster:    ${withPoster.toLocaleString()}`);
   console.log(`  no poster file: ${noPoster.toLocaleString()}`);
+  console.log(`  with tvdbId:    ${withTvdb.toLocaleString()}`);
   console.log(`  notFound:       ${notFoundFinal.toLocaleString()}`);
   console.log(`  errored:        ${errored.toLocaleString()}`);
   if (recoveredViaSearch > 0) {
