@@ -781,6 +781,44 @@ body.rising-seasons-app button {
   box-shadow: 0 0 0 3px var(--accent-soft);
 }
 
+/* ---------- Quick filters drawer ----------
+ * Wraps the row of Type / Watched / IMDb / Gems chips behind a small
+ * toggle so the main page reads results-first. The .label-filters
+ * styles handle the panel chrome when expanded. */
+.quick-filters-wrap {
+  margin: 0.6rem 0;
+}
+.quick-filters-wrap > summary {
+  cursor: pointer;
+  list-style: none;
+  user-select: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+  padding: 0.4rem 0.85rem;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.035);
+  border: 1px solid var(--border);
+  color: var(--muted);
+  font-size: 0.72rem;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  transition: background 0.15s var(--ease), border-color 0.15s var(--ease), color 0.15s var(--ease);
+}
+.quick-filters-wrap > summary::-webkit-details-marker { display: none; }
+.quick-filters-wrap > summary:hover {
+  background: rgba(255, 255, 255, 0.06);
+  border-color: var(--border-strong);
+  color: var(--text);
+}
+.quick-filters-wrap[open] > summary {
+  background: var(--accent-soft);
+  border-color: var(--accent-strong);
+  color: var(--accent);
+  margin-bottom: 0.5rem;
+}
+
 /* ---------- "More filters" panel ----------
    Editorial filter sheet: caption-style labels, dense grid of slim
    inputs, soft hairline-divided sub-sections, integrated Reset link.
@@ -1259,9 +1297,20 @@ body.rising-seasons-app button {
 
 .card-body {
   padding: 0.85rem 1rem 1rem;
-  display: flex;
-  flex-direction: column;
-  gap: 0.55rem;
+  /* Grid so the curve always sits at its own row, regardless of how many
+     lines the chip row above takes. Row order matches DOM source:
+       1. card-head    (title + season)
+       2. card-meta    (year + genres)
+       3. card-shapes  (1fr — absorbs any extra vertical space so the
+                        curve doesn't drift down when chips wrap)
+       4. .curve       (sparkline, fixed height)
+       5. card-stats   (single horizontal line)
+     Since .results-grid stretches all cards in a row to the same height,
+     the 1fr region resolves to the same value across siblings — putting
+     every sparkline at the identical y from the top of its card. */
+  display: grid;
+  grid-template-rows: auto auto 1fr auto auto;
+  row-gap: 0.55rem;
   flex: 1;
 }
 
@@ -1292,7 +1341,17 @@ body.rising-seasons-app button {
   color: var(--muted);
   flex-wrap: wrap;
 }
-.card-shapes { display: flex; flex-wrap: wrap; gap: 0.3rem; }
+/* Chip row wraps freely — overflow is preserved so every shape/provider
+ * chip stays visible. Card-body's grid handles curve alignment so a
+ * 2-line wrap here doesn't push the sparkline below it; the curve stays
+ * pinned to its own row, the chip area just consumes more of the 1fr
+ * flex region between meta and curve. */
+.card-shapes {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.3rem;
+  align-content: flex-start;
+}
 
 .shape-tag {
   background: var(--surface-3);
@@ -1318,22 +1377,29 @@ button.shape-tag.is-clickable:hover {
   color: var(--accent);
 }
 
-/* Streaming-platform chip, lives in the same flex row as .shape-tag inside
- * .card-shapes / .row-shapes. Outline-only style separates "where to watch"
- * tokens from the trajectory-pattern tags without forcing a second row. */
+/* Streaming-platform chip — distinct from the shape tags so the row reads
+ * as "<pattern tags> · <where to watch>" rather than one homogenous token
+ * blob. Cyan-tinted outline + leading play glyph give it a "channel" feel
+ * versus the warm-filled trajectory tags. */
 .provider-tag {
   display: inline-flex;
   align-items: center;
-  background: transparent;
-  color: var(--muted);
+  gap: 0.3rem;
+  background: rgba(56, 189, 248, 0.08);
+  color: rgba(125, 211, 252, 0.95);
   font-size: 0.66rem;
   font-weight: 600;
-  padding: 0.1rem 0.5rem;
+  padding: 0.1rem 0.55rem 0.1rem 0.45rem;
   border-radius: 999px;
-  border: 1px solid var(--border-strong);
+  border: 1px solid rgba(56, 189, 248, 0.28);
   line-height: 1.4;
-  letter-spacing: 0.01em;
+  letter-spacing: 0.02em;
   white-space: nowrap;
+}
+.provider-tag::before {
+  content: '▶';
+  font-size: 0.55rem;
+  opacity: 0.85;
 }
 
 /* List-view genre line — mirrors .card-meta on the grid card. Lives inside
@@ -1364,7 +1430,8 @@ button.shape-tag.is-clickable:hover {
   display: inline-flex;
   align-items: center;
   gap: 0.2rem;
-  margin-left: 0.45rem;
+  /* No left margin — these now sit at the start of .card-shapes/.row-shapes
+     where the row's gap handles spacing from the next pill. */
   padding: 0 0.42rem;
   height: 1.05rem;
   line-height: 1;
@@ -1374,10 +1441,8 @@ button.shape-tag.is-clickable:hover {
   letter-spacing: 0.06em;
   white-space: nowrap;
   vertical-align: middle;
-  /* Small badge shouldn't visually dominate; keep typography compact. */
-  font-size: 0.62rem;
+  font-size: 0.6rem;
   text-transform: uppercase;
-  /* Don't shrink in tight flex containers (e.g. when title is long). */
   flex-shrink: 0;
 }
 .best-badge {
@@ -1843,23 +1908,37 @@ button.shape-tag.is-clickable:hover {
   border: 1px solid var(--border);
 }
 
-.card-stats {
+/* Result-tile stats — single horizontal line, comfortable gap, values are
+ * self-describing so we don't need uppercase labels. Wraps when the row
+ * is narrow, but stays compact on the common widths. */
+.card-stats,
+.row-stats {
   display: flex;
-  gap: 0.85rem;
-  font-size: 0.75rem;
-  color: var(--muted);
-  font-variant-numeric: tabular-nums;
   flex-wrap: wrap;
+  gap: 0.25rem 0.9rem;
+  font-size: 0.76rem;
+  font-variant-numeric: tabular-nums;
+  color: var(--muted);
+  line-height: 1.3;
 }
+.card-stats > span,
+.row-stats > span {
+  white-space: nowrap;
+}
+.card-stats .stat-runtime[hidden],
+.row-stats .stat-runtime[hidden] { display: none; }
 .stat-climb { color: var(--good); font-weight: 600; }
 
 /* ---------- List view rows ---------- */
 
 .row {
   display: grid;
-  /* Original right-side layout: text fills the left half, curve sits on
-     the right at a fixed 200px, watch on the far right edge. */
-  grid-template-columns: 56px 1fr 200px 36px;
+  /* Layout: poster · text (1fr, fills available width so stats line out
+     horizontally) · curve (240px, right of the row) · watch (36px, far
+     right edge). With no gray sparkline backdrop, the empty space inside
+     row-main between text and curve just reads as row surface — no
+     visible padding gap. */
+  grid-template-columns: 56px 1fr 240px 36px;
   gap: 1rem;
   align-items: center;
   padding: 0.7rem 0.95rem;
@@ -1922,14 +2001,7 @@ button.shape-tag.is-clickable:hover {
   color: var(--muted);
 }
 .row-shapes { display: flex; gap: 0.3rem; flex-wrap: wrap; }
-.row-stats {
-  display: flex;
-  gap: 0.85rem;
-  font-size: 0.75rem;
-  color: var(--muted);
-  font-variant-numeric: tabular-nums;
-  flex-wrap: wrap;
-}
+/* .row-stats styled together with .card-stats above as one stats grid. */
 .row-curve {
   display: block;
   width: 100%;
@@ -2148,13 +2220,17 @@ button.shape-tag.is-clickable:hover {
 
 .modal-panel {
   position: relative;
+  /* Brighter surface than the page bg so the panel reads as an elevated
+     content layer rather than the same dark sheet with a thin outline.
+     Stronger top-edge gradient + a more present border + a wider shadow
+     give it visual lift away from the page. */
   background:
-    radial-gradient(ellipse 80% 50% at 50% 0%, rgba(245, 197, 24, 0.05), transparent 60%),
-    linear-gradient(180deg, #15192257, #0f121b 30%, #0c0f17 100%),
+    radial-gradient(ellipse 80% 50% at 50% 0%, rgba(245, 197, 24, 0.07), transparent 60%),
+    linear-gradient(180deg, #1a1f2c, #14182265 40%, #0e1219 100%),
     var(--surface);
-  border: 1px solid var(--border-strong);
+  border: 1px solid rgba(255, 255, 255, 0.085);
   border-radius: 18px;
-  max-width: 720px;
+  max-width: 780px;
   width: 100%;
   /* 100dvh fixes iOS Safari over-counting the URL bar height. The vh
      line is a fallback for older browsers that don't know dvh. */
@@ -2162,11 +2238,14 @@ button.shape-tag.is-clickable:hover {
   max-height: calc(100dvh - 2rem);
   overflow-y: auto;
   overscroll-behavior: contain;
-  padding: 1.75rem;
+  padding: 1.9rem 1.9rem 1.6rem;
   display: flex;
   flex-direction: column;
-  gap: 1.1rem;
-  box-shadow: var(--shadow-modal);
+  gap: 1.25rem;
+  box-shadow:
+    0 24px 60px rgba(0, 0, 0, 0.55),
+    0 4px 14px rgba(0, 0, 0, 0.45),
+    0 0 0 1px rgba(255, 255, 255, 0.03) inset;
 }
 .modal-panel::before {
   content: '';
@@ -2277,6 +2356,7 @@ button.shape-tag.is-clickable:hover {
   letter-spacing: 0.005em;
 }
 .modal-shapes { display: flex; gap: 0.35rem; flex-wrap: wrap; margin-top: 0.15rem; }
+.modal-shapes:empty { display: none; }
 .modal-stats {
   margin: 0;
   color: var(--muted);
@@ -2368,16 +2448,35 @@ button.shape-tag.is-clickable:hover {
 
 .modal-actions {
   display: flex;
-  gap: 0.75rem;
+  gap: 0.6rem;
   align-items: center;
   flex-wrap: wrap;
 }
 /* Top-of-modal action row: a thin divider underneath separates it from the
- * descriptive content (overview / episodes) that follows. */
+ * descriptive content (overview / episodes) that follows. Extra vertical
+ * padding gives the buttons breathing room. */
 .modal-actions-top {
-  margin-bottom: 0.25rem;
-  padding-bottom: 0.85rem;
+  margin: 0.25rem 0 0.1rem;
+  padding: 0.75rem 0 1.1rem;
   border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+}
+/* Hierarchy inside .modal-actions: the primary watch button gets an
+ * accent surface so it reads as the obvious primary action, secondary
+ * buttons stay ghost. IMDb anchor sits flush-right via margin-left:auto. */
+.modal-actions .watch-btn {
+  background: var(--accent-soft);
+  border: 1px solid var(--accent-strong);
+  color: var(--accent) !important;
+  font-weight: 700;
+}
+.modal-actions .watch-btn:hover {
+  background: rgba(245, 197, 24, 0.18);
+  border-color: rgba(245, 197, 24, 0.5);
+}
+.modal-actions .watch-btn.is-watched {
+  background: rgba(74, 222, 128, 0.16);
+  border-color: rgba(74, 222, 128, 0.45);
+  color: var(--good) !important;
 }
 .modal-imdb { margin-left: auto; }
 

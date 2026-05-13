@@ -77,16 +77,20 @@ test('isSlowBurn rejects seasons too short to halve', () => {
 
 // --- isBigFinale ---
 
-test('isBigFinale matches when the finale is the peak and well above average', () => {
+test('isBigFinale matches when the finale beats the rest by 0.1+', () => {
   assert.equal(isBigFinale(season(7.5, 7.6, 7.5, 9.5)), true);
+});
+
+test('isBigFinale matches when the finale clears the next-best by exactly 0.1', () => {
+  assert.equal(isBigFinale(season(8.0, 8.0, 8.0, 8.0, 8.5, 8.7)), true);
+});
+
+test('isBigFinale rejects when the finale ties the next-best episode', () => {
+  assert.equal(isBigFinale(season(8.0, 9.0, 8.5, 9.0)), false);
 });
 
 test('isBigFinale rejects when the finale is not the peak', () => {
   assert.equal(isBigFinale(season(7.5, 9.4, 7.5, 9.0)), false);
-});
-
-test('isBigFinale rejects when the finale is only marginally above average', () => {
-  assert.equal(isBigFinale(season(8.0, 8.1, 8.0, 8.2)), false);
 });
 
 // --- isRebound ---
@@ -197,8 +201,8 @@ test('detectShapes tags a rising season with both rising and slow-burn when appl
 });
 
 test('detectShapes returns empty array when nothing matches', () => {
-  // Flat-ish season just below the consistent floor — matches no shape.
-  assert.deepEqual(detectShapes(season(7.5, 7.6, 7.5, 7.6)), []);
+  // Flat-ish season just below the consistent floor, finale not the peak — matches no shape.
+  assert.deepEqual(detectShapes(season(7.5, 7.7, 7.5, 7.6)), []);
 });
 
 // --- findMatches integration ---
@@ -244,12 +248,14 @@ test('findMatches emits every season passing the floor regardless of shape', () 
   ]);
   const episodes = new Map([
     ['tt600', new Map([
-      // Season 1 — bouncy, no shape match.
-      [1, [ep(1, 7.5), ep(2, 7.7), ep(3, 7.4), ep(4, 7.6)]],
+      // Season 1 — bouncy, no shape match. Highest avg so it doubles as the
+      // anchor that keeps the last season from earning saved-best-for-last.
+      [1, [ep(1, 8.0), ep(2, 8.2), ep(3, 7.9), ep(4, 8.1)]],
       // Season 2 — non-decreasing.
       [2, [ep(1, 7.0), ep(2, 7.2), ep(3, 7.4), ep(4, 7.5)]],
-      // Season 3 — bouncy again, no shape match.
-      [3, [ep(1, 8.0), ep(2, 7.8), ep(3, 8.1), ep(4, 7.9)]],
+      // Season 3 — bouncy again, no shape match. Lower avg than S1 so the
+      // saved-best-for-last post-pass doesn't fire on this run.
+      [3, [ep(1, 7.0), ep(2, 6.8), ep(3, 7.1), ep(4, 6.9)]],
     ])],
   ]);
   const matches = findMatches(series, episodes);
