@@ -2460,20 +2460,26 @@ button.shape-tag.is-clickable:hover {
   padding: 0.75rem 0 1.1rem;
   border-bottom: 1px solid rgba(255, 255, 255, 0.06);
 }
-/* Hierarchy inside .modal-actions: the primary watch button gets an
- * accent surface so it reads as the obvious primary action, secondary
- * buttons stay ghost. IMDb anchor sits flush-right via margin-left:auto. */
-.modal-actions .watch-btn {
+/* Hierarchy inside .modal-actions: each modal's primary action (watch
+ * on season-modal, compare on show-modal) gets an accent surface so it
+ * reads as the obvious primary button. Secondary buttons stay ghost.
+ * IMDb anchor sits flush-right via margin-left:auto. */
+.modal-actions .watch-btn,
+.modal-actions .compare-btn {
   background: var(--accent-soft);
   border: 1px solid var(--accent-strong);
   color: var(--accent) !important;
   font-weight: 700;
 }
-.modal-actions .watch-btn:hover {
+.modal-actions .watch-btn:hover,
+.modal-actions .compare-btn:hover {
   background: rgba(245, 197, 24, 0.18);
   border-color: rgba(245, 197, 24, 0.5);
 }
-.modal-actions .watch-btn.is-watched {
+/* "Already added" state — green to signal the success-of-state, same
+ * pattern the watch button uses when a season is marked watched. */
+.modal-actions .watch-btn.is-watched,
+.modal-actions .compare-btn.is-in-compare {
   background: rgba(74, 222, 128, 0.16);
   border-color: rgba(74, 222, 128, 0.45);
   color: var(--good) !important;
