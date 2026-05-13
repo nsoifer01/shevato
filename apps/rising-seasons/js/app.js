@@ -1451,6 +1451,7 @@ function syncCompareButton() {
   const inSet = Compare.has(showModalState.seriesId);
   const atLimit = !inSet && Compare.size() >= COMPARE_LIMIT;
   els.showModalCompare.textContent = inSet ? '✓ In compare' : '＋ Add to compare';
+  els.showModalCompare.classList.toggle('is-in-compare', inSet);
   els.showModalCompare.disabled = atLimit;
   els.showModalCompare.title = atLimit
     ? `Compare set is full (${COMPARE_LIMIT} max) — remove one first`
@@ -1625,22 +1626,18 @@ function openModal(m, opts = {}) {
   els.modalTitle.textContent = m.title;
   const seasonYearStr = (m.seasonYear || m.year);
   const yearStr = seasonYearStr ? ` · ${seasonYearStr}` : '';
-  // Same suppression as the card/row + show-modal season list: the
-  // 'saved-best-for-last' shape is a show-level signal redundant with
-  // per-season labels and the filter chip on the main view.
-  const subtitleShapes = m.shapes.filter((s) => s !== 'saved-best-for-last');
-  // Shapes inline at the end of the subtitle ("· Rising") so they read as
-  // one descriptor line instead of floating in their own row.
-  const shapeBit = subtitleShapes.length
-    ? ' · ' + subtitleShapes.map((s) => SHAPE_LABELS[s] || s).join(' · ')
-    : '';
-  els.modalSubtitle.textContent = `Season ${m.season} · ${m.episodes.length} episodes${yearStr} · ${m.genres.join(', ') || 'No genre listed'}${shapeBit}`;
+  els.modalSubtitle.textContent = `Season ${m.season} · ${m.episodes.length} episodes${yearStr} · ${m.genres.join(', ') || 'No genre listed'}`;
 
-  // modal-shapes container now hosts the season's streaming-platform chips
-  // only — shape labels live inline in the subtitle above. This mirrors
-  // the chip row that cards and list rows render on each result tile so
-  // the modal reads as a familiar "where to watch" strip.
+  // Shape pills + streaming chips in the modal-shapes row, matching the
+  // chip row rendered on every result tile. Same suppression rule as
+  // cards/rows/show-modal-season-list: 'saved-best-for-last' is a
+  // show-level signal so it doesn't get a per-season pill.
   els.modalShapes.replaceChildren();
+  fillShapeTags(
+    els.modalShapes,
+    m.shapes.filter((s) => s !== 'saved-best-for-last'),
+    { clickable: false },
+  );
   fillProviderTags(els.modalShapes, m.providers || []);
 
   const climb = m.lastRating - m.firstRating;
