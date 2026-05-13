@@ -222,7 +222,7 @@ body.maptap-rivals-app button {
   border: 1px solid var(--border);
   border-radius: 999px;
   background: var(--surface);
-  color: var(--text) !important;
+  color: #fff !important;
   font: inherit;
   font-size: 0.9rem;
   font-weight: 500;
@@ -235,7 +235,7 @@ body.maptap-rivals-app button {
 .view-tab.is-active:hover {
   background: var(--accent-soft);
   border-color: var(--accent-strong);
-  color: var(--accent-2) !important;
+  color: #fff !important;
 }
 
 /* ---------- Section bits ---------- */
@@ -2349,4 +2349,260 @@ tr:focus-within .icon-btn {
   .rival-card-stats { grid-template-columns: repeat(3, 1fr); }
   .hero { padding-top: 1.6rem; }
   .view-tabs { padding: 1rem 0 0.5rem; }
+}
+
+/* ---------- Matrix view ---------- */
+
+.matrix-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1rem;
+  margin-top: 0.5rem;
+}
+
+.matrix-sub {
+  margin: 0.35rem 0 0;
+  color: var(--muted);
+  font-size: 0.92rem;
+  max-width: 60ch;
+}
+
+.matrix-controls {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.6rem;
+  margin: 1rem 0 0.75rem;
+  padding: 0.75rem 0.9rem;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+}
+
+.matrix-controls-label {
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.matrix-chip-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+}
+
+.matrix-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.35rem 0.75rem;
+  border: 1px solid var(--border-strong);
+  border-radius: 999px;
+  background: var(--surface-2);
+  color: #fff !important;
+  opacity: 1;
+  font: inherit;
+  font-size: 0.85rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: transform 0.1s, background 0.15s, border-color 0.15s, color 0.15s;
+}
+.matrix-chip:hover { transform: translateY(-1px); color: #fff !important; }
+.matrix-chip.is-on { color: #fff !important; font-weight: 600; }
+
+.matrix-wrap {
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 0.75rem;
+}
+
+.matrix-table {
+  width: 100%;
+  border-collapse: separate;
+  border-spacing: 6px;
+  table-layout: fixed;
+}
+
+.matrix-corner {
+  background: transparent;
+  border: none;
+}
+
+.matrix-col-head,
+.matrix-row-head {
+  background: var(--surface-2);
+  color: #fff;
+  font-weight: 600;
+  font-size: 0.88rem;
+  padding: 0.55rem 0.6rem;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border);
+  vertical-align: middle;
+  text-align: center;
+}
+
+.matrix-row-head { text-align: left; }
+
+.matrix-head-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  color: #fff;
+  opacity: 1;
+}
+.matrix-head-chip .matrix-head-name { color: #fff; }
+.matrix-head-icon { font-size: 1rem; }
+.matrix-head-name {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 9rem;
+}
+
+.matrix-cell {
+  text-align: center;
+  vertical-align: middle;
+  padding: 0.7rem 0.5rem;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border);
+  background: var(--surface-2);
+  min-width: 6.5rem;
+  line-height: 1.15;
+}
+
+.matrix-diag {
+  background: transparent;
+  border: 1px dashed var(--border-strong);
+  color: var(--muted-2);
+  font-size: 1.1rem;
+}
+
+.matrix-empty {
+  color: var(--muted-2);
+  font-style: italic;
+  font-size: 0.8rem;
+}
+
+.matrix-record {
+  font-weight: 700;
+  font-size: 1.05rem;
+  letter-spacing: 0.02em;
+}
+
+.matrix-margin {
+  font-size: 0.82rem;
+  font-weight: 600;
+  margin-top: 0.15rem;
+}
+
+.matrix-meta {
+  font-size: 0.72rem;
+  color: var(--muted);
+  margin-top: 0.1rem;
+}
+
+.matrix-win {
+  background: var(--good-soft);
+  border-color: rgba(74, 222, 128, 0.35);
+  color: var(--good);
+}
+.matrix-win .matrix-meta { color: rgba(74, 222, 128, 0.7); }
+
+.matrix-loss {
+  background: var(--bad-soft);
+  border-color: rgba(248, 113, 113, 0.35);
+  color: var(--bad);
+}
+.matrix-loss .matrix-meta { color: rgba(248, 113, 113, 0.75); }
+
+.matrix-tie {
+  background: var(--tie-soft);
+  border-color: rgba(154, 163, 178, 0.35);
+  color: var(--text);
+}
+
+.matrix-hint {
+  color: var(--muted);
+  text-align: center;
+  padding: 1.5rem 0;
+  margin: 0;
+}
+
+.matrix-legend {
+  margin: 0.75rem 0 0;
+  font-size: 0.82rem;
+  color: var(--muted);
+  text-align: center;
+}
+
+/* Sub-tabs for switching the metric shown inside each matrix cell */
+.matrix-subtabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  margin: 0 0 0.75rem;
+  padding: 0.5rem;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+}
+
+.matrix-subtab {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  padding: 0.4rem 0.85rem;
+  border: 1px solid transparent;
+  border-radius: 999px;
+  background: transparent;
+  color: #fff !important;
+  font: inherit;
+  font-size: 0.85rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background 0.15s, border-color 0.15s, color 0.15s;
+}
+.matrix-subtab:hover {
+  background: var(--surface-2);
+  color: #fff !important;
+}
+.matrix-subtab.is-active,
+.matrix-subtab.is-active:hover {
+  background: var(--accent-soft);
+  border-color: var(--accent-strong);
+  color: #fff !important;
+}
+
+/* Form dots used by the "Last 5" sub-tab. Sit in the matrix-record slot so
+ * they line up with the win-record glyphs in other tabs. */
+.matrix-form-dots {
+  display: inline-flex;
+  gap: 0.3rem;
+  justify-content: center;
+  align-items: center;
+}
+.matrix-form-dot {
+  width: 0.65rem;
+  height: 0.65rem;
+  border-radius: 50%;
+  display: inline-block;
+  background: var(--surface-3);
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.08);
+}
+.matrix-form-dot.is-win  { background: var(--good); }
+.matrix-form-dot.is-loss { background: var(--bad); }
+.matrix-form-dot.is-tie  { background: var(--tie); }
+
+@media (max-width: 720px) {
+  .matrix-cell { min-width: 5.5rem; padding: 0.55rem 0.4rem; }
+  .matrix-record { font-size: 0.95rem; }
+  .matrix-margin { font-size: 0.75rem; }
+  .matrix-meta { font-size: 0.68rem; }
+  .matrix-head-name { max-width: 6rem; font-size: 0.82rem; }
 }
