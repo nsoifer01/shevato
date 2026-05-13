@@ -33,6 +33,7 @@
     MY_PROFILE: 'maptapRivalsMyProfile',
     SETTINGS: 'maptapRivalsSettings',
     SELECTED: 'maptapRivalsSelectedRivalId',
+    MATRIX_SEL: 'maptapRivalsMatrixSelection',
   };
 
   // Public MapTap Cloud Function — returns gameHistory keyed by YYYY-MM-DD.
@@ -241,6 +242,8 @@
     settings: load(KEY.SETTINGS, {}),
     selectedRivalId: loadString(KEY.SELECTED, null),
     view: 'dashboard',
+    matrixSelection: load(KEY.MATRIX_SEL, null), // string[] of rivalIds, or null = "all"
+    matrixTab: 'record',           // overridden by URL hash on first paint
     historyFilters: { rival: 'all', result: 'all' },
     historyPage: 1,
     historyPageSize: 25,
@@ -262,6 +265,7 @@
   function persistMyMapTap() { saveString(KEY.MY_MAPTAP, state.myMapTap); }
   function persistMyProfile() { save(KEY.MY_PROFILE, state.myProfile); }
   function persistSelected() { saveString(KEY.SELECTED, state.selectedRivalId); }
+  function persistMatrixSelection() { save(KEY.MATRIX_SEL, state.matrixSelection); }
 
   // ---------- date utils ----------
   function todayISO() {
@@ -590,7 +594,73 @@
     if (view === 'dashboard') renderDashboard();
     else if (view === 'rival') renderRival();
     else if (view === 'leaderboard') renderLeaderboard();
+    else if (view === 'matrix') renderMatrix();
     else if (view === 'history') renderHistory();
+
+    syncUrlHash();
+  }
+
+  // ---------- URL routing ----------
+  // Shareable URLs use the hash fragment:
+  //   #dashboard | #leaderboard | #history
+  //   #rival/<id>            (rival detail)
+  //   #matrix | #matrix/<subtab>
+  // We use replaceState so the URL updates silently without polluting the
+  // back/forward history; hashchange handles users pasting or editing the URL.
+  const KNOWN_VIEWS = new Set(['dashboard', 'rival', 'leaderboard', 'matrix', 'history']);
+
+  function viewHash() {
+    if (state.view === 'matrix') {
+      return state.matrixTab && state.matrixTab !== 'record'
+        ? `#matrix/${state.matrixTab}`
+        : '#matrix';
+    }
+    if (state.view === 'rival' && state.selectedRivalId) {
+      return `#rival/${state.selectedRivalId}`;
+    }
+    return `#${state.view}`;
+  }
+
+  // Mirror current in-memory view → location.hash. Bail if already in sync
+  // so re-renders don't churn the URL bar mid-typing.
+  function syncUrlHash() {
+    const want = viewHash();
+    if (location.hash === want) return;
+    try {
+      history.replaceState(null, '', want);
+    } catch (_) {
+      // Older browsers / file:// — fall back to direct hash assignment.
+      location.hash = want.slice(1);
+    }
+  }
+
+  // Drive view state from location.hash. Used at init and on hashchange
+  // (browser back/forward or user-edited URL).
+  function applyUrlHash() {
+    const raw = (location.hash || '').replace(/^#/, '').trim();
+    if (!raw) { setView('dashboard'); return; }
+    const slash = raw.indexOf('/');
+    const view = slash === -1 ? raw : raw.slice(0, slash);
+    const arg = slash === -1 ? '' : raw.slice(slash + 1);
+
+    if (view === 'matrix') {
+      state.matrixTab = isValidMatrixTab(arg) ? arg : 'record';
+      setView('matrix');
+      return;
+    }
+    if (view === 'rival') {
+      if (arg && state.rivals.some(r => r.id === arg)) {
+        state.selectedRivalId = arg;
+        persistSelected();
+        setView('rival');
+        return;
+      }
+      // Unknown rival — fall through to dashboard so a stale link isn't fatal.
+      setView('dashboard');
+      return;
+    }
+    if (KNOWN_VIEWS.has(view)) { setView(view); return; }
+    setView('dashboard');
   }
 
   // ---------- rival modal ----------
@@ -682,6 +752,7 @@
     if (state.view === 'dashboard') renderDashboard();
     else if (state.view === 'rival') renderRival();
     else if (state.view === 'leaderboard') renderLeaderboard();
+    else if (state.view === 'matrix') renderMatrix();
   }
 
   function deleteRivalFromModal() {
@@ -699,6 +770,10 @@
       state.selectedRivalId = null;
       persistSelected();
     }
+    if (Array.isArray(state.matrixSelection) && state.matrixSelection.includes(r.id)) {
+      state.matrixSelection = state.matrixSelection.filter(id => id !== r.id);
+      persistMatrixSelection();
+    }
     persistRivals();
     persistGames();
     closeRivalModal();
@@ -706,6 +781,7 @@
     if (state.view === 'rival') setView('dashboard');
     else if (state.view === 'dashboard') renderDashboard();
     else if (state.view === 'leaderboard') renderLeaderboard();
+    else if (state.view === 'matrix') renderMatrix();
     else if (state.view === 'history') renderHistory();
   }
 
@@ -734,6 +810,7 @@
     if (state.view === 'dashboard') renderDashboard();
     else if (state.view === 'rival') renderRival();
     else if (state.view === 'leaderboard') renderLeaderboard();
+    else if (state.view === 'matrix') renderMatrix();
     else if (state.view === 'history') renderHistory();
   }
 
@@ -1888,6 +1965,346 @@
     });
   }
 
+  // ---------- matrix view ----------
+  // Confusion-style H2H grid for you + any selected rivals. The user always
+  // anchors the matrix. Rival ↔ rival cells are *derived* from days where
+  // both rivals appear in state.games: on each such day, the user has one
+  // daily MapTap score, so the two rivals' scores can be compared head to
+  // head against each other. We pick the latest game per rival per date in
+  // case duplicates exist.
+  const MATRIX_TABS = [
+    { id: 'record', label: 'Record',    icon: '🏆' },
+    { id: 'margin', label: 'Margin',    icon: '📐' },
+    { id: 'score',  label: 'Avg score', icon: '📊' },
+    { id: 'form',   label: 'Last 5',    icon: '⚡' },
+  ];
+  function isValidMatrixTab(id) { return MATRIX_TABS.some(t => t.id === id); }
+
+  function selectedMatrixRivals() {
+    // null selection = include all rivals; otherwise filter to remembered ids
+    // (dropping any that no longer exist).
+    if (!Array.isArray(state.matrixSelection)) return state.rivals.slice();
+    const wanted = new Set(state.matrixSelection);
+    return state.rivals.filter(r => wanted.has(r.id));
+  }
+
+  function isMatrixRivalSelected(rivalId) {
+    if (!Array.isArray(state.matrixSelection)) return true;
+    return state.matrixSelection.includes(rivalId);
+  }
+
+  function toggleMatrixRival(rivalId) {
+    const current = Array.isArray(state.matrixSelection)
+      ? state.matrixSelection.slice()
+      : state.rivals.map(r => r.id);
+    const i = current.indexOf(rivalId);
+    if (i >= 0) current.splice(i, 1);
+    else current.push(rivalId);
+    state.matrixSelection = current;
+    persistMatrixSelection();
+    renderMatrix();
+  }
+
+  // Build a map: rivalId -> Map<date, { mine, theirs }> using the latest
+  // game on each date (in createdAt order) so duplicate logs collapse.
+  function buildRivalDateIndex(rivalIds) {
+    const want = new Set(rivalIds);
+    const byRival = new Map();
+    rivalIds.forEach(id => byRival.set(id, new Map()));
+    state.games.forEach(g => {
+      if (!want.has(g.rivalId)) return;
+      const mine = getMyTotal(g);
+      const theirs = getTheirTotal(g);
+      const slot = byRival.get(g.rivalId);
+      const prev = slot.get(g.date);
+      if (!prev || (g.createdAt || 0) >= (prev.createdAt || 0)) {
+        slot.set(g.date, { mine, theirs, createdAt: g.createdAt || 0 });
+      }
+    });
+    return byRival;
+  }
+
+  // H2H from the row's perspective vs the column. Returns aggregate counts
+  // plus a chronological list of meetings, so the per-tab renderers can
+  // pull margins, recency, and form without re-querying state.games.
+  function computeMatrixCell(rowKind, colKind, byRival) {
+    // rowKind/colKind: { type: 'you' } | { type: 'rival', id }
+    if (rowKind.type === 'you' && colKind.type === 'you') return null;
+
+    const meetings = []; // { date, rowScore, colScore }
+    if (rowKind.type === 'you' || colKind.type === 'you') {
+      const rivalId = rowKind.type === 'rival' ? rowKind.id : colKind.id;
+      const youIsRow = rowKind.type === 'you';
+      const dateMap = byRival.get(rivalId);
+      if (dateMap) {
+        dateMap.forEach(({ mine, theirs }, date) => {
+          meetings.push({
+            date,
+            rowScore: youIsRow ? mine : theirs,
+            colScore: youIsRow ? theirs : mine,
+          });
+        });
+      }
+    } else {
+      const rowMap = byRival.get(rowKind.id);
+      const colMap = byRival.get(colKind.id);
+      if (rowMap && colMap) {
+        rowMap.forEach(({ theirs: rowScore }, date) => {
+          const colEntry = colMap.get(date);
+          if (!colEntry) return;
+          meetings.push({ date, rowScore, colScore: colEntry.theirs });
+        });
+      }
+    }
+    meetings.sort((a, b) => a.date.localeCompare(b.date));
+
+    let wins = 0, losses = 0, ties = 0, rowTotal = 0, colTotal = 0;
+    let bestMargin = null, worstMargin = null;
+    meetings.forEach(({ rowScore, colScore }) => {
+      rowTotal += rowScore;
+      colTotal += colScore;
+      const m = rowScore - colScore;
+      if (bestMargin === null || m > bestMargin) bestMargin = m;
+      if (worstMargin === null || m < worstMargin) worstMargin = m;
+      if (rowScore > colScore) wins++;
+      else if (rowScore < colScore) losses++;
+      else ties++;
+    });
+    return {
+      games: meetings.length,
+      wins, losses, ties,
+      rowTotal, colTotal,
+      bestMargin, worstMargin,
+      meetings,
+    };
+  }
+
+  // Build the visible content for one matrix cell based on the active sub-tab.
+  // Returns { tone, title, content } where tone drives the W/L/T tint and
+  // content is the array of child nodes for the <td>.
+  function matrixCellViewModel(cell, subtab, row, col) {
+    const gamesLabel = `${cell.games} game${cell.games === 1 ? '' : 's'}`;
+    const fmtSigned = m => (m > 0 ? '+' : '') + Math.round(m);
+
+    if (subtab === 'margin') {
+      const avg = (cell.rowTotal - cell.colTotal) / cell.games;
+      const tone = avg > 5 ? 'win' : avg < -5 ? 'loss' : 'tie';
+      const best = cell.bestMargin;
+      return {
+        tone,
+        title: `${row.label} vs ${col.label} — avg ${fmtSigned(avg)} per game, best ${fmtSigned(best)}, worst ${fmtSigned(cell.worstMargin)}`,
+        content: [
+          el('div', { class: 'matrix-record' }, fmtSigned(avg)),
+          el('div', { class: 'matrix-margin' }, `best ${fmtSigned(best)}`),
+          el('div', { class: 'matrix-meta' }, gamesLabel),
+        ],
+      };
+    }
+
+    if (subtab === 'score') {
+      const rowAvg = cell.rowTotal / cell.games;
+      const colAvg = cell.colTotal / cell.games;
+      const tone = rowAvg > colAvg + 3 ? 'win' : rowAvg < colAvg - 3 ? 'loss' : 'tie';
+      return {
+        tone,
+        title: `${row.label} averages ${rowAvg.toFixed(0)} vs ${col.label}'s ${colAvg.toFixed(0)} across ${gamesLabel}`,
+        content: [
+          el('div', { class: 'matrix-record' }, String(Math.round(rowAvg))),
+          el('div', { class: 'matrix-margin' }, `vs ${Math.round(colAvg)}`),
+          el('div', { class: 'matrix-meta' }, gamesLabel),
+        ],
+      };
+    }
+
+    if (subtab === 'form') {
+      const last5 = cell.meetings.slice(-5);
+      const dots = el('div', { class: 'matrix-form-dots' });
+      last5.forEach(m => {
+        const cls = m.rowScore > m.colScore ? 'win'
+          : m.rowScore < m.colScore ? 'loss'
+          : 'tie';
+        dots.appendChild(el('span', {
+          class: `matrix-form-dot is-${cls}`,
+          title: `${fmtDateShort(m.date)} · ${m.rowScore} vs ${m.colScore}`,
+        }));
+      });
+      // Current streak: walk backward from the latest meeting.
+      let streakKind = null, streakLen = 0;
+      for (let i = cell.meetings.length - 1; i >= 0; i--) {
+        const m = cell.meetings[i];
+        const kind = m.rowScore > m.colScore ? 'W'
+          : m.rowScore < m.colScore ? 'L'
+          : 'T';
+        if (streakKind === null) { streakKind = kind; streakLen = 1; }
+        else if (kind === streakKind) streakLen++;
+        else break;
+      }
+      const streakLabel = streakLen > 0 ? `${streakKind}${streakLen}` : '—';
+      const tone = streakKind === 'W' ? 'win' : streakKind === 'L' ? 'loss' : 'tie';
+      return {
+        tone,
+        title: `Last ${last5.length} (oldest → newest), current streak ${streakLabel}`,
+        content: [
+          dots,
+          el('div', { class: 'matrix-margin' }, streakLabel),
+          el('div', { class: 'matrix-meta' }, gamesLabel),
+        ],
+      };
+    }
+
+    // 'record' (default)
+    const winPct = (cell.wins + 0.5 * cell.ties) / cell.games;
+    const winPctStr = (winPct * 100).toFixed(1) + '%';
+    const tone = winPct > 0.55 ? 'win' : winPct < 0.45 ? 'loss' : 'tie';
+    return {
+      tone,
+      title: `${row.label} vs ${col.label} — ${gamesLabel}, ${winPctStr} win rate`,
+      content: [
+        el('div', { class: 'matrix-record' },
+          `${cell.wins}-${cell.losses}` + (cell.ties ? `-${cell.ties}` : '')),
+        el('div', { class: 'matrix-margin' }, winPctStr),
+        el('div', { class: 'matrix-meta' }, gamesLabel),
+      ],
+    };
+  }
+
+  function renderMatrixSubtabs() {
+    const wrap = $('#matrix-subtabs');
+    wrap.innerHTML = '';
+    MATRIX_TABS.forEach(t => {
+      const active = state.matrixTab === t.id;
+      const btn = el('button', {
+        type: 'button',
+        class: 'matrix-subtab' + (active ? ' is-active' : ''),
+        role: 'tab',
+        'aria-selected': active ? 'true' : 'false',
+        onclick: () => {
+          if (state.matrixTab === t.id) return;
+          state.matrixTab = t.id;
+          renderMatrix();
+          syncUrlHash();
+        },
+      }, [
+        el('span', { 'aria-hidden': 'true' }, t.icon),
+        ' ',
+        t.label,
+      ]);
+      wrap.appendChild(btn);
+    });
+  }
+
+  function renderMatrixChips() {
+    const wrap = $('#matrix-chip-row');
+    wrap.innerHTML = '';
+    if (!state.rivals.length) return;
+    state.rivals
+      .slice()
+      .sort((a, b) => a.name.localeCompare(b.name))
+      .forEach(r => {
+        const selected = isMatrixRivalSelected(r.id);
+        const chip = el('button', {
+          type: 'button',
+          class: 'matrix-chip' + (selected ? ' is-on' : ''),
+          style: selected
+            ? `border-color:${r.color};background:${r.color}22`
+            : '',
+          'aria-pressed': selected ? 'true' : 'false',
+          onclick: () => toggleMatrixRival(r.id),
+        }, r.icon + ' ' + r.name);
+        wrap.appendChild(chip);
+      });
+  }
+
+  function matrixLegendText(subtab) {
+    if (subtab === 'margin') return 'Avg point margin per game from the row\'s perspective; the small line shows the row\'s best single result vs that column.';
+    if (subtab === 'score')  return 'Row participant\'s average score in head-to-head meetings (small line: column\'s average in those same games).';
+    if (subtab === 'form')   return 'Dots = last 5 meetings (oldest left → newest right) from the row\'s perspective. Big label = current streak.';
+    return 'Wins-losses(-ties) and the row\'s win % — ties count as half a win.';
+  }
+
+  function renderMatrix() {
+    if (!isValidMatrixTab(state.matrixTab)) state.matrixTab = 'record';
+    renderMatrixChips();
+    renderMatrixSubtabs();
+
+    const wrap = $('#matrix-wrap');
+    wrap.innerHTML = '';
+    const emptyMsg = $('#matrix-empty');
+
+    if (!state.rivals.length || !state.games.length) {
+      emptyMsg.hidden = false;
+      return;
+    }
+    emptyMsg.hidden = true;
+
+    const rivals = selectedMatrixRivals();
+    if (!rivals.length) {
+      wrap.appendChild(el('p', { class: 'matrix-hint' },
+        'Pick at least one rival above to build the matrix.'));
+      return;
+    }
+
+    // Participants in display order: You first, then rivals alphabetically.
+    const sortedRivals = rivals.slice().sort((a, b) => a.name.localeCompare(b.name));
+    const participants = [
+      { type: 'you', label: state.me || 'You', icon: '🧍', color: 'var(--accent-2)' },
+      ...sortedRivals.map(r => ({ type: 'rival', id: r.id, label: r.name, icon: r.icon, color: r.color })),
+    ];
+
+    const byRival = buildRivalDateIndex(sortedRivals.map(r => r.id));
+
+    const table = el('table', { class: 'matrix-table' });
+    const thead = el('thead');
+    const headRow = el('tr');
+    headRow.appendChild(el('th', { class: 'matrix-corner', scope: 'col' }, ''));
+    participants.forEach(p => {
+      const th = el('th', { class: 'matrix-col-head', scope: 'col' }, [
+        el('span', { class: 'matrix-head-chip', style: `--p-color:${p.color}` }, [
+          el('span', { class: 'matrix-head-icon' }, p.icon),
+          el('span', { class: 'matrix-head-name' }, p.label),
+        ]),
+      ]);
+      headRow.appendChild(th);
+    });
+    thead.appendChild(headRow);
+    table.appendChild(thead);
+
+    const tbody = el('tbody');
+    participants.forEach(row => {
+      const tr = el('tr');
+      tr.appendChild(el('th', { class: 'matrix-row-head', scope: 'row' }, [
+        el('span', { class: 'matrix-head-chip', style: `--p-color:${row.color}` }, [
+          el('span', { class: 'matrix-head-icon' }, row.icon),
+          el('span', { class: 'matrix-head-name' }, row.label),
+        ]),
+      ]));
+      participants.forEach(col => {
+        if (row === col) {
+          tr.appendChild(el('td', { class: 'matrix-cell matrix-diag', 'aria-label': 'self' }, '—'));
+          return;
+        }
+        const cell = computeMatrixCell(row, col, byRival);
+        if (!cell || cell.games === 0) {
+          tr.appendChild(el('td', { class: 'matrix-cell matrix-empty' }, [
+            el('span', { class: 'matrix-record' }, 'no games'),
+          ]));
+          return;
+        }
+        const vm = matrixCellViewModel(cell, state.matrixTab, row, col);
+        tr.appendChild(el('td', {
+          class: `matrix-cell matrix-${vm.tone}`,
+          title: vm.title,
+        }, vm.content));
+      });
+      tbody.appendChild(tr);
+    });
+    table.appendChild(tbody);
+
+    wrap.appendChild(table);
+
+    wrap.appendChild(el('p', { class: 'matrix-legend' }, matrixLegendText(state.matrixTab)));
+  }
+
   function renderRivalGamesPagination(total, totalPages, startIdx, endIdx) {
     const nav = $('#rival-games-pagination');
     nav.hidden = false;
@@ -2485,6 +2902,7 @@
       if (state.view === 'dashboard') renderDashboard();
       else if (state.view === 'rival') renderRival();
       else if (state.view === 'leaderboard') renderLeaderboard();
+      else if (state.view === 'matrix') renderMatrix();
       else if (state.view === 'history') renderHistory();
     } catch (err) {
       setRivalSyncStatus(rivalId, 'err', err.message || 'sync failed');
@@ -2936,6 +3354,7 @@
     if (state.view === 'dashboard') renderDashboard();
     else if (state.view === 'rival') renderRival();
     else if (state.view === 'leaderboard') renderLeaderboard();
+    else if (state.view === 'matrix') renderMatrix();
     else if (state.view === 'history') renderHistory();
   }
 
@@ -2956,6 +3375,7 @@
     if (state.view === 'dashboard') renderDashboard();
     else if (state.view === 'rival') renderRival();
     else if (state.view === 'leaderboard') renderLeaderboard();
+    else if (state.view === 'matrix') renderMatrix();
     else if (state.view === 'history') renderHistory();
   }
 
@@ -2997,6 +3417,7 @@
         if (state.view === 'dashboard') renderDashboard();
         else if (state.view === 'rival') renderRival();
         else if (state.view === 'leaderboard') renderLeaderboard();
+        else if (state.view === 'matrix') renderMatrix();
         else if (state.view === 'history') renderHistory();
       } catch (e) {
         alert('Could not parse backup file.');
@@ -3034,6 +3455,7 @@
     if (state.view === 'dashboard') renderDashboard();
     else if (state.view === 'rival') renderRival();
     else if (state.view === 'leaderboard') renderLeaderboard();
+    else if (state.view === 'matrix') renderMatrix();
     else if (state.view === 'history') renderHistory();
   }
 
@@ -3147,8 +3569,11 @@
     // cross-tab / sync changes
     window.addEventListener('storage', onExternalStorage);
 
-    // first paint
-    setView('dashboard');
+    // Shareable-link routing — react to back/forward and pasted URLs.
+    window.addEventListener('hashchange', applyUrlHash);
+
+    // first paint — honor the hash so deep links work on cold load.
+    applyUrlHash();
   }
 
   if (document.readyState === 'loading') {
