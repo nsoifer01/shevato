@@ -80,18 +80,14 @@ html {
   background-attachment: fixed;
   background-color: var(--bg);
   min-height: 100%;
-  /* Hide the vertical scrollbar visually so the .page content box is
-     always at full viewport width — opening / closing the More-filters
-     panel (or the mobile drawer's body scroll-lock) can't shift the
-     layout horizontally because there's no scrollbar gutter to gain
-     or lose. Vertical scrolling still works via wheel / keyboard /
-     touch; only the scrollbar's visible track is suppressed. */
-  scrollbar-width: none;          /* Firefox */
-}
-html::-webkit-scrollbar {
-  width: 0;
-  height: 0;
-  display: none;                  /* Chromium / WebKit */
+  /* Always show the vertical scrollbar so its gutter is permanently
+     reserved. Without this, expanding the More-filters panel grows the
+     page tall enough to surface the scrollbar, which steals ~15px from
+     the viewport width and yanks the centered .page sideways. Using
+     overflow-y:scroll instead of scrollbar-gutter:stable for universal
+     browser support (Safari < 18 ignores scrollbar-gutter). */
+  overflow-y: scroll;
+  scrollbar-gutter: stable;
 }
 
 body.rising-seasons-app {
@@ -340,9 +336,17 @@ body.rising-seasons-app button {
 /* ---------- Page layout ---------- */
 
 .page {
-  max-width: 1200px;
+  /* Match the site footer's text container exactly — main.css `.inner` is
+     `width: 75rem; max-width: calc(100% - 6rem)`, so we mirror that here.
+     The page's content edges then line up with the footer text edges on
+     every viewport size, and there's no horizontal shift when the body
+     scrollbar appears (overflow-y: scroll on <html> keeps the gutter
+     reserved at all times). */
+  width: 75rem;
+  max-width: calc(100% - 6rem);
+  box-sizing: border-box;
   margin: 0 auto;
-  padding: 0 1.5rem 3rem;
+  padding: 0 0 3rem;
 }
 
 .hero {
@@ -429,8 +433,10 @@ body.rising-seasons-app button {
   border-color: rgba(255, 255, 255, 0.18);
 }
 .shape-chip:focus-visible {
+  /* Same reasoning as .label-chip — inset focus ring so adjacent chips
+     never share a visual frame. */
   outline: 2px solid rgba(245, 197, 24, 0.65);
-  outline-offset: 2px;
+  outline-offset: -2px;
 }
 .shape-chip[aria-pressed="true"],
 .shape-chip[aria-pressed="true"]:hover {
@@ -813,6 +819,17 @@ body.rising-seasons-app button {
   color: rgba(231, 233, 238, 0.6);
   transition: color 0.15s var(--ease), background 0.15s var(--ease);
 }
+/* The browser draws a default focus ring on <summary> when one of its
+ * children (e.g. the in-summary "Clear all filters" pill) is clicked —
+ * focus moves to the summary and the ring frames BOTH children, looking
+ * like a single black border wrapping the chip and the pill together.
+ * Suppress that ring; the pill and the summary text each have their own
+ * hover/focus indicators so no accessibility is lost. */
+.advanced summary:focus,
+.advanced summary:focus-visible {
+  outline: none !important;
+  box-shadow: none !important;
+}
 .advanced summary::-webkit-details-marker { display: none; }
 .advanced summary:hover {
   color: var(--text);
@@ -836,6 +853,63 @@ body.rising-seasons-app button {
   transform: rotate(45deg);  /* + → × */
   color: var(--accent);
 }
+
+/* Wrapper that holds the <details> panel and the standalone Clear-all pill
+ * side by side. The pill is a SIBLING of .advanced, not a child, so the
+ * panel's border can't visually wrap both as a group. */
+.advanced-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.6rem;
+  /* When details opens, the panel becomes the full-width box; the pill
+     stays aligned to its top. flex-wrap lets the pill drop under the
+     panel on narrower viewports. */
+  flex-wrap: wrap;
+}
+.advanced-row > .advanced {
+  /* Let the panel shrink/grow to fill remaining space when collapsed and
+     occupy the whole row when open. */
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.advanced summary .advanced-summary-label { display: inline-flex; align-items: center; }
+
+/* Standalone "Clear all filters" pill — sits next to the .advanced panel
+ * (outside its border) so visually nothing wraps it together with the
+ * More filters chip. Hidden via the [hidden] attribute when no filters
+ * are active. */
+.advanced-reset,
+.advanced-reset:hover {
+  display: inline-flex;
+  align-items: center;
+  height: 28px;
+  margin-top: 0.6rem; /* line up with .advanced's margin-top: 0.6rem */
+  padding: 0 0.85rem;
+  background: rgba(248, 113, 113, 0.12);
+  border: 1px solid rgba(248, 113, 113, 0.4);
+  border-radius: 999px;
+  color: var(--danger, #f87171) !important;
+  font-size: 0.66rem;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  cursor: pointer;
+  box-shadow: none !important;
+  line-height: 1;
+  transition: background 0.15s var(--ease), border-color 0.15s var(--ease), color 0.15s var(--ease);
+  flex: 0 0 auto;
+  white-space: nowrap;
+}
+.advanced-reset:hover {
+  background: rgba(248, 113, 113, 0.2);
+  border-color: rgba(248, 113, 113, 0.6);
+}
+.advanced-reset:focus-visible {
+  outline: 2px solid rgba(245, 197, 24, 0.55);
+  outline-offset: 2px;
+}
+.advanced-reset[hidden] { display: none; }
 
 
 /* Numeric inputs + Sort: 4-column grid for an even rhythm, caption
@@ -1244,6 +1318,43 @@ button.shape-tag.is-clickable:hover {
   color: var(--accent);
 }
 
+/* Streaming-platform chip, lives in the same flex row as .shape-tag inside
+ * .card-shapes / .row-shapes. Outline-only style separates "where to watch"
+ * tokens from the trajectory-pattern tags without forcing a second row. */
+.provider-tag {
+  display: inline-flex;
+  align-items: center;
+  background: transparent;
+  color: var(--muted);
+  font-size: 0.66rem;
+  font-weight: 600;
+  padding: 0.1rem 0.5rem;
+  border-radius: 999px;
+  border: 1px solid var(--border-strong);
+  line-height: 1.4;
+  letter-spacing: 0.01em;
+  white-space: nowrap;
+}
+
+/* List-view genre line — mirrors .card-meta on the grid card. Lives inside
+ * .row-head so it flows inline with title / season / year, separated by a
+ * subtle bullet so the row stays compact. */
+.row-genres {
+  font-size: 0.78rem;
+  color: var(--muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 100%;
+}
+.row-genres:empty,
+.row-genres[hidden] { display: none; }
+.row-genres::before {
+  content: '·';
+  margin: 0 0.45rem 0 0;
+  color: var(--muted-2);
+}
+
 /* Best / Worst season rank badges. Designed to sit inline with the
    season-metadata line ("S2 · 10 eps") rather than the title — compact
    pill, no wrap, subtle tinted surface. Icon + uppercase label give a
@@ -1377,19 +1488,36 @@ button.shape-tag.is-clickable:hover {
 
 /* Chips: invisible until you hover or activate. No border, no shadow,
    no container — they read as tokens on the page. */
+/* Total reset across every conceivable chip state. main.css applies a
+ * sitewide `button { box-shadow: inset 0 0 0 1px #555 }` and changes it
+ * to red on hover; without aggressive overrides, both the hovered chip
+ * and its neighbor in the same group end up with 1px insets that read
+ * together as a single border wrapping both buttons. We also keep the
+ * focus indicator inside the chip (background-only) so the focus ring
+ * never extends into a neighbor. */
+.label-chip,
+.label-chip:hover,
+.label-chip:focus,
+.label-chip:focus-visible,
+.label-chip:active,
+.label-chip[aria-pressed="true"],
+.label-chip[aria-pressed="true"]:hover,
+.label-chip[aria-pressed="true"]:focus,
+.label-chip[aria-pressed="true"]:focus-visible {
+  outline: 0 !important;
+  border: 0 !important;
+  box-shadow: none !important;
+}
+
 .label-chip {
   appearance: none;
+  -webkit-appearance: none;
   display: inline-flex;
   align-items: center;
   justify-content: center;
   height: 26px;
   padding: 0 0.65rem;
-  border: 0;
   background: transparent;
-  /* Full body-text white (no opacity reduction) so inactive chips —
-     TV series, Mini-series, Watched, Unwatched, ↑ Above IMDb — read
-     crisp against the dark background. Active state overrides to the
-     accent colour below. */
   color: var(--text);
   font: inherit;
   font-size: 0.76rem;
@@ -1402,14 +1530,19 @@ button.shape-tag.is-clickable:hover {
     color 0.18s var(--ease);
   white-space: nowrap;
 }
-.label-chip + .label-chip { margin-left: 0.1rem; }
+/* Bigger gap so even if some downstream theme tries to draw a 1px outline
+ * it can't visually touch the neighbor — but they still feel like one
+ * group thanks to the parent .label-group's gap rhythm. */
+.label-chip + .label-chip { margin-left: 0.35rem; }
 .label-chip:hover {
-  color: #ffffff;
-  background: rgba(255, 255, 255, 0.045);
+  color: #ffffff !important;
+  background: rgba(255, 255, 255, 0.06);
 }
 .label-chip:focus-visible {
-  outline: 2px solid rgba(245, 197, 24, 0.55);
-  outline-offset: 2px;
+  /* Background-only focus indicator — no outline, no shadow. Cannot
+     possibly extend into the adjacent chip's space. */
+  background: rgba(245, 197, 24, 0.2);
+  color: var(--accent) !important;
 }
 
 /* Active = a soft accent wash + accent text. No ring, no shadow.
@@ -1553,13 +1686,24 @@ button.shape-tag.is-clickable:hover {
 }
 
 .curve {
-  width: 100%;
+  /* The card body that wraps this SVG has 1rem of horizontal padding, so a
+     plain width:100% would leave the yellow line drawn 1rem inset from the
+     card's left/right edges. Extend the curve out past that padding with
+     negative margins so the line literally starts at the card edges. */
+  width: calc(100% + 2rem);
+  margin-left: -1rem;
+  margin-right: -1rem;
   height: 70px;
   background:
     radial-gradient(ellipse 60% 50% at 50% 100%, rgba(245, 197, 24, 0.06), transparent 70%),
     var(--surface-2);
-  border-radius: var(--radius-sm);
+  /* Keep the bottom corners rounded with the card (top corners flush against
+     the content above) — but no border-radius makes the line/area truly hit
+     the corner pixels without any rounded clip. */
+  border-radius: 0;
   display: block;
+  /* Let hover dots at viewBox x=0 / x=W render fully instead of half-clipped. */
+  overflow: visible;
 }
 .curve-area { fill: rgba(245, 197, 24, 0.18); stroke: none; }
 .curve-line {
@@ -1713,6 +1857,8 @@ button.shape-tag.is-clickable:hover {
 
 .row {
   display: grid;
+  /* Original right-side layout: text fills the left half, curve sits on
+     the right at a fixed 200px, watch on the far right edge. */
   grid-template-columns: 56px 1fr 200px 36px;
   gap: 1rem;
   align-items: center;
@@ -1788,13 +1934,19 @@ button.shape-tag.is-clickable:hover {
   display: block;
   width: 100%;
   height: 56px;
-  background: var(--surface-2);
-  border-radius: var(--radius-sm);
-  /* Clip the sparkline path to the rounded shape — without this the
-     stroke endcaps drawn at x=0 / x=W bleed past the rounded corner
-     and read as an unbalanced inset on one side. */
-  overflow: hidden;
+  /* No gray rectangle backdrop — the sparkline floats directly on the
+     row's surface. Removing the box also removes the "gray padding"
+     perception, since there's no container that can look incompletely
+     filled when the trend line happens to be high or low at the edges. */
+  background: transparent;
+  border-radius: 0;
+  overflow: visible;
 }
+/* Slightly thicker stroke + brighter area fill scoped to the list-view
+ * row sparkline, since it now sits on the row surface (darker than the
+ * old --surface-2 box) and benefits from a touch more presence. */
+.row-curve .curve-line { stroke-width: 2.4; }
+.row-curve .curve-area { fill: rgba(245, 197, 24, 0.32); }
 /* Stay in the grid cell — must override the base + :hover absolute
    positioning that .watch-toggle sets for the card corner overlay. */
 .row-watch,
@@ -1826,6 +1978,10 @@ button.shape-tag.is-clickable:hover {
     display: block;
     height: 44px;
     width: 100%;
+    /* Reset the desktop edge-bleed — on mobile the curve spans the full
+       width of the row's second grid row already, so the negative margin
+       would just push it under the row's left border. */
+    margin-left: 0;
   }
 }
 
@@ -1836,34 +1992,42 @@ button.shape-tag.is-clickable:hover {
   flex-wrap: wrap;
   justify-content: center;
   align-items: center;
-  gap: 0.4rem;
-  margin: 1.5rem 0 0;
-  padding: 0.5rem 0;
+  gap: 0.25rem;
+  margin: 1.25rem 0 0;
+  padding: 0.25rem 0;
 }
 .pager[hidden] { display: none; }
+/* Top pager: small, quiet — sits between the meta line and the results
+ * grid. The bottom pager keeps the larger feel since it's the natural
+ * landing spot after scrolling through results. */
+.pager-top {
+  margin: 0.25rem 0 0.85rem;
+  padding: 0;
+}
 
 .pager .page-btn,
 .pager .page-btn:hover {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  min-width: var(--ctrl-h);
-  height: var(--ctrl-h);
-  padding: 0 0.7rem;
+  min-width: 32px;
+  height: 32px;
+  padding: 0 0.55rem;
   background: transparent;
   color: var(--muted) !important;
-  border: 1px solid var(--border);
-  border-radius: var(--ctrl-radius);
+  border: 1px solid transparent;
+  border-radius: 8px;
   font: inherit;
-  font-size: 0.85rem;
+  font-size: 0.82rem;
+  font-weight: 500;
   font-variant-numeric: tabular-nums;
   cursor: pointer;
   box-shadow: none !important;
   transition: background 0.18s var(--ease), border-color 0.18s var(--ease), color 0.18s var(--ease);
 }
 .pager .page-btn:hover {
-  background: var(--surface-2);
-  border-color: var(--border-strong);
+  background: rgba(255, 255, 255, 0.06);
+  border-color: transparent;
   color: var(--text) !important;
 }
 .pager .page-btn:focus-visible {
@@ -1873,26 +2037,30 @@ button.shape-tag.is-clickable:hover {
 }
 .pager .page-btn[aria-current="page"],
 .pager .page-btn[aria-current="page"]:hover {
-  background: var(--accent);
-  color: var(--accent-ink) !important;
-  border-color: var(--accent);
-  font-weight: 600;
+  background: rgba(245, 197, 24, 0.14);
+  color: var(--accent) !important;
+  border-color: rgba(245, 197, 24, 0.28);
+  font-weight: 700;
 }
 .pager .page-btn:disabled,
 .pager .page-btn[aria-disabled="true"] {
-  opacity: 0.4;
+  opacity: 0.3;
   cursor: not-allowed;
-  color: var(--text) !important;
+  color: var(--muted) !important;
 }
 .pager .page-ellipsis {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  min-width: 2rem;
-  height: var(--ctrl-h);
-  color: var(--muted);
+  min-width: 1.5rem;
+  height: 32px;
+  color: var(--muted-2);
   user-select: none;
+  font-size: 0.82rem;
 }
+/* Compact even further on the top pager so it never crowds the results. */
+.pager-top .page-btn { min-width: 28px; height: 28px; font-size: 0.78rem; padding: 0 0.4rem; }
+.pager-top .page-ellipsis { min-width: 1.25rem; height: 28px; font-size: 0.78rem; }
 
 /* ---------- Empty + error ---------- */
 
@@ -2192,12 +2360,24 @@ button.shape-tag.is-clickable:hover {
   font-size: 0.74rem;
   white-space: nowrap;
 }
+.modal-episodes .ep-runtime {
+  color: var(--muted-2);
+  font-size: 0.74rem;
+  white-space: nowrap;
+}
 
 .modal-actions {
   display: flex;
   gap: 0.75rem;
   align-items: center;
   flex-wrap: wrap;
+}
+/* Top-of-modal action row: a thin divider underneath separates it from the
+ * descriptive content (overview / episodes) that follows. */
+.modal-actions-top {
+  margin-bottom: 0.25rem;
+  padding-bottom: 0.85rem;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
 }
 .modal-imdb { margin-left: auto; }
 
@@ -2315,7 +2495,9 @@ body.advanced-drawer-open {
    ------------------------------------------------------------------------- */
 
 @media (max-width: 760px) {
-  .page { padding: 0 1rem 1.5rem; }
+  /* Side spacing is handled by .page's max-width: calc(100% - 6rem) already,
+     same as the footer .inner. Only the bottom padding gets compacted here. */
+  .page { padding: 0 0 1.5rem; }
 
   /* Compact hero — claim less vertical space so results show above fold. */
   .hero { padding: 1.5rem 0 0.35rem; }
@@ -2533,6 +2715,16 @@ body.advanced-drawer-open {
     top: 0.4rem;
     right: 0.4rem;
   }
+  /* Mobile cards go horizontal (poster | body), so the desktop edge-bleed
+     trick would push the curve into the poster on the left. Match the
+     mobile card-body padding (0.85rem) on the right only, and leave the
+     left edge flush with the body's left padding so the line still feels
+     edge-anchored on the side it can be. */
+  .card .curve {
+    margin-left: 0;
+    margin-right: -0.85rem;
+    width: calc(100% + 0.85rem);
+  }
 
   /* List view rows — already tight; just give the watch button a
      bigger circular tap target. */
@@ -2710,7 +2902,9 @@ body.advanced-drawer-open {
    ------------------------------------------------------------------------- */
 
 @media (max-width: 430px) {
-  .page { padding: 0 0.75rem 1.25rem; }
+  /* Tighten the side gutter on the smallest phones to match the footer's
+     <480px breakpoint (max-width: calc(100% - 3rem)). */
+  .page { padding: 0 0 1.25rem; max-width: calc(100% - 3rem); }
 
   .hero { padding: 1.1rem 0 0.2rem; }
   .hero h1 { font-size: clamp(1.5rem, 8vw, 1.95rem); }

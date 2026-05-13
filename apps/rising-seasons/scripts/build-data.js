@@ -89,6 +89,7 @@ async function loadSeries(ratings) {
   const series = new Map();
   const episodeTitles = new Map();
   const episodeYears = new Map();
+  const episodeRuntimes = new Map();
   const rl = openTsv('title.basics.tsv.gz');
   let header = true;
   for await (const line of rl) {
@@ -109,6 +110,13 @@ async function loadSeries(ratings) {
         const y = parseInt(startYear, 10);
         if (Number.isFinite(y)) episodeYears.set(tconst, y);
       }
+      // IMDb runtimeMinutes is integer or "\N". We only store positive
+      // finite values so downstream code can `if (runtime)` cheaply.
+      const runtimeRaw = cols[7];
+      if (runtimeRaw && runtimeRaw !== '\\N') {
+        const rt = parseInt(runtimeRaw, 10);
+        if (Number.isFinite(rt) && rt > 0) episodeRuntimes.set(tconst, rt);
+      }
       continue;
     }
 
@@ -123,10 +131,10 @@ async function loadSeries(ratings) {
       genres,
     });
   }
-  return { series, episodeTitles, episodeYears };
+  return { series, episodeTitles, episodeYears, episodeRuntimes };
 }
 
-async function loadEpisodes(series, ratings, episodeTitles, episodeYears) {
+async function loadEpisodes(series, ratings, episodeTitles, episodeYears, episodeRuntimes) {
   // Map<seriesId, Map<seasonNumber, Array<{episode, tconst, rating, votes, name}>>>
   const result = new Map();
   const rl = openTsv('title.episode.tsv.gz');
@@ -162,6 +170,8 @@ async function loadEpisodes(series, ratings, episodeTitles, episodeYears) {
     // Year is build-internal — match.js consumes it to compute the
     // per-season `seasonYear` and then drops it from the projection.
     if (year) ep.year = year;
+    const runtime = episodeRuntimes && episodeRuntimes.get(tconst);
+    if (runtime) ep.runtime = runtime;
     arr.push(ep);
   }
   return result;
@@ -205,16 +215,17 @@ function loadTmdbCache() {
   const ratings = await loadRatings();
   console.log(`${ratings.size.toLocaleString()} rated titles`);
 
-  process.stdout.write('Loading series basics + episode titles + air years... ');
-  const { series, episodeTitles, episodeYears } = await loadSeries(ratings);
+  process.stdout.write('Loading series basics + episode titles + air years + runtimes... ');
+  const { series, episodeTitles, episodeYears, episodeRuntimes } = await loadSeries(ratings);
   console.log(
     `${series.size.toLocaleString()} TV series + mini-series, ` +
     `${episodeTitles.size.toLocaleString()} episode titles, ` +
-    `${episodeYears.size.toLocaleString()} episode air years`,
+    `${episodeYears.size.toLocaleString()} episode air years, ` +
+    `${episodeRuntimes.size.toLocaleString()} episode runtimes`,
   );
 
   process.stdout.write('Loading episodes... ');
-  const episodes = await loadEpisodes(series, ratings, episodeTitles, episodeYears);
+  const episodes = await loadEpisodes(series, ratings, episodeTitles, episodeYears, episodeRuntimes);
   console.log(`${episodes.size.toLocaleString()} series have rated episodes`);
 
   process.stdout.write('Detecting shape matches... ');
