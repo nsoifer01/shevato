@@ -270,6 +270,7 @@ function loadTmdbCache() {
         m.poster = t.poster_path || null;
         m.overview = t.overview || null;
         m.tmdbId = t.id || null;
+        if (Number.isFinite(t.tvdbId)) m.tvdbId = t.tvdbId;
         if (t.original_language) m.language = t.original_language;
         if (Array.isArray(t.providers) && t.providers.length) {
           const seen = new Set();

@@ -84,6 +84,7 @@ const els = {
   modalCurve: document.getElementById('modalCurve'),
   modalEpisodes: document.getElementById('modalEpisodes'),
   modalImdb: document.getElementById('modalImdb'),
+  modalTvdb: document.getElementById('modalTvdb'),
   modalPoster: document.getElementById('modalPoster'),
   modalWatchBtn: document.getElementById('modalWatchBtn'),
   modalReroll: document.getElementById('modalReroll'),
@@ -97,6 +98,7 @@ const els = {
   showModalSeasons: document.getElementById('showModalSeasons'),
   showModalPoster: document.getElementById('showModalPoster'),
   showModalImdb: document.getElementById('showModalImdb'),
+  showModalTvdb: document.getElementById('showModalTvdb'),
   showModalOverlay: document.getElementById('showModalOverlay'),
   showModalOverlayCurve: document.getElementById('showModalOverlayCurve'),
   showModalOverlayLegend: document.getElementById('showModalOverlayLegend'),
@@ -1712,6 +1714,13 @@ function openModal(m, opts = {}) {
   els.modalEpisodes.replaceChildren(epFrag);
 
   els.modalImdb.href = `https://www.imdb.com/title/${m.seriesId}/episodes/?season=${m.season}`;
+  if (m.tvdbId) {
+    els.modalTvdb.href = `https://thetvdb.com/dereferrer/series/${m.tvdbId}`;
+    els.modalTvdb.hidden = false;
+  } else {
+    els.modalTvdb.removeAttribute('href');
+    els.modalTvdb.hidden = true;
+  }
   syncModalWatchBtn();
   els.modalReroll.hidden = !modalState.surprise;
 
@@ -1873,6 +1882,13 @@ function openShowModal(seriesId) {
   }
 
   els.showModalImdb.href = `https://www.imdb.com/title/${seriesId}/`;
+  if (meta.tvdbId) {
+    els.showModalTvdb.href = `https://thetvdb.com/dereferrer/series/${meta.tvdbId}`;
+    els.showModalTvdb.hidden = false;
+  } else {
+    els.showModalTvdb.removeAttribute('href');
+    els.showModalTvdb.hidden = true;
+  }
 
   els.showModal.hidden = false;
   els.showModal.setAttribute('aria-hidden', 'false');
