@@ -248,7 +248,17 @@ function findMatches(seriesById, episodesBySeries, opts = {}) {
       if (e.year && (!seasonYear || e.year < seasonYear)) seasonYear = e.year;
     }
 
-    matches.push({
+    // Per-season average runtime, in minutes. Only counts episodes that
+    // carry a runtime value (some IMDb entries don't), so a season with
+    // one missing episode still gets a useful number.
+    let runtimeSum = 0;
+    let runtimeCount = 0;
+    for (const e of eps) {
+      if (e.runtime) { runtimeSum += e.runtime; runtimeCount++; }
+    }
+    const avgRuntime = runtimeCount > 0 ? Math.round(runtimeSum / runtimeCount) : null;
+
+    const season_obj = {
       seriesId,
       title: meta.title,
       year: meta.year,
@@ -265,9 +275,10 @@ function findMatches(seriesById, episodesBySeries, opts = {}) {
       // so shipping it inflates data.json by ~1.5MB across ~126K episodes.
       // We also drop the per-episode `year` because seasonYear above
       // captures the only year the UI needs.
-      episodes: eps.map(({ episode, rating, votes, name }) => {
+      episodes: eps.map(({ episode, rating, votes, name, runtime }) => {
         const ep = { episode, rating, votes };
         if (name) ep.name = name;
+        if (runtime) ep.runtime = runtime;
         return ep;
       }),
       firstRating: ratings[0],
@@ -275,10 +286,43 @@ function findMatches(seriesById, episodesBySeries, opts = {}) {
       avgRating: Math.round(seasonAvg * 100) / 100,
       minVotes: minSeasonVotes,
       shapes,
-    });
+    };
+    if (avgRuntime !== null) season_obj.avgRuntime = avgRuntime;
+    matches.push(season_obj);
   }
 
+  tagSavedBestForLast(matches);
   return matches;
+}
+
+// Post-pass shape: a series whose highest-numbered season is also the
+// highest-avg season earns 'saved-best-for-last' on that final season.
+// Requires 3+ seasons in the dataset — a two-season "comeback" is too
+// thin to credibly say a show built toward its finale. Ties at the top
+// don't qualify: the last season must strictly outscore every other
+// season we have for the series.
+function tagSavedBestForLast(matches) {
+  const bySeries = new Map();
+  for (const m of matches) {
+    let arr = bySeries.get(m.seriesId);
+    if (!arr) { arr = []; bySeries.set(m.seriesId, arr); }
+    arr.push(m);
+  }
+  for (const arr of bySeries.values()) {
+    if (arr.length < 3) continue;
+    let last = arr[0];
+    let topAvg = -Infinity;
+    for (const m of arr) {
+      if (m.season > last.season) last = m;
+      if (m.avgRating > topAvg) topAvg = m.avgRating;
+    }
+    if (last.avgRating < topAvg) continue;
+    const tiedAtTop = arr.filter((m) => m.avgRating === topAvg);
+    if (tiedAtTop.length > 1) continue;
+    if (!last.shapes.includes('saved-best-for-last')) {
+      last.shapes.push('saved-best-for-last');
+    }
+  }
 }
 
 module.exports = {
@@ -294,6 +338,7 @@ module.exports = {
   isMidPeak,
   detectShapes,
   findMatches,
+  tagSavedBestForLast,
   // Back-compat with earlier API name.
   isNonDecreasing: isRising,
 };
