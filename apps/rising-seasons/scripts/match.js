@@ -11,8 +11,8 @@ const DEFAULTS = {
   consistent: { floor: 8.0, maxRange: 0.5 },
   // "Slow burn" — second half meaningfully better than first half.
   slowBurn: { delta: 0.6 },
-  // "Big finale" — finale is the peak AND well above the season average.
-  bigFinale: { aboveAvg: 0.5 },
+  // "Big finale" — finale beats every other episode by at least one IMDb step (0.1).
+  bigFinale: { minMargin: 0.1 },
   // "Rebound" — has a real dip in the middle but recovers past the start.
   rebound: { dipDepth: 0.4, recoveryAboveStart: 0.2 },
   // "Front-loaded" — first half meaningfully better than second half.
@@ -69,13 +69,13 @@ function isSlowBurn(episodes, opts = DEFAULTS.slowBurn) {
 function isBigFinale(episodes, opts = DEFAULTS.bigFinale) {
   if (episodes.length < 4) return false;
   const finale = episodes[episodes.length - 1].rating;
-  let max = -Infinity;
-  for (const e of episodes) {
-    if (e.rating > max) max = e.rating;
+  let secondMax = -Infinity;
+  for (let i = 0; i < episodes.length - 1; i++) {
+    if (episodes[i].rating > secondMax) secondMax = episodes[i].rating;
   }
-  // Finale must be (tied for) the peak.
-  if (finale < max) return false;
-  return finale - avg(episodes) >= opts.aboveAvg;
+  // IMDb ratings are 0.1 increments, so the difference is always a multiple
+  // of 0.1 — round to avoid floating-point drift (e.g. 9.0 - 8.9 = 0.0999...).
+  return Math.round((finale - secondMax) * 10) / 10 >= opts.minMargin;
 }
 
 function isRebound(episodes, opts = DEFAULTS.rebound) {

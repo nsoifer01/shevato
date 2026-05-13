@@ -200,30 +200,36 @@
         </button>
       </div>
 
-      <div class="label-filters" aria-label="Quick filters">
-        <div class="label-group" role="radiogroup" aria-label="Series type">
-          <span class="label-group-name">Type</span>
-          <button type="button" class="label-chip" data-filter="seriesType" data-value="all" aria-pressed="true">All</button>
-          <button type="button" class="label-chip" data-filter="seriesType" data-value="tvSeries" aria-pressed="false">TV series</button>
-          <button type="button" class="label-chip" data-filter="seriesType" data-value="tvMiniSeries" aria-pressed="false">Mini-series</button>
+      <details class="quick-filters-wrap">
+        <summary class="quick-filters-summary">
+          <span aria-hidden="true">⌕</span>
+          <span>Quick filters</span>
+        </summary>
+        <div class="label-filters" aria-label="Quick filters">
+          <div class="label-group" role="radiogroup" aria-label="Series type">
+            <span class="label-group-name">Type</span>
+            <button type="button" class="label-chip" data-filter="seriesType" data-value="all" aria-pressed="true">All</button>
+            <button type="button" class="label-chip" data-filter="seriesType" data-value="tvSeries" aria-pressed="false">TV series</button>
+            <button type="button" class="label-chip" data-filter="seriesType" data-value="tvMiniSeries" aria-pressed="false">Mini-series</button>
+          </div>
+          <div class="label-group" role="radiogroup" aria-label="Watched status">
+            <span class="label-group-name">Watched</span>
+            <button type="button" class="label-chip" data-filter="watched" data-value="all" aria-pressed="true">All</button>
+            <button type="button" class="label-chip" data-filter="watched" data-value="watched" aria-pressed="false">Watched</button>
+            <button type="button" class="label-chip" data-filter="watched" data-value="unwatched" aria-pressed="false">Unwatched</button>
+          </div>
+          <div class="label-group" role="radiogroup" aria-label="Above IMDb rating">
+            <span class="label-group-name">IMDb</span>
+            <button type="button" class="label-chip" data-filter="aboveImdb" data-value="all" aria-pressed="true">All</button>
+            <button type="button" class="label-chip label-chip-good" data-filter="aboveImdb" data-value="above" aria-pressed="false" title="Only seasons whose avg episode rating is higher than the show's IMDb rating">↑ Above IMDb</button>
+          </div>
+          <div class="label-group" role="radiogroup" aria-label="Hidden gems">
+            <span class="label-group-name">Gems</span>
+            <button type="button" class="label-chip" data-filter="hiddenGems" data-value="all" aria-pressed="true">All</button>
+            <button type="button" class="label-chip label-chip-good" data-filter="hiddenGems" data-value="on" aria-pressed="false" title="High-rated seasons most people haven't watched (avg ≥ 8.5, fewer than 500 votes per episode)">💎 Hidden gems</button>
+          </div>
         </div>
-        <div class="label-group" role="radiogroup" aria-label="Watched status">
-          <span class="label-group-name">Watched</span>
-          <button type="button" class="label-chip" data-filter="watched" data-value="all" aria-pressed="true">All</button>
-          <button type="button" class="label-chip" data-filter="watched" data-value="watched" aria-pressed="false">Watched</button>
-          <button type="button" class="label-chip" data-filter="watched" data-value="unwatched" aria-pressed="false">Unwatched</button>
-        </div>
-        <div class="label-group" role="radiogroup" aria-label="Above IMDb rating">
-          <span class="label-group-name">IMDb</span>
-          <button type="button" class="label-chip" data-filter="aboveImdb" data-value="all" aria-pressed="true">All</button>
-          <button type="button" class="label-chip label-chip-good" data-filter="aboveImdb" data-value="above" aria-pressed="false" title="Only seasons whose avg episode rating is higher than the show's IMDb rating">↑ Above IMDb</button>
-        </div>
-        <div class="label-group" role="radiogroup" aria-label="Hidden gems">
-          <span class="label-group-name">Gems</span>
-          <button type="button" class="label-chip" data-filter="hiddenGems" data-value="all" aria-pressed="true">All</button>
-          <button type="button" class="label-chip label-chip-good" data-filter="hiddenGems" data-value="on" aria-pressed="false" title="High-rated seasons most people haven't watched (avg ≥ 8.5, fewer than 500 votes per episode)">💎 Hidden gems</button>
-        </div>
-      </div>
+      </details>
 
       <div class="advanced-row">
       <details class="advanced">

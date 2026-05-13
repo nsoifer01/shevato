@@ -1112,11 +1112,24 @@ function formatAvgRuntime(min) {
   return m === 0 ? `${h}h` : `${h}h ${m}m`;
 }
 
+// Compact, fixed-width-friendly variant for the result-tile stats grid —
+// always returns minutes ("72 min", "112 min") so the runtime cell doesn't
+// wrap awkwardly compared to its neighbors. The longer formatAvgRuntime is
+// still used in modals and free-text contexts.
+function formatAvgRuntimeShort(min) {
+  if (!min || !Number.isFinite(min)) return '';
+  return `${min} min`;
+}
+
+function avgVotesPerEpisode(m) {
+  return Math.round(m.episodes.reduce((s, e) => s + e.votes, 0) / m.episodes.length);
+}
+
 function setRuntimeStat(node, m) {
   const el = node.querySelector('.stat-runtime');
   if (!el) return;
-  const text = formatAvgRuntime(m.avgRuntime);
-  el.textContent = text ? `~${text}/ep` : '';
+  const text = formatAvgRuntimeShort(m.avgRuntime);
+  el.textContent = text ? `${text}/ep` : '';
   el.hidden = !text;
 }
 
@@ -1186,27 +1199,29 @@ function buildCard(m) {
   node.querySelector('.card-year').textContent = (m.seasonYear || m.year) || 'year unknown';
   node.querySelector('.card-genres').textContent = m.genres.slice(0, 3).join(' · ');
 
-  const badge = maybeBestBadge(m) || maybeWorstBadge(m);
-  // Live next to the season metadata ("S2 · 10 eps") rather than at the
-  // far end of the title row — keeps the title clean and aligns the badge
-  // with the smaller-typography row it visually belongs in.
-  if (badge) node.querySelector('.card-season').appendChild(badge);
-
   const cardShapes = node.querySelector('.card-shapes');
-  fillShapeTags(cardShapes, m.shapes, { clickable: false });
+  // Suppress 'saved-best-for-last' here — the ★ Best badge already conveys it
+  // (a final-season shape only fires when that season is also the show's
+  // best, which always earns the ★).
+  fillShapeTags(cardShapes, m.shapes.filter((s) => s !== 'saved-best-for-last'), { clickable: false });
+  // Best/Worst badge prepended to the shapes row so it reads as a season
+  // descriptor alongside the trajectory pattern, rather than crowding the
+  // title with a big colored chip.
+  const badge = maybeBestBadge(m) || maybeWorstBadge(m);
+  if (badge) cardShapes.insertBefore(badge, cardShapes.firstChild);
   fillProviderTags(cardShapes, m.providers);
 
   drawCurve(node.querySelector('.curve'), m.episodes, 300, 70, 0);
 
   const climb = m.lastRating - m.firstRating;
   const climbStr = climb >= 0 ? `+${climb.toFixed(1)}` : climb.toFixed(1);
-  node.querySelector('.stat-climb').textContent = `${m.firstRating.toFixed(1)} → ${m.lastRating.toFixed(1)} (${climbStr})`;
+  node.querySelector('.stat-climb').textContent = `${m.firstRating.toFixed(1)}→${m.lastRating.toFixed(1)} (${climbStr})`;
   const avgEl = node.querySelector('.stat-avg');
   avgEl.textContent = `Avg ${m.avgRating.toFixed(1)}`;
   const cardBadge = aboveImdbBadge(m);
   if (cardBadge) avgEl.appendChild(cardBadge);
   setRuntimeStat(node, m);
-  node.querySelector('.stat-votes').textContent = `${m.minVotes.toLocaleString()} votes/ep min`;
+  node.querySelector('.stat-votes').textContent = `${avgVotesPerEpisode(m).toLocaleString()} votes/ep`;
 
   const posterEl = node.querySelector('.card-poster');
   if (m.poster) {
@@ -1244,11 +1259,13 @@ function buildRow(m) {
   node.querySelector('.row-season').textContent = `S${m.season} · ${m.episodes.length} eps`;
   node.querySelector('.row-year').textContent = (m.seasonYear || m.year) || '';
 
-  const badge = maybeBestBadge(m) || maybeWorstBadge(m);
-  if (badge) node.querySelector('.row-season').appendChild(badge);
-
   const rowShapes = node.querySelector('.row-shapes');
-  fillShapeTags(rowShapes, m.shapes, { clickable: false });
+  // Suppress 'saved-best-for-last' here — see buildCard for rationale.
+  fillShapeTags(rowShapes, m.shapes.filter((s) => s !== 'saved-best-for-last'), { clickable: false });
+  // Best/Worst badge moves out of the title row and into the shapes row so
+  // it reads as a season descriptor (matches the grid card layout).
+  const badge = maybeBestBadge(m) || maybeWorstBadge(m);
+  if (badge) rowShapes.insertBefore(badge, rowShapes.firstChild);
   fillProviderTags(rowShapes, m.providers);
 
   // Genre line, mirroring the grid card's .card-meta. Hidden when there
@@ -1268,7 +1285,7 @@ function buildRow(m) {
   const rowBadge = aboveImdbBadge(m);
   if (rowBadge) rowAvgEl.appendChild(rowBadge);
   setRuntimeStat(node, m);
-  node.querySelector('.stat-votes').textContent = `${m.minVotes.toLocaleString()} votes/ep min`;
+  node.querySelector('.stat-votes').textContent = `${avgVotesPerEpisode(m).toLocaleString()} votes/ep`;
 
   drawCurve(node.querySelector('.row-curve'), m.episodes, 200, 56, 0);
 
@@ -1608,9 +1625,23 @@ function openModal(m, opts = {}) {
   els.modalTitle.textContent = m.title;
   const seasonYearStr = (m.seasonYear || m.year);
   const yearStr = seasonYearStr ? ` · ${seasonYearStr}` : '';
-  els.modalSubtitle.textContent = `Season ${m.season} · ${m.episodes.length} episodes${yearStr} · ${m.genres.join(', ') || 'No genre listed'}`;
+  // Same suppression as the card/row + show-modal season list: the
+  // 'saved-best-for-last' shape is a show-level signal redundant with
+  // per-season labels and the filter chip on the main view.
+  const subtitleShapes = m.shapes.filter((s) => s !== 'saved-best-for-last');
+  // Shapes inline at the end of the subtitle ("· Rising") so they read as
+  // one descriptor line instead of floating in their own row.
+  const shapeBit = subtitleShapes.length
+    ? ' · ' + subtitleShapes.map((s) => SHAPE_LABELS[s] || s).join(' · ')
+    : '';
+  els.modalSubtitle.textContent = `Season ${m.season} · ${m.episodes.length} episodes${yearStr} · ${m.genres.join(', ') || 'No genre listed'}${shapeBit}`;
 
-  fillShapeTags(els.modalShapes, m.shapes, { clickable: false });
+  // modal-shapes container now hosts the season's streaming-platform chips
+  // only — shape labels live inline in the subtitle above. This mirrors
+  // the chip row that cards and list rows render on each result tile so
+  // the modal reads as a familiar "where to watch" strip.
+  els.modalShapes.replaceChildren();
+  fillProviderTags(els.modalShapes, m.providers || []);
 
   const climb = m.lastRating - m.firstRating;
   const climbStr = climb >= 0 ? `+${climb.toFixed(1)}` : climb.toFixed(1);
@@ -1624,7 +1655,7 @@ function openModal(m, opts = {}) {
   if (seasonModalBadge) els.modalStats.appendChild(seasonModalBadge);
   const runtimeStr = formatAvgRuntime(m.avgRuntime);
   els.modalStats.appendChild(document.createTextNode(
-    ` · ${m.minVotes.toLocaleString()} votes per episode (min)` +
+    ` · ${avgVotesPerEpisode(m).toLocaleString()} votes per episode (avg)` +
     (runtimeStr ? ` · ~${runtimeStr} per episode` : ''),
   ));
 
@@ -1788,34 +1819,18 @@ function openShowModal(seriesId) {
     els.showModalStats.appendChild(aboveBadge);
   }
 
-  // Show-level shapes = INTERSECTION across seasons. A shape only belongs
-  // at the show level if it's true of every season — anything else is a
-  // per-season pattern (still rendered on each ss-shape-row below).
-  let commonShapes = null;
-  for (const s of seasons) {
-    const set = new Set(s.shapes);
-    if (commonShapes === null) {
-      commonShapes = set;
-    } else {
-      for (const sh of [...commonShapes]) {
-        if (!set.has(sh)) commonShapes.delete(sh);
-      }
-    }
-  }
-  fillShapeTags(els.showModalShapes, commonShapes ? [...commonShapes] : [], { clickable: false });
+  // Shape labels (Rising / Rebound / Big finale / etc.) live on the
+  // per-season view only — they describe a single season's trajectory,
+  // not a property of the whole show. Clear the show-modal shape slot
+  // so it never renders an "intersection of every season's shapes"
+  // pattern that doesn't really mean anything to a viewer.
+  els.showModalShapes.replaceChildren();
 
-  // Providers badges (TMDB watch providers, US). Filtered to the mainstream
-  // whitelist so the modal matches what the cards/rows/filter chips show.
-  const providersList = (meta.providers || []).filter(isMainstreamProvider);
+  // Providers — use the same .provider-tag styling the cards and rows
+  // render so streaming chips look identical across every surface. The
+  // mainstream-provider filter happens inside fillProviderTags.
   els.showModalProviders.replaceChildren();
-  if (providersList.length) {
-    for (const name of providersList) {
-      const badge = document.createElement('span');
-      badge.className = 'provider-badge';
-      badge.textContent = name;
-      els.showModalProviders.appendChild(badge);
-    }
-  }
+  fillProviderTags(els.showModalProviders, meta.providers || []);
 
   els.showModalOverview.textContent = meta.overview || '';
 
@@ -1896,10 +1911,17 @@ function buildShowSeasonRow(m, bestSeason, worstSeason) {
   const ssRuntimeBit = ssRuntimeStr ? ` · ~${ssRuntimeStr}/ep` : '';
   eps.textContent = `${m.episodes.length} eps${yearStr}${ssRuntimeBit}`;
   meta.appendChild(eps);
-  if (m.shapes.length) {
+  // Per-season shape labels inside the show modal's season list — these
+  // belong to an individual season, not the show as a whole, so they stay
+  // here. The show-level intersection rendered in els.showModalShapes
+  // above is what gets suppressed (it's a property of the show).
+  // Suppress 'saved-best-for-last' too — the ★ best marker rendered below
+  // already conveys it.
+  const rowShapes = m.shapes.filter((s) => s !== 'saved-best-for-last');
+  if (rowShapes.length) {
     const shapeRow = document.createElement('span');
     shapeRow.className = 'ss-shape-row';
-    for (const s of m.shapes) {
+    for (const s of rowShapes) {
       const tag = document.createElement('span');
       tag.className = 'shape-tag' + (state.shapes.has(s) ? ' active' : '');
       tag.textContent = SHAPE_LABELS[s] || s;
