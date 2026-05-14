@@ -88,10 +88,22 @@ jobs:
           path: apps/rising-seasons/data/tmdb-cache.json
           key: tmdb-cache-${{ github.run_id }}
 
+      - name: Build changelog entry
+        # Diffs the new data.json against the version in HEAD and appends a
+        # summary to apps/rising-seasons/changelog.json. Powers the
+        # "What's new" popover in the footer. Skipped when data.json is
+        # unchanged — no point recording a noop entry.
+        run: |
+          if git diff --quiet apps/rising-seasons/data.json; then
+            echo "data.json unchanged — skipping changelog."
+            exit 0
+          fi
+          node apps/rising-seasons/scripts/build-changelog.js
+
       - name: Run tests
         run: npm test
 
-      - name: Commit data.json if changed
+      - name: Commit data.json + changelog.json if changed
         run: |
           set -e
           if git diff --quiet apps/rising-seasons/data.json; then
@@ -100,6 +112,6 @@ jobs:
           fi
           git config user.name "shevato-bot"
           git config user.email "actions@users.noreply.github.com"
-          git add apps/rising-seasons/data.json
+          git add apps/rising-seasons/data.json apps/rising-seasons/changelog.json
           git commit -m "chore(rising-seasons): refresh data $(date -u +%Y-%m-%d)"
           git push

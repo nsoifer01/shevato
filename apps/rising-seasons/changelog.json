@@ -1,0 +1,1421 @@
+{
+  "updates": [
+    {
+      "builtAt": "2026-05-14T08:24:59.670Z",
+      "totals": {
+        "seasons": 16545,
+        "delta": 35
+      },
+      "shapeCounts": {
+        "declining": 214,
+        "rollercoaster": 3562,
+        "rebound": 2787,
+        "mid-peak": 1116,
+        "big-finale": 4040,
+        "bad-finale": 1045,
+        "front-loaded": 545,
+        "saved-best-for-last": 434,
+        "slow-burn": 872,
+        "rising": 596,
+        "consistent": 454
+      },
+      "shapeDeltas": {
+        "declining": 3,
+        "rollercoaster": 11,
+        "rebound": 4,
+        "mid-peak": 11,
+        "big-finale": 11,
+        "bad-finale": 4,
+        "front-loaded": 5,
+        "slow-burn": -1,
+        "saved-best-for-last": 5,
+        "rising": -7,
+        "consistent": -7
+      },
+      "added": [
+        {
+          "seriesId": "tt32767294",
+          "title": "Half Man",
+          "season": 1,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt32604054",
+          "title": "Regular Show: The Lost Tapes",
+          "season": 1,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt10834220",
+          "title": "The Chestnut Man",
+          "season": 2,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt9794044",
+          "title": "Citadel",
+          "season": 2,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt30796986",
+          "title": "NCIS: Origins",
+          "season": 2,
+          "seasonYear": 2025
+        },
+        {
+          "seriesId": "tt21906554",
+          "title": "The Hunting Party",
+          "season": 2,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt31631142",
+          "title": "Unchosen",
+          "season": 1,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt0413573",
+          "title": "Grey's Anatomy",
+          "season": 22,
+          "seasonYear": 2025
+        },
+        {
+          "seriesId": "tt2805096",
+          "title": "Chicago P.D.",
+          "season": 13,
+          "seasonYear": 2025
+        },
+        {
+          "seriesId": "tt33265765",
+          "title": "Legends",
+          "season": 1,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt39443176",
+          "title": "Gals Can't Be Kind to Otaku!?",
+          "season": 1,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt39267868",
+          "title": "Agents of the Four Seasons: Dance of Spring",
+          "season": 1,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt31183656",
+          "title": "Maamla Legal Hai",
+          "season": 2,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt33550053",
+          "title": "9-1-1: Nashville",
+          "season": 1,
+          "seasonYear": 2025
+        },
+        {
+          "seriesId": "tt0094512",
+          "title": "Monsters",
+          "season": 2,
+          "seasonYear": 1989
+        },
+        {
+          "seriesId": "tt0105986",
+          "title": "Diagnosis Murder",
+          "season": 2,
+          "seasonYear": 1994
+        },
+        {
+          "seriesId": "tt0086742",
+          "title": "Kate & Allie",
+          "season": 1,
+          "seasonYear": 1984
+        },
+        {
+          "seriesId": "tt0103484",
+          "title": "Mad About You",
+          "season": 8,
+          "seasonYear": 2019
+        },
+        {
+          "seriesId": "tt0098948",
+          "title": "Wings",
+          "season": 6,
+          "seasonYear": 1994
+        },
+        {
+          "seriesId": "tt10384610",
+          "title": "Scissor Seven",
+          "season": 5,
+          "seasonYear": 2024
+        },
+        {
+          "seriesId": "tt8673610",
+          "title": "Cells at Work!",
+          "season": 1,
+          "seasonYear": 2018
+        },
+        {
+          "seriesId": "tt0884762",
+          "title": "Wild China",
+          "season": 1,
+          "seasonYear": 2008
+        },
+        {
+          "seriesId": "tt12443322",
+          "title": "Deca-Dence",
+          "season": 1,
+          "seasonYear": 2020
+        },
+        {
+          "seriesId": "tt13463778",
+          "title": "Girlfriend, Girlfriend",
+          "season": 1,
+          "seasonYear": 2021
+        },
+        {
+          "seriesId": "tt1738321",
+          "title": "A History of Horror with Mark Gatiss",
+          "season": 1,
+          "seasonYear": 2010
+        },
+        {
+          "seriesId": "tt2087571",
+          "title": "The New Normal",
+          "season": 1,
+          "seasonYear": 2012
+        },
+        {
+          "seriesId": "tt27814427",
+          "title": "Skibidi Toilet",
+          "season": 15,
+          "seasonYear": 2023
+        },
+        {
+          "seriesId": "tt27814427",
+          "title": "Skibidi Toilet",
+          "season": 18,
+          "seasonYear": 2023
+        },
+        {
+          "seriesId": "tt29899652",
+          "title": "Night Has Come",
+          "season": 1,
+          "seasonYear": 2023
+        },
+        {
+          "seriesId": "tt30089363",
+          "title": "The Witch and the Beast",
+          "season": 1,
+          "seasonYear": 2024
+        },
+        {
+          "seriesId": "tt2301351",
+          "title": "RuPaul's Drag Race All Stars",
+          "season": 11,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt39385315",
+          "title": "Funny AF with Kevin Hart",
+          "season": 1,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt33362418",
+          "title": "America's Culinary Cup",
+          "season": 1,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt0320037",
+          "title": "Jimmy Kimmel Live!",
+          "season": 24,
+          "seasonYear": 2025
+        },
+        {
+          "seriesId": "tt36933506",
+          "title": "Celebrity Weakest Link",
+          "season": 1,
+          "seasonYear": 2025
+        },
+        {
+          "seriesId": "tt6645582",
+          "title": "Summer House",
+          "season": 10,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt14721554",
+          "title": "Below Deck Down Under",
+          "season": 4,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt21047514",
+          "title": "Make Some Noise",
+          "season": 4,
+          "seasonYear": 2025
+        },
+        {
+          "seriesId": "tt30468994",
+          "title": "Very Important People",
+          "season": 3,
+          "seasonYear": 2025
+        },
+        {
+          "seriesId": "tt0319931",
+          "title": "American Idol",
+          "season": 24,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt2348531",
+          "title": "Half in the Bag",
+          "season": 16,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt3204810",
+          "title": "On Cinema",
+          "season": 14,
+          "seasonYear": 2024
+        },
+        {
+          "seriesId": "tt1442550",
+          "title": "Shark Tank",
+          "season": 17,
+          "seasonYear": 2025
+        },
+        {
+          "seriesId": "tt2815522",
+          "title": "Southern Charm",
+          "season": 11,
+          "seasonYear": 2025
+        },
+        {
+          "seriesId": "tt0236911",
+          "title": "De Mol",
+          "season": 4,
+          "seasonYear": 2016
+        },
+        {
+          "seriesId": "tt7252812",
+          "title": "90 Day Fiancé: Before the 90 Days",
+          "season": 8,
+          "seasonYear": 2025
+        },
+        {
+          "seriesId": "tt13648914",
+          "title": "Wer stiehlt mir die Show?",
+          "season": 5,
+          "seasonYear": 2023
+        },
+        {
+          "seriesId": "tt27615984",
+          "title": "Black Pop: Celebrating the Power of Black Culture",
+          "season": 1,
+          "seasonYear": 2023
+        },
+        {
+          "seriesId": "tt28862450",
+          "title": "Förrädarna",
+          "season": 2,
+          "seasonYear": 2024
+        },
+        {
+          "seriesId": "tt15131696",
+          "title": "Stupid Pet Tricks",
+          "season": 1,
+          "seasonYear": 2024
+        },
+        {
+          "seriesId": "tt2815618",
+          "title": "Ladies of London: The New Reign",
+          "season": 4,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt37677376",
+          "title": "Members Only: Palm Beach",
+          "season": 1,
+          "seasonYear": 2025
+        }
+      ],
+      "removed": [
+        {
+          "seriesId": "tt15402976",
+          "title": "Untold",
+          "season": 6,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt11147852",
+          "title": "Dorohedoro",
+          "season": 2,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt31137273",
+          "title": "Margo's Got Money Troubles",
+          "season": 1,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt39123061",
+          "title": "The Ramparts of Ice",
+          "season": 1,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt0098844",
+          "title": "Law & Order",
+          "season": 25,
+          "seasonYear": 2025
+        },
+        {
+          "seriesId": "tt35515227",
+          "title": "CIA",
+          "season": 1,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt0364845",
+          "title": "NCIS",
+          "season": 23,
+          "seasonYear": 2025
+        },
+        {
+          "seriesId": "tt14669850",
+          "title": "Next Level Chef",
+          "season": 5,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt36850092",
+          "title": "The Real Housewives of Rhode Island",
+          "season": 1,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt9909248",
+          "title": "Race Across the World",
+          "season": 6,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt28499011",
+          "title": "La Narcosatánica",
+          "season": 1,
+          "seasonYear": 2023
+        },
+        {
+          "seriesId": "tt29248161",
+          "title": "Mazatlán Shore",
+          "season": 1,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt0765425",
+          "title": "Top Chef",
+          "season": 23,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt1252370",
+          "title": "The Real Housewives of Atlanta",
+          "season": 17,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt1034201",
+          "title": "Britain's Got Talent",
+          "season": 19,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt37546380",
+          "title": "Little Big Italy",
+          "season": 8,
+          "seasonYear": 2025
+        },
+        {
+          "seriesId": "tt38516631",
+          "title": "La Granja VIP",
+          "season": 1,
+          "seasonYear": 2025
+        }
+      ],
+      "ratingSwings": [
+        {
+          "seriesId": "tt8764970",
+          "title": "The Secret World of Jeffree Star",
+          "season": 1,
+          "from": 7.58,
+          "to": 7.1,
+          "delta": -0.48
+        },
+        {
+          "seriesId": "tt23030000",
+          "title": "Jet Lag: The Game",
+          "season": 15,
+          "from": 8.12,
+          "to": 7.68,
+          "delta": -0.44
+        },
+        {
+          "seriesId": "tt27814427",
+          "title": "Skibidi Toilet",
+          "season": 12,
+          "from": 5.43,
+          "to": 5,
+          "delta": -0.43
+        },
+        {
+          "seriesId": "tt27814427",
+          "title": "Skibidi Toilet",
+          "season": 11,
+          "from": 6.4,
+          "to": 5.97,
+          "delta": -0.43
+        },
+        {
+          "seriesId": "tt23030000",
+          "title": "Jet Lag: The Game",
+          "season": 16,
+          "from": 8.59,
+          "to": 8.19,
+          "delta": -0.4
+        },
+        {
+          "seriesId": "tt3513388",
+          "title": "Late Night with Seth Meyers",
+          "season": 10,
+          "from": 6.18,
+          "to": 5.81,
+          "delta": -0.37
+        },
+        {
+          "seriesId": "tt23030000",
+          "title": "Jet Lag: The Game",
+          "season": 13,
+          "from": 8.51,
+          "to": 8.15,
+          "delta": -0.36
+        },
+        {
+          "seriesId": "tt27814427",
+          "title": "Skibidi Toilet",
+          "season": 10,
+          "from": 6.03,
+          "to": 5.7,
+          "delta": -0.33
+        },
+        {
+          "seriesId": "tt23030000",
+          "title": "Jet Lag: The Game",
+          "season": 10,
+          "from": 8.32,
+          "to": 8,
+          "delta": -0.32
+        },
+        {
+          "seriesId": "tt23030000",
+          "title": "Jet Lag: The Game",
+          "season": 11,
+          "from": 8.22,
+          "to": 7.9,
+          "delta": -0.32
+        }
+      ],
+      "modifiedCounts": {
+        "seriesVotes": 14287,
+        "avgRating": 1737,
+        "shapes": 210,
+        "seriesRating": 155,
+        "episodeCount": 43,
+        "poster": 5,
+        "overview": 1,
+        "providers": 1
+      }
+    },
+    {
+      "builtAt": "2026-05-12T15:00:37.412Z",
+      "totals": {
+        "seasons": 16536,
+        "delta": 20
+      },
+      "shapeCounts": {
+        "declining": 214,
+        "rollercoaster": 3563,
+        "rebound": 2784,
+        "mid-peak": 1114,
+        "big-finale": 3006,
+        "bad-finale": 1045,
+        "front-loaded": 546,
+        "slow-burn": 871,
+        "rising": 594,
+        "consistent": 456
+      },
+      "shapeDeltas": {
+        "declining": 1,
+        "rollercoaster": 10,
+        "rebound": 4,
+        "mid-peak": 5,
+        "big-finale": 9,
+        "bad-finale": 2,
+        "front-loaded": 4,
+        "consistent": -1
+      },
+      "added": [
+        {
+          "seriesId": "tt0072562",
+          "title": "Saturday Night Live",
+          "season": 51,
+          "seasonYear": 2025
+        },
+        {
+          "seriesId": "tt21906554",
+          "title": "The Hunting Party",
+          "season": 2,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt0203259",
+          "title": "Law & Order: Special Victims Unit",
+          "season": 27,
+          "seasonYear": 2025
+        },
+        {
+          "seriesId": "tt32268630",
+          "title": "Sheriff Country",
+          "season": 1,
+          "seasonYear": 2025
+        },
+        {
+          "seriesId": "tt39267868",
+          "title": "Agents of the Four Seasons: Dance of Spring",
+          "season": 1,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt39443176",
+          "title": "Gals Can't Be Kind to Otaku!?",
+          "season": 1,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt0094512",
+          "title": "Monsters",
+          "season": 2,
+          "seasonYear": 1989
+        },
+        {
+          "seriesId": "tt12443322",
+          "title": "Deca-Dence",
+          "season": 1,
+          "seasonYear": 2020
+        },
+        {
+          "seriesId": "tt13463778",
+          "title": "Girlfriend, Girlfriend",
+          "season": 1,
+          "seasonYear": 2021
+        },
+        {
+          "seriesId": "tt27814427",
+          "title": "Skibidi Toilet",
+          "season": 15,
+          "seasonYear": 2023
+        },
+        {
+          "seriesId": "tt27814427",
+          "title": "Skibidi Toilet",
+          "season": 18,
+          "seasonYear": 2023
+        },
+        {
+          "seriesId": "tt30089363",
+          "title": "The Witch and the Beast",
+          "season": 1,
+          "seasonYear": 2024
+        },
+        {
+          "seriesId": "tt39333617",
+          "title": "Perfect Crown",
+          "season": 1,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt36933506",
+          "title": "Celebrity Weakest Link",
+          "season": 1,
+          "seasonYear": 2025
+        },
+        {
+          "seriesId": "tt1694423",
+          "title": "MasterChef: USA",
+          "season": 16,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt30468994",
+          "title": "Very Important People",
+          "season": 3,
+          "seasonYear": 2025
+        },
+        {
+          "seriesId": "tt0115147",
+          "title": "The Daily Show",
+          "season": 31,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt1442550",
+          "title": "Shark Tank",
+          "season": 17,
+          "seasonYear": 2025
+        },
+        {
+          "seriesId": "tt2815522",
+          "title": "Southern Charm",
+          "season": 11,
+          "seasonYear": 2025
+        },
+        {
+          "seriesId": "tt21047514",
+          "title": "Make Some Noise",
+          "season": 4,
+          "seasonYear": 2025
+        },
+        {
+          "seriesId": "tt27073388",
+          "title": "Disventure Camp",
+          "season": 5,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt7914040",
+          "title": "The Floor",
+          "season": 5,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt37677376",
+          "title": "Members Only: Palm Beach",
+          "season": 1,
+          "seasonYear": 2025
+        }
+      ],
+      "removed": [
+        {
+          "seriesId": "tt0182576",
+          "title": "Family Guy",
+          "season": 24,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt35515227",
+          "title": "CIA",
+          "season": 1,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt14669850",
+          "title": "Next Level Chef",
+          "season": 5,
+          "seasonYear": 2026
+        }
+      ],
+      "ratingSwings": [
+        {
+          "seriesId": "tt27814427",
+          "title": "Skibidi Toilet",
+          "season": 12,
+          "from": 5.43,
+          "to": 5,
+          "delta": -0.43
+        },
+        {
+          "seriesId": "tt27814427",
+          "title": "Skibidi Toilet",
+          "season": 11,
+          "from": 6.4,
+          "to": 5.97,
+          "delta": -0.43
+        },
+        {
+          "seriesId": "tt27814427",
+          "title": "Skibidi Toilet",
+          "season": 10,
+          "from": 6.03,
+          "to": 5.7,
+          "delta": -0.33
+        },
+        {
+          "seriesId": "tt9794044",
+          "title": "Citadel",
+          "season": 2,
+          "from": 7.23,
+          "to": 6.93,
+          "delta": -0.3
+        },
+        {
+          "seriesId": "tt8772296",
+          "title": "Euphoria",
+          "season": 3,
+          "from": 7.17,
+          "to": 6.96,
+          "delta": -0.21
+        }
+      ],
+      "modifiedCounts": {
+        "seriesVotes": 11552,
+        "avgRating": 506,
+        "shapes": 51,
+        "episodeCount": 13,
+        "seriesRating": 37
+      }
+    },
+    {
+      "builtAt": "2026-05-12T06:17:38.729Z",
+      "totals": {
+        "seasons": 16516,
+        "delta": 6
+      },
+      "shapeCounts": {
+        "declining": 213,
+        "rollercoaster": 3553,
+        "rebound": 2780,
+        "mid-peak": 1109,
+        "big-finale": 2997,
+        "bad-finale": 1043,
+        "front-loaded": 542,
+        "slow-burn": 871,
+        "rising": 594,
+        "consistent": 457
+      },
+      "shapeDeltas": {
+        "declining": 2,
+        "rollercoaster": 2,
+        "rebound": -3,
+        "mid-peak": 4,
+        "big-finale": -2,
+        "bad-finale": 2,
+        "front-loaded": 2,
+        "slow-burn": -2,
+        "rising": -9,
+        "consistent": -4
+      },
+      "added": [
+        {
+          "seriesId": "tt32767294",
+          "title": "Half Man",
+          "season": 1,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt30796986",
+          "title": "NCIS: Origins",
+          "season": 2,
+          "seasonYear": 2025
+        },
+        {
+          "seriesId": "tt31631142",
+          "title": "Unchosen",
+          "season": 1,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt10834220",
+          "title": "The Chestnut Man",
+          "season": 2,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt0413573",
+          "title": "Grey's Anatomy",
+          "season": 22,
+          "seasonYear": 2025
+        },
+        {
+          "seriesId": "tt9794044",
+          "title": "Citadel",
+          "season": 2,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt2805096",
+          "title": "Chicago P.D.",
+          "season": 13,
+          "seasonYear": 2025
+        },
+        {
+          "seriesId": "tt31183656",
+          "title": "Maamla Legal Hai",
+          "season": 2,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt0086742",
+          "title": "Kate & Allie",
+          "season": 1,
+          "seasonYear": 1984
+        },
+        {
+          "seriesId": "tt0098948",
+          "title": "Wings",
+          "season": 6,
+          "seasonYear": 1994
+        },
+        {
+          "seriesId": "tt0884762",
+          "title": "Wild China",
+          "season": 1,
+          "seasonYear": 2008
+        },
+        {
+          "seriesId": "tt1738321",
+          "title": "A History of Horror with Mark Gatiss",
+          "season": 1,
+          "seasonYear": 2010
+        },
+        {
+          "seriesId": "tt2301351",
+          "title": "RuPaul's Drag Race All Stars",
+          "season": 11,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt39385315",
+          "title": "Funny AF with Kevin Hart",
+          "season": 1,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt0319931",
+          "title": "American Idol",
+          "season": 24,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt1601141",
+          "title": "WWE NXT",
+          "season": 20,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt33362418",
+          "title": "America's Culinary Cup",
+          "season": 1,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt0320037",
+          "title": "Jimmy Kimmel Live!",
+          "season": 24,
+          "seasonYear": 2025
+        },
+        {
+          "seriesId": "tt6645582",
+          "title": "Summer House",
+          "season": 10,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt2348531",
+          "title": "Half in the Bag",
+          "season": 16,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt3204810",
+          "title": "On Cinema",
+          "season": 14,
+          "seasonYear": 2024
+        },
+        {
+          "seriesId": "tt0236911",
+          "title": "De Mol",
+          "season": 4,
+          "seasonYear": 2016
+        },
+        {
+          "seriesId": "tt13648914",
+          "title": "Wer stiehlt mir die Show?",
+          "season": 5,
+          "seasonYear": 2023
+        },
+        {
+          "seriesId": "tt28862450",
+          "title": "Förrädarna",
+          "season": 2,
+          "seasonYear": 2024
+        }
+      ],
+      "removed": [
+        {
+          "seriesId": "tt11147852",
+          "title": "Dorohedoro",
+          "season": 2,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt0072562",
+          "title": "Saturday Night Live",
+          "season": 51,
+          "seasonYear": 2025
+        },
+        {
+          "seriesId": "tt0203259",
+          "title": "Law & Order: Special Victims Unit",
+          "season": 27,
+          "seasonYear": 2025
+        },
+        {
+          "seriesId": "tt39123061",
+          "title": "The Ramparts of Ice",
+          "season": 1,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt39333617",
+          "title": "Perfect Crown",
+          "season": 1,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt0098844",
+          "title": "Law & Order",
+          "season": 25,
+          "seasonYear": 2025
+        },
+        {
+          "seriesId": "tt32268630",
+          "title": "Sheriff Country",
+          "season": 1,
+          "seasonYear": 2025
+        },
+        {
+          "seriesId": "tt27073388",
+          "title": "Disventure Camp",
+          "season": 5,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt7914040",
+          "title": "The Floor",
+          "season": 5,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt1694423",
+          "title": "MasterChef: USA",
+          "season": 16,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt21861638",
+          "title": "Celebrity Jeopardy!",
+          "season": 4,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt9909248",
+          "title": "Race Across the World",
+          "season": 6,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt28499011",
+          "title": "La Narcosatánica",
+          "season": 1,
+          "seasonYear": 2023
+        },
+        {
+          "seriesId": "tt29248161",
+          "title": "Mazatlán Shore",
+          "season": 1,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt1252370",
+          "title": "The Real Housewives of Atlanta",
+          "season": 17,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt1034201",
+          "title": "Britain's Got Talent",
+          "season": 19,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt37546380",
+          "title": "Little Big Italy",
+          "season": 8,
+          "seasonYear": 2025
+        },
+        {
+          "seriesId": "tt38516631",
+          "title": "La Granja VIP",
+          "season": 1,
+          "seasonYear": 2025
+        }
+      ],
+      "ratingSwings": [
+        {
+          "seriesId": "tt8764970",
+          "title": "The Secret World of Jeffree Star",
+          "season": 1,
+          "from": 7.58,
+          "to": 7.1,
+          "delta": -0.48
+        },
+        {
+          "seriesId": "tt28862450",
+          "title": "Förrädarna",
+          "season": 4,
+          "from": 5.95,
+          "to": 5.66,
+          "delta": -0.29
+        },
+        {
+          "seriesId": "tt23834134",
+          "title": "Exodus",
+          "season": 1,
+          "from": 4.81,
+          "to": 5.08,
+          "delta": 0.27
+        },
+        {
+          "seriesId": "tt28862450",
+          "title": "Förrädarna",
+          "season": 3,
+          "from": 7.73,
+          "to": 7.51,
+          "delta": -0.22
+        },
+        {
+          "seriesId": "tt31323988",
+          "title": "Mehmed: Sultan of Conquests",
+          "season": 1,
+          "from": 9.41,
+          "to": 9.2,
+          "delta": -0.21
+        },
+        {
+          "seriesId": "tt35089518",
+          "title": "The Vendetta of An",
+          "season": 1,
+          "from": 6.45,
+          "to": 6.65,
+          "delta": 0.2
+        },
+        {
+          "seriesId": "tt3781836",
+          "title": "Botched",
+          "season": 2,
+          "from": 7.53,
+          "to": 7.33,
+          "delta": -0.2
+        }
+      ],
+      "modifiedCounts": {
+        "seriesVotes": 13179,
+        "avgRating": 1087,
+        "seriesRating": 94,
+        "shapes": 110,
+        "episodeCount": 21,
+        "poster": 5
+      }
+    },
+    {
+      "builtAt": "2026-05-11T07:38:08.526Z",
+      "totals": {
+        "seasons": 8968,
+        "delta": -7
+      },
+      "shapeCounts": {
+        "rollercoaster": 2264,
+        "rebound": 2083,
+        "mid-peak": 684,
+        "big-finale": 2489,
+        "bad-finale": 520,
+        "front-loaded": 220,
+        "slow-burn": 623,
+        "rising": 517,
+        "consistent": 300,
+        "declining": 153
+      },
+      "shapeDeltas": {
+        "rollercoaster": -2,
+        "rebound": -5,
+        "mid-peak": 3,
+        "big-finale": -1,
+        "front-loaded": 1,
+        "slow-burn": 1,
+        "rising": -5,
+        "consistent": -2,
+        "declining": 4
+      },
+      "added": [
+        {
+          "seriesId": "tt10380768",
+          "title": "Love Life",
+          "season": 1,
+          "seasonYear": 2020
+        },
+        {
+          "seriesId": "tt6053512",
+          "title": "Home Before Dark",
+          "season": 1,
+          "seasonYear": 2020
+        },
+        {
+          "seriesId": "tt6053512",
+          "title": "Home Before Dark",
+          "season": 2,
+          "seasonYear": 2021
+        },
+        {
+          "seriesId": "tt10380768",
+          "title": "Love Life",
+          "season": 2,
+          "seasonYear": 2021
+        },
+        {
+          "seriesId": "tt0239195",
+          "title": "Survivor",
+          "season": 50,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt5640558",
+          "title": "Claws",
+          "season": 1,
+          "seasonYear": 2017
+        },
+        {
+          "seriesId": "tt14641098",
+          "title": "The Case Study of Vanitas",
+          "season": 1,
+          "seasonYear": 2021
+        },
+        {
+          "seriesId": "tt30796986",
+          "title": "NCIS: Origins",
+          "season": 2,
+          "seasonYear": 2025
+        },
+        {
+          "seriesId": "tt0413573",
+          "title": "Grey's Anatomy",
+          "season": 22,
+          "seasonYear": 2025
+        },
+        {
+          "seriesId": "tt2805096",
+          "title": "Chicago P.D.",
+          "season": 13,
+          "seasonYear": 2025
+        },
+        {
+          "seriesId": "tt5640558",
+          "title": "Claws",
+          "season": 2,
+          "seasonYear": 2018
+        },
+        {
+          "seriesId": "tt31183656",
+          "title": "Maamla Legal Hai",
+          "season": 2,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt0098948",
+          "title": "Wings",
+          "season": 6,
+          "seasonYear": 1994
+        },
+        {
+          "seriesId": "tt0884762",
+          "title": "Wild China",
+          "season": 1,
+          "seasonYear": 2008
+        },
+        {
+          "seriesId": "tt1738321",
+          "title": "A History of Horror with Mark Gatiss",
+          "season": 1,
+          "seasonYear": 2010
+        }
+      ],
+      "removed": [
+        {
+          "seriesId": "tt28267514",
+          "title": "Thank You, Next",
+          "season": 1,
+          "seasonYear": 2024
+        },
+        {
+          "seriesId": "tt30459041",
+          "title": "Your Friends & Neighbors",
+          "season": 1,
+          "seasonYear": 2025
+        },
+        {
+          "seriesId": "tt11147852",
+          "title": "Dorohedoro",
+          "season": 1,
+          "seasonYear": 2020
+        },
+        {
+          "seriesId": "tt11822998",
+          "title": "The Trials of Gabriel Fernandez",
+          "season": 1,
+          "seasonYear": 2020
+        },
+        {
+          "seriesId": "tt30459041",
+          "title": "Your Friends & Neighbors",
+          "season": 2,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt2711738",
+          "title": "The Tunnel",
+          "season": 1,
+          "seasonYear": 2013
+        },
+        {
+          "seriesId": "tt2711738",
+          "title": "The Tunnel",
+          "season": 2,
+          "seasonYear": 2016
+        },
+        {
+          "seriesId": "tt2711738",
+          "title": "The Tunnel",
+          "season": 3,
+          "seasonYear": 2017
+        },
+        {
+          "seriesId": "tt14671790",
+          "title": "Elite Short Stories: Nadia Guzmán",
+          "season": 1,
+          "seasonYear": 2021
+        },
+        {
+          "seriesId": "tt11147852",
+          "title": "Dorohedoro",
+          "season": 2,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt0935095",
+          "title": "In Plain Sight",
+          "season": 1,
+          "seasonYear": 2008
+        },
+        {
+          "seriesId": "tt0072562",
+          "title": "Saturday Night Live",
+          "season": 51,
+          "seasonYear": 2025
+        },
+        {
+          "seriesId": "tt0203259",
+          "title": "Law & Order: Special Victims Unit",
+          "season": 27,
+          "seasonYear": 2025
+        },
+        {
+          "seriesId": "tt0935095",
+          "title": "In Plain Sight",
+          "season": 2,
+          "seasonYear": 2009
+        },
+        {
+          "seriesId": "tt39123061",
+          "title": "The Ramparts of Ice",
+          "season": 1,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt0935095",
+          "title": "In Plain Sight",
+          "season": 3,
+          "seasonYear": 2010
+        },
+        {
+          "seriesId": "tt28267514",
+          "title": "Thank You, Next",
+          "season": 2,
+          "seasonYear": 2025
+        },
+        {
+          "seriesId": "tt0935095",
+          "title": "In Plain Sight",
+          "season": 5,
+          "seasonYear": 2012
+        },
+        {
+          "seriesId": "tt0098844",
+          "title": "Law & Order",
+          "season": 25,
+          "seasonYear": 2025
+        },
+        {
+          "seriesId": "tt35515227",
+          "title": "CIA",
+          "season": 1,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt0935095",
+          "title": "In Plain Sight",
+          "season": 4,
+          "seasonYear": 2011
+        },
+        {
+          "seriesId": "tt4219258",
+          "title": "The Testament of Sister New Devil",
+          "season": 1,
+          "seasonYear": 2015
+        }
+      ],
+      "ratingSwings": [
+        {
+          "seriesId": "tt31323988",
+          "title": "Mehmed: Sultan of Conquests",
+          "season": 1,
+          "from": 9.41,
+          "to": 9.2,
+          "delta": -0.21
+        },
+        {
+          "seriesId": "tt35089518",
+          "title": "The Vendetta of An",
+          "season": 1,
+          "from": 6.45,
+          "to": 6.65,
+          "delta": 0.2
+        }
+      ],
+      "modifiedCounts": {
+        "seriesVotes": 8382,
+        "avgRating": 708,
+        "poster": 296,
+        "overview": 269,
+        "shapes": 65,
+        "seriesRating": 37,
+        "episodeCount": 10
+      }
+    }
+  ]
+}
