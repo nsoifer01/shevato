@@ -106,6 +106,20 @@ async function fetchTvdbId(tmdbId) {
   }
 }
 
+// Per-season external IDs so we can deep-link to a season on TVDB (the
+// series-level dereferrer only lands on the show page). TMDB exposes
+// season-level external_ids and TVDB has a matching season dereferrer
+// (`https://thetvdb.com/dereferrer/season/{tvdb_id}`).
+async function fetchSeasonTvdbId(tmdbId, seasonNumber) {
+  try {
+    const body = await tmdbFetch(`https://api.themoviedb.org/3/tv/${tmdbId}/season/${seasonNumber}/external_ids`);
+    const v = body && body.tvdb_id;
+    return Number.isFinite(v) ? v : null;
+  } catch (_) {
+    return null;
+  }
+}
+
 (async () => {
   if (!TOKEN) {
     console.error('Set TMDB_TOKEN env var (a v4 read access token from https://www.themoviedb.org/settings/api)');
@@ -214,22 +228,66 @@ async function fetchTvdbId(tmdbId) {
     }
   }
 
+  // Per-season tvdbId so the season modal can deep-link to the right
+  // season page. Uses the (seriesId, season) pairs that actually appear
+  // in data.json — no point fetching seasons we have no ratings for.
+  // We store one map per series (`seasonTvdbIds: { "1": 364731, ... }`),
+  // recording null on misses so we don't retry forever.
+  const seasonsBySeriesId = {};
+  for (const m of data.matches) {
+    if (!seasonsBySeriesId[m.seriesId]) seasonsBySeriesId[m.seriesId] = new Set();
+    seasonsBySeriesId[m.seriesId].add(m.season);
+  }
+  const seasonWork = [];
+  for (const [imdbId, seasons] of Object.entries(seasonsBySeriesId)) {
+    const e = cache[imdbId];
+    if (!e || !e.id || e.notFound || e.error) continue;
+    const known = e.seasonTvdbIds || {};
+    for (const s of seasons) {
+      if (s in known) continue;
+      seasonWork.push({ imdbId, tmdbId: e.id, season: s });
+    }
+  }
+  if (seasonWork.length > 0) {
+    console.log(`\nFetching season tvdbIds for ${seasonWork.length.toLocaleString()} seasons`);
+    let sdone = 0;
+    const st0 = Date.now();
+    for (const job of seasonWork) {
+      const tvdb = await fetchSeasonTvdbId(job.tmdbId, job.season);
+      const e = cache[job.imdbId];
+      if (!e.seasonTvdbIds) e.seasonTvdbIds = {};
+      e.seasonTvdbIds[job.season] = tvdb; // may be null — that's the "we asked, not available" signal
+      sdone++;
+      if (sdone % 50 === 0) {
+        const rate = (sdone / ((Date.now() - st0) / 1000)).toFixed(1);
+        const eta = ((seasonWork.length - sdone) / parseFloat(rate)).toFixed(0);
+        process.stdout.write(`  ${sdone}/${seasonWork.length}  (${rate}/s, ~${eta}s left)\r`);
+        fs.writeFileSync(CACHE_FILE, JSON.stringify(cache));
+      }
+      await sleep(REQUEST_INTERVAL_MS);
+    }
+  }
+
   fs.writeFileSync(CACHE_FILE, JSON.stringify(cache));
   // Tally cache health so it's obvious what the run accomplished.
-  let withPoster = 0, noPoster = 0, notFoundFinal = 0, errored = 0, withTvdb = 0;
+  let withPoster = 0, noPoster = 0, notFoundFinal = 0, errored = 0, withTvdb = 0, seasonTvdbCount = 0;
   for (const e of Object.values(cache)) {
     if (!e || e.error) { errored++; continue; }
     if (e.notFound) { notFoundFinal++; continue; }
     if (e.poster_path) withPoster++;
     else noPoster++;
     if (e.tvdbId) withTvdb++;
+    if (e.seasonTvdbIds) {
+      for (const v of Object.values(e.seasonTvdbIds)) if (Number.isFinite(v)) seasonTvdbCount++;
+    }
   }
   console.log(`\nWrote ${CACHE_FILE} — ${Object.keys(cache).length.toLocaleString()} entries`);
-  console.log(`  with poster:    ${withPoster.toLocaleString()}`);
-  console.log(`  no poster file: ${noPoster.toLocaleString()}`);
-  console.log(`  with tvdbId:    ${withTvdb.toLocaleString()}`);
-  console.log(`  notFound:       ${notFoundFinal.toLocaleString()}`);
-  console.log(`  errored:        ${errored.toLocaleString()}`);
+  console.log(`  with poster:       ${withPoster.toLocaleString()}`);
+  console.log(`  no poster file:    ${noPoster.toLocaleString()}`);
+  console.log(`  with tvdbId:       ${withTvdb.toLocaleString()}`);
+  console.log(`  seasons w/ tvdbId: ${seasonTvdbCount.toLocaleString()}`);
+  console.log(`  notFound:          ${notFoundFinal.toLocaleString()}`);
+  console.log(`  errored:           ${errored.toLocaleString()}`);
   if (recoveredViaSearch > 0) {
     console.log(`Recovered ${recoveredViaSearch.toLocaleString()} series via title-search fallback this run.`);
   }

@@ -1714,8 +1714,15 @@ function openModal(m, opts = {}) {
   els.modalEpisodes.replaceChildren(epFrag);
 
   els.modalImdb.href = `https://www.imdb.com/title/${m.seriesId}/episodes/?season=${m.season}`;
-  if (m.tvdbId) {
+  // Prefer the season-level dereferrer when we have a season tvdbId; otherwise
+  // fall back to the series page (still useful, just not deep-linked).
+  if (m.seasonTvdbId) {
+    els.modalTvdb.href = `https://thetvdb.com/dereferrer/season/${m.seasonTvdbId}`;
+    els.modalTvdb.textContent = 'View season on TVDB →';
+    els.modalTvdb.hidden = false;
+  } else if (m.tvdbId) {
     els.modalTvdb.href = `https://thetvdb.com/dereferrer/series/${m.tvdbId}`;
+    els.modalTvdb.textContent = 'View series on TVDB →';
     els.modalTvdb.hidden = false;
   } else {
     els.modalTvdb.removeAttribute('href');
