@@ -107,6 +107,9 @@
       <button class="view-tab" data-view="leaderboard" role="tab" aria-selected="false">
         <span aria-hidden="true">🏆</span> Leaderboard
       </button>
+      <button class="view-tab" data-view="matrix" role="tab" aria-selected="false">
+        <span aria-hidden="true">🔀</span> Matrix
+      </button>
       <button class="view-tab" data-view="history" role="tab" aria-selected="false">
         <span aria-hidden="true">📜</span> History
       </button>
@@ -324,6 +327,32 @@
       </div>
       <p class="empty-state" id="leaderboard-empty" hidden>
         Nothing on the board yet — log a game to populate.
+      </p>
+    </section>
+
+    <!-- MATRIX VIEW (cross-participant H2H grid) -->
+    <section class="view view-matrix" data-view-panel="matrix" hidden>
+      <header class="matrix-head">
+        <div>
+          <h2 class="section-title">Confusion matrix</h2>
+          <p class="matrix-sub">
+            Head-to-head between you and every selected rival. Rival ↔ rival cells
+            compare their scores on days you played <em>both</em>.
+          </p>
+        </div>
+      </header>
+
+      <div class="matrix-controls">
+        <span class="matrix-controls-label">Include rivals</span>
+        <div class="matrix-chip-row" id="matrix-chip-row"></div>
+      </div>
+
+      <nav class="matrix-subtabs" id="matrix-subtabs" role="tablist" aria-label="Matrix metric"></nav>
+
+      <div class="matrix-wrap" id="matrix-wrap"></div>
+
+      <p class="empty-state" id="matrix-empty" hidden>
+        Add at least one rival and log a game to populate the matrix.
       </p>
     </section>
 
