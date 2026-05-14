@@ -271,6 +271,10 @@ function loadTmdbCache() {
         m.overview = t.overview || null;
         m.tmdbId = t.id || null;
         if (Number.isFinite(t.tvdbId)) m.tvdbId = t.tvdbId;
+        if (t.seasonTvdbIds) {
+          const sv = t.seasonTvdbIds[m.season];
+          if (Number.isFinite(sv)) m.seasonTvdbId = sv;
+        }
         if (t.original_language) m.language = t.original_language;
         if (Array.isArray(t.providers) && t.providers.length) {
           const seen = new Set();
