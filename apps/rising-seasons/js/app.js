@@ -111,6 +111,17 @@ const els = {
   compareFabCount: document.getElementById('compareFabCount'),
   viewToggle: document.querySelector('.view-toggle'),
   suggestions: document.getElementById('searchSuggestions'),
+  changelogModal: document.getElementById('changelogModal'),
+  changelogSubtitle: document.getElementById('changelogSubtitle'),
+  changelogTotals: document.getElementById('changelogTotals'),
+  changelogShapesSection: document.getElementById('changelogShapes'),
+  changelogShapesList: document.getElementById('changelogShapesList'),
+  changelogAddedSection: document.getElementById('changelogAdded'),
+  changelogAddedList: document.getElementById('changelogAddedList'),
+  changelogRemovedSection: document.getElementById('changelogRemoved'),
+  changelogRemovedList: document.getElementById('changelogRemovedList'),
+  changelogSwingsSection: document.getElementById('changelogSwings'),
+  changelogSwingsList: document.getElementById('changelogSwingsList'),
 };
 
 // --- mutable state ---
@@ -155,6 +166,8 @@ let pendingModalKey = null;
 let pendingShowKey = null;
 let modalState = { season: null, lastFocus: null, surprise: false };
 let showModalState = { seriesId: null, lastFocus: null };
+let changelog = null;
+let changelogState = { lastFocus: null };
 const suggestState = { items: [], active: -1, open: false };
 
 function debounce(fn, ms) {
@@ -257,6 +270,7 @@ async function load() {
     showError(err);
     return;
   }
+  loadChangelog();
   Watched.load();
   Compare.load();
   state.view = ViewPref.load();
@@ -828,7 +842,7 @@ function render() {
   if (filtered.length === 0) {
     showEmptyState();
     renderPager(0, 1);
-    els.footerMeta.textContent = '';
+    renderFooterMeta();
     return;
   }
 
@@ -840,7 +854,75 @@ function render() {
   els.results.replaceChildren(frag);
 
   renderPager(totalPages, state.page);
-  els.footerMeta.textContent = `Last updated: ${formatBuiltAt(dataset.builtAt)}`;
+  renderFooterMeta();
+}
+
+function renderFooterMeta() {
+  els.footerMeta.replaceChildren();
+  if (!dataset?.builtAt) return;
+
+  const text = document.createElement('span');
+  text.className = 'footer-meta-text';
+  text.textContent = `Last updated: ${formatBuiltAt(dataset.builtAt)}`;
+  els.footerMeta.appendChild(text);
+
+  const latest = changelog?.updates?.[0];
+  if (!latest) return;
+  // Only show the chip when the *most recent* entry corresponds to the
+  // dataset we're displaying. Mismatches (data.json ahead of, or behind,
+  // the changelog) shouldn't surface a misleading summary.
+  if (latest.builtAt !== dataset.builtAt) return;
+  if (!hasMeaningfulChange(latest)) return;
+
+  const sep = document.createElement('span');
+  sep.className = 'footer-meta-sep';
+  sep.setAttribute('aria-hidden', 'true');
+  sep.textContent = '·';
+  els.footerMeta.appendChild(sep);
+
+  const chip = document.createElement('button');
+  chip.type = 'button';
+  chip.className = 'whats-new-chip';
+  chip.setAttribute('aria-haspopup', 'dialog');
+  chip.setAttribute('aria-controls', 'changelogModal');
+  const added = latest.added?.length || 0;
+  const removed = latest.removed?.length || 0;
+  const counts = document.createElement('span');
+  counts.className = 'whats-new-chip-counts';
+  if (added) {
+    const a = document.createElement('span');
+    a.className = 'whats-new-chip-added';
+    a.textContent = `+${added}`;
+    counts.append(a, ' new');
+  }
+  if (added && removed) counts.append(' · ');
+  if (removed) {
+    const r = document.createElement('span');
+    r.className = 'whats-new-chip-removed';
+    r.textContent = `−${removed}`;
+    counts.append(r, ' dropped');
+  }
+  if (!added && !removed) counts.textContent = 'refreshed';
+  const cta = document.createElement('span');
+  cta.className = 'whats-new-chip-cta';
+  cta.textContent = "What's new";
+  const caret = document.createElement('span');
+  caret.className = 'whats-new-chip-caret';
+  caret.setAttribute('aria-hidden', 'true');
+  caret.textContent = '▾';
+  chip.append(counts, cta, caret);
+  chip.addEventListener('click', () => openChangelogModal());
+  els.footerMeta.appendChild(chip);
+}
+
+function hasMeaningfulChange(entry) {
+  if (!entry) return false;
+  if ((entry.added?.length || 0) > 0) return true;
+  if ((entry.removed?.length || 0) > 0) return true;
+  if (entry.totals?.delta) return true;
+  if (entry.shapeDeltas && Object.keys(entry.shapeDeltas).length) return true;
+  if ((entry.ratingSwings?.length || 0) > 0) return true;
+  return false;
 }
 
 function formatBuiltAt(iso) {
@@ -2028,13 +2110,15 @@ function syncModalWatchBtn() {
 // background controls (and assistive tech / pointer events are blocked too).
 // When both modals are closed, clears inert from all body children.
 function syncModalInert() {
-  const openModal = !els.compareModal.hidden
-    ? els.compareModal
-    : !els.modal.hidden
-      ? els.modal
-      : !els.showModal.hidden
-        ? els.showModal
-        : null;
+  const openModal = !els.changelogModal.hidden
+    ? els.changelogModal
+    : !els.compareModal.hidden
+      ? els.compareModal
+      : !els.modal.hidden
+        ? els.modal
+        : !els.showModal.hidden
+          ? els.showModal
+          : null;
   for (const node of document.body.children) {
     if (node.tagName === 'TEMPLATE' || node.tagName === 'SCRIPT') continue;
     if (openModal && node !== openModal) node.setAttribute('inert', '');
@@ -2065,6 +2149,172 @@ function warnIfStale() {
       `Rising Seasons data is older than ${STALE_DAYS} days (built ${dataset.builtAt}). ` +
       `Run npm run build:rising-seasons or wait for the next scheduled refresh.`,
     );
+  }
+}
+
+// --- changelog (What's new) ---
+
+async function loadChangelog() {
+  try {
+    const res = await fetch('changelog.json', { cache: 'no-store' });
+    if (!res.ok) return; // file may not exist yet on a fresh checkout
+    const json = await res.json();
+    if (json && Array.isArray(json.updates)) {
+      changelog = json;
+      // The initial render may have already painted the footer before the
+      // fetch resolved — refresh it now so the "What's new" chip appears.
+      if (dataset && els.footerMeta) renderFooterMeta();
+    }
+  } catch {
+    // Network or parse error — non-fatal; UI just doesn't get the chip.
+  }
+}
+
+function openChangelogModal() {
+  const latest = changelog?.updates?.[0];
+  if (!latest) return;
+
+  if (els.changelogModal.hidden) changelogState.lastFocus = document.activeElement;
+
+  els.changelogSubtitle.textContent = formatChangelogSubtitle(latest);
+  renderChangelogTotals(latest);
+  renderChangelogShapes(latest);
+  renderChangelogAdded(latest);
+  renderChangelogRemoved(latest);
+  renderChangelogSwings(latest);
+
+  els.changelogModal.hidden = false;
+  els.changelogModal.setAttribute('aria-hidden', 'false');
+  document.documentElement.style.overflow = 'hidden';
+  document.body.style.overflow = 'hidden';
+  syncModalInert();
+  requestAnimationFrame(() => {
+    const close = els.changelogModal.querySelector('.modal-close');
+    if (close) close.focus();
+  });
+}
+
+function closeChangelogModal() {
+  if (els.changelogModal.hidden) return;
+  els.changelogModal.hidden = true;
+  els.changelogModal.setAttribute('aria-hidden', 'true');
+  if (els.modal.hidden && els.showModal.hidden && els.compareModal.hidden) {
+    document.documentElement.style.overflow = '';
+    document.body.style.overflow = '';
+  }
+  syncModalInert();
+  if (changelogState.lastFocus && typeof changelogState.lastFocus.focus === 'function') {
+    changelogState.lastFocus.focus();
+  }
+  changelogState.lastFocus = null;
+}
+
+function formatChangelogSubtitle(entry) {
+  const date = formatBuiltAt(entry.builtAt);
+  const total = entry.totals?.seasons?.toLocaleString?.() ?? '?';
+  return `Refresh on ${date} · ${total} seasons tracked`;
+}
+
+function renderChangelogTotals(entry) {
+  const totalsParts = [];
+  const delta = entry.totals?.delta || 0;
+  if (delta) {
+    const sign = delta > 0 ? '+' : '−';
+    totalsParts.push(`<strong>${sign}${Math.abs(delta).toLocaleString()}</strong> total seasons`);
+  }
+  if (entry.added?.length) totalsParts.push(`<strong>${entry.added.length}</strong> added`);
+  if (entry.removed?.length) totalsParts.push(`<strong>${entry.removed.length}</strong> dropped`);
+  const m = entry.modifiedCounts || {};
+  const modified = Object.values(m).reduce((s, v) => s + (v || 0), 0);
+  if (modified) {
+    totalsParts.push(`<strong>${modified.toLocaleString()}</strong> seasons with field updates`);
+  }
+  if (!totalsParts.length) totalsParts.push('No measurable changes this refresh.');
+  els.changelogTotals.innerHTML = totalsParts.map((p) => `<span class="changelog-stat">${p}</span>`).join('');
+}
+
+function renderChangelogShapes(entry) {
+  const deltas = entry.shapeDeltas || {};
+  const keys = Object.keys(deltas);
+  if (!keys.length) {
+    els.changelogShapesSection.hidden = true;
+    return;
+  }
+  els.changelogShapesSection.hidden = false;
+  els.changelogShapesList.replaceChildren();
+  // Sort by absolute magnitude so the biggest movers come first.
+  keys.sort((a, b) => Math.abs(deltas[b]) - Math.abs(deltas[a]));
+  for (const k of keys) {
+    const d = deltas[k];
+    const pill = document.createElement('span');
+    pill.className = `changelog-shape-pill ${d > 0 ? 'is-up' : 'is-down'}`;
+    pill.textContent = `${k} ${d > 0 ? '+' : '−'}${Math.abs(d).toLocaleString()}`;
+    els.changelogShapesList.appendChild(pill);
+  }
+}
+
+function renderChangelogAdded(entry) {
+  const items = entry.added || [];
+  if (!items.length) { els.changelogAddedSection.hidden = true; return; }
+  els.changelogAddedSection.hidden = false;
+  els.changelogAddedList.replaceChildren();
+  for (const item of items) {
+    const li = document.createElement('li');
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'changelog-item-link';
+    const year = item.seasonYear ? ` (${item.seasonYear})` : '';
+    btn.textContent = `${item.title} · S${item.season}${year}`;
+    btn.addEventListener('click', () => jumpToSeason(item));
+    li.appendChild(btn);
+    els.changelogAddedList.appendChild(li);
+  }
+}
+
+function renderChangelogRemoved(entry) {
+  const items = entry.removed || [];
+  if (!items.length) { els.changelogRemovedSection.hidden = true; return; }
+  els.changelogRemovedSection.hidden = false;
+  els.changelogRemovedList.replaceChildren();
+  for (const item of items) {
+    const li = document.createElement('li');
+    const year = item.seasonYear ? ` (${item.seasonYear})` : '';
+    li.textContent = `${item.title} · S${item.season}${year}`;
+    els.changelogRemovedList.appendChild(li);
+  }
+}
+
+function renderChangelogSwings(entry) {
+  const items = entry.ratingSwings || [];
+  if (!items.length) { els.changelogSwingsSection.hidden = true; return; }
+  els.changelogSwingsSection.hidden = false;
+  els.changelogSwingsList.replaceChildren();
+  for (const s of items) {
+    const li = document.createElement('li');
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'changelog-item-link';
+    const arrow = s.delta > 0 ? '↑' : '↓';
+    btn.innerHTML = `<span>${s.title} · S${s.season}</span> <span class="changelog-swing-delta ${s.delta > 0 ? 'is-up' : 'is-down'}">${arrow} ${s.from.toFixed(2)} → ${s.to.toFixed(2)}</span>`;
+    btn.addEventListener('click', () => jumpToSeason(s));
+    li.appendChild(btn);
+    els.changelogSwingsList.appendChild(li);
+  }
+}
+
+// Open the season directly when a user clicks an added title or a rating
+// swing. The match is found by (seriesId, season); if the season is
+// missing (e.g. it was added then dropped before the user opened the
+// popover), we fall back to opening the show modal so they still see
+// something useful.
+function jumpToSeason(item) {
+  if (!dataset?.matches) return;
+  const m = dataset.matches.find((x) => x.seriesId === item.seriesId && x.season === item.season);
+  closeChangelogModal();
+  if (m) {
+    openModal(m);
+  } else if (dataset.matches.some((x) => x.seriesId === item.seriesId)) {
+    openShowModal(item.seriesId);
   }
 }
 
@@ -2459,6 +2709,9 @@ function bindEvents() {
   for (const closer of els.compareModal.querySelectorAll('[data-close="compare-modal"]')) {
     closer.addEventListener('click', closeCompareModal);
   }
+  for (const closer of els.changelogModal.querySelectorAll('[data-close="changelog-modal"]')) {
+    closer.addEventListener('click', closeChangelogModal);
+  }
   els.showModalCompare.addEventListener('click', () => {
     if (!showModalState.seriesId) return;
     if (Compare.has(showModalState.seriesId)) Compare.remove(showModalState.seriesId);
@@ -2495,7 +2748,9 @@ function bindKeyboard() {
       return;
     }
     if (e.key === 'Escape') {
-      if (!els.compareModal.hidden) {
+      if (!els.changelogModal.hidden) {
+        closeChangelogModal();
+      } else if (!els.compareModal.hidden) {
         closeCompareModal();
       } else if (!els.modal.hidden) {
         closeModal();
