@@ -7,8 +7,10 @@ name: Refresh Rising Seasons data
 
 on:
   schedule:
-    # Mondays at 06:00 UTC.
-    - cron: '0 6 * * 1'
+    # Every day at 06:00 UTC — keeps the static site current with IMDb's
+    # daily TSV publishing cadence. Incremental TMDB cache hits keep
+    # runtimes well under 15 min once the cold-start bootstrap is done.
+    - cron: '0 6 * * *'
   workflow_dispatch:
     inputs:
       skip_tmdb:
