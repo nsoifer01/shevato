@@ -130,6 +130,12 @@
         <span class="shape-desc">The last episode is the peak</span>
         <span class="shape-count" data-count="big-finale"></span>
       </button>
+      <button class="shape-chip" data-shape="saved-best-for-last" aria-pressed="false" type="button">
+        <span class="shape-icon" aria-hidden="true">🏁</span>
+        <span class="shape-name">Saved best for last</span>
+        <span class="shape-desc">Final season is the show's highest-rated</span>
+        <span class="shape-count" data-count="saved-best-for-last"></span>
+      </button>
       <button class="shape-chip" data-shape="rebound" aria-pressed="false" type="button">
         <span class="shape-icon" aria-hidden="true">∪</span>
         <span class="shape-name">Rebound</span>
@@ -194,33 +200,42 @@
         </button>
       </div>
 
-      <div class="label-filters" aria-label="Quick filters">
-        <div class="label-group" role="radiogroup" aria-label="Series type">
-          <span class="label-group-name">Type</span>
-          <button type="button" class="label-chip" data-filter="seriesType" data-value="all" aria-pressed="true">All</button>
-          <button type="button" class="label-chip" data-filter="seriesType" data-value="tvSeries" aria-pressed="false">TV series</button>
-          <button type="button" class="label-chip" data-filter="seriesType" data-value="tvMiniSeries" aria-pressed="false">Mini-series</button>
+      <details class="quick-filters-wrap">
+        <summary class="quick-filters-summary">
+          <span aria-hidden="true">⌕</span>
+          <span>Quick filters</span>
+        </summary>
+        <div class="label-filters" aria-label="Quick filters">
+          <div class="label-group" role="radiogroup" aria-label="Series type">
+            <span class="label-group-name">Type</span>
+            <button type="button" class="label-chip" data-filter="seriesType" data-value="all" aria-pressed="true">All</button>
+            <button type="button" class="label-chip" data-filter="seriesType" data-value="tvSeries" aria-pressed="false">TV series</button>
+            <button type="button" class="label-chip" data-filter="seriesType" data-value="tvMiniSeries" aria-pressed="false">Mini-series</button>
+          </div>
+          <div class="label-group" role="radiogroup" aria-label="Watched status">
+            <span class="label-group-name">Watched</span>
+            <button type="button" class="label-chip" data-filter="watched" data-value="all" aria-pressed="true">All</button>
+            <button type="button" class="label-chip" data-filter="watched" data-value="watched" aria-pressed="false">Watched</button>
+            <button type="button" class="label-chip" data-filter="watched" data-value="unwatched" aria-pressed="false">Unwatched</button>
+          </div>
+          <div class="label-group" role="radiogroup" aria-label="Above IMDb rating">
+            <span class="label-group-name">IMDb</span>
+            <button type="button" class="label-chip" data-filter="aboveImdb" data-value="all" aria-pressed="true">All</button>
+            <button type="button" class="label-chip label-chip-good" data-filter="aboveImdb" data-value="above" aria-pressed="false" title="Only seasons whose avg episode rating is higher than the show's IMDb rating">↑ Above IMDb</button>
+          </div>
+          <div class="label-group" role="radiogroup" aria-label="Hidden gems">
+            <span class="label-group-name">Gems</span>
+            <button type="button" class="label-chip" data-filter="hiddenGems" data-value="all" aria-pressed="true">All</button>
+            <button type="button" class="label-chip label-chip-good" data-filter="hiddenGems" data-value="on" aria-pressed="false" title="High-rated seasons most people haven't watched (avg ≥ 8.5, fewer than 500 votes per episode)">💎 Hidden gems</button>
+          </div>
         </div>
-        <div class="label-group" role="radiogroup" aria-label="Watched status">
-          <span class="label-group-name">Watched</span>
-          <button type="button" class="label-chip" data-filter="watched" data-value="all" aria-pressed="true">All</button>
-          <button type="button" class="label-chip" data-filter="watched" data-value="watched" aria-pressed="false">Watched</button>
-          <button type="button" class="label-chip" data-filter="watched" data-value="unwatched" aria-pressed="false">Unwatched</button>
-        </div>
-        <div class="label-group" role="radiogroup" aria-label="Above IMDb rating">
-          <span class="label-group-name">IMDb</span>
-          <button type="button" class="label-chip" data-filter="aboveImdb" data-value="all" aria-pressed="true">All</button>
-          <button type="button" class="label-chip label-chip-good" data-filter="aboveImdb" data-value="above" aria-pressed="false" title="Only seasons whose avg episode rating is higher than the show's IMDb rating">↑ Above IMDb</button>
-        </div>
-        <div class="label-group" role="radiogroup" aria-label="Hidden gems">
-          <span class="label-group-name">Gems</span>
-          <button type="button" class="label-chip" data-filter="hiddenGems" data-value="all" aria-pressed="true">All</button>
-          <button type="button" class="label-chip label-chip-good" data-filter="hiddenGems" data-value="on" aria-pressed="false" title="High-rated seasons most people haven't watched (avg ≥ 8.0, fewer than 1,000 votes per episode)">💎 Hidden gems</button>
-        </div>
-      </div>
+      </details>
 
+      <div class="advanced-row">
       <details class="advanced">
-        <summary>More filters</summary>
+        <summary>
+          <span class="advanced-summary-label">More filters</span>
+        </summary>
         <div class="filter-row">
           <label>
             Min episodes
@@ -274,15 +289,16 @@
           <span class="chip-section-title">Streaming</span>
           <div class="genre-row" id="providers" role="group" aria-label="Filter by streaming provider"></div>
         </div>
-        <div class="filter-actions">
-          <button type="button" class="btn btn-ghost" id="resetFilters">Reset all filters</button>
-        </div>
       </details>
+      <button type="button" class="advanced-reset" id="resetFilters" hidden>Clear all filters</button>
+      </div>
     </section>
 
     <section class="stats-bar" id="statsBar" aria-live="polite"></section>
 
     <p class="meta" id="meta" aria-live="polite"></p>
+
+    <nav class="pager pager-top" id="pager-top" aria-label="Pagination (top)" hidden></nav>
 
     <div id="results" class="results-grid" aria-label="Matching seasons"></div>
 
@@ -311,6 +327,12 @@
           <p class="modal-stats" id="modalStats"></p>
         </div>
       </div>
+      <div class="modal-actions modal-actions-top">
+        <button type="button" class="btn watch-btn" id="modalWatchBtn"></button>
+        <button type="button" class="btn btn-ghost" id="modalViewShow">📺 View show</button>
+        <a class="btn btn-ghost modal-imdb" id="modalImdb" target="_blank" rel="noopener">View season on IMDb →</a>
+        <a class="btn btn-ghost" id="modalTvdb" target="_blank" rel="noopener" hidden>View series on TVDB →</a>
+      </div>
       <p class="modal-overview" id="modalOverview"></p>
       <h3 class="modal-section">Episode ratings</h3>
       <svg class="modal-curve" id="modalCurve" viewBox="0 0 600 180" preserveAspectRatio="none" aria-hidden="true">
@@ -319,11 +341,6 @@
         <g class="curve-dots"></g>
       </svg>
       <ol class="modal-episodes" id="modalEpisodes"></ol>
-      <div class="modal-actions">
-        <button type="button" class="btn watch-btn" id="modalWatchBtn"></button>
-        <button type="button" class="btn btn-ghost" id="modalViewShow">📺 View show</button>
-        <a class="btn btn-ghost modal-imdb" id="modalImdb" target="_blank" rel="noopener">View season on IMDb →</a>
-      </div>
     </article>
   </div>
 
@@ -342,6 +359,11 @@
           <div class="provider-badges" id="showModalProviders"></div>
         </div>
       </div>
+      <div class="modal-actions modal-actions-top">
+        <button type="button" class="btn compare-btn" id="showModalCompare">＋ Add to compare</button>
+        <a class="btn btn-ghost" id="showModalImdb" target="_blank" rel="noopener">View show on IMDb →</a>
+        <a class="btn btn-ghost" id="showModalTvdb" target="_blank" rel="noopener" hidden>View show on TVDB →</a>
+      </div>
       <p class="modal-overview" id="showModalOverview"></p>
       <section class="season-overlay" id="showModalOverlay" hidden>
         <h3 class="modal-section">Seasons overlay</h3>
@@ -350,10 +372,6 @@
       </section>
       <h3 class="modal-section">All seasons</h3>
       <ol class="show-seasons" id="showModalSeasons"></ol>
-      <div class="modal-actions">
-        <button type="button" class="btn btn-ghost" id="showModalCompare">＋ Add to compare</button>
-        <a class="btn btn-ghost" id="showModalImdb" target="_blank" rel="noopener">View show on IMDb →</a>
-      </div>
     </article>
   </div>
 
@@ -364,11 +382,11 @@
       <button type="button" class="btn modal-close" data-close="compare-modal" aria-label="Close">×</button>
       <h2 id="compareModalTitle">Compare shows</h2>
       <p class="modal-subtitle">Season-average rating trajectory for each show. Click a show name to remove.</p>
-      <svg class="overlay-curve" id="compareModalCurve" viewBox="0 0 600 240" preserveAspectRatio="none" aria-hidden="true"></svg>
-      <div class="overlay-legend" id="compareModalLegend"></div>
-      <div class="modal-actions">
+      <div class="modal-actions modal-actions-top">
         <button type="button" class="btn btn-ghost" id="compareModalClear">Clear all</button>
       </div>
+      <svg class="overlay-curve" id="compareModalCurve" viewBox="0 0 600 240" preserveAspectRatio="none" aria-hidden="true"></svg>
+      <div class="overlay-legend" id="compareModalLegend"></div>
     </article>
   </div>
 
@@ -406,6 +424,7 @@
         <div class="card-stats">
           <span class="stat-climb"></span>
           <span class="stat-avg"></span>
+          <span class="stat-runtime"></span>
           <span class="stat-votes"></span>
         </div>
       </div>
@@ -423,11 +442,13 @@
           <h2 class="row-title"></h2>
           <span class="row-season"></span>
           <span class="row-year"></span>
+          <span class="row-genres"></span>
         </header>
         <div class="row-shapes"></div>
         <div class="row-stats">
           <span class="stat-climb"></span>
           <span class="stat-avg"></span>
+          <span class="stat-runtime"></span>
           <span class="stat-votes"></span>
         </div>
       </div>
