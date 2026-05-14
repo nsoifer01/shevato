@@ -816,7 +816,6 @@ body.rising-seasons-app button {
   background: var(--accent-soft);
   border-color: var(--accent-strong);
   color: var(--accent);
-  margin-bottom: 0.5rem;
 }
 
 /* ---------- "More filters" panel ----------
@@ -892,37 +891,37 @@ body.rising-seasons-app button {
   color: var(--accent);
 }
 
-/* Wrapper that holds the <details> panel and the standalone Clear-all pill
- * side by side. The pill is a SIBLING of .advanced, not a child, so the
- * panel's border can't visually wrap both as a group. */
-.advanced-row {
+/* Row that pairs the Quick filters pill with the Clear-filters pill
+ * immediately to its right. The .label-filters panel lives as a sibling
+ * row below — its visibility is driven by the <details>' [open] state via
+ * :has(), so the panel can't widen the row and push the Clear pill below
+ * the summary. */
+.quick-filters-row {
   display: flex;
-  align-items: flex-start;
-  gap: 0.6rem;
-  /* When details opens, the panel becomes the full-width box; the pill
-     stays aligned to its top. flex-wrap lets the pill drop under the
-     panel on narrower viewports. */
   flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+  margin: 0.6rem 0;
 }
-.advanced-row > .advanced {
-  /* Let the panel shrink/grow to fill remaining space when collapsed and
-     occupy the whole row when open. */
-  flex: 1 1 auto;
-  min-width: 0;
+.quick-filters-row > .quick-filters-wrap { margin: 0; }
+
+#quickFiltersPanel { display: none; }
+.filters:has(.quick-filters-wrap[open]) #quickFiltersPanel {
+  display: flex;
+  margin-top: 0.5rem;
 }
 
 .advanced summary .advanced-summary-label { display: inline-flex; align-items: center; }
 
-/* Standalone "Clear all filters" pill — sits next to the .advanced panel
- * (outside its border) so visually nothing wraps it together with the
- * More filters chip. Hidden via the [hidden] attribute when no filters
- * are active. */
+/* "Clear filters" pill — anchored to the right side of the Quick filters
+ * row so it's always visible alongside the filter controls, regardless of
+ * whether either drawer is open. Hidden via [hidden] when no filters are
+ * active. */
 .advanced-reset,
 .advanced-reset:hover {
   display: inline-flex;
   align-items: center;
   height: 28px;
-  margin-top: 0.6rem; /* line up with .advanced's margin-top: 0.6rem */
   padding: 0 0.85rem;
   background: rgba(248, 113, 113, 0.12);
   border: 1px solid rgba(248, 113, 113, 0.4);
@@ -3076,3 +3075,205 @@ body.advanced-drawer-open {
 
 #footer a { color: var(--accent); }
 #footer a:hover { color: var(--accent); text-decoration: underline; }
+
+/* ---------- Footer "What's new" chip + changelog popover ---------- */
+
+.footer-meta {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  align-items: center;
+  gap: 0.5rem;
+}
+.footer-meta-text { color: var(--muted-2); }
+.footer-meta-sep { color: var(--border-strong); }
+
+/* Footer "What's new" pill. main.css applies height/line-height/color !important
+ * to every button on the site, so most properties here need !important to win. */
+.whats-new-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  height: auto !important;
+  line-height: 1.2 !important;
+  padding: 0.3rem 0.7rem 0.3rem 0.75rem !important;
+  border-radius: 999px;
+  font-size: 0.78rem !important;
+  font-weight: 600;
+  color: var(--text) !important;
+  background: var(--surface-2);
+  border: 1px solid var(--accent-strong);
+  box-shadow: none !important;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background 0.15s ease, border-color 0.15s ease, transform 0.05s ease;
+}
+.whats-new-chip:hover {
+  background: rgba(245, 197, 24, 0.14);
+  border-color: var(--accent);
+  color: var(--text) !important;
+}
+.whats-new-chip:active { transform: translateY(1px); }
+.whats-new-chip:focus-visible {
+  outline: none;
+  box-shadow: var(--accent-glow) !important;
+}
+.whats-new-chip-counts { color: var(--muted); font-weight: 500; }
+.whats-new-chip-added { color: var(--good); font-weight: 700; }
+.whats-new-chip-removed { color: var(--danger); font-weight: 700; }
+.whats-new-chip-cta {
+  color: var(--accent);
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  font-size: 0.68rem;
+  padding-left: 0.55rem;
+  border-left: 1px solid var(--border-strong);
+}
+.whats-new-chip-caret { color: var(--accent); font-size: 0.7rem; }
+
+/* Modal panel — slightly tighter than the season modal because it's a
+ * read-only summary, no media or curve. */
+.changelog-panel {
+  max-width: 560px;
+  gap: 1.1rem;
+}
+.changelog-header { display: flex; flex-direction: column; gap: 0.25rem; }
+.changelog-header h2 { margin: 0; font-size: 1.35rem; }
+.changelog-panel .modal-subtitle { color: var(--muted); font-size: 0.85rem; }
+
+.changelog-section { display: flex; flex-direction: column; gap: 0.55rem; }
+.changelog-section .modal-section {
+  margin: 0;
+  font-size: 0.7rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--muted-2);
+  font-weight: 600;
+}
+
+/* "At a glance" totals: render as a horizontal stat strip with separators. */
+#changelogTotals {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem 1rem;
+  padding: 0.65rem 0.85rem;
+  border-radius: var(--radius-sm);
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+}
+.changelog-stat {
+  font-size: 0.88rem;
+  color: var(--muted);
+}
+.changelog-stat strong { color: var(--text); font-weight: 700; font-variant-numeric: tabular-nums; }
+
+.changelog-shape-pills {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+}
+.changelog-shape-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  padding: 0.18rem 0.55rem;
+  border-radius: 999px;
+  font-size: 0.74rem;
+  font-variant-numeric: tabular-nums;
+  border: 1px solid var(--border-strong);
+  background: var(--surface-2);
+  color: var(--text);
+}
+.changelog-shape-pill.is-up {
+  border-color: rgba(52, 211, 158, 0.35);
+  background: var(--good-soft);
+  color: var(--good);
+}
+.changelog-shape-pill.is-down {
+  border-color: rgba(248, 113, 113, 0.32);
+  background: rgba(248, 113, 113, 0.1);
+  color: var(--danger);
+}
+
+/* Lists: a single softly-bordered card containing tight rows. Only the
+ * Added list gets a max-height — Dropped + Swings are usually short. */
+.changelog-list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface-2);
+  overflow: hidden;
+}
+#changelogAddedList { max-height: 260px; overflow-y: auto; }
+.changelog-list li {
+  padding: 0;
+  margin: 0;
+  border-bottom: 1px solid var(--border);
+}
+.changelog-list li:last-child { border-bottom: 0; }
+.changelog-list-muted li {
+  padding: 0.5rem 0.85rem;
+  font-size: 0.88rem;
+  color: var(--muted);
+}
+
+/* Button rows inside lists. main.css's site-wide button defaults — 3.25rem
+ * height, gray inset border, gray !important text — would otherwise paint
+ * each row as a tall hollow button. Override all of them. */
+.changelog-item-link {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 0.75rem;
+  width: 100%;
+  height: auto !important;
+  line-height: 1.35 !important;
+  padding: 0.5rem 0.85rem !important;
+  background: transparent !important;
+  border: 0 !important;
+  border-radius: 0 !important;
+  box-shadow: none !important;
+  color: var(--text) !important;
+  text-align: left;
+  font: inherit;
+  font-size: 0.88rem !important;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background 0.12s ease, color 0.12s ease;
+}
+.changelog-item-link:hover { background: var(--surface-3) !important; color: var(--text) !important; }
+.changelog-item-link:focus-visible {
+  outline: none;
+  background: var(--surface-3) !important;
+  box-shadow: inset 2px 0 0 var(--accent) !important;
+}
+
+.changelog-swing-delta {
+  font-variant-numeric: tabular-nums;
+  font-size: 0.82rem;
+  color: var(--muted);
+  white-space: nowrap;
+}
+.changelog-swing-delta.is-up { color: var(--good); }
+.changelog-swing-delta.is-down { color: var(--danger); }
+
+@media (max-width: 600px) {
+  .changelog-panel {
+    padding: 1.5rem 1.25rem 1.25rem;
+    gap: 0.9rem;
+  }
+  .changelog-header h2 { font-size: 1.15rem; }
+  .changelog-stat { font-size: 0.82rem; }
+  #changelogAddedList { max-height: 220px; }
+  .whats-new-chip {
+    padding: 0.25rem 0.6rem !important;
+    font-size: 0.72rem !important;
+    gap: 0.4rem;
+  }
+  .whats-new-chip-cta { padding-left: 0.4rem; font-size: 0.62rem; }
+}
