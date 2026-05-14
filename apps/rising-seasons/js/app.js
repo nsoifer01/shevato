@@ -11,6 +11,7 @@ const SHAPE_LABELS = {
   'bad-finale': 'Bad finale',
   rollercoaster: 'Rollercoaster',
   'mid-peak': 'Mid-peak',
+  'saved-best-for-last': 'Saved best for last',
 };
 
 const STORAGE_NS = 'rising-seasons';
@@ -21,6 +22,29 @@ const COMPARE_LIMIT = 5;
 const PAGE_SIZE = 24;
 const STALE_DAYS = 30;
 const MAX_SUGGESTIONS = 10;
+
+// Only show these streaming services as filter chips and as provider tags
+// on cards/rows. TMDB returns ~200 distinct providers including aggregator
+// listings ("BritBox Amazon Channel"), bundlers (Spectrum / Philo / fuboTV),
+// niche specialty channels (AMC+, Acorn TV), and free ad-supported services
+// (Tubi, Pluto, The Roku Channel). Keeping the list to the major
+// subscription services makes the metadata read at a glance and the filter
+// chip row stay short.
+const MAINSTREAM_PROVIDERS = new Set([
+  'Netflix',
+  'Hulu',
+  'Amazon Prime Video',
+  'HBO Max',
+  'Max',
+  'Disney+',
+  'Peacock',
+  'Paramount+',
+  'Apple TV+',
+  'Crunchyroll',
+]);
+function isMainstreamProvider(name) {
+  return MAINSTREAM_PROVIDERS.has(name);
+}
 
 // --- DOM refs ---
 
@@ -44,6 +68,7 @@ const els = {
   showModalProviders: document.getElementById('showModalProviders'),
   results: document.getElementById('results'),
   pager: document.getElementById('pager'),
+  pagerTop: document.getElementById('pager-top'),
   meta: document.getElementById('meta'),
   footerMeta: document.getElementById('footer-meta'),
   statsBar: document.getElementById('statsBar'),
@@ -59,6 +84,7 @@ const els = {
   modalCurve: document.getElementById('modalCurve'),
   modalEpisodes: document.getElementById('modalEpisodes'),
   modalImdb: document.getElementById('modalImdb'),
+  modalTvdb: document.getElementById('modalTvdb'),
   modalPoster: document.getElementById('modalPoster'),
   modalWatchBtn: document.getElementById('modalWatchBtn'),
   modalReroll: document.getElementById('modalReroll'),
@@ -72,6 +98,7 @@ const els = {
   showModalSeasons: document.getElementById('showModalSeasons'),
   showModalPoster: document.getElementById('showModalPoster'),
   showModalImdb: document.getElementById('showModalImdb'),
+  showModalTvdb: document.getElementById('showModalTvdb'),
   showModalOverlay: document.getElementById('showModalOverlay'),
   showModalOverlayCurve: document.getElementById('showModalOverlayCurve'),
   showModalOverlayLegend: document.getElementById('showModalOverlayLegend'),
@@ -351,6 +378,31 @@ function buildSeriesIndex() {
 
 function applyStateFromURL() {
   const p = new URLSearchParams(location.hash.replace(/^#/, ''));
+
+  // Reset every URL-backed field to its default first so that removing a
+  // parameter from the hash (e.g. user deletes &gems=on) actually clears
+  // the corresponding state, instead of leaving the previous value behind.
+  state.shapes = new Set();
+  state.search = '';
+  state.minEpisodes = null;
+  state.maxEpisodes = null;
+  state.minVotes = null;
+  state.minAvg = null;
+  state.minClimb = null;
+  state.minYear = null;
+  state.maxYear = null;
+  state.seriesType = 'all';
+  state.sort = 'popularity';
+  state.watched = 'all';
+  state.aboveImdb = 'all';
+  state.hiddenGems = 'all';
+  state.genres = new Set();
+  state.excludeGenres = new Set();
+  state.languages = new Set();
+  state.providers = new Set();
+  state.page = 1;
+  state.lockedSeriesId = null;
+
   if (p.has('shape')) {
     const val = p.get('shape');
     state.shapes = val === 'all' ? new Set() : new Set(val.split(',').filter(Boolean));
@@ -584,7 +636,13 @@ function languageLabel(code) {
 }
 
 function renderProviderChips() {
-  const top = (dataset.providers || []).slice(0, 10);
+  // Filter the dataset's provider list to the mainstream whitelist before
+  // taking the top N — otherwise the chip row gets dominated by aggregator
+  // listings (Spectrum, Philo, Roku Channel) that aren't real streaming
+  // homes for the content.
+  const top = (dataset.providers || [])
+    .filter((p) => isMainstreamProvider(p.name))
+    .slice(0, 10);
   const frag = document.createDocumentFragment();
   for (const p of top) {
     const btn = document.createElement('button');
@@ -701,10 +759,10 @@ function buildNonShapeChecker() {
     }
     if (state.aboveImdb === 'above' && !aboveImdbBySeries.get(m.seriesId)) return false;
     if (state.hiddenGems === 'on') {
-      // High-rated (avg >= 8.0) and under the radar (each episode has fewer
-      // than 1,000 votes, i.e. minVotes < 1000 across the season).
-      if (m.avgRating < 8.0) return false;
-      if (m.minVotes >= 1000) return false;
+      // High-rated (avg >= 8.5) and under the radar (each episode has fewer
+      // than 500 votes, i.e. minVotes < 500 across the season).
+      if (m.avgRating < 8.5) return false;
+      if (m.minVotes >= 500) return false;
     }
     return true;
   };
@@ -754,8 +812,13 @@ function render() {
   updateShapeChipCounts();
 
   const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
+  const requestedPage = state.page;
   if (state.page > totalPages) state.page = totalPages;
   if (state.page < 1) state.page = 1;
+  // If the URL asked for a page that doesn't exist (e.g. ?page=50 but only
+  // 5 pages are available after filtering), sync the URL back to the page
+  // we're actually showing so it's not lying about position.
+  if (requestedPage !== state.page) writeStateToURL();
 
   renderStatsBar();
   els.meta.textContent = filtered.length
@@ -874,36 +937,48 @@ function stat(html) {
 // --- pagination ---
 
 function renderPager(totalPages, current) {
+  // [target, scrollAfter] — the top pager leaves the user where they are
+  // (so the page-bar above the results stays in view as they click);
+  // the bottom pager scrolls back up to the start of the results, which
+  // is what they expect after reaching the end of a page.
+  const targets = [
+    [els.pagerTop, false],
+    [els.pager, true],
+  ].filter(([t]) => t);
   if (totalPages <= 1) {
-    els.pager.replaceChildren();
-    els.pager.hidden = true;
+    for (const [t] of targets) {
+      t.replaceChildren();
+      t.hidden = true;
+    }
     return;
   }
-  els.pager.hidden = false;
 
-  const frag = document.createDocumentFragment();
-  frag.appendChild(pageButton('Prev', current - 1, current === 1));
-
-  for (const n of pageNumbers(current, totalPages)) {
-    if (n === '…') {
-      const span = document.createElement('span');
-      span.className = 'page-ellipsis';
-      span.textContent = '…';
-      span.setAttribute('aria-hidden', 'true');
-      frag.appendChild(span);
-    } else {
-      const btn = pageButton(String(n), n, false);
-      if (n === current) btn.setAttribute('aria-current', 'page');
-      btn.setAttribute('aria-label', `Page ${n}`);
-      frag.appendChild(btn);
+  // Build a fresh fragment per target — DocumentFragments are consumed by
+  // replaceChildren, so a single fragment can't populate both pagers.
+  for (const [t, scrollAfter] of targets) {
+    const frag = document.createDocumentFragment();
+    frag.appendChild(pageButton('Prev', current - 1, current === 1, scrollAfter));
+    for (const n of pageNumbers(current, totalPages)) {
+      if (n === '…') {
+        const span = document.createElement('span');
+        span.className = 'page-ellipsis';
+        span.textContent = '…';
+        span.setAttribute('aria-hidden', 'true');
+        frag.appendChild(span);
+      } else {
+        const btn = pageButton(String(n), n, false, scrollAfter);
+        if (n === current) btn.setAttribute('aria-current', 'page');
+        btn.setAttribute('aria-label', `Page ${n}`);
+        frag.appendChild(btn);
+      }
     }
+    frag.appendChild(pageButton('Next', current + 1, current === totalPages, scrollAfter));
+    t.replaceChildren(frag);
+    t.hidden = false;
   }
-
-  frag.appendChild(pageButton('Next', current + 1, current === totalPages));
-  els.pager.replaceChildren(frag);
 }
 
-function pageButton(label, target, disabled) {
+function pageButton(label, target, disabled, scrollAfter = true) {
   const btn = document.createElement('button');
   btn.type = 'button';
   btn.className = 'page-btn';
@@ -912,7 +987,7 @@ function pageButton(label, target, disabled) {
     btn.disabled = true;
     btn.setAttribute('aria-disabled', 'true');
   } else {
-    btn.addEventListener('click', () => goToPage(target));
+    btn.addEventListener('click', () => goToPage(target, scrollAfter));
   }
   return btn;
 }
@@ -936,12 +1011,17 @@ function pageNumbers(current, total) {
   return out;
 }
 
-function goToPage(n) {
+function goToPage(n, scrollAfter = true) {
   state.page = n;
   writeStateToURL();
   render();
-  const top = els.results.getBoundingClientRect().top + window.scrollY - 70;
-  window.scrollTo({ top, behavior: 'smooth' });
+  // Only the bottom pager opts into scrolling — clicking the top pager
+  // should leave the user looking at the same vertical position so the
+  // pager they clicked stays under their cursor.
+  if (scrollAfter) {
+    const top = els.results.getBoundingClientRect().top + window.scrollY - 70;
+    window.scrollTo({ top, behavior: 'smooth' });
+  }
 }
 
 function onFilterChange() {
@@ -979,6 +1059,10 @@ function hasActiveFilters() {
 function syncResetButton() {
   if (!els.resetFilters) return;
   const active = hasActiveFilters();
+  // Button lives inside <summary>, so we hide it entirely when there's
+  // nothing to clear rather than leaving a disabled control taking space
+  // next to the "More filters" chip.
+  els.resetFilters.hidden = !active;
   els.resetFilters.disabled = !active;
   els.resetFilters.setAttribute('aria-disabled', String(!active));
   els.resetFilters.title = active
@@ -995,14 +1079,10 @@ function surprisePick() {
 
 function fillShapeTags(container, shapes, { clickable = true } = {}) {
   container.replaceChildren();
-  if (shapes.length === 0) {
-    const tag = document.createElement('span');
-    tag.className = 'shape-tag';
-    tag.textContent = 'No pattern';
-    tag.title = 'This season does not match any shape pattern.';
-    container.appendChild(tag);
-    return;
-  }
+  // No "No pattern" placeholder — an empty shape container just renders
+  // nothing, which keeps the row/card cleaner for seasons that don't fit
+  // a recognized trajectory shape.
+  if (shapes.length === 0) return;
   for (const s of shapes) {
     if (clickable) {
       const tag = document.createElement('button');
@@ -1021,6 +1101,55 @@ function fillShapeTags(container, shapes, { clickable = true } = {}) {
       tag.textContent = SHAPE_LABELS[s] || s;
       container.appendChild(tag);
     }
+  }
+}
+
+// Format an avg-runtime value as "52 min" / "1h 5m" depending on length.
+// Returns '' when no runtime is available so the caller can hide the slot.
+function formatAvgRuntime(min) {
+  if (!min || !Number.isFinite(min)) return '';
+  if (min < 60) return `${min} min`;
+  const h = Math.floor(min / 60);
+  const m = min - h * 60;
+  return m === 0 ? `${h}h` : `${h}h ${m}m`;
+}
+
+// Compact, fixed-width-friendly variant for the result-tile stats grid —
+// always returns minutes ("72 min", "112 min") so the runtime cell doesn't
+// wrap awkwardly compared to its neighbors. The longer formatAvgRuntime is
+// still used in modals and free-text contexts.
+function formatAvgRuntimeShort(min) {
+  if (!min || !Number.isFinite(min)) return '';
+  return `${min} min`;
+}
+
+function avgVotesPerEpisode(m) {
+  return Math.round(m.episodes.reduce((s, e) => s + e.votes, 0) / m.episodes.length);
+}
+
+function setRuntimeStat(node, m) {
+  const el = node.querySelector('.stat-runtime');
+  if (!el) return;
+  const text = formatAvgRuntimeShort(m.avgRuntime);
+  el.textContent = text ? `${text}/ep` : '';
+  el.hidden = !text;
+}
+
+// Append streaming-platform chips into an existing shapes container so the
+// trajectory patterns and the platforms read as one row of metadata.
+// Distinct .provider-tag styling keeps them visually separable from the
+// pattern tags without forcing a second row.
+function fillProviderTags(container, providers) {
+  if (!providers || !providers.length) return;
+  // Same whitelist as the filter chips — only major streaming services get
+  // a chip on the card/row. Channels like AMC+, Philo, The Roku Channel,
+  // Spectrum, and the *-Amazon-Channel aggregator entries are dropped.
+  const filtered = providers.filter(isMainstreamProvider);
+  for (const p of filtered) {
+    const tag = document.createElement('span');
+    tag.className = 'provider-tag';
+    tag.textContent = p;
+    container.appendChild(tag);
   }
 }
 
@@ -1072,24 +1201,29 @@ function buildCard(m) {
   node.querySelector('.card-year').textContent = (m.seasonYear || m.year) || 'year unknown';
   node.querySelector('.card-genres').textContent = m.genres.slice(0, 3).join(' · ');
 
+  const cardShapes = node.querySelector('.card-shapes');
+  // Suppress 'saved-best-for-last' here — the ★ Best badge already conveys it
+  // (a final-season shape only fires when that season is also the show's
+  // best, which always earns the ★).
+  fillShapeTags(cardShapes, m.shapes.filter((s) => s !== 'saved-best-for-last'), { clickable: false });
+  // Best/Worst badge prepended to the shapes row so it reads as a season
+  // descriptor alongside the trajectory pattern, rather than crowding the
+  // title with a big colored chip.
   const badge = maybeBestBadge(m) || maybeWorstBadge(m);
-  // Live next to the season metadata ("S2 · 10 eps") rather than at the
-  // far end of the title row — keeps the title clean and aligns the badge
-  // with the smaller-typography row it visually belongs in.
-  if (badge) node.querySelector('.card-season').appendChild(badge);
+  if (badge) cardShapes.insertBefore(badge, cardShapes.firstChild);
+  fillProviderTags(cardShapes, m.providers);
 
-  fillShapeTags(node.querySelector('.card-shapes'), m.shapes, { clickable: false });
-
-  drawCurve(node.querySelector('.curve'), m.episodes, 300, 70);
+  drawCurve(node.querySelector('.curve'), m.episodes, 300, 70, 0);
 
   const climb = m.lastRating - m.firstRating;
   const climbStr = climb >= 0 ? `+${climb.toFixed(1)}` : climb.toFixed(1);
-  node.querySelector('.stat-climb').textContent = `${m.firstRating.toFixed(1)} → ${m.lastRating.toFixed(1)} (${climbStr})`;
+  node.querySelector('.stat-climb').textContent = `${m.firstRating.toFixed(1)}→${m.lastRating.toFixed(1)} (${climbStr})`;
   const avgEl = node.querySelector('.stat-avg');
   avgEl.textContent = `Avg ${m.avgRating.toFixed(1)}`;
   const cardBadge = aboveImdbBadge(m);
   if (cardBadge) avgEl.appendChild(cardBadge);
-  node.querySelector('.stat-votes').textContent = `${m.minVotes.toLocaleString()} votes/ep min`;
+  setRuntimeStat(node, m);
+  node.querySelector('.stat-votes').textContent = `${avgVotesPerEpisode(m).toLocaleString()} votes/ep`;
 
   const posterEl = node.querySelector('.card-poster');
   if (m.poster) {
@@ -1127,10 +1261,23 @@ function buildRow(m) {
   node.querySelector('.row-season').textContent = `S${m.season} · ${m.episodes.length} eps`;
   node.querySelector('.row-year').textContent = (m.seasonYear || m.year) || '';
 
+  const rowShapes = node.querySelector('.row-shapes');
+  // Suppress 'saved-best-for-last' here — see buildCard for rationale.
+  fillShapeTags(rowShapes, m.shapes.filter((s) => s !== 'saved-best-for-last'), { clickable: false });
+  // Best/Worst badge moves out of the title row and into the shapes row so
+  // it reads as a season descriptor (matches the grid card layout).
   const badge = maybeBestBadge(m) || maybeWorstBadge(m);
-  if (badge) node.querySelector('.row-season').appendChild(badge);
+  if (badge) rowShapes.insertBefore(badge, rowShapes.firstChild);
+  fillProviderTags(rowShapes, m.providers);
 
-  fillShapeTags(node.querySelector('.row-shapes'), m.shapes, { clickable: false });
+  // Genre line, mirroring the grid card's .card-meta. Hidden when there
+  // are no genres on the season (rare but possible).
+  const rowGenres = node.querySelector('.row-genres');
+  if (rowGenres) {
+    const text = (m.genres || []).slice(0, 3).join(' · ');
+    rowGenres.textContent = text;
+    rowGenres.hidden = !text;
+  }
 
   const climb = m.lastRating - m.firstRating;
   const climbStr = climb >= 0 ? `+${climb.toFixed(1)}` : climb.toFixed(1);
@@ -1139,7 +1286,8 @@ function buildRow(m) {
   rowAvgEl.textContent = `Avg ${m.avgRating.toFixed(1)}`;
   const rowBadge = aboveImdbBadge(m);
   if (rowBadge) rowAvgEl.appendChild(rowBadge);
-  node.querySelector('.stat-votes').textContent = `${m.minVotes.toLocaleString()} votes/ep min`;
+  setRuntimeStat(node, m);
+  node.querySelector('.stat-votes').textContent = `${avgVotesPerEpisode(m).toLocaleString()} votes/ep`;
 
   drawCurve(node.querySelector('.row-curve'), m.episodes, 200, 56, 0);
 
@@ -1305,6 +1453,7 @@ function syncCompareButton() {
   const inSet = Compare.has(showModalState.seriesId);
   const atLimit = !inSet && Compare.size() >= COMPARE_LIMIT;
   els.showModalCompare.textContent = inSet ? '✓ In compare' : '＋ Add to compare';
+  els.showModalCompare.classList.toggle('is-in-compare', inSet);
   els.showModalCompare.disabled = atLimit;
   els.showModalCompare.title = atLimit
     ? `Compare set is full (${COMPARE_LIMIT} max) — remove one first`
@@ -1481,7 +1630,17 @@ function openModal(m, opts = {}) {
   const yearStr = seasonYearStr ? ` · ${seasonYearStr}` : '';
   els.modalSubtitle.textContent = `Season ${m.season} · ${m.episodes.length} episodes${yearStr} · ${m.genres.join(', ') || 'No genre listed'}`;
 
-  fillShapeTags(els.modalShapes, m.shapes, { clickable: false });
+  // Shape pills + streaming chips in the modal-shapes row, matching the
+  // chip row rendered on every result tile. Same suppression rule as
+  // cards/rows/show-modal-season-list: 'saved-best-for-last' is a
+  // show-level signal so it doesn't get a per-season pill.
+  els.modalShapes.replaceChildren();
+  fillShapeTags(
+    els.modalShapes,
+    m.shapes.filter((s) => s !== 'saved-best-for-last'),
+    { clickable: false },
+  );
+  fillProviderTags(els.modalShapes, m.providers || []);
 
   const climb = m.lastRating - m.firstRating;
   const climbStr = climb >= 0 ? `+${climb.toFixed(1)}` : climb.toFixed(1);
@@ -1493,8 +1652,10 @@ function openModal(m, opts = {}) {
   els.modalStats.appendChild(statText);
   const seasonModalBadge = aboveImdbBadge(m);
   if (seasonModalBadge) els.modalStats.appendChild(seasonModalBadge);
+  const runtimeStr = formatAvgRuntime(m.avgRuntime);
   els.modalStats.appendChild(document.createTextNode(
-    ` · ${m.minVotes.toLocaleString()} votes per episode (min)`,
+    ` · ${avgVotesPerEpisode(m).toLocaleString()} votes per episode (avg)` +
+    (runtimeStr ? ` · ~${runtimeStr} per episode` : ''),
   ));
 
   els.modalOverview.textContent = m.overview || '';
@@ -1540,6 +1701,12 @@ function openModal(m, opts = {}) {
     votes.className = 'ep-votes';
     votes.textContent = `${e.votes.toLocaleString()} votes`;
     meta.append(rating, votes);
+    if (e.runtime) {
+      const rt = document.createElement('span');
+      rt.className = 'ep-runtime';
+      rt.textContent = formatAvgRuntime(e.runtime);
+      meta.append(rt);
+    }
 
     li.append(num, name, meta);
     epFrag.appendChild(li);
@@ -1547,6 +1714,20 @@ function openModal(m, opts = {}) {
   els.modalEpisodes.replaceChildren(epFrag);
 
   els.modalImdb.href = `https://www.imdb.com/title/${m.seriesId}/episodes/?season=${m.season}`;
+  // Prefer the season-level dereferrer when we have a season tvdbId; otherwise
+  // fall back to the series page (still useful, just not deep-linked).
+  if (m.seasonTvdbId) {
+    els.modalTvdb.href = `https://thetvdb.com/dereferrer/season/${m.seasonTvdbId}`;
+    els.modalTvdb.textContent = 'View season on TVDB →';
+    els.modalTvdb.hidden = false;
+  } else if (m.tvdbId) {
+    els.modalTvdb.href = `https://thetvdb.com/dereferrer/series/${m.tvdbId}`;
+    els.modalTvdb.textContent = 'View series on TVDB →';
+    els.modalTvdb.hidden = false;
+  } else {
+    els.modalTvdb.removeAttribute('href');
+    els.modalTvdb.hidden = true;
+  }
   syncModalWatchBtn();
   els.modalReroll.hidden = !modalState.surprise;
 
@@ -1598,7 +1779,11 @@ function openShowModal(seriesId) {
 
   els.showModalTitle.textContent = meta.title;
 
-  const years = seasons.map((s) => s.year).filter(Boolean);
+  // Use each season's own air year (falling back to the show's start year)
+  // so the range spans the show's full run — m.year is the show-level start
+  // and is identical on every season record, which would otherwise collapse
+  // the range to a single year.
+  const years = seasons.map((s) => s.seasonYear || s.year).filter(Boolean);
   const yearStr = years.length === 0 ? ''
     : years[0] === years[years.length - 1] ? `${years[0]}`
     : `${years[0]}–${years[years.length - 1]}`;
@@ -1610,6 +1795,18 @@ function openShowModal(seriesId) {
 
   const totalEps = seasons.reduce((s, m) => s + m.episodes.length, 0);
   const overallAvg = seasons.reduce((s, m) => s + m.avgRating, 0) / seasons.length;
+  // Show-level average runtime — averaged across every episode that has a
+  // runtime in any season. Skipped entirely when none do.
+  let showRuntimeSum = 0;
+  let showRuntimeCount = 0;
+  for (const s of seasons) {
+    for (const e of s.episodes) {
+      if (e.runtime) { showRuntimeSum += e.runtime; showRuntimeCount++; }
+    }
+  }
+  const showAvgRuntime = showRuntimeCount > 0
+    ? Math.round(showRuntimeSum / showRuntimeCount)
+    : null;
   const watchedCount = seasons.filter((m) => Watched.has(m)).length;
   const statsParts = [
     `${seasons.length} season${seasons.length === 1 ? '' : 's'}`,
@@ -1620,6 +1817,8 @@ function openShowModal(seriesId) {
     statsParts.push(`IMDb ${meta.seriesRating.toFixed(1)}${votesStr}`);
   }
   statsParts.push(`avg episode ${overallAvg.toFixed(1)}`);
+  const showRuntimeStr = formatAvgRuntime(showAvgRuntime);
+  if (showRuntimeStr) statsParts.push(`~${showRuntimeStr}/ep`);
   if (watchedCount > 0) statsParts.push(`${watchedCount} watched`);
   els.showModalStats.replaceChildren();
   els.showModalStats.appendChild(document.createTextNode(statsParts.join(' · ')));
@@ -1633,33 +1832,18 @@ function openShowModal(seriesId) {
     els.showModalStats.appendChild(aboveBadge);
   }
 
-  // Show-level shapes = INTERSECTION across seasons. A shape only belongs
-  // at the show level if it's true of every season — anything else is a
-  // per-season pattern (still rendered on each ss-shape-row below).
-  let commonShapes = null;
-  for (const s of seasons) {
-    const set = new Set(s.shapes);
-    if (commonShapes === null) {
-      commonShapes = set;
-    } else {
-      for (const sh of [...commonShapes]) {
-        if (!set.has(sh)) commonShapes.delete(sh);
-      }
-    }
-  }
-  fillShapeTags(els.showModalShapes, commonShapes ? [...commonShapes] : [], { clickable: false });
+  // Shape labels (Rising / Rebound / Big finale / etc.) live on the
+  // per-season view only — they describe a single season's trajectory,
+  // not a property of the whole show. Clear the show-modal shape slot
+  // so it never renders an "intersection of every season's shapes"
+  // pattern that doesn't really mean anything to a viewer.
+  els.showModalShapes.replaceChildren();
 
-  // Providers badges (TMDB watch providers, US). Hidden when no data.
-  const providersList = meta.providers || [];
+  // Providers — use the same .provider-tag styling the cards and rows
+  // render so streaming chips look identical across every surface. The
+  // mainstream-provider filter happens inside fillProviderTags.
   els.showModalProviders.replaceChildren();
-  if (providersList.length) {
-    for (const name of providersList) {
-      const badge = document.createElement('span');
-      badge.className = 'provider-badge';
-      badge.textContent = name;
-      els.showModalProviders.appendChild(badge);
-    }
-  }
+  fillProviderTags(els.showModalProviders, meta.providers || []);
 
   els.showModalOverview.textContent = meta.overview || '';
 
@@ -1705,6 +1889,13 @@ function openShowModal(seriesId) {
   }
 
   els.showModalImdb.href = `https://www.imdb.com/title/${seriesId}/`;
+  if (meta.tvdbId) {
+    els.showModalTvdb.href = `https://thetvdb.com/dereferrer/series/${meta.tvdbId}`;
+    els.showModalTvdb.hidden = false;
+  } else {
+    els.showModalTvdb.removeAttribute('href');
+    els.showModalTvdb.hidden = true;
+  }
 
   els.showModal.hidden = false;
   els.showModal.setAttribute('aria-hidden', 'false');
@@ -1736,12 +1927,21 @@ function buildShowSeasonRow(m, bestSeason, worstSeason) {
   eps.className = 'ss-eps';
   const ssYear = m.seasonYear || m.year;
   const yearStr = ssYear ? ` · ${ssYear}` : '';
-  eps.textContent = `${m.episodes.length} eps${yearStr}`;
+  const ssRuntimeStr = formatAvgRuntime(m.avgRuntime);
+  const ssRuntimeBit = ssRuntimeStr ? ` · ~${ssRuntimeStr}/ep` : '';
+  eps.textContent = `${m.episodes.length} eps${yearStr}${ssRuntimeBit}`;
   meta.appendChild(eps);
-  if (m.shapes.length) {
+  // Per-season shape labels inside the show modal's season list — these
+  // belong to an individual season, not the show as a whole, so they stay
+  // here. The show-level intersection rendered in els.showModalShapes
+  // above is what gets suppressed (it's a property of the show).
+  // Suppress 'saved-best-for-last' too — the ★ best marker rendered below
+  // already conveys it.
+  const rowShapes = m.shapes.filter((s) => s !== 'saved-best-for-last');
+  if (rowShapes.length) {
     const shapeRow = document.createElement('span');
     shapeRow.className = 'ss-shape-row';
-    for (const s of m.shapes) {
+    for (const s of rowShapes) {
       const tag = document.createElement('span');
       tag.className = 'shape-tag' + (state.shapes.has(s) ? ' active' : '');
       tag.textContent = SHAPE_LABELS[s] || s;
@@ -2239,6 +2439,16 @@ function bindEvents() {
       render();
     });
   }
+
+  // When the URL hash changes (back/forward navigation, or user pasting a
+  // new hash into the address bar), re-apply state from the URL and
+  // re-render. writeStateToURL uses history.replaceState so our own URL
+  // writes don't fire this event — only genuine user navigation does.
+  window.addEventListener('hashchange', () => {
+    applyStateFromURL();
+    syncResetButton();
+    render();
+  });
 
   for (const closer of els.modal.querySelectorAll('[data-close="modal"]')) {
     closer.addEventListener('click', closeModal);
