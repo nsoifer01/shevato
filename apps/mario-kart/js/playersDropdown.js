@@ -115,19 +115,21 @@
                 symbol = nameToUse.charAt(0).toUpperCase() || 'P';
             }
             
+            const safeName = escapeHtml(playerName);
+            const safeSymbol = escapeHtml(symbol);
             return `
                 <div class="player-item ${!isActive ? 'inactive' : ''}" data-player="${playerKey}">
                     <div class="player-header">
-                        <div class="player-initial ${isActive ? 'clickable' : ''}" 
+                        <div class="player-initial ${isActive ? 'clickable' : ''}"
                              onclick="${isActive ? `openIconPicker('${playerKey}', this)` : ''}"
-                             ${isActive ? `title="Click to change icon" aria-label="Change icon for ${playerName}"` : ''}>
-                            <span class="initial-letter">${symbol}</span>
+                             ${isActive ? `title="Click to change icon" aria-label="Change icon for ${safeName}"` : ''}>
+                            <span class="initial-letter">${safeSymbol}</span>
                         </div>
                         <div class="player-details">
                             <label class="player-label">Player ${playerNum}</label>
-                            <input type="text" 
-                                   class="player-name-input" 
-                                   value="${playerName}"
+                            <input type="text"
+                                   class="player-name-input"
+                                   value="${safeName}"
                                    placeholder="Enter name..."
                                    ${!isActive ? 'disabled' : ''}
                                    data-player="${playerKey}"
