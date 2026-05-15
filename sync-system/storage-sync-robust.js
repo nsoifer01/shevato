@@ -20,10 +20,13 @@ import {
 import { db, rtdb, auth } from '../firebase-config.js';
 
 // Configuration
-const DEBOUNCE_MS = 300; // Reduced for faster sync
+const DEBOUNCE_MS = 500; // Balanced: catches keystroke bursts without thrashing Firestore quota
 const MAX_RETRY_ATTEMPTS = 3;
 const RETRY_DELAY_MS = 1000;
 const USE_FIRESTORE = true;
+// Firestore rejects documents > 1 MiB. We refuse to flush above 700 KB so a
+// single namespace can't silently lose writes once payloads grow.
+const MAX_FLUSH_BYTES = 700 * 1024;
 
 // Global state management (singleton pattern)
 class StorageSyncManager {
@@ -423,39 +426,42 @@ class StorageSyncManager {
     }
     
     if (shouldApply) {
-      // Set sync lock to prevent echo
+      // Echo-prevention lock. Held only across the synchronous body below
+      // so that any forward through the immediate-sync override (which
+      // runs synchronously inside setItem) sees the lock and skips. Older
+      // versions cleared this via setTimeout(..., 100) which silently
+      // dropped any local user write that happened during that window.
       this.syncLocks.set(key, true);
-      
+
       try {
         // Use original methods if available, otherwise fall back to localStorage directly
         const setItem = this.originalMethods?.setItem || localStorage.setItem.bind(localStorage);
         const removeItem = this.originalMethods?.removeItem || localStorage.removeItem.bind(localStorage);
-        
+
         if (remoteInfo.deleted || remoteInfo.value === undefined || remoteInfo.value === null) {
           removeItem(key);
         } else {
-          const value = typeof remoteInfo.value === 'object' ? 
+          const value = typeof remoteInfo.value === 'object' ?
             JSON.stringify(remoteInfo.value) : String(remoteInfo.value);
           setItem(key, value);
         }
-        
+
         // Update local tracking
         this.localRevisions.set(key, {
           rev: remoteInfo.rev || 0,
           updatedAt: remoteTimestamp,
           hash: this.hashValue(remoteInfo.value)
         });
-        
+
         this.lastRemoteUpdates.set(key, remoteTimestamp);
-        
+
         // Dispatch custom event for apps that want to listen
         window.dispatchEvent(new CustomEvent('localStorageSync', {
           detail: { key, value: remoteInfo.value, source: 'remote' }
         }));
-        
+
       } finally {
-        // Clear sync lock after a brief delay
-        setTimeout(() => this.syncLocks.delete(key), 100);
+        this.syncLocks.delete(key);
       }
     }
   }
@@ -594,10 +600,40 @@ class StorageSyncManager {
       }
     }
 
+    // Refuse to ship a payload that would breach Firestore's 1 MiB doc
+    // ceiling. Surface as a real error so the retry path requeues and the
+    // user sees something instead of a silent drop.
+    const approxBytes = this.estimatePayloadBytes(dataPayload);
+    if (approxBytes > MAX_FLUSH_BYTES) {
+      throw new Error(
+        `Refusing to flush ${state.namespace}: payload ~${approxBytes}B exceeds ${MAX_FLUSH_BYTES}B`
+      );
+    }
+
     await setDoc(docRef, {
       data: dataPayload,
       meta: { lastUpdated: serverTimestamp() }
     }, { merge: true });
+  }
+
+  /**
+   * Cheap upper-bound estimate of a payload's serialised size. Sentinels
+   * like serverTimestamp() are not JSON-serialisable, so we substitute a
+   * stand-in before measuring. Order-of-magnitude accurate, which is all
+   * the size guard needs.
+   */
+  estimatePayloadBytes(payload) {
+    try {
+      const probe = JSON.stringify(payload, (_, v) => {
+        if (v && typeof v === 'object' && typeof v.toJSON !== 'function' && v.constructor && v.constructor.name && v.constructor.name.includes('FieldValue')) {
+          return '__SENTINEL__';
+        }
+        return v;
+      });
+      return probe ? probe.length : 0;
+    } catch {
+      return 0;
+    }
   }
 
   /**
@@ -835,15 +871,19 @@ window._debugSync = {
   locks: () => Array.from(syncManager.syncLocks.keys()),
   revisions: () => Object.fromEntries(syncManager.localRevisions),
   
-  // Manual initial merge trigger
+  // Manual re-upload of any keys present locally but missing remotely.
+  // The initial merge no longer has a dedicated method (the snapshot
+  // listener covers it on attach); this debug entry just re-runs the
+  // local-only-keys upload against an empty remote snapshot.
   async triggerInitialMerge(namespace) {
     const state = syncManager.syncStates.get(namespace);
     if (!state) {
       console.error(`❌ Namespace "${namespace}" not found`);
       return;
     }
-
-    await syncManager.performInitialMerge(state);
+    state.initialMergeDone = false;
+    syncManager.uploadLocalOnlyKeys(state, {});
+    state.initialMergeDone = true;
   },
   
   // Get all available namespaces
