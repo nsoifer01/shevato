@@ -21,7 +21,7 @@
                   ".validate": "newData.isNumber() || newData.val() === '.sv'"
                 },
                 "rev": {
-                  ".validate": "newData.isNumber() && newData.val() >= 0"
+                  ".validate": "newData.isNumber() && newData.val() > 0"
                 }
               }
             },

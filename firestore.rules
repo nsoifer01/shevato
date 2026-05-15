@@ -1,26 +1,29 @@
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
-    // Users can only read/write their own data
+    // The user document itself (no subcollections — those are scoped
+    // explicitly below so the granular validation actually applies).
     match /users/{userId} {
       allow read, write: if request.auth != null && request.auth.uid == userId;
-      
-      // Recursive rule for all subcollections and documents
-      match /{document=**} {
-        allow read, write: if request.auth != null && request.auth.uid == userId;
-      }
     }
-    
-    // Alternative: More granular control per namespace
+
+    // Per-app sync documents written by storage-sync-robust.js. The shape
+    // check is the *only* reason the granular rule existed; the broader
+    // recursive rule that used to live above this one bypassed it
+    // entirely (Firestore unions allow rules — any matching allow grants
+    // access — so a permissive parent rule disables narrower validation
+    // on the same path).
     match /users/{userId}/apps/{namespace} {
       allow read: if request.auth != null && request.auth.uid == userId;
-      
-      allow write: if request.auth != null 
+
+      allow write: if request.auth != null
         && request.auth.uid == userId
-        && request.resource.data.keys().hasAll(['data', 'meta'])
+        && request.resource.data.keys().hasOnly(['data', 'meta'])
+        && request.resource.data.data is map
+        && request.resource.data.meta is map
         && request.resource.data.meta.keys().hasAll(['lastUpdated']);
     }
-    
+
     // Deny all other access
     match /{document=**} {
       allow read, write: if false;
