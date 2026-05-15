@@ -25,7 +25,7 @@
   font-size: 0.78rem;
   letter-spacing: 0.24em;
   text-transform: uppercase;
-  color: #0044cc;
+  color: var(--brand-blue);
   font-weight: 600;
   margin-bottom: 1rem;
 }
@@ -39,7 +39,7 @@
   color: #1c1f24;
 }
 .hero h1 .accent {
-  color: #0044cc;
+  color: var(--brand-blue);
   font-weight: 500;
 }
 .hero p.lede {
@@ -56,22 +56,22 @@
   justify-content: center;
 }
 .hero .cta-row .button.primary {
-  background-color: #0044cc;
+  background-color: var(--brand-blue);
   color: #ffffff !important;
-  box-shadow: 0 6px 16px rgba(0, 68, 204, 0.18);
+  box-shadow: 0 6px 16px rgba(var(--brand-blue-rgb), 0.18);
 }
 .hero .cta-row .button.primary:hover {
-  background-color: #003bb5;
-  box-shadow: 0 10px 22px rgba(0, 68, 204, 0.25);
+  background-color: var(--brand-blue-hover);
+  box-shadow: 0 10px 22px rgba(var(--brand-blue-rgb), 0.25);
 }
 .hero .cta-row .button.ghost {
-  background-color: rgba(0, 68, 204, 0.06);
-  color: #0044cc !important;
-  box-shadow: inset 0 0 0 1px rgba(0, 68, 204, 0.2);
+  background-color: rgba(var(--brand-blue-rgb), 0.06);
+  color: var(--brand-blue) !important;
+  box-shadow: inset 0 0 0 1px rgba(var(--brand-blue-rgb), 0.2);
 }
 .hero .cta-row .button.ghost:hover {
-  background-color: rgba(0, 68, 204, 0.1);
-  box-shadow: inset 0 0 0 1px rgba(0, 68, 204, 0.35);
+  background-color: rgba(var(--brand-blue-rgb), 0.1);
+  box-shadow: inset 0 0 0 1px rgba(var(--brand-blue-rgb), 0.35);
 }
 
 @media screen and (max-width: 736px) {
@@ -105,7 +105,7 @@
 .capability {
   position: relative;
   background: #ffffff;
-  border: 1px solid rgba(0, 68, 204, 0.08);
+  border: 1px solid rgba(var(--brand-blue-rgb), 0.08);
   border-radius: 10px;
   padding: 1.6rem 1.5rem;
   box-shadow: 0 2px 6px rgba(0, 0, 0, 0.04);
@@ -113,8 +113,8 @@
 }
 .capability:hover {
   transform: translateY(-3px);
-  box-shadow: 0 10px 28px rgba(0, 68, 204, 0.12);
-  border-color: rgba(0, 68, 204, 0.22);
+  box-shadow: 0 10px 28px rgba(var(--brand-blue-rgb), 0.12);
+  border-color: rgba(var(--brand-blue-rgb), 0.22);
 }
 .capability .icon {
   display: inline-flex;
@@ -123,8 +123,8 @@
   width: 2.8rem;
   height: 2.8rem;
   border-radius: 8px;
-  background: linear-gradient(135deg, rgba(0, 68, 204, 0.08), rgba(74, 144, 255, 0.14));
-  color: #0044cc;
+  background: linear-gradient(135deg, rgba(var(--brand-blue-rgb), 0.08), rgba(74, 144, 255, 0.14));
+  color: var(--brand-blue);
   font-size: 1.25rem;
   margin-bottom: 1rem;
 }
@@ -154,8 +154,8 @@
   font-size: 0.72rem;
   letter-spacing: 0.04em;
   text-transform: uppercase;
-  color: #0044cc;
-  background: rgba(0, 68, 204, 0.06);
+  color: var(--brand-blue);
+  background: rgba(var(--brand-blue-rgb), 0.06);
   border-radius: 999px;
   padding: 0.25rem 0.65rem;
   margin: 0;
@@ -171,11 +171,11 @@
   gap: 0.85rem;
   margin: 0 0 1.25rem;
   padding-bottom: 0.6rem;
-  border-bottom: 2px solid rgba(0, 68, 204, 0.1);
+  border-bottom: 2px solid rgba(var(--brand-blue-rgb), 0.1);
 }
 .work-group .group-head .icon {
   font-size: 1.4rem;
-  color: #0044cc;
+  color: var(--brand-blue);
 }
 .work-group .group-head h2 {
   margin: 0;
@@ -190,7 +190,7 @@
 }
 .work-item {
   background: #ffffff;
-  border: 1px solid rgba(0, 68, 204, 0.07);
+  border: 1px solid rgba(var(--brand-blue-rgb), 0.07);
   border-radius: 10px;
   padding: 1.5rem 1.5rem 1.35rem;
   box-shadow: 0 1px 4px rgba(0, 0, 0, 0.04);
@@ -198,8 +198,8 @@
 }
 .work-item:hover {
   transform: translateY(-3px);
-  box-shadow: 0 8px 22px rgba(0, 68, 204, 0.1);
-  border-color: rgba(0, 68, 204, 0.2);
+  box-shadow: 0 8px 22px rgba(var(--brand-blue-rgb), 0.1);
+  border-color: rgba(var(--brand-blue-rgb), 0.2);
 }
 .work-item h3 {
   font-size: 1.05rem;
@@ -214,7 +214,7 @@
   font-size: 0.74rem;
   letter-spacing: 0.12em;
   text-transform: uppercase;
-  color: #0044cc;
+  color: var(--brand-blue);
   font-weight: 600;
   margin-bottom: 0.55rem;
 }
@@ -267,7 +267,7 @@
 }
 .skill-row {
   background: #ffffff;
-  border: 1px solid rgba(0, 68, 204, 0.07);
+  border: 1px solid rgba(var(--brand-blue-rgb), 0.07);
   border-radius: 10px;
   padding: 1.25rem 1.4rem;
 }
@@ -275,7 +275,7 @@
   font-size: 0.78rem;
   letter-spacing: 0.16em;
   text-transform: uppercase;
-  color: #0044cc;
+  color: var(--brand-blue);
   margin: 0 0 0.65rem;
   font-weight: 600;
 }
@@ -293,10 +293,10 @@
 }
 .contact-card {
   background: #ffffff;
-  border: 1px solid rgba(0, 68, 204, 0.08);
+  border: 1px solid rgba(var(--brand-blue-rgb), 0.08);
   border-radius: 12px;
   padding: 2rem 2rem 1.5rem;
-  box-shadow: 0 6px 22px rgba(0, 68, 204, 0.06);
+  box-shadow: 0 6px 22px rgba(var(--brand-blue-rgb), 0.06);
   margin: 1rem 0 2rem;
 }
 .contact-methods {
@@ -317,7 +317,7 @@
   gap: 0.85rem;
   padding: 1rem 1.1rem;
   background: #f8faff;
-  border: 1px solid rgba(0, 68, 204, 0.1);
+  border: 1px solid rgba(var(--brand-blue-rgb), 0.1);
   border-radius: 10px;
   color: #1c1f24;
   text-decoration: none;
@@ -326,17 +326,17 @@
 .contact-methods a:hover {
   transform: translateY(-2px);
   background: #eef3ff;
-  border-color: rgba(0, 68, 204, 0.3);
+  border-color: rgba(var(--brand-blue-rgb), 0.3);
 }
 .contact-methods .icon {
   width: 2.4rem;
   height: 2.4rem;
   border-radius: 8px;
-  background: linear-gradient(135deg, rgba(0, 68, 204, 0.1), rgba(74, 144, 255, 0.18));
+  background: linear-gradient(135deg, rgba(var(--brand-blue-rgb), 0.1), rgba(74, 144, 255, 0.18));
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  color: #0044cc;
+  color: var(--brand-blue);
   font-size: 1.1rem;
   flex-shrink: 0;
 }
@@ -381,7 +381,7 @@
 .preview-card {
   position: relative;
   background: #ffffff;
-  border: 1px solid rgba(0, 68, 204, 0.08);
+  border: 1px solid rgba(var(--brand-blue-rgb), 0.08);
   border-radius: 12px;
   padding: 1.5rem 1.5rem 1.25rem;
   text-decoration: none;
@@ -393,14 +393,14 @@
 }
 .preview-card:hover {
   transform: translateY(-3px);
-  box-shadow: 0 12px 28px rgba(0, 68, 204, 0.12);
-  border-color: rgba(0, 68, 204, 0.22);
+  box-shadow: 0 12px 28px rgba(var(--brand-blue-rgb), 0.12);
+  border-color: rgba(var(--brand-blue-rgb), 0.22);
 }
 .preview-card .eyebrow {
   font-size: 0.72rem;
   letter-spacing: 0.18em;
   text-transform: uppercase;
-  color: #0044cc;
+  color: var(--brand-blue);
   font-weight: 600;
 }
 .preview-card h3 {
@@ -422,7 +422,7 @@
   padding-top: 0.6rem;
   font-size: 0.85rem;
   font-weight: 600;
-  color: #0044cc;
+  color: var(--brand-blue);
   display: inline-flex;
   align-items: center;
   gap: 0.4rem;
@@ -437,13 +437,13 @@
 
 /* CTA banner (shared across Work, Services). -------------------------------- */
 .cta-banner {
-  background: linear-gradient(135deg, #0044cc 0%, #1a5fd9 100%);
+  background: linear-gradient(135deg, var(--brand-blue) 0%, var(--brand-blue-tint) 100%);
   color: #ffffff;
   border-radius: 14px;
   padding: 2.75rem 2rem;
   text-align: center;
   margin: 3rem 0 1rem;
-  box-shadow: 0 14px 32px rgba(0, 68, 204, 0.22);
+  box-shadow: 0 14px 32px rgba(var(--brand-blue-rgb), 0.22);
 }
 .cta-banner h3 {
   color: #ffffff;
@@ -462,7 +462,7 @@
 .cta-banner .cta-button {
   display: inline-block;
   background: #ffffff;
-  color: #0044cc;
+  color: var(--brand-blue);
   padding: 0.85rem 2.25rem;
   border-radius: 999px;
   font-weight: 600;
@@ -489,5 +489,5 @@ body {
   min-height: 100vh;
 }
 .wrapper { flex: 1; }
-.wrapper-inherit-padding { padding-top: inherit; }
+/* .wrapper-inherit-padding lives in brand-colors.css; it loads on every page. */
 #footer { margin-top: auto; }
