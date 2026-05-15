@@ -13,6 +13,13 @@
   status = 301
   force = true
 
+# Extensionless variant in case anyone bookmarked /product without .html.
+[[redirects]]
+  from = "/product"
+  to = "/work.html"
+  status = 301
+  force = true
+
 # Baseline security headers for every response. The CSP is intentionally
 # Report-Only because main.js (jQuery + the auth modal) sets element
 # styles at runtime and writes inline event-style attributes via
