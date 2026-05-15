@@ -1,6 +1,174 @@
 {
   "updates": [
     {
+      "builtAt": "2026-05-15T07:21:39.030Z",
+      "totals": {
+        "seasons": 16553,
+        "delta": 8
+      },
+      "shapeCounts": {
+        "declining": 216,
+        "rollercoaster": 3564,
+        "rebound": 2783,
+        "mid-peak": 1115,
+        "big-finale": 4040,
+        "bad-finale": 1046,
+        "front-loaded": 546,
+        "saved-best-for-last": 433,
+        "slow-burn": 872,
+        "rising": 594,
+        "consistent": 454
+      },
+      "shapeDeltas": {
+        "declining": 2,
+        "rollercoaster": 2,
+        "rebound": -4,
+        "mid-peak": -1,
+        "bad-finale": 1,
+        "front-loaded": 1,
+        "saved-best-for-last": -1,
+        "rising": -2
+      },
+      "added": [
+        {
+          "seriesId": "tt31137273",
+          "title": "Margo's Got Money Troubles",
+          "season": 1,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt35515227",
+          "title": "CIA",
+          "season": 1,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt11147852",
+          "title": "Dorohedoro",
+          "season": 2,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt0364845",
+          "title": "NCIS",
+          "season": 23,
+          "seasonYear": 2025
+        },
+        {
+          "seriesId": "tt33546863",
+          "title": "Off Campus",
+          "season": 1,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt0115355",
+          "title": "Silent Witness",
+          "season": 29,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt0070992",
+          "title": "Happy Days",
+          "season": 6,
+          "seasonYear": 1978
+        },
+        {
+          "seriesId": "tt14016574",
+          "title": "Krapopolis",
+          "season": 2,
+          "seasonYear": 2024
+        },
+        {
+          "seriesId": "tt2788780",
+          "title": "Undateable",
+          "season": 1,
+          "seasonYear": 2014
+        },
+        {
+          "seriesId": "tt7814574",
+          "title": "Junji Ito Collection",
+          "season": 1,
+          "seasonYear": 2018
+        },
+        {
+          "seriesId": "tt15395964",
+          "title": "Coach Prime",
+          "season": 1,
+          "seasonYear": 2022
+        },
+        {
+          "seriesId": "tt15395964",
+          "title": "Coach Prime",
+          "season": 2,
+          "seasonYear": 2023
+        },
+        {
+          "seriesId": "tt14669850",
+          "title": "Next Level Chef",
+          "season": 5,
+          "seasonYear": 2026
+        }
+      ],
+      "removed": [
+        {
+          "seriesId": "tt0388629",
+          "title": "One Piece",
+          "season": 1,
+          "seasonYear": 1999
+        },
+        {
+          "seriesId": "tt9054364",
+          "title": "That Time I Got Reincarnated as a Slime",
+          "season": 4,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt2805096",
+          "title": "Chicago P.D.",
+          "season": 13,
+          "seasonYear": 2025
+        },
+        {
+          "seriesId": "tt39443176",
+          "title": "Gals Can't Be Kind to Otaku!?",
+          "season": 1,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt21861638",
+          "title": "Celebrity Jeopardy!",
+          "season": 4,
+          "seasonYear": 2026
+        }
+      ],
+      "ratingSwings": [
+        {
+          "seriesId": "tt1694423",
+          "title": "MasterChef: USA",
+          "season": 16,
+          "from": 6.53,
+          "to": 6.32,
+          "delta": -0.21
+        },
+        {
+          "seriesId": "tt1190634",
+          "title": "The Boys",
+          "season": 5,
+          "from": 8.3,
+          "to": 8.1,
+          "delta": -0.2
+        }
+      ],
+      "modifiedCounts": {
+        "seriesVotes": 9744,
+        "avgRating": 200,
+        "shapes": 35,
+        "episodeCount": 6,
+        "seriesRating": 26,
+        "poster": 1
+      }
+    },
+    {
       "builtAt": "2026-05-14T08:24:59.670Z",
       "totals": {
         "seasons": 16545,
