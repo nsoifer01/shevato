@@ -77,13 +77,14 @@ function generateQuickPlayerInputs() {
         const inputDiv = document.createElement('div');
         inputDiv.className = 'quick-player-input';
         
+        const truncated = playerName.length > 8 ? playerName.substring(0, 8) + '...' : playerName;
         inputDiv.innerHTML = `
-            <label class="quick-player-label">${playerName.length > 8 ? playerName.substring(0, 8) + '...' : playerName}:</label>
-            <input type="number" 
-                   class="quick-position-input" 
-                   id="quick-player${i}" 
-                   min="${MIN_POSITIONS}" 
-                   max="${MAX_POSITIONS}" 
+            <label class="quick-player-label">${escapeHtml(truncated)}:</label>
+            <input type="number"
+                   class="quick-position-input"
+                   id="quick-player${i}"
+                   min="${MIN_POSITIONS}"
+                   max="${MAX_POSITIONS}"
                    placeholder="${MIN_POSITIONS}-${MAX_POSITIONS}"
                    onkeypress="handleQuickInputEnter(event, ${i})"
                    oninput="validateQuickInput(this)">

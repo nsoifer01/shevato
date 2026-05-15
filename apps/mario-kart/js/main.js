@@ -1025,9 +1025,10 @@ function updateHistoryTableHeaders() {
     if (!headerRow) return;
 
     // Generate dynamic headers
-    const playerHeaders = players.map(player =>
-        `<th style="cursor: pointer;" onclick="sortTable('${player}')" tabindex="0" onkeydown="if(event.key==='Enter'||event.key===' ')sortTable('${player}')" aria-label="Sort by ${window.PlayerNameManager ? window.PlayerNameManager.get(player) : getPlayerName(player)}'s position">${window.PlayerNameManager ? window.PlayerNameManager.get(player) : getPlayerName(player)} ↕</th>`
-    ).join('');
+    const playerHeaders = players.map(player => {
+        const name = escapeHtml(window.PlayerNameManager ? window.PlayerNameManager.get(player) : getPlayerName(player));
+        return `<th style="cursor: pointer;" onclick="sortTable('${player}')" tabindex="0" onkeydown="if(event.key==='Enter'||event.key===' ')sortTable('${player}')" aria-label="Sort by ${name}'s position">${name} ↕</th>`;
+    }).join('');
 
     headerRow.innerHTML = `
         <th>Race #</th>
@@ -1143,7 +1144,7 @@ function updateMobileRaceCards(filteredRaces) {
             return position !== null
                 ? `
                     <div class="position-item">
-                        <span class="player-label">${playerName}:</span>
+                        <span class="player-label">${escapeHtml(playerName)}:</span>
                         <span class="position-cell ${getRelativePositionClass(position, positions)}">${position}</span>
                     </div>
                 `
@@ -1273,7 +1274,7 @@ function updateDisplay() {
                         const avgs = players.map(p => parseFloat(stats.averageFinish[p]) || '-');
                         return `
                             <div class="stat-item ${getStatClass(avg || '-', avgs)}">
-                                <div class="player-name">${window.PlayerNameManager ? window.PlayerNameManager.get(player) : getPlayerName(player)}</div>
+                                <div class="player-name">${escapeHtml(window.PlayerNameManager ? window.PlayerNameManager.get(player) : getPlayerName(player))}</div>
                                 <div class="player-value">${avg || '-'}</div>
                             </div>
                         `;
@@ -1296,7 +1297,7 @@ function updateDisplay() {
                         });
                         return `
                             <div class="stat-item ${getStatClass(played > 0 ? winRate : '-', allWinRates, true)}">
-                                <div class="player-name">${window.PlayerNameManager ? window.PlayerNameManager.get(player) : getPlayerName(player)}</div>
+                                <div class="player-name">${escapeHtml(window.PlayerNameManager ? window.PlayerNameManager.get(player) : getPlayerName(player))}</div>
                                 <div class="player-value">${played > 0 ? winRateDisplay + '%' : '-'}</div>
                                 ${played > 0 ? `<div class="stat-count">${wins}</div>` : ''}
                             </div>
@@ -1320,7 +1321,7 @@ function updateDisplay() {
                         });
                         return `
                             <div class="stat-item ${getStatClass(played > 0 ? podiumRate : '-', allPodiumRates, true)}">
-                                <div class="player-name">${window.PlayerNameManager ? window.PlayerNameManager.get(player) : getPlayerName(player)}</div>
+                                <div class="player-name">${escapeHtml(window.PlayerNameManager ? window.PlayerNameManager.get(player) : getPlayerName(player))}</div>
                                 <div class="player-value">${played > 0 ? podiumRateDisplay + '%' : '-'}</div>
                                 ${played > 0 ? `<div class="stat-count">${podiums}</div>` : ''}
                             </div>
@@ -1338,7 +1339,7 @@ function updateDisplay() {
                         const allStreaks = players.map(p => stats.racesPlayed[p] > 0 ? stats.bestStreak[p] : '-');
                         return `
                             <div class="stat-item ${getStatClass(played > 0 ? streak : '-', allStreaks, true)}">
-                                <div class="player-name">${window.PlayerNameManager ? window.PlayerNameManager.get(player) : getPlayerName(player)}</div>
+                                <div class="player-name">${escapeHtml(window.PlayerNameManager ? window.PlayerNameManager.get(player) : getPlayerName(player))}</div>
                                 <div class="player-value">${played > 0 ? streak : '-'}</div>
                             </div>
                         `;

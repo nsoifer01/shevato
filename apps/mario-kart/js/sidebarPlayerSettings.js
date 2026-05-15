@@ -94,19 +94,21 @@
                 symbol = nameToUse.charAt(0).toUpperCase() || 'P';
             }
             
+            const safeName = window.escapeHtml ? window.escapeHtml(playerName) : playerName;
+            const safeSymbol = window.escapeHtml ? window.escapeHtml(symbol) : symbol;
             return `
                 <div class="sidebar-player-item ${!isActive ? 'inactive' : ''}" data-player="${playerKey}">
                     <div class="sidebar-player-header">
-                        <div class="sidebar-player-initial ${isActive ? 'clickable' : ''}" 
+                        <div class="sidebar-player-initial ${isActive ? 'clickable' : ''}"
                              onclick="${isActive ? `openSidebarIconPicker('${playerKey}', this)` : ''}"
                              ${isActive ? 'title="Click to change icon"' : ''}>
-                            <span class="sidebar-initial-letter">${symbol}</span>
+                            <span class="sidebar-initial-letter">${safeSymbol}</span>
                         </div>
                         <div class="sidebar-player-details">
                             <label class="sidebar-player-label">Player ${playerNum}</label>
-                            <input type="text" 
-                                   class="sidebar-player-name-input" 
-                                   value="${playerName}"
+                            <input type="text"
+                                   class="sidebar-player-name-input"
+                                   value="${safeName}"
                                    placeholder="Enter name..."
                                    ${!isActive ? 'disabled' : ''}
                                    data-player="${playerKey}"
