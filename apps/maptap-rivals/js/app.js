@@ -1441,11 +1441,12 @@
 
     // callouts
     calloutsHost.innerHTML = '';
-    if (s.hot) calloutsHost.appendChild(callout('good', '🔥', `Hot streak: <strong>${s.streak.curMine} wins in a row</strong> against ${rival.name}.`));
-    if (s.onColdStreak) calloutsHost.appendChild(callout('bad', '❄️', `${rival.name} has won the last <strong>${s.streak.curTheirs} games</strong>. Time to bounce back.`));
+    const rivalNameSafe = escapeHtml(rival.name);
+    if (s.hot) calloutsHost.appendChild(callout('good', '🔥', `Hot streak: <strong>${s.streak.curMine} wins in a row</strong> against ${rivalNameSafe}.`));
+    if (s.onColdStreak) calloutsHost.appendChild(callout('bad', '❄️', `${rivalNameSafe} has won the last <strong>${s.streak.curTheirs} games</strong>. Time to bounce back.`));
     if (s.total >= 3) {
       const pb = s.games.find(g => getMyTotal(g) === s.bestMine);
-      if (pb) calloutsHost.appendChild(callout('good', '⭐', `Personal best <strong>${s.bestMine}</strong> set vs ${rival.name} on ${fmtDateShort(pb.date)}.`));
+      if (pb) calloutsHost.appendChild(callout('good', '⭐', `Personal best <strong>${s.bestMine}</strong> set vs ${rivalNameSafe} on ${fmtDateShort(pb.date)}.`));
     }
     // games table (most recent first), paginated
     tableBody.innerHTML = '';
@@ -1616,7 +1617,7 @@
     }
     if (s.myTotalPerfects > 0 || s.theirTotalPerfects > 0) {
       cWrap.appendChild(callout('', '💯',
-        `Perfect 100s — <strong>you ${s.myTotalPerfects}</strong>, ${s.rival.name} ${s.theirTotalPerfects}.`));
+        `Perfect 100s — <strong>you ${s.myTotalPerfects}</strong>, ${escapeHtml(s.rival.name)} ${s.theirTotalPerfects}.`));
     }
     if (s.mostVolatile && s.mostVolatile.total >= 3) {
       cWrap.appendChild(callout('', '🎲',

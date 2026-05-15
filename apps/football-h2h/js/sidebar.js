@@ -586,32 +586,32 @@ function generateSidebarPlayerSettings() {
                 <h4 class="section-title">Player Names</h4>
                 <div class="player-input-group">
                     <label for="sidebar-player1-name">Player 1</label>
-                    <input type="text" id="sidebar-player1-name" class="sidebar-player-input" 
-                           placeholder="Enter player 1 name" value="${currentPlayer1Name}" 
+                    <input type="text" id="sidebar-player1-name" class="sidebar-player-input"
+                           placeholder="Enter player 1 name" value="${escapeHtml(currentPlayer1Name)}"
                            onchange="updatePlayerName(1, this.value)">
                 </div>
                 <div class="player-input-group">
                     <label for="sidebar-player2-name">Player 2</label>
-                    <input type="text" id="sidebar-player2-name" class="sidebar-player-input" 
-                           placeholder="Enter player 2 name" value="${currentPlayer2Name}" 
+                    <input type="text" id="sidebar-player2-name" class="sidebar-player-input"
+                           placeholder="Enter player 2 name" value="${escapeHtml(currentPlayer2Name)}"
                            onchange="updatePlayerName(2, this.value)">
                 </div>
             </div>
-            
+
             <div class="player-settings-section">
                 <h4 class="section-title">Player Icons</h4>
                 <div class="player-icon-row">
                     <div class="player-icon-item">
                         <div class="player-icon-display clickable-icon" onclick="openIconSelector(1)">
-                            <span class="team-logo">${currentPlayer1Icon}</span>
+                            <span class="team-logo">${escapeHtml(currentPlayer1Icon)}</span>
                         </div>
-                        <span class="player-label">${currentPlayer1Name}</span>
+                        <span class="player-label">${escapeHtml(currentPlayer1Name)}</span>
                     </div>
                     <div class="player-icon-item">
                         <div class="player-icon-display clickable-icon" onclick="openIconSelector(2)">
-                            <span class="team-logo">${currentPlayer2Icon}</span>
+                            <span class="team-logo">${escapeHtml(currentPlayer2Icon)}</span>
                         </div>
-                        <span class="player-label">${currentPlayer2Name}</span>
+                        <span class="player-label">${escapeHtml(currentPlayer2Name)}</span>
                     </div>
                 </div>
             </div>
@@ -643,28 +643,28 @@ function generateSidebarGameInputs() {
     container.innerHTML = `
         <div class="sidebar-game-goals">
             <div class="sidebar-player-input">
-                <label for="sidebar-player1-goals">${currentPlayer1Name} Goals:</label>
-                <input type="number" id="sidebar-player1-goals" class="sidebar-goals-input" 
+                <label for="sidebar-player1-goals">${escapeHtml(currentPlayer1Name)} Goals:</label>
+                <input type="number" id="sidebar-player1-goals" class="sidebar-goals-input"
                        min="0" max="99" placeholder="" onchange="checkSidebarForDraw()">
             </div>
             <div class="sidebar-player-input">
-                <label for="sidebar-player2-goals">${currentPlayer2Name} Goals:</label>
-                <input type="number" id="sidebar-player2-goals" class="sidebar-goals-input" 
+                <label for="sidebar-player2-goals">${escapeHtml(currentPlayer2Name)} Goals:</label>
+                <input type="number" id="sidebar-player2-goals" class="sidebar-goals-input"
                        min="0" max="99" placeholder="" onchange="checkSidebarForDraw()">
             </div>
             <div class="sidebar-penalty-section" id="sidebar-penalty-section" style="display: none;">
                 <label for="sidebar-penalty-winner">Penalty Result:</label>
                 <select id="sidebar-penalty-winner" class="sidebar-team-select">
                     <option value="">Select Result</option>
-                    <option value="1">${currentPlayer1Name} Won</option>
-                    <option value="2">${currentPlayer2Name} Won</option>
+                    <option value="1">${escapeHtml(currentPlayer1Name)} Won</option>
+                    <option value="2">${escapeHtml(currentPlayer2Name)} Won</option>
                     <option value="draw">No Winner (Draw)</option>
                 </select>
             </div>
         </div>
         <div class="sidebar-game-teams">
             <div class="sidebar-player-input">
-                <label for="sidebar-player1-team-type">${currentPlayer1Name} Team Type:</label>
+                <label for="sidebar-player1-team-type">${escapeHtml(currentPlayer1Name)} Team Type:</label>
                 <select id="sidebar-player1-team-type" class="sidebar-team-select" onchange="updateSidebarTeamOptions(1)">
                     <option value="Ultimate Team">Ultimate Team</option>
                     <option value="Premier League">Premier League</option>
@@ -688,7 +688,7 @@ function generateSidebarGameInputs() {
                 </div>
             </div>
             <div class="sidebar-player-input">
-                <label for="sidebar-player2-team-type">${currentPlayer2Name} Team Type:</label>
+                <label for="sidebar-player2-team-type">${escapeHtml(currentPlayer2Name)} Team Type:</label>
                 <select id="sidebar-player2-team-type" class="sidebar-team-select" onchange="updateSidebarTeamOptions(2)">
                     <option value="Ultimate Team">Ultimate Team</option>
                     <option value="Premier League">Premier League</option>
