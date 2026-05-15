@@ -45,9 +45,12 @@ function loadJsonFromFile(p) {
 // path doesn't exist in that ref (first-ever build, fresh checkout, etc).
 function loadJsonFromGit(ref, relPath, repoRoot) {
   try {
+    // 64 MiB is well above any plausible JSON we ship (data.json sits at
+     // ~30 MiB) and well below the previous 512 MiB cap that wasted RAM
+     // on memory-constrained CI runners.
     const buf = execFileSync('git', ['show', `${ref}:${relPath}`], {
       cwd: repoRoot,
-      maxBuffer: 512 * 1024 * 1024,
+      maxBuffer: 64 * 1024 * 1024,
     });
     return JSON.parse(buf.toString('utf8'));
   } catch {

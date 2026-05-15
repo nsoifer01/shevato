@@ -32,35 +32,29 @@ function createModal({ icon, title, content, buttons = [] }) {
     modal.appendChild(dialog);
     document.body.appendChild(modal);
 
-    // Add event listeners for buttons
+    // Single teardown so every close path (button, background, Escape)
+    // removes the document-level keydown listener. The previous version
+    // only removed the listener on the Escape path, so opening +
+    // dismissing modals via background-click or any button stacked
+    // listeners that fired forever.
+    const closeModal = () => {
+        if (modal.parentNode) modal.parentNode.removeChild(modal);
+        document.removeEventListener('keydown', escapeHandler);
+    };
+    const escapeHandler = (e) => { if (e.key === 'Escape') closeModal(); };
+    document.addEventListener('keydown', escapeHandler);
+
     buttons.forEach(btn => {
         const buttonEl = document.getElementById(btn.id);
         if (buttonEl && btn.onClick) {
             buttonEl.onclick = () => {
                 const result = btn.onClick();
-                // Only close if onClick doesn't return false and closeOnClick is not false
-                if (result !== false && btn.closeOnClick !== false) {
-                    document.body.removeChild(modal);
-                }
+                if (result !== false && btn.closeOnClick !== false) closeModal();
             };
         }
     });
 
-    // Close on background click
-    modal.onclick = (e) => {
-        if (e.target === modal) {
-            document.body.removeChild(modal);
-        }
-    };
-
-    // Close on Escape key
-    const escapeHandler = (e) => {
-        if (e.key === 'Escape') {
-            document.body.removeChild(modal);
-            document.removeEventListener('keydown', escapeHandler);
-        }
-    };
-    document.addEventListener('keydown', escapeHandler);
+    modal.onclick = (e) => { if (e.target === modal) closeModal(); };
 
     return modal;
 }
