@@ -203,7 +203,7 @@ function createHeatmapView(raceData = null) {
                             <tr>
                                 <th>Day</th>
                                 <th>Activity</th>
-                                ${players.map(player => `<th>${window.PlayerNameManager ? window.PlayerNameManager.get(player) : getPlayerName(player)}<span class="subtitle">Avg Pos</span></th>`).join('')}
+                                ${players.map(player => `<th>${escapeHtml(window.PlayerNameManager ? window.PlayerNameManager.get(player) : getPlayerName(player))}<span class="subtitle">Avg Pos</span></th>`).join('')}
                             </tr>
                         </thead>
                         <tbody id="weekly-breakdown-body">
@@ -495,7 +495,7 @@ function createAnalysisView(raceData = null) {
                         if (!data.date || data.averagePosition === null) {
                             return `
                                 <div class="worst-day-item">
-                                    <span>${window.PlayerNameManager ? window.PlayerNameManager.get(player) : getPlayerName(player)}</span>
+                                    <span>${escapeHtml(window.PlayerNameManager ? window.PlayerNameManager.get(player) : getPlayerName(player))}</span>
                                     <div>
                                         <div class="worst-day-score">—</div>
                                     </div>
@@ -511,7 +511,7 @@ function createAnalysisView(raceData = null) {
                         
                         return `
                             <div class="worst-day-item">
-                                <span>${window.PlayerNameManager ? window.PlayerNameManager.get(player) : getPlayerName(player)}</span>
+                                <span>${escapeHtml(window.PlayerNameManager ? window.PlayerNameManager.get(player) : getPlayerName(player))}</span>
                                 <div>
                                     <div class="worst-day-score">Avg ${formatDecimal(data.averagePosition)}</div>
                                     <small>${formattedDate} (${data.raceCount} races)</small>
@@ -532,7 +532,7 @@ function createAnalysisView(raceData = null) {
                         if (!data.date || data.averagePosition === null) {
                             return `
                                 <div class="best-day-item">
-                                    <span>${window.PlayerNameManager ? window.PlayerNameManager.get(player) : getPlayerName(player)}</span>
+                                    <span>${escapeHtml(window.PlayerNameManager ? window.PlayerNameManager.get(player) : getPlayerName(player))}</span>
                                     <div>
                                         <div class="best-day-score">—</div>
                                     </div>
@@ -548,7 +548,7 @@ function createAnalysisView(raceData = null) {
                         
                         return `
                             <div class="best-day-item">
-                                <span>${window.PlayerNameManager ? window.PlayerNameManager.get(player) : getPlayerName(player)}</span>
+                                <span>${escapeHtml(window.PlayerNameManager ? window.PlayerNameManager.get(player) : getPlayerName(player))}</span>
                                 <div>
                                     <div class="best-day-score">Avg ${formatDecimal(data.averagePosition)}</div>
                                     <small>${formattedDate} (${data.raceCount} races)</small>
