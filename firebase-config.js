@@ -20,7 +20,11 @@
 // adapter below provides the same surface main.js needs.
 
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
-import { getFirestore } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
+import {
+  initializeFirestore,
+  persistentLocalCache,
+  persistentMultipleTabManager
+} from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
 import { getDatabase } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-database.js";
 import {
   getAuth,
@@ -46,7 +50,15 @@ const firebaseConfig = {
 const app = initializeApp(firebaseConfig);
 
 export const auth = getAuth(app);
-export const db = getFirestore(app);
+// Firestore with offline persistence configured at init time (modern API).
+// Replaces the deprecated enableMultiTabIndexedDbPersistence() call that used
+// to live in sync-system/firebase-persistence.js. If IndexedDB is unavailable
+// (Safari private mode, etc.), the SDK falls back to in-memory cache itself.
+export const db = initializeFirestore(app, {
+  localCache: persistentLocalCache({
+    tabManager: persistentMultipleTabManager()
+  })
+});
 export const rtdb = getDatabase(app);
 export { app };
 
