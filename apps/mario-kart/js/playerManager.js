@@ -33,9 +33,12 @@ function updatePlayerLabels() {
     // Update table headers
     const headers = document.querySelectorAll('#history-table th');
     if (headers.length >= 5) {
-        headers[2].innerHTML = `<span style="cursor: pointer;" onclick="sortTable('player1')" tabindex="0" onkeydown="if(event.key==='Enter'||event.key===' ')sortTable('player1')" aria-label="Sort by ${playerNames.player1}'s position">${playerNames.player1} ↕</span>`;
-        headers[3].innerHTML = `<span style="cursor: pointer;" onclick="sortTable('player2')" tabindex="0" onkeydown="if(event.key==='Enter'||event.key===' ')sortTable('player2')" aria-label="Sort by ${playerNames.player2}'s position">${playerNames.player2} ↕</span>`;
-        headers[4].innerHTML = `<span style="cursor: pointer;" onclick="sortTable('player3')" tabindex="0" onkeydown="if(event.key==='Enter'||event.key===' ')sortTable('player3')" aria-label="Sort by ${playerNames.player3}'s position">${playerNames.player3} ↕</span>`;
+        const p1 = escapeHtml(playerNames.player1);
+        const p2 = escapeHtml(playerNames.player2);
+        const p3 = escapeHtml(playerNames.player3);
+        headers[2].innerHTML = `<span style="cursor: pointer;" onclick="sortTable('player1')" tabindex="0" onkeydown="if(event.key==='Enter'||event.key===' ')sortTable('player1')" aria-label="Sort by ${p1}'s position">${p1} ↕</span>`;
+        headers[3].innerHTML = `<span style="cursor: pointer;" onclick="sortTable('player2')" tabindex="0" onkeydown="if(event.key==='Enter'||event.key===' ')sortTable('player2')" aria-label="Sort by ${p2}'s position">${p2} ↕</span>`;
+        headers[4].innerHTML = `<span style="cursor: pointer;" onclick="sortTable('player3')" tabindex="0" onkeydown="if(event.key==='Enter'||event.key===' ')sortTable('player3')" aria-label="Sort by ${p3}'s position">${p3} ↕</span>`;
     }
 
     // Update player name inputs if they exist
