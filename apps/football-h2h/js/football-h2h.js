@@ -224,14 +224,14 @@ function applyPlayerNameChanges(newPlayer1Name, newPlayer2Name) {
     
     if (player1Header) {
         const player1IconDisplay = playerIcons.player1 || '⚽';
-        player1Header.innerHTML = `<span class="player-header-icon">${player1IconDisplay}</span> ${player1Name}`;
+        player1Header.innerHTML = `<span class="player-header-icon">${escapeHtml(player1IconDisplay)}</span> ${escapeHtml(player1Name)}`;
     }
-    
+
     if (player2Header) {
         const player2IconDisplay = playerIcons.player2 || '⚽';
-        player2Header.innerHTML = `<span class="player-header-icon">${player2IconDisplay}</span> ${player2Name}`;
+        player2Header.innerHTML = `<span class="player-header-icon">${escapeHtml(player2IconDisplay)}</span> ${escapeHtml(player2Name)}`;
     }
-    
+
     // Update modal labels (if they exist)
     const modalPlayer1Name = document.getElementById('modalPlayer1Name');
     const modalPlayer2Name = document.getElementById('modalPlayer2Name');
@@ -488,8 +488,8 @@ function renderGamesTableLegacy() {
                 <td>${dateTimeDisplay}</td>
                 <td><span class="goal-circle ${player1Class}">${game.player1Goals}</span></td>
                 <td><span class="goal-circle ${player2Class}">${game.player2Goals}</span></td>
-                <td>${game.player1Team || game.team || 'Ultimate Team'}</td>
-                <td>${game.player2Team || game.team || 'Ultimate Team'}</td>
+                <td>${escapeHtml(game.player1Team || game.team || 'Ultimate Team')}</td>
+                <td>${escapeHtml(game.player2Team || game.team || 'Ultimate Team')}</td>
                 <td>
                     <div class="action-buttons">
                         <button class="btn-icon edit" onclick="editGame(${game.id})" title="Edit">
@@ -1194,8 +1194,8 @@ function updatePlayerIconDisplays() {
     const player1IconDisplay = document.getElementById('player1IconDisplay');
     const player2IconDisplay = document.getElementById('player2IconDisplay');
     
-    if (player1IconDisplay) player1IconDisplay.innerHTML = `<span class="team-logo">${playerIcons.player1}</span>`;
-    if (player2IconDisplay) player2IconDisplay.innerHTML = `<span class="team-logo">${playerIcons.player2}</span>`;
+    if (player1IconDisplay) player1IconDisplay.innerHTML = `<span class="team-logo">${escapeHtml(playerIcons.player1)}</span>`;
+    if (player2IconDisplay) player2IconDisplay.innerHTML = `<span class="team-logo">${escapeHtml(playerIcons.player2)}</span>`;
     
     // Update display names (if elements exist)
     const player1DisplayName = document.getElementById('player1DisplayName');
@@ -1209,14 +1209,14 @@ function updatePlayerIconDisplays() {
     
     if (player1Header) {
         const player1IconDisplay = playerIcons.player1 || '⚽';
-        player1Header.innerHTML = `<span class="player-header-icon">${player1IconDisplay}</span> ${player1Name}`;
+        player1Header.innerHTML = `<span class="player-header-icon">${escapeHtml(player1IconDisplay)}</span> ${escapeHtml(player1Name)}`;
     }
-    
+
     if (player2Header) {
         const player2IconDisplay = playerIcons.player2 || '⚽';
-        player2Header.innerHTML = `<span class="player-header-icon">${player2IconDisplay}</span> ${player2Name}`;
+        player2Header.innerHTML = `<span class="player-header-icon">${escapeHtml(player2IconDisplay)}</span> ${escapeHtml(player2Name)}`;
     }
-    
+
     // Update player management modal if it's open
     const playerModal = document.getElementById('playerManagementModal');
     if (playerModal && playerModal.classList.contains('active')) {
@@ -1614,8 +1614,8 @@ function renderGamesTableWithData(gamesData) {
             <td class="player-score player2-score ${player2ScoreClass}">
                 <span class="score-number">${game.player2Goals}</span>${player2PenaltyText}
             </td>
-            <td class="team-name">${game.player1Team}</td>
-            <td class="team-name">${game.player2Team}</td>
+            <td class="team-name">${escapeHtml(game.player1Team)}</td>
+            <td class="team-name">${escapeHtml(game.player2Team)}</td>
             <td class="actions">
                 <button class="edit-btn" onclick="editGame(${game.id})" title="Edit game">✏️</button>
                 <button class="delete-btn" onclick="deleteGame(${game.id})" title="Delete game">🗑️</button>
