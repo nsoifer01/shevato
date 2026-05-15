@@ -34,6 +34,15 @@ import {
 const DEBOUNCE_MS = 500; // Balanced: catches keystroke bursts without thrashing Firestore quota
 const MAX_RETRY_ATTEMPTS = 3;
 const RETRY_DELAY_MS = 1000;
+// Auth-specific retry budget. On cold boot, `auth.currentUser` is restored
+// from IndexedDB synchronously, but the first ID-token mint requires a
+// network roundtrip; if onSnapshot attaches inside that window the listen
+// request reaches Firestore with no token and the security rules return
+// permission-denied. We retry on a tighter schedule than the generic
+// network-error path because in practice the token usually lands in under
+// 1s. Total budget: 250 + 500 + 1000 + 2000 = 3.75s.
+const MAX_AUTH_RETRY_ATTEMPTS = 4;
+const AUTH_RETRY_BASE_MS = 250;
 const USE_FIRESTORE = true;
 // Firestore rejects documents > 1 MiB. We refuse to flush above 700 KB so a
 // single namespace can't silently lose writes once payloads grow.
@@ -384,6 +393,7 @@ class StorageSyncManager {
     const docRef = doc(db, docPath);
 
     let retryAttempts = 0;
+    let authRetryAttempts = 0;
 
     const tearDown = () => {
       if (state.unsubscribe) {
@@ -392,8 +402,26 @@ class StorageSyncManager {
       }
     };
 
-    const setupListener = () => {
+    const setupListener = async () => {
       tearDown();
+      if (state.stopped) return;
+
+      // Cold-boot guard: wait for a fresh ID token before letting
+      // onSnapshot fire its first listen request. auth.currentUser
+      // populates synchronously from IndexedDB but the network mint
+      // of a token can take a few hundred ms; without this await the
+      // initial listen reaches Firestore with no Authorization header
+      // and the rules deny it (the "permission-denied on first load"
+      // bug). getIdToken() resolves immediately if a valid token is
+      // already cached, so this is a one-off cost paid only when the
+      // SDK actually needs to fetch.
+      const user = auth.currentUser;
+      if (!user || user.uid !== state.userId) return;
+      try {
+        await user.getIdToken();
+      } catch (err) {
+        console.warn(`🔐 Failed to acquire ID token for ${state.namespace}, falling through to listener:`, err?.message);
+      }
       if (state.stopped) return;
 
       const unsubscribe = onSnapshot(docRef,
@@ -425,10 +453,29 @@ class StorageSyncManager {
           }
 
           retryAttempts = 0;
+          authRetryAttempts = 0;
         },
         (error) => {
           if (error.code === 'permission-denied' || error.code === 'unauthenticated') {
-            console.error(`🔐 Authentication error for ${state.namespace}:`, error.message);
+            // Cold-boot race: getIdToken() above usually prevents this,
+            // but it can still fire if the cached token is rejected
+            // (token revoked, clock skew, multi-tab refresh contention).
+            // Retry on a tighter cadence than the generic network path,
+            // gated on the same user still being signed in — if they
+            // really did sign out, we abandon instead of looping.
+            if (auth.currentUser?.uid !== state.userId) {
+              console.warn(`🔐 User changed during permission-denied recovery for ${state.namespace} — abandoning`);
+              tearDown();
+              return;
+            }
+            if (authRetryAttempts < MAX_AUTH_RETRY_ATTEMPTS) {
+              authRetryAttempts++;
+              const delay = AUTH_RETRY_BASE_MS * Math.pow(2, authRetryAttempts - 1);
+              console.log(`🔐 Auth not ready for ${state.namespace}, retrying in ${delay}ms (${authRetryAttempts}/${MAX_AUTH_RETRY_ATTEMPTS})`);
+              setTimeout(setupListener, delay);
+              return;
+            }
+            console.error(`🔐 Authentication error for ${state.namespace} after ${MAX_AUTH_RETRY_ATTEMPTS} retries:`, error.message);
             tearDown();
             return;
           }

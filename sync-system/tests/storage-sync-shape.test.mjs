@@ -74,6 +74,35 @@ test('storage-sync-robust has a retry loop with exponential backoff', () => {
     assert.match(SRC, /Math\.pow\(2/);
 });
 
+test('storage-sync-robust awaits a fresh ID token before attaching the listener', () => {
+    // Cold-boot race fix: auth.currentUser is restored from IndexedDB
+    // synchronously but the network mint of an ID token takes a few
+    // hundred ms. Without awaiting getIdToken() the initial onSnapshot
+    // listen request reaches Firestore unauthenticated and the rules
+    // deny it (the "Missing or insufficient permissions on first load"
+    // bug). The await must appear before the onSnapshot call.
+    assert.match(SRC, /await\s+user\.getIdToken\(\)/);
+    const tokenIdx = SRC.indexOf('await user.getIdToken()');
+    const onSnapshotIdx = SRC.indexOf('onSnapshot(docRef');
+    assert.ok(tokenIdx > 0 && onSnapshotIdx > tokenIdx,
+        'getIdToken() await must precede the onSnapshot attach');
+});
+
+test('storage-sync-robust retries permission-denied on cold-boot instead of giving up immediately', () => {
+    // If the cached token is rejected (revoked, clock skew, multi-tab
+    // refresh contention) the getIdToken() guard above can still let
+    // a permission-denied through. Retry on a short cadence rather
+    // than tearing down — the previous behaviour surfaced the cold-
+    // boot race as a permanent "sync offline" pill for the user.
+    assert.match(SRC, /MAX_AUTH_RETRY_ATTEMPTS/);
+    assert.match(SRC, /AUTH_RETRY_BASE_MS/);
+    assert.match(SRC, /authRetryAttempts/);
+    // The retry path must be guarded by checking that the auth user
+    // hasn't actually changed under our feet, otherwise we'd keep
+    // hammering Firestore after a real sign-out.
+    assert.match(SRC, /auth\.currentUser\?\.uid\s*!==\s*state\.userId/);
+});
+
 test('storage-sync-robust gates the initial merge on the snapshot being server-confirmed', () => {
     // The cross-browser data-loss bug we patched was: a cached snapshot
     // looking empty caused us to upload local-only keys before the server
