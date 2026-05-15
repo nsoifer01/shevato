@@ -2835,4 +2835,19 @@ function isTypingTarget(el) {
   return tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || el.isContentEditable;
 }
 
+// Live remote-update channel: another device toggled a watched
+// season. 750 ms debounce coalesces bursts after sign-in or
+// reconnect. Re-loads the Watched set then re-renders.
+let __rsRemoteRefreshTimer = null;
+window.addEventListener('localStorageSync', (e) => {
+  const key = e.detail?.key;
+  if (typeof key !== 'string' || !key.startsWith(`${STORAGE_NS}:`)) return;
+  if (e.detail?.source !== 'remote') return;
+  clearTimeout(__rsRemoteRefreshTimer);
+  __rsRemoteRefreshTimer = setTimeout(() => {
+    Watched.load();
+    render();
+  }, 750);
+});
+
 load();
