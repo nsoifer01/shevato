@@ -1,0 +1,61 @@
+/* Shared sync-status indicator
+   ----------------------------
+   Two surfaces, see assets/js/sync-status.js:
+   - `.sync-status-pill` rendered into `[data-sync-status-slot]`
+   - `.sync-banner` (id="sync-banner") shown only when offline,
+     plus a brief recovery flash on the offline -> synced transition.
+
+   Colours are inlined (not theme tokens) so the indicator looks
+   right across every app's palette without coupling to per-app
+   CSS variables. */
+
+.sync-status-pill {
+    display: inline-flex;
+    align-items: center;
+    padding: 4px 10px;
+    border-radius: 999px;
+    font-size: 12px;
+    font-weight: 600;
+    line-height: 1.2;
+    color: #fff;
+    user-select: none;
+    transition: background 200ms ease, color 200ms ease;
+    white-space: nowrap;
+}
+.sync-status-pill::before {
+    content: '';
+    display: inline-block;
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    margin-right: 6px;
+    background: currentColor;
+    flex: none;
+}
+.sync-status-pill[data-state="synced"]     { background: rgba(34, 197, 94, 0.85); }
+.sync-status-pill[data-state="syncing"]    { background: rgba(245, 158, 11, 0.85); }
+.sync-status-pill[data-state="connecting"] { background: rgba(245, 158, 11, 0.6); }
+.sync-status-pill[data-state="offline"]    { background: rgba(148, 163, 184, 0.85); }
+.sync-status-pill[data-state="idle"]       { background: rgba(100, 116, 139, 0.7); }
+
+.sync-banner {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    z-index: 10100; /* above the marketing site header (z-index 10001) so the offline notice is never covered */
+    padding: 8px 14px;
+    padding-top: calc(8px + env(safe-area-inset-top, 0px));
+    text-align: center;
+    font-size: 13px;
+    font-weight: 600;
+    line-height: 1.2;
+    color: #fff;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.35);
+    transition: background 200ms ease, opacity 200ms ease, transform 200ms ease;
+    transform: translateY(0);
+}
+.sync-banner[hidden] { display: none; }
+.sync-banner[data-state="offline"] { background: rgba(100, 116, 139, 0.95); }
+.sync-banner[data-state="synced"]  { background: rgba(34, 197, 94, 0.95); }
+.sync-banner[data-fading="true"]   { opacity: 0; transform: translateY(-4px); }
