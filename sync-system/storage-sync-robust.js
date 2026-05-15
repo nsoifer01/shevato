@@ -6,7 +6,8 @@ import {
   setDoc,
   onSnapshot,
   serverTimestamp,
-  deleteField
+  deleteField,
+  deleteDoc
 } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
 
 import {
@@ -18,6 +19,16 @@ import {
 } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-database.js";
 
 import { db, rtdb, auth } from '../firebase-config.js';
+import { createCrossTabChannel, CHANNEL_MESSAGE_TYPES } from './cross-tab-channel.mjs';
+import {
+  hashValue,
+  parseValue,
+  getTimestamp,
+  sanitiseForFirestore,
+  estimatePayloadBytes,
+  sameKeySet,
+  decideRemoteChange
+} from './sync-helpers.mjs';
 
 // Configuration
 const DEBOUNCE_MS = 500; // Balanced: catches keystroke bursts without thrashing Firestore quota
@@ -45,6 +56,123 @@ class StorageSyncManager {
     } else {
       this.installGlobalOverride();
     }
+
+    this.installCrossTabChannel();
+    this.installVisibilityHook();
+  }
+
+  /**
+   * Wire the cross-tab BroadcastChannel into the sync manager. Shares
+   * the same channel instance with firebase-config.js so we don't open
+   * multiple channels per tab.
+   *
+   * Outbound: after a successful Firestore flush we publish
+   * `data-updated` with the namespace and the keys that changed.
+   *
+   * Inbound: when a peer tab posts `data-updated`, we treat it as a
+   * hint that our own onSnapshot may be stale (e.g. backgrounded tab
+   * during a reconnect window). For every key in our active namespaces
+   * we re-dispatch `localStorageSync` against the current localStorage
+   * value so app render listeners pick it up. This is safe even when
+   * onSnapshot is healthy — the apps' debounced re-render loops fold
+   * the duplicate event.
+   */
+  installCrossTabChannel() {
+    this.channel = (typeof window !== 'undefined' && window.__shevatoSyncChannel)
+      ? window.__shevatoSyncChannel
+      : createCrossTabChannel();
+    if (typeof window !== 'undefined') {
+      window.__shevatoSyncChannel = this.channel;
+    }
+
+    this.channelUnsubscribe = this.channel.subscribe(
+      CHANNEL_MESSAGE_TYPES.DATA_UPDATED,
+      (msg) => this.onCrossTabDataUpdated(msg)
+    );
+  }
+
+  /**
+   * Refresh active namespaces when the tab becomes visible again.
+   *
+   * Firebase's onSnapshot listener auto-reconnects on tab focus, but
+   * there is a window (sometimes seconds, occasionally longer on
+   * mobile) where queued remote writes have already landed in
+   * IndexedDB-backed localStorage via the native 'storage' event but
+   * the listener has not yet re-fired. We bridge that by re-dispatching
+   * `localStorageSync` for any key whose current localStorage hash
+   * disagrees with what we last recorded.
+   *
+   * We also `enableNetwork(db)` defensively — it's a no-op when the
+   * SDK is already online but forces a fresh long-poll connection if
+   * the network stack was suspended by the browser.
+   */
+  installVisibilityHook() {
+    if (typeof document === 'undefined' || typeof document.addEventListener !== 'function') return;
+    if (this._visibilityHookInstalled) return;
+    this._visibilityHookInstalled = true;
+
+    document.addEventListener('visibilitychange', () => {
+      if (document.visibilityState !== 'visible') return;
+      this.handleTabVisible();
+    });
+  }
+
+  handleTabVisible() {
+    for (const [, state] of this.syncStates) {
+      if (state.stopped) continue;
+      this.reconcileFromLocalStorage(state);
+    }
+  }
+
+  /**
+   * For each key registered in the given sync state, compare the
+   * current localStorage hash against our last-known hash and dispatch
+   * a `localStorageSync` event when they differ. Used by the visibility
+   * hook and the cross-tab `data-updated` receiver.
+   */
+  reconcileFromLocalStorage(state) {
+    if (!state || state.stopped) return;
+    const getItem = this.originalMethods?.getItem
+      ? this.originalMethods.getItem
+      : localStorage.getItem.bind(localStorage);
+
+    for (const key of state.keys) {
+      const raw = getItem(key);
+      const parsed = parseValue(raw);
+      const currentHash = hashValue(parsed);
+      const known = this.localRevisions.get(key);
+      if (known && known.hash === currentHash) continue;
+
+      this.localRevisions.set(key, {
+        rev: known?.rev || 0,
+        updatedAt: known?.updatedAt || Date.now(),
+        hash: currentHash
+      });
+      // Source is 'remote' because every app's localStorageSync listener
+      // gates on that label (they only re-render on remote-origin events,
+      // not on writes they themselves just made). Reconcile is exactly the
+      // case the apps mean by 'remote' — data on disk is fresher than the
+      // app's in-memory view, sourced from a peer tab or onSnapshot delivery
+      // we missed while backgrounded.
+      window.dispatchEvent(new CustomEvent('localStorageSync', {
+        detail: { key, value: parsed, source: 'remote' }
+      }));
+    }
+  }
+
+  /**
+   * Receive a `data-updated` broadcast from a peer tab. If we have an
+   * active sync state for that namespace, force a reconcile so any
+   * key whose localStorage value has drifted from our last-known hash
+   * fires a fresh `localStorageSync` event.
+   */
+  onCrossTabDataUpdated(msg) {
+    if (!msg || typeof msg !== 'object') return;
+    const namespace = msg.namespace;
+    if (typeof namespace !== 'string') return;
+    const state = this.syncStates.get(namespace);
+    if (!state) return;
+    this.reconcileFromLocalStorage(state);
   }
 
   /**
@@ -128,29 +256,11 @@ class StorageSyncManager {
   }
 
   /**
-   * Create a hash of the value for change detection
+   * Hash a value for change detection. Thin wrapper around the pure
+   * helper so debug code keeps working; new code should import the
+   * helper directly.
    */
-  hashValue(value) {
-    if (value === null || value === undefined) return 'null';
-    
-    const jsonString = JSON.stringify(value);
-    
-    try {
-      // Try btoa first (faster for Latin1)
-      return btoa(jsonString).slice(0, 16);
-    } catch (error) {
-      // Fallback for Unicode characters (emojis, special chars, etc.)
-      // Use a simple hash function that works with all Unicode
-      let hash = 0;
-      for (let i = 0; i < jsonString.length; i++) {
-        const char = jsonString.charCodeAt(i);
-        hash = ((hash << 5) - hash) + char;
-        hash = hash & hash; // Convert to 32-bit integer
-      }
-      // Return as hex string, padded to 16 chars
-      return Math.abs(hash).toString(16).padStart(16, '0').slice(0, 16);
-    }
-  }
+  hashValue(value) { return hashValue(value); }
 
   /**
    * Start sync for a namespace.
@@ -205,7 +315,7 @@ class StorageSyncManager {
     if (existing && !existing.stopped
         && existing.userId === user.uid
         && existing.useFirestore === useFirestore
-        && this._sameKeySet(existing.keys, keys)) {
+        && sameKeySet(existing.keys, keys)) {
       return {
         stop: () => this.stopSync(namespace),
         getStatus: () => this.getSyncStatus(namespace)
@@ -250,13 +360,6 @@ class StorageSyncManager {
       stop: () => this.stopSync(namespace),
       getStatus: () => this.getSyncStatus(namespace)
     };
-  }
-
-  /** True iff the existing key set matches the incoming list exactly. */
-  _sameKeySet(existingSet, incomingKeys) {
-    if (existingSet.size !== incomingKeys.length) return false;
-    for (const k of incomingKeys) if (!existingSet.has(k)) return false;
-    return true;
   }
 
   /**
@@ -387,82 +490,62 @@ class StorageSyncManager {
   }
 
   /**
-   * Apply remote change with improved conflict resolution
+   * Apply a remote change to localStorage. Conflict decision is
+   * delegated to `decideRemoteChange` in sync-helpers.js so the
+   * verdict logic can be unit-tested without a Firestore mock.
+   *
+   * Hash-equality short-circuit is critical: Firestore re-emits the
+   * same document body whenever a listener reattaches (network blip,
+   * tab focus, SDK session refresh). Without this guard the app
+   * re-loads localStorage and re-renders every view on every reattach,
+   * which the user sees as flicker on hover when the cursor is over a
+   * card whose DOM gets rebuilt mid-interaction.
    */
   applyRemoteChange(key, remoteInfo) {
     const localRev = this.localRevisions.get(key);
-    const remoteTimestamp = this.getTimestamp(remoteInfo.updatedAt);
+    const remoteTimestamp = getTimestamp(remoteInfo.updatedAt);
     const lastRemoteUpdate = this.lastRemoteUpdates.get(key) || 0;
+    const verdict = decideRemoteChange(localRev, remoteInfo, lastRemoteUpdate);
 
-    // Skip if we just processed this change
-    if (remoteTimestamp <= lastRemoteUpdate) {
-      return;
-    }
-
-    // Hash-equality short-circuit. Firestore re-emits the same document
-    // body whenever a listener reattaches (network blip, tab focus, SDK
-    // session refresh). The timestamp on those re-emits is fresher even
-    // though the value is byte-identical. Without this guard the app
-    // re-loads localStorage and re-renders every view on every reattach,
-    // which the user sees as flicker on hover when the cursor is over a
-    // card whose DOM gets rebuilt mid-interaction.
-    if (localRev && remoteInfo.hash && remoteInfo.hash === localRev.hash) {
+    if (verdict === 'skip-stale' || verdict === 'skip-older') return;
+    if (verdict === 'skip-deduped') {
       this.lastRemoteUpdates.set(key, remoteTimestamp);
       return;
     }
 
-    // Conflict resolution logic
-    let shouldApply = true;
+    // Echo-prevention lock. Held only across the synchronous body below
+    // so that any forward through the immediate-sync override (which
+    // runs synchronously inside setItem) sees the lock and skips. Older
+    // versions cleared this via setTimeout(..., 100) which silently
+    // dropped any local user write that happened during that window.
+    this.syncLocks.set(key, true);
 
-    if (localRev) {
-      // Compare timestamps first
-      if (remoteTimestamp < localRev.updatedAt) {
-        shouldApply = false; // Local is newer
-      } else if (remoteTimestamp === localRev.updatedAt) {
-        // Same timestamp - compare revision numbers
-        shouldApply = (remoteInfo.rev || 0) > (localRev.rev || 0);
+    try {
+      const setItem = this.originalMethods?.setItem || localStorage.setItem.bind(localStorage);
+      const removeItem = this.originalMethods?.removeItem || localStorage.removeItem.bind(localStorage);
+
+      if (remoteInfo.deleted || remoteInfo.value === undefined || remoteInfo.value === null) {
+        removeItem(key);
+      } else {
+        const value = typeof remoteInfo.value === 'object'
+          ? JSON.stringify(remoteInfo.value)
+          : String(remoteInfo.value);
+        setItem(key, value);
       }
-      // If remote timestamp > local timestamp, apply (shouldApply stays true)
-    }
-    
-    if (shouldApply) {
-      // Echo-prevention lock. Held only across the synchronous body below
-      // so that any forward through the immediate-sync override (which
-      // runs synchronously inside setItem) sees the lock and skips. Older
-      // versions cleared this via setTimeout(..., 100) which silently
-      // dropped any local user write that happened during that window.
-      this.syncLocks.set(key, true);
 
-      try {
-        // Use original methods if available, otherwise fall back to localStorage directly
-        const setItem = this.originalMethods?.setItem || localStorage.setItem.bind(localStorage);
-        const removeItem = this.originalMethods?.removeItem || localStorage.removeItem.bind(localStorage);
+      this.localRevisions.set(key, {
+        rev: remoteInfo.rev || 0,
+        updatedAt: remoteTimestamp,
+        hash: hashValue(remoteInfo.value)
+      });
 
-        if (remoteInfo.deleted || remoteInfo.value === undefined || remoteInfo.value === null) {
-          removeItem(key);
-        } else {
-          const value = typeof remoteInfo.value === 'object' ?
-            JSON.stringify(remoteInfo.value) : String(remoteInfo.value);
-          setItem(key, value);
-        }
+      this.lastRemoteUpdates.set(key, remoteTimestamp);
 
-        // Update local tracking
-        this.localRevisions.set(key, {
-          rev: remoteInfo.rev || 0,
-          updatedAt: remoteTimestamp,
-          hash: this.hashValue(remoteInfo.value)
-        });
-
-        this.lastRemoteUpdates.set(key, remoteTimestamp);
-
-        // Dispatch custom event for apps that want to listen
-        window.dispatchEvent(new CustomEvent('localStorageSync', {
-          detail: { key, value: remoteInfo.value, source: 'remote' }
-        }));
-
-      } finally {
-        this.syncLocks.delete(key);
-      }
+      window.dispatchEvent(new CustomEvent('localStorageSync', {
+        detail: { key, value: remoteInfo.value, source: 'remote' }
+      }));
+    } finally {
+      this.syncLocks.delete(key);
     }
   }
 
@@ -471,7 +554,7 @@ class StorageSyncManager {
    */
   queueWrite(state, key, value) {
     const queue = this.writeQueues.get(state.namespace);
-    const currentHash = this.hashValue(value);
+    const currentHash = hashValue(value);
     const localRev = this.localRevisions.get(key) || { rev: 0, hash: '' };
     
     // Skip if value hasn't actually changed
@@ -540,7 +623,18 @@ class StorageSyncManager {
 
       state.retryCount = 0;
       state.lastSyncTime = Date.now();
-      
+
+      // Broadcast to peer tabs that this namespace just changed. Their
+      // onSnapshot listeners will eventually fire too, but a same-origin
+      // BroadcastChannel post arrives synchronously and lets a stale
+      // listener tab (backgrounded, mid-reconnect) re-render immediately.
+      if (this.channel) {
+        this.channel.publish(CHANNEL_MESSAGE_TYPES.DATA_UPDATED, {
+          namespace: state.namespace,
+          keys: Array.from(writes.keys())
+        });
+      }
+
     } catch (error) {
       console.error(`❌ Failed to flush writes for ${state.namespace}:`, error);
       
@@ -592,7 +686,7 @@ class StorageSyncManager {
         dataPayload[key] = deleteField();
       } else {
         dataPayload[key] = {
-          value: this.sanitiseForFirestore(info.value),
+          value: sanitiseForFirestore(info.value),
           rev: info.rev,
           updatedAt: serverTimestamp(),
           hash: info.hash
@@ -603,7 +697,7 @@ class StorageSyncManager {
     // Refuse to ship a payload that would breach Firestore's 1 MiB doc
     // ceiling. Surface as a real error so the retry path requeues and the
     // user sees something instead of a silent drop.
-    const approxBytes = this.estimatePayloadBytes(dataPayload);
+    const approxBytes = estimatePayloadBytes(dataPayload);
     if (approxBytes > MAX_FLUSH_BYTES) {
       throw new Error(
         `Refusing to flush ${state.namespace}: payload ~${approxBytes}B exceeds ${MAX_FLUSH_BYTES}B`
@@ -614,37 +708,6 @@ class StorageSyncManager {
       data: dataPayload,
       meta: { lastUpdated: serverTimestamp() }
     }, { merge: true });
-  }
-
-  /**
-   * Cheap upper-bound estimate of a payload's serialised size. Sentinels
-   * like serverTimestamp() are not JSON-serialisable, so we substitute a
-   * stand-in before measuring. Order-of-magnitude accurate, which is all
-   * the size guard needs.
-   */
-  estimatePayloadBytes(payload) {
-    try {
-      const probe = JSON.stringify(payload, (_, v) => {
-        if (v && typeof v === 'object' && typeof v.toJSON !== 'function' && v.constructor && v.constructor.name && v.constructor.name.includes('FieldValue')) {
-          return '__SENTINEL__';
-        }
-        return v;
-      });
-      return probe ? probe.length : 0;
-    } catch {
-      return 0;
-    }
-  }
-
-  /**
-   * Strip `undefined` values from a payload so Firestore accepts it.
-   * Strings/numbers/booleans/null pass through unchanged. Objects and
-   * arrays are deep-cloned via JSON, which drops undefined fields.
-   */
-  sanitiseForFirestore(value) {
-    if (value === null || value === undefined) return null;
-    if (typeof value !== 'object') return value;
-    return JSON.parse(JSON.stringify(value));
   }
 
   /**
@@ -705,12 +768,12 @@ class StorageSyncManager {
       if (localValue === null || localValue === undefined) continue;
       if (remoteData[key] !== undefined) continue;
 
-      const parsed = this.parseValue(localValue);
+      const parsed = parseValue(localValue);
       localWrites.set(key, {
         value: parsed,
         rev: 1,
         updatedAt: Date.now(),
-        hash: this.hashValue(parsed),
+        hash: hashValue(parsed),
         deleted: false
       });
     }
@@ -731,29 +794,6 @@ class StorageSyncManager {
       // rate limit that motivated this rewrite.
       console.warn(`⚠️ Initial upload of local-only keys failed for ${state.namespace}:`, error.message);
     });
-  }
-
-  /**
-   * Utility: Parse value from localStorage
-   */
-  parseValue(value) {
-    if (value === null || value === undefined) return null;
-    try {
-      return JSON.parse(value);
-    } catch {
-      return value;
-    }
-  }
-
-  /**
-   * Utility: Get timestamp from Firebase timestamp
-   */
-  getTimestamp(timestamp) {
-    if (!timestamp) return 0;
-    if (typeof timestamp === 'number') return timestamp;
-    if (timestamp.toMillis) return timestamp.toMillis();
-    if (timestamp.seconds) return timestamp.seconds * 1000;
-    return 0;
   }
 
   /**
@@ -855,6 +895,28 @@ export function getSyncStatus(namespace) {
 
 export function getGlobalSyncStatus() {
   return syncManager.getGlobalStatus();
+}
+
+/**
+ * Delete a user's cloud-side app document. Single canonical entry point
+ * for app-level "wipe cloud data" buttons — previously the gym tracker
+ * imported Firestore directly to do this, which violated the rule that
+ * only the sync module talks to Firestore. Callers pass the namespace
+ * exactly as it appears in app-sync-init.js (e.g. 'gymTrackerApp').
+ *
+ * @param {string} namespace App namespace as registered in APP_SYNC_CONFIG.
+ * @returns {Promise<void>}
+ */
+export async function eraseCloudData(namespace) {
+  if (typeof namespace !== 'string' || !namespace) {
+    throw new Error('eraseCloudData: namespace is required');
+  }
+  const user = auth.currentUser;
+  if (!user) {
+    throw new Error('eraseCloudData: not signed in');
+  }
+  const docRef = doc(db, `users/${user.uid}/apps/${namespace}`);
+  await deleteDoc(docRef);
 }
 
 // Expose the global-status getter to non-module code (e.g. the gym
