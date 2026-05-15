@@ -1966,8 +1966,23 @@ function buildValueCell(mainText, className, rangeText) {
     return td;
 }
 
-// Switch between stats tabs
-function switchStatsTab(tabName) {
+// Valid stats-tab IDs that may appear in the URL hash. Anything else
+// (random fragment, stale link) falls back to the default tab.
+const FOOTBALL_STATS_TABS = new Set(['h2h', 'general', 'player']);
+
+// Drive the active tab from the URL hash. Called on initial load and
+// whenever the user hits browser back/forward between tabs.
+function syncStatsTabFromHash() {
+    const raw = (window.location.hash || '').replace(/^#/, '').trim();
+    if (!FOOTBALL_STATS_TABS.has(raw)) return;
+    switchStatsTab(raw, { fromHash: true });
+}
+
+// Switch between stats tabs. The {fromHash} flag suppresses the
+// history.replaceState write when we're already responding to a
+// hashchange — otherwise we'd briefly re-stamp the same hash, which
+// is harmless but pointless.
+function switchStatsTab(tabName, { fromHash = false } = {}) {
     // Remove active class from all tabs and contents
     document.querySelectorAll('.stats-tab').forEach(tab => {
         tab.classList.remove('active');
@@ -1991,6 +2006,17 @@ function switchStatsTab(tabName) {
     if (activeContent) {
         activeContent.classList.add('active');
         activeContent.style.display = 'block';
+    }
+
+    // Mirror the active tab into the URL hash so reload + deep-link
+    // preserve which sub-view the user was on. replaceState (no
+    // hashchange firing, no back-stack growth) matches the convention
+    // mario-kart and gym-tracker use.
+    if (!fromHash && FOOTBALL_STATS_TABS.has(tabName)
+            && typeof history !== 'undefined'
+            && typeof history.replaceState === 'function') {
+        try { history.replaceState(null, '', '#' + tabName); }
+        catch (_) { /* sandboxed origins can throw; harmless */ }
     }
 }
 
@@ -2231,6 +2257,11 @@ function initializeApp() {
     // Update global exports
     window.player1Name = player1Name;
     window.player2Name = player2Name;
+
+    // Stats-tab routing. The default tab markup already has h2h active,
+    // so we only switch if the hash names a different valid tab.
+    syncStatsTabFromHash();
+    window.addEventListener('hashchange', syncStatsTabFromHash);
 }
 
 // Run initialization when DOM is loaded
