@@ -2,7 +2,7 @@
 
 ## Overview
 
-Shevato is a static, multi-page web platform built with vanilla HTML5, CSS3, and JavaScript. The marketing site (home, product, apps) coexists with a small set of free browser apps and a separately-branded medical services page (Moadon Alef). The repo has no build step at the root; CSS is plain, JS is loaded with `<script defer>`, and partials are stitched together client-side via jQuery.
+Shevato is a static, multi-page web platform built with vanilla HTML5, CSS3, and JavaScript. The marketing site (home, work, apps, about, contact) coexists with a small set of free browser apps. The repo has no build step at the root; CSS is plain, JS is loaded with `<script defer>`, and partials are stitched together client-side via jQuery.
 
 ## Directory Structure
 
@@ -15,7 +15,7 @@ shevato/
 │   │   ├── main.js                   # Auth UI + partials loader (jQuery)
 │   │   ├── jquery.min.js             # jQuery (vendored)
 │   │   ├── analytics.js              # Google Analytics bootstrap
-│   │   ├── language-switcher.js      # Moadon Alef tri-lingual switcher
+│   │   ├── language-switcher.js      # Tri-lingual switcher for the separately-branded landing
 │   │   ├── year-updater.js           # Footer copyright year
 │   │   ├── passive-events-fix.js     # Passive listeners polyfill
 │   │   ├── breakpoints.min.js, browser.min.js, util.js  # Responsive helpers
@@ -24,14 +24,14 @@ shevato/
 │   └── seo/                          # Reference JSON-LD fragments + metadata checklist
 │
 ├── apps/                             # Browser apps (each is self-contained)
-│   ├── mario-kart/                   # Mario Kart 8 Deluxe race tracker
+│   ├── mario-kart/                   # Mario Kart race tracker (8 Deluxe + World)
 │   ├── gym-tracker/                  # Gym workout tracker (PWA, manifest + service worker)
 │   └── football-h2h/                 # Head-to-head football league manager
 │
 ├── partials/                         # Header/footer fragments loaded by main.js
 │   ├── header.html
 │   ├── footer.html
-│   └── footer-moadon-alef.html       # Tri-lingual footer for Moadon Alef
+│   └── footer-moadon-alef.html       # Tri-lingual footer for the separately-branded landing
 │
 ├── images/                           # Logos, backgrounds, and app artwork
 ├── netlify/, .netlify/               # Netlify functions and build artifacts
@@ -41,7 +41,7 @@ shevato/
 ├── home.html                         # Main landing page
 ├── product.html                      # Services / product overview
 ├── apps.html                         # Apps hub
-├── moadon-alef.html                  # Medical services landing (Hebrew/Russian/English)
+├── moadon-alef.html                  # Separately-branded multilingual landing (Hebrew/Russian/English)
 ├── 404.html                          # Friendly not-found page (noindex, follow)
 ├── sitemap.xml                       # Indexable URL list
 ├── robots.txt                        # Crawler policy
@@ -65,7 +65,7 @@ shevato/
 - Consistent themed background (`bg.jpg`) across the marketing pages.
 - Dynamic header/footer injection via the partials system.
 - Optional Firebase email/password auth for cross-device sync (apps work fine signed-out via localStorage).
-- Multi-language support on Moadon Alef (English, Russian, Hebrew) via per-element `lang` attributes and a small switcher.
+- Multi-language support (English, Russian, Hebrew) on the separately-branded landing via per-element `lang` attributes and a small switcher.
 - Reference SEO assets under `assets/seo/` (canonical Organization/WebSite JSON-LD plus a per-page metadata checklist).
 
 ## Local Development

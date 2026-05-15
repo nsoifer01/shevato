@@ -32,3 +32,6 @@ TESTING_STEPS.txt
 # WhatsApp chat exports (personal data, used locally for MapTap Rivals import)
 WhatsApp Chat *.txt
 WhatsApp Chat *.txt:Zone.Identifier
+
+# Windows / WSL download metadata
+*:Zone.Identifier
