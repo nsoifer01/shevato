@@ -5,16 +5,20 @@
  * attribute, which keeps the markup compatible with strict CSPs that
  * disallow inline event handlers.
  *
- * Note: the page's `<html>` element intentionally has NO `lang` attribute.
- * A CSS rule (`[lang]:not([lang="en"]) { display: none; }`) hides per-element
- * lang variants by default; setting `<html lang="he">` would hide the
- * entire page. The chosen language is reflected via `dir` and the
- * Open Graph / hreflang tags in <head> still signal targeting to crawlers.
+ * The CSS rule `[lang]:not([lang="en"]) { display: none; }` hides
+ * per-element lang variants by default; the chosen language is then
+ * revealed by toggling inline display below. The `<html>` and `<body>`
+ * elements are skipped so a root-level `lang` attribute (required for
+ * a11y / SEO) cannot blank the page.
  */
 
 const LANG_BLOCK_ELEMENTS = new Set(['P', 'H1', 'H2', 'H3', 'H4', 'H5', 'H6', 'DIV', 'SECTION']);
 const SUPPORTED_LANGS = new Set(['en', 'ru', 'he']);
 const STORAGE_KEY = 'moadon-alef-lang';
+
+function isStructuralLangHost(el) {
+  return el === document.documentElement || el === document.body;
+}
 
 function switchLanguage(lang) {
   if (!SUPPORTED_LANGS.has(lang)) return;
@@ -25,14 +29,13 @@ function switchLanguage(lang) {
     btn.setAttribute('aria-pressed', isActive ? 'true' : 'false');
   });
 
-  // Hide every per-language element except the buttons themselves.
   document.querySelectorAll('[lang]').forEach(el => {
-    if (el.classList.contains('lang-btn')) return;
+    if (el.classList.contains('lang-btn') || isStructuralLangHost(el)) return;
     el.style.display = 'none';
   });
 
   document.querySelectorAll(`[lang="${lang}"]`).forEach(el => {
-    if (el.classList.contains('lang-btn')) return;
+    if (el.classList.contains('lang-btn') || isStructuralLangHost(el)) return;
     el.style.display = LANG_BLOCK_ELEMENTS.has(el.tagName) ? 'block' : 'inline';
   });
 

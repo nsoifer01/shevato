@@ -1,5 +1,10 @@
 /* Override some styles for medical theme */
 
+:root {
+  --medical-blue: #0066cc;
+  --medical-blue-hover: #0044aa;
+  --medical-blue-icon-hover: #004499;
+}
 
 .highlights section {
   transition: all 0.3s ease;
@@ -7,13 +12,13 @@
 }
 
 .highlights section:hover {
-  border-color: #0066cc;
+  border-color: var(--medical-blue);
   transform: translateY(-5px);
 }
 
 /* Medical theme colors */
 .icon.medical {
-  color: #0066cc !important;
+  color: var(--medical-blue) !important;
 }
 
 /* Language switcher styles */
@@ -28,9 +33,9 @@
 
 .lang-btn {
   padding: 12px 24px;
-  border: 2px solid #0066cc;
+  border: 2px solid var(--medical-blue);
   background: white;
-  color: #0066cc;
+  color: var(--medical-blue);
   border-radius: 25px;
   cursor: pointer;
   font-weight: 600;
@@ -64,7 +69,7 @@
 .brand-title {
   font-size: 3rem;
   font-weight: bold;
-  color: #0066cc;
+  color: var(--medical-blue);
   margin-bottom: 20px;
   letter-spacing: -1px;
 }
@@ -72,7 +77,7 @@
 .main-phone {
   font-size: 2.5rem;
   font-weight: bold;
-  color: #0066cc;
+  color: var(--medical-blue);
   text-decoration: none;
   display: inline-block;
   margin: 20px 0;
@@ -80,7 +85,7 @@
 }
 
 .main-phone:hover {
-  color: #0044aa;
+  color: var(--medical-blue-hover);
   transform: scale(1.05);
 }
 
@@ -127,13 +132,13 @@
   display: block;
   margin-bottom: 1rem;
   font-size: 4rem !important;
-  color: #0066cc;
+  color: var(--medical-blue);
   transition: transform 0.3s ease, color 0.3s ease;
 }
 
 .highlights .content header .icon:hover {
   transform: scale(1.1);
-  color: #004499;
+  color: var(--medical-blue-icon-hover);
 }
 
 .highlights .content header h2 {
