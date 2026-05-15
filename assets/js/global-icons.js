@@ -25,8 +25,3 @@ window.GlobalIcons = {
         return [...this.SPORTS, ...this.ANIMALS, ...this.GENERAL];
     }
 };
-
-// Export for CommonJS environments if needed
-if (typeof module !== 'undefined' && module.exports) {
-    module.exports = window.GlobalIcons;
-}
