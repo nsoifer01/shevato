@@ -101,9 +101,12 @@
     <!-- Football H2H specific CSS -->
     <link rel="stylesheet" href="css/sidebar.css">
     <link rel="stylesheet" href="../../assets/css/pagination.css">
+    <link rel="stylesheet" href="../../assets/css/sync-status.css">
     <link rel="stylesheet" href="css/football-h2h.css">
 </head>
 <body class="mario-kart-app football-h2h-tracker">
+    <!-- Sync status banner — only visible when offline (and briefly on recovery). Managed by assets/js/sync-status.js. -->
+    <div id="sync-banner" class="sync-banner" role="status" aria-live="polite" hidden></div>
     <div data-include="header"></div>
     
     <!-- Sidebar Toggle Button -->
@@ -226,6 +229,8 @@
                     <button class="sidebar-date-today-btn" onclick="setSidebarDateToday()">Set to Today</button>
                 </div>
             </div>
+            <!-- Sync status pill — auto-populated by assets/js/sync-status.js -->
+            <div class="sidebar-section sidebar-sync-footer" data-sync-status-slot></div>
         </div>
     </aside>
     
@@ -410,6 +415,7 @@
     
     <!-- Include Scripts -->
     <script src="../../assets/js/passive-events-fix.js"></script>
+    <script src="../../assets/js/sync-status.js"></script>
     <script src="../../assets/js/escape-html.js"></script>
     <script src="../../assets/js/jquery.min.js"></script>
     <script src="../../assets/js/global-icons.js"></script>
