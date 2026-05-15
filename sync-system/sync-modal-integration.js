@@ -88,6 +88,7 @@
         userJustSignedIn = false;
         awaitingInitialSync = false;
         lastKnownUserId = null;
+        tearDownSyncWatch();
         hideSyncModal();
       }
 
@@ -97,68 +98,82 @@
     });
   }
   
+  // Single owner of the in-flight sync watch. Holding it on the IIFE
+  // scope (not inside checkForSyncCompletion) lets every exit path —
+  // first-change, timeout, sign-out, manual mark-complete — share one
+  // teardown so we never leak the setItem override or the
+  // localStorageSync listener across sign-in cycles.
+  let activeSyncWatch = null;
+
+  function tearDownSyncWatch() {
+    const watch = activeSyncWatch;
+    if (!watch) return;
+    activeSyncWatch = null;
+
+    // Restore setItem only if no other code has wrapped it in the
+    // meantime; otherwise leave the chain intact so we don't clobber a
+    // newer override.
+    if (watch.installedSetItem && localStorage.setItem === watch.installedSetItem) {
+      localStorage.setItem = watch.originalSetItem;
+    }
+    window.removeEventListener('localStorageSync', watch.eventListener);
+    if (watch.timeoutId) clearTimeout(watch.timeoutId);
+  }
+
   // Check if sync has completed by monitoring localStorage changes
   function checkForSyncCompletion() {
     if (!awaitingInitialSync) return;
-    
-    let changeCount = 0;
+    if (activeSyncWatch) tearDownSyncWatch();
+
     const maxWaitTime = 8000; // 8 seconds max wait
-    const startTime = Date.now();
-    
-    // Monitor localStorage for sync-related changes
-    const originalSetItem = localStorage.setItem;
-    
-    function monitorChanges(key, value) {
-      // Count meaningful changes (not just auth tokens or UI state)
+    let changeCount = 0;
+
+    const watch = {
+      originalSetItem: localStorage.setItem,
+      installedSetItem: null,
+      eventListener: null,
+      timeoutId: null
+    };
+
+    function monitorChanges(key) {
+      if (!awaitingInitialSync) return;
       if (key && !key.includes('firebase:') && !key.includes('Auth') &&
           !key.includes('Welcome') && !key.includes('theme')) {
         changeCount++;
-
-        // If we've seen some changes, consider sync complete
-        if (changeCount >= 1) {
-          completeSyncProcess();
-        }
+        if (changeCount >= 1) completeSyncProcess();
       }
     }
-    
-    // Override setItem temporarily
-    localStorage.setItem = function(key, value) {
-      originalSetItem.call(this, key, value);
-      monitorChanges(key, value);
+
+    watch.installedSetItem = function(key, value) {
+      watch.originalSetItem.call(this, key, value);
+      try { monitorChanges(key); } catch (_) { /* never break the write */ }
     };
-    
-    // Also listen for custom sync events if available
-    window.addEventListener('localStorageSync', (event) => {
-      if (event.detail && event.detail.key) {
-        monitorChanges(event.detail.key, event.detail.value);
-      }
-    });
-    
-    // Timeout fallback
-    setTimeout(() => {
-      if (awaitingInitialSync) {
-        completeSyncProcess();
-      }
+    localStorage.setItem = watch.installedSetItem;
+
+    watch.eventListener = (event) => {
+      if (event.detail && event.detail.key) monitorChanges(event.detail.key);
+    };
+    window.addEventListener('localStorageSync', watch.eventListener);
+
+    watch.timeoutId = setTimeout(() => {
+      if (awaitingInitialSync) completeSyncProcess();
     }, maxWaitTime);
+
+    activeSyncWatch = watch;
 
     function completeSyncProcess() {
       if (!awaitingInitialSync) return;
 
       awaitingInitialSync = false;
       syncCompleted = true;
+      tearDownSyncWatch();
 
-      // Restore original setItem
-      localStorage.setItem = originalSetItem;
-      
-      // Show completion message briefly, then refresh
       if (window.SyncLoadingModal) {
         window.SyncLoadingModal.updateMessage('Sync Complete!', 'Refreshing page...');
-        
+
         setTimeout(() => {
           hideSyncModal();
-          // Mark that we're about to refresh due to sync completion
           sessionStorage.setItem(SYNC_REFRESH_KEY, 'true');
-          // Refresh the page to show synced data
           window.location.reload();
         }, 1000);
       }
@@ -187,6 +202,7 @@
     markSyncComplete: () => {
       if (awaitingInitialSync) {
         awaitingInitialSync = false;
+        tearDownSyncWatch();
         hideSyncModal();
         setTimeout(() => window.location.reload(), 500);
       }
