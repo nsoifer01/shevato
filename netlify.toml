@@ -4,6 +4,15 @@
 [functions]
   node_bundler = "esbuild"
 
+# product.html was retired as part of the marketing/portfolio refresh.
+# Its services content now lives at the top of /work.html. Permanent
+# redirect so anyone with a bookmark or inbound link lands cleanly.
+[[redirects]]
+  from = "/product.html"
+  to = "/work.html"
+  status = 301
+  force = true
+
 # Baseline security headers for every response. The CSP is intentionally
 # Report-Only because main.js (jQuery + the auth modal) sets element
 # styles at runtime and writes inline event-style attributes via

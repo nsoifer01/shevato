@@ -21,16 +21,25 @@
   <!-- SEO Enhancement: Hebrew-focused meta description targeting medical assistance searches -->
   <meta name="description" content="מועדון אלף - שירות רופא עד הבית 24/7 בישראל. טיפול רפואי מקצועי, בדיקות, חיסונים וטיפולי חירום בנוחות ביתכם. צוות רופאים מומחים זמין מסביב לשעון כולל שבתות וחגים. טלפון: 1-700-7011-03" />
   <!-- SEO Enhancement: Comprehensive Hebrew keywords for medical services -->
-  <meta name="keywords" content="רופא עד הבית, שירות רפואי 24/7, רופא לילה, רופא שבת, ביקור רופא בבית, טיפול רפואי בבית, מועדון אלף, רופא חירום, בדיקות דם בבית, חיסונים בבית, רופא ילדים עד הבית, רופא קשישים, שירותי רפואה פרטיים, 1700701103" />
+  <meta name="keywords" content="רופא עד הבית, שירות רפואי 24/7, רופא לילה, רופא שבת, ביקור רופא בבית, טיפול רפואי בבית, מועדון אלף, רופא חירום, בדיקות דם בבית, חיסונים בבית, רופא ילדים עד הבית, רופא קשישים, שירותי רפואה פרטיים, רופא תורן, רופא דחוף, מרפאה ביתית, רופא משפחה בבית, ביקור בית רפואי, רופא פרטי, טיפול דחוף בבית, ויזיט רופא, רופא מומחה בבית, IV בבית, אינפוזיה בבית, מרשם רפואי, רופא דובר רוסית, רופא דובר אנגלית, doctor house call Israel, врач на дом Израиль, 1700701103" />
   <meta name="author" content="Moadon Alef" />
+  <meta name="rating" content="general" />
+  <meta name="distribution" content="global" />
+  <meta name="coverage" content="Israel" />
+  <meta name="target" content="all" />
   <link rel="stylesheet" href="assets/css/main.css" />
   <link rel="icon" type="image/png" href="images/moadon-alef-header.png">
   
   <!-- SEO Enhancement: Canonical URL to prevent duplicate content issues -->
   <link rel="canonical" href="https://shevato.com/moadon-alef.html" />
   
-  <!-- SEO Enhancement: Language targeting for Israeli users -->
+  <!-- SEO Enhancement: Language targeting for Israeli users and the Russian and English audiences served on the same page. -->
   <link rel="alternate" hreflang="he-IL" href="https://shevato.com/moadon-alef.html" />
+  <link rel="alternate" hreflang="he" href="https://shevato.com/moadon-alef.html" />
+  <link rel="alternate" hreflang="ru-IL" href="https://shevato.com/moadon-alef.html" />
+  <link rel="alternate" hreflang="ru" href="https://shevato.com/moadon-alef.html" />
+  <link rel="alternate" hreflang="en-IL" href="https://shevato.com/moadon-alef.html" />
+  <link rel="alternate" hreflang="en" href="https://shevato.com/moadon-alef.html" />
   <link rel="alternate" hreflang="x-default" href="https://shevato.com/moadon-alef.html" />
   
   <!-- SEO Enhancement: Robots meta tag for search engine crawling -->
@@ -45,7 +54,11 @@
   <meta property="og:image:type" content="image/png" />
   <meta property="og:image:alt" content="מועדון אלף - רופא עד הבית 24/7" />
   <meta property="og:locale" content="he_IL" />
+  <meta property="og:locale:alternate" content="en_US" />
+  <meta property="og:locale:alternate" content="ru_RU" />
   <meta property="og:site_name" content="מועדון אלף" />
+  <meta property="business:contact_data:country_name" content="Israel" />
+  <meta property="business:contact_data:phone_number" content="+972-1-700-7011-03" />
 
   <!-- SEO Enhancement: Twitter Card tags -->
   <meta name="twitter:card" content="summary_large_image" />
@@ -56,8 +69,10 @@
   
   <!-- SEO Enhancement: Additional meta tags for local Israeli searches -->
   <meta name="geo.region" content="IL" />
-  <meta name="geo.placename" content="ישראל" />
-  <meta name="language" content="Hebrew" />
+  <meta name="geo.placename" content="Israel" />
+  <meta name="ICBM" content="31.0461,34.8516" />
+  <meta name="language" content="Hebrew, English, Russian" />
+  <meta http-equiv="content-language" content="he-IL" />
   <link rel="stylesheet" href="/assets/css/moadon-alef-theme.css" />
   <link rel="stylesheet" href="/assets/css/brand-colors.css" />
   
@@ -66,43 +81,80 @@
   {
     "@context": "https://schema.org",
     "@type": "MedicalOrganization",
-    "@id": "https://shevato.com/moadon-alef.html",
+    "@id": "https://shevato.com/moadon-alef.html#organization",
     "name": "מועדון אלף",
-    "alternateName": "Moadon Alef",
+    "alternateName": ["Moadon Alef", "Моадон Алеф"],
     "description": "שירות רופא עד הבית 24/7 המוביל בישראל. מספקים טיפול רפואי מקצועי, בדיקות, חיסונים וטיפולי חירום בנוחות ביתכם.",
+    "slogan": "שירות רופא עד הבית 24/7",
     "url": "https://shevato.com/moadon-alef.html",
     "telephone": "+972-1-700-7011-03",
-    "logo": "https://shevato.com/images/moadon-alef-header.png",
-    "image": "https://shevato.com/images/moadon-alef.png",
+    "logo": {
+      "@type": "ImageObject",
+      "url": "https://shevato.com/images/moadon-alef-header.png",
+      "caption": "מועדון אלף"
+    },
+    "image": "https://shevato.com/images/moadon-alef-header.png",
+    "inLanguage": ["he", "en", "ru"],
+    "knowsLanguage": ["he", "en", "ru"],
     "address": {
       "@type": "PostalAddress",
-      "addressCountry": "IL",
-      "addressLocality": "ישראל"
+      "addressCountry": "IL"
     },
     "areaServed": {
       "@type": "Country",
-      "name": "ישראל"
+      "name": "Israel",
+      "alternateName": "ישראל"
     },
+    "serviceType": [
+      "ביקור רופא בבית",
+      "רופא עד הבית 24/7",
+      "טיפול רפואי בבית",
+      "רופא תורן",
+      "רופא חירום",
+      "בדיקות דם בבית",
+      "חיסונים בבית",
+      "רופא ילדים בבית",
+      "רופא קשישים",
+      "House call doctor",
+      "Home medical services",
+      "Visit врача на дом"
+    ],
     "availableService": [
       {
         "@type": "MedicalProcedure",
         "name": "ביקור רופא בבית",
+        "alternateName": ["Doctor house call", "Визит врача на дом"],
         "description": "בדיקה וטיפול רפואי מקצועי בבית המטופל"
       },
       {
         "@type": "MedicalProcedure",
         "name": "טיפול חירום 24/7",
-        "description": "שירות רפואי דחוף זמין מסביב לשעון"
+        "alternateName": ["24/7 emergency care", "Экстренная помощь 24/7"],
+        "description": "שירות רפואי דחוף זמין מסביב לשעון, כולל סופי שבוע וחגים"
       },
       {
         "@type": "MedicalProcedure",
         "name": "בדיקות דם בבית",
+        "alternateName": ["Home blood tests", "Анализы крови на дому"],
         "description": "ביצוע בדיקות מעבדה בנוחות הבית"
       },
       {
         "@type": "MedicalProcedure",
-        "name": "חיסונים",
+        "name": "חיסונים בבית",
+        "alternateName": ["Home vaccinations", "Вакцинация на дому"],
         "description": "מתן חיסונים לילדים ומבוגרים בבית"
+      },
+      {
+        "@type": "MedicalProcedure",
+        "name": "טיפולי IV ועירוי",
+        "alternateName": ["IV therapy at home", "Внутривенное лечение"],
+        "description": "מתן עירויים וטיפולי IV בבית המטופל"
+      },
+      {
+        "@type": "MedicalProcedure",
+        "name": "מרשמים רפואיים",
+        "alternateName": ["Prescription services", "Выписка рецептов"],
+        "description": "כתיבת מרשמים רפואיים בעת ביקור הרופא"
       }
     ],
     "openingHoursSpecification": {
@@ -119,6 +171,10 @@
       "opens": "00:00",
       "closes": "23:59"
     },
+    "specialOpeningHoursSpecification": {
+      "@type": "OpeningHoursSpecification",
+      "description": "Available 24/7 including Shabbat and Israeli public holidays"
+    },
     "priceRange": "$$",
     "paymentAccepted": "Cash, Credit Card",
     "currenciesAccepted": "ILS",
@@ -127,8 +183,30 @@
       "FamilyPractice",
       "EmergencyMedicine",
       "Pediatrics",
-      "Geriatrics"
-    ]
+      "Geriatrics",
+      "InternalMedicine",
+      "PrimaryCare"
+    ],
+    "potentialAction": {
+      "@type": "ReserveAction",
+      "name": "Call to book a house call",
+      "target": "tel:+972170070110 3"
+    }
+  }
+  </script>
+
+  <!-- SEO Enhancement: WebSite schema with Hebrew sitelinks search action -->
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@type": "WebSite",
+    "@id": "https://shevato.com/moadon-alef.html#website",
+    "url": "https://shevato.com/moadon-alef.html",
+    "name": "מועדון אלף",
+    "alternateName": ["Moadon Alef", "Моадон Алеф"],
+    "description": "שירות רופא עד הבית 24/7 בישראל",
+    "inLanguage": ["he", "en", "ru"],
+    "publisher": { "@id": "https://shevato.com/moadon-alef.html#organization" }
   }
   </script>
   
@@ -167,7 +245,7 @@
         <h1 class="brand-title" lang="ru">Моадон Алеф</h1>
         <h1 class="brand-title" lang="he">מועדון אלף</h1>
         <div>
-          <a href="tel:+1700701103" class="main-phone">📞 1-700-7011-03</a>
+          <a href="tel:+9721700701103" class="main-phone" aria-label="חייגו 1-700-701-103">📞 1-700-7011-03</a>
         </div>
         <p class="service-tagline" lang="en">24/7 House Call Doctor Service</p>
         <p class="service-tagline" lang="ru">Круглосуточная служба вызова врача на дом</p>
