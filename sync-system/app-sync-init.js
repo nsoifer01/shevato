@@ -2,8 +2,6 @@
 // Integrates with existing Firebase Auth in main.js
 
 import { startStorageSync, stopAllSyncs, getSyncStatus, getGlobalSyncStatus } from './storage-sync-robust.js';
-import { enablePersistence } from './firebase-persistence.js';
-import { db } from '../firebase-config.js';
 
 // Track active syncs
 let activeSyncs = [];
@@ -89,12 +87,10 @@ const APP_SYNC_CONFIG = {
  * Call this when user signs in
  */
 export async function initAppSync() {
-  // Enable offline persistence once globally
-  try {
-    await enablePersistence(db, true);
-  } catch (error) {
-    console.warn('Firebase persistence failed:', error.message);
-  }
+  // Persistence is configured at initializeFirestore() time in
+  // firebase-config.js (persistentLocalCache + persistentMultipleTabManager),
+  // so there is nothing to enable here — the import this function used to
+  // make has been retired along with the no-op firebase-persistence shim.
 
   // Stop any existing syncs
   stopAllSyncs();
