@@ -102,6 +102,7 @@
     <link rel="stylesheet" href="css/players-dropdown-new.css">
     <link rel="stylesheet" href="css/player-icons.css">
     <link rel="stylesheet" href="../../assets/css/pagination.css">
+    <link rel="stylesheet" href="../../assets/css/sync-status.css">
     <link rel="stylesheet" href="css/sidebar.css">
     <link rel="stylesheet" href="css/tooltip.css">
     <link rel="stylesheet" href="css/help-styles.css">
@@ -114,6 +115,8 @@
     <script src="../../sync-system/sync-immediate.js"></script>
 </head>
 <body class="mario-kart-app mario-kart-tracker">
+    <!-- Sync status banner — only visible when offline (and briefly on recovery). Managed by assets/js/sync-status.js. -->
+    <div id="sync-banner" class="sync-banner" role="status" aria-live="polite" hidden></div>
     <div data-include="header"></div>
     
     
@@ -213,6 +216,8 @@
                     <button class="sidebar-date-today-btn" onclick="setSidebarDateToday()">Set to Today</button>
                 </div>
             </div>
+            <!-- Sync status pill — auto-populated by assets/js/sync-status.js -->
+            <div class="sidebar-section sidebar-sync-footer" data-sync-status-slot></div>
         </div>
     </aside>
     
@@ -576,6 +581,7 @@
 
     <!-- Import all modules -->
     <script src="../../assets/js/escape-html.js"></script>
+    <script src="../../assets/js/sync-status.js"></script>
     <script src="js/constants.js"></script>
     <script src="js/gameVersionManager.js"></script>
     <script src="js/modalUtils.js"></script>
