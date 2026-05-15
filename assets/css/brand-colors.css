@@ -1,5 +1,15 @@
+/* Brand color tokens. Anything visual that wants the Shevato blue should pull
+   from these variables instead of hard-coding the hex. The RGB triple is also
+   exposed for use inside rgba(...) calls. */
+:root {
+  --brand-blue: #0044cc;
+  --brand-blue-hover: #003bb5;
+  --brand-blue-tint: #1a5fd9;
+  --brand-blue-rgb: 0, 68, 204;
+}
+
 .brand-color-primary {
-  color: #0044cc !important;
+  color: var(--brand-blue) !important;
 }
 
 .btn-export {
@@ -35,7 +45,7 @@
   left: 0;
   z-index: 1000;
   padding: 8px 16px;
-  background: #0044cc;
+  background: var(--brand-blue);
   color: #ffffff;
   text-decoration: none;
   font-weight: 600;
