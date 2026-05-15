@@ -1,14 +1,10 @@
 /**
  * Global Enhanced JavaScript
  * Includes: Firebase Config, Auth, UI, and Main site functionality
- * 
+ *
  * Dependencies: jQuery, Firebase SDK (loaded from CDN)
  */
 
-// Firebase Configuration is now loaded directly from firebase-config.js
-// The config file is included in all HTML pages before main.js
-
-// Main Application JavaScript
 (function($) {
   'use strict';
 
@@ -35,7 +31,8 @@
     tabActive: 'auth-tab--active',
     formActive: 'auth-form--active',
     messageVisible: 'auth-message--visible',
-    inputError: 'auth-form__input--error'
+    inputError: 'auth-form__input--error',
+    errorVisible: 'auth-form__error--visible'
   };
 
   // Firebase config will be loaded from external file (firebase-config-local.js)
@@ -64,24 +61,6 @@
   function isValidEmail(email) {
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
     return emailRegex.test(email);
-  }
-
-  /**
-   * Debounce function to limit function calls
-   * @param {Function} func - Function to debounce
-   * @param {number} wait - Wait time in milliseconds
-   * @returns {Function} Debounced function
-   */
-  function debounce(func, wait) {
-    let timeout;
-    return function executedFunction(...args) {
-      const later = () => {
-        clearTimeout(timeout);
-        func(...args);
-      };
-      clearTimeout(timeout);
-      timeout = setTimeout(later, wait);
-    };
   }
 
   /* ==========================================================================
@@ -466,9 +445,6 @@
       });
     }
 
-    // ... (Additional methods continue - createAuthModal, bindModalEvents, etc.)
-    // Due to length constraints, I'll continue with the most essential methods
-
     /**
      * Create authentication modal
      * @private
@@ -665,6 +641,28 @@
 
 
     /**
+     * Clear inline error state from all auth form inputs.
+     * The CSS forces `.auth-form__error { display: none !important }`, so
+     * visibility is driven by the `auth-form__error--visible` class — not
+     * jQuery `.show()` / `.hide()`, which can't beat `!important`.
+     * @private
+     */
+    clearAuthFormErrors() {
+      $('.auth-form__input').removeClass(CSS_CLASSES.inputError);
+      $('.auth-form__error').text('').removeClass(CSS_CLASSES.errorVisible);
+    }
+
+    /**
+     * Mark a field as invalid: add error class to the input and reveal the
+     * matching error message element.
+     * @private
+     */
+    showFieldError(inputSelector, errorSelector, message) {
+      $(inputSelector).addClass(CSS_CLASSES.inputError);
+      $(errorSelector).text(message).addClass(CSS_CLASSES.errorVisible);
+    }
+
+    /**
      * Validate sign in form
      * @private
      * @param {string} email - Email address
@@ -673,24 +671,18 @@
      */
     validateSignInForm(email, password) {
       let isValid = true;
-
-      // Clear previous errors
-      $('.auth-form__input').removeClass(CSS_CLASSES.inputError);
-      $('.auth-form__error').text('').hide();
+      this.clearAuthFormErrors();
 
       if (!email) {
-        $('#signin-email').addClass(CSS_CLASSES.inputError);
-        $('#signin-email-error').text('Email is required').show();
+        this.showFieldError('#signin-email', '#signin-email-error', 'Email is required');
         isValid = false;
       } else if (!isValidEmail(email)) {
-        $('#signin-email').addClass(CSS_CLASSES.inputError);
-        $('#signin-email-error').text('Please enter a valid email address').show();
+        this.showFieldError('#signin-email', '#signin-email-error', 'Please enter a valid email address');
         isValid = false;
       }
 
       if (!password) {
-        $('#signin-password').addClass(CSS_CLASSES.inputError);
-        $('#signin-password-error').text('Password is required').show();
+        this.showFieldError('#signin-password', '#signin-password-error', 'Password is required');
         isValid = false;
       }
 
@@ -706,28 +698,21 @@
      */
     validateSignUpForm(email, password) {
       let isValid = true;
-
-      // Clear previous errors
-      $('.auth-form__input').removeClass(CSS_CLASSES.inputError);
-      $('.auth-form__error').text('').hide();
+      this.clearAuthFormErrors();
 
       if (!email) {
-        $('#signup-email').addClass(CSS_CLASSES.inputError);
-        $('#signup-email-error').text('Email is required').show();
+        this.showFieldError('#signup-email', '#signup-email-error', 'Email is required');
         isValid = false;
       } else if (!isValidEmail(email)) {
-        $('#signup-email').addClass(CSS_CLASSES.inputError);
-        $('#signup-email-error').text('Please enter a valid email address').show();
+        this.showFieldError('#signup-email', '#signup-email-error', 'Please enter a valid email address');
         isValid = false;
       }
 
       if (!password) {
-        $('#signup-password').addClass(CSS_CLASSES.inputError);
-        $('#signup-password-error').text('Password is required').show();
+        this.showFieldError('#signup-password', '#signup-password-error', 'Password is required');
         isValid = false;
       } else if (password.length < 6) {
-        $('#signup-password').addClass(CSS_CLASSES.inputError);
-        $('#signup-password-error').text('Password must be at least 6 characters long').show();
+        this.showFieldError('#signup-password', '#signup-password-error', 'Password must be at least 6 characters long');
         isValid = false;
       }
 
@@ -956,16 +941,5 @@
       }
     }, 1000);
   });
-
-  // Handle scroll and resize events (debounced for performance)
-  const debouncedResize = debounce(() => {
-    // Handle responsive adjustments
-    if (window.authUI && window.authUI.state.isModalOpen) {
-      // Ensure modal is properly positioned
-      window.authUI.trapFocus = window.authUI.trapFocus.bind(window.authUI);
-    }
-  }, 250);
-
-  $window.on('resize', debouncedResize);
 
 })(jQuery);
