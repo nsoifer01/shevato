@@ -291,6 +291,7 @@ class StorageSyncManager {
       if (state.stopped) return;
 
       const unsubscribe = onSnapshot(docRef,
+        { includeMetadataChanges: true },
         (snapshot) => {
           if (state.stopped) return;
 
@@ -302,12 +303,17 @@ class StorageSyncManager {
             this.applyRemoteChange(key, info);
           }
 
-          // First snapshot doubles as the initial merge: any keys we
-          // have locally but Firestore doesn't are queued for upload.
-          // This replaces the old separate `getDoc` round-trip in
-          // `performInitialMerge`, which was the chief contributor to
-          // the 429s under auth-state churn.
-          if (!state.initialMergeDone) {
+          // Initial merge: queue any keys we have locally but Firestore
+          // doesn't. Gate on !fromCache because persistent IndexedDB
+          // cache means the first snapshot can come from an empty/stale
+          // local cache; uploading local-only keys against that view
+          // silently overwrites whatever a different browser already
+          // wrote to the same keys (the "sometimes data is kept,
+          // sometimes not" cross-browser bug). includeMetadataChanges
+          // guarantees we get a callback when the snapshot transitions
+          // from cached to server-confirmed even if the data is
+          // unchanged.
+          if (!state.initialMergeDone && !snapshot.metadata.fromCache) {
             state.initialMergeDone = true;
             this.uploadLocalOnlyKeys(state, remoteData);
           }
