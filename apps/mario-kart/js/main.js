@@ -1621,6 +1621,29 @@ document.addEventListener('DOMContentLoaded', function() {
         }, { once: true });
     }
 
+    // Live remote-update channel: another device pushed a change.
+    // 750 ms debounce coalesces the per-key burst the storage layer
+    // emits when it flushes several Mario Kart keys back-to-back.
+    // PlayerNameManager caches in memory after its initial load, so
+    // we explicitly call `initialize()` to make remote name renames
+    // visible — without it the table headers and stat cards keep
+    // showing stale names even after `loadSavedData()` refreshes
+    // `races`.
+    let __mkRemoteRefreshTimer = null;
+    window.addEventListener('localStorageSync', (e) => {
+        const key = e.detail?.key;
+        if (typeof key !== 'string') return;
+        if (e.detail?.source !== 'remote') return;
+        if (!key.startsWith('marioKart') && key !== 'selectedGameVersion') return;
+        clearTimeout(__mkRemoteRefreshTimer);
+        __mkRemoteRefreshTimer = setTimeout(() => {
+            if (window.PlayerNameManager?.initialize) window.PlayerNameManager.initialize();
+            if (window.loadSavedData) window.loadSavedData();
+            if (typeof updateDisplay === 'function') updateDisplay();
+            if (window.updateAllPlayerIcons) window.updateAllPlayerIcons();
+        }, 750);
+    });
+
     // Subscribe to player symbol changes to update H2H tables
     if (window.PlayerSymbolManager) {
         window.PlayerSymbolManager.subscribe(() => {

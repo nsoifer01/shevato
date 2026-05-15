@@ -106,7 +106,20 @@ document.addEventListener('DOMContentLoaded', function() {
             }, 1000);
         }, { once: true });
     }
-    
+
+    // Live remote-update channel: another device pushed a change.
+    // 750 ms debounce coalesces the per-key burst the storage layer
+    // emits when it flushes several keys back-to-back (e.g. just
+    // after sign-in or after a reconnect).
+    let __footballRemoteRefreshTimer = null;
+    window.addEventListener('localStorageSync', (e) => {
+        const key = e.detail?.key;
+        if (typeof key !== 'string' || !key.startsWith('footballH2H')) return;
+        if (e.detail?.source !== 'remote') return;
+        clearTimeout(__footballRemoteRefreshTimer);
+        __footballRemoteRefreshTimer = setTimeout(initializeAppData, 750);
+    });
+
     // Initialize sidebar after everything else is loaded
     setTimeout(() => {
         if (window.initializeSidebar) {
