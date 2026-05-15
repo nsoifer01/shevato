@@ -185,6 +185,12 @@ export function setupAppSyncIntegration() {
         if (user) {
           initAppSync().catch(error => {
             console.error('❌ App sync initialization failed:', error);
+            // Broadcast so per-app UI (sync-status pill, banner) can show
+            // "sync offline" instead of silently letting writes accumulate
+            // in localStorage with no path to Firestore.
+            window.dispatchEvent(new CustomEvent('appSyncFailed', {
+              detail: { message: error?.message || String(error) }
+            }));
           });
         } else {
           stopAppSync();

@@ -79,14 +79,23 @@ function restoreFromBackup() {
         modal.appendChild(dialog);
         document.body.appendChild(modal);
 
-        // Add event listeners
-        document.getElementById('cancel-restore').onclick = () => {
-            document.body.removeChild(modal);
+        // Single teardown path so cancel/confirm/background-click/Escape
+        // all converge on the same cleanup. Older code called
+        // removeChild from each handler independently and never removed
+        // the document-level keydown listener except on the Escape path,
+        // so opening + cancelling the modal repeatedly stacked listeners.
+        const closeModal = () => {
+            if (modal.parentNode) modal.parentNode.removeChild(modal);
+            document.removeEventListener('keydown', escapeHandler);
         };
+        const escapeHandler = (e) => { if (e.key === 'Escape') closeModal(); };
+        document.addEventListener('keydown', escapeHandler);
+
+        document.getElementById('cancel-restore').onclick = closeModal;
 
         document.getElementById('confirm-restore').onclick = () => {
-            document.body.removeChild(modal);
-            
+            closeModal();
+
             // Perform the restore
             races = backupData.races || [];
             
@@ -147,20 +156,7 @@ function restoreFromBackup() {
         };
 
         // Close on background click
-        modal.onclick = (e) => {
-            if (e.target === modal) {
-                document.body.removeChild(modal);
-            }
-        };
-
-        // Close on Escape key
-        const escapeHandler = (e) => {
-            if (e.key === 'Escape') {
-                document.body.removeChild(modal);
-                document.removeEventListener('keydown', escapeHandler);
-            }
-        };
-        document.addEventListener('keydown', escapeHandler);
+        modal.onclick = (e) => { if (e.target === modal) closeModal(); };
 
     } catch (e) {
         showMessage('Failed to restore backup', true);

@@ -307,7 +307,7 @@ function generateSidebarRaceInputs() {
         
         html += `
             <div class="sidebar-player-input" data-player="${player}">
-                <label for="sidebar-${player}">${playerName}</label>
+                <label for="sidebar-${player}">${window.escapeHtml ? window.escapeHtml(playerName) : playerName}</label>
                 <div class="position-input-group">
                     <input 
                         type="number" 
@@ -1063,12 +1063,21 @@ function updateRaceHistoryTable(filteredRaces) {
         ? window.GlobalPaginationManager.getPaginatedItems('mario-kart-races', reversedRaces)
         : reversedRaces;
 
+    // Pre-index both source arrays so lookups inside the row map are O(1)
+    // instead of O(n) per row. With heavy users (1k+ races) the previous
+    // indexOf-per-row pattern made the history tab visibly hitch on
+    // every render.
+    const filteredIndexMap = new Map();
+    for (let i = 0; i < filteredRaces.length; i++) filteredIndexMap.set(filteredRaces[i], i);
+    const racesIndexMap = new Map();
+    for (let i = 0; i < races.length; i++) racesIndexMap.set(races[i], i);
+
     // Update history table
     const historyHtml = racesToDisplay.map((race) => {
         const positions = players.map(player => race[player]).filter(pos => pos !== null);
-        // Calculate race number based on original position in filtered races
-        const originalIndex = filteredRaces.indexOf(race);
+        const originalIndex = filteredIndexMap.get(race) ?? -1;
         const raceNumber = originalIndex + 1;
+        const globalIndex = racesIndexMap.get(race) ?? -1;
         const playerCells = players.map(player => {
             const position = race[player];
             return position !== null
@@ -1082,8 +1091,8 @@ function updateRaceHistoryTable(filteredRaces) {
             <td>${race.date}${race.timestamp ? '<br><small>' + race.timestamp + '</small>' : ''}</td>
             ${playerCells}
             <td>
-                <button class="edit-btn" onclick="editRace(${races.indexOf(race)})" title="Edit race">✏️</button>
-                <button class="delete-btn" onclick="deleteRace(${races.indexOf(race)})" title="Delete race">🗑️</button>
+                <button class="edit-btn" onclick="editRace(${globalIndex})" title="Edit race">✏️</button>
+                <button class="delete-btn" onclick="deleteRace(${globalIndex})" title="Delete race">🗑️</button>
             </td>
         </tr>
     `;

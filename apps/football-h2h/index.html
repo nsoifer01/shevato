@@ -282,19 +282,19 @@
             <!-- Statistics Tabs -->
             <div class="stats-tabs-section">
                 <div class="stats-tabs" role="tablist">
-                    <button class="stats-tab active" onclick="switchStatsTab('h2h')" role="tab" aria-selected="true" aria-controls="h2h-stats">
+                    <button id="tab-h2h" class="stats-tab active" onclick="switchStatsTab('h2h')" role="tab" aria-selected="true" aria-controls="h2h-stats">
                         ⚔️ H2H Stats
                     </button>
-                    <button class="stats-tab" onclick="switchStatsTab('general')" role="tab" aria-selected="false" aria-controls="general-stats">
+                    <button id="tab-general" class="stats-tab" onclick="switchStatsTab('general')" role="tab" aria-selected="false" aria-controls="general-stats">
                         📊 General Stats
                     </button>
-                    <button class="stats-tab" onclick="switchStatsTab('player')" role="tab" aria-selected="false" aria-controls="player-stats">
+                    <button id="tab-player" class="stats-tab" onclick="switchStatsTab('player')" role="tab" aria-selected="false" aria-controls="player-stats">
                         👤 Player Stats
                     </button>
                 </div>
 
                 <!-- H2H Stats Tab Content -->
-                <section class="stats-overview stats-tab-content active" id="h2h-stats" role="tabpanel">
+                <section class="stats-overview stats-tab-content active" id="h2h-stats" role="tabpanel" aria-labelledby="tab-h2h">
                     <!-- Total Wins Row -->
                     <h3 class="h2h-section-title">Total Wins</h3>
                     <div class="stats-grid h2h-row">
@@ -340,7 +340,7 @@
                 </section>
 
                 <!-- General Stats Tab Content -->
-                <section class="stats-overview stats-tab-content" id="general-stats" role="tabpanel" style="display: none;">
+                <section class="stats-overview stats-tab-content" id="general-stats" role="tabpanel" aria-labelledby="tab-general" style="display: none;">
                     <div class="stats-grid">
                         <div class="stat-card">
                             <div class="stat-label">Total Games</div>
@@ -358,7 +358,7 @@
                 </section>
 
                 <!-- Player Stats Tab Content -->
-                <section class="stats-overview stats-tab-content" id="player-stats" role="tabpanel" style="display: none;">
+                <section class="stats-overview stats-tab-content" id="player-stats" role="tabpanel" aria-labelledby="tab-player" style="display: none;">
                     <div class="player-comparison-wrap">
                         <table class="player-comparison-table">
                             <thead>
