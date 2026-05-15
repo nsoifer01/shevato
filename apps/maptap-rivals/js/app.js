@@ -3582,4 +3582,16 @@
   } else {
     init();
   }
+
+  // Live remote-update channel: bridge the storage-sync layer's
+  // `localStorageSync` event into a synthetic `'storage'` event so
+  // the existing `onExternalStorage` handler (wired above for the
+  // cross-tab `'storage'` event) re-renders the active view when
+  // another device pushes a change.
+  window.addEventListener('localStorageSync', (e) => {
+    const key = e.detail?.key;
+    if (typeof key !== 'string' || !key.startsWith('maptapRivals')) return;
+    if (e.detail?.source !== 'remote') return;
+    window.dispatchEvent(new StorageEvent('storage', { key }));
+  });
 })();
