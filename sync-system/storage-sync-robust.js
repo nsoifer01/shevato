@@ -597,26 +597,38 @@ class StorageSyncManager {
   }
 
   /**
-   * Enhanced write queueing with deduplication
+   * Enhanced write queueing with deduplication.
+   *
+   * Hash basis must be the parsed value, not the raw setItem string. The
+   * two paths that touch `localRevisions[key].hash` are this function
+   * (after a local setItem) and `applyRemoteChange` (after a remote
+   * delivery); the latter hashes the parsed object it just installed.
+   * Hashing the raw string here and the parsed object there produces
+   * different digests for the *same* JSON content, so the no-op skip
+   * below misses local writebacks of remote data — every UI re-render
+   * loop that calls `setItem` with the same value (e.g. football's
+   * `updateUI` → `updatePlayerNames` → `savePlayers`) gets requeued and
+   * flushed, the peer sees a write, fires its own re-render, the cycle
+   * repeats once per RTT. Parse first, hash the parsed form.
    */
   queueWrite(state, key, value) {
     const queue = this.writeQueues.get(state.namespace);
-    const currentHash = hashValue(value);
-    const localRev = this.localRevisions.get(key) || { rev: 0, hash: '' };
-    
-    // Skip if value hasn't actually changed
-    if (currentHash === localRev.hash) {
-      return;
-    }
-    
-    // Parse value if it's a string JSON
+
     let parsedValue = value;
     if (value !== null && value !== undefined) {
       try {
         parsedValue = JSON.parse(value);
       } catch {
-        // Keep as string if not valid JSON
+        // Keep as string if not valid JSON.
       }
+    }
+
+    const currentHash = hashValue(parsedValue);
+    const localRev = this.localRevisions.get(key) || { rev: 0, hash: '' };
+
+    // Skip if value hasn't actually changed.
+    if (currentHash === localRev.hash) {
+      return;
     }
 
     const newRev = localRev.rev + 1;
