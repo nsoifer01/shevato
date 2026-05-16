@@ -912,6 +912,130 @@ body.maptap-rivals-app button {
   .pred-row-head { font-size: 0.65rem; }
 }
 
+/* Wraps a player row + its per-round chip strip. Used as a single
+   visual block so the strip reads as "belonging to" the totals above. */
+.pred-row-wrap {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  padding: 0.5rem 0.6rem 0.6rem;
+  border-radius: var(--radius-sm);
+  background: var(--surface-2);
+}
+.pred-row-wrap-you { background: var(--accent-soft); }
+.pred-row-wrap > .pred-row { background: transparent; padding: 0; }
+
+/* Day-tab strip across the top of the predictions body. Each pill is
+   roughly square, today is highlighted, future days carry a thinner
+   accent so the upcoming run reads in one glance. */
+.pred-day-tabs {
+  display: flex;
+  gap: 0.4rem;
+  overflow-x: auto;
+  padding: 0 0.15rem 0.65rem;
+  margin: -0.25rem -0.15rem 0.4rem;
+  scrollbar-width: thin;
+}
+.pred-day-tab {
+  flex: 0 0 auto;
+  min-width: 58px;
+  padding: 0.4rem 0.55rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface-2);
+  color: var(--muted);
+  font: inherit;
+  cursor: pointer;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.05rem;
+  line-height: 1.1;
+  transition: border-color 0.12s ease, background 0.12s ease, color 0.12s ease;
+}
+.pred-day-tab:hover { border-color: var(--border-strong); color: var(--text); }
+.pred-day-tab.is-today { border-color: var(--accent-strong); color: var(--text); }
+.pred-day-tab.is-active {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--accent-ink);
+}
+.pred-day-tab.is-loading { opacity: 0.7; }
+.pred-day-tab.is-error   { border-color: rgba(251, 146, 60, 0.5); color: var(--warn); }
+.pred-day-tab:focus-visible { outline: 2px solid var(--accent-2); outline-offset: 2px; }
+.pred-day-tab-name {
+  font-size: 0.68rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  font-weight: 600;
+}
+.pred-day-tab-num {
+  font-size: 1.05rem;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+/* Per-round chip strip — one chip per of today's 5 rounds. Shows the
+   predicted value, the actual value once known, and a colored sliver
+   underneath keyed to the Δ direction. */
+.pred-round-strip {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 0.3rem;
+}
+.prc {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 0.3rem 0.4rem 0.35rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.1rem;
+  align-items: center;
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+  position: relative;
+  overflow: hidden;
+}
+.prc-head {
+  display: flex;
+  align-items: baseline;
+  gap: 0.3rem;
+  font-size: 0.68rem;
+  color: var(--muted);
+  letter-spacing: 0.04em;
+}
+.prc-slot   { font-weight: 700; color: var(--text); }
+.prc-weight { color: var(--muted); font-weight: 600; }
+.prc-nums {
+  display: flex;
+  align-items: baseline;
+  gap: 0.2rem;
+  font-size: 0.92rem;
+  font-weight: 700;
+}
+.prc-pred   { color: var(--accent-2); }
+.prc-arrow  { color: var(--muted-2); font-weight: 500; }
+.prc-actual { color: var(--text); }
+.prc-delta {
+  font-size: 0.7rem;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+}
+.prc-pos  { box-shadow: inset 0 -3px 0 0 var(--good); }
+.prc-pos  .prc-delta { color: var(--good); }
+.prc-neg  { box-shadow: inset 0 -3px 0 0 var(--bad);  }
+.prc-neg  .prc-delta { color: var(--bad);  }
+.prc-zero { box-shadow: inset 0 -3px 0 0 var(--muted); }
+.prc-zero .prc-delta { color: var(--muted); }
+
+@media (max-width: 520px) {
+  .pred-round-strip { gap: 0.2rem; }
+  .prc { padding: 0.25rem 0.2rem 0.3rem; }
+  .prc-nums { font-size: 0.82rem; }
+  .prc-head { font-size: 0.6rem; }
+}
+
 /* ---------- Dashboard rival grid ---------- */
 
 .dash-controls {
