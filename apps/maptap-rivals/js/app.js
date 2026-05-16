@@ -34,6 +34,10 @@
     SETTINGS: 'maptapRivalsSettings',
     SELECTED: 'maptapRivalsSelectedRivalId',
     MATRIX_SEL: 'maptapRivalsMatrixSelection',
+    // Per-ISO-date cache of the day's 5 puzzle lat/lng pairs. Values are
+    // stored under `KEY.DAILY_CITIES_PREFIX + isoDate`. Only coordinates
+    // are persisted — never names or trivia from the daily file.
+    DAILY_CITIES_PREFIX: 'maptapRivalsDailyCities/',
   };
 
   // Public MapTap Cloud Function — returns gameHistory keyed by YYYY-MM-DD.
@@ -41,6 +45,15 @@
   // browser without a proxy.
   const MAPTAP_PROFILE_URL =
     'https://us-central1-jjexperiment-12af6.cloudfunctions.net/getPublicProfile';
+
+  // Daily puzzle locations. MapTap publishes each day's content as a static
+  // JS file at `data/this_day_in_history/<MonthDay>.js`. The file is CORS-
+  // open and contains the same 5 cities every player will play that day
+  // (it lists more for editorial flexibility, but MapTap only plays the
+  // first N_LOCS in file order — verified empirically across 5+ days). We
+  // fetch the text and pull only lat/lng — names and trivia are dropped
+  // before anything reaches the predictor or the UI.
+  const MAPTAP_DAILY_URL_BASE = 'https://maptap.gg/data/this_day_in_history/';
 
   const COLORS = [
     '#6366f1', '#22d3ee', '#4ade80', '#f97316', '#f43f5e',
@@ -256,6 +269,10 @@
     charts: { trend: null, wins: null, diff: null, radar: null, locWinrate: null },
     syncing: new Set(),       // rivalIds currently fetching from MapTap
     syncStatus: new Map(),    // rivalId -> { kind: 'ok'|'flat'|'err', msg }
+    todaysCities: null,       // [{lat,lng}…] x N_LOCS for today, or null
+    todaysCitiesISO: null,    // ISO date the loaded cities are for
+    todaysCitiesError: null,  // null | 'unavailable' (puzzle file missing)
+    todaysCitiesFetching: false,
   };
 
   function persistRivals() { save(KEY.RIVALS, state.rivals); }
@@ -283,16 +300,91 @@
     const d = new Date(iso + 'T00:00:00');
     return d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
   }
-  // MapTap deep-link for a given ISO date: full English month name + day,
-  // no zero pad, no year, no separator. Hardcoded month names because the
-  // URL is owned by maptap.gg and must not vary with the user's locale.
-  function mapTapHistoryUrl(iso) {
+  // Shared `<MonthName><Day>` token used by both the maptap.gg history
+  // deep link and the daily-puzzle data URL. English month names are
+  // hardcoded since the URLs are owned by maptap.gg and must not vary
+  // with the user's locale; the day is not zero-padded.
+  const ENGLISH_MONTHS = ['January','February','March','April','May','June',
+                          'July','August','September','October','November','December'];
+  function maptapMonthDay(iso) {
     if (!iso) return null;
     const d = new Date(iso + 'T00:00:00');
     if (Number.isNaN(d.getTime())) return null;
-    const MONTHS = ['January','February','March','April','May','June',
-                    'July','August','September','October','November','December'];
-    return `https://maptap.gg/history/${MONTHS[d.getMonth()]}${d.getDate()}`;
+    return `${ENGLISH_MONTHS[d.getMonth()]}${d.getDate()}`;
+  }
+  function mapTapHistoryUrl(iso) {
+    const tok = maptapMonthDay(iso);
+    return tok ? `https://maptap.gg/history/${tok}` : null;
+  }
+  function mapTapDailyDataUrl(iso) {
+    const tok = maptapMonthDay(iso);
+    return tok ? `${MAPTAP_DAILY_URL_BASE}${tok}.js` : null;
+  }
+
+  // Today's ISO date in the user's local timezone, so the prediction
+  // tracks whatever day MapTap is showing the user (MapTap's day rolls
+  // over at local midnight too — verified from observed gameHistory keys).
+  function todayISO() {
+    const d = new Date();
+    const tz = d.getTimezoneOffset() * 60000;
+    return new Date(d - tz).toISOString().slice(0, 10);
+  }
+
+  // Pull only the first N_LOCS lat/lng pairs from a daily puzzle file.
+  // The MapTap client plays the first 5 cities in file order regardless
+  // of how many the file lists (verified across May 10-14 plays). We
+  // deliberately discard name/trivia/photos so the predictor and any
+  // downstream code never accidentally surface the answer.
+  // Regex: match `lat:` not preceded by a letter (excludes `labelLat:`),
+  // then the nearest `lng:` (same letter-boundary exclusion).
+  const DAILY_LATLNG_RE =
+    /(?<![A-Za-z])lat\s*:\s*(-?\d+(?:\.\d+)?)\s*,[\s\S]{0,80}?(?<![A-Za-z])lng\s*:\s*(-?\d+(?:\.\d+)?)/g;
+  function parseDailyCitiesText(src) {
+    if (typeof src !== 'string' || !src.length) return null;
+    DAILY_LATLNG_RE.lastIndex = 0;
+    const out = [];
+    let m;
+    while ((m = DAILY_LATLNG_RE.exec(src)) !== null) {
+      const lat = parseFloat(m[1]);
+      const lng = parseFloat(m[2]);
+      if (Number.isFinite(lat) && Number.isFinite(lng) &&
+          lat >= -90 && lat <= 90 && lng >= -180 && lng <= 180) {
+        out.push({ lat, lng });
+      }
+      if (out.length >= N_LOCS) break;
+    }
+    return out.length === N_LOCS ? out : null;
+  }
+
+  // Fetch + cache the day's 5 puzzle coordinates. Cache is keyed by ISO
+  // date; once a puzzle's day has passed, the file is immutable so the
+  // cache is valid forever. For today / future dates we still cache but
+  // re-fetch after 6h in case MapTap revises the file before play.
+  async function fetchDailyCities(iso) {
+    const url = mapTapDailyDataUrl(iso);
+    if (!url) return null;
+    const cacheKey = KEY.DAILY_CITIES_PREFIX + iso;
+    try {
+      const cached = JSON.parse(localStorage.getItem(cacheKey) || 'null');
+      if (cached && Array.isArray(cached.cities) && cached.cities.length === N_LOCS) {
+        const isPast = iso < todayISO();
+        const fresh = isPast || (Date.now() - (cached.cachedAt || 0)) < 6 * 3600 * 1000;
+        if (fresh) return cached.cities;
+      }
+    } catch (_) { /* cache corrupted — fall through to fetch */ }
+    try {
+      const res = await fetch(url, { credentials: 'omit' });
+      if (!res.ok) return null;
+      const text = await res.text();
+      const cities = parseDailyCitiesText(text);
+      if (!cities) return null;
+      try {
+        localStorage.setItem(cacheKey, JSON.stringify({ cities, cachedAt: Date.now() }));
+      } catch (_) { /* quota — ignore, prediction still works for this session */ }
+      return cities;
+    } catch (_) {
+      return null;
+    }
   }
   function fmtDateLong(iso) {
     if (!iso) return '—';
@@ -836,8 +928,167 @@
     renderProfileCard();
     renderPasteSection();
     renderDashSummary();
+    renderTodaysPredictions();
     renderRivalGrid();
     $('#dash-empty').hidden = state.rivals.length > 0;
+  }
+
+  // ---------- today's predictions card ----------
+  // Lazy-load the day's puzzle coords on first dashboard paint per
+  // session. Re-runs only when the local date crosses a boundary mid-
+  // session (rare but cheap to guard against).
+  function ensureTodaysCitiesLoaded() {
+    const iso = todayISO();
+    if (state.todaysCitiesISO === iso &&
+        (state.todaysCities || state.todaysCitiesError || state.todaysCitiesFetching)) {
+      return;
+    }
+    state.todaysCitiesISO = iso;
+    state.todaysCities = null;
+    state.todaysCitiesError = null;
+    state.todaysCitiesFetching = true;
+    fetchDailyCities(iso).then(cities => {
+      // Bail if the user rolled past midnight while we were waiting.
+      if (state.todaysCitiesISO !== iso) return;
+      state.todaysCitiesFetching = false;
+      if (cities) state.todaysCities = cities;
+      else state.todaysCitiesError = 'unavailable';
+      if (state.view === 'dashboard') renderTodaysPredictions();
+    }).catch(() => {
+      if (state.todaysCitiesISO !== iso) return;
+      state.todaysCitiesFetching = false;
+      state.todaysCitiesError = 'unavailable';
+      if (state.view === 'dashboard') renderTodaysPredictions();
+    });
+  }
+
+  // Pull today's actual played total for `side` ('mine' | 'theirs') for a
+  // given rival. `mine` uses myProfile.gameHistory (most authoritative);
+  // both fall back to a game record matching today's date.
+  function actualForToday(rivalId) {
+    const iso = state.todaysCitiesISO || todayISO();
+    let mine = null, theirs = null;
+    const mineRound = state.myProfile && state.myProfile.gameHistory &&
+                      state.myProfile.gameHistory[iso];
+    if (mineRound && Array.isArray(mineRound.roundData) &&
+        mineRound.roundData.length === N_LOCS) {
+      const scores = mineRound.roundData.map(r => Number(r.score) || 0);
+      let t = 0;
+      for (let i = 0; i < N_LOCS; i++) t += scores[i] * WEIGHTS[i];
+      mine = Math.round(t);
+    }
+    const g = state.games.find(x => x.rivalId === rivalId && x.date === iso);
+    if (g) {
+      if (mine == null && Array.isArray(g.myScores)) mine = getMyTotal(g);
+      if (Array.isArray(g.theirScores)) theirs = getTheirTotal(g);
+    }
+    return { mine, theirs };
+  }
+
+  function makePredictionRow({ label, predicted, actual, isYou }) {
+    const cls = ['pred-row'];
+    if (isYou) cls.push('pred-row-you');
+    const cells = [el('div', { class: 'pred-label' }, label)];
+    cells.push(el('div', { class: 'pred-cell pred-predicted' },
+      predicted != null ? String(predicted) : '—'));
+    cells.push(el('div', { class: 'pred-cell pred-actual' },
+      actual != null ? String(actual) : '—'));
+    let delta = null;
+    if (predicted != null && actual != null) delta = actual - predicted;
+    const deltaCls = ['pred-cell', 'pred-delta'];
+    if (delta != null) deltaCls.push(delta > 0 ? 'pred-delta-pos' : delta < 0 ? 'pred-delta-neg' : 'pred-delta-zero');
+    cells.push(el('div', { class: deltaCls.join(' ') },
+      delta == null ? '—' : (delta > 0 ? '+' : '') + delta));
+    return el('div', { class: cls.join(' ') }, cells);
+  }
+
+  function renderTodaysPredictions() {
+    ensureTodaysCitiesLoaded();
+    const card = $('#todays-card');
+    if (!card) return;
+    const body = $('#todays-card-body');
+    const sub = $('#todays-card-sub');
+    const status = $('#todays-card-status');
+    body.innerHTML = '';
+
+    // Hide the card entirely when there are no rivals — the empty-state
+    // copy below already handles new users.
+    if (!state.rivals.length) {
+      card.hidden = true;
+      return;
+    }
+    card.hidden = false;
+
+    const iso = state.todaysCitiesISO || todayISO();
+    sub.textContent = fmtDateLong(iso);
+
+    if (state.todaysCitiesFetching) {
+      status.textContent = 'Loading puzzle…';
+      status.className = 'todays-card-status is-loading';
+      body.appendChild(el('p', { class: 'pred-empty' }, 'Fetching today’s puzzle from maptap.gg…'));
+      return;
+    }
+    if (state.todaysCitiesError || !state.todaysCities) {
+      status.textContent = 'Puzzle unavailable';
+      status.className = 'todays-card-status is-warn';
+      body.appendChild(el('p', { class: 'pred-empty' },
+        'Couldn’t load today’s puzzle from maptap.gg. Predictions will appear once it’s available.'));
+      return;
+    }
+
+    // Header row + per-player rows
+    const header = el('div', { class: 'pred-row pred-row-head' }, [
+      el('div', { class: 'pred-label' }, 'Player'),
+      el('div', { class: 'pred-cell' }, 'Predicted'),
+      el('div', { class: 'pred-cell' }, 'Actual'),
+      el('div', { class: 'pred-cell' }, 'Δ'),
+    ]);
+    body.appendChild(header);
+
+    const myRounds = myProfileRounds();
+    const myPrediction = predictTotalForPlayer(myRounds, state.todaysCities);
+    const myActual = (() => {
+      const r = state.myProfile && state.myProfile.gameHistory &&
+                state.myProfile.gameHistory[iso];
+      if (!r || !Array.isArray(r.roundData) || r.roundData.length !== N_LOCS) return null;
+      let t = 0;
+      for (let i = 0; i < N_LOCS; i++) t += (Number(r.roundData[i].score) || 0) * WEIGHTS[i];
+      return Math.round(t);
+    })();
+    body.appendChild(makePredictionRow({
+      label: state.me || 'You',
+      predicted: myPrediction ? myPrediction.score : null,
+      actual: myActual,
+      isYou: true,
+    }));
+
+    let predictedCount = myPrediction ? 1 : 0;
+    state.rivals
+      .slice()
+      .sort((a, b) => a.name.localeCompare(b.name))
+      .forEach(r => {
+        const rounds = rivalRounds(r.id);
+        const pred = predictTotalForPlayer(rounds, state.todaysCities);
+        if (pred) predictedCount++;
+        const { theirs } = actualForToday(r.id);
+        body.appendChild(makePredictionRow({
+          label: `${r.icon || '🎯'} ${r.name}`,
+          predicted: pred ? pred.score : null,
+          actual: theirs,
+          isYou: false,
+        }));
+      });
+
+    if (predictedCount === 0) {
+      status.textContent = 'Need more games';
+      status.className = 'todays-card-status is-muted';
+    } else if (myActual != null) {
+      status.textContent = 'Game played ✓';
+      status.className = 'todays-card-status is-good';
+    } else {
+      status.textContent = 'Pre-game';
+      status.className = 'todays-card-status is-accent';
+    }
   }
 
   // ---------- paste-mode entry on dashboard ----------
@@ -2853,6 +3104,85 @@
     }));
     out.sort((a, b) => b.rounds - a.rounds);
     return { rows: out, totalRounds };
+  }
+
+  // ---------- prediction ----------
+  // Build a per-continent raw-round-score average from a player's past
+  // rounds. `rounds` is an array of `{cities: [{lat,lng}…], scores: […]}`
+  // entries. We deliberately mix all five round slots together — the
+  // empirical signal we want is "how this player tends to score at
+  // locations on continent X", regardless of which slot it appeared in.
+  function continentScoreIndex(rounds) {
+    const buckets = new Map();
+    let totalSum = 0, totalCount = 0;
+    for (const r of rounds) {
+      if (!Array.isArray(r.cities) || !Array.isArray(r.scores)) continue;
+      const n = Math.min(r.cities.length, r.scores.length, N_LOCS);
+      for (let i = 0; i < n; i++) {
+        const c = r.cities[i] || {};
+        const s = Number(r.scores[i]);
+        if (!Number.isFinite(s)) continue;
+        const continent = classifyContinent(Number(c.lat), Number(c.lng));
+        let b = buckets.get(continent);
+        if (!b) { b = { sum: 0, count: 0 }; buckets.set(continent, b); }
+        b.sum += s; b.count += 1;
+        totalSum += s; totalCount += 1;
+      }
+    }
+    return { buckets, overallAvg: totalCount ? totalSum / totalCount : null, totalRounds: totalCount };
+  }
+
+  // Extract your own per-round data from `state.myProfile.gameHistory`
+  // (the most complete record of your play). One round entry per day.
+  function myProfileRounds() {
+    const gh = state.myProfile && state.myProfile.gameHistory;
+    if (!gh) return [];
+    const out = [];
+    for (const entry of Object.values(gh)) {
+      if (!entry || !Array.isArray(entry.roundData) || entry.roundData.length !== N_LOCS) continue;
+      const cities = entry.roundData.map(r => ({ lat: Number(r.cityLat), lng: Number(r.cityLng) }));
+      const scores = entry.roundData.map(r => Number(r.score));
+      if (!scores.every(s => Number.isFinite(s))) continue;
+      out.push({ cities, scores });
+    }
+    return out;
+  }
+
+  // Per-rival rounds from `state.games`, restricted to entries that
+  // carry city geometry (i.e. the user had their profile linked when the
+  // game was synced). Returns rounds keyed to the rival's `theirScores`.
+  function rivalRounds(rivalId) {
+    return gamesFor(rivalId)
+      .filter(g => Array.isArray(g.cities) && g.cities.length === N_LOCS &&
+                   Array.isArray(g.theirScores))
+      .map(g => ({ cities: g.cities, scores: g.theirScores }));
+  }
+
+  // Predict a player's weighted total against today's 5 cities. Each
+  // round is projected from their continent average for that round's
+  // location (fallback: their overall round average). Total uses the
+  // same WEIGHTS the rest of the app uses so it's comparable to actual
+  // scores. Returns null when the player has too little history to give
+  // a meaningful number.
+  // `confidence` = number of rounds informing the estimate (rough
+  // sample-size cue for the UI, not a probability).
+  const PREDICTION_MIN_ROUNDS = 5;
+  function predictTotalForPlayer(rounds, todaysCities) {
+    if (!Array.isArray(todaysCities) || todaysCities.length !== N_LOCS) return null;
+    const idx = continentScoreIndex(rounds);
+    if (idx.totalRounds < PREDICTION_MIN_ROUNDS || idx.overallAvg == null) return null;
+    let weighted = 0;
+    for (let i = 0; i < N_LOCS; i++) {
+      const c = todaysCities[i];
+      const cont = classifyContinent(c.lat, c.lng);
+      const b = idx.buckets.get(cont);
+      // Need at least 2 rounds on the continent to trust its bucket;
+      // otherwise fall back to the player's overall round mean.
+      const roundAvg = (b && b.count >= 2) ? (b.sum / b.count) : idx.overallAvg;
+      weighted += roundAvg * WEIGHTS[i];
+    }
+    const score = Math.round(Math.max(0, Math.min(1000, weighted)));
+    return { score, confidence: idx.totalRounds };
   }
 
   async function syncMapTapForRival(rivalId) {
