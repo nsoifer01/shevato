@@ -40,7 +40,7 @@ jobs:
       - name: Setup Node
         uses: actions/setup-node@v6
         with:
-          node-version: '20'
+          node-version-file: '.nvmrc'
 
       - name: Download IMDb datasets
         working-directory: apps/rising-seasons/data
