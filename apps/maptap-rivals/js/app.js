@@ -1181,7 +1181,7 @@
 
     const isPastOrToday = selectedISO <= today;
     const myRounds = myProfileRounds();
-    const myPred = predictRoundsForPlayer(myRounds, selected.cities);
+    const myPred = predictRoundsForPlayer(myRounds, selected.cities, selectedISO);
     const myActuals = isPastOrToday ? actualScoresForDay(selectedISO) : { mineScores: null, mineTotal: null };
     body.appendChild(makePredictionRow({
       label: `${state.myIcon || '🧍'} ${state.me || 'You'}`,
@@ -1199,7 +1199,7 @@
       .sort((a, b) => a.name.localeCompare(b.name))
       .forEach(r => {
         const rounds = rivalRounds(r.id);
-        const pred = predictRoundsForPlayer(rounds, selected.cities);
+        const pred = predictRoundsForPlayer(rounds, selected.cities, selectedISO);
         if (pred) predictedCount++;
         const act = isPastOrToday ? actualScoresForRivalDay(r.id, selectedISO) : { scores: null, total: null };
         body.appendChild(makePredictionRow({
@@ -3256,29 +3256,82 @@
   }
 
   // ---------- prediction ----------
-  // Build a per-continent raw-round-score average from a player's past
-  // rounds. `rounds` is an array of `{cities: [{lat,lng}…], scores: […]}`
-  // entries. We deliberately mix all five round slots together — the
-  // empirical signal we want is "how this player tends to score at
-  // locations on continent X", regardless of which slot it appeared in.
-  function continentScoreIndex(rounds) {
-    const buckets = new Map();
-    let totalSum = 0, totalCount = 0;
+  // Per-round prediction blends three signals:
+  //   (1) Geographic similarity (haversine distance) — closer past
+  //       rounds get more weight via 1/(km + ε).
+  //   (2) Recency — exponential decay with a 30-day half-life so a
+  //       player's recent skill dominates over stale rounds.
+  //   (3) Bayesian shrinkage toward the player's overall mean —
+  //       sparse-evidence predictions get pulled back to the baseline
+  //       so a single hot/cold local round can't whipsaw the estimate.
+  // Continent buckets are *not* used here; classifyContinent is still
+  // around for the rival detail's continent breakdown view.
+  const PREDICTION_MIN_ROUNDS = 5;
+  const PREDICTION_RECENCY_HALF_LIFE_DAYS = 30;
+  const PREDICTION_SHRINKAGE_K = 5;       // pseudo-rounds at the player's mean
+  const PREDICTION_DISTANCE_EPS_KM = 25;  // floor on inverse-distance to avoid divide-by-zero / over-weighting exact matches
+  const EARTH_RADIUS_KM = 6371;
+
+  function haversineKm(aLat, aLng, bLat, bLng) {
+    const toRad = (d) => (d * Math.PI) / 180;
+    const dLat = toRad(bLat - aLat);
+    const dLng = toRad(bLng - aLng);
+    const h = Math.sin(dLat / 2) ** 2 +
+              Math.cos(toRad(aLat)) * Math.cos(toRad(bLat)) * Math.sin(dLng / 2) ** 2;
+    return 2 * EARTH_RADIUS_KM * Math.asin(Math.sqrt(h));
+  }
+
+  // Flatten `rounds` (one entry per day) into individual {lat, lng,
+  // score, daysAgo} samples relative to `asOfISO`. Rounds on or after
+  // asOfISO are excluded so we never "predict" using data from the
+  // same day or later — back-testing stays honest, and same-day
+  // actuals don't bleed into their own prediction.
+  function flattenRoundsForPrediction(rounds, asOfISO) {
+    const out = [];
+    if (!asOfISO || !Array.isArray(rounds)) return out;
+    const asOf = Date.parse(asOfISO + 'T00:00:00');
+    if (!Number.isFinite(asOf)) return out;
     for (const r of rounds) {
-      if (!Array.isArray(r.cities) || !Array.isArray(r.scores)) continue;
+      if (!r || !Array.isArray(r.cities) || !Array.isArray(r.scores) || !r.date) continue;
+      const t = Date.parse(r.date + 'T00:00:00');
+      if (!Number.isFinite(t) || t >= asOf) continue;
+      const daysAgo = (asOf - t) / 86400000;
       const n = Math.min(r.cities.length, r.scores.length, N_LOCS);
       for (let i = 0; i < n; i++) {
         const c = r.cities[i] || {};
+        const lat = Number(c.lat);
+        const lng = Number(c.lng);
         const s = Number(r.scores[i]);
-        if (!Number.isFinite(s)) continue;
-        const continent = classifyContinent(Number(c.lat), Number(c.lng));
-        let b = buckets.get(continent);
-        if (!b) { b = { sum: 0, count: 0 }; buckets.set(continent, b); }
-        b.sum += s; b.count += 1;
-        totalSum += s; totalCount += 1;
+        if (!Number.isFinite(lat) || !Number.isFinite(lng) || !Number.isFinite(s)) continue;
+        out.push({ lat, lng, score: s, daysAgo });
       }
     }
-    return { buckets, overallAvg: totalCount ? totalSum / totalCount : null, totalRounds: totalCount };
+    return out;
+  }
+
+  function predictRoundScoreFromHistory(history, targetLat, targetLng, playerMean) {
+    if (!history.length || !Number.isFinite(playerMean)) return playerMean;
+    const recencyLambda = Math.LN2 / PREDICTION_RECENCY_HALF_LIFE_DAYS;
+    let sumW = 0, sumWX = 0, sumW2 = 0;
+    for (const r of history) {
+      const km = haversineKm(targetLat, targetLng, r.lat, r.lng);
+      const distW = 1 / (km + PREDICTION_DISTANCE_EPS_KM);
+      const recW = Math.exp(-r.daysAgo * recencyLambda);
+      const w = distW * recW;
+      sumW += w;
+      sumWX += w * r.score;
+      sumW2 += w * w;
+    }
+    if (sumW <= 0 || sumW2 <= 0) return playerMean;
+    const weightedAvg = sumWX / sumW;
+    // Kish's effective sample size: (Σw)² / Σw² — counts evidence by
+    // weight concentration. A handful of close-and-recent rounds give
+    // nEff ≈ their count; lots of far/old rounds give nEff ≈ 1-2.
+    const nEff = (sumW * sumW) / sumW2;
+    // Shrinkage toward the player's long-term mean. With nEff = 0 we
+    // get the prior outright; with nEff >> K we trust the local mean.
+    return (nEff * weightedAvg + PREDICTION_SHRINKAGE_K * playerMean) /
+           (nEff + PREDICTION_SHRINKAGE_K);
   }
 
   // Your own per-round history derived from `state.games`. `state.myProfile`
@@ -3286,7 +3339,8 @@
   // small (see summarizeMapTapProfile), so the paired Game records are
   // the authoritative source. The same day appears once per rival you
   // played with, so dedupe by date — your scores are identical across
-  // those duplicates by construction.
+  // those duplicates by construction. `date` is preserved so the
+  // predictor's recency decay and same-day cutoff can use it.
   function myProfileRounds() {
     const byDate = new Map();
     for (const g of state.games) {
@@ -3296,7 +3350,7 @@
       const cities = g.cities.map(c => ({ lat: Number(c.lat), lng: Number(c.lng) }));
       const scores = g.myScores.map(Number);
       if (!scores.every(s => Number.isFinite(s))) continue;
-      byDate.set(g.date, { cities, scores });
+      byDate.set(g.date, { date: g.date, cities, scores });
     }
     return Array.from(byDate.values());
   }
@@ -3308,38 +3362,35 @@
     return gamesFor(rivalId)
       .filter(g => Array.isArray(g.cities) && g.cities.length === N_LOCS &&
                    Array.isArray(g.theirScores))
-      .map(g => ({ cities: g.cities, scores: g.theirScores }));
+      .map(g => ({ date: g.date, cities: g.cities, scores: g.theirScores }));
   }
 
-  // Predict a player's weighted total against today's 5 cities. Each
-  // round is projected from their continent average for that round's
-  // location (fallback: their overall round average). Total uses the
-  // same WEIGHTS the rest of the app uses so it's comparable to actual
-  // scores. Returns null when the player has too little history to give
-  // a meaningful number.
+  // Predict a player's weighted total + per-round breakdown for a given
+  // 5-city array, computed as of `asOfISO` (excludes any rounds from
+  // that day or later). Returns null when the player has too little
+  // pre-cutoff history to give a meaningful number.
   // `confidence` = number of rounds informing the estimate (rough
   // sample-size cue for the UI, not a probability).
-  const PREDICTION_MIN_ROUNDS = 5;
-  // Return per-round 0-100 predictions for a player against a given
-  // 5-city array. Each round uses the player's continent average for
-  // that location (needs ≥2 rounds in-continent to trust the bucket;
-  // otherwise the player's overall round mean takes over). Returns null
-  // when the player's total history is too small to predict at all.
-  function predictRoundsForPlayer(rounds, todaysCities) {
+  function predictRoundsForPlayer(rounds, todaysCities, asOfISO) {
     if (!Array.isArray(todaysCities) || todaysCities.length !== N_LOCS) return null;
-    const idx = continentScoreIndex(rounds);
-    if (idx.totalRounds < PREDICTION_MIN_ROUNDS || idx.overallAvg == null) return null;
+    const history = flattenRoundsForPrediction(rounds, asOfISO);
+    if (history.length < PREDICTION_MIN_ROUNDS) return null;
+    // Player's overall mean used as the shrinkage prior. Straight
+    // unweighted average keeps the prior stable over time — recency
+    // already lives in the per-round weights.
+    let total = 0;
+    for (const r of history) total += r.score;
+    const playerMean = total / history.length;
     const scores = new Array(N_LOCS);
     for (let i = 0; i < N_LOCS; i++) {
       const c = todaysCities[i];
-      const cont = classifyContinent(c.lat, c.lng);
-      const b = idx.buckets.get(cont);
-      scores[i] = (b && b.count >= 2) ? (b.sum / b.count) : idx.overallAvg;
+      const s = predictRoundScoreFromHistory(history, c.lat, c.lng, playerMean);
+      scores[i] = Math.max(0, Math.min(100, s));
     }
-    return { scores, confidence: idx.totalRounds };
+    return { scores, confidence: history.length };
   }
-  function predictTotalForPlayer(rounds, todaysCities) {
-    const rp = predictRoundsForPlayer(rounds, todaysCities);
+  function predictTotalForPlayer(rounds, todaysCities, asOfISO) {
+    const rp = predictRoundsForPlayer(rounds, todaysCities, asOfISO);
     if (!rp) return null;
     let weighted = 0;
     for (let i = 0; i < N_LOCS; i++) weighted += rp.scores[i] * WEIGHTS[i];
