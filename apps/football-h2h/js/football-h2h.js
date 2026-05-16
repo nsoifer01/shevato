@@ -174,22 +174,30 @@ function savePlayers() {
 function handlePlayerNameChange() {
     const player1Input = document.getElementById('player1Name');
     const player2Input = document.getElementById('player2Name');
-    
+
     if (player1Input) player1Name = player1Input.value || 'Player 1';
     if (player2Input) player2Name = player2Input.value || 'Player 2';
-    
+
     applyPlayerNameChanges(player1Name, player2Name);
+    savePlayers();
     showToast('Player names updated', 'success');
 }
 
-// Update player names throughout the UI (used internally, no toast)
+// Render-only refresh used by `updateUI`. Must NOT write to localStorage:
+// the live-sync listener calls updateUI on every remote delivery, so any
+// writeback here pings Firestore and the peer receives a "new" write,
+// triggering its own re-render → ours again → flicker loop. Reads input
+// fields when present (so the user's in-progress edit isn't lost) but
+// only updates in-memory state + DOM. Persistence happens at the
+// user-initiated callsites (`handlePlayerNameChange`, `updatePlayerName`,
+// `applyPlayerNameChanges` callers that explicitly call `savePlayers`).
 function updatePlayerNames() {
     const player1Input = document.getElementById('player1Name');
     const player2Input = document.getElementById('player2Name');
-    
+
     if (player1Input) player1Name = player1Input.value || 'Player 1';
     if (player2Input) player2Name = player2Input.value || 'Player 2';
-    
+
     applyPlayerNameChanges(player1Name, player2Name);
 }
 
@@ -200,8 +208,9 @@ function updatePlayerName(playerNumber, newName) {
     } else if (playerNumber === 2) {
         player2Name = newName || 'Player 2';
     }
-    
+
     applyPlayerNameChanges(player1Name, player2Name);
+    savePlayers();
     showToast(`Player ${playerNumber} name updated`, 'success');
 }
 
@@ -209,17 +218,19 @@ function updatePlayerName(playerNumber, newName) {
 window.handlePlayerNameChange = handlePlayerNameChange;
 window.updatePlayerName = updatePlayerName;
 
+// Pure in-memory + DOM update. Does NOT persist — callers that represent a
+// genuine user intent (typing in the name field, picking from the sidebar)
+// must call `savePlayers()` themselves. See the comment on
+// `updatePlayerNames` for why this matters for live sync.
 function applyPlayerNameChanges(newPlayer1Name, newPlayer2Name) {
     // Update global variables
     player1Name = newPlayer1Name;
     player2Name = newPlayer2Name;
-    
+
     // Update window globals for sidebar access
     window.player1Name = player1Name;
     window.player2Name = player2Name;
-    
-    savePlayers();
-    
+
     // Refresh sidebar content if the function exists
     if (window.refreshSidebarPlayerContent) {
         window.refreshSidebarPlayerContent();
@@ -1966,8 +1977,23 @@ function buildValueCell(mainText, className, rangeText) {
     return td;
 }
 
-// Switch between stats tabs
-function switchStatsTab(tabName) {
+// Valid stats-tab IDs that may appear in the URL hash. Anything else
+// (random fragment, stale link) falls back to the default tab.
+const FOOTBALL_STATS_TABS = new Set(['h2h', 'general', 'player']);
+
+// Drive the active tab from the URL hash. Called on initial load and
+// whenever the user hits browser back/forward between tabs.
+function syncStatsTabFromHash() {
+    const raw = (window.location.hash || '').replace(/^#/, '').trim();
+    if (!FOOTBALL_STATS_TABS.has(raw)) return;
+    switchStatsTab(raw, { fromHash: true });
+}
+
+// Switch between stats tabs. The {fromHash} flag suppresses the
+// history.replaceState write when we're already responding to a
+// hashchange — otherwise we'd briefly re-stamp the same hash, which
+// is harmless but pointless.
+function switchStatsTab(tabName, { fromHash = false } = {}) {
     // Remove active class from all tabs and contents
     document.querySelectorAll('.stats-tab').forEach(tab => {
         tab.classList.remove('active');
@@ -1991,6 +2017,17 @@ function switchStatsTab(tabName) {
     if (activeContent) {
         activeContent.classList.add('active');
         activeContent.style.display = 'block';
+    }
+
+    // Mirror the active tab into the URL hash so reload + deep-link
+    // preserve which sub-view the user was on. replaceState (no
+    // hashchange firing, no back-stack growth) matches the convention
+    // mario-kart and gym-tracker use.
+    if (!fromHash && FOOTBALL_STATS_TABS.has(tabName)
+            && typeof history !== 'undefined'
+            && typeof history.replaceState === 'function') {
+        try { history.replaceState(null, '', '#' + tabName); }
+        catch (_) { /* sandboxed origins can throw; harmless */ }
     }
 }
 
@@ -2033,175 +2070,16 @@ window.checkEditModalForDraw = checkEditModalForDraw;
 window.updateEditModalTeamOptions = updateEditModalTeamOptions;
 window.updateEditModalTeamOptionsHandler = updateEditModalTeamOptionsHandler;
 
-// Load players from localStorage
-function loadPlayers() {
-    const savedPlayers = localStorage.getItem(PLAYERS_KEY);
-    if (savedPlayers) {
-        const players = JSON.parse(savedPlayers);
-        player1Name = players.player1 || 'Player 1';
-        player2Name = players.player2 || 'Player 2';
-    }
-}
-
-// Save players to localStorage
-function savePlayers() {
-    const players = {
-        player1: player1Name,
-        player2: player2Name
-    };
-    localStorage.setItem(PLAYERS_KEY, JSON.stringify(players));
-}
-
-// Load player icons from localStorage
-function loadPlayerIcons() {
-    const savedIcons = localStorage.getItem('footballH2HPlayerIcons');
-    if (savedIcons) {
-        playerIcons = JSON.parse(savedIcons);
-    }
-}
-
-// Save player icons to localStorage
-function savePlayerIcons() {
-    localStorage.setItem('footballH2HPlayerIcons', JSON.stringify(playerIcons));
-}
-
-// Update player name from sidebar
-function updatePlayerName(playerNumber, newName) {
-    if (playerNumber === 1) {
-        player1Name = newName || 'Player 1';
-    } else if (playerNumber === 2) {
-        player2Name = newName || 'Player 2';
-    }
-    
-    // Save to localStorage
-    savePlayers();
-    
-    // Update global exports
-    window.player1Name = player1Name;
-    window.player2Name = player2Name;
-    window.playerIcons = playerIcons;
-    
-    // Refresh UI to show updated names
-    updateUI();
-    
-    // Refresh sidebar player content if it's open
-    if (window.refreshSidebarPlayerContent) {
-        window.refreshSidebarPlayerContent();
-    }
-}
-
-// Icon selection and management
-// Open icon selector for a player
-function openIconSelector(playerNumber) {
-    currentPlayerForIcon = playerNumber;
-    const playerName = playerNumber === 1 ? player1Name : player2Name;
-    const iconModalTitle = document.getElementById('iconModalTitle');
-    if (iconModalTitle) {
-        iconModalTitle.textContent = `Select Icon for ${playerName}`;
-    }
-    
-    // Show sports icons by default
-    showIconCategory('sports');
-    
-    const iconModal = document.getElementById('iconSelectorModal');
-    if (iconModal) {
-        iconModal.classList.add('active');
-    }
-}
-
-// Close icon selector
-function closeIconSelector() {
-    document.getElementById('iconSelectorModal').classList.remove('active');
-    currentPlayerForIcon = null;
-}
-
-// Show icon category
-function showIconCategory(category) {
-    // Update tab states
-    document.querySelectorAll('.category-btn').forEach(btn => btn.classList.remove('active'));
-    document.getElementById(category + 'Tab').classList.add('active');
-    
-    // Hide all grids first
-    document.getElementById('sportsIconGrid').style.display = 'none';
-    document.getElementById('animalsIconGrid').style.display = 'none';
-    document.getElementById('generalIconGrid').style.display = 'none';
-    
-    // Show selected grid
-    document.getElementById(category + 'IconGrid').style.display = 'grid';
-}
-
-// Select an icon
-function selectIcon(icon) {
-    if (currentPlayerForIcon) {
-        playerIcons[`player${currentPlayerForIcon}`] = icon;
-        savePlayerIcons();
-        
-        // Update global exports
-        window.playerIcons = playerIcons;
-        
-        // Update UI
-        updateUI();
-        
-        // Refresh sidebar player content if it's open
-        if (window.refreshSidebarPlayerContent) {
-            window.refreshSidebarPlayerContent();
-        }
-        
-        closeIconSelector();
-        
-        if (window.showToast) {
-            // Icon updated silently
-        }
-    }
-}
-
-// Initialize icon grids
-function initializeIconGrids() {
-    // Check if global icons are available
-    if (!window.GlobalIcons) {
-        console.error('Global icons not loaded');
-        return;
-    }
-    
-    // Populate sports icons
-    const sportsGrid = document.getElementById('sportsIconGrid');
-    if (sportsGrid) {
-        sportsGrid.innerHTML = '';
-        window.GlobalIcons.SPORTS.forEach(icon => {
-            const iconDiv = document.createElement('div');
-            iconDiv.className = 'icon-item';
-            iconDiv.innerHTML = `<span class="team-logo">${icon}</span>`;
-            iconDiv.onclick = () => selectIcon(icon);
-            sportsGrid.appendChild(iconDiv);
-        });
-    }
-    
-    // Populate animal icons
-    const animalsGrid = document.getElementById('animalsIconGrid');
-    if (animalsGrid) {
-        animalsGrid.innerHTML = '';
-        window.GlobalIcons.ANIMALS.forEach(icon => {
-            const iconDiv = document.createElement('div');
-            iconDiv.className = 'icon-item';
-            iconDiv.innerHTML = `<span class="team-logo">${icon}</span>`;
-            iconDiv.onclick = () => selectIcon(icon);
-            animalsGrid.appendChild(iconDiv);
-        });
-    }
-    
-    // Populate general icons
-    const generalGrid = document.getElementById('generalIconGrid');
-    if (generalGrid) {
-        generalGrid.innerHTML = '';
-        window.GlobalIcons.GENERAL.forEach(icon => {
-            const iconDiv = document.createElement('div');
-            iconDiv.className = 'icon-item';
-            iconDiv.innerHTML = `<span class="team-logo">${icon}</span>`;
-            iconDiv.onclick = () => selectIcon(icon);
-            generalGrid.appendChild(iconDiv);
-        });
-    }
-}
+// Duplicate definitions of loadPlayers / savePlayers / loadPlayerIcons /
+// savePlayerIcons / updatePlayerName / openIconSelector / closeIconSelector /
+// showIconCategory / selectIcon / initializeIconGrids used to live below
+// this point. JS function-declaration hoisting let them silently override
+// the original definitions earlier in the file. The shadowing loadPlayers
+// in particular dropped the input-field refresh, so when the live-sync
+// listener called loadPlayers() and then updateUI(), updatePlayerNames()
+// read the still-stale `<input id="player1Name">` value and savePlayers()
+// wrote it back to localStorage — overwriting the just-arrived remote
+// change and creating a flicker loop in cross-browser sync.
 
 // Initialize the application
 function initializeApp() {
@@ -2231,6 +2109,11 @@ function initializeApp() {
     // Update global exports
     window.player1Name = player1Name;
     window.player2Name = player2Name;
+
+    // Stats-tab routing. The default tab markup already has h2h active,
+    // so we only switch if the hash names a different valid tab.
+    syncStatsTabFromHash();
+    window.addEventListener('hashchange', syncStatsTabFromHash);
 }
 
 // Run initialization when DOM is loaded
