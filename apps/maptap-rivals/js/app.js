@@ -1047,7 +1047,13 @@
 
     const myRounds = myProfileRounds();
     const myPrediction = predictTotalForPlayer(myRounds, state.todaysCities);
+    // Your actual: any of today's paired games carries your scores (they
+    // match across rivals by construction since you only played MapTap
+    // once). Falls back to the profile.gameHistory entry if a sync
+    // populated it before any paired game record was written.
     const myActual = (() => {
+      const todays = state.games.find(g => g.date === iso && Array.isArray(g.myScores));
+      if (todays) return getMyTotal(todays);
       const r = state.myProfile && state.myProfile.gameHistory &&
                 state.myProfile.gameHistory[iso];
       if (!r || !Array.isArray(r.roundData) || r.roundData.length !== N_LOCS) return null;
@@ -3132,20 +3138,24 @@
     return { buckets, overallAvg: totalCount ? totalSum / totalCount : null, totalRounds: totalCount };
   }
 
-  // Extract your own per-round data from `state.myProfile.gameHistory`
-  // (the most complete record of your play). One round entry per day.
+  // Your own per-round history derived from `state.games`. `state.myProfile`
+  // intentionally drops `gameHistory` to keep the localStorage payload
+  // small (see summarizeMapTapProfile), so the paired Game records are
+  // the authoritative source. The same day appears once per rival you
+  // played with, so dedupe by date — your scores are identical across
+  // those duplicates by construction.
   function myProfileRounds() {
-    const gh = state.myProfile && state.myProfile.gameHistory;
-    if (!gh) return [];
-    const out = [];
-    for (const entry of Object.values(gh)) {
-      if (!entry || !Array.isArray(entry.roundData) || entry.roundData.length !== N_LOCS) continue;
-      const cities = entry.roundData.map(r => ({ lat: Number(r.cityLat), lng: Number(r.cityLng) }));
-      const scores = entry.roundData.map(r => Number(r.score));
+    const byDate = new Map();
+    for (const g of state.games) {
+      if (byDate.has(g.date)) continue;
+      if (!Array.isArray(g.cities) || g.cities.length !== N_LOCS) continue;
+      if (!Array.isArray(g.myScores) || g.myScores.length !== N_LOCS) continue;
+      const cities = g.cities.map(c => ({ lat: Number(c.lat), lng: Number(c.lng) }));
+      const scores = g.myScores.map(Number);
       if (!scores.every(s => Number.isFinite(s))) continue;
-      out.push({ cities, scores });
+      byDate.set(g.date, { cities, scores });
     }
-    return out;
+    return Array.from(byDate.values());
   }
 
   // Per-rival rounds from `state.games`, restricted to entries that
