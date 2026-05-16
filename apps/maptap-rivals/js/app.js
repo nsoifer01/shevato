@@ -269,10 +269,13 @@
     charts: { trend: null, wins: null, diff: null, radar: null, locWinrate: null },
     syncing: new Set(),       // rivalIds currently fetching from MapTap
     syncStatus: new Map(),    // rivalId -> { kind: 'ok'|'flat'|'err', msg }
-    todaysCities: null,       // [{lat,lng}…] x N_LOCS for today, or null
-    todaysCitiesISO: null,    // ISO date the loaded cities are for
-    todaysCitiesError: null,  // null | 'unavailable' (puzzle file missing)
-    todaysCitiesFetching: false,
+    // Rolling 7-day puzzle window starting at today. Each entry holds:
+    //   { iso, cities: [{lat,lng}…] | null, status: 'idle'|'fetching'|'ok'|'error' }
+    // Reseeded when the local date crosses midnight mid-session.
+    predictWindow: [],
+    predictWindowAnchorISO: null,
+    // ISO date of the day currently shown in the dashboard predictions card.
+    predictSelectedISO: null,
   };
 
   function persistRivals() { save(KEY.RIVALS, state.rivals); }
@@ -329,6 +332,13 @@
     const tz = d.getTimezoneOffset() * 60000;
     return new Date(d - tz).toISOString().slice(0, 10);
   }
+  function addDaysISO(iso, days) {
+    const d = new Date(iso + 'T00:00:00');
+    if (Number.isNaN(d.getTime())) return null;
+    d.setDate(d.getDate() + days);
+    return d.toISOString().slice(0, 10);
+  }
+  const PREDICT_WINDOW_DAYS = 7;
 
   // Pull only the first N_LOCS lat/lng pairs from a daily puzzle file.
   // The MapTap client plays the first 5 cities in file order regardless
@@ -933,77 +943,140 @@
     $('#dash-empty').hidden = state.rivals.length > 0;
   }
 
-  // ---------- today's predictions card ----------
-  // Lazy-load the day's puzzle coords on first dashboard paint per
-  // session. Re-runs only when the local date crosses a boundary mid-
-  // session (rare but cheap to guard against).
-  function ensureTodaysCitiesLoaded() {
-    const iso = todayISO();
-    if (state.todaysCitiesISO === iso &&
-        (state.todaysCities || state.todaysCitiesError || state.todaysCitiesFetching)) {
-      return;
+  // ---------- predictions card (rolling 7-day window) ----------
+  // Anchor the window at today and keep the existing entries' selected
+  // state intact across re-renders. The fetcher is idempotent — each
+  // entry only flips out of 'fetching' once.
+  function ensureSevenDayWindowLoaded() {
+    const today = todayISO();
+    if (state.predictWindowAnchorISO !== today) {
+      state.predictWindowAnchorISO = today;
+      state.predictWindow = Array.from({ length: PREDICT_WINDOW_DAYS }, (_, i) => ({
+        iso: addDaysISO(today, i),
+        cities: null,
+        status: 'idle',
+      }));
+      // Keep the user's selection when possible; otherwise jump to today.
+      if (!state.predictSelectedISO ||
+          !state.predictWindow.some(w => w.iso === state.predictSelectedISO)) {
+        state.predictSelectedISO = today;
+      }
     }
-    state.todaysCitiesISO = iso;
-    state.todaysCities = null;
-    state.todaysCitiesError = null;
-    state.todaysCitiesFetching = true;
-    fetchDailyCities(iso).then(cities => {
-      // Bail if the user rolled past midnight while we were waiting.
-      if (state.todaysCitiesISO !== iso) return;
-      state.todaysCitiesFetching = false;
-      if (cities) state.todaysCities = cities;
-      else state.todaysCitiesError = 'unavailable';
-      if (state.view === 'dashboard') renderTodaysPredictions();
-    }).catch(() => {
-      if (state.todaysCitiesISO !== iso) return;
-      state.todaysCitiesFetching = false;
-      state.todaysCitiesError = 'unavailable';
-      if (state.view === 'dashboard') renderTodaysPredictions();
-    });
+    for (const entry of state.predictWindow) {
+      if (entry.status !== 'idle') continue;
+      entry.status = 'fetching';
+      fetchDailyCities(entry.iso).then(cities => {
+        if (state.predictWindowAnchorISO !== today) return; // stale window
+        if (cities) { entry.cities = cities; entry.status = 'ok'; }
+        else        { entry.status = 'error'; }
+        if (state.view === 'dashboard') renderTodaysPredictions();
+      }).catch(() => {
+        if (state.predictWindowAnchorISO !== today) return;
+        entry.status = 'error';
+        if (state.view === 'dashboard') renderTodaysPredictions();
+      });
+    }
   }
 
-  // Pull today's actual played total for `side` ('mine' | 'theirs') for a
-  // given rival. `mine` uses myProfile.gameHistory (most authoritative);
-  // both fall back to a game record matching today's date.
-  function actualForToday(rivalId) {
-    const iso = state.todaysCitiesISO || todayISO();
-    let mine = null, theirs = null;
-    const mineRound = state.myProfile && state.myProfile.gameHistory &&
-                      state.myProfile.gameHistory[iso];
-    if (mineRound && Array.isArray(mineRound.roundData) &&
-        mineRound.roundData.length === N_LOCS) {
-      const scores = mineRound.roundData.map(r => Number(r.score) || 0);
-      let t = 0;
-      for (let i = 0; i < N_LOCS; i++) t += scores[i] * WEIGHTS[i];
-      mine = Math.round(t);
-    }
+  // Look up actuals for a given day. For "you" the source is any of that
+  // day's paired games (myScores is duplicated across rivals by design,
+  // so the first match is fine). For a rival it's the matching game's
+  // theirScores. Returns nulls when the game wasn't logged.
+  function actualScoresForDay(iso) {
+    const mineGame = state.games.find(g => g.date === iso && Array.isArray(g.myScores));
+    return {
+      mineScores:  mineGame ? mineGame.myScores  : null,
+      mineTotal:   mineGame ? getMyTotal(mineGame) : null,
+    };
+  }
+  function actualScoresForRivalDay(rivalId, iso) {
     const g = state.games.find(x => x.rivalId === rivalId && x.date === iso);
-    if (g) {
-      if (mine == null && Array.isArray(g.myScores)) mine = getMyTotal(g);
-      if (Array.isArray(g.theirScores)) theirs = getTheirTotal(g);
-    }
-    return { mine, theirs };
+    if (!g) return { scores: null, total: null };
+    return {
+      scores: Array.isArray(g.theirScores) ? g.theirScores : null,
+      total:  Array.isArray(g.theirScores) ? getTheirTotal(g) : null,
+    };
   }
 
-  function makePredictionRow({ label, predicted, actual, isYou }) {
+  // One round chip: shows weighted slot, predicted (and actual when known),
+  // and a colored bottom band keyed to Δ. Predicted is never null when
+  // we render — caller skips the strip entirely if the predictor failed.
+  function makeRoundChip(slot, predicted, actual) {
+    const predRound = Math.round(predicted);
+    const hasActual = actual != null && Number.isFinite(actual);
+    const delta = hasActual ? Math.round(actual) - predRound : null;
+    const cls = ['prc'];
+    if (delta != null) cls.push(delta > 0 ? 'prc-pos' : delta < 0 ? 'prc-neg' : 'prc-zero');
+    const w = WEIGHTS[slot];
+    const wLabel = w === 1 ? '' : `×${w}`;
+    return el('div', { class: cls.join(' '), title:
+        hasActual
+          ? `Round ${slot + 1} (×${w}): predicted ${predRound}, actual ${Math.round(actual)}`
+          : `Round ${slot + 1} (×${w}): predicted ${predRound}` }, [
+      el('div', { class: 'prc-head' }, [
+        el('span', { class: 'prc-slot' }, `R${slot + 1}`),
+        wLabel ? el('span', { class: 'prc-weight' }, wLabel) : null,
+      ]),
+      el('div', { class: 'prc-nums' }, [
+        el('span', { class: 'prc-pred' }, String(predRound)),
+        hasActual ? el('span', { class: 'prc-arrow' }, '→') : null,
+        hasActual ? el('span', { class: 'prc-actual' }, String(Math.round(actual))) : null,
+      ]),
+      delta != null
+        ? el('div', { class: 'prc-delta' }, (delta > 0 ? '+' : '') + delta)
+        : null,
+    ]);
+  }
+
+  function makePredictionRow({ label, predictedScores, actualScores, predictedTotal, actualTotal, isYou }) {
     const cls = ['pred-row'];
     if (isYou) cls.push('pred-row-you');
     const cells = [el('div', { class: 'pred-label' }, label)];
     cells.push(el('div', { class: 'pred-cell pred-predicted' },
-      predicted != null ? String(predicted) : '—'));
+      predictedTotal != null ? String(predictedTotal) : '—'));
     cells.push(el('div', { class: 'pred-cell pred-actual' },
-      actual != null ? String(actual) : '—'));
+      actualTotal != null ? String(actualTotal) : '—'));
     let delta = null;
-    if (predicted != null && actual != null) delta = actual - predicted;
+    if (predictedTotal != null && actualTotal != null) delta = actualTotal - predictedTotal;
     const deltaCls = ['pred-cell', 'pred-delta'];
     if (delta != null) deltaCls.push(delta > 0 ? 'pred-delta-pos' : delta < 0 ? 'pred-delta-neg' : 'pred-delta-zero');
     cells.push(el('div', { class: deltaCls.join(' ') },
       delta == null ? '—' : (delta > 0 ? '+' : '') + delta));
-    return el('div', { class: cls.join(' ') }, cells);
+    const head = el('div', { class: cls.join(' ') }, cells);
+    if (!Array.isArray(predictedScores)) return head;
+    const strip = el('div', { class: 'pred-round-strip' },
+      predictedScores.map((p, i) => makeRoundChip(i, p, actualScores ? actualScores[i] : null)));
+    return el('div', { class: 'pred-row-wrap' + (isYou ? ' pred-row-wrap-you' : '') }, [head, strip]);
+  }
+
+  // Day-tab pill. Shows weekday + day-of-month. Today is labelled "Today";
+  // tomorrow gets a thinner accent so the upcoming run reads at a glance.
+  function makeDayTab(entry, todayIso) {
+    const dt = new Date(entry.iso + 'T00:00:00');
+    const isToday = entry.iso === todayIso;
+    const dayNames = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
+    const cls = ['pred-day-tab'];
+    if (entry.iso === state.predictSelectedISO) cls.push('is-active');
+    if (isToday) cls.push('is-today');
+    if (entry.status === 'fetching') cls.push('is-loading');
+    if (entry.status === 'error')    cls.push('is-error');
+    return el('button', {
+      type: 'button',
+      class: cls.join(' '),
+      'aria-pressed': entry.iso === state.predictSelectedISO ? 'true' : 'false',
+      onclick: () => {
+        if (state.predictSelectedISO === entry.iso) return;
+        state.predictSelectedISO = entry.iso;
+        renderTodaysPredictions();
+      },
+    }, [
+      el('span', { class: 'pred-day-tab-name' }, isToday ? 'Today' : dayNames[dt.getDay()]),
+      el('span', { class: 'pred-day-tab-num' }, String(dt.getDate())),
+    ]);
   }
 
   function renderTodaysPredictions() {
-    ensureTodaysCitiesLoaded();
+    ensureSevenDayWindowLoaded();
     const card = $('#todays-card');
     if (!card) return;
     const body = $('#todays-card-body');
@@ -1011,32 +1084,39 @@
     const status = $('#todays-card-status');
     body.innerHTML = '';
 
-    // Hide the card entirely when there are no rivals — the empty-state
-    // copy below already handles new users.
-    if (!state.rivals.length) {
-      card.hidden = true;
-      return;
-    }
+    if (!state.rivals.length) { card.hidden = true; return; }
     card.hidden = false;
 
-    const iso = state.todaysCitiesISO || todayISO();
-    sub.textContent = fmtDateLong(iso);
+    const today = todayISO();
+    const selectedISO = state.predictSelectedISO || today;
+    const selected = state.predictWindow.find(w => w.iso === selectedISO) ||
+                     state.predictWindow[0];
 
-    if (state.todaysCitiesFetching) {
-      status.textContent = 'Loading puzzle…';
+    sub.textContent = fmtDateLong(selectedISO);
+
+    // Day-tab strip (always visible — the headline UI for the 7-day view).
+    const tabs = el('div', { class: 'pred-day-tabs', role: 'tablist',
+                             'aria-label': 'Next 7 days' },
+      state.predictWindow.map(entry => makeDayTab(entry, today)));
+    body.appendChild(tabs);
+
+    // Selected-day state branches
+    if (!selected || selected.status === 'fetching') {
+      status.textContent = 'Loading…';
       status.className = 'todays-card-status is-loading';
-      body.appendChild(el('p', { class: 'pred-empty' }, 'Fetching today’s puzzle from maptap.gg…'));
+      body.appendChild(el('p', { class: 'pred-empty' },
+        'Fetching this day’s puzzle from maptap.gg…'));
       return;
     }
-    if (state.todaysCitiesError || !state.todaysCities) {
+    if (selected.status === 'error' || !selected.cities) {
       status.textContent = 'Puzzle unavailable';
       status.className = 'todays-card-status is-warn';
       body.appendChild(el('p', { class: 'pred-empty' },
-        'Couldn’t load today’s puzzle from maptap.gg. Predictions will appear once it’s available.'));
+        'Couldn’t load this day’s puzzle from maptap.gg. Predictions will appear once it’s available.'));
       return;
     }
 
-    // Header row + per-player rows
+    // Per-player rows
     const header = el('div', { class: 'pred-row pred-row-head' }, [
       el('div', { class: 'pred-label' }, 'Player'),
       el('div', { class: 'pred-cell' }, 'Predicted'),
@@ -1045,42 +1125,34 @@
     ]);
     body.appendChild(header);
 
+    const isPastOrToday = selectedISO <= today;
     const myRounds = myProfileRounds();
-    const myPrediction = predictTotalForPlayer(myRounds, state.todaysCities);
-    // Your actual: any of today's paired games carries your scores (they
-    // match across rivals by construction since you only played MapTap
-    // once). Falls back to the profile.gameHistory entry if a sync
-    // populated it before any paired game record was written.
-    const myActual = (() => {
-      const todays = state.games.find(g => g.date === iso && Array.isArray(g.myScores));
-      if (todays) return getMyTotal(todays);
-      const r = state.myProfile && state.myProfile.gameHistory &&
-                state.myProfile.gameHistory[iso];
-      if (!r || !Array.isArray(r.roundData) || r.roundData.length !== N_LOCS) return null;
-      let t = 0;
-      for (let i = 0; i < N_LOCS; i++) t += (Number(r.roundData[i].score) || 0) * WEIGHTS[i];
-      return Math.round(t);
-    })();
+    const myPred = predictRoundsForPlayer(myRounds, selected.cities);
+    const myActuals = isPastOrToday ? actualScoresForDay(selectedISO) : { mineScores: null, mineTotal: null };
     body.appendChild(makePredictionRow({
       label: state.me || 'You',
-      predicted: myPrediction ? myPrediction.score : null,
-      actual: myActual,
+      predictedScores: myPred ? myPred.scores : null,
+      actualScores:    myActuals.mineScores,
+      predictedTotal:  myPred ? predTotalFromScores(myPred.scores) : null,
+      actualTotal:     myActuals.mineTotal,
       isYou: true,
     }));
 
-    let predictedCount = myPrediction ? 1 : 0;
+    let predictedCount = myPred ? 1 : 0;
     state.rivals
       .slice()
       .sort((a, b) => a.name.localeCompare(b.name))
       .forEach(r => {
         const rounds = rivalRounds(r.id);
-        const pred = predictTotalForPlayer(rounds, state.todaysCities);
+        const pred = predictRoundsForPlayer(rounds, selected.cities);
         if (pred) predictedCount++;
-        const { theirs } = actualForToday(r.id);
+        const act = isPastOrToday ? actualScoresForRivalDay(r.id, selectedISO) : { scores: null, total: null };
         body.appendChild(makePredictionRow({
           label: `${r.icon || '🎯'} ${r.name}`,
-          predicted: pred ? pred.score : null,
-          actual: theirs,
+          predictedScores: pred ? pred.scores : null,
+          actualScores:    act.scores,
+          predictedTotal:  pred ? predTotalFromScores(pred.scores) : null,
+          actualTotal:     act.total,
           isYou: false,
         }));
       });
@@ -1088,13 +1160,24 @@
     if (predictedCount === 0) {
       status.textContent = 'Need more games';
       status.className = 'todays-card-status is-muted';
-    } else if (myActual != null) {
+    } else if (selectedISO > today) {
+      status.textContent = 'Upcoming';
+      status.className = 'todays-card-status is-accent';
+    } else if (myActuals.mineTotal != null) {
       status.textContent = 'Game played ✓';
       status.className = 'todays-card-status is-good';
     } else {
-      status.textContent = 'Pre-game';
+      status.textContent = selectedISO === today ? 'Pre-game' : 'Not logged';
       status.className = 'todays-card-status is-accent';
     }
+  }
+
+  // Sum a round score array using the standard WEIGHTS.
+  function predTotalFromScores(scores) {
+    if (!Array.isArray(scores) || scores.length !== N_LOCS) return null;
+    let t = 0;
+    for (let i = 0; i < N_LOCS; i++) t += scores[i] * WEIGHTS[i];
+    return Math.round(Math.max(0, Math.min(1000, t)));
   }
 
   // ---------- paste-mode entry on dashboard ----------
@@ -3177,22 +3260,33 @@
   // `confidence` = number of rounds informing the estimate (rough
   // sample-size cue for the UI, not a probability).
   const PREDICTION_MIN_ROUNDS = 5;
-  function predictTotalForPlayer(rounds, todaysCities) {
+  // Return per-round 0-100 predictions for a player against a given
+  // 5-city array. Each round uses the player's continent average for
+  // that location (needs ≥2 rounds in-continent to trust the bucket;
+  // otherwise the player's overall round mean takes over). Returns null
+  // when the player's total history is too small to predict at all.
+  function predictRoundsForPlayer(rounds, todaysCities) {
     if (!Array.isArray(todaysCities) || todaysCities.length !== N_LOCS) return null;
     const idx = continentScoreIndex(rounds);
     if (idx.totalRounds < PREDICTION_MIN_ROUNDS || idx.overallAvg == null) return null;
-    let weighted = 0;
+    const scores = new Array(N_LOCS);
     for (let i = 0; i < N_LOCS; i++) {
       const c = todaysCities[i];
       const cont = classifyContinent(c.lat, c.lng);
       const b = idx.buckets.get(cont);
-      // Need at least 2 rounds on the continent to trust its bucket;
-      // otherwise fall back to the player's overall round mean.
-      const roundAvg = (b && b.count >= 2) ? (b.sum / b.count) : idx.overallAvg;
-      weighted += roundAvg * WEIGHTS[i];
+      scores[i] = (b && b.count >= 2) ? (b.sum / b.count) : idx.overallAvg;
     }
-    const score = Math.round(Math.max(0, Math.min(1000, weighted)));
-    return { score, confidence: idx.totalRounds };
+    return { scores, confidence: idx.totalRounds };
+  }
+  function predictTotalForPlayer(rounds, todaysCities) {
+    const rp = predictRoundsForPlayer(rounds, todaysCities);
+    if (!rp) return null;
+    let weighted = 0;
+    for (let i = 0; i < N_LOCS; i++) weighted += rp.scores[i] * WEIGHTS[i];
+    return {
+      score: Math.round(Math.max(0, Math.min(1000, weighted))),
+      confidence: rp.confidence,
+    };
   }
 
   async function syncMapTapForRival(rivalId) {
