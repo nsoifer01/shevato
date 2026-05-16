@@ -415,6 +415,45 @@ body.maptap-rivals-app button {
   box-shadow: 0 8px 24px rgba(0, 0, 0, 0.18);
 }
 
+.paste-collapse > summary {
+  list-style: none;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+  padding: 0.15rem 0;
+}
+.paste-collapse > summary::-webkit-details-marker { display: none; }
+.paste-collapse > summary::after {
+  content: '';
+  margin-left: auto;
+  width: 0.6rem;
+  height: 0.6rem;
+  border-right: 2px solid var(--muted);
+  border-bottom: 2px solid var(--muted);
+  transform: rotate(45deg);
+  transition: transform 0.18s ease, border-color 0.18s ease;
+}
+.paste-collapse > summary:hover::after { border-color: var(--text); }
+.paste-collapse[open] > summary::after { transform: rotate(-135deg); }
+.paste-collapse > summary:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 4px;
+  border-radius: var(--radius-sm);
+}
+.paste-collapse-title {
+  font-size: 1.05rem;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  color: var(--text);
+}
+.paste-collapse-hint {
+  color: var(--muted);
+  font-size: 0.82rem;
+}
+.paste-collapse-body { margin-top: 0.9rem; }
+
 .paste-head {
   display: flex;
   align-items: center;
@@ -1802,6 +1841,15 @@ tr:focus-within .icon-btn {
   background: var(--surface-2);
   color: var(--text);
   font-size: 0.9rem;
+}
+
+/* Native <select> dropdown panels render with the OS theme. Color-scheme
+   plus an explicit option background keeps the open dropdown dark in
+   Chromium and Firefox instead of flashing a white list. */
+body.maptap-rivals-app select { color-scheme: dark; }
+body.maptap-rivals-app select option {
+  background-color: var(--surface-2);
+  color: var(--text);
 }
 
 /* ---------- Settings strip ----------
