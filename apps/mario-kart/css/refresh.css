@@ -1,0 +1,757 @@
+/*
+ * Mario Kart Tracker — visual refresh layer.
+ *
+ * Loaded LAST (after every legacy module) so it wins specificity ties. It
+ * does not touch any JS or HTML structure — every rule targets existing
+ * classes / IDs and is scoped to body.mario-kart-app or the legacy
+ * body.theme dark-mode class so the older light theme remains untouched
+ * if anyone ever toggles it.
+ *
+ * Reference design language: Rising Seasons / MapTap (cinematic dark
+ * palette, soft accent surfaces, gradient hero, dashed empty states).
+ */
+
+body.mario-kart-app.theme,
+body.mario-kart-app {
+    --mk-bg: #0a0c14;
+    --mk-bg-grad:
+        radial-gradient(ellipse 90% 60% at 50% -10%, rgba(99, 102, 241, 0.10), transparent 60%),
+        radial-gradient(ellipse 60% 40% at 100% 0%, rgba(244, 114, 182, 0.05), transparent 65%),
+        linear-gradient(180deg, #0a0c14 0%, #07090f 70%, #050609 100%);
+    --mk-surface: #12151d;
+    --mk-surface-2: #181c26;
+    --mk-surface-3: #232836;
+    --mk-text: #f1f3f8;
+    --mk-muted: #a4adbd;
+    --mk-muted-2: #6f7785;
+    --mk-accent: #818cf8;
+    --mk-accent-strong: #6366f1;
+    --mk-accent-soft: rgba(129, 140, 248, 0.14);
+    --mk-accent-strong-soft: rgba(99, 102, 241, 0.32);
+    --mk-good: #34d399;
+    --mk-good-soft: rgba(52, 211, 153, 0.16);
+    --mk-good-ink: #052e1c;
+    --mk-warn: #fbbf24;
+    --mk-warn-soft: rgba(251, 191, 36, 0.16);
+    --mk-danger: #f87171;
+    --mk-danger-soft: rgba(248, 113, 113, 0.16);
+    --mk-border: #232838;
+    --mk-border-strong: #343a4f;
+    --mk-radius: 14px;
+    --mk-radius-sm: 10px;
+    --mk-shadow-lift: 0 6px 22px -8px rgba(0, 0, 0, 0.55), 0 2px 4px rgba(0, 0, 0, 0.3);
+    color-scheme: dark;
+}
+
+/* ---------- Page canvas ---------- */
+
+body.mario-kart-app {
+    background: var(--mk-bg) !important;
+    background-image: var(--mk-bg-grad) !important;
+    background-attachment: fixed !important;
+    color: var(--mk-text);
+    font-family: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+    -webkit-font-smoothing: antialiased;
+}
+
+body.mario-kart-app .container {
+    background: transparent !important;
+    box-shadow: none !important;
+    border-radius: 0 !important;
+    color: var(--mk-text);
+}
+
+body.mario-kart-app.theme .container {
+    background: transparent !important;
+}
+
+/* ---------- Hero ---------- */
+
+body.mario-kart-app .header-section {
+    margin-bottom: 1.85rem;
+    padding-top: 0.5rem;
+}
+
+/* Title typography. Note: we deliberately do NOT use
+   `-webkit-text-fill-color: transparent` here — the heading contains
+   inline color emojis (🏎️, 🌍) which become invisible once the text
+   fill is transparent. A solid bright text colour + a soft accent
+   drop-shadow keeps both the wordmark and the emoji bookends crisp. */
+body.mario-kart-app .header-section h1 {
+    font-family: inherit;
+    font-size: clamp(1.85rem, 4vw, 2.75rem);
+    font-weight: 700;
+    letter-spacing: -0.025em;
+    line-height: 1.15;
+    text-transform: none;
+    color: #f1f3f8;
+    -webkit-text-fill-color: #f1f3f8;
+    background: none;
+    text-shadow: 0 4px 24px rgba(129, 140, 248, 0.22);
+    margin: 0 0 0.55rem;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.6rem;
+    flex-wrap: wrap;
+}
+
+/* Game version toggle (MK8 / MK World) — segmented pill control */
+body.mario-kart-app .game-version-toggle {
+    display: inline-flex !important;
+    gap: 4px;
+    padding: 4px;
+    background: rgba(255, 255, 255, 0.03);
+    border: 1px solid var(--mk-border);
+    border-radius: 999px;
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.02);
+}
+
+body.mario-kart-app .game-version-toggle button.version-btn,
+body.mario-kart-app .game-version-toggle button.version-btn:not(.active) {
+    background: transparent !important;
+    border: none !important;
+    color: var(--mk-muted) !important;
+    border-radius: 999px !important;
+    padding: 0.5rem 1.1rem !important;
+    font-size: 0.88rem !important;
+    font-weight: 600 !important;
+    letter-spacing: 0;
+    line-height: 1 !important;
+    box-shadow: none !important;
+    transition: background 0.18s ease, color 0.18s ease;
+    display: inline-flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    gap: 0.4rem !important;
+    text-align: center !important;
+    min-height: 32px;
+}
+
+/* Keep the racing-car / globe icons (and any other glyphs) vertically
+   centred on the same baseline as the label, and emoji-sized rather
+   than label-sized so they read as decorative rather than dominant. */
+body.mario-kart-app .game-version-toggle button.version-btn .version-icon {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    line-height: 1;
+    font-size: 1rem;
+}
+body.mario-kart-app .game-version-toggle button.version-btn .version-text {
+    display: inline-flex;
+    align-items: center;
+    line-height: 1;
+}
+
+body.mario-kart-app .game-version-toggle button.version-btn:hover {
+    background: rgba(255, 255, 255, 0.04) !important;
+    color: var(--mk-text) !important;
+    transform: none !important;
+    box-shadow: none !important;
+}
+
+body.mario-kart-app .game-version-toggle button.version-btn.active,
+body.mario-kart-app .game-version-toggle button#mk8d-btn.active,
+body.mario-kart-app .game-version-toggle button#mkworld-btn.active {
+    background: var(--mk-accent-soft) !important;
+    color: var(--mk-text) !important;
+    border-color: transparent !important;
+    box-shadow: inset 0 0 0 1px rgba(129, 140, 248, 0.45) !important;
+}
+
+body.mario-kart-app .game-version-toggle button.version-btn.active span,
+body.mario-kart-app .game-version-toggle button.version-btn.active .version-text,
+body.mario-kart-app .game-version-toggle button.version-btn.active .version-icon { color: var(--mk-text) !important; }
+
+/* ---------- Top tabs (Help / Guide / Achievements / Stats / H2H / Analysis / Activity / Trends) ---------- */
+
+body.mario-kart-app .toggle-section {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.4rem;
+    padding: 1rem 0 1.25rem;
+    justify-content: center;
+    background: transparent !important;
+    border: none !important;
+    box-shadow: none !important;
+    margin-bottom: 1rem;
+}
+
+body.mario-kart-app .toggle-btn {
+    padding: 0.45rem 0.9rem !important;
+    background: rgba(255, 255, 255, 0.035) !important;
+    border: 1px solid var(--mk-border) !important;
+    color: var(--mk-muted) !important;
+    border-radius: 999px !important;
+    font-size: 0.85rem !important;
+    font-weight: 600 !important;
+    letter-spacing: 0;
+    box-shadow: none !important;
+    transition: background 0.15s ease, border-color 0.15s ease, color 0.15s ease;
+}
+
+body.mario-kart-app .toggle-btn:hover {
+    background: rgba(255, 255, 255, 0.06) !important;
+    border-color: var(--mk-border-strong) !important;
+    color: var(--mk-text) !important;
+    transform: none !important;
+}
+
+body.mario-kart-app .toggle-btn.active {
+    background: var(--mk-accent-soft) !important;
+    border-color: rgba(129, 140, 248, 0.45) !important;
+    color: var(--mk-text) !important;
+}
+
+/* ---------- Help / Guide panels (empty-state-friendly) ---------- */
+
+body.mario-kart-app.theme .help-panel,
+body.mario-kart-app .help-panel {
+    background: var(--mk-surface) !important;
+    border: 1px solid var(--mk-border) !important;
+    border-radius: var(--mk-radius);
+    box-shadow: var(--mk-shadow-lift);
+}
+
+body.mario-kart-app .help-content { padding: 1.5rem; }
+
+body.mario-kart-app .help-section h4 {
+    color: var(--mk-text) !important;
+    font-size: 1.1rem;
+    font-weight: 600;
+    letter-spacing: -0.01em;
+    text-transform: none;
+    margin-bottom: 0.75rem;
+}
+
+body.mario-kart-app .help-section p,
+body.mario-kart-app .help-text p {
+    color: var(--mk-muted) !important;
+    line-height: 1.55;
+}
+
+body.mario-kart-app .help-grid { gap: 0.8rem; margin-bottom: 1.4rem; }
+
+body.mario-kart-app .help-item {
+    background: var(--mk-surface-2) !important;
+    border: 1px solid var(--mk-border) !important;
+    border-radius: var(--mk-radius-sm);
+    padding: 1rem 1.1rem;
+    transition: border-color 0.15s ease, background 0.15s ease, transform 0.1s ease;
+}
+body.mario-kart-app .help-item:hover {
+    background: var(--mk-surface-3) !important;
+    border-color: var(--mk-border-strong) !important;
+    transform: translateY(-1px);
+    box-shadow: var(--mk-shadow-lift);
+}
+
+body.mario-kart-app .help-icon {
+    font-size: 1.5rem;
+    margin-bottom: 0.5rem;
+}
+
+body.mario-kart-app .help-text strong {
+    color: var(--mk-text) !important;
+    font-size: 0.98rem;
+    font-weight: 600;
+}
+
+body.mario-kart-app .help-steps {
+    background: var(--mk-surface-2) !important;
+    border: 1px solid var(--mk-border) !important;
+    border-left: 3px solid var(--mk-accent) !important;
+    color: var(--mk-text);
+}
+body.mario-kart-app .help-steps li { color: var(--mk-muted) !important; }
+body.mario-kart-app .help-steps strong { color: var(--mk-text) !important; }
+
+body.mario-kart-app .help-footer {
+    background: var(--mk-warn-soft) !important;
+    border: 1px solid rgba(251, 191, 36, 0.32) !important;
+    color: var(--mk-warn) !important;
+}
+body.mario-kart-app .help-footer p { color: var(--mk-warn) !important; }
+
+/* ---------- Sidebar (Control Panel) ---------- */
+
+body.mario-kart-app .sidebar,
+body.mario-kart-app.theme .sidebar {
+    background: var(--mk-surface) !important;
+    border-right: 1px solid var(--mk-border);
+    box-shadow: 2px 0 24px rgba(0, 0, 0, 0.5);
+}
+
+body.mario-kart-app .sidebar-header {
+    border-bottom: 1px solid var(--mk-border);
+    padding: 1rem 1.25rem;
+}
+
+body.mario-kart-app .sidebar-title {
+    font-size: 0.85rem !important;
+    font-weight: 700 !important;
+    letter-spacing: 0.16em !important;
+    text-transform: uppercase !important;
+    color: var(--mk-muted) !important;
+    font-family: inherit !important;
+}
+
+body.mario-kart-app .sidebar-section-title {
+    font-size: 0.7rem !important;
+    font-weight: 700 !important;
+    letter-spacing: 0.14em !important;
+    text-transform: uppercase !important;
+    color: var(--mk-muted-2) !important;
+    margin-bottom: 0.6rem !important;
+    font-family: inherit !important;
+}
+
+body.mario-kart-app .sidebar-content { padding: 1.1rem 1.1rem 1.4rem; }
+body.mario-kart-app .sidebar-section { margin-bottom: 1.4rem; }
+
+/* Sidebar close (X) + clear (trash) chips — match the Football refresh
+   exactly. The legacy `apps/mario-kart/css/sidebar.css` styles these
+   buttons with a red colour at rest and a red-tinted background +
+   `transform: scale(1.05)` on hover (under both the bare selector and
+   the `body.theme` variant). We override every combination at
+   equal-or-higher specificity, with `!important`, so the buttons sit
+   on a neutral dark surface and lift to the next surface tier on hover
+   — identical visual language to the Football Control Panel. */
+body.mario-kart-app .sidebar-close-btn,
+body.mario-kart-app.theme .sidebar-close-btn,
+body.mario-kart-app .sidebar-header-clear,
+body.mario-kart-app.theme .sidebar-header-clear {
+    width: 30px !important;
+    height: 30px !important;
+    padding: 0 !important;
+    background: rgba(255, 255, 255, 0.03) !important;
+    border: 1px solid var(--mk-border) !important;
+    color: var(--mk-muted) !important;
+    border-radius: 8px !important;
+    box-shadow: none !important;
+    transform: none !important;
+    transition: background 0.15s ease, color 0.15s ease, border-color 0.15s ease !important;
+}
+
+body.mario-kart-app .sidebar-close-btn:hover,
+body.mario-kart-app.theme .sidebar-close-btn:hover,
+body.mario-kart-app .sidebar-header-clear:hover,
+body.mario-kart-app .sidebar-header-clear:hover:not(:disabled),
+body.mario-kart-app.theme .sidebar-header-clear:hover,
+body.mario-kart-app.theme .sidebar-header-clear:hover:not(:disabled) {
+    background: var(--mk-surface-2) !important;
+    background-color: var(--mk-surface-2) !important;
+    border-color: var(--mk-border-strong) !important;
+    color: var(--mk-text) !important;
+    transform: none !important;
+    scale: none !important;
+    box-shadow: none !important;
+}
+
+body.mario-kart-app .sidebar-close-btn:focus-visible,
+body.mario-kart-app .sidebar-header-clear:focus-visible {
+    outline: 2px solid var(--mk-accent) !important;
+    outline-offset: 2px !important;
+    box-shadow: none !important;
+}
+
+body.mario-kart-app .sidebar-header-clear:disabled,
+body.mario-kart-app .sidebar-header-clear[disabled] {
+    opacity: 0.4;
+    cursor: not-allowed;
+}
+
+/* Primary action buttons — unify the rainbow into one accent surface */
+body.mario-kart-app .sidebar-player-settings-btn,
+body.mario-kart-app .sidebar-add-race-btn {
+    background: linear-gradient(135deg, var(--mk-accent), var(--mk-accent-strong)) !important;
+    color: #ffffff !important;
+    border: 1px solid transparent !important;
+    border-radius: 10px !important;
+    padding: 0.7rem 0.85rem !important;
+    font-weight: 600 !important;
+    font-size: 0.92rem !important;
+    box-shadow: 0 4px 14px rgba(99, 102, 241, 0.28) !important;
+    width: 100%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.5rem;
+    transition: filter 0.15s ease, transform 0.08s ease, box-shadow 0.15s ease;
+}
+body.mario-kart-app .sidebar-player-settings-btn:hover,
+body.mario-kart-app .sidebar-add-race-btn:hover {
+    filter: brightness(1.06);
+    transform: translateY(-1px);
+    box-shadow: 0 8px 22px -6px rgba(99, 102, 241, 0.55) !important;
+}
+body.mario-kart-app .sidebar-add-race-btn.active {
+    background: linear-gradient(135deg, var(--mk-good), #10b981) !important;
+    box-shadow: 0 4px 14px rgba(52, 211, 153, 0.32) !important;
+}
+
+/* Secondary action button group (Undo/Redo/Export/Import/Backup/Restore).
+   Sidebar surface is var(--mk-surface) = #12151d; the previous 3% white
+   wash was almost invisible against it. Use --mk-surface-2 so the
+   buttons read as real surfaces with their own elevation. Icon + label
+   are flex-aligned so emoji glyphs sit on the same baseline as the
+   text and the row reads as one unit. */
+body.mario-kart-app .sidebar-action-btn,
+body.mario-kart-app .sidebar .action-buttons button,
+body.mario-kart-app .sidebar .action-buttons button[onclick*="exportData"],
+body.mario-kart-app .sidebar .action-buttons button[onclick*="importFile"],
+body.mario-kart-app .sidebar .action-buttons button[onclick*="backupToGoogleDrive"] {
+    background: var(--mk-surface-2) !important;
+    color: var(--mk-text) !important;
+    border: 1px solid var(--mk-border-strong) !important;
+    border-radius: 10px !important;
+    padding: 0.6rem 0.85rem !important;
+    font-size: 0.88rem !important;
+    font-weight: 500 !important;
+    box-shadow: none !important;
+    display: flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    gap: 0.55rem !important;
+    line-height: 1 !important;
+    transition: background 0.15s ease, border-color 0.15s ease, color 0.15s ease, transform 0.08s ease;
+}
+
+body.mario-kart-app .sidebar-action-btn:hover:not(:disabled),
+body.mario-kart-app .sidebar .action-buttons button:hover,
+body.mario-kart-app .sidebar .action-buttons button[onclick*="exportData"]:hover,
+body.mario-kart-app .sidebar .action-buttons button[onclick*="importFile"]:hover,
+body.mario-kart-app .sidebar .action-buttons button[onclick*="backupToGoogleDrive"]:hover {
+    background: var(--mk-surface-3) !important;
+    border-color: #4a4f66 !important;
+    color: var(--mk-text) !important;
+    transform: none !important;
+    box-shadow: none !important;
+}
+
+body.mario-kart-app .sidebar-action-btn:disabled,
+body.mario-kart-app .sidebar-action-btn[disabled] {
+    opacity: 0.45;
+    cursor: not-allowed;
+}
+
+/* Per-button semantic accent — each secondary action keeps a hint of
+   its original colour identity so the user can still scan the rail
+   visually (green Restore, blue/teal Export/Import, etc.) without the
+   buttons themselves becoming bright slabs. */
+body.mario-kart-app .sidebar-action-btn.restore-btn,
+body.mario-kart-app .sidebar-action-btn.restore-btn .action-icon {
+    color: var(--mk-good) !important;
+}
+
+/* ---------- Undo / Redo toolbar pair ---------- */
+
+/* Lay the Undo + Redo buttons out as a 2-column toolbar so they read as
+   a paired control rather than two anonymous stacked buttons. They get
+   a distinct accent identity (indigo arrow) while disabled keeps them
+   present-but-quiet, so users can see they exist before there's history
+   to operate on. */
+body.mario-kart-app .sidebar-action-buttons-group {
+    display: grid !important;
+    grid-template-columns: 1fr 1fr !important;
+    gap: 0.5rem !important;
+    margin-bottom: 0.6rem;
+}
+
+body.mario-kart-app .sidebar-action-btn.undo-btn,
+body.mario-kart-app .sidebar-action-btn.redo-btn {
+    background: var(--mk-surface-2) !important;
+    color: var(--mk-text) !important;
+    border: 1px solid var(--mk-border-strong) !important;
+    border-radius: 10px !important;
+    padding: 0.55rem 0.6rem !important;
+    font-size: 0.86rem !important;
+    font-weight: 600 !important;
+    width: 100%;
+    box-shadow: none !important;
+    display: inline-flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    gap: 0.45rem !important;
+    line-height: 1 !important;
+    cursor: pointer;
+    transition: background 0.15s ease, border-color 0.15s ease, color 0.15s ease, transform 0.08s ease;
+}
+
+body.mario-kart-app .sidebar-action-btn.undo-btn .action-icon,
+body.mario-kart-app .sidebar-action-btn.redo-btn .action-icon {
+    color: var(--mk-accent) !important;
+    font-size: 1.25rem !important;
+    line-height: 1 !important;
+    font-weight: 700;
+}
+
+body.mario-kart-app .sidebar-action-btn.undo-btn .action-text,
+body.mario-kart-app .sidebar-action-btn.redo-btn .action-text {
+    color: var(--mk-text) !important;
+    font-weight: 600;
+    letter-spacing: 0.01em;
+}
+
+/* Enabled hover — accent-soft fill + indigo border so it's obvious the
+   button is now actionable. */
+body.mario-kart-app .sidebar-action-btn.undo-btn:hover:not(:disabled),
+body.mario-kart-app .sidebar-action-btn.redo-btn:hover:not(:disabled) {
+    background: var(--mk-accent-soft) !important;
+    border-color: rgba(129, 140, 248, 0.55) !important;
+    color: #ffffff !important;
+    transform: translateY(-1px);
+}
+
+body.mario-kart-app .sidebar-action-btn.undo-btn:hover:not(:disabled) .action-icon,
+body.mario-kart-app .sidebar-action-btn.redo-btn:hover:not(:disabled) .action-icon,
+body.mario-kart-app .sidebar-action-btn.undo-btn:hover:not(:disabled) .action-text,
+body.mario-kart-app .sidebar-action-btn.redo-btn:hover:not(:disabled) .action-text {
+    color: #ffffff !important;
+}
+
+body.mario-kart-app .sidebar-action-btn.undo-btn:active:not(:disabled),
+body.mario-kart-app .sidebar-action-btn.redo-btn:active:not(:disabled) {
+    transform: translateY(0);
+    background: rgba(99, 102, 241, 0.22) !important;
+}
+
+/* Disabled state — unambiguously inert. The button is still visible (so
+   users can find it later) but reduced opacity + not-allowed cursor +
+   no hover transform make it clear there's nothing to undo/redo yet. */
+body.mario-kart-app .sidebar-action-btn.undo-btn:disabled,
+body.mario-kart-app .sidebar-action-btn.redo-btn:disabled,
+body.mario-kart-app .sidebar-action-btn.undo-btn[disabled],
+body.mario-kart-app .sidebar-action-btn.redo-btn[disabled] {
+    opacity: 0.42 !important;
+    cursor: not-allowed !important;
+    pointer-events: none;
+    background: var(--mk-surface-2) !important;
+    border-color: var(--mk-border) !important;
+    transform: none !important;
+}
+body.mario-kart-app .sidebar-action-btn.undo-btn:disabled .action-icon,
+body.mario-kart-app .sidebar-action-btn.redo-btn:disabled .action-icon {
+    color: var(--mk-muted) !important;
+}
+body.mario-kart-app .sidebar .action-buttons button[onclick*="exportData"] .action-icon,
+body.mario-kart-app .sidebar .action-buttons button[onclick*="exportData"]::first-letter {
+    color: var(--mk-good) !important;
+}
+body.mario-kart-app .sidebar .action-buttons button[onclick*="importFile"] .action-icon {
+    color: #38b2ac !important;
+}
+body.mario-kart-app .sidebar .action-buttons button[onclick*="backupToGoogleDrive"] .action-icon {
+    color: #4299e1 !important;
+}
+
+/* Icon + text alignment for sidebar action buttons that use
+   `<span class="action-icon">` + `<span class="action-text">` wrappers. */
+body.mario-kart-app .sidebar-action-btn .action-icon {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    line-height: 1;
+    font-size: 1rem;
+}
+body.mario-kart-app .sidebar-action-btn .action-text {
+    display: inline-flex;
+    align-items: center;
+    line-height: 1;
+}
+
+/* Date filter buttons in the sidebar */
+body.mario-kart-app .sidebar .date-filter-controls { gap: 0.4rem !important; }
+body.mario-kart-app .sidebar .filter-btn,
+body.mario-kart-app .sidebar .date-filter-btn {
+    background: var(--mk-surface-2) !important;
+    color: var(--mk-text) !important;
+    border: 1px solid var(--mk-border-strong) !important;
+    border-radius: 999px !important;
+    padding: 0.5rem 0.9rem !important;
+    font-size: 0.85rem !important;
+    font-weight: 500 !important;
+    width: 100%;
+    box-shadow: none !important;
+    transition: background 0.15s ease, color 0.15s ease, border-color 0.15s ease;
+}
+body.mario-kart-app .sidebar .filter-btn:hover,
+body.mario-kart-app .sidebar .date-filter-btn:hover {
+    background: var(--mk-surface-2) !important;
+    border-color: var(--mk-border-strong) !important;
+    color: var(--mk-text) !important;
+    transform: none !important;
+}
+body.mario-kart-app .sidebar .filter-btn.active,
+body.mario-kart-app .sidebar .date-filter-btn.active {
+    background: var(--mk-accent-soft) !important;
+    border-color: rgba(129, 140, 248, 0.45) !important;
+    color: var(--mk-text) !important;
+}
+
+/* Race-date helper button */
+body.mario-kart-app .sidebar-date-btn-container {
+    background: var(--mk-surface-2) !important;
+    border: 1px solid var(--mk-border) !important;
+    border-radius: 10px !important;
+    color: var(--mk-text) !important;
+}
+body.mario-kart-app .sidebar-date-today-btn {
+    background: rgba(255, 255, 255, 0.03) !important;
+    color: var(--mk-muted) !important;
+    border: 1px solid var(--mk-border) !important;
+    border-radius: 999px !important;
+    box-shadow: none !important;
+    transition: background 0.15s ease, color 0.15s ease, border-color 0.15s ease;
+}
+body.mario-kart-app .sidebar-date-today-btn:hover {
+    background: var(--mk-surface-2) !important;
+    border-color: var(--mk-border-strong) !important;
+    color: var(--mk-text) !important;
+}
+
+/* Sidebar toggle button (the hamburger floating outside the sidebar) */
+body.mario-kart-app .sidebar-toggle,
+body.mario-kart-app.theme .sidebar-toggle {
+    background: linear-gradient(135deg, var(--mk-accent), var(--mk-accent-strong)) !important;
+    box-shadow: 0 6px 20px rgba(99, 102, 241, 0.35) !important;
+    border: 1px solid rgba(255, 255, 255, 0.08) !important;
+}
+
+/* ---------- Stat cards / Race-history tables ---------- */
+
+body.mario-kart-app.theme .stat-card,
+body.mario-kart-app .stat-card,
+body.mario-kart-app.theme .race-history,
+body.mario-kart-app .race-history,
+body.mario-kart-app.theme #history-table,
+body.mario-kart-app #history-table {
+    background: var(--mk-surface) !important;
+    border: 1px solid var(--mk-border) !important;
+    color: var(--mk-text) !important;
+}
+
+body.mario-kart-app .stat-card { border-radius: var(--mk-radius); box-shadow: var(--mk-shadow-lift); }
+
+body.mario-kart-app.theme th,
+body.mario-kart-app th {
+    background: var(--mk-surface-2) !important;
+    color: var(--mk-muted) !important;
+    border-bottom: 1px solid var(--mk-border) !important;
+    font-size: 0.78rem;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    font-weight: 600;
+}
+
+body.mario-kart-app.theme td,
+body.mario-kart-app td {
+    background: transparent !important;
+    color: var(--mk-text) !important;
+    border-bottom-color: var(--mk-border) !important;
+}
+
+body.mario-kart-app tr:hover td,
+body.mario-kart-app.theme tr:hover td { background: rgba(255, 255, 255, 0.025) !important; }
+
+/* ---------- Inputs ---------- */
+
+body.mario-kart-app input[type="text"],
+body.mario-kart-app input[type="number"],
+body.mario-kart-app input[type="date"],
+body.mario-kart-app select,
+body.mario-kart-app textarea {
+    background: var(--mk-surface-2) !important;
+    color: var(--mk-text) !important;
+    border: 1px solid var(--mk-border) !important;
+    border-radius: 10px !important;
+    transition: border-color 0.15s ease, box-shadow 0.15s ease, background 0.15s ease;
+}
+body.mario-kart-app input[type="text"]:focus,
+body.mario-kart-app input[type="number"]:focus,
+body.mario-kart-app input[type="date"]:focus,
+body.mario-kart-app select:focus,
+body.mario-kart-app textarea:focus {
+    outline: none !important;
+    border-color: var(--mk-accent) !important;
+    box-shadow: 0 0 0 3px var(--mk-accent-soft) !important;
+    background: var(--mk-surface) !important;
+}
+
+/* ---------- Export/Import/Backup/Clear buttons used in main area ---------- */
+
+body.mario-kart-app .export-btn,
+body.mario-kart-app .import-btn,
+body.mario-kart-app .backup-btn,
+body.mario-kart-app .clear-btn {
+    background: rgba(255, 255, 255, 0.03) !important;
+    color: var(--mk-text) !important;
+    border: 1px solid var(--mk-border) !important;
+    border-radius: 10px !important;
+    padding: 0.55rem 0.95rem !important;
+    font-weight: 500 !important;
+    font-size: 0.88rem !important;
+    margin-left: 0.45rem;
+    box-shadow: none !important;
+    transition: background 0.15s ease, border-color 0.15s ease;
+}
+body.mario-kart-app .export-btn:hover,
+body.mario-kart-app .import-btn:hover,
+body.mario-kart-app .backup-btn:hover,
+body.mario-kart-app .clear-btn:hover {
+    background: var(--mk-surface-2) !important;
+    border-color: var(--mk-border-strong) !important;
+    transform: none !important;
+}
+body.mario-kart-app .clear-btn:not(:disabled) { color: var(--mk-danger) !important; }
+body.mario-kart-app .clear-btn:not(:disabled):hover {
+    background: var(--mk-danger-soft) !important;
+    border-color: rgba(248, 113, 113, 0.45) !important;
+}
+
+/* ---------- Generic button reset for the page body (without breaking icons) ---------- */
+body.mario-kart-app button {
+    box-shadow: none;
+}
+body.mario-kart-app button:hover { transform: none; box-shadow: none; }
+
+/* ---------- Help/feature section: a "What is this?" headline tone ---------- */
+
+body.mario-kart-app .help-section.visualization-guide,
+body.mario-kart-app .help-section.help-disclaimers,
+body.mario-kart-app .help-section.help-technical {
+    background: var(--mk-surface-2);
+    border: 1px solid var(--mk-border);
+    border-radius: var(--mk-radius-sm);
+    padding: 1rem 1.1rem;
+}
+
+body.mario-kart-app .viz-guide-card {
+    background: var(--mk-surface) !important;
+    border: 1px solid var(--mk-border) !important;
+    border-radius: var(--mk-radius-sm) !important;
+}
+body.mario-kart-app .viz-tip {
+    background: var(--mk-accent-soft) !important;
+    border-left: 3px solid var(--mk-accent) !important;
+    color: var(--mk-text) !important;
+}
+
+/* ---------- Scrollbars ---------- */
+
+body.mario-kart-app ::-webkit-scrollbar { width: 10px; height: 10px; }
+body.mario-kart-app ::-webkit-scrollbar-track { background: transparent !important; }
+body.mario-kart-app ::-webkit-scrollbar-thumb {
+    background: var(--mk-border-strong) !important;
+    border: 3px solid var(--mk-bg) !important;
+    background-clip: content-box !important;
+    border-radius: 999px !important;
+}
+body.mario-kart-app ::-webkit-scrollbar-thumb:hover {
+    background: #4a4f66 !important;
+    background-clip: content-box !important;
+}
+
+/* ---------- Cleanup: prevent the global generic `button:hover` glow ---------- */
+body.mario-kart-app .container button:hover { box-shadow: none; }

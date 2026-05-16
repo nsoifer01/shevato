@@ -1,0 +1,862 @@
+/*
+ * Football H2H League — visual refresh layer.
+ *
+ * Loaded LAST so it wins specificity ties. Football H2H reuses several
+ * Mario Kart stylesheets (utilities/base/theme/layout/forms/overrides) +
+ * a Football-specific sheet. This refresh layer aligns the hero, tabs,
+ * stat cards, sidebar, and tables with the Rising Seasons / MapTap
+ * reference apps without changing any JS, IDs, or event handlers.
+ */
+
+body.football-h2h-tracker {
+    --fh-bg: #0a0c14;
+    --fh-bg-grad:
+        radial-gradient(ellipse 90% 60% at 50% -10%, rgba(129, 140, 248, 0.10), transparent 60%),
+        radial-gradient(ellipse 60% 40% at 100% 0%, rgba(74, 222, 128, 0.05), transparent 65%),
+        linear-gradient(180deg, #0a0c14 0%, #07090f 70%, #050609 100%);
+    --fh-surface: #12151d;
+    --fh-surface-2: #181c26;
+    --fh-surface-3: #232836;
+    --fh-text: #f1f3f8;
+    --fh-muted: #a4adbd;
+    --fh-muted-2: #6f7785;
+    --fh-accent: #818cf8;
+    --fh-accent-strong: #6366f1;
+    --fh-accent-soft: rgba(129, 140, 248, 0.14);
+    --fh-good: #34d399;
+    --fh-good-soft: rgba(52, 211, 153, 0.16);
+    --fh-bad: #f87171;
+    --fh-bad-soft: rgba(248, 113, 113, 0.16);
+    --fh-warn: #fbbf24;
+    --fh-warn-soft: rgba(251, 191, 36, 0.16);
+    --fh-border: #232838;
+    --fh-border-strong: #343a4f;
+    --fh-radius: 14px;
+    --fh-radius-sm: 10px;
+    --fh-shadow-lift: 0 6px 22px -8px rgba(0, 0, 0, 0.55), 0 2px 4px rgba(0, 0, 0, 0.3);
+
+    background: var(--fh-bg) !important;
+    background-image: var(--fh-bg-grad) !important;
+    background-attachment: fixed !important;
+    color: var(--fh-text);
+    color-scheme: dark;
+    font-family: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+    -webkit-font-smoothing: antialiased;
+}
+
+/* ---------- Page container ---------- */
+
+/* `apps/football-h2h/css/sidebar.css` line 12 sets `body { padding: 0 }`
+   which wipes out the 3.25rem top padding main.css uses to clear the
+   fixed site header. Restore it here so the app sits below the header
+   bar rather than under it. */
+body.football-h2h-tracker {
+    padding-top: 3.25rem !important;
+}
+
+body.football-h2h-tracker .app-container {
+    max-width: 1280px;
+    /* With body padding-top restored above, this just controls the gap
+       between the site header and the gradient hero. Was 2rem in the
+       original layout — tightened here so the title sits closer to the
+       header bar without smothering it. */
+    padding: 0.6rem 1.25rem 3rem;
+}
+
+body.football-h2h-tracker .main-wrapper {
+    background: transparent !important;
+    border: none !important;
+    box-shadow: none !important;
+    padding: 0 !important;
+}
+
+/* ---------- Hero ----------
+   Tightened against the site header bar — was 1rem top padding +
+   0.5rem bottom margin before, leaving an obvious gap. Drop both to
+   minimal values so the gradient title sits directly under the chrome. */
+
+body.football-h2h-tracker .app-header {
+    border-bottom: none !important;
+    padding: 0 !important;
+    margin: 0 !important;
+}
+
+body.football-h2h-tracker .app-title {
+    font-family: inherit !important;
+    font-size: clamp(2rem, 4vw, 2.85rem);
+    font-weight: 700;
+    letter-spacing: -0.035em;
+    line-height: 1.05;
+    text-transform: none;
+    background: linear-gradient(135deg, #ffffff 0%, var(--fh-accent) 60%, var(--fh-good) 110%);
+    -webkit-background-clip: text;
+    background-clip: text;
+    -webkit-text-fill-color: transparent;
+    color: transparent;
+    filter: drop-shadow(0 4px 24px rgba(129, 140, 248, 0.18));
+    gap: 0.75rem;
+    margin: 0 !important;
+}
+
+body.football-h2h-tracker .football-icon {
+    font-size: 1.6rem !important;
+    filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.4));
+}
+
+/* Subtitle: synthesize one using existing :before/:after if there isn't a
+   real subtitle in the DOM — keep this purely cosmetic, so even when the
+   browser drops it nothing breaks. */
+body.football-h2h-tracker .app-header::after {
+    content: "Head-to-head match log, wins, and side-by-side player stats";
+    display: block;
+    color: var(--fh-muted);
+    font-size: 0.95rem;
+    letter-spacing: -0.005em;
+    text-align: center;
+    margin-top: 0.25rem;
+}
+
+/* ---------- Stats tabs (H2H / General / Player) ---------- */
+
+body.football-h2h-tracker .stats-tabs-section { margin-bottom: 1.5rem; }
+
+body.football-h2h-tracker .stats-tabs {
+    display: inline-flex !important;
+    flex-wrap: wrap;
+    gap: 4px;
+    padding: 4px;
+    margin: 1.25rem auto 1.25rem !important;
+    background: rgba(255, 255, 255, 0.03);
+    border: 1px solid var(--fh-border);
+    border-radius: 999px;
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.02);
+    justify-content: center;
+    width: auto !important;
+}
+
+body.football-h2h-tracker .stats-tabs-section {
+    text-align: center;
+}
+
+body.football-h2h-tracker .stats-tabs button.stats-tab {
+    background: transparent !important;
+    color: var(--fh-muted) !important;
+    border: none !important;
+    border-radius: 999px !important;
+    padding: 0.5rem 1rem !important;
+    font-size: 0.87rem !important;
+    font-weight: 600 !important;
+    box-shadow: none !important;
+    transition: background 0.15s ease, color 0.15s ease;
+    display: inline-flex !important;
+    align-items: center !important;
+    gap: 0.35rem;
+}
+
+body.football-h2h-tracker .stats-tabs button.stats-tab:hover {
+    background: rgba(255, 255, 255, 0.04) !important;
+    color: var(--fh-text) !important;
+    transform: none !important;
+}
+
+body.football-h2h-tracker .stats-tabs button.stats-tab.active {
+    background: var(--fh-accent-soft) !important;
+    color: var(--fh-text) !important;
+    box-shadow: inset 0 0 0 1px rgba(129, 140, 248, 0.45) !important;
+}
+
+/* ---------- Section titles ---------- */
+
+body.football-h2h-tracker .h2h-section-title {
+    font-size: 0.78rem;
+    font-weight: 700;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: var(--fh-muted-2) !important;
+    margin: 1.25rem 0 0.65rem !important;
+    text-align: left;
+}
+
+body.football-h2h-tracker .h2h-section-title:first-of-type { margin-top: 0.4rem; }
+
+body.football-h2h-tracker .section-title {
+    font-size: 1.15rem !important;
+    font-weight: 600 !important;
+    color: var(--fh-text) !important;
+    letter-spacing: -0.01em !important;
+    margin: 0 0 1rem !important;
+    text-align: left !important;
+    text-transform: none !important;
+}
+
+body.football-h2h-tracker .section-title::after { display: none !important; }
+
+/* ---------- Stat cards ---------- */
+
+body.football-h2h-tracker .stats-grid {
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)) !important;
+    gap: 0.85rem !important;
+}
+
+body.football-h2h-tracker .stat-card,
+body.football-h2h-tracker .stat-card.player1-card,
+body.football-h2h-tracker .stat-card.player2-card,
+body.football-h2h-tracker .stat-card.draws-card,
+body.football-h2h-tracker .stat-card.player1-90min-card,
+body.football-h2h-tracker .stat-card.player2-90min-card,
+body.football-h2h-tracker .stat-card.player1-penalty-card,
+body.football-h2h-tracker .stat-card.player2-penalty-card {
+    background: var(--fh-surface) !important;
+    border: 1px solid var(--fh-border) !important;
+    border-radius: var(--fh-radius) !important;
+    padding: 1.1rem 1.2rem !important;
+    box-shadow: var(--fh-shadow-lift) !important;
+    text-align: left !important;
+    position: relative;
+    overflow: hidden;
+    transition: background 0.15s ease, border-color 0.15s ease, transform 0.12s ease;
+}
+
+/* Subtle accent strip on each card */
+body.football-h2h-tracker .stat-card::before {
+    content: "";
+    position: absolute;
+    inset: 0 auto 0 0;
+    width: 3px;
+    background: var(--fh-border-strong);
+    transition: background 0.18s ease;
+}
+
+body.football-h2h-tracker .stat-card.player1-card::before,
+body.football-h2h-tracker .stat-card.player1-90min-card::before {
+    background: linear-gradient(180deg, var(--fh-accent), var(--fh-good));
+}
+body.football-h2h-tracker .stat-card.player2-card::before,
+body.football-h2h-tracker .stat-card.player2-90min-card::before {
+    background: linear-gradient(180deg, var(--fh-bad), #ec4899);
+}
+body.football-h2h-tracker .stat-card.draws-card::before { background: var(--fh-warn); }
+body.football-h2h-tracker .stat-card.player1-penalty-card::before {
+    background: linear-gradient(180deg, #a78bfa, #818cf8);
+}
+body.football-h2h-tracker .stat-card.player2-penalty-card::before {
+    background: linear-gradient(180deg, #f472b6, #ec4899);
+}
+
+/* JS-driven winning/losing/tied border colors should still win — bump
+   their specificity by keeping their original rules untouched and only
+   recoloring the strip. */
+body.football-h2h-tracker .stat-card.winning {
+    border-color: rgba(52, 211, 153, 0.55) !important;
+    background: linear-gradient(180deg, var(--fh-good-soft), var(--fh-surface)) !important;
+}
+body.football-h2h-tracker .stat-card.losing {
+    border-color: rgba(248, 113, 113, 0.55) !important;
+    background: linear-gradient(180deg, var(--fh-bad-soft), var(--fh-surface)) !important;
+}
+body.football-h2h-tracker .stat-card.tied {
+    border-color: rgba(251, 191, 36, 0.55) !important;
+    background: linear-gradient(180deg, var(--fh-warn-soft), var(--fh-surface)) !important;
+}
+
+body.football-h2h-tracker .stat-card:hover {
+    transform: translateY(-2px);
+    border-color: var(--fh-border-strong) !important;
+}
+
+body.football-h2h-tracker .stat-label {
+    font-size: 0.7rem !important;
+    color: var(--fh-muted) !important;
+    text-transform: uppercase !important;
+    letter-spacing: 0.08em !important;
+    font-weight: 600 !important;
+    margin-bottom: 0.3rem !important;
+    text-align: left !important;
+}
+
+body.football-h2h-tracker .stat-value {
+    font-family: inherit !important;
+    font-size: 2.1rem !important;
+    font-weight: 700 !important;
+    color: var(--fh-text) !important;
+    font-variant-numeric: tabular-nums !important;
+    letter-spacing: -0.03em !important;
+    text-align: left !important;
+    line-height: 1.05;
+}
+
+/* ---------- Game history ---------- */
+
+body.football-h2h-tracker .game-history {
+    background: var(--fh-surface) !important;
+    border: 1px solid var(--fh-border) !important;
+    border-radius: var(--fh-radius) !important;
+    padding: 1.25rem 1.4rem !important;
+    box-shadow: var(--fh-shadow-lift) !important;
+    margin-top: 1.5rem !important;
+    transition: border-color 0.15s ease !important;
+}
+
+body.football-h2h-tracker .game-history::before { display: none !important; }
+body.football-h2h-tracker .game-history:hover {
+    transform: none !important;
+    box-shadow: var(--fh-shadow-lift) !important;
+    border-color: var(--fh-border-strong) !important;
+}
+
+body.football-h2h-tracker .table-container {
+    background: transparent !important;
+    border: 1px solid var(--fh-border) !important;
+    border-radius: var(--fh-radius-sm) !important;
+    box-shadow: none !important;
+}
+
+body.football-h2h-tracker .games-table thead {
+    background: var(--fh-surface-2) !important;
+    color: var(--fh-muted) !important;
+}
+
+body.football-h2h-tracker .games-table thead th {
+    padding: 0.85rem 0.9rem !important;
+    color: var(--fh-muted) !important;
+    background: transparent !important;
+    font-size: 0.72rem !important;
+    text-transform: uppercase !important;
+    letter-spacing: 0.06em !important;
+    font-weight: 600 !important;
+    border-bottom: 1px solid var(--fh-border) !important;
+}
+
+body.football-h2h-tracker .games-table td {
+    background: transparent !important;
+    color: var(--fh-text) !important;
+    border-bottom-color: var(--fh-border) !important;
+    padding: 0.7rem 0.9rem !important;
+}
+
+body.football-h2h-tracker .games-table tr:hover td {
+    background: rgba(255, 255, 255, 0.025) !important;
+}
+
+/* ---------- Player comparison table (Player Stats tab) ----------
+   Restores the green/red/olive cell highlighting that was bulldozed by
+   my earlier `td { background: transparent }` blanket rule. The
+   underlying JS still tags each cell with `.pc-cell-winning`,
+   `.pc-cell-losing`, or `.pc-cell-tied` and handles the lower-is-better
+   reversal for stats like Consistency σ, Current Losing Streak, and
+   Longest Scoreless Streak — we just need to paint those classes at a
+   specificity that beats the bare-`td` rule below. */
+
+body.football-h2h-tracker .player-comparison-table {
+    background: var(--fh-surface);
+    border: 1px solid var(--fh-border);
+    border-radius: var(--fh-radius-sm);
+    border-collapse: separate;
+    border-spacing: 0;
+    overflow: hidden;
+}
+body.football-h2h-tracker .player-comparison-table th,
+body.football-h2h-tracker .player-comparison-table td {
+    border-bottom: 1px solid var(--fh-border);
+    background: transparent;
+    color: var(--fh-text);
+}
+body.football-h2h-tracker .player-comparison-table th {
+    background: var(--fh-surface-2);
+    color: var(--fh-muted);
+    font-size: 0.74rem;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    font-weight: 600;
+}
+
+/* Winning/losing/tied cell tints — semi-transparent so the underlying
+   surface dark colour shows through. Text stays white via the parent
+   `td { color: var(--fh-text) }` declaration. Specificity (0, 3, 2)
+   beats the bare-td rule (0, 2, 2) above, and the `!important` keeps
+   us safe against any future-added overrides. */
+body.football-h2h-tracker .player-comparison-table td.pc-cell-winning {
+    background: rgba(52, 211, 153, 0.22) !important;
+    background-color: rgba(52, 211, 153, 0.22) !important;
+    color: #ffffff !important;
+}
+body.football-h2h-tracker .player-comparison-table td.pc-cell-losing {
+    background: rgba(248, 113, 113, 0.22) !important;
+    background-color: rgba(248, 113, 113, 0.22) !important;
+    color: #ffffff !important;
+}
+body.football-h2h-tracker .player-comparison-table td.pc-cell-tied {
+    background: rgba(180, 195, 70, 0.18) !important;
+    background-color: rgba(180, 195, 70, 0.18) !important;
+    color: #ffffff !important;
+}
+
+/* Stat-label column should never inherit a tint — it carries the row
+   title, not a player value. */
+body.football-h2h-tracker .player-comparison-table td.pc-cell-stat,
+body.football-h2h-tracker .player-comparison-table .pc-stat-label {
+    background: transparent !important;
+    color: var(--fh-text) !important;
+}
+body.football-h2h-tracker .player-comparison-table .pc-stat-hint {
+    color: var(--fh-muted) !important;
+}
+
+/* Make the winning value the visual leader: bold + tabular numerals so
+   the eye lands on the higher number first. */
+body.football-h2h-tracker .player-comparison-table td.pc-cell-winning .pc-cell-value {
+    color: #d6fff1 !important;
+    font-weight: 700;
+}
+body.football-h2h-tracker .player-comparison-table td.pc-cell-losing .pc-cell-value {
+    color: #ffe4e6 !important;
+}
+body.football-h2h-tracker .player-comparison-table td.pc-cell-tied .pc-cell-value {
+    color: #fefce8 !important;
+}
+
+/* ---------- Sidebar (shared with Mario Kart but scoped here) ---------- */
+
+body.football-h2h-tracker .sidebar,
+body.football-h2h-tracker.theme .sidebar {
+    background: var(--fh-surface) !important;
+    border-right: 1px solid var(--fh-border) !important;
+    box-shadow: 2px 0 24px rgba(0, 0, 0, 0.5);
+}
+
+body.football-h2h-tracker .sidebar-header {
+    border-bottom: 1px solid var(--fh-border);
+    padding: 1rem 1.25rem;
+}
+
+body.football-h2h-tracker .sidebar-title {
+    font-size: 0.85rem !important;
+    font-weight: 700 !important;
+    letter-spacing: 0.16em !important;
+    text-transform: uppercase !important;
+    color: var(--fh-muted) !important;
+    font-family: inherit !important;
+}
+
+body.football-h2h-tracker .sidebar-section-title {
+    font-size: 0.7rem !important;
+    font-weight: 700 !important;
+    letter-spacing: 0.14em !important;
+    text-transform: uppercase !important;
+    color: var(--fh-muted-2) !important;
+    margin-bottom: 0.6rem !important;
+    font-family: inherit !important;
+}
+
+body.football-h2h-tracker .sidebar-content { padding: 1.1rem 1.1rem 1.4rem; }
+body.football-h2h-tracker .sidebar-section { margin-bottom: 1.4rem; }
+
+body.football-h2h-tracker .sidebar-close-btn,
+body.football-h2h-tracker.theme .sidebar-close-btn,
+body.football-h2h-tracker .sidebar-header-clear {
+    width: 30px !important;
+    height: 30px !important;
+    background: rgba(255, 255, 255, 0.03) !important;
+    border: 1px solid var(--fh-border) !important;
+    color: var(--fh-muted) !important;
+    border-radius: 8px !important;
+    transition: background 0.15s ease, color 0.15s ease, border-color 0.15s ease;
+}
+body.football-h2h-tracker .sidebar-close-btn:hover,
+body.football-h2h-tracker .sidebar-header-clear:hover:not(:disabled) {
+    background: var(--fh-surface-2) !important;
+    border-color: var(--fh-border-strong) !important;
+    color: var(--fh-text) !important;
+    transform: none !important;
+}
+
+body.football-h2h-tracker .sidebar-player-settings-btn,
+body.football-h2h-tracker .sidebar-add-game-btn,
+body.football-h2h-tracker .sidebar-add-race-btn {
+    background: linear-gradient(135deg, var(--fh-accent), var(--fh-accent-strong)) !important;
+    color: #ffffff !important;
+    border: 1px solid transparent !important;
+    border-radius: 10px !important;
+    padding: 0.7rem 0.85rem !important;
+    font-weight: 600 !important;
+    font-size: 0.92rem !important;
+    box-shadow: 0 4px 14px rgba(99, 102, 241, 0.28) !important;
+    width: 100%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.5rem;
+    transition: filter 0.15s ease, transform 0.08s ease, box-shadow 0.15s ease;
+}
+body.football-h2h-tracker .sidebar-player-settings-btn:hover,
+body.football-h2h-tracker .sidebar-add-game-btn:hover {
+    filter: brightness(1.06);
+    transform: translateY(-1px);
+    box-shadow: 0 8px 22px -6px rgba(99, 102, 241, 0.55) !important;
+}
+
+/* Football's own apps/football-h2h/css/sidebar.css sets
+   `color: black !important` on every sidebar-action button variant
+   (undo/redo/restore + the attribute-selector exportData/importData/
+   toggleBackupMenu/restoreFromBackup rules), and body.theme repeats the
+   same. Black text on a dark surface is invisible — we override every
+   one of those selectors below at equal-or-higher specificity so the
+   labels stay white. */
+
+body.football-h2h-tracker .sidebar-action-btn,
+body.football-h2h-tracker .sidebar .action-buttons button,
+body.football-h2h-tracker .sidebar .action-buttons button[onclick*="exportData"],
+body.football-h2h-tracker .sidebar .action-buttons button[onclick*="importData"],
+body.football-h2h-tracker .sidebar .action-buttons button[onclick*="toggleBackupMenu"],
+body.football-h2h-tracker .sidebar .action-buttons button[onclick*="restoreFromBackup"],
+body.football-h2h-tracker.theme .sidebar-action-btn,
+body.football-h2h-tracker.theme .sidebar .action-buttons button {
+    background: var(--fh-surface-2) !important;
+    color: #ffffff !important;
+    border: 1px solid var(--fh-border-strong) !important;
+    border-radius: 10px !important;
+    padding: 0.6rem 0.85rem !important;
+    font-size: 0.88rem !important;
+    font-weight: 500 !important;
+    box-shadow: none !important;
+    display: flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    gap: 0.55rem !important;
+    line-height: 1 !important;
+    transition: background 0.15s ease, border-color 0.15s ease, color 0.15s ease, transform 0.08s ease;
+}
+
+body.football-h2h-tracker .sidebar-action-btn:hover:not(:disabled),
+body.football-h2h-tracker .sidebar .action-buttons button:hover,
+body.football-h2h-tracker .sidebar .action-buttons button[onclick*="exportData"]:hover,
+body.football-h2h-tracker .sidebar .action-buttons button[onclick*="importData"]:hover,
+body.football-h2h-tracker .sidebar .action-buttons button[onclick*="toggleBackupMenu"]:hover,
+body.football-h2h-tracker .sidebar .action-buttons button[onclick*="restoreFromBackup"]:hover {
+    background: var(--fh-surface-3) !important;
+    border-color: #4a4f66 !important;
+    color: #ffffff !important;
+    transform: none !important;
+    box-shadow: none !important;
+}
+
+/* Specifically force the inner span colours — both .action-icon and
+   .action-text would otherwise inherit the legacy `color: black` and
+   render invisible against a dark surface. */
+body.football-h2h-tracker .sidebar-action-btn .action-text,
+body.football-h2h-tracker .sidebar .action-buttons button .action-text,
+body.football-h2h-tracker.theme .sidebar-action-btn .action-text {
+    display: inline-flex !important;
+    align-items: center !important;
+    line-height: 1 !important;
+    color: #ffffff !important;
+    font-weight: 500;
+}
+
+body.football-h2h-tracker .sidebar-action-btn .action-icon,
+body.football-h2h-tracker .sidebar .action-buttons button .action-icon {
+    display: inline-flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    line-height: 1 !important;
+    font-size: 1rem !important;
+    width: auto !important;
+    min-width: 0 !important;
+    color: #ffffff !important;
+}
+
+/* Per-button identity tint — applied only to the icon glyph so the
+   label stays unambiguously white but the row still scans by colour. */
+body.football-h2h-tracker .sidebar-action-btn.restore-btn .action-icon,
+body.football-h2h-tracker .sidebar .action-buttons button[onclick*="restoreFromBackup"] .action-icon {
+    color: var(--fh-good) !important;
+}
+body.football-h2h-tracker .sidebar-action-btn.export-btn .action-icon,
+body.football-h2h-tracker .sidebar .action-buttons button[onclick*="exportData"] .action-icon {
+    color: var(--fh-good) !important;
+}
+body.football-h2h-tracker .sidebar-action-btn.import-btn .action-icon,
+body.football-h2h-tracker .sidebar .action-buttons button[onclick*="importData"] .action-icon {
+    color: #5eead4 !important;
+}
+body.football-h2h-tracker .sidebar-action-btn.backup-btn .action-icon,
+body.football-h2h-tracker .sidebar .action-buttons button[onclick*="toggleBackupMenu"] .action-icon {
+    color: #60a5fa !important;
+}
+
+/* ---------- Undo / Redo toolbar pair ---------- */
+
+body.football-h2h-tracker .sidebar-action-buttons-group {
+    display: grid !important;
+    grid-template-columns: 1fr 1fr !important;
+    gap: 0.5rem !important;
+    margin-bottom: 0.6rem;
+}
+
+body.football-h2h-tracker .sidebar-action-btn.undo-btn,
+body.football-h2h-tracker .sidebar-action-btn.redo-btn {
+    background: var(--fh-surface-2) !important;
+    color: var(--fh-text) !important;
+    border: 1px solid var(--fh-border-strong) !important;
+    border-radius: 10px !important;
+    padding: 0.55rem 0.6rem !important;
+    font-size: 0.86rem !important;
+    font-weight: 600 !important;
+    width: 100%;
+    box-shadow: none !important;
+    display: inline-flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    gap: 0.45rem !important;
+    line-height: 1 !important;
+    cursor: pointer;
+    transition: background 0.15s ease, border-color 0.15s ease, color 0.15s ease, transform 0.08s ease;
+}
+
+body.football-h2h-tracker .sidebar-action-btn.undo-btn .action-icon,
+body.football-h2h-tracker .sidebar-action-btn.redo-btn .action-icon {
+    color: var(--fh-accent) !important;
+    font-size: 1.25rem !important;
+    line-height: 1 !important;
+    font-weight: 700;
+}
+
+body.football-h2h-tracker .sidebar-action-btn.undo-btn .action-text,
+body.football-h2h-tracker .sidebar-action-btn.redo-btn .action-text {
+    color: var(--fh-text) !important;
+    font-weight: 600;
+    letter-spacing: 0.01em;
+}
+
+body.football-h2h-tracker .sidebar-action-btn.undo-btn:hover:not(:disabled),
+body.football-h2h-tracker .sidebar-action-btn.redo-btn:hover:not(:disabled) {
+    background: var(--fh-accent-soft) !important;
+    border-color: rgba(129, 140, 248, 0.55) !important;
+    color: #ffffff !important;
+    transform: translateY(-1px);
+}
+body.football-h2h-tracker .sidebar-action-btn.undo-btn:hover:not(:disabled) .action-icon,
+body.football-h2h-tracker .sidebar-action-btn.redo-btn:hover:not(:disabled) .action-icon,
+body.football-h2h-tracker .sidebar-action-btn.undo-btn:hover:not(:disabled) .action-text,
+body.football-h2h-tracker .sidebar-action-btn.redo-btn:hover:not(:disabled) .action-text {
+    color: #ffffff !important;
+}
+
+body.football-h2h-tracker .sidebar-action-btn.undo-btn:active:not(:disabled),
+body.football-h2h-tracker .sidebar-action-btn.redo-btn:active:not(:disabled) {
+    transform: translateY(0);
+    background: rgba(99, 102, 241, 0.22) !important;
+}
+
+body.football-h2h-tracker .sidebar-action-btn.undo-btn:disabled,
+body.football-h2h-tracker .sidebar-action-btn.redo-btn:disabled,
+body.football-h2h-tracker .sidebar-action-btn.undo-btn[disabled],
+body.football-h2h-tracker .sidebar-action-btn.redo-btn[disabled] {
+    opacity: 0.42 !important;
+    cursor: not-allowed !important;
+    pointer-events: none;
+    background: var(--fh-surface-2) !important;
+    border-color: var(--fh-border) !important;
+    transform: none !important;
+}
+body.football-h2h-tracker .sidebar-action-btn.undo-btn:disabled .action-icon,
+body.football-h2h-tracker .sidebar-action-btn.redo-btn:disabled .action-icon {
+    color: var(--fh-muted) !important;
+}
+
+body.football-h2h-tracker .sidebar .filter-btn,
+body.football-h2h-tracker .sidebar .date-filter-btn,
+body.football-h2h-tracker.theme .sidebar .filter-btn,
+body.football-h2h-tracker.theme .sidebar .date-filter-btn {
+    background: var(--fh-surface-2) !important;
+    color: #ffffff !important;
+    border: 1px solid var(--fh-border-strong) !important;
+    border-radius: 999px !important;
+    padding: 0.5rem 0.9rem !important;
+    font-size: 0.85rem !important;
+    font-weight: 500 !important;
+    width: 100%;
+    box-shadow: none !important;
+    transition: background 0.15s ease, color 0.15s ease, border-color 0.15s ease;
+}
+body.football-h2h-tracker .sidebar .filter-btn:hover:not(.active),
+body.football-h2h-tracker .sidebar .date-filter-btn:hover:not(.active) {
+    background: var(--fh-surface-3) !important;
+    border-color: #4a4f66 !important;
+    color: #ffffff !important;
+    transform: none !important;
+}
+body.football-h2h-tracker .sidebar .filter-btn.active,
+body.football-h2h-tracker .sidebar .date-filter-btn.active,
+body.football-h2h-tracker.theme .sidebar .filter-btn.active,
+body.football-h2h-tracker.theme .sidebar .date-filter-btn.active {
+    background: linear-gradient(135deg, var(--fh-accent), var(--fh-accent-strong)) !important;
+    border-color: transparent !important;
+    color: #ffffff !important;
+    box-shadow: 0 4px 14px rgba(99, 102, 241, 0.28) !important;
+}
+
+body.football-h2h-tracker .sidebar-date-btn-container {
+    background: var(--fh-surface-2) !important;
+    border: 1px solid var(--fh-border) !important;
+    border-radius: 10px !important;
+}
+body.football-h2h-tracker .sidebar-date-today-btn,
+body.football-h2h-tracker.theme .sidebar-date-today-btn {
+    background: var(--fh-surface-2) !important;
+    color: #ffffff !important;
+    border: 1px solid var(--fh-border-strong) !important;
+    border-radius: 999px !important;
+    box-shadow: none !important;
+}
+body.football-h2h-tracker .sidebar-date-today-btn:hover,
+body.football-h2h-tracker.theme .sidebar-date-today-btn:hover {
+    background: var(--fh-surface-3) !important;
+    border-color: #4a4f66 !important;
+    color: #ffffff !important;
+    transform: none !important;
+    box-shadow: none !important;
+}
+
+/* Sidebar toggle (floating hamburger) */
+body.football-h2h-tracker .sidebar-toggle,
+body.football-h2h-tracker.theme .sidebar-toggle {
+    background: linear-gradient(135deg, var(--fh-accent), var(--fh-accent-strong)) !important;
+    box-shadow: 0 6px 20px rgba(99, 102, 241, 0.35) !important;
+    border: 1px solid rgba(255, 255, 255, 0.08) !important;
+}
+
+/* ---------- Inputs ---------- */
+
+body.football-h2h-tracker input[type="text"],
+body.football-h2h-tracker input[type="number"],
+body.football-h2h-tracker input[type="date"],
+body.football-h2h-tracker select,
+body.football-h2h-tracker textarea {
+    background: var(--fh-surface-2) !important;
+    color: var(--fh-text) !important;
+    border: 1px solid var(--fh-border) !important;
+    border-radius: 10px !important;
+    transition: border-color 0.15s ease, box-shadow 0.15s ease, background 0.15s ease;
+}
+body.football-h2h-tracker input[type="text"]:focus,
+body.football-h2h-tracker input[type="number"]:focus,
+body.football-h2h-tracker input[type="date"]:focus,
+body.football-h2h-tracker select:focus,
+body.football-h2h-tracker textarea:focus {
+    outline: none !important;
+    border-color: var(--fh-accent) !important;
+    box-shadow: 0 0 0 3px var(--fh-accent-soft) !important;
+    background: var(--fh-surface) !important;
+}
+
+/* ---------- Game History row action buttons (edit / delete) ----------
+   The default styling was a 40px solid gradient blue + 40px solid red
+   slab per row — visually heavy and dominated the table. Refine to a
+   compact 28px icon chip with a quiet ghost surface; the delete chip
+   only goes red on hover so unstyled rows don't shout. Both chips lift
+   subtly on hover for clear interactive feedback. */
+
+body.football-h2h-tracker .games-table .action-buttons,
+body.football-h2h-tracker .games-table td .action-buttons {
+    display: inline-flex !important;
+    gap: 0.3rem !important;
+    align-items: center;
+    justify-content: center;
+    margin: 0 !important;
+    padding: 0 !important;
+    background: transparent !important;
+    border: none !important;
+}
+
+body.football-h2h-tracker .games-table .btn-icon,
+body.football-h2h-tracker .games-table .btn-icon.edit,
+body.football-h2h-tracker .games-table .btn-icon.delete {
+    width: 28px !important;
+    height: 28px !important;
+    padding: 0 !important;
+    background: rgba(255, 255, 255, 0.04) !important;
+    border: 1px solid var(--fh-border) !important;
+    border-radius: 7px !important;
+    color: var(--fh-muted) !important;
+    box-shadow: none !important;
+    font-size: 0.78rem !important;
+    cursor: pointer;
+    display: inline-flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    transition: background 0.15s ease, color 0.15s ease,
+                border-color 0.15s ease, transform 0.12s ease,
+                box-shadow 0.15s ease !important;
+}
+
+body.football-h2h-tracker .games-table .btn-icon i {
+    color: inherit !important;
+    font-size: 0.78rem !important;
+    line-height: 1 !important;
+    width: auto !important;
+    height: auto !important;
+}
+
+/* Edit chip — soft indigo accent. Outline at rest, fills on hover. */
+body.football-h2h-tracker .games-table .btn-icon.edit {
+    color: #93c5fd !important;
+}
+body.football-h2h-tracker .games-table .btn-icon.edit:hover {
+    background: rgba(59, 130, 246, 0.18) !important;
+    border-color: rgba(96, 165, 250, 0.55) !important;
+    color: #dbeafe !important;
+    transform: translateY(-1px) scale(1.05);
+    box-shadow: 0 4px 10px -4px rgba(59, 130, 246, 0.45) !important;
+}
+
+/* Delete chip — neutral ghost at rest, danger-red on hover only. */
+body.football-h2h-tracker .games-table .btn-icon.delete {
+    color: var(--fh-muted) !important;
+}
+body.football-h2h-tracker .games-table .btn-icon.delete:hover {
+    background: rgba(248, 113, 113, 0.18) !important;
+    border-color: rgba(248, 113, 113, 0.55) !important;
+    color: #fecaca !important;
+    transform: translateY(-1px) scale(1.05);
+    box-shadow: 0 4px 10px -4px rgba(248, 113, 113, 0.45) !important;
+}
+
+body.football-h2h-tracker .games-table .btn-icon:active {
+    transform: translateY(0) scale(0.98);
+}
+body.football-h2h-tracker .games-table .btn-icon:focus-visible {
+    outline: 2px solid var(--fh-accent) !important;
+    outline-offset: 2px !important;
+}
+
+/* ---------- Empty/zero stat-card body — promote visual hierarchy when value = "0" ---------- */
+
+body.football-h2h-tracker .stats-grid .stat-card .stat-value:not(:empty) {
+    /* Keep visual; the 0 still reads as a tabular number. */
+}
+
+/* ---------- Scrollbars ---------- */
+
+body.football-h2h-tracker ::-webkit-scrollbar { width: 10px; height: 10px; }
+body.football-h2h-tracker ::-webkit-scrollbar-track { background: transparent !important; }
+body.football-h2h-tracker ::-webkit-scrollbar-thumb {
+    background: var(--fh-border-strong) !important;
+    border: 3px solid var(--fh-bg) !important;
+    background-clip: content-box !important;
+    border-radius: 999px !important;
+}
+body.football-h2h-tracker ::-webkit-scrollbar-thumb:hover {
+    background: #4a4f66 !important;
+    background-clip: content-box !important;
+}
+
+/* ---------- Tiny "empty league" hint above stats when player counts are all zero.
+   Adds an editorial cue using a pseudo-element on the H2H tab body. The
+   element is content-only (no DOM change) and is removed by JS that
+   already manipulates the underlying values — safe to add. ---------- */
+
+body.football-h2h-tracker .stats-tab-content.active#h2h-stats::before {
+    content: "";
+    display: none;
+}
