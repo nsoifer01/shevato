@@ -2451,6 +2451,78 @@ body.maptap-rivals-app select option {
   transform: none;
 }
 
+/* User icon picker in the settings strip — small button showing the
+   current icon, with a floating grid flyout that mirrors the rival
+   icon-swatch palette but at a slightly tighter density. */
+.my-icon-wrap { position: relative; display: inline-flex; }
+.my-icon-btn {
+  width: 28px;
+  height: 28px;
+  border-radius: 7px;
+  border: 1px solid var(--border);
+  background: rgba(255, 255, 255, 0.025);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  padding: 0;
+  font-size: 1.02rem;
+  line-height: 1;
+  transition: background 0.15s ease, border-color 0.15s ease;
+}
+.my-icon-btn:hover { background: var(--surface-3); border-color: var(--border-strong); }
+.my-icon-btn:focus-visible {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-soft);
+}
+.my-icon-current { display: inline-block; }
+.my-icon-flyout {
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 0;
+  z-index: 40;
+  background: var(--surface-2);
+  border: 1px solid var(--border-strong);
+  border-radius: 10px;
+  padding: 0.45rem;
+  box-shadow: 0 12px 28px rgba(0, 0, 0, 0.35);
+  display: grid;
+  grid-template-columns: repeat(8, 28px);
+  gap: 0.3rem;
+  min-width: max-content;
+}
+.my-icon-flyout[hidden] { display: none; }
+.my-icon-swatch {
+  width: 28px;
+  height: 28px;
+  border-radius: 6px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid var(--border);
+  font-size: 0.98rem;
+  line-height: 1;
+  padding: 0;
+  transition: background 0.12s ease, border-color 0.12s ease;
+}
+.my-icon-swatch:hover  { background: var(--surface-3); border-color: var(--border-strong); }
+.my-icon-swatch:focus-visible {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-soft);
+}
+.my-icon-swatch.is-selected,
+.my-icon-swatch.is-selected:hover {
+  background: var(--accent-soft);
+  border-color: var(--accent);
+}
+@media (max-width: 520px) {
+  .my-icon-flyout { grid-template-columns: repeat(6, 28px); }
+}
+
 /* Footer — top hairline, compact buttons, balanced hierarchy. */
 .modal-actions {
   display: flex;

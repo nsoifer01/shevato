@@ -445,11 +445,18 @@
 
     <!-- Settings strip (compact) -->
     <section class="settings-strip" aria-label="Settings">
-      <div class="settings-field" role="group" aria-label="Your name">
-        <svg class="settings-field-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-          <circle cx="12" cy="8" r="3.6"/>
-          <path d="M4.5 20c1.2-3.5 4.2-5.5 7.5-5.5s6.3 2 7.5 5.5"/>
-        </svg>
+      <div class="settings-field settings-field-me" role="group" aria-label="Your identity">
+        <!-- Icon picker: button shows current icon, click toggles a small
+             flyout with the same ICONS palette rivals use. Stored under
+             KEY.MY_ICON so the choice survives reloads. -->
+        <div class="my-icon-wrap">
+          <button type="button" class="my-icon-btn" id="my-icon-btn"
+                  aria-haspopup="true" aria-expanded="false"
+                  aria-label="Pick your icon" title="Pick your icon">
+            <span class="my-icon-current" id="my-icon-current">🧍</span>
+          </button>
+          <div class="my-icon-flyout" id="my-icon-flyout" role="menu" hidden></div>
+        </div>
         <input type="text" id="my-name" maxlength="24" placeholder="Your name" aria-label="Your name">
       </div>
 
