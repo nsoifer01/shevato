@@ -1006,9 +1006,40 @@
     };
   }
 
+  // SVG icon helpers — tiny stroke glyphs used as score-cell adornments
+  // and as the prediction → actual chevron. Each returns a fresh node so
+  // they're safe to call once per row/chip.
+  function svgIcon(pathD, opts) {
+    const o = opts || {};
+    const wrap = el('span', { class: 'pred-ic' + (o.cls ? ' ' + o.cls : ''), 'aria-hidden': 'true' });
+    wrap.innerHTML =
+      '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" ' +
+      'stroke-width="' + (o.sw || 1.6) + '" stroke-linecap="round" stroke-linejoin="round">' +
+      pathD + '</svg>';
+    return wrap;
+  }
+  const ICON_TARGET = '<circle cx="8" cy="8" r="6"/><circle cx="8" cy="8" r="3"/><circle cx="8" cy="8" r="0.6" fill="currentColor"/>';
+  const ICON_CHECK  = '<path d="M3.5 8.5l3 3 6-6"/>';
+  const ICON_UP     = '<path d="M8 13V4"/><path d="M4 8l4-4 4 4"/>';
+  const ICON_DOWN   = '<path d="M8 3v9"/><path d="M4 8l4 4 4-4"/>';
+  const ICON_DASH   = '<path d="M4 8h8"/>';
+  const ICON_CHEV   = '<path d="M4 4l4 4-4 4"/>';
+
+  function makeDeltaBadge(delta) {
+    if (delta == null) {
+      return el('span', { class: 'pred-delta-badge is-na' }, '—');
+    }
+    const sign = delta > 0 ? 'is-pos' : delta < 0 ? 'is-neg' : 'is-zero';
+    const ic = delta > 0 ? ICON_UP : delta < 0 ? ICON_DOWN : ICON_DASH;
+    return el('span', { class: 'pred-delta-badge ' + sign }, [
+      svgIcon(ic, { sw: 2 }),
+      el('span', { class: 'pred-delta-num' }, (delta > 0 ? '+' : '') + delta),
+    ]);
+  }
+
   // One round chip: shows weighted slot, predicted (and actual when known),
-  // and a colored bottom band keyed to Δ. Predicted is never null when
-  // we render — caller skips the strip entirely if the predictor failed.
+  // and a top accent line keyed to Δ. Predicted is never null when we
+  // render — caller skips the strip entirely if the predictor failed.
   function makeRoundChip(slot, predicted, actual) {
     const predRound = Math.round(predicted);
     const hasActual = actual != null && Number.isFinite(actual);
@@ -1016,27 +1047,30 @@
     const cls = ['prc'];
     if (delta != null) cls.push(delta > 0 ? 'prc-pos' : delta < 0 ? 'prc-neg' : 'prc-zero');
     const w = WEIGHTS[slot];
-    const wLabel = w === 1 ? '' : `×${w}`;
     return el('div', { class: cls.join(' '), title:
         hasActual
           ? `Round ${slot + 1} (×${w}): predicted ${predRound}, actual ${Math.round(actual)}`
           : `Round ${slot + 1} (×${w}): predicted ${predRound}` }, [
       el('div', { class: 'prc-head' }, [
         el('span', { class: 'prc-slot' }, `R${slot + 1}`),
-        wLabel ? el('span', { class: 'prc-weight' }, wLabel) : null,
       ]),
+      w > 1 ? el('span', { class: 'prc-weight' }, `×${w}`) : null,
       el('div', { class: 'prc-nums' }, [
         el('span', { class: 'prc-pred' }, String(predRound)),
-        hasActual ? el('span', { class: 'prc-arrow' }, '→') : null,
+        hasActual ? svgIcon(ICON_CHEV, { cls: 'prc-arrow', sw: 1.8 }) : null,
         hasActual ? el('span', { class: 'prc-actual' }, String(Math.round(actual))) : null,
       ]),
       delta != null
-        ? el('div', { class: 'prc-delta' }, (delta > 0 ? '+' : '') + delta)
+        ? el('div', { class: 'prc-delta' }, [
+            svgIcon(delta > 0 ? ICON_UP : delta < 0 ? ICON_DOWN : ICON_DASH,
+                    { cls: 'prc-delta-ic', sw: 2 }),
+            el('span', {}, (delta > 0 ? '+' : '') + delta),
+          ])
         : null,
     ]);
   }
 
-  function makePredictionRow({ label, predictedScores, actualScores, predictedTotal, actualTotal, isYou }) {
+  function makePredictionRow({ label, predictedScores, actualScores, predictedTotal, actualTotal, isYou, accentColor }) {
     const cls = ['pred-row'];
     if (isYou) cls.push('pred-row-you');
     const cells = [el('div', { class: 'pred-label' }, label)];
@@ -1046,15 +1080,19 @@
       actualTotal != null ? String(actualTotal) : '—'));
     let delta = null;
     if (predictedTotal != null && actualTotal != null) delta = actualTotal - predictedTotal;
-    const deltaCls = ['pred-cell', 'pred-delta'];
-    if (delta != null) deltaCls.push(delta > 0 ? 'pred-delta-pos' : delta < 0 ? 'pred-delta-neg' : 'pred-delta-zero');
-    cells.push(el('div', { class: deltaCls.join(' ') },
-      delta == null ? '—' : (delta > 0 ? '+' : '') + delta));
+    cells.push(el('div', { class: 'pred-cell pred-delta-cell' }, [makeDeltaBadge(delta)]));
     const head = el('div', { class: cls.join(' ') }, cells);
-    if (!Array.isArray(predictedScores)) return head;
+    const accentStyle = accentColor ? `--row-accent:${accentColor};` : '';
+    if (!Array.isArray(predictedScores)) {
+      if (accentStyle) head.setAttribute('style', accentStyle);
+      return head;
+    }
     const strip = el('div', { class: 'pred-round-strip' },
       predictedScores.map((p, i) => makeRoundChip(i, p, actualScores ? actualScores[i] : null)));
-    return el('div', { class: 'pred-row-wrap' + (isYou ? ' pred-row-wrap-you' : '') }, [head, strip]);
+    return el('div', {
+      class: 'pred-row-wrap' + (isYou ? ' pred-row-wrap-you' : ''),
+      style: accentStyle || null,
+    }, [head, strip]);
   }
 
   // Day-tab pill. Shows weekday + day-of-month. Today is labelled "Today";
@@ -1124,11 +1162,19 @@
       return;
     }
 
-    // Per-player rows
+    // Per-player rows. Column headers carry tiny status glyphs so the
+    // PREDICTED / ACTUAL split is scannable even from the chart strip
+    // below it.
     const header = el('div', { class: 'pred-row pred-row-head' }, [
       el('div', { class: 'pred-label' }, 'Player'),
-      el('div', { class: 'pred-cell' }, 'Predicted'),
-      el('div', { class: 'pred-cell' }, 'Actual'),
+      el('div', { class: 'pred-cell' }, [
+        svgIcon(ICON_TARGET, { cls: 'pred-col-ic' }),
+        el('span', {}, 'Predicted'),
+      ]),
+      el('div', { class: 'pred-cell' }, [
+        svgIcon(ICON_CHECK, { cls: 'pred-col-ic' }),
+        el('span', {}, 'Actual'),
+      ]),
       el('div', { class: 'pred-cell' }, 'Δ'),
     ]);
     body.appendChild(header);
@@ -1144,6 +1190,7 @@
       predictedTotal:  myPred ? predTotalFromScores(myPred.scores) : null,
       actualTotal:     myActuals.mineTotal,
       isYou: true,
+      accentColor: 'var(--accent-2)',
     }));
 
     let predictedCount = myPred ? 1 : 0;
@@ -1162,6 +1209,7 @@
           predictedTotal:  pred ? predTotalFromScores(pred.scores) : null,
           actualTotal:     act.total,
           isYou: false,
+          accentColor: r.color,
         }));
       });
 
