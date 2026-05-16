@@ -34,56 +34,9 @@
    Button Overrides
    =========================================== */
 
-/* Game version toggle buttons - inactive state */
-.game-version-toggle button.version-btn {
-    background: #4a5568 !important;
-    border: 1px solid #6b7280 !important;
-    color: white !important;
-}
-
-.game-version-toggle button.version-btn:not(.active) {
-    background: #4a5568 !important;
-    border: 1px solid #6b7280 !important;
-}
-
-.game-version-toggle button.version-btn span {
-    color: white !important;
-}
-
-.game-version-toggle button.version-btn .version-text {
-    color: white !important;
-}
-
-.game-version-toggle button.version-btn .version-icon {
-    color: white !important;
-}
-
-/* Ensure active state styles are applied */
-.game-version-toggle button.version-btn.active,
-.game-version-toggle button#mk8d-btn.active,
-.game-version-toggle button#mkworld-btn.active {
-    background: #667eea !important;
-    border-color: #667eea !important;
-}
-
-.game-version-toggle button.version-btn.active:hover,
-.game-version-toggle button#mk8d-btn.active:hover,
-.game-version-toggle button#mkworld-btn.active:hover {
-    background: #5a67d8 !important;
-    border-color: #5a67d8 !important;
-}
-
-.game-version-toggle button.version-btn.active span {
-    color: white !important;
-}
-
-.game-version-toggle button.version-btn.active .version-text {
-    color: white !important;
-}
-
-.game-version-toggle button.version-btn.active .version-icon {
-    color: white !important;
-}
+/* Game version toggle (MK8 / MK World) — fully restyled in
+   css/refresh.css as a segmented pill control. The previous grey-block
+   inactive + indigo-block active rules are now dead overrides. */
 
 /* Override main.css button styling for pagination */
 .pagination-btn {
@@ -116,41 +69,11 @@ body.theme .pagination-btn:hover:not(:disabled) {
     background: #4b5563 !important;
 }
 
-/* Export/Import/Backup button classes */
-.export-btn {
-    background: #48BB78 !important;
-    color: white !important;
-    border: none;
-    padding: 0.75rem 1.5rem;
-    border-radius: 0.5rem;
-    cursor: pointer;
-    font-weight: 600;
-    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-}
-
-.import-btn {
-    background: #38B2AC !important;
-    color: white !important;
-    border: none;
-    padding: 0.75rem 1.5rem;
-    border-radius: 0.5rem;
-    cursor: pointer;
-    font-weight: 600;
-    margin-left: 10px;
-    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-}
-
-.backup-btn {
-    background: #4299E1 !important;
-    color: white !important;
-    border: none;
-    padding: 0.75rem 1.5rem;
-    border-radius: 0.5rem;
-    cursor: pointer;
-    font-weight: 600;
-    margin-left: 10px;
-    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-}
+/* Export / Import / Backup base classes — fully restyled in
+   css/refresh.css (`body.mario-kart-app .export-btn` etc.) to live on a
+   neutral surface with the new dark palette. The legacy green/teal/blue
+   pills were dead. The responsive @media block further down still
+   covers `margin-left/width` on mobile so removal is safe. */
 
 /* ===========================================
    Modal Styling Classes
@@ -451,12 +374,6 @@ body.theme .pagination-btn:hover:not(:disabled) {
 }
 
 /* Theme support */
-
-    to { 
-        opacity: 1; 
-        transform: scale(1) translateY(0); 
-    }
-}
 
 .fade-in {
     animation: fadeIn 0.3s ease-out;
