@@ -816,6 +816,102 @@ body.maptap-rivals-app button {
 }
 .dash-summary-card .sub { font-size: 0.78rem; color: var(--muted); margin-top: 0.1rem; }
 
+/* ---------- Today's predictions card ----------
+   Compact head-to-head table comparing each player's predicted total
+   against their actual once results sync. City names from the daily
+   puzzle are intentionally never rendered — only scores. */
+
+.todays-card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 1rem 1.1rem;
+  margin-bottom: 1.25rem;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.18);
+}
+.todays-card[hidden] { display: none; }
+.todays-card-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0.65rem;
+  flex-wrap: wrap;
+  margin-bottom: 0.75rem;
+}
+.todays-card-title { display: flex; align-items: baseline; gap: 0.6rem; flex-wrap: wrap; }
+.todays-card-title .section-title { margin: 0; }
+.todays-card-sub {
+  color: var(--muted);
+  font-size: 0.85rem;
+}
+.todays-card-status {
+  font-size: 0.75rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  padding: 0.18rem 0.55rem;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  color: var(--muted);
+  background: var(--surface-2);
+}
+.todays-card-status.is-loading { color: var(--accent-2); border-color: var(--accent-strong); }
+.todays-card-status.is-warn    { color: var(--warn);     border-color: rgba(251, 146, 60, 0.4); }
+.todays-card-status.is-good    { color: var(--good);     border-color: rgba(74, 222, 128, 0.4); }
+.todays-card-status.is-accent  { color: var(--accent-2); border-color: var(--accent-strong); }
+.todays-card-status.is-muted   { color: var(--muted);    border-color: var(--border); }
+
+.todays-card-body { display: flex; flex-direction: column; gap: 0.25rem; }
+.pred-row {
+  display: grid;
+  grid-template-columns: minmax(120px, 1.4fr) repeat(3, minmax(70px, 1fr));
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.5rem 0.6rem;
+  border-radius: var(--radius-sm);
+  background: var(--surface-2);
+}
+.pred-row-head {
+  background: transparent;
+  padding: 0.2rem 0.6rem;
+  color: var(--muted);
+  font-size: 0.72rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+.pred-row-head .pred-cell { text-align: right; }
+.pred-row-you { background: var(--accent-soft); }
+.pred-label {
+  font-weight: 600;
+  color: var(--text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.pred-cell {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+}
+.pred-predicted { color: var(--accent-2); }
+.pred-actual    { color: var(--text); }
+.pred-delta     { color: var(--muted); font-weight: 700; }
+.pred-delta-pos { color: var(--good); }
+.pred-delta-neg { color: var(--bad); }
+.pred-delta-zero { color: var(--muted); }
+.pred-empty {
+  margin: 0;
+  padding: 0.4rem 0.2rem;
+  color: var(--muted);
+  font-size: 0.9rem;
+}
+
+@media (max-width: 520px) {
+  .pred-row { grid-template-columns: minmax(100px, 1.2fr) repeat(3, minmax(56px, 1fr)); font-size: 0.92rem; }
+  .pred-row-head { font-size: 0.65rem; }
+}
+
 /* ---------- Dashboard rival grid ---------- */
 
 .dash-controls {
