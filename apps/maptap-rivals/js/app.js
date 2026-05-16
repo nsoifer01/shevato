@@ -283,6 +283,17 @@
     const d = new Date(iso + 'T00:00:00');
     return d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
   }
+  // MapTap deep-link for a given ISO date: full English month name + day,
+  // no zero pad, no year, no separator. Hardcoded month names because the
+  // URL is owned by maptap.gg and must not vary with the user's locale.
+  function mapTapHistoryUrl(iso) {
+    if (!iso) return null;
+    const d = new Date(iso + 'T00:00:00');
+    if (Number.isNaN(d.getTime())) return null;
+    const MONTHS = ['January','February','March','April','May','June',
+                    'July','August','September','October','November','December'];
+    return `https://maptap.gg/history/${MONTHS[d.getMonth()]}${d.getDate()}`;
+  }
   function fmtDateLong(iso) {
     if (!iso) return '—';
     const d = new Date(iso + 'T00:00:00');
@@ -2364,8 +2375,18 @@
       const myT = getMyTotal(g);
       const theirT = getTheirTotal(g);
       const diff = myT - theirT;
+      const dayUrl = mapTapHistoryUrl(g.date);
+      const dateCell = dayUrl
+        ? el('td', {}, [el('a', {
+            href: dayUrl,
+            target: '_blank',
+            rel: 'noopener noreferrer',
+            class: 'maptap-day-link',
+            title: 'Open this day on maptap.gg',
+          }, fmtDateShort(g.date))])
+        : el('td', {}, fmtDateShort(g.date));
       tbody.appendChild(el('tr', {}, [
-        el('td', {}, fmtDateShort(g.date)),
+        dateCell,
         el('td', {}, rival ? `${rival.icon} ${rival.name}` : '—'),
         el('td', { style: 'font-weight:600', title: hasLocs(g) ? `Rounds: ${g.myScores.join(' / ')}` : '' }, String(myT)),
         el('td', { style: 'font-weight:600', title: hasLocs(g) ? `Rounds: ${g.theirScores.join(' / ')}` : '' }, String(theirT)),

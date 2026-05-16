@@ -1447,6 +1447,18 @@ body.maptap-rivals-app button {
   font-variant-numeric: tabular-nums;
   font-size: 0.825rem;
 }
+.games-table tbody td:first-child .maptap-day-link {
+  color: inherit;
+  text-decoration: none;
+  border-bottom: 1px dotted currentColor;
+  padding-bottom: 1px;
+}
+.games-table tbody td:first-child .maptap-day-link:hover,
+.games-table tbody td:first-child .maptap-day-link:focus-visible {
+  color: var(--accent-2);
+  border-bottom-style: solid;
+  outline: none;
+}
 
 .rounds-cell { width: 0; }
 .rounds-cell .round-dots { display: inline-flex; }
