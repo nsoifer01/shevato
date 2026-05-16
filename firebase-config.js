@@ -35,6 +35,7 @@ import {
   setPersistence,
   browserLocalPersistence
 } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js";
+import { createCrossTabChannel, CHANNEL_MESSAGE_TYPES } from './sync-system/cross-tab-channel.mjs';
 
 const firebaseConfig = {
   apiKey: "AIzaSyDlawczS-pufHS_Oi5LUeU_EzcwTFyU_2I",
@@ -52,8 +53,9 @@ const app = initializeApp(firebaseConfig);
 export const auth = getAuth(app);
 // Firestore with offline persistence configured at init time (modern API).
 // Replaces the deprecated enableMultiTabIndexedDbPersistence() call that used
-// to live in sync-system/firebase-persistence.js. If IndexedDB is unavailable
-// (Safari private mode, etc.), the SDK falls back to in-memory cache itself.
+// to live in a separate persistence shim (sync-system/firebase-persistence.js,
+// now retired). If IndexedDB is unavailable (Safari private mode, etc.), the
+// SDK falls back to in-memory cache itself.
 export const db = initializeFirestore(app, {
   localCache: persistentLocalCache({
     tabManager: persistentMultipleTabManager()
@@ -75,15 +77,55 @@ let authReady = false;
 let resolveReady;
 const readyPromise = new Promise((r) => { resolveReady = r; });
 
+// Cross-tab signal. Shared singleton on the window so storage-sync-robust
+// and any future module can reuse the same channel (BroadcastChannel
+// instances are cheap, but a single broadcast surface is easier to reason
+// about — and tests can swap a fake into window.__shevatoSyncChannel
+// before this module loads).
+export const crossTabChannel = (typeof window !== 'undefined' && window.__shevatoSyncChannel)
+  ? window.__shevatoSyncChannel
+  : createCrossTabChannel();
+if (typeof window !== 'undefined') {
+  window.__shevatoSyncChannel = crossTabChannel;
+}
+
+function notifyAuthListeners(user) {
+  for (const cb of listeners) {
+    try { cb(user); } catch (err) { console.error('Auth listener error:', err); }
+  }
+}
+
 onAuthStateChanged(auth, (user) => {
+  const prevUid = currentUser?.uid || null;
   currentUser = user;
   if (!authReady) {
     authReady = true;
     resolveReady();
   }
-  for (const cb of listeners) {
-    try { cb(user); } catch (err) { console.error('Auth listener error:', err); }
+  notifyAuthListeners(user);
+
+  // Tell sibling tabs immediately. They will re-check their own auth state
+  // (Firebase's IndexedDB cross-tab eventually catches up, but the broadcast
+  // is synchronous between same-origin tabs and avoids the multi-second
+  // mobile latency window).
+  const nextUid = user?.uid || null;
+  if (prevUid !== nextUid) {
+    crossTabChannel.publish(CHANNEL_MESSAGE_TYPES.AUTH_CHANGED, { uid: nextUid });
   }
+});
+
+// Remote tab signalled an auth change. Re-fire our listeners with the
+// current `auth.currentUser` so app UI re-evaluates without waiting for
+// Firebase's own IndexedDB-backed cross-tab sync. This is a hint, not a
+// source of truth: `auth.currentUser` is still owned by the Firebase SDK.
+// We let the SDK settle for one tick before re-fanning so its IndexedDB
+// listener has a chance to update `currentUser` first.
+crossTabChannel.subscribe(CHANNEL_MESSAGE_TYPES.AUTH_CHANGED, () => {
+  // Microtask delay is enough — Firebase's storage listener fires
+  // synchronously on the IndexedDB write event from the peer tab.
+  Promise.resolve().then(() => {
+    notifyAuthListeners(auth.currentUser);
+  });
 });
 
 const ERROR_MESSAGES = {

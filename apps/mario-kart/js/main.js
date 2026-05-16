@@ -2,6 +2,22 @@ let currentView = 'achievements';
 let sortColumn = null;
 let sortDirection = 'asc';
 
+// View-routing in the URL hash. Lets you deep-link to a tab (#stats,
+// #h2h, etc.), preserves the active view across reloads, and gives
+// browser back/forward navigation between views something to land on.
+// Matches the pattern gym-tracker and maptap-rivals already use.
+const MARIO_KART_VIEWS = new Set([
+    'achievements', 'stats', 'h2h', 'analysis',
+    'activity', 'trends', 'help', 'guide'
+]);
+
+function syncViewFromHash() {
+    const raw = (window.location.hash || '').replace(/^#/, '').trim();
+    if (!MARIO_KART_VIEWS.has(raw)) return;
+    if (raw === currentView) return;
+    toggleView(raw);
+}
+
 function toggleDateWidget(event) {
     // Prevent default if called from keyboard event
     if (event && event.type === 'keydown') {
@@ -679,6 +695,15 @@ function toggleView(view) {
 
     // Now update currentView
     currentView = view;
+
+    // Mirror to URL hash so reload + back/forward preserves the view.
+    // replaceState (not pushState) keeps the existing history entry —
+    // we don't want every toggle to balloon the back stack. replaceState
+    // does NOT fire `hashchange`, so the listener below won't bounce.
+    if (typeof history !== 'undefined' && typeof history.replaceState === 'function') {
+        try { history.replaceState(null, '', '#' + view); }
+        catch (_) { /* opaque-origin sandboxes can throw; harmless */ }
+    }
 
     // Reset pagination when view changes
     if (window.GlobalPaginationManager) {
@@ -1665,4 +1690,11 @@ document.addEventListener('DOMContentLoaded', function() {
 
     // The date button already has onclick="toggleDateWidget()" in HTML,
     // so we don't need to add another listener
+
+    // View-routing: respect `?#view` deep-links on load, and react to
+    // back/forward navigation between view hashes. Runs at the end of
+    // DOM setup so toggleView's downstream callers (updateDisplay,
+    // pagination, etc.) are already wired.
+    syncViewFromHash();
+    window.addEventListener('hashchange', syncViewFromHash);
 });
