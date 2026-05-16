@@ -30,6 +30,7 @@
     GAMES: 'maptapRivalsGames',
     ME: 'maptapRivalsMe',
     MY_MAPTAP: 'maptapRivalsMyMapTap',
+    MY_ICON: 'maptapRivalsMyIcon',
     MY_PROFILE: 'maptapRivalsMyProfile',
     SETTINGS: 'maptapRivalsSettings',
     SELECTED: 'maptapRivalsSelectedRivalId',
@@ -247,6 +248,7 @@
     games: load(KEY.GAMES, []),
     me: loadString(KEY.ME, 'Me'),
     myMapTap: loadString(KEY.MY_MAPTAP, ''),
+    myIcon: loadString(KEY.MY_ICON, '🧍'),
     myProfile: load(KEY.MY_PROFILE, null),
     profileEditMode: false,        // true → username input is shown
     profileVerifying: false,
@@ -282,6 +284,7 @@
   function persistGames() { save(KEY.GAMES, state.games); }
   function persistSettings() { save(KEY.SETTINGS, state.settings); }
   function persistMe() { saveString(KEY.ME, state.me); }
+  function persistMyIcon() { saveString(KEY.MY_ICON, state.myIcon); }
   function persistMyMapTap() { saveString(KEY.MY_MAPTAP, state.myMapTap); }
   function persistMyProfile() { save(KEY.MY_PROFILE, state.myProfile); }
   function persistSelected() { saveString(KEY.SELECTED, state.selectedRivalId); }
@@ -698,6 +701,7 @@
 
   // ---------- view switching ----------
   function setView(view) {
+    const changed = state.view !== view;
     state.view = view;
     $$('.view-tab').forEach(tab => {
       const active = tab.dataset.view === view;
@@ -717,6 +721,10 @@
     else if (view === 'history') renderHistory();
 
     syncUrlHash();
+    // Reset scroll when the view changes so a deep-scrolled dashboard
+    // doesn't leave the rival detail mid-page after a card click.
+    // Skip on no-op re-renders so a renderRival mid-scroll stays put.
+    if (changed) window.scrollTo(0, 0);
   }
 
   // ---------- URL routing ----------
@@ -1130,7 +1138,7 @@
     const myPred = predictRoundsForPlayer(myRounds, selected.cities);
     const myActuals = isPastOrToday ? actualScoresForDay(selectedISO) : { mineScores: null, mineTotal: null };
     body.appendChild(makePredictionRow({
-      label: state.me || 'You',
+      label: `${state.myIcon || '🧍'} ${state.me || 'You'}`,
       predictedScores: myPred ? myPred.scores : null,
       actualScores:    myActuals.mineScores,
       predictedTotal:  myPred ? predTotalFromScores(myPred.scores) : null,
@@ -2639,7 +2647,7 @@
     // Participants in display order: You first, then rivals alphabetically.
     const sortedRivals = rivals.slice().sort((a, b) => a.name.localeCompare(b.name));
     const participants = [
-      { type: 'you', label: state.me || 'You', icon: '🧍', color: 'var(--accent-2)' },
+      { type: 'you', label: state.me || 'You', icon: state.myIcon || '🧍', color: 'var(--accent-2)' },
       ...sortedRivals.map(r => ({ type: 'rival', id: r.id, label: r.name, icon: r.icon, color: r.color })),
     ];
 
@@ -3881,6 +3889,7 @@
       version: 1,
       exportedAt: new Date().toISOString(),
       me: state.me,
+      myIcon: state.myIcon,
       rivals: state.rivals,
       games: state.games,
     }, null, 2)], { type: 'application/json' });
@@ -3905,10 +3914,13 @@
         state.rivals = parsed.rivals;
         state.games = parsed.games;
         if (typeof parsed.me === 'string') state.me = parsed.me;
+        if (typeof parsed.myIcon === 'string') state.myIcon = parsed.myIcon;
         persistRivals();
         persistGames();
         persistMe();
+        persistMyIcon();
         $('#my-name').value = state.me;
+        const cur = $('#my-icon-current'); if (cur) cur.textContent = state.myIcon || '🧍';
         refreshRivalSelects();
         if (state.view === 'dashboard') renderDashboard();
         else if (state.view === 'rival') renderRival();
@@ -3940,6 +3952,10 @@
     }
     else if (e.key === KEY.MY_MAPTAP) {
       state.myMapTap = loadString(KEY.MY_MAPTAP, '');
+    }
+    else if (e.key === KEY.MY_ICON) {
+      state.myIcon = loadString(KEY.MY_ICON, '🧍');
+      const cur = $('#my-icon-current'); if (cur) cur.textContent = state.myIcon;
     }
     else if (e.key === KEY.MY_PROFILE) {
       state.myProfile = load(KEY.MY_PROFILE, null);
@@ -3996,6 +4012,60 @@
       persistMe();
     });
 
+    // User icon picker — flyout with the same ICONS palette as rivals,
+    // plus 🧍 as a neutral "no animal" choice for users who don't want
+    // an animal avatar. Closes on outside click or Escape.
+    const myIconBtn     = $('#my-icon-btn');
+    const myIconCurrent = $('#my-icon-current');
+    const myIconFlyout  = $('#my-icon-flyout');
+    const MY_ICONS = ['🧍', ...ICONS];
+    function renderMyIconCurrent() {
+      myIconCurrent.textContent = state.myIcon || '🧍';
+    }
+    function renderMyIconFlyout() {
+      myIconFlyout.innerHTML = '';
+      MY_ICONS.forEach(ic => {
+        myIconFlyout.appendChild(el('button', {
+          type: 'button',
+          class: 'my-icon-swatch' + (ic === state.myIcon ? ' is-selected' : ''),
+          role: 'menuitemradio',
+          'aria-checked': ic === state.myIcon ? 'true' : 'false',
+          'aria-label': `Choose icon ${ic}`,
+          onclick: () => {
+            state.myIcon = ic;
+            persistMyIcon();
+            renderMyIconCurrent();
+            closeMyIconFlyout();
+            // Refresh anywhere the icon is on screen
+            if (state.view === 'dashboard') renderDashboard();
+            else if (state.view === 'matrix') renderMatrix();
+          },
+        }, ic));
+      });
+    }
+    function openMyIconFlyout() {
+      renderMyIconFlyout();
+      myIconFlyout.hidden = false;
+      myIconBtn.setAttribute('aria-expanded', 'true');
+    }
+    function closeMyIconFlyout() {
+      myIconFlyout.hidden = true;
+      myIconBtn.setAttribute('aria-expanded', 'false');
+    }
+    renderMyIconCurrent();
+    myIconBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      if (myIconFlyout.hidden) openMyIconFlyout();
+      else closeMyIconFlyout();
+    });
+    document.addEventListener('click', (e) => {
+      if (myIconFlyout.hidden) return;
+      if (myIconFlyout.contains(e.target) || myIconBtn.contains(e.target)) return;
+      closeMyIconFlyout();
+    });
+    document.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape' && !myIconFlyout.hidden) closeMyIconFlyout();
+    });
 
     $('#clear-games-btn').addEventListener('click', clearAllGames);
 
