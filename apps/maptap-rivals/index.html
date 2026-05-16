@@ -135,40 +135,48 @@
         <div class="profile-card-body" id="profile-card-body"></div>
       </section>
 
-      <!-- Paste-mode entry: paste your daily MapTap share, then paste each
-           rival's share. No rival picker — every rival shows up below as
-           its own row, with a live W/L/T preview against your score. -->
+      <!-- Paste-mode entry, collapsed by default — the MapTap profile
+           card above is the recommended path. Opens to reveal the
+           paste rows: every rival shows up as its own row with a live
+           W/L/T preview against your score. -->
       <section class="paste-section">
-        <div class="paste-head">
-          <h2 class="section-title">Paste daily scores</h2>
-          <label class="paste-date-field">
-            <span>Date</span>
-            <input type="date" id="paste-date">
-          </label>
-        </div>
+        <details class="paste-collapse">
+          <summary class="paste-collapse-summary">
+            <span class="paste-collapse-title">Paste daily scores</span>
+            <span class="paste-collapse-hint">Optional · link your MapTap profile above to auto-sync</span>
+          </summary>
+          <div class="paste-collapse-body">
+            <div class="paste-head">
+              <label class="paste-date-field">
+                <span>Date</span>
+                <input type="date" id="paste-date">
+              </label>
+            </div>
 
-        <div class="paste-mine">
-          <div class="paste-mine-head">
-            <span class="paste-mine-label" id="paste-mine-label">Your score</span>
-            <span class="paste-status" id="paste-mine-status">Paste your MapTap result anywhere on the page</span>
+            <div class="paste-mine">
+              <div class="paste-mine-head">
+                <span class="paste-mine-label" id="paste-mine-label">Your score</span>
+                <span class="paste-status" id="paste-mine-status">Paste your MapTap result anywhere on the page</span>
+              </div>
+              <textarea id="paste-mine-input" rows="3" spellcheck="false" autocomplete="off"
+                placeholder="May 10&#10;95🏅 89✨ 91🎉 9🤢 64🙃&#10;Final score: 585"></textarea>
+              <div class="paste-mine-rounds" id="paste-mine-rounds" hidden></div>
+            </div>
+
+            <div class="paste-rivals" id="paste-rivals"></div>
+
+            <p class="paste-empty" id="paste-empty" hidden>
+              Add at least one rival to use paste mode.
+            </p>
+
+            <div class="paste-actions" id="paste-actions" hidden>
+              <span class="paste-summary" id="paste-summary">Paste your score and at least one rival's to save.</span>
+              <button type="button" class="btn btn-primary paste-save-all" id="paste-save-all" disabled>
+                Save day's games
+              </button>
+            </div>
           </div>
-          <textarea id="paste-mine-input" rows="3" spellcheck="false" autocomplete="off"
-            placeholder="May 10&#10;95🏅 89✨ 91🎉 9🤢 64🙃&#10;Final score: 585"></textarea>
-          <div class="paste-mine-rounds" id="paste-mine-rounds" hidden></div>
-        </div>
-
-        <div class="paste-rivals" id="paste-rivals"></div>
-
-        <p class="paste-empty" id="paste-empty" hidden>
-          Add at least one rival to use paste mode.
-        </p>
-
-        <div class="paste-actions" id="paste-actions" hidden>
-          <span class="paste-summary" id="paste-summary">Paste your score and at least one rival's to save.</span>
-          <button type="button" class="btn btn-primary paste-save-all" id="paste-save-all" disabled>
-            Save day's games
-          </button>
-        </div>
+        </details>
       </section>
 
       <div class="dash-summary" id="dash-summary"></div>
