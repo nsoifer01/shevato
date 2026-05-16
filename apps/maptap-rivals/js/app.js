@@ -283,6 +283,17 @@
     const d = new Date(iso + 'T00:00:00');
     return d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
   }
+  // MapTap deep-link for a given ISO date: full English month name + day,
+  // no zero pad, no year, no separator. Hardcoded month names because the
+  // URL is owned by maptap.gg and must not vary with the user's locale.
+  function mapTapHistoryUrl(iso) {
+    if (!iso) return null;
+    const d = new Date(iso + 'T00:00:00');
+    if (Number.isNaN(d.getTime())) return null;
+    const MONTHS = ['January','February','March','April','May','June',
+                    'July','August','September','October','November','December'];
+    return `https://maptap.gg/history/${MONTHS[d.getMonth()]}${d.getDate()}`;
+  }
   function fmtDateLong(iso) {
     if (!iso) return '—';
     const d = new Date(iso + 'T00:00:00');
@@ -464,6 +475,8 @@
     let myCum = 0, theirCum = 0;
     let bestMine = -Infinity, worstMine = Infinity;
     let bestTheirs = -Infinity, worstTheirs = Infinity;
+    let bestMineGame = null, worstMineGame = null;
+    let bestTheirsGame = null, worstTheirsGame = null;
     let biggestWinMargin = 0, biggestLossMargin = 0;
     let biggestWinGame = null, biggestLossGame = null;
 
@@ -476,10 +489,10 @@
       else ties++;
       myCum += myT;
       theirCum += theirT;
-      if (myT > bestMine) bestMine = myT;
-      if (myT < worstMine) worstMine = myT;
-      if (theirT > bestTheirs) bestTheirs = theirT;
-      if (theirT < worstTheirs) worstTheirs = theirT;
+      if (myT > bestMine)   { bestMine   = myT;   bestMineGame   = g; }
+      if (myT < worstMine)  { worstMine  = myT;   worstMineGame  = g; }
+      if (theirT > bestTheirs)  { bestTheirs  = theirT; bestTheirsGame  = g; }
+      if (theirT < worstTheirs) { worstTheirs = theirT; worstTheirsGame = g; }
       const diff = myT - theirT;
       if (diff > biggestWinMargin) { biggestWinMargin = diff; biggestWinGame = g; }
       if (diff < biggestLossMargin) { biggestLossMargin = diff; biggestLossGame = g; }
@@ -533,6 +546,10 @@
       worstMine: total ? worstMine : 0,
       bestTheirs: total ? bestTheirs : 0,
       worstTheirs: total ? worstTheirs : 0,
+      bestMineGame: total ? bestMineGame : null,
+      worstMineGame: total ? worstMineGame : null,
+      bestTheirsGame: total ? bestTheirsGame : null,
+      worstTheirsGame: total ? worstTheirsGame : null,
       biggestWinMargin,
       biggestLossMargin: Math.abs(biggestLossMargin),
       biggestWinGame,
@@ -1426,8 +1443,19 @@
       s.streak.curMine > 0 ? `${s.streak.curMine} W` : s.streak.curTheirs > 0 ? `${s.streak.curTheirs} L` : '—',
       `Longest: ${s.streak.longestMine} W / ${s.streak.longestTheirs} L`,
       s.streak.curMine > 0 ? 'is-good' : s.streak.curTheirs > 0 ? 'is-bad' : ''));
-    cardsHost.appendChild(makeStatCard('Best score (you)', s.bestMine, `Worst: ${s.worstMine}`, 'is-accent'));
-    cardsHost.appendChild(makeStatCard(`Best score (${rival.name})`, s.bestTheirs, `Worst: ${s.worstTheirs}`));
+    const bestMineDate  = s.bestMineGame  ? fmtDateShort(s.bestMineGame.date)  : null;
+    const worstMineDate = s.worstMineGame ? fmtDateShort(s.worstMineGame.date) : null;
+    const bestTheirsDate  = s.bestTheirsGame  ? fmtDateShort(s.bestTheirsGame.date)  : null;
+    const worstTheirsDate = s.worstTheirsGame ? fmtDateShort(s.worstTheirsGame.date) : null;
+    cardsHost.appendChild(makeStatCard('Best score (you)', s.bestMine,
+      bestMineDate
+        ? `${bestMineDate} · Worst ${s.worstMine}${worstMineDate ? ` (${worstMineDate})` : ''}`
+        : `Worst: ${s.worstMine}`,
+      'is-accent'));
+    cardsHost.appendChild(makeStatCard(`Best score (${rival.name})`, s.bestTheirs,
+      bestTheirsDate
+        ? `${bestTheirsDate} · Worst ${s.worstTheirs}${worstTheirsDate ? ` (${worstTheirsDate})` : ''}`
+        : `Worst: ${s.worstTheirs}`));
     cardsHost.appendChild(makeStatCard('Consistency (you)', s.consistencyMine.toFixed(1), 'σ — lower = steadier'));
     cardsHost.appendChild(makeStatCard('Biggest win', s.biggestWinGame ? `+${s.biggestWinMargin}` : '—',
       s.biggestWinGame ? `${s.biggestWinGame.myScore}–${s.biggestWinGame.theirScore} on ${fmtDateShort(s.biggestWinGame.date)}` : '—',
@@ -1754,14 +1782,17 @@
             pointBackgroundColor: '#4ade80',
             pointRadius: 3,
           },
-          {
-            label: s.rival.name,
-            data: s.locStats.map(l => l.theirAvg),
-            borderColor: s.rival.color,
-            backgroundColor: hexToRgba(s.rival.color, 0.18),
-            pointBackgroundColor: s.rival.color,
-            pointRadius: 3,
-          },
+          (() => {
+            const rc = chartRivalColor(s.rival.color);
+            return {
+              label: s.rival.name,
+              data: s.locStats.map(l => l.theirAvg),
+              borderColor: rc,
+              backgroundColor: hexToRgba(rc, 0.18),
+              pointBackgroundColor: rc,
+              pointRadius: 3,
+            };
+          })(),
         ],
       },
       options: chartCommon({
@@ -1805,6 +1836,23 @@
   }
 
   // ---------- charts ----------
+  // The "You" series is pinned to a fixed green across charts. If the
+  // rival's chosen color sits too close to that green in RGB space the
+  // two lines become indistinguishable, so swap to a contrasting orange.
+  const USER_CHART_COLOR = '#4ade80';
+  const RIVAL_FALLBACK_COLOR = '#f97316';
+  function chartRivalColor(rivalColor) {
+    if (!rivalColor || typeof rivalColor !== 'string' || rivalColor[0] !== '#' || rivalColor.length !== 7) {
+      return RIVAL_FALLBACK_COLOR;
+    }
+    const u = parseInt(USER_CHART_COLOR.slice(1), 16);
+    const r = parseInt(rivalColor.slice(1), 16);
+    const dr = ((u >> 16) & 0xff) - ((r >> 16) & 0xff);
+    const dg = ((u >> 8)  & 0xff) - ((r >> 8)  & 0xff);
+    const db =  (u        & 0xff) -  (r        & 0xff);
+    return (dr * dr + dg * dg + db * db) < 6400 ? RIVAL_FALLBACK_COLOR : rivalColor;
+  }
+
   function destroyChart(name) {
     if (state.charts[name]) {
       state.charts[name].destroy();
@@ -1839,15 +1887,18 @@
             fill: true,
             pointRadius: 3,
           },
-          {
-            label: s.rival.name,
-            data: last30.map(getTheirTotal),
-            borderColor: s.rival.color,
-            backgroundColor: hexToRgba(s.rival.color, 0.12),
-            tension: 0.3,
-            fill: true,
-            pointRadius: 3,
-          },
+          (() => {
+            const rc = chartRivalColor(s.rival.color);
+            return {
+              label: s.rival.name,
+              data: last30.map(getTheirTotal),
+              borderColor: rc,
+              backgroundColor: hexToRgba(rc, 0.12),
+              tension: 0.3,
+              fill: true,
+              pointRadius: 3,
+            };
+          })(),
         ],
       },
       options: chartCommon({
@@ -2364,8 +2415,18 @@
       const myT = getMyTotal(g);
       const theirT = getTheirTotal(g);
       const diff = myT - theirT;
+      const dayUrl = mapTapHistoryUrl(g.date);
+      const dateCell = dayUrl
+        ? el('td', {}, [el('a', {
+            href: dayUrl,
+            target: '_blank',
+            rel: 'noopener noreferrer',
+            class: 'maptap-day-link',
+            title: 'Open this day on maptap.gg',
+          }, fmtDateShort(g.date))])
+        : el('td', {}, fmtDateShort(g.date));
       tbody.appendChild(el('tr', {}, [
-        el('td', {}, fmtDateShort(g.date)),
+        dateCell,
         el('td', {}, rival ? `${rival.icon} ${rival.name}` : '—'),
         el('td', { style: 'font-weight:600', title: hasLocs(g) ? `Rounds: ${g.myScores.join(' / ')}` : '' }, String(myT)),
         el('td', { style: 'font-weight:600', title: hasLocs(g) ? `Rounds: ${g.theirScores.join(' / ')}` : '' }, String(theirT)),
