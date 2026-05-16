@@ -1784,7 +1784,14 @@
     }
 
     cardsHost.appendChild(makeStatCard('Win rate', `${(s.winPct * 100).toFixed(1)}%`, `${s.wins}W · ${s.losses}L · ${s.ties}T`, s.winPct >= 0.5 ? 'is-good' : 'is-bad'));
-    cardsHost.appendChild(makeStatCard('Cumulative Δ', (s.cumDiff > 0 ? '+' : '') + s.cumDiff, 'your points − theirs', s.cumDiff >= 0 ? 'is-good' : 'is-bad'));
+    // Average per-game point gap rather than cumulative — comparable
+    // across rivals you've played different counts of games against.
+    const avgDiffAll = s.total ? (s.cumDiff / s.total) : 0;
+    const avgDiffSign = avgDiffAll > 0 ? '+' : '';
+    cardsHost.appendChild(makeStatCard('Avg Δ per game',
+      `${avgDiffSign}${avgDiffAll.toFixed(1)}`,
+      'your points − theirs',
+      avgDiffAll >= 0 ? 'is-good' : 'is-bad'));
     cardsHost.appendChild(makeStatCard('Avg score (you)', s.myAvgAll.toFixed(0), `7d ${s.myAvg7 ? s.myAvg7.toFixed(0) : '—'} · 30d ${s.myAvg30 ? s.myAvg30.toFixed(0) : '—'}`));
     cardsHost.appendChild(makeStatCard(`Avg score (${rival.name})`, s.theirAvgAll.toFixed(0), `7d ${s.theirAvg7 ? s.theirAvg7.toFixed(0) : '—'} · 30d ${s.theirAvg30 ? s.theirAvg30.toFixed(0) : '—'}`));
     cardsHost.appendChild(makeStatCard('Current streak',
