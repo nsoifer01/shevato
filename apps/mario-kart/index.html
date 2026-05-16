@@ -108,6 +108,8 @@
     <link rel="stylesheet" href="css/help-styles.css">
     <link rel="stylesheet" href="../../assets/css/main.css" />
       <link rel="stylesheet" href="css/mario-kart-overrides.css">
+    <!-- Visual refresh layer — must load last so it wins specificity ties. -->
+    <link rel="stylesheet" href="css/refresh.css">
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <script src="https://apis.google.com/js/api.js"></script>
     
@@ -135,7 +137,7 @@
         <div class="sidebar-header">
             <h2 class="sidebar-title">Control Panel</h2>
             <div class="sidebar-header-buttons">
-                <button id="sidebar-clear-btn" class="sidebar-header-clear" onclick="confirmClearData()" title="Clear all data" aria-label="Clear all data">
+                <button id="sidebar-clear-btn" class="sidebar-header-clear" onclick="confirmClearData()" aria-label="Clear all data">
                     🗑️
                 </button>
                 <button class="sidebar-close-btn" onclick="closeSidebar()" aria-label="Close sidebar">
@@ -175,17 +177,17 @@
                     </div>
                 </div>
                 <div class="sidebar-action-buttons-group">
-                    <button id="sidebar-undo-btn" class="sidebar-action-btn undo-btn" onclick="undoLastAction()" disabled title="Undo last action">
+                    <button id="sidebar-undo-btn" class="sidebar-action-btn undo-btn" onclick="undoLastAction()" disabled aria-label="Undo last action">
                         <span class="action-icon">↶</span>
                         <span class="action-text">Undo</span>
                     </button>
-                    <button id="sidebar-redo-btn" class="sidebar-action-btn redo-btn" onclick="redoLastAction()" disabled title="Redo last action">
+                    <button id="sidebar-redo-btn" class="sidebar-action-btn redo-btn" onclick="redoLastAction()" disabled aria-label="Redo last action">
                         <span class="action-icon">↷</span>
                         <span class="action-text">Redo</span>
                     </button>
                 </div>
                 <div class="action-buttons" id="sidebar-action-buttons">
-                    <button class="sidebar-action-btn restore-btn" onclick="restoreFromBackup()" title="Restore from auto-backup">
+                    <button class="sidebar-action-btn restore-btn" onclick="restoreFromBackup()" aria-label="Restore from auto-backup">
                         <span class="action-icon">🔄</span>
                         <span class="action-text">Restore</span>
                     </button>
