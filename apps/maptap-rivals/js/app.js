@@ -30,10 +30,15 @@
     GAMES: 'maptapRivalsGames',
     ME: 'maptapRivalsMe',
     MY_MAPTAP: 'maptapRivalsMyMapTap',
+    MY_ICON: 'maptapRivalsMyIcon',
     MY_PROFILE: 'maptapRivalsMyProfile',
     SETTINGS: 'maptapRivalsSettings',
     SELECTED: 'maptapRivalsSelectedRivalId',
     MATRIX_SEL: 'maptapRivalsMatrixSelection',
+    // Per-ISO-date cache of the day's 5 puzzle lat/lng pairs. Values are
+    // stored under `KEY.DAILY_CITIES_PREFIX + isoDate`. Only coordinates
+    // are persisted — never names or trivia from the daily file.
+    DAILY_CITIES_PREFIX: 'maptapRivalsDailyCities/',
   };
 
   // Public MapTap Cloud Function — returns gameHistory keyed by YYYY-MM-DD.
@@ -41,6 +46,15 @@
   // browser without a proxy.
   const MAPTAP_PROFILE_URL =
     'https://us-central1-jjexperiment-12af6.cloudfunctions.net/getPublicProfile';
+
+  // Daily puzzle locations. MapTap publishes each day's content as a static
+  // JS file at `data/this_day_in_history/<MonthDay>.js`. The file is CORS-
+  // open and contains the same 5 cities every player will play that day
+  // (it lists more for editorial flexibility, but MapTap only plays the
+  // first N_LOCS in file order — verified empirically across 5+ days). We
+  // fetch the text and pull only lat/lng — names and trivia are dropped
+  // before anything reaches the predictor or the UI.
+  const MAPTAP_DAILY_URL_BASE = 'https://maptap.gg/data/this_day_in_history/';
 
   const COLORS = [
     '#6366f1', '#22d3ee', '#4ade80', '#f97316', '#f43f5e',
@@ -234,6 +248,7 @@
     games: load(KEY.GAMES, []),
     me: loadString(KEY.ME, 'Me'),
     myMapTap: loadString(KEY.MY_MAPTAP, ''),
+    myIcon: loadString(KEY.MY_ICON, '🧍'),
     myProfile: load(KEY.MY_PROFILE, null),
     profileEditMode: false,        // true → username input is shown
     profileVerifying: false,
@@ -256,12 +271,20 @@
     charts: { trend: null, wins: null, diff: null, radar: null, locWinrate: null },
     syncing: new Set(),       // rivalIds currently fetching from MapTap
     syncStatus: new Map(),    // rivalId -> { kind: 'ok'|'flat'|'err', msg }
+    // Rolling 7-day puzzle window starting at today. Each entry holds:
+    //   { iso, cities: [{lat,lng}…] | null, status: 'idle'|'fetching'|'ok'|'error' }
+    // Reseeded when the local date crosses midnight mid-session.
+    predictWindow: [],
+    predictWindowAnchorISO: null,
+    // ISO date of the day currently shown in the dashboard predictions card.
+    predictSelectedISO: null,
   };
 
   function persistRivals() { save(KEY.RIVALS, state.rivals); }
   function persistGames() { save(KEY.GAMES, state.games); }
   function persistSettings() { save(KEY.SETTINGS, state.settings); }
   function persistMe() { saveString(KEY.ME, state.me); }
+  function persistMyIcon() { saveString(KEY.MY_ICON, state.myIcon); }
   function persistMyMapTap() { saveString(KEY.MY_MAPTAP, state.myMapTap); }
   function persistMyProfile() { save(KEY.MY_PROFILE, state.myProfile); }
   function persistSelected() { saveString(KEY.SELECTED, state.selectedRivalId); }
@@ -283,16 +306,98 @@
     const d = new Date(iso + 'T00:00:00');
     return d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
   }
-  // MapTap deep-link for a given ISO date: full English month name + day,
-  // no zero pad, no year, no separator. Hardcoded month names because the
-  // URL is owned by maptap.gg and must not vary with the user's locale.
-  function mapTapHistoryUrl(iso) {
+  // Shared `<MonthName><Day>` token used by both the maptap.gg history
+  // deep link and the daily-puzzle data URL. English month names are
+  // hardcoded since the URLs are owned by maptap.gg and must not vary
+  // with the user's locale; the day is not zero-padded.
+  const ENGLISH_MONTHS = ['January','February','March','April','May','June',
+                          'July','August','September','October','November','December'];
+  function maptapMonthDay(iso) {
     if (!iso) return null;
     const d = new Date(iso + 'T00:00:00');
     if (Number.isNaN(d.getTime())) return null;
-    const MONTHS = ['January','February','March','April','May','June',
-                    'July','August','September','October','November','December'];
-    return `https://maptap.gg/history/${MONTHS[d.getMonth()]}${d.getDate()}`;
+    return `${ENGLISH_MONTHS[d.getMonth()]}${d.getDate()}`;
+  }
+  function mapTapHistoryUrl(iso) {
+    const tok = maptapMonthDay(iso);
+    return tok ? `https://maptap.gg/history/${tok}` : null;
+  }
+  function mapTapDailyDataUrl(iso) {
+    const tok = maptapMonthDay(iso);
+    return tok ? `${MAPTAP_DAILY_URL_BASE}${tok}.js` : null;
+  }
+
+  // Today's ISO date in the user's local timezone, so the prediction
+  // tracks whatever day MapTap is showing the user (MapTap's day rolls
+  // over at local midnight too — verified from observed gameHistory keys).
+  function todayISO() {
+    const d = new Date();
+    const tz = d.getTimezoneOffset() * 60000;
+    return new Date(d - tz).toISOString().slice(0, 10);
+  }
+  function addDaysISO(iso, days) {
+    const d = new Date(iso + 'T00:00:00');
+    if (Number.isNaN(d.getTime())) return null;
+    d.setDate(d.getDate() + days);
+    return d.toISOString().slice(0, 10);
+  }
+  const PREDICT_WINDOW_DAYS = 7;
+
+  // Pull only the first N_LOCS lat/lng pairs from a daily puzzle file.
+  // The MapTap client plays the first 5 cities in file order regardless
+  // of how many the file lists (verified across May 10-14 plays). We
+  // deliberately discard name/trivia/photos so the predictor and any
+  // downstream code never accidentally surface the answer.
+  // Regex: match `lat:` not preceded by a letter (excludes `labelLat:`),
+  // then the nearest `lng:` (same letter-boundary exclusion).
+  const DAILY_LATLNG_RE =
+    /(?<![A-Za-z])lat\s*:\s*(-?\d+(?:\.\d+)?)\s*,[\s\S]{0,80}?(?<![A-Za-z])lng\s*:\s*(-?\d+(?:\.\d+)?)/g;
+  function parseDailyCitiesText(src) {
+    if (typeof src !== 'string' || !src.length) return null;
+    DAILY_LATLNG_RE.lastIndex = 0;
+    const out = [];
+    let m;
+    while ((m = DAILY_LATLNG_RE.exec(src)) !== null) {
+      const lat = parseFloat(m[1]);
+      const lng = parseFloat(m[2]);
+      if (Number.isFinite(lat) && Number.isFinite(lng) &&
+          lat >= -90 && lat <= 90 && lng >= -180 && lng <= 180) {
+        out.push({ lat, lng });
+      }
+      if (out.length >= N_LOCS) break;
+    }
+    return out.length === N_LOCS ? out : null;
+  }
+
+  // Fetch + cache the day's 5 puzzle coordinates. Cache is keyed by ISO
+  // date; once a puzzle's day has passed, the file is immutable so the
+  // cache is valid forever. For today / future dates we still cache but
+  // re-fetch after 6h in case MapTap revises the file before play.
+  async function fetchDailyCities(iso) {
+    const url = mapTapDailyDataUrl(iso);
+    if (!url) return null;
+    const cacheKey = KEY.DAILY_CITIES_PREFIX + iso;
+    try {
+      const cached = JSON.parse(localStorage.getItem(cacheKey) || 'null');
+      if (cached && Array.isArray(cached.cities) && cached.cities.length === N_LOCS) {
+        const isPast = iso < todayISO();
+        const fresh = isPast || (Date.now() - (cached.cachedAt || 0)) < 6 * 3600 * 1000;
+        if (fresh) return cached.cities;
+      }
+    } catch (_) { /* cache corrupted — fall through to fetch */ }
+    try {
+      const res = await fetch(url, { credentials: 'omit' });
+      if (!res.ok) return null;
+      const text = await res.text();
+      const cities = parseDailyCitiesText(text);
+      if (!cities) return null;
+      try {
+        localStorage.setItem(cacheKey, JSON.stringify({ cities, cachedAt: Date.now() }));
+      } catch (_) { /* quota — ignore, prediction still works for this session */ }
+      return cities;
+    } catch (_) {
+      return null;
+    }
   }
   function fmtDateLong(iso) {
     if (!iso) return '—';
@@ -596,6 +701,7 @@
 
   // ---------- view switching ----------
   function setView(view) {
+    const changed = state.view !== view;
     state.view = view;
     $$('.view-tab').forEach(tab => {
       const active = tab.dataset.view === view;
@@ -615,6 +721,10 @@
     else if (view === 'history') renderHistory();
 
     syncUrlHash();
+    // Reset scroll when the view changes so a deep-scrolled dashboard
+    // doesn't leave the rival detail mid-page after a card click.
+    // Skip on no-op re-renders so a renderRival mid-scroll stays put.
+    if (changed) window.scrollTo(0, 0);
   }
 
   // ---------- URL routing ----------
@@ -836,8 +946,294 @@
     renderProfileCard();
     renderPasteSection();
     renderDashSummary();
+    renderTodaysPredictions();
     renderRivalGrid();
     $('#dash-empty').hidden = state.rivals.length > 0;
+  }
+
+  // ---------- predictions card (rolling 7-day window) ----------
+  // Anchor the window at today and keep the existing entries' selected
+  // state intact across re-renders. The fetcher is idempotent — each
+  // entry only flips out of 'fetching' once.
+  function ensureSevenDayWindowLoaded() {
+    const today = todayISO();
+    if (state.predictWindowAnchorISO !== today) {
+      state.predictWindowAnchorISO = today;
+      state.predictWindow = Array.from({ length: PREDICT_WINDOW_DAYS }, (_, i) => ({
+        iso: addDaysISO(today, i),
+        cities: null,
+        status: 'idle',
+      }));
+      // Keep the user's selection when possible; otherwise jump to today.
+      if (!state.predictSelectedISO ||
+          !state.predictWindow.some(w => w.iso === state.predictSelectedISO)) {
+        state.predictSelectedISO = today;
+      }
+    }
+    for (const entry of state.predictWindow) {
+      if (entry.status !== 'idle') continue;
+      entry.status = 'fetching';
+      fetchDailyCities(entry.iso).then(cities => {
+        if (state.predictWindowAnchorISO !== today) return; // stale window
+        if (cities) { entry.cities = cities; entry.status = 'ok'; }
+        else        { entry.status = 'error'; }
+        if (state.view === 'dashboard') renderTodaysPredictions();
+      }).catch(() => {
+        if (state.predictWindowAnchorISO !== today) return;
+        entry.status = 'error';
+        if (state.view === 'dashboard') renderTodaysPredictions();
+      });
+    }
+  }
+
+  // Look up actuals for a given day. For "you" the source is any of that
+  // day's paired games (myScores is duplicated across rivals by design,
+  // so the first match is fine). For a rival it's the matching game's
+  // theirScores. Returns nulls when the game wasn't logged.
+  function actualScoresForDay(iso) {
+    const mineGame = state.games.find(g => g.date === iso && Array.isArray(g.myScores));
+    return {
+      mineScores:  mineGame ? mineGame.myScores  : null,
+      mineTotal:   mineGame ? getMyTotal(mineGame) : null,
+    };
+  }
+  function actualScoresForRivalDay(rivalId, iso) {
+    const g = state.games.find(x => x.rivalId === rivalId && x.date === iso);
+    if (!g) return { scores: null, total: null };
+    return {
+      scores: Array.isArray(g.theirScores) ? g.theirScores : null,
+      total:  Array.isArray(g.theirScores) ? getTheirTotal(g) : null,
+    };
+  }
+
+  // SVG icon helpers — tiny stroke glyphs used as score-cell adornments
+  // and as the prediction → actual chevron. Each returns a fresh node so
+  // they're safe to call once per row/chip.
+  function svgIcon(pathD, opts) {
+    const o = opts || {};
+    const wrap = el('span', { class: 'pred-ic' + (o.cls ? ' ' + o.cls : ''), 'aria-hidden': 'true' });
+    wrap.innerHTML =
+      '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" ' +
+      'stroke-width="' + (o.sw || 1.6) + '" stroke-linecap="round" stroke-linejoin="round">' +
+      pathD + '</svg>';
+    return wrap;
+  }
+  const ICON_TARGET = '<circle cx="8" cy="8" r="6"/><circle cx="8" cy="8" r="3"/><circle cx="8" cy="8" r="0.6" fill="currentColor"/>';
+  const ICON_CHECK  = '<path d="M3.5 8.5l3 3 6-6"/>';
+  const ICON_UP     = '<path d="M8 13V4"/><path d="M4 8l4-4 4 4"/>';
+  const ICON_DOWN   = '<path d="M8 3v9"/><path d="M4 8l4 4 4-4"/>';
+  const ICON_DASH   = '<path d="M4 8h8"/>';
+  const ICON_CHEV   = '<path d="M4 4l4 4-4 4"/>';
+
+  function makeDeltaBadge(delta) {
+    if (delta == null) {
+      return el('span', { class: 'pred-delta-badge is-na' }, '—');
+    }
+    const sign = delta > 0 ? 'is-pos' : delta < 0 ? 'is-neg' : 'is-zero';
+    const ic = delta > 0 ? ICON_UP : delta < 0 ? ICON_DOWN : ICON_DASH;
+    return el('span', { class: 'pred-delta-badge ' + sign }, [
+      svgIcon(ic, { sw: 2 }),
+      el('span', { class: 'pred-delta-num' }, (delta > 0 ? '+' : '') + delta),
+    ]);
+  }
+
+  // One round chip: shows weighted slot, predicted (and actual when known),
+  // and a top accent line keyed to Δ. Predicted is never null when we
+  // render — caller skips the strip entirely if the predictor failed.
+  function makeRoundChip(slot, predicted, actual) {
+    const predRound = Math.round(predicted);
+    const hasActual = actual != null && Number.isFinite(actual);
+    const delta = hasActual ? Math.round(actual) - predRound : null;
+    const cls = ['prc'];
+    if (delta != null) cls.push(delta > 0 ? 'prc-pos' : delta < 0 ? 'prc-neg' : 'prc-zero');
+    const w = WEIGHTS[slot];
+    return el('div', { class: cls.join(' '), title:
+        hasActual
+          ? `Round ${slot + 1} (×${w}): predicted ${predRound}, actual ${Math.round(actual)}`
+          : `Round ${slot + 1} (×${w}): predicted ${predRound}` }, [
+      el('div', { class: 'prc-head' }, [
+        el('span', { class: 'prc-slot' }, `R${slot + 1}`),
+      ]),
+      w > 1 ? el('span', { class: 'prc-weight' }, `×${w}`) : null,
+      el('div', { class: 'prc-nums' }, [
+        el('span', { class: 'prc-pred' }, String(predRound)),
+        hasActual ? svgIcon(ICON_CHEV, { cls: 'prc-arrow', sw: 1.8 }) : null,
+        hasActual ? el('span', { class: 'prc-actual' }, String(Math.round(actual))) : null,
+      ]),
+      delta != null
+        ? el('div', { class: 'prc-delta' }, [
+            svgIcon(delta > 0 ? ICON_UP : delta < 0 ? ICON_DOWN : ICON_DASH,
+                    { cls: 'prc-delta-ic', sw: 2 }),
+            el('span', {}, (delta > 0 ? '+' : '') + delta),
+          ])
+        : null,
+    ]);
+  }
+
+  function makePredictionRow({ label, predictedScores, actualScores, predictedTotal, actualTotal, isYou, accentColor }) {
+    const cls = ['pred-row'];
+    if (isYou) cls.push('pred-row-you');
+    const cells = [el('div', { class: 'pred-label' }, label)];
+    cells.push(el('div', { class: 'pred-cell pred-predicted' },
+      predictedTotal != null ? String(predictedTotal) : '—'));
+    cells.push(el('div', { class: 'pred-cell pred-actual' },
+      actualTotal != null ? String(actualTotal) : '—'));
+    let delta = null;
+    if (predictedTotal != null && actualTotal != null) delta = actualTotal - predictedTotal;
+    cells.push(el('div', { class: 'pred-cell pred-delta-cell' }, [makeDeltaBadge(delta)]));
+    const head = el('div', { class: cls.join(' ') }, cells);
+    const accentStyle = accentColor ? `--row-accent:${accentColor};` : '';
+    if (!Array.isArray(predictedScores)) {
+      if (accentStyle) head.setAttribute('style', accentStyle);
+      return head;
+    }
+    const strip = el('div', { class: 'pred-round-strip' },
+      predictedScores.map((p, i) => makeRoundChip(i, p, actualScores ? actualScores[i] : null)));
+    return el('div', {
+      class: 'pred-row-wrap' + (isYou ? ' pred-row-wrap-you' : ''),
+      style: accentStyle || null,
+    }, [head, strip]);
+  }
+
+  // Day-tab pill. Shows weekday + day-of-month. Today is labelled "Today";
+  // tomorrow gets a thinner accent so the upcoming run reads at a glance.
+  function makeDayTab(entry, todayIso) {
+    const dt = new Date(entry.iso + 'T00:00:00');
+    const isToday = entry.iso === todayIso;
+    const dayNames = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
+    const cls = ['pred-day-tab'];
+    if (entry.iso === state.predictSelectedISO) cls.push('is-active');
+    if (isToday) cls.push('is-today');
+    if (entry.status === 'fetching') cls.push('is-loading');
+    if (entry.status === 'error')    cls.push('is-error');
+    return el('button', {
+      type: 'button',
+      class: cls.join(' '),
+      'aria-pressed': entry.iso === state.predictSelectedISO ? 'true' : 'false',
+      onclick: () => {
+        if (state.predictSelectedISO === entry.iso) return;
+        state.predictSelectedISO = entry.iso;
+        renderTodaysPredictions();
+      },
+    }, [
+      el('span', { class: 'pred-day-tab-name' }, isToday ? 'Today' : dayNames[dt.getDay()]),
+      el('span', { class: 'pred-day-tab-num' }, String(dt.getDate())),
+    ]);
+  }
+
+  function renderTodaysPredictions() {
+    ensureSevenDayWindowLoaded();
+    const card = $('#todays-card');
+    if (!card) return;
+    const body = $('#todays-card-body');
+    const sub = $('#todays-card-sub');
+    const status = $('#todays-card-status');
+    body.innerHTML = '';
+
+    if (!state.rivals.length) { card.hidden = true; return; }
+    card.hidden = false;
+
+    const today = todayISO();
+    const selectedISO = state.predictSelectedISO || today;
+    const selected = state.predictWindow.find(w => w.iso === selectedISO) ||
+                     state.predictWindow[0];
+
+    sub.textContent = fmtDateLong(selectedISO);
+
+    // Day-tab strip (always visible — the headline UI for the 7-day view).
+    const tabs = el('div', { class: 'pred-day-tabs', role: 'tablist',
+                             'aria-label': 'Next 7 days' },
+      state.predictWindow.map(entry => makeDayTab(entry, today)));
+    body.appendChild(tabs);
+
+    // Selected-day state branches
+    if (!selected || selected.status === 'fetching') {
+      status.textContent = 'Loading…';
+      status.className = 'todays-card-status is-loading';
+      body.appendChild(el('p', { class: 'pred-empty' },
+        'Fetching this day’s puzzle from maptap.gg…'));
+      return;
+    }
+    if (selected.status === 'error' || !selected.cities) {
+      status.textContent = 'Puzzle unavailable';
+      status.className = 'todays-card-status is-warn';
+      body.appendChild(el('p', { class: 'pred-empty' },
+        'Couldn’t load this day’s puzzle from maptap.gg. Predictions will appear once it’s available.'));
+      return;
+    }
+
+    // Per-player rows. Column headers carry tiny status glyphs so the
+    // PREDICTED / ACTUAL split is scannable even from the chart strip
+    // below it.
+    const header = el('div', { class: 'pred-row pred-row-head' }, [
+      el('div', { class: 'pred-label' }, 'Player'),
+      el('div', { class: 'pred-cell' }, [
+        svgIcon(ICON_TARGET, { cls: 'pred-col-ic' }),
+        el('span', {}, 'Predicted'),
+      ]),
+      el('div', { class: 'pred-cell' }, [
+        svgIcon(ICON_CHECK, { cls: 'pred-col-ic' }),
+        el('span', {}, 'Actual'),
+      ]),
+      el('div', { class: 'pred-cell' }, 'Δ'),
+    ]);
+    body.appendChild(header);
+
+    const isPastOrToday = selectedISO <= today;
+    const myRounds = myProfileRounds();
+    const myPred = predictRoundsForPlayer(myRounds, selected.cities, selectedISO);
+    const myActuals = isPastOrToday ? actualScoresForDay(selectedISO) : { mineScores: null, mineTotal: null };
+    body.appendChild(makePredictionRow({
+      label: `${state.myIcon || '🧍'} ${state.me || 'You'}`,
+      predictedScores: myPred ? myPred.scores : null,
+      actualScores:    myActuals.mineScores,
+      predictedTotal:  myPred ? predTotalFromScores(myPred.scores) : null,
+      actualTotal:     myActuals.mineTotal,
+      isYou: true,
+      accentColor: 'var(--accent-2)',
+    }));
+
+    let predictedCount = myPred ? 1 : 0;
+    state.rivals
+      .slice()
+      .sort((a, b) => a.name.localeCompare(b.name))
+      .forEach(r => {
+        const rounds = rivalRounds(r.id);
+        const pred = predictRoundsForPlayer(rounds, selected.cities, selectedISO);
+        if (pred) predictedCount++;
+        const act = isPastOrToday ? actualScoresForRivalDay(r.id, selectedISO) : { scores: null, total: null };
+        body.appendChild(makePredictionRow({
+          label: `${r.icon || '🎯'} ${r.name}`,
+          predictedScores: pred ? pred.scores : null,
+          actualScores:    act.scores,
+          predictedTotal:  pred ? predTotalFromScores(pred.scores) : null,
+          actualTotal:     act.total,
+          isYou: false,
+          accentColor: r.color,
+        }));
+      });
+
+    if (predictedCount === 0) {
+      status.textContent = 'Need more games';
+      status.className = 'todays-card-status is-muted';
+    } else if (selectedISO > today) {
+      status.textContent = 'Upcoming';
+      status.className = 'todays-card-status is-accent';
+    } else if (myActuals.mineTotal != null) {
+      status.textContent = 'Game played ✓';
+      status.className = 'todays-card-status is-good';
+    } else {
+      status.textContent = selectedISO === today ? 'Pre-game' : 'Not logged';
+      status.className = 'todays-card-status is-accent';
+    }
+  }
+
+  // Sum a round score array using the standard WEIGHTS.
+  function predTotalFromScores(scores) {
+    if (!Array.isArray(scores) || scores.length !== N_LOCS) return null;
+    let t = 0;
+    for (let i = 0; i < N_LOCS; i++) t += scores[i] * WEIGHTS[i];
+    return Math.round(Math.max(0, Math.min(1000, t)));
   }
 
   // ---------- paste-mode entry on dashboard ----------
@@ -1436,7 +1832,14 @@
     }
 
     cardsHost.appendChild(makeStatCard('Win rate', `${(s.winPct * 100).toFixed(1)}%`, `${s.wins}W · ${s.losses}L · ${s.ties}T`, s.winPct >= 0.5 ? 'is-good' : 'is-bad'));
-    cardsHost.appendChild(makeStatCard('Cumulative Δ', (s.cumDiff > 0 ? '+' : '') + s.cumDiff, 'your points − theirs', s.cumDiff >= 0 ? 'is-good' : 'is-bad'));
+    // Average per-game point gap rather than cumulative — comparable
+    // across rivals you've played different counts of games against.
+    const avgDiffAll = s.total ? (s.cumDiff / s.total) : 0;
+    const avgDiffSign = avgDiffAll > 0 ? '+' : '';
+    cardsHost.appendChild(makeStatCard('Avg Δ per game',
+      `${avgDiffSign}${avgDiffAll.toFixed(1)}`,
+      'your points − theirs',
+      avgDiffAll >= 0 ? 'is-good' : 'is-bad'));
     cardsHost.appendChild(makeStatCard('Avg score (you)', s.myAvgAll.toFixed(0), `7d ${s.myAvg7 ? s.myAvg7.toFixed(0) : '—'} · 30d ${s.myAvg30 ? s.myAvg30.toFixed(0) : '—'}`));
     cardsHost.appendChild(makeStatCard(`Avg score (${rival.name})`, s.theirAvgAll.toFixed(0), `7d ${s.theirAvg7 ? s.theirAvg7.toFixed(0) : '—'} · 30d ${s.theirAvg30 ? s.theirAvg30.toFixed(0) : '—'}`));
     cardsHost.appendChild(makeStatCard('Current streak',
@@ -1463,9 +1866,6 @@
     cardsHost.appendChild(makeStatCard('Biggest loss', s.biggestLossGame ? `−${s.biggestLossMargin}` : '—',
       s.biggestLossGame ? `${s.biggestLossGame.myScore}–${s.biggestLossGame.theirScore} on ${fmtDateShort(s.biggestLossGame.date)}` : '—',
       s.biggestLossGame ? 'is-bad' : ''));
-    cardsHost.appendChild(makeStatCard('Projected next', s.projection,
-      s.trendSlope > 0.5 ? '↗ improving' : s.trendSlope < -0.5 ? '↘ declining' : '→ flat',
-      s.trendSlope > 0.5 ? 'is-good' : s.trendSlope < -0.5 ? 'is-bad' : ''));
 
     // callouts
     calloutsHost.innerHTML = '';
@@ -2299,7 +2699,7 @@
     // Participants in display order: You first, then rivals alphabetically.
     const sortedRivals = rivals.slice().sort((a, b) => a.name.localeCompare(b.name));
     const participants = [
-      { type: 'you', label: state.me || 'You', icon: '🧍', color: 'var(--accent-2)' },
+      { type: 'you', label: state.me || 'You', icon: state.myIcon || '🧍', color: 'var(--accent-2)' },
       ...sortedRivals.map(r => ({ type: 'rival', id: r.id, label: r.name, icon: r.icon, color: r.color })),
     ];
 
@@ -2853,6 +3253,151 @@
     }));
     out.sort((a, b) => b.rounds - a.rounds);
     return { rows: out, totalRounds };
+  }
+
+  // ---------- prediction ----------
+  // Per-round prediction blends three signals:
+  //   (1) Geographic similarity (haversine distance) — closer past
+  //       rounds get more weight via 1/(km + ε).
+  //   (2) Recency — exponential decay with a 30-day half-life so a
+  //       player's recent skill dominates over stale rounds.
+  //   (3) Bayesian shrinkage toward the player's overall mean —
+  //       sparse-evidence predictions get pulled back to the baseline
+  //       so a single hot/cold local round can't whipsaw the estimate.
+  // Continent buckets are *not* used here; classifyContinent is still
+  // around for the rival detail's continent breakdown view.
+  const PREDICTION_MIN_ROUNDS = 5;
+  const PREDICTION_RECENCY_HALF_LIFE_DAYS = 30;
+  const PREDICTION_SHRINKAGE_K = 5;       // pseudo-rounds at the player's mean
+  const PREDICTION_DISTANCE_EPS_KM = 25;  // floor on inverse-distance to avoid divide-by-zero / over-weighting exact matches
+  const EARTH_RADIUS_KM = 6371;
+
+  function haversineKm(aLat, aLng, bLat, bLng) {
+    const toRad = (d) => (d * Math.PI) / 180;
+    const dLat = toRad(bLat - aLat);
+    const dLng = toRad(bLng - aLng);
+    const h = Math.sin(dLat / 2) ** 2 +
+              Math.cos(toRad(aLat)) * Math.cos(toRad(bLat)) * Math.sin(dLng / 2) ** 2;
+    return 2 * EARTH_RADIUS_KM * Math.asin(Math.sqrt(h));
+  }
+
+  // Flatten `rounds` (one entry per day) into individual {lat, lng,
+  // score, daysAgo} samples relative to `asOfISO`. Rounds on or after
+  // asOfISO are excluded so we never "predict" using data from the
+  // same day or later — back-testing stays honest, and same-day
+  // actuals don't bleed into their own prediction.
+  function flattenRoundsForPrediction(rounds, asOfISO) {
+    const out = [];
+    if (!asOfISO || !Array.isArray(rounds)) return out;
+    const asOf = Date.parse(asOfISO + 'T00:00:00');
+    if (!Number.isFinite(asOf)) return out;
+    for (const r of rounds) {
+      if (!r || !Array.isArray(r.cities) || !Array.isArray(r.scores) || !r.date) continue;
+      const t = Date.parse(r.date + 'T00:00:00');
+      if (!Number.isFinite(t) || t >= asOf) continue;
+      const daysAgo = (asOf - t) / 86400000;
+      const n = Math.min(r.cities.length, r.scores.length, N_LOCS);
+      for (let i = 0; i < n; i++) {
+        const c = r.cities[i] || {};
+        const lat = Number(c.lat);
+        const lng = Number(c.lng);
+        const s = Number(r.scores[i]);
+        if (!Number.isFinite(lat) || !Number.isFinite(lng) || !Number.isFinite(s)) continue;
+        out.push({ lat, lng, score: s, daysAgo });
+      }
+    }
+    return out;
+  }
+
+  function predictRoundScoreFromHistory(history, targetLat, targetLng, playerMean) {
+    if (!history.length || !Number.isFinite(playerMean)) return playerMean;
+    const recencyLambda = Math.LN2 / PREDICTION_RECENCY_HALF_LIFE_DAYS;
+    let sumW = 0, sumWX = 0, sumW2 = 0;
+    for (const r of history) {
+      const km = haversineKm(targetLat, targetLng, r.lat, r.lng);
+      const distW = 1 / (km + PREDICTION_DISTANCE_EPS_KM);
+      const recW = Math.exp(-r.daysAgo * recencyLambda);
+      const w = distW * recW;
+      sumW += w;
+      sumWX += w * r.score;
+      sumW2 += w * w;
+    }
+    if (sumW <= 0 || sumW2 <= 0) return playerMean;
+    const weightedAvg = sumWX / sumW;
+    // Kish's effective sample size: (Σw)² / Σw² — counts evidence by
+    // weight concentration. A handful of close-and-recent rounds give
+    // nEff ≈ their count; lots of far/old rounds give nEff ≈ 1-2.
+    const nEff = (sumW * sumW) / sumW2;
+    // Shrinkage toward the player's long-term mean. With nEff = 0 we
+    // get the prior outright; with nEff >> K we trust the local mean.
+    return (nEff * weightedAvg + PREDICTION_SHRINKAGE_K * playerMean) /
+           (nEff + PREDICTION_SHRINKAGE_K);
+  }
+
+  // Your own per-round history derived from `state.games`. `state.myProfile`
+  // intentionally drops `gameHistory` to keep the localStorage payload
+  // small (see summarizeMapTapProfile), so the paired Game records are
+  // the authoritative source. The same day appears once per rival you
+  // played with, so dedupe by date — your scores are identical across
+  // those duplicates by construction. `date` is preserved so the
+  // predictor's recency decay and same-day cutoff can use it.
+  function myProfileRounds() {
+    const byDate = new Map();
+    for (const g of state.games) {
+      if (byDate.has(g.date)) continue;
+      if (!Array.isArray(g.cities) || g.cities.length !== N_LOCS) continue;
+      if (!Array.isArray(g.myScores) || g.myScores.length !== N_LOCS) continue;
+      const cities = g.cities.map(c => ({ lat: Number(c.lat), lng: Number(c.lng) }));
+      const scores = g.myScores.map(Number);
+      if (!scores.every(s => Number.isFinite(s))) continue;
+      byDate.set(g.date, { date: g.date, cities, scores });
+    }
+    return Array.from(byDate.values());
+  }
+
+  // Per-rival rounds from `state.games`, restricted to entries that
+  // carry city geometry (i.e. the user had their profile linked when the
+  // game was synced). Returns rounds keyed to the rival's `theirScores`.
+  function rivalRounds(rivalId) {
+    return gamesFor(rivalId)
+      .filter(g => Array.isArray(g.cities) && g.cities.length === N_LOCS &&
+                   Array.isArray(g.theirScores))
+      .map(g => ({ date: g.date, cities: g.cities, scores: g.theirScores }));
+  }
+
+  // Predict a player's weighted total + per-round breakdown for a given
+  // 5-city array, computed as of `asOfISO` (excludes any rounds from
+  // that day or later). Returns null when the player has too little
+  // pre-cutoff history to give a meaningful number.
+  // `confidence` = number of rounds informing the estimate (rough
+  // sample-size cue for the UI, not a probability).
+  function predictRoundsForPlayer(rounds, todaysCities, asOfISO) {
+    if (!Array.isArray(todaysCities) || todaysCities.length !== N_LOCS) return null;
+    const history = flattenRoundsForPrediction(rounds, asOfISO);
+    if (history.length < PREDICTION_MIN_ROUNDS) return null;
+    // Player's overall mean used as the shrinkage prior. Straight
+    // unweighted average keeps the prior stable over time — recency
+    // already lives in the per-round weights.
+    let total = 0;
+    for (const r of history) total += r.score;
+    const playerMean = total / history.length;
+    const scores = new Array(N_LOCS);
+    for (let i = 0; i < N_LOCS; i++) {
+      const c = todaysCities[i];
+      const s = predictRoundScoreFromHistory(history, c.lat, c.lng, playerMean);
+      scores[i] = Math.max(0, Math.min(100, s));
+    }
+    return { scores, confidence: history.length };
+  }
+  function predictTotalForPlayer(rounds, todaysCities, asOfISO) {
+    const rp = predictRoundsForPlayer(rounds, todaysCities, asOfISO);
+    if (!rp) return null;
+    let weighted = 0;
+    for (let i = 0; i < N_LOCS; i++) weighted += rp.scores[i] * WEIGHTS[i];
+    return {
+      score: Math.round(Math.max(0, Math.min(1000, weighted))),
+      confidence: rp.confidence,
+    };
   }
 
   async function syncMapTapForRival(rivalId) {
@@ -3447,6 +3992,7 @@
       version: 1,
       exportedAt: new Date().toISOString(),
       me: state.me,
+      myIcon: state.myIcon,
       rivals: state.rivals,
       games: state.games,
     }, null, 2)], { type: 'application/json' });
@@ -3471,10 +4017,13 @@
         state.rivals = parsed.rivals;
         state.games = parsed.games;
         if (typeof parsed.me === 'string') state.me = parsed.me;
+        if (typeof parsed.myIcon === 'string') state.myIcon = parsed.myIcon;
         persistRivals();
         persistGames();
         persistMe();
+        persistMyIcon();
         $('#my-name').value = state.me;
+        const cur = $('#my-icon-current'); if (cur) cur.textContent = state.myIcon || '🧍';
         refreshRivalSelects();
         if (state.view === 'dashboard') renderDashboard();
         else if (state.view === 'rival') renderRival();
@@ -3506,6 +4055,10 @@
     }
     else if (e.key === KEY.MY_MAPTAP) {
       state.myMapTap = loadString(KEY.MY_MAPTAP, '');
+    }
+    else if (e.key === KEY.MY_ICON) {
+      state.myIcon = loadString(KEY.MY_ICON, '🧍');
+      const cur = $('#my-icon-current'); if (cur) cur.textContent = state.myIcon;
     }
     else if (e.key === KEY.MY_PROFILE) {
       state.myProfile = load(KEY.MY_PROFILE, null);
@@ -3562,6 +4115,60 @@
       persistMe();
     });
 
+    // User icon picker — flyout with the same ICONS palette as rivals,
+    // plus 🧍 as a neutral "no animal" choice for users who don't want
+    // an animal avatar. Closes on outside click or Escape.
+    const myIconBtn     = $('#my-icon-btn');
+    const myIconCurrent = $('#my-icon-current');
+    const myIconFlyout  = $('#my-icon-flyout');
+    const MY_ICONS = ['🧍', ...ICONS];
+    function renderMyIconCurrent() {
+      myIconCurrent.textContent = state.myIcon || '🧍';
+    }
+    function renderMyIconFlyout() {
+      myIconFlyout.innerHTML = '';
+      MY_ICONS.forEach(ic => {
+        myIconFlyout.appendChild(el('button', {
+          type: 'button',
+          class: 'my-icon-swatch' + (ic === state.myIcon ? ' is-selected' : ''),
+          role: 'menuitemradio',
+          'aria-checked': ic === state.myIcon ? 'true' : 'false',
+          'aria-label': `Choose icon ${ic}`,
+          onclick: () => {
+            state.myIcon = ic;
+            persistMyIcon();
+            renderMyIconCurrent();
+            closeMyIconFlyout();
+            // Refresh anywhere the icon is on screen
+            if (state.view === 'dashboard') renderDashboard();
+            else if (state.view === 'matrix') renderMatrix();
+          },
+        }, ic));
+      });
+    }
+    function openMyIconFlyout() {
+      renderMyIconFlyout();
+      myIconFlyout.hidden = false;
+      myIconBtn.setAttribute('aria-expanded', 'true');
+    }
+    function closeMyIconFlyout() {
+      myIconFlyout.hidden = true;
+      myIconBtn.setAttribute('aria-expanded', 'false');
+    }
+    renderMyIconCurrent();
+    myIconBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      if (myIconFlyout.hidden) openMyIconFlyout();
+      else closeMyIconFlyout();
+    });
+    document.addEventListener('click', (e) => {
+      if (myIconFlyout.hidden) return;
+      if (myIconFlyout.contains(e.target) || myIconBtn.contains(e.target)) return;
+      closeMyIconFlyout();
+    });
+    document.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape' && !myIconFlyout.hidden) closeMyIconFlyout();
+    });
 
     $('#clear-games-btn').addEventListener('click', clearAllGames);
 
