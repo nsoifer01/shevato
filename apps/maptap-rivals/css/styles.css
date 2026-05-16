@@ -52,6 +52,12 @@
   --ctrl-pad-x: 0.95rem;
   --ctrl-font: 0.9rem;
 
+  /* Monospace stack used for numeric values in the predictions table so
+     digits march in lockstep — gives the dashboard a sports-board feel
+     without changing the body font. */
+  --mono: "JetBrains Mono", "SF Mono", "Cascadia Code", ui-monospace,
+          "Roboto Mono", "Menlo", monospace;
+
   font-family: -apple-system, BlinkMacSystemFont, "Inter", "Segoe UI", system-ui, sans-serif;
 }
 
@@ -242,9 +248,10 @@ body.maptap-rivals-app button {
 
 .section-title {
   margin: 0;
-  font-size: 1.1rem;
+  font-size: 1.08rem;
   font-weight: 600;
   color: var(--text);
+  letter-spacing: -0.01em;
 }
 
 .empty-state {
@@ -393,14 +400,14 @@ body.maptap-rivals-app button {
 }
 
 .profile-hint {
-  margin-top: 0.5rem;
-  padding: 0.5rem 0.7rem;
-  background: var(--surface);
-  border: 1px dashed var(--border);
+  margin-top: 0.55rem;
+  padding: 0.55rem 0.8rem;
+  background: rgba(255, 255, 255, 0.015);
+  border: 1px solid var(--border);
   border-radius: var(--radius-sm);
   font-size: 0.78rem;
   color: var(--muted);
-  line-height: 1.4;
+  line-height: 1.5;
 }
 .profile-hint strong { color: var(--text); font-weight: 600; }
 
@@ -790,31 +797,448 @@ body.maptap-rivals-app button {
 .dash-summary {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
-  gap: 0.75rem;
-  margin-bottom: 1.25rem;
+  gap: 0.65rem;
+  margin-bottom: 1.4rem;
 }
 
+/* Aligned with .stat-card on the rival page so the dashboard's quick
+   stats and the rival detail stats read as the same visual family. */
 .dash-summary-card {
   background: var(--surface);
   border: 1px solid var(--border);
   border-radius: var(--radius-sm);
-  padding: 0.75rem 0.9rem;
+  padding: 0.7rem 0.85rem;
+  min-height: 78px;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 0.05rem;
 }
 .dash-summary-card .label {
-  font-size: 0.7rem;
+  font-size: 0.68rem;
   color: var(--muted);
   text-transform: uppercase;
   letter-spacing: 0.06em;
   font-weight: 600;
 }
 .dash-summary-card .value {
-  font-size: 1.5rem;
+  font-size: 1.4rem;
   font-weight: 700;
-  margin-top: 0.2rem;
+  margin-top: 0.15rem;
   color: var(--text);
   line-height: 1.1;
+  letter-spacing: -0.01em;
 }
-.dash-summary-card .sub { font-size: 0.78rem; color: var(--muted); margin-top: 0.1rem; }
+.dash-summary-card .sub {
+  font-size: 0.74rem;
+  color: var(--muted);
+  margin-top: 0.15rem;
+}
+
+/* ---------- Today's predictions card ----------
+   Head-to-head card comparing each player's predicted total against
+   their actual once results sync. Visual language mirrors the rival
+   detail page: surface card, soft section header underline, muted
+   labels, premium pill states. City names from the daily puzzle are
+   intentionally never rendered — only scores. */
+
+.todays-card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 1.05rem 1.15rem 1.15rem;
+  margin-bottom: 1.4rem;
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.22);
+}
+.todays-card[hidden] { display: none; }
+.todays-card-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0.65rem 1rem;
+  flex-wrap: wrap;
+  padding-bottom: 0.85rem;
+  margin-bottom: 0.9rem;
+  border-bottom: 1px solid var(--border);
+}
+.todays-card-title { display: flex; align-items: baseline; gap: 0.65rem; flex-wrap: wrap; }
+.todays-card-title .section-title {
+  margin: 0;
+  letter-spacing: -0.01em;
+}
+.todays-card-sub {
+  color: var(--muted);
+  font-size: 0.82rem;
+  letter-spacing: 0.01em;
+}
+.todays-card-status {
+  font-size: 0.66rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  padding: 0.22rem 0.6rem;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  color: var(--muted);
+  background: var(--surface-2);
+  white-space: nowrap;
+}
+.todays-card-status.is-loading {
+  color: var(--accent-2);
+  background: var(--accent-soft);
+  border-color: var(--accent-strong);
+}
+.todays-card-status.is-warn {
+  color: var(--warn);
+  background: rgba(251, 146, 60, 0.10);
+  border-color: rgba(251, 146, 60, 0.30);
+}
+.todays-card-status.is-good {
+  color: var(--good);
+  background: var(--good-soft);
+  border-color: rgba(74, 222, 128, 0.30);
+}
+.todays-card-status.is-accent {
+  color: var(--accent-2);
+  background: var(--accent-soft);
+  border-color: var(--accent-strong);
+}
+.todays-card-status.is-muted {
+  color: var(--muted);
+  background: var(--surface-2);
+  border-color: var(--border);
+}
+
+.todays-card-body { display: flex; flex-direction: column; gap: 0.55rem; }
+
+/* Tiny inline-SVG slot used for column headers, delta arrows, and chip
+   chevrons. Width-bound so the icon always pairs cleanly with adjacent
+   text without nudging the baseline. */
+.pred-ic {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 0.92em;
+  height: 0.92em;
+  flex-shrink: 0;
+}
+.pred-ic > svg { width: 100%; height: 100%; display: block; }
+.pred-col-ic { color: var(--muted-2); margin-right: 0.32rem; }
+.pred-row-head .pred-cell { display: inline-flex; align-items: center; justify-content: flex-end; gap: 0; }
+
+.pred-row {
+  display: grid;
+  grid-template-columns: minmax(140px, 1.6fr) repeat(3, minmax(74px, 1fr));
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.65rem 0.8rem 0.65rem 0.85rem;
+  border-radius: var(--radius-sm);
+  background: var(--surface-2);
+  border-left: 3px solid var(--row-accent, transparent);
+}
+.pred-row-head {
+  background: transparent;
+  border-left: 0;
+  padding: 0 0.85rem 0.4rem;
+  color: var(--muted-2);
+  font-size: 0.66rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  border-bottom: 1px solid var(--border);
+  margin-bottom: 0.2rem;
+}
+.pred-row-head .pred-cell { text-align: right; color: var(--muted-2); font-family: inherit; }
+.pred-row-you { background: var(--accent-soft); }
+.pred-label {
+  font-weight: 600;
+  color: var(--text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  letter-spacing: -0.005em;
+}
+.pred-cell {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  font-weight: 700;
+  letter-spacing: -0.005em;
+  font-family: var(--mono);
+}
+.pred-predicted { color: var(--accent-2); }
+.pred-actual    { color: var(--text); }
+.pred-delta-cell { display: flex; justify-content: flex-end; }
+.pred-empty {
+  margin: 0;
+  padding: 0.65rem 0.2rem;
+  color: var(--muted);
+  font-size: 0.88rem;
+  line-height: 1.5;
+}
+
+/* Pill-shaped delta badge for the Δ column. Soft tint + matching arrow
+   so direction reads instantly even at small sizes. */
+.pred-delta-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  font-family: var(--mono);
+  font-variant-numeric: tabular-nums;
+  font-weight: 700;
+  font-size: 0.84rem;
+  letter-spacing: -0.01em;
+  padding: 0.18rem 0.5rem 0.18rem 0.42rem;
+  border-radius: 999px;
+  border: 1px solid transparent;
+  line-height: 1;
+}
+.pred-delta-badge.is-pos {
+  color: var(--good);
+  background: var(--good-soft);
+  border-color: rgba(74, 222, 128, 0.28);
+}
+.pred-delta-badge.is-neg {
+  color: var(--bad);
+  background: var(--bad-soft);
+  border-color: rgba(248, 113, 113, 0.26);
+}
+.pred-delta-badge.is-zero {
+  color: var(--muted);
+  background: var(--tie-soft);
+  border-color: rgba(154, 163, 178, 0.24);
+}
+.pred-delta-badge.is-na {
+  color: var(--muted-2);
+  background: transparent;
+  border-color: transparent;
+  padding: 0 0.4rem;
+  font-family: inherit;
+}
+.pred-delta-num { display: inline-block; }
+
+@media (max-width: 520px) {
+  .pred-row { grid-template-columns: minmax(100px, 1.3fr) repeat(3, minmax(58px, 1fr)); gap: 0.45rem; font-size: 0.92rem; padding: 0.55rem 0.6rem; }
+  .pred-row-head { font-size: 0.6rem; padding: 0 0.6rem 0.3rem; }
+  .pred-delta-badge { font-size: 0.78rem; padding: 0.15rem 0.4rem; }
+}
+
+/* Wraps a player row + its per-round chip strip into one visual block
+   so the strip reads as belonging to the totals above. Inherits the
+   per-player left accent so the totals row and chip strip share it. */
+.pred-row-wrap {
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+  padding: 0.7rem 0.85rem 0.75rem;
+  border-radius: var(--radius-sm);
+  background: var(--surface-2);
+  border-left: 3px solid var(--row-accent, transparent);
+}
+.pred-row-wrap-you { background: var(--accent-soft); }
+.pred-row-wrap > .pred-row { background: transparent; padding: 0; gap: 0.75rem; border-left: 0; }
+
+/* Day-tab strip across the top of the predictions body. Inactive pills
+   sit on surface-2, today wears a subtle accent ring, and the selected
+   pill uses accent-soft + accent border to match the rest of the
+   "selected state" treatment elsewhere in the app — no harsh fills. */
+.pred-day-tabs {
+  display: flex;
+  gap: 0.4rem;
+  overflow-x: auto;
+  padding: 0.05rem 0.15rem 0.75rem;
+  margin: -0.2rem -0.15rem 0.6rem;
+  scrollbar-width: thin;
+}
+.pred-day-tab {
+  flex: 0 0 auto;
+  min-width: 62px;
+  padding: 0.42rem 0.6rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface-2);
+  color: var(--muted);
+  font: inherit;
+  cursor: pointer;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.08rem;
+  line-height: 1.1;
+  transition: border-color 0.16s ease, background 0.16s ease, color 0.16s ease, transform 0.12s ease;
+}
+.pred-day-tab:hover {
+  border-color: var(--border-strong);
+  background: var(--surface-3);
+  color: var(--text);
+}
+.pred-day-tab.is-today { color: var(--text); }
+.pred-day-tab.is-today .pred-day-tab-num { color: var(--accent-2); }
+.pred-day-tab.is-active {
+  background: linear-gradient(180deg,
+              rgba(99, 102, 241, 0.22) 0%,
+              rgba(99, 102, 241, 0.12) 100%);
+  border-color: var(--accent);
+  color: var(--accent-2);
+  box-shadow: inset 0 1px 0 0 rgba(255, 255, 255, 0.04),
+              0 0 0 1px rgba(99, 102, 241, 0.18);
+}
+.pred-day-tab.is-active::after {
+  content: '';
+  position: absolute;
+  left: 50%;
+  top: -1px;
+  transform: translateX(-50%);
+  width: 24px;
+  height: 2px;
+  border-radius: 0 0 4px 4px;
+  background: var(--accent);
+}
+.pred-day-tab { position: relative; }
+.pred-day-tab.is-active .pred-day-tab-num { color: var(--accent-2); }
+.pred-day-tab.is-loading { opacity: 0.65; }
+.pred-day-tab.is-error   { border-color: rgba(251, 146, 60, 0.45); color: var(--warn); }
+.pred-day-tab:focus-visible { outline: 2px solid var(--accent-2); outline-offset: 2px; }
+.pred-day-tab-name {
+  font-size: 0.62rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  font-weight: 700;
+  color: var(--muted);
+}
+.pred-day-tab.is-active .pred-day-tab-name { color: var(--accent-2); }
+.pred-day-tab.is-today  .pred-day-tab-name { color: var(--accent-2); }
+.pred-day-tab-num {
+  font-size: 1.02rem;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.01em;
+}
+
+/* Per-round chips — premium compact stat modules. A thin top accent
+   line keys the chip to its Δ direction; the background carries a
+   gentle tint of the same semantic so the eye reads five chips in a
+   single sweep without any harsh strokes. ×weight rides as a small
+   superscript badge in the top-right corner. */
+.pred-round-strip {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 0.45rem;
+}
+.prc {
+  position: relative;
+  background: rgba(255, 255, 255, 0.015);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 0.55rem 0.5rem 0.5rem;
+  display: grid;
+  grid-template-rows: auto auto auto;
+  row-gap: 0.22rem;
+  align-items: center;
+  justify-items: center;
+  text-align: center;
+  overflow: hidden;
+}
+/* Thin top accent line drawn via ::before so border-radius keeps clean
+   rounded corners on the chip itself. Hidden by default; the Δ status
+   modifiers below promote it. */
+.prc::before {
+  content: '';
+  position: absolute;
+  inset: 0 0 auto 0;
+  height: 2px;
+  background: transparent;
+  border-radius: var(--radius-sm) var(--radius-sm) 0 0;
+}
+.prc-head {
+  display: flex;
+  align-items: baseline;
+  gap: 0.3rem;
+  font-size: 0.58rem;
+  color: var(--muted-2);
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+.prc-slot   { font-weight: 700; color: var(--muted); }
+.prc-weight {
+  position: absolute;
+  top: 0.32rem;
+  right: 0.4rem;
+  font-size: 0.54rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  color: var(--muted);
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 0.06rem 0.22rem;
+  line-height: 1.1;
+  font-variant-numeric: tabular-nums;
+}
+.prc-nums {
+  display: flex;
+  align-items: center;
+  gap: 0.32rem;
+  font-family: var(--mono);
+  font-size: 0.98rem;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.02em;
+}
+.prc-pred   { color: var(--accent-2); }
+.prc-actual { color: var(--text); }
+.prc-arrow  {
+  color: var(--muted-2);
+  width: 0.72em;
+  height: 0.72em;
+  opacity: 0.85;
+}
+.prc-delta {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.2rem;
+  font-family: var(--mono);
+  font-size: 0.7rem;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.01em;
+  min-height: 0.85rem;
+  line-height: 1;
+}
+.prc-delta-ic { width: 0.78em; height: 0.78em; }
+
+.prc-pos {
+  background: var(--good-soft);
+  border-color: rgba(74, 222, 128, 0.30);
+}
+.prc-pos::before { background: linear-gradient(90deg,
+                   transparent 0%, var(--good) 50%, transparent 100%); opacity: 0.65; }
+.prc-pos .prc-delta { color: var(--good); }
+.prc-pos .prc-weight { color: var(--good); border-color: rgba(74, 222, 128, 0.25); background: rgba(74, 222, 128, 0.07); }
+
+.prc-neg {
+  background: var(--bad-soft);
+  border-color: rgba(248, 113, 113, 0.28);
+}
+.prc-neg::before { background: linear-gradient(90deg,
+                   transparent 0%, var(--bad) 50%, transparent 100%); opacity: 0.6; }
+.prc-neg .prc-delta { color: var(--bad); }
+.prc-neg .prc-weight { color: var(--bad); border-color: rgba(248, 113, 113, 0.22); background: rgba(248, 113, 113, 0.06); }
+
+.prc-zero {
+  background: var(--tie-soft);
+  border-color: rgba(154, 163, 178, 0.28);
+}
+.prc-zero::before { background: linear-gradient(90deg,
+                    transparent 0%, var(--muted) 50%, transparent 100%); opacity: 0.4; }
+.prc-zero .prc-delta { color: var(--muted); }
+
+@media (max-width: 520px) {
+  .pred-round-strip { gap: 0.32rem; }
+  .prc { padding: 0.45rem 0.3rem 0.4rem; }
+  .prc-nums { font-size: 0.86rem; gap: 0.22rem; }
+  .prc-head { font-size: 0.55rem; }
+  .prc-weight { font-size: 0.5rem; top: 0.25rem; right: 0.28rem; }
+}
 
 /* ---------- Dashboard rival grid ---------- */
 
@@ -1053,6 +1477,11 @@ body.maptap-rivals-app button {
   border: 1px solid var(--border);
   border-radius: var(--radius-sm);
   padding: 0.7rem 0.85rem;
+  min-height: 78px;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 0.05rem;
 }
 .stat-card .label {
   font-size: 0.68rem;
@@ -1066,8 +1495,13 @@ body.maptap-rivals-app button {
   font-weight: 700;
   margin-top: 0.15rem;
   line-height: 1.1;
+  letter-spacing: -0.01em;
 }
-.stat-card .sub { font-size: 0.74rem; color: var(--muted); margin-top: 0.1rem; }
+.stat-card .sub {
+  font-size: 0.74rem;
+  color: var(--muted);
+  margin-top: 0.15rem;
+}
 .stat-card.is-good .value { color: var(--good); }
 .stat-card.is-bad .value { color: var(--bad); }
 .stat-card.is-accent .value { color: var(--accent-2); }
@@ -2229,6 +2663,78 @@ body.maptap-rivals-app select option {
   border-color: var(--accent);
   color: var(--accent-2);
   transform: none;
+}
+
+/* User icon picker in the settings strip — small button showing the
+   current icon, with a floating grid flyout that mirrors the rival
+   icon-swatch palette but at a slightly tighter density. */
+.my-icon-wrap { position: relative; display: inline-flex; }
+.my-icon-btn {
+  width: 28px;
+  height: 28px;
+  border-radius: 7px;
+  border: 1px solid var(--border);
+  background: rgba(255, 255, 255, 0.025);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  padding: 0;
+  font-size: 1.02rem;
+  line-height: 1;
+  transition: background 0.15s ease, border-color 0.15s ease;
+}
+.my-icon-btn:hover { background: var(--surface-3); border-color: var(--border-strong); }
+.my-icon-btn:focus-visible {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-soft);
+}
+.my-icon-current { display: inline-block; }
+.my-icon-flyout {
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 0;
+  z-index: 40;
+  background: var(--surface-2);
+  border: 1px solid var(--border-strong);
+  border-radius: 10px;
+  padding: 0.45rem;
+  box-shadow: 0 12px 28px rgba(0, 0, 0, 0.35);
+  display: grid;
+  grid-template-columns: repeat(8, 28px);
+  gap: 0.3rem;
+  min-width: max-content;
+}
+.my-icon-flyout[hidden] { display: none; }
+.my-icon-swatch {
+  width: 28px;
+  height: 28px;
+  border-radius: 6px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid var(--border);
+  font-size: 0.98rem;
+  line-height: 1;
+  padding: 0;
+  transition: background 0.12s ease, border-color 0.12s ease;
+}
+.my-icon-swatch:hover  { background: var(--surface-3); border-color: var(--border-strong); }
+.my-icon-swatch:focus-visible {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-soft);
+}
+.my-icon-swatch.is-selected,
+.my-icon-swatch.is-selected:hover {
+  background: var(--accent-soft);
+  border-color: var(--accent);
+}
+@media (max-width: 520px) {
+  .my-icon-flyout { grid-template-columns: repeat(6, 28px); }
 }
 
 /* Footer — top hairline, compact buttons, balanced hierarchy. */

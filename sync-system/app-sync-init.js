@@ -74,6 +74,7 @@ const APP_SYNC_CONFIG = {
       'maptapRivalsRivals',         // Rival list (id, name, color, icon, maptapUsername, createdAt)
       'maptapRivalsGames',          // All daily games (id, rivalId, date, myScore, theirScore, note)
       'maptapRivalsMe',             // Owner display name
+      'maptapRivalsMyIcon',         // Owner avatar icon (emoji from ICONS palette)
       'maptapRivalsMyMapTap',       // Your maptap.gg username (for syncing)
       'maptapRivalsMyProfile',      // Verified profile snapshot (nickname/joinDate/avg/best)
       'maptapRivalsSettings',       // UI prefs (last-selected rival, etc.)
