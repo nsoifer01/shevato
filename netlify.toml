@@ -20,6 +20,15 @@
   status = 301
   force = true
 
+# Mario Kart was renamed from tracker.html to index.html so every app shares
+# the same entry filename. Permanent redirect preserves inbound links and
+# anything Google already has indexed.
+[[redirects]]
+  from = "/apps/mario-kart/tracker.html"
+  to = "/apps/mario-kart/index.html"
+  status = 301
+  force = true
+
 # Baseline security headers for every response. The CSP is intentionally
 # Report-Only because main.js (jQuery + the auth modal) sets element
 # styles at runtime and writes inline event-style attributes via
