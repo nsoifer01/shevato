@@ -178,10 +178,8 @@ class SettingsView {
         if (!confirmed) return;
 
         try {
-            const { db } = await import('../../../../firebase-config.js');
-            const { doc, deleteDoc } = await import('https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js');
-            const ref = doc(db, `users/${user.uid}/apps/gymTrackerApp`);
-            await deleteDoc(ref);
+            const { eraseCloudData } = await import('../../../../sync-system/storage-sync-robust.js');
+            await eraseCloudData('gymTrackerApp');
             showToast('Cloud data deleted. Sign out + back in to re-sync.', 'success', 5000);
         } catch (error) {
             console.error('Failed to delete cloud data:', error);

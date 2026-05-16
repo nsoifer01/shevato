@@ -269,16 +269,29 @@ class GymTrackerApp {
     }
 
     /**
-     * Update achievements based on current data
+     * Update achievements based on current data.
+     *
+     * Skip the persist step when nothing actually changed. Otherwise the
+     * live-sync listener path (remote delivery → `refreshFromStorage` →
+     * `updateAchievements` → unconditional `saveAchievements`) writes the
+     * same achievements blob back to localStorage on every remote
+     * delivery, the sync layer flushes it to Firestore, the peer browser
+     * sees a "new" write, fires its own refresh, and the two browsers
+     * ping-pong achievements every few seconds with no user input — each
+     * round producing a fresh Firestore revision.
      */
     updateAchievements() {
-        const oldAchievements = [...this.achievements];
+        const before = JSON.stringify(this.achievements.map(a => a.toJSON()));
         this.achievements = AchievementService.updateAchievementProgress(
             this.achievements,
             this.workoutSessions
         );
+        const after = JSON.stringify(this.achievements.map(a => a.toJSON()));
 
-        // Check for newly unlocked achievements
+        if (before === after) return;
+
+        // Newly-unlocked detection only needs to run when something moved.
+        const oldAchievements = JSON.parse(before).map(j => Achievement.fromJSON(j));
         const newlyUnlocked = AchievementService.getNewlyUnlocked(oldAchievements, this.achievements);
         if (newlyUnlocked.length > 0) {
             this.showAchievementUnlocked(newlyUnlocked);
