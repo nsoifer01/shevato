@@ -51,6 +51,51 @@ test('hashValue: produces stable output length cap of 16 chars', () => {
     assert.ok(h.length <= 16);
 });
 
+// Regression: the previous btoa(...).slice(0,16) implementation only
+// reflected the first 12 bytes of the JSON, so any field whose value
+// lived past byte 12 (e.g. player1 in {"player1":"X","player2":...})
+// produced the same hash regardless of value. queueWrite then dropped
+// every subsequent name change as a no-op, silently breaking
+// cross-browser sync for mario-kart and football-h2h.
+test('hashValue: distinguishes values past byte 12 of the JSON', () => {
+    const a = { player1: 'Alice', player2: 'M', player3: 'N', player4: 'P4' };
+    const b = { player1: 'Bob',   player2: 'M', player3: 'N', player4: 'P4' };
+    assert.notEqual(hashValue(a), hashValue(b));
+});
+
+// Same regression, string form — queueWrite hashes the raw setItem
+// string, where the same byte-12 bug also bit because JSON.stringify
+// of a string adds a leading quote and pushes the value even further
+// out.
+test('hashValue: distinguishes values past byte 12 in the string-JSON form', () => {
+    const a = '{"player1":"Alice","player2":"M","player3":"N","player4":"P4"}';
+    const b = '{"player1":"Bob","player2":"M","player3":"N","player4":"P4"}';
+    assert.notEqual(hashValue(a), hashValue(b));
+});
+
+// Regression: Firestore returns Map fields with keys in a different order
+// than the writer inserted them. If hashValue cared about key order, every
+// `app.refreshFromStorage()` writeback after a remote delivery would hash
+// differently from the just-stored value, queueWrite would not dedupe it,
+// and the apps re-saved on remote-update (gym tracker's updateAchievements,
+// football's updatePlayerNames) entered a per-RTT ping-pong loop.
+test('hashValue: same content with different key order hashes the same', () => {
+    const a = { player1: 'Alice', player2: 'Bob' };
+    const b = { player2: 'Bob',   player1: 'Alice' };
+    assert.equal(hashValue(a), hashValue(b));
+});
+
+test('hashValue: nested key reorderings also collapse to the same hash', () => {
+    const a = { games: [{ id: 1, score: 5 }, { id: 2, score: 3 }] };
+    const b = { games: [{ score: 5, id: 1 }, { score: 3, id: 2 }] };
+    assert.equal(hashValue(a), hashValue(b));
+});
+
+// Arrays are semantic ordering — must NOT be sorted away.
+test('hashValue: array order is preserved (not sorted)', () => {
+    assert.notEqual(hashValue([1, 2, 3]), hashValue([3, 2, 1]));
+});
+
 /* -------------------- parseValue -------------------- */
 
 test('parseValue: null and undefined return null', () => {

@@ -6,44 +6,79 @@
 // transparent — no this-binding, no Firebase types, no globals.
 
 /**
- * Compact deterministic hash of a JSON-serialisable value. Used to
- * short-circuit `applyRemoteChange` when Firestore re-emits the same
- * document body on listener re-attach.
+ * Compact deterministic hash of a JSON-serialisable value. Used by
+ * `queueWrite` to drop no-op writes and by `applyRemoteChange` to
+ * short-circuit when Firestore re-emits the same document body on
+ * listener re-attach.
  *
- * Two implementations: btoa for Latin1 strings (fast), and a
- * 32-bit djb2-ish hash for anything containing characters outside
- * Latin1 (emoji, non-ASCII). The exact algorithm doesn't matter
- * provided it's deterministic across reloads.
+ * Must hash EVERY input byte AND ignore object key ordering.
+ *
+ * Previous bug 1: truncating `btoa(jsonString)` to 16 chars only encoded
+ * the first 12 bytes, so any value living past byte 12 of the JSON could
+ * not change the hash. Fixed by switching to 32-bit djb2 over all bytes.
+ *
+ * Previous bug 2 (this one): even with full-byte djb2, `JSON.stringify`
+ * preserves the in-memory key order of objects, and Firestore's Map
+ * deserialisation returns keys in a different order than the writer used.
+ * So after a remote delivery, the receiver's local object had a different
+ * key ordering than what its own `saveX()` would produce, the resulting
+ * JSON differed byte-for-byte, the hash differed, `queueWrite` did not
+ * recognise the writeback as a no-op, and every app that re-saved on the
+ * remote-update path (gym tracker's `updateAchievements`, football's
+ * `updatePlayerNames`) entered a per-RTT ping-pong loop. Fixed by
+ * sorting keys recursively before serialising — the hash becomes a
+ * property of the value's *content*, not its memory layout.
  *
  * @param {*} value
- * @returns {string} 16-char hash
+ * @returns {string} hex hash, up to 8 chars
  */
 export function hashValue(value) {
   if (value === null || value === undefined) return 'null';
 
-  const jsonString = JSON.stringify(value);
+  const jsonString = canonicalStringify(value);
 
-  try {
-    // btoa rejects characters > U+00FF; we catch and fall through.
-    if (typeof btoa === 'function') {
-      return btoa(jsonString).slice(0, 16);
-    }
-    // Node has Buffer; equivalent base64 path.
-    if (typeof Buffer !== 'undefined') {
-      // eslint-disable-next-line no-undef
-      return Buffer.from(jsonString, 'latin1').toString('base64').slice(0, 16);
-    }
-  } catch (_) {
-    /* fall through to manual hash */
-  }
-
-  let hash = 0;
+  let hash = 5381;
   for (let i = 0; i < jsonString.length; i++) {
-    const char = jsonString.charCodeAt(i);
-    hash = ((hash << 5) - hash) + char;
-    hash = hash & hash;
+    hash = (((hash << 5) + hash) + jsonString.charCodeAt(i)) | 0;
   }
-  return Math.abs(hash).toString(16).padStart(16, '0').slice(0, 16);
+  // >>> 0 forces unsigned 32-bit so toString(16) never includes a sign.
+  return (hash >>> 0).toString(16);
+}
+
+/**
+ * `JSON.stringify` with object keys sorted alphabetically at every depth.
+ * Arrays preserve order (semantic). `undefined` values and functions drop
+ * just like the built-in stringify. Non-finite numbers (`NaN`, `±Infinity`)
+ * become `null` to stay JSON-valid.
+ */
+function canonicalStringify(value) {
+  if (value === null) return 'null';
+  if (typeof value === 'number') return Number.isFinite(value) ? String(value) : 'null';
+  if (typeof value === 'boolean') return value ? 'true' : 'false';
+  if (typeof value === 'string') return JSON.stringify(value);
+  if (typeof value !== 'object') return 'null'; // function / undefined / symbol
+
+  if (Array.isArray(value)) {
+    let out = '[';
+    for (let i = 0; i < value.length; i++) {
+      if (i > 0) out += ',';
+      const v = value[i];
+      out += v === undefined ? 'null' : canonicalStringify(v);
+    }
+    return out + ']';
+  }
+
+  const keys = Object.keys(value).sort();
+  let out = '{';
+  let first = true;
+  for (const k of keys) {
+    const v = value[k];
+    if (v === undefined) continue; // match JSON.stringify behaviour for objects
+    if (!first) out += ',';
+    first = false;
+    out += JSON.stringify(k) + ':' + canonicalStringify(v);
+  }
+  return out + '}';
 }
 
 /**
