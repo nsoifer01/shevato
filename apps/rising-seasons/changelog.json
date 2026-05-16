@@ -1,6 +1,229 @@
 {
   "updates": [
     {
+      "builtAt": "2026-05-16T06:58:41.715Z",
+      "totals": {
+        "seasons": 16550,
+        "delta": -3
+      },
+      "shapeCounts": {
+        "declining": 218,
+        "rollercoaster": 3560,
+        "rebound": 2796,
+        "mid-peak": 1115,
+        "big-finale": 4047,
+        "bad-finale": 1044,
+        "front-loaded": 547,
+        "saved-best-for-last": 431,
+        "slow-burn": 873,
+        "rising": 596,
+        "consistent": 453
+      },
+      "shapeDeltas": {
+        "declining": 2,
+        "rollercoaster": -4,
+        "rebound": 13,
+        "big-finale": 7,
+        "bad-finale": -2,
+        "front-loaded": 1,
+        "saved-best-for-last": -2,
+        "slow-burn": 1,
+        "rising": 2,
+        "consistent": -1
+      },
+      "added": [
+        {
+          "seriesId": "tt0388629",
+          "title": "One Piece",
+          "season": 1,
+          "seasonYear": 1999
+        },
+        {
+          "seriesId": "tt15716776",
+          "title": "Devil May Cry",
+          "season": 2,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt3006802",
+          "title": "Outlander",
+          "season": 8,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt39122769",
+          "title": "Marriagetoxin",
+          "season": 1,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt27814427",
+          "title": "Skibidi Toilet",
+          "season": 19,
+          "seasonYear": 2023
+        },
+        {
+          "seriesId": "tt1601141",
+          "title": "WWE NXT",
+          "season": 20,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt0765425",
+          "title": "Top Chef",
+          "season": 23,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt3204810",
+          "title": "On Cinema",
+          "season": 15,
+          "seasonYear": 2024
+        },
+        {
+          "seriesId": "tt1252370",
+          "title": "The Real Housewives of Atlanta",
+          "season": 17,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt36850092",
+          "title": "The Real Housewives of Rhode Island",
+          "season": 1,
+          "seasonYear": 2026
+        }
+      ],
+      "removed": [
+        {
+          "seriesId": "tt30459041",
+          "title": "Your Friends & Neighbors",
+          "season": 2,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt9679542",
+          "title": "Dr. Stone",
+          "season": 4,
+          "seasonYear": 2025
+        },
+        {
+          "seriesId": "tt31589662",
+          "title": "Georgie & Mandy's First Marriage",
+          "season": 2,
+          "seasonYear": 2025
+        },
+        {
+          "seriesId": "tt11379026",
+          "title": "Ghosts",
+          "season": 5,
+          "seasonYear": 2025
+        },
+        {
+          "seriesId": "tt26591110",
+          "title": "Elsbeth",
+          "season": 3,
+          "seasonYear": 2025
+        },
+        {
+          "seriesId": "tt0203259",
+          "title": "Law & Order: Special Victims Unit",
+          "season": 27,
+          "seasonYear": 2025
+        },
+        {
+          "seriesId": "tt11147852",
+          "title": "Dorohedoro",
+          "season": 2,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt1694423",
+          "title": "MasterChef: USA",
+          "season": 16,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt6645582",
+          "title": "Summer House",
+          "season": 10,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt7914040",
+          "title": "The Floor",
+          "season": 5,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt14721554",
+          "title": "Below Deck Down Under",
+          "season": 4,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt30468994",
+          "title": "Very Important People",
+          "season": 3,
+          "seasonYear": 2025
+        },
+        {
+          "seriesId": "tt39219780",
+          "title": "Crime in Progress",
+          "season": 1,
+          "seasonYear": 2026
+        }
+      ],
+      "ratingSwings": [
+        {
+          "seriesId": "tt27814427",
+          "title": "Skibidi Toilet",
+          "season": 9,
+          "from": 5.4,
+          "to": 4.97,
+          "delta": -0.43
+        },
+        {
+          "seriesId": "tt27814427",
+          "title": "Skibidi Toilet",
+          "season": 17,
+          "from": 6.93,
+          "to": 6.57,
+          "delta": -0.36
+        },
+        {
+          "seriesId": "tt33546863",
+          "title": "Off Campus",
+          "season": 1,
+          "from": 8.24,
+          "to": 8.55,
+          "delta": 0.31
+        },
+        {
+          "seriesId": "tt9702106",
+          "title": "The Heart of Sergio Ramos",
+          "season": 1,
+          "from": 7.55,
+          "to": 7.28,
+          "delta": -0.27
+        },
+        {
+          "seriesId": "tt32604054",
+          "title": "Regular Show: The Lost Tapes",
+          "season": 1,
+          "from": 8.57,
+          "to": 8.33,
+          "delta": -0.24
+        }
+      ],
+      "modifiedCounts": {
+        "seriesVotes": 11923,
+        "avgRating": 450,
+        "shapes": 64,
+        "episodeCount": 8,
+        "seriesRating": 52
+      }
+    },
+    {
       "builtAt": "2026-05-15T07:21:39.030Z",
       "totals": {
         "seasons": 16553,
