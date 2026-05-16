@@ -1811,9 +1811,6 @@
     cardsHost.appendChild(makeStatCard('Biggest loss', s.biggestLossGame ? `−${s.biggestLossMargin}` : '—',
       s.biggestLossGame ? `${s.biggestLossGame.myScore}–${s.biggestLossGame.theirScore} on ${fmtDateShort(s.biggestLossGame.date)}` : '—',
       s.biggestLossGame ? 'is-bad' : ''));
-    cardsHost.appendChild(makeStatCard('Projected next', s.projection,
-      s.trendSlope > 0.5 ? '↗ improving' : s.trendSlope < -0.5 ? '↘ declining' : '→ flat',
-      s.trendSlope > 0.5 ? 'is-good' : s.trendSlope < -0.5 ? 'is-bad' : ''));
 
     // callouts
     calloutsHost.innerHTML = '';
