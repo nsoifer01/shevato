@@ -1,6 +1,331 @@
 {
   "updates": [
     {
+      "builtAt": "2026-05-18T22:26:43.624Z",
+      "totals": {
+        "seasons": 16579,
+        "delta": 29
+      },
+      "shapeCounts": {
+        "declining": 221,
+        "rollercoaster": 3567,
+        "rebound": 2798,
+        "mid-peak": 1122,
+        "big-finale": 4063,
+        "bad-finale": 1045,
+        "front-loaded": 548,
+        "saved-best-for-last": 430,
+        "slow-burn": 872,
+        "rising": 599,
+        "consistent": 455
+      },
+      "shapeDeltas": {
+        "declining": 3,
+        "rollercoaster": 7,
+        "rebound": 2,
+        "mid-peak": 7,
+        "big-finale": 16,
+        "bad-finale": 1,
+        "front-loaded": 1,
+        "saved-best-for-last": -1,
+        "slow-burn": -1,
+        "rising": 3,
+        "consistent": 2
+      },
+      "added": [
+        {
+          "seriesId": "tt30459041",
+          "title": "Your Friends & Neighbors",
+          "season": 2,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt9054364",
+          "title": "That Time I Got Reincarnated as a Slime",
+          "season": 4,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt9679542",
+          "title": "Dr. Stone",
+          "season": 4,
+          "seasonYear": 2025
+        },
+        {
+          "seriesId": "tt42178219",
+          "title": "Berlin and the Lady with an Ermine",
+          "season": 1,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt31589662",
+          "title": "Georgie & Mandy's First Marriage",
+          "season": 2,
+          "seasonYear": 2025
+        },
+        {
+          "seriesId": "tt0203259",
+          "title": "Law & Order: Special Victims Unit",
+          "season": 27,
+          "seasonYear": 2025
+        },
+        {
+          "seriesId": "tt2805096",
+          "title": "Chicago P.D.",
+          "season": 13,
+          "seasonYear": 2025
+        },
+        {
+          "seriesId": "tt39123061",
+          "title": "The Ramparts of Ice",
+          "season": 1,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt26591110",
+          "title": "Elsbeth",
+          "season": 3,
+          "seasonYear": 2025
+        },
+        {
+          "seriesId": "tt7491982",
+          "title": "FBI",
+          "season": 8,
+          "seasonYear": 2025
+        },
+        {
+          "seriesId": "tt2261391",
+          "title": "Chicago Fire",
+          "season": 14,
+          "seasonYear": 2025
+        },
+        {
+          "seriesId": "tt11379026",
+          "title": "Ghosts",
+          "season": 5,
+          "seasonYear": 2025
+        },
+        {
+          "seriesId": "tt41082351",
+          "title": "Should I Marry a Murderer?",
+          "season": 1,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt0090418",
+          "title": "Designing Women",
+          "season": 2,
+          "seasonYear": 1987
+        },
+        {
+          "seriesId": "tt0065333",
+          "title": "The Partridge Family",
+          "season": 1,
+          "seasonYear": 1970
+        },
+        {
+          "seriesId": "tt0071041",
+          "title": "Rising Damp",
+          "season": 2,
+          "seasonYear": 1975
+        },
+        {
+          "seriesId": "tt11769304",
+          "title": "Hospital Playlist",
+          "season": 2,
+          "seasonYear": 2021
+        },
+        {
+          "seriesId": "tt6193336",
+          "title": "The Hollow",
+          "season": 2,
+          "seasonYear": 2020
+        },
+        {
+          "seriesId": "tt11952974",
+          "title": "SurrealEstate",
+          "season": 3,
+          "seasonYear": 2025
+        },
+        {
+          "seriesId": "tt33384856",
+          "title": "May I Ask for One Final Thing?",
+          "season": 1,
+          "seasonYear": 2025
+        },
+        {
+          "seriesId": "tt37041367",
+          "title": "Ronaldinho: The One and Only",
+          "season": 1,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt7914040",
+          "title": "The Floor",
+          "season": 5,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt38750982",
+          "title": "The Traitors Türkiye",
+          "season": 1,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt9646834",
+          "title": "RuPaul's Drag Race All Stars: Untucked!",
+          "season": 8,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt23731242",
+          "title": "Perfect Match",
+          "season": 4,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt0115147",
+          "title": "The Daily Show",
+          "season": 31,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt1800864",
+          "title": "Gold Rush",
+          "season": 16,
+          "seasonYear": 2025
+        },
+        {
+          "seriesId": "tt0983514",
+          "title": "Kitchen Nightmares",
+          "season": 5,
+          "seasonYear": 2011
+        },
+        {
+          "seriesId": "tt1820166",
+          "title": "Ridiculousness",
+          "season": 4,
+          "seasonYear": 2014
+        },
+        {
+          "seriesId": "tt9022462",
+          "title": "The Great Celebrity Bake Off for SU2C",
+          "season": 8,
+          "seasonYear": 2025
+        },
+        {
+          "seriesId": "tt9022462",
+          "title": "The Great Celebrity Bake Off for SU2C",
+          "season": 9,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt1694423",
+          "title": "MasterChef: USA",
+          "season": 16,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt2129304",
+          "title": "Hotel Impossible",
+          "season": 2,
+          "seasonYear": 2012
+        },
+        {
+          "seriesId": "tt21822674",
+          "title": "The Great American Baking Show",
+          "season": 2,
+          "seasonYear": 2024
+        },
+        {
+          "seriesId": "tt34914743",
+          "title": "WWE LFG: Legends & Future Greats",
+          "season": 3,
+          "seasonYear": 2026
+        }
+      ],
+      "removed": [
+        {
+          "seriesId": "tt36849871",
+          "title": "Marshals",
+          "season": 1,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt40548519",
+          "title": "Nippon Sangoku: The Three Nations of the Crimson Sun",
+          "season": 1,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt13875494",
+          "title": "Tracker",
+          "season": 3,
+          "seasonYear": 2025
+        },
+        {
+          "seriesId": "tt0182576",
+          "title": "Family Guy",
+          "season": 24,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt3530232",
+          "title": "Last Week Tonight with John Oliver",
+          "season": 13,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt14669850",
+          "title": "Next Level Chef",
+          "season": 5,
+          "seasonYear": 2026
+        }
+      ],
+      "ratingSwings": [
+        {
+          "seriesId": "tt0176095",
+          "title": "The Challenge",
+          "season": 7,
+          "from": 8.63,
+          "to": 7.95,
+          "delta": -0.68
+        },
+        {
+          "seriesId": "tt9813792",
+          "title": "From",
+          "season": 4,
+          "from": 7.15,
+          "to": 7.48,
+          "delta": 0.33
+        },
+        {
+          "seriesId": "tt2301351",
+          "title": "RuPaul's Drag Race All Stars",
+          "season": 11,
+          "from": 7.63,
+          "to": 7.35,
+          "delta": -0.28
+        },
+        {
+          "seriesId": "tt10353060",
+          "title": "Stormester",
+          "season": 1,
+          "from": 6.24,
+          "to": 6.04,
+          "delta": -0.2
+        }
+      ],
+      "modifiedCounts": {
+        "seriesVotes": 13159,
+        "avgRating": 807,
+        "shapes": 99,
+        "episodeCount": 15,
+        "seriesRating": 57,
+        "poster": 1
+      }
+    },
+    {
       "builtAt": "2026-05-16T06:58:41.715Z",
       "totals": {
         "seasons": 16550,
