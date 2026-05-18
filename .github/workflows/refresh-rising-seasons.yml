@@ -25,6 +25,7 @@ concurrency:
 
 permissions:
   contents: write
+  pull-requests: write
 
 jobs:
   refresh:
@@ -103,15 +104,30 @@ jobs:
       - name: Run tests
         run: npm test
 
-      - name: Commit data.json + changelog.json if changed
+      # master is protected by a "PR before Merge" ruleset, so direct pushes
+      # are rejected. We push to a short-lived branch, open a PR, and merge
+      # it immediately — the ruleset requires 0 approvals and no status
+      # checks, and tests already ran above on this exact tree.
+      - name: Open and merge PR if data changed
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           set -e
           if git diff --quiet apps/rising-seasons/data.json; then
             echo "No changes — nothing to commit."
             exit 0
           fi
+          DATE=$(date -u +%Y-%m-%d)
+          BRANCH="bot/refresh-rising-seasons-$(date -u +%Y%m%d-%H%M%S)"
           git config user.name "shevato-bot"
           git config user.email "actions@users.noreply.github.com"
+          git checkout -b "$BRANCH"
           git add apps/rising-seasons/data.json apps/rising-seasons/changelog.json
-          git commit -m "chore(rising-seasons): refresh data $(date -u +%Y-%m-%d)"
-          git push
+          git commit -m "chore(rising-seasons): refresh data $DATE"
+          git push --set-upstream origin "$BRANCH"
+          gh pr create \
+            --base master \
+            --head "$BRANCH" \
+            --title "chore(rising-seasons): refresh data $DATE" \
+            --body "Automated refresh of IMDb + TMDB data."
+          gh pr merge "$BRANCH" --merge --delete-branch
