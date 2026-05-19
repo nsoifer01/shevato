@@ -1,0 +1,616 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <!-- CRITICAL: immediate sync override must run before any localStorage call -->
+  <script src="../../sync-system/sync-immediate.js"></script>
+
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  <meta name="description" content="Brain Arena — real-time multiplayer party game with two modes: head-to-head Trivia and Globe Drop geography (guess cities on a 3D globe). Create a room, share the code, race the timer.">
+  <meta name="keywords" content="trivia game, multiplayer trivia, real-time trivia, party game, online quiz, head to head trivia, group trivia, geography game, capital city game, world map game, 3d globe game, multiplayer geography, brain arena, globe drop, multiplayer party game, room code game" />
+  <meta name="author" content="Shevato LLC">
+  <meta name="robots" content="index, follow, max-image-preview:large">
+  <meta name="theme-color" content="#0b0d12">
+  <meta name="color-scheme" content="dark">
+  <link rel="canonical" href="https://shevato.com/apps/brain-arena/" />
+  <title>Brain Arena | Real-time multiplayer trivia + Globe Drop geography - Shevato</title>
+
+  <!-- Open Graph -->
+  <meta property="og:title" content="Brain Arena | Real-time multiplayer trivia + Globe Drop geography" />
+  <meta property="og:description" content="Two party modes in one room: head-to-head trivia and Globe Drop, where you guess capital cities on a 3D globe. Share a code, race the timer, climb the global XP leaderboard." />
+  <meta property="og:type" content="website" />
+  <meta property="og:url" content="https://shevato.com/apps/brain-arena/" />
+  <meta property="og:image" content="https://shevato.com/images/full-logo.svg" />
+  <meta property="og:image:type" content="image/svg+xml" />
+  <meta property="og:image:alt" content="Brain Arena — real-time multiplayer trivia and Globe Drop geography game" />
+  <meta property="og:site_name" content="Shevato" />
+  <meta property="og:locale" content="en_US" />
+
+  <!-- Twitter Card -->
+  <meta name="twitter:card" content="summary_large_image" />
+  <meta name="twitter:title" content="Brain Arena | Real-time multiplayer trivia + Globe Drop" />
+  <meta name="twitter:description" content="Two party modes: head-to-head trivia and Globe Drop geography on a 3D globe. Speed + streak scoring, global XP leaderboard." />
+  <meta name="twitter:image" content="https://shevato.com/images/full-logo.svg" />
+  <meta name="twitter:site" content="@shevato" />
+
+  <!-- Breadcrumbs -->
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@type": "BreadcrumbList",
+    "itemListElement": [
+      { "@type": "ListItem", "position": 1, "name": "Home", "item": "https://shevato.com/home.html" },
+      { "@type": "ListItem", "position": 2, "name": "Apps", "item": "https://shevato.com/apps.html" },
+      { "@type": "ListItem", "position": 3, "name": "Brain Arena", "item": "https://shevato.com/apps/brain-arena/" }
+    ]
+  }
+  </script>
+
+  <!-- WebApplication -->
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@type": "WebApplication",
+    "name": "Brain Arena",
+    "description": "Real-time multiplayer party-game arena with two modes: head-to-head Trivia and Globe Drop geography (guess capital cities by dropping a pin on a 3D globe). Create a room, share the code, race the timer, climb a global XP leaderboard. Free to play with an optional premium tier for private rooms, custom packs, and detailed post-game stats.",
+    "url": "https://shevato.com/apps/brain-arena/",
+    "applicationCategory": "GameApplication",
+    "operatingSystem": "Web Browser",
+    "browserRequirements": "Requires JavaScript. Works on all modern browsers.",
+    "offers": {
+      "@type": "Offer",
+      "price": "0",
+      "priceCurrency": "USD"
+    },
+    "featureList": [
+      "Two game modes in one room: Trivia and Globe Drop geography",
+      "Create or join live multiplayer rooms with a 5-character code",
+      "Real-time Firestore sync — see players join and scores update live",
+      "Host-configurable per-question timer (10–60s for Trivia, 30s–5min for Globe Drop)",
+      "Trivia: live questions pulled from The Trivia API with a rotating category picker between questions",
+      "Globe Drop: 3D Earth (NASA Blue Marble texture) with distance-decayed scoring and continental multipliers (Africa, Asia, Oceania and Antarctic score higher than Europe)",
+      "Speed + streak based scoring with instant local reveal after you submit",
+      "Per-question / per-location recap table comparing you side-by-side with your opponents",
+      "Global XP leaderboard",
+      "Firebase Auth profiles with XP, games played, and wins",
+      "Premium tier: private password-protected rooms, custom question packs, detailed accuracy / response-time stats"
+    ],
+    "author": {
+      "@type": "Organization",
+      "name": "Shevato LLC",
+      "url": "https://shevato.com"
+    }
+  }
+  </script>
+
+  <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>🎯</text></svg>">
+
+  <link rel="stylesheet" href="../../assets/css/main.css">
+  <link rel="stylesheet" href="../../assets/css/sync-status.css">
+  <link rel="stylesheet" href="css/styles.css">
+</head>
+<body class="brain-arena-app">
+  <!-- Sync status banner (managed by assets/js/sync-status.js) — only visible when offline. -->
+  <div id="sync-banner" class="sync-banner" role="status" aria-live="polite" hidden></div>
+  <div data-include="header"></div>
+
+  <main class="page">
+    <header class="hero">
+      <h1>Brain Arena</h1>
+      <p class="tagline">Multiplayer trivia + Globe Drop geography. Create a room, share the code, race the timer.</p>
+    </header>
+
+    <!-- View tabs — three primary views: Play, Leaderboard, Profile -->
+    <nav class="view-tabs" role="tablist" aria-label="View">
+      <button class="view-tab is-active" data-view="play" role="tab" aria-selected="true">
+        <span aria-hidden="true">🎯</span> Play
+      </button>
+      <button class="view-tab" data-view="leaderboard" role="tab" aria-selected="false">
+        <span aria-hidden="true">🏆</span> Leaderboard
+      </button>
+      <button class="view-tab" data-view="profile" role="tab" aria-selected="false">
+        <span aria-hidden="true">👤</span> Profile
+      </button>
+    </nav>
+
+    <!-- ====================== PLAY VIEW ====================== -->
+    <section class="view view-play is-active" data-view-panel="play">
+
+      <!-- LOBBY (create / join) -->
+      <section class="lobby-panel" id="lobby-panel">
+        <p class="auth-gate" id="auth-gate" hidden>
+          <span aria-hidden="true">🔒</span>
+          Sign in from the top-right to create or join rooms — your XP, wins, and games-played stay on your profile.
+        </p>
+        <div class="lobby-grid" id="lobby-grid">
+          <article class="lobby-card lobby-create">
+            <header>
+              <h2><span aria-hidden="true">✨</span> Create a room</h2>
+              <p>Spin up a new game. You'll be the host.</p>
+            </header>
+
+            <!-- Game-type toggle: trivia vs globe-drop. The fields below
+                 swap based on which is selected. Joiners pick up the
+                 game type from the room doc, so the Join card doesn't
+                 need a matching toggle. -->
+            <div class="game-type-toggle" role="tablist" aria-label="Game type">
+              <button type="button" class="game-type-btn is-active" data-game-type="trivia" role="tab" aria-selected="true">
+                <span aria-hidden="true">🎯</span> Trivia
+              </button>
+              <button type="button" class="game-type-btn" data-game-type="globe-drop" role="tab" aria-selected="false">
+                <span aria-hidden="true">🗺️</span> Globe Drop
+              </button>
+            </div>
+
+            <div class="lobby-form">
+              <!-- Trivia-only fields -->
+              <label class="lobby-field" data-game-type="trivia">
+                <span>Question pack</span>
+                <select id="create-pack-select">
+                  <option value="live">Live questions (The Trivia API)</option>
+                </select>
+              </label>
+              <label class="lobby-field" data-game-type="trivia">
+                <span>Questions per game</span>
+                <select id="create-questions-count">
+                  <option value="5">5 — sprint</option>
+                  <option value="10" selected>10 — standard</option>
+                </select>
+              </label>
+              <label class="lobby-field" data-game-type="trivia">
+                <span>Time per question</span>
+                <select id="create-trivia-time">
+                  <option value="10">10 seconds — frantic</option>
+                  <option value="15" selected>15 seconds — standard</option>
+                  <option value="30">30 seconds — relaxed</option>
+                  <option value="60">60 seconds — long-form</option>
+                </select>
+              </label>
+
+              <!-- Globe Drop-only fields -->
+              <label class="lobby-field" data-game-type="globe-drop" hidden>
+                <span>Locations per game</span>
+                <select id="create-locations-count">
+                  <option value="5" selected>5 — quick round</option>
+                  <option value="10">10 — full game</option>
+                </select>
+              </label>
+              <label class="lobby-field" data-game-type="globe-drop" hidden>
+                <span>Time per location</span>
+                <select id="create-globe-drop-time">
+                  <option value="30">30 seconds — speed run</option>
+                  <option value="60">60 seconds — classic</option>
+                  <option value="120" selected>120 seconds — thoughtful</option>
+                  <option value="180">3 minutes — deliberate</option>
+                  <option value="300">5 minutes — discuss it out</option>
+                </select>
+              </label>
+              <p class="lobby-hint" data-game-type="globe-drop" hidden>
+                Random world capitals from REST Countries. Closer guesses score more, with continental multipliers (Africa &amp; Asia &gt; Europe).
+              </p>
+
+              <!-- Shared fields -->
+              <label class="lobby-field lobby-field-toggle">
+                <input type="checkbox" id="create-private-toggle">
+                <span>Private (password required to join)</span>
+                <span class="premium-tag" data-feature="private-rooms">Premium</span>
+              </label>
+              <label class="lobby-field" id="create-password-field" hidden>
+                <span>Room password</span>
+                <input type="text" id="create-password" maxlength="32" placeholder="Set a password" autocomplete="off">
+              </label>
+              <button type="button" class="btn btn-primary lobby-cta" id="create-room-btn">Create room</button>
+            </div>
+          </article>
+
+          <article class="lobby-card lobby-join">
+            <header>
+              <h2><span aria-hidden="true">🔑</span> Join a room</h2>
+              <p>Got a code? Drop in.</p>
+            </header>
+            <div class="lobby-form">
+              <label class="lobby-field">
+                <span>Room code</span>
+                <input type="text" id="join-code" maxlength="7" placeholder="ABCDE" autocomplete="off" spellcheck="false" inputmode="latin" autocapitalize="characters">
+              </label>
+              <label class="lobby-field" id="join-password-field" hidden>
+                <span>Password</span>
+                <input type="text" id="join-password" maxlength="32" placeholder="Password" autocomplete="off">
+              </label>
+              <p class="join-error" id="join-error" hidden></p>
+              <button type="button" class="btn btn-primary lobby-cta" id="join-room-btn">Join room</button>
+            </div>
+          </article>
+        </div>
+      </section>
+
+      <!-- ROOM (lobby + game + reveal + end) -->
+      <section class="room-panel" id="room-panel" hidden>
+
+        <!-- Top bar: code, copy, leave -->
+        <header class="room-head">
+          <div class="room-head-left">
+            <div class="room-code-pill" title="Share this code with friends">
+              <span class="room-code-label">Room</span>
+              <span class="room-code-value" id="room-code-display">—</span>
+              <button type="button" class="room-code-copy" id="room-code-copy" aria-label="Copy room code">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.85" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15V6a1 1 0 0 1 1-1h9"/></svg>
+              </button>
+            </div>
+            <span class="room-host-tag" id="room-host-tag" hidden>You're the host</span>
+            <span class="room-private-tag" id="room-private-tag" hidden>
+              <span aria-hidden="true">🔒</span> Private
+            </span>
+          </div>
+          <div class="room-head-right">
+            <button type="button" class="btn btn-ghost" id="leave-room-btn">Leave room</button>
+          </div>
+        </header>
+
+        <!-- STAGE: lobby (waiting) -->
+        <section class="stage stage-lobby" id="stage-lobby">
+          <h2 class="section-title">Players in the lobby</h2>
+          <ul class="player-grid" id="lobby-player-grid"></ul>
+          <div class="lobby-host-controls" id="lobby-host-controls" hidden>
+            <p class="lobby-host-hint">
+              Once everyone's in, kick things off. The first question appears for all players at once.
+            </p>
+            <button type="button" class="btn btn-primary" id="start-game-btn" disabled>
+              <span aria-hidden="true">▶</span> Start game
+            </button>
+          </div>
+          <p class="lobby-guest-hint" id="lobby-guest-hint" hidden>
+            Waiting for the host to start the game…
+          </p>
+        </section>
+
+        <!-- STAGE: category picker (between questions) -->
+        <section class="stage stage-picking" id="stage-picking" hidden>
+          <header class="pick-head">
+            <div class="pick-progress">
+              <span class="pick-progress-label">Up next</span>
+              <span class="pick-progress-now" id="pick-progress-now">1</span>
+              <span class="pick-progress-sep">/</span>
+              <span class="pick-progress-total" id="pick-progress-total">10</span>
+            </div>
+            <div class="pick-decider" aria-live="polite">
+              <span class="pick-decider-avatar" id="pick-decider-avatar">?</span>
+              <div class="pick-decider-text">
+                <span class="pick-decider-label">Decider</span>
+                <span class="pick-decider-name" id="pick-decider-name">—</span>
+              </div>
+            </div>
+          </header>
+
+          <p class="pick-prompt" id="pick-prompt" hidden>Pick a category for the next question.</p>
+          <div class="pick-category-grid" id="pick-category-grid"></div>
+          <p class="pick-waiting-msg" id="pick-waiting-msg" hidden></p>
+        </section>
+
+        <!-- STAGE: asking + reveal -->
+        <section class="stage stage-game" id="stage-game" hidden>
+          <header class="game-head">
+            <div class="game-progress">
+              <span class="game-progress-label">Question</span>
+              <span class="game-progress-now" id="game-progress-now">1</span>
+              <span class="game-progress-sep">/</span>
+              <span class="game-progress-total" id="game-progress-total">10</span>
+            </div>
+            <div class="game-timer" id="game-timer" data-state="asking">
+              <svg viewBox="0 0 64 64" class="timer-ring" aria-hidden="true">
+                <circle class="timer-ring-track" cx="32" cy="32" r="28" />
+                <circle class="timer-ring-fill" id="timer-ring-fill" cx="32" cy="32" r="28" />
+              </svg>
+              <span class="game-timer-num" id="game-timer-num">15</span>
+            </div>
+          </header>
+
+          <article class="question-card" id="question-card">
+            <p class="question-category" id="question-category"></p>
+            <h2 class="question-text" id="question-text"></h2>
+            <div class="answer-grid" id="answer-grid"></div>
+            <p class="answer-status" id="answer-status" aria-live="polite"></p>
+          </article>
+
+          <!-- Mini live scoreboard during the question -->
+          <section class="mini-board" id="mini-board">
+            <h3>Live standings</h3>
+            <ol class="mini-board-list" id="mini-board-list"></ol>
+          </section>
+        </section>
+
+        <!-- STAGE: globe-drop asking + reveal (used instead of stage-game when gameType='globe-drop') -->
+        <section class="stage stage-globe-drop" id="stage-globe-drop" hidden>
+          <header class="game-head">
+            <div class="game-progress">
+              <span class="game-progress-label">Location</span>
+              <span class="game-progress-now" id="globe-drop-progress-now">1</span>
+              <span class="game-progress-sep">/</span>
+              <span class="game-progress-total" id="globe-drop-progress-total">5</span>
+            </div>
+            <div class="game-timer" id="globe-drop-timer" data-state="asking">
+              <svg viewBox="0 0 64 64" class="timer-ring" aria-hidden="true">
+                <circle class="timer-ring-track" cx="32" cy="32" r="28" />
+                <circle class="timer-ring-fill" id="globe-drop-timer-ring-fill" cx="32" cy="32" r="28" />
+              </svg>
+              <span class="game-timer-num" id="globe-drop-timer-num">120</span>
+            </div>
+          </header>
+
+          <article class="globe-drop-card">
+            <header class="globe-drop-prompt-row">
+              <p class="globe-drop-prompt">
+                <span class="globe-drop-prompt-label">Where is</span>
+                <strong id="globe-drop-target-name">—</strong>
+                <span class="globe-drop-prompt-country" id="globe-drop-target-country"></span>?
+              </p>
+            </header>
+
+            <!-- Reveal panel — appears ABOVE the globe so the result is
+                 the first thing you see after submitting. The countdown
+                 badge ticks 5→1 during the global reveal window. -->
+            <section class="globe-drop-reveal" id="globe-drop-reveal" hidden>
+              <div class="globe-drop-reveal-head">
+                <p class="globe-drop-reveal-distance" id="globe-drop-reveal-distance"></p>
+                <div class="globe-drop-countdown" id="globe-drop-countdown" hidden>
+                  <span class="globe-drop-countdown-num" id="globe-drop-countdown-num">5</span>
+                  <span class="globe-drop-countdown-label">to next</span>
+                </div>
+              </div>
+              <p class="globe-drop-reveal-trivia" id="globe-drop-reveal-trivia" hidden></p>
+            </section>
+
+            <p class="globe-drop-hint" id="globe-drop-hint">Drag to spin the globe. Click anywhere to drop your pin, then submit.</p>
+            <div id="globe-drop-map" class="globe-drop-map" aria-label="World globe for guessing"></div>
+            <div class="globe-drop-controls">
+              <button type="button" class="btn btn-ghost" id="globe-drop-clear-btn" hidden>Clear pin</button>
+              <button type="button" class="btn btn-primary" id="globe-drop-submit-btn" disabled>Submit guess</button>
+            </div>
+            <p class="answer-status globe-drop-status" id="globe-drop-status" aria-live="polite"></p>
+            <p class="globe-drop-attribution">
+              Earth texture: <a href="https://www.solarsystemscope.com/textures/" rel="noopener" target="_blank">Solar System Scope</a> (CC BY 4.0).
+            </p>
+          </article>
+
+          <section class="mini-board" id="mini-board-globe-drop">
+            <h3>Live standings</h3>
+            <ol class="mini-board-list" id="mini-board-list-globe-drop"></ol>
+          </section>
+        </section>
+
+        <!-- STAGE: end of game -->
+        <section class="stage stage-end" id="stage-end" hidden>
+          <header class="end-head">
+            <h2>Game over</h2>
+            <p id="end-summary"></p>
+          </header>
+
+          <!-- Podium top 3 -->
+          <div class="podium" id="podium" aria-label="Top three"></div>
+
+          <!-- Full scoreboard -->
+          <div class="end-board-wrap">
+            <table class="end-board">
+              <thead>
+                <tr>
+                  <th>#</th>
+                  <th>Player</th>
+                  <th>Score</th>
+                  <th>Streak</th>
+                  <th>XP earned</th>
+                </tr>
+              </thead>
+              <tbody id="end-board-body"></tbody>
+            </table>
+          </div>
+
+          <!-- Game recap — per-question/per-location table + aggregate stats.
+               Built from each player's `answers[]` array on their player doc,
+               so we can compare what everyone picked side-by-side. -->
+          <section class="end-recap" id="end-recap" hidden>
+            <header class="end-recap-head">
+              <h3>Game recap</h3>
+              <p class="end-recap-sub" id="end-recap-sub"></p>
+            </header>
+            <div class="end-recap-stats" id="end-recap-stats"></div>
+            <div class="end-recap-table-wrap">
+              <table class="end-recap-table" id="end-recap-table">
+                <thead id="end-recap-thead"></thead>
+                <tbody id="end-recap-tbody"></tbody>
+              </table>
+            </div>
+          </section>
+
+          <!-- Detailed stats (premium) -->
+          <section class="detailed-stats" id="detailed-stats" hidden>
+            <header class="detailed-stats-head">
+              <h3><span aria-hidden="true">📊</span> Your detailed stats</h3>
+              <span class="premium-chip">Premium</span>
+            </header>
+            <div class="detailed-stats-grid" id="detailed-stats-grid"></div>
+          </section>
+          <div class="detailed-stats-upsell" id="detailed-stats-upsell" hidden>
+            <p>
+              <span aria-hidden="true">📊</span>
+              Want a breakdown of your accuracy, response time, and category strengths?
+            </p>
+            <button type="button" class="btn btn-primary" data-action="open-premium">Go Premium</button>
+          </div>
+
+          <div class="end-actions">
+            <button type="button" class="btn btn-ghost" id="end-back-btn">Back to lobby</button>
+            <button type="button" class="btn btn-primary" id="end-again-btn" hidden>Play again</button>
+          </div>
+        </section>
+      </section>
+    </section>
+
+    <!-- ====================== LEADERBOARD VIEW ====================== -->
+    <section class="view view-leaderboard" data-view-panel="leaderboard" hidden>
+      <header class="leaderboard-head">
+        <h2 class="section-title">Global XP leaderboard</h2>
+        <div class="leaderboard-filters">
+          <label class="lobby-field">
+            <span>Time period</span>
+            <select id="leaderboard-period">
+              <option value="all">All time</option>
+              <option value="month">Last 30 days</option>
+              <option value="week">Last 7 days</option>
+            </select>
+          </label>
+          <label class="lobby-field">
+            <span>Category</span>
+            <select id="leaderboard-category">
+              <option value="all">All categories</option>
+              <option value="geography">Geography</option>
+              <option value="science">Science</option>
+              <option value="history">History</option>
+              <option value="pop-culture">Pop culture</option>
+              <option value="sports">Sports</option>
+            </select>
+          </label>
+        </div>
+      </header>
+
+      <div class="leaderboard-wrap">
+        <table class="leaderboard-table" id="leaderboard-table">
+          <thead>
+            <tr>
+              <th>#</th>
+              <th>Player</th>
+              <th>XP</th>
+              <th>Games</th>
+              <th>Wins</th>
+              <th>Win %</th>
+              <th>Last played</th>
+            </tr>
+          </thead>
+          <tbody id="leaderboard-body"></tbody>
+        </table>
+      </div>
+      <p class="empty-state" id="leaderboard-empty" hidden>
+        No games played yet — be the first to land on the board.
+      </p>
+    </section>
+
+    <!-- ====================== PROFILE VIEW ====================== -->
+    <section class="view view-profile" data-view-panel="profile" hidden>
+      <header class="profile-head">
+        <h2 class="section-title">Your trivia profile</h2>
+      </header>
+
+      <section class="profile-card-trivia" id="profile-card-trivia">
+        <div class="profile-row">
+          <span class="profile-avatar" id="profile-avatar" aria-hidden="true">🎯</span>
+          <div class="profile-id">
+            <label class="lobby-field profile-display-field">
+              <span>Display name</span>
+              <input type="text" id="profile-display-name" maxlength="20" placeholder="Pick a name">
+            </label>
+            <p class="profile-email" id="profile-email"></p>
+          </div>
+        </div>
+
+        <div class="profile-stats" id="profile-stats">
+          <div class="profile-stat"><span class="profile-stat-label">XP</span><span class="profile-stat-value" id="stat-xp">0</span></div>
+          <div class="profile-stat"><span class="profile-stat-label">Games</span><span class="profile-stat-value" id="stat-games">0</span></div>
+          <div class="profile-stat"><span class="profile-stat-label">Wins</span><span class="profile-stat-value" id="stat-wins">0</span></div>
+          <div class="profile-stat"><span class="profile-stat-label">Win %</span><span class="profile-stat-value" id="stat-winpct">0%</span></div>
+        </div>
+
+        <div class="profile-premium-card" id="profile-premium-card">
+          <div class="profile-premium-info">
+            <h3><span aria-hidden="true">✨</span> Premium</h3>
+            <p id="profile-premium-status">Upgrade to unlock private rooms, custom question packs, and detailed post-game stats.</p>
+          </div>
+          <button type="button" class="btn btn-primary" id="upgrade-premium-btn">Go Premium</button>
+        </div>
+
+        <!-- Custom pack upload (premium) -->
+        <details class="custom-pack" id="custom-pack-details">
+          <summary>
+            <span aria-hidden="true">📦</span> Upload a custom question pack
+            <span class="premium-tag" data-feature="custom-packs">Premium</span>
+          </summary>
+          <div class="custom-pack-body">
+            <p class="custom-pack-hint">
+              Paste a JSON pack matching the schema below. Stored on your profile; available the next time you create a room.
+            </p>
+            <textarea id="custom-pack-input" rows="8" spellcheck="false" autocomplete="off" placeholder='{ "name": "My pack", "questions": [{ "question": "?", "choices": ["A","B","C","D"], "correctIndex": 0, "category": "general" }] }'></textarea>
+            <div class="custom-pack-actions">
+              <button type="button" class="btn btn-ghost" id="custom-pack-clear-btn">Clear saved pack</button>
+              <button type="button" class="btn btn-primary" id="custom-pack-save-btn">Save pack</button>
+            </div>
+            <p class="custom-pack-msg" id="custom-pack-msg" aria-live="polite"></p>
+          </div>
+        </details>
+      </section>
+
+      <p class="profile-signed-out" id="profile-signed-out" hidden>
+        Sign in from the top-right to save your XP, wins, and games played.
+      </p>
+    </section>
+  </main>
+
+  <!-- Premium modal -->
+  <div class="modal" id="premium-modal" role="dialog" aria-modal="true" aria-labelledby="premium-modal-title" hidden>
+    <div class="modal-backdrop" data-close="modal"></div>
+    <article class="modal-panel modal-panel-sm">
+      <button type="button" class="modal-close" data-close="modal" aria-label="Close">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.85" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 6l12 12"/><path d="M18 6L6 18"/></svg>
+      </button>
+      <h2 id="premium-modal-title"><span aria-hidden="true">✨</span> Brain Arena Premium</h2>
+      <ul class="premium-list">
+        <li><span aria-hidden="true">🔒</span> Private password-protected rooms</li>
+        <li><span aria-hidden="true">📦</span> Upload custom question packs</li>
+        <li><span aria-hidden="true">📊</span> Detailed post-game stats (accuracy, response time, category breakdown)</li>
+      </ul>
+      <p class="premium-modal-hint">
+        Premium status is tied to your Shevato account — upgrade once and it follows you across devices.
+      </p>
+      <div class="modal-actions">
+        <button type="button" class="btn btn-ghost" data-close="modal">Maybe later</button>
+        <button type="button" class="btn btn-primary" id="premium-checkout-btn">Continue to checkout</button>
+      </div>
+    </article>
+  </div>
+
+  <div data-include="footer"></div>
+
+  <!-- Site JS deps (same set the other apps load before main.js). -->
+  <script src="../../assets/js/passive-events-fix.js"></script>
+  <script src="../../assets/js/sync-status.js"></script>
+  <script src="../../assets/js/jquery.min.js"></script>
+  <script src="../../assets/js/browser.min.js"></script>
+  <script src="../../assets/js/breakpoints.min.js"></script>
+  <script src="../../assets/js/util.js"></script>
+
+  <!-- Firebase storage sync (matches other apps so storage-sync-robust knows about us). -->
+  <script type="module" src="../../firebase-config.js"></script>
+  <script type="module" src="../../sync-system/storage-sync-robust.js"></script>
+  <script type="module" src="../../sync-system/app-sync-init.js"></script>
+  <script src="../../sync-system/sync-debug.js"></script>
+  <script src="../../sync-system/sync-loading-modal.js"></script>
+  <script src="../../sync-system/sync-modal-integration.js"></script>
+
+  <!-- Site main JS — injects header/footer partials via $.fn.load and mounts AuthUI. -->
+  <script src="../../assets/js/main.js"></script>
+
+  <!-- globe.gl (Three.js-based 3D globe for Globe Drop mode). Bundles Three.js
+       so no separate three import needed. We use NASA's Blue Marble texture
+       as the globe surface — pure satellite imagery, no labels or borders,
+       so the geography game stays a real challenge. -->
+  <script defer src="https://unpkg.com/globe.gl@2.27.4/dist/globe.gl.min.js"></script>
+
+  <!-- Brain Arena: pure-logic UMD files first (attach to window.BrainArena),
+       then the main app module that imports Firestore SDK + reads the
+       namespace. -->
+  <script src="js/config.js"></script>
+  <script src="js/scoring.js"></script>
+  <script src="js/room-state.js"></script>
+  <script src="js/live-questions.js"></script>
+  <script src="js/globe-drop-scoring.js"></script>
+  <script src="js/globe-drop-locations.js"></script>
+  <script type="module" src="js/app.js"></script>
+</body>
+</html>
