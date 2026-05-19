@@ -733,12 +733,15 @@ async function createRoom() {
             const seconds = overrideTimer
                 ? (parseInt($('#create-globe-drop-time').value, 10) || diff.timerSec)
                 : diff.timerSec;
-            const locations = await GlobeDropLocations.fetchLocations(count, shuffle);
+            const roundType = $('#create-globe-drop-round-type').value || 'capitals';
+            const meta = GlobeDropLocations.ROUND_TYPES[roundType] || GlobeDropLocations.ROUND_TYPES.capitals;
+            const locations = await GlobeDropLocations.fetchLocations(roundType, count, shuffle);
             await setDoc(ref, Object.assign({}, shared, {
-                packId: 'world-capitals',
-                packName: 'World capitals',
+                packId: meta.packId,
+                packName: meta.packName,
                 totalQuestions: locations.length,
                 questions: locations,
+                roundType,
                 difficulty: difficultyKey,
                 // Per-question timer chosen by tier (or override). Stored in
                 // ms so the pure phase helpers don't have to know about the
@@ -2653,8 +2656,11 @@ async function playAgain() {
 
     try {
         if (isGlobeDrop) {
-            // Re-fetch fresh locations from REST Countries. Same total count.
+            // Re-fetch fresh locations using the same round type the room
+            // was created with — host can't switch round types mid-replay,
+            // that's a fresh-room move.
             const locations = await GlobeDropLocations.fetchLocations(
+                state.roomData.roundType || 'capitals',
                 state.roomData.totalQuestions,
                 shuffle
             );

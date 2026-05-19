@@ -170,6 +170,15 @@
 
               <!-- Globe Drop-only fields -->
               <label class="lobby-field" data-game-type="globe-drop" hidden>
+                <span>Round type</span>
+                <select id="create-globe-drop-round-type">
+                  <option value="capitals" selected>World capitals (REST Countries)</option>
+                  <option value="countries">Countries — guess the country's centroid</option>
+                  <option value="major-cities">Major cities (Wikidata · pop &gt; 2M)</option>
+                  <option value="landmarks">World landmarks (Wikidata · UNESCO sites)</option>
+                </select>
+              </label>
+              <label class="lobby-field" data-game-type="globe-drop" hidden>
                 <span>Difficulty</span>
                 <select id="create-globe-drop-difficulty">
                   <option value="easy">Easy — country + continent + region, 180 s, 0.75× score</option>
@@ -199,7 +208,7 @@
                 </select>
               </label>
               <p class="lobby-hint" data-game-type="globe-drop" hidden>
-                Random world capitals from REST Countries. Closer guesses score more, with continental multipliers (Africa &amp; Asia &gt; Europe) and a difficulty multiplier on top.
+                Pick a round type, then drop a pin on the 3D globe. Closer guesses score more, with continental multipliers (Africa &amp; Asia &gt; Europe) and a difficulty multiplier on top. World capitals and Countries pull from REST Countries; Major cities and Landmarks pull live from Wikidata.
               </p>
 
               <!-- Shared fields -->
@@ -637,6 +646,9 @@
   <script src="js/room-state.js"></script>
   <script src="js/live-questions.js"></script>
   <script src="js/globe-drop-scoring.js"></script>
+  <!-- Wikidata helpers must load before globe-drop-locations.js so the
+       dispatcher can read window.BrainArena.GlobeDropWikidata. -->
+  <script src="js/globe-drop-wikidata.js"></script>
   <script src="js/globe-drop-locations.js"></script>
   <script type="module" src="js/app.js"></script>
 </body>
