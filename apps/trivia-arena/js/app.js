@@ -56,7 +56,6 @@ const state = {
     user: null,                  // Firebase user (or null)
     profile: null,               // users/{uid}.triviaProfile (or null)
     activeView: 'play',          // 'play' | 'leaderboard' | 'profile'
-    questionPack: null,          // default question pack JSON
     customPack: null,            // user's saved custom pack (premium)
 
     // Room state
@@ -311,13 +310,6 @@ function wirePremiumModal() {
  * Question pack loading
  * ===================================================================== */
 
-async function loadDefaultPack() {
-    if (state.questionPack) return state.questionPack;
-    const res = await fetch('data/questions.json', { cache: 'no-cache' });
-    state.questionPack = await res.json();
-    return state.questionPack;
-}
-
 function shuffle(arr, rand = Math.random) {
     const a = arr.slice();
     for (let i = a.length - 1; i > 0; i--) {
@@ -327,42 +319,20 @@ function shuffle(arr, rand = Math.random) {
     return a;
 }
 
-function pickRoundQuestions(pack, count) {
-    const all = (pack && Array.isArray(pack.questions)) ? pack.questions : [];
-    const shuffled = shuffle(all);
-    return shuffled.slice(0, Math.min(count, shuffled.length));
-}
-
 /**
  * Build the question POOL for a round. We over-provision so the per-question
  * category picker has variety: the round plays `count` questions out of a
  * pool of up to 5x that (capped at the live API's 50/request limit).
  *
- * Live source is best-effort — any fetch / parse failure transparently
- * falls back to the bundled pack so the game still starts. The chosen
- * packId we return is what should be persisted on the room so Play Again
- * uses the same source.
+ * Live source is the only built-in (no offline fallback). Premium custom
+ * packs take precedence when explicitly selected. Any fetch failure bubbles
+ * up — callers should catch and surface a clear error to the host.
  *
- * @param {string} packId — 'live' | 'custom' | 'default'
+ * @param {string} packId — 'live' | 'custom'
  * @param {number} count — number of questions to be played this round
  * @returns {Promise<{questions:Array, packId:string, packName:string}>}
  */
 async function buildQuestionsForRound(packId, count) {
-    const poolTarget = Math.max(count, Math.min(50, count * 5));
-    if (packId === 'live') {
-        try {
-            const questions = await LiveQuestions.fetchLiveQuestions(poolTarget, shuffle);
-            return { questions, packId: 'live', packName: 'The Trivia API' };
-        } catch (err) {
-            console.warn('Live questions fetch failed, falling back to bundled pack:', err);
-            const pack = await loadDefaultPack();
-            return {
-                questions: shuffle(pack.questions || []),
-                packId: 'default',
-                packName: (pack && pack.name) || 'Mixed General Knowledge'
-            };
-        }
-    }
     if (packId === 'custom' && state.customPack && isPremium()) {
         return {
             questions: shuffle(state.customPack.questions || []),
@@ -370,12 +340,9 @@ async function buildQuestionsForRound(packId, count) {
             packName: state.customPack.name || 'Custom pack'
         };
     }
-    const pack = await loadDefaultPack();
-    return {
-        questions: shuffle(pack.questions || []),
-        packId: 'default',
-        packName: (pack && pack.name) || 'Mixed General Knowledge'
-    };
+    const poolTarget = Math.max(count, Math.min(50, count * 5));
+    const questions = await LiveQuestions.fetchLiveQuestions(poolTarget, shuffle);
+    return { questions, packId: 'live', packName: 'The Trivia API' };
 }
 
 /* =====================================================================
@@ -478,18 +445,12 @@ function renderPackOptions() {
     const previouslySelected = sel.value;
     sel.innerHTML = '';
 
-    // Live API is the default — much larger and more varied than the
-    // bundled pack. The bundled pack stays as an explicit fallback option
-    // (and is always used if the live fetch fails).
+    // Live API is the only built-in question source. Premium users with
+    // a saved custom pack get a second option.
     const live = document.createElement('option');
     live.value = 'live';
     live.textContent = 'Live questions (The Trivia API)';
     sel.appendChild(live);
-
-    const bundled = document.createElement('option');
-    bundled.value = 'default';
-    bundled.textContent = 'Mixed General Knowledge (offline pack)';
-    sel.appendChild(bundled);
 
     if (state.customPack && isPremium()) {
         const c = document.createElement('option');
@@ -637,7 +598,7 @@ async function createRoom() {
             const sel = $('#create-pack-select').value;
             const count = parseInt($('#create-questions-count').value, 10) || 10;
             const seconds = parseInt($('#create-trivia-time').value, 10) || 15;
-            btn.textContent = sel === 'live' ? 'Fetching questions…' : 'Creating room…';
+            btn.textContent = 'Fetching questions…';
             const { questions, packId, packName } = await buildQuestionsForRound(sel, count);
             await setDoc(ref, Object.assign({}, shared, {
                 packId,
@@ -652,6 +613,16 @@ async function createRoom() {
 
         await joinPlayer(code, displayName, /* isHost */ true);
         enterRoom(code);
+    } catch (err) {
+        console.warn('Room creation failed:', err);
+        // The live APIs (The Trivia API + REST Countries) are the only
+        // built-in question/location sources — there's no offline pack to
+        // fall back to. Surface the failure so the host knows to retry.
+        alert(
+            (gameType === 'maptap' ? 'Could not fetch locations: ' : 'Could not fetch questions: ')
+            + (err && err.message ? err.message : 'unknown error')
+            + '. Try again in a moment.'
+        );
     } finally {
         btn.disabled = false;
         btn.textContent = originalLabel;
@@ -2457,30 +2428,34 @@ async function playAgain() {
     const nextRound = (state.roomData.round || 1) + 1;
     const isMapTap = state.roomData.gameType === 'maptap';
 
-    if (isMapTap) {
-        // Re-fetch fresh locations from REST Countries. Same total count.
-        const locations = await MapTapLocations.fetchLocations(
-            state.roomData.totalQuestions,
-            shuffle
-        );
-        await updateDoc(doc(db, 'triviaRooms', state.roomCode), {
-            status: 'lobby',
-            currentQuestionIndex: 0,
-            currentQuestionId: null,
-            questionStartedAt: null,
-            revealStartedAt: null,
-            playedQuestionIds: [],
-            questions: locations,
-            totalQuestions: locations.length,
-            round: nextRound,
-            finishedAt: null
-        });
-    } else {
-        // Trivia: re-deal questions using the same source + reset picker.
-        const { questions, packId, packName } = await buildQuestionsForRound(
-            state.roomData.packId || 'default',
-            state.roomData.totalQuestions
-        );
+    try {
+        if (isMapTap) {
+            // Re-fetch fresh locations from REST Countries. Same total count.
+            const locations = await MapTapLocations.fetchLocations(
+                state.roomData.totalQuestions,
+                shuffle
+            );
+            await updateDoc(doc(db, 'triviaRooms', state.roomCode), {
+                status: 'lobby',
+                currentQuestionIndex: 0,
+                currentQuestionId: null,
+                questionStartedAt: null,
+                revealStartedAt: null,
+                playedQuestionIds: [],
+                questions: locations,
+                totalQuestions: locations.length,
+                round: nextRound,
+                finishedAt: null
+            });
+        } else {
+            // Trivia: re-deal questions using the same source + reset picker.
+            // Old rooms may have `packId: 'default'` from before this commit
+            // removed the offline pack — coerce those to 'live'.
+            const sourcePackId = state.roomData.packId === 'custom' ? 'custom' : 'live';
+            const { questions, packId, packName } = await buildQuestionsForRound(
+                sourcePackId,
+                state.roomData.totalQuestions
+            );
         // Rebuild player order fresh (same defensive fetch as startGame so a
         // stale state.roomPlayers can't compress the rotation to just the host).
         const playersSnap = await getDocs(collection(db, 'triviaRooms', state.roomCode, 'players'));
@@ -2505,10 +2480,18 @@ async function playAgain() {
             round: nextRound,
             finishedAt: null
         });
-    }
+        }
 
-    state.currentAnswers = [];
-    endStageWrittenForRoom = null;
+        state.currentAnswers = [];
+        endStageWrittenForRoom = null;
+    } catch (err) {
+        console.warn('Play again failed:', err);
+        alert(
+            (isMapTap ? 'Could not refresh locations: ' : 'Could not refresh questions: ')
+            + (err && err.message ? err.message : 'unknown error')
+            + '. Try again in a moment.'
+        );
+    }
 }
 
 /* =====================================================================
@@ -2600,9 +2583,6 @@ async function boot() {
     await waitForFirebaseAuth();
     window.firebaseAuth.onAuthStateChange(applyAuthState);
     // Initial state — onAuthStateChange fires synchronously if ready.
-
-    // Preload the default question pack so creating a room is snappy.
-    loadDefaultPack().catch(() => { /* fetch errors surface at create-time */ });
 }
 
 if (document.readyState === 'loading') {
