@@ -1329,6 +1329,44 @@ select option { background: var(--surface); color: var(--text); }
   letter-spacing: 0.02em;
 }
 
+/* Ready-for-next strip — sits inside the reveal panel during the
+   5-second wait between rounds. Any player can vote ready to skip
+   the wait; the host advances once everyone's voted. */
+.globe-drop-ready-bar {
+  margin-top: 0.6rem;
+  display: flex;
+  align-items: center;
+  gap: 0.7rem;
+}
+.globe-drop-ready-bar button {
+  flex: 0 0 auto;
+}
+.globe-drop-ready-bar button:disabled {
+  opacity: 0.55;
+  cursor: default;
+}
+.globe-drop-ready-status {
+  font-family: var(--mono);
+  font-size: 0.8rem;
+  color: var(--muted);
+  letter-spacing: 0.01em;
+}
+.globe-drop-ready-status .ready-pip {
+  display: inline-block;
+  margin: 0 0.35rem 0 0;
+  padding: 0.05rem 0.45rem;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(148, 163, 184, 0.18);
+  font-size: 0.72rem;
+  color: var(--muted);
+}
+.globe-drop-ready-status .ready-pip.is-ready {
+  background: rgba(16, 185, 129, 0.18);
+  border-color: rgba(16, 185, 129, 0.45);
+  color: rgb(110, 231, 183);
+}
+
 .confirm-modal-body {
   margin: 0.5rem 0 1.1rem;
   color: var(--muted);
@@ -1599,6 +1637,17 @@ select option { background: var(--surface); color: var(--text); }
   border-color: rgba(34, 211, 238, 0.45);
   color: var(--text);
 }
+.rounds-history-chip em {
+  font-style: normal;
+  margin-left: 0.35rem;
+  padding-left: 0.4rem;
+  border-left: 1px solid rgba(255, 255, 255, 0.18);
+  font-family: var(--mono);
+  font-size: 0.72rem;
+  color: var(--muted);
+  font-weight: 500;
+}
+.rounds-history-chip.is-me em { color: var(--cyan-2); }
 .rounds-history-chip.is-zero {
   color: var(--muted);
   background: rgba(255, 255, 255, 0.02);
@@ -2656,27 +2705,14 @@ select option { background: var(--surface); color: var(--text); }
   white-space: nowrap;
 }
 
-/* Inline submitted check — appears in the row flow just before the
-   score badge, no overflow, single source of truth (no double-mark).
-   Sized + colored to feel like a glowing icon, not a badge with chrome. */
-.mini-board-check {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 0;
-  opacity: 0;
-  flex: 0 0 auto;
-  font-family: var(--mono);
-  font-weight: 700;
-  font-size: 0.92rem;
-  color: rgb(110, 231, 183);
-  text-shadow: 0 0 8px rgba(74, 222, 128, 0.55);
-  transition: width 0.18s ease, opacity 0.18s ease;
-}
-.mini-board-row.is-answered .mini-board-check::before { content: "✓"; }
-.mini-board-row.is-answered .mini-board-check {
-  width: 1.05rem;
-  opacity: 1;
+/* Submitted indicator — no chrome, no badge, no "submitted" word.
+   The name span gets a faint green tint and a soft green glow so the
+   answered state reads at a glance without adding noise. */
+.mini-board-row.is-answered .mini-board-name {
+  background: rgba(16, 185, 129, 0.18);
+  border-radius: 6px;
+  padding: 0.05rem 0.4rem;
+  box-shadow: 0 0 10px rgba(16, 185, 129, 0.22) inset;
 }
 
 .mini-board-score {

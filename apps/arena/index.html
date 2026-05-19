@@ -591,6 +591,15 @@
                 </div>
               </div>
               <p class="globe-drop-reveal-trivia" id="globe-drop-reveal-trivia" hidden></p>
+              <!-- Ready-for-next bar. During the reveal window, any
+                   player can click "Ready" to vote to skip the wait;
+                   if every player is ready the host advances early. -->
+              <div class="globe-drop-ready-bar" id="globe-drop-ready-bar" hidden>
+                <button type="button" class="btn btn-ghost btn-sm" id="globe-drop-ready-btn">
+                  <span aria-hidden="true">⏭</span> Ready
+                </button>
+                <span class="globe-drop-ready-status" id="globe-drop-ready-status"></span>
+              </div>
             </section>
 
             <p class="globe-drop-hint" id="globe-drop-hint" hidden></p>
@@ -737,12 +746,9 @@
             </div>
           </div>
 
-          <div class="end-actions">
-            <button type="button" class="btn btn-ghost" id="end-back-btn">Back to lobby</button>
-            <button type="button" class="btn btn-primary" id="end-again-btn" hidden>
-              <span aria-hidden="true">🔁</span> Rematch
-            </button>
-          </div>
+          <!-- Post-match actions (Back to lobby / Rematch) live in the
+               room header alongside Chat. The end stage no longer
+               duplicates them at the bottom of the recap. -->
         </section>
       </section>
     </section>
