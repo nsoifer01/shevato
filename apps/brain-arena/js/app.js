@@ -194,9 +194,10 @@ function setView(view) {
         setClass(panel, 'is-active', panel.dataset.viewPanel === view);
         panel.hidden = panel.dataset.viewPanel !== view;
     });
-    if (view === 'leaderboard') startLeaderboardListener();
+    if (view === 'leaderboard' || view === 'h2h') startLeaderboardListener();
     else stopLeaderboardListener();
     if (view === 'profile') renderProfileView();
+    if (view === 'h2h') renderH2HPickers();
     syncUrlToState();
 }
 
@@ -218,7 +219,7 @@ function wireViewTabs() {
  * accumulate every tab click; the URL just mirrors current state.
  * ===================================================================== */
 
-const VALID_VIEWS = new Set(['play', 'leaderboard', 'profile']);
+const VALID_VIEWS = new Set(['play', 'leaderboard', 'h2h', 'profile']);
 
 function parseUrlState() {
     try {
@@ -3262,6 +3263,10 @@ function startLeaderboardListener() {
     state.leaderboardUnsub = onSnapshot(q, (snap) => {
         state.leaderboardEntries = snap.docs.map((d) => d.data());
         renderLeaderboardEntries();
+        // If the H2H tab is open the same snapshot needs to repopulate
+        // its dropdowns; cheap to call unconditionally since the
+        // function returns early when the panel isn't in the DOM.
+        if (state.activeView === 'h2h') renderH2HPickers();
     }, (err) => {
         console.warn('Leaderboard listener error:', err);
     });
@@ -3406,6 +3411,100 @@ function formatRelativeDate(d) {
     return d.toLocaleDateString();
 }
 
+/* =====================================================================
+ * H2H comparison view
+ *
+ * Reuses state.leaderboardEntries (already subscribed when the LB or H2H
+ * view is active). Both dropdowns list every entry; picking two of the
+ * same player just shows their card on both sides — harmless.
+ * ===================================================================== */
+
+let h2hPickerVersion = 0;
+
+function renderH2HPickers() {
+    const a = $('#h2h-select-a');
+    const b = $('#h2h-select-b');
+    if (!a || !b) return;
+    const entries = (state.leaderboardEntries || []).slice();
+    if (!entries.length) {
+        a.innerHTML = '<option value="">No players yet</option>';
+        b.innerHTML = '<option value="">No players yet</option>';
+        renderH2HComparison();
+        return;
+    }
+    const optsHtml = entries.map((e) => {
+        const uid = escapeHtml(e.uid || '');
+        const name = escapeHtml(e.displayName || 'Player');
+        const xp = e.xp || 0;
+        return `<option value="${uid}">${name} · ${xp} XP</option>`;
+    }).join('');
+
+    // Preserve current selections across re-renders (LB snapshot can
+    // refire while the H2H tab is open).
+    const prevA = a.value;
+    const prevB = b.value;
+
+    a.innerHTML = optsHtml;
+    b.innerHTML = optsHtml;
+
+    // Default: A = current user (if present), B = next entry. Otherwise
+    // first / second by XP.
+    const meUid = state.user && state.user.uid;
+    const meIdx = entries.findIndex((e) => e.uid === meUid);
+    const aDefault = (meIdx >= 0 ? meUid : entries[0].uid) || '';
+    const bDefault = entries.find((e) => e.uid !== aDefault)?.uid || aDefault;
+    a.value = prevA && entries.some((e) => e.uid === prevA) ? prevA : aDefault;
+    b.value = prevB && entries.some((e) => e.uid === prevB) ? prevB : bDefault;
+
+    h2hPickerVersion++;
+    renderH2HComparison();
+}
+
+function renderH2HComparison() {
+    const a = $('#h2h-select-a');
+    const b = $('#h2h-select-b');
+    if (!a || !b) return;
+    const entries = state.leaderboardEntries || [];
+    const ea = entries.find((e) => e.uid === a.value);
+    const eb = entries.find((e) => e.uid === b.value);
+    const empty = $('#h2h-empty');
+    const result = $('#h2h-result');
+    if (!ea || !eb) {
+        if (empty) empty.hidden = false;
+        if (result) result.hidden = true;
+        return;
+    }
+    if (empty) empty.hidden = true;
+    if (result) result.hidden = false;
+    setText($('#h2h-name-a'), ea.displayName || 'Player');
+    setText($('#h2h-name-b'), eb.displayName || 'Player');
+    $('#h2h-stats-a').innerHTML = renderH2HStatsHtml(ea, eb);
+    $('#h2h-stats-b').innerHTML = renderH2HStatsHtml(eb, ea);
+}
+
+function renderH2HStatsHtml(self, other) {
+    // Highlight the field where `self` leads vs `other` so the eye lands
+    // on the head-to-head deltas instead of reading two columns of digits.
+    const pct = (e) => e.gamesPlayed ? (100 * (e.wins || 0) / e.gamesPlayed) : 0;
+    const fields = [
+        { label: 'XP',         val: self.xp || 0,         cmp: (self.xp || 0)         - (other.xp || 0) },
+        { label: 'Games',      val: self.gamesPlayed || 0,cmp: (self.gamesPlayed || 0)- (other.gamesPlayed || 0) },
+        { label: 'Wins',       val: self.wins || 0,       cmp: (self.wins || 0)       - (other.wins || 0) },
+        { label: 'Win %',      val: Math.round(pct(self)) + '%', cmp: pct(self)       - pct(other) }
+    ];
+    return fields.map((f) => {
+        const cls = f.cmp > 0 ? ' h2h-lead' : (f.cmp < 0 ? ' h2h-trail' : '');
+        return `<dt>${escapeHtml(f.label)}</dt><dd class="h2h-val${cls}">${escapeHtml(String(f.val))}</dd>`;
+    }).join('');
+}
+
+function wireH2H() {
+    const a = $('#h2h-select-a');
+    const b = $('#h2h-select-b');
+    if (a) a.addEventListener('change', renderH2HComparison);
+    if (b) b.addEventListener('change', renderH2HComparison);
+}
+
 function wireLeaderboard() {
     $('#leaderboard-period').addEventListener('change', renderLeaderboardEntries);
     $('#leaderboard-category').addEventListener('change', renderLeaderboardEntries);
@@ -3442,6 +3541,7 @@ async function boot() {
     wireProfileView();
     wireCustomPack();
     wireLeaderboard();
+    wireH2H();
     renderPackOptions();
 
     // Read tab + queued room from the URL BEFORE auth wires up, so a
