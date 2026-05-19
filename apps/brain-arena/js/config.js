@@ -117,6 +117,23 @@
         },
 
         // Default round size dropdown for GlobeDrop (locations per game).
-        GLOBE_DROP_LOCATIONS_DEFAULT: 5
+        GLOBE_DROP_LOCATIONS_DEFAULT: 5,
+
+        // Difficulty tiers for GlobeDrop. Each tier overrides the per-location
+        // timer, controls which hints render alongside the city name, and
+        // multiplies the final score after distance + continent multipliers.
+        // hintLevel values:
+        //   'country+continent+subregion' — easy: full geographic context
+        //   'country+continent'           — medium: country and continent
+        //   'country'                     — current default for legacy rooms
+        //   'none'                        — hard: city name only, no country
+        // scoreMultiplier is exposed in the lobby and end-card so players see
+        // the tradeoff before they pick.
+        GLOBE_DROP_DIFFICULTY_DEFAULT: 'medium',
+        GLOBE_DROP_DIFFICULTIES: {
+            easy:   { label: 'Easy',   timerSec: 180, hintLevel: 'country+continent+subregion', scoreMultiplier: 0.75 },
+            medium: { label: 'Medium', timerSec: 120, hintLevel: 'country+continent',            scoreMultiplier: 1.00 },
+            hard:   { label: 'Hard',   timerSec: 60,  hintLevel: 'none',                          scoreMultiplier: 1.50 }
+        }
     };
 }));

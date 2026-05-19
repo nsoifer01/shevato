@@ -627,6 +627,18 @@ function wireLobby() {
         $('#create-password-field').hidden = !wantsPrivate;
     });
 
+    // Globe Drop: difficulty drives the timer + hint level + scoring multiplier.
+    // The manual "time per location" override is hidden by default; checking
+    // the override toggle reveals it for hosts who want something off-tier.
+    $('#create-globe-drop-difficulty').addEventListener('change', (e) => {
+        const diff = GlobeDropScoring.difficultySettings(e.target.value);
+        const timeSel = $('#create-globe-drop-time');
+        if (timeSel) timeSel.value = String(diff.timerSec);
+    });
+    $('#create-globe-drop-timer-override').addEventListener('change', (e) => {
+        $('#create-globe-drop-time-field').hidden = !e.target.checked;
+    });
+
     $('#create-room-btn').addEventListener('click', createRoom);
     $('#join-room-btn').addEventListener('click', joinRoom);
     $('#join-code').addEventListener('input', (e) => {
@@ -712,18 +724,25 @@ async function createRoom() {
         if (gameType === 'globe-drop') {
             btn.textContent = 'Fetching locations…';
             const count = parseInt($('#create-locations-count').value, 10) || Config.GLOBE_DROP_LOCATIONS_DEFAULT;
-            const seconds = parseInt($('#create-globe-drop-time').value, 10) || 120;
-            // For GlobeDrop, questions[] holds the exact playlist of locations
-            // (no over-provisioning — there's no per-question category picker
-            // to feed variety into).
+            const difficultyKey = $('#create-globe-drop-difficulty').value || Config.GLOBE_DROP_DIFFICULTY_DEFAULT;
+            const diff = GlobeDropScoring.difficultySettings(difficultyKey);
+            // Manual timer override only kicks in if the host explicitly opts
+            // into it — otherwise the difficulty tier's timer is the source
+            // of truth so "Hard" actually feels hard.
+            const overrideTimer = !!$('#create-globe-drop-timer-override').checked;
+            const seconds = overrideTimer
+                ? (parseInt($('#create-globe-drop-time').value, 10) || diff.timerSec)
+                : diff.timerSec;
             const locations = await GlobeDropLocations.fetchLocations(count, shuffle);
             await setDoc(ref, Object.assign({}, shared, {
                 packId: 'world-capitals',
                 packName: 'World capitals',
                 totalQuestions: locations.length,
                 questions: locations,
-                // Per-question timer chosen in the lobby. Stored in ms so the
-                // pure phase helpers don't have to know about the unit choice.
+                difficulty: difficultyKey,
+                // Per-question timer chosen by tier (or override). Stored in
+                // ms so the pure phase helpers don't have to know about the
+                // unit choice.
                 questionTimeMs: seconds * 1000
             }));
         } else {
@@ -1498,11 +1517,44 @@ function renderGlobeDropStage() {
     if (!loc) return;
 
     setText($('#globe-drop-target-name'), loc.name || '—');
-    setText($('#globe-drop-target-country'), loc.country || '');
-    // We deliberately do NOT surface the continent/region during the
-    // asking phase — knowing "Europe" narrows the guess to ~10% of the
-    // globe and makes the multipliers meaningless. Region is still
-    // applied to the score behind the scenes.
+
+    // Difficulty drives which hints render:
+    //   easy   — country + continent + subregion (full geographic context)
+    //   medium — country + continent
+    //   hard   — city name only, no country
+    // We look up the tier from the room doc; legacy rooms (no difficulty
+    // field) read as medium and show the prior country-only behaviour.
+    const diff = GlobeDropScoring.difficultySettings(state.roomData.difficulty);
+    const hintLevel = diff.hintLevel;
+    const showCountry = hintLevel !== 'none';
+    setText($('#globe-drop-target-country'), showCountry ? (loc.country || '') : '');
+
+    const hintsEl = $('#globe-drop-prompt-hints');
+    const extra = [];
+    if (hintLevel === 'country+continent' || hintLevel === 'country+continent+subregion') {
+        if (loc.region) extra.push(loc.region);
+    }
+    if (hintLevel === 'country+continent+subregion') {
+        if (loc.subregion && loc.subregion !== loc.region) extra.push(loc.subregion);
+    }
+    if (extra.length) {
+        setText(hintsEl, extra.join(' · '));
+        hintsEl.removeAttribute('hidden');
+    } else {
+        hintsEl.setAttribute('hidden', '');
+    }
+
+    // Difficulty chip is only meaningful on the medium-or-harder tiers
+    // (easy is the friendly default and doesn't need celebrating).
+    const chip = $('#globe-drop-difficulty-chip');
+    if (state.roomData.difficulty && diff.scoreMultiplier !== 1) {
+        const sign = diff.scoreMultiplier > 1 ? '+' : '';
+        setText(chip, `${diff.label} · ${sign}${Math.round((diff.scoreMultiplier - 1) * 100)}% score`);
+        chip.removeAttribute('hidden');
+        chip.dataset.tier = state.roomData.difficulty;
+    } else {
+        chip.setAttribute('hidden', '');
+    }
 
     // Init the globe after the stage is visible so its container has a
     // measurable size. globe.gl reads dimensions during construction.
@@ -1626,7 +1678,7 @@ function drawGlobeDropReveal(loc, me, { showOthers = true } = {}) {
         const d = GlobeDropScoring.haversineDistanceKm(
             me.currentGuess.lat, me.currentGuess.lng, loc.lat, loc.lng
         );
-        const { points } = GlobeDropScoring.scoreGuess({ distanceKm: d, region: loc.region });
+        const { points } = GlobeDropScoring.scoreGuess({ distanceKm: d, region: loc.region, difficulty: state.roomData.difficulty });
         distEl.innerHTML = `${Math.round(d).toLocaleString()} km off — <strong>+${points}</strong> points`;
         let sentiment;
         if (d < 100) sentiment = '🎯 Bullseye!';

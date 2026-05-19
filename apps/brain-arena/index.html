@@ -170,13 +170,25 @@
 
               <!-- Globe Drop-only fields -->
               <label class="lobby-field" data-game-type="globe-drop" hidden>
+                <span>Difficulty</span>
+                <select id="create-globe-drop-difficulty">
+                  <option value="easy">Easy — country + continent + region, 180 s, 0.75× score</option>
+                  <option value="medium" selected>Medium — country + continent, 120 s, 1× score</option>
+                  <option value="hard">Hard — city name only, 60 s, 1.5× score</option>
+                </select>
+              </label>
+              <label class="lobby-field" data-game-type="globe-drop" hidden>
                 <span>Locations per game</span>
                 <select id="create-locations-count">
                   <option value="5" selected>5 — quick round</option>
                   <option value="10">10 — full game</option>
                 </select>
               </label>
-              <label class="lobby-field" data-game-type="globe-drop" hidden>
+              <label class="lobby-field lobby-field-toggle" data-game-type="globe-drop" hidden>
+                <input type="checkbox" id="create-globe-drop-timer-override">
+                <span>Override timer for this room</span>
+              </label>
+              <label class="lobby-field" data-game-type="globe-drop" id="create-globe-drop-time-field" hidden>
                 <span>Time per location</span>
                 <select id="create-globe-drop-time">
                   <option value="30">30 seconds — speed run</option>
@@ -187,7 +199,7 @@
                 </select>
               </label>
               <p class="lobby-hint" data-game-type="globe-drop" hidden>
-                Random world capitals from REST Countries. Closer guesses score more, with continental multipliers (Africa &amp; Asia &gt; Europe).
+                Random world capitals from REST Countries. Closer guesses score more, with continental multipliers (Africa &amp; Asia &gt; Europe) and a difficulty multiplier on top.
               </p>
 
               <!-- Shared fields -->
@@ -344,6 +356,8 @@
                 <strong id="globe-drop-target-name">—</strong>
                 <span class="globe-drop-prompt-country" id="globe-drop-target-country"></span>?
               </p>
+              <p class="globe-drop-prompt-hints" id="globe-drop-prompt-hints" hidden></p>
+              <span class="globe-drop-difficulty-chip" id="globe-drop-difficulty-chip" hidden></span>
             </header>
 
             <!-- Reveal panel — appears ABOVE the globe so the result is
