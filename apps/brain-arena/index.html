@@ -272,9 +272,25 @@
             </span>
           </div>
           <div class="room-head-right">
+            <!-- Host-only mid-game controls. Hidden until the room is in
+                 'playing' or 'picking' and the local user is the host. -->
+            <div class="room-host-actions" id="room-host-actions" hidden>
+              <button type="button" class="btn btn-ghost btn-sm" id="room-pause-btn" title="Pause / resume the timer">
+                <span aria-hidden="true">⏸</span> Pause
+              </button>
+              <button type="button" class="btn btn-ghost btn-sm" id="room-skip-btn" title="Skip to the reveal for this question">
+                <span aria-hidden="true">⏭</span> Skip
+              </button>
+              <button type="button" class="btn btn-ghost btn-sm btn-danger-ghost" id="room-end-btn" title="End the game and show the final scores">
+                <span aria-hidden="true">⏹</span> End
+              </button>
+            </div>
             <button type="button" class="btn btn-ghost" id="leave-room-btn">Leave room</button>
           </div>
         </header>
+        <p class="room-paused-banner" id="room-paused-banner" hidden>
+          <span aria-hidden="true">⏸</span> Game paused by host.
+        </p>
 
         <!-- STAGE: lobby (waiting) -->
         <section class="stage stage-lobby" id="stage-lobby">
