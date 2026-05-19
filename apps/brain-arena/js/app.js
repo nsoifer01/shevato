@@ -624,11 +624,6 @@ function wireLobby() {
 
     $('#create-private-toggle').addEventListener('change', (e) => {
         const wantsPrivate = e.target.checked;
-        if (wantsPrivate && !isPremium()) {
-            e.target.checked = false;
-            openPremiumModal();
-            return;
-        }
         $('#create-password-field').hidden = !wantsPrivate;
     });
 
@@ -638,6 +633,10 @@ function wireLobby() {
         const raw = String(e.target.value || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
         e.target.value = raw.slice(0, Config.ROOM_CODE_LENGTH);
         clearJoinError();
+        // When the code is fully typed, peek at the room so the password
+        // field appears proactively. Otherwise the user has to click Join,
+        // see an error, type the password, and click Join again.
+        maybeRevealJoinPasswordField(e.target.value);
     });
     $('#join-code').addEventListener('keydown', (e) => {
         if (e.key === 'Enter') joinRoom();
@@ -681,7 +680,7 @@ function showJoinError(msg) {
 async function createRoom() {
     if (!state.user) { openSignInPrompt(); return; }
     const gameType = state.selectedGameType === 'globe-drop' ? 'globe-drop' : 'trivia';
-    const isPrivate = !!$('#create-private-toggle').checked && isPremium();
+    const isPrivate = !!$('#create-private-toggle').checked;
     const password = isPrivate ? String($('#create-password').value || '').trim() : '';
     if (isPrivate && !password) {
         alert('Set a password for the private room.');
@@ -770,6 +769,45 @@ async function reserveUniqueRoomCode() {
         if (!snap.exists()) return code;
     }
     throw new Error('Could not reserve a room code; try again.');
+}
+
+/**
+ * When the join-code input reaches full length, peek at the room doc so
+ * the password field can appear proactively (instead of forcing a
+ * click → fail → type → click-again loop). Lookups are cheap and gated
+ * by Firestore rules; signed-out users get a no-op.
+ *
+ * Race notes:
+ *   - We tag each request with the typed code; only the most-recent
+ *     request updates the DOM. Otherwise a slow lookup for an earlier
+ *     prefix could overwrite a newer one.
+ *   - Any error (not signed in, doc missing, transient) just clears the
+ *     field — the user will see the real error when they click Join.
+ */
+let joinPeekToken = 0;
+function setJoinPwFieldVisible(visible) {
+    const el = $('#join-password-field');
+    if (visible) el.removeAttribute('hidden');
+    else el.setAttribute('hidden', '');
+}
+async function maybeRevealJoinPasswordField(rawValue) {
+    const code = RoomState.normalizeRoomCode(rawValue);
+    if (!code) { setJoinPwFieldVisible(false); return; }
+    if (!state.user) return; // can't peek; rules require auth
+    const token = ++joinPeekToken;
+    try {
+        const snap = await getDoc(doc(db, 'triviaRooms', code));
+        if (token !== joinPeekToken) return;
+        const isPrivate = snap.exists() && !!snap.data().isPrivate;
+        if (isPrivate) {
+            setJoinPwFieldVisible(true);
+        } else {
+            setJoinPwFieldVisible(false);
+            $('#join-password').value = '';
+        }
+    } catch (_) {
+        if (token === joinPeekToken) setJoinPwFieldVisible(false);
+    }
 }
 
 async function joinRoom() {

@@ -73,7 +73,8 @@
       "Per-question / per-location recap table comparing you side-by-side with your opponents",
       "Global XP leaderboard",
       "Firebase Auth profiles with XP, games played, and wins",
-      "Premium tier: private password-protected rooms, custom question packs, detailed accuracy / response-time stats"
+      "Optional password-protected private rooms for friends-only games",
+      "Premium tier: custom question packs, detailed accuracy / response-time stats"
     ],
     "author": {
       "@type": "Organization",
@@ -193,7 +194,6 @@
               <label class="lobby-field lobby-field-toggle">
                 <input type="checkbox" id="create-private-toggle">
                 <span>Private (password required to join)</span>
-                <span class="premium-tag" data-feature="private-rooms">Premium</span>
               </label>
               <label class="lobby-field" id="create-password-field" hidden>
                 <span>Room password</span>
@@ -521,7 +521,7 @@
         <div class="profile-premium-card" id="profile-premium-card">
           <div class="profile-premium-info">
             <h3><span aria-hidden="true">✨</span> Premium</h3>
-            <p id="profile-premium-status">Every new account gets a 30-day free trial. After that, upgrade for $5 one-time to keep private rooms, custom question packs, and detailed post-game stats unlocked.</p>
+            <p id="profile-premium-status">Every new account gets a 30-day free trial. After that, upgrade for $5 one-time to keep custom question packs and detailed post-game stats unlocked.</p>
           </div>
           <button type="button" class="btn btn-primary" id="upgrade-premium-btn">Go Premium · $5</button>
         </div>
@@ -574,7 +574,6 @@
       <h2 id="premium-modal-title"><span aria-hidden="true">✨</span> Brain Arena Premium</h2>
       <p class="premium-modal-price"><strong>$5 one-time</strong> — no subscription.</p>
       <ul class="premium-list">
-        <li><span aria-hidden="true">🔒</span> Private password-protected rooms</li>
         <li><span aria-hidden="true">📦</span> Upload custom question packs</li>
         <li><span aria-hidden="true">📊</span> Detailed post-game stats (accuracy, response time, category breakdown)</li>
       </ul>
