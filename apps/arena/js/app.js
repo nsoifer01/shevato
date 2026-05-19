@@ -1022,7 +1022,10 @@ function wireLobby() {
         if (ok) leaveRoom();
     });
     $('#start-game-btn').addEventListener('click', startGame);
-    $('#end-back-btn').addEventListener('click', () => leaveRoom());
+    // Legacy bottom-of-recap end-stage buttons were removed — guard
+    // the listeners so a future re-add Just Works.
+    const endBack = $('#end-back-btn');
+    if (endBack) endBack.addEventListener('click', () => leaveRoom());
     const settingsEditBtn = $('#room-settings-edit-btn');
     if (settingsEditBtn) settingsEditBtn.addEventListener('click', () => openRoomSettingsEditor());
     const settingsCancel = $('#room-settings-cancel');
@@ -1035,7 +1038,8 @@ function wireLobby() {
         if (playMode === 'solo') playAgain();
         else proposeRematch();
     };
-    $('#end-again-btn').addEventListener('click', endAgainHandler);
+    const endAgainBtn = $('#end-again-btn');
+    if (endAgainBtn) endAgainBtn.addEventListener('click', endAgainHandler);
     const headerRematchBtn = $('#room-end-again-btn');
     if (headerRematchBtn) headerRematchBtn.addEventListener('click', endAgainHandler);
     $('#rematch-accept-btn').addEventListener('click', () => respondToRematch(true));
@@ -1046,6 +1050,8 @@ function wireLobby() {
     // GlobeDrop controls (wired once; they no-op when no GlobeDrop room is active)
     const submitBtn = $('#globe-drop-submit-btn');
     if (submitBtn) submitBtn.addEventListener('click', () => { Feedback.guessSubmitted(); submitGuess(); });
+    const readyBtn = $('#globe-drop-ready-btn');
+    if (readyBtn) readyBtn.addEventListener('click', () => markReadyForNext());
     const clearBtn = $('#globe-drop-clear-btn');
     if (clearBtn) clearBtn.addEventListener('click', () => { Feedback.pinCleared(); clearMyPin(); });
 
@@ -2063,22 +2069,44 @@ function renderRoom() {
     // Rematch / restart proposal — surface an accept/decline prompt
     // exactly once per proposal so the player has a chance to weigh in
     // without missing the round. Fires both mid-game (status='playing')
-    // and post-game (status='finished') so the end stage's strip no
-    // longer requires the user to spot it among the recap.
+    // and post-game (status='finished'). A live "Xs remaining" ticker
+    // is injected into the modal body so respondents see the same
+    // 10-second deadline the proposer's pending modal counts down.
     if ((playing || finished) && room.rematchProposedBy
         && state.user && room.rematchProposedBy !== state.user.uid
         && !meHasAcceptedRematch() && !meHasDeclinedRematch()
         && state.lastRematchPromptShown !== room.rematchProposedBy) {
         state.lastRematchPromptShown = room.rematchProposedBy;
+        const proposedAtMs = (room.rematchProposedAt && room.rematchProposedAt.toMillis)
+            ? room.rematchProposedAt.toMillis() : Date.now();
+        const deadline = proposedAtMs + PROPOSAL_TIMEOUT_MS;
+        const baseBody = playing
+            ? 'Another player proposed restarting. Accept to draw fresh locations; decline to keep playing.'
+            : 'Another player wants a rematch. Accept to start a new game; decline to head back to the lobby.';
+        // The body element is the same one openConfirmModal writes —
+        // we keep updating it until the modal closes. clearInterval
+        // happens both when the promise resolves and when the timer
+        // hits zero (which also auto-declines).
+        let respTicker = setInterval(() => {
+            const left = Math.max(0, Math.ceil((deadline - Date.now()) / 1000));
+            const bodyEl = document.getElementById('confirm-modal-body');
+            if (bodyEl) bodyEl.textContent = baseBody + '  ·  ' + left + 's remaining';
+            if (left <= 0) {
+                clearInterval(respTicker);
+                respTicker = null;
+                if (typeof closeConfirmModal === 'function') closeConfirmModal(false);
+            }
+        }, 250);
         openConfirmModal({
             title: playing ? 'Restart the game?' : 'Play again?',
-            body: playing
-                ? 'Another player proposed restarting. Accept to draw fresh locations; decline to keep playing.'
-                : 'Another player wants a rematch. Accept to start a new game; decline to head back to the lobby.',
+            body: baseBody + '  ·  10s remaining',
             confirmLabel: 'Accept',
             cancelLabel: 'Decline',
             danger: false
-        }).then((accept) => respondToRematch(!!accept));
+        }).then((accept) => {
+            if (respTicker) { clearInterval(respTicker); respTicker = null; }
+            respondToRematch(!!accept);
+        });
     }
 
     // If this client IS the proposer, keep their waiting modal in sync
@@ -2659,7 +2687,7 @@ function ensureGlobe() {
     state.globe.width(el.clientWidth);
     state.globe.height(el.clientHeight);
     // Initial camera pose: roughly overhead, comfortable altitude.
-    state.globe.pointOfView({ lat: 20, lng: 0, altitude: 1.35 }, 0);
+    state.globe.pointOfView({ lat: 20, lng: 0, altitude: 1.0 }, 0);
 
     // Three.js OrbitControls defaults feel sluggish — crank zoom speed and
     // ease damping so wheel + pinch react snappily. We ALSO install a
@@ -2954,7 +2982,7 @@ function renderGlobeDropStage() {
             // reveal had the camera centered on the answer's lat/lng, and
             // tweening from there to (20,0) was reading as "the globe
             // spins between rounds for no reason."
-            g.pointOfView({ lat: 20, lng: 0, altitude: 1.35 }, 0);
+            g.pointOfView({ lat: 20, lng: 0, altitude: 1.0 }, 0);
         }
 
         // Lock the controls if we've already submitted this question.
@@ -2991,6 +3019,63 @@ function renderGlobeDropStage() {
 
     renderMiniBoardGlobeDrop(loc.id);
     startGlobeDropTimerLoop();
+}
+
+/**
+ * Write the local player's "ready to advance" marker for the current
+ * question. The host's rAF gate watches every player's readyAfterQId;
+ * once everyone matches the current question id, the next round (or
+ * the end stage, for the final question) fires early instead of
+ * waiting out the full 5-second reveal window.
+ */
+async function markReadyForNext() {
+    if (!state.user || !state.roomCode || !state.roomData) return;
+    const loc = currentGlobeDropLocation();
+    if (!loc || !loc.id) return;
+    const me = state.roomPlayers.find((p) => p.uid === state.user.uid);
+    if (me && me.readyAfterQId === loc.id) return; // already marked
+    try {
+        await updateDoc(doc(db, 'triviaRooms', state.roomCode, 'players', state.user.uid), {
+            readyAfterQId: loc.id
+        });
+    } catch (err) {
+        console.warn('markReadyForNext failed:', err);
+    }
+}
+
+/**
+ * Render the Ready bar inside the reveal panel: shows the button
+ * (disabled once I've voted) plus a tiny pip per player indicating
+ * who has and hasn't voted yet.
+ */
+function renderReadyBar(phase) {
+    const bar = $('#globe-drop-ready-bar');
+    if (!bar) return;
+    const loc = currentGlobeDropLocation();
+    const visible = (phase === 'reveal' || phase === 'ended') && !!loc;
+    bar.hidden = !visible;
+    if (!visible) return;
+    const me = state.user
+        ? state.roomPlayers.find((p) => p.uid === state.user.uid)
+        : null;
+    const meReady = !!(me && me.readyAfterQId === loc.id);
+    const btn = $('#globe-drop-ready-btn');
+    if (btn) {
+        btn.disabled = meReady;
+        btn.innerHTML = meReady
+            ? '<span aria-hidden="true">✓</span> You\'re ready'
+            : '<span aria-hidden="true">⏭</span> Ready';
+    }
+    const statusEl = $('#globe-drop-ready-status');
+    if (statusEl) {
+        const players = state.roomPlayers || [];
+        const readyCount = players.filter((p) => p.readyAfterQId === loc.id).length;
+        const pips = players.map((p) => {
+            const isReady = p.readyAfterQId === loc.id;
+            return `<span class="ready-pip${isReady ? ' is-ready' : ''}">${escapeHtml(p.displayName || 'Player')}</span>`;
+        }).join('');
+        statusEl.innerHTML = `${pips} <small>${readyCount}/${players.length} ready</small>`;
+    }
 }
 
 function drawGlobeDropReveal(loc, me, { showOthers = true } = {}) {
@@ -3173,13 +3258,12 @@ function renderMiniBoardGlobeDrop(currentQuestionId) {
         if (state.user && p.uid === state.user.uid) li.classList.add('is-me');
         if (i === 0 && (p.score || 0) > 0) li.classList.add('is-leader');
         if (p.answeredThisQuestion) li.classList.add('is-answered');
-        // Markup intentionally minimal — the submitted ✓ is rendered
-        // via a CSS pseudo-element on .is-answered (single source of
-        // truth, no risk of duplicating into the name span).
+        // No "submitted" word, no badge. The .is-answered class drives
+        // a faint green tint on the name span so the answered state
+        // reads at a glance without adding chrome to the row.
         li.innerHTML =
             `<span class="mini-board-rank">${i+1}</span>` +
             `<span class="mini-board-name">${escapeHtml(p.displayName)}</span>` +
-            `<span class="mini-board-check" aria-label="submitted"></span>` +
             `<span class="mini-board-score">${p.score || 0}</span>`;
         list.appendChild(li);
     });
@@ -3242,6 +3326,25 @@ function renderRoundsHistoryBoard() {
         });
         const li = document.createElement('li');
         li.className = 'rounds-history-row';
+        // Local-player breakdown — recompute the multipliers we applied
+        // so the chip can spell out "× 1.5 × 1.2" alongside the total.
+        // Only shown for the LOCAL user's chip, and only for rounds
+        // they've actually submitted (no peeking ahead on the current
+        // round before submitting).
+        const meRec = me && Array.isArray(me.answers)
+            ? me.answers.find((a) => a && a.locationId === loc.id)
+            : null;
+        let myBreakdown = '';
+        if (meRec && typeof meRec.points === 'number' && !meRec.gaveUp) {
+            const diffMult = GlobeDropScoring.difficultySettings(room.difficulty).scoreMultiplier;
+            const contMult = GlobeDropScoring.continentMultiplier(loc.region);
+            const popMult = GlobeDropScoring.populationWeight(loc.population);
+            const parts = [];
+            if (diffMult !== 1) parts.push('×' + diffMult.toFixed(2).replace(/0+$/, '').replace(/\.$/, ''));
+            if (contMult !== 1) parts.push('×' + contMult.toFixed(2).replace(/0+$/, '').replace(/\.$/, ''));
+            if (popMult !== 1) parts.push('×' + popMult.toFixed(2).replace(/0+$/, '').replace(/\.$/, ''));
+            if (parts.length) myBreakdown = ' <em>' + escapeHtml(parts.join(' ')) + '</em>';
+        }
         const chips = perPlayer.map((pp) => {
             const isMe = state.user && pp.uid === state.user.uid;
             const cls = 'rounds-history-chip'
@@ -3252,7 +3355,8 @@ function renderRoundsHistoryBoard() {
             else if (pp.roundPoints == null) val = '—';
             else if (pp.gaveUp) val = 'X';
             else val = String(pp.roundPoints);
-            return `<span class="${cls}"><span>${escapeHtml(pp.displayName)}</span><strong>${escapeHtml(val)}</strong></span>`;
+            const trailing = isMe ? myBreakdown : '';
+            return `<span class="${cls}"><span>${escapeHtml(pp.displayName)}</span><strong>${escapeHtml(val)}</strong>${trailing}</span>`;
         }).join('');
         li.innerHTML =
             `<span class="rounds-history-label">R${r + 1}</span>` +
@@ -3448,6 +3552,28 @@ function startGlobeDropTimerLoop() {
             }).catch((err) => {
                 console.warn('early reveal write failed:', err);
                 state.earlyRevealForQuestion = null;
+            });
+        }
+
+        // Render the Ready bar (button + per-player pips) every tick
+        // while we're in or past reveal. Cheap — just a few DOM
+        // writes on a small element.
+        if (phase === 'reveal' || phase === 'ended') renderReadyBar(phase);
+
+        // Early advance: if every player has voted Ready for the
+        // current question during reveal, jump straight to the next
+        // round (or the end stage for the final question) instead of
+        // waiting out the rest of the 5-second window. The
+        // earlyAdvanceForQuestion guard ensures we fire exactly once
+        // per question.
+        if (isHost && phase === 'reveal' && currentQId
+            && state.earlyAdvanceForQuestion !== currentQId
+            && state.roomPlayers.length > 0
+            && state.roomPlayers.every((p) => p.readyAfterQId === currentQId)) {
+            state.earlyAdvanceForQuestion = currentQId;
+            advanceQuestionOrFinish().catch((err) => {
+                console.warn('early advance write failed:', err);
+                state.earlyAdvanceForQuestion = null;
             });
         }
 
