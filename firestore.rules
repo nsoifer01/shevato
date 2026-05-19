@@ -86,6 +86,20 @@ service cloud.firestore {
       allow write: if false;
     }
 
+    // Brain Arena — Pairwise head-to-head records.
+    // One doc per ordered uid pair (key = "{uidA}__{uidB}" with uidA <
+    // uidB lexicographically). Holds Wins/Losses/Ties between those two
+    // players across all multiplayer games. Read is open to any signed-
+    // in user so the H2H view + lobby badges can fetch arbitrary pairs;
+    // write requires the caller to actually be one of the two players
+    // in the pair, so randoms can't manufacture wins for unrelated uids.
+    match /triviaH2H/{pairKey} {
+      allow read: if request.auth != null;
+      allow create, update: if request.auth != null
+        && (request.resource.data.uidA == request.auth.uid
+            || request.resource.data.uidB == request.auth.uid);
+    }
+
     // Brain Arena — Globe Drop daily challenge leaderboard.
     // Each YYYY-MM-DD doc has a /scores subcollection keyed by uid.
     // Anyone signed in can read (to render the daily top 10); each

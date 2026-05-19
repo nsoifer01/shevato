@@ -2849,6 +2849,53 @@ select option { background: var(--surface); color: var(--text); }
 }
 .end-board td.col-xp, .leaderboard-table td.col-xp { color: var(--good); }
 
+/* Room settings panel — sits at the top of the room lobby so all
+   players can see what they're about to play. Host gets an Edit
+   button; others see the values read-only. */
+.room-settings {
+  margin: 0 0 1.4rem;
+  padding: 0.9rem 1.1rem;
+  background:
+    linear-gradient(180deg, rgba(34, 211, 238, 0.04), transparent 50%),
+    rgba(8, 11, 22, 0.55);
+  border: 1px solid rgba(34, 211, 238, 0.18);
+  border-radius: var(--radius);
+}
+.room-settings-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 0.7rem;
+}
+.room-settings-head h3 {
+  font-family: "Space Grotesk", "Outfit", sans-serif;
+  font-size: 1rem;
+  font-weight: 600;
+  color: var(--text);
+  margin: 0;
+}
+.room-settings-list {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  gap: 0.7rem 1rem;
+  margin: 0;
+}
+.room-settings-item dt {
+  font-family: "Space Grotesk", "Outfit", sans-serif;
+  font-size: 0.7rem;
+  font-weight: 600;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--muted-2);
+  margin-bottom: 0.2rem;
+}
+.room-settings-item dd {
+  margin: 0;
+  font-size: 0.94rem;
+  font-weight: 500;
+  color: var(--text);
+}
+
 /* Room-session H2H — appears on the end stage once at least one match
    has finished in this room and there are 2+ players. Same row aesthetic
    as the mini-board but with a more compact margin. */
