@@ -3,7 +3,7 @@
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
 
-const { normalizeCountry } = require('../js/maptap-locations.js');
+const { normalizeCountry } = require('../js/globe-drop-locations.js');
 
 function rawCountry(over = {}) {
     return Object.assign({

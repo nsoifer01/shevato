@@ -1,7 +1,7 @@
 /*
- * Trivia Arena — app styles.
+ * Brain Arena — app styles.
  *
- * Dark theme matching maptap-rivals / rising-seasons tokens for visual
+ * Dark theme matching globe-drop-rivals / rising-seasons tokens for visual
  * consistency across apps. Loaded after assets/css/main.css; site chrome
  * keeps its main.css styling, this file owns the in-app surfaces.
  */
@@ -64,7 +64,7 @@ html {
   min-height: 100%;
 }
 
-body.trivia-arena-app {
+body.brain-arena-app {
   background: transparent !important;
   color: var(--text);
   line-height: 1.5;
@@ -75,13 +75,13 @@ body.trivia-arena-app {
   padding-top: 3.25rem;
 }
 
-body.trivia-arena-app a { color: var(--accent-2); text-decoration: none; }
-body.trivia-arena-app a:hover { text-decoration: underline; }
+body.brain-arena-app a { color: var(--accent-2); text-decoration: none; }
+body.brain-arena-app a:hover { text-decoration: underline; }
 
-body.trivia-arena-app h1,
-body.trivia-arena-app h2,
-body.trivia-arena-app h3,
-body.trivia-arena-app h4 {
+body.brain-arena-app h1,
+body.brain-arena-app h2,
+body.brain-arena-app h3,
+body.brain-arena-app h4 {
   color: var(--text);
   margin: 0;
   letter-spacing: -0.01em;
@@ -90,14 +90,14 @@ body.trivia-arena-app h4 {
   line-height: 1.25;
 }
 
-body.trivia-arena-app input,
-body.trivia-arena-app select,
-body.trivia-arena-app textarea,
-body.trivia-arena-app button {
+body.brain-arena-app input,
+body.brain-arena-app select,
+body.brain-arena-app textarea,
+body.brain-arena-app button {
   font-family: inherit;
 }
 
-/* ---------- Buttons (matches maptap-rivals so chrome feels identical) ---------- */
+/* ---------- Buttons (matches globe-drop-rivals so chrome feels identical) ---------- */
 
 .btn {
   display: inline-flex;
@@ -192,7 +192,7 @@ body.trivia-arena-app button {
   padding: 2rem 0;
 }
 
-/* ---------- View tabs (matches maptap-rivals) ---------- */
+/* ---------- View tabs (matches globe-drop-rivals) ---------- */
 
 .view-tabs {
   display: flex;
@@ -563,9 +563,9 @@ body.trivia-arena-app button {
   border-radius: var(--radius-sm);
 }
 
-/* ---------- Stage: maptap ---------- */
+/* ---------- Stage: globe-drop ---------- */
 
-.maptap-card {
+.globe-drop-card {
   background:
     linear-gradient(180deg, rgba(255, 255, 255, 0.03), transparent 30%),
     var(--surface);
@@ -575,7 +575,7 @@ body.trivia-arena-app button {
   box-shadow: 0 22px 60px -16px rgba(0,0,0,0.4);
 }
 
-.maptap-prompt-row {
+.globe-drop-prompt-row {
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -583,17 +583,17 @@ body.trivia-arena-app button {
   margin-bottom: 0.55rem;
   flex-wrap: wrap;
 }
-.maptap-prompt {
+.globe-drop-prompt {
   margin: 0;
   font-size: clamp(1.1rem, 2.6vw, 1.45rem);
   color: var(--text);
 }
-.maptap-prompt-label { color: var(--muted); font-weight: 400; }
-.maptap-prompt strong { color: var(--accent-2); font-weight: 700; }
-.maptap-prompt-country { color: var(--muted); font-weight: 400; font-size: 0.95em; }
-.maptap-prompt-country:not(:empty)::before { content: ", "; }
+.globe-drop-prompt-label { color: var(--muted); font-weight: 400; }
+.globe-drop-prompt strong { color: var(--accent-2); font-weight: 700; }
+.globe-drop-prompt-country { color: var(--muted); font-weight: 400; font-size: 0.95em; }
+.globe-drop-prompt-country:not(:empty)::before { content: ", "; }
 
-.maptap-region-chip {
+.globe-drop-region-chip {
   display: inline-flex;
   align-items: center;
   padding: 0.25rem 0.6rem;
@@ -608,13 +608,13 @@ body.trivia-arena-app button {
   white-space: nowrap;
 }
 
-.maptap-hint {
+.globe-drop-hint {
   margin: 0 0 0.85rem;
   color: var(--muted);
   font-size: 0.88rem;
 }
 
-.maptap-map {
+.globe-drop-map {
   position: relative;
   width: 100%;
   height: clamp(380px, 60vh, 600px);
@@ -626,11 +626,11 @@ body.trivia-arena-app button {
   background: radial-gradient(circle at 50% 50%, #0e1530 0%, #02030a 80%);
   cursor: grab;
 }
-.maptap-map:active { cursor: grabbing; }
+.globe-drop-map:active { cursor: grabbing; }
 /* globe.gl injects a <canvas> child that fills the container. */
-.maptap-map canvas { display: block; }
+.globe-drop-map canvas { display: block; }
 
-.maptap-controls {
+.globe-drop-controls {
   display: flex;
   justify-content: flex-end;
   gap: 0.55rem;
@@ -638,47 +638,47 @@ body.trivia-arena-app button {
   flex-wrap: wrap;
 }
 
-.maptap-status {
+.globe-drop-status {
   margin-top: 0.6rem;
 }
 
-.maptap-attribution {
+.globe-drop-attribution {
   margin: 0.75rem 0 0;
   font-size: 0.7rem;
   color: var(--muted-2);
   text-align: right;
 }
-.maptap-attribution a {
+.globe-drop-attribution a {
   color: inherit;
   text-decoration: underline dotted;
 }
 
-.maptap-reveal {
+.globe-drop-reveal {
   margin: 0 0 0.85rem;
   padding: 0.85rem 1rem;
   background: var(--surface-2);
   border: 1px solid var(--border);
   border-radius: var(--radius-sm);
 }
-.maptap-reveal-head {
+.globe-drop-reveal-head {
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 0.75rem;
   flex-wrap: wrap;
 }
-.maptap-reveal-distance {
+.globe-drop-reveal-distance {
   margin: 0;
   font-size: 0.95rem;
   color: var(--text);
   flex: 1;
   min-width: 0;
 }
-.maptap-reveal-distance strong { color: var(--accent-2); }
+.globe-drop-reveal-distance strong { color: var(--accent-2); }
 
 /* "5 to next" countdown chip — visible only during the global reveal
    window so players see exactly how many seconds until the next city. */
-.maptap-countdown {
+.globe-drop-countdown {
   display: inline-flex;
   align-items: center;
   gap: 0.45rem;
@@ -693,7 +693,7 @@ body.trivia-arena-app button {
   text-transform: uppercase;
   white-space: nowrap;
 }
-.maptap-countdown-num {
+.globe-drop-countdown-num {
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -707,9 +707,9 @@ body.trivia-arena-app button {
   font-weight: 700;
   letter-spacing: 0;
 }
-.maptap-countdown-label { letter-spacing: 0.08em; }
+.globe-drop-countdown-label { letter-spacing: 0.08em; }
 
-.maptap-reveal-trivia {
+.globe-drop-reveal-trivia {
   margin: 0.55rem 0 0;
   font-size: 0.88rem;
   color: var(--muted);
@@ -721,7 +721,7 @@ body.trivia-arena-app button {
 /* Pin styling is now handled by globe.gl's pointColor() (no DOM nodes
    to style — pins are rendered into the WebGL canvas). Legend chips
    below the globe explain the colors. */
-.maptap-legend {
+.globe-drop-legend {
   display: flex;
   gap: 0.7rem;
   flex-wrap: wrap;
@@ -729,20 +729,20 @@ body.trivia-arena-app button {
   font-size: 0.72rem;
   color: var(--muted);
 }
-.maptap-legend-item {
+.globe-drop-legend-item {
   display: inline-flex;
   align-items: center;
   gap: 0.3rem;
 }
-.maptap-legend-dot {
+.globe-drop-legend-dot {
   width: 10px;
   height: 10px;
   border-radius: 50%;
   display: inline-block;
 }
-.maptap-legend-dot.is-actual { background: var(--gold); box-shadow: 0 0 0 2px rgba(252, 211, 77, 0.3); }
-.maptap-legend-dot.is-mine   { background: var(--accent); }
-.maptap-legend-dot.is-other  { background: var(--bad); }
+.globe-drop-legend-dot.is-actual { background: var(--gold); box-shadow: 0 0 0 2px rgba(252, 211, 77, 0.3); }
+.globe-drop-legend-dot.is-mine   { background: var(--accent); }
+.globe-drop-legend-dot.is-other  { background: var(--bad); }
 
 /* ---------- Stage: picking (between questions) ---------- */
 
@@ -1589,7 +1589,7 @@ body.trivia-arena-app button {
   border-radius: var(--radius);
 }
 
-/* ---------- Modal (matches maptap-rivals) ---------- */
+/* ---------- Modal (matches globe-drop-rivals) ---------- */
 
 .modal {
   position: fixed;

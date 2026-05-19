@@ -1,8 +1,8 @@
 /*
- * Trivia Arena — runtime constants.
+ * Brain Arena — runtime constants.
  *
  * UMD-style export: CommonJS for node:test, attached to a window namespace
- * (window.TriviaArena.Config) for browser classic scripts.
+ * (window.BrainArena.Config) for browser classic scripts.
  *
  * STRIPE_CHECKOUT_URL is intentionally a placeholder — flip it to the real
  * Stripe Checkout link post-merge, no other code needs to change.
@@ -11,7 +11,7 @@
     if (typeof module === 'object' && module.exports) {
         module.exports = factory();
     } else {
-        const ns = root.TriviaArena = root.TriviaArena || {};
+        const ns = root.BrainArena = root.BrainArena || {};
         ns.Config = factory();
     }
 }(typeof self !== 'undefined' ? self : this, function () {
@@ -60,24 +60,24 @@
         MAX_DISPLAY_NAME: 20,
         MAX_PLAYERS_PER_ROOM: 16,
 
-        // ---------- MapTap mode ----------
+        // ---------- GlobeDrop mode ----------
         // Per-location timer. 120s matches your "X minutes" framing — gives
         // players time to study the map before committing.
-        MAPTAP_LOCATION_TIME_MS: 120000,
+        GLOBE_DROP_LOCATION_TIME_MS: 120000,
         // 3s glimpse of pins/distances + Wikipedia blurb, then advance.
-        MAPTAP_REVEAL_TIME_MS: 5000,
+        GLOBE_DROP_REVEAL_TIME_MS: 5000,
 
         // Scoring is exponential decay: base * exp(-distance / scaleKm).
         // At 0km you get base * multiplier; at scaleKm you get ~37% of base.
-        MAPTAP_BASE_POINTS: 100,
-        MAPTAP_DISTANCE_SCALE_KM: 1500,
+        GLOBE_DROP_BASE_POINTS: 100,
+        GLOBE_DROP_DISTANCE_SCALE_KM: 1500,
 
         // Continent multipliers per your spec — harder/lesser-known
         // continents (Africa, Asia, Oceania, Antarctic) score more than
         // Europe (the baseline) so the points reflect difficulty, not just
         // geographic luck. Keys are lowercased REST Countries `region`
         // strings; missing keys fall back to 1.0.
-        MAPTAP_CONTINENT_MULTIPLIERS: {
+        GLOBE_DROP_CONTINENT_MULTIPLIERS: {
             africa: 1.3,
             asia: 1.3,
             europe: 1.0,
@@ -86,7 +86,7 @@
             antarctic: 1.5
         },
 
-        // Default round size dropdown for MapTap (locations per game).
-        MAPTAP_LOCATIONS_DEFAULT: 5
+        // Default round size dropdown for GlobeDrop (locations per game).
+        GLOBE_DROP_LOCATIONS_DEFAULT: 5
     };
 }));

@@ -1,10 +1,10 @@
 /*
- * Trivia Arena — MapTap location source (REST Countries API).
+ * Brain Arena — GlobeDrop location source (REST Countries API).
  *
  * https://restcountries.com — free, no API key, CORS-enabled.
  * GET /v3.1/all?fields=name,capital,capitalInfo,region,subregion,flag
  * returns ~250 country records. We map each one's capital + lat/lng into
- * the in-app location shape used by the MapTap game stage.
+ * the in-app location shape used by the GlobeDrop game stage.
  *
  * normalizeCountry is pure (no fetch) so it's testable; fetchLocations
  * does the network call + normalization + random shuffle in one shot.
@@ -13,8 +13,8 @@
     if (typeof module === 'object' && module.exports) {
         module.exports = factory();
     } else {
-        const ns = root.TriviaArena = root.TriviaArena || {};
-        ns.MapTapLocations = factory();
+        const ns = root.BrainArena = root.BrainArena || {};
+        ns.GlobeDropLocations = factory();
     }
 }(typeof self !== 'undefined' ? self : this, function () {
     'use strict';

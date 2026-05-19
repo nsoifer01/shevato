@@ -8,7 +8,7 @@ const {
     haversineDistanceKm,
     continentMultiplier,
     scoreGuess
-} = require('../js/maptap-scoring.js');
+} = require('../js/globe-drop-scoring.js');
 
 // --- haversineDistanceKm ----------------------------------------------
 
@@ -68,18 +68,18 @@ test('continentMultiplier: unknown / empty / null => 1.0', () => {
 
 test('scoreGuess: bullseye in Europe => base points exactly', () => {
     const r = scoreGuess({ distanceKm: 0, region: 'Europe' });
-    assert.equal(r.points, Config.MAPTAP_BASE_POINTS);
+    assert.equal(r.points, Config.GLOBE_DROP_BASE_POINTS);
     assert.equal(r.multiplier, 1);
 });
 
 test('scoreGuess: bullseye in Africa picks up the bonus', () => {
     const r = scoreGuess({ distanceKm: 0, region: 'Africa' });
-    assert.equal(r.points, Math.round(Config.MAPTAP_BASE_POINTS * 1.3));
+    assert.equal(r.points, Math.round(Config.GLOBE_DROP_BASE_POINTS * 1.3));
 });
 
 test('scoreGuess: at scaleKm distance => ~37% of base (1/e)', () => {
-    const r = scoreGuess({ distanceKm: Config.MAPTAP_DISTANCE_SCALE_KM, region: 'Europe' });
-    const expected = Math.round(Config.MAPTAP_BASE_POINTS * Math.exp(-1));
+    const r = scoreGuess({ distanceKm: Config.GLOBE_DROP_DISTANCE_SCALE_KM, region: 'Europe' });
+    const expected = Math.round(Config.GLOBE_DROP_BASE_POINTS * Math.exp(-1));
     assert.equal(r.points, expected);
 });
 
@@ -99,6 +99,6 @@ test('scoreGuess: far-side-of-the-world guess approaches 0', () => {
 });
 
 test('scoreGuess: negative / missing distance treated as 0', () => {
-    assert.equal(scoreGuess({ distanceKm: -100, region: 'Europe' }).points, Config.MAPTAP_BASE_POINTS);
-    assert.equal(scoreGuess({ distanceKm: null, region: 'Europe' }).points, Config.MAPTAP_BASE_POINTS);
+    assert.equal(scoreGuess({ distanceKm: -100, region: 'Europe' }).points, Config.GLOBE_DROP_BASE_POINTS);
+    assert.equal(scoreGuess({ distanceKm: null, region: 'Europe' }).points, Config.GLOBE_DROP_BASE_POINTS);
 });
