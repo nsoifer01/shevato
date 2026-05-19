@@ -843,6 +843,14 @@ function wireLobby() {
             setTimeout(() => { btn.innerHTML = original; }, 1200);
         } catch (e) { /* ignore */ }
     });
+
+    // Host-only mid-game controls.
+    const pauseBtn = $('#room-pause-btn');
+    const skipBtn = $('#room-skip-btn');
+    const endBtn = $('#room-end-btn');
+    if (pauseBtn) pauseBtn.addEventListener('click', () => togglePauseRoom());
+    if (skipBtn) skipBtn.addEventListener('click', () => hostSkipCurrentQuestion());
+    if (endBtn) endBtn.addEventListener('click', () => hostEndGameEarly());
 }
 
 function clearJoinError() {
@@ -1297,6 +1305,82 @@ async function leaveRoom({ silent = false, reason = null } = {}) {
  * Render room (lobby, asking, reveal, end)
  * ===================================================================== */
 
+/* =====================================================================
+ * Host mid-game controls (pause / skip / end)
+ * ===================================================================== */
+
+function isHostOfActiveRoom() {
+    return !!(state.roomCode && state.roomData
+        && state.user && state.roomData.hostUid === state.user.uid);
+}
+
+async function togglePauseRoom() {
+    if (!isHostOfActiveRoom()) return;
+    const room = state.roomData;
+    if (!room || room.status !== 'playing') return;
+    const ref = doc(db, 'triviaRooms', state.roomCode);
+    try {
+        if (room.paused) {
+            // Resume: bump questionStartedAt forward by the time the
+            // game spent paused, so the remaining-time math picks up
+            // exactly where the player left off. pausedAt is whatever
+            // serverTimestamp resolved to when we paused.
+            const pausedAtMs = room.pausedAt && room.pausedAt.toMillis ? room.pausedAt.toMillis() : Date.now();
+            const elapsedPause = Math.max(0, Date.now() - pausedAtMs);
+            const startMs = room.questionStartedAt && room.questionStartedAt.toMillis
+                ? room.questionStartedAt.toMillis() : Date.now();
+            // Re-anchor questionStartedAt to (originalStart + elapsedPause).
+            // We can't easily write a server-side adjusted timestamp, so we
+            // write a plain Date millisecond-converted value via new Date().
+            await updateDoc(ref, {
+                paused: false,
+                pausedAt: null,
+                questionStartedAt: new Date(startMs + elapsedPause)
+            });
+        } else {
+            await updateDoc(ref, {
+                paused: true,
+                pausedAt: serverTimestamp()
+            });
+        }
+    } catch (err) {
+        console.warn('togglePauseRoom failed:', err);
+    }
+}
+
+async function hostSkipCurrentQuestion() {
+    if (!isHostOfActiveRoom()) return;
+    const room = state.roomData;
+    if (!room || room.status !== 'playing') return;
+    if (!window.confirm('Skip to the reveal for this question? Everyone who hasn\'t submitted gets the minimum score.')) return;
+    try {
+        await updateDoc(doc(db, 'triviaRooms', state.roomCode), {
+            revealStartedAt: serverTimestamp(),
+            paused: false,
+            pausedAt: null
+        });
+    } catch (err) {
+        console.warn('hostSkipCurrentQuestion failed:', err);
+    }
+}
+
+async function hostEndGameEarly() {
+    if (!isHostOfActiveRoom()) return;
+    const room = state.roomData;
+    if (!room) return;
+    if (!window.confirm('End the game now? Final scores are tallied with everyone\'s current points.')) return;
+    try {
+        await updateDoc(doc(db, 'triviaRooms', state.roomCode), {
+            status: 'finished',
+            finishedAt: serverTimestamp(),
+            paused: false,
+            pausedAt: null
+        });
+    } catch (err) {
+        console.warn('hostEndGameEarly failed:', err);
+    }
+}
+
 // Edge-trigger feedback on game-status transitions. We track the last
 // status we played a sound for so a snapshot replay (same status fires
 // twice) doesn't re-buzz the user. Reset on leaveRoom().
@@ -1306,6 +1390,21 @@ function renderRoom() {
     const isHost = state.user && state.roomData.hostUid === state.user.uid;
     $('#room-host-tag').hidden = !isHost;
     $('#room-private-tag').hidden = !state.roomData.isPrivate;
+    // Pause banner + host-controls visibility. Skip / End / Pause only
+    // make sense while a question is live (status='playing'), so we hide
+    // the whole strip outside that window.
+    const room = state.roomData;
+    const playing = room.status === 'playing';
+    const hostActions = $('#room-host-actions');
+    if (hostActions) hostActions.hidden = !(isHost && playing);
+    const banner = $('#room-paused-banner');
+    if (banner) banner.hidden = !room.paused;
+    const pauseBtn = $('#room-pause-btn');
+    if (pauseBtn) {
+        pauseBtn.innerHTML = room.paused
+            ? '<span aria-hidden="true">▶</span> Resume'
+            : '<span aria-hidden="true">⏸</span> Pause';
+    }
 
     const status = state.roomData.status;
     if (status !== lastStatusPlayedFeedback) {
@@ -2181,6 +2280,13 @@ function startGlobeDropTimerLoop() {
     const tick = () => {
         if (!state.roomData || state.roomData.status !== 'playing') return;
         if (state.roomData.gameType !== 'globe-drop') return;
+        // When the host has paused the room we still keep the rAF loop
+        // running (so unpausing rejoins cleanly) but lock the displayed
+        // time + phase to the moment-of-pause so the UI freezes.
+        if (state.roomData.paused) {
+            state.timerRaf = requestAnimationFrame(tick);
+            return;
+        }
         const startMs = state.roomData.questionStartedAt && state.roomData.questionStartedAt.toMillis
             ? state.roomData.questionStartedAt.toMillis() : null;
         const revealMs = state.roomData.revealStartedAt && state.roomData.revealStartedAt.toMillis
@@ -2323,6 +2429,10 @@ function startTimerLoop() {
     let lastRenderedQuestionId = null;
     const tick = () => {
         if (!state.roomData || state.roomData.status !== 'playing') return;
+        if (state.roomData.paused) {
+            state.timerRaf = requestAnimationFrame(tick);
+            return;
+        }
         const startMs = state.roomData.questionStartedAt && state.roomData.questionStartedAt.toMillis
             ? state.roomData.questionStartedAt.toMillis() : null;
         const revealMs = state.roomData.revealStartedAt && state.roomData.revealStartedAt.toMillis
