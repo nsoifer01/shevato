@@ -101,13 +101,16 @@
       <p class="tagline">Multiplayer trivia + Globe Drop geography. Create a room, share the code, race the timer.</p>
     </header>
 
-    <!-- View tabs — three primary views: Play, Leaderboard, Profile -->
+    <!-- View tabs: Play, Leaderboard, H2H, Profile. -->
     <nav class="view-tabs" role="tablist" aria-label="View">
       <button class="view-tab is-active" data-view="play" role="tab" aria-selected="true">
         <span aria-hidden="true">🎯</span> Play
       </button>
       <button class="view-tab" data-view="leaderboard" role="tab" aria-selected="false">
         <span aria-hidden="true">🏆</span> Leaderboard
+      </button>
+      <button class="view-tab" data-view="h2h" role="tab" aria-selected="false">
+        <span aria-hidden="true">⚔️</span> H2H
       </button>
       <button class="view-tab" data-view="profile" role="tab" aria-selected="false">
         <span aria-hidden="true">👤</span> Profile
@@ -573,6 +576,40 @@
       </div>
       <p class="empty-state" id="leaderboard-daily-empty" hidden>
         No one has finished today's challenge yet. Be first.
+      </p>
+    </section>
+
+    <!-- ====================== H2H VIEW ====================== -->
+    <section class="view view-h2h" data-view-panel="h2h" hidden>
+      <header class="leaderboard-head">
+        <h2 class="section-title">Head to head</h2>
+        <p class="leaderboard-sub">Pick two players from the global leaderboard to compare stats side by side.</p>
+      </header>
+
+      <div class="h2h-picker">
+        <label class="lobby-field h2h-pick">
+          <span>Player A</span>
+          <select id="h2h-select-a"></select>
+        </label>
+        <span class="h2h-versus" aria-hidden="true">VS</span>
+        <label class="lobby-field h2h-pick">
+          <span>Player B</span>
+          <select id="h2h-select-b"></select>
+        </label>
+      </div>
+
+      <div class="h2h-result" id="h2h-result" hidden>
+        <article class="h2h-card h2h-card-a">
+          <header><h3 id="h2h-name-a">…</h3></header>
+          <dl class="h2h-stats" id="h2h-stats-a"></dl>
+        </article>
+        <article class="h2h-card h2h-card-b">
+          <header><h3 id="h2h-name-b">…</h3></header>
+          <dl class="h2h-stats" id="h2h-stats-b"></dl>
+        </article>
+      </div>
+      <p class="empty-state" id="h2h-empty" hidden>
+        Pick two different players from the dropdowns above.
       </p>
     </section>
 
