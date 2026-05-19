@@ -3,11 +3,11 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <meta name="description" content="Brain Arena — premium upgrade successful.">
+  <meta name="description" content="Arena — premium upgrade successful.">
   <meta name="robots" content="noindex, nofollow">
   <meta name="theme-color" content="#0b0d12">
   <meta name="color-scheme" content="dark">
-  <title>Premium unlocked - Brain Arena - Shevato</title>
+  <title>Premium unlocked - Arena - Shevato</title>
 
   <link rel="icon" type="image/svg+xml" href="../../images/favicon.svg">
   <link rel="stylesheet" href="../../assets/css/main.css">
@@ -29,7 +29,7 @@
     <header style="margin: 1.5rem 0 0.5rem;">
       <h1><span aria-hidden="true">✨</span> Premium unlocked</h1>
       <p class="success-lede">
-        Thanks for supporting Shevato! Your $5 one-time payment has been received and Brain Arena Premium is now active on your account.
+        Thanks for supporting Shevato! Your $5 one-time payment has been received and Arena Premium is now active on your account.
       </p>
     </header>
 
@@ -56,7 +56,7 @@
           Confirmation usually lands within a few seconds. If it takes longer than a minute, refresh this page — once the webhook fires, premium turns on automatically.
         </p>
         <div class="success-actions">
-          <a class="btn btn-primary" href="./">Back to Brain Arena</a>
+          <a class="btn btn-primary" href="./">Back to Arena</a>
         </div>
       </article>
     </div>
@@ -92,7 +92,7 @@
       onSnapshot(ref, (snap) => {
         const tp = snap.exists() ? (snap.data().triviaProfile || {}) : {};
         if (tp.premium === true) {
-          setStatus('Premium is active on your account. Head back to Brain Arena and try the unlocked features.');
+          setStatus('Premium is active on your account. Head back to Arena and try the unlocked features.');
         } else {
           setStatus('Waiting for Stripe to confirm your payment with our server…');
         }
