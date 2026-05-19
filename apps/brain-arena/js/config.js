@@ -61,8 +61,10 @@
 
         // Premium tier — keep this list small and load-bearing. The premium
         // boolean lives at users/{uid}.triviaProfile.premium.
+        // Private password-protected rooms are NOT in this list — they're
+        // a free feature for every signed-in user. Anyone can flip the
+        // "Private" toggle in the create-room form and set a password.
         PREMIUM_FEATURES: {
-            PRIVATE_ROOMS: 'private-rooms',
             CUSTOM_PACKS: 'custom-packs',
             DETAILED_STATS: 'detailed-stats'
         },

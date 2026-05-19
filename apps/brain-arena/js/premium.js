@@ -63,14 +63,14 @@
 
     function premiumStatusText(profile, now) {
         if (isPaidPremium(profile)) {
-            return 'Premium active — private rooms, custom packs, and detailed stats are unlocked. Thanks for supporting Shevato!';
+            return 'Premium active — custom packs and detailed stats are unlocked. Thanks for supporting Shevato!';
         }
         const days = trialDaysLeft(profile, now);
         if (days > 0) {
             const noun = days === 1 ? 'day' : 'days';
-            return `Free trial — ${days} ${noun} left. After the trial, upgrade for ${Config.PREMIUM_PRICE_DISPLAY} to keep private rooms, custom packs, and detailed stats unlocked.`;
+            return `Free trial — ${days} ${noun} left. After the trial, upgrade for ${Config.PREMIUM_PRICE_DISPLAY} to keep custom packs and detailed stats unlocked.`;
         }
-        return `Upgrade for ${Config.PREMIUM_PRICE_DISPLAY} to unlock private rooms, custom question packs, and detailed post-game stats.`;
+        return `Upgrade for ${Config.PREMIUM_PRICE_DISPLAY} to unlock custom question packs and detailed post-game stats.`;
     }
 
     function isAdmin(uid) {

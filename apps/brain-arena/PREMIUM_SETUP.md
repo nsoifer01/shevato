@@ -4,6 +4,10 @@ The premium tier is fully implemented in code but **disabled in the UI**.
 Every signed-in user sees every feature unlocked because
 `Config.PREMIUM_UI_ENABLED` is `false`.
 
+Note: **private password-protected rooms are free for everyone** — they
+are not in this premium tier. The remaining premium features are
+custom question packs and detailed post-game stats.
+
 Files involved:
 
 | File | Role |
@@ -12,8 +16,8 @@ Files involved:
 | `js/premium.js` | Pure helpers — trial math, status text, admin check (21 unit tests) |
 | `js/app.js` | Wires the UI, gates features via `isPremium()`, snapshot listener on `users/{uid}` |
 | `success.html` | Post-checkout return page; confirms premium when the webhook lands |
-| `../../netlify/functions/stripe-webhook.js` | Stripe → Firestore. Verifies signature, flips `triviaProfile.premium=true` |
-| `../../netlify/functions/package.json` | Server-only deps: `stripe`, `firebase-admin` |
+| `../../netlify/pending-functions/stripe-webhook.js` | Stripe → Firestore. Verifies signature, flips `triviaProfile.premium=true`. **Not deployed** — moved here so Netlify doesn't try to bundle firebase-admin. Activate by moving back to `netlify/functions/`. |
+| `../../netlify/pending-functions/package.json` | Server-only deps: `stripe`, `firebase-admin` |
 
 Tests stay green with the flag off — `premium.test.js` exercises the pure
 helpers directly and doesn't touch the master switch.
@@ -21,6 +25,24 @@ helpers directly and doesn't touch the master switch.
 ---
 
 ## When you're ready to turn it on
+
+### 0. Move the webhook into the Netlify build path
+
+The function lives in `netlify/pending-functions/` so deploys stay green
+while the tier is dormant. Move it back to where Netlify looks:
+
+```bash
+git mv netlify/pending-functions netlify/functions
+```
+
+If the first deploy after this move fails on `firebase-admin`, add to
+`netlify.toml`:
+
+```toml
+[functions]
+  node_bundler = "esbuild"
+  external_node_modules = ["firebase-admin"]
+```
 
 ### 1. Create the Firebase service account
 
