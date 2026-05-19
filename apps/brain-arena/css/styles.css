@@ -907,27 +907,35 @@ select option { background: var(--surface); color: var(--text); }
   border-radius: 8px;
 }
 .room-chat-quick {
-  display: flex;
+  display: grid;
+  /* Fixed 8-column grid — keeps every emoji button the same width and
+     prevents the uneven wrap we get with flex when the panel is narrow.
+     Drops to 4 columns on tight panels via the responsive rule below. */
+  grid-template-columns: repeat(8, 1fr);
   gap: 0.3rem;
   padding: 0.4rem 0.9rem;
   border-top: 1px solid var(--border);
-  flex-wrap: wrap;
 }
 .room-chat-quick-btn {
-  flex: 1 1 auto;
-  min-width: 36px;
-  height: 32px;
+  height: 34px;
   padding: 0;
   background: var(--surface);
   border: 1px solid var(--border);
-  border-radius: 7px;
+  border-radius: 8px;
   color: var(--text);
   font-size: 1.05rem;
+  line-height: 1;
   cursor: pointer;
-  transition: background 0.12s, transform 0.05s;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background 0.12s, transform 0.05s, border-color 0.12s;
 }
-.room-chat-quick-btn:hover { background: var(--surface-2); }
-.room-chat-quick-btn:active { transform: scale(0.95); }
+.room-chat-quick-btn:hover { background: var(--surface-2); border-color: var(--border-strong); }
+.room-chat-quick-btn:active { transform: scale(0.92); }
+@media (max-width: 380px) {
+  .room-chat-quick { grid-template-columns: repeat(4, 1fr); }
+}
 
 .room-chat-form {
   display: flex;

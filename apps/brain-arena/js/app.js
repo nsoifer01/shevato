@@ -2035,13 +2035,19 @@ function ensureGlobe() {
     // produces — that's where the real "feels fast" upgrade comes from.
     const controls = state.globe.controls();
     if (controls) {
-        // Smoother feel: lower rotate sensitivity so a small drag doesn't
-        // overshoot, and heavier damping so the camera glides to rest
-        // instead of stopping abruptly.
-        controls.zoomSpeed = 5;
-        controls.rotateSpeed = 0.7;
+        // Camera feel:
+        //   - rotateSpeed 0.45: drag tracks the cursor without over-shoot
+        //   - zoomSpeed 4: pinch / pinpoint zooms feel intentional
+        //   - dampingFactor 0.3: drag inertia bleeds off in ~5 frames so
+        //     the globe stops where you let go instead of "spinning for
+        //     no reason" after release
+        //   - autoRotate explicitly OFF so a stray default doesn't kick
+        //     the globe into continuous spin between rounds
+        controls.zoomSpeed = 4;
+        controls.rotateSpeed = 0.45;
         controls.enableDamping = true;
-        controls.dampingFactor = 0.12;
+        controls.dampingFactor = 0.3;
+        controls.autoRotate = false;
     }
 
     // Custom wheel zoom: multiplicative altitude change per scroll click,
@@ -2266,9 +2272,12 @@ function renderGlobeDropStage() {
             setText($('#globe-drop-status'), 'Click anywhere on the globe to drop your pin.');
             $('#globe-drop-status').classList.remove('is-correct', 'is-wrong');
             // Reset camera to the overview pose for each new question.
-            // Easing the overview tween out a little so the camera flies
-            // back to the world view less abruptly between questions.
-            g.pointOfView({ lat: 20, lng: 0, altitude: 2.5 }, 900);
+            // Instant teleport (0ms) so the globe doesn't appear to spin
+            // along a great-arc between rounds — the previous question's
+            // reveal had the camera centered on the answer's lat/lng, and
+            // tweening from there to (20,0) was reading as "the globe
+            // spins between rounds for no reason."
+            g.pointOfView({ lat: 20, lng: 0, altitude: 2.5 }, 0);
         }
 
         // Lock the controls if we've already submitted this question.
