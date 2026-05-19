@@ -81,7 +81,8 @@ const state = {
     earlyRevealForQuestion: null,
 
     // Lobby — which game type the create-card is currently configured for.
-    selectedGameType: 'trivia',
+    // Defaults to globe-drop because it's the headline mode now.
+    selectedGameType: 'globe-drop',
 
     // GlobeDrop-specific runtime state (only populated while a GlobeDrop room
     // is active). globe = globe.gl/Three.js scene wrapper; we don't keep
@@ -793,7 +794,11 @@ async function createRoom(opts) {
                 questionTimeMs: seconds * 1000
             }));
         } else {
-            const sel = $('#create-pack-select').value;
+            // The pack-select dropdown was retired — live API is the only
+            // built-in source. Premium custom packs still go through
+            // buildQuestionsForRound('custom', …) elsewhere; the lobby
+            // doesn't expose pack choice anymore.
+            const sel = 'live';
             const count = parseInt($('#create-questions-count').value, 10) || 10;
             const seconds = parseInt($('#create-trivia-time').value, 10) || 15;
             btn.textContent = 'Fetching questions…';
@@ -1141,7 +1146,19 @@ function renderLobbyStage(isHost) {
 
     $('#lobby-host-controls').hidden = !isHost;
     $('#lobby-guest-hint').hidden = isHost;
-    $('#start-game-btn').disabled = players.length < 1;
+    // Multi-player rooms require at least 2 players to start. Solo / daily
+    // rooms are intentionally single-player so they can start with 1.
+    const playMode = state.roomData.playMode || 'multi';
+    const minPlayers = (playMode === 'solo' || playMode === 'daily') ? 1 : 2;
+    const startBtn = $('#start-game-btn');
+    startBtn.disabled = players.length < minPlayers;
+    startBtn.title = startBtn.disabled && playMode === 'multi'
+        ? 'Waiting for another player to join. Share the room code or use "Play solo" from the lobby instead.'
+        : '';
+    // Pair a visible hint when the button is disabled in a multi room so
+    // the host knows why nothing happens on click.
+    const waitingHint = $('#lobby-waiting-hint');
+    if (waitingHint) waitingHint.hidden = !(isHost && startBtn.disabled && playMode === 'multi');
 }
 
 function renderPickingStage(isHost) {
@@ -1192,7 +1209,7 @@ function renderPickingStage(isHost) {
         if (!cats.length) {
             const empty = document.createElement('p');
             empty.className = 'empty-state';
-            empty.textContent = 'Pool exhausted — host will finish the game.';
+            empty.textContent = 'Pool exhausted. Host will finish the game.';
             grid.appendChild(empty);
         }
     } else {
@@ -1323,7 +1340,7 @@ function renderQuestion(q, myAnsweredIndex) {
             status.classList.add('is-wrong');
         }
     } else if (myAnsweredIndex != null) {
-        setText(status, 'Locked in — waiting for the rest.');
+        setText(status, 'Locked in. Waiting for the rest.');
     } else {
         setText(status, 'Pick an answer.');
     }
@@ -1501,7 +1518,7 @@ function onGlobeClick(lat, lng) {
     drawMyPinOnly(lat, lng);
     $('#globe-drop-submit-btn').disabled = false;
     $('#globe-drop-clear-btn').hidden = false;
-    setText($('#globe-drop-status'), 'Pin placed — submit when you\'re sure.');
+    setText($('#globe-drop-status'), 'Pin placed. Submit when you\'re sure.');
     $('#globe-drop-status').classList.remove('is-correct', 'is-wrong');
 }
 
@@ -1585,7 +1602,7 @@ function renderGlobeDropStage() {
     const loc = currentGlobeDropLocation();
     if (!loc) return;
 
-    setText($('#globe-drop-target-name'), loc.name || '—');
+    setText($('#globe-drop-target-name'), loc.name || '…');
 
     // Difficulty drives which hints render:
     //   easy   — country + continent + subregion (full geographic context)
@@ -1774,12 +1791,12 @@ function drawGlobeDropReveal(loc, me, { showOthers = true } = {}) {
         distEl.innerHTML = `${Math.round(d).toLocaleString()} km off — <strong>+${points}</strong> points`;
         let sentiment;
         if (d < 100) sentiment = '🎯 Bullseye!';
-        else if (d < 500) sentiment = 'Close — nicely done.';
+        else if (d < 500) sentiment = 'Close, nicely done.';
         else if (d < 2000) sentiment = 'Not bad.';
         else sentiment = 'Way off, but you tried.';
         setText($('#globe-drop-status'), showOthers ? sentiment : `${sentiment} Waiting for the rest…`);
     } else {
-        distEl.textContent = 'No guess submitted — 0 points';
+        distEl.textContent = 'No guess submitted (minimum score awarded).';
         setText($('#globe-drop-status'), showOthers ? '⏱ Time up.' : 'Waiting for the rest…');
     }
     revealEl.hidden = false;
@@ -1987,6 +2004,15 @@ function renderRevealCountdown(phase, revealStartedAtMs, nowMs) {
     const num = $('#globe-drop-countdown-num');
     if (!chip || !num) return;
     if (phase !== 'reveal' || !revealStartedAtMs) {
+        chip.hidden = true;
+        return;
+    }
+    // Hide the "5 to next" chip on the FINAL location — there's no "next"
+    // to count down to. We'll roll into the end-of-game screen instead.
+    const idx = state.roomData ? (state.roomData.currentQuestionIndex || 0) : 0;
+    const total = state.roomData ? (state.roomData.totalQuestions || 0) : 0;
+    const isLast = total > 0 && idx >= total - 1;
+    if (isLast) {
         chip.hidden = true;
         return;
     }
@@ -2615,14 +2641,14 @@ function renderEndRecap() {
         if (isGlobeDrop) {
             rowHTML +=
                 '<td class="col-question">' +
-                `<span class="recap-q-text">${escapeHtml(q.name || '—')}</span>` +
+                `<span class="recap-q-text">${escapeHtml(q.name || '…')}</span>` +
                 `<span class="recap-q-meta">${escapeHtml(q.country || '')}</span>` +
                 '</td>';
         } else {
             const correctText = q.choices ? q.choices[q.correctIndex] : '';
             rowHTML +=
                 '<td class="col-question">' +
-                `<span class="recap-q-text">${escapeHtml(q.question || '—')}</span>` +
+                `<span class="recap-q-text">${escapeHtml(q.question || '…')}</span>` +
                 `<span class="recap-q-meta">${escapeHtml(prettyCategory(q.category || ''))} · answer: ${escapeHtml(correctText)}</span>` +
                 '</td>';
         }
@@ -2640,7 +2666,7 @@ function renderEndRecap() {
         colResults.forEach(({ col, ans }) => {
             const isMe = state.user && col.uid === state.user.uid;
             if (!ans) {
-                rowHTML += `<td class="col-result ${isMe ? 'is-mine' : ''}"><span class="recap-result-zero">—</span></td>`;
+                rowHTML += `<td class="col-result ${isMe ? 'is-mine' : ''}"><span class="recap-result-zero">…</span></td>`;
                 return;
             }
             if (isGlobeDrop) {
@@ -2656,13 +2682,13 @@ function renderEndRecap() {
                 rowHTML +=
                     `<td class="col-result ${isMe ? 'is-mine' : ''}">` +
                     `<span class="${pts > 0 ? 'recap-result-points' : 'recap-result-zero'}">${pts > 0 ? '+' + pts : '0'}</span>` +
-                    `<span class="recap-result-pick ${pickClass}">${escapeHtml(ans.answerText || '—')}</span>` +
+                    `<span class="recap-result-pick ${pickClass}">${escapeHtml(ans.answerText || '…')}</span>` +
                     '</td>';
             }
         });
 
         // Winner badge — tie if more than one player hit bestPoints (>0).
-        let winnerCell = '<span class="recap-result-zero">—</span>';
+        let winnerCell = '<span class="recap-result-zero">…</span>';
         if (bestPoints > 0) {
             const winners = colResults.filter((r) => r.points === bestPoints);
             if (winners.length === 1) {
@@ -2952,7 +2978,7 @@ function renderLeaderboardEntries() {
         if (state.user && e.uid === state.user.uid) tr.classList.add('is-me');
         const pct = e.gamesPlayed ? Math.round(100 * (e.wins || 0) / e.gamesPlayed) : 0;
         const lastPlayed = e.lastPlayedAt && e.lastPlayedAt.toDate ? e.lastPlayedAt.toDate() : null;
-        const lastStr = lastPlayed ? formatRelativeDate(lastPlayed) : '—';
+        const lastStr = lastPlayed ? formatRelativeDate(lastPlayed) : '…';
         tr.innerHTML =
             `<td>${i+1}</td>` +
             `<td>${escapeHtml(e.displayName || 'Player')}</td>` +
