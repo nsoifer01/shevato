@@ -50,6 +50,7 @@ const {
 const Config = window.BrainArena.Config;
 const Scoring = window.BrainArena.Scoring;
 const Premium = window.BrainArena.Premium;
+const Feedback = window.BrainArena.Feedback;
 const RoomState = window.BrainArena.RoomState;
 const LiveQuestions = window.BrainArena.LiveQuestions;
 const GlobeDropScoring = window.BrainArena.GlobeDropScoring;
@@ -132,6 +133,39 @@ function escapeHtml(text) {
     const div = document.createElement('div');
     div.textContent = String(text == null ? '' : text);
     return div.innerHTML;
+}
+
+/**
+ * Push a transient toast onto the right-bottom stack. Auto-dismisses
+ * after the CSS animation runs out (~4 s total). Used for "X submitted"
+ * presence pings and chat-message previews. Pass `icon` for a leading
+ * emoji; pass `key` to deduplicate rapid-fire identical toasts.
+ */
+const recentToastKeys = new Map();
+function showToast(message, { icon = '', key = null, ttlMs = 4000 } = {}) {
+    if (!message) return;
+    if (key) {
+        // Throttle: same key within the last second is dropped silently
+        // so a flood of identical events (e.g. a snapshot replay) doesn't
+        // bury the screen in copies of the same notification.
+        const last = recentToastKeys.get(key) || 0;
+        const now = Date.now();
+        if (now - last < 1000) return;
+        recentToastKeys.set(key, now);
+    }
+    const stack = document.getElementById('ba-toast-stack');
+    if (!stack) return;
+    const li = document.createElement('li');
+    li.className = 'ba-toast';
+    li.innerHTML = (icon ? `<span class="ba-toast-icon" aria-hidden="true">${escapeHtml(icon)}</span>` : '')
+        + escapeHtml(message);
+    stack.appendChild(li);
+    // Animation-driven removal is tied to the keyframes finish event.
+    li.addEventListener('animationend', (e) => {
+        if (e.animationName === 'ba-toast-out') li.remove();
+    });
+    // Hard fallback in case the animation gets cancelled.
+    setTimeout(() => { try { li.remove(); } catch (_) {} }, ttlMs + 600);
 }
 
 function avatarLetter(displayName) {
@@ -787,9 +821,9 @@ function wireLobby() {
 
     // GlobeDrop controls (wired once; they no-op when no GlobeDrop room is active)
     const submitBtn = $('#globe-drop-submit-btn');
-    if (submitBtn) submitBtn.addEventListener('click', () => submitGuess());
+    if (submitBtn) submitBtn.addEventListener('click', () => { Feedback.guessSubmitted(); submitGuess(); });
     const clearBtn = $('#globe-drop-clear-btn');
-    if (clearBtn) clearBtn.addEventListener('click', () => clearMyPin());
+    if (clearBtn) clearBtn.addEventListener('click', () => { Feedback.pinCleared(); clearMyPin(); });
 
     $('#room-code-copy').addEventListener('click', async () => {
         if (!state.roomCode) return;
@@ -1129,9 +1163,41 @@ function enterRoom(code) {
     }));
 
     state.roomUnsubs.push(onSnapshot(playersRef, (snap) => {
-        state.roomPlayers = snap.docs.map((d) => d.data());
+        const prev = state.roomPlayers;
+        const next = snap.docs.map((d) => d.data());
+        notifyOpponentSubmissions(prev, next);
+        state.roomPlayers = next;
         renderRoom();
     }));
+}
+
+/**
+ * Toast + audio ping when an opponent transitions from "not answered" to
+ * "answered" for the current question. Skipped for the local player
+ * (their own submission already gets a louder cue from guessSubmitted)
+ * and for any submission that lands during the reveal phase (irrelevant
+ * presence noise once everyone can see the result anyway).
+ */
+function notifyOpponentSubmissions(prev, next) {
+    if (!state.user || !state.roomCode || !state.roomData) return;
+    if (state.roomData.status !== 'playing') return;
+    if (state.roomData.revealStartedAt) return;
+    const currentQId = state.roomData.currentQuestionId;
+    if (!currentQId) return;
+    const prevMap = new Map((prev || []).map((p) => [p.uid, p]));
+    for (const np of next) {
+        if (!np || !np.uid) continue;
+        if (np.uid === state.user.uid) continue;                     // me
+        if (np.currentAnsweredFor !== currentQId) continue;          // not on this question
+        const before = prevMap.get(np.uid);
+        if (before && before.currentAnsweredFor === currentQId) continue; // not new
+        const name = String(np.displayName || 'Opponent');
+        showToast(`${name} submitted.`, {
+            icon: '✅',
+            key: `submitted:${np.uid}:${currentQId}`
+        });
+        try { Feedback.opponentSubmitted(); } catch (_) { /* ignore */ }
+    }
 }
 
 // When the host bumps the room's `round` (Play Again), every client notices
@@ -1179,6 +1245,7 @@ async function leaveRoom({ silent = false, reason = null } = {}) {
     state.roomPlayers = [];
     state.submittedQuestionId = null;
     state.currentAnswers = [];
+    lastStatusPlayedFeedback = null;
 
     if (code && state.user) {
         try {
@@ -1222,14 +1289,28 @@ async function leaveRoom({ silent = false, reason = null } = {}) {
  * Render room (lobby, asking, reveal, end)
  * ===================================================================== */
 
+// Edge-trigger feedback on game-status transitions. We track the last
+// status we played a sound for so a snapshot replay (same status fires
+// twice) doesn't re-buzz the user. Reset on leaveRoom().
+let lastStatusPlayedFeedback = null;
 function renderRoom() {
     if (!state.roomData) return;
     const isHost = state.user && state.roomData.hostUid === state.user.uid;
     $('#room-host-tag').hidden = !isHost;
     $('#room-private-tag').hidden = !state.roomData.isPrivate;
 
+    const status = state.roomData.status;
+    if (status !== lastStatusPlayedFeedback) {
+        if (status === 'playing' && lastStatusPlayedFeedback === 'lobby') {
+            try { Feedback.gameStart(); } catch (_) {}
+        } else if (status === 'finished') {
+            try { Feedback.gameEnd(); } catch (_) {}
+        }
+        lastStatusPlayedFeedback = status;
+    }
+
     const isGlobeDrop = state.roomData.gameType === 'globe-drop';
-    switch (state.roomData.status) {
+    switch (status) {
         case 'lobby': return renderLobbyStage(isHost);
         case 'picking': return renderPickingStage(isHost);
         case 'playing': return isGlobeDrop ? renderGlobeDropStage(isHost) : renderGameStage(isHost);
@@ -1639,6 +1720,7 @@ function onGlobeClick(lat, lng) {
     $('#globe-drop-clear-btn').hidden = false;
     setText($('#globe-drop-status'), 'Pin placed. Submit when you\'re sure.');
     $('#globe-drop-status').classList.remove('is-correct', 'is-wrong');
+    Feedback.pinPlaced();
 }
 
 function drawMyPinOnly(lat, lng) {
@@ -1919,6 +2001,14 @@ function drawGlobeDropReveal(loc, me, { showOthers = true } = {}) {
         else if (d < 2000) sentiment = 'Not bad.';
         else sentiment = 'Way off, but you tried.';
         setText($('#globe-drop-status'), showOthers ? sentiment : `${sentiment} Waiting for the rest…`);
+        // Reveal sound + haptic. Only fire on the LOCAL reveal (the first
+        // time the player sees their own result) so opponents' reveals
+        // don't trigger a second buzz when their global-reveal arc lands.
+        if (!showOthers) {
+            if (d < 100) Feedback.revealBullseye();
+            else if (d < 2000) Feedback.revealClose();
+            else Feedback.revealFar();
+        }
     } else {
         distEl.textContent = 'No guess submitted (minimum score awarded).';
         setText($('#globe-drop-status'), showOthers ? '⏱ Time up.' : 'Waiting for the rest…');
@@ -2087,6 +2177,29 @@ function startGlobeDropTimerLoop() {
         renderRevealCountdown(phase, revealMs, now);
 
         const currentQId = state.roomData.currentQuestionId;
+        // Low-timer ping at 5s and 3s. Fires exactly once per threshold
+        // per question — the lastTimerPingQId guard prevents the rAF
+        // loop from re-emitting the sound 60×/sec while we're under it.
+        if (phase === 'asking' && currentQId && currentQId !== state.lastTimerPingQId) {
+            const seconds = Math.ceil(left / 1000);
+            const fired = state.lastTimerPingThresholds || {};
+            if (seconds <= 5 && !fired.five) {
+                try { Feedback.timerLow(); } catch (_) {}
+                fired.five = true;
+            }
+            if (seconds <= 3 && !fired.three) {
+                try { Feedback.timerLow(); } catch (_) {}
+                fired.three = true;
+            }
+            state.lastTimerPingThresholds = fired;
+            if (seconds > 6) {
+                state.lastTimerPingThresholds = {};
+                state.lastTimerPingQId = currentQId;
+            }
+        } else if (currentQId !== state.lastTimerPingQId) {
+            state.lastTimerPingThresholds = {};
+            state.lastTimerPingQId = currentQId;
+        }
         // Re-render the stage when phase changes so the reveal markers
         // and "X km off" line draw without waiting for a snapshot.
         if (phase !== lastPhase || currentQId !== lastQId) {
