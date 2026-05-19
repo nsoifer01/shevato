@@ -1500,18 +1500,34 @@ async function sendChatMessage() {
     if (!state.user || !state.roomCode) return;
     const input = $('#room-chat-input');
     const err = $('#room-chat-error');
+    const sendBtn = $('#room-chat-form') && $('#room-chat-form').querySelector('button[type="submit"]');
     if (err) { err.hidden = true; err.textContent = ''; }
     if (!input) return;
     const text = Chat.sanitizeText(input.value);
     if (!text) return;
-    const blocked = Chat.profanityCheck(text);
-    if (blocked) {
-        if (err) { err.textContent = `That word isn't allowed in chat.`; err.hidden = false; }
+    if (Chat.shouldRateLimit(chatState.lastSentAt, Date.now())) {
+        if (err) { err.textContent = 'Slow down. Wait a moment before sending again.'; err.hidden = false; }
         return;
     }
-    if (Chat.shouldRateLimit(chatState.lastSentAt, Date.now())) {
-        if (err) { err.textContent = 'Slow down — wait a moment before sending again.'; err.hidden = false; }
+    // External moderation API check. Disable the send button while
+    // we're waiting so the user can't double-fire. Fail-open: if the
+    // API is unreachable, allow the message through with a console
+    // warning rather than blocking on third-party uptime.
+    if (sendBtn) sendBtn.disabled = true;
+    let modResult;
+    try {
+        modResult = await Chat.checkProfanity(text);
+    } catch (e) {
+        modResult = { ok: false, error: 'unexpected' };
+    }
+    if (sendBtn) sendBtn.disabled = false;
+    if (modResult.ok && modResult.blocked) {
+        if (err) { err.textContent = 'That message was flagged by the moderation service.'; err.hidden = false; }
         return;
+    }
+    if (!modResult.ok) {
+        // Telemetry only; do not block the user on API issues.
+        console.warn('chat moderation API unavailable:', modResult.error);
     }
     const displayName = (state.profile && state.profile.displayName) || deriveInitialDisplayName();
     try {
