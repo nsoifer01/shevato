@@ -1534,16 +1534,10 @@ select option { background: var(--surface); color: var(--text); }
 @keyframes gd-pulse-in  { from { transform: translateY(-4px); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
 @keyframes gd-pulse-out { to   { opacity: 0; } }
 
-.mini-board-list .submitted-badge {
-  margin-left: 0.4rem;
-  padding: 0.05rem 0.4rem;
-  background: rgba(74, 222, 128, 0.15);
-  border: 1px solid rgba(74, 222, 128, 0.45);
-  border-radius: 999px;
-  color: rgb(134, 239, 172);
-  font-size: 0.72rem;
-  font-weight: 600;
-}
+/* Legacy submitted-badge — kept invisible to avoid any chance of older
+   server-rendered HTML showing two checkmarks. The single ✓ now comes
+   from .mini-board-check (see below). */
+.mini-board-list .submitted-badge { display: none; }
 
 /* Chat side panel */
 .room-chat-panel {
@@ -2448,54 +2442,70 @@ select option { background: var(--surface); color: var(--text); }
 }
 
 /* Mini live scoreboard */
+/* Live standings — unified strip.
+ *
+ * Players sit side-by-side inside ONE glass container with a single
+ * subtle border. Each player is a row that fills its grid track;
+ * adjacent players are separated by a thin vertical divider via the
+ * `+`-sibling rule, NOT individual borders. The strip stays compact
+ * regardless of player count: each row has the same height + padding,
+ * and the score / check are right-aligned to a consistent baseline.
+ */
 .mini-board {
-  margin-top: 1.3rem;
-  padding: 1.1rem 1.2rem;
+  margin-top: 1rem;
+  padding: 0.6rem 0.85rem;
   background: var(--surface-translucent);
   -webkit-backdrop-filter: blur(14px);
   backdrop-filter: blur(14px);
   border: 1px solid var(--border);
-  border-radius: var(--radius);
+  border-radius: 12px;
   box-shadow: var(--shadow-soft);
 }
 .mini-board h3 {
   font-family: "Space Grotesk", "Outfit", sans-serif;
-  font-size: 0.78rem;
+  font-size: 0.7rem;
   text-transform: uppercase;
-  letter-spacing: 0.18em;
-  color: var(--muted);
+  letter-spacing: 0.16em;
+  color: var(--muted-2);
   font-weight: 600;
-  margin: 0 0 0.7rem;
+  margin: 0 0 0.4rem;
 }
 .mini-board-list {
   list-style: none;
-  margin: 0; padding: 0;
+  margin: 0;
+  padding: 0;
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
-  gap: 0.5rem;
+  grid-auto-flow: column;
+  grid-auto-columns: minmax(0, 1fr);
+  align-items: stretch;
+}
+/* Thin vertical divider between adjacent players. Skipped for the
+   leading edge of the strip (no divider before the first player). */
+.mini-board-row + .mini-board-row {
+  border-left: 1px solid rgba(148, 163, 184, 0.10);
 }
 .mini-board-row {
   display: flex;
   align-items: center;
-  gap: 0.6rem;
-  padding: 0.55rem 0.75rem;
-  background: var(--surface-2-translucent);
-  border: 1px solid var(--border);
-  border-radius: 10px;
-  font-size: 0.88rem;
+  gap: 0.45rem;
+  padding: 0.35rem 0.6rem;
+  background: transparent;
+  border: 0;
+  border-radius: 8px;
+  font-size: 0.86rem;
   position: relative;
   overflow: hidden;
-  transition: background 0.2s ease, border-color 0.2s ease, transform 0.18s ease;
+  min-width: 0;
+  transition: background 0.18s ease;
 }
-.mini-board-row:hover { transform: translateY(-1px); border-color: rgba(255, 255, 255, 0.14); }
-/* "Me" row — shimmer effect sweeping every few seconds so the
-   current user can find themselves in a long list at a glance. */
+.mini-board-row:hover { background: rgba(255, 255, 255, 0.02); }
+
+/* Highlight states use background TINTS only — no separate border so
+   nothing protrudes outside the strip. The "me" shimmer still sweeps
+   across its row. */
 .mini-board-row.is-me {
-  border-color: rgba(34, 211, 238, 0.55);
   background:
-    linear-gradient(135deg, rgba(34, 211, 238, 0.12), rgba(168, 85, 247, 0.10)),
-    var(--surface-2-translucent);
-  box-shadow: 0 0 18px rgba(34, 211, 238, 0.18);
+    linear-gradient(135deg, rgba(34, 211, 238, 0.14), rgba(168, 85, 247, 0.10));
 }
 .mini-board-row.is-me::after {
   content: "";
@@ -2503,7 +2513,7 @@ select option { background: var(--surface); color: var(--text); }
   top: 0; left: -120%;
   width: 60%;
   height: 100%;
-  background: linear-gradient(90deg, transparent, rgba(34, 211, 238, 0.20), transparent);
+  background: linear-gradient(90deg, transparent, rgba(34, 211, 238, 0.16), transparent);
   animation: gd-row-shimmer 4.5s ease-in-out infinite;
   pointer-events: none;
 }
@@ -2513,31 +2523,32 @@ select option { background: var(--surface); color: var(--text); }
   100% { left: 120%; }
 }
 .mini-board-row.is-leader {
-  border-color: rgba(251, 191, 36, 0.55);
   background:
-    linear-gradient(135deg, rgba(251, 191, 36, 0.14), rgba(168, 85, 247, 0.06)),
-    var(--surface-2-translucent);
-  box-shadow: 0 0 16px rgba(251, 191, 36, 0.18);
+    linear-gradient(135deg, rgba(251, 191, 36, 0.14), transparent 70%);
 }
+
 .mini-board-rank {
   font-family: var(--mono);
-  font-size: 0.82rem;
+  font-size: 0.72rem;
   color: var(--cyan);
   font-weight: 700;
-  width: 1.5rem;
-  text-shadow: 0 0 8px rgba(34, 211, 238, 0.35);
+  flex: 0 0 auto;
+  min-width: 1rem;
+  text-align: center;
+  opacity: 0.85;
 }
 .mini-board-row.is-leader .mini-board-rank {
   color: var(--gold);
-  text-shadow: 0 0 8px rgba(251, 191, 36, 0.4);
 }
 .mini-board-name {
-  flex: 1;
+  flex: 1 1 auto;
+  min-width: 0;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
   color: var(--text);
   font-weight: 500;
+  font-size: 0.88rem;
   position: relative;
   z-index: 1;
 }
@@ -2549,40 +2560,72 @@ select option { background: var(--surface); color: var(--text); }
   background: rgba(245, 158, 9, 0.18);
   color: var(--warn);
   font-family: var(--mono);
-  font-size: 0.72rem;
+  font-size: 0.7rem;
   font-weight: 700;
   white-space: nowrap;
 }
-.mini-board-score {
-  /* Score "pill" — small badge so the score stands out at a glance. */
+
+/* Inline submitted check — appears in the row flow just before the
+   score badge, no overflow, single source of truth (no double-mark).
+   Sized + colored to feel like a glowing icon, not a badge with chrome. */
+.mini-board-check {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  min-width: 2.4rem;
-  padding: 0.18rem 0.55rem;
+  width: 0;
+  opacity: 0;
+  flex: 0 0 auto;
+  font-family: var(--mono);
+  font-weight: 700;
+  font-size: 0.92rem;
+  color: rgb(110, 231, 183);
+  text-shadow: 0 0 8px rgba(74, 222, 128, 0.55);
+  transition: width 0.18s ease, opacity 0.18s ease;
+}
+.mini-board-row.is-answered .mini-board-check::before { content: "✓"; }
+.mini-board-row.is-answered .mini-board-check {
+  width: 1.05rem;
+  opacity: 1;
+}
+
+.mini-board-score {
+  /* Compact pill, right-aligned. Smaller than the previous size so the
+     name stays dominant in the row. */
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 2rem;
+  padding: 0.1rem 0.5rem;
   border-radius: 999px;
-  background: rgba(34, 211, 238, 0.14);
-  border: 1px solid rgba(34, 211, 238, 0.30);
+  background: rgba(34, 211, 238, 0.12);
+  border: 1px solid rgba(34, 211, 238, 0.28);
   color: var(--cyan-2);
   font-family: var(--mono);
-  font-size: 0.85rem;
+  font-size: 0.78rem;
   font-weight: 700;
   position: relative;
   z-index: 1;
+  flex: 0 0 auto;
 }
 .mini-board-row.is-leader .mini-board-score {
-  background: rgba(251, 191, 36, 0.18);
-  border-color: rgba(251, 191, 36, 0.45);
+  background: rgba(251, 191, 36, 0.16);
+  border-color: rgba(251, 191, 36, 0.4);
   color: var(--gold);
 }
-.mini-board-row.is-answered::after,
-.mini-board-row.is-answered:not(.is-me)::after {
-  content: "✓";
-  color: var(--good);
-  font-weight: 700;
-  font-size: 0.95rem;
-  position: relative;
-  z-index: 1;
+
+/* Stack vertically on narrow viewports — keeps each row roomy enough
+   to show the name without truncation when there isn't horizontal
+   space for side-by-side. */
+@media (max-width: 540px) {
+  .mini-board-list {
+    grid-auto-flow: row;
+    grid-auto-columns: auto;
+    grid-template-columns: 1fr;
+  }
+  .mini-board-row + .mini-board-row {
+    border-left: 0;
+    border-top: 1px solid rgba(148, 163, 184, 0.10);
+  }
 }
 
 /* ---------- Stage: end ---------- */
