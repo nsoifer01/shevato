@@ -1476,18 +1476,24 @@ function clearMapOverlays() {
 }
 
 function onGlobeClick(lat, lng) {
-    // Only respond when we're in the asking phase of a GlobeDrop question
-    // and haven't already locked in.
+    // Only respond when we're in a live GlobeDrop game and haven't locked
+    // in this question yet. We do NOT block on phase === 'asking' here —
+    // the very first click immediately after the host starts the game can
+    // race the questionStartedAt server timestamp landing in the local
+    // cache (pendingWrite leaves it null for a tick), and that race was
+    // making the first tap silently eat the guess. The submit handler
+    // still enforces phase before writing.
     if (!state.roomData || state.roomData.status !== 'playing') return;
     if (state.roomData.gameType !== 'globe-drop') return;
     const loc = currentGlobeDropLocation();
     if (!loc) return;
+    // Reject clicks once the reveal has already started for this question.
     const startMs = state.roomData.questionStartedAt && state.roomData.questionStartedAt.toMillis
         ? state.roomData.questionStartedAt.toMillis() : null;
     const revealMs = state.roomData.revealStartedAt && state.roomData.revealStartedAt.toMillis
         ? state.roomData.revealStartedAt.toMillis() : null;
     const phase = globeDropPhase(startMs, Date.now(), revealMs, currentAskingDurationMs());
-    if (phase !== 'asking') return;
+    if (phase === 'reveal' || phase === 'ended') return;
     const me = state.roomPlayers.find((p) => state.user && p.uid === state.user.uid);
     if (me && me.currentAnsweredFor === loc.id) return;
 
@@ -1622,6 +1628,11 @@ function renderGlobeDropStage() {
     // Init the globe after the stage is visible so its container has a
     // measurable size. globe.gl reads dimensions during construction.
     setTimeout(() => {
+        // The deferred fire-time can land AFTER leaveRoom() has nulled
+        // state.roomData, which then crashes the phase/reveal code below
+        // with `Cannot read properties of null (reading 'questionStartedAt')`.
+        // Bail if the room is gone — there's nothing to render.
+        if (!state.roomData || !state.roomCode) return;
         const g = ensureGlobe();
         if (!g) return;
         const el = document.getElementById('globe-drop-map');
