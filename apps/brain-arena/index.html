@@ -101,13 +101,16 @@
       <p class="tagline">Multiplayer trivia + Globe Drop geography. Create a room, share the code, race the timer.</p>
     </header>
 
-    <!-- View tabs — three primary views: Play, Leaderboard, Profile -->
+    <!-- View tabs: Play, Leaderboard, H2H, Profile. -->
     <nav class="view-tabs" role="tablist" aria-label="View">
       <button class="view-tab is-active" data-view="play" role="tab" aria-selected="true">
         <span aria-hidden="true">🎯</span> Play
       </button>
       <button class="view-tab" data-view="leaderboard" role="tab" aria-selected="false">
         <span aria-hidden="true">🏆</span> Leaderboard
+      </button>
+      <button class="view-tab" data-view="h2h" role="tab" aria-selected="false">
+        <span aria-hidden="true">⚔️</span> H2H
       </button>
       <button class="view-tab" data-view="profile" role="tab" aria-selected="false">
         <span aria-hidden="true">👤</span> Profile
@@ -272,9 +275,48 @@
             </span>
           </div>
           <div class="room-head-right">
+            <!-- Host-only mid-game controls. Hidden until the room is in
+                 'playing' or 'picking' and the local user is the host. -->
+            <div class="room-host-actions" id="room-host-actions" hidden>
+              <button type="button" class="btn btn-ghost btn-sm" id="room-pause-btn" title="Pause / resume the timer">
+                <span aria-hidden="true">⏸</span> Pause
+              </button>
+              <button type="button" class="btn btn-ghost btn-sm" id="room-skip-btn" title="Skip to the reveal for this question">
+                <span aria-hidden="true">⏭</span> Skip
+              </button>
+              <button type="button" class="btn btn-ghost btn-sm btn-danger-ghost" id="room-end-btn" title="End the game and show the final scores">
+                <span aria-hidden="true">⏹</span> End
+              </button>
+            </div>
+            <button type="button" class="btn btn-ghost btn-sm" id="room-chat-toggle" title="Open chat">
+              <span aria-hidden="true">💬</span> Chat
+              <span class="room-chat-badge" id="room-chat-badge" hidden>0</span>
+            </button>
             <button type="button" class="btn btn-ghost" id="leave-room-btn">Leave room</button>
           </div>
         </header>
+        <p class="room-paused-banner" id="room-paused-banner" hidden>
+          <span aria-hidden="true">⏸</span> Game paused by host.
+        </p>
+
+        <!-- Chat side panel. Slides in from the right when toggled.
+             Subscribes to triviaRooms/{code}/chat on enterRoom and
+             keeps the latest ~80 messages in memory. -->
+        <aside class="room-chat-panel" id="room-chat-panel" hidden aria-label="Room chat">
+          <header class="room-chat-head">
+            <h3>Room chat</h3>
+            <button type="button" class="modal-close" id="room-chat-close" aria-label="Close chat">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.85" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 6l12 12"/><path d="M18 6L6 18"/></svg>
+            </button>
+          </header>
+          <ul class="room-chat-list" id="room-chat-list" aria-live="polite"></ul>
+          <p class="room-chat-empty" id="room-chat-empty">No messages yet. Say something.</p>
+          <form class="room-chat-form" id="room-chat-form" autocomplete="off">
+            <input type="text" id="room-chat-input" maxlength="280" placeholder="Type a message…" aria-label="Chat message">
+            <button type="submit" class="btn btn-primary btn-sm">Send</button>
+          </form>
+          <p class="room-chat-error" id="room-chat-error" hidden></p>
+        </aside>
 
         <!-- STAGE: lobby (waiting) -->
         <section class="stage stage-lobby" id="stage-lobby">
@@ -474,7 +516,9 @@
 
           <div class="end-actions">
             <button type="button" class="btn btn-ghost" id="end-back-btn">Back to lobby</button>
-            <button type="button" class="btn btn-primary" id="end-again-btn" hidden>Play again</button>
+            <button type="button" class="btn btn-primary" id="end-again-btn" hidden>
+              <span aria-hidden="true">🔁</span> Rematch
+            </button>
           </div>
         </section>
       </section>
@@ -518,6 +562,7 @@
               <th>Wins</th>
               <th>Win %</th>
               <th>Last played</th>
+              <th id="leaderboard-admin-th" hidden>Admin</th>
             </tr>
           </thead>
           <tbody id="leaderboard-body"></tbody>
@@ -554,6 +599,40 @@
       </div>
       <p class="empty-state" id="leaderboard-daily-empty" hidden>
         No one has finished today's challenge yet. Be first.
+      </p>
+    </section>
+
+    <!-- ====================== H2H VIEW ====================== -->
+    <section class="view view-h2h" data-view-panel="h2h" hidden>
+      <header class="leaderboard-head">
+        <h2 class="section-title">Head to head</h2>
+        <p class="leaderboard-sub">Pick two players from the global leaderboard to compare stats side by side.</p>
+      </header>
+
+      <div class="h2h-picker">
+        <label class="lobby-field h2h-pick">
+          <span>Player A</span>
+          <select id="h2h-select-a"></select>
+        </label>
+        <span class="h2h-versus" aria-hidden="true">VS</span>
+        <label class="lobby-field h2h-pick">
+          <span>Player B</span>
+          <select id="h2h-select-b"></select>
+        </label>
+      </div>
+
+      <div class="h2h-result" id="h2h-result" hidden>
+        <article class="h2h-card h2h-card-a">
+          <header><h3 id="h2h-name-a">…</h3></header>
+          <dl class="h2h-stats" id="h2h-stats-a"></dl>
+        </article>
+        <article class="h2h-card h2h-card-b">
+          <header><h3 id="h2h-name-b">…</h3></header>
+          <dl class="h2h-stats" id="h2h-stats-b"></dl>
+        </article>
+      </div>
+      <p class="empty-state" id="h2h-empty" hidden>
+        Pick two different players from the dropdowns above.
       </p>
     </section>
 
@@ -651,6 +730,11 @@
     </article>
   </div>
 
+  <!-- Lightweight toast bus. showToast(msg) pushes a <li> here that
+       auto-dismisses after a few seconds. Used for "Opponent submitted"
+       presence notifications and for chat-message previews. -->
+  <ul class="ba-toast-stack" id="ba-toast-stack" aria-live="polite"></ul>
+
   <div data-include="footer"></div>
 
   <!-- Site JS deps (same set the other apps load before main.js). -->
@@ -684,6 +768,8 @@
   <script src="js/config.js"></script>
   <script src="js/scoring.js"></script>
   <script src="js/premium.js"></script>
+  <script src="js/feedback.js"></script>
+  <script src="js/chat.js"></script>
   <script src="js/room-state.js"></script>
   <script src="js/live-questions.js"></script>
   <script src="js/globe-drop-scoring.js"></script>
