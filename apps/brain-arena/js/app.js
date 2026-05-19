@@ -1024,18 +1024,11 @@ function wireLobby() {
     $('#start-game-btn').addEventListener('click', startGame);
     $('#end-back-btn').addEventListener('click', () => leaveRoom());
     const settingsEditBtn = $('#room-settings-edit-btn');
-    if (settingsEditBtn) {
-        settingsEditBtn.addEventListener('click', async () => {
-            const ok = await openConfirmModal({
-                title: 'Change settings',
-                body: 'Changing round type, difficulty, or location count needs the room to be recreated. Leave the room and use "Create a room" with new settings — your players can re-join with the same code.',
-                confirmLabel: 'Got it',
-                cancelLabel: 'Close'
-            });
-            // intentional no-op on either response — informational modal
-            void ok;
-        });
-    }
+    if (settingsEditBtn) settingsEditBtn.addEventListener('click', () => openRoomSettingsEditor());
+    const settingsCancel = $('#room-settings-cancel');
+    if (settingsCancel) settingsCancel.addEventListener('click', () => closeRoomSettingsEditor());
+    const settingsSave = $('#room-settings-save');
+    if (settingsSave) settingsSave.addEventListener('click', () => saveRoomSettings());
     $('#end-again-btn').addEventListener('click', () => {
         // Solo: skip the accept gate, restart immediately.
         const playMode = (state.roomData && state.roomData.playMode) || 'multi';
@@ -2029,7 +2022,7 @@ function renderRoom() {
 /**
  * Render the room-settings panel inside the room lobby. Shows the
  * round type, difficulty, locations count, and per-question timer.
- * Host sees an Edit button; others see the values read-only.
+ * Host sees an Edit button + inline edit form; others see read-only.
  */
 function renderRoomSettings(isHost) {
     const panel = $('#room-settings');
@@ -2055,7 +2048,122 @@ function renderRoomSettings(isHost) {
     setText($('#room-settings-timer'), `${seconds}s`);
 
     const editBtn = $('#room-settings-edit-btn');
-    if (editBtn) editBtn.hidden = !isHost;
+    const hint = $('#room-settings-hint');
+    const editForm = $('#room-settings-edit');
+    const view = $('#room-settings-view');
+
+    // Edit affordances visible only to host AND only while the room is
+    // still in lobby state (settings are locked once playing starts).
+    const canEdit = isHost && room.status === 'lobby';
+    if (editBtn) editBtn.hidden = !canEdit;
+    if (hint) hint.hidden = !(isHost && !canEdit);
+    // Whenever the form isn't open, keep it hidden (show summary).
+    if (editForm && !state.roomSettingsEditing) {
+        editForm.hidden = true;
+        if (view) view.hidden = false;
+    }
+}
+
+/**
+ * Open the inline settings editor — preload the selects with the
+ * current room values, hide the read-only summary, show the form.
+ */
+function openRoomSettingsEditor() {
+    const room = state.roomData || {};
+    if (room.gameType !== 'globe-drop') return;
+    state.roomSettingsEditing = true;
+    $('#room-settings-view').hidden = true;
+    $('#room-settings-edit').hidden = false;
+    $('#room-settings-edit-btn').hidden = true;
+    $('#room-settings-edit-round-type').value = room.roundType || 'capitals';
+    $('#room-settings-edit-difficulty').value = room.difficulty || 'medium';
+    $('#room-settings-edit-count').value = String(room.totalQuestions || 5);
+    const seconds = Math.round((room.questionTimeMs || 120000) / 1000);
+    $('#room-settings-edit-time').value = String(seconds);
+    const msg = $('#room-settings-msg');
+    if (msg) { msg.hidden = true; msg.textContent = ''; msg.classList.remove('is-busy', 'is-err'); }
+}
+
+function closeRoomSettingsEditor() {
+    state.roomSettingsEditing = false;
+    $('#room-settings-edit').hidden = true;
+    $('#room-settings-view').hidden = false;
+    const isHost = !!(state.user && state.roomData && state.roomData.hostUid === state.user.uid);
+    const canEdit = isHost && state.roomData && state.roomData.status === 'lobby';
+    $('#room-settings-edit-btn').hidden = !canEdit;
+}
+
+async function saveRoomSettings() {
+    if (!state.user || !state.roomCode || !state.roomData) return;
+    if (state.roomData.hostUid !== state.user.uid) return;
+    if (state.roomData.status !== 'lobby') return;
+
+    const newRoundType = $('#room-settings-edit-round-type').value || 'capitals';
+    const newDifficulty = $('#room-settings-edit-difficulty').value || 'medium';
+    const newCount = Math.max(1, Math.min(10, parseInt($('#room-settings-edit-count').value, 10) || 5));
+    const newSeconds = parseInt($('#room-settings-edit-time').value, 10) || 120;
+    const diff = GlobeDropScoring.difficultySettings(newDifficulty);
+
+    const oldRoundType = state.roomData.roundType || 'capitals';
+    const oldCount = state.roomData.totalQuestions || 0;
+    const needsRefetch = (newRoundType !== oldRoundType) || (newCount !== oldCount);
+
+    const msg = $('#room-settings-msg');
+    const saveBtn = $('#room-settings-save');
+    const cancelBtn = $('#room-settings-cancel');
+    if (saveBtn) saveBtn.disabled = true;
+    if (cancelBtn) cancelBtn.disabled = true;
+    if (msg) {
+        msg.hidden = false;
+        msg.classList.remove('is-err');
+        msg.classList.add('is-busy');
+        msg.textContent = needsRefetch ? 'Refetching locations…' : 'Saving…';
+    }
+
+    try {
+        const meta = GlobeDropLocations.ROUND_TYPES[newRoundType] || GlobeDropLocations.ROUND_TYPES.capitals;
+        const update = {
+            roundType: newRoundType,
+            packId: meta.packId,
+            packName: meta.packName,
+            difficulty: newDifficulty,
+            totalQuestions: newCount,
+            questionTimeMs: newSeconds * 1000
+        };
+        if (needsRefetch) {
+            const locations = await GlobeDropLocations.fetchLocations(newRoundType, newCount, shuffle);
+            update.questions = sortLocationsByAscendingDifficulty(locations);
+            update.totalQuestions = update.questions.length;
+            update.currentQuestionIndex = 0;
+            update.currentQuestionId = null;
+            update.questionStartedAt = null;
+            update.revealStartedAt = null;
+            update.playedQuestionIds = [];
+        }
+        // If difficulty changed but timer was the tier default, snap timer
+        // to the new tier default; otherwise keep the user's override.
+        const oldDiff = GlobeDropScoring.difficultySettings(state.roomData.difficulty || 'medium');
+        const oldUsesTierDefault = state.roomData.questionTimeMs === oldDiff.timerSec * 1000;
+        if (oldUsesTierDefault && newDifficulty !== state.roomData.difficulty) {
+            update.questionTimeMs = diff.timerSec * 1000;
+        }
+        await updateDoc(doc(db, 'triviaRooms', state.roomCode), update);
+        if (msg) {
+            msg.classList.remove('is-busy');
+            msg.textContent = 'Saved.';
+        }
+        setTimeout(() => closeRoomSettingsEditor(), 600);
+    } catch (err) {
+        console.warn('saveRoomSettings failed:', err);
+        if (msg) {
+            msg.classList.remove('is-busy');
+            msg.classList.add('is-err');
+            msg.textContent = 'Save failed: ' + (err && err.message ? err.message : 'unknown');
+        }
+    } finally {
+        if (saveBtn) saveBtn.disabled = false;
+        if (cancelBtn) cancelBtn.disabled = false;
+    }
 }
 
 /**
