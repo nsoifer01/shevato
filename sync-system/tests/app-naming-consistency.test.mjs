@@ -40,18 +40,24 @@ test('no app directory contains a stray non-index *.html entry alongside index.h
     // Apps may host secondary HTML files in subdirs (docs, help pages) but the
     // top-level of each app must have exactly one index.html and no other
     // entry candidates that would compete for "primary URL" status.
+    //
+    // Explicit exceptions live here. brain-arena/success.html is the
+    // Stripe Checkout return URL: it is intentionally a sibling of
+    // index.html so the URL stays short (`/apps/brain-arena/success.html`)
+    // and the page can reuse the app's CSS. It is `noindex` so it never
+    // competes for the canonical app URL in search.
     const apps = listDirs(APPS_DIR);
+    const allowedExtras = {
+        'brain-arena': new Set(['success.html'])
+    };
     const offenders = [];
     for (const app of apps) {
         const appDir = join(APPS_DIR, app);
         const topLevelHtml = readdirSync(appDir).filter(
             (name) => name.endsWith('.html') && statSync(join(appDir, name)).isFile()
         );
-        // index.html is the only blessed entry; everything else is su[redacted]ious
-        // at the top level. (None of the current apps need a secondary
-        // top-level HTML; if that changes, this test is the right place to
-        // declare the exception.)
-        const extras = topLevelHtml.filter((name) => name !== 'index.html');
+        const allowed = allowedExtras[app] || new Set();
+        const extras = topLevelHtml.filter((name) => name !== 'index.html' && !allowed.has(name));
         if (extras.length) offenders.push(`${app}: ${extras.join(', ')}`);
     }
     assert.deepEqual(offenders, [], `unexpected top-level HTML beside index.html:\n  ${offenders.join('\n  ')}`);
