@@ -63,9 +63,16 @@
 
   <url>
     <loc>https://shevato.com/apps/gym-tracker/</loc>
-    <lastmod>2026-05-15</lastmod>
+    <lastmod>2026-05-18</lastmod>
     <changefreq>monthly</changefreq>
-    <priority>0.6</priority>
+    <priority>0.7</priority>
+  </url>
+
+  <url>
+    <loc>https://shevato.com/apps/gym-tracker/exercises/</loc>
+    <lastmod>2026-05-18</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.7</priority>
   </url>
 
   <url>
@@ -77,9 +84,16 @@
 
   <url>
     <loc>https://shevato.com/apps/rising-seasons/</loc>
-    <lastmod>2026-05-15</lastmod>
+    <lastmod>2026-05-18</lastmod>
     <changefreq>weekly</changefreq>
-    <priority>0.6</priority>
+    <priority>0.7</priority>
+  </url>
+
+  <url>
+    <loc>https://shevato.com/apps/rising-seasons/shows/</loc>
+    <lastmod>2026-05-18</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.7</priority>
   </url>
 
   <url>
