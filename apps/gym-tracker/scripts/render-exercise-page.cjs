@@ -1,5 +1,7 @@
 'use strict';
 
+const { renderMoreFooter } = require('./render-footer.cjs');
+
 const SITE = 'https://shevato.com';
 
 // Human-readable labels for the kebab-case taxonomy in exercises-db.json.
@@ -122,9 +124,7 @@ ${jsonLd(buildExerciseSchema({ exercise, canonical, description }))}
     </section>
   </main>
 
-  <footer class="page-footer">
-    <p>© Shevato LLC · <a href="/">shevato.com</a> · <a href="/contact.html">Contact</a></p>
-  </footer>
+  ${renderMoreFooter()}
 </body>
 </html>
 `;
