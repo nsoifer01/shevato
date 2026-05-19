@@ -699,6 +699,47 @@ select option { background: var(--surface); color: var(--text); }
   flex-wrap: wrap;
 }
 
+/* Default room-head-right: inline cluster of mid-game controls.
+   The button order in the DOM is host-actions → end-actions →
+   chat → leave; defaults flow LTR with the cluster's natural gap. */
+.room-head-right {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+
+/* Post-match: stack the THREE end-stage actions (Rematch, Chat,
+   Back to lobby) as a clean right-aligned column. Equal width via
+   a min-width on the wrapper + width:100% on each child.
+   The host-actions wrapper is hidden when status=finished so it
+   doesn't claim a slot in this column. */
+.room-head-right.is-finished {
+  flex-direction: column;
+  align-items: stretch;
+  gap: 0.5rem;
+  align-self: center;
+  min-width: 220px;
+}
+.room-head-right.is-finished > .room-end-actions { width: 100%; }
+.room-head-right.is-finished > .room-end-actions > .btn { width: 100%; }
+.room-head-right.is-finished > #room-chat-toggle,
+.room-head-right.is-finished > #leave-room-btn {
+  width: 100%;
+  justify-content: center;
+  /* Force a consistent height across all three so the column looks
+     deliberate. Both ghosts + the gradient Rematch sit at 40px. */
+  height: var(--ctrl-h);
+  font-size: 0.9rem;
+}
+.room-head-right.is-finished > .room-end-actions > .btn {
+  height: var(--ctrl-h);
+  font-size: 0.92rem;
+  /* Promote the Rematch button to the size it deserves on this
+     stage. Was btn-sm; here it's the headline action. */
+  padding: 0 1rem;
+}
+
 .room-code-pill {
   display: inline-flex;
   align-items: center;
