@@ -694,6 +694,25 @@ select option { background: var(--surface); color: var(--text); }
   to   { transform: translateY(8px); opacity: 0; }
 }
 
+.btn-icon-danger {
+  background: transparent;
+  border: 1px solid rgba(248, 113, 113, 0.4);
+  color: rgb(252, 165, 165);
+  width: 28px;
+  height: 28px;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 0.85rem;
+  line-height: 1;
+  padding: 0;
+  transition: background 0.15s, color 0.15s;
+}
+.btn-icon-danger:hover {
+  background: rgba(248, 113, 113, 0.12);
+  color: rgb(254, 202, 202);
+}
+.leaderboard-table .col-admin { width: 40px; text-align: center; }
+
 .lobby-waiting-hint {
   margin: 0 0 0.65rem;
   padding: 0.55rem 0.8rem;

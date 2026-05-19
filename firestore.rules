@@ -46,10 +46,26 @@ service cloud.firestore {
     }
 
     // Denormalized global XP leaderboard. Read for everyone signed in;
-    // each user can only write their own entry.
+    // each user can only write their own entry. Admins (presence of a
+    // doc at /leaderboardAdmins/{uid}) can delete any row — used to
+    // moderate stale or abusive entries from the public leaderboard.
     match /triviaLeaderboard/{userId} {
       allow read: if request.auth != null;
       allow create, update: if request.auth != null && request.auth.uid == userId;
+      allow delete: if request.auth != null
+        && exists(/databases/$(database)/documents/leaderboardAdmins/$(request.auth.uid));
+    }
+
+    // Admin registry for leaderboard moderation. Each doc id is a uid;
+    // presence (not the doc contents) grants admin power above. Bootstrap:
+    // create the FIRST doc manually in the Firebase Console (anyone with
+    // project-owner access can do it); from then on you can manage the
+    // list there.
+    match /leaderboardAdmins/{userId} {
+      allow read: if request.auth != null;
+      // Writes are deliberately closed — admin registry is managed via
+      // the Firebase Console only, not in-app.
+      allow write: if false;
     }
 
     // Brain Arena — Globe Drop daily challenge leaderboard.

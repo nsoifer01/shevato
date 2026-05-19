@@ -114,7 +114,12 @@ const state = {
 
     // Room code parsed from `?room=ABCDE` at boot, queued behind sign-in.
     // applyAuthState picks it up the first time it sees a signed-in user.
-    pendingRoomCode: null
+    pendingRoomCode: null,
+
+    // True if the signed-in user has a doc at /leaderboardAdmins/{uid}.
+    // Drives the trash-icon affordance on leaderboard rows. Re-checked
+    // on every auth state change.
+    isLeaderboardAdmin: false
 };
 
 /* =====================================================================
@@ -399,6 +404,9 @@ function applyAuthState(user) {
         // queued behind auth — kick it off now. Runs in parallel with
         // loadProfile since the two don't depend on each other.
         if (state.pendingRoomCode) tryRejoinPendingRoom();
+        // Admin probe — presence of a doc at /leaderboardAdmins/{uid}
+        // turns on the trash-icon affordance on leaderboard rows.
+        checkLeaderboardAdmin(user.uid);
         loadProfile(user.uid).then((p) => {
             state.profile = p;
             renderProfileView();
@@ -3228,12 +3236,16 @@ function renderLeaderboardEntries() {
     }
     $('#leaderboard-empty').hidden = true;
 
+    const showAdmin = !!state.isLeaderboardAdmin;
     entries.forEach((e, i) => {
         const tr = document.createElement('tr');
         if (state.user && e.uid === state.user.uid) tr.classList.add('is-me');
         const pct = e.gamesPlayed ? Math.round(100 * (e.wins || 0) / e.gamesPlayed) : 0;
         const lastPlayed = e.lastPlayedAt && e.lastPlayedAt.toDate ? e.lastPlayedAt.toDate() : null;
         const lastStr = lastPlayed ? formatRelativeDate(lastPlayed) : '…';
+        const adminCell = showAdmin
+            ? `<td class="col-admin"><button type="button" class="btn-icon-danger" data-action="remove-leaderboard" data-uid="${escapeHtml(e.uid)}" data-name="${escapeHtml(e.displayName || 'Player')}" title="Remove from leaderboard">✕</button></td>`
+            : '';
         tr.innerHTML =
             `<td>${i+1}</td>` +
             `<td>${escapeHtml(e.displayName || 'Player')}</td>` +
@@ -3241,9 +3253,38 @@ function renderLeaderboardEntries() {
             `<td class="col-games">${e.gamesPlayed || 0}</td>` +
             `<td class="col-wins">${e.wins || 0}</td>` +
             `<td class="col-winpct">${pct}%</td>` +
-            `<td>${escapeHtml(lastStr)}</td>`;
+            `<td>${escapeHtml(lastStr)}</td>` +
+            adminCell;
         body.appendChild(tr);
     });
+
+    // Show / hide the admin column header so the row counts still align.
+    const adminHeader = $('#leaderboard-admin-th');
+    if (adminHeader) adminHeader.hidden = !showAdmin;
+}
+
+async function checkLeaderboardAdmin(uid) {
+    if (!uid) { state.isLeaderboardAdmin = false; return; }
+    try {
+        const snap = await getDoc(doc(db, 'leaderboardAdmins', uid));
+        state.isLeaderboardAdmin = snap.exists();
+        if (state.isLeaderboardAdmin) renderLeaderboardEntries();
+    } catch (err) {
+        state.isLeaderboardAdmin = false;
+    }
+}
+
+async function removeLeaderboardEntry(uid, name) {
+    if (!state.isLeaderboardAdmin) return;
+    if (!uid) return;
+    if (!window.confirm(`Remove "${name}" from the Global XP leaderboard?\n\nThis only deletes their leaderboard row — their XP / profile is untouched. The row reappears the next time they play a game.`)) return;
+    try {
+        await deleteDoc(doc(db, 'triviaLeaderboard', uid));
+        showToast(`Removed ${name} from leaderboard.`, { icon: '🗑️' });
+    } catch (err) {
+        console.warn('removeLeaderboardEntry failed:', err);
+        alert('Could not remove that row. Check that your uid is in /leaderboardAdmins/ in Firestore.');
+    }
 }
 
 function formatRelativeDate(d) {
@@ -3258,6 +3299,16 @@ function formatRelativeDate(d) {
 function wireLeaderboard() {
     $('#leaderboard-period').addEventListener('change', renderLeaderboardEntries);
     $('#leaderboard-category').addEventListener('change', renderLeaderboardEntries);
+    // Admin: delete-row clicks. Delegated to the leaderboard body so we
+    // don't have to re-bind on every render.
+    const body = $('#leaderboard-body');
+    if (body) {
+        body.addEventListener('click', (e) => {
+            const btn = e.target.closest('[data-action="remove-leaderboard"]');
+            if (!btn) return;
+            removeLeaderboardEntry(btn.dataset.uid, btn.dataset.name);
+        });
+    }
 }
 
 /* =====================================================================
