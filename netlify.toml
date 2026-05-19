@@ -33,6 +33,17 @@
   status = 301
   force = true
 
+# Brain Arena was rebranded to "Arena" (it's no longer trivia-only; it's a
+# hub for private-room party games with friends). The directory moved from
+# /apps/brain-arena/ → /apps/arena/. The splat catches every deep link
+# (success page, future per-game routes) so existing bookmarks + indexed
+# pages forward cleanly.
+[[redirects]]
+  from = "/apps/brain-arena/*"
+  to = "/apps/arena/:splat"
+  status = 301
+  force = true
+
 # Baseline security headers for every response. The CSP is intentionally
 # Report-Only because main.js (jQuery + the auth modal) sets element
 # styles at runtime and writes inline event-style attributes via
