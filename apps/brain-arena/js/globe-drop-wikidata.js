@@ -27,6 +27,17 @@
 
     const SPARQL_ENDPOINT = 'https://query.wikidata.org/sparql';
 
+    // Population thresholds — duplicated in the SPARQL queries below for the
+    // server-side filter, AND applied as a client-side defensive check after
+    // normalization. The defensive check catches the rare case where Wikidata
+    // returns a row whose `?pop` value passed the SPARQL filter at one point
+    // (e.g. a historic peak population that's now lower) but where the
+    // current city population would not qualify. Anything we can't classify
+    // (population missing/null) is rejected from the population-gated lists
+    // so we never serve a sub-threshold city as "Major".
+    const MAJOR_CITY_MIN_POPULATION = 2000000;
+    const TOP_CITY_MIN_POPULATION = 100000;
+
     // Wikidata returns coordinates as `Point(longitude latitude)`. Note the
     // longitude-first order — this is the opposite of every other API in the
     // codebase, so a wrong call site silently puts cities in the wrong
@@ -149,6 +160,12 @@
         for (const b of bindings) {
             const loc = normalizeCityBinding(b);
             if (!loc) continue;
+            // Defensive client-side population gate: reject anything below
+            // the major-cities threshold or with unknown population. SPARQL
+            // already filters server-side, but historic / multi-statement
+            // P1082 quirks have been observed letting sub-threshold cities
+            // leak through. Don't trust upstream — verify.
+            if (!Number.isFinite(loc.population) || loc.population < MAJOR_CITY_MIN_POPULATION) continue;
             // Wikidata sometimes returns duplicates for cities with multiple
             // qualifying population statements; keep the first occurrence.
             if (seen.has(loc.id)) continue;
@@ -181,6 +198,9 @@
         for (const b of bindings) {
             const loc = normalizeCityBinding(b);
             if (!loc) continue;
+            // Same defensive gate as major-cities: drop rows whose current
+            // population can't be confirmed to be over the threshold.
+            if (!Number.isFinite(loc.population) || loc.population < TOP_CITY_MIN_POPULATION) continue;
             if (seen.has(loc.id)) continue;
             seen.add(loc.id);
             const key = loc.country || '__unknown__';
