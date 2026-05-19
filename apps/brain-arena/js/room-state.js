@@ -1,16 +1,16 @@
 /*
- * Trivia Arena — room state helpers.
+ * Brain Arena — room state helpers.
  *
  * Pure functions for generating room codes, deciding game phase, picking the
  * next host on disconnect, and aggregating end-of-game stats. No DOM, no
- * Firestore. Exported as CommonJS + window.TriviaArena.RoomState.
+ * Firestore. Exported as CommonJS + window.BrainArena.RoomState.
  */
 (function (root, factory) {
     if (typeof module === 'object' && module.exports) {
         const Config = require('./config.js');
         module.exports = factory(Config);
     } else {
-        const ns = root.TriviaArena = root.TriviaArena || {};
+        const ns = root.BrainArena = root.BrainArena || {};
         ns.RoomState = factory(ns.Config);
     }
 }(typeof self !== 'undefined' ? self : this, function (Config) {

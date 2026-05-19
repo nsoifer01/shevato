@@ -1,5 +1,5 @@
 /*
- * Trivia Arena — live-question source (The Trivia API).
+ * Brain Arena — live-question source (The Trivia API).
  *
  * The Trivia API (the-trivia-api.com) is a free, no-key, CC-BY-licensed
  * question bank with ~30K questions. We hit /v2/questions which returns
@@ -23,7 +23,7 @@
     if (typeof module === 'object' && module.exports) {
         module.exports = factory();
     } else {
-        const ns = root.TriviaArena = root.TriviaArena || {};
+        const ns = root.BrainArena = root.BrainArena || {};
         ns.LiveQuestions = factory();
     }
 }(typeof self !== 'undefined' ? self : this, function () {

@@ -1,5 +1,5 @@
 /*
- * Trivia Arena — main app module.
+ * Brain Arena — main app module.
  *
  * Wiring:
  *   - Auth: window.firebaseAuth (set up by ../../firebase-config.js, loaded
@@ -7,7 +7,7 @@
  *   - Firestore: import the SDK directly from the gstatic CDN. The db
  *     instance is already initialized inside firebase-config.js — we import
  *     `db` from there so we don't initialize a second app.
- *   - Pure helpers: window.TriviaArena.{Config,Scoring,RoomState} from the
+ *   - Pure helpers: window.BrainArena.{Config,Scoring,RoomState} from the
  *     three classic scripts loaded above this module.
  *
  * Firestore data model:
@@ -32,8 +32,8 @@
 // All Firestore SDK access flows through firebase-config.js (the single
 // init point) so we don't import the SDK URL directly here — the
 // `no app file imports Firestore directly` invariant test forbids it.
-// Path: this file is /apps/trivia-arena/js/app.js, so we go up three
-// directories (js → trivia-arena → apps → repo root).
+// Path: this file is /apps/brain-arena/js/app.js, so we go up three
+// directories (js → brain-arena → apps → repo root).
 import { db, firestore } from '../../../firebase-config.js';
 const {
     doc, collection, getDoc, getDocs, setDoc, updateDoc, deleteDoc,
@@ -41,12 +41,12 @@ const {
     increment, deleteField
 } = firestore;
 
-const Config = window.TriviaArena.Config;
-const Scoring = window.TriviaArena.Scoring;
-const RoomState = window.TriviaArena.RoomState;
-const LiveQuestions = window.TriviaArena.LiveQuestions;
-const MapTapScoring = window.TriviaArena.MapTapScoring;
-const MapTapLocations = window.TriviaArena.MapTapLocations;
+const Config = window.BrainArena.Config;
+const Scoring = window.BrainArena.Scoring;
+const RoomState = window.BrainArena.RoomState;
+const LiveQuestions = window.BrainArena.LiveQuestions;
+const GlobeDropScoring = window.BrainArena.GlobeDropScoring;
+const GlobeDropLocations = window.BrainArena.GlobeDropLocations;
 
 /* =====================================================================
  * State
@@ -75,7 +75,7 @@ const state = {
     // Lobby — which game type the create-card is currently configured for.
     selectedGameType: 'trivia',
 
-    // MapTap-specific runtime state (only populated while a MapTap room
+    // GlobeDrop-specific runtime state (only populated while a GlobeDrop room
     // is active). globe = globe.gl/Three.js scene wrapper; we don't keep
     // per-marker handles because globe.gl is declarative — call
     // pointsData()/arcsData() with the full set on every update.
@@ -469,14 +469,14 @@ function wireGameTypeToggle() {
     $$('.game-type-btn').forEach((btn) => {
         btn.addEventListener('click', () => {
             const type = btn.dataset.gameType;
-            if (type !== 'trivia' && type !== 'maptap') return;
+            if (type !== 'trivia' && type !== 'globe-drop') return;
             state.selectedGameType = type;
             $$('.game-type-btn').forEach((b) => {
                 const isOn = b.dataset.gameType === type;
                 b.classList.toggle('is-active', isOn);
                 b.setAttribute('aria-selected', isOn ? 'true' : 'false');
             });
-            // Show/hide trivia-only vs maptap-only form fields.
+            // Show/hide trivia-only vs globe-drop-only form fields.
             $$('[data-game-type]').forEach((el) => {
                 if (!el.matches('.game-type-btn') && el.dataset.gameType) {
                     el.hidden = el.dataset.gameType !== type;
@@ -515,10 +515,10 @@ function wireLobby() {
     $('#end-back-btn').addEventListener('click', () => leaveRoom());
     $('#end-again-btn').addEventListener('click', () => playAgain());
 
-    // MapTap controls (wired once; they no-op when no MapTap room is active)
-    const submitBtn = $('#maptap-submit-btn');
+    // GlobeDrop controls (wired once; they no-op when no GlobeDrop room is active)
+    const submitBtn = $('#globe-drop-submit-btn');
     if (submitBtn) submitBtn.addEventListener('click', () => submitGuess());
-    const clearBtn = $('#maptap-clear-btn');
+    const clearBtn = $('#globe-drop-clear-btn');
     if (clearBtn) clearBtn.addEventListener('click', () => clearMyPin());
 
     $('#room-code-copy').addEventListener('click', async () => {
@@ -547,7 +547,7 @@ function showJoinError(msg) {
 
 async function createRoom() {
     if (!state.user) { openSignInPrompt(); return; }
-    const gameType = state.selectedGameType === 'maptap' ? 'maptap' : 'trivia';
+    const gameType = state.selectedGameType === 'globe-drop' ? 'globe-drop' : 'trivia';
     const isPrivate = !!$('#create-private-toggle').checked && isPremium();
     const password = isPrivate ? String($('#create-password').value || '').trim() : '';
     if (isPrivate && !password) {
@@ -577,14 +577,14 @@ async function createRoom() {
             finishedAt: null
         };
 
-        if (gameType === 'maptap') {
+        if (gameType === 'globe-drop') {
             btn.textContent = 'Fetching locations…';
-            const count = parseInt($('#create-locations-count').value, 10) || Config.MAPTAP_LOCATIONS_DEFAULT;
-            const seconds = parseInt($('#create-maptap-time').value, 10) || 120;
-            // For MapTap, questions[] holds the exact playlist of locations
+            const count = parseInt($('#create-locations-count').value, 10) || Config.GLOBE_DROP_LOCATIONS_DEFAULT;
+            const seconds = parseInt($('#create-globe-drop-time').value, 10) || 120;
+            // For GlobeDrop, questions[] holds the exact playlist of locations
             // (no over-provisioning — there's no per-question category picker
             // to feed variety into).
-            const locations = await MapTapLocations.fetchLocations(count, shuffle);
+            const locations = await GlobeDropLocations.fetchLocations(count, shuffle);
             await setDoc(ref, Object.assign({}, shared, {
                 packId: 'world-capitals',
                 packName: 'World capitals',
@@ -619,7 +619,7 @@ async function createRoom() {
         // built-in question/location sources — there's no offline pack to
         // fall back to. Surface the failure so the host knows to retry.
         alert(
-            (gameType === 'maptap' ? 'Could not fetch locations: ' : 'Could not fetch questions: ')
+            (gameType === 'globe-drop' ? 'Could not fetch locations: ' : 'Could not fetch questions: ')
             + (err && err.message ? err.message : 'unknown error')
             + '. Try again in a moment.'
         );
@@ -834,7 +834,7 @@ async function leaveRoom({ silent = false, reason = null } = {}) {
     hide($('#room-panel'));
     hide($('#stage-end'));
     hide($('#stage-game'));
-    hide($('#stage-maptap'));
+    hide($('#stage-globe-drop'));
     hide($('#stage-picking'));
     show($('#stage-lobby'));
     if (!silent && reason) alert(reason);
@@ -851,11 +851,11 @@ function renderRoom() {
     $('#room-host-tag').hidden = !isHost;
     $('#room-private-tag').hidden = !state.roomData.isPrivate;
 
-    const isMapTap = state.roomData.gameType === 'maptap';
+    const isGlobeDrop = state.roomData.gameType === 'globe-drop';
     switch (state.roomData.status) {
         case 'lobby': return renderLobbyStage(isHost);
         case 'picking': return renderPickingStage(isHost);
-        case 'playing': return isMapTap ? renderMapTapStage(isHost) : renderGameStage(isHost);
+        case 'playing': return isGlobeDrop ? renderGlobeDropStage(isHost) : renderGameStage(isHost);
         case 'finished': return renderEndStage(isHost);
     }
 }
@@ -863,7 +863,7 @@ function renderRoom() {
 function renderLobbyStage(isHost) {
     show($('#stage-lobby'));
     hide($('#stage-game'));
-    hide($('#stage-maptap'));
+    hide($('#stage-globe-drop'));
     hide($('#stage-picking'));
     hide($('#stage-end'));
 
@@ -894,7 +894,7 @@ function renderLobbyStage(isHost) {
 function renderPickingStage(isHost) {
     hide($('#stage-lobby'));
     hide($('#stage-game'));
-    hide($('#stage-maptap'));
+    hide($('#stage-globe-drop'));
     hide($('#stage-end'));
     show($('#stage-picking'));
 
@@ -984,7 +984,7 @@ function renderGameStage() {
     hide($('#stage-lobby'));
     hide($('#stage-end'));
     hide($('#stage-picking'));
-    hide($('#stage-maptap'));
+    hide($('#stage-globe-drop'));
     show($('#stage-game'));
 
     const idx = state.roomData.currentQuestionIndex || 0;
@@ -1113,11 +1113,11 @@ function renderMiniBoard(currentQuestionId) {
 }
 
 /* =====================================================================
- * MapTap stage — map UI, guess submission, reveal, Wikipedia trivia
+ * GlobeDrop stage — map UI, guess submission, reveal, Wikipedia trivia
  * ===================================================================== */
 
 /**
- * Lazy-init the globe.gl instance on first entry into a MapTap room.
+ * Lazy-init the globe.gl instance on first entry into a GlobeDrop room.
  * The script is loaded with `defer` so it may not be ready at the moment
  * the room enters — callers retry on the next snapshot in that case.
  *
@@ -1131,11 +1131,11 @@ function ensureGlobe() {
         console.warn('globe.gl not loaded yet — init deferred');
         return null;
     }
-    const el = document.getElementById('maptap-map');
+    const el = document.getElementById('globe-drop-map');
     if (!el) return null;
     state.globe = Globe()(el)
         // Bundled 8K (8192×4096) Earth daymap from Solar System Scope
-        // (CC BY 4.0, attributed in the MapTap stage footer). Local so we
+        // (CC BY 4.0, attributed in the GlobeDrop stage footer). Local so we
         // don't depend on a third-party CDN and skip any CORS surprises.
         // ~4.5 MB; the browser caches it after the first room creation.
         .globeImageUrl('data/earth-8k.jpg')
@@ -1208,7 +1208,7 @@ function ensureGlobe() {
 function teardownMap() {
     // globe.gl doesn't expose a public destructor; drop our ref and clear
     // the container so the WebGL renderer + canvas get GC'd.
-    const el = document.getElementById('maptap-map');
+    const el = document.getElementById('globe-drop-map');
     if (el) el.innerHTML = '';
     state.globe = null;
     state.pendingGuess = null;
@@ -1223,27 +1223,27 @@ function clearMapOverlays() {
 }
 
 function onGlobeClick(lat, lng) {
-    // Only respond when we're in the asking phase of a MapTap question
+    // Only respond when we're in the asking phase of a GlobeDrop question
     // and haven't already locked in.
     if (!state.roomData || state.roomData.status !== 'playing') return;
-    if (state.roomData.gameType !== 'maptap') return;
-    const loc = currentMapTapLocation();
+    if (state.roomData.gameType !== 'globe-drop') return;
+    const loc = currentGlobeDropLocation();
     if (!loc) return;
     const startMs = state.roomData.questionStartedAt && state.roomData.questionStartedAt.toMillis
         ? state.roomData.questionStartedAt.toMillis() : null;
     const revealMs = state.roomData.revealStartedAt && state.roomData.revealStartedAt.toMillis
         ? state.roomData.revealStartedAt.toMillis() : null;
-    const phase = mapTapPhase(startMs, Date.now(), revealMs, currentAskingDurationMs());
+    const phase = globeDropPhase(startMs, Date.now(), revealMs, currentAskingDurationMs());
     if (phase !== 'asking') return;
     const me = state.roomPlayers.find((p) => state.user && p.uid === state.user.uid);
     if (me && me.currentAnsweredFor === loc.id) return;
 
     state.pendingGuess = { lat, lng };
     drawMyPinOnly(lat, lng);
-    $('#maptap-submit-btn').disabled = false;
-    $('#maptap-clear-btn').hidden = false;
-    setText($('#maptap-status'), 'Pin placed — submit when you\'re sure.');
-    $('#maptap-status').classList.remove('is-correct', 'is-wrong');
+    $('#globe-drop-submit-btn').disabled = false;
+    $('#globe-drop-clear-btn').hidden = false;
+    setText($('#globe-drop-status'), 'Pin placed — submit when you\'re sure.');
+    $('#globe-drop-status').classList.remove('is-correct', 'is-wrong');
 }
 
 function drawMyPinOnly(lat, lng) {
@@ -1259,7 +1259,7 @@ function drawMyPinOnly(lat, lng) {
 
 function placeMyPin(lat, lng) { drawMyPinOnly(lat, lng); }
 
-function currentMapTapLocation() {
+function currentGlobeDropLocation() {
     if (!state.roomData) return null;
     const pool = Array.isArray(state.roomData.questions) ? state.roomData.questions : [];
     return pool.find((q) => q && q.id === state.roomData.currentQuestionId) || null;
@@ -1273,61 +1273,61 @@ function currentMapTapLocation() {
 function currentAskingDurationMs() {
     const ms = state.roomData && state.roomData.questionTimeMs;
     if (typeof ms === 'number' && ms > 0) return ms;
-    return (state.roomData && state.roomData.gameType === 'maptap')
-        ? Config.MAPTAP_LOCATION_TIME_MS
+    return (state.roomData && state.roomData.gameType === 'globe-drop')
+        ? Config.GLOBE_DROP_LOCATION_TIME_MS
         : Config.QUESTION_TIME_MS;
 }
 
 /**
- * Phase function for MapTap — same shape as RoomState.questionPhase but
+ * Phase function for GlobeDrop — same shape as RoomState.questionPhase but
  * keyed off the per-room duration (host-configurable) for asking and
- * MAPTAP_REVEAL_TIME_MS for reveal.
+ * GLOBE_DROP_REVEAL_TIME_MS for reveal.
  */
-function mapTapPhase(startedAtMs, nowMs, revealStartedAtMs, askingDurationMs) {
+function globeDropPhase(startedAtMs, nowMs, revealStartedAtMs, askingDurationMs) {
     if (!startedAtMs) return 'idle';
     const asking = (typeof askingDurationMs === 'number' && askingDurationMs > 0)
         ? askingDurationMs
-        : Config.MAPTAP_LOCATION_TIME_MS;
+        : Config.GLOBE_DROP_LOCATION_TIME_MS;
     if (revealStartedAtMs) {
         const revealElapsed = nowMs - revealStartedAtMs;
         if (revealElapsed < 0) return 'asking';
-        if (revealElapsed < Config.MAPTAP_REVEAL_TIME_MS) return 'reveal';
+        if (revealElapsed < Config.GLOBE_DROP_REVEAL_TIME_MS) return 'reveal';
         return 'ended';
     }
     const elapsed = nowMs - startedAtMs;
     if (elapsed < 0) return 'idle';
     if (elapsed < asking) return 'asking';
-    if (elapsed < asking + Config.MAPTAP_REVEAL_TIME_MS) return 'reveal';
+    if (elapsed < asking + Config.GLOBE_DROP_REVEAL_TIME_MS) return 'reveal';
     return 'ended';
 }
 
-function mapTapTimeLeftMs(startedAtMs, nowMs, revealStartedAtMs, askingDurationMs) {
+function globeDropTimeLeftMs(startedAtMs, nowMs, revealStartedAtMs, askingDurationMs) {
     const asking = (typeof askingDurationMs === 'number' && askingDurationMs > 0)
         ? askingDurationMs
-        : Config.MAPTAP_LOCATION_TIME_MS;
+        : Config.GLOBE_DROP_LOCATION_TIME_MS;
     if (!startedAtMs) return asking;
     if (revealStartedAtMs) return 0;
     const elapsed = nowMs - startedAtMs;
     return Math.max(0, Math.min(asking, asking - elapsed));
 }
 
-function renderMapTapStage() {
+function renderGlobeDropStage() {
     hide($('#stage-lobby'));
     hide($('#stage-game'));
     hide($('#stage-end'));
     hide($('#stage-picking'));
-    show($('#stage-maptap'));
+    show($('#stage-globe-drop'));
 
     const idx = state.roomData.currentQuestionIndex || 0;
     const total = state.roomData.totalQuestions || 0;
-    setText($('#maptap-progress-now'), String(idx + 1));
-    setText($('#maptap-progress-total'), String(total));
+    setText($('#globe-drop-progress-now'), String(idx + 1));
+    setText($('#globe-drop-progress-total'), String(total));
 
-    const loc = currentMapTapLocation();
+    const loc = currentGlobeDropLocation();
     if (!loc) return;
 
-    setText($('#maptap-target-name'), loc.name || '—');
-    setText($('#maptap-target-country'), loc.country || '');
+    setText($('#globe-drop-target-name'), loc.name || '—');
+    setText($('#globe-drop-target-country'), loc.country || '');
     // We deliberately do NOT surface the continent/region during the
     // asking phase — knowing "Europe" narrows the guess to ~10% of the
     // globe and makes the multipliers meaningless. Region is still
@@ -1338,7 +1338,7 @@ function renderMapTapStage() {
     setTimeout(() => {
         const g = ensureGlobe();
         if (!g) return;
-        const el = document.getElementById('maptap-map');
+        const el = document.getElementById('globe-drop-map');
         if (el) { g.width(el.clientWidth); g.height(el.clientHeight); }
 
         // New question? Wipe overlays and re-arm the controls.
@@ -1347,14 +1347,14 @@ function renderMapTapStage() {
             state.lastRenderedMapQuestion = loc.id;
             state.lastRevealedMapQuestion = null;
             state.pendingGuess = null;
-            $('#maptap-submit-btn').disabled = true;
-            $('#maptap-clear-btn').hidden = true;
-            $('#maptap-reveal').hidden = true;
-            $('#maptap-reveal-trivia').hidden = true;
-            $('#maptap-countdown').hidden = true;
-            $('#maptap-hint').hidden = false;
-            setText($('#maptap-status'), 'Click anywhere on the globe to drop your pin.');
-            $('#maptap-status').classList.remove('is-correct', 'is-wrong');
+            $('#globe-drop-submit-btn').disabled = true;
+            $('#globe-drop-clear-btn').hidden = true;
+            $('#globe-drop-reveal').hidden = true;
+            $('#globe-drop-reveal-trivia').hidden = true;
+            $('#globe-drop-countdown').hidden = true;
+            $('#globe-drop-hint').hidden = false;
+            setText($('#globe-drop-status'), 'Click anywhere on the globe to drop your pin.');
+            $('#globe-drop-status').classList.remove('is-correct', 'is-wrong');
             // Reset camera to the overview pose for each new question.
             g.pointOfView({ lat: 20, lng: 0, altitude: 2.5 }, 600);
         }
@@ -1363,8 +1363,8 @@ function renderMapTapStage() {
         const me = state.roomPlayers.find((p) => state.user && p.uid === state.user.uid);
         const meSubmitted = !!(me && me.currentAnsweredFor === loc.id && me.currentGuess);
         if (meSubmitted) {
-            $('#maptap-submit-btn').disabled = true;
-            $('#maptap-clear-btn').hidden = true;
+            $('#globe-drop-submit-btn').disabled = true;
+            $('#globe-drop-clear-btn').hidden = true;
         }
 
         // Three reveal states:
@@ -1378,24 +1378,24 @@ function renderMapTapStage() {
             ? state.roomData.questionStartedAt.toMillis() : null;
         const revealMs = state.roomData.revealStartedAt && state.roomData.revealStartedAt.toMillis
             ? state.roomData.revealStartedAt.toMillis() : null;
-        const phase = mapTapPhase(startMs, Date.now(), revealMs, currentAskingDurationMs());
+        const phase = globeDropPhase(startMs, Date.now(), revealMs, currentAskingDurationMs());
         const globalReveal = phase === 'reveal' || phase === 'ended';
         const globalTag = loc.id + ':global';
         const localTag = loc.id + ':local';
         if (globalReveal && state.lastRevealedMapQuestion !== globalTag) {
-            drawMapTapReveal(loc, me, { showOthers: true });
+            drawGlobeDropReveal(loc, me, { showOthers: true });
             state.lastRevealedMapQuestion = globalTag;
         } else if (!globalReveal && meSubmitted && state.lastRevealedMapQuestion !== localTag) {
-            drawMapTapReveal(loc, me, { showOthers: false });
+            drawGlobeDropReveal(loc, me, { showOthers: false });
             state.lastRevealedMapQuestion = localTag;
         }
     }, 50);
 
-    renderMiniBoardMapTap(loc.id);
-    startMapTapTimerLoop();
+    renderMiniBoardGlobeDrop(loc.id);
+    startGlobeDropTimerLoop();
 }
 
-function drawMapTapReveal(loc, me, { showOthers = true } = {}) {
+function drawGlobeDropReveal(loc, me, { showOthers = true } = {}) {
     if (!state.globe) return;
 
     // Always shown: actual location (gold) + my pin (indigo) if I've submitted.
@@ -1449,27 +1449,27 @@ function drawMapTapReveal(loc, me, { showOthers = true } = {}) {
     state.globe.pointOfView({ lat: loc.lat, lng: loc.lng, altitude: 1.8 }, 1000);
 
     // Reveal panel: distance + points or "no guess"
-    const revealEl = $('#maptap-reveal');
-    const distEl = $('#maptap-reveal-distance');
+    const revealEl = $('#globe-drop-reveal');
+    const distEl = $('#globe-drop-reveal-distance');
     if (meSubmitted) {
-        const d = MapTapScoring.haversineDistanceKm(
+        const d = GlobeDropScoring.haversineDistanceKm(
             me.currentGuess.lat, me.currentGuess.lng, loc.lat, loc.lng
         );
-        const { points } = MapTapScoring.scoreGuess({ distanceKm: d, region: loc.region });
+        const { points } = GlobeDropScoring.scoreGuess({ distanceKm: d, region: loc.region });
         distEl.innerHTML = `${Math.round(d).toLocaleString()} km off — <strong>+${points}</strong> points`;
         let sentiment;
         if (d < 100) sentiment = '🎯 Bullseye!';
         else if (d < 500) sentiment = 'Close — nicely done.';
         else if (d < 2000) sentiment = 'Not bad.';
         else sentiment = 'Way off, but you tried.';
-        setText($('#maptap-status'), showOthers ? sentiment : `${sentiment} Waiting for the rest…`);
+        setText($('#globe-drop-status'), showOthers ? sentiment : `${sentiment} Waiting for the rest…`);
     } else {
         distEl.textContent = 'No guess submitted — 0 points';
-        setText($('#maptap-status'), showOthers ? '⏱ Time up.' : 'Waiting for the rest…');
+        setText($('#globe-drop-status'), showOthers ? '⏱ Time up.' : 'Waiting for the rest…');
     }
     revealEl.hidden = false;
     // The asking-phase hint becomes irrelevant once the reveal panel is up.
-    const hint = $('#maptap-hint');
+    const hint = $('#globe-drop-hint');
     if (hint) hint.hidden = true;
 
     // Wikipedia trivia (best-effort; silently skipped on failure). Fetch
@@ -1477,22 +1477,22 @@ function drawMapTapReveal(loc, me, { showOthers = true } = {}) {
     // already in the panel by the time the global reveal hits.
     if (state.triviaFetchedFor !== loc.id) {
         state.triviaFetchedFor = loc.id;
-        MapTapLocations.fetchCityTrivia(loc.name).then((text) => {
+        GlobeDropLocations.fetchCityTrivia(loc.name).then((text) => {
             if (!text) return;
-            const triviaEl = $('#maptap-reveal-trivia');
+            const triviaEl = $('#globe-drop-reveal-trivia');
             triviaEl.textContent = text;
             triviaEl.hidden = false;
         }).catch(() => { /* ignore */ });
     }
 }
 
-function renderMiniBoardMapTap(currentQuestionId) {
-    const list = $('#mini-board-list-maptap');
+function renderMiniBoardGlobeDrop(currentQuestionId) {
+    const list = $('#mini-board-list-globe-drop');
     list.innerHTML = '';
     const ranked = Scoring.rankPlayers(state.roomPlayers.map((p) => ({
         displayName: p.displayName,
         score: p.score,
-        streak: 0, // MapTap doesn't use streaks (yet)
+        streak: 0, // GlobeDrop doesn't use streaks (yet)
         uid: p.uid,
         answeredThisQuestion: currentQuestionId != null
             && p.currentAnsweredFor === currentQuestionId
@@ -1514,8 +1514,8 @@ function renderMiniBoardMapTap(currentQuestionId) {
 
 async function submitGuess() {
     if (!state.user || !state.roomCode || !state.roomData) return;
-    if (state.roomData.gameType !== 'maptap') return;
-    const loc = currentMapTapLocation();
+    if (state.roomData.gameType !== 'globe-drop') return;
+    const loc = currentGlobeDropLocation();
     if (!loc) return;
     if (!state.pendingGuess) return;
     if (state.submittedQuestionId === loc.id) return;
@@ -1524,12 +1524,12 @@ async function submitGuess() {
         ? state.roomData.questionStartedAt.toMillis() : null;
     const revealMs = state.roomData.revealStartedAt && state.roomData.revealStartedAt.toMillis
         ? state.roomData.revealStartedAt.toMillis() : null;
-    if (mapTapPhase(startMs, Date.now(), revealMs, currentAskingDurationMs()) !== 'asking') return;
+    if (globeDropPhase(startMs, Date.now(), revealMs, currentAskingDurationMs()) !== 'asking') return;
 
-    const distance = MapTapScoring.haversineDistanceKm(
+    const distance = GlobeDropScoring.haversineDistanceKm(
         state.pendingGuess.lat, state.pendingGuess.lng, loc.lat, loc.lng
     );
-    const { points } = MapTapScoring.scoreGuess({ distanceKm: distance, region: loc.region });
+    const { points } = GlobeDropScoring.scoreGuess({ distanceKm: distance, region: loc.region });
 
     state.submittedQuestionId = loc.id;
     const guess = state.pendingGuess;
@@ -1537,15 +1537,15 @@ async function submitGuess() {
     // Lock the UI + render the LOCAL reveal optimistically so the player
     // sees their result instantly instead of waiting ~150ms for the
     // snapshot round-trip. We mirror the guess into our local roomPlayers
-    // copy so drawMapTapReveal can find it.
-    $('#maptap-submit-btn').disabled = true;
-    $('#maptap-clear-btn').hidden = true;
+    // copy so drawGlobeDropReveal can find it.
+    $('#globe-drop-submit-btn').disabled = true;
+    $('#globe-drop-clear-btn').hidden = true;
     const myEntry = state.roomPlayers.find((p) => p.uid === state.user.uid);
     if (myEntry) {
         myEntry.currentGuess = guess;
         myEntry.currentAnsweredFor = loc.id;
     }
-    drawMapTapReveal(loc, myEntry || { uid: state.user.uid, currentGuess: guess, currentAnsweredFor: loc.id }, { showOthers: false });
+    drawGlobeDropReveal(loc, myEntry || { uid: state.user.uid, currentGuess: guess, currentAnsweredFor: loc.id }, { showOthers: false });
     state.lastRevealedMapQuestion = loc.id + ':local';
 
     const pref = doc(db, 'triviaRooms', state.roomCode, 'players', state.user.uid);
@@ -1581,7 +1581,7 @@ async function submitGuess() {
     } catch (err) {
         console.warn('Guess write failed:', err);
         state.submittedQuestionId = null;
-        $('#maptap-submit-btn').disabled = false;
+        $('#globe-drop-submit-btn').disabled = false;
     }
 }
 
@@ -1591,27 +1591,27 @@ function clearMyPin() {
         state.globe.pointsData([]);
         state.globe.arcsData([]);
     }
-    $('#maptap-submit-btn').disabled = true;
-    $('#maptap-clear-btn').hidden = true;
-    setText($('#maptap-status'), 'Click anywhere on the globe to drop your pin.');
+    $('#globe-drop-submit-btn').disabled = true;
+    $('#globe-drop-clear-btn').hidden = true;
+    setText($('#globe-drop-status'), 'Click anywhere on the globe to drop your pin.');
 }
 
-function startMapTapTimerLoop() {
+function startGlobeDropTimerLoop() {
     if (state.timerRaf) cancelAnimationFrame(state.timerRaf);
     let lastPhase = null;
     let lastQId = null;
     const tick = () => {
         if (!state.roomData || state.roomData.status !== 'playing') return;
-        if (state.roomData.gameType !== 'maptap') return;
+        if (state.roomData.gameType !== 'globe-drop') return;
         const startMs = state.roomData.questionStartedAt && state.roomData.questionStartedAt.toMillis
             ? state.roomData.questionStartedAt.toMillis() : null;
         const revealMs = state.roomData.revealStartedAt && state.roomData.revealStartedAt.toMillis
             ? state.roomData.revealStartedAt.toMillis() : null;
         const now = Date.now();
         const duration = currentAskingDurationMs();
-        const left = mapTapTimeLeftMs(startMs, now, revealMs, duration);
-        const phase = mapTapPhase(startMs, now, revealMs, duration);
-        renderMapTapTimer(left, phase, duration);
+        const left = globeDropTimeLeftMs(startMs, now, revealMs, duration);
+        const phase = globeDropPhase(startMs, now, revealMs, duration);
+        renderGlobeDropTimer(left, phase, duration);
         renderRevealCountdown(phase, revealMs, now);
 
         const currentQId = state.roomData.currentQuestionId;
@@ -1621,7 +1621,7 @@ function startMapTapTimerLoop() {
             lastPhase = phase;
             lastQId = currentQId;
             // Heavy-handed but safe: just re-run the stage renderer.
-            renderMapTapStage();
+            renderGlobeDropStage();
         }
 
         const isHost = state.user && state.roomData.hostUid === state.user.uid;
@@ -1657,31 +1657,31 @@ function startMapTapTimerLoop() {
  * countdown, because the host hasn't started one yet.
  */
 function renderRevealCountdown(phase, revealStartedAtMs, nowMs) {
-    const chip = $('#maptap-countdown');
-    const num = $('#maptap-countdown-num');
+    const chip = $('#globe-drop-countdown');
+    const num = $('#globe-drop-countdown-num');
     if (!chip || !num) return;
     if (phase !== 'reveal' || !revealStartedAtMs) {
         chip.hidden = true;
         return;
     }
     const elapsed = nowMs - revealStartedAtMs;
-    const left = Math.max(0, Config.MAPTAP_REVEAL_TIME_MS - elapsed);
+    const left = Math.max(0, Config.GLOBE_DROP_REVEAL_TIME_MS - elapsed);
     const seconds = Math.max(1, Math.ceil(left / 1000));
     setText(num, String(seconds));
     chip.hidden = false;
 }
 
-function renderMapTapTimer(leftMs, phase, totalMs) {
-    const total = totalMs || Config.MAPTAP_LOCATION_TIME_MS;
+function renderGlobeDropTimer(leftMs, phase, totalMs) {
+    const total = totalMs || Config.GLOBE_DROP_LOCATION_TIME_MS;
     const fraction = Math.max(0, Math.min(1, leftMs / total));
     const circumference = 176;
     const offset = circumference * (1 - fraction);
-    const ring = $('#maptap-timer-ring-fill');
+    const ring = $('#globe-drop-timer-ring-fill');
     if (ring) ring.style.strokeDashoffset = String(offset);
 
-    const timer = $('#maptap-timer');
+    const timer = $('#globe-drop-timer');
     const seconds = Math.ceil(leftMs / 1000);
-    setText($('#maptap-timer-num'), (phase === 'reveal' || phase === 'ended') ? '!' : String(seconds));
+    setText($('#globe-drop-timer-num'), (phase === 'reveal' || phase === 'ended') ? '!' : String(seconds));
     // Warn/danger thresholds scale with total time so a 30s game doesn't
     // sit in danger-red the whole time, and a 5min game still flashes
     // appropriately near the end.
@@ -1821,8 +1821,8 @@ async function startGame() {
     if (!state.roomCode || !state.roomData) return;
     if (state.roomData.status !== 'lobby') return;
 
-    if (state.roomData.gameType === 'maptap') {
-        // MapTap plays locations sequentially — no picking stage, no decider.
+    if (state.roomData.gameType === 'globe-drop') {
+        // GlobeDrop plays locations sequentially — no picking stage, no decider.
         const pool = Array.isArray(state.roomData.questions) ? state.roomData.questions : [];
         const firstLoc = pool[0];
         if (!firstLoc) return;
@@ -1969,8 +1969,8 @@ async function advanceQuestionOrFinish() {
         return;
     }
 
-    if (state.roomData.gameType === 'maptap') {
-        // MapTap is sequential — no picking stage, just advance.
+    if (state.roomData.gameType === 'globe-drop') {
+        // GlobeDrop is sequential — no picking stage, just advance.
         const pool = Array.isArray(state.roomData.questions) ? state.roomData.questions : [];
         const nextLoc = pool[nextIdx];
         if (!nextLoc) return;
@@ -2050,7 +2050,7 @@ let endStageWrittenForRoom = null;
 async function renderEndStage(isHost) {
     hide($('#stage-lobby'));
     hide($('#stage-game'));
-    hide($('#stage-maptap'));
+    hide($('#stage-globe-drop'));
     hide($('#stage-picking'));
     show($('#stage-end'));
 
@@ -2176,7 +2176,7 @@ function renderEndRecap() {
     const players = state.roomPlayers || [];
     if (!players.length) { section.hidden = true; return; }
 
-    const isMapTap = state.roomData && state.roomData.gameType === 'maptap';
+    const isGlobeDrop = state.roomData && state.roomData.gameType === 'globe-drop';
 
     // Pick columns: me first, then highest-scoring opponents, cap at 4 so
     // the table stays readable on phones.
@@ -2212,8 +2212,8 @@ function renderEndRecap() {
     // Aggregate stat tiles
     const statsHost = $('#end-recap-stats');
     statsHost.innerHTML = '';
-    const aggregates = isMapTap
-        ? computeMapTapAggregates(columns, answersByUid)
+    const aggregates = isGlobeDrop
+        ? computeGlobeDropAggregates(columns, answersByUid)
         : computeTriviaAggregates(columns, answersByUid);
     aggregates.forEach((card) => {
         const div = document.createElement('div');
@@ -2244,7 +2244,7 @@ function renderEndRecap() {
 
     // Table head
     const trHead = document.createElement('tr');
-    let headHTML = `<th>#</th><th>${isMapTap ? 'Location' : 'Question'}</th>`;
+    let headHTML = `<th>#</th><th>${isGlobeDrop ? 'Location' : 'Question'}</th>`;
     columns.forEach((col) => {
         const isMe = state.user && col.uid === state.user.uid;
         headHTML += `<th class="${isMe ? 'is-mine' : ''}">${escapeHtml(isMe ? 'You' : col.displayName)}</th>`;
@@ -2257,7 +2257,7 @@ function renderEndRecap() {
     questions.forEach((q, i) => {
         const tr = document.createElement('tr');
         let rowHTML = `<td class="col-rank">${i + 1}</td>`;
-        if (isMapTap) {
+        if (isGlobeDrop) {
             rowHTML +=
                 '<td class="col-question">' +
                 `<span class="recap-q-text">${escapeHtml(q.name || '—')}</span>` +
@@ -2288,7 +2288,7 @@ function renderEndRecap() {
                 rowHTML += `<td class="col-result ${isMe ? 'is-mine' : ''}"><span class="recap-result-zero">—</span></td>`;
                 return;
             }
-            if (isMapTap) {
+            if (isGlobeDrop) {
                 const pts = Number(ans.points) || 0;
                 rowHTML +=
                     `<td class="col-result ${isMe ? 'is-mine' : ''}">` +
@@ -2323,13 +2323,13 @@ function renderEndRecap() {
         tbody.appendChild(tr);
     });
 
-    const qNoun = questions.length === 1 ? 'question' : (isMapTap ? 'locations' : 'questions');
+    const qNoun = questions.length === 1 ? 'question' : (isGlobeDrop ? 'locations' : 'questions');
     setText($('#end-recap-sub'),
         `${questions.length} ${qNoun} · comparing ${columns.length} player${columns.length === 1 ? '' : 's'}`);
     section.hidden = false;
 }
 
-function computeMapTapAggregates(columns, answersByUid) {
+function computeGlobeDropAggregates(columns, answersByUid) {
     const cards = [];
     columns.forEach((col) => {
         const ans = answersByUid[col.uid] || [];
@@ -2426,12 +2426,12 @@ async function playAgain() {
     if (!state.roomCode || !state.roomData) return;
     if (!(state.user && state.roomData.hostUid === state.user.uid)) return;
     const nextRound = (state.roomData.round || 1) + 1;
-    const isMapTap = state.roomData.gameType === 'maptap';
+    const isGlobeDrop = state.roomData.gameType === 'globe-drop';
 
     try {
-        if (isMapTap) {
+        if (isGlobeDrop) {
             // Re-fetch fresh locations from REST Countries. Same total count.
-            const locations = await MapTapLocations.fetchLocations(
+            const locations = await GlobeDropLocations.fetchLocations(
                 state.roomData.totalQuestions,
                 shuffle
             );
@@ -2487,7 +2487,7 @@ async function playAgain() {
     } catch (err) {
         console.warn('Play again failed:', err);
         alert(
-            (isMapTap ? 'Could not refresh locations: ' : 'Could not refresh questions: ')
+            (isGlobeDrop ? 'Could not refresh locations: ' : 'Could not refresh questions: ')
             + (err && err.message ? err.message : 'unknown error')
             + '. Try again in a moment.'
         );

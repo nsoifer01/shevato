@@ -1,8 +1,8 @@
 /*
- * Trivia Arena — scoring math.
+ * Brain Arena — scoring math.
  *
  * Pure functions, no DOM/Firebase. Exported as CommonJS (for node:test) and
- * window.TriviaArena.Scoring (for the browser app, loaded as a classic script).
+ * window.BrainArena.Scoring (for the browser app, loaded as a classic script).
  *
  * The full point award for a correct answer is:
  *   (SCORE_BASE_CORRECT + speedBonus) * streakMultiplier
@@ -15,7 +15,7 @@
         const Config = require('./config.js');
         module.exports = factory(Config);
     } else {
-        const ns = root.TriviaArena = root.TriviaArena || {};
+        const ns = root.BrainArena = root.BrainArena || {};
         ns.Scoring = factory(ns.Config);
     }
 }(typeof self !== 'undefined' ? self : this, function (Config) {
