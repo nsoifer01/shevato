@@ -1,4 +1,8 @@
 [build]
+  # Regenerate Rising Seasons per-show SEO pages (and their sitemap)
+  # from the committed data.json on every deploy. The output lives at
+  # apps/rising-seasons/shows/ and is intentionally gitignored.
+  command = "npm run build:site"
   functions = "netlify/functions"
 
 [functions]

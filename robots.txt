@@ -40,3 +40,5 @@ Allow: /
 
 # Sitemap
 Sitemap: https://shevato.com/sitemap.xml
+Sitemap: https://shevato.com/apps/rising-seasons/sitemap-shows.xml
+Sitemap: https://shevato.com/apps/gym-tracker/sitemap-exercises.xml
