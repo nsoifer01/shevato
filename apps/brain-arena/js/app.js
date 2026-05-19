@@ -558,12 +558,37 @@ function wireProfileView() {
         const v = String(e.target.value || '').trim().slice(0, Config.MAX_DISPLAY_NAME);
         if (!v) return;
         await saveProfileField({ displayName: v });
+        await propagateDisplayName(v);
         renderProfileView();
         renderLeaderboardEntries();
     });
     if (Config.PREMIUM_UI_ENABLED) {
         $('#upgrade-premium-btn').addEventListener('click', openPremiumModal);
     }
+}
+
+/**
+ * Push a new display name to every place we've denormalized it:
+ *   - the active room's player doc (so the mini-board updates)
+ *   - the global leaderboard doc (so other tabs see the new name)
+ * Errors are swallowed — best-effort UX, the source of truth is the
+ * user profile doc which has already been updated by saveProfileField.
+ */
+async function propagateDisplayName(displayName) {
+    if (!state.user) return;
+    if (state.roomCode) {
+        try {
+            await updateDoc(doc(db, 'triviaRooms', state.roomCode, 'players', state.user.uid), {
+                displayName
+            });
+        } catch (_) { /* room may not exist or rules may deny */ }
+    }
+    try {
+        await setDoc(doc(db, 'triviaLeaderboard', state.user.uid), {
+            uid: state.user.uid,
+            displayName
+        }, { merge: true });
+    } catch (_) { /* leaderboard doc may not exist yet */ }
 }
 
 /* =====================================================================
@@ -964,7 +989,12 @@ function wireLobby() {
     });
     $('#start-game-btn').addEventListener('click', startGame);
     $('#end-back-btn').addEventListener('click', () => leaveRoom());
-    $('#end-again-btn').addEventListener('click', () => proposeRematch());
+    $('#end-again-btn').addEventListener('click', () => {
+        // Solo: skip the accept gate, restart immediately.
+        const playMode = (state.roomData && state.roomData.playMode) || 'multi';
+        if (playMode === 'solo') playAgain();
+        else proposeRematch();
+    });
     $('#rematch-accept-btn').addEventListener('click', () => respondToRematch(true));
     $('#rematch-decline-btn').addEventListener('click', () => respondToRematch(false));
 
@@ -1068,19 +1098,22 @@ async function createRoom(opts) {
         if (gameType === 'globe-drop') {
             btn.textContent = mode === 'daily' ? "Loading today's challenge…" : 'Fetching locations…';
             const count = parseInt($('#create-locations-count').value, 10) || Config.GLOBE_DROP_LOCATIONS_DEFAULT;
-            const difficultyKey = isSoloLike
+            // Daily is the only mode that forces its settings (so every
+            // player who plays a given day faces the same parameters).
+            // Solo passes through the form selections the user picked.
+            const isDaily = mode === 'daily';
+            const difficultyKey = isDaily
                 ? 'medium'
                 : ($('#create-globe-drop-difficulty').value || Config.GLOBE_DROP_DIFFICULTY_DEFAULT);
             const diff = GlobeDropScoring.difficultySettings(difficultyKey);
-            // Manual timer override only kicks in if the host explicitly opts
-            // into it — otherwise the difficulty tier's timer is the source
-            // of truth so "Hard" actually feels hard. Solo/daily skip the
-            // override entirely and take the tier's default.
-            const overrideTimer = !isSoloLike && !!$('#create-globe-drop-timer-override').checked;
+            // Manual timer override applies when the host (or solo player)
+            // opts in via the toggle. Daily skips it so the day's seed
+            // produces identical games for everyone.
+            const overrideTimer = !isDaily && !!$('#create-globe-drop-timer-override').checked;
             const seconds = overrideTimer
                 ? (parseInt($('#create-globe-drop-time').value, 10) || diff.timerSec)
                 : diff.timerSec;
-            const roundType = isSoloLike
+            const roundType = isDaily
                 ? 'capitals'
                 : ($('#create-globe-drop-round-type').value || 'capitals');
             const meta = GlobeDropLocations.ROUND_TYPES[roundType] || GlobeDropLocations.ROUND_TYPES.capitals;
@@ -1876,6 +1909,37 @@ function renderRoom() {
     }
 }
 
+/**
+ * Fetch the lifetime H2H record between the current user and `opponentUid`
+ * and stamp a "W-L-T" badge into the lobby tile. Cached on state so
+ * re-renders within the same session don't refetch. Best-effort —
+ * missing docs / network errors leave the badge hidden.
+ */
+async function hydrateLobbyH2HBadge(opponentUid, spanId) {
+    if (!state.user) return;
+    state.h2hPairCache = state.h2hPairCache || {};
+    const key = h2hPairKey(state.user.uid, opponentUid);
+    if (!key) return;
+    let pair = state.h2hPairCache[key];
+    if (pair === undefined) {
+        try {
+            const snap = await getDoc(doc(db, 'triviaH2H', key));
+            pair = snap.exists() ? snap.data() : null;
+        } catch (_) {
+            pair = null;
+        }
+        state.h2hPairCache[key] = pair;
+    }
+    const el = document.getElementById(spanId);
+    if (!el || !pair) return;
+    const myIsA = pair.uidA === state.user.uid;
+    const myWins = myIsA ? (pair.winsA || 0) : (pair.winsB || 0);
+    const theirWins = myIsA ? (pair.winsB || 0) : (pair.winsA || 0);
+    const ties = pair.ties || 0;
+    el.textContent = `H2H ${myWins}-${theirWins}${ties ? `-${ties}` : ''}`;
+    el.hidden = false;
+}
+
 function renderLobbyStage(isHost) {
     show($('#stage-lobby'));
     hide($('#stage-game'));
@@ -1895,11 +1959,15 @@ function renderLobbyStage(isHost) {
         li.className = 'player-tile';
         if (p.uid === state.roomData.hostUid) li.classList.add('is-host');
         if (state.user && p.uid === state.user.uid) li.classList.add('is-me');
+        const isMe = state.user && p.uid === state.user.uid;
+        const h2hSpanId = (state.user && !isMe) ? `lobby-h2h-${p.uid}` : '';
         li.innerHTML =
             `<span class="player-avatar">${escapeHtml(avatarLetter(p.displayName))}</span>` +
             `<span class="player-name">${escapeHtml(p.displayName)}</span>` +
-            (p.uid === state.roomData.hostUid ? '<span class="player-mini-tag">Host</span>' : '');
+            (p.uid === state.roomData.hostUid ? '<span class="player-mini-tag">Host</span>' : '') +
+            (h2hSpanId ? `<span class="player-h2h-badge" id="${h2hSpanId}" hidden></span>` : '');
         list.appendChild(li);
+        if (h2hSpanId) hydrateLobbyH2HBadge(p.uid, h2hSpanId);
     }
 
     $('#lobby-host-controls').hidden = !isHost;
@@ -2192,7 +2260,7 @@ function ensureGlobe() {
     state.globe.width(el.clientWidth);
     state.globe.height(el.clientHeight);
     // Initial camera pose: roughly overhead, comfortable altitude.
-    state.globe.pointOfView({ lat: 20, lng: 0, altitude: 2.5 }, 0);
+    state.globe.pointOfView({ lat: 20, lng: 0, altitude: 1.75 }, 0);
 
     // Three.js OrbitControls defaults feel sluggish — crank zoom speed and
     // ease damping so wheel + pinch react snappily. We ALSO install a
@@ -2454,7 +2522,13 @@ function renderGlobeDropStage() {
             $('#globe-drop-submit-btn').disabled = true;
             $('#globe-drop-clear-btn').hidden = true;
             $('#globe-drop-reveal').hidden = true;
-            $('#globe-drop-reveal-trivia').hidden = true;
+            const triviaEl = $('#globe-drop-reveal-trivia');
+            // Clear the text in addition to hiding so a stale entry can
+            // never flash when the reveal panel comes back for the next
+            // question. Trivia only renders after a successful fetch
+            // completes on the new question.
+            triviaEl.textContent = '';
+            triviaEl.hidden = true;
             $('#globe-drop-countdown').hidden = true;
             $('#globe-drop-hint').hidden = false;
             setText($('#globe-drop-status'), '');
@@ -2465,7 +2539,7 @@ function renderGlobeDropStage() {
             // reveal had the camera centered on the answer's lat/lng, and
             // tweening from there to (20,0) was reading as "the globe
             // spins between rounds for no reason."
-            g.pointOfView({ lat: 20, lng: 0, altitude: 2.5 }, 0);
+            g.pointOfView({ lat: 20, lng: 0, altitude: 1.75 }, 0);
         }
 
         // Lock the controls if we've already submitted this question.
@@ -2628,11 +2702,18 @@ function drawGlobeDropReveal(loc, me, { showOthers = true } = {}) {
 
     // Wikipedia trivia (best-effort; silently skipped on failure). Fetch
     // once per question — the local reveal kicks off the request so it's
-    // already in the panel by the time the global reveal hits.
+    // already in the panel by the time the global reveal hits. The
+    // resolve callback re-checks that we're still on the same question
+    // so a slow response from the previous round can't bleed in.
     if (state.triviaFetchedFor !== loc.id) {
         state.triviaFetchedFor = loc.id;
+        const startedForId = loc.id;
         GlobeDropLocations.fetchCityTrivia(loc.name).then((text) => {
             if (!text) return;
+            // Drop the response if the question has advanced (race).
+            if (state.triviaFetchedFor !== startedForId) return;
+            const curLoc = currentGlobeDropLocation();
+            if (!curLoc || curLoc.id !== startedForId) return;
             const triviaEl = $('#globe-drop-reveal-trivia');
             triviaEl.textContent = text;
             triviaEl.hidden = false;
@@ -2667,67 +2748,70 @@ function renderMiniBoardGlobeDrop(currentQuestionId) {
             `<span class="mini-board-score">${p.score || 0}</span>`;
         list.appendChild(li);
     });
-    renderPreviousRoundBoard();
+    renderRoundsHistoryBoard();
 }
 
 /**
- * Render a compact table of what each player scored on the most recently
- * completed round. Hidden until the room has advanced past the first
- * question. Reads from each player's `answers[]` (the per-location
- * record list each guess appends to) so the source of truth is the
- * same as the end-of-game recap.
+ * Render every completed round in this game as a row: round number +
+ * location name + a chip per player showing their score for that round.
+ * Pairs visually with the cumulative live standings above it — the
+ * standings answer "who is winning right now", this answers "how did
+ * they get there round-by-round".
+ *
+ * Reads each player's `answers[]` (per-location record list every
+ * guess appends to) — same source as the end-of-game recap, so the
+ * numbers are guaranteed to match.
  */
-function renderPreviousRoundBoard() {
-    const board = $('#prev-round-board');
-    const title = $('#prev-round-title');
-    const list = $('#prev-round-list');
+function renderRoundsHistoryBoard() {
+    const board = $('#rounds-history-board');
+    const list = $('#rounds-history-list');
     if (!board || !list) return;
 
     const room = state.roomData;
     if (!room || !Array.isArray(room.questions)) { board.hidden = true; return; }
     const idx = room.currentQuestionIndex || 0;
     if (idx < 1) { board.hidden = true; return; }
-    const prevLoc = room.questions[idx - 1];
-    if (!prevLoc || !prevLoc.id) { board.hidden = true; return; }
 
-    // For each player, find the answer record matching the previous
-    // location. Players who didn't answer that question (joined late,
-    // disconnected) are still listed with a dash so the panel reads
-    // consistently row-for-row with the live standings above it.
-    const rows = state.roomPlayers.map((p) => {
-        const answers = Array.isArray(p.answers) ? p.answers : [];
-        const rec = answers.find((a) => a && a.locationId === prevLoc.id);
-        return {
-            uid: p.uid,
-            displayName: p.displayName,
-            roundPoints: rec ? (typeof rec.points === 'number' ? rec.points : 0) : null,
-            gaveUp: !!(rec && rec.gaveUp)
-        };
-    });
-    // Sort by descending round points; players without a record sink to the bottom.
-    rows.sort((a, b) => {
-        const av = a.roundPoints == null ? -1 : a.roundPoints;
-        const bv = b.roundPoints == null ? -1 : b.roundPoints;
-        return bv - av;
-    });
-
-    setText(title, `Round ${idx} — ${prevLoc.name || ''}`);
     list.innerHTML = '';
-    rows.forEach((r, i) => {
+    for (let r = 0; r < idx; r++) {
+        const loc = room.questions[r];
+        if (!loc || !loc.id) continue;
+        // For each player, find the answer record matching this round's location.
+        const perPlayer = state.roomPlayers.map((p) => {
+            const answers = Array.isArray(p.answers) ? p.answers : [];
+            const rec = answers.find((a) => a && a.locationId === loc.id);
+            return {
+                uid: p.uid,
+                displayName: p.displayName,
+                roundPoints: rec ? (typeof rec.points === 'number' ? rec.points : 0) : null,
+                gaveUp: !!(rec && rec.gaveUp)
+            };
+        });
+        perPlayer.sort((a, b) => {
+            const av = a.roundPoints == null ? -1 : a.roundPoints;
+            const bv = b.roundPoints == null ? -1 : b.roundPoints;
+            return bv - av;
+        });
         const li = document.createElement('li');
-        li.className = 'mini-board-row';
-        if (state.user && r.uid === state.user.uid) li.classList.add('is-me');
-        let scoreText;
-        if (r.roundPoints == null) scoreText = '—';
-        else if (r.gaveUp) scoreText = 'gave up';
-        else scoreText = String(r.roundPoints);
+        li.className = 'rounds-history-row';
+        const chips = perPlayer.map((pp) => {
+            const isMe = state.user && pp.uid === state.user.uid;
+            const cls = 'rounds-history-chip'
+                + (isMe ? ' is-me' : '')
+                + ((pp.roundPoints || 0) === 0 ? ' is-zero' : '');
+            let val;
+            if (pp.roundPoints == null) val = '—';
+            else if (pp.gaveUp) val = 'X';
+            else val = String(pp.roundPoints);
+            return `<span class="${cls}"><span>${escapeHtml(pp.displayName)}</span><strong>${escapeHtml(val)}</strong></span>`;
+        }).join('');
         li.innerHTML =
-            `<span class="mini-board-rank">${i+1}</span>` +
-            `<span class="mini-board-name">${escapeHtml(r.displayName)}</span>` +
-            `<span class="mini-board-score">${escapeHtml(scoreText)}</span>`;
+            `<span class="rounds-history-label">R${r + 1}</span>` +
+            `<span class="rounds-history-loc">${escapeHtml(loc.name || '')}</span>` +
+            `<span class="rounds-history-scores">${chips}</span>`;
         list.appendChild(li);
-    });
-    board.hidden = false;
+    }
+    board.hidden = idx === 0;
 }
 
 async function submitGuess() {
@@ -3338,12 +3422,23 @@ async function renderEndStage(isHost) {
         streak: p.streak || 0
     })));
 
-    // Podium
+    // Podium — skipped for solo runs (no opponents to rank against).
     const podium = $('#podium');
+    const isSoloMode = (state.roomData && state.roomData.playMode) === 'solo';
+    podium.hidden = isSoloMode;
     podium.innerHTML = '';
+    if (isSoloMode) {
+        // Hide the end-board too — for solo there's only one row and the
+        // final score is already in the summary line above.
+        const boardWrap = $('#end-board-wrap') || $('.end-board-wrap');
+        if (boardWrap) boardWrap.hidden = true;
+    } else {
+        const boardWrap = $('#end-board-wrap') || $('.end-board-wrap');
+        if (boardWrap) boardWrap.hidden = false;
+    }
     const medals = ['🥇', '🥈', '🥉'];
     const slotOrder = [1, 0, 2]; // visual: 2nd, 1st, 3rd
-    for (const orderIdx of slotOrder) {
+    if (!isSoloMode) for (const orderIdx of slotOrder) {
         if (!ranked[orderIdx]) {
             podium.appendChild(document.createElement('div'));
             continue;
@@ -3375,15 +3470,24 @@ async function renderEndStage(isHost) {
         body.appendChild(tr);
     });
 
-    // Summary line
+    // Summary line. Solo runs have no opponent so we don't frame it as
+    // a win/loss; we just celebrate the final score.
     const winner = ranked[0];
     const me = ranked.find((p) => state.user && p.uid === state.user.uid);
-    if (winner && me && winner.uid === me.uid) {
-        setText($('#end-summary'), '🎉 You won! Nice work.');
-    } else if (winner) {
-        setText($('#end-summary'), `${winner.displayName} took it home with ${winner.score} points.`);
+    const playMode = (state.roomData && state.roomData.playMode) || 'multi';
+    const heading = $('#stage-end .end-head h2');
+    if (playMode === 'solo' && me) {
+        if (heading) setText(heading, 'Run complete');
+        setText($('#end-summary'), `Final score: ${me.score}`);
     } else {
-        setText($('#end-summary'), 'No scores recorded.');
+        if (heading) setText(heading, 'Game over');
+        if (winner && me && winner.uid === me.uid) {
+            setText($('#end-summary'), '🎉 You won! Nice work.');
+        } else if (winner) {
+            setText($('#end-summary'), `${winner.displayName} took it home with ${winner.score} points.`);
+        } else {
+            setText($('#end-summary'), 'No scores recorded.');
+        }
     }
 
     // Full per-question/per-location recap (free for everyone)
@@ -3399,6 +3503,11 @@ async function renderEndStage(isHost) {
         show($('#detailed-stats-upsell'));
     }
 
+    // In-room session H2H (one panel showing cumulative wins per player
+    // since this room was created). Visible after >=1 match in a multi
+    // room with 2+ players.
+    renderRoomSessionH2H();
+
     // Rematch controls. Only the host can PROPOSE a rematch, and only
     // when at least two players are still in the room. Anyone else sees
     // the accept/decline strip once a proposal is active.
@@ -3413,38 +3522,134 @@ async function renderEndStage(isHost) {
 
 async function writeEndOfGameStats(me, didWin) {
     if (!state.user) return;
+    const playMode = (state.roomData && state.roomData.playMode) || 'multi';
+    const isSolo = playMode === 'solo';
     try {
         const xp = Scoring.xpFromScore(me.score);
         const userRef = doc(db, 'users', state.user.uid);
+        // Solo: still earns XP and counts as a game played, but it
+        // cannot grant a "win" because there was no opponent. The
+        // global leaderboard write is also skipped — solo results
+        // are personal-best-only, not ranked.
+        const winsDelta = (isSolo ? 0 : (didWin ? 1 : 0));
         await updateDoc(userRef, {
             'triviaProfile.xp': increment(xp),
             'triviaProfile.gamesPlayed': increment(1),
-            'triviaProfile.wins': increment(didWin ? 1 : 0),
+            'triviaProfile.wins': increment(winsDelta),
             'triviaProfile.lastPlayedAt': serverTimestamp()
         });
-        // Refresh local profile cache for the profile view
         if (state.profile) {
             state.profile.xp = (state.profile.xp || 0) + xp;
             state.profile.gamesPlayed = (state.profile.gamesPlayed || 0) + 1;
-            state.profile.wins = (state.profile.wins || 0) + (didWin ? 1 : 0);
+            state.profile.wins = (state.profile.wins || 0) + winsDelta;
         }
-        // Denormalized leaderboard write
-        const lbRef = doc(db, 'triviaLeaderboard', state.user.uid);
-        await setDoc(lbRef, {
-            uid: state.user.uid,
-            displayName: me.displayName,
-            xp: (state.profile && state.profile.xp) || xp,
-            gamesPlayed: (state.profile && state.profile.gamesPlayed) || 1,
-            wins: (state.profile && state.profile.wins) || (didWin ? 1 : 0),
-            lastPlayedAt: serverTimestamp()
-        }, { merge: true });
+        if (!isSolo) {
+            // Denormalized leaderboard write — multiplayer + daily only.
+            const lbRef = doc(db, 'triviaLeaderboard', state.user.uid);
+            await setDoc(lbRef, {
+                uid: state.user.uid,
+                displayName: me.displayName,
+                xp: (state.profile && state.profile.xp) || xp,
+                gamesPlayed: (state.profile && state.profile.gamesPlayed) || 1,
+                wins: (state.profile && state.profile.wins) || winsDelta,
+                lastPlayedAt: serverTimestamp()
+            }, { merge: true });
+        }
 
         // Daily-challenge leaderboard write. Only the player's BEST score
         // for the day stays — we read the existing doc and only overwrite
-        // when the new score is higher. Skipped silently for solo / multi.
+        // when the new score is higher. No-op for solo / multi.
         await maybeWriteDailyLeaderboard(me);
+
+        // Pairwise head-to-head — host only, multiplayer only. Iterates
+        // every player pair in the room and updates triviaH2H/<pair_key>
+        // so the H2H view can display real records instead of generic
+        // aggregates.
+        await maybeWriteH2HPairs();
     } catch (err) {
         console.warn('End-of-game profile write failed:', err);
+    }
+}
+
+/**
+ * H2H pair-key built from two uids, alphabetically sorted so both
+ * directions resolve to the same doc.
+ */
+function h2hPairKey(uidA, uidB) {
+    if (!uidA || !uidB || uidA === uidB) return null;
+    return [uidA, uidB].sort().join('__');
+}
+
+/**
+ * For each pair of players in the current room, increment the pair's
+ * H2H record based on this game's final scores. Runs only on the
+ * host's client (others would race for the same doc) and only for
+ * multiplayer games (solo/daily can't have head-to-head records).
+ *
+ * Each pair doc carries the displayed names so the H2H view can
+ * render without re-fetching the leaderboard.
+ */
+async function maybeWriteH2HPairs() {
+    if (!state.user || !state.roomData || !state.roomCode) return;
+    const playMode = state.roomData.playMode || 'multi';
+    if (playMode !== 'multi') return;
+    if (state.roomData.hostUid !== state.user.uid) return;
+    const players = Array.isArray(state.roomPlayers) ? state.roomPlayers.slice() : [];
+    if (players.length < 2) return;
+
+    // In-room session H2H: track each player's cumulative wins across
+    // every match played in this room. Survives rematches; resets only
+    // when the room is deleted.
+    const sortedByScore = players.slice().sort((a, b) => (b.score || 0) - (a.score || 0));
+    const topScore = sortedByScore[0] ? (sortedByScore[0].score || 0) : 0;
+    const winners = sortedByScore.filter((p) => (p.score || 0) === topScore);
+    const sessionUpdate = { sessionMatchCount: (state.roomData.sessionMatchCount || 0) + 1 };
+    if (winners.length === 1 && topScore > 0) {
+        // Unique winner — increment their session win count.
+        const prevWins = (state.roomData.sessionWinsByUid && state.roomData.sessionWinsByUid[winners[0].uid]) || 0;
+        sessionUpdate[`sessionWinsByUid.${winners[0].uid}`] = prevWins + 1;
+    }
+    try {
+        await updateDoc(doc(db, 'triviaRooms', state.roomCode), sessionUpdate);
+    } catch (err) {
+        console.warn('Session H2H write failed:', err);
+    }
+
+    for (let i = 0; i < players.length; i++) {
+        for (let j = i + 1; j < players.length; j++) {
+            const a = players[i];
+            const b = players[j];
+            if (!a || !b) continue;
+            const key = h2hPairKey(a.uid, b.uid);
+            if (!key) continue;
+            const ref = doc(db, 'triviaH2H', key);
+            // Sort the pair canonically: alphabetically lower uid is A.
+            const [uidA, uidB] = [a.uid, b.uid].sort();
+            const pA = a.uid === uidA ? a : b;
+            const pB = a.uid === uidB ? a : b;
+            const aScore = pA.score || 0;
+            const bScore = pB.score || 0;
+            try {
+                await runTransaction(db, async (tx) => {
+                    const snap = await tx.get(ref);
+                    const cur = snap.exists() ? snap.data() : {};
+                    const winsA = (cur.winsA || 0) + (aScore > bScore ? 1 : 0);
+                    const winsB = (cur.winsB || 0) + (bScore > aScore ? 1 : 0);
+                    const ties = (cur.ties || 0) + (aScore === bScore ? 1 : 0);
+                    tx.set(ref, {
+                        uidA, uidB,
+                        displayNameA: pA.displayName || 'Player',
+                        displayNameB: pB.displayName || 'Player',
+                        winsA, winsB, ties,
+                        gamesPlayed: (cur.gamesPlayed || 0) + 1,
+                        lastPlayedAt: serverTimestamp()
+                    }, { merge: true });
+                });
+            } catch (err) {
+                // Best-effort: rules / network issues shouldn't block end-of-game.
+                console.warn('H2H write failed for pair', key, err);
+            }
+        }
     }
 }
 
@@ -3767,10 +3972,42 @@ function meHasDeclinedRematch() {
     return arr.indexOf(state.user.uid) !== -1;
 }
 
+function renderRoomSessionH2H() {
+    const panel = $('#room-session-h2h');
+    const list = $('#room-session-h2h-list');
+    if (!panel || !list) return;
+    const room = state.roomData || {};
+    const matchCount = room.sessionMatchCount || 0;
+    const playMode = room.playMode || 'multi';
+    if (playMode !== 'multi' || matchCount < 1 || state.roomPlayers.length < 2) {
+        panel.hidden = true;
+        return;
+    }
+    const wins = room.sessionWinsByUid || {};
+    const rows = state.roomPlayers.map((p) => ({
+        uid: p.uid,
+        displayName: p.displayName,
+        sessionWins: wins[p.uid] || 0
+    })).sort((a, b) => b.sessionWins - a.sessionWins);
+    list.innerHTML = '';
+    rows.forEach((r, i) => {
+        const li = document.createElement('li');
+        li.className = 'mini-board-row';
+        if (state.user && r.uid === state.user.uid) li.classList.add('is-me');
+        li.innerHTML =
+            `<span class="mini-board-rank">${i + 1}</span>` +
+            `<span class="mini-board-name">${escapeHtml(r.displayName)}</span>` +
+            `<span class="mini-board-score">${r.sessionWins} W</span>`;
+        list.appendChild(li);
+    });
+    panel.hidden = false;
+}
+
 function renderRematchUI(isHost) {
     const playerCount = rematchPlayerCount();
     const proposed = !!(state.roomData && state.roomData.rematchProposedBy);
     const declined = rematchDeclineCount() > 0;
+    const playMode = (state.roomData && state.roomData.playMode) || 'multi';
     const strip = $('#rematch-strip');
     const status = $('#rematch-status');
     const actions = $('#rematch-actions');
@@ -3781,12 +4018,26 @@ function renderRematchUI(isHost) {
     if (strip) strip.hidden = true;
     if (actions) actions.hidden = true;
 
-    // Rematch requires at least 2 players. If <2 remain, no rematch at all.
+    // Solo: there's only one player so there's nothing to accept-gate. Show
+    // a single Restart button that fires playAgain immediately.
+    if (playMode === 'solo' && playerCount === 1) {
+        if (proposeBtn) {
+            proposeBtn.hidden = false;
+            proposeBtn.innerHTML = '<span aria-hidden="true">🔁</span> Restart';
+        }
+        return;
+    }
+
+    // Multiplayer rematch requires at least 2 players. If <2 remain,
+    // no rematch at all.
     if (playerCount < 2) return;
 
     if (!proposed) {
         // No proposal yet — only the host sees the propose button.
-        if (proposeBtn) proposeBtn.hidden = !isHost;
+        if (proposeBtn) {
+            proposeBtn.hidden = !isHost;
+            proposeBtn.innerHTML = '<span aria-hidden="true">🔁</span> Rematch';
+        }
         return;
     }
 
@@ -4158,7 +4409,8 @@ function renderH2HPickers() {
     renderH2HComparison();
 }
 
-function renderH2HComparison() {
+let h2hPairFetchToken = 0;
+async function renderH2HComparison() {
     const a = $('#h2h-select-a');
     const b = $('#h2h-select-b');
     if (!a || !b) return;
@@ -4176,19 +4428,48 @@ function renderH2HComparison() {
     if (result) result.hidden = false;
     setText($('#h2h-name-a'), ea.displayName || 'Player');
     setText($('#h2h-name-b'), eb.displayName || 'Player');
-    $('#h2h-stats-a').innerHTML = renderH2HStatsHtml(ea, eb);
-    $('#h2h-stats-b').innerHTML = renderH2HStatsHtml(eb, ea);
+    // Optimistic placeholder so the panel doesn't jump between empty
+    // and populated states while we fetch the pair doc.
+    $('#h2h-stats-a').innerHTML = '<dt>Loading…</dt><dd>—</dd>';
+    $('#h2h-stats-b').innerHTML = '<dt>Loading…</dt><dd>—</dd>';
+
+    const key = h2hPairKey(ea.uid, eb.uid);
+    const token = ++h2hPairFetchToken;
+    let pair = null;
+    if (key) {
+        try {
+            const snap = await getDoc(doc(db, 'triviaH2H', key));
+            if (snap.exists()) pair = snap.data();
+        } catch (_) { /* network / rules — fall back to no-pair view */ }
+    }
+    if (token !== h2hPairFetchToken) return; // raced
+
+    $('#h2h-stats-a').innerHTML = renderH2HStatsHtml(ea, eb, pair);
+    $('#h2h-stats-b').innerHTML = renderH2HStatsHtml(eb, ea, pair);
 }
 
-function renderH2HStatsHtml(self, other) {
-    // Highlight the field where `self` leads vs `other` so the eye lands
-    // on the head-to-head deltas instead of reading two columns of digits.
-    const pct = (e) => e.gamesPlayed ? (100 * (e.wins || 0) / e.gamesPlayed) : 0;
+function pairStatsFor(self, other, pair) {
+    if (!pair) return { wins: 0, losses: 0, ties: 0, gamesPlayed: 0 };
+    // pair is keyed by sorted (uidA, uidB). Figure out which side `self` is.
+    const selfIsA = pair.uidA === self.uid;
+    const wins = selfIsA ? (pair.winsA || 0) : (pair.winsB || 0);
+    const losses = selfIsA ? (pair.winsB || 0) : (pair.winsA || 0);
+    const ties = pair.ties || 0;
+    return { wins, losses, ties, gamesPlayed: pair.gamesPlayed || 0 };
+}
+
+function renderH2HStatsHtml(self, other, pair) {
+    // Pairwise stats first (the headline), with global lifetime XP shown
+    // as context below. cmp > 0 highlights self leading vs other for
+    // the colour cue.
+    const sp = pairStatsFor(self, other, pair);
+    const op = pairStatsFor(other, self, pair);
     const fields = [
-        { label: 'XP',         val: self.xp || 0,         cmp: (self.xp || 0)         - (other.xp || 0) },
-        { label: 'Games',      val: self.gamesPlayed || 0,cmp: (self.gamesPlayed || 0)- (other.gamesPlayed || 0) },
-        { label: 'Wins',       val: self.wins || 0,       cmp: (self.wins || 0)       - (other.wins || 0) },
-        { label: 'Win %',      val: Math.round(pct(self)) + '%', cmp: pct(self)       - pct(other) }
+        { label: 'Matches',  val: sp.gamesPlayed,            cmp: 0 },
+        { label: 'Wins',     val: sp.wins,                   cmp: sp.wins - op.wins },
+        { label: 'Losses',   val: sp.losses,                 cmp: op.wins - sp.wins },
+        { label: 'Ties',     val: sp.ties,                   cmp: 0 },
+        { label: 'XP',       val: self.xp || 0,              cmp: (self.xp || 0) - (other.xp || 0) }
     ];
     return fields.map((f) => {
         const cls = f.cmp > 0 ? ' h2h-lead' : (f.cmp < 0 ? ' h2h-trail' : '');

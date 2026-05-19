@@ -241,10 +241,17 @@
                    and posts the result to the per-day leaderboard. -->
               <div class="lobby-solo-actions" data-game-type="globe-drop">
                 <button type="button" class="btn btn-ghost lobby-solo-btn" id="play-solo-btn">
-                  <span aria-hidden="true">🎯</span> Play solo
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                    <polygon points="6 4 20 12 6 20 6 4"/>
+                  </svg>
+                  Play solo
                 </button>
                 <button type="button" class="btn btn-ghost lobby-solo-btn" id="play-daily-btn">
-                  <span aria-hidden="true">🗓️</span> Today's challenge
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                    <circle cx="12" cy="12" r="9"/>
+                    <path d="M12 7v5l3 2"/>
+                  </svg>
+                  Today's challenge
                 </button>
               </div>
             </div>
@@ -436,13 +443,6 @@
               <span class="game-progress-sep">/</span>
               <span class="game-progress-total" id="globe-drop-progress-total">5</span>
             </div>
-            <div class="game-timer" id="globe-drop-timer" data-state="asking">
-              <svg viewBox="0 0 64 64" class="timer-ring" aria-hidden="true">
-                <circle class="timer-ring-track" cx="32" cy="32" r="28" />
-                <circle class="timer-ring-fill" id="globe-drop-timer-ring-fill" cx="32" cy="32" r="28" />
-              </svg>
-              <span class="game-timer-num" id="globe-drop-timer-num">120</span>
-            </div>
           </header>
 
           <article class="globe-drop-card">
@@ -474,13 +474,15 @@
               <ol class="mini-board-list" id="mini-board-list-globe-drop"></ol>
             </section>
 
-            <!-- Previous-round scores. Populated by app.js after the
-                 first round resolves; hidden until then. -->
-            <section class="prev-round-board" id="prev-round-board" hidden>
+            <!-- Round-by-round breakdown. Populated by app.js after the
+                 first round resolves; one row per completed round
+                 showing each player's score for that round. Sits
+                 alongside the live standings above (cumulative). -->
+            <section class="rounds-history-board" id="rounds-history-board" hidden>
               <header class="mini-board-head">
-                <h3 id="prev-round-title">Previous round</h3>
+                <h3>Rounds so far</h3>
               </header>
-              <ol class="mini-board-list" id="prev-round-list"></ol>
+              <ol class="rounds-history-list" id="rounds-history-list"></ol>
             </section>
 
             <!-- Reveal panel — just above the globe so the result is
@@ -497,10 +499,24 @@
             </section>
 
             <p class="globe-drop-hint" id="globe-drop-hint" hidden></p>
-            <div id="globe-drop-map" class="globe-drop-map" aria-label="World globe for guessing">
-              <!-- Floating action buttons. Only visible once a pin is
-                   placed (toggled by app.js). Pointer-events:none on the
-                   container lets the globe stay draggable around them. -->
+            <!-- Wrapper holds the globe + overlay UI as siblings; globe.gl
+                 owns the inner contents of #globe-drop-map (canvas) so
+                 the FAB stack + timer overlay MUST live outside that
+                 element or they get wiped during scene init. -->
+            <div class="globe-drop-map-wrap">
+              <div id="globe-drop-map" class="globe-drop-map" aria-label="World globe for guessing"></div>
+              <!-- In-globe timer ring (top-left overlay). Drives the
+                   countdown visualization for the current question. -->
+              <div class="game-timer globe-drop-timer-overlay" id="globe-drop-timer" data-state="asking">
+                <svg viewBox="0 0 64 64" class="timer-ring" aria-hidden="true">
+                  <circle class="timer-ring-track" cx="32" cy="32" r="28" />
+                  <circle class="timer-ring-fill" id="globe-drop-timer-ring-fill" cx="32" cy="32" r="28" />
+                </svg>
+                <span class="game-timer-num" id="globe-drop-timer-num">120</span>
+              </div>
+              <!-- Floating action buttons. Auto-hidden via CSS :has()
+                   until #globe-drop-clear-btn loses its [hidden] (i.e.
+                   a pin has been placed). -->
               <div class="globe-drop-fab-stack" id="globe-drop-fab-stack">
                 <button type="button" class="globe-drop-fab globe-drop-fab-ghost" id="globe-drop-clear-btn" hidden>
                   <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
@@ -574,6 +590,15 @@
             </p>
             <button type="button" class="btn btn-primary" data-action="open-premium">Go Premium</button>
           </div>
+
+          <!-- In-room session H2H — visible once at least one match has
+               finished in this room and there are 2+ players. -->
+          <section class="room-session-h2h" id="room-session-h2h" hidden>
+            <header class="mini-board-head">
+              <h3>This room — head to head</h3>
+            </header>
+            <ol class="mini-board-list" id="room-session-h2h-list"></ol>
+          </section>
 
           <!-- Rematch coordination strip — only visible once a rematch
                has been proposed. Tracks accept progress across the
@@ -652,7 +677,14 @@
            one personal-best score per player per day. -->
       <header class="leaderboard-head leaderboard-head-daily">
         <h2 class="section-title">
-          <span aria-hidden="true">🗓️</span>
+          <span class="section-title-icon" aria-hidden="true">
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round">
+              <circle cx="12" cy="12" r="9"/>
+              <path d="M12 7v5l3 2"/>
+              <path d="m18.5 4.5-1.5 1.5"/>
+              <path d="m5.5 4.5 1.5 1.5"/>
+            </svg>
+          </span>
           Today's Globe Drop challenge
           <span class="leaderboard-date" id="leaderboard-daily-date"></span>
         </h2>
