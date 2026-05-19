@@ -2705,14 +2705,27 @@ select option { background: var(--surface); color: var(--text); }
   white-space: nowrap;
 }
 
-/* Submitted indicator — no chrome, no badge, no "submitted" word.
-   The name span gets a faint green tint and a soft green glow so the
-   answered state reads at a glance without adding noise. */
-.mini-board-row.is-answered .mini-board-name {
-  background: rgba(16, 185, 129, 0.18);
-  border-radius: 6px;
-  padding: 0.05rem 0.4rem;
-  box-shadow: 0 0 10px rgba(16, 185, 129, 0.22) inset;
+/* Submitted indicator — a small green ✓ that slides in next to the
+   player's name. No "submitted" word, no badge chrome. Reads cleanly
+   inside the row without overflowing. */
+.mini-board-check {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 0;
+  opacity: 0;
+  flex: 0 0 auto;
+  font-family: var(--mono);
+  font-weight: 700;
+  font-size: 0.9rem;
+  color: rgb(110, 231, 183);
+  text-shadow: 0 0 8px rgba(74, 222, 128, 0.55);
+  transition: width 0.18s ease, opacity 0.18s ease;
+}
+.mini-board-row.is-answered .mini-board-check::before { content: "✓"; }
+.mini-board-row.is-answered .mini-board-check {
+  width: 1rem;
+  opacity: 1;
 }
 
 .mini-board-score {
