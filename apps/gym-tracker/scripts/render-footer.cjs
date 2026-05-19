@@ -14,6 +14,7 @@ function renderMoreFooter() {
         <li><a href="/apps/mario-kart/"><strong>Mario Kart Tracker</strong><span> · race tracker and stats</span></a></li>
         <li><a href="/apps/football-h2h/"><strong>Football H2H</strong><span> · head-to-head match tracker</span></a></li>
         <li><a href="/apps/maptap-rivals/"><strong>MapTap Rivals</strong><span> · daily MapTap.gg tracker</span></a></li>
+        <li><a href="/apps/brain-arena/"><strong>Brain Arena</strong><span> · multiplayer trivia and geography party game</span></a></li>
       </ul>
     </nav>
     <p class="copyright">© Shevato LLC · <a href="/">shevato.com</a> · <a href="/about.html">About</a> · <a href="/contact.html">Contact</a></p>
