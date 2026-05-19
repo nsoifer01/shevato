@@ -1089,6 +1089,7 @@ function wireLobby() {
  */
 async function proposeMidGameRestart() {
     if (!state.user || !state.roomCode || !state.roomData) return;
+    if (actionRemaining('restart') <= 0) return;
     const playMode = state.roomData.playMode || 'multi';
     if (playMode === 'solo') {
         const ok = await openConfirmModal({
@@ -1097,7 +1098,7 @@ async function proposeMidGameRestart() {
             confirmLabel: 'Restart',
             danger: true
         });
-        if (ok) {
+        if (ok && consumeActionAllowance('restart')) {
             // playAgain expects the room to be 'finished' to advance the
             // round counter cleanly, but it works from any state. For
             // solo we can call it directly.
@@ -1113,6 +1114,7 @@ async function proposeMidGameRestart() {
         danger: false
     });
     if (!ok) return;
+    if (!consumeActionAllowance('restart')) return;
     await proposeRematch();
 }
 
@@ -1585,6 +1587,8 @@ async function leaveRoom({ silent = false, reason = null } = {}) {
     state.roomPlayers = [];
     state.submittedQuestionId = null;
     state.currentAnswers = [];
+    state.actionCounts = {};
+    state.lastRematchPromptShown = null;
     lastStatusPlayedFeedback = null;
     stopChatListener();
     closeChatPanel();
@@ -1648,6 +1652,28 @@ function isHostOfActiveRoom() {
         && state.user && state.roomData.hostUid === state.user.uid);
 }
 
+/**
+ * Per-player rate limits on mid-game control actions, keyed by room.
+ * Resets when leaveRoom() runs. Limits are intentionally generous —
+ * they exist to prevent griefing (one player spamming pause / restart
+ * proposals), not to punish honest use.
+ */
+const ACTION_LIMITS = { pause: 2, restart: 3, end: 3 };
+function actionCount(kind) {
+    state.actionCounts = state.actionCounts || {};
+    return state.actionCounts[kind] || 0;
+}
+function actionRemaining(kind) {
+    return Math.max(0, (ACTION_LIMITS[kind] || 0) - actionCount(kind));
+}
+function consumeActionAllowance(kind) {
+    state.actionCounts = state.actionCounts || {};
+    const used = state.actionCounts[kind] || 0;
+    if (used >= (ACTION_LIMITS[kind] || 0)) return false;
+    state.actionCounts[kind] = used + 1;
+    return true;
+}
+
 async function togglePauseRoom() {
     if (!state.user || !state.roomCode) return;
     const room = state.roomData;
@@ -1669,12 +1695,20 @@ async function togglePauseRoom() {
             await updateDoc(ref, {
                 paused: false,
                 pausedAt: null,
+                pausedByUid: null,
+                pausedByName: null,
                 questionStartedAt: new Date(startMs + elapsedPause)
             });
         } else {
+            // Per-player pause limit: 2 per room. Bail BEFORE writing.
+            if (!consumeActionAllowance('pause')) return;
+            const myName = (state.profile && state.profile.displayName)
+                || deriveInitialDisplayName();
             await updateDoc(ref, {
                 paused: true,
-                pausedAt: serverTimestamp()
+                pausedAt: serverTimestamp(),
+                pausedByUid: state.user.uid,
+                pausedByName: myName
             });
         }
     } catch (err) {
@@ -1687,6 +1721,7 @@ async function hostEndGameEarly() {
     const room = state.roomData;
     if (!room) return;
     const isSolo = room.playMode === 'solo';
+    if (actionRemaining('end') <= 0) return;
     const ok = await openConfirmModal({
         title: isSolo ? 'End your run?' : 'End the game for everyone?',
         body: isSolo
@@ -1696,6 +1731,7 @@ async function hostEndGameEarly() {
         danger: true
     });
     if (!ok) return;
+    if (!consumeActionAllowance('end')) return;
     try {
         await updateDoc(doc(db, 'triviaRooms', state.roomCode), {
             status: 'finished',
@@ -1945,6 +1981,34 @@ function renderRoom() {
     const hostActions = $('#room-host-actions');
     if (hostActions) hostActions.hidden = !playing;
 
+    // Per-player rate limits: gray out each control once its allowance
+    // is exhausted (pause: 2/room, restart: 3/room, end: 3/room). Reset
+    // happens in leaveRoom().
+    const pauseBtn2 = $('#room-pause-btn');
+    if (pauseBtn2) {
+        const left = actionRemaining('pause');
+        pauseBtn2.disabled = (left <= 0 && !room.paused);
+        pauseBtn2.title = pauseBtn2.disabled
+            ? 'You\'ve used your pause allowance for this room.'
+            : `Pause / resume the timer (${left} left)`;
+    }
+    const restartBtn2 = $('#room-restart-btn');
+    if (restartBtn2) {
+        const left = actionRemaining('restart');
+        restartBtn2.disabled = left <= 0;
+        restartBtn2.title = restartBtn2.disabled
+            ? 'You\'ve used your restart proposals for this room.'
+            : `Propose restarting the game — all players must accept (${left} left)`;
+    }
+    const endBtn2 = $('#room-end-btn');
+    if (endBtn2) {
+        const left = actionRemaining('end');
+        endBtn2.disabled = left <= 0;
+        endBtn2.title = endBtn2.disabled
+            ? 'You\'ve used your end-game allowance for this room.'
+            : `End the game and show the final scores (${left} left)`;
+    }
+
     // Chat toggle: visible only when there's someone else to talk to.
     // Solo / daily rooms are inherently single-player so chat is also
     // hidden in those modes regardless of the player count.
@@ -1986,12 +2050,38 @@ function renderRoom() {
     // Reset the prompt-shown sentinel once a proposal clears so a NEW
     // proposal will surface its own modal next time.
     if (!room.rematchProposedBy) state.lastRematchPromptShown = null;
+
+    // Mid-game restart trigger. The end-stage renderRematchUI handles
+    // the equivalent post-game path; this is the missing piece that
+    // actually pulled the trigger when a mid-match unanimous accept
+    // came together. The same gate (host only, accepted >= playerCount)
+    // ensures exactly one client does the writes.
+    if (playing && room.rematchProposedBy && state.user
+        && room.hostUid === state.user.uid
+        && rematchAcceptCount() >= rematchPlayerCount()
+        && rematchDeclineCount() === 0
+        && !state.rematchInFlight) {
+        playAgain();
+    }
     const banner = $('#room-paused-banner');
     if (banner) {
         banner.hidden = !room.paused;
-        banner.innerHTML = (playMode === 'solo')
-            ? '<span aria-hidden="true">⏸</span> Game paused'
-            : '<span aria-hidden="true">⏸</span> Game paused by host.';
+        if (playMode === 'solo') {
+            banner.innerHTML = '<span aria-hidden="true">⏸</span> Game paused';
+        } else {
+            // Prefer the explicit pausedByName on the room doc; fall back
+            // to looking up the uid in the live players list; finally
+            // fall back to "host" if neither is available (legacy rooms
+            // paused before this field existed).
+            let pauserName = room.pausedByName;
+            if (!pauserName && room.pausedByUid) {
+                const p = state.roomPlayers.find((pp) => pp.uid === room.pausedByUid);
+                pauserName = p && p.displayName;
+            }
+            if (!pauserName) pauserName = 'host';
+            banner.innerHTML = '<span aria-hidden="true">⏸</span> Game paused by '
+                + escapeHtml(pauserName) + '.';
+        }
     }
     const pauseBtn = $('#room-pause-btn');
     if (pauseBtn) {
@@ -3036,7 +3126,7 @@ function renderMiniBoardGlobeDrop(currentQuestionId) {
         if (i === 0 && (p.score || 0) > 0) li.classList.add('is-leader');
         if (p.answeredThisQuestion) li.classList.add('is-answered');
         const badge = p.answeredThisQuestion
-            ? '<span class="submitted-badge" aria-label="submitted">✓ submitted</span>'
+            ? '<span class="submitted-badge" aria-label="submitted">✓</span>'
             : '';
         li.innerHTML =
             `<span class="mini-board-rank">${i+1}</span>` +
@@ -3275,8 +3365,23 @@ function startGlobeDropTimerLoop() {
         // Re-render the stage when phase changes so the reveal markers
         // and "X km off" line draw without waiting for a snapshot.
         if (phase !== lastPhase || currentQId !== lastQId) {
+            const transitionedToRevealForCurQ =
+                (lastPhase === 'asking' && (phase === 'reveal' || phase === 'ended')
+                 && currentQId === lastQId);
             lastPhase = phase;
             lastQId = currentQId;
+            // Time-up audio cue: if the local player didn't submit a
+            // guess for the current question before the asking window
+            // closed, play the sad "time ran out" sound + vibrate.
+            // Submitters get the existing guessSubmitted cue and don't
+            // need this.
+            if (transitionedToRevealForCurQ) {
+                const me = state.user && state.roomPlayers.find((p) => p.uid === state.user.uid);
+                const meSubmitted = !!(me && me.currentAnsweredFor === currentQId);
+                if (!meSubmitted) {
+                    try { Feedback.timerExpired(); } catch (_) {}
+                }
+            }
             // Heavy-handed but safe: just re-run the stage renderer.
             renderGlobeDropStage();
         }
@@ -3936,62 +4041,70 @@ async function maybeWriteH2HPairs() {
     if (!state.user || !state.roomData || !state.roomCode) return;
     const playMode = state.roomData.playMode || 'multi';
     if (playMode !== 'multi') return;
-    if (state.roomData.hostUid !== state.user.uid) return;
     const players = Array.isArray(state.roomPlayers) ? state.roomPlayers.slice() : [];
     if (players.length < 2) return;
 
-    // In-room session H2H: track each player's cumulative wins across
-    // every match played in this room. Survives rematches; resets only
-    // when the room is deleted.
-    const sortedByScore = players.slice().sort((a, b) => (b.score || 0) - (a.score || 0));
-    const topScore = sortedByScore[0] ? (sortedByScore[0].score || 0) : 0;
-    const winners = sortedByScore.filter((p) => (p.score || 0) === topScore);
-    const sessionUpdate = { sessionMatchCount: (state.roomData.sessionMatchCount || 0) + 1 };
-    if (winners.length === 1 && topScore > 0) {
-        // Unique winner — increment their session win count.
-        const prevWins = (state.roomData.sessionWinsByUid && state.roomData.sessionWinsByUid[winners[0].uid]) || 0;
-        sessionUpdate[`sessionWinsByUid.${winners[0].uid}`] = prevWins + 1;
-    }
-    try {
-        await updateDoc(doc(db, 'triviaRooms', state.roomCode), sessionUpdate);
-    } catch (err) {
-        console.warn('Session H2H write failed:', err);
+    // In-room session H2H — host writes the room-level counter so
+    // rematches accumulate. Other players don't try (rules permit it
+    // since /triviaRooms is open-write to anyone signed in, but only
+    // one writer avoids the increment race).
+    if (state.roomData.hostUid === state.user.uid) {
+        const sortedByScore = players.slice().sort((a, b) => (b.score || 0) - (a.score || 0));
+        const topScore = sortedByScore[0] ? (sortedByScore[0].score || 0) : 0;
+        const winners = sortedByScore.filter((p) => (p.score || 0) === topScore);
+        const sessionUpdate = { sessionMatchCount: (state.roomData.sessionMatchCount || 0) + 1 };
+        if (winners.length === 1 && topScore > 0) {
+            const prevWins = (state.roomData.sessionWinsByUid && state.roomData.sessionWinsByUid[winners[0].uid]) || 0;
+            sessionUpdate[`sessionWinsByUid.${winners[0].uid}`] = prevWins + 1;
+        }
+        try {
+            await updateDoc(doc(db, 'triviaRooms', state.roomCode), sessionUpdate);
+        } catch (err) {
+            console.warn('Session H2H write failed:', err);
+        }
     }
 
-    for (let i = 0; i < players.length; i++) {
-        for (let j = i + 1; j < players.length; j++) {
-            const a = players[i];
-            const b = players[j];
-            if (!a || !b) continue;
-            const key = h2hPairKey(a.uid, b.uid);
-            if (!key) continue;
-            const ref = doc(db, 'triviaH2H', key);
-            // Sort the pair canonically: alphabetically lower uid is A.
-            const [uidA, uidB] = [a.uid, b.uid].sort();
-            const pA = a.uid === uidA ? a : b;
-            const pB = a.uid === uidB ? a : b;
-            const aScore = pA.score || 0;
-            const bScore = pB.score || 0;
-            try {
-                await runTransaction(db, async (tx) => {
-                    const snap = await tx.get(ref);
-                    const cur = snap.exists() ? snap.data() : {};
-                    const winsA = (cur.winsA || 0) + (aScore > bScore ? 1 : 0);
-                    const winsB = (cur.winsB || 0) + (bScore > aScore ? 1 : 0);
-                    const ties = (cur.ties || 0) + (aScore === bScore ? 1 : 0);
-                    tx.set(ref, {
-                        uidA, uidB,
-                        displayNameA: pA.displayName || 'Player',
-                        displayNameB: pB.displayName || 'Player',
-                        winsA, winsB, ties,
-                        gamesPlayed: (cur.gamesPlayed || 0) + 1,
-                        lastPlayedAt: serverTimestamp()
-                    }, { merge: true });
-                });
-            } catch (err) {
-                // Best-effort: rules / network issues shouldn't block end-of-game.
-                console.warn('H2H write failed for pair', key, err);
-            }
+    // Per-pair lifetime H2H — written by whichever side of the pair has
+    // the lexicographically lower uid. That single-writer convention
+    // (a) satisfies the rules (the writer is uidA, so rules pass)
+    // (b) avoids two clients racing to increment the same pair doc.
+    // For pairs that don't include me, OR pairs where I'm uidB, I
+    // skip — my counterpart handles the write.
+    const myUid = state.user.uid;
+    for (const opp of players) {
+        if (!opp || !opp.uid || opp.uid === myUid) continue;
+        if (myUid >= opp.uid) continue; // only the lower-uid side writes
+        const me = players.find((p) => p.uid === myUid);
+        if (!me) continue;
+        const uidA = myUid;
+        const uidB = opp.uid;
+        const key = uidA + '__' + uidB;
+        const aScore = me.score || 0;
+        const bScore = opp.score || 0;
+        try {
+            await runTransaction(db, async (tx) => {
+                const ref = doc(db, 'triviaH2H', key);
+                const snap = await tx.get(ref);
+                const cur = snap.exists() ? snap.data() : {};
+                const winsA = (cur.winsA || 0) + (aScore > bScore ? 1 : 0);
+                const winsB = (cur.winsB || 0) + (bScore > aScore ? 1 : 0);
+                const ties = (cur.ties || 0) + (aScore === bScore ? 1 : 0);
+                tx.set(ref, {
+                    uidA, uidB,
+                    displayNameA: me.displayName || 'Player',
+                    displayNameB: opp.displayName || 'Player',
+                    winsA, winsB, ties,
+                    gamesPlayed: (cur.gamesPlayed || 0) + 1,
+                    lastPlayedAt: serverTimestamp()
+                }, { merge: true });
+            });
+        } catch (err) {
+            // The most common cause here is "Missing or insufficient
+            // permissions" — i.e. the Firestore rules for /triviaH2H
+            // haven't been deployed yet. Run:
+            //     firebase deploy --only firestore:rules
+            // The block won't fail the rest of end-of-game.
+            console.warn('H2H write failed for pair', key, '— check that firestore.rules has been deployed:', err);
         }
     }
 }
