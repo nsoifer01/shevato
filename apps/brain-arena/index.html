@@ -651,6 +651,11 @@
     </article>
   </div>
 
+  <!-- Lightweight toast bus. showToast(msg) pushes a <li> here that
+       auto-dismisses after a few seconds. Used for "Opponent submitted"
+       presence notifications and for chat-message previews. -->
+  <ul class="ba-toast-stack" id="ba-toast-stack" aria-live="polite"></ul>
+
   <div data-include="footer"></div>
 
   <!-- Site JS deps (same set the other apps load before main.js). -->
@@ -684,6 +689,7 @@
   <script src="js/config.js"></script>
   <script src="js/scoring.js"></script>
   <script src="js/premium.js"></script>
+  <script src="js/feedback.js"></script>
   <script src="js/room-state.js"></script>
   <script src="js/live-questions.js"></script>
   <script src="js/globe-drop-scoring.js"></script>
