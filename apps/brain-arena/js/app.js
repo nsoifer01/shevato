@@ -1643,25 +1643,28 @@ function ensureGlobe() {
     // produces — that's where the real "feels fast" upgrade comes from.
     const controls = state.globe.controls();
     if (controls) {
-        controls.zoomSpeed = 8;            // baseline for pinch / non-wheel zoom
-        controls.rotateSpeed = 1.1;
+        // Smoother feel: lower rotate sensitivity so a small drag doesn't
+        // overshoot, and heavier damping so the camera glides to rest
+        // instead of stopping abruptly.
+        controls.zoomSpeed = 5;
+        controls.rotateSpeed = 0.7;
         controls.enableDamping = true;
-        controls.dampingFactor = 0.22;
+        controls.dampingFactor = 0.12;
     }
 
-    // Custom wheel zoom: multiplicative altitude change per scroll click
-    // so zoom feels equally fast at any altitude (default OrbitControls is
-    // linear and feels slow when zoomed in). 25% per click ≈ 4 clicks to
-    // halve/double the view. Passive:false because we preventDefault.
+    // Custom wheel zoom: multiplicative altitude change per scroll click,
+    // gentler factor (15% per click instead of 25%) for less erratic feel
+    // and a slightly longer tween (240ms) so the zoom interpolates rather
+    // than snapping. Passive:false because we preventDefault.
     el.addEventListener('wheel', (e) => {
         e.preventDefault();
         if (!state.globe) return;
         const pov = state.globe.pointOfView();
-        const factor = e.deltaY > 0 ? 1.25 : 0.8;
+        const factor = e.deltaY > 0 ? 1.15 : 0.87;
         const minAlt = 0.15;
         const maxAlt = 4.0;
         const nextAlt = Math.max(minAlt, Math.min(maxAlt, pov.altitude * factor));
-        state.globe.pointOfView({ lat: pov.lat, lng: pov.lng, altitude: nextAlt }, 120);
+        state.globe.pointOfView({ lat: pov.lat, lng: pov.lng, altitude: nextAlt }, 240);
     }, { passive: false });
 
     // Ask the device for the actual pixel ratio so the globe canvas is
@@ -1871,7 +1874,9 @@ function renderGlobeDropStage() {
             setText($('#globe-drop-status'), 'Click anywhere on the globe to drop your pin.');
             $('#globe-drop-status').classList.remove('is-correct', 'is-wrong');
             // Reset camera to the overview pose for each new question.
-            g.pointOfView({ lat: 20, lng: 0, altitude: 2.5 }, 600);
+            // Easing the overview tween out a little so the camera flies
+            // back to the world view less abruptly between questions.
+            g.pointOfView({ lat: 20, lng: 0, altitude: 2.5 }, 900);
         }
 
         // Lock the controls if we've already submitted this question.
@@ -1979,7 +1984,10 @@ function drawGlobeDropReveal(loc, me, { showOthers = true } = {}) {
     state.globe.arcsData(arcs);
 
     // Pan camera so the actual location is centered + zoom in a touch.
-    state.globe.pointOfView({ lat: loc.lat, lng: loc.lng, altitude: 1.8 }, 1000);
+    // Reveal fly-in: longer tween so the camera glides into the truth
+    // instead of snapping. 1400ms paired with globe.gl's default easing
+    // gives a noticeably calmer feel than the prior 1000ms.
+    state.globe.pointOfView({ lat: loc.lat, lng: loc.lng, altitude: 1.8 }, 1400);
 
     // Reveal panel: distance + points or "no guess"
     const revealEl = $('#globe-drop-reveal');
@@ -3061,11 +3069,16 @@ async function playAgain() {
                 state.roomData.totalQuestions,
                 shuffle
             );
+            // One-click rematch: write 'playing' directly with the first
+            // location armed, so the host doesn't have to click Start
+            // again. The intermediate 'lobby' status used to flash here;
+            // now we jump straight to the first question.
+            const firstLoc = locations[0];
             await updateDoc(doc(db, 'triviaRooms', state.roomCode), {
-                status: 'lobby',
+                status: firstLoc ? 'playing' : 'lobby',
                 currentQuestionIndex: 0,
-                currentQuestionId: null,
-                questionStartedAt: null,
+                currentQuestionId: firstLoc ? firstLoc.id : null,
+                questionStartedAt: firstLoc ? serverTimestamp() : null,
                 revealStartedAt: null,
                 playedQuestionIds: [],
                 questions: locations,
