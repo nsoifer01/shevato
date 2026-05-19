@@ -520,9 +520,25 @@ select option { background: var(--surface); color: var(--text); }
   color: var(--text);
   cursor: pointer;
   user-select: none;
-  padding: 0.35rem 0;
+  padding: 0.55rem 0.75rem;
+  background: rgba(255, 255, 255, 0.02);
+  border: 1px solid rgba(148, 163, 184, 0.08);
+  border-radius: 10px;
+  transition: background 0.18s ease, border-color 0.18s ease;
 }
+.lobby-field-toggle:hover {
+  background: rgba(34, 211, 238, 0.04);
+  border-color: rgba(34, 211, 238, 0.25);
+}
+.lobby-field-toggle .toggle-icon {
+  color: var(--muted-2);
+  flex-shrink: 0;
+  transition: color 0.18s ease;
+}
+.lobby-field-toggle:hover .toggle-icon { color: var(--cyan-2); }
+.lobby-field-toggle:has(input[type="checkbox"]:checked) .toggle-icon { color: var(--cyan); }
 .lobby-field-toggle > span {
+  flex: 1;
   margin: 0;
   text-transform: none;
   letter-spacing: 0;
@@ -1267,35 +1283,8 @@ select option { background: var(--surface); color: var(--text); }
   text-align: center;
 }
 
-/* New Globe Drop layout — action bar + top-mounted live standings */
-.globe-drop-action-bar {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 1rem;
-  margin: 1rem 0;
-  padding: 0.8rem 1.1rem;
-  background: var(--surface-translucent);
-  -webkit-backdrop-filter: blur(14px);
-  backdrop-filter: blur(14px);
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-  box-shadow: var(--shadow-soft);
-  flex-wrap: wrap;
-}
-.globe-drop-action-bar .globe-drop-status {
-  margin: 0;
-  flex: 1 1 200px;
-  font-size: 0.92rem;
-  color: var(--muted);
-  letter-spacing: 0.01em;
-  min-width: 0;
-}
-.globe-drop-action-bar .globe-drop-controls {
-  display: flex;
-  gap: 0.5rem;
-  flex: 0 0 auto;
-}
+/* Globe-drop layout — top-mounted live standings */
+.globe-drop-status { display: none; }
 
 /* Floating action buttons overlaid on the globe (top-right). Container
    has pointer-events:none so the globe stays draggable behind it; the
@@ -2596,6 +2585,64 @@ select option { background: var(--surface); color: var(--text); }
 /* ---------- Stage: end ---------- */
 
 .end-head { text-align: center; margin-bottom: 1.6rem; }
+
+/* Solo-only hero block. Replaces the podium / standings table for
+   single-player runs since there's nothing to rank against. */
+.solo-hero {
+  margin: 0 auto 1.8rem;
+  max-width: 720px;
+  padding: 1.6rem 1.4rem;
+  background:
+    linear-gradient(180deg, rgba(34, 211, 238, 0.06), transparent 50%),
+    rgba(8, 11, 22, 0.55);
+  -webkit-backdrop-filter: blur(18px);
+  backdrop-filter: blur(18px);
+  border: 1px solid rgba(34, 211, 238, 0.22);
+  border-radius: var(--radius);
+  box-shadow:
+    0 1px 0 rgba(255, 255, 255, 0.05) inset,
+    0 18px 50px rgba(2, 6, 23, 0.55),
+    0 0 36px rgba(34, 211, 238, 0.12);
+  position: relative;
+  overflow: hidden;
+}
+.solo-hero::before {
+  content: "";
+  position: absolute;
+  top: 0; left: 14%; right: 14%; height: 1.5px;
+  background: linear-gradient(90deg, transparent, rgba(34, 211, 238, 0.55) 50%, transparent);
+  filter: blur(0.4px);
+  pointer-events: none;
+}
+.solo-hero-score-row {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  gap: 1.1rem;
+  text-align: center;
+}
+.solo-hero-stat {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  position: relative;
+}
+.solo-hero-stat-label {
+  font-family: "Space Grotesk", "Outfit", sans-serif;
+  font-size: 0.7rem;
+  font-weight: 600;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--muted-2);
+}
+.solo-hero-stat-value {
+  font-family: var(--mono);
+  font-size: 2rem;
+  font-weight: 700;
+  color: var(--cyan-2);
+  text-shadow: 0 0 16px rgba(34, 211, 238, 0.35);
+  letter-spacing: -0.01em;
+  line-height: 1;
+}
 .end-head h2 {
   font-family: "Space Grotesk", "Outfit", sans-serif;
   font-size: clamp(1.7rem, 4.5vw, 2.4rem);

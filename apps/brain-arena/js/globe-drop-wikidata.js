@@ -180,14 +180,14 @@
 
     /**
      * "Top cities by country" — for each country, take its top-population
-     * cities (roughly the 80th-percentile by population: only the top 20%
+     * cities (roughly the 90th-percentile by population: only the top 10%
      * for each country qualify) and pick across countries. This gives
      * variety like Chicago, Lisbon, Haifa, Wuhan, Osaka in one game
      * instead of a US/CN dogpile.
      *
      * Strategy:
      *   1. SPARQL: cities with population > 100k, ordered DESC, large LIMIT
-     *   2. Group by country, sort each group DESC by pop, keep top 20%
+     *   2. Group by country, sort each group DESC by pop, keep top 10%
      *      (min 1 per country)
      *   3. Flatten, shuffle, slice to count.
      */
@@ -211,7 +211,7 @@
         const finalists = [];
         byCountry.forEach((bucket) => {
             bucket.sort((a, b) => (b.population || 0) - (a.population || 0));
-            const keepCount = Math.max(1, Math.ceil(bucket.length * 0.2));
+            const keepCount = Math.max(1, Math.ceil(bucket.length * 0.1));
             for (let i = 0; i < keepCount && i < bucket.length; i++) {
                 finalists.push(bucket[i]);
             }
