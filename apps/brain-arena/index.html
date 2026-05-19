@@ -176,8 +176,16 @@
               <label class="lobby-field" data-game-type="globe-drop">
                 <span>Locations per game</span>
                 <select id="create-locations-count">
-                  <option value="5" selected>5 (quick round)</option>
-                  <option value="10">10 (full game)</option>
+                  <option value="1">1</option>
+                  <option value="2">2</option>
+                  <option value="3">3</option>
+                  <option value="4">4</option>
+                  <option value="5" selected>5</option>
+                  <option value="6">6</option>
+                  <option value="7">7</option>
+                  <option value="8">8</option>
+                  <option value="9">9</option>
+                  <option value="10">10</option>
                 </select>
               </label>
               <label class="lobby-field lobby-field-toggle" data-game-type="globe-drop">
@@ -194,10 +202,6 @@
                   <option value="300">5 minutes (discuss it out)</option>
                 </select>
               </label>
-              <p class="lobby-hint" data-game-type="globe-drop">
-                Pick a round type, then drop a pin on the 3D globe. Closer guesses score more, with continental multipliers (Africa &amp; Asia &gt; Europe) and a population-obscurity weight (smaller, less famous places are worth more) on top of the difficulty multiplier.
-              </p>
-
               <!-- Trivia-only fields -->
               <label class="lobby-field" data-game-type="trivia" hidden>
                 <span>Questions per game</span>
@@ -224,6 +228,10 @@
               <label class="lobby-field" id="create-password-field" hidden>
                 <span>Room password</span>
                 <input type="text" id="create-password" maxlength="32" placeholder="Set a password" autocomplete="off">
+                <p class="field-warning" id="create-password-warning" role="alert" hidden>
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 9v4"/><path d="M12 17h.01"/><path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/></svg>
+                  <span>Please set a password for your private room.</span>
+                </p>
               </label>
               <button type="button" class="btn btn-primary lobby-cta" id="create-room-btn">Create room</button>
 
@@ -282,14 +290,19 @@
             </span>
           </div>
           <div class="room-head-right">
+            <!-- Per-player Give Up: visible to anyone during 'playing'.
+                 Affects only the player who clicks it (forfeits current
+                 round only). Distinct from host-actions below. -->
+            <div class="room-self-actions" id="room-self-actions" hidden>
+              <button type="button" class="btn btn-ghost btn-sm btn-danger-ghost" id="room-giveup-btn" title="Forfeit your score for this round">
+                <span aria-hidden="true">🏳️</span> Give up
+              </button>
+            </div>
             <!-- Host-only mid-game controls. Hidden until the room is in
                  'playing' or 'picking' and the local user is the host. -->
             <div class="room-host-actions" id="room-host-actions" hidden>
               <button type="button" class="btn btn-ghost btn-sm" id="room-pause-btn" title="Pause / resume the timer">
                 <span aria-hidden="true">⏸</span> Pause
-              </button>
-              <button type="button" class="btn btn-ghost btn-sm btn-danger-ghost" id="room-giveup-btn" title="Give up this question and reveal the answer now">
-                <span aria-hidden="true">🏳️</span> Give up
               </button>
               <button type="button" class="btn btn-ghost btn-sm btn-danger-ghost" id="room-end-btn" title="End the game and show the final scores">
                 <span aria-hidden="true">⏹</span> End game
@@ -443,15 +456,12 @@
               <span class="globe-drop-difficulty-chip" id="globe-drop-difficulty-chip" hidden></span>
             </header>
 
-            <!-- Action bar (submit / clear / status). Above the globe so
-                 on mobile your thumb doesn't have to scroll the whole
-                 stage to reach Submit. -->
+            <!-- Status line stays above the globe so phase messages
+                 (pin placed / time up / reveal) remain visible. The
+                 Submit / Clear controls live overlaid on the globe
+                 itself, see #globe-drop-map below. -->
             <div class="globe-drop-action-bar">
-              <p class="answer-status globe-drop-status" id="globe-drop-status" aria-live="polite">Drag to spin the globe. Click to drop your pin.</p>
-              <div class="globe-drop-controls">
-                <button type="button" class="btn btn-ghost" id="globe-drop-clear-btn" hidden>Clear pin</button>
-                <button type="button" class="btn btn-primary" id="globe-drop-submit-btn" disabled>Submit guess</button>
-              </div>
+              <p class="answer-status globe-drop-status" id="globe-drop-status" aria-live="polite"></p>
             </div>
 
             <!-- Live standings + opponent submission indicators. Submit-
@@ -462,6 +472,15 @@
                 <p class="mini-board-pulse" id="globe-drop-pulse" aria-live="polite" hidden></p>
               </header>
               <ol class="mini-board-list" id="mini-board-list-globe-drop"></ol>
+            </section>
+
+            <!-- Previous-round scores. Populated by app.js after the
+                 first round resolves; hidden until then. -->
+            <section class="prev-round-board" id="prev-round-board" hidden>
+              <header class="mini-board-head">
+                <h3 id="prev-round-title">Previous round</h3>
+              </header>
+              <ol class="mini-board-list" id="prev-round-list"></ol>
             </section>
 
             <!-- Reveal panel — just above the globe so the result is
@@ -478,7 +497,21 @@
             </section>
 
             <p class="globe-drop-hint" id="globe-drop-hint" hidden></p>
-            <div id="globe-drop-map" class="globe-drop-map" aria-label="World globe for guessing"></div>
+            <div id="globe-drop-map" class="globe-drop-map" aria-label="World globe for guessing">
+              <!-- Floating action buttons. Only visible once a pin is
+                   placed (toggled by app.js). Pointer-events:none on the
+                   container lets the globe stay draggable around them. -->
+              <div class="globe-drop-fab-stack" id="globe-drop-fab-stack">
+                <button type="button" class="globe-drop-fab globe-drop-fab-ghost" id="globe-drop-clear-btn" hidden>
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
+                  <span>Clear pin</span>
+                </button>
+                <button type="button" class="globe-drop-fab globe-drop-fab-primary" id="globe-drop-submit-btn" disabled>
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m5 12 5 5L20 7"/></svg>
+                  <span>Submit guess</span>
+                </button>
+              </div>
+            </div>
             <!-- Nothing below the globe by design. -->
           </article>
         </section>
@@ -540,6 +573,21 @@
               Want a breakdown of your accuracy, response time, and category strengths?
             </p>
             <button type="button" class="btn btn-primary" data-action="open-premium">Go Premium</button>
+          </div>
+
+          <!-- Rematch coordination strip — only visible once a rematch
+               has been proposed. Tracks accept progress across the
+               remaining players. -->
+          <div class="rematch-strip" id="rematch-strip" hidden>
+            <p class="rematch-status" id="rematch-status"></p>
+            <div class="rematch-actions" id="rematch-actions" hidden>
+              <button type="button" class="btn btn-primary" id="rematch-accept-btn">
+                <span aria-hidden="true">✓</span> Accept rematch
+              </button>
+              <button type="button" class="btn btn-ghost btn-danger-ghost" id="rematch-decline-btn">
+                Decline
+              </button>
+            </div>
           </div>
 
           <div class="end-actions">

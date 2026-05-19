@@ -515,16 +515,76 @@ select option { background: var(--surface); color: var(--text); }
 .lobby-field-toggle {
   display: flex;
   align-items: center;
-  gap: 0.5rem;
-  font-size: 0.9rem;
+  gap: 0.75rem;
+  font-size: 0.92rem;
   color: var(--text);
   cursor: pointer;
   user-select: none;
+  padding: 0.35rem 0;
 }
-.lobby-field-toggle > span { margin: 0; text-transform: none; letter-spacing: 0; font-weight: 400; color: inherit; font-size: 0.9rem; }
+.lobby-field-toggle > span {
+  margin: 0;
+  text-transform: none;
+  letter-spacing: 0;
+  font-weight: 500;
+  color: var(--text);
+  font-size: 0.92rem;
+}
+/* Track + thumb switch built from the native checkbox. Track is the
+   input itself (appearance:none) sized as a pill; thumb is a ::before
+   that slides on :checked. Keeps accessibility — still a real
+   checkbox under the hood. */
 .lobby-field-toggle input[type="checkbox"] {
-  width: 16px; height: 16px;
-  accent-color: var(--accent);
+  appearance: none;
+  -webkit-appearance: none;
+  position: relative;
+  width: 44px;
+  height: 24px;
+  flex-shrink: 0;
+  margin: 0;
+  border: 1px solid rgba(148, 163, 184, 0.18);
+  border-radius: 999px;
+  background:
+    linear-gradient(180deg, rgba(0, 0, 0, 0.35), rgba(0, 0, 0, 0.15)),
+    rgba(8, 11, 22, 0.65);
+  box-shadow:
+    0 2px 4px rgba(0, 0, 0, 0.4) inset,
+    0 -1px 0 rgba(0, 0, 0, 0.3) inset;
+  cursor: pointer;
+  transition: background 0.22s ease, border-color 0.22s ease, box-shadow 0.22s ease;
+}
+.lobby-field-toggle input[type="checkbox"]::before {
+  content: "";
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: linear-gradient(180deg, #e5e7eb, #94a3b8);
+  box-shadow:
+    0 1px 2px rgba(0, 0, 0, 0.5),
+    0 0 0 1px rgba(0, 0, 0, 0.2);
+  transition: transform 0.22s cubic-bezier(0.22, 1, 0.36, 1), background 0.22s ease, box-shadow 0.22s ease;
+}
+.lobby-field-toggle input[type="checkbox"]:checked {
+  background: var(--grad-brand);
+  border-color: rgba(34, 211, 238, 0.55);
+  box-shadow:
+    0 0 0 1px rgba(34, 211, 238, 0.30),
+    0 0 14px rgba(34, 211, 238, 0.45),
+    0 0 22px rgba(168, 85, 247, 0.30);
+}
+.lobby-field-toggle input[type="checkbox"]:checked::before {
+  transform: translateX(20px);
+  background: linear-gradient(180deg, #ffffff, #e0f2fe);
+  box-shadow:
+    0 1px 3px rgba(0, 0, 0, 0.55),
+    0 0 8px rgba(34, 211, 238, 0.45);
+}
+.lobby-field-toggle input[type="checkbox"]:focus-visible {
+  outline: 2px solid var(--cyan);
+  outline-offset: 3px;
 }
 
 .lobby-cta { align-self: stretch; height: 42px; }
@@ -542,6 +602,30 @@ select option { background: var(--surface); color: var(--text); }
   margin: 0;
   color: var(--bad);
   font-size: 0.85rem;
+}
+
+/* Inline form-field warning — used under fields when validation fails.
+   Amber-tinted with a warning icon, matching the app's glass look. */
+.field-warning {
+  margin: 0.45rem 0 0;
+  padding: 0.4rem 0.6rem;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  font-size: 0.82rem;
+  font-weight: 500;
+  color: #fcd34d;
+  background:
+    linear-gradient(90deg, rgba(245, 158, 11, 0.10), rgba(245, 158, 11, 0.03) 60%, transparent);
+  border: 1px solid rgba(245, 158, 11, 0.30);
+  border-left-width: 3px;
+  border-radius: 7px;
+  animation: field-warning-in 220ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+.field-warning svg { flex-shrink: 0; color: var(--warn); }
+@keyframes field-warning-in {
+  from { transform: translateY(-3px); opacity: 0; }
+  to   { transform: none; opacity: 1; }
 }
 
 /* Premium tags */
@@ -1183,8 +1267,144 @@ select option { background: var(--surface); color: var(--text); }
   flex: 0 0 auto;
 }
 
-/* Mini-board variant pinned above the globe with submit-state badges. */
-.mini-board-top { margin: 0 0 0.8rem; }
+/* Floating action buttons overlaid on the globe (top-right). Container
+   has pointer-events:none so the globe stays draggable behind it; the
+   buttons themselves restore pointer-events:auto. Only rendered while
+   a pin is placed (toggled via [hidden] on the stack and individual
+   buttons). */
+.globe-drop-fab-stack {
+  position: absolute;
+  top: 0.75rem;
+  right: 0.75rem;
+  z-index: 4;
+  display: flex;
+  gap: 0.5rem;
+  pointer-events: none;
+  animation: globe-fab-in 240ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+/* Hide the whole stack until a pin is placed. The Clear button is the
+   pin-placed signal (hidden becomes false on pin-drop); when it's
+   absent, the entire FAB stack collapses. */
+.globe-drop-fab-stack:not(:has(#globe-drop-clear-btn:not([hidden]))) {
+  display: none;
+}
+@keyframes globe-fab-in {
+  from { transform: translateY(-6px); opacity: 0; }
+  to   { transform: none; opacity: 1; }
+}
+.globe-drop-fab,
+.globe-drop-fab:hover {
+  pointer-events: auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0 0.85rem;
+  height: 36px;
+  border: 1px solid transparent;
+  border-radius: 10px;
+  font: inherit;
+  font-size: 0.84rem;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+  cursor: pointer;
+  backdrop-filter: blur(14px) saturate(1.1);
+  -webkit-backdrop-filter: blur(14px) saturate(1.1);
+  transition: transform 0.12s ease, box-shadow 0.18s ease, background 0.18s ease, border-color 0.18s ease;
+}
+.globe-drop-fab svg { flex-shrink: 0; }
+.globe-drop-fab:disabled { opacity: 0.55; cursor: not-allowed; }
+.globe-drop-fab[hidden] { display: none; }
+
+/* Primary submit: cyan→violet gradient with halo glow. */
+.globe-drop-fab-primary,
+.globe-drop-fab-primary:hover {
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.16), transparent 40%),
+    var(--grad-brand);
+  color: #061522;
+  border-color: rgba(255, 255, 255, 0.20);
+  box-shadow:
+    0 0 0 1px rgba(34, 211, 238, 0.45),
+    0 6px 18px rgba(34, 211, 238, 0.40),
+    0 0 22px rgba(168, 85, 247, 0.28);
+}
+.globe-drop-fab-primary:hover:not(:disabled) {
+  filter: brightness(1.08);
+  transform: translateY(-1px);
+  box-shadow:
+    0 0 0 1px rgba(34, 211, 238, 0.6),
+    0 8px 24px rgba(34, 211, 238, 0.55),
+    0 0 28px rgba(168, 85, 247, 0.40);
+}
+.globe-drop-fab-primary:active:not(:disabled) { transform: translateY(0); }
+
+/* Ghost clear: glass background with cyan border + hover glow. */
+.globe-drop-fab-ghost,
+.globe-drop-fab-ghost:hover {
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.05), transparent 50%),
+    rgba(8, 11, 22, 0.6);
+  color: var(--text);
+  border-color: rgba(148, 163, 184, 0.22);
+  box-shadow:
+    0 0 0 1px rgba(34, 211, 238, 0.08),
+    0 6px 18px rgba(2, 6, 23, 0.45);
+}
+.globe-drop-fab-ghost:hover {
+  background:
+    linear-gradient(180deg, rgba(34, 211, 238, 0.10), transparent 50%),
+    rgba(8, 11, 22, 0.55);
+  border-color: rgba(34, 211, 238, 0.4);
+  box-shadow:
+    0 0 0 1px rgba(34, 211, 238, 0.25),
+    0 6px 22px rgba(34, 211, 238, 0.25);
+  transform: translateY(-1px);
+}
+
+@media (max-width: 540px) {
+  .globe-drop-fab-stack { top: 0.5rem; right: 0.5rem; gap: 0.35rem; }
+  .globe-drop-fab { height: 32px; padding: 0 0.7rem; font-size: 0.78rem; }
+  .globe-drop-fab span { display: none; }
+}
+
+/* Mini-board variant pinned above the globe with submit-state badges.
+   Generous bottom margin gives live standings breathing room before
+   the next section (globe / previous round scores) begins. */
+.mini-board-top { margin: 0 0 1.6rem; }
+
+/* Previous-round scores — uses the same row aesthetic as live standings
+   but with a muted, calmer treatment so it reads as "history". */
+.prev-round-board {
+  margin: 0 0 1.6rem;
+  padding: 0.9rem 1.1rem 0.95rem;
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.025), transparent 40%),
+    rgba(8, 11, 22, 0.55);
+  -webkit-backdrop-filter: blur(14px);
+  backdrop-filter: blur(14px);
+  border: 1px solid rgba(148, 163, 184, 0.10);
+  border-radius: var(--radius);
+  position: relative;
+  overflow: hidden;
+  box-shadow: 0 1px 0 rgba(255, 255, 255, 0.04) inset, 0 6px 20px rgba(2, 6, 23, 0.35);
+}
+.prev-round-board::before {
+  content: "";
+  position: absolute;
+  top: 0; left: 14%; right: 14%; height: 1px;
+  background: linear-gradient(90deg, transparent, rgba(148, 163, 184, 0.30) 50%, transparent);
+  pointer-events: none;
+}
+.prev-round-board .mini-board-head {
+  margin-bottom: 0.5rem;
+}
+.prev-round-board h3 {
+  font-family: "Space Grotesk", "Outfit", sans-serif;
+  font-size: 0.92rem;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  color: var(--muted);
+}
 .mini-board-head {
   display: flex;
   align-items: baseline;
@@ -2455,6 +2675,48 @@ select option { background: var(--surface); color: var(--text); }
   color: var(--cyan-2);
 }
 .end-board td.col-xp, .leaderboard-table td.col-xp { color: var(--good); }
+
+/* Rematch coordination — visible only after a rematch is proposed.
+   Shows accept progress + per-player accept/decline buttons. */
+.rematch-strip {
+  margin: 1.4rem 0 0;
+  padding: 1rem 1.2rem;
+  background:
+    linear-gradient(180deg, rgba(34, 211, 238, 0.06), transparent 50%),
+    rgba(8, 11, 22, 0.55);
+  border: 1px solid rgba(34, 211, 238, 0.22);
+  border-radius: var(--radius);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  flex-wrap: wrap;
+  position: relative;
+  overflow: hidden;
+  box-shadow:
+    0 1px 0 rgba(255, 255, 255, 0.05) inset,
+    0 12px 32px rgba(2, 6, 23, 0.45),
+    0 0 28px rgba(34, 211, 238, 0.10);
+}
+.rematch-strip::before {
+  content: "";
+  position: absolute;
+  top: 0; left: 14%; right: 14%; height: 1px;
+  background: linear-gradient(90deg, transparent, rgba(34, 211, 238, 0.55) 50%, transparent);
+  pointer-events: none;
+}
+.rematch-status {
+  margin: 0;
+  font-family: "Space Grotesk", "Outfit", sans-serif;
+  font-size: 1rem;
+  font-weight: 500;
+  color: var(--text);
+}
+.rematch-actions {
+  display: inline-flex;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
 
 .end-actions {
   display: flex;
