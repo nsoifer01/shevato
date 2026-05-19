@@ -1718,7 +1718,11 @@ function drawGlobeDropReveal(loc, me, { showOthers = true } = {}) {
     }
     state.globe.pointsData(pins);
 
-    // Arc from my guess to the actual location (great-circle on the globe).
+    // Great-circle arcs from each guess to the actual location. The
+    // outbound colour (per-player) fades into gold at the truth so it
+    // reads as "your pin → the right spot". During the local reveal we
+    // only draw the player's own arc; during the global reveal we add
+    // every opponent so the result feels collective.
     const arcs = [];
     if (meSubmitted) {
         arcs.push({
@@ -1727,6 +1731,20 @@ function drawGlobeDropReveal(loc, me, { showOthers = true } = {}) {
             endLat: loc.lat,
             endLng: loc.lng,
             color: ['#6366f1', '#fcd34d']
+        });
+    }
+    if (showOthers) {
+        state.roomPlayers.forEach((p) => {
+            if (!p || !p.currentGuess) return;
+            if (p.currentAnsweredFor !== loc.id) return;
+            if (state.user && p.uid === state.user.uid) return; // already added above
+            arcs.push({
+                startLat: p.currentGuess.lat,
+                startLng: p.currentGuess.lng,
+                endLat: loc.lat,
+                endLng: loc.lng,
+                color: ['#f87171', '#fcd34d']
+            });
         });
     }
     state.globe.arcsData(arcs);
@@ -1754,6 +1772,17 @@ function drawGlobeDropReveal(loc, me, { showOthers = true } = {}) {
         setText($('#globe-drop-status'), showOthers ? '⏱ Time up.' : 'Waiting for the rest…');
     }
     revealEl.hidden = false;
+    // One-shot pulse on the score callout so the points feel earned. The
+    // class is removed once the animation finishes (animationend) so it
+    // re-fires the next time the panel opens for a fresh question.
+    if (meSubmitted) {
+        distEl.classList.remove('is-pulse');
+        // Force a reflow so removing + re-adding the class restarts the
+        // CSS animation. void 0 is a no-op that triggers layout.
+        // eslint-disable-next-line no-void
+        void distEl.offsetWidth;
+        distEl.classList.add('is-pulse');
+    }
     // The asking-phase hint becomes irrelevant once the reveal panel is up.
     const hint = $('#globe-drop-hint');
     if (hint) hint.hidden = true;
