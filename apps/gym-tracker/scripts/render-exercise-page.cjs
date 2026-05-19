@@ -94,7 +94,7 @@ ${jsonLd(buildExerciseSchema({ exercise, canonical, description }))}
       <h1>${escapeHtml(name)}</h1>
       <p class="lede">${escapeHtml(description)}</p>
       <div class="hero-actions">
-        <a class="primary-btn" href="/apps/gym-tracker/#exercise=${exercise.id}">Log this exercise →</a>
+        <a class="primary-btn" href="/apps/gym-tracker/#exercises">Open in Gym Tracker →</a>
       </div>
     </header>
 
