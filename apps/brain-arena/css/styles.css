@@ -660,6 +660,40 @@ select option { background: var(--surface); color: var(--text); }
 }
 .leaderboard-sub { color: var(--muted); font-size: 0.88rem; margin: 0.2rem 0 0; }
 
+.ba-toast-stack {
+  position: fixed;
+  right: 1rem;
+  bottom: 1rem;
+  z-index: 100;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column-reverse;
+  gap: 0.45rem;
+  pointer-events: none;
+  max-width: 320px;
+}
+.ba-toast {
+  pointer-events: auto;
+  padding: 0.6rem 0.85rem;
+  background: rgba(15, 18, 28, 0.92);
+  border: 1px solid var(--border);
+  border-radius: 9px;
+  color: var(--text);
+  font-size: 0.88rem;
+  box-shadow: 0 6px 22px rgba(0, 0, 0, 0.45);
+  animation: ba-toast-in 220ms ease-out, ba-toast-out 220ms ease-in 3.5s forwards;
+}
+.ba-toast .ba-toast-icon { margin-right: 0.35rem; }
+@keyframes ba-toast-in {
+  from { transform: translateY(8px); opacity: 0; }
+  to   { transform: translateY(0);   opacity: 1; }
+}
+@keyframes ba-toast-out {
+  to   { transform: translateY(8px); opacity: 0; }
+}
+
 .lobby-waiting-hint {
   margin: 0 0 0.65rem;
   padding: 0.55rem 0.8rem;
