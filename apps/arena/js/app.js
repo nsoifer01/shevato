@@ -4358,7 +4358,9 @@ function renderEndRecap() {
         : computeTriviaAggregates(columns, answersByUid);
     aggregates.forEach((card) => {
         const div = document.createElement('div');
-        div.className = 'end-recap-stat' + (card.isMine ? ' is-mine' : '');
+        div.className = 'end-recap-stat'
+            + (card.isMine ? ' is-mine' : '')
+            + (card.isClosest ? ' is-closest' : '');
         div.innerHTML =
             `<span class="end-recap-stat-label">${escapeHtml(card.label)}</span>` +
             `<span class="end-recap-stat-value">${escapeHtml(card.value)}</span>` +
@@ -4423,16 +4425,27 @@ function renderEndRecap() {
             return { col, ans, points };
         });
 
-        colResults.forEach(({ col, ans }) => {
+        const winnersOfRow = bestPoints > 0
+            ? colResults.filter((r) => r.points === bestPoints)
+            : [];
+        const isTie = winnersOfRow.length > 1;
+        colResults.forEach(({ col, ans, points }) => {
             const isMe = state.user && col.uid === state.user.uid;
+            // Cell highlight: green tint for the winning score(s) in
+            // each row (tie shares the win); muted for the rest.
+            // Ties don't get the highlight since "winning" is ambiguous.
+            let resultCls = 'col-result';
+            if (isMe) resultCls += ' is-mine';
+            if (!isTie && bestPoints > 0 && points === bestPoints) resultCls += ' is-winner';
+            else if (bestPoints > 0 && points < bestPoints) resultCls += ' is-loser';
             if (!ans) {
-                rowHTML += `<td class="col-result ${isMe ? 'is-mine' : ''}"><span class="recap-result-zero">…</span></td>`;
+                rowHTML += `<td class="${resultCls}"><span class="recap-result-zero">…</span></td>`;
                 return;
             }
             if (isGlobeDrop) {
                 const pts = Number(ans.points) || 0;
                 rowHTML +=
-                    `<td class="col-result ${isMe ? 'is-mine' : ''}">` +
+                    `<td class="${resultCls}">` +
                     `<span class="${pts > 0 ? 'recap-result-points' : 'recap-result-zero'}">+${pts}</span>` +
                     `<span class="recap-result-dist">${Math.round(Number(ans.distanceKm) || 0).toLocaleString()} km off</span>` +
                     '</td>';
@@ -4440,23 +4453,23 @@ function renderEndRecap() {
                 const pts = Number(ans.points) || 0;
                 const pickClass = ans.correct ? 'is-correct' : 'is-wrong';
                 rowHTML +=
-                    `<td class="col-result ${isMe ? 'is-mine' : ''}">` +
+                    `<td class="${resultCls}">` +
                     `<span class="${pts > 0 ? 'recap-result-points' : 'recap-result-zero'}">${pts > 0 ? '+' + pts : '0'}</span>` +
                     `<span class="recap-result-pick ${pickClass}">${escapeHtml(ans.answerText || '…')}</span>` +
                     '</td>';
             }
         });
 
-        // Winner badge — tie if more than one player hit bestPoints (>0).
+        // Winner badge — a glowing trophy pill for a single winner; a
+        // neutral pill for a tie; nothing if nobody scored.
         let winnerCell = '<span class="recap-result-zero">…</span>';
         if (bestPoints > 0) {
-            const winners = colResults.filter((r) => r.points === bestPoints);
-            if (winners.length === 1) {
-                const w = winners[0].col;
+            if (winnersOfRow.length === 1) {
+                const w = winnersOfRow[0].col;
                 const isMe = state.user && w.uid === state.user.uid;
-                winnerCell = `🏆 ${escapeHtml(isMe ? 'You' : w.displayName)}`;
+                winnerCell = `<span class="recap-winner-badge">🏆 ${escapeHtml(isMe ? 'You' : w.displayName)}</span>`;
             } else {
-                winnerCell = '🤝 Tie';
+                winnerCell = '<span class="recap-tie-badge">Tie</span>';
             }
         }
         rowHTML += `<td class="col-winner">${winnerCell}</td>`;
@@ -4501,6 +4514,7 @@ function computeGlobeDropAggregates(columns, answersByUid) {
         const isMine = state.user && closestPlayer.uid === state.user.uid;
         cards.push({
             isMine: false,
+            isClosest: true,
             label: 'Closest guess',
             value: Math.round(closest.distanceKm).toLocaleString() + ' km',
             sub: (isMine ? 'You' : closestPlayer.displayName) + ' · ' + closest.locationName
@@ -4619,15 +4633,23 @@ function renderRoomSessionH2H() {
         displayName: p.displayName,
         sessionWins: wins[p.uid] || 0
     })).sort((a, b) => b.sessionWins - a.sessionWins);
+    // Total matches = sum of wins across all players, but capped by
+    // sessionMatchCount (ties don't increment anyone's count, so the
+    // sum can lag behind). Use sessionMatchCount as the denominator
+    // so the "losses" calc reflects reality.
     list.innerHTML = '';
     rows.forEach((r, i) => {
+        const losses = Math.max(0, matchCount - r.sessionWins);
         const li = document.createElement('li');
-        li.className = 'mini-board-row';
+        li.className = 'mini-board-row session-h2h-row';
         if (state.user && r.uid === state.user.uid) li.classList.add('is-me');
         li.innerHTML =
             `<span class="mini-board-rank">${i + 1}</span>` +
             `<span class="mini-board-name">${escapeHtml(r.displayName)}</span>` +
-            `<span class="mini-board-score">${r.sessionWins} W</span>`;
+            `<span class="session-h2h-wl">` +
+                `<span class="session-h2h-pill is-win">${r.sessionWins}W</span>` +
+                `<span class="session-h2h-pill is-loss">${losses}L</span>` +
+            `</span>`;
         list.appendChild(li);
     });
     panel.hidden = false;
