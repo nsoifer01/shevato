@@ -1,22 +1,30 @@
 /*
- * Brain Arena — GlobeDrop location source (REST Countries API).
+ * Brain Arena — GlobeDrop location dispatcher.
  *
- * https://restcountries.com — free, no API key, CORS-enabled.
- * GET /v3.1/all?fields=name,capital,capitalInfo,region,subregion,flag
- * returns ~250 country records. We map each one's capital + lat/lng into
- * the in-app location shape used by the GlobeDrop game stage.
+ * Four round types, each with its own data source:
  *
- * normalizeCountry is pure (no fetch) so it's testable; fetchLocations
- * does the network call + normalization + random shuffle in one shot.
+ *   'capitals'    → REST Countries API   (in this file)
+ *   'countries'   → REST Countries API   (in this file, country-centroid flip)
+ *   'major-cities'→ Wikidata SPARQL      (globe-drop-wikidata.js)
+ *   'landmarks'   → Wikidata SPARQL      (globe-drop-wikidata.js)
+ *
+ * `fetchLocations(roundType, count, shuffleFn)` is the public entry point;
+ * everything else here is the capitals/countries implementation +
+ * normalization (kept pure so it's directly testable).
+ *
+ * REST Countries: https://restcountries.com (free, no key, CORS-enabled).
+ * Wikidata SPARQL: lives in globe-drop-wikidata.js so the queries can be
+ * unit-tested without dragging the network fetch through this module.
  */
 (function (root, factory) {
     if (typeof module === 'object' && module.exports) {
-        module.exports = factory();
+        const Wikidata = require('./globe-drop-wikidata.js');
+        module.exports = factory(Wikidata);
     } else {
         const ns = root.BrainArena = root.BrainArena || {};
-        ns.GlobeDropLocations = factory();
+        ns.GlobeDropLocations = factory(ns.GlobeDropWikidata);
     }
-}(typeof self !== 'undefined' ? self : this, function () {
+}(typeof self !== 'undefined' ? self : this, function (Wikidata) {
     'use strict';
 
     const REST_COUNTRIES_URL = 'https://restcountries.com/v3.1/all?fields=name,capital,capitalInfo,region,subregion,flag,latlng';
@@ -67,21 +75,82 @@
     }
 
     /**
-     * Fetch up to `count` random capital-city locations.
-     * @param {number} count
-     * @param {(arr:Array)=>Array} shuffleFn — injectable shuffle (pure)
-     * @returns {Promise<Array>}
+     * Variant of normalizeCountry that turns each REST Countries record into
+     * a "guess the country" prompt: name = the country itself, no city, and
+     * coordinates point at the country's geographic centroid (latlng), not
+     * its capital. The recap can still reference the country meta as usual.
      */
-    async function fetchLocations(count, shuffleFn) {
+    function normalizeAsCountry(raw) {
+        if (!raw || typeof raw !== 'object') return null;
+        const country = (raw.name && typeof raw.name.common === 'string')
+            ? raw.name.common
+            : null;
+        if (!country) return null;
+        const latlng = Array.isArray(raw.latlng) ? raw.latlng : null;
+        if (!latlng || latlng.length < 2 || !Number.isFinite(latlng[0]) || !Number.isFinite(latlng[1])) {
+            return null;
+        }
+        const region = String(raw.region || 'Unknown');
+        return {
+            id: 'country-' + (country.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '') || 'unknown'),
+            name: country,           // the prompt shows this
+            country: '',             // no extra country line — it IS the country
+            region,
+            subregion: String(raw.subregion || ''),
+            flag: String(raw.flag || ''),
+            lat: latlng[0],
+            lng: latlng[1]
+        };
+    }
+
+    async function fetchRestCountries(normalizer, count, shuffleFn) {
         const res = await fetch(REST_COUNTRIES_URL, { cache: 'force-cache' });
         if (!res.ok) throw new Error(`REST Countries HTTP ${res.status}`);
         const raw = await res.json();
         if (!Array.isArray(raw) || !raw.length) throw new Error('REST Countries empty response');
-        const normalized = raw.map(normalizeCountry).filter((q) => q !== null);
+        const normalized = raw.map(normalizer).filter((q) => q !== null);
         if (!normalized.length) throw new Error('REST Countries returned no usable locations');
         const shuffled = typeof shuffleFn === 'function' ? shuffleFn(normalized) : normalized.slice();
         const n = Math.max(1, Math.min(shuffled.length, Number(count) || 5));
         return shuffled.slice(0, n);
+    }
+
+    /**
+     * Default capital-cities fetch — kept named the same as before for any
+     * existing call sites that still ask for the legacy behaviour directly.
+     */
+    async function fetchCapitalLocations(count, shuffleFn) {
+        return fetchRestCountries(normalizeCountry, count, shuffleFn);
+    }
+
+    async function fetchCountryLocations(count, shuffleFn) {
+        return fetchRestCountries(normalizeAsCountry, count, shuffleFn);
+    }
+
+    const ROUND_TYPES = {
+        'capitals':    { label: 'World capitals',      packId: 'world-capitals',  packName: 'World capitals',  promptVerb: 'Where is' },
+        'countries':   { label: 'Countries',           packId: 'world-countries', packName: 'Countries',        promptVerb: 'Where is' },
+        'major-cities':{ label: 'Major cities',         packId: 'major-cities',    packName: 'Major cities (Wikidata)', promptVerb: 'Where is' },
+        'landmarks':   { label: 'World landmarks',     packId: 'world-landmarks', packName: 'UNESCO World Heritage sites (Wikidata)', promptVerb: 'Where is' }
+    };
+
+    /**
+     * Dispatcher — picks the right fetch for the host-selected round type.
+     * Falls back to 'capitals' for unknown / missing values so legacy rooms
+     * persisted before this feature shipped still play exactly as before.
+     */
+    async function fetchLocations(roundType, count, shuffleFn) {
+        // Back-compat: callers that haven't migrated yet pass (count, shuffleFn).
+        if (typeof roundType !== 'string') {
+            return fetchCapitalLocations(roundType, count);
+        }
+        switch (roundType) {
+            case 'countries':    return fetchCountryLocations(count, shuffleFn);
+            case 'major-cities': return Wikidata.fetchMajorCities(count, shuffleFn);
+            case 'landmarks':    return Wikidata.fetchLandmarks(count, shuffleFn);
+            case 'capitals':
+            default:             return fetchCapitalLocations(count, shuffleFn);
+        }
     }
 
     /**
@@ -112,5 +181,14 @@
         }
     }
 
-    return { REST_COUNTRIES_URL, normalizeCountry, fetchLocations, fetchCityTrivia };
+    return {
+        REST_COUNTRIES_URL,
+        ROUND_TYPES,
+        normalizeCountry,
+        normalizeAsCountry,
+        fetchLocations,
+        fetchCapitalLocations,
+        fetchCountryLocations,
+        fetchCityTrivia
+    };
 }));

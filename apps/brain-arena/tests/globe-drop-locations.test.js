@@ -3,7 +3,11 @@
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
 
-const { normalizeCountry } = require('../js/globe-drop-locations.js');
+const {
+    normalizeCountry,
+    normalizeAsCountry,
+    ROUND_TYPES
+} = require('../js/globe-drop-locations.js');
 
 function rawCountry(over = {}) {
     return Object.assign({
@@ -89,4 +93,63 @@ test('normalizeCountry: malformed root => null', () => {
     assert.equal(normalizeCountry(null), null);
     assert.equal(normalizeCountry('string'), null);
     assert.equal(normalizeCountry(42), null);
+});
+
+// --- normalizeAsCountry (countries-flip mode) --------------------------
+
+function rawCountryWithCentroid(over = {}) {
+    return Object.assign({
+        name: { common: 'France', official: 'French Republic' },
+        latlng: [46, 2],
+        region: 'Europe',
+        subregion: 'Western Europe',
+        flag: '🇫🇷'
+    }, over);
+}
+
+test('normalizeAsCountry: well-formed record => country-centred location', () => {
+    const out = normalizeAsCountry(rawCountryWithCentroid());
+    assert.equal(out.id, 'country-france');
+    assert.equal(out.name, 'France');
+    assert.equal(out.country, '');         // the prompt IS the country, no extra line
+    assert.equal(out.region, 'Europe');
+    assert.equal(out.subregion, 'Western Europe');
+    assert.equal(out.lat, 46);
+    assert.equal(out.lng, 2);
+});
+
+test('normalizeAsCountry: missing latlng => null', () => {
+    assert.equal(normalizeAsCountry(rawCountryWithCentroid({ latlng: undefined })), null);
+    assert.equal(normalizeAsCountry(rawCountryWithCentroid({ latlng: [46] })), null);
+});
+
+test('normalizeAsCountry: missing common name => null', () => {
+    assert.equal(normalizeAsCountry(rawCountryWithCentroid({ name: { official: 'Foo' } })), null);
+});
+
+test('normalizeAsCountry: id prefix distinguishes countries from capitals', () => {
+    const cap = normalizeCountry({
+        name: { common: 'France' }, capital: ['Paris'],
+        capitalInfo: { latlng: [48.87, 2.33] }, region: 'Europe'
+    });
+    const cou = normalizeAsCountry(rawCountryWithCentroid());
+    assert.notEqual(cap.id, cou.id, 'capitals and countries must have distinct ids');
+    assert.ok(cou.id.startsWith('country-'));
+});
+
+// --- ROUND_TYPES registry ---------------------------------------------
+
+test('ROUND_TYPES: all four round types are registered', () => {
+    assert.ok(ROUND_TYPES.capitals);
+    assert.ok(ROUND_TYPES.countries);
+    assert.ok(ROUND_TYPES['major-cities']);
+    assert.ok(ROUND_TYPES.landmarks);
+});
+
+test('ROUND_TYPES: every type has a label, packId, and packName', () => {
+    for (const [key, meta] of Object.entries(ROUND_TYPES)) {
+        assert.ok(meta.label, `${key} missing label`);
+        assert.ok(meta.packId, `${key} missing packId`);
+        assert.ok(meta.packName, `${key} missing packName`);
+    }
 });
