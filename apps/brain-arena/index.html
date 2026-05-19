@@ -521,9 +521,21 @@
         <div class="profile-premium-card" id="profile-premium-card">
           <div class="profile-premium-info">
             <h3><span aria-hidden="true">✨</span> Premium</h3>
-            <p id="profile-premium-status">Upgrade to unlock private rooms, custom question packs, and detailed post-game stats.</p>
+            <p id="profile-premium-status">Every new account gets a 30-day free trial. After that, upgrade for $5 one-time to keep private rooms, custom question packs, and detailed post-game stats unlocked.</p>
           </div>
-          <button type="button" class="btn btn-primary" id="upgrade-premium-btn">Go Premium</button>
+          <button type="button" class="btn btn-primary" id="upgrade-premium-btn">Go Premium · $5</button>
+        </div>
+
+        <!-- Admin-only dev controls. Hidden unless your Firebase uid is in
+             Config.ADMIN_UIDS so you can toggle premium / reset the trial
+             without going through Stripe. Empty list = nothing shown. -->
+        <div class="profile-admin-controls" id="profile-admin-controls" hidden>
+          <h4>Admin (dev)</h4>
+          <p class="profile-admin-hint">These shortcuts are visible because your uid is in <code>Config.ADMIN_UIDS</code>.</p>
+          <div class="profile-admin-actions">
+            <button type="button" class="btn btn-ghost btn-sm" id="admin-toggle-paid-btn">Grant paid premium</button>
+            <button type="button" class="btn btn-ghost btn-sm" id="admin-reset-trial-btn">Reset trial clock</button>
+          </div>
         </div>
 
         <!-- Custom pack upload (premium) -->
@@ -560,13 +572,14 @@
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.85" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 6l12 12"/><path d="M18 6L6 18"/></svg>
       </button>
       <h2 id="premium-modal-title"><span aria-hidden="true">✨</span> Brain Arena Premium</h2>
+      <p class="premium-modal-price"><strong>$5 one-time</strong> — no subscription.</p>
       <ul class="premium-list">
         <li><span aria-hidden="true">🔒</span> Private password-protected rooms</li>
         <li><span aria-hidden="true">📦</span> Upload custom question packs</li>
         <li><span aria-hidden="true">📊</span> Detailed post-game stats (accuracy, response time, category breakdown)</li>
       </ul>
       <p class="premium-modal-hint">
-        Premium status is tied to your Shevato account — upgrade once and it follows you across devices.
+        Every new account gets a 30-day free trial automatically — pay only if you want to keep premium after it ends. Premium is tied to your Shevato account and follows you across devices.
       </p>
       <div class="modal-actions">
         <button type="button" class="btn btn-ghost" data-close="modal">Maybe later</button>
@@ -607,6 +620,7 @@
        namespace. -->
   <script src="js/config.js"></script>
   <script src="js/scoring.js"></script>
+  <script src="js/premium.js"></script>
   <script src="js/room-state.js"></script>
   <script src="js/live-questions.js"></script>
   <script src="js/globe-drop-scoring.js"></script>
