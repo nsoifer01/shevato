@@ -25,7 +25,7 @@
 # anything Google already has indexed.
 [[redirects]]
   from = "/apps/mario-kart/tracker.html"
-  to = "/apps/mario-kart/index.html"
+  to = "/apps/mario-kart/"
   status = 301
   force = true
 
