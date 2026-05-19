@@ -397,6 +397,17 @@
         chord({ notes: [N.A4 * 2], type: 'square', duration: 0.07, peakVol: 0.07, filterFreq: 2200, sendWet: 0 });
     }
 
+    function timerExpired() {
+        // Sad descending "wah-wah" — clearly says "time ran out / you
+        // didn't get it in." Two-note glide down, fuller body than the
+        // timerLow tick, with a tail of reverb so it lingers.
+        const ctx = ensureAudio(); if (!ctx) return;
+        const t = ctx.currentTime;
+        voice({ freq: N.E4, type: 'sawtooth', startAt: t + 0.00, duration: 0.22, peakVol: 0.10, filterFreq: 1400, sendWet: 0.6 });
+        voice({ freq: N.C4, type: 'sawtooth', startAt: t + 0.18, duration: 0.32, peakVol: 0.10, filterFreq: 1200, sendWet: 0.75 });
+        vibrate(70);
+    }
+
     function chatMessage() {
         // Gentle "you have mail" two-note chime.
         const ctx = ensureAudio(); if (!ctx) return;
@@ -436,6 +447,7 @@
         gameStart,
         gameEnd,
         timerLow,
+        timerExpired,
         chatMessage
     };
 }));

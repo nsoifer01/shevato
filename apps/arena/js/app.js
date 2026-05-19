@@ -213,7 +213,10 @@ function wireConfirmModal() {
     const modal = document.getElementById('confirm-modal');
     if (!modal) return;
     modal.addEventListener('click', (e) => {
-        if (e.target.matches('[data-confirm-close]')) closeConfirmModal(false);
+        // .closest() — clicks on the SVG/path INSIDE the X button bubble
+        // as e.target=<path|svg>, which would never match [data-confirm-close]
+        // on the button directly via .matches().
+        if (e.target.closest('[data-confirm-close]')) closeConfirmModal(false);
     });
     document.getElementById('confirm-modal-cancel').addEventListener('click', () => closeConfirmModal(false));
     document.getElementById('confirm-modal-confirm').addEventListener('click', () => closeConfirmModal(true));
@@ -284,6 +287,22 @@ function parseUrlState() {
     }
 }
 
+/**
+ * Build a shareable invite URL for the given room code. Keeps the
+ * current location's protocol + host + pathname so the link works
+ * across staging / prod / preview deploys, and strips every search
+ * param except `?room=`.
+ */
+function buildInviteLink(code) {
+    try {
+        const u = new URL(window.location.href);
+        const out = `${u.protocol}//${u.host}${u.pathname}?room=${encodeURIComponent(code)}`;
+        return out;
+    } catch (_) {
+        return `${window.location.origin}${window.location.pathname}?room=${encodeURIComponent(code)}`;
+    }
+}
+
 function syncUrlToState() {
     try {
         const url = new URL(window.location.href);
@@ -332,35 +351,54 @@ async function tryRejoinPendingRoom() {
     if (!code || !state.user) return;
     if (state.roomCode === code) { state.pendingRoomCode = null; return; }
     state.pendingRoomCode = null;
+    // Indicate to the UI that we're resolving a room from the URL. We hold
+    // off any "finished / missing room" verdict until after both the room
+    // doc AND the player-membership doc have actually returned from
+    // Firestore — that was the race that caused "That room has already
+    // finished" to flash on first paint of an active room.
+    setView('play');
+    showJoinError('Loading room…');
     try {
         const snap = await getDoc(doc(db, 'triviaRooms', code));
-        if (!snap.exists()) return;
-        const data = snap.data();
-        // Private rooms still need a password — but a refresh of someone
-        // who was ALREADY a player should slide in without re-prompting,
-        // since their player doc already exists. We check that first.
+        if (!snap.exists()) {
+            showJoinError('Room not found.');
+            return;
+        }
+        const data = snap.data() || {};
+        // Membership lookup. We *must* do this BEFORE evaluating
+        // status==='finished', because a previous player coming back to a
+        // finished room should still land on the end-of-game screen (to
+        // see the podium / rematch), not the "room finished" error wall.
         const playerRef = doc(db, 'triviaRooms', code, 'players', state.user.uid);
         const playerSnap = await getDoc(playerRef);
-        if (playerSnap.exists()) {
-            await updateDoc(playerRef, { lastSeen: serverTimestamp() });
+        const wasAlreadyMember = playerSnap.exists();
+        if (wasAlreadyMember) {
+            // Member rejoin — works for any status. Finished rooms render
+            // the end stage, lobby/picking/playing render the matching
+            // stage. Either way, no error.
+            clearJoinError();
+            try { await updateDoc(playerRef, { lastSeen: serverTimestamp() }); } catch (_) {}
             enterRoom(code);
             return;
         }
-        // Not a member yet: if private, ask for the password. If public,
-        // join as a guest. We piggy-back on joinRoom by pre-filling the
-        // code input + opening the lobby; for private rooms the user has
-        // to type the password manually.
+        // Non-member: now it's safe to evaluate status. A non-member
+        // trying to join a finished room sees the expected error.
+        if (data.status === 'finished') {
+            showJoinError('That room has already finished.');
+            return;
+        }
         const codeInput = $('#join-code');
         if (codeInput) codeInput.value = code;
         if (data.isPrivate) {
-            setView('play');
             setJoinPwFieldVisible(true);
             showJoinError('This room is private. Enter the password to join.');
         } else {
+            clearJoinError();
             await joinRoom();
         }
     } catch (err) {
         console.warn('rejoin from URL failed:', err);
+        showJoinError('Could not load that room. Please try again.');
     }
 }
 
@@ -437,6 +475,16 @@ function applyAuthState(user) {
     setClass($('#auth-gate'), 'is-hidden', signedIn);
     if (state.user) $('#auth-gate').hidden = true;
     else $('#auth-gate').hidden = false;
+
+    // Invite-link landing: if a signed-out user arrived via an
+    // /?room=ABCDE link, open the sign-in modal automatically so they
+    // can join without hunting for it. pendingRoomCode is kept; once
+    // they finish auth, applyAuthState fires again with signedIn=true
+    // and tryRejoinPendingRoom takes them straight to the room.
+    if (!signedIn && state.pendingRoomCode && !state.inviteSignInPrompted) {
+        state.inviteSignInPrompted = true;
+        openSignInPrompt();
+    }
 
     // Profile view toggles
     setClass($('#profile-signed-out'), 'is-hidden', signedIn);
@@ -539,12 +587,37 @@ function wireProfileView() {
         const v = String(e.target.value || '').trim().slice(0, Config.MAX_DISPLAY_NAME);
         if (!v) return;
         await saveProfileField({ displayName: v });
+        await propagateDisplayName(v);
         renderProfileView();
         renderLeaderboardEntries();
     });
     if (Config.PREMIUM_UI_ENABLED) {
         $('#upgrade-premium-btn').addEventListener('click', openPremiumModal);
     }
+}
+
+/**
+ * Push a new display name to every place we've denormalized it:
+ *   - the active room's player doc (so the mini-board updates)
+ *   - the global leaderboard doc (so other tabs see the new name)
+ * Errors are swallowed — best-effort UX, the source of truth is the
+ * user profile doc which has already been updated by saveProfileField.
+ */
+async function propagateDisplayName(displayName) {
+    if (!state.user) return;
+    if (state.roomCode) {
+        try {
+            await updateDoc(doc(db, 'triviaRooms', state.roomCode, 'players', state.user.uid), {
+                displayName
+            });
+        } catch (_) { /* room may not exist or rules may deny */ }
+    }
+    try {
+        await setDoc(doc(db, 'triviaLeaderboard', state.user.uid), {
+            uid: state.user.uid,
+            displayName
+        }, { merge: true });
+    } catch (_) { /* leaderboard doc may not exist yet */ }
 }
 
 /* =====================================================================
@@ -589,7 +662,9 @@ function closePremiumModal() {
 function wirePremiumModal() {
     const modal = $('#premium-modal');
     modal.addEventListener('click', (e) => {
-        if (e.target.matches('[data-close="modal"], .modal-backdrop, .modal-close')) {
+        // Use closest() — clicks on the SVG/path inside the X button
+        // surface as e.target=<path>, which would miss .modal-close.
+        if (e.target.closest('[data-close="modal"], .modal-backdrop, .modal-close')) {
             closePremiumModal();
         }
     });
@@ -659,6 +734,41 @@ function wireAdminControls() {
  * Question pack loading
  * ===================================================================== */
 
+/**
+ * Silence the unhandled Firestore-channel write errors that bubble when a
+ * client-side privacy extension (uBlock, Brave Shields, etc.) blocks the
+ * https://firestore.googleapis.com/.../Write/channel POST. Firestore retries
+ * internally and keeps the app working, but the unhandled rejection lands
+ * in the console as a scary "ERR_BLOCKED_BY_CLIENT" stack — and on leaveRoom
+ * the terminating XHR can throw on the way out.
+ *
+ * We swallow only this specific class of message; real bugs still surface.
+ */
+function installFirestoreNoiseGuard() {
+    if (typeof window === 'undefined' || window.__baFirestoreGuardInstalled) return;
+    window.__baFirestoreGuardInstalled = true;
+    const isFirestoreNetNoise = (err) => {
+        if (!err) return false;
+        const msg = String((err && (err.message || err.code || err.name)) || err).toLowerCase();
+        return msg.includes('err_blocked_by_client')
+            || msg.includes('firestore.googleapis.com')
+            || (msg.includes('webchannel') && msg.includes('transport'));
+    };
+    window.addEventListener('unhandledrejection', (e) => {
+        if (isFirestoreNetNoise(e.reason)) {
+            // Demote to a single-line warn so devs can still spot trends.
+            try { console.warn('[firestore] suppressed network noise:', e.reason && (e.reason.code || e.reason.message)); } catch (_) {}
+            e.preventDefault();
+        }
+    });
+    window.addEventListener('error', (e) => {
+        if (isFirestoreNetNoise(e.error || e.message)) {
+            try { console.warn('[firestore] suppressed network noise:', e.message); } catch (_) {}
+            e.preventDefault();
+        }
+    });
+}
+
 function shuffle(arr, rand = Math.random) {
     const a = arr.slice();
     for (let i = a.length - 1; i > 0; i--) {
@@ -666,6 +776,32 @@ function shuffle(arr, rand = Math.random) {
         [a[i], a[j]] = [a[j], a[i]];
     }
     return a;
+}
+
+/**
+ * Sort a location list easiest → hardest using populationWeight as the
+ * obscurity signal. Higher weight = lower population = more obscure /
+ * harder. We rank ascending so each subsequent round is ≥ the previous
+ * in difficulty.
+ *
+ * Stable sort preserves the input order for ties — important for modes
+ * without population (capitals, countries, landmarks → all weight = 1)
+ * so the upstream shuffle is honoured.
+ */
+function sortLocationsByAscendingDifficulty(locations) {
+    if (!Array.isArray(locations) || locations.length < 2) {
+        return Array.isArray(locations) ? locations.slice() : [];
+    }
+    const decorated = locations.map((loc, i) => ({
+        loc,
+        weight: GlobeDropScoring.populationWeight(loc && loc.population),
+        idx: i
+    }));
+    decorated.sort((a, b) => {
+        if (a.weight !== b.weight) return a.weight - b.weight;
+        return a.idx - b.idx;
+    });
+    return decorated.map((d) => d.loc);
 }
 
 /**
@@ -872,14 +1008,50 @@ function wireLobby() {
         if (e.key === 'Enter') joinRoom();
     });
 
-    $('#leave-room-btn').addEventListener('click', () => leaveRoom());
+    $('#leave-room-btn').addEventListener('click', async () => {
+        const isSolo = state.roomData && state.roomData.playMode === 'solo';
+        const ok = await openConfirmModal({
+            title: isSolo ? 'Back to lobby?' : 'Leave room?',
+            body: isSolo
+                ? 'Your current run will end and you\'ll return to the lobby.'
+                : 'Are you sure you want to leave this room?',
+            confirmLabel: isSolo ? 'Back to lobby' : 'Leave',
+            cancelLabel: 'Cancel',
+            danger: true
+        });
+        if (ok) leaveRoom();
+    });
     $('#start-game-btn').addEventListener('click', startGame);
-    $('#end-back-btn').addEventListener('click', () => leaveRoom());
-    $('#end-again-btn').addEventListener('click', () => playAgain());
+    // Legacy bottom-of-recap end-stage buttons were removed — guard
+    // the listeners so a future re-add Just Works.
+    const endBack = $('#end-back-btn');
+    if (endBack) endBack.addEventListener('click', () => leaveRoom());
+    const settingsEditBtn = $('#room-settings-edit-btn');
+    if (settingsEditBtn) settingsEditBtn.addEventListener('click', () => openRoomSettingsEditor());
+    const settingsCancel = $('#room-settings-cancel');
+    if (settingsCancel) settingsCancel.addEventListener('click', () => closeRoomSettingsEditor());
+    const settingsSave = $('#room-settings-save');
+    if (settingsSave) settingsSave.addEventListener('click', () => saveRoomSettings());
+    const endAgainHandler = () => {
+        // Solo: skip the accept gate, restart immediately.
+        const playMode = (state.roomData && state.roomData.playMode) || 'multi';
+        if (playMode === 'solo') playAgain();
+        else proposeRematch();
+    };
+    const endAgainBtn = $('#end-again-btn');
+    if (endAgainBtn) endAgainBtn.addEventListener('click', endAgainHandler);
+    const headerRematchBtn = $('#room-end-again-btn');
+    if (headerRematchBtn) headerRematchBtn.addEventListener('click', endAgainHandler);
+    $('#rematch-accept-btn').addEventListener('click', () => respondToRematch(true));
+    $('#rematch-decline-btn').addEventListener('click', () => respondToRematch(false));
+    const proposalCancelBtn = $('#proposal-cancel-btn');
+    if (proposalCancelBtn) proposalCancelBtn.addEventListener('click', () => cancelOwnProposal('cancel'));
 
     // GlobeDrop controls (wired once; they no-op when no GlobeDrop room is active)
     const submitBtn = $('#globe-drop-submit-btn');
     if (submitBtn) submitBtn.addEventListener('click', () => { Feedback.guessSubmitted(); submitGuess(); });
+    const readyBtn = $('#globe-drop-ready-btn');
+    if (readyBtn) readyBtn.addEventListener('click', () => markReadyForNext());
     const clearBtn = $('#globe-drop-clear-btn');
     if (clearBtn) clearBtn.addEventListener('click', () => { Feedback.pinCleared(); clearMyPin(); });
 
@@ -894,13 +1066,67 @@ function wireLobby() {
         } catch (e) { /* ignore */ }
     });
 
-    // Host-only mid-game controls.
+    // Copy a full invite link to the clipboard. Opening the URL in any
+    // browser pre-fills the room code; signed-in friends auto-join and
+    // signed-out friends get the sign-in modal pop on landing.
+    const shareBtn = $('#room-code-share');
+    if (shareBtn) shareBtn.addEventListener('click', async () => {
+        if (!state.roomCode) return;
+        const link = buildInviteLink(state.roomCode);
+        try {
+            await navigator.clipboard.writeText(link);
+            const original = shareBtn.innerHTML;
+            shareBtn.innerHTML = '✓';
+            setTimeout(() => { shareBtn.innerHTML = original; }, 1200);
+            showToast('Invite link copied', { icon: '🔗', key: 'invite-link' });
+        } catch (e) {
+            showToast('Could not copy link', { icon: '⚠️', key: 'invite-link-fail' });
+        }
+    });
+
+    // Mid-game controls (all players).
     const pauseBtn = $('#room-pause-btn');
-    const giveUpBtn = $('#room-giveup-btn');
     const endBtn = $('#room-end-btn');
+    const restartBtn = $('#room-restart-btn');
     if (pauseBtn) pauseBtn.addEventListener('click', () => togglePauseRoom());
-    if (giveUpBtn) giveUpBtn.addEventListener('click', () => hostGiveUpCurrentQuestion());
     if (endBtn) endBtn.addEventListener('click', () => hostEndGameEarly());
+    if (restartBtn) restartBtn.addEventListener('click', () => proposeMidGameRestart());
+}
+
+/**
+ * Mid-match Restart. Solo just calls playAgain directly. Multi proposes
+ * a unanimous-accept restart via the same rematch coordination fields
+ * used on the end stage.
+ */
+async function proposeMidGameRestart() {
+    if (!state.user || !state.roomCode || !state.roomData) return;
+    if (actionRemaining('restart') <= 0) return;
+    const playMode = state.roomData.playMode || 'multi';
+    if (playMode === 'solo') {
+        const ok = await openConfirmModal({
+            title: 'Restart your run?',
+            body: 'A fresh set of locations will be drawn. The current run will end.',
+            confirmLabel: 'Restart',
+            danger: true
+        });
+        if (ok && consumeActionAllowance('restart')) {
+            // playAgain expects the room to be 'finished' to advance the
+            // round counter cleanly, but it works from any state. For
+            // solo we can call it directly.
+            playAgain();
+        }
+        return;
+    }
+    if (rematchPlayerCount() < 2) return;
+    const ok = await openConfirmModal({
+        title: 'Restart the game?',
+        body: 'All players must accept before the game restarts.',
+        confirmLabel: 'Propose restart',
+        danger: false
+    });
+    if (!ok) return;
+    if (!consumeActionAllowance('restart')) return;
+    await proposeRematch();
 }
 
 function clearJoinError() {
@@ -933,15 +1159,26 @@ async function createRoom(opts) {
     // them, and the room code itself acts as the (single-use) secret.
     const isPrivate = isSoloLike ? true : !!$('#create-private-toggle').checked;
     const password = (isPrivate && !isSoloLike) ? String($('#create-password').value || '').trim() : '';
+    const passwordWarning = $('#create-password-warning');
+    if (passwordWarning) passwordWarning.hidden = true;
     if (isPrivate && !isSoloLike && !password) {
-        alert('Set a password for the private room.');
+        if (passwordWarning) {
+            passwordWarning.hidden = false;
+            const pwInput = $('#create-password');
+            if (pwInput) {
+                pwInput.focus();
+                pwInput.addEventListener('input', () => { passwordWarning.hidden = true; }, { once: true });
+            }
+        }
         return;
     }
 
     const btn = isSoloLike
         ? (mode === 'daily' ? $('#play-daily-btn') : $('#play-solo-btn'))
         : $('#create-room-btn');
-    const originalLabel = btn.textContent;
+    // innerHTML preserves the inline SVG icon. textContent would
+    // strip it on restore and leave the button text-only.
+    const originalLabel = btn.innerHTML;
     btn.disabled = true;
 
     try {
@@ -963,21 +1200,24 @@ async function createRoom(opts) {
         };
 
         if (gameType === 'globe-drop') {
-            btn.textContent = mode === 'daily' ? "Loading today's challenge…" : 'Fetching locations…';
+            btn.innerHTML = mode === 'daily' ? "Loading today's challenge…" : 'Fetching locations…';
             const count = parseInt($('#create-locations-count').value, 10) || Config.GLOBE_DROP_LOCATIONS_DEFAULT;
-            const difficultyKey = isSoloLike
+            // Daily is the only mode that forces its settings (so every
+            // player who plays a given day faces the same parameters).
+            // Solo passes through the form selections the user picked.
+            const isDaily = mode === 'daily';
+            const difficultyKey = isDaily
                 ? 'medium'
                 : ($('#create-globe-drop-difficulty').value || Config.GLOBE_DROP_DIFFICULTY_DEFAULT);
             const diff = GlobeDropScoring.difficultySettings(difficultyKey);
-            // Manual timer override only kicks in if the host explicitly opts
-            // into it — otherwise the difficulty tier's timer is the source
-            // of truth so "Hard" actually feels hard. Solo/daily skip the
-            // override entirely and take the tier's default.
-            const overrideTimer = !isSoloLike && !!$('#create-globe-drop-timer-override').checked;
+            // Manual timer override applies when the host (or solo player)
+            // opts in via the toggle. Daily skips it so the day's seed
+            // produces identical games for everyone.
+            const overrideTimer = !isDaily && !!$('#create-globe-drop-timer-override').checked;
             const seconds = overrideTimer
                 ? (parseInt($('#create-globe-drop-time').value, 10) || diff.timerSec)
                 : diff.timerSec;
-            const roundType = isSoloLike
+            const roundType = isDaily
                 ? 'capitals'
                 : ($('#create-globe-drop-round-type').value || 'capitals');
             const meta = GlobeDropLocations.ROUND_TYPES[roundType] || GlobeDropLocations.ROUND_TYPES.capitals;
@@ -995,6 +1235,15 @@ async function createRoom(opts) {
             } else {
                 locations = await GlobeDropLocations.fetchLocations(roundType, count, shuffle);
             }
+
+            // Round-progression sort: order rounds easiest → hardest using
+            // the existing populationWeight (higher weight = more obscure).
+            // Stable sort, so for modes without population data (capitals,
+            // countries, landmarks → all weight=1) the prior shuffle order
+            // is preserved. Daily mode is sorted too: every player still
+            // sees the same locations in the same order because the input
+            // pool was seeded by date.
+            locations = sortLocationsByAscendingDifficulty(locations);
 
             await setDoc(ref, Object.assign({}, shared, {
                 packId: meta.packId,
@@ -1018,7 +1267,7 @@ async function createRoom(opts) {
             const sel = 'live';
             const count = parseInt($('#create-questions-count').value, 10) || 10;
             const seconds = parseInt($('#create-trivia-time').value, 10) || 15;
-            btn.textContent = 'Fetching questions…';
+            btn.innerHTML = 'Fetching questions…';
             const { questions, packId, packName } = await buildQuestionsForRound(sel, count);
             await setDoc(ref, Object.assign({}, shared, {
                 packId,
@@ -1061,7 +1310,7 @@ async function createRoom(opts) {
         );
     } finally {
         btn.disabled = false;
-        btn.textContent = originalLabel;
+        btn.innerHTML = originalLabel;
     }
 }
 
@@ -1211,6 +1460,23 @@ function enterRoom(code) {
     syncUrlToState();
     startChatListener(code);
 
+    // Pre-warm the 8K Earth texture as soon as we enter the room. The
+    // texture is ~4.5 MB and decoding it is the single biggest chunk
+    // inside Globe()(el). Browsers cache decoded bitmap data, so once
+    // this <img> resolves, the later globe init reuses it instead of
+    // re-fetching + re-decoding — moving most of the >200ms cost off
+    // the game-start critical path.
+    if (!state.earthTextureWarmed) {
+        state.earthTextureWarmed = true;
+        try {
+            const img = new Image();
+            img.decoding = 'async';
+            img.src = 'data/earth-8k.jpg';
+            // No need to await; the load+decode happens in the background
+            // and the browser's image cache fields the second request.
+        } catch (_) { /* best-effort */ }
+    }
+
     // window.beforeunload cleanup so the player removes themselves on tab close
     window.addEventListener('beforeunload', beforeUnloadCleanup);
 
@@ -1239,11 +1505,12 @@ function enterRoom(code) {
 }
 
 /**
- * Toast + audio ping when an opponent transitions from "not answered" to
- * "answered" for the current question. Skipped for the local player
- * (their own submission already gets a louder cue from guessSubmitted)
- * and for any submission that lands during the reveal phase (irrelevant
- * presence noise once everyone can see the result anyway).
+ * Audio ping when an opponent transitions from "not answered" to
+ * "answered" for the current question. No toast, no pulse banner —
+ * the green name tint + ✓ on the mini-board carries the visual
+ * signal. Skipped for the local player (their own submission gets
+ * a louder cue from guessSubmitted) and for any submission that
+ * lands during the reveal phase.
  */
 function notifyOpponentSubmissions(prev, next) {
     if (!state.user || !state.roomCode || !state.roomData) return;
@@ -1258,16 +1525,6 @@ function notifyOpponentSubmissions(prev, next) {
         if (np.currentAnsweredFor !== currentQId) continue;          // not on this question
         const before = prevMap.get(np.uid);
         if (before && before.currentAnsweredFor === currentQId) continue; // not new
-        const name = String(np.displayName || 'Opponent');
-        showToast(`${name} submitted.`, {
-            icon: '✅',
-            key: `submitted:${np.uid}:${currentQId}`
-        });
-        // Flash the in-stage pulse banner too — more prominent than the
-        // corner toast and lives right above the globe where the player's
-        // attention is. Restarts the animation by toggling [hidden] off
-        // after removing + re-adding the element to the DOM-tree.
-        flashStagePulse(`${name} submitted ✓`);
         try { Feedback.opponentSubmitted(); } catch (_) { /* ignore */ }
     }
 }
@@ -1332,6 +1589,8 @@ async function leaveRoom({ silent = false, reason = null } = {}) {
     state.roomPlayers = [];
     state.submittedQuestionId = null;
     state.currentAnswers = [];
+    state.actionCounts = {};
+    state.lastRematchPromptShown = null;
     lastStatusPlayedFeedback = null;
     stopChatListener();
     closeChatPanel();
@@ -1369,6 +1628,14 @@ async function leaveRoom({ silent = false, reason = null } = {}) {
     hide($('#stage-globe-drop'));
     hide($('#stage-picking'));
     show($('#stage-lobby'));
+    // Clear the join-code input so the previous room's code doesn't
+    // pre-populate the next attempt. Same for the password field below.
+    const codeInput = $('#join-code');
+    if (codeInput) codeInput.value = '';
+    const joinPw = $('#join-password');
+    if (joinPw) joinPw.value = '';
+    setJoinPwFieldVisible(false);
+    clearJoinError();
     if (!silent && reason) alert(reason);
     teardownMap();
     syncUrlToState();
@@ -1387,8 +1654,30 @@ function isHostOfActiveRoom() {
         && state.user && state.roomData.hostUid === state.user.uid);
 }
 
+/**
+ * Per-player rate limits on mid-game control actions, keyed by room.
+ * Resets when leaveRoom() runs. Limits are intentionally generous —
+ * they exist to prevent griefing (one player spamming pause / restart
+ * proposals), not to punish honest use.
+ */
+const ACTION_LIMITS = { pause: 2, restart: 3, end: 3 };
+function actionCount(kind) {
+    state.actionCounts = state.actionCounts || {};
+    return state.actionCounts[kind] || 0;
+}
+function actionRemaining(kind) {
+    return Math.max(0, (ACTION_LIMITS[kind] || 0) - actionCount(kind));
+}
+function consumeActionAllowance(kind) {
+    state.actionCounts = state.actionCounts || {};
+    const used = state.actionCounts[kind] || 0;
+    if (used >= (ACTION_LIMITS[kind] || 0)) return false;
+    state.actionCounts[kind] = used + 1;
+    return true;
+}
+
 async function togglePauseRoom() {
-    if (!isHostOfActiveRoom()) return;
+    if (!state.user || !state.roomCode) return;
     const room = state.roomData;
     if (!room || room.status !== 'playing') return;
     const ref = doc(db, 'triviaRooms', state.roomCode);
@@ -1408,12 +1697,20 @@ async function togglePauseRoom() {
             await updateDoc(ref, {
                 paused: false,
                 pausedAt: null,
+                pausedByUid: null,
+                pausedByName: null,
                 questionStartedAt: new Date(startMs + elapsedPause)
             });
         } else {
+            // Per-player pause limit: 2 per room. Bail BEFORE writing.
+            if (!consumeActionAllowance('pause')) return;
+            const myName = (state.profile && state.profile.displayName)
+                || deriveInitialDisplayName();
             await updateDoc(ref, {
                 paused: true,
-                pausedAt: serverTimestamp()
+                pausedAt: serverTimestamp(),
+                pausedByUid: state.user.uid,
+                pausedByName: myName
             });
         }
     } catch (err) {
@@ -1421,39 +1718,22 @@ async function togglePauseRoom() {
     }
 }
 
-async function hostGiveUpCurrentQuestion() {
-    if (!isHostOfActiveRoom()) return;
-    const room = state.roomData;
-    if (!room || room.status !== 'playing') return;
-    const ok = await openConfirmModal({
-        title: 'Give up this question?',
-        body: 'The reveal will show now. Anyone who hasn\'t submitted gets the minimum score for this location.',
-        confirmLabel: 'Give up',
-        danger: true
-    });
-    if (!ok) return;
-    try {
-        await updateDoc(doc(db, 'triviaRooms', state.roomCode), {
-            revealStartedAt: serverTimestamp(),
-            paused: false,
-            pausedAt: null
-        });
-    } catch (err) {
-        console.warn('hostGiveUpCurrentQuestion failed:', err);
-    }
-}
-
 async function hostEndGameEarly() {
-    if (!isHostOfActiveRoom()) return;
+    if (!state.user || !state.roomCode) return;
     const room = state.roomData;
     if (!room) return;
+    const isSolo = room.playMode === 'solo';
+    if (actionRemaining('end') <= 0) return;
     const ok = await openConfirmModal({
-        title: 'End the game?',
-        body: 'Final scores will be tallied with everyone\'s current points and the room will go to the end screen.',
+        title: isSolo ? 'End your run?' : 'End the game for everyone?',
+        body: isSolo
+            ? 'Your run will end now and the final score screen will show.'
+            : 'Final scores will be tallied with everyone\'s current points and the room will go to the end screen.',
         confirmLabel: 'End game',
         danger: true
     });
     if (!ok) return;
+    if (!consumeActionAllowance('end')) return;
     try {
         await updateDoc(doc(db, 'triviaRooms', state.roomCode), {
             status: 'finished',
@@ -1520,18 +1800,33 @@ function startChatListener(code) {
     chatState.unreadSince = 0;
     const chatRef = collection(db, 'triviaRooms', code, 'chat');
     const q = query(chatRef, orderBy('sentAt', 'asc'), limit(80));
+    chatState.initialFillDone = false;
+    chatState.lastNotifiedMessageId = null;
     chatState.unsub = onSnapshot(q, (snap) => {
         const prevLen = chatState.messages.length;
         chatState.messages = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
         renderChatMessages();
+        const wasInitialFill = !chatState.initialFillDone;
         // First fill is treated as "all read" so the badge doesn't show
         // 50 unread on first render. After that, growth = unread.
-        if (prevLen === 0) chatState.unreadSince = chatState.messages.length;
-        // Toast preview for the latest message when the panel is closed,
-        // but only for messages that weren't authored by us (we already
-        // know we sent ours).
+        if (wasInitialFill) {
+            chatState.unreadSince = chatState.messages.length;
+            chatState.initialFillDone = true;
+            const newest0 = chatState.messages[chatState.messages.length - 1];
+            chatState.lastNotifiedMessageId = newest0 ? newest0.id : null;
+        }
+        // Toast preview + sound for any genuinely-new message from another
+        // player when the panel is closed. Works for both text and emoji
+        // (emoji messages bypass moderation but otherwise look identical).
         const newest = chatState.messages[chatState.messages.length - 1];
-        if (!chatState.open && newest && state.user && newest.uid !== state.user.uid && prevLen > 0 && prevLen < chatState.messages.length) {
+        if (!wasInitialFill
+            && !chatState.open
+            && newest
+            && state.user
+            && newest.uid !== state.user.uid
+            && newest.id !== chatState.lastNotifiedMessageId
+            && prevLen < chatState.messages.length) {
+            chatState.lastNotifiedMessageId = newest.id;
             showToast(`${newest.displayName || 'Player'}: ${newest.text}`, { icon: '💬', key: 'chat:' + newest.id });
             try { Feedback.chatMessage(); } catch (_) {}
         }
@@ -1548,6 +1843,8 @@ function stopChatListener() {
     }
     chatState.messages = [];
     chatState.unreadSince = 0;
+    chatState.initialFillDone = false;
+    chatState.lastNotifiedMessageId = null;
     updateChatBadge();
 }
 
@@ -1680,10 +1977,183 @@ function renderRoom() {
     // the whole strip outside that window.
     const room = state.roomData;
     const playing = room.status === 'playing';
+    // Pause + End Game are available to every player (host included)
+    // once the room is playing — the previous host-only gate created
+    // dead-end states where the host had left.
     const hostActions = $('#room-host-actions');
-    if (hostActions) hostActions.hidden = !(isHost && playing);
+    if (hostActions) hostActions.hidden = !playing;
+
+    // Per-player rate limits: gray out each control once its allowance
+    // is exhausted (pause: 2/room, restart: 3/room, end: 3/room). Reset
+    // happens in leaveRoom().
+    const pauseBtn2 = $('#room-pause-btn');
+    if (pauseBtn2) {
+        const left = actionRemaining('pause');
+        pauseBtn2.disabled = (left <= 0 && !room.paused);
+        pauseBtn2.title = pauseBtn2.disabled
+            ? 'You\'ve used your pause allowance for this room.'
+            : `Pause / resume the timer (${left} left)`;
+    }
+    const restartBtn2 = $('#room-restart-btn');
+    if (restartBtn2) {
+        const left = actionRemaining('restart');
+        restartBtn2.disabled = left <= 0;
+        restartBtn2.title = restartBtn2.disabled
+            ? 'You\'ve used your restart proposals for this room.'
+            : `Propose restarting the game — all players must accept (${left} left)`;
+    }
+    const endBtn2 = $('#room-end-btn');
+    if (endBtn2) {
+        const left = actionRemaining('end');
+        endBtn2.disabled = left <= 0;
+        endBtn2.title = endBtn2.disabled
+            ? 'You\'ve used your end-game allowance for this room.'
+            : `End the game and show the final scores (${left} left)`;
+    }
+
+    // Chat toggle: visible only when there's someone else to talk to.
+    // Solo / daily rooms are inherently single-player so chat is also
+    // hidden in those modes regardless of the player count.
+    const chatToggle = $('#room-chat-toggle');
+    const playMode = room.playMode || 'multi';
+    const hasOthers = playMode === 'multi' && state.roomPlayers.length >= 2;
+    if (chatToggle) chatToggle.hidden = !hasOthers;
+    if (!hasOthers) {
+        const panel = $('#room-chat-panel');
+        if (panel) panel.hidden = true;
+    }
+
+    // In solo, the host's "End game" button (room-end-btn) is the
+    // canonical end action. The leave-room button reads as "Back to
+    // lobby" so the two controls don't both say "End game" and
+    // confuse the player. Same treatment once a multi game is
+    // finished — the game's over, "Leave room" reframes nicely as
+    // "Back to lobby".
+    const finished = room.status === 'finished';
+    const leaveBtn = $('#leave-room-btn');
+    if (leaveBtn) {
+        leaveBtn.textContent = (playMode === 'solo' || finished) ? 'Back to lobby' : 'Leave room';
+    }
+
+    // Header end-stage actions (Rematch). Only visible on the finished
+    // stage. The end-of-stage section keeps its own copy for users
+    // who scroll past the recap. Toggle a class on .room-head-right
+    // so the layout flips from inline-row (mid-game) to a clean
+    // right-aligned column (post-match) — see styles.css.
+    const headerEndActions = $('#room-end-actions');
+    const headerRematch = $('#room-end-again-btn');
+    if (headerEndActions) headerEndActions.hidden = !finished;
+    const headRight = document.querySelector('.room-head-right');
+    if (headRight) headRight.classList.toggle('is-finished', finished);
+    if (headerRematch) {
+        // Mirror the visibility logic from renderRematchUI — only show
+        // when a rematch is even an option (>=2 players in multi, or
+        // solo player can restart).
+        const pCount = rematchPlayerCount();
+        const canRematchMulti = playMode === 'multi' && pCount >= 2;
+        const canRestartSolo = playMode === 'solo';
+        const proposed = !!room.rematchProposedBy;
+        // Hide if a proposal is already in flight (the strip below
+        // is handling response UI). Show otherwise.
+        headerRematch.hidden = !(finished && (canRematchMulti || canRestartSolo) && !proposed);
+        headerRematch.innerHTML = canRestartSolo
+            ? '<span aria-hidden="true">🔁</span> Restart'
+            : '<span aria-hidden="true">🔁</span> Rematch';
+    }
+
+    // Rematch / restart proposal — surface an accept/decline prompt
+    // exactly once per proposal so the player has a chance to weigh in
+    // without missing the round. Fires both mid-game (status='playing')
+    // and post-game (status='finished'). A live "Xs remaining" ticker
+    // is injected into the modal body so respondents see the same
+    // 10-second deadline the proposer's pending modal counts down.
+    if ((playing || finished) && room.rematchProposedBy
+        && state.user && room.rematchProposedBy !== state.user.uid
+        && !meHasAcceptedRematch() && !meHasDeclinedRematch()
+        && state.lastRematchPromptShown !== room.rematchProposedBy) {
+        state.lastRematchPromptShown = room.rematchProposedBy;
+        const proposedAtMs = (room.rematchProposedAt && room.rematchProposedAt.toMillis)
+            ? room.rematchProposedAt.toMillis() : Date.now();
+        const deadline = proposedAtMs + PROPOSAL_TIMEOUT_MS;
+        const baseBody = playing
+            ? 'Another player proposed restarting. Accept to draw fresh locations; decline to keep playing.'
+            : 'Another player wants a rematch. Accept to start a new game; decline to head back to the lobby.';
+        // The body element is the same one openConfirmModal writes —
+        // we keep updating it until the modal closes. clearInterval
+        // happens both when the promise resolves and when the timer
+        // hits zero (which also auto-declines).
+        let respTicker = setInterval(() => {
+            const left = Math.max(0, Math.ceil((deadline - Date.now()) / 1000));
+            const bodyEl = document.getElementById('confirm-modal-body');
+            if (bodyEl) bodyEl.textContent = baseBody + '  ·  ' + left + 's remaining';
+            if (left <= 0) {
+                clearInterval(respTicker);
+                respTicker = null;
+                if (typeof closeConfirmModal === 'function') closeConfirmModal(false);
+            }
+        }, 250);
+        openConfirmModal({
+            title: playing ? 'Restart the game?' : 'Play again?',
+            body: baseBody + '  ·  10s remaining',
+            confirmLabel: 'Accept',
+            cancelLabel: 'Decline',
+            danger: false
+        }).then((accept) => {
+            if (respTicker) { clearInterval(respTicker); respTicker = null; }
+            respondToRematch(!!accept);
+        });
+    }
+
+    // If this client IS the proposer, keep their waiting modal in sync
+    // with the latest snapshot — and close it once the proposal
+    // resolves either way (unanimous accept → game restarts, decline →
+    // close, no proposal field → host already cleared it).
+    if (room.rematchProposedBy && state.user && room.rematchProposedBy === state.user.uid) {
+        if (state.proposalPendingDeadline) {
+            renderProposalPendingModal();
+            if (rematchDeclineCount() > 0) cancelOwnProposal('declined');
+            else if (rematchAcceptCount() >= rematchPlayerCount()) closeProposalPendingModal();
+        }
+    } else if (!room.rematchProposedBy && state.proposalPendingDeadline) {
+        // Proposal cleared by someone else — make sure our modal is closed.
+        closeProposalPendingModal();
+    }
+    // Reset the prompt-shown sentinel once a proposal clears so a NEW
+    // proposal will surface its own modal next time.
+    if (!room.rematchProposedBy) state.lastRematchPromptShown = null;
+
+    // Mid-game restart trigger. The end-stage renderRematchUI handles
+    // the equivalent post-game path; this is the missing piece that
+    // actually pulled the trigger when a mid-match unanimous accept
+    // came together. The same gate (host only, accepted >= playerCount)
+    // ensures exactly one client does the writes.
+    if (playing && room.rematchProposedBy && state.user
+        && room.hostUid === state.user.uid
+        && rematchAcceptCount() >= rematchPlayerCount()
+        && rematchDeclineCount() === 0
+        && !state.rematchInFlight) {
+        playAgain();
+    }
     const banner = $('#room-paused-banner');
-    if (banner) banner.hidden = !room.paused;
+    if (banner) {
+        banner.hidden = !room.paused;
+        if (playMode === 'solo') {
+            banner.innerHTML = '<span aria-hidden="true">⏸</span> Game paused';
+        } else {
+            // Prefer the explicit pausedByName on the room doc; fall back
+            // to looking up the uid in the live players list; finally
+            // fall back to "host" if neither is available (legacy rooms
+            // paused before this field existed).
+            let pauserName = room.pausedByName;
+            if (!pauserName && room.pausedByUid) {
+                const p = state.roomPlayers.find((pp) => pp.uid === room.pausedByUid);
+                pauserName = p && p.displayName;
+            }
+            if (!pauserName) pauserName = 'host';
+            banner.innerHTML = '<span aria-hidden="true">⏸</span> Game paused by '
+                + escapeHtml(pauserName) + '.';
+        }
+    }
     const pauseBtn = $('#room-pause-btn');
     if (pauseBtn) {
         pauseBtn.innerHTML = room.paused
@@ -1710,12 +2180,194 @@ function renderRoom() {
     }
 }
 
+/**
+ * Render the room-settings panel inside the room lobby. Shows the
+ * round type, difficulty, locations count, and per-question timer.
+ * Host sees an Edit button + inline edit form; others see read-only.
+ */
+function renderRoomSettings(isHost) {
+    const panel = $('#room-settings');
+    if (!panel) return;
+    const room = state.roomData || {};
+    if (room.gameType !== 'globe-drop') {
+        panel.hidden = true;
+        return;
+    }
+    panel.hidden = false;
+
+    const roundType = room.roundType || 'capitals';
+    const meta = GlobeDropLocations.ROUND_TYPES[roundType] || GlobeDropLocations.ROUND_TYPES.capitals;
+    setText($('#room-settings-round-type'), meta.label || roundType);
+
+    const diffKey = room.difficulty || 'medium';
+    const diff = GlobeDropScoring.difficultySettings(diffKey);
+    setText($('#room-settings-difficulty'), diff.label || diffKey);
+
+    setText($('#room-settings-locations'), String(room.totalQuestions || 0));
+
+    const seconds = Math.round((room.questionTimeMs || diff.timerSec * 1000) / 1000);
+    setText($('#room-settings-timer'), `${seconds}s`);
+
+    const editBtn = $('#room-settings-edit-btn');
+    const hint = $('#room-settings-hint');
+    const editForm = $('#room-settings-edit');
+    const view = $('#room-settings-view');
+
+    // Edit affordances visible only to host AND only while the room is
+    // still in lobby state (settings are locked once playing starts).
+    const canEdit = isHost && room.status === 'lobby';
+    if (editBtn) editBtn.hidden = !canEdit;
+    if (hint) hint.hidden = !(isHost && !canEdit);
+    // Whenever the form isn't open, keep it hidden (show summary).
+    if (editForm && !state.roomSettingsEditing) {
+        editForm.hidden = true;
+        if (view) view.hidden = false;
+    }
+}
+
+/**
+ * Open the inline settings editor — preload the selects with the
+ * current room values, hide the read-only summary, show the form.
+ */
+function openRoomSettingsEditor() {
+    const room = state.roomData || {};
+    if (room.gameType !== 'globe-drop') return;
+    state.roomSettingsEditing = true;
+    $('#room-settings-view').hidden = true;
+    $('#room-settings-edit').hidden = false;
+    $('#room-settings-edit-btn').hidden = true;
+    $('#room-settings-edit-round-type').value = room.roundType || 'capitals';
+    $('#room-settings-edit-difficulty').value = room.difficulty || 'medium';
+    $('#room-settings-edit-count').value = String(room.totalQuestions || 5);
+    const seconds = Math.round((room.questionTimeMs || 120000) / 1000);
+    $('#room-settings-edit-time').value = String(seconds);
+    const msg = $('#room-settings-msg');
+    if (msg) { msg.hidden = true; msg.textContent = ''; msg.classList.remove('is-busy', 'is-err'); }
+}
+
+function closeRoomSettingsEditor() {
+    state.roomSettingsEditing = false;
+    $('#room-settings-edit').hidden = true;
+    $('#room-settings-view').hidden = false;
+    const isHost = !!(state.user && state.roomData && state.roomData.hostUid === state.user.uid);
+    const canEdit = isHost && state.roomData && state.roomData.status === 'lobby';
+    $('#room-settings-edit-btn').hidden = !canEdit;
+}
+
+async function saveRoomSettings() {
+    if (!state.user || !state.roomCode || !state.roomData) return;
+    if (state.roomData.hostUid !== state.user.uid) return;
+    if (state.roomData.status !== 'lobby') return;
+
+    const newRoundType = $('#room-settings-edit-round-type').value || 'capitals';
+    const newDifficulty = $('#room-settings-edit-difficulty').value || 'medium';
+    const newCount = Math.max(1, Math.min(10, parseInt($('#room-settings-edit-count').value, 10) || 5));
+    const newSeconds = parseInt($('#room-settings-edit-time').value, 10) || 120;
+    const diff = GlobeDropScoring.difficultySettings(newDifficulty);
+
+    const oldRoundType = state.roomData.roundType || 'capitals';
+    const oldCount = state.roomData.totalQuestions || 0;
+    const needsRefetch = (newRoundType !== oldRoundType) || (newCount !== oldCount);
+
+    const msg = $('#room-settings-msg');
+    const saveBtn = $('#room-settings-save');
+    const cancelBtn = $('#room-settings-cancel');
+    if (saveBtn) saveBtn.disabled = true;
+    if (cancelBtn) cancelBtn.disabled = true;
+    if (msg) {
+        msg.hidden = false;
+        msg.classList.remove('is-err');
+        msg.classList.add('is-busy');
+        msg.textContent = needsRefetch ? 'Refetching locations…' : 'Saving…';
+    }
+
+    try {
+        const meta = GlobeDropLocations.ROUND_TYPES[newRoundType] || GlobeDropLocations.ROUND_TYPES.capitals;
+        const update = {
+            roundType: newRoundType,
+            packId: meta.packId,
+            packName: meta.packName,
+            difficulty: newDifficulty,
+            totalQuestions: newCount,
+            questionTimeMs: newSeconds * 1000
+        };
+        if (needsRefetch) {
+            const locations = await GlobeDropLocations.fetchLocations(newRoundType, newCount, shuffle);
+            update.questions = sortLocationsByAscendingDifficulty(locations);
+            update.totalQuestions = update.questions.length;
+            update.currentQuestionIndex = 0;
+            update.currentQuestionId = null;
+            update.questionStartedAt = null;
+            update.revealStartedAt = null;
+            update.playedQuestionIds = [];
+        }
+        // If difficulty changed but timer was the tier default, snap timer
+        // to the new tier default; otherwise keep the user's override.
+        const oldDiff = GlobeDropScoring.difficultySettings(state.roomData.difficulty || 'medium');
+        const oldUsesTierDefault = state.roomData.questionTimeMs === oldDiff.timerSec * 1000;
+        if (oldUsesTierDefault && newDifficulty !== state.roomData.difficulty) {
+            update.questionTimeMs = diff.timerSec * 1000;
+        }
+        await updateDoc(doc(db, 'triviaRooms', state.roomCode), update);
+        if (msg) {
+            msg.classList.remove('is-busy');
+            msg.textContent = 'Saved.';
+        }
+        setTimeout(() => closeRoomSettingsEditor(), 600);
+    } catch (err) {
+        console.warn('saveRoomSettings failed:', err);
+        if (msg) {
+            msg.classList.remove('is-busy');
+            msg.classList.add('is-err');
+            msg.textContent = 'Save failed: ' + (err && err.message ? err.message : 'unknown');
+        }
+    } finally {
+        if (saveBtn) saveBtn.disabled = false;
+        if (cancelBtn) cancelBtn.disabled = false;
+    }
+}
+
+/**
+ * Fetch the lifetime H2H record between the current user and `opponentUid`
+ * and stamp a "W-L-T" badge into the lobby tile. Cached on state so
+ * re-renders within the same session don't refetch. Best-effort —
+ * missing docs / network errors leave the badge hidden.
+ */
+async function hydrateLobbyH2HBadge(opponentUid, spanId) {
+    if (!state.user) return;
+    state.h2hPairCache = state.h2hPairCache || {};
+    const key = h2hPairKey(state.user.uid, opponentUid);
+    if (!key) return;
+    let pair = state.h2hPairCache[key];
+    if (pair === undefined) {
+        try {
+            const snap = await getDoc(doc(db, 'triviaH2H', key));
+            pair = snap.exists() ? snap.data() : null;
+        } catch (_) {
+            pair = null;
+        }
+        state.h2hPairCache[key] = pair;
+    }
+    const el = document.getElementById(spanId);
+    if (!el || !pair) return;
+    const myIsA = pair.uidA === state.user.uid;
+    const myWins = myIsA ? (pair.winsA || 0) : (pair.winsB || 0);
+    const theirWins = myIsA ? (pair.winsB || 0) : (pair.winsA || 0);
+    const ties = pair.ties || 0;
+    el.textContent = `H2H ${myWins}-${theirWins}${ties ? `-${ties}` : ''}`;
+    el.hidden = false;
+}
+
 function renderLobbyStage(isHost) {
     show($('#stage-lobby'));
     hide($('#stage-game'));
     hide($('#stage-globe-drop'));
     hide($('#stage-picking'));
     hide($('#stage-end'));
+
+    // Room settings panel — show current room settings to everyone in
+    // the lobby. Host can edit (click event handled separately).
+    renderRoomSettings(isHost);
 
     const list = $('#lobby-player-grid');
     list.innerHTML = '';
@@ -1729,11 +2381,15 @@ function renderLobbyStage(isHost) {
         li.className = 'player-tile';
         if (p.uid === state.roomData.hostUid) li.classList.add('is-host');
         if (state.user && p.uid === state.user.uid) li.classList.add('is-me');
+        const isMe = state.user && p.uid === state.user.uid;
+        const h2hSpanId = (state.user && !isMe) ? `lobby-h2h-${p.uid}` : '';
         li.innerHTML =
             `<span class="player-avatar">${escapeHtml(avatarLetter(p.displayName))}</span>` +
             `<span class="player-name">${escapeHtml(p.displayName)}</span>` +
-            (p.uid === state.roomData.hostUid ? '<span class="player-mini-tag">Host</span>' : '');
+            (p.uid === state.roomData.hostUid ? '<span class="player-mini-tag">Host</span>' : '') +
+            (h2hSpanId ? `<span class="player-h2h-badge" id="${h2hSpanId}" hidden></span>` : '');
         list.appendChild(li);
+        if (h2hSpanId) hydrateLobbyH2HBadge(p.uid, h2hSpanId);
     }
 
     $('#lobby-host-controls').hidden = !isHost;
@@ -2026,7 +2682,7 @@ function ensureGlobe() {
     state.globe.width(el.clientWidth);
     state.globe.height(el.clientHeight);
     // Initial camera pose: roughly overhead, comfortable altitude.
-    state.globe.pointOfView({ lat: 20, lng: 0, altitude: 2.5 }, 0);
+    state.globe.pointOfView({ lat: 20, lng: 0, altitude: 1.0 }, 0);
 
     // Three.js OrbitControls defaults feel sluggish — crank zoom speed and
     // ease damping so wheel + pinch react snappily. We ALSO install a
@@ -2142,6 +2798,10 @@ function currentGlobeDropLocation() {
     const pool = Array.isArray(state.roomData.questions) ? state.roomData.questions : [];
     return pool.find((q) => q && q.id === state.roomData.currentQuestionId) || null;
 }
+function currentGlobeDropLocationId() {
+    const loc = currentGlobeDropLocation();
+    return loc ? loc.id : null;
+}
 
 /**
  * Resolve the per-question asking duration for the current room. The host
@@ -2219,16 +2879,26 @@ function renderGlobeDropStage() {
 
     const hintsEl = $('#globe-drop-prompt-hints');
     const extra = [];
-    if (hintLevel === 'country+continent' || hintLevel === 'country+continent+subregion') {
-        if (loc.region) extra.push(loc.region);
-    }
-    if (hintLevel === 'country+continent+subregion') {
-        if (loc.subregion && loc.subregion !== loc.region) extra.push(loc.subregion);
+    // Defensive: hard mode (hintLevel='none') must never produce any extras,
+    // even if a future hintLevel key accidentally matches one of the branches
+    // below. The outer guard makes this airtight regardless of config drift.
+    if (hintLevel !== 'none') {
+        if (hintLevel === 'country+continent' || hintLevel === 'country+continent+subregion') {
+            if (loc.region) extra.push(loc.region);
+        }
+        if (hintLevel === 'country+continent+subregion') {
+            if (loc.subregion && loc.subregion !== loc.region) extra.push(loc.subregion);
+        }
     }
     if (extra.length) {
         setText(hintsEl, extra.join(' · '));
         hintsEl.removeAttribute('hidden');
     } else {
+        // Always clear the text in addition to hiding — guarantees stale
+        // hint content from a previous round (or a mid-game difficulty
+        // change) can never bleed through if [hidden] is overridden by
+        // some other style.
+        setText(hintsEl, '');
         hintsEl.setAttribute('hidden', '');
     }
 
@@ -2246,12 +2916,37 @@ function renderGlobeDropStage() {
 
     // Init the globe after the stage is visible so its container has a
     // measurable size. globe.gl reads dimensions during construction.
-    setTimeout(() => {
+    // Three.js scene construction + texture upload is the >200ms blocking
+    // chunk at game start; running it inside requestIdleCallback (with a
+    // setTimeout fallback for browsers without idle callbacks) lets the
+    // browser paint the question prompt and timer first, so the rAF loop
+    // never has to share its frame with that work.
+    const deferGlobeInit = (cb) => {
+        if (typeof window !== 'undefined' && typeof window.requestIdleCallback === 'function') {
+            window.requestIdleCallback(cb, { timeout: 200 });
+        } else {
+            setTimeout(cb, 0);
+        }
+    };
+    deferGlobeInit(() => {
         // The deferred fire-time can land AFTER leaveRoom() has nulled
         // state.roomData, which then crashes the phase/reveal code below
         // with `Cannot read properties of null (reading 'questionStartedAt')`.
         // Bail if the room is gone — there's nothing to render.
         if (!state.roomData || !state.roomCode) return;
+        // Smooth-scroll the question prompt to the top of the viewport
+        // on each new question. Anchoring to the "Where is …" header
+        // (not the globe) means the player sees the city name first,
+        // then the globe sits naturally below — no hunting for the
+        // prompt after a long live-standings panel. Once per question
+        // so the viewport doesn't yank mid-round.
+        const promptRow = document.querySelector('.globe-drop-prompt-row');
+        if (promptRow && state.lastScrolledToGlobeForQId !== currentGlobeDropLocationId()) {
+            state.lastScrolledToGlobeForQId = currentGlobeDropLocationId();
+            try {
+                promptRow.scrollIntoView({ behavior: 'smooth', block: 'start' });
+            } catch (_) { /* older browsers */ }
+        }
         const g = ensureGlobe();
         if (!g) return;
         const el = document.getElementById('globe-drop-map');
@@ -2266,10 +2961,16 @@ function renderGlobeDropStage() {
             $('#globe-drop-submit-btn').disabled = true;
             $('#globe-drop-clear-btn').hidden = true;
             $('#globe-drop-reveal').hidden = true;
-            $('#globe-drop-reveal-trivia').hidden = true;
+            const triviaEl = $('#globe-drop-reveal-trivia');
+            // Clear the text in addition to hiding so a stale entry can
+            // never flash when the reveal panel comes back for the next
+            // question. Trivia only renders after a successful fetch
+            // completes on the new question.
+            triviaEl.textContent = '';
+            triviaEl.hidden = true;
             $('#globe-drop-countdown').hidden = true;
             $('#globe-drop-hint').hidden = false;
-            setText($('#globe-drop-status'), 'Click anywhere on the globe to drop your pin.');
+            setText($('#globe-drop-status'), '');
             $('#globe-drop-status').classList.remove('is-correct', 'is-wrong');
             // Reset camera to the overview pose for each new question.
             // Instant teleport (0ms) so the globe doesn't appear to spin
@@ -2277,7 +2978,7 @@ function renderGlobeDropStage() {
             // reveal had the camera centered on the answer's lat/lng, and
             // tweening from there to (20,0) was reading as "the globe
             // spins between rounds for no reason."
-            g.pointOfView({ lat: 20, lng: 0, altitude: 2.5 }, 0);
+            g.pointOfView({ lat: 20, lng: 0, altitude: 1.0 }, 0);
         }
 
         // Lock the controls if we've already submitted this question.
@@ -2314,6 +3015,75 @@ function renderGlobeDropStage() {
 
     renderMiniBoardGlobeDrop(loc.id);
     startGlobeDropTimerLoop();
+}
+
+/**
+ * Write the local player's "ready to advance" marker for the current
+ * question. The host's rAF gate watches every player's readyAfterQId;
+ * once everyone matches the current question id, the next round (or
+ * the end stage, for the final question) fires early instead of
+ * waiting out the full 5-second reveal window.
+ */
+async function markReadyForNext() {
+    if (!state.user || !state.roomCode || !state.roomData) return;
+    const loc = currentGlobeDropLocation();
+    if (!loc || !loc.id) return;
+    const me = state.roomPlayers.find((p) => p.uid === state.user.uid);
+    if (me && me.readyAfterQId === loc.id) return; // already marked
+    try {
+        await updateDoc(doc(db, 'triviaRooms', state.roomCode, 'players', state.user.uid), {
+            readyAfterQId: loc.id
+        });
+    } catch (err) {
+        console.warn('markReadyForNext failed:', err);
+    }
+}
+
+/**
+ * Render the Ready bar inside the reveal panel: shows the button
+ * (disabled once I've voted) plus a tiny pip per player indicating
+ * who has and hasn't voted yet.
+ */
+function renderReadyBar(phase) {
+    const bar = $('#globe-drop-ready-bar');
+    if (!bar) return;
+    const loc = currentGlobeDropLocation();
+    const visible = (phase === 'reveal' || phase === 'ended') && !!loc;
+    bar.hidden = !visible;
+    if (!visible) return;
+    const me = state.user
+        ? state.roomPlayers.find((p) => p.uid === state.user.uid)
+        : null;
+    const meReady = !!(me && me.readyAfterQId === loc.id);
+    // Last round: relabel to "Finish" — the click ends the game, not
+    // "ready for next."
+    const room = state.roomData || {};
+    const idx = room.currentQuestionIndex || 0;
+    const totalQ = room.totalQuestions || 0;
+    const isLast = totalQ > 0 && idx >= totalQ - 1;
+    const btn = $('#globe-drop-ready-btn');
+    if (btn) {
+        btn.disabled = meReady;
+        if (meReady) {
+            btn.innerHTML = isLast
+                ? '<span aria-hidden="true">✓</span> Finishing'
+                : '<span aria-hidden="true">✓</span> You\'re ready';
+        } else {
+            btn.innerHTML = isLast
+                ? '<span aria-hidden="true">🏁</span> Finish'
+                : '<span aria-hidden="true">⏭</span> Ready';
+        }
+    }
+    const statusEl = $('#globe-drop-ready-status');
+    if (statusEl) {
+        const players = state.roomPlayers || [];
+        const readyCount = players.filter((p) => p.readyAfterQId === loc.id).length;
+        const pips = players.map((p) => {
+            const isReady = p.readyAfterQId === loc.id;
+            return `<span class="ready-pip${isReady ? ' is-ready' : ''}">${escapeHtml(p.displayName || 'Player')}</span>`;
+        }).join('');
+        statusEl.innerHTML = `${pips} <small>${readyCount}/${players.length} ${isLast ? 'finishing' : 'ready'}</small>`;
+    }
 }
 
 function drawGlobeDropReveal(loc, me, { showOthers = true } = {}) {
@@ -2440,11 +3210,18 @@ function drawGlobeDropReveal(loc, me, { showOthers = true } = {}) {
 
     // Wikipedia trivia (best-effort; silently skipped on failure). Fetch
     // once per question — the local reveal kicks off the request so it's
-    // already in the panel by the time the global reveal hits.
+    // already in the panel by the time the global reveal hits. The
+    // resolve callback re-checks that we're still on the same question
+    // so a slow response from the previous round can't bleed in.
     if (state.triviaFetchedFor !== loc.id) {
         state.triviaFetchedFor = loc.id;
+        const startedForId = loc.id;
         GlobeDropLocations.fetchCityTrivia(loc.name).then((text) => {
             if (!text) return;
+            // Drop the response if the question has advanced (race).
+            if (state.triviaFetchedFor !== startedForId) return;
+            const curLoc = currentGlobeDropLocation();
+            if (!curLoc || curLoc.id !== startedForId) return;
             const triviaEl = $('#globe-drop-reveal-trivia');
             triviaEl.textContent = text;
             triviaEl.hidden = false;
@@ -2455,9 +3232,28 @@ function drawGlobeDropReveal(loc, me, { showOthers = true } = {}) {
 function renderMiniBoardGlobeDrop(currentQuestionId) {
     const list = $('#mini-board-list-globe-drop');
     list.innerHTML = '';
+    // Anti-peek: if I haven't submitted the current round, redact each
+    // opponent's contribution from THIS round so I can't infer their
+    // distance/score before I've committed mine. The reveal phase
+    // already discloses scores once everyone is in. My own score
+    // always reflects my real running total.
+    const me = state.user
+        ? state.roomPlayers.find((p) => p.uid === state.user.uid)
+        : null;
+    const meSubmittedCurrent = !!(me && currentQuestionId && me.currentAnsweredFor === currentQuestionId);
+    const adjustedScore = (p) => {
+        if (!currentQuestionId) return p.score || 0;
+        const isMe = state.user && p.uid === state.user.uid;
+        if (isMe || meSubmittedCurrent) return p.score || 0;
+        // Strip the current round's points from their displayed total.
+        const answers = Array.isArray(p.answers) ? p.answers : [];
+        const rec = answers.find((a) => a && a.locationId === currentQuestionId);
+        const pts = rec && typeof rec.points === 'number' ? rec.points : 0;
+        return (p.score || 0) - pts;
+    };
     const ranked = Scoring.rankPlayers(state.roomPlayers.map((p) => ({
         displayName: p.displayName,
-        score: p.score,
+        score: adjustedScore(p),
         streak: 0, // GlobeDrop doesn't use streaks (yet)
         uid: p.uid,
         answeredThisQuestion: currentQuestionId != null
@@ -2470,15 +3266,115 @@ function renderMiniBoardGlobeDrop(currentQuestionId) {
         if (state.user && p.uid === state.user.uid) li.classList.add('is-me');
         if (i === 0 && (p.score || 0) > 0) li.classList.add('is-leader');
         if (p.answeredThisQuestion) li.classList.add('is-answered');
-        const badge = p.answeredThisQuestion
-            ? '<span class="submitted-badge" aria-label="submitted">✓ submitted</span>'
-            : '';
+        // Answered state: a small green ✓ sits inline next to the
+        // player's name. No "submitted" word, no badge chrome — the
+        // pseudo-element on .is-answered .mini-board-check renders the
+        // ✓ glyph and animates in.
         li.innerHTML =
             `<span class="mini-board-rank">${i+1}</span>` +
-            `<span class="mini-board-name">${escapeHtml(p.displayName)}${badge}</span>` +
+            `<span class="mini-board-name">${escapeHtml(p.displayName)}</span>` +
+            `<span class="mini-board-check" aria-label="submitted"></span>` +
             `<span class="mini-board-score">${p.score || 0}</span>`;
         list.appendChild(li);
     });
+    renderRoundsHistoryBoard();
+}
+
+/**
+ * Render every completed round in this game as a row: round number +
+ * location name + a chip per player showing their score for that round.
+ * Pairs visually with the cumulative live standings above it — the
+ * standings answer "who is winning right now", this answers "how did
+ * they get there round-by-round".
+ *
+ * Reads each player's `answers[]` (per-location record list every
+ * guess appends to) — same source as the end-of-game recap, so the
+ * numbers are guaranteed to match.
+ */
+function renderRoundsHistoryBoard() {
+    const board = $('#rounds-history-board');
+    const list = $('#rounds-history-list');
+    if (!board || !list) return;
+
+    const room = state.roomData;
+    if (!room || !Array.isArray(room.questions)) { board.hidden = true; return; }
+    const idx = room.currentQuestionIndex || 0;
+    if (idx < 1) { board.hidden = true; return; }
+
+    // To prevent score-peeking, opponents' scores for the CURRENT round
+    // (the one in progress) stay hidden until the local user has
+    // submitted their guess for that round. We only mask the current
+    // round here — prior rounds' scores are always visible because the
+    // reveal phase already disclosed them.
+    const curLoc = currentGlobeDropLocation();
+    const me = state.user
+        ? state.roomPlayers.find((p) => p.uid === state.user.uid)
+        : null;
+    const meSubmittedCurrent = !!(me && curLoc && me.currentAnsweredFor === curLoc.id);
+
+    list.innerHTML = '';
+    for (let r = 0; r < idx; r++) {
+        const loc = room.questions[r];
+        if (!loc || !loc.id) continue;
+        const isCurrentRound = curLoc && loc.id === curLoc.id;
+        const maskOthers = isCurrentRound && !meSubmittedCurrent;
+        // For each player, find the answer record matching this round's location.
+        const perPlayer = state.roomPlayers.map((p) => {
+            const answers = Array.isArray(p.answers) ? p.answers : [];
+            const rec = answers.find((a) => a && a.locationId === loc.id);
+            return {
+                uid: p.uid,
+                displayName: p.displayName,
+                roundPoints: rec ? (typeof rec.points === 'number' ? rec.points : 0) : null,
+                gaveUp: !!(rec && rec.gaveUp)
+            };
+        });
+        perPlayer.sort((a, b) => {
+            const av = a.roundPoints == null ? -1 : a.roundPoints;
+            const bv = b.roundPoints == null ? -1 : b.roundPoints;
+            return bv - av;
+        });
+        const li = document.createElement('li');
+        li.className = 'rounds-history-row';
+        // Local-player breakdown — recompute the multipliers we applied
+        // so the chip can spell out "× 1.5 × 1.2" alongside the total.
+        // Only shown for the LOCAL user's chip, and only for rounds
+        // they've actually submitted (no peeking ahead on the current
+        // round before submitting).
+        const meRec = me && Array.isArray(me.answers)
+            ? me.answers.find((a) => a && a.locationId === loc.id)
+            : null;
+        let myBreakdown = '';
+        if (meRec && typeof meRec.points === 'number' && !meRec.gaveUp) {
+            const diffMult = GlobeDropScoring.difficultySettings(room.difficulty).scoreMultiplier;
+            const contMult = GlobeDropScoring.continentMultiplier(loc.region);
+            const popMult = GlobeDropScoring.populationWeight(loc.population);
+            const parts = [];
+            if (diffMult !== 1) parts.push('×' + diffMult.toFixed(2).replace(/0+$/, '').replace(/\.$/, ''));
+            if (contMult !== 1) parts.push('×' + contMult.toFixed(2).replace(/0+$/, '').replace(/\.$/, ''));
+            if (popMult !== 1) parts.push('×' + popMult.toFixed(2).replace(/0+$/, '').replace(/\.$/, ''));
+            if (parts.length) myBreakdown = ' <em>' + escapeHtml(parts.join(' ')) + '</em>';
+        }
+        const chips = perPlayer.map((pp) => {
+            const isMe = state.user && pp.uid === state.user.uid;
+            const cls = 'rounds-history-chip'
+                + (isMe ? ' is-me' : '')
+                + ((pp.roundPoints || 0) === 0 ? ' is-zero' : '');
+            let val;
+            if (maskOthers && !isMe) val = '🔒';
+            else if (pp.roundPoints == null) val = '—';
+            else if (pp.gaveUp) val = 'X';
+            else val = String(pp.roundPoints);
+            const trailing = isMe ? myBreakdown : '';
+            return `<span class="${cls}"><span>${escapeHtml(pp.displayName)}</span><strong>${escapeHtml(val)}</strong>${trailing}</span>`;
+        }).join('');
+        li.innerHTML =
+            `<span class="rounds-history-label">R${r + 1}</span>` +
+            `<span class="rounds-history-loc">${escapeHtml(loc.name || '')}</span>` +
+            `<span class="rounds-history-scores">${chips}</span>`;
+        list.appendChild(li);
+    }
+    board.hidden = idx === 0;
 }
 
 async function submitGuess() {
@@ -2567,13 +3463,22 @@ function clearMyPin() {
     }
     $('#globe-drop-submit-btn').disabled = true;
     $('#globe-drop-clear-btn').hidden = true;
-    setText($('#globe-drop-status'), 'Click anywhere on the globe to drop your pin.');
+    setText($('#globe-drop-status'), '');
 }
 
 function startGlobeDropTimerLoop() {
     if (state.timerRaf) cancelAnimationFrame(state.timerRaf);
-    let lastPhase = null;
-    let lastQId = null;
+    // Seed lastPhase/lastQId to the CURRENT phase + question so the first
+    // tick doesn't trigger a redundant renderGlobeDropStage on top of the
+    // one renderRoom just ran. The redundant re-render was the main culprit
+    // behind the >200ms rAF handler at game start (it re-triggered globe
+    // init alongside the actual stage render).
+    const _initStart = state.roomData && state.roomData.questionStartedAt && state.roomData.questionStartedAt.toMillis
+        ? state.roomData.questionStartedAt.toMillis() : null;
+    const _initReveal = state.roomData && state.roomData.revealStartedAt && state.roomData.revealStartedAt.toMillis
+        ? state.roomData.revealStartedAt.toMillis() : null;
+    let lastPhase = globeDropPhase(_initStart, Date.now(), _initReveal, currentAskingDurationMs());
+    let lastQId = state.roomData ? state.roomData.currentQuestionId : null;
     const tick = () => {
         if (!state.roomData || state.roomData.status !== 'playing') return;
         if (state.roomData.gameType !== 'globe-drop') return;
@@ -2596,34 +3501,54 @@ function startGlobeDropTimerLoop() {
         renderRevealCountdown(phase, revealMs, now);
 
         const currentQId = state.roomData.currentQuestionId;
-        // Low-timer ping at 5s and 3s. Fires exactly once per threshold
-        // per question — the lastTimerPingQId guard prevents the rAF
-        // loop from re-emitting the sound 60×/sec while we're under it.
-        if (phase === 'asking' && currentQId && currentQId !== state.lastTimerPingQId) {
+        // Low-timer pings at 5 / 4 / 3 / 2 / 1 seconds. Each fires
+        // exactly once per question. Skipped entirely if the local
+        // player has ALREADY submitted their guess for this round —
+        // they don't need the urgent countdown cue, only the players
+        // still picking do.
+        const meForBuzz = state.user && state.roomPlayers.find((p) => p.uid === state.user.uid);
+        const meAlreadyIn = !!(meForBuzz && meForBuzz.currentAnsweredFor === currentQId);
+        if (phase === 'asking' && currentQId && !meAlreadyIn) {
             const seconds = Math.ceil(left / 1000);
-            const fired = state.lastTimerPingThresholds || {};
-            if (seconds <= 5 && !fired.five) {
+            const fired = (state.lastTimerPingQId === currentQId)
+                ? (state.lastTimerPingThresholds || {})
+                : {};
+            const buzz = () => {
                 try { Feedback.timerLow(); } catch (_) {}
-                fired.five = true;
-            }
-            if (seconds <= 3 && !fired.three) {
-                try { Feedback.timerLow(); } catch (_) {}
-                fired.three = true;
-            }
+                try {
+                    if (typeof navigator !== 'undefined' && typeof navigator.vibrate === 'function') {
+                        navigator.vibrate(40);
+                    }
+                } catch (_) {}
+            };
+            if (seconds <= 5 && !fired.five)  { buzz(); fired.five  = true; }
+            if (seconds <= 4 && !fired.four)  { buzz(); fired.four  = true; }
+            if (seconds <= 3 && !fired.three) { buzz(); fired.three = true; }
+            if (seconds <= 2 && !fired.two)   { buzz(); fired.two   = true; }
+            if (seconds <= 1 && !fired.one)   { buzz(); fired.one   = true; }
             state.lastTimerPingThresholds = fired;
-            if (seconds > 6) {
-                state.lastTimerPingThresholds = {};
-                state.lastTimerPingQId = currentQId;
-            }
-        } else if (currentQId !== state.lastTimerPingQId) {
-            state.lastTimerPingThresholds = {};
             state.lastTimerPingQId = currentQId;
         }
         // Re-render the stage when phase changes so the reveal markers
         // and "X km off" line draw without waiting for a snapshot.
         if (phase !== lastPhase || currentQId !== lastQId) {
+            const transitionedToRevealForCurQ =
+                (lastPhase === 'asking' && (phase === 'reveal' || phase === 'ended')
+                 && currentQId === lastQId);
             lastPhase = phase;
             lastQId = currentQId;
+            // Time-up audio cue: if the local player didn't submit a
+            // guess for the current question before the asking window
+            // closed, play the sad "time ran out" sound + vibrate.
+            // Submitters get the existing guessSubmitted cue and don't
+            // need this.
+            if (transitionedToRevealForCurQ) {
+                const me = state.user && state.roomPlayers.find((p) => p.uid === state.user.uid);
+                const meSubmitted = !!(me && me.currentAnsweredFor === currentQId);
+                if (!meSubmitted) {
+                    try { Feedback.timerExpired(); } catch (_) {}
+                }
+            }
             // Heavy-handed but safe: just re-run the stage renderer.
             renderGlobeDropStage();
         }
@@ -2644,6 +3569,28 @@ function startGlobeDropTimerLoop() {
             });
         }
 
+        // Render the Ready bar (button + per-player pips) every tick
+        // while we're in or past reveal. Cheap — just a few DOM
+        // writes on a small element.
+        if (phase === 'reveal' || phase === 'ended') renderReadyBar(phase);
+
+        // Early advance: if every player has voted Ready for the
+        // current question during reveal, jump straight to the next
+        // round (or the end stage for the final question) instead of
+        // waiting out the rest of the 5-second window. The
+        // earlyAdvanceForQuestion guard ensures we fire exactly once
+        // per question.
+        if (isHost && phase === 'reveal' && currentQId
+            && state.earlyAdvanceForQuestion !== currentQId
+            && state.roomPlayers.length > 0
+            && state.roomPlayers.every((p) => p.readyAfterQId === currentQId)) {
+            state.earlyAdvanceForQuestion = currentQId;
+            advanceQuestionOrFinish().catch((err) => {
+                console.warn('early advance write failed:', err);
+                state.earlyAdvanceForQuestion = null;
+            });
+        }
+
         if (isHost && phase === 'ended') {
             advanceQuestionOrFinish().catch((err) => console.warn('advance failed:', err));
             return;
@@ -2661,53 +3608,65 @@ function startGlobeDropTimerLoop() {
  * countdown, because the host hasn't started one yet.
  */
 function renderRevealCountdown(phase, revealStartedAtMs, nowMs) {
+    // The "5 to next" countdown is now drawn into the timer overlay
+    // itself by renderGlobeDropTimer. We keep the chip element hidden
+    // permanently — there's only ever one timer on screen, top-left.
     const chip = $('#globe-drop-countdown');
-    const num = $('#globe-drop-countdown-num');
-    if (!chip || !num) return;
-    if (phase !== 'reveal' || !revealStartedAtMs) {
-        chip.hidden = true;
-        return;
-    }
-    // Hide the "5 to next" chip on the FINAL location — there's no "next"
-    // to count down to. We'll roll into the end-of-game screen instead.
-    const idx = state.roomData ? (state.roomData.currentQuestionIndex || 0) : 0;
-    const total = state.roomData ? (state.roomData.totalQuestions || 0) : 0;
-    const isLast = total > 0 && idx >= total - 1;
-    if (isLast) {
-        chip.hidden = true;
-        return;
-    }
-    const elapsed = nowMs - revealStartedAtMs;
-    const left = Math.max(0, Config.GLOBE_DROP_REVEAL_TIME_MS - elapsed);
-    const seconds = Math.max(1, Math.ceil(left / 1000));
-    setText(num, String(seconds));
-    chip.hidden = false;
+    if (chip) chip.hidden = true;
 }
 
 function renderGlobeDropTimer(leftMs, phase, totalMs) {
     const total = totalMs || Config.GLOBE_DROP_LOCATION_TIME_MS;
+    const ring = $('#globe-drop-timer-ring-fill');
+    const timer = $('#globe-drop-timer');
+    const numEl = $('#globe-drop-timer-num');
+
+    // During reveal the same overlay flips to showing the to-next
+    // countdown. Compute the reveal seconds-left from the room state
+    // so we share the single visual.
+    if (phase === 'reveal' || phase === 'ended') {
+        const room = state.roomData || {};
+        const revealMs = room.revealStartedAt && room.revealStartedAt.toMillis
+            ? room.revealStartedAt.toMillis() : null;
+        // Same 5→1 countdown for EVERY round including the last one —
+        // previously the last round short-circuited to "—" because we
+        // assumed nothing follows, but the host still waits 5 s before
+        // writing status='finished', so the player should see that
+        // wait counted down.
+        if (revealMs) {
+            const elapsed = Date.now() - revealMs;
+            const leftRev = Math.max(0, Config.GLOBE_DROP_REVEAL_TIME_MS - elapsed);
+            const seconds = Math.max(1, Math.ceil(leftRev / 1000));
+            const fraction = Math.max(0, Math.min(1, leftRev / Config.GLOBE_DROP_REVEAL_TIME_MS));
+            const offset = 176 * (1 - fraction);
+            if (ring) ring.style.strokeDashoffset = String(offset);
+            setText(numEl, String(seconds));
+        } else {
+            setText(numEl, '—');
+            if (ring) ring.style.strokeDashoffset = '0';
+        }
+        if (timer) timer.dataset.state = 'reveal';
+        return;
+    }
+
+    // Asking phase — render the question countdown into the overlay.
     const fraction = Math.max(0, Math.min(1, leftMs / total));
     const circumference = 176;
     const offset = circumference * (1 - fraction);
-    const ring = $('#globe-drop-timer-ring-fill');
     if (ring) ring.style.strokeDashoffset = String(offset);
-
-    const timer = $('#globe-drop-timer');
     const seconds = Math.ceil(leftMs / 1000);
-    setText($('#globe-drop-timer-num'), (phase === 'reveal' || phase === 'ended') ? '!' : String(seconds));
+    setText(numEl, String(seconds));
     // Warn/danger thresholds scale with total time so a 30s game doesn't
     // sit in danger-red the whole time, and a 5min game still flashes
-    // appropriately near the end.
+    // appropriately near the end. Reveal phase short-circuits above.
     const dangerCutoff = Math.max(3000, total * 0.1);
     const warnCutoff = Math.max(10000, total * 0.25);
-    if (phase === 'reveal' || phase === 'ended') {
-        timer.dataset.state = 'reveal';
-    } else if (leftMs <= dangerCutoff) {
-        timer.dataset.state = 'danger';
+    if (leftMs <= dangerCutoff) {
+        if (timer) timer.dataset.state = 'danger';
     } else if (leftMs <= warnCutoff) {
-        timer.dataset.state = 'warn';
+        if (timer) timer.dataset.state = 'warn';
     } else {
-        timer.dataset.state = 'asking';
+        if (timer) timer.dataset.state = 'asking';
     }
 }
 
@@ -3080,12 +4039,45 @@ async function renderEndStage(isHost) {
         streak: p.streak || 0
     })));
 
-    // Podium
+    // Podium — skipped for solo runs (no opponents to rank against).
     const podium = $('#podium');
+    const isSoloMode = (state.roomData && state.roomData.playMode) === 'solo';
+    podium.hidden = isSoloMode;
     podium.innerHTML = '';
+    const soloHero = $('#solo-hero');
+    if (isSoloMode) {
+        // Hide the end-board too — for solo there's only one row and the
+        // final score is already in the hero block.
+        const boardWrap = document.querySelector('.end-board-wrap');
+        if (boardWrap) boardWrap.hidden = true;
+        // Populate the solo hero with run stats sourced from the player's
+        // answers[] array.
+        const meEntry = state.user
+            ? state.roomPlayers.find((p) => p.uid === state.user.uid)
+            : null;
+        const answers = (meEntry && Array.isArray(meEntry.answers)) ? meEntry.answers : [];
+        const scored = answers.filter((a) => a && typeof a.points === 'number');
+        const finalScore = meEntry ? (meEntry.score || 0) : 0;
+        const bestRound = scored.reduce((m, a) => Math.max(m, a.points || 0), 0);
+        const distances = answers.map((a) => a && typeof a.distanceKm === 'number' ? a.distanceKm : null).filter((d) => d != null);
+        const avgDist = distances.length
+            ? Math.round(distances.reduce((s, d) => s + d, 0) / distances.length)
+            : null;
+        if (soloHero) {
+            soloHero.hidden = false;
+            setText($('#solo-hero-score'), String(finalScore));
+            setText($('#solo-hero-best'), String(bestRound));
+            setText($('#solo-hero-avg-dist'), avgDist != null ? `${avgDist} km` : '—');
+            setText($('#solo-hero-locations'), String(answers.length));
+        }
+    } else {
+        const boardWrap = document.querySelector('.end-board-wrap');
+        if (boardWrap) boardWrap.hidden = false;
+        if (soloHero) soloHero.hidden = true;
+    }
     const medals = ['🥇', '🥈', '🥉'];
     const slotOrder = [1, 0, 2]; // visual: 2nd, 1st, 3rd
-    for (const orderIdx of slotOrder) {
+    if (!isSoloMode) for (const orderIdx of slotOrder) {
         if (!ranked[orderIdx]) {
             podium.appendChild(document.createElement('div'));
             continue;
@@ -3117,15 +4109,24 @@ async function renderEndStage(isHost) {
         body.appendChild(tr);
     });
 
-    // Summary line
+    // Summary line. Solo runs have no opponent so we don't frame it as
+    // a win/loss; we just celebrate the final score.
     const winner = ranked[0];
     const me = ranked.find((p) => state.user && p.uid === state.user.uid);
-    if (winner && me && winner.uid === me.uid) {
-        setText($('#end-summary'), '🎉 You won! Nice work.');
-    } else if (winner) {
-        setText($('#end-summary'), `${winner.displayName} took it home with ${winner.score} points.`);
+    const playMode = (state.roomData && state.roomData.playMode) || 'multi';
+    const heading = $('#stage-end .end-head h2');
+    if (playMode === 'solo' && me) {
+        if (heading) setText(heading, 'Run complete');
+        setText($('#end-summary'), `Final score: ${me.score}`);
     } else {
-        setText($('#end-summary'), 'No scores recorded.');
+        if (heading) setText(heading, 'Game over');
+        if (winner && me && winner.uid === me.uid) {
+            setText($('#end-summary'), '🎉 You won! Nice work.');
+        } else if (winner) {
+            setText($('#end-summary'), `${winner.displayName} took it home with ${winner.score} points.`);
+        } else {
+            setText($('#end-summary'), 'No scores recorded.');
+        }
     }
 
     // Full per-question/per-location recap (free for everyone)
@@ -3141,8 +4142,15 @@ async function renderEndStage(isHost) {
         show($('#detailed-stats-upsell'));
     }
 
-    // Host can replay
-    $('#end-again-btn').hidden = !isHost;
+    // In-room session H2H (one panel showing cumulative wins per player
+    // since this room was created). Visible after >=1 match in a multi
+    // room with 2+ players.
+    renderRoomSessionH2H();
+
+    // Rematch controls. Only the host can PROPOSE a rematch, and only
+    // when at least two players are still in the room. Anyone else sees
+    // the accept/decline strip once a proposal is active.
+    renderRematchUI(isHost);
 
     // Write XP / wins / games to profile (once per game)
     if (state.user && me && endStageWrittenForRoom !== state.roomCode) {
@@ -3153,38 +4161,142 @@ async function renderEndStage(isHost) {
 
 async function writeEndOfGameStats(me, didWin) {
     if (!state.user) return;
+    const playMode = (state.roomData && state.roomData.playMode) || 'multi';
+    const isSolo = playMode === 'solo';
     try {
         const xp = Scoring.xpFromScore(me.score);
         const userRef = doc(db, 'users', state.user.uid);
+        // Solo: still earns XP and counts as a game played, but it
+        // cannot grant a "win" because there was no opponent. The
+        // global leaderboard write is also skipped — solo results
+        // are personal-best-only, not ranked.
+        const winsDelta = (isSolo ? 0 : (didWin ? 1 : 0));
         await updateDoc(userRef, {
             'triviaProfile.xp': increment(xp),
             'triviaProfile.gamesPlayed': increment(1),
-            'triviaProfile.wins': increment(didWin ? 1 : 0),
+            'triviaProfile.wins': increment(winsDelta),
             'triviaProfile.lastPlayedAt': serverTimestamp()
         });
-        // Refresh local profile cache for the profile view
         if (state.profile) {
             state.profile.xp = (state.profile.xp || 0) + xp;
             state.profile.gamesPlayed = (state.profile.gamesPlayed || 0) + 1;
-            state.profile.wins = (state.profile.wins || 0) + (didWin ? 1 : 0);
+            state.profile.wins = (state.profile.wins || 0) + winsDelta;
         }
-        // Denormalized leaderboard write
-        const lbRef = doc(db, 'triviaLeaderboard', state.user.uid);
-        await setDoc(lbRef, {
-            uid: state.user.uid,
-            displayName: me.displayName,
-            xp: (state.profile && state.profile.xp) || xp,
-            gamesPlayed: (state.profile && state.profile.gamesPlayed) || 1,
-            wins: (state.profile && state.profile.wins) || (didWin ? 1 : 0),
-            lastPlayedAt: serverTimestamp()
-        }, { merge: true });
+        if (!isSolo) {
+            // Denormalized leaderboard write — multiplayer + daily only.
+            const lbRef = doc(db, 'triviaLeaderboard', state.user.uid);
+            await setDoc(lbRef, {
+                uid: state.user.uid,
+                displayName: me.displayName,
+                xp: (state.profile && state.profile.xp) || xp,
+                gamesPlayed: (state.profile && state.profile.gamesPlayed) || 1,
+                wins: (state.profile && state.profile.wins) || winsDelta,
+                lastPlayedAt: serverTimestamp()
+            }, { merge: true });
+        }
 
         // Daily-challenge leaderboard write. Only the player's BEST score
         // for the day stays — we read the existing doc and only overwrite
-        // when the new score is higher. Skipped silently for solo / multi.
+        // when the new score is higher. No-op for solo / multi.
         await maybeWriteDailyLeaderboard(me);
+
+        // Pairwise head-to-head — host only, multiplayer only. Iterates
+        // every player pair in the room and updates triviaH2H/<pair_key>
+        // so the H2H view can display real records instead of generic
+        // aggregates.
+        await maybeWriteH2HPairs();
     } catch (err) {
         console.warn('End-of-game profile write failed:', err);
+    }
+}
+
+/**
+ * H2H pair-key built from two uids, alphabetically sorted so both
+ * directions resolve to the same doc.
+ */
+function h2hPairKey(uidA, uidB) {
+    if (!uidA || !uidB || uidA === uidB) return null;
+    return [uidA, uidB].sort().join('__');
+}
+
+/**
+ * For each pair of players in the current room, increment the pair's
+ * H2H record based on this game's final scores. Runs only on the
+ * host's client (others would race for the same doc) and only for
+ * multiplayer games (solo/daily can't have head-to-head records).
+ *
+ * Each pair doc carries the displayed names so the H2H view can
+ * render without re-fetching the leaderboard.
+ */
+async function maybeWriteH2HPairs() {
+    if (!state.user || !state.roomData || !state.roomCode) return;
+    const playMode = state.roomData.playMode || 'multi';
+    if (playMode !== 'multi') return;
+    const players = Array.isArray(state.roomPlayers) ? state.roomPlayers.slice() : [];
+    if (players.length < 2) return;
+
+    // In-room session H2H — host writes the room-level counter so
+    // rematches accumulate. Other players don't try (rules permit it
+    // since /triviaRooms is open-write to anyone signed in, but only
+    // one writer avoids the increment race).
+    if (state.roomData.hostUid === state.user.uid) {
+        const sortedByScore = players.slice().sort((a, b) => (b.score || 0) - (a.score || 0));
+        const topScore = sortedByScore[0] ? (sortedByScore[0].score || 0) : 0;
+        const winners = sortedByScore.filter((p) => (p.score || 0) === topScore);
+        const sessionUpdate = { sessionMatchCount: (state.roomData.sessionMatchCount || 0) + 1 };
+        if (winners.length === 1 && topScore > 0) {
+            const prevWins = (state.roomData.sessionWinsByUid && state.roomData.sessionWinsByUid[winners[0].uid]) || 0;
+            sessionUpdate[`sessionWinsByUid.${winners[0].uid}`] = prevWins + 1;
+        }
+        try {
+            await updateDoc(doc(db, 'triviaRooms', state.roomCode), sessionUpdate);
+        } catch (err) {
+            console.warn('Session H2H write failed:', err);
+        }
+    }
+
+    // Per-pair lifetime H2H — written by whichever side of the pair has
+    // the lexicographically lower uid. That single-writer convention
+    // (a) satisfies the rules (the writer is uidA, so rules pass)
+    // (b) avoids two clients racing to increment the same pair doc.
+    // For pairs that don't include me, OR pairs where I'm uidB, I
+    // skip — my counterpart handles the write.
+    const myUid = state.user.uid;
+    for (const opp of players) {
+        if (!opp || !opp.uid || opp.uid === myUid) continue;
+        if (myUid >= opp.uid) continue; // only the lower-uid side writes
+        const me = players.find((p) => p.uid === myUid);
+        if (!me) continue;
+        const uidA = myUid;
+        const uidB = opp.uid;
+        const key = uidA + '__' + uidB;
+        const aScore = me.score || 0;
+        const bScore = opp.score || 0;
+        try {
+            await runTransaction(db, async (tx) => {
+                const ref = doc(db, 'triviaH2H', key);
+                const snap = await tx.get(ref);
+                const cur = snap.exists() ? snap.data() : {};
+                const winsA = (cur.winsA || 0) + (aScore > bScore ? 1 : 0);
+                const winsB = (cur.winsB || 0) + (bScore > aScore ? 1 : 0);
+                const ties = (cur.ties || 0) + (aScore === bScore ? 1 : 0);
+                tx.set(ref, {
+                    uidA, uidB,
+                    displayNameA: me.displayName || 'Player',
+                    displayNameB: opp.displayName || 'Player',
+                    winsA, winsB, ties,
+                    gamesPlayed: (cur.gamesPlayed || 0) + 1,
+                    lastPlayedAt: serverTimestamp()
+                }, { merge: true });
+            });
+        } catch (err) {
+            // The most common cause here is "Missing or insufficient
+            // permissions" — i.e. the Firestore rules for /triviaH2H
+            // haven't been deployed yet. Run:
+            //     firebase deploy --only firestore:rules
+            // The block won't fail the rest of end-of-game.
+            console.warn('H2H write failed for pair', key, '— check that firestore.rules has been deployed:', err);
+        }
     }
 }
 
@@ -3263,7 +4375,9 @@ function renderEndRecap() {
         : computeTriviaAggregates(columns, answersByUid);
     aggregates.forEach((card) => {
         const div = document.createElement('div');
-        div.className = 'end-recap-stat' + (card.isMine ? ' is-mine' : '');
+        div.className = 'end-recap-stat'
+            + (card.isMine ? ' is-mine' : '')
+            + (card.isClosest ? ' is-closest' : '');
         div.innerHTML =
             `<span class="end-recap-stat-label">${escapeHtml(card.label)}</span>` +
             `<span class="end-recap-stat-value">${escapeHtml(card.value)}</span>` +
@@ -3328,16 +4442,27 @@ function renderEndRecap() {
             return { col, ans, points };
         });
 
-        colResults.forEach(({ col, ans }) => {
+        const winnersOfRow = bestPoints > 0
+            ? colResults.filter((r) => r.points === bestPoints)
+            : [];
+        const isTie = winnersOfRow.length > 1;
+        colResults.forEach(({ col, ans, points }) => {
             const isMe = state.user && col.uid === state.user.uid;
+            // Cell highlight: green tint for the winning score(s) in
+            // each row (tie shares the win); muted for the rest.
+            // Ties don't get the highlight since "winning" is ambiguous.
+            let resultCls = 'col-result';
+            if (isMe) resultCls += ' is-mine';
+            if (!isTie && bestPoints > 0 && points === bestPoints) resultCls += ' is-winner';
+            else if (bestPoints > 0 && points < bestPoints) resultCls += ' is-loser';
             if (!ans) {
-                rowHTML += `<td class="col-result ${isMe ? 'is-mine' : ''}"><span class="recap-result-zero">…</span></td>`;
+                rowHTML += `<td class="${resultCls}"><span class="recap-result-zero">…</span></td>`;
                 return;
             }
             if (isGlobeDrop) {
                 const pts = Number(ans.points) || 0;
                 rowHTML +=
-                    `<td class="col-result ${isMe ? 'is-mine' : ''}">` +
+                    `<td class="${resultCls}">` +
                     `<span class="${pts > 0 ? 'recap-result-points' : 'recap-result-zero'}">+${pts}</span>` +
                     `<span class="recap-result-dist">${Math.round(Number(ans.distanceKm) || 0).toLocaleString()} km off</span>` +
                     '</td>';
@@ -3345,23 +4470,23 @@ function renderEndRecap() {
                 const pts = Number(ans.points) || 0;
                 const pickClass = ans.correct ? 'is-correct' : 'is-wrong';
                 rowHTML +=
-                    `<td class="col-result ${isMe ? 'is-mine' : ''}">` +
+                    `<td class="${resultCls}">` +
                     `<span class="${pts > 0 ? 'recap-result-points' : 'recap-result-zero'}">${pts > 0 ? '+' + pts : '0'}</span>` +
                     `<span class="recap-result-pick ${pickClass}">${escapeHtml(ans.answerText || '…')}</span>` +
                     '</td>';
             }
         });
 
-        // Winner badge — tie if more than one player hit bestPoints (>0).
+        // Winner badge — a glowing trophy pill for a single winner; a
+        // neutral pill for a tie; nothing if nobody scored.
         let winnerCell = '<span class="recap-result-zero">…</span>';
         if (bestPoints > 0) {
-            const winners = colResults.filter((r) => r.points === bestPoints);
-            if (winners.length === 1) {
-                const w = winners[0].col;
+            if (winnersOfRow.length === 1) {
+                const w = winnersOfRow[0].col;
                 const isMe = state.user && w.uid === state.user.uid;
-                winnerCell = `🏆 ${escapeHtml(isMe ? 'You' : w.displayName)}`;
+                winnerCell = `<span class="recap-winner-badge">🏆 ${escapeHtml(isMe ? 'You' : w.displayName)}</span>`;
             } else {
-                winnerCell = '🤝 Tie';
+                winnerCell = '<span class="recap-tie-badge">Tie</span>';
             }
         }
         rowHTML += `<td class="col-winner">${winnerCell}</td>`;
@@ -3406,6 +4531,7 @@ function computeGlobeDropAggregates(columns, answersByUid) {
         const isMine = state.user && closestPlayer.uid === state.user.uid;
         cards.push({
             isMine: false,
+            isClosest: true,
             label: 'Closest guess',
             value: Math.round(closest.distanceKm).toLocaleString() + ' km',
             sub: (isMine ? 'You' : closestPlayer.displayName) + ' · ' + closest.locationName
@@ -3468,9 +4594,324 @@ function renderDetailedStats() {
     }
 }
 
+/* =====================================================================
+ * Rematch flow
+ * =====================================================================
+ *
+ * The host proposes a rematch; every other player in the room must
+ * accept before the new game starts. Anyone declining cancels the
+ * proposal for everyone. Room doc carries the coordination state:
+ *
+ *   rematchProposedBy:    uid of the host who proposed (or null)
+ *   rematchAcceptedBy:    array of uids who have accepted
+ *   rematchDeclinedBy:    array of uids who have declined
+ *
+ * Once `rematchAcceptedBy.length === playerCount` and no decliners,
+ * `playAgain()` is invoked by the host's client (only one client should
+ * actually do the writes — we gate by `state.roomData.hostUid`).
+ */
+
+function rematchAcceptCount() {
+    const r = state.roomData || {};
+    return Array.isArray(r.rematchAcceptedBy) ? r.rematchAcceptedBy.length : 0;
+}
+function rematchDeclineCount() {
+    const r = state.roomData || {};
+    return Array.isArray(r.rematchDeclinedBy) ? r.rematchDeclinedBy.length : 0;
+}
+function rematchPlayerCount() {
+    return Array.isArray(state.roomPlayers) ? state.roomPlayers.length : 0;
+}
+function meHasAcceptedRematch() {
+    if (!state.user) return false;
+    const arr = (state.roomData && state.roomData.rematchAcceptedBy) || [];
+    return arr.indexOf(state.user.uid) !== -1;
+}
+function meHasDeclinedRematch() {
+    if (!state.user) return false;
+    const arr = (state.roomData && state.roomData.rematchDeclinedBy) || [];
+    return arr.indexOf(state.user.uid) !== -1;
+}
+
+function renderRoomSessionH2H() {
+    const panel = $('#room-session-h2h');
+    const list = $('#room-session-h2h-list');
+    if (!panel || !list) return;
+    const room = state.roomData || {};
+    const matchCount = room.sessionMatchCount || 0;
+    const playMode = room.playMode || 'multi';
+    if (playMode !== 'multi' || matchCount < 1 || state.roomPlayers.length < 2) {
+        panel.hidden = true;
+        return;
+    }
+    const wins = room.sessionWinsByUid || {};
+    const rows = state.roomPlayers.map((p) => ({
+        uid: p.uid,
+        displayName: p.displayName,
+        sessionWins: wins[p.uid] || 0
+    })).sort((a, b) => b.sessionWins - a.sessionWins);
+    // Total matches = sum of wins across all players, but capped by
+    // sessionMatchCount (ties don't increment anyone's count, so the
+    // sum can lag behind). Use sessionMatchCount as the denominator
+    // so the "losses" calc reflects reality.
+    list.innerHTML = '';
+    rows.forEach((r, i) => {
+        const losses = Math.max(0, matchCount - r.sessionWins);
+        const li = document.createElement('li');
+        li.className = 'mini-board-row session-h2h-row';
+        if (state.user && r.uid === state.user.uid) li.classList.add('is-me');
+        li.innerHTML =
+            `<span class="mini-board-rank">${i + 1}</span>` +
+            `<span class="mini-board-name">${escapeHtml(r.displayName)}</span>` +
+            `<span class="session-h2h-wl">` +
+                `<span class="session-h2h-pill is-win">${r.sessionWins}W</span>` +
+                `<span class="session-h2h-pill is-loss">${losses}L</span>` +
+            `</span>`;
+        list.appendChild(li);
+    });
+    panel.hidden = false;
+}
+
+function renderRematchUI(isHost) {
+    const playerCount = rematchPlayerCount();
+    const proposed = !!(state.roomData && state.roomData.rematchProposedBy);
+    const declined = rematchDeclineCount() > 0;
+    const playMode = (state.roomData && state.roomData.playMode) || 'multi';
+    const strip = $('#rematch-strip');
+    const status = $('#rematch-status');
+    const actions = $('#rematch-actions');
+    const proposeBtn = $('#end-again-btn');
+
+    // Hide everything by default, then enable based on state.
+    if (proposeBtn) proposeBtn.hidden = true;
+    if (strip) strip.hidden = true;
+    if (actions) actions.hidden = true;
+
+    // Solo: there's only one player so there's nothing to accept-gate. Show
+    // a single Restart button that fires playAgain immediately.
+    if (playMode === 'solo' && playerCount === 1) {
+        if (proposeBtn) {
+            proposeBtn.hidden = false;
+            proposeBtn.innerHTML = '<span aria-hidden="true">🔁</span> Restart';
+        }
+        return;
+    }
+
+    // Multiplayer rematch requires at least 2 players. If <2 remain,
+    // no rematch at all.
+    if (playerCount < 2) return;
+
+    if (!proposed) {
+        // No proposal yet — any player can propose a rematch.
+        if (proposeBtn) {
+            proposeBtn.hidden = false;
+            proposeBtn.innerHTML = '<span aria-hidden="true">🔁</span> Rematch';
+        }
+        return;
+    }
+
+    // Proposal active — show strip with progress.
+    if (strip) strip.hidden = false;
+    if (declined) {
+        // Surface the decline briefly, then auto-reset so anyone can
+        // propose again. Without this, a single decline used to lock
+        // the rematch flow forever.
+        if (status) setText(status, 'Rematch declined — try again any time.');
+        if (proposeBtn) {
+            proposeBtn.hidden = false;
+            proposeBtn.innerHTML = '<span aria-hidden="true">🔁</span> Propose again';
+        }
+        clearRematchStateSoon();
+        return;
+    }
+    const accepted = rematchAcceptCount();
+    if (status) setText(status, `Rematch — ${accepted} / ${playerCount} players ready`);
+
+    // Show accept/decline buttons to anyone who hasn't yet responded.
+    if (actions && state.user && !meHasAcceptedRematch() && !meHasDeclinedRematch()) {
+        actions.hidden = false;
+    }
+
+    // When everyone has accepted, the host fires the actual restart.
+    if (isHost && accepted >= playerCount) {
+        playAgain();
+    }
+}
+
+async function proposeRematch() {
+    if (!state.roomCode || !state.roomData || !state.user) return;
+    if (rematchPlayerCount() < 2) return;
+    try {
+        await updateDoc(doc(db, 'triviaRooms', state.roomCode), {
+            rematchProposedBy: state.user.uid,
+            rematchAcceptedBy: [state.user.uid],
+            rematchDeclinedBy: [],
+            rematchProposedAt: serverTimestamp()
+        });
+        // Open the waiting modal locally for the proposer. The room
+        // snapshot listener will re-render its contents as opponents
+        // respond. Auto-cancels after PROPOSAL_TIMEOUT_MS.
+        openProposalPendingModal();
+    } catch (err) {
+        console.warn('proposeRematch failed:', err);
+    }
+}
+
+/* Proposer's waiting modal — single-instance, driven by the room
+ * snapshot. The timer is a setInterval that ticks the countdown
+ * label every 250ms and force-closes once it hits 0. Cancelling
+ * from the modal calls clearRematchStateSoon() to wipe the room
+ * fields immediately so opponents stop seeing the prompt. */
+const PROPOSAL_TIMEOUT_MS = 10000;
+let proposalPendingTimerId = null;
+function openProposalPendingModal() {
+    const modal = document.getElementById('proposal-pending-modal');
+    if (!modal) return;
+    state.proposalPendingDeadline = Date.now() + PROPOSAL_TIMEOUT_MS;
+    modal.removeAttribute('hidden');
+    // Reset the depletion bar to full width and kick off the 10-second
+    // shrink. transition: transform 0.25s linear in CSS smooths the
+    // 250ms render cadence into a continuous animation.
+    const barInner = modal.querySelector('.proposal-pending-bar span');
+    if (barInner) {
+        barInner.style.transition = 'none';
+        barInner.style.transform = 'scaleX(1)';
+        // Force a layout flush, then re-enable the transition and kick
+        // the bar to 0 over the full proposal window.
+        // eslint-disable-next-line no-void
+        void barInner.offsetWidth;
+        barInner.style.transition = `transform ${PROPOSAL_TIMEOUT_MS}ms linear`;
+        barInner.style.transform = 'scaleX(0)';
+    }
+    renderProposalPendingModal();
+    if (proposalPendingTimerId) clearInterval(proposalPendingTimerId);
+    proposalPendingTimerId = setInterval(() => {
+        const left = state.proposalPendingDeadline - Date.now();
+        if (left <= 0) {
+            cancelOwnProposal('timeout');
+            return;
+        }
+        renderProposalPendingModal();
+    }, 250);
+}
+function closeProposalPendingModal() {
+    const modal = document.getElementById('proposal-pending-modal');
+    if (modal) modal.setAttribute('hidden', '');
+    if (proposalPendingTimerId) {
+        clearInterval(proposalPendingTimerId);
+        proposalPendingTimerId = null;
+    }
+    state.proposalPendingDeadline = null;
+}
+function renderProposalPendingModal() {
+    const list = document.getElementById('proposal-response-list');
+    const timerEl = document.getElementById('proposal-pending-timer');
+    if (!list || !timerEl) return;
+    const room = state.roomData || {};
+    const accepted = Array.isArray(room.rematchAcceptedBy) ? room.rematchAcceptedBy : [];
+    const declined = Array.isArray(room.rematchDeclinedBy) ? room.rematchDeclinedBy : [];
+    // List rows for every player EXCEPT the proposer (they're the host
+    // of the proposal, no need to show their own row).
+    const myUid = state.user && state.user.uid;
+    const others = state.roomPlayers.filter((p) => p.uid !== myUid);
+    list.innerHTML = '';
+    others.forEach((p) => {
+        const li = document.createElement('li');
+        // Single-word status label; the CSS handles the pulsing
+        // "Waiting" amber pill vs the glowing "Ready" green pill.
+        let status = 'Waiting';
+        let cls = 'is-pending';
+        if (declined.includes(p.uid)) { status = 'Declined'; cls = 'is-declined'; }
+        else if (accepted.includes(p.uid)) { status = 'Ready'; cls = 'is-accepted'; }
+        li.className = 'proposal-response-row ' + cls;
+        const initial = avatarLetter(p.displayName);
+        li.innerHTML =
+            `<span class="avatar" aria-hidden="true">${escapeHtml(initial)}</span>` +
+            `<span class="name">${escapeHtml(p.displayName || 'Player')}</span>` +
+            `<span class="status">${escapeHtml(status)}</span>`;
+        list.appendChild(li);
+    });
+    const left = Math.max(0, Math.ceil((state.proposalPendingDeadline - Date.now()) / 1000));
+    timerEl.textContent = left + 's remaining';
+}
+async function cancelOwnProposal(reason) {
+    closeProposalPendingModal();
+    // Clear the room fields right away so opponents stop seeing the
+    // prompt. Best-effort.
+    if (!state.roomCode) return;
+    try {
+        await updateDoc(doc(db, 'triviaRooms', state.roomCode), {
+            rematchProposedBy: null,
+            rematchAcceptedBy: [],
+            rematchDeclinedBy: []
+        });
+    } catch (_) { /* best-effort */ }
+    if (reason === 'timeout') {
+        try { showToast('Restart proposal timed out', { icon: '⌛', key: 'proposal-timeout' }); } catch (_) {}
+    }
+}
+
+/**
+ * Reset the rematch coordination state on the room doc after a decline,
+ * so the option to propose another rematch isn't permanently nuked.
+ * Debounced so we don't write multiple times if renderRematchUI fires
+ * back-to-back (snapshot replay).
+ */
+let _rematchClearTimer = null;
+function clearRematchStateSoon() {
+    if (_rematchClearTimer) return;
+    _rematchClearTimer = setTimeout(async () => {
+        _rematchClearTimer = null;
+        if (!state.roomCode || !state.user) return;
+        // Only any one client needs to write — pick the proposer since
+        // they're the one who created the state. If they've left,
+        // anyone may clear it.
+        const r = state.roomData || {};
+        if (!r.rematchProposedBy) return;
+        try {
+            await updateDoc(doc(db, 'triviaRooms', state.roomCode), {
+                rematchProposedBy: null,
+                rematchAcceptedBy: [],
+                rematchDeclinedBy: []
+            });
+        } catch (_) { /* best-effort */ }
+    }, 2500);
+}
+
+async function respondToRematch(accept) {
+    if (!state.roomCode || !state.roomData || !state.user) return;
+    if (!state.roomData.rematchProposedBy) return;
+    if (meHasAcceptedRematch() || meHasDeclinedRematch()) return;
+    const myUid = state.user.uid;
+    try {
+        await runTransaction(db, async (tx) => {
+            const ref = doc(db, 'triviaRooms', state.roomCode);
+            const snap = await tx.get(ref);
+            if (!snap.exists()) return;
+            const data = snap.data() || {};
+            const accepted = Array.isArray(data.rematchAcceptedBy) ? data.rematchAcceptedBy.slice() : [];
+            const declined = Array.isArray(data.rematchDeclinedBy) ? data.rematchDeclinedBy.slice() : [];
+            if (accepted.includes(myUid) || declined.includes(myUid)) return;
+            if (accept) accepted.push(myUid);
+            else declined.push(myUid);
+            tx.update(ref, {
+                rematchAcceptedBy: accepted,
+                rematchDeclinedBy: declined
+            });
+        });
+    } catch (err) {
+        console.warn('respondToRematch failed:', err);
+    }
+}
+
 async function playAgain() {
     if (!state.roomCode || !state.roomData) return;
     if (!(state.user && state.roomData.hostUid === state.user.uid)) return;
+    // Re-entry guard: once playAgain starts writing, the rematch state on
+    // the room doc will be cleared. Without this flag, the renderEndStage
+    // re-render between the read and the write could fire playAgain twice.
+    if (state.rematchInFlight) return;
+    state.rematchInFlight = true;
     const nextRound = (state.roomData.round || 1) + 1;
     const isGlobeDrop = state.roomData.gameType === 'globe-drop';
 
@@ -3499,7 +4940,10 @@ async function playAgain() {
                 questions: locations,
                 totalQuestions: locations.length,
                 round: nextRound,
-                finishedAt: null
+                finishedAt: null,
+                rematchProposedBy: null,
+                rematchAcceptedBy: [],
+                rematchDeclinedBy: []
             });
         } else {
             // Trivia: re-deal questions using the same source + reset picker.
@@ -3532,7 +4976,10 @@ async function playAgain() {
             packId,
             packName,
             round: nextRound,
-            finishedAt: null
+            finishedAt: null,
+            rematchProposedBy: null,
+            rematchAcceptedBy: [],
+            rematchDeclinedBy: []
         });
         }
 
@@ -3545,6 +4992,8 @@ async function playAgain() {
             + (err && err.message ? err.message : 'unknown error')
             + '. Try again in a moment.'
         );
+    } finally {
+        state.rematchInFlight = false;
     }
 }
 
@@ -3762,7 +5211,8 @@ function renderH2HPickers() {
     renderH2HComparison();
 }
 
-function renderH2HComparison() {
+let h2hPairFetchToken = 0;
+async function renderH2HComparison() {
     const a = $('#h2h-select-a');
     const b = $('#h2h-select-b');
     if (!a || !b) return;
@@ -3780,19 +5230,48 @@ function renderH2HComparison() {
     if (result) result.hidden = false;
     setText($('#h2h-name-a'), ea.displayName || 'Player');
     setText($('#h2h-name-b'), eb.displayName || 'Player');
-    $('#h2h-stats-a').innerHTML = renderH2HStatsHtml(ea, eb);
-    $('#h2h-stats-b').innerHTML = renderH2HStatsHtml(eb, ea);
+    // Optimistic placeholder so the panel doesn't jump between empty
+    // and populated states while we fetch the pair doc.
+    $('#h2h-stats-a').innerHTML = '<dt>Loading…</dt><dd>—</dd>';
+    $('#h2h-stats-b').innerHTML = '<dt>Loading…</dt><dd>—</dd>';
+
+    const key = h2hPairKey(ea.uid, eb.uid);
+    const token = ++h2hPairFetchToken;
+    let pair = null;
+    if (key) {
+        try {
+            const snap = await getDoc(doc(db, 'triviaH2H', key));
+            if (snap.exists()) pair = snap.data();
+        } catch (_) { /* network / rules — fall back to no-pair view */ }
+    }
+    if (token !== h2hPairFetchToken) return; // raced
+
+    $('#h2h-stats-a').innerHTML = renderH2HStatsHtml(ea, eb, pair);
+    $('#h2h-stats-b').innerHTML = renderH2HStatsHtml(eb, ea, pair);
 }
 
-function renderH2HStatsHtml(self, other) {
-    // Highlight the field where `self` leads vs `other` so the eye lands
-    // on the head-to-head deltas instead of reading two columns of digits.
-    const pct = (e) => e.gamesPlayed ? (100 * (e.wins || 0) / e.gamesPlayed) : 0;
+function pairStatsFor(self, other, pair) {
+    if (!pair) return { wins: 0, losses: 0, ties: 0, gamesPlayed: 0 };
+    // pair is keyed by sorted (uidA, uidB). Figure out which side `self` is.
+    const selfIsA = pair.uidA === self.uid;
+    const wins = selfIsA ? (pair.winsA || 0) : (pair.winsB || 0);
+    const losses = selfIsA ? (pair.winsB || 0) : (pair.winsA || 0);
+    const ties = pair.ties || 0;
+    return { wins, losses, ties, gamesPlayed: pair.gamesPlayed || 0 };
+}
+
+function renderH2HStatsHtml(self, other, pair) {
+    // Pairwise stats first (the headline), with global lifetime XP shown
+    // as context below. cmp > 0 highlights self leading vs other for
+    // the colour cue.
+    const sp = pairStatsFor(self, other, pair);
+    const op = pairStatsFor(other, self, pair);
     const fields = [
-        { label: 'XP',         val: self.xp || 0,         cmp: (self.xp || 0)         - (other.xp || 0) },
-        { label: 'Games',      val: self.gamesPlayed || 0,cmp: (self.gamesPlayed || 0)- (other.gamesPlayed || 0) },
-        { label: 'Wins',       val: self.wins || 0,       cmp: (self.wins || 0)       - (other.wins || 0) },
-        { label: 'Win %',      val: Math.round(pct(self)) + '%', cmp: pct(self)       - pct(other) }
+        { label: 'Matches',  val: sp.gamesPlayed,            cmp: 0 },
+        { label: 'Wins',     val: sp.wins,                   cmp: sp.wins - op.wins },
+        { label: 'Losses',   val: sp.losses,                 cmp: op.wins - sp.wins },
+        { label: 'Ties',     val: sp.ties,                   cmp: 0 },
+        { label: 'XP',       val: self.xp || 0,              cmp: (self.xp || 0) - (other.xp || 0) }
     ];
     return fields.map((f) => {
         const cls = f.cmp > 0 ? ' h2h-lead' : (f.cmp < 0 ? ' h2h-trail' : '');
@@ -3833,6 +5312,8 @@ async function boot() {
     if (!Config.PREMIUM_UI_ENABLED) {
         document.body.classList.add('premium-disabled');
     }
+
+    installFirestoreNoiseGuard();
 
     wireViewTabs();
     wireLobby();

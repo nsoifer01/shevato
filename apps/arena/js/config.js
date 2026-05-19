@@ -94,8 +94,9 @@
         // Per-location timer. 120s matches your "X minutes" framing — gives
         // players time to study the map before committing.
         GLOBE_DROP_LOCATION_TIME_MS: 120000,
-        // 3s glimpse of pins/distances + Wikipedia blurb, then advance.
-        GLOBE_DROP_REVEAL_TIME_MS: 5000,
+        // Post-round reveal window — pins, distances, Wikipedia blurb,
+        // and the Ready bar so players who want to skip the wait can.
+        GLOBE_DROP_REVEAL_TIME_MS: 10000,
 
         // Scoring is exponential decay: base * exp(-distance / scaleKm).
         // At 0km you get base * multiplier; at scaleKm you get ~37% of base.
