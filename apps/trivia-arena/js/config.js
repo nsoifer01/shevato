@@ -1,0 +1,92 @@
+/*
+ * Trivia Arena — runtime constants.
+ *
+ * UMD-style export: CommonJS for node:test, attached to a window namespace
+ * (window.TriviaArena.Config) for browser classic scripts.
+ *
+ * STRIPE_CHECKOUT_URL is intentionally a placeholder — flip it to the real
+ * Stripe Checkout link post-merge, no other code needs to change.
+ */
+(function (root, factory) {
+    if (typeof module === 'object' && module.exports) {
+        module.exports = factory();
+    } else {
+        const ns = root.TriviaArena = root.TriviaArena || {};
+        ns.Config = factory();
+    }
+}(typeof self !== 'undefined' ? self : this, function () {
+    'use strict';
+
+    return {
+        // Where the "Go Premium" button sends users. Replace with your real
+        // Stripe Checkout link or Payment Link URL after merge — no other
+        // code references it.
+        STRIPE_CHECKOUT_URL: 'https://buy.stripe.com/test_placeholder_trivia_arena_premium',
+
+        // Room codes are 5 uppercase letters/digits, excluding visually
+        // ambiguous characters (0/O, 1/I/L) to keep verbal sharing painless.
+        ROOM_CODE_LENGTH: 5,
+        ROOM_CODE_ALPHABET: 'ABCDEFGHJKMNPQRSTUVWXYZ23456789',
+
+        // Question pacing.
+        QUESTION_TIME_MS: 15000,       // 15s to answer each question
+        REVEAL_TIME_MS: 2500,          // 2.5s to read the correct-answer text, then next picker
+        MAX_QUESTIONS_PER_GAME: 10,
+
+        // Scoring — base for correctness + a speed bonus that decays linearly
+        // with time remaining. Streaks add a multiplier capped at +50%.
+        // Per-question max = (100 + 100) * 1.5 = 300, so a 10-question
+        // round tops out around 3000 and typical play lands ~1000–2000.
+        // Small enough to read at a glance, big enough to feel like points.
+        SCORE_BASE_CORRECT: 100,
+        SCORE_SPEED_BONUS_MAX: 100,
+        STREAK_MULTIPLIER_STEP: 0.1,   // +10% per consecutive correct
+        STREAK_MULTIPLIER_CAP: 5,      // capped at 5 in a row (=> 1.5x)
+
+        // XP earned == score (1:1). With the smaller scoring scale above,
+        // this gives ~1000–3000 XP per game — feels rewarding without
+        // exploding profile totals.
+        XP_PER_POINT_DIVISOR: 1,
+
+        // Premium tier — keep this list small and load-bearing. The premium
+        // boolean lives at users/{uid}.triviaProfile.premium.
+        PREMIUM_FEATURES: {
+            PRIVATE_ROOMS: 'private-rooms',
+            CUSTOM_PACKS: 'custom-packs',
+            DETAILED_STATS: 'detailed-stats'
+        },
+
+        // Cosmetic limits.
+        MAX_DISPLAY_NAME: 20,
+        MAX_PLAYERS_PER_ROOM: 16,
+
+        // ---------- MapTap mode ----------
+        // Per-location timer. 120s matches your "X minutes" framing — gives
+        // players time to study the map before committing.
+        MAPTAP_LOCATION_TIME_MS: 120000,
+        // 3s glimpse of pins/distances + Wikipedia blurb, then advance.
+        MAPTAP_REVEAL_TIME_MS: 5000,
+
+        // Scoring is exponential decay: base * exp(-distance / scaleKm).
+        // At 0km you get base * multiplier; at scaleKm you get ~37% of base.
+        MAPTAP_BASE_POINTS: 100,
+        MAPTAP_DISTANCE_SCALE_KM: 1500,
+
+        // Continent multipliers per your spec — harder/lesser-known
+        // continents (Africa, Asia, Oceania, Antarctic) score more than
+        // Europe (the baseline) so the points reflect difficulty, not just
+        // geographic luck. Keys are lowercased REST Countries `region`
+        // strings; missing keys fall back to 1.0.
+        MAPTAP_CONTINENT_MULTIPLIERS: {
+            africa: 1.3,
+            asia: 1.3,
+            europe: 1.0,
+            americas: 1.1,
+            oceania: 1.4,
+            antarctic: 1.5
+        },
+
+        // Default round size dropdown for MapTap (locations per game).
+        MAPTAP_LOCATIONS_DEFAULT: 5
+    };
+}));
