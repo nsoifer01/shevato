@@ -1,13 +1,13 @@
 /*
- * Trivia Arena — MapTap mode scoring.
+ * Brain Arena — GlobeDrop mode scoring.
  *
- * Pure, no DOM/Firebase. Exported CommonJS + window.TriviaArena.MapTapScoring.
+ * Pure, no DOM/Firebase. Exported CommonJS + window.BrainArena.GlobeDropScoring.
  *
  * Distance: standard Haversine great-circle formula in km.
  * Score:    base * exp(-distance / scaleKm) * continentMultiplier
  *           (0km → base * multiplier; scaleKm → ~37% of base; far → ~0)
  *
- * Continent multiplier comes from Config.MAPTAP_CONTINENT_MULTIPLIERS,
+ * Continent multiplier comes from Config.GLOBE_DROP_CONTINENT_MULTIPLIERS,
  * keyed by lowercased REST Countries `region` string (Africa, Americas,
  * Asia, Europe, Oceania, Antarctic). Missing keys fall back to 1.0.
  */
@@ -16,8 +16,8 @@
         const Config = require('./config.js');
         module.exports = factory(Config);
     } else {
-        const ns = root.TriviaArena = root.TriviaArena || {};
-        ns.MapTapScoring = factory(ns.Config);
+        const ns = root.BrainArena = root.BrainArena || {};
+        ns.GlobeDropScoring = factory(ns.Config);
     }
 }(typeof self !== 'undefined' ? self : this, function (Config) {
     'use strict';
@@ -44,7 +44,7 @@
      * recognize so a malformed location can never zero-out scoring.
      */
     function continentMultiplier(region) {
-        const table = Config.MAPTAP_CONTINENT_MULTIPLIERS || {};
+        const table = Config.GLOBE_DROP_CONTINENT_MULTIPLIERS || {};
         const key = String(region || '').trim().toLowerCase();
         const mult = table[key];
         return (typeof mult === 'number' && Number.isFinite(mult)) ? mult : 1;
@@ -58,8 +58,8 @@
      * @returns {{ points:number, distanceKm:number, multiplier:number, basePoints:number }}
      */
     function scoreGuess({ distanceKm, region }) {
-        const max = Config.MAPTAP_BASE_POINTS;
-        const scale = Config.MAPTAP_DISTANCE_SCALE_KM;
+        const max = Config.GLOBE_DROP_BASE_POINTS;
+        const scale = Config.GLOBE_DROP_DISTANCE_SCALE_KM;
         const d = Math.max(0, Number(distanceKm) || 0);
         const base = max * Math.exp(-d / scale);
         const mult = continentMultiplier(region);
