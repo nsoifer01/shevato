@@ -310,11 +310,15 @@
             </span>
           </div>
           <div class="room-head-right">
-            <!-- Host-only mid-game controls. Hidden until the room is in
-                 'playing' or 'picking' and the local user is the host. -->
+            <!-- Mid-game controls. Visible to every player once the
+                 room is playing — pause + restart + end game now all
+                 require unanimous accept where applicable. -->
             <div class="room-host-actions" id="room-host-actions" hidden>
               <button type="button" class="btn btn-ghost btn-sm" id="room-pause-btn" title="Pause / resume the timer">
                 <span aria-hidden="true">⏸</span> Pause
+              </button>
+              <button type="button" class="btn btn-ghost btn-sm" id="room-restart-btn" title="Propose restarting the game (all players must accept)">
+                <span aria-hidden="true">🔁</span> Restart
               </button>
               <button type="button" class="btn btn-ghost btn-sm btn-danger-ghost" id="room-end-btn" title="End the game and show the final scores">
                 <span aria-hidden="true">⏹</span> End game
@@ -365,6 +369,34 @@
 
         <!-- STAGE: lobby (waiting) -->
         <section class="stage stage-lobby" id="stage-lobby">
+          <!-- Room settings — visible to all players, read-only for
+               guests. Host can tweak via the "Edit settings" button. -->
+          <section class="room-settings" id="room-settings" hidden>
+            <header class="room-settings-head">
+              <h3>Room settings</h3>
+              <button type="button" class="btn btn-ghost btn-sm" id="room-settings-edit-btn" hidden>
+                <span aria-hidden="true">⚙</span> Edit
+              </button>
+            </header>
+            <dl class="room-settings-list">
+              <div class="room-settings-item">
+                <dt>Round type</dt>
+                <dd id="room-settings-round-type">—</dd>
+              </div>
+              <div class="room-settings-item">
+                <dt>Difficulty</dt>
+                <dd id="room-settings-difficulty">—</dd>
+              </div>
+              <div class="room-settings-item">
+                <dt>Locations</dt>
+                <dd id="room-settings-locations">—</dd>
+              </div>
+              <div class="room-settings-item">
+                <dt>Time / location</dt>
+                <dd id="room-settings-timer">—</dd>
+              </div>
+            </dl>
+          </section>
           <h2 class="section-title">Players in the lobby</h2>
           <ul class="player-grid" id="lobby-player-grid"></ul>
           <div class="lobby-host-controls" id="lobby-host-controls" hidden>

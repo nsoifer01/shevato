@@ -985,11 +985,11 @@ function wireLobby() {
     $('#leave-room-btn').addEventListener('click', async () => {
         const isSolo = state.roomData && state.roomData.playMode === 'solo';
         const ok = await openConfirmModal({
-            title: isSolo ? 'End your run?' : 'Leave room?',
+            title: isSolo ? 'Back to lobby?' : 'Leave room?',
             body: isSolo
-                ? 'Ending now will discard the current run.'
+                ? 'Your current run will end and you\'ll return to the lobby.'
                 : 'Are you sure you want to leave this room?',
-            confirmLabel: isSolo ? 'End run' : 'Leave',
+            confirmLabel: isSolo ? 'Back to lobby' : 'Leave',
             cancelLabel: 'Cancel',
             danger: true
         });
@@ -997,6 +997,19 @@ function wireLobby() {
     });
     $('#start-game-btn').addEventListener('click', startGame);
     $('#end-back-btn').addEventListener('click', () => leaveRoom());
+    const settingsEditBtn = $('#room-settings-edit-btn');
+    if (settingsEditBtn) {
+        settingsEditBtn.addEventListener('click', async () => {
+            const ok = await openConfirmModal({
+                title: 'Change settings',
+                body: 'Changing round type, difficulty, or location count needs the room to be recreated. Leave the room and use "Create a room" with new settings — your players can re-join with the same code.',
+                confirmLabel: 'Got it',
+                cancelLabel: 'Close'
+            });
+            // intentional no-op on either response — informational modal
+            void ok;
+        });
+    }
     $('#end-again-btn').addEventListener('click', () => {
         // Solo: skip the accept gate, restart immediately.
         const playMode = (state.roomData && state.roomData.playMode) || 'multi';
@@ -1023,11 +1036,47 @@ function wireLobby() {
         } catch (e) { /* ignore */ }
     });
 
-    // Host-only mid-game controls (pause / end).
+    // Mid-game controls (all players).
     const pauseBtn = $('#room-pause-btn');
     const endBtn = $('#room-end-btn');
+    const restartBtn = $('#room-restart-btn');
     if (pauseBtn) pauseBtn.addEventListener('click', () => togglePauseRoom());
     if (endBtn) endBtn.addEventListener('click', () => hostEndGameEarly());
+    if (restartBtn) restartBtn.addEventListener('click', () => proposeMidGameRestart());
+}
+
+/**
+ * Mid-match Restart. Solo just calls playAgain directly. Multi proposes
+ * a unanimous-accept restart via the same rematch coordination fields
+ * used on the end stage.
+ */
+async function proposeMidGameRestart() {
+    if (!state.user || !state.roomCode || !state.roomData) return;
+    const playMode = state.roomData.playMode || 'multi';
+    if (playMode === 'solo') {
+        const ok = await openConfirmModal({
+            title: 'Restart your run?',
+            body: 'A fresh set of locations will be drawn. The current run will end.',
+            confirmLabel: 'Restart',
+            danger: true
+        });
+        if (ok) {
+            // playAgain expects the room to be 'finished' to advance the
+            // round counter cleanly, but it works from any state. For
+            // solo we can call it directly.
+            playAgain();
+        }
+        return;
+    }
+    if (rematchPlayerCount() < 2) return;
+    const ok = await openConfirmModal({
+        title: 'Restart the game?',
+        body: 'All players must accept before the game restarts.',
+        confirmLabel: 'Propose restart',
+        danger: false
+    });
+    if (!ok) return;
+    await proposeRematch();
 }
 
 function clearJoinError() {
@@ -1077,7 +1126,9 @@ async function createRoom(opts) {
     const btn = isSoloLike
         ? (mode === 'daily' ? $('#play-daily-btn') : $('#play-solo-btn'))
         : $('#create-room-btn');
-    const originalLabel = btn.textContent;
+    // innerHTML preserves the inline SVG icon. textContent would
+    // strip it on restore and leave the button text-only.
+    const originalLabel = btn.innerHTML;
     btn.disabled = true;
 
     try {
@@ -1099,7 +1150,7 @@ async function createRoom(opts) {
         };
 
         if (gameType === 'globe-drop') {
-            btn.textContent = mode === 'daily' ? "Loading today's challenge…" : 'Fetching locations…';
+            btn.innerHTML = mode === 'daily' ? "Loading today's challenge…" : 'Fetching locations…';
             const count = parseInt($('#create-locations-count').value, 10) || Config.GLOBE_DROP_LOCATIONS_DEFAULT;
             // Daily is the only mode that forces its settings (so every
             // player who plays a given day faces the same parameters).
@@ -1166,7 +1217,7 @@ async function createRoom(opts) {
             const sel = 'live';
             const count = parseInt($('#create-questions-count').value, 10) || 10;
             const seconds = parseInt($('#create-trivia-time').value, 10) || 15;
-            btn.textContent = 'Fetching questions…';
+            btn.innerHTML = 'Fetching questions…';
             const { questions, packId, packName } = await buildQuestionsForRound(sel, count);
             await setDoc(ref, Object.assign({}, shared, {
                 packId,
@@ -1209,7 +1260,7 @@ async function createRoom(opts) {
         );
     } finally {
         btn.disabled = false;
-        btn.textContent = originalLabel;
+        btn.innerHTML = originalLabel;
     }
 }
 
@@ -1534,6 +1585,14 @@ async function leaveRoom({ silent = false, reason = null } = {}) {
     hide($('#stage-globe-drop'));
     hide($('#stage-picking'));
     show($('#stage-lobby'));
+    // Clear the join-code input so the previous room's code doesn't
+    // pre-populate the next attempt. Same for the password field below.
+    const codeInput = $('#join-code');
+    if (codeInput) codeInput.value = '';
+    const joinPw = $('#join-password');
+    if (joinPw) joinPw.value = '';
+    setJoinPwFieldVisible(false);
+    clearJoinError();
     if (!silent && reason) alert(reason);
     teardownMap();
     syncUrlToState();
@@ -1553,7 +1612,7 @@ function isHostOfActiveRoom() {
 }
 
 async function togglePauseRoom() {
-    if (!isHostOfActiveRoom()) return;
+    if (!state.user || !state.roomCode) return;
     const room = state.roomData;
     if (!room || room.status !== 'playing') return;
     const ref = doc(db, 'triviaRooms', state.roomCode);
@@ -1587,12 +1646,12 @@ async function togglePauseRoom() {
 }
 
 async function hostEndGameEarly() {
-    if (!isHostOfActiveRoom()) return;
+    if (!state.user || !state.roomCode) return;
     const room = state.roomData;
     if (!room) return;
     const isSolo = room.playMode === 'solo';
     const ok = await openConfirmModal({
-        title: isSolo ? 'End your run?' : 'End the game?',
+        title: isSolo ? 'End your run?' : 'End the game for everyone?',
         body: isSolo
             ? 'Your run will end now and the final score screen will show.'
             : 'Final scores will be tallied with everyone\'s current points and the room will go to the end screen.',
@@ -1666,18 +1725,33 @@ function startChatListener(code) {
     chatState.unreadSince = 0;
     const chatRef = collection(db, 'triviaRooms', code, 'chat');
     const q = query(chatRef, orderBy('sentAt', 'asc'), limit(80));
+    chatState.initialFillDone = false;
+    chatState.lastNotifiedMessageId = null;
     chatState.unsub = onSnapshot(q, (snap) => {
         const prevLen = chatState.messages.length;
         chatState.messages = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
         renderChatMessages();
+        const wasInitialFill = !chatState.initialFillDone;
         // First fill is treated as "all read" so the badge doesn't show
         // 50 unread on first render. After that, growth = unread.
-        if (prevLen === 0) chatState.unreadSince = chatState.messages.length;
-        // Toast preview for the latest message when the panel is closed,
-        // but only for messages that weren't authored by us (we already
-        // know we sent ours).
+        if (wasInitialFill) {
+            chatState.unreadSince = chatState.messages.length;
+            chatState.initialFillDone = true;
+            const newest0 = chatState.messages[chatState.messages.length - 1];
+            chatState.lastNotifiedMessageId = newest0 ? newest0.id : null;
+        }
+        // Toast preview + sound for any genuinely-new message from another
+        // player when the panel is closed. Works for both text and emoji
+        // (emoji messages bypass moderation but otherwise look identical).
         const newest = chatState.messages[chatState.messages.length - 1];
-        if (!chatState.open && newest && state.user && newest.uid !== state.user.uid && prevLen > 0 && prevLen < chatState.messages.length) {
+        if (!wasInitialFill
+            && !chatState.open
+            && newest
+            && state.user
+            && newest.uid !== state.user.uid
+            && newest.id !== chatState.lastNotifiedMessageId
+            && prevLen < chatState.messages.length) {
+            chatState.lastNotifiedMessageId = newest.id;
             showToast(`${newest.displayName || 'Player'}: ${newest.text}`, { icon: '💬', key: 'chat:' + newest.id });
             try { Feedback.chatMessage(); } catch (_) {}
         }
@@ -1694,6 +1768,8 @@ function stopChatListener() {
     }
     chatState.messages = [];
     chatState.unreadSince = 0;
+    chatState.initialFillDone = false;
+    chatState.lastNotifiedMessageId = null;
     updateChatBadge();
 }
 
@@ -1826,8 +1902,11 @@ function renderRoom() {
     // the whole strip outside that window.
     const room = state.roomData;
     const playing = room.status === 'playing';
+    // Pause + End Game are available to every player (host included)
+    // once the room is playing — the previous host-only gate created
+    // dead-end states where the host had left.
     const hostActions = $('#room-host-actions');
-    if (hostActions) hostActions.hidden = !(isHost && playing);
+    if (hostActions) hostActions.hidden = !playing;
 
     // Chat toggle: visible only when there's someone else to talk to.
     // Solo / daily rooms are inherently single-player so chat is also
@@ -1841,14 +1920,42 @@ function renderRoom() {
         if (panel) panel.hidden = true;
     }
 
-    // Solo rooms: "Leave room" reads as "End game" because there's no
-    // room to leave — you're the only player and ending = exiting.
+    // In solo, the host's "End game" button (room-end-btn) is the
+    // canonical end action. The leave-room button reads as "Back to
+    // lobby" so the two controls don't both say "End game" and
+    // confuse the player.
     const leaveBtn = $('#leave-room-btn');
     if (leaveBtn) {
-        leaveBtn.textContent = (playMode === 'solo') ? 'End game' : 'Leave room';
+        leaveBtn.textContent = (playMode === 'solo') ? 'Back to lobby' : 'Leave room';
     }
+
+    // Mid-game rematch proposal — surface an accept/decline prompt
+    // exactly once per proposal so the player has a chance to weigh in
+    // without missing the round. The end-stage flow handles its own UI;
+    // only run this prompt while we're still in 'playing'.
+    if (playing && room.rematchProposedBy
+        && state.user && room.rematchProposedBy !== state.user.uid
+        && !meHasAcceptedRematch() && !meHasDeclinedRematch()
+        && state.lastRematchPromptShown !== room.rematchProposedBy) {
+        state.lastRematchPromptShown = room.rematchProposedBy;
+        openConfirmModal({
+            title: 'Restart the game?',
+            body: 'Another player proposed restarting. Accept to draw fresh locations; decline to keep playing.',
+            confirmLabel: 'Accept',
+            cancelLabel: 'Decline',
+            danger: false
+        }).then((accept) => respondToRematch(!!accept));
+    }
+    // Reset the prompt-shown sentinel once a proposal clears so a NEW
+    // proposal will surface its own modal next time.
+    if (!room.rematchProposedBy) state.lastRematchPromptShown = null;
     const banner = $('#room-paused-banner');
-    if (banner) banner.hidden = !room.paused;
+    if (banner) {
+        banner.hidden = !room.paused;
+        banner.innerHTML = (playMode === 'solo')
+            ? '<span aria-hidden="true">⏸</span> Game paused'
+            : '<span aria-hidden="true">⏸</span> Game paused by host.';
+    }
     const pauseBtn = $('#room-pause-btn');
     if (pauseBtn) {
         pauseBtn.innerHTML = room.paused
@@ -1873,6 +1980,38 @@ function renderRoom() {
         case 'playing': return isGlobeDrop ? renderGlobeDropStage(isHost) : renderGameStage(isHost);
         case 'finished': return renderEndStage(isHost);
     }
+}
+
+/**
+ * Render the room-settings panel inside the room lobby. Shows the
+ * round type, difficulty, locations count, and per-question timer.
+ * Host sees an Edit button; others see the values read-only.
+ */
+function renderRoomSettings(isHost) {
+    const panel = $('#room-settings');
+    if (!panel) return;
+    const room = state.roomData || {};
+    if (room.gameType !== 'globe-drop') {
+        panel.hidden = true;
+        return;
+    }
+    panel.hidden = false;
+
+    const roundType = room.roundType || 'capitals';
+    const meta = GlobeDropLocations.ROUND_TYPES[roundType] || GlobeDropLocations.ROUND_TYPES.capitals;
+    setText($('#room-settings-round-type'), meta.label || roundType);
+
+    const diffKey = room.difficulty || 'medium';
+    const diff = GlobeDropScoring.difficultySettings(diffKey);
+    setText($('#room-settings-difficulty'), diff.label || diffKey);
+
+    setText($('#room-settings-locations'), String(room.totalQuestions || 0));
+
+    const seconds = Math.round((room.questionTimeMs || diff.timerSec * 1000) / 1000);
+    setText($('#room-settings-timer'), `${seconds}s`);
+
+    const editBtn = $('#room-settings-edit-btn');
+    if (editBtn) editBtn.hidden = !isHost;
 }
 
 /**
@@ -1912,6 +2051,10 @@ function renderLobbyStage(isHost) {
     hide($('#stage-globe-drop'));
     hide($('#stage-picking'));
     hide($('#stage-end'));
+
+    // Room settings panel — show current room settings to everyone in
+    // the lobby. Host can edit (click event handled separately).
+    renderRoomSettings(isHost);
 
     const list = $('#lobby-player-grid');
     list.innerHTML = '';
@@ -2226,7 +2369,7 @@ function ensureGlobe() {
     state.globe.width(el.clientWidth);
     state.globe.height(el.clientHeight);
     // Initial camera pose: roughly overhead, comfortable altitude.
-    state.globe.pointOfView({ lat: 20, lng: 0, altitude: 1.75 }, 0);
+    state.globe.pointOfView({ lat: 20, lng: 0, altitude: 1.35 }, 0);
 
     // Three.js OrbitControls defaults feel sluggish — crank zoom speed and
     // ease damping so wheel + pinch react snappily. We ALSO install a
@@ -2341,6 +2484,10 @@ function currentGlobeDropLocation() {
     if (!state.roomData) return null;
     const pool = Array.isArray(state.roomData.questions) ? state.roomData.questions : [];
     return pool.find((q) => q && q.id === state.roomData.currentQuestionId) || null;
+}
+function currentGlobeDropLocationId() {
+    const loc = currentGlobeDropLocation();
+    return loc ? loc.id : null;
 }
 
 /**
@@ -2474,6 +2621,18 @@ function renderGlobeDropStage() {
         // with `Cannot read properties of null (reading 'questionStartedAt')`.
         // Bail if the room is gone — there's nothing to render.
         if (!state.roomData || !state.roomCode) return;
+        // Smooth-scroll the globe map into view on game start so the
+        // player doesn't have to hunt for it (the header + standings
+        // panels above it can push it off-screen on shorter viewports).
+        // Only do this once per question to avoid yanking the viewport
+        // around mid-round.
+        const wrap = document.querySelector('.globe-drop-map-wrap');
+        if (wrap && state.lastScrolledToGlobeForQId !== currentGlobeDropLocationId()) {
+            state.lastScrolledToGlobeForQId = currentGlobeDropLocationId();
+            try {
+                wrap.scrollIntoView({ behavior: 'smooth', block: 'center' });
+            } catch (_) { /* older browsers */ }
+        }
         const g = ensureGlobe();
         if (!g) return;
         const el = document.getElementById('globe-drop-map');
@@ -2505,7 +2664,7 @@ function renderGlobeDropStage() {
             // reveal had the camera centered on the answer's lat/lng, and
             // tweening from there to (20,0) was reading as "the globe
             // spins between rounds for no reason."
-            g.pointOfView({ lat: 20, lng: 0, altitude: 1.75 }, 0);
+            g.pointOfView({ lat: 20, lng: 0, altitude: 1.35 }, 0);
         }
 
         // Lock the controls if we've already submitted this question.
@@ -2690,9 +2849,28 @@ function drawGlobeDropReveal(loc, me, { showOthers = true } = {}) {
 function renderMiniBoardGlobeDrop(currentQuestionId) {
     const list = $('#mini-board-list-globe-drop');
     list.innerHTML = '';
+    // Anti-peek: if I haven't submitted the current round, redact each
+    // opponent's contribution from THIS round so I can't infer their
+    // distance/score before I've committed mine. The reveal phase
+    // already discloses scores once everyone is in. My own score
+    // always reflects my real running total.
+    const me = state.user
+        ? state.roomPlayers.find((p) => p.uid === state.user.uid)
+        : null;
+    const meSubmittedCurrent = !!(me && currentQuestionId && me.currentAnsweredFor === currentQuestionId);
+    const adjustedScore = (p) => {
+        if (!currentQuestionId) return p.score || 0;
+        const isMe = state.user && p.uid === state.user.uid;
+        if (isMe || meSubmittedCurrent) return p.score || 0;
+        // Strip the current round's points from their displayed total.
+        const answers = Array.isArray(p.answers) ? p.answers : [];
+        const rec = answers.find((a) => a && a.locationId === currentQuestionId);
+        const pts = rec && typeof rec.points === 'number' ? rec.points : 0;
+        return (p.score || 0) - pts;
+    };
     const ranked = Scoring.rankPlayers(state.roomPlayers.map((p) => ({
         displayName: p.displayName,
-        score: p.score,
+        score: adjustedScore(p),
         streak: 0, // GlobeDrop doesn't use streaks (yet)
         uid: p.uid,
         answeredThisQuestion: currentQuestionId != null
@@ -2738,10 +2916,23 @@ function renderRoundsHistoryBoard() {
     const idx = room.currentQuestionIndex || 0;
     if (idx < 1) { board.hidden = true; return; }
 
+    // To prevent score-peeking, opponents' scores for the CURRENT round
+    // (the one in progress) stay hidden until the local user has
+    // submitted their guess for that round. We only mask the current
+    // round here — prior rounds' scores are always visible because the
+    // reveal phase already disclosed them.
+    const curLoc = currentGlobeDropLocation();
+    const me = state.user
+        ? state.roomPlayers.find((p) => p.uid === state.user.uid)
+        : null;
+    const meSubmittedCurrent = !!(me && curLoc && me.currentAnsweredFor === curLoc.id);
+
     list.innerHTML = '';
     for (let r = 0; r < idx; r++) {
         const loc = room.questions[r];
         if (!loc || !loc.id) continue;
+        const isCurrentRound = curLoc && loc.id === curLoc.id;
+        const maskOthers = isCurrentRound && !meSubmittedCurrent;
         // For each player, find the answer record matching this round's location.
         const perPlayer = state.roomPlayers.map((p) => {
             const answers = Array.isArray(p.answers) ? p.answers : [];
@@ -2766,7 +2957,8 @@ function renderRoundsHistoryBoard() {
                 + (isMe ? ' is-me' : '')
                 + ((pp.roundPoints || 0) === 0 ? ' is-zero' : '');
             let val;
-            if (pp.roundPoints == null) val = '—';
+            if (maskOthers && !isMe) val = '🔒';
+            else if (pp.roundPoints == null) val = '—';
             else if (pp.gaveUp) val = 'X';
             else val = String(pp.roundPoints);
             return `<span class="${cls}"><span>${escapeHtml(pp.displayName)}</span><strong>${escapeHtml(val)}</strong></span>`;
@@ -2920,9 +3112,11 @@ function startGlobeDropTimerLoop() {
                     }
                 } catch (_) {}
             };
-            if (seconds <= 5 && !fired.five) { buzz(); fired.five = true; }
-            if (seconds <= 4 && !fired.four) { buzz(); fired.four = true; }
+            if (seconds <= 5 && !fired.five)  { buzz(); fired.five  = true; }
+            if (seconds <= 4 && !fired.four)  { buzz(); fired.four  = true; }
             if (seconds <= 3 && !fired.three) { buzz(); fired.three = true; }
+            if (seconds <= 2 && !fired.two)   { buzz(); fired.two   = true; }
+            if (seconds <= 1 && !fired.one)   { buzz(); fired.one   = true; }
             state.lastTimerPingThresholds = fired;
             state.lastTimerPingQId = currentQId;
         }
@@ -4030,9 +4224,9 @@ function renderRematchUI(isHost) {
     if (playerCount < 2) return;
 
     if (!proposed) {
-        // No proposal yet — only the host sees the propose button.
+        // No proposal yet — any player can propose a rematch.
         if (proposeBtn) {
-            proposeBtn.hidden = !isHost;
+            proposeBtn.hidden = false;
             proposeBtn.innerHTML = '<span aria-hidden="true">🔁</span> Rematch';
         }
         return;
@@ -4041,7 +4235,15 @@ function renderRematchUI(isHost) {
     // Proposal active — show strip with progress.
     if (strip) strip.hidden = false;
     if (declined) {
-        if (status) setText(status, 'A player declined the rematch.');
+        // Surface the decline briefly, then auto-reset so anyone can
+        // propose again. Without this, a single decline used to lock
+        // the rematch flow forever.
+        if (status) setText(status, 'Rematch declined — try again any time.');
+        if (proposeBtn) {
+            proposeBtn.hidden = false;
+            proposeBtn.innerHTML = '<span aria-hidden="true">🔁</span> Propose again';
+        }
+        clearRematchStateSoon();
         return;
     }
     const accepted = rematchAcceptCount();
@@ -4060,7 +4262,6 @@ function renderRematchUI(isHost) {
 
 async function proposeRematch() {
     if (!state.roomCode || !state.roomData || !state.user) return;
-    if (state.roomData.hostUid !== state.user.uid) return;
     if (rematchPlayerCount() < 2) return;
     try {
         await updateDoc(doc(db, 'triviaRooms', state.roomCode), {
@@ -4071,6 +4272,33 @@ async function proposeRematch() {
     } catch (err) {
         console.warn('proposeRematch failed:', err);
     }
+}
+
+/**
+ * Reset the rematch coordination state on the room doc after a decline,
+ * so the option to propose another rematch isn't permanently nuked.
+ * Debounced so we don't write multiple times if renderRematchUI fires
+ * back-to-back (snapshot replay).
+ */
+let _rematchClearTimer = null;
+function clearRematchStateSoon() {
+    if (_rematchClearTimer) return;
+    _rematchClearTimer = setTimeout(async () => {
+        _rematchClearTimer = null;
+        if (!state.roomCode || !state.user) return;
+        // Only any one client needs to write — pick the proposer since
+        // they're the one who created the state. If they've left,
+        // anyone may clear it.
+        const r = state.roomData || {};
+        if (!r.rematchProposedBy) return;
+        try {
+            await updateDoc(doc(db, 'triviaRooms', state.roomCode), {
+                rematchProposedBy: null,
+                rematchAcceptedBy: [],
+                rematchDeclinedBy: []
+            });
+        } catch (_) { /* best-effort */ }
+    }, 2500);
 }
 
 async function respondToRematch(accept) {
