@@ -56,6 +56,23 @@
             DETAILED_STATS: 'detailed-stats'
         },
 
+        // One-time $5 (no recurring subscription). Display string only —
+        // the actual amount is configured in the Stripe Product / Payment
+        // Link, this constant is just what we surface in the UI.
+        PREMIUM_PRICE_DISPLAY: '$5 one-time',
+
+        // 30-day free trial — every signed-up user gets full premium access
+        // for the first 30 days from triviaProfile.signedUpAt. After that
+        // they need to pay $5 (one-time) to keep the gates open. Measured
+        // in ms so the math matches Date.now() / Timestamp.toMillis().
+        TRIAL_DURATION_MS: 30 * 24 * 60 * 60 * 1000,
+
+        // Admin uids for the dev-only "toggle premium" / "reset trial"
+        // buttons in the profile view. Empty array = no admin controls
+        // visible to anyone. Add your own Firebase uid here to test the
+        // gates without paying $5 every cycle.
+        ADMIN_UIDS: [],
+
         // Cosmetic limits.
         MAX_DISPLAY_NAME: 20,
         MAX_PLAYERS_PER_ROOM: 16,

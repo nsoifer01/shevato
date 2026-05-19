@@ -23,7 +23,13 @@
  *       answers: [{questionId, correct, timeLeftMs, totalMs, category, points}] }
  *
  *   users/{uid}.triviaProfile
- *     { displayName, xp, gamesPlayed, wins, premium, lastPlayedAt }
+ *     { displayName, xp, gamesPlayed, wins, premium, signedUpAt,
+ *       premiumPaidAt, stripeCheckoutSessionId, lastPlayedAt }
+ *
+ *   Premium gating rule:
+ *     isPremium = (premium === true)  OR  (now < signedUpAt + 30 days)
+ *   The webhook at /.netlify/functions/stripe-webhook flips `premium=true`
+ *   after a successful Stripe Checkout for the one-time $5 fee.
  *
  *   triviaLeaderboard/{uid}  (denormalized for cheap reads)
  *     { uid, displayName, xp, gamesPlayed, wins, lastPlayedAt }
@@ -43,6 +49,7 @@ const {
 
 const Config = window.BrainArena.Config;
 const Scoring = window.BrainArena.Scoring;
+const Premium = window.BrainArena.Premium;
 const RoomState = window.BrainArena.RoomState;
 const LiveQuestions = window.BrainArena.LiveQuestions;
 const GlobeDropScoring = window.BrainArena.GlobeDropScoring;
@@ -90,7 +97,12 @@ const state = {
 
     // Leaderboard
     leaderboardEntries: [],
-    leaderboardUnsub: null
+    leaderboardUnsub: null,
+
+    // Live listener on users/{uid} so the Stripe webhook's flip of
+    // triviaProfile.premium (server-side via Admin SDK) propagates to
+    // the UI without a reload.
+    profileUnsub: null
 };
 
 /* =====================================================================
@@ -160,7 +172,20 @@ async function loadProfile(uid) {
         const snap = await getDoc(ref);
         const data = snap.exists() ? snap.data() : {};
         const tp = data.triviaProfile || null;
-        if (tp) return tp;
+        if (tp) {
+            // Backfill signedUpAt for accounts created before the trial
+            // tier existed. Without it Premium.isInTrial returns false
+            // even for brand-new users who just happen to predate this
+            // field, which would feel like a regression. We stamp it
+            // server-side once and let the snapshot listener pick it up.
+            if (!tp.signedUpAt) {
+                await updateDoc(ref, { 'triviaProfile.signedUpAt': serverTimestamp() });
+                // Local placeholder until the server stamp lands — the
+                // listener will overwrite this with the real Timestamp.
+                tp.signedUpAt = Date.now();
+            }
+            return tp;
+        }
         // Seed a minimal profile on first run.
         const seeded = {
             displayName: deriveInitialDisplayName(),
@@ -168,10 +193,14 @@ async function loadProfile(uid) {
             gamesPlayed: 0,
             wins: 0,
             premium: false,
+            signedUpAt: serverTimestamp(),
             lastPlayedAt: null
         };
         await setDoc(ref, { triviaProfile: seeded }, { merge: true });
-        return seeded;
+        // serverTimestamp() resolves on the server — surface a usable
+        // local value for the first render. The snapshot listener will
+        // replace it with the canonical Timestamp object.
+        return { ...seeded, signedUpAt: Date.now() };
     } catch (err) {
         console.warn('Could not load trivia profile:', err);
         return null;
@@ -205,13 +234,32 @@ function applyAuthState(user) {
     $('#profile-signed-out').hidden = signedIn;
     $('#profile-card-trivia').hidden = !signedIn;
 
+    // Stop watching the previous user's doc (if any) before swapping.
+    if (state.profileUnsub) {
+        try { state.profileUnsub(); } catch (_) { /* ignore */ }
+        state.profileUnsub = null;
+    }
+
     if (signedIn) {
         loadProfile(user.uid).then((p) => {
             state.profile = p;
             renderProfileView();
             renderPremiumGates();
-            // Pull custom pack if any
             state.customPack = (p && p.customPack) ? p.customPack : null;
+            // Live-subscribe so the Stripe webhook's flip of triviaProfile.premium
+            // (server-side via Admin SDK) and trial-time updates surface without
+            // a page reload.
+            state.profileUnsub = onSnapshot(doc(db, 'users', user.uid), (snap) => {
+                const data = snap.exists() ? snap.data() : {};
+                const tp = data.triviaProfile;
+                if (!tp) return;
+                state.profile = tp;
+                state.customPack = tp.customPack || null;
+                renderProfileView();
+                renderPremiumGates();
+            }, (err) => {
+                console.warn('Profile snapshot listener error:', err);
+            });
         });
     } else {
         state.profile = null;
@@ -239,16 +287,38 @@ function renderProfileView() {
     const pct = p.gamesPlayed ? Math.round(100 * (p.wins || 0) / p.gamesPlayed) : 0;
     setText($('#stat-winpct'), pct + '%');
 
+    const now = Date.now();
+    const paid = Premium.isPaidPremium(p);
+    const inTrial = Premium.isInTrial(p, now);
+
     const premiumCard = $('#profile-premium-card');
-    setClass(premiumCard, 'is-premium', !!p.premium);
-    setText(
-        $('#profile-premium-status'),
-        p.premium
-            ? 'Premium active — private rooms, custom packs, and detailed stats are unlocked. Thanks for supporting Shevato!'
-            : 'Upgrade to unlock private rooms, custom question packs, and detailed post-game stats.'
-    );
+    setClass(premiumCard, 'is-premium', paid);
+    setClass(premiumCard, 'is-trial', !paid && inTrial);
+    setText($('#profile-premium-status'), Premium.premiumStatusText(p, now));
+
+    // Hide the "Go Premium" CTA when the user is already paid (no need),
+    // but keep it visible during trial so they can lock in before it ends.
+    const upgradeBtn = $('#upgrade-premium-btn');
+    if (upgradeBtn) upgradeBtn.hidden = paid;
+
+    // Admin-only dev controls — toggle paid premium and reset the trial
+    // clock without going through Stripe. Empty ADMIN_UIDS = nothing
+    // rendered; users in the list get the controls inline.
+    renderAdminControls(p);
 
     renderCustomPackTextarea();
+}
+
+function renderAdminControls(profile) {
+    const wrap = $('#profile-admin-controls');
+    if (!wrap) return;
+    const show = state.user && Premium.isAdmin(state.user.uid);
+    wrap.hidden = !show;
+    if (!show) return;
+    const togglePaidBtn = $('#admin-toggle-paid-btn');
+    if (togglePaidBtn) {
+        togglePaidBtn.textContent = profile && profile.premium ? 'Remove paid premium' : 'Grant paid premium';
+    }
 }
 
 function wireProfileView() {
@@ -267,7 +337,7 @@ function wireProfileView() {
  * ===================================================================== */
 
 function isPremium() {
-    return !!(state.profile && state.profile.premium);
+    return Premium.isPremium(state.profile, Date.now());
 }
 
 function renderPremiumGates() {
@@ -297,13 +367,65 @@ function wirePremiumModal() {
         }
     });
     $('#premium-checkout-btn').addEventListener('click', () => {
-        window.open(Config.STRIPE_CHECKOUT_URL, '_blank', 'noopener,noreferrer');
+        if (!state.user) {
+            // Shouldn't happen — the upgrade buttons are gated behind sign-in
+            // by the auth-gate — but be defensive so we don't strand a buyer.
+            return;
+        }
+        const url = buildCheckoutUrl(state.user.uid);
+        window.open(url, '_blank', 'noopener,noreferrer');
     });
     // Any [data-action="open-premium"] anywhere opens it.
     document.addEventListener('click', (e) => {
         const trigger = e.target.closest('[data-action="open-premium"]');
         if (trigger) openPremiumModal();
     });
+}
+
+/**
+ * Stripe Checkout / Payment Link URL with client_reference_id and a
+ * success redirect appended. The webhook reads client_reference_id off
+ * the session to identify the user; the success_url surfaces a "thanks,
+ * premium unlocked" page back on shevato.com.
+ *
+ * Works for both Payment Links (https://buy.stripe.com/...) and full
+ * Checkout sessions — both honor `client_reference_id` + `success_url`
+ * as query params when appended this way.
+ */
+function buildCheckoutUrl(uid) {
+    const base = Config.STRIPE_CHECKOUT_URL;
+    const sep = base.includes('?') ? '&' : '?';
+    const successUrl = new URL('success.html', window.location.href).toString();
+    const params = new URLSearchParams({
+        client_reference_id: uid,
+        // Stripe URL-encodes nested params for us; the success page also
+        // reads `?paid=1` so it can show a confirmation immediately even
+        // before the webhook lands.
+        prefilled_email: state.user?.email || ''
+    });
+    return `${base}${sep}${params.toString()}&success_url=${encodeURIComponent(successUrl + '?paid=1')}`;
+}
+
+function wireAdminControls() {
+    const toggleBtn = $('#admin-toggle-paid-btn');
+    const resetBtn = $('#admin-reset-trial-btn');
+    if (toggleBtn) {
+        toggleBtn.addEventListener('click', async () => {
+            if (!state.user || !Premium.isAdmin(state.user.uid)) return;
+            const next = !(state.profile && state.profile.premium);
+            await saveProfileField({ premium: next });
+            renderProfileView();
+            renderPremiumGates();
+        });
+    }
+    if (resetBtn) {
+        resetBtn.addEventListener('click', async () => {
+            if (!state.user || !Premium.isAdmin(state.user.uid)) return;
+            const ref = doc(db, 'users', state.user.uid);
+            await updateDoc(ref, { 'triviaProfile.signedUpAt': serverTimestamp() });
+            // Snapshot listener will re-render once the server stamp lands.
+        });
+    }
 }
 
 /* =====================================================================
@@ -2577,6 +2699,7 @@ async function boot() {
     wirePremiumModal();
     wireProfileView();
     wireCustomPack();
+    wireAdminControls();
     wireLeaderboard();
     renderPackOptions();
 
