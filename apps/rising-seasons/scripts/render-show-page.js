@@ -123,7 +123,7 @@ ${jsonLd(buildTvSeriesSchema({ seriesId, title, year, canonical, posterUrl, clea
           ${type ? `<div><dt>Type</dt><dd>${escapeHtml(formatType(type))}</dd></div>` : ''}
         </dl>
         <div class="hero-actions">
-          <a class="primary-btn" href="/apps/rising-seasons/#series=${seriesId}">Open in interactive explorer →</a>
+          <a class="primary-btn" href="/apps/rising-seasons/#show=${seriesId}">Open in interactive explorer →</a>
           <a class="secondary-btn" href="https://www.imdb.com/title/${seriesId}/" rel="noopener" target="_blank">View on IMDb</a>
         </div>
       </div>
