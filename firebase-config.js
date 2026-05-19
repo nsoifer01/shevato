@@ -23,8 +23,17 @@ import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebas
 import {
   initializeFirestore,
   persistentLocalCache,
-  persistentMultipleTabManager
+  persistentMultipleTabManager,
+  setLogLevel as setFirestoreLogLevel
 } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
+
+// Silence Firestore's INFO/WARN logs. The most common offender is the
+// "BloomFilter error" warning the SDK emits when it tears down a
+// listen-stream while a server-side existence-filter check is in flight —
+// purely an internal optimization log, harmless to callers, but visible
+// in production consoles every time a user leaves a room. Errors still
+// surface so real failures aren't hidden.
+setFirestoreLogLevel('error');
 // Re-export the Firestore SDK as a single namespace so app modules can
 // reach `doc`, `onSnapshot`, etc. without re-importing the SDK URL
 // themselves. The invariant test in sync-system/tests/firebase-config-shape.test.mjs

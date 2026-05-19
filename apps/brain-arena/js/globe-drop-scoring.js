@@ -51,26 +51,84 @@
     }
 
     /**
+     * Look up the difficulty settings for a tier key (easy / medium / hard).
+     * Unknown / missing keys fall back to medium so legacy rooms persisted
+     * before this feature shipped score exactly the same as they always have.
+     */
+    function difficultySettings(key) {
+        const table = Config.GLOBE_DROP_DIFFICULTIES || {};
+        const fallback = table[Config.GLOBE_DROP_DIFFICULTY_DEFAULT] || { scoreMultiplier: 1, timerSec: 120, hintLevel: 'country+continent', label: 'Medium' };
+        if (typeof key !== 'string') return fallback;
+        return table[key] || fallback;
+    }
+
+    /**
+     * Obscurity weight from population. The smaller (less-famous) the
+     * place, the higher the multiplier — so guessing a 200k-person
+     * Polish city is worth meaningfully more than a 10M-person megacity
+     * at the same distance.
+     *
+     * Formula: weight = clamp((REFERENCE_LOG10 - log10(pop)) * SLOPE + 1, MIN, MAX)
+     *
+     * Tuning examples with current config (REFERENCE_LOG10=6, SLOPE=0.35):
+     *   pop=10,000     → log10=4   → (6-4)*0.35 + 1 = 1.70
+     *   pop=100,000    → log10=5   → (6-5)*0.35 + 1 = 1.35
+     *   pop=1,000,000  → log10=6   → 1.00
+     *   pop=10,000,000 → log10=7   → (6-7)*0.35 + 1 = 0.65
+     *   pop=missing    → 1.00 (legacy capitals where we don't have data)
+     */
+    function populationWeight(pop) {
+        if (pop == null || !Number.isFinite(pop) || pop <= 0) return 1;
+        const cfg = Config.GLOBE_DROP_POPULATION_WEIGHT || {};
+        const ref = typeof cfg.REFERENCE_LOG10 === 'number' ? cfg.REFERENCE_LOG10 : 6;
+        const slope = typeof cfg.SLOPE === 'number' ? cfg.SLOPE : 0.35;
+        const minW = typeof cfg.MIN === 'number' ? cfg.MIN : 0.55;
+        const maxW = typeof cfg.MAX === 'number' ? cfg.MAX : 2.0;
+        const w = (ref - Math.log10(pop)) * slope + 1;
+        return Math.max(minW, Math.min(maxW, w));
+    }
+
+    /**
      * Score a single guess.
      * @param {object} args
      * @param {number} args.distanceKm
      * @param {string} args.region — continent / region label
-     * @returns {{ points:number, distanceKm:number, multiplier:number, basePoints:number }}
+     * @param {string} [args.difficulty] — easy/medium/hard; omitted = legacy = medium (1x)
+     * @param {number} [args.population] — population of the place being guessed.
+     *                                     Smaller pop = higher obscurity weight.
+     * @returns {{ points:number, distanceKm:number, multiplier:number, basePoints:number,
+     *            difficultyMultiplier:number, populationMultiplier:number }}
      */
-    function scoreGuess({ distanceKm, region }) {
+    function scoreGuess({ distanceKm, region, difficulty, population }) {
         const max = Config.GLOBE_DROP_BASE_POINTS;
         const scale = Config.GLOBE_DROP_DISTANCE_SCALE_KM;
+        const floor = typeof Config.GLOBE_DROP_MIN_POINTS === 'number' ? Config.GLOBE_DROP_MIN_POINTS : 0;
         const d = Math.max(0, Number(distanceKm) || 0);
         const base = max * Math.exp(-d / scale);
         const mult = continentMultiplier(region);
-        const points = Math.max(0, Math.round(base * mult));
+        const diff = difficultySettings(difficulty);
+        const diffMult = diff.scoreMultiplier;
+        const popMult = populationWeight(population);
+        // Distance-decay points × continent × difficulty × obscurity, then
+        // floor at GLOBE_DROP_MIN_POINTS so an antipodal guess still scores
+        // something instead of a flat 0.
+        const raw = base * mult * diffMult * popMult;
+        const points = Math.max(floor, Math.round(raw));
         return {
             points,
             distanceKm: d,
             multiplier: mult,
-            basePoints: Math.round(base)
+            basePoints: Math.round(base),
+            difficultyMultiplier: diffMult,
+            populationMultiplier: popMult
         };
     }
 
-    return { haversineDistanceKm, continentMultiplier, scoreGuess };
+    return {
+        haversineDistanceKm,
+        continentMultiplier,
+        difficultySettings,
+        populationWeight,
+        scoreGuess
+    };
 }));
