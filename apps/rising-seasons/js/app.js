@@ -14,6 +14,21 @@ const SHAPE_LABELS = {
   'saved-best-for-last': 'Saved best for last',
 };
 
+// Mirrors scripts/slugify.js — keep both in sync so the SPA's permalink
+// button and the build-script-generated static page URLs always agree.
+function showSlug(title) {
+  if (!title || typeof title !== 'string') return 'show';
+  let s = title
+    .toLowerCase()
+    .normalize('NFKD')
+    .replace(/[̀-ͯ]/g, '')
+    .replace(/&/g, ' and ')
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '');
+  if (s.length > 80) s = s.slice(0, 80).replace(/-+$/, '');
+  return s || 'show';
+}
+
 const STORAGE_NS = 'rising-seasons';
 const KEY_WATCHED = `${STORAGE_NS}:watched`;
 const KEY_VIEW = `${STORAGE_NS}:view`;
@@ -99,6 +114,7 @@ const els = {
   showModalPoster: document.getElementById('showModalPoster'),
   showModalImdb: document.getElementById('showModalImdb'),
   showModalTvdb: document.getElementById('showModalTvdb'),
+  showModalPermalink: document.getElementById('showModalPermalink'),
   showModalOverlay: document.getElementById('showModalOverlay'),
   showModalOverlayCurve: document.getElementById('showModalOverlayCurve'),
   showModalOverlayLegend: document.getElementById('showModalOverlayLegend'),
@@ -1971,6 +1987,9 @@ function openShowModal(seriesId) {
   }
 
   els.showModalImdb.href = `https://www.imdb.com/title/${seriesId}/`;
+  if (els.showModalPermalink) {
+    els.showModalPermalink.href = `/apps/rising-seasons/shows/${showSlug(meta.title)}-${seriesId}/`;
+  }
   if (meta.tvdbId) {
     els.showModalTvdb.href = `https://thetvdb.com/dereferrer/series/${meta.tvdbId}`;
     els.showModalTvdb.hidden = false;
