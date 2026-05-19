@@ -109,7 +109,11 @@ const state = {
     // Live listener on users/{uid} so the Stripe webhook's flip of
     // triviaProfile.premium (server-side via Admin SDK) propagates to
     // the UI without a reload.
-    profileUnsub: null
+    profileUnsub: null,
+
+    // Room code parsed from `?room=ABCDE` at boot, queued behind sign-in.
+    // applyAuthState picks it up the first time it sees a signed-in user.
+    pendingRoomCode: null
 };
 
 /* =====================================================================
@@ -154,12 +158,121 @@ function setView(view) {
     if (view === 'leaderboard') startLeaderboardListener();
     else stopLeaderboardListener();
     if (view === 'profile') renderProfileView();
+    syncUrlToState();
 }
 
 function wireViewTabs() {
     $$('.view-tab').forEach((b) => {
         b.addEventListener('click', () => setView(b.dataset.view));
     });
+}
+
+/* =====================================================================
+ * URL state (?view=…&room=…)
+ *
+ * The URL is the single source of truth for: which tab is active, and
+ * which room (if any) the user is currently in. A refresh re-attaches to
+ * the same tab + the same room without re-prompting. A pasted room URL
+ * is treated as a join attempt — gates apply normally (sign-in, password).
+ *
+ * We use history.replaceState (not pushState) so the back button doesn't
+ * accumulate every tab click; the URL just mirrors current state.
+ * ===================================================================== */
+
+const VALID_VIEWS = new Set(['play', 'leaderboard', 'profile']);
+
+function parseUrlState() {
+    try {
+        const url = new URL(window.location.href);
+        const view = url.searchParams.get('view');
+        const room = url.searchParams.get('room');
+        return {
+            view: VALID_VIEWS.has(view) ? view : null,
+            room: (typeof room === 'string' && /^[A-Z0-9]{3,8}$/.test(room.toUpperCase())) ? room.toUpperCase() : null
+        };
+    } catch (e) {
+        return { view: null, room: null };
+    }
+}
+
+function syncUrlToState() {
+    try {
+        const url = new URL(window.location.href);
+        // Only encode the bits we want to round-trip; leave anything else
+        // (gtag, utm params) alone so external links keep their context.
+        if (state.activeView && state.activeView !== 'play') {
+            url.searchParams.set('view', state.activeView);
+        } else {
+            url.searchParams.delete('view');
+        }
+        if (state.roomCode) {
+            url.searchParams.set('room', state.roomCode);
+        } else {
+            url.searchParams.delete('room');
+        }
+        const next = url.pathname + (url.search ? url.search : '') + url.hash;
+        // No-op when URL is already in sync — avoids redundant history
+        // entries when render fans out three setView calls during boot.
+        if (next !== window.location.pathname + window.location.search + window.location.hash) {
+            window.history.replaceState(null, '', next);
+        }
+    } catch (e) {
+        // history.replaceState can throw inside very restrictive iframes;
+        // not worth crashing the app over a URL cosmetics failure.
+    }
+}
+
+/**
+ * On boot, try to restore tab + active room from the URL. Tab is cheap
+ * and synchronous; room rejoin needs the user to be signed in, so we
+ * defer the room half until applyAuthState fires with a signed-in user.
+ */
+async function restoreFromUrl() {
+    const { view, room } = parseUrlState();
+    if (view && view !== state.activeView) setView(view);
+    if (!room) return;
+    // Stash the desired room on state; applyAuthState picks it up the
+    // first time we see a signed-in user. That way a refresh of
+    // /?room=ABCDE on a signed-out tab queues the rejoin behind the
+    // sign-in flow instead of failing immediately.
+    state.pendingRoomCode = room;
+}
+
+async function tryRejoinPendingRoom() {
+    const code = state.pendingRoomCode;
+    if (!code || !state.user) return;
+    if (state.roomCode === code) { state.pendingRoomCode = null; return; }
+    state.pendingRoomCode = null;
+    try {
+        const snap = await getDoc(doc(db, 'triviaRooms', code));
+        if (!snap.exists()) return;
+        const data = snap.data();
+        // Private rooms still need a password — but a refresh of someone
+        // who was ALREADY a player should slide in without re-prompting,
+        // since their player doc already exists. We check that first.
+        const playerRef = doc(db, 'triviaRooms', code, 'players', state.user.uid);
+        const playerSnap = await getDoc(playerRef);
+        if (playerSnap.exists()) {
+            await updateDoc(playerRef, { lastSeen: serverTimestamp() });
+            enterRoom(code);
+            return;
+        }
+        // Not a member yet: if private, ask for the password. If public,
+        // join as a guest. We piggy-back on joinRoom by pre-filling the
+        // code input + opening the lobby; for private rooms the user has
+        // to type the password manually.
+        const codeInput = $('#join-code');
+        if (codeInput) codeInput.value = code;
+        if (data.isPrivate) {
+            setView('play');
+            setJoinPwFieldVisible(true);
+            showJoinError('This room is private. Enter the password to join.');
+        } else {
+            await joinRoom();
+        }
+    } catch (err) {
+        console.warn('rejoin from URL failed:', err);
+    }
 }
 
 /* =====================================================================
@@ -248,6 +361,10 @@ function applyAuthState(user) {
     }
 
     if (signedIn) {
+        // If we landed on /?room=ABCDE before sign-in, the rejoin was
+        // queued behind auth — kick it off now. Runs in parallel with
+        // loadProfile since the two don't depend on each other.
+        if (state.pendingRoomCode) tryRejoinPendingRoom();
         loadProfile(user.uid).then((p) => {
             state.profile = p;
             renderProfileView();
@@ -991,6 +1108,7 @@ function enterRoom(code) {
     show($('#room-panel'));
     hide($('#lobby-panel'));
     setText($('#room-code-display'), code);
+    syncUrlToState();
 
     // window.beforeunload cleanup so the player removes themselves on tab close
     window.addEventListener('beforeunload', beforeUnloadCleanup);
@@ -1097,6 +1215,7 @@ async function leaveRoom({ silent = false, reason = null } = {}) {
     show($('#stage-lobby'));
     if (!silent && reason) alert(reason);
     teardownMap();
+    syncUrlToState();
 }
 
 /* =====================================================================
@@ -3037,6 +3156,10 @@ async function boot() {
     wireCustomPack();
     wireLeaderboard();
     renderPackOptions();
+
+    // Read tab + queued room from the URL BEFORE auth wires up, so a
+    // signed-in tab refresh restores both without flicker.
+    await restoreFromUrl();
 
     await waitForFirebaseAuth();
     window.firebaseAuth.onAuthStateChange(applyAuthState);
