@@ -57,24 +57,49 @@ test('no app directory contains a stray non-index *.html entry alongside index.h
     assert.deepEqual(offenders, [], `unexpected top-level HTML beside index.html:\n  ${offenders.join('\n  ')}`);
 });
 
-test('apps.html and sitemap.xml link to every app via /apps/<name>/index.html', () => {
+test('apps.html and sitemap.xml link to every app via the directory form /apps/<name>/', () => {
+    // We link to the directory (not /index.html) so that the rendered URL,
+    // the canonical tag, the sitemap entry, and the user-facing href all
+    // agree — Netlify's pretty-URLs would otherwise redirect /index.html
+    // off and break that alignment.
     const appsHtml = readFileSync(join(REPO_ROOT, 'apps.html'), 'utf8');
     const sitemap = readFileSync(join(REPO_ROOT, 'sitemap.xml'), 'utf8');
 
     const apps = listDirs(APPS_DIR);
     const missing = [];
     for (const app of apps) {
-        const expected = `apps/${app}/index.html`;
-        // apps.html and sitemap may use either relative or full URL form.
-        if (!appsHtml.includes(expected)) missing.push(`apps.html → ${expected}`);
-        if (!sitemap.includes(expected)) missing.push(`sitemap.xml → ${expected}`);
+        // Match the href closing quote in apps.html (href="apps/<name>/")
+        // and the loc closing tag in the sitemap (.../apps/<name>/</loc>)
+        // so we don't accidentally match deeper sub-paths.
+        const hrefPattern = new RegExp(`href="apps/${app}/"`);
+        const locPattern = new RegExp(`apps/${app}/</loc>`);
+        if (!hrefPattern.test(appsHtml)) missing.push(`apps.html → href="apps/${app}/"`);
+        if (!locPattern.test(sitemap)) missing.push(`sitemap.xml → apps/${app}/</loc>`);
     }
     assert.deepEqual(missing, [], `links/loc entries missing:\n  ${missing.join('\n  ')}`);
+});
+
+test('apps.html and sitemap.xml never expose /apps/<name>/index.html as a URL', () => {
+    // Guards against drift back to the /index.html form, which would put
+    // the markup out of sync with Netlify's pretty-URL behavior.
+    const appsHtml = readFileSync(join(REPO_ROOT, 'apps.html'), 'utf8');
+    const sitemap = readFileSync(join(REPO_ROOT, 'sitemap.xml'), 'utf8');
+
+    const apps = listDirs(APPS_DIR);
+    const offenders = [];
+    for (const app of apps) {
+        const bad = `apps/${app}/index.html`;
+        if (appsHtml.includes(bad)) offenders.push(`apps.html → ${bad}`);
+        if (sitemap.includes(bad)) offenders.push(`sitemap.xml → ${bad}`);
+    }
+    assert.deepEqual(offenders, [], `unexpected /index.html URL forms:\n  ${offenders.join('\n  ')}`);
 });
 
 test('netlify.toml keeps a 301 from tracker.html to the new mario-kart entry', () => {
     const toml = readFileSync(join(REPO_ROOT, 'netlify.toml'), 'utf8');
     assert.match(toml, /from\s*=\s*"\/apps\/mario-kart\/tracker\.html"/);
-    assert.match(toml, /to\s*=\s*"\/apps\/mario-kart\/index\.html"/);
+    // Target is the directory form so the redirect lands on the
+    // pretty-URL canonical in a single hop.
+    assert.match(toml, /to\s*=\s*"\/apps\/mario-kart\/"/);
     assert.match(toml, /status\s*=\s*301/);
 });
