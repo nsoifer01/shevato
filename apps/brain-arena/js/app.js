@@ -287,24 +287,21 @@ function renderProfileView() {
     const pct = p.gamesPlayed ? Math.round(100 * (p.wins || 0) / p.gamesPlayed) : 0;
     setText($('#stat-winpct'), pct + '%');
 
-    const now = Date.now();
-    const paid = Premium.isPaidPremium(p);
-    const inTrial = Premium.isInTrial(p, now);
+    if (Config.PREMIUM_UI_ENABLED) {
+        const now = Date.now();
+        const paid = Premium.isPaidPremium(p);
+        const inTrial = Premium.isInTrial(p, now);
 
-    const premiumCard = $('#profile-premium-card');
-    setClass(premiumCard, 'is-premium', paid);
-    setClass(premiumCard, 'is-trial', !paid && inTrial);
-    setText($('#profile-premium-status'), Premium.premiumStatusText(p, now));
+        const premiumCard = $('#profile-premium-card');
+        setClass(premiumCard, 'is-premium', paid);
+        setClass(premiumCard, 'is-trial', !paid && inTrial);
+        setText($('#profile-premium-status'), Premium.premiumStatusText(p, now));
 
-    // Hide the "Go Premium" CTA when the user is already paid (no need),
-    // but keep it visible during trial so they can lock in before it ends.
-    const upgradeBtn = $('#upgrade-premium-btn');
-    if (upgradeBtn) upgradeBtn.hidden = paid;
+        const upgradeBtn = $('#upgrade-premium-btn');
+        if (upgradeBtn) upgradeBtn.hidden = paid;
 
-    // Admin-only dev controls — toggle paid premium and reset the trial
-    // clock without going through Stripe. Empty ADMIN_UIDS = nothing
-    // rendered; users in the list get the controls inline.
-    renderAdminControls(p);
+        renderAdminControls(p);
+    }
 
     renderCustomPackTextarea();
 }
@@ -329,7 +326,9 @@ function wireProfileView() {
         renderProfileView();
         renderLeaderboardEntries();
     });
-    $('#upgrade-premium-btn').addEventListener('click', openPremiumModal);
+    if (Config.PREMIUM_UI_ENABLED) {
+        $('#upgrade-premium-btn').addEventListener('click', openPremiumModal);
+    }
 }
 
 /* =====================================================================
@@ -337,12 +336,19 @@ function wireProfileView() {
  * ===================================================================== */
 
 function isPremium() {
+    // Master switch: when the premium UI is hidden site-wide, every gated
+    // feature is unlocked for every signed-in user. See Config.PREMIUM_UI_ENABLED
+    // and apps/brain-arena/PREMIUM_SETUP.md.
+    if (!Config.PREMIUM_UI_ENABLED) return true;
     return Premium.isPremium(state.profile, Date.now());
 }
 
 function renderPremiumGates() {
-    // Toggle "Premium" tags' visibility — keep them visible always, but show
-    // a contextual hint when a non-premium user tries to engage the feature.
+    // When the premium UI is hidden, CSS pulls every `.premium-tag`,
+    // `.premium-chip`, and `[data-action="open-premium"]` out of layout —
+    // no per-element JS toggling required. Bail early so we don't fight
+    // it with inline styles.
+    if (!Config.PREMIUM_UI_ENABLED) return;
     const premium = isPremium();
     $$('.premium-tag').forEach((tag) => {
         tag.style.display = premium ? 'none' : 'inline-flex';
@@ -350,6 +356,11 @@ function renderPremiumGates() {
 }
 
 function openPremiumModal() {
+    // Hard-stop when the premium UI is disabled. With isPremium() always
+    // true in that mode, the call sites (custom-pack save, lobby gates)
+    // never trigger this — but if any future path does, fail silently
+    // instead of flashing a half-styled hidden modal at the user.
+    if (!Config.PREMIUM_UI_ENABLED) return;
     const modal = $('#premium-modal');
     show(modal);
     modal.removeAttribute('hidden');
@@ -2694,12 +2705,21 @@ function wireLeaderboard() {
  * ===================================================================== */
 
 async function boot() {
+    // Premium UI is opt-in. The body class drives CSS that pulls every
+    // premium-related element out of layout. Skip the JS wiring too so
+    // disabled handlers don't fire on hidden controls.
+    if (!Config.PREMIUM_UI_ENABLED) {
+        document.body.classList.add('premium-disabled');
+    }
+
     wireViewTabs();
     wireLobby();
-    wirePremiumModal();
+    if (Config.PREMIUM_UI_ENABLED) {
+        wirePremiumModal();
+        wireAdminControls();
+    }
     wireProfileView();
     wireCustomPack();
-    wireAdminControls();
     wireLeaderboard();
     renderPackOptions();
 
