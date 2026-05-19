@@ -27,7 +27,7 @@
 }(typeof self !== 'undefined' ? self : this, function (Wikidata) {
     'use strict';
 
-    const REST_COUNTRIES_URL = 'https://restcountries.com/v3.1/all?fields=name,capital,capitalInfo,region,subregion,flag,latlng';
+    const REST_COUNTRIES_URL = 'https://restcountries.com/v3.1/all?fields=name,capital,capitalInfo,region,subregion,flag,latlng,area,landlocked,independent';
 
     /**
      * Convert one REST Countries record into our location shape, or null
@@ -62,6 +62,7 @@
             : 'Unknown country';
         const region = String(raw.region || 'Unknown');
 
+        const areaNum = Number(raw.area);
         return {
             id: country.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '') || 'unknown',
             name: capital,
@@ -70,8 +71,69 @@
             subregion: String(raw.subregion || ''),
             flag: String(raw.flag || ''),
             lat: latlng[0],
-            lng: latlng[1]
+            lng: latlng[1],
+            // Land area + landlocked surface here so the small-island cap
+            // can decide which capitals are "tiny ocean specks" without
+            // re-fetching the REST Countries payload.
+            countryAreaSqKm: Number.isFinite(areaNum) ? areaNum : null,
+            landlocked: raw.landlocked === true
         };
+    }
+
+    /**
+     * Heuristic: is this location's country a "small island nation" the
+     * cap should limit to ≤2 per game? Two conditions, both must be true:
+     *   1. Country land area below Config.GLOBE_DROP_SMALL_ISLAND_MAX_AREA
+     *   2. Country subregion is in Config.GLOBE_DROP_SMALL_ISLAND_SUBREGIONS
+     * The subregion filter avoids penalising small landlocked European
+     * states (Liechtenstein, San Marino) that happen to be tiny but
+     * aren't ocean dots.
+     */
+    function isSmallIslandLocation(loc) {
+        if (!loc) return false;
+        // Missing / null area means we can't classify reliably — treat as
+        // non-island. Number(null) is 0 (finite), so the explicit guard
+        // here matters; without it every legacy location would be flagged.
+        if (loc.countryAreaSqKm == null) return false;
+        const Config = (typeof module === 'object' && module.exports)
+            ? require('./config.js')
+            : (typeof window !== 'undefined' && window.BrainArena && window.BrainArena.Config) || {};
+        const maxArea = Number(Config.GLOBE_DROP_SMALL_ISLAND_MAX_AREA);
+        const subregions = Array.isArray(Config.GLOBE_DROP_SMALL_ISLAND_SUBREGIONS)
+            ? Config.GLOBE_DROP_SMALL_ISLAND_SUBREGIONS
+            : [];
+        const area = Number(loc.countryAreaSqKm);
+        if (!Number.isFinite(area) || area > maxArea) return false;
+        const sub = String(loc.subregion || '');
+        return subregions.indexOf(sub) !== -1;
+    }
+
+    /**
+     * Cap small-island-nation locations to N per playlist. Walks the
+     * (already-shuffled) list in order, keeping non-islands as-is and
+     * keeping up to N islands; once the island budget is spent, further
+     * islands are pushed to the END of the list so the head-of-list
+     * slicing produces a balanced game. Pure; injectable for tests.
+     */
+    function capSmallIslands(locations, maxIslands) {
+        if (!Array.isArray(locations)) return [];
+        const cap = Math.max(0, Number(maxIslands) || 0);
+        const head = [];
+        const tail = [];
+        let islandsKept = 0;
+        for (const loc of locations) {
+            if (isSmallIslandLocation(loc)) {
+                if (islandsKept < cap) {
+                    head.push(loc);
+                    islandsKept++;
+                } else {
+                    tail.push(loc);
+                }
+            } else {
+                head.push(loc);
+            }
+        }
+        return head.concat(tail);
     }
 
     /**
@@ -111,8 +173,16 @@
         const normalized = raw.map(normalizer).filter((q) => q !== null);
         if (!normalized.length) throw new Error('REST Countries returned no usable locations');
         const shuffled = typeof shuffleFn === 'function' ? shuffleFn(normalized) : normalized.slice();
-        const n = Math.max(1, Math.min(shuffled.length, Number(count) || 5));
-        return shuffled.slice(0, n);
+        // Apply small-island cap BEFORE the take-N slice so the head of
+        // the playlist gets at most GLOBE_DROP_SMALL_ISLAND_MAX_PER_GAME
+        // tiny island capitals. capSmallIslands keeps the rest of the
+        // playlist intact (any extra islands fall to the tail).
+        const Config = (typeof require === 'function')
+            ? require('./config.js')
+            : (typeof window !== 'undefined' && window.BrainArena && window.BrainArena.Config) || {};
+        const capped = capSmallIslands(shuffled, Config.GLOBE_DROP_SMALL_ISLAND_MAX_PER_GAME);
+        const n = Math.max(1, Math.min(capped.length, Number(count) || 5));
+        return capped.slice(0, n);
     }
 
     /**
@@ -128,10 +198,11 @@
     }
 
     const ROUND_TYPES = {
-        'capitals':    { label: 'World capitals',      packId: 'world-capitals',  packName: 'World capitals',  promptVerb: 'Where is' },
-        'countries':   { label: 'Countries',           packId: 'world-countries', packName: 'Countries',        promptVerb: 'Where is' },
-        'major-cities':{ label: 'Major cities',         packId: 'major-cities',    packName: 'Major cities (Wikidata)', promptVerb: 'Where is' },
-        'landmarks':   { label: 'World landmarks',     packId: 'world-landmarks', packName: 'UNESCO World Heritage sites (Wikidata)', promptVerb: 'Where is' }
+        'capitals':              { label: 'World capitals',          packId: 'world-capitals',         packName: 'World capitals',                       promptVerb: 'Where is' },
+        'countries':             { label: 'Countries',               packId: 'world-countries',        packName: 'Countries',                            promptVerb: 'Where is' },
+        'major-cities':          { label: 'Major cities',            packId: 'major-cities',           packName: 'Major cities (Wikidata)',              promptVerb: 'Where is' },
+        'top-cities-by-country': { label: 'Top cities by country',   packId: 'top-cities-by-country',  packName: 'Top cities by country (Wikidata)',     promptVerb: 'Where is' },
+        'landmarks':             { label: 'World landmarks',         packId: 'world-landmarks',        packName: 'UNESCO World Heritage sites (Wikidata)', promptVerb: 'Where is' }
     };
 
     /**
@@ -145,11 +216,12 @@
             return fetchCapitalLocations(roundType, count);
         }
         switch (roundType) {
-            case 'countries':    return fetchCountryLocations(count, shuffleFn);
-            case 'major-cities': return Wikidata.fetchMajorCities(count, shuffleFn);
-            case 'landmarks':    return Wikidata.fetchLandmarks(count, shuffleFn);
+            case 'countries':              return fetchCountryLocations(count, shuffleFn);
+            case 'major-cities':           return Wikidata.fetchMajorCities(count, shuffleFn);
+            case 'top-cities-by-country':  return Wikidata.fetchTopCitiesByCountry(count, shuffleFn);
+            case 'landmarks':              return Wikidata.fetchLandmarks(count, shuffleFn);
             case 'capitals':
-            default:             return fetchCapitalLocations(count, shuffleFn);
+            default:                       return fetchCapitalLocations(count, shuffleFn);
         }
     }
 
@@ -186,6 +258,8 @@
         ROUND_TYPES,
         normalizeCountry,
         normalizeAsCountry,
+        isSmallIslandLocation,
+        capSmallIslands,
         fetchLocations,
         fetchCapitalLocations,
         fetchCountryLocations,

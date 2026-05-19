@@ -137,6 +137,17 @@
         // Default round size dropdown for GlobeDrop (locations per game).
         GLOBE_DROP_LOCATIONS_DEFAULT: 5,
 
+        // Cap on small-island-nation entries per playlist. Without this,
+        // luck-of-the-shuffle can pack three Maldives-class capitals into
+        // a 5-location game and turn it into "name the Caribbean specks".
+        // Heuristic: country.area <= GLOBE_DROP_SMALL_ISLAND_MAX_AREA AND
+        // country.subregion matches a known island-cluster subregion.
+        GLOBE_DROP_SMALL_ISLAND_MAX_PER_GAME: 2,
+        GLOBE_DROP_SMALL_ISLAND_MAX_AREA: 50000,    // sq km
+        GLOBE_DROP_SMALL_ISLAND_SUBREGIONS: [
+            'Caribbean', 'Polynesia', 'Micronesia', 'Melanesia'
+        ],
+
         // Difficulty tiers for GlobeDrop. Each tier overrides the per-location
         // timer, controls which hints render alongside the city name, and
         // multiplies the final score after distance + continent multipliers.
