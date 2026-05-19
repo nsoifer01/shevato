@@ -808,6 +808,19 @@ select option { background: var(--surface); color: var(--text); }
   color: var(--muted-2);
 }
 .player-tile.is-host .player-mini-tag { color: var(--good); }
+.player-h2h-badge {
+  font-family: var(--mono);
+  font-size: 0.7rem;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  margin-top: 0.25rem;
+  padding: 0.15rem 0.5rem;
+  background: rgba(34, 211, 238, 0.10);
+  border: 1px solid rgba(34, 211, 238, 0.30);
+  border-radius: 999px;
+  color: var(--cyan-2);
+  text-shadow: 0 0 8px rgba(34, 211, 238, 0.25);
+}
 
 .lobby-host-controls {
   display: flex;
@@ -1098,6 +1111,23 @@ select option { background: var(--surface); color: var(--text); }
   -webkit-text-fill-color: transparent;
   filter: drop-shadow(0 0 14px rgba(34, 211, 238, 0.30));
 }
+.section-title-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  background: rgba(34, 211, 238, 0.10);
+  border: 1px solid rgba(34, 211, 238, 0.35);
+  color: var(--cyan-2);
+  box-shadow:
+    0 0 0 1px rgba(34, 211, 238, 0.10),
+    0 0 16px rgba(34, 211, 238, 0.25);
+  filter: drop-shadow(0 0 6px rgba(34, 211, 238, 0.35));
+  -webkit-text-fill-color: initial;
+}
+.section-title-icon svg { display: block; }
 .leaderboard-date {
   margin-left: 0.55rem;
   padding: 0.25rem 0.7rem;
@@ -1272,6 +1302,30 @@ select option { background: var(--surface); color: var(--text); }
    buttons themselves restore pointer-events:auto. Only rendered while
    a pin is placed (toggled via [hidden] on the stack and individual
    buttons). */
+/* Timer overlay positioned at the top-left of the globe wrapper. Sized
+   smaller than the legacy header timer (it was 72px) so it doesn't
+   dominate the globe view. */
+.globe-drop-timer-overlay {
+  position: absolute;
+  top: 0.75rem;
+  left: 0.75rem;
+  z-index: 4;
+  width: 56px;
+  height: 56px;
+  pointer-events: none;
+}
+.globe-drop-timer-overlay .timer-ring {
+  width: 100%;
+  height: 100%;
+}
+.globe-drop-timer-overlay .game-timer-num {
+  font-size: 0.95rem;
+}
+@media (max-width: 540px) {
+  .globe-drop-timer-overlay { width: 46px; height: 46px; top: 0.5rem; left: 0.5rem; }
+  .globe-drop-timer-overlay .game-timer-num { font-size: 0.82rem; }
+}
+
 .globe-drop-fab-stack {
   position: absolute;
   top: 0.75rem;
@@ -1372,9 +1426,11 @@ select option { background: var(--surface); color: var(--text); }
    the next section (globe / previous round scores) begins. */
 .mini-board-top { margin: 0 0 1.6rem; }
 
-/* Previous-round scores — uses the same row aesthetic as live standings
-   but with a muted, calmer treatment so it reads as "history". */
-.prev-round-board {
+/* Round-by-round breakdown. Each row = one completed round, with per-
+   player score chips. Sits next to / under the cumulative live
+   standings — same visual family, muted treatment so it reads as
+   reference detail not the headline. */
+.rounds-history-board {
   margin: 0 0 1.6rem;
   padding: 0.9rem 1.1rem 0.95rem;
   background:
@@ -1388,22 +1444,82 @@ select option { background: var(--surface); color: var(--text); }
   overflow: hidden;
   box-shadow: 0 1px 0 rgba(255, 255, 255, 0.04) inset, 0 6px 20px rgba(2, 6, 23, 0.35);
 }
-.prev-round-board::before {
+.rounds-history-board::before {
   content: "";
   position: absolute;
   top: 0; left: 14%; right: 14%; height: 1px;
   background: linear-gradient(90deg, transparent, rgba(148, 163, 184, 0.30) 50%, transparent);
   pointer-events: none;
 }
-.prev-round-board .mini-board-head {
+.rounds-history-board .mini-board-head {
   margin-bottom: 0.5rem;
 }
-.prev-round-board h3 {
+.rounds-history-board h3 {
   font-family: "Space Grotesk", "Outfit", sans-serif;
   font-size: 0.92rem;
   font-weight: 600;
   letter-spacing: 0.02em;
   color: var(--muted);
+}
+.rounds-history-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+.rounds-history-row {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.4rem 0.6rem;
+  background: rgba(255, 255, 255, 0.015);
+  border: 1px solid rgba(148, 163, 184, 0.06);
+  border-radius: var(--radius-sm);
+  font-size: 0.85rem;
+  flex-wrap: wrap;
+}
+.rounds-history-label {
+  font-family: var(--mono);
+  font-weight: 700;
+  color: var(--muted-2);
+  letter-spacing: 0.02em;
+  white-space: nowrap;
+  font-size: 0.78rem;
+}
+.rounds-history-loc {
+  color: var(--text);
+  font-weight: 500;
+}
+.rounds-history-scores {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  margin-left: auto;
+}
+.rounds-history-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  padding: 0.15rem 0.55rem;
+  background: rgba(34, 211, 238, 0.07);
+  border: 1px solid rgba(34, 211, 238, 0.18);
+  border-radius: 999px;
+  font-family: var(--mono);
+  font-size: 0.78rem;
+  font-weight: 600;
+  color: var(--cyan-2);
+}
+.rounds-history-chip.is-me {
+  background: var(--grad-brand-soft);
+  border-color: rgba(34, 211, 238, 0.45);
+  color: var(--text);
+}
+.rounds-history-chip.is-zero {
+  color: var(--muted);
+  background: rgba(255, 255, 255, 0.02);
+  border-color: rgba(148, 163, 184, 0.10);
 }
 .mini-board-head {
   display: flex;
@@ -1849,6 +1965,16 @@ select option { background: var(--surface); color: var(--text); }
   margin: 0 0 0.85rem;
   color: var(--muted);
   font-size: 0.88rem;
+}
+
+/* Wrapper hosts the globe + overlay UI as siblings. globe.gl owns the
+   inner contents of #globe-drop-map (its WebGL canvas) and we can't
+   safely keep our own children in there — they get reparented when
+   the scene re-initializes. The wrapper is the positioning context
+   for the FAB stack + the timer overlay. */
+.globe-drop-map-wrap {
+  position: relative;
+  width: 100%;
 }
 
 .globe-drop-map {
@@ -2675,6 +2801,26 @@ select option { background: var(--surface); color: var(--text); }
   color: var(--cyan-2);
 }
 .end-board td.col-xp, .leaderboard-table td.col-xp { color: var(--good); }
+
+/* Room-session H2H — appears on the end stage once at least one match
+   has finished in this room and there are 2+ players. Same row aesthetic
+   as the mini-board but with a more compact margin. */
+.room-session-h2h {
+  margin: 1.4rem 0 0;
+  padding: 0.9rem 1.1rem 0.95rem;
+  background:
+    linear-gradient(180deg, rgba(168, 85, 247, 0.04), transparent 50%),
+    rgba(8, 11, 22, 0.55);
+  border: 1px solid rgba(168, 85, 247, 0.18);
+  border-radius: var(--radius);
+  box-shadow: 0 1px 0 rgba(255, 255, 255, 0.04) inset, 0 8px 24px rgba(2, 6, 23, 0.4);
+}
+.room-session-h2h .mini-board-head { margin-bottom: 0.6rem; }
+.room-session-h2h h3 {
+  font-family: "Space Grotesk", "Outfit", sans-serif;
+  font-size: 0.95rem;
+  color: var(--text);
+}
 
 /* Rematch coordination — visible only after a rematch is proposed.
    Shows accept progress + per-player accept/decline buttons. */
