@@ -1,6 +1,7 @@
 'use strict';
 
 const { labelOf, escapeHtml, SITE } = require('./render-exercise-page.cjs');
+const { renderMoreFooter } = require('./render-footer.cjs');
 
 // Master /exercises/ landing page. Groups every exercise under its
 // primary muscle group with anchor jumps. Internal links here let
@@ -97,9 +98,7 @@ function renderExerciseIndex(exercises, slugs, builtAt) {
     <p class="index-footer">Last updated ${builtAt ? new Date(builtAt).toISOString().slice(0, 10) : new Date().toISOString().slice(0, 10)}.</p>
   </main>
 
-  <footer class="page-footer">
-    <p>© Shevato LLC · <a href="/">shevato.com</a> · <a href="/contact.html">Contact</a></p>
-  </footer>
+  ${renderMoreFooter()}
 </body>
 </html>
 `;
@@ -190,9 +189,7 @@ function renderTaxonomyPage({ kind, key, label, exercises, slugs, builtAt }) {
     <p class="index-footer"><a href="/apps/gym-tracker/exercises/">Browse all exercises →</a></p>
   </main>
 
-  <footer class="page-footer">
-    <p>© Shevato LLC · <a href="/">shevato.com</a> · <a href="/contact.html">Contact</a></p>
-  </footer>
+  ${renderMoreFooter()}
 </body>
 </html>
 `;

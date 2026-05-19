@@ -2,6 +2,7 @@
 
 const { renderCurve, escapeXml } = require('./render-curve.js');
 const { showPath } = require('./slugify.js');
+const { renderMoreFooter } = require('./render-footer.js');
 
 const SITE = 'https://shevato.com';
 const TMDB_POSTER = 'https://image.tmdb.org/t/p/w500';
@@ -140,9 +141,7 @@ ${jsonLd(buildTvSeriesSchema({ seriesId, title, year, canonical, posterUrl, clea
     </section>
   </main>
 
-  <footer class="page-footer">
-    <p>© Shevato LLC · <a href="/">shevato.com</a> · <a href="/contact.html">Contact</a></p>
-  </footer>
+  ${renderMoreFooter()}
 </body>
 </html>
 `;
