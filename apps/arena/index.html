@@ -989,14 +989,23 @@
        accept, any decline, or after a 10s timeout. -->
   <div class="modal" id="proposal-pending-modal" role="dialog" aria-modal="true" aria-labelledby="proposal-pending-title" hidden>
     <div class="modal-backdrop"></div>
-    <article class="modal-panel modal-panel-sm">
-      <h2 id="proposal-pending-title">Waiting for players…</h2>
+    <article class="modal-panel modal-panel-sm proposal-pending-panel">
+      <h2 id="proposal-pending-title" class="proposal-pending-title">
+        <span>Waiting for players</span><span class="proposal-pending-dots" aria-hidden="true"><i>.</i><i>.</i><i>.</i></span>
+      </h2>
       <p class="proposal-pending-sub" id="proposal-pending-sub">All players need to accept before the game restarts.</p>
       <ul class="proposal-response-list" id="proposal-response-list"></ul>
-      <p class="proposal-pending-timer" id="proposal-pending-timer">10s remaining</p>
-      <div class="modal-actions">
-        <button type="button" class="btn btn-ghost" id="proposal-cancel-btn">Cancel</button>
+      <div class="proposal-pending-timer-row">
+        <svg class="proposal-pending-clock" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <circle cx="12" cy="12" r="9"/>
+          <path d="M12 7v5l3 2"/>
+        </svg>
+        <span class="proposal-pending-timer" id="proposal-pending-timer">10s remaining</span>
       </div>
+      <div class="modal-actions">
+        <button type="button" class="btn btn-ghost btn-sm proposal-cancel-btn" id="proposal-cancel-btn">Cancel</button>
+      </div>
+      <div class="proposal-pending-bar" id="proposal-pending-bar" aria-hidden="true"><span></span></div>
     </article>
   </div>
 

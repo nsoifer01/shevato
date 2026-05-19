@@ -4752,6 +4752,20 @@ function openProposalPendingModal() {
     if (!modal) return;
     state.proposalPendingDeadline = Date.now() + PROPOSAL_TIMEOUT_MS;
     modal.removeAttribute('hidden');
+    // Reset the depletion bar to full width and kick off the 10-second
+    // shrink. transition: transform 0.25s linear in CSS smooths the
+    // 250ms render cadence into a continuous animation.
+    const barInner = modal.querySelector('.proposal-pending-bar span');
+    if (barInner) {
+        barInner.style.transition = 'none';
+        barInner.style.transform = 'scaleX(1)';
+        // Force a layout flush, then re-enable the transition and kick
+        // the bar to 0 over the full proposal window.
+        // eslint-disable-next-line no-void
+        void barInner.offsetWidth;
+        barInner.style.transition = `transform ${PROPOSAL_TIMEOUT_MS}ms linear`;
+        barInner.style.transform = 'scaleX(0)';
+    }
     renderProposalPendingModal();
     if (proposalPendingTimerId) clearInterval(proposalPendingTimerId);
     proposalPendingTimerId = setInterval(() => {
@@ -4786,13 +4800,18 @@ function renderProposalPendingModal() {
     list.innerHTML = '';
     others.forEach((p) => {
         const li = document.createElement('li');
-        let status = 'Waiting…';
+        // Single-word status label; the CSS handles the pulsing
+        // "Waiting" amber pill vs the glowing "Ready" green pill.
+        let status = 'Waiting';
         let cls = 'is-pending';
         if (declined.includes(p.uid)) { status = 'Declined'; cls = 'is-declined'; }
-        else if (accepted.includes(p.uid)) { status = 'Accepted'; cls = 'is-accepted'; }
+        else if (accepted.includes(p.uid)) { status = 'Ready'; cls = 'is-accepted'; }
         li.className = 'proposal-response-row ' + cls;
-        li.innerHTML = `<span class="name">${escapeHtml(p.displayName || 'Player')}</span>`
-            + `<span class="status">${escapeHtml(status)}</span>`;
+        const initial = avatarLetter(p.displayName);
+        li.innerHTML =
+            `<span class="avatar" aria-hidden="true">${escapeHtml(initial)}</span>` +
+            `<span class="name">${escapeHtml(p.displayName || 'Player')}</span>` +
+            `<span class="status">${escapeHtml(status)}</span>`;
         list.appendChild(li);
     });
     const left = Math.max(0, Math.ceil((state.proposalPendingDeadline - Date.now()) / 1000));
