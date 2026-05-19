@@ -25,6 +25,12 @@ import {
   persistentLocalCache,
   persistentMultipleTabManager
 } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
+// Re-export the Firestore SDK as a single namespace so app modules can
+// reach `doc`, `onSnapshot`, etc. without re-importing the SDK URL
+// themselves. The invariant test in sync-system/tests/firebase-config-shape.test.mjs
+// (`no app file imports Firestore directly except the sync layer`) keeps
+// every consumer routed through this file.
+export * as firestore from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
 import { getDatabase } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-database.js";
 import {
   getAuth,
