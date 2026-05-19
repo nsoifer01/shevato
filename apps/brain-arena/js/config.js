@@ -48,6 +48,17 @@
         // exploding profile totals.
         XP_PER_POINT_DIVISOR: 1,
 
+        // Master switch for the premium tier. When false (default):
+        //   - all premium UI is hidden (modal, profile card, "Premium" tags,
+        //     admin toggles, the locked detailed-stats panel),
+        //   - every gated feature is unlocked for every signed-in user
+        //     (isPremium() short-circuits to true in app.js).
+        // The pure helpers in premium.js stay enforceable so the trial /
+        // paid math is testable, and so flipping this flag to `true` after
+        // a Stripe Payment Link is wired up turns the whole flow on cleanly.
+        // See apps/brain-arena/PREMIUM_SETUP.md for the full rollout steps.
+        PREMIUM_UI_ENABLED: false,
+
         // Premium tier — keep this list small and load-bearing. The premium
         // boolean lives at users/{uid}.triviaProfile.premium.
         PREMIUM_FEATURES: {
