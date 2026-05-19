@@ -2705,9 +2705,16 @@ select option { background: var(--surface); color: var(--text); }
   white-space: nowrap;
 }
 
-/* Submitted indicator — a small green ✓ that slides in next to the
-   player's name. No "submitted" word, no badge chrome. Reads cleanly
-   inside the row without overflowing. */
+/* Submitted indicator — green tint on the name span PLUS a small ✓
+   sliding in next to it. No "submitted" word, no toast, no badge
+   chrome. The tint reads at a glance even at a distance; the ✓ is
+   the precise confirmation. */
+.mini-board-row.is-answered .mini-board-name {
+  background: rgba(16, 185, 129, 0.16);
+  border-radius: 6px;
+  padding: 0.05rem 0.4rem;
+  box-shadow: 0 0 10px rgba(16, 185, 129, 0.18) inset;
+}
 .mini-board-check {
   display: inline-flex;
   align-items: center;

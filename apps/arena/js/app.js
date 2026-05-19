@@ -1505,11 +1505,12 @@ function enterRoom(code) {
 }
 
 /**
- * Toast + audio ping when an opponent transitions from "not answered" to
- * "answered" for the current question. Skipped for the local player
- * (their own submission already gets a louder cue from guessSubmitted)
- * and for any submission that lands during the reveal phase (irrelevant
- * presence noise once everyone can see the result anyway).
+ * Audio ping when an opponent transitions from "not answered" to
+ * "answered" for the current question. No toast, no pulse banner —
+ * the green name tint + ✓ on the mini-board carries the visual
+ * signal. Skipped for the local player (their own submission gets
+ * a louder cue from guessSubmitted) and for any submission that
+ * lands during the reveal phase.
  */
 function notifyOpponentSubmissions(prev, next) {
     if (!state.user || !state.roomCode || !state.roomData) return;
@@ -1524,16 +1525,6 @@ function notifyOpponentSubmissions(prev, next) {
         if (np.currentAnsweredFor !== currentQId) continue;          // not on this question
         const before = prevMap.get(np.uid);
         if (before && before.currentAnsweredFor === currentQId) continue; // not new
-        const name = String(np.displayName || 'Opponent');
-        showToast(`${name} submitted.`, {
-            icon: '✅',
-            key: `submitted:${np.uid}:${currentQId}`
-        });
-        // Flash the in-stage pulse banner too — more prominent than the
-        // corner toast and lives right above the globe where the player's
-        // attention is. Restarts the animation by toggling [hidden] off
-        // after removing + re-adding the element to the DOM-tree.
-        flashStagePulse(`${name} submitted ✓`);
         try { Feedback.opponentSubmitted(); } catch (_) { /* ignore */ }
     }
 }
