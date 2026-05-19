@@ -42,7 +42,7 @@
 // directories (js → brain-arena → apps → repo root).
 import { db, firestore } from '../../../firebase-config.js';
 const {
-    doc, collection, getDoc, getDocs, setDoc, updateDoc, deleteDoc,
+    doc, collection, getDoc, getDocs, setDoc, updateDoc, deleteDoc, addDoc,
     onSnapshot, query, orderBy, limit, serverTimestamp, runTransaction,
     increment, deleteField
 } = firestore;
@@ -51,6 +51,7 @@ const Config = window.BrainArena.Config;
 const Scoring = window.BrainArena.Scoring;
 const Premium = window.BrainArena.Premium;
 const Feedback = window.BrainArena.Feedback;
+const Chat = window.BrainArena.Chat;
 const RoomState = window.BrainArena.RoomState;
 const LiveQuestions = window.BrainArena.LiveQuestions;
 const GlobeDropScoring = window.BrainArena.GlobeDropScoring;
@@ -1160,6 +1161,7 @@ function enterRoom(code) {
     hide($('#lobby-panel'));
     setText($('#room-code-display'), code);
     syncUrlToState();
+    startChatListener(code);
 
     // window.beforeunload cleanup so the player removes themselves on tab close
     window.addEventListener('beforeunload', beforeUnloadCleanup);
@@ -1263,6 +1265,8 @@ async function leaveRoom({ silent = false, reason = null } = {}) {
     state.submittedQuestionId = null;
     state.currentAnswers = [];
     lastStatusPlayedFeedback = null;
+    stopChatListener();
+    closeChatPanel();
 
     if (code && state.user) {
         try {
@@ -1380,6 +1384,161 @@ async function hostEndGameEarly() {
     } catch (err) {
         console.warn('hostEndGameEarly failed:', err);
     }
+}
+
+/* =====================================================================
+ * Chat — per-room subcollection at triviaRooms/{code}/chat
+ * ===================================================================== */
+
+const chatState = {
+    open: false,
+    messages: [],
+    unsub: null,
+    lastSentAt: null,
+    unreadSince: 0
+};
+
+function openChatPanel() {
+    chatState.open = true;
+    const panel = $('#room-chat-panel');
+    if (panel) panel.hidden = false;
+    chatState.unreadSince = chatState.messages.length;
+    updateChatBadge();
+    // Focus the input on open — feels conversational.
+    const input = $('#room-chat-input');
+    if (input) setTimeout(() => input.focus(), 50);
+    scrollChatToBottom();
+}
+
+function closeChatPanel() {
+    chatState.open = false;
+    const panel = $('#room-chat-panel');
+    if (panel) panel.hidden = true;
+}
+
+function updateChatBadge() {
+    const badge = $('#room-chat-badge');
+    if (!badge) return;
+    const unread = Math.max(0, chatState.messages.length - chatState.unreadSince);
+    if (chatState.open || unread === 0) {
+        badge.hidden = true;
+        return;
+    }
+    badge.textContent = unread > 9 ? '9+' : String(unread);
+    badge.hidden = false;
+}
+
+function scrollChatToBottom() {
+    const list = $('#room-chat-list');
+    if (!list) return;
+    list.scrollTop = list.scrollHeight;
+}
+
+function startChatListener(code) {
+    stopChatListener();
+    chatState.messages = [];
+    chatState.unreadSince = 0;
+    const chatRef = collection(db, 'triviaRooms', code, 'chat');
+    const q = query(chatRef, orderBy('sentAt', 'asc'), limit(80));
+    chatState.unsub = onSnapshot(q, (snap) => {
+        const prevLen = chatState.messages.length;
+        chatState.messages = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+        renderChatMessages();
+        // First fill is treated as "all read" so the badge doesn't show
+        // 50 unread on first render. After that, growth = unread.
+        if (prevLen === 0) chatState.unreadSince = chatState.messages.length;
+        // Toast preview for the latest message when the panel is closed,
+        // but only for messages that weren't authored by us (we already
+        // know we sent ours).
+        const newest = chatState.messages[chatState.messages.length - 1];
+        if (!chatState.open && newest && state.user && newest.uid !== state.user.uid && prevLen > 0 && prevLen < chatState.messages.length) {
+            showToast(`${newest.displayName || 'Player'}: ${newest.text}`, { icon: '💬', key: 'chat:' + newest.id });
+            try { Feedback.chatMessage(); } catch (_) {}
+        }
+        updateChatBadge();
+    }, (err) => {
+        console.warn('Chat listener error:', err);
+    });
+}
+
+function stopChatListener() {
+    if (chatState.unsub) {
+        try { chatState.unsub(); } catch (_) {}
+        chatState.unsub = null;
+    }
+    chatState.messages = [];
+    chatState.unreadSince = 0;
+    updateChatBadge();
+}
+
+function renderChatMessages() {
+    const list = $('#room-chat-list');
+    const empty = $('#room-chat-empty');
+    if (!list) return;
+    list.innerHTML = '';
+    if (!chatState.messages.length) {
+        if (empty) empty.hidden = false;
+        return;
+    }
+    if (empty) empty.hidden = true;
+    for (const m of chatState.messages) {
+        const li = document.createElement('li');
+        li.className = 'room-chat-msg';
+        if (state.user && m.uid === state.user.uid) li.classList.add('is-mine');
+        const sentMs = m.sentAt && m.sentAt.toMillis ? m.sentAt.toMillis() : null;
+        const time = sentMs ? Chat.formatTimestamp(sentMs) : '';
+        li.innerHTML =
+            `<span class="room-chat-name">${escapeHtml(m.displayName || 'Player')}</span>` +
+            (time ? `<span class="room-chat-time">${escapeHtml(time)}</span>` : '') +
+            `<span class="room-chat-body">${escapeHtml(m.text || '')}</span>`;
+        list.appendChild(li);
+    }
+    scrollChatToBottom();
+}
+
+async function sendChatMessage() {
+    if (!state.user || !state.roomCode) return;
+    const input = $('#room-chat-input');
+    const err = $('#room-chat-error');
+    if (err) { err.hidden = true; err.textContent = ''; }
+    if (!input) return;
+    const text = Chat.sanitizeText(input.value);
+    if (!text) return;
+    const blocked = Chat.profanityCheck(text);
+    if (blocked) {
+        if (err) { err.textContent = `That word isn't allowed in chat.`; err.hidden = false; }
+        return;
+    }
+    if (Chat.shouldRateLimit(chatState.lastSentAt, Date.now())) {
+        if (err) { err.textContent = 'Slow down — wait a moment before sending again.'; err.hidden = false; }
+        return;
+    }
+    const displayName = (state.profile && state.profile.displayName) || deriveInitialDisplayName();
+    try {
+        await addDoc(collection(db, 'triviaRooms', state.roomCode, 'chat'), {
+            uid: state.user.uid,
+            displayName,
+            text,
+            sentAt: serverTimestamp()
+        });
+        chatState.lastSentAt = Date.now();
+        input.value = '';
+    } catch (e) {
+        console.warn('sendChatMessage failed:', e);
+        if (err) { err.textContent = 'Could not send. Try again.'; err.hidden = false; }
+    }
+}
+
+function wireChat() {
+    const toggle = $('#room-chat-toggle');
+    const closeBtn = $('#room-chat-close');
+    const form = $('#room-chat-form');
+    if (toggle) toggle.addEventListener('click', () => {
+        if (chatState.open) closeChatPanel();
+        else openChatPanel();
+    });
+    if (closeBtn) closeBtn.addEventListener('click', closeChatPanel);
+    if (form) form.addEventListener('submit', (e) => { e.preventDefault(); sendChatMessage(); });
 }
 
 // Edge-trigger feedback on game-status transitions. We track the last
@@ -3542,6 +3701,7 @@ async function boot() {
     wireCustomPack();
     wireLeaderboard();
     wireH2H();
+    wireChat();
     renderPackOptions();
 
     // Read tab + queued room from the URL BEFORE auth wires up, so a
