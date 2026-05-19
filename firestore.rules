@@ -52,6 +52,18 @@ service cloud.firestore {
       allow create, update: if request.auth != null && request.auth.uid == userId;
     }
 
+    // Brain Arena — Globe Drop daily challenge leaderboard.
+    // Each YYYY-MM-DD doc has a /scores subcollection keyed by uid.
+    // Anyone signed in can read (to render the daily top 10); each
+    // user can only create/update their own score entry. The client
+    // enforces "personal best only" by reading first; rules accept
+    // any write the user makes to their own doc — replay-cheating
+    // here just resets your own best, so the blast radius is small.
+    match /globeDropDailyLeaderboard/{date}/scores/{userId} {
+      allow read: if request.auth != null;
+      allow create, update: if request.auth != null && request.auth.uid == userId;
+    }
+
     // Deny all other access
     match /{document=**} {
       allow read, write: if false;

@@ -54,6 +54,7 @@ const RoomState = window.BrainArena.RoomState;
 const LiveQuestions = window.BrainArena.LiveQuestions;
 const GlobeDropScoring = window.BrainArena.GlobeDropScoring;
 const GlobeDropLocations = window.BrainArena.GlobeDropLocations;
+const GlobeDropDaily = window.BrainArena.GlobeDropDaily;
 
 /* =====================================================================
  * State
@@ -98,6 +99,11 @@ const state = {
     // Leaderboard
     leaderboardEntries: [],
     leaderboardUnsub: null,
+
+    // Daily Globe Drop leaderboard — same panel, separate subscription
+    // because it lives in its own collection and resets at UTC midnight.
+    dailyLeaderboardEntries: [],
+    dailyLeaderboardUnsub: null,
 
     // Live listener on users/{uid} so the Stripe webhook's flip of
     // triviaProfile.premium (server-side via Admin SDK) propagates to
@@ -639,7 +645,9 @@ function wireLobby() {
         $('#create-globe-drop-time-field').hidden = !e.target.checked;
     });
 
-    $('#create-room-btn').addEventListener('click', createRoom);
+    $('#create-room-btn').addEventListener('click', () => createRoom());
+    $('#play-solo-btn').addEventListener('click', () => createRoom({ mode: 'solo' }));
+    $('#play-daily-btn').addEventListener('click', () => createRoom({ mode: 'daily' }));
     $('#join-room-btn').addEventListener('click', joinRoom);
     $('#join-code').addEventListener('input', (e) => {
         const raw = String(e.target.value || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
@@ -689,17 +697,32 @@ function showJoinError(msg) {
     e.hidden = false;
 }
 
-async function createRoom() {
+async function createRoom(opts) {
     if (!state.user) { openSignInPrompt(); return; }
-    const gameType = state.selectedGameType === 'globe-drop' ? 'globe-drop' : 'trivia';
-    const isPrivate = !!$('#create-private-toggle').checked;
-    const password = isPrivate ? String($('#create-password').value || '').trim() : '';
-    if (isPrivate && !password) {
+    // mode = 'multi' (default) | 'solo' | 'daily'.
+    // - solo: private, single-player, auto-starts as soon as the room exists
+    // - daily: like solo, plus deterministic location seeding by UTC date
+    //          and an end-of-game write to globeDropDailyLeaderboard
+    const mode = (opts && opts.mode) || 'multi';
+    const isSoloLike = mode === 'solo' || mode === 'daily';
+
+    const gameType = isSoloLike
+        ? 'globe-drop'
+        : (state.selectedGameType === 'globe-drop' ? 'globe-drop' : 'trivia');
+
+    // Solo / daily rooms are always private to keep them out of any future
+    // public-room discovery. They have no password — only this user is in
+    // them, and the room code itself acts as the (single-use) secret.
+    const isPrivate = isSoloLike ? true : !!$('#create-private-toggle').checked;
+    const password = (isPrivate && !isSoloLike) ? String($('#create-password').value || '').trim() : '';
+    if (isPrivate && !isSoloLike && !password) {
         alert('Set a password for the private room.');
         return;
     }
 
-    const btn = $('#create-room-btn');
+    const btn = isSoloLike
+        ? (mode === 'daily' ? $('#play-daily-btn') : $('#play-solo-btn'))
+        : $('#create-room-btn');
     const originalLabel = btn.textContent;
     btn.disabled = true;
 
@@ -722,27 +745,48 @@ async function createRoom() {
         };
 
         if (gameType === 'globe-drop') {
-            btn.textContent = 'Fetching locations…';
+            btn.textContent = mode === 'daily' ? "Loading today's challenge…" : 'Fetching locations…';
             const count = parseInt($('#create-locations-count').value, 10) || Config.GLOBE_DROP_LOCATIONS_DEFAULT;
-            const difficultyKey = $('#create-globe-drop-difficulty').value || Config.GLOBE_DROP_DIFFICULTY_DEFAULT;
+            const difficultyKey = isSoloLike
+                ? 'medium'
+                : ($('#create-globe-drop-difficulty').value || Config.GLOBE_DROP_DIFFICULTY_DEFAULT);
             const diff = GlobeDropScoring.difficultySettings(difficultyKey);
             // Manual timer override only kicks in if the host explicitly opts
             // into it — otherwise the difficulty tier's timer is the source
-            // of truth so "Hard" actually feels hard.
-            const overrideTimer = !!$('#create-globe-drop-timer-override').checked;
+            // of truth so "Hard" actually feels hard. Solo/daily skip the
+            // override entirely and take the tier's default.
+            const overrideTimer = !isSoloLike && !!$('#create-globe-drop-timer-override').checked;
             const seconds = overrideTimer
                 ? (parseInt($('#create-globe-drop-time').value, 10) || diff.timerSec)
                 : diff.timerSec;
-            const roundType = $('#create-globe-drop-round-type').value || 'capitals';
+            const roundType = isSoloLike
+                ? 'capitals'
+                : ($('#create-globe-drop-round-type').value || 'capitals');
             const meta = GlobeDropLocations.ROUND_TYPES[roundType] || GlobeDropLocations.ROUND_TYPES.capitals;
-            const locations = await GlobeDropLocations.fetchLocations(roundType, count, shuffle);
+
+            let locations;
+            let dailyDateKey = null;
+            if (mode === 'daily') {
+                // Daily challenge: pull an over-provisioned pool so the
+                // seeded shuffle has room to vary the picks across days,
+                // then seed the order by UTC date. Every player who plays
+                // today gets exactly the same N locations.
+                dailyDateKey = GlobeDropDaily.dailyDateKey(Date.now());
+                const pool = await GlobeDropLocations.fetchLocations(roundType, Math.max(30, count * 4), (a) => a);
+                locations = GlobeDropDaily.pickDailyLocations(pool, count, dailyDateKey);
+            } else {
+                locations = await GlobeDropLocations.fetchLocations(roundType, count, shuffle);
+            }
+
             await setDoc(ref, Object.assign({}, shared, {
                 packId: meta.packId,
-                packName: meta.packName,
+                packName: mode === 'daily' ? `${meta.packName} · daily ${dailyDateKey}` : meta.packName,
                 totalQuestions: locations.length,
                 questions: locations,
                 roundType,
                 difficulty: difficultyKey,
+                playMode: mode, // 'multi' | 'solo' | 'daily'
+                dailyDateKey,
                 // Per-question timer chosen by tier (or override). Stored in
                 // ms so the pure phase helpers don't have to know about the
                 // unit choice.
@@ -767,6 +811,22 @@ async function createRoom() {
 
         await joinPlayer(code, displayName, /* isHost */ true);
         enterRoom(code);
+
+        // Solo / daily rooms auto-start so the user lands straight in the
+        // game stage. We wait one tick for the snapshot listener to populate
+        // state.roomData (startGame reads it as a guard) before flipping
+        // status to 'playing'. The startGame guard then sees the same room
+        // we just created and triggers the normal play flow.
+        if (isSoloLike) {
+            const tryStart = async () => {
+                if (state.roomData && state.roomData.status === 'lobby') {
+                    await startGame();
+                } else {
+                    setTimeout(tryStart, 80);
+                }
+            };
+            tryStart();
+        }
     } catch (err) {
         console.warn('Room creation failed:', err);
         // The live APIs (The Trivia API + REST Countries) are the only
@@ -2387,8 +2447,37 @@ async function writeEndOfGameStats(me, didWin) {
             wins: (state.profile && state.profile.wins) || (didWin ? 1 : 0),
             lastPlayedAt: serverTimestamp()
         }, { merge: true });
+
+        // Daily-challenge leaderboard write. Only the player's BEST score
+        // for the day stays — we read the existing doc and only overwrite
+        // when the new score is higher. Skipped silently for solo / multi.
+        await maybeWriteDailyLeaderboard(me);
     } catch (err) {
         console.warn('End-of-game profile write failed:', err);
+    }
+}
+
+async function maybeWriteDailyLeaderboard(me) {
+    if (!state.user || !state.roomData) return;
+    if (state.roomData.playMode !== 'daily') return;
+    const dateKey = state.roomData.dailyDateKey;
+    if (!dateKey) return;
+    const ref = doc(db, 'globeDropDailyLeaderboard', dateKey, 'scores', state.user.uid);
+    try {
+        const existing = await getDoc(ref);
+        const prevScore = existing.exists() ? Number(existing.data().score || 0) : -1;
+        if (me.score <= prevScore) return; // not a personal best for today
+        await setDoc(ref, {
+            uid: state.user.uid,
+            displayName: me.displayName,
+            score: me.score,
+            roundType: state.roomData.roundType || 'capitals',
+            difficulty: state.roomData.difficulty || Config.GLOBE_DROP_DIFFICULTY_DEFAULT,
+            locations: state.roomData.totalQuestions || 0,
+            completedAt: serverTimestamp()
+        }, { merge: true });
+    } catch (err) {
+        console.warn('Daily leaderboard write failed:', err);
     }
 }
 
@@ -2737,6 +2826,10 @@ function startLeaderboardListener() {
     }, (err) => {
         console.warn('Leaderboard listener error:', err);
     });
+    // Daily Globe Drop top 10 — fresh subscription per leaderboard open
+    // so the date is always today's, and so we drop the listener for an
+    // old date when the user comes back tomorrow.
+    startDailyLeaderboardListener();
 }
 
 function stopLeaderboardListener() {
@@ -2744,6 +2837,56 @@ function stopLeaderboardListener() {
         try { state.leaderboardUnsub(); } catch (e) {}
         state.leaderboardUnsub = null;
     }
+    stopDailyLeaderboardListener();
+}
+
+function startDailyLeaderboardListener() {
+    stopDailyLeaderboardListener();
+    const dateKey = GlobeDropDaily.dailyDateKey(Date.now());
+    setText($('#leaderboard-daily-date'), dateKey);
+    const ref = collection(db, 'globeDropDailyLeaderboard', dateKey, 'scores');
+    const q = query(ref, orderBy('score', 'desc'), limit(10));
+    state.dailyLeaderboardUnsub = onSnapshot(q, (snap) => {
+        state.dailyLeaderboardEntries = snap.docs.map((d) => d.data());
+        renderDailyLeaderboardEntries();
+    }, (err) => {
+        console.warn('Daily leaderboard listener error:', err);
+        state.dailyLeaderboardEntries = [];
+        renderDailyLeaderboardEntries();
+    });
+}
+
+function stopDailyLeaderboardListener() {
+    if (state.dailyLeaderboardUnsub) {
+        try { state.dailyLeaderboardUnsub(); } catch (e) {}
+        state.dailyLeaderboardUnsub = null;
+    }
+}
+
+function renderDailyLeaderboardEntries() {
+    const entries = state.dailyLeaderboardEntries || [];
+    const body = $('#leaderboard-daily-body');
+    const empty = $('#leaderboard-daily-empty');
+    body.innerHTML = '';
+    if (!entries.length) {
+        empty.hidden = false;
+        return;
+    }
+    empty.hidden = true;
+    entries.forEach((e, i) => {
+        const tr = document.createElement('tr');
+        if (state.user && e.uid === state.user.uid) tr.classList.add('is-me');
+        const roundLabel = (GlobeDropLocations.ROUND_TYPES[e.roundType] || GlobeDropLocations.ROUND_TYPES.capitals).label;
+        const diffLabel = GlobeDropScoring.difficultySettings(e.difficulty).label;
+        tr.innerHTML =
+            `<td>${i + 1}</td>` +
+            `<td>${escapeHtml(e.displayName || 'Player')}</td>` +
+            `<td class="col-xp">${e.score || 0}</td>` +
+            `<td>${escapeHtml(roundLabel)}</td>` +
+            `<td>${escapeHtml(diffLabel)}</td>` +
+            `<td>${e.locations || 0}</td>`;
+        body.appendChild(tr);
+    });
 }
 
 function renderLeaderboardEntries() {
