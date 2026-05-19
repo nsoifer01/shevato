@@ -161,6 +161,60 @@
         return shuffled.slice(0, n);
     }
 
+    /**
+     * "Top cities by country" — for each country, take its top-population
+     * cities (roughly the 80th-percentile by population: only the top 20%
+     * for each country qualify) and pick across countries. This gives
+     * variety like Chicago, Lisbon, Haifa, Wuhan, Osaka in one game
+     * instead of a US/CN dogpile.
+     *
+     * Strategy:
+     *   1. SPARQL: cities with population > 100k, ordered DESC, large LIMIT
+     *   2. Group by country, sort each group DESC by pop, keep top 20%
+     *      (min 1 per country)
+     *   3. Flatten, shuffle, slice to count.
+     */
+    async function fetchTopCitiesByCountry(count, shuffleFn) {
+        const bindings = await runQuery(TOP_CITIES_QUERY);
+        const seen = new Set();
+        const byCountry = new Map();
+        for (const b of bindings) {
+            const loc = normalizeCityBinding(b);
+            if (!loc) continue;
+            if (seen.has(loc.id)) continue;
+            seen.add(loc.id);
+            const key = loc.country || '__unknown__';
+            const bucket = byCountry.get(key) || [];
+            bucket.push(loc);
+            byCountry.set(key, bucket);
+        }
+        const finalists = [];
+        byCountry.forEach((bucket) => {
+            bucket.sort((a, b) => (b.population || 0) - (a.population || 0));
+            const keepCount = Math.max(1, Math.ceil(bucket.length * 0.2));
+            for (let i = 0; i < keepCount && i < bucket.length; i++) {
+                finalists.push(bucket[i]);
+            }
+        });
+        if (!finalists.length) throw new Error('Wikidata SPARQL returned no usable top-cities');
+        const shuffled = typeof shuffleFn === 'function' ? shuffleFn(finalists) : finalists.slice();
+        const n = Math.max(1, Math.min(shuffled.length, Number(count) || 5));
+        return shuffled.slice(0, n);
+    }
+
+    const TOP_CITIES_QUERY = `
+        SELECT DISTINCT ?city ?cityLabel ?countryLabel ?coord ?pop WHERE {
+            ?city wdt:P31/wdt:P279* wd:Q515.
+            ?city wdt:P1082 ?pop.
+            ?city wdt:P625 ?coord.
+            ?city wdt:P17 ?country.
+            FILTER(?pop > 100000)
+            SERVICE wikibase:label { bd:serviceParam wikibase:language "en". }
+        }
+        ORDER BY DESC(?pop)
+        LIMIT 2000
+    `;
+
     async function fetchLandmarks(count, shuffleFn) {
         const bindings = await runQuery(LANDMARK_QUERY);
         const seen = new Set();
@@ -184,6 +238,7 @@
         normalizeCityBinding,
         normalizeLandmarkBinding,
         fetchMajorCities,
+        fetchTopCitiesByCountry,
         fetchLandmarks
     };
 }));

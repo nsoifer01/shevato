@@ -3,9 +3,12 @@
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
 
+const Config = require('../js/config.js');
 const {
     normalizeCountry,
     normalizeAsCountry,
+    isSmallIslandLocation,
+    capSmallIslands,
     ROUND_TYPES
 } = require('../js/globe-drop-locations.js');
 
@@ -152,4 +155,76 @@ test('ROUND_TYPES: every type has a label, packId, and packName', () => {
         assert.ok(meta.packId, `${key} missing packId`);
         assert.ok(meta.packName, `${key} missing packName`);
     }
+});
+
+test('ROUND_TYPES: includes top-cities-by-country mode', () => {
+    assert.ok(ROUND_TYPES['top-cities-by-country']);
+});
+
+// --- isSmallIslandLocation -------------------------------------------
+
+function loc(over) {
+    return Object.assign({
+        countryAreaSqKm: 100000,
+        subregion: 'Western Europe'
+    }, over || {});
+}
+
+test('isSmallIslandLocation: false when area is large', () => {
+    assert.equal(isSmallIslandLocation(loc({ countryAreaSqKm: 600000, subregion: 'Caribbean' })), false);
+});
+
+test('isSmallIslandLocation: false when subregion is not an island cluster', () => {
+    assert.equal(isSmallIslandLocation(loc({ countryAreaSqKm: 300, subregion: 'Western Europe' })), false);
+});
+
+test('isSmallIslandLocation: true for small Caribbean nation', () => {
+    assert.equal(isSmallIslandLocation(loc({ countryAreaSqKm: 442, subregion: 'Caribbean' })), true);
+});
+
+test('isSmallIslandLocation: true for small Polynesian nation', () => {
+    assert.equal(isSmallIslandLocation(loc({ countryAreaSqKm: 26, subregion: 'Polynesia' })), true);
+});
+
+test('isSmallIslandLocation: missing area treated as non-island', () => {
+    assert.equal(isSmallIslandLocation(loc({ countryAreaSqKm: null, subregion: 'Caribbean' })), false);
+});
+
+// --- capSmallIslands -------------------------------------------------
+
+test('capSmallIslands: keeps everything when nothing is an island', () => {
+    const list = [loc({}), loc({}), loc({})];
+    const out = capSmallIslands(list, 2);
+    assert.equal(out.length, 3);
+});
+
+test('capSmallIslands: keeps up to N islands at the head; pushes extras to tail', () => {
+    const big = loc({ name: 'big' });
+    const island1 = loc({ name: 'island1', countryAreaSqKm: 300, subregion: 'Caribbean' });
+    const island2 = loc({ name: 'island2', countryAreaSqKm: 300, subregion: 'Caribbean' });
+    const island3 = loc({ name: 'island3', countryAreaSqKm: 300, subregion: 'Caribbean' });
+    const out = capSmallIslands([island1, big, island2, island3], 2);
+    // First three slots should be the two kept islands + the non-island,
+    // in original order; the third island gets pushed to the end.
+    assert.equal(out[0].name, 'island1');
+    assert.equal(out[1].name, 'big');
+    assert.equal(out[2].name, 'island2');
+    assert.equal(out[3].name, 'island3');
+});
+
+test('capSmallIslands: zero cap pushes ALL islands to the tail', () => {
+    const big = loc({ name: 'big' });
+    const islandA = loc({ name: 'islandA', countryAreaSqKm: 300, subregion: 'Caribbean' });
+    const islandB = loc({ name: 'islandB', countryAreaSqKm: 300, subregion: 'Polynesia' });
+    const out = capSmallIslands([islandA, islandB, big], 0);
+    assert.equal(out[0].name, 'big');
+});
+
+test('capSmallIslands: with a 5-slot game playlist, at most 2 islands reach the head', () => {
+    const arr = [];
+    for (let i = 0; i < 10; i++) arr.push(loc({ name: 'island' + i, countryAreaSqKm: 300, subregion: 'Caribbean' }));
+    for (let i = 0; i < 10; i++) arr.push(loc({ name: 'big' + i }));
+    const out = capSmallIslands(arr, Config.GLOBE_DROP_SMALL_ISLAND_MAX_PER_GAME);
+    const headIslands = out.slice(0, 5).filter(isSmallIslandLocation);
+    assert.ok(headIslands.length <= Config.GLOBE_DROP_SMALL_ISLAND_MAX_PER_GAME);
 });
