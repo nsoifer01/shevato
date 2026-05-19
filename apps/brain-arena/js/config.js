@@ -102,6 +102,24 @@
         GLOBE_DROP_BASE_POINTS: 100,
         GLOBE_DROP_DISTANCE_SCALE_KM: 1500,
 
+        // Hard floor so even an antipodal guess still earns 1-10 points
+        // (no "you got 0" frustration). Tunable; lifts the worst possible
+        // result enough to feel like effort was rewarded.
+        GLOBE_DROP_MIN_POINTS: 5,
+
+        // Population obscurity weight. Smaller, less globally-famous places
+        // are worth more so the game rewards real geographic knowledge
+        // instead of guessing famous capitals. Formula in globe-drop-scoring.js:
+        //   weight = clamp((REFERENCE_LOG10 - log10(pop)) * SLOPE + 1, MIN, MAX)
+        // tuned so pop=1M ≈ 1.0×, pop=10M ≈ 0.65×, pop=100k ≈ 1.4×,
+        // pop=10k ≈ 1.8×. Missing population (legacy capitals) gets 1.0×.
+        GLOBE_DROP_POPULATION_WEIGHT: {
+            REFERENCE_LOG10: 6,   // log10(1,000,000) — typical "city" benchmark
+            SLOPE: 0.35,
+            MIN: 0.55,
+            MAX: 2.0
+        },
+
         // Continent multipliers per your spec — harder/lesser-known
         // continents (Africa, Asia, Oceania, Antarctic) score more than
         // Europe (the baseline) so the points reflect difficulty, not just
@@ -117,6 +135,34 @@
         },
 
         // Default round size dropdown for GlobeDrop (locations per game).
-        GLOBE_DROP_LOCATIONS_DEFAULT: 5
+        GLOBE_DROP_LOCATIONS_DEFAULT: 5,
+
+        // Cap on small-island-nation entries per playlist. Without this,
+        // luck-of-the-shuffle can pack three Maldives-class capitals into
+        // a 5-location game and turn it into "name the Caribbean specks".
+        // Heuristic: country.area <= GLOBE_DROP_SMALL_ISLAND_MAX_AREA AND
+        // country.subregion matches a known island-cluster subregion.
+        GLOBE_DROP_SMALL_ISLAND_MAX_PER_GAME: 2,
+        GLOBE_DROP_SMALL_ISLAND_MAX_AREA: 50000,    // sq km
+        GLOBE_DROP_SMALL_ISLAND_SUBREGIONS: [
+            'Caribbean', 'Polynesia', 'Micronesia', 'Melanesia'
+        ],
+
+        // Difficulty tiers for GlobeDrop. Each tier overrides the per-location
+        // timer, controls which hints render alongside the city name, and
+        // multiplies the final score after distance + continent multipliers.
+        // hintLevel values:
+        //   'country+continent+subregion' — easy: full geographic context
+        //   'country+continent'           — medium: country and continent
+        //   'country'                     — current default for legacy rooms
+        //   'none'                        — hard: city name only, no country
+        // scoreMultiplier is exposed in the lobby and end-card so players see
+        // the tradeoff before they pick.
+        GLOBE_DROP_DIFFICULTY_DEFAULT: 'medium',
+        GLOBE_DROP_DIFFICULTIES: {
+            easy:   { label: 'Easy',   timerSec: 180, hintLevel: 'country+continent+subregion', scoreMultiplier: 0.75 },
+            medium: { label: 'Medium', timerSec: 120, hintLevel: 'country+continent',            scoreMultiplier: 1.00 },
+            hard:   { label: 'Hard',   timerSec: 60,  hintLevel: 'none',                          scoreMultiplier: 1.50 }
+        }
     };
 }));

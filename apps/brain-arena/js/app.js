@@ -54,6 +54,7 @@ const RoomState = window.BrainArena.RoomState;
 const LiveQuestions = window.BrainArena.LiveQuestions;
 const GlobeDropScoring = window.BrainArena.GlobeDropScoring;
 const GlobeDropLocations = window.BrainArena.GlobeDropLocations;
+const GlobeDropDaily = window.BrainArena.GlobeDropDaily;
 
 /* =====================================================================
  * State
@@ -80,7 +81,8 @@ const state = {
     earlyRevealForQuestion: null,
 
     // Lobby — which game type the create-card is currently configured for.
-    selectedGameType: 'trivia',
+    // Defaults to globe-drop because it's the headline mode now.
+    selectedGameType: 'globe-drop',
 
     // GlobeDrop-specific runtime state (only populated while a GlobeDrop room
     // is active). globe = globe.gl/Three.js scene wrapper; we don't keep
@@ -98,6 +100,11 @@ const state = {
     // Leaderboard
     leaderboardEntries: [],
     leaderboardUnsub: null,
+
+    // Daily Globe Drop leaderboard — same panel, separate subscription
+    // because it lives in its own collection and resets at UTC midnight.
+    dailyLeaderboardEntries: [],
+    dailyLeaderboardUnsub: null,
 
     // Live listener on users/{uid} so the Stripe webhook's flip of
     // triviaProfile.premium (server-side via Admin SDK) propagates to
@@ -627,7 +634,21 @@ function wireLobby() {
         $('#create-password-field').hidden = !wantsPrivate;
     });
 
-    $('#create-room-btn').addEventListener('click', createRoom);
+    // Globe Drop: difficulty drives the timer + hint level + scoring multiplier.
+    // The manual "time per location" override is hidden by default; checking
+    // the override toggle reveals it for hosts who want something off-tier.
+    $('#create-globe-drop-difficulty').addEventListener('change', (e) => {
+        const diff = GlobeDropScoring.difficultySettings(e.target.value);
+        const timeSel = $('#create-globe-drop-time');
+        if (timeSel) timeSel.value = String(diff.timerSec);
+    });
+    $('#create-globe-drop-timer-override').addEventListener('change', (e) => {
+        $('#create-globe-drop-time-field').hidden = !e.target.checked;
+    });
+
+    $('#create-room-btn').addEventListener('click', () => createRoom());
+    $('#play-solo-btn').addEventListener('click', () => createRoom({ mode: 'solo' }));
+    $('#play-daily-btn').addEventListener('click', () => createRoom({ mode: 'daily' }));
     $('#join-room-btn').addEventListener('click', joinRoom);
     $('#join-code').addEventListener('input', (e) => {
         const raw = String(e.target.value || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
@@ -677,17 +698,32 @@ function showJoinError(msg) {
     e.hidden = false;
 }
 
-async function createRoom() {
+async function createRoom(opts) {
     if (!state.user) { openSignInPrompt(); return; }
-    const gameType = state.selectedGameType === 'globe-drop' ? 'globe-drop' : 'trivia';
-    const isPrivate = !!$('#create-private-toggle').checked;
-    const password = isPrivate ? String($('#create-password').value || '').trim() : '';
-    if (isPrivate && !password) {
+    // mode = 'multi' (default) | 'solo' | 'daily'.
+    // - solo: private, single-player, auto-starts as soon as the room exists
+    // - daily: like solo, plus deterministic location seeding by UTC date
+    //          and an end-of-game write to globeDropDailyLeaderboard
+    const mode = (opts && opts.mode) || 'multi';
+    const isSoloLike = mode === 'solo' || mode === 'daily';
+
+    const gameType = isSoloLike
+        ? 'globe-drop'
+        : (state.selectedGameType === 'globe-drop' ? 'globe-drop' : 'trivia');
+
+    // Solo / daily rooms are always private to keep them out of any future
+    // public-room discovery. They have no password — only this user is in
+    // them, and the room code itself acts as the (single-use) secret.
+    const isPrivate = isSoloLike ? true : !!$('#create-private-toggle').checked;
+    const password = (isPrivate && !isSoloLike) ? String($('#create-password').value || '').trim() : '';
+    if (isPrivate && !isSoloLike && !password) {
         alert('Set a password for the private room.');
         return;
     }
 
-    const btn = $('#create-room-btn');
+    const btn = isSoloLike
+        ? (mode === 'daily' ? $('#play-daily-btn') : $('#play-solo-btn'))
+        : $('#create-room-btn');
     const originalLabel = btn.textContent;
     btn.disabled = true;
 
@@ -710,24 +746,59 @@ async function createRoom() {
         };
 
         if (gameType === 'globe-drop') {
-            btn.textContent = 'Fetching locations…';
+            btn.textContent = mode === 'daily' ? "Loading today's challenge…" : 'Fetching locations…';
             const count = parseInt($('#create-locations-count').value, 10) || Config.GLOBE_DROP_LOCATIONS_DEFAULT;
-            const seconds = parseInt($('#create-globe-drop-time').value, 10) || 120;
-            // For GlobeDrop, questions[] holds the exact playlist of locations
-            // (no over-provisioning — there's no per-question category picker
-            // to feed variety into).
-            const locations = await GlobeDropLocations.fetchLocations(count, shuffle);
+            const difficultyKey = isSoloLike
+                ? 'medium'
+                : ($('#create-globe-drop-difficulty').value || Config.GLOBE_DROP_DIFFICULTY_DEFAULT);
+            const diff = GlobeDropScoring.difficultySettings(difficultyKey);
+            // Manual timer override only kicks in if the host explicitly opts
+            // into it — otherwise the difficulty tier's timer is the source
+            // of truth so "Hard" actually feels hard. Solo/daily skip the
+            // override entirely and take the tier's default.
+            const overrideTimer = !isSoloLike && !!$('#create-globe-drop-timer-override').checked;
+            const seconds = overrideTimer
+                ? (parseInt($('#create-globe-drop-time').value, 10) || diff.timerSec)
+                : diff.timerSec;
+            const roundType = isSoloLike
+                ? 'capitals'
+                : ($('#create-globe-drop-round-type').value || 'capitals');
+            const meta = GlobeDropLocations.ROUND_TYPES[roundType] || GlobeDropLocations.ROUND_TYPES.capitals;
+
+            let locations;
+            let dailyDateKey = null;
+            if (mode === 'daily') {
+                // Daily challenge: pull an over-provisioned pool so the
+                // seeded shuffle has room to vary the picks across days,
+                // then seed the order by UTC date. Every player who plays
+                // today gets exactly the same N locations.
+                dailyDateKey = GlobeDropDaily.dailyDateKey(Date.now());
+                const pool = await GlobeDropLocations.fetchLocations(roundType, Math.max(30, count * 4), (a) => a);
+                locations = GlobeDropDaily.pickDailyLocations(pool, count, dailyDateKey);
+            } else {
+                locations = await GlobeDropLocations.fetchLocations(roundType, count, shuffle);
+            }
+
             await setDoc(ref, Object.assign({}, shared, {
-                packId: 'world-capitals',
-                packName: 'World capitals',
+                packId: meta.packId,
+                packName: mode === 'daily' ? `${meta.packName} · daily ${dailyDateKey}` : meta.packName,
                 totalQuestions: locations.length,
                 questions: locations,
-                // Per-question timer chosen in the lobby. Stored in ms so the
-                // pure phase helpers don't have to know about the unit choice.
+                roundType,
+                difficulty: difficultyKey,
+                playMode: mode, // 'multi' | 'solo' | 'daily'
+                dailyDateKey,
+                // Per-question timer chosen by tier (or override). Stored in
+                // ms so the pure phase helpers don't have to know about the
+                // unit choice.
                 questionTimeMs: seconds * 1000
             }));
         } else {
-            const sel = $('#create-pack-select').value;
+            // The pack-select dropdown was retired — live API is the only
+            // built-in source. Premium custom packs still go through
+            // buildQuestionsForRound('custom', …) elsewhere; the lobby
+            // doesn't expose pack choice anymore.
+            const sel = 'live';
             const count = parseInt($('#create-questions-count').value, 10) || 10;
             const seconds = parseInt($('#create-trivia-time').value, 10) || 15;
             btn.textContent = 'Fetching questions…';
@@ -745,6 +816,22 @@ async function createRoom() {
 
         await joinPlayer(code, displayName, /* isHost */ true);
         enterRoom(code);
+
+        // Solo / daily rooms auto-start so the user lands straight in the
+        // game stage. We wait one tick for the snapshot listener to populate
+        // state.roomData (startGame reads it as a guard) before flipping
+        // status to 'playing'. The startGame guard then sees the same room
+        // we just created and triggers the normal play flow.
+        if (isSoloLike) {
+            const tryStart = async () => {
+                if (state.roomData && state.roomData.status === 'lobby') {
+                    await startGame();
+                } else {
+                    setTimeout(tryStart, 80);
+                }
+            };
+            tryStart();
+        }
     } catch (err) {
         console.warn('Room creation failed:', err);
         // The live APIs (The Trivia API + REST Countries) are the only
@@ -1059,7 +1146,19 @@ function renderLobbyStage(isHost) {
 
     $('#lobby-host-controls').hidden = !isHost;
     $('#lobby-guest-hint').hidden = isHost;
-    $('#start-game-btn').disabled = players.length < 1;
+    // Multi-player rooms require at least 2 players to start. Solo / daily
+    // rooms are intentionally single-player so they can start with 1.
+    const playMode = state.roomData.playMode || 'multi';
+    const minPlayers = (playMode === 'solo' || playMode === 'daily') ? 1 : 2;
+    const startBtn = $('#start-game-btn');
+    startBtn.disabled = players.length < minPlayers;
+    startBtn.title = startBtn.disabled && playMode === 'multi'
+        ? 'Waiting for another player to join. Share the room code or use "Play solo" from the lobby instead.'
+        : '';
+    // Pair a visible hint when the button is disabled in a multi room so
+    // the host knows why nothing happens on click.
+    const waitingHint = $('#lobby-waiting-hint');
+    if (waitingHint) waitingHint.hidden = !(isHost && startBtn.disabled && playMode === 'multi');
 }
 
 function renderPickingStage(isHost) {
@@ -1110,7 +1209,7 @@ function renderPickingStage(isHost) {
         if (!cats.length) {
             const empty = document.createElement('p');
             empty.className = 'empty-state';
-            empty.textContent = 'Pool exhausted — host will finish the game.';
+            empty.textContent = 'Pool exhausted. Host will finish the game.';
             grid.appendChild(empty);
         }
     } else {
@@ -1241,7 +1340,7 @@ function renderQuestion(q, myAnsweredIndex) {
             status.classList.add('is-wrong');
         }
     } else if (myAnsweredIndex != null) {
-        setText(status, 'Locked in — waiting for the rest.');
+        setText(status, 'Locked in. Waiting for the rest.');
     } else {
         setText(status, 'Pick an answer.');
     }
@@ -1394,18 +1493,24 @@ function clearMapOverlays() {
 }
 
 function onGlobeClick(lat, lng) {
-    // Only respond when we're in the asking phase of a GlobeDrop question
-    // and haven't already locked in.
+    // Only respond when we're in a live GlobeDrop game and haven't locked
+    // in this question yet. We do NOT block on phase === 'asking' here —
+    // the very first click immediately after the host starts the game can
+    // race the questionStartedAt server timestamp landing in the local
+    // cache (pendingWrite leaves it null for a tick), and that race was
+    // making the first tap silently eat the guess. The submit handler
+    // still enforces phase before writing.
     if (!state.roomData || state.roomData.status !== 'playing') return;
     if (state.roomData.gameType !== 'globe-drop') return;
     const loc = currentGlobeDropLocation();
     if (!loc) return;
+    // Reject clicks once the reveal has already started for this question.
     const startMs = state.roomData.questionStartedAt && state.roomData.questionStartedAt.toMillis
         ? state.roomData.questionStartedAt.toMillis() : null;
     const revealMs = state.roomData.revealStartedAt && state.roomData.revealStartedAt.toMillis
         ? state.roomData.revealStartedAt.toMillis() : null;
     const phase = globeDropPhase(startMs, Date.now(), revealMs, currentAskingDurationMs());
-    if (phase !== 'asking') return;
+    if (phase === 'reveal' || phase === 'ended') return;
     const me = state.roomPlayers.find((p) => state.user && p.uid === state.user.uid);
     if (me && me.currentAnsweredFor === loc.id) return;
 
@@ -1413,7 +1518,7 @@ function onGlobeClick(lat, lng) {
     drawMyPinOnly(lat, lng);
     $('#globe-drop-submit-btn').disabled = false;
     $('#globe-drop-clear-btn').hidden = false;
-    setText($('#globe-drop-status'), 'Pin placed — submit when you\'re sure.');
+    setText($('#globe-drop-status'), 'Pin placed. Submit when you\'re sure.');
     $('#globe-drop-status').classList.remove('is-correct', 'is-wrong');
 }
 
@@ -1497,16 +1602,54 @@ function renderGlobeDropStage() {
     const loc = currentGlobeDropLocation();
     if (!loc) return;
 
-    setText($('#globe-drop-target-name'), loc.name || '—');
-    setText($('#globe-drop-target-country'), loc.country || '');
-    // We deliberately do NOT surface the continent/region during the
-    // asking phase — knowing "Europe" narrows the guess to ~10% of the
-    // globe and makes the multipliers meaningless. Region is still
-    // applied to the score behind the scenes.
+    setText($('#globe-drop-target-name'), loc.name || '…');
+
+    // Difficulty drives which hints render:
+    //   easy   — country + continent + subregion (full geographic context)
+    //   medium — country + continent
+    //   hard   — city name only, no country
+    // We look up the tier from the room doc; legacy rooms (no difficulty
+    // field) read as medium and show the prior country-only behaviour.
+    const diff = GlobeDropScoring.difficultySettings(state.roomData.difficulty);
+    const hintLevel = diff.hintLevel;
+    const showCountry = hintLevel !== 'none';
+    setText($('#globe-drop-target-country'), showCountry ? (loc.country || '') : '');
+
+    const hintsEl = $('#globe-drop-prompt-hints');
+    const extra = [];
+    if (hintLevel === 'country+continent' || hintLevel === 'country+continent+subregion') {
+        if (loc.region) extra.push(loc.region);
+    }
+    if (hintLevel === 'country+continent+subregion') {
+        if (loc.subregion && loc.subregion !== loc.region) extra.push(loc.subregion);
+    }
+    if (extra.length) {
+        setText(hintsEl, extra.join(' · '));
+        hintsEl.removeAttribute('hidden');
+    } else {
+        hintsEl.setAttribute('hidden', '');
+    }
+
+    // Difficulty chip is only meaningful on the medium-or-harder tiers
+    // (easy is the friendly default and doesn't need celebrating).
+    const chip = $('#globe-drop-difficulty-chip');
+    if (state.roomData.difficulty && diff.scoreMultiplier !== 1) {
+        const sign = diff.scoreMultiplier > 1 ? '+' : '';
+        setText(chip, `${diff.label} · ${sign}${Math.round((diff.scoreMultiplier - 1) * 100)}% score`);
+        chip.removeAttribute('hidden');
+        chip.dataset.tier = state.roomData.difficulty;
+    } else {
+        chip.setAttribute('hidden', '');
+    }
 
     // Init the globe after the stage is visible so its container has a
     // measurable size. globe.gl reads dimensions during construction.
     setTimeout(() => {
+        // The deferred fire-time can land AFTER leaveRoom() has nulled
+        // state.roomData, which then crashes the phase/reveal code below
+        // with `Cannot read properties of null (reading 'questionStartedAt')`.
+        // Bail if the room is gone — there's nothing to render.
+        if (!state.roomData || !state.roomCode) return;
         const g = ensureGlobe();
         if (!g) return;
         const el = document.getElementById('globe-drop-map');
@@ -1603,7 +1746,11 @@ function drawGlobeDropReveal(loc, me, { showOthers = true } = {}) {
     }
     state.globe.pointsData(pins);
 
-    // Arc from my guess to the actual location (great-circle on the globe).
+    // Great-circle arcs from each guess to the actual location. The
+    // outbound colour (per-player) fades into gold at the truth so it
+    // reads as "your pin → the right spot". During the local reveal we
+    // only draw the player's own arc; during the global reveal we add
+    // every opponent so the result feels collective.
     const arcs = [];
     if (meSubmitted) {
         arcs.push({
@@ -1612,6 +1759,20 @@ function drawGlobeDropReveal(loc, me, { showOthers = true } = {}) {
             endLat: loc.lat,
             endLng: loc.lng,
             color: ['#6366f1', '#fcd34d']
+        });
+    }
+    if (showOthers) {
+        state.roomPlayers.forEach((p) => {
+            if (!p || !p.currentGuess) return;
+            if (p.currentAnsweredFor !== loc.id) return;
+            if (state.user && p.uid === state.user.uid) return; // already added above
+            arcs.push({
+                startLat: p.currentGuess.lat,
+                startLng: p.currentGuess.lng,
+                endLat: loc.lat,
+                endLng: loc.lng,
+                color: ['#f87171', '#fcd34d']
+            });
         });
     }
     state.globe.arcsData(arcs);
@@ -1626,19 +1787,35 @@ function drawGlobeDropReveal(loc, me, { showOthers = true } = {}) {
         const d = GlobeDropScoring.haversineDistanceKm(
             me.currentGuess.lat, me.currentGuess.lng, loc.lat, loc.lng
         );
-        const { points } = GlobeDropScoring.scoreGuess({ distanceKm: d, region: loc.region });
+        const { points } = GlobeDropScoring.scoreGuess({
+            distanceKm: d,
+            region: loc.region,
+            difficulty: state.roomData.difficulty,
+            population: loc.population
+        });
         distEl.innerHTML = `${Math.round(d).toLocaleString()} km off — <strong>+${points}</strong> points`;
         let sentiment;
         if (d < 100) sentiment = '🎯 Bullseye!';
-        else if (d < 500) sentiment = 'Close — nicely done.';
+        else if (d < 500) sentiment = 'Close, nicely done.';
         else if (d < 2000) sentiment = 'Not bad.';
         else sentiment = 'Way off, but you tried.';
         setText($('#globe-drop-status'), showOthers ? sentiment : `${sentiment} Waiting for the rest…`);
     } else {
-        distEl.textContent = 'No guess submitted — 0 points';
+        distEl.textContent = 'No guess submitted (minimum score awarded).';
         setText($('#globe-drop-status'), showOthers ? '⏱ Time up.' : 'Waiting for the rest…');
     }
     revealEl.hidden = false;
+    // One-shot pulse on the score callout so the points feel earned. The
+    // class is removed once the animation finishes (animationend) so it
+    // re-fires the next time the panel opens for a fresh question.
+    if (meSubmitted) {
+        distEl.classList.remove('is-pulse');
+        // Force a reflow so removing + re-adding the class restarts the
+        // CSS animation. void 0 is a no-op that triggers layout.
+        // eslint-disable-next-line no-void
+        void distEl.offsetWidth;
+        distEl.classList.add('is-pulse');
+    }
     // The asking-phase hint becomes irrelevant once the reveal panel is up.
     const hint = $('#globe-drop-hint');
     if (hint) hint.hidden = true;
@@ -1700,7 +1877,12 @@ async function submitGuess() {
     const distance = GlobeDropScoring.haversineDistanceKm(
         state.pendingGuess.lat, state.pendingGuess.lng, loc.lat, loc.lng
     );
-    const { points } = GlobeDropScoring.scoreGuess({ distanceKm: distance, region: loc.region });
+    const { points } = GlobeDropScoring.scoreGuess({
+        distanceKm: distance,
+        region: loc.region,
+        difficulty: state.roomData.difficulty,
+        population: loc.population
+    });
 
     state.submittedQuestionId = loc.id;
     const guess = state.pendingGuess;
@@ -1832,6 +2014,15 @@ function renderRevealCountdown(phase, revealStartedAtMs, nowMs) {
     const num = $('#globe-drop-countdown-num');
     if (!chip || !num) return;
     if (phase !== 'reveal' || !revealStartedAtMs) {
+        chip.hidden = true;
+        return;
+    }
+    // Hide the "5 to next" chip on the FINAL location — there's no "next"
+    // to count down to. We'll roll into the end-of-game screen instead.
+    const idx = state.roomData ? (state.roomData.currentQuestionIndex || 0) : 0;
+    const total = state.roomData ? (state.roomData.totalQuestions || 0) : 0;
+    const isLast = total > 0 && idx >= total - 1;
+    if (isLast) {
         chip.hidden = true;
         return;
     }
@@ -2332,8 +2523,37 @@ async function writeEndOfGameStats(me, didWin) {
             wins: (state.profile && state.profile.wins) || (didWin ? 1 : 0),
             lastPlayedAt: serverTimestamp()
         }, { merge: true });
+
+        // Daily-challenge leaderboard write. Only the player's BEST score
+        // for the day stays — we read the existing doc and only overwrite
+        // when the new score is higher. Skipped silently for solo / multi.
+        await maybeWriteDailyLeaderboard(me);
     } catch (err) {
         console.warn('End-of-game profile write failed:', err);
+    }
+}
+
+async function maybeWriteDailyLeaderboard(me) {
+    if (!state.user || !state.roomData) return;
+    if (state.roomData.playMode !== 'daily') return;
+    const dateKey = state.roomData.dailyDateKey;
+    if (!dateKey) return;
+    const ref = doc(db, 'globeDropDailyLeaderboard', dateKey, 'scores', state.user.uid);
+    try {
+        const existing = await getDoc(ref);
+        const prevScore = existing.exists() ? Number(existing.data().score || 0) : -1;
+        if (me.score <= prevScore) return; // not a personal best for today
+        await setDoc(ref, {
+            uid: state.user.uid,
+            displayName: me.displayName,
+            score: me.score,
+            roundType: state.roomData.roundType || 'capitals',
+            difficulty: state.roomData.difficulty || Config.GLOBE_DROP_DIFFICULTY_DEFAULT,
+            locations: state.roomData.totalQuestions || 0,
+            completedAt: serverTimestamp()
+        }, { merge: true });
+    } catch (err) {
+        console.warn('Daily leaderboard write failed:', err);
     }
 }
 
@@ -2431,14 +2651,14 @@ function renderEndRecap() {
         if (isGlobeDrop) {
             rowHTML +=
                 '<td class="col-question">' +
-                `<span class="recap-q-text">${escapeHtml(q.name || '—')}</span>` +
+                `<span class="recap-q-text">${escapeHtml(q.name || '…')}</span>` +
                 `<span class="recap-q-meta">${escapeHtml(q.country || '')}</span>` +
                 '</td>';
         } else {
             const correctText = q.choices ? q.choices[q.correctIndex] : '';
             rowHTML +=
                 '<td class="col-question">' +
-                `<span class="recap-q-text">${escapeHtml(q.question || '—')}</span>` +
+                `<span class="recap-q-text">${escapeHtml(q.question || '…')}</span>` +
                 `<span class="recap-q-meta">${escapeHtml(prettyCategory(q.category || ''))} · answer: ${escapeHtml(correctText)}</span>` +
                 '</td>';
         }
@@ -2456,7 +2676,7 @@ function renderEndRecap() {
         colResults.forEach(({ col, ans }) => {
             const isMe = state.user && col.uid === state.user.uid;
             if (!ans) {
-                rowHTML += `<td class="col-result ${isMe ? 'is-mine' : ''}"><span class="recap-result-zero">—</span></td>`;
+                rowHTML += `<td class="col-result ${isMe ? 'is-mine' : ''}"><span class="recap-result-zero">…</span></td>`;
                 return;
             }
             if (isGlobeDrop) {
@@ -2472,13 +2692,13 @@ function renderEndRecap() {
                 rowHTML +=
                     `<td class="col-result ${isMe ? 'is-mine' : ''}">` +
                     `<span class="${pts > 0 ? 'recap-result-points' : 'recap-result-zero'}">${pts > 0 ? '+' + pts : '0'}</span>` +
-                    `<span class="recap-result-pick ${pickClass}">${escapeHtml(ans.answerText || '—')}</span>` +
+                    `<span class="recap-result-pick ${pickClass}">${escapeHtml(ans.answerText || '…')}</span>` +
                     '</td>';
             }
         });
 
         // Winner badge — tie if more than one player hit bestPoints (>0).
-        let winnerCell = '<span class="recap-result-zero">—</span>';
+        let winnerCell = '<span class="recap-result-zero">…</span>';
         if (bestPoints > 0) {
             const winners = colResults.filter((r) => r.points === bestPoints);
             if (winners.length === 1) {
@@ -2601,8 +2821,11 @@ async function playAgain() {
 
     try {
         if (isGlobeDrop) {
-            // Re-fetch fresh locations from REST Countries. Same total count.
+            // Re-fetch fresh locations using the same round type the room
+            // was created with — host can't switch round types mid-replay,
+            // that's a fresh-room move.
             const locations = await GlobeDropLocations.fetchLocations(
+                state.roomData.roundType || 'capitals',
                 state.roomData.totalQuestions,
                 shuffle
             );
@@ -2679,6 +2902,10 @@ function startLeaderboardListener() {
     }, (err) => {
         console.warn('Leaderboard listener error:', err);
     });
+    // Daily Globe Drop top 10 — fresh subscription per leaderboard open
+    // so the date is always today's, and so we drop the listener for an
+    // old date when the user comes back tomorrow.
+    startDailyLeaderboardListener();
 }
 
 function stopLeaderboardListener() {
@@ -2686,6 +2913,56 @@ function stopLeaderboardListener() {
         try { state.leaderboardUnsub(); } catch (e) {}
         state.leaderboardUnsub = null;
     }
+    stopDailyLeaderboardListener();
+}
+
+function startDailyLeaderboardListener() {
+    stopDailyLeaderboardListener();
+    const dateKey = GlobeDropDaily.dailyDateKey(Date.now());
+    setText($('#leaderboard-daily-date'), dateKey);
+    const ref = collection(db, 'globeDropDailyLeaderboard', dateKey, 'scores');
+    const q = query(ref, orderBy('score', 'desc'), limit(10));
+    state.dailyLeaderboardUnsub = onSnapshot(q, (snap) => {
+        state.dailyLeaderboardEntries = snap.docs.map((d) => d.data());
+        renderDailyLeaderboardEntries();
+    }, (err) => {
+        console.warn('Daily leaderboard listener error:', err);
+        state.dailyLeaderboardEntries = [];
+        renderDailyLeaderboardEntries();
+    });
+}
+
+function stopDailyLeaderboardListener() {
+    if (state.dailyLeaderboardUnsub) {
+        try { state.dailyLeaderboardUnsub(); } catch (e) {}
+        state.dailyLeaderboardUnsub = null;
+    }
+}
+
+function renderDailyLeaderboardEntries() {
+    const entries = state.dailyLeaderboardEntries || [];
+    const body = $('#leaderboard-daily-body');
+    const empty = $('#leaderboard-daily-empty');
+    body.innerHTML = '';
+    if (!entries.length) {
+        empty.hidden = false;
+        return;
+    }
+    empty.hidden = true;
+    entries.forEach((e, i) => {
+        const tr = document.createElement('tr');
+        if (state.user && e.uid === state.user.uid) tr.classList.add('is-me');
+        const roundLabel = (GlobeDropLocations.ROUND_TYPES[e.roundType] || GlobeDropLocations.ROUND_TYPES.capitals).label;
+        const diffLabel = GlobeDropScoring.difficultySettings(e.difficulty).label;
+        tr.innerHTML =
+            `<td>${i + 1}</td>` +
+            `<td>${escapeHtml(e.displayName || 'Player')}</td>` +
+            `<td class="col-xp">${e.score || 0}</td>` +
+            `<td>${escapeHtml(roundLabel)}</td>` +
+            `<td>${escapeHtml(diffLabel)}</td>` +
+            `<td>${e.locations || 0}</td>`;
+        body.appendChild(tr);
+    });
 }
 
 function renderLeaderboardEntries() {
@@ -2711,7 +2988,7 @@ function renderLeaderboardEntries() {
         if (state.user && e.uid === state.user.uid) tr.classList.add('is-me');
         const pct = e.gamesPlayed ? Math.round(100 * (e.wins || 0) / e.gamesPlayed) : 0;
         const lastPlayed = e.lastPlayedAt && e.lastPlayedAt.toDate ? e.lastPlayedAt.toDate() : null;
-        const lastStr = lastPlayed ? formatRelativeDate(lastPlayed) : '—';
+        const lastStr = lastPlayed ? formatRelativeDate(lastPlayed) : '…';
         tr.innerHTML =
             `<td>${i+1}</td>` +
             `<td>${escapeHtml(e.displayName || 'Player')}</td>` +

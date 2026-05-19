@@ -7,6 +7,8 @@ const Config = require('../js/config.js');
 const {
     haversineDistanceKm,
     continentMultiplier,
+    difficultySettings,
+    populationWeight,
     scoreGuess
 } = require('../js/globe-drop-scoring.js');
 
@@ -92,13 +94,132 @@ test('scoreGuess: continent multiplier compounds with distance score', () => {
         `expected ~${europe.points * 1.3}, got ${africa.points}`);
 });
 
-test('scoreGuess: far-side-of-the-world guess approaches 0', () => {
+test('scoreGuess: far-side-of-the-world guess lands at the score floor (never 0)', () => {
     const r = scoreGuess({ distanceKm: 20000, region: 'Europe' });
-    assert.ok(r.points < 5, `expected <5, got ${r.points}`);
-    assert.ok(r.points >= 0, 'never negative');
+    // The exp-decay value at 20,000 km is well below MIN_POINTS, so the
+    // floor takes over — never 0, never negative, never above the floor.
+    assert.equal(r.points, Config.GLOBE_DROP_MIN_POINTS);
 });
 
 test('scoreGuess: negative / missing distance treated as 0', () => {
     assert.equal(scoreGuess({ distanceKm: -100, region: 'Europe' }).points, Config.GLOBE_DROP_BASE_POINTS);
     assert.equal(scoreGuess({ distanceKm: null, region: 'Europe' }).points, Config.GLOBE_DROP_BASE_POINTS);
+});
+
+// --- difficultySettings ------------------------------------------------
+
+test('difficultySettings: known keys return the configured tier', () => {
+    assert.equal(difficultySettings('easy').label, 'Easy');
+    assert.equal(difficultySettings('medium').label, 'Medium');
+    assert.equal(difficultySettings('hard').label, 'Hard');
+});
+
+test('difficultySettings: unknown / missing key falls back to medium', () => {
+    const fb = difficultySettings(undefined);
+    assert.equal(fb.scoreMultiplier, 1);
+    const fb2 = difficultySettings('legendary');
+    assert.equal(fb2.scoreMultiplier, 1);
+});
+
+// --- scoreGuess with difficulty ---------------------------------------
+
+test('scoreGuess: difficulty=medium == no difficulty (legacy parity)', () => {
+    const legacy = scoreGuess({ distanceKm: 500, region: 'Europe' });
+    const medium = scoreGuess({ distanceKm: 500, region: 'Europe', difficulty: 'medium' });
+    assert.equal(legacy.points, medium.points);
+    assert.equal(medium.difficultyMultiplier, 1);
+});
+
+test('scoreGuess: difficulty=hard multiplies by 1.5x', () => {
+    const medium = scoreGuess({ distanceKm: 0, region: 'Europe', difficulty: 'medium' });
+    const hard = scoreGuess({ distanceKm: 0, region: 'Europe', difficulty: 'hard' });
+    assert.equal(hard.difficultyMultiplier, 1.5);
+    assert.equal(hard.points, Math.round(medium.points * 1.5));
+});
+
+test('scoreGuess: difficulty=easy multiplies by 0.75x', () => {
+    const medium = scoreGuess({ distanceKm: 0, region: 'Europe', difficulty: 'medium' });
+    const easy = scoreGuess({ distanceKm: 0, region: 'Europe', difficulty: 'easy' });
+    assert.equal(easy.difficultyMultiplier, 0.75);
+    assert.equal(easy.points, Math.round(medium.points * 0.75));
+});
+
+test('scoreGuess: difficulty compounds with continent multiplier', () => {
+    const r = scoreGuess({ distanceKm: 0, region: 'Africa', difficulty: 'hard' });
+    // 100 base * 1.3 Africa * 1.5 hard = 195
+    assert.equal(r.points, 195);
+});
+
+test('scoreGuess: unknown difficulty falls back silently (legacy room safety)', () => {
+    const r = scoreGuess({ distanceKm: 0, region: 'Europe', difficulty: 'made-up' });
+    assert.equal(r.difficultyMultiplier, 1);
+});
+
+// --- populationWeight -------------------------------------------------
+
+test('populationWeight: missing / invalid input returns 1 (no boost, no penalty)', () => {
+    assert.equal(populationWeight(undefined), 1);
+    assert.equal(populationWeight(null), 1);
+    assert.equal(populationWeight(0), 1);
+    assert.equal(populationWeight(-100), 1);
+    assert.equal(populationWeight('huge'), 1);
+});
+
+test('populationWeight: 1 million ≈ 1.0× (reference point)', () => {
+    assert.equal(Math.round(populationWeight(1_000_000) * 100), 100);
+});
+
+test('populationWeight: megacity (10M) is penalised relative to 1M', () => {
+    const ten = populationWeight(10_000_000);
+    const one = populationWeight(1_000_000);
+    assert.ok(ten < one, 'megacities should be worth less');
+    assert.ok(ten >= 0.55, `should not drop below MIN clamp, got ${ten}`);
+});
+
+test('populationWeight: small city (100k) earns >1.0× obscurity boost', () => {
+    const small = populationWeight(100_000);
+    assert.ok(small > 1, `expected >1, got ${small}`);
+    assert.ok(small < 2.0, `expected <MAX clamp, got ${small}`);
+});
+
+test('populationWeight: clamps to MAX for tiny populations (no infinite reward)', () => {
+    const tiny = populationWeight(100);
+    assert.equal(tiny, 2.0);
+});
+
+// --- scoreGuess with population --------------------------------------
+
+test('scoreGuess: smaller-city guess scores more than big-city at same distance', () => {
+    const big = scoreGuess({ distanceKm: 200, region: 'Europe', population: 10_000_000 });
+    const small = scoreGuess({ distanceKm: 200, region: 'Europe', population: 100_000 });
+    assert.ok(small.points > big.points, `small ${small.points} should beat big ${big.points}`);
+});
+
+test('scoreGuess: missing population leaves the score unchanged (legacy capitals)', () => {
+    const a = scoreGuess({ distanceKm: 500, region: 'Europe' });
+    const b = scoreGuess({ distanceKm: 500, region: 'Europe', population: null });
+    assert.equal(a.points, b.points);
+    assert.equal(a.populationMultiplier, 1);
+});
+
+test('scoreGuess: populationMultiplier surfaces in the result for UI', () => {
+    const r = scoreGuess({ distanceKm: 0, region: 'Europe', population: 100_000 });
+    assert.ok(r.populationMultiplier > 1);
+});
+
+// --- score floor (never 0) -------------------------------------------
+
+test('scoreGuess: antipodal guess earns at least GLOBE_DROP_MIN_POINTS, never 0', () => {
+    const r = scoreGuess({ distanceKm: 20000, region: 'Europe' });
+    assert.ok(r.points >= Config.GLOBE_DROP_MIN_POINTS, `expected >= floor, got ${r.points}`);
+});
+
+test('scoreGuess: floor applies even with hard difficulty 1.5× and obscurity 1.8×', () => {
+    const r = scoreGuess({
+        distanceKm: 20000,
+        region: 'Europe',
+        difficulty: 'hard',
+        population: 10_000
+    });
+    assert.ok(r.points >= Config.GLOBE_DROP_MIN_POINTS);
 });
