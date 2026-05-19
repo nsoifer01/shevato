@@ -65,7 +65,7 @@ test('renderShowPage emits TVSeries JSON-LD with aggregateRating', () => {
 test('renderShowPage links to the IMDb canonical and the SPA', () => {
   const html = renderShowPage(BREAKING_BAD);
   assert.ok(html.includes('https://www.imdb.com/title/tt0903747/'));
-  assert.ok(html.includes('/apps/rising-seasons/#series=tt0903747'));
+  assert.ok(html.includes('/apps/rising-seasons/#show=tt0903747'));
 });
 
 test('renderShowPage includes episode rows in a real HTML table', () => {

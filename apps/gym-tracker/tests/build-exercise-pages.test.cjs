@@ -69,9 +69,9 @@ test('renderExercisePage XSS-escapes hostile fields', () => {
   assert.ok(html.includes('&lt;script&gt;alert(1)&lt;/script&gt;'));
 });
 
-test('renderExercisePage links into the SPA with the exercise id', () => {
+test('renderExercisePage links into the SPA exercise database view', () => {
   const html = renderExercisePage({ exercise: SAMPLE[0], slug: 'archer-push-ups', related: [], builtAt: '2026-05-18T00:00:00.000Z' });
-  assert.ok(html.includes('/apps/gym-tracker/#exercise=1'));
+  assert.ok(html.includes('/apps/gym-tracker/#exercises'));
 });
 
 test('buildDescription stays under 300 chars and mentions key facts', () => {
