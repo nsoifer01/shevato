@@ -38,7 +38,5 @@ Allow: /
 User-agent: WhatsApp
 Allow: /
 
-# Sitemap
+# Sitemap index — references the page, show, and exercise sub-sitemaps.
 Sitemap: https://shevato.com/sitemap.xml
-Sitemap: https://shevato.com/apps/rising-seasons/sitemap-shows.xml
-Sitemap: https://shevato.com/apps/gym-tracker/sitemap-exercises.xml
