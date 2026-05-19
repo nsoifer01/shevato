@@ -1293,8 +1293,11 @@ select option { background: var(--surface); color: var(--text); }
    buttons). */
 /* Timer overlay positioned at the top-left of the globe wrapper. Sized
    smaller than the legacy header timer (it was 72px) so it doesn't
-   dominate the globe view. */
-.globe-drop-timer-overlay {
+   dominate the globe view. Compound selector `.game-timer.globe-drop-
+   timer-overlay` so it beats the bare `.game-timer` rule defined
+   later in this file (which would otherwise restore position:relative
+   + 72px and drop the element into the document flow). */
+.game-timer.globe-drop-timer-overlay {
   position: absolute;
   top: 0.75rem;
   left: 0.75rem;
@@ -1303,16 +1306,16 @@ select option { background: var(--surface); color: var(--text); }
   height: 56px;
   pointer-events: none;
 }
-.globe-drop-timer-overlay .timer-ring {
+.game-timer.globe-drop-timer-overlay .timer-ring {
   width: 100%;
   height: 100%;
 }
-.globe-drop-timer-overlay .game-timer-num {
+.game-timer.globe-drop-timer-overlay .game-timer-num {
   font-size: 0.95rem;
 }
 @media (max-width: 540px) {
-  .globe-drop-timer-overlay { width: 46px; height: 46px; top: 0.5rem; left: 0.5rem; }
-  .globe-drop-timer-overlay .game-timer-num { font-size: 0.82rem; }
+  .game-timer.globe-drop-timer-overlay { width: 46px; height: 46px; top: 0.5rem; left: 0.5rem; }
+  .game-timer.globe-drop-timer-overlay .game-timer-num { font-size: 0.82rem; }
 }
 
 .globe-drop-fab-stack {
@@ -2895,6 +2898,33 @@ select option { background: var(--surface); color: var(--text); }
   font-weight: 500;
   color: var(--text);
 }
+.room-settings-hint {
+  font-size: 0.78rem;
+  color: var(--muted-2);
+  font-style: italic;
+}
+.room-settings-edit-btn { margin-top: 0.6rem; }
+.room-settings-edit {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 0.7rem 0.9rem;
+}
+.room-settings-edit .room-settings-field { margin: 0; }
+.room-settings-actions {
+  grid-column: 1 / -1;
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.5rem;
+  margin-top: 0.25rem;
+}
+.room-settings-msg {
+  grid-column: 1 / -1;
+  margin: 0;
+  font-size: 0.85rem;
+  color: var(--muted);
+}
+.room-settings-msg.is-busy { color: var(--cyan-2); }
+.room-settings-msg.is-err { color: var(--bad); }
 
 /* Room-session H2H — appears on the end stage once at least one match
    has finished in this room and there are 2+ players. Same row aesthetic
