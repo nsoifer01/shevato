@@ -48,13 +48,43 @@
         // exploding profile totals.
         XP_PER_POINT_DIVISOR: 1,
 
+        // Master switch for the premium tier. When false (default):
+        //   - all premium UI is hidden (modal, profile card, "Premium" tags,
+        //     admin toggles, the locked detailed-stats panel),
+        //   - every gated feature is unlocked for every signed-in user
+        //     (isPremium() short-circuits to true in app.js).
+        // The pure helpers in premium.js stay enforceable so the trial /
+        // paid math is testable, and so flipping this flag to `true` after
+        // a Stripe Payment Link is wired up turns the whole flow on cleanly.
+        // See apps/brain-arena/PREMIUM_SETUP.md for the full rollout steps.
+        PREMIUM_UI_ENABLED: false,
+
         // Premium tier — keep this list small and load-bearing. The premium
         // boolean lives at users/{uid}.triviaProfile.premium.
+        // Private password-protected rooms are NOT in this list — they're
+        // a free feature for every signed-in user. Anyone can flip the
+        // "Private" toggle in the create-room form and set a password.
         PREMIUM_FEATURES: {
-            PRIVATE_ROOMS: 'private-rooms',
             CUSTOM_PACKS: 'custom-packs',
             DETAILED_STATS: 'detailed-stats'
         },
+
+        // One-time $5 (no recurring subscription). Display string only —
+        // the actual amount is configured in the Stripe Product / Payment
+        // Link, this constant is just what we surface in the UI.
+        PREMIUM_PRICE_DISPLAY: '$5 one-time',
+
+        // 30-day free trial — every signed-up user gets full premium access
+        // for the first 30 days from triviaProfile.signedUpAt. After that
+        // they need to pay $5 (one-time) to keep the gates open. Measured
+        // in ms so the math matches Date.now() / Timestamp.toMillis().
+        TRIAL_DURATION_MS: 30 * 24 * 60 * 60 * 1000,
+
+        // Admin uids for the dev-only "toggle premium" / "reset trial"
+        // buttons in the profile view. Empty array = no admin controls
+        // visible to anyone. Add your own Firebase uid here to test the
+        // gates without paying $5 every cycle.
+        ADMIN_UIDS: [],
 
         // Cosmetic limits.
         MAX_DISPLAY_NAME: 20,
