@@ -8,6 +8,7 @@ const {
     haversineDistanceKm,
     continentMultiplier,
     difficultySettings,
+    populationWeight,
     scoreGuess
 } = require('../js/globe-drop-scoring.js');
 
@@ -93,10 +94,11 @@ test('scoreGuess: continent multiplier compounds with distance score', () => {
         `expected ~${europe.points * 1.3}, got ${africa.points}`);
 });
 
-test('scoreGuess: far-side-of-the-world guess approaches 0', () => {
+test('scoreGuess: far-side-of-the-world guess lands at the score floor (never 0)', () => {
     const r = scoreGuess({ distanceKm: 20000, region: 'Europe' });
-    assert.ok(r.points < 5, `expected <5, got ${r.points}`);
-    assert.ok(r.points >= 0, 'never negative');
+    // The exp-decay value at 20,000 km is well below MIN_POINTS, so the
+    // floor takes over — never 0, never negative, never above the floor.
+    assert.equal(r.points, Config.GLOBE_DROP_MIN_POINTS);
 });
 
 test('scoreGuess: negative / missing distance treated as 0', () => {
@@ -151,4 +153,73 @@ test('scoreGuess: difficulty compounds with continent multiplier', () => {
 test('scoreGuess: unknown difficulty falls back silently (legacy room safety)', () => {
     const r = scoreGuess({ distanceKm: 0, region: 'Europe', difficulty: 'made-up' });
     assert.equal(r.difficultyMultiplier, 1);
+});
+
+// --- populationWeight -------------------------------------------------
+
+test('populationWeight: missing / invalid input returns 1 (no boost, no penalty)', () => {
+    assert.equal(populationWeight(undefined), 1);
+    assert.equal(populationWeight(null), 1);
+    assert.equal(populationWeight(0), 1);
+    assert.equal(populationWeight(-100), 1);
+    assert.equal(populationWeight('huge'), 1);
+});
+
+test('populationWeight: 1 million ≈ 1.0× (reference point)', () => {
+    assert.equal(Math.round(populationWeight(1_000_000) * 100), 100);
+});
+
+test('populationWeight: megacity (10M) is penalised relative to 1M', () => {
+    const ten = populationWeight(10_000_000);
+    const one = populationWeight(1_000_000);
+    assert.ok(ten < one, 'megacities should be worth less');
+    assert.ok(ten >= 0.55, `should not drop below MIN clamp, got ${ten}`);
+});
+
+test('populationWeight: small city (100k) earns >1.0× obscurity boost', () => {
+    const small = populationWeight(100_000);
+    assert.ok(small > 1, `expected >1, got ${small}`);
+    assert.ok(small < 2.0, `expected <MAX clamp, got ${small}`);
+});
+
+test('populationWeight: clamps to MAX for tiny populations (no infinite reward)', () => {
+    const tiny = populationWeight(100);
+    assert.equal(tiny, 2.0);
+});
+
+// --- scoreGuess with population --------------------------------------
+
+test('scoreGuess: smaller-city guess scores more than big-city at same distance', () => {
+    const big = scoreGuess({ distanceKm: 200, region: 'Europe', population: 10_000_000 });
+    const small = scoreGuess({ distanceKm: 200, region: 'Europe', population: 100_000 });
+    assert.ok(small.points > big.points, `small ${small.points} should beat big ${big.points}`);
+});
+
+test('scoreGuess: missing population leaves the score unchanged (legacy capitals)', () => {
+    const a = scoreGuess({ distanceKm: 500, region: 'Europe' });
+    const b = scoreGuess({ distanceKm: 500, region: 'Europe', population: null });
+    assert.equal(a.points, b.points);
+    assert.equal(a.populationMultiplier, 1);
+});
+
+test('scoreGuess: populationMultiplier surfaces in the result for UI', () => {
+    const r = scoreGuess({ distanceKm: 0, region: 'Europe', population: 100_000 });
+    assert.ok(r.populationMultiplier > 1);
+});
+
+// --- score floor (never 0) -------------------------------------------
+
+test('scoreGuess: antipodal guess earns at least GLOBE_DROP_MIN_POINTS, never 0', () => {
+    const r = scoreGuess({ distanceKm: 20000, region: 'Europe' });
+    assert.ok(r.points >= Config.GLOBE_DROP_MIN_POINTS, `expected >= floor, got ${r.points}`);
+});
+
+test('scoreGuess: floor applies even with hard difficulty 1.5× and obscurity 1.8×', () => {
+    const r = scoreGuess({
+        distanceKm: 20000,
+        region: 'Europe',
+        difficulty: 'hard',
+        population: 10_000
+    });
+    assert.ok(r.points >= Config.GLOBE_DROP_MIN_POINTS);
 });
