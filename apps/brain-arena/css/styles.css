@@ -713,6 +713,37 @@ select option { background: var(--surface); color: var(--text); }
 }
 .leaderboard-table .col-admin { width: 40px; text-align: center; }
 
+.room-host-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  margin-right: 0.55rem;
+}
+.btn-sm {
+  padding: 0.35rem 0.65rem;
+  font-size: 0.82rem;
+  line-height: 1.1;
+}
+.btn-danger-ghost {
+  color: rgb(252, 165, 165);
+  border-color: rgba(248, 113, 113, 0.4);
+}
+.btn-danger-ghost:hover {
+  background: rgba(248, 113, 113, 0.10);
+}
+
+.room-paused-banner {
+  margin: 0.5rem 0 0;
+  padding: 0.5rem 0.85rem;
+  background: rgba(252, 211, 77, 0.10);
+  border: 1px solid rgba(252, 211, 77, 0.35);
+  border-radius: 8px;
+  color: rgb(252, 211, 77);
+  font-size: 0.88rem;
+  font-weight: 600;
+  text-align: center;
+}
+
 .lobby-waiting-hint {
   margin: 0 0 0.65rem;
   padding: 0.55rem 0.8rem;
