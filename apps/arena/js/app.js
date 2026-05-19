@@ -2037,10 +2037,14 @@ function renderRoom() {
 
     // Header end-stage actions (Rematch). Only visible on the finished
     // stage. The end-of-stage section keeps its own copy for users
-    // who scroll past the recap.
+    // who scroll past the recap. Toggle a class on .room-head-right
+    // so the layout flips from inline-row (mid-game) to a clean
+    // right-aligned column (post-match) — see styles.css.
     const headerEndActions = $('#room-end-actions');
     const headerRematch = $('#room-end-again-btn');
     if (headerEndActions) headerEndActions.hidden = !finished;
+    const headRight = document.querySelector('.room-head-right');
+    if (headRight) headRight.classList.toggle('is-finished', finished);
     if (headerRematch) {
         // Mirror the visibility logic from renderRematchUI — only show
         // when a rematch is even an option (>=2 players in multi, or
