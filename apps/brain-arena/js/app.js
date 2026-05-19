@@ -287,6 +287,22 @@ function parseUrlState() {
     }
 }
 
+/**
+ * Build a shareable invite URL for the given room code. Keeps the
+ * current location's protocol + host + pathname so the link works
+ * across staging / prod / preview deploys, and strips every search
+ * param except `?room=`.
+ */
+function buildInviteLink(code) {
+    try {
+        const u = new URL(window.location.href);
+        const out = `${u.protocol}//${u.host}${u.pathname}?room=${encodeURIComponent(code)}`;
+        return out;
+    } catch (_) {
+        return `${window.location.origin}${window.location.pathname}?room=${encodeURIComponent(code)}`;
+    }
+}
+
 function syncUrlToState() {
     try {
         const url = new URL(window.location.href);
@@ -459,6 +475,16 @@ function applyAuthState(user) {
     setClass($('#auth-gate'), 'is-hidden', signedIn);
     if (state.user) $('#auth-gate').hidden = true;
     else $('#auth-gate').hidden = false;
+
+    // Invite-link landing: if a signed-out user arrived via an
+    // /?room=ABCDE link, open the sign-in modal automatically so they
+    // can join without hunting for it. pendingRoomCode is kept; once
+    // they finish auth, applyAuthState fires again with signedIn=true
+    // and tryRejoinPendingRoom takes them straight to the room.
+    if (!signedIn && state.pendingRoomCode && !state.inviteSignInPrompted) {
+        state.inviteSignInPrompted = true;
+        openSignInPrompt();
+    }
 
     // Profile view toggles
     setClass($('#profile-signed-out'), 'is-hidden', signedIn);
@@ -1034,6 +1060,33 @@ function wireLobby() {
             btn.innerHTML = '✓';
             setTimeout(() => { btn.innerHTML = original; }, 1200);
         } catch (e) { /* ignore */ }
+    });
+
+    // Copy a full invite link to the clipboard. Opening the URL in any
+    // browser pre-fills the room code; signed-in friends auto-join and
+    // signed-out friends get the sign-in modal pop on landing.
+    const shareBtn = $('#room-code-share');
+    if (shareBtn) shareBtn.addEventListener('click', async () => {
+        if (!state.roomCode) return;
+        const link = buildInviteLink(state.roomCode);
+        try {
+            if (navigator.share && typeof navigator.share === 'function') {
+                // Native share sheet where supported (mobile). Fall back
+                // to clipboard if the user cancels or the API rejects.
+                try {
+                    await navigator.share({ title: 'Brain Arena room', url: link });
+                    showToast('Invite link shared', { icon: '🔗', key: 'invite-share' });
+                    return;
+                } catch (_) { /* user cancelled / not supported — fall through to clipboard */ }
+            }
+            await navigator.clipboard.writeText(link);
+            const original = shareBtn.innerHTML;
+            shareBtn.innerHTML = '✓';
+            setTimeout(() => { shareBtn.innerHTML = original; }, 1200);
+            showToast('Invite link copied', { icon: '🔗', key: 'invite-link' });
+        } catch (e) {
+            showToast('Could not copy link', { icon: '⚠️', key: 'invite-link-fail' });
+        }
     });
 
     // Mid-game controls (all players).
