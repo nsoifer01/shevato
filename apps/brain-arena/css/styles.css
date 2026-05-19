@@ -1531,7 +1531,33 @@ body.brain-arena-app button {
 .profile-premium-info h3 { font-size: 1rem; margin: 0 0 0.15rem; display: inline-flex; gap: 0.3rem; align-items: center; }
 .profile-premium-info p { margin: 0; color: var(--muted); font-size: 0.88rem; }
 .profile-premium-card.is-premium { background: linear-gradient(135deg, rgba(74, 222, 128, 0.12), rgba(99, 102, 241, 0.05)); border-color: rgba(74, 222, 128, 0.4); }
-.profile-premium-card.is-premium #upgrade-premium-btn { display: none; }
+.profile-premium-card.is-trial { background: linear-gradient(135deg, rgba(99, 102, 241, 0.10), rgba(252, 211, 77, 0.05)); border-color: rgba(99, 102, 241, 0.35); }
+
+/* Master switch: when boot() sees Config.PREMIUM_UI_ENABLED === false it
+ * adds `premium-disabled` to <body>, and these rules pull every premium-
+ * related affordance out of layout. The pure premium.js helpers stay
+ * loaded so we can flip the flag back on without code changes.
+ * See apps/brain-arena/PREMIUM_SETUP.md for the rollout checklist. */
+body.premium-disabled #profile-premium-card,
+body.premium-disabled #profile-admin-controls,
+body.premium-disabled #premium-modal,
+body.premium-disabled #custom-pack-details,
+body.premium-disabled #detailed-stats-upsell,
+body.premium-disabled .premium-tag,
+body.premium-disabled .premium-chip,
+body.premium-disabled [data-action="open-premium"] { display: none !important; }
+
+.profile-admin-controls {
+  margin-top: 0.6rem;
+  padding: 0.75rem 0.95rem;
+  background: var(--surface);
+  border: 1px dashed var(--border);
+  border-radius: var(--radius);
+}
+.profile-admin-controls h4 { margin: 0 0 0.2rem; font-size: 0.95rem; color: var(--text); }
+.profile-admin-hint { margin: 0 0 0.55rem; color: var(--muted); font-size: 0.82rem; }
+.profile-admin-hint code { background: var(--surface-2); padding: 0.05rem 0.3rem; border-radius: 4px; font-size: 0.78rem; }
+.profile-admin-actions { display: flex; gap: 0.5rem; flex-wrap: wrap; }
 
 .custom-pack {
   background: var(--surface);
@@ -1695,6 +1721,13 @@ body.brain-arena-app button {
   color: var(--muted);
   text-align: center;
 }
+.premium-modal-price {
+  margin: 0 0 0.75rem;
+  text-align: center;
+  color: var(--text);
+  font-size: 1rem;
+}
+.premium-modal-price strong { font-size: 1.15rem; }
 
 /* ---------- Responsive ---------- */
 
