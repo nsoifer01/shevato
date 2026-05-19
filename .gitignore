@@ -14,6 +14,10 @@
 
 # Netlify
 .netlify/
+netlify/functions/node_modules/
+netlify/functions/package-lock.json
+netlify/pending-functions/node_modules/
+netlify/pending-functions/package-lock.json
 
 # Firebase local config (if you want a different local config)
 assets/js/firebase-config-local.js
