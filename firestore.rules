@@ -1,27 +1,55 @@
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
-    // The user document itself (no subcollections — those are scoped
-    // explicitly below so the granular validation actually applies).
+    // Users can only read/write their own data
     match /users/{userId} {
       allow read, write: if request.auth != null && request.auth.uid == userId;
+
+      // Recursive rule for all subcollections and documents
+      match /{document=**} {
+        allow read, write: if request.auth != null && request.auth.uid == userId;
+      }
     }
 
-    // Per-app sync documents written by storage-sync-robust.js. The shape
-    // check is the *only* reason the granular rule existed; the broader
-    // recursive rule that used to live above this one bypassed it
-    // entirely (Firestore unions allow rules — any matching allow grants
-    // access — so a permissive parent rule disables narrower validation
-    // on the same path).
+    // Alternative: More granular control per namespace. NOTE — this rule
+    // is shadowed by the recursive /users/{userId}/{document=**} match
+    // above; Firestore unions allow rules so the permissive parent
+    // disables the validation here. Kept in sync with the deployed
+    // ruleset so a CLI deploy from this file doesn't drift.
     match /users/{userId}/apps/{namespace} {
       allow read: if request.auth != null && request.auth.uid == userId;
 
       allow write: if request.auth != null
         && request.auth.uid == userId
-        && request.resource.data.keys().hasOnly(['data', 'meta'])
-        && request.resource.data.data is map
-        && request.resource.data.meta is map
+        && request.resource.data.keys().hasAll(['data', 'meta'])
         && request.resource.data.meta.keys().hasAll(['lastUpdated']);
+    }
+
+    // ---------- Trivia Arena ----------
+    // Multiplayer game rooms. Any signed-in user can read any room (so
+    // they can join with a code) and write to the room doc (host advances
+    // questions; players touch lastSeen-style fields). App-level password
+    // check gates private rooms — rules deliberately stay loose because
+    // game state is client-of-truth. Tighten with field-level conditions
+    // if abuse shows up.
+    match /triviaRooms/{roomCode} {
+      allow read: if request.auth != null;
+      allow create, update, delete: if request.auth != null;
+    }
+    // Each player owns their own player doc. Score increments and answer
+    // writes happen here under the player's own uid — the host can't
+    // silently rewrite someone else's score.
+    match /triviaRooms/{roomCode}/players/{playerUid} {
+      allow read: if request.auth != null;
+      allow create, update, delete: if request.auth != null
+        && request.auth.uid == playerUid;
+    }
+
+    // Denormalized global XP leaderboard. Read for everyone signed in;
+    // each user can only write their own entry.
+    match /triviaLeaderboard/{userId} {
+      allow read: if request.auth != null;
+      allow create, update: if request.auth != null && request.auth.uid == userId;
     }
 
     // Deny all other access
