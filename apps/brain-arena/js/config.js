@@ -102,6 +102,24 @@
         GLOBE_DROP_BASE_POINTS: 100,
         GLOBE_DROP_DISTANCE_SCALE_KM: 1500,
 
+        // Hard floor so even an antipodal guess still earns 1-10 points
+        // (no "you got 0" frustration). Tunable; lifts the worst possible
+        // result enough to feel like effort was rewarded.
+        GLOBE_DROP_MIN_POINTS: 5,
+
+        // Population obscurity weight. Smaller, less globally-famous places
+        // are worth more so the game rewards real geographic knowledge
+        // instead of guessing famous capitals. Formula in globe-drop-scoring.js:
+        //   weight = clamp((REFERENCE_LOG10 - log10(pop)) * SLOPE + 1, MIN, MAX)
+        // tuned so pop=1M ≈ 1.0×, pop=10M ≈ 0.65×, pop=100k ≈ 1.4×,
+        // pop=10k ≈ 1.8×. Missing population (legacy capitals) gets 1.0×.
+        GLOBE_DROP_POPULATION_WEIGHT: {
+            REFERENCE_LOG10: 6,   // log10(1,000,000) — typical "city" benchmark
+            SLOPE: 0.35,
+            MIN: 0.55,
+            MAX: 2.0
+        },
+
         // Continent multipliers per your spec — harder/lesser-known
         // continents (Africa, Asia, Oceania, Antarctic) score more than
         // Europe (the baseline) so the points reflect difficulty, not just

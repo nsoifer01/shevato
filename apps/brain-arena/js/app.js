@@ -1787,7 +1787,12 @@ function drawGlobeDropReveal(loc, me, { showOthers = true } = {}) {
         const d = GlobeDropScoring.haversineDistanceKm(
             me.currentGuess.lat, me.currentGuess.lng, loc.lat, loc.lng
         );
-        const { points } = GlobeDropScoring.scoreGuess({ distanceKm: d, region: loc.region, difficulty: state.roomData.difficulty });
+        const { points } = GlobeDropScoring.scoreGuess({
+            distanceKm: d,
+            region: loc.region,
+            difficulty: state.roomData.difficulty,
+            population: loc.population
+        });
         distEl.innerHTML = `${Math.round(d).toLocaleString()} km off — <strong>+${points}</strong> points`;
         let sentiment;
         if (d < 100) sentiment = '🎯 Bullseye!';
@@ -1872,7 +1877,12 @@ async function submitGuess() {
     const distance = GlobeDropScoring.haversineDistanceKm(
         state.pendingGuess.lat, state.pendingGuess.lng, loc.lat, loc.lng
     );
-    const { points } = GlobeDropScoring.scoreGuess({ distanceKm: distance, region: loc.region });
+    const { points } = GlobeDropScoring.scoreGuess({
+        distanceKm: distance,
+        region: loc.region,
+        difficulty: state.roomData.difficulty,
+        population: loc.population
+    });
 
     state.submittedQuestionId = loc.id;
     const guess = state.pendingGuess;
