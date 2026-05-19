@@ -3055,12 +3055,24 @@ function renderReadyBar(phase) {
         ? state.roomPlayers.find((p) => p.uid === state.user.uid)
         : null;
     const meReady = !!(me && me.readyAfterQId === loc.id);
+    // Last round: relabel to "Finish" — the click ends the game, not
+    // "ready for next."
+    const room = state.roomData || {};
+    const idx = room.currentQuestionIndex || 0;
+    const totalQ = room.totalQuestions || 0;
+    const isLast = totalQ > 0 && idx >= totalQ - 1;
     const btn = $('#globe-drop-ready-btn');
     if (btn) {
         btn.disabled = meReady;
-        btn.innerHTML = meReady
-            ? '<span aria-hidden="true">✓</span> You\'re ready'
-            : '<span aria-hidden="true">⏭</span> Ready';
+        if (meReady) {
+            btn.innerHTML = isLast
+                ? '<span aria-hidden="true">✓</span> Finishing'
+                : '<span aria-hidden="true">✓</span> You\'re ready';
+        } else {
+            btn.innerHTML = isLast
+                ? '<span aria-hidden="true">🏁</span> Finish'
+                : '<span aria-hidden="true">⏭</span> Ready';
+        }
     }
     const statusEl = $('#globe-drop-ready-status');
     if (statusEl) {
@@ -3070,7 +3082,7 @@ function renderReadyBar(phase) {
             const isReady = p.readyAfterQId === loc.id;
             return `<span class="ready-pip${isReady ? ' is-ready' : ''}">${escapeHtml(p.displayName || 'Player')}</span>`;
         }).join('');
-        statusEl.innerHTML = `${pips} <small>${readyCount}/${players.length} ready</small>`;
+        statusEl.innerHTML = `${pips} <small>${readyCount}/${players.length} ${isLast ? 'finishing' : 'ready'}</small>`;
     }
 }
 
