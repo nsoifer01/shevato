@@ -174,6 +174,54 @@ function showToast(message, { icon = '', key = null, ttlMs = 4000 } = {}) {
     setTimeout(() => { try { li.remove(); } catch (_) {} }, ttlMs + 600);
 }
 
+/**
+ * Themed confirm modal. Returns a Promise<boolean> that resolves true
+ * when the user clicks the confirm action, false on cancel / close /
+ * backdrop / escape. Single global modal element; only one prompt at
+ * a time is supported, which is fine for the call sites we have.
+ */
+let confirmModalResolve = null;
+function openConfirmModal({ title = 'Confirm', body = '', confirmLabel = 'Confirm', cancelLabel = 'Cancel', danger = false } = {}) {
+    const modal = document.getElementById('confirm-modal');
+    if (!modal) return Promise.resolve(window.confirm(body));
+    setText(document.getElementById('confirm-modal-title'), title);
+    setText(document.getElementById('confirm-modal-body'), body);
+    const confirmBtn = document.getElementById('confirm-modal-confirm');
+    const cancelBtn = document.getElementById('confirm-modal-cancel');
+    confirmBtn.textContent = confirmLabel;
+    cancelBtn.textContent = cancelLabel;
+    confirmBtn.classList.toggle('btn-danger', !!danger);
+    modal.removeAttribute('hidden');
+    return new Promise((resolve) => {
+        // Resolve a stale outstanding prompt as false so we never leak
+        // a dangling promise if openConfirmModal is called twice quickly.
+        if (confirmModalResolve) {
+            try { confirmModalResolve(false); } catch (_) {}
+        }
+        confirmModalResolve = resolve;
+        confirmBtn.focus();
+    });
+}
+function closeConfirmModal(result) {
+    const modal = document.getElementById('confirm-modal');
+    if (modal) modal.setAttribute('hidden', '');
+    const r = confirmModalResolve;
+    confirmModalResolve = null;
+    if (r) r(!!result);
+}
+function wireConfirmModal() {
+    const modal = document.getElementById('confirm-modal');
+    if (!modal) return;
+    modal.addEventListener('click', (e) => {
+        if (e.target.matches('[data-confirm-close]')) closeConfirmModal(false);
+    });
+    document.getElementById('confirm-modal-cancel').addEventListener('click', () => closeConfirmModal(false));
+    document.getElementById('confirm-modal-confirm').addEventListener('click', () => closeConfirmModal(true));
+    document.addEventListener('keydown', (e) => {
+        if (e.key === 'Escape' && !modal.hasAttribute('hidden')) closeConfirmModal(false);
+    });
+}
+
 function avatarLetter(displayName) {
     const s = String(displayName || '').trim();
     if (!s) return '?';
@@ -848,10 +896,10 @@ function wireLobby() {
 
     // Host-only mid-game controls.
     const pauseBtn = $('#room-pause-btn');
-    const skipBtn = $('#room-skip-btn');
+    const giveUpBtn = $('#room-giveup-btn');
     const endBtn = $('#room-end-btn');
     if (pauseBtn) pauseBtn.addEventListener('click', () => togglePauseRoom());
-    if (skipBtn) skipBtn.addEventListener('click', () => hostSkipCurrentQuestion());
+    if (giveUpBtn) giveUpBtn.addEventListener('click', () => hostGiveUpCurrentQuestion());
     if (endBtn) endBtn.addEventListener('click', () => hostEndGameEarly());
 }
 
@@ -1215,8 +1263,28 @@ function notifyOpponentSubmissions(prev, next) {
             icon: '✅',
             key: `submitted:${np.uid}:${currentQId}`
         });
+        // Flash the in-stage pulse banner too — more prominent than the
+        // corner toast and lives right above the globe where the player's
+        // attention is. Restarts the animation by toggling [hidden] off
+        // after removing + re-adding the element to the DOM-tree.
+        flashStagePulse(`${name} submitted ✓`);
         try { Feedback.opponentSubmitted(); } catch (_) { /* ignore */ }
     }
+}
+
+function flashStagePulse(message) {
+    const el = document.getElementById('globe-drop-pulse');
+    if (!el) return;
+    el.textContent = message;
+    el.removeAttribute('hidden');
+    // Re-trigger CSS animation by cloning the node — the keyframes only
+    // run on first mount, so swapping the element resets them.
+    const replacement = el.cloneNode(true);
+    el.parentNode.replaceChild(replacement, el);
+    // Hide after the animation finishes; the keyframes already fade it
+    // out, but we want the element fully out of layout so the next pulse
+    // renders cleanly.
+    setTimeout(() => { try { replacement.setAttribute('hidden', ''); } catch (_) {} }, 3000);
 }
 
 // When the host bumps the room's `round` (Play Again), every client notices
@@ -1353,11 +1421,17 @@ async function togglePauseRoom() {
     }
 }
 
-async function hostSkipCurrentQuestion() {
+async function hostGiveUpCurrentQuestion() {
     if (!isHostOfActiveRoom()) return;
     const room = state.roomData;
     if (!room || room.status !== 'playing') return;
-    if (!window.confirm('Skip to the reveal for this question? Everyone who hasn\'t submitted gets the minimum score.')) return;
+    const ok = await openConfirmModal({
+        title: 'Give up this question?',
+        body: 'The reveal will show now. Anyone who hasn\'t submitted gets the minimum score for this location.',
+        confirmLabel: 'Give up',
+        danger: true
+    });
+    if (!ok) return;
     try {
         await updateDoc(doc(db, 'triviaRooms', state.roomCode), {
             revealStartedAt: serverTimestamp(),
@@ -1365,7 +1439,7 @@ async function hostSkipCurrentQuestion() {
             pausedAt: null
         });
     } catch (err) {
-        console.warn('hostSkipCurrentQuestion failed:', err);
+        console.warn('hostGiveUpCurrentQuestion failed:', err);
     }
 }
 
@@ -1373,7 +1447,13 @@ async function hostEndGameEarly() {
     if (!isHostOfActiveRoom()) return;
     const room = state.roomData;
     if (!room) return;
-    if (!window.confirm('End the game now? Final scores are tallied with everyone\'s current points.')) return;
+    const ok = await openConfirmModal({
+        title: 'End the game?',
+        body: 'Final scores will be tallied with everyone\'s current points and the room will go to the end screen.',
+        confirmLabel: 'End game',
+        danger: true
+    });
+    if (!ok) return;
     try {
         await updateDoc(doc(db, 'triviaRooms', state.roomCode), {
             status: 'finished',
@@ -1541,7 +1621,14 @@ async function sendChatMessage() {
         input.value = '';
     } catch (e) {
         console.warn('sendChatMessage failed:', e);
-        if (err) { err.textContent = 'Could not send. Try again.'; err.hidden = false; }
+        if (err) {
+            const isPermDenied = e && (e.code === 'permission-denied'
+                || /Missing or insufficient permissions/i.test(String(e.message || e)));
+            err.textContent = isPermDenied
+                ? 'Chat is locked until the Firestore rules for /triviaRooms/{code}/chat are published. Ask the site admin to redeploy rules.'
+                : 'Could not send. Try again.';
+            err.hidden = false;
+        }
     }
 }
 
@@ -1555,6 +1642,28 @@ function wireChat() {
     });
     if (closeBtn) closeBtn.addEventListener('click', closeChatPanel);
     if (form) form.addEventListener('submit', (e) => { e.preventDefault(); sendChatMessage(); });
+    // Quick-emoji bar. One click sends the emoji as a chat message
+    // bypassing the moderation API (an emoji can't be flagged).
+    document.querySelectorAll('.room-chat-quick-btn').forEach((btn) => {
+        btn.addEventListener('click', () => sendChatEmoji(btn.dataset.emoji));
+    });
+}
+
+async function sendChatEmoji(emoji) {
+    if (!state.user || !state.roomCode || !emoji) return;
+    if (Chat.shouldRateLimit(chatState.lastSentAt, Date.now())) return;
+    const displayName = (state.profile && state.profile.displayName) || deriveInitialDisplayName();
+    try {
+        await addDoc(collection(db, 'triviaRooms', state.roomCode, 'chat'), {
+            uid: state.user.uid,
+            displayName,
+            text: emoji,
+            sentAt: serverTimestamp()
+        });
+        chatState.lastSentAt = Date.now();
+    } catch (e) {
+        console.warn('sendChatEmoji failed:', e);
+    }
 }
 
 // Edge-trigger feedback on game-status transitions. We track the last
@@ -2292,13 +2401,13 @@ function drawGlobeDropReveal(loc, me, { showOthers = true } = {}) {
         else if (d < 2000) sentiment = 'Not bad.';
         else sentiment = 'Way off, but you tried.';
         setText($('#globe-drop-status'), showOthers ? sentiment : `${sentiment} Waiting for the rest…`);
-        // Reveal sound + haptic. Only fire on the LOCAL reveal (the first
-        // time the player sees their own result) so opponents' reveals
-        // don't trigger a second buzz when their global-reveal arc lands.
+        // Reveal sound + haptic, tiered by points earned (so a tiny-city
+        // bullseye gets the celebratory sound, an antipodal guess gets a
+        // soft minor descent). Only fires on the LOCAL reveal — the
+        // global reveal doesn't re-trigger so opponents' arcs landing
+        // don't make a second buzz.
         if (!showOthers) {
-            if (d < 100) Feedback.revealBullseye();
-            else if (d < 2000) Feedback.revealClose();
-            else Feedback.revealFar();
+            try { Feedback.revealForScore(points); } catch (_) { /* ignore */ }
         }
     } else {
         distEl.textContent = 'No guess submitted (minimum score awarded).';
@@ -2352,9 +2461,12 @@ function renderMiniBoardGlobeDrop(currentQuestionId) {
         if (state.user && p.uid === state.user.uid) li.classList.add('is-me');
         if (i === 0 && (p.score || 0) > 0) li.classList.add('is-leader');
         if (p.answeredThisQuestion) li.classList.add('is-answered');
+        const badge = p.answeredThisQuestion
+            ? '<span class="submitted-badge" aria-label="submitted">✓ submitted</span>'
+            : '';
         li.innerHTML =
             `<span class="mini-board-rank">${i+1}</span>` +
-            `<span class="mini-board-name">${escapeHtml(p.displayName)}</span>` +
+            `<span class="mini-board-name">${escapeHtml(p.displayName)}${badge}</span>` +
             `<span class="mini-board-score">${p.score || 0}</span>`;
         list.appendChild(li);
     });
@@ -3567,13 +3679,19 @@ async function checkLeaderboardAdmin(uid) {
 async function removeLeaderboardEntry(uid, name) {
     if (!state.isLeaderboardAdmin) return;
     if (!uid) return;
-    if (!window.confirm(`Remove "${name}" from the Global XP leaderboard?\n\nThis only deletes their leaderboard row — their XP / profile is untouched. The row reappears the next time they play a game.`)) return;
+    const ok = await openConfirmModal({
+        title: `Remove "${name}"?`,
+        body: 'This deletes their row from the Global XP leaderboard only. Their XP and profile stay intact, and the row reappears the next time they play a game.',
+        confirmLabel: 'Remove row',
+        danger: true
+    });
+    if (!ok) return;
     try {
         await deleteDoc(doc(db, 'triviaLeaderboard', uid));
         showToast(`Removed ${name} from leaderboard.`, { icon: '🗑️' });
     } catch (err) {
         console.warn('removeLeaderboardEntry failed:', err);
-        alert('Could not remove that row. Check that your uid is in /leaderboardAdmins/ in Firestore.');
+        showToast('Could not remove. Check that your uid is in /leaderboardAdmins/.', { icon: '⚠️' });
     }
 }
 
@@ -3718,6 +3836,7 @@ async function boot() {
     wireLeaderboard();
     wireH2H();
     wireChat();
+    wireConfirmModal();
     renderPackOptions();
 
     // Read tab + queued room from the URL BEFORE auth wires up, so a

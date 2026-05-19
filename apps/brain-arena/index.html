@@ -224,7 +224,7 @@
                    private room of one and auto-starts; Daily uses a
                    deterministic location set seeded by today's UTC date
                    and posts the result to the per-day leaderboard. -->
-              <div class="lobby-solo-actions" data-game-type="globe-drop" hidden>
+              <div class="lobby-solo-actions" data-game-type="globe-drop">
                 <button type="button" class="btn btn-ghost lobby-solo-btn" id="play-solo-btn">
                   <span aria-hidden="true">🎯</span> Play solo
                 </button>
@@ -281,11 +281,11 @@
               <button type="button" class="btn btn-ghost btn-sm" id="room-pause-btn" title="Pause / resume the timer">
                 <span aria-hidden="true">⏸</span> Pause
               </button>
-              <button type="button" class="btn btn-ghost btn-sm" id="room-skip-btn" title="Skip to the reveal for this question">
-                <span aria-hidden="true">⏭</span> Skip
+              <button type="button" class="btn btn-ghost btn-sm btn-danger-ghost" id="room-giveup-btn" title="Give up this question and reveal the answer now">
+                <span aria-hidden="true">🏳️</span> Give up
               </button>
               <button type="button" class="btn btn-ghost btn-sm btn-danger-ghost" id="room-end-btn" title="End the game and show the final scores">
-                <span aria-hidden="true">⏹</span> End
+                <span aria-hidden="true">⏹</span> End game
               </button>
             </div>
             <button type="button" class="btn btn-ghost btn-sm" id="room-chat-toggle" title="Open chat">
@@ -311,6 +311,19 @@
           </header>
           <ul class="room-chat-list" id="room-chat-list" aria-live="polite"></ul>
           <p class="room-chat-empty" id="room-chat-empty">No messages yet. Say something.</p>
+          <!-- Quick-tap emoji bar — one click sends that emoji as a
+               message, no typing required. Skips moderation since
+               emoji-only messages can't contain profanity. -->
+          <div class="room-chat-quick" aria-label="Quick reactions">
+            <button type="button" class="room-chat-quick-btn" data-emoji="🔥">🔥</button>
+            <button type="button" class="room-chat-quick-btn" data-emoji="🎯">🎯</button>
+            <button type="button" class="room-chat-quick-btn" data-emoji="😂">😂</button>
+            <button type="button" class="room-chat-quick-btn" data-emoji="😭">😭</button>
+            <button type="button" class="room-chat-quick-btn" data-emoji="👏">👏</button>
+            <button type="button" class="room-chat-quick-btn" data-emoji="🤯">🤯</button>
+            <button type="button" class="room-chat-quick-btn" data-emoji="😬">😬</button>
+            <button type="button" class="room-chat-quick-btn" data-emoji="🤔">🤔</button>
+          </div>
           <form class="room-chat-form" id="room-chat-form" autocomplete="off">
             <input type="text" id="room-chat-input" maxlength="280" placeholder="Type a message…" aria-label="Chat message">
             <button type="submit" class="btn btn-primary btn-sm">Send</button>
@@ -423,9 +436,29 @@
               <span class="globe-drop-difficulty-chip" id="globe-drop-difficulty-chip" hidden></span>
             </header>
 
-            <!-- Reveal panel — appears ABOVE the globe so the result is
-                 the first thing you see after submitting. The countdown
-                 badge ticks 5→1 during the global reveal window. -->
+            <!-- Action bar (submit / clear / status). Above the globe so
+                 on mobile your thumb doesn't have to scroll the whole
+                 stage to reach Submit. -->
+            <div class="globe-drop-action-bar">
+              <p class="answer-status globe-drop-status" id="globe-drop-status" aria-live="polite">Drag to spin the globe. Click to drop your pin.</p>
+              <div class="globe-drop-controls">
+                <button type="button" class="btn btn-ghost" id="globe-drop-clear-btn" hidden>Clear pin</button>
+                <button type="button" class="btn btn-primary" id="globe-drop-submit-btn" disabled>Submit guess</button>
+              </div>
+            </div>
+
+            <!-- Live standings + opponent submission indicators. Submit-
+                 state badges flash next to each name as they commit. -->
+            <section class="mini-board mini-board-top" id="mini-board-globe-drop">
+              <header class="mini-board-head">
+                <h3>Live standings</h3>
+                <p class="mini-board-pulse" id="globe-drop-pulse" aria-live="polite" hidden></p>
+              </header>
+              <ol class="mini-board-list" id="mini-board-list-globe-drop"></ol>
+            </section>
+
+            <!-- Reveal panel — just above the globe so the result is
+                 visible without scrolling. Countdown ticks 5→1. -->
             <section class="globe-drop-reveal" id="globe-drop-reveal" hidden>
               <div class="globe-drop-reveal-head">
                 <p class="globe-drop-reveal-distance" id="globe-drop-reveal-distance"></p>
@@ -437,22 +470,10 @@
               <p class="globe-drop-reveal-trivia" id="globe-drop-reveal-trivia" hidden></p>
             </section>
 
-            <p class="globe-drop-hint" id="globe-drop-hint">Drag to spin the globe. Click anywhere to drop your pin, then submit.</p>
+            <p class="globe-drop-hint" id="globe-drop-hint" hidden></p>
             <div id="globe-drop-map" class="globe-drop-map" aria-label="World globe for guessing"></div>
-            <div class="globe-drop-controls">
-              <button type="button" class="btn btn-ghost" id="globe-drop-clear-btn" hidden>Clear pin</button>
-              <button type="button" class="btn btn-primary" id="globe-drop-submit-btn" disabled>Submit guess</button>
-            </div>
-            <p class="answer-status globe-drop-status" id="globe-drop-status" aria-live="polite"></p>
-            <p class="globe-drop-attribution">
-              Earth texture: <a href="https://www.solarsystemscope.com/textures/" rel="noopener" target="_blank">Solar System Scope</a> (CC BY 4.0).
-            </p>
+            <!-- Nothing below the globe by design. -->
           </article>
-
-          <section class="mini-board" id="mini-board-globe-drop">
-            <h3>Live standings</h3>
-            <ol class="mini-board-list" id="mini-board-list-globe-drop"></ol>
-          </section>
         </section>
 
         <!-- STAGE: end of game -->
@@ -726,6 +747,24 @@
       <div class="modal-actions">
         <button type="button" class="btn btn-ghost" data-close="modal">Maybe later</button>
         <button type="button" class="btn btn-primary" id="premium-checkout-btn">Continue to checkout</button>
+      </div>
+    </article>
+  </div>
+
+  <!-- Reusable confirmation modal. openConfirmModal({...}) drops the
+       title/body/labels in and returns a Promise<boolean>. Replaces
+       window.confirm() so confirmations match the dark theme. -->
+  <div class="modal" id="confirm-modal" role="dialog" aria-modal="true" aria-labelledby="confirm-modal-title" hidden>
+    <div class="modal-backdrop" data-confirm-close></div>
+    <article class="modal-panel modal-panel-sm">
+      <button type="button" class="modal-close" data-confirm-close aria-label="Close">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.85" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 6l12 12"/><path d="M18 6L6 18"/></svg>
+      </button>
+      <h2 id="confirm-modal-title">Confirm</h2>
+      <p id="confirm-modal-body" class="confirm-modal-body"></p>
+      <div class="modal-actions">
+        <button type="button" class="btn btn-ghost" id="confirm-modal-cancel">Cancel</button>
+        <button type="button" class="btn btn-primary" id="confirm-modal-confirm">Confirm</button>
       </div>
     </article>
   </div>
