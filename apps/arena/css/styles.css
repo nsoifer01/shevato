@@ -1001,6 +1001,10 @@ select option { background: var(--surface); color: var(--text); }
   gap: 1rem;
   margin: 0 0 1.1rem;
   padding: 1.3rem 1.5rem;
+  /* scrollIntoView({block:'start'}) anchors element top to viewport
+     y=0; the global fixed page header would otherwise overlap. Add
+     a margin so the prompt lands just under the header. */
+  scroll-margin-top: 4rem;
   /* Glassmorphism: semi-transparent surface + blur picks up the
      background gradient. Inner glow + outer shadow gives it lift. */
   background:
