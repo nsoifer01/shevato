@@ -397,6 +397,10 @@ body.brain-arena-app button {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
   gap: 1.4rem;
+  /* Let each card size to its own content height. Without this, the
+     Join card stretches to match the much taller Create card and
+     looks empty. */
+  align-items: start;
 }
 
 .lobby-card {
@@ -858,22 +862,21 @@ select option { background: var(--surface); color: var(--text); }
 
 .game-type-toggle {
   display: inline-flex;
-  padding: 5px;
-  /* Dark inset track — feels like a recessed physical switch.
-     Layered shadow gives the well of depth, then the active
-     segment floats above. */
+  padding: 4px;
+  /* Inset track with a visible outer border so the two segments
+     read as ONE unified control, not a button next to dark space. */
   background:
-    linear-gradient(180deg, rgba(0, 0, 0, 0.35), rgba(0, 0, 0, 0.15)),
-    rgba(8, 11, 22, 0.6);
-  border: 1px solid rgba(148, 163, 184, 0.10);
+    linear-gradient(180deg, rgba(0, 0, 0, 0.30), rgba(0, 0, 0, 0.12)),
+    rgba(8, 11, 22, 0.55);
+  border: 1px solid rgba(255, 255, 255, 0.12);
   border-radius: 999px;
   gap: 0;
   align-self: stretch;
   justify-content: center;
   box-shadow:
-    0 2px 6px rgba(0, 0, 0, 0.45) inset,
-    0 -1px 0 rgba(0, 0, 0, 0.30) inset,
-    0 1px 0 rgba(255, 255, 255, 0.04);
+    0 0 0 1px rgba(255, 255, 255, 0.03),
+    0 2px 6px rgba(0, 0, 0, 0.40) inset,
+    0 -1px 0 rgba(0, 0, 0, 0.25) inset;
   position: relative;
 }
 .game-type-btn,
@@ -886,7 +889,10 @@ select option { background: var(--surface); color: var(--text); }
   padding: 0.55rem 1.1rem;
   border: 0;
   background: transparent;
-  color: var(--muted) !important;
+  /* Inactive label legible — was --muted (#8b95b3) which read as
+     dim against the recessed track; bumped up to a soft white so
+     the option clearly looks clickable. */
+  color: #d1d5db !important;
   font: inherit;
   font-size: 0.9rem;
   font-weight: 600;
@@ -894,10 +900,13 @@ select option { background: var(--surface); color: var(--text); }
   border-radius: 999px;
   cursor: pointer;
   position: relative;
-  transition: color 0.22s ease, transform 0.08s ease;
+  /* Smooth active-state transition — color + background + box-shadow
+     all fade so the swap feels like a slide, not an abrupt cut. */
+  transition: color 0.25s ease, background 0.25s ease, box-shadow 0.25s ease, transform 0.08s ease;
 }
 .game-type-btn:hover {
-  color: var(--text) !important;
+  color: #ffffff !important;
+  background: rgba(255, 255, 255, 0.04);
 }
 .game-type-btn.is-active,
 .game-type-btn.is-active:hover {
