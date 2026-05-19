@@ -1,6 +1,88 @@
 {
   "updates": [
     {
+      "builtAt": "2026-05-19T07:28:40.512Z",
+      "totals": {
+        "seasons": 16584,
+        "delta": 5
+      },
+      "shapeCounts": {
+        "declining": 221,
+        "rollercoaster": 3563,
+        "rebound": 2796,
+        "mid-peak": 1123,
+        "big-finale": 4069,
+        "bad-finale": 1048,
+        "front-loaded": 548,
+        "saved-best-for-last": 430,
+        "slow-burn": 876,
+        "rising": 602,
+        "consistent": 455
+      },
+      "shapeDeltas": {
+        "rollercoaster": -4,
+        "rebound": -2,
+        "mid-peak": 1,
+        "big-finale": 6,
+        "bad-finale": 3,
+        "slow-burn": 4,
+        "rising": 3
+      },
+      "added": [
+        {
+          "seriesId": "tt34440854",
+          "title": "The Wonderfools",
+          "season": 1,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt40548519",
+          "title": "Nippon Sangoku: The Three Nations of the Crimson Sun",
+          "season": 1,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt0147760",
+          "title": "Dalziel and Pascoe",
+          "season": 9,
+          "seasonYear": 2005
+        },
+        {
+          "seriesId": "tt27507828",
+          "title": "Fired on Mars",
+          "season": 1,
+          "seasonYear": 2023
+        },
+        {
+          "seriesId": "tt3530232",
+          "title": "Last Week Tonight with John Oliver",
+          "season": 13,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt14721554",
+          "title": "Below Deck Down Under",
+          "season": 4,
+          "seasonYear": 2026
+        }
+      ],
+      "removed": [
+        {
+          "seriesId": "tt36850092",
+          "title": "The Real Housewives of Rhode Island",
+          "season": 1,
+          "seasonYear": 2026
+        }
+      ],
+      "ratingSwings": [],
+      "modifiedCounts": {
+        "seriesVotes": 8232,
+        "avgRating": 231,
+        "shapes": 29,
+        "seriesRating": 27
+      }
+    },
+    {
       "builtAt": "2026-05-18T22:26:43.624Z",
       "totals": {
         "seasons": 16579,
