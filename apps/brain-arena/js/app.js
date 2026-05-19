@@ -213,7 +213,10 @@ function wireConfirmModal() {
     const modal = document.getElementById('confirm-modal');
     if (!modal) return;
     modal.addEventListener('click', (e) => {
-        if (e.target.matches('[data-confirm-close]')) closeConfirmModal(false);
+        // .closest() — clicks on the SVG/path INSIDE the X button bubble
+        // as e.target=<path|svg>, which would never match [data-confirm-close]
+        // on the button directly via .matches().
+        if (e.target.closest('[data-confirm-close]')) closeConfirmModal(false);
     });
     document.getElementById('confirm-modal-cancel').addEventListener('click', () => closeConfirmModal(false));
     document.getElementById('confirm-modal-confirm').addEventListener('click', () => closeConfirmModal(true));
@@ -633,7 +636,9 @@ function closePremiumModal() {
 function wirePremiumModal() {
     const modal = $('#premium-modal');
     modal.addEventListener('click', (e) => {
-        if (e.target.matches('[data-close="modal"], .modal-backdrop, .modal-close')) {
+        // Use closest() — clicks on the SVG/path inside the X button
+        // surface as e.target=<path>, which would miss .modal-close.
+        if (e.target.closest('[data-close="modal"], .modal-backdrop, .modal-close')) {
             closePremiumModal();
         }
     });
@@ -978,10 +983,13 @@ function wireLobby() {
     });
 
     $('#leave-room-btn').addEventListener('click', async () => {
+        const isSolo = state.roomData && state.roomData.playMode === 'solo';
         const ok = await openConfirmModal({
-            title: 'Leave room?',
-            body: 'Are you sure you want to leave this room?',
-            confirmLabel: 'Leave',
+            title: isSolo ? 'End your run?' : 'Leave room?',
+            body: isSolo
+                ? 'Ending now will discard the current run.'
+                : 'Are you sure you want to leave this room?',
+            confirmLabel: isSolo ? 'End run' : 'Leave',
             cancelLabel: 'Cancel',
             danger: true
         });
@@ -1020,11 +1028,6 @@ function wireLobby() {
     const endBtn = $('#room-end-btn');
     if (pauseBtn) pauseBtn.addEventListener('click', () => togglePauseRoom());
     if (endBtn) endBtn.addEventListener('click', () => hostEndGameEarly());
-
-    // Per-player Give Up (any player, including host). Only forfeits the
-    // clicking player's current round; doesn't reveal for everyone.
-    const giveUpBtn = $('#room-giveup-btn');
-    if (giveUpBtn) giveUpBtn.addEventListener('click', () => selfGiveUpCurrentQuestion());
 }
 
 function clearJoinError() {
@@ -1356,6 +1359,23 @@ function enterRoom(code) {
     syncUrlToState();
     startChatListener(code);
 
+    // Pre-warm the 8K Earth texture as soon as we enter the room. The
+    // texture is ~4.5 MB and decoding it is the single biggest chunk
+    // inside Globe()(el). Browsers cache decoded bitmap data, so once
+    // this <img> resolves, the later globe init reuses it instead of
+    // re-fetching + re-decoding — moving most of the >200ms cost off
+    // the game-start critical path.
+    if (!state.earthTextureWarmed) {
+        state.earthTextureWarmed = true;
+        try {
+            const img = new Image();
+            img.decoding = 'async';
+            img.src = 'data/earth-8k.jpg';
+            // No need to await; the load+decode happens in the background
+            // and the browser's image cache fields the second request.
+        } catch (_) { /* best-effort */ }
+    }
+
     // window.beforeunload cleanup so the player removes themselves on tab close
     window.addEventListener('beforeunload', beforeUnloadCleanup);
 
@@ -1566,79 +1586,16 @@ async function togglePauseRoom() {
     }
 }
 
-/**
- * Per-player Give Up. Any player (host included) can forfeit THEIR
- * current round only — other players keep playing normally. Implemented
- * as a write to the player's own doc: zero points appended, the current
- * question is marked answered (without a pin) so the existing
- * "everyone-submitted ⇒ early reveal" detector counts this player.
- *
- * Distinct from the legacy host-level give-up, which reset reveal for
- * everyone. End Game (host-only, ends the session for everyone) is the
- * "force end" path now.
- */
-async function selfGiveUpCurrentQuestion() {
-    if (!state.user || !state.roomCode || !state.roomData) return;
-    if (state.roomData.status !== 'playing') return;
-    const loc = currentGlobeDropLocation();
-    if (!loc) return;
-    const me = state.roomPlayers.find((p) => p.uid === state.user.uid);
-    // Already submitted or already gave up — nothing to forfeit.
-    if (me && me.currentAnsweredFor === loc.id) return;
-    const ok = await openConfirmModal({
-        title: 'Give up this round?',
-        body: 'You\'ll score zero for this location. Other players keep playing.',
-        confirmLabel: 'Give up',
-        danger: true
-    });
-    if (!ok) return;
-    state.submittedQuestionId = loc.id;
-    $('#globe-drop-submit-btn').disabled = true;
-    $('#globe-drop-clear-btn').hidden = true;
-    setText($('#globe-drop-status'), 'You gave up. Waiting for the rest…');
-    const pref = doc(db, 'triviaRooms', state.roomCode, 'players', state.user.uid);
-    try {
-        await runTransaction(db, async (tx) => {
-            const snap = await tx.get(pref);
-            if (!snap.exists()) return;
-            const cur = snap.data();
-            if (cur.currentAnsweredFor === loc.id) return; // already submitted
-            const guessRecord = {
-                locationId: loc.id,
-                locationName: loc.name,
-                country: loc.country,
-                region: loc.region,
-                actualLat: loc.lat,
-                actualLng: loc.lng,
-                guessLat: null,
-                guessLng: null,
-                distanceKm: null,
-                points: 0,
-                gaveUp: true
-            };
-            tx.update(pref, {
-                currentGuess: null,
-                currentAnswerAt: serverTimestamp(),
-                currentAnsweredFor: loc.id,
-                gaveUpFor: loc.id,
-                answers: [...(Array.isArray(cur.answers) ? cur.answers : []), guessRecord],
-                lastSeen: serverTimestamp()
-            });
-        });
-    } catch (err) {
-        console.warn('selfGiveUpCurrentQuestion failed:', err);
-        state.submittedQuestionId = null;
-        $('#globe-drop-submit-btn').disabled = false;
-    }
-}
-
 async function hostEndGameEarly() {
     if (!isHostOfActiveRoom()) return;
     const room = state.roomData;
     if (!room) return;
+    const isSolo = room.playMode === 'solo';
     const ok = await openConfirmModal({
-        title: 'End the game?',
-        body: 'Final scores will be tallied with everyone\'s current points and the room will go to the end screen.',
+        title: isSolo ? 'End your run?' : 'End the game?',
+        body: isSolo
+            ? 'Your run will end now and the final score screen will show.'
+            : 'Final scores will be tallied with everyone\'s current points and the room will go to the end screen.',
         confirmLabel: 'End game',
         danger: true
     });
@@ -1871,15 +1828,24 @@ function renderRoom() {
     const playing = room.status === 'playing';
     const hostActions = $('#room-host-actions');
     if (hostActions) hostActions.hidden = !(isHost && playing);
-    // Per-player Give Up is visible to every player (including the host)
-    // while the room is playing. Hide it once the player has already
-    // submitted or given up for the current question.
-    const selfActions = $('#room-self-actions');
-    if (selfActions) {
-        const me = state.user ? state.roomPlayers.find((p) => p.uid === state.user.uid) : null;
-        const loc = currentGlobeDropLocation && currentGlobeDropLocation();
-        const meDone = !!(me && loc && me.currentAnsweredFor === loc.id);
-        selfActions.hidden = !(playing && !meDone);
+
+    // Chat toggle: visible only when there's someone else to talk to.
+    // Solo / daily rooms are inherently single-player so chat is also
+    // hidden in those modes regardless of the player count.
+    const chatToggle = $('#room-chat-toggle');
+    const playMode = room.playMode || 'multi';
+    const hasOthers = playMode === 'multi' && state.roomPlayers.length >= 2;
+    if (chatToggle) chatToggle.hidden = !hasOthers;
+    if (!hasOthers) {
+        const panel = $('#room-chat-panel');
+        if (panel) panel.hidden = true;
+    }
+
+    // Solo rooms: "Leave room" reads as "End game" because there's no
+    // room to leave — you're the only player and ending = exiting.
+    const leaveBtn = $('#leave-room-btn');
+    if (leaveBtn) {
+        leaveBtn.textContent = (playMode === 'solo') ? 'End game' : 'Leave room';
     }
     const banner = $('#room-paused-banner');
     if (banner) banner.hidden = !room.paused;
@@ -2938,27 +2904,26 @@ function startGlobeDropTimerLoop() {
         renderRevealCountdown(phase, revealMs, now);
 
         const currentQId = state.roomData.currentQuestionId;
-        // Low-timer ping at 5s and 3s. Fires exactly once per threshold
-        // per question — the lastTimerPingQId guard prevents the rAF
-        // loop from re-emitting the sound 60×/sec while we're under it.
-        if (phase === 'asking' && currentQId && currentQId !== state.lastTimerPingQId) {
+        // Low-timer pings at 5 / 4 / 3 seconds. Each fires exactly once
+        // per question. Sound + a short vibration buzz on supporting
+        // devices for haptic feedback.
+        if (phase === 'asking' && currentQId) {
             const seconds = Math.ceil(left / 1000);
-            const fired = state.lastTimerPingThresholds || {};
-            if (seconds <= 5 && !fired.five) {
+            const fired = (state.lastTimerPingQId === currentQId)
+                ? (state.lastTimerPingThresholds || {})
+                : {};
+            const buzz = () => {
                 try { Feedback.timerLow(); } catch (_) {}
-                fired.five = true;
-            }
-            if (seconds <= 3 && !fired.three) {
-                try { Feedback.timerLow(); } catch (_) {}
-                fired.three = true;
-            }
+                try {
+                    if (typeof navigator !== 'undefined' && typeof navigator.vibrate === 'function') {
+                        navigator.vibrate(40);
+                    }
+                } catch (_) {}
+            };
+            if (seconds <= 5 && !fired.five) { buzz(); fired.five = true; }
+            if (seconds <= 4 && !fired.four) { buzz(); fired.four = true; }
+            if (seconds <= 3 && !fired.three) { buzz(); fired.three = true; }
             state.lastTimerPingThresholds = fired;
-            if (seconds > 6) {
-                state.lastTimerPingThresholds = {};
-                state.lastTimerPingQId = currentQId;
-            }
-        } else if (currentQId !== state.lastTimerPingQId) {
-            state.lastTimerPingThresholds = {};
             state.lastTimerPingQId = currentQId;
         }
         // Re-render the stage when phase changes so the reveal markers
@@ -3003,53 +2968,63 @@ function startGlobeDropTimerLoop() {
  * countdown, because the host hasn't started one yet.
  */
 function renderRevealCountdown(phase, revealStartedAtMs, nowMs) {
+    // The "5 to next" countdown is now drawn into the timer overlay
+    // itself by renderGlobeDropTimer. We keep the chip element hidden
+    // permanently — there's only ever one timer on screen, top-left.
     const chip = $('#globe-drop-countdown');
-    const num = $('#globe-drop-countdown-num');
-    if (!chip || !num) return;
-    if (phase !== 'reveal' || !revealStartedAtMs) {
-        chip.hidden = true;
-        return;
-    }
-    // Hide the "5 to next" chip on the FINAL location — there's no "next"
-    // to count down to. We'll roll into the end-of-game screen instead.
-    const idx = state.roomData ? (state.roomData.currentQuestionIndex || 0) : 0;
-    const total = state.roomData ? (state.roomData.totalQuestions || 0) : 0;
-    const isLast = total > 0 && idx >= total - 1;
-    if (isLast) {
-        chip.hidden = true;
-        return;
-    }
-    const elapsed = nowMs - revealStartedAtMs;
-    const left = Math.max(0, Config.GLOBE_DROP_REVEAL_TIME_MS - elapsed);
-    const seconds = Math.max(1, Math.ceil(left / 1000));
-    setText(num, String(seconds));
-    chip.hidden = false;
+    if (chip) chip.hidden = true;
 }
 
 function renderGlobeDropTimer(leftMs, phase, totalMs) {
     const total = totalMs || Config.GLOBE_DROP_LOCATION_TIME_MS;
+    const ring = $('#globe-drop-timer-ring-fill');
+    const timer = $('#globe-drop-timer');
+    const numEl = $('#globe-drop-timer-num');
+
+    // During reveal the same overlay flips to showing the to-next
+    // countdown. Compute the reveal seconds-left from the room state
+    // so we share the single visual.
+    if (phase === 'reveal' || phase === 'ended') {
+        const room = state.roomData || {};
+        const revealMs = room.revealStartedAt && room.revealStartedAt.toMillis
+            ? room.revealStartedAt.toMillis() : null;
+        const idx = room.currentQuestionIndex || 0;
+        const totalQ = room.totalQuestions || 0;
+        const isLast = totalQ > 0 && idx >= totalQ - 1;
+        if (revealMs && !isLast) {
+            const elapsed = Date.now() - revealMs;
+            const leftRev = Math.max(0, Config.GLOBE_DROP_REVEAL_TIME_MS - elapsed);
+            const seconds = Math.max(1, Math.ceil(leftRev / 1000));
+            const fraction = Math.max(0, Math.min(1, leftRev / Config.GLOBE_DROP_REVEAL_TIME_MS));
+            const offset = 176 * (1 - fraction);
+            if (ring) ring.style.strokeDashoffset = String(offset);
+            setText(numEl, String(seconds));
+        } else {
+            setText(numEl, '—');
+            if (ring) ring.style.strokeDashoffset = '0';
+        }
+        if (timer) timer.dataset.state = 'reveal';
+        return;
+    }
+
+    // Asking phase — render the question countdown into the overlay.
     const fraction = Math.max(0, Math.min(1, leftMs / total));
     const circumference = 176;
     const offset = circumference * (1 - fraction);
-    const ring = $('#globe-drop-timer-ring-fill');
     if (ring) ring.style.strokeDashoffset = String(offset);
-
-    const timer = $('#globe-drop-timer');
     const seconds = Math.ceil(leftMs / 1000);
-    setText($('#globe-drop-timer-num'), (phase === 'reveal' || phase === 'ended') ? '!' : String(seconds));
+    setText(numEl, String(seconds));
     // Warn/danger thresholds scale with total time so a 30s game doesn't
     // sit in danger-red the whole time, and a 5min game still flashes
-    // appropriately near the end.
+    // appropriately near the end. Reveal phase short-circuits above.
     const dangerCutoff = Math.max(3000, total * 0.1);
     const warnCutoff = Math.max(10000, total * 0.25);
-    if (phase === 'reveal' || phase === 'ended') {
-        timer.dataset.state = 'reveal';
-    } else if (leftMs <= dangerCutoff) {
-        timer.dataset.state = 'danger';
+    if (leftMs <= dangerCutoff) {
+        if (timer) timer.dataset.state = 'danger';
     } else if (leftMs <= warnCutoff) {
-        timer.dataset.state = 'warn';
+        if (timer) timer.dataset.state = 'warn';
     } else {
-        timer.dataset.state = 'asking';
+        if (timer) timer.dataset.state = 'asking';
     }
 }
 
@@ -3427,14 +3402,36 @@ async function renderEndStage(isHost) {
     const isSoloMode = (state.roomData && state.roomData.playMode) === 'solo';
     podium.hidden = isSoloMode;
     podium.innerHTML = '';
+    const soloHero = $('#solo-hero');
     if (isSoloMode) {
         // Hide the end-board too — for solo there's only one row and the
-        // final score is already in the summary line above.
-        const boardWrap = $('#end-board-wrap') || $('.end-board-wrap');
+        // final score is already in the hero block.
+        const boardWrap = document.querySelector('.end-board-wrap');
         if (boardWrap) boardWrap.hidden = true;
+        // Populate the solo hero with run stats sourced from the player's
+        // answers[] array.
+        const meEntry = state.user
+            ? state.roomPlayers.find((p) => p.uid === state.user.uid)
+            : null;
+        const answers = (meEntry && Array.isArray(meEntry.answers)) ? meEntry.answers : [];
+        const scored = answers.filter((a) => a && typeof a.points === 'number');
+        const finalScore = meEntry ? (meEntry.score || 0) : 0;
+        const bestRound = scored.reduce((m, a) => Math.max(m, a.points || 0), 0);
+        const distances = answers.map((a) => a && typeof a.distanceKm === 'number' ? a.distanceKm : null).filter((d) => d != null);
+        const avgDist = distances.length
+            ? Math.round(distances.reduce((s, d) => s + d, 0) / distances.length)
+            : null;
+        if (soloHero) {
+            soloHero.hidden = false;
+            setText($('#solo-hero-score'), String(finalScore));
+            setText($('#solo-hero-best'), String(bestRound));
+            setText($('#solo-hero-avg-dist'), avgDist != null ? `${avgDist} km` : '—');
+            setText($('#solo-hero-locations'), String(answers.length));
+        }
     } else {
-        const boardWrap = $('#end-board-wrap') || $('.end-board-wrap');
+        const boardWrap = document.querySelector('.end-board-wrap');
         if (boardWrap) boardWrap.hidden = false;
+        if (soloHero) soloHero.hidden = true;
     }
     const medals = ['🥇', '🥈', '🥉'];
     const slotOrder = [1, 0, 2]; // visual: 2nd, 1st, 3rd
