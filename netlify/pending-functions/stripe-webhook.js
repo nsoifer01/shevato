@@ -1,18 +1,31 @@
 /*
  * Stripe -> Firestore webhook for Brain Arena premium.
  *
+ * IMPORTANT: this file currently lives in `netlify/pending-functions/`
+ * (NOT `netlify/functions/`) so Netlify does NOT bundle it on deploy —
+ * esbuild can't bundle firebase-admin without extra config, and the
+ * webhook is dormant until the premium tier is rolled out. To activate it:
+ *
+ *   git mv netlify/pending-functions netlify/functions
+ *
+ * If esbuild still chokes on firebase-admin after the move, add to
+ * netlify.toml:
+ *   [functions]
+ *     node_bundler = "esbuild"
+ *     external_node_modules = ["firebase-admin"]
+ *
+ * Then follow apps/brain-arena/PREMIUM_SETUP.md (Stripe Payment Link,
+ * webhook registration, Netlify env vars).
+ *
  * Stripe Checkout (one-time $5) redirects the buyer to success.html and
  * fires `checkout.session.completed` at this endpoint. We verify the
  * signature, then flip users/{uid}.triviaProfile.premium=true via the
  * Firebase Admin SDK (which bypasses Firestore rules).
  *
- * Endpoint URL after deploy:
+ * Endpoint URL after activation:
  *   https://<your-site>/.netlify/functions/stripe-webhook
- * Configure that URL in Stripe Dashboard -> Developers -> Webhooks,
- * subscribed to `checkout.session.completed`. Copy the signing secret
- * into Netlify env vars as STRIPE_WEBHOOK_SECRET.
  *
- * Required Netlify env vars:
+ * Required Netlify env vars (once activated):
  *   STRIPE_SECRET_KEY           - sk_live_... or sk_test_... (Secret API key)
  *   STRIPE_WEBHOOK_SECRET       - whsec_... from the webhook signing secret
  *   FIREBASE_SERVICE_ACCOUNT    - the entire service-account JSON, single line
