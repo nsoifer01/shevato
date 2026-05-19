@@ -11,6 +11,9 @@
     "test:brain-arena": "node --test apps/brain-arena/tests/",
     "test:sync": "node --test sync-system/tests/",
     "build:rising-seasons": "node apps/rising-seasons/scripts/build-data.js",
+    "build:rising-seasons:pages": "node apps/rising-seasons/scripts/build-show-pages.js",
+    "build:gym-tracker:pages": "node apps/gym-tracker/scripts/build-exercise-pages.cjs",
+    "build:site": "node apps/rising-seasons/scripts/build-show-pages.js && node apps/gym-tracker/scripts/build-exercise-pages.cjs",
     "enrich:rising-seasons": "node apps/rising-seasons/scripts/enrich-tmdb.js",
     "enrich:rising-seasons:providers": "node apps/rising-seasons/scripts/enrich-providers.js"
   }
