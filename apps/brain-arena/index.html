@@ -6,7 +6,7 @@
 
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
-  <meta name="description" content="Brain Arena — real-time multiplayer party game with two modes: head-to-head Trivia and Globe Drop geography (guess cities on a 3D globe). Create a room, share the code, race the timer.">
+  <meta name="description" content="Brain Arena: real-time multiplayer party game with two modes, head-to-head Trivia and Globe Drop geography (guess cities on a 3D globe). Create a room, share the code, race the timer.">
   <meta name="keywords" content="trivia game, multiplayer trivia, real-time trivia, party game, online quiz, head to head trivia, group trivia, geography game, capital city game, world map game, 3d globe game, multiplayer geography, brain arena, globe drop, multiplayer party game, room code game" />
   <meta name="author" content="Shevato LLC">
   <meta name="robots" content="index, follow, max-image-preview:large">
@@ -22,7 +22,7 @@
   <meta property="og:url" content="https://shevato.com/apps/brain-arena/" />
   <meta property="og:image" content="https://shevato.com/images/full-logo.svg" />
   <meta property="og:image:type" content="image/svg+xml" />
-  <meta property="og:image:alt" content="Brain Arena — real-time multiplayer trivia and Globe Drop geography game" />
+  <meta property="og:image:alt" content="Brain Arena: real-time multiplayer trivia and Globe Drop geography game" />
   <meta property="og:site_name" content="Shevato" />
   <meta property="og:locale" content="en_US" />
 
@@ -65,7 +65,7 @@
     "featureList": [
       "Two game modes in one room: Trivia and Globe Drop geography",
       "Create or join live multiplayer rooms with a 5-character code",
-      "Real-time Firestore sync — see players join and scores update live",
+      "Real-time Firestore sync (see players join and scores update live)",
       "Host-configurable per-question timer (10–60s for Trivia, 30s–5min for Globe Drop)",
       "Trivia: live questions pulled from The Trivia API with a rotating category picker between questions",
       "Globe Drop: 3D Earth (NASA Blue Marble texture) with distance-decayed scoring and continental multipliers (Africa, Asia, Oceania and Antarctic score higher than Europe)",
@@ -121,7 +121,7 @@
       <section class="lobby-panel" id="lobby-panel">
         <p class="auth-gate" id="auth-gate" hidden>
           <span aria-hidden="true">🔒</span>
-          Sign in from the top-right to create or join rooms — your XP, wins, and games-played stay on your profile.
+          Sign in from the top-right to create or join rooms. Your XP, wins, and games-played stay on your profile.
         </p>
         <div class="lobby-grid" id="lobby-grid">
           <article class="lobby-card lobby-create">
@@ -135,81 +135,76 @@
                  game type from the room doc, so the Join card doesn't
                  need a matching toggle. -->
             <div class="game-type-toggle" role="tablist" aria-label="Game type">
-              <button type="button" class="game-type-btn is-active" data-game-type="trivia" role="tab" aria-selected="true">
-                <span aria-hidden="true">🎯</span> Trivia
-              </button>
-              <button type="button" class="game-type-btn" data-game-type="globe-drop" role="tab" aria-selected="false">
+              <button type="button" class="game-type-btn is-active" data-game-type="globe-drop" role="tab" aria-selected="true">
                 <span aria-hidden="true">🗺️</span> Globe Drop
+              </button>
+              <button type="button" class="game-type-btn" data-game-type="trivia" role="tab" aria-selected="false">
+                <span aria-hidden="true">🎯</span> Trivia
               </button>
             </div>
 
             <div class="lobby-form">
-              <!-- Trivia-only fields -->
-              <label class="lobby-field" data-game-type="trivia">
-                <span>Question pack</span>
-                <select id="create-pack-select">
-                  <option value="live">Live questions (The Trivia API)</option>
-                </select>
-              </label>
-              <label class="lobby-field" data-game-type="trivia">
-                <span>Questions per game</span>
-                <select id="create-questions-count">
-                  <option value="5">5 — sprint</option>
-                  <option value="10" selected>10 — standard</option>
-                </select>
-              </label>
-              <label class="lobby-field" data-game-type="trivia">
-                <span>Time per question</span>
-                <select id="create-trivia-time">
-                  <option value="10">10 seconds — frantic</option>
-                  <option value="15" selected>15 seconds — standard</option>
-                  <option value="30">30 seconds — relaxed</option>
-                  <option value="60">60 seconds — long-form</option>
-                </select>
-              </label>
-
-              <!-- Globe Drop-only fields -->
-              <label class="lobby-field" data-game-type="globe-drop" hidden>
+              <!-- Globe Drop-only fields (default visible — headline mode) -->
+              <label class="lobby-field" data-game-type="globe-drop">
                 <span>Round type</span>
                 <select id="create-globe-drop-round-type">
                   <option value="capitals" selected>World capitals (REST Countries)</option>
-                  <option value="countries">Countries — guess the country's centroid</option>
-                  <option value="major-cities">Major cities (Wikidata · pop &gt; 2M)</option>
-                  <option value="landmarks">World landmarks (Wikidata · UNESCO sites)</option>
+                  <option value="countries">Countries (guess the country centroid)</option>
+                  <option value="major-cities">Major cities (Wikidata, pop &gt; 2M)</option>
+                  <option value="top-cities-by-country">Top cities by country (top 20% of each)</option>
+                  <option value="landmarks">World landmarks (UNESCO sites)</option>
                 </select>
               </label>
-              <label class="lobby-field" data-game-type="globe-drop" hidden>
+              <label class="lobby-field" data-game-type="globe-drop">
                 <span>Difficulty</span>
                 <select id="create-globe-drop-difficulty">
-                  <option value="easy">Easy — country + continent + region, 180 s, 0.75× score</option>
-                  <option value="medium" selected>Medium — country + continent, 120 s, 1× score</option>
-                  <option value="hard">Hard — city name only, 60 s, 1.5× score</option>
+                  <option value="easy">Easy (country + continent + region, 180 s, 0.75&times; score)</option>
+                  <option value="medium" selected>Medium (country + continent, 120 s, 1&times; score)</option>
+                  <option value="hard">Hard (city name only, 60 s, 1.5&times; score)</option>
                 </select>
               </label>
-              <label class="lobby-field" data-game-type="globe-drop" hidden>
+              <label class="lobby-field" data-game-type="globe-drop">
                 <span>Locations per game</span>
                 <select id="create-locations-count">
-                  <option value="5" selected>5 — quick round</option>
-                  <option value="10">10 — full game</option>
+                  <option value="5" selected>5 (quick round)</option>
+                  <option value="10">10 (full game)</option>
                 </select>
               </label>
-              <label class="lobby-field lobby-field-toggle" data-game-type="globe-drop" hidden>
+              <label class="lobby-field lobby-field-toggle" data-game-type="globe-drop">
                 <input type="checkbox" id="create-globe-drop-timer-override">
                 <span>Override timer for this room</span>
               </label>
               <label class="lobby-field" data-game-type="globe-drop" id="create-globe-drop-time-field" hidden>
                 <span>Time per location</span>
                 <select id="create-globe-drop-time">
-                  <option value="30">30 seconds — speed run</option>
-                  <option value="60">60 seconds — classic</option>
-                  <option value="120" selected>120 seconds — thoughtful</option>
-                  <option value="180">3 minutes — deliberate</option>
-                  <option value="300">5 minutes — discuss it out</option>
+                  <option value="30">30 seconds (speed run)</option>
+                  <option value="60">60 seconds (classic)</option>
+                  <option value="120" selected>120 seconds (thoughtful)</option>
+                  <option value="180">3 minutes (deliberate)</option>
+                  <option value="300">5 minutes (discuss it out)</option>
                 </select>
               </label>
-              <p class="lobby-hint" data-game-type="globe-drop" hidden>
-                Pick a round type, then drop a pin on the 3D globe. Closer guesses score more, with continental multipliers (Africa &amp; Asia &gt; Europe) and a difficulty multiplier on top. World capitals and Countries pull from REST Countries; Major cities and Landmarks pull live from Wikidata.
+              <p class="lobby-hint" data-game-type="globe-drop">
+                Pick a round type, then drop a pin on the 3D globe. Closer guesses score more, with continental multipliers (Africa &amp; Asia &gt; Europe) and a population-obscurity weight (smaller, less famous places are worth more) on top of the difficulty multiplier.
               </p>
+
+              <!-- Trivia-only fields -->
+              <label class="lobby-field" data-game-type="trivia" hidden>
+                <span>Questions per game</span>
+                <select id="create-questions-count">
+                  <option value="5">5 (sprint)</option>
+                  <option value="10" selected>10 (standard)</option>
+                </select>
+              </label>
+              <label class="lobby-field" data-game-type="trivia" hidden>
+                <span>Time per question</span>
+                <select id="create-trivia-time">
+                  <option value="10">10 seconds (frantic)</option>
+                  <option value="15" selected>15 seconds (standard)</option>
+                  <option value="30">30 seconds (relaxed)</option>
+                  <option value="60">60 seconds (long-form)</option>
+                </select>
+              </label>
 
               <!-- Shared fields -->
               <label class="lobby-field lobby-field-toggle">
@@ -266,7 +261,7 @@
           <div class="room-head-left">
             <div class="room-code-pill" title="Share this code with friends">
               <span class="room-code-label">Room</span>
-              <span class="room-code-value" id="room-code-display">—</span>
+              <span class="room-code-value" id="room-code-display">…</span>
               <button type="button" class="room-code-copy" id="room-code-copy" aria-label="Copy room code">
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.85" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15V6a1 1 0 0 1 1-1h9"/></svg>
               </button>
@@ -288,6 +283,10 @@
           <div class="lobby-host-controls" id="lobby-host-controls" hidden>
             <p class="lobby-host-hint">
               Once everyone's in, kick things off. The first question appears for all players at once.
+            </p>
+            <p class="lobby-waiting-hint" id="lobby-waiting-hint" hidden>
+              <span aria-hidden="true">⏳</span>
+              Waiting for at least one other player to join. Share the room code, or leave and pick "Play solo" if you want to play alone.
             </p>
             <button type="button" class="btn btn-primary" id="start-game-btn" disabled>
               <span aria-hidden="true">▶</span> Start game
@@ -311,7 +310,7 @@
               <span class="pick-decider-avatar" id="pick-decider-avatar">?</span>
               <div class="pick-decider-text">
                 <span class="pick-decider-label">Decider</span>
-                <span class="pick-decider-name" id="pick-decider-name">—</span>
+                <span class="pick-decider-name" id="pick-decider-name">…</span>
               </div>
             </div>
           </header>
@@ -525,7 +524,7 @@
         </table>
       </div>
       <p class="empty-state" id="leaderboard-empty" hidden>
-        No games played yet — be the first to land on the board.
+        No games played yet. Be the first to land on the board.
       </p>
 
       <!-- Daily Globe Drop challenge — same UTC date, same locations,
@@ -554,7 +553,7 @@
         </table>
       </div>
       <p class="empty-state" id="leaderboard-daily-empty" hidden>
-        No one has finished today's challenge yet — be first.
+        No one has finished today's challenge yet. Be first.
       </p>
     </section>
 
@@ -637,13 +636,13 @@
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.85" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 6l12 12"/><path d="M18 6L6 18"/></svg>
       </button>
       <h2 id="premium-modal-title"><span aria-hidden="true">✨</span> Brain Arena Premium</h2>
-      <p class="premium-modal-price"><strong>$5 one-time</strong> — no subscription.</p>
+      <p class="premium-modal-price"><strong>$5 one-time</strong> (no subscription).</p>
       <ul class="premium-list">
         <li><span aria-hidden="true">📦</span> Upload custom question packs</li>
         <li><span aria-hidden="true">📊</span> Detailed post-game stats (accuracy, response time, category breakdown)</li>
       </ul>
       <p class="premium-modal-hint">
-        Every new account gets a 30-day free trial automatically — pay only if you want to keep premium after it ends. Premium is tied to your Shevato account and follows you across devices.
+        Every new account gets a 30-day free trial automatically. Pay only if you want to keep premium after it ends. Premium is tied to your Shevato account and follows you across devices.
       </p>
       <div class="modal-actions">
         <button type="button" class="btn btn-ghost" data-close="modal">Maybe later</button>

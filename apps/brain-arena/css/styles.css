@@ -301,7 +301,17 @@ body.brain-arena-app button {
   color: var(--text);
   font-size: 0.9rem;
   transition: border-color 0.15s, background 0.15s, box-shadow 0.15s;
+  /* color-scheme: dark; tells the browser to render native popups
+     (the option list, autofill chips, scrollbar) in dark mode so the
+     dropdowns match the page chrome instead of flashing white. */
+  color-scheme: dark;
 }
+/* Apply the same dark color-scheme to every select / option in the app
+   so the OS-native dropdown popups stay dark site-wide, not just inside
+   .lobby-field. <option> can't be fully restyled by CSS (browser-side),
+   but color-scheme drives the popup palette. */
+select, option { color-scheme: dark; }
+select option { background: var(--surface); color: var(--text); }
 .lobby-field input:hover, .lobby-field select:hover {
   border-color: var(--border-strong);
   background: var(--surface-2);
@@ -649,6 +659,16 @@ body.brain-arena-app button {
   text-transform: uppercase;
 }
 .leaderboard-sub { color: var(--muted); font-size: 0.88rem; margin: 0.2rem 0 0; }
+
+.lobby-waiting-hint {
+  margin: 0 0 0.65rem;
+  padding: 0.55rem 0.8rem;
+  background: rgba(252, 211, 77, 0.08);
+  border: 1px solid rgba(252, 211, 77, 0.3);
+  border-radius: 7px;
+  color: var(--text);
+  font-size: 0.85rem;
+}
 
 .globe-drop-region-chip {
   display: inline-flex;
