@@ -1,0 +1,107 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="description" content="Brain Arena — premium upgrade successful.">
+  <meta name="robots" content="noindex, nofollow">
+  <meta name="theme-color" content="#0b0d12">
+  <meta name="color-scheme" content="dark">
+  <title>Premium unlocked - Brain Arena - Shevato</title>
+
+  <link rel="icon" type="image/svg+xml" href="../../images/favicon.svg">
+  <link rel="stylesheet" href="../../assets/css/main.css">
+  <link rel="stylesheet" href="../../assets/css/auth-modal.css">
+  <link rel="stylesheet" href="css/styles.css">
+  <style>
+    .success-page { display: grid; gap: 1rem; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); margin-top: 1.5rem; }
+    .success-page .lobby-card { display: flex; flex-direction: column; }
+    .success-page h1 { margin: 0 0 0.4rem; }
+    .success-lede { color: var(--muted); margin: 0 0 0.4rem; max-width: 60ch; }
+    .success-foot { color: var(--muted); font-size: 0.9rem; margin-top: 0.85rem; }
+    .success-actions { margin-top: 1rem; }
+  </style>
+</head>
+<body class="brain-arena-app">
+  <div data-include="header"></div>
+
+  <main class="page" id="main-content">
+    <header style="margin: 1.5rem 0 0.5rem;">
+      <h1><span aria-hidden="true">✨</span> Premium unlocked</h1>
+      <p class="success-lede">
+        Thanks for supporting Shevato! Your $5 one-time payment has been received and Brain Arena Premium is now active on your account.
+      </p>
+    </header>
+
+    <div class="success-page">
+      <article class="lobby-card">
+        <header>
+          <h2>What you unlocked</h2>
+        </header>
+        <ul class="premium-list">
+          <li><span aria-hidden="true">🔒</span> Private password-protected rooms</li>
+          <li><span aria-hidden="true">📦</span> Upload custom question packs</li>
+          <li><span aria-hidden="true">📊</span> Detailed post-game stats</li>
+        </ul>
+        <p class="success-foot">
+          Premium is tied to your Shevato account and follows you across devices.
+        </p>
+      </article>
+
+      <article class="lobby-card">
+        <header>
+          <h2>What happens next</h2>
+        </header>
+        <p id="success-status">Waiting for Stripe to confirm your payment with our server…</p>
+        <p class="success-foot">
+          Confirmation usually lands within a few seconds. If it takes longer than a minute, refresh this page — once the webhook fires, premium turns on automatically.
+        </p>
+        <div class="success-actions">
+          <a class="btn btn-primary" href="./">Back to Brain Arena</a>
+        </div>
+      </article>
+    </div>
+  </main>
+
+  <div data-include="footer"></div>
+
+  <script src="../../assets/js/passive-events-fix.js"></script>
+  <script src="../../assets/js/jquery.min.js"></script>
+  <script src="../../assets/js/browser.min.js"></script>
+  <script src="../../assets/js/breakpoints.min.js"></script>
+  <script src="../../assets/js/util.js"></script>
+
+  <script type="module" src="../../firebase-config.js"></script>
+  <script src="../../assets/js/main.js"></script>
+
+  <script type="module">
+    // Poll the user's profile for premium=true (set by the Stripe webhook).
+    // The webhook usually beats the user back to this page, but on slower
+    // payment methods it may take a few seconds — show a live status.
+    import { db, firestore, auth } from '../../firebase-config.js';
+    const { doc, onSnapshot } = firestore;
+
+    const statusEl = document.getElementById('success-status');
+    function setStatus(msg) { if (statusEl) statusEl.textContent = msg; }
+
+    auth.onAuthStateChanged((user) => {
+      if (!user) {
+        setStatus('Sign in with the same account you used at checkout to see your premium status here.');
+        return;
+      }
+      const ref = doc(db, 'users', user.uid);
+      onSnapshot(ref, (snap) => {
+        const tp = snap.exists() ? (snap.data().triviaProfile || {}) : {};
+        if (tp.premium === true) {
+          setStatus('Premium is active on your account. Head back to Brain Arena and try the unlocked features.');
+        } else {
+          setStatus('Waiting for Stripe to confirm your payment with our server…');
+        }
+      }, (err) => {
+        console.warn('success-page snapshot error:', err);
+        setStatus('Could not read your profile in real time. Refresh the page in a few seconds — premium will turn on once the payment is confirmed.');
+      });
+    });
+  </script>
+</body>
+</html>
