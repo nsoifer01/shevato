@@ -1,0 +1,237 @@
+/* Standalone styling for the static per-show pages and the /shows/
+   browse index. Intentionally light — no Google Fonts, no jQuery, no
+   dependency on the marketing-site shell. Optimized for fast First
+   Contentful Paint since these are SEO landing destinations. */
+
+* { box-sizing: border-box; }
+
+:root {
+  --bg: #0b0d12;
+  --bg-2: #131722;
+  --panel: #1a1f2e;
+  --border: rgba(255, 255, 255, 0.08);
+  --text: #e6e8ee;
+  --muted: #9aa3b5;
+  --accent: #7aa2ff;
+  --accent-2: #5cd1c5;
+  --curve-line: #7aa2ff;
+  --curve-area: rgba(122, 162, 255, 0.18);
+  --shape: #1f2c4d;
+  --shape-text: #c8d4f6;
+}
+
+html, body { margin: 0; padding: 0; }
+
+body {
+  background: var(--bg);
+  color: var(--text);
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  line-height: 1.55;
+  font-size: 16px;
+  -webkit-text-size-adjust: 100%;
+}
+
+a { color: var(--accent); }
+a:hover { color: #a3c0ff; }
+
+.skip-link {
+  position: absolute; left: -9999px; top: -9999px;
+  background: var(--accent); color: #0b0d12; padding: 8px 12px; border-radius: 4px;
+}
+.skip-link:focus { left: 12px; top: 12px; z-index: 1000; }
+
+.page-header {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 14px 24px; border-bottom: 1px solid var(--border);
+  background: var(--bg-2);
+  position: sticky; top: 0; z-index: 10;
+  backdrop-filter: blur(8px);
+}
+.brand {
+  font-weight: 600; font-size: 17px; text-decoration: none; color: var(--text);
+  display: inline-flex; align-items: center; gap: 8px;
+}
+.page-nav { display: flex; gap: 18px; }
+.page-nav a { text-decoration: none; color: var(--muted); font-size: 14px; }
+.page-nav a:hover, .page-nav a[aria-current="page"] { color: var(--text); }
+
+main { max-width: 1080px; margin: 0 auto; padding: 24px; }
+
+.crumbs {
+  font-size: 13px; color: var(--muted); margin-bottom: 20px;
+}
+.crumbs a { color: var(--muted); text-decoration: none; }
+.crumbs a:hover { color: var(--text); text-decoration: underline; }
+
+/* --- Show hero --- */
+.show-hero {
+  display: grid; grid-template-columns: 220px 1fr; gap: 28px;
+  margin-bottom: 32px;
+}
+.show-poster {
+  width: 220px; height: auto; border-radius: 10px; display: block;
+  background: var(--panel); box-shadow: 0 12px 36px rgba(0,0,0,0.45);
+}
+.poster-placeholder {
+  width: 220px; height: 330px;
+  background: linear-gradient(135deg, #1f2c4d 0%, #2d1f4d 100%);
+  border-radius: 10px;
+}
+.show-meta h1 {
+  font-size: clamp(28px, 4.5vw, 40px); margin: 0 0 6px; line-height: 1.15;
+}
+.show-year { color: var(--muted); font-weight: 400; }
+.show-genres { color: var(--muted); margin: 0 0 14px; font-size: 14px; }
+.show-overview { margin: 0 0 18px; max-width: 60ch; }
+
+.show-stats {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  gap: 14px 24px;
+  margin: 0 0 22px;
+}
+.show-stats > div { border-left: 2px solid var(--border); padding-left: 12px; }
+.show-stats dt { font-size: 11px; text-transform: uppercase; letter-spacing: 0.05em; color: var(--muted); }
+.show-stats dd { margin: 2px 0 0; font-size: 15px; }
+.show-stats .muted { color: var(--muted); font-size: 13px; }
+
+.hero-actions { display: flex; gap: 12px; flex-wrap: wrap; }
+.primary-btn, .secondary-btn {
+  display: inline-block; padding: 10px 16px; border-radius: 8px;
+  text-decoration: none; font-size: 14px; font-weight: 500;
+}
+.primary-btn { background: var(--accent); color: #0b0d12; }
+.primary-btn:hover { background: #a3c0ff; color: #0b0d12; }
+.secondary-btn { background: var(--panel); color: var(--text); border: 1px solid var(--border); }
+.secondary-btn:hover { background: #232838; }
+
+/* --- Seasons --- */
+.seasons h2 { font-size: 22px; margin: 0 0 16px; }
+.season-section {
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 20px;
+  margin-bottom: 20px;
+}
+.season-head { margin-bottom: 12px; }
+.season-head h3 { margin: 0 0 6px; font-size: 18px; }
+.season-head h3 .muted { color: var(--muted); font-weight: 400; }
+.season-summary {
+  margin: 0; color: var(--muted); font-size: 14px;
+  display: flex; gap: 18px; flex-wrap: wrap;
+}
+.season-summary strong { color: var(--text); }
+
+.season-shapes {
+  list-style: none; margin: 10px 0 0; padding: 0;
+  display: flex; gap: 6px; flex-wrap: wrap;
+}
+.shape-badge {
+  background: var(--shape); color: var(--shape-text);
+  padding: 3px 10px; border-radius: 999px; font-size: 12px;
+}
+
+.season-curve {
+  display: block; width: 100%; height: auto; margin: 14px 0;
+  background: var(--bg-2); border-radius: 8px;
+}
+.season-curve .curve-line {
+  fill: none; stroke: var(--curve-line); stroke-width: 2;
+  stroke-linecap: round; stroke-linejoin: round;
+  vector-effect: non-scaling-stroke;
+}
+.season-curve .curve-area { fill: var(--curve-area); stroke: none; }
+.season-curve .curve-dots circle { fill: var(--curve-line); }
+
+.episode-table {
+  width: 100%; border-collapse: collapse; font-size: 14px;
+  margin-top: 6px;
+}
+.episode-table caption { text-align: left; color: var(--muted); padding: 6px 0; font-size: 13px; }
+.episode-table th, .episode-table td {
+  text-align: left; padding: 7px 10px; border-bottom: 1px solid var(--border);
+}
+.episode-table th { color: var(--muted); font-weight: 500; font-size: 12px; text-transform: uppercase; letter-spacing: 0.04em; }
+.episode-table td:first-child, .episode-table th:first-child { width: 50px; color: var(--muted); }
+.episode-table td:nth-child(3), .episode-table td:nth-child(4),
+.episode-table th:nth-child(3), .episode-table th:nth-child(4) { text-align: right; }
+.episode-table td strong { color: var(--text); }
+
+.page-footer-meta {
+  margin-top: 26px; padding-top: 20px; border-top: 1px solid var(--border);
+  color: var(--muted); font-size: 14px;
+}
+.page-footer-meta a { color: var(--accent); }
+
+.page-footer {
+  max-width: 1080px; margin: 36px auto 60px; padding: 24px;
+  color: var(--muted); font-size: 13px;
+  border-top: 1px solid var(--border);
+}
+.page-footer a { color: var(--muted); }
+.page-footer a:hover { color: var(--text); }
+
+.footer-more { margin-bottom: 18px; }
+.footer-more-heading {
+  margin: 0 0 10px; font-size: 12px; text-transform: uppercase;
+  letter-spacing: 0.08em; color: var(--muted); font-weight: 600;
+}
+.footer-more ul {
+  list-style: none; margin: 0; padding: 0;
+  display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+  gap: 6px 18px;
+}
+.footer-more li a {
+  display: block; padding: 6px 0; text-decoration: none; color: var(--text);
+  border-bottom: 1px solid transparent;
+}
+.footer-more li a:hover { color: var(--accent); }
+.footer-more li a strong { font-weight: 600; }
+.footer-more li a span { color: var(--muted); font-size: 12px; }
+.page-footer .copyright { margin: 0; text-align: center; font-size: 12px; }
+
+/* --- Shows browse index --- */
+.shows-index .index-hero { margin-bottom: 20px; }
+.shows-index .index-hero h1 { margin: 0 0 8px; font-size: clamp(28px, 4vw, 36px); }
+.shows-index .lede { color: var(--muted); margin: 0; }
+
+.alpha-jump {
+  display: flex; flex-wrap: wrap; gap: 8px;
+  margin: 18px 0 26px; padding: 12px 16px;
+  background: var(--panel); border-radius: 10px; border: 1px solid var(--border);
+}
+.alpha-jump a {
+  display: inline-block; padding: 4px 10px; border-radius: 6px;
+  text-decoration: none; font-weight: 500; font-size: 14px;
+  background: var(--bg-2); color: var(--text);
+}
+.alpha-jump a:hover { background: var(--shape); }
+
+.alpha-group { margin-bottom: 28px; }
+.alpha-group h2 {
+  margin: 0 0 10px; font-size: 22px; padding-bottom: 6px;
+  border-bottom: 1px solid var(--border);
+}
+.shows-list {
+  list-style: none; margin: 0; padding: 0;
+  display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+  gap: 4px 16px;
+}
+.shows-list li a {
+  display: block; padding: 6px 0; text-decoration: none;
+  color: var(--text); border-bottom: 1px solid transparent;
+}
+.shows-list li a:hover { color: var(--accent); }
+.shows-list .muted { color: var(--muted); font-size: 13px; }
+
+.index-footer { margin-top: 28px; color: var(--muted); font-size: 14px; }
+
+/* --- Mobile --- */
+@media (max-width: 700px) {
+  main { padding: 16px; }
+  .show-hero { grid-template-columns: 1fr; gap: 18px; }
+  .show-poster, .poster-placeholder { width: 160px; }
+  .episode-table { font-size: 13px; }
+  .episode-table th, .episode-table td { padding: 6px 8px; }
+}
