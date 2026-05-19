@@ -3258,12 +3258,14 @@ function renderMiniBoardGlobeDrop(currentQuestionId) {
         if (state.user && p.uid === state.user.uid) li.classList.add('is-me');
         if (i === 0 && (p.score || 0) > 0) li.classList.add('is-leader');
         if (p.answeredThisQuestion) li.classList.add('is-answered');
-        // No "submitted" word, no badge. The .is-answered class drives
-        // a faint green tint on the name span so the answered state
-        // reads at a glance without adding chrome to the row.
+        // Answered state: a small green ✓ sits inline next to the
+        // player's name. No "submitted" word, no badge chrome — the
+        // pseudo-element on .is-answered .mini-board-check renders the
+        // ✓ glyph and animates in.
         li.innerHTML =
             `<span class="mini-board-rank">${i+1}</span>` +
             `<span class="mini-board-name">${escapeHtml(p.displayName)}</span>` +
+            `<span class="mini-board-check" aria-label="submitted"></span>` +
             `<span class="mini-board-score">${p.score || 0}</span>`;
         list.appendChild(li);
     });
@@ -3491,10 +3493,14 @@ function startGlobeDropTimerLoop() {
         renderRevealCountdown(phase, revealMs, now);
 
         const currentQId = state.roomData.currentQuestionId;
-        // Low-timer pings at 5 / 4 / 3 seconds. Each fires exactly once
-        // per question. Sound + a short vibration buzz on supporting
-        // devices for haptic feedback.
-        if (phase === 'asking' && currentQId) {
+        // Low-timer pings at 5 / 4 / 3 / 2 / 1 seconds. Each fires
+        // exactly once per question. Skipped entirely if the local
+        // player has ALREADY submitted their guess for this round —
+        // they don't need the urgent countdown cue, only the players
+        // still picking do.
+        const meForBuzz = state.user && state.roomPlayers.find((p) => p.uid === state.user.uid);
+        const meAlreadyIn = !!(meForBuzz && meForBuzz.currentAnsweredFor === currentQId);
+        if (phase === 'asking' && currentQId && !meAlreadyIn) {
             const seconds = Math.ceil(left / 1000);
             const fired = (state.lastTimerPingQId === currentQId)
                 ? (state.lastTimerPingThresholds || {})
@@ -3614,10 +3620,12 @@ function renderGlobeDropTimer(leftMs, phase, totalMs) {
         const room = state.roomData || {};
         const revealMs = room.revealStartedAt && room.revealStartedAt.toMillis
             ? room.revealStartedAt.toMillis() : null;
-        const idx = room.currentQuestionIndex || 0;
-        const totalQ = room.totalQuestions || 0;
-        const isLast = totalQ > 0 && idx >= totalQ - 1;
-        if (revealMs && !isLast) {
+        // Same 5→1 countdown for EVERY round including the last one —
+        // previously the last round short-circuited to "—" because we
+        // assumed nothing follows, but the host still waits 5 s before
+        // writing status='finished', so the player should see that
+        // wait counted down.
+        if (revealMs) {
             const elapsed = Date.now() - revealMs;
             const leftRev = Math.max(0, Config.GLOBE_DROP_REVEAL_TIME_MS - elapsed);
             const seconds = Math.max(1, Math.ceil(leftRev / 1000));
