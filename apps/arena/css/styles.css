@@ -709,35 +709,29 @@ select option { background: var(--surface); color: var(--text); }
   flex-wrap: wrap;
 }
 
-/* Post-match: stack the THREE end-stage actions (Rematch, Chat,
-   Back to lobby) as a clean right-aligned column. Equal width via
-   a min-width on the wrapper + width:100% on each child.
-   The host-actions wrapper is hidden when status=finished so it
-   doesn't claim a slot in this column. */
+/* Post-match: three end-stage actions (Rematch, Chat, Back to lobby)
+   sit side-by-side in one horizontal row, right-aligned in the
+   room bar. All three share the same height + radius + font-size
+   so the row reads as a matched set. flex-wrap:nowrap to keep
+   them on one line at normal desktop widths. */
 .room-head-right.is-finished {
-  flex-direction: column;
-  align-items: stretch;
+  flex-wrap: nowrap;
   gap: 0.5rem;
   align-self: center;
-  min-width: 220px;
 }
-.room-head-right.is-finished > .room-end-actions { width: 100%; }
-.room-head-right.is-finished > .room-end-actions > .btn { width: 100%; }
+.room-head-right.is-finished > .room-end-actions > .btn,
 .room-head-right.is-finished > #room-chat-toggle,
 .room-head-right.is-finished > #leave-room-btn {
-  width: 100%;
-  justify-content: center;
-  /* Force a consistent height across all three so the column looks
-     deliberate. Both ghosts + the gradient Rematch sit at 40px. */
   height: var(--ctrl-h);
   font-size: 0.9rem;
+  padding: 0 1.1rem;
+  white-space: nowrap;
 }
 .room-head-right.is-finished > .room-end-actions > .btn {
-  height: var(--ctrl-h);
-  font-size: 0.92rem;
-  /* Promote the Rematch button to the size it deserves on this
-     stage. Was btn-sm; here it's the headline action. */
-  padding: 0 1rem;
+  /* Rematch — keep the primary gradient and bump weight slightly so
+     it's the obviously promoted action of the trio. */
+  font-weight: 700;
+  padding: 0 1.3rem;
 }
 
 .room-code-pill {
