@@ -3125,12 +3125,13 @@ function renderMiniBoardGlobeDrop(currentQuestionId) {
         if (state.user && p.uid === state.user.uid) li.classList.add('is-me');
         if (i === 0 && (p.score || 0) > 0) li.classList.add('is-leader');
         if (p.answeredThisQuestion) li.classList.add('is-answered');
-        const badge = p.answeredThisQuestion
-            ? '<span class="submitted-badge" aria-label="submitted">✓</span>'
-            : '';
+        // Markup intentionally minimal — the submitted ✓ is rendered
+        // via a CSS pseudo-element on .is-answered (single source of
+        // truth, no risk of duplicating into the name span).
         li.innerHTML =
             `<span class="mini-board-rank">${i+1}</span>` +
-            `<span class="mini-board-name">${escapeHtml(p.displayName)}${badge}</span>` +
+            `<span class="mini-board-name">${escapeHtml(p.displayName)}</span>` +
+            `<span class="mini-board-check" aria-label="submitted"></span>` +
             `<span class="mini-board-score">${p.score || 0}</span>`;
         list.appendChild(li);
     });
