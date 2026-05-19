@@ -2934,16 +2934,17 @@ function renderGlobeDropStage() {
         // with `Cannot read properties of null (reading 'questionStartedAt')`.
         // Bail if the room is gone — there's nothing to render.
         if (!state.roomData || !state.roomCode) return;
-        // Smooth-scroll the globe map into view on game start so the
-        // player doesn't have to hunt for it (the header + standings
-        // panels above it can push it off-screen on shorter viewports).
-        // Only do this once per question to avoid yanking the viewport
-        // around mid-round.
-        const wrap = document.querySelector('.globe-drop-map-wrap');
-        if (wrap && state.lastScrolledToGlobeForQId !== currentGlobeDropLocationId()) {
+        // Smooth-scroll the question prompt to the top of the viewport
+        // on each new question. Anchoring to the "Where is …" header
+        // (not the globe) means the player sees the city name first,
+        // then the globe sits naturally below — no hunting for the
+        // prompt after a long live-standings panel. Once per question
+        // so the viewport doesn't yank mid-round.
+        const promptRow = document.querySelector('.globe-drop-prompt-row');
+        if (promptRow && state.lastScrolledToGlobeForQId !== currentGlobeDropLocationId()) {
             state.lastScrolledToGlobeForQId = currentGlobeDropLocationId();
             try {
-                wrap.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                promptRow.scrollIntoView({ behavior: 'smooth', block: 'start' });
             } catch (_) { /* older browsers */ }
         }
         const g = ensureGlobe();
