@@ -41,14 +41,14 @@ test('no app directory contains a stray non-index *.html entry alongside index.h
     // top-level of each app must have exactly one index.html and no other
     // entry candidates that would compete for "primary URL" status.
     //
-    // Explicit exceptions live here. brain-arena/success.html is the
-    // Stripe Checkout return URL: it is intentionally a sibling of
-    // index.html so the URL stays short (`/apps/brain-arena/success.html`)
-    // and the page can reuse the app's CSS. It is `noindex` so it never
-    // competes for the canonical app URL in search.
+    // Explicit exceptions live here. arena/success.html is the Stripe
+    // Checkout return URL: it is intentionally a sibling of index.html
+    // so the URL stays short (`/apps/arena/success.html`) and the page
+    // can reuse the app's CSS. It is `noindex` so it never competes for
+    // the canonical app URL in search.
     const apps = listDirs(APPS_DIR);
     const allowedExtras = {
-        'brain-arena': new Set(['success.html'])
+        'arena': new Set(['success.html'])
     };
     const offenders = [];
     for (const app of apps) {
