@@ -1070,15 +1070,6 @@ function wireLobby() {
         if (!state.roomCode) return;
         const link = buildInviteLink(state.roomCode);
         try {
-            if (navigator.share && typeof navigator.share === 'function') {
-                // Native share sheet where supported (mobile). Fall back
-                // to clipboard if the user cancels or the API rejects.
-                try {
-                    await navigator.share({ title: 'Brain Arena room', url: link });
-                    showToast('Invite link shared', { icon: '🔗', key: 'invite-share' });
-                    return;
-                } catch (_) { /* user cancelled / not supported — fall through to clipboard */ }
-            }
             await navigator.clipboard.writeText(link);
             const original = shareBtn.innerHTML;
             shareBtn.innerHTML = '✓';
