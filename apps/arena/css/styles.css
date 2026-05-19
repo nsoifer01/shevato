@@ -1264,6 +1264,71 @@ select option { background: var(--surface); color: var(--text); }
 }
 .btn-danger:hover { background: rgb(185, 28, 28) !important; }
 
+/* Restart-proposal waiting modal — shown to the proposer while
+   opponents respond. The list of responses re-renders on each
+   room-doc snapshot; the timer label updates on a 250ms interval. */
+.proposal-pending-sub {
+  margin: 0 0 0.85rem;
+  color: var(--muted);
+  font-size: 0.9rem;
+  line-height: 1.5;
+}
+.proposal-response-list {
+  list-style: none;
+  margin: 0 0 0.85rem;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+}
+.proposal-response-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.6rem;
+  padding: 0.4rem 0.7rem;
+  background: rgba(255, 255, 255, 0.02);
+  border: 1px solid rgba(148, 163, 184, 0.10);
+  border-radius: 8px;
+  font-size: 0.85rem;
+}
+.proposal-response-row .name {
+  color: var(--text);
+  font-weight: 500;
+  flex: 1;
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.proposal-response-row .status {
+  font-family: var(--mono);
+  font-size: 0.78rem;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  white-space: nowrap;
+}
+.proposal-response-row.is-accepted {
+  background: rgba(16, 185, 129, 0.10);
+  border-color: rgba(16, 185, 129, 0.30);
+}
+.proposal-response-row.is-accepted .status { color: rgb(110, 231, 183); }
+.proposal-response-row.is-declined {
+  background: rgba(239, 68, 68, 0.10);
+  border-color: rgba(239, 68, 68, 0.30);
+}
+.proposal-response-row.is-declined .status { color: rgb(252, 165, 165); }
+.proposal-response-row.is-pending .status { color: var(--muted); }
+.proposal-pending-timer {
+  margin: 0 0 0.4rem;
+  font-family: var(--mono);
+  font-size: 0.82rem;
+  font-weight: 600;
+  color: var(--cyan-2);
+  text-align: right;
+  letter-spacing: 0.02em;
+}
+
 .confirm-modal-body {
   margin: 0.5rem 0 1.1rem;
   color: var(--muted);
@@ -1376,7 +1441,9 @@ select option { background: var(--surface); color: var(--text); }
   background:
     linear-gradient(180deg, rgba(255, 255, 255, 0.18), transparent 50%),
     var(--grad-brand);
-  color: #ffffff;
+  /* !important wins the cascade against main.css's
+     `button { color: #555555 !important; }` global. */
+  color: #ffffff !important;
   border-color: rgba(255, 255, 255, 0.30);
   box-shadow:
     0 0 0 1px rgba(34, 211, 238, 0.45),
@@ -1406,7 +1473,8 @@ select option { background: var(--surface); color: var(--text); }
   background:
     linear-gradient(180deg, rgba(255, 255, 255, 0.06), transparent 60%),
     rgba(8, 11, 22, 0.55);
-  color: #f3f4f6;
+  /* !important — see note on .globe-drop-fab-primary. */
+  color: #f3f4f6 !important;
   border-color: rgba(255, 255, 255, 0.30);
   box-shadow:
     0 1px 0 rgba(255, 255, 255, 0.06) inset,
@@ -1419,7 +1487,7 @@ select option { background: var(--surface); color: var(--text); }
   background:
     linear-gradient(180deg, rgba(245, 158, 11, 0.14), transparent 60%),
     rgba(20, 11, 4, 0.55);
-  color: #fde68a;
+  color: #fde68a !important;
   border-color: rgba(245, 158, 11, 0.50);
   box-shadow:
     0 1px 0 rgba(255, 255, 255, 0.06) inset,
