@@ -1029,14 +1029,19 @@ function wireLobby() {
     if (settingsCancel) settingsCancel.addEventListener('click', () => closeRoomSettingsEditor());
     const settingsSave = $('#room-settings-save');
     if (settingsSave) settingsSave.addEventListener('click', () => saveRoomSettings());
-    $('#end-again-btn').addEventListener('click', () => {
+    const endAgainHandler = () => {
         // Solo: skip the accept gate, restart immediately.
         const playMode = (state.roomData && state.roomData.playMode) || 'multi';
         if (playMode === 'solo') playAgain();
         else proposeRematch();
-    });
+    };
+    $('#end-again-btn').addEventListener('click', endAgainHandler);
+    const headerRematchBtn = $('#room-end-again-btn');
+    if (headerRematchBtn) headerRematchBtn.addEventListener('click', endAgainHandler);
     $('#rematch-accept-btn').addEventListener('click', () => respondToRematch(true));
     $('#rematch-decline-btn').addEventListener('click', () => respondToRematch(false));
+    const proposalCancelBtn = $('#proposal-cancel-btn');
+    if (proposalCancelBtn) proposalCancelBtn.addEventListener('click', () => cancelOwnProposal('cancel'));
 
     // GlobeDrop controls (wired once; they no-op when no GlobeDrop room is active)
     const submitBtn = $('#globe-drop-submit-btn');
@@ -2024,28 +2029,71 @@ function renderRoom() {
     // In solo, the host's "End game" button (room-end-btn) is the
     // canonical end action. The leave-room button reads as "Back to
     // lobby" so the two controls don't both say "End game" and
-    // confuse the player.
+    // confuse the player. Same treatment once a multi game is
+    // finished — the game's over, "Leave room" reframes nicely as
+    // "Back to lobby".
+    const finished = room.status === 'finished';
     const leaveBtn = $('#leave-room-btn');
     if (leaveBtn) {
-        leaveBtn.textContent = (playMode === 'solo') ? 'Back to lobby' : 'Leave room';
+        leaveBtn.textContent = (playMode === 'solo' || finished) ? 'Back to lobby' : 'Leave room';
     }
 
-    // Mid-game rematch proposal — surface an accept/decline prompt
+    // Header end-stage actions (Rematch). Only visible on the finished
+    // stage. The end-of-stage section keeps its own copy for users
+    // who scroll past the recap.
+    const headerEndActions = $('#room-end-actions');
+    const headerRematch = $('#room-end-again-btn');
+    if (headerEndActions) headerEndActions.hidden = !finished;
+    if (headerRematch) {
+        // Mirror the visibility logic from renderRematchUI — only show
+        // when a rematch is even an option (>=2 players in multi, or
+        // solo player can restart).
+        const pCount = rematchPlayerCount();
+        const canRematchMulti = playMode === 'multi' && pCount >= 2;
+        const canRestartSolo = playMode === 'solo';
+        const proposed = !!room.rematchProposedBy;
+        // Hide if a proposal is already in flight (the strip below
+        // is handling response UI). Show otherwise.
+        headerRematch.hidden = !(finished && (canRematchMulti || canRestartSolo) && !proposed);
+        headerRematch.innerHTML = canRestartSolo
+            ? '<span aria-hidden="true">🔁</span> Restart'
+            : '<span aria-hidden="true">🔁</span> Rematch';
+    }
+
+    // Rematch / restart proposal — surface an accept/decline prompt
     // exactly once per proposal so the player has a chance to weigh in
-    // without missing the round. The end-stage flow handles its own UI;
-    // only run this prompt while we're still in 'playing'.
-    if (playing && room.rematchProposedBy
+    // without missing the round. Fires both mid-game (status='playing')
+    // and post-game (status='finished') so the end stage's strip no
+    // longer requires the user to spot it among the recap.
+    if ((playing || finished) && room.rematchProposedBy
         && state.user && room.rematchProposedBy !== state.user.uid
         && !meHasAcceptedRematch() && !meHasDeclinedRematch()
         && state.lastRematchPromptShown !== room.rematchProposedBy) {
         state.lastRematchPromptShown = room.rematchProposedBy;
         openConfirmModal({
-            title: 'Restart the game?',
-            body: 'Another player proposed restarting. Accept to draw fresh locations; decline to keep playing.',
+            title: playing ? 'Restart the game?' : 'Play again?',
+            body: playing
+                ? 'Another player proposed restarting. Accept to draw fresh locations; decline to keep playing.'
+                : 'Another player wants a rematch. Accept to start a new game; decline to head back to the lobby.',
             confirmLabel: 'Accept',
             cancelLabel: 'Decline',
             danger: false
         }).then((accept) => respondToRematch(!!accept));
+    }
+
+    // If this client IS the proposer, keep their waiting modal in sync
+    // with the latest snapshot — and close it once the proposal
+    // resolves either way (unanimous accept → game restarts, decline →
+    // close, no proposal field → host already cleared it).
+    if (room.rematchProposedBy && state.user && room.rematchProposedBy === state.user.uid) {
+        if (state.proposalPendingDeadline) {
+            renderProposalPendingModal();
+            if (rematchDeclineCount() > 0) cancelOwnProposal('declined');
+            else if (rematchAcceptCount() >= rematchPlayerCount()) closeProposalPendingModal();
+        }
+    } else if (!room.rematchProposedBy && state.proposalPendingDeadline) {
+        // Proposal cleared by someone else — make sure our modal is closed.
+        closeProposalPendingModal();
     }
     // Reset the prompt-shown sentinel once a proposal clears so a NEW
     // proposal will surface its own modal next time.
@@ -4533,10 +4581,90 @@ async function proposeRematch() {
         await updateDoc(doc(db, 'triviaRooms', state.roomCode), {
             rematchProposedBy: state.user.uid,
             rematchAcceptedBy: [state.user.uid],
-            rematchDeclinedBy: []
+            rematchDeclinedBy: [],
+            rematchProposedAt: serverTimestamp()
         });
+        // Open the waiting modal locally for the proposer. The room
+        // snapshot listener will re-render its contents as opponents
+        // respond. Auto-cancels after PROPOSAL_TIMEOUT_MS.
+        openProposalPendingModal();
     } catch (err) {
         console.warn('proposeRematch failed:', err);
+    }
+}
+
+/* Proposer's waiting modal — single-instance, driven by the room
+ * snapshot. The timer is a setInterval that ticks the countdown
+ * label every 250ms and force-closes once it hits 0. Cancelling
+ * from the modal calls clearRematchStateSoon() to wipe the room
+ * fields immediately so opponents stop seeing the prompt. */
+const PROPOSAL_TIMEOUT_MS = 10000;
+let proposalPendingTimerId = null;
+function openProposalPendingModal() {
+    const modal = document.getElementById('proposal-pending-modal');
+    if (!modal) return;
+    state.proposalPendingDeadline = Date.now() + PROPOSAL_TIMEOUT_MS;
+    modal.removeAttribute('hidden');
+    renderProposalPendingModal();
+    if (proposalPendingTimerId) clearInterval(proposalPendingTimerId);
+    proposalPendingTimerId = setInterval(() => {
+        const left = state.proposalPendingDeadline - Date.now();
+        if (left <= 0) {
+            cancelOwnProposal('timeout');
+            return;
+        }
+        renderProposalPendingModal();
+    }, 250);
+}
+function closeProposalPendingModal() {
+    const modal = document.getElementById('proposal-pending-modal');
+    if (modal) modal.setAttribute('hidden', '');
+    if (proposalPendingTimerId) {
+        clearInterval(proposalPendingTimerId);
+        proposalPendingTimerId = null;
+    }
+    state.proposalPendingDeadline = null;
+}
+function renderProposalPendingModal() {
+    const list = document.getElementById('proposal-response-list');
+    const timerEl = document.getElementById('proposal-pending-timer');
+    if (!list || !timerEl) return;
+    const room = state.roomData || {};
+    const accepted = Array.isArray(room.rematchAcceptedBy) ? room.rematchAcceptedBy : [];
+    const declined = Array.isArray(room.rematchDeclinedBy) ? room.rematchDeclinedBy : [];
+    // List rows for every player EXCEPT the proposer (they're the host
+    // of the proposal, no need to show their own row).
+    const myUid = state.user && state.user.uid;
+    const others = state.roomPlayers.filter((p) => p.uid !== myUid);
+    list.innerHTML = '';
+    others.forEach((p) => {
+        const li = document.createElement('li');
+        let status = 'Waiting…';
+        let cls = 'is-pending';
+        if (declined.includes(p.uid)) { status = 'Declined'; cls = 'is-declined'; }
+        else if (accepted.includes(p.uid)) { status = 'Accepted'; cls = 'is-accepted'; }
+        li.className = 'proposal-response-row ' + cls;
+        li.innerHTML = `<span class="name">${escapeHtml(p.displayName || 'Player')}</span>`
+            + `<span class="status">${escapeHtml(status)}</span>`;
+        list.appendChild(li);
+    });
+    const left = Math.max(0, Math.ceil((state.proposalPendingDeadline - Date.now()) / 1000));
+    timerEl.textContent = left + 's remaining';
+}
+async function cancelOwnProposal(reason) {
+    closeProposalPendingModal();
+    // Clear the room fields right away so opponents stop seeing the
+    // prompt. Best-effort.
+    if (!state.roomCode) return;
+    try {
+        await updateDoc(doc(db, 'triviaRooms', state.roomCode), {
+            rematchProposedBy: null,
+            rematchAcceptedBy: [],
+            rematchDeclinedBy: []
+        });
+    } catch (_) { /* best-effort */ }
+    if (reason === 'timeout') {
+        try { showToast('Restart proposal timed out', { icon: '⌛', key: 'proposal-timeout' }); } catch (_) {}
     }
 }
 

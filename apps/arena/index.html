@@ -326,6 +326,15 @@
                 <span aria-hidden="true">⏹</span> End game
               </button>
             </div>
+            <!-- End-of-game actions sit in the header alongside chat/
+                 leave-room so the player doesn't have to scroll past
+                 the recap to reach Rematch / Back to lobby. Visible
+                 only when status === 'finished'. -->
+            <div class="room-end-actions" id="room-end-actions" hidden>
+              <button type="button" class="btn btn-primary btn-sm" id="room-end-again-btn" hidden>
+                <span aria-hidden="true">🔁</span> Rematch
+              </button>
+            </div>
             <button type="button" class="btn btn-ghost btn-sm" id="room-chat-toggle" title="Open chat">
               <span aria-hidden="true">💬</span> Chat
               <span class="room-chat-badge" id="room-chat-badge" hidden>0</span>
@@ -965,6 +974,22 @@
       <div class="modal-actions">
         <button type="button" class="btn btn-ghost" id="confirm-modal-cancel">Cancel</button>
         <button type="button" class="btn btn-primary" id="confirm-modal-confirm">Confirm</button>
+      </div>
+    </article>
+  </div>
+
+  <!-- Restart-proposal "waiting" modal. Stays open on the proposer's
+       screen while opponents accept / decline; closes on unanimous
+       accept, any decline, or after a 10s timeout. -->
+  <div class="modal" id="proposal-pending-modal" role="dialog" aria-modal="true" aria-labelledby="proposal-pending-title" hidden>
+    <div class="modal-backdrop"></div>
+    <article class="modal-panel modal-panel-sm">
+      <h2 id="proposal-pending-title">Waiting for players…</h2>
+      <p class="proposal-pending-sub" id="proposal-pending-sub">All players need to accept before the game restarts.</p>
+      <ul class="proposal-response-list" id="proposal-response-list"></ul>
+      <p class="proposal-pending-timer" id="proposal-pending-timer">10s remaining</p>
+      <div class="modal-actions">
+        <button type="button" class="btn btn-ghost" id="proposal-cancel-btn">Cancel</button>
       </div>
     </article>
   </div>
