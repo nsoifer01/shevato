@@ -51,26 +51,42 @@
     }
 
     /**
+     * Look up the difficulty settings for a tier key (easy / medium / hard).
+     * Unknown / missing keys fall back to medium so legacy rooms persisted
+     * before this feature shipped score exactly the same as they always have.
+     */
+    function difficultySettings(key) {
+        const table = Config.GLOBE_DROP_DIFFICULTIES || {};
+        const fallback = table[Config.GLOBE_DROP_DIFFICULTY_DEFAULT] || { scoreMultiplier: 1, timerSec: 120, hintLevel: 'country+continent', label: 'Medium' };
+        if (typeof key !== 'string') return fallback;
+        return table[key] || fallback;
+    }
+
+    /**
      * Score a single guess.
      * @param {object} args
      * @param {number} args.distanceKm
      * @param {string} args.region — continent / region label
-     * @returns {{ points:number, distanceKm:number, multiplier:number, basePoints:number }}
+     * @param {string} [args.difficulty] — easy/medium/hard; omitted = legacy = medium (1x)
+     * @returns {{ points:number, distanceKm:number, multiplier:number, basePoints:number, difficultyMultiplier:number }}
      */
-    function scoreGuess({ distanceKm, region }) {
+    function scoreGuess({ distanceKm, region, difficulty }) {
         const max = Config.GLOBE_DROP_BASE_POINTS;
         const scale = Config.GLOBE_DROP_DISTANCE_SCALE_KM;
         const d = Math.max(0, Number(distanceKm) || 0);
         const base = max * Math.exp(-d / scale);
         const mult = continentMultiplier(region);
-        const points = Math.max(0, Math.round(base * mult));
+        const diff = difficultySettings(difficulty);
+        const diffMult = diff.scoreMultiplier;
+        const points = Math.max(0, Math.round(base * mult * diffMult));
         return {
             points,
             distanceKm: d,
             multiplier: mult,
-            basePoints: Math.round(base)
+            basePoints: Math.round(base),
+            difficultyMultiplier: diffMult
         };
     }
 
-    return { haversineDistanceKm, continentMultiplier, scoreGuess };
+    return { haversineDistanceKm, continentMultiplier, difficultySettings, scoreGuess };
 }));

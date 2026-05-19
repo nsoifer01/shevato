@@ -7,6 +7,7 @@ const Config = require('../js/config.js');
 const {
     haversineDistanceKm,
     continentMultiplier,
+    difficultySettings,
     scoreGuess
 } = require('../js/globe-drop-scoring.js');
 
@@ -101,4 +102,53 @@ test('scoreGuess: far-side-of-the-world guess approaches 0', () => {
 test('scoreGuess: negative / missing distance treated as 0', () => {
     assert.equal(scoreGuess({ distanceKm: -100, region: 'Europe' }).points, Config.GLOBE_DROP_BASE_POINTS);
     assert.equal(scoreGuess({ distanceKm: null, region: 'Europe' }).points, Config.GLOBE_DROP_BASE_POINTS);
+});
+
+// --- difficultySettings ------------------------------------------------
+
+test('difficultySettings: known keys return the configured tier', () => {
+    assert.equal(difficultySettings('easy').label, 'Easy');
+    assert.equal(difficultySettings('medium').label, 'Medium');
+    assert.equal(difficultySettings('hard').label, 'Hard');
+});
+
+test('difficultySettings: unknown / missing key falls back to medium', () => {
+    const fb = difficultySettings(undefined);
+    assert.equal(fb.scoreMultiplier, 1);
+    const fb2 = difficultySettings('legendary');
+    assert.equal(fb2.scoreMultiplier, 1);
+});
+
+// --- scoreGuess with difficulty ---------------------------------------
+
+test('scoreGuess: difficulty=medium == no difficulty (legacy parity)', () => {
+    const legacy = scoreGuess({ distanceKm: 500, region: 'Europe' });
+    const medium = scoreGuess({ distanceKm: 500, region: 'Europe', difficulty: 'medium' });
+    assert.equal(legacy.points, medium.points);
+    assert.equal(medium.difficultyMultiplier, 1);
+});
+
+test('scoreGuess: difficulty=hard multiplies by 1.5x', () => {
+    const medium = scoreGuess({ distanceKm: 0, region: 'Europe', difficulty: 'medium' });
+    const hard = scoreGuess({ distanceKm: 0, region: 'Europe', difficulty: 'hard' });
+    assert.equal(hard.difficultyMultiplier, 1.5);
+    assert.equal(hard.points, Math.round(medium.points * 1.5));
+});
+
+test('scoreGuess: difficulty=easy multiplies by 0.75x', () => {
+    const medium = scoreGuess({ distanceKm: 0, region: 'Europe', difficulty: 'medium' });
+    const easy = scoreGuess({ distanceKm: 0, region: 'Europe', difficulty: 'easy' });
+    assert.equal(easy.difficultyMultiplier, 0.75);
+    assert.equal(easy.points, Math.round(medium.points * 0.75));
+});
+
+test('scoreGuess: difficulty compounds with continent multiplier', () => {
+    const r = scoreGuess({ distanceKm: 0, region: 'Africa', difficulty: 'hard' });
+    // 100 base * 1.3 Africa * 1.5 hard = 195
+    assert.equal(r.points, 195);
+});
+
+test('scoreGuess: unknown difficulty falls back silently (legacy room safety)', () => {
+    const r = scoreGuess({ distanceKm: 0, region: 'Europe', difficulty: 'made-up' });
+    assert.equal(r.difficultyMultiplier, 1);
 });
