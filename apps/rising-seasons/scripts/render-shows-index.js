@@ -2,6 +2,7 @@
 
 const { showPath } = require('./slugify.js');
 const { escapeHtml, SITE } = require('./render-show-page.js');
+const { renderMoreFooter } = require('./render-footer.js');
 
 // Single A-Z browse index of every show. This is the crawler's primary
 // entry point into the per-show pages — Google follows the links here to
@@ -108,9 +109,7 @@ function renderShowsIndex(series, builtAt) {
     <p class="index-footer">Refreshed ${builtAt ? new Date(builtAt).toISOString().slice(0, 10) : 'weekly'}. Source: <a href="https://datasets.imdbws.com/" rel="noopener" target="_blank">IMDb datasets</a>.</p>
   </main>
 
-  <footer class="page-footer">
-    <p>© Shevato LLC · <a href="/">shevato.com</a> · <a href="/contact.html">Contact</a></p>
-  </footer>
+  ${renderMoreFooter()}
 </body>
 </html>
 `;
