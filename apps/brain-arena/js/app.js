@@ -42,7 +42,7 @@
 // directories (js → brain-arena → apps → repo root).
 import { db, firestore } from '../../../firebase-config.js';
 const {
-    doc, collection, getDoc, getDocs, setDoc, updateDoc, deleteDoc,
+    doc, collection, getDoc, getDocs, setDoc, updateDoc, deleteDoc, addDoc,
     onSnapshot, query, orderBy, limit, serverTimestamp, runTransaction,
     increment, deleteField
 } = firestore;
@@ -50,6 +50,8 @@ const {
 const Config = window.BrainArena.Config;
 const Scoring = window.BrainArena.Scoring;
 const Premium = window.BrainArena.Premium;
+const Feedback = window.BrainArena.Feedback;
+const Chat = window.BrainArena.Chat;
 const RoomState = window.BrainArena.RoomState;
 const LiveQuestions = window.BrainArena.LiveQuestions;
 const GlobeDropScoring = window.BrainArena.GlobeDropScoring;
@@ -109,7 +111,16 @@ const state = {
     // Live listener on users/{uid} so the Stripe webhook's flip of
     // triviaProfile.premium (server-side via Admin SDK) propagates to
     // the UI without a reload.
-    profileUnsub: null
+    profileUnsub: null,
+
+    // Room code parsed from `?room=ABCDE` at boot, queued behind sign-in.
+    // applyAuthState picks it up the first time it sees a signed-in user.
+    pendingRoomCode: null,
+
+    // True if the signed-in user has a doc at /leaderboardAdmins/{uid}.
+    // Drives the trash-icon affordance on leaderboard rows. Re-checked
+    // on every auth state change.
+    isLeaderboardAdmin: false
 };
 
 /* =====================================================================
@@ -128,6 +139,39 @@ function escapeHtml(text) {
     const div = document.createElement('div');
     div.textContent = String(text == null ? '' : text);
     return div.innerHTML;
+}
+
+/**
+ * Push a transient toast onto the right-bottom stack. Auto-dismisses
+ * after the CSS animation runs out (~4 s total). Used for "X submitted"
+ * presence pings and chat-message previews. Pass `icon` for a leading
+ * emoji; pass `key` to deduplicate rapid-fire identical toasts.
+ */
+const recentToastKeys = new Map();
+function showToast(message, { icon = '', key = null, ttlMs = 4000 } = {}) {
+    if (!message) return;
+    if (key) {
+        // Throttle: same key within the last second is dropped silently
+        // so a flood of identical events (e.g. a snapshot replay) doesn't
+        // bury the screen in copies of the same notification.
+        const last = recentToastKeys.get(key) || 0;
+        const now = Date.now();
+        if (now - last < 1000) return;
+        recentToastKeys.set(key, now);
+    }
+    const stack = document.getElementById('ba-toast-stack');
+    if (!stack) return;
+    const li = document.createElement('li');
+    li.className = 'ba-toast';
+    li.innerHTML = (icon ? `<span class="ba-toast-icon" aria-hidden="true">${escapeHtml(icon)}</span>` : '')
+        + escapeHtml(message);
+    stack.appendChild(li);
+    // Animation-driven removal is tied to the keyframes finish event.
+    li.addEventListener('animationend', (e) => {
+        if (e.animationName === 'ba-toast-out') li.remove();
+    });
+    // Hard fallback in case the animation gets cancelled.
+    setTimeout(() => { try { li.remove(); } catch (_) {} }, ttlMs + 600);
 }
 
 function avatarLetter(displayName) {
@@ -151,15 +195,125 @@ function setView(view) {
         setClass(panel, 'is-active', panel.dataset.viewPanel === view);
         panel.hidden = panel.dataset.viewPanel !== view;
     });
-    if (view === 'leaderboard') startLeaderboardListener();
+    if (view === 'leaderboard' || view === 'h2h') startLeaderboardListener();
     else stopLeaderboardListener();
     if (view === 'profile') renderProfileView();
+    if (view === 'h2h') renderH2HPickers();
+    syncUrlToState();
 }
 
 function wireViewTabs() {
     $$('.view-tab').forEach((b) => {
         b.addEventListener('click', () => setView(b.dataset.view));
     });
+}
+
+/* =====================================================================
+ * URL state (?view=…&room=…)
+ *
+ * The URL is the single source of truth for: which tab is active, and
+ * which room (if any) the user is currently in. A refresh re-attaches to
+ * the same tab + the same room without re-prompting. A pasted room URL
+ * is treated as a join attempt — gates apply normally (sign-in, password).
+ *
+ * We use history.replaceState (not pushState) so the back button doesn't
+ * accumulate every tab click; the URL just mirrors current state.
+ * ===================================================================== */
+
+const VALID_VIEWS = new Set(['play', 'leaderboard', 'h2h', 'profile']);
+
+function parseUrlState() {
+    try {
+        const url = new URL(window.location.href);
+        const view = url.searchParams.get('view');
+        const room = url.searchParams.get('room');
+        return {
+            view: VALID_VIEWS.has(view) ? view : null,
+            room: (typeof room === 'string' && /^[A-Z0-9]{3,8}$/.test(room.toUpperCase())) ? room.toUpperCase() : null
+        };
+    } catch (e) {
+        return { view: null, room: null };
+    }
+}
+
+function syncUrlToState() {
+    try {
+        const url = new URL(window.location.href);
+        // Only encode the bits we want to round-trip; leave anything else
+        // (gtag, utm params) alone so external links keep their context.
+        if (state.activeView && state.activeView !== 'play') {
+            url.searchParams.set('view', state.activeView);
+        } else {
+            url.searchParams.delete('view');
+        }
+        if (state.roomCode) {
+            url.searchParams.set('room', state.roomCode);
+        } else {
+            url.searchParams.delete('room');
+        }
+        const next = url.pathname + (url.search ? url.search : '') + url.hash;
+        // No-op when URL is already in sync — avoids redundant history
+        // entries when render fans out three setView calls during boot.
+        if (next !== window.location.pathname + window.location.search + window.location.hash) {
+            window.history.replaceState(null, '', next);
+        }
+    } catch (e) {
+        // history.replaceState can throw inside very restrictive iframes;
+        // not worth crashing the app over a URL cosmetics failure.
+    }
+}
+
+/**
+ * On boot, try to restore tab + active room from the URL. Tab is cheap
+ * and synchronous; room rejoin needs the user to be signed in, so we
+ * defer the room half until applyAuthState fires with a signed-in user.
+ */
+async function restoreFromUrl() {
+    const { view, room } = parseUrlState();
+    if (view && view !== state.activeView) setView(view);
+    if (!room) return;
+    // Stash the desired room on state; applyAuthState picks it up the
+    // first time we see a signed-in user. That way a refresh of
+    // /?room=ABCDE on a signed-out tab queues the rejoin behind the
+    // sign-in flow instead of failing immediately.
+    state.pendingRoomCode = room;
+}
+
+async function tryRejoinPendingRoom() {
+    const code = state.pendingRoomCode;
+    if (!code || !state.user) return;
+    if (state.roomCode === code) { state.pendingRoomCode = null; return; }
+    state.pendingRoomCode = null;
+    try {
+        const snap = await getDoc(doc(db, 'triviaRooms', code));
+        if (!snap.exists()) return;
+        const data = snap.data();
+        // Private rooms still need a password — but a refresh of someone
+        // who was ALREADY a player should slide in without re-prompting,
+        // since their player doc already exists. We check that first.
+        const playerRef = doc(db, 'triviaRooms', code, 'players', state.user.uid);
+        const playerSnap = await getDoc(playerRef);
+        if (playerSnap.exists()) {
+            await updateDoc(playerRef, { lastSeen: serverTimestamp() });
+            enterRoom(code);
+            return;
+        }
+        // Not a member yet: if private, ask for the password. If public,
+        // join as a guest. We piggy-back on joinRoom by pre-filling the
+        // code input + opening the lobby; for private rooms the user has
+        // to type the password manually.
+        const codeInput = $('#join-code');
+        if (codeInput) codeInput.value = code;
+        if (data.isPrivate) {
+            setView('play');
+            setJoinPwFieldVisible(true);
+            showJoinError('This room is private. Enter the password to join.');
+        } else {
+            await joinRoom();
+        }
+    } catch (err) {
+        console.warn('rejoin from URL failed:', err);
+    }
 }
 
 /* =====================================================================
@@ -248,6 +402,13 @@ function applyAuthState(user) {
     }
 
     if (signedIn) {
+        // If we landed on /?room=ABCDE before sign-in, the rejoin was
+        // queued behind auth — kick it off now. Runs in parallel with
+        // loadProfile since the two don't depend on each other.
+        if (state.pendingRoomCode) tryRejoinPendingRoom();
+        // Admin probe — presence of a doc at /leaderboardAdmins/{uid}
+        // turns on the trash-icon affordance on leaderboard rows.
+        checkLeaderboardAdmin(user.uid);
         loadProfile(user.uid).then((p) => {
             state.profile = p;
             renderProfileView();
@@ -670,9 +831,9 @@ function wireLobby() {
 
     // GlobeDrop controls (wired once; they no-op when no GlobeDrop room is active)
     const submitBtn = $('#globe-drop-submit-btn');
-    if (submitBtn) submitBtn.addEventListener('click', () => submitGuess());
+    if (submitBtn) submitBtn.addEventListener('click', () => { Feedback.guessSubmitted(); submitGuess(); });
     const clearBtn = $('#globe-drop-clear-btn');
-    if (clearBtn) clearBtn.addEventListener('click', () => clearMyPin());
+    if (clearBtn) clearBtn.addEventListener('click', () => { Feedback.pinCleared(); clearMyPin(); });
 
     $('#room-code-copy').addEventListener('click', async () => {
         if (!state.roomCode) return;
@@ -684,6 +845,14 @@ function wireLobby() {
             setTimeout(() => { btn.innerHTML = original; }, 1200);
         } catch (e) { /* ignore */ }
     });
+
+    // Host-only mid-game controls.
+    const pauseBtn = $('#room-pause-btn');
+    const skipBtn = $('#room-skip-btn');
+    const endBtn = $('#room-end-btn');
+    if (pauseBtn) pauseBtn.addEventListener('click', () => togglePauseRoom());
+    if (skipBtn) skipBtn.addEventListener('click', () => hostSkipCurrentQuestion());
+    if (endBtn) endBtn.addEventListener('click', () => hostEndGameEarly());
 }
 
 function clearJoinError() {
@@ -991,6 +1160,8 @@ function enterRoom(code) {
     show($('#room-panel'));
     hide($('#lobby-panel'));
     setText($('#room-code-display'), code);
+    syncUrlToState();
+    startChatListener(code);
 
     // window.beforeunload cleanup so the player removes themselves on tab close
     window.addEventListener('beforeunload', beforeUnloadCleanup);
@@ -1011,9 +1182,41 @@ function enterRoom(code) {
     }));
 
     state.roomUnsubs.push(onSnapshot(playersRef, (snap) => {
-        state.roomPlayers = snap.docs.map((d) => d.data());
+        const prev = state.roomPlayers;
+        const next = snap.docs.map((d) => d.data());
+        notifyOpponentSubmissions(prev, next);
+        state.roomPlayers = next;
         renderRoom();
     }));
+}
+
+/**
+ * Toast + audio ping when an opponent transitions from "not answered" to
+ * "answered" for the current question. Skipped for the local player
+ * (their own submission already gets a louder cue from guessSubmitted)
+ * and for any submission that lands during the reveal phase (irrelevant
+ * presence noise once everyone can see the result anyway).
+ */
+function notifyOpponentSubmissions(prev, next) {
+    if (!state.user || !state.roomCode || !state.roomData) return;
+    if (state.roomData.status !== 'playing') return;
+    if (state.roomData.revealStartedAt) return;
+    const currentQId = state.roomData.currentQuestionId;
+    if (!currentQId) return;
+    const prevMap = new Map((prev || []).map((p) => [p.uid, p]));
+    for (const np of next) {
+        if (!np || !np.uid) continue;
+        if (np.uid === state.user.uid) continue;                     // me
+        if (np.currentAnsweredFor !== currentQId) continue;          // not on this question
+        const before = prevMap.get(np.uid);
+        if (before && before.currentAnsweredFor === currentQId) continue; // not new
+        const name = String(np.displayName || 'Opponent');
+        showToast(`${name} submitted.`, {
+            icon: '✅',
+            key: `submitted:${np.uid}:${currentQId}`
+        });
+        try { Feedback.opponentSubmitted(); } catch (_) { /* ignore */ }
+    }
 }
 
 // When the host bumps the room's `round` (Play Again), every client notices
@@ -1061,6 +1264,9 @@ async function leaveRoom({ silent = false, reason = null } = {}) {
     state.roomPlayers = [];
     state.submittedQuestionId = null;
     state.currentAnswers = [];
+    lastStatusPlayedFeedback = null;
+    stopChatListener();
+    closeChatPanel();
 
     if (code && state.user) {
         try {
@@ -1097,20 +1303,281 @@ async function leaveRoom({ silent = false, reason = null } = {}) {
     show($('#stage-lobby'));
     if (!silent && reason) alert(reason);
     teardownMap();
+    syncUrlToState();
 }
 
 /* =====================================================================
  * Render room (lobby, asking, reveal, end)
  * ===================================================================== */
 
+/* =====================================================================
+ * Host mid-game controls (pause / skip / end)
+ * ===================================================================== */
+
+function isHostOfActiveRoom() {
+    return !!(state.roomCode && state.roomData
+        && state.user && state.roomData.hostUid === state.user.uid);
+}
+
+async function togglePauseRoom() {
+    if (!isHostOfActiveRoom()) return;
+    const room = state.roomData;
+    if (!room || room.status !== 'playing') return;
+    const ref = doc(db, 'triviaRooms', state.roomCode);
+    try {
+        if (room.paused) {
+            // Resume: bump questionStartedAt forward by the time the
+            // game spent paused, so the remaining-time math picks up
+            // exactly where the player left off. pausedAt is whatever
+            // serverTimestamp resolved to when we paused.
+            const pausedAtMs = room.pausedAt && room.pausedAt.toMillis ? room.pausedAt.toMillis() : Date.now();
+            const elapsedPause = Math.max(0, Date.now() - pausedAtMs);
+            const startMs = room.questionStartedAt && room.questionStartedAt.toMillis
+                ? room.questionStartedAt.toMillis() : Date.now();
+            // Re-anchor questionStartedAt to (originalStart + elapsedPause).
+            // We can't easily write a server-side adjusted timestamp, so we
+            // write a plain Date millisecond-converted value via new Date().
+            await updateDoc(ref, {
+                paused: false,
+                pausedAt: null,
+                questionStartedAt: new Date(startMs + elapsedPause)
+            });
+        } else {
+            await updateDoc(ref, {
+                paused: true,
+                pausedAt: serverTimestamp()
+            });
+        }
+    } catch (err) {
+        console.warn('togglePauseRoom failed:', err);
+    }
+}
+
+async function hostSkipCurrentQuestion() {
+    if (!isHostOfActiveRoom()) return;
+    const room = state.roomData;
+    if (!room || room.status !== 'playing') return;
+    if (!window.confirm('Skip to the reveal for this question? Everyone who hasn\'t submitted gets the minimum score.')) return;
+    try {
+        await updateDoc(doc(db, 'triviaRooms', state.roomCode), {
+            revealStartedAt: serverTimestamp(),
+            paused: false,
+            pausedAt: null
+        });
+    } catch (err) {
+        console.warn('hostSkipCurrentQuestion failed:', err);
+    }
+}
+
+async function hostEndGameEarly() {
+    if (!isHostOfActiveRoom()) return;
+    const room = state.roomData;
+    if (!room) return;
+    if (!window.confirm('End the game now? Final scores are tallied with everyone\'s current points.')) return;
+    try {
+        await updateDoc(doc(db, 'triviaRooms', state.roomCode), {
+            status: 'finished',
+            finishedAt: serverTimestamp(),
+            paused: false,
+            pausedAt: null
+        });
+    } catch (err) {
+        console.warn('hostEndGameEarly failed:', err);
+    }
+}
+
+/* =====================================================================
+ * Chat — per-room subcollection at triviaRooms/{code}/chat
+ * ===================================================================== */
+
+const chatState = {
+    open: false,
+    messages: [],
+    unsub: null,
+    lastSentAt: null,
+    unreadSince: 0
+};
+
+function openChatPanel() {
+    chatState.open = true;
+    const panel = $('#room-chat-panel');
+    if (panel) panel.hidden = false;
+    chatState.unreadSince = chatState.messages.length;
+    updateChatBadge();
+    // Focus the input on open — feels conversational.
+    const input = $('#room-chat-input');
+    if (input) setTimeout(() => input.focus(), 50);
+    scrollChatToBottom();
+}
+
+function closeChatPanel() {
+    chatState.open = false;
+    const panel = $('#room-chat-panel');
+    if (panel) panel.hidden = true;
+}
+
+function updateChatBadge() {
+    const badge = $('#room-chat-badge');
+    if (!badge) return;
+    const unread = Math.max(0, chatState.messages.length - chatState.unreadSince);
+    if (chatState.open || unread === 0) {
+        badge.hidden = true;
+        return;
+    }
+    badge.textContent = unread > 9 ? '9+' : String(unread);
+    badge.hidden = false;
+}
+
+function scrollChatToBottom() {
+    const list = $('#room-chat-list');
+    if (!list) return;
+    list.scrollTop = list.scrollHeight;
+}
+
+function startChatListener(code) {
+    stopChatListener();
+    chatState.messages = [];
+    chatState.unreadSince = 0;
+    const chatRef = collection(db, 'triviaRooms', code, 'chat');
+    const q = query(chatRef, orderBy('sentAt', 'asc'), limit(80));
+    chatState.unsub = onSnapshot(q, (snap) => {
+        const prevLen = chatState.messages.length;
+        chatState.messages = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+        renderChatMessages();
+        // First fill is treated as "all read" so the badge doesn't show
+        // 50 unread on first render. After that, growth = unread.
+        if (prevLen === 0) chatState.unreadSince = chatState.messages.length;
+        // Toast preview for the latest message when the panel is closed,
+        // but only for messages that weren't authored by us (we already
+        // know we sent ours).
+        const newest = chatState.messages[chatState.messages.length - 1];
+        if (!chatState.open && newest && state.user && newest.uid !== state.user.uid && prevLen > 0 && prevLen < chatState.messages.length) {
+            showToast(`${newest.displayName || 'Player'}: ${newest.text}`, { icon: '💬', key: 'chat:' + newest.id });
+            try { Feedback.chatMessage(); } catch (_) {}
+        }
+        updateChatBadge();
+    }, (err) => {
+        console.warn('Chat listener error:', err);
+    });
+}
+
+function stopChatListener() {
+    if (chatState.unsub) {
+        try { chatState.unsub(); } catch (_) {}
+        chatState.unsub = null;
+    }
+    chatState.messages = [];
+    chatState.unreadSince = 0;
+    updateChatBadge();
+}
+
+function renderChatMessages() {
+    const list = $('#room-chat-list');
+    const empty = $('#room-chat-empty');
+    if (!list) return;
+    list.innerHTML = '';
+    if (!chatState.messages.length) {
+        if (empty) empty.hidden = false;
+        return;
+    }
+    if (empty) empty.hidden = true;
+    for (const m of chatState.messages) {
+        const li = document.createElement('li');
+        li.className = 'room-chat-msg';
+        if (state.user && m.uid === state.user.uid) li.classList.add('is-mine');
+        const sentMs = m.sentAt && m.sentAt.toMillis ? m.sentAt.toMillis() : null;
+        const time = sentMs ? Chat.formatTimestamp(sentMs) : '';
+        li.innerHTML =
+            `<span class="room-chat-name">${escapeHtml(m.displayName || 'Player')}</span>` +
+            (time ? `<span class="room-chat-time">${escapeHtml(time)}</span>` : '') +
+            `<span class="room-chat-body">${escapeHtml(m.text || '')}</span>`;
+        list.appendChild(li);
+    }
+    scrollChatToBottom();
+}
+
+async function sendChatMessage() {
+    if (!state.user || !state.roomCode) return;
+    const input = $('#room-chat-input');
+    const err = $('#room-chat-error');
+    if (err) { err.hidden = true; err.textContent = ''; }
+    if (!input) return;
+    const text = Chat.sanitizeText(input.value);
+    if (!text) return;
+    const blocked = Chat.profanityCheck(text);
+    if (blocked) {
+        if (err) { err.textContent = `That word isn't allowed in chat.`; err.hidden = false; }
+        return;
+    }
+    if (Chat.shouldRateLimit(chatState.lastSentAt, Date.now())) {
+        if (err) { err.textContent = 'Slow down — wait a moment before sending again.'; err.hidden = false; }
+        return;
+    }
+    const displayName = (state.profile && state.profile.displayName) || deriveInitialDisplayName();
+    try {
+        await addDoc(collection(db, 'triviaRooms', state.roomCode, 'chat'), {
+            uid: state.user.uid,
+            displayName,
+            text,
+            sentAt: serverTimestamp()
+        });
+        chatState.lastSentAt = Date.now();
+        input.value = '';
+    } catch (e) {
+        console.warn('sendChatMessage failed:', e);
+        if (err) { err.textContent = 'Could not send. Try again.'; err.hidden = false; }
+    }
+}
+
+function wireChat() {
+    const toggle = $('#room-chat-toggle');
+    const closeBtn = $('#room-chat-close');
+    const form = $('#room-chat-form');
+    if (toggle) toggle.addEventListener('click', () => {
+        if (chatState.open) closeChatPanel();
+        else openChatPanel();
+    });
+    if (closeBtn) closeBtn.addEventListener('click', closeChatPanel);
+    if (form) form.addEventListener('submit', (e) => { e.preventDefault(); sendChatMessage(); });
+}
+
+// Edge-trigger feedback on game-status transitions. We track the last
+// status we played a sound for so a snapshot replay (same status fires
+// twice) doesn't re-buzz the user. Reset on leaveRoom().
+let lastStatusPlayedFeedback = null;
 function renderRoom() {
     if (!state.roomData) return;
     const isHost = state.user && state.roomData.hostUid === state.user.uid;
     $('#room-host-tag').hidden = !isHost;
     $('#room-private-tag').hidden = !state.roomData.isPrivate;
+    // Pause banner + host-controls visibility. Skip / End / Pause only
+    // make sense while a question is live (status='playing'), so we hide
+    // the whole strip outside that window.
+    const room = state.roomData;
+    const playing = room.status === 'playing';
+    const hostActions = $('#room-host-actions');
+    if (hostActions) hostActions.hidden = !(isHost && playing);
+    const banner = $('#room-paused-banner');
+    if (banner) banner.hidden = !room.paused;
+    const pauseBtn = $('#room-pause-btn');
+    if (pauseBtn) {
+        pauseBtn.innerHTML = room.paused
+            ? '<span aria-hidden="true">▶</span> Resume'
+            : '<span aria-hidden="true">⏸</span> Pause';
+    }
+
+    const status = state.roomData.status;
+    if (status !== lastStatusPlayedFeedback) {
+        if (status === 'playing' && lastStatusPlayedFeedback === 'lobby') {
+            try { Feedback.gameStart(); } catch (_) {}
+        } else if (status === 'finished') {
+            try { Feedback.gameEnd(); } catch (_) {}
+        }
+        lastStatusPlayedFeedback = status;
+    }
 
     const isGlobeDrop = state.roomData.gameType === 'globe-drop';
-    switch (state.roomData.status) {
+    switch (status) {
         case 'lobby': return renderLobbyStage(isHost);
         case 'picking': return renderPickingStage(isHost);
         case 'playing': return isGlobeDrop ? renderGlobeDropStage(isHost) : renderGameStage(isHost);
@@ -1443,25 +1910,28 @@ function ensureGlobe() {
     // produces — that's where the real "feels fast" upgrade comes from.
     const controls = state.globe.controls();
     if (controls) {
-        controls.zoomSpeed = 8;            // baseline for pinch / non-wheel zoom
-        controls.rotateSpeed = 1.1;
+        // Smoother feel: lower rotate sensitivity so a small drag doesn't
+        // overshoot, and heavier damping so the camera glides to rest
+        // instead of stopping abruptly.
+        controls.zoomSpeed = 5;
+        controls.rotateSpeed = 0.7;
         controls.enableDamping = true;
-        controls.dampingFactor = 0.22;
+        controls.dampingFactor = 0.12;
     }
 
-    // Custom wheel zoom: multiplicative altitude change per scroll click
-    // so zoom feels equally fast at any altitude (default OrbitControls is
-    // linear and feels slow when zoomed in). 25% per click ≈ 4 clicks to
-    // halve/double the view. Passive:false because we preventDefault.
+    // Custom wheel zoom: multiplicative altitude change per scroll click,
+    // gentler factor (15% per click instead of 25%) for less erratic feel
+    // and a slightly longer tween (240ms) so the zoom interpolates rather
+    // than snapping. Passive:false because we preventDefault.
     el.addEventListener('wheel', (e) => {
         e.preventDefault();
         if (!state.globe) return;
         const pov = state.globe.pointOfView();
-        const factor = e.deltaY > 0 ? 1.25 : 0.8;
+        const factor = e.deltaY > 0 ? 1.15 : 0.87;
         const minAlt = 0.15;
         const maxAlt = 4.0;
         const nextAlt = Math.max(minAlt, Math.min(maxAlt, pov.altitude * factor));
-        state.globe.pointOfView({ lat: pov.lat, lng: pov.lng, altitude: nextAlt }, 120);
+        state.globe.pointOfView({ lat: pov.lat, lng: pov.lng, altitude: nextAlt }, 240);
     }, { passive: false });
 
     // Ask the device for the actual pixel ratio so the globe canvas is
@@ -1520,6 +1990,7 @@ function onGlobeClick(lat, lng) {
     $('#globe-drop-clear-btn').hidden = false;
     setText($('#globe-drop-status'), 'Pin placed. Submit when you\'re sure.');
     $('#globe-drop-status').classList.remove('is-correct', 'is-wrong');
+    Feedback.pinPlaced();
 }
 
 function drawMyPinOnly(lat, lng) {
@@ -1670,7 +2141,9 @@ function renderGlobeDropStage() {
             setText($('#globe-drop-status'), 'Click anywhere on the globe to drop your pin.');
             $('#globe-drop-status').classList.remove('is-correct', 'is-wrong');
             // Reset camera to the overview pose for each new question.
-            g.pointOfView({ lat: 20, lng: 0, altitude: 2.5 }, 600);
+            // Easing the overview tween out a little so the camera flies
+            // back to the world view less abruptly between questions.
+            g.pointOfView({ lat: 20, lng: 0, altitude: 2.5 }, 900);
         }
 
         // Lock the controls if we've already submitted this question.
@@ -1778,7 +2251,10 @@ function drawGlobeDropReveal(loc, me, { showOthers = true } = {}) {
     state.globe.arcsData(arcs);
 
     // Pan camera so the actual location is centered + zoom in a touch.
-    state.globe.pointOfView({ lat: loc.lat, lng: loc.lng, altitude: 1.8 }, 1000);
+    // Reveal fly-in: longer tween so the camera glides into the truth
+    // instead of snapping. 1400ms paired with globe.gl's default easing
+    // gives a noticeably calmer feel than the prior 1000ms.
+    state.globe.pointOfView({ lat: loc.lat, lng: loc.lng, altitude: 1.8 }, 1400);
 
     // Reveal panel: distance + points or "no guess"
     const revealEl = $('#globe-drop-reveal');
@@ -1800,6 +2276,14 @@ function drawGlobeDropReveal(loc, me, { showOthers = true } = {}) {
         else if (d < 2000) sentiment = 'Not bad.';
         else sentiment = 'Way off, but you tried.';
         setText($('#globe-drop-status'), showOthers ? sentiment : `${sentiment} Waiting for the rest…`);
+        // Reveal sound + haptic. Only fire on the LOCAL reveal (the first
+        // time the player sees their own result) so opponents' reveals
+        // don't trigger a second buzz when their global-reveal arc lands.
+        if (!showOthers) {
+            if (d < 100) Feedback.revealBullseye();
+            else if (d < 2000) Feedback.revealClose();
+            else Feedback.revealFar();
+        }
     } else {
         distEl.textContent = 'No guess submitted (minimum score awarded).';
         setText($('#globe-drop-status'), showOthers ? '⏱ Time up.' : 'Waiting for the rest…');
@@ -1956,6 +2440,13 @@ function startGlobeDropTimerLoop() {
     const tick = () => {
         if (!state.roomData || state.roomData.status !== 'playing') return;
         if (state.roomData.gameType !== 'globe-drop') return;
+        // When the host has paused the room we still keep the rAF loop
+        // running (so unpausing rejoins cleanly) but lock the displayed
+        // time + phase to the moment-of-pause so the UI freezes.
+        if (state.roomData.paused) {
+            state.timerRaf = requestAnimationFrame(tick);
+            return;
+        }
         const startMs = state.roomData.questionStartedAt && state.roomData.questionStartedAt.toMillis
             ? state.roomData.questionStartedAt.toMillis() : null;
         const revealMs = state.roomData.revealStartedAt && state.roomData.revealStartedAt.toMillis
@@ -1968,6 +2459,29 @@ function startGlobeDropTimerLoop() {
         renderRevealCountdown(phase, revealMs, now);
 
         const currentQId = state.roomData.currentQuestionId;
+        // Low-timer ping at 5s and 3s. Fires exactly once per threshold
+        // per question — the lastTimerPingQId guard prevents the rAF
+        // loop from re-emitting the sound 60×/sec while we're under it.
+        if (phase === 'asking' && currentQId && currentQId !== state.lastTimerPingQId) {
+            const seconds = Math.ceil(left / 1000);
+            const fired = state.lastTimerPingThresholds || {};
+            if (seconds <= 5 && !fired.five) {
+                try { Feedback.timerLow(); } catch (_) {}
+                fired.five = true;
+            }
+            if (seconds <= 3 && !fired.three) {
+                try { Feedback.timerLow(); } catch (_) {}
+                fired.three = true;
+            }
+            state.lastTimerPingThresholds = fired;
+            if (seconds > 6) {
+                state.lastTimerPingThresholds = {};
+                state.lastTimerPingQId = currentQId;
+            }
+        } else if (currentQId !== state.lastTimerPingQId) {
+            state.lastTimerPingThresholds = {};
+            state.lastTimerPingQId = currentQId;
+        }
         // Re-render the stage when phase changes so the reveal markers
         // and "X km off" line draw without waiting for a snapshot.
         if (phase !== lastPhase || currentQId !== lastQId) {
@@ -2075,6 +2589,10 @@ function startTimerLoop() {
     let lastRenderedQuestionId = null;
     const tick = () => {
         if (!state.roomData || state.roomData.status !== 'playing') return;
+        if (state.roomData.paused) {
+            state.timerRaf = requestAnimationFrame(tick);
+            return;
+        }
         const startMs = state.roomData.questionStartedAt && state.roomData.questionStartedAt.toMillis
             ? state.roomData.questionStartedAt.toMillis() : null;
         const revealMs = state.roomData.revealStartedAt && state.roomData.revealStartedAt.toMillis
@@ -2829,11 +3347,16 @@ async function playAgain() {
                 state.roomData.totalQuestions,
                 shuffle
             );
+            // One-click rematch: write 'playing' directly with the first
+            // location armed, so the host doesn't have to click Start
+            // again. The intermediate 'lobby' status used to flash here;
+            // now we jump straight to the first question.
+            const firstLoc = locations[0];
             await updateDoc(doc(db, 'triviaRooms', state.roomCode), {
-                status: 'lobby',
+                status: firstLoc ? 'playing' : 'lobby',
                 currentQuestionIndex: 0,
-                currentQuestionId: null,
-                questionStartedAt: null,
+                currentQuestionId: firstLoc ? firstLoc.id : null,
+                questionStartedAt: firstLoc ? serverTimestamp() : null,
                 revealStartedAt: null,
                 playedQuestionIds: [],
                 questions: locations,
@@ -2899,6 +3422,10 @@ function startLeaderboardListener() {
     state.leaderboardUnsub = onSnapshot(q, (snap) => {
         state.leaderboardEntries = snap.docs.map((d) => d.data());
         renderLeaderboardEntries();
+        // If the H2H tab is open the same snapshot needs to repopulate
+        // its dropdowns; cheap to call unconditionally since the
+        // function returns early when the panel isn't in the DOM.
+        if (state.activeView === 'h2h') renderH2HPickers();
     }, (err) => {
         console.warn('Leaderboard listener error:', err);
     });
@@ -2983,12 +3510,16 @@ function renderLeaderboardEntries() {
     }
     $('#leaderboard-empty').hidden = true;
 
+    const showAdmin = !!state.isLeaderboardAdmin;
     entries.forEach((e, i) => {
         const tr = document.createElement('tr');
         if (state.user && e.uid === state.user.uid) tr.classList.add('is-me');
         const pct = e.gamesPlayed ? Math.round(100 * (e.wins || 0) / e.gamesPlayed) : 0;
         const lastPlayed = e.lastPlayedAt && e.lastPlayedAt.toDate ? e.lastPlayedAt.toDate() : null;
         const lastStr = lastPlayed ? formatRelativeDate(lastPlayed) : '…';
+        const adminCell = showAdmin
+            ? `<td class="col-admin"><button type="button" class="btn-icon-danger" data-action="remove-leaderboard" data-uid="${escapeHtml(e.uid)}" data-name="${escapeHtml(e.displayName || 'Player')}" title="Remove from leaderboard">✕</button></td>`
+            : '';
         tr.innerHTML =
             `<td>${i+1}</td>` +
             `<td>${escapeHtml(e.displayName || 'Player')}</td>` +
@@ -2996,9 +3527,38 @@ function renderLeaderboardEntries() {
             `<td class="col-games">${e.gamesPlayed || 0}</td>` +
             `<td class="col-wins">${e.wins || 0}</td>` +
             `<td class="col-winpct">${pct}%</td>` +
-            `<td>${escapeHtml(lastStr)}</td>`;
+            `<td>${escapeHtml(lastStr)}</td>` +
+            adminCell;
         body.appendChild(tr);
     });
+
+    // Show / hide the admin column header so the row counts still align.
+    const adminHeader = $('#leaderboard-admin-th');
+    if (adminHeader) adminHeader.hidden = !showAdmin;
+}
+
+async function checkLeaderboardAdmin(uid) {
+    if (!uid) { state.isLeaderboardAdmin = false; return; }
+    try {
+        const snap = await getDoc(doc(db, 'leaderboardAdmins', uid));
+        state.isLeaderboardAdmin = snap.exists();
+        if (state.isLeaderboardAdmin) renderLeaderboardEntries();
+    } catch (err) {
+        state.isLeaderboardAdmin = false;
+    }
+}
+
+async function removeLeaderboardEntry(uid, name) {
+    if (!state.isLeaderboardAdmin) return;
+    if (!uid) return;
+    if (!window.confirm(`Remove "${name}" from the Global XP leaderboard?\n\nThis only deletes their leaderboard row — their XP / profile is untouched. The row reappears the next time they play a game.`)) return;
+    try {
+        await deleteDoc(doc(db, 'triviaLeaderboard', uid));
+        showToast(`Removed ${name} from leaderboard.`, { icon: '🗑️' });
+    } catch (err) {
+        console.warn('removeLeaderboardEntry failed:', err);
+        alert('Could not remove that row. Check that your uid is in /leaderboardAdmins/ in Firestore.');
+    }
 }
 
 function formatRelativeDate(d) {
@@ -3010,9 +3570,113 @@ function formatRelativeDate(d) {
     return d.toLocaleDateString();
 }
 
+/* =====================================================================
+ * H2H comparison view
+ *
+ * Reuses state.leaderboardEntries (already subscribed when the LB or H2H
+ * view is active). Both dropdowns list every entry; picking two of the
+ * same player just shows their card on both sides — harmless.
+ * ===================================================================== */
+
+let h2hPickerVersion = 0;
+
+function renderH2HPickers() {
+    const a = $('#h2h-select-a');
+    const b = $('#h2h-select-b');
+    if (!a || !b) return;
+    const entries = (state.leaderboardEntries || []).slice();
+    if (!entries.length) {
+        a.innerHTML = '<option value="">No players yet</option>';
+        b.innerHTML = '<option value="">No players yet</option>';
+        renderH2HComparison();
+        return;
+    }
+    const optsHtml = entries.map((e) => {
+        const uid = escapeHtml(e.uid || '');
+        const name = escapeHtml(e.displayName || 'Player');
+        const xp = e.xp || 0;
+        return `<option value="${uid}">${name} · ${xp} XP</option>`;
+    }).join('');
+
+    // Preserve current selections across re-renders (LB snapshot can
+    // refire while the H2H tab is open).
+    const prevA = a.value;
+    const prevB = b.value;
+
+    a.innerHTML = optsHtml;
+    b.innerHTML = optsHtml;
+
+    // Default: A = current user (if present), B = next entry. Otherwise
+    // first / second by XP.
+    const meUid = state.user && state.user.uid;
+    const meIdx = entries.findIndex((e) => e.uid === meUid);
+    const aDefault = (meIdx >= 0 ? meUid : entries[0].uid) || '';
+    const bDefault = entries.find((e) => e.uid !== aDefault)?.uid || aDefault;
+    a.value = prevA && entries.some((e) => e.uid === prevA) ? prevA : aDefault;
+    b.value = prevB && entries.some((e) => e.uid === prevB) ? prevB : bDefault;
+
+    h2hPickerVersion++;
+    renderH2HComparison();
+}
+
+function renderH2HComparison() {
+    const a = $('#h2h-select-a');
+    const b = $('#h2h-select-b');
+    if (!a || !b) return;
+    const entries = state.leaderboardEntries || [];
+    const ea = entries.find((e) => e.uid === a.value);
+    const eb = entries.find((e) => e.uid === b.value);
+    const empty = $('#h2h-empty');
+    const result = $('#h2h-result');
+    if (!ea || !eb) {
+        if (empty) empty.hidden = false;
+        if (result) result.hidden = true;
+        return;
+    }
+    if (empty) empty.hidden = true;
+    if (result) result.hidden = false;
+    setText($('#h2h-name-a'), ea.displayName || 'Player');
+    setText($('#h2h-name-b'), eb.displayName || 'Player');
+    $('#h2h-stats-a').innerHTML = renderH2HStatsHtml(ea, eb);
+    $('#h2h-stats-b').innerHTML = renderH2HStatsHtml(eb, ea);
+}
+
+function renderH2HStatsHtml(self, other) {
+    // Highlight the field where `self` leads vs `other` so the eye lands
+    // on the head-to-head deltas instead of reading two columns of digits.
+    const pct = (e) => e.gamesPlayed ? (100 * (e.wins || 0) / e.gamesPlayed) : 0;
+    const fields = [
+        { label: 'XP',         val: self.xp || 0,         cmp: (self.xp || 0)         - (other.xp || 0) },
+        { label: 'Games',      val: self.gamesPlayed || 0,cmp: (self.gamesPlayed || 0)- (other.gamesPlayed || 0) },
+        { label: 'Wins',       val: self.wins || 0,       cmp: (self.wins || 0)       - (other.wins || 0) },
+        { label: 'Win %',      val: Math.round(pct(self)) + '%', cmp: pct(self)       - pct(other) }
+    ];
+    return fields.map((f) => {
+        const cls = f.cmp > 0 ? ' h2h-lead' : (f.cmp < 0 ? ' h2h-trail' : '');
+        return `<dt>${escapeHtml(f.label)}</dt><dd class="h2h-val${cls}">${escapeHtml(String(f.val))}</dd>`;
+    }).join('');
+}
+
+function wireH2H() {
+    const a = $('#h2h-select-a');
+    const b = $('#h2h-select-b');
+    if (a) a.addEventListener('change', renderH2HComparison);
+    if (b) b.addEventListener('change', renderH2HComparison);
+}
+
 function wireLeaderboard() {
     $('#leaderboard-period').addEventListener('change', renderLeaderboardEntries);
     $('#leaderboard-category').addEventListener('change', renderLeaderboardEntries);
+    // Admin: delete-row clicks. Delegated to the leaderboard body so we
+    // don't have to re-bind on every render.
+    const body = $('#leaderboard-body');
+    if (body) {
+        body.addEventListener('click', (e) => {
+            const btn = e.target.closest('[data-action="remove-leaderboard"]');
+            if (!btn) return;
+            removeLeaderboardEntry(btn.dataset.uid, btn.dataset.name);
+        });
+    }
 }
 
 /* =====================================================================
@@ -3036,7 +3700,13 @@ async function boot() {
     wireProfileView();
     wireCustomPack();
     wireLeaderboard();
+    wireH2H();
+    wireChat();
     renderPackOptions();
+
+    // Read tab + queued room from the URL BEFORE auth wires up, so a
+    // signed-in tab refresh restores both without flicker.
+    await restoreFromUrl();
 
     await waitForFirebaseAuth();
     window.firebaseAuth.onAuthStateChange(applyAuthState);
