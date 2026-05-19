@@ -145,10 +145,12 @@
                  game type from the room doc, so the Join card doesn't
                  need a matching toggle. -->
             <div class="game-type-toggle" role="tablist" aria-label="Game type">
-              <button type="button" class="game-type-btn is-active" data-game-type="globe-drop" role="tab" aria-selected="true">
+              <button type="button" class="game-type-btn is-active" data-game-type="globe-drop" role="tab" aria-selected="true"
+                      title="Globe Drop — drop a pin on the 3D globe; closer guesses score more.">
                 <span aria-hidden="true">🗺️</span> Globe Drop
               </button>
-              <button type="button" class="game-type-btn" data-game-type="trivia" role="tab" aria-selected="false">
+              <button type="button" class="game-type-btn" data-game-type="trivia" role="tab" aria-selected="false"
+                      title="Trivia — multiple-choice questions across categories.">
                 <span aria-hidden="true">🎯</span> Trivia
               </button>
             </div>
@@ -157,12 +159,12 @@
               <!-- Globe Drop-only fields (default visible — headline mode) -->
               <label class="lobby-field" data-game-type="globe-drop">
                 <span>Round type</span>
-                <select id="create-globe-drop-round-type">
-                  <option value="capitals" selected>World capitals (REST Countries)</option>
-                  <option value="countries">Countries (guess the country centroid)</option>
-                  <option value="major-cities">Major cities (Wikidata, pop &gt; 2M)</option>
-                  <option value="top-cities-by-country">Top cities by country (top 20% of each)</option>
-                  <option value="landmarks">World landmarks (UNESCO sites)</option>
+                <select id="create-globe-drop-round-type" title="Pick the location pool used to seed each round.">
+                  <option value="capitals" selected title="One capital per country. Variety guaranteed.">World capitals (REST Countries)</option>
+                  <option value="countries" title="Guess each country at its geographic centroid — bigger sense of scale, less precision.">Countries (guess the country centroid)</option>
+                  <option value="major-cities" title="Wikidata cities with population over 2 million.">Major cities (Wikidata, pop &gt; 2M)</option>
+                  <option value="top-cities-by-country" title="Top-population 10% of each country's cities (variety across regions, harder picks).">Top cities by country (top 10% of each)</option>
+                  <option value="landmarks" title="UNESCO World Heritage sites worldwide.">World landmarks (UNESCO sites)</option>
                 </select>
               </label>
               <label class="lobby-field" data-game-type="globe-drop">
@@ -188,9 +190,15 @@
                   <option value="10">10</option>
                 </select>
               </label>
-              <label class="lobby-field lobby-field-toggle" data-game-type="globe-drop">
-                <input type="checkbox" id="create-globe-drop-timer-override">
+              <label class="lobby-field lobby-field-toggle" data-game-type="globe-drop"
+                     title="Pick your own time per location. Otherwise the difficulty tier's default is used.">
+                <svg class="toggle-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                  <circle cx="12" cy="13" r="8"/>
+                  <path d="M12 9v4l3 1"/>
+                  <path d="M9 2h6"/>
+                </svg>
                 <span>Override timer for this room</span>
+                <input type="checkbox" id="create-globe-drop-timer-override">
               </label>
               <label class="lobby-field" data-game-type="globe-drop" id="create-globe-drop-time-field" hidden>
                 <span>Time per location</span>
@@ -221,9 +229,14 @@
               </label>
 
               <!-- Shared fields -->
-              <label class="lobby-field lobby-field-toggle">
-                <input type="checkbox" id="create-private-toggle">
+              <label class="lobby-field lobby-field-toggle"
+                     title="Private rooms require a password to join.">
+                <svg class="toggle-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                  <rect x="4" y="11" width="16" height="10" rx="2"/>
+                  <path d="M8 11V8a4 4 0 0 1 8 0v3"/>
+                </svg>
                 <span>Private (password required to join)</span>
+                <input type="checkbox" id="create-private-toggle">
               </label>
               <label class="lobby-field" id="create-password-field" hidden>
                 <span>Room password</span>
@@ -297,14 +310,6 @@
             </span>
           </div>
           <div class="room-head-right">
-            <!-- Per-player Give Up: visible to anyone during 'playing'.
-                 Affects only the player who clicks it (forfeits current
-                 round only). Distinct from host-actions below. -->
-            <div class="room-self-actions" id="room-self-actions" hidden>
-              <button type="button" class="btn btn-ghost btn-sm btn-danger-ghost" id="room-giveup-btn" title="Forfeit your score for this round">
-                <span aria-hidden="true">🏳️</span> Give up
-              </button>
-            </div>
             <!-- Host-only mid-game controls. Hidden until the room is in
                  'playing' or 'picking' and the local user is the host. -->
             <div class="room-host-actions" id="room-host-actions" hidden>
@@ -456,13 +461,6 @@
               <span class="globe-drop-difficulty-chip" id="globe-drop-difficulty-chip" hidden></span>
             </header>
 
-            <!-- Status line stays above the globe so phase messages
-                 (pin placed / time up / reveal) remain visible. The
-                 Submit / Clear controls live overlaid on the globe
-                 itself, see #globe-drop-map below. -->
-            <div class="globe-drop-action-bar">
-              <p class="answer-status globe-drop-status" id="globe-drop-status" aria-live="polite"></p>
-            </div>
 
             <!-- Live standings + opponent submission indicators. Submit-
                  state badges flash next to each name as they commit. -->
@@ -499,6 +497,10 @@
             </section>
 
             <p class="globe-drop-hint" id="globe-drop-hint" hidden></p>
+            <!-- Status element kept (display:none) so JS callsites don't
+                 crash. Action bar removed by request — phase feedback
+                 lives in the reveal panel + visual pin. -->
+            <p class="answer-status globe-drop-status" id="globe-drop-status" aria-live="polite" hidden></p>
             <!-- Wrapper holds the globe + overlay UI as siblings; globe.gl
                  owns the inner contents of #globe-drop-map (canvas) so
                  the FAB stack + timer overlay MUST live outside that
@@ -538,6 +540,29 @@
             <h2>Game over</h2>
             <p id="end-summary"></p>
           </header>
+
+          <!-- Solo-only hero score block. Populated by renderEndStage
+               when playMode === 'solo' and hidden otherwise. -->
+          <div class="solo-hero" id="solo-hero" hidden>
+            <div class="solo-hero-score-row">
+              <div class="solo-hero-stat">
+                <span class="solo-hero-stat-label">Final score</span>
+                <span class="solo-hero-stat-value" id="solo-hero-score">0</span>
+              </div>
+              <div class="solo-hero-stat">
+                <span class="solo-hero-stat-label">Best round</span>
+                <span class="solo-hero-stat-value" id="solo-hero-best">0</span>
+              </div>
+              <div class="solo-hero-stat">
+                <span class="solo-hero-stat-label">Avg distance</span>
+                <span class="solo-hero-stat-value" id="solo-hero-avg-dist">—</span>
+              </div>
+              <div class="solo-hero-stat">
+                <span class="solo-hero-stat-label">Locations</span>
+                <span class="solo-hero-stat-value" id="solo-hero-locations">0</span>
+              </div>
+            </div>
+          </div>
 
           <!-- Podium top 3 -->
           <div class="podium" id="podium" aria-label="Top three"></div>
