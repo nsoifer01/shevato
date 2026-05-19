@@ -2836,22 +2836,54 @@ select option { background: var(--surface); color: var(--text); }
   letter-spacing: -0.01em;
   line-height: 1;
 }
+/* Game-over title — same 3-stop gradient (cyan → white → violet) as
+   the Brain Arena hero so the resolution beat feels like a finale,
+   not a plain dismissal. Layered drop-shadow halo for the gravitas. */
 .end-head h2 {
   font-family: "Space Grotesk", "Outfit", sans-serif;
-  font-size: clamp(1.7rem, 4.5vw, 2.4rem);
-  font-weight: 700;
-  letter-spacing: -0.02em;
-  background: var(--grad-brand-2);
+  font-size: clamp(2.4rem, 6vw, 3.6rem);
+  font-weight: 800;
+  letter-spacing: -0.03em;
+  line-height: 1.05;
+  background: linear-gradient(110deg,
+    var(--cyan) 0%,
+    var(--cyan-2) 22%,
+    #f0f9ff 50%,
+    var(--violet-2) 78%,
+    var(--violet) 100%);
   -webkit-background-clip: text;
   background-clip: text;
+  -webkit-text-fill-color: transparent;
   color: transparent;
-  filter: drop-shadow(0 0 18px rgba(34, 211, 238, 0.25));
+  filter:
+    drop-shadow(0 0 32px rgba(34, 211, 238, 0.22))
+    drop-shadow(0 6px 28px rgba(168, 85, 247, 0.18));
   margin: 0;
 }
+/* Subtitle — soft gold + one-shot shimmer when the screen loads. */
 .end-head p {
-  color: var(--muted);
-  margin: 0.45rem 0 0;
-  font-size: 1rem;
+  margin: 0.7rem 0 0;
+  font-size: 1.05rem;
+  font-weight: 500;
+  color: #fde68a;
+  text-shadow: 0 0 18px rgba(251, 191, 36, 0.35);
+  position: relative;
+  display: inline-block;
+}
+.end-head p::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(110deg, transparent 30%, rgba(255, 255, 255, 0.45) 50%, transparent 70%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+  animation: end-shimmer 1.8s ease-out 0.4s 1 forwards;
+  pointer-events: none;
+}
+@keyframes end-shimmer {
+  from { background-position: -150% 0; }
+  to   { background-position: 250% 0; }
 }
 
 /* Podium */
@@ -2881,26 +2913,42 @@ select option { background: var(--surface); color: var(--text); }
 .podium-slot-3 { animation-delay: 0.15s; }
 
 .podium-medal {
-  font-size: 1.7rem;
+  font-size: 2.4rem;
   line-height: 1;
-  filter: drop-shadow(0 0 8px rgba(255, 255, 255, 0.15));
+  filter: drop-shadow(0 0 12px rgba(255, 255, 255, 0.25));
 }
+.podium-slot-1 .podium-medal { filter: drop-shadow(0 0 16px rgba(251, 191, 36, 0.6)); }
+.podium-slot-2 .podium-medal { filter: drop-shadow(0 0 14px rgba(203, 213, 225, 0.45)); }
+.podium-slot-3 .podium-medal { filter: drop-shadow(0 0 14px rgba(245, 158, 11, 0.45)); }
 .podium-name {
-  font-weight: 600;
-  font-size: 0.95rem;
+  font-family: "Space Grotesk", "Outfit", sans-serif;
+  font-weight: 700;
+  font-size: 1.05rem;
   text-align: center;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
   max-width: 100%;
   color: var(--text);
+  letter-spacing: -0.005em;
 }
 .podium-score {
   font-family: var(--mono);
   font-weight: 700;
-  font-size: 0.92rem;
-  color: var(--cyan-2);
-  text-shadow: 0 0 10px rgba(34, 211, 238, 0.35);
+  font-size: 1rem;
+  letter-spacing: 0.01em;
+}
+.podium-slot-1 .podium-score {
+  color: var(--gold);
+  text-shadow: 0 0 12px rgba(251, 191, 36, 0.5);
+}
+.podium-slot-2 .podium-score {
+  color: var(--silver);
+  text-shadow: 0 0 10px rgba(203, 213, 225, 0.40);
+}
+.podium-slot-3 .podium-score {
+  color: var(--bronze);
+  text-shadow: 0 0 10px rgba(245, 158, 11, 0.45);
 }
 .podium-block {
   width: 100%;
@@ -2927,26 +2975,58 @@ select option { background: var(--surface); color: var(--text); }
   opacity: 0.6;
 }
 .podium-slot-1 .podium-block {
-  height: 140px;
+  height: 160px;
   background:
-    linear-gradient(180deg, rgba(251, 191, 36, 0.30), rgba(251, 191, 36, 0.06) 50%, var(--surface-3));
-  border-color: rgba(251, 191, 36, 0.55);
+    linear-gradient(180deg, rgba(251, 191, 36, 0.55), rgba(251, 191, 36, 0.18) 40%, rgba(120, 53, 15, 0.45) 100%);
+  border-color: rgba(251, 191, 36, 0.65);
   color: var(--gold);
-  box-shadow: 0 0 32px rgba(251, 191, 36, 0.22), 0 -1px 0 rgba(255, 255, 255, 0.06) inset;
+  box-shadow:
+    0 0 48px rgba(251, 191, 36, 0.40),
+    0 0 0 1px rgba(251, 191, 36, 0.30) inset,
+    0 -1px 0 rgba(255, 255, 255, 0.10) inset;
+}
+.podium-slot-1 .podium-block::before {
+  /* Confetti burst — five emojis flung out from behind the gold
+     column on load, falling with staggered durations. CSS-only so
+     it doesn't tax JS during the celebratory moment. */
+  content: "🎉  ✨  🎊  ✨  🎉";
+  position: absolute;
+  top: -36px;
+  left: 50%;
+  transform: translateX(-50%);
+  font-size: 1.4rem;
+  letter-spacing: 0.4em;
+  white-space: nowrap;
+  filter: drop-shadow(0 0 6px rgba(251, 191, 36, 0.45));
+  animation: confetti-burst 1.4s ease-out 0.5s 1 both;
+  pointer-events: none;
+}
+@keyframes confetti-burst {
+  0%   { opacity: 0; transform: translate(-50%, 30px) scale(0.5); }
+  25%  { opacity: 1; transform: translate(-50%, -10px) scale(1); }
+  100% { opacity: 0; transform: translate(-50%, -70px) scale(1.1); }
 }
 .podium-slot-2 .podium-block {
-  height: 108px;
-  background: linear-gradient(180deg, rgba(203, 213, 225, 0.22), rgba(203, 213, 225, 0.04) 50%, var(--surface-3));
-  border-color: rgba(203, 213, 225, 0.45);
+  height: 122px;
+  background:
+    linear-gradient(180deg, rgba(226, 232, 240, 0.40), rgba(148, 163, 184, 0.14) 40%, rgba(51, 65, 85, 0.45) 100%);
+  border-color: rgba(203, 213, 225, 0.55);
   color: var(--silver);
-  box-shadow: 0 0 22px rgba(203, 213, 225, 0.14), 0 -1px 0 rgba(255, 255, 255, 0.05) inset;
+  box-shadow:
+    0 0 30px rgba(203, 213, 225, 0.25),
+    0 0 0 1px rgba(203, 213, 225, 0.22) inset,
+    0 -1px 0 rgba(255, 255, 255, 0.10) inset;
 }
 .podium-slot-3 .podium-block {
-  height: 84px;
-  background: linear-gradient(180deg, rgba(245, 158, 11, 0.24), rgba(245, 158, 11, 0.04) 50%, var(--surface-3));
-  border-color: rgba(245, 158, 11, 0.50);
+  height: 94px;
+  background:
+    linear-gradient(180deg, rgba(245, 158, 11, 0.42), rgba(180, 83, 9, 0.18) 40%, rgba(120, 53, 15, 0.45) 100%);
+  border-color: rgba(245, 158, 11, 0.55);
   color: var(--bronze);
-  box-shadow: 0 0 22px rgba(245, 158, 11, 0.16), 0 -1px 0 rgba(255, 255, 255, 0.05) inset;
+  box-shadow:
+    0 0 28px rgba(245, 158, 11, 0.28),
+    0 0 0 1px rgba(245, 158, 11, 0.20) inset,
+    0 -1px 0 rgba(255, 255, 255, 0.08) inset;
 }
 
 .end-board-wrap {
@@ -3117,23 +3197,69 @@ select option { background: var(--surface); color: var(--text); }
 .room-settings-msg.is-err { color: var(--bad); }
 
 /* Room-session H2H — appears on the end stage once at least one match
-   has finished in this room and there are 2+ players. Same row aesthetic
-   as the mini-board but with a more compact margin. */
+   has finished in this room and there are 2+ players. Glass card with
+   a violet accent scanline + pill wins/losses badges per row. */
 .room-session-h2h {
-  margin: 1.4rem 0 0;
-  padding: 0.9rem 1.1rem 0.95rem;
+  margin: 1.6rem 0 0;
+  padding: 1.2rem 1.3rem 1.15rem;
   background:
-    linear-gradient(180deg, rgba(168, 85, 247, 0.04), transparent 50%),
-    rgba(8, 11, 22, 0.55);
-  border: 1px solid rgba(168, 85, 247, 0.18);
+    linear-gradient(180deg, rgba(168, 85, 247, 0.06), transparent 50%),
+    var(--surface-translucent);
+  -webkit-backdrop-filter: blur(16px);
+  backdrop-filter: blur(16px);
+  border: 1px solid rgba(168, 85, 247, 0.22);
   border-radius: var(--radius);
-  box-shadow: 0 1px 0 rgba(255, 255, 255, 0.04) inset, 0 8px 24px rgba(2, 6, 23, 0.4);
+  position: relative;
+  box-shadow:
+    0 1px 0 rgba(255, 255, 255, 0.04) inset,
+    0 14px 36px rgba(2, 6, 23, 0.45),
+    0 0 28px rgba(168, 85, 247, 0.08);
 }
-.room-session-h2h .mini-board-head { margin-bottom: 0.6rem; }
+.room-session-h2h::before {
+  content: "";
+  position: absolute;
+  top: 0; left: 12%; right: 12%; height: 1.5px;
+  background: linear-gradient(90deg, transparent, rgba(168, 85, 247, 0.55) 50%, transparent);
+  pointer-events: none;
+}
+.room-session-h2h .mini-board-head {
+  margin-bottom: 0.8rem;
+}
 .room-session-h2h h3 {
   font-family: "Space Grotesk", "Outfit", sans-serif;
-  font-size: 0.95rem;
+  font-size: 1.05rem;
+  font-weight: 700;
   color: var(--text);
+}
+.session-h2h-row .mini-board-name {
+  font-weight: 700;
+}
+.session-h2h-wl {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  margin-left: auto;
+}
+.session-h2h-pill {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0.18rem 0.6rem;
+  border-radius: 999px;
+  font-family: var(--mono);
+  font-size: 0.78rem;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+}
+.session-h2h-pill.is-win {
+  background: rgba(16, 185, 129, 0.18);
+  border: 1px solid rgba(16, 185, 129, 0.45);
+  color: rgb(110, 231, 183);
+}
+.session-h2h-pill.is-loss {
+  background: rgba(148, 163, 184, 0.10);
+  border: 1px solid rgba(148, 163, 184, 0.30);
+  color: var(--muted);
 }
 
 /* Rematch coordination — visible only after a rematch is proposed.
@@ -3189,98 +3315,158 @@ select option { background: var(--surface); color: var(--text); }
 /* ---------- End-of-game recap ---------- */
 
 .end-recap {
-  margin-top: 1.5rem;
-  padding: 1.1rem 1.15rem 1.05rem;
+  margin-top: 1.6rem;
+  padding: 1.3rem 1.4rem 1.2rem;
   background:
-    linear-gradient(180deg, rgba(255, 255, 255, 0.025), transparent 30%),
-    var(--surface);
-  border: 1px solid var(--border);
+    linear-gradient(180deg, rgba(255, 255, 255, 0.04), transparent 35%),
+    var(--surface-translucent);
+  -webkit-backdrop-filter: blur(16px);
+  backdrop-filter: blur(16px);
+  border: 1px solid rgba(148, 163, 184, 0.14);
   border-radius: var(--radius);
+  position: relative;
+  box-shadow:
+    0 1px 0 rgba(255, 255, 255, 0.05) inset,
+    0 16px 40px rgba(2, 6, 23, 0.5);
 }
-.end-recap-head { margin-bottom: 0.9rem; }
+.end-recap::before {
+  content: "";
+  position: absolute;
+  top: 0; left: 12%; right: 12%; height: 1.5px;
+  background: linear-gradient(90deg, transparent, rgba(34, 211, 238, 0.45) 50%, transparent);
+  pointer-events: none;
+}
+.end-recap-head { margin-bottom: 1.1rem; }
 .end-recap-head h3 {
-  font-size: 1rem;
-  margin: 0 0 0.2rem;
+  font-family: "Space Grotesk", "Outfit", sans-serif;
+  font-size: 1.15rem;
+  font-weight: 700;
+  margin: 0 0 0.25rem;
   display: inline-flex;
   align-items: center;
-  gap: 0.4rem;
+  gap: 0.5rem;
+  color: var(--text);
 }
 .end-recap-head h3::before { content: "📋"; }
-.end-recap-sub { margin: 0; font-size: 0.85rem; color: var(--muted); }
+.end-recap-sub { margin: 0; font-size: 0.88rem; color: var(--muted); }
 
 .end-recap-stats {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
-  gap: 0.55rem;
-  margin-bottom: 1.1rem;
+  grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
+  gap: 0.85rem;
+  margin-bottom: 1.4rem;
 }
 .end-recap-stat {
-  background: var(--surface-2);
-  border: 1px solid var(--border);
+  position: relative;
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.04), transparent 60%),
+    rgba(8, 11, 22, 0.5);
+  border: 1px solid rgba(148, 163, 184, 0.10);
   border-radius: var(--radius-sm);
-  padding: 0.65rem 0.8rem;
+  padding: 1rem 1rem 0.85rem;
+  overflow: hidden;
+  transition: transform 0.22s ease, border-color 0.22s ease;
 }
+.end-recap-stat::before {
+  content: "";
+  position: absolute;
+  top: 0; left: 12%; right: 12%; height: 2px;
+  background: linear-gradient(90deg, transparent, rgba(148, 163, 184, 0.4) 50%, transparent);
+  border-radius: 999px;
+}
+.end-recap-stat:hover { transform: translateY(-2px); border-color: rgba(148, 163, 184, 0.18); }
+/* "You" card: cyan accent. */
 .end-recap-stat.is-mine {
-  border-color: var(--accent);
-  background: linear-gradient(180deg, var(--accent-soft), transparent 60%), var(--surface-2);
+  border-color: rgba(34, 211, 238, 0.30);
+  box-shadow: 0 0 0 1px rgba(34, 211, 238, 0.10) inset, 0 0 22px rgba(34, 211, 238, 0.10);
+}
+.end-recap-stat.is-mine::before {
+  background: linear-gradient(90deg, transparent, var(--cyan), var(--cyan-2), var(--cyan), transparent);
+}
+.end-recap-stat.is-mine .end-recap-stat-value {
+  color: var(--cyan-2);
+  text-shadow: 0 0 14px rgba(34, 211, 238, 0.35);
+}
+/* "Closest guess" card: violet accent. */
+.end-recap-stat.is-closest {
+  border-color: rgba(168, 85, 247, 0.30);
+  box-shadow: 0 0 0 1px rgba(168, 85, 247, 0.10) inset, 0 0 22px rgba(168, 85, 247, 0.10);
+}
+.end-recap-stat.is-closest::before {
+  background: linear-gradient(90deg, transparent, var(--violet), var(--violet-2), var(--violet), transparent);
+}
+.end-recap-stat.is-closest .end-recap-stat-value {
+  color: var(--violet-2);
+  text-shadow: 0 0 14px rgba(168, 85, 247, 0.30);
 }
 .end-recap-stat-label {
   display: block;
-  font-size: 0.65rem;
+  font-family: "Space Grotesk", "Outfit", sans-serif;
+  font-size: 0.7rem;
   color: var(--muted-2);
   text-transform: uppercase;
-  letter-spacing: 0.1em;
-  font-weight: 700;
-  margin-bottom: 0.25rem;
+  letter-spacing: 0.14em;
+  font-weight: 600;
+  margin-bottom: 0.5rem;
 }
 .end-recap-stat-value {
   font-family: var(--mono);
-  font-size: 1.15rem;
+  font-size: 1.7rem;
   font-weight: 700;
   color: var(--text);
-  line-height: 1.1;
+  line-height: 1;
+  letter-spacing: -0.01em;
 }
 .end-recap-stat-sub {
   display: block;
-  margin-top: 0.2rem;
-  font-size: 0.72rem;
+  margin-top: 0.4rem;
+  font-size: 0.74rem;
   color: var(--muted);
 }
 
 .end-recap-table-wrap {
   overflow-x: auto;
-  background: var(--surface-2);
-  border: 1px solid var(--border);
+  background: rgba(8, 11, 22, 0.55);
+  border: 1px solid rgba(148, 163, 184, 0.10);
   border-radius: var(--radius-sm);
 }
 .end-recap-table {
   width: 100%;
   border-collapse: collapse;
-  font-size: 0.85rem;
+  font-size: 0.88rem;
 }
 .end-recap-table thead th {
   text-align: left;
+  font-family: "Space Grotesk", "Outfit", sans-serif;
   font-weight: 600;
-  font-size: 0.7rem;
+  font-size: 0.72rem;
   text-transform: uppercase;
-  letter-spacing: 0.08em;
+  letter-spacing: 0.12em;
   color: var(--muted-2);
-  padding: 0.6rem 0.7rem;
-  border-bottom: 1px solid var(--border);
-  background: var(--surface);
+  padding: 0.75rem 0.8rem;
+  border-bottom: 1px solid rgba(34, 211, 238, 0.12);
+  background: rgba(20, 26, 44, 0.5);
   position: sticky;
   top: 0;
   white-space: nowrap;
 }
-.end-recap-table thead th.is-mine { color: var(--accent-2); }
+.end-recap-table thead th.is-mine { color: var(--cyan-2); }
 .end-recap-table tbody td {
-  padding: 0.55rem 0.7rem;
-  border-bottom: 1px solid var(--border);
+  padding: 0.7rem 0.8rem;
+  border-bottom: 1px solid rgba(148, 163, 184, 0.06);
   vertical-align: middle;
 }
+/* Alternate row tint for rhythm. */
+.end-recap-table tbody tr:nth-child(even) td { background: rgba(255, 255, 255, 0.012); }
 .end-recap-table tbody tr:last-child td { border-bottom: 0; }
-.end-recap-table tbody tr:hover td { background: rgba(255,255,255,0.025); }
-.end-recap-table td.col-rank { font-family: var(--mono); color: var(--muted); width: 36px; }
+.end-recap-table tbody tr:hover td { background: rgba(34, 211, 238, 0.04); }
+.end-recap-table td.col-rank {
+  font-family: var(--mono);
+  color: var(--cyan);
+  font-weight: 700;
+  width: 36px;
+  opacity: 0.85;
+}
 .end-recap-table td.col-question { color: var(--text); min-width: 200px; max-width: 360px; }
 .end-recap-table td.col-question .recap-q-text {
   display: block;
@@ -3288,23 +3474,75 @@ select option { background: var(--surface); color: var(--text); }
   overflow: hidden;
   text-overflow: ellipsis;
   max-width: 360px;
+  font-weight: 700;
+  font-size: 0.95rem;
+  color: var(--text);
 }
 .end-recap-table td.col-question .recap-q-meta {
   display: block;
-  font-size: 0.72rem;
-  color: var(--muted);
+  font-size: 0.74rem;
+  color: var(--muted-2);
   text-transform: capitalize;
-  margin-top: 0.1rem;
+  margin-top: 0.15rem;
+  font-weight: 500;
 }
 .end-recap-table td.col-result { font-family: var(--mono); font-variant-numeric: tabular-nums; }
-.end-recap-table td.col-result.is-mine { background: var(--accent-soft); }
-.recap-result-points { color: var(--good); font-weight: 700; }
+/* "You" column gets a faint cyan wash everywhere. */
+.end-recap-table td.col-result.is-mine { background: rgba(34, 211, 238, 0.06); }
+/* Winning row: the cell that produced the high score for the row
+   gets a green tint so it pops; the other cells fade slightly. */
+.end-recap-table td.col-result.is-winner {
+  background: rgba(16, 185, 129, 0.14) !important;
+  box-shadow: inset 2px 0 0 rgba(16, 185, 129, 0.4);
+}
+.end-recap-table td.col-result.is-winner.is-mine {
+  background: rgba(16, 185, 129, 0.22) !important;
+}
+.end-recap-table td.col-result.is-loser {
+  opacity: 0.55;
+}
+.recap-result-points {
+  color: rgb(110, 231, 183);
+  font-weight: 700;
+  font-size: 0.95rem;
+  letter-spacing: 0.01em;
+}
 .recap-result-zero { color: var(--muted-2); }
-.recap-result-dist { color: var(--muted); font-size: 0.78rem; display: block; margin-top: 0.1rem; }
-.recap-result-pick { color: var(--text); font-size: 0.78rem; display: block; margin-top: 0.1rem; }
+.recap-result-dist { color: var(--muted); font-size: 0.78rem; display: block; margin-top: 0.15rem; }
+.recap-result-pick { color: var(--text); font-size: 0.78rem; display: block; margin-top: 0.15rem; }
 .recap-result-pick.is-wrong { color: var(--bad); text-decoration: line-through; }
 .recap-result-pick.is-correct { color: var(--good); }
-.end-recap-table td.col-winner { width: 70px; text-align: center; font-size: 1rem; }
+.end-recap-table td.col-winner {
+  width: 110px;
+  text-align: center;
+  font-size: 0.85rem;
+  white-space: nowrap;
+}
+.recap-winner-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  padding: 0.2rem 0.6rem;
+  border-radius: 999px;
+  background: linear-gradient(135deg, rgba(251, 191, 36, 0.20), rgba(168, 85, 247, 0.10));
+  border: 1px solid rgba(251, 191, 36, 0.45);
+  color: var(--gold);
+  font-weight: 700;
+  font-size: 0.78rem;
+  letter-spacing: 0.02em;
+  text-shadow: 0 0 8px rgba(251, 191, 36, 0.35);
+}
+.recap-tie-badge {
+  display: inline-flex;
+  padding: 0.18rem 0.55rem;
+  border-radius: 999px;
+  background: rgba(148, 163, 184, 0.12);
+  border: 1px solid rgba(148, 163, 184, 0.25);
+  color: var(--muted);
+  font-size: 0.74rem;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+}
 
 .end-recap-empty {
   text-align: center;
@@ -3315,42 +3553,77 @@ select option { background: var(--surface); color: var(--text); }
 
 /* Detailed stats (premium) */
 .detailed-stats {
-  margin-top: 1.4rem;
-  padding: 1rem 1.1rem;
-  background: var(--surface);
-  border: 1px solid var(--border);
+  margin-top: 1.6rem;
+  padding: 1.3rem 1.4rem;
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.03), transparent 35%),
+    var(--surface-translucent);
+  -webkit-backdrop-filter: blur(16px);
+  backdrop-filter: blur(16px);
+  border: 1px solid rgba(148, 163, 184, 0.14);
   border-radius: var(--radius);
+  box-shadow: 0 1px 0 rgba(255, 255, 255, 0.04) inset, 0 14px 36px rgba(2, 6, 23, 0.45);
 }
 .detailed-stats-head {
   display: flex; align-items: center; justify-content: space-between;
-  margin-bottom: 0.8rem;
+  margin-bottom: 1rem;
 }
-.detailed-stats-head h3 { font-size: 1rem; }
+.detailed-stats-head h3 {
+  font-family: "Space Grotesk", "Outfit", sans-serif;
+  font-size: 1.1rem;
+  font-weight: 700;
+  margin: 0;
+  color: var(--text);
+}
 .detailed-stats-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
-  gap: 0.55rem;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 0.85rem;
 }
 .detailed-stat {
-  background: var(--surface-2);
-  border: 1px solid var(--border);
+  position: relative;
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.04), transparent 60%),
+    rgba(8, 11, 22, 0.5);
+  border: 1px solid rgba(148, 163, 184, 0.10);
   border-radius: var(--radius-sm);
-  padding: 0.65rem 0.75rem;
+  padding: 1rem 0.9rem 0.85rem;
+  overflow: hidden;
+  transition: transform 0.22s ease, border-color 0.22s ease;
 }
+.detailed-stat::before {
+  content: "";
+  position: absolute;
+  top: 0; left: 12%; right: 12%; height: 2px;
+  border-radius: 999px;
+}
+.detailed-stat:hover { transform: translateY(-2px); border-color: rgba(148, 163, 184, 0.20); }
+/* Cycle accent colors per tile so each one reads as its own metric. */
+.detailed-stat:nth-child(4n+1)::before { background: linear-gradient(90deg, transparent, var(--cyan), var(--cyan-2), var(--cyan), transparent); }
+.detailed-stat:nth-child(4n+2)::before { background: linear-gradient(90deg, transparent, var(--violet), var(--violet-2), var(--violet), transparent); }
+.detailed-stat:nth-child(4n+3)::before { background: linear-gradient(90deg, transparent, var(--good), #34d399, var(--good), transparent); }
+.detailed-stat:nth-child(4n+4)::before { background: linear-gradient(90deg, transparent, var(--warn), #fcd34d, var(--warn), transparent); }
+.detailed-stat:nth-child(4n+1) .detailed-stat-value { color: var(--cyan-2); text-shadow: 0 0 14px rgba(34, 211, 238, 0.35); }
+.detailed-stat:nth-child(4n+2) .detailed-stat-value { color: var(--violet-2); text-shadow: 0 0 14px rgba(168, 85, 247, 0.35); }
+.detailed-stat:nth-child(4n+3) .detailed-stat-value { color: #6ee7b7; text-shadow: 0 0 14px rgba(16, 185, 129, 0.35); }
+.detailed-stat:nth-child(4n+4) .detailed-stat-value { color: #fcd34d; text-shadow: 0 0 14px rgba(245, 158, 11, 0.35); }
 .detailed-stat-label {
+  font-family: "Space Grotesk", "Outfit", sans-serif;
   font-size: 0.7rem;
   color: var(--muted-2);
   text-transform: uppercase;
-  letter-spacing: 0.08em;
+  letter-spacing: 0.14em;
   font-weight: 600;
   display: block;
-  margin-bottom: 0.2rem;
+  margin-bottom: 0.5rem;
 }
 .detailed-stat-value {
   font-family: var(--mono);
   font-weight: 700;
-  font-size: 1.05rem;
+  font-size: 1.65rem;
   color: var(--text);
+  line-height: 1;
+  letter-spacing: -0.01em;
 }
 
 .detailed-stats-upsell {
