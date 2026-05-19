@@ -372,16 +372,18 @@
 
         <!-- STAGE: lobby (waiting) -->
         <section class="stage stage-lobby" id="stage-lobby">
-          <!-- Room settings — visible to all players, read-only for
-               guests. Host can tweak via the "Edit settings" button. -->
+          <!-- Room settings — visible to all players. Host gets inline
+               select fields; guests see a read-only summary. -->
           <section class="room-settings" id="room-settings" hidden>
             <header class="room-settings-head">
               <h3>Room settings</h3>
-              <button type="button" class="btn btn-ghost btn-sm" id="room-settings-edit-btn" hidden>
-                <span aria-hidden="true">⚙</span> Edit
-              </button>
+              <span class="room-settings-hint" id="room-settings-hint" hidden>Host can change settings</span>
             </header>
-            <dl class="room-settings-list">
+
+            <!-- Read-only summary (always rendered; visibility flipped
+                 by JS depending on whether the host has the edit form
+                 open). -->
+            <dl class="room-settings-list" id="room-settings-view">
               <div class="room-settings-item">
                 <dt>Round type</dt>
                 <dd id="room-settings-round-type">—</dd>
@@ -399,6 +401,58 @@
                 <dd id="room-settings-timer">—</dd>
               </div>
             </dl>
+
+            <!-- Inline edit form (host only). Each select fires a
+                 change event handled in JS; round-type / count changes
+                 trigger a location refetch before writing to Firestore. -->
+            <div class="room-settings-edit" id="room-settings-edit" hidden>
+              <label class="lobby-field room-settings-field">
+                <span>Round type</span>
+                <select id="room-settings-edit-round-type">
+                  <option value="capitals">World capitals</option>
+                  <option value="countries">Countries</option>
+                  <option value="major-cities">Major cities (&gt; 2M)</option>
+                  <option value="top-cities-by-country">Top cities by country (top 10%)</option>
+                  <option value="landmarks">World landmarks</option>
+                </select>
+              </label>
+              <label class="lobby-field room-settings-field">
+                <span>Difficulty</span>
+                <select id="room-settings-edit-difficulty">
+                  <option value="easy">Easy (180 s, 0.75&times;)</option>
+                  <option value="medium">Medium (120 s, 1&times;)</option>
+                  <option value="hard">Hard (60 s, 1.5&times;)</option>
+                </select>
+              </label>
+              <label class="lobby-field room-settings-field">
+                <span>Locations</span>
+                <select id="room-settings-edit-count">
+                  <option value="1">1</option><option value="2">2</option><option value="3">3</option>
+                  <option value="4">4</option><option value="5">5</option><option value="6">6</option>
+                  <option value="7">7</option><option value="8">8</option><option value="9">9</option>
+                  <option value="10">10</option>
+                </select>
+              </label>
+              <label class="lobby-field room-settings-field">
+                <span>Time / location</span>
+                <select id="room-settings-edit-time">
+                  <option value="30">30 s</option>
+                  <option value="60">60 s</option>
+                  <option value="120">120 s</option>
+                  <option value="180">180 s</option>
+                  <option value="300">300 s</option>
+                </select>
+              </label>
+              <p class="room-settings-msg" id="room-settings-msg" hidden></p>
+              <div class="room-settings-actions">
+                <button type="button" class="btn btn-ghost btn-sm" id="room-settings-cancel">Cancel</button>
+                <button type="button" class="btn btn-primary btn-sm" id="room-settings-save">Save</button>
+              </div>
+            </div>
+
+            <button type="button" class="btn btn-ghost btn-sm room-settings-edit-btn" id="room-settings-edit-btn" hidden>
+              <span aria-hidden="true">⚙</span> Edit settings
+            </button>
           </section>
           <h2 class="section-title">Players in the lobby</h2>
           <ul class="player-grid" id="lobby-player-grid"></ul>
