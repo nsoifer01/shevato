@@ -3853,12 +3853,18 @@ select option { background: var(--surface); color: var(--text); }
 .recap-score-cell.is-winner.is-mine {
   background: linear-gradient(135deg, rgba(16, 185, 129, 0.18), rgba(34, 211, 238, 0.12));
 }
+.recap-base {
+  font-family: var(--mono);
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
 .recap-score-meta {
+  display: block;
   font-family: var(--font);
   font-weight: 500;
-  font-size: 0.7rem;
+  font-size: 0.68rem;
   color: var(--muted);
-  margin-left: 0.3rem;
+  margin-top: 0.1rem;
 }
 .recap-winner-cell {
   width: 4.5rem;
