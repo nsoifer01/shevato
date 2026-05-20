@@ -89,29 +89,227 @@
     }
 
     /**
+     * Round multiplier ladder. Every round in a game draws its
+     * multiplier from this fixed pool — first round always 1.0×,
+     * last round always 3.0×, intermediate rounds interpolate.
+     * One impactful scaling per round instead of compounding
+     * continent × difficulty × obscurity multipliers.
+     */
+    const ROUND_MULTIPLIERS = [1.0, 1.5, 2.0, 2.5, 3.0];
+
+    /**
+     * Pick the multiplier for round `i` (0-indexed) out of `n` total
+     * rounds. Linearly interpolates an index into ROUND_MULTIPLIERS:
+     *
+     *   n=5  → [1.0, 1.5, 2.0, 2.5, 3.0]            (every step used)
+     *   n=10 → [1.0, 1.0, 1.5, 1.5, 2.0, 2.0,        (each step x2)
+     *           2.5, 2.5, 3.0, 3.0]
+     *   n=3  → [1.0, 2.0, 3.0]                       (subset spread evenly)
+     *   n=1  → [1.0]                                 (always start easy)
+     *
+     * Guaranteed monotonic non-decreasing: round i+1 always has
+     * multiplier ≥ round i.
+     */
+    function roundMultiplierForIndex(i, n) {
+        if (!Number.isFinite(i) || i < 0) return ROUND_MULTIPLIERS[0];
+        if (!Number.isFinite(n) || n <= 1) return ROUND_MULTIPLIERS[0];
+        const lastIdx = ROUND_MULTIPLIERS.length - 1;
+        const idx = Math.round(i * lastIdx / (n - 1));
+        return ROUND_MULTIPLIERS[Math.max(0, Math.min(lastIdx, idx))];
+    }
+
+    /**
+     * Stamp `multiplier` onto each location in order. The input order
+     * is preserved — callers should shuffle for variety BEFORE
+     * passing the array in. Returns a new array; doesn't mutate input.
+     */
+    function assignRoundMultipliers(locations) {
+        if (!Array.isArray(locations)) return [];
+        const n = locations.length;
+        return locations.map((loc, i) => Object.assign({}, loc, {
+            multiplier: roundMultiplierForIndex(i, n)
+        }));
+    }
+
+    /**
+     * Clamp a raw difficulty score to the nearest step in the
+     * ROUND_MULTIPLIERS ladder [1.0, 1.5, 2.0, 2.5, 3.0]. Anything
+     * below 1.0 becomes 1.0; anything above 3.0 becomes 3.0; in
+     * between we snap to the nearest 0.5 step so a continuous score
+     * collapses to one of the five tiers.
+     */
+    function quantizeToLadder(raw) {
+        if (!Number.isFinite(raw)) return ROUND_MULTIPLIERS[0];
+        const snapped = Math.round(raw * 2) / 2;
+        const lo = ROUND_MULTIPLIERS[0];
+        const hi = ROUND_MULTIPLIERS[ROUND_MULTIPLIERS.length - 1];
+        return Math.max(lo, Math.min(hi, snapped));
+    }
+
+    /**
+     * Subregions whose capitals are systematically less-recognizable
+     * than their continent average — island clusters and politically
+     * isolated regions where the capital city isn't household-name.
+     * Used as an additive boost on top of the continent baseline.
+     */
+    const OBSCURE_SUBREGIONS = [
+        'Caribbean',
+        'Polynesia',
+        'Micronesia',
+        'Melanesia',
+        'Middle Africa',
+        'Central Asia'
+    ];
+
+    /**
+     * Continent obscurity weights. Europe gets 0 because European
+     * capitals dominate global media; Antarctic gets the highest
+     * because the few research-station "capitals" are basically
+     * unknown trivia. Designed to be additive (not multiplicative)
+     * so combining with other signals stays predictable.
+     */
+    const CONTINENT_OBSCURITY = {
+        europe:    0.0,
+        americas:  0.1,
+        asia:      0.2,
+        africa:    0.3,
+        oceania:   0.4,
+        antarctic: 0.5
+    };
+
+    /**
+     * Country-population obscurity tiers. The strongest single
+     * signal: large-population countries (China, India, USA) have
+     * household-name capitals; micro-states (Tuvalu, Nauru) have
+     * capitals almost nobody can name. Step function rather than
+     * a continuous log curve so the cutoffs are explicit and
+     * tunable.
+     */
+    function populationObscurity(pop) {
+        if (!Number.isFinite(pop) || pop <= 0) return 0.4; // missing → neutral mid
+        if (pop >= 100_000_000) return 0.0;
+        if (pop >=  30_000_000) return 0.1;
+        if (pop >=  10_000_000) return 0.3;
+        if (pop >=   3_000_000) return 0.6;
+        if (pop >=     500_000) return 0.9;
+        if (pop >=      50_000) return 1.2;
+        if (pop >=       5_000) return 1.5;
+        return 1.7;
+    }
+
+    /**
+     * Country-area obscurity tiers. Smaller area weakly correlates
+     * with lower geopolitical prominence; the strongest signal in
+     * the tail is the < 1 000 sq km micro-state cluster where you're
+     * dealing with city-states and island specks.
+     */
+    function areaObscurity(area) {
+        if (!Number.isFinite(area) || area <= 0) return 0.1;
+        if (area >=   500_000) return 0.0;
+        if (area >=   100_000) return 0.0;
+        if (area >=    20_000) return 0.2;
+        if (area >=     5_000) return 0.4;
+        if (area >=     1_000) return 0.6;
+        if (area >=       100) return 0.7;
+        return 0.9;
+    }
+
+    /**
+     * Per-location difficulty score combining every signal we have:
+     *
+     *   continent   0.0 – 0.5  (Europe easiest, Antarctic hardest)
+     *   + pop tier  0.0 – 1.7  (>100M → 0; <5k → 1.7) — dominant signal
+     *   + area tier 0.0 – 0.9  (huge → 0; <100 sq km → 0.9)
+     *   + 0.5       if subregion ∈ OBSCURE_SUBREGIONS
+     *   + 0.3       if independent === false (dependency / overseas territory)
+     *
+     * Continuous output (typically 0 – 3.5+); quantizeToLadder snaps
+     * it onto the [1.0, 1.5, 2.0, 2.5, 3.0] ladder.
+     *
+     * Expected behavior on real capitals:
+     *   London / Paris / Berlin / Tokyo / Beijing / Moscow / Cairo  → ×1.0
+     *   Brussels / Vienna / Copenhagen / Helsinki / Reykjavik        → ×1.5
+     *   Bangui / Bishkek / Niamey / Ouagadougou                      → ×1.5
+     *   Ciudad de la Paz (Eq. Guinea) / Vatican / Monaco             → ×1.5–2.0
+     *   St. George's / Castries / Roseau (Caribbean capitals)        → ×2.0–2.5
+     *   The Valley (Anguilla, dependent)                             → ×3.0
+     *   Funafuti (Tuvalu) / Yaren (Nauru) / Palikir (FSM)            → ×3.0
+     */
+    function locationDifficultyScore(loc) {
+        if (!loc) return 1;
+        const region = String(loc.region || '').toLowerCase();
+        const cont = (region in CONTINENT_OBSCURITY) ? CONTINENT_OBSCURITY[region] : 0.2;
+        const pop  = populationObscurity(Number(loc.countryPopulation));
+        const area = areaObscurity(Number(loc.countryAreaSqKm));
+        const subBoost = OBSCURE_SUBREGIONS.indexOf(String(loc.subregion || '')) !== -1 ? 0.5 : 0;
+        const depBoost = loc.independent === false ? 0.3 : 0;
+        return cont + pop + area + subBoost + depBoost;
+    }
+
+    /**
+     * Stamp each location with a multiplier derived from its own
+     * attributes (continent + population), not its position in the
+     * playlist. Same input order is preserved — but the multipliers
+     * are no longer monotonic. Returns a new array; doesn't mutate
+     * input.
+     *
+     * This replaces assignRoundMultipliers as the production path:
+     *   - assignRoundMultipliers — position-based ladder (legacy)
+     *   - assignDifficultyMultipliers — per-location difficulty (current)
+     */
+    function assignDifficultyMultipliers(locations) {
+        if (!Array.isArray(locations)) return [];
+        return locations.map((loc) => Object.assign({}, loc, {
+            multiplier: quantizeToLadder(locationDifficultyScore(loc))
+        }));
+    }
+
+    /**
      * Score a single guess.
+     *
+     * New model (preferred): pass `multiplier` directly. Score is
+     *   round(base × exp(-distance / scaleKm) × multiplier)
+     * floored at GLOBE_DROP_MIN_POINTS.
+     *
+     * Legacy model (only when `multiplier` is not provided): falls
+     * back to compounding continent × difficulty × population
+     * multipliers, so callers that haven't migrated yet keep working.
+     *
      * @param {object} args
      * @param {number} args.distanceKm
-     * @param {string} args.region — continent / region label
-     * @param {string} [args.difficulty] — easy/medium/hard; omitted = legacy = medium (1x)
-     * @param {number} [args.population] — population of the place being guessed.
-     *                                     Smaller pop = higher obscurity weight.
-     * @returns {{ points:number, distanceKm:number, multiplier:number, basePoints:number,
-     *            difficultyMultiplier:number, populationMultiplier:number }}
+     * @param {number} [args.multiplier] — preferred round multiplier
+     * @param {string} [args.region] — legacy: continent label
+     * @param {string} [args.difficulty] — legacy: easy/medium/hard
+     * @param {number} [args.population] — legacy: city population
      */
-    function scoreGuess({ distanceKm, region, difficulty, population }) {
+    function scoreGuess(args) {
+        const distanceKm = args && args.distanceKm;
         const max = Config.GLOBE_DROP_BASE_POINTS;
         const scale = Config.GLOBE_DROP_DISTANCE_SCALE_KM;
         const floor = typeof Config.GLOBE_DROP_MIN_POINTS === 'number' ? Config.GLOBE_DROP_MIN_POINTS : 0;
         const d = Math.max(0, Number(distanceKm) || 0);
         const base = max * Math.exp(-d / scale);
+
+        // New model: single round multiplier.
+        if (args && typeof args.multiplier === 'number' && Number.isFinite(args.multiplier)) {
+            const mult = args.multiplier;
+            const points = Math.max(floor, Math.round(base * mult));
+            return {
+                points,
+                distanceKm: d,
+                multiplier: mult,
+                basePoints: Math.round(base)
+            };
+        }
+
+        // Legacy model: compound multipliers.
+        const region = args && args.region;
+        const difficulty = args && args.difficulty;
+        const population = args && args.population;
         const mult = continentMultiplier(region);
         const diff = difficultySettings(difficulty);
         const diffMult = diff.scoreMultiplier;
         const popMult = populationWeight(population);
-        // Distance-decay points × continent × difficulty × obscurity, then
-        // floor at GLOBE_DROP_MIN_POINTS so an antipodal guess still scores
-        // something instead of a flat 0.
         const raw = base * mult * diffMult * popMult;
         const points = Math.max(floor, Math.round(raw));
         return {
@@ -129,6 +327,12 @@
         continentMultiplier,
         difficultySettings,
         populationWeight,
-        scoreGuess
+        scoreGuess,
+        ROUND_MULTIPLIERS,
+        roundMultiplierForIndex,
+        assignRoundMultipliers,
+        quantizeToLadder,
+        locationDifficultyScore,
+        assignDifficultyMultipliers
     };
 }));

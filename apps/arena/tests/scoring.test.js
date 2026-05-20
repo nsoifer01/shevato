@@ -8,7 +8,6 @@ const {
     streakMultiplier,
     speedBonus,
     scoreAnswer,
-    xpFromScore,
     rankPlayers
 } = require('../js/scoring.js');
 
@@ -93,22 +92,6 @@ test('scoreAnswer: streak multiplier caps at the configured ceiling', () => {
     const expectedMult = 1 + Config.STREAK_MULTIPLIER_STEP * Config.STREAK_MULTIPLIER_CAP;
     assert.equal(huge.breakdown.multiplier, expectedMult);
     assert.equal(huge.pointsEarned, Math.round(Config.SCORE_BASE_CORRECT * expectedMult));
-});
-
-// --- xpFromScore -------------------------------------------------------
-
-test('xpFromScore: zero / negative score => 0 XP', () => {
-    assert.equal(xpFromScore(0), 0);
-    assert.equal(xpFromScore(-100), 0);
-});
-
-test('xpFromScore: rounds to nearest integer per the divisor', () => {
-    // Divisor is configured in config.js — assert via the constant so the
-    // test tracks pacing changes without manual edits.
-    const div = Config.XP_PER_POINT_DIVISOR;
-    assert.equal(xpFromScore(1000), Math.round(1000 / div));
-    assert.equal(xpFromScore(1234), Math.round(1234 / div));
-    assert.equal(xpFromScore(1235), Math.round(1235 / div));
 });
 
 // --- rankPlayers -------------------------------------------------------

@@ -9,7 +9,13 @@ const {
     continentMultiplier,
     difficultySettings,
     populationWeight,
-    scoreGuess
+    scoreGuess,
+    ROUND_MULTIPLIERS,
+    roundMultiplierForIndex,
+    assignRoundMultipliers,
+    quantizeToLadder,
+    locationDifficultyScore,
+    assignDifficultyMultipliers
 } = require('../js/globe-drop-scoring.js');
 
 // --- haversineDistanceKm ----------------------------------------------
@@ -222,4 +228,278 @@ test('scoreGuess: floor applies even with hard difficulty 1.5× and obscurity 1.
         population: 10_000
     });
     assert.ok(r.points >= Config.GLOBE_DROP_MIN_POINTS);
+});
+
+// --- round-multiplier ladder ------------------------------------------
+
+test('ROUND_MULTIPLIERS: fixed 5-step ladder 1.0 → 3.0', () => {
+    assert.deepEqual(ROUND_MULTIPLIERS, [1.0, 1.5, 2.0, 2.5, 3.0]);
+});
+
+test('roundMultiplierForIndex: 5 rounds uses every step in order', () => {
+    const got = [0, 1, 2, 3, 4].map((i) => roundMultiplierForIndex(i, 5));
+    assert.deepEqual(got, [1.0, 1.5, 2.0, 2.5, 3.0]);
+});
+
+test('roundMultiplierForIndex: 10 rounds doubles each step', () => {
+    const got = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9].map((i) => roundMultiplierForIndex(i, 10));
+    assert.deepEqual(got, [1.0, 1.0, 1.5, 1.5, 2.0, 2.0, 2.5, 2.5, 3.0, 3.0]);
+});
+
+test('roundMultiplierForIndex: 3 rounds picks 1.0 / 2.0 / 3.0', () => {
+    const got = [0, 1, 2].map((i) => roundMultiplierForIndex(i, 3));
+    assert.deepEqual(got, [1.0, 2.0, 3.0]);
+});
+
+test('roundMultiplierForIndex: 1 round always 1.0', () => {
+    assert.equal(roundMultiplierForIndex(0, 1), 1.0);
+});
+
+test('roundMultiplierForIndex: monotonic non-decreasing across any N', () => {
+    for (let n = 1; n <= 20; n++) {
+        let prev = 0;
+        for (let i = 0; i < n; i++) {
+            const m = roundMultiplierForIndex(i, n);
+            assert.ok(m >= prev, `n=${n} i=${i} mult=${m} prev=${prev}`);
+            prev = m;
+        }
+    }
+});
+
+test('roundMultiplierForIndex: first round always 1.0, last always 3.0', () => {
+    for (let n = 2; n <= 12; n++) {
+        assert.equal(roundMultiplierForIndex(0, n),     1.0, `n=${n} first`);
+        assert.equal(roundMultiplierForIndex(n - 1, n), 3.0, `n=${n} last`);
+    }
+});
+
+test('assignRoundMultipliers: stamps multiplier onto each location in order', () => {
+    const locs = [
+        { id: 'a', name: 'A' },
+        { id: 'b', name: 'B' },
+        { id: 'c', name: 'C' }
+    ];
+    const out = assignRoundMultipliers(locs);
+    assert.equal(out.length, 3);
+    assert.deepEqual(out.map((l) => l.multiplier), [1.0, 2.0, 3.0]);
+    // Input not mutated:
+    assert.equal(locs[0].multiplier, undefined);
+});
+
+test('assignRoundMultipliers: preserves location order (no internal sort)', () => {
+    const locs = [
+        { id: 'first',  name: 'First' },
+        { id: 'second', name: 'Second' },
+        { id: 'third',  name: 'Third' },
+        { id: 'fourth', name: 'Fourth' },
+        { id: 'fifth',  name: 'Fifth' }
+    ];
+    const out = assignRoundMultipliers(locs);
+    assert.deepEqual(out.map((l) => l.id), ['first', 'second', 'third', 'fourth', 'fifth']);
+});
+
+test('assignRoundMultipliers: empty / non-array inputs => []', () => {
+    assert.deepEqual(assignRoundMultipliers([]), []);
+    assert.deepEqual(assignRoundMultipliers(null), []);
+    assert.deepEqual(assignRoundMultipliers(undefined), []);
+});
+
+// --- scoreGuess new model (single round multiplier) -------------------
+
+test('scoreGuess(new): bullseye × 1.0 => base points exactly', () => {
+    const r = scoreGuess({ distanceKm: 0, multiplier: 1.0 });
+    assert.equal(r.points, Config.GLOBE_DROP_BASE_POINTS);
+    assert.equal(r.multiplier, 1.0);
+});
+
+test('scoreGuess(new): bullseye × 2.0 => double base', () => {
+    const r = scoreGuess({ distanceKm: 0, multiplier: 2.0 });
+    assert.equal(r.points, Config.GLOBE_DROP_BASE_POINTS * 2);
+});
+
+test('scoreGuess(new): bullseye × 3.0 => triple base', () => {
+    const r = scoreGuess({ distanceKm: 0, multiplier: 3.0 });
+    assert.equal(r.points, Config.GLOBE_DROP_BASE_POINTS * 3);
+});
+
+test('scoreGuess(new): explicit multiplier overrides legacy region / pop / difficulty', () => {
+    // Even with rich legacy inputs, when `multiplier` is supplied
+    // it should be the SOLE multiplier applied to base × decay.
+    const r = scoreGuess({
+        distanceKm: 0,
+        multiplier: 1.5,
+        region: 'Africa',
+        difficulty: 'hard',
+        population: 10_000
+    });
+    assert.equal(r.points, Math.round(Config.GLOBE_DROP_BASE_POINTS * 1.5));
+});
+
+test('scoreGuess(new): distance decay scales with multiplier', () => {
+    // At scaleKm, base * exp(-1) ≈ 37 points. ×3.0 ≈ 110-111.
+    // Each result is rounded independently after its own multiplication,
+    // so allow ±1 instead of strict equality (same convention as the
+    // continent-multiplier compounding test above).
+    const r1 = scoreGuess({ distanceKm: Config.GLOBE_DROP_DISTANCE_SCALE_KM, multiplier: 1.0 });
+    const r3 = scoreGuess({ distanceKm: Config.GLOBE_DROP_DISTANCE_SCALE_KM, multiplier: 3.0 });
+    assert.ok(Math.abs(r3.points - r1.points * 3) <= 1,
+        `expected ~${r1.points * 3}, got ${r3.points}`);
+});
+
+test('scoreGuess(new): falls back to legacy compound math when multiplier omitted', () => {
+    // No `multiplier` field — should keep using region/diff/pop chain
+    // so callers that haven't migrated stay working.
+    const r = scoreGuess({ distanceKm: 0, region: 'Africa' });
+    assert.ok('difficultyMultiplier' in r);
+    assert.ok('populationMultiplier' in r);
+});
+
+// --- difficulty-driven multiplier assignment --------------------------
+
+test('quantizeToLadder: snaps to nearest 0.5 step', () => {
+    assert.equal(quantizeToLadder(1.0), 1.0);
+    assert.equal(quantizeToLadder(1.2), 1.0);
+    assert.equal(quantizeToLadder(1.3), 1.5);
+    assert.equal(quantizeToLadder(1.7), 1.5);
+    assert.equal(quantizeToLadder(1.8), 2.0);
+    assert.equal(quantizeToLadder(2.5), 2.5);
+    assert.equal(quantizeToLadder(2.74), 2.5);
+    assert.equal(quantizeToLadder(2.76), 3.0);
+});
+
+test('quantizeToLadder: clamps below 1.0 and above 3.0', () => {
+    assert.equal(quantizeToLadder(0.3), 1.0);
+    assert.equal(quantizeToLadder(0.99), 1.0);
+    assert.equal(quantizeToLadder(3.5), 3.0);
+    assert.equal(quantizeToLadder(10), 3.0);
+});
+
+test('quantizeToLadder: non-finite => 1.0 (safe floor)', () => {
+    assert.equal(quantizeToLadder(NaN), 1.0);
+    assert.equal(quantizeToLadder(Infinity), 1.0);
+});
+
+test('locationDifficultyScore: famous European capital easier than obscure island capital', () => {
+    const london    = { region: 'Europe',   subregion: 'Northern Europe', countryAreaSqKm: 242495, countryPopulation: 67_000_000 };
+    const stGeorges = { region: 'Americas', subregion: 'Caribbean',       countryAreaSqKm: 344,    countryPopulation: 112_000 };
+    assert.ok(
+        locationDifficultyScore(stGeorges) > locationDifficultyScore(london),
+        "expected St. George's > London on difficulty"
+    );
+});
+
+test('locationDifficultyScore: missing fields fall back to neutral (~ 1.0)', () => {
+    // Empty object → continent fallback 0.2, pop fallback 0.4, area fallback 0.1 = 0.7.
+    const s = locationDifficultyScore({});
+    assert.ok(s >= 0.5 && s <= 1.0, `expected ~0.7, got ${s}`);
+});
+
+test('locationDifficultyScore: null input => 1', () => {
+    assert.equal(locationDifficultyScore(null), 1);
+});
+
+test('locationDifficultyScore: obscure subregion adds boost', () => {
+    const eastAfrica   = { region: 'Africa', subregion: 'Eastern Africa', countryAreaSqKm: 800000, countryPopulation: 50_000_000 };
+    const middleAfrica = { region: 'Africa', subregion: 'Middle Africa',  countryAreaSqKm: 800000, countryPopulation: 50_000_000 };
+    assert.ok(
+        locationDifficultyScore(middleAfrica) > locationDifficultyScore(eastAfrica),
+        'Middle Africa is in OBSCURE_SUBREGIONS, should outrank Eastern Africa'
+    );
+});
+
+test('locationDifficultyScore: smaller population => higher score (monotonic)', () => {
+    const huge   = { region: 'Asia',   subregion: 'Eastern Asia',  countryAreaSqKm: 500000, countryPopulation: 100_000_000 };
+    const mid    = { region: 'Asia',   subregion: 'Eastern Asia',  countryAreaSqKm: 500000, countryPopulation: 5_000_000 };
+    const tiny   = { region: 'Asia',   subregion: 'Eastern Asia',  countryAreaSqKm: 500000, countryPopulation: 50_000 };
+    const micro  = { region: 'Asia',   subregion: 'Eastern Asia',  countryAreaSqKm: 500000, countryPopulation: 5_000 };
+    const a = locationDifficultyScore(huge);
+    const b = locationDifficultyScore(mid);
+    const c = locationDifficultyScore(tiny);
+    const d = locationDifficultyScore(micro);
+    assert.ok(b > a, `mid > huge (${b} > ${a})`);
+    assert.ok(c > b, `tiny > mid (${c} > ${b})`);
+    assert.ok(d > c, `micro > tiny (${d} > ${c})`);
+});
+
+test('locationDifficultyScore: smaller country area => higher score (monotonic)', () => {
+    const big   = { region: 'Europe', subregion: 'Western Europe', countryAreaSqKm: 500000, countryPopulation: 10_000_000 };
+    const mid   = { region: 'Europe', subregion: 'Western Europe', countryAreaSqKm: 15000,  countryPopulation: 10_000_000 };
+    const tiny  = { region: 'Europe', subregion: 'Western Europe', countryAreaSqKm: 100,    countryPopulation: 10_000_000 };
+    assert.ok(locationDifficultyScore(mid)  > locationDifficultyScore(big),  'mid > big');
+    assert.ok(locationDifficultyScore(tiny) > locationDifficultyScore(mid),  'tiny > mid');
+});
+
+test('locationDifficultyScore: dependent territory bumps obscurity', () => {
+    const a = { region: 'Americas', subregion: 'Caribbean', countryAreaSqKm: 91, countryPopulation: 15_000, independent: true };
+    const b = { region: 'Americas', subregion: 'Caribbean', countryAreaSqKm: 91, countryPopulation: 15_000, independent: false };
+    assert.ok(locationDifficultyScore(b) > locationDifficultyScore(a),
+        'dependent should outrank independent at the same size/pop');
+});
+
+test('assignDifficultyMultipliers: real-world capitals land in expected tiers', () => {
+    // Curated reference set covering each tier of the ladder.
+    // Population / area numbers are 2024-era REST Countries values.
+    const cities = [
+        { id: 'london',     region: 'Europe',    subregion: 'Northern Europe', countryAreaSqKm: 242495,  countryPopulation: 67_215_293,  independent: true,  expect: 1.0 },
+        { id: 'paris',      region: 'Europe',    subregion: 'Western Europe',  countryAreaSqKm: 551695,  countryPopulation: 67_391_582,  independent: true,  expect: 1.0 },
+        { id: 'tokyo',      region: 'Asia',      subregion: 'Eastern Asia',    countryAreaSqKm: 377975,  countryPopulation: 125_836_021, independent: true,  expect: 1.0 },
+        { id: 'cairo',      region: 'Africa',    subregion: 'Northern Africa', countryAreaSqKm: 1002450, countryPopulation: 102_334_403, independent: true,  expect: 1.0 },
+        { id: 'pretoria',   region: 'Africa',    subregion: 'Southern Africa', countryAreaSqKm: 1221037, countryPopulation: 59_308_690,  independent: true,  expect: 1.0 },
+        { id: 'brussels',   region: 'Europe',    subregion: 'Western Europe',  countryAreaSqKm: 30528,   countryPopulation: 11_555_997,  independent: true,  expect: 1.0 },
+        { id: 'cdlp',       region: 'Africa',    subregion: 'Middle Africa',   countryAreaSqKm: 28051,   countryPopulation: 1_402_985,   independent: true,  expect: 2.0 },
+        { id: 'luxembourg', region: 'Europe',    subregion: 'Western Europe',  countryAreaSqKm: 2586,    countryPopulation: 632_275,     independent: true,  expect: 1.5 },
+        { id: 'stgeorges',  region: 'Americas',  subregion: 'Caribbean',       countryAreaSqKm: 344,     countryPopulation: 112_519,     independent: true,  expect: 2.5 },
+        { id: 'thevalley',  region: 'Americas',  subregion: 'Caribbean',       countryAreaSqKm: 91,      countryPopulation: 13_452,      independent: false, expect: 3.0 },
+        { id: 'funafuti',   region: 'Oceania',   subregion: 'Polynesia',       countryAreaSqKm: 26,      countryPopulation: 11_792,      independent: true,  expect: 3.0 }
+    ];
+    const out = assignDifficultyMultipliers(cities);
+    out.forEach((loc, i) => {
+        assert.equal(loc.multiplier, cities[i].expect,
+            `${cities[i].id}: expected ×${cities[i].expect}, got ×${loc.multiplier}`);
+    });
+});
+
+test('assignDifficultyMultipliers: every stamp is a valid ladder value', () => {
+    const locs = [
+        { region: 'Europe',    subregion: 'Northern Europe', countryAreaSqKm: 9_000_000, countryPopulation: 67_000_000 },
+        { region: 'Americas',  subregion: 'Caribbean',       countryAreaSqKm: 100,       countryPopulation: 10_000 },
+        { region: 'Africa',    subregion: 'Middle Africa',   countryAreaSqKm: 28051,     countryPopulation: 1_400_000 },
+        { region: 'Asia',      subregion: 'Western Asia',    countryAreaSqKm: 86600,     countryPopulation: 10_000_000 },
+        { region: 'Oceania',   subregion: 'Polynesia',       countryAreaSqKm: 26,        countryPopulation: 11_000 },
+        { region: 'Antarctic', subregion: '',                countryAreaSqKm: null,      countryPopulation: null },
+        { region: 'Unknown',   subregion: '',                countryAreaSqKm: null,      countryPopulation: null }
+    ];
+    const out = assignDifficultyMultipliers(locs);
+    out.forEach((loc) => {
+        assert.ok(ROUND_MULTIPLIERS.includes(loc.multiplier),
+            `multiplier ${loc.multiplier} not in ${JSON.stringify(ROUND_MULTIPLIERS)}`);
+    });
+});
+
+test('assignDifficultyMultipliers: preserves input order (no internal sort)', () => {
+    const locs = [
+        { id: 'a', region: 'Europe',   subregion: 'Western Europe',  countryAreaSqKm: 200000, countryPopulation: 11_000_000 },
+        { id: 'b', region: 'Oceania',  subregion: 'Polynesia',       countryAreaSqKm: 26,     countryPopulation: 11_000 },
+        { id: 'c', region: 'Asia',     subregion: 'Eastern Asia',    countryAreaSqKm: 100000, countryPopulation: 10_000_000 }
+    ];
+    const out = assignDifficultyMultipliers(locs);
+    assert.deepEqual(out.map((l) => l.id), ['a', 'b', 'c']);
+});
+
+test('assignDifficultyMultipliers: empty / non-array => []', () => {
+    assert.deepEqual(assignDifficultyMultipliers([]), []);
+    assert.deepEqual(assignDifficultyMultipliers(null), []);
+    assert.deepEqual(assignDifficultyMultipliers(undefined), []);
+});
+
+test('assignDifficultyMultipliers: same location ALWAYS gets same multiplier', () => {
+    // Position-independence is the whole point of the new model —
+    // Baku should be Baku regardless of when it's played.
+    const baku = { id: 'baku', name: 'Baku', region: 'Asia', subregion: 'Western Asia',
+                   countryAreaSqKm: 86600, countryPopulation: 10_110_116, independent: true };
+    const m1 = assignDifficultyMultipliers([baku])[0].multiplier;
+    const m2 = assignDifficultyMultipliers([baku, baku, baku])[2].multiplier;
+    const m3 = assignDifficultyMultipliers([{}, baku])[1].multiplier;
+    assert.equal(m1, m2);
+    assert.equal(m1, m3);
 });

@@ -9,6 +9,9 @@ const {
     normalizeAsCountry,
     isSmallIslandLocation,
     capSmallIslands,
+    capByCountry,
+    capByContinent,
+    pickWithMultiplierVariety,
     ROUND_TYPES
 } = require('../js/globe-drop-locations.js');
 
@@ -19,7 +22,7 @@ function rawCountry(over = {}) {
         capitalInfo: { latlng: [48.87, 2.33] },
         region: 'Europe',
         subregion: 'Western Europe',
-        flag: '🇫🇷'
+        ccn3: '250'  // France ISO 3166-1 numeric
     }, over);
 }
 
@@ -32,7 +35,7 @@ test('normalizeCountry: well-formed record => internal location shape', () => {
     assert.equal(out.country, 'France');
     assert.equal(out.region, 'Europe');
     assert.equal(out.subregion, 'Western Europe');
-    assert.equal(out.flag, '🇫🇷');
+    assert.equal(out.countryCode, '250');
     assert.equal(out.lat, 48.87);
     assert.equal(out.lng, 2.33);
 });
@@ -106,7 +109,7 @@ function rawCountryWithCentroid(over = {}) {
         latlng: [46, 2],
         region: 'Europe',
         subregion: 'Western Europe',
-        flag: '🇫🇷'
+        ccn3: '250'
     }, over);
 }
 
@@ -227,4 +230,100 @@ test('capSmallIslands: with a 5-slot game playlist, at most 2 islands reach the 
     const out = capSmallIslands(arr, Config.GLOBE_DROP_SMALL_ISLAND_MAX_PER_GAME);
     const headIslands = out.slice(0, 5).filter(isSmallIslandLocation);
     assert.ok(headIslands.length <= Config.GLOBE_DROP_SMALL_ISLAND_MAX_PER_GAME);
+});
+
+// --- capByCountry ------------------------------------------------------
+
+test('capByCountry: keeps first N per country, drops the excess', () => {
+    const arr = [
+        { id: '1', name: 'Wuhan',    country: 'China' },
+        { id: '2', name: 'Shanghai', country: 'China' },
+        { id: '3', name: 'Changsha', country: 'China' },
+        { id: '4', name: 'Mumbai',   country: 'India' },
+        { id: '5', name: 'Beijing',  country: 'China' }
+    ];
+    const out = capByCountry(arr, 2);
+    // First two Chinese + Mumbai survive; the rest are filtered out.
+    assert.deepEqual(out.map((l) => l.id), ['1', '2', '4']);
+});
+
+test('capByCountry: cap of 1 dedupes one per country', () => {
+    const arr = [
+        { country: 'A' }, { country: 'A' }, { country: 'B' }, { country: 'A' }
+    ];
+    const out = capByCountry(arr, 1);
+    assert.deepEqual(out.map((l) => l.country), ['A', 'B']);
+});
+
+// --- capByContinent ----------------------------------------------------
+
+test('capByContinent: 30% cap on a 5-slot game keeps max 2 per continent', () => {
+    // 5 × 0.3 = 1.5 → ceil = 2 → max 2 per continent.
+    const arr = [
+        { id: '1', region: 'Asia' },   { id: '2', region: 'Asia' },
+        { id: '3', region: 'Asia' },   { id: '4', region: 'Asia' },
+        { id: '5', region: 'Europe' }, { id: '6', region: 'Africa' }
+    ];
+    const out = capByContinent(arr, 0.3, 5);
+    // First two Asia survive, then Europe, then Africa — excess Asia dropped.
+    assert.deepEqual(out.map((l) => l.id), ['1', '2', '5', '6']);
+});
+
+test('capByContinent: 10-slot 30% cap drops 4th+ of any continent', () => {
+    // Hard cap — over-fetched callers feed the filtered pool into a
+    // variety pick. With 6 Asia + 4 Europe, only the first 3 Asia +
+    // 3 Europe survive (cap = ceil(10 × 0.3) = 3).
+    const arr = [];
+    for (let i = 0; i < 6; i++) arr.push({ id: 'a' + i, region: 'Asia' });
+    for (let i = 0; i < 4; i++) arr.push({ id: 'e' + i, region: 'Europe' });
+    const out = capByContinent(arr, 0.3, 10);
+    assert.deepEqual(out.map((l) => l.id),
+                     ['a0', 'a1', 'a2', 'e0', 'e1', 'e2']);
+});
+
+test('capByContinent: empty / non-array => []', () => {
+    assert.deepEqual(capByContinent([], 0.3, 5), []);
+    assert.deepEqual(capByContinent(null, 0.3, 5), []);
+});
+
+// --- pickWithMultiplierVariety -----------------------------------------
+
+test('pickWithMultiplierVariety: 1 from each tier, ladder ascending', () => {
+    const pool = [
+        { id: 'a', multiplier: 1.0 }, { id: 'b', multiplier: 1.0 },
+        { id: 'c', multiplier: 1.5 }, { id: 'd', multiplier: 2.0 },
+        { id: 'e', multiplier: 2.5 }, { id: 'f', multiplier: 3.0 },
+        { id: 'g', multiplier: 1.0 }
+    ];
+    const out = pickWithMultiplierVariety(pool, 5);
+    assert.deepEqual(out.map((l) => l.id), ['a', 'c', 'd', 'e', 'f']);
+});
+
+test('pickWithMultiplierVariety: fills by round-robin when one tier dominates', () => {
+    // 4 × ×1 + 1 × ×3 → target 5 → take ×1, ×3, then keep pulling ×1.
+    const pool = [
+        { id: 'a', multiplier: 1.0 }, { id: 'b', multiplier: 1.0 },
+        { id: 'c', multiplier: 1.0 }, { id: 'd', multiplier: 1.0 },
+        { id: 'e', multiplier: 3.0 }
+    ];
+    const out = pickWithMultiplierVariety(pool, 5);
+    // First a (×1), then e (×3), then b/c/d.
+    assert.deepEqual(out.map((l) => l.id), ['a', 'e', 'b', 'c', 'd']);
+});
+
+test('pickWithMultiplierVariety: gracefully takes only what is available', () => {
+    const pool = [{ id: '1', multiplier: 1.5 }, { id: '2', multiplier: 1.5 }];
+    const out = pickWithMultiplierVariety(pool, 5);
+    assert.equal(out.length, 2);
+});
+
+test('pickWithMultiplierVariety: unknown multipliers fall into the ×1 bucket', () => {
+    const pool = [
+        { id: 'x' },                          // no multiplier
+        { id: 'y', multiplier: 1.7 },         // off-ladder
+        { id: 'a', multiplier: 1.5 }
+    ];
+    const out = pickWithMultiplierVariety(pool, 3);
+    // ×1 bucket gets x + y (off-ladder fallback). Order: x (×1), a (×1.5), y (×1).
+    assert.deepEqual(out.map((l) => l.id), ['x', 'a', 'y']);
 });
