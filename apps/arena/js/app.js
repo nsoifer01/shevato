@@ -1573,6 +1573,12 @@ async function maybeResetForNewRound() {
 
 async function beforeUnloadCleanup() {
     if (!state.roomCode || !state.user) return;
+    // Keep the player doc when the room is already in the post-match
+    // stage — refreshing the page should land the player back on the
+    // end screen, not bounce them to the lobby. tryRejoinPendingRoom
+    // identifies them as a member via this doc on reload, then
+    // renderRoom routes status=finished → renderEndStage.
+    if (state.roomData && state.roomData.status === 'finished') return;
     try {
         await deleteDoc(doc(db, 'triviaRooms', state.roomCode, 'players', state.user.uid));
     } catch (e) { /* best-effort */ }
