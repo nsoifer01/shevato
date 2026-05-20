@@ -9,7 +9,10 @@ const {
     continentMultiplier,
     difficultySettings,
     populationWeight,
-    scoreGuess
+    scoreGuess,
+    ROUND_MULTIPLIERS,
+    roundMultiplierForIndex,
+    assignRoundMultipliers
 } = require('../js/globe-drop-scoring.js');
 
 // --- haversineDistanceKm ----------------------------------------------
@@ -222,4 +225,128 @@ test('scoreGuess: floor applies even with hard difficulty 1.5× and obscurity 1.
         population: 10_000
     });
     assert.ok(r.points >= Config.GLOBE_DROP_MIN_POINTS);
+});
+
+// --- round-multiplier ladder ------------------------------------------
+
+test('ROUND_MULTIPLIERS: fixed 5-step ladder 1.0 → 3.0', () => {
+    assert.deepEqual(ROUND_MULTIPLIERS, [1.0, 1.5, 2.0, 2.5, 3.0]);
+});
+
+test('roundMultiplierForIndex: 5 rounds uses every step in order', () => {
+    const got = [0, 1, 2, 3, 4].map((i) => roundMultiplierForIndex(i, 5));
+    assert.deepEqual(got, [1.0, 1.5, 2.0, 2.5, 3.0]);
+});
+
+test('roundMultiplierForIndex: 10 rounds doubles each step', () => {
+    const got = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9].map((i) => roundMultiplierForIndex(i, 10));
+    assert.deepEqual(got, [1.0, 1.0, 1.5, 1.5, 2.0, 2.0, 2.5, 2.5, 3.0, 3.0]);
+});
+
+test('roundMultiplierForIndex: 3 rounds picks 1.0 / 2.0 / 3.0', () => {
+    const got = [0, 1, 2].map((i) => roundMultiplierForIndex(i, 3));
+    assert.deepEqual(got, [1.0, 2.0, 3.0]);
+});
+
+test('roundMultiplierForIndex: 1 round always 1.0', () => {
+    assert.equal(roundMultiplierForIndex(0, 1), 1.0);
+});
+
+test('roundMultiplierForIndex: monotonic non-decreasing across any N', () => {
+    for (let n = 1; n <= 20; n++) {
+        let prev = 0;
+        for (let i = 0; i < n; i++) {
+            const m = roundMultiplierForIndex(i, n);
+            assert.ok(m >= prev, `n=${n} i=${i} mult=${m} prev=${prev}`);
+            prev = m;
+        }
+    }
+});
+
+test('roundMultiplierForIndex: first round always 1.0, last always 3.0', () => {
+    for (let n = 2; n <= 12; n++) {
+        assert.equal(roundMultiplierForIndex(0, n),     1.0, `n=${n} first`);
+        assert.equal(roundMultiplierForIndex(n - 1, n), 3.0, `n=${n} last`);
+    }
+});
+
+test('assignRoundMultipliers: stamps multiplier onto each location in order', () => {
+    const locs = [
+        { id: 'a', name: 'A' },
+        { id: 'b', name: 'B' },
+        { id: 'c', name: 'C' }
+    ];
+    const out = assignRoundMultipliers(locs);
+    assert.equal(out.length, 3);
+    assert.deepEqual(out.map((l) => l.multiplier), [1.0, 2.0, 3.0]);
+    // Input not mutated:
+    assert.equal(locs[0].multiplier, undefined);
+});
+
+test('assignRoundMultipliers: preserves location order (no internal sort)', () => {
+    const locs = [
+        { id: 'first',  name: 'First' },
+        { id: 'second', name: 'Second' },
+        { id: 'third',  name: 'Third' },
+        { id: 'fourth', name: 'Fourth' },
+        { id: 'fifth',  name: 'Fifth' }
+    ];
+    const out = assignRoundMultipliers(locs);
+    assert.deepEqual(out.map((l) => l.id), ['first', 'second', 'third', 'fourth', 'fifth']);
+});
+
+test('assignRoundMultipliers: empty / non-array inputs => []', () => {
+    assert.deepEqual(assignRoundMultipliers([]), []);
+    assert.deepEqual(assignRoundMultipliers(null), []);
+    assert.deepEqual(assignRoundMultipliers(undefined), []);
+});
+
+// --- scoreGuess new model (single round multiplier) -------------------
+
+test('scoreGuess(new): bullseye × 1.0 => base points exactly', () => {
+    const r = scoreGuess({ distanceKm: 0, multiplier: 1.0 });
+    assert.equal(r.points, Config.GLOBE_DROP_BASE_POINTS);
+    assert.equal(r.multiplier, 1.0);
+});
+
+test('scoreGuess(new): bullseye × 2.0 => double base', () => {
+    const r = scoreGuess({ distanceKm: 0, multiplier: 2.0 });
+    assert.equal(r.points, Config.GLOBE_DROP_BASE_POINTS * 2);
+});
+
+test('scoreGuess(new): bullseye × 3.0 => triple base', () => {
+    const r = scoreGuess({ distanceKm: 0, multiplier: 3.0 });
+    assert.equal(r.points, Config.GLOBE_DROP_BASE_POINTS * 3);
+});
+
+test('scoreGuess(new): explicit multiplier overrides legacy region / pop / difficulty', () => {
+    // Even with rich legacy inputs, when `multiplier` is supplied
+    // it should be the SOLE multiplier applied to base × decay.
+    const r = scoreGuess({
+        distanceKm: 0,
+        multiplier: 1.5,
+        region: 'Africa',
+        difficulty: 'hard',
+        population: 10_000
+    });
+    assert.equal(r.points, Math.round(Config.GLOBE_DROP_BASE_POINTS * 1.5));
+});
+
+test('scoreGuess(new): distance decay scales with multiplier', () => {
+    // At scaleKm, base * exp(-1) ≈ 37 points. ×3.0 ≈ 110-111.
+    // Each result is rounded independently after its own multiplication,
+    // so allow ±1 instead of strict equality (same convention as the
+    // continent-multiplier compounding test above).
+    const r1 = scoreGuess({ distanceKm: Config.GLOBE_DROP_DISTANCE_SCALE_KM, multiplier: 1.0 });
+    const r3 = scoreGuess({ distanceKm: Config.GLOBE_DROP_DISTANCE_SCALE_KM, multiplier: 3.0 });
+    assert.ok(Math.abs(r3.points - r1.points * 3) <= 1,
+        `expected ~${r1.points * 3}, got ${r3.points}`);
+});
+
+test('scoreGuess(new): falls back to legacy compound math when multiplier omitted', () => {
+    // No `multiplier` field — should keep using region/diff/pop chain
+    // so callers that haven't migrated stay working.
+    const r = scoreGuess({ distanceKm: 0, region: 'Africa' });
+    assert.ok('difficultyMultiplier' in r);
+    assert.ok('populationMultiplier' in r);
 });
