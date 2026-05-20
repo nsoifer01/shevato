@@ -393,6 +393,28 @@ body.brain-arena-app button {
   margin-bottom: 1.25rem;
 }
 
+.end-guest-cta {
+  /* Same chrome as .auth-gate but sits on the end stage just under the
+     summary line — slightly tighter top margin so it nests against the
+     header without feeling bolted on. */
+  margin-top: 0.75rem;
+  margin-bottom: 1rem;
+}
+
+.auth-gate .link-btn {
+  background: none;
+  border: none;
+  color: var(--accent, #6aa7ff);
+  text-decoration: underline;
+  cursor: pointer;
+  font: inherit;
+  padding: 0;
+}
+.auth-gate .link-btn:hover,
+.auth-gate .link-btn:focus-visible {
+  color: var(--accent-strong, #8bbcff);
+}
+
 .lobby-grid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
