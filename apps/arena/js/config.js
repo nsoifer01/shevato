@@ -43,11 +43,6 @@
         STREAK_MULTIPLIER_STEP: 0.1,   // +10% per consecutive correct
         STREAK_MULTIPLIER_CAP: 5,      // capped at 5 in a row (=> 1.5x)
 
-        // XP earned == score (1:1). With the smaller scoring scale above,
-        // this gives ~1000–3000 XP per game — feels rewarding without
-        // exploding profile totals.
-        XP_PER_POINT_DIVISOR: 1,
-
         // Master switch for the premium tier. When false (default):
         //   - all premium UI is hidden (modal, profile card, "Premium" tags,
         //     admin toggles, the locked detailed-stats panel),
