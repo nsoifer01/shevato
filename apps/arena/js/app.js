@@ -1050,14 +1050,8 @@ function wireLobby() {
         $('#create-password-field').hidden = !wantsPrivate;
     });
 
-    // Globe Drop: difficulty drives the timer + hint level + scoring multiplier.
-    // The manual "time per location" override is hidden by default; checking
-    // the override toggle reveals it for hosts who want something off-tier.
-    $('#create-globe-drop-difficulty').addEventListener('change', (e) => {
-        const diff = GlobeDropScoring.difficultySettings(e.target.value);
-        const timeSel = $('#create-globe-drop-time');
-        if (timeSel) timeSel.value = String(diff.timerSec);
-    });
+    // Globe Drop: difficulty drives the hint level only — timer is a
+    // separate dial (default 60 s, host can override via the toggle).
     $('#create-globe-drop-timer-override').addEventListener('change', (e) => {
         $('#create-globe-drop-time-field').hidden = !e.target.checked;
     });
@@ -2378,12 +2372,8 @@ async function saveRoomSettings() {
             update.playedQuestionIds = [];
         }
         // If difficulty changed but timer was the tier default, snap timer
-        // to the new tier default; otherwise keep the user's override.
-        const oldDiff = GlobeDropScoring.difficultySettings(state.roomData.difficulty || 'medium');
-        const oldUsesTierDefault = state.roomData.questionTimeMs === oldDiff.timerSec * 1000;
-        if (oldUsesTierDefault && newDifficulty !== state.roomData.difficulty) {
-            update.questionTimeMs = diff.timerSec * 1000;
-        }
+        // Difficulty no longer rewrites the timer — hosts set the timer
+        // independently via the override toggle.
         await updateDoc(doc(db, 'triviaRooms', state.roomCode), update);
         if (msg) {
             msg.classList.remove('is-busy');

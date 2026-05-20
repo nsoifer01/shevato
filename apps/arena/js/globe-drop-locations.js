@@ -19,12 +19,13 @@
 (function (root, factory) {
     if (typeof module === 'object' && module.exports) {
         const Wikidata = require('./globe-drop-wikidata.js');
-        module.exports = factory(Wikidata);
+        const Scoring  = require('./globe-drop-scoring.js');
+        module.exports = factory(Wikidata, Scoring);
     } else {
         const ns = root.BrainArena = root.BrainArena || {};
-        ns.GlobeDropLocations = factory(ns.GlobeDropWikidata);
+        ns.GlobeDropLocations = factory(ns.GlobeDropWikidata, ns.GlobeDropScoring);
     }
-}(typeof self !== 'undefined' ? self : this, function (Wikidata) {
+}(typeof self !== 'undefined' ? self : this, function (Wikidata, Scoring) {
     'use strict';
 
     // NOTE: REST Countries /all caps the `fields` list at 10 entries
@@ -296,34 +297,31 @@
     }
 
     /**
-     * Stable cap: walk the list, keep up to `max` per country in head order,
-     * push the rest to the tail. So 5 Chinese cities in a row → first 2 keep
-     * their slots, the other 3 get pushed past the take-N slice.
+     * Drop entries past `max` per country. Walks the list in order and
+     * keeps the first N for each country; any further entries are
+     * filtered out entirely. So a pool that pulls 5 Chinese cities in
+     * a row keeps the first 2 and discards the rest.
      */
     function capByCountry(locs, maxPerCountry) {
         if (!Array.isArray(locs)) return [];
         const cap = Math.max(1, Number(maxPerCountry) || 2);
-        const head = [];
-        const tail = [];
         const count = {};
-        for (const loc of locs) {
+        return locs.filter((loc) => {
             const c = String(loc && loc.country || '');
-            if ((count[c] || 0) < cap) {
-                head.push(loc);
-                count[c] = (count[c] || 0) + 1;
-            } else {
-                tail.push(loc);
-            }
-        }
-        return head.concat(tail);
+            const used = count[c] || 0;
+            if (used >= cap) return false;
+            count[c] = used + 1;
+            return true;
+        });
     }
 
     /**
-     * Same shape, capping per CONTINENT instead of per country. The cap
-     * is `ceil(totalRounds × maxFraction)` so 5-round games with the
+     * Drop entries past the continent cap. Cap is
+     * `ceil(totalRounds × maxFraction)` so 5-round games with the
      * default 30% cap allow at most 2 from any one continent, 10-round
-     * games allow at most 3. Bumps obscure-continent locations into
-     * better slots whenever the famous-continent quota is full.
+     * games allow at most 3. Filters rather than tail-pushes — that
+     * way the downstream pool is strictly diverse, not just "diverse
+     * if you stop reading partway through."
      */
     function capByContinent(locs, maxFraction, totalRounds) {
         if (!Array.isArray(locs)) return [];
@@ -331,19 +329,49 @@
         // Subtract a tiny epsilon before ceil so 10×0.3 (which IEEE 754
         // computes as 3.0000…0004) doesn't quietly overshoot to 4.
         const cap = Math.max(1, Math.ceil(total * (Number(maxFraction) || 0.3) - 1e-9));
-        const head = [];
-        const tail = [];
         const count = {};
-        for (const loc of locs) {
+        return locs.filter((loc) => {
             const r = String(loc && loc.region || 'Unknown');
-            if ((count[r] || 0) < cap) {
-                head.push(loc);
-                count[r] = (count[r] || 0) + 1;
-            } else {
-                tail.push(loc);
+            const used = count[r] || 0;
+            if (used >= cap) return false;
+            count[r] = used + 1;
+            return true;
+        });
+    }
+
+    /**
+     * Pick `target` locations from a stamped pool with maximum
+     * multiplier-tier spread. Walks the ladder [1.0, 1.5, 2.0, 2.5, 3.0]
+     * round-robin: one item from each tier in ascending order, then
+     * another from each tier with remaining items, etc. Result: a
+     * 5-round game in a diverse pool gets one location at each
+     * difficulty tier. Falls back gracefully when the pool only has
+     * one tier (e.g. unlucky shuffle of famous capitals) — all items
+     * just come from that bucket.
+     */
+    function pickWithMultiplierVariety(stamped, target) {
+        if (!Array.isArray(stamped)) return [];
+        const ladder = [1.0, 1.5, 2.0, 2.5, 3.0];
+        const buckets = Object.create(null);
+        for (const t of ladder) buckets[t] = [];
+        for (const loc of stamped) {
+            const m = Number(loc && loc.multiplier);
+            const tier = ladder.indexOf(m) !== -1 ? m : 1.0;
+            buckets[tier].push(loc);
+        }
+        const out = [];
+        let progressed = true;
+        while (out.length < target && progressed) {
+            progressed = false;
+            for (const t of ladder) {
+                if (out.length >= target) break;
+                if (buckets[t].length > 0) {
+                    out.push(buckets[t].shift());
+                    progressed = true;
+                }
             }
         }
-        return head.concat(tail);
+        return out;
     }
 
     /**
@@ -362,7 +390,12 @@
             return fetchCapitalLocations(roundType, count);
         }
         const target = Math.max(1, Number(count) || 5);
-        const overfetch = Math.max(target * 4, 30);
+        // Over-fetch ~10× the game size (capped at 60) so the country
+        // and continent caps have plenty of headroom AND so the pool
+        // is statistically guaranteed to span multiple difficulty
+        // tiers — without that, a famous-capital-heavy shuffle would
+        // give every round ×1.
+        const overfetch = Math.max(target * 10, 60);
         let raw;
         switch (roundType) {
             case 'countries':              raw = await fetchCountryLocations(overfetch, shuffleFn); break;
@@ -373,9 +406,16 @@
             default:                       raw = await fetchCapitalLocations(overfetch, shuffleFn); break;
         }
         const enriched = await enrichWithCountryMeta(raw);
-        const countryCapped = capByCountry(enriched, 2);
-        const continentCapped = capByContinent(countryCapped, 0.3, target);
-        return continentCapped.slice(0, target);
+        const countryFiltered = capByCountry(enriched, 2);
+        const continentFiltered = capByContinent(countryFiltered, 0.3, target);
+        // Stamp multipliers on the diverse pool, then pick `target`
+        // items spread across difficulty tiers via round-robin. This
+        // is the actual fix for "5 famous capitals → all ×1": we look
+        // at every tier in the pool and pull from each in turn.
+        const stamped = Scoring && Scoring.assignDifficultyMultipliers
+            ? Scoring.assignDifficultyMultipliers(continentFiltered)
+            : continentFiltered;
+        return pickWithMultiplierVariety(stamped, target);
     }
 
     /**
@@ -415,6 +455,7 @@
         capSmallIslands,
         capByCountry,
         capByContinent,
+        pickWithMultiplierVariety,
         loadCountryMetaIndex,
         enrichWithCountryMeta,
         fetchLocations,
