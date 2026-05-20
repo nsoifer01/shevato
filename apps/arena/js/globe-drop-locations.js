@@ -28,9 +28,11 @@
     'use strict';
 
     // NOTE: REST Countries /all caps the `fields` list at 10 entries
-    // and returns HTTP 400 over that — adding population means we had
-    // to drop `landlocked` (which we set but never read anywhere).
-    const REST_COUNTRIES_URL = 'https://restcountries.com/v3.1/all?fields=name,capital,capitalInfo,region,subregion,flag,latlng,area,independent,population';
+    // and returns HTTP 400 over that. `ccn3` is the numeric ISO-3166
+    // code we use to match locations against world-110m TopoJSON for
+    // the reveal-phase country-border overlay; `flag` was unused, so
+    // we swapped it out.
+    const REST_COUNTRIES_URL = 'https://restcountries.com/v3.1/all?fields=name,capital,capitalInfo,region,subregion,ccn3,latlng,area,independent,population';
 
     /**
      * Convert one REST Countries record into our location shape, or null
@@ -73,7 +75,11 @@
             country,
             region,
             subregion: String(raw.subregion || ''),
-            flag: String(raw.flag || ''),
+            // ISO 3166-1 numeric country code (e.g. '076' for Brazil).
+            // Used by the reveal-phase overlay to look up the matching
+            // polygon in world-110m TopoJSON (which keys features on
+            // numeric ISO codes too).
+            countryCode: String(raw.ccn3 || '').padStart(3, '0'),
             lat: latlng[0],
             lng: latlng[1],
             // Country-level metrics surfaced on the location so the
@@ -168,7 +174,7 @@
             country: '',             // no extra country line — it IS the country
             region,
             subregion: String(raw.subregion || ''),
-            flag: String(raw.flag || ''),
+            countryCode: String(raw.ccn3 || '').padStart(3, '0'),
             lat: latlng[0],
             lng: latlng[1],
             countryAreaSqKm:   Number.isFinite(areaNum) ? areaNum : null,

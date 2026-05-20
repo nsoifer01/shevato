@@ -19,7 +19,7 @@ function rawCountry(over = {}) {
         capitalInfo: { latlng: [48.87, 2.33] },
         region: 'Europe',
         subregion: 'Western Europe',
-        flag: '🇫🇷'
+        ccn3: '250'  // France ISO 3166-1 numeric
     }, over);
 }
 
@@ -32,7 +32,7 @@ test('normalizeCountry: well-formed record => internal location shape', () => {
     assert.equal(out.country, 'France');
     assert.equal(out.region, 'Europe');
     assert.equal(out.subregion, 'Western Europe');
-    assert.equal(out.flag, '🇫🇷');
+    assert.equal(out.countryCode, '250');
     assert.equal(out.lat, 48.87);
     assert.equal(out.lng, 2.33);
 });
@@ -106,7 +106,7 @@ function rawCountryWithCentroid(over = {}) {
         latlng: [46, 2],
         region: 'Europe',
         subregion: 'Western Europe',
-        flag: '🇫🇷'
+        ccn3: '250'
     }, over);
 }
 
