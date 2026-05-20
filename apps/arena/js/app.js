@@ -73,6 +73,10 @@ const state = {
     roomData: null,              // latest room doc snapshot
     roomPlayers: [],             // latest player list
     roomUnsubs: [],              // listener unsubs to clean up on leave
+    // Set when viewing a finished room in read-only mode (e.g. arriving via
+    // ?postMatch=ABCDE). URL syncer keys on this to write postMatch=… instead
+    // of room=…, which avoids re-join attempts when the link is shared.
+    postMatchCode: null,
 
     // Answer tracking
     submittedQuestionId: null,   // id of question we last answered
@@ -116,6 +120,9 @@ const state = {
     // Room code parsed from `?room=ABCDE` at boot, queued behind sign-in.
     // applyAuthState picks it up the first time it sees a signed-in user.
     pendingRoomCode: null,
+    // Same idea for `?postMatch=ABCDE` — a read-only deep link to a
+    // finished room's recap. Auth-gated since Firestore reads need it.
+    pendingPostMatchCode: null,
 
     // True if the signed-in user has a doc at /leaderboardAdmins/{uid}.
     // Drives the trash-icon affordance on leaderboard rows. Re-checked
@@ -278,12 +285,15 @@ function parseUrlState() {
         const url = new URL(window.location.href);
         const view = url.searchParams.get('view');
         const room = url.searchParams.get('room');
+        const postMatch = url.searchParams.get('postMatch');
+        const codeRe = /^[A-Z0-9]{3,8}$/;
         return {
             view: VALID_VIEWS.has(view) ? view : null,
-            room: (typeof room === 'string' && /^[A-Z0-9]{3,8}$/.test(room.toUpperCase())) ? room.toUpperCase() : null
+            room: (typeof room === 'string' && codeRe.test(room.toUpperCase())) ? room.toUpperCase() : null,
+            postMatch: (typeof postMatch === 'string' && codeRe.test(postMatch.toUpperCase())) ? postMatch.toUpperCase() : null
         };
     } catch (e) {
-        return { view: null, room: null };
+        return { view: null, room: null, postMatch: null };
     }
 }
 
@@ -313,10 +323,17 @@ function syncUrlToState() {
         } else {
             url.searchParams.delete('view');
         }
-        if (state.roomCode) {
+        // ?postMatch=<code> wins over ?room=<code> — the recap view is
+        // read-only, so we don't want pasting the URL to also re-join.
+        if (state.postMatchCode) {
+            url.searchParams.set('postMatch', state.postMatchCode);
+            url.searchParams.delete('room');
+        } else if (state.roomCode) {
             url.searchParams.set('room', state.roomCode);
+            url.searchParams.delete('postMatch');
         } else {
             url.searchParams.delete('room');
+            url.searchParams.delete('postMatch');
         }
         const next = url.pathname + (url.search ? url.search : '') + url.hash;
         // No-op when URL is already in sync — avoids redundant history
@@ -336,14 +353,60 @@ function syncUrlToState() {
  * defer the room half until applyAuthState fires with a signed-in user.
  */
 async function restoreFromUrl() {
-    const { view, room } = parseUrlState();
+    const { view, room, postMatch } = parseUrlState();
     if (view && view !== state.activeView) setView(view);
+    // postMatch wins over room — it's a deep link to a finished room's
+    // recap view. Same auth gating (Firestore reads need a signed-in
+    // user, even anonymous), so we queue behind applyAuthState too.
+    if (postMatch) { state.pendingPostMatchCode = postMatch; return; }
     if (!room) return;
     // Stash the desired room on state; applyAuthState picks it up the
     // first time we see a signed-in user. That way a refresh of
     // /?room=ABCDE on a signed-out tab queues the rejoin behind the
     // sign-in flow instead of failing immediately.
     state.pendingRoomCode = room;
+}
+
+async function tryLoadPendingPostMatch() {
+    const code = state.pendingPostMatchCode;
+    if (!code || !state.user) return;
+    state.pendingPostMatchCode = null;
+    if (state.roomCode === code) return; // already in this room
+    setView('play');
+    showJoinError('Loading recap…');
+    try {
+        const snap = await getDoc(doc(db, 'triviaRooms', code));
+        if (!snap.exists()) {
+            showJoinError('Recap not found — that room may have been cleaned up.');
+            state.postMatchCode = null;
+            syncUrlToState();
+            return;
+        }
+        const data = snap.data() || {};
+        if (data.status !== 'finished') {
+            // Not finished — fall through to a normal join attempt so the
+            // user lands in the active room instead of a broken recap.
+            state.pendingRoomCode = code;
+            state.postMatchCode = null;
+            syncUrlToState();
+            return tryRejoinPendingRoom();
+        }
+        // View-only recap: hydrate the room + player snapshots, mark
+        // postMatchCode so the URL stays as ?postMatch=…, then jump to
+        // the end stage without touching this user's membership.
+        clearJoinError();
+        const playersSnap = await getDocs(collection(db, 'triviaRooms', code, 'players'));
+        const players = playersSnap.docs.map((d) => d.data());
+        state.roomCode = code;
+        state.roomData = data;
+        state.roomPlayers = players;
+        state.postMatchCode = code;
+        syncUrlToState();
+        renderEndStage(false);
+    } catch (err) {
+        console.warn('post-match deep link failed:', err);
+        showJoinError('Could not load that recap. Please try again.');
+    }
 }
 
 async function tryRejoinPendingRoom() {
@@ -498,10 +561,12 @@ function applyAuthState(user) {
     }
 
     if (signedIn) {
-        // If we landed on /?room=ABCDE before sign-in, the rejoin was
-        // queued behind auth — kick it off now. Runs in parallel with
-        // loadProfile since the two don't depend on each other.
-        if (state.pendingRoomCode) tryRejoinPendingRoom();
+        // If we landed on /?room=ABCDE or /?postMatch=ABCDE before
+        // sign-in, the rejoin / recap fetch was queued behind auth —
+        // kick it off now. Runs in parallel with loadProfile since
+        // the two don't depend on each other.
+        if (state.pendingPostMatchCode) tryLoadPendingPostMatch();
+        else if (state.pendingRoomCode)  tryRejoinPendingRoom();
         // Admin probe — presence of a doc at /leaderboardAdmins/{uid}
         // turns on the trash-icon affordance on leaderboard rows.
         checkLeaderboardAdmin(user.uid);
@@ -1577,6 +1642,7 @@ async function leaveRoom({ silent = false, reason = null } = {}) {
     state.roomCode = null;
     state.roomData = null;
     state.roomPlayers = [];
+    state.postMatchCode = null;
     state.submittedQuestionId = null;
     state.currentAnswers = [];
     state.actionCounts = {};
@@ -4042,6 +4108,14 @@ async function renderEndStage(isHost) {
     hide($('#stage-picking'));
     show($('#stage-end'));
 
+    // Deep-link: rewrite the URL to ?postMatch=<code> so refresh + share
+    // both land back on this recap. Cleared by setView('play') when the
+    // user navigates away from the end stage.
+    if (state.roomCode) {
+        state.postMatchCode = state.roomCode;
+        syncUrlToState();
+    }
+
     if (state.timerRaf) { cancelAnimationFrame(state.timerRaf); state.timerRaf = null; }
 
     const ranked = Scoring.rankPlayers(state.roomPlayers.map((p) => ({
@@ -4126,19 +4200,14 @@ async function renderEndStage(isHost) {
     const winner = ranked[0];
     const me = ranked.find((p) => state.user && p.uid === state.user.uid);
     const playMode = (state.roomData && state.roomData.playMode) || 'multi';
-    const heading = $('#stage-end .end-head h2');
     if (playMode === 'solo' && me) {
-        if (heading) setText(heading, 'Run complete');
         setText($('#end-summary'), `Final score: ${me.score}`);
+    } else if (winner && me && winner.uid === me.uid) {
+        setText($('#end-summary'), '🎉 You won! Nice work.');
+    } else if (winner) {
+        setText($('#end-summary'), `${winner.displayName} took it home with ${winner.score} points.`);
     } else {
-        if (heading) setText(heading, 'Game over');
-        if (winner && me && winner.uid === me.uid) {
-            setText($('#end-summary'), '🎉 You won! Nice work.');
-        } else if (winner) {
-            setText($('#end-summary'), `${winner.displayName} took it home with ${winner.score} points.`);
-        } else {
-            setText($('#end-summary'), 'No scores recorded.');
-        }
+        setText($('#end-summary'), 'No scores recorded.');
     }
 
     // Full per-question/per-location recap (free for everyone)
@@ -4645,30 +4714,62 @@ function computeTriviaAggregates(columns, answersByUid) {
 }
 
 function renderDetailedStats() {
-    const stats = RoomState.aggregateAnswerStats(state.currentAnswers);
     const grid = $('#detailed-stats-grid');
     grid.innerHTML = '';
-    const cards = [
-        ['Accuracy', Math.round(stats.accuracy * 100) + '%'],
-        ['Avg response', stats.avgResponseMs < 1000 ? stats.avgResponseMs + 'ms' : (stats.avgResponseMs / 1000).toFixed(1) + 's'],
-        ['Questions answered', String(state.currentAnswers.length)]
-    ];
-    for (const [label, value] of cards) {
+    const isGlobeDrop = state.roomData && state.roomData.gameType === 'globe-drop';
+
+    const pushCard = (label, value, opts = {}) => {
         const div = document.createElement('div');
-        div.className = 'detailed-stat';
+        div.className = 'detailed-stat' + (opts.highlight ? ' is-highlight' : '');
         div.innerHTML =
             `<span class="detailed-stat-label">${escapeHtml(label)}</span>` +
-            `<span class="detailed-stat-value">${escapeHtml(value)}</span>`;
+            `<span class="detailed-stat-value">${escapeHtml(value)}</span>` +
+            (opts.sub ? `<span class="detailed-stat-sub">${escapeHtml(opts.sub)}</span>` : '');
         grid.appendChild(div);
+    };
+
+    if (isGlobeDrop) {
+        // Globe Drop pulls from the player doc's answers[] (the trivia
+        // path uses state.currentAnswers, populated only on choose-an-
+        // answer submits). Falls back to an empty grid + helpful note
+        // if the local player has no answer records for this game.
+        const me = state.roomPlayers.find((p) => state.user && p.uid === state.user.uid);
+        const answers = (me && Array.isArray(me.answers)) ? me.answers : [];
+        const stats = RoomState.aggregateGlobeDropStats(answers);
+        if (!stats) {
+            pushCard('Rounds played', '0', { sub: 'No guesses recorded this game' });
+            return;
+        }
+        pushCard('Avg base score', stats.avgBaseScore + ' / 100', { highlight: true });
+        pushCard('Avg distance off', stats.avgDistanceKm.toLocaleString() + ' km');
+        pushCard('Bullseyes', String(stats.bullseyeCount), { sub: 'rounds scored 90+ base' });
+        pushCard('Closest guess',
+            stats.closestKm != null ? stats.closestKm.toLocaleString() + ' km' : '—',
+            { sub: stats.closestLocation || '' });
+        pushCard('Farthest miss',
+            stats.farthestKm != null ? stats.farthestKm.toLocaleString() + ' km' : '—',
+            { sub: stats.farthestLocation || '' });
+        pushCard('Rounds played', String(stats.roundsPlayed));
+        for (const [region, rec] of Object.entries(stats.byRegion)) {
+            pushCard(region, rec.avgBase + ' / 100', {
+                sub: rec.rounds + (rec.rounds === 1 ? ' round' : ' rounds')
+            });
+        }
+        return;
     }
+
+    // Trivia: per-question records stored in state.currentAnswers,
+    // each carrying `correct` + `category` + `timeLeftMs` + `totalMs`.
+    const stats = RoomState.aggregateAnswerStats(state.currentAnswers);
+    pushCard('Accuracy', Math.round(stats.accuracy * 100) + '%', { highlight: true });
+    pushCard('Avg response',
+        stats.avgResponseMs < 1000
+            ? stats.avgResponseMs + 'ms'
+            : (stats.avgResponseMs / 1000).toFixed(1) + 's');
+    pushCard('Questions answered', String(state.currentAnswers.length));
     for (const [cat, rec] of Object.entries(stats.byCategory)) {
-        const div = document.createElement('div');
-        div.className = 'detailed-stat';
         const pct = rec.total ? Math.round(100 * rec.correct / rec.total) : 0;
-        div.innerHTML =
-            `<span class="detailed-stat-label">${escapeHtml(cat.replace(/-/g, ' '))}</span>` +
-            `<span class="detailed-stat-value">${rec.correct}/${rec.total} · ${pct}%</span>`;
-        grid.appendChild(div);
+        pushCard(cat.replace(/-/g, ' '), rec.correct + '/' + rec.total + ' · ' + pct + '%');
     }
 }
 
