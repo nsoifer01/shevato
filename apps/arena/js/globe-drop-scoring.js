@@ -162,41 +162,88 @@
     ];
 
     /**
-     * Per-location difficulty score combining the actual signals we
-     * persist on every location: continent, subregion, country land
-     * area, landlocked status. The REST Countries fetch doesn't
-     * include city-level population, so we infer obscurity from
-     * country-level data the location does carry.
+     * Continent obscurity weights. Europe gets 0 because European
+     * capitals dominate global media; Antarctic gets the highest
+     * because the few research-station "capitals" are basically
+     * unknown trivia. Designed to be additive (not multiplicative)
+     * so combining with other signals stays predictable.
+     */
+    const CONTINENT_OBSCURITY = {
+        europe:    0.0,
+        americas:  0.1,
+        asia:      0.2,
+        africa:    0.3,
+        oceania:   0.4,
+        antarctic: 0.5
+    };
+
+    /**
+     * Country-population obscurity tiers. The strongest single
+     * signal: large-population countries (China, India, USA) have
+     * household-name capitals; micro-states (Tuvalu, Nauru) have
+     * capitals almost nobody can name. Step function rather than
+     * a continuous log curve so the cutoffs are explicit and
+     * tunable.
+     */
+    function populationObscurity(pop) {
+        if (!Number.isFinite(pop) || pop <= 0) return 0.4; // missing → neutral mid
+        if (pop >= 100_000_000) return 0.0;
+        if (pop >=  30_000_000) return 0.1;
+        if (pop >=  10_000_000) return 0.3;
+        if (pop >=   3_000_000) return 0.6;
+        if (pop >=     500_000) return 0.9;
+        if (pop >=      50_000) return 1.2;
+        if (pop >=       5_000) return 1.5;
+        return 1.7;
+    }
+
+    /**
+     * Country-area obscurity tiers. Smaller area weakly correlates
+     * with lower geopolitical prominence; the strongest signal in
+     * the tail is the < 1 000 sq km micro-state cluster where you're
+     * dealing with city-states and island specks.
+     */
+    function areaObscurity(area) {
+        if (!Number.isFinite(area) || area <= 0) return 0.1;
+        if (area >=   500_000) return 0.0;
+        if (area >=   100_000) return 0.0;
+        if (area >=    20_000) return 0.2;
+        if (area >=     5_000) return 0.4;
+        if (area >=     1_000) return 0.6;
+        if (area >=       100) return 0.7;
+        return 0.9;
+    }
+
+    /**
+     * Per-location difficulty score combining every signal we have:
      *
-     *   base       = continentMultiplier(region)   // 1.0 – 1.5
-     *   + 0.5      if subregion ∈ OBSCURE_SUBREGIONS (island/isolated clusters)
-     *   + 1.0      if countryAreaSqKm < 100   (specks: Vatican, Tuvalu, Nauru, Anguilla)
-     *   + 0.7      else if countryAreaSqKm < 5000   (small: Luxembourg, Malta, Grenada)
-     *   + 0.3      else if countryAreaSqKm < 20000  (mid-small: Eswatini, Brunei)
+     *   continent   0.0 – 0.5  (Europe easiest, Antarctic hardest)
+     *   + pop tier  0.0 – 1.7  (>100M → 0; <5k → 1.7) — dominant signal
+     *   + area tier 0.0 – 0.9  (huge → 0; <100 sq km → 0.9)
+     *   + 0.5       if subregion ∈ OBSCURE_SUBREGIONS
+     *   + 0.3       if independent === false (dependency / overseas territory)
      *
-     * Examples (with current OBSCURE list + thresholds):
-     *   London      (Europe / North. Europe / 242k)        → 1.0
-     *   Brussels    (Europe / West. Europe / 30k)          → 1.0
-     *   Luxembourg  (Europe / West. Europe / 2.6k)         → 1.5
-     *   Pretoria    (Africa / South. Africa / 1.22M)       → 1.5
-     *   Maputo      (Africa / East. Africa / 801k)         → 1.5
-     *   Ciudad de la Paz (Africa / Middle Africa / 28k)    → 2.0
-     *   St. George's (Americas / Caribbean / 344)          → 2.5
-     *   The Valley   (Americas / Caribbean / 91)           → 2.5
-     *   Funafuti    (Oceania / Polynesia / 26)             → 3.0
+     * Continuous output (typically 0 – 3.5+); quantizeToLadder snaps
+     * it onto the [1.0, 1.5, 2.0, 2.5, 3.0] ladder.
+     *
+     * Expected behavior on real capitals:
+     *   London / Paris / Berlin / Tokyo / Beijing / Moscow / Cairo  → ×1.0
+     *   Brussels / Vienna / Copenhagen / Helsinki / Reykjavik        → ×1.5
+     *   Bangui / Bishkek / Niamey / Ouagadougou                      → ×1.5
+     *   Ciudad de la Paz (Eq. Guinea) / Vatican / Monaco             → ×1.5–2.0
+     *   St. George's / Castries / Roseau (Caribbean capitals)        → ×2.0–2.5
+     *   The Valley (Anguilla, dependent)                             → ×3.0
+     *   Funafuti (Tuvalu) / Yaren (Nauru) / Palikir (FSM)            → ×3.0
      */
     function locationDifficultyScore(loc) {
         if (!loc) return 1;
-        let score = continentMultiplier(loc.region);
-        const sub = String(loc.subregion || '');
-        if (OBSCURE_SUBREGIONS.indexOf(sub) !== -1) score += 0.5;
-        const area = Number(loc.countryAreaSqKm);
-        if (Number.isFinite(area) && area > 0) {
-            if (area < 100)        score += 1.0;
-            else if (area < 5000)  score += 0.7;
-            else if (area < 20000) score += 0.3;
-        }
-        return score;
+        const region = String(loc.region || '').toLowerCase();
+        const cont = (region in CONTINENT_OBSCURITY) ? CONTINENT_OBSCURITY[region] : 0.2;
+        const pop  = populationObscurity(Number(loc.countryPopulation));
+        const area = areaObscurity(Number(loc.countryAreaSqKm));
+        const subBoost = OBSCURE_SUBREGIONS.indexOf(String(loc.subregion || '')) !== -1 ? 0.5 : 0;
+        const depBoost = loc.independent === false ? 0.3 : 0;
+        return cont + pop + area + subBoost + depBoost;
     }
 
     /**
