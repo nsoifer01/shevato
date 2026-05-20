@@ -132,6 +132,57 @@
     }
 
     /**
+     * Clamp a raw difficulty score to the nearest step in the
+     * ROUND_MULTIPLIERS ladder [1.0, 1.5, 2.0, 2.5, 3.0]. Anything
+     * below 1.0 becomes 1.0; anything above 3.0 becomes 3.0; in
+     * between we snap to the nearest 0.5 step so a continuous score
+     * collapses to one of the five tiers.
+     */
+    function quantizeToLadder(raw) {
+        if (!Number.isFinite(raw)) return ROUND_MULTIPLIERS[0];
+        const snapped = Math.round(raw * 2) / 2;
+        const lo = ROUND_MULTIPLIERS[0];
+        const hi = ROUND_MULTIPLIERS[ROUND_MULTIPLIERS.length - 1];
+        return Math.max(lo, Math.min(hi, snapped));
+    }
+
+    /**
+     * Per-location difficulty score combining continent rarity and
+     * population obscurity. Higher = harder. Designed so a famous
+     * European capital (e.g. London, pop 9M) lands near 0.7 and an
+     * obscure island state (e.g. Funafuti, pop ~6k) lands near 2.5.
+     *
+     *   raw = populationWeight(pop) × continentMultiplier(region)
+     *
+     * Missing population / region fall back to 1.0 (their respective
+     * neutral values), so legacy locations still get a sensible tier.
+     */
+    function locationDifficultyScore(loc) {
+        if (!loc) return 1;
+        const cont = continentMultiplier(loc.region);
+        const obscurity = populationWeight(loc.population);
+        return cont * obscurity;
+    }
+
+    /**
+     * Stamp each location with a multiplier derived from its own
+     * attributes (continent + population), not its position in the
+     * playlist. Same input order is preserved — but the multipliers
+     * are no longer monotonic. Returns a new array; doesn't mutate
+     * input.
+     *
+     * This replaces assignRoundMultipliers as the production path:
+     *   - assignRoundMultipliers — position-based ladder (legacy)
+     *   - assignDifficultyMultipliers — per-location difficulty (current)
+     */
+    function assignDifficultyMultipliers(locations) {
+        if (!Array.isArray(locations)) return [];
+        return locations.map((loc) => Object.assign({}, loc, {
+            multiplier: quantizeToLadder(locationDifficultyScore(loc))
+        }));
+    }
+
+    /**
      * Score a single guess.
      *
      * New model (preferred): pass `multiplier` directly. Score is
@@ -197,6 +248,9 @@
         scoreGuess,
         ROUND_MULTIPLIERS,
         roundMultiplierForIndex,
-        assignRoundMultipliers
+        assignRoundMultipliers,
+        quantizeToLadder,
+        locationDifficultyScore,
+        assignDifficultyMultipliers
     };
 }));
