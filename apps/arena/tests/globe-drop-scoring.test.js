@@ -12,7 +12,10 @@ const {
     scoreGuess,
     ROUND_MULTIPLIERS,
     roundMultiplierForIndex,
-    assignRoundMultipliers
+    assignRoundMultipliers,
+    quantizeToLadder,
+    locationDifficultyScore,
+    assignDifficultyMultipliers
 } = require('../js/globe-drop-scoring.js');
 
 // --- haversineDistanceKm ----------------------------------------------
@@ -349,4 +352,100 @@ test('scoreGuess(new): falls back to legacy compound math when multiplier omitte
     const r = scoreGuess({ distanceKm: 0, region: 'Africa' });
     assert.ok('difficultyMultiplier' in r);
     assert.ok('populationMultiplier' in r);
+});
+
+// --- difficulty-driven multiplier assignment --------------------------
+
+test('quantizeToLadder: snaps to nearest 0.5 step', () => {
+    assert.equal(quantizeToLadder(1.0), 1.0);
+    assert.equal(quantizeToLadder(1.2), 1.0);
+    assert.equal(quantizeToLadder(1.3), 1.5);
+    assert.equal(quantizeToLadder(1.7), 1.5);
+    assert.equal(quantizeToLadder(1.8), 2.0);
+    assert.equal(quantizeToLadder(2.5), 2.5);
+    assert.equal(quantizeToLadder(2.74), 2.5);
+    assert.equal(quantizeToLadder(2.76), 3.0);
+});
+
+test('quantizeToLadder: clamps below 1.0 and above 3.0', () => {
+    assert.equal(quantizeToLadder(0.3), 1.0);
+    assert.equal(quantizeToLadder(0.99), 1.0);
+    assert.equal(quantizeToLadder(3.5), 3.0);
+    assert.equal(quantizeToLadder(10), 3.0);
+});
+
+test('quantizeToLadder: non-finite => 1.0 (safe floor)', () => {
+    assert.equal(quantizeToLadder(NaN), 1.0);
+    assert.equal(quantizeToLadder(Infinity), 1.0);
+});
+
+test('locationDifficultyScore: famous European capital is easier than obscure island', () => {
+    const london   = { region: 'Europe',  population: 9_000_000 };
+    const funafuti = { region: 'Oceania', population:    6_000 };
+    assert.ok(
+        locationDifficultyScore(funafuti) > locationDifficultyScore(london),
+        'expected Funafuti > London on difficulty'
+    );
+});
+
+test('locationDifficultyScore: missing fields fall back to neutral (1.0)', () => {
+    assert.equal(locationDifficultyScore({}), 1);
+    assert.equal(locationDifficultyScore(null), 1);
+});
+
+test('assignDifficultyMultipliers: stamps per-location multiplier from ladder', () => {
+    const locs = [
+        { id: 'london',   region: 'Europe',  population: 9_000_000 },
+        { id: 'funafuti', region: 'Oceania', population:    6_000 }
+    ];
+    const out = assignDifficultyMultipliers(locs);
+    assert.equal(out.length, 2);
+    // London is the most-famous case — expect 1.0×.
+    assert.equal(out[0].multiplier, 1.0);
+    // Funafuti is the most-obscure case — expect 2.5× or 3.0×.
+    assert.ok(out[1].multiplier >= 2.5, `expected ≥2.5, got ${out[1].multiplier}`);
+});
+
+test('assignDifficultyMultipliers: every stamp is a valid ladder value', () => {
+    const locs = [
+        { region: 'Europe',     population: 9_000_000 },
+        { region: 'Americas',   population: 2_000_000 },
+        { region: 'Africa',     population:   500_000 },
+        { region: 'Asia',       population: 1_500_000 },
+        { region: 'Oceania',    population:   200_000 },
+        { region: 'Antarctic',  population:     1_000 },
+        { region: 'Unknown',    population: null      }
+    ];
+    const out = assignDifficultyMultipliers(locs);
+    out.forEach((loc) => {
+        assert.ok(ROUND_MULTIPLIERS.includes(loc.multiplier),
+            `multiplier ${loc.multiplier} not in ${JSON.stringify(ROUND_MULTIPLIERS)}`);
+    });
+});
+
+test('assignDifficultyMultipliers: preserves input order (no internal sort)', () => {
+    const locs = [
+        { id: 'a', region: 'Europe',  population: 5_000_000 },
+        { id: 'b', region: 'Oceania', population:    50_000 },
+        { id: 'c', region: 'Asia',    population: 1_000_000 }
+    ];
+    const out = assignDifficultyMultipliers(locs);
+    assert.deepEqual(out.map((l) => l.id), ['a', 'b', 'c']);
+});
+
+test('assignDifficultyMultipliers: empty / non-array => []', () => {
+    assert.deepEqual(assignDifficultyMultipliers([]), []);
+    assert.deepEqual(assignDifficultyMultipliers(null), []);
+    assert.deepEqual(assignDifficultyMultipliers(undefined), []);
+});
+
+test('assignDifficultyMultipliers: same location ALWAYS gets same multiplier', () => {
+    // Position-independence is the whole point of the new model —
+    // Baku should be Baku regardless of when it's played.
+    const baku = { id: 'baku', name: 'Baku', region: 'Asia', population: 2_300_000 };
+    const m1 = assignDifficultyMultipliers([baku])[0].multiplier;
+    const m2 = assignDifficultyMultipliers([baku, baku, baku])[2].multiplier;
+    const m3 = assignDifficultyMultipliers([{}, baku])[1].multiplier;
+    assert.equal(m1, m2);
+    assert.equal(m1, m3);
 });

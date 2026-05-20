@@ -779,16 +779,15 @@ function shuffle(arr, rand = Math.random) {
 }
 
 /**
- * Apply the round-multiplier ladder to a pre-shuffled location list.
- * Round i gets multipliers from a fixed [1.0, 1.5, 2.0, 2.5, 3.0]
- * pool interpolated across N — see GlobeDropScoring.assignRoundMultipliers.
- *
- * Replaced the old continent×population sort: per-round scaling is
- * now a single explicit multiplier stored on the location at room
- * creation, not derived from city data at score time.
+ * Stamp each location with a multiplier from the [1.0, 1.5, 2.0,
+ * 2.5, 3.0] ladder based on its own difficulty (continent rarity ×
+ * population obscurity). Famous capitals → 1.0×; obscure island
+ * states → 2.5–3.0×. Stored on the location at room creation so
+ * every player sees the same per-location multiplier regardless of
+ * play order.
  */
 function applyRoundMultipliers(locations) {
-    return GlobeDropScoring.assignRoundMultipliers(locations);
+    return GlobeDropScoring.assignDifficultyMultipliers(locations);
 }
 
 /**
@@ -1223,12 +1222,11 @@ async function createRoom(opts) {
                 locations = await GlobeDropLocations.fetchLocations(roundType, count, shuffle);
             }
 
-            // Round-progression scaling: stamp each location with a
-            // multiplier from the fixed [1.0, 1.5, 2.0, 2.5, 3.0]
-            // ladder, interpolated across the total round count.
-            // First round = 1.0×, last round = 3.0×, monotonic in
-            // between. Locations stay in their pre-shuffled order
-            // (so daily mode keeps deterministic order via date seed).
+            // Difficulty-driven scaling: each location is stamped with
+            // a multiplier from the [1.0, 1.5, 2.0, 2.5, 3.0] ladder
+            // based on its own continent rarity × population obscurity
+            // — NOT its position in the playlist. Famous capitals are
+            // worth less; obscure island states are worth more.
             locations = applyRoundMultipliers(locations);
 
             await setDoc(ref, Object.assign({}, shared, {
