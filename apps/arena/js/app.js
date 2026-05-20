@@ -73,6 +73,10 @@ const state = {
     roomData: null,              // latest room doc snapshot
     roomPlayers: [],             // latest player list
     roomUnsubs: [],              // listener unsubs to clean up on leave
+    // Set when viewing a finished room in read-only mode (e.g. arriving via
+    // ?postMatch=ABCDE). URL syncer keys on this to write postMatch=… instead
+    // of room=…, which avoids re-join attempts when the link is shared.
+    postMatchCode: null,
 
     // Answer tracking
     submittedQuestionId: null,   // id of question we last answered
@@ -94,6 +98,7 @@ const state = {
     pendingGuess: null,                  // { lat, lng } selected but not yet submitted
     lastRenderedMapQuestion: null,       // location id currently shown on the globe
     lastRevealedMapQuestion: null,       // '{locId}:local' or '{locId}:global' — what we've drawn
+    lastCameraTarget: null,              // '{locId}:{lat},{lng}' — short-circuits redundant pointOfView calls
     triviaFetchedFor: null,              // location id we've already kicked off a Wikipedia fetch for
 
     // Timer rAF handle
@@ -101,6 +106,10 @@ const state = {
 
     // Leaderboard
     leaderboardEntries: [],
+    // Active sort for the global leaderboard table — `{ key, dir }`.
+    // Click on a header toggles dir for the same key, or sets the new
+    // key with its data-sort-default (defaults to 'desc' if absent).
+    leaderboardSort: { key: 'avgScore', dir: 'desc' },
     leaderboardUnsub: null,
 
     // Daily Globe Drop leaderboard — same panel, separate subscription
@@ -116,6 +125,9 @@ const state = {
     // Room code parsed from `?room=ABCDE` at boot, queued behind sign-in.
     // applyAuthState picks it up the first time it sees a signed-in user.
     pendingRoomCode: null,
+    // Same idea for `?postMatch=ABCDE` — a read-only deep link to a
+    // finished room's recap. Auth-gated since Firestore reads need it.
+    pendingPostMatchCode: null,
 
     // True if the signed-in user has a doc at /leaderboardAdmins/{uid}.
     // Drives the trash-icon affordance on leaderboard rows. Re-checked
@@ -278,12 +290,15 @@ function parseUrlState() {
         const url = new URL(window.location.href);
         const view = url.searchParams.get('view');
         const room = url.searchParams.get('room');
+        const postMatch = url.searchParams.get('postMatch');
+        const codeRe = /^[A-Z0-9]{3,8}$/;
         return {
             view: VALID_VIEWS.has(view) ? view : null,
-            room: (typeof room === 'string' && /^[A-Z0-9]{3,8}$/.test(room.toUpperCase())) ? room.toUpperCase() : null
+            room: (typeof room === 'string' && codeRe.test(room.toUpperCase())) ? room.toUpperCase() : null,
+            postMatch: (typeof postMatch === 'string' && codeRe.test(postMatch.toUpperCase())) ? postMatch.toUpperCase() : null
         };
     } catch (e) {
-        return { view: null, room: null };
+        return { view: null, room: null, postMatch: null };
     }
 }
 
@@ -313,10 +328,17 @@ function syncUrlToState() {
         } else {
             url.searchParams.delete('view');
         }
-        if (state.roomCode) {
+        // ?postMatch=<code> wins over ?room=<code> — the recap view is
+        // read-only, so we don't want pasting the URL to also re-join.
+        if (state.postMatchCode) {
+            url.searchParams.set('postMatch', state.postMatchCode);
+            url.searchParams.delete('room');
+        } else if (state.roomCode) {
             url.searchParams.set('room', state.roomCode);
+            url.searchParams.delete('postMatch');
         } else {
             url.searchParams.delete('room');
+            url.searchParams.delete('postMatch');
         }
         const next = url.pathname + (url.search ? url.search : '') + url.hash;
         // No-op when URL is already in sync — avoids redundant history
@@ -336,14 +358,60 @@ function syncUrlToState() {
  * defer the room half until applyAuthState fires with a signed-in user.
  */
 async function restoreFromUrl() {
-    const { view, room } = parseUrlState();
+    const { view, room, postMatch } = parseUrlState();
     if (view && view !== state.activeView) setView(view);
+    // postMatch wins over room — it's a deep link to a finished room's
+    // recap view. Same auth gating (Firestore reads need a signed-in
+    // user, even anonymous), so we queue behind applyAuthState too.
+    if (postMatch) { state.pendingPostMatchCode = postMatch; return; }
     if (!room) return;
     // Stash the desired room on state; applyAuthState picks it up the
     // first time we see a signed-in user. That way a refresh of
     // /?room=ABCDE on a signed-out tab queues the rejoin behind the
     // sign-in flow instead of failing immediately.
     state.pendingRoomCode = room;
+}
+
+async function tryLoadPendingPostMatch() {
+    const code = state.pendingPostMatchCode;
+    if (!code || !state.user) return;
+    state.pendingPostMatchCode = null;
+    if (state.roomCode === code) return; // already in this room
+    setView('play');
+    showJoinError('Loading recap…');
+    try {
+        const snap = await getDoc(doc(db, 'triviaRooms', code));
+        if (!snap.exists()) {
+            showJoinError('Recap not found — that room may have been cleaned up.');
+            state.postMatchCode = null;
+            syncUrlToState();
+            return;
+        }
+        const data = snap.data() || {};
+        if (data.status !== 'finished') {
+            // Not finished — fall through to a normal join attempt so the
+            // user lands in the active room instead of a broken recap.
+            state.pendingRoomCode = code;
+            state.postMatchCode = null;
+            syncUrlToState();
+            return tryRejoinPendingRoom();
+        }
+        // View-only recap: hydrate the room + player snapshots, mark
+        // postMatchCode so the URL stays as ?postMatch=…, then jump to
+        // the end stage without touching this user's membership.
+        clearJoinError();
+        const playersSnap = await getDocs(collection(db, 'triviaRooms', code, 'players'));
+        const players = playersSnap.docs.map((d) => d.data());
+        state.roomCode = code;
+        state.roomData = data;
+        state.roomPlayers = players;
+        state.postMatchCode = code;
+        syncUrlToState();
+        renderEndStage(false);
+    } catch (err) {
+        console.warn('post-match deep link failed:', err);
+        showJoinError('Could not load that recap. Please try again.');
+    }
 }
 
 async function tryRejoinPendingRoom() {
@@ -498,10 +566,12 @@ function applyAuthState(user) {
     }
 
     if (signedIn) {
-        // If we landed on /?room=ABCDE before sign-in, the rejoin was
-        // queued behind auth — kick it off now. Runs in parallel with
-        // loadProfile since the two don't depend on each other.
-        if (state.pendingRoomCode) tryRejoinPendingRoom();
+        // If we landed on /?room=ABCDE or /?postMatch=ABCDE before
+        // sign-in, the rejoin / recap fetch was queued behind auth —
+        // kick it off now. Runs in parallel with loadProfile since
+        // the two don't depend on each other.
+        if (state.pendingPostMatchCode) tryLoadPendingPostMatch();
+        else if (state.pendingRoomCode)  tryRejoinPendingRoom();
         // Admin probe — presence of a doc at /leaderboardAdmins/{uid}
         // turns on the trash-icon affordance on leaderboard rows.
         checkLeaderboardAdmin(user.uid);
@@ -545,11 +615,17 @@ function renderProfileView() {
     const input = $('#profile-display-name');
     if (input && document.activeElement !== input) input.value = name;
     setText($('#profile-avatar'), avatarLetter(name));
-    setText($('#stat-xp'), String(p.xp || 0));
-    setText($('#stat-games'), String(p.gamesPlayed || 0));
-    setText($('#stat-wins'), String(p.wins || 0));
-    const pct = p.gamesPlayed ? Math.round(100 * (p.wins || 0) / p.gamesPlayed) : 0;
+    // Avg score (= total score / games) is the headline stat — total
+    // score is what's persisted, but mean per game is the meaningful
+    // skill signal regardless of how many games someone has logged.
+    const games = p.gamesPlayed || 0;
+    const avg = games > 0 ? Math.round((p.xp || 0) / games) : 0;
+    setText($('#stat-avg-score'), avg.toLocaleString());
+    setText($('#stat-games'), String(games));
+    const pct = games > 0 ? Math.round(100 * (p.wins || 0) / games) : 0;
     setText($('#stat-winpct'), pct + '%');
+    setText($('#stat-bullseyes'), String(p.lifetimeBullseyes || 0));
+    setText($('#stat-best-round'), String(p.bestRoundScore || 0));
 
     if (Config.PREMIUM_UI_ENABLED) {
         const now = Date.now();
@@ -779,29 +855,24 @@ function shuffle(arr, rand = Math.random) {
 }
 
 /**
- * Sort a location list easiest → hardest using populationWeight as the
- * obscurity signal. Higher weight = lower population = more obscure /
- * harder. We rank ascending so each subsequent round is ≥ the previous
- * in difficulty.
+ * Stamp each location with a multiplier from the [1.0, 1.5, 2.0,
+ * 2.5, 3.0] ladder based on its own difficulty (continent rarity ×
+ * population obscurity). Famous capitals → 1.0×; obscure island
+ * states → 2.5–3.0×. Stored on the location at room creation so
+ * every player sees the same per-location multiplier regardless of
+ * play order.
  *
- * Stable sort preserves the input order for ties — important for modes
- * without population (capitals, countries, landmarks → all weight = 1)
- * so the upstream shuffle is honoured.
+ * After stamping, reorder the playlist so each round is at least as
+ * hard as the last — easiest first, hardest last. Per-location
+ * difficulty alone doesn't guarantee progression; without this sort
+ * the playlist would jump around (×1 → ×2.5 → ×1 → ×1.5 → ×1).
+ * Ties keep their original (shuffled) order via Array.sort's
+ * stability so two ×1 capitals don't always appear in the same
+ * order across games.
  */
-function sortLocationsByAscendingDifficulty(locations) {
-    if (!Array.isArray(locations) || locations.length < 2) {
-        return Array.isArray(locations) ? locations.slice() : [];
-    }
-    const decorated = locations.map((loc, i) => ({
-        loc,
-        weight: GlobeDropScoring.populationWeight(loc && loc.population),
-        idx: i
-    }));
-    decorated.sort((a, b) => {
-        if (a.weight !== b.weight) return a.weight - b.weight;
-        return a.idx - b.idx;
-    });
-    return decorated.map((d) => d.loc);
+function applyRoundMultipliers(locations) {
+    const stamped = GlobeDropScoring.assignDifficultyMultipliers(locations);
+    return stamped.slice().sort((a, b) => (a.multiplier || 1) - (b.multiplier || 1));
 }
 
 /**
@@ -979,14 +1050,8 @@ function wireLobby() {
         $('#create-password-field').hidden = !wantsPrivate;
     });
 
-    // Globe Drop: difficulty drives the timer + hint level + scoring multiplier.
-    // The manual "time per location" override is hidden by default; checking
-    // the override toggle reveals it for hosts who want something off-tier.
-    $('#create-globe-drop-difficulty').addEventListener('change', (e) => {
-        const diff = GlobeDropScoring.difficultySettings(e.target.value);
-        const timeSel = $('#create-globe-drop-time');
-        if (timeSel) timeSel.value = String(diff.timerSec);
-    });
+    // Globe Drop: difficulty drives the hint level only — timer is a
+    // separate dial (default 60 s, host can override via the toggle).
     $('#create-globe-drop-timer-override').addEventListener('change', (e) => {
         $('#create-globe-drop-time-field').hidden = !e.target.checked;
     });
@@ -1236,14 +1301,12 @@ async function createRoom(opts) {
                 locations = await GlobeDropLocations.fetchLocations(roundType, count, shuffle);
             }
 
-            // Round-progression sort: order rounds easiest → hardest using
-            // the existing populationWeight (higher weight = more obscure).
-            // Stable sort, so for modes without population data (capitals,
-            // countries, landmarks → all weight=1) the prior shuffle order
-            // is preserved. Daily mode is sorted too: every player still
-            // sees the same locations in the same order because the input
-            // pool was seeded by date.
-            locations = sortLocationsByAscendingDifficulty(locations);
+            // Difficulty-driven scaling: each location is stamped with
+            // a multiplier from the [1.0, 1.5, 2.0, 2.5, 3.0] ladder
+            // based on its own continent rarity × population obscurity
+            // — NOT its position in the playlist. Famous capitals are
+            // worth less; obscure island states are worth more.
+            locations = applyRoundMultipliers(locations);
 
             await setDoc(ref, Object.assign({}, shared, {
                 packId: meta.packId,
@@ -1573,6 +1636,12 @@ async function maybeResetForNewRound() {
 
 async function beforeUnloadCleanup() {
     if (!state.roomCode || !state.user) return;
+    // Keep the player doc when the room is already in the post-match
+    // stage — refreshing the page should land the player back on the
+    // end screen, not bounce them to the lobby. tryRejoinPendingRoom
+    // identifies them as a member via this doc on reload, then
+    // renderRoom routes status=finished → renderEndStage.
+    if (state.roomData && state.roomData.status === 'finished') return;
     try {
         await deleteDoc(doc(db, 'triviaRooms', state.roomCode, 'players', state.user.uid));
     } catch (e) { /* best-effort */ }
@@ -1587,6 +1656,7 @@ async function leaveRoom({ silent = false, reason = null } = {}) {
     state.roomCode = null;
     state.roomData = null;
     state.roomPlayers = [];
+    state.postMatchCode = null;
     state.submittedQuestionId = null;
     state.currentAnswers = [];
     state.actionCounts = {};
@@ -2293,7 +2363,7 @@ async function saveRoomSettings() {
         };
         if (needsRefetch) {
             const locations = await GlobeDropLocations.fetchLocations(newRoundType, newCount, shuffle);
-            update.questions = sortLocationsByAscendingDifficulty(locations);
+            update.questions = applyRoundMultipliers(locations);
             update.totalQuestions = update.questions.length;
             update.currentQuestionIndex = 0;
             update.currentQuestionId = null;
@@ -2302,12 +2372,8 @@ async function saveRoomSettings() {
             update.playedQuestionIds = [];
         }
         // If difficulty changed but timer was the tier default, snap timer
-        // to the new tier default; otherwise keep the user's override.
-        const oldDiff = GlobeDropScoring.difficultySettings(state.roomData.difficulty || 'medium');
-        const oldUsesTierDefault = state.roomData.questionTimeMs === oldDiff.timerSec * 1000;
-        if (oldUsesTierDefault && newDifficulty !== state.roomData.difficulty) {
-            update.questionTimeMs = diff.timerSec * 1000;
-        }
+        // Difficulty no longer rewrites the timer — hosts set the timer
+        // independently via the override toggle.
         await updateDoc(doc(db, 'triviaRooms', state.roomCode), update);
         if (msg) {
             msg.classList.remove('is-busy');
@@ -2353,8 +2419,10 @@ async function hydrateLobbyH2HBadge(opponentUid, spanId) {
     const myIsA = pair.uidA === state.user.uid;
     const myWins = myIsA ? (pair.winsA || 0) : (pair.winsB || 0);
     const theirWins = myIsA ? (pair.winsB || 0) : (pair.winsA || 0);
-    const ties = pair.ties || 0;
-    el.textContent = `H2H ${myWins}-${theirWins}${ties ? `-${ties}` : ''}`;
+    const draws = pair.ties || 0;
+    // Format: W-D-L (Wins-Draws-Losses), always all three numbers
+    // so the structure stays parseable at a glance even with zeros.
+    el.textContent = `H2H ${myWins}-${draws}-${theirWins}`;
     el.hidden = false;
 }
 
@@ -2383,11 +2451,22 @@ function renderLobbyStage(isHost) {
         if (state.user && p.uid === state.user.uid) li.classList.add('is-me');
         const isMe = state.user && p.uid === state.user.uid;
         const h2hSpanId = (state.user && !isMe) ? `lobby-h2h-${p.uid}` : '';
+        const isHost = p.uid === state.roomData.hostUid;
+        // Two-row layout: name gets the full content width on top
+        // (wraps to 2 lines if needed, ellipses only as a last resort);
+        // small badges (HOST tag + H2H pill) live on the row beneath.
+        const badgesHTML = (isHost || h2hSpanId)
+            ? '<span class="player-tile-badges">'
+                + (isHost ? '<span class="player-mini-tag">Host</span>' : '')
+                + (h2hSpanId ? `<span class="player-h2h-badge" id="${h2hSpanId}" hidden></span>` : '')
+              + '</span>'
+            : '';
         li.innerHTML =
             `<span class="player-avatar">${escapeHtml(avatarLetter(p.displayName))}</span>` +
-            `<span class="player-name">${escapeHtml(p.displayName)}</span>` +
-            (p.uid === state.roomData.hostUid ? '<span class="player-mini-tag">Host</span>' : '') +
-            (h2hSpanId ? `<span class="player-h2h-badge" id="${h2hSpanId}" hidden></span>` : '');
+            '<span class="player-tile-body">' +
+                `<span class="player-name">${escapeHtml(p.displayName)}</span>` +
+                badgesHTML +
+            '</span>';
         list.appendChild(li);
         if (h2hSpanId) hydrateLobbyH2HBadge(p.uid, h2hSpanId);
     }
@@ -2657,7 +2736,10 @@ function ensureGlobe() {
         // don't depend on a third-party CDN and skip any CORS surprises.
         // ~4.5 MB; the browser caches it after the first room creation.
         .globeImageUrl('data/earth-8k.jpg')
-        .bumpImageUrl('https://unpkg.com/three-globe@2.31.1/example/img/earth-topology.png')
+        // Self-hosted topology bump map (from three-globe@2.31.1's
+        // example assets). Keeping it local matches earth-8k.jpg and
+        // means the globe build doesn't touch unpkg at all.
+        .bumpImageUrl('data/earth-topology.png')
         .showAtmosphere(true)
         .atmosphereColor('#6366f1')
         .atmosphereAltitude(0.18)
@@ -2676,7 +2758,18 @@ function ensureGlobe() {
         .arcStroke(0.45)
         .arcDashLength(0.4)
         .arcDashGap(0.2)
-        .arcDashAnimateTime(1800);
+        .arcDashAnimateTime(1800)
+        // Polygon styling used by the reveal-phase country-border
+        // overlay. Cap fill is a faint cyan wash so the texture
+        // beneath stays readable; side + stroke are saturated so
+        // the outline reads against the satellite image. polygonsData
+        // is empty until drawGlobeDropReveal hands in the correct
+        // country's feature.
+        .polygonAltitude(0.008)
+        .polygonCapColor(() => 'rgba(34, 211, 238, 0.18)')
+        .polygonSideColor(() => 'rgba(34, 211, 238, 0.30)')
+        .polygonStrokeColor(() => '#22d3ee')
+        .polygonsTransitionDuration(700);
     // Match the canvas size to its container; globe.gl reads this once
     // up front so we have to call it after the stage is visible.
     state.globe.width(el.clientWidth);
@@ -2741,12 +2834,44 @@ function teardownMap() {
     state.pendingGuess = null;
     state.lastRenderedMapQuestion = null;
     state.lastRevealedMapQuestion = null;
+    state.lastCameraTarget = null;
 }
 
 function clearMapOverlays() {
     if (!state.globe) return;
     state.globe.pointsData([]);
     state.globe.arcsData([]);
+    state.globe.polygonsData([]);
+}
+
+/**
+ * Lazy-load world country features once and cache them keyed by ISO
+ * 3166-1 numeric code. Source: world-atlas 110m TopoJSON, expanded
+ * client-side via topojson-client.feature(). ~108 KB on the wire,
+ * keys map 1-to-1 with REST Countries' ccn3 (now persisted on every
+ * location as `countryCode`). Resolves to {} when the network fetch
+ * fails so callers can safely ?. into the result.
+ */
+let countryFeaturesIndexPromise = null;
+function loadCountryFeaturesIndex() {
+    if (countryFeaturesIndexPromise) return countryFeaturesIndexPromise;
+    countryFeaturesIndexPromise = (async () => {
+        try {
+            if (typeof window.topojson === 'undefined') return {};
+            const res = await fetch('data/world-110m.json', { cache: 'force-cache' });
+            if (!res.ok) return {};
+            const topo = await res.json();
+            const fc = window.topojson.feature(topo, topo.objects.countries);
+            const idx = {};
+            for (const f of fc.features) {
+                idx[String(f.id).padStart(3, '0')] = f;
+            }
+            return idx;
+        } catch (_) {
+            return {};
+        }
+    })();
+    return countryFeaturesIndexPromise;
 }
 
 function onGlobeClick(lat, lng) {
@@ -2789,6 +2914,7 @@ function drawMyPinOnly(lat, lng) {
         label: 'Your guess'
     }]);
     state.globe.arcsData([]);
+    state.globe.polygonsData([]);
 }
 
 function placeMyPin(lat, lng) { drawMyPinOnly(lat, lng); }
@@ -2869,13 +2995,12 @@ function renderGlobeDropStage() {
     // Difficulty drives which hints render:
     //   easy   — country + continent + subregion (full geographic context)
     //   medium — country + continent
-    //   hard   — city name only, no country
+    //   hard   — country only (no continent/subregion hint)
     // We look up the tier from the room doc; legacy rooms (no difficulty
     // field) read as medium and show the prior country-only behaviour.
     const diff = GlobeDropScoring.difficultySettings(state.roomData.difficulty);
     const hintLevel = diff.hintLevel;
-    const showCountry = hintLevel !== 'none';
-    setText($('#globe-drop-target-country'), showCountry ? (loc.country || '') : '');
+    setText($('#globe-drop-target-country'), loc.country || '');
 
     const hintsEl = $('#globe-drop-prompt-hints');
     const extra = [];
@@ -2902,12 +3027,12 @@ function renderGlobeDropStage() {
         hintsEl.setAttribute('hidden', '');
     }
 
-    // Difficulty chip is only meaningful on the medium-or-harder tiers
-    // (easy is the friendly default and doesn't need celebrating).
+    // Difficulty chip — shows the tier label only (no "+50% score"
+    // claim, since difficulty now controls timer + hint level only,
+    // not scoring; per-round multiplier comes from the round ladder).
     const chip = $('#globe-drop-difficulty-chip');
-    if (state.roomData.difficulty && diff.scoreMultiplier !== 1) {
-        const sign = diff.scoreMultiplier > 1 ? '+' : '';
-        setText(chip, `${diff.label} · ${sign}${Math.round((diff.scoreMultiplier - 1) * 100)}% score`);
+    if (state.roomData.difficulty && state.roomData.difficulty !== 'medium') {
+        setText(chip, diff.label);
         chip.removeAttribute('hidden');
         chip.dataset.tier = state.roomData.difficulty;
     } else {
@@ -2952,11 +3077,17 @@ function renderGlobeDropStage() {
         const el = document.getElementById('globe-drop-map');
         if (el) { g.width(el.clientWidth); g.height(el.clientHeight); }
 
-        // New question? Wipe overlays and re-arm the controls.
+        // New question? Wipe overlays and re-arm the controls. Camera
+        // stays where the last reveal left it — the user can pan / zoom
+        // out manually to drop a new guess. That avoids the jarring
+        // "globe spins back to (20, 0) between rounds" effect, which
+        // also clobbered the in-flight reveal tween if the next round
+        // arrived before the previous tween settled.
         if (state.lastRenderedMapQuestion !== loc.id) {
             clearMapOverlays();
             state.lastRenderedMapQuestion = loc.id;
             state.lastRevealedMapQuestion = null;
+            state.lastCameraTarget = null;        // re-arm the reveal-pan guard
             state.pendingGuess = null;
             $('#globe-drop-submit-btn').disabled = true;
             $('#globe-drop-clear-btn').hidden = true;
@@ -2972,13 +3103,6 @@ function renderGlobeDropStage() {
             $('#globe-drop-hint').hidden = false;
             setText($('#globe-drop-status'), '');
             $('#globe-drop-status').classList.remove('is-correct', 'is-wrong');
-            // Reset camera to the overview pose for each new question.
-            // Instant teleport (0ms) so the globe doesn't appear to spin
-            // along a great-arc between rounds — the previous question's
-            // reveal had the camera centered on the answer's lat/lng, and
-            // tweening from there to (20,0) was reading as "the globe
-            // spins between rounds for no reason."
-            g.pointOfView({ lat: 20, lng: 0, altitude: 1.0 }, 0);
         }
 
         // Lock the controls if we've already submitted this question.
@@ -3040,21 +3164,33 @@ async function markReadyForNext() {
 }
 
 /**
- * Render the Ready bar inside the reveal panel: shows the button
- * (disabled once I've voted) plus a tiny pip per player indicating
- * who has and hasn't voted yet.
+ * Render the Ready bar inside the reveal panel.
+ *
+ * Visible from the moment I submit (so it's not a surprise once
+ * global reveal hits) — but disabled until every player has either
+ * submitted or timed out for this round. That gives a clear
+ * affordance for "we're waiting on someone" instead of the button
+ * silently appearing later.
  */
 function renderReadyBar(phase) {
     const bar = $('#globe-drop-ready-bar');
     if (!bar) return;
     const loc = currentGlobeDropLocation();
-    const visible = (phase === 'reveal' || phase === 'ended') && !!loc;
-    bar.hidden = !visible;
-    if (!visible) return;
     const me = state.user
         ? state.roomPlayers.find((p) => p.uid === state.user.uid)
         : null;
+    const meSubmitted = !!(me && me.currentAnsweredFor === (loc && loc.id));
+    const inReveal = phase === 'reveal' || phase === 'ended';
+    // Show during global reveal OR once I've submitted (local reveal).
+    const visible = !!loc && (inReveal || meSubmitted);
+    bar.hidden = !visible;
+    if (!visible) return;
+
+    const players = state.roomPlayers || [];
+    const allSubmitted = players.length > 0
+        && players.every((p) => p && p.currentAnsweredFor === loc.id);
     const meReady = !!(me && me.readyAfterQId === loc.id);
+
     // Last round: relabel to "Finish" — the click ends the game, not
     // "ready for next."
     const room = state.roomData || {};
@@ -3063,8 +3199,11 @@ function renderReadyBar(phase) {
     const isLast = totalQ > 0 && idx >= totalQ - 1;
     const btn = $('#globe-drop-ready-btn');
     if (btn) {
-        btn.disabled = meReady;
-        if (meReady) {
+        const waitingForOthers = !allSubmitted && !inReveal;
+        btn.disabled = meReady || waitingForOthers;
+        if (waitingForOthers) {
+            btn.innerHTML = '<span aria-hidden="true">⏳</span> Waiting for opponents';
+        } else if (meReady) {
             btn.innerHTML = isLast
                 ? '<span aria-hidden="true">✓</span> Finishing'
                 : '<span aria-hidden="true">✓</span> You\'re ready';
@@ -3076,7 +3215,6 @@ function renderReadyBar(phase) {
     }
     const statusEl = $('#globe-drop-ready-status');
     if (statusEl) {
-        const players = state.roomPlayers || [];
         const readyCount = players.filter((p) => p.readyAfterQId === loc.id).length;
         const pips = players.map((p) => {
             const isReady = p.readyAfterQId === loc.id;
@@ -3154,11 +3292,36 @@ function drawGlobeDropReveal(loc, me, { showOthers = true } = {}) {
     }
     state.globe.arcsData(arcs);
 
-    // Pan camera so the actual location is centered + zoom in a touch.
-    // Reveal fly-in: longer tween so the camera glides into the truth
-    // instead of snapping. 1400ms paired with globe.gl's default easing
-    // gives a noticeably calmer feel than the prior 1000ms.
-    state.globe.pointOfView({ lat: loc.lat, lng: loc.lng, altitude: 1.8 }, 1400);
+    // Reveal-phase country border. Lazy-load the world-countries
+    // index on first call, then hand globe.gl exactly one polygon
+    // (the correct country) so the focus stays on the answer.
+    // Fire-and-forget; if the network or topojson lib isn't ready
+    // we silently skip the overlay rather than blocking the reveal.
+    loadCountryFeaturesIndex().then((idx) => {
+        if (!state.globe) return;
+        // Race guard: only paint if this is still the question on
+        // screen — a fast next-question would otherwise leak the
+        // previous country's border into the new round.
+        const stillCurrent = state.lastRenderedMapQuestion === loc.id
+            || state.lastRevealedMapQuestion === loc.id + ':local'
+            || state.lastRevealedMapQuestion === loc.id + ':global';
+        if (!stillCurrent) return;
+        const code = loc.countryCode && String(loc.countryCode).padStart(3, '0');
+        const feat = code ? idx[code] : null;
+        state.globe.polygonsData(feat ? [feat] : []);
+    });
+
+    // Pan + zoom into the correct location. Altitude 0.6 puts the
+    // country's outline at roughly half the viewport — close enough
+    // for borders to read, far enough that the city pin doesn't get
+    // lost under the chrome. 1400ms tween matches globe.gl's default
+    // easing for a smooth fly-in. Guarded so the local + global
+    // reveal don't fight each other's tweens for the same question.
+    const camTarget = `${loc.id}:${loc.lat.toFixed(3)},${loc.lng.toFixed(3)}`;
+    if (state.lastCameraTarget !== camTarget) {
+        state.globe.pointOfView({ lat: loc.lat, lng: loc.lng, altitude: 0.6 }, 1400);
+        state.lastCameraTarget = camTarget;
+    }
 
     // Reveal panel: distance + points or "no guess"
     const revealEl = $('#globe-drop-reveal');
@@ -3167,13 +3330,23 @@ function drawGlobeDropReveal(loc, me, { showOthers = true } = {}) {
         const d = GlobeDropScoring.haversineDistanceKm(
             me.currentGuess.lat, me.currentGuess.lng, loc.lat, loc.lng
         );
-        const { points } = GlobeDropScoring.scoreGuess({
+        const { points, basePoints } = GlobeDropScoring.scoreGuess({
             distanceKm: d,
-            region: loc.region,
-            difficulty: state.roomData.difficulty,
-            population: loc.population
+            multiplier: loc.multiplier
         });
-        distEl.innerHTML = `${Math.round(d).toLocaleString()} km off — <strong>+${points}</strong> points`;
+        // Show "× mult = +final" whenever the final differs from base —
+        // either because mult > 1 OR because the MIN_POINTS floor kicked
+        // in for a really-far guess (base 0 → final 5). Without the
+        // second case, the floor was invisible to the player.
+        const multNum = typeof loc.multiplier === 'number' ? loc.multiplier : 1;
+        const multStr = multNum.toFixed(2).replace(/0+$/, '').replace(/\.$/, '');
+        const showFinal = points !== basePoints;
+        const multTxt = showFinal
+            ? (multNum !== 1
+                ? ` × ${multStr} = <strong>+${points}</strong>`
+                : ` = <strong>+${points}</strong> <small>(min)</small>`)
+            : '';
+        distEl.innerHTML = `${Math.round(d).toLocaleString()} km off — <strong>${basePoints}</strong>/100${multTxt}`;
         let sentiment;
         if (d < 100) sentiment = '🎯 Bullseye!';
         else if (d < 500) sentiment = 'Close, nicely done.';
@@ -3193,6 +3366,22 @@ function drawGlobeDropReveal(loc, me, { showOthers = true } = {}) {
         setText($('#globe-drop-status'), showOthers ? '⏱ Time up.' : 'Waiting for the rest…');
     }
     revealEl.hidden = false;
+
+    // Wikipedia escape hatch. Always rendered when the reveal opens —
+    // the inline trivia summary loads async and can fail; the link is
+    // useful either way. Title prefers the location's own name (capital
+    // city / landmark / country), which is what Wikipedia indexes.
+    const wikiEl = $('#globe-drop-reveal-wiki');
+    if (wikiEl) {
+        const title = String(loc.name || loc.country || '').trim();
+        if (title) {
+            wikiEl.href = 'https://en.wikipedia.org/wiki/' + encodeURIComponent(title.replace(/\s+/g, '_'));
+            wikiEl.hidden = false;
+        } else {
+            wikiEl.hidden = true;
+        }
+    }
+
     // One-shot pulse on the score callout so the points feel earned. The
     // class is removed once the animation finishes (animationend) so it
     // re-fires the next time the panel opens for a fresh question.
@@ -3319,13 +3508,24 @@ function renderRoundsHistoryBoard() {
         const isCurrentRound = curLoc && loc.id === curLoc.id;
         const maskOthers = isCurrentRound && !meSubmittedCurrent;
         // For each player, find the answer record matching this round's location.
+        // Chip shows the BASE (0-100) score so the cap stays visible — the
+        // round multiplier is rendered once next to the R# label and the
+        // final score lives in the recap.
         const perPlayer = state.roomPlayers.map((p) => {
             const answers = Array.isArray(p.answers) ? p.answers : [];
             const rec = answers.find((a) => a && a.locationId === loc.id);
+            let basePts = null;
+            if (rec) {
+                if (typeof rec.basePoints === 'number') basePts = Math.max(0, Math.round(rec.basePoints));
+                else if (typeof rec.points === 'number') {
+                    const m = typeof rec.multiplier === 'number' && rec.multiplier > 0 ? rec.multiplier : 1;
+                    basePts = Math.max(0, Math.round(rec.points / m));
+                } else basePts = 0;
+            }
             return {
                 uid: p.uid,
                 displayName: p.displayName,
-                roundPoints: rec ? (typeof rec.points === 'number' ? rec.points : 0) : null,
+                roundPoints: basePts,
                 gaveUp: !!(rec && rec.gaveUp)
             };
         });
@@ -3336,25 +3536,13 @@ function renderRoundsHistoryBoard() {
         });
         const li = document.createElement('li');
         li.className = 'rounds-history-row';
-        // Local-player breakdown — recompute the multipliers we applied
-        // so the chip can spell out "× 1.5 × 1.2" alongside the total.
-        // Only shown for the LOCAL user's chip, and only for rounds
-        // they've actually submitted (no peeking ahead on the current
-        // round before submitting).
-        const meRec = me && Array.isArray(me.answers)
-            ? me.answers.find((a) => a && a.locationId === loc.id)
-            : null;
-        let myBreakdown = '';
-        if (meRec && typeof meRec.points === 'number' && !meRec.gaveUp) {
-            const diffMult = GlobeDropScoring.difficultySettings(room.difficulty).scoreMultiplier;
-            const contMult = GlobeDropScoring.continentMultiplier(loc.region);
-            const popMult = GlobeDropScoring.populationWeight(loc.population);
-            const parts = [];
-            if (diffMult !== 1) parts.push('×' + diffMult.toFixed(2).replace(/0+$/, '').replace(/\.$/, ''));
-            if (contMult !== 1) parts.push('×' + contMult.toFixed(2).replace(/0+$/, '').replace(/\.$/, ''));
-            if (popMult !== 1) parts.push('×' + popMult.toFixed(2).replace(/0+$/, '').replace(/\.$/, ''));
-            if (parts.length) myBreakdown = ' <em>' + escapeHtml(parts.join(' ')) + '</em>';
-        }
+        // Round multiplier: single value baked onto the location at
+        // room-creation time via the 1.0 → 3.0 ladder. Same number
+        // applies to every chip in the round, so we render it once
+        // next to the R# label.
+        const roundMult = (typeof loc.multiplier === 'number') ? loc.multiplier : 1;
+        const fmt = (n) => n.toFixed(2).replace(/0+$/, '').replace(/\.$/, '');
+        const multHtml = ` <em class="rounds-history-mult">×${escapeHtml(fmt(roundMult))}</em>`;
         const chips = perPlayer.map((pp) => {
             const isMe = state.user && pp.uid === state.user.uid;
             const cls = 'rounds-history-chip'
@@ -3365,11 +3553,10 @@ function renderRoundsHistoryBoard() {
             else if (pp.roundPoints == null) val = '—';
             else if (pp.gaveUp) val = 'X';
             else val = String(pp.roundPoints);
-            const trailing = isMe ? myBreakdown : '';
-            return `<span class="${cls}"><span>${escapeHtml(pp.displayName)}</span><strong>${escapeHtml(val)}</strong>${trailing}</span>`;
+            return `<span class="${cls}"><span>${escapeHtml(pp.displayName)}</span><strong>${escapeHtml(val)}</strong></span>`;
         }).join('');
         li.innerHTML =
-            `<span class="rounds-history-label">R${r + 1}</span>` +
+            `<span class="rounds-history-label">R${r + 1}${multHtml}</span>` +
             `<span class="rounds-history-loc">${escapeHtml(loc.name || '')}</span>` +
             `<span class="rounds-history-scores">${chips}</span>`;
         list.appendChild(li);
@@ -3394,11 +3581,9 @@ async function submitGuess() {
     const distance = GlobeDropScoring.haversineDistanceKm(
         state.pendingGuess.lat, state.pendingGuess.lng, loc.lat, loc.lng
     );
-    const { points } = GlobeDropScoring.scoreGuess({
+    const { points, basePoints } = GlobeDropScoring.scoreGuess({
         distanceKm: distance,
-        region: loc.region,
-        difficulty: state.roomData.difficulty,
-        population: loc.population
+        multiplier: loc.multiplier
     });
 
     state.submittedQuestionId = loc.id;
@@ -3437,6 +3622,8 @@ async function submitGuess() {
                 guessLat: guess.lat,
                 guessLng: guess.lng,
                 distanceKm: distance,
+                basePoints,
+                multiplier: typeof loc.multiplier === 'number' ? loc.multiplier : 1,
                 points
             };
             tx.update(pref, {
@@ -3460,6 +3647,7 @@ function clearMyPin() {
     if (state.globe) {
         state.globe.pointsData([]);
         state.globe.arcsData([]);
+        state.globe.polygonsData([]);
     }
     $('#globe-drop-submit-btn').disabled = true;
     $('#globe-drop-clear-btn').hidden = true;
@@ -3626,15 +3814,22 @@ function renderGlobeDropTimer(leftMs, phase, totalMs) {
     // so we share the single visual.
     if (phase === 'reveal' || phase === 'ended') {
         const room = state.roomData || {};
-        const revealMs = room.revealStartedAt && room.revealStartedAt.toMillis
+        // Prefer the explicit revealStartedAt the host writes during
+        // early-reveal (all players submitted). When the asking timer
+        // simply runs out without an early trigger, revealStartedAt is
+        // null — derive the anchor from questionStartedAt + asking
+        // duration so the countdown still renders. Without this, the
+        // display fell through to "—" + a flat ring after time-up.
+        let revealAnchorMs = (room.revealStartedAt && room.revealStartedAt.toMillis)
             ? room.revealStartedAt.toMillis() : null;
-        // Same 5→1 countdown for EVERY round including the last one —
-        // previously the last round short-circuited to "—" because we
-        // assumed nothing follows, but the host still waits 5 s before
-        // writing status='finished', so the player should see that
-        // wait counted down.
-        if (revealMs) {
-            const elapsed = Date.now() - revealMs;
+        if (!revealAnchorMs) {
+            const startMs = (room.questionStartedAt && room.questionStartedAt.toMillis)
+                ? room.questionStartedAt.toMillis() : null;
+            const askingMs = currentAskingDurationMs();
+            if (startMs && askingMs) revealAnchorMs = startMs + askingMs;
+        }
+        if (revealAnchorMs) {
+            const elapsed = Date.now() - revealAnchorMs;
             const leftRev = Math.max(0, Config.GLOBE_DROP_REVEAL_TIME_MS - elapsed);
             const seconds = Math.max(1, Math.ceil(leftRev / 1000));
             const fraction = Math.max(0, Math.min(1, leftRev / Config.GLOBE_DROP_REVEAL_TIME_MS));
@@ -4030,6 +4225,14 @@ async function renderEndStage(isHost) {
     hide($('#stage-picking'));
     show($('#stage-end'));
 
+    // Deep-link: rewrite the URL to ?postMatch=<code> so refresh + share
+    // both land back on this recap. Cleared by setView('play') when the
+    // user navigates away from the end stage.
+    if (state.roomCode) {
+        state.postMatchCode = state.roomCode;
+        syncUrlToState();
+    }
+
     if (state.timerRaf) { cancelAnimationFrame(state.timerRaf); state.timerRaf = null; }
 
     const ranked = Scoring.rankPlayers(state.roomPlayers.map((p) => ({
@@ -4099,13 +4302,11 @@ async function renderEndStage(isHost) {
     ranked.forEach((p, i) => {
         const tr = document.createElement('tr');
         if (state.user && p.uid === state.user.uid) tr.classList.add('is-me');
-        const xp = Scoring.xpFromScore(p.score);
         tr.innerHTML =
             `<td>${i+1}</td>` +
             `<td>${escapeHtml(p.displayName)}</td>` +
             `<td class="col-score">${p.score}</td>` +
-            `<td class="col-streak">${p.streak || 0}</td>` +
-            `<td class="col-xp">+${xp}</td>`;
+            `<td class="col-streak">${p.streak || 0}</td>`;
         body.appendChild(tr);
     });
 
@@ -4114,19 +4315,14 @@ async function renderEndStage(isHost) {
     const winner = ranked[0];
     const me = ranked.find((p) => state.user && p.uid === state.user.uid);
     const playMode = (state.roomData && state.roomData.playMode) || 'multi';
-    const heading = $('#stage-end .end-head h2');
     if (playMode === 'solo' && me) {
-        if (heading) setText(heading, 'Run complete');
         setText($('#end-summary'), `Final score: ${me.score}`);
+    } else if (winner && me && winner.uid === me.uid) {
+        setText($('#end-summary'), '🎉 You won! Nice work.');
+    } else if (winner) {
+        setText($('#end-summary'), `${winner.displayName} took it home with ${winner.score} points.`);
     } else {
-        if (heading) setText(heading, 'Game over');
-        if (winner && me && winner.uid === me.uid) {
-            setText($('#end-summary'), '🎉 You won! Nice work.');
-        } else if (winner) {
-            setText($('#end-summary'), `${winner.displayName} took it home with ${winner.score} points.`);
-        } else {
-            setText($('#end-summary'), 'No scores recorded.');
-        }
+        setText($('#end-summary'), 'No scores recorded.');
     }
 
     // Full per-question/per-location recap (free for everyone)
@@ -4152,7 +4348,9 @@ async function renderEndStage(isHost) {
     // the accept/decline strip once a proposal is active.
     renderRematchUI(isHost);
 
-    // Write XP / wins / games to profile (once per game)
+    // Write score / wins / games to profile (once per game). The
+    // Firestore field is still named `xp` for backward-compat with
+    // existing user docs — UI labels are "score" everywhere now.
     if (state.user && me && endStageWrittenForRoom !== state.roomCode) {
         endStageWrittenForRoom = state.roomCode;
         await writeEndOfGameStats(me, winner && winner.uid === me.uid);
@@ -4164,23 +4362,49 @@ async function writeEndOfGameStats(me, didWin) {
     const playMode = (state.roomData && state.roomData.playMode) || 'multi';
     const isSolo = playMode === 'solo';
     try {
-        const xp = Scoring.xpFromScore(me.score);
+        // Score is the game's earned points (1:1 with the legacy `xp`
+        // field, since XP_PER_POINT_DIVISOR is 1). Keeping the
+        // Firestore key as `xp` so existing user docs aren't orphaned.
+        const scoreEarned = me.score || 0;
         const userRef = doc(db, 'users', state.user.uid);
-        // Solo: still earns XP and counts as a game played, but it
+        // Solo: still earns score and counts as a game played, but it
         // cannot grant a "win" because there was no opponent. The
         // global leaderboard write is also skipped — solo results
         // are personal-best-only, not ranked.
         const winsDelta = (isSolo ? 0 : (didWin ? 1 : 0));
+
+        // Bullseye count + best round score from THIS game's answer
+        // records. Bullseye = base score ≥ 98 (near-perfect guess).
+        const myEntry = state.roomPlayers.find((p) => p.uid === state.user.uid);
+        const myAnswers = (myEntry && Array.isArray(myEntry.answers)) ? myEntry.answers : [];
+        let bullseyesThisGame = 0;
+        let bestRoundThisGame = 0;
+        for (const r of myAnswers) {
+            const base = (typeof r.basePoints === 'number')
+                ? Math.max(0, Math.round(r.basePoints))
+                : (typeof r.points === 'number' && typeof r.multiplier === 'number' && r.multiplier > 0
+                    ? Math.round(r.points / r.multiplier) : 0);
+            if (base >= 98) bullseyesThisGame++;
+            const pts = Number(r.points) || 0;
+            if (pts > bestRoundThisGame) bestRoundThisGame = pts;
+        }
+        const prevBest = (state.profile && state.profile.bestRoundScore) || 0;
+        const newBest = Math.max(prevBest, bestRoundThisGame);
+
         await updateDoc(userRef, {
-            'triviaProfile.xp': increment(xp),
+            'triviaProfile.xp': increment(scoreEarned),
             'triviaProfile.gamesPlayed': increment(1),
             'triviaProfile.wins': increment(winsDelta),
+            'triviaProfile.lifetimeBullseyes': increment(bullseyesThisGame),
+            'triviaProfile.bestRoundScore': newBest,
             'triviaProfile.lastPlayedAt': serverTimestamp()
         });
         if (state.profile) {
-            state.profile.xp = (state.profile.xp || 0) + xp;
+            state.profile.xp = (state.profile.xp || 0) + scoreEarned;
             state.profile.gamesPlayed = (state.profile.gamesPlayed || 0) + 1;
             state.profile.wins = (state.profile.wins || 0) + winsDelta;
+            state.profile.lifetimeBullseyes = (state.profile.lifetimeBullseyes || 0) + bullseyesThisGame;
+            state.profile.bestRoundScore = newBest;
         }
         if (!isSolo) {
             // Denormalized leaderboard write — multiplayer + daily only.
@@ -4188,9 +4412,11 @@ async function writeEndOfGameStats(me, didWin) {
             await setDoc(lbRef, {
                 uid: state.user.uid,
                 displayName: me.displayName,
-                xp: (state.profile && state.profile.xp) || xp,
+                xp: (state.profile && state.profile.xp) || scoreEarned,
                 gamesPlayed: (state.profile && state.profile.gamesPlayed) || 1,
                 wins: (state.profile && state.profile.wins) || winsDelta,
+                lifetimeBullseyes: (state.profile && state.profile.lifetimeBullseyes) || bullseyesThisGame,
+                bestRoundScore: newBest,
                 lastPlayedAt: serverTimestamp()
             }, { merge: true });
         }
@@ -4328,6 +4554,53 @@ async function maybeWriteDailyLeaderboard(me) {
  * Game recap — per-question/per-location table + aggregate stats
  * ===================================================================== */
 
+/**
+ * Lifetime head-to-head banner at the top of the end-stage recap.
+ * Only renders in 2-player rooms (the pair concept is clear there).
+ * Pulls the triviaH2H/<pair> doc, falls back to a placeholder when
+ * the pair has no recorded games yet (e.g. first match between two
+ * accounts).
+ */
+async function renderEndRecapH2H(players) {
+    const banner = document.getElementById('end-recap-h2h');
+    if (!banner) return;
+    banner.hidden = true;
+    if (!state.user || !Array.isArray(players) || players.length !== 2) return;
+    const me = players.find((p) => p.uid === state.user.uid);
+    const opp = players.find((p) => p.uid !== state.user.uid);
+    if (!me || !opp) return;
+    const key = h2hPairKey(me.uid, opp.uid);
+    if (!key) return;
+    let pair = null;
+    state.h2hPairCache = state.h2hPairCache || {};
+    if (state.h2hPairCache[key]) {
+        pair = state.h2hPairCache[key];
+    } else {
+        try {
+            const snap = await getDoc(doc(db, 'triviaH2H', key));
+            pair = snap.exists() ? snap.data() : null;
+            state.h2hPairCache[key] = pair;
+        } catch (_) { pair = null; }
+    }
+    const myIsA = pair && pair.uidA === me.uid;
+    const wins   = pair ? (myIsA ? (pair.winsA || 0) : (pair.winsB || 0)) : 0;
+    const losses = pair ? (myIsA ? (pair.winsB || 0) : (pair.winsA || 0)) : 0;
+    const draws  = pair ? (pair.ties || 0) : 0;
+    const total  = wins + draws + losses;
+    banner.innerHTML =
+        '<div class="end-recap-h2h-head">'
+        + '<span class="end-recap-h2h-label">Head to head</span>'
+        + `<span class="end-recap-h2h-names">${escapeHtml(me.displayName || 'You')}<span> vs </span>${escapeHtml(opp.displayName || 'Opponent')}</span>`
+        + '</div>'
+        + '<div class="end-recap-h2h-record">'
+        + `<span class="end-recap-h2h-pill is-win">${wins}<small>W</small></span>`
+        + `<span class="end-recap-h2h-pill is-draw">${draws}<small>D</small></span>`
+        + `<span class="end-recap-h2h-pill is-loss">${losses}<small>L</small></span>`
+        + `<span class="end-recap-h2h-total">${total === 0 ? 'First match' : (total + ' total')}</span>`
+        + '</div>';
+    banner.hidden = false;
+}
+
 function renderEndRecap() {
     const section = $('#end-recap');
     if (!section) return;
@@ -4335,6 +4608,12 @@ function renderEndRecap() {
     if (!players.length) { section.hidden = true; return; }
 
     const isGlobeDrop = state.roomData && state.roomData.gameType === 'globe-drop';
+
+    // Lifetime H2H banner — only in 2-player rooms (the pair record
+    // is unambiguous). Fetches the triviaH2H pair doc and shows
+    // W-D-L between the local user and the opponent at the top of
+    // the recap.
+    renderEndRecapH2H(players);
 
     // Pick columns: me first, then highest-scoring opponents, cap at 4 so
     // the table stays readable on phones.
@@ -4385,112 +4664,134 @@ function renderEndRecap() {
         statsHost.appendChild(div);
     });
 
-    // Table — empty state if no answers recorded (older rooms predating
-    // the per-answer write would land here).
+    // Compact table — rank | ×mult | location | per-player score | winner.
+    // Replaces the previous card-list which spread each round across
+    // two strips; the table is one row per round, easier to scan
+    // vertically for 8-10 round matches.
     const thead = $('#end-recap-thead');
     const tbody = $('#end-recap-tbody');
+    const emptyEl = $('#end-recap-empty');
     thead.innerHTML = '';
     tbody.innerHTML = '';
+    if (emptyEl) emptyEl.hidden = true;
 
     const anyAnswers = columns.some((c) => (answersByUid[c.uid] || []).length > 0);
     if (!questions.length || !anyAnswers) {
-        const tr = document.createElement('tr');
-        tr.innerHTML = `<td colspan="${columns.length + 3}" class="end-recap-empty">No per-question detail recorded for this game.</td>`;
-        tbody.appendChild(tr);
+        if (emptyEl) emptyEl.hidden = false;
         setText($('#end-recap-sub'), '');
         section.hidden = false;
         return;
     }
 
-    // Table head
+    // Header row. Solo runs skip the Winner column entirely — there's
+    // only one player, "winner" would just be that player on every row.
+    const isSoloRecap = (state.roomData && state.roomData.playMode) === 'solo';
     const trHead = document.createElement('tr');
-    let headHTML = `<th>#</th><th>${isGlobeDrop ? 'Location' : 'Question'}</th>`;
+    let headHTML = '<th class="recap-rank">#</th>'
+        + (isGlobeDrop ? '<th class="recap-mult-cell">Mult</th>' : '')
+        + `<th class="recap-loc-cell">${isGlobeDrop ? 'Location' : 'Question'}</th>`;
     columns.forEach((col) => {
         const isMe = state.user && col.uid === state.user.uid;
-        headHTML += `<th class="${isMe ? 'is-mine' : ''}">${escapeHtml(isMe ? 'You' : col.displayName)}</th>`;
+        headHTML += `<th class="recap-score-cell${isMe ? ' is-mine' : ''}">${escapeHtml(isMe ? 'You' : col.displayName)}</th>`;
     });
-    headHTML += '<th>Winner</th>';
+    if (!isSoloRecap) headHTML += '<th class="recap-winner-cell">Winner</th>';
     trHead.innerHTML = headHTML;
     thead.appendChild(trHead);
 
     // Body rows
+    const fmt = (n) => n.toFixed(2).replace(/0+$/, '').replace(/\.$/, '');
     questions.forEach((q, i) => {
         const tr = document.createElement('tr');
-        let rowHTML = `<td class="col-rank">${i + 1}</td>`;
+        const roundMult = (isGlobeDrop && typeof q.multiplier === 'number') ? q.multiplier : null;
+        const multCell = isGlobeDrop
+            ? `<td class="recap-mult-cell">${roundMult != null ? `×${escapeHtml(fmt(roundMult))}` : ''}</td>`
+            : '';
+
+        let locCell;
         if (isGlobeDrop) {
-            rowHTML +=
-                '<td class="col-question">' +
-                `<span class="recap-q-text">${escapeHtml(q.name || '…')}</span>` +
-                `<span class="recap-q-meta">${escapeHtml(q.country || '')}</span>` +
-                '</td>';
+            locCell = '<td class="recap-loc-cell">'
+                + `<span class="recap-loc-name">${escapeHtml(q.name || '…')}</span>`
+                + (q.country ? `<span class="recap-loc-country">${escapeHtml(q.country)}</span>` : '')
+                + '</td>';
         } else {
             const correctText = q.choices ? q.choices[q.correctIndex] : '';
-            rowHTML +=
-                '<td class="col-question">' +
-                `<span class="recap-q-text">${escapeHtml(q.question || '…')}</span>` +
-                `<span class="recap-q-meta">${escapeHtml(prettyCategory(q.category || ''))} · answer: ${escapeHtml(correctText)}</span>` +
-                '</td>';
+            locCell = '<td class="recap-loc-cell">'
+                + `<span class="recap-loc-name">${escapeHtml(q.question || '…')}</span>`
+                + `<span class="recap-loc-country">${escapeHtml(prettyCategory(q.category || ''))} · answer: ${escapeHtml(correctText)}</span>`
+                + '</td>';
         }
 
-        // Per-column results — also track winner(s) for this question.
-        let bestPoints = -1;
+        // Per-column results + winner detection. Both-zero is a TIE,
+        // not "no winner" — so the winner column always shows something.
         const colResults = columns.map((col) => {
             const ans = (answersByUid[col.uid] || [])
                 .find((a) => (a.locationId || a.questionId) === q.id);
             const points = ans ? (Number(ans.points) || 0) : 0;
-            if (points > bestPoints) bestPoints = points;
             return { col, ans, points };
         });
-
-        const winnersOfRow = bestPoints > 0
-            ? colResults.filter((r) => r.points === bestPoints)
-            : [];
+        const bestPoints = colResults.reduce((max, r) => Math.max(max, r.points), 0);
+        const winnersOfRow = colResults.filter((r) => r.points === bestPoints);
         const isTie = winnersOfRow.length > 1;
+
+        let scoreCells = '';
         colResults.forEach(({ col, ans, points }) => {
             const isMe = state.user && col.uid === state.user.uid;
-            // Cell highlight: green tint for the winning score(s) in
-            // each row (tie shares the win); muted for the rest.
-            // Ties don't get the highlight since "winning" is ambiguous.
-            let resultCls = 'col-result';
-            if (isMe) resultCls += ' is-mine';
-            if (!isTie && bestPoints > 0 && points === bestPoints) resultCls += ' is-winner';
-            else if (bestPoints > 0 && points < bestPoints) resultCls += ' is-loser';
-            if (!ans) {
-                rowHTML += `<td class="${resultCls}"><span class="recap-result-zero">…</span></td>`;
+            const isWinner = !isTie && points === bestPoints && points > 0;
+            let cls = 'recap-score-cell';
+            if (points === 0) cls += ' is-zero';
+            if (isMe) cls += ' is-mine';
+            if (isWinner) cls += ' is-winner';
+
+            if (!ans && points === 0) {
+                scoreCells += `<td class="${cls}">0</td>`;
                 return;
             }
             if (isGlobeDrop) {
-                const pts = Number(ans.points) || 0;
-                rowHTML +=
-                    `<td class="${resultCls}">` +
-                    `<span class="${pts > 0 ? 'recap-result-points' : 'recap-result-zero'}">+${pts}</span>` +
-                    `<span class="recap-result-dist">${Math.round(Number(ans.distanceKm) || 0).toLocaleString()} km off</span>` +
-                    '</td>';
+                // Show base score (0-100) prominently, then the
+                // multiplied final + distance meta. The user-facing
+                // rule is "round score is 0-100, multiplier is applied
+                // afterwards" — so the 0-100 is the primary number.
+                const base = ans && typeof ans.basePoints === 'number'
+                    ? Math.max(0, Math.round(ans.basePoints))
+                    : (points > 0 && typeof q.multiplier === 'number' && q.multiplier > 0
+                        ? Math.round(points / q.multiplier)
+                        : points);
+                // Surface the multiplied final when it differs from base —
+                // happens whenever multiplier > 1 OR the MIN_POINTS floor
+                // kicked in for a really-far guess (e.g. base 0 → final 5).
+                // Without this, the floor was silently invisible.
+                const showFinal = points !== base;
+                const finalTxt = showFinal ? `→ +${points}` : '';
+                const distTxt = (ans && ans.distanceKm != null)
+                    ? `${Math.round(Number(ans.distanceKm) || 0).toLocaleString()} km`
+                    : '';
+                const metaParts = [finalTxt, distTxt].filter(Boolean).join(' · ');
+                const metaHtml = metaParts ? `<span class="recap-score-meta">${escapeHtml(metaParts)}</span>` : '';
+                scoreCells += `<td class="${cls}"><span class="recap-base">${base}</span>${metaHtml}</td>`;
             } else {
-                const pts = Number(ans.points) || 0;
-                const pickClass = ans.correct ? 'is-correct' : 'is-wrong';
-                rowHTML +=
-                    `<td class="${resultCls}">` +
-                    `<span class="${pts > 0 ? 'recap-result-points' : 'recap-result-zero'}">${pts > 0 ? '+' + pts : '0'}</span>` +
-                    `<span class="recap-result-pick ${pickClass}">${escapeHtml(ans.answerText || '…')}</span>` +
-                    '</td>';
+                const pickClass = ans && ans.correct ? 'is-correct' : 'is-wrong';
+                const pickHtml = ans
+                    ? ` <span class="recap-pick ${pickClass}">${escapeHtml(ans.answerText || '…')}</span>`
+                    : '';
+                scoreCells += `<td class="${cls}">${points > 0 ? '+' + points : '0'}${pickHtml}</td>`;
             }
         });
 
-        // Winner badge — a glowing trophy pill for a single winner; a
-        // neutral pill for a tie; nothing if nobody scored.
-        let winnerCell = '<span class="recap-result-zero">…</span>';
-        if (bestPoints > 0) {
-            if (winnersOfRow.length === 1) {
+        // Gold trophy for a single winner; grey "Tie" pill when
+        // multiple cells tie (including the everyone-scored-0 case).
+        // Solo runs skip the Winner column outright.
+        let winnerCell = '';
+        if (!isSoloRecap) {
+            if (!isTie) {
                 const w = winnersOfRow[0].col;
                 const isMe = state.user && w.uid === state.user.uid;
-                winnerCell = `<span class="recap-winner-badge">🏆 ${escapeHtml(isMe ? 'You' : w.displayName)}</span>`;
+                winnerCell = `<td class="recap-winner-cell"><span class="recap-winner-badge">🏆 ${escapeHtml(isMe ? 'You' : w.displayName)}</span></td>`;
             } else {
-                winnerCell = '<span class="recap-tie-badge">Tie</span>';
+                winnerCell = '<td class="recap-winner-cell"><span class="recap-tie-badge">Tie</span></td>';
             }
         }
-        rowHTML += `<td class="col-winner">${winnerCell}</td>`;
-        tr.innerHTML = rowHTML;
+
+        tr.innerHTML = `<td class="recap-rank">${i + 1}</td>${multCell}${locCell}${scoreCells}${winnerCell}`;
         tbody.appendChild(tr);
     });
 
@@ -4567,30 +4868,180 @@ function computeTriviaAggregates(columns, answersByUid) {
 }
 
 function renderDetailedStats() {
-    const stats = RoomState.aggregateAnswerStats(state.currentAnswers);
     const grid = $('#detailed-stats-grid');
     grid.innerHTML = '';
-    const cards = [
-        ['Accuracy', Math.round(stats.accuracy * 100) + '%'],
-        ['Avg response', stats.avgResponseMs < 1000 ? stats.avgResponseMs + 'ms' : (stats.avgResponseMs / 1000).toFixed(1) + 's'],
-        ['Questions answered', String(state.currentAnswers.length)]
+    grid.classList.remove('is-table');
+    const isGlobeDrop = state.roomData && state.roomData.gameType === 'globe-drop';
+
+    if (isGlobeDrop) {
+        // Comparison table needs the host to drop its tile-grid layout
+        // so the <table> can lay out naturally end-to-end.
+        grid.classList.add('is-table');
+        renderGlobeDropComparisonTable(grid);
+    } else {
+        renderTriviaDetailedStats(grid);
+    }
+}
+
+/**
+ * Side-by-side stats table for Globe Drop end-of-game. Each row is a
+ * metric; each column is a player. The cell with the best value in a
+ * row gets a leader highlight so the eye picks up "who won where" at
+ * a glance. Falls back to the single-player tile grid when there's
+ * only one row to compare against (solo or no peers in the doc).
+ */
+function renderGlobeDropComparisonTable(host) {
+    // Total rounds in the game (not per-player guess count) drives the
+    // denominator for avgs and the "X / Y" rounds-guessed cell. Fixes
+    // the off-by-one users hit when they timed out on the last round.
+    const totalRounds = Array.isArray(state.roomData && state.roomData.playedQuestionIds)
+        ? state.roomData.playedQuestionIds.length
+        : 0;
+
+    // Order: me first, then opponents by total points desc (so the
+    // strongest opponent reads next to me). Cap at 4 columns total
+    // for table width sanity on phones.
+    const ranked = Scoring.rankPlayers(state.roomPlayers.map((p) => ({
+        uid: p.uid,
+        displayName: p.displayName,
+        score: p.score || 0,
+        streak: p.streak || 0
+    })));
+    const cols = [];
+    if (state.user) {
+        const me = ranked.find((p) => p.uid === state.user.uid);
+        if (me) cols.push(me);
+    }
+    for (const p of ranked) {
+        if (cols.length >= 4) break;
+        if (!cols.find((c) => c.uid === p.uid)) cols.push(p);
+    }
+    if (!cols.length) return;
+
+    // Compute stats per column from the matching player doc.
+    const statsByUid = {};
+    cols.forEach((col) => {
+        const player = state.roomPlayers.find((p) => p.uid === col.uid);
+        const answers = (player && Array.isArray(player.answers)) ? player.answers : [];
+        statsByUid[col.uid] = RoomState.aggregateGlobeDropStats(answers, totalRounds);
+    });
+
+    // Row definitions: label, value extractor (returns { text, sub?, sortKey, missing? })
+    // — sortKey + higherIsBetter determines which cell gets the leader badge.
+    const fmt = (n) => (n == null ? '—' : n.toLocaleString());
+    const rows = [
+        { label: 'Final score',     higherIsBetter: true,  get: (s, col) => ({ text: String(col.score || 0), sortKey: col.score || 0 }) },
+        { label: 'Avg base score',  higherIsBetter: true,  get: (s) => s ? { text: s.avgBaseScore + ' / 100', sortKey: s.avgBaseScore } : null },
+        { label: 'Closest guess',   higherIsBetter: false, get: (s) => s && s.closestKm != null ? { text: fmt(s.closestKm) + ' km', sub: s.closestLocation, sortKey: s.closestKm } : null },
+        { label: 'Farthest miss',   higherIsBetter: false, get: (s) => s && s.farthestKm != null ? { text: fmt(s.farthestKm) + ' km', sub: s.farthestLocation, sortKey: s.farthestKm } : null },
+        { label: 'Bullseyes',       higherIsBetter: true,  get: (s) => s ? { text: String(s.bullseyeCount), sub: '98+ base', sortKey: s.bullseyeCount } : null }
     ];
-    for (const [label, value] of cards) {
+
+    // Per-region rows, deduped across all players' regions.
+    const regionsSeen = new Set();
+    cols.forEach((col) => {
+        const s = statsByUid[col.uid];
+        if (s && s.byRegion) Object.keys(s.byRegion).forEach((r) => regionsSeen.add(r));
+    });
+    for (const region of regionsSeen) {
+        rows.push({
+            label: region,
+            higherIsBetter: true,
+            isRegion: true,
+            get: (s) => {
+                if (!s || !s.byRegion || !s.byRegion[region]) return null;
+                const rec = s.byRegion[region];
+                return {
+                    text: rec.avgBase + ' / 100',
+                    sub: rec.rounds + (rec.rounds === 1 ? ' round' : ' rounds'),
+                    sortKey: rec.avgBase
+                };
+            }
+        });
+    }
+
+    // Build the table.
+    const table = document.createElement('table');
+    table.className = 'detailed-stats-table';
+    const thead = document.createElement('thead');
+    const headRow = document.createElement('tr');
+    headRow.innerHTML = '<th class="detailed-stats-row-label">Stat</th>'
+        + cols.map((col) => {
+            const isMe = state.user && col.uid === state.user.uid;
+            return `<th class="detailed-stats-col${isMe ? ' is-mine' : ''}">${escapeHtml(isMe ? 'You' : col.displayName)}</th>`;
+        }).join('');
+    thead.appendChild(headRow);
+    table.appendChild(thead);
+
+    const tbody = document.createElement('tbody');
+    let regionHeaderInserted = false;
+    rows.forEach((row) => {
+        // Insert a divider header before the first region row so the
+        // continent group reads as its own block.
+        if (row.isRegion && !regionHeaderInserted) {
+            const tr = document.createElement('tr');
+            tr.className = 'detailed-stats-section';
+            tr.innerHTML = `<th colspan="${cols.length + 1}">By continent · avg score</th>`;
+            tbody.appendChild(tr);
+            regionHeaderInserted = true;
+        }
+        const tr = document.createElement('tr');
+        const cells = cols.map((col) => row.get(statsByUid[col.uid], col));
+        // Find the leader cell — best sortKey under higherIsBetter sense.
+        const valid = cells.filter((c) => c && Number.isFinite(c.sortKey));
+        let bestKey = null;
+        if (valid.length) {
+            bestKey = valid.reduce((acc, c) => {
+                if (acc == null) return c.sortKey;
+                return row.higherIsBetter ? Math.max(acc, c.sortKey) : Math.min(acc, c.sortKey);
+            }, null);
+        }
+        let html = `<th scope="row" class="detailed-stats-row-label">${escapeHtml(row.label)}</th>`;
+        cells.forEach((cell, i) => {
+            const col = cols[i];
+            const isMe = state.user && col.uid === state.user.uid;
+            const isLeader = cell && bestKey != null && cell.sortKey === bestKey && valid.length > 1;
+            let cls = 'detailed-stats-cell';
+            if (isMe) cls += ' is-mine';
+            if (isLeader) cls += ' is-leader';
+            if (!cell) {
+                html += `<td class="${cls} is-missing">—</td>`;
+                return;
+            }
+            html += `<td class="${cls}"><span class="detailed-stats-value">${escapeHtml(cell.text)}</span>`
+                + (cell.sub ? `<span class="detailed-stats-sub">${escapeHtml(cell.sub)}</span>` : '')
+                + `</td>`;
+        });
+        tr.innerHTML = html;
+        tbody.appendChild(tr);
+    });
+    table.appendChild(tbody);
+    host.appendChild(table);
+}
+
+function renderTriviaDetailedStats(host) {
+    // Trivia: per-question records stored in state.currentAnswers,
+    // each carrying `correct` + `category` + `timeLeftMs` + `totalMs`.
+    // Kept as the legacy tile grid since trivia doesn't have multi-
+    // player per-question detail to compare in a table.
+    const stats = RoomState.aggregateAnswerStats(state.currentAnswers);
+    const push = (label, value, highlight) => {
         const div = document.createElement('div');
-        div.className = 'detailed-stat';
+        div.className = 'detailed-stat' + (highlight ? ' is-highlight' : '');
         div.innerHTML =
             `<span class="detailed-stat-label">${escapeHtml(label)}</span>` +
             `<span class="detailed-stat-value">${escapeHtml(value)}</span>`;
-        grid.appendChild(div);
-    }
+        host.appendChild(div);
+    };
+    push('Accuracy', Math.round(stats.accuracy * 100) + '%', true);
+    push('Avg response',
+        stats.avgResponseMs < 1000
+            ? stats.avgResponseMs + 'ms'
+            : (stats.avgResponseMs / 1000).toFixed(1) + 's');
+    push('Questions answered', String(state.currentAnswers.length));
     for (const [cat, rec] of Object.entries(stats.byCategory)) {
-        const div = document.createElement('div');
-        div.className = 'detailed-stat';
         const pct = rec.total ? Math.round(100 * rec.correct / rec.total) : 0;
-        div.innerHTML =
-            `<span class="detailed-stat-label">${escapeHtml(cat.replace(/-/g, ' '))}</span>` +
-            `<span class="detailed-stat-value">${rec.correct}/${rec.total} · ${pct}%</span>`;
-        grid.appendChild(div);
+        push(cat.replace(/-/g, ' '), rec.correct + '/' + rec.total + ' · ' + pct + '%');
     }
 }
 
@@ -4650,13 +5101,15 @@ function renderRoomSessionH2H() {
         displayName: p.displayName,
         sessionWins: wins[p.uid] || 0
     })).sort((a, b) => b.sessionWins - a.sessionWins);
-    // Total matches = sum of wins across all players, but capped by
-    // sessionMatchCount (ties don't increment anyone's count, so the
-    // sum can lag behind). Use sessionMatchCount as the denominator
-    // so the "losses" calc reflects reality.
+    // Ties aren't tracked per-player; derive from the gap between
+    // matchCount and the sum of per-player wins. In 2-player rooms
+    // this gives exact W/D/L; in 3+ player rooms "draws" counts
+    // matches where no single player took the top score.
+    const totalRecordedWins = rows.reduce((s, r) => s + r.sessionWins, 0);
+    const draws = Math.max(0, matchCount - totalRecordedWins);
     list.innerHTML = '';
     rows.forEach((r, i) => {
-        const losses = Math.max(0, matchCount - r.sessionWins);
+        const losses = Math.max(0, matchCount - r.sessionWins - draws);
         const li = document.createElement('li');
         li.className = 'mini-board-row session-h2h-row';
         if (state.user && r.uid === state.user.uid) li.classList.add('is-me');
@@ -4665,6 +5118,7 @@ function renderRoomSessionH2H() {
             `<span class="mini-board-name">${escapeHtml(r.displayName)}</span>` +
             `<span class="session-h2h-wl">` +
                 `<span class="session-h2h-pill is-win">${r.sessionWins}W</span>` +
+                `<span class="session-h2h-pill is-draw">${draws}D</span>` +
                 `<span class="session-h2h-pill is-loss">${losses}L</span>` +
             `</span>`;
         list.appendChild(li);
@@ -5088,31 +5542,53 @@ function renderLeaderboardEntries() {
         return (Date.now() - lastPlayed) <= cutoff * 24 * 60 * 60 * 1000;
     });
 
+    // Decorate each entry with the derived columns we display, so the
+    // sort layer can pull them from a single source of truth.
+    const decorated = entries.map((e) => {
+        const games = e.gamesPlayed || 0;
+        const wins  = e.wins || 0;
+        const avg   = games > 0 ? Math.round((e.xp || 0) / games) : 0;
+        const pct   = games > 0 ? Math.round(100 * wins / games) : 0;
+        const last  = e.lastPlayedAt && e.lastPlayedAt.toMillis ? e.lastPlayedAt.toMillis() : 0;
+        return Object.assign({}, e, {
+            avgScore: avg,
+            winPct:   pct,
+            lastPlayedMs: last
+        });
+    });
+
+    // Sort state lives on app state so it survives snapshot re-renders.
+    const sort = state.leaderboardSort || { key: 'avgScore', dir: 'desc' };
+    decorated.sort((a, b) => compareForSort(a, b, sort));
+
     const body = $('#leaderboard-body');
     body.innerHTML = '';
-    if (!entries.length) {
+    if (!decorated.length) {
         $('#leaderboard-empty').hidden = false;
         return;
     }
     $('#leaderboard-empty').hidden = true;
 
+    // Paint the active-sort indicator on the matching <th>.
+    decorateLeaderboardHeaders(sort);
+
     const showAdmin = !!state.isLeaderboardAdmin;
-    entries.forEach((e, i) => {
+    decorated.forEach((e, i) => {
         const tr = document.createElement('tr');
         if (state.user && e.uid === state.user.uid) tr.classList.add('is-me');
-        const pct = e.gamesPlayed ? Math.round(100 * (e.wins || 0) / e.gamesPlayed) : 0;
-        const lastPlayed = e.lastPlayedAt && e.lastPlayedAt.toDate ? e.lastPlayedAt.toDate() : null;
-        const lastStr = lastPlayed ? formatRelativeDate(lastPlayed) : '…';
+        const lastStr = e.lastPlayedMs ? formatRelativeDate(new Date(e.lastPlayedMs)) : '…';
         const adminCell = showAdmin
             ? `<td class="col-admin"><button type="button" class="btn-icon-danger" data-action="remove-leaderboard" data-uid="${escapeHtml(e.uid)}" data-name="${escapeHtml(e.displayName || 'Player')}" title="Remove from leaderboard">✕</button></td>`
             : '';
         tr.innerHTML =
-            `<td>${i+1}</td>` +
+            `<td>${i + 1}</td>` +
             `<td>${escapeHtml(e.displayName || 'Player')}</td>` +
-            `<td class="col-xp">${e.xp || 0}</td>` +
+            `<td class="col-xp">${e.avgScore.toLocaleString()}</td>` +
+            `<td class="col-best">${(e.bestRoundScore || 0).toLocaleString()}</td>` +
+            `<td class="col-bullseyes">${e.lifetimeBullseyes || 0}</td>` +
             `<td class="col-games">${e.gamesPlayed || 0}</td>` +
             `<td class="col-wins">${e.wins || 0}</td>` +
-            `<td class="col-winpct">${pct}%</td>` +
+            `<td class="col-winpct">${e.winPct}%</td>` +
             `<td>${escapeHtml(lastStr)}</td>` +
             adminCell;
         body.appendChild(tr);
@@ -5121,6 +5597,65 @@ function renderLeaderboardEntries() {
     // Show / hide the admin column header so the row counts still align.
     const adminHeader = $('#leaderboard-admin-th');
     if (adminHeader) adminHeader.hidden = !showAdmin;
+}
+
+/**
+ * Stable comparator for leaderboard rows. Keys that are strings sort
+ * alphabetically (case-insensitive); everything else sorts numerically.
+ * Missing values sink to the bottom regardless of direction so an empty
+ * column doesn't pollute the top of the table.
+ */
+function compareForSort(a, b, sort) {
+    const key = sort.key;
+    const dir = sort.dir === 'asc' ? 1 : -1;
+    const va = a[key];
+    const vb = b[key];
+    const aMissing = va == null || va === '';
+    const bMissing = vb == null || vb === '';
+    if (aMissing && bMissing) return 0;
+    if (aMissing) return 1;     // always sink missing
+    if (bMissing) return -1;
+    if (typeof va === 'string' && typeof vb === 'string') {
+        return dir * va.localeCompare(vb, undefined, { sensitivity: 'base' });
+    }
+    return dir * ((Number(va) || 0) - (Number(vb) || 0));
+}
+
+/**
+ * Paint the asc/desc arrow on whichever <th> matches the active sort
+ * and strip it from every other header so the state reads at a glance.
+ */
+function decorateLeaderboardHeaders(sort) {
+    const ths = document.querySelectorAll('#leaderboard-table thead th[data-sort-key]');
+    ths.forEach((th) => {
+        const key = th.getAttribute('data-sort-key');
+        const isActive = key === sort.key;
+        th.classList.toggle('is-sorted', isActive);
+        th.classList.toggle('is-asc', isActive && sort.dir === 'asc');
+        th.classList.toggle('is-desc', isActive && sort.dir === 'desc');
+    });
+}
+
+function bindLeaderboardSortHandlers() {
+    const head = document.querySelector('#leaderboard-table thead');
+    if (!head || head.dataset.sortBound === '1') return;
+    head.dataset.sortBound = '1';
+    head.addEventListener('click', (ev) => {
+        const th = ev.target.closest('th[data-sort-key]');
+        if (!th) return;
+        const key = th.getAttribute('data-sort-key');
+        const defaultDir = th.getAttribute('data-sort-default') || 'desc';
+        if (state.leaderboardSort.key === key) {
+            // Same column: toggle direction.
+            state.leaderboardSort = {
+                key,
+                dir: state.leaderboardSort.dir === 'asc' ? 'desc' : 'asc'
+            };
+        } else {
+            state.leaderboardSort = { key, dir: defaultDir };
+        }
+        renderLeaderboardEntries();
+    });
 }
 
 async function checkLeaderboardAdmin(uid) {
@@ -5139,7 +5674,7 @@ async function removeLeaderboardEntry(uid, name) {
     if (!uid) return;
     const ok = await openConfirmModal({
         title: `Remove "${name}"?`,
-        body: 'This deletes their row from the Global XP leaderboard only. Their XP and profile stay intact, and the row reappears the next time they play a game.',
+        body: 'This deletes their row from the global leaderboard only. Their score and profile stay intact, and the row reappears the next time they play a game.',
         confirmLabel: 'Remove row',
         danger: true
     });
@@ -5186,8 +5721,8 @@ function renderH2HPickers() {
     const optsHtml = entries.map((e) => {
         const uid = escapeHtml(e.uid || '');
         const name = escapeHtml(e.displayName || 'Player');
-        const xp = e.xp || 0;
-        return `<option value="${uid}">${name} · ${xp} XP</option>`;
+        const score = e.xp || 0;
+        return `<option value="${uid}">${name} · ${score} pts</option>`;
     }).join('');
 
     // Preserve current selections across re-renders (LB snapshot can
@@ -5199,7 +5734,7 @@ function renderH2HPickers() {
     b.innerHTML = optsHtml;
 
     // Default: A = current user (if present), B = next entry. Otherwise
-    // first / second by XP.
+    // first / second by total score.
     const meUid = state.user && state.user.uid;
     const meIdx = entries.findIndex((e) => e.uid === meUid);
     const aDefault = (meIdx >= 0 ? meUid : entries[0].uid) || '';
@@ -5248,6 +5783,26 @@ async function renderH2HComparison() {
 
     $('#h2h-stats-a').innerHTML = renderH2HStatsHtml(ea, eb, pair);
     $('#h2h-stats-b').innerHTML = renderH2HStatsHtml(eb, ea, pair);
+
+    // Lifetime W-D-L pill. Pulls wins from the pair doc and labels
+    // whichever side is ahead with the gold leader treatment.
+    const pillEl = $('#h2h-record-pill');
+    if (pillEl) {
+        const a = pairStatsFor(ea, eb, pair);
+        const b = pairStatsFor(eb, ea, pair);
+        const total = a.wins + b.wins + a.ties;
+        const elA = $('#h2h-record-a');
+        const elB = $('#h2h-record-b');
+        if (elA) { elA.textContent = String(a.wins); elA.className = 'h2h-record-num' + (a.wins > b.wins ? ' is-lead' : (a.wins < b.wins ? ' is-trail' : '')); }
+        if (elB) { elB.textContent = String(b.wins); elB.className = 'h2h-record-num' + (b.wins > a.wins ? ' is-lead' : (b.wins < a.wins ? ' is-trail' : '')); }
+        const subEl = $('#h2h-record-sub');
+        if (subEl) {
+            if (total === 0) subEl.textContent = 'No matches yet';
+            else if (a.ties > 0) subEl.textContent = `${total} matches · ${a.ties} tied`;
+            else subEl.textContent = `${total} ${total === 1 ? 'match' : 'matches'}`;
+        }
+        pillEl.hidden = false;
+    }
 }
 
 function pairStatsFor(self, other, pair) {
@@ -5261,17 +5816,17 @@ function pairStatsFor(self, other, pair) {
 }
 
 function renderH2HStatsHtml(self, other, pair) {
-    // Pairwise stats first (the headline), with global lifetime XP shown
+    // Pairwise stats first (the headline), with global lifetime score
     // as context below. cmp > 0 highlights self leading vs other for
     // the colour cue.
     const sp = pairStatsFor(self, other, pair);
     const op = pairStatsFor(other, self, pair);
     const fields = [
-        { label: 'Matches',  val: sp.gamesPlayed,            cmp: 0 },
-        { label: 'Wins',     val: sp.wins,                   cmp: sp.wins - op.wins },
-        { label: 'Losses',   val: sp.losses,                 cmp: op.wins - sp.wins },
-        { label: 'Ties',     val: sp.ties,                   cmp: 0 },
-        { label: 'XP',       val: self.xp || 0,              cmp: (self.xp || 0) - (other.xp || 0) }
+        { label: 'Matches',     val: sp.gamesPlayed,            cmp: 0 },
+        { label: 'Wins',        val: sp.wins,                   cmp: sp.wins - op.wins },
+        { label: 'Losses',      val: sp.losses,                 cmp: op.wins - sp.wins },
+        { label: 'Ties',        val: sp.ties,                   cmp: 0 },
+        { label: 'Total score', val: self.xp || 0,              cmp: (self.xp || 0) - (other.xp || 0) }
     ];
     return fields.map((f) => {
         const cls = f.cmp > 0 ? ' h2h-lead' : (f.cmp < 0 ? ' h2h-trail' : '');
@@ -5289,6 +5844,7 @@ function wireH2H() {
 function wireLeaderboard() {
     $('#leaderboard-period').addEventListener('change', renderLeaderboardEntries);
     $('#leaderboard-category').addEventListener('change', renderLeaderboardEntries);
+    bindLeaderboardSortHandlers();
     // Admin: delete-row clicks. Delegated to the leaderboard body so we
     // don't have to re-bind on every render.
     const body = $('#leaderboard-body');

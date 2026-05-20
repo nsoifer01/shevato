@@ -11,6 +11,7 @@ const {
     timeLeftMs,
     pickNextHost,
     aggregateAnswerStats,
+    aggregateGlobeDropStats,
     pickDecider,
     availableCategoriesFromPool,
     pickQuestionFromPool
@@ -253,4 +254,103 @@ test('pickQuestionFromPool: exhausted category falls back to any unplayed', () =
 
 test('pickQuestionFromPool: fully exhausted pool returns null', () => {
     assert.equal(pickQuestionFromPool(POOL, POOL.map((q) => q.id), 'science'), null);
+});
+
+// --- aggregateGlobeDropStats ------------------------------------------
+
+test('aggregateGlobeDropStats: empty / non-array => null', () => {
+    assert.equal(aggregateGlobeDropStats([]), null);
+    assert.equal(aggregateGlobeDropStats(null), null);
+    assert.equal(aggregateGlobeDropStats(undefined), null);
+});
+
+test('aggregateGlobeDropStats: derives avg/closest/farthest/bullseye from records', () => {
+    const recs = [
+        { locationName: 'Pretoria',  region: 'Africa',   distanceKm: 42,   basePoints: 95, multiplier: 1.5, points: 143 },
+        { locationName: 'Brussels',  region: 'Europe',   distanceKm: 412,  basePoints: 80, multiplier: 1,   points: 80 },
+        { locationName: 'Valley',    region: 'Americas', distanceKm: 4201, basePoints: 0,  multiplier: 3,   points: 0 }
+    ];
+    const s = aggregateGlobeDropStats(recs);
+    assert.equal(s.roundsPlayed, 3);
+    assert.equal(s.totalPoints, 223);
+    assert.equal(s.avgBaseScore, Math.round((95 + 80 + 0) / 3));
+    assert.equal(s.avgDistanceKm, Math.round((42 + 412 + 4201) / 3));
+    assert.equal(s.closestKm, 42);
+    assert.equal(s.closestLocation, 'Pretoria');
+    assert.equal(s.farthestKm, 4201);
+    assert.equal(s.farthestLocation, 'Valley');
+    assert.equal(s.bullseyeCount, 0);  // bullseye is base ≥ 98 — Pretoria's 95 misses
+});
+
+test('aggregateGlobeDropStats: groups by region', () => {
+    const recs = [
+        { region: 'Europe', basePoints: 90, distanceKm: 100 },
+        { region: 'Europe', basePoints: 70, distanceKm: 200 },
+        { region: 'Africa', basePoints: 50, distanceKm: 500 }
+    ];
+    const s = aggregateGlobeDropStats(recs);
+    assert.equal(s.byRegion.Europe.rounds, 2);
+    assert.equal(s.byRegion.Europe.avgBase, 80);
+    assert.equal(s.byRegion.Africa.rounds, 1);
+    assert.equal(s.byRegion.Africa.avgBase, 50);
+});
+
+test('aggregateGlobeDropStats: reconstructs basePoints from points/multiplier when missing', () => {
+    // Legacy records (pre-basePoints field) — should still produce
+    // a usable avg by dividing points back out by the multiplier.
+    const recs = [
+        { region: 'Europe', distanceKm: 100, points: 160, multiplier: 2 }, // base 80
+        { region: 'Europe', distanceKm: 200, points: 90,  multiplier: 1 }  // base 90
+    ];
+    const s = aggregateGlobeDropStats(recs);
+    assert.equal(s.avgBaseScore, 85);
+});
+
+test('aggregateGlobeDropStats: skips non-numeric distanceKm without crashing', () => {
+    const recs = [
+        { region: 'Europe', basePoints: 80, distanceKm: 100 },
+        { region: 'Europe', basePoints: 50, distanceKm: undefined }, // missing
+        { region: 'Europe', basePoints: 70, distanceKm: 'oops' }     // bad
+    ];
+    const s = aggregateGlobeDropStats(recs);
+    assert.equal(s.roundsPlayed, 3);
+    // Only the valid record counts toward distance metrics.
+    assert.equal(s.closestKm, 100);
+    assert.equal(s.farthestKm, 100);
+});
+
+test('aggregateGlobeDropStats: totalRounds drives roundsPlayed + avg denominator', () => {
+    // Player guessed on 3 of 5 rounds — totalRounds should be 5 and
+    // averages should treat the missing rounds as 0 so a player who
+    // skipped the hard ones doesn't get an inflated mean.
+    const recs = [
+        { basePoints: 90, distanceKm: 100, region: 'Europe' },
+        { basePoints: 60, distanceKm: 800, region: 'Europe' },
+        { basePoints: 30, distanceKm: 3000, region: 'Africa' }
+    ];
+    const s = aggregateGlobeDropStats(recs, 5);
+    assert.equal(s.roundsPlayed, 5);
+    assert.equal(s.roundsGuessed, 3);
+    // (90+60+30+0+0)/5 = 36
+    assert.equal(s.avgBaseScore, 36);
+    // Distance avg still uses guess count — "infinite distance" for
+    // a non-guess isn't a meaningful number to average.
+    assert.equal(s.avgDistanceKm, Math.round((100 + 800 + 3000) / 3));
+});
+
+test('aggregateGlobeDropStats: missing totalRounds falls back to records length', () => {
+    const recs = [
+        { basePoints: 80, distanceKm: 200, region: 'Europe' },
+        { basePoints: 40, distanceKm: 500, region: 'Africa' }
+    ];
+    const s = aggregateGlobeDropStats(recs);
+    assert.equal(s.roundsPlayed, 2);
+    assert.equal(s.roundsGuessed, 2);
+});
+
+test('aggregateGlobeDropStats: empty records + totalRounds=5 still returns null', () => {
+    // Player has zero guesses; nothing to aggregate even though the
+    // game ran 5 rounds. Caller (renderDetailedStats) shows a "no
+    // guesses recorded" hint in this case rather than divide-by-zero.
+    assert.equal(aggregateGlobeDropStats([], 5), null);
 });

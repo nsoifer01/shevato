@@ -214,6 +214,93 @@
         };
     }
 
+    /**
+     * Aggregate per-player end-of-game stats from a list of Globe Drop
+     * answer records. Each record:
+     *   { locationId, locationName, country, region,
+     *     distanceKm, basePoints, multiplier, points }
+     *
+     * Trivia stats (aggregateAnswerStats) keys on `correct` / `category`
+     * which Globe Drop doesn't carry, so we need a separate aggregator.
+     * Returns null when no answers — caller can swap in the upsell card.
+     *
+     * @param {Array} records
+     * @returns {{
+     *   roundsPlayed:    number,
+     *   totalPoints:     number,
+     *   avgBaseScore:    number,        // 0..100
+     *   avgDistanceKm:   number,
+     *   closestKm:       number|null,
+     *   closestLocation: string|null,
+     *   farthestKm:      number|null,
+     *   farthestLocation:string|null,
+     *   bullseyeCount:   number,        // base ≥ 98 (near-perfect)
+     *   byRegion: { [region]: { rounds:number, avgBase:number } }
+     * } | null}
+     */
+    function aggregateGlobeDropStats(records, totalRounds) {
+        const list = Array.isArray(records) ? records.filter((r) => r && typeof r === 'object') : [];
+        if (!list.length) return null; // no guesses → no stats, regardless of round count
+        // Total rounds in the GAME (from room.playedQuestionIds), not just
+        // the rounds the player actually guessed on. When omitted, fall
+        // back to the records length so legacy callers keep working.
+        const total = (typeof totalRounds === 'number' && totalRounds > 0)
+            ? totalRounds
+            : list.length;
+        let totalPoints = 0;
+        let totalBase = 0;
+        let totalDistanceKm = 0;
+        let closestKm = Infinity;
+        let closestLocation = null;
+        let farthestKm = -Infinity;
+        let farthestLocation = null;
+        let bullseyeCount = 0;
+        const byRegion = {};
+        for (const r of list) {
+            const pts = Number(r.points) || 0;
+            const mult = (typeof r.multiplier === 'number' && r.multiplier > 0) ? r.multiplier : 1;
+            // Reconstruct basePoints when older records didn't persist it.
+            const base = (typeof r.basePoints === 'number')
+                ? Math.max(0, Math.round(r.basePoints))
+                : Math.max(0, Math.round(pts / mult));
+            const dist = Number(r.distanceKm);
+            totalPoints += pts;
+            totalBase += base;
+            if (Number.isFinite(dist)) {
+                totalDistanceKm += dist;
+                if (dist < closestKm)  { closestKm = dist;  closestLocation = r.locationName || r.country || null; }
+                if (dist > farthestKm) { farthestKm = dist; farthestLocation = r.locationName || r.country || null; }
+            }
+            if (base >= 98) bullseyeCount++;
+            const region = String(r.region || 'Unknown');
+            if (!byRegion[region]) byRegion[region] = { rounds: 0, totalBase: 0 };
+            byRegion[region].rounds++;
+            byRegion[region].totalBase += base;
+        }
+        const regionOut = {};
+        for (const [k, v] of Object.entries(byRegion)) {
+            regionOut[k] = { rounds: v.rounds, avgBase: Math.round(v.totalBase / v.rounds) };
+        }
+        // Score-based averages divide by TOTAL rounds — a skipped round
+        // counts as 0, otherwise the avg silently inflates for players
+        // who timed out on the hard ones. Distance avg uses the record
+        // count because "infinite distance" for a non-guess isn't a
+        // meaningful number to fold into a mean.
+        return {
+            roundsPlayed:     total,
+            roundsGuessed:    list.length,
+            totalPoints,
+            avgBaseScore:     Math.round(totalBase / total),
+            avgDistanceKm:    list.length ? Math.round(totalDistanceKm / list.length) : null,
+            closestKm:        Number.isFinite(closestKm)  ? Math.round(closestKm)  : null,
+            closestLocation,
+            farthestKm:       Number.isFinite(farthestKm) ? Math.round(farthestKm) : null,
+            farthestLocation,
+            bullseyeCount,
+            byRegion: regionOut
+        };
+    }
+
     return {
         generateRoomCode,
         normalizeRoomCode,
@@ -221,6 +308,7 @@
         timeLeftMs,
         pickNextHost,
         aggregateAnswerStats,
+        aggregateGlobeDropStats,
         pickDecider,
         availableCategoriesFromPool,
         pickQuestionFromPool
