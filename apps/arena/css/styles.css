@@ -3953,6 +3953,13 @@ select option { background: var(--surface); color: var(--text); }
   margin: 0;
   color: var(--text);
 }
+/* Container switches between tile grid (trivia) and a single comparison
+   table (globe drop) at render time. is-table disables the grid so the
+   <table> can lay out edge-to-edge with overflow-x scroll on phones. */
+.detailed-stats-grid.is-table {
+  display: block;
+  overflow-x: auto;
+}
 .detailed-stats-grid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
@@ -4018,6 +4025,99 @@ select option { background: var(--surface); color: var(--text); }
 .detailed-stat.is-highlight {
   border-color: rgba(34, 211, 238, 0.30);
   box-shadow: 0 0 0 1px rgba(34, 211, 238, 0.10) inset;
+}
+
+/* ---- Globe Drop comparison table ----------------------------------
+   Side-by-side stats: stat label on the left, one column per player.
+   Cells get a leader highlight so the eye picks up wins-per-row in
+   one pass without sorting columns mentally. */
+.detailed-stats-table {
+  width: 100%;
+  border-collapse: separate;
+  border-spacing: 0;
+  font-size: 0.9rem;
+}
+.detailed-stats-table th,
+.detailed-stats-table td {
+  padding: 0.55rem 0.75rem;
+  text-align: left;
+  border-bottom: 1px solid rgba(148, 163, 184, 0.10);
+  vertical-align: middle;
+}
+.detailed-stats-table tbody tr:last-child td,
+.detailed-stats-table tbody tr:last-child th { border-bottom: none; }
+.detailed-stats-table thead th {
+  font-size: 0.72rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--muted);
+  font-weight: 700;
+  background: rgba(8, 11, 22, 0.4);
+  border-bottom: 1px solid rgba(148, 163, 184, 0.18);
+}
+.detailed-stats-table .detailed-stats-col       { text-align: right; }
+.detailed-stats-table .detailed-stats-col.is-mine {
+  color: var(--cyan-2);
+  background: linear-gradient(180deg, rgba(34, 211, 238, 0.10), rgba(34, 211, 238, 0.04));
+}
+.detailed-stats-row-label {
+  font-weight: 600;
+  color: var(--text);
+  white-space: nowrap;
+}
+.detailed-stats-cell {
+  text-align: right;
+  font-family: var(--mono);
+  font-variant-numeric: tabular-nums;
+  font-weight: 700;
+  color: var(--text);
+}
+.detailed-stats-cell.is-mine {
+  background: rgba(34, 211, 238, 0.05);
+}
+.detailed-stats-cell.is-leader {
+  /* The cell that wins this row — gold accent so the eye locks on. */
+  background: linear-gradient(135deg, rgba(251, 191, 36, 0.16), rgba(168, 85, 247, 0.08));
+  color: var(--gold);
+  text-shadow: 0 0 10px rgba(251, 191, 36, 0.30);
+}
+.detailed-stats-cell.is-leader.is-mine {
+  background: linear-gradient(135deg, rgba(251, 191, 36, 0.20), rgba(34, 211, 238, 0.12));
+}
+.detailed-stats-cell.is-missing {
+  color: var(--muted);
+  font-weight: 500;
+}
+.detailed-stats-value { display: block; line-height: 1.1; }
+.detailed-stats-sub {
+  display: block;
+  margin-top: 0.15rem;
+  font-family: var(--font);
+  font-size: 0.68rem;
+  font-weight: 500;
+  color: var(--muted);
+  letter-spacing: 0.02em;
+  white-space: nowrap;
+}
+/* Continent-grouping divider row — subtle banded header so the
+   per-region rows read as their own block under the headline stats. */
+.detailed-stats-table tr.detailed-stats-section th {
+  font-size: 0.65rem;
+  letter-spacing: 0.10em;
+  text-transform: uppercase;
+  color: var(--muted-2);
+  font-weight: 700;
+  text-align: left;
+  padding: 0.75rem 0.75rem 0.35rem;
+  border-top: 1px solid rgba(148, 163, 184, 0.10);
+  border-bottom: none;
+  background: rgba(8, 11, 22, 0.25);
+}
+
+@media (max-width: 540px) {
+  .detailed-stats-table th,
+  .detailed-stats-table td { padding: 0.4rem 0.5rem; }
+  .detailed-stats-table { font-size: 0.82rem; }
 }
 
 .detailed-stats-upsell {

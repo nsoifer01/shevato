@@ -318,3 +318,39 @@ test('aggregateGlobeDropStats: skips non-numeric distanceKm without crashing', (
     assert.equal(s.closestKm, 100);
     assert.equal(s.farthestKm, 100);
 });
+
+test('aggregateGlobeDropStats: totalRounds drives roundsPlayed + avg denominator', () => {
+    // Player guessed on 3 of 5 rounds — totalRounds should be 5 and
+    // averages should treat the missing rounds as 0 so a player who
+    // skipped the hard ones doesn't get an inflated mean.
+    const recs = [
+        { basePoints: 90, distanceKm: 100, region: 'Europe' },
+        { basePoints: 60, distanceKm: 800, region: 'Europe' },
+        { basePoints: 30, distanceKm: 3000, region: 'Africa' }
+    ];
+    const s = aggregateGlobeDropStats(recs, 5);
+    assert.equal(s.roundsPlayed, 5);
+    assert.equal(s.roundsGuessed, 3);
+    // (90+60+30+0+0)/5 = 36
+    assert.equal(s.avgBaseScore, 36);
+    // Distance avg still uses guess count — "infinite distance" for
+    // a non-guess isn't a meaningful number to average.
+    assert.equal(s.avgDistanceKm, Math.round((100 + 800 + 3000) / 3));
+});
+
+test('aggregateGlobeDropStats: missing totalRounds falls back to records length', () => {
+    const recs = [
+        { basePoints: 80, distanceKm: 200, region: 'Europe' },
+        { basePoints: 40, distanceKm: 500, region: 'Africa' }
+    ];
+    const s = aggregateGlobeDropStats(recs);
+    assert.equal(s.roundsPlayed, 2);
+    assert.equal(s.roundsGuessed, 2);
+});
+
+test('aggregateGlobeDropStats: empty records + totalRounds=5 still returns null', () => {
+    // Player has zero guesses; nothing to aggregate even though the
+    // game ran 5 rounds. Caller (renderDetailedStats) shows a "no
+    // guesses recorded" hint in this case rather than divide-by-zero.
+    assert.equal(aggregateGlobeDropStats([], 5), null);
+});
