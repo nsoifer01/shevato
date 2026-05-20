@@ -151,14 +151,18 @@
         //   'country+continent+subregion' — easy: full geographic context
         //   'country+continent'           — medium: country and continent
         //   'country'                     — hard: city + country
-        // (Pre-rebalance there was a 'none' level showing city alone, but
-        // that was too punishing — players had no anchor at all. Hard
-        // keeps the country so guessing is still tractable.)
+        // Per-difficulty timers were removed — every room defaults to
+        // GLOBE_DROP_DEFAULT_TIMER_SEC and the host can override via the
+        // "Time per location" field in the lobby form. Keeping a `timerSec`
+        // alias on each tier for older code paths that still read it; the
+        // value is identical regardless of tier so changing difficulty
+        // mid-lobby no longer rewrites the timer.
+        GLOBE_DROP_DEFAULT_TIMER_SEC: 60,
         GLOBE_DROP_DIFFICULTY_DEFAULT: 'medium',
         GLOBE_DROP_DIFFICULTIES: {
-            easy:   { label: 'Easy',   timerSec: 180, hintLevel: 'country+continent+subregion', scoreMultiplier: 0.75 },
-            medium: { label: 'Medium', timerSec: 120, hintLevel: 'country+continent',            scoreMultiplier: 1.00 },
-            hard:   { label: 'Hard',   timerSec: 60,  hintLevel: 'country',                       scoreMultiplier: 1.50 }
+            easy:   { label: 'Easy',   timerSec: 60, hintLevel: 'country+continent+subregion', scoreMultiplier: 0.75 },
+            medium: { label: 'Medium', timerSec: 60, hintLevel: 'country+continent',            scoreMultiplier: 1.00 },
+            hard:   { label: 'Hard',   timerSec: 60, hintLevel: 'country',                       scoreMultiplier: 1.50 }
         }
     };
 }));
