@@ -89,29 +89,94 @@
     }
 
     /**
+     * Round multiplier ladder. Every round in a game draws its
+     * multiplier from this fixed pool — first round always 1.0×,
+     * last round always 3.0×, intermediate rounds interpolate.
+     * One impactful scaling per round instead of compounding
+     * continent × difficulty × obscurity multipliers.
+     */
+    const ROUND_MULTIPLIERS = [1.0, 1.5, 2.0, 2.5, 3.0];
+
+    /**
+     * Pick the multiplier for round `i` (0-indexed) out of `n` total
+     * rounds. Linearly interpolates an index into ROUND_MULTIPLIERS:
+     *
+     *   n=5  → [1.0, 1.5, 2.0, 2.5, 3.0]            (every step used)
+     *   n=10 → [1.0, 1.0, 1.5, 1.5, 2.0, 2.0,        (each step x2)
+     *           2.5, 2.5, 3.0, 3.0]
+     *   n=3  → [1.0, 2.0, 3.0]                       (subset spread evenly)
+     *   n=1  → [1.0]                                 (always start easy)
+     *
+     * Guaranteed monotonic non-decreasing: round i+1 always has
+     * multiplier ≥ round i.
+     */
+    function roundMultiplierForIndex(i, n) {
+        if (!Number.isFinite(i) || i < 0) return ROUND_MULTIPLIERS[0];
+        if (!Number.isFinite(n) || n <= 1) return ROUND_MULTIPLIERS[0];
+        const lastIdx = ROUND_MULTIPLIERS.length - 1;
+        const idx = Math.round(i * lastIdx / (n - 1));
+        return ROUND_MULTIPLIERS[Math.max(0, Math.min(lastIdx, idx))];
+    }
+
+    /**
+     * Stamp `multiplier` onto each location in order. The input order
+     * is preserved — callers should shuffle for variety BEFORE
+     * passing the array in. Returns a new array; doesn't mutate input.
+     */
+    function assignRoundMultipliers(locations) {
+        if (!Array.isArray(locations)) return [];
+        const n = locations.length;
+        return locations.map((loc, i) => Object.assign({}, loc, {
+            multiplier: roundMultiplierForIndex(i, n)
+        }));
+    }
+
+    /**
      * Score a single guess.
+     *
+     * New model (preferred): pass `multiplier` directly. Score is
+     *   round(base × exp(-distance / scaleKm) × multiplier)
+     * floored at GLOBE_DROP_MIN_POINTS.
+     *
+     * Legacy model (only when `multiplier` is not provided): falls
+     * back to compounding continent × difficulty × population
+     * multipliers, so callers that haven't migrated yet keep working.
+     *
      * @param {object} args
      * @param {number} args.distanceKm
-     * @param {string} args.region — continent / region label
-     * @param {string} [args.difficulty] — easy/medium/hard; omitted = legacy = medium (1x)
-     * @param {number} [args.population] — population of the place being guessed.
-     *                                     Smaller pop = higher obscurity weight.
-     * @returns {{ points:number, distanceKm:number, multiplier:number, basePoints:number,
-     *            difficultyMultiplier:number, populationMultiplier:number }}
+     * @param {number} [args.multiplier] — preferred round multiplier
+     * @param {string} [args.region] — legacy: continent label
+     * @param {string} [args.difficulty] — legacy: easy/medium/hard
+     * @param {number} [args.population] — legacy: city population
      */
-    function scoreGuess({ distanceKm, region, difficulty, population }) {
+    function scoreGuess(args) {
+        const distanceKm = args && args.distanceKm;
         const max = Config.GLOBE_DROP_BASE_POINTS;
         const scale = Config.GLOBE_DROP_DISTANCE_SCALE_KM;
         const floor = typeof Config.GLOBE_DROP_MIN_POINTS === 'number' ? Config.GLOBE_DROP_MIN_POINTS : 0;
         const d = Math.max(0, Number(distanceKm) || 0);
         const base = max * Math.exp(-d / scale);
+
+        // New model: single round multiplier.
+        if (args && typeof args.multiplier === 'number' && Number.isFinite(args.multiplier)) {
+            const mult = args.multiplier;
+            const points = Math.max(floor, Math.round(base * mult));
+            return {
+                points,
+                distanceKm: d,
+                multiplier: mult,
+                basePoints: Math.round(base)
+            };
+        }
+
+        // Legacy model: compound multipliers.
+        const region = args && args.region;
+        const difficulty = args && args.difficulty;
+        const population = args && args.population;
         const mult = continentMultiplier(region);
         const diff = difficultySettings(difficulty);
         const diffMult = diff.scoreMultiplier;
         const popMult = populationWeight(population);
-        // Distance-decay points × continent × difficulty × obscurity, then
-        // floor at GLOBE_DROP_MIN_POINTS so an antipodal guess still scores
-        // something instead of a flat 0.
         const raw = base * mult * diffMult * popMult;
         const points = Math.max(floor, Math.round(raw));
         return {
@@ -129,6 +194,9 @@
         continentMultiplier,
         difficultySettings,
         populationWeight,
-        scoreGuess
+        scoreGuess,
+        ROUND_MULTIPLIERS,
+        roundMultiplierForIndex,
+        assignRoundMultipliers
     };
 }));

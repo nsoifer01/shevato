@@ -779,41 +779,16 @@ function shuffle(arr, rand = Math.random) {
 }
 
 /**
- * Sort a location list easiest → hardest by the COMBINED round
- * multiplier we actually award:
+ * Apply the round-multiplier ladder to a pre-shuffled location list.
+ * Round i gets multipliers from a fixed [1.0, 1.5, 2.0, 2.5, 3.0]
+ * pool interpolated across N — see GlobeDropScoring.assignRoundMultipliers.
  *
- *   roundMult = continentMultiplier(region) × populationWeight(pop)
- *
- * (Difficulty tier is a room-wide constant so it doesn't affect
- * ordering.) Sorting on the combined product guarantees every later
- * round has a >= multiplier than every earlier round — earlier
- * versions sorted only on populationWeight, so a Europe high-pop
- * city could outrank an Asia / Africa low-pop city even though the
- * latter rewards more points.
- *
- * Stable sort preserves the input order for ties — important for
- * modes without population (capitals, countries, landmarks) where
- * popWeight is constant 1 across the list, so order falls back to
- * continentMultiplier and then the upstream shuffle.
+ * Replaced the old continent×population sort: per-round scaling is
+ * now a single explicit multiplier stored on the location at room
+ * creation, not derived from city data at score time.
  */
-function sortLocationsByAscendingDifficulty(locations) {
-    if (!Array.isArray(locations) || locations.length < 2) {
-        return Array.isArray(locations) ? locations.slice() : [];
-    }
-    const decorated = locations.map((loc, i) => {
-        const contMult = GlobeDropScoring.continentMultiplier(loc && loc.region);
-        const popMult = GlobeDropScoring.populationWeight(loc && loc.population);
-        return {
-            loc,
-            roundMult: contMult * popMult,
-            idx: i
-        };
-    });
-    decorated.sort((a, b) => {
-        if (a.roundMult !== b.roundMult) return a.roundMult - b.roundMult;
-        return a.idx - b.idx;
-    });
-    return decorated.map((d) => d.loc);
+function applyRoundMultipliers(locations) {
+    return GlobeDropScoring.assignRoundMultipliers(locations);
 }
 
 /**
@@ -1248,14 +1223,13 @@ async function createRoom(opts) {
                 locations = await GlobeDropLocations.fetchLocations(roundType, count, shuffle);
             }
 
-            // Round-progression sort: order rounds easiest → hardest using
-            // the existing populationWeight (higher weight = more obscure).
-            // Stable sort, so for modes without population data (capitals,
-            // countries, landmarks → all weight=1) the prior shuffle order
-            // is preserved. Daily mode is sorted too: every player still
-            // sees the same locations in the same order because the input
-            // pool was seeded by date.
-            locations = sortLocationsByAscendingDifficulty(locations);
+            // Round-progression scaling: stamp each location with a
+            // multiplier from the fixed [1.0, 1.5, 2.0, 2.5, 3.0]
+            // ladder, interpolated across the total round count.
+            // First round = 1.0×, last round = 3.0×, monotonic in
+            // between. Locations stay in their pre-shuffled order
+            // (so daily mode keeps deterministic order via date seed).
+            locations = applyRoundMultipliers(locations);
 
             await setDoc(ref, Object.assign({}, shared, {
                 packId: meta.packId,
@@ -2311,7 +2285,7 @@ async function saveRoomSettings() {
         };
         if (needsRefetch) {
             const locations = await GlobeDropLocations.fetchLocations(newRoundType, newCount, shuffle);
-            update.questions = sortLocationsByAscendingDifficulty(locations);
+            update.questions = applyRoundMultipliers(locations);
             update.totalQuestions = update.questions.length;
             update.currentQuestionIndex = 0;
             update.currentQuestionId = null;
@@ -2936,12 +2910,12 @@ function renderGlobeDropStage() {
         hintsEl.setAttribute('hidden', '');
     }
 
-    // Difficulty chip is only meaningful on the medium-or-harder tiers
-    // (easy is the friendly default and doesn't need celebrating).
+    // Difficulty chip — shows the tier label only (no "+50% score"
+    // claim, since difficulty now controls timer + hint level only,
+    // not scoring; per-round multiplier comes from the round ladder).
     const chip = $('#globe-drop-difficulty-chip');
-    if (state.roomData.difficulty && diff.scoreMultiplier !== 1) {
-        const sign = diff.scoreMultiplier > 1 ? '+' : '';
-        setText(chip, `${diff.label} · ${sign}${Math.round((diff.scoreMultiplier - 1) * 100)}% score`);
+    if (state.roomData.difficulty && state.roomData.difficulty !== 'medium') {
+        setText(chip, diff.label);
         chip.removeAttribute('hidden');
         chip.dataset.tier = state.roomData.difficulty;
     } else {
@@ -3203,9 +3177,7 @@ function drawGlobeDropReveal(loc, me, { showOthers = true } = {}) {
         );
         const { points } = GlobeDropScoring.scoreGuess({
             distanceKm: d,
-            region: loc.region,
-            difficulty: state.roomData.difficulty,
-            population: loc.population
+            multiplier: loc.multiplier
         });
         distEl.innerHTML = `${Math.round(d).toLocaleString()} km off — <strong>+${points}</strong> points`;
         let sentiment;
@@ -3370,22 +3342,13 @@ function renderRoundsHistoryBoard() {
         });
         const li = document.createElement('li');
         li.className = 'rounds-history-row';
-        // Multiplier breakdown is a property of the ROUND (difficulty +
-        // continent + obscurity), not of any one player — same numbers
-        // apply to every chip. Show it next to the R# label so it
-        // reads once per round instead of being repeated inside the
-        // local player's chip.
-        const diffMult = GlobeDropScoring.difficultySettings(room.difficulty).scoreMultiplier;
-        const contMult = GlobeDropScoring.continentMultiplier(loc.region);
-        const popMult = GlobeDropScoring.populationWeight(loc.population);
-        const parts = [];
+        // Round multiplier: single value baked onto the location at
+        // room-creation time via the 1.0 → 3.0 ladder. Same number
+        // applies to every chip in the round, so we render it once
+        // next to the R# label.
+        const roundMult = (typeof loc.multiplier === 'number') ? loc.multiplier : 1;
         const fmt = (n) => n.toFixed(2).replace(/0+$/, '').replace(/\.$/, '');
-        if (diffMult !== 1) parts.push('×' + fmt(diffMult));
-        if (contMult !== 1) parts.push('×' + fmt(contMult));
-        if (popMult !== 1) parts.push('×' + fmt(popMult));
-        const multHtml = parts.length
-            ? ` <em class="rounds-history-mult">${escapeHtml(parts.join(' '))}</em>`
-            : '';
+        const multHtml = ` <em class="rounds-history-mult">×${escapeHtml(fmt(roundMult))}</em>`;
         const chips = perPlayer.map((pp) => {
             const isMe = state.user && pp.uid === state.user.uid;
             const cls = 'rounds-history-chip'
@@ -3426,9 +3389,7 @@ async function submitGuess() {
     );
     const { points } = GlobeDropScoring.scoreGuess({
         distanceKm: distance,
-        region: loc.region,
-        difficulty: state.roomData.difficulty,
-        population: loc.population
+        multiplier: loc.multiplier
     });
 
     state.submittedQuestionId = loc.id;
@@ -4440,28 +4401,15 @@ function renderEndRecap() {
         return;
     }
 
-    const room = state.roomData || {};
-    const diffMult = isGlobeDrop
-        ? GlobeDropScoring.difficultySettings(room.difficulty).scoreMultiplier
-        : 1;
-
     questions.forEach((q, i) => {
-        // Round-level multiplier (Globe Drop only — trivia has no
-        // geographic / population scaling). Difficulty tier is room-
-        // wide and constant, so we only highlight the per-round
-        // continent × population product; the tier mult is shown
-        // separately when not 1.
-        const parts = [];
+        // Round multiplier (Globe Drop only — trivia rounds don't
+        // scale by location). The value comes straight from
+        // q.multiplier, stamped at room-create time from the
+        // 1.0 → 3.0 ladder.
         const fmt = (n) => n.toFixed(2).replace(/0+$/, '').replace(/\.$/, '');
-        if (isGlobeDrop) {
-            const contMult = GlobeDropScoring.continentMultiplier(q.region);
-            const popMult = GlobeDropScoring.populationWeight(q.population);
-            if (diffMult !== 1) parts.push('×' + fmt(diffMult));
-            if (contMult !== 1) parts.push('×' + fmt(contMult));
-            if (popMult !== 1) parts.push('×' + fmt(popMult));
-        }
-        const multHtml = parts.length
-            ? `<span class="recap-card-mult" title="Round multipliers (difficulty × continent × obscurity)">${escapeHtml(parts.join(' '))}</span>`
+        const roundMult = (isGlobeDrop && typeof q.multiplier === 'number') ? q.multiplier : null;
+        const multHtml = (roundMult != null)
+            ? `<span class="recap-card-mult" title="Round multiplier">×${escapeHtml(fmt(roundMult))}</span>`
             : '';
 
         // Per-column results — also tracks the winner(s).
