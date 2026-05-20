@@ -2359,8 +2359,10 @@ async function hydrateLobbyH2HBadge(opponentUid, spanId) {
     const myIsA = pair.uidA === state.user.uid;
     const myWins = myIsA ? (pair.winsA || 0) : (pair.winsB || 0);
     const theirWins = myIsA ? (pair.winsB || 0) : (pair.winsA || 0);
-    const ties = pair.ties || 0;
-    el.textContent = `H2H ${myWins}-${theirWins}${ties ? `-${ties}` : ''}`;
+    const draws = pair.ties || 0;
+    // Format: W-D-L (Wins-Draws-Losses), always all three numbers
+    // so the structure stays parseable at a glance even with zeros.
+    el.textContent = `H2H ${myWins}-${draws}-${theirWins}`;
     el.hidden = false;
 }
 
@@ -4677,13 +4679,15 @@ function renderRoomSessionH2H() {
         displayName: p.displayName,
         sessionWins: wins[p.uid] || 0
     })).sort((a, b) => b.sessionWins - a.sessionWins);
-    // Total matches = sum of wins across all players, but capped by
-    // sessionMatchCount (ties don't increment anyone's count, so the
-    // sum can lag behind). Use sessionMatchCount as the denominator
-    // so the "losses" calc reflects reality.
+    // Ties aren't tracked per-player; derive from the gap between
+    // matchCount and the sum of per-player wins. In 2-player rooms
+    // this gives exact W/D/L; in 3+ player rooms "draws" counts
+    // matches where no single player took the top score.
+    const totalRecordedWins = rows.reduce((s, r) => s + r.sessionWins, 0);
+    const draws = Math.max(0, matchCount - totalRecordedWins);
     list.innerHTML = '';
     rows.forEach((r, i) => {
-        const losses = Math.max(0, matchCount - r.sessionWins);
+        const losses = Math.max(0, matchCount - r.sessionWins - draws);
         const li = document.createElement('li');
         li.className = 'mini-board-row session-h2h-row';
         if (state.user && r.uid === state.user.uid) li.classList.add('is-me');
@@ -4692,6 +4696,7 @@ function renderRoomSessionH2H() {
             `<span class="mini-board-name">${escapeHtml(r.displayName)}</span>` +
             `<span class="session-h2h-wl">` +
                 `<span class="session-h2h-pill is-win">${r.sessionWins}W</span>` +
+                `<span class="session-h2h-pill is-draw">${draws}D</span>` +
                 `<span class="session-h2h-pill is-loss">${losses}L</span>` +
             `</span>`;
         list.appendChild(li);
