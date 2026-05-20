@@ -1850,7 +1850,7 @@ select option { background: var(--surface); color: var(--text); }
 .rounds-history-row {
   display: flex;
   align-items: center;
-  gap: 0.5rem;
+  gap: 0.65rem;
   padding: 0.4rem 0.6rem;
   background: rgba(255, 255, 255, 0.015);
   border: 1px solid rgba(148, 163, 184, 0.06);
@@ -1861,20 +1861,32 @@ select option { background: var(--surface); color: var(--text); }
 .rounds-history-label {
   font-family: var(--mono);
   font-weight: 700;
-  color: var(--muted-2);
+  color: var(--cyan);
   letter-spacing: 0.02em;
   white-space: nowrap;
   font-size: 0.78rem;
+  flex: 0 0 auto;
 }
 .rounds-history-loc {
   color: var(--text);
-  font-weight: 500;
+  font-weight: 600;
+  white-space: nowrap;
+  /* Cap the city name so a very long label can't push the chips off
+     the row alone; ellipsis only if it overflows the column. */
+  max-width: 14ch;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  flex: 0 1 auto;
 }
 .rounds-history-scores {
+  /* Chips sit immediately after the city — no margin-left:auto so
+     the row reads as one tight group: R# / city / chips. Wraps to
+     a new line on narrow viewports via the row's flex-wrap. */
   display: inline-flex;
   flex-wrap: wrap;
-  gap: 0.4rem;
-  margin-left: auto;
+  gap: 0.35rem;
+  flex: 1 1 auto;
+  min-width: 0;
 }
 .rounds-history-chip {
   display: inline-flex;
