@@ -2748,7 +2748,18 @@ function ensureGlobe() {
         .arcStroke(0.45)
         .arcDashLength(0.4)
         .arcDashGap(0.2)
-        .arcDashAnimateTime(1800);
+        .arcDashAnimateTime(1800)
+        // Polygon styling used by the reveal-phase country-border
+        // overlay. Cap fill is a faint cyan wash so the texture
+        // beneath stays readable; side + stroke are saturated so
+        // the outline reads against the satellite image. polygonsData
+        // is empty until drawGlobeDropReveal hands in the correct
+        // country's feature.
+        .polygonAltitude(0.008)
+        .polygonCapColor(() => 'rgba(34, 211, 238, 0.18)')
+        .polygonSideColor(() => 'rgba(34, 211, 238, 0.30)')
+        .polygonStrokeColor(() => '#22d3ee')
+        .polygonsTransitionDuration(700);
     // Match the canvas size to its container; globe.gl reads this once
     // up front so we have to call it after the stage is visible.
     state.globe.width(el.clientWidth);
@@ -2819,6 +2830,37 @@ function clearMapOverlays() {
     if (!state.globe) return;
     state.globe.pointsData([]);
     state.globe.arcsData([]);
+    state.globe.polygonsData([]);
+}
+
+/**
+ * Lazy-load world country features once and cache them keyed by ISO
+ * 3166-1 numeric code. Source: world-atlas 110m TopoJSON, expanded
+ * client-side via topojson-client.feature(). ~108 KB on the wire,
+ * keys map 1-to-1 with REST Countries' ccn3 (now persisted on every
+ * location as `countryCode`). Resolves to {} when the network fetch
+ * fails so callers can safely ?. into the result.
+ */
+let countryFeaturesIndexPromise = null;
+function loadCountryFeaturesIndex() {
+    if (countryFeaturesIndexPromise) return countryFeaturesIndexPromise;
+    countryFeaturesIndexPromise = (async () => {
+        try {
+            if (typeof window.topojson === 'undefined') return {};
+            const res = await fetch('data/world-110m.json', { cache: 'force-cache' });
+            if (!res.ok) return {};
+            const topo = await res.json();
+            const fc = window.topojson.feature(topo, topo.objects.countries);
+            const idx = {};
+            for (const f of fc.features) {
+                idx[String(f.id).padStart(3, '0')] = f;
+            }
+            return idx;
+        } catch (_) {
+            return {};
+        }
+    })();
+    return countryFeaturesIndexPromise;
 }
 
 function onGlobeClick(lat, lng) {
@@ -2861,6 +2903,7 @@ function drawMyPinOnly(lat, lng) {
         label: 'Your guess'
     }]);
     state.globe.arcsData([]);
+    state.globe.polygonsData([]);
 }
 
 function placeMyPin(lat, lng) { drawMyPinOnly(lat, lng); }
@@ -3226,6 +3269,25 @@ function drawGlobeDropReveal(loc, me, { showOthers = true } = {}) {
     }
     state.globe.arcsData(arcs);
 
+    // Reveal-phase country border. Lazy-load the world-countries
+    // index on first call, then hand globe.gl exactly one polygon
+    // (the correct country) so the focus stays on the answer.
+    // Fire-and-forget; if the network or topojson lib isn't ready
+    // we silently skip the overlay rather than blocking the reveal.
+    loadCountryFeaturesIndex().then((idx) => {
+        if (!state.globe) return;
+        // Race guard: only paint if this is still the question on
+        // screen — a fast next-question would otherwise leak the
+        // previous country's border into the new round.
+        const stillCurrent = state.lastRenderedMapQuestion === loc.id
+            || state.lastRevealedMapQuestion === loc.id + ':local'
+            || state.lastRevealedMapQuestion === loc.id + ':global';
+        if (!stillCurrent) return;
+        const code = loc.countryCode && String(loc.countryCode).padStart(3, '0');
+        const feat = code ? idx[code] : null;
+        state.globe.polygonsData(feat ? [feat] : []);
+    });
+
     // Pan camera so the actual location is centered + zoom in a touch.
     // Reveal fly-in: longer tween so the camera glides into the truth
     // instead of snapping. 1400ms paired with globe.gl's default easing
@@ -3531,6 +3593,7 @@ function clearMyPin() {
     if (state.globe) {
         state.globe.pointsData([]);
         state.globe.arcsData([]);
+        state.globe.polygonsData([]);
     }
     $('#globe-drop-submit-btn').disabled = true;
     $('#globe-drop-clear-btn').hidden = true;
