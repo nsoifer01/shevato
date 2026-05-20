@@ -72,7 +72,7 @@
       "Trivia: live questions pulled from The Trivia API with a rotating category picker between questions",
       "Speed + streak based scoring with instant local reveal after you submit",
       "Per-question / per-location recap table comparing you side-by-side with your opponents",
-      "Global XP leaderboard and Firebase Auth profiles with XP, games played, and wins",
+      "Global score leaderboard and Firebase Auth profiles with total score, games played, and wins",
       "Premium tier: custom question packs, detailed accuracy / response-time stats"
     ],
     "author": {
@@ -130,7 +130,7 @@
       <section class="lobby-panel" id="lobby-panel">
         <p class="auth-gate" id="auth-gate" hidden>
           <span aria-hidden="true">🔒</span>
-          Sign in from the top-right to create or join rooms. Your XP, wins, and games-played stay on your profile.
+          Sign in from the top-right to create or join rooms. Your score, wins, and games-played stay on your profile.
         </p>
         <div class="lobby-grid" id="lobby-grid">
           <article class="lobby-card lobby-create">
@@ -169,9 +169,9 @@
               <label class="lobby-field" data-game-type="globe-drop">
                 <span>Difficulty</span>
                 <select id="create-globe-drop-difficulty">
-                  <option value="easy">Easy (country + continent + region, 180 s, 0.75&times; score)</option>
-                  <option value="medium" selected>Medium (country + continent, 120 s, 1&times; score)</option>
-                  <option value="hard">Hard (city name only, 60 s, 1.5&times; score)</option>
+                  <option value="easy">Easy &mdash; name + country + continent + region</option>
+                  <option value="medium" selected>Medium &mdash; name + country + continent</option>
+                  <option value="hard">Hard &mdash; name + country only</option>
                 </select>
               </label>
               <label class="lobby-field" data-game-type="globe-drop">
@@ -203,8 +203,8 @@
                 <span>Time per location</span>
                 <select id="create-globe-drop-time">
                   <option value="30">30 seconds (speed run)</option>
-                  <option value="60">60 seconds (classic)</option>
-                  <option value="120" selected>120 seconds (thoughtful)</option>
+                  <option value="60" selected>60 seconds (default)</option>
+                  <option value="120">120 seconds (thoughtful)</option>
                   <option value="180">3 minutes (deliberate)</option>
                   <option value="300">5 minutes (discuss it out)</option>
                 </select>
@@ -591,6 +591,13 @@
                 </div>
               </div>
               <p class="globe-drop-reveal-trivia" id="globe-drop-reveal-trivia" hidden></p>
+              <!-- Always-visible Wikipedia escape hatch. Wired up by
+                   drawGlobeDropReveal whenever the reveal opens so
+                   players can read more about the location even if
+                   the inline trivia summary fetch failed. -->
+              <a class="globe-drop-reveal-wiki" id="globe-drop-reveal-wiki" target="_blank" rel="noopener" hidden>
+                <span aria-hidden="true">📖</span> Read on Wikipedia
+              </a>
               <!-- Ready-for-next bar. During the reveal window, any
                    player can click "Ready" to vote to skip the wait;
                    if every player is ready the host advances early. -->
@@ -643,7 +650,6 @@
         <!-- STAGE: end of game -->
         <section class="stage stage-end" id="stage-end" hidden>
           <header class="end-head">
-            <h2>Game over</h2>
             <p id="end-summary"></p>
           </header>
 
@@ -682,7 +688,6 @@
                   <th>Player</th>
                   <th>Score</th>
                   <th>Streak</th>
-                  <th>XP earned</th>
                 </tr>
               </thead>
               <tbody id="end-board-body"></tbody>
@@ -697,13 +702,25 @@
               <h3>Game recap</h3>
               <p class="end-recap-sub" id="end-recap-sub"></p>
             </header>
+            <!-- Lifetime H2H banner — shown only in 2-player rooms.
+                 Surfaces the player vs opponent record (W-D-L) from
+                 triviaH2H so players see context as soon as the end
+                 stage loads. -->
+            <div class="end-recap-h2h" id="end-recap-h2h" hidden></div>
+
             <div class="end-recap-stats" id="end-recap-stats"></div>
+
+            <!-- Per-round table. Compact: rank | ×mult | location |
+                 per-player score cells | winner. Cards version was
+                 noisier than this; the table reads as a single grid
+                 at a glance for 8-10 round matches. -->
             <div class="end-recap-table-wrap">
               <table class="end-recap-table" id="end-recap-table">
                 <thead id="end-recap-thead"></thead>
                 <tbody id="end-recap-tbody"></tbody>
               </table>
             </div>
+            <p class="end-recap-empty" id="end-recap-empty" hidden>No per-question detail recorded for this game.</p>
           </section>
 
           <!-- Detailed stats (premium) -->
@@ -756,7 +773,7 @@
     <!-- ====================== LEADERBOARD VIEW ====================== -->
     <section class="view view-leaderboard" data-view-panel="leaderboard" hidden>
       <header class="leaderboard-head">
-        <h2 class="section-title">Global XP leaderboard</h2>
+        <h2 class="section-title">Global leaderboard</h2>
         <div class="leaderboard-filters">
           <label class="lobby-field">
             <span>Time period</span>
@@ -785,19 +802,21 @@
           <thead>
             <tr>
               <th>#</th>
-              <th>Player</th>
-              <th>XP</th>
-              <th>Games</th>
-              <th>Wins</th>
-              <th>Win %</th>
-              <th>Last played</th>
+              <th data-sort-key="displayName">Player</th>
+              <th data-sort-key="avgScore" data-sort-default="desc">Avg score</th>
+              <th data-sort-key="bestRoundScore">Best round</th>
+              <th data-sort-key="lifetimeBullseyes">Bullseyes</th>
+              <th data-sort-key="gamesPlayed">Games</th>
+              <th data-sort-key="wins">Wins</th>
+              <th data-sort-key="winPct">Win %</th>
+              <th data-sort-key="lastPlayedAt">Last played</th>
               <th id="leaderboard-admin-th" hidden>Admin</th>
             </tr>
           </thead>
           <tbody id="leaderboard-body"></tbody>
         </table>
       </div>
-      <p class="empty-state" id="leaderboard-empty" hidden>
+      <p class="empty-state" id="leaderboard-empty">
         No games played yet. Be the first to land on the board.
       </p>
 
@@ -833,7 +852,7 @@
           <tbody id="leaderboard-daily-body"></tbody>
         </table>
       </div>
-      <p class="empty-state" id="leaderboard-daily-empty" hidden>
+      <p class="empty-state" id="leaderboard-daily-empty">
         No one has finished today's challenge yet. Be first.
       </p>
     </section>
@@ -862,6 +881,18 @@
           <header><h3 id="h2h-name-a">…</h3></header>
           <dl class="h2h-stats" id="h2h-stats-a"></dl>
         </article>
+        <!-- Lifetime W-D-L record between the two selected players.
+             Populated by renderH2HComparison alongside the two cards.
+             Sits between them on desktop, above on mobile. -->
+        <div class="h2h-record-pill" id="h2h-record-pill" hidden>
+          <span class="h2h-record-label">Lifetime</span>
+          <div class="h2h-record-score">
+            <span class="h2h-record-num" id="h2h-record-a">0</span>
+            <span class="h2h-record-dash">–</span>
+            <span class="h2h-record-num" id="h2h-record-b">0</span>
+          </div>
+          <span class="h2h-record-sub" id="h2h-record-sub">No matches yet</span>
+        </div>
         <article class="h2h-card h2h-card-b">
           <header><h3 id="h2h-name-b">…</h3></header>
           <dl class="h2h-stats" id="h2h-stats-b"></dl>
@@ -891,10 +922,11 @@
         </div>
 
         <div class="profile-stats" id="profile-stats">
-          <div class="profile-stat"><span class="profile-stat-label">XP</span><span class="profile-stat-value" id="stat-xp">0</span></div>
+          <div class="profile-stat is-headline"><span class="profile-stat-label">Avg score</span><span class="profile-stat-value" id="stat-avg-score">0</span></div>
           <div class="profile-stat"><span class="profile-stat-label">Games</span><span class="profile-stat-value" id="stat-games">0</span></div>
-          <div class="profile-stat"><span class="profile-stat-label">Wins</span><span class="profile-stat-value" id="stat-wins">0</span></div>
           <div class="profile-stat"><span class="profile-stat-label">Win %</span><span class="profile-stat-value" id="stat-winpct">0%</span></div>
+          <div class="profile-stat"><span class="profile-stat-label">Bullseyes</span><span class="profile-stat-value" id="stat-bullseyes">0</span></div>
+          <div class="profile-stat"><span class="profile-stat-label">Best round</span><span class="profile-stat-value" id="stat-best-round">0</span></div>
         </div>
 
         <div class="profile-premium-card" id="profile-premium-card">
@@ -938,7 +970,7 @@
       </section>
 
       <p class="profile-signed-out" id="profile-signed-out" hidden>
-        Sign in from the top-right to save your XP, wins, and games played.
+        Sign in from the top-right to save your score, wins, and games played.
       </p>
     </section>
   </main>
@@ -1039,7 +1071,16 @@
        so no separate three import needed. We use NASA's Blue Marble texture
        as the globe surface — pure satellite imagery, no labels or borders,
        so the geography game stays a real challenge. -->
-  <script defer src="https://unpkg.com/globe.gl@2.27.4/dist/globe.gl.min.js"></script>
+  <!-- Self-hosted globe.gl (2.27.4) — keeps the page off unpkg so the
+       Netlify CSP can stay tight (no script-src exception needed) and
+       removes a second-origin round-trip from initial load. To upgrade,
+       re-download from https://unpkg.com/globe.gl@<ver>/dist/globe.gl.min.js
+       into js/vendor/ and bump the comment above. -->
+  <script defer src="js/vendor/globe.gl.min.js"></script>
+  <!-- Self-hosted topojson-client (3.1.0). Converts the world-110m
+       TopoJSON in /apps/arena/data/ into GeoJSON features for the
+       reveal-phase country-border overlay. ~7 KB minified. -->
+  <script defer src="js/vendor/topojson-client.min.js"></script>
 
   <!-- Brain Arena: pure-logic UMD files first (attach to window.BrainArena),
        then the main app module that imports Firestore SDK + reads the

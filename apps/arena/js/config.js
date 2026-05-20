@@ -43,11 +43,6 @@
         STREAK_MULTIPLIER_STEP: 0.1,   // +10% per consecutive correct
         STREAK_MULTIPLIER_CAP: 5,      // capped at 5 in a row (=> 1.5x)
 
-        // XP earned == score (1:1). With the smaller scoring scale above,
-        // this gives ~1000–3000 XP per game — feels rewarding without
-        // exploding profile totals.
-        XP_PER_POINT_DIVISOR: 1,
-
         // Master switch for the premium tier. When false (default):
         //   - all premium UI is hidden (modal, profile card, "Premium" tags,
         //     admin toggles, the locked detailed-stats panel),
@@ -155,15 +150,19 @@
         // hintLevel values:
         //   'country+continent+subregion' — easy: full geographic context
         //   'country+continent'           — medium: country and continent
-        //   'country'                     — current default for legacy rooms
-        //   'none'                        — hard: city name only, no country
-        // scoreMultiplier is exposed in the lobby and end-card so players see
-        // the tradeoff before they pick.
+        //   'country'                     — hard: city + country
+        // Per-difficulty timers were removed — every room defaults to
+        // GLOBE_DROP_DEFAULT_TIMER_SEC and the host can override via the
+        // "Time per location" field in the lobby form. Keeping a `timerSec`
+        // alias on each tier for older code paths that still read it; the
+        // value is identical regardless of tier so changing difficulty
+        // mid-lobby no longer rewrites the timer.
+        GLOBE_DROP_DEFAULT_TIMER_SEC: 60,
         GLOBE_DROP_DIFFICULTY_DEFAULT: 'medium',
         GLOBE_DROP_DIFFICULTIES: {
-            easy:   { label: 'Easy',   timerSec: 180, hintLevel: 'country+continent+subregion', scoreMultiplier: 0.75 },
-            medium: { label: 'Medium', timerSec: 120, hintLevel: 'country+continent',            scoreMultiplier: 1.00 },
-            hard:   { label: 'Hard',   timerSec: 60,  hintLevel: 'none',                          scoreMultiplier: 1.50 }
+            easy:   { label: 'Easy',   timerSec: 60, hintLevel: 'country+continent+subregion', scoreMultiplier: 0.75 },
+            medium: { label: 'Medium', timerSec: 60, hintLevel: 'country+continent',            scoreMultiplier: 1.00 },
+            hard:   { label: 'Hard',   timerSec: 60, hintLevel: 'country',                       scoreMultiplier: 1.50 }
         }
     };
 }));
