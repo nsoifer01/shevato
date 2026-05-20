@@ -2383,11 +2383,22 @@ function renderLobbyStage(isHost) {
         if (state.user && p.uid === state.user.uid) li.classList.add('is-me');
         const isMe = state.user && p.uid === state.user.uid;
         const h2hSpanId = (state.user && !isMe) ? `lobby-h2h-${p.uid}` : '';
+        const isHost = p.uid === state.roomData.hostUid;
+        // Two-row layout: name gets the full content width on top
+        // (wraps to 2 lines if needed, ellipses only as a last resort);
+        // small badges (HOST tag + H2H pill) live on the row beneath.
+        const badgesHTML = (isHost || h2hSpanId)
+            ? '<span class="player-tile-badges">'
+                + (isHost ? '<span class="player-mini-tag">Host</span>' : '')
+                + (h2hSpanId ? `<span class="player-h2h-badge" id="${h2hSpanId}" hidden></span>` : '')
+              + '</span>'
+            : '';
         li.innerHTML =
             `<span class="player-avatar">${escapeHtml(avatarLetter(p.displayName))}</span>` +
-            `<span class="player-name">${escapeHtml(p.displayName)}</span>` +
-            (p.uid === state.roomData.hostUid ? '<span class="player-mini-tag">Host</span>' : '') +
-            (h2hSpanId ? `<span class="player-h2h-badge" id="${h2hSpanId}" hidden></span>` : '');
+            '<span class="player-tile-body">' +
+                `<span class="player-name">${escapeHtml(p.displayName)}</span>` +
+                badgesHTML +
+            '</span>';
         list.appendChild(li);
         if (h2hSpanId) hydrateLobbyH2HBadge(p.uid, h2hSpanId);
     }
