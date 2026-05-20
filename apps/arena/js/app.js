@@ -3640,15 +3640,22 @@ function renderGlobeDropTimer(leftMs, phase, totalMs) {
     // so we share the single visual.
     if (phase === 'reveal' || phase === 'ended') {
         const room = state.roomData || {};
-        const revealMs = room.revealStartedAt && room.revealStartedAt.toMillis
+        // Prefer the explicit revealStartedAt the host writes during
+        // early-reveal (all players submitted). When the asking timer
+        // simply runs out without an early trigger, revealStartedAt is
+        // null — derive the anchor from questionStartedAt + asking
+        // duration so the countdown still renders. Without this, the
+        // display fell through to "—" + a flat ring after time-up.
+        let revealAnchorMs = (room.revealStartedAt && room.revealStartedAt.toMillis)
             ? room.revealStartedAt.toMillis() : null;
-        // Same 5→1 countdown for EVERY round including the last one —
-        // previously the last round short-circuited to "—" because we
-        // assumed nothing follows, but the host still waits 5 s before
-        // writing status='finished', so the player should see that
-        // wait counted down.
-        if (revealMs) {
-            const elapsed = Date.now() - revealMs;
+        if (!revealAnchorMs) {
+            const startMs = (room.questionStartedAt && room.questionStartedAt.toMillis)
+                ? room.questionStartedAt.toMillis() : null;
+            const askingMs = currentAskingDurationMs();
+            if (startMs && askingMs) revealAnchorMs = startMs + askingMs;
+        }
+        if (revealAnchorMs) {
+            const elapsed = Date.now() - revealAnchorMs;
             const leftRev = Math.max(0, Config.GLOBE_DROP_REVEAL_TIME_MS - elapsed);
             const seconds = Math.max(1, Math.ceil(leftRev / 1000));
             const fraction = Math.max(0, Math.min(1, leftRev / Config.GLOBE_DROP_REVEAL_TIME_MS));
