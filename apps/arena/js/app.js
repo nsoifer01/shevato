@@ -850,9 +850,18 @@ function shuffle(arr, rand = Math.random) {
  * states → 2.5–3.0×. Stored on the location at room creation so
  * every player sees the same per-location multiplier regardless of
  * play order.
+ *
+ * After stamping, reorder the playlist so each round is at least as
+ * hard as the last — easiest first, hardest last. Per-location
+ * difficulty alone doesn't guarantee progression; without this sort
+ * the playlist would jump around (×1 → ×2.5 → ×1 → ×1.5 → ×1).
+ * Ties keep their original (shuffled) order via Array.sort's
+ * stability so two ×1 capitals don't always appear in the same
+ * order across games.
  */
 function applyRoundMultipliers(locations) {
-    return GlobeDropScoring.assignDifficultyMultipliers(locations);
+    const stamped = GlobeDropScoring.assignDifficultyMultipliers(locations);
+    return stamped.slice().sort((a, b) => (a.multiplier || 1) - (b.multiplier || 1));
 }
 
 /**
@@ -4779,60 +4788,179 @@ function computeTriviaAggregates(columns, answersByUid) {
 function renderDetailedStats() {
     const grid = $('#detailed-stats-grid');
     grid.innerHTML = '';
+    grid.classList.remove('is-table');
     const isGlobeDrop = state.roomData && state.roomData.gameType === 'globe-drop';
 
-    const pushCard = (label, value, opts = {}) => {
-        const div = document.createElement('div');
-        div.className = 'detailed-stat' + (opts.highlight ? ' is-highlight' : '');
-        div.innerHTML =
-            `<span class="detailed-stat-label">${escapeHtml(label)}</span>` +
-            `<span class="detailed-stat-value">${escapeHtml(value)}</span>` +
-            (opts.sub ? `<span class="detailed-stat-sub">${escapeHtml(opts.sub)}</span>` : '');
-        grid.appendChild(div);
-    };
-
     if (isGlobeDrop) {
-        // Globe Drop pulls from the player doc's answers[] (the trivia
-        // path uses state.currentAnswers, populated only on choose-an-
-        // answer submits). Falls back to an empty grid + helpful note
-        // if the local player has no answer records for this game.
-        const me = state.roomPlayers.find((p) => state.user && p.uid === state.user.uid);
-        const answers = (me && Array.isArray(me.answers)) ? me.answers : [];
-        const stats = RoomState.aggregateGlobeDropStats(answers);
-        if (!stats) {
-            pushCard('Rounds played', '0', { sub: 'No guesses recorded this game' });
-            return;
-        }
-        pushCard('Avg base score', stats.avgBaseScore + ' / 100', { highlight: true });
-        pushCard('Avg distance off', stats.avgDistanceKm.toLocaleString() + ' km');
-        pushCard('Bullseyes', String(stats.bullseyeCount), { sub: 'rounds scored 90+ base' });
-        pushCard('Closest guess',
-            stats.closestKm != null ? stats.closestKm.toLocaleString() + ' km' : '—',
-            { sub: stats.closestLocation || '' });
-        pushCard('Farthest miss',
-            stats.farthestKm != null ? stats.farthestKm.toLocaleString() + ' km' : '—',
-            { sub: stats.farthestLocation || '' });
-        pushCard('Rounds played', String(stats.roundsPlayed));
-        for (const [region, rec] of Object.entries(stats.byRegion)) {
-            pushCard(region, rec.avgBase + ' / 100', {
-                sub: rec.rounds + (rec.rounds === 1 ? ' round' : ' rounds')
-            });
-        }
-        return;
+        // Comparison table needs the host to drop its tile-grid layout
+        // so the <table> can lay out naturally end-to-end.
+        grid.classList.add('is-table');
+        renderGlobeDropComparisonTable(grid);
+    } else {
+        renderTriviaDetailedStats(grid);
+    }
+}
+
+/**
+ * Side-by-side stats table for Globe Drop end-of-game. Each row is a
+ * metric; each column is a player. The cell with the best value in a
+ * row gets a leader highlight so the eye picks up "who won where" at
+ * a glance. Falls back to the single-player tile grid when there's
+ * only one row to compare against (solo or no peers in the doc).
+ */
+function renderGlobeDropComparisonTable(host) {
+    // Total rounds in the game (not per-player guess count) drives the
+    // denominator for avgs and the "X / Y" rounds-guessed cell. Fixes
+    // the off-by-one users hit when they timed out on the last round.
+    const totalRounds = Array.isArray(state.roomData && state.roomData.playedQuestionIds)
+        ? state.roomData.playedQuestionIds.length
+        : 0;
+
+    // Order: me first, then opponents by total points desc (so the
+    // strongest opponent reads next to me). Cap at 4 columns total
+    // for table width sanity on phones.
+    const ranked = Scoring.rankPlayers(state.roomPlayers.map((p) => ({
+        uid: p.uid,
+        displayName: p.displayName,
+        score: p.score || 0,
+        streak: p.streak || 0
+    })));
+    const cols = [];
+    if (state.user) {
+        const me = ranked.find((p) => p.uid === state.user.uid);
+        if (me) cols.push(me);
+    }
+    for (const p of ranked) {
+        if (cols.length >= 4) break;
+        if (!cols.find((c) => c.uid === p.uid)) cols.push(p);
+    }
+    if (!cols.length) return;
+
+    // Compute stats per column from the matching player doc.
+    const statsByUid = {};
+    cols.forEach((col) => {
+        const player = state.roomPlayers.find((p) => p.uid === col.uid);
+        const answers = (player && Array.isArray(player.answers)) ? player.answers : [];
+        statsByUid[col.uid] = RoomState.aggregateGlobeDropStats(answers, totalRounds);
+    });
+
+    // Row definitions: label, value extractor (returns { text, sub?, sortKey, missing? })
+    // — sortKey + higherIsBetter determines which cell gets the leader badge.
+    const fmt = (n) => (n == null ? '—' : n.toLocaleString());
+    const rows = [
+        { label: 'Final score',     higherIsBetter: true,  get: (s, col) => ({ text: String(col.score || 0), sortKey: col.score || 0 }) },
+        { label: 'Avg base score',  higherIsBetter: true,  get: (s) => s ? { text: s.avgBaseScore + ' / 100', sortKey: s.avgBaseScore } : null },
+        { label: 'Closest guess',   higherIsBetter: false, get: (s) => s && s.closestKm != null ? { text: fmt(s.closestKm) + ' km', sub: s.closestLocation, sortKey: s.closestKm } : null },
+        { label: 'Farthest miss',   higherIsBetter: false, get: (s) => s && s.farthestKm != null ? { text: fmt(s.farthestKm) + ' km', sub: s.farthestLocation, sortKey: s.farthestKm } : null },
+        { label: 'Bullseyes',       higherIsBetter: true,  get: (s) => s ? { text: String(s.bullseyeCount), sub: '90+ base', sortKey: s.bullseyeCount } : null },
+        { label: 'Rounds guessed',  higherIsBetter: true,  get: (s) => s ? { text: s.roundsGuessed + ' / ' + s.roundsPlayed, sortKey: s.roundsGuessed } : null }
+    ];
+
+    // Per-region rows, deduped across all players' regions.
+    const regionsSeen = new Set();
+    cols.forEach((col) => {
+        const s = statsByUid[col.uid];
+        if (s && s.byRegion) Object.keys(s.byRegion).forEach((r) => regionsSeen.add(r));
+    });
+    for (const region of regionsSeen) {
+        rows.push({
+            label: region,
+            higherIsBetter: true,
+            isRegion: true,
+            get: (s) => {
+                if (!s || !s.byRegion || !s.byRegion[region]) return null;
+                const rec = s.byRegion[region];
+                return {
+                    text: rec.avgBase + ' / 100',
+                    sub: rec.rounds + (rec.rounds === 1 ? ' round' : ' rounds'),
+                    sortKey: rec.avgBase
+                };
+            }
+        });
     }
 
+    // Build the table.
+    const table = document.createElement('table');
+    table.className = 'detailed-stats-table';
+    const thead = document.createElement('thead');
+    const headRow = document.createElement('tr');
+    headRow.innerHTML = '<th class="detailed-stats-row-label">Stat</th>'
+        + cols.map((col) => {
+            const isMe = state.user && col.uid === state.user.uid;
+            return `<th class="detailed-stats-col${isMe ? ' is-mine' : ''}">${escapeHtml(isMe ? 'You' : col.displayName)}</th>`;
+        }).join('');
+    thead.appendChild(headRow);
+    table.appendChild(thead);
+
+    const tbody = document.createElement('tbody');
+    let regionHeaderInserted = false;
+    rows.forEach((row) => {
+        // Insert a divider header before the first region row so the
+        // continent group reads as its own block.
+        if (row.isRegion && !regionHeaderInserted) {
+            const tr = document.createElement('tr');
+            tr.className = 'detailed-stats-section';
+            tr.innerHTML = `<th colspan="${cols.length + 1}">By continent · avg score</th>`;
+            tbody.appendChild(tr);
+            regionHeaderInserted = true;
+        }
+        const tr = document.createElement('tr');
+        const cells = cols.map((col) => row.get(statsByUid[col.uid], col));
+        // Find the leader cell — best sortKey under higherIsBetter sense.
+        const valid = cells.filter((c) => c && Number.isFinite(c.sortKey));
+        let bestKey = null;
+        if (valid.length) {
+            bestKey = valid.reduce((acc, c) => {
+                if (acc == null) return c.sortKey;
+                return row.higherIsBetter ? Math.max(acc, c.sortKey) : Math.min(acc, c.sortKey);
+            }, null);
+        }
+        let html = `<th scope="row" class="detailed-stats-row-label">${escapeHtml(row.label)}</th>`;
+        cells.forEach((cell, i) => {
+            const col = cols[i];
+            const isMe = state.user && col.uid === state.user.uid;
+            const isLeader = cell && bestKey != null && cell.sortKey === bestKey && valid.length > 1;
+            let cls = 'detailed-stats-cell';
+            if (isMe) cls += ' is-mine';
+            if (isLeader) cls += ' is-leader';
+            if (!cell) {
+                html += `<td class="${cls} is-missing">—</td>`;
+                return;
+            }
+            html += `<td class="${cls}"><span class="detailed-stats-value">${escapeHtml(cell.text)}</span>`
+                + (cell.sub ? `<span class="detailed-stats-sub">${escapeHtml(cell.sub)}</span>` : '')
+                + `</td>`;
+        });
+        tr.innerHTML = html;
+        tbody.appendChild(tr);
+    });
+    table.appendChild(tbody);
+    host.appendChild(table);
+}
+
+function renderTriviaDetailedStats(host) {
     // Trivia: per-question records stored in state.currentAnswers,
     // each carrying `correct` + `category` + `timeLeftMs` + `totalMs`.
+    // Kept as the legacy tile grid since trivia doesn't have multi-
+    // player per-question detail to compare in a table.
     const stats = RoomState.aggregateAnswerStats(state.currentAnswers);
-    pushCard('Accuracy', Math.round(stats.accuracy * 100) + '%', { highlight: true });
-    pushCard('Avg response',
+    const push = (label, value, highlight) => {
+        const div = document.createElement('div');
+        div.className = 'detailed-stat' + (highlight ? ' is-highlight' : '');
+        div.innerHTML =
+            `<span class="detailed-stat-label">${escapeHtml(label)}</span>` +
+            `<span class="detailed-stat-value">${escapeHtml(value)}</span>`;
+        host.appendChild(div);
+    };
+    push('Accuracy', Math.round(stats.accuracy * 100) + '%', true);
+    push('Avg response',
         stats.avgResponseMs < 1000
             ? stats.avgResponseMs + 'ms'
             : (stats.avgResponseMs / 1000).toFixed(1) + 's');
-    pushCard('Questions answered', String(state.currentAnswers.length));
+    push('Questions answered', String(state.currentAnswers.length));
     for (const [cat, rec] of Object.entries(stats.byCategory)) {
         const pct = rec.total ? Math.round(100 * rec.correct / rec.total) : 0;
-        pushCard(cat.replace(/-/g, ' '), rec.correct + '/' + rec.total + ' · ' + pct + '%');
+        push(cat.replace(/-/g, ' '), rec.correct + '/' + rec.total + ' · ' + pct + '%');
     }
 }
 
