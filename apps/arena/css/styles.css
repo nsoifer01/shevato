@@ -3706,135 +3706,167 @@ select option { background: var(--surface); color: var(--text); }
   color: var(--muted);
 }
 
-/* Compact card-list recap. Each round is a slim two-strip card so a
-   10-round match doesn't read like a spreadsheet — header strip
-   carries R# + multipliers + location + winner, body strip carries
-   the per-player chips. */
-.end-recap-cards {
-  list-style: none;
-  margin: 0;
-  padding: 0;
-  display: flex;
-  flex-direction: column;
-  gap: 0.5rem;
-}
-.recap-card {
-  background: rgba(8, 11, 22, 0.55);
-  border: 1px solid rgba(148, 163, 184, 0.10);
-  border-radius: var(--radius-sm);
-  padding: 0.55rem 0.75rem 0.6rem;
-  transition: border-color 0.18s ease, background 0.18s ease;
-}
-.recap-card:hover {
-  border-color: rgba(34, 211, 238, 0.20);
-  background: rgba(34, 211, 238, 0.04);
-}
-
-/* Header strip: rank → multipliers → location (flex:1) → winner. */
-.recap-card-head {
+/* Lifetime head-to-head banner at the top of the recap. Only
+   renders in 2-player rooms so the pair record is unambiguous —
+   gives the local player their W-D-L vs the opponent before
+   they read the per-round breakdown. */
+.end-recap-h2h {
   display: flex;
   align-items: center;
-  gap: 0.6rem;
-  font-size: 0.85rem;
+  justify-content: space-between;
+  gap: 0.75rem;
+  padding: 0.55rem 0.85rem;
+  margin-bottom: 0.65rem;
+  background: linear-gradient(135deg, rgba(34, 211, 238, 0.06), rgba(168, 85, 247, 0.06));
+  border: 1px solid rgba(34, 211, 238, 0.20);
+  border-radius: var(--radius-sm);
   flex-wrap: wrap;
 }
-.recap-card-rank {
+.end-recap-h2h-head {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+  min-width: 0;
+}
+.end-recap-h2h-label {
+  font-size: 0.68rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--muted-2);
+  font-weight: 700;
+}
+.end-recap-h2h-names {
+  font-weight: 700;
+  color: var(--text);
+  font-size: 0.95rem;
+}
+.end-recap-h2h-names span {
+  color: var(--muted);
+  font-weight: 500;
+  margin: 0 0.3rem;
+}
+.end-recap-h2h-record {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  flex-wrap: wrap;
+}
+.end-recap-h2h-pill {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 0.25rem;
+  padding: 0.2rem 0.55rem;
+  border-radius: 999px;
+  font-family: var(--mono);
+  font-weight: 700;
+  font-size: 0.95rem;
+  font-variant-numeric: tabular-nums;
+  border: 1px solid transparent;
+}
+.end-recap-h2h-pill small {
+  font-size: 0.68rem;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  opacity: 0.85;
+}
+.end-recap-h2h-pill.is-win  { background: rgba(16, 185, 129, 0.14); border-color: rgba(16, 185, 129, 0.35); color: rgb(110, 231, 183); }
+.end-recap-h2h-pill.is-draw { background: rgba(148, 163, 184, 0.12); border-color: rgba(148, 163, 184, 0.25); color: var(--muted); }
+.end-recap-h2h-pill.is-loss { background: rgba(239, 68, 68, 0.12);  border-color: rgba(239, 68, 68, 0.30);  color: rgb(252, 165, 165); }
+.end-recap-h2h-total {
+  font-size: 0.72rem;
+  color: var(--muted-2);
+  letter-spacing: 0.02em;
+}
+
+/* Compact per-round table. Replaces the in-between card list
+   so an 8–10 round match reads as a single scannable grid:
+   rank | ×mult | location | per-player scores | winner. */
+.end-recap-table-wrap {
+  overflow-x: auto;
+}
+.end-recap-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.85rem;
+}
+.end-recap-table th,
+.end-recap-table td {
+  padding: 0.4rem 0.55rem;
+  text-align: left;
+  border-bottom: 1px solid rgba(148, 163, 184, 0.10);
+  vertical-align: middle;
+}
+.end-recap-table th.recap-score-cell,
+.end-recap-table th.recap-winner-cell { text-align: right; }
+.end-recap-table th {
+  font-size: 0.7rem;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--muted-2);
+  font-weight: 700;
+  background: rgba(8, 11, 22, 0.4);
+  position: sticky;
+  top: 0;
+}
+.end-recap-table tbody tr:hover { background: rgba(34, 211, 238, 0.04); }
+.end-recap-table tbody tr:last-child td { border-bottom: none; }
+.recap-rank {
   font-family: var(--mono);
   font-weight: 700;
   color: var(--cyan);
   font-size: 0.78rem;
-  letter-spacing: 0.02em;
-  flex: 0 0 auto;
+  width: 2.5rem;
 }
-.recap-card-mult {
+.recap-mult-cell {
   font-family: var(--mono);
-  font-size: 0.72rem;
-  font-weight: 600;
-  color: var(--warn);
-  background: rgba(245, 158, 11, 0.10);
-  border: 1px solid rgba(245, 158, 11, 0.30);
-  border-radius: 999px;
-  padding: 0.05rem 0.5rem;
-  letter-spacing: 0.02em;
-  flex: 0 0 auto;
-}
-.recap-card-loc {
-  flex: 1 1 auto;
-  min-width: 0;
-  display: flex;
-  align-items: baseline;
-  gap: 0.4rem;
-  flex-wrap: wrap;
-}
-.recap-card-loc-name {
   font-weight: 700;
-  font-size: 0.95rem;
-  color: var(--text);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  max-width: 100%;
-}
-.recap-card-loc-country {
-  font-size: 0.75rem;
-  color: var(--muted-2);
-  font-weight: 500;
-}
-.recap-card-winner {
-  flex: 0 0 auto;
-}
-
-/* Body strip: per-player score chips. */
-.recap-card-body {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.4rem;
-  margin-top: 0.45rem;
-}
-.recap-card-chip {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.4rem;
-  padding: 0.2rem 0.6rem;
-  background: rgba(255, 255, 255, 0.025);
-  border: 1px solid rgba(148, 163, 184, 0.10);
-  border-radius: 999px;
+  color: var(--warn);
   font-size: 0.78rem;
+  width: 3rem;
+  white-space: nowrap;
+}
+.recap-loc-cell { min-width: 0; }
+.recap-loc-name {
+  font-weight: 700;
+  color: var(--text);
+}
+.recap-loc-country {
+  color: var(--muted-2);
+  font-size: 0.72rem;
+  margin-left: 0.35rem;
+}
+.recap-score-cell {
   font-family: var(--mono);
   font-variant-numeric: tabular-nums;
-  transition: background 0.18s ease, border-color 0.18s ease, opacity 0.18s ease;
-}
-.recap-card-chip.is-mine {
-  background: rgba(34, 211, 238, 0.10);
-  border-color: rgba(34, 211, 238, 0.30);
-}
-.recap-card-chip.is-winner {
-  background: rgba(16, 185, 129, 0.18);
-  border-color: rgba(16, 185, 129, 0.45);
-  box-shadow: 0 0 12px rgba(16, 185, 129, 0.20);
-}
-.recap-card-chip.is-winner.is-mine {
-  background: linear-gradient(135deg, rgba(16, 185, 129, 0.22), rgba(34, 211, 238, 0.18));
-}
-.recap-card-chip.is-loser { opacity: 0.6; }
-.recap-card-chip-name {
-  font-family: "Outfit", "Inter", sans-serif;
-  font-weight: 600;
-  color: var(--text);
-}
-.recap-card-chip-pts {
   font-weight: 700;
+  text-align: right;
+  width: 5.5rem;
+  white-space: nowrap;
   color: rgb(110, 231, 183);
 }
-.recap-card-chip.is-loser .recap-card-chip-pts { color: var(--muted); }
-.recap-card-chip-pts.is-zero { color: var(--muted-2); }
-.recap-card-chip-meta {
-  color: var(--muted);
-  font-size: 0.7rem;
-  padding-left: 0.4rem;
-  border-left: 1px solid rgba(255, 255, 255, 0.10);
+.recap-score-cell.is-zero { color: var(--muted-2); font-weight: 500; }
+.recap-score-cell.is-mine { background: rgba(34, 211, 238, 0.06); }
+.recap-score-cell.is-winner {
+  background: rgba(16, 185, 129, 0.12);
+  color: rgb(110, 231, 183);
 }
-.recap-pick.is-wrong { color: var(--bad); text-decoration: line-through; }
+.recap-score-cell.is-winner.is-mine {
+  background: linear-gradient(135deg, rgba(16, 185, 129, 0.18), rgba(34, 211, 238, 0.12));
+}
+.recap-score-meta {
+  font-family: var(--font);
+  font-weight: 500;
+  font-size: 0.7rem;
+  color: var(--muted);
+  margin-left: 0.3rem;
+}
+.recap-winner-cell {
+  width: 4.5rem;
+  text-align: right;
+  white-space: nowrap;
+}
+
+.recap-pick.is-wrong   { color: var(--bad); text-decoration: line-through; }
 .recap-pick.is-correct { color: var(--good); }
 
 .recap-winner-badge {
@@ -3865,10 +3897,12 @@ select option { background: var(--surface); color: var(--text); }
 }
 
 @media (max-width: 540px) {
-  .recap-card-head { gap: 0.45rem; }
-  .recap-card-loc-name { font-size: 0.9rem; }
-  .recap-card-loc-country { width: 100%; }
-  .recap-card-chip-meta { display: none; }
+  .end-recap-table th,
+  .end-recap-table td { padding: 0.35rem 0.4rem; }
+  .recap-score-cell { width: auto; }
+  .recap-score-meta { display: none; }
+  .recap-loc-country { display: block; margin-left: 0; }
+  .end-recap-h2h { padding: 0.5rem 0.65rem; gap: 0.5rem; }
 }
 
 .end-recap-empty {

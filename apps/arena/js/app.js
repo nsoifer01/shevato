@@ -4326,6 +4326,53 @@ async function maybeWriteDailyLeaderboard(me) {
  * Game recap — per-question/per-location table + aggregate stats
  * ===================================================================== */
 
+/**
+ * Lifetime head-to-head banner at the top of the end-stage recap.
+ * Only renders in 2-player rooms (the pair concept is clear there).
+ * Pulls the triviaH2H/<pair> doc, falls back to a placeholder when
+ * the pair has no recorded games yet (e.g. first match between two
+ * accounts).
+ */
+async function renderEndRecapH2H(players) {
+    const banner = document.getElementById('end-recap-h2h');
+    if (!banner) return;
+    banner.hidden = true;
+    if (!state.user || !Array.isArray(players) || players.length !== 2) return;
+    const me = players.find((p) => p.uid === state.user.uid);
+    const opp = players.find((p) => p.uid !== state.user.uid);
+    if (!me || !opp) return;
+    const key = h2hPairKey(me.uid, opp.uid);
+    if (!key) return;
+    let pair = null;
+    state.h2hPairCache = state.h2hPairCache || {};
+    if (state.h2hPairCache[key]) {
+        pair = state.h2hPairCache[key];
+    } else {
+        try {
+            const snap = await getDoc(doc(db, 'triviaH2H', key));
+            pair = snap.exists() ? snap.data() : null;
+            state.h2hPairCache[key] = pair;
+        } catch (_) { pair = null; }
+    }
+    const myIsA = pair && pair.uidA === me.uid;
+    const wins   = pair ? (myIsA ? (pair.winsA || 0) : (pair.winsB || 0)) : 0;
+    const losses = pair ? (myIsA ? (pair.winsB || 0) : (pair.winsA || 0)) : 0;
+    const draws  = pair ? (pair.ties || 0) : 0;
+    const total  = wins + draws + losses;
+    banner.innerHTML =
+        '<div class="end-recap-h2h-head">'
+        + '<span class="end-recap-h2h-label">Head to head</span>'
+        + `<span class="end-recap-h2h-names">${escapeHtml(me.displayName || 'You')}<span> vs </span>${escapeHtml(opp.displayName || 'Opponent')}</span>`
+        + '</div>'
+        + '<div class="end-recap-h2h-record">'
+        + `<span class="end-recap-h2h-pill is-win">${wins}<small>W</small></span>`
+        + `<span class="end-recap-h2h-pill is-draw">${draws}<small>D</small></span>`
+        + `<span class="end-recap-h2h-pill is-loss">${losses}<small>L</small></span>`
+        + `<span class="end-recap-h2h-total">${total === 0 ? 'First match' : (total + ' total')}</span>`
+        + '</div>';
+    banner.hidden = false;
+}
+
 function renderEndRecap() {
     const section = $('#end-recap');
     if (!section) return;
@@ -4333,6 +4380,12 @@ function renderEndRecap() {
     if (!players.length) { section.hidden = true; return; }
 
     const isGlobeDrop = state.roomData && state.roomData.gameType === 'globe-drop';
+
+    // Lifetime H2H banner — only in 2-player rooms (the pair record
+    // is unambiguous). Fetches the triviaH2H pair doc and shows
+    // W-D-L between the local user and the opponent at the top of
+    // the recap.
+    renderEndRecapH2H(players);
 
     // Pick columns: me first, then highest-scoring opponents, cap at 4 so
     // the table stays readable on phones.
@@ -4383,14 +4436,15 @@ function renderEndRecap() {
         statsHost.appendChild(div);
     });
 
-    // Card list layout — one card per round, two strips inside each:
-    //   header strip  →  R# · ×mult · location · winner pill
-    //   body strip    →  per-player score chips
-    // Replaces the old wide table which felt like a spreadsheet on
-    // longer 8-10 round games.
-    const list = $('#end-recap-cards');
+    // Compact table — rank | ×mult | location | per-player score | winner.
+    // Replaces the previous card-list which spread each round across
+    // two strips; the table is one row per round, easier to scan
+    // vertically for 8-10 round matches.
+    const thead = $('#end-recap-thead');
+    const tbody = $('#end-recap-tbody');
     const emptyEl = $('#end-recap-empty');
-    list.innerHTML = '';
+    thead.innerHTML = '';
+    tbody.innerHTML = '';
     if (emptyEl) emptyEl.hidden = true;
 
     const anyAnswers = columns.some((c) => (answersByUid[c.uid] || []).length > 0);
@@ -4401,96 +4455,94 @@ function renderEndRecap() {
         return;
     }
 
+    // Header row
+    const trHead = document.createElement('tr');
+    let headHTML = '<th class="recap-rank">#</th>'
+        + (isGlobeDrop ? '<th class="recap-mult-cell">Mult</th>' : '')
+        + `<th class="recap-loc-cell">${isGlobeDrop ? 'Location' : 'Question'}</th>`;
+    columns.forEach((col) => {
+        const isMe = state.user && col.uid === state.user.uid;
+        headHTML += `<th class="recap-score-cell${isMe ? ' is-mine' : ''}">${escapeHtml(isMe ? 'You' : col.displayName)}</th>`;
+    });
+    headHTML += '<th class="recap-winner-cell">Winner</th>';
+    trHead.innerHTML = headHTML;
+    thead.appendChild(trHead);
+
+    // Body rows
+    const fmt = (n) => n.toFixed(2).replace(/0+$/, '').replace(/\.$/, '');
     questions.forEach((q, i) => {
-        // Round multiplier (Globe Drop only — trivia rounds don't
-        // scale by location). The value comes straight from
-        // q.multiplier, stamped at room-create time from the
-        // 1.0 → 3.0 ladder.
-        const fmt = (n) => n.toFixed(2).replace(/0+$/, '').replace(/\.$/, '');
+        const tr = document.createElement('tr');
         const roundMult = (isGlobeDrop && typeof q.multiplier === 'number') ? q.multiplier : null;
-        const multHtml = (roundMult != null)
-            ? `<span class="recap-card-mult" title="Round multiplier">×${escapeHtml(fmt(roundMult))}</span>`
+        const multCell = isGlobeDrop
+            ? `<td class="recap-mult-cell">${roundMult != null ? `×${escapeHtml(fmt(roundMult))}` : ''}</td>`
             : '';
 
-        // Per-column results — also tracks the winner(s).
-        let bestPoints = -1;
+        let locCell;
+        if (isGlobeDrop) {
+            locCell = '<td class="recap-loc-cell">'
+                + `<span class="recap-loc-name">${escapeHtml(q.name || '…')}</span>`
+                + (q.country ? `<span class="recap-loc-country">${escapeHtml(q.country)}</span>` : '')
+                + '</td>';
+        } else {
+            const correctText = q.choices ? q.choices[q.correctIndex] : '';
+            locCell = '<td class="recap-loc-cell">'
+                + `<span class="recap-loc-name">${escapeHtml(q.question || '…')}</span>`
+                + `<span class="recap-loc-country">${escapeHtml(prettyCategory(q.category || ''))} · answer: ${escapeHtml(correctText)}</span>`
+                + '</td>';
+        }
+
+        // Per-column results + winner detection. Both-zero is a TIE,
+        // not "no winner" — so the winner column always shows something.
         const colResults = columns.map((col) => {
             const ans = (answersByUid[col.uid] || [])
                 .find((a) => (a.locationId || a.questionId) === q.id);
             const points = ans ? (Number(ans.points) || 0) : 0;
-            if (points > bestPoints) bestPoints = points;
             return { col, ans, points };
         });
-        const winnersOfRow = bestPoints > 0
-            ? colResults.filter((r) => r.points === bestPoints)
-            : [];
+        const bestPoints = colResults.reduce((max, r) => Math.max(max, r.points), 0);
+        const winnersOfRow = colResults.filter((r) => r.points === bestPoints);
         const isTie = winnersOfRow.length > 1;
 
-        // Winner pill (header-right slot).
-        let winnerBadge = '';
-        if (bestPoints > 0) {
-            if (winnersOfRow.length === 1) {
-                const w = winnersOfRow[0].col;
-                const isMe = state.user && w.uid === state.user.uid;
-                winnerBadge = `<span class="recap-winner-badge">🏆 ${escapeHtml(isMe ? 'You' : w.displayName)}</span>`;
-            } else {
-                winnerBadge = '<span class="recap-tie-badge">Tie</span>';
-            }
-        }
-
-        // Location / question label for the header.
-        let locLabel;
-        if (isGlobeDrop) {
-            locLabel =
-                `<span class="recap-card-loc-name">${escapeHtml(q.name || '…')}</span>` +
-                (q.country ? `<span class="recap-card-loc-country">${escapeHtml(q.country)}</span>` : '');
-        } else {
-            const correctText = q.choices ? q.choices[q.correctIndex] : '';
-            locLabel =
-                `<span class="recap-card-loc-name">${escapeHtml(q.question || '…')}</span>` +
-                `<span class="recap-card-loc-country">${escapeHtml(prettyCategory(q.category || ''))} · answer: ${escapeHtml(correctText)}</span>`;
-        }
-
-        // Player score chips (body strip).
-        const chips = colResults.map(({ col, ans, points }) => {
+        let scoreCells = '';
+        colResults.forEach(({ col, ans, points }) => {
             const isMe = state.user && col.uid === state.user.uid;
-            const isWinner = !isTie && bestPoints > 0 && points === bestPoints;
-            const isLoser = bestPoints > 0 && points < bestPoints;
-            let cls = 'recap-card-chip';
+            const isWinner = !isTie && points === bestPoints && points > 0;
+            let cls = 'recap-score-cell';
+            if (points === 0) cls += ' is-zero';
             if (isMe) cls += ' is-mine';
             if (isWinner) cls += ' is-winner';
-            else if (isLoser) cls += ' is-loser';
 
-            const nameHtml = `<span class="recap-card-chip-name">${escapeHtml(isMe ? 'You' : col.displayName)}</span>`;
-            if (!ans) {
-                return `<span class="${cls}">${nameHtml}<span class="recap-card-chip-pts is-zero">…</span></span>`;
+            if (!ans && points === 0) {
+                scoreCells += `<td class="${cls}">0</td>`;
+                return;
             }
             if (isGlobeDrop) {
-                const pts = Number(ans.points) || 0;
-                const distHtml = ans.distanceKm != null
-                    ? `<span class="recap-card-chip-meta">${Math.round(Number(ans.distanceKm) || 0).toLocaleString()} km</span>`
+                const distMeta = (ans && ans.distanceKm != null)
+                    ? `<span class="recap-score-meta">${Math.round(Number(ans.distanceKm) || 0).toLocaleString()} km</span>`
                     : '';
-                const ptsCls = pts > 0 ? 'recap-card-chip-pts' : 'recap-card-chip-pts is-zero';
-                return `<span class="${cls}">${nameHtml}<span class="${ptsCls}">+${pts}</span>${distHtml}</span>`;
+                scoreCells += `<td class="${cls}">${points > 0 ? '+' + points : '0'}${distMeta}</td>`;
+            } else {
+                const pickClass = ans && ans.correct ? 'is-correct' : 'is-wrong';
+                const pickHtml = ans
+                    ? ` <span class="recap-pick ${pickClass}">${escapeHtml(ans.answerText || '…')}</span>`
+                    : '';
+                scoreCells += `<td class="${cls}">${points > 0 ? '+' + points : '0'}${pickHtml}</td>`;
             }
-            const pts = Number(ans.points) || 0;
-            const pickClass = ans.correct ? 'is-correct' : 'is-wrong';
-            const pickHtml = `<span class="recap-card-chip-meta recap-pick ${pickClass}">${escapeHtml(ans.answerText || '…')}</span>`;
-            const ptsCls = pts > 0 ? 'recap-card-chip-pts' : 'recap-card-chip-pts is-zero';
-            return `<span class="${cls}">${nameHtml}<span class="${ptsCls}">${pts > 0 ? '+' + pts : '0'}</span>${pickHtml}</span>`;
-        }).join('');
+        });
 
-        const li = document.createElement('li');
-        li.className = 'recap-card';
-        li.innerHTML =
-            '<div class="recap-card-head">' +
-                `<span class="recap-card-rank">R${i + 1}</span>` +
-                multHtml +
-                `<span class="recap-card-loc">${locLabel}</span>` +
-                `<span class="recap-card-winner">${winnerBadge}</span>` +
-            '</div>' +
-            `<div class="recap-card-body">${chips}</div>`;
-        list.appendChild(li);
+        // Gold trophy for a single winner; grey "Tie" pill when
+        // multiple cells tie (including the everyone-scored-0 case).
+        let winnerCell;
+        if (!isTie) {
+            const w = winnersOfRow[0].col;
+            const isMe = state.user && w.uid === state.user.uid;
+            winnerCell = `<td class="recap-winner-cell"><span class="recap-winner-badge">🏆 ${escapeHtml(isMe ? 'You' : w.displayName)}</span></td>`;
+        } else {
+            winnerCell = '<td class="recap-winner-cell"><span class="recap-tie-badge">Tie</span></td>';
+        }
+
+        tr.innerHTML = `<td class="recap-rank">${i + 1}</td>${multCell}${locCell}${scoreCells}${winnerCell}`;
+        tbody.appendChild(tr);
     });
 
     const qNoun = questions.length === 1 ? 'question' : (isGlobeDrop ? 'locations' : 'questions');
