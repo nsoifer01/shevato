@@ -27,7 +27,10 @@
 }(typeof self !== 'undefined' ? self : this, function (Wikidata) {
     'use strict';
 
-    const REST_COUNTRIES_URL = 'https://restcountries.com/v3.1/all?fields=name,capital,capitalInfo,region,subregion,flag,latlng,area,landlocked,independent,population';
+    // NOTE: REST Countries /all caps the `fields` list at 10 entries
+    // and returns HTTP 400 over that — adding population means we had
+    // to drop `landlocked` (which we set but never read anywhere).
+    const REST_COUNTRIES_URL = 'https://restcountries.com/v3.1/all?fields=name,capital,capitalInfo,region,subregion,flag,latlng,area,independent,population';
 
     /**
      * Convert one REST Countries record into our location shape, or null
@@ -80,7 +83,6 @@
             // this place show up in international news / education".
             countryAreaSqKm:   Number.isFinite(areaNum) ? areaNum : null,
             countryPopulation: Number.isFinite(popNum)  ? popNum  : null,
-            landlocked:  raw.landlocked === true,
             independent: raw.independent !== false
         };
     }
@@ -171,7 +173,6 @@
             lng: latlng[1],
             countryAreaSqKm:   Number.isFinite(areaNum) ? areaNum : null,
             countryPopulation: Number.isFinite(popNum)  ? popNum  : null,
-            landlocked:  raw.landlocked === true,
             independent: raw.independent !== false
         };
     }
