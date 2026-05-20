@@ -147,21 +147,56 @@
     }
 
     /**
-     * Per-location difficulty score combining continent rarity and
-     * population obscurity. Higher = harder. Designed so a famous
-     * European capital (e.g. London, pop 9M) lands near 0.7 and an
-     * obscure island state (e.g. Funafuti, pop ~6k) lands near 2.5.
+     * Subregions whose capitals are systematically less-recognizable
+     * than their continent average — island clusters and politically
+     * isolated regions where the capital city isn't household-name.
+     * Used as an additive boost on top of the continent baseline.
+     */
+    const OBSCURE_SUBREGIONS = [
+        'Caribbean',
+        'Polynesia',
+        'Micronesia',
+        'Melanesia',
+        'Middle Africa',
+        'Central Asia'
+    ];
+
+    /**
+     * Per-location difficulty score combining the actual signals we
+     * persist on every location: continent, subregion, country land
+     * area, landlocked status. The REST Countries fetch doesn't
+     * include city-level population, so we infer obscurity from
+     * country-level data the location does carry.
      *
-     *   raw = populationWeight(pop) × continentMultiplier(region)
+     *   base       = continentMultiplier(region)   // 1.0 – 1.5
+     *   + 0.5      if subregion ∈ OBSCURE_SUBREGIONS (island/isolated clusters)
+     *   + 1.0      if countryAreaSqKm < 100   (specks: Vatican, Tuvalu, Nauru, Anguilla)
+     *   + 0.7      else if countryAreaSqKm < 5000   (small: Luxembourg, Malta, Grenada)
+     *   + 0.3      else if countryAreaSqKm < 20000  (mid-small: Eswatini, Brunei)
      *
-     * Missing population / region fall back to 1.0 (their respective
-     * neutral values), so legacy locations still get a sensible tier.
+     * Examples (with current OBSCURE list + thresholds):
+     *   London      (Europe / North. Europe / 242k)        → 1.0
+     *   Brussels    (Europe / West. Europe / 30k)          → 1.0
+     *   Luxembourg  (Europe / West. Europe / 2.6k)         → 1.5
+     *   Pretoria    (Africa / South. Africa / 1.22M)       → 1.5
+     *   Maputo      (Africa / East. Africa / 801k)         → 1.5
+     *   Ciudad de la Paz (Africa / Middle Africa / 28k)    → 2.0
+     *   St. George's (Americas / Caribbean / 344)          → 2.5
+     *   The Valley   (Americas / Caribbean / 91)           → 2.5
+     *   Funafuti    (Oceania / Polynesia / 26)             → 3.0
      */
     function locationDifficultyScore(loc) {
         if (!loc) return 1;
-        const cont = continentMultiplier(loc.region);
-        const obscurity = populationWeight(loc.population);
-        return cont * obscurity;
+        let score = continentMultiplier(loc.region);
+        const sub = String(loc.subregion || '');
+        if (OBSCURE_SUBREGIONS.indexOf(sub) !== -1) score += 0.5;
+        const area = Number(loc.countryAreaSqKm);
+        if (Number.isFinite(area) && area > 0) {
+            if (area < 100)        score += 1.0;
+            else if (area < 5000)  score += 0.7;
+            else if (area < 20000) score += 0.3;
+        }
+        return score;
     }
 
     /**
