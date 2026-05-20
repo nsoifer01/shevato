@@ -9,6 +9,8 @@ const {
     normalizeAsCountry,
     isSmallIslandLocation,
     capSmallIslands,
+    capByCountry,
+    capByContinent,
     ROUND_TYPES
 } = require('../js/globe-drop-locations.js');
 
@@ -227,4 +229,70 @@ test('capSmallIslands: with a 5-slot game playlist, at most 2 islands reach the 
     const out = capSmallIslands(arr, Config.GLOBE_DROP_SMALL_ISLAND_MAX_PER_GAME);
     const headIslands = out.slice(0, 5).filter(isSmallIslandLocation);
     assert.ok(headIslands.length <= Config.GLOBE_DROP_SMALL_ISLAND_MAX_PER_GAME);
+});
+
+// --- capByCountry ------------------------------------------------------
+
+test('capByCountry: keeps up to N from same country in head order', () => {
+    const arr = [
+        { id: '1', name: 'Wuhan',    country: 'China' },
+        { id: '2', name: 'Shanghai', country: 'China' },
+        { id: '3', name: 'Changsha', country: 'China' },
+        { id: '4', name: 'Mumbai',   country: 'India' },
+        { id: '5', name: 'Beijing',  country: 'China' }
+    ];
+    const out = capByCountry(arr, 2);
+    // First 2 China entries kept, plus Mumbai, with Changsha + Beijing pushed.
+    assert.deepEqual(out.slice(0, 3).map((l) => l.id), ['1', '2', '4']);
+    // Tail has the rest, original order preserved.
+    assert.deepEqual(out.slice(3).map((l) => l.id), ['3', '5']);
+});
+
+test('capByCountry: cap of 1 dedupes per country entirely in head', () => {
+    const arr = [
+        { country: 'A' }, { country: 'A' }, { country: 'B' }, { country: 'A' }
+    ];
+    const out = capByCountry(arr, 1);
+    assert.equal(out[0].country, 'A');
+    assert.equal(out[1].country, 'B');
+    // Rest of A entries get tail-pushed.
+    assert.equal(out[2].country, 'A');
+    assert.equal(out[3].country, 'A');
+});
+
+// --- capByContinent ----------------------------------------------------
+
+test('capByContinent: 30% cap on a 5-slot game allows max 2 per continent', () => {
+    const arr = [
+        { id: '1', region: 'Asia' },   { id: '2', region: 'Asia' },
+        { id: '3', region: 'Asia' },   { id: '4', region: 'Asia' },
+        { id: '5', region: 'Europe' }, { id: '6', region: 'Africa' }
+    ];
+    const out = capByContinent(arr, 0.3, 5);
+    // First 2 Asia + Europe + Africa make it to the head.
+    assert.deepEqual(out.slice(0, 4).map((l) => l.id), ['1', '2', '5', '6']);
+    // The remaining Asia entries push to the tail.
+    assert.deepEqual(out.slice(4).map((l) => l.id), ['3', '4']);
+});
+
+test('capByContinent: 10-slot 30% cap pushes 4th+ of any continent to the tail', () => {
+    // Soft cap — over-fetched callers slice to the target and only the
+    // head (= cap × continents) is guaranteed diverse. With 6 Asia +
+    // 4 Europe, the first 4 Asia are tail-pushed because the cap is 3.
+    const arr = [];
+    for (let i = 0; i < 6; i++) arr.push({ id: 'a' + i, region: 'Asia' });
+    for (let i = 0; i < 4; i++) arr.push({ id: 'e' + i, region: 'Europe' });
+    const out = capByContinent(arr, 0.3, 10);
+    // Head order: first 3 Asia, then 3 Europe (Europe also caps at 3),
+    // tail: a3..a5, e3.
+    assert.deepEqual(out.slice(0, 6).map((l) => l.id),
+                     ['a0', 'a1', 'a2', 'e0', 'e1', 'e2']);
+    // 4th and later Asia entries land in the tail.
+    const tailAsia = out.slice(6).filter((l) => l.region === 'Asia');
+    assert.deepEqual(tailAsia.map((l) => l.id), ['a3', 'a4', 'a5']);
+});
+
+test('capByContinent: empty / non-array => []', () => {
+    assert.deepEqual(capByContinent([], 0.3, 5), []);
+    assert.deepEqual(capByContinent(null, 0.3, 5), []);
 });

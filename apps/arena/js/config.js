@@ -150,15 +150,15 @@
         // hintLevel values:
         //   'country+continent+subregion' — easy: full geographic context
         //   'country+continent'           — medium: country and continent
-        //   'country'                     — current default for legacy rooms
-        //   'none'                        — hard: city name only, no country
-        // scoreMultiplier is exposed in the lobby and end-card so players see
-        // the tradeoff before they pick.
+        //   'country'                     — hard: city + country
+        // (Pre-rebalance there was a 'none' level showing city alone, but
+        // that was too punishing — players had no anchor at all. Hard
+        // keeps the country so guessing is still tractable.)
         GLOBE_DROP_DIFFICULTY_DEFAULT: 'medium',
         GLOBE_DROP_DIFFICULTIES: {
             easy:   { label: 'Easy',   timerSec: 180, hintLevel: 'country+continent+subregion', scoreMultiplier: 0.75 },
             medium: { label: 'Medium', timerSec: 120, hintLevel: 'country+continent',            scoreMultiplier: 1.00 },
-            hard:   { label: 'Hard',   timerSec: 60,  hintLevel: 'none',                          scoreMultiplier: 1.50 }
+            hard:   { label: 'Hard',   timerSec: 60,  hintLevel: 'country',                       scoreMultiplier: 1.50 }
         }
     };
 }));

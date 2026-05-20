@@ -169,9 +169,9 @@
               <label class="lobby-field" data-game-type="globe-drop">
                 <span>Difficulty</span>
                 <select id="create-globe-drop-difficulty">
-                  <option value="easy">Easy &mdash; country + continent + region, 180&nbsp;s</option>
-                  <option value="medium" selected>Medium &mdash; country + continent, 120&nbsp;s</option>
-                  <option value="hard">Hard &mdash; city name only, 60&nbsp;s</option>
+                  <option value="easy">Easy &mdash; name + country + continent + region, 180&nbsp;s</option>
+                  <option value="medium" selected>Medium &mdash; name + country + continent, 120&nbsp;s</option>
+                  <option value="hard">Hard &mdash; name + country only, 60&nbsp;s</option>
                 </select>
               </label>
               <label class="lobby-field" data-game-type="globe-drop">
@@ -591,6 +591,13 @@
                 </div>
               </div>
               <p class="globe-drop-reveal-trivia" id="globe-drop-reveal-trivia" hidden></p>
+              <!-- Always-visible Wikipedia escape hatch. Wired up by
+                   drawGlobeDropReveal whenever the reveal opens so
+                   players can read more about the location even if
+                   the inline trivia summary fetch failed. -->
+              <a class="globe-drop-reveal-wiki" id="globe-drop-reveal-wiki" target="_blank" rel="noopener" hidden>
+                <span aria-hidden="true">📖</span> Read on Wikipedia
+              </a>
               <!-- Ready-for-next bar. During the reveal window, any
                    player can click "Ready" to vote to skip the wait;
                    if every player is ready the host advances early. -->

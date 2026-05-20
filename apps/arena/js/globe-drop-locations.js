@@ -224,23 +224,158 @@
     };
 
     /**
+     * Lazy-loaded country-metadata index keyed by every lowercased name
+     * alias we can extract from REST Countries (common + official). Used
+     * by Wikidata-backed packs to recover the region / subregion / area
+     * / population / ccn3 fields the SPARQL queries don't return, which
+     * is what was making every Wikidata location score ×1 difficulty.
+     */
+    let _countryMetaPromise = null;
+    function loadCountryMetaIndex() {
+        if (_countryMetaPromise) return _countryMetaPromise;
+        _countryMetaPromise = (async () => {
+            try {
+                const res = await fetch(REST_COUNTRIES_URL, { cache: 'force-cache' });
+                if (!res.ok) return {};
+                const raw = await res.json();
+                const idx = {};
+                for (const c of (Array.isArray(raw) ? raw : [])) {
+                    if (!c || !c.name) continue;
+                    const common   = String(c.name.common   || '').trim();
+                    const official = String(c.name.official || '').trim();
+                    const areaNum  = Number(c.area);
+                    const popNum   = Number(c.population);
+                    const meta = {
+                        common,
+                        region:            String(c.region    || 'Unknown'),
+                        subregion:         String(c.subregion || ''),
+                        countryCode:       String(c.ccn3      || '').padStart(3, '0'),
+                        countryAreaSqKm:   Number.isFinite(areaNum) ? areaNum : null,
+                        countryPopulation: Number.isFinite(popNum)  ? popNum  : null,
+                        independent:       c.independent !== false
+                    };
+                    for (const alias of [common, official]) {
+                        const k = alias.toLowerCase();
+                        if (k) idx[k] = meta;
+                    }
+                }
+                return idx;
+            } catch (_) {
+                return {};
+            }
+        })();
+        return _countryMetaPromise;
+    }
+
+    /**
+     * Fill in missing region / subregion / countryCode / area / population
+     * on locations whose pack didn't return that data (i.e. Wikidata).
+     * Also normalizes the country name to REST's `common` form so the
+     * recap says "China" instead of "People's Republic of China".
+     * Locations that already have a region are passed through unchanged.
+     */
+    async function enrichWithCountryMeta(locs) {
+        if (!Array.isArray(locs) || !locs.length) return [];
+        const idx = await loadCountryMetaIndex();
+        return locs.map((loc) => {
+            if (!loc) return loc;
+            if (loc.region && loc.region !== 'Unknown' && loc.countryCode) return loc;
+            const key = String(loc.country || '').toLowerCase().trim();
+            const meta = idx[key];
+            if (!meta) return loc;
+            return Object.assign({}, loc, {
+                country:           meta.common || loc.country,
+                region:            meta.region,
+                subregion:         meta.subregion,
+                countryCode:       meta.countryCode,
+                countryAreaSqKm:   loc.countryAreaSqKm != null ? loc.countryAreaSqKm : meta.countryAreaSqKm,
+                countryPopulation: loc.countryPopulation != null ? loc.countryPopulation : meta.countryPopulation,
+                independent:       typeof loc.independent === 'boolean' ? loc.independent : meta.independent
+            });
+        });
+    }
+
+    /**
+     * Stable cap: walk the list, keep up to `max` per country in head order,
+     * push the rest to the tail. So 5 Chinese cities in a row → first 2 keep
+     * their slots, the other 3 get pushed past the take-N slice.
+     */
+    function capByCountry(locs, maxPerCountry) {
+        if (!Array.isArray(locs)) return [];
+        const cap = Math.max(1, Number(maxPerCountry) || 2);
+        const head = [];
+        const tail = [];
+        const count = {};
+        for (const loc of locs) {
+            const c = String(loc && loc.country || '');
+            if ((count[c] || 0) < cap) {
+                head.push(loc);
+                count[c] = (count[c] || 0) + 1;
+            } else {
+                tail.push(loc);
+            }
+        }
+        return head.concat(tail);
+    }
+
+    /**
+     * Same shape, capping per CONTINENT instead of per country. The cap
+     * is `ceil(totalRounds × maxFraction)` so 5-round games with the
+     * default 30% cap allow at most 2 from any one continent, 10-round
+     * games allow at most 3. Bumps obscure-continent locations into
+     * better slots whenever the famous-continent quota is full.
+     */
+    function capByContinent(locs, maxFraction, totalRounds) {
+        if (!Array.isArray(locs)) return [];
+        const total = Math.max(1, Number(totalRounds) || locs.length);
+        // Subtract a tiny epsilon before ceil so 10×0.3 (which IEEE 754
+        // computes as 3.0000…0004) doesn't quietly overshoot to 4.
+        const cap = Math.max(1, Math.ceil(total * (Number(maxFraction) || 0.3) - 1e-9));
+        const head = [];
+        const tail = [];
+        const count = {};
+        for (const loc of locs) {
+            const r = String(loc && loc.region || 'Unknown');
+            if ((count[r] || 0) < cap) {
+                head.push(loc);
+                count[r] = (count[r] || 0) + 1;
+            } else {
+                tail.push(loc);
+            }
+        }
+        return head.concat(tail);
+    }
+
+    /**
      * Dispatcher — picks the right fetch for the host-selected round type.
      * Falls back to 'capitals' for unknown / missing values so legacy rooms
      * persisted before this feature shipped still play exactly as before.
+     *
+     * Over-fetches each pack and then enriches + applies country (max 2)
+     * and continent (max 30%) diversity caps before slicing to `count`.
+     * That fixes the "5 Chinese cities" and "all 5 from Asia" failure
+     * modes the user hit on top-cities-by-country.
      */
     async function fetchLocations(roundType, count, shuffleFn) {
         // Back-compat: callers that haven't migrated yet pass (count, shuffleFn).
         if (typeof roundType !== 'string') {
             return fetchCapitalLocations(roundType, count);
         }
+        const target = Math.max(1, Number(count) || 5);
+        const overfetch = Math.max(target * 4, 30);
+        let raw;
         switch (roundType) {
-            case 'countries':              return fetchCountryLocations(count, shuffleFn);
-            case 'major-cities':           return Wikidata.fetchMajorCities(count, shuffleFn);
-            case 'top-cities-by-country':  return Wikidata.fetchTopCitiesByCountry(count, shuffleFn);
-            case 'landmarks':              return Wikidata.fetchLandmarks(count, shuffleFn);
+            case 'countries':              raw = await fetchCountryLocations(overfetch, shuffleFn); break;
+            case 'major-cities':           raw = await Wikidata.fetchMajorCities(overfetch, shuffleFn); break;
+            case 'top-cities-by-country':  raw = await Wikidata.fetchTopCitiesByCountry(overfetch, shuffleFn); break;
+            case 'landmarks':              raw = await Wikidata.fetchLandmarks(overfetch, shuffleFn); break;
             case 'capitals':
-            default:                       return fetchCapitalLocations(count, shuffleFn);
+            default:                       raw = await fetchCapitalLocations(overfetch, shuffleFn); break;
         }
+        const enriched = await enrichWithCountryMeta(raw);
+        const countryCapped = capByCountry(enriched, 2);
+        const continentCapped = capByContinent(countryCapped, 0.3, target);
+        return continentCapped.slice(0, target);
     }
 
     /**
@@ -278,6 +413,10 @@
         normalizeAsCountry,
         isSmallIslandLocation,
         capSmallIslands,
+        capByCountry,
+        capByContinent,
+        loadCountryMetaIndex,
+        enrichWithCountryMeta,
         fetchLocations,
         fetchCapitalLocations,
         fetchCountryLocations,
