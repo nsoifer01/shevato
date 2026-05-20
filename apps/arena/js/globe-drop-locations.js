@@ -27,7 +27,7 @@
 }(typeof self !== 'undefined' ? self : this, function (Wikidata) {
     'use strict';
 
-    const REST_COUNTRIES_URL = 'https://restcountries.com/v3.1/all?fields=name,capital,capitalInfo,region,subregion,flag,latlng,area,landlocked,independent';
+    const REST_COUNTRIES_URL = 'https://restcountries.com/v3.1/all?fields=name,capital,capitalInfo,region,subregion,flag,latlng,area,landlocked,independent,population';
 
     /**
      * Convert one REST Countries record into our location shape, or null
@@ -63,6 +63,7 @@
         const region = String(raw.region || 'Unknown');
 
         const areaNum = Number(raw.area);
+        const popNum  = Number(raw.population);
         return {
             id: country.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '') || 'unknown',
             name: capital,
@@ -72,11 +73,15 @@
             flag: String(raw.flag || ''),
             lat: latlng[0],
             lng: latlng[1],
-            // Land area + landlocked surface here so the small-island cap
-            // can decide which capitals are "tiny ocean specks" without
-            // re-fetching the REST Countries payload.
-            countryAreaSqKm: Number.isFinite(areaNum) ? areaNum : null,
-            landlocked: raw.landlocked === true
+            // Country-level metrics surfaced on the location so the
+            // difficulty scorer can rank without re-fetching the REST
+            // Countries payload. Population is country-wide (not city),
+            // but it's the strongest proxy we have for "how often does
+            // this place show up in international news / education".
+            countryAreaSqKm:   Number.isFinite(areaNum) ? areaNum : null,
+            countryPopulation: Number.isFinite(popNum)  ? popNum  : null,
+            landlocked:  raw.landlocked === true,
+            independent: raw.independent !== false
         };
     }
 
@@ -153,6 +158,8 @@
             return null;
         }
         const region = String(raw.region || 'Unknown');
+        const areaNum = Number(raw.area);
+        const popNum  = Number(raw.population);
         return {
             id: 'country-' + (country.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '') || 'unknown'),
             name: country,           // the prompt shows this
@@ -161,7 +168,11 @@
             subregion: String(raw.subregion || ''),
             flag: String(raw.flag || ''),
             lat: latlng[0],
-            lng: latlng[1]
+            lng: latlng[1],
+            countryAreaSqKm:   Number.isFinite(areaNum) ? areaNum : null,
+            countryPopulation: Number.isFinite(popNum)  ? popNum  : null,
+            landlocked:  raw.landlocked === true,
+            independent: raw.independent !== false
         };
     }
 
