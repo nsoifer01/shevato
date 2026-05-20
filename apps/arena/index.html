@@ -697,12 +697,24 @@
               <h3>Game recap</h3>
               <p class="end-recap-sub" id="end-recap-sub"></p>
             </header>
+            <!-- Lifetime H2H banner — shown only in 2-player rooms.
+                 Surfaces the player vs opponent record (W-D-L) from
+                 triviaH2H so players see context as soon as the end
+                 stage loads. -->
+            <div class="end-recap-h2h" id="end-recap-h2h" hidden></div>
+
             <div class="end-recap-stats" id="end-recap-stats"></div>
-            <!-- Card-list layout. Each card is one round: header strip
-                 (R# / multiplier / location / winner) + body strip
-                 (per-player score chips). Scannable for 8-10 round
-                 games where the old wide-table format felt heavy. -->
-            <ol class="end-recap-cards" id="end-recap-cards"></ol>
+
+            <!-- Per-round table. Compact: rank | ×mult | location |
+                 per-player score cells | winner. Cards version was
+                 noisier than this; the table reads as a single grid
+                 at a glance for 8-10 round matches. -->
+            <div class="end-recap-table-wrap">
+              <table class="end-recap-table" id="end-recap-table">
+                <thead id="end-recap-thead"></thead>
+                <tbody id="end-recap-tbody"></tbody>
+              </table>
+            </div>
             <p class="end-recap-empty" id="end-recap-empty" hidden>No per-question detail recorded for this game.</p>
           </section>
 
