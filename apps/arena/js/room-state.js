@@ -234,7 +234,7 @@
      *   closestLocation: string|null,
      *   farthestKm:      number|null,
      *   farthestLocation:string|null,
-     *   bullseyeCount:   number,        // base ≥ 90
+     *   bullseyeCount:   number,        // base ≥ 98 (near-perfect)
      *   byRegion: { [region]: { rounds:number, avgBase:number } }
      * } | null}
      */
@@ -271,7 +271,7 @@
                 if (dist < closestKm)  { closestKm = dist;  closestLocation = r.locationName || r.country || null; }
                 if (dist > farthestKm) { farthestKm = dist; farthestLocation = r.locationName || r.country || null; }
             }
-            if (base >= 90) bullseyeCount++;
+            if (base >= 98) bullseyeCount++;
             const region = String(r.region || 'Unknown');
             if (!byRegion[region]) byRegion[region] = { rounds: 0, totalBase: 0 };
             byRegion[region].rounds++;

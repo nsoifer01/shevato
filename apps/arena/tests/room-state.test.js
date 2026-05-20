@@ -279,7 +279,7 @@ test('aggregateGlobeDropStats: derives avg/closest/farthest/bullseye from record
     assert.equal(s.closestLocation, 'Pretoria');
     assert.equal(s.farthestKm, 4201);
     assert.equal(s.farthestLocation, 'Valley');
-    assert.equal(s.bullseyeCount, 1);  // only Pretoria's 95 ≥ 90
+    assert.equal(s.bullseyeCount, 0);  // bullseye is base ≥ 98 — Pretoria's 95 misses
 });
 
 test('aggregateGlobeDropStats: groups by region', () => {
