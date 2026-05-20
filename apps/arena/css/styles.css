@@ -4003,6 +4003,22 @@ select option { background: var(--surface); color: var(--text); }
   line-height: 1;
   letter-spacing: -0.01em;
 }
+.detailed-stat-sub {
+  display: block;
+  margin-top: 0.45rem;
+  font-size: 0.72rem;
+  color: var(--muted);
+  letter-spacing: 0.01em;
+  font-weight: 500;
+  /* Keep long city names from blowing the grid layout. */
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.detailed-stat.is-highlight {
+  border-color: rgba(34, 211, 238, 0.30);
+  box-shadow: 0 0 0 1px rgba(34, 211, 238, 0.10) inset;
+}
 
 .detailed-stats-upsell {
   margin-top: 1.2rem;

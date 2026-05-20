@@ -11,6 +11,7 @@ const {
     timeLeftMs,
     pickNextHost,
     aggregateAnswerStats,
+    aggregateGlobeDropStats,
     pickDecider,
     availableCategoriesFromPool,
     pickQuestionFromPool
@@ -253,4 +254,67 @@ test('pickQuestionFromPool: exhausted category falls back to any unplayed', () =
 
 test('pickQuestionFromPool: fully exhausted pool returns null', () => {
     assert.equal(pickQuestionFromPool(POOL, POOL.map((q) => q.id), 'science'), null);
+});
+
+// --- aggregateGlobeDropStats ------------------------------------------
+
+test('aggregateGlobeDropStats: empty / non-array => null', () => {
+    assert.equal(aggregateGlobeDropStats([]), null);
+    assert.equal(aggregateGlobeDropStats(null), null);
+    assert.equal(aggregateGlobeDropStats(undefined), null);
+});
+
+test('aggregateGlobeDropStats: derives avg/closest/farthest/bullseye from records', () => {
+    const recs = [
+        { locationName: 'Pretoria',  region: 'Africa',   distanceKm: 42,   basePoints: 95, multiplier: 1.5, points: 143 },
+        { locationName: 'Brussels',  region: 'Europe',   distanceKm: 412,  basePoints: 80, multiplier: 1,   points: 80 },
+        { locationName: 'Valley',    region: 'Americas', distanceKm: 4201, basePoints: 0,  multiplier: 3,   points: 0 }
+    ];
+    const s = aggregateGlobeDropStats(recs);
+    assert.equal(s.roundsPlayed, 3);
+    assert.equal(s.totalPoints, 223);
+    assert.equal(s.avgBaseScore, Math.round((95 + 80 + 0) / 3));
+    assert.equal(s.avgDistanceKm, Math.round((42 + 412 + 4201) / 3));
+    assert.equal(s.closestKm, 42);
+    assert.equal(s.closestLocation, 'Pretoria');
+    assert.equal(s.farthestKm, 4201);
+    assert.equal(s.farthestLocation, 'Valley');
+    assert.equal(s.bullseyeCount, 1);  // only Pretoria's 95 ≥ 90
+});
+
+test('aggregateGlobeDropStats: groups by region', () => {
+    const recs = [
+        { region: 'Europe', basePoints: 90, distanceKm: 100 },
+        { region: 'Europe', basePoints: 70, distanceKm: 200 },
+        { region: 'Africa', basePoints: 50, distanceKm: 500 }
+    ];
+    const s = aggregateGlobeDropStats(recs);
+    assert.equal(s.byRegion.Europe.rounds, 2);
+    assert.equal(s.byRegion.Europe.avgBase, 80);
+    assert.equal(s.byRegion.Africa.rounds, 1);
+    assert.equal(s.byRegion.Africa.avgBase, 50);
+});
+
+test('aggregateGlobeDropStats: reconstructs basePoints from points/multiplier when missing', () => {
+    // Legacy records (pre-basePoints field) — should still produce
+    // a usable avg by dividing points back out by the multiplier.
+    const recs = [
+        { region: 'Europe', distanceKm: 100, points: 160, multiplier: 2 }, // base 80
+        { region: 'Europe', distanceKm: 200, points: 90,  multiplier: 1 }  // base 90
+    ];
+    const s = aggregateGlobeDropStats(recs);
+    assert.equal(s.avgBaseScore, 85);
+});
+
+test('aggregateGlobeDropStats: skips non-numeric distanceKm without crashing', () => {
+    const recs = [
+        { region: 'Europe', basePoints: 80, distanceKm: 100 },
+        { region: 'Europe', basePoints: 50, distanceKm: undefined }, // missing
+        { region: 'Europe', basePoints: 70, distanceKm: 'oops' }     // bad
+    ];
+    const s = aggregateGlobeDropStats(recs);
+    assert.equal(s.roundsPlayed, 3);
+    // Only the valid record counts toward distance metrics.
+    assert.equal(s.closestKm, 100);
+    assert.equal(s.farthestKm, 100);
 });
