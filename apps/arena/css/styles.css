@@ -3782,12 +3782,23 @@ select option { background: var(--surface); color: var(--text); }
    so an 8–10 round match reads as a single scannable grid:
    rank | ×mult | location | per-player scores | winner. */
 .end-recap-table-wrap {
+  text-align: center;       /* centers the auto-width table */
+  position: relative;
   overflow-x: auto;
+  /* Right-edge fade: signals horizontal scroll when 3- and 4-player
+     rooms overflow on narrow viewports. The mask is a no-op when
+     nothing overflows — at desktop widths the table fits and no
+     fade is visible. */
+  -webkit-mask-image: linear-gradient(90deg, #000 0, #000 calc(100% - 48px), transparent 100%);
+          mask-image: linear-gradient(90deg, #000 0, #000 calc(100% - 48px), transparent 100%);
 }
 .end-recap-table {
-  width: 100%;
+  width: auto;
+  max-width: 100%;
+  margin: 0 auto;
   border-collapse: collapse;
   font-size: 0.85rem;
+  text-align: left;         /* override centered text-align from wrap */
 }
 .end-recap-table th,
 .end-recap-table td {
@@ -3802,7 +3813,7 @@ select option { background: var(--surface); color: var(--text); }
   font-size: 0.7rem;
   letter-spacing: 0.06em;
   text-transform: uppercase;
-  color: var(--muted-2);
+  color: var(--muted);          /* lifted from muted-2 so '#' / 'MULT' / 'LOCATION' actually read */
   font-weight: 700;
   background: rgba(8, 11, 22, 0.4);
   position: sticky;
