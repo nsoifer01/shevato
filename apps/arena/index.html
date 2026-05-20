@@ -802,12 +802,14 @@
           <thead>
             <tr>
               <th>#</th>
-              <th>Player</th>
-              <th>Score</th>
-              <th>Games</th>
-              <th>Wins</th>
-              <th>Win %</th>
-              <th>Last played</th>
+              <th data-sort-key="displayName">Player</th>
+              <th data-sort-key="avgScore" data-sort-default="desc">Avg score</th>
+              <th data-sort-key="bestRoundScore">Best round</th>
+              <th data-sort-key="lifetimeBullseyes">Bullseyes</th>
+              <th data-sort-key="gamesPlayed">Games</th>
+              <th data-sort-key="wins">Wins</th>
+              <th data-sort-key="winPct">Win %</th>
+              <th data-sort-key="lastPlayedAt">Last played</th>
               <th id="leaderboard-admin-th" hidden>Admin</th>
             </tr>
           </thead>
@@ -920,10 +922,11 @@
         </div>
 
         <div class="profile-stats" id="profile-stats">
-          <div class="profile-stat"><span class="profile-stat-label">Total score</span><span class="profile-stat-value" id="stat-xp">0</span></div>
+          <div class="profile-stat is-headline"><span class="profile-stat-label">Avg score</span><span class="profile-stat-value" id="stat-avg-score">0</span></div>
           <div class="profile-stat"><span class="profile-stat-label">Games</span><span class="profile-stat-value" id="stat-games">0</span></div>
-          <div class="profile-stat"><span class="profile-stat-label">Wins</span><span class="profile-stat-value" id="stat-wins">0</span></div>
           <div class="profile-stat"><span class="profile-stat-label">Win %</span><span class="profile-stat-value" id="stat-winpct">0%</span></div>
+          <div class="profile-stat"><span class="profile-stat-label">Bullseyes</span><span class="profile-stat-value" id="stat-bullseyes">0</span></div>
+          <div class="profile-stat"><span class="profile-stat-label">Best round</span><span class="profile-stat-value" id="stat-best-round">0</span></div>
         </div>
 
         <div class="profile-premium-card" id="profile-premium-card">
