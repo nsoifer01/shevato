@@ -129,8 +129,8 @@
       <!-- LOBBY (create / join) -->
       <section class="lobby-panel" id="lobby-panel">
         <p class="auth-gate" id="auth-gate" hidden>
-          <span aria-hidden="true">🔒</span>
-          Sign in from the top-right to create or join rooms. Your score, wins, and games-played stay on your profile.
+          <span aria-hidden="true">👋</span>
+          <span id="auth-gate-text">Jump in below to play as a guest, or sign up (top-right) to save your score, wins, and games played across devices.</span>
         </p>
         <div class="lobby-grid" id="lobby-grid">
           <article class="lobby-card lobby-create">
@@ -652,6 +652,15 @@
           <header class="end-head">
             <p id="end-summary"></p>
           </header>
+
+          <!-- Guest-only sign-up CTA. Shown for anonymous users on the
+               recap stage as a soft nudge to save their stats — toggled
+               by renderEndStage based on isGuest(). Reuses .auth-gate
+               styling so the look matches the lobby banner. -->
+          <p class="auth-gate end-guest-cta" id="end-guest-cta" hidden>
+            <span aria-hidden="true">⭐</span>
+            Nice run! You played as a guest — <button type="button" class="link-btn" id="end-guest-cta-btn">sign up</button> to save your score, wins, and games played across devices.
+          </p>
 
           <!-- Solo-only hero score block. Populated by renderEndStage
                when playMode === 'solo' and hidden otherwise. -->

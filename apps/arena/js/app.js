@@ -481,7 +481,52 @@ function waitForFirebaseAuth() {
     });
 }
 
+/**
+ * True when the current user is an anonymous (guest) Firebase user.
+ * Guests can play, but persistent writes (leaderboard, H2H, daily,
+ * users/{uid}.triviaProfile) skip them — their room is ephemeral.
+ */
+function isGuest() {
+    return !!(state.user && state.user.isAnonymous);
+}
+
+/**
+ * Sign in anonymously if no user yet. Returns the user, or null on
+ * failure. Failure is surfaced as a toast so visitors don't get a
+ * silent bounce back to the sign-in modal when Anonymous auth isn't
+ * enabled in the Firebase project (the most common cause). Waits for
+ * applyAuthState to populate state.user before returning so callers
+ * can rely on state.user immediately after awaiting.
+ */
+async function ensureGuestAuth() {
+    if (state.user) return state.user;
+    try {
+        const user = await window.firebaseAuth.signInAsGuest();
+        // onAuthStateChanged fires asynchronously after signInAnonymously
+        // resolves; spin briefly until applyAuthState has populated
+        // state.user so downstream code (createRoom, joinRoom) sees it.
+        for (let i = 0; i < 50 && !state.user; i++) {
+            await new Promise((r) => setTimeout(r, 10));
+        }
+        return state.user || user;
+    } catch (err) {
+        console.warn('Guest sign-in failed:', err);
+        // Most common cause: Anonymous provider disabled in Firebase
+        // Console (auth/operation-not-allowed / admin-restricted-
+        // operation). Surface a toast so the user understands why
+        // they're being routed to the sign-in modal instead of into
+        // the room.
+        showToast('Guest mode is unavailable right now — please sign in or sign up to play.', { icon: '⚠️', key: 'guest-auth-failed' });
+        return null;
+    }
+}
+
 async function loadProfile(uid) {
+    // Guests never get a persistent users/{uid} doc — their uid resets
+    // when storage is cleared, so any profile we wrote would be garbage.
+    // Returning null lets renderProfileView short-circuit into the
+    // "sign up to save your stats" CTA branch.
+    if (isGuest()) return null;
     const ref = doc(db, 'users', uid);
     try {
         const snap = await getDoc(ref);
@@ -529,7 +574,7 @@ function deriveInitialDisplayName() {
 }
 
 async function saveProfileField(patch) {
-    if (!state.user) return;
+    if (!state.user || isGuest()) return;
     const ref = doc(db, 'users', state.user.uid);
     const updates = {};
     for (const [k, v] of Object.entries(patch)) updates[`triviaProfile.${k}`] = v;
@@ -540,24 +585,33 @@ async function saveProfileField(patch) {
 function applyAuthState(user) {
     state.user = user || null;
     const signedIn = !!user;
-    setClass($('#auth-gate'), 'is-hidden', signedIn);
-    if (state.user) $('#auth-gate').hidden = true;
+    // Treat guests (anonymous users) as "not signed up" for UI gating —
+    // the auth-gate / profile-signed-out CTAs still show their sign-up
+    // prompt, but the lobby itself stays unlocked because createRoom /
+    // joinRoom auto-bootstrap anon auth when needed.
+    const isRegistered = signedIn && !user.isAnonymous;
+    setClass($('#auth-gate'), 'is-hidden', isRegistered);
+    if (isRegistered) $('#auth-gate').hidden = true;
     else $('#auth-gate').hidden = false;
 
     // Invite-link landing: if a signed-out user arrived via an
-    // /?room=ABCDE link, open the sign-in modal automatically so they
-    // can join without hunting for it. pendingRoomCode is kept; once
-    // they finish auth, applyAuthState fires again with signedIn=true
-    // and tryRejoinPendingRoom takes them straight to the room.
+    // /?room=ABCDE link, silently sign them in as a guest and join.
+    // applyAuthState fires again once the anon user exists, which
+    // re-runs the signedIn branch below and tryRejoinPendingRoom
+    // takes them straight to the room. We only kick this off once per
+    // boot to avoid an auth-loop if the sign-in itself fails.
     if (!signedIn && state.pendingRoomCode && !state.inviteSignInPrompted) {
         state.inviteSignInPrompted = true;
-        openSignInPrompt();
+        ensureGuestAuth();
     }
 
-    // Profile view toggles
-    setClass($('#profile-signed-out'), 'is-hidden', signedIn);
-    $('#profile-signed-out').hidden = signedIn;
-    $('#profile-card-trivia').hidden = !signedIn;
+    // Profile view toggles — guests see the sign-up CTA (same panel
+    // as fully signed-out users, slightly different copy handled by
+    // renderProfileGuestCTA).
+    setClass($('#profile-signed-out'), 'is-hidden', isRegistered);
+    $('#profile-signed-out').hidden = isRegistered;
+    $('#profile-card-trivia').hidden = !isRegistered;
+    renderProfileGuestCTA();
 
     // Stop watching the previous user's doc (if any) before swapping.
     if (state.profileUnsub) {
@@ -572,9 +626,17 @@ function applyAuthState(user) {
         // the two don't depend on each other.
         if (state.pendingPostMatchCode) tryLoadPendingPostMatch();
         else if (state.pendingRoomCode)  tryRejoinPendingRoom();
-        // Admin probe — presence of a doc at /leaderboardAdmins/{uid}
-        // turns on the trash-icon affordance on leaderboard rows.
-        checkLeaderboardAdmin(user.uid);
+        // Skip the registered-only side effects (admin probe + profile
+        // subscription) for guests — both would be wasted Firestore
+        // reads that hit rule denials.
+        if (isRegistered) checkLeaderboardAdmin(user.uid);
+        if (isGuest()) {
+            state.profile = null;
+            state.customPack = null;
+            renderProfileView();
+            renderPremiumGates();
+            return;
+        }
         loadProfile(user.uid).then((p) => {
             state.profile = p;
             renderProfileView();
@@ -607,8 +669,25 @@ function applyAuthState(user) {
  * Profile view
  * ===================================================================== */
 
+/**
+ * Update the copy of the #profile-signed-out CTA based on whether the
+ * visitor is fully signed out or playing as a guest. Same panel, two
+ * voices: "Sign in to save…" for signed-out, "You're playing as a guest
+ * — sign up to keep your stats" for anonymous users.
+ */
+function renderProfileGuestCTA() {
+    const panel = $('#profile-signed-out');
+    if (!panel) return;
+    if (isGuest()) {
+        panel.innerHTML = '<strong>Playing as a guest.</strong> '
+            + 'Sign up from the top-right to save your score, wins, and games played across devices.';
+    } else {
+        panel.textContent = 'Sign in from the top-right to save your score, wins, and games played.';
+    }
+}
+
 function renderProfileView() {
-    if (!state.user) return;
+    if (!state.user || isGuest()) return;
     setText($('#profile-email'), state.user.email || '');
     const p = state.profile || {};
     const name = p.displayName || deriveInitialDisplayName();
@@ -748,6 +827,14 @@ function wirePremiumModal() {
         if (!state.user) {
             // Shouldn't happen — the upgrade buttons are gated behind sign-in
             // by the auth-gate — but be defensive so we don't strand a buyer.
+            return;
+        }
+        if (isGuest()) {
+            // Premium is tied to a real account (Stripe webhook flips
+            // users/{uid}.triviaProfile.premium). Push guests through
+            // sign-up first; their guest session ends when they sign up
+            // for real, but premium needs a stable uid to attach to.
+            openSignInPrompt();
             return;
         }
         const url = buildCheckoutUrl(state.user.uid);
@@ -1091,6 +1178,12 @@ function wireLobby() {
     // the listeners so a future re-add Just Works.
     const endBack = $('#end-back-btn');
     if (endBack) endBack.addEventListener('click', () => leaveRoom());
+    // Guest sign-up CTA on the end stage routes through the existing
+    // sign-in modal. linkWithCredential would carry the guest's stats
+    // over if we wanted to preserve them, but for now we treat sign-up
+    // as a fresh start since guest stats were never persisted anyway.
+    const endGuestCtaBtn = $('#end-guest-cta-btn');
+    if (endGuestCtaBtn) endGuestCtaBtn.addEventListener('click', () => openSignInPrompt());
     const settingsEditBtn = $('#room-settings-edit-btn');
     if (settingsEditBtn) settingsEditBtn.addEventListener('click', () => openRoomSettingsEditor());
     const settingsCancel = $('#room-settings-cancel');
@@ -1207,7 +1300,15 @@ function showJoinError(msg) {
 }
 
 async function createRoom(opts) {
-    if (!state.user) { openSignInPrompt(); return; }
+    if (!state.user) {
+        // Visitor hasn't signed up — drop them into anonymous (guest)
+        // mode so they can try the game with zero friction. Their room
+        // and player docs are ephemeral; leaveRoom + the TTL sweep wipe
+        // them. Persistent writes (leaderboard, H2H, profile) skip
+        // guests entirely (see writeEndOfGameStats / maybeWriteH2HPairs).
+        await ensureGuestAuth();
+        if (!state.user) { openSignInPrompt(); return; }
+    }
     // mode = 'multi' (default) | 'solo' | 'daily'.
     // - solo: private, single-player, auto-starts as soon as the room exists
     // - daily: like solo, plus deterministic location seeding by UTC date
@@ -1427,7 +1528,13 @@ async function maybeRevealJoinPasswordField(rawValue) {
 }
 
 async function joinRoom() {
-    if (!state.user) { openSignInPrompt(); return; }
+    if (!state.user) {
+        // Same guest-mode fallback as createRoom — sign in anonymously
+        // so the visitor can join a friend's room without making an
+        // account first.
+        await ensureGuestAuth();
+        if (!state.user) { openSignInPrompt(); return; }
+    }
     clearJoinError();
     const raw = $('#join-code').value;
     const code = RoomState.normalizeRoomCode(raw);
@@ -1647,6 +1754,23 @@ async function beforeUnloadCleanup() {
     } catch (e) { /* best-effort */ }
 }
 
+/**
+ * Wipe every chat message under a room. Called right before the room
+ * doc itself is deleted in leaveRoom, so the subcollection doesn't
+ * outlive its parent (Firestore doesn't cascade subcollection deletes).
+ * Best-effort: any single doc failure is swallowed so a partial sweep
+ * still lets the room doc deletion proceed.
+ */
+async function deleteRoomChat(code) {
+    if (!code) return;
+    try {
+        const snap = await getDocs(collection(db, 'triviaRooms', code, 'chat'));
+        await Promise.all(snap.docs.map((d) =>
+            deleteDoc(doc(db, 'triviaRooms', code, 'chat', d.id)).catch(() => {})
+        ));
+    } catch (e) { /* ignore — room delete is the source of truth */ }
+}
+
 async function leaveRoom({ silent = false, reason = null } = {}) {
     const code = state.roomCode;
     state.roomUnsubs.splice(0).forEach((u) => { try { u(); } catch (e) {} });
@@ -1674,6 +1798,13 @@ async function leaveRoom({ silent = false, reason = null } = {}) {
             const remaining = await getDocs(collection(db, 'triviaRooms', code, 'players'));
             const survivors = remaining.docs.map((d) => d.data());
             if (!survivors.length) {
+                // Best-effort chat sweep before deleting the room doc —
+                // chat messages don't cascade automatically. Mostly
+                // matters for guest rooms (where we want zero residual
+                // data in Firestore after the last player leaves), but
+                // running it unconditionally also tidies up signed-in
+                // rooms instead of leaving orphaned subcollection docs.
+                await deleteRoomChat(code);
                 await deleteDoc(doc(db, 'triviaRooms', code));
             } else {
                 const roomSnap = await getDoc(doc(db, 'triviaRooms', code));
@@ -4225,6 +4356,12 @@ async function renderEndStage(isHost) {
     hide($('#stage-picking'));
     show($('#stage-end'));
 
+    // Guest-only sign-up nudge. Only shown to anonymous users — for
+    // registered users this panel stays hidden so the recap layout
+    // doesn't pick up dead space.
+    const guestCta = $('#end-guest-cta');
+    if (guestCta) guestCta.hidden = !isGuest();
+
     // Deep-link: rewrite the URL to ?postMatch=<code> so refresh + share
     // both land back on this recap. Cleared by setView('play') when the
     // user navigates away from the end stage.
@@ -4359,6 +4496,10 @@ async function renderEndStage(isHost) {
 
 async function writeEndOfGameStats(me, didWin) {
     if (!state.user) return;
+    // Guests have no persistent profile or leaderboard slot — the end-
+    // of-game writes would all fail at the rules layer, and we don't
+    // want anon uids polluting the global boards anyway.
+    if (isGuest()) return;
     const playMode = (state.roomData && state.roomData.playMode) || 'multi';
     const isSolo = playMode === 'solo';
     try {
@@ -4456,6 +4597,10 @@ function h2hPairKey(uidA, uidB) {
  */
 async function maybeWriteH2HPairs() {
     if (!state.user || !state.roomData || !state.roomCode) return;
+    // Guest hosts: still update sessionMatchCount on the room doc (it's
+    // ephemeral and helps the in-room session H2H render), but skip
+    // the lifetime triviaH2H pair writes — rules forbid anon writes
+    // there, and anon uids would create orphaned pair rows anyway.
     const playMode = state.roomData.playMode || 'multi';
     if (playMode !== 'multi') return;
     const players = Array.isArray(state.roomPlayers) ? state.roomPlayers.slice() : [];
@@ -4486,7 +4631,9 @@ async function maybeWriteH2HPairs() {
     // (a) satisfies the rules (the writer is uidA, so rules pass)
     // (b) avoids two clients racing to increment the same pair doc.
     // For pairs that don't include me, OR pairs where I'm uidB, I
-    // skip — my counterpart handles the write.
+    // skip — my counterpart handles the write. Guests skip entirely
+    // (rules block anon writes to triviaH2H).
+    if (isGuest()) return;
     const myUid = state.user.uid;
     for (const opp of players) {
         if (!opp || !opp.uid || opp.uid === myUid) continue;
@@ -4528,6 +4675,10 @@ async function maybeWriteH2HPairs() {
 
 async function maybeWriteDailyLeaderboard(me) {
     if (!state.user || !state.roomData) return;
+    // Guests don't qualify for the daily leaderboard — anon uids can
+    // change at any time, so their score isn't a "personal best" anyone
+    // could ever beat. Rules block the write anyway.
+    if (isGuest()) return;
     if (state.roomData.playMode !== 'daily') return;
     const dateKey = state.roomData.dailyDateKey;
     if (!dateKey) return;

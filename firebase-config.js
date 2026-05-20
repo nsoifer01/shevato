@@ -46,6 +46,7 @@ import {
   onAuthStateChanged,
   signInWithEmailAndPassword,
   createUserWithEmailAndPassword,
+  signInAnonymously,
   signOut,
   setPersistence,
   browserLocalPersistence
@@ -187,6 +188,19 @@ window.firebaseAuth = {
       return cred.user;
     } catch (err) {
       console.error('Sign up error:', err);
+      throw formatAuthError(err);
+    }
+  },
+  // Guest mode — used by Arena to let users try multiplayer without
+  // creating an account. The returned uid is per-device and resets when
+  // browser storage is cleared, so callers must NOT write to any
+  // persistent collection (leaderboard, profile, H2H) for anon users.
+  async signInAsGuest() {
+    try {
+      const cred = await signInAnonymously(auth);
+      return cred.user;
+    } catch (err) {
+      console.error('Anonymous sign in error:', err);
       throw formatAuthError(err);
     }
   },
