@@ -1914,17 +1914,17 @@ select option { background: var(--surface); color: var(--text); }
   border-color: rgba(34, 211, 238, 0.45);
   color: var(--text);
 }
-.rounds-history-chip em {
+/* Multiplier breakdown sits next to the R# label (round-level, not
+   per-player). Compact mono in muted-2 so it reads as metadata, not
+   the headline number. */
+.rounds-history-mult {
   font-style: normal;
-  margin-left: 0.35rem;
-  padding-left: 0.4rem;
-  border-left: 1px solid rgba(255, 255, 255, 0.18);
   font-family: var(--mono);
   font-size: 0.72rem;
+  font-weight: 600;
   color: var(--muted);
-  font-weight: 500;
+  margin-left: 0.3rem;
 }
-.rounds-history-chip.is-me em { color: var(--cyan-2); }
 .rounds-history-chip.is-zero {
   color: var(--muted);
   background: rgba(255, 255, 255, 0.02);
