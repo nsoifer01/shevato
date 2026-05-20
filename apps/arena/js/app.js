@@ -3175,11 +3175,14 @@ function drawGlobeDropReveal(loc, me, { showOthers = true } = {}) {
         const d = GlobeDropScoring.haversineDistanceKm(
             me.currentGuess.lat, me.currentGuess.lng, loc.lat, loc.lng
         );
-        const { points } = GlobeDropScoring.scoreGuess({
+        const { points, basePoints } = GlobeDropScoring.scoreGuess({
             distanceKm: d,
             multiplier: loc.multiplier
         });
-        distEl.innerHTML = `${Math.round(d).toLocaleString()} km off — <strong>+${points}</strong> points`;
+        const multTxt = (typeof loc.multiplier === 'number' && loc.multiplier !== 1)
+            ? ` × ${loc.multiplier.toFixed(2).replace(/0+$/, '').replace(/\.$/, '')} = <strong>+${points}</strong>`
+            : '';
+        distEl.innerHTML = `${Math.round(d).toLocaleString()} km off — <strong>${basePoints}</strong>/100${multTxt}`;
         let sentiment;
         if (d < 100) sentiment = '🎯 Bullseye!';
         else if (d < 500) sentiment = 'Close, nicely done.';
@@ -3387,7 +3390,7 @@ async function submitGuess() {
     const distance = GlobeDropScoring.haversineDistanceKm(
         state.pendingGuess.lat, state.pendingGuess.lng, loc.lat, loc.lng
     );
-    const { points } = GlobeDropScoring.scoreGuess({
+    const { points, basePoints } = GlobeDropScoring.scoreGuess({
         distanceKm: distance,
         multiplier: loc.multiplier
     });
@@ -3428,6 +3431,8 @@ async function submitGuess() {
                 guessLat: guess.lat,
                 guessLng: guess.lng,
                 distanceKm: distance,
+                basePoints,
+                multiplier: typeof loc.multiplier === 'number' ? loc.multiplier : 1,
                 points
             };
             tx.update(pref, {
@@ -4517,10 +4522,23 @@ function renderEndRecap() {
                 return;
             }
             if (isGlobeDrop) {
-                const distMeta = (ans && ans.distanceKm != null)
-                    ? `<span class="recap-score-meta">${Math.round(Number(ans.distanceKm) || 0).toLocaleString()} km</span>`
+                // Show base score (0-100) prominently, then the
+                // multiplied final + distance meta. The user-facing
+                // rule is "round score is 0-100, multiplier is applied
+                // afterwards" — so the 0-100 is the primary number.
+                const base = ans && typeof ans.basePoints === 'number'
+                    ? Math.max(0, Math.round(ans.basePoints))
+                    : (points > 0 && typeof q.multiplier === 'number' && q.multiplier > 0
+                        ? Math.round(points / q.multiplier)
+                        : points);
+                const showMult = ans && typeof ans.multiplier === 'number' && ans.multiplier !== 1;
+                const finalTxt = showMult ? `→ +${points}` : '';
+                const distTxt = (ans && ans.distanceKm != null)
+                    ? `${Math.round(Number(ans.distanceKm) || 0).toLocaleString()} km`
                     : '';
-                scoreCells += `<td class="${cls}">${points > 0 ? '+' + points : '0'}${distMeta}</td>`;
+                const metaParts = [finalTxt, distTxt].filter(Boolean).join(' · ');
+                const metaHtml = metaParts ? `<span class="recap-score-meta">${escapeHtml(metaParts)}</span>` : '';
+                scoreCells += `<td class="${cls}"><span class="recap-base">${base}</span>${metaHtml}</td>`;
             } else {
                 const pickClass = ans && ans.correct ? 'is-correct' : 'is-wrong';
                 const pickHtml = ans
