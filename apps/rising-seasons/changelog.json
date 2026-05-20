@@ -1,6 +1,238 @@
 {
   "updates": [
     {
+      "builtAt": "2026-05-20T07:29:14.351Z",
+      "totals": {
+        "seasons": 16575,
+        "delta": -9
+      },
+      "shapeCounts": {
+        "declining": 220,
+        "rollercoaster": 3558,
+        "rebound": 2797,
+        "mid-peak": 1119,
+        "big-finale": 4074,
+        "bad-finale": 1047,
+        "front-loaded": 547,
+        "saved-best-for-last": 434,
+        "slow-burn": 876,
+        "rising": 599,
+        "consistent": 456
+      },
+      "shapeDeltas": {
+        "declining": -1,
+        "rollercoaster": -5,
+        "rebound": 1,
+        "mid-peak": -4,
+        "big-finale": 5,
+        "bad-finale": -1,
+        "front-loaded": -1,
+        "saved-best-for-last": 4,
+        "rising": -3,
+        "consistent": 1
+      },
+      "added": [
+        {
+          "seriesId": "tt36849871",
+          "title": "Marshals",
+          "season": 1,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt0182576",
+          "title": "Family Guy",
+          "season": 24,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt0168366",
+          "title": "Pokémon Journeys: The Series",
+          "season": 23,
+          "seasonYear": 2019
+        },
+        {
+          "seriesId": "tt30068040",
+          "title": "The Secret of the River",
+          "season": 1,
+          "seasonYear": 2024
+        },
+        {
+          "seriesId": "tt3692970",
+          "title": "Night and the Doctor",
+          "season": 1,
+          "seasonYear": 2011
+        },
+        {
+          "seriesId": "tt39443176",
+          "title": "Gals Can't Be Kind to Otaku!?",
+          "season": 1,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt36850092",
+          "title": "The Real Housewives of Rhode Island",
+          "season": 1,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt0324692",
+          "title": "Ant & Dec's Saturday Night Takeaway",
+          "season": 20,
+          "seasonYear": 2024
+        },
+        {
+          "seriesId": "tt0463827",
+          "title": "Mock the Week",
+          "season": 20,
+          "seasonYear": 2021
+        },
+        {
+          "seriesId": "tt2255443",
+          "title": "The Undateables",
+          "season": 7,
+          "seasonYear": 2017
+        },
+        {
+          "seriesId": "tt36192875",
+          "title": "The Race",
+          "season": 2,
+          "seasonYear": 2025
+        }
+      ],
+      "removed": [
+        {
+          "seriesId": "tt32604054",
+          "title": "Regular Show: The Lost Tapes",
+          "season": 1,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt35515227",
+          "title": "CIA",
+          "season": 1,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt7491982",
+          "title": "FBI",
+          "season": 8,
+          "seasonYear": 2025
+        },
+        {
+          "seriesId": "tt0423652",
+          "title": "The First 48",
+          "season": 1,
+          "seasonYear": 2004
+        },
+        {
+          "seriesId": "tt0423652",
+          "title": "The First 48",
+          "season": 7,
+          "seasonYear": 2008
+        },
+        {
+          "seriesId": "tt0423652",
+          "title": "The First 48",
+          "season": 8,
+          "seasonYear": 2008
+        },
+        {
+          "seriesId": "tt0423652",
+          "title": "The First 48",
+          "season": 2,
+          "seasonYear": 2005
+        },
+        {
+          "seriesId": "tt0320037",
+          "title": "Jimmy Kimmel Live!",
+          "season": 24,
+          "seasonYear": 2025
+        },
+        {
+          "seriesId": "tt0423652",
+          "title": "The First 48",
+          "season": 3,
+          "seasonYear": 2005
+        },
+        {
+          "seriesId": "tt0423652",
+          "title": "The First 48",
+          "season": 18,
+          "seasonYear": 2019
+        },
+        {
+          "seriesId": "tt0423652",
+          "title": "The First 48",
+          "season": 6,
+          "seasonYear": 2007
+        },
+        {
+          "seriesId": "tt0423652",
+          "title": "The First 48",
+          "season": 9,
+          "seasonYear": 2009
+        },
+        {
+          "seriesId": "tt0423652",
+          "title": "The First 48",
+          "season": 5,
+          "seasonYear": 2007
+        },
+        {
+          "seriesId": "tt0423652",
+          "title": "The First 48",
+          "season": 4,
+          "seasonYear": 2006
+        },
+        {
+          "seriesId": "tt0423652",
+          "title": "The First 48",
+          "season": 22,
+          "seasonYear": 2021
+        },
+        {
+          "seriesId": "tt0115147",
+          "title": "The Daily Show",
+          "season": 31,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt0423652",
+          "title": "The First 48",
+          "season": 11,
+          "seasonYear": 2010
+        },
+        {
+          "seriesId": "tt0423652",
+          "title": "The First 48",
+          "season": 17,
+          "seasonYear": 2017
+        },
+        {
+          "seriesId": "tt2255443",
+          "title": "The Undateables",
+          "season": 6,
+          "seasonYear": 2017
+        },
+        {
+          "seriesId": "tt14721554",
+          "title": "Below Deck Down Under",
+          "season": 4,
+          "seasonYear": 2026
+        }
+      ],
+      "ratingSwings": [],
+      "modifiedCounts": {
+        "seriesVotes": 10794,
+        "poster": 23,
+        "avgRating": 404,
+        "shapes": 55,
+        "overview": 126,
+        "seriesRating": 29,
+        "episodeCount": 3
+      }
+    },
+    {
       "builtAt": "2026-05-19T07:28:40.512Z",
       "totals": {
         "seasons": 16584,
