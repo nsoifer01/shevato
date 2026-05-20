@@ -1056,6 +1056,10 @@
        re-download from https://unpkg.com/globe.gl@<ver>/dist/globe.gl.min.js
        into js/vendor/ and bump the comment above. -->
   <script defer src="js/vendor/globe.gl.min.js"></script>
+  <!-- Self-hosted topojson-client (3.1.0). Converts the world-110m
+       TopoJSON in /apps/arena/data/ into GeoJSON features for the
+       reveal-phase country-border overlay. ~7 KB minified. -->
+  <script defer src="js/vendor/topojson-client.min.js"></script>
 
   <!-- Brain Arena: pure-logic UMD files first (attach to window.BrainArena),
        then the main app module that imports Firestore SDK + reads the
