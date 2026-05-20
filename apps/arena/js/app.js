@@ -2657,7 +2657,10 @@ function ensureGlobe() {
         // don't depend on a third-party CDN and skip any CORS surprises.
         // ~4.5 MB; the browser caches it after the first room creation.
         .globeImageUrl('data/earth-8k.jpg')
-        .bumpImageUrl('https://unpkg.com/three-globe@2.31.1/example/img/earth-topology.png')
+        // Self-hosted topology bump map (from three-globe@2.31.1's
+        // example assets). Keeping it local matches earth-8k.jpg and
+        // means the globe build doesn't touch unpkg at all.
+        .bumpImageUrl('data/earth-topology.png')
         .showAtmosphere(true)
         .atmosphereColor('#6366f1')
         .atmosphereAltitude(0.18)
