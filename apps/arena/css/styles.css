@@ -2214,8 +2214,66 @@ select option { background: var(--surface); color: var(--text); }
 }
 .h2h-result {
   display: grid;
-  grid-template-columns: 1fr 1fr;
+  grid-template-columns: 1fr auto 1fr;   /* card · record pill · card */
+  align-items: stretch;
   gap: 1rem;
+}
+/* Lifetime W-D-L pill sitting between the two cards. Reads as the
+   headline summary so the eye lands on "who's winning the rivalry"
+   before parsing the stat lists. */
+.h2h-record-pill {
+  align-self: center;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 1rem 1.1rem;
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.04), transparent 60%),
+    rgba(8, 11, 22, 0.6);
+  border: 1px solid rgba(251, 191, 36, 0.35);
+  border-radius: 18px;
+  box-shadow:
+    0 0 24px rgba(251, 191, 36, 0.18),
+    0 1px 0 rgba(255, 255, 255, 0.04) inset;
+  min-width: 130px;
+}
+.h2h-record-label {
+  font-size: 0.65rem;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--muted-2);
+  font-weight: 700;
+}
+.h2h-record-score {
+  display: flex;
+  align-items: baseline;
+  gap: 0.5rem;
+  font-family: var(--mono);
+  font-weight: 800;
+  font-size: 2rem;
+  letter-spacing: -0.02em;
+}
+.h2h-record-num {
+  font-variant-numeric: tabular-nums;
+  color: var(--text);
+}
+.h2h-record-num.is-lead {
+  color: var(--gold);
+  text-shadow: 0 0 14px rgba(251, 191, 36, 0.5);
+}
+.h2h-record-num.is-trail {
+  color: var(--muted);
+  opacity: 0.7;
+}
+.h2h-record-dash {
+  color: var(--muted-2);
+  font-weight: 500;
+}
+.h2h-record-sub {
+  font-size: 0.7rem;
+  color: var(--muted);
+  letter-spacing: 0.04em;
 }
 .h2h-card {
   position: relative;
@@ -2337,6 +2395,7 @@ select option { background: var(--surface); color: var(--text); }
   .h2h-picker { grid-template-columns: 1fr; }
   .h2h-versus { text-align: center; padding: 0.15rem 0; }
   .h2h-result { grid-template-columns: 1fr; }
+  .h2h-record-pill { order: -1; }   /* lifetime pill above the cards on mobile */
 }
 
 .lobby-waiting-hint {

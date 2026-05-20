@@ -3297,11 +3297,12 @@ function drawGlobeDropReveal(loc, me, { showOthers = true } = {}) {
         state.globe.polygonsData(feat ? [feat] : []);
     });
 
-    // Pan camera so the actual location is centered + zoom in a touch.
-    // Reveal fly-in: longer tween so the camera glides into the truth
-    // instead of snapping. 1400ms paired with globe.gl's default easing
-    // gives a noticeably calmer feel than the prior 1000ms.
-    state.globe.pointOfView({ lat: loc.lat, lng: loc.lng, altitude: 1.8 }, 1400);
+    // Pan + zoom into the correct location. Altitude 0.6 puts the
+    // country's outline at roughly half the viewport — close enough
+    // for borders to read, far enough that the city pin doesn't get
+    // lost under the chrome. 1400ms tween matches globe.gl's default
+    // easing for a smooth fly-in.
+    state.globe.pointOfView({ lat: loc.lat, lng: loc.lng, altitude: 0.6 }, 1400);
 
     // Reveal panel: distance + points or "no guess"
     const revealEl = $('#globe-drop-reveal');
@@ -3314,8 +3315,17 @@ function drawGlobeDropReveal(loc, me, { showOthers = true } = {}) {
             distanceKm: d,
             multiplier: loc.multiplier
         });
-        const multTxt = (typeof loc.multiplier === 'number' && loc.multiplier !== 1)
-            ? ` × ${loc.multiplier.toFixed(2).replace(/0+$/, '').replace(/\.$/, '')} = <strong>+${points}</strong>`
+        // Show "× mult = +final" whenever the final differs from base —
+        // either because mult > 1 OR because the MIN_POINTS floor kicked
+        // in for a really-far guess (base 0 → final 5). Without the
+        // second case, the floor was invisible to the player.
+        const multNum = typeof loc.multiplier === 'number' ? loc.multiplier : 1;
+        const multStr = multNum.toFixed(2).replace(/0+$/, '').replace(/\.$/, '');
+        const showFinal = points !== basePoints;
+        const multTxt = showFinal
+            ? (multNum !== 1
+                ? ` × ${multStr} = <strong>+${points}</strong>`
+                : ` = <strong>+${points}</strong> <small>(min)</small>`)
             : '';
         distEl.innerHTML = `${Math.round(d).toLocaleString()} km off — <strong>${basePoints}</strong>/100${multTxt}`;
         let sentiment;
@@ -4257,13 +4267,11 @@ async function renderEndStage(isHost) {
     ranked.forEach((p, i) => {
         const tr = document.createElement('tr');
         if (state.user && p.uid === state.user.uid) tr.classList.add('is-me');
-        const xp = Scoring.xpFromScore(p.score);
         tr.innerHTML =
             `<td>${i+1}</td>` +
             `<td>${escapeHtml(p.displayName)}</td>` +
             `<td class="col-score">${p.score}</td>` +
-            `<td class="col-streak">${p.streak || 0}</td>` +
-            `<td class="col-xp">+${xp}</td>`;
+            `<td class="col-streak">${p.streak || 0}</td>`;
         body.appendChild(tr);
     });
 
@@ -4305,7 +4313,9 @@ async function renderEndStage(isHost) {
     // the accept/decline strip once a proposal is active.
     renderRematchUI(isHost);
 
-    // Write XP / wins / games to profile (once per game)
+    // Write score / wins / games to profile (once per game). The
+    // Firestore field is still named `xp` for backward-compat with
+    // existing user docs — UI labels are "score" everywhere now.
     if (state.user && me && endStageWrittenForRoom !== state.roomCode) {
         endStageWrittenForRoom = state.roomCode;
         await writeEndOfGameStats(me, winner && winner.uid === me.uid);
@@ -4317,21 +4327,24 @@ async function writeEndOfGameStats(me, didWin) {
     const playMode = (state.roomData && state.roomData.playMode) || 'multi';
     const isSolo = playMode === 'solo';
     try {
-        const xp = Scoring.xpFromScore(me.score);
+        // Score is the game's earned points (1:1 with the legacy `xp`
+        // field, since XP_PER_POINT_DIVISOR is 1). Keeping the
+        // Firestore key as `xp` so existing user docs aren't orphaned.
+        const scoreEarned = me.score || 0;
         const userRef = doc(db, 'users', state.user.uid);
-        // Solo: still earns XP and counts as a game played, but it
+        // Solo: still earns score and counts as a game played, but it
         // cannot grant a "win" because there was no opponent. The
         // global leaderboard write is also skipped — solo results
         // are personal-best-only, not ranked.
         const winsDelta = (isSolo ? 0 : (didWin ? 1 : 0));
         await updateDoc(userRef, {
-            'triviaProfile.xp': increment(xp),
+            'triviaProfile.xp': increment(scoreEarned),
             'triviaProfile.gamesPlayed': increment(1),
             'triviaProfile.wins': increment(winsDelta),
             'triviaProfile.lastPlayedAt': serverTimestamp()
         });
         if (state.profile) {
-            state.profile.xp = (state.profile.xp || 0) + xp;
+            state.profile.xp = (state.profile.xp || 0) + scoreEarned;
             state.profile.gamesPlayed = (state.profile.gamesPlayed || 0) + 1;
             state.profile.wins = (state.profile.wins || 0) + winsDelta;
         }
@@ -4341,7 +4354,7 @@ async function writeEndOfGameStats(me, didWin) {
             await setDoc(lbRef, {
                 uid: state.user.uid,
                 displayName: me.displayName,
-                xp: (state.profile && state.profile.xp) || xp,
+                xp: (state.profile && state.profile.xp) || scoreEarned,
                 gamesPlayed: (state.profile && state.profile.gamesPlayed) || 1,
                 wins: (state.profile && state.profile.wins) || winsDelta,
                 lastPlayedAt: serverTimestamp()
@@ -4681,8 +4694,12 @@ function renderEndRecap() {
                     : (points > 0 && typeof q.multiplier === 'number' && q.multiplier > 0
                         ? Math.round(points / q.multiplier)
                         : points);
-                const showMult = ans && typeof ans.multiplier === 'number' && ans.multiplier !== 1;
-                const finalTxt = showMult ? `→ +${points}` : '';
+                // Surface the multiplied final when it differs from base —
+                // happens whenever multiplier > 1 OR the MIN_POINTS floor
+                // kicked in for a really-far guess (e.g. base 0 → final 5).
+                // Without this, the floor was silently invisible.
+                const showFinal = points !== base;
+                const finalTxt = showFinal ? `→ +${points}` : '';
                 const distTxt = (ans && ans.distanceKm != null)
                     ? `${Math.round(Number(ans.distanceKm) || 0).toLocaleString()} km`
                     : '';
@@ -5512,7 +5529,7 @@ async function removeLeaderboardEntry(uid, name) {
     if (!uid) return;
     const ok = await openConfirmModal({
         title: `Remove "${name}"?`,
-        body: 'This deletes their row from the Global XP leaderboard only. Their XP and profile stay intact, and the row reappears the next time they play a game.',
+        body: 'This deletes their row from the global leaderboard only. Their score and profile stay intact, and the row reappears the next time they play a game.',
         confirmLabel: 'Remove row',
         danger: true
     });
@@ -5559,8 +5576,8 @@ function renderH2HPickers() {
     const optsHtml = entries.map((e) => {
         const uid = escapeHtml(e.uid || '');
         const name = escapeHtml(e.displayName || 'Player');
-        const xp = e.xp || 0;
-        return `<option value="${uid}">${name} · ${xp} XP</option>`;
+        const score = e.xp || 0;
+        return `<option value="${uid}">${name} · ${score} pts</option>`;
     }).join('');
 
     // Preserve current selections across re-renders (LB snapshot can
@@ -5572,7 +5589,7 @@ function renderH2HPickers() {
     b.innerHTML = optsHtml;
 
     // Default: A = current user (if present), B = next entry. Otherwise
-    // first / second by XP.
+    // first / second by total score.
     const meUid = state.user && state.user.uid;
     const meIdx = entries.findIndex((e) => e.uid === meUid);
     const aDefault = (meIdx >= 0 ? meUid : entries[0].uid) || '';
@@ -5621,6 +5638,26 @@ async function renderH2HComparison() {
 
     $('#h2h-stats-a').innerHTML = renderH2HStatsHtml(ea, eb, pair);
     $('#h2h-stats-b').innerHTML = renderH2HStatsHtml(eb, ea, pair);
+
+    // Lifetime W-D-L pill. Pulls wins from the pair doc and labels
+    // whichever side is ahead with the gold leader treatment.
+    const pillEl = $('#h2h-record-pill');
+    if (pillEl) {
+        const a = pairStatsFor(ea, eb, pair);
+        const b = pairStatsFor(eb, ea, pair);
+        const total = a.wins + b.wins + a.ties;
+        const elA = $('#h2h-record-a');
+        const elB = $('#h2h-record-b');
+        if (elA) { elA.textContent = String(a.wins); elA.className = 'h2h-record-num' + (a.wins > b.wins ? ' is-lead' : (a.wins < b.wins ? ' is-trail' : '')); }
+        if (elB) { elB.textContent = String(b.wins); elB.className = 'h2h-record-num' + (b.wins > a.wins ? ' is-lead' : (b.wins < a.wins ? ' is-trail' : '')); }
+        const subEl = $('#h2h-record-sub');
+        if (subEl) {
+            if (total === 0) subEl.textContent = 'No matches yet';
+            else if (a.ties > 0) subEl.textContent = `${total} matches · ${a.ties} tied`;
+            else subEl.textContent = `${total} ${total === 1 ? 'match' : 'matches'}`;
+        }
+        pillEl.hidden = false;
+    }
 }
 
 function pairStatsFor(self, other, pair) {
@@ -5634,17 +5671,17 @@ function pairStatsFor(self, other, pair) {
 }
 
 function renderH2HStatsHtml(self, other, pair) {
-    // Pairwise stats first (the headline), with global lifetime XP shown
+    // Pairwise stats first (the headline), with global lifetime score
     // as context below. cmp > 0 highlights self leading vs other for
     // the colour cue.
     const sp = pairStatsFor(self, other, pair);
     const op = pairStatsFor(other, self, pair);
     const fields = [
-        { label: 'Matches',  val: sp.gamesPlayed,            cmp: 0 },
-        { label: 'Wins',     val: sp.wins,                   cmp: sp.wins - op.wins },
-        { label: 'Losses',   val: sp.losses,                 cmp: op.wins - sp.wins },
-        { label: 'Ties',     val: sp.ties,                   cmp: 0 },
-        { label: 'XP',       val: self.xp || 0,              cmp: (self.xp || 0) - (other.xp || 0) }
+        { label: 'Matches',     val: sp.gamesPlayed,            cmp: 0 },
+        { label: 'Wins',        val: sp.wins,                   cmp: sp.wins - op.wins },
+        { label: 'Losses',      val: sp.losses,                 cmp: op.wins - sp.wins },
+        { label: 'Ties',        val: sp.ties,                   cmp: 0 },
+        { label: 'Total score', val: self.xp || 0,              cmp: (self.xp || 0) - (other.xp || 0) }
     ];
     return fields.map((f) => {
         const cls = f.cmp > 0 ? ' h2h-lead' : (f.cmp < 0 ? ' h2h-trail' : '');

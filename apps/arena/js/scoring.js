@@ -80,17 +80,6 @@
     }
 
     /**
-     * Convert total game score to XP awarded to the user's profile.
-     * @param {number} totalScore
-     * @returns {number}
-     */
-    function xpFromScore(totalScore) {
-        const s = Number(totalScore) || 0;
-        if (s <= 0) return 0;
-        return Math.round(s / Config.XP_PER_POINT_DIVISOR);
-    }
-
-    /**
      * Sort scoreboard entries (highest score first; ties broken by streak,
      * then by displayName for stability).
      * @param {Array<{ score:number, streak:number, displayName:string }>} players
@@ -111,5 +100,5 @@
         });
     }
 
-    return { streakMultiplier, speedBonus, scoreAnswer, xpFromScore, rankPlayers };
+    return { streakMultiplier, speedBonus, scoreAnswer, rankPlayers };
 }));
