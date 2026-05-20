@@ -106,6 +106,10 @@ const state = {
 
     // Leaderboard
     leaderboardEntries: [],
+    // Active sort for the global leaderboard table — `{ key, dir }`.
+    // Click on a header toggles dir for the same key, or sets the new
+    // key with its data-sort-default (defaults to 'desc' if absent).
+    leaderboardSort: { key: 'avgScore', dir: 'desc' },
     leaderboardUnsub: null,
 
     // Daily Globe Drop leaderboard — same panel, separate subscription
@@ -611,11 +615,17 @@ function renderProfileView() {
     const input = $('#profile-display-name');
     if (input && document.activeElement !== input) input.value = name;
     setText($('#profile-avatar'), avatarLetter(name));
-    setText($('#stat-xp'), String(p.xp || 0));
-    setText($('#stat-games'), String(p.gamesPlayed || 0));
-    setText($('#stat-wins'), String(p.wins || 0));
-    const pct = p.gamesPlayed ? Math.round(100 * (p.wins || 0) / p.gamesPlayed) : 0;
+    // Avg score (= total score / games) is the headline stat — total
+    // score is what's persisted, but mean per game is the meaningful
+    // skill signal regardless of how many games someone has logged.
+    const games = p.gamesPlayed || 0;
+    const avg = games > 0 ? Math.round((p.xp || 0) / games) : 0;
+    setText($('#stat-avg-score'), avg.toLocaleString());
+    setText($('#stat-games'), String(games));
+    const pct = games > 0 ? Math.round(100 * (p.wins || 0) / games) : 0;
     setText($('#stat-winpct'), pct + '%');
+    setText($('#stat-bullseyes'), String(p.lifetimeBullseyes || 0));
+    setText($('#stat-best-round'), String(p.bestRoundScore || 0));
 
     if (Config.PREMIUM_UI_ENABLED) {
         const now = Date.now();
@@ -4372,16 +4382,39 @@ async function writeEndOfGameStats(me, didWin) {
         // global leaderboard write is also skipped — solo results
         // are personal-best-only, not ranked.
         const winsDelta = (isSolo ? 0 : (didWin ? 1 : 0));
+
+        // Bullseye count + best round score from THIS game's answer
+        // records. Bullseye = base score ≥ 98 (near-perfect guess).
+        const myEntry = state.roomPlayers.find((p) => p.uid === state.user.uid);
+        const myAnswers = (myEntry && Array.isArray(myEntry.answers)) ? myEntry.answers : [];
+        let bullseyesThisGame = 0;
+        let bestRoundThisGame = 0;
+        for (const r of myAnswers) {
+            const base = (typeof r.basePoints === 'number')
+                ? Math.max(0, Math.round(r.basePoints))
+                : (typeof r.points === 'number' && typeof r.multiplier === 'number' && r.multiplier > 0
+                    ? Math.round(r.points / r.multiplier) : 0);
+            if (base >= 98) bullseyesThisGame++;
+            const pts = Number(r.points) || 0;
+            if (pts > bestRoundThisGame) bestRoundThisGame = pts;
+        }
+        const prevBest = (state.profile && state.profile.bestRoundScore) || 0;
+        const newBest = Math.max(prevBest, bestRoundThisGame);
+
         await updateDoc(userRef, {
             'triviaProfile.xp': increment(scoreEarned),
             'triviaProfile.gamesPlayed': increment(1),
             'triviaProfile.wins': increment(winsDelta),
+            'triviaProfile.lifetimeBullseyes': increment(bullseyesThisGame),
+            'triviaProfile.bestRoundScore': newBest,
             'triviaProfile.lastPlayedAt': serverTimestamp()
         });
         if (state.profile) {
             state.profile.xp = (state.profile.xp || 0) + scoreEarned;
             state.profile.gamesPlayed = (state.profile.gamesPlayed || 0) + 1;
             state.profile.wins = (state.profile.wins || 0) + winsDelta;
+            state.profile.lifetimeBullseyes = (state.profile.lifetimeBullseyes || 0) + bullseyesThisGame;
+            state.profile.bestRoundScore = newBest;
         }
         if (!isSolo) {
             // Denormalized leaderboard write — multiplayer + daily only.
@@ -4392,6 +4425,8 @@ async function writeEndOfGameStats(me, didWin) {
                 xp: (state.profile && state.profile.xp) || scoreEarned,
                 gamesPlayed: (state.profile && state.profile.gamesPlayed) || 1,
                 wins: (state.profile && state.profile.wins) || winsDelta,
+                lifetimeBullseyes: (state.profile && state.profile.lifetimeBullseyes) || bullseyesThisGame,
+                bestRoundScore: newBest,
                 lastPlayedAt: serverTimestamp()
             }, { merge: true });
         }
@@ -5517,31 +5552,53 @@ function renderLeaderboardEntries() {
         return (Date.now() - lastPlayed) <= cutoff * 24 * 60 * 60 * 1000;
     });
 
+    // Decorate each entry with the derived columns we display, so the
+    // sort layer can pull them from a single source of truth.
+    const decorated = entries.map((e) => {
+        const games = e.gamesPlayed || 0;
+        const wins  = e.wins || 0;
+        const avg   = games > 0 ? Math.round((e.xp || 0) / games) : 0;
+        const pct   = games > 0 ? Math.round(100 * wins / games) : 0;
+        const last  = e.lastPlayedAt && e.lastPlayedAt.toMillis ? e.lastPlayedAt.toMillis() : 0;
+        return Object.assign({}, e, {
+            avgScore: avg,
+            winPct:   pct,
+            lastPlayedMs: last
+        });
+    });
+
+    // Sort state lives on app state so it survives snapshot re-renders.
+    const sort = state.leaderboardSort || { key: 'avgScore', dir: 'desc' };
+    decorated.sort((a, b) => compareForSort(a, b, sort));
+
     const body = $('#leaderboard-body');
     body.innerHTML = '';
-    if (!entries.length) {
+    if (!decorated.length) {
         $('#leaderboard-empty').hidden = false;
         return;
     }
     $('#leaderboard-empty').hidden = true;
 
+    // Paint the active-sort indicator on the matching <th>.
+    decorateLeaderboardHeaders(sort);
+
     const showAdmin = !!state.isLeaderboardAdmin;
-    entries.forEach((e, i) => {
+    decorated.forEach((e, i) => {
         const tr = document.createElement('tr');
         if (state.user && e.uid === state.user.uid) tr.classList.add('is-me');
-        const pct = e.gamesPlayed ? Math.round(100 * (e.wins || 0) / e.gamesPlayed) : 0;
-        const lastPlayed = e.lastPlayedAt && e.lastPlayedAt.toDate ? e.lastPlayedAt.toDate() : null;
-        const lastStr = lastPlayed ? formatRelativeDate(lastPlayed) : '…';
+        const lastStr = e.lastPlayedMs ? formatRelativeDate(new Date(e.lastPlayedMs)) : '…';
         const adminCell = showAdmin
             ? `<td class="col-admin"><button type="button" class="btn-icon-danger" data-action="remove-leaderboard" data-uid="${escapeHtml(e.uid)}" data-name="${escapeHtml(e.displayName || 'Player')}" title="Remove from leaderboard">✕</button></td>`
             : '';
         tr.innerHTML =
-            `<td>${i+1}</td>` +
+            `<td>${i + 1}</td>` +
             `<td>${escapeHtml(e.displayName || 'Player')}</td>` +
-            `<td class="col-xp">${e.xp || 0}</td>` +
+            `<td class="col-xp">${e.avgScore.toLocaleString()}</td>` +
+            `<td class="col-best">${(e.bestRoundScore || 0).toLocaleString()}</td>` +
+            `<td class="col-bullseyes">${e.lifetimeBullseyes || 0}</td>` +
             `<td class="col-games">${e.gamesPlayed || 0}</td>` +
             `<td class="col-wins">${e.wins || 0}</td>` +
-            `<td class="col-winpct">${pct}%</td>` +
+            `<td class="col-winpct">${e.winPct}%</td>` +
             `<td>${escapeHtml(lastStr)}</td>` +
             adminCell;
         body.appendChild(tr);
@@ -5550,6 +5607,65 @@ function renderLeaderboardEntries() {
     // Show / hide the admin column header so the row counts still align.
     const adminHeader = $('#leaderboard-admin-th');
     if (adminHeader) adminHeader.hidden = !showAdmin;
+}
+
+/**
+ * Stable comparator for leaderboard rows. Keys that are strings sort
+ * alphabetically (case-insensitive); everything else sorts numerically.
+ * Missing values sink to the bottom regardless of direction so an empty
+ * column doesn't pollute the top of the table.
+ */
+function compareForSort(a, b, sort) {
+    const key = sort.key;
+    const dir = sort.dir === 'asc' ? 1 : -1;
+    const va = a[key];
+    const vb = b[key];
+    const aMissing = va == null || va === '';
+    const bMissing = vb == null || vb === '';
+    if (aMissing && bMissing) return 0;
+    if (aMissing) return 1;     // always sink missing
+    if (bMissing) return -1;
+    if (typeof va === 'string' && typeof vb === 'string') {
+        return dir * va.localeCompare(vb, undefined, { sensitivity: 'base' });
+    }
+    return dir * ((Number(va) || 0) - (Number(vb) || 0));
+}
+
+/**
+ * Paint the asc/desc arrow on whichever <th> matches the active sort
+ * and strip it from every other header so the state reads at a glance.
+ */
+function decorateLeaderboardHeaders(sort) {
+    const ths = document.querySelectorAll('#leaderboard-table thead th[data-sort-key]');
+    ths.forEach((th) => {
+        const key = th.getAttribute('data-sort-key');
+        const isActive = key === sort.key;
+        th.classList.toggle('is-sorted', isActive);
+        th.classList.toggle('is-asc', isActive && sort.dir === 'asc');
+        th.classList.toggle('is-desc', isActive && sort.dir === 'desc');
+    });
+}
+
+function bindLeaderboardSortHandlers() {
+    const head = document.querySelector('#leaderboard-table thead');
+    if (!head || head.dataset.sortBound === '1') return;
+    head.dataset.sortBound = '1';
+    head.addEventListener('click', (ev) => {
+        const th = ev.target.closest('th[data-sort-key]');
+        if (!th) return;
+        const key = th.getAttribute('data-sort-key');
+        const defaultDir = th.getAttribute('data-sort-default') || 'desc';
+        if (state.leaderboardSort.key === key) {
+            // Same column: toggle direction.
+            state.leaderboardSort = {
+                key,
+                dir: state.leaderboardSort.dir === 'asc' ? 'desc' : 'asc'
+            };
+        } else {
+            state.leaderboardSort = { key, dir: defaultDir };
+        }
+        renderLeaderboardEntries();
+    });
 }
 
 async function checkLeaderboardAdmin(uid) {
@@ -5738,6 +5854,7 @@ function wireH2H() {
 function wireLeaderboard() {
     $('#leaderboard-period').addEventListener('change', renderLeaderboardEntries);
     $('#leaderboard-category').addEventListener('change', renderLeaderboardEntries);
+    bindLeaderboardSortHandlers();
     // Admin: delete-row clicks. Delegated to the leaderboard body so we
     // don't have to re-bind on every render.
     const body = $('#leaderboard-body');

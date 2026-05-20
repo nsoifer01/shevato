@@ -3415,6 +3415,31 @@ select option { background: var(--surface); color: var(--text); }
   border-bottom: 1px solid rgba(34, 211, 238, 0.12);
   background: rgba(20, 26, 44, 0.5);
 }
+/* Sortable column headers — visible affordance + active-sort
+   indicator. The arrow lives inside ::after so we don't need
+   re-render-cost JS to swap glyphs. */
+.leaderboard-table thead th[data-sort-key] {
+  cursor: pointer;
+  user-select: none;
+  transition: color 0.15s ease;
+  position: relative;
+  padding-right: 1.4rem;
+}
+.leaderboard-table thead th[data-sort-key]:hover { color: var(--text); }
+.leaderboard-table thead th[data-sort-key]::after {
+  content: "↕";
+  position: absolute;
+  right: 0.55rem;
+  top: 50%;
+  transform: translateY(-50%);
+  font-size: 0.65rem;
+  opacity: 0.35;
+  font-family: var(--mono);
+}
+.leaderboard-table thead th.is-sorted { color: var(--cyan-2); }
+.leaderboard-table thead th.is-sorted::after { opacity: 1; color: var(--cyan-2); }
+.leaderboard-table thead th.is-asc::after  { content: "↑"; }
+.leaderboard-table thead th.is-desc::after { content: "↓"; }
 .end-board td, .leaderboard-table td {
   padding: 0.7rem 0.75rem;
   border-bottom: 1px solid rgba(148, 163, 184, 0.06);
@@ -4347,6 +4372,21 @@ select option { background: var(--surface); color: var(--text); }
   border: 1px solid rgba(148, 163, 184, 0.10);
   border-radius: var(--radius-sm);
   padding: 1rem 0.85rem 0.9rem;
+}
+/* Headline stat (Avg score) spans 2 columns and gets a larger value
+   so it reads as the primary metric while the other tiles serve as
+   context. The grid auto-fit still allows the row to collapse on
+   narrow viewports. */
+.profile-stat.is-headline {
+  grid-column: span 2;
+  border-color: rgba(34, 211, 238, 0.30);
+  box-shadow: 0 0 0 1px rgba(34, 211, 238, 0.10) inset;
+}
+.profile-stat.is-headline .profile-stat-value {
+  font-size: 2.1rem;
+}
+@media (max-width: 540px) {
+  .profile-stat.is-headline { grid-column: 1 / -1; }   /* full-width on mobile */
   text-align: center;
   overflow: hidden;
   transition: transform 0.22s ease, box-shadow 0.22s ease, border-color 0.22s ease;
