@@ -2565,6 +2565,28 @@ select option { background: var(--surface); color: var(--text); }
   padding-top: 0.55rem;
   border-top: 1px solid var(--border);
 }
+/* Wikipedia escape hatch — small pill below the reveal so players can
+   read more about the location regardless of whether the inline trivia
+   fetch returned anything. */
+.globe-drop-reveal-wiki {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  margin-top: 0.55rem;
+  padding: 0.3rem 0.65rem;
+  font-size: 0.78rem;
+  font-weight: 600;
+  color: var(--cyan-2);
+  background: rgba(34, 211, 238, 0.08);
+  border: 1px solid rgba(34, 211, 238, 0.25);
+  border-radius: 999px;
+  text-decoration: none;
+  transition: background 0.18s ease, border-color 0.18s ease;
+}
+.globe-drop-reveal-wiki:hover {
+  background: rgba(34, 211, 238, 0.16);
+  border-color: rgba(34, 211, 238, 0.45);
+}
 
 /* Pin styling is now handled by globe.gl's pointColor() (no DOM nodes
    to style — pins are rendered into the WebGL canvas). Legend chips

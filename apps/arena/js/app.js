@@ -98,6 +98,7 @@ const state = {
     pendingGuess: null,                  // { lat, lng } selected but not yet submitted
     lastRenderedMapQuestion: null,       // location id currently shown on the globe
     lastRevealedMapQuestion: null,       // '{locId}:local' or '{locId}:global' — what we've drawn
+    lastCameraTarget: null,              // '{locId}:{lat},{lng}' — short-circuits redundant pointOfView calls
     triviaFetchedFor: null,              // location id we've already kicked off a Wikipedia fetch for
 
     // Timer rAF handle
@@ -2833,6 +2834,7 @@ function teardownMap() {
     state.pendingGuess = null;
     state.lastRenderedMapQuestion = null;
     state.lastRevealedMapQuestion = null;
+    state.lastCameraTarget = null;
 }
 
 function clearMapOverlays() {
@@ -2993,13 +2995,12 @@ function renderGlobeDropStage() {
     // Difficulty drives which hints render:
     //   easy   — country + continent + subregion (full geographic context)
     //   medium — country + continent
-    //   hard   — city name only, no country
+    //   hard   — country only (no continent/subregion hint)
     // We look up the tier from the room doc; legacy rooms (no difficulty
     // field) read as medium and show the prior country-only behaviour.
     const diff = GlobeDropScoring.difficultySettings(state.roomData.difficulty);
     const hintLevel = diff.hintLevel;
-    const showCountry = hintLevel !== 'none';
-    setText($('#globe-drop-target-country'), showCountry ? (loc.country || '') : '');
+    setText($('#globe-drop-target-country'), loc.country || '');
 
     const hintsEl = $('#globe-drop-prompt-hints');
     const extra = [];
@@ -3076,11 +3077,17 @@ function renderGlobeDropStage() {
         const el = document.getElementById('globe-drop-map');
         if (el) { g.width(el.clientWidth); g.height(el.clientHeight); }
 
-        // New question? Wipe overlays and re-arm the controls.
+        // New question? Wipe overlays and re-arm the controls. Camera
+        // stays where the last reveal left it — the user can pan / zoom
+        // out manually to drop a new guess. That avoids the jarring
+        // "globe spins back to (20, 0) between rounds" effect, which
+        // also clobbered the in-flight reveal tween if the next round
+        // arrived before the previous tween settled.
         if (state.lastRenderedMapQuestion !== loc.id) {
             clearMapOverlays();
             state.lastRenderedMapQuestion = loc.id;
             state.lastRevealedMapQuestion = null;
+            state.lastCameraTarget = null;        // re-arm the reveal-pan guard
             state.pendingGuess = null;
             $('#globe-drop-submit-btn').disabled = true;
             $('#globe-drop-clear-btn').hidden = true;
@@ -3096,13 +3103,6 @@ function renderGlobeDropStage() {
             $('#globe-drop-hint').hidden = false;
             setText($('#globe-drop-status'), '');
             $('#globe-drop-status').classList.remove('is-correct', 'is-wrong');
-            // Reset camera to the overview pose for each new question.
-            // Instant teleport (0ms) so the globe doesn't appear to spin
-            // along a great-arc between rounds — the previous question's
-            // reveal had the camera centered on the answer's lat/lng, and
-            // tweening from there to (20,0) was reading as "the globe
-            // spins between rounds for no reason."
-            g.pointOfView({ lat: 20, lng: 0, altitude: 1.0 }, 0);
         }
 
         // Lock the controls if we've already submitted this question.
@@ -3164,21 +3164,33 @@ async function markReadyForNext() {
 }
 
 /**
- * Render the Ready bar inside the reveal panel: shows the button
- * (disabled once I've voted) plus a tiny pip per player indicating
- * who has and hasn't voted yet.
+ * Render the Ready bar inside the reveal panel.
+ *
+ * Visible from the moment I submit (so it's not a surprise once
+ * global reveal hits) — but disabled until every player has either
+ * submitted or timed out for this round. That gives a clear
+ * affordance for "we're waiting on someone" instead of the button
+ * silently appearing later.
  */
 function renderReadyBar(phase) {
     const bar = $('#globe-drop-ready-bar');
     if (!bar) return;
     const loc = currentGlobeDropLocation();
-    const visible = (phase === 'reveal' || phase === 'ended') && !!loc;
-    bar.hidden = !visible;
-    if (!visible) return;
     const me = state.user
         ? state.roomPlayers.find((p) => p.uid === state.user.uid)
         : null;
+    const meSubmitted = !!(me && me.currentAnsweredFor === (loc && loc.id));
+    const inReveal = phase === 'reveal' || phase === 'ended';
+    // Show during global reveal OR once I've submitted (local reveal).
+    const visible = !!loc && (inReveal || meSubmitted);
+    bar.hidden = !visible;
+    if (!visible) return;
+
+    const players = state.roomPlayers || [];
+    const allSubmitted = players.length > 0
+        && players.every((p) => p && p.currentAnsweredFor === loc.id);
     const meReady = !!(me && me.readyAfterQId === loc.id);
+
     // Last round: relabel to "Finish" — the click ends the game, not
     // "ready for next."
     const room = state.roomData || {};
@@ -3187,8 +3199,11 @@ function renderReadyBar(phase) {
     const isLast = totalQ > 0 && idx >= totalQ - 1;
     const btn = $('#globe-drop-ready-btn');
     if (btn) {
-        btn.disabled = meReady;
-        if (meReady) {
+        const waitingForOthers = !allSubmitted && !inReveal;
+        btn.disabled = meReady || waitingForOthers;
+        if (waitingForOthers) {
+            btn.innerHTML = '<span aria-hidden="true">⏳</span> Waiting for opponents';
+        } else if (meReady) {
             btn.innerHTML = isLast
                 ? '<span aria-hidden="true">✓</span> Finishing'
                 : '<span aria-hidden="true">✓</span> You\'re ready';
@@ -3200,7 +3215,6 @@ function renderReadyBar(phase) {
     }
     const statusEl = $('#globe-drop-ready-status');
     if (statusEl) {
-        const players = state.roomPlayers || [];
         const readyCount = players.filter((p) => p.readyAfterQId === loc.id).length;
         const pips = players.map((p) => {
             const isReady = p.readyAfterQId === loc.id;
@@ -3301,8 +3315,13 @@ function drawGlobeDropReveal(loc, me, { showOthers = true } = {}) {
     // country's outline at roughly half the viewport — close enough
     // for borders to read, far enough that the city pin doesn't get
     // lost under the chrome. 1400ms tween matches globe.gl's default
-    // easing for a smooth fly-in.
-    state.globe.pointOfView({ lat: loc.lat, lng: loc.lng, altitude: 0.6 }, 1400);
+    // easing for a smooth fly-in. Guarded so the local + global
+    // reveal don't fight each other's tweens for the same question.
+    const camTarget = `${loc.id}:${loc.lat.toFixed(3)},${loc.lng.toFixed(3)}`;
+    if (state.lastCameraTarget !== camTarget) {
+        state.globe.pointOfView({ lat: loc.lat, lng: loc.lng, altitude: 0.6 }, 1400);
+        state.lastCameraTarget = camTarget;
+    }
 
     // Reveal panel: distance + points or "no guess"
     const revealEl = $('#globe-drop-reveal');
@@ -3347,6 +3366,22 @@ function drawGlobeDropReveal(loc, me, { showOthers = true } = {}) {
         setText($('#globe-drop-status'), showOthers ? '⏱ Time up.' : 'Waiting for the rest…');
     }
     revealEl.hidden = false;
+
+    // Wikipedia escape hatch. Always rendered when the reveal opens —
+    // the inline trivia summary loads async and can fail; the link is
+    // useful either way. Title prefers the location's own name (capital
+    // city / landmark / country), which is what Wikipedia indexes.
+    const wikiEl = $('#globe-drop-reveal-wiki');
+    if (wikiEl) {
+        const title = String(loc.name || loc.country || '').trim();
+        if (title) {
+            wikiEl.href = 'https://en.wikipedia.org/wiki/' + encodeURIComponent(title.replace(/\s+/g, '_'));
+            wikiEl.hidden = false;
+        } else {
+            wikiEl.hidden = true;
+        }
+    }
+
     // One-shot pulse on the score callout so the points feel earned. The
     // class is removed once the animation finishes (animationend) so it
     // re-fires the next time the panel opens for a fresh question.
@@ -4623,7 +4658,9 @@ function renderEndRecap() {
         return;
     }
 
-    // Header row
+    // Header row. Solo runs skip the Winner column entirely — there's
+    // only one player, "winner" would just be that player on every row.
+    const isSoloRecap = (state.roomData && state.roomData.playMode) === 'solo';
     const trHead = document.createElement('tr');
     let headHTML = '<th class="recap-rank">#</th>'
         + (isGlobeDrop ? '<th class="recap-mult-cell">Mult</th>' : '')
@@ -4632,7 +4669,7 @@ function renderEndRecap() {
         const isMe = state.user && col.uid === state.user.uid;
         headHTML += `<th class="recap-score-cell${isMe ? ' is-mine' : ''}">${escapeHtml(isMe ? 'You' : col.displayName)}</th>`;
     });
-    headHTML += '<th class="recap-winner-cell">Winner</th>';
+    if (!isSoloRecap) headHTML += '<th class="recap-winner-cell">Winner</th>';
     trHead.innerHTML = headHTML;
     thead.appendChild(trHead);
 
@@ -4717,13 +4754,16 @@ function renderEndRecap() {
 
         // Gold trophy for a single winner; grey "Tie" pill when
         // multiple cells tie (including the everyone-scored-0 case).
-        let winnerCell;
-        if (!isTie) {
-            const w = winnersOfRow[0].col;
-            const isMe = state.user && w.uid === state.user.uid;
-            winnerCell = `<td class="recap-winner-cell"><span class="recap-winner-badge">🏆 ${escapeHtml(isMe ? 'You' : w.displayName)}</span></td>`;
-        } else {
-            winnerCell = '<td class="recap-winner-cell"><span class="recap-tie-badge">Tie</span></td>';
+        // Solo runs skip the Winner column outright.
+        let winnerCell = '';
+        if (!isSoloRecap) {
+            if (!isTie) {
+                const w = winnersOfRow[0].col;
+                const isMe = state.user && w.uid === state.user.uid;
+                winnerCell = `<td class="recap-winner-cell"><span class="recap-winner-badge">🏆 ${escapeHtml(isMe ? 'You' : w.displayName)}</span></td>`;
+            } else {
+                winnerCell = '<td class="recap-winner-cell"><span class="recap-tie-badge">Tie</span></td>';
+            }
         }
 
         tr.innerHTML = `<td class="recap-rank">${i + 1}</td>${multCell}${locCell}${scoreCells}${winnerCell}`;
@@ -4869,8 +4909,7 @@ function renderGlobeDropComparisonTable(host) {
         { label: 'Avg base score',  higherIsBetter: true,  get: (s) => s ? { text: s.avgBaseScore + ' / 100', sortKey: s.avgBaseScore } : null },
         { label: 'Closest guess',   higherIsBetter: false, get: (s) => s && s.closestKm != null ? { text: fmt(s.closestKm) + ' km', sub: s.closestLocation, sortKey: s.closestKm } : null },
         { label: 'Farthest miss',   higherIsBetter: false, get: (s) => s && s.farthestKm != null ? { text: fmt(s.farthestKm) + ' km', sub: s.farthestLocation, sortKey: s.farthestKm } : null },
-        { label: 'Bullseyes',       higherIsBetter: true,  get: (s) => s ? { text: String(s.bullseyeCount), sub: '90+ base', sortKey: s.bullseyeCount } : null },
-        { label: 'Rounds guessed',  higherIsBetter: true,  get: (s) => s ? { text: s.roundsGuessed + ' / ' + s.roundsPlayed, sortKey: s.roundsGuessed } : null }
+        { label: 'Bullseyes',       higherIsBetter: true,  get: (s) => s ? { text: String(s.bullseyeCount), sub: '98+ base', sortKey: s.bullseyeCount } : null }
     ];
 
     // Per-region rows, deduped across all players' regions.
