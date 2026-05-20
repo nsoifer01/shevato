@@ -3326,13 +3326,24 @@ function renderRoundsHistoryBoard() {
         const isCurrentRound = curLoc && loc.id === curLoc.id;
         const maskOthers = isCurrentRound && !meSubmittedCurrent;
         // For each player, find the answer record matching this round's location.
+        // Chip shows the BASE (0-100) score so the cap stays visible — the
+        // round multiplier is rendered once next to the R# label and the
+        // final score lives in the recap.
         const perPlayer = state.roomPlayers.map((p) => {
             const answers = Array.isArray(p.answers) ? p.answers : [];
             const rec = answers.find((a) => a && a.locationId === loc.id);
+            let basePts = null;
+            if (rec) {
+                if (typeof rec.basePoints === 'number') basePts = Math.max(0, Math.round(rec.basePoints));
+                else if (typeof rec.points === 'number') {
+                    const m = typeof rec.multiplier === 'number' && rec.multiplier > 0 ? rec.multiplier : 1;
+                    basePts = Math.max(0, Math.round(rec.points / m));
+                } else basePts = 0;
+            }
             return {
                 uid: p.uid,
                 displayName: p.displayName,
-                roundPoints: rec ? (typeof rec.points === 'number' ? rec.points : 0) : null,
+                roundPoints: basePts,
                 gaveUp: !!(rec && rec.gaveUp)
             };
         });
