@@ -1,13 +1,25 @@
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
-    // Users can only read/write their own data
+    // Helper: is the caller signed in with a real account (not anonymous)?
+    // Arena uses anonymous sign-in for guest mode, which can play
+    // ephemeral rooms but MUST NOT touch persistent collections
+    // (leaderboard, H2H, daily, users/{uid}).
+    function isRegistered() {
+      return request.auth != null
+        && request.auth.token.firebase.sign_in_provider != 'anonymous';
+    }
+
+    // Users can only read/write their own data. Anonymous users have no
+    // persistent profile, so we explicitly block them here even though
+    // their uid would otherwise match — they'd just be writing garbage
+    // that nobody can ever read back after the anon session expires.
     match /users/{userId} {
-      allow read, write: if request.auth != null && request.auth.uid == userId;
+      allow read, write: if isRegistered() && request.auth.uid == userId;
 
       // Recursive rule for all subcollections and documents
       match /{document=**} {
-        allow read, write: if request.auth != null && request.auth.uid == userId;
+        allow read, write: if isRegistered() && request.auth.uid == userId;
       }
     }
 
@@ -17,9 +29,9 @@ service cloud.firestore {
     // disables the validation here. Kept in sync with the deployed
     // ruleset so a CLI deploy from this file doesn't drift.
     match /users/{userId}/apps/{namespace} {
-      allow read: if request.auth != null && request.auth.uid == userId;
+      allow read: if isRegistered() && request.auth.uid == userId;
 
-      allow write: if request.auth != null
+      allow write: if isRegistered()
         && request.auth.uid == userId
         && request.resource.data.keys().hasAll(['data', 'meta'])
         && request.resource.data.meta.keys().hasAll(['lastUpdated']);
@@ -63,14 +75,15 @@ service cloud.firestore {
       allow update, delete: if false;
     }
 
-    // Denormalized global XP leaderboard. Read for everyone signed in;
-    // each user can only write their own entry. Admins (presence of a
-    // doc at /leaderboardAdmins/{uid}) can delete any row — used to
-    // moderate stale or abusive entries from the public leaderboard.
+    // Denormalized global XP leaderboard. Read for everyone signed in
+    // (guests included — they can browse the boards). Writes require a
+    // real account so guest uids can't pollute the public leaderboard.
+    // Admins (presence of a doc at /leaderboardAdmins/{uid}) can delete
+    // any row — used to moderate stale or abusive entries.
     match /triviaLeaderboard/{userId} {
       allow read: if request.auth != null;
-      allow create, update: if request.auth != null && request.auth.uid == userId;
-      allow delete: if request.auth != null
+      allow create, update: if isRegistered() && request.auth.uid == userId;
+      allow delete: if isRegistered()
         && exists(/databases/$(database)/documents/leaderboardAdmins/$(request.auth.uid));
     }
 
@@ -92,10 +105,11 @@ service cloud.firestore {
     // players across all multiplayer games. Read is open to any signed-
     // in user so the H2H view + lobby badges can fetch arbitrary pairs;
     // write requires the caller to actually be one of the two players
-    // in the pair, so randoms can't manufacture wins for unrelated uids.
+    // in the pair AND to be a registered (non-anonymous) user — guests
+    // play ephemerally and shouldn't create H2H pair rows.
     match /triviaH2H/{pairKey} {
       allow read: if request.auth != null;
-      allow create, update: if request.auth != null
+      allow create, update: if isRegistered()
         && (request.resource.data.uidA == request.auth.uid
             || request.resource.data.uidB == request.auth.uid);
     }
@@ -103,13 +117,12 @@ service cloud.firestore {
     // Brain Arena — Globe Drop daily challenge leaderboard.
     // Each YYYY-MM-DD doc has a /scores subcollection keyed by uid.
     // Anyone signed in can read (to render the daily top 10); each
-    // user can only create/update their own score entry. The client
-    // enforces "personal best only" by reading first; rules accept
-    // any write the user makes to their own doc — replay-cheating
-    // here just resets your own best, so the blast radius is small.
+    // user can only create/update their own score entry, and must be
+    // a registered (non-anonymous) user so guest uids can't claim a
+    // daily top spot that would orphan as soon as their session ends.
     match /globeDropDailyLeaderboard/{date}/scores/{userId} {
       allow read: if request.auth != null;
-      allow create, update: if request.auth != null && request.auth.uid == userId;
+      allow create, update: if isRegistered() && request.auth.uid == userId;
     }
 
     // Deny all other access
