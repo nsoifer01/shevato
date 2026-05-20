@@ -779,26 +779,38 @@ function shuffle(arr, rand = Math.random) {
 }
 
 /**
- * Sort a location list easiest → hardest using populationWeight as the
- * obscurity signal. Higher weight = lower population = more obscure /
- * harder. We rank ascending so each subsequent round is ≥ the previous
- * in difficulty.
+ * Sort a location list easiest → hardest by the COMBINED round
+ * multiplier we actually award:
  *
- * Stable sort preserves the input order for ties — important for modes
- * without population (capitals, countries, landmarks → all weight = 1)
- * so the upstream shuffle is honoured.
+ *   roundMult = continentMultiplier(region) × populationWeight(pop)
+ *
+ * (Difficulty tier is a room-wide constant so it doesn't affect
+ * ordering.) Sorting on the combined product guarantees every later
+ * round has a >= multiplier than every earlier round — earlier
+ * versions sorted only on populationWeight, so a Europe high-pop
+ * city could outrank an Asia / Africa low-pop city even though the
+ * latter rewards more points.
+ *
+ * Stable sort preserves the input order for ties — important for
+ * modes without population (capitals, countries, landmarks) where
+ * popWeight is constant 1 across the list, so order falls back to
+ * continentMultiplier and then the upstream shuffle.
  */
 function sortLocationsByAscendingDifficulty(locations) {
     if (!Array.isArray(locations) || locations.length < 2) {
         return Array.isArray(locations) ? locations.slice() : [];
     }
-    const decorated = locations.map((loc, i) => ({
-        loc,
-        weight: GlobeDropScoring.populationWeight(loc && loc.population),
-        idx: i
-    }));
+    const decorated = locations.map((loc, i) => {
+        const contMult = GlobeDropScoring.continentMultiplier(loc && loc.region);
+        const popMult = GlobeDropScoring.populationWeight(loc && loc.population);
+        return {
+            loc,
+            roundMult: contMult * popMult,
+            idx: i
+        };
+    });
     decorated.sort((a, b) => {
-        if (a.weight !== b.weight) return a.weight - b.weight;
+        if (a.roundMult !== b.roundMult) return a.roundMult - b.roundMult;
         return a.idx - b.idx;
     });
     return decorated.map((d) => d.loc);
