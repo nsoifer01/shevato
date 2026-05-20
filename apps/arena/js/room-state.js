@@ -214,6 +214,82 @@
         };
     }
 
+    /**
+     * Aggregate per-player end-of-game stats from a list of Globe Drop
+     * answer records. Each record:
+     *   { locationId, locationName, country, region,
+     *     distanceKm, basePoints, multiplier, points }
+     *
+     * Trivia stats (aggregateAnswerStats) keys on `correct` / `category`
+     * which Globe Drop doesn't carry, so we need a separate aggregator.
+     * Returns null when no answers — caller can swap in the upsell card.
+     *
+     * @param {Array} records
+     * @returns {{
+     *   roundsPlayed:    number,
+     *   totalPoints:     number,
+     *   avgBaseScore:    number,        // 0..100
+     *   avgDistanceKm:   number,
+     *   closestKm:       number|null,
+     *   closestLocation: string|null,
+     *   farthestKm:      number|null,
+     *   farthestLocation:string|null,
+     *   bullseyeCount:   number,        // base ≥ 90
+     *   byRegion: { [region]: { rounds:number, avgBase:number } }
+     * } | null}
+     */
+    function aggregateGlobeDropStats(records) {
+        const list = Array.isArray(records) ? records.filter((r) => r && typeof r === 'object') : [];
+        if (!list.length) return null;
+        let totalPoints = 0;
+        let totalBase = 0;
+        let totalDistanceKm = 0;
+        let closestKm = Infinity;
+        let closestLocation = null;
+        let farthestKm = -Infinity;
+        let farthestLocation = null;
+        let bullseyeCount = 0;
+        const byRegion = {};
+        for (const r of list) {
+            const pts = Number(r.points) || 0;
+            const mult = (typeof r.multiplier === 'number' && r.multiplier > 0) ? r.multiplier : 1;
+            // Reconstruct basePoints when older records didn't persist it.
+            const base = (typeof r.basePoints === 'number')
+                ? Math.max(0, Math.round(r.basePoints))
+                : Math.max(0, Math.round(pts / mult));
+            const dist = Number(r.distanceKm);
+            totalPoints += pts;
+            totalBase += base;
+            if (Number.isFinite(dist)) {
+                totalDistanceKm += dist;
+                if (dist < closestKm)  { closestKm = dist;  closestLocation = r.locationName || r.country || null; }
+                if (dist > farthestKm) { farthestKm = dist; farthestLocation = r.locationName || r.country || null; }
+            }
+            if (base >= 90) bullseyeCount++;
+            const region = String(r.region || 'Unknown');
+            if (!byRegion[region]) byRegion[region] = { rounds: 0, totalBase: 0 };
+            byRegion[region].rounds++;
+            byRegion[region].totalBase += base;
+        }
+        const n = list.length;
+        const regionOut = {};
+        for (const [k, v] of Object.entries(byRegion)) {
+            regionOut[k] = { rounds: v.rounds, avgBase: Math.round(v.totalBase / v.rounds) };
+        }
+        return {
+            roundsPlayed:     n,
+            totalPoints,
+            avgBaseScore:     Math.round(totalBase / n),
+            avgDistanceKm:    Math.round(totalDistanceKm / n),
+            closestKm:        Number.isFinite(closestKm)  ? Math.round(closestKm)  : null,
+            closestLocation,
+            farthestKm:       Number.isFinite(farthestKm) ? Math.round(farthestKm) : null,
+            farthestLocation,
+            bullseyeCount,
+            byRegion: regionOut
+        };
+    }
+
     return {
         generateRoomCode,
         normalizeRoomCode,
@@ -221,6 +297,7 @@
         timeLeftMs,
         pickNextHost,
         aggregateAnswerStats,
+        aggregateGlobeDropStats,
         pickDecider,
         availableCategoriesFromPool,
         pickQuestionFromPool
