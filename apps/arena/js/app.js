@@ -4422,54 +4422,49 @@ function renderEndRecap() {
         statsHost.appendChild(div);
     });
 
-    // Table — empty state if no answers recorded (older rooms predating
-    // the per-answer write would land here).
-    const thead = $('#end-recap-thead');
-    const tbody = $('#end-recap-tbody');
-    thead.innerHTML = '';
-    tbody.innerHTML = '';
+    // Card list layout — one card per round, two strips inside each:
+    //   header strip  →  R# · ×mult · location · winner pill
+    //   body strip    →  per-player score chips
+    // Replaces the old wide table which felt like a spreadsheet on
+    // longer 8-10 round games.
+    const list = $('#end-recap-cards');
+    const emptyEl = $('#end-recap-empty');
+    list.innerHTML = '';
+    if (emptyEl) emptyEl.hidden = true;
 
     const anyAnswers = columns.some((c) => (answersByUid[c.uid] || []).length > 0);
     if (!questions.length || !anyAnswers) {
-        const tr = document.createElement('tr');
-        tr.innerHTML = `<td colspan="${columns.length + 3}" class="end-recap-empty">No per-question detail recorded for this game.</td>`;
-        tbody.appendChild(tr);
+        if (emptyEl) emptyEl.hidden = false;
         setText($('#end-recap-sub'), '');
         section.hidden = false;
         return;
     }
 
-    // Table head
-    const trHead = document.createElement('tr');
-    let headHTML = `<th>#</th><th>${isGlobeDrop ? 'Location' : 'Question'}</th>`;
-    columns.forEach((col) => {
-        const isMe = state.user && col.uid === state.user.uid;
-        headHTML += `<th class="${isMe ? 'is-mine' : ''}">${escapeHtml(isMe ? 'You' : col.displayName)}</th>`;
-    });
-    headHTML += '<th>Winner</th>';
-    trHead.innerHTML = headHTML;
-    thead.appendChild(trHead);
+    const room = state.roomData || {};
+    const diffMult = isGlobeDrop
+        ? GlobeDropScoring.difficultySettings(room.difficulty).scoreMultiplier
+        : 1;
 
-    // Body rows
     questions.forEach((q, i) => {
-        const tr = document.createElement('tr');
-        let rowHTML = `<td class="col-rank">${i + 1}</td>`;
+        // Round-level multiplier (Globe Drop only — trivia has no
+        // geographic / population scaling). Difficulty tier is room-
+        // wide and constant, so we only highlight the per-round
+        // continent × population product; the tier mult is shown
+        // separately when not 1.
+        const parts = [];
+        const fmt = (n) => n.toFixed(2).replace(/0+$/, '').replace(/\.$/, '');
         if (isGlobeDrop) {
-            rowHTML +=
-                '<td class="col-question">' +
-                `<span class="recap-q-text">${escapeHtml(q.name || '…')}</span>` +
-                `<span class="recap-q-meta">${escapeHtml(q.country || '')}</span>` +
-                '</td>';
-        } else {
-            const correctText = q.choices ? q.choices[q.correctIndex] : '';
-            rowHTML +=
-                '<td class="col-question">' +
-                `<span class="recap-q-text">${escapeHtml(q.question || '…')}</span>` +
-                `<span class="recap-q-meta">${escapeHtml(prettyCategory(q.category || ''))} · answer: ${escapeHtml(correctText)}</span>` +
-                '</td>';
+            const contMult = GlobeDropScoring.continentMultiplier(q.region);
+            const popMult = GlobeDropScoring.populationWeight(q.population);
+            if (diffMult !== 1) parts.push('×' + fmt(diffMult));
+            if (contMult !== 1) parts.push('×' + fmt(contMult));
+            if (popMult !== 1) parts.push('×' + fmt(popMult));
         }
+        const multHtml = parts.length
+            ? `<span class="recap-card-mult" title="Round multipliers (difficulty × continent × obscurity)">${escapeHtml(parts.join(' '))}</span>`
+            : '';
 
-        // Per-column results — also track winner(s) for this question.
+        // Per-column results — also tracks the winner(s).
         let bestPoints = -1;
         const colResults = columns.map((col) => {
             const ans = (answersByUid[col.uid] || [])
@@ -4478,57 +4473,76 @@ function renderEndRecap() {
             if (points > bestPoints) bestPoints = points;
             return { col, ans, points };
         });
-
         const winnersOfRow = bestPoints > 0
             ? colResults.filter((r) => r.points === bestPoints)
             : [];
         const isTie = winnersOfRow.length > 1;
-        colResults.forEach(({ col, ans, points }) => {
-            const isMe = state.user && col.uid === state.user.uid;
-            // Cell highlight: green tint for the winning score(s) in
-            // each row (tie shares the win); muted for the rest.
-            // Ties don't get the highlight since "winning" is ambiguous.
-            let resultCls = 'col-result';
-            if (isMe) resultCls += ' is-mine';
-            if (!isTie && bestPoints > 0 && points === bestPoints) resultCls += ' is-winner';
-            else if (bestPoints > 0 && points < bestPoints) resultCls += ' is-loser';
-            if (!ans) {
-                rowHTML += `<td class="${resultCls}"><span class="recap-result-zero">…</span></td>`;
-                return;
-            }
-            if (isGlobeDrop) {
-                const pts = Number(ans.points) || 0;
-                rowHTML +=
-                    `<td class="${resultCls}">` +
-                    `<span class="${pts > 0 ? 'recap-result-points' : 'recap-result-zero'}">+${pts}</span>` +
-                    `<span class="recap-result-dist">${Math.round(Number(ans.distanceKm) || 0).toLocaleString()} km off</span>` +
-                    '</td>';
-            } else {
-                const pts = Number(ans.points) || 0;
-                const pickClass = ans.correct ? 'is-correct' : 'is-wrong';
-                rowHTML +=
-                    `<td class="${resultCls}">` +
-                    `<span class="${pts > 0 ? 'recap-result-points' : 'recap-result-zero'}">${pts > 0 ? '+' + pts : '0'}</span>` +
-                    `<span class="recap-result-pick ${pickClass}">${escapeHtml(ans.answerText || '…')}</span>` +
-                    '</td>';
-            }
-        });
 
-        // Winner badge — a glowing trophy pill for a single winner; a
-        // neutral pill for a tie; nothing if nobody scored.
-        let winnerCell = '<span class="recap-result-zero">…</span>';
+        // Winner pill (header-right slot).
+        let winnerBadge = '';
         if (bestPoints > 0) {
             if (winnersOfRow.length === 1) {
                 const w = winnersOfRow[0].col;
                 const isMe = state.user && w.uid === state.user.uid;
-                winnerCell = `<span class="recap-winner-badge">🏆 ${escapeHtml(isMe ? 'You' : w.displayName)}</span>`;
+                winnerBadge = `<span class="recap-winner-badge">🏆 ${escapeHtml(isMe ? 'You' : w.displayName)}</span>`;
             } else {
-                winnerCell = '<span class="recap-tie-badge">Tie</span>';
+                winnerBadge = '<span class="recap-tie-badge">Tie</span>';
             }
         }
-        rowHTML += `<td class="col-winner">${winnerCell}</td>`;
-        tr.innerHTML = rowHTML;
-        tbody.appendChild(tr);
+
+        // Location / question label for the header.
+        let locLabel;
+        if (isGlobeDrop) {
+            locLabel =
+                `<span class="recap-card-loc-name">${escapeHtml(q.name || '…')}</span>` +
+                (q.country ? `<span class="recap-card-loc-country">${escapeHtml(q.country)}</span>` : '');
+        } else {
+            const correctText = q.choices ? q.choices[q.correctIndex] : '';
+            locLabel =
+                `<span class="recap-card-loc-name">${escapeHtml(q.question || '…')}</span>` +
+                `<span class="recap-card-loc-country">${escapeHtml(prettyCategory(q.category || ''))} · answer: ${escapeHtml(correctText)}</span>`;
+        }
+
+        // Player score chips (body strip).
+        const chips = colResults.map(({ col, ans, points }) => {
+            const isMe = state.user && col.uid === state.user.uid;
+            const isWinner = !isTie && bestPoints > 0 && points === bestPoints;
+            const isLoser = bestPoints > 0 && points < bestPoints;
+            let cls = 'recap-card-chip';
+            if (isMe) cls += ' is-mine';
+            if (isWinner) cls += ' is-winner';
+            else if (isLoser) cls += ' is-loser';
+
+            const nameHtml = `<span class="recap-card-chip-name">${escapeHtml(isMe ? 'You' : col.displayName)}</span>`;
+            if (!ans) {
+                return `<span class="${cls}">${nameHtml}<span class="recap-card-chip-pts is-zero">…</span></span>`;
+            }
+            if (isGlobeDrop) {
+                const pts = Number(ans.points) || 0;
+                const distHtml = ans.distanceKm != null
+                    ? `<span class="recap-card-chip-meta">${Math.round(Number(ans.distanceKm) || 0).toLocaleString()} km</span>`
+                    : '';
+                const ptsCls = pts > 0 ? 'recap-card-chip-pts' : 'recap-card-chip-pts is-zero';
+                return `<span class="${cls}">${nameHtml}<span class="${ptsCls}">+${pts}</span>${distHtml}</span>`;
+            }
+            const pts = Number(ans.points) || 0;
+            const pickClass = ans.correct ? 'is-correct' : 'is-wrong';
+            const pickHtml = `<span class="recap-card-chip-meta recap-pick ${pickClass}">${escapeHtml(ans.answerText || '…')}</span>`;
+            const ptsCls = pts > 0 ? 'recap-card-chip-pts' : 'recap-card-chip-pts is-zero';
+            return `<span class="${cls}">${nameHtml}<span class="${ptsCls}">${pts > 0 ? '+' + pts : '0'}</span>${pickHtml}</span>`;
+        }).join('');
+
+        const li = document.createElement('li');
+        li.className = 'recap-card';
+        li.innerHTML =
+            '<div class="recap-card-head">' +
+                `<span class="recap-card-rank">R${i + 1}</span>` +
+                multHtml +
+                `<span class="recap-card-loc">${locLabel}</span>` +
+                `<span class="recap-card-winner">${winnerBadge}</span>` +
+            '</div>' +
+            `<div class="recap-card-body">${chips}</div>`;
+        list.appendChild(li);
     });
 
     const qNoun = questions.length === 1 ? 'question' : (isGlobeDrop ? 'locations' : 'questions');

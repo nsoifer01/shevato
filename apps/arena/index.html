@@ -698,12 +698,12 @@
               <p class="end-recap-sub" id="end-recap-sub"></p>
             </header>
             <div class="end-recap-stats" id="end-recap-stats"></div>
-            <div class="end-recap-table-wrap">
-              <table class="end-recap-table" id="end-recap-table">
-                <thead id="end-recap-thead"></thead>
-                <tbody id="end-recap-tbody"></tbody>
-              </table>
-            </div>
+            <!-- Card-list layout. Each card is one round: header strip
+                 (R# / multiplier / location / winner) + body strip
+                 (per-player score chips). Scannable for 8-10 round
+                 games where the old wide-table format felt heavy. -->
+            <ol class="end-recap-cards" id="end-recap-cards"></ol>
+            <p class="end-recap-empty" id="end-recap-empty" hidden>No per-question detail recorded for this game.</p>
           </section>
 
           <!-- Detailed stats (premium) -->
