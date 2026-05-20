@@ -3249,17 +3249,17 @@ select option { background: var(--surface); color: var(--text); }
   display: grid;
   grid-template-columns: 1fr 1fr 1fr;
   align-items: end;
-  gap: 0.45rem;
-  margin: 0 auto 0.9rem;
-  max-width: 380px;
-  min-height: 110px;
+  gap: 0.4rem;
+  margin: 0 auto 0.7rem;
+  max-width: 300px;        /* tighter so the table downstream reads as the focus */
+  min-height: 84px;
 }
 .podium-slot {
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 0.2rem;
-  padding-bottom: 0.25rem;
+  gap: 0.15rem;
+  padding-bottom: 0.2rem;
   animation: podium-rise 0.6s cubic-bezier(0.2, 0.7, 0.3, 1) both;
 }
 @keyframes podium-rise {
@@ -3271,9 +3271,9 @@ select option { background: var(--surface); color: var(--text); }
 .podium-slot-3 { animation-delay: 0.15s; }
 
 .podium-medal {
-  font-size: 1.35rem;
+  font-size: 1.15rem;
   line-height: 1;
-  filter: drop-shadow(0 0 8px rgba(255, 255, 255, 0.25));
+  filter: drop-shadow(0 0 6px rgba(255, 255, 255, 0.25));
 }
 .podium-slot-1 .podium-medal { filter: drop-shadow(0 0 10px rgba(251, 191, 36, 0.6)); }
 .podium-slot-2 .podium-medal { filter: drop-shadow(0 0 9px rgba(203, 213, 225, 0.45)); }
@@ -3281,7 +3281,7 @@ select option { background: var(--surface); color: var(--text); }
 .podium-name {
   font-family: "Space Grotesk", "Outfit", sans-serif;
   font-weight: 700;
-  font-size: 0.82rem;
+  font-size: 0.75rem;
   text-align: center;
   white-space: nowrap;
   overflow: hidden;
@@ -3293,7 +3293,7 @@ select option { background: var(--surface); color: var(--text); }
 .podium-score {
   font-family: var(--mono);
   font-weight: 700;
-  font-size: 0.78rem;
+  font-size: 0.72rem;
   letter-spacing: 0.01em;
 }
 .podium-slot-1 .podium-score {
@@ -3310,18 +3310,18 @@ select option { background: var(--surface); color: var(--text); }
 }
 .podium-block {
   width: 100%;
-  border-radius: 10px 10px 0 0;
+  border-radius: 8px 8px 0 0;
   background:
     linear-gradient(180deg, rgba(255, 255, 255, 0.04), transparent 30%),
     linear-gradient(180deg, var(--surface-2), var(--surface-3));
   border: 1px solid var(--border-strong);
   border-bottom: 0;
   text-align: center;
-  padding-top: 0.3rem;
+  padding-top: 0.25rem;
   color: var(--muted-2);
   font-family: var(--mono);
   font-weight: 700;
-  font-size: 0.85rem;
+  font-size: 0.78rem;
   position: relative;
   box-shadow: 0 -1px 0 rgba(255, 255, 255, 0.04) inset;
 }
@@ -3333,7 +3333,7 @@ select option { background: var(--surface); color: var(--text); }
   opacity: 0.6;
 }
 .podium-slot-1 .podium-block {
-  height: 78px;
+  height: 62px;
   background:
     linear-gradient(180deg, rgba(251, 191, 36, 0.55), rgba(251, 191, 36, 0.18) 40%, rgba(120, 53, 15, 0.45) 100%);
   border-color: rgba(251, 191, 36, 0.65);
@@ -3365,7 +3365,7 @@ select option { background: var(--surface); color: var(--text); }
   100% { opacity: 0; transform: translate(-50%, -42px) scale(1.1); }
 }
 .podium-slot-2 .podium-block {
-  height: 58px;
+  height: 46px;
   background:
     linear-gradient(180deg, rgba(226, 232, 240, 0.40), rgba(148, 163, 184, 0.14) 40%, rgba(51, 65, 85, 0.45) 100%);
   border-color: rgba(203, 213, 225, 0.55);
@@ -3376,7 +3376,7 @@ select option { background: var(--surface); color: var(--text); }
     0 -1px 0 rgba(255, 255, 255, 0.10) inset;
 }
 .podium-slot-3 .podium-block {
-  height: 42px;
+  height: 34px;
   background:
     linear-gradient(180deg, rgba(245, 158, 11, 0.42), rgba(180, 83, 9, 0.18) 40%, rgba(120, 53, 15, 0.45) 100%);
   border-color: rgba(245, 158, 11, 0.55);
@@ -3740,9 +3740,9 @@ select option { background: var(--surface); color: var(--text); }
 
 .end-recap-stats {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
-  gap: 0.85rem;
-  margin-bottom: 1.4rem;
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  gap: 0.55rem;
+  margin-bottom: 0.95rem;     /* tightened so the table reads as the main act */
 }
 .end-recap-stat {
   position: relative;
@@ -3751,7 +3751,7 @@ select option { background: var(--surface); color: var(--text); }
     rgba(8, 11, 22, 0.5);
   border: 1px solid rgba(148, 163, 184, 0.10);
   border-radius: var(--radius-sm);
-  padding: 1rem 1rem 0.85rem;
+  padding: 0.6rem 0.75rem 0.55rem;   /* compact — was 1rem padding */
   overflow: hidden;
   transition: transform 0.22s ease, border-color 0.22s ease;
 }
@@ -3790,16 +3790,16 @@ select option { background: var(--surface); color: var(--text); }
 .end-recap-stat-label {
   display: block;
   font-family: "Space Grotesk", "Outfit", sans-serif;
-  font-size: 0.7rem;
+  font-size: 0.62rem;            /* was 0.7 — smaller alongside compacter cards */
   color: var(--muted-2);
   text-transform: uppercase;
-  letter-spacing: 0.14em;
+  letter-spacing: 0.12em;
   font-weight: 600;
-  margin-bottom: 0.5rem;
+  margin-bottom: 0.25rem;
 }
 .end-recap-stat-value {
   font-family: var(--mono);
-  font-size: 1.7rem;
+  font-size: 1.25rem;            /* was 1.7 — recedes so the table dominates */
   font-weight: 700;
   color: var(--text);
   line-height: 1;
@@ -3807,8 +3807,8 @@ select option { background: var(--surface); color: var(--text); }
 }
 .end-recap-stat-sub {
   display: block;
-  margin-top: 0.4rem;
-  font-size: 0.74rem;
+  margin-top: 0.25rem;
+  font-size: 0.66rem;
   color: var(--muted);
 }
 
@@ -3899,16 +3899,23 @@ select option { background: var(--surface); color: var(--text); }
           mask-image: linear-gradient(90deg, #000 0, #000 calc(100% - 48px), transparent 100%);
 }
 .end-recap-table {
-  width: auto;
+  /* Stretch full-width — table is the focal element now. */
+  width: 100%;
   max-width: 100%;
   margin: 0 auto;
-  border-collapse: collapse;
-  font-size: 0.85rem;
-  text-align: left;         /* override centered text-align from wrap */
+  border-collapse: separate;
+  border-spacing: 0;
+  font-size: 0.98rem;             /* was 0.85 — bumped for readability */
+  text-align: left;
+  background: rgba(8, 11, 22, 0.35);
+  border: 1px solid rgba(148, 163, 184, 0.12);
+  border-radius: var(--radius-sm);
+  overflow: hidden;
+  box-shadow: 0 12px 32px rgba(2, 6, 23, 0.45);
 }
 .end-recap-table th,
 .end-recap-table td {
-  padding: 0.4rem 0.55rem;
+  padding: 0.85rem 1rem;           /* was 0.4 0.55 — generous row breathing */
   text-align: left;
   border-bottom: 1px solid rgba(148, 163, 184, 0.10);
   vertical-align: middle;
@@ -3916,50 +3923,57 @@ select option { background: var(--surface); color: var(--text); }
 .end-recap-table th.recap-score-cell,
 .end-recap-table th.recap-winner-cell { text-align: right; }
 .end-recap-table th {
-  font-size: 0.7rem;
-  letter-spacing: 0.06em;
+  font-size: 0.74rem;
+  letter-spacing: 0.10em;
   text-transform: uppercase;
-  color: var(--muted);          /* lifted from muted-2 so '#' / 'MULT' / 'LOCATION' actually read */
+  color: var(--muted);
   font-weight: 700;
-  background: rgba(8, 11, 22, 0.4);
+  background: rgba(8, 11, 22, 0.55);
+  border-bottom: 1px solid rgba(34, 211, 238, 0.20);
   position: sticky;
   top: 0;
 }
-.end-recap-table tbody tr:hover { background: rgba(34, 211, 238, 0.04); }
+.end-recap-table tbody tr {
+  transition: background 0.18s ease;
+}
+.end-recap-table tbody tr:hover { background: rgba(34, 211, 238, 0.06); }
+.end-recap-table tbody tr:nth-child(even) td { background: rgba(255, 255, 255, 0.012); }
 .end-recap-table tbody tr:last-child td { border-bottom: none; }
 .recap-rank {
   font-family: var(--mono);
   font-weight: 700;
   color: var(--cyan);
-  font-size: 0.78rem;
-  width: 2.5rem;
+  font-size: 0.86rem;
+  width: 3rem;
 }
 .recap-mult-cell {
   font-family: var(--mono);
   font-weight: 700;
   color: var(--warn);
-  font-size: 0.78rem;
-  width: 3rem;
+  font-size: 0.86rem;
+  width: 3.4rem;
   white-space: nowrap;
 }
 .recap-loc-cell { min-width: 0; }
 .recap-loc-name {
   font-weight: 700;
   color: var(--text);
+  font-size: 1rem;
 }
 .recap-loc-country {
   color: var(--muted-2);
-  font-size: 0.72rem;
-  margin-left: 0.35rem;
+  font-size: 0.78rem;
+  margin-left: 0.4rem;
 }
 .recap-score-cell {
   font-family: var(--mono);
   font-variant-numeric: tabular-nums;
   font-weight: 700;
   text-align: right;
-  width: 5.5rem;
+  width: 6.5rem;
   white-space: nowrap;
   color: rgb(110, 231, 183);
+  font-size: 1rem;
 }
 .recap-score-cell.is-zero { color: var(--muted-2); font-weight: 500; }
 .recap-score-cell.is-mine { background: rgba(34, 211, 238, 0.06); }
@@ -3979,12 +3993,12 @@ select option { background: var(--surface); color: var(--text); }
   display: block;
   font-family: var(--font);
   font-weight: 500;
-  font-size: 0.68rem;
+  font-size: 0.72rem;
   color: var(--muted);
-  margin-top: 0.1rem;
+  margin-top: 0.15rem;
 }
 .recap-winner-cell {
-  width: 4.5rem;
+  width: 5.5rem;
   text-align: right;
   white-space: nowrap;
 }
@@ -4020,12 +4034,18 @@ select option { background: var(--surface); color: var(--text); }
 }
 
 @media (max-width: 540px) {
+  /* Tighter spacing on phones — full 0.85rem padding would overflow the
+     viewport with 4-player columns. Keeps the table dense enough to read
+     end-to-end without horizontal scroll for 2-player games. */
+  .end-recap-table { font-size: 0.88rem; }
   .end-recap-table th,
-  .end-recap-table td { padding: 0.35rem 0.4rem; }
-  .recap-score-cell { width: auto; }
+  .end-recap-table td { padding: 0.55rem 0.55rem; }
+  .recap-score-cell { width: auto; font-size: 0.92rem; }
   .recap-score-meta { display: none; }
-  .recap-loc-country { display: block; margin-left: 0; }
+  .recap-loc-name { font-size: 0.92rem; }
+  .recap-loc-country { display: block; margin-left: 0; font-size: 0.7rem; }
   .end-recap-h2h { padding: 0.5rem 0.65rem; gap: 0.5rem; }
+  .end-recap-stat-value { font-size: 1.1rem; }
 }
 
 .end-recap-empty {
