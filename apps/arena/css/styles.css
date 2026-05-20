@@ -3706,124 +3706,169 @@ select option { background: var(--surface); color: var(--text); }
   color: var(--muted);
 }
 
-.end-recap-table-wrap {
-  overflow-x: auto;
+/* Compact card-list recap. Each round is a slim two-strip card so a
+   10-round match doesn't read like a spreadsheet — header strip
+   carries R# + multipliers + location + winner, body strip carries
+   the per-player chips. */
+.end-recap-cards {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+.recap-card {
   background: rgba(8, 11, 22, 0.55);
   border: 1px solid rgba(148, 163, 184, 0.10);
   border-radius: var(--radius-sm);
+  padding: 0.55rem 0.75rem 0.6rem;
+  transition: border-color 0.18s ease, background 0.18s ease;
 }
-.end-recap-table {
-  width: 100%;
-  border-collapse: collapse;
-  font-size: 0.88rem;
+.recap-card:hover {
+  border-color: rgba(34, 211, 238, 0.20);
+  background: rgba(34, 211, 238, 0.04);
 }
-.end-recap-table thead th {
-  text-align: left;
-  font-family: "Space Grotesk", "Outfit", sans-serif;
-  font-weight: 600;
-  font-size: 0.72rem;
-  text-transform: uppercase;
-  letter-spacing: 0.12em;
-  color: var(--muted-2);
-  padding: 0.75rem 0.8rem;
-  border-bottom: 1px solid rgba(34, 211, 238, 0.12);
-  background: rgba(20, 26, 44, 0.5);
-  position: sticky;
-  top: 0;
-  white-space: nowrap;
+
+/* Header strip: rank → multipliers → location (flex:1) → winner. */
+.recap-card-head {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  font-size: 0.85rem;
+  flex-wrap: wrap;
 }
-.end-recap-table thead th.is-mine { color: var(--cyan-2); }
-.end-recap-table tbody td {
-  padding: 0.7rem 0.8rem;
-  border-bottom: 1px solid rgba(148, 163, 184, 0.06);
-  vertical-align: middle;
-}
-/* Alternate row tint for rhythm. */
-.end-recap-table tbody tr:nth-child(even) td { background: rgba(255, 255, 255, 0.012); }
-.end-recap-table tbody tr:last-child td { border-bottom: 0; }
-.end-recap-table tbody tr:hover td { background: rgba(34, 211, 238, 0.04); }
-.end-recap-table td.col-rank {
+.recap-card-rank {
   font-family: var(--mono);
-  color: var(--cyan);
   font-weight: 700;
-  width: 36px;
-  opacity: 0.85;
+  color: var(--cyan);
+  font-size: 0.78rem;
+  letter-spacing: 0.02em;
+  flex: 0 0 auto;
 }
-.end-recap-table td.col-question { color: var(--text); min-width: 200px; max-width: 360px; }
-.end-recap-table td.col-question .recap-q-text {
-  display: block;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  max-width: 360px;
+.recap-card-mult {
+  font-family: var(--mono);
+  font-size: 0.72rem;
+  font-weight: 600;
+  color: var(--warn);
+  background: rgba(245, 158, 11, 0.10);
+  border: 1px solid rgba(245, 158, 11, 0.30);
+  border-radius: 999px;
+  padding: 0.05rem 0.5rem;
+  letter-spacing: 0.02em;
+  flex: 0 0 auto;
+}
+.recap-card-loc {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  align-items: baseline;
+  gap: 0.4rem;
+  flex-wrap: wrap;
+}
+.recap-card-loc-name {
   font-weight: 700;
   font-size: 0.95rem;
   color: var(--text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 100%;
 }
-.end-recap-table td.col-question .recap-q-meta {
-  display: block;
-  font-size: 0.74rem;
+.recap-card-loc-country {
+  font-size: 0.75rem;
   color: var(--muted-2);
-  text-transform: capitalize;
-  margin-top: 0.15rem;
   font-weight: 500;
 }
-.end-recap-table td.col-result { font-family: var(--mono); font-variant-numeric: tabular-nums; }
-/* "You" column gets a faint cyan wash everywhere. */
-.end-recap-table td.col-result.is-mine { background: rgba(34, 211, 238, 0.06); }
-/* Winning row: the cell that produced the high score for the row
-   gets a green tint so it pops; the other cells fade slightly. */
-.end-recap-table td.col-result.is-winner {
-  background: rgba(16, 185, 129, 0.14) !important;
-  box-shadow: inset 2px 0 0 rgba(16, 185, 129, 0.4);
+.recap-card-winner {
+  flex: 0 0 auto;
 }
-.end-recap-table td.col-result.is-winner.is-mine {
-  background: rgba(16, 185, 129, 0.22) !important;
+
+/* Body strip: per-player score chips. */
+.recap-card-body {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  margin-top: 0.45rem;
 }
-.end-recap-table td.col-result.is-loser {
-  opacity: 0.55;
+.recap-card-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.2rem 0.6rem;
+  background: rgba(255, 255, 255, 0.025);
+  border: 1px solid rgba(148, 163, 184, 0.10);
+  border-radius: 999px;
+  font-size: 0.78rem;
+  font-family: var(--mono);
+  font-variant-numeric: tabular-nums;
+  transition: background 0.18s ease, border-color 0.18s ease, opacity 0.18s ease;
 }
-.recap-result-points {
-  color: rgb(110, 231, 183);
+.recap-card-chip.is-mine {
+  background: rgba(34, 211, 238, 0.10);
+  border-color: rgba(34, 211, 238, 0.30);
+}
+.recap-card-chip.is-winner {
+  background: rgba(16, 185, 129, 0.18);
+  border-color: rgba(16, 185, 129, 0.45);
+  box-shadow: 0 0 12px rgba(16, 185, 129, 0.20);
+}
+.recap-card-chip.is-winner.is-mine {
+  background: linear-gradient(135deg, rgba(16, 185, 129, 0.22), rgba(34, 211, 238, 0.18));
+}
+.recap-card-chip.is-loser { opacity: 0.6; }
+.recap-card-chip-name {
+  font-family: "Outfit", "Inter", sans-serif;
+  font-weight: 600;
+  color: var(--text);
+}
+.recap-card-chip-pts {
   font-weight: 700;
-  font-size: 0.95rem;
-  letter-spacing: 0.01em;
+  color: rgb(110, 231, 183);
 }
-.recap-result-zero { color: var(--muted-2); }
-.recap-result-dist { color: var(--muted); font-size: 0.78rem; display: block; margin-top: 0.15rem; }
-.recap-result-pick { color: var(--text); font-size: 0.78rem; display: block; margin-top: 0.15rem; }
-.recap-result-pick.is-wrong { color: var(--bad); text-decoration: line-through; }
-.recap-result-pick.is-correct { color: var(--good); }
-.end-recap-table td.col-winner {
-  width: 110px;
-  text-align: center;
-  font-size: 0.85rem;
-  white-space: nowrap;
+.recap-card-chip.is-loser .recap-card-chip-pts { color: var(--muted); }
+.recap-card-chip-pts.is-zero { color: var(--muted-2); }
+.recap-card-chip-meta {
+  color: var(--muted);
+  font-size: 0.7rem;
+  padding-left: 0.4rem;
+  border-left: 1px solid rgba(255, 255, 255, 0.10);
 }
+.recap-pick.is-wrong { color: var(--bad); text-decoration: line-through; }
+.recap-pick.is-correct { color: var(--good); }
+
 .recap-winner-badge {
   display: inline-flex;
   align-items: center;
   gap: 0.3rem;
-  padding: 0.2rem 0.6rem;
+  padding: 0.15rem 0.55rem;
   border-radius: 999px;
   background: linear-gradient(135deg, rgba(251, 191, 36, 0.20), rgba(168, 85, 247, 0.10));
   border: 1px solid rgba(251, 191, 36, 0.45);
   color: var(--gold);
   font-weight: 700;
-  font-size: 0.78rem;
+  font-size: 0.74rem;
   letter-spacing: 0.02em;
   text-shadow: 0 0 8px rgba(251, 191, 36, 0.35);
+  white-space: nowrap;
 }
 .recap-tie-badge {
   display: inline-flex;
-  padding: 0.18rem 0.55rem;
+  padding: 0.15rem 0.55rem;
   border-radius: 999px;
   background: rgba(148, 163, 184, 0.12);
   border: 1px solid rgba(148, 163, 184, 0.25);
   color: var(--muted);
-  font-size: 0.74rem;
+  font-size: 0.72rem;
   font-weight: 600;
   letter-spacing: 0.02em;
+}
+
+@media (max-width: 540px) {
+  .recap-card-head { gap: 0.45rem; }
+  .recap-card-loc-name { font-size: 0.9rem; }
+  .recap-card-loc-country { width: 100%; }
+  .recap-card-chip-meta { display: none; }
 }
 
 .end-recap-empty {
