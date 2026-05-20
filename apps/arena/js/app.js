@@ -3358,25 +3358,22 @@ function renderRoundsHistoryBoard() {
         });
         const li = document.createElement('li');
         li.className = 'rounds-history-row';
-        // Local-player breakdown — recompute the multipliers we applied
-        // so the chip can spell out "× 1.5 × 1.2" alongside the total.
-        // Only shown for the LOCAL user's chip, and only for rounds
-        // they've actually submitted (no peeking ahead on the current
-        // round before submitting).
-        const meRec = me && Array.isArray(me.answers)
-            ? me.answers.find((a) => a && a.locationId === loc.id)
-            : null;
-        let myBreakdown = '';
-        if (meRec && typeof meRec.points === 'number' && !meRec.gaveUp) {
-            const diffMult = GlobeDropScoring.difficultySettings(room.difficulty).scoreMultiplier;
-            const contMult = GlobeDropScoring.continentMultiplier(loc.region);
-            const popMult = GlobeDropScoring.populationWeight(loc.population);
-            const parts = [];
-            if (diffMult !== 1) parts.push('×' + diffMult.toFixed(2).replace(/0+$/, '').replace(/\.$/, ''));
-            if (contMult !== 1) parts.push('×' + contMult.toFixed(2).replace(/0+$/, '').replace(/\.$/, ''));
-            if (popMult !== 1) parts.push('×' + popMult.toFixed(2).replace(/0+$/, '').replace(/\.$/, ''));
-            if (parts.length) myBreakdown = ' <em>' + escapeHtml(parts.join(' ')) + '</em>';
-        }
+        // Multiplier breakdown is a property of the ROUND (difficulty +
+        // continent + obscurity), not of any one player — same numbers
+        // apply to every chip. Show it next to the R# label so it
+        // reads once per round instead of being repeated inside the
+        // local player's chip.
+        const diffMult = GlobeDropScoring.difficultySettings(room.difficulty).scoreMultiplier;
+        const contMult = GlobeDropScoring.continentMultiplier(loc.region);
+        const popMult = GlobeDropScoring.populationWeight(loc.population);
+        const parts = [];
+        const fmt = (n) => n.toFixed(2).replace(/0+$/, '').replace(/\.$/, '');
+        if (diffMult !== 1) parts.push('×' + fmt(diffMult));
+        if (contMult !== 1) parts.push('×' + fmt(contMult));
+        if (popMult !== 1) parts.push('×' + fmt(popMult));
+        const multHtml = parts.length
+            ? ` <em class="rounds-history-mult">${escapeHtml(parts.join(' '))}</em>`
+            : '';
         const chips = perPlayer.map((pp) => {
             const isMe = state.user && pp.uid === state.user.uid;
             const cls = 'rounds-history-chip'
@@ -3387,11 +3384,10 @@ function renderRoundsHistoryBoard() {
             else if (pp.roundPoints == null) val = '—';
             else if (pp.gaveUp) val = 'X';
             else val = String(pp.roundPoints);
-            const trailing = isMe ? myBreakdown : '';
-            return `<span class="${cls}"><span>${escapeHtml(pp.displayName)}</span><strong>${escapeHtml(val)}</strong>${trailing}</span>`;
+            return `<span class="${cls}"><span>${escapeHtml(pp.displayName)}</span><strong>${escapeHtml(val)}</strong></span>`;
         }).join('');
         li.innerHTML =
-            `<span class="rounds-history-label">R${r + 1}</span>` +
+            `<span class="rounds-history-label">R${r + 1}${multHtml}</span>` +
             `<span class="rounds-history-loc">${escapeHtml(loc.name || '')}</span>` +
             `<span class="rounds-history-scores">${chips}</span>`;
         list.appendChild(li);
