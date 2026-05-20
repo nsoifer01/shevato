@@ -818,20 +818,26 @@ select option { background: var(--surface); color: var(--text); }
   margin: 0.65rem 0 1.1rem;
   padding: 0;
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(190px, 1fr));
-  gap: 0.55rem;
+  /* Wider floor than before (was 190px) so the name + badges have
+     room to breathe. Cards still pack two-up on tablet, three-up
+     on desktop. */
+  grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+  gap: 0.6rem;
 }
 .player-tile {
   display: flex;
   align-items: center;
-  gap: 0.55rem;
-  padding: 0.6rem 0.75rem;
+  gap: 0.7rem;
+  padding: 0.6rem 0.85rem;
   background: var(--surface);
   border: 1px solid var(--border);
   border-radius: var(--radius-sm);
   font-size: 0.9rem;
   transition: border-color 0.15s, background 0.15s;
   animation: player-pop 0.25s ease both;
+  /* Let the tile expand vertically when the name wraps or the
+     badges row is present — no fixed height. */
+  min-height: 44px;
 }
 @keyframes player-pop {
   from { opacity: 0; transform: scale(0.96); }
@@ -840,36 +846,78 @@ select option { background: var(--surface); color: var(--text); }
 .player-tile.is-host { border-color: var(--good); background: linear-gradient(180deg, var(--good-soft), transparent 60%), var(--surface); }
 .player-tile.is-me { border-color: var(--accent); }
 .player-avatar {
-  width: 28px; height: 28px;
+  width: 30px; height: 30px;
   border-radius: 50%;
   display: inline-flex; align-items: center; justify-content: center;
   background: var(--surface-3);
-  font-size: 0.9rem;
+  font-size: 0.92rem;
   font-weight: 700;
   color: var(--text);
   flex-shrink: 0;
+  align-self: flex-start;
+}
+
+/* Content column: name on top, badges row underneath. min-width:0
+   is essential — without it the name's intrinsic width keeps the
+   flex item from shrinking, forcing the badges to wrap weirdly. */
+.player-tile-body {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.25rem;
+  flex: 1 1 auto;
+  min-width: 0;
 }
 .player-name {
-  flex: 1;
-  white-space: nowrap;
+  font-weight: 600;
+  color: var(--text);
+  /* Allow names to wrap to a second line before truncating —
+     truncation is the last resort, not the default. line-clamp
+     caps at 2 so a 30-char name still fits in the tile. */
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
   overflow: hidden;
-  text-overflow: ellipsis;
+  word-break: break-word;
+  overflow-wrap: anywhere;
+  line-height: 1.25;
+  max-width: 100%;
 }
+
+.player-tile-badges {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  flex-wrap: wrap;
+}
+
 .player-mini-tag {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.1rem 0.45rem;
   font-size: 0.62rem;
   font-weight: 700;
   text-transform: uppercase;
-  letter-spacing: 0.07em;
+  letter-spacing: 0.08em;
   color: var(--muted-2);
+  background: rgba(148, 163, 184, 0.10);
+  border: 1px solid rgba(148, 163, 184, 0.22);
+  border-radius: 999px;
 }
-.player-tile.is-host .player-mini-tag { color: var(--good); }
+.player-tile.is-host .player-mini-tag {
+  color: rgb(110, 231, 183);
+  background: rgba(16, 185, 129, 0.15);
+  border-color: rgba(16, 185, 129, 0.40);
+}
 .player-h2h-badge {
+  display: inline-flex;
+  align-items: center;
   font-family: var(--mono);
   font-size: 0.7rem;
   font-weight: 700;
   letter-spacing: 0.02em;
-  margin-top: 0.25rem;
-  padding: 0.15rem 0.5rem;
+  margin: 0;
+  padding: 0.1rem 0.5rem;
   background: rgba(34, 211, 238, 0.10);
   border: 1px solid rgba(34, 211, 238, 0.30);
   border-radius: 999px;
