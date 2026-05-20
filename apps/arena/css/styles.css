@@ -3525,6 +3525,11 @@ select option { background: var(--surface); color: var(--text); }
   border: 1px solid rgba(16, 185, 129, 0.45);
   color: rgb(110, 231, 183);
 }
+.session-h2h-pill.is-draw {
+  background: rgba(245, 158, 11, 0.14);
+  border: 1px solid rgba(245, 158, 11, 0.35);
+  color: #fde68a;
+}
 .session-h2h-pill.is-loss {
   background: rgba(148, 163, 184, 0.10);
   border: 1px solid rgba(148, 163, 184, 0.30);
