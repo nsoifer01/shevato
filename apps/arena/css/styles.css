@@ -3168,17 +3168,17 @@ select option { background: var(--surface); color: var(--text); }
   display: grid;
   grid-template-columns: 1fr 1fr 1fr;
   align-items: end;
-  gap: 0.6rem;
-  margin: 0 auto 1.6rem;
-  max-width: 540px;
-  min-height: 200px;
+  gap: 0.45rem;
+  margin: 0 auto 0.9rem;
+  max-width: 380px;
+  min-height: 110px;
 }
 .podium-slot {
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 0.45rem;
-  padding-bottom: 0.4rem;
+  gap: 0.2rem;
+  padding-bottom: 0.25rem;
   animation: podium-rise 0.6s cubic-bezier(0.2, 0.7, 0.3, 1) both;
 }
 @keyframes podium-rise {
@@ -3190,17 +3190,17 @@ select option { background: var(--surface); color: var(--text); }
 .podium-slot-3 { animation-delay: 0.15s; }
 
 .podium-medal {
-  font-size: 2.4rem;
+  font-size: 1.35rem;
   line-height: 1;
-  filter: drop-shadow(0 0 12px rgba(255, 255, 255, 0.25));
+  filter: drop-shadow(0 0 8px rgba(255, 255, 255, 0.25));
 }
-.podium-slot-1 .podium-medal { filter: drop-shadow(0 0 16px rgba(251, 191, 36, 0.6)); }
-.podium-slot-2 .podium-medal { filter: drop-shadow(0 0 14px rgba(203, 213, 225, 0.45)); }
-.podium-slot-3 .podium-medal { filter: drop-shadow(0 0 14px rgba(245, 158, 11, 0.45)); }
+.podium-slot-1 .podium-medal { filter: drop-shadow(0 0 10px rgba(251, 191, 36, 0.6)); }
+.podium-slot-2 .podium-medal { filter: drop-shadow(0 0 9px rgba(203, 213, 225, 0.45)); }
+.podium-slot-3 .podium-medal { filter: drop-shadow(0 0 9px rgba(245, 158, 11, 0.45)); }
 .podium-name {
   font-family: "Space Grotesk", "Outfit", sans-serif;
   font-weight: 700;
-  font-size: 1.05rem;
+  font-size: 0.82rem;
   text-align: center;
   white-space: nowrap;
   overflow: hidden;
@@ -3212,7 +3212,7 @@ select option { background: var(--surface); color: var(--text); }
 .podium-score {
   font-family: var(--mono);
   font-weight: 700;
-  font-size: 1rem;
+  font-size: 0.78rem;
   letter-spacing: 0.01em;
 }
 .podium-slot-1 .podium-score {
@@ -3229,18 +3229,18 @@ select option { background: var(--surface); color: var(--text); }
 }
 .podium-block {
   width: 100%;
-  border-radius: 14px 14px 0 0;
+  border-radius: 10px 10px 0 0;
   background:
     linear-gradient(180deg, rgba(255, 255, 255, 0.04), transparent 30%),
     linear-gradient(180deg, var(--surface-2), var(--surface-3));
   border: 1px solid var(--border-strong);
   border-bottom: 0;
   text-align: center;
-  padding-top: 0.55rem;
+  padding-top: 0.3rem;
   color: var(--muted-2);
   font-family: var(--mono);
   font-weight: 700;
-  font-size: 1.15rem;
+  font-size: 0.85rem;
   position: relative;
   box-shadow: 0 -1px 0 rgba(255, 255, 255, 0.04) inset;
 }
@@ -3252,7 +3252,7 @@ select option { background: var(--surface); color: var(--text); }
   opacity: 0.6;
 }
 .podium-slot-1 .podium-block {
-  height: 160px;
+  height: 78px;
   background:
     linear-gradient(180deg, rgba(251, 191, 36, 0.55), rgba(251, 191, 36, 0.18) 40%, rgba(120, 53, 15, 0.45) 100%);
   border-color: rgba(251, 191, 36, 0.65);
@@ -3268,23 +3268,23 @@ select option { background: var(--surface); color: var(--text); }
      it doesn't tax JS during the celebratory moment. */
   content: "🎉  ✨  🎊  ✨  🎉";
   position: absolute;
-  top: -36px;
+  top: -24px;
   left: 50%;
   transform: translateX(-50%);
-  font-size: 1.4rem;
-  letter-spacing: 0.4em;
+  font-size: 0.9rem;
+  letter-spacing: 0.3em;
   white-space: nowrap;
-  filter: drop-shadow(0 0 6px rgba(251, 191, 36, 0.45));
+  filter: drop-shadow(0 0 4px rgba(251, 191, 36, 0.45));
   animation: confetti-burst 1.4s ease-out 0.5s 1 both;
   pointer-events: none;
 }
 @keyframes confetti-burst {
-  0%   { opacity: 0; transform: translate(-50%, 30px) scale(0.5); }
-  25%  { opacity: 1; transform: translate(-50%, -10px) scale(1); }
-  100% { opacity: 0; transform: translate(-50%, -70px) scale(1.1); }
+  0%   { opacity: 0; transform: translate(-50%, 20px) scale(0.5); }
+  25%  { opacity: 1; transform: translate(-50%, -6px) scale(1); }
+  100% { opacity: 0; transform: translate(-50%, -42px) scale(1.1); }
 }
 .podium-slot-2 .podium-block {
-  height: 122px;
+  height: 58px;
   background:
     linear-gradient(180deg, rgba(226, 232, 240, 0.40), rgba(148, 163, 184, 0.14) 40%, rgba(51, 65, 85, 0.45) 100%);
   border-color: rgba(203, 213, 225, 0.55);
@@ -3295,7 +3295,7 @@ select option { background: var(--surface); color: var(--text); }
     0 -1px 0 rgba(255, 255, 255, 0.10) inset;
 }
 .podium-slot-3 .podium-block {
-  height: 94px;
+  height: 42px;
   background:
     linear-gradient(180deg, rgba(245, 158, 11, 0.42), rgba(180, 83, 9, 0.18) 40%, rgba(120, 53, 15, 0.45) 100%);
   border-color: rgba(245, 158, 11, 0.55);
