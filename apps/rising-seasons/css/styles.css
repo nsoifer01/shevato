@@ -676,6 +676,24 @@ body.rising-seasons-app button {
   display: block;
 }
 
+/* Same hash-based tint as the card/modal poster placeholder, scaled to
+   the dropdown's 32×48 slot. A single initial sits centered. */
+.search-suggestion .ss-poster.ss-poster-fallback {
+  --poster-hue: 220;
+  background:
+    radial-gradient(circle at 30% 25%, hsl(var(--poster-hue) 70% 45% / 0.7), transparent 70%),
+    radial-gradient(circle at 70% 75%, hsl(calc(var(--poster-hue) + 60) 70% 35% / 0.55), transparent 70%),
+    var(--surface-2);
+}
+.search-suggestion .ss-poster-initial {
+  font-size: 1rem;
+  font-weight: 700;
+  color: rgba(255, 255, 255, 0.95);
+  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.5);
+  letter-spacing: -0.02em;
+  font-variant-numeric: tabular-nums;
+}
+
 .search-suggestion .ss-text {
   display: flex;
   flex-direction: column;
