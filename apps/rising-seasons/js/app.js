@@ -794,7 +794,16 @@ function buildNonShapeChecker() {
       // "The X-Files"). IMDb-ID match stays plain since IDs are alnum.
       const titleHit = qNorm.length > 0 && m.titleSearch.includes(qNorm);
       const idHit = m.seriesId.toLowerCase().includes(q);
-      if (!titleHit && !idHit) return false;
+      // Episode-title fallback — only run when the cheaper title/id checks
+      // missed, since this scans every episode in the season. Gated at
+      // q.length >= 3 so single-character noise queries don't iterate.
+      let epHit = false;
+      if (!titleHit && !idHit && q.length >= 3) {
+        for (const ep of m.episodes) {
+          if (ep.name && ep.name.toLowerCase().includes(q)) { epHit = true; break; }
+        }
+      }
+      if (!titleHit && !idHit && !epHit) return false;
     }
     if (wantLanguages.size && (!m.language || !wantLanguages.has(m.language))) {
       return false;
@@ -2459,23 +2468,52 @@ function computeSuggestions(rawQuery) {
   const titleStarts = [];
   const titleContains = [];
   const idMatches = [];
+  const matchedIds = new Set();
   for (const s of seriesIndex) {
     const idL = s.seriesId.toLowerCase();
     const titleN = s.titleSearch;
     if (titleN === qNorm || idL === q || idL === `tt${q}`) {
-      exact.push(s);
+      exact.push(s); matchedIds.add(s.seriesId);
     } else if (qNorm && titleN.startsWith(qNorm)) {
-      titleStarts.push(s);
+      titleStarts.push(s); matchedIds.add(s.seriesId);
     } else if (qNorm && titleN.includes(qNorm)) {
-      titleContains.push(s);
+      titleContains.push(s); matchedIds.add(s.seriesId);
     } else if (idL.includes(q)) {
-      idMatches.push(s);
+      idMatches.push(s); matchedIds.add(s.seriesId);
     }
     if (exact.length + titleStarts.length + titleContains.length + idMatches.length >= MAX_SUGGESTIONS * 4) {
       break;
     }
   }
-  return [...exact, ...titleStarts, ...titleContains, ...idMatches].slice(0, MAX_SUGGESTIONS);
+  // Episode-name fallback: if the title pass didn't fill the dropdown and
+  // the query is specific (>= 3 chars), surface series whose episode list
+  // contains the query (e.g. "Gray Matter" → Breaking Bad).
+  const epHits = [];
+  const titleHits = exact.length + titleStarts.length + titleContains.length + idMatches.length;
+  if (q.length >= 3 && titleHits < MAX_SUGGESTIONS) {
+    const seriesById = new Map(seriesIndex.map((s) => [s.seriesId, s]));
+    const seen = new Set();
+    for (const m of dataset.matches) {
+      if (matchedIds.has(m.seriesId) || seen.has(m.seriesId)) continue;
+      for (const ep of m.episodes) {
+        if (ep.name && ep.name.toLowerCase().includes(q)) {
+          seen.add(m.seriesId);
+          const base = seriesById.get(m.seriesId);
+          if (base) {
+            epHits.push({
+              ...base,
+              episodeMatch: ep.name,
+              episodeSeason: m.season,
+              episodeNumber: ep.episode,
+            });
+          }
+          break;
+        }
+      }
+      if (epHits.length + titleHits >= MAX_SUGGESTIONS * 2) break;
+    }
+  }
+  return [...exact, ...titleStarts, ...titleContains, ...idMatches, ...epHits].slice(0, MAX_SUGGESTIONS);
 }
 
 function highlightFragment(text, q) {
@@ -2533,6 +2571,16 @@ function renderSuggestionItems() {
 
     text.append(title, meta);
 
+    // If this match came from an episode-name hit, append a small line
+    // explaining which episode caused the match — so the user understands
+    // why Breaking Bad shows up when they typed "Gray Matter".
+    if (s.episodeMatch) {
+      const epHint = document.createElement('span');
+      epHint.className = 'ss-ep-hint';
+      epHint.appendChild(document.createTextNode(`S${s.episodeSeason}E${s.episodeNumber} · `));
+      for (const node of highlightFragment(s.episodeMatch, q)) epHint.appendChild(node);
+      text.appendChild(epHint);
+    }
     li.append(poster, text);
 
     li.addEventListener('mousedown', (e) => e.preventDefault());
