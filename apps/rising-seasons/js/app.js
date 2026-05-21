@@ -216,6 +216,17 @@ function populatePosterFallback(el, title) {
   el.appendChild(label);
 }
 
+// First meaningful character of the title — skips leading articles
+// ("The X-Files" → "X", "A Quiet Place" → "Q") and falls back to the
+// raw first char. Used by the suggestion dropdown where the full title
+// won't fit in the 32×48 px poster slot.
+function posterInitial(title) {
+  if (!title) return '?';
+  const cleaned = title.replace(/^(the|a|an)\s+/i, '').trim();
+  const ch = (cleaned || title).charAt(0);
+  return ch.toUpperCase() || '?';
+}
+
 // --- search normalization ---
 // "The X-Files" → "the x files", "Married... with Children" → "married with children".
 // Lets a typed query of "the x files" or "married with children" match titles
@@ -2555,6 +2566,15 @@ function renderSuggestionItems() {
       img.alt = '';
       img.loading = 'lazy';
       poster.appendChild(img);
+    } else {
+      // Tinted initial placeholder — small enough that the full title
+      // doesn't fit, so we show a single distinguishing character.
+      poster.classList.add('ss-poster-fallback');
+      poster.style.setProperty('--poster-hue', String(hashHue(s.title || 'unknown')));
+      const initial = document.createElement('span');
+      initial.className = 'ss-poster-initial';
+      initial.textContent = posterInitial(s.title);
+      poster.appendChild(initial);
     }
 
     const text = document.createElement('div');
