@@ -18,13 +18,11 @@
 // Output: apps/rising-seasons/data.json
 //
 // Tunables (env vars):
-//   MIN_EPISODES     (default 4)   — minimum rated episodes per season
-//   MIN_VOTES        (default 100) — every episode must have at least this many votes
-//   RELAX_GENRES     (default "Reality-TV,Game-Show,Talk-Show") — comma-list of
-//                                    IMDb genres whose series get the lower floor below
-//   RELAX_MIN_VOTES  (default 10)  — per-episode vote floor for the relaxed-genre series.
-//                                    Reality/competition episodes typically draw 10-50
-//                                    IMDb votes, so the standard 100 wipes them out.
+//   MIN_EPISODES     (default 3)  — minimum rated episodes per season
+//   MIN_VOTES        (default 5)  — every episode must have at least this many votes.
+//                                   Set low so reality, foreign, and short-run shows are
+//                                   not filtered out at build time. The browser UI exposes
+//                                   its own (stricter) vote and popularity filters on top.
 
 const fs = require('fs');
 const path = require('path');
@@ -42,12 +40,7 @@ const TMDB_CACHE = path.join(DATA_DIR, 'tmdb-cache.json');
 // short seasons will be emitted as shape-less rows under the parent show
 // rather than appearing as their own pattern hits.
 const MIN_EPISODES = parseInt(process.env.MIN_EPISODES || '3', 10);
-const MIN_VOTES = parseInt(process.env.MIN_VOTES || '100', 10);
-const RELAX_GENRES = (process.env.RELAX_GENRES ?? 'Reality-TV,Game-Show,Talk-Show')
-  .split(',')
-  .map((s) => s.trim())
-  .filter(Boolean);
-const RELAX_MIN_VOTES = parseInt(process.env.RELAX_MIN_VOTES || '10', 10);
+const MIN_VOTES = parseInt(process.env.MIN_VOTES || '5', 10);
 const SERIES_TYPES = new Set(['tvSeries', 'tvMiniSeries']);
 
 function openTsv(filename) {
@@ -232,8 +225,6 @@ function loadTmdbCache() {
   const matches = findMatches(series, episodes, {
     minEpisodes: MIN_EPISODES,
     minVotes: MIN_VOTES,
-    relaxedGenres: new Set(RELAX_GENRES),
-    relaxedMinVotes: RELAX_MIN_VOTES,
   });
   const shapedCount = matches.reduce((n, m) => n + (m.shapes.length > 0 ? 1 : 0), 0);
   console.log(`${matches.length.toLocaleString()} seasons (${shapedCount.toLocaleString()} with at least one shape)`);
@@ -344,8 +335,6 @@ function loadTmdbCache() {
     builtAt: new Date().toISOString(),
     minEpisodes: MIN_EPISODES,
     minVotes: MIN_VOTES,
-    relaxedGenres: RELAX_GENRES,
-    relaxedMinVotes: RELAX_MIN_VOTES,
     count: matches.length,
     shapeCounts,
     genres,
