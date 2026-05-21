@@ -499,9 +499,17 @@ body.rising-seasons-app button {
 
 .shape-chip:disabled,
 .shape-chip.is-disabled {
-  opacity: 0.3;
+  /* Muted but still legible — 0.3 read as "broken element" on mobile
+     next to brighter siblings. */
+  opacity: 0.5;
   cursor: not-allowed;
   pointer-events: none;
+}
+.shape-chip.is-disabled .shape-count {
+  /* Zero-count badges look mid-render on disabled chips. Drop the
+     pill background so the disabled state reads as "no hits in this
+     filter combo," not as a partial render. */
+  background: transparent;
 }
 
 /* ---------- Filter toolbar ---------- */
@@ -674,6 +682,24 @@ body.rising-seasons-app button {
   height: 100%;
   object-fit: cover;
   display: block;
+}
+
+/* Same hash-based tint as the card/modal poster placeholder, scaled to
+   the dropdown's 32×48 slot. A single initial sits centered. */
+.search-suggestion .ss-poster.ss-poster-fallback {
+  --poster-hue: 220;
+  background:
+    radial-gradient(circle at 30% 25%, hsl(var(--poster-hue) 70% 45% / 0.7), transparent 70%),
+    radial-gradient(circle at 70% 75%, hsl(calc(var(--poster-hue) + 60) 70% 35% / 0.55), transparent 70%),
+    var(--surface-2);
+}
+.search-suggestion .ss-poster-initial {
+  font-size: 1rem;
+  font-weight: 700;
+  color: rgba(255, 255, 255, 0.95);
+  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.5);
+  letter-spacing: -0.02em;
+  font-variant-numeric: tabular-nums;
 }
 
 .search-suggestion .ss-text {
@@ -1286,12 +1312,40 @@ body.rising-seasons-app button {
 }
 
 .poster-fallback {
+  --poster-hue: 220;
   position: absolute;
   inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0.6rem;
   background:
-    radial-gradient(circle at 30% 30%, rgba(245, 197, 24, 0.18), transparent 60%),
-    radial-gradient(circle at 70% 70%, rgba(74, 222, 128, 0.12), transparent 60%),
+    radial-gradient(circle at 30% 25%, hsl(var(--poster-hue) 70% 45% / 0.55), transparent 65%),
+    radial-gradient(circle at 70% 75%, hsl(calc(var(--poster-hue) + 60) 70% 35% / 0.4), transparent 65%),
     var(--surface-2);
+}
+.poster-fallback-title {
+  font-size: 0.85rem;
+  font-weight: 700;
+  line-height: 1.2;
+  color: rgba(255, 255, 255, 0.92);
+  text-align: center;
+  letter-spacing: -0.01em;
+  text-shadow: 0 1px 4px rgba(0, 0, 0, 0.45);
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 4;
+  overflow: hidden;
+}
+/* Big modal-poster context — larger title text so it doesn't look lost */
+.modal-poster .poster-fallback-title {
+  font-size: 1.05rem;
+  -webkit-line-clamp: 5;
+}
+/* Compact row-poster context — smaller title */
+.row-poster .poster-fallback-title {
+  font-size: 0.72rem;
+  padding: 0.35rem;
 }
 
 .card-body {
@@ -1782,6 +1836,45 @@ button.shape-tag.is-clickable:hover {
 .curve-dots circle {
   fill: var(--accent);
   cursor: help;
+}
+.curve-dots circle.special-ep {
+  fill: #c084fc;
+  stroke: rgba(255, 255, 255, 0.7);
+  stroke-width: 1;
+}
+.curve-axis .axis-grid {
+  stroke: rgba(255, 255, 255, 0.08);
+  stroke-width: 1;
+  vector-effect: non-scaling-stroke;
+}
+/* Y-axis labels live in HTML (not SVG) so the SVG's preserveAspectRatio="none"
+   doesn't horizontally squish the glyphs. The wrapper sits over the SVG,
+   labels are positioned by percentage of the SVG's height. */
+.curve-with-axis {
+  position: relative;
+}
+.curve-with-axis > svg {
+  display: block;
+}
+.curve-axis-labels {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  z-index: 1;
+}
+.curve-axis-labels .axis-label {
+  position: absolute;
+  /* padXLeft (36) / W (600) = 6% of the SVG's display width. The label's
+     right edge sits just inside that — matching where the gridline begins
+     regardless of how wide the modal becomes. */
+  right: calc(100% - 5%);
+  transform: translateY(-50%);
+  padding-right: 4px;
+  font-size: 11px;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+  font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  white-space: nowrap;
 }
 
 .modal-curve {
@@ -2408,6 +2501,13 @@ button.shape-tag.is-clickable:hover {
   font-weight: 600;
   letter-spacing: 0.04em;
   text-transform: uppercase;
+}
+.modal-episodes li.ep-special {
+  border-color: rgba(192, 132, 252, 0.4);
+  background: rgba(192, 132, 252, 0.06);
+}
+.modal-episodes li.ep-special .ep-number {
+  color: #c084fc;
 }
 .modal-episodes .ep-name {
   color: var(--text);
