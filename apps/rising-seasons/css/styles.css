@@ -396,10 +396,13 @@ body.rising-seasons-app button {
 .shapes {
   display: flex;
   flex-wrap: wrap;
-  gap: 0.45rem 0.5rem;
+  gap: 0.4rem 0.45rem;
   justify-content: center;
-  padding: 1.6rem 0 0.75rem;
-  max-width: 56rem;
+  /* Hidden header text via aria-label is enough for screen readers;
+     visual rhythm is intentionally label-less so the chips themselves
+     read as the controls — fewer chrome elements above the fold. */
+  padding: 1.4rem 0 0.6rem;
+  max-width: 48rem;
   margin: 0 auto;
 }
 
@@ -408,9 +411,9 @@ body.rising-seasons-app button {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  gap: 0.45rem;
-  height: 32px;
-  padding: 0 0.85rem;
+  gap: 0.4rem;
+  height: 30px;
+  padding: 0 0.7rem 0 0.6rem;
   /* Subtle surface — clearly lighter than the page bg so each chip
      reads as an object, never as floating text. */
   background: rgba(255, 255, 255, 0.035);
@@ -429,8 +432,12 @@ body.rising-seasons-app button {
               color 0.18s var(--ease);
 }
 .shape-chip:hover {
-  background: rgba(255, 255, 255, 0.06);
-  border-color: rgba(255, 255, 255, 0.18);
+  background: rgba(255, 255, 255, 0.08);
+  border-color: rgba(255, 255, 255, 0.22);
+  color: rgba(255, 255, 255, 0.95) !important;
+}
+.shape-chip:hover .shape-icon {
+  opacity: 1;
 }
 .shape-chip:focus-visible {
   /* Same reasoning as .label-chip — inset focus ring so adjacent chips
@@ -458,18 +465,20 @@ body.rising-seasons-app button {
   /* Stronger than description so the pattern name reads first. */
 }
 
+/* Descriptions are kept in the DOM (a11y + content for the tooltip-from-text
+   JS pass), but hidden visually at every viewport. They render via the
+   chip's title attribute on hover instead, so the row stays calm and the
+   teaching content is still one hover away. */
 .shape-desc {
-  display: none;
-  color: rgba(231, 233, 238, 0.62);
-  font-size: 0.72rem;
-  font-weight: 400;
-  letter-spacing: 0;
-}
-@media (min-width: 760px) {
-  .shape-desc { display: inline; }
-}
-.shape-chip[aria-pressed="true"] .shape-desc {
-  color: rgba(245, 197, 24, 0.7);
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
 }
 
 .shape-count {

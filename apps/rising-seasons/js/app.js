@@ -352,6 +352,15 @@ async function load() {
   renderGenreChips();
   renderLanguageChips();
   renderProviderChips();
+  // Promote each chip's hidden description to a native browser tooltip
+  // so the desktop nav stays calm but the teaching content is one
+  // hover away.
+  for (const chip of els.shapes.querySelectorAll('.shape-chip')) {
+    const desc = chip.querySelector('.shape-desc');
+    if (desc && desc.textContent.trim() && !chip.title) {
+      chip.title = desc.textContent.trim();
+    }
+  }
   syncCompareFab();
   bindEvents();
   bindKeyboard();
