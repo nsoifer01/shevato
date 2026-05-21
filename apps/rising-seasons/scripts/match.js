@@ -25,6 +25,10 @@ const DEFAULTS = {
   rollercoaster: { minFlips: 4, minRange: 1.2, minAvgDiff: 0.4, ignoreBelow: 0.2 },
   // "Mid-peak" — peak sits in the interior; both edges sit well below it.
   midPeak: { peakAboveStart: 0.7, peakAboveEnd: 0.7 },
+  // "U-shaped" — strong opener and strong finale with a real dip between
+  // them. Distinct from rebound (which requires end > start) and from
+  // front-loaded (which has no strong finale).
+  uShaped: { edgeAboveMiddle: 0.4 },
 };
 
 function isRising(episodes) {
@@ -170,6 +174,19 @@ function isMidPeak(episodes, opts = DEFAULTS.midPeak) {
   return (max - start) >= opts.peakAboveStart && (max - end) >= opts.peakAboveEnd;
 }
 
+function isUShaped(episodes, opts = DEFAULTS.uShaped) {
+  const n = episodes.length;
+  if (n < 6) return false;
+  const q = Math.max(1, Math.floor(n / 4));
+  const firstQ = episodes.slice(0, q);
+  const lastQ = episodes.slice(n - q);
+  const middle = episodes.slice(q, n - q);
+  if (middle.length === 0) return false;
+  const mid = avg(middle);
+  return (avg(firstQ) - mid) >= opts.edgeAboveMiddle
+      && (avg(lastQ) - mid) >= opts.edgeAboveMiddle;
+}
+
 function detectShapes(episodes) {
   const tags = [];
   if (isRising(episodes)) tags.push('rising');
@@ -182,6 +199,7 @@ function detectShapes(episodes) {
   if (isBadFinale(episodes)) tags.push('bad-finale');
   if (isRollercoaster(episodes)) tags.push('rollercoaster');
   if (isMidPeak(episodes)) tags.push('mid-peak');
+  if (isUShaped(episodes)) tags.push('u-shaped');
   return tags;
 }
 
@@ -322,6 +340,7 @@ module.exports = {
   isBadFinale,
   isRollercoaster,
   isMidPeak,
+  isUShaped,
   detectShapes,
   findMatches,
   tagSavedBestForLast,
