@@ -344,4 +344,20 @@ function loadTmdbCache() {
   }));
   const seconds = ((Date.now() - t0) / 1000).toFixed(1);
   console.log(`Wrote ${OUT_FILE} in ${seconds}s`);
+
+  // Diff against the previously-committed data.json and update changelog.json
+  // so the "What's new" footer chip stays in sync. The footer guards the chip
+  // on `latest.builtAt === dataset.builtAt`, so writing a new data.json without
+  // also writing a matching changelog entry silently hides the chip.
+  // Skip when explicitly opted out (e.g., test fixtures, dry runs).
+  if (process.env.SKIP_CHANGELOG !== '1') {
+    try {
+      const { execFileSync } = require('child_process');
+      execFileSync(process.execPath,
+        [path.join(__dirname, 'build-changelog.js')],
+        { stdio: 'inherit', cwd: path.join(__dirname, '..', '..', '..') });
+    } catch (err) {
+      console.warn(`build-changelog step failed: ${err.message}`);
+    }
+  }
 })();
