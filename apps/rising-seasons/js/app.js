@@ -1553,14 +1553,20 @@ function drawCurve(svg, episodes, W, H, opts) {
 // Draw IMDb-rating gridlines + labels along the left edge of a curve SVG.
 // 5 evenly-spaced ticks across the actual [lo, hi] range — snapped to 0.1
 // (IMDb's own precision) so the labels read like real rating values.
+//
+// Gridlines render inside the SVG (horizontal lines can safely stretch
+// under preserveAspectRatio="none"). Labels are placed as HTML in a sibling
+// overlay so they're never horizontally squished by the SVG's non-uniform
+// scale — that's what caused "9.3" to read as "0.3" before.
 function drawYAxis(svg, lo, hi, padXLeft, padXRight, padY, W, H) {
   const NS = 'http://www.w3.org/2000/svg';
-  // Reuse or create the axis group; clear previous contents.
+  const labelsEl = ensureAxisLabelContainer(svg);
+  while (labelsEl.firstChild) labelsEl.removeChild(labelsEl.firstChild);
+
   let group = svg.querySelector('.curve-axis');
   if (!group) {
     group = document.createElementNS(NS, 'g');
     group.setAttribute('class', 'curve-axis');
-    // Insert before .curve-area so the area/line draw over the gridlines.
     svg.insertBefore(group, svg.firstChild);
   } else {
     while (group.firstChild) group.removeChild(group.firstChild);
@@ -1576,6 +1582,7 @@ function drawYAxis(svg, lo, hi, padXLeft, padXRight, padY, W, H) {
     const v = lo + (span * i) / (ticks - 1);
     const y = plotTop + (1 - (v - lo) / span) * (plotBottom - plotTop);
 
+    // Gridline — SVG, free to stretch.
     const line = document.createElementNS(NS, 'line');
     line.setAttribute('x1', padXLeft);
     line.setAttribute('x2', plotRight);
@@ -1584,14 +1591,38 @@ function drawYAxis(svg, lo, hi, padXLeft, padXRight, padY, W, H) {
     line.setAttribute('class', 'axis-grid');
     group.appendChild(line);
 
-    const label = document.createElementNS(NS, 'text');
-    label.setAttribute('x', padXLeft - 6);
-    label.setAttribute('y', (y + 3.5).toFixed(1));
-    label.setAttribute('class', 'axis-label');
-    label.setAttribute('text-anchor', 'end');
+    // Label — HTML, positioned by percentage so SVG scaling doesn't
+    // distort the glyphs.
+    const yPct = (y / H * 100).toFixed(2);
+    const label = document.createElement('span');
+    label.className = 'axis-label';
+    label.style.top = yPct + '%';
     label.textContent = v.toFixed(1);
-    group.appendChild(label);
+    labelsEl.appendChild(label);
   }
+}
+
+// Wrap an axis-bearing SVG in a positioned container the first time we
+// draw on it, so the HTML axis labels can layer over the SVG without being
+// stretched by the SVG's non-uniform scale.
+function ensureAxisLabelContainer(svg) {
+  if (svg.parentElement && svg.parentElement.classList.contains('curve-with-axis')) {
+    let labels = svg.parentElement.querySelector('.curve-axis-labels');
+    if (!labels) {
+      labels = document.createElement('div');
+      labels.className = 'curve-axis-labels';
+      svg.parentElement.appendChild(labels);
+    }
+    return labels;
+  }
+  const wrap = document.createElement('div');
+  wrap.className = 'curve-with-axis';
+  svg.parentNode.insertBefore(wrap, svg);
+  wrap.appendChild(svg);
+  const labels = document.createElement('div');
+  labels.className = 'curve-axis-labels';
+  wrap.appendChild(labels);
+  return labels;
 }
 
 // Picks a visually distinct stroke color per season. HSL spread across the
