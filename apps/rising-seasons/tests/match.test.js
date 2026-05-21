@@ -13,6 +13,7 @@ const {
   isBadFinale,
   isRollercoaster,
   isMidPeak,
+  isUShaped,
   detectShapes,
   findMatches,
   isNonDecreasing,
@@ -190,6 +191,32 @@ test('isMidPeak rejects a peak in the first quarter (Last of Us S2 case)', () =>
 test('isMidPeak rejects a peak in the last quarter', () => {
   // Peak at ep 6 of 7 is interior but in the last quarter.
   assert.equal(isMidPeak(season(6.2, 7.1, 6.7, 6.1, 7.0, 9.0, 7.5)), false);
+});
+
+// --- isUShaped ---
+
+test('isUShaped accepts a clear U with strong opener + finale and a middle dip', () => {
+  // First quarter avg ~8.5, middle ~7.0, last quarter avg ~8.5
+  assert.equal(isUShaped(season(8.5, 8.4, 7.0, 6.9, 7.1, 8.5, 8.6, 8.4)), true);
+});
+
+test('isUShaped rejects a rising season (no middle dip)', () => {
+  assert.equal(isUShaped(season(7.0, 7.2, 7.5, 7.8, 8.0, 8.4)), false);
+});
+
+test('isUShaped rejects a season without a strong finale (front-loaded)', () => {
+  // First quarter ~8.5, middle ~7.0, last quarter ~7.0 — opener strong, finale not.
+  assert.equal(isUShaped(season(8.5, 8.4, 7.0, 6.9, 7.1, 7.0, 6.9, 7.1)), false);
+});
+
+test('isUShaped rejects a season without a strong opener', () => {
+  // First quarter ~7.0, middle ~7.0, last quarter ~8.5 — finale strong, opener not.
+  assert.equal(isUShaped(season(7.0, 7.1, 7.0, 6.9, 7.1, 8.5, 8.6, 8.4)), false);
+});
+
+test('isUShaped rejects very short seasons', () => {
+  // Fewer than 6 episodes — too short to identify a U.
+  assert.equal(isUShaped(season(8.5, 8.4, 7.0, 8.5, 8.4)), false);
 });
 
 // --- detectShapes ---

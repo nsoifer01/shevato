@@ -697,17 +697,6 @@ body.rising-seasons-app button {
   text-overflow: ellipsis;
 }
 
-.search-suggestion .ss-ep-hint {
-  display: block;
-  font-size: 0.72rem;
-  color: var(--accent);
-  font-style: italic;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  margin-top: 0.1rem;
-}
-
 .search-suggestion mark {
   background: transparent;
   color: var(--accent);
@@ -1286,12 +1275,40 @@ body.rising-seasons-app button {
 }
 
 .poster-fallback {
+  --poster-hue: 220;
   position: absolute;
   inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0.6rem;
   background:
-    radial-gradient(circle at 30% 30%, rgba(245, 197, 24, 0.18), transparent 60%),
-    radial-gradient(circle at 70% 70%, rgba(74, 222, 128, 0.12), transparent 60%),
+    radial-gradient(circle at 30% 25%, hsl(var(--poster-hue) 70% 45% / 0.55), transparent 65%),
+    radial-gradient(circle at 70% 75%, hsl(calc(var(--poster-hue) + 60) 70% 35% / 0.4), transparent 65%),
     var(--surface-2);
+}
+.poster-fallback-title {
+  font-size: 0.85rem;
+  font-weight: 700;
+  line-height: 1.2;
+  color: rgba(255, 255, 255, 0.92);
+  text-align: center;
+  letter-spacing: -0.01em;
+  text-shadow: 0 1px 4px rgba(0, 0, 0, 0.45);
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 4;
+  overflow: hidden;
+}
+/* Big modal-poster context — larger title text so it doesn't look lost */
+.modal-poster .poster-fallback-title {
+  font-size: 1.05rem;
+  -webkit-line-clamp: 5;
+}
+/* Compact row-poster context — smaller title */
+.row-poster .poster-fallback-title {
+  font-size: 0.72rem;
+  padding: 0.35rem;
 }
 
 .card-body {
@@ -1782,6 +1799,22 @@ button.shape-tag.is-clickable:hover {
 .curve-dots circle {
   fill: var(--accent);
   cursor: help;
+}
+.curve-dots circle.special-ep {
+  fill: #c084fc;
+  stroke: rgba(255, 255, 255, 0.7);
+  stroke-width: 1;
+}
+.curve-axis .axis-grid {
+  stroke: rgba(255, 255, 255, 0.08);
+  stroke-width: 1;
+  vector-effect: non-scaling-stroke;
+}
+.curve-axis .axis-label {
+  fill: var(--muted);
+  font-size: 10px;
+  font-variant-numeric: tabular-nums;
+  font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
 }
 
 .modal-curve {
@@ -2408,6 +2441,13 @@ button.shape-tag.is-clickable:hover {
   font-weight: 600;
   letter-spacing: 0.04em;
   text-transform: uppercase;
+}
+.modal-episodes li.ep-special {
+  border-color: rgba(192, 132, 252, 0.4);
+  background: rgba(192, 132, 252, 0.06);
+}
+.modal-episodes li.ep-special .ep-number {
+  color: #c084fc;
 }
 .modal-episodes .ep-name {
   color: var(--text);
