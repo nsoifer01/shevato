@@ -181,8 +181,8 @@ let worstSeasonBySeries = new Map();
 let aboveImdbBySeries = new Map();
 let pendingModalKey = null;
 let pendingShowKey = null;
-let modalState = { season: null, lastFocus: null, surprise: false };
-let showModalState = { seriesId: null, lastFocus: null };
+let modalState = { season: null, lastFocus: null, surprise: false, fromChangelog: false };
+let showModalState = { seriesId: null, lastFocus: null, fromChangelog: false };
 let changelog = null;
 let changelogState = { lastFocus: null };
 const suggestState = { items: [], active: -1, open: false };
@@ -1859,19 +1859,25 @@ function closeCompareModal() {
 function openModal(m, opts = {}) {
   const wasOpen = !els.modal.hidden;
   const wasShowOpen = !els.showModal.hidden;
+  // Inherit fromChangelog from the show modal we're closing, so closing
+  // the (newly-opened) season modal still returns to the changelog.
+  const inheritedFromChangelog = wasShowOpen && showModalState.fromChangelog;
   modalState.season = m;
   if (!wasOpen) {
     if (wasShowOpen) {
       // Transitioning from show → season; inherit show's lastFocus so
       // ultimately closing returns focus to whatever opened the chain.
       const inherited = showModalState.lastFocus;
-      closeShowModal();
+      closeShowModal({ suppressReopen: true });
       modalState.lastFocus = inherited;
     } else {
       modalState.lastFocus = document.activeElement;
     }
   }
   modalState.surprise = !!opts.surprise;
+  // Origin tracker — when set, closeModal reopens the changelog so the
+  // user lands back in the "What's new" list they were browsing.
+  modalState.fromChangelog = opts.fromChangelog === true || inheritedFromChangelog;
 
   els.modalTitle.textContent = m.title;
   const seasonYearStr = (m.seasonYear || m.year);
@@ -2003,7 +2009,7 @@ function openModal(m, opts = {}) {
   }
 }
 
-function closeModal() {
+function closeModal(opts = {}) {
   if (els.modal.hidden) return;
   els.modal.hidden = true;
   els.modal.setAttribute('aria-hidden', 'true');
@@ -2015,23 +2021,34 @@ function closeModal() {
   if (modalState.lastFocus && typeof modalState.lastFocus.focus === 'function') {
     modalState.lastFocus.focus();
   }
+  // Reopen the changelog if the user came from "What's new" AND we're
+  // not chaining into another modal (e.g. season → show via "View show").
+  const reopenChangelog = !opts.suppressReopen
+    && modalState.fromChangelog
+    && els.showModal.hidden;
   modalState.season = null;
   modalState.lastFocus = null;
   modalState.surprise = false;
+  modalState.fromChangelog = false;
   writeStateToURL();
+  if (reopenChangelog) openChangelogModal();
 }
 
-function openShowModal(seriesId) {
+function openShowModal(seriesId, opts = {}) {
   const seasons = dataset.matches
     .filter((m) => m.seriesId === seriesId)
     .sort((a, b) => a.season - b.season);
   if (seasons.length === 0) return;
 
   const wasSeasonOpen = !els.modal.hidden;
-  if (wasSeasonOpen) closeModal();
+  // Inherit origin from the season modal we're closing, so closing the
+  // show modal still returns the user to the changelog.
+  const inheritedFromChangelog = wasSeasonOpen && modalState.fromChangelog;
+  if (wasSeasonOpen) closeModal({ suppressReopen: true });
 
   const meta = seasons[0];
   showModalState.seriesId = seriesId;
+  showModalState.fromChangelog = inheritedFromChangelog || opts.fromChangelog === true;
   if (els.showModal.hidden) showModalState.lastFocus = document.activeElement;
   syncCompareButton();
 
@@ -2262,7 +2279,7 @@ function buildShowSeasonRow(m, bestSeason, worstSeason) {
   return li;
 }
 
-function closeShowModal() {
+function closeShowModal(opts = {}) {
   if (els.showModal.hidden) return;
   els.showModal.hidden = true;
   els.showModal.setAttribute('aria-hidden', 'true');
@@ -2274,9 +2291,14 @@ function closeShowModal() {
   if (showModalState.lastFocus && typeof showModalState.lastFocus.focus === 'function') {
     showModalState.lastFocus.focus();
   }
+  const reopenChangelog = !opts.suppressReopen
+    && showModalState.fromChangelog
+    && els.modal.hidden;
   showModalState.seriesId = null;
   showModalState.lastFocus = null;
+  showModalState.fromChangelog = false;
   writeStateToURL();
+  if (reopenChangelog) openChangelogModal();
 }
 
 function syncModalWatchBtn() {
@@ -2491,10 +2513,12 @@ function jumpToSeason(item) {
   if (!dataset?.matches) return;
   const m = dataset.matches.find((x) => x.seriesId === item.seriesId && x.season === item.season);
   closeChangelogModal();
+  // fromChangelog flag — when set, closing the opened modal returns
+  // the user to the "What's new" list they were browsing.
   if (m) {
-    openModal(m);
+    openModal(m, { fromChangelog: true });
   } else if (dataset.matches.some((x) => x.seriesId === item.seriesId)) {
-    openShowModal(item.seriesId);
+    openShowModal(item.seriesId, { fromChangelog: true });
   }
 }
 
