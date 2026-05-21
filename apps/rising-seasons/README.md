@@ -94,14 +94,12 @@ The app degrades gracefully without each layer:
 
 Pass via env vars to `build-data.js`:
 
-| Var               | Default                              | Meaning                                                                                            |
-| ----------------- | ------------------------------------ | -------------------------------------------------------------------------------------------------- |
-| `MIN_EPISODES`    | `3`                                  | Skip seasons with fewer rated episodes                                                             |
-| `MIN_VOTES`       | `100`                                | Every episode must have at least this many votes                                                   |
-| `RELAX_GENRES`    | `Reality-TV,Game-Show,Talk-Show`     | Series tagged with any of these genres use the lower floor below                                   |
-| `RELAX_MIN_VOTES` | `10`                                 | Per-episode vote floor for relaxed-genre series (reality episodes rarely clear 100 votes on IMDb)  |
+| Var            | Default | Meaning                                          |
+| -------------- | ------- | ------------------------------------------------ |
+| `MIN_EPISODES` | `3`     | Skip seasons with fewer rated episodes           |
+| `MIN_VOTES`    | `5`     | Every episode must have at least this many votes |
 
-The browser UI applies its own (stricter) defaults on top, so building wide and filtering narrow in the UI is the easy path.
+The default vote floor is deliberately low — IMDb's per-episode vote counts can be tiny for older shows, foreign series, reality TV, and short-run formats, and a high floor at build time wipes them out. The browser UI exposes its own minimum-votes filter and a popularity-sorted view, so building wide and filtering narrow in the UI is the easy path.
 
 ## Viewing locally
 
