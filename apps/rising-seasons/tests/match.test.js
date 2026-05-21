@@ -226,15 +226,22 @@ test('isUShaped rejects when the dip is shallower than 0.5', () => {
 });
 
 test('isUShaped allows a dip 0.5 below only one endpoint', () => {
-  // Opener 9.0, finale 8.5. Interior dip to 8.4 — 0.6 below opener, 0.1
-  // below finale. The "either endpoint" rule means this qualifies.
-  assert.equal(isUShaped(season(9.0, 8.5, 8.4, 8.5)), true);
+  // Opener 9.0, finale 8.6. Interior 8.5 and 8.4 are both strictly
+  // below both endpoints. Dip of 8.4 is 0.6 below opener but only 0.2
+  // below finale — the "either endpoint" rule means this qualifies.
+  assert.equal(isUShaped(season(9.0, 8.5, 8.4, 8.6)), true);
 });
 
-test('isUShaped allows interior episode tied with finale', () => {
-  // Opener 9.0, ep 2 ties with finale at 8.5, ep 3 dips to 7.8 (1.2 below opener).
-  // Ties are not "strictly beats" — should still qualify.
-  assert.equal(isUShaped(season(9.0, 8.5, 7.8, 8.5)), true);
+test('isUShaped rejects when an interior episode ties an endpoint', () => {
+  // Opener 9.0, finale 8.5, but ep 2 also 8.5 ties the finale → finale
+  // isn't STRICTLY the peak. Black Mirror S2 (E1=E2=7.9) was the
+  // motivating real-world case.
+  assert.equal(isUShaped(season(9.0, 8.5, 7.8, 8.5)), false);
+});
+
+test('isUShaped rejects when an interior ties the opener', () => {
+  // Two episodes both at 7.9 — opener doesn't strictly dominate.
+  assert.equal(isUShaped(season(7.9, 7.9, 6.5, 9.1)), false);
 });
 
 test('isUShaped rejects very short seasons (n < 3)', () => {

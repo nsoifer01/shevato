@@ -25,9 +25,10 @@ const DEFAULTS = {
   rollercoaster: { minFlips: 4, minRange: 1.2, minAvgDiff: 0.4, ignoreBelow: 0.2 },
   // "Mid-peak" — peak sits in the interior; both edges sit well below it.
   midPeak: { peakAboveStart: 0.7, peakAboveEnd: 0.7 },
-  // "U-shaped" — opener and finale are the season's peaks (no interior
-  // episode strictly beats either), with at least one interior dip
-  // sitting >= dipDepth below opener OR finale.
+  // "U-shaped" — opener and finale are the season's peaks. Both
+  // STRICTLY exceed every interior episode (no ties — if an interior
+  // ep matches an endpoint, that endpoint isn't really a peak), and
+  // at least one interior dip sits >= dipDepth below opener OR finale.
   // Distinct from rebound (which requires end > start) and from
   // front-loaded (which has no strong finale).
   uShaped: { dipDepth: 0.5 },
@@ -182,11 +183,13 @@ function isUShaped(episodes, opts = DEFAULTS.uShaped) {
   const opener = episodes[0].rating;
   const finale = episodes[n - 1].rating;
   let dipFound = false;
-  // Opener and finale must dominate — no interior episode may strictly
-  // beat either. Ties with the endpoints are allowed.
+  // Opener and finale must STRICTLY exceed every interior episode —
+  // they are the season's peaks, not tied for peak. (e.g. Black Mirror
+  // S2 has E1=E2=7.9, which means E1 doesn't dominate, so it shouldn't
+  // count as U-shaped.)
   for (let i = 1; i < n - 1; i++) {
     const r = episodes[i].rating;
-    if (r > opener || r > finale) return false;
+    if (r >= opener || r >= finale) return false;
     if ((opener - r) >= opts.dipDepth || (finale - r) >= opts.dipDepth) {
       dipFound = true;
     }
