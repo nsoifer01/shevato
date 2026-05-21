@@ -585,6 +585,14 @@ body.rising-seasons-app button {
   box-shadow: 0 1px 0 rgba(255, 255, 255, 0.02) inset, var(--shadow-lift);
 }
 
+/* Surprise group — two adjacent buttons sharing a labeled boundary:
+   primary "Surprise me" (random across all filtered) + secondary
+   "Popular pick" (random across the top 50 by current sort). */
+.surprise-group {
+  display: inline-flex;
+  align-items: stretch;
+  gap: 0.35rem;
+}
 /* Soften the Surprise CTA — was the heaviest element on the bar,
    competing with active filter pills. Now reads as a secondary action
    that's still clearly the primary yellow surface, just less shouty. */
@@ -596,6 +604,22 @@ body.rising-seasons-app button {
   filter: saturate(0.92);
 }
 .filter-row.primary .surprise:hover { filter: saturate(1) brightness(1.04); }
+.filter-row.primary .surprise-popular {
+  font-size: 0.8rem;
+  font-weight: 500;
+  letter-spacing: 0;
+  padding: 0 0.75rem;
+  /* Sits next to the primary yellow Surprise me — quieter so the
+     primary stays clearly primary, but visible enough to discover. */
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  color: rgba(231, 233, 238, 0.85);
+}
+.filter-row.primary .surprise-popular:hover {
+  background: rgba(255, 255, 255, 0.08);
+  border-color: rgba(255, 255, 255, 0.22);
+  color: #ffffff;
+}
 
 /* Tighter horizontal padding on the buttons inside the slimmer toolbar
    so the labels don't crowd the rounded edges at the smaller height. */
