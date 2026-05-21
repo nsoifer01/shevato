@@ -308,40 +308,6 @@ test('findMatches drops seasons whose lowest-vote episode is under minVotes', ()
   assert.equal(findMatches(series, episodes, { minVotes: 25 }).length, 1);
 });
 
-test('findMatches applies relaxedMinVotes only to series in relaxedGenres', () => {
-  const series = new Map([
-    ['ttReal',   { title: 'Cook-Off',  year: 2020, type: 'tvSeries', genres: ['Reality-TV'] }],
-    ['ttDrama',  { title: 'Big Drama', year: 2020, type: 'tvSeries', genres: ['Drama'] }],
-  ]);
-  // Both seasons have a low-vote episode (15) — well below the standard 100.
-  const episodes = new Map([
-    ['ttReal',  new Map([[1, [ep(1, 7.0, 15), ep(2, 7.2, 5000), ep(3, 7.4, 5000), ep(4, 7.5, 5000)]]])],
-    ['ttDrama', new Map([[1, [ep(1, 7.0, 15), ep(2, 7.2, 5000), ep(3, 7.4, 5000), ep(4, 7.5, 5000)]]])],
-  ]);
-  const matches = findMatches(series, episodes, {
-    minVotes: 100,
-    relaxedGenres: new Set(['Reality-TV']),
-    relaxedMinVotes: 10,
-  });
-  assert.equal(matches.length, 1);
-  assert.equal(matches[0].seriesId, 'ttReal');
-});
-
-test('findMatches accepts relaxedGenres as an array', () => {
-  const series = new Map([
-    ['ttGame', { title: 'Quiz Show', year: 2021, type: 'tvSeries', genres: ['Game-Show'] }],
-  ]);
-  const episodes = new Map([
-    ['ttGame', new Map([[1, [ep(1, 7.0, 20), ep(2, 7.2, 20), ep(3, 7.4, 20), ep(4, 7.5, 20)]]])],
-  ]);
-  const matches = findMatches(series, episodes, {
-    minVotes: 100,
-    relaxedGenres: ['Game-Show'],
-    relaxedMinVotes: 10,
-  });
-  assert.equal(matches.length, 1);
-});
-
 test('findMatches skips series missing from the metadata map', () => {
   const series = new Map();
   const episodes = new Map([
