@@ -195,28 +195,55 @@ test('isMidPeak rejects a peak in the last quarter', () => {
 
 // --- isUShaped ---
 
-test('isUShaped accepts a clear U with strong opener + finale and a middle dip', () => {
-  // First quarter avg ~8.5, middle ~7.0, last quarter avg ~8.5
-  assert.equal(isUShaped(season(8.5, 8.4, 7.0, 6.9, 7.1, 8.5, 8.6, 8.4)), true);
+test('isUShaped accepts a clear U — opener+finale are peaks, middle dips >= 0.5', () => {
+  // Opener 9.0 and finale 9.0 are tied as the season max; ep 3 dips to 8.2 (0.8 below).
+  assert.equal(isUShaped(season(9.0, 8.7, 8.2, 8.6, 9.0)), true);
 });
 
-test('isUShaped rejects a rising season (no middle dip)', () => {
+test('isUShaped rejects a rising season (interior beats opener)', () => {
+  // Interior eps beat the opener — opener is not a peak.
   assert.equal(isUShaped(season(7.0, 7.2, 7.5, 7.8, 8.0, 8.4)), false);
 });
 
-test('isUShaped rejects a season without a strong finale (front-loaded)', () => {
-  // First quarter ~8.5, middle ~7.0, last quarter ~7.0 — opener strong, finale not.
-  assert.equal(isUShaped(season(8.5, 8.4, 7.0, 6.9, 7.1, 7.0, 6.9, 7.1)), false);
+test('isUShaped rejects when an interior episode beats the finale', () => {
+  // ep 2 (9.2) is higher than finale (8.4) — finale is not a peak.
+  assert.equal(isUShaped(season(8.5, 9.2, 7.0, 8.4)), false);
 });
 
-test('isUShaped rejects a season without a strong opener', () => {
-  // First quarter ~7.0, middle ~7.0, last quarter ~8.5 — finale strong, opener not.
-  assert.equal(isUShaped(season(7.0, 7.1, 7.0, 6.9, 7.1, 8.5, 8.6, 8.4)), false);
+test('isUShaped rejects when an interior episode beats the opener', () => {
+  // ep 2 (9.2) is higher than opener (8.5).
+  assert.equal(isUShaped(season(8.5, 9.2, 7.0, 8.5)), false);
 });
 
-test('isUShaped rejects very short seasons', () => {
-  // Fewer than 6 episodes — too short to identify a U.
-  assert.equal(isUShaped(season(8.5, 8.4, 7.0, 8.5, 8.4)), false);
+test('isUShaped accepts a 3-episode U (opener=finale=peak, middle dips)', () => {
+  // BBC Sherlock-style 3-ep season — still a valid U if the middle dips.
+  assert.equal(isUShaped(season(9.0, 8.3, 9.0)), true);
+});
+
+test('isUShaped rejects when the dip is shallower than 0.5', () => {
+  // Opener and finale are 9.0; deepest interior dip is only 8.6 (0.4 below).
+  assert.equal(isUShaped(season(9.0, 8.7, 8.6, 8.8, 9.0)), false);
+});
+
+test('isUShaped allows a dip 0.5 below only one endpoint', () => {
+  // Opener 9.0, finale 8.5. Interior dip to 8.4 — 0.6 below opener, 0.1
+  // below finale. The "either endpoint" rule means this qualifies.
+  assert.equal(isUShaped(season(9.0, 8.5, 8.4, 8.5)), true);
+});
+
+test('isUShaped allows interior episode tied with finale', () => {
+  // Opener 9.0, ep 2 ties with finale at 8.5, ep 3 dips to 7.8 (1.2 below opener).
+  // Ties are not "strictly beats" — should still qualify.
+  assert.equal(isUShaped(season(9.0, 8.5, 7.8, 8.5)), true);
+});
+
+test('isUShaped rejects very short seasons (n < 3)', () => {
+  // Two episodes is too short — no interior to dip.
+  assert.equal(isUShaped(season(8.5, 8.5)), false);
+});
+
+test('isUShaped rejects a flat season with no real dip', () => {
+  assert.equal(isUShaped(season(8.5, 8.4, 8.5, 8.4, 8.5)), false);
 });
 
 // --- detectShapes ---
