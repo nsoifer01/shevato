@@ -580,9 +580,36 @@ body.rising-seasons-app button {
      extends the same surface and closes the shell. */
   border-radius: 12px 12px 0 0;
   border-bottom: 0;
-  padding: 3px 3px 1px;
-  gap: 0.3rem;
+  padding: 4px 6px;
+  gap: 0.5rem;
   box-shadow: 0 1px 0 rgba(255, 255, 255, 0.02) inset, var(--shadow-lift);
+}
+/* Subtle vertical separator dividing the search ("find") cluster from
+   the right-side ("view + discover") cluster. Without it the row reads
+   as one indistinct strip of widgets — the divider helps the eye chunk
+   the controls. Only shown at viewports wide enough that everything
+   sits on a single line. */
+@media (min-width: 760px) {
+  .filter-row.primary .view-toggle {
+    position: relative;
+  }
+  .filter-row.primary .view-toggle::before {
+    content: '';
+    position: absolute;
+    left: -0.35rem;
+    top: 18%;
+    bottom: 18%;
+    width: 1px;
+    background: rgba(255, 255, 255, 0.1);
+  }
+}
+/* At narrow widths the row wraps. Lock the visual order so search is
+   always first (primary task), view-toggle second, surprise actions
+   last — regardless of which break point the row wraps at. */
+@media (max-width: 759px) {
+  .filter-row.primary .search { order: 1; flex-basis: 100%; }
+  .filter-row.primary .view-toggle { order: 2; }
+  .filter-row.primary .surprise-group { order: 3; margin-left: auto; }
 }
 
 /* Surprise group — two adjacent buttons sharing a labeled boundary:
@@ -835,7 +862,10 @@ body.rising-seasons-app button {
   background-color: rgba(255, 255, 255, 0.04);
   border-color: var(--accent);
   outline: none;
-  box-shadow: 0 0 0 3px var(--accent-soft);
+  /* Smaller, dimmer focus ring than the global default. The full
+     3px yellow ring fought with the yellow Surprise CTA next to it;
+     a quieter halo lets the input own its focus without competing. */
+  box-shadow: 0 0 0 2px rgba(245, 197, 24, 0.18);
 }
 .search input { padding: 0 0.85rem; font-size: 1rem; }
 .search input::placeholder { color: var(--muted-2); }
