@@ -2048,6 +2048,46 @@ tr:focus-within .icon-btn {
   box-shadow: 0 0 0 2px rgba(248, 113, 113, 0.22);
 }
 
+.icon-btn-share:hover {
+  background: rgba(99, 102, 241, 0.12);
+  color: var(--accent-2);
+}
+.icon-btn-share:focus-visible {
+  box-shadow: 0 0 0 2px var(--accent-soft);
+}
+
+/* Inline toast that appears next to the share button after copying. */
+.share-toast {
+  display: inline-block;
+  margin-left: 0.35rem;
+  padding: 0.18rem 0.55rem;
+  border-radius: 999px;
+  background: var(--surface-3);
+  border: 1px solid var(--border-strong);
+  color: var(--good);
+  font-size: 0.72rem;
+  font-weight: 600;
+  white-space: nowrap;
+  pointer-events: none;
+  animation: share-toast-in 0.15s ease;
+}
+@keyframes share-toast-in {
+  from { opacity: 0; transform: translateY(-4px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+/* Post-save share button in the paste actions bar */
+.paste-share-btn {
+  height: 2.6rem;
+  font-size: 0.85rem;
+  gap: 0.35rem;
+}
+.paste-share-icon {
+  display: inline-flex;
+  align-items: center;
+}
+.paste-share-icon svg { width: 14px; height: 14px; }
+
 .history-controls {
   display: flex;
   flex-wrap: wrap;
