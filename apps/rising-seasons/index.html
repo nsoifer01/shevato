@@ -204,10 +204,18 @@
           <button type="button" class="btn view-btn" data-view="grid" aria-pressed="true" aria-label="Grid view" title="Grid view">▦</button>
           <button type="button" class="btn view-btn" data-view="list" aria-pressed="false" aria-label="List view" title="List view">☰</button>
         </div>
-        <button class="btn btn-primary surprise" id="surprise" type="button" title="Pick one at random">
-          <span aria-hidden="true">🎲</span>
-          <span>Surprise me</span>
-        </button>
+        <div class="surprise-group" role="group" aria-label="Random pick">
+          <button class="btn btn-primary surprise" id="surprise" type="button"
+                  title="Random pick across every season matching your filters">
+            <span aria-hidden="true">🎲</span>
+            <span>Surprise me</span>
+          </button>
+          <button class="btn btn-ghost surprise-popular" id="surprisePopular" type="button"
+                  title="Random pick from the 50 most-watched seasons matching your filters">
+            <span aria-hidden="true">🔥</span>
+            <span>Popular pick</span>
+          </button>
+        </div>
       </div>
 
       <div class="quick-filters-row">
