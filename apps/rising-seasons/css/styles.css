@@ -261,32 +261,49 @@ body.rising-seasons-app button {
    centred regardless of font metrics. */
 .modal-close,
 .modal-close:hover {
-  width: 32px;
-  height: 32px;
+  /* 34 px (was 32) — closer to a comfortable touch target without
+     disrupting the modal-header layout. */
+  width: 34px;
+  height: 34px;
   padding: 0;
   border-radius: 50%;
-  background: rgba(20, 24, 35, 0.62);
+  background: rgba(255, 255, 255, 0.06);
   -webkit-backdrop-filter: blur(8px);
   backdrop-filter: blur(8px);
-  border: 1px solid rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.14);
   color: rgba(255, 255, 255, 0.85) !important;
-  font-size: 18px;
+  /* Hide the × text — pseudo-element strokes below draw a crisper,
+     weight-consistent X that renders identically at any zoom. */
+  font-size: 0;
   line-height: 1;
-  font-weight: 400;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
+  position: relative;
   box-shadow:
-    0 4px 14px rgba(0, 0, 0, 0.35),
-    0 0 0 1px rgba(0, 0, 0, 0.4) inset !important;
-  transition: background 0.18s var(--ease), border-color 0.18s var(--ease), color 0.18s var(--ease), transform 0.08s var(--ease);
+    0 4px 14px rgba(0, 0, 0, 0.3),
+    0 0 0 1px rgba(0, 0, 0, 0.35) inset !important;
+  transition: background 0.18s var(--ease), border-color 0.18s var(--ease),
+              color 0.18s var(--ease), transform 0.08s var(--ease);
 }
+.modal-close::before,
+.modal-close::after {
+  content: '';
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 14px;
+  height: 2px;
+  background: currentColor;
+  border-radius: 1px;
+  transform-origin: center;
+  transition: transform 0.2s var(--ease);
+}
+.modal-close::before { transform: translate(-50%, -50%) rotate(45deg); }
+.modal-close::after  { transform: translate(-50%, -50%) rotate(-45deg); }
 .modal-close:hover {
-  background: rgba(36, 41, 56, 0.85);
-  border-color: rgba(255, 255, 255, 0.18);
+  background: rgba(255, 255, 255, 0.16);
+  border-color: rgba(255, 255, 255, 0.32);
   color: #ffffff !important;
 }
-.modal-close:active { transform: scale(0.94); }
+.modal-close:active { transform: scale(0.92); }
 .modal-close:focus-visible {
   outline: 2px solid var(--accent);
   outline-offset: 2px;
