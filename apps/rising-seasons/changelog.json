@@ -1,6 +1,182 @@
 {
   "updates": [
     {
+      "builtAt": "2026-05-21T07:32:48.227Z",
+      "totals": {
+        "seasons": 16582,
+        "delta": 7
+      },
+      "shapeCounts": {
+        "declining": 221,
+        "rollercoaster": 3559,
+        "rebound": 2795,
+        "mid-peak": 1121,
+        "big-finale": 4074,
+        "bad-finale": 1048,
+        "front-loaded": 548,
+        "saved-best-for-last": 433,
+        "slow-burn": 877,
+        "rising": 601,
+        "consistent": 457
+      },
+      "shapeDeltas": {
+        "declining": 1,
+        "rollercoaster": 1,
+        "rebound": -2,
+        "mid-peak": 2,
+        "bad-finale": 1,
+        "front-loaded": 1,
+        "saved-best-for-last": -1,
+        "slow-burn": 1,
+        "rising": 2,
+        "consistent": 1
+      },
+      "added": [
+        {
+          "seriesId": "tt13875494",
+          "title": "Tracker",
+          "season": 3,
+          "seasonYear": 2025
+        },
+        {
+          "seriesId": "tt11147852",
+          "title": "Dorohedoro",
+          "season": 2,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt7491982",
+          "title": "FBI",
+          "season": 8,
+          "seasonYear": 2025
+        },
+        {
+          "seriesId": "tt4655480",
+          "title": "Chicago Med",
+          "season": 11,
+          "seasonYear": 2025
+        },
+        {
+          "seriesId": "tt14721554",
+          "title": "Below Deck Down Under",
+          "season": 4,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt0320037",
+          "title": "Jimmy Kimmel Live!",
+          "season": 24,
+          "seasonYear": 2025
+        },
+        {
+          "seriesId": "tt21861638",
+          "title": "Celebrity Jeopardy!",
+          "season": 4,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt0115147",
+          "title": "The Daily Show",
+          "season": 31,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt6645582",
+          "title": "Summer House",
+          "season": 10,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt3868860",
+          "title": "Married at First Sight",
+          "season": 17,
+          "seasonYear": 2023
+        },
+        {
+          "seriesId": "tt11310352",
+          "title": "Canal Boat Diaries",
+          "season": 2,
+          "seasonYear": 2020
+        }
+      ],
+      "removed": [
+        {
+          "seriesId": "tt31137273",
+          "title": "Margo's Got Money Troubles",
+          "season": 1,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt39122769",
+          "title": "Marriagetoxin",
+          "season": 1,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt0765425",
+          "title": "Top Chef",
+          "season": 23,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt1252370",
+          "title": "The Real Housewives of Atlanta",
+          "season": 17,
+          "seasonYear": 2026
+        }
+      ],
+      "ratingSwings": [
+        {
+          "seriesId": "tt3444938",
+          "title": "The Tonight Show Starring Jimmy Fallon",
+          "season": 5,
+          "from": 6.69,
+          "to": 6.1,
+          "delta": -0.59
+        },
+        {
+          "seriesId": "tt3444938",
+          "title": "The Tonight Show Starring Jimmy Fallon",
+          "season": 4,
+          "from": 6.83,
+          "to": 6.28,
+          "delta": -0.55
+        },
+        {
+          "seriesId": "tt3444938",
+          "title": "The Tonight Show Starring Jimmy Fallon",
+          "season": 3,
+          "from": 6.54,
+          "to": 6.07,
+          "delta": -0.47
+        },
+        {
+          "seriesId": "tt3444938",
+          "title": "The Tonight Show Starring Jimmy Fallon",
+          "season": 2,
+          "from": 6.43,
+          "to": 6.01,
+          "delta": -0.42
+        },
+        {
+          "seriesId": "tt3444938",
+          "title": "The Tonight Show Starring Jimmy Fallon",
+          "season": 1,
+          "from": 6.83,
+          "to": 6.49,
+          "delta": -0.34
+        }
+      ],
+      "modifiedCounts": {
+        "seriesVotes": 9044,
+        "avgRating": 237,
+        "shapes": 31,
+        "seriesRating": 18,
+        "poster": 1,
+        "overview": 1
+      }
+    },
+    {
       "builtAt": "2026-05-20T07:29:14.351Z",
       "totals": {
         "seasons": 16575,
