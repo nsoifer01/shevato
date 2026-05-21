@@ -11,6 +11,7 @@ const SHAPE_LABELS = {
   'bad-finale': 'Bad finale',
   rollercoaster: 'Rollercoaster',
   'mid-peak': 'Mid-peak',
+  'u-shaped': 'U-shaped',
   'saved-best-for-last': 'Saved best for last',
 };
 
@@ -194,6 +195,47 @@ function debounce(fn, ms) {
   };
 }
 
+// --- poster placeholder ---
+// 80% of series in the dataset have no TMDB poster (the build's TMDB
+// enrichment is incremental and the catalog is huge), so the placeholder
+// has to do real work. Render the show title prominently and tint the
+// background by a stable hash of the title so a given show is always the
+// same color across cards/modals.
+function hashHue(s) {
+  let h = 0;
+  for (let i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) | 0;
+  return Math.abs(h) % 360;
+}
+function populatePosterFallback(el, title) {
+  if (!el || el.dataset.populated === '1') return;
+  el.dataset.populated = '1';
+  el.style.setProperty('--poster-hue', String(hashHue(title || 'unknown')));
+  const label = document.createElement('span');
+  label.className = 'poster-fallback-title';
+  label.textContent = title || '?';
+  el.appendChild(label);
+}
+
+// First meaningful character of the title — skips leading articles
+// ("The X-Files" → "X", "A Quiet Place" → "Q") and falls back to the
+// raw first char. Used by the suggestion dropdown where the full title
+// won't fit in the 32×48 px poster slot.
+function posterInitial(title) {
+  if (!title) return '?';
+  const cleaned = title.replace(/^(the|a|an)\s+/i, '').trim();
+  const ch = (cleaned || title).charAt(0);
+  return ch.toUpperCase() || '?';
+}
+
+// --- search normalization ---
+// "The X-Files" → "the x files", "Married... with Children" → "married with children".
+// Lets a typed query of "the x files" or "married with children" match titles
+// whose punctuation differs from how the user types it. Same form is applied
+// to query and to each indexed title before substring-matching.
+function normalizeSearch(s) {
+  return s.toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
+}
+
 // --- localStorage helpers ---
 
 const Watched = {
@@ -285,6 +327,11 @@ async function load() {
   } catch (err) {
     showError(err);
     return;
+  }
+  // Precompute normalized title once per match so the search hot path doesn't
+  // re-derive it on every filter pass. [[normalizeSearch]] for the rule.
+  for (const m of dataset.matches) {
+    m.titleSearch = normalizeSearch(m.title);
   }
   loadChangelog();
   Watched.load();
@@ -392,6 +439,7 @@ function buildSeriesIndex() {
       entry = {
         seriesId: m.seriesId,
         title: m.title,
+        titleSearch: m.titleSearch,
         year: m.year || null,
         poster: m.poster || null,
       };
@@ -564,6 +612,16 @@ function updateShapeChipCounts() {
   const baseNoShape = dataset.matches.filter(passesNonShape);
   const currentResults = baseNoShape.filter(m => passesShapeAnd(m, state.shapes));
 
+  // Tally per-shape hits in a single pass instead of one pass per chip —
+  // a season's shapes[] is short (typically 0-3), so this is roughly
+  // currentResults * 1.5 work versus currentResults * 11 work before.
+  const shapeCounts = Object.create(null);
+  for (const m of currentResults) {
+    for (const s of m.shapes) {
+      shapeCounts[s] = (shapeCounts[s] || 0) + 1;
+    }
+  }
+
   for (const btn of els.shapes.querySelectorAll('.shape-chip')) {
     const shape = btn.dataset.shape;
     const span = btn.querySelector('[data-count]');
@@ -575,15 +633,7 @@ function updateShapeChipCounts() {
       continue;
     }
 
-    let n;
-    if (state.shapes.has(shape)) {
-      // Active: every result already has this shape, so n == result total.
-      n = currentResults.length;
-    } else {
-      // Inactive: how many current results would survive adding this filter.
-      n = 0;
-      for (const m of currentResults) if (m.shapes.includes(shape)) n++;
-    }
+    const n = state.shapes.has(shape) ? currentResults.length : (shapeCounts[shape] || 0);
     if (span) span.textContent = n.toLocaleString();
 
     // Disable an inactive chip that would drive results to zero. Active
@@ -716,7 +766,9 @@ function renderLanguageChips() {
 // --- filter + sort ---
 
 function buildNonShapeChecker() {
-  const q = state.search.trim().toLowerCase();
+  const qRaw = state.search.trim();
+  const q = qRaw.toLowerCase();
+  const qNorm = normalizeSearch(qRaw);
   const minEps = state.minEpisodes;
   const maxEps = state.maxEpisodes;
   const minVotes = state.minVotes;
@@ -748,11 +800,15 @@ function buildNonShapeChecker() {
       // user edits the search input.
       if (m.seriesId !== state.lockedSeriesId) return false;
     } else if (q) {
-      const titleHit = m.title.toLowerCase().includes(q);
+      // Title match runs on normalized form so punctuation/whitespace
+      // differences don't block a match (e.g. "the x files" matches
+      // "The X-Files"). IMDb-ID match stays plain since IDs are alnum.
+      const titleHit = qNorm.length > 0 && m.titleSearch.includes(qNorm);
       const idHit = m.seriesId.toLowerCase().includes(q);
-      let epHit = false;
       // Episode-title fallback — only run when the cheaper title/id checks
-      // missed, since this scans every episode in the season.
+      // missed, since this scans every episode in the season. Gated at
+      // q.length >= 3 so single-character noise queries don't iterate.
+      let epHit = false;
       if (!titleHit && !idHit && q.length >= 3) {
         for (const ep of m.episodes) {
           if (ep.name && ep.name.toLowerCase().includes(q)) { epHit = true; break; }
@@ -1330,6 +1386,8 @@ function buildCard(m) {
     img.alt = `${m.title} poster`;
     img.loading = 'lazy';
     posterEl.appendChild(img);
+  } else {
+    populatePosterFallback(posterEl.querySelector('.poster-fallback'), m.title);
   }
 
   applyWatchedState(node, node.querySelector('.watch-toggle'), m);
@@ -1396,6 +1454,8 @@ function buildRow(m) {
     img.alt = `${m.title} poster`;
     img.loading = 'lazy';
     posterEl.appendChild(img);
+  } else {
+    populatePosterFallback(posterEl.querySelector('.poster-fallback'), m.title);
   }
 
   applyWatchedState(node, node.querySelector('.watch-toggle'), m);
@@ -1436,23 +1496,30 @@ function onToggleWatched(m, cardOrRow) {
 
 // --- curve drawing (shared) ---
 
-function drawCurve(svg, episodes, W, H, padXOverride) {
+function drawCurve(svg, episodes, W, H, opts) {
   // Charts with hover dots need a small inset so the dots don't get
   // clipped at the viewport edge. Sparklines without dots (the list-view
   // row and the show-modal per-season mini-spark) pass padX=0 so the
   // line/fill plot literally edge-to-edge — symmetric by construction,
   // no perceived left-bias from a 2-6 px gap on the left.
-  const padX = typeof padXOverride === 'number' ? padXOverride : 4;
+  // Backward-compat: a numeric 5th arg is treated as padX.
+  if (typeof opts === 'number') opts = { padX: opts };
+  opts = opts || {};
+  const showAxis = opts.showAxis === true;
+  const defaultPad = showAxis ? 4 : 4;
+  const padX = typeof opts.padX === 'number' ? opts.padX : defaultPad;
+  const padXLeft = showAxis ? 36 : padX;
+  const padXRight = padX;
   const padY = 6;
   const ratings = episodes.map((e) => e.rating);
   const lo = Math.max(0, Math.min(...ratings) - 0.3);
   const hi = Math.min(10, Math.max(...ratings) + 0.3);
   const span = Math.max(0.1, hi - lo);
   const n = episodes.length;
-  const xStep = n > 1 ? (W - padX * 2) / (n - 1) : 0;
+  const xStep = n > 1 ? (W - padXLeft - padXRight) / (n - 1) : 0;
 
   const points = episodes.map((e, i) => {
-    const x = padX + (n > 1 ? i * xStep : (W - padX * 2) / 2);
+    const x = padXLeft + (n > 1 ? i * xStep : (W - padXLeft - padXRight) / 2);
     const y = padY + (1 - (e.rating - lo) / span) * (H - padY * 2);
     return [x, y];
   });
@@ -1463,6 +1530,8 @@ function drawCurve(svg, episodes, W, H, padXOverride) {
   svg.querySelector('.curve-line').setAttribute('d', linePath);
   svg.querySelector('.curve-area').setAttribute('d', areaPath);
 
+  if (showAxis) drawYAxis(svg, lo, hi, padXLeft, padXRight, padY, W, H);
+
   const dots = svg.querySelector('.curve-dots');
   if (dots) {
     dots.replaceChildren();
@@ -1471,12 +1540,89 @@ function drawCurve(svg, episodes, W, H, padXOverride) {
       c.setAttribute('cx', points[i][0].toFixed(1));
       c.setAttribute('cy', points[i][1].toFixed(1));
       c.setAttribute('r', H > 100 ? '4' : '2.5');
+      if (episodes[i].episode === 0) c.classList.add('special-ep');
       const title = document.createElementNS('http://www.w3.org/2000/svg', 'title');
-      title.textContent = `Ep ${episodes[i].episode}: ${episodes[i].rating.toFixed(1)} · ${episodes[i].votes.toLocaleString()} votes`;
+      const epLabel = episodes[i].episode === 0 ? 'Ep 0 (pre-season special)' : `Ep ${episodes[i].episode}`;
+      title.textContent = `${epLabel}: ${episodes[i].rating.toFixed(1)} · ${episodes[i].votes.toLocaleString()} votes`;
       c.appendChild(title);
       dots.appendChild(c);
     }
   }
+}
+
+// Draw IMDb-rating gridlines + labels along the left edge of a curve SVG.
+// 5 evenly-spaced ticks across the actual [lo, hi] range — snapped to 0.1
+// (IMDb's own precision) so the labels read like real rating values.
+//
+// Gridlines render inside the SVG (horizontal lines can safely stretch
+// under preserveAspectRatio="none"). Labels are placed as HTML in a sibling
+// overlay so they're never horizontally squished by the SVG's non-uniform
+// scale — that's what caused "9.3" to read as "0.3" before.
+function drawYAxis(svg, lo, hi, padXLeft, padXRight, padY, W, H) {
+  const NS = 'http://www.w3.org/2000/svg';
+  const labelsEl = ensureAxisLabelContainer(svg);
+  while (labelsEl.firstChild) labelsEl.removeChild(labelsEl.firstChild);
+
+  let group = svg.querySelector('.curve-axis');
+  if (!group) {
+    group = document.createElementNS(NS, 'g');
+    group.setAttribute('class', 'curve-axis');
+    svg.insertBefore(group, svg.firstChild);
+  } else {
+    while (group.firstChild) group.removeChild(group.firstChild);
+  }
+
+  const span = Math.max(0.1, hi - lo);
+  const ticks = 5;
+  const plotTop = padY;
+  const plotBottom = H - padY;
+  const plotRight = W - padXRight;
+
+  for (let i = 0; i < ticks; i++) {
+    const v = lo + (span * i) / (ticks - 1);
+    const y = plotTop + (1 - (v - lo) / span) * (plotBottom - plotTop);
+
+    // Gridline — SVG, free to stretch.
+    const line = document.createElementNS(NS, 'line');
+    line.setAttribute('x1', padXLeft);
+    line.setAttribute('x2', plotRight);
+    line.setAttribute('y1', y.toFixed(1));
+    line.setAttribute('y2', y.toFixed(1));
+    line.setAttribute('class', 'axis-grid');
+    group.appendChild(line);
+
+    // Label — HTML, positioned by percentage so SVG scaling doesn't
+    // distort the glyphs.
+    const yPct = (y / H * 100).toFixed(2);
+    const label = document.createElement('span');
+    label.className = 'axis-label';
+    label.style.top = yPct + '%';
+    label.textContent = v.toFixed(1);
+    labelsEl.appendChild(label);
+  }
+}
+
+// Wrap an axis-bearing SVG in a positioned container the first time we
+// draw on it, so the HTML axis labels can layer over the SVG without being
+// stretched by the SVG's non-uniform scale.
+function ensureAxisLabelContainer(svg) {
+  if (svg.parentElement && svg.parentElement.classList.contains('curve-with-axis')) {
+    let labels = svg.parentElement.querySelector('.curve-axis-labels');
+    if (!labels) {
+      labels = document.createElement('div');
+      labels.className = 'curve-axis-labels';
+      svg.parentElement.appendChild(labels);
+    }
+    return labels;
+  }
+  const wrap = document.createElement('div');
+  wrap.className = 'curve-with-axis';
+  svg.parentNode.insertBefore(wrap, svg);
+  wrap.appendChild(svg);
+  const labels = document.createElement('div');
+  labels.className = 'curve-axis-labels';
+  wrap.appendChild(labels);
+  return labels;
 }
 
 // Picks a visually distinct stroke color per season. HSL spread across the
@@ -1491,7 +1637,8 @@ function seasonColor(i, total) {
 // 0..1 (episode index / season length) so seasons of different lengths align.
 // Y range spans the global min/max across all seasons (slightly padded).
 function drawSeasonOverlay(svg, seasons, W, H) {
-  const padX = 10;
+  const padXLeft = 36;
+  const padXRight = 10;
   const padY = 12;
   // Wipe previous content — this SVG is reused across openShowModal calls.
   while (svg.firstChild) svg.removeChild(svg.firstChild);
@@ -1506,15 +1653,18 @@ function drawSeasonOverlay(svg, seasons, W, H) {
   hi = Math.min(10, hi + 0.3);
   const span = Math.max(0.1, hi - lo);
 
+  // Axis first so the season curves draw on top of the gridlines.
+  drawYAxis(svg, lo, hi, padXLeft, padXRight, padY, W, H);
+
   const NS = 'http://www.w3.org/2000/svg';
   const colors = [];
   seasons.forEach((s, idx) => {
     const color = seasonColor(idx, seasons.length);
     colors.push({ season: s.season, color });
     const n = s.episodes.length;
-    const xStep = n > 1 ? (W - padX * 2) / (n - 1) : 0;
+    const xStep = n > 1 ? (W - padXLeft - padXRight) / (n - 1) : 0;
     const points = s.episodes.map((e, i) => {
-      const x = padX + (n > 1 ? i * xStep : (W - padX * 2) / 2);
+      const x = padXLeft + (n > 1 ? i * xStep : (W - padXLeft - padXRight) / 2);
       const y = padY + (1 - (e.rating - lo) / span) * (H - padY * 2);
       return [x, y];
     });
@@ -1767,18 +1917,28 @@ function openModal(m, opts = {}) {
   } else {
     const fallback = document.createElement('div');
     fallback.className = 'poster-fallback';
+    populatePosterFallback(fallback, m.title);
     els.modalPoster.appendChild(fallback);
   }
 
-  drawCurve(els.modalCurve, m.episodes, 600, 180);
+  drawCurve(els.modalCurve, m.episodes, 600, 180, { showAxis: true });
 
   const epFrag = document.createDocumentFragment();
   for (const e of m.episodes) {
     const li = document.createElement('li');
+    // IMDb tags pre-season specials, unaired pilots, and Christmas episodes
+    // as ep 0 of a given season. Flag them so the curve isn't read as a
+    // weak cold open from a regular ep 1.
+    if (e.episode === 0) li.classList.add('ep-special');
 
     const num = document.createElement('span');
     num.className = 'ep-number';
-    num.textContent = `Ep ${e.episode}`;
+    if (e.episode === 0) {
+      num.textContent = '★ Ep 0';
+      num.title = 'Pre-season special (IMDb episode 0)';
+    } else {
+      num.textContent = `Ep ${e.episode}`;
+    }
 
     // Episode title — populated by build-data.js from IMDb's
     // title.basics.tsv. Falls back to empty (hidden via CSS) when the
@@ -1954,6 +2114,7 @@ function openShowModal(seriesId) {
   } else {
     const fb = document.createElement('div');
     fb.className = 'poster-fallback';
+    populatePosterFallback(fb, meta.title);
     els.showModalPoster.appendChild(fb);
   }
 
@@ -2344,19 +2505,20 @@ function jumpToSeason(item) {
 function computeSuggestions(rawQuery) {
   const q = rawQuery.trim().toLowerCase();
   if (!q) return [];
+  const qNorm = normalizeSearch(rawQuery);
   const exact = [];
   const titleStarts = [];
   const titleContains = [];
   const idMatches = [];
   const matchedIds = new Set();
   for (const s of seriesIndex) {
-    const titleL = s.title.toLowerCase();
     const idL = s.seriesId.toLowerCase();
-    if (titleL === q || idL === q || idL === `tt${q}`) {
+    const titleN = s.titleSearch;
+    if (titleN === qNorm || idL === q || idL === `tt${q}`) {
       exact.push(s); matchedIds.add(s.seriesId);
-    } else if (titleL.startsWith(q)) {
+    } else if (qNorm && titleN.startsWith(qNorm)) {
       titleStarts.push(s); matchedIds.add(s.seriesId);
-    } else if (titleL.includes(q)) {
+    } else if (qNorm && titleN.includes(qNorm)) {
       titleContains.push(s); matchedIds.add(s.seriesId);
     } else if (idL.includes(q)) {
       idMatches.push(s); matchedIds.add(s.seriesId);
@@ -2435,6 +2597,15 @@ function renderSuggestionItems() {
       img.alt = '';
       img.loading = 'lazy';
       poster.appendChild(img);
+    } else {
+      // Tinted initial placeholder — small enough that the full title
+      // doesn't fit, so we show a single distinguishing character.
+      poster.classList.add('ss-poster-fallback');
+      poster.style.setProperty('--poster-hue', String(hashHue(s.title || 'unknown')));
+      const initial = document.createElement('span');
+      initial.className = 'ss-poster-initial';
+      initial.textContent = posterInitial(s.title);
+      poster.appendChild(initial);
     }
 
     const text = document.createElement('div');
@@ -2586,18 +2757,18 @@ function bindEvents() {
   const debouncedChange = debounce(onToolbarChange, 150);
   // Numeric inputs debounce on 'input' (mid-typing) but commit instantly on
   // 'change' (Tab out / blur) so users can still ENTER and see results.
+  // Search also debounces — at 64k seasons the filter+chip-count work is
+  // ~5-10 ms; per-keystroke renders made fast typing feel sticky.
   const debouncedInputIds = [
-    'minEpisodes', 'maxEpisodes', 'minVotes', 'minAvg', 'minClimb', 'minYear', 'maxYear',
+    'search', 'minEpisodes', 'maxEpisodes', 'minVotes', 'minAvg', 'minClimb', 'minYear', 'maxYear',
   ];
   for (const id of debouncedInputIds) {
     els[id].addEventListener('input', debouncedChange);
     els[id].addEventListener('change', onToolbarChange);
   }
-  // Search and the sort select react instantly.
-  for (const id of ['search', 'sort']) {
-    els[id].addEventListener('input', onToolbarChange);
-    els[id].addEventListener('change', onToolbarChange);
-  }
+  // Sort select still reacts instantly — it's a single click, not mid-typing.
+  els.sort.addEventListener('input', onToolbarChange);
+  els.sort.addEventListener('change', onToolbarChange);
   // Any direct keystroke in the search box releases the suggestion lock —
   // the user is now searching freeform, not riding a picked series.
   els.search.addEventListener('input', () => { state.lockedSeriesId = null; });
