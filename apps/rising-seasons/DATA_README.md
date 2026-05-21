@@ -82,10 +82,8 @@ gh run watch
 {
   "builtAt": "2026-05-11T18:24:00.000Z",
   "minEpisodes": 3,                                       // build-time threshold
-  "minVotes": 100,                                        // build-time threshold
-  "relaxedGenres": ["Reality-TV", "Game-Show", "Talk-Show"], // genres that get the lower floor below
-  "relaxedMinVotes": 10,                                  // per-episode vote floor for relaxed-genre series
-  "count": 16510,                                         // total matching seasons
+  "minVotes": 5,                                          // build-time threshold
+  "count": 64877,                                         // total matching seasons
   "shapeCounts": {
     "rollercoaster": 3551, "big-finale": 2999, "rebound": 2783,
     "mid-peak": 1105, "bad-finale": 1041, "slow-burn": 873,
@@ -183,19 +181,19 @@ Notes:
 
 `build-data.js` accepts these env vars:
 
-| Var               | Default                              | Effect                                                                                            |
-| ----------------- | ------------------------------------ | ------------------------------------------------------------------------------------------------- |
-| `MIN_EPISODES`    | `3`                                  | Skip seasons with fewer rated episodes                                                            |
-| `MIN_VOTES`       | `100`                                | Every episode must have ≥ this many votes                                                         |
-| `RELAX_GENRES`    | `Reality-TV,Game-Show,Talk-Show`     | Series tagged with any of these IMDb genres use the relaxed floor below                           |
-| `RELAX_MIN_VOTES` | `10`                                 | Per-episode vote floor for relaxed-genre series (reality episodes rarely clear 100 votes on IMDb) |
+| Var            | Default | Effect                                    |
+| -------------- | ------- | ----------------------------------------- |
+| `MIN_EPISODES` | `3`     | Skip seasons with fewer rated episodes    |
+| `MIN_VOTES`    | `5`     | Every episode must have ≥ this many votes |
 
-The browser UI applies its own (typically stricter) defaults on top, so
-build wide and let users narrow in the UI.
+The vote floor is deliberately low so older shows, foreign series, reality
+TV, and short-run formats are not filtered out at build time. The browser
+UI exposes its own minimum-votes filter and popularity sort, so build wide
+and let users narrow in the UI.
 
 ## Repo size considerations
 
-`data.json` is ~26 MB after both enrichment passes (posters + providers).
+`data.json` is ~85 MB after both enrichment passes (posters + providers).
 Weekly commits will grow git history by roughly a few MB/week (most fields
 are stable; only ratings, votes, and counts change). If history bloat
 becomes an issue, options:
