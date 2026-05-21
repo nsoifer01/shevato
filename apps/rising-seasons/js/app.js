@@ -105,6 +105,7 @@ const els = {
   modalWatchBtn: document.getElementById('modalWatchBtn'),
   modalReroll: document.getElementById('modalReroll'),
   modalViewShow: document.getElementById('modalViewShow'),
+  surprisePopular: document.getElementById('surprisePopular'),
   showModal: document.getElementById('showModal'),
   showModalTitle: document.getElementById('showModalTitle'),
   showModalSubtitle: document.getElementById('showModalSubtitle'),
@@ -1244,9 +1245,16 @@ function syncResetButton() {
     : 'No filters are currently active';
 }
 
-function surprisePick() {
+// Two surprise modes:
+//   'any'     — true random across every filtered season.
+//   'popular' — random from the top 50 by current sort (popularity by
+//               default), so the user always lands on something with
+//               enough audience to have an opinion about.
+// Reroll inside the modal honors whichever mode the user clicked.
+function surprisePick(mode = 'any') {
   if (filtered.length === 0) return null;
-  return filtered[Math.floor(Math.random() * Math.min(filtered.length, 50))];
+  const pool = mode === 'popular' ? Math.min(filtered.length, 50) : filtered.length;
+  return filtered[Math.floor(Math.random() * pool)];
 }
 
 // --- shared shape-tag + best-badge helpers ---
@@ -1894,7 +1902,10 @@ function openModal(m, opts = {}) {
       modalState.lastFocus = document.activeElement;
     }
   }
-  modalState.surprise = !!opts.surprise;
+  // Carry the surprise mode forward so the in-modal Reroll button can
+  // re-pick from the same pool the user originally chose.
+  modalState.surprise = opts.surprise === true ? 'any' :
+                        (opts.surprise === 'any' || opts.surprise === 'popular' ? opts.surprise : false);
   // Origin tracker — when set, closeModal reopens the changelog so the
   // user lands back in the "What's new" list they were browsing.
   modalState.fromChangelog = opts.fromChangelog === true || inheritedFromChangelog;
@@ -2867,13 +2878,23 @@ function bindEvents() {
   });
 
   els.surprise.addEventListener('click', () => {
-    const pick = surprisePick();
-    if (pick) openModal(pick, { surprise: true });
+    const pick = surprisePick('any');
+    if (pick) openModal(pick, { surprise: 'any' });
   });
 
+  if (els.surprisePopular) {
+    els.surprisePopular.addEventListener('click', () => {
+      const pick = surprisePick('popular');
+      if (pick) openModal(pick, { surprise: 'popular' });
+    });
+  }
+
+  // Reroll inherits whichever mode opened the modal — 'any' or 'popular' —
+  // so the dice button feels consistent with the entry point.
   els.modalReroll.addEventListener('click', () => {
-    const pick = surprisePick();
-    if (pick) openModal(pick, { surprise: true });
+    const mode = modalState.surprise || 'any';
+    const pick = surprisePick(mode);
+    if (pick) openModal(pick, { surprise: mode });
   });
 
   els.resetFilters.addEventListener('click', () => {
