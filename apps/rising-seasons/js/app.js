@@ -228,12 +228,18 @@ function posterInitial(title) {
 }
 
 // --- search normalization ---
-// "The X-Files" → "the x files", "Married... with Children" → "married with children".
-// Lets a typed query of "the x files" or "married with children" match titles
-// whose punctuation differs from how the user types it. Same form is applied
-// to query and to each indexed title before substring-matching.
+// "The X-Files" → "x files", "Married... with Children" → "married with children",
+// "The Office" → "office", "A Quiet Place" → "quiet place".
+// Lets typed queries match titles whose punctuation/articles differ from how
+// they're written. Leading "the/a/an " stripped so users typing the bare
+// show name ("office" → The Office) get an exact match, not a contains hit
+// behind unrelated titles that happen to start with the bare noun.
+// Same form is applied to both query and indexed title before comparing.
 function normalizeSearch(s) {
-  return s.toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
+  return s.toLowerCase()
+    .replace(/[^a-z0-9]+/g, ' ')
+    .trim()
+    .replace(/^(the|a|an) /, '');
 }
 
 // --- localStorage helpers ---
@@ -442,11 +448,16 @@ function buildSeriesIndex() {
         titleSearch: m.titleSearch,
         year: m.year || null,
         poster: m.poster || null,
+        // Series-level IMDb vote count — used to rank suggestion buckets
+        // so a popular show ("House") leads a long tail of obscure
+        // titles that just happen to contain the query.
+        seriesVotes: m.seriesVotes || 0,
       };
       map.set(m.seriesId, entry);
     } else {
       if (!entry.poster && m.poster) entry.poster = m.poster;
       if (!entry.year && m.year) entry.year = m.year;
+      if (m.seriesVotes && m.seriesVotes > entry.seriesVotes) entry.seriesVotes = m.seriesVotes;
     }
   }
   seriesIndex = [...map.values()].sort((a, b) => a.title.localeCompare(b.title));
@@ -2535,6 +2546,10 @@ function computeSuggestions(rawQuery) {
   const titleContains = [];
   const idMatches = [];
   const matchedIds = new Set();
+  // Full pass over the index (~34k entries, <5 ms). Earlier code broke at
+  // 40 collected candidates, which silently dropped the exact match for
+  // any query whose canonical title falls late alphabetically — typing
+  // "house" matched 40 titles starting with A-B before reaching "House".
   for (const s of seriesIndex) {
     const idL = s.seriesId.toLowerCase();
     const titleN = s.titleSearch;
@@ -2547,10 +2562,15 @@ function computeSuggestions(rawQuery) {
     } else if (idL.includes(q)) {
       idMatches.push(s); matchedIds.add(s.seriesId);
     }
-    if (exact.length + titleStarts.length + titleContains.length + idMatches.length >= MAX_SUGGESTIONS * 4) {
-      break;
-    }
   }
+  // Within each bucket, rank by series IMDb popularity desc — so the
+  // marquee "House" (~592k votes) beats "House of Cards" beats the
+  // long tail of obscure house-containing shows.
+  const byVotes = (a, b) => (b.seriesVotes || 0) - (a.seriesVotes || 0);
+  exact.sort(byVotes);
+  titleStarts.sort(byVotes);
+  titleContains.sort(byVotes);
+  idMatches.sort(byVotes);
   // Episode-name fallback: if the title pass didn't fill the dropdown and
   // the query is specific (>= 3 chars), surface series whose episode list
   // contains the query (e.g. "Gray Matter" → Breaking Bad).
