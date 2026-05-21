@@ -697,6 +697,17 @@ body.rising-seasons-app button {
   text-overflow: ellipsis;
 }
 
+.search-suggestion .ss-ep-hint {
+  display: block;
+  font-size: 0.72rem;
+  color: var(--accent);
+  font-style: italic;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  margin-top: 0.1rem;
+}
+
 .search-suggestion mark {
   background: transparent;
   color: var(--accent);
