@@ -192,32 +192,18 @@ function detectShapes(episodes) {
 //
 // Filters:
 //   minEpisodes — skip seasons with fewer rated episodes than this.
-//   minVotes    — every episode must have at least this many votes (low-vote
-//                 ratings are noisy and not meaningful).
-//   relaxedGenres / relaxedMinVotes — apply a lower per-episode vote floor
-//                 when the series is tagged with any of these genres.
-//                 Reality/competition shows get a fraction of the per-episode
-//                 votes scripted shows do, so the standard floor wipes them
-//                 out entirely; a relaxed floor lets them surface.
+//   minVotes    — every episode must have at least this many votes. The
+//                 default is intentionally low; the browser UI applies its
+//                 own (stricter) vote and popularity filters on top.
 function findMatches(seriesById, episodesBySeries, opts = {}) {
   const minEpisodes = opts.minEpisodes ?? 4;
-  const minVotes = opts.minVotes ?? 100;
-  const relaxedGenres = opts.relaxedGenres instanceof Set
-    ? opts.relaxedGenres
-    : new Set(opts.relaxedGenres || []);
-  const relaxedMinVotes = opts.relaxedMinVotes ?? minVotes;
+  const minVotes = opts.minVotes ?? 5;
 
   const seasons = []; // { seriesId, season, eps, shapes, minSeasonVotes }
 
   for (const [seriesId, bySeason] of episodesBySeries) {
     const meta = seriesById.get(seriesId);
     if (!meta) continue;
-    let floor = minVotes;
-    if (relaxedGenres.size > 0 && meta.genres) {
-      for (const g of meta.genres) {
-        if (relaxedGenres.has(g)) { floor = relaxedMinVotes; break; }
-      }
-    }
     for (const [season, eps] of bySeason) {
       if (eps.length < minEpisodes) continue;
       eps.sort((a, b) => a.episode - b.episode);
@@ -226,7 +212,7 @@ function findMatches(seriesById, episodesBySeries, opts = {}) {
       for (const e of eps) {
         if (e.votes < minSeasonVotes) minSeasonVotes = e.votes;
       }
-      if (minSeasonVotes < floor) continue;
+      if (minSeasonVotes < minVotes) continue;
 
       const shapes = detectShapes(eps);
       seasons.push({ seriesId, season, eps, shapes, minSeasonVotes });
