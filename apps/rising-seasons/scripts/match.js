@@ -25,10 +25,12 @@ const DEFAULTS = {
   rollercoaster: { minFlips: 4, minRange: 1.2, minAvgDiff: 0.4, ignoreBelow: 0.2 },
   // "Mid-peak" — peak sits in the interior; both edges sit well below it.
   midPeak: { peakAboveStart: 0.7, peakAboveEnd: 0.7 },
-  // "U-shaped" — strong opener and strong finale with a real dip between
-  // them. Distinct from rebound (which requires end > start) and from
+  // "U-shaped" — opener and finale are the season's peaks (no interior
+  // episode strictly beats either), with at least one interior dip
+  // sitting >= dipDepth below opener OR finale.
+  // Distinct from rebound (which requires end > start) and from
   // front-loaded (which has no strong finale).
-  uShaped: { edgeAboveMiddle: 0.4 },
+  uShaped: { dipDepth: 0.5 },
 };
 
 function isRising(episodes) {
@@ -176,15 +178,20 @@ function isMidPeak(episodes, opts = DEFAULTS.midPeak) {
 
 function isUShaped(episodes, opts = DEFAULTS.uShaped) {
   const n = episodes.length;
-  if (n < 6) return false;
-  const q = Math.max(1, Math.floor(n / 4));
-  const firstQ = episodes.slice(0, q);
-  const lastQ = episodes.slice(n - q);
-  const middle = episodes.slice(q, n - q);
-  if (middle.length === 0) return false;
-  const mid = avg(middle);
-  return (avg(firstQ) - mid) >= opts.edgeAboveMiddle
-      && (avg(lastQ) - mid) >= opts.edgeAboveMiddle;
+  if (n < 3) return false;
+  const opener = episodes[0].rating;
+  const finale = episodes[n - 1].rating;
+  let dipFound = false;
+  // Opener and finale must dominate — no interior episode may strictly
+  // beat either. Ties with the endpoints are allowed.
+  for (let i = 1; i < n - 1; i++) {
+    const r = episodes[i].rating;
+    if (r > opener || r > finale) return false;
+    if ((opener - r) >= opts.dipDepth || (finale - r) >= opts.dipDepth) {
+      dipFound = true;
+    }
+  }
+  return dipFound;
 }
 
 function detectShapes(episodes) {
