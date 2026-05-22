@@ -133,6 +133,14 @@
         // Default round size dropdown for GlobeDrop (locations per game).
         GLOBE_DROP_LOCATIONS_DEFAULT: 5,
 
+        // Globe Drop bullseye streak. A streak increments when a player earns
+        // base score >= 98 (near-perfect guess). Consecutive bullseyes add a
+        // multiplier capped at GLOBE_DROP_STREAK_MULTIPLIER_CAP consecutive
+        // bullseyes. The multiplier is applied on top of the distance/continent
+        // score so a hot streak can meaningfully swing the leaderboard.
+        GLOBE_DROP_STREAK_MULTIPLIER_STEP: 0.1,   // +10% per consecutive bullseye
+        GLOBE_DROP_STREAK_MULTIPLIER_CAP: 5,       // capped at 5 in a row (=> 1.5x)
+
         // Cap on small-island-nation entries per playlist. Without this,
         // luck-of-the-shuffle can pack three Maldives-class capitals into
         // a 5-location game and turn it into "name the Caribbean specks".
