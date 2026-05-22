@@ -175,6 +175,10 @@
                         <span class="action-text">Redo</span>
                     </button>
                 </div>
+                <button class="sidebar-action-btn summary-btn" onclick="showSessionSummary()" aria-label="Session summary">
+                    <span class="action-icon">📋</span>
+                    <span class="action-text">Session Summary</span>
+                </button>
                 <div class="action-buttons" id="sidebar-action-buttons">
                     <button class="sidebar-action-btn export-btn" onclick="exportData()" aria-label="Export data">
                         <span class="action-icon">📤</span>
@@ -314,6 +318,14 @@
                         </div>
                     </div>
 
+                    <!-- Current Streak Row -->
+                    <h3 class="h2h-section-title">Current Streak</h3>
+                    <div class="streak-row" id="streakRow">
+                        <div class="streak-badge" id="streakBadge">
+                            <span class="streak-text" id="streakText">—</span>
+                        </div>
+                    </div>
+
                     <!-- 90 Minute Wins Row -->
                     <h3 class="h2h-section-title">90 Minute Wins</h3>
                     <div class="stats-grid h2h-row">
@@ -357,6 +369,29 @@
                             <div class="stat-value" id="penaltyShootouts">0</div>
                         </div>
                     </div>
+
+                    <!-- Team Matchup Lookup -->
+                    <h3 class="h2h-section-title" style="margin-top: 1.5rem;">Team Matchup</h3>
+                    <div class="matchup-lookup">
+                        <div class="matchup-selects">
+                            <div class="matchup-select-group">
+                                <label class="matchup-label" id="matchupP1Label">Player 1's Team</label>
+                                <select id="matchupTeam1" class="matchup-select" onchange="updateMatchupResult()">
+                                    <option value="">— any —</option>
+                                </select>
+                            </div>
+                            <span class="matchup-vs">vs</span>
+                            <div class="matchup-select-group">
+                                <label class="matchup-label" id="matchupP2Label">Player 2's Team</label>
+                                <select id="matchupTeam2" class="matchup-select" onchange="updateMatchupResult()">
+                                    <option value="">— any —</option>
+                                </select>
+                            </div>
+                        </div>
+                        <div class="matchup-result" id="matchupResult" style="display: none;">
+                            <div class="matchup-result-grid" id="matchupResultGrid"></div>
+                        </div>
+                    </div>
                 </section>
 
                 <!-- Player Stats Tab Content -->
@@ -374,6 +409,18 @@
                         </table>
                     </div>
                 </section>
+            </div>
+
+            <!-- Recent Form Strip -->
+            <div class="form-strip-section" id="formStripSection" style="display: none;">
+                <div class="form-strip-row">
+                    <span class="form-strip-name" id="formStrip1Name">Player 1</span>
+                    <div class="form-strip-dots" id="formStrip1Dots"></div>
+                </div>
+                <div class="form-strip-row">
+                    <span class="form-strip-name" id="formStrip2Name">Player 2</span>
+                    <div class="form-strip-dots" id="formStrip2Dots"></div>
+                </div>
             </div>
 
             <!-- Game History Table -->
