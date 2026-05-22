@@ -286,9 +286,49 @@ class GymTrackerApp {
             this.achievements,
             this.workoutSessions
         );
+
+        // Feature 7: lift-specific PR milestone achievements.
+        // These live outside the standard Achievement model (no progress
+        // counter — they're simply unlocked/not). We store their ids in a
+        // Set for fast dedup, then fire a toast for each new unlock.
+        const unlockedIds = new Set(
+            this.achievements.filter(a => a.unlocked).map(a => a.id)
+        );
+        const storedMilestoneIds = new Set(this.achievements.map(a => a.id));
+        const latestBW = this.measurements.length > 0
+            ? [...this.measurements].sort((a, b) =>
+                new Date(b.date) - new Date(a.date)
+              ).find(m => m.weight != null)?.weight ?? null
+            : null;
+        const newMilestones = AchievementService.checkLiftMilestones(
+            this.workoutSessions,
+            unlockedIds,
+            latestBW,
+            this.settings.weightUnit,
+        );
+        for (const m of newMilestones) {
+            showToast(`🎉 Lift milestone: ${m.icon} ${m.name}`, 'success', 5000);
+            if (!storedMilestoneIds.has(m.id)) {
+                const a = new Achievement({
+                    id: m.id,
+                    name: m.name,
+                    description: m.description,
+                    type: 'global',
+                    icon: m.icon,
+                    requirement: { type: 'lift-milestone' },
+                    target: 1,
+                });
+                a.updateProgress(1);
+                this.achievements.push(a);
+            } else {
+                const existing = this.achievements.find(a => a.id === m.id);
+                if (existing) existing.updateProgress(1);
+            }
+        }
+
         const after = JSON.stringify(this.achievements.map(a => a.toJSON()));
 
-        if (before === after) return;
+        if (before === after && newMilestones.length === 0) return;
 
         // Newly-unlocked detection only needs to run when something moved.
         const oldAchievements = JSON.parse(before).map(j => Achievement.fromJSON(j));
