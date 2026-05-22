@@ -661,6 +661,11 @@ function generateSidebarGameInputs() {
                     <option value="draw">No Winner (Draw)</option>
                 </select>
             </div>
+            <div class="sidebar-note-section">
+                <label for="sidebar-game-note">Note (optional):</label>
+                <input type="text" id="sidebar-game-note" class="sidebar-player-input"
+                       placeholder="e.g. First session back" maxlength="80">
+            </div>
         </div>
         <div class="sidebar-game-teams">
             <div class="sidebar-player-input">
@@ -869,6 +874,8 @@ function submitSidebarGame() {
         );
     }
     
+    const noteValue = (document.getElementById('sidebar-game-note')?.value || '').trim() || undefined;
+
     // Create game object
     const newGame = {
         id: Date.now(),
@@ -878,7 +885,8 @@ function submitSidebarGame() {
         player2Team: player2Team || 'Unknown',
         penaltyWinner: penaltyWinner,
         dateTime: gameDate.toISOString(),
-        gameNumber: window.games ? window.games.length + 1 : 1
+        gameNumber: window.games ? window.games.length + 1 : 1,
+        ...(noteValue ? { note: noteValue } : {})
     };
     
     // Add to games
