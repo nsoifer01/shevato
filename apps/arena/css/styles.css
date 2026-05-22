@@ -1665,6 +1665,18 @@ select option { background: var(--surface); color: var(--text); }
   text-align: center;
 }
 
+.room-spectator-banner {
+  margin: 0.5rem 0 0;
+  padding: 0.5rem 0.85rem;
+  background: rgba(168, 85, 247, 0.10);
+  border: 1px solid rgba(168, 85, 247, 0.35);
+  border-radius: 8px;
+  color: var(--violet-2);
+  font-size: 0.88rem;
+  font-weight: 600;
+  text-align: center;
+}
+
 /* Globe-drop layout — top-mounted live standings */
 .globe-drop-status { display: none; }
 
