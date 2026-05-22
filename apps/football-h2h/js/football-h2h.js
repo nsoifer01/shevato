@@ -799,6 +799,14 @@ function editGame(id) {
             placeholder: player2TeamInfo.teamType === 'Other' ? 'Enter team name' : undefined,
             maxlength: player2TeamInfo.teamType === 'Other' ? 15 : undefined,
             hidden: player2TeamInfo.teamType === 'Ultimate Team'
+        },
+        {
+            id: 'note',
+            type: 'text',
+            label: 'Note (optional)',
+            value: game.note || '',
+            placeholder: 'e.g. First session back',
+            maxlength: 80
         }
     ];
     
@@ -912,6 +920,7 @@ function editGame(id) {
                 }
             }
             
+            const noteValue = (formData.note || '').trim() || undefined;
             const updatedGame = {
                 ...game,
                 player1Goals: player1Goals,
@@ -919,7 +928,8 @@ function editGame(id) {
                 player1Team: player1Team,
                 player2Team: player2Team,
                 penaltyWinner: penaltyWinner,
-                dateTime: newDateTime.toISOString()
+                dateTime: newDateTime.toISOString(),
+                ...(noteValue ? { note: noteValue } : { note: undefined })
             };
             
             // Update the game in the array
@@ -1629,9 +1639,10 @@ function renderGamesTableWithData(gamesData) {
             }
         }
         
+        const noteHtml = game.note ? `<div class="game-note">${escapeHtml(game.note)}</div>` : '';
         row.innerHTML = `
             <td class="game-number">${game.gameNumber}</td>
-            <td class="game-date">${formattedDate}<br><small>${formattedTime}</small></td>
+            <td class="game-date">${formattedDate}<br><small>${formattedTime}</small>${noteHtml}</td>
             <td class="player-score player1-score ${player1ScoreClass}">
                 <span class="score-number">${game.player1Goals}</span>${player1PenaltyText}
             </td>
@@ -1820,6 +1831,9 @@ function updateStatisticsWithData(gamesData) {
     }
 
     renderPlayerStatsTab(gamesData);
+    renderStreakBadge(gamesData);
+    renderFormStrip(gamesData);
+    populateMatchupDropdowns();
 }
 
 // Descriptor for each row in the Player Stats comparison table. `direction`
@@ -2031,6 +2045,252 @@ function switchStatsTab(tabName, { fromHash = false } = {}) {
     }
 }
 
+// ── Feature 1: Streak badge ────────────────────────────────────────────────
+
+function renderStreakBadge(gamesData) {
+    const badge = document.getElementById('streakBadge');
+    const text = document.getElementById('streakText');
+    if (!badge || !text) return;
+
+    const api = window.FootballPlayerStats;
+    if (!api) return;
+
+    const p1Results = api.matchResultsInOrder(gamesData, 'player1Goals', 'player2Goals', 1);
+    const p2Results = api.matchResultsInOrder(gamesData, 'player2Goals', 'player1Goals', 2);
+    const s1 = api.computeMatchStreaks(p1Results);
+    const s2 = api.computeMatchStreaks(p2Results);
+
+    badge.className = 'streak-badge';
+
+    if (s1.currentWinningStreak > 0) {
+        const n = s1.currentWinningStreak;
+        text.textContent = `${player1Name} – ${n} match winning streak`;
+        badge.classList.add('streak-win');
+    } else if (s2.currentWinningStreak > 0) {
+        const n = s2.currentWinningStreak;
+        text.textContent = `${player2Name} – ${n} match winning streak`;
+        badge.classList.add('streak-win');
+    } else if (s1.currentLosingStreak > 0) {
+        const n = s1.currentLosingStreak;
+        text.textContent = `${player1Name} – ${n} match losing streak`;
+        badge.classList.add('streak-lose');
+    } else if (s2.currentLosingStreak > 0) {
+        const n = s2.currentLosingStreak;
+        text.textContent = `${player2Name} – ${n} match losing streak`;
+        badge.classList.add('streak-lose');
+    } else {
+        text.textContent = 'No current streak';
+        badge.classList.add('streak-none');
+    }
+}
+
+// ── Feature 2: Recent form strip ──────────────────────────────────────────
+
+function renderFormStrip(gamesData) {
+    const section = document.getElementById('formStripSection');
+    if (!section) return;
+
+    if (gamesData.length === 0) {
+        section.style.display = 'none';
+        return;
+    }
+
+    section.style.display = 'flex';
+
+    const api = window.FootballPlayerStats;
+    if (!api) return;
+
+    function buildDots(results) {
+        const last5 = results.slice(-5);
+        const container = document.createDocumentFragment();
+        for (const r of last5) {
+            const dot = document.createElement('span');
+            dot.className = 'form-dot form-dot-' + (r === 'W' ? 'w' : r === 'L' ? 'l' : 'd');
+            dot.textContent = r === null ? '?' : r;
+            dot.title = r === 'W' ? 'Win' : r === 'L' ? 'Loss' : r === 'D' ? 'Draw' : 'Unknown';
+            container.appendChild(dot);
+        }
+        return container;
+    }
+
+    const p1Results = api.matchResultsInOrder(gamesData, 'player1Goals', 'player2Goals', 1);
+    const p2Results = api.matchResultsInOrder(gamesData, 'player2Goals', 'player1Goals', 2);
+
+    const dots1 = document.getElementById('formStrip1Dots');
+    const dots2 = document.getElementById('formStrip2Dots');
+    const name1 = document.getElementById('formStrip1Name');
+    const name2 = document.getElementById('formStrip2Name');
+
+    if (name1) name1.textContent = player1Name;
+    if (name2) name2.textContent = player2Name;
+    if (dots1) { dots1.innerHTML = ''; dots1.appendChild(buildDots(p1Results)); }
+    if (dots2) { dots2.innerHTML = ''; dots2.appendChild(buildDots(p2Results)); }
+}
+
+// ── Feature 4: Team matchup lookup ────────────────────────────────────────
+
+function populateMatchupDropdowns() {
+    const sel1 = document.getElementById('matchupTeam1');
+    const sel2 = document.getElementById('matchupTeam2');
+    const lbl1 = document.getElementById('matchupP1Label');
+    const lbl2 = document.getElementById('matchupP2Label');
+    if (!sel1 || !sel2) return;
+
+    if (lbl1) lbl1.textContent = player1Name + "'s Team";
+    if (lbl2) lbl2.textContent = player2Name + "'s Team";
+
+    const allGames = window.games || [];
+    const teams1 = [...new Set(allGames.map(g => g.player1Team).filter(Boolean))].sort();
+    const teams2 = [...new Set(allGames.map(g => g.player2Team).filter(Boolean))].sort();
+
+    function rebuild(sel, teams) {
+        const current = sel.value;
+        sel.innerHTML = '<option value="">— any —</option>';
+        for (const t of teams) {
+            const opt = document.createElement('option');
+            opt.value = t;
+            opt.textContent = t;
+            if (t === current) opt.selected = true;
+            sel.appendChild(opt);
+        }
+    }
+
+    rebuild(sel1, teams1);
+    rebuild(sel2, teams2);
+    updateMatchupResult();
+}
+
+function updateMatchupResult() {
+    const sel1 = document.getElementById('matchupTeam1');
+    const sel2 = document.getElementById('matchupTeam2');
+    const result = document.getElementById('matchupResult');
+    const grid = document.getElementById('matchupResultGrid');
+    if (!sel1 || !sel2 || !result || !grid) return;
+
+    const t1 = sel1.value;
+    const t2 = sel2.value;
+
+    if (!t1 && !t2) {
+        result.style.display = 'none';
+        return;
+    }
+
+    const allGames = window.games || [];
+    const filtered = allGames.filter(g => {
+        const match1 = !t1 || g.player1Team === t1;
+        const match2 = !t2 || g.player2Team === t2;
+        return match1 && match2;
+    });
+
+    let p1Wins = 0, p2Wins = 0, draws = 0;
+    for (const g of filtered) {
+        if (g.player1Goals > g.player2Goals) {
+            p1Wins++;
+        } else if (g.player2Goals > g.player1Goals) {
+            p2Wins++;
+        } else if (g.penaltyWinner === 1) {
+            p1Wins++;
+        } else if (g.penaltyWinner === 2) {
+            p2Wins++;
+        } else {
+            draws++;
+        }
+    }
+
+    if (filtered.length === 0) {
+        grid.innerHTML = '<span class="matchup-no-data">No games found for this matchup</span>';
+    } else {
+        grid.innerHTML = `
+            <div class="matchup-stat"><span class="matchup-stat-label">${escapeHtml(player1Name)}</span><span class="matchup-stat-value">${p1Wins}</span></div>
+            <div class="matchup-stat matchup-stat-draw"><span class="matchup-stat-label">Draws</span><span class="matchup-stat-value">${draws}</span></div>
+            <div class="matchup-stat"><span class="matchup-stat-label">${escapeHtml(player2Name)}</span><span class="matchup-stat-value">${p2Wins}</span></div>
+            <div class="matchup-games-played">from ${filtered.length} game${filtered.length !== 1 ? 's' : ''}</div>
+        `;
+    }
+
+    result.style.display = 'block';
+}
+
+// ── Feature 5: Session summary ────────────────────────────────────────────
+
+function buildSessionSummaryText(gamesData) {
+    const p1 = player1Name;
+    const p2 = player2Name;
+
+    if (gamesData.length === 0) {
+        return `${p1} vs ${p2} — No games recorded.`;
+    }
+
+    const lines = [];
+    let totalGoals = 0;
+    let p1Wins = 0, p2Wins = 0, draws = 0;
+
+    for (const g of gamesData) {
+        totalGoals += g.player1Goals + g.player2Goals;
+        const scoreStr = `${g.player1Goals}–${g.player2Goals}`;
+        let suffix = '';
+        if (g.player1Goals === g.player2Goals) {
+            if (g.penaltyWinner === 1) { p1Wins++; suffix = ` (${p1} wins pens)`; }
+            else if (g.penaltyWinner === 2) { p2Wins++; suffix = ` (${p2} wins pens)`; }
+            else { draws++; suffix = ' (draw)'; }
+        } else if (g.player1Goals > g.player2Goals) {
+            p1Wins++;
+        } else {
+            p2Wins++;
+        }
+        const dateStr = g.dateTime ? new Date(g.dateTime).toLocaleDateString() : '';
+        const noteStr = g.note ? ` — ${g.note}` : '';
+        lines.push(`${scoreStr}${suffix} (${dateStr})${noteStr}`);
+    }
+
+    let winner = '';
+    if (p1Wins > p2Wins) winner = `Winner of the session: ${p1}`;
+    else if (p2Wins > p1Wins) winner = `Winner of the session: ${p2}`;
+    else winner = 'Session result: level';
+
+    const header = `${p1} vs ${p2}`;
+    const record = `${p1}: ${p1Wins}W  ${p2}: ${p2Wins}W  Draws: ${draws}`;
+    const goals = `Total goals: ${totalGoals}`;
+
+    return [header, record, goals, winner, '', ...lines].join('\n');
+}
+
+function showSessionSummary() {
+    const filteredGames = window.getFilteredGames ? window.getFilteredGames() : (window.games || []);
+
+    const summaryText = buildSessionSummaryText(filteredGames);
+
+    const content = `
+        <div class="session-summary-text" id="sessionSummaryText">${escapeHtml(summaryText).replace(/\n/g, '<br>')}</div>
+    `;
+
+    const modal = createModal({
+        icon: '📋',
+        title: 'Session Summary',
+        content,
+        buttons: [
+            {
+                id: 'copy-summary-btn',
+                text: 'Copy',
+                type: 0,
+                onClick: () => {
+                    navigator.clipboard.writeText(summaryText).then(() => {
+                        showToast('Summary copied!', 'success');
+                    });
+                    return false;
+                },
+                closeOnClick: false
+            },
+            {
+                id: 'close-summary-btn',
+                text: 'Close',
+                type: 1,
+                onClick: () => {}
+            }
+        ]
+    });
+}
+
 // Export player names, teams data and functions to global scope
 window.player1Name = player1Name;
 window.player2Name = player2Name;
@@ -2069,6 +2329,8 @@ window.savePlayerIcons = savePlayerIcons;
 window.checkEditModalForDraw = checkEditModalForDraw;
 window.updateEditModalTeamOptions = updateEditModalTeamOptions;
 window.updateEditModalTeamOptionsHandler = updateEditModalTeamOptionsHandler;
+window.updateMatchupResult = updateMatchupResult;
+window.showSessionSummary = showSessionSummary;
 
 // Duplicate definitions of loadPlayers / savePlayers / loadPlayerIcons /
 // savePlayerIcons / updatePlayerName / openIconSelector / closeIconSelector /
