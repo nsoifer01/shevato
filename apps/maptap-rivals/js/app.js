@@ -1025,14 +1025,6 @@
 
   async function shareGame(g, rival, btn) {
     const text = buildShareText(g, rival);
-    if (navigator.share) {
-      try {
-        await navigator.share({ text });
-        return;
-      } catch (_) {
-        // User cancelled or share failed — fall through to clipboard.
-      }
-    }
     try {
       await navigator.clipboard.writeText(text);
       showShareToast(btn, 'Copied — paste anywhere');
