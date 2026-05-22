@@ -1654,11 +1654,14 @@ async function joinRoom() {
     }
 
     const displayName = (state.profile && state.profile.displayName) || deriveInitialDisplayName();
-    await joinPlayer(code, displayName, /* isHost */ false);
+    // Mark the player as a spectator if they're joining mid-game so the UI
+    // can show a "Spectating — joining next round" banner and gate submitting.
+    const isSpectator = data.status === 'playing';
+    await joinPlayer(code, displayName, /* isHost */ false, isSpectator ? (data.currentQuestionIndex || 0) : -1);
     enterRoom(code);
 }
 
-async function joinPlayer(code, displayName, isHost) {
+async function joinPlayer(code, displayName, isHost, joinedAtQuestionIndex) {
     const pref = doc(db, 'triviaRooms', code, 'players', state.user.uid);
     // Pull the room's current round so we don't carry stale "joinedAt round 1"
     // markers into round 2+. We can't write across players, so each player
@@ -1668,7 +1671,33 @@ async function joinPlayer(code, displayName, isHost) {
         const roomSnap = await getDoc(doc(db, 'triviaRooms', code));
         if (roomSnap.exists()) currentRound = roomSnap.data().round || 1;
     } catch (e) { /* fall back to 1 */ }
-    await setDoc(pref, {
+
+    // Check for an existing player doc written by beforeUnloadCleanup — if
+    // disconnectedAt is within the grace window, restore the player's
+    // score/streak/answers instead of resetting them to 0.
+    let existingSnap = null;
+    try { existingSnap = await getDoc(pref); } catch (e) { /* ignore */ }
+    const existing = existingSnap && existingSnap.exists() ? existingSnap.data() : null;
+    const now = Date.now();
+    const withinGrace = existing
+        && typeof existing.disconnectedAt === 'number'
+        && (now - existing.disconnectedAt) < DISCONNECT_GRACE_MS;
+
+    if (withinGrace) {
+        // Reconnect path: clear the disconnectedAt flag and refresh lastSeen.
+        // Score, streak, answers, and currentAnsweredFor are preserved.
+        await updateDoc(pref, {
+            displayName: String(displayName).slice(0, Config.MAX_DISPLAY_NAME),
+            disconnectedAt: deleteField(),
+            lastSeen: serverTimestamp()
+        });
+        return;
+    }
+
+    // joinedAtQuestionIndex >= 0 means the player joined mid-game and should
+    // spectate the current question (gate: their joinedAtQuestionIndex === the
+    // room's currentQuestionIndex at join time). -1 = joined at lobby, full participant.
+    const doc_data = {
         uid: state.user.uid,
         displayName: String(displayName).slice(0, Config.MAX_DISPLAY_NAME),
         isHost: !!isHost,
@@ -1681,7 +1710,11 @@ async function joinPlayer(code, displayName, isHost) {
         currentAnswerAt: null,
         currentAnsweredFor: null,
         answers: []
-    }, { merge: true });
+    };
+    if (typeof joinedAtQuestionIndex === 'number' && joinedAtQuestionIndex >= 0) {
+        doc_data.joinedAtQuestionIndex = joinedAtQuestionIndex;
+    }
+    await setDoc(pref, doc_data, { merge: true });
 }
 
 function openSignInPrompt() {
@@ -1820,6 +1853,8 @@ async function maybeResetForNewRound() {
     }
 }
 
+const DISCONNECT_GRACE_MS = 30000; // 30-second rejoin window
+
 async function beforeUnloadCleanup() {
     if (!state.roomCode || !state.user) return;
     // Keep the player doc when the room is already in the post-match
@@ -1829,8 +1864,17 @@ async function beforeUnloadCleanup() {
     // renderRoom routes status=finished → renderEndStage.
     if (state.roomData && state.roomData.status === 'finished') return;
     try {
-        await deleteDoc(doc(db, 'triviaRooms', state.roomCode, 'players', state.user.uid));
-    } catch (e) { /* best-effort */ }
+        // Write disconnectedAt timestamp instead of deleting the doc.
+        // If the player reloads within DISCONNECT_GRACE_MS, joinPlayer
+        // detects the grace window and restores their score/streak rather
+        // than treating them as a fresh joiner. After the grace period
+        // elapses without reconnect, the host's TTL sweep (or the next
+        // joinPlayer call) cleans up the orphaned doc.
+        await updateDoc(doc(db, 'triviaRooms', state.roomCode, 'players', state.user.uid), {
+            disconnectedAt: Date.now(),
+            lastSeen: serverTimestamp()
+        });
+    } catch (e) { /* best-effort; deletion still happens via joinPlayer on fresh join */ }
 }
 
 /**
@@ -2414,6 +2458,20 @@ function renderRoom() {
         && !state.rematchInFlight) {
         playAgain();
     }
+    // Spectator banner — shown when the local player joined mid-game and the
+    // current question is the one they joined on (joinedAtQuestionIndex === currentQuestionIndex).
+    // As soon as the host advances to the next question the index increments
+    // and the banner disappears — the player is now a full participant.
+    const spectatorBanner = $('#room-spectator-banner');
+    if (spectatorBanner) {
+        const mePlayer = state.user ? state.roomPlayers.find((p) => p.uid === state.user.uid) : null;
+        const joinedAtQIdx = mePlayer && typeof mePlayer.joinedAtQuestionIndex === 'number'
+            ? mePlayer.joinedAtQuestionIndex : -1;
+        const curQIdx = typeof room.currentQuestionIndex === 'number' ? room.currentQuestionIndex : -1;
+        const isSpectating = playing && joinedAtQIdx >= 0 && curQIdx <= joinedAtQIdx;
+        spectatorBanner.hidden = !isSpectating;
+    }
+
     const banner = $('#room-paused-banner');
     if (banner) {
         banner.hidden = !room.paused;
@@ -3861,6 +3919,13 @@ async function submitGuess() {
     if (!loc) return;
     if (!state.pendingGuess) return;
     if (state.submittedQuestionId === loc.id) return;
+    // Block submission while spectating (joined mid-game on this question).
+    const mePlayer = state.roomPlayers.find((p) => p.uid === state.user.uid);
+    const joinedAtQIdx = mePlayer && typeof mePlayer.joinedAtQuestionIndex === 'number'
+        ? mePlayer.joinedAtQuestionIndex : -1;
+    const curQIdx = typeof state.roomData.currentQuestionIndex === 'number'
+        ? state.roomData.currentQuestionIndex : -1;
+    if (joinedAtQIdx >= 0 && curQIdx <= joinedAtQIdx) return;
 
     const startMs = state.roomData.questionStartedAt && state.roomData.questionStartedAt.toMillis
         ? state.roomData.questionStartedAt.toMillis() : null;
@@ -4960,6 +5025,7 @@ async function maybeWriteH2HPairs() {
         const aScore = me.score || 0;
         const bScore = opp.score || 0;
         try {
+            const gameType = state.roomData.gameType || 'trivia';
             await runTransaction(db, async (tx) => {
                 const ref = doc(db, 'triviaH2H', key);
                 const snap = await tx.get(ref);
@@ -4967,13 +5033,18 @@ async function maybeWriteH2HPairs() {
                 const winsA = (cur.winsA || 0) + (aScore > bScore ? 1 : 0);
                 const winsB = (cur.winsB || 0) + (bScore > aScore ? 1 : 0);
                 const ties = (cur.ties || 0) + (aScore === bScore ? 1 : 0);
+                // Track game-type breakdown so the H2H view can show
+                // per-mode records when the pair has played multiple modes.
+                const prevGameTypes = (cur.gameTypes && typeof cur.gameTypes === 'object') ? cur.gameTypes : {};
+                const prevTypeCount = prevGameTypes[gameType] || 0;
                 tx.set(ref, {
                     uidA, uidB,
                     displayNameA: me.displayName || 'Player',
                     displayNameB: opp.displayName || 'Player',
                     winsA, winsB, ties,
                     gamesPlayed: (cur.gamesPlayed || 0) + 1,
-                    lastPlayedAt: serverTimestamp()
+                    lastPlayedAt: serverTimestamp(),
+                    gameTypes: { ...prevGameTypes, [gameType]: prevTypeCount + 1 }
                 }, { merge: true });
             });
         } catch (err) {
