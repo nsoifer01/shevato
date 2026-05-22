@@ -1439,6 +1439,30 @@ body.maptap-rivals-app button {
   background: linear-gradient(90deg, var(--good), var(--accent-2));
 }
 
+.drama-callout {
+  font-size: 0.75rem;
+  font-weight: 600;
+  line-height: 1.3;
+  padding: 0.3rem 0.6rem;
+  border-radius: 6px;
+  margin-bottom: 0.55rem;
+}
+.drama-callout-win {
+  background: rgba(249, 115, 22, 0.15);
+  color: #fb923c;
+  border: 1px solid rgba(249, 115, 22, 0.25);
+}
+.drama-callout-loss {
+  background: rgba(96, 165, 250, 0.12);
+  color: #60a5fa;
+  border: 1px solid rgba(96, 165, 250, 0.22);
+}
+.drama-callout-comeback {
+  background: rgba(250, 204, 21, 0.12);
+  color: #fbbf24;
+  border: 1px solid rgba(250, 204, 21, 0.22);
+}
+
 /* ---------- Rival detail ---------- */
 
 .rival-header {
