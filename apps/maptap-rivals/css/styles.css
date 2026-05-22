@@ -1800,6 +1800,46 @@ body.maptap-rivals-app button {
 .continent-winpct.good { color: var(--good); }
 .continent-winpct.bad { color: var(--bad); }
 
+/* ---------- Calendar heatmap (game history) ---------- */
+
+.heatmap-section { margin: 0.5rem 0 1.25rem; }
+.heatmap-section[hidden] { display: none; }
+
+.heatmap-scroll-wrap {
+  overflow-x: auto;
+  padding-bottom: 4px;
+}
+
+.heatmap-cell {
+  display: inline-block;
+  width: 11px;
+  height: 11px;
+  border-radius: 2px;
+  flex-shrink: 0;
+}
+.heatmap-W    { background: var(--good); }
+.heatmap-L    { background: var(--bad); }
+.heatmap-T    { background: var(--tie); }
+.heatmap-none { background: var(--surface-3); }
+.heatmap-empty { background: transparent; }
+
+.heatmap-legend {
+  display: flex;
+  align-items: center;
+  gap: 0.85rem;
+  flex-wrap: wrap;
+  margin-top: 0.55rem;
+}
+.heatmap-legend-item {
+  display: flex;
+  align-items: center;
+  gap: 0.3rem;
+}
+.heatmap-legend-lbl {
+  font-size: 0.72rem;
+  color: var(--muted);
+}
+
 /* Heatmap: rows = games, cols = rounds. Cell color = my raw score 0-100. */
 .loc-heatmap {
   display: grid;

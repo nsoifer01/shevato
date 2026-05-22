@@ -2100,6 +2100,173 @@
     // Per-location section (handles its own visibility based on data presence)
     renderLocationSection(s);
     renderContinentSection(s);
+    renderCalendarHeatmap(s);
+  }
+
+  // ---------- calendar heatmap ----------
+  // Shows every day from the relationship start (or 18 months back, whichever
+  // is more recent) to today. Cells are coloured by game result:
+  //   Win  → --good    Loss → --bad    Tie → --tie    No game → --surface-2
+  // When multiple games fall on the same day the net result is used:
+  //   more wins than losses → W, more losses than wins → L, otherwise T.
+  // Skipped entirely when the rival has fewer than 5 games (too sparse to read).
+  function renderCalendarHeatmap(s) {
+    const section = $('#heatmap-section');
+    const gridEl = $('#heatmap-grid');
+    const monthEl = $('#heatmap-month-labels');
+    const subEl = $('#heatmap-section-sub');
+    const legendEl = $('#heatmap-legend');
+
+    if (s.total < 5) {
+      section.hidden = true;
+      gridEl.innerHTML = '';
+      monthEl.innerHTML = '';
+      legendEl.innerHTML = '';
+      return;
+    }
+
+    const today = todayISO();
+    const maxStartISO = addDaysISO(today, -(18 * 30 + 15)); // ~18 months back
+    const firstGameISO = s.games[0].date; // gamesFor already sorted asc
+    const startCandidateISO = firstGameISO > maxStartISO ? firstGameISO : maxStartISO;
+
+    // Snap start back to the Sunday of that week so the grid aligns cleanly.
+    const snapDate = new Date(startCandidateISO + 'T00:00:00');
+    snapDate.setDate(snapDate.getDate() - snapDate.getDay()); // rewind to Sunday
+    const startISO = snapDate.toISOString().slice(0, 10);
+
+    // Build a map: date → net result.
+    const dayMap = {};
+    for (const g of s.games) {
+      const r = resultOf(g);
+      if (!dayMap[g.date]) dayMap[g.date] = { W: 0, L: 0, T: 0 };
+      dayMap[g.date][r]++;
+    }
+    function netResult(counts) {
+      if (counts.W > counts.L) return 'W';
+      if (counts.L > counts.W) return 'L';
+      return 'T';
+    }
+    function tooltipText(iso, counts) {
+      const r = netResult(counts);
+      const label = r === 'W' ? 'Win' : r === 'L' ? 'Loss' : 'Tie';
+      const gamesOnDay = s.games.filter(g => g.date === iso);
+      if (gamesOnDay.length === 1) {
+        const g = gamesOnDay[0];
+        return `${iso}: ${label} ${getMyTotal(g)}–${getTheirTotal(g)}`;
+      }
+      const totals = gamesOnDay.map(g => `${getMyTotal(g)}–${getTheirTotal(g)}`).join(', ');
+      return `${iso}: ${label} (${gamesOnDay.length} games: ${totals})`;
+    }
+
+    // Walk from startISO to today, collecting all days into week columns.
+    const weeks = [];
+    let week = [];
+    let cur = new Date(startISO + 'T00:00:00');
+    const end = new Date(today + 'T00:00:00');
+    // The grid is 7 rows (Sun=0..Sat=6) × N weeks.
+    // Pad the first week: we snapped to Sunday so no leading padding needed,
+    // but guard against edge cases by filling from 0 to cur.getDay().
+    while (cur <= end) {
+      const iso = cur.toISOString().slice(0, 10);
+      const dow = cur.getDay(); // 0=Sun
+      if (dow === 0 && week.length > 0) { weeks.push(week); week = []; }
+      week.push(iso);
+      cur.setDate(cur.getDate() + 1);
+    }
+    if (week.length > 0) weeks.push(week);
+
+    // Compute column widths for month label placement.
+    // For each week col, record the ISO of the first day so we can detect
+    // month changes and place labels above the right column.
+    const monthLabelItems = []; // { colIdx, label }
+    let lastMonth = -1;
+    for (let wi = 0; wi < weeks.length; wi++) {
+      const firstDay = new Date(weeks[wi][0] + 'T00:00:00');
+      if (firstDay.getMonth() !== lastMonth) {
+        lastMonth = firstDay.getMonth();
+        const mo = firstDay.toLocaleDateString(undefined, { month: 'short' });
+        monthLabelItems.push({ colIdx: wi, label: mo });
+      }
+    }
+
+    const CELL = 11; // px
+    const GAP  = 2;  // px
+    const colUnit = CELL + GAP;
+
+    // Month labels row
+    monthEl.innerHTML = '';
+    monthEl.style.cssText =
+      `display:grid;grid-template-columns:repeat(${weeks.length},${colUnit}px);` +
+      `gap:0 0;margin-bottom:2px;height:16px;position:relative;`;
+    for (const { colIdx, label } of monthLabelItems) {
+      const span = el('span', {
+        class: 'heatmap-month-lbl',
+        style: `grid-column:${colIdx + 1};font-size:0.65rem;color:var(--muted-2);` +
+               `white-space:nowrap;line-height:16px;`,
+      }, label);
+      monthEl.appendChild(span);
+    }
+
+    // Build the grid: 7 rows × N week-cols.
+    // CSS grid row = day-of-week (row 1=Sun, row 7=Sat).
+    gridEl.innerHTML = '';
+    gridEl.style.cssText =
+      `display:grid;` +
+      `grid-template-rows:repeat(7,${CELL}px);` +
+      `grid-template-columns:repeat(${weeks.length},${CELL}px);` +
+      `gap:${GAP}px;` +
+      `grid-auto-flow:column;`;
+
+    for (let wi = 0; wi < weeks.length; wi++) {
+      const days = weeks[wi]; // array of ISO strings (1–7 items)
+      // First week may start after Sunday if snap didn't land on one
+      // (it always should, but guard anyway).
+      const firstDow = new Date(days[0] + 'T00:00:00').getDay();
+      // Insert empty filler cells for missing leading days.
+      for (let pad = 0; pad < firstDow; pad++) {
+        const empty = el('span', {
+          class: 'heatmap-cell heatmap-empty',
+          style: `grid-column:${wi + 1};grid-row:${pad + 1};`,
+        });
+        gridEl.appendChild(empty);
+      }
+      for (let di = 0; di < days.length; di++) {
+        const iso = days[di];
+        const dow = new Date(iso + 'T00:00:00').getDay();
+        const counts = dayMap[iso];
+        const cls = counts ? 'heatmap-cell heatmap-' + netResult(counts) : 'heatmap-cell heatmap-none';
+        const title = counts ? tooltipText(iso, counts) : iso;
+        const cell = el('span', {
+          class: cls,
+          title,
+          style: `grid-column:${wi + 1};grid-row:${dow + 1};`,
+        });
+        gridEl.appendChild(cell);
+      }
+    }
+
+    // Total days spanned (for the sub label)
+    const totalDays = daysBetween(startISO, today) + 1;
+    const gameDays = Object.keys(dayMap).length;
+    subEl.textContent = `${s.total} game${s.total === 1 ? '' : 's'} on ${gameDays} day${gameDays === 1 ? '' : 's'}`;
+
+    // Legend
+    legendEl.innerHTML = '';
+    const legendItems = [
+      { cls: 'heatmap-W', label: 'Win' },
+      { cls: 'heatmap-L', label: 'Loss' },
+      { cls: 'heatmap-T', label: 'Tie' },
+      { cls: 'heatmap-none', label: 'No game' },
+    ];
+    for (const { cls, label } of legendItems) {
+      legendEl.appendChild(el('span', { class: 'heatmap-legend-item' }, [
+        el('span', { class: 'heatmap-cell ' + cls, 'aria-hidden': 'true' }),
+        el('span', { class: 'heatmap-legend-lbl' }, label),
+      ]));
+    }
+
+    section.hidden = false;
   }
 
   function renderContinentSection(s) {
