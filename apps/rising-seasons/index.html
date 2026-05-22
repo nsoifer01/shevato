@@ -188,7 +188,47 @@
         <span class="shape-desc">Show's rating pattern or quality changed significantly late in its run</span>
         <span class="shape-count" data-count="shape-drift"></span>
       </button>
+      <button type="button" class="shapes-more-btn" id="shapesMoreBtn" aria-expanded="false" hidden>
+        <span class="shapes-more-label">More shapes</span>
+        <span class="shapes-more-count" id="shapesMoreCount"></span>
+      </button>
     </nav>
+
+    <section class="mood-presets" aria-label="Explore by mood">
+      <h2 class="mood-presets-title">Explore by mood</h2>
+      <div class="mood-preset-chips">
+        <a class="mood-chip" href="#shape=slow-burn%2Cbig-finale" title="Slow burn + Big finale">
+          <span class="mood-chip-icon" aria-hidden="true">⤴⇧</span>
+          <span class="mood-chip-label">Patient payoff</span>
+          <span class="mood-chip-desc">Slow burn that sticks the landing</span>
+        </a>
+        <a class="mood-chip" href="#shape=rollercoaster%2Cbig-finale" title="Rollercoaster + Big finale">
+          <span class="mood-chip-icon" aria-hidden="true">∿⇧</span>
+          <span class="mood-chip-label">Feast or famine</span>
+          <span class="mood-chip-desc">Wild ride with a spectacular finish</span>
+        </a>
+        <a class="mood-chip" href="#shape=rebound%2Cbig-finale" title="Rebound + Big finale">
+          <span class="mood-chip-icon" aria-hidden="true">∪⇧</span>
+          <span class="mood-chip-label">Redemption arc</span>
+          <span class="mood-chip-desc">Dips, recovers, ends on a high note</span>
+        </a>
+        <a class="mood-chip" href="#shape=consistent%2Crising" title="Consistent + Rising">
+          <span class="mood-chip-icon" aria-hidden="true">═↗</span>
+          <span class="mood-chip-label">Consistent excellence</span>
+          <span class="mood-chip-desc">Quality floor throughout, still getting better</span>
+        </a>
+        <a class="mood-chip" href="#shape=consistent%2Cbig-finale" title="Consistent + Big finale">
+          <span class="mood-chip-icon" aria-hidden="true">═⇧</span>
+          <span class="mood-chip-label">Hidden masterpiece</span>
+          <span class="mood-chip-desc">Reliable quality crowned by a standout finale</span>
+        </a>
+        <a class="mood-chip" href="#shape=declining%2Cbad-finale" title="Declining + Bad finale">
+          <span class="mood-chip-icon" aria-hidden="true">↘⇩</span>
+          <span class="mood-chip-label">Sharp decline</span>
+          <span class="mood-chip-desc">Fell from grace, landed badly</span>
+        </a>
+      </div>
+    </section>
 
     <section class="filters" aria-label="Filters">
       <div class="filter-row primary">
@@ -358,6 +398,10 @@
         <h3 class="modal-section">Notable rating swings</h3>
         <ul class="changelog-list" id="changelogSwingsList"></ul>
       </section>
+      <section class="changelog-section" id="changelogFreshness">
+        <h3 class="modal-section">Data freshness</h3>
+        <div id="changelogFreshnessContent"></div>
+      </section>
     </article>
   </div>
 
@@ -384,7 +428,9 @@
       <div class="modal-actions modal-actions-top">
         <button type="button" class="btn watch-btn" id="modalWatchBtn"></button>
         <button type="button" class="btn btn-ghost" id="modalViewShow">📺 View show</button>
+        <button type="button" class="btn btn-ghost" id="modalShareCard">Share card</button>
         <a class="btn btn-ghost modal-imdb" id="modalImdb" target="_blank" rel="noopener">View season on IMDb →</a>
+        <a class="btn btn-ghost" id="modalJustwatch" target="_blank" rel="noopener">Where to watch →</a>
         <a class="btn btn-ghost" id="modalTvdb" target="_blank" rel="noopener" hidden>View series on TVDB →</a>
       </div>
       <p class="modal-overview" id="modalOverview"></p>
