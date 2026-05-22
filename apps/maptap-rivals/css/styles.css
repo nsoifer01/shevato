@@ -1413,6 +1413,31 @@ body.maptap-rivals-app button {
 .form-pill.L { background: var(--bad); color: var(--bad-ink); }
 .form-pill.T { background: var(--tie); color: #1a1d24; }
 
+.leaderboard-form {
+  display: inline-flex;
+  gap: 2px;
+  align-items: center;
+}
+.lb-form-pill {
+  width: 14px;
+  height: 14px;
+  border-radius: 3px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.58rem;
+  font-weight: 700;
+  color: #fff;
+}
+.lb-form-W { background: var(--good); color: var(--good-ink); }
+.lb-form-L { background: var(--bad); color: var(--bad-ink); }
+.lb-form-T { background: var(--tie); color: #1a1d24; }
+.lb-form-empty {
+  background: transparent;
+  border: 1px solid var(--border);
+  opacity: 0.35;
+}
+
 .streak-tag {
   display: inline-flex;
   align-items: center;
