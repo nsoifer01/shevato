@@ -1013,21 +1013,22 @@
     return lines.join('\n');
   }
 
-  // Show a transient toast anchored to `anchorEl`. Cleans itself up after
-  // 2.5 s, or immediately if share succeeds via native sheet (no toast needed).
-  function showShareToast(anchorEl, msg) {
-    const existing = anchorEl.parentNode && anchorEl.parentNode.querySelector('.share-toast');
+  // Floating, body-level confirmation that doesn't reflow the table the
+  // share button lives in. Replaces any prior toast so rapid clicks don't
+  // stack up multiple pills.
+  function showShareToast(_anchorEl, msg) {
+    const existing = document.querySelector('.share-toast');
     if (existing) existing.remove();
-    const toast = el('span', { class: 'share-toast', role: 'status', 'aria-live': 'polite' }, msg);
-    anchorEl.insertAdjacentElement('afterend', toast);
-    setTimeout(() => { if (toast.parentNode) toast.remove(); }, 2500);
+    const toast = el('div', { class: 'share-toast', role: 'status', 'aria-live': 'polite' }, msg);
+    document.body.appendChild(toast);
+    setTimeout(() => { if (toast.parentNode) toast.remove(); }, 2000);
   }
 
   async function shareGame(g, rival, btn) {
     const text = buildShareText(g, rival);
     try {
       await navigator.clipboard.writeText(text);
-      showShareToast(btn, 'Copied — paste anywhere');
+      showShareToast(btn, 'Copied to clipboard');
     } catch (_) {
       showShareToast(btn, 'Copy failed');
     }
