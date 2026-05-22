@@ -13,6 +13,7 @@ const SHAPE_LABELS = {
   'mid-peak': 'Mid-peak',
   'u-shaped': 'U-shaped',
   'saved-best-for-last': 'Saved best for last',
+  'shape-drift': 'Shape drift',
 };
 
 // Mirrors scripts/slugify.js — keep both in sync so the SPA's permalink
@@ -901,7 +902,22 @@ function filterAndSort() {
       case 'avg':    primary = b.avgRating - a.avgRating; break;
       case 'recent': primary = ((b.seasonYear || b.year) || 0) - ((a.seasonYear || a.year) || 0); break;
       case 'popularity':
-      default:       primary = b.minVotes - a.minVotes; break;
+      default: {
+        // When exactly one shape is selected, boost the most archetypal
+        // examples by sorting by confidence × log-popularity so the
+        // seasons that most strongly match the pattern lead.
+        if (state.shapes.size === 1) {
+          const shape = [...state.shapes][0];
+          const ca = (a.confidence && a.confidence[shape]) || 0;
+          const cb = (b.confidence && b.confidence[shape]) || 0;
+          const logA = ca * Math.log1p(a.minVotes);
+          const logB = cb * Math.log1p(b.minVotes);
+          primary = logB - logA;
+        } else {
+          primary = b.minVotes - a.minVotes;
+        }
+        break;
+      }
     }
     if (primary !== 0) return primary;
     if (state.sort !== 'popularity' && b.minVotes !== a.minVotes) return b.minVotes - a.minVotes;
@@ -1944,6 +1960,19 @@ function openModal(m, opts = {}) {
   ));
 
   els.modalOverview.textContent = m.overview || '';
+
+  let driftNoteEl = els.modal.querySelector('.modal-drift-note');
+  if (m.driftNote) {
+    if (!driftNoteEl) {
+      driftNoteEl = document.createElement('p');
+      driftNoteEl.className = 'modal-drift-note';
+      els.modalOverview.insertAdjacentElement('afterend', driftNoteEl);
+    }
+    driftNoteEl.textContent = `⇌ ${m.driftNote}`;
+    driftNoteEl.hidden = false;
+  } else if (driftNoteEl) {
+    driftNoteEl.hidden = true;
+  }
 
   els.modalPoster.replaceChildren();
   if (m.poster) {
