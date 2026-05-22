@@ -3457,3 +3457,220 @@ body.advanced-drawer-open {
   }
   .whats-new-chip-cta { padding-left: 0.4rem; font-size: 0.62rem; }
 }
+
+/* ---- Mood presets (NUI-5) ---- */
+
+.mood-presets {
+  padding: 0.5rem 0 1rem;
+  max-width: 48rem;
+  margin: 0 auto;
+}
+
+.mood-presets-title {
+  font-size: 0.72rem;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--muted-2);
+  margin-bottom: 0.5rem;
+  text-align: center;
+}
+
+.mood-preset-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.45rem;
+  justify-content: center;
+}
+
+.mood-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.45rem 0.85rem;
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid rgba(255, 255, 255, 0.09);
+  border-radius: 999px;
+  color: var(--text) !important;
+  font-size: 0.82rem;
+  font-weight: 500;
+  text-decoration: none !important;
+  white-space: nowrap;
+  transition: background 0.18s var(--ease), border-color 0.18s var(--ease);
+}
+
+.mood-chip:hover {
+  background: rgba(255, 255, 255, 0.07);
+  border-color: rgba(255, 255, 255, 0.2);
+  text-decoration: none !important;
+}
+
+.mood-chip-icon {
+  font-size: 0.78rem;
+  color: var(--accent);
+  font-weight: 700;
+}
+
+.mood-chip-label {
+  font-weight: 600;
+}
+
+.mood-chip-desc {
+  position: absolute;
+  width: 1px; height: 1px;
+  margin: -1px; padding: 0;
+  overflow: hidden; clip: rect(0,0,0,0);
+  white-space: nowrap; border: 0;
+}
+
+/* ---- Shape overflow toggle (UI-3) ---- */
+
+.shapes-hidden {
+  display: none !important;
+}
+
+.shapes-more-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  height: 30px;
+  padding: 0 0.7rem;
+  background: rgba(245, 197, 24, 0.08);
+  border: 1px solid rgba(245, 197, 24, 0.28);
+  border-radius: 999px;
+  color: var(--accent) !important;
+  font: inherit;
+  font-size: 0.8rem;
+  font-weight: 600;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background 0.18s var(--ease), border-color 0.18s var(--ease);
+}
+
+.shapes-more-btn:hover {
+  background: rgba(245, 197, 24, 0.15);
+  border-color: rgba(245, 197, 24, 0.45);
+}
+
+.shapes-more-count {
+  display: inline-flex;
+  align-items: center;
+  height: 17px;
+  padding: 0 0.4rem;
+  background: rgba(245, 197, 24, 0.18);
+  border-radius: 999px;
+  font-size: 0.68rem;
+  color: var(--accent);
+}
+
+/* ---- Modal drift note (NUI-3) ---- */
+
+.modal-drift-note {
+  font-size: 0.88rem;
+  color: var(--muted);
+  background: rgba(245, 197, 24, 0.06);
+  border: 1px solid rgba(245, 197, 24, 0.18);
+  border-radius: var(--radius-sm);
+  padding: 0.6rem 0.9rem;
+  margin: 0;
+}
+
+/* ---- Data freshness (NUI-4) ---- */
+
+.freshness-row {
+  display: flex;
+  gap: 0.5rem;
+  align-items: baseline;
+  font-size: 0.875rem;
+  padding: 0.25rem 0;
+}
+
+.freshness-label {
+  color: var(--muted);
+  font-size: 0.82rem;
+  min-width: 12rem;
+}
+
+.freshness-value {
+  color: var(--text);
+  font-variant-numeric: tabular-nums;
+  font-weight: 500;
+}
+
+#changelogFreshness h3 {
+  margin-bottom: 0.5rem;
+}
+
+/* ---- Shape touch tooltip (UI-4) ---- */
+
+.shape-touch-tooltip {
+  position: absolute;
+  z-index: 9999;
+  background: var(--surface-3);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-xs);
+  color: var(--text);
+  font-size: 0.82rem;
+  font-family: inherit;
+  padding: 0.4rem 0.7rem;
+  pointer-events: none;
+  max-width: 200px;
+  box-shadow: var(--shadow-lift);
+  animation: tooltip-in 0.12s var(--ease) both;
+}
+
+@keyframes tooltip-in {
+  from { opacity: 0; transform: translateY(4px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+/* ---- Episode hover tip on modal curve (UI-5) ---- */
+
+.curve-hover-tip {
+  position: absolute;
+  z-index: 10;
+  background: var(--surface-3);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-xs);
+  color: var(--text);
+  font-size: 0.8rem;
+  font-family: inherit;
+  padding: 0.35rem 0.65rem;
+  pointer-events: none;
+  white-space: nowrap;
+  max-width: 260px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  box-shadow: var(--shadow-lift);
+  transition: opacity 0.1s;
+}
+
+.curve-hover-tip[hidden] {
+  display: none;
+}
+
+/* ---- Modal curve shape annotations (UI-2) ---- */
+
+.curve-annotation-label {
+  font-size: 10px;
+  fill: rgba(245, 197, 24, 0.85);
+  font-family: system-ui, sans-serif;
+  font-weight: 600;
+  pointer-events: none;
+}
+
+.curve-annotation-arrow {
+  stroke: rgba(245, 197, 24, 0.75);
+  stroke-width: 1.5;
+  fill: none;
+}
+
+.curve-annotation-arrowhead {
+  fill: rgba(245, 197, 24, 0.75);
+}
+
+.curve-annotation-bracket {
+  stroke: rgba(245, 197, 24, 0.5);
+  stroke-width: 1.5;
+  stroke-dasharray: 4 2;
+}
