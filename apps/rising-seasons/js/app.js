@@ -13,6 +13,23 @@ const SHAPE_LABELS = {
   'mid-peak': 'Mid-peak',
   'u-shaped': 'U-shaped',
   'saved-best-for-last': 'Saved best for last',
+  'shape-drift': 'Shape drift',
+};
+
+const SHAPE_DESCS = {
+  rising: 'Each episode at least as good as the last',
+  consistent: 'Excellent throughout, no weak link',
+  'slow-burn': 'Second half lifts off',
+  'big-finale': 'The last episode is the peak',
+  rebound: 'Dips, then comes back stronger',
+  'front-loaded': 'Strong start, weaker back half',
+  declining: 'Each episode no better than the last',
+  'bad-finale': 'Finale is the worst episode',
+  rollercoaster: 'Big swings episode to episode',
+  'mid-peak': 'Climaxes mid-season, falls after',
+  'u-shaped': 'Strong opener and finale, sag in the middle',
+  'saved-best-for-last': 'Final season is the show\'s highest-rated',
+  'shape-drift': 'Show\'s rating pattern or quality changed significantly late in its run',
 };
 
 // Mirrors scripts/slugify.js — keep both in sync so the SPA's permalink
@@ -99,7 +116,9 @@ const els = {
   modalOverview: document.getElementById('modalOverview'),
   modalCurve: document.getElementById('modalCurve'),
   modalEpisodes: document.getElementById('modalEpisodes'),
+  modalShareCard: document.getElementById('modalShareCard'),
   modalImdb: document.getElementById('modalImdb'),
+  modalJustwatch: document.getElementById('modalJustwatch'),
   modalTvdb: document.getElementById('modalTvdb'),
   modalPoster: document.getElementById('modalPoster'),
   modalWatchBtn: document.getElementById('modalWatchBtn'),
@@ -140,6 +159,8 @@ const els = {
   changelogRemovedList: document.getElementById('changelogRemovedList'),
   changelogSwingsSection: document.getElementById('changelogSwings'),
   changelogSwingsList: document.getElementById('changelogSwingsList'),
+  changelogFreshnessSection: document.getElementById('changelogFreshness'),
+  changelogFreshnessContent: document.getElementById('changelogFreshnessContent'),
 };
 
 // --- mutable state ---
@@ -362,10 +383,12 @@ async function load() {
       chip.title = desc.textContent.trim();
     }
   }
+  initShapesOverflow();
   syncCompareFab();
   bindEvents();
   bindKeyboard();
   bindAdvancedDrawer();
+  bindShapeTagTouchTooltips();
   // Initial reset-button state: disabled unless the URL pre-populated some filters.
   syncResetButton();
   render();
@@ -564,11 +587,63 @@ function syncLabelFiltersAria() {
   }
 }
 
+// On narrow viewports, collapse the shape chip bar to the first MOBILE_CHIP_LIMIT
+// chips and reveal a "More shapes" button so the rest of the page is visible.
+// On wider screens the button stays hidden and all chips render normally.
+const MOBILE_CHIP_LIMIT = 7;
+function initShapesOverflow() {
+  const moreBtn = document.getElementById('shapesMoreBtn');
+  if (!moreBtn) return;
+  const chips = [...els.shapes.querySelectorAll('.shape-chip')];
+  const hideable = chips.slice(MOBILE_CHIP_LIMIT);
+  const mq = window.matchMedia('(max-width: 600px)');
+
+  function apply(narrow) {
+    if (narrow) {
+      moreBtn.hidden = false;
+      const expanded = moreBtn.getAttribute('aria-expanded') === 'true';
+      for (const c of hideable) c.classList.toggle('shapes-hidden', !expanded);
+      const hiddenCount = hideable.filter((c) => !c.classList.contains('shapes-active') || true).length;
+      const countEl = document.getElementById('shapesMoreCount');
+      if (countEl) countEl.textContent = expanded ? '' : `+${hideable.length}`;
+      moreBtn.querySelector('.shapes-more-label').textContent = expanded ? 'Show fewer' : 'More shapes';
+    } else {
+      moreBtn.hidden = true;
+      for (const c of hideable) c.classList.remove('shapes-hidden');
+    }
+  }
+
+  apply(mq.matches);
+  mq.addEventListener('change', (e) => apply(e.matches));
+
+  moreBtn.addEventListener('click', () => {
+    const expanded = moreBtn.getAttribute('aria-expanded') !== 'true';
+    moreBtn.setAttribute('aria-expanded', expanded ? 'true' : 'false');
+    apply(mq.matches);
+  });
+}
+
 function syncShapeChipsAria() {
   for (const btn of els.shapes.querySelectorAll('.shape-chip')) {
     const shape = btn.dataset.shape;
     const pressed = shape === 'all' ? state.shapes.size === 0 : state.shapes.has(shape);
     btn.setAttribute('aria-pressed', pressed ? 'true' : 'false');
+  }
+  // If a hidden chip is now active (pressed), auto-expand the shapes bar so
+  // the user can see their active filter without having to tap "More shapes".
+  const moreBtn = document.getElementById('shapesMoreBtn');
+  if (moreBtn && !moreBtn.hidden) {
+    const chips = [...els.shapes.querySelectorAll('.shape-chip')];
+    const hideable = chips.slice(MOBILE_CHIP_LIMIT);
+    const anyHiddenActive = hideable.some((c) => c.getAttribute('aria-pressed') === 'true');
+    if (anyHiddenActive && moreBtn.getAttribute('aria-expanded') !== 'true') {
+      moreBtn.setAttribute('aria-expanded', 'true');
+      for (const c of hideable) c.classList.remove('shapes-hidden');
+      const countEl = document.getElementById('shapesMoreCount');
+      if (countEl) countEl.textContent = '';
+      const lbl = moreBtn.querySelector('.shapes-more-label');
+      if (lbl) lbl.textContent = 'Show fewer';
+    }
   }
 }
 
@@ -901,7 +976,22 @@ function filterAndSort() {
       case 'avg':    primary = b.avgRating - a.avgRating; break;
       case 'recent': primary = ((b.seasonYear || b.year) || 0) - ((a.seasonYear || a.year) || 0); break;
       case 'popularity':
-      default:       primary = b.minVotes - a.minVotes; break;
+      default: {
+        // When exactly one shape is selected, boost the most archetypal
+        // examples by sorting by confidence × log-popularity so the
+        // seasons that most strongly match the pattern lead.
+        if (state.shapes.size === 1) {
+          const shape = [...state.shapes][0];
+          const ca = (a.confidence && a.confidence[shape]) || 0;
+          const cb = (b.confidence && b.confidence[shape]) || 0;
+          const logA = ca * Math.log1p(a.minVotes);
+          const logB = cb * Math.log1p(b.minVotes);
+          primary = logB - logA;
+        } else {
+          primary = b.minVotes - a.minVotes;
+        }
+        break;
+      }
     }
     if (primary !== 0) return primary;
     if (state.sort !== 'popularity' && b.minVotes !== a.minVotes) return b.minVotes - a.minVotes;
@@ -1266,12 +1356,15 @@ function fillShapeTags(container, shapes, { clickable = true } = {}) {
   // a recognized trajectory shape.
   if (shapes.length === 0) return;
   for (const s of shapes) {
+    const desc = SHAPE_DESCS[s] || '';
     if (clickable) {
       const tag = document.createElement('button');
       tag.type = 'button';
       tag.className = 'shape-tag is-clickable' + (state.shapes.has(s) ? ' active' : '');
       tag.textContent = SHAPE_LABELS[s] || s;
-      tag.title = state.shapes.has(s) ? 'Remove this shape filter' : 'Filter by this shape';
+      tag.title = desc
+        ? (state.shapes.has(s) ? `Remove this shape filter — ${desc}` : `Filter by this shape — ${desc}`)
+        : (state.shapes.has(s) ? 'Remove this shape filter' : 'Filter by this shape');
       tag.addEventListener('click', (e) => {
         e.stopPropagation();
         toggleShape(s);
@@ -1281,6 +1374,7 @@ function fillShapeTags(container, shapes, { clickable = true } = {}) {
       const tag = document.createElement('span');
       tag.className = 'shape-tag' + (state.shapes.has(s) ? ' active' : '');
       tag.textContent = SHAPE_LABELS[s] || s;
+      if (desc) tag.title = desc;
       container.appendChild(tag);
     }
   }
@@ -1576,6 +1670,202 @@ function drawCurve(svg, episodes, W, H, opts) {
       dots.appendChild(c);
     }
   }
+}
+
+// Add lightweight shape-specific annotations to the modal episode-rating SVG.
+// Only fires for shapes that actually match the season.
+function drawCurveAnnotations(svg, episodes, shapes) {
+  const NS = 'http://www.w3.org/2000/svg';
+  let group = svg.querySelector('.curve-annotations');
+  if (group) group.remove();
+  if (!shapes || !shapes.length) return;
+
+  group = document.createElementNS(NS, 'g');
+  group.setAttribute('class', 'curve-annotations');
+  svg.appendChild(group);
+
+  const W = 600, H = 180;
+  const padXLeft = 36, padXRight = 4, padY = 6;
+  const n = episodes.length;
+  if (n < 2) return;
+  const ratings = episodes.map((e) => e.rating);
+  const lo = Math.max(0, Math.min(...ratings) - 0.3);
+  const hi = Math.min(10, Math.max(...ratings) + 0.3);
+  const span = Math.max(0.1, hi - lo);
+  const xStep = (W - padXLeft - padXRight) / (n - 1);
+
+  function px(i) {
+    return padXLeft + i * xStep;
+  }
+  function py(r) {
+    return padY + (1 - (r - lo) / span) * (H - padY * 2);
+  }
+
+  function addLabel(x, y, text, anchor = 'middle') {
+    const t = document.createElementNS(NS, 'text');
+    t.setAttribute('x', x.toFixed(1));
+    t.setAttribute('y', y.toFixed(1));
+    t.setAttribute('text-anchor', anchor);
+    t.setAttribute('class', 'curve-annotation-label');
+    t.textContent = text;
+    group.appendChild(t);
+  }
+
+  function addArrow(x1, y1, x2, y2) {
+    const line = document.createElementNS(NS, 'line');
+    line.setAttribute('x1', x1.toFixed(1));
+    line.setAttribute('y1', y1.toFixed(1));
+    line.setAttribute('x2', x2.toFixed(1));
+    line.setAttribute('y2', y2.toFixed(1));
+    line.setAttribute('class', 'curve-annotation-arrow');
+    line.setAttribute('marker-end', 'url(#ann-arrow)');
+    group.appendChild(line);
+  }
+
+  // Arrow marker definition (shared)
+  if (!svg.querySelector('#ann-arrow')) {
+    const defs = document.createElementNS(NS, 'defs');
+    const marker = document.createElementNS(NS, 'marker');
+    marker.setAttribute('id', 'ann-arrow');
+    marker.setAttribute('markerWidth', '6');
+    marker.setAttribute('markerHeight', '6');
+    marker.setAttribute('refX', '5');
+    marker.setAttribute('refY', '3');
+    marker.setAttribute('orient', 'auto');
+    const path = document.createElementNS(NS, 'path');
+    path.setAttribute('d', 'M0,0 L0,6 L6,3 Z');
+    path.setAttribute('class', 'curve-annotation-arrowhead');
+    marker.appendChild(path);
+    defs.appendChild(marker);
+    svg.insertBefore(defs, svg.firstChild);
+  }
+
+  const finaleIdx = n - 1;
+  const finaleX = px(finaleIdx);
+  const finaleY = py(ratings[finaleIdx]);
+
+  if (shapes.includes('big-finale')) {
+    addArrow(finaleX, finaleY - 22, finaleX, finaleY - 10);
+    addLabel(finaleX, finaleY - 26, 'Peak finale');
+  }
+
+  if (shapes.includes('bad-finale')) {
+    addArrow(finaleX, finaleY + 22, finaleX, finaleY + 10);
+    addLabel(finaleX, finaleY + 30, 'Weakest finale');
+  }
+
+  if (shapes.includes('rebound')) {
+    let minIdx = 1, minR = Infinity;
+    for (let i = 1; i < n - 1; i++) {
+      if (ratings[i] < minR) { minR = ratings[i]; minIdx = i; }
+    }
+    const dipX = px(minIdx);
+    const dipY = py(minR);
+    addArrow(dipX, dipY + 18, dipX, dipY + 8);
+    addLabel(dipX, dipY + 24, 'Dip', 'middle');
+  }
+
+  if (shapes.includes('slow-burn')) {
+    const mid = Math.floor(n / 2);
+    const midX = px(mid);
+    const braceY = H - padY + 12;
+    const lineR = document.createElementNS(NS, 'line');
+    lineR.setAttribute('x1', midX.toFixed(1));
+    lineR.setAttribute('y1', (braceY).toFixed(1));
+    lineR.setAttribute('x2', px(finaleIdx).toFixed(1));
+    lineR.setAttribute('y2', (braceY).toFixed(1));
+    lineR.setAttribute('class', 'curve-annotation-bracket');
+    group.appendChild(lineR);
+    addLabel((midX + px(finaleIdx)) / 2, braceY + 12, 'Lifts off');
+  }
+
+  if (shapes.includes('mid-peak')) {
+    let maxIdx = 0, maxR = -Infinity;
+    for (let i = 0; i < n; i++) {
+      if (ratings[i] > maxR) { maxR = ratings[i]; maxIdx = i; }
+    }
+    const pkX = px(maxIdx);
+    const pkY = py(maxR);
+    addArrow(pkX, pkY - 22, pkX, pkY - 10);
+    addLabel(pkX, pkY - 26, 'Mid-peak');
+  }
+}
+
+// Attach mousemove / touchmove to the modal curve SVG and show a floating
+// label for the nearest episode dot. Cleans up the previous handler on
+// each openModal call so there's no accumulation across re-opens.
+let _curveHoverCleanup = null;
+function bindModalCurveHover(svg, episodes) {
+  if (_curveHoverCleanup) { _curveHoverCleanup(); _curveHoverCleanup = null; }
+
+  let tip = svg.parentElement && svg.parentElement.querySelector('.curve-hover-tip');
+  if (!tip) {
+    const wrap = svg.closest('.curve-with-axis') || svg.parentElement;
+    tip = document.createElement('div');
+    tip.className = 'curve-hover-tip';
+    tip.hidden = true;
+    if (wrap) wrap.style.position = 'relative';
+    (wrap || svg.parentElement).appendChild(tip);
+  }
+
+  const dots = [...(svg.querySelector('.curve-dots')?.children || [])];
+
+  function getNearestEpIndex(svgX, svgW) {
+    if (dots.length === 0) return -1;
+    const fracX = (svgX - 36) / (svgW - 36 - 4);
+    const idx = Math.round(fracX * (dots.length - 1));
+    return Math.max(0, Math.min(dots.length - 1, idx));
+  }
+
+  function showTip(e) {
+    const rect = svg.getBoundingClientRect();
+    const clientX = e.touches ? e.touches[0].clientX : e.clientX;
+    const clientY = e.touches ? e.touches[0].clientY : e.clientY;
+    const relX = clientX - rect.left;
+    const relY = clientY - rect.top;
+
+    const svgW = parseFloat(svg.getAttribute('viewBox').split(' ')[2]) || 600;
+    const svgH = parseFloat(svg.getAttribute('viewBox').split(' ')[3]) || 180;
+    const scaleX = svgW / rect.width;
+    const svgX = relX * scaleX;
+
+    const idx = getNearestEpIndex(svgX, svgW);
+    if (idx < 0) return;
+
+    const ep = episodes[idx];
+    const epLabel = ep.episode === 0 ? 'Ep 0' : `Ep ${ep.episode}`;
+    const namePart = ep.name ? ` · ${ep.name}` : '';
+    const votesPart = ep.votes ? `  ${ep.votes.toLocaleString()} votes` : '';
+    tip.textContent = `${epLabel}${namePart}  ${ep.rating.toFixed(1)}★${votesPart}`;
+    tip.hidden = false;
+
+    const dotEl = dots[idx];
+    const dotCx = parseFloat(dotEl.getAttribute('cx'));
+    const dotCy = parseFloat(dotEl.getAttribute('cy'));
+    const pxX = (dotCx / svgW) * rect.width;
+    const pxY = (dotCy / svgH) * rect.height;
+
+    const tipW = 200;
+    const left = Math.min(Math.max(0, pxX - tipW / 2), rect.width - tipW);
+    const top = pxY - 44;
+    tip.style.left = `${left}px`;
+    tip.style.top = `${top < 0 ? pxY + 8 : top}px`;
+  }
+
+  function hideTip() { tip.hidden = true; }
+
+  svg.addEventListener('mousemove', showTip);
+  svg.addEventListener('mouseleave', hideTip);
+  svg.addEventListener('touchmove', showTip, { passive: true });
+  svg.addEventListener('touchend', hideTip, { passive: true });
+
+  _curveHoverCleanup = () => {
+    svg.removeEventListener('mousemove', showTip);
+    svg.removeEventListener('mouseleave', hideTip);
+    svg.removeEventListener('touchmove', showTip);
+    svg.removeEventListener('touchend', hideTip);
+    tip.hidden = true;
+  };
 }
 
 // Draw IMDb-rating gridlines + labels along the left edge of a curve SVG.
@@ -1945,6 +2235,19 @@ function openModal(m, opts = {}) {
 
   els.modalOverview.textContent = m.overview || '';
 
+  let driftNoteEl = els.modal.querySelector('.modal-drift-note');
+  if (m.driftNote) {
+    if (!driftNoteEl) {
+      driftNoteEl = document.createElement('p');
+      driftNoteEl.className = 'modal-drift-note';
+      els.modalOverview.insertAdjacentElement('afterend', driftNoteEl);
+    }
+    driftNoteEl.textContent = `⇌ ${m.driftNote}`;
+    driftNoteEl.hidden = false;
+  } else if (driftNoteEl) {
+    driftNoteEl.hidden = true;
+  }
+
   els.modalPoster.replaceChildren();
   if (m.poster) {
     const img = document.createElement('img');
@@ -1959,6 +2262,8 @@ function openModal(m, opts = {}) {
   }
 
   drawCurve(els.modalCurve, m.episodes, 600, 180, { showAxis: true });
+  drawCurveAnnotations(els.modalCurve, m.episodes, m.shapes);
+  bindModalCurveHover(els.modalCurve, m.episodes);
 
   const epFrag = document.createDocumentFragment();
   for (const e of m.episodes) {
@@ -2009,6 +2314,18 @@ function openModal(m, opts = {}) {
   els.modalEpisodes.replaceChildren(epFrag);
 
   els.modalImdb.href = `https://www.imdb.com/title/${m.seriesId}/episodes/?season=${m.season}`;
+
+  if (els.modalJustwatch) {
+    const mainstream = (m.providers || []).filter(isMainstreamProvider);
+    if (mainstream.length > 0) {
+      els.modalJustwatch.href = `https://www.justwatch.com/us/search?q=${encodeURIComponent(m.title)}`;
+      els.modalJustwatch.title = `Available on: ${mainstream.join(', ')}`;
+    } else {
+      els.modalJustwatch.href = `https://www.justwatch.com/us/search?q=${encodeURIComponent(m.title)}`;
+      els.modalJustwatch.title = 'Search JustWatch for streaming options';
+    }
+  }
+
   // Prefer the season-level dereferrer when we have a season tvdbId; otherwise
   // fall back to the series page (still useful, just not deep-linked).
   if (m.seasonTvdbId) {
@@ -2415,6 +2732,7 @@ function openChangelogModal() {
   renderChangelogAdded(latest);
   renderChangelogRemoved(latest);
   renderChangelogSwings(latest);
+  renderChangelogFreshness(latest);
 
   els.changelogModal.hidden = false;
   els.changelogModal.setAttribute('aria-hidden', 'false');
@@ -2533,6 +2851,62 @@ function renderChangelogSwings(entry) {
     li.appendChild(btn);
     els.changelogSwingsList.appendChild(li);
   }
+}
+
+function renderChangelogFreshness(entry) {
+  if (!els.changelogFreshnessContent) return;
+  const frag = document.createDocumentFragment();
+
+  const builtAt = entry.builtAt || dataset?.builtAt;
+  if (builtAt) {
+    const row = document.createElement('div');
+    row.className = 'freshness-row';
+    const label = document.createElement('span');
+    label.className = 'freshness-label';
+    label.textContent = 'Dataset built:';
+    const val = document.createElement('span');
+    val.className = 'freshness-value';
+    val.textContent = formatBuiltAt(builtAt);
+    row.append(label, val);
+    frag.appendChild(row);
+  }
+
+  const ratingChanges = entry.modifiedCounts?.avgRating || 0;
+  if (ratingChanges > 0) {
+    const row = document.createElement('div');
+    row.className = 'freshness-row';
+    const label = document.createElement('span');
+    label.className = 'freshness-label';
+    label.textContent = 'Avg ratings changed:';
+    const val = document.createElement('span');
+    val.className = 'freshness-value';
+    val.textContent = `${ratingChanges.toLocaleString()} season${ratingChanges === 1 ? '' : 's'}`;
+    row.append(label, val);
+    frag.appendChild(row);
+  }
+
+  const bigSwings = (entry.ratingSwings || []).length;
+  if (bigSwings > 0) {
+    const row = document.createElement('div');
+    row.className = 'freshness-row';
+    const label = document.createElement('span');
+    label.className = 'freshness-label';
+    label.textContent = 'Notable rating swings (≥0.2):';
+    const val = document.createElement('span');
+    val.className = 'freshness-value';
+    val.textContent = `${bigSwings} season${bigSwings === 1 ? '' : 's'}`;
+    row.append(label, val);
+    frag.appendChild(row);
+  }
+
+  if (!frag.childNodes.length) {
+    const p = document.createElement('p');
+    p.className = 'freshness-label';
+    p.textContent = 'No freshness data available for this refresh.';
+    frag.appendChild(p);
+  }
+
+  els.changelogFreshnessContent.replaceChildren(frag);
 }
 
 // Open the season directly when a user clicks an added title or a rating
@@ -2813,6 +3187,148 @@ function onToolbarChange() {
   onFilterChange();
 }
 
+// Render a 1200×630 share card for the given season onto a canvas, then
+// copy it to the clipboard as a PNG (falling back to a download).
+function shareSeasonCard(m, curveSvg) {
+  const W = 1200, H = 630;
+  const canvas = document.createElement('canvas');
+  canvas.width = W;
+  canvas.height = H;
+  const ctx = canvas.getContext('2d');
+
+  // Background
+  ctx.fillStyle = '#07090f';
+  ctx.fillRect(0, 0, W, H);
+
+  // Accent bar at the top
+  const grad = ctx.createLinearGradient(0, 0, W, 0);
+  grad.addColorStop(0, 'rgba(245,197,24,0.7)');
+  grad.addColorStop(1, 'rgba(245,197,24,0.1)');
+  ctx.fillStyle = grad;
+  ctx.fillRect(0, 0, W, 4);
+
+  // Branding
+  ctx.fillStyle = 'rgba(255,255,255,0.3)';
+  ctx.font = '500 22px system-ui, sans-serif';
+  ctx.fillText('Rising Seasons · shevato.com', 56, 52);
+
+  // Title
+  ctx.fillStyle = '#f1f3f8';
+  ctx.font = '700 56px system-ui, sans-serif';
+  const titleText = m.title.length > 32 ? m.title.slice(0, 30) + '…' : m.title;
+  ctx.fillText(titleText, 56, 128);
+
+  // Season info
+  const seasonYear = m.seasonYear || m.year || '';
+  ctx.fillStyle = '#f5c518';
+  ctx.font = '600 30px system-ui, sans-serif';
+  ctx.fillText(`Season ${m.season}  ·  ${m.episodes.length} eps${seasonYear ? '  ·  ' + seasonYear : ''}`, 56, 178);
+
+  // Shape tags
+  ctx.font = '600 22px system-ui, sans-serif';
+  const shapeLabels = m.shapes
+    .filter((s) => s !== 'saved-best-for-last')
+    .map((s) => SHAPE_LABELS[s] || s);
+  let tagX = 56;
+  const tagY = 222;
+  for (const label of shapeLabels.slice(0, 4)) {
+    const tw = ctx.measureText(label).width;
+    const tagW = tw + 24;
+    ctx.fillStyle = 'rgba(245,197,24,0.12)';
+    ctx.beginPath();
+    ctx.roundRect(tagX, tagY - 20, tagW, 32, 16);
+    ctx.fill();
+    ctx.fillStyle = '#f5c518';
+    ctx.fillText(label, tagX + 12, tagY + 8);
+    tagX += tagW + 10;
+  }
+
+  // Stats line
+  ctx.fillStyle = 'rgba(255,255,255,0.6)';
+  ctx.font = '500 22px system-ui, sans-serif';
+  const climb = m.lastRating - m.firstRating;
+  const climbStr = climb >= 0 ? `+${climb.toFixed(1)}` : climb.toFixed(1);
+  ctx.fillText(
+    `Avg ${m.avgRating.toFixed(1)}  ·  Climb ${m.firstRating.toFixed(1)} → ${m.lastRating.toFixed(1)} (${climbStr})`,
+    56, 286,
+  );
+
+  // Episode rating curve
+  const curveX = 56, curveY = 320, curveW = W - 112, curveH = 220;
+  const ratings = m.episodes.map((e) => e.rating);
+  const lo = Math.max(0, Math.min(...ratings) - 0.3);
+  const hi = Math.min(10, Math.max(...ratings) + 0.3);
+  const span = Math.max(0.1, hi - lo);
+  const n = ratings.length;
+  const xStep = n > 1 ? curveW / (n - 1) : 0;
+  const points = ratings.map((r, i) => [
+    curveX + (n > 1 ? i * xStep : curveW / 2),
+    curveY + (1 - (r - lo) / span) * curveH,
+  ]);
+
+  // Area fill
+  const areaGrad = ctx.createLinearGradient(0, curveY, 0, curveY + curveH);
+  areaGrad.addColorStop(0, 'rgba(245,197,24,0.22)');
+  areaGrad.addColorStop(1, 'rgba(245,197,24,0.01)');
+  ctx.beginPath();
+  ctx.moveTo(points[0][0], points[0][1]);
+  for (let i = 1; i < points.length; i++) ctx.lineTo(points[i][0], points[i][1]);
+  ctx.lineTo(points[points.length - 1][0], curveY + curveH);
+  ctx.lineTo(points[0][0], curveY + curveH);
+  ctx.closePath();
+  ctx.fillStyle = areaGrad;
+  ctx.fill();
+
+  // Line
+  ctx.beginPath();
+  ctx.moveTo(points[0][0], points[0][1]);
+  for (let i = 1; i < points.length; i++) ctx.lineTo(points[i][0], points[i][1]);
+  ctx.strokeStyle = '#f5c518';
+  ctx.lineWidth = 3;
+  ctx.lineJoin = 'round';
+  ctx.stroke();
+
+  // Dots
+  for (const [px, py] of points) {
+    ctx.beginPath();
+    ctx.arc(px, py, 5, 0, Math.PI * 2);
+    ctx.fillStyle = '#f5c518';
+    ctx.fill();
+  }
+
+  // Footer
+  ctx.fillStyle = 'rgba(255,255,255,0.2)';
+  ctx.font = '400 18px system-ui, sans-serif';
+  ctx.fillText('Rising Seasons — TV by the shape of episode ratings', 56, 610);
+
+  canvas.toBlob((blob) => {
+    if (!blob) return;
+    const fname = `${m.title.replace(/[^a-z0-9]/gi, '-').toLowerCase()}-s${m.season}-share.png`;
+    if (navigator.clipboard && navigator.clipboard.write) {
+      navigator.clipboard.write([new ClipboardItem({ 'image/png': blob })])
+        .then(() => {
+          if (els.modalShareCard) {
+            const orig = els.modalShareCard.textContent;
+            els.modalShareCard.textContent = 'Copied!';
+            setTimeout(() => { els.modalShareCard.textContent = orig; }, 1800);
+          }
+        })
+        .catch(() => downloadBlob(blob, fname));
+    } else {
+      downloadBlob(blob, fname);
+    }
+  }, 'image/png');
+}
+
+function downloadBlob(blob, filename) {
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = filename;
+  a.click();
+  setTimeout(() => URL.revokeObjectURL(url), 5000);
+}
+
 function bindEvents() {
   for (const btn of els.shapes.querySelectorAll('.shape-chip')) {
     btn.addEventListener('click', () => toggleShape(btn.dataset.shape));
@@ -3001,6 +3517,13 @@ function bindEvents() {
     renderStatsBar();
     render();
   });
+
+  if (els.modalShareCard) {
+    els.modalShareCard.addEventListener('click', () => {
+      if (!modalState.season) return;
+      shareSeasonCard(modalState.season, els.modalCurve);
+    });
+  }
 }
 
 function bindKeyboard() {
@@ -3032,6 +3555,38 @@ function bindKeyboard() {
       return;
     }
   });
+}
+
+// Touch tooltip for shape tags on result cards (UI-4).
+// On touchstart on a .shape-tag[title], show a floating label near the touch
+// point for 2 seconds. Works on iOS where title tooltips don't show on tap.
+let _touchTooltipEl = null;
+let _touchTooltipTimer = null;
+function bindShapeTagTouchTooltips() {
+  function show(text, x, y) {
+    hide();
+    const el = document.createElement('div');
+    el.className = 'shape-touch-tooltip';
+    el.textContent = text;
+    el.style.left = `${Math.min(x, window.innerWidth - 200)}px`;
+    el.style.top = `${y - 44}px`;
+    document.body.appendChild(el);
+    _touchTooltipEl = el;
+    _touchTooltipTimer = setTimeout(hide, 2000);
+  }
+  function hide() {
+    if (_touchTooltipEl) { _touchTooltipEl.remove(); _touchTooltipEl = null; }
+    if (_touchTooltipTimer) { clearTimeout(_touchTooltipTimer); _touchTooltipTimer = null; }
+  }
+  document.addEventListener('touchstart', (e) => {
+    const tag = e.target.closest('.shape-tag:not(.is-clickable)');
+    if (tag && tag.title) {
+      const touch = e.touches[0];
+      show(tag.title, touch.clientX, touch.clientY + window.scrollY);
+    } else {
+      hide();
+    }
+  }, { passive: true });
 }
 
 /* Advanced-filters drawer (mobile only).
