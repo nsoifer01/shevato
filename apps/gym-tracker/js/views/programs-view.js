@@ -251,6 +251,9 @@ class ProgramsView {
                     <button class="btn btn-secondary" data-action="edit-program" data-program-id="${program.id}">
                         <i class="fas fa-edit"></i> Edit
                     </button>
+                    <button class="btn btn-ghost" data-action="duplicate-program" data-program-id="${program.id}">
+                        <i class="fas fa-copy"></i> Duplicate
+                    </button>
                     <button class="btn btn-danger" data-action="delete-program" data-program-id="${program.id}">
                         <i class="fas fa-trash"></i> Delete
                     </button>
@@ -292,6 +295,10 @@ class ProgramsView {
                 case 'edit-program':
                     e.preventDefault();
                     this.editProgram(id);
+                    break;
+                case 'duplicate-program':
+                    e.preventDefault();
+                    this.duplicateProgram(id);
                     break;
                 case 'delete-program':
                     e.preventDefault();
@@ -741,6 +748,20 @@ class ProgramsView {
             this.returnToView = null;
             this.app.showView(target);
         }
+    }
+
+    duplicateProgram(programId) {
+        const source = this.app.getProgramById(programId);
+        if (!source) return;
+        const copy = new Program({
+            name: `${source.name} (Copy)`,
+            description: source.description,
+            exercises: source.exercises.map(ex => ({ ...ex })),
+        });
+        this.app.programs.push(copy);
+        this.app.savePrograms();
+        this.render();
+        showToast(`"${copy.name}" created`, 'success');
     }
 
     async deleteProgram(programId) {
