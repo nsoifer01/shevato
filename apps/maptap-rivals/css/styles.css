@@ -2055,6 +2055,36 @@ body.maptap-rivals-app button {
 .delta-neg { color: var(--bad); font-variant-numeric: tabular-nums; font-weight: 600; }
 .delta-zero { color: var(--muted); font-variant-numeric: tabular-nums; }
 
+/* Leaderboard sortable column headers */
+.lb-th-sortable {
+  cursor: pointer;
+  user-select: none;
+}
+.lb-th-sortable:hover {
+  color: var(--text);
+}
+.lb-th-sorted {
+  color: var(--accent-2);
+}
+.lb-th-sorted::after {
+  content: ' \25BC'; /* down triangle */
+  font-size: 0.55rem;
+  vertical-align: middle;
+  opacity: 0.7;
+}
+/* Rivalry score tooltip trigger */
+.lb-th-hint {
+  font-size: 0.65rem;
+  color: var(--muted-2);
+  cursor: help;
+  border-bottom: 1px dotted currentColor;
+}
+/* Rivalry score data cells — tabular numerics, same weight as Win % */
+.lb-rivalry-score {
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
 /* Row action — compact icon button that sits muted until the row is
    hovered/focused, like Linear / Notion table actions. */
 .icon-btn,
