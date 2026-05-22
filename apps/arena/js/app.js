@@ -1125,12 +1125,86 @@ function wireGameTypeToggle() {
                     el.hidden = el.dataset.gameType !== type;
                 }
             });
+            saveLobbySettings();
         });
     });
 }
 
+const LOBBY_SETTINGS_KEY = 'arena.lobby.lastSettings';
+
+function saveLobbySettings() {
+    try {
+        const overrideTimer = !!$('#create-globe-drop-timer-override').checked;
+        const settings = {
+            gameType: state.selectedGameType,
+            roundType: $('#create-globe-drop-round-type').value,
+            difficulty: $('#create-globe-drop-difficulty').value,
+            locationsCount: $('#create-locations-count').value,
+            timerOverride: overrideTimer,
+            timerSec: overrideTimer ? $('#create-globe-drop-time').value : null,
+            questionsCount: $('#create-questions-count').value,
+            triviaTimeSec: $('#create-trivia-time').value
+        };
+        localStorage.setItem(LOBBY_SETTINGS_KEY, JSON.stringify(settings));
+    } catch (e) { /* localStorage may be unavailable */ }
+}
+
+function restoreLobbySettings() {
+    try {
+        const raw = localStorage.getItem(LOBBY_SETTINGS_KEY);
+        if (!raw) return;
+        const s = JSON.parse(raw);
+
+        // Restore game type toggle first so the correct fields show.
+        if (s.gameType === 'trivia' || s.gameType === 'globe-drop') {
+            const btn = $(`.game-type-btn[data-game-type="${s.gameType}"]`);
+            if (btn) btn.click();
+        }
+
+        if (s.roundType) {
+            const el = $('#create-globe-drop-round-type');
+            if (el) el.value = s.roundType;
+        }
+        if (s.difficulty) {
+            const el = $('#create-globe-drop-difficulty');
+            if (el) el.value = s.difficulty;
+        }
+        if (s.locationsCount) {
+            const el = $('#create-locations-count');
+            if (el) el.value = s.locationsCount;
+        }
+        if (s.timerOverride) {
+            const tog = $('#create-globe-drop-timer-override');
+            if (tog) {
+                tog.checked = true;
+                $('#create-globe-drop-time-field').hidden = false;
+            }
+            if (s.timerSec) {
+                const el = $('#create-globe-drop-time');
+                if (el) el.value = s.timerSec;
+            }
+        }
+        if (s.questionsCount) {
+            const el = $('#create-questions-count');
+            if (el) el.value = s.questionsCount;
+        }
+        if (s.triviaTimeSec) {
+            const el = $('#create-trivia-time');
+            if (el) el.value = s.triviaTimeSec;
+        }
+    } catch (e) { /* ignore corrupt localStorage */ }
+}
+
 function wireLobby() {
     wireGameTypeToggle();
+
+    // Restore previously used settings on mount.
+    restoreLobbySettings();
+
+    // Save settings on any field change so the last selection survives reload.
+    $$('#lobby-panel select, #lobby-panel input[type="checkbox"]').forEach((el) => {
+        el.addEventListener('change', saveLobbySettings);
+    });
 
     $('#create-private-toggle').addEventListener('change', (e) => {
         const wantsPrivate = e.target.checked;
@@ -1184,12 +1258,16 @@ function wireLobby() {
     // as a fresh start since guest stats were never persisted anyway.
     const endGuestCtaBtn = $('#end-guest-cta-btn');
     if (endGuestCtaBtn) endGuestCtaBtn.addEventListener('click', () => openSignInPrompt());
+    const endShareBtn = $('#end-share-btn');
+    if (endShareBtn) endShareBtn.addEventListener('click', () => shareResultCard());
     const settingsEditBtn = $('#room-settings-edit-btn');
     if (settingsEditBtn) settingsEditBtn.addEventListener('click', () => openRoomSettingsEditor());
     const settingsCancel = $('#room-settings-cancel');
     if (settingsCancel) settingsCancel.addEventListener('click', () => closeRoomSettingsEditor());
     const settingsSave = $('#room-settings-save');
     if (settingsSave) settingsSave.addEventListener('click', () => saveRoomSettings());
+    const switchGameTypeBtn = $('#room-switch-game-type-btn');
+    if (switchGameTypeBtn) switchGameTypeBtn.addEventListener('click', () => switchRoomGameType());
     const endAgainHandler = () => {
         // Solo: skip the accept gate, restart immediately.
         const playMode = (state.roomData && state.roomData.playMode) || 'multi';
@@ -1576,11 +1654,14 @@ async function joinRoom() {
     }
 
     const displayName = (state.profile && state.profile.displayName) || deriveInitialDisplayName();
-    await joinPlayer(code, displayName, /* isHost */ false);
+    // Mark the player as a spectator if they're joining mid-game so the UI
+    // can show a "Spectating — joining next round" banner and gate submitting.
+    const isSpectator = data.status === 'playing';
+    await joinPlayer(code, displayName, /* isHost */ false, isSpectator ? (data.currentQuestionIndex || 0) : -1);
     enterRoom(code);
 }
 
-async function joinPlayer(code, displayName, isHost) {
+async function joinPlayer(code, displayName, isHost, joinedAtQuestionIndex) {
     const pref = doc(db, 'triviaRooms', code, 'players', state.user.uid);
     // Pull the room's current round so we don't carry stale "joinedAt round 1"
     // markers into round 2+. We can't write across players, so each player
@@ -1590,7 +1671,33 @@ async function joinPlayer(code, displayName, isHost) {
         const roomSnap = await getDoc(doc(db, 'triviaRooms', code));
         if (roomSnap.exists()) currentRound = roomSnap.data().round || 1;
     } catch (e) { /* fall back to 1 */ }
-    await setDoc(pref, {
+
+    // Check for an existing player doc written by beforeUnloadCleanup — if
+    // disconnectedAt is within the grace window, restore the player's
+    // score/streak/answers instead of resetting them to 0.
+    let existingSnap = null;
+    try { existingSnap = await getDoc(pref); } catch (e) { /* ignore */ }
+    const existing = existingSnap && existingSnap.exists() ? existingSnap.data() : null;
+    const now = Date.now();
+    const withinGrace = existing
+        && typeof existing.disconnectedAt === 'number'
+        && (now - existing.disconnectedAt) < DISCONNECT_GRACE_MS;
+
+    if (withinGrace) {
+        // Reconnect path: clear the disconnectedAt flag and refresh lastSeen.
+        // Score, streak, answers, and currentAnsweredFor are preserved.
+        await updateDoc(pref, {
+            displayName: String(displayName).slice(0, Config.MAX_DISPLAY_NAME),
+            disconnectedAt: deleteField(),
+            lastSeen: serverTimestamp()
+        });
+        return;
+    }
+
+    // joinedAtQuestionIndex >= 0 means the player joined mid-game and should
+    // spectate the current question (gate: their joinedAtQuestionIndex === the
+    // room's currentQuestionIndex at join time). -1 = joined at lobby, full participant.
+    const doc_data = {
         uid: state.user.uid,
         displayName: String(displayName).slice(0, Config.MAX_DISPLAY_NAME),
         isHost: !!isHost,
@@ -1603,7 +1710,11 @@ async function joinPlayer(code, displayName, isHost) {
         currentAnswerAt: null,
         currentAnsweredFor: null,
         answers: []
-    }, { merge: true });
+    };
+    if (typeof joinedAtQuestionIndex === 'number' && joinedAtQuestionIndex >= 0) {
+        doc_data.joinedAtQuestionIndex = joinedAtQuestionIndex;
+    }
+    await setDoc(pref, doc_data, { merge: true });
 }
 
 function openSignInPrompt() {
@@ -1729,6 +1840,7 @@ async function maybeResetForNewRound() {
         await updateDoc(doc(db, 'triviaRooms', state.roomCode, 'players', state.user.uid), {
             score: 0,
             streak: 0,
+            globeDropStreak: 0,
             round: roomRound,
             currentAnswerIndex: null,
             currentGuess: null,
@@ -1741,6 +1853,8 @@ async function maybeResetForNewRound() {
     }
 }
 
+const DISCONNECT_GRACE_MS = 30000; // 30-second rejoin window
+
 async function beforeUnloadCleanup() {
     if (!state.roomCode || !state.user) return;
     // Keep the player doc when the room is already in the post-match
@@ -1750,8 +1864,17 @@ async function beforeUnloadCleanup() {
     // renderRoom routes status=finished → renderEndStage.
     if (state.roomData && state.roomData.status === 'finished') return;
     try {
-        await deleteDoc(doc(db, 'triviaRooms', state.roomCode, 'players', state.user.uid));
-    } catch (e) { /* best-effort */ }
+        // Write disconnectedAt timestamp instead of deleting the doc.
+        // If the player reloads within DISCONNECT_GRACE_MS, joinPlayer
+        // detects the grace window and restores their score/streak rather
+        // than treating them as a fresh joiner. After the grace period
+        // elapses without reconnect, the host's TTL sweep (or the next
+        // joinPlayer call) cleans up the orphaned doc.
+        await updateDoc(doc(db, 'triviaRooms', state.roomCode, 'players', state.user.uid), {
+            disconnectedAt: Date.now(),
+            lastSeen: serverTimestamp()
+        });
+    } catch (e) { /* best-effort; deletion still happens via joinPlayer on fresh join */ }
 }
 
 /**
@@ -2335,6 +2458,20 @@ function renderRoom() {
         && !state.rematchInFlight) {
         playAgain();
     }
+    // Spectator banner — shown when the local player joined mid-game and the
+    // current question is the one they joined on (joinedAtQuestionIndex === currentQuestionIndex).
+    // As soon as the host advances to the next question the index increments
+    // and the banner disappears — the player is now a full participant.
+    const spectatorBanner = $('#room-spectator-banner');
+    if (spectatorBanner) {
+        const mePlayer = state.user ? state.roomPlayers.find((p) => p.uid === state.user.uid) : null;
+        const joinedAtQIdx = mePlayer && typeof mePlayer.joinedAtQuestionIndex === 'number'
+            ? mePlayer.joinedAtQuestionIndex : -1;
+        const curQIdx = typeof room.currentQuestionIndex === 'number' ? room.currentQuestionIndex : -1;
+        const isSpectating = playing && joinedAtQIdx >= 0 && curQIdx <= joinedAtQIdx;
+        spectatorBanner.hidden = !isSpectating;
+    }
+
     const banner = $('#room-paused-banner');
     if (banner) {
         banner.hidden = !room.paused;
@@ -2390,34 +2527,55 @@ function renderRoomSettings(isHost) {
     const panel = $('#room-settings');
     if (!panel) return;
     const room = state.roomData || {};
-    if (room.gameType !== 'globe-drop') {
-        panel.hidden = true;
-        return;
-    }
+    const canEdit = isHost && room.status === 'lobby';
+
+    // Show the panel for both game types — trivia rooms need the game-type
+    // display and the switch button even though they have no GlobeDrop fields.
     panel.hidden = false;
 
-    const roundType = room.roundType || 'capitals';
-    const meta = GlobeDropLocations.ROUND_TYPES[roundType] || GlobeDropLocations.ROUND_TYPES.capitals;
-    setText($('#room-settings-round-type'), meta.label || roundType);
+    // Game type display row — always populated regardless of game type.
+    const gameTypeEl = $('#room-settings-game-type');
+    if (gameTypeEl) {
+        setText(gameTypeEl, room.gameType === 'globe-drop' ? 'Globe Drop' : 'Trivia');
+    }
 
-    const diffKey = room.difficulty || 'medium';
-    const diff = GlobeDropScoring.difficultySettings(diffKey);
-    setText($('#room-settings-difficulty'), diff.label || diffKey);
+    // Globe Drop-specific settings rows — hide for trivia rooms.
+    const isGlobeDrop = room.gameType === 'globe-drop';
+    const roundTypeItem = $('#room-settings-item-round-type');
+    if (roundTypeItem) roundTypeItem.hidden = !isGlobeDrop;
+    const diffEl = document.querySelector('.room-settings-item:has(#room-settings-difficulty)');
 
-    setText($('#room-settings-locations'), String(room.totalQuestions || 0));
+    if (isGlobeDrop) {
+        const roundType = room.roundType || 'capitals';
+        const meta = GlobeDropLocations.ROUND_TYPES[roundType] || GlobeDropLocations.ROUND_TYPES.capitals;
+        setText($('#room-settings-round-type'), meta.label || roundType);
 
-    const seconds = Math.round((room.questionTimeMs || diff.timerSec * 1000) / 1000);
-    setText($('#room-settings-timer'), `${seconds}s`);
+        const diffKey = room.difficulty || 'medium';
+        const diff = GlobeDropScoring.difficultySettings(diffKey);
+        setText($('#room-settings-difficulty'), diff.label || diffKey);
+
+        setText($('#room-settings-locations'), String(room.totalQuestions || 0));
+
+        const seconds = Math.round((room.questionTimeMs || diff.timerSec * 1000) / 1000);
+        setText($('#room-settings-timer'), `${seconds}s`);
+    }
+
+    // Switch game type button — host only, lobby only.
+    const switchBtn = $('#room-switch-game-type-btn');
+    if (switchBtn) {
+        switchBtn.hidden = !canEdit;
+        if (canEdit) {
+            switchBtn.textContent = isGlobeDrop ? 'Switch to Trivia' : 'Switch to Globe Drop';
+        }
+    }
 
     const editBtn = $('#room-settings-edit-btn');
     const hint = $('#room-settings-hint');
     const editForm = $('#room-settings-edit');
     const view = $('#room-settings-view');
 
-    // Edit affordances visible only to host AND only while the room is
-    // still in lobby state (settings are locked once playing starts).
-    const canEdit = isHost && room.status === 'lobby';
-    if (editBtn) editBtn.hidden = !canEdit;
+    // Edit affordances visible only for globe-drop host in lobby.
+    if (editBtn) editBtn.hidden = !(canEdit && isGlobeDrop);
     if (hint) hint.hidden = !(isHost && !canEdit);
     // Whenever the form isn't open, keep it hidden (show summary).
     if (editForm && !state.roomSettingsEditing) {
@@ -2521,6 +2679,33 @@ async function saveRoomSettings() {
     } finally {
         if (saveBtn) saveBtn.disabled = false;
         if (cancelBtn) cancelBtn.disabled = false;
+    }
+}
+
+/**
+ * Toggle the room's game type between 'globe-drop' and 'trivia' while the
+ * room is still in the lobby. Writes atomically to the room doc — only the
+ * gameType field changes, the player list is untouched.
+ */
+async function switchRoomGameType() {
+    if (!state.user || !state.roomCode || !state.roomData) return;
+    if (state.roomData.hostUid !== state.user.uid) return;
+    if (state.roomData.status !== 'lobby') return;
+
+    const current = state.roomData.gameType || 'globe-drop';
+    const next = current === 'globe-drop' ? 'trivia' : 'globe-drop';
+
+    const switchBtn = $('#room-switch-game-type-btn');
+    if (switchBtn) switchBtn.disabled = true;
+    try {
+        await updateDoc(doc(db, 'triviaRooms', state.roomCode), { gameType: next });
+        // Also update state.selectedGameType so the local create-form toggle
+        // stays in sync on subsequent room-settings renders.
+        state.selectedGameType = next;
+    } catch (err) {
+        console.warn('switchRoomGameType failed:', err);
+    } finally {
+        if (switchBtn) switchBtn.disabled = false;
     }
 }
 
@@ -3442,15 +3627,24 @@ function drawGlobeDropReveal(loc, me, { showOthers = true } = {}) {
         state.globe.polygonsData(feat ? [feat] : []);
     });
 
-    // Pan + zoom into the correct location. Altitude 0.6 puts the
-    // country's outline at roughly half the viewport — close enough
-    // for borders to read, far enough that the city pin doesn't get
-    // lost under the chrome. 1400ms tween matches globe.gl's default
-    // easing for a smooth fly-in. Guarded so the local + global
-    // reveal don't fight each other's tweens for the same question.
+    // Cinematic camera pan into the correct location. We do a two-phase
+    // tween: first pull back slightly from the player's current altitude
+    // (200ms, gives visual context), then arc into the target at 0.6
+    // altitude (1400ms). The two-phase approach prevents an abrupt jump
+    // when the player is zoomed close and the target is far away.
+    // Guarded by lastCameraTarget so local → global doesn't re-fire.
     const camTarget = `${loc.id}:${loc.lat.toFixed(3)},${loc.lng.toFixed(3)}`;
     if (state.lastCameraTarget !== camTarget) {
-        state.globe.pointOfView({ lat: loc.lat, lng: loc.lng, altitude: 0.6 }, 1400);
+        const curPov = state.globe.pointOfView();
+        const pullbackAlt = Math.max(curPov.altitude, 1.2);
+        // Phase 1: pull back (200ms)
+        state.globe.pointOfView({ lat: curPov.lat, lng: curPov.lng, altitude: pullbackAlt }, 200);
+        // Phase 2: fly to target (1400ms), delayed so phase 1 settles
+        setTimeout(() => {
+            if (state.globe && state.lastCameraTarget === camTarget) {
+                state.globe.pointOfView({ lat: loc.lat, lng: loc.lng, altitude: 0.6 }, 1400);
+            }
+        }, 220);
         state.lastCameraTarget = camTarget;
     }
 
@@ -3571,28 +3765,51 @@ function renderMiniBoardGlobeDrop(currentQuestionId) {
         const pts = rec && typeof rec.points === 'number' ? rec.points : 0;
         return (p.score || 0) - pts;
     };
+    // Carry each player's globeDropStreak from the Firestore doc so the
+    // streak chip renders correctly in the mini-board.
+    const playerStreak = (p) => {
+        const full = state.roomPlayers.find((rp) => rp.uid === p.uid);
+        return full ? (full.globeDropStreak || 0) : 0;
+    };
     const ranked = Scoring.rankPlayers(state.roomPlayers.map((p) => ({
         displayName: p.displayName,
         score: adjustedScore(p),
-        streak: 0, // GlobeDrop doesn't use streaks (yet)
+        streak: p.globeDropStreak || 0,
         uid: p.uid,
         answeredThisQuestion: currentQuestionId != null
             && p.currentAnsweredFor === currentQuestionId
             && p.currentGuess != null
     })));
+    // Determine the current phase so we can show the pending pulse only during
+    // the asking window (not during reveal when everyone's result is locked).
+    const startMs = state.roomData && state.roomData.questionStartedAt && state.roomData.questionStartedAt.toMillis
+        ? state.roomData.questionStartedAt.toMillis() : null;
+    const revealMs = state.roomData && state.roomData.revealStartedAt && state.roomData.revealStartedAt.toMillis
+        ? state.roomData.revealStartedAt.toMillis() : null;
+    const currentPhase = globeDropPhase(startMs, Date.now(), revealMs, currentAskingDurationMs());
+    const isAskingPhase = currentPhase === 'asking';
+
     ranked.forEach((p, i) => {
         const li = document.createElement('li');
         li.className = 'mini-board-row';
         if (state.user && p.uid === state.user.uid) li.classList.add('is-me');
         if (i === 0 && (p.score || 0) > 0) li.classList.add('is-leader');
-        if (p.answeredThisQuestion) li.classList.add('is-answered');
-        // Answered state: a small green ✓ sits inline next to the
-        // player's name. No "submitted" word, no badge chrome — the
-        // pseudo-element on .is-answered .mini-board-check renders the
-        // ✓ glyph and animates in.
+        if (p.answeredThisQuestion) {
+            li.classList.add('is-answered');
+        } else if (isAskingPhase && currentQuestionId) {
+            // Idle during the asking window: subtle pulse so the host can
+            // see who still needs to submit without it being distracting.
+            li.classList.add('is-pending');
+        }
+        // Surface bullseye streak >= 2 — same treatment as trivia streaks.
+        const streak = Number(p.streak) || 0;
+        const streakChip = streak >= 2
+            ? `<span class="mini-board-streak" title="${streak} bullseyes in a row">🎯${streak}</span>`
+            : '';
         li.innerHTML =
             `<span class="mini-board-rank">${i+1}</span>` +
             `<span class="mini-board-name">${escapeHtml(p.displayName)}</span>` +
+            streakChip +
             `<span class="mini-board-check" aria-label="submitted"></span>` +
             `<span class="mini-board-score">${p.score || 0}</span>`;
         list.appendChild(li);
@@ -3702,6 +3919,13 @@ async function submitGuess() {
     if (!loc) return;
     if (!state.pendingGuess) return;
     if (state.submittedQuestionId === loc.id) return;
+    // Block submission while spectating (joined mid-game on this question).
+    const mePlayer = state.roomPlayers.find((p) => p.uid === state.user.uid);
+    const joinedAtQIdx = mePlayer && typeof mePlayer.joinedAtQuestionIndex === 'number'
+        ? mePlayer.joinedAtQuestionIndex : -1;
+    const curQIdx = typeof state.roomData.currentQuestionIndex === 'number'
+        ? state.roomData.currentQuestionIndex : -1;
+    if (joinedAtQIdx >= 0 && curQIdx <= joinedAtQIdx) return;
 
     const startMs = state.roomData.questionStartedAt && state.roomData.questionStartedAt.toMillis
         ? state.roomData.questionStartedAt.toMillis() : null;
@@ -3741,6 +3965,18 @@ async function submitGuess() {
             if (!snap.exists()) return;
             const cur = snap.data();
             if (cur.currentAnsweredFor === loc.id) return; // already submitted
+
+            // Globe Drop streak: consecutive bullseyes (basePoints >= 98) add a
+            // multiplier on top of the distance/continent score.
+            const prevStreak = cur.globeDropStreak || 0;
+            const isBullseye = basePoints >= 98;
+            const newStreak = isBullseye ? prevStreak + 1 : 0;
+            const cappedStreak = Math.min(newStreak, Config.GLOBE_DROP_STREAK_MULTIPLIER_CAP);
+            const streakMult = 1 + cappedStreak * Config.GLOBE_DROP_STREAK_MULTIPLIER_STEP;
+            // Only apply the streak bonus when there is at least one prior
+            // bullseye in the run (cappedStreak >= 2 means the second+ in a row).
+            const finalPoints = cappedStreak >= 2 ? Math.round(points * streakMult) : points;
+
             // Append a per-location record so the recap can show actual
             // vs guess + distance + points for every play.
             const guessRecord = {
@@ -3755,13 +3991,14 @@ async function submitGuess() {
                 distanceKm: distance,
                 basePoints,
                 multiplier: typeof loc.multiplier === 'number' ? loc.multiplier : 1,
-                points
+                points: finalPoints
             };
             tx.update(pref, {
                 currentGuess: guess,
                 currentAnswerAt: serverTimestamp(),
                 currentAnsweredFor: loc.id,
-                score: (cur.score || 0) + points,
+                score: (cur.score || 0) + finalPoints,
+                globeDropStreak: newStreak,
                 answers: [...(Array.isArray(cur.answers) ? cur.answers : []), guessRecord],
                 lastSeen: serverTimestamp()
             });
@@ -4462,6 +4699,10 @@ async function renderEndStage(isHost) {
         setText($('#end-summary'), 'No scores recorded.');
     }
 
+    // Share result button — visible on the end stage for all game types.
+    const shareBtn = $('#end-share-btn');
+    if (shareBtn) shareBtn.hidden = false;
+
     // Full per-question/per-location recap (free for everyone)
     renderEndRecap();
 
@@ -4578,6 +4819,144 @@ async function writeEndOfGameStats(me, didWin) {
 }
 
 /**
+ * Generate and download (or Web Share) a canvas result card for the
+ * current finished game. Card includes: game type, top score, and the
+ * final standings for all players.
+ */
+async function shareResultCard() {
+    if (!state.roomData || !state.roomPlayers) return;
+    const btn = $('#end-share-btn');
+    if (btn) btn.disabled = true;
+
+    try {
+        const W = 600, H = 340;
+        const canvas = document.createElement('canvas');
+        canvas.width = W;
+        canvas.height = H;
+        const ctx = canvas.getContext('2d');
+
+        // Background gradient
+        const bg = ctx.createLinearGradient(0, 0, W, H);
+        bg.addColorStop(0, '#06070d');
+        bg.addColorStop(1, '#0e1220');
+        ctx.fillStyle = bg;
+        ctx.fillRect(0, 0, W, H);
+
+        // Accent border top
+        const topBar = ctx.createLinearGradient(0, 0, W, 0);
+        topBar.addColorStop(0, '#22d3ee');
+        topBar.addColorStop(1, '#a855f7');
+        ctx.fillStyle = topBar;
+        ctx.fillRect(0, 0, W, 3);
+
+        // Title
+        ctx.font = 'bold 22px "Space Grotesk", sans-serif';
+        ctx.fillStyle = '#eef2ff';
+        const gameType = state.roomData.gameType === 'globe-drop' ? 'Globe Drop' : 'Trivia';
+        ctx.fillText(`Arena — ${gameType}`, 28, 40);
+
+        // Date
+        ctx.font = '13px "Outfit", sans-serif';
+        ctx.fillStyle = '#8b95b3';
+        const dateStr = new Date().toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' });
+        ctx.fillText(dateStr, 28, 62);
+
+        // Ranked players
+        const ranked = Scoring.rankPlayers(state.roomPlayers.map((p) => ({
+            displayName: p.displayName,
+            score: p.score || 0,
+            streak: p.streak || 0,
+            uid: p.uid
+        })));
+        const medals = ['🥇', '🥈', '🥉'];
+        const rowH = 44;
+        const startY = 90;
+        ranked.slice(0, 5).forEach((p, i) => {
+            const y = startY + i * rowH;
+            const isWinner = i === 0;
+
+            // Row background for winner
+            if (isWinner) {
+                ctx.fillStyle = 'rgba(251,191,36,0.08)';
+                ctx.beginPath();
+                ctx.roundRect(20, y - 8, W - 40, rowH - 4, 8);
+                ctx.fill();
+            }
+
+            // Medal or rank number
+            if (medals[i]) {
+                ctx.font = '20px serif';
+                ctx.fillText(medals[i], 28, y + 18);
+            } else {
+                ctx.font = 'bold 14px "JetBrains Mono", monospace';
+                ctx.fillStyle = '#22d3ee';
+                ctx.fillText(String(i + 1), 32, y + 18);
+            }
+
+            // Name
+            ctx.font = isWinner ? 'bold 16px "Outfit", sans-serif' : '15px "Outfit", sans-serif';
+            ctx.fillStyle = isWinner ? '#fbbf24' : '#eef2ff';
+            const maxNameW = 340;
+            let name = p.displayName || 'Player';
+            while (ctx.measureText(name).width > maxNameW && name.length > 1) name = name.slice(0, -1);
+            if (name !== p.displayName) name += '…';
+            ctx.fillText(name, 68, y + 18);
+
+            // Score pill
+            ctx.font = 'bold 14px "JetBrains Mono", monospace';
+            ctx.fillStyle = isWinner ? '#fbbf24' : '#22d3ee';
+            const scoreStr = String(p.score);
+            const scoreW = ctx.measureText(scoreStr).width;
+            ctx.fillText(scoreStr, W - 48 - scoreW / 2, y + 18);
+        });
+
+        // Footer
+        ctx.font = '12px "Outfit", sans-serif';
+        ctx.fillStyle = '#5b6585';
+        ctx.fillText('shevato.com/apps/arena', 28, H - 16);
+
+        // Gradient cyan line bottom-right
+        const footerBar = ctx.createLinearGradient(W - 200, 0, W, 0);
+        footerBar.addColorStop(0, 'transparent');
+        footerBar.addColorStop(1, '#22d3ee');
+        ctx.fillStyle = footerBar;
+        ctx.fillRect(W - 200, H - 3, 200, 3);
+
+        const filename = `arena-result-${Date.now()}.png`;
+        const dataUrl = canvas.toDataURL('image/png');
+
+        if (navigator.share && navigator.canShare) {
+            // Attempt Web Share API (mobile)
+            try {
+                const res = await fetch(dataUrl);
+                const blob = await res.blob();
+                const file = new File([blob], filename, { type: 'image/png' });
+                if (navigator.canShare({ files: [file] })) {
+                    await navigator.share({
+                        files: [file],
+                        title: `Arena ${gameType} results`,
+                        text: ranked[0] ? `${ranked[0].displayName} won with ${ranked[0].score} points!` : 'Check out the results!'
+                    });
+                    return;
+                }
+            } catch (_) { /* fall through to download */ }
+        }
+
+        // Fallback: download
+        const a = document.createElement('a');
+        a.href = dataUrl;
+        a.download = filename;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+    } catch (err) {
+        console.warn('shareResultCard failed:', err);
+    } finally {
+        if (btn) btn.disabled = false;
+    }
+}
+
+/**
  * H2H pair-key built from two uids, alphabetically sorted so both
  * directions resolve to the same doc.
  */
@@ -4646,6 +5025,7 @@ async function maybeWriteH2HPairs() {
         const aScore = me.score || 0;
         const bScore = opp.score || 0;
         try {
+            const gameType = state.roomData.gameType || 'trivia';
             await runTransaction(db, async (tx) => {
                 const ref = doc(db, 'triviaH2H', key);
                 const snap = await tx.get(ref);
@@ -4653,13 +5033,18 @@ async function maybeWriteH2HPairs() {
                 const winsA = (cur.winsA || 0) + (aScore > bScore ? 1 : 0);
                 const winsB = (cur.winsB || 0) + (bScore > aScore ? 1 : 0);
                 const ties = (cur.ties || 0) + (aScore === bScore ? 1 : 0);
+                // Track game-type breakdown so the H2H view can show
+                // per-mode records when the pair has played multiple modes.
+                const prevGameTypes = (cur.gameTypes && typeof cur.gameTypes === 'object') ? cur.gameTypes : {};
+                const prevTypeCount = prevGameTypes[gameType] || 0;
                 tx.set(ref, {
                     uidA, uidB,
                     displayNameA: me.displayName || 'Player',
                     displayNameB: opp.displayName || 'Player',
                     winsA, winsB, ties,
                     gamesPlayed: (cur.gamesPlayed || 0) + 1,
-                    lastPlayedAt: serverTimestamp()
+                    lastPlayedAt: serverTimestamp(),
+                    gameTypes: { ...prevGameTypes, [gameType]: prevTypeCount + 1 }
                 }, { merge: true });
             });
         } catch (err) {
