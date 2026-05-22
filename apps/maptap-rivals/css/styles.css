@@ -1439,6 +1439,30 @@ body.maptap-rivals-app button {
   background: linear-gradient(90deg, var(--good), var(--accent-2));
 }
 
+.drama-callout {
+  font-size: 0.75rem;
+  font-weight: 600;
+  line-height: 1.3;
+  padding: 0.3rem 0.6rem;
+  border-radius: 6px;
+  margin-bottom: 0.55rem;
+}
+.drama-callout-win {
+  background: rgba(249, 115, 22, 0.15);
+  color: #fb923c;
+  border: 1px solid rgba(249, 115, 22, 0.25);
+}
+.drama-callout-loss {
+  background: rgba(96, 165, 250, 0.12);
+  color: #60a5fa;
+  border: 1px solid rgba(96, 165, 250, 0.22);
+}
+.drama-callout-comeback {
+  background: rgba(250, 204, 21, 0.12);
+  color: #fbbf24;
+  border: 1px solid rgba(250, 204, 21, 0.22);
+}
+
 /* ---------- Rival detail ---------- */
 
 .rival-header {
@@ -2047,6 +2071,46 @@ tr:focus-within .icon-btn {
 .icon-btn-danger:focus-visible {
   box-shadow: 0 0 0 2px rgba(248, 113, 113, 0.22);
 }
+
+.icon-btn-share:hover {
+  background: rgba(99, 102, 241, 0.12);
+  color: var(--accent-2);
+}
+.icon-btn-share:focus-visible {
+  box-shadow: 0 0 0 2px var(--accent-soft);
+}
+
+/* Inline toast that appears next to the share button after copying. */
+.share-toast {
+  display: inline-block;
+  margin-left: 0.35rem;
+  padding: 0.18rem 0.55rem;
+  border-radius: 999px;
+  background: var(--surface-3);
+  border: 1px solid var(--border-strong);
+  color: var(--good);
+  font-size: 0.72rem;
+  font-weight: 600;
+  white-space: nowrap;
+  pointer-events: none;
+  animation: share-toast-in 0.15s ease;
+}
+@keyframes share-toast-in {
+  from { opacity: 0; transform: translateY(-4px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+/* Post-save share button in the paste actions bar */
+.paste-share-btn {
+  height: 2.6rem;
+  font-size: 0.85rem;
+  gap: 0.35rem;
+}
+.paste-share-icon {
+  display: inline-flex;
+  align-items: center;
+}
+.paste-share-icon svg { width: 14px; height: 14px; }
 
 .history-controls {
   display: flex;
