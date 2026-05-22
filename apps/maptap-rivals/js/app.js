@@ -91,6 +91,12 @@
     '<path d="M21 12a9 9 0 0 1-15 6.7L3 16"/>' +
     '<path d="M3 21v-5h5"/>' +
     '</svg>';
+  const ICON_SHARE =
+    '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false">' +
+    '<path d="M4 12v8a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-8"/>' +
+    '<polyline points="16 6 12 2 8 6"/>' +
+    '<line x1="12" y1="2" x2="12" y2="15"/>' +
+    '</svg>';
 
   // Render the Note cell. "synced from MapTap" — which would otherwise repeat
   // on most rows — collapses to a tiny sync icon with a tooltip. Manual
@@ -941,6 +947,113 @@
     else if (state.view === 'history') renderHistory();
   }
 
+  // ---------- share / result card ----------
+
+  // Build the streak line for the share text. Uses games for the rival
+  // *up to and including* the game being shared so the streak reflects
+  // the state right after that result, not the current live streak.
+  function streakUpTo(game) {
+    const all = gamesFor(game.rivalId);
+    const idx = all.findIndex(g => g.id === game.id);
+    if (idx < 0) return null;
+    const slice = all.slice(0, idx + 1);
+    const s = streaks(slice);
+    if (s.curMine >= 2) return { kind: 'W', len: s.curMine };
+    if (s.curTheirs >= 2) return { kind: 'L', len: s.curTheirs };
+    return null;
+  }
+
+  function buildShareText(g, rival) {
+    const myT = getMyTotal(g);
+    const theirT = getTheirTotal(g);
+    const diff = myT - theirT;
+    const meName = state.me || 'Me';
+    const rivalName = rival ? rival.name : 'Rival';
+
+    const winnerScore = diff >= 0 ? myT : theirT;
+    const loserScore  = diff >= 0 ? theirT : myT;
+    const margin = Math.abs(diff);
+    const result = diff > 0 ? 'you won' : diff < 0 ? 'they won' : 'tie';
+
+    const winnerSquare = '🟩'; // green
+    const loserSquare  = '⬜';       // white
+    const tieSquare    = '⬛';       // black (tie)
+
+    let lines = [];
+    lines.push(`MapTap Rivals — ${meName} vs ${rivalName}`);
+    lines.push(g.date);
+    lines.push('');
+
+    if (diff > 0) {
+      lines.push(`${winnerSquare} ${winnerScore} — ${loserScore} ${loserSquare}  (${result} by ${margin})`);
+    } else if (diff < 0) {
+      lines.push(`${loserSquare} ${loserScore} — ${winnerScore} ${winnerSquare}  (${result} by ${margin})`);
+    } else {
+      lines.push(`${tieSquare} ${myT} — ${theirT} ${tieSquare}  (tie)`);
+    }
+
+    if (hasLocs(g)) {
+      lines.push('Round scores:');
+      const myRound    = g.myScores.map((m, i) => resultLoc(m, g.theirScores[i]));
+      const theirRound = g.theirScores.map((t, i) => resultLoc(t, g.myScores[i]));
+      const toEmoji = r => r === 'W' ? winnerSquare : r === 'L' ? loserSquare : tieSquare;
+      lines.push(myRound.map(toEmoji).join('') + '  ' + meName);
+      lines.push(theirRound.map(toEmoji).join('') + '  ' + rivalName);
+    }
+
+    const sk = streakUpTo(g);
+    if (sk) {
+      const streakEmoji = sk.kind === 'W' ? '🔥' : '❄️';
+      const who = sk.kind === 'W' ? 'win' : 'loss';
+      lines.push('');
+      lines.push(`${streakEmoji} ${sk.len}-game ${who} streak`);
+    }
+
+    lines.push('shevato.com/apps/maptap-rivals');
+    return lines.join('\n');
+  }
+
+  // Show a transient toast anchored to `anchorEl`. Cleans itself up after
+  // 2.5 s, or immediately if share succeeds via native sheet (no toast needed).
+  function showShareToast(anchorEl, msg) {
+    const existing = anchorEl.parentNode && anchorEl.parentNode.querySelector('.share-toast');
+    if (existing) existing.remove();
+    const toast = el('span', { class: 'share-toast', role: 'status', 'aria-live': 'polite' }, msg);
+    anchorEl.insertAdjacentElement('afterend', toast);
+    setTimeout(() => { if (toast.parentNode) toast.remove(); }, 2500);
+  }
+
+  async function shareGame(g, rival, btn) {
+    const text = buildShareText(g, rival);
+    if (navigator.share) {
+      try {
+        await navigator.share({ text });
+        return;
+      } catch (_) {
+        // User cancelled or share failed — fall through to clipboard.
+      }
+    }
+    try {
+      await navigator.clipboard.writeText(text);
+      showShareToast(btn, 'Copied — paste anywhere');
+    } catch (_) {
+      showShareToast(btn, 'Copy failed');
+    }
+  }
+
+  function shareCell(g, rival) {
+    return el('td', { class: 'row-action-cell' }, [
+      el('button', {
+        type: 'button',
+        class: 'icon-btn icon-btn-share',
+        title: 'Share result',
+        'aria-label': 'Share result',
+        html: ICON_SHARE,
+        onclick: function () { shareGame(g, rival, this); },
+      }),
+    ]);
+  }
+
   // ---------- dashboard view ----------
   function renderDashboard() {
     renderProfileCard();
@@ -1515,13 +1628,14 @@
 
     let w = 0, l = 0, t = 0;
     const now = Date.now();
+    const savedGames = [];
     for (const { rival, theirs } of targets) {
       const myT = mine.computedTotal;
       const theirT = theirs.computedTotal;
       const diff = myT - theirT;
       if (diff > 0) w++; else if (diff < 0) l++; else t++;
 
-      state.games.push({
+      const newGame = {
         id: uid(),
         rivalId: rival.id,
         date,
@@ -1531,7 +1645,9 @@
         theirScore: theirT,
         note: '',
         createdAt: now,
-      });
+      };
+      state.games.push(newGame);
+      savedGames.push({ game: newGame, rival });
     }
     persistGames();
 
@@ -1558,8 +1674,9 @@
     refreshPasteMineUI();
     refreshAllPasteResults();
 
-    // Confirmation summary on the bottom bar
+    // Confirmation summary on the bottom bar + share buttons (one per rival).
     const summary = $('#paste-summary');
+    const pasteActions = $('#paste-actions');
     if (summary) {
       summary.classList.remove('is-ready', 'is-error');
       summary.classList.add('is-success');
@@ -1568,6 +1685,21 @@
       if (l) wlt.push(`${l}L`);
       if (t) wlt.push(`${t}T`);
       summary.textContent = `Saved ${targets.length} game${targets.length === 1 ? '' : 's'} · ${wlt.join(' · ') || 'no result'}`;
+    }
+    if (pasteActions) {
+      pasteActions.querySelectorAll('.paste-share-btn').forEach(b => b.remove());
+      savedGames.forEach(({ game, rival }) => {
+        const shareBtn = el('button', {
+          type: 'button',
+          class: 'btn btn-ghost paste-share-btn',
+          title: `Share result vs ${rival.name}`,
+        }, [
+          el('span', { html: ICON_SHARE, class: 'paste-share-icon' }),
+          `Share vs ${rival.name}`,
+        ]);
+        shareBtn.addEventListener('click', function () { shareGame(game, rival, this); });
+        pasteActions.appendChild(shareBtn);
+      });
     }
 
     // Refresh the dashboard tiles + summary so saved games land immediately.
@@ -1619,6 +1751,61 @@
       el('div', { class: 'value' }, String(value)),
       sub ? el('div', { class: 'sub' }, sub) : null,
     ]);
+  }
+
+  // Returns {kind, text} for a one-line drama callout on the dashboard rival
+  // card, or null if no drama applies. Priority order matches the spec.
+  // kind: 'win' | 'loss' | 'comeback'
+  function streakDrama(rivalId) {
+    const today = todayISO();
+    // Already played today — drama resolved, skip.
+    if (state.games.some(g => g.rivalId === rivalId && g.date === today)) return null;
+
+    const games = gamesFor(rivalId);
+    if (games.length < 2) return null;
+
+    const rival = state.rivals.find(r => r.id === rivalId);
+    const rivalName = rival ? rival.name : 'rival';
+
+    const s = streaks(games);
+    const curW = s.curMine;
+    const curL = s.curTheirs;
+
+    // Compute the previous all-time best win streak (excluding the current
+    // ongoing run) so conditions 1 and 2 compare against the historical record.
+    let prevLongestW = 0;
+    let run = 0;
+    for (let i = 0; i < games.length - curW; i++) {
+      const r = resultOf(games[i]);
+      if (r === 'W') { run++; if (run > prevLongestW) prevLongestW = run; }
+      else run = 0;
+    }
+
+    // 1. About to break personal best win streak (tie record with next win)
+    if (curW >= 2 && curW === prevLongestW) {
+      return { kind: 'win', text: `🔥 On a ${curW}-game win streak — match your record today` };
+    }
+    // 2. About to extend personal best win streak (already surpassed old record)
+    if (curW >= 2 && curW > prevLongestW) {
+      return { kind: 'win', text: `🔥 New record! ${curW}-game win streak vs ${rivalName}` };
+    }
+    // 3. About to extend any winning streak
+    if (curW >= 3) {
+      return { kind: 'win', text: `🔥 ${curW}-game win streak vs ${rivalName}` };
+    }
+    // 4. About to end a losing streak
+    if (curL >= 3) {
+      return { kind: 'loss', text: `❄️ ${curL}-game losing streak — turn it around today` };
+    }
+    // 5. Comeback potential
+    if (games.length >= 3) {
+      const last = games[games.length - 1];
+      const diff = getMyTotal(last) - getTheirTotal(last);
+      if (diff < 0 && Math.abs(diff) < 100) {
+        return { kind: 'comeback', text: `⚡ Close one last time (${Math.abs(diff)}-pt loss) — get even today` };
+      }
+    }
+    return null;
   }
 
   function renderRivalGrid() {
@@ -1711,6 +1898,11 @@
       el('span', { style: `width:${(s.winPct * 100).toFixed(1)}%` }),
     ]);
     card.appendChild(pctBar);
+
+    const drama = streakDrama(r.id);
+    if (drama) {
+      card.appendChild(el('div', { class: 'drama-callout drama-callout-' + drama.kind }, drama.text));
+    }
 
     const foot = el('div', { class: 'rival-card-foot' });
     const formPills = el('div', { class: 'form-pills', title: 'Last 5 games (oldest → newest)' });
@@ -1904,6 +2096,7 @@
         el('td', { class: 'rounds-cell' }, [makeRoundDots(g)]),
         el('td', {}, [el('span', { class: 'result-badge ' + r }, r)]),
         noteCell(g),
+        shareCell(g, rival),
         deleteCell(g),
       ]));
     });
@@ -2835,6 +3028,7 @@
         el('td', { class: 'rounds-cell' }, [makeRoundDots(g)]),
         el('td', {}, [el('span', { class: 'result-badge ' + r }, r)]),
         noteCell(g),
+        shareCell(g, rival || null),
         deleteCell(g),
       ]));
     });
