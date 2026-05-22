@@ -265,6 +265,7 @@
     view: 'dashboard',
     matrixSelection: load(KEY.MATRIX_SEL, null), // string[] of rivalIds, or null = "all"
     matrixTab: 'record',           // overridden by URL hash on first paint
+    lbSort: 'winpct',              // 'winpct' | 'rivalry'
     historyFilters: { rival: 'all', result: 'all' },
     historyPage: 1,
     historyPageSize: 25,
@@ -416,6 +417,41 @@
     return state.games
       .filter(g => g.rivalId === rivalId)
       .sort((a, b) => a.date.localeCompare(b.date) || a.createdAt - b.createdAt);
+  }
+
+  // Composite rivalry score — single number summarising how the rivalry is
+  // going. Blends win rate, volume confidence, recency, and average margin.
+  //
+  // Formula (one line):
+  //   score = min(1, games/10) * 50 * (recencyWinRate + recencyMarginRate)
+  //
+  // recencyWinRate    = Σ(outcome * 0.95^rank) / Σ(0.95^rank)
+  //                     outcome: W=+1, L=−1, T=0; rank 0 = newest game
+  // recencyMarginRate = Σ((myTotal − theirTotal)/1000 * 0.95^rank) / Σ(0.95^rank)
+  //
+  // Positive = you are winning the rivalry; negative = they are.
+  function rivalryScore(rivalId) {
+    const games = gamesFor(rivalId);
+    const n = games.length;
+    if (n === 0) return 0;
+    const volume = Math.min(1, n / 10);
+    let weightSum = 0;
+    let winSum = 0;
+    let marginSum = 0;
+    for (let i = 0; i < n; i++) {
+      const rank = n - 1 - i; // rank 0 = newest (games is oldest-first)
+      const decay = Math.pow(0.95, rank);
+      const g = games[i];
+      const my = getMyTotal(g);
+      const their = getTheirTotal(g);
+      const outcome = my > their ? 1 : my < their ? -1 : 0;
+      winSum    += outcome * decay;
+      marginSum += ((my - their) / 1000) * decay;
+      weightSum += decay;
+    }
+    const recencyWinRate    = winSum    / weightSum;
+    const recencyMarginRate = marginSum / weightSum;
+    return volume * 50 * (recencyWinRate + recencyMarginRate);
   }
 
   function resultOf(g) {
@@ -2567,7 +2603,27 @@
       return;
     }
     $('#leaderboard-empty').hidden = true;
-    summaries.sort((a, b) => b.winPct - a.winPct || b.total - a.total);
+
+    // Annotate each summary with its rivalry score so we compute it once.
+    summaries.forEach(s => { s._rivalryScore = rivalryScore(s.rival.id); });
+
+    if (state.lbSort === 'rivalry') {
+      summaries.sort((a, b) => b._rivalryScore - a._rivalryScore || b.total - a.total);
+    } else {
+      summaries.sort((a, b) => b.winPct - a.winPct || b.total - a.total);
+    }
+
+    // Update sort-active state on the column headers.
+    const thWinPct  = $('#lb-th-winpct');
+    const thRivalry = $('#lb-th-rivalry');
+    if (thWinPct) {
+      thWinPct.classList.toggle('lb-th-sorted', state.lbSort === 'winpct');
+      thWinPct.setAttribute('aria-sort', state.lbSort === 'winpct' ? 'descending' : 'none');
+    }
+    if (thRivalry) {
+      thRivalry.classList.toggle('lb-th-sorted', state.lbSort === 'rivalry');
+      thRivalry.setAttribute('aria-sort', state.lbSort === 'rivalry' ? 'descending' : 'none');
+    }
 
     summaries.forEach((s, i) => {
       const avgDiff = s.total ? (s.cumDiff / s.total) : 0;
@@ -2594,6 +2650,13 @@
       tr.appendChild(el('td', { style: 'color:var(--bad);font-weight:600' }, String(s.losses)));
       tr.appendChild(el('td', { style: 'color:var(--tie)' }, String(s.ties)));
       tr.appendChild(el('td', { style: 'font-weight:600' }, `${(s.winPct * 100).toFixed(1)}%`));
+
+      const rs = s._rivalryScore;
+      const rsFormatted = (rs > 0 ? '+' : '') + rs.toFixed(1);
+      tr.appendChild(el('td', {
+        class: 'lb-rivalry-score ' + (rs > 0 ? 'delta-pos' : rs < 0 ? 'delta-neg' : 'delta-zero'),
+      }, rsFormatted));
+
       tr.appendChild(el('td', { class: avgDiff > 0 ? 'delta-pos' : avgDiff < 0 ? 'delta-neg' : 'delta-zero' },
         (avgDiff > 0 ? '+' : '') + avgDiff.toFixed(1)));
       const streakCell = el('td', {});
@@ -4442,6 +4505,27 @@
       state.rivalGamesPage++;
       renderRival();
     });
+
+    // leaderboard sort headers
+    function makeLbSortHandler(sortKey) {
+      return function (e) {
+        if (e.type === 'keydown' && e.key !== 'Enter' && e.key !== ' ') return;
+        if (e.type === 'keydown') e.preventDefault();
+        if (state.lbSort === sortKey) return;
+        state.lbSort = sortKey;
+        if (state.view === 'leaderboard') renderLeaderboard();
+      };
+    }
+    const lbThWinPct  = $('#lb-th-winpct');
+    const lbThRivalry = $('#lb-th-rivalry');
+    if (lbThWinPct) {
+      lbThWinPct.addEventListener('click',   makeLbSortHandler('winpct'));
+      lbThWinPct.addEventListener('keydown', makeLbSortHandler('winpct'));
+    }
+    if (lbThRivalry) {
+      lbThRivalry.addEventListener('click',   makeLbSortHandler('rivalry'));
+      lbThRivalry.addEventListener('keydown', makeLbSortHandler('rivalry'));
+    }
 
     // cross-tab / sync changes
     window.addEventListener('storage', onExternalStorage);
