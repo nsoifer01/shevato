@@ -324,6 +324,72 @@ export class AchievementService {
     }
 
     /**
+     * Feature 7: definitions for per-lift weight milestone achievements.
+     * `exerciseMatch` is a lowercase substring to match against exercise names.
+     * `threshold` is in kg; convert to lb when unit is lb.
+     * `bwMultiplier` signals that the threshold is N × bodyweight.
+     */
+    static getLiftMilestoneAchievements() {
+        return [
+            // Bench Press
+            { id: 'lift-bench-60', name: 'Bench 60kg', description: 'Log a Bench Press set at 60 kg or more', exerciseMatch: 'bench press', threshold: 60, icon: '🏋️' },
+            { id: 'lift-bench-80', name: 'Bench 80kg', description: 'Log a Bench Press set at 80 kg or more', exerciseMatch: 'bench press', threshold: 80, icon: '🏋️' },
+            { id: 'lift-bench-100', name: 'Bench 100kg', description: 'Log a Bench Press set at 100 kg or more', exerciseMatch: 'bench press', threshold: 100, icon: '💯' },
+            { id: 'lift-bench-bw', name: 'Bench Bodyweight', description: 'Bench press your own bodyweight', exerciseMatch: 'bench press', bwMultiplier: 1, icon: '🪞' },
+            // Squat
+            { id: 'lift-squat-80', name: 'Squat 80kg', description: 'Log a Squat set at 80 kg or more', exerciseMatch: 'squat', threshold: 80, icon: '🦵' },
+            { id: 'lift-squat-100', name: 'Squat 100kg', description: 'Log a Squat set at 100 kg or more', exerciseMatch: 'squat', threshold: 100, icon: '🦵' },
+            { id: 'lift-squat-140', name: 'Squat 140kg', description: 'Log a Squat set at 140 kg or more', exerciseMatch: 'squat', threshold: 140, icon: '💪' },
+            { id: 'lift-squat-15bw', name: 'Squat 1.5× BW', description: 'Squat 1.5× your bodyweight', exerciseMatch: 'squat', bwMultiplier: 1.5, icon: '🏆' },
+            // Deadlift
+            { id: 'lift-deadlift-100', name: 'Deadlift 100kg', description: 'Log a Deadlift set at 100 kg or more', exerciseMatch: 'deadlift', threshold: 100, icon: '🔩' },
+            { id: 'lift-deadlift-140', name: 'Deadlift 140kg', description: 'Log a Deadlift set at 140 kg or more', exerciseMatch: 'deadlift', threshold: 140, icon: '⚙️' },
+            { id: 'lift-deadlift-180', name: 'Deadlift 180kg', description: 'Log a Deadlift set at 180 kg or more', exerciseMatch: 'deadlift', threshold: 180, icon: '🏗️' },
+            { id: 'lift-deadlift-2bw', name: 'Deadlift 2× BW', description: 'Deadlift twice your bodyweight', exerciseMatch: 'deadlift', bwMultiplier: 2, icon: '👑' },
+            // Overhead Press
+            { id: 'lift-ohp-40', name: 'OHP 40kg', description: 'Log an Overhead Press set at 40 kg or more', exerciseMatch: 'overhead press', threshold: 40, icon: '☝️' },
+            { id: 'lift-ohp-60', name: 'OHP 60kg', description: 'Log an Overhead Press set at 60 kg or more', exerciseMatch: 'overhead press', threshold: 60, icon: '☝️' },
+            { id: 'lift-ohp-bw', name: 'Press Bodyweight', description: 'Overhead press your bodyweight', exerciseMatch: 'overhead press', bwMultiplier: 1, icon: '🌟' },
+        ];
+    }
+
+    /**
+     * Feature 7: check whether a just-completed session unlocks any lift
+     * milestone achievement. Returns an array of newly-unlocked definition
+     * objects (from getLiftMilestoneAchievements) so the caller can fire
+     * toasts / update stored achievements.
+     *
+     * `bodyweight` — latest body weight in the same unit as sets. May be null.
+     * `unit` — 'kg' or 'lb'. Thresholds are kg; multiply by 2.205 for lb.
+     */
+    static checkLiftMilestones(sessions, unlockedIds, bodyweight, unit = 'kg') {
+        const milestones = this.getLiftMilestoneAchievements();
+        const factor = unit === 'lb' ? 2.205 : 1;
+        const newlyUnlocked = [];
+
+        for (const m of milestones) {
+            if (unlockedIds.has(m.id)) continue;
+
+            const threshold = m.bwMultiplier != null
+                ? (bodyweight != null ? bodyweight * m.bwMultiplier : null)
+                : m.threshold * factor;
+
+            if (threshold == null) continue;
+
+            const hit = sessions.some(s =>
+                s.exercises.some(ex => {
+                    if (!ex.exerciseName.toLowerCase().includes(m.exerciseMatch)) return false;
+                    return (ex.sets || []).some(set => (set.weight || 0) >= threshold && set.completed);
+                })
+            );
+
+            if (hit) newlyUnlocked.push(m);
+        }
+
+        return newlyUnlocked;
+    }
+
+    /**
      * Update all achievement progress based on sessions
      */
     static updateAchievementProgress(achievements, sessions) {
