@@ -113,6 +113,9 @@
       <button class="view-tab" data-view="matrix" role="tab" aria-selected="false">
         <span aria-hidden="true">🔀</span> Matrix
       </button>
+      <button class="view-tab" data-view="seasons" role="tab" aria-selected="false">
+        <span aria-hidden="true">🏅</span> Seasons
+      </button>
       <button class="view-tab" data-view="history" role="tab" aria-selected="false">
         <span aria-hidden="true">📜</span> History
       </button>
@@ -178,6 +181,8 @@
           </div>
         </details>
       </section>
+
+      <div id="dash-active-season-banner" hidden></div>
 
       <div class="dash-summary" id="dash-summary"></div>
 
@@ -398,6 +403,16 @@
       </p>
     </section>
 
+    <!-- SEASONS VIEW -->
+    <section class="view view-seasons" data-view-panel="seasons" hidden>
+      <div class="seasons-toolbar">
+        <h2 class="section-title">Rivalry Seasons</h2>
+        <button type="button" class="btn btn-primary" id="new-season-btn">+ New season</button>
+      </div>
+      <div id="seasons-active-banner"></div>
+      <div id="seasons-body"></div>
+    </section>
+
     <!-- HISTORY VIEW (all games, all rivals) -->
     <section class="view view-history" data-view-panel="history" hidden>
       <div class="history-controls">
@@ -540,6 +555,69 @@
         <button type="button" class="btn btn-ghost" data-close="modal">Cancel</button>
         <button type="button" class="btn btn-danger" id="rival-delete-btn" hidden>Delete</button>
         <button type="button" class="btn btn-primary" id="rival-save-btn">Save</button>
+      </div>
+    </article>
+  </div>
+
+  <!-- Season creation modal -->
+  <div class="modal" id="season-modal" role="dialog" aria-modal="true" aria-labelledby="season-modal-title" hidden>
+    <div class="modal-backdrop" data-close="season-modal"></div>
+    <article class="modal-panel modal-panel-season">
+      <button type="button" class="modal-close" data-close="season-modal" aria-label="Close">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.85" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M6 6l12 12"/><path d="M18 6L6 18"/></svg>
+      </button>
+      <h2 id="season-modal-title">New season</h2>
+
+      <label class="modal-field">
+        <span>Season name</span>
+        <input type="text" id="season-name" maxlength="60" placeholder="e.g. May Showdown" autocomplete="off">
+      </label>
+
+      <div class="season-modal-dates">
+        <label class="modal-field">
+          <span>Start date</span>
+          <input type="date" id="season-start">
+        </label>
+        <label class="modal-field">
+          <span>End date</span>
+          <input type="date" id="season-end">
+        </label>
+      </div>
+
+      <label class="modal-field">
+        <span>Target rival</span>
+        <select id="season-rival">
+          <option value="">All rivals</option>
+        </select>
+      </label>
+
+      <fieldset class="season-goal-fieldset">
+        <legend>Goal</legend>
+        <label class="season-goal-radio">
+          <input type="radio" name="season-goal-type" value="winPct" checked>
+          <span>Win % of at least</span>
+          <input type="number" id="season-goal-winpct" class="season-goal-val" min="1" max="100" value="60">
+          <span class="season-goal-unit">%</span>
+        </label>
+        <label class="season-goal-radio">
+          <input type="radio" name="season-goal-type" value="wins">
+          <span>Win at least</span>
+          <input type="number" id="season-goal-wins" class="season-goal-val" min="1" value="10">
+          <span class="season-goal-unit">games</span>
+        </label>
+        <label class="season-goal-radio">
+          <input type="radio" name="season-goal-type" value="minGames">
+          <span>Play at least</span>
+          <input type="number" id="season-goal-mingames" class="season-goal-val" min="1" value="20">
+          <span class="season-goal-unit">games</span>
+        </label>
+      </fieldset>
+
+      <p class="season-modal-error" id="season-modal-error" hidden></p>
+
+      <div class="modal-actions">
+        <button type="button" class="btn btn-ghost" data-close="season-modal">Cancel</button>
+        <button type="button" class="btn btn-primary" id="season-save-btn">Create season</button>
       </div>
     </article>
   </div>
