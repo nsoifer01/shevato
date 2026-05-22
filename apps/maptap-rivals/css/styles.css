@@ -2105,24 +2105,28 @@ tr:focus-within .icon-btn {
   box-shadow: 0 0 0 2px var(--accent-soft);
 }
 
-/* Inline toast that appears next to the share button after copying. */
+/* Floating clipboard-confirmation pill — bottom center, doesn't affect layout. */
 .share-toast {
-  display: inline-block;
-  margin-left: 0.35rem;
-  padding: 0.18rem 0.55rem;
+  position: fixed;
+  left: 50%;
+  bottom: 1.75rem;
+  transform: translateX(-50%);
+  padding: 0.5rem 1rem;
   border-radius: 999px;
   background: var(--surface-3);
   border: 1px solid var(--border-strong);
   color: var(--good);
-  font-size: 0.72rem;
+  font-size: 0.8rem;
   font-weight: 600;
   white-space: nowrap;
   pointer-events: none;
-  animation: share-toast-in 0.15s ease;
+  z-index: 9999;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.35);
+  animation: share-toast-in 0.18s ease;
 }
 @keyframes share-toast-in {
-  from { opacity: 0; transform: translateY(-4px); }
-  to   { opacity: 1; transform: translateY(0); }
+  from { opacity: 0; transform: translate(-50%, 6px); }
+  to   { opacity: 1; transform: translate(-50%, 0); }
 }
 
 /* Post-save share button in the paste actions bar */
