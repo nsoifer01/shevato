@@ -1665,6 +1665,18 @@ select option { background: var(--surface); color: var(--text); }
   text-align: center;
 }
 
+.room-spectator-banner {
+  margin: 0.5rem 0 0;
+  padding: 0.5rem 0.85rem;
+  background: rgba(168, 85, 247, 0.10);
+  border: 1px solid rgba(168, 85, 247, 0.35);
+  border-radius: 8px;
+  color: var(--violet-2);
+  font-size: 0.88rem;
+  font-weight: 600;
+  text-align: center;
+}
+
 /* Globe-drop layout — top-mounted live standings */
 .globe-drop-status { display: none; }
 
@@ -1819,6 +1831,34 @@ select option { background: var(--surface); color: var(--text); }
   .globe-drop-fab-stack { top: 0.5rem; right: 0.5rem; gap: 0.35rem; }
   .globe-drop-fab { height: 28px; padding: 0 0.6rem; font-size: 0.74rem; }
   .globe-drop-fab span { display: none; }
+}
+
+/* Mobile: fixed bottom pill for the submit button so players don't
+   need to scroll below the globe. Overlays the canvas; the Clear
+   button stays in the FAB stack (top-right) since it's secondary.
+   Only activates on narrow viewports (≤768px). */
+@media (max-width: 768px) {
+  #globe-drop-submit-btn {
+    position: fixed;
+    bottom: calc(env(safe-area-inset-bottom, 0px) + 1rem);
+    left: 50%;
+    transform: translateX(-50%);
+    z-index: 200;
+    height: 48px;
+    padding: 0 2rem;
+    border-radius: 999px;
+    font-size: 0.95rem;
+    min-width: 180px;
+    box-shadow: 0 4px 24px rgba(34, 211, 238, 0.45), 0 2px 8px rgba(0,0,0,0.5);
+    /* Override the FAB-stack absolute positioning context */
+    top: auto;
+    right: auto;
+  }
+  /* Add bottom padding to the map wrap so the fixed pill doesn't
+     cover the bottom of the globe on short screens. */
+  .globe-drop-map-wrap {
+    padding-bottom: 4rem;
+  }
 }
 
 /* Mini-board variant pinned above the globe with submit-state badges.
@@ -3085,6 +3125,20 @@ select option { background: var(--surface); color: var(--text); }
   white-space: nowrap;
 }
 
+/* Pending (not yet submitted) — a subtle pulsing left border so it's
+   obvious at a glance who is still thinking. Only applied during the
+   Globe Drop asking phase; removed when the player locks in. */
+.mini-board-row.is-pending {
+  border-left: 2px solid rgba(168, 85, 247, 0.55);
+}
+.mini-board-row.is-pending .mini-board-rank {
+  animation: mb-rank-pulse 1.6s ease-in-out infinite;
+}
+@keyframes mb-rank-pulse {
+  0%, 100% { opacity: 0.85; }
+  50%       { opacity: 0.35; }
+}
+
 /* Submitted indicator — green tint on the name span PLUS a small ✓
    sliding in next to it. No "submitted" word, no toast, no badge
    chrome. The tint reads at a glance even at a distance; the ✓ is
@@ -3094,6 +3148,14 @@ select option { background: var(--surface); color: var(--text); }
   border-radius: 6px;
   padding: 0.05rem 0.4rem;
   box-shadow: 0 0 10px rgba(16, 185, 129, 0.18) inset;
+}
+/* Settled state removes the pending pulse cleanly. */
+.mini-board-row.is-answered.is-pending {
+  border-left-color: transparent;
+}
+.mini-board-row.is-answered .mini-board-rank {
+  animation: none;
+  opacity: 0.85;
 }
 .mini-board-check {
   display: inline-flex;
@@ -3157,7 +3219,19 @@ select option { background: var(--surface); color: var(--text); }
 
 /* ---------- Stage: end ---------- */
 
-.end-head { text-align: center; margin-bottom: 1.6rem; }
+.end-head {
+  text-align: center;
+  margin-bottom: 1.6rem;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.75rem;
+}
+.end-share-btn {
+  gap: 0.4rem;
+  opacity: 0.85;
+}
+.end-share-btn:hover { opacity: 1; }
 
 /* Solo-only hero block. Replaces the podium / standings table for
    single-player runs since there's nothing to rank against. */

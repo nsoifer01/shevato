@@ -345,6 +345,9 @@
         <p class="room-paused-banner" id="room-paused-banner" hidden>
           <span aria-hidden="true">⏸</span> Game paused by host.
         </p>
+        <p class="room-spectator-banner" id="room-spectator-banner" hidden>
+          <span aria-hidden="true">👁</span> Spectating — joining next round automatically.
+        </p>
 
         <!-- Chat side panel. Slides in from the right when toggled.
              Subscribes to triviaRooms/{code}/chat on enterRoom and
@@ -386,6 +389,9 @@
             <header class="room-settings-head">
               <h3>Room settings</h3>
               <span class="room-settings-hint" id="room-settings-hint" hidden>Host can change settings</span>
+              <!-- Host-only: switch game type while still in lobby. Hidden once the
+                   game starts (status changes to 'playing'). -->
+              <button type="button" class="btn btn-ghost btn-sm room-settings-game-type-btn" id="room-switch-game-type-btn" hidden></button>
             </header>
 
             <!-- Read-only summary (always rendered; visibility flipped
@@ -393,6 +399,10 @@
                  open). -->
             <dl class="room-settings-list" id="room-settings-view">
               <div class="room-settings-item">
+                <dt>Game type</dt>
+                <dd id="room-settings-game-type">—</dd>
+              </div>
+              <div class="room-settings-item" id="room-settings-item-round-type">
                 <dt>Round type</dt>
                 <dd id="room-settings-round-type">—</dd>
               </div>
@@ -651,6 +661,15 @@
         <section class="stage stage-end" id="stage-end" hidden>
           <header class="end-head">
             <p id="end-summary"></p>
+            <!-- Share result card — generates a canvas image of the
+                 final standings and triggers a download / Web Share. -->
+            <button type="button" class="btn btn-ghost btn-sm end-share-btn" id="end-share-btn" hidden>
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/>
+                <line x1="8.59" y1="13.51" x2="15.42" y2="17.49"/><line x1="15.41" y1="6.51" x2="8.59" y2="10.49"/>
+              </svg>
+              Share result
+            </button>
           </header>
 
           <!-- Guest-only sign-up CTA. Shown for anonymous users on the
