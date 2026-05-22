@@ -213,6 +213,128 @@ function detectShapes(episodes) {
   return tags;
 }
 
+// Compute per-shape confidence in [0,1] — how far each matched shape exceeds
+// its classifier threshold. Capped at 1.0; 0 means the shape was not matched.
+// cap values are chosen so ~95th-percentile margin maps to ~1.0.
+function shapeConfidence(episodes) {
+  const conf = {};
+  const h = halves(episodes);
+
+  if (isRising(episodes)) {
+    // Margin = total positive climb across all steps / max possible climb.
+    const climb = episodes[episodes.length - 1].rating - episodes[0].rating;
+    conf.rising = Math.min(1, Math.max(0, climb) / 2.0);
+  }
+
+  if (isConsistent(episodes)) {
+    const opts = DEFAULTS.consistent;
+    let min = Infinity, max = -Infinity;
+    for (const e of episodes) {
+      if (e.rating < min) min = e.rating;
+      if (e.rating > max) max = e.rating;
+    }
+    const rangeMargin = opts.maxRange - (max - min);
+    const floorMargin = min - opts.floor;
+    conf.consistent = Math.min(1, (rangeMargin / opts.maxRange * 0.5) + (Math.min(floorMargin, 1.0) * 0.5));
+  }
+
+  if (isSlowBurn(episodes) && h) {
+    const opts = DEFAULTS.slowBurn;
+    const delta = avg(h.second) - avg(h.first);
+    conf['slow-burn'] = Math.min(1, (delta - opts.delta) / 1.5 + 0.1);
+  }
+
+  if (isBigFinale(episodes)) {
+    const opts = DEFAULTS.bigFinale;
+    const finale = episodes[episodes.length - 1].rating;
+    let secondMax = -Infinity;
+    for (let i = 0; i < episodes.length - 1; i++) {
+      if (episodes[i].rating > secondMax) secondMax = episodes[i].rating;
+    }
+    const margin = Math.round((finale - secondMax) * 10) / 10;
+    conf['big-finale'] = Math.min(1, (margin - opts.minMargin) / 2.0 + 0.1);
+  }
+
+  if (isRebound(episodes)) {
+    const opts = DEFAULTS.rebound;
+    const start = episodes[0].rating;
+    const end = episodes[episodes.length - 1].rating;
+    let minRating = Infinity;
+    for (let i = 1; i < episodes.length - 1; i++) {
+      if (episodes[i].rating < minRating) minRating = episodes[i].rating;
+    }
+    const dip = Math.min(start, end) - minRating;
+    const recovery = end - start;
+    conf.rebound = Math.min(1, ((dip - opts.dipDepth) / 1.5 + (recovery - opts.recoveryAboveStart) / 1.5) / 2 + 0.1);
+  }
+
+  if (isFrontLoaded(episodes) && h) {
+    const opts = DEFAULTS.frontLoaded;
+    const delta = avg(h.first) - avg(h.second);
+    conf['front-loaded'] = Math.min(1, (delta - opts.delta) / 1.5 + 0.1);
+  }
+
+  if (isDeclining(episodes)) {
+    const drop = episodes[0].rating - episodes[episodes.length - 1].rating;
+    conf.declining = Math.min(1, drop / 2.0);
+  }
+
+  if (isBadFinale(episodes)) {
+    const opts = DEFAULTS.badFinale;
+    const avgRating = avg(episodes);
+    const finale = episodes[episodes.length - 1].rating;
+    const margin = avgRating - finale;
+    conf['bad-finale'] = Math.min(1, (margin - opts.belowAvg) / 1.5 + 0.1);
+  }
+
+  if (isRollercoaster(episodes)) {
+    const opts = DEFAULTS.rollercoaster;
+    let flips = 0;
+    let prevSign = 0;
+    let totalAbs = 0;
+    for (let i = 1; i < episodes.length; i++) {
+      const diff = episodes[i].rating - episodes[i - 1].rating;
+      totalAbs += Math.abs(diff);
+      if (Math.abs(diff) < opts.ignoreBelow) continue;
+      const sign = diff > 0 ? 1 : -1;
+      if (prevSign !== 0 && sign !== prevSign) flips++;
+      prevSign = sign;
+    }
+    const flipMargin = Math.max(0, flips - opts.minFlips) / 6;
+    conf.rollercoaster = Math.min(1, flipMargin + 0.1);
+  }
+
+  if (isMidPeak(episodes)) {
+    const opts = DEFAULTS.midPeak;
+    const n = episodes.length;
+    let max = -Infinity;
+    for (const e of episodes) if (e.rating > max) max = e.rating;
+    const start = episodes[0].rating;
+    const end = episodes[n - 1].rating;
+    const margin = Math.min(max - start - opts.peakAboveStart, max - end - opts.peakAboveEnd);
+    conf['mid-peak'] = Math.min(1, margin / 1.5 + 0.1);
+  }
+
+  if (isUShaped(episodes)) {
+    const opts = DEFAULTS.uShaped;
+    const opener = episodes[0].rating;
+    const finale = episodes[episodes.length - 1].rating;
+    let maxDip = 0;
+    for (let i = 1; i < episodes.length - 1; i++) {
+      const r = episodes[i].rating;
+      const dip = Math.min(opener - r, finale - r);
+      if (dip > maxDip) maxDip = dip;
+    }
+    conf['u-shaped'] = Math.min(1, (maxDip - opts.dipDepth) / 1.5 + 0.1);
+  }
+
+  // Clamp all values to [0, 1] and round to 2 decimal places
+  for (const k of Object.keys(conf)) {
+    conf[k] = Math.round(Math.max(0, Math.min(1, conf[k])) * 100) / 100;
+  }
+  return conf;
+}
+
 // Walk the (series -> season -> episodes) map and return one record per
 // season that passes the vote/episode floor. Shape matching is descriptive,
 // not gating — seasons with no shape match are still emitted with shapes: []
@@ -243,12 +365,13 @@ function findMatches(seriesById, episodesBySeries, opts = {}) {
       if (minSeasonVotes < minVotes) continue;
 
       const shapes = detectShapes(eps);
-      seasons.push({ seriesId, season, eps, shapes, minSeasonVotes });
+      const confidence = shapeConfidence(eps);
+      seasons.push({ seriesId, season, eps, shapes, confidence, minSeasonVotes });
     }
   }
 
   const matches = [];
-  for (const { seriesId, season, eps, shapes, minSeasonVotes } of seasons) {
+  for (const { seriesId, season, eps, shapes, confidence, minSeasonVotes } of seasons) {
     const meta = seriesById.get(seriesId);
     const ratings = eps.map((e) => e.rating);
     const seasonAvg = ratings.reduce((s, r) => s + r, 0) / ratings.length;
@@ -300,12 +423,14 @@ function findMatches(seriesById, episodesBySeries, opts = {}) {
       avgRating: Math.round(seasonAvg * 100) / 100,
       minVotes: minSeasonVotes,
       shapes,
+      confidence,
     };
     if (avgRuntime !== null) season_obj.avgRuntime = avgRuntime;
     matches.push(season_obj);
   }
 
   tagSavedBestForLast(matches);
+  tagShapeDrift(matches);
   return matches;
 }
 
@@ -339,6 +464,72 @@ function tagSavedBestForLast(matches) {
   }
 }
 
+// Cross-season shape drift: for each series with 3+ seasons (sorted by
+// season number), tag the LATEST season with 'shape-drift' when either:
+//   (a) the show's dominant shape changed from seasons 1..N-1 to season N, OR
+//   (b) the avgRating declined by > 0.5 across 2 consecutive seasons at any
+//       point, and that trend is still ongoing at the final season.
+// A one-sentence driftNote is written onto every season of the series
+// describing the trajectory so the modal can surface it.
+function tagShapeDrift(matches) {
+  const bySeries = new Map();
+  for (const m of matches) {
+    let arr = bySeries.get(m.seriesId);
+    if (!arr) { arr = []; bySeries.set(m.seriesId, arr); }
+    arr.push(m);
+  }
+
+  for (const arr of bySeries.values()) {
+    if (arr.length < 3) continue;
+    arr.sort((a, b) => a.season - b.season);
+
+    const last = arr[arr.length - 1];
+    const prior = arr.slice(0, arr.length - 1);
+
+    // Dominant shape across prior seasons = shape appearing in the most seasons.
+    const shapeCounts = {};
+    for (const s of prior) {
+      for (const sh of s.shapes) {
+        if (sh === 'saved-best-for-last' || sh === 'shape-drift') continue;
+        shapeCounts[sh] = (shapeCounts[sh] || 0) + 1;
+      }
+    }
+    const dominantCount = Math.max(0, ...Object.values(shapeCounts));
+    // Require dominant shape appeared in strictly more than half the prior
+    // seasons — a single season out of two doesn't constitute a "dominant"
+    // pattern worth calling a drift.
+    const halfPrior = prior.length / 2;
+    const dominantShapes = Object.entries(shapeCounts)
+      .filter(([, c]) => c > halfPrior && c === dominantCount)
+      .map(([s]) => s);
+
+    // Check if the last season lost all dominant prior shapes.
+    const lostAll = dominantShapes.length > 0 &&
+      dominantShapes.every((s) => !last.shapes.includes(s));
+
+    // Rating decline: does the final season continue a ≥0.5 drop from prev?
+    const prev = arr[arr.length - 2];
+    const ratingDecline = (prev.avgRating - last.avgRating) >= 0.5;
+
+    if (!lostAll && !ratingDecline) continue;
+
+    // Attach 'shape-drift' to the final season.
+    if (!last.shapes.includes('shape-drift')) last.shapes.push('shape-drift');
+
+    // Build a human-readable summary for the modal.
+    let note = null;
+    if (lostAll && ratingDecline) {
+      note = `Dominant ${dominantShapes.join('/')} pattern through S${prior[prior.length - 1].season}, then shape changed and ratings fell in S${last.season}.`;
+    } else if (lostAll) {
+      note = `${dominantShapes.join('/')} through S${prior[prior.length - 1].season} — shape shifted in S${last.season}.`;
+    } else {
+      note = `Rating dropped ${(prev.avgRating - last.avgRating).toFixed(1)} pts from S${prev.season} (${prev.avgRating.toFixed(1)}) to S${last.season} (${last.avgRating.toFixed(1)}).`;
+    }
+    // Write the note onto the drifting season only (not all seasons).
+    last.driftNote = note;
+  }
+}
+
 module.exports = {
   isRising,
   isConsistent,
@@ -354,6 +545,8 @@ module.exports = {
   detectShapes,
   findMatches,
   tagSavedBestForLast,
+  tagShapeDrift,
+  shapeConfidence,
   // Back-compat with earlier API name.
   isNonDecreasing: isRising,
 };
