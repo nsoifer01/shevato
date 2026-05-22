@@ -2598,6 +2598,27 @@
       const streakCell = el('td', {});
       streakCell.innerHTML = streakHtml;
       tr.appendChild(streakCell);
+
+      const formCell = el('td', {});
+      const formWrap = el('div', { class: 'leaderboard-form' });
+      const FORM_SLOTS = 5;
+      const padCount = FORM_SLOTS - s.recent5.length;
+      for (let p = 0; p < padCount; p++) {
+        formWrap.appendChild(el('span', { class: 'lb-form-pill lb-form-empty' }));
+      }
+      s.recent5.forEach(g => {
+        const r = resultOf(g);
+        const myT = getMyTotal(g);
+        const theirT = getTheirTotal(g);
+        const label = r === 'W' ? 'Win' : r === 'L' ? 'Loss' : 'Tie';
+        formWrap.appendChild(el('span', {
+          class: 'lb-form-pill lb-form-' + r,
+          title: `${label} ${myT}–${theirT} (${g.date})`,
+        }, r));
+      });
+      formCell.appendChild(formWrap);
+      tr.appendChild(formCell);
+
       tbody.appendChild(tr);
     });
   }
