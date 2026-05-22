@@ -6,6 +6,7 @@ import { formatDate, showToast, showConfirmModal, formatSessionDateTime, escapeH
 import { trapModalFocus } from '../utils/modal-focus.js';
 import { DarkCalendar } from '../utils/dark-calendar.js';
 import { DarkSelect } from '../utils/dark-select.js';
+import { Program } from '../models/Program.js';
 
 class HistoryView {
     constructor() {
@@ -408,8 +409,51 @@ class HistoryView {
         }
 
         content.innerHTML = html;
+
+        // Feature 10a: "Save as Program" button appended to the modal footer.
+        // Injected each time so sessionId is always current.
+        const existingBtn = modal.querySelector('.save-as-program-btn');
+        if (existingBtn) existingBtn.remove();
+        const saveBtn = document.createElement('button');
+        saveBtn.type = 'button';
+        saveBtn.className = 'btn btn-secondary save-as-program-btn';
+        saveBtn.innerHTML = '<i class="fas fa-bookmark"></i> Save as Program';
+        saveBtn.addEventListener('click', () => this.saveSessionAsProgram(session.id));
+        modal.querySelector('.modal-body').appendChild(saveBtn);
+
         modal.classList.add('active');
         trapModalFocus(modal);
+    }
+
+    async saveSessionAsProgram(sessionId) {
+        const session = this.app.workoutSessions.find(s => s.id === sessionId);
+        if (!session) return;
+
+        const rawName = window.prompt('Program name:', session.workoutDayName || 'My Program');
+        if (rawName === null) return;
+        const name = rawName.trim();
+        if (!name) {
+            showToast('Program name cannot be empty', 'error');
+            return;
+        }
+
+        const program = new Program({ name, description: '' });
+        session.exercises.forEach(ex => {
+            const completedSets = (ex.sets || []).filter(s => s.completed);
+            if (completedSets.length === 0) return;
+            const reps = Math.round(completedSets.reduce((s, set) => s + (set.reps || 0), 0) / completedSets.length);
+            program.addExercise(ex.exerciseId, ex.exerciseName, completedSets.length, reps || 10);
+        });
+
+        if (program.exercises.length === 0) {
+            showToast('No completed exercises to save', 'error');
+            return;
+        }
+
+        this.app.programs.push(program);
+        this.app.savePrograms();
+        showToast(`Program "${name}" created`, 'success');
+        document.getElementById('workout-detail-modal').classList.remove('active');
     }
 
     async deleteWorkout(sessionId) {

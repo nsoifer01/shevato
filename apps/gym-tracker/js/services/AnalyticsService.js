@@ -396,6 +396,56 @@ export class AnalyticsService {
     }
 
     /**
+     * Feature 9: bodyweight exercise name list. Exercises whose names
+     * include any of these keywords and whose logged weight is 0 get the
+     * lifter's bodyweight substituted for volume math.
+     */
+    static BODYWEIGHT_EXERCISE_KEYWORDS = [
+        'push-up', 'push up', 'pushup',
+        'pull-up', 'pull up', 'pullup',
+        'chin-up', 'chin up', 'chinup',
+        'dip', 'body row', 'inverted row',
+        'hanging knee raise', 'knee raise',
+    ];
+
+    /**
+     * Feature 9: return true if an exercise name matches the bodyweight heuristic.
+     */
+    static isBodyweightExercise(exerciseName) {
+        const lower = (exerciseName || '').toLowerCase();
+        return this.BODYWEIGHT_EXERCISE_KEYWORDS.some(kw => lower.includes(kw));
+    }
+
+    /**
+     * Feature 9: compute effective volume for a set, substituting bodyweight
+     * when the set weight is 0 and the exercise is a bodyweight exercise.
+     * Does NOT mutate the stored set.
+     */
+    static effectiveSetVolume(set, exerciseName, bodyweight) {
+        if (set.duration > 0) return set.duration;
+        const w = (set.weight === 0 || set.weight == null)
+            && bodyweight != null
+            && this.isBodyweightExercise(exerciseName)
+            ? bodyweight
+            : (set.weight || 0);
+        return w * (set.reps || 0);
+    }
+
+    /**
+     * Feature 9: total session volume with bodyweight substitution for
+     * zero-weight bodyweight exercises. `exerciseDb` provides category/name
+     * lookups; `bodyweight` is the latest measurement weight (may be null).
+     */
+    static getEffectiveSessionVolume(session, bodyweight) {
+        return (session.exercises || []).reduce((sum, ex) => {
+            const name = ex.exerciseName || '';
+            return sum + (ex.sets || []).reduce(
+                (s, set) => s + this.effectiveSetVolume(set, name, bodyweight), 0
+            );
+        }, 0);
+    }
+
+    /**
      * Weekly summary stats for the Home dashboard.
      *
      * Returns totals for the current ISO week (Mon–Sun) plus deltas vs

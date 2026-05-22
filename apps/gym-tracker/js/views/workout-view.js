@@ -29,6 +29,11 @@ class WorkoutView {
         // on purpose: this module imports `Set` from models/Set.js, which
         // shadows the built-in Set.
         this.sessionPrSlots = {};
+        // Feature 3: per-exercise collapsed state (index → bool). Exercises
+        // marked exercise-complete auto-collapse; the rest start expanded.
+        this.collapsedExercises = {};
+        // Feature 5: per-exercise rest override for this session (index → seconds).
+        this.exerciseRestOverrides = {};
         this.init();
     }
 
@@ -114,6 +119,14 @@ class WorkoutView {
                 case 'remove-planned-row':
                     e.preventDefault();
                     this.removePlannedRow(exerciseIndex);
+                    break;
+                case 'toggle-exercise-collapse':
+                    e.preventDefault();
+                    this.toggleExerciseCollapse(exerciseIndex);
+                    break;
+                case 'set-rest-override':
+                    e.preventDefault();
+                    this.setRestOverride(exerciseIndex, Number(target.dataset.seconds));
                     break;
             }
         });
@@ -488,9 +501,11 @@ class WorkoutView {
 
         this.currentWorkoutSession.startWorkout();
 
-        // Reset PR counters for the new session.
+        // Reset per-session state.
         this.sessionPrCount = 0;
         this.sessionPrSlots = {};
+        this.collapsedExercises = {};
+        this.exerciseRestOverrides = {};
 
         // Start workout timer
         timerService.startWorkoutTimer((elapsed) => {
@@ -611,6 +626,12 @@ class WorkoutView {
         const muscle = formatMuscleGroup(exerciseData?.muscleGroup);
         const progressLabel = `${completedCount} / ${targetSets} sets`;
 
+        // Feature 3: collapsed state. Completed exercises start collapsed by
+        // default; in-progress (or manually toggled) ones stay expanded.
+        const isCollapsed = isComplete
+            ? (this.collapsedExercises[index] !== false)  // default collapsed when complete
+            : !!this.collapsedExercises[index];           // default expanded when in-progress
+
         let rowsHTML = '';
         for (let i = 0; i < totalRows; i++) {
             const committed = setsBySlot.get(i);
@@ -633,10 +654,36 @@ class WorkoutView {
 
         const lastTimeHTML = this.renderLastTimeStrip(previousSets, isDuration, unit);
 
+        // Feature 5: rest timer pills
+        const REST_PILLS = [
+            { label: '60s', seconds: 60 },
+            { label: '90s', seconds: 90 },
+            { label: '2m',  seconds: 120 },
+            { label: '3m',  seconds: 180 },
+        ];
+        const activeRest = this.exerciseRestOverrides[index] ?? exercise.restSeconds ?? 90;
+        const restPillsHTML = REST_PILLS.map(p => {
+            const isActive = activeRest === p.seconds;
+            return `<button type="button"
+                class="rest-pill${isActive ? ' rest-pill--active' : ''}"
+                data-action="set-rest-override"
+                data-exercise-index="${index}"
+                data-seconds="${p.seconds}"
+                aria-pressed="${isActive ? 'true' : 'false'}"
+                aria-label="Set rest to ${p.label}">${p.label}</button>`;
+        }).join('');
+
         return `
-            <div class="exercise-entry ${isComplete ? 'exercise-complete' : ''}"
+            <div class="exercise-entry ${isComplete ? 'exercise-complete' : ''} ${isCollapsed ? 'exercise-collapsed' : ''}"
                  id="exercise-${index}" data-exercise-type="${isDuration ? 'duration' : 'reps'}">
                 <div class="exercise-entry-header">
+                    <button type="button" class="exercise-collapse-toggle"
+                        data-action="toggle-exercise-collapse"
+                        data-exercise-index="${index}"
+                        aria-expanded="${isCollapsed ? 'false' : 'true'}"
+                        aria-label="${isCollapsed ? 'Expand' : 'Collapse'} exercise">
+                        <i class="fas fa-chevron-${isCollapsed ? 'down' : 'up'}" aria-hidden="true"></i>
+                    </button>
                     <h3>
                         <span class="exercise-name-main">${escapeHtml(exercise.exerciseName)}</span>${muscle ? `
                         <span class="exercise-name-sub">(${escapeHtml(muscle)})</span>` : ''}
@@ -647,28 +694,34 @@ class WorkoutView {
                     </span>
                 </div>
 
-                ${lastTimeHTML}
+                <div class="exercise-body">
+                    <div class="rest-pills-row" aria-label="Rest timer presets">
+                        ${restPillsHTML}
+                    </div>
 
-                <ol class="set-row-list" id="set-row-list-${index}">
-                    ${rowsHTML}
-                </ol>
+                    ${lastTimeHTML}
 
-                <div class="set-row-footer">
-                    ${totalRows > Math.max(1, completedCount) ? `
-                        <button type="button" class="btn-remove-set"
-                            data-action="remove-planned-row"
+                    <ol class="set-row-list" id="set-row-list-${index}">
+                        ${rowsHTML}
+                    </ol>
+
+                    <div class="set-row-footer">
+                        ${totalRows > Math.max(1, completedCount) ? `
+                            <button type="button" class="btn-remove-set"
+                                data-action="remove-planned-row"
+                                data-exercise-index="${index}"
+                                title="Remove last empty set"
+                                aria-label="Remove last empty set row">
+                                <i class="fas fa-minus"></i>
+                            </button>
+                        ` : ''}
+                        <button type="button" class="btn-add-set btn-add-set--extra"
+                            data-action="add-planned-row"
                             data-exercise-index="${index}"
-                            title="Remove last empty set"
-                            aria-label="Remove last empty set row">
-                            <i class="fas fa-minus"></i>
+                            aria-label="Add another set row">
+                            <i class="fas fa-plus"></i> Add set
                         </button>
-                    ` : ''}
-                    <button type="button" class="btn-add-set btn-add-set--extra"
-                        data-action="add-planned-row"
-                        data-exercise-index="${index}"
-                        aria-label="Add another set row">
-                        <i class="fas fa-plus"></i> Add set
-                    </button>
+                    </div>
                 </div>
             </div>
         `;
@@ -733,6 +786,22 @@ class WorkoutView {
         const weight = prior ? prior.weight : '';
         const reps = prior ? prior.reps : (targetReps || '');
         const plateHintHTML = isBarbell ? this.renderPlateHint(weight, unit) : '';
+
+        // Feature 1: weight nudge chip — only on slot 0 (first planned row) and
+        // only when auto-bump already happened (suggestIncrement on the prior array).
+        let nudgeChipHTML = '';
+        if (slot === 0 && prior && prior.originalWeight != null && prior.weight !== prior.originalWeight) {
+            const orig = prior.originalWeight;
+            const diff = prior.weight - orig;
+            const sign = diff > 0 ? '+' : '';
+            nudgeChipHTML = `
+                <div class="weight-nudge-chip" data-exercise-index="${exerciseIndex}" data-slot="${slot}" data-nudge-weight="${prior.weight}">
+                    <i class="fas fa-arrow-up" aria-hidden="true"></i>
+                    Auto-bumped ${sign}${diff}${unit} (was ${orig}${unit})
+                </div>
+            `;
+        }
+
         return `
             <li class="set-row set-row-planned" data-slot="${slot}">
                 <span class="set-row-num">${setLabel}</span>
@@ -747,6 +816,7 @@ class WorkoutView {
                         value="${reps === '' ? '' : reps}" placeholder="Reps" aria-label="Reps">
                 </div>
                 ${toggle}
+                ${nudgeChipHTML}
                 ${plateHintHTML ? `<div class="plate-hint" id="plate-hint-${exerciseIndex}-${slot}">${plateHintHTML}</div>` : ''}
             </li>
         `;
@@ -881,6 +951,18 @@ class WorkoutView {
         this.rerenderExercise(exerciseIndex);
     }
 
+    /** Feature 3: toggle collapse state for a single exercise block. */
+    toggleExerciseCollapse(exerciseIndex) {
+        this.collapsedExercises[exerciseIndex] = !this.collapsedExercises[exerciseIndex];
+        this.rerenderExercise(exerciseIndex);
+    }
+
+    /** Feature 5: override the rest timer for one exercise in this session. */
+    setRestOverride(exerciseIndex, seconds) {
+        this.exerciseRestOverrides[exerciseIndex] = seconds;
+        this.rerenderExercise(exerciseIndex);
+    }
+
     /** Re-render just the given exercise block without touching the others. */
     rerenderExercise(exerciseIndex) {
         const exercise = this.currentWorkoutSession.exercises[exerciseIndex];
@@ -903,24 +985,78 @@ class WorkoutView {
             new Date(b.sortTimestamp) - new Date(a.sortTimestamp)
         );
 
-        // Find the most recent workout that has this exercise with completed sets
+        // Collect the two most recent sessions that have this exercise with completed sets
+        const recentSessions = [];
         for (const session of sortedSessions) {
             const exercise = session.exercises.find(ex => ex.exerciseId === exerciseId);
             if (exercise && exercise.sets && exercise.sets.length > 0) {
-                // Get all completed sets
                 const completedSets = exercise.sets.filter(set => set.completed);
                 if (completedSets.length > 0) {
-                    // Return all completed sets with their weight, reps, and duration
-                    return completedSets.map(set => ({
-                        weight: set.weight,
-                        reps: set.reps,
-                        duration: set.duration
-                    }));
+                    recentSessions.push({ session, exercise, completedSets });
+                    if (recentSessions.length === 2) break;
                 }
             }
         }
 
-        return null;
+        if (recentSessions.length === 0) return null;
+
+        const { exercise: lastExercise, completedSets: lastSets } = recentSessions[0];
+
+        // Feature 6+8: detect progressive overload opportunity.
+        // If the lifter hit all target reps at a given weight in BOTH of the
+        // last two sessions, suggest (and auto-apply) an increment.
+        let suggestIncrement = false;
+        let increment = 0;
+        let previousWeight = 0;
+
+        if (recentSessions.length === 2) {
+            const { completedSets: prevSets } = recentSessions[1];
+            const targetReps = lastExercise.targetReps || 0;
+
+            // "All target reps" = every completed set hit at least targetReps.
+            const allHit = (sets) =>
+                sets.length > 0 &&
+                sets.every(s => (s.reps || 0) >= targetReps && targetReps > 0);
+
+            if (allHit(lastSets) && allHit(prevSets)) {
+                const lastWeight = lastSets[0]?.weight || 0;
+                const prevWeight = prevSets[0]?.weight || 0;
+                // Only suggest if both sessions used the same weight (no jump
+                // already happened between them).
+                if (lastWeight > 0 && lastWeight === prevWeight) {
+                    suggestIncrement = true;
+                    previousWeight = lastWeight;
+                    const unit = this.app.settings.weightUnit;
+                    increment = this._overloadIncrement(exerciseId, unit);
+                }
+            }
+        }
+
+        const sets = lastSets.map(set => ({
+            weight: suggestIncrement ? previousWeight + increment : set.weight,
+            reps: set.reps,
+            duration: set.duration,
+            // Pass original weight so the chip can show "auto-bumped from Xkg"
+            originalWeight: set.weight,
+        }));
+
+        sets.suggestIncrement = suggestIncrement;
+        sets.increment = increment;
+        sets.previousWeight = previousWeight;
+
+        return sets;
+    }
+
+    /**
+     * Return the progressive-overload increment for an exercise.
+     * Lower-body compound movements get a larger step.
+     */
+    _overloadIncrement(exerciseId, unit) {
+        const exerciseData = this.app.getExerciseById(exerciseId);
+        const name = (exerciseData?.name || '').toLowerCase();
+        const isLower = /squat|deadlift|leg press|lunge/.test(name);
+        if (unit === 'lb') return isLower ? 10 : 5;
+        return isLower ? 5 : 2.5;
     }
 
     /**
@@ -993,7 +1129,8 @@ class WorkoutView {
         // committed sets than the just-finished one), skip rest entirely
         // — they should move straight to the next exercise.
         if (this.shouldStartRestForSet(exerciseIndex, exercise)) {
-            this.startRest(exercise.restSeconds || 90);
+            const restSecs = this.exerciseRestOverrides[exerciseIndex] ?? exercise.restSeconds ?? 90;
+            this.startRest(restSecs);
         } else {
             this.skipRest();
         }
@@ -1436,10 +1573,67 @@ class WorkoutView {
         document.getElementById('active-workout').classList.remove('active');
         document.getElementById('workout-selection').classList.add('active');
 
+        const completedSession = this.currentWorkoutSession;
         this.currentWorkoutSession = null;
 
-        showToast('Workout completed! Great job!', 'success', 5000);
+        this.showCompletionBurst(completedSession);
         this.render();
+    }
+
+    /**
+     * Feature 2: full-screen burst card shown after saving a workout.
+     * Auto-dismisses after 4 s or on tap. Falls back silently when the
+     * container element isn't in the DOM.
+     */
+    showCompletionBurst(session) {
+        const unit = this.app.settings.weightUnit;
+        const duration = session.duration || 0;
+        const volume = Math.round(session.totalVolume).toLocaleString();
+        const exerciseCount = session.exercises.length;
+        const prCount = this.sessionPrCount;
+
+        const overlay = document.createElement('div');
+        overlay.className = 'completion-burst';
+        overlay.setAttribute('role', 'dialog');
+        overlay.setAttribute('aria-modal', 'true');
+        overlay.setAttribute('aria-label', 'Workout complete');
+        overlay.innerHTML = `
+            <div class="completion-burst-card">
+                <div class="completion-burst-icon">💪</div>
+                <h2 class="completion-burst-title">Workout Complete!</h2>
+                <div class="completion-burst-stats">
+                    <div class="completion-burst-stat">
+                        <span class="completion-burst-value">${duration}</span>
+                        <span class="completion-burst-label">min</span>
+                    </div>
+                    <div class="completion-burst-stat">
+                        <span class="completion-burst-value">${volume}</span>
+                        <span class="completion-burst-label">${unit} volume</span>
+                    </div>
+                    <div class="completion-burst-stat">
+                        <span class="completion-burst-value">${exerciseCount}</span>
+                        <span class="completion-burst-label">exercises</span>
+                    </div>
+                    ${prCount > 0 ? `
+                    <div class="completion-burst-stat completion-burst-stat--pr">
+                        <span class="completion-burst-value">🏆 ${prCount}</span>
+                        <span class="completion-burst-label">PR${prCount === 1 ? '' : 's'}</span>
+                    </div>` : ''}
+                </div>
+                <p class="completion-burst-dismiss">Tap anywhere to close</p>
+            </div>
+        `;
+
+        document.body.appendChild(overlay);
+
+        const dismiss = () => {
+            overlay.classList.add('completion-burst--out');
+            setTimeout(() => overlay.remove(), 300);
+        };
+
+        overlay.addEventListener('click', dismiss);
+        const timerId = setTimeout(dismiss, 4000);
+        overlay.addEventListener('click', () => clearTimeout(timerId), { once: true });
     }
 
     async endWorkout() {

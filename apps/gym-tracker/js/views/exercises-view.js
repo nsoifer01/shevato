@@ -634,6 +634,7 @@ class ExercisesView {
      *
      * For weighted exercises we plot top-set weight and estimated 1RM (Epley).
      * For duration exercises we plot longest set per session.
+     * Feature 4: also renders a 90-day e1RM sparkline for weighted exercises.
      */
     renderProgressionChart(exerciseId, isDuration) {
         const host = document.getElementById('exercise-history-chart');
@@ -645,6 +646,12 @@ class ExercisesView {
             this.app.workoutSessions,
             { limit: 12 },
         );
+
+        // Feature 4: 90-day e1RM sparkline for weighted exercises.
+        if (!isDuration) {
+            this._renderE1rmSparkline(host, exerciseId);
+        }
+
         if (points.length < 2) return; // need ≥2 points to draw a trend
 
         const unit = this.app.settings.weightUnit;
@@ -724,7 +731,7 @@ class ExercisesView {
             <text x="${mx - 6}" y="${yAt(yLo).toFixed(1) + 4}" class="progression-axis" text-anchor="end">${fmtY(yLo)}</text>
         `;
 
-        host.innerHTML = `
+        host.innerHTML += `
             <section class="exercise-detail-section exercise-progression">
                 <header class="exercise-detail-section-header">
                     <h3><i class="fas fa-chart-line"></i> Progression</h3>
@@ -744,6 +751,85 @@ class ExercisesView {
                     <div class="progression-legend">
                         <span class="progression-legend-item"><span class="dot dot-primary"></span>${primaryLabel}</span>
                         ${e1rmSeries ? '<span class="progression-legend-item"><span class="dot dot-e1rm"></span>Est. 1RM</span>' : ''}
+                    </div>
+                </div>
+            </section>
+        `;
+    }
+
+    /**
+     * Feature 4: 90-day e1RM sparkline rendered into the host element.
+     * Uses the Epley formula: e1RM = weight × (1 + reps/30).
+     * Only rendered for weighted exercises with ≥2 data points.
+     */
+    _renderE1rmSparkline(host, exerciseId) {
+        const cutoff = new Date();
+        cutoff.setDate(cutoff.getDate() - 90);
+        cutoff.setHours(0, 0, 0, 0);
+
+        const points = AnalyticsService.getExerciseProgression(
+            exerciseId,
+            this.app.workoutSessions,
+        ).filter(p => AnalyticsService.toLocalDate(p.date) >= cutoff);
+
+        if (points.length < 2) {
+            host.innerHTML += `
+                <section class="exercise-detail-section">
+                    <header class="exercise-detail-section-header">
+                        <h3><i class="fas fa-bolt"></i> 90-day e1RM</h3>
+                    </header>
+                    <p class="exercise-sparkline-empty">Not enough history yet.</p>
+                </section>
+            `;
+            return;
+        }
+
+        const unit = this.app.settings.weightUnit;
+        const fmtDate = (dateStr) => AnalyticsService.toLocalDate(dateStr).toLocaleDateString(undefined, {
+            month: 'short', day: 'numeric',
+        });
+
+        const series = points.map(p => ({ x: p.date, y: Math.round(p.e1rm) }));
+        const vals = series.map(p => p.y);
+        const yMin = Math.min(...vals);
+        const yMax = Math.max(...vals);
+        const yRange = Math.max(yMax - yMin, 1);
+        const pad = yRange * 0.15;
+        const yLo = Math.max(0, yMin - pad);
+        const yHi = yMax + pad;
+
+        const W = 520;
+        const H = 80;
+        const mx = 8;
+        const my = 8;
+        const plotW = W - mx * 2;
+        const plotH = H - my * 2;
+
+        const xAt = (i) => mx + (series.length === 1 ? plotW / 2 : (i / (series.length - 1)) * plotW);
+        const yAt = (v) => my + plotH - ((v - yLo) / (yHi - yLo)) * plotH;
+        const pathD = series.map((p, i) => `${i === 0 ? 'M' : 'L'}${xAt(i).toFixed(1)},${yAt(p.y).toFixed(1)}`).join(' ');
+
+        const latest = series[series.length - 1];
+        const earliest = series[0];
+
+        const dots = series.map((p, i) =>
+            `<circle cx="${xAt(i).toFixed(1)}" cy="${yAt(p.y).toFixed(1)}" r="2.5" class="sparkline-dot"><title>${fmtDate(p.x)}: ${p.y} ${unit}</title></circle>`
+        ).join('');
+
+        host.innerHTML += `
+            <section class="exercise-detail-section exercise-sparkline-section">
+                <header class="exercise-detail-section-header">
+                    <h3><i class="fas fa-bolt"></i> 90-day e1RM</h3>
+                    <span class="exercise-detail-section-caption">${points.length} sessions · latest: ${latest.y} ${unit}</span>
+                </header>
+                <div class="exercise-sparkline-wrap">
+                    <svg viewBox="0 0 ${W} ${H}" class="exercise-sparkline" role="img" aria-label="90-day estimated 1-rep max">
+                        <path d="${pathD}" class="sparkline-line"/>
+                        ${dots}
+                    </svg>
+                    <div class="sparkline-axis-labels">
+                        <span>${fmtDate(earliest.x)}</span>
+                        <span>${fmtDate(latest.x)}</span>
                     </div>
                 </div>
             </section>
