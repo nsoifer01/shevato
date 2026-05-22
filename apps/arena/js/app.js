@@ -1258,6 +1258,8 @@ function wireLobby() {
     // as a fresh start since guest stats were never persisted anyway.
     const endGuestCtaBtn = $('#end-guest-cta-btn');
     if (endGuestCtaBtn) endGuestCtaBtn.addEventListener('click', () => openSignInPrompt());
+    const endShareBtn = $('#end-share-btn');
+    if (endShareBtn) endShareBtn.addEventListener('click', () => shareResultCard());
     const settingsEditBtn = $('#room-settings-edit-btn');
     if (settingsEditBtn) settingsEditBtn.addEventListener('click', () => openRoomSettingsEditor());
     const settingsCancel = $('#room-settings-cancel');
@@ -3567,15 +3569,24 @@ function drawGlobeDropReveal(loc, me, { showOthers = true } = {}) {
         state.globe.polygonsData(feat ? [feat] : []);
     });
 
-    // Pan + zoom into the correct location. Altitude 0.6 puts the
-    // country's outline at roughly half the viewport — close enough
-    // for borders to read, far enough that the city pin doesn't get
-    // lost under the chrome. 1400ms tween matches globe.gl's default
-    // easing for a smooth fly-in. Guarded so the local + global
-    // reveal don't fight each other's tweens for the same question.
+    // Cinematic camera pan into the correct location. We do a two-phase
+    // tween: first pull back slightly from the player's current altitude
+    // (200ms, gives visual context), then arc into the target at 0.6
+    // altitude (1400ms). The two-phase approach prevents an abrupt jump
+    // when the player is zoomed close and the target is far away.
+    // Guarded by lastCameraTarget so local → global doesn't re-fire.
     const camTarget = `${loc.id}:${loc.lat.toFixed(3)},${loc.lng.toFixed(3)}`;
     if (state.lastCameraTarget !== camTarget) {
-        state.globe.pointOfView({ lat: loc.lat, lng: loc.lng, altitude: 0.6 }, 1400);
+        const curPov = state.globe.pointOfView();
+        const pullbackAlt = Math.max(curPov.altitude, 1.2);
+        // Phase 1: pull back (200ms)
+        state.globe.pointOfView({ lat: curPov.lat, lng: curPov.lng, altitude: pullbackAlt }, 200);
+        // Phase 2: fly to target (1400ms), delayed so phase 1 settles
+        setTimeout(() => {
+            if (state.globe && state.lastCameraTarget === camTarget) {
+                state.globe.pointOfView({ lat: loc.lat, lng: loc.lng, altitude: 0.6 }, 1400);
+            }
+        }, 220);
         state.lastCameraTarget = camTarget;
     }
 
@@ -3711,12 +3722,27 @@ function renderMiniBoardGlobeDrop(currentQuestionId) {
             && p.currentAnsweredFor === currentQuestionId
             && p.currentGuess != null
     })));
+    // Determine the current phase so we can show the pending pulse only during
+    // the asking window (not during reveal when everyone's result is locked).
+    const startMs = state.roomData && state.roomData.questionStartedAt && state.roomData.questionStartedAt.toMillis
+        ? state.roomData.questionStartedAt.toMillis() : null;
+    const revealMs = state.roomData && state.roomData.revealStartedAt && state.roomData.revealStartedAt.toMillis
+        ? state.roomData.revealStartedAt.toMillis() : null;
+    const currentPhase = globeDropPhase(startMs, Date.now(), revealMs, currentAskingDurationMs());
+    const isAskingPhase = currentPhase === 'asking';
+
     ranked.forEach((p, i) => {
         const li = document.createElement('li');
         li.className = 'mini-board-row';
         if (state.user && p.uid === state.user.uid) li.classList.add('is-me');
         if (i === 0 && (p.score || 0) > 0) li.classList.add('is-leader');
-        if (p.answeredThisQuestion) li.classList.add('is-answered');
+        if (p.answeredThisQuestion) {
+            li.classList.add('is-answered');
+        } else if (isAskingPhase && currentQuestionId) {
+            // Idle during the asking window: subtle pulse so the host can
+            // see who still needs to submit without it being distracting.
+            li.classList.add('is-pending');
+        }
         // Surface bullseye streak >= 2 — same treatment as trivia streaks.
         const streak = Number(p.streak) || 0;
         const streakChip = streak >= 2
@@ -4608,6 +4634,10 @@ async function renderEndStage(isHost) {
         setText($('#end-summary'), 'No scores recorded.');
     }
 
+    // Share result button — visible on the end stage for all game types.
+    const shareBtn = $('#end-share-btn');
+    if (shareBtn) shareBtn.hidden = false;
+
     // Full per-question/per-location recap (free for everyone)
     renderEndRecap();
 
@@ -4720,6 +4750,144 @@ async function writeEndOfGameStats(me, didWin) {
         await maybeWriteH2HPairs();
     } catch (err) {
         console.warn('End-of-game profile write failed:', err);
+    }
+}
+
+/**
+ * Generate and download (or Web Share) a canvas result card for the
+ * current finished game. Card includes: game type, top score, and the
+ * final standings for all players.
+ */
+async function shareResultCard() {
+    if (!state.roomData || !state.roomPlayers) return;
+    const btn = $('#end-share-btn');
+    if (btn) btn.disabled = true;
+
+    try {
+        const W = 600, H = 340;
+        const canvas = document.createElement('canvas');
+        canvas.width = W;
+        canvas.height = H;
+        const ctx = canvas.getContext('2d');
+
+        // Background gradient
+        const bg = ctx.createLinearGradient(0, 0, W, H);
+        bg.addColorStop(0, '#06070d');
+        bg.addColorStop(1, '#0e1220');
+        ctx.fillStyle = bg;
+        ctx.fillRect(0, 0, W, H);
+
+        // Accent border top
+        const topBar = ctx.createLinearGradient(0, 0, W, 0);
+        topBar.addColorStop(0, '#22d3ee');
+        topBar.addColorStop(1, '#a855f7');
+        ctx.fillStyle = topBar;
+        ctx.fillRect(0, 0, W, 3);
+
+        // Title
+        ctx.font = 'bold 22px "Space Grotesk", sans-serif';
+        ctx.fillStyle = '#eef2ff';
+        const gameType = state.roomData.gameType === 'globe-drop' ? 'Globe Drop' : 'Trivia';
+        ctx.fillText(`Arena — ${gameType}`, 28, 40);
+
+        // Date
+        ctx.font = '13px "Outfit", sans-serif';
+        ctx.fillStyle = '#8b95b3';
+        const dateStr = new Date().toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' });
+        ctx.fillText(dateStr, 28, 62);
+
+        // Ranked players
+        const ranked = Scoring.rankPlayers(state.roomPlayers.map((p) => ({
+            displayName: p.displayName,
+            score: p.score || 0,
+            streak: p.streak || 0,
+            uid: p.uid
+        })));
+        const medals = ['🥇', '🥈', '🥉'];
+        const rowH = 44;
+        const startY = 90;
+        ranked.slice(0, 5).forEach((p, i) => {
+            const y = startY + i * rowH;
+            const isWinner = i === 0;
+
+            // Row background for winner
+            if (isWinner) {
+                ctx.fillStyle = 'rgba(251,191,36,0.08)';
+                ctx.beginPath();
+                ctx.roundRect(20, y - 8, W - 40, rowH - 4, 8);
+                ctx.fill();
+            }
+
+            // Medal or rank number
+            if (medals[i]) {
+                ctx.font = '20px serif';
+                ctx.fillText(medals[i], 28, y + 18);
+            } else {
+                ctx.font = 'bold 14px "JetBrains Mono", monospace';
+                ctx.fillStyle = '#22d3ee';
+                ctx.fillText(String(i + 1), 32, y + 18);
+            }
+
+            // Name
+            ctx.font = isWinner ? 'bold 16px "Outfit", sans-serif' : '15px "Outfit", sans-serif';
+            ctx.fillStyle = isWinner ? '#fbbf24' : '#eef2ff';
+            const maxNameW = 340;
+            let name = p.displayName || 'Player';
+            while (ctx.measureText(name).width > maxNameW && name.length > 1) name = name.slice(0, -1);
+            if (name !== p.displayName) name += '…';
+            ctx.fillText(name, 68, y + 18);
+
+            // Score pill
+            ctx.font = 'bold 14px "JetBrains Mono", monospace';
+            ctx.fillStyle = isWinner ? '#fbbf24' : '#22d3ee';
+            const scoreStr = String(p.score);
+            const scoreW = ctx.measureText(scoreStr).width;
+            ctx.fillText(scoreStr, W - 48 - scoreW / 2, y + 18);
+        });
+
+        // Footer
+        ctx.font = '12px "Outfit", sans-serif';
+        ctx.fillStyle = '#5b6585';
+        ctx.fillText('shevato.com/apps/arena', 28, H - 16);
+
+        // Gradient cyan line bottom-right
+        const footerBar = ctx.createLinearGradient(W - 200, 0, W, 0);
+        footerBar.addColorStop(0, 'transparent');
+        footerBar.addColorStop(1, '#22d3ee');
+        ctx.fillStyle = footerBar;
+        ctx.fillRect(W - 200, H - 3, 200, 3);
+
+        const filename = `arena-result-${Date.now()}.png`;
+        const dataUrl = canvas.toDataURL('image/png');
+
+        if (navigator.share && navigator.canShare) {
+            // Attempt Web Share API (mobile)
+            try {
+                const res = await fetch(dataUrl);
+                const blob = await res.blob();
+                const file = new File([blob], filename, { type: 'image/png' });
+                if (navigator.canShare({ files: [file] })) {
+                    await navigator.share({
+                        files: [file],
+                        title: `Arena ${gameType} results`,
+                        text: ranked[0] ? `${ranked[0].displayName} won with ${ranked[0].score} points!` : 'Check out the results!'
+                    });
+                    return;
+                }
+            } catch (_) { /* fall through to download */ }
+        }
+
+        // Fallback: download
+        const a = document.createElement('a');
+        a.href = dataUrl;
+        a.download = filename;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+    } catch (err) {
+        console.warn('shareResultCard failed:', err);
+    } finally {
+        if (btn) btn.disabled = false;
     }
 }
 
