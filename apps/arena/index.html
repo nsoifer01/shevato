@@ -386,6 +386,9 @@
             <header class="room-settings-head">
               <h3>Room settings</h3>
               <span class="room-settings-hint" id="room-settings-hint" hidden>Host can change settings</span>
+              <!-- Host-only: switch game type while still in lobby. Hidden once the
+                   game starts (status changes to 'playing'). -->
+              <button type="button" class="btn btn-ghost btn-sm room-settings-game-type-btn" id="room-switch-game-type-btn" hidden></button>
             </header>
 
             <!-- Read-only summary (always rendered; visibility flipped
@@ -393,6 +396,10 @@
                  open). -->
             <dl class="room-settings-list" id="room-settings-view">
               <div class="room-settings-item">
+                <dt>Game type</dt>
+                <dd id="room-settings-game-type">—</dd>
+              </div>
+              <div class="room-settings-item" id="room-settings-item-round-type">
                 <dt>Round type</dt>
                 <dd id="room-settings-round-type">—</dd>
               </div>

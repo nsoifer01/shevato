@@ -1125,12 +1125,86 @@ function wireGameTypeToggle() {
                     el.hidden = el.dataset.gameType !== type;
                 }
             });
+            saveLobbySettings();
         });
     });
 }
 
+const LOBBY_SETTINGS_KEY = 'arena.lobby.lastSettings';
+
+function saveLobbySettings() {
+    try {
+        const overrideTimer = !!$('#create-globe-drop-timer-override').checked;
+        const settings = {
+            gameType: state.selectedGameType,
+            roundType: $('#create-globe-drop-round-type').value,
+            difficulty: $('#create-globe-drop-difficulty').value,
+            locationsCount: $('#create-locations-count').value,
+            timerOverride: overrideTimer,
+            timerSec: overrideTimer ? $('#create-globe-drop-time').value : null,
+            questionsCount: $('#create-questions-count').value,
+            triviaTimeSec: $('#create-trivia-time').value
+        };
+        localStorage.setItem(LOBBY_SETTINGS_KEY, JSON.stringify(settings));
+    } catch (e) { /* localStorage may be unavailable */ }
+}
+
+function restoreLobbySettings() {
+    try {
+        const raw = localStorage.getItem(LOBBY_SETTINGS_KEY);
+        if (!raw) return;
+        const s = JSON.parse(raw);
+
+        // Restore game type toggle first so the correct fields show.
+        if (s.gameType === 'trivia' || s.gameType === 'globe-drop') {
+            const btn = $(`.game-type-btn[data-game-type="${s.gameType}"]`);
+            if (btn) btn.click();
+        }
+
+        if (s.roundType) {
+            const el = $('#create-globe-drop-round-type');
+            if (el) el.value = s.roundType;
+        }
+        if (s.difficulty) {
+            const el = $('#create-globe-drop-difficulty');
+            if (el) el.value = s.difficulty;
+        }
+        if (s.locationsCount) {
+            const el = $('#create-locations-count');
+            if (el) el.value = s.locationsCount;
+        }
+        if (s.timerOverride) {
+            const tog = $('#create-globe-drop-timer-override');
+            if (tog) {
+                tog.checked = true;
+                $('#create-globe-drop-time-field').hidden = false;
+            }
+            if (s.timerSec) {
+                const el = $('#create-globe-drop-time');
+                if (el) el.value = s.timerSec;
+            }
+        }
+        if (s.questionsCount) {
+            const el = $('#create-questions-count');
+            if (el) el.value = s.questionsCount;
+        }
+        if (s.triviaTimeSec) {
+            const el = $('#create-trivia-time');
+            if (el) el.value = s.triviaTimeSec;
+        }
+    } catch (e) { /* ignore corrupt localStorage */ }
+}
+
 function wireLobby() {
     wireGameTypeToggle();
+
+    // Restore previously used settings on mount.
+    restoreLobbySettings();
+
+    // Save settings on any field change so the last selection survives reload.
+    $$('#lobby-panel select, #lobby-panel input[type="checkbox"]').forEach((el) => {
+        el.addEventListener('change', saveLobbySettings);
+    });
 
     $('#create-private-toggle').addEventListener('change', (e) => {
         const wantsPrivate = e.target.checked;
@@ -1190,6 +1264,8 @@ function wireLobby() {
     if (settingsCancel) settingsCancel.addEventListener('click', () => closeRoomSettingsEditor());
     const settingsSave = $('#room-settings-save');
     if (settingsSave) settingsSave.addEventListener('click', () => saveRoomSettings());
+    const switchGameTypeBtn = $('#room-switch-game-type-btn');
+    if (switchGameTypeBtn) switchGameTypeBtn.addEventListener('click', () => switchRoomGameType());
     const endAgainHandler = () => {
         // Solo: skip the accept gate, restart immediately.
         const playMode = (state.roomData && state.roomData.playMode) || 'multi';
@@ -1729,6 +1805,7 @@ async function maybeResetForNewRound() {
         await updateDoc(doc(db, 'triviaRooms', state.roomCode, 'players', state.user.uid), {
             score: 0,
             streak: 0,
+            globeDropStreak: 0,
             round: roomRound,
             currentAnswerIndex: null,
             currentGuess: null,
@@ -2390,34 +2467,55 @@ function renderRoomSettings(isHost) {
     const panel = $('#room-settings');
     if (!panel) return;
     const room = state.roomData || {};
-    if (room.gameType !== 'globe-drop') {
-        panel.hidden = true;
-        return;
-    }
+    const canEdit = isHost && room.status === 'lobby';
+
+    // Show the panel for both game types — trivia rooms need the game-type
+    // display and the switch button even though they have no GlobeDrop fields.
     panel.hidden = false;
 
-    const roundType = room.roundType || 'capitals';
-    const meta = GlobeDropLocations.ROUND_TYPES[roundType] || GlobeDropLocations.ROUND_TYPES.capitals;
-    setText($('#room-settings-round-type'), meta.label || roundType);
+    // Game type display row — always populated regardless of game type.
+    const gameTypeEl = $('#room-settings-game-type');
+    if (gameTypeEl) {
+        setText(gameTypeEl, room.gameType === 'globe-drop' ? 'Globe Drop' : 'Trivia');
+    }
 
-    const diffKey = room.difficulty || 'medium';
-    const diff = GlobeDropScoring.difficultySettings(diffKey);
-    setText($('#room-settings-difficulty'), diff.label || diffKey);
+    // Globe Drop-specific settings rows — hide for trivia rooms.
+    const isGlobeDrop = room.gameType === 'globe-drop';
+    const roundTypeItem = $('#room-settings-item-round-type');
+    if (roundTypeItem) roundTypeItem.hidden = !isGlobeDrop;
+    const diffEl = document.querySelector('.room-settings-item:has(#room-settings-difficulty)');
 
-    setText($('#room-settings-locations'), String(room.totalQuestions || 0));
+    if (isGlobeDrop) {
+        const roundType = room.roundType || 'capitals';
+        const meta = GlobeDropLocations.ROUND_TYPES[roundType] || GlobeDropLocations.ROUND_TYPES.capitals;
+        setText($('#room-settings-round-type'), meta.label || roundType);
 
-    const seconds = Math.round((room.questionTimeMs || diff.timerSec * 1000) / 1000);
-    setText($('#room-settings-timer'), `${seconds}s`);
+        const diffKey = room.difficulty || 'medium';
+        const diff = GlobeDropScoring.difficultySettings(diffKey);
+        setText($('#room-settings-difficulty'), diff.label || diffKey);
+
+        setText($('#room-settings-locations'), String(room.totalQuestions || 0));
+
+        const seconds = Math.round((room.questionTimeMs || diff.timerSec * 1000) / 1000);
+        setText($('#room-settings-timer'), `${seconds}s`);
+    }
+
+    // Switch game type button — host only, lobby only.
+    const switchBtn = $('#room-switch-game-type-btn');
+    if (switchBtn) {
+        switchBtn.hidden = !canEdit;
+        if (canEdit) {
+            switchBtn.textContent = isGlobeDrop ? 'Switch to Trivia' : 'Switch to Globe Drop';
+        }
+    }
 
     const editBtn = $('#room-settings-edit-btn');
     const hint = $('#room-settings-hint');
     const editForm = $('#room-settings-edit');
     const view = $('#room-settings-view');
 
-    // Edit affordances visible only to host AND only while the room is
-    // still in lobby state (settings are locked once playing starts).
-    const canEdit = isHost && room.status === 'lobby';
-    if (editBtn) editBtn.hidden = !canEdit;
+    // Edit affordances visible only for globe-drop host in lobby.
+    if (editBtn) editBtn.hidden = !(canEdit && isGlobeDrop);
     if (hint) hint.hidden = !(isHost && !canEdit);
     // Whenever the form isn't open, keep it hidden (show summary).
     if (editForm && !state.roomSettingsEditing) {
@@ -2521,6 +2619,33 @@ async function saveRoomSettings() {
     } finally {
         if (saveBtn) saveBtn.disabled = false;
         if (cancelBtn) cancelBtn.disabled = false;
+    }
+}
+
+/**
+ * Toggle the room's game type between 'globe-drop' and 'trivia' while the
+ * room is still in the lobby. Writes atomically to the room doc — only the
+ * gameType field changes, the player list is untouched.
+ */
+async function switchRoomGameType() {
+    if (!state.user || !state.roomCode || !state.roomData) return;
+    if (state.roomData.hostUid !== state.user.uid) return;
+    if (state.roomData.status !== 'lobby') return;
+
+    const current = state.roomData.gameType || 'globe-drop';
+    const next = current === 'globe-drop' ? 'trivia' : 'globe-drop';
+
+    const switchBtn = $('#room-switch-game-type-btn');
+    if (switchBtn) switchBtn.disabled = true;
+    try {
+        await updateDoc(doc(db, 'triviaRooms', state.roomCode), { gameType: next });
+        // Also update state.selectedGameType so the local create-form toggle
+        // stays in sync on subsequent room-settings renders.
+        state.selectedGameType = next;
+    } catch (err) {
+        console.warn('switchRoomGameType failed:', err);
+    } finally {
+        if (switchBtn) switchBtn.disabled = false;
     }
 }
 
@@ -3571,10 +3696,16 @@ function renderMiniBoardGlobeDrop(currentQuestionId) {
         const pts = rec && typeof rec.points === 'number' ? rec.points : 0;
         return (p.score || 0) - pts;
     };
+    // Carry each player's globeDropStreak from the Firestore doc so the
+    // streak chip renders correctly in the mini-board.
+    const playerStreak = (p) => {
+        const full = state.roomPlayers.find((rp) => rp.uid === p.uid);
+        return full ? (full.globeDropStreak || 0) : 0;
+    };
     const ranked = Scoring.rankPlayers(state.roomPlayers.map((p) => ({
         displayName: p.displayName,
         score: adjustedScore(p),
-        streak: 0, // GlobeDrop doesn't use streaks (yet)
+        streak: p.globeDropStreak || 0,
         uid: p.uid,
         answeredThisQuestion: currentQuestionId != null
             && p.currentAnsweredFor === currentQuestionId
@@ -3586,13 +3717,15 @@ function renderMiniBoardGlobeDrop(currentQuestionId) {
         if (state.user && p.uid === state.user.uid) li.classList.add('is-me');
         if (i === 0 && (p.score || 0) > 0) li.classList.add('is-leader');
         if (p.answeredThisQuestion) li.classList.add('is-answered');
-        // Answered state: a small green ✓ sits inline next to the
-        // player's name. No "submitted" word, no badge chrome — the
-        // pseudo-element on .is-answered .mini-board-check renders the
-        // ✓ glyph and animates in.
+        // Surface bullseye streak >= 2 — same treatment as trivia streaks.
+        const streak = Number(p.streak) || 0;
+        const streakChip = streak >= 2
+            ? `<span class="mini-board-streak" title="${streak} bullseyes in a row">🎯${streak}</span>`
+            : '';
         li.innerHTML =
             `<span class="mini-board-rank">${i+1}</span>` +
             `<span class="mini-board-name">${escapeHtml(p.displayName)}</span>` +
+            streakChip +
             `<span class="mini-board-check" aria-label="submitted"></span>` +
             `<span class="mini-board-score">${p.score || 0}</span>`;
         list.appendChild(li);
@@ -3741,6 +3874,18 @@ async function submitGuess() {
             if (!snap.exists()) return;
             const cur = snap.data();
             if (cur.currentAnsweredFor === loc.id) return; // already submitted
+
+            // Globe Drop streak: consecutive bullseyes (basePoints >= 98) add a
+            // multiplier on top of the distance/continent score.
+            const prevStreak = cur.globeDropStreak || 0;
+            const isBullseye = basePoints >= 98;
+            const newStreak = isBullseye ? prevStreak + 1 : 0;
+            const cappedStreak = Math.min(newStreak, Config.GLOBE_DROP_STREAK_MULTIPLIER_CAP);
+            const streakMult = 1 + cappedStreak * Config.GLOBE_DROP_STREAK_MULTIPLIER_STEP;
+            // Only apply the streak bonus when there is at least one prior
+            // bullseye in the run (cappedStreak >= 2 means the second+ in a row).
+            const finalPoints = cappedStreak >= 2 ? Math.round(points * streakMult) : points;
+
             // Append a per-location record so the recap can show actual
             // vs guess + distance + points for every play.
             const guessRecord = {
@@ -3755,13 +3900,14 @@ async function submitGuess() {
                 distanceKm: distance,
                 basePoints,
                 multiplier: typeof loc.multiplier === 'number' ? loc.multiplier : 1,
-                points
+                points: finalPoints
             };
             tx.update(pref, {
                 currentGuess: guess,
                 currentAnswerAt: serverTimestamp(),
                 currentAnsweredFor: loc.id,
-                score: (cur.score || 0) + points,
+                score: (cur.score || 0) + finalPoints,
+                globeDropStreak: newStreak,
                 answers: [...(Array.isArray(cur.answers) ? cur.answers : []), guessRecord],
                 lastSeen: serverTimestamp()
             });
