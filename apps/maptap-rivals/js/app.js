@@ -1753,6 +1753,61 @@
     ]);
   }
 
+  // Returns {kind, text} for a one-line drama callout on the dashboard rival
+  // card, or null if no drama applies. Priority order matches the spec.
+  // kind: 'win' | 'loss' | 'comeback'
+  function streakDrama(rivalId) {
+    const today = todayISO();
+    // Already played today — drama resolved, skip.
+    if (state.games.some(g => g.rivalId === rivalId && g.date === today)) return null;
+
+    const games = gamesFor(rivalId);
+    if (games.length < 2) return null;
+
+    const rival = state.rivals.find(r => r.id === rivalId);
+    const rivalName = rival ? rival.name : 'rival';
+
+    const s = streaks(games);
+    const curW = s.curMine;
+    const curL = s.curTheirs;
+
+    // Compute the previous all-time best win streak (excluding the current
+    // ongoing run) so conditions 1 and 2 compare against the historical record.
+    let prevLongestW = 0;
+    let run = 0;
+    for (let i = 0; i < games.length - curW; i++) {
+      const r = resultOf(games[i]);
+      if (r === 'W') { run++; if (run > prevLongestW) prevLongestW = run; }
+      else run = 0;
+    }
+
+    // 1. About to break personal best win streak (tie record with next win)
+    if (curW >= 2 && curW === prevLongestW) {
+      return { kind: 'win', text: `🔥 On a ${curW}-game win streak — match your record today` };
+    }
+    // 2. About to extend personal best win streak (already surpassed old record)
+    if (curW >= 2 && curW > prevLongestW) {
+      return { kind: 'win', text: `🔥 New record! ${curW}-game win streak vs ${rivalName}` };
+    }
+    // 3. About to extend any winning streak
+    if (curW >= 3) {
+      return { kind: 'win', text: `🔥 ${curW}-game win streak vs ${rivalName}` };
+    }
+    // 4. About to end a losing streak
+    if (curL >= 3) {
+      return { kind: 'loss', text: `❄️ ${curL}-game losing streak — turn it around today` };
+    }
+    // 5. Comeback potential
+    if (games.length >= 3) {
+      const last = games[games.length - 1];
+      const diff = getMyTotal(last) - getTheirTotal(last);
+      if (diff < 0 && Math.abs(diff) < 100) {
+        return { kind: 'comeback', text: `⚡ Close one last time (${Math.abs(diff)}-pt loss) — get even today` };
+      }
+    }
+    return null;
+  }
+
   function renderRivalGrid() {
     const grid = $('#rival-grid');
     grid.innerHTML = '';
@@ -1843,6 +1898,11 @@
       el('span', { style: `width:${(s.winPct * 100).toFixed(1)}%` }),
     ]);
     card.appendChild(pctBar);
+
+    const drama = streakDrama(r.id);
+    if (drama) {
+      card.appendChild(el('div', { class: 'drama-callout drama-callout-' + drama.kind }, drama.text));
+    }
 
     const foot = el('div', { class: 'rival-card-foot' });
     const formPills = el('div', { class: 'form-pills', title: 'Last 5 games (oldest → newest)' });
