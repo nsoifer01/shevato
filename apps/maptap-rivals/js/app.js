@@ -35,6 +35,7 @@
     SETTINGS: 'maptapRivalsSettings',
     SELECTED: 'maptapRivalsSelectedRivalId',
     MATRIX_SEL: 'maptapRivalsMatrixSelection',
+    SEASONS: 'maptapRivalsSeasons',
     // Per-ISO-date cache of the day's 5 puzzle lat/lng pairs. Values are
     // stored under `KEY.DAILY_CITIES_PREFIX + isoDate`. Only coordinates
     // are persisted — never names or trivia from the daily file.
@@ -252,6 +253,7 @@
   const state = {
     rivals: load(KEY.RIVALS, []),
     games: load(KEY.GAMES, []),
+    seasons: load(KEY.SEASONS, []),
     me: loadString(KEY.ME, 'Me'),
     myMapTap: loadString(KEY.MY_MAPTAP, ''),
     myIcon: loadString(KEY.MY_ICON, '🧍'),
@@ -289,6 +291,7 @@
 
   function persistRivals() { save(KEY.RIVALS, state.rivals); }
   function persistGames() { save(KEY.GAMES, state.games); }
+  function persistSeasons() { save(KEY.SEASONS, state.seasons); }
   function persistSettings() { save(KEY.SETTINGS, state.settings); }
   function persistMe() { saveString(KEY.ME, state.me); }
   function persistMyIcon() { saveString(KEY.MY_ICON, state.myIcon); }
@@ -760,6 +763,7 @@
     else if (view === 'rival') renderRival();
     else if (view === 'leaderboard') renderLeaderboard();
     else if (view === 'matrix') renderMatrix();
+    else if (view === 'seasons') renderSeasons();
     else if (view === 'history') renderHistory();
 
     syncUrlHash();
@@ -776,7 +780,7 @@
   //   #matrix | #matrix/<subtab>
   // We use replaceState so the URL updates silently without polluting the
   // back/forward history; hashchange handles users pasting or editing the URL.
-  const KNOWN_VIEWS = new Set(['dashboard', 'rival', 'leaderboard', 'matrix', 'history']);
+  const KNOWN_VIEWS = new Set(['dashboard', 'rival', 'leaderboard', 'matrix', 'seasons', 'history']);
 
   function viewHash() {
     if (state.view === 'matrix') {
@@ -951,6 +955,7 @@
     else if (state.view === 'dashboard') renderDashboard();
     else if (state.view === 'leaderboard') renderLeaderboard();
     else if (state.view === 'matrix') renderMatrix();
+    else if (state.view === 'seasons') renderSeasons();
     else if (state.view === 'history') renderHistory();
   }
 
@@ -980,6 +985,7 @@
     else if (state.view === 'rival') renderRival();
     else if (state.view === 'leaderboard') renderLeaderboard();
     else if (state.view === 'matrix') renderMatrix();
+    else if (state.view === 'seasons') renderSeasons();
     else if (state.view === 'history') renderHistory();
   }
 
@@ -1083,10 +1089,354 @@
     ]);
   }
 
+  // ---------- seasons ----------
+
+  function seasonStats(season) {
+    const today = todayISO();
+    let filtered = state.games.filter(g =>
+      g.date >= season.startDate && g.date <= season.endDate
+    );
+    if (season.rivalId) filtered = filtered.filter(g => g.rivalId === season.rivalId);
+
+    const gamesPlayed = filtered.length;
+    let wins = 0, losses = 0, ties = 0;
+    for (const g of filtered) {
+      const r = resultOf(g);
+      if (r === 'W') wins++;
+      else if (r === 'L') losses++;
+      else ties++;
+    }
+    const decidedGames = wins + losses;
+    const winPct = decidedGames > 0 ? (wins / decidedGames) * 100 : 0;
+
+    return { gamesPlayed, wins, losses, ties, winPct };
+  }
+
+  function seasonVerdict(season, stats) {
+    const { wins, losses, gamesPlayed, winPct } = stats;
+    if (season.goalType === 'winPct') {
+      return (wins + losses) > 0 && winPct >= season.goalValue;
+    }
+    if (season.goalType === 'wins') return wins >= season.goalValue;
+    if (season.goalType === 'minGames') return gamesPlayed >= season.goalValue;
+    return false;
+  }
+
+  function seasonGoalText(season) {
+    if (season.goalType === 'winPct') return `Win ${season.goalValue}% or more`;
+    if (season.goalType === 'wins') return `Win ${season.goalValue} game${season.goalValue === 1 ? '' : 's'}`;
+    if (season.goalType === 'minGames') return `Play at least ${season.goalValue} game${season.goalValue === 1 ? '' : 's'}`;
+    return '';
+  }
+
+  function seasonCurrentStat(season, stats) {
+    if (season.goalType === 'winPct') return stats.winPct;
+    if (season.goalType === 'wins') return stats.wins;
+    if (season.goalType === 'minGames') return stats.gamesPlayed;
+    return 0;
+  }
+
+  function seasonOnTrack(season, stats) {
+    if (stats.gamesPlayed === 0) return null;
+    const today = todayISO();
+    const totalDays = daysBetween(season.startDate, season.endDate) + 1;
+    const daysDone = Math.min(totalDays, daysBetween(season.startDate, today) + 1);
+    const progress = Math.max(0, Math.min(1, daysDone / totalDays));
+
+    const current = seasonCurrentStat(season, stats);
+    if (season.goalType === 'winPct') {
+      return current >= season.goalValue;
+    }
+    const expected = season.goalValue * progress;
+    return current >= expected;
+  }
+
+  function seasonDateRange(season) {
+    return fmtDateShort(season.startDate) + ' – ' + fmtDateShort(season.endDate);
+  }
+
+  function rivalLabel(rivalId) {
+    if (!rivalId) return 'All rivals';
+    const r = state.rivals.find(x => x.id === rivalId);
+    return r ? r.name : 'Unknown rival';
+  }
+
+  function makeSeasonProgressBar(fraction, cls) {
+    const pct = Math.min(1, Math.max(0, fraction));
+    return el('div', { class: 'season-progress-wrap' }, [
+      el('div', { class: 'season-progress-bar' }, [
+        el('span', { class: 'season-progress-fill ' + (cls || ''), style: `width:${(pct * 100).toFixed(1)}%` }),
+      ]),
+    ]);
+  }
+
+  function makeSeasonCard(season, bucket) {
+    const stats = seasonStats(season);
+    const today = todayISO();
+    const isActive = bucket === 'active';
+    const isPast = bucket === 'past';
+    const isUpcoming = bucket === 'upcoming';
+
+    const card = el('article', { class: 'season-card season-card-' + bucket });
+
+    // Header row
+    const head = el('div', { class: 'season-card-head' });
+    head.appendChild(el('div', { class: 'season-card-title' }, [
+      el('span', { class: 'season-card-name' }, season.name),
+      el('span', { class: 'season-card-dates' }, seasonDateRange(season)),
+    ]));
+    const headRight = el('div', { class: 'season-card-head-right' });
+    head.appendChild(headRight);
+
+    if (isPast) {
+      const passed = seasonVerdict(season, stats);
+      headRight.appendChild(el('span', {
+        class: 'season-verdict-pill ' + (passed ? 'is-pass' : 'is-fail'),
+      }, passed ? 'Passed' : 'Failed'));
+    }
+
+    if ((isActive || isUpcoming)) {
+      headRight.appendChild(el('button', {
+        type: 'button',
+        class: 'icon-btn icon-btn-danger season-delete-btn',
+        title: 'Delete season',
+        'aria-label': 'Delete season',
+        html: ICON_TRASH,
+        onclick: () => deleteSeason(season.id),
+      }));
+    }
+
+    card.appendChild(head);
+
+    // Meta row
+    card.appendChild(el('div', { class: 'season-card-meta' }, [
+      el('span', { class: 'season-card-meta-item' }, rivalLabel(season.rivalId)),
+      el('span', { class: 'season-card-meta-sep' }, '·'),
+      el('span', { class: 'season-card-meta-item' }, seasonGoalText(season)),
+    ]));
+
+    if (isUpcoming) return card;
+
+    // Stats row
+    const wld = `${stats.wins}W · ${stats.losses}L · ${stats.ties}T`;
+    const winPctStr = (stats.wins + stats.losses) > 0
+      ? stats.winPct.toFixed(0) + '% win'
+      : '—';
+
+    card.appendChild(el('div', { class: 'season-card-stats' }, [
+      el('span', { class: 'season-stat-num' }, String(stats.gamesPlayed)),
+      el('span', { class: 'season-stat-label' }, ' game' + (stats.gamesPlayed === 1 ? '' : 's')),
+      el('span', { class: 'season-stat-sep' }, '·'),
+      el('span', { class: 'season-stat-wld' }, wld),
+      el('span', { class: 'season-stat-sep' }, '·'),
+      el('span', { class: 'season-stat-pct' }, winPctStr),
+    ]));
+
+    // Progress toward goal
+    const currentVal = seasonCurrentStat(season, stats);
+    let progressFraction = 0;
+    if (season.goalType === 'winPct') {
+      progressFraction = stats.winPct / season.goalValue;
+    } else {
+      progressFraction = currentVal / season.goalValue;
+    }
+
+    const progressLabel = season.goalType === 'winPct'
+      ? `${stats.winPct.toFixed(0)}% / ${season.goalValue}%`
+      : `${currentVal} / ${season.goalValue}`;
+
+    const barCls = progressFraction >= 1 ? 'is-done' : '';
+    card.appendChild(el('div', { class: 'season-progress-row' }, [
+      el('span', { class: 'season-progress-label' }, progressLabel),
+      makeSeasonProgressBar(progressFraction, barCls),
+    ]));
+
+    // On-track indicator (active only)
+    if (isActive) {
+      const onTrack = seasonOnTrack(season, stats);
+      if (onTrack !== null) {
+        card.appendChild(el('div', {
+          class: 'season-track-pill ' + (onTrack ? 'is-on-track' : 'is-behind'),
+        }, onTrack ? 'On track' : 'Behind'));
+      }
+    }
+
+    return card;
+  }
+
+  function deleteSeason(id) {
+    const season = state.seasons.find(s => s.id === id);
+    if (!season) return;
+    if (!confirm(`Delete season "${season.name}"? This cannot be undone.`)) return;
+    state.seasons = state.seasons.filter(s => s.id !== id);
+    persistSeasons();
+    renderSeasons();
+    if (state.view === 'dashboard') renderDashboard();
+  }
+
+  function renderSeasons() {
+    const body = $('#seasons-body');
+    if (!body) return;
+    body.innerHTML = '';
+
+    const today = todayISO();
+
+    if (state.seasons.length === 0) {
+      body.appendChild(el('div', { class: 'empty-state seasons-empty' }, [
+        el('p', {}, 'No seasons yet. Create your first season to start tracking a time-boxed challenge.'),
+        el('button', { type: 'button', class: 'btn btn-primary', style: 'margin-top:.75rem', onclick: openSeasonModal }, '+ Create your first season'),
+      ]));
+      return;
+    }
+
+    const active = state.seasons.filter(s => s.startDate <= today && s.endDate >= today);
+    const upcoming = state.seasons.filter(s => s.startDate > today);
+    const past = state.seasons.filter(s => s.endDate < today);
+
+    function makeGroup(title, items, bucket) {
+      if (!items.length) return null;
+      const section = el('section', { class: 'seasons-group' });
+      section.appendChild(el('h3', { class: 'seasons-group-title' }, title));
+      items.forEach(s => section.appendChild(makeSeasonCard(s, bucket)));
+      return section;
+    }
+
+    const activeSection = makeGroup('Active', active, 'active');
+    const upcomingSection = makeGroup('Upcoming', upcoming, 'upcoming');
+    const pastSection = makeGroup('Past', past, 'past');
+
+    if (activeSection) body.appendChild(activeSection);
+    if (upcomingSection) body.appendChild(upcomingSection);
+    if (pastSection) body.appendChild(pastSection);
+  }
+
+  // ---------- season modal ----------
+  function openSeasonModal() {
+    const modal = $('#season-modal');
+    const nameInput = $('#season-name');
+    const startInput = $('#season-start');
+    const endInput = $('#season-end');
+    const rivalSelect = $('#season-rival');
+    const errorEl = $('#season-modal-error');
+
+    // Populate rival dropdown
+    rivalSelect.innerHTML = '<option value="">All rivals</option>';
+    state.rivals
+      .slice()
+      .sort((a, b) => a.name.localeCompare(b.name))
+      .forEach(r => {
+        rivalSelect.appendChild(el('option', { value: r.id }, r.name));
+      });
+
+    // Defaults
+    const today = todayISO();
+    nameInput.value = '';
+    startInput.value = today;
+    endInput.value = addDaysISO(today, 30);
+    rivalSelect.value = '';
+    document.querySelector('input[name="season-goal-type"][value="winPct"]').checked = true;
+    errorEl.hidden = true;
+    errorEl.textContent = '';
+
+    modal.hidden = false;
+    setTimeout(() => nameInput.focus(), 30);
+  }
+
+  function closeSeasonModal() {
+    $('#season-modal').hidden = true;
+  }
+
+  function saveSeasonFromModal() {
+    const name = $('#season-name').value.trim();
+    const startDate = $('#season-start').value;
+    const endDate = $('#season-end').value;
+    const rivalId = $('#season-rival').value || null;
+    const goalType = document.querySelector('input[name="season-goal-type"]:checked')?.value;
+    const errorEl = $('#season-modal-error');
+
+    const goalValInput = {
+      winPct: $('#season-goal-winpct'),
+      wins: $('#season-goal-wins'),
+      minGames: $('#season-goal-mingames'),
+    }[goalType];
+    const goalValue = goalValInput ? Number(goalValInput.value) : 0;
+
+    errorEl.hidden = true;
+
+    if (!name) {
+      errorEl.textContent = 'Season name is required.';
+      errorEl.hidden = false;
+      $('#season-name').focus();
+      return;
+    }
+    if (!startDate || !endDate) {
+      errorEl.textContent = 'Start and end dates are required.';
+      errorEl.hidden = false;
+      return;
+    }
+    if (startDate > endDate) {
+      errorEl.textContent = 'Start date must be on or before end date.';
+      errorEl.hidden = false;
+      return;
+    }
+    if (!goalValue || goalValue <= 0) {
+      errorEl.textContent = 'Goal value must be greater than 0.';
+      errorEl.hidden = false;
+      return;
+    }
+    if (goalType === 'winPct' && goalValue > 100) {
+      errorEl.textContent = 'Win % goal must be between 1 and 100.';
+      errorEl.hidden = false;
+      return;
+    }
+
+    state.seasons.push({
+      id: uid(),
+      name,
+      rivalId,
+      startDate,
+      endDate,
+      goalType,
+      goalValue,
+      createdAt: Date.now(),
+    });
+    persistSeasons();
+    closeSeasonModal();
+    renderSeasons();
+    if (state.view === 'dashboard') renderDashboard();
+  }
+
+  // Dashboard active-season banner
+  function renderActiveSeasonBanner() {
+    const wrap = $('#dash-active-season-banner');
+    if (!wrap) return;
+    wrap.innerHTML = '';
+    const today = todayISO();
+    const active = state.seasons.filter(s => s.startDate <= today && s.endDate >= today);
+    if (!active.length) { wrap.hidden = true; return; }
+
+    const season = active[0];
+    const stats = seasonStats(season);
+    const daysLeft = daysBetween(today, season.endDate);
+    const onTrack = seasonOnTrack(season, stats);
+    const trackText = onTrack === null ? '' : (onTrack ? ' · On track' : ' · Behind');
+
+    wrap.hidden = false;
+    const banner = el('div', { class: 'season-dash-banner', onclick: () => setView('seasons') }, [
+      el('div', { class: 'season-dash-banner-left' }, [
+        el('span', { class: 'season-dash-banner-name' }, season.name + ' is active'),
+        el('span', { class: 'season-dash-banner-meta' }, `${daysLeft} day${daysLeft === 1 ? '' : 's'} left${trackText}`),
+      ]),
+      el('span', { class: 'season-dash-banner-arrow' }, '→'),
+    ]);
+    wrap.appendChild(banner);
+  }
+
   // ---------- dashboard view ----------
   function renderDashboard() {
     renderProfileCard();
     renderPasteSection();
+    renderActiveSeasonBanner();
     renderDashSummary();
     renderTodaysPredictions();
     renderRivalGrid();
@@ -3948,6 +4298,7 @@
       else if (state.view === 'rival') renderRival();
       else if (state.view === 'leaderboard') renderLeaderboard();
       else if (state.view === 'matrix') renderMatrix();
+      else if (state.view === 'seasons') renderSeasons();
       else if (state.view === 'history') renderHistory();
     } catch (err) {
       setRivalSyncStatus(rivalId, 'err', err.message || 'sync failed');
@@ -4400,6 +4751,7 @@
     else if (state.view === 'rival') renderRival();
     else if (state.view === 'leaderboard') renderLeaderboard();
     else if (state.view === 'matrix') renderMatrix();
+    else if (state.view === 'seasons') renderSeasons();
     else if (state.view === 'history') renderHistory();
   }
 
@@ -4421,6 +4773,7 @@
     else if (state.view === 'rival') renderRival();
     else if (state.view === 'leaderboard') renderLeaderboard();
     else if (state.view === 'matrix') renderMatrix();
+    else if (state.view === 'seasons') renderSeasons();
     else if (state.view === 'history') renderHistory();
   }
 
@@ -4467,6 +4820,7 @@
         else if (state.view === 'rival') renderRival();
         else if (state.view === 'leaderboard') renderLeaderboard();
         else if (state.view === 'matrix') renderMatrix();
+        else if (state.view === 'seasons') renderSeasons();
         else if (state.view === 'history') renderHistory();
       } catch (e) {
         alert('Could not parse backup file.');
@@ -4487,6 +4841,7 @@
     if (!e.key) return;
     if (e.key === KEY.RIVALS) state.rivals = load(KEY.RIVALS, []);
     else if (e.key === KEY.GAMES) state.games = load(KEY.GAMES, []);
+    else if (e.key === KEY.SEASONS) state.seasons = load(KEY.SEASONS, []);
     else if (e.key === KEY.ME) {
       state.me = loadString(KEY.ME, 'Me');
       const me = $('#my-name'); if (me) me.value = state.me;
@@ -4509,6 +4864,7 @@
     else if (state.view === 'rival') renderRival();
     else if (state.view === 'leaderboard') renderLeaderboard();
     else if (state.view === 'matrix') renderMatrix();
+    else if (state.view === 'seasons') renderSeasons();
     else if (state.view === 'history') renderHistory();
   }
 
@@ -4529,6 +4885,16 @@
     // add rival
     $('#add-rival-btn').addEventListener('click', () => openRivalModal(null));
 
+    // Seasons
+    $('#new-season-btn').addEventListener('click', openSeasonModal);
+    $('#season-modal').querySelectorAll('[data-close="season-modal"]').forEach(node => {
+      node.addEventListener('click', closeSeasonModal);
+    });
+    $('#season-save-btn').addEventListener('click', saveSeasonFromModal);
+    $('#season-name').addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') { e.preventDefault(); saveSeasonFromModal(); }
+    });
+
     // Rival modal close — scoped to #rival-modal so it doesn't also fire
     // for clicks on the WhatsApp import modal.
     $('#rival-modal').querySelectorAll('[data-close="modal"]').forEach(node => {
@@ -4543,6 +4909,7 @@
       if (e.key !== 'Escape') return;
       if (!$('#wa-modal').hidden) closeWhatsAppModal();
       else if (!$('#rival-modal').hidden) closeRivalModal();
+      else if (!$('#season-modal').hidden) closeSeasonModal();
     });
 
     // settings strip
