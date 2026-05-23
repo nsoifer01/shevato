@@ -10,7 +10,7 @@ const fs = require('fs');
 const path = require('path');
 
 const { showPath } = require('./slugify.js');
-const { renderShowPage } = require('./render-show-page.js');
+const { renderShowPage, shapeToSlug } = require('./render-show-page.js');
 const { renderShowsIndex } = require('./render-shows-index.js');
 const { renderShowsSitemap } = require('./render-sitemap.js');
 
@@ -30,6 +30,9 @@ function main() {
   const series = groupBySeries(data.matches);
   console.log(`[build-show-pages] ${series.length} unique series · ${data.matches.length} seasons · builtAt=${data.builtAt}`);
 
+  // Build shape → series lookup for recommendations panel.
+  const shapeIndex = buildShapeIndex(series);
+
   fs.rmSync(SHOWS_DIR, { recursive: true, force: true });
   fs.mkdirSync(SHOWS_DIR, { recursive: true });
 
@@ -38,7 +41,9 @@ function main() {
   for (const s of series) {
     const dir = path.join(SHOWS_DIR, showPath(s.title, s.seriesId));
     fs.mkdirSync(dir, { recursive: true });
-    const html = renderShowPage({ ...s, builtAt: data.builtAt });
+    const { dominantShape, dominantShapeSlug } = computeDominantShape(s);
+    const relatedShows = computeRelatedShows(s, dominantShape, shapeIndex, 4);
+    const html = renderShowPage({ ...s, builtAt: data.builtAt, dominantShape, dominantShapeSlug, relatedShows });
     fs.writeFileSync(path.join(dir, 'index.html'), html);
     pageCount++;
     if (pageCount % 1000 === 0) {
@@ -113,6 +118,64 @@ function toIndexEntry(s) {
   return { seriesId: s.seriesId, title: s.title, year: s.year };
 }
 
+// Pick the shape from the season with the highest seriesVotes (all seasons
+// in a series share the same seriesVotes, so break ties by avgRating).
+// Returns null when the show has no shape classifications at all.
+function computeDominantShape(show) {
+  let bestSeason = null;
+  for (const s of show.seasons) {
+    if (!s.shapes || s.shapes.length === 0) continue;
+    if (!bestSeason) { bestSeason = s; continue; }
+    if (s.avgRating > bestSeason.avgRating) bestSeason = s;
+  }
+  if (!bestSeason) return { dominantShape: null, dominantShapeSlug: null };
+  const shape = bestSeason.shapes[0];
+  return { dominantShape: shape, dominantShapeSlug: shapeToSlug(shape) };
+}
+
+// Build an inverted index: shape slug → array of series objects sorted by
+// seriesVotes descending so top-voted shows come first in recommendations.
+function buildShapeIndex(series) {
+  const index = new Map();
+  for (const s of series) {
+    const shapes = new Set();
+    for (const season of s.seasons) {
+      for (const sh of (season.shapes || [])) shapes.add(sh);
+    }
+    for (const sh of shapes) {
+      if (!index.has(sh)) index.set(sh, []);
+      index.get(sh).push(s);
+    }
+  }
+  for (const list of index.values()) {
+    list.sort((a, b) => (b.seriesVotes || 0) - (a.seriesVotes || 0));
+  }
+  return index;
+}
+
+// Return up to `limit` other shows that share the dominant shape, ordered
+// by seriesVotes descending. Excludes the show itself.
+function computeRelatedShows(show, dominantShape, shapeIndex, limit) {
+  if (!dominantShape) return [];
+  const candidates = shapeIndex.get(dominantShape) || [];
+  const result = [];
+  for (const s of candidates) {
+    if (s.seriesId === show.seriesId) continue;
+    const { dominantShape: rShape, dominantShapeSlug: rSlug } = computeDominantShape(s);
+    result.push({
+      seriesId: s.seriesId,
+      title: s.title,
+      year: s.year,
+      poster: s.poster,
+      dominantShape: rShape,
+      dominantShapeSlug: rSlug,
+      slug: showPath(s.title, s.seriesId),
+    });
+    if (result.length >= limit) break;
+  }
+  return result;
+}
+
 if (require.main === module) {
   try {
     main();
@@ -122,4 +185,4 @@ if (require.main === module) {
   }
 }
 
-module.exports = { groupBySeries };
+module.exports = { groupBySeries, computeDominantShape, buildShapeIndex, computeRelatedShows };

@@ -23,8 +23,10 @@
   <meta property="og:description" content="Browse thousands of TV seasons by episode-rating shape — rising, consistent, slow-burn, big-finale, rebound, mid-peak, and more." />
   <meta property="og:type" content="website" />
   <meta property="og:url" content="https://shevato.com/apps/rising-seasons/" />
-  <meta property="og:image" content="https://shevato.com/images/full-logo.svg" />
-  <meta property="og:image:type" content="image/svg+xml" />
+  <meta property="og:image" content="https://shevato.com/images/og-card.png" />
+  <meta property="og:image:width" content="1200" />
+  <meta property="og:image:height" content="630" />
+  <meta property="og:image:type" content="image/png" />
   <meta property="og:image:alt" content="Rising Seasons — TV by the shape of episode ratings" />
   <meta property="og:site_name" content="Shevato" />
   <meta property="og:locale" content="en_US" />
@@ -33,7 +35,7 @@
   <meta name="twitter:card" content="summary_large_image" />
   <meta name="twitter:title" content="Rising Seasons | TV by the shape of episode ratings" />
   <meta name="twitter:description" content="Browse thousands of TV seasons by episode-rating curve — rising, slow-burn, big-finale, rebound, mid-peak, and more." />
-  <meta name="twitter:image" content="https://shevato.com/images/full-logo.svg" />
+  <meta name="twitter:image" content="https://shevato.com/images/og-card.png" />
   <meta name="twitter:site" content="@shevato" />
 
   <!-- Breadcrumbs -->
@@ -98,11 +100,30 @@
   <div id="sync-banner" class="sync-banner" role="status" aria-live="polite" hidden></div>
   <div data-include="header"></div>
 
+  <!-- Sticky filter bar: appears once the main filter section scrolls off-screen.
+       Holds a condensed shape strip, search input, and shortcut/reset buttons. -->
+  <nav class="sticky-filter-bar" id="stickyFilterBar" aria-label="Filters (sticky)" hidden>
+    <div class="sticky-filter-inner">
+      <div class="sticky-shape-row" id="stickyShapeRow" role="group" aria-label="Shape filter"></div>
+      <div class="sticky-search">
+        <input type="search" id="stickySearch"
+               placeholder="Search…"
+               autocomplete="off"
+               aria-label="Search title, episode, or IMDb ID">
+      </div>
+      <button type="button" class="btn btn-ghost sticky-jump" id="stickyJumpFilters" title="Open full filters">Filters</button>
+    </div>
+  </nav>
+
   <main class="page">
     <header class="hero">
       <h1>Rising Seasons</h1>
       <p class="tagline">Discover TV by the <em>shape</em> of its episode ratings</p>
-      <p class="hero-secondary"><a href="shows/" class="hero-link">Browse all shows A–Z →</a></p>
+      <p class="hero-secondary">
+        <a href="shows/" class="hero-link">Browse all shows A–Z →</a>
+        <span class="hero-sep" aria-hidden="true">•</span>
+        <a href="kometa/" class="hero-link" title="Build Plex collections and badges from these shapes via Kometa">Use with Plex + Kometa →</a>
+      </p>
     </header>
 
     <nav class="shapes" id="shapes" aria-label="Rating shape">
@@ -197,54 +218,56 @@
     <section class="mood-presets" aria-label="Explore by mood">
       <h2 class="mood-presets-title">Explore by mood</h2>
       <div class="mood-preset-chips">
-        <a class="mood-chip" href="#shape=slow-burn%2Cbig-finale" title="Slow burn + Big finale">
-          <span class="mood-chip-icon" aria-hidden="true">⤴⇧</span>
-          <span class="mood-chip-label">Patient payoff</span>
-          <span class="mood-chip-desc">Slow burn that sticks the landing</span>
+        <a class="mood-chip" href="#minYear=2020&minAvg=8.5&minVotes=1000&sort=avg" title="2020+, avg ≥ 8.5, ≥1,000 votes/episode">
+          <span class="mood-chip-icon" aria-hidden="true">★◉</span>
+          <span class="mood-chip-label">Modern prestige</span>
+          <span class="mood-chip-desc">Recent seasons critics and audiences both love</span>
+          <span class="mood-chip-count"></span>
         </a>
-        <a class="mood-chip" href="#shape=rollercoaster%2Cbig-finale" title="Rollercoaster + Big finale">
-          <span class="mood-chip-icon" aria-hidden="true">∿⇧</span>
-          <span class="mood-chip-label">Feast or famine</span>
-          <span class="mood-chip-desc">Wild ride with a spectacular finish</span>
+        <a class="mood-chip" href="#type=tvMiniSeries&minAvg=8&sort=avg" title="Mini-series only, avg ≥ 8">
+          <span class="mood-chip-icon" aria-hidden="true">❮❯</span>
+          <span class="mood-chip-label">One and done</span>
+          <span class="mood-chip-desc">Top mini-series — one season, full story</span>
+          <span class="mood-chip-count"></span>
         </a>
-        <a class="mood-chip" href="#shape=rebound%2Cbig-finale" title="Rebound + Big finale">
-          <span class="mood-chip-icon" aria-hidden="true">∪⇧</span>
-          <span class="mood-chip-label">Redemption arc</span>
-          <span class="mood-chip-desc">Dips, recovers, ends on a high note</span>
+        <a class="mood-chip" href="#above=above&minAvg=8&sort=avg" title="Season avg above the show's IMDb rating, avg ≥ 8">
+          <span class="mood-chip-icon" aria-hidden="true">⇈★</span>
+          <span class="mood-chip-label">Outshines the show</span>
+          <span class="mood-chip-desc">Seasons rated higher than their show overall</span>
+          <span class="mood-chip-count"></span>
         </a>
-        <a class="mood-chip" href="#shape=consistent%2Crising" title="Consistent + Rising">
-          <span class="mood-chip-icon" aria-hidden="true">═↗</span>
-          <span class="mood-chip-label">Consistent excellence</span>
-          <span class="mood-chip-desc">Quality floor throughout, still getting better</span>
+        <a class="mood-chip" href="#minEps=10&minAvg=8&sort=length" title="≥10 episodes, avg ≥ 8, sorted by length">
+          <span class="mood-chip-icon" aria-hidden="true">❯❯❯</span>
+          <span class="mood-chip-label">Marathon material</span>
+          <span class="mood-chip-desc">Long seasons worth committing to</span>
+          <span class="mood-chip-count"></span>
         </a>
-        <a class="mood-chip" href="#shape=consistent%2Cbig-finale" title="Consistent + Big finale">
-          <span class="mood-chip-icon" aria-hidden="true">═⇧</span>
-          <span class="mood-chip-label">Hidden masterpiece</span>
-          <span class="mood-chip-desc">Reliable quality crowned by a standout finale</span>
-        </a>
-        <a class="mood-chip" href="#shape=declining%2Cbad-finale" title="Declining + Bad finale">
-          <span class="mood-chip-icon" aria-hidden="true">↘⇩</span>
-          <span class="mood-chip-label">Sharp decline</span>
-          <span class="mood-chip-desc">Fell from grace, landed badly</span>
+        <a class="mood-chip" href="#minClimb=1&minAvg=7.5&sort=climb" title="Last episode ≥1 pt higher than the first, avg ≥ 7.5">
+          <span class="mood-chip-icon" aria-hidden="true">↗⇧</span>
+          <span class="mood-chip-label">Biggest glow-ups</span>
+          <span class="mood-chip-desc">Seasons that ended way better than they started</span>
+          <span class="mood-chip-count"></span>
         </a>
       </div>
     </section>
 
     <section class="filters" aria-label="Filters">
       <div class="filter-row primary">
-        <div class="search">
-          <label>
-            <span class="visually-hidden">Search title, episode, or IMDb ID</span>
-            <input type="search" id="search"
-                   placeholder="Search title, episode, or IMDb ID — press / to focus"
-                   autocomplete="off"
-                   role="combobox"
-                   aria-expanded="false"
-                   aria-autocomplete="list"
-                   aria-controls="searchSuggestions"
-                   aria-label="Search title, episode, or IMDb ID">
-          </label>
-          <ul id="searchSuggestions" class="search-suggestions" role="listbox" hidden></ul>
+        <div class="search-cluster">
+          <div class="search">
+            <label>
+              <span class="visually-hidden">Search title, episode, or IMDb ID</span>
+              <input type="search" id="search"
+                     placeholder="Search title, episode, or IMDb ID — press / to focus"
+                     autocomplete="off"
+                     role="combobox"
+                     aria-expanded="false"
+                     aria-autocomplete="list"
+                     aria-controls="searchSuggestions"
+                     aria-label="Search title, episode, or IMDb ID">
+            </label>
+            <ul id="searchSuggestions" class="search-suggestions" role="listbox" hidden></ul>
+          </div>
         </div>
         <div class="view-toggle" role="radiogroup" aria-label="View mode">
           <button type="button" class="btn view-btn" data-view="grid" aria-pressed="true" aria-label="Grid view" title="Grid view">▦</button>
@@ -262,7 +285,13 @@
             <span>Popular pick</span>
           </button>
         </div>
+        <button type="button" class="btn shortcut-legend-btn" id="shortcutLegendBtn"
+                aria-haspopup="dialog" aria-controls="shortcutLegend" aria-expanded="false"
+                title="Keyboard shortcuts (press ?)">?</button>
       </div>
+
+      <!-- Active-filter chip bar: rendered by JS when any filter is active. -->
+      <div class="active-filter-bar" id="activeFilterBar" hidden aria-label="Active filters"></div>
 
       <div class="quick-filters-row">
         <details class="quick-filters-wrap">
@@ -295,6 +324,12 @@
           <span class="label-group-name">Gems</span>
           <button type="button" class="label-chip" data-filter="hiddenGems" data-value="all" aria-pressed="true">All</button>
           <button type="button" class="label-chip label-chip-good" data-filter="hiddenGems" data-value="on" aria-pressed="false" title="High-rated seasons most people haven't watched (avg ≥ 8.5, fewer than 500 votes per episode)">💎 Hidden gems</button>
+        </div>
+        <div class="label-group" role="radiogroup" aria-label="Poster artwork">
+          <span class="label-group-name">Poster</span>
+          <button type="button" class="label-chip" data-filter="poster" data-value="all" aria-pressed="true">All</button>
+          <button type="button" class="label-chip" data-filter="poster" data-value="with" aria-pressed="false" title="Only seasons whose series has a TMDB poster">With poster</button>
+          <button type="button" class="label-chip" data-filter="poster" data-value="without" aria-pressed="false" title="Only seasons whose series has no TMDB poster">No poster</button>
         </div>
       </div>
 
@@ -375,7 +410,7 @@
        changelog.json. Hidden until the user activates the chip. -->
   <div class="changelog-modal modal" id="changelogModal" role="dialog" aria-modal="true" aria-labelledby="changelogModalTitle" aria-hidden="true" hidden>
     <div class="modal-backdrop" data-close="changelog-modal"></div>
-    <article class="modal-panel changelog-panel">
+    <article class="modal-panel changelog-panel" tabindex="-1">
       <button type="button" class="btn modal-close" data-close="changelog-modal" aria-label="Close">×</button>
       <header class="changelog-header">
         <h2 id="changelogModalTitle">What's new</h2>
@@ -410,12 +445,9 @@
   <!-- Detail modal (opens when a card is clicked) -->
   <div class="modal" id="detailModal" role="dialog" aria-modal="true" aria-labelledby="modalTitle" aria-hidden="true" hidden>
     <div class="modal-backdrop" data-close="modal"></div>
-    <article class="modal-panel">
+    <article class="modal-panel" tabindex="-1">
       <button type="button" class="btn modal-close" data-close="modal" aria-label="Close">×</button>
-      <button type="button" class="btn btn-primary modal-reroll" id="modalReroll" hidden>
-        <span aria-hidden="true">🎲</span>
-        <span>Roll again</span>
-      </button>
+      <button type="button" class="btn btn-primary modal-reroll" id="modalReroll" hidden>Roll again</button>
       <div class="modal-header">
         <div class="modal-poster" id="modalPoster" aria-hidden="true"></div>
         <div class="modal-heading">
@@ -423,23 +455,25 @@
           <p class="modal-subtitle" id="modalSubtitle"></p>
           <div class="modal-shapes" id="modalShapes"></div>
           <p class="modal-stats" id="modalStats"></p>
+          <div class="modal-primary-actions">
+            <button type="button" class="btn btn-ghost" id="modalShareCard">Share card</button>
+            <button type="button" class="btn watch-btn" id="modalWatchBtn"></button>
+          </div>
         </div>
       </div>
       <div class="modal-actions modal-actions-top">
-        <button type="button" class="btn watch-btn" id="modalWatchBtn"></button>
         <button type="button" class="btn btn-ghost" id="modalViewShow">📺 View show</button>
-        <button type="button" class="btn btn-ghost" id="modalShareCard">Share card</button>
         <a class="btn btn-ghost modal-imdb" id="modalImdb" target="_blank" rel="noopener">View season on IMDb →</a>
-        <a class="btn btn-ghost" id="modalJustwatch" target="_blank" rel="noopener">Where to watch →</a>
         <a class="btn btn-ghost" id="modalTvdb" target="_blank" rel="noopener" hidden>View series on TVDB →</a>
       </div>
       <p class="modal-overview" id="modalOverview"></p>
       <h3 class="modal-section">Episode ratings</h3>
-      <svg class="modal-curve" id="modalCurve" viewBox="0 0 600 180" preserveAspectRatio="none" aria-hidden="true">
+      <svg class="modal-curve" id="modalCurve" viewBox="0 0 600 180" preserveAspectRatio="none" tabindex="0" aria-label="Episode ratings curve">
         <path class="curve-area" />
         <path class="curve-line" />
         <g class="curve-dots"></g>
       </svg>
+      <p class="modal-curve-annotation" id="modalCurveAnnotation" hidden></p>
       <ol class="modal-episodes" id="modalEpisodes"></ol>
     </article>
   </div>
@@ -447,7 +481,7 @@
   <!-- Show-level modal (all seasons + aggregate info) -->
   <div class="modal" id="showModal" role="dialog" aria-modal="true" aria-labelledby="showModalTitle" aria-hidden="true" hidden>
     <div class="modal-backdrop" data-close="show-modal"></div>
-    <article class="modal-panel">
+    <article class="modal-panel" tabindex="-1">
       <button type="button" class="btn modal-close" data-close="show-modal" aria-label="Close">×</button>
       <div class="modal-header">
         <div class="modal-poster" id="showModalPoster" aria-hidden="true"></div>
@@ -457,15 +491,23 @@
           <p class="modal-stats" id="showModalStats"></p>
           <div class="modal-shapes" id="showModalShapes"></div>
           <div class="provider-badges" id="showModalProviders"></div>
+          <div class="modal-primary-actions">
+            <button type="button" class="btn btn-ghost" id="showModalShareCard">Share card</button>
+            <button type="button" class="btn compare-btn" id="showModalCompare">＋ Add to compare</button>
+          </div>
         </div>
       </div>
       <div class="modal-actions modal-actions-top">
-        <button type="button" class="btn compare-btn" id="showModalCompare">＋ Add to compare</button>
+        <a class="btn btn-ghost" id="showModalWatchOn" target="_blank" rel="noopener" hidden></a>
         <a class="btn btn-ghost" id="showModalPermalink">Permalink →</a>
         <a class="btn btn-ghost" id="showModalImdb" target="_blank" rel="noopener">View show on IMDb →</a>
         <a class="btn btn-ghost" id="showModalTvdb" target="_blank" rel="noopener" hidden>View show on TVDB →</a>
       </div>
       <p class="modal-overview" id="showModalOverview"></p>
+      <section class="cast-section" id="showModalCast" hidden>
+        <h3 class="modal-section">Cast</h3>
+        <ol class="cast-list" id="showModalCastList"></ol>
+      </section>
       <section class="season-overlay" id="showModalOverlay" hidden>
         <h3 class="modal-section">Seasons overlay</h3>
         <svg class="overlay-curve" id="showModalOverlayCurve" viewBox="0 0 600 200" preserveAspectRatio="none" aria-hidden="true"></svg>
@@ -479,7 +521,7 @@
   <!-- Compare modal (overlay trajectory across multiple series) -->
   <div class="modal" id="compareModal" role="dialog" aria-modal="true" aria-labelledby="compareModalTitle" aria-hidden="true" hidden>
     <div class="modal-backdrop" data-close="compare-modal"></div>
-    <article class="modal-panel">
+    <article class="modal-panel" tabindex="-1">
       <button type="button" class="btn modal-close" data-close="compare-modal" aria-label="Close">×</button>
       <h2 id="compareModalTitle">Compare shows</h2>
       <p class="modal-subtitle">Season-average rating trajectory for each show. Click a show name to remove.</p>
@@ -497,6 +539,19 @@
     <span class="compare-fab-label">Compare</span>
     <span class="compare-fab-count" id="compareFabCount">0</span>
   </button>
+
+  <!-- Keyboard shortcuts popover (toggled by the ? button and the ? key). -->
+  <div class="shortcut-legend" id="shortcutLegend" role="dialog" aria-label="Keyboard shortcuts" hidden>
+    <h3 class="shortcut-legend-title">Keyboard shortcuts</h3>
+    <ul class="shortcut-legend-list">
+      <li><kbd>/</kbd> <span>Focus search</span></li>
+      <li><kbd>R</kbd> <span>Random pick (surprise)</span></li>
+      <li><kbd>←</kbd> <kbd>→</kbd> <span>Step through shape chips</span></li>
+      <li><kbd>Esc</kbd> <span>Close any open modal</span></li>
+      <li><kbd>?</kbd> <span>Toggle this list</span></li>
+    </ul>
+    <p class="shortcut-legend-note">Modal curve: focus the chart and use <kbd>←</kbd>/<kbd>→</kbd> to step episodes.</p>
+  </div>
 
   <!-- Card template (grid view) -->
   <template id="card-template">

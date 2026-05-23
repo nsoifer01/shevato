@@ -34,6 +34,10 @@ const { findMatches } = require('./match.js');
 const DATA_DIR = path.join(__dirname, '..', 'data');
 const OUT_FILE = path.join(__dirname, '..', 'data.json');
 const TMDB_CACHE = path.join(DATA_DIR, 'tmdb-cache.json');
+// Side-file produced by `fetch-season-overviews.js` — kept separate from
+// tmdb-cache.json so the season-overview backfill can run alongside the
+// main enrich script without racing on cache writes.
+const SEASON_OVERVIEWS_FILE = path.join(DATA_DIR, 'season-overviews.json');
 
 // Default 3 (was 4) so short-season formats like BBC Sherlock (3 eps/season)
 // are included. Most shape detectors require >= 4 episodes internally, so
@@ -201,6 +205,16 @@ function loadTmdbCache() {
   }
 }
 
+function loadSeasonOverviews() {
+  if (!fs.existsSync(SEASON_OVERVIEWS_FILE)) return null;
+  try {
+    return JSON.parse(fs.readFileSync(SEASON_OVERVIEWS_FILE, 'utf8'));
+  } catch (err) {
+    console.warn(`Could not parse ${SEASON_OVERVIEWS_FILE}: ${err.message}`);
+    return null;
+  }
+}
+
 (async () => {
   const t0 = Date.now();
 
@@ -266,7 +280,12 @@ function loadTmdbCache() {
           const sv = t.seasonTvdbIds[m.season];
           if (Number.isFinite(sv)) m.seasonTvdbId = sv;
         }
+        if (t.seasonOverviews) {
+          const so = t.seasonOverviews[m.season];
+          if (typeof so === 'string' && so.length > 0) m.seasonOverview = so;
+        }
         if (t.original_language) m.language = t.original_language;
+        if (Array.isArray(t.cast) && t.cast.length) m.cast = t.cast;
         if (Array.isArray(t.providers) && t.providers.length) {
           const seen = new Set();
           const norm = [];
@@ -284,6 +303,25 @@ function loadTmdbCache() {
     console.log(`Enriched ${enriched.toLocaleString()} of ${matches.length.toLocaleString()} matches with TMDB metadata`);
   } else {
     console.log('(No TMDB cache present — run `npm run enrich:rising-seasons` to add posters/overviews.)');
+  }
+
+  // Per-season overviews from the parallel side-file. Runs as its own
+  // pass so it works whether or not the main TMDB cache exists, and so
+  // the side-file takes precedence over `seasonOverviews` baked into
+  // tmdb-cache.json (the side-file is generally fresher when both exist).
+  const sideOverviews = loadSeasonOverviews();
+  if (sideOverviews) {
+    let withSeasonOverview = 0;
+    for (const m of matches) {
+      const ovMap = sideOverviews[m.seriesId];
+      if (!ovMap) continue;
+      const so = ovMap[String(m.season)];
+      if (typeof so === 'string' && so.length > 0) {
+        m.seasonOverview = so;
+        withSeasonOverview++;
+      }
+    }
+    console.log(`Attached per-season overview to ${withSeasonOverview.toLocaleString()} matches (from season-overviews.json)`);
   }
 
   // Sort by minimum vote count desc — most-watched matches first.
@@ -331,6 +369,48 @@ function loadTmdbCache() {
     .sort((a, b) => b[1] - a[1])
     .map(([name, count]) => ({ name, count }));
 
+  // Split modal-only enrichment out into a side-file so data.json stays under
+  // GitHub's 100 MB file-size cap. The browser app fetches both files in
+  // parallel from load() and merges show-modal-extras.json onto each match
+  // before the user opens any modal — see apps/rising-seasons/js/app.js.
+  const modalExtras = {}; // seriesId -> { cast, seasons: { seasonNum -> { ov, eps: { epNum -> { tt, rt } } } } }
+  const seenCastSeries = new Set();
+  for (const m of matches) {
+    const sid = m.seriesId;
+    if (m.cast && m.cast.length) {
+      if (!seenCastSeries.has(sid)) {
+        if (!modalExtras[sid]) modalExtras[sid] = { cast: null, seasons: {} };
+        modalExtras[sid].cast = m.cast;
+        seenCastSeries.add(sid);
+      }
+      delete m.cast;
+    }
+    if (m.seasonOverview) {
+      if (!modalExtras[sid]) modalExtras[sid] = { cast: null, seasons: {} };
+      const key = String(m.season);
+      if (!modalExtras[sid].seasons[key]) modalExtras[sid].seasons[key] = { ov: null, eps: {} };
+      modalExtras[sid].seasons[key].ov = m.seasonOverview;
+      delete m.seasonOverview;
+    }
+    if (Array.isArray(m.episodes)) {
+      for (const ep of m.episodes) {
+        if (!ep.tt && ep.runtime === undefined) continue;
+        if (!modalExtras[sid]) modalExtras[sid] = { cast: null, seasons: {} };
+        const key = String(m.season);
+        if (!modalExtras[sid].seasons[key]) modalExtras[sid].seasons[key] = { ov: null, eps: {} };
+        const rec = {};
+        if (ep.tt) { rec.tt = ep.tt; delete ep.tt; }
+        if (ep.runtime !== undefined) { rec.rt = ep.runtime; delete ep.runtime; }
+        modalExtras[sid].seasons[key].eps[String(ep.episode)] = rec;
+      }
+    }
+  }
+  // Drop top-level entries that ended up empty (no cast and no season records).
+  for (const sid of Object.keys(modalExtras)) {
+    const e = modalExtras[sid];
+    if (!e.cast && Object.keys(e.seasons).length === 0) delete modalExtras[sid];
+  }
+
   fs.writeFileSync(OUT_FILE, JSON.stringify({
     builtAt: new Date().toISOString(),
     minEpisodes: MIN_EPISODES,
@@ -342,8 +422,11 @@ function loadTmdbCache() {
     providers,
     matches,
   }));
+  const EXTRAS_FILE = path.join(DATA_DIR, 'show-modal-extras.json');
+  fs.writeFileSync(EXTRAS_FILE, JSON.stringify(modalExtras));
   const seconds = ((Date.now() - t0) / 1000).toFixed(1);
   console.log(`Wrote ${OUT_FILE} in ${seconds}s`);
+  console.log(`Wrote ${EXTRAS_FILE} (${Object.keys(modalExtras).length.toLocaleString()} shows with modal extras)`);
 
   // Diff against the previously-committed data.json and update changelog.json
   // so the "What's new" footer chip stays in sync. The footer guards the chip
