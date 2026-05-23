@@ -301,11 +301,6 @@
   function persistMatrixSelection() { save(KEY.MATRIX_SEL, state.matrixSelection); }
 
   // ---------- date utils ----------
-  function todayISO() {
-    const d = new Date();
-    const tz = d.getTimezoneOffset();
-    return new Date(d.getTime() - tz * 60000).toISOString().slice(0, 10);
-  }
   function daysBetween(aISO, bISO) {
     const a = new Date(aISO + 'T00:00:00');
     const b = new Date(bISO + 'T00:00:00');
@@ -2659,6 +2654,10 @@
     const gameDays = Object.keys(dayMap).length;
     subEl.textContent = `${s.total} game${s.total === 1 ? '' : 's'} on ${gameDays} day${gameDays === 1 ? '' : 's'}`;
 
+    // Scroll to the right so most recent months are visible by default.
+    // Only matters when the grid overflows the wrap (long histories on mobile).
+    if (wrapEl) wrapEl.scrollLeft = wrapEl.scrollWidth;
+
     // Legend
     legendEl.innerHTML = '';
     const legendItems = [
@@ -2776,7 +2775,6 @@
     const section = $('#loc-section');
     if (!s.locStats || !s.gamesWithLocsCount) {
       section.hidden = true;
-      destroyChart('radar');
       destroyChart('locWinrate');
       return;
     }
@@ -2935,48 +2933,6 @@
   function renderLocationCharts(s) {
     if (!window.Chart || !s.locStats) return;
     const labels = s.locStats.map((l, i) => `${l.label} (×${WEIGHTS[i]})`);
-
-    destroyChart('radar');
-    state.charts.radar = new Chart($('#chart-radar'), {
-      type: 'radar',
-      data: {
-        labels,
-        datasets: [
-          {
-            label: 'You',
-            data: s.locStats.map(l => l.myAvg),
-            borderColor: '#4ade80',
-            backgroundColor: 'rgba(74,222,128,0.18)',
-            pointBackgroundColor: '#4ade80',
-            pointRadius: 3,
-          },
-          (() => {
-            const rc = chartRivalColor(s.rival.color);
-            return {
-              label: s.rival.name,
-              data: s.locStats.map(l => l.theirAvg),
-              borderColor: rc,
-              backgroundColor: hexToRgba(rc, 0.18),
-              pointBackgroundColor: rc,
-              pointRadius: 3,
-            };
-          })(),
-        ],
-      },
-      options: chartCommon({
-        scales: {
-          r: {
-            beginAtZero: true,
-            min: 0,
-            max: 100,
-            ticks: { color: '#9aa3b2', backdropColor: 'transparent', stepSize: 25 },
-            grid: { color: '#252938' },
-            angleLines: { color: '#252938' },
-            pointLabels: { color: '#e7e9ee', font: { size: 11 } },
-          },
-        },
-      }),
-    });
 
     destroyChart('locWinrate');
     const winrates = s.locStats.map(l => +(l.winPct * 100).toFixed(1));
