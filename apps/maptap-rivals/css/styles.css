@@ -1234,6 +1234,18 @@ body.maptap-rivals-app button {
                     transparent 0%, var(--muted) 50%, transparent 100%); opacity: 0.4; }
 .prc-zero .prc-delta { color: var(--muted); }
 
+/* Synced actual without a prediction (rival played today, predictor lacks
+   history or user hasn't played). The chip stays in a neutral tone — no
+   W/L colouring since there's no comparison — but a soft accent ring marks
+   it as "real data, just no prediction to delta against". */
+.prc.prc-actual-only {
+  background: rgba(74, 222, 128, 0.04);
+  border-color: rgba(74, 222, 128, 0.22);
+}
+.prc.prc-actual-only::before { background: linear-gradient(90deg,
+                    transparent 0%, var(--good) 50%, transparent 100%); opacity: 0.45; }
+.prc.prc-actual-only .prc-actual { color: var(--good); }
+
 @media (max-width: 520px) {
   .pred-round-strip { gap: 0.32rem; }
   .prc { padding: 0.45rem 0.3rem 0.4rem; }
