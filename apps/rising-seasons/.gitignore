@@ -1,1 +1,7 @@
 # data.json is now committed and refreshed weekly by .github/workflows/refresh-imdb.yml
+
+# User-uploaded Kometa reference files — contain live Plex/Trakt/TMDB/OMDB/MDBList secrets.
+# Kept locally for integration development; never commit.
+config.yml
+movies_collections.yml
+tv_shows_collections.yml

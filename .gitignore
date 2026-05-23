@@ -31,7 +31,6 @@ claude-*.json
 claude-session/
 .claude-history
 .claude_rules
-TESTING_STEPS.txt
 
 # WhatsApp chat exports (personal data, used locally for MapTap Rivals import)
 WhatsApp Chat *.txt

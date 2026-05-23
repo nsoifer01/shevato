@@ -406,14 +406,14 @@ function findMatches(seriesById, episodesBySeries, opts = {}) {
       type: meta.type,
       genres: meta.genres || [],
       season,
-      // Project to the minimal shape the UI actually reads. We deliberately
-      // drop `tconst` — it's the IMDb episode ID we used to join the ratings
-      // and titles tables during build, but the front-end never reads it,
-      // so shipping it inflates data.json by ~1.5MB across ~126K episodes.
-      // We also drop the per-episode `year` because seasonYear above
-      // captures the only year the UI needs.
-      episodes: eps.map(({ episode, rating, votes, name, runtime }) => {
+      // Project to the minimal shape the UI actually reads. We keep `tt`
+      // (the IMDb episode ID) so the modal can deep-link each episode row
+      // to its IMDb page — adds ~1.5MB across ~126K episodes, much less
+      // after gzip. We drop the per-episode `year` because seasonYear
+      // above captures the only year the UI needs.
+      episodes: eps.map(({ episode, tconst, rating, votes, name, runtime }) => {
         const ep = { episode, rating, votes };
+        if (tconst) ep.tt = tconst;
         if (name) ep.name = name;
         if (runtime) ep.runtime = runtime;
         return ep;
