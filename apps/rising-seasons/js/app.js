@@ -118,8 +118,8 @@ const els = {
   modalEpisodes: document.getElementById('modalEpisodes'),
   modalShareCard: document.getElementById('modalShareCard'),
   modalImdb: document.getElementById('modalImdb'),
-  modalJustwatch: document.getElementById('modalJustwatch'),
   modalTvdb: document.getElementById('modalTvdb'),
+  showModalShareCard: document.getElementById('showModalShareCard'),
   modalPoster: document.getElementById('modalPoster'),
   modalWatchBtn: document.getElementById('modalWatchBtn'),
   modalReroll: document.getElementById('modalReroll'),
@@ -131,6 +131,8 @@ const els = {
   showModalStats: document.getElementById('showModalStats'),
   showModalShapes: document.getElementById('showModalShapes'),
   showModalOverview: document.getElementById('showModalOverview'),
+  showModalCast: document.getElementById('showModalCast'),
+  showModalCastList: document.getElementById('showModalCastList'),
   showModalSeasons: document.getElementById('showModalSeasons'),
   showModalPoster: document.getElementById('showModalPoster'),
   showModalImdb: document.getElementById('showModalImdb'),
@@ -161,6 +163,15 @@ const els = {
   changelogSwingsList: document.getElementById('changelogSwingsList'),
   changelogFreshnessSection: document.getElementById('changelogFreshness'),
   changelogFreshnessContent: document.getElementById('changelogFreshnessContent'),
+  activeFilterBar: document.getElementById('activeFilterBar'),
+  stickyFilterBar: document.getElementById('stickyFilterBar'),
+  stickyShapeRow: document.getElementById('stickyShapeRow'),
+  stickySearch: document.getElementById('stickySearch'),
+  stickyJumpFilters: document.getElementById('stickyJumpFilters'),
+  shortcutLegendBtn: document.getElementById('shortcutLegendBtn'),
+  shortcutLegend: document.getElementById('shortcutLegend'),
+  modalCurveAnnotation: document.getElementById('modalCurveAnnotation'),
+  showModalWatchOn: document.getElementById('showModalWatchOn'),
 };
 
 // --- mutable state ---
@@ -186,6 +197,7 @@ const state = {
   watched: 'all',
   aboveImdb: 'all',
   hiddenGems: 'all',
+  poster: 'all',
   sort: 'popularity',
   genres: new Set(),
   excludeGenres: new Set(),
@@ -262,6 +274,25 @@ function normalizeSearch(s) {
     .replace(/[^a-z0-9]+/g, ' ')
     .trim()
     .replace(/^(the|a|an) /, '');
+}
+
+// fuzzy-search: character-bigram set used by the Dice-coefficient
+// scorer. Run on already-normalized strings so "The Bear" and "bear"
+// hash to identical bigram sets.
+function searchBigrams(s) {
+  const set = new Set();
+  for (let i = 0; i < s.length - 1; i++) set.add(s.slice(i, i + 2));
+  return set;
+}
+
+// fuzzy-search: Sørensen–Dice coefficient over two bigram sets.
+// Returns 1.0 for identical strings, ~0.67 for "beat" vs "bear",
+// trending to 0 as the strings diverge.
+function searchDice(a, b) {
+  if (a.size === 0 || b.size === 0) return 0;
+  let inter = 0;
+  for (const bg of a) if (b.has(bg)) inter++;
+  return (2 * inter) / (a.size + b.size);
 }
 
 // --- localStorage helpers ---
@@ -348,18 +379,55 @@ const Compare = {
 
 async function load() {
   showSkeletons(8);
+  let extras = null;
   try {
-    const res = await fetch('data.json', { cache: 'no-store' });
-    if (!res.ok) throw new Error(`HTTP ${res.status}`);
-    dataset = await res.json();
+    // data.json carries everything needed to filter, sort, and render the
+    // grid. show-modal-extras.json carries cast, per-season plot overviews,
+    // and per-episode IMDb deep-link IDs / runtimes — kept separate so
+    // data.json stays under GitHub's 100 MB file-size cap. Fetched in
+    // parallel; the extras file is optional, so a failure there doesn't
+    // block the grid.
+    const [dataRes, extrasRes] = await Promise.all([
+      fetch('data.json', { cache: 'no-store' }),
+      fetch('data/show-modal-extras.json', { cache: 'no-store' }).catch(() => null),
+    ]);
+    if (!dataRes.ok) throw new Error(`HTTP ${dataRes.status}`);
+    dataset = await dataRes.json();
+    if (extrasRes && extrasRes.ok) {
+      try { extras = await extrasRes.json(); }
+      catch (_) { extras = null; }
+    }
   } catch (err) {
     showError(err);
     return;
   }
   // Precompute normalized title once per match so the search hot path doesn't
   // re-derive it on every filter pass. [[normalizeSearch]] for the rule.
+  // Same pass attaches per-match modal extras (cast, season overview, per-episode
+  // tt + runtime) from show-modal-extras.json. The fields are placed directly on
+  // each match object so downstream code can keep reading `m.cast`, `m.seasonOverview`,
+  // `e.tt`, and `e.runtime` exactly as it did when everything lived in data.json.
   for (const m of dataset.matches) {
     m.titleSearch = normalizeSearch(m.title);
+    if (extras) {
+      const e = extras[m.seriesId];
+      if (e) {
+        if (e.cast) m.cast = e.cast;
+        const sRec = e.seasons && e.seasons[String(m.season)];
+        if (sRec) {
+          if (sRec.ov) m.seasonOverview = sRec.ov;
+          if (sRec.eps && Array.isArray(m.episodes)) {
+            for (const ep of m.episodes) {
+              const rec = sRec.eps[String(ep.episode)];
+              if (rec) {
+                if (rec.tt) ep.tt = rec.tt;
+                if (rec.rt !== undefined) ep.runtime = rec.rt;
+              }
+            }
+          }
+        }
+      }
+    }
   }
   loadChangelog();
   Watched.load();
@@ -389,6 +457,9 @@ async function load() {
   bindKeyboard();
   bindAdvancedDrawer();
   bindShapeTagTouchTooltips();
+  bindShapeChipIntersectionHover();
+  bindStickyFilterBar();
+  bindShortcutLegend();
   // Initial reset-button state: disabled unless the URL pre-populated some filters.
   syncResetButton();
   render();
@@ -518,6 +589,7 @@ function applyStateFromURL() {
   state.watched = 'all';
   state.aboveImdb = 'all';
   state.hiddenGems = 'all';
+  state.poster = 'all';
   state.genres = new Set();
   state.excludeGenres = new Set();
   state.languages = new Set();
@@ -544,6 +616,7 @@ function applyStateFromURL() {
   if (p.has('watched'))   state.watched = p.get('watched');
   if (p.has('above'))     state.aboveImdb = p.get('above');
   if (p.has('gems'))      state.hiddenGems = p.get('gems');
+  if (p.has('poster'))    state.poster = p.get('poster');
   if (p.has('g'))         state.genres = new Set(p.get('g').split(',').filter(Boolean));
   if (p.has('xg'))        state.excludeGenres = new Set(p.get('xg').split(',').filter(Boolean));
   if (p.has('l'))         state.languages = new Set(p.get('l').split(',').filter(Boolean));
@@ -579,6 +652,7 @@ function syncLabelFiltersAria() {
     watched: state.watched,
     aboveImdb: state.aboveImdb,
     hiddenGems: state.hiddenGems,
+    poster: state.poster,
   };
   for (const btn of els.labelFilters.querySelectorAll('.label-chip')) {
     const filter = btn.dataset.filter;
@@ -675,6 +749,7 @@ function writeStateToURL() {
   if (state.watched !== 'all') p.set('watched', state.watched);
   if (state.aboveImdb !== 'all') p.set('above', state.aboveImdb);
   if (state.hiddenGems !== 'all') p.set('gems', state.hiddenGems);
+  if (state.poster !== 'all') p.set('poster', state.poster);
   if (state.genres.size) p.set('g', [...state.genres].join(','));
   if (state.excludeGenres.size) p.set('xg', [...state.excludeGenres].join(','));
   if (state.languages.size) p.set('l', [...state.languages].join(','));
@@ -946,6 +1021,8 @@ function buildNonShapeChecker() {
       if (m.avgRating < 8.5) return false;
       if (m.minVotes >= 500) return false;
     }
+    if (state.poster === 'with' && !m.poster) return false;
+    if (state.poster === 'without' && m.poster) return false;
     return true;
   };
 }
@@ -1005,8 +1082,15 @@ function filterAndSort() {
 // --- render ---
 
 function render() {
+  // Guard against being called before data.json finishes loading — e.g. a
+  // localStorageSync event firing during initial bootstrap.
+  if (!dataset) return;
   filtered = filterAndSort();
   updateShapeChipCounts();
+  updateMoodChipCounts();
+  syncMoodChipsActive();
+  renderActiveFilterBar();
+  syncStickyShapeRow();
 
   const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
   const requestedPage = state.page;
@@ -1120,9 +1204,141 @@ function buildItem(m) {
 
 function showEmptyState() {
   const div = document.createElement('div');
-  div.className = 'empty';
-  div.innerHTML = '<p>No seasons match these filters.</p><p>Try lowering minimum votes, removing genre filters, or pressing Reset.</p>';
+  div.className = 'empty empty-state';
+
+  const icon = document.createElement('div');
+  icon.className = 'empty-icon';
+  icon.setAttribute('aria-hidden', 'true');
+  // Inline SVG instead of the 🎞️ emoji so the icon picks up the
+  // muted soft-white tone from CSS (currentColor) and matches the
+  // dark editorial aesthetic instead of clashing with it.
+  icon.innerHTML = '<svg viewBox="0 0 48 48" width="48" height="48" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><circle cx="21" cy="21" r="12"/><line x1="30" y1="30" x2="40" y2="40"/><line x1="15.5" y1="21" x2="26.5" y2="21"/></svg>';
+  div.appendChild(icon);
+
+  const headline = document.createElement('p');
+  headline.className = 'empty-headline';
+  headline.textContent = 'No matches yet';
+  div.appendChild(headline);
+
+  const sub = document.createElement('p');
+  sub.className = 'empty-sub';
+  sub.textContent = 'Try adjusting or clearing your filters';
+  div.appendChild(sub);
+
+  const { quick, reset } = buildEmptyStateSuggestions();
+  if (quick.length) {
+    const wrap = document.createElement('div');
+    wrap.className = 'empty-suggestions';
+    for (const s of quick) {
+      const btn = document.createElement('button');
+      btn.type = 'button';
+      btn.className = 'empty-suggestion-btn';
+      const icn = document.createElement('span');
+      icn.className = 'empty-suggestion-icon';
+      icn.setAttribute('aria-hidden', 'true');
+      icn.textContent = s.icon || '×';
+      const txt = document.createElement('span');
+      txt.textContent = s.label;
+      btn.append(icn, txt);
+      btn.addEventListener('click', s.action);
+      wrap.appendChild(btn);
+    }
+    div.appendChild(wrap);
+  }
+
+  if (reset) {
+    const resetBtn = document.createElement('button');
+    resetBtn.type = 'button';
+    resetBtn.className = 'empty-reset-btn';
+    resetBtn.textContent = reset.label;
+    resetBtn.addEventListener('click', reset.action);
+    div.appendChild(resetBtn);
+  }
+
   els.results.replaceChildren(div);
+}
+
+// Build a short list of concrete suggestions tied to the currently-active
+// filters. Returns { quick: up-to-3 narrow undo actions, reset: the
+// always-on "Reset all filters" primary action }. Quick actions undo a
+// single filter dimension; reset clears everything.
+function buildEmptyStateSuggestions() {
+  const quick = [];
+  if (state.minVotes && state.minVotes > 200) {
+    quick.push({
+      icon: '↺',
+      label: `Min votes: ${state.minVotes.toLocaleString()}`,
+      action: () => {
+        state.minVotes = null;
+        els.minVotes.value = '';
+        afterEmptyStateAction();
+      },
+    });
+  }
+  if (state.minAvg && state.minAvg > 7.5) {
+    quick.push({
+      icon: '↺',
+      label: `Min rating: ${state.minAvg.toFixed(1)}`,
+      action: () => {
+        state.minAvg = null;
+        els.minAvg.value = '';
+        afterEmptyStateAction();
+      },
+    });
+  }
+  if (state.genres.size > 0) {
+    quick.push({
+      icon: '×',
+      label: state.genres.size === 1 ? `Genre: ${[...state.genres][0]}` : `Genres (${state.genres.size})`,
+      action: () => {
+        state.genres.clear();
+        for (const c of els.genres.querySelectorAll('.genre-chip')) {
+          c.setAttribute('aria-pressed', 'false');
+          c.dataset.exclude = 'false';
+        }
+        afterEmptyStateAction();
+      },
+    });
+  }
+  if (state.shapes.size > 1) {
+    quick.push({
+      icon: '↺',
+      label: `Shapes (${state.shapes.size}) → 1`,
+      action: () => {
+        const keep = [...state.shapes][0];
+        state.shapes.clear();
+        state.shapes.add(keep);
+        syncShapeChipsAria();
+        afterEmptyStateAction();
+      },
+    });
+  }
+  if (state.providers.size > 0) {
+    quick.push({
+      icon: '×',
+      label: state.providers.size === 1 ? `Streaming: ${[...state.providers][0]}` : `Streaming (${state.providers.size})`,
+      action: () => {
+        state.providers.clear();
+        for (const c of els.providers.querySelectorAll('.genre-chip')) {
+          c.setAttribute('aria-pressed', 'false');
+        }
+        afterEmptyStateAction();
+      },
+    });
+  }
+  const reset = {
+    label: 'Reset all filters',
+    action: () => {
+      if (els.resetFilters) els.resetFilters.click();
+    },
+  };
+  return { quick: quick.slice(0, 3), reset };
+}
+
+function afterEmptyStateAction() {
+  writeStateToURL();
+  syncResetButton();
+  render();
 }
 
 function showSkeletons(n) {
@@ -1313,6 +1529,7 @@ function hasActiveFilters() {
   if (state.watched && state.watched !== 'all') return true;
   if (state.aboveImdb && state.aboveImdb !== 'all') return true;
   if (state.hiddenGems && state.hiddenGems !== 'all') return true;
+  if (state.poster && state.poster !== 'all') return true;
   if (state.sort && state.sort !== 'popularity') return true;
   if (state.genres && state.genres.size > 0) return true;
   if (state.excludeGenres && state.excludeGenres.size > 0) return true;
@@ -1409,6 +1626,197 @@ function setRuntimeStat(node, m) {
   const text = formatAvgRuntimeShort(m.avgRuntime);
   el.textContent = text ? `${text}/ep` : '';
   el.hidden = !text;
+}
+
+// Renders the top-billed cast strip inside the show modal. `cast` is
+// the array stashed on the series by enrich-tmdb.js — each entry is
+// { name, character, profile_path }. Empty/missing cast hides the
+// whole section so the modal flow stays clean.
+function renderShowModalCast(cast) {
+  const section = els.showModalCast;
+  const list = els.showModalCastList;
+  if (!section || !list) return;
+  list.replaceChildren();
+  if (!Array.isArray(cast) || cast.length === 0) {
+    section.hidden = true;
+    return;
+  }
+  const frag = document.createDocumentFragment();
+  for (const person of cast) {
+    const li = document.createElement('li');
+    li.className = 'cast-card';
+
+    // Inner container: <a> when we have a TMDB person id so the whole
+    // card is a clickable link to their TMDB person page (which links
+    // out to IMDb / Wikipedia / etc.). Falls back to <div> for cache
+    // entries written before person.id was stored.
+    let inner;
+    if (Number.isFinite(person.id)) {
+      inner = document.createElement('a');
+      inner.href = `https://www.themoviedb.org/person/${person.id}`;
+      inner.target = '_blank';
+      inner.rel = 'noopener noreferrer';
+      inner.title = `View ${person.name || 'cast member'} on TMDB`;
+    } else {
+      inner = document.createElement('div');
+    }
+    inner.className = 'cast-card-inner';
+
+    const photo = document.createElement('div');
+    photo.className = 'cast-photo';
+    if (person.profile_path) {
+      const img = document.createElement('img');
+      img.src = `https://image.tmdb.org/t/p/w185${person.profile_path}`;
+      img.alt = '';
+      img.loading = 'lazy';
+      photo.appendChild(img);
+    } else {
+      const fb = document.createElement('div');
+      fb.className = 'cast-photo-fallback';
+      fb.textContent = (person.name || '?').charAt(0).toUpperCase();
+      photo.appendChild(fb);
+    }
+    const name = document.createElement('span');
+    name.className = 'cast-name';
+    name.textContent = person.name || '';
+    inner.appendChild(photo);
+    inner.appendChild(name);
+    if (person.character) {
+      const ch = document.createElement('span');
+      ch.className = 'cast-character';
+      ch.textContent = person.character;
+      inner.appendChild(ch);
+    }
+    li.appendChild(inner);
+    frag.appendChild(li);
+  }
+  list.appendChild(frag);
+  section.hidden = false;
+}
+
+// Set aria-pressed=true on any mood chip whose href params exactly match
+// the current filter state. The pressed state drives the yellow styling
+// in the CSS, and is also what the click handler reads to decide whether
+// a click "toggles off" the preset.
+function syncMoodChipsActive() {
+  const numEq = (a, b) => (a == null && (b === '' || b == null)) || Number(a) === Number(b);
+  for (const chip of document.querySelectorAll('.mood-preset-chips .mood-chip')) {
+    const params = new URLSearchParams((chip.getAttribute('href') || '').replace(/^#/, ''));
+    let match = true;
+    if (params.has('minYear')  && !numEq(state.minYear,    params.get('minYear')))  match = false;
+    if (params.has('maxYear')  && !numEq(state.maxYear,    params.get('maxYear')))  match = false;
+    if (params.has('minAvg')   && !numEq(state.minAvg,     params.get('minAvg')))   match = false;
+    if (params.has('minVotes') && !numEq(state.minVotes,   params.get('minVotes'))) match = false;
+    if (params.has('minEps')   && !numEq(state.minEpisodes, params.get('minEps')))  match = false;
+    if (params.has('maxEps')   && !numEq(state.maxEpisodes, params.get('maxEps')))  match = false;
+    if (params.has('minClimb') && !numEq(state.minClimb,   params.get('minClimb'))) match = false;
+    if (params.has('type')     && state.seriesType !== params.get('type'))          match = false;
+    if (params.has('above')    && state.aboveImdb !== params.get('above'))          match = false;
+    if (params.has('gems')     && state.hiddenGems !== params.get('gems'))          match = false;
+    if (params.has('sort')     && state.sort !== params.get('sort'))                match = false;
+    chip.setAttribute('aria-pressed', match ? 'true' : 'false');
+  }
+}
+
+// Per-mood-chip count. The base set respects user filters that wouldn't
+// normally come from a mood preset (shape, search, watched, genres,
+// languages, providers) — but ignores the mood-overlap fields (minYear,
+// minAvg, minVotes, minClimb, minEps, maxEps, type, above, gems, sort) so
+// that toggling between presets doesn't shift the counts (since presets
+// replace each other, not stack).
+function updateMoodChipCounts() {
+  if (!dataset) return;
+  const baseCheck = buildMoodBaseChecker();
+  const base = dataset.matches.filter((m) => baseCheck(m) && passesShapeAnd(m, state.shapes));
+  for (const chip of document.querySelectorAll('.mood-preset-chips .mood-chip')) {
+    const countEl = chip.querySelector('.mood-chip-count');
+    if (!countEl) continue;
+    const params = new URLSearchParams((chip.getAttribute('href') || '').replace(/^#/, ''));
+    const check = buildMoodChecker(params);
+    let n = 0;
+    for (const m of base) if (check(m)) n++;
+    countEl.textContent = n.toLocaleString();
+  }
+}
+
+// Subset of buildNonShapeChecker that skips the fields a mood preset owns
+// (minYear/maxYear/minAvg/minVotes/minClimb/minEps/maxEps/type/above/gems).
+// Used to compute the base population for mood-chip counts.
+function buildMoodBaseChecker() {
+  const qRaw = state.search.trim();
+  const q = qRaw.toLowerCase();
+  const qNorm = normalizeSearch(qRaw);
+  const wantGenres = state.genres;
+  const excludeGenres = state.excludeGenres;
+  const wantLanguages = state.languages;
+  const wantProviders = state.providers;
+  const watchedFilter = state.watched;
+
+  return function (m) {
+    if (state.lockedSeriesId) {
+      if (m.seriesId !== state.lockedSeriesId) return false;
+    } else if (q) {
+      const titleHit = qNorm.length > 0 && m.titleSearch.includes(qNorm);
+      const idHit = m.seriesId.toLowerCase().includes(q);
+      let epHit = false;
+      if (!titleHit && !idHit && q.length >= 3) {
+        for (const ep of m.episodes) {
+          if (ep.name && ep.name.toLowerCase().includes(q)) { epHit = true; break; }
+        }
+      }
+      if (!titleHit && !idHit && !epHit) return false;
+    }
+    if (wantLanguages.size && (!m.language || !wantLanguages.has(m.language))) return false;
+    if (wantProviders.size) {
+      if (!m.providers || m.providers.length === 0) return false;
+      let ok = false;
+      for (const p of m.providers) if (wantProviders.has(p)) { ok = true; break; }
+      if (!ok) return false;
+    }
+    if (wantGenres.size) {
+      for (const g of wantGenres) if (!m.genres.includes(g)) return false;
+    }
+    if (excludeGenres.size) {
+      for (const g of m.genres) if (excludeGenres.has(g)) return false;
+    }
+    if (watchedFilter !== 'all') {
+      const isWatched = Watched.has(m);
+      if (watchedFilter === 'watched' && !isWatched) return false;
+      if (watchedFilter === 'unwatched' && isWatched) return false;
+    }
+    return true;
+  };
+}
+
+// Closure-based checker for a fixed set of URL params. Mirrors the
+// preset-driving filters in buildNonShapeChecker without depending on
+// global state.
+function buildMoodChecker(params) {
+  const minEps   = parseInt(params.get('minEps'),   10) || null;
+  const maxEps   = parseInt(params.get('maxEps'),   10) || null;
+  const minVotes = parseInt(params.get('minVotes'), 10) || null;
+  const minAvg   = parseFloat(params.get('minAvg'))      || null;
+  const minClimb = parseFloat(params.get('minClimb'))    || null;
+  const minYear  = parseInt(params.get('minYear'),  10) || null;
+  const maxYear  = parseInt(params.get('maxYear'),  10) || null;
+  const seriesType = params.get('type') || 'all';
+  const above    = params.get('above') === 'above';
+  const gems     = params.get('gems')  === 'on';
+
+  return function (m) {
+    if (minEps && m.episodes.length < minEps) return false;
+    if (maxEps && m.episodes.length > maxEps) return false;
+    if (minVotes && m.minVotes < minVotes) return false;
+    if (minAvg && m.avgRating < minAvg) return false;
+    if (minClimb && (m.lastRating - m.firstRating) < minClimb) return false;
+    const y = m.seasonYear || m.year;
+    if (minYear && y && y < minYear) return false;
+    if (maxYear && y && y > maxYear) return false;
+    if (seriesType !== 'all' && m.type !== seriesType) return false;
+    if (above && !aboveImdbBySeries.get(m.seriesId)) return false;
+    if (gems && (m.avgRating < 8.5 || m.minVotes >= 500)) return false;
+    return true;
+  };
 }
 
 // Append streaming-platform chips into an existing shapes container so the
@@ -1513,6 +1921,8 @@ function buildCard(m) {
   }
 
   applyWatchedState(node, node.querySelector('.watch-toggle'), m);
+  node.dataset.seriesId = m.seriesId;
+  applyCompareState(node, m);
 
   node.addEventListener('click', () => openModal(m));
   node.addEventListener('keydown', (e) => {
@@ -1581,6 +1991,8 @@ function buildRow(m) {
   }
 
   applyWatchedState(node, node.querySelector('.watch-toggle'), m);
+  node.dataset.seriesId = m.seriesId;
+  applyCompareState(node, m);
 
   node.addEventListener('click', (e) => {
     if (e.target.closest('.watch-toggle')) return;
@@ -1607,6 +2019,27 @@ function applyWatchedState(cardOrRow, toggleBtn, m) {
   toggleBtn.setAttribute('aria-pressed', isWatched ? 'true' : 'false');
   toggleBtn.title = isWatched ? 'Mark as unwatched' : 'Mark as watched';
   toggleBtn.setAttribute('aria-label', toggleBtn.title);
+}
+
+function applyCompareState(cardOrRow, m) {
+  cardOrRow.classList.toggle('is-in-compare', Compare.has(m.seriesId));
+}
+
+// Compare lives on the show-modal, not on each card — so toggling it has
+// to reach back into the grid/list and update every card/row matching
+// that seriesId (a show may be visible as multiple seasons).
+function syncCompareClassesForSeries(seriesId) {
+  const inSet = Compare.has(seriesId);
+  const selector = `[data-series-id="${CSS.escape(seriesId)}"]`;
+  for (const node of els.results.querySelectorAll(selector)) {
+    node.classList.toggle('is-in-compare', inSet);
+  }
+}
+
+function syncAllCompareClasses() {
+  for (const node of els.results.querySelectorAll('[data-series-id]')) {
+    node.classList.toggle('is-in-compare', Compare.has(node.dataset.seriesId));
+  }
 }
 
 function onToggleWatched(m, cardOrRow) {
@@ -1653,6 +2086,7 @@ function drawCurve(svg, episodes, W, H, opts) {
   svg.querySelector('.curve-area').setAttribute('d', areaPath);
 
   if (showAxis) drawYAxis(svg, lo, hi, padXLeft, padXRight, padY, W, H);
+  else drawMiniAxisLabels(svg, ratings, padY, W, H);
 
   const dots = svg.querySelector('.curve-dots');
   if (dots) {
@@ -1701,10 +2135,25 @@ function drawCurveAnnotations(svg, episodes, shapes) {
     return padY + (1 - (r - lo) / span) * (H - padY * 2);
   }
 
-  function addLabel(x, y, text, anchor = 'middle') {
+  function addLabel(x, y, text, anchor = 'auto') {
+    // Auto-pick anchor so labels never spill past the chart bounds. Because
+    // the SVG uses preserveAspectRatio="none", glyphs render at native pixel
+    // size while x stretches non-uniformly — at the rightmost data point a
+    // middle-anchored label would extend past the right edge and get clipped.
+    if (anchor === 'auto') {
+      const usableLeft = padXLeft;
+      const usableRight = W - padXRight;
+      const usable = usableRight - usableLeft;
+      if (x < usableLeft + usable * 0.18) anchor = 'start';
+      else if (x > usableLeft + usable * 0.82) anchor = 'end';
+      else anchor = 'middle';
+    }
+    // Keep the label within the vertical plot area too — at a top/bottom
+    // extreme the caller's y offset can land outside the SVG.
+    const yClamped = Math.max(padY + 8, Math.min(H - padY - 2, y));
     const t = document.createElementNS(NS, 'text');
     t.setAttribute('x', x.toFixed(1));
-    t.setAttribute('y', y.toFixed(1));
+    t.setAttribute('y', yClamped.toFixed(1));
     t.setAttribute('text-anchor', anchor);
     t.setAttribute('class', 'curve-annotation-label');
     t.textContent = text;
@@ -1762,7 +2211,7 @@ function drawCurveAnnotations(svg, episodes, shapes) {
     const dipX = px(minIdx);
     const dipY = py(minR);
     addArrow(dipX, dipY + 18, dipX, dipY + 8);
-    addLabel(dipX, dipY + 24, 'Dip', 'middle');
+    addLabel(dipX, dipY + 24, 'Dip');
   }
 
   if (shapes.includes('slow-burn')) {
@@ -1791,6 +2240,42 @@ function drawCurveAnnotations(svg, episodes, shapes) {
   }
 }
 
+// Lightweight min/max labels for non-axis sparklines (card + row + show-modal
+// per-season sparks). Skipped when the rating range is too narrow for labels
+// to be informative — flat curves don't benefit from "8.0 / 8.1".
+function drawMiniAxisLabels(svg, ratings, padY, W, H) {
+  // Remove any previous labels so re-renders don't duplicate.
+  const existing = svg.querySelector('.spark-axis-labels');
+  if (existing) existing.remove();
+  if (!ratings || ratings.length === 0) return;
+  const min = Math.min(...ratings);
+  const max = Math.max(...ratings);
+  if (max - min < 0.3) return;
+
+  const NS = 'http://www.w3.org/2000/svg';
+  const g = document.createElementNS(NS, 'g');
+  g.setAttribute('class', 'spark-axis-labels');
+  // Hug the left chart edge with a small, deliberate 3-unit gutter. Top
+  // label baseline sits just inside padY so the glyphs touch the top of
+  // the plot area; bottom label baseline sits 2 units off the floor so
+  // the digits visually rest on the bottom edge.
+  const x = 3;
+  const top = document.createElementNS(NS, 'text');
+  top.setAttribute('class', 'spark-axis-label');
+  top.setAttribute('x', x);
+  top.setAttribute('y', padY + 8);
+  top.setAttribute('text-anchor', 'start');
+  top.textContent = max.toFixed(1);
+  const bot = document.createElementNS(NS, 'text');
+  bot.setAttribute('class', 'spark-axis-label');
+  bot.setAttribute('x', x);
+  bot.setAttribute('y', H - 2);
+  bot.setAttribute('text-anchor', 'start');
+  bot.textContent = min.toFixed(1);
+  g.append(top, bot);
+  svg.appendChild(g);
+}
+
 // Attach mousemove / touchmove to the modal curve SVG and show a floating
 // label for the nearest episode dot. Cleans up the previous handler on
 // each openModal call so there's no accumulation across re-opens.
@@ -1809,6 +2294,17 @@ function bindModalCurveHover(svg, episodes) {
   }
 
   const dots = [...(svg.querySelector('.curve-dots')?.children || [])];
+  let activeIdx = -1;
+
+  function setActiveDot(idx) {
+    if (activeIdx >= 0 && activeIdx < dots.length) {
+      dots[activeIdx].classList.remove('is-active');
+    }
+    activeIdx = idx;
+    if (idx >= 0 && idx < dots.length) {
+      dots[idx].classList.add('is-active');
+    }
+  }
 
   function getNearestEpIndex(svgX, svgW) {
     if (dots.length === 0) return -1;
@@ -1817,34 +2313,24 @@ function bindModalCurveHover(svg, episodes) {
     return Math.max(0, Math.min(dots.length - 1, idx));
   }
 
-  function showTip(e) {
+  function showTipForIdx(idx) {
+    if (idx < 0 || idx >= dots.length) return;
     const rect = svg.getBoundingClientRect();
-    const clientX = e.touches ? e.touches[0].clientX : e.clientX;
-    const clientY = e.touches ? e.touches[0].clientY : e.clientY;
-    const relX = clientX - rect.left;
-    const relY = clientY - rect.top;
-
     const svgW = parseFloat(svg.getAttribute('viewBox').split(' ')[2]) || 600;
     const svgH = parseFloat(svg.getAttribute('viewBox').split(' ')[3]) || 180;
-    const scaleX = svgW / rect.width;
-    const svgX = relX * scaleX;
-
-    const idx = getNearestEpIndex(svgX, svgW);
-    if (idx < 0) return;
-
     const ep = episodes[idx];
     const epLabel = ep.episode === 0 ? 'Ep 0' : `Ep ${ep.episode}`;
     const namePart = ep.name ? ` · ${ep.name}` : '';
     const votesPart = ep.votes ? `  ${ep.votes.toLocaleString()} votes` : '';
     tip.textContent = `${epLabel}${namePart}  ${ep.rating.toFixed(1)}★${votesPart}`;
     tip.hidden = false;
+    setActiveDot(idx);
 
     const dotEl = dots[idx];
     const dotCx = parseFloat(dotEl.getAttribute('cx'));
     const dotCy = parseFloat(dotEl.getAttribute('cy'));
     const pxX = (dotCx / svgW) * rect.width;
     const pxY = (dotCy / svgH) * rect.height;
-
     const tipW = 200;
     const left = Math.min(Math.max(0, pxX - tipW / 2), rect.width - tipW);
     const top = pxY - 44;
@@ -1852,18 +2338,50 @@ function bindModalCurveHover(svg, episodes) {
     tip.style.top = `${top < 0 ? pxY + 8 : top}px`;
   }
 
-  function hideTip() { tip.hidden = true; }
+  function showTip(e) {
+    const rect = svg.getBoundingClientRect();
+    const clientX = e.touches ? e.touches[0].clientX : e.clientX;
+    const relX = clientX - rect.left;
+    const svgW = parseFloat(svg.getAttribute('viewBox').split(' ')[2]) || 600;
+    const scaleX = svgW / rect.width;
+    const svgX = relX * scaleX;
+    const idx = getNearestEpIndex(svgX, svgW);
+    showTipForIdx(idx);
+  }
+
+  function hideTip() { tip.hidden = true; setActiveDot(-1); }
+
+  function onKeyDown(e) {
+    if (e.key === 'ArrowLeft' || e.key === 'ArrowRight') {
+      e.preventDefault();
+      const next = activeIdx < 0
+        ? (e.key === 'ArrowRight' ? 0 : dots.length - 1)
+        : Math.max(0, Math.min(dots.length - 1, activeIdx + (e.key === 'ArrowRight' ? 1 : -1)));
+      showTipForIdx(next);
+    } else if (e.key === 'Home') {
+      e.preventDefault();
+      showTipForIdx(0);
+    } else if (e.key === 'End') {
+      e.preventDefault();
+      showTipForIdx(dots.length - 1);
+    }
+  }
 
   svg.addEventListener('mousemove', showTip);
   svg.addEventListener('mouseleave', hideTip);
   svg.addEventListener('touchmove', showTip, { passive: true });
   svg.addEventListener('touchend', hideTip, { passive: true });
+  svg.addEventListener('keydown', onKeyDown);
+  svg.addEventListener('blur', hideTip);
 
   _curveHoverCleanup = () => {
     svg.removeEventListener('mousemove', showTip);
     svg.removeEventListener('mouseleave', hideTip);
     svg.removeEventListener('touchmove', showTip);
     svg.removeEventListener('touchend', hideTip);
+    svg.removeEventListener('keydown', onKeyDown);
+    svg.removeEventListener('blur', hideTip);
+    setActiveDot(-1);
     tip.hidden = true;
   };
 }
@@ -2118,6 +2636,7 @@ function renderCompareLegend(entries) {
     item.addEventListener('click', () => {
       Compare.remove(e.seriesId);
       syncCompareFab();
+      syncCompareClassesForSeries(e.seriesId);
       if (Compare.size() === 0) {
         closeCompareModal();
       } else {
@@ -2152,8 +2671,8 @@ function openCompareModal() {
   document.body.style.overflow = 'hidden';
   syncModalInert();
   requestAnimationFrame(() => {
-    const close = els.compareModal.querySelector('.modal-close');
-    if (close) close.focus();
+    const panel = els.compareModal.querySelector('.modal-panel');
+    if (panel) panel.focus();
   });
 }
 
@@ -2233,7 +2752,11 @@ function openModal(m, opts = {}) {
     (runtimeStr ? ` · ~${runtimeStr} per episode` : ''),
   ));
 
-  els.modalOverview.textContent = m.overview || '';
+  // Prefer the per-season overview when TMDB has one — it usually frames
+  // *this* season's arc rather than restating the pilot premise. Falls
+  // back to the series overview for unenriched seasons or shows where
+  // TMDB only has show-level text.
+  els.modalOverview.textContent = m.seasonOverview || m.overview || '';
 
   let driftNoteEl = els.modal.querySelector('.modal-drift-note');
   if (m.driftNote) {
@@ -2264,6 +2787,7 @@ function openModal(m, opts = {}) {
   drawCurve(els.modalCurve, m.episodes, 600, 180, { showAxis: true });
   drawCurveAnnotations(els.modalCurve, m.episodes, m.shapes);
   bindModalCurveHover(els.modalCurve, m.episodes);
+  renderShapeAnnotationText(m);
 
   const epFrag = document.createDocumentFragment();
   for (const e of m.episodes) {
@@ -2309,22 +2833,27 @@ function openModal(m, opts = {}) {
     }
 
     li.append(num, name, meta);
+
+    // When we have an IMDb episode ID, overlay a stretched link so the
+    // entire row deep-links to the episode's IMDb page. Older data.json
+    // builds without per-episode tt fall back to a non-clickable row.
+    if (e.tt) {
+      li.classList.add('has-link');
+      const link = document.createElement('a');
+      link.className = 'ep-link';
+      link.href = `https://www.imdb.com/title/${e.tt}/`;
+      link.target = '_blank';
+      link.rel = 'noopener';
+      link.setAttribute('aria-label', `Open ${num.textContent}${e.name ? ' — ' + e.name : ''} on IMDb`);
+      li.appendChild(link);
+    }
+
     epFrag.appendChild(li);
   }
   els.modalEpisodes.replaceChildren(epFrag);
 
   els.modalImdb.href = `https://www.imdb.com/title/${m.seriesId}/episodes/?season=${m.season}`;
 
-  if (els.modalJustwatch) {
-    const mainstream = (m.providers || []).filter(isMainstreamProvider);
-    if (mainstream.length > 0) {
-      els.modalJustwatch.href = `https://www.justwatch.com/us/search?q=${encodeURIComponent(m.title)}`;
-      els.modalJustwatch.title = `Available on: ${mainstream.join(', ')}`;
-    } else {
-      els.modalJustwatch.href = `https://www.justwatch.com/us/search?q=${encodeURIComponent(m.title)}`;
-      els.modalJustwatch.title = 'Search JustWatch for streaming options';
-    }
-  }
 
   // Prefer the season-level dereferrer when we have a season tvdbId; otherwise
   // fall back to the series page (still useful, just not deep-linked).
@@ -2351,8 +2880,8 @@ function openModal(m, opts = {}) {
   writeStateToURL();
   if (!wasOpen) {
     requestAnimationFrame(() => {
-      const close = els.modal.querySelector('.modal-close');
-      if (close) close.focus();
+      const panel = els.modal.querySelector('.modal-panel');
+      if (panel) panel.focus();
     });
   }
 }
@@ -2467,8 +2996,13 @@ function openShowModal(seriesId, opts = {}) {
   // mainstream-provider filter happens inside fillProviderTags.
   els.showModalProviders.replaceChildren();
   fillProviderTags(els.showModalProviders, meta.providers || []);
+  syncShowModalWatchOnLink(meta);
 
   els.showModalOverview.textContent = meta.overview || '';
+
+  // Cast strip — populated from data.json by the TMDB enrichment.
+  // Section stays hidden when the series has no cast field.
+  renderShowModalCast(meta.cast);
 
   els.showModalPoster.replaceChildren();
   if (meta.poster) {
@@ -2531,8 +3065,8 @@ function openShowModal(seriesId, opts = {}) {
   syncModalInert();
   writeStateToURL();
   requestAnimationFrame(() => {
-    const close = els.showModal.querySelector('.modal-close');
-    if (close) close.focus();
+    const panel = els.showModal.querySelector('.modal-panel');
+    if (panel) panel.focus();
   });
 }
 
@@ -2740,8 +3274,8 @@ function openChangelogModal() {
   document.body.style.overflow = 'hidden';
   syncModalInert();
   requestAnimationFrame(() => {
-    const close = els.changelogModal.querySelector('.modal-close');
-    if (close) close.focus();
+    const panel = els.changelogModal.querySelector('.modal-panel');
+    if (panel) panel.focus();
   });
 }
 
@@ -2993,7 +3527,43 @@ function computeSuggestions(rawQuery) {
       if (epHits.length + titleHits >= MAX_SUGGESTIONS * 2) break;
     }
   }
-  return [...exact, ...titleStarts, ...titleContains, ...idMatches, ...epHits].slice(0, MAX_SUGGESTIONS);
+  const strictAll = [...exact, ...titleStarts, ...titleContains, ...idMatches, ...epHits];
+  const out = strictAll.slice(0, MAX_SUGGESTIONS);
+
+  // fuzzy-search: append up to FUZZY_MAX_RESULTS typo-tolerant
+  // candidates under a "Did you mean?" subheader. Runs even when the
+  // strict bucket is full so a query like "the beat" surfaces "The
+  // Bear" alongside the legitimate substring hits ("Beat Shazam", etc).
+  // Suppressed when a multi-word query exactly matches a real title —
+  // the user typed "Breaking Bad" intentionally and we shouldn't
+  // suggest "Breaking In" as a typo alternative. Single-word exact
+  // hits stay fuzzy-eligible because they're often coincidences
+  // ("Beat" exists, but the user meant "The Bear").
+  const FUZZY_MIN_QUERY_LEN = 4;
+  const FUZZY_DICE_THRESHOLD = 0.6;
+  const FUZZY_MAX_RESULTS = 3;
+  const suppressFuzzy = exact.length > 0 && qNorm.includes(' ');
+  if (qNorm.length >= FUZZY_MIN_QUERY_LEN && !suppressFuzzy) {
+    const qBigrams = searchBigrams(qNorm);
+    const scored = [];
+    for (const s of seriesIndex) {
+      if (matchedIds.has(s.seriesId)) continue;
+      // Identical normalized titles already came back in `exact`; no
+      // point fuzzy-suggesting a row that strict ranked first.
+      if (s.titleSearch === qNorm) continue;
+      const score = searchDice(qBigrams, searchBigrams(s.titleSearch));
+      if (score >= FUZZY_DICE_THRESHOLD) scored.push({ s, score });
+    }
+    scored.sort((a, b) => {
+      if (b.score !== a.score) return b.score - a.score;
+      return (b.s.seriesVotes || 0) - (a.s.seriesVotes || 0);
+    });
+    for (let i = 0; i < scored.length && i < FUZZY_MAX_RESULTS; i++) {
+      out.push({ ...scored[i].s, isFuzzy: true });
+    }
+  }
+
+  return out;
 }
 
 function highlightFragment(text, q) {
@@ -3019,7 +3589,21 @@ function renderSuggestionItems() {
   }
   const q = els.search.value.trim().toLowerCase();
   const frag = document.createDocumentFragment();
+  // fuzzy-search: only the very first fuzzy item gets a preceding
+  // "Did you mean?" subheader; subsequent fuzzy items in the same
+  // dropdown share that section.
+  let fuzzyHeaderRendered = false;
   items.forEach((s, i) => {
+    // fuzzy-search: insert the non-interactive subheader before the
+    // first row flagged as fuzzy.
+    if (s.isFuzzy && !fuzzyHeaderRendered) {
+      const head = document.createElement('li');
+      head.className = 'search-suggestion-subheader';
+      head.setAttribute('aria-hidden', 'true');
+      head.textContent = 'Did you mean?';
+      frag.appendChild(head);
+      fuzzyHeaderRendered = true;
+    }
     const li = document.createElement('li');
     li.className = 'search-suggestion';
     li.setAttribute('role', 'option');
@@ -3187,151 +3771,128 @@ function onToolbarChange() {
   onFilterChange();
 }
 
-// Render a 1200×630 share card for the given season onto a canvas, then
-// copy it to the clipboard as a PNG (falling back to a download).
-function shareSeasonCard(m, curveSvg) {
-  const W = 1200, H = 630;
-  const canvas = document.createElement('canvas');
-  canvas.width = W;
-  canvas.height = H;
-  const ctx = canvas.getContext('2d');
-
-  // Background
-  ctx.fillStyle = '#07090f';
-  ctx.fillRect(0, 0, W, H);
-
-  // Accent bar at the top
-  const grad = ctx.createLinearGradient(0, 0, W, 0);
-  grad.addColorStop(0, 'rgba(245,197,24,0.7)');
-  grad.addColorStop(1, 'rgba(245,197,24,0.1)');
-  ctx.fillStyle = grad;
-  ctx.fillRect(0, 0, W, 4);
-
-  // Branding
-  ctx.fillStyle = 'rgba(255,255,255,0.3)';
-  ctx.font = '500 22px system-ui, sans-serif';
-  ctx.fillText('Rising Seasons · shevato.com', 56, 52);
-
-  // Title
-  ctx.fillStyle = '#f1f3f8';
-  ctx.font = '700 56px system-ui, sans-serif';
-  const titleText = m.title.length > 32 ? m.title.slice(0, 30) + '…' : m.title;
-  ctx.fillText(titleText, 56, 128);
-
-  // Season info
-  const seasonYear = m.seasonYear || m.year || '';
-  ctx.fillStyle = '#f5c518';
-  ctx.font = '600 30px system-ui, sans-serif';
-  ctx.fillText(`Season ${m.season}  ·  ${m.episodes.length} eps${seasonYear ? '  ·  ' + seasonYear : ''}`, 56, 178);
-
-  // Shape tags
-  ctx.font = '600 22px system-ui, sans-serif';
-  const shapeLabels = m.shapes
-    .filter((s) => s !== 'saved-best-for-last')
-    .map((s) => SHAPE_LABELS[s] || s);
-  let tagX = 56;
-  const tagY = 222;
-  for (const label of shapeLabels.slice(0, 4)) {
-    const tw = ctx.measureText(label).width;
-    const tagW = tw + 24;
-    ctx.fillStyle = 'rgba(245,197,24,0.12)';
-    ctx.beginPath();
-    ctx.roundRect(tagX, tagY - 20, tagW, 32, 16);
-    ctx.fill();
-    ctx.fillStyle = '#f5c518';
-    ctx.fillText(label, tagX + 12, tagY + 8);
-    tagX += tagW + 10;
-  }
-
-  // Stats line
-  ctx.fillStyle = 'rgba(255,255,255,0.6)';
-  ctx.font = '500 22px system-ui, sans-serif';
-  const climb = m.lastRating - m.firstRating;
-  const climbStr = climb >= 0 ? `+${climb.toFixed(1)}` : climb.toFixed(1);
-  ctx.fillText(
-    `Avg ${m.avgRating.toFixed(1)}  ·  Climb ${m.firstRating.toFixed(1)} → ${m.lastRating.toFixed(1)} (${climbStr})`,
-    56, 286,
-  );
-
-  // Episode rating curve
-  const curveX = 56, curveY = 320, curveW = W - 112, curveH = 220;
-  const ratings = m.episodes.map((e) => e.rating);
-  const lo = Math.max(0, Math.min(...ratings) - 0.3);
-  const hi = Math.min(10, Math.max(...ratings) + 0.3);
-  const span = Math.max(0.1, hi - lo);
-  const n = ratings.length;
-  const xStep = n > 1 ? curveW / (n - 1) : 0;
-  const points = ratings.map((r, i) => [
-    curveX + (n > 1 ? i * xStep : curveW / 2),
-    curveY + (1 - (r - lo) / span) * curveH,
-  ]);
-
-  // Area fill
-  const areaGrad = ctx.createLinearGradient(0, curveY, 0, curveY + curveH);
-  areaGrad.addColorStop(0, 'rgba(245,197,24,0.22)');
-  areaGrad.addColorStop(1, 'rgba(245,197,24,0.01)');
-  ctx.beginPath();
-  ctx.moveTo(points[0][0], points[0][1]);
-  for (let i = 1; i < points.length; i++) ctx.lineTo(points[i][0], points[i][1]);
-  ctx.lineTo(points[points.length - 1][0], curveY + curveH);
-  ctx.lineTo(points[0][0], curveY + curveH);
-  ctx.closePath();
-  ctx.fillStyle = areaGrad;
-  ctx.fill();
-
-  // Line
-  ctx.beginPath();
-  ctx.moveTo(points[0][0], points[0][1]);
-  for (let i = 1; i < points.length; i++) ctx.lineTo(points[i][0], points[i][1]);
-  ctx.strokeStyle = '#f5c518';
-  ctx.lineWidth = 3;
-  ctx.lineJoin = 'round';
-  ctx.stroke();
-
-  // Dots
-  for (const [px, py] of points) {
-    ctx.beginPath();
-    ctx.arc(px, py, 5, 0, Math.PI * 2);
-    ctx.fillStyle = '#f5c518';
-    ctx.fill();
-  }
-
-  // Footer
-  ctx.fillStyle = 'rgba(255,255,255,0.2)';
-  ctx.font = '400 18px system-ui, sans-serif';
-  ctx.fillText('Rising Seasons — TV by the shape of episode ratings', 56, 610);
-
-  canvas.toBlob((blob) => {
-    if (!blob) return;
-    const fname = `${m.title.replace(/[^a-z0-9]/gi, '-').toLowerCase()}-s${m.season}-share.png`;
-    if (navigator.clipboard && navigator.clipboard.write) {
-      navigator.clipboard.write([new ClipboardItem({ 'image/png': blob })])
-        .then(() => {
-          if (els.modalShareCard) {
-            const orig = els.modalShareCard.textContent;
-            els.modalShareCard.textContent = 'Copied!';
-            setTimeout(() => { els.modalShareCard.textContent = orig; }, 1800);
-          }
-        })
-        .catch(() => downloadBlob(blob, fname));
-    } else {
-      downloadBlob(blob, fname);
-    }
-  }, 'image/png');
+function shareSeasonCard(m) {
+  shareText(buildSeasonShareText(m), els.modalShareCard);
 }
 
-function downloadBlob(blob, filename) {
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = filename;
-  a.click();
-  setTimeout(() => URL.revokeObjectURL(url), 5000);
+// Show-level variant — title, year range, season/episode counts,
+// IMDb + avg-episode line, link to the show's static page.
+function shareShowCard(seriesId) {
+  const seasons = dataset.matches
+    .filter((s) => s.seriesId === seriesId)
+    .sort((a, b) => a.season - b.season);
+  if (!seasons.length) return;
+  shareText(buildShowShareText(seasons), els.showModalShareCard);
+}
+
+function shareText(text, buttonEl) {
+  const flashLabel = (label) => {
+    if (!buttonEl) return;
+    const orig = buttonEl.dataset.origLabel || buttonEl.textContent;
+    buttonEl.dataset.origLabel = orig;
+    buttonEl.textContent = label;
+    setTimeout(() => {
+      buttonEl.textContent = orig;
+      delete buttonEl.dataset.origLabel;
+    }, 1800);
+  };
+  const manualFallback = () => {
+    // Last-ditch: pop a prompt with the text pre-selected so the user
+    // can ⌘C / Ctrl-C manually. Better than silently doing nothing.
+    try { window.prompt('Copy this:', text); flashLabel('Copy manually'); }
+    catch { flashLabel('Copy failed'); }
+  };
+
+  if (navigator.clipboard && typeof navigator.clipboard.writeText === 'function') {
+    navigator.clipboard.writeText(text)
+      .then(() => flashLabel('Copied!'))
+      .catch(manualFallback);
+  } else {
+    manualFallback();
+  }
+}
+
+function buildSeasonShareText(m) {
+  const lines = [];
+  const seasonYear = m.seasonYear || m.year;
+  lines.push(`${m.title} — Season ${m.season}` + (seasonYear ? ` (${seasonYear})` : ''));
+  const shapeLabels = (m.shapes || [])
+    .filter((s) => s !== 'saved-best-for-last')
+    .map((s) => SHAPE_LABELS[s] || s);
+  if (shapeLabels.length) lines.push(shapeLabels.join(' · '));
+  const climb = m.lastRating - m.firstRating;
+  const climbStr = climb >= 0 ? `+${climb.toFixed(1)}` : climb.toFixed(1);
+  lines.push(
+    `Avg ${m.avgRating.toFixed(1)} · Climb ${m.firstRating.toFixed(1)} → ${m.lastRating.toFixed(1)} (${climbStr}) · ${m.episodes.length} eps`,
+  );
+  // Link to the show's static page (not the SPA hash) so chat apps see
+  // og:image and unfurl a poster thumbnail. The season # is in the text
+  // above so recipients still know which season was shared.
+  lines.push(showPageUrl(m));
+  return lines.join('\n');
+}
+
+function buildShowShareText(seasons) {
+  const meta = seasons[0];
+  const lines = [];
+  const years = seasons.map((s) => s.seasonYear || s.year).filter(Boolean);
+  const yearStr = years.length === 0 ? ''
+    : years[0] === years[years.length - 1] ? `${years[0]}`
+    : `${years[0]}–${years[years.length - 1]}`;
+  lines.push(`${meta.title}` + (yearStr ? ` (${yearStr})` : ''));
+  const totalEps = seasons.reduce((s, m) => s + m.episodes.length, 0);
+  const overallAvg = seasons.reduce((s, m) => s + m.avgRating, 0) / seasons.length;
+  const head = `${seasons.length} season${seasons.length === 1 ? '' : 's'} · ${totalEps} episodes · avg episode ${overallAvg.toFixed(1)}`;
+  lines.push(typeof meta.seriesRating === 'number'
+    ? `${head} · IMDb ${meta.seriesRating.toFixed(1)}`
+    : head);
+  lines.push(showPageUrl(meta));
+  return lines.join('\n');
+}
+
+// URL of the show's static page on the current origin. Static pages
+// carry og:image/og:title/og:description tags (see render-show-page.js)
+// so chat apps unfurl them into thumbnails.
+function showPageUrl(m) {
+  return `${location.origin}/apps/rising-seasons/shows/${showSlug(m.title)}-${m.seriesId}/`;
 }
 
 function bindEvents() {
   for (const btn of els.shapes.querySelectorAll('.shape-chip')) {
     btn.addEventListener('click', () => toggleShape(btn.dataset.shape));
+  }
+
+  // Mood chips: clicking applies the chip's recipe ON TOP of existing
+  // filters (shape, genre, search, etc.) — it doesn't wipe them. Clicking
+  // the currently-active chip clears its params (toggle off). Clicking a
+  // different chip swaps in its params (only one mood preset at a time).
+  // Aria-pressed is maintained by syncMoodChipsActive().
+  const allMoodParamKeys = (() => {
+    const keys = new Set();
+    for (const chip of document.querySelectorAll('.mood-preset-chips .mood-chip')) {
+      const params = new URLSearchParams((chip.getAttribute('href') || '').replace(/^#/, ''));
+      for (const k of params.keys()) keys.add(k);
+    }
+    return keys;
+  })();
+
+  for (const chip of document.querySelectorAll('.mood-preset-chips .mood-chip')) {
+    chip.addEventListener('click', (e) => {
+      e.preventDefault();
+      const isActive = chip.getAttribute('aria-pressed') === 'true';
+      const moodParams = new URLSearchParams((chip.getAttribute('href') || '').replace(/^#/, ''));
+      const currentParams = new URLSearchParams(location.hash.replace(/^#/, ''));
+      // Strip every key any mood preset could set — guarantees only one
+      // mood's params live in the URL at a time, and prevents stale fields
+      // from a previously-active mood lingering after a swap.
+      for (const k of allMoodParamKeys) currentParams.delete(k);
+      // Add this mood's params unless we're toggling it off.
+      if (!isActive) {
+        for (const [k, v] of moodParams.entries()) currentParams.set(k, v);
+      }
+      const next = currentParams.toString();
+      location.hash = next ? `#${next}` : '';
+    });
   }
 
   const debouncedChange = debounce(onToolbarChange, 150);
@@ -3362,6 +3923,7 @@ function bindEvents() {
         else if (filter === 'watched') state.watched = val;
         else if (filter === 'aboveImdb') state.aboveImdb = val;
         else if (filter === 'hiddenGems') state.hiddenGems = val;
+        else if (filter === 'poster') state.poster = val;
         syncLabelFiltersAria();
         onFilterChange();
       });
@@ -3429,6 +3991,7 @@ function bindEvents() {
     state.watched = 'all';
     state.aboveImdb = 'all';
     state.hiddenGems = 'all';
+    state.poster = 'all';
     state.genres = new Set();
     state.excludeGenres = new Set();
     state.languages = new Set();
@@ -3498,11 +4061,13 @@ function bindEvents() {
     else Compare.add(showModalState.seriesId);
     syncCompareButton();
     syncCompareFab();
+    syncCompareClassesForSeries(showModalState.seriesId);
   });
   els.compareFab.addEventListener('click', openCompareModal);
   els.compareModalClear.addEventListener('click', () => {
     Compare.clear();
     syncCompareFab();
+    syncAllCompareClasses();
     closeCompareModal();
   });
   els.modalViewShow.addEventListener('click', () => {
@@ -3521,7 +4086,13 @@ function bindEvents() {
   if (els.modalShareCard) {
     els.modalShareCard.addEventListener('click', () => {
       if (!modalState.season) return;
-      shareSeasonCard(modalState.season, els.modalCurve);
+      shareSeasonCard(modalState.season);
+    });
+  }
+  if (els.showModalShareCard) {
+    els.showModalShareCard.addEventListener('click', () => {
+      if (!showModalState.seriesId) return;
+      shareShowCard(showModalState.seriesId);
     });
   }
 }
@@ -3534,7 +4105,34 @@ function bindKeyboard() {
       els.search.select();
       return;
     }
+    if (e.key === '?' && !isTypingTarget(e.target)) {
+      e.preventDefault();
+      toggleShortcutLegend();
+      return;
+    }
+    if ((e.key === 'r' || e.key === 'R') && !isTypingTarget(e.target) && !e.metaKey && !e.ctrlKey && !e.altKey) {
+      // R triggers a surprise pick — only when no modals are open so it
+      // doesn't compete with browser refresh in the address bar context.
+      if (els.modal.hidden && els.showModal.hidden && els.changelogModal.hidden && els.compareModal.hidden) {
+        e.preventDefault();
+        const pick = surprisePick('any');
+        if (pick) openModal(pick, { surprise: 'any' });
+        return;
+      }
+    }
+    if ((e.key === 'ArrowLeft' || e.key === 'ArrowRight') && !isTypingTarget(e.target)) {
+      const active = document.activeElement;
+      if (active && active.classList && active.classList.contains('shape-chip')) {
+        if (moveShapeChipFocus(e.key === 'ArrowRight' ? 1 : -1)) {
+          e.preventDefault();
+        }
+      }
+    }
     if (e.key === 'Escape') {
+      if (els.shortcutLegend && !els.shortcutLegend.hidden) {
+        toggleShortcutLegend(false);
+        return;
+      }
       if (!els.changelogModal.hidden) {
         closeChangelogModal();
       } else if (!els.compareModal.hidden) {
@@ -3652,6 +4250,455 @@ function isTypingTarget(el) {
   if (!el) return false;
   const tag = el.tagName;
   return tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || el.isContentEditable;
+}
+
+// ===== UI improvement helpers (chip bar, sticky bar, shortcut legend,
+// shape annotation, JustWatch link, intersection-hover counts) =====
+
+function renderActiveFilterBar() {
+  const bar = els.activeFilterBar;
+  if (!bar) return;
+  const chips = describeActiveFilters();
+  if (chips.length === 0) {
+    bar.replaceChildren();
+    bar.hidden = true;
+    return;
+  }
+  bar.hidden = false;
+  const frag = document.createDocumentFragment();
+  const label = document.createElement('span');
+  label.className = 'active-filter-label';
+  label.textContent = 'Active filters';
+  frag.appendChild(label);
+  for (const c of chips) {
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'active-filter-chip';
+    btn.title = `Remove ${c.key}: ${c.value}`;
+    const k = document.createElement('span');
+    k.className = 'chip-key';
+    k.textContent = c.key;
+    const v = document.createElement('span');
+    v.className = 'chip-val';
+    v.textContent = c.value;
+    const x = document.createElement('span');
+    x.className = 'chip-x';
+    x.textContent = '×';
+    btn.append(k, v, x);
+    btn.addEventListener('click', c.remove);
+    frag.appendChild(btn);
+  }
+  bar.replaceChildren(frag);
+}
+
+function describeActiveFilters() {
+  const chips = [];
+  for (const s of state.shapes) {
+    chips.push({
+      key: 'Shape',
+      value: SHAPE_LABELS[s] || s,
+      remove: () => { toggleShape(s); syncShapeChipsAria(); writeStateToURL(); syncResetButton(); render(); },
+    });
+  }
+  if (state.search) {
+    chips.push({
+      key: 'Search',
+      value: state.search,
+      remove: () => {
+        state.search = '';
+        state.lockedSeriesId = null;
+        els.search.value = '';
+        onFilterChange();
+      },
+    });
+  }
+  if (state.seriesType !== 'all') {
+    const labelMap = { tvSeries: 'TV series', tvMiniSeries: 'Mini-series' };
+    chips.push({
+      key: 'Type',
+      value: labelMap[state.seriesType] || state.seriesType,
+      remove: () => {
+        state.seriesType = 'all';
+        syncLabelFiltersAria();
+        onFilterChange();
+      },
+    });
+  }
+  if (state.watched !== 'all') {
+    chips.push({
+      key: 'Watched',
+      value: state.watched === 'watched' ? 'Watched' : 'Unwatched',
+      remove: () => { state.watched = 'all'; syncLabelFiltersAria(); onFilterChange(); },
+    });
+  }
+  if (state.aboveImdb !== 'all') {
+    chips.push({
+      key: 'IMDb',
+      value: '↑ Above show',
+      remove: () => { state.aboveImdb = 'all'; syncLabelFiltersAria(); onFilterChange(); },
+    });
+  }
+  if (state.hiddenGems !== 'all') {
+    chips.push({
+      key: 'Gems',
+      value: 'Hidden gems',
+      remove: () => { state.hiddenGems = 'all'; syncLabelFiltersAria(); onFilterChange(); },
+    });
+  }
+  if (state.poster !== 'all') {
+    chips.push({
+      key: 'Poster',
+      value: state.poster === 'with' ? 'With poster' : 'No poster',
+      remove: () => { state.poster = 'all'; syncLabelFiltersAria(); onFilterChange(); },
+    });
+  }
+  for (const g of state.genres) {
+    chips.push({
+      key: 'Genre',
+      value: g,
+      remove: () => {
+        state.genres.delete(g);
+        const btn = els.genres.querySelector(`.genre-chip[data-genre="${cssEscape(g)}"]`);
+        if (btn) syncGenreChipTriState(btn);
+        onFilterChange();
+      },
+    });
+  }
+  for (const g of state.excludeGenres) {
+    chips.push({
+      key: 'Not',
+      value: g,
+      remove: () => {
+        state.excludeGenres.delete(g);
+        const btn = els.genres.querySelector(`.genre-chip[data-genre="${cssEscape(g)}"]`);
+        if (btn) syncGenreChipTriState(btn);
+        onFilterChange();
+      },
+    });
+  }
+  for (const l of state.languages) {
+    chips.push({
+      key: 'Language',
+      value: languageLabel(l),
+      remove: () => {
+        state.languages.delete(l);
+        const btn = els.languages.querySelector(`.genre-chip[data-language="${l}"]`);
+        if (btn) btn.setAttribute('aria-pressed', 'false');
+        onFilterChange();
+      },
+    });
+  }
+  for (const p of state.providers) {
+    chips.push({
+      key: 'Streaming',
+      value: p,
+      remove: () => {
+        state.providers.delete(p);
+        const btn = els.providers.querySelector(`.genre-chip[data-provider="${cssEscape(p)}"]`);
+        if (btn) btn.setAttribute('aria-pressed', 'false');
+        onFilterChange();
+      },
+    });
+  }
+  if (state.minEpisodes != null) chips.push(numericChip('Min eps', state.minEpisodes, 'minEpisodes'));
+  if (state.maxEpisodes != null) chips.push(numericChip('Max eps', state.maxEpisodes, 'maxEpisodes'));
+  if (state.minVotes != null) chips.push(numericChip('Min votes', state.minVotes.toLocaleString(), 'minVotes'));
+  if (state.minAvg != null) chips.push(numericChip('Min avg', state.minAvg.toFixed(1), 'minAvg'));
+  if (state.minClimb != null) chips.push(numericChip('Min climb', state.minClimb.toFixed(1), 'minClimb'));
+  if (state.minYear != null) chips.push(numericChip('Year ≥', state.minYear, 'minYear'));
+  if (state.maxYear != null) chips.push(numericChip('Year ≤', state.maxYear, 'maxYear'));
+  if (state.sort && state.sort !== 'popularity') {
+    const sortLabels = {
+      length: 'Length',
+      climb: 'Climb',
+      finale: 'Finale',
+      avg: 'Avg rating',
+      recent: 'Most recent',
+    };
+    chips.push({
+      key: 'Sort',
+      value: sortLabels[state.sort] || state.sort,
+      remove: () => {
+        state.sort = 'popularity';
+        if (els.sort) els.sort.value = 'popularity';
+        onFilterChange();
+      },
+    });
+  }
+  return chips;
+}
+
+function numericChip(label, displayValue, field) {
+  return {
+    key: label,
+    value: String(displayValue),
+    remove: () => {
+      state[field] = null;
+      if (els[field]) els[field].value = '';
+      onFilterChange();
+    },
+  };
+}
+
+function cssEscape(s) {
+  // CSS.escape is widely supported, but guard for older browsers.
+  return (typeof CSS !== 'undefined' && CSS.escape) ? CSS.escape(s) : String(s).replace(/"/g, '\\"');
+}
+
+// Sticky filter bar: a compact, scroll-pinned strip of shape chips +
+// search input that appears once the main filter section leaves the
+// viewport. Backed by an IntersectionObserver on the .filters element.
+let _stickyObserver = null;
+function bindStickyFilterBar() {
+  if (!els.stickyFilterBar) return;
+  els.stickyFilterBar.hidden = false;
+  buildStickyShapeRow();
+  syncStickyShapeRow();
+
+  els.stickySearch.value = state.search;
+  els.stickySearch.addEventListener('input', () => {
+    state.search = els.stickySearch.value.trim();
+    state.lockedSeriesId = null;
+    els.search.value = state.search;
+    onFilterChange();
+  });
+
+  if (els.stickyJumpFilters) {
+    els.stickyJumpFilters.addEventListener('click', () => {
+      const filters = document.querySelector('.filters');
+      if (!filters) return;
+      filters.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    });
+  }
+
+  const sentinel = document.querySelector('.filters');
+  if (!sentinel || !('IntersectionObserver' in window)) {
+    els.stickyFilterBar.classList.add('is-visible');
+    return;
+  }
+  _stickyObserver = new IntersectionObserver((entries) => {
+    for (const entry of entries) {
+      const past = !entry.isIntersecting && entry.boundingClientRect.top < 0;
+      els.stickyFilterBar.classList.toggle('is-visible', past);
+    }
+  }, { threshold: 0 });
+  _stickyObserver.observe(sentinel);
+}
+
+function buildStickyShapeRow() {
+  if (!els.stickyShapeRow) return;
+  const frag = document.createDocumentFragment();
+  const order = ['rising', 'consistent', 'slow-burn', 'big-finale', 'rebound',
+                 'front-loaded', 'declining', 'bad-finale', 'rollercoaster',
+                 'mid-peak', 'u-shaped', 'saved-best-for-last', 'shape-drift'];
+  for (const s of order) {
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'sticky-shape-chip';
+    btn.dataset.shape = s;
+    btn.textContent = SHAPE_LABELS[s] || s;
+    btn.addEventListener('click', () => {
+      toggleShape(s);
+      syncShapeChipsAria();
+      onFilterChange();
+    });
+    frag.appendChild(btn);
+  }
+  els.stickyShapeRow.replaceChildren(frag);
+}
+
+function syncStickyShapeRow() {
+  if (!els.stickyShapeRow) return;
+  for (const btn of els.stickyShapeRow.querySelectorAll('.sticky-shape-chip')) {
+    btn.classList.toggle('is-active', state.shapes.has(btn.dataset.shape));
+  }
+  if (els.stickySearch && els.stickySearch.value !== state.search) {
+    els.stickySearch.value = state.search;
+  }
+}
+
+// Shape chip hover: when a shape is already active and the user hovers
+// another, swap the hovered chip's count badge to show the size of the
+// intersection (i.e. "how many would survive if I added this too?").
+function bindShapeChipIntersectionHover() {
+  if (!els.shapes) return;
+  for (const btn of els.shapes.querySelectorAll('.shape-chip')) {
+    const shape = btn.dataset.shape;
+    if (!shape || shape === 'all') continue;
+    btn.addEventListener('mouseenter', () => {
+      if (state.shapes.size === 0 || state.shapes.has(shape)) return;
+      const span = btn.querySelector('[data-count]');
+      if (!span) return;
+      if (!btn.dataset.origCount) btn.dataset.origCount = span.textContent;
+      const trial = new Set(state.shapes);
+      trial.add(shape);
+      let n = 0;
+      const passesNonShape = buildNonShapeChecker();
+      for (const m of dataset.matches) {
+        if (!passesNonShape(m)) continue;
+        if (passesShapeAnd(m, trial)) n++;
+      }
+      span.textContent = n.toLocaleString();
+      btn.classList.add('is-hover-intersection');
+    });
+    btn.addEventListener('mouseleave', () => {
+      const span = btn.querySelector('[data-count]');
+      if (span && btn.dataset.origCount) {
+        span.textContent = btn.dataset.origCount;
+        delete btn.dataset.origCount;
+      }
+      btn.classList.remove('is-hover-intersection');
+    });
+  }
+}
+
+// Generate a one-line, data-driven sentence per recognized shape on the
+// season and stack them under the modal curve. Skips "consistent" because
+// the curve itself communicates it.
+function renderShapeAnnotationText(m) {
+  const el = els.modalCurveAnnotation;
+  if (!el) return;
+  el.replaceChildren();
+  if (!m.shapes || !m.shapes.length) { el.hidden = true; return; }
+
+  const ratings = m.episodes.map((e) => e.rating);
+  const n = ratings.length;
+  const min = Math.min(...ratings);
+  const max = Math.max(...ratings);
+  const minIdx = ratings.indexOf(min);
+  const maxIdx = ratings.indexOf(max);
+  const half = Math.floor(n / 2);
+  const firstAvg = mean(ratings.slice(0, half));
+  const secondAvg = mean(ratings.slice(half));
+
+  function sentence(shape) {
+    switch (shape) {
+      case 'rising':
+        return `Each episode is rated at least as high as the one before — climbs from ${m.firstRating.toFixed(1)} to ${m.lastRating.toFixed(1)}.`;
+      case 'slow-burn':
+        return `Second half (eps ${half + 1}–${n}) averages ${secondAvg.toFixed(1)}, vs. ${firstAvg.toFixed(1)} in the first half — a lift of ${(secondAvg - firstAvg).toFixed(1)}.`;
+      case 'big-finale':
+        return `Finale (Ep ${n}) lands at ${ratings[n - 1].toFixed(1)} — the season high, vs. an average of ${m.avgRating.toFixed(1)}.`;
+      case 'rebound':
+        return `Dips to ${min.toFixed(1)} at Ep ${minIdx + 1}, then recovers to ${m.lastRating.toFixed(1)} by the finale.`;
+      case 'front-loaded':
+        return `Opens strong (${m.firstRating.toFixed(1)}) then trends down to ${m.lastRating.toFixed(1)} — a drop of ${(m.firstRating - m.lastRating).toFixed(1)}.`;
+      case 'declining':
+        return `Each episode is rated no higher than the one before — slides from ${m.firstRating.toFixed(1)} to ${m.lastRating.toFixed(1)}.`;
+      case 'bad-finale':
+        return `Finale (Ep ${n}) is the season's weakest — ${ratings[n - 1].toFixed(1)} vs. an average of ${m.avgRating.toFixed(1)}.`;
+      case 'rollercoaster':
+        return `Range spans ${(max - min).toFixed(1)} points (${min.toFixed(1)}–${max.toFixed(1)}) — big swings episode to episode.`;
+      case 'mid-peak':
+        return `Peak at Ep ${maxIdx + 1} (${max.toFixed(1)}); first half avg ${firstAvg.toFixed(1)}, finale ${m.lastRating.toFixed(1)}.`;
+      case 'u-shaped':
+        return `Strong opener (${m.firstRating.toFixed(1)}) and finale (${m.lastRating.toFixed(1)}); midpoint dips to ${min.toFixed(1)} at Ep ${minIdx + 1}.`;
+      case 'saved-best-for-last':
+        return `This is the show's highest-rated season — final run averages ${m.avgRating.toFixed(1)}.`;
+      case 'shape-drift':
+        return `Late-run shape or quality shifted relative to earlier seasons.`;
+      default:
+        return null;
+    }
+  }
+
+  for (const shape of m.shapes) {
+    if (shape === 'consistent') continue;
+    const text = sentence(shape);
+    if (!text) continue;
+    const p = document.createElement('span');
+    p.style.display = 'block';
+    const label = document.createElement('span');
+    label.className = 'ann-shape';
+    label.textContent = `${SHAPE_LABELS[shape] || shape} — `;
+    p.append(label, document.createTextNode(text));
+    el.appendChild(p);
+  }
+  el.hidden = el.childElementCount === 0;
+}
+
+function mean(arr) {
+  if (!arr.length) return 0;
+  return arr.reduce((s, x) => s + x, 0) / arr.length;
+}
+
+// Each provider's own search page so the user lands directly on the streamer
+// instead of an aggregator. Fallback to the provider's homepage if we don't
+// have a search-URL pattern for it.
+const PROVIDER_URLS = {
+  'Netflix':            (q) => `https://www.netflix.com/search?q=${q}`,
+  'Hulu':               (q) => `https://www.hulu.com/search?q=${q}`,
+  'Amazon Prime Video': (q) => `https://www.amazon.com/s?k=${q}&i=instant-video`,
+  'HBO Max':            (q) => `https://www.max.com/search?q=${q}`,
+  'Max':                (q) => `https://www.max.com/search?q=${q}`,
+  'Disney+':            (q) => `https://www.disneyplus.com/search?q=${q}`,
+  'Peacock':            (q) => `https://www.peacocktv.com/search?q=${q}`,
+  'Paramount+':         (q) => `https://www.paramountplus.com/search/?searchTerm=${q}`,
+  'Apple TV+':          (q) => `https://tv.apple.com/search?term=${q}`,
+  'Crunchyroll':        (q) => `https://www.crunchyroll.com/search?q=${q}`,
+};
+
+// "Watch on …" deep-link on the show modal. Picks the first mainstream
+// provider on the show and sends the user directly to that provider's
+// search page for the title.
+function syncShowModalWatchOnLink(meta) {
+  const btn = els.showModalWatchOn;
+  if (!btn) return;
+  const provider = (meta.providers || []).find((p) => isMainstreamProvider(p));
+  const urlFor = provider ? PROVIDER_URLS[provider] : null;
+  if (!provider || !urlFor) {
+    btn.hidden = true;
+    return;
+  }
+  btn.hidden = false;
+  btn.textContent = `Watch on ${provider} →`;
+  btn.title = `Search for "${meta.title}" on ${provider}`;
+  btn.href = urlFor(encodeURIComponent(meta.title));
+}
+
+// Shortcut legend popover: ?-button + ? key both toggle. Click-outside +
+// Escape dismiss. Tracks aria-expanded on the trigger button.
+let _legendOutsideHandler = null;
+function toggleShortcutLegend(forceOpen) {
+  const el = els.shortcutLegend;
+  const btn = els.shortcutLegendBtn;
+  if (!el || !btn) return;
+  const willOpen = typeof forceOpen === 'boolean' ? forceOpen : el.hidden;
+  el.hidden = !willOpen;
+  btn.setAttribute('aria-expanded', String(willOpen));
+  if (willOpen) {
+    setTimeout(() => {
+      _legendOutsideHandler = (e) => {
+        if (el.contains(e.target) || btn.contains(e.target)) return;
+        toggleShortcutLegend(false);
+      };
+      document.addEventListener('click', _legendOutsideHandler);
+    }, 0);
+  } else if (_legendOutsideHandler) {
+    document.removeEventListener('click', _legendOutsideHandler);
+    _legendOutsideHandler = null;
+  }
+}
+
+function bindShortcutLegend() {
+  if (!els.shortcutLegendBtn) return;
+  els.shortcutLegendBtn.addEventListener('click', (e) => {
+    e.stopPropagation();
+    toggleShortcutLegend();
+  });
+}
+
+// Step through .shape-chip elements with ←/→.
+function moveShapeChipFocus(delta) {
+  if (!els.shapes) return false;
+  const chips = [...els.shapes.querySelectorAll('.shape-chip')].filter((c) => !c.hidden);
+  if (!chips.length) return false;
+  const active = document.activeElement;
+  let i = chips.indexOf(active);
+  if (i < 0) i = 0;
+  else i = Math.max(0, Math.min(chips.length - 1, i + delta));
+  chips[i].focus();
+  return true;
 }
 
 // Live remote-update channel: another device toggled a watched

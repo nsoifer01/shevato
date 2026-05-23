@@ -261,27 +261,25 @@ body.rising-seasons-app button {
    centred regardless of font metrics. */
 .modal-close,
 .modal-close:hover {
-  /* 34 px (was 32) — closer to a comfortable touch target without
-     disrupting the modal-header layout. */
-  width: 34px;
-  height: 34px;
+  /* 36 px circular icon button — comfortable touch target, anchored
+     to the panel's top-right via absolute positioning below. */
+  width: 36px;
+  height: 36px;
   padding: 0;
   border-radius: 50%;
-  background: rgba(255, 255, 255, 0.06);
+  background: rgba(255, 255, 255, 0.08);
   -webkit-backdrop-filter: blur(8px);
   backdrop-filter: blur(8px);
-  border: 1px solid rgba(255, 255, 255, 0.14);
+  border: 1px solid rgba(255, 255, 255, 0.12);
   color: rgba(255, 255, 255, 0.85) !important;
-  /* Hide the × text — pseudo-element strokes below draw a crisper,
-     weight-consistent X that renders identically at any zoom. */
   font-size: 0;
   line-height: 1;
-  position: relative;
   box-shadow:
     0 4px 14px rgba(0, 0, 0, 0.3),
     0 0 0 1px rgba(0, 0, 0, 0.35) inset !important;
   transition: background 0.18s var(--ease), border-color 0.18s var(--ease),
-              color 0.18s var(--ease), transform 0.08s var(--ease);
+              color 0.18s var(--ease), transform 0.08s var(--ease),
+              box-shadow 0.18s var(--ease);
 }
 .modal-close::before,
 .modal-close::after {
@@ -289,7 +287,7 @@ body.rising-seasons-app button {
   position: absolute;
   top: 50%;
   left: 50%;
-  width: 14px;
+  width: 16px;
   height: 2px;
   background: currentColor;
   border-radius: 1px;
@@ -300,8 +298,12 @@ body.rising-seasons-app button {
 .modal-close::after  { transform: translate(-50%, -50%) rotate(-45deg); }
 .modal-close:hover {
   background: rgba(255, 255, 255, 0.16);
-  border-color: rgba(255, 255, 255, 0.32);
+  border-color: rgba(255, 255, 255, 0.3);
   color: #ffffff !important;
+  box-shadow:
+    0 4px 14px rgba(0, 0, 0, 0.35),
+    0 0 0 1px rgba(255, 255, 255, 0.08),
+    0 0 18px rgba(255, 255, 255, 0.12) !important;
 }
 .modal-close:active { transform: scale(0.92); }
 .modal-close:focus-visible {
@@ -311,12 +313,15 @@ body.rising-seasons-app button {
 
 /* Modal "Mark as watched" button — extends .btn (white text by default). */
 .watch-btn.is-watched,
-.watch-btn.is-watched:hover {
+.watch-btn.is-watched:hover,
+.compare-btn.is-in-compare,
+.compare-btn.is-in-compare:hover {
   background: var(--good);
   color: var(--good-ink) !important;
   border-color: var(--good);
 }
-.watch-btn.is-watched:hover { filter: brightness(1.05); }
+.watch-btn.is-watched:hover,
+.compare-btn.is-in-compare:hover { filter: brightness(1.05); }
 
 /* Card/row corner watched toggle — circular pill, smaller height */
 .watch-toggle,
@@ -367,31 +372,52 @@ body.rising-seasons-app button {
 }
 
 .hero {
-  padding: 3.25rem 0 0.75rem;
+  padding: 4.5rem 0 1.25rem;
   text-align: center;
   background: none !important;
   position: relative;
+  isolation: isolate;
+}
+
+/* Soft amber glow behind the title — cinematic spotlight, low alpha so
+   the edge fades into the page texture instead of forming a visible disc. */
+.hero::before {
+  content: '';
+  position: absolute;
+  left: 50%;
+  top: 35%;
+  width: min(900px, 90%);
+  height: 360px;
+  transform: translate(-50%, -50%);
+  background: radial-gradient(ellipse at center,
+    rgba(245, 197, 24, 0.18) 0%,
+    rgba(245, 197, 24, 0.08) 30%,
+    rgba(245, 197, 24, 0) 70%);
+  filter: blur(6px);
+  pointer-events: none;
+  z-index: -1;
 }
 
 .hero h1 {
-  font-size: clamp(2.25rem, 5.5vw, 3.75rem);
+  font-size: clamp(2.5rem, 6vw, 4.25rem);
   font-weight: 700;
   letter-spacing: -0.035em;
   line-height: 1.05;
-  background: linear-gradient(135deg, #ffe169 0%, var(--accent) 45%, #f5c518 100%);
+  background: linear-gradient(135deg, #ffe89a 0%, #ffd35a 35%, var(--accent) 70%, #f5c518 100%);
   -webkit-background-clip: text;
   background-clip: text;
   color: transparent;
-  filter: drop-shadow(0 4px 24px rgba(245, 197, 24, 0.18));
+  filter: drop-shadow(0 2px 1px rgba(0, 0, 0, 0.35))
+          drop-shadow(0 8px 32px rgba(245, 197, 24, 0.28));
 }
 
 .tagline {
-  margin: 0.65rem auto 0;
+  margin: 1rem auto 0;
   max-width: 38rem;
   color: var(--muted);
-  font-size: 1.02rem;
-  letter-spacing: -0.005em;
-  line-height: 1.45;
+  font-size: 1.08rem;
+  letter-spacing: 0;
+  line-height: 1.5;
 }
 .tagline em {
   color: var(--text);
@@ -401,6 +427,11 @@ body.rising-seasons-app button {
   -webkit-background-clip: text;
   background-clip: text;
   -webkit-text-fill-color: transparent;
+}
+
+.hero-sep {
+  margin: 0 0.5rem;
+  color: var(--muted-2);
 }
 
 /* ---------- Shape chips ----------
@@ -431,27 +462,33 @@ body.rising-seasons-app button {
   gap: 0.4rem;
   height: 30px;
   padding: 0 0.7rem 0 0.6rem;
-  /* Subtle surface — clearly lighter than the page bg so each chip
-     reads as an object, never as floating text. */
-  background: rgba(255, 255, 255, 0.035);
-  border: 1px solid rgba(255, 255, 255, 0.09);
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.1);
   border-radius: 999px;
-  color: var(--text) !important;
+  color: #FFFFFF !important;
   font: inherit;
   font-size: 0.8rem;
   font-weight: 600;
   line-height: 1;
   letter-spacing: 0.005em;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
   cursor: pointer;
   white-space: nowrap;
   box-shadow: 0 1px 0 rgba(255, 255, 255, 0.02) inset !important;
   transition: background 0.18s var(--ease), border-color 0.18s var(--ease),
-              color 0.18s var(--ease);
+              color 0.18s var(--ease), transform 0.18s var(--ease),
+              box-shadow 0.18s var(--ease);
 }
 .shape-chip:hover {
-  background: rgba(255, 255, 255, 0.08);
-  border-color: rgba(255, 255, 255, 0.22);
-  color: rgba(255, 255, 255, 0.95) !important;
+  /* Hint of gold on hover so inactive chips foreshadow the active
+     yellow state, unifying the interaction model. */
+  background: rgba(245, 197, 24, 0.06);
+  border-color: rgba(245, 197, 24, 0.32);
+  color: #FFFFFF !important;
+  transform: scale(1.03);
+  box-shadow: 0 1px 0 rgba(255, 255, 255, 0.02) inset,
+              0 4px 14px rgba(245, 197, 24, 0.1) !important;
 }
 .shape-chip:hover .shape-icon {
   opacity: 1;
@@ -479,6 +516,7 @@ body.rising-seasons-app button {
 }
 .shape-name {
   font-weight: 600;
+  color: #FFFFFF;
   /* Stronger than description so the pattern name reads first. */
 }
 
@@ -509,14 +547,14 @@ body.rising-seasons-app button {
   background: rgba(255, 255, 255, 0.05);
   border-radius: 999px;
   font-size: 0.68rem;
-  color: rgba(231, 233, 238, 0.6);
+  color: rgba(243, 244, 246, 0.72);
   font-variant-numeric: tabular-nums;
   font-weight: 500;
   margin-left: 0.1rem;
 }
 .shape-chip:hover .shape-count {
   background: rgba(255, 255, 255, 0.08);
-  color: rgba(231, 233, 238, 0.75);
+  color: rgba(243, 244, 246, 0.88);
 }
 .shape-chip[aria-pressed="true"] .shape-count {
   background: rgba(245, 197, 24, 0.18);
@@ -551,8 +589,9 @@ body.rising-seasons-app button {
   align-items: stretch;
 }
 
-/* Primary row reads as one connected toolbar: glassy surface, single
-   rounded shell, with controls visually grouped inside it.
+/* Primary row reads as a subtle platform under the controls — soft glass
+   surface with a barely-there stroke, no decorative gold rim competing
+   with the Surprise CTA, no heavy drop shadow framing it like a card.
    IMPORTANT: backdrop-filter creates a stacking context. The search
    dropdown (.search-suggestions) lives inside this row and can't escape
    that context. Lifting the whole row with position:relative + z-index
@@ -571,18 +610,17 @@ body.rising-seasons-app button {
      untouched. */
   --ctrl-h: 32px;
   align-items: center;
-  background: var(--surface-glass);
-  backdrop-filter: blur(10px);
-  -webkit-backdrop-filter: blur(10px);
-  border: 1px solid var(--border);
-  /* Top half of a unified two-row toolbar — fully rounded on top,
-     squared off at the bottom, no bottom border. The filter row below
-     extends the same surface and closes the shell. */
+  background: rgba(18, 21, 29, 0.55);
+  backdrop-filter: blur(14px) saturate(140%);
+  -webkit-backdrop-filter: blur(14px) saturate(140%);
+  border: 1px solid rgba(255, 255, 255, 0.04);
+  /* Top half of a unified two-row toolbar — rounded on top, squared off
+     at the bottom, no bottom border. The filter row below extends the
+     same surface and closes the shell. */
   border-radius: 12px 12px 0 0;
   border-bottom: 0;
   padding: 4px 6px;
   gap: 0.5rem;
-  box-shadow: 0 1px 0 rgba(255, 255, 255, 0.02) inset, var(--shadow-lift);
 }
 /* Subtle vertical separator dividing the search ("find") cluster from
    the right-side ("view + discover") cluster. Without it the row reads
@@ -590,9 +628,21 @@ body.rising-seasons-app button {
    the controls. Only shown at viewports wide enough that everything
    sits on a single line. */
 @media (min-width: 760px) {
+  /* 5-column grid: [left spacer 1fr] [search ≤600px] [right spacer 1fr]
+     [view-toggle auto] [surprise-group auto]. Matching 1fr columns
+     visually center the search; trailing auto columns keep the
+     view/surprise controls pinned to the right edge. */
+  .filter-row.primary {
+    display: grid;
+    grid-template-columns: 1fr minmax(0, 600px) 1fr auto auto auto;
+  }
+  .filter-row.primary .search-cluster { grid-column: 2; }
   .filter-row.primary .view-toggle {
     position: relative;
+    grid-column: 4;
   }
+  .filter-row.primary .surprise-group { grid-column: 5; }
+  .filter-row.primary .shortcut-legend-btn { grid-column: 6; }
   .filter-row.primary .view-toggle::before {
     content: '';
     position: absolute;
@@ -607,18 +657,30 @@ body.rising-seasons-app button {
    always first (primary task), view-toggle second, surprise actions
    last — regardless of which break point the row wraps at. */
 @media (max-width: 759px) {
-  .filter-row.primary .search { order: 1; flex-basis: 100%; }
+  .filter-row.primary .search-cluster { order: 1; flex-basis: 100%; }
   .filter-row.primary .view-toggle { order: 2; }
   .filter-row.primary .surprise-group { order: 3; margin-left: auto; }
+  .filter-row.primary .shortcut-legend-btn { order: 4; }
+}
+
+/* Wraps the shortcut-legend `?` button alongside the search input so the
+   legend sits immediately to the left of the search field, instead of
+   floating at the far right of the toolbar. */
+.search-cluster {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  min-width: 0;
 }
 
 /* Surprise group — two adjacent buttons sharing a labeled boundary:
    primary "Surprise me" (random across all filtered) + secondary
-   "Popular pick" (random across the top 50 by current sort). */
+   "Popular pick" (random across the top 50 by current sort). Tight gap
+   makes them read as a pair, not two independent buttons. */
 .surprise-group {
   display: inline-flex;
   align-items: stretch;
-  gap: 0.35rem;
+  gap: 0.25rem;
 }
 /* Soften the Surprise CTA — was the heaviest element on the bar,
    competing with active filter pills. Now reads as a secondary action
@@ -648,11 +710,14 @@ body.rising-seasons-app button {
   color: #ffffff;
 }
 
-/* Tighter horizontal padding on the buttons inside the slimmer toolbar
-   so the labels don't crowd the rounded edges at the smaller height. */
-.filter-row.primary .btn { padding: 0 0.85rem; font-size: 0.85rem; }
+/* Pill-shaped buttons inside the polished toolbar — capsule corners +
+   tighter padding give the row a streaming-app-header feel. The view-
+   toggle rail stays segmented (its own rounded wrapper), only its
+   children pick up the pill radius. */
+.filter-row.primary .btn { padding: 0 0.85rem; font-size: 0.85rem; border-radius: 999px; }
 .filter-row.primary .surprise { font-weight: 600; }
-.filter-row.primary .view-btn { width: 2.1rem; font-size: 0.95rem; }
+.filter-row.primary .view-toggle { border-radius: 999px; }
+.filter-row.primary .view-btn { width: 2.1rem; font-size: 0.95rem; border-radius: 999px; }
 
 .filter-row label {
   display: flex;
@@ -846,29 +911,37 @@ body.rising-seasons-app button {
 }
 
 /* Inside the glassy primary toolbar the search field needs a transparent
-   look so the surface reads as one piece, not nested boxes. */
+   look so the surface reads as one piece, not nested boxes. Lighter and
+   smaller text reads as a refined search field, not a heavy form input. */
 .filter-row.primary .search input {
   background: transparent;
   border-color: transparent;
   padding: 0 0.8rem 0 2.15rem;
-  font-size: 0.88rem;
+  font-size: 0.82rem;
+  font-weight: 400;
+  border-radius: 999px;
   background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23a4adbd' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'><circle cx='11' cy='11' r='7'/><path d='M21 21l-4.35-4.35'/></svg>");
   background-repeat: no-repeat;
   background-position: 0.7rem center;
   background-size: 0.9rem 0.9rem;
+  transition: background-color 0.18s var(--ease), border-color 0.18s var(--ease),
+              box-shadow 0.18s var(--ease);
+}
+.filter-row.primary .search input::placeholder {
+  color: rgba(231, 233, 238, 0.42);
+  font-weight: 400;
 }
 .filter-row.primary .search input:hover { background-color: rgba(255, 255, 255, 0.025); }
 .filter-row.primary .search input:focus {
-  background-color: rgba(255, 255, 255, 0.04);
-  border-color: var(--accent);
+  background-color: rgba(255, 255, 255, 0.05);
+  border-color: rgba(245, 197, 24, 0.55);
   outline: none;
-  /* Smaller, dimmer focus ring than the global default. The full
-     3px yellow ring fought with the yellow Surprise CTA next to it;
-     a quieter halo lets the input own its focus without competing. */
-  box-shadow: 0 0 0 2px rgba(245, 197, 24, 0.18);
+  /* Soft amber glow on focus — clearly highlights the active state
+     without competing with the yellow Surprise CTA. */
+  box-shadow: 0 0 0 3px rgba(245, 197, 24, 0.22);
 }
 .search input { padding: 0 0.85rem; font-size: 1rem; }
-.search input::placeholder { color: var(--muted-2); }
+.search input::placeholder { color: rgba(243, 244, 246, 0.55); }
 
 .filter-row select {
   padding-right: 2rem;
@@ -905,7 +978,7 @@ body.rising-seasons-app button {
   border-radius: 999px;
   background: rgba(255, 255, 255, 0.035);
   border: 1px solid var(--border);
-  color: var(--muted);
+  color: rgba(243, 244, 246, 0.78);
   font-size: 0.72rem;
   font-weight: 600;
   letter-spacing: 0.08em;
@@ -916,7 +989,7 @@ body.rising-seasons-app button {
 .quick-filters-wrap > summary:hover {
   background: rgba(255, 255, 255, 0.06);
   border-color: var(--border-strong);
-  color: var(--text);
+  color: #F3F4F6;
 }
 .quick-filters-wrap[open] > summary {
   background: var(--accent-soft);
@@ -959,7 +1032,7 @@ body.rising-seasons-app button {
   font-weight: 700;
   letter-spacing: 0.14em;
   text-transform: uppercase;
-  color: rgba(231, 233, 238, 0.6);
+  color: rgba(243, 244, 246, 0.78);
   transition: color 0.15s var(--ease), background 0.15s var(--ease);
 }
 /* The browser draws a default focus ring on <summary> when one of its
@@ -975,7 +1048,7 @@ body.rising-seasons-app button {
 }
 .advanced summary::-webkit-details-marker { display: none; }
 .advanced summary:hover {
-  color: var(--text);
+  color: #F3F4F6;
   background: rgba(255, 255, 255, 0.035);
 }
 .advanced summary::before {
@@ -985,7 +1058,7 @@ body.rising-seasons-app button {
   text-align: center;
   font-size: 0.95rem;
   font-weight: 400;
-  color: rgba(231, 233, 238, 0.5);
+  color: rgba(243, 244, 246, 0.68);
   transition: transform 0.2s var(--ease), color 0.2s var(--ease);
 }
 .advanced[open] summary {
@@ -1358,10 +1431,12 @@ body.rising-seasons-app button {
   border-color: var(--accent);
   box-shadow: var(--accent-glow);
 }
-.card.is-watched {
+.card.is-watched,
+.card.is-in-compare {
   border-color: rgba(52, 211, 158, 0.4);
 }
-.card.is-watched::after {
+.card.is-watched::after,
+.card.is-in-compare::after {
   content: '';
   position: absolute;
   inset: 0;
@@ -1775,6 +1850,24 @@ button.shape-tag.is-clickable:hover {
   background: transparent;
 }
 
+/* fuzzy-search: non-interactive "Did you mean?" header that introduces
+   the typo-tolerant matches appended after the strict suggestions. */
+.search-suggestion-subheader {
+  cursor: default;
+  color: var(--muted-2);
+  font-size: 0.7rem;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  padding: 0.45rem 0.7rem 0.2rem;
+  pointer-events: none;
+  border-top: 1px solid var(--border);
+  margin-top: 0.25rem;
+}
+.search-suggestion-subheader:hover {
+  background: transparent;
+}
+
 .show-seasons {
   list-style: none;
   margin: 0;
@@ -2130,7 +2223,8 @@ button.shape-tag.is-clickable:hover {
   border-color: var(--accent);
   box-shadow: 0 0 0 3px var(--accent-soft);
 }
-.row.is-watched { border-color: rgba(52, 211, 158, 0.4); }
+.row.is-watched,
+.row.is-in-compare { border-color: rgba(52, 211, 158, 0.4); }
 .row.is-watched .row-poster img { opacity: 0.55; }
 
 .row-poster {
@@ -2429,10 +2523,22 @@ button.shape-tag.is-clickable:hover {
 }
 
 .modal-close {
-  align-self: flex-end;
-  margin-bottom: -1.5rem;  /* sit on top of header */
-  position: relative;
-  z-index: 2;
+  /* Anchored to the panel's top-right, slightly inset from the edge.
+     position:absolute pulls the button out of the flex flow so the
+     header content (poster + heading) starts at the panel's top
+     padding instead of beneath a 1.5rem negative-margin overlap. */
+  position: absolute;
+  top: 0.85rem;
+  right: 0.85rem;
+  z-index: 3;
+}
+/* Reserve space on the header's right side so long titles don't run
+   under the absolutely-positioned close button. ~2.75rem clears the
+   36 px button plus the 0.85 rem inset. */
+.modal-header,
+.changelog-header,
+#compareModalTitle {
+  padding-right: 2.75rem;
 }
 
 /* Roll-again is anchored directly above the poster — same width, slim
@@ -2546,6 +2652,130 @@ button.shape-tag.is-clickable:hover {
 }
 .modal-overview:empty { display: none; }
 
+/* Primary actions cluster — sits inside .modal-heading so the action
+   is tied visually to the show/season identity rather than buried in
+   the row of external-link buttons below. */
+.modal-primary-actions {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin-top: 0.35rem;
+}
+
+/* Cast strip — horizontal-scrolling row of head-and-shoulders cards
+   showing the top-billed cast. Wrapper is [hidden] by default and
+   only revealed when meta.cast has entries. */
+.cast-section[hidden] {
+  display: none;
+}
+.cast-section {
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+}
+.cast-list {
+  display: flex;
+  gap: 0.6rem;
+  overflow-x: auto;
+  padding: 0.25rem 0 0.5rem;
+  margin: 0;
+  list-style: none;
+  scroll-snap-type: x proximity;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(255, 255, 255, 0.18) transparent;
+}
+.cast-list::-webkit-scrollbar { height: 6px; }
+.cast-list::-webkit-scrollbar-track { background: transparent; }
+.cast-list::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.18);
+  border-radius: 999px;
+}
+.cast-card {
+  flex: 0 0 90px;
+  scroll-snap-align: start;
+}
+
+/* Inner container — either an <a> (clickable, links to TMDB person
+   page) or a plain <div> fallback for older cache entries with no
+   person id. Same layout either way so the card looks identical. */
+.cast-card-inner {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 0.35rem;
+  text-align: center;
+  text-decoration: none !important;
+  color: inherit;
+  transition: transform 0.18s var(--ease);
+}
+.cast-card-inner:hover {
+  text-decoration: none !important;
+}
+a.cast-card-inner:hover {
+  transform: translateY(-2px);
+}
+a.cast-card-inner:hover .cast-photo {
+  box-shadow: 0 0 0 1px rgba(245, 197, 24, 0.45) inset,
+              0 6px 16px rgba(0, 0, 0, 0.4);
+}
+a.cast-card-inner:hover .cast-name {
+  color: var(--accent);
+}
+a.cast-card-inner:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 4px;
+  border-radius: 12px;
+}
+.cast-photo {
+  transition: box-shadow 0.18s var(--ease);
+}
+.cast-photo {
+  width: 90px;
+  aspect-ratio: 2 / 3;
+  border-radius: 10px;
+  background: var(--surface-2);
+  position: relative;
+  overflow: hidden;
+  box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.06) inset;
+}
+.cast-photo img {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+.cast-photo-fallback {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1.5rem;
+  font-weight: 600;
+  color: rgba(255, 255, 255, 0.45);
+  background: linear-gradient(135deg, #1a2030 0%, #14182265 100%);
+}
+.cast-name {
+  font-size: 0.78rem;
+  font-weight: 600;
+  color: var(--text);
+  line-height: 1.2;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+.cast-character {
+  font-size: 0.72rem;
+  color: var(--muted);
+  line-height: 1.25;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
 .modal-section {
   font-size: 0.72rem;
   text-transform: uppercase;
@@ -2574,6 +2804,33 @@ button.shape-tag.is-clickable:hover {
   border-radius: 10px;
   font-variant-numeric: tabular-nums;
   font-size: 0.9rem;
+  position: relative;
+  transition: border-color 0.15s var(--ease), background 0.15s var(--ease);
+}
+/* Stretched link: invisible <a> covering the whole row so clicking anywhere
+   opens the episode on IMDb. The inner spans sit on top so text selection
+   and tooltips still work. */
+.modal-episodes .ep-link {
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  z-index: 1;
+}
+.modal-episodes .ep-number,
+.modal-episodes .ep-name,
+.modal-episodes .ep-meta {
+  position: relative;
+  z-index: 2;
+  pointer-events: none;
+}
+.modal-episodes li.has-link:hover,
+.modal-episodes li.has-link:focus-within {
+  border-color: var(--accent-strong, rgba(245, 197, 24, 0.5));
+  background: rgba(245, 197, 24, 0.06);
+}
+.modal-episodes .ep-link:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
 }
 .modal-episodes .ep-number {
   color: var(--muted);
@@ -3461,48 +3718,83 @@ body.advanced-drawer-open {
 /* ---- Mood presets (NUI-5) ---- */
 
 .mood-presets {
-  padding: 0.5rem 0 1rem;
+  /* Bottom padding scales 48 → 64 px between mobile and desktop so the
+     mood strip never crowds the filter toolbar below. */
+  padding: 0.5rem 0 clamp(3rem, 5vw, 4rem);
   max-width: 48rem;
   margin: 0 auto;
 }
 
+/* Section label flanked by hairline rules so "Explore by mood" reads
+   as a proper section header rather than floating text above chips. */
 .mood-presets-title {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.85rem;
   font-size: 0.72rem;
   font-weight: 600;
-  letter-spacing: 0.08em;
+  letter-spacing: 0.12em;
   text-transform: uppercase;
   color: var(--muted-2);
-  margin-bottom: 0.5rem;
+  margin-bottom: 1.5rem;
   text-align: center;
+}
+.mood-presets-title::before,
+.mood-presets-title::after {
+  content: '';
+  flex: 0 1 4rem;
+  height: 1px;
+  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.12), transparent);
 }
 
 .mood-preset-chips {
   display: flex;
   flex-wrap: wrap;
-  gap: 0.45rem;
+  gap: 0.5rem;
   justify-content: center;
 }
 
+/* Same visual language as .shape-chip — height, border, surface,
+   hover gold-tint, scale on hover. */
 .mood-chip {
   display: inline-flex;
   align-items: center;
-  gap: 0.5rem;
-  padding: 0.45rem 0.85rem;
-  background: rgba(255, 255, 255, 0.03);
-  border: 1px solid rgba(255, 255, 255, 0.09);
+  justify-content: center;
+  gap: 0.45rem;
+  height: 30px;
+  padding: 0 0.85rem;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.1);
   border-radius: 999px;
   color: var(--text) !important;
-  font-size: 0.82rem;
-  font-weight: 500;
+  font-size: 0.8rem;
+  font-weight: 600;
+  line-height: 1;
+  letter-spacing: 0.005em;
   text-decoration: none !important;
   white-space: nowrap;
-  transition: background 0.18s var(--ease), border-color 0.18s var(--ease);
+  box-shadow: 0 1px 0 rgba(255, 255, 255, 0.02) inset;
+  transition: background 0.18s var(--ease), border-color 0.18s var(--ease),
+              color 0.18s var(--ease), transform 0.18s var(--ease),
+              box-shadow 0.18s var(--ease);
 }
 
 .mood-chip:hover {
-  background: rgba(255, 255, 255, 0.07);
-  border-color: rgba(255, 255, 255, 0.2);
+  background: rgba(245, 197, 24, 0.06);
+  border-color: rgba(245, 197, 24, 0.32);
+  color: rgba(255, 255, 255, 0.98) !important;
   text-decoration: none !important;
+  transform: scale(1.03);
+  box-shadow: 0 1px 0 rgba(255, 255, 255, 0.02) inset,
+              0 4px 14px rgba(245, 197, 24, 0.1);
+}
+
+.mood-chip[aria-pressed="true"],
+.mood-chip[aria-pressed="true"]:hover {
+  background: rgba(245, 197, 24, 0.12);
+  border-color: rgba(245, 197, 24, 0.45);
+  color: var(--accent) !important;
 }
 
 .mood-chip-icon {
@@ -3513,6 +3805,32 @@ body.advanced-drawer-open {
 
 .mood-chip-label {
   font-weight: 600;
+}
+
+/* Tertiary count badge — mirrors .shape-count so the chip systems
+   read as one family. Hidden when empty so a chip without a count
+   doesn't grow a phantom pill. */
+.mood-chip-count {
+  display: inline-flex;
+  align-items: center;
+  height: 17px;
+  padding: 0 0.45rem;
+  background: rgba(255, 255, 255, 0.05);
+  border-radius: 999px;
+  font-size: 0.68rem;
+  color: rgba(231, 233, 238, 0.6);
+  font-variant-numeric: tabular-nums;
+  font-weight: 500;
+  margin-left: 0.1rem;
+}
+.mood-chip-count:empty { display: none; }
+.mood-chip:hover .mood-chip-count {
+  background: rgba(255, 255, 255, 0.08);
+  color: rgba(231, 233, 238, 0.75);
+}
+.mood-chip[aria-pressed="true"] .mood-chip-count {
+  background: rgba(245, 197, 24, 0.18);
+  color: var(--accent);
 }
 
 .mood-chip-desc {
@@ -3527,6 +3845,10 @@ body.advanced-drawer-open {
 
 .shapes-hidden {
   display: none !important;
+}
+
+.shapes-more-btn[hidden] {
+  display: none;
 }
 
 .shapes-more-btn {
@@ -3562,6 +3884,7 @@ body.advanced-drawer-open {
   font-size: 0.68rem;
   color: var(--accent);
 }
+.shapes-more-count:empty { display: none; }
 
 /* ---- Modal drift note (NUI-3) ---- */
 
@@ -3653,7 +3976,14 @@ body.advanced-drawer-open {
 
 .curve-annotation-label {
   font-size: 10px;
-  fill: rgba(245, 197, 24, 0.85);
+  fill: rgba(245, 197, 24, 0.95);
+  /* Dark halo so the yellow label stays readable when it lands over the
+     yellow area-fill below the curve (e.g. "Dip" sitting under a rebound
+     trough, where yellow-on-yellow would otherwise erase it). */
+  stroke: rgba(11, 13, 18, 0.85);
+  stroke-width: 3px;
+  paint-order: stroke fill;
+  stroke-linejoin: round;
   font-family: system-ui, sans-serif;
   font-weight: 600;
   pointer-events: none;
@@ -3673,4 +4003,477 @@ body.advanced-drawer-open {
   stroke: rgba(245, 197, 24, 0.5);
   stroke-width: 1.5;
   stroke-dasharray: 4 2;
+}
+
+/* ===== UI improvements: chip bar, sticky filter, share canvas,
+   sparkline min/max labels, annotation, shortcut popover ===== */
+
+/* #1 Active-filter chip bar */
+.active-filter-bar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  align-items: center;
+  margin: 0.5rem 0 0;
+  padding: 0.5rem 0.65rem;
+  border: 1px solid var(--border);
+  background: var(--surface-glass);
+  border-radius: var(--ctrl-radius);
+}
+.active-filter-bar[hidden] { display: none; }
+.active-filter-bar .active-filter-label {
+  font-size: 0.82rem;
+  color: var(--text);
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  margin-right: 0.4rem;
+}
+.active-filter-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.28rem 0.6rem 0.28rem 0.75rem;
+  border-radius: 999px;
+  border: 1px solid var(--border-strong);
+  background: var(--surface-2);
+  color: var(--text);
+  font-size: 0.88rem;
+  cursor: pointer;
+  line-height: 1;
+}
+.active-filter-chip:hover {
+  border-color: var(--accent-strong);
+  background: var(--accent-soft);
+}
+.active-filter-chip .chip-key {
+  color: var(--accent);
+  font-size: 0.72rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  font-weight: 700;
+}
+.active-filter-chip .chip-val {
+  color: var(--text);
+  font-weight: 600;
+}
+.active-filter-chip .chip-x {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.12);
+  color: var(--text);
+  font-size: 0.95rem;
+  font-weight: 700;
+}
+.active-filter-chip:hover .chip-x { background: var(--accent); color: var(--accent-ink); }
+@media (max-width: 600px) {
+  .active-filter-bar {
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: thin;
+  }
+  .active-filter-bar > * { flex: 0 0 auto; }
+}
+
+/* #4 Mini sparkline min/max axis labels (cards + row sparklines)
+   — small but deliberate: tabular digits, dark halo via paint-order so
+   they stay legible on top of the gold curve, brightness held below
+   the Avg score so the eye reads Avg first. */
+.spark-axis-label {
+  font-size: 11px;
+  fill: rgba(241, 243, 248, 0.82);
+  font-family: ui-monospace, "SF Mono", Menlo, Consolas, "Inter", system-ui, sans-serif;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.01em;
+  pointer-events: none;
+  paint-order: stroke fill;
+  stroke: rgba(8, 10, 16, 0.78);
+  stroke-width: 2px;
+  stroke-linejoin: round;
+}
+
+/* #5 Sticky filter bar — frosted-glass strip that drops in once the
+   main filter section scrolls off. Echoes the main toolbar (dark
+   glass, top-edge amber rim, gold-tinted chips on hover, soft amber
+   wash on active) so it reads as the same control surface, compact. */
+.sticky-filter-bar {
+  position: fixed;
+  top: var(--header-h, 3.25rem);
+  left: 0;
+  right: 0;
+  z-index: 60;
+  background: rgba(11, 13, 18, 0.78);
+  backdrop-filter: blur(16px) saturate(140%);
+  -webkit-backdrop-filter: blur(16px) saturate(140%);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+  padding: 0.55rem 1rem;
+  box-shadow:
+    0 -1px 0 rgba(245, 197, 24, 0.18) inset,
+    0 8px 24px rgba(0, 0, 0, 0.35);
+  transform: translateY(-110%);
+  transition: transform 0.22s var(--ease), opacity 0.18s var(--ease);
+  pointer-events: none;
+  opacity: 0;
+}
+/* Top-edge amber hairline — same accent as .filter-row.primary so
+   the sticky bar visually belongs to the same toolbar family. */
+.sticky-filter-bar::before {
+  content: '';
+  position: absolute;
+  left: 12%;
+  right: 12%;
+  top: -1px;
+  height: 1px;
+  background: linear-gradient(90deg,
+    transparent 0%,
+    rgba(245, 197, 24, 0.45) 50%,
+    transparent 100%);
+  pointer-events: none;
+}
+.sticky-filter-bar.is-visible {
+  transform: translateY(0);
+  pointer-events: auto;
+  opacity: 1;
+}
+.sticky-filter-bar[hidden] { display: none; }
+.sticky-filter-inner {
+  display: flex;
+  align-items: center;
+  gap: 0.65rem;
+  max-width: 1500px;
+  margin: 0 auto;
+}
+.sticky-shape-row {
+  display: flex;
+  gap: 0.35rem;
+  overflow-x: auto;
+  flex: 1 1 auto;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(255, 255, 255, 0.18) transparent;
+  /* Soft fade on the right so chips appear to scroll into the bar
+     rather than being abruptly clipped at the search box. */
+  mask-image: linear-gradient(90deg, #000 0, #000 calc(100% - 2rem), transparent 100%);
+  -webkit-mask-image: linear-gradient(90deg, #000 0, #000 calc(100% - 2rem), transparent 100%);
+  padding-right: 1rem;
+}
+.sticky-shape-row::-webkit-scrollbar { height: 4px; }
+.sticky-shape-row::-webkit-scrollbar-track { background: transparent; }
+.sticky-shape-row::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.18);
+  border-radius: 999px;
+}
+/* Sticky chips inherit shape-chip styling at a compact size. */
+.sticky-shape-chip {
+  flex: 0 0 auto;
+  height: 28px;
+  padding: 0 0.7rem;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  background: rgba(255, 255, 255, 0.05);
+  color: #FFFFFF !important;
+  font-size: 0.78rem;
+  font-weight: 600;
+  letter-spacing: 0.005em;
+  cursor: pointer;
+  white-space: nowrap;
+  box-shadow: 0 1px 0 rgba(255, 255, 255, 0.02) inset;
+  transition: background 0.18s var(--ease), border-color 0.18s var(--ease),
+              color 0.18s var(--ease), transform 0.18s var(--ease);
+}
+.sticky-shape-chip:hover {
+  background: rgba(245, 197, 24, 0.06);
+  border-color: rgba(245, 197, 24, 0.32);
+  color: #FFFFFF !important;
+  transform: translateY(-1px);
+}
+.sticky-shape-chip.is-active,
+.sticky-shape-chip.is-active:hover {
+  background: rgba(245, 197, 24, 0.14);
+  border-color: rgba(245, 197, 24, 0.5);
+  color: var(--accent) !important;
+  box-shadow: 0 1px 0 rgba(255, 255, 255, 0.02) inset,
+              0 0 0 1px rgba(245, 197, 24, 0.18) inset;
+}
+.sticky-shape-chip .sticky-shape-x {
+  margin-left: 0.05rem;
+  font-size: 0.95rem;
+  line-height: 1;
+  opacity: 0.7;
+}
+.sticky-shape-chip:hover .sticky-shape-x {
+  opacity: 1;
+}
+.sticky-search input {
+  height: 28px;
+  padding: 0 0.7rem;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  background: rgba(255, 255, 255, 0.04);
+  color: var(--text);
+  font-size: 0.82rem;
+  min-width: 0;
+  width: 220px;
+  max-width: 30vw;
+  transition: border-color 0.18s var(--ease), background 0.18s var(--ease),
+              box-shadow 0.18s var(--ease);
+}
+.sticky-search input:focus {
+  outline: none;
+  border-color: rgba(245, 197, 24, 0.5);
+  background: rgba(255, 255, 255, 0.08);
+  box-shadow: 0 0 0 3px rgba(245, 197, 24, 0.12);
+}
+.sticky-search input::placeholder {
+  color: rgba(231, 233, 238, 0.45);
+}
+.sticky-jump {
+  height: 28px;
+  padding: 0 0.85rem;
+  font-size: 0.78rem;
+  font-weight: 600;
+  flex: 0 0 auto;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  background: rgba(255, 255, 255, 0.04);
+  color: rgba(231, 233, 238, 0.85);
+  cursor: pointer;
+  transition: background 0.18s var(--ease), border-color 0.18s var(--ease),
+              color 0.18s var(--ease);
+}
+.sticky-jump:hover {
+  background: rgba(245, 197, 24, 0.08);
+  border-color: rgba(245, 197, 24, 0.4);
+  color: var(--accent);
+}
+@media (max-width: 600px) {
+  .sticky-filter-bar { padding: 0.5rem 0.75rem; }
+  .sticky-filter-inner { gap: 0.4rem; }
+  .sticky-search input { width: 130px; }
+  .sticky-jump { display: none; }
+}
+
+/* #6 Empty state — minimal, airy "no results" panel. Reads as a quiet
+   helper, not a warning. Icon → headline → subtitle → optional chips →
+   ghost reset; vertical gap on the column does the spacing work so
+   each child stays unfussy. */
+.empty-state {
+  padding: 4.5rem 1.5rem 4.25rem;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 1.1rem;
+}
+.empty-state .empty-icon {
+  width: 48px;
+  height: 48px;
+  color: rgba(243, 244, 246, 0.4);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  margin-bottom: 0.25rem;
+}
+.empty-state .empty-icon svg {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+.empty-state .empty-headline {
+  color: #F3F4F6;
+  font-size: 1.05rem;
+  font-weight: 500;
+  margin: 0;
+  letter-spacing: -0.005em;
+}
+.empty-state .empty-sub {
+  color: rgba(243, 244, 246, 0.55);
+  font-size: 0.88rem;
+  font-weight: 400;
+  margin: 0;
+}
+.empty-state .empty-suggestions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  justify-content: center;
+  max-width: 540px;
+  margin: 0.25rem 0 0;
+}
+.empty-state .empty-suggestion-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  background: transparent;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  color: rgba(243, 244, 246, 0.85) !important;
+  padding: 0.32rem 0.85rem;
+  border-radius: 999px;
+  font-size: 0.8rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background 0.18s var(--ease), border-color 0.18s var(--ease), color 0.18s var(--ease);
+}
+.empty-state .empty-suggestion-btn:hover {
+  background: rgba(255, 255, 255, 0.04);
+  border-color: rgba(255, 255, 255, 0.2);
+  color: #FFFFFF !important;
+}
+.empty-state .empty-suggestion-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.05em;
+  height: 1.05em;
+  color: rgba(243, 244, 246, 0.55);
+  font-weight: 400;
+  font-size: 0.95em;
+}
+.empty-state .empty-suggestion-btn:hover .empty-suggestion-icon {
+  color: #FFFFFF;
+}
+/* Reset CTA: subtle ghost pill — quiet enough that it reads as a
+   "tap to clear" affordance instead of a primary action. Uses
+   !important on color so the global `button { color: #555 !important }`
+   from assets/css/main.css can't drag it back to gray. */
+.empty-state .empty-reset-btn {
+  background: transparent;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  color: rgba(243, 244, 246, 0.88) !important;
+  padding: 0.38rem 1rem;
+  border-radius: 999px;
+  font-size: 0.8rem;
+  font-weight: 500;
+  cursor: pointer;
+  margin-top: 0.25rem;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  transition: background 0.18s var(--ease), border-color 0.18s var(--ease), color 0.18s var(--ease);
+}
+.empty-state .empty-reset-btn:hover {
+  background: rgba(255, 255, 255, 0.05);
+  border-color: rgba(255, 255, 255, 0.24);
+  color: #FFFFFF !important;
+}
+
+/* #7 Modal curve annotation line */
+.modal-curve-annotation {
+  margin: 0.4rem 0 1rem;
+  padding: 0.5rem 0.75rem;
+  background: rgba(245, 197, 24, 0.06);
+  border-left: 3px solid var(--accent-strong);
+  border-radius: 4px;
+  color: var(--muted);
+  font-size: 0.88rem;
+  line-height: 1.45;
+}
+.modal-curve-annotation[hidden] { display: none; }
+.modal-curve-annotation .ann-shape {
+  color: var(--accent);
+  font-weight: 600;
+}
+
+/* #10 Shortcut legend popover + button */
+.shortcut-legend-btn {
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  border-radius: 50%;
+  border: 1px solid var(--border-strong);
+  background: var(--surface-2);
+  color: var(--muted);
+  font-size: 1rem;
+  font-weight: 700;
+  cursor: pointer;
+  line-height: 1;
+}
+.shortcut-legend-btn:hover,
+.shortcut-legend-btn[aria-expanded="true"] {
+  background: var(--accent);
+  color: var(--accent-ink);
+  border-color: var(--accent);
+}
+.shortcut-legend {
+  position: fixed;
+  top: calc(var(--header-h, 3.25rem) + 4rem);
+  right: 1.5rem;
+  z-index: 70;
+  background: var(--surface);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-sm);
+  padding: 1rem 1.1rem 0.85rem;
+  box-shadow: var(--shadow-lift);
+  width: min(320px, calc(100vw - 2rem));
+}
+.shortcut-legend[hidden] { display: none; }
+.shortcut-legend-title {
+  font-size: 0.9rem;
+  margin: 0 0 0.6rem;
+  color: var(--text);
+}
+.shortcut-legend-list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: grid;
+  gap: 0.4rem;
+  font-size: 0.85rem;
+  color: var(--muted);
+}
+.shortcut-legend-list li {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+.shortcut-legend-list kbd {
+  display: inline-block;
+  min-width: 1.4rem;
+  padding: 0.1rem 0.35rem;
+  text-align: center;
+  font-size: 0.8rem;
+  background: var(--surface-3);
+  border: 1px solid var(--border-strong);
+  border-radius: 4px;
+  color: var(--text);
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+.shortcut-legend-note {
+  margin: 0.7rem 0 0;
+  font-size: 0.75rem;
+  color: var(--muted-2);
+  line-height: 1.4;
+}
+@media (max-width: 600px) {
+  .shortcut-legend {
+    right: 0.75rem;
+    top: calc(var(--header-h, 3.25rem) + 3.5rem);
+  }
+}
+
+/* #2 Modal curve focus state for keyboard navigation */
+.modal-curve:focus {
+  outline: 2px solid var(--accent-strong);
+  outline-offset: 4px;
+  border-radius: 6px;
+}
+.modal-curve .curve-dots circle.is-active {
+  fill: var(--accent);
+  stroke: var(--accent-warm);
+  stroke-width: 2;
+  r: 7;
+}
+
+/* #9 Shape chip count: dim when showing intersection hover preview */
+.shape-chip.is-hover-intersection .shape-count {
+  background: var(--accent-soft);
+  color: var(--accent);
 }

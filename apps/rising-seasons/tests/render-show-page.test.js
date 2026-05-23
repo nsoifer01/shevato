@@ -62,10 +62,17 @@ test('renderShowPage emits TVSeries JSON-LD with aggregateRating', () => {
   assert.ok(html.includes('"ratingCount": 2615545'));
 });
 
-test('renderShowPage links to the IMDb canonical and the SPA', () => {
-  const html = renderShowPage(BREAKING_BAD);
+test('renderShowPage links to the IMDb canonical and the shape-filtered explorer', () => {
+  const html = renderShowPage({ ...BREAKING_BAD, dominantShape: 'rising', dominantShapeSlug: 'rising', relatedShows: [] });
   assert.ok(html.includes('https://www.imdb.com/title/tt0903747/'));
-  assert.ok(html.includes('/apps/rising-seasons/#show=tt0903747'));
+  // Primary CTA now deep-links to the shape filter, not a per-show hash
+  assert.ok(html.includes('/apps/rising-seasons/#shape=rising'));
+});
+
+test('renderShowPage CTA falls back when show has no shape', () => {
+  const html = renderShowPage({ ...BREAKING_BAD, dominantShape: null, dominantShapeSlug: null, relatedShows: [] });
+  assert.ok(html.includes('Browse seasons by rating shape'));
+  assert.ok(html.includes('href="/apps/rising-seasons/"'));
 });
 
 test('renderShowPage includes episode rows in a real HTML table', () => {
@@ -85,8 +92,8 @@ test('renderShowPage embeds a server-rendered SVG curve', () => {
 test('renderShowPage degrades gracefully without TMDB data', () => {
   const noTmdb = { ...BREAKING_BAD, poster: null, overview: null, language: null, providers: null, tmdbId: null };
   const html = renderShowPage(noTmdb);
-  // Falls back to the site logo for og:image
-  assert.ok(html.includes('og:image" content="https://shevato.com/images/full-logo.svg'));
+  // Falls back to the site OG card when the show has no TMDB poster
+  assert.ok(html.includes('og:image" content="https://shevato.com/images/og-card.png'));
   // Renders a placeholder, not a broken <img>
   assert.ok(html.includes('poster-placeholder'));
   // Does NOT include the TMDB sameAs reference
@@ -129,6 +136,42 @@ test('groupBySeries collapses seasons under a single series', () => {
   assert.equal(x.seasons.length, 2);
   // seasons sorted numerically
   assert.deepEqual(x.seasons.map((s) => s.season), [1, 2]);
+});
+
+test('renderShowPage header contains brand link and launch-app button pointing to /apps/rising-seasons/', () => {
+  const html = renderShowPage(BREAKING_BAD);
+  assert.ok(html.includes('class="brand"'));
+  assert.ok(html.includes('href="/apps/rising-seasons/" aria-label="Rising Seasons home"'));
+  assert.ok(html.includes('class="header-launch-btn"'));
+  // header launch button links to the base app URL, no hash fragment
+  const headerLaunchIdx = html.indexOf('class="header-launch-btn"');
+  const snippet = html.slice(headerLaunchIdx - 60, headerLaunchIdx + 80);
+  assert.ok(snippet.includes('href="/apps/rising-seasons/"'));
+});
+
+test('renderShowPage hero-actions has three buttons: shape CTA, app-btn, IMDb link', () => {
+  const html = renderShowPage({ ...BREAKING_BAD, dominantShape: 'rising', dominantShapeSlug: 'rising', relatedShows: [] });
+  // All three must be present
+  assert.ok(html.includes('class="primary-btn"'));
+  assert.ok(html.includes('class="app-btn"'));
+  assert.ok(html.includes('class="secondary-btn"'));
+  // app-btn links to the base app URL with no hash
+  const appBtnIdx = html.indexOf('class="app-btn"');
+  const appBtnSnippet = html.slice(appBtnIdx - 60, appBtnIdx + 80);
+  assert.ok(appBtnSnippet.includes('href="/apps/rising-seasons/"'));
+  // app-btn does NOT carry the shape hash (that's the primary-btn's job)
+  assert.ok(!appBtnSnippet.includes('#shape='));
+  // Order: primary-btn appears before app-btn, app-btn before secondary-btn
+  assert.ok(html.indexOf('class="primary-btn"') < html.indexOf('class="app-btn"'));
+  assert.ok(html.indexOf('class="app-btn"') < html.indexOf('class="secondary-btn"'));
+});
+
+test('renderShowPage app-btn is present even when show has no dominant shape', () => {
+  const html = renderShowPage({ ...BREAKING_BAD, dominantShape: null, dominantShapeSlug: null, relatedShows: [] });
+  assert.ok(html.includes('class="app-btn"'));
+  const appBtnIdx = html.indexOf('class="app-btn"');
+  const snippet = html.slice(appBtnIdx - 60, appBtnIdx + 80);
+  assert.ok(snippet.includes('href="/apps/rising-seasons/"'));
 });
 
 test('groupBySeries backfills series-level fields from any season', () => {
