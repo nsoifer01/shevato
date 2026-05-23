@@ -86,7 +86,7 @@
     <!-- Favicon -->
     <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>🏁</text></svg>">
     <link rel="apple-touch-icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><rect width=%22100%22 height=%22100%22 rx=%2220%22 fill=%22%23667eea%22/><text x=%2250%22 y=%2265%22 font-size=%2260%22 text-anchor=%22middle%22>🏁</text></svg>">
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" integrity="sha384-iw3OoTErCYJJB9mCa8LNS2hbsQ7M3C0EpIsO/H5+EGAkPGc6rk+V8i04oW/K5xq0" crossorigin="anonymous" referrerpolicy="no-referrer">
     <!-- Import all CSS modules -->
     <link rel="stylesheet" href="css/utilities.css">
     <link rel="stylesheet" href="css/base.css">
@@ -112,11 +112,9 @@
       <link rel="stylesheet" href="css/mario-kart-overrides.css">
     <!-- Visual refresh layer — must load last so it wins specificity ties. -->
     <link rel="stylesheet" href="css/refresh.css">
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js" integrity="sha384-bs/nf9FbdNouRbMiFcrcZfLXYPKiPaGVGplVbv7dLGECccEXDW+S3zjqSKR5ZEaD" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
-    <script src="https://apis.google.com/js/api.js"></script>
-    
     <!-- CRITICAL: Load immediate sync FIRST to catch all localStorage calls -->
     <script src="../../sync-system/sync-immediate.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js" integrity="sha384-bs/nf9FbdNouRbMiFcrcZfLXYPKiPaGVGplVbv7dLGECccEXDW+S3zjqSKR5ZEaD" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
 </head>
 <body class="mario-kart-app mario-kart-tracker">
     <!-- Sync status banner — only visible when offline (and briefly on recovery). Managed by assets/js/sync-status.js. -->
