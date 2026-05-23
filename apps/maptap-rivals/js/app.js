@@ -1284,7 +1284,7 @@
     if (state.seasons.length === 0) {
       body.appendChild(el('div', { class: 'empty-state seasons-empty' }, [
         el('p', {}, 'No seasons yet. Create your first season to start tracking a time-boxed challenge.'),
-        el('button', { type: 'button', class: 'btn btn-primary', style: 'margin-top:.75rem', onclick: openSeasonModal }, '+ Create your first season'),
+        el('button', { type: 'button', class: 'btn btn-ghost', style: 'margin-top:.75rem', onclick: openSeasonModal }, '+ Create your first season'),
       ]));
       return;
     }
@@ -2320,7 +2320,12 @@
       persistSelected();
     }
     if (!rival) {
-      headerHost.innerHTML = '<p class="empty-state" style="margin:0">Add a rival to see detailed stats.</p>';
+      headerHost.innerHTML = '';
+      const emptyWrap = el('div', { class: 'empty-state', style: 'margin:0' }, [
+        el('p', {}, 'Add a rival to see detailed stats.'),
+        el('button', { type: 'button', class: 'btn btn-primary', style: 'margin-top:.75rem', onclick: () => openRivalModal(null) }, '+ Add rival'),
+      ]);
+      headerHost.appendChild(emptyWrap);
       cardsHost.innerHTML = '';
       calloutsHost.innerHTML = '';
       tableBody.innerHTML = '';
@@ -2510,6 +2515,10 @@
       legendEl.innerHTML = '';
       return;
     }
+    // Reveal the section now (instead of at the end) so we can measure the
+    // wrap's real clientWidth below. Hidden elements report clientWidth = 0,
+    // which would force the cell-size computation back to the minimum.
+    section.hidden = false;
 
     const today = todayISO();
     const maxStartISO = addDaysISO(today, -(18 * 30 + 15)); // ~18 months back
@@ -2576,8 +2585,21 @@
       }
     }
 
-    const CELL = 11; // px
-    const GAP  = 2;  // px
+    // Cell size: floor is 11px desktop / 13px mobile, but grow to fill the
+    // wrap when there's extra horizontal space. Without this, a long-running
+    // 78-week grid (~18 months) at 11 px × 78 = 858 px hugs the left of a
+    // 1200 px panel. Capped at maxCell so a brand-new rival with only a few
+    // weeks of history doesn't get a calendar of huge chunky squares.
+    const GAP = 2; // px
+    const minCell = window.innerWidth <= 720 ? 13 : 11;
+    const maxCell = window.innerWidth <= 720 ? 18 : 16;
+    const wrapEl = gridEl.parentElement;
+    const availableWidth = wrapEl ? Math.max(0, wrapEl.clientWidth) : 0;
+    let CELL = minCell;
+    if (availableWidth > 0 && weeks.length > 0) {
+      const fitted = Math.floor((availableWidth - GAP * (weeks.length - 1)) / weeks.length);
+      CELL = Math.min(maxCell, Math.max(minCell, fitted));
+    }
     const colUnit = CELL + GAP;
 
     // Month labels row
@@ -2651,8 +2673,6 @@
         el('span', { class: 'heatmap-legend-lbl' }, label),
       ]));
     }
-
-    section.hidden = false;
   }
 
   function renderContinentSection(s) {
@@ -2878,9 +2898,18 @@
       }
       const tr = resultOf(g);
       const total = getMyTotal(g);
+      const theirTotal = getTheirTotal(g);
+      // Color = did you win this game (green) or lose (red). The total number
+      // itself can be high and still be red — what matters is whether the rival
+      // scored higher. The "W/L/T" letter makes that explicit so the color
+      // isn't read as "is my score high?".
       row.appendChild(el('span', {
         class: 'heatmap-totalcol ' + (tr === 'W' ? 'win' : tr === 'L' ? 'loss' : 'tie'),
-      }, String(total)));
+        title: `You ${total} vs ${s.rival.name} ${theirTotal} — ${tr === 'W' ? 'Win' : tr === 'L' ? 'Loss' : 'Tie'}`,
+      }, [
+        el('span', { class: 'heatmap-total-num' }, String(total)),
+        el('span', { class: 'heatmap-total-result' }, tr),
+      ]));
       wrap.appendChild(row);
     });
   }
@@ -3524,8 +3553,8 @@
         }
         const cell = computeMatrixCell(row, col, byRival);
         if (!cell || cell.games === 0) {
-          tr.appendChild(el('td', { class: 'matrix-cell matrix-empty' }, [
-            el('span', { class: 'matrix-record' }, 'no games'),
+          tr.appendChild(el('td', { class: 'matrix-cell matrix-empty matrix-cell-empty' }, [
+            el('span', {}, 'no games'),
           ]));
           return;
         }
@@ -4884,6 +4913,7 @@
 
     // add rival
     $('#add-rival-btn').addEventListener('click', () => openRivalModal(null));
+    $('#dash-empty-add-btn').addEventListener('click', () => openRivalModal(null));
 
     // Seasons
     $('#new-season-btn').addEventListener('click', openSeasonModal);
