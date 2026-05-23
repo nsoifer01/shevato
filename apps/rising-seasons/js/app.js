@@ -2249,7 +2249,7 @@ function drawCurveAnnotations(svg, episodes, shapes) {
 // differ on mobile, which would stretch inline <text> into the distorted
 // "huge wide digits over the chart" look the legacy implementation had.
 // HTML labels stay at exactly the CSS font-size on every viewport.
-function drawMiniAxisLabels(svg, ratings /*, padY, W, H */) {
+function drawMiniAxisLabels(svg, ratings, padY, W, H) {
   const wrap = svg.parentElement && svg.parentElement.classList.contains('curve-wrap')
     ? svg.parentElement
     : null;
@@ -2261,15 +2261,27 @@ function drawMiniAxisLabels(svg, ratings /*, padY, W, H */) {
   const max = Math.max(...ratings);
   if (max - min < 0.3) return;
 
+  // Place each label at the actual y of its value on the curve. drawCurve
+  // pads the Y range (lo = min - 0.3, hi = max + 0.3) so the line doesn't
+  // touch the chart edges; positioning labels at the wrap's edges left a
+  // visible gap between "7.5" and where 7.5 actually lives on the curve.
+  const lo = Math.max(0, min - 0.3);
+  const hi = Math.min(10, max + 0.3);
+  const span = Math.max(0.1, hi - lo);
+  const yMaxPct = ((padY + (1 - (max - lo) / span) * (H - 2 * padY)) / H) * 100;
+  const yMinPct = ((padY + (1 - (min - lo) / span) * (H - 2 * padY)) / H) * 100;
+
   overlay = document.createElement('div');
   overlay.className = 'spark-axis-labels';
   overlay.setAttribute('aria-hidden', 'true');
   const top = document.createElement('span');
   top.className = 'spark-axis-label spark-axis-label-top';
   top.textContent = max.toFixed(1);
+  top.style.top = `${yMaxPct.toFixed(2)}%`;
   const bot = document.createElement('span');
   bot.className = 'spark-axis-label spark-axis-label-bot';
   bot.textContent = min.toFixed(1);
+  bot.style.top = `${yMinPct.toFixed(2)}%`;
   overlay.append(top, bot);
   wrap.appendChild(overlay);
 }
