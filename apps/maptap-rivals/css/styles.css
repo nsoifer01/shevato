@@ -1562,6 +1562,9 @@ body.maptap-rivals-app button {
   grid-template-columns: 1fr 1fr;
   gap: 0.85rem;
   margin-bottom: 1.25rem;
+  /* Don't stretch shorter cards (e.g. the calendar heatmap) to match
+     taller siblings — that leaves dead space inside the shorter card. */
+  align-items: start;
 }
 .chart-card {
   background: var(--surface);
@@ -1809,32 +1812,20 @@ body.maptap-rivals-app button {
 #heatmap-section[hidden] { display: none; }
 
 /* The heatmap lives inside a .chart-card slot in the round-by-round
-   charts-grid. heatmap-card-body fills the card so the cell-size auto-fit
-   (in JS) gets a meaningful clientWidth to size cells against. The scroll
-   wrap inside handles long histories that overflow the card horizontally. */
+   charts-grid. The grid below fills the card width via `1fr` columns and
+   `aspect-ratio: 1` cells; the body just stacks header + grid + legend.
+   No min-height — the card sizes to its content (the parent grid sets
+   align-items: start so it doesn't stretch to match the sibling card). */
 .heatmap-card-body {
   display: flex;
   flex-direction: column;
   gap: 0.55rem;
-  min-height: 240px;
 }
 
 .heatmap-scroll-wrap {
-  overflow-x: auto;
   padding-bottom: 4px;
-  /* Left-anchor the grid. When the calendar is short (few weeks of history)
-     centering left it visually lost in a wide panel; anchoring to the left
-     keeps it next to the section heading. Long calendars overflow into
-     horizontal scroll — JS scrolls to the right edge after render so the
-     most recent months are visible by default. */
-  display: flex;
-  flex-direction: column;
-  align-items: flex-start;
-  flex: 1;
-}
-.heatmap-scroll-wrap > .heatmap-month-labels,
-.heatmap-scroll-wrap > .heatmap-grid {
-  flex-shrink: 0;
+  /* Grid uses 1fr columns + width: 100%, so it always fills the wrap.
+     No scroll, no flex centering needed. */
 }
 
 .heatmap-cell {
@@ -1867,12 +1858,17 @@ body.maptap-rivals-app button {
   color: var(--muted);
 }
 
-/* Calendar heatmap cells fill their grid cell (which JS sizes dynamically to
-   fit the container). Scoped to #heatmap-grid so legend dots and other
-   contexts keep the base 11px square. */
+/* Calendar heatmap cells stretch to fill their `1fr` grid column (JS sets
+   `grid-template-columns: repeat(N, 1fr)` and `width: 100%` on the grid).
+   `aspect-ratio: 1 / 1` keeps each cell square so row height follows column
+   width — no JS measurement needed and the grid fills the card's full width.
+   Scoped to #heatmap-grid so legend dots and round-by-round cells keep
+   their own sizing. */
 #heatmap-grid .heatmap-cell {
   width: 100%;
-  height: 100%;
+  height: auto;
+  min-width: 0;
+  aspect-ratio: 1 / 1;
 }
 
 /* Heatmap: rows = games, cols = rounds. Cell color = my raw score 0-100. */
@@ -2146,6 +2142,18 @@ body.maptap-rivals-app button {
   background: rgba(255, 255, 255, 0.04);
   color: var(--tie);
   border-color: var(--border);
+}
+/* Only one side played — no W/L semantics, render as a quiet token. */
+.result-badge.NA {
+  background: rgba(255, 255, 255, 0.02);
+  color: var(--muted);
+  border-color: var(--border);
+}
+.row-one-sided {
+  opacity: 0.78;
+}
+.row-one-sided td:first-child {
+  font-style: italic;
 }
 
 .delta-pos { color: var(--good); font-variant-numeric: tabular-nums; font-weight: 600; }
