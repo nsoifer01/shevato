@@ -572,17 +572,19 @@
           <span class="card-genres"></span>
         </div>
         <div class="card-shapes"></div>
+      </div>
+      <div class="curve-wrap">
         <svg class="curve" viewBox="0 0 300 80" preserveAspectRatio="none" aria-hidden="true">
           <path class="curve-area" />
           <path class="curve-line" />
           <g class="curve-dots"></g>
         </svg>
-        <div class="card-stats">
-          <span class="stat-climb"></span>
-          <span class="stat-avg"></span>
-          <span class="stat-runtime"></span>
-          <span class="stat-votes"></span>
-        </div>
+      </div>
+      <div class="card-stats">
+        <span class="stat-climb"></span>
+        <span class="stat-avg"></span>
+        <span class="stat-runtime"></span>
+        <span class="stat-votes"></span>
       </div>
     </article>
   </template>
@@ -608,10 +610,12 @@
           <span class="stat-votes"></span>
         </div>
       </div>
-      <svg class="row-curve" viewBox="0 0 200 56" preserveAspectRatio="none" aria-hidden="true">
-        <path class="curve-area" />
-        <path class="curve-line" />
-      </svg>
+      <div class="curve-wrap row-curve-wrap">
+        <svg class="row-curve" viewBox="0 0 200 56" preserveAspectRatio="none" aria-hidden="true">
+          <path class="curve-area" />
+          <path class="curve-line" />
+        </svg>
+      </div>
       <button type="button" class="watch-toggle row-watch" aria-pressed="false" aria-label="Mark as watched" title="Mark as watched">
         <span class="watch-icon" aria-hidden="true">✓</span>
       </button>
