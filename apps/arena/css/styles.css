@@ -304,7 +304,7 @@ body.brain-arena-app button {
 
 .view-tabs {
   display: inline-flex;
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
   gap: 0.4rem;
   justify-content: center;
   align-items: center;
@@ -375,6 +375,10 @@ body.brain-arena-app button {
     0 0 28px rgba(168, 85, 247, 0.30);
 }
 
+@media (max-width: 480px) {
+  .view-tab, .view-tab:hover { padding: 0.5rem 0.65rem; font-size: 0.82rem; gap: 0.3rem; }
+}
+
 .view { display: none; }
 .view.is-active { display: block; }
 
@@ -404,7 +408,7 @@ body.brain-arena-app button {
 .auth-gate .link-btn {
   background: none;
   border: none;
-  color: var(--accent, #6aa7ff);
+  color: var(--accent);
   text-decoration: underline;
   cursor: pointer;
   font: inherit;
@@ -412,12 +416,12 @@ body.brain-arena-app button {
 }
 .auth-gate .link-btn:hover,
 .auth-gate .link-btn:focus-visible {
-  color: var(--accent-strong, #8bbcff);
+  color: var(--cyan-2);
 }
 
 .lobby-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
   gap: 1.4rem;
   /* Let each card size to its own content height. Without this, the
      Join card stretches to match the much taller Create card and
@@ -629,7 +633,7 @@ select option { background: var(--surface); color: var(--text); }
   outline-offset: 3px;
 }
 
-.lobby-cta { align-self: stretch; height: 42px; }
+.lobby-cta { align-self: stretch; --ctrl-h: 42px; }
 
 #join-code {
   text-transform: uppercase;
@@ -642,6 +646,7 @@ select option { background: var(--surface); color: var(--text); }
 
 .join-error {
   margin: 0;
+  min-height: 1.2rem;
   color: var(--bad);
   font-size: 0.85rem;
 }
@@ -1063,8 +1068,8 @@ select option { background: var(--surface); color: var(--text); }
 .globe-drop-prompt-row {
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  gap: 1rem;
+  justify-content: flex-start;
+  gap: 0.75rem;
   margin: 0 0 1.1rem;
   padding: 1.3rem 1.5rem;
   /* scrollIntoView({block:'start'}) anchors element top to viewport
@@ -1179,6 +1184,15 @@ select option { background: var(--surface); color: var(--text); }
   gap: 0.7rem;
   margin-top: 0.7rem;
   flex-wrap: wrap;
+  overflow: hidden;
+  max-height: 200px;
+  visibility: visible;
+  transition: max-height 0.28s ease, visibility 0.28s ease, margin-top 0.28s ease;
+}
+.lobby-solo-actions.is-hidden {
+  max-height: 0;
+  visibility: hidden;
+  margin-top: 0;
 }
 /* Gradient-bordered ghost — transparent fill on a dark surface, with
    the border itself being a cyan→violet gradient via double-bg trick
@@ -1724,8 +1738,9 @@ select option { background: var(--surface); color: var(--text); }
 }
 /* Hide the whole stack until a pin is placed. The Clear button is the
    pin-placed signal (hidden becomes false on pin-drop); when it's
-   absent, the entire FAB stack collapses. */
-.globe-drop-fab-stack:not(:has(#globe-drop-clear-btn:not([hidden]))) {
+   absent, the entire FAB stack collapses.
+   .fab-pinned is a JS fallback class for browsers that don't support :has(). */
+.globe-drop-fab-stack:not(:has(#globe-drop-clear-btn:not([hidden]))):not(.fab-pinned) {
   display: none;
 }
 @keyframes globe-fab-in {
@@ -1857,7 +1872,7 @@ select option { background: var(--surface); color: var(--text); }
   /* Add bottom padding to the map wrap so the fixed pill doesn't
      cover the bottom of the globe on short screens. */
   .globe-drop-map-wrap {
-    padding-bottom: 4rem;
+    padding-bottom: calc(4rem + env(safe-area-inset-bottom, 0px));
   }
 }
 
@@ -1870,6 +1885,9 @@ select option { background: var(--surface); color: var(--text); }
    player score chips. Sits next to / under the cumulative live
    standings — same visual family, muted treatment so it reads as
    reference detail not the headline. */
+.rounds-history-board:not([hidden]) {
+  animation: stage-fade 0.35s ease-out both;
+}
 .rounds-history-board {
   margin: 0 0 1.6rem;
   padding: 0.9rem 1.1rem 0.95rem;
@@ -1915,7 +1933,7 @@ select option { background: var(--surface); color: var(--text); }
      scans vertically without zig-zagging. Narrow viewports collapse
      to a stacked layout via the media query below. */
   display: grid;
-  grid-template-columns: auto 14ch 1fr;
+  grid-template-columns: auto minmax(0, 14ch) 1fr;
   align-items: center;
   gap: 0.55rem 0.75rem;
   padding: 0.4rem 0.6rem;
@@ -2039,7 +2057,7 @@ select option { background: var(--surface); color: var(--text); }
     0 1px 0 rgba(255, 255, 255, 0.04) inset,
     0 24px 60px rgba(2, 6, 23, 0.6),
     0 0 32px rgba(34, 211, 238, 0.10);
-  z-index: 50;
+  z-index: 210;
   animation: ba-chat-in 240ms cubic-bezier(0.22, 1, 0.36, 1);
   overflow: hidden;
 }
@@ -2070,6 +2088,22 @@ select option { background: var(--surface); color: var(--text); }
   letter-spacing: 0.01em;
   color: var(--text);
 }
+.room-chat-game-live {
+  margin: 0;
+  padding: 0.4rem 0.95rem;
+  background: rgba(34, 211, 238, 0.08);
+  border-bottom: 1px solid rgba(34, 211, 238, 0.18);
+  color: var(--cyan-2);
+  font-size: 0.78rem;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  animation: chat-live-pulse 2s ease-in-out infinite;
+}
+@keyframes chat-live-pulse {
+  0%, 100% { opacity: 1; }
+  50%       { opacity: 0.6; }
+}
+
 .room-chat-list {
   list-style: none;
   margin: 0;
@@ -2455,7 +2489,7 @@ select option { background: var(--surface); color: var(--text); }
 }
 @media (max-width: 540px) {
   .h2h-picker { grid-template-columns: 1fr; }
-  .h2h-versus { text-align: center; padding: 0.15rem 0; }
+  .h2h-versus { text-align: center; padding: 0.15rem 0; width: 58px; margin: 0 auto; }
   .h2h-result { grid-template-columns: 1fr; }
   .h2h-record-pill { order: -1; }   /* lifetime pill above the cards on mobile */
 }
@@ -2574,15 +2608,17 @@ select option { background: var(--surface); color: var(--text); }
   flex: 1;
   min-width: 0;
 }
-.globe-drop-reveal-distance strong { color: var(--accent-2); }
-.globe-drop-reveal-distance.is-pulse strong {
+.globe-drop-reveal-distance strong { color: var(--violet-2); }
+.globe-drop-reveal-distance strong {
   display: inline-block;
+}
+.globe-drop-reveal-distance.is-pulse strong {
   animation: gd-score-pulse 700ms cubic-bezier(0.18, 0.84, 0.32, 1) both;
 }
 @keyframes gd-score-pulse {
   0%   { transform: translateY(8px) scale(0.85); opacity: 0; }
-  35%  { transform: translateY(-2px) scale(1.35); opacity: 1; color: var(--accent-2); }
-  60%  { transform: translateY(0) scale(1.08); }
+  35%  { transform: translateY(-2px) scale(1.15); opacity: 1; }
+  60%  { transform: translateY(0) scale(1.05); }
   100% { transform: translateY(0) scale(1); }
 }
 
@@ -3149,6 +3185,10 @@ select option { background: var(--surface); color: var(--text); }
   padding: 0.05rem 0.4rem;
   box-shadow: 0 0 10px rgba(16, 185, 129, 0.18) inset;
 }
+/* When both me + pending: remove the violet border (the cyan shimmer is enough). */
+.mini-board-row.is-me.is-pending {
+  border-left-color: transparent;
+}
 /* Settled state removes the pending pulse cleanly. */
 .mini-board-row.is-answered.is-pending {
   border-left-color: transparent;
@@ -3215,6 +3255,8 @@ select option { background: var(--surface); color: var(--text); }
     border-left: 0;
     border-top: 1px solid rgba(148, 163, 184, 0.10);
   }
+  /* When 5+ players, save space: hide the name, show rank + score only. */
+  .mini-board-list.is-crowded .mini-board-name { display: none; }
 }
 
 /* ---------- Stage: end ---------- */
@@ -3991,6 +4033,9 @@ select option { background: var(--surface); color: var(--text); }
      rooms overflow on narrow viewports. The mask is a no-op when
      nothing overflows — at desktop widths the table fits and no
      fade is visible. */
+  /* Mask applied only when content overflows (class set by JS). */
+}
+.end-recap-table-wrap.has-overflow {
   -webkit-mask-image: linear-gradient(90deg, #000 0, #000 calc(100% - 48px), transparent 100%);
           mask-image: linear-gradient(90deg, #000 0, #000 calc(100% - 48px), transparent 100%);
 }
@@ -4087,7 +4132,7 @@ select option { background: var(--surface); color: var(--text); }
 }
 .recap-score-meta {
   display: block;
-  font-family: var(--font);
+  font-family: inherit;
   font-weight: 500;
   font-size: 0.72rem;
   color: var(--muted);
@@ -4784,8 +4829,8 @@ body.premium-disabled [data-action="open-premium"] { display: none !important; }
   position: absolute;
   top: 0.6rem;
   right: 0.6rem;
-  width: 26px;
-  height: 26px;
+  width: 36px;
+  height: 36px;
   padding: 0;
   border-radius: 6px;
   border: 0;
@@ -4845,6 +4890,18 @@ body.premium-disabled [data-action="open-premium"] { display: none !important; }
 }
 .premium-modal-price strong { font-size: 1.15rem; }
 
+/* Focus-visible outlines for interactive elements missing them */
+.room-code-copy:focus-visible,
+.game-type-btn:focus-visible,
+.pick-cat-btn:focus-visible,
+.answer-btn:focus-visible,
+.globe-drop-ready-btn:focus-visible,
+.room-chat-quick-btn:focus-visible,
+.modal-close:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
 /* ---------- Responsive ---------- */
 
 @media (max-width: 540px) {
@@ -4856,4 +4913,11 @@ body.premium-disabled [data-action="open-premium"] { display: none !important; }
   .game-timer { width: 54px; height: 54px; }
   .game-timer-num { font-size: 0.95rem; }
   .question-card { padding: 1.1rem 1rem; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+  }
 }
