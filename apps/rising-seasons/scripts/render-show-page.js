@@ -7,6 +7,11 @@ const { renderMoreFooter } = require('./render-footer.js');
 const SITE = 'https://shevato.com';
 const TMDB_POSTER = 'https://image.tmdb.org/t/p/w500';
 
+function shapeToSlug(shape) {
+  if (!shape) return '';
+  return shape.toLowerCase().replace(/\s+/g, '-').replace(/[^a-z0-9-]/g, '');
+}
+
 // Shape descriptions doubled as alt-text for the curve and as
 // human-readable copy in the season header. Mirrors the shape rules
 // documented in apps/rising-seasons/README.md.
@@ -26,7 +31,7 @@ const SHAPE_LABELS = {
 // Build a single static HTML page for one TV series, given every season's
 // data (already grouped from data.json's flat `matches` array). Returns a
 // complete HTML string.
-function renderShowPage({ seriesId, title, year, type, genres, seriesRating, seriesVotes, poster, overview, language, providers, tmdbId, seasons, builtAt }) {
+function renderShowPage({ seriesId, title, year, type, genres, seriesRating, seriesVotes, poster, overview, language, providers, tmdbId, seasons, builtAt, dominantShape, dominantShapeSlug, relatedShows }) {
   const path = `/apps/rising-seasons/shows/${showPath(title, seriesId)}/`;
   const canonical = `${SITE}${path}`;
   const numberOfSeasons = seasons.length;
@@ -36,7 +41,7 @@ function renderShowPage({ seriesId, title, year, type, genres, seriesRating, ser
   const description = buildDescription(title, year, numberOfSeasons, seriesRating, seriesVotes, cleanOverview);
 
   const posterUrl = poster ? `${TMDB_POSTER}${poster}` : null;
-  const ogImage = posterUrl || `${SITE}/images/full-logo.svg`;
+  const ogImage = posterUrl || `${SITE}/images/og-card.png`;
 
   return `<!DOCTYPE html>
 <html lang="en">
@@ -95,11 +100,14 @@ ${jsonLd(buildTvSeriesSchema({ seriesId, title, year, canonical, posterUrl, clea
     <a class="brand" href="/apps/rising-seasons/" aria-label="Rising Seasons home">
       <span aria-hidden="true">📈</span> Rising Seasons
     </a>
-    <nav class="page-nav" aria-label="Primary">
-      <a href="/apps/rising-seasons/">Explorer</a>
-      <a href="/apps/rising-seasons/shows/">All shows</a>
-      <a href="/apps.html">More apps</a>
-    </nav>
+    <div class="page-header-right">
+      <nav class="page-nav" aria-label="Primary">
+        <a href="/apps/rising-seasons/">Explorer</a>
+        <a href="/apps/rising-seasons/shows/">All shows</a>
+        <a href="/apps.html">More apps</a>
+      </nav>
+      <a class="header-launch-btn" href="/apps/rising-seasons/">Launch app →</a>
+    </div>
   </header>
 
   <main id="main" class="show-page">
@@ -124,9 +132,11 @@ ${jsonLd(buildTvSeriesSchema({ seriesId, title, year, canonical, posterUrl, clea
           ${type ? `<div><dt>Type</dt><dd>${escapeHtml(formatType(type))}</dd></div>` : ''}
         </dl>
         <div class="hero-actions">
-          <a class="primary-btn" href="/apps/rising-seasons/#show=${seriesId}">Open in interactive explorer →</a>
+          ${renderPrimaryCtaBtn(dominantShape, dominantShapeSlug)}
+          <a class="app-btn" href="/apps/rising-seasons/">Open Rising Seasons app →</a>
           <a class="secondary-btn" href="https://www.imdb.com/title/${seriesId}/" rel="noopener" target="_blank">View on IMDb</a>
         </div>
+        ${renderFreshnessLine(builtAt, seasons.length)}
       </div>
     </section>
 
@@ -135,6 +145,8 @@ ${jsonLd(buildTvSeriesSchema({ seriesId, title, year, canonical, posterUrl, clea
       ${seasons.map((s) => renderSeasonSection(s, seriesId)).join('\n')}
     </section>
 
+    ${renderRelatedShows(relatedShows, dominantShape, dominantShapeSlug)}
+
     <section class="page-footer-meta">
       <p class="attribution">Episode ratings and vote counts from <a href="https://www.imdb.com/title/${seriesId}/" rel="noopener" target="_blank">IMDb</a>${tmdbId ? `. Poster, overview, and streaming data from <a href="https://www.themoviedb.org/tv/${tmdbId}" rel="noopener" target="_blank">TMDB</a>` : ''}. Data refreshed ${builtAt ? new Date(builtAt).toISOString().slice(0, 10) : 'weekly'}.</p>
       <p>Want to discover more shows by their rating shape? <a href="/apps/rising-seasons/">Browse Rising Seasons →</a></p>
@@ -142,6 +154,7 @@ ${jsonLd(buildTvSeriesSchema({ seriesId, title, year, canonical, posterUrl, clea
   </main>
 
   ${renderMoreFooter()}
+  ${renderStickyBanner(title, dominantShape, dominantShapeSlug)}
 </body>
 </html>
 `;
@@ -155,10 +168,10 @@ function renderHeroPoster(posterUrl, title) {
 }
 
 function renderSeasonSection(season, seriesId) {
-  const shapes = (season.shapes || []).map((s) => SHAPE_LABELS[s] || s);
-  const shapesHtml = shapes.length
-    ? `<ul class="season-shapes" aria-label="Season shape classifications">${shapes
-        .map((s) => `<li class="shape-badge">${escapeHtml(s)}</li>`)
+  const shapeEntries = (season.shapes || []).map((s) => ({ label: SHAPE_LABELS[s] || s, slug: shapeToSlug(s) }));
+  const shapesHtml = shapeEntries.length
+    ? `<ul class="season-shapes" aria-label="Season shape classifications">${shapeEntries
+        .map((e) => `<li><a class="shape-badge" href="/apps/rising-seasons/#shape=${escapeHtml(e.slug)}" target="_blank" rel="noopener">${escapeHtml(e.label)}</a></li>`)
         .join('')}</ul>`
     : '';
   const curveSvg = renderCurve(season.episodes, { width: 720, height: 220 });
@@ -184,6 +197,80 @@ function renderSeasonSection(season, seriesId) {
           </tbody>
         </table>
       </article>`;
+}
+
+function renderPrimaryCtaBtn(dominantShape, dominantShapeSlug) {
+  if (dominantShape && dominantShapeSlug) {
+    const label = SHAPE_LABELS[dominantShape] || dominantShape;
+    return `<a class="primary-btn" href="/apps/rising-seasons/#shape=${escapeHtml(dominantShapeSlug)}">Browse all ${escapeHtml(label)} seasons in the explorer →</a>`;
+  }
+  return `<a class="primary-btn" href="/apps/rising-seasons/">Browse seasons by rating shape →</a>`;
+}
+
+function renderFreshnessLine(builtAt, seasonCount) {
+  const dateStr = builtAt ? new Date(builtAt).toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' }) : null;
+  const text = dateStr
+    ? `Ratings refreshed ${escapeHtml(dateStr)} · ${seasonCount} season${seasonCount === 1 ? '' : 's'} indexed`
+    : `Data refreshed weekly · ${seasonCount} season${seasonCount === 1 ? '' : 's'} indexed`;
+  return `<p class="hero-freshness">${text}</p>`;
+}
+
+function renderRelatedShows(relatedShows, dominantShape, dominantShapeSlug) {
+  if (!relatedShows || relatedShows.length === 0 || !dominantShape) return '';
+  const shapeLabel = SHAPE_LABELS[dominantShape] || dominantShape;
+  const cards = relatedShows.map((s) => {
+    const posterEl = s.poster
+      ? `<img class="rec-poster" src="${escapeHtml(`https://image.tmdb.org/t/p/w185${s.poster}`)}" alt="${escapeHtml(`${s.title} poster`)}" width="92" height="138" loading="lazy" decoding="async">`
+      : `<div class="rec-poster rec-poster-placeholder" aria-hidden="true"></div>`;
+    const badge = s.dominantShape
+      ? `<span class="shape-badge rec-shape-badge">${escapeHtml(SHAPE_LABELS[s.dominantShape] || s.dominantShape)}</span>`
+      : '';
+    const yearLabel = s.year ? ` <span class="rec-year">(${s.year})</span>` : '';
+    return `<a class="rec-card" href="/apps/rising-seasons/shows/${escapeHtml(s.slug)}/">
+        ${posterEl}
+        <div class="rec-info">
+          <span class="rec-title">${escapeHtml(s.title)}${yearLabel}</span>
+          ${badge}
+        </div>
+      </a>`;
+  }).join('\n');
+  return `<section class="related-shows" aria-labelledby="related-heading">
+    <h2 id="related-heading">Shows like this</h2>
+    <div class="rec-strip">${cards}</div>
+    <p class="rec-see-all"><a href="/apps/rising-seasons/#shape=${escapeHtml(dominantShapeSlug)}">See all ${escapeHtml(shapeLabel)} seasons in the explorer →</a></p>
+  </section>`;
+}
+
+function renderStickyBanner(title, dominantShape, dominantShapeSlug) {
+  if (!dominantShape || !dominantShapeSlug) return '';
+  const shapeLabel = SHAPE_LABELS[dominantShape] || dominantShape;
+  const link = `/apps/rising-seasons/#shape=${dominantShapeSlug}`;
+  return `<div class="sticky-cta-banner" id="stickyCta" hidden aria-live="polite">
+    <div class="sticky-cta-inner">
+      <span class="sticky-cta-title">${escapeHtml(title)}</span>
+      <span class="shape-badge sticky-cta-badge">${escapeHtml(shapeLabel)}</span>
+      <a class="primary-btn sticky-cta-btn" href="${escapeHtml(link)}">Explore by shape in the app</a>
+      <button type="button" class="sticky-cta-close" aria-label="Dismiss banner" onclick="sessionStorage.setItem('rs-cta-banner-dismissed','1');document.getElementById('stickyCta').hidden=true;document.body.style.paddingBottom=''">×</button>
+    </div>
+  </div>
+  <script>
+  (function () {
+    if (sessionStorage.getItem('rs-cta-banner-dismissed') === '1') return;
+    var banner = document.getElementById('stickyCta');
+    var hero = document.querySelector('.show-hero');
+    if (!banner || !hero) return;
+    var shown = false;
+    function check() {
+      if (!shown && window.scrollY > hero.offsetHeight) {
+        shown = true;
+        banner.hidden = false;
+        document.body.style.paddingBottom = banner.offsetHeight + 'px';
+      }
+    }
+    window.addEventListener('scroll', check, { passive: true });
+    check();
+  })();
+  </script>`;
 }
 
 function buildDescription(title, year, n, rating, votes, overview) {
@@ -254,9 +341,6 @@ function buildTvSeriesSchema({ seriesId, title, year, canonical, posterUrl, clea
 }
 
 function jsonLd(obj) {
-  // Escape `</` so a hostile title containing `</script>` cannot break out
-  // of the surrounding <script type="application/ld+json"> tag. The `\/`
-  // is valid in JSON and round-trips back to `/` when parsed.
   return JSON.stringify(obj, null, 2)
     .replace(/<\/(script|style)/gi, '<\\/$1')
     .split('\n')
@@ -273,4 +357,4 @@ function escapeHtml(s) {
     .replace(/'/g, '&#39;');
 }
 
-module.exports = { renderShowPage, escapeHtml, buildDescription, SITE };
+module.exports = { renderShowPage, escapeHtml, buildDescription, shapeToSlug, SITE };

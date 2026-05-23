@@ -1,0 +1,278 @@
+# Rising Seasons → Plex + Kometa
+
+Four ways Rising Seasons plugs into a Plex + Kometa stack. The
+exports under `apps/rising-seasons/exports/` are produced by
+`npm run export:rising-seasons` and committed alongside `data.json`, so the
+NAS side can pull them directly from GitHub raw URLs without running the
+repo locally.
+
+```
+exports/
+├── kometa/
+│   ├── rising.yml, slow-burn.yml, big-finale.yml, …    ← Plex collections
+│   └── season-overlays.yml                              ← season-poster badges
+└── ids/
+    └── rising.txt, slow-burn.txt, …                     ← MDBList ID lists
+```
+
+The "watch next" CLI (`scripts/watch-next.js`) queries your Plex server live
+and doesn't write any files.
+
+**End users don't need to clone this repo.** Point Kometa at the raw GitHub
+URLs, or open the browser UI to pick the shapes you want and download the
+YAML directly.
+
+---
+
+## Browser UI
+
+Open `https://shevato.com/apps/rising-seasons/kometa/` (or
+`apps/rising-seasons/kometa/index.html` locally). Pick which shapes to
+include, adjust the confidence floor, preview the YAML live, and copy or
+download. The UI runs entirely client-side using the same
+`integrations-lib.js` that powers the static exports.
+
+---
+
+## Regenerating the static exports
+
+```bash
+npm run build:rising-seasons       # only if data.json changed
+npm run export:rising-seasons      # always
+```
+
+Tunables:
+
+| Env var | Default | Meaning |
+|---|---|---|
+| `RS_CONFIDENCE_FLOOR` | `0.35` | Drop matches whose per-shape confidence is below this. |
+| `RS_MIN_SERIES` | `3` | Skip Kometa collections that would have fewer than this many series. |
+
+---
+
+## Kometa: per-shape collections
+
+`exports/kometa/<shape>.yml` — one Kometa collection per shape, sourced by
+TMDB ID (`tmdb_show:`) or TVDB ID (`tvdb_show:`).
+
+### Test on your NAS
+
+1. **Copy the YAMLs to your Kometa config directory.** From the project root:
+
+   ```bash
+   scp apps/rising-seasons/exports/kometa/*.yml \
+       <NAS-USER>@<NAS-HOST>:/path/to/kometa/config/rising-seasons/
+   ```
+
+   Or fetch them straight from GitHub raw on the NAS:
+
+   ```bash
+   mkdir -p /path/to/kometa/config/rising-seasons
+   cd /path/to/kometa/config/rising-seasons
+   for f in rising slow-burn big-finale rebound mid-peak u-shaped \
+            saved-best-for-last front-loaded declining bad-finale \
+            season-overlays; do
+     wget "https://raw.githubusercontent.com/nsoifer01/shevato/master/apps/rising-seasons/exports/kometa/${f}.yml"
+   done
+   ```
+
+2. **Reference them from your `config.yml`** under the `TV Shows` library's
+   `collection_files`:
+
+   ```yaml
+   libraries:
+     TV Shows:
+       collection_files:
+         - file: config/tv_shows_collections.yml          # your existing one
+         - file: config/rising-seasons/rising.yml
+         - file: config/rising-seasons/slow-burn.yml
+         - file: config/rising-seasons/big-finale.yml
+         - file: config/rising-seasons/rebound.yml
+         - file: config/rising-seasons/mid-peak.yml
+         - file: config/rising-seasons/u-shaped.yml
+         - file: config/rising-seasons/saved-best-for-last.yml
+         - file: config/rising-seasons/front-loaded.yml
+         - file: config/rising-seasons/declining.yml
+         - file: config/rising-seasons/bad-finale.yml
+   ```
+
+3. **Run Kometa** with collections-only on your first try:
+
+   ```bash
+   docker exec kometa python kometa.py --run --collections-only
+   ```
+
+4. **Open Plex → TV Shows library → Collections.** You should see new
+   collections sorted near the top: "Rising Seasons", "Slow Burn Seasons",
+   "Big Finale Seasons", etc.
+
+### What "pass" looks like
+
+- New collections appear in Plex (one per shape you wired up).
+- Each is non-empty.
+- If a collection is empty, that's expected — it means none of your owned
+  shows have a strongly-fitting season for that shape.
+
+---
+
+## Kometa: season-poster badges
+
+`exports/kometa/season-overlays.yml` adds small text badges to season
+posters in Plex: `FINALE`, `BURN`, `BOUND`, `PEAK`, etc. Each shape gets a
+fixed corner so badges from different shapes don't visually collide.
+
+### Test on your NAS
+
+1. **Copy the file** alongside your other overlay files (covered by the
+   bulk `scp`/`wget` above).
+
+2. **Add to `config.yml`** under your TV library's `overlay_files`:
+
+   ```yaml
+   libraries:
+     TV Shows:
+       overlay_files:
+         - file: config/tv_shows_overlays.yml             # your existing one
+         - file: config/rising-seasons/season-overlays.yml
+         # ... rest of your existing overlays
+   ```
+
+3. **Run Kometa with overlays only** the first time so you can inspect a
+   handful of season posters before committing the full overlay run:
+
+   ```bash
+   docker exec kometa python kometa.py --run --overlays-only
+   ```
+
+4. **Open Plex → TV Shows → pick a show with multiple seasons → open the
+   season grid.** Seasons that match a shape will show a small badge in
+   one of the corners.
+
+### Examples to look for
+
+- Game of Thrones S8: `BUST` (bad-finale).
+- The Wire S4: `BEST` (saved-best-for-last).
+- Breaking Bad S5: `BEST` or `BURN`.
+- The Office (US) S2: `BURN` (slow burn).
+
+If badges are unreadable at thumbnail size, edit `OVERLAY_POSITIONS` and
+the overlay block parameters in
+`apps/rising-seasons/scripts/integrations-lib.js` and rerun the export.
+
+---
+
+## MDBList: flat IMDb-ID lists
+
+`exports/ids/<shape>.txt` — plain text, one `tt`-ID per line. The
+lowest-friction way to share these collections without managing Kometa
+YAML directly.
+
+### Test (one-time MDBList setup)
+
+1. Sign in to [mdblist.com](https://mdblist.com/).
+2. Create a new list, e.g. "Rising Seasons: Slow Burn".
+3. Open `apps/rising-seasons/exports/ids/slow-burn.txt`, copy all the
+   `tt`-IDs, paste into the MDBList "add items" box.
+4. Save. Copy the list's public URL.
+
+5. **Wire it into Kometa** in `tv_shows_collections.yml`:
+
+   ```yaml
+   collections:
+     Slow Burn Seasons (via MDBList):
+       mdblist_list:
+         url: https://mdblist.com/lists/<your-username>/rising-seasons-slow-burn
+         sort_by: imdbrating.desc
+       collection_order: custom
+       sync_mode: sync
+       sort_title: !090_rs_slow_burn
+       summary: "Seasons where the second half meaningfully outscores the first."
+   ```
+
+6. Run Kometa with `--collections-only` and verify the collection appears.
+
+---
+
+## "Watch next" Plex CLI
+
+`scripts/watch-next.js` queries your Plex server live and tells you which
+seasons in **your** library match a given mood/shape.
+
+### Test on your NAS (or anywhere with network access to Plex)
+
+1. **Set env vars:**
+
+   ```bash
+   export PLEX_URL=http://nas.local:32400
+   export PLEX_TOKEN=<your_plex_token>
+   ```
+
+2. **List shapes:**
+
+   ```bash
+   npm run watch-next -- --list-shapes
+   ```
+
+3. **Find slow-burn seasons in your library:**
+
+   ```bash
+   npm run watch-next -- --shape slow-burn --limit 20
+   ```
+
+   Expected output:
+
+   ```
+   Top 20 of 47 "slow-burn" seasons in "TV Shows":
+
+     Better Call Saul                          S03  avg 8.82  conf 0.78
+     Severance                                 S01  avg 8.71  conf 0.72
+     The Americans                             S04  avg 9.10  conf 0.69
+     ...
+   ```
+
+4. **JSON mode** (for piping into Notifiarr, Discord webhook, Homarr widget,
+   cron job summary, etc.):
+
+   ```bash
+   npm run watch-next -- --shape slow-burn --limit 5 --json
+   ```
+
+### Wiring it as a cron job
+
+```bash
+# /etc/cron.d/rising-seasons-discord
+0 9 * * * nas /usr/bin/env PLEX_URL=... PLEX_TOKEN=... \
+  node /path/to/shevato/apps/rising-seasons/scripts/watch-next.js \
+  --shape slow-burn --limit 3 --json \
+  | curl -X POST -H 'Content-Type: application/json' \
+         -d @- https://discord.com/api/webhooks/...
+```
+
+(Build your own payload shape for whichever target you use — Discord
+won't take the raw `watch-next` JSON shape as-is.)
+
+---
+
+## Failure modes / troubleshooting
+
+| Symptom | Likely cause | Fix |
+|---|---|---|
+| Kometa collection has 0 items | Library uses IMDb-only agent, no TMDB IDs to match against | Set TMDB agent on the library, run Plex refresh, re-run Kometa |
+| `watch-next` returns 0 for every shape | Plex agent isn't writing `Guid` entries, so we can't join by IMDb/TMDB/TVDB | Verify Plex → Manage Library → Edit → Advanced → Use Plex Movie/Series agent |
+| Overlays don't appear | TV library missing `builder_level: season` support in your Kometa version | Update Kometa; the YAML uses standard `builder_level: season` directives |
+| Browser builder shows "Loading…" forever | data.json (≈90 MB) cache miss + slow network | Wait for the initial fetch; subsequent visits use the HTTP cache |
+
+---
+
+## Where to edit if you want to tweak shapes / badges
+
+- **Drop a shape from collections:** remove its entry in `COLLECTION_SHAPES`
+  in `apps/rising-seasons/scripts/integrations-lib.js`.
+- **Change collection title or summary:** edit `SHAPE_META` in the same file.
+- **Reposition or restyle badges:** edit `OVERLAY_POSITIONS` and the
+  overlay-block lines in `buildSeasonOverlays` in the same file.
+- **Lower / raise the confidence floor globally:** export with
+  `RS_CONFIDENCE_FLOOR=0.5 npm run export:rising-seasons`.
+
+After any edit, run `npm test` then `npm run export:rising-seasons` and
+commit the regenerated files under `exports/`.
