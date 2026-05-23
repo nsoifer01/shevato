@@ -2243,37 +2243,47 @@ function drawCurveAnnotations(svg, episodes, shapes) {
 // Lightweight min/max labels for non-axis sparklines (card + row + show-modal
 // per-season sparks). Skipped when the rating range is too narrow for labels
 // to be informative — flat curves don't benefit from "8.0 / 8.1".
+//
+// Rendered as HTML spans on a sibling overlay rather than SVG <text> nodes:
+// the parent SVG uses preserveAspectRatio="none" so the X and Y scales
+// differ on mobile, which would stretch inline <text> into the distorted
+// "huge wide digits over the chart" look the legacy implementation had.
+// HTML labels stay at exactly the CSS font-size on every viewport.
 function drawMiniAxisLabels(svg, ratings, padY, W, H) {
-  // Remove any previous labels so re-renders don't duplicate.
-  const existing = svg.querySelector('.spark-axis-labels');
-  if (existing) existing.remove();
+  const wrap = svg.parentElement && svg.parentElement.classList.contains('curve-wrap')
+    ? svg.parentElement
+    : null;
+  if (!wrap) return; // older render paths without a wrapper — skip silently
+  let overlay = wrap.querySelector(':scope > .spark-axis-labels');
+  if (overlay) overlay.remove();
   if (!ratings || ratings.length === 0) return;
   const min = Math.min(...ratings);
   const max = Math.max(...ratings);
   if (max - min < 0.3) return;
 
-  const NS = 'http://www.w3.org/2000/svg';
-  const g = document.createElementNS(NS, 'g');
-  g.setAttribute('class', 'spark-axis-labels');
-  // Hug the left chart edge with a small, deliberate 3-unit gutter. Top
-  // label baseline sits just inside padY so the glyphs touch the top of
-  // the plot area; bottom label baseline sits 2 units off the floor so
-  // the digits visually rest on the bottom edge.
-  const x = 3;
-  const top = document.createElementNS(NS, 'text');
-  top.setAttribute('class', 'spark-axis-label');
-  top.setAttribute('x', x);
-  top.setAttribute('y', padY + 8);
-  top.setAttribute('text-anchor', 'start');
+  // Place each label at the actual y of its value on the curve. drawCurve
+  // pads the Y range (lo = min - 0.3, hi = max + 0.3) so the line doesn't
+  // touch the chart edges; positioning labels at the wrap's edges left a
+  // visible gap between "7.5" and where 7.5 actually lives on the curve.
+  const lo = Math.max(0, min - 0.3);
+  const hi = Math.min(10, max + 0.3);
+  const span = Math.max(0.1, hi - lo);
+  const yMaxPct = ((padY + (1 - (max - lo) / span) * (H - 2 * padY)) / H) * 100;
+  const yMinPct = ((padY + (1 - (min - lo) / span) * (H - 2 * padY)) / H) * 100;
+
+  overlay = document.createElement('div');
+  overlay.className = 'spark-axis-labels';
+  overlay.setAttribute('aria-hidden', 'true');
+  const top = document.createElement('span');
+  top.className = 'spark-axis-label spark-axis-label-top';
   top.textContent = max.toFixed(1);
-  const bot = document.createElementNS(NS, 'text');
-  bot.setAttribute('class', 'spark-axis-label');
-  bot.setAttribute('x', x);
-  bot.setAttribute('y', H - 2);
-  bot.setAttribute('text-anchor', 'start');
+  top.style.top = `${yMaxPct.toFixed(2)}%`;
+  const bot = document.createElement('span');
+  bot.className = 'spark-axis-label spark-axis-label-bot';
   bot.textContent = min.toFixed(1);
-  g.append(top, bot);
-  svg.appendChild(g);
+  bot.style.top = `${yMinPct.toFixed(2)}%`;
+  overlay.append(top, bot);
+  wrap.appendChild(overlay);
 }
 
 // Attach mousemove / touchmove to the modal curve SVG and show a floating
@@ -3111,6 +3121,11 @@ function buildShowSeasonRow(m, bestSeason, worstSeason) {
     meta.appendChild(shapeRow);
   }
 
+  // Wrap the SVG so HTML min/max labels can overlay it without going
+  // through the SVG's preserveAspectRatio="none" stretch (which distorts
+  // inline <text> on narrow mobile widths).
+  const sparkWrap = document.createElement('div');
+  sparkWrap.className = 'curve-wrap ss-spark-wrap';
   const sparkSvg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
   sparkSvg.setAttribute('class', 'ss-spark curve');
   sparkSvg.setAttribute('viewBox', '0 0 200 36');
@@ -3120,6 +3135,7 @@ function buildShowSeasonRow(m, bestSeason, worstSeason) {
     path.setAttribute('class', cls);
     sparkSvg.appendChild(path);
   }
+  sparkWrap.appendChild(sparkSvg);
   drawCurve(sparkSvg, m.episodes, 200, 36, 0);
 
   const stats = document.createElement('div');
@@ -3150,7 +3166,7 @@ function buildShowSeasonRow(m, bestSeason, worstSeason) {
     stats.appendChild(w);
   }
 
-  li.append(num, meta, sparkSvg, stats);
+  li.append(num, meta, sparkWrap, stats);
   li.addEventListener('click', () => openModal(m));
   li.addEventListener('keydown', (e) => {
     if (e.key === 'Enter' || e.key === ' ') {
