@@ -1569,27 +1569,34 @@
   }
 
   // One round chip: shows weighted slot, predicted (and actual when known),
-  // and a top accent line keyed to Δ. Predicted is never null when we
-  // render — caller skips the strip entirely if the predictor failed.
+  // and a top accent line keyed to Δ. `predicted` may be null when the
+  // predictor lacked enough history but we have a synced actual — in that
+  // case we render an actual-only chip so the rival's round score is still
+  // visible on the dashboard.
   function makeRoundChip(slot, predicted, actual) {
-    const predRound = Math.round(predicted);
+    const hasPred = predicted != null && Number.isFinite(predicted);
     const hasActual = actual != null && Number.isFinite(actual);
-    const delta = hasActual ? Math.round(actual) - predRound : null;
+    const predRound = hasPred ? Math.round(predicted) : null;
+    const actualRound = hasActual ? Math.round(actual) : null;
+    const delta = (hasPred && hasActual) ? actualRound - predRound : null;
     const cls = ['prc'];
     if (delta != null) cls.push(delta > 0 ? 'prc-pos' : delta < 0 ? 'prc-neg' : 'prc-zero');
+    if (!hasPred && hasActual) cls.push('prc-actual-only');
     const w = WEIGHTS[slot];
-    return el('div', { class: cls.join(' '), title:
-        hasActual
-          ? `Round ${slot + 1} (×${w}): predicted ${predRound}, actual ${Math.round(actual)}`
-          : `Round ${slot + 1} (×${w}): predicted ${predRound}` }, [
+    const title =
+      hasPred && hasActual ? `Round ${slot + 1} (×${w}): predicted ${predRound}, actual ${actualRound}` :
+      hasPred              ? `Round ${slot + 1} (×${w}): predicted ${predRound}` :
+      hasActual            ? `Round ${slot + 1} (×${w}): actual ${actualRound}` :
+                             `Round ${slot + 1} (×${w})`;
+    return el('div', { class: cls.join(' '), title }, [
       el('div', { class: 'prc-head' }, [
         el('span', { class: 'prc-slot' }, `R${slot + 1}`),
       ]),
       w > 1 ? el('span', { class: 'prc-weight' }, `×${w}`) : null,
       el('div', { class: 'prc-nums' }, [
-        el('span', { class: 'prc-pred' }, String(predRound)),
-        hasActual ? svgIcon(ICON_CHEV, { cls: 'prc-arrow', sw: 1.8 }) : null,
-        hasActual ? el('span', { class: 'prc-actual' }, String(Math.round(actual))) : null,
+        hasPred ? el('span', { class: 'prc-pred' }, String(predRound)) : null,
+        (hasPred && hasActual) ? svgIcon(ICON_CHEV, { cls: 'prc-arrow', sw: 1.8 }) : null,
+        hasActual ? el('span', { class: 'prc-actual' }, String(actualRound)) : null,
       ]),
       delta != null
         ? el('div', { class: 'prc-delta' }, [
@@ -1614,12 +1621,22 @@
     cells.push(el('div', { class: 'pred-cell pred-delta-cell' }, [makeDeltaBadge(delta)]));
     const head = el('div', { class: cls.join(' ') }, cells);
     const accentStyle = accentColor ? `--row-accent:${accentColor};` : '';
-    if (!Array.isArray(predictedScores)) {
+    // Render the per-round strip whenever we have either predicted scores OR
+    // synced actual scores — the rival-only case (rival played today, user
+    // hasn't, predictor lacks history) still gets per-round chips so the
+    // user can see their rival's round shape.
+    const hasPredArr = Array.isArray(predictedScores) && predictedScores.length === N_LOCS;
+    const hasActualArr = Array.isArray(actualScores) && actualScores.length === N_LOCS;
+    if (!hasPredArr && !hasActualArr) {
       if (accentStyle) head.setAttribute('style', accentStyle);
       return head;
     }
     const strip = el('div', { class: 'pred-round-strip' },
-      predictedScores.map((p, i) => makeRoundChip(i, p, actualScores ? actualScores[i] : null)));
+      Array.from({ length: N_LOCS }, (_, i) => makeRoundChip(
+        i,
+        hasPredArr ? predictedScores[i] : null,
+        hasActualArr ? actualScores[i] : null,
+      )));
     return el('div', {
       class: 'pred-row-wrap' + (isYou ? ' pred-row-wrap-you' : ''),
       style: accentStyle || null,
