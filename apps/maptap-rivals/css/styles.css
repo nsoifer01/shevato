@@ -1804,18 +1804,33 @@ body.maptap-rivals-app button {
 
 /* ---------- Calendar heatmap (game history) ---------- */
 
-.heatmap-section { margin: 0.5rem 0 1.25rem; }
-.heatmap-section[hidden] { display: none; }
+/* When hidden via JS, the chart-card the heatmap lives in disappears.
+   Sibling chart-card in the same charts-grid row still renders. */
+#heatmap-section[hidden] { display: none; }
+
+/* The heatmap lives inside a .chart-card slot in the round-by-round
+   charts-grid. heatmap-card-body fills the card so the cell-size auto-fit
+   (in JS) gets a meaningful clientWidth to size cells against. The scroll
+   wrap inside handles long histories that overflow the card horizontally. */
+.heatmap-card-body {
+  display: flex;
+  flex-direction: column;
+  gap: 0.55rem;
+  min-height: 240px;
+}
 
 .heatmap-scroll-wrap {
   overflow-x: auto;
   padding-bottom: 4px;
-  /* Center the grid so a narrow (few-weeks) calendar doesn't hug the left
-     edge of a wide panel. JS sizes #heatmap-grid via grid-template-columns
-     so the inner grid has an explicit width and auto-centers cleanly. */
+  /* Left-anchor the grid. When the calendar is short (few weeks of history)
+     centering left it visually lost in a wide panel; anchoring to the left
+     keeps it next to the section heading. Long calendars overflow into
+     horizontal scroll — JS scrolls to the right edge after render so the
+     most recent months are visible by default. */
   display: flex;
   flex-direction: column;
-  align-items: center;
+  align-items: flex-start;
+  flex: 1;
 }
 .heatmap-scroll-wrap > .heatmap-month-labels,
 .heatmap-scroll-wrap > .heatmap-grid {
