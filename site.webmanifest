@@ -1,0 +1,15 @@
+{
+  "name": "Shevato",
+  "short_name": "Shevato",
+  "description": "Software engineering firm specializing in Spring Boot microservices, REST APIs, and full stack web applications.",
+  "start_url": "/home.html",
+  "scope": "/",
+  "display": "browser",
+  "background_color": "#ffffff",
+  "theme_color": "#0044cc",
+  "icons": [
+    { "src": "/images/icon-192.png", "sizes": "192x192", "type": "image/png" },
+    { "src": "/images/icon-512.png", "sizes": "512x512", "type": "image/png" },
+    { "src": "/images/apple-touch-icon.png", "sizes": "180x180", "type": "image/png", "purpose": "any" }
+  ]
+}

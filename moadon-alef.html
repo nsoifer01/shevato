@@ -47,7 +47,9 @@
   <meta property="og:description" content="שירות רופא עד הבית המוביל בישראל. טיפול רפואי מקצועי 24/7, כולל שבתות וחגים. התקשרו: 1-700-701-103" />
   <meta property="og:type" content="website" />
   <meta property="og:url" content="https://shevato.com/moadon-alef.html" />
-  <meta property="og:image" content="https://shevato.com/images/moadon-alef-header.png" />
+  <meta property="og:image" content="https://shevato.com/images/og-card-moadon-alef.png" />
+  <meta property="og:image:width" content="1200" />
+  <meta property="og:image:height" content="630" />
   <meta property="og:image:type" content="image/png" />
   <meta property="og:image:alt" content="מועדון אלף - רופא עד הבית 24/7" />
   <meta property="og:locale" content="he_IL" />
@@ -60,7 +62,7 @@
   <meta name="twitter:card" content="summary_large_image" />
   <meta name="twitter:title" content="מועדון אלף - רופא עד הבית 24/7" />
   <meta name="twitter:description" content="שירות רופא עד הבית המוביל בישראל. זמינים 24/7 לטיפול רפואי מקצועי בביתכם." />
-  <meta name="twitter:image" content="https://shevato.com/images/moadon-alef-header.png" />
+  <meta name="twitter:image" content="https://shevato.com/images/og-card-moadon-alef.png" />
   <meta name="twitter:image:alt" content="מועדון אלף - רופא עד הבית 24/7" />
   
   <!-- SEO Enhancement: Additional meta tags for local Israeli searches -->
@@ -89,7 +91,7 @@
       "url": "https://shevato.com/images/moadon-alef-header.png",
       "caption": "מועדון אלף"
     },
-    "image": "https://shevato.com/images/moadon-alef-header.png",
+    "image": "https://shevato.com/images/og-card-moadon-alef.png",
     "inLanguage": ["he", "en", "ru"],
     "knowsLanguage": ["he", "en", "ru"],
     "address": {
@@ -236,10 +238,12 @@
   <main id="main-content" class="wrapper wrapper-inherit-padding">
     <div class="inner">
       <div class="contact-header">
-        <!-- SEO Enhancement: Main H1 heading for page topic -->
-        <h1 class="brand-title" lang="en">Moadon Alef</h1>
-        <h1 class="brand-title" lang="ru">Моадон Алеф</h1>
-        <h1 class="brand-title" lang="he">מועדון אלף</h1>
+        <!-- Single H1 wrapper; language-specific spans are toggled by the language switcher so the DOM always has exactly one <h1>. -->
+        <h1 class="brand-title">
+          <span lang="en">Moadon Alef</span>
+          <span lang="ru">Моадон Алеф</span>
+          <span lang="he">מועדון אלף</span>
+        </h1>
         <div>
           <a href="tel:+9721700701103" class="main-phone" aria-label="חייגו 1-700-701-103">📞 1-700-701-103</a>
         </div>
