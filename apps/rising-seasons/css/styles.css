@@ -1504,20 +1504,17 @@ body.rising-seasons-app button {
 }
 
 .card-body {
-  padding: 0.85rem 1rem 1rem;
-  /* Grid so the curve always sits at its own row, regardless of how many
-     lines the chip row above takes. Row order matches DOM source:
+  padding: 0.85rem 1rem 0.55rem;
+  /* Grid so the chip row absorbs any extra vertical height — keeps the
+     sparkline (a sibling of card-body, not a child) at the same y across
+     cards of varying chip-row line counts. Row order matches DOM source:
        1. card-head    (title + season)
        2. card-meta    (year + genres)
-       3. card-shapes  (1fr — absorbs any extra vertical space so the
-                        curve doesn't drift down when chips wrap)
-       4. .curve       (sparkline, fixed height)
-       5. card-stats   (single horizontal line)
+       3. card-shapes  (1fr — absorbs leftover vertical space)
      Since .results-grid stretches all cards in a row to the same height,
-     the 1fr region resolves to the same value across siblings — putting
-     every sparkline at the identical y from the top of its card. */
+     the 1fr region resolves to the same value across siblings. */
   display: grid;
-  grid-template-rows: auto auto 1fr auto auto;
+  grid-template-rows: auto auto 1fr;
   row-gap: 0.55rem;
   flex: 1;
 }
@@ -1977,13 +1974,10 @@ button.shape-tag.is-clickable:hover {
 }
 
 .curve {
-  /* The card body that wraps this SVG has 1rem of horizontal padding, so a
-     plain width:100% would leave the yellow line drawn 1rem inset from the
-     card's left/right edges. Extend the curve out past that padding with
-     negative margins so the line literally starts at the card edges. */
-  width: calc(100% + 2rem);
-  margin-left: -1rem;
-  margin-right: -1rem;
+  /* .curve-wrap is a direct child of .card now (no parent padding to
+     bleed out of), so the SVG sits at the full card width with no
+     negative margins. */
+  width: 100%;
   height: 70px;
   background:
     radial-gradient(ellipse 60% 50% at 50% 100%, rgba(245, 197, 24, 0.06), transparent 70%),
@@ -2185,6 +2179,11 @@ button.shape-tag.is-clickable:hover {
   font-variant-numeric: tabular-nums;
   color: var(--muted);
   line-height: 1.3;
+}
+/* .card-stats is now a direct child of .card (was inside .card-body), so
+   it needs its own horizontal padding to match the body's text gutter. */
+.card > .card-stats {
+  padding: 0.4rem 1rem 0.85rem;
 }
 .card-stats > span,
 .row-stats > span {
@@ -3220,21 +3219,40 @@ body.advanced-drawer-open {
   }
   .results-grid.list-view { gap: 0.55rem; }
 
+  /* Mobile cards: two-column grid so the poster sits on the left next to
+     the text, but the sparkline + stats span the full card width below.
+     Previously the card was a horizontal flex row and the curve was
+     trapped inside .card-body — visually appearing as a thin chart strip
+     squeezed into the right-hand text column. */
   .card {
-    flex-direction: row;
+    display: grid;
+    grid-template-columns: 104px 1fr;
+    grid-template-areas:
+      "poster body"
+      "curve  curve"
+      "stats  stats";
     align-items: stretch;
-    min-height: 156px;
+    min-height: auto;
   }
   .card-poster {
-    flex: 0 0 104px;
+    grid-area: poster;
+    flex: none;
     width: 104px;
     aspect-ratio: 2 / 3;
   }
   .card-body {
-    flex: 1 1 auto;
+    grid-area: body;
+    flex: none;
     min-width: 0;
-    padding: 0.7rem 0.85rem 0.8rem;
-    gap: 0.45rem;
+    padding: 0.7rem 0.85rem 0.6rem;
+    row-gap: 0.45rem;
+  }
+  .card .curve-wrap { grid-area: curve; }
+  .card-stats {
+    grid-area: stats;
+    gap: 0.55rem;
+    font-size: 0.72rem;
+    padding: 0.5rem 0.85rem 0.7rem;
   }
   .card-head { gap: 0.4rem; }
   .card-title {
@@ -3245,26 +3263,12 @@ body.advanced-drawer-open {
   .card-meta { font-size: 0.72rem; gap: 0.45rem; }
   .card-shapes { gap: 0.25rem; }
   .card .curve { height: 48px; }
-  .card-stats {
-    gap: 0.55rem;
-    font-size: 0.72rem;
-  }
   /* Watch toggle is roomier so it's easier to thumb-tap on the corner. */
   .card .watch-toggle {
     width: 2.25rem;
     height: 2.25rem;
     top: 0.4rem;
     right: 0.4rem;
-  }
-  /* Mobile cards go horizontal (poster | body), so the desktop edge-bleed
-     trick would push the curve into the poster on the left. Match the
-     mobile card-body padding (0.85rem) on the right only, and leave the
-     left edge flush with the body's left padding so the line still feels
-     edge-anchored on the side it can be. */
-  .card .curve {
-    margin-left: 0;
-    margin-right: -0.85rem;
-    width: calc(100% + 0.85rem);
   }
 
   /* List view rows — already tight; just give the watch button a
@@ -4081,22 +4085,44 @@ body.advanced-drawer-open {
 }
 
 /* #4 Mini sparkline min/max axis labels (cards + row sparklines)
-   — small but deliberate: tabular digits, dark halo via paint-order so
+   — small but deliberate: tabular digits, dark halo via text-shadow so
    they stay legible on top of the gold curve, brightness held below
-   the Avg score so the eye reads Avg first. */
+   the Avg score so the eye reads Avg first.
+
+   Rendered as HTML spans absolutely-positioned over a .curve-wrap rather
+   than SVG <text>, because the parent SVG uses preserveAspectRatio="none"
+   and would otherwise stretch inline text horizontally and squish it
+   vertically on narrow mobile widths (the "9.2" rendered as a huge wide
+   blob over the chart). HTML labels keep CSS font-size on every viewport. */
+.curve-wrap {
+  position: relative;
+  display: block;
+  width: 100%;
+}
+.curve-wrap > .curve { width: 100%; margin: 0; }
+.spark-axis-labels {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
 .spark-axis-label {
+  position: absolute;
+  left: 0.3rem;
   font-size: 11px;
-  fill: rgba(241, 243, 248, 0.82);
+  line-height: 1;
+  color: rgba(241, 243, 248, 0.82);
   font-family: ui-monospace, "SF Mono", Menlo, Consolas, "Inter", system-ui, sans-serif;
   font-weight: 600;
   font-variant-numeric: tabular-nums;
   letter-spacing: 0.01em;
-  pointer-events: none;
-  paint-order: stroke fill;
-  stroke: rgba(8, 10, 16, 0.78);
-  stroke-width: 2px;
-  stroke-linejoin: round;
+  /* Dark halo so the digits stay legible over the gold curve area. */
+  text-shadow:
+    0 0 2px rgba(8, 10, 16, 0.95),
+    0 0 2px rgba(8, 10, 16, 0.95),
+    0 0 3px rgba(8, 10, 16, 0.7);
 }
+.spark-axis-label-top { top: 0.15rem; }
+.spark-axis-label-bot { bottom: 0.1rem; }
 
 /* #5 Sticky filter bar — frosted-glass strip that drops in once the
    main filter section scrolls off. Echoes the main toolbar (dark
