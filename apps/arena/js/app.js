@@ -233,7 +233,21 @@ function wireConfirmModal() {
     document.getElementById('confirm-modal-cancel').addEventListener('click', () => closeConfirmModal(false));
     document.getElementById('confirm-modal-confirm').addEventListener('click', () => closeConfirmModal(true));
     document.addEventListener('keydown', (e) => {
-        if (e.key === 'Escape' && !modal.hasAttribute('hidden')) closeConfirmModal(false);
+        if (e.key === 'Escape' && !modal.hasAttribute('hidden')) { closeConfirmModal(false); return; }
+        // Focus trap: cycle Tab/Shift+Tab within the modal's focusable elements.
+        if (e.key === 'Tab' && !modal.hasAttribute('hidden')) {
+            const focusables = Array.from(modal.querySelectorAll(
+                'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])'
+            )).filter((el) => !el.disabled && !el.hasAttribute('hidden'));
+            if (!focusables.length) return;
+            const first = focusables[0];
+            const last = focusables[focusables.length - 1];
+            if (e.shiftKey) {
+                if (document.activeElement === first) { e.preventDefault(); last.focus(); }
+            } else {
+                if (document.activeElement === last) { e.preventDefault(); first.focus(); }
+            }
+        }
     });
 }
 
@@ -806,6 +820,8 @@ function openPremiumModal() {
     // instead of flashing a half-styled hidden modal at the user.
     if (!Config.PREMIUM_UI_ENABLED) return;
     const modal = $('#premium-modal');
+    const priceEl = document.getElementById('premium-modal-price-value');
+    if (priceEl) priceEl.textContent = Config.PREMIUM_PRICE_DISPLAY;
     show(modal);
     modal.removeAttribute('hidden');
 }
@@ -1122,7 +1138,13 @@ function wireGameTypeToggle() {
             // Show/hide trivia-only vs globe-drop-only form fields.
             $$('[data-game-type]').forEach((el) => {
                 if (!el.matches('.game-type-btn') && el.dataset.gameType) {
-                    el.hidden = el.dataset.gameType !== type;
+                    const shouldHide = el.dataset.gameType !== type;
+                    // .lobby-solo-actions uses a CSS transition instead of hidden.
+                    if (el.classList.contains('lobby-solo-actions')) {
+                        el.classList.toggle('is-hidden', shouldHide);
+                    } else {
+                        el.hidden = shouldHide;
+                    }
                 }
             });
             saveLobbySettings();
@@ -1819,10 +1841,12 @@ function flashStagePulse(message) {
     // run on first mount, so swapping the element resets them.
     const replacement = el.cloneNode(true);
     el.parentNode.replaceChild(replacement, el);
-    // Hide after the animation finishes; the keyframes already fade it
-    // out, but we want the element fully out of layout so the next pulse
-    // renders cleanly.
-    setTimeout(() => { try { replacement.setAttribute('hidden', ''); } catch (_) {} }, 3000);
+    // Hide once the gd-pulse-out animation ends so the element leaves layout cleanly.
+    replacement.addEventListener('animationend', (e) => {
+        if (e.animationName === 'gd-pulse-out') {
+            try { replacement.hidden = true; } catch (_) {}
+        }
+    });
 }
 
 // When the host bumps the room's `round` (Play Again), every client notices
@@ -2088,6 +2112,9 @@ function openChatPanel() {
     if (panel) panel.hidden = false;
     chatState.unreadSince = chatState.messages.length;
     updateChatBadge();
+    // Show "Game in progress" banner when a game is actively running.
+    const liveBanner = document.getElementById('room-chat-game-live');
+    if (liveBanner) liveBanner.hidden = !(state.roomData && state.roomData.status === 'playing');
     // Focus the input on open — feels conversational.
     const input = $('#room-chat-input');
     if (input) setTimeout(() => input.focus(), 50);
@@ -3190,6 +3217,15 @@ function loadCountryFeaturesIndex() {
     return countryFeaturesIndexPromise;
 }
 
+function setClearBtnVisible(visible) {
+    const btn = document.getElementById('globe-drop-clear-btn');
+    if (!btn) return;
+    btn.hidden = !visible;
+    // Fallback for browsers that don't support :has() — toggle class on the stack.
+    const stack = document.getElementById('globe-drop-fab-stack');
+    if (stack) stack.classList.toggle('fab-pinned', visible);
+}
+
 function onGlobeClick(lat, lng) {
     // Only respond when we're in a live GlobeDrop game and haven't locked
     // in this question yet. We do NOT block on phase === 'asking' here —
@@ -3215,7 +3251,7 @@ function onGlobeClick(lat, lng) {
     state.pendingGuess = { lat, lng };
     drawMyPinOnly(lat, lng);
     $('#globe-drop-submit-btn').disabled = false;
-    $('#globe-drop-clear-btn').hidden = false;
+    setClearBtnVisible(true);
     setText($('#globe-drop-status'), 'Pin placed. Submit when you\'re sure.');
     $('#globe-drop-status').classList.remove('is-correct', 'is-wrong');
     Feedback.pinPlaced();
@@ -3406,7 +3442,7 @@ function renderGlobeDropStage() {
             state.lastCameraTarget = null;        // re-arm the reveal-pan guard
             state.pendingGuess = null;
             $('#globe-drop-submit-btn').disabled = true;
-            $('#globe-drop-clear-btn').hidden = true;
+            setClearBtnVisible(false);
             $('#globe-drop-reveal').hidden = true;
             const triviaEl = $('#globe-drop-reveal-trivia');
             // Clear the text in addition to hiding so a stale entry can
@@ -3426,7 +3462,7 @@ function renderGlobeDropStage() {
         const meSubmitted = !!(me && me.currentAnsweredFor === loc.id && me.currentGuess);
         if (meSubmitted) {
             $('#globe-drop-submit-btn').disabled = true;
-            $('#globe-drop-clear-btn').hidden = true;
+            setClearBtnVisible(false);
         }
 
         // Three reveal states:
@@ -3532,11 +3568,16 @@ function renderReadyBar(phase) {
     const statusEl = $('#globe-drop-ready-status');
     if (statusEl) {
         const readyCount = players.filter((p) => p.readyAfterQId === loc.id).length;
-        const pips = players.map((p) => {
-            const isReady = p.readyAfterQId === loc.id;
-            return `<span class="ready-pip${isReady ? ' is-ready' : ''}">${escapeHtml(p.displayName || 'Player')}</span>`;
-        }).join('');
-        statusEl.innerHTML = `${pips} <small>${readyCount}/${players.length} ${isLast ? 'finishing' : 'ready'}</small>`;
+        const label = isLast ? 'finishing' : 'ready';
+        if (players.length > 4) {
+            statusEl.innerHTML = `<small>${readyCount}/${players.length} ${label}</small>`;
+        } else {
+            const pips = players.map((p) => {
+                const isReady = p.readyAfterQId === loc.id;
+                return `<span class="ready-pip${isReady ? ' is-ready' : ''}">${escapeHtml(p.displayName || 'Player')}</span>`;
+            }).join('');
+            statusEl.innerHTML = `${pips} <small>${readyCount}/${players.length} ${label}</small>`;
+        }
     }
 }
 
@@ -3746,6 +3787,7 @@ function drawGlobeDropReveal(loc, me, { showOthers = true } = {}) {
 function renderMiniBoardGlobeDrop(currentQuestionId) {
     const list = $('#mini-board-list-globe-drop');
     list.innerHTML = '';
+    list.classList.toggle('is-crowded', state.roomPlayers && state.roomPlayers.length > 4);
     // Anti-peek: if I haven't submitted the current round, redact each
     // opponent's contribution from THIS round so I can't infer their
     // distance/score before I've committed mine. The reveal phase
@@ -3949,7 +3991,7 @@ async function submitGuess() {
     // snapshot round-trip. We mirror the guess into our local roomPlayers
     // copy so drawGlobeDropReveal can find it.
     $('#globe-drop-submit-btn').disabled = true;
-    $('#globe-drop-clear-btn').hidden = true;
+    setClearBtnVisible(false);
     const myEntry = state.roomPlayers.find((p) => p.uid === state.user.uid);
     if (myEntry) {
         myEntry.currentGuess = guess;
@@ -4018,7 +4060,7 @@ function clearMyPin() {
         state.globe.polygonsData([]);
     }
     $('#globe-drop-submit-btn').disabled = true;
-    $('#globe-drop-clear-btn').hidden = true;
+    setClearBtnVisible(false);
     setText($('#globe-drop-status'), '');
 }
 
@@ -4654,23 +4696,28 @@ async function renderEndStage(isHost) {
     }
     const medals = ['🥇', '🥈', '🥉'];
     const slotOrder = [1, 0, 2]; // visual: 2nd, 1st, 3rd
-    if (!isSoloMode) for (const orderIdx of slotOrder) {
-        if (!ranked[orderIdx]) {
-            podium.appendChild(document.createElement('div'));
-            continue;
+    if (!isSoloMode) {
+        podium.setAttribute('aria-label', `Top ${Math.min(ranked.length, 3)}`);
+        for (const orderIdx of slotOrder) {
+            if (!ranked[orderIdx]) continue;
+            const p = ranked[orderIdx];
+            const slot = document.createElement('div');
+            slot.className = `podium-slot podium-slot-${orderIdx+1}`;
+            slot.innerHTML =
+                `<span class="podium-medal">${medals[orderIdx]}</span>` +
+                `<span class="podium-name" title="${escapeHtml(p.displayName)}">${escapeHtml(p.displayName)}</span>` +
+                `<span class="podium-score">${p.score}</span>` +
+                `<div class="podium-block">${orderIdx+1}</div>`;
+            podium.appendChild(slot);
         }
-        const p = ranked[orderIdx];
-        const slot = document.createElement('div');
-        slot.className = `podium-slot podium-slot-${orderIdx+1}`;
-        slot.innerHTML =
-            `<span class="podium-medal">${medals[orderIdx]}</span>` +
-            `<span class="podium-name">${escapeHtml(p.displayName)}</span>` +
-            `<span class="podium-score">${p.score}</span>` +
-            `<div class="podium-block">${orderIdx+1}</div>`;
-        podium.appendChild(slot);
     }
 
     // Full board
+    const streakHeader = $('#end-board-streak-header');
+    if (streakHeader) {
+        const isGlobeDrop = state.roomData && state.roomData.gameType === 'globe-drop';
+        streakHeader.textContent = isGlobeDrop ? 'Bullseye streak' : 'Streak';
+    }
     const body = $('#end-board-body');
     body.innerHTML = '';
     ranked.forEach((p, i) => {
@@ -5101,9 +5148,13 @@ async function renderEndRecapH2H(players) {
     const banner = document.getElementById('end-recap-h2h');
     if (!banner) return;
     banner.hidden = true;
-    if (!state.user || !Array.isArray(players) || players.length !== 2) return;
-    const me = players.find((p) => p.uid === state.user.uid);
-    const opp = players.find((p) => p.uid !== state.user.uid);
+    if (!state.user || !Array.isArray(players)) return;
+    // Show when exactly 2 players have recorded answers (works even when a 3rd player left).
+    const withAnswers = players.filter((p) => p && Array.isArray(p.answers) && p.answers.length > 0);
+    const twoPlayers = withAnswers.length === 2 ? withAnswers : (players.length === 2 ? players : null);
+    if (!twoPlayers) return;
+    const me = twoPlayers.find((p) => p.uid === state.user.uid);
+    const opp = twoPlayers.find((p) => p.uid !== state.user.uid);
     if (!me || !opp) return;
     const key = h2hPairKey(me.uid, opp.uid);
     if (!key) return;
@@ -5335,6 +5386,11 @@ function renderEndRecap() {
     setText($('#end-recap-sub'),
         `${questions.length} ${qNoun} · comparing ${columns.length} player${columns.length === 1 ? '' : 's'}`);
     section.hidden = false;
+    // Apply the scroll-fade mask only when the table actually overflows.
+    const tableWrap = document.querySelector('.end-recap-table-wrap');
+    if (tableWrap) {
+        tableWrap.classList.toggle('has-overflow', tableWrap.scrollWidth > tableWrap.clientWidth);
+    }
 }
 
 function computeGlobeDropAggregates(columns, answersByUid) {
