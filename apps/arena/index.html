@@ -161,11 +161,11 @@
               <label class="lobby-field" data-game-type="globe-drop">
                 <span>Round type</span>
                 <select id="create-globe-drop-round-type" title="Pick the location pool used to seed each round.">
-                  <option value="capitals" selected title="One capital per country. Variety guaranteed.">World capitals (REST Countries)</option>
-                  <option value="countries" title="Guess each country at its geographic centroid — bigger sense of scale, less precision.">Countries (guess the country centroid)</option>
-                  <option value="major-cities" title="Wikidata cities with population over 2 million.">Major cities (Wikidata, pop &gt; 2M)</option>
-                  <option value="top-cities-by-country" title="Top-population 10% of each country's cities (variety across regions, harder picks).">Top cities by country (top 10% of each)</option>
-                  <option value="landmarks" title="UNESCO World Heritage sites worldwide.">World landmarks (UNESCO sites)</option>
+                  <option value="capitals" selected>World capitals (one per country, variety guaranteed)</option>
+                  <option value="countries">Countries (guess the geographic centroid)</option>
+                  <option value="major-cities">Major cities (pop &gt; 2M)</option>
+                  <option value="top-cities-by-country">Top cities by country (top 10%, harder)</option>
+                  <option value="landmarks">World landmarks (UNESCO sites)</option>
                 </select>
               </label>
               <label class="lobby-field" data-game-type="globe-drop">
@@ -279,7 +279,7 @@
             <div class="lobby-form">
               <label class="lobby-field">
                 <span>Room code</span>
-                <input type="text" id="join-code" maxlength="7" placeholder="ABCDE" autocomplete="off" spellcheck="false" inputmode="latin" autocapitalize="characters">
+                <input type="text" id="join-code" maxlength="5" placeholder="ABCDE" autocomplete="off" spellcheck="false" inputmode="latin" autocapitalize="characters">
               </label>
               <label class="lobby-field" id="join-password-field" hidden>
                 <span>Password</span>
@@ -361,20 +361,21 @@
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.85" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 6l12 12"/><path d="M18 6L6 18"/></svg>
             </button>
           </header>
+          <p class="room-chat-game-live" id="room-chat-game-live" hidden><span aria-hidden="true">🎮</span> Game in progress</p>
           <ul class="room-chat-list" id="room-chat-list" aria-live="polite"></ul>
           <p class="room-chat-empty" id="room-chat-empty">No messages yet. Say something.</p>
           <!-- Quick-tap emoji bar — one click sends that emoji as a
                message, no typing required. Skips moderation since
                emoji-only messages can't contain profanity. -->
           <div class="room-chat-quick" aria-label="Quick reactions">
-            <button type="button" class="room-chat-quick-btn" data-emoji="🔥">🔥</button>
-            <button type="button" class="room-chat-quick-btn" data-emoji="🎯">🎯</button>
-            <button type="button" class="room-chat-quick-btn" data-emoji="😂">😂</button>
-            <button type="button" class="room-chat-quick-btn" data-emoji="😭">😭</button>
-            <button type="button" class="room-chat-quick-btn" data-emoji="👏">👏</button>
-            <button type="button" class="room-chat-quick-btn" data-emoji="🤯">🤯</button>
-            <button type="button" class="room-chat-quick-btn" data-emoji="😬">😬</button>
-            <button type="button" class="room-chat-quick-btn" data-emoji="🤔">🤔</button>
+            <button type="button" class="room-chat-quick-btn" data-emoji="🔥" title="Send 🔥" aria-label="Send fire reaction">🔥</button>
+            <button type="button" class="room-chat-quick-btn" data-emoji="🎯" title="Send 🎯" aria-label="Send bullseye reaction">🎯</button>
+            <button type="button" class="room-chat-quick-btn" data-emoji="😂" title="Send 😂" aria-label="Send laughing reaction">😂</button>
+            <button type="button" class="room-chat-quick-btn" data-emoji="😭" title="Send 😭" aria-label="Send crying reaction">😭</button>
+            <button type="button" class="room-chat-quick-btn" data-emoji="👏" title="Send 👏" aria-label="Send clapping reaction">👏</button>
+            <button type="button" class="room-chat-quick-btn" data-emoji="🤯" title="Send 🤯" aria-label="Send mind-blown reaction">🤯</button>
+            <button type="button" class="room-chat-quick-btn" data-emoji="😬" title="Send 😬" aria-label="Send grimace reaction">😬</button>
+            <button type="button" class="room-chat-quick-btn" data-emoji="🤔" title="Send 🤔" aria-label="Send thinking reaction">🤔</button>
           </div>
           <form class="room-chat-form" id="room-chat-form" autocomplete="off">
             <input type="text" id="room-chat-input" maxlength="280" placeholder="Type a message…" aria-label="Chat message">
@@ -393,7 +394,7 @@
               <span class="room-settings-hint" id="room-settings-hint" hidden>Host can change settings</span>
               <!-- Host-only: switch game type while still in lobby. Hidden once the
                    game starts (status changes to 'playing'). -->
-              <button type="button" class="btn btn-ghost btn-sm room-settings-game-type-btn" id="room-switch-game-type-btn" hidden></button>
+              <button type="button" class="btn btn-ghost btn-sm room-settings-game-type-btn" id="room-switch-game-type-btn" hidden aria-label="Switch game type"></button>
             </header>
 
             <!-- Read-only summary (always rendered; visibility flipped
@@ -617,7 +618,7 @@
                 <button type="button" class="btn btn-ghost btn-sm" id="globe-drop-ready-btn">
                   <span aria-hidden="true">⏭</span> Ready
                 </button>
-                <span class="globe-drop-ready-status" id="globe-drop-ready-status"></span>
+                <span class="globe-drop-ready-status" id="globe-drop-ready-status" aria-live="polite"></span>
               </div>
             </section>
 
@@ -625,13 +626,13 @@
             <!-- Status element kept (display:none) so JS callsites don't
                  crash. Action bar removed by request — phase feedback
                  lives in the reveal panel + visual pin. -->
-            <p class="answer-status globe-drop-status" id="globe-drop-status" aria-live="polite" hidden></p>
+            <p class="answer-status globe-drop-status" id="globe-drop-status" hidden></p>
             <!-- Wrapper holds the globe + overlay UI as siblings; globe.gl
                  owns the inner contents of #globe-drop-map (canvas) so
                  the FAB stack + timer overlay MUST live outside that
                  element or they get wiped during scene init. -->
             <div class="globe-drop-map-wrap">
-              <div id="globe-drop-map" class="globe-drop-map" aria-label="World globe for guessing"></div>
+              <div id="globe-drop-map" class="globe-drop-map" role="img" aria-label="Interactive 3D world globe — click to place your guess pin"></div>
               <!-- In-globe timer ring (top-left overlay). Drives the
                    countdown visualization for the current question. -->
               <div class="game-timer globe-drop-timer-overlay" id="globe-drop-timer" data-state="asking">
@@ -645,11 +646,11 @@
                    until #globe-drop-clear-btn loses its [hidden] (i.e.
                    a pin has been placed). -->
               <div class="globe-drop-fab-stack" id="globe-drop-fab-stack">
-                <button type="button" class="globe-drop-fab globe-drop-fab-ghost" id="globe-drop-clear-btn" hidden>
+                <button type="button" class="globe-drop-fab globe-drop-fab-ghost" id="globe-drop-clear-btn" hidden aria-label="Clear pin">
                   <svg class="globe-drop-fab-icon" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
                   <span>Clear pin</span>
                 </button>
-                <button type="button" class="globe-drop-fab globe-drop-fab-primary" id="globe-drop-submit-btn" disabled>
+                <button type="button" class="globe-drop-fab globe-drop-fab-primary" id="globe-drop-submit-btn" disabled aria-label="Submit guess">
                   <svg class="globe-drop-fab-icon" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m5 12 5 5L20 7"/></svg>
                   <span>Submit guess</span>
                 </button>
@@ -706,8 +707,8 @@
             </div>
           </div>
 
-          <!-- Podium top 3 -->
-          <div class="podium" id="podium" aria-label="Top three"></div>
+          <!-- Podium top 3. aria-label set dynamically by JS. -->
+          <div class="podium" id="podium"></div>
 
           <!-- Full scoreboard -->
           <div class="end-board-wrap">
@@ -717,7 +718,7 @@
                   <th>#</th>
                   <th>Player</th>
                   <th>Score</th>
-                  <th>Streak</th>
+                  <th id="end-board-streak-header">Streak</th>
                 </tr>
               </thead>
               <tbody id="end-board-body"></tbody>
@@ -1007,13 +1008,13 @@
 
   <!-- Premium modal -->
   <div class="modal" id="premium-modal" role="dialog" aria-modal="true" aria-labelledby="premium-modal-title" hidden>
-    <div class="modal-backdrop" data-close="modal"></div>
+    <div class="modal-backdrop" data-close="modal" aria-label="Close dialog"></div>
     <article class="modal-panel modal-panel-sm">
       <button type="button" class="modal-close" data-close="modal" aria-label="Close">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.85" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 6l12 12"/><path d="M18 6L6 18"/></svg>
       </button>
       <h2 id="premium-modal-title"><span aria-hidden="true">✨</span> Arena Premium</h2>
-      <p class="premium-modal-price"><strong>$5 one-time</strong> (no subscription).</p>
+      <p class="premium-modal-price" id="premium-modal-price"><strong id="premium-modal-price-value">$5 one-time</strong> (no subscription).</p>
       <ul class="premium-list">
         <li><span aria-hidden="true">📦</span> Upload custom question packs</li>
         <li><span aria-hidden="true">📊</span> Detailed post-game stats (accuracy, response time, category breakdown)</li>
@@ -1032,7 +1033,7 @@
        title/body/labels in and returns a Promise<boolean>. Replaces
        window.confirm() so confirmations match the dark theme. -->
   <div class="modal" id="confirm-modal" role="dialog" aria-modal="true" aria-labelledby="confirm-modal-title" hidden>
-    <div class="modal-backdrop" data-confirm-close></div>
+    <div class="modal-backdrop" data-confirm-close aria-label="Close dialog"></div>
     <article class="modal-panel modal-panel-sm">
       <button type="button" class="modal-close" data-confirm-close aria-label="Close">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.85" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 6l12 12"/><path d="M18 6L6 18"/></svg>
