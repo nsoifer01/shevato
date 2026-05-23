@@ -52,14 +52,16 @@ When adding a new HTML page, the head should include:
   intentionally permitted so external backlink tools can surface the
   site.
 
-## Known follow-ups
+## Social preview image
 
-- The site's social-preview image is currently the SVG logo
-  (`/images/full-logo.svg`). Most platforms (Twitter/X, Facebook,
-  LinkedIn) render PNG/JPG previews better than SVG. Producing a
-  dedicated 1200×630 PNG OG image and pointing all `og:image` /
-  `twitter:image` tags at it would noticeably improve the way shared
-  links render.
-- Adding a `og:image:width` / `og:image:height` pair (once a sized
-  raster image exists) lets Slack and other crawlers reserve layout
-  space and avoid jank.
+The site-wide OG card is `/images/og-card.png` (1200×630, PNG). All
+marketing pages and app `index.html` files reference it via `og:image`
+and `twitter:image`. Pages also declare `og:image:width`,
+`og:image:height`, `og:image:type`, and `og:image:alt`.
+
+The `moadon-alef.html` landing has its own bilingual OG card at
+`/images/og-card-moadon-alef.png`.
+
+When updating brand visuals, regenerate both cards and keep the
+dimensions at exactly 1200×630 so Facebook, LinkedIn, Slack, and
+WhatsApp render the preview without re-fetching to determine size.
