@@ -1875,10 +1875,17 @@ button.shape-tag.is-clickable:hover {
 }
 
 .show-season {
+  /* Sparkline is the whole point — give it its own full-width row at all
+     breakpoints. Top row keeps S# / meta / Avg compact; bottom row is a
+     full-bleed spark. */
   display: grid;
-  grid-template-columns: 56px 1fr 110px auto;
-  gap: 0.85rem;
-  align-items: center;
+  grid-template-columns: 56px 1fr auto;
+  grid-template-areas:
+    "num   meta  stats"
+    "spark spark spark";
+  column-gap: 0.85rem;
+  row-gap: 0.55rem;
+  align-items: start;
   padding: 0.7rem 0.9rem;
   background: var(--surface-2);
   border: 1px solid var(--border);
@@ -1902,6 +1909,7 @@ button.shape-tag.is-clickable:hover {
 }
 
 .show-season .ss-num {
+  grid-area: num;
   font-weight: 600;
   font-size: 1rem;
   color: var(--text);
@@ -1909,6 +1917,7 @@ button.shape-tag.is-clickable:hover {
 }
 
 .show-season .ss-meta {
+  grid-area: meta;
   display: flex;
   flex-direction: column;
   min-width: 0;
@@ -1924,15 +1933,22 @@ button.shape-tag.is-clickable:hover {
   margin-top: 0.2rem;
 }
 
+/* The actual grid child is the wrapper (.ss-spark-wrap), not the SVG —
+   grid-area must live here so the spark row spans full card width. */
+.show-season .ss-spark-wrap {
+  grid-area: spark;
+  width: 100%;
+}
 .show-season .ss-spark {
   width: 100%;
-  height: 36px;
+  height: 48px;
   background: var(--surface);
   border-radius: 4px;
   display: block;
 }
 
 .show-season .ss-stats {
+  grid-area: stats;
   display: flex;
   flex-direction: column;
   align-items: flex-end;
@@ -1951,26 +1967,13 @@ button.shape-tag.is-clickable:hover {
 }
 
 @media (max-width: 560px) {
-  /* The season-trend sparkline is the whole point of the app — restore
-     it on mobile by stacking the row into two grid rows. Top row keeps
-     S# / meta / stats compact; bottom row is a full-width spark. */
+  /* Tighter S# column + row gap on phones; the 2-row grid layout itself is
+     defined at the base level so the spark always spans full width. */
   .show-season {
     grid-template-columns: 48px 1fr auto;
-    grid-template-areas:
-      "num   meta  stats"
-      "spark spark spark";
     row-gap: 0.45rem;
-    align-items: start;
   }
-  .show-season .ss-num   { grid-area: num; }
-  .show-season .ss-meta  { grid-area: meta; }
-  .show-season .ss-stats { grid-area: stats; }
-  .show-season .ss-spark {
-    grid-area: spark;
-    display: block;
-    width: 100%;
-    height: 44px;
-  }
+  .show-season .ss-spark { height: 44px; }
 }
 
 .curve {
@@ -3271,14 +3274,25 @@ body.advanced-drawer-open {
     right: 0.4rem;
   }
 
-  /* List view rows — already tight; just give the watch button a
-     bigger circular tap target. */
+  /* List view rows — stack the sparkline onto its own full-width row
+     below poster+text, same pattern as the mobile season cards. The
+     desktop 4-col layout (`56px 1fr 240px 36px`) squeezed the curve
+     into a 40px sliver because the mobile rule only defined 3 columns
+     and grid auto-flow trapped the spark in the 40px watch slot. */
   .row {
     grid-template-columns: 56px 1fr 40px;
+    grid-template-areas:
+      "poster main  watch"
+      "curve  curve curve";
     column-gap: 0.85rem;
     row-gap: 0.55rem;
     padding: 0.7rem 0.85rem;
+    align-items: start;
   }
+  .row-poster        { grid-area: poster; }
+  .row-main          { grid-area: main; }
+  .row .curve-wrap   { grid-area: curve; }
+  .row-watch         { grid-area: watch; align-self: center; }
   .row-curve { height: 48px; }
   .row-watch {
     width: 2.5rem;
@@ -4121,8 +4135,13 @@ body.advanced-drawer-open {
     0 0 2px rgba(8, 10, 16, 0.95),
     0 0 3px rgba(8, 10, 16, 0.7);
 }
-.spark-axis-label-top { top: 0.15rem; }
-.spark-axis-label-bot { bottom: 0.1rem; }
+/* JS sets `top: <yPct>%` for both labels so they line up with the actual
+   y-coordinate of the max/min on the curve (drawCurve pads the Y range
+   beyond min/max). translateY(-50%) centers the label vertically on the
+   y line so it overlays the curve at the right height rather than
+   overflowing above/below the wrap. */
+.spark-axis-label-top,
+.spark-axis-label-bot { top: 0; bottom: auto; transform: translateY(-50%); }
 
 /* #5 Sticky filter bar — frosted-glass strip that drops in once the
    main filter section scrolls off. Echoes the main toolbar (dark
