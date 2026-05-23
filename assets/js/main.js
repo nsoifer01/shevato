@@ -906,8 +906,7 @@
 
     jQuery.each(includes, function() {
       const includeFile = $(this).data('include') + '.html';
-      const basePath = window.location.pathname.includes('/apps/') ? '../../partials/' : 'partials/';
-      const file = basePath + includeFile;
+      const file = '/partials/' + includeFile;
       const $element = $(this);
 
       $element.load(file, function() {

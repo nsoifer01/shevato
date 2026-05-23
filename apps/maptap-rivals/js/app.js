@@ -145,14 +145,32 @@
   }
   function hasLocs(g) { return Array.isArray(g.myScores) && Array.isArray(g.theirScores); }
 
+  // Side presence. A rival-only game (saved by sync when the rival played but
+  // the user didn't) has theirScores/theirScore but no myScores/myScore.
+  // Old totals-only games have both totals defined but no arrays; bothPlayed
+  // still returns true for those so existing stats keep working unchanged.
+  function iPlayed(g) {
+    return Array.isArray(g.myScores) || Number.isFinite(g.myScore);
+  }
+  function theyPlayed(g) {
+    return Array.isArray(g.theirScores) || Number.isFinite(g.theirScore);
+  }
+  function bothPlayed(g) { return iPlayed(g) && theyPlayed(g); }
+
   function arrEq(a, b) {
     if (a === b) return true;
     if (!Array.isArray(a) || !Array.isArray(b) || a.length !== b.length) return false;
     for (let i = 0; i < a.length; i++) if (a[i] !== b[i]) return false;
     return true;
   }
-  function getMyTotal(g) { return hasLocs(g) ? weightedTotal(g.myScores) : (g.myScore || 0); }
-  function getTheirTotal(g) { return hasLocs(g) ? weightedTotal(g.theirScores) : (g.theirScore || 0); }
+  function getMyTotal(g) {
+    if (Array.isArray(g.myScores)) return weightedTotal(g.myScores);
+    return Number.isFinite(g.myScore) ? g.myScore : 0;
+  }
+  function getTheirTotal(g) {
+    if (Array.isArray(g.theirScores)) return weightedTotal(g.theirScores);
+    return Number.isFinite(g.theirScore) ? g.theirScore : 0;
+  }
 
   // ---------- paste parser ----------
   // MapTap shareable format looks like:
@@ -301,11 +319,6 @@
   function persistMatrixSelection() { save(KEY.MATRIX_SEL, state.matrixSelection); }
 
   // ---------- date utils ----------
-  function todayISO() {
-    const d = new Date();
-    const tz = d.getTimezoneOffset();
-    return new Date(d.getTime() - tz * 60000).toISOString().slice(0, 10);
-  }
   function daysBetween(aISO, bISO) {
     const a = new Date(aISO + 'T00:00:00');
     const b = new Date(bISO + 'T00:00:00');
@@ -434,7 +447,9 @@
   //
   // Positive = you are winning the rivalry; negative = they are.
   function rivalryScore(rivalId) {
-    const games = gamesFor(rivalId);
+    // Rival-only days (rival played, user didn't) carry no W/L signal — they
+    // shouldn't shift the rivalry score either way.
+    const games = gamesFor(rivalId).filter(bothPlayed);
     const n = games.length;
     if (n === 0) return 0;
     const volume = Math.min(1, n / 10);
@@ -458,6 +473,10 @@
   }
 
   function resultOf(g) {
+    // Rival-only (or me-only) days have no W/L semantics — neither side beat
+    // the other; one of them just didn't show up. Returning null lets the
+    // W/L/T filter exclude them naturally and the result-badge render '—'.
+    if (!bothPlayed(g)) return null;
     const m = getMyTotal(g);
     const t = getTheirTotal(g);
     if (m > t) return 'W';
@@ -619,8 +638,14 @@
   }
 
   function rivalSummary(rival) {
-    const games = gamesFor(rival.id);
+    // Stats below all describe H2H performance — running them over rival-only
+    // days (no `myScores`/`myScore`) would inject a stream of phantom 0–X
+    // losses and trash every avg/streak/best/worst. `allGames` is kept for
+    // callers that want to render *every* day this rival appears in.
+    const allGames = gamesFor(rival.id);
+    const games = allGames.filter(bothPlayed);
     const total = games.length;
+    const rivalOnlyGames = allGames.filter(g => theyPlayed(g) && !iPlayed(g));
     let wins = 0, losses = 0, ties = 0;
     let myCum = 0, theirCum = 0;
     let bestMine = -Infinity, worstMine = Infinity;
@@ -682,6 +707,8 @@
     return {
       rival,
       games,
+      allGames,
+      rivalOnlyGames,
       total,
       wins, losses, ties,
       winPct: total ? wins / total : 0,
@@ -978,7 +1005,9 @@
   function deleteGame(id) {
     const g = state.games.find(x => x.id === id);
     if (!g) return;
-    if (!confirm(`Delete this game (${fmtDateShort(g.date)}, ${getMyTotal(g)} vs ${getTheirTotal(g)})?`)) return;
+    const myLabel = iPlayed(g) ? String(getMyTotal(g)) : '—';
+    const theirLabel = theyPlayed(g) ? String(getTheirTotal(g)) : '—';
+    if (!confirm(`Delete this game (${fmtDateShort(g.date)}, ${myLabel} vs ${theirLabel})?`)) return;
     state.games = state.games.filter(x => x.id !== id);
     persistGames();
     if (state.view === 'dashboard') renderDashboard();
@@ -995,10 +1024,14 @@
   // *up to and including* the game being shared so the streak reflects
   // the state right after that result, not the current live streak.
   function streakUpTo(game) {
+    // Build the streak over H2H games only — rival-only days don't have a
+    // winner so they can't extend or break a streak. Use the full list to
+    // locate the anchor game (it might be the one being shared) then
+    // restrict the prefix to bothPlayed before counting.
     const all = gamesFor(game.rivalId);
     const idx = all.findIndex(g => g.id === game.id);
     if (idx < 0) return null;
-    const slice = all.slice(0, idx + 1);
+    const slice = all.slice(0, idx + 1).filter(bothPlayed);
     const s = streaks(slice);
     if (s.curMine >= 2) return { kind: 'W', len: s.curMine };
     if (s.curTheirs >= 2) return { kind: 'L', len: s.curTheirs };
@@ -1077,6 +1110,9 @@
   }
 
   function shareCell(g, rival) {
+    // No useful share text for one-sided days — keep the cell as a spacer
+    // so the column widths still align.
+    if (!bothPlayed(g)) return el('td', { class: 'row-action-cell' }, '');
     return el('td', { class: 'row-action-cell' }, [
       el('button', {
         type: 'button',
@@ -1097,6 +1133,9 @@
       g.date >= season.startDate && g.date <= season.endDate
     );
     if (season.rivalId) filtered = filtered.filter(g => g.rivalId === season.rivalId);
+    // Season goals are about your record vs. the rival — rival-only days
+    // (they played, you didn't) shouldn't count toward gamesPlayed or W/L.
+    filtered = filtered.filter(bothPlayed);
 
     const gamesPlayed = filtered.length;
     let wins = 0, losses = 0, ties = 0;
@@ -1284,7 +1323,7 @@
     if (state.seasons.length === 0) {
       body.appendChild(el('div', { class: 'empty-state seasons-empty' }, [
         el('p', {}, 'No seasons yet. Create your first season to start tracking a time-boxed challenge.'),
-        el('button', { type: 'button', class: 'btn btn-primary', style: 'margin-top:.75rem', onclick: openSeasonModal }, '+ Create your first season'),
+        el('button', { type: 'button', class: 'btn btn-ghost', style: 'margin-top:.75rem', onclick: openSeasonModal }, '+ Create your first season'),
       ]));
       return;
     }
@@ -1530,27 +1569,34 @@
   }
 
   // One round chip: shows weighted slot, predicted (and actual when known),
-  // and a top accent line keyed to Δ. Predicted is never null when we
-  // render — caller skips the strip entirely if the predictor failed.
+  // and a top accent line keyed to Δ. `predicted` may be null when the
+  // predictor lacked enough history but we have a synced actual — in that
+  // case we render an actual-only chip so the rival's round score is still
+  // visible on the dashboard.
   function makeRoundChip(slot, predicted, actual) {
-    const predRound = Math.round(predicted);
+    const hasPred = predicted != null && Number.isFinite(predicted);
     const hasActual = actual != null && Number.isFinite(actual);
-    const delta = hasActual ? Math.round(actual) - predRound : null;
+    const predRound = hasPred ? Math.round(predicted) : null;
+    const actualRound = hasActual ? Math.round(actual) : null;
+    const delta = (hasPred && hasActual) ? actualRound - predRound : null;
     const cls = ['prc'];
     if (delta != null) cls.push(delta > 0 ? 'prc-pos' : delta < 0 ? 'prc-neg' : 'prc-zero');
+    if (!hasPred && hasActual) cls.push('prc-actual-only');
     const w = WEIGHTS[slot];
-    return el('div', { class: cls.join(' '), title:
-        hasActual
-          ? `Round ${slot + 1} (×${w}): predicted ${predRound}, actual ${Math.round(actual)}`
-          : `Round ${slot + 1} (×${w}): predicted ${predRound}` }, [
+    const title =
+      hasPred && hasActual ? `Round ${slot + 1} (×${w}): predicted ${predRound}, actual ${actualRound}` :
+      hasPred              ? `Round ${slot + 1} (×${w}): predicted ${predRound}` :
+      hasActual            ? `Round ${slot + 1} (×${w}): actual ${actualRound}` :
+                             `Round ${slot + 1} (×${w})`;
+    return el('div', { class: cls.join(' '), title }, [
       el('div', { class: 'prc-head' }, [
         el('span', { class: 'prc-slot' }, `R${slot + 1}`),
       ]),
       w > 1 ? el('span', { class: 'prc-weight' }, `×${w}`) : null,
       el('div', { class: 'prc-nums' }, [
-        el('span', { class: 'prc-pred' }, String(predRound)),
-        hasActual ? svgIcon(ICON_CHEV, { cls: 'prc-arrow', sw: 1.8 }) : null,
-        hasActual ? el('span', { class: 'prc-actual' }, String(Math.round(actual))) : null,
+        hasPred ? el('span', { class: 'prc-pred' }, String(predRound)) : null,
+        (hasPred && hasActual) ? svgIcon(ICON_CHEV, { cls: 'prc-arrow', sw: 1.8 }) : null,
+        hasActual ? el('span', { class: 'prc-actual' }, String(actualRound)) : null,
       ]),
       delta != null
         ? el('div', { class: 'prc-delta' }, [
@@ -1575,12 +1621,22 @@
     cells.push(el('div', { class: 'pred-cell pred-delta-cell' }, [makeDeltaBadge(delta)]));
     const head = el('div', { class: cls.join(' ') }, cells);
     const accentStyle = accentColor ? `--row-accent:${accentColor};` : '';
-    if (!Array.isArray(predictedScores)) {
+    // Render the per-round strip whenever we have either predicted scores OR
+    // synced actual scores — the rival-only case (rival played today, user
+    // hasn't, predictor lacks history) still gets per-round chips so the
+    // user can see their rival's round shape.
+    const hasPredArr = Array.isArray(predictedScores) && predictedScores.length === N_LOCS;
+    const hasActualArr = Array.isArray(actualScores) && actualScores.length === N_LOCS;
+    if (!hasPredArr && !hasActualArr) {
       if (accentStyle) head.setAttribute('style', accentStyle);
       return head;
     }
     const strip = el('div', { class: 'pred-round-strip' },
-      predictedScores.map((p, i) => makeRoundChip(i, p, actualScores ? actualScores[i] : null)));
+      Array.from({ length: N_LOCS }, (_, i) => makeRoundChip(
+        i,
+        hasPredArr ? predictedScores[i] : null,
+        hasActualArr ? actualScores[i] : null,
+      )));
     return el('div', {
       class: 'pred-row-wrap' + (isYou ? ' pred-row-wrap-you' : ''),
       style: accentStyle || null,
@@ -2093,16 +2149,19 @@
       return;
     }
 
-    const totalGames = state.games.length;
+    // H2H games only — rival-only days carry no W/L and would skew the
+    // "Avg score" tile down to 0 because the user wasn't there.
+    const h2hGames = state.games.filter(bothPlayed);
+    const totalGames = h2hGames.length;
     let wins = 0, losses = 0, ties = 0;
-    state.games.forEach(g => {
+    h2hGames.forEach(g => {
       const r = resultOf(g);
       if (r === 'W') wins++;
       else if (r === 'L') losses++;
       else ties++;
     });
     const winPct = totalGames ? (wins / totalGames * 100) : 0;
-    const myAvg = average(state.games.map(getMyTotal));
+    const myAvg = average(h2hGames.map(getMyTotal));
 
     // best rival = highest win % with at least 1 game
     let bestRival = null, worstRival = null;
@@ -2113,7 +2172,7 @@
       if (!worstRival || s.winPct < worstRival.winPct) worstRival = s;
     });
 
-    const todayGames = state.games.filter(g => g.date === todayISO()).length;
+    const todayGames = h2hGames.filter(g => g.date === todayISO()).length;
 
     wrap.innerHTML = '';
     wrap.appendChild(makeSummaryCard('Total games', totalGames, `${wins}W · ${losses}L · ${ties}T`));
@@ -2137,10 +2196,13 @@
   // kind: 'win' | 'loss' | 'comeback'
   function streakDrama(rivalId) {
     const today = todayISO();
-    // Already played today — drama resolved, skip.
-    if (state.games.some(g => g.rivalId === rivalId && g.date === today)) return null;
+    // Drama is "resolved" only when the user has actually played today vs.
+    // this rival — a rival-only entry for today means they played but the
+    // user hasn't, which is exactly when we *want* the prompt to show.
+    if (state.games.some(g => g.rivalId === rivalId && g.date === today && bothPlayed(g))) return null;
 
-    const games = gamesFor(rivalId);
+    // Streaks only make sense over H2H games.
+    const games = gamesFor(rivalId).filter(bothPlayed);
     if (games.length < 2) return null;
 
     const rival = state.rivals.find(r => r.id === rivalId);
@@ -2320,7 +2382,12 @@
       persistSelected();
     }
     if (!rival) {
-      headerHost.innerHTML = '<p class="empty-state" style="margin:0">Add a rival to see detailed stats.</p>';
+      headerHost.innerHTML = '';
+      const emptyWrap = el('div', { class: 'empty-state', style: 'margin:0' }, [
+        el('p', {}, 'Add a rival to see detailed stats.'),
+        el('button', { type: 'button', class: 'btn btn-primary', style: 'margin-top:.75rem', onclick: () => openRivalModal(null) }, '+ Add rival'),
+      ]);
+      headerHost.appendChild(emptyWrap);
       cardsHost.innerHTML = '';
       calloutsHost.innerHTML = '';
       tableBody.innerHTML = '';
@@ -2348,7 +2415,12 @@
       el('div', { class: 'meta' },
         s.total
           ? `${s.total} games · ${s.wins}W ${s.losses}L ${s.ties}T · ${(s.winPct * 100).toFixed(1)}% win rate`
-          : 'No games yet — log your first one above.'
+          + (s.rivalOnlyGames && s.rivalOnlyGames.length
+              ? ` · +${s.rivalOnlyGames.length} day${s.rivalOnlyGames.length === 1 ? '' : 's'} they played without you`
+              : '')
+          : (s.rivalOnlyGames && s.rivalOnlyGames.length
+              ? `No head-to-head games yet — ${rival.name} has played ${s.rivalOnlyGames.length} day${s.rivalOnlyGames.length === 1 ? '' : 's'} on their own.`
+              : 'No games yet — log your first one above.')
       ),
     ]));
     const actions = el('div', { class: 'rival-header-actions' });
@@ -2392,15 +2464,22 @@
 
     // stat cards
     cardsHost.innerHTML = '';
+    calloutsHost.innerHTML = '';
     if (!s.total) {
+      // No head-to-head games — stat cards/charts/callouts would all be
+      // empty or zeroed. Skip them and the round-by-round breakdown, but
+      // still render the games table below so rival-only days (rival
+      // played, user didn't) are visible.
       destroyAllCharts();
-      calloutsHost.innerHTML = '';
-      tableBody.innerHTML = '';
-      $('#rival-games-pagination').hidden = true;
       $('#loc-section').hidden = true;
       $('#continent-section').hidden = true;
-      return;
+      if (!s.allGames.length) {
+        tableBody.innerHTML = '';
+        $('#rival-games-pagination').hidden = true;
+        return;
+      }
     }
+    if (s.total) {
 
     cardsHost.appendChild(makeStatCard('Win rate', `${(s.winPct * 100).toFixed(1)}%`, `${s.wins}W · ${s.losses}L · ${s.ties}T`, s.winPct >= 0.5 ? 'is-good' : 'is-bad'));
     // Average per-game point gap rather than cumulative — comparable
@@ -2439,7 +2518,6 @@
       s.biggestLossGame ? 'is-bad' : ''));
 
     // callouts
-    calloutsHost.innerHTML = '';
     const rivalNameSafe = escapeHtml(rival.name);
     if (s.hot) calloutsHost.appendChild(callout('good', '🔥', `Hot streak: <strong>${s.streak.curMine} wins in a row</strong> against ${rivalNameSafe}.`));
     if (s.onColdStreak) calloutsHost.appendChild(callout('bad', '❄️', `${rivalNameSafe} has won the last <strong>${s.streak.curTheirs} games</strong>. Time to bounce back.`));
@@ -2447,9 +2525,13 @@
       const pb = s.games.find(g => getMyTotal(g) === s.bestMine);
       if (pb) calloutsHost.appendChild(callout('good', '⭐', `Personal best <strong>${s.bestMine}</strong> set vs ${rivalNameSafe} on ${fmtDateShort(pb.date)}.`));
     }
-    // games table (most recent first), paginated
+    } // end if (s.total)
+    // games table (most recent first), paginated. Use the unfiltered list
+    // so rival-only days show up here even though they're excluded from
+    // the W/L stats above — the user wants to see their rival's activity
+    // even when they didn't play themselves.
     tableBody.innerHTML = '';
-    const allGames = s.games.slice().reverse();
+    const allGames = s.allGames.slice().reverse();
     const total = allGames.length;
     const size = state.rivalGamesPageSize;
     const totalPages = size === 0 ? 1 : Math.max(1, Math.ceil(total / size));
@@ -2463,30 +2545,49 @@
 
     pageGames.forEach(g => {
       const r = resultOf(g);
-      const myT = getMyTotal(g);
-      const theirT = getTheirTotal(g);
-      const diff = myT - theirT;
-      tableBody.appendChild(el('tr', {}, [
+      const meHere = iPlayed(g);
+      const themHere = theyPlayed(g);
+      const myT = meHere ? getMyTotal(g) : null;
+      const theirT = themHere ? getTheirTotal(g) : null;
+      const diff = (meHere && themHere) ? (myT - theirT) : null;
+      tableBody.appendChild(el('tr', { class: r ? '' : 'row-one-sided' }, [
         el('td', {}, fmtDateShort(g.date)),
-        el('td', { style: 'font-weight:600', title: hasLocs(g) ? `Rounds: ${g.myScores.join(' / ')}` : '' }, String(myT)),
-        el('td', { style: 'font-weight:600', title: hasLocs(g) ? `Rounds: ${g.theirScores.join(' / ')}` : '' }, String(theirT)),
-        el('td', { class: diff > 0 ? 'delta-pos' : diff < 0 ? 'delta-neg' : 'delta-zero' },
-          (diff > 0 ? '+' : '') + diff),
+        el('td', {
+          style: 'font-weight:600',
+          title: hasLocs(g) ? `Rounds: ${g.myScores.join(' / ')}` : (meHere ? '' : 'You didn\'t play this day'),
+        }, meHere ? String(myT) : '—'),
+        el('td', {
+          style: 'font-weight:600',
+          title: Array.isArray(g.theirScores) ? `Rounds: ${g.theirScores.join(' / ')}` : '',
+        }, themHere ? String(theirT) : '—'),
+        diff === null
+          ? el('td', { class: 'delta-zero', title: 'Only one side played' }, '—')
+          : el('td', { class: diff > 0 ? 'delta-pos' : diff < 0 ? 'delta-neg' : 'delta-zero' },
+              (diff > 0 ? '+' : '') + diff),
         el('td', { class: 'rounds-cell' }, [makeRoundDots(g)]),
-        el('td', {}, [el('span', { class: 'result-badge ' + r }, r)]),
+        el('td', {}, [el('span', {
+          class: 'result-badge ' + (r || 'NA'),
+          title: r ? '' : 'Only one side played',
+        }, r || '—')]),
         noteCell(g),
         shareCell(g, rival),
         deleteCell(g),
       ]));
     });
 
-    // charts (defer one tick to ensure canvases are visible)
-    requestAnimationFrame(() => renderCharts(s));
+    if (s.total) {
+      // charts (defer one tick to ensure canvases are visible)
+      requestAnimationFrame(() => renderCharts(s));
 
-    // Per-location section (handles its own visibility based on data presence)
-    renderLocationSection(s);
-    renderContinentSection(s);
-    renderCalendarHeatmap(s);
+      // Per-location section (handles its own visibility based on data presence)
+      renderLocationSection(s);
+      renderContinentSection(s);
+      renderCalendarHeatmap(s);
+    } else {
+      destroyAllCharts();
+      $('#loc-section').hidden = true;
+      $('#continent-section').hidden = true;
+    }
   }
 
   // ---------- calendar heatmap ----------
@@ -2510,6 +2611,10 @@
       legendEl.innerHTML = '';
       return;
     }
+    // Reveal the section now (instead of at the end) so we can measure the
+    // wrap's real clientWidth below. Hidden elements report clientWidth = 0,
+    // which would force the cell-size computation back to the minimum.
+    section.hidden = false;
 
     const today = todayISO();
     const maxStartISO = addDaysISO(today, -(18 * 30 + 15)); // ~18 months back
@@ -2576,15 +2681,19 @@
       }
     }
 
-    const CELL = 11; // px
-    const GAP  = 2;  // px
-    const colUnit = CELL + GAP;
+    // Grid sizing strategy: let CSS do it. Columns are `1fr` so the grid
+    // stretches to fill its container's width, and cells use `aspect-ratio: 1`
+    // (see styles.css `#heatmap-grid .heatmap-cell`) so they stay square at
+    // whatever width the column gives them. Row heights flow from the cell
+    // heights — no JS measurement required.
+    const GAP = 2; // px
 
-    // Month labels row
+    // Month labels row — same column template as the grid below so labels
+    // align with their week columns.
     monthEl.innerHTML = '';
     monthEl.style.cssText =
-      `display:grid;grid-template-columns:repeat(${weeks.length},${colUnit}px);` +
-      `gap:0 0;margin-bottom:2px;height:16px;position:relative;`;
+      `display:grid;grid-template-columns:repeat(${weeks.length},1fr);` +
+      `gap:0 ${GAP}px;margin-bottom:2px;height:16px;position:relative;`;
     for (const { colIdx, label } of monthLabelItems) {
       const span = el('span', {
         class: 'heatmap-month-lbl',
@@ -2594,15 +2703,15 @@
       monthEl.appendChild(span);
     }
 
-    // Build the grid: 7 rows × N week-cols.
-    // CSS grid row = day-of-week (row 1=Sun, row 7=Sat).
+    // Build the grid: 7 rows × N week-cols. CSS grid row = day-of-week
+    // (row 1=Sun, row 7=Sat). Columns are 1fr so the grid fills the wrap
+    // width; cell aspect-ratio: 1 (from CSS) keeps the squares square.
     gridEl.innerHTML = '';
     gridEl.style.cssText =
       `display:grid;` +
-      `grid-template-rows:repeat(7,${CELL}px);` +
-      `grid-template-columns:repeat(${weeks.length},${CELL}px);` +
+      `grid-template-columns:repeat(${weeks.length},1fr);` +
       `gap:${GAP}px;` +
-      `grid-auto-flow:column;`;
+      `width:100%;`;
 
     for (let wi = 0; wi < weeks.length; wi++) {
       const days = weeks[wi]; // array of ISO strings (1–7 items)
@@ -2651,8 +2760,6 @@
         el('span', { class: 'heatmap-legend-lbl' }, label),
       ]));
     }
-
-    section.hidden = false;
   }
 
   function renderContinentSection(s) {
@@ -2733,8 +2840,14 @@
   function makeRoundDots(g) {
     const wrap = el('span', { class: 'round-dots' });
     if (!hasLocs(g)) {
+      // Either an older totals-only import or a one-sided sync (only the
+      // rival or only the user played). Use the dot row purely as a
+      // placeholder — we can't render a comparison without both sides.
+      const tip = iPlayed(g) && !theyPlayed(g) ? 'They didn\'t play this day'
+                : theyPlayed(g) && !iPlayed(g) ? 'You didn\'t play this day'
+                : 'No round data';
       for (let i = 0; i < N_LOCS; i++) {
-        wrap.appendChild(el('span', { class: 'round-dot empty', title: 'No round data' }));
+        wrap.appendChild(el('span', { class: 'round-dot empty', title: tip }));
       }
       return wrap;
     }
@@ -2756,7 +2869,6 @@
     const section = $('#loc-section');
     if (!s.locStats || !s.gamesWithLocsCount) {
       section.hidden = true;
-      destroyChart('radar');
       destroyChart('locWinrate');
       return;
     }
@@ -2878,9 +2990,18 @@
       }
       const tr = resultOf(g);
       const total = getMyTotal(g);
+      const theirTotal = getTheirTotal(g);
+      // Color = did you win this game (green) or lose (red). The total number
+      // itself can be high and still be red — what matters is whether the rival
+      // scored higher. The "W/L/T" letter makes that explicit so the color
+      // isn't read as "is my score high?".
       row.appendChild(el('span', {
         class: 'heatmap-totalcol ' + (tr === 'W' ? 'win' : tr === 'L' ? 'loss' : 'tie'),
-      }, String(total)));
+        title: `You ${total} vs ${s.rival.name} ${theirTotal} — ${tr === 'W' ? 'Win' : tr === 'L' ? 'Loss' : 'Tie'}`,
+      }, [
+        el('span', { class: 'heatmap-total-num' }, String(total)),
+        el('span', { class: 'heatmap-total-result' }, tr),
+      ]));
       wrap.appendChild(row);
     });
   }
@@ -2906,48 +3027,6 @@
   function renderLocationCharts(s) {
     if (!window.Chart || !s.locStats) return;
     const labels = s.locStats.map((l, i) => `${l.label} (×${WEIGHTS[i]})`);
-
-    destroyChart('radar');
-    state.charts.radar = new Chart($('#chart-radar'), {
-      type: 'radar',
-      data: {
-        labels,
-        datasets: [
-          {
-            label: 'You',
-            data: s.locStats.map(l => l.myAvg),
-            borderColor: '#4ade80',
-            backgroundColor: 'rgba(74,222,128,0.18)',
-            pointBackgroundColor: '#4ade80',
-            pointRadius: 3,
-          },
-          (() => {
-            const rc = chartRivalColor(s.rival.color);
-            return {
-              label: s.rival.name,
-              data: s.locStats.map(l => l.theirAvg),
-              borderColor: rc,
-              backgroundColor: hexToRgba(rc, 0.18),
-              pointBackgroundColor: rc,
-              pointRadius: 3,
-            };
-          })(),
-        ],
-      },
-      options: chartCommon({
-        scales: {
-          r: {
-            beginAtZero: true,
-            min: 0,
-            max: 100,
-            ticks: { color: '#9aa3b2', backdropColor: 'transparent', stepSize: 25 },
-            grid: { color: '#252938' },
-            angleLines: { color: '#252938' },
-            pointLabels: { color: '#e7e9ee', font: { size: 11 } },
-          },
-        },
-      }),
-    });
 
     destroyChart('locWinrate');
     const winrates = s.locStats.map(l => +(l.winPct * 100).toFixed(1));
@@ -3252,6 +3331,9 @@
     rivalIds.forEach(id => byRival.set(id, new Map()));
     state.games.forEach(g => {
       if (!want.has(g.rivalId)) return;
+      // Matrix cells compare row vs. column scores head-to-head — a missing
+      // my-side would silently render as 0 and skew margins/averages.
+      if (!bothPlayed(g)) return;
       const mine = getMyTotal(g);
       const theirs = getTheirTotal(g);
       const slot = byRival.get(g.rivalId);
@@ -3524,8 +3606,8 @@
         }
         const cell = computeMatrixCell(row, col, byRival);
         if (!cell || cell.games === 0) {
-          tr.appendChild(el('td', { class: 'matrix-cell matrix-empty' }, [
-            el('span', { class: 'matrix-record' }, 'no games'),
+          tr.appendChild(el('td', { class: 'matrix-cell matrix-empty matrix-cell-empty' }, [
+            el('span', {}, 'no games'),
           ]));
           return;
         }
@@ -3599,9 +3681,11 @@
     pageGames.forEach(g => {
       const rival = rivalById[g.rivalId];
       const r = resultOf(g);
-      const myT = getMyTotal(g);
-      const theirT = getTheirTotal(g);
-      const diff = myT - theirT;
+      const meHere = iPlayed(g);
+      const themHere = theyPlayed(g);
+      const myT = meHere ? getMyTotal(g) : null;
+      const theirT = themHere ? getTheirTotal(g) : null;
+      const diff = (meHere && themHere) ? (myT - theirT) : null;
       const dayUrl = mapTapHistoryUrl(g.date);
       const dateCell = dayUrl
         ? el('td', {}, [el('a', {
@@ -3612,15 +3696,26 @@
             title: 'Open this day on maptap.gg',
           }, fmtDateShort(g.date))])
         : el('td', {}, fmtDateShort(g.date));
-      tbody.appendChild(el('tr', {}, [
+      tbody.appendChild(el('tr', { class: r ? '' : 'row-one-sided' }, [
         dateCell,
         el('td', {}, rival ? `${rival.icon} ${rival.name}` : '—'),
-        el('td', { style: 'font-weight:600', title: hasLocs(g) ? `Rounds: ${g.myScores.join(' / ')}` : '' }, String(myT)),
-        el('td', { style: 'font-weight:600', title: hasLocs(g) ? `Rounds: ${g.theirScores.join(' / ')}` : '' }, String(theirT)),
-        el('td', { class: diff > 0 ? 'delta-pos' : diff < 0 ? 'delta-neg' : 'delta-zero' },
-          (diff > 0 ? '+' : '') + diff),
+        el('td', {
+          style: 'font-weight:600',
+          title: hasLocs(g) ? `Rounds: ${g.myScores.join(' / ')}` : (meHere ? '' : 'You didn\'t play this day'),
+        }, meHere ? String(myT) : '—'),
+        el('td', {
+          style: 'font-weight:600',
+          title: Array.isArray(g.theirScores) ? `Rounds: ${g.theirScores.join(' / ')}` : '',
+        }, themHere ? String(theirT) : '—'),
+        diff === null
+          ? el('td', { class: 'delta-zero', title: 'Only one side played' }, '—')
+          : el('td', { class: diff > 0 ? 'delta-pos' : diff < 0 ? 'delta-neg' : 'delta-zero' },
+              (diff > 0 ? '+' : '') + diff),
         el('td', { class: 'rounds-cell' }, [makeRoundDots(g)]),
-        el('td', {}, [el('span', { class: 'result-badge ' + r }, r)]),
+        el('td', {}, [el('span', {
+          class: 'result-badge ' + (r || 'NA'),
+          title: r ? '' : 'Only one side played',
+        }, r || '—')]),
         noteCell(g),
         shareCell(g, rival || null),
         deleteCell(g),
@@ -4235,9 +4330,15 @@
       for (const date of sortedDates) {
         const mine = mineByDate[date];
         const theirs = theirsByDate[date];
-        if (!mine || !theirs) continue;
-        // Cities are identical for both players each day — take ours.
-        const cities = mine.cities;
+        // Skip only if the rival has no entry — there's nothing to record
+        // about a day they didn't play. Days where only the rival played
+        // (no `mine`) still get saved below as rival-only games so the
+        // user can see their rival's activity without having to play too.
+        if (!theirs) continue;
+        // Cities are identical for both players each day — take whichever
+        // side we have (preferring ours when both exist for parity with
+        // the existing behaviour).
+        const cities = (mine && mine.cities) || theirs.cities;
 
         const existingGame = existingGameByDate.get(date);
         if (existingGame) {
@@ -4249,36 +4350,48 @@
             backfilled++;
           }
           // Refresh scores for games that originally came from MapTap sync.
-          // This covers the case where the user pointed `myMapTap` at a
-          // different MapTap profile — the stored rows still reflect the
-          // previous user and need to be replaced. Manually entered games
-          // (different `note`) are left alone so we don't clobber hand-
-          // entered data.
+          // This covers two cases:
+          //   1. The user pointed `myMapTap` at a different MapTap profile —
+          //      the stored rows still reflect the previous user and need
+          //      to be replaced.
+          //   2. A previously rival-only game (no `myScores`/`myScore`)
+          //      becomes a full H2H game once the user plays and re-syncs.
+          // Manually entered games (different `note`) are left alone so we
+          // don't clobber hand-entered data.
           if (existingGame.note === 'synced from MapTap') {
-            const newMy = mine.scores.slice();
             const newTheir = theirs.scores.slice();
-            if (!arrEq(existingGame.myScores, newMy) || !arrEq(existingGame.theirScores, newTheir)) {
-              existingGame.myScores = newMy;
+            const newMy = mine ? mine.scores.slice() : null;
+            const myChanged = newMy
+              ? !arrEq(existingGame.myScores, newMy)
+              : false; // can't downgrade existing my-side from a sync
+            const theirChanged = !arrEq(existingGame.theirScores, newTheir);
+            if (myChanged || theirChanged) {
+              if (newMy) {
+                existingGame.myScores = newMy;
+                existingGame.myScore = weightedTotal(newMy);
+              }
               existingGame.theirScores = newTheir;
-              existingGame.myScore = weightedTotal(newMy);
               existingGame.theirScore = weightedTotal(newTheir);
               updated++;
             }
           }
           continue;
         }
-        state.games.push({
+        const newGame = {
           id: uid(),
           rivalId: rival.id,
           date,
-          myScores: mine.scores.slice(),
           theirScores: theirs.scores.slice(),
           cities: cities.slice(),
-          myScore: weightedTotal(mine.scores),
           theirScore: weightedTotal(theirs.scores),
           note: 'synced from MapTap',
           createdAt: now + added,
-        });
+        };
+        if (mine) {
+          newGame.myScores = mine.scores.slice();
+          newGame.myScore = weightedTotal(mine.scores);
+        }
+        state.games.push(newGame);
         added++;
       }
       if (added || backfilled || updated) persistGames();
@@ -4884,6 +4997,7 @@
 
     // add rival
     $('#add-rival-btn').addEventListener('click', () => openRivalModal(null));
+    $('#dash-empty-add-btn').addEventListener('click', () => openRivalModal(null));
 
     // Seasons
     $('#new-season-btn').addEventListener('click', openSeasonModal);
