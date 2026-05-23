@@ -19,8 +19,10 @@ const DATA_FILE = path.join(__dirname, '..', 'data.json');
 const CACHE_FILE = path.join(__dirname, '..', 'data', 'tmdb-cache.json');
 const TOKEN = process.env.TMDB_TOKEN || process.env.TMDB_BEARER_TOKEN;
 
-// TMDB rate limit is generous (~50 req/sec) but we go gentle.
-const REQUEST_INTERVAL_MS = 100;
+// TMDB rate limit is generous (~50 req/sec) but we go gentle. Override
+// via TMDB_INTERVAL_MS env var when backfilling a large batch — values
+// down to ~35ms (28/sec) stay comfortably below TMDB's limit.
+const REQUEST_INTERVAL_MS = parseInt(process.env.TMDB_INTERVAL_MS, 10) || 100;
 
 function sleep(ms) { return new Promise((r) => setTimeout(r, ms)); }
 
@@ -106,17 +108,45 @@ async function fetchTvdbId(tmdbId) {
   }
 }
 
-// Per-season external IDs so we can deep-link to a season on TVDB (the
-// series-level dereferrer only lands on the show page). TMDB exposes
-// season-level external_ids and TVDB has a matching season dereferrer
-// (`https://thetvdb.com/dereferrer/season/{tvdb_id}`).
-async function fetchSeasonTvdbId(tmdbId, seasonNumber) {
+// Top-billed cast for a series. Stores name + character + profile_path
+// for up to MAX_CAST entries so the show modal can render a compact
+// cast strip. Returns null on any failure so a missing endpoint
+// (deleted/private show, etc.) doesn't block the whole enrichment.
+const MAX_CAST = 6;
+async function fetchCast(tmdbId) {
   try {
-    const body = await tmdbFetch(`https://api.themoviedb.org/3/tv/${tmdbId}/season/${seasonNumber}/external_ids`);
-    const v = body && body.tvdb_id;
-    return Number.isFinite(v) ? v : null;
+    const body = await tmdbFetch(`https://api.themoviedb.org/3/tv/${tmdbId}/credits`);
+    const arr = body && Array.isArray(body.cast) ? body.cast : [];
+    if (arr.length === 0) return [];
+    return arr.slice(0, MAX_CAST).map((p) => ({
+      id: Number.isFinite(p.id) ? p.id : null,
+      name: p.name || null,
+      character: p.character || null,
+      profile_path: p.profile_path || null,
+    }));
   } catch (_) {
     return null;
+  }
+}
+
+// Per-season details — overview (used as the season modal's plot summary
+// when TMDB has one) + external_ids (so the modal can deep-link to TVDB's
+// season page rather than the series page). One TMDB call gets both via
+// `append_to_response=external_ids`. Returns `''` for overview and `null`
+// for tvdbId on miss so the caller can record "we asked" and stop retrying.
+async function fetchSeasonExtras(tmdbId, seasonNumber) {
+  try {
+    const body = await tmdbFetch(
+      `https://api.themoviedb.org/3/tv/${tmdbId}/season/${seasonNumber}?append_to_response=external_ids`,
+    );
+    const overview = (body && typeof body.overview === 'string') ? body.overview.trim() : '';
+    const tvdb = body && body.external_ids && body.external_ids.tvdb_id;
+    return {
+      overview,
+      tvdbId: Number.isFinite(tvdb) ? tvdb : null,
+    };
+  } catch (_) {
+    return { overview: '', tvdbId: null };
   }
 }
 
@@ -186,6 +216,8 @@ async function fetchSeasonTvdbId(tmdbId, seasonNumber) {
       if (result && result.id && !result.notFound) {
         await sleep(REQUEST_INTERVAL_MS);
         result.tvdbId = await fetchTvdbId(result.id);
+        await sleep(REQUEST_INTERVAL_MS);
+        result.cast = await fetchCast(result.id);
       }
       cache[imdbId] = result;
       if (wasNotFound && result && !result.notFound) recoveredViaSearch++;
@@ -228,11 +260,42 @@ async function fetchSeasonTvdbId(tmdbId, seasonNumber) {
     }
   }
 
-  // Per-season tvdbId so the season modal can deep-link to the right
-  // season page. Uses the (seriesId, season) pairs that actually appear
-  // in data.json — no point fetching seasons we have no ratings for.
-  // We store one map per series (`seasonTvdbIds: { "1": 364731, ... }`),
-  // recording null on misses so we don't retry forever.
+  // Back-fill cast for entries resolved before fetchCast existed, AND
+  // re-fetch entries cached before person.id was added (so cast cards
+  // can link to TMDB person pages). null result is recorded so we
+  // don't retry forever. Entries with a populated cast that already
+  // carry id on the first cast member are left alone.
+  const castBackfill = uniqueSeries.filter((id) => {
+    const e = cache[id];
+    if (!e || !e.id || e.notFound || e.error) return false;
+    if (!('cast' in e)) return true;
+    if (Array.isArray(e.cast) && e.cast.length > 0 && e.cast[0].id == null) return true;
+    return false;
+  });
+  if (castBackfill.length > 0) {
+    console.log(`\nBack-filling cast for ${castBackfill.length.toLocaleString()} cached entries`);
+    let cdone = 0;
+    const ct0 = Date.now();
+    for (const imdbId of castBackfill) {
+      cache[imdbId].cast = await fetchCast(cache[imdbId].id);
+      cdone++;
+      if (cdone % 50 === 0) {
+        const rate = (cdone / ((Date.now() - ct0) / 1000)).toFixed(1);
+        const eta = ((castBackfill.length - cdone) / parseFloat(rate)).toFixed(0);
+        process.stdout.write(`  ${cdone}/${castBackfill.length}  (${rate}/s, ~${eta}s left)\r`);
+        fs.writeFileSync(CACHE_FILE, JSON.stringify(cache));
+      }
+      await sleep(REQUEST_INTERVAL_MS);
+    }
+  }
+
+  // Per-season details (tvdbId for the season-modal TVDB deep link, +
+  // per-season overview for the season-modal plot summary). Uses the
+  // (seriesId, season) pairs that actually appear in data.json — no point
+  // fetching seasons we have no ratings for. Each cache entry stores two
+  // maps: `seasonTvdbIds: { "1": 364731, ... }` and `seasonOverviews:
+  // { "1": "Strange things are afoot...", ... }`, recording null/empty on
+  // misses so we don't retry forever.
   const seasonsBySeriesId = {};
   for (const m of data.matches) {
     if (!seasonsBySeriesId[m.seriesId]) seasonsBySeriesId[m.seriesId] = new Set();
@@ -242,21 +305,28 @@ async function fetchSeasonTvdbId(tmdbId, seasonNumber) {
   for (const [imdbId, seasons] of Object.entries(seasonsBySeriesId)) {
     const e = cache[imdbId];
     if (!e || !e.id || e.notFound || e.error) continue;
-    const known = e.seasonTvdbIds || {};
+    const knownTvdb = e.seasonTvdbIds || {};
+    const knownOverviews = e.seasonOverviews || {};
     for (const s of seasons) {
-      if (s in known) continue;
+      // Fetch when EITHER piece is missing — one TMDB call returns both,
+      // so a previously-cached tvdbId still triggers a fetch the first time
+      // we run after this script learned about overviews.
+      if (s in knownTvdb && s in knownOverviews) continue;
       seasonWork.push({ imdbId, tmdbId: e.id, season: s });
     }
   }
   if (seasonWork.length > 0) {
-    console.log(`\nFetching season tvdbIds for ${seasonWork.length.toLocaleString()} seasons`);
+    console.log(`\nFetching season details for ${seasonWork.length.toLocaleString()} seasons`);
     let sdone = 0;
     const st0 = Date.now();
     for (const job of seasonWork) {
-      const tvdb = await fetchSeasonTvdbId(job.tmdbId, job.season);
+      const extras = await fetchSeasonExtras(job.tmdbId, job.season);
       const e = cache[job.imdbId];
       if (!e.seasonTvdbIds) e.seasonTvdbIds = {};
-      e.seasonTvdbIds[job.season] = tvdb; // may be null — that's the "we asked, not available" signal
+      if (!e.seasonOverviews) e.seasonOverviews = {};
+      // May be null/empty — that's the "we asked, not available" signal.
+      e.seasonTvdbIds[job.season] = extras.tvdbId;
+      e.seasonOverviews[job.season] = extras.overview;
       sdone++;
       if (sdone % 50 === 0) {
         const rate = (sdone / ((Date.now() - st0) / 1000)).toFixed(1);
@@ -270,7 +340,8 @@ async function fetchSeasonTvdbId(tmdbId, seasonNumber) {
 
   fs.writeFileSync(CACHE_FILE, JSON.stringify(cache));
   // Tally cache health so it's obvious what the run accomplished.
-  let withPoster = 0, noPoster = 0, notFoundFinal = 0, errored = 0, withTvdb = 0, seasonTvdbCount = 0;
+  let withPoster = 0, noPoster = 0, notFoundFinal = 0, errored = 0, withTvdb = 0;
+  let seasonTvdbCount = 0, seasonOverviewCount = 0;
   for (const e of Object.values(cache)) {
     if (!e || e.error) { errored++; continue; }
     if (e.notFound) { notFoundFinal++; continue; }
@@ -280,12 +351,16 @@ async function fetchSeasonTvdbId(tmdbId, seasonNumber) {
     if (e.seasonTvdbIds) {
       for (const v of Object.values(e.seasonTvdbIds)) if (Number.isFinite(v)) seasonTvdbCount++;
     }
+    if (e.seasonOverviews) {
+      for (const v of Object.values(e.seasonOverviews)) if (typeof v === 'string' && v.length > 0) seasonOverviewCount++;
+    }
   }
   console.log(`\nWrote ${CACHE_FILE} — ${Object.keys(cache).length.toLocaleString()} entries`);
-  console.log(`  with poster:       ${withPoster.toLocaleString()}`);
-  console.log(`  no poster file:    ${noPoster.toLocaleString()}`);
-  console.log(`  with tvdbId:       ${withTvdb.toLocaleString()}`);
-  console.log(`  seasons w/ tvdbId: ${seasonTvdbCount.toLocaleString()}`);
+  console.log(`  with poster:          ${withPoster.toLocaleString()}`);
+  console.log(`  no poster file:       ${noPoster.toLocaleString()}`);
+  console.log(`  with tvdbId:          ${withTvdb.toLocaleString()}`);
+  console.log(`  seasons w/ tvdbId:    ${seasonTvdbCount.toLocaleString()}`);
+  console.log(`  seasons w/ overview:  ${seasonOverviewCount.toLocaleString()}`);
   console.log(`  notFound:          ${notFoundFinal.toLocaleString()}`);
   console.log(`  errored:           ${errored.toLocaleString()}`);
   if (recoveredViaSearch > 0) {
