@@ -2729,10 +2729,6 @@
     const gameDays = Object.keys(dayMap).length;
     subEl.textContent = `${s.total} game${s.total === 1 ? '' : 's'} on ${gameDays} day${gameDays === 1 ? '' : 's'}`;
 
-    // Scroll to the right so most recent months are visible by default.
-    // Only matters when the grid overflows the wrap (long histories on mobile).
-    if (wrapEl) wrapEl.scrollLeft = wrapEl.scrollWidth;
-
     // Legend
     legendEl.innerHTML = '';
     const legendItems = [
