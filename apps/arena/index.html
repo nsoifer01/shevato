@@ -857,35 +857,41 @@
         <section class="stage stage-end" id="stage-end" hidden>
           <header class="end-head">
             <p id="end-summary"></p>
-            <!-- Item #4 — copy a shareable ?postMatch link. Recipients
-                 sign in (or auto-anon) and land on the read-only recap. -->
-            <button type="button" class="btn btn-ghost btn-sm end-share-btn" id="end-share-link-btn" hidden>
-              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-                <path d="M10 13a5 5 0 0 0 7.07 0l3-3a5 5 0 1 0-7.07-7.07l-1 1"/>
-                <path d="M14 11a5 5 0 0 0-7.07 0l-3 3a5 5 0 1 0 7.07 7.07l1-1"/>
-              </svg>
-              Copy link
-            </button>
-            <!-- Share result card — generates a canvas image of the
-                 final standings and triggers a download / Web Share. -->
-            <button type="button" class="btn btn-ghost btn-sm end-share-btn" id="end-share-btn" hidden>
-              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-                <circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/>
-                <line x1="8.59" y1="13.51" x2="15.42" y2="17.49"/><line x1="15.41" y1="6.51" x2="8.59" y2="10.49"/>
-              </svg>
-              Share card
-            </button>
-            <!-- Switch game type in-session (host-only). Re-uses the
-                 rematch flow but flips to the alternate game on the
-                 way back to the lobby. Label is set by JS based on
-                 the current game type. -->
-            <button type="button" class="btn btn-ghost btn-sm" id="end-switch-game-btn" hidden>
-              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-                <polyline points="17 1 21 5 17 9"/><path d="M3 11V9a4 4 0 0 1 4-4h14"/>
-                <polyline points="7 23 3 19 7 15"/><path d="M21 13v2a4 4 0 0 1-4 4H3"/>
-              </svg>
-              <span id="end-switch-game-label">Switch game</span>
-            </button>
+            <!-- Action buttons row — Copy link / Share card / Switch
+                 game. Wrapped in a flex row so they sit side-by-side
+                 rather than stacking vertically (which got unwieldy
+                 once Items #3 + #4 added two more buttons). -->
+            <div class="end-head-actions">
+              <!-- Item #4 — copy a shareable ?postMatch link. Recipients
+                   sign in (or auto-anon) and land on the read-only recap. -->
+              <button type="button" class="btn btn-ghost btn-sm end-share-btn" id="end-share-link-btn" hidden>
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                  <path d="M10 13a5 5 0 0 0 7.07 0l3-3a5 5 0 1 0-7.07-7.07l-1 1"/>
+                  <path d="M14 11a5 5 0 0 0-7.07 0l-3 3a5 5 0 1 0 7.07 7.07l1-1"/>
+                </svg>
+                Copy link
+              </button>
+              <!-- Share result card — generates a canvas image of the
+                   final standings and triggers a download / Web Share. -->
+              <button type="button" class="btn btn-ghost btn-sm end-share-btn" id="end-share-btn" hidden>
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                  <circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/>
+                  <line x1="8.59" y1="13.51" x2="15.42" y2="17.49"/><line x1="15.41" y1="6.51" x2="8.59" y2="10.49"/>
+                </svg>
+                Share card
+              </button>
+              <!-- Switch game type in-session (host-only). Re-uses the
+                   rematch flow but flips to the alternate game on the
+                   way back to the lobby. Label is set by JS based on
+                   the current game type. -->
+              <button type="button" class="btn btn-ghost btn-sm" id="end-switch-game-btn" hidden>
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                  <polyline points="17 1 21 5 17 9"/><path d="M3 11V9a4 4 0 0 1 4-4h14"/>
+                  <polyline points="7 23 3 19 7 15"/><path d="M21 13v2a4 4 0 0 1-4 4H3"/>
+                </svg>
+                <span id="end-switch-game-label">Switch game</span>
+              </button>
+            </div>
           </header>
 
           <!-- Guest-only sign-up CTA. Shown for anonymous users on the
@@ -1409,6 +1415,8 @@
   <script src="js/globe-drop-locations.js"></script>
   <script src="js/globe-drop-daily.js"></script>
   <script src="js/word-blitz.js"></script>
+  <script src="js/emoji-chain.js"></script>
+  <script src="js/rejoin-storage.js"></script>
   <script type="module" src="js/app.js"></script>
 </body>
 </html>

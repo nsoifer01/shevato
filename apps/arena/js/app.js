@@ -58,6 +58,8 @@ const GlobeDropScoring = window.BrainArena.GlobeDropScoring;
 const GlobeDropLocations = window.BrainArena.GlobeDropLocations;
 const GlobeDropDaily = window.BrainArena.GlobeDropDaily;
 const WordBlitz = window.BrainArena.WordBlitz;
+const EmojiChain = window.BrainArena.EmojiChain;
+const RejoinStorage = window.BrainArena.RejoinStorage;
 
 /* =====================================================================
  * State
@@ -439,35 +441,18 @@ async function tryLoadPendingPostMatch() {
  * `leaveRoom` clears it; the banner only fires for the same uid and
  * only when the room doc still exists in Firestore.
  */
-const REJOIN_KEY = 'arenaRecentRoom';
-const REJOIN_TTL_MS = 2 * 60 * 60 * 1000;
+// Thin wrappers around the pure RejoinStorage module — they pass in
+// the browser's localStorage + current uid so the helper itself stays
+// testable without browser globals.
 function saveRecentRoom(code) {
-    if (!code || !state.user) return;
-    try {
-        const codeRe = /^[A-Z0-9]+$/;
-        if (!codeRe.test(code)) return;
-        localStorage.setItem(REJOIN_KEY, JSON.stringify({
-            code,
-            uid: state.user.uid,
-            savedAt: Date.now()
-        }));
-    } catch (_) { /* private mode / quota — ignore */ }
+    if (!state.user) return;
+    RejoinStorage.saveRecentRoom(window.localStorage, Date.now(), code, state.user.uid);
 }
 function clearRecentRoom() {
-    try { localStorage.removeItem(REJOIN_KEY); } catch (_) {}
+    RejoinStorage.clearRecentRoom(window.localStorage);
 }
 function getRecentRoom() {
-    try {
-        const raw = localStorage.getItem(REJOIN_KEY);
-        if (!raw) return null;
-        const parsed = JSON.parse(raw);
-        if (!parsed || typeof parsed.code !== 'string') return null;
-        const age = Date.now() - (Number(parsed.savedAt) || 0);
-        if (!Number.isFinite(age) || age < 0 || age > REJOIN_TTL_MS) return null;
-        return parsed;
-    } catch (_) {
-        return null;
-    }
+    return RejoinStorage.getRecentRoom(window.localStorage, Date.now());
 }
 function hideRejoinBanner() {
     const banner = $('#lobby-rejoin-banner');
@@ -1141,32 +1126,10 @@ function fetchWordBlitzPool() {
     return _wordBlitzPoolPromise;
 }
 
-/**
- * Item #9 — pick N Emoji Chain phrases. Static list embedded here so the
- * game works offline and per-room creation doesn't depend on the network.
- * Sized for "casual party game" — short phrases, broad recognition.
- */
-const EMOJI_CHAIN_PHRASES = [
-    'The Lion King', 'Harry Potter', 'Frozen', 'Star Wars',
-    'Pirates of the Caribbean', 'Spider-Man', 'Toy Story', 'Finding Nemo',
-    'Jurassic Park', 'The Matrix', 'Titanic', 'Avatar',
-    'Inside Out', 'Despicable Me', 'Shrek', 'Beauty and the Beast',
-    'Ice Age', 'The Avengers', 'Back to the Future', 'Home Alone',
-    'Forrest Gump', 'Mary Poppins', 'Cinderella', 'Aladdin',
-    'Game of Thrones', 'Breaking Bad', 'Stranger Things', 'The Office',
-    'Friends', 'Squid Game', 'The Crown', 'Black Mirror'
-];
+// Item #9 — phrase pool + picker live in js/emoji-chain.js so they're
+// unit-testable. Thin wrapper here keeps the call site readable.
 function pickEmojiChainPhrases(count) {
-    const n = Math.max(1, Math.min(EMOJI_CHAIN_PHRASES.length, Number(count) || 3));
-    const pool = EMOJI_CHAIN_PHRASES.slice();
-    for (let i = 0; i < n; i++) {
-        const j = i + Math.floor(Math.random() * (pool.length - i));
-        const tmp = pool[i]; pool[i] = pool[j]; pool[j] = tmp;
-    }
-    return pool.slice(0, n).map((phrase, idx) => ({
-        id: `ec-${idx}-${phrase.toLowerCase().replace(/[^a-z0-9]+/g, '-').slice(0, 16)}`,
-        phrase
-    }));
+    return EmojiChain.pickPhrases(count);
 }
 
 async function buildQuestionsForRound(packId, count) {
@@ -4501,16 +4464,11 @@ function currentEmojiChainEntry() {
     return pool[state.roomData.currentQuestionIndex || 0] || null;
 }
 
-function emojiChainNormalize(s) {
-    return String(s == null ? '' : s)
-        .toLowerCase()
-        .replace(/[^a-z0-9]/g, '');
-}
-function emojiChainGuessMatches(typed, target) {
-    const a = emojiChainNormalize(typed);
-    const b = emojiChainNormalize(target);
-    return a && b && a === b;
-}
+// Normalize + match helpers live in the EmojiChain module so tests
+// can exercise them without loading the full app. Local thin wrappers
+// keep the call sites idiomatic.
+function emojiChainNormalize(s) { return EmojiChain.normalizeGuess(s); }
+function emojiChainGuessMatches(typed, target) { return EmojiChain.guessMatches(typed, target); }
 
 function renderEmojiChainStage(isHost) {
     hide($('#stage-lobby'));
@@ -4739,35 +4697,14 @@ async function scoreEmojiChainRound(votesIn) {
     const room = state.roomData;
     const entry = currentEmojiChainEntry();
     if (!entry) return;
-    const truth = entry.phrase;
-    const guesses = room.currentGuesses || {};
-    const votes = votesIn || room.currentVotes || {};
-    const prompterUid = room.currentPrompterUid;
-
-    // Tally funniest-guess vote totals per uid (excluding self-votes).
-    const voteTotals = {};
-    for (const [voter, target] of Object.entries(votes)) {
-        if (!target || target === voter) continue;
-        voteTotals[target] = (voteTotals[target] || 0) + 1;
-    }
-    let topVotes = 0;
-    let topUids = [];
-    for (const [uid, count] of Object.entries(voteTotals)) {
-        if (count > topVotes) { topVotes = count; topUids = [uid]; }
-        else if (count === topVotes) topUids.push(uid);
-    }
-
-    // Score correct guesses and the prompter (if anyone got it right).
-    const correctGuessers = Object.entries(guesses)
-        .filter(([, g]) => emojiChainGuessMatches(g, truth))
-        .map(([uid]) => uid);
-    const promptBonus = correctGuessers.length > 0 ? 10 : 0;
-
-    // Each player's delta this round.
-    const deltas = {};
-    for (const uid of correctGuessers) deltas[uid] = (deltas[uid] || 0) + 50;
-    for (const uid of topUids) if (topVotes > 0) deltas[uid] = (deltas[uid] || 0) + 30;
-    if (prompterUid && promptBonus) deltas[prompterUid] = (deltas[prompterUid] || 0) + promptBonus;
+    // Delegate the pure tally to EmojiChain.scoreRound — that helper
+    // owns the points table and tie-handling so it's unit-testable.
+    const { deltas } = EmojiChain.scoreRound({
+        truth: entry.phrase,
+        prompterUid: room.currentPrompterUid,
+        guesses: room.currentGuesses || {},
+        votes: votesIn || room.currentVotes || {}
+    });
 
     // Write each delta to each player's own doc — host can write any
     // player doc per rules (open create/update on /players).

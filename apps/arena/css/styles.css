@@ -1428,9 +1428,15 @@ select option { background: var(--surface); color: var(--text); }
   transition: max-height 0.28s ease, visibility 0.28s ease, margin-top 0.28s ease;
 }
 .lobby-solo-actions.is-hidden {
+  /* `display: none` is the guaranteed-hide path. max-height + visibility
+     alone failed to collapse the block in headless Chrome (the visual
+     state lingered as fully visible). Trading the 0.28s collapse
+     animation for correctness — the swap reads fine without it. */
+  display: none;
   max-height: 0;
   visibility: hidden;
   margin-top: 0;
+  padding: 0;
 }
 /* Gradient-bordered ghost — transparent fill on a dark surface, with
    the border itself being a cyan→violet gradient via double-bg trick
@@ -3512,6 +3518,17 @@ select option { background: var(--surface); color: var(--text); }
   opacity: 0.85;
 }
 .end-share-btn:hover { opacity: 1; }
+
+/* Item #3 / #4 action row — Copy link / Share card / Switch game.
+   Wraps on narrow viewports so a 3-button row doesn't push the
+   podium below the fold. */
+.end-head-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 0.5rem;
+  width: 100%;
+}
 
 /* Solo-only hero block. Replaces the podium / standings table for
    single-player runs since there's nothing to rank against. */
