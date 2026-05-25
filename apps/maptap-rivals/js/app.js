@@ -305,6 +305,11 @@
     predictWindowAnchorISO: null,
     // ISO date of the day currently shown in the dashboard predictions card.
     predictSelectedISO: null,
+    // Feature (5): notification permission state
+    notifPermissionAsked: load('maptapRivalsNotifAsked', false),
+    // Feature (3): quick-entry mode toggle
+    quickEntryOpen: false,
+    quickEntryRivalId: null,
   };
 
   function persistRivals() { save(KEY.RIVALS, state.rivals); }
@@ -1113,6 +1118,12 @@
     // No useful share text for one-sided days — keep the cell as a spacer
     // so the column widths still align.
     if (!bothPlayed(g)) return el('td', { class: 'row-action-cell' }, '');
+    const ICON_IMAGE =
+      '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false">' +
+      '<rect x="3" y="3" width="18" height="18" rx="2"/>' +
+      '<circle cx="8.5" cy="8.5" r="1.5"/>' +
+      '<path d="M21 15l-5-5L5 21"/>' +
+      '</svg>';
     return el('td', { class: 'row-action-cell' }, [
       el('button', {
         type: 'button',
@@ -1121,6 +1132,14 @@
         'aria-label': 'Share result',
         html: ICON_SHARE,
         onclick: function () { shareGame(g, rival, this); },
+      }),
+      el('button', {
+        type: 'button',
+        class: 'icon-btn icon-btn-image',
+        title: 'Share as image',
+        'aria-label': 'Share as image',
+        html: ICON_IMAGE,
+        onclick: function () { shareImageCard(g, rival, this); },
       }),
     ]);
   }
@@ -1232,6 +1251,16 @@
       headRight.appendChild(el('span', {
         class: 'season-verdict-pill ' + (passed ? 'is-pass' : 'is-fail'),
       }, passed ? 'Passed' : 'Failed'));
+    }
+
+    if (isActive || isPast) {
+      headRight.appendChild(el('button', {
+        type: 'button',
+        class: 'btn btn-ghost season-share-btn',
+        title: 'Copy season summary to clipboard',
+        'aria-label': 'Share season summary',
+        onclick: function (e) { e.stopPropagation(); shareSeasonCard(season, this); },
+      }, 'Share season'));
     }
 
     if ((isActive || isUpcoming)) {
@@ -1475,10 +1504,12 @@
   function renderDashboard() {
     renderProfileCard();
     renderPasteSection();
+    renderTodaysLeaderBanner();
     renderActiveSeasonBanner();
     renderDashSummary();
     renderTodaysPredictions();
     renderRivalGrid();
+    renderQuickEntry();
     $('#dash-empty').hidden = state.rivals.length > 0;
   }
 
@@ -2538,12 +2569,29 @@
       card.appendChild(el('div', { class: 'drama-callout drama-callout-' + drama.kind }, drama.text));
     }
 
+    const contCallout = continentStrengthCallout(r.id);
+    if (contCallout) {
+      card.appendChild(el('div', { class: 'continent-strength-callout' }, contCallout));
+    }
+
+    if (rivalPostedTodayBadge(r.id)) {
+      card.appendChild(el('div', { class: 'rival-posted-badge' }, 'Posted today — your move'));
+    }
+
     const foot = el('div', { class: 'rival-card-foot' });
-    const formPills = el('div', { class: 'form-pills', title: 'Last 5 games (oldest → newest)' });
-    s.recentForm.forEach(r => {
-      formPills.appendChild(el('span', { class: 'form-pill ' + r }, r));
-    });
-    foot.appendChild(formPills);
+
+    const sparkSvg = makeSparkline(r.id);
+    if (sparkSvg) {
+      const sparkWrap = el('div', { class: 'sparkline-wrap', title: 'Score differential, last 10 games' });
+      sparkWrap.innerHTML = sparkSvg;
+      foot.appendChild(sparkWrap);
+    } else {
+      const formPills = el('div', { class: 'form-pills', title: 'Last 5 games (oldest → newest)' });
+      s.recentForm.forEach(r => {
+        formPills.appendChild(el('span', { class: 'form-pill ' + r }, r));
+      });
+      foot.appendChild(formPills);
+    }
 
     if (s.hot) {
       foot.appendChild(el('span', { class: 'streak-tag hot', title: 'Hot streak: 3+ wins in a row' },
@@ -3452,6 +3500,31 @@
 
       tr.appendChild(el('td', { class: avgDiff > 0 ? 'delta-pos' : avgDiff < 0 ? 'delta-neg' : 'delta-zero' },
         (avgDiff > 0 ? '+' : '') + avgDiff.toFixed(1)));
+
+      const bestCont = bestContinentForRival(s.rival.id);
+      const contCell = el('td', {});
+      if (bestCont) {
+        const badge = el('span', {
+          class: 'lb-continent-badge',
+          title: `You lead in ${bestCont.continent}: avg +${bestCont.avgDiff.toFixed(0)} per round`,
+          onclick: (e) => {
+            e.stopPropagation();
+            state.selectedRivalId = s.rival.id;
+            persistSelected();
+            setView('rival');
+            setTimeout(() => {
+              const cs = $('#continent-section');
+              if (cs) cs.scrollIntoView({ behavior: 'smooth', block: 'start' });
+            }, 150);
+          },
+        }, bestCont.continent);
+        contCell.appendChild(badge);
+      } else {
+        contCell.textContent = '—';
+        contCell.style.color = 'var(--muted)';
+      }
+      tr.appendChild(contCell);
+
       const streakCell = el('td', {});
       streakCell.innerHTML = streakHtml;
       tr.appendChild(streakCell);
@@ -3875,6 +3948,9 @@
 
     renderHistoryPagination(total, totalPages, startIdx, endIdx);
 
+    // Build per-rival chronological game list for rematch annotations
+    const rivalGamesChron = {};
+
     pageGames.forEach(g => {
       const rival = rivalById[g.rivalId];
       const r = resultOf(g);
@@ -3893,6 +3969,27 @@
             title: 'Open this day on maptap.gg',
           }, fmtDateShort(g.date))])
         : el('td', {}, fmtDateShort(g.date));
+
+      // Rematch annotation for this row
+      if (!rivalGamesChron[g.rivalId]) {
+        rivalGamesChron[g.rivalId] = state.games
+          .filter(x => x.rivalId === g.rivalId)
+          .slice()
+          .sort((a, b) => a.date.localeCompare(b.date) || (a.createdAt || 0) - (b.createdAt || 0));
+      }
+      const chronList = rivalGamesChron[g.rivalId];
+      const chronIdx = chronList.findIndex(x => x.id === g.id);
+      const annotation = chronIdx >= 0 ? rematcAnnotation(chronList, chronIdx) : null;
+
+      const resultTd = el('td', {});
+      resultTd.appendChild(el('span', {
+        class: 'result-badge ' + (r || 'NA'),
+        title: r ? '' : 'Only one side played',
+      }, r || '—'));
+      if (annotation) {
+        resultTd.appendChild(el('span', { class: 'history-annotation' }, annotation));
+      }
+
       tbody.appendChild(el('tr', { class: r ? '' : 'row-one-sided' }, [
         dateCell,
         el('td', {}, rival ? `${rival.icon} ${rival.name}` : '—'),
@@ -3909,10 +4006,7 @@
           : el('td', { class: diff > 0 ? 'delta-pos' : diff < 0 ? 'delta-neg' : 'delta-zero' },
               (diff > 0 ? '+' : '') + diff),
         el('td', { class: 'rounds-cell' }, [makeRoundDots(g)]),
-        el('td', {}, [el('span', {
-          class: 'result-badge ' + (r || 'NA'),
-          title: r ? '' : 'Only one side played',
-        }, r || '—')]),
+        resultTd,
         noteCell(g),
         shareCell(g, rival || null),
         deleteCell(g),
@@ -4603,6 +4697,8 @@
         : { kind: 'flat', msg: statusMsg };
       setRivalSyncStatus(rivalId, status.kind, status.msg);
 
+      checkRivalsPostedToday();
+
       // Refresh whichever view we're on so the new games show up
       if (state.view === 'dashboard') renderDashboard();
       else if (state.view === 'rival') renderRival();
@@ -5178,6 +5274,619 @@
     else if (state.view === 'history') renderHistory();
   }
 
+  // ==========================================================================
+  // FEATURE (2): Today's Leader banner
+  // ==========================================================================
+  function renderTodaysLeaderBanner() {
+    const wrap = $('#todays-leader-banner');
+    if (!wrap) return;
+    wrap.innerHTML = '';
+    const today = todayISO();
+    const myName = state.me || 'You';
+
+    // Find any rival that has a score for today
+    let leaderRival = null;
+    let leaderScore = -Infinity;
+    let myScore = null;
+
+    // Get my score for today from any game
+    const myGame = state.games.find(g => g.date === today && iPlayed(g));
+    if (myGame) myScore = getMyTotal(myGame);
+
+    state.rivals.forEach(r => {
+      const rGame = state.games.find(g => g.rivalId === r.id && g.date === today && theyPlayed(g));
+      if (!rGame) return;
+      const rScore = getTheirTotal(rGame);
+      if (rScore > leaderScore) { leaderScore = rScore; leaderRival = r; }
+    });
+
+    if (!leaderRival && myScore === null) { wrap.hidden = true; return; }
+
+    let text;
+    if (leaderRival && myScore !== null) {
+      if (myScore > leaderScore) {
+        text = `You are leading today: ${myScore} · ${leaderRival.name}: ${leaderScore}`;
+      } else if (myScore < leaderScore) {
+        text = `${leaderRival.name} is leading today: ${leaderScore} · You: ${myScore}`;
+      } else {
+        text = `Tied today: you and ${leaderRival.name} both scored ${myScore}`;
+      }
+    } else if (leaderRival) {
+      text = `${leaderRival.name} posted today: ${leaderScore} · You haven't played yet`;
+    } else {
+      text = `You posted today: ${myScore}`;
+    }
+
+    wrap.hidden = false;
+    wrap.appendChild(el('div', { class: 'todays-leader-pill' }, text));
+  }
+
+  // ==========================================================================
+  // FEATURE (4): Continent strength callout on rival card
+  // ==========================================================================
+  function continentStrengthCallout(rivalId) {
+    const rival = state.rivals.find(r => r.id === rivalId);
+    if (!rival) return null;
+    const games = gamesFor(rivalId);
+    const { rows } = continentBreakdown(games);
+    // Need at least one continent with >= 10 rounds
+    const eligible = rows.filter(r => r.rounds >= 10);
+    if (eligible.length < 2) return null;
+
+    // Find the most lopsided contrast: best win pct vs worst win pct
+    const best = eligible.reduce((a, b) => a.winPct > b.winPct ? a : b);
+    const worst = eligible.reduce((a, b) => a.winPct < b.winPct ? a : b);
+    if (best === worst) return null;
+    const bestPct = (best.winPct * 100).toFixed(0);
+    const worstPct = (worst.winPct * 100).toFixed(0);
+    return `You dominate ${best.continent} (${bestPct}%) but trail in ${worst.continent} (${worstPct}%)`;
+  }
+
+  // ==========================================================================
+  // FEATURE (6): Best continent badge for leaderboard
+  // ==========================================================================
+  function bestContinentForRival(rivalId) {
+    const games = gamesFor(rivalId);
+    const { rows } = continentBreakdown(games);
+    if (!rows.length) return null;
+    // The continent where the user most dominantly beats this rival (by avgDiff)
+    const best = rows.reduce((a, b) => a.avgDiff > b.avgDiff ? a : b);
+    if (best.avgDiff <= 0) return null;
+    return best;
+  }
+
+  // ==========================================================================
+  // FEATURE (7): Season share card
+  // ==========================================================================
+  function buildSeasonShareText(season, stats) {
+    const today = todayISO();
+    const rival = state.rivals.find(r => r.id === season.rivalId);
+    const rivalName = rival ? rival.name : 'All rivals';
+    const meName = state.me || 'Me';
+    const isActive = season.startDate <= today && season.endDate >= today;
+    const verdict = !isActive ? (seasonVerdict(season, stats) ? 'Goal MET' : 'Goal MISSED') : 'In progress';
+
+    const lines = [];
+    lines.push(`MapTap Rivals — Season: ${season.name}`);
+    lines.push(`${season.startDate} to ${season.endDate}`);
+    lines.push(`Rival: ${rivalName}`);
+    lines.push('');
+    lines.push(`${meName}: ${stats.wins}W · ${stats.losses}L · ${stats.ties}T`);
+    if ((stats.wins + stats.losses) > 0) {
+      lines.push(`Win rate: ${stats.winPct.toFixed(0)}%`);
+    }
+    lines.push(`Goal: ${seasonGoalText(season)} — ${verdict}`);
+    lines.push('');
+    lines.push('shevato.com/apps/maptap-rivals');
+    return lines.join('\n');
+  }
+
+  async function shareSeasonCard(season, btn) {
+    const stats = seasonStats(season);
+    const text = buildSeasonShareText(season, stats);
+    try {
+      await navigator.clipboard.writeText(text);
+      showShareToast(btn, 'Season summary copied');
+    } catch (_) {
+      showShareToast(btn, 'Copy failed');
+    }
+  }
+
+  // ==========================================================================
+  // FEATURE (5): "Rival posted today" badge + optional notification
+  // ==========================================================================
+  function rivalPostedTodayBadge(rivalId) {
+    const today = todayISO();
+    return state.games.some(g =>
+      g.rivalId === rivalId && g.date === today && theyPlayed(g) && !iPlayed(g)
+    );
+  }
+
+  function maybePromptNotification() {
+    if (state.notifPermissionAsked) return;
+    if (!('Notification' in window)) return;
+    if (Notification.permission !== 'default') return;
+    state.notifPermissionAsked = true;
+    save('maptapRivalsNotifAsked', true);
+    Notification.requestPermission();
+  }
+
+  function fireNotification(rivalName, score) {
+    if (!('Notification' in window)) return;
+    if (Notification.permission !== 'granted') return;
+    new Notification('MapTap Rivals', {
+      body: `${rivalName} posted ${score} today. Your move.`,
+      icon: 'data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>🗺️</text></svg>',
+    });
+  }
+
+  // Call after any sync to check rivals who posted without the user
+  function checkRivalsPostedToday() {
+    const today = todayISO();
+    let anyPosted = false;
+    state.rivals.forEach(r => {
+      const posted = state.games.some(g =>
+        g.rivalId === r.id && g.date === today && theyPlayed(g) && !iPlayed(g)
+      );
+      if (posted) {
+        anyPosted = true;
+        // Only fire notification once per rival per session by using sessionStorage
+        const notifKey = `maptapNotifFired_${r.id}_${today}`;
+        if (!sessionStorage.getItem(notifKey)) {
+          sessionStorage.setItem(notifKey, '1');
+          const rGame = state.games.find(g => g.rivalId === r.id && g.date === today && theyPlayed(g));
+          if (rGame) fireNotification(r.name, getTheirTotal(rGame));
+        }
+      }
+    });
+    if (anyPosted) maybePromptNotification();
+  }
+
+  // ==========================================================================
+  // FEATURE (8): Rival activity sparkline (score differential last 10 games)
+  // ==========================================================================
+  function makeSparkline(rivalId) {
+    const games = gamesFor(rivalId).filter(bothPlayed).slice(-10);
+    if (!games.length) return null;
+
+    const diffs = games.map(g => getMyTotal(g) - getTheirTotal(g));
+    const minD = Math.min(...diffs, 0);
+    const maxD = Math.max(...diffs, 0);
+    const range = maxD - minD || 1;
+
+    const W = 60, H = 24, barW = Math.max(2, Math.floor((W - (games.length - 1)) / games.length));
+    const gap = games.length > 1 ? (W - barW * games.length) / (games.length - 1) : 0;
+    const zeroY = H - Math.round(((0 - minD) / range) * H);
+
+    const bars = diffs.map((d, i) => {
+      const x = Math.round(i * (barW + gap));
+      const barH = Math.max(1, Math.round((Math.abs(d) / range) * H));
+      const y = d >= 0 ? zeroY - barH : zeroY;
+      const color = d > 0 ? '#4ade80' : d < 0 ? '#f87171' : '#9aa3b2';
+      const tip = `${fmtDateShort(games[i].date)}: ${d > 0 ? '+' : ''}${d}`;
+      return `<rect x="${x}" y="${y}" width="${barW}" height="${barH}" fill="${color}" rx="1"><title>${escapeHtml(tip)}</title></rect>`;
+    }).join('');
+
+    // Zero line
+    const zeroLine = `<line x1="0" y1="${zeroY}" x2="${W}" y2="${zeroY}" stroke="#252938" stroke-width="1"/>`;
+
+    return `<svg class="sparkline-svg" viewBox="0 0 ${W} ${H}" width="${W}" height="${H}" aria-label="Score differential last ${games.length} games">${zeroLine}${bars}</svg>`;
+  }
+
+  // ==========================================================================
+  // FEATURE (10): Rematch context annotations on history rows
+  // ==========================================================================
+  // Computes a single annotation label for a game given all of the rival's
+  // games in chronological order and the index of this game in that list.
+  // Returns null if no annotation applies.
+  function rematcAnnotation(allGames, idx) {
+    const g = allGames[idx];
+    if (!bothPlayed(g)) return null;
+    const result = resultOf(g);
+    const priorGames = allGames.slice(0, idx).filter(bothPlayed);
+    const myT = getMyTotal(g);
+    const theirT = getTheirTotal(g);
+
+    // Personal best
+    const allMy = [...priorGames, g].filter(bothPlayed).map(getMyTotal);
+    const priorMax = priorGames.length ? Math.max(...priorGames.map(getMyTotal)) : -Infinity;
+    if (priorGames.length >= 3 && myT > priorMax && myT === Math.max(...allMy)) {
+      return 'Personal best';
+    }
+
+    // Streak-based annotations
+    if (!priorGames.length) return null;
+
+    // Count streak before this game
+    let winStreak = 0, lossStreak = 0;
+    for (let i = priorGames.length - 1; i >= 0; i--) {
+      const r = resultOf(priorGames[i]);
+      if (r === 'W') { if (lossStreak > 0) break; winStreak++; }
+      else if (r === 'L') { if (winStreak > 0) break; lossStreak++; }
+      else break;
+    }
+
+    if (result === 'L' && winStreak >= 2) {
+      return `Broke your ${winStreak}-game win streak`;
+    }
+    if (result === 'W' && lossStreak >= 2) {
+      return `First win in ${lossStreak + 1} games`;
+    }
+    if (result === 'L') {
+      // Count consecutive losses including this one
+      let consLoss = 1;
+      for (let i = priorGames.length - 1; i >= 0; i--) {
+        if (resultOf(priorGames[i]) === 'L') consLoss++;
+        else break;
+      }
+      if (consLoss >= 3) return `${consLoss}th loss in a row`;
+    }
+
+    return null;
+  }
+
+  // ==========================================================================
+  // FEATURE (1): Shareable image card (PNG via canvas)
+  // ==========================================================================
+  async function shareImageCard(game, rival, btn) {
+    const W = 1200, H = 630;
+    const canvas = document.createElement('canvas');
+    canvas.width = W;
+    canvas.height = H;
+    const ctx = canvas.getContext('2d');
+
+    // Background
+    const grad = ctx.createLinearGradient(0, 0, W, H);
+    grad.addColorStop(0, '#0b0d12');
+    grad.addColorStop(1, '#161922');
+    ctx.fillStyle = grad;
+    ctx.fillRect(0, 0, W, H);
+
+    // Subtle top accent gradient
+    const topGrad = ctx.createLinearGradient(0, 0, W, 0);
+    topGrad.addColorStop(0, 'rgba(99,102,241,0.4)');
+    topGrad.addColorStop(0.5, 'rgba(74,222,128,0.2)');
+    topGrad.addColorStop(1, 'rgba(99,102,241,0.0)');
+    ctx.fillStyle = topGrad;
+    ctx.fillRect(0, 0, W, 4);
+
+    const myT = getMyTotal(game);
+    const theirT = getTheirTotal(game);
+    const diff = myT - theirT;
+    const result = diff > 0 ? 'W' : diff < 0 ? 'L' : 'T';
+    const meName = state.me || 'Me';
+    const rivalName = rival ? rival.name : 'Rival';
+
+    // App branding
+    ctx.fillStyle = '#6366f1';
+    ctx.font = 'bold 26px -apple-system, BlinkMacSystemFont, Inter, system-ui, sans-serif';
+    ctx.fillText('MapTap Rivals', 60, 60);
+
+    ctx.fillStyle = '#6b7280';
+    ctx.font = '20px -apple-system, BlinkMacSystemFont, Inter, system-ui, sans-serif';
+    ctx.fillText(game.date, 60, 90);
+
+    // Main result area
+    const resultColor = result === 'W' ? '#4ade80' : result === 'L' ? '#f87171' : '#9aa3b2';
+
+    // You block
+    ctx.fillStyle = '#e7e9ee';
+    ctx.font = 'bold 36px -apple-system, BlinkMacSystemFont, Inter, system-ui, sans-serif';
+    ctx.fillText((state.myIcon || '🧍') + ' ' + meName, 60, 200);
+
+    ctx.fillStyle = result === 'W' ? '#4ade80' : '#9aa3b2';
+    ctx.font = 'bold 120px -apple-system, BlinkMacSystemFont, Inter, system-ui, sans-serif';
+    ctx.fillText(String(myT), 60, 340);
+
+    // VS divider
+    ctx.fillStyle = '#252938';
+    ctx.fillRect(W / 2 - 1, 150, 2, 280);
+    ctx.fillStyle = '#6b7280';
+    ctx.font = 'bold 32px -apple-system, BlinkMacSystemFont, Inter, system-ui, sans-serif';
+    ctx.textAlign = 'center';
+    ctx.fillText('VS', W / 2, 310);
+    ctx.textAlign = 'left';
+
+    // Rival block
+    const rivalColor = rival ? rival.color : '#6366f1';
+    ctx.fillStyle = '#e7e9ee';
+    ctx.font = 'bold 36px -apple-system, BlinkMacSystemFont, Inter, system-ui, sans-serif';
+    ctx.fillText((rival ? (rival.icon || '🎯') : '🎯') + ' ' + rivalName, W / 2 + 40, 200);
+
+    ctx.fillStyle = result === 'L' ? '#f87171' : '#9aa3b2';
+    ctx.font = 'bold 120px -apple-system, BlinkMacSystemFont, Inter, system-ui, sans-serif';
+    ctx.fillText(String(theirT), W / 2 + 40, 340);
+
+    // Result badge
+    ctx.fillStyle = resultColor;
+    ctx.font = 'bold 48px -apple-system, BlinkMacSystemFont, Inter, system-ui, sans-serif';
+    ctx.textAlign = 'center';
+    const resultText = result === 'W' ? 'WIN' : result === 'L' ? 'LOSS' : 'TIE';
+    ctx.fillText(resultText, W / 2, 420);
+    ctx.textAlign = 'left';
+
+    // Margin
+    if (diff !== 0) {
+      ctx.fillStyle = '#6b7280';
+      ctx.font = '22px -apple-system, BlinkMacSystemFont, Inter, system-ui, sans-serif';
+      ctx.textAlign = 'center';
+      ctx.fillText(`by ${Math.abs(diff)} points`, W / 2, 455);
+      ctx.textAlign = 'left';
+    }
+
+    // Round emoji strip
+    if (hasLocs(game)) {
+      const stripY = 500;
+      const chipW = 90, chipH = 52, chipGap = 10;
+      const totalW = 5 * chipW + 4 * chipGap;
+      const startX = (W - totalW) / 2;
+      for (let i = 0; i < N_LOCS; i++) {
+        const m = game.myScores[i], t = game.theirScores[i];
+        const r = resultLoc(m, t);
+        const cx = startX + i * (chipW + chipGap);
+        const chipColor = r === 'W' ? 'rgba(74,222,128,0.18)' : r === 'L' ? 'rgba(248,113,113,0.18)' : 'rgba(154,163,178,0.12)';
+        const chipBorder = r === 'W' ? '#4ade80' : r === 'L' ? '#f87171' : '#9aa3b2';
+        // Chip bg
+        ctx.fillStyle = chipColor;
+        ctx.beginPath();
+        ctx.roundRect(cx, stripY, chipW, chipH, 8);
+        ctx.fill();
+        ctx.strokeStyle = chipBorder;
+        ctx.lineWidth = 1;
+        ctx.beginPath();
+        ctx.roundRect(cx, stripY, chipW, chipH, 8);
+        ctx.stroke();
+        // Round label
+        ctx.fillStyle = '#6b7280';
+        ctx.font = '11px -apple-system, BlinkMacSystemFont, Inter, system-ui, sans-serif';
+        ctx.textAlign = 'center';
+        ctx.fillText(`R${i + 1}`, cx + chipW / 2, stripY + 14);
+        // Score
+        ctx.fillStyle = '#e7e9ee';
+        ctx.font = 'bold 16px -apple-system, BlinkMacSystemFont, Inter, system-ui, sans-serif';
+        ctx.fillText(`${m}–${t}`, cx + chipW / 2, stripY + 34);
+        ctx.textAlign = 'left';
+      }
+    }
+
+    // Streak info
+    const sk = streakUpTo(game);
+    if (sk) {
+      const streakEmoji = sk.kind === 'W' ? '🔥' : '❄️';
+      ctx.fillStyle = '#9aa3b2';
+      ctx.font = '20px -apple-system, BlinkMacSystemFont, Inter, system-ui, sans-serif';
+      ctx.textAlign = 'center';
+      ctx.fillText(`${streakEmoji} ${sk.len}-game ${sk.kind === 'W' ? 'win' : 'loss'} streak`, W / 2, 590);
+      ctx.textAlign = 'left';
+    }
+
+    // Branding footer
+    ctx.fillStyle = '#353a4b';
+    ctx.font = '18px -apple-system, BlinkMacSystemFont, Inter, system-ui, sans-serif';
+    ctx.textAlign = 'right';
+    ctx.fillText('shevato.com/apps/maptap-rivals', W - 60, H - 24);
+    ctx.textAlign = 'left';
+
+    // Try Web Share API with files, then download fallback
+    try {
+      canvas.toBlob(async (blob) => {
+        if (!blob) { showShareToast(btn, 'Failed to generate image'); return; }
+        const file = new File([blob], 'maptap-result.png', { type: 'image/png' });
+        if (navigator.canShare && navigator.canShare({ files: [file] })) {
+          try {
+            await navigator.share({ files: [file], title: 'MapTap Rivals' });
+            return;
+          } catch (_) { /* fall through to download */ }
+        }
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `maptap-${game.date}-vs-${rivalName}.png`;
+        a.click();
+        URL.revokeObjectURL(url);
+        showShareToast(btn, 'Image downloaded');
+      }, 'image/png');
+    } catch (_) {
+      showShareToast(btn, 'Image sharing not supported');
+    }
+  }
+
+  // ==========================================================================
+  // FEATURE (3): Quick score entry panel
+  // ==========================================================================
+  function renderQuickEntry() {
+    const wrap = $('#quick-entry-panel');
+    if (!wrap) return;
+    if (!state.quickEntryOpen) {
+      wrap.hidden = true;
+      return;
+    }
+    wrap.hidden = false;
+    wrap.innerHTML = '';
+
+    const rivals = state.rivals.slice().sort((a, b) => a.name.localeCompare(b.name));
+    if (!rivals.length) {
+      wrap.appendChild(el('p', { class: 'paste-empty' }, 'Add a rival first.'));
+      return;
+    }
+
+    // Date row
+    const dateRow = el('div', { class: 'paste-head' });
+    const dateField = el('label', { class: 'paste-date-field' }, [
+      el('span', {}, 'Date'),
+    ]);
+    const dateInput = el('input', {
+      type: 'date',
+      id: 'qe-date',
+      value: todayISO(),
+    });
+    dateField.appendChild(dateInput);
+    dateRow.appendChild(dateField);
+    wrap.appendChild(dateRow);
+
+    // Rival selector
+    const rivalRow = el('div', { class: 'qe-rival-row' });
+    rivalRow.appendChild(el('label', { class: 'qe-label', for: 'qe-rival-sel' }, 'Rival'));
+    const rivalSel = el('select', { id: 'qe-rival-sel', class: 'qe-select' });
+    rivals.forEach(r => {
+      rivalSel.appendChild(el('option', { value: r.id, selected: r.id === state.quickEntryRivalId || undefined }, `${r.icon} ${r.name}`));
+    });
+    if (!state.quickEntryRivalId) state.quickEntryRivalId = rivals[0].id;
+    rivalSel.addEventListener('change', (e) => {
+      state.quickEntryRivalId = e.target.value;
+      renderQuickEntry();
+    });
+    rivalRow.appendChild(rivalSel);
+    wrap.appendChild(rivalRow);
+
+    // Scores grid: you and rival
+    const grid = el('div', { class: 'qe-grid' });
+
+    function makeScoreInputs(prefix, label) {
+      const col = el('div', { class: 'qe-col' });
+      col.appendChild(el('div', { class: 'qe-col-label' }, label));
+      const inputs = [];
+      const roundsWrap = el('div', { class: 'qe-rounds' });
+      for (let i = 0; i < N_LOCS; i++) {
+        const inp = el('input', {
+          type: 'number',
+          min: '0',
+          max: '100',
+          step: '1',
+          class: 'qe-round-input',
+          placeholder: `R${i + 1}`,
+          'aria-label': `${label} round ${i + 1}`,
+          id: `${prefix}-r${i}`,
+        });
+        inp.addEventListener('input', refreshQuickEntryPreview);
+        inp.addEventListener('keydown', (e) => {
+          if (e.key === 'Enter') {
+            e.preventDefault();
+            const next = document.getElementById(`${prefix}-r${i + 1}`);
+            if (next) next.focus(); else refreshQuickEntryPreview();
+          }
+        });
+        inputs.push(inp);
+        roundsWrap.appendChild(inp);
+      }
+      const totalEl = el('div', { class: 'qe-total', id: `${prefix}-total` }, '—');
+      col.appendChild(roundsWrap);
+      col.appendChild(totalEl);
+      return col;
+    }
+
+    grid.appendChild(makeScoreInputs('qe-me', `${state.myIcon || '🧍'} You`));
+    const selRival = rivals.find(r => r.id === state.quickEntryRivalId) || rivals[0];
+    grid.appendChild(makeScoreInputs('qe-them', `${selRival.icon || '🎯'} ${selRival.name}`));
+    wrap.appendChild(grid);
+
+    // Preview result
+    const preview = el('div', { class: 'qe-preview', id: 'qe-preview' });
+    wrap.appendChild(preview);
+
+    // Actions
+    const actions = el('div', { class: 'qe-actions' });
+    const saveBtn = el('button', {
+      type: 'button',
+      class: 'btn btn-primary',
+      id: 'qe-save-btn',
+      onclick: saveQuickEntry,
+    }, 'Save game');
+    actions.appendChild(saveBtn);
+    wrap.appendChild(actions);
+
+    // Make save work on Enter in last rival input
+    const lastRivalInput = wrap.querySelector('#qe-them-r4');
+    if (lastRivalInput) {
+      lastRivalInput.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') { e.preventDefault(); saveQuickEntry(); }
+      });
+    }
+  }
+
+  function refreshQuickEntryPreview() {
+    const preview = $('#qe-preview');
+    const meTotal = $('#qe-me-total');
+    const themTotal = $('#qe-them-total');
+    if (!preview) return;
+
+    const meScores = Array.from({ length: N_LOCS }, (_, i) => {
+      const v = Number(document.getElementById(`qe-me-r${i}`)?.value);
+      return Number.isFinite(v) && v >= 0 && v <= 100 ? v : null;
+    });
+    const themScores = Array.from({ length: N_LOCS }, (_, i) => {
+      const v = Number(document.getElementById(`qe-them-r${i}`)?.value);
+      return Number.isFinite(v) && v >= 0 && v <= 100 ? v : null;
+    });
+
+    const meComplete = meScores.every(v => v !== null);
+    const themComplete = themScores.every(v => v !== null);
+
+    if (meComplete && meTotal) {
+      const t = weightedTotal(meScores);
+      meTotal.textContent = t;
+    } else if (meTotal) meTotal.textContent = '—';
+
+    if (themComplete && themTotal) {
+      const t = weightedTotal(themScores);
+      themTotal.textContent = t;
+    } else if (themTotal) themTotal.textContent = '—';
+
+    if (meComplete && themComplete) {
+      const myT = weightedTotal(meScores);
+      const theirT = weightedTotal(themScores);
+      const diff = myT - theirT;
+      const r = diff > 0 ? 'W' : diff < 0 ? 'L' : 'T';
+      const sign = diff > 0 ? '+' : diff < 0 ? '−' : '±';
+      preview.textContent = `${r} ${sign}${Math.abs(diff)}`;
+      preview.className = 'qe-preview qe-preview-' + r.toLowerCase();
+    } else {
+      preview.textContent = '';
+      preview.className = 'qe-preview';
+    }
+  }
+
+  function saveQuickEntry() {
+    const date = $('#qe-date')?.value || todayISO();
+    const rivalId = state.quickEntryRivalId;
+    const rival = state.rivals.find(r => r.id === rivalId);
+    if (!rival) return;
+
+    const meScores = Array.from({ length: N_LOCS }, (_, i) => {
+      const v = Number(document.getElementById(`qe-me-r${i}`)?.value);
+      return Number.isFinite(v) && v >= 0 && v <= 100 ? v : null;
+    });
+    const themScores = Array.from({ length: N_LOCS }, (_, i) => {
+      const v = Number(document.getElementById(`qe-them-r${i}`)?.value);
+      return Number.isFinite(v) && v >= 0 && v <= 100 ? v : null;
+    });
+
+    if (!meScores.every(v => v !== null) || !themScores.every(v => v !== null)) {
+      showShareToast(null, 'Fill in all 5 rounds for both players');
+      return;
+    }
+
+    const newGame = {
+      id: uid(),
+      rivalId,
+      date,
+      myScores: meScores,
+      theirScores: themScores,
+      myScore: weightedTotal(meScores),
+      theirScore: weightedTotal(themScores),
+      note: '',
+      createdAt: Date.now(),
+    };
+    state.games.push(newGame);
+    persistGames();
+
+    // Close panel and refresh
+    state.quickEntryOpen = false;
+    renderQuickEntry();
+    renderDashboard();
+    showShareToast(null, 'Game saved');
+  }
+
   // ---------- init ----------
   function init() {
     // wire view tabs
@@ -5186,6 +5895,16 @@
     });
 
     refreshRivalSelects();
+
+    // Quick-entry toggle
+    const qeToggle = $('#quick-entry-toggle');
+    if (qeToggle) {
+      qeToggle.addEventListener('click', () => {
+        state.quickEntryOpen = !state.quickEntryOpen;
+        qeToggle.textContent = state.quickEntryOpen ? '− Quick score entry' : '+ Quick score entry';
+        renderQuickEntry();
+      });
+    }
 
     // Paste-mode entry (the one entry method)
     $('#paste-date').value = todayISO();

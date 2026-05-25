@@ -57,6 +57,7 @@ const LiveQuestions = window.BrainArena.LiveQuestions;
 const GlobeDropScoring = window.BrainArena.GlobeDropScoring;
 const GlobeDropLocations = window.BrainArena.GlobeDropLocations;
 const GlobeDropDaily = window.BrainArena.GlobeDropDaily;
+const WordBlitz = window.BrainArena.WordBlitz;
 
 /* =====================================================================
  * State
@@ -428,6 +429,92 @@ async function tryLoadPendingPostMatch() {
     }
 }
 
+/* =====================================================================
+ * Rejoin breadcrumb (localStorage)
+ * =====================================================================
+ *
+ * `enterRoom` writes the current room code + uid + timestamp here so a
+ * tab close or accidental refresh that wipes ?room= from the URL still
+ * gives the user a "Rejoin ABCDE?" one-tap path on next load. Explicit
+ * `leaveRoom` clears it; the banner only fires for the same uid and
+ * only when the room doc still exists in Firestore.
+ */
+const REJOIN_KEY = 'arenaRecentRoom';
+const REJOIN_TTL_MS = 2 * 60 * 60 * 1000;
+function saveRecentRoom(code) {
+    if (!code || !state.user) return;
+    try {
+        const codeRe = /^[A-Z0-9]+$/;
+        if (!codeRe.test(code)) return;
+        localStorage.setItem(REJOIN_KEY, JSON.stringify({
+            code,
+            uid: state.user.uid,
+            savedAt: Date.now()
+        }));
+    } catch (_) { /* private mode / quota — ignore */ }
+}
+function clearRecentRoom() {
+    try { localStorage.removeItem(REJOIN_KEY); } catch (_) {}
+}
+function getRecentRoom() {
+    try {
+        const raw = localStorage.getItem(REJOIN_KEY);
+        if (!raw) return null;
+        const parsed = JSON.parse(raw);
+        if (!parsed || typeof parsed.code !== 'string') return null;
+        const age = Date.now() - (Number(parsed.savedAt) || 0);
+        if (!Number.isFinite(age) || age < 0 || age > REJOIN_TTL_MS) return null;
+        return parsed;
+    } catch (_) {
+        return null;
+    }
+}
+function hideRejoinBanner() {
+    const banner = $('#lobby-rejoin-banner');
+    if (banner) banner.hidden = true;
+}
+async function maybeShowRejoinBanner() {
+    const banner = $('#lobby-rejoin-banner');
+    if (!banner) return;
+    // Don't compete with the URL-based rejoin / postMatch flows; if any
+    // is in progress, the user is already being routed somewhere.
+    if (state.roomCode) { hideRejoinBanner(); return; }
+    if (state.pendingRoomCode || state.pendingPostMatchCode) { hideRejoinBanner(); return; }
+    if (!state.user) { hideRejoinBanner(); return; }
+    const entry = getRecentRoom();
+    if (!entry) { hideRejoinBanner(); return; }
+    // Cross-account safety: don't surface another uid's room.
+    if (entry.uid && entry.uid !== state.user.uid) { hideRejoinBanner(); return; }
+    // Verify the room still exists before promising a rejoin.
+    try {
+        const snap = await getDoc(doc(db, 'triviaRooms', entry.code));
+        if (!snap.exists()) { clearRecentRoom(); hideRejoinBanner(); return; }
+        const data = snap.data() || {};
+        if (data.status === 'finished') { clearRecentRoom(); hideRejoinBanner(); return; }
+    } catch (_) {
+        // Permission / network — best-effort; leave the banner hidden.
+        hideRejoinBanner();
+        return;
+    }
+    const codeEl = $('#lobby-rejoin-code');
+    if (codeEl) codeEl.textContent = entry.code;
+    banner.hidden = false;
+}
+function rejoinRecentRoom() {
+    const entry = getRecentRoom();
+    if (!entry) { hideRejoinBanner(); return; }
+    hideRejoinBanner();
+    // Reuse the existing URL-based rejoin path so private-room password
+    // prompts, capacity guards, and spectator marking all stay in one
+    // code path. Set the pending code and trigger the helper directly.
+    state.pendingRoomCode = entry.code;
+    tryRejoinPendingRoom();
+}
+function dismissRejoinBanner() {
+    clearRecentRoom();
+    hideRejoinBanner();
+}
+
 async function tryRejoinPendingRoom() {
     const code = state.pendingRoomCode;
     if (!code || !state.user) return;
@@ -640,6 +727,7 @@ function applyAuthState(user) {
         // the two don't depend on each other.
         if (state.pendingPostMatchCode) tryLoadPendingPostMatch();
         else if (state.pendingRoomCode)  tryRejoinPendingRoom();
+        else maybeShowRejoinBanner();
         // Skip the registered-only side effects (admin probe + profile
         // subscription) for guests — both would be wasted Firestore
         // reads that hit rule denials.
@@ -717,8 +805,34 @@ function renderProfileView() {
     setText($('#stat-games'), String(games));
     const pct = games > 0 ? Math.round(100 * (p.wins || 0) / games) : 0;
     setText($('#stat-winpct'), pct + '%');
-    setText($('#stat-bullseyes'), String(p.lifetimeBullseyes || 0));
-    setText($('#stat-best-round'), String(p.bestRoundScore || 0));
+
+    // Item #7 — per-game-type panels. Reads triviaProfile.byGameType
+    // (written by writeEndOfGameStats starting at this commit). Legacy
+    // mixed totals still surface in lifetimeBullseyes / bestRoundScore
+    // — they're shown as the Globe Drop tab's bullseye / best-round
+    // values because the existing fields were Globe-Drop-only in
+    // practice anyway (bullseye = base ≥ 98, a GD-only signal).
+    const byType = (p.byGameType && typeof p.byGameType === 'object') ? p.byGameType : {};
+    const gd = byType['globe-drop'] || {};
+    const tr = byType['trivia'] || {};
+    const gdGames = Number(gd.gamesPlayed) || 0;
+    const trGames = Number(tr.gamesPlayed) || 0;
+    setText($('#stat-gd-games'), String(gdGames));
+    setText($('#stat-gd-wins'), String(Number(gd.wins) || 0));
+    // Bullseyes / best-round prefer the per-type field when present and
+    // fall back to the legacy mixed counters for users who played
+    // before the per-type fields were introduced.
+    setText($('#stat-bullseyes'), String(Number(gd.bullseyes) || Number(p.lifetimeBullseyes) || 0));
+    setText($('#stat-best-round'), String(Number(gd.bestRoundScore) || Number(p.bestRoundScore) || 0));
+    setText($('#stat-tr-games'), String(trGames));
+    setText($('#stat-tr-wins'), String(Number(tr.wins) || 0));
+    const trAvg = trGames > 0 ? Math.round((Number(tr.xp) || 0) / trGames) : 0;
+    setText($('#stat-tr-avg'), trAvg.toLocaleString());
+    setText($('#stat-tr-best-round'), String(Number(tr.bestRoundScore) || 0));
+    const gdEmpty = $('#profile-game-empty-gd');
+    if (gdEmpty) gdEmpty.hidden = gdGames > 0;
+    const trEmpty = $('#profile-game-empty-tr');
+    if (trEmpty) trEmpty.hidden = trGames > 0;
 
     if (Config.PREMIUM_UI_ENABLED) {
         const now = Date.now();
@@ -763,6 +877,20 @@ function wireProfileView() {
     if (Config.PREMIUM_UI_ENABLED) {
         $('#upgrade-premium-btn').addEventListener('click', openPremiumModal);
     }
+    // Item #7 — per-game-type tab toggle.
+    document.querySelectorAll('.profile-game-tab').forEach((btn) => {
+        btn.addEventListener('click', () => {
+            const target = btn.getAttribute('data-game-tab');
+            document.querySelectorAll('.profile-game-tab').forEach((b) => {
+                const on = b === btn;
+                b.classList.toggle('is-active', on);
+                b.setAttribute('aria-selected', on ? 'true' : 'false');
+            });
+            document.querySelectorAll('.profile-game-tab-pane').forEach((pane) => {
+                pane.hidden = pane.getAttribute('data-game-pane') !== target;
+            });
+        });
+    });
 }
 
 /**
@@ -991,6 +1119,56 @@ function applyRoundMultipliers(locations) {
  * @param {number} count — number of questions to be played this round
  * @returns {Promise<{questions:Array, packId:string, packName:string}>}
  */
+/**
+ * Item #6 — fetch the Word Blitz word pool. Cached after first load so
+ * subsequent rooms in the same session don't refetch. Word list ships
+ * with the app under data/word-blitz-words.json.
+ */
+let _wordBlitzPoolPromise = null;
+function fetchWordBlitzPool() {
+    if (!_wordBlitzPoolPromise) {
+        _wordBlitzPoolPromise = (async () => {
+            const res = await fetch('data/word-blitz-words.json', { cache: 'default' });
+            if (!res.ok) throw new Error(`Word list HTTP ${res.status}`);
+            const data = await res.json();
+            return Array.isArray(data && data.words) ? data.words : [];
+        })().catch((err) => {
+            // Don't poison the promise — let the next attempt retry.
+            _wordBlitzPoolPromise = null;
+            throw err;
+        });
+    }
+    return _wordBlitzPoolPromise;
+}
+
+/**
+ * Item #9 — pick N Emoji Chain phrases. Static list embedded here so the
+ * game works offline and per-room creation doesn't depend on the network.
+ * Sized for "casual party game" — short phrases, broad recognition.
+ */
+const EMOJI_CHAIN_PHRASES = [
+    'The Lion King', 'Harry Potter', 'Frozen', 'Star Wars',
+    'Pirates of the Caribbean', 'Spider-Man', 'Toy Story', 'Finding Nemo',
+    'Jurassic Park', 'The Matrix', 'Titanic', 'Avatar',
+    'Inside Out', 'Despicable Me', 'Shrek', 'Beauty and the Beast',
+    'Ice Age', 'The Avengers', 'Back to the Future', 'Home Alone',
+    'Forrest Gump', 'Mary Poppins', 'Cinderella', 'Aladdin',
+    'Game of Thrones', 'Breaking Bad', 'Stranger Things', 'The Office',
+    'Friends', 'Squid Game', 'The Crown', 'Black Mirror'
+];
+function pickEmojiChainPhrases(count) {
+    const n = Math.max(1, Math.min(EMOJI_CHAIN_PHRASES.length, Number(count) || 3));
+    const pool = EMOJI_CHAIN_PHRASES.slice();
+    for (let i = 0; i < n; i++) {
+        const j = i + Math.floor(Math.random() * (pool.length - i));
+        const tmp = pool[i]; pool[i] = pool[j]; pool[j] = tmp;
+    }
+    return pool.slice(0, n).map((phrase, idx) => ({
+        id: `ec-${idx}-${phrase.toLowerCase().replace(/[^a-z0-9]+/g, '-').slice(0, 16)}`,
+        phrase
+    }));
+}
+
 async function buildQuestionsForRound(packId, count) {
     if (packId === 'custom' && state.customPack && isPremium()) {
         return {
@@ -1125,10 +1303,11 @@ function renderPackOptions() {
  * ===================================================================== */
 
 function wireGameTypeToggle() {
+    const allowedTypes = new Set(['trivia', 'globe-drop', 'word-blitz', 'emoji-chain']);
     $$('.game-type-btn').forEach((btn) => {
         btn.addEventListener('click', () => {
             const type = btn.dataset.gameType;
-            if (type !== 'trivia' && type !== 'globe-drop') return;
+            if (!allowedTypes.has(type)) return;
             state.selectedGameType = type;
             $$('.game-type-btn').forEach((b) => {
                 const isOn = b.dataset.gameType === type;
@@ -1242,6 +1421,8 @@ function wireLobby() {
     $('#create-room-btn').addEventListener('click', () => createRoom());
     $('#play-solo-btn').addEventListener('click', () => createRoom({ mode: 'solo' }));
     $('#play-daily-btn').addEventListener('click', () => createRoom({ mode: 'daily' }));
+    const playDailyTriviaBtn = $('#play-daily-trivia-btn');
+    if (playDailyTriviaBtn) playDailyTriviaBtn.addEventListener('click', () => createRoom({ mode: 'daily-trivia' }));
     $('#join-room-btn').addEventListener('click', joinRoom);
     $('#join-code').addEventListener('input', (e) => {
         const raw = String(e.target.value || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
@@ -1255,6 +1436,12 @@ function wireLobby() {
     $('#join-code').addEventListener('keydown', (e) => {
         if (e.key === 'Enter') joinRoom();
     });
+
+    // Rejoin banner — Item #8 (localStorage-backed recent-room hint).
+    const rejoinBtn = $('#lobby-rejoin-btn');
+    if (rejoinBtn) rejoinBtn.addEventListener('click', rejoinRecentRoom);
+    const rejoinDismiss = $('#lobby-rejoin-dismiss');
+    if (rejoinDismiss) rejoinDismiss.addEventListener('click', dismissRejoinBanner);
 
     $('#leave-room-btn').addEventListener('click', async () => {
         const isSolo = state.roomData && state.roomData.playMode === 'solo';
@@ -1282,6 +1469,10 @@ function wireLobby() {
     if (endGuestCtaBtn) endGuestCtaBtn.addEventListener('click', () => openSignInPrompt());
     const endShareBtn = $('#end-share-btn');
     if (endShareBtn) endShareBtn.addEventListener('click', () => shareResultCard());
+    const endShareLinkBtn = $('#end-share-link-btn');
+    if (endShareLinkBtn) endShareLinkBtn.addEventListener('click', () => copyResultLink());
+    const endSwitchBtn = $('#end-switch-game-btn');
+    if (endSwitchBtn) endSwitchBtn.addEventListener('click', () => switchGameAndRestart());
     const settingsEditBtn = $('#room-settings-edit-btn');
     if (settingsEditBtn) settingsEditBtn.addEventListener('click', () => openRoomSettingsEditor());
     const settingsCancel = $('#room-settings-cancel');
@@ -1308,6 +1499,26 @@ function wireLobby() {
     // GlobeDrop controls (wired once; they no-op when no GlobeDrop room is active)
     const submitBtn = $('#globe-drop-submit-btn');
     if (submitBtn) submitBtn.addEventListener('click', () => { Feedback.guessSubmitted(); submitGuess(); });
+
+    // Word Blitz form (Item #6). Wired once; no-ops when not in a WB room.
+    const wbForm = $('#word-blitz-form');
+    if (wbForm) wbForm.addEventListener('submit', (e) => {
+        e.preventDefault();
+        try { Feedback.guessSubmitted(); } catch (_) {}
+        submitWordBlitzGuess();
+    });
+
+    // Emoji Chain forms (Item #9). Three phases, three forms.
+    const ecPrompterForm = $('#emoji-chain-prompter-form');
+    if (ecPrompterForm) ecPrompterForm.addEventListener('submit', (e) => {
+        e.preventDefault();
+        submitEmojiChainPrompter();
+    });
+    const ecGuesserForm = $('#emoji-chain-guesser-form');
+    if (ecGuesserForm) ecGuesserForm.addEventListener('submit', (e) => {
+        e.preventDefault();
+        submitEmojiChainGuess();
+    });
     const readyBtn = $('#globe-drop-ready-btn');
     if (readyBtn) readyBtn.addEventListener('click', () => markReadyForNext());
     const clearBtn = $('#globe-drop-clear-btn');
@@ -1409,16 +1620,24 @@ async function createRoom(opts) {
         await ensureGuestAuth();
         if (!state.user) { openSignInPrompt(); return; }
     }
-    // mode = 'multi' (default) | 'solo' | 'daily'.
-    // - solo: private, single-player, auto-starts as soon as the room exists
-    // - daily: like solo, plus deterministic location seeding by UTC date
-    //          and an end-of-game write to globeDropDailyLeaderboard
+    // mode = 'multi' (default) | 'solo' | 'daily' | 'daily-trivia'.
+    // - solo:         private, single-player, auto-starts as soon as the room exists
+    // - daily:        like solo + deterministic location seeding by UTC date;
+    //                 end-of-game writes to globeDropDailyLeaderboard
+    // - daily-trivia: like solo + same idea, but for Trivia. First player
+    //                 of the day seeds questions into triviaDaily/{date};
+    //                 every other player reads that same canonical set.
+    //                 End-of-game writes to triviaDailyLeaderboard.
     const mode = (opts && opts.mode) || 'multi';
-    const isSoloLike = mode === 'solo' || mode === 'daily';
+    const isSoloLike = mode === 'solo' || mode === 'daily' || mode === 'daily-trivia';
 
-    const gameType = isSoloLike
-        ? 'globe-drop'
-        : (state.selectedGameType === 'globe-drop' ? 'globe-drop' : 'trivia');
+    let gameType;
+    if (mode === 'daily-trivia') gameType = 'trivia';
+    else if (mode === 'solo' || mode === 'daily') gameType = 'globe-drop';
+    else {
+        const allowed = new Set(['globe-drop', 'trivia', 'word-blitz', 'emoji-chain']);
+        gameType = allowed.has(state.selectedGameType) ? state.selectedGameType : 'globe-drop';
+    }
 
     // Solo / daily rooms are always private to keep them out of any future
     // public-room discovery. They have no password — only this user is in
@@ -1439,9 +1658,11 @@ async function createRoom(opts) {
         return;
     }
 
-    const btn = isSoloLike
-        ? (mode === 'daily' ? $('#play-daily-btn') : $('#play-solo-btn'))
-        : $('#create-room-btn');
+    let btn;
+    if (mode === 'daily') btn = $('#play-daily-btn');
+    else if (mode === 'daily-trivia') btn = $('#play-daily-trivia-btn');
+    else if (mode === 'solo') btn = $('#play-solo-btn');
+    else btn = $('#create-room-btn');
     // innerHTML preserves the inline SVG icon. textContent would
     // strip it on restore and leave the button text-only.
     const originalLabel = btn.innerHTML;
@@ -1522,6 +1743,85 @@ async function createRoom(opts) {
                 // ms so the pure phase helpers don't have to know about the
                 // unit choice.
                 questionTimeMs: seconds * 1000
+            }));
+        } else if (gameType === 'word-blitz') {
+            // Item #6 — typing race. Static word list ships with the app;
+            // host picks a count + per-word timer. Picks N unique words
+            // at create time so every player sees the same sequence.
+            const count = Math.max(4, Math.min(20, parseInt($('#create-word-blitz-count').value, 10) || 10));
+            const seconds = Math.max(5, Math.min(30, parseInt($('#create-word-blitz-time').value, 10) || 10));
+            btn.innerHTML = 'Setting up Word Blitz…';
+            const pool = await fetchWordBlitzPool();
+            const words = WordBlitz.buildWordList(pool, count);
+            if (!words.length) throw new Error('Could not load the word list');
+            await setDoc(ref, Object.assign({}, shared, {
+                packId: 'word-blitz-default',
+                packName: 'Word Blitz',
+                totalQuestions: words.length,
+                questions: words,
+                questionTimeMs: seconds * 1000
+            }));
+        } else if (gameType === 'emoji-chain') {
+            // Item #9 — emoji relay. Phrases ship with the app. State
+            // machine fields (currentPhase, currentPrompterUid, etc.)
+            // are filled in on startGame; createRoom just provisions
+            // the phrase pool.
+            const count = Math.max(2, Math.min(8, parseInt($('#create-emoji-chain-count').value, 10) || 3));
+            const seconds = Math.max(20, Math.min(120, parseInt($('#create-emoji-chain-time').value, 10) || 45));
+            const phrases = pickEmojiChainPhrases(count);
+            await setDoc(ref, Object.assign({}, shared, {
+                packId: 'emoji-chain-default',
+                packName: 'Emoji Chain',
+                totalQuestions: phrases.length,
+                questions: phrases,
+                questionTimeMs: seconds * 1000
+            }));
+        } else if (mode === 'daily-trivia') {
+            // Daily Trivia — Item #2. Read or seed the canonical question
+            // set for today (UTC date) so every player who plays today
+            // sees identical questions. Daily forces fixed settings (10
+            // questions, 15s timer) so the leaderboard rows compare like
+            // for like.
+            btn.innerHTML = "Loading today's Trivia…";
+            const dailyDateKey = GlobeDropDaily.dailyDateKey(Date.now());
+            const dailyDocRef = doc(db, 'triviaDaily', dailyDateKey);
+            let dailyQuestions = null;
+            try {
+                const snap = await getDoc(dailyDocRef);
+                if (snap.exists()) {
+                    const data = snap.data() || {};
+                    if (Array.isArray(data.questions) && data.questions.length) {
+                        dailyQuestions = data.questions;
+                    }
+                }
+            } catch (_) { /* fall through to fresh fetch */ }
+            if (!dailyQuestions) {
+                // First player of the day seeds the set. Over-fetch +
+                // seeded shuffle so the day's 10 are reproducible from
+                // the API's larger pool without trusting the API to be
+                // deterministic itself.
+                const pool = await buildQuestionsForRound('live', 30);
+                const ordered = GlobeDropDaily.seededShuffle(pool.questions, `trivia-daily-${dailyDateKey}`);
+                dailyQuestions = ordered.slice(0, 10);
+                try {
+                    await setDoc(dailyDocRef, {
+                        date: dailyDateKey,
+                        questions: dailyQuestions,
+                        seededAt: serverTimestamp(),
+                        seededBy: state.user.uid
+                    }, { merge: true });
+                } catch (err) {
+                    console.warn('triviaDaily seed write failed (continuing with local copy):', err);
+                }
+            }
+            await setDoc(ref, Object.assign({}, shared, {
+                packId: 'daily-trivia',
+                packName: `Daily Trivia · ${dailyDateKey}`,
+                totalQuestions: dailyQuestions.length,
+                questions: dailyQuestions,
+                questionTimeMs: 15000,
+                playMode: 'daily-trivia',
+                dailyDateKey
             }));
         } else {
             // The pack-select dropdown was retired — live API is the only
@@ -1762,6 +2062,8 @@ function enterRoom(code) {
     setText($('#room-code-display'), code);
     syncUrlToState();
     startChatListener(code);
+    saveRecentRoom(code);
+    hideRejoinBanner();
 
     // Pre-warm the 8K Earth texture as soon as we enter the room. The
     // texture is ~4.5 MB and decoding it is the single biggest chunk
@@ -1935,6 +2237,9 @@ async function leaveRoom({ silent = false, reason = null } = {}) {
     lastStatusPlayedFeedback = null;
     stopChatListener();
     closeChatPanel();
+    // Explicit leave clears the rejoin breadcrumb — only tab-close /
+    // disconnect should trigger the rejoin banner on next visit.
+    clearRecentRoom();
 
     if (code && state.user) {
         try {
@@ -1975,6 +2280,8 @@ async function leaveRoom({ silent = false, reason = null } = {}) {
     hide($('#stage-game'));
     hide($('#stage-globe-drop'));
     hide($('#stage-picking'));
+    hide($('#stage-word-blitz'));
+    hide($('#stage-emoji-chain'));
     show($('#stage-lobby'));
     // Clear the join-code input so the previous room's code doesn't
     // pre-populate the next attempt. Same for the password field below.
@@ -2489,6 +2796,11 @@ function renderRoom() {
     // current question is the one they joined on (joinedAtQuestionIndex === currentQuestionIndex).
     // As soon as the host advances to the next question the index increments
     // and the banner disappears — the player is now a full participant.
+    //
+    // Item #5 polish: banner now carries a live "joins next round" hint
+    // sourced from the room doc, and a one-shot "You're in!" toast fires
+    // on the transition so latecomers know they're now playing rather
+    // than waiting on a banner that silently disappears.
     const spectatorBanner = $('#room-spectator-banner');
     if (spectatorBanner) {
         const mePlayer = state.user ? state.roomPlayers.find((p) => p.uid === state.user.uid) : null;
@@ -2497,6 +2809,32 @@ function renderRoom() {
         const curQIdx = typeof room.currentQuestionIndex === 'number' ? room.currentQuestionIndex : -1;
         const isSpectating = playing && joinedAtQIdx >= 0 && curQIdx <= joinedAtQIdx;
         spectatorBanner.hidden = !isSpectating;
+        if (isSpectating) {
+            const total = Number(room.totalQuestions) || 0;
+            const isGlobeDrop = room.gameType === 'globe-drop';
+            const noun = isGlobeDrop ? 'location' : 'question';
+            const remainingAfterCur = total > 0 ? Math.max(0, total - (curQIdx + 1)) : 0;
+            const label = total > 0 && remainingAfterCur > 0
+                ? `Spectating · you join after this ${noun} (${remainingAfterCur} ${noun}${remainingAfterCur === 1 ? '' : 's'} left)`
+                : `Spectating · you join after this ${noun}`;
+            spectatorBanner.innerHTML = '<span aria-hidden="true">👁</span> ' + escapeHtml(label);
+        }
+        // Transition detection — fire a single toast the first time the
+        // local player is no longer spectating after having been one.
+        if (!state.lastSpectatorActive) state.lastSpectatorActive = false;
+        if (isSpectating) {
+            state.lastSpectatorActive = true;
+        } else if (state.lastSpectatorActive) {
+            state.lastSpectatorActive = false;
+            // Only celebrate if a real round transition actually happened
+            // (curQIdx surpassed joinedAtQIdx, not just because the room
+            // ended or the player left).
+            if (playing && joinedAtQIdx >= 0 && curQIdx > joinedAtQIdx) {
+                try {
+                    showToast("You're in — next round counts!", { icon: '🎯', key: 'spectator-joined' });
+                } catch (_) { /* ignore */ }
+            }
+        }
     }
 
     const banner = $('#room-paused-banner');
@@ -2536,11 +2874,15 @@ function renderRoom() {
         lastStatusPlayedFeedback = status;
     }
 
-    const isGlobeDrop = state.roomData.gameType === 'globe-drop';
+    const gt = state.roomData.gameType;
     switch (status) {
         case 'lobby': return renderLobbyStage(isHost);
         case 'picking': return renderPickingStage(isHost);
-        case 'playing': return isGlobeDrop ? renderGlobeDropStage(isHost) : renderGameStage(isHost);
+        case 'playing':
+            if (gt === 'globe-drop')  return renderGlobeDropStage(isHost);
+            if (gt === 'word-blitz')  return renderWordBlitzStage(isHost);
+            if (gt === 'emoji-chain') return renderEmojiChainStage(isHost);
+            return renderGameStage(isHost);
         case 'finished': return renderEndStage(isHost);
     }
 }
@@ -2775,6 +3117,8 @@ function renderLobbyStage(isHost) {
     hide($('#stage-globe-drop'));
     hide($('#stage-picking'));
     hide($('#stage-end'));
+    hide($('#stage-word-blitz'));
+    hide($('#stage-emoji-chain'));
 
     // Room settings panel — show current room settings to everyone in
     // the lobby. Host can edit (click event handled separately).
@@ -2836,6 +3180,8 @@ function renderPickingStage(isHost) {
     hide($('#stage-game'));
     hide($('#stage-globe-drop'));
     hide($('#stage-end'));
+    hide($('#stage-word-blitz'));
+    hide($('#stage-emoji-chain'));
     show($('#stage-picking'));
 
     const idx = state.roomData.currentQuestionIndex || 0;
@@ -2925,6 +3271,8 @@ function renderGameStage() {
     hide($('#stage-end'));
     hide($('#stage-picking'));
     hide($('#stage-globe-drop'));
+    hide($('#stage-word-blitz'));
+    hide($('#stage-emoji-chain'));
     show($('#stage-game'));
 
     const idx = state.roomData.currentQuestionIndex || 0;
@@ -3332,6 +3680,8 @@ function renderGlobeDropStage() {
     hide($('#stage-game'));
     hide($('#stage-end'));
     hide($('#stage-picking'));
+    hide($('#stage-word-blitz'));
+    hide($('#stage-emoji-chain'));
     show($('#stage-globe-drop'));
 
     const idx = state.roomData.currentQuestionIndex || 0;
@@ -3954,6 +4304,497 @@ function renderRoundsHistoryBoard() {
     board.hidden = idx === 0;
 }
 
+/* =====================================================================
+ * Word Blitz (Item #6)
+ * ===================================================================== */
+
+function currentWordBlitzEntry() {
+    if (!state.roomData) return null;
+    const pool = Array.isArray(state.roomData.questions) ? state.roomData.questions : [];
+    return pool[state.roomData.currentQuestionIndex || 0] || null;
+}
+
+function renderWordBlitzStage(/* isHost */) {
+    hide($('#stage-lobby'));
+    hide($('#stage-game'));
+    hide($('#stage-globe-drop'));
+    hide($('#stage-picking'));
+    hide($('#stage-end'));
+    hide($('#stage-emoji-chain'));
+    show($('#stage-word-blitz'));
+
+    const entry = currentWordBlitzEntry();
+    if (!entry) return;
+    const idx = state.roomData.currentQuestionIndex || 0;
+    const total = state.roomData.totalQuestions || 0;
+    setText($('#word-blitz-progress-now'), String(idx + 1));
+    setText($('#word-blitz-progress-total'), String(total));
+    setText($('#word-blitz-target'), entry.word);
+
+    const winnerUid = state.roomData.currentWinnerUid;
+    const phase = state.roomData.revealStartedAt ? 'reveal' : 'asking';
+    const me = state.user ? state.roomPlayers.find((p) => p.uid === state.user.uid) : null;
+    const myUid = me && me.uid;
+    const iAnswered = me && me.currentAnsweredFor === entry.id;
+
+    const input = $('#word-blitz-input');
+    const submitBtn = $('#word-blitz-submit-btn');
+    const winnerEl = $('#word-blitz-winner');
+    const statusEl = $('#word-blitz-status');
+
+    if (phase === 'reveal') {
+        if (input) { input.disabled = true; input.value = ''; }
+        if (submitBtn) submitBtn.disabled = true;
+        if (winnerEl) {
+            winnerEl.hidden = false;
+            if (winnerUid) {
+                const winnerName = state.roomData.currentWinnerName
+                    || (state.roomPlayers.find((p) => p.uid === winnerUid) || {}).displayName
+                    || 'Someone';
+                winnerEl.textContent = winnerUid === myUid
+                    ? `You got it! +100 — next word in a moment…`
+                    : `${winnerName} got it first. Next word in a moment…`;
+            } else {
+                winnerEl.textContent = 'Time! No winner this round.';
+            }
+        }
+        if (statusEl) statusEl.textContent = '';
+    } else {
+        if (input) {
+            input.disabled = false;
+            if (state.lastWordBlitzId !== entry.id) {
+                // Auto-clear + focus on a new round.
+                input.value = '';
+                try { input.focus(); } catch (_) {}
+                state.lastWordBlitzId = entry.id;
+            }
+        }
+        if (submitBtn) submitBtn.disabled = false;
+        if (winnerEl) { winnerEl.hidden = true; winnerEl.textContent = ''; }
+        if (statusEl) {
+            statusEl.textContent = iAnswered ? 'Submitted — keep trying!' : '';
+        }
+    }
+
+    renderWordBlitzBoard();
+}
+
+function renderWordBlitzBoard() {
+    const list = $('#mini-board-list-word-blitz');
+    if (!list) return;
+    list.innerHTML = '';
+    const ranked = Scoring.rankPlayers(state.roomPlayers.map((p) => ({
+        uid: p.uid, displayName: p.displayName,
+        score: p.score || 0, streak: p.streak || 0
+    })));
+    ranked.forEach((p, i) => {
+        const li = document.createElement('li');
+        li.className = 'mini-board-row';
+        if (state.user && p.uid === state.user.uid) li.classList.add('is-me');
+        li.innerHTML =
+            `<span class="mini-board-rank">${i + 1}</span>` +
+            `<span class="mini-board-name">${escapeHtml(p.displayName || 'Player')}</span>` +
+            `<span class="mini-board-score">${p.score}</span>`;
+        list.appendChild(li);
+    });
+}
+
+/**
+ * Player submitted a typed word. If it matches the target and the
+ * room has no winner yet, claim the win via a transaction (first
+ * commit wins). Award 100 points and flip the room to reveal.
+ */
+async function submitWordBlitzGuess() {
+    if (!state.user || !state.roomCode || !state.roomData) return;
+    if (state.roomData.gameType !== 'word-blitz') return;
+    if (state.roomData.revealStartedAt) return; // reveal already running
+    const entry = currentWordBlitzEntry();
+    if (!entry) return;
+    const input = $('#word-blitz-input');
+    const typed = input ? input.value : '';
+    const statusEl = $('#word-blitz-status');
+    const match = WordBlitz.wordsMatch(typed, entry.word);
+
+    const me = state.roomPlayers.find((p) => p.uid === state.user.uid);
+    const myAnswers = (me && Array.isArray(me.answers)) ? me.answers.slice() : [];
+    const playerRef = doc(db, 'triviaRooms', state.roomCode, 'players', state.user.uid);
+
+    if (!match) {
+        // Record the attempt for visible feedback; allow re-submission
+        // until the round ends.
+        if (statusEl) statusEl.textContent = 'Not quite — keep typing!';
+        await updateDoc(playerRef, {
+            currentAnswerAt: serverTimestamp(),
+            currentAnsweredFor: entry.id,
+            lastSeen: serverTimestamp()
+        });
+        return;
+    }
+
+    // Correct — try to claim the win. Transaction prevents a tie
+    // (two players' clients both thinking they were first).
+    let won = false;
+    try {
+        await runTransaction(db, async (tx) => {
+            const ref = doc(db, 'triviaRooms', state.roomCode);
+            const snap = await tx.get(ref);
+            const data = snap.data() || {};
+            if (data.currentWinnerUid || data.revealStartedAt) { won = false; return; }
+            if (data.currentQuestionId !== entry.id) { won = false; return; }
+            tx.update(ref, {
+                currentWinnerUid: state.user.uid,
+                currentWinnerName: (me && me.displayName) || 'Player',
+                revealStartedAt: serverTimestamp()
+            });
+            won = true;
+        });
+    } catch (err) {
+        console.warn('Word Blitz claim failed:', err);
+    }
+
+    const points = won ? 100 : 0;
+    myAnswers.push({
+        questionId: entry.id,
+        word: entry.word,
+        typedText: String(typed || '').slice(0, 80),
+        correct: true,
+        winner: won,
+        points
+    });
+    try {
+        await updateDoc(playerRef, {
+            score: (me && me.score || 0) + points,
+            currentAnswerAt: serverTimestamp(),
+            currentAnsweredFor: entry.id,
+            answers: myAnswers,
+            lastSeen: serverTimestamp()
+        });
+    } catch (err) {
+        console.warn('Word Blitz player write failed:', err);
+    }
+
+    if (input) input.value = '';
+    if (statusEl) statusEl.textContent = won ? 'Got it! +100' : 'Too late — already claimed.';
+}
+
+/* =====================================================================
+ * Emoji Chain (Item #9)
+ * =====================================================================
+ *
+ * Phase machine on the room doc:
+ *   currentPhase: 'prompter' → prompter sees the secret, sends emoji
+ *                 'guessing' → everyone else types a guess
+ *                 'voting'   → everyone votes for the funniest guess
+ *                 'reveal'   → show truth + scores, then advance
+ *
+ * Scoring per round:
+ *   +50 to anyone whose guess matches the truth (normalized)
+ *   +30 to the guess that wins the funniest-guess vote (prompter
+ *       included in voters but their own row can't be voted for)
+ *   +10 to the prompter when ≥1 guesser gets it right (their clue
+ *       worked, but it wasn't TOO easy)
+ */
+
+function currentEmojiChainEntry() {
+    if (!state.roomData) return null;
+    const pool = Array.isArray(state.roomData.questions) ? state.roomData.questions : [];
+    return pool[state.roomData.currentQuestionIndex || 0] || null;
+}
+
+function emojiChainNormalize(s) {
+    return String(s == null ? '' : s)
+        .toLowerCase()
+        .replace(/[^a-z0-9]/g, '');
+}
+function emojiChainGuessMatches(typed, target) {
+    const a = emojiChainNormalize(typed);
+    const b = emojiChainNormalize(target);
+    return a && b && a === b;
+}
+
+function renderEmojiChainStage(isHost) {
+    hide($('#stage-lobby'));
+    hide($('#stage-game'));
+    hide($('#stage-globe-drop'));
+    hide($('#stage-picking'));
+    hide($('#stage-end'));
+    hide($('#stage-word-blitz'));
+    show($('#stage-emoji-chain'));
+
+    const entry = currentEmojiChainEntry();
+    if (!entry) return;
+    const idx = state.roomData.currentQuestionIndex || 0;
+    const total = state.roomData.totalQuestions || 0;
+    setText($('#emoji-chain-progress-now'), String(idx + 1));
+    setText($('#emoji-chain-progress-total'), String(total));
+
+    const phase = state.roomData.currentPhase || 'prompter';
+    const prompterUid = state.roomData.currentPrompterUid;
+    const isPrompter = state.user && prompterUid === state.user.uid;
+    const phaseBadge = $('#emoji-chain-phase-badge');
+    if (phaseBadge) {
+        const labels = { prompter: 'Prompter', guessing: 'Guessing', voting: 'Voting', reveal: 'Reveal' };
+        phaseBadge.textContent = labels[phase] || phase;
+    }
+
+    const prompterEl = $('#emoji-chain-prompter');
+    const guesserEl = $('#emoji-chain-guesser');
+    const votingEl = $('#emoji-chain-voting');
+    const revealEl = $('#emoji-chain-reveal');
+    [prompterEl, guesserEl, votingEl, revealEl].forEach((el) => { if (el) el.hidden = true; });
+
+    if (phase === 'prompter') {
+        if (isPrompter) {
+            if (prompterEl) prompterEl.hidden = false;
+            setText($('#emoji-chain-secret'), entry.phrase);
+        } else {
+            if (guesserEl) guesserEl.hidden = false;
+            setText($('#emoji-chain-emoji'), 'Waiting on the prompter…');
+            const form = $('#emoji-chain-guesser-form');
+            if (form) form.hidden = true;
+            const waiting = $('#emoji-chain-guesser-waiting');
+            if (waiting) waiting.hidden = false;
+        }
+    } else if (phase === 'guessing') {
+        if (isPrompter) {
+            // Prompter waits during guessing.
+            if (guesserEl) guesserEl.hidden = false;
+            setText($('#emoji-chain-emoji'), state.roomData.currentEmoji || '—');
+            const form = $('#emoji-chain-guesser-form');
+            if (form) form.hidden = true;
+            const waiting = $('#emoji-chain-guesser-waiting');
+            if (waiting) { waiting.hidden = false; waiting.textContent = 'Waiting on guessers…'; }
+        } else {
+            if (guesserEl) guesserEl.hidden = false;
+            setText($('#emoji-chain-emoji'), state.roomData.currentEmoji || '—');
+            const myGuess = (state.roomData.currentGuesses || {})[state.user && state.user.uid];
+            const form = $('#emoji-chain-guesser-form');
+            const waiting = $('#emoji-chain-guesser-waiting');
+            if (myGuess) {
+                if (form) form.hidden = true;
+                if (waiting) { waiting.hidden = false; waiting.textContent = 'Guess submitted — waiting on others…'; }
+            } else {
+                if (form) form.hidden = false;
+                if (waiting) waiting.hidden = true;
+            }
+        }
+    } else if (phase === 'voting') {
+        if (votingEl) votingEl.hidden = false;
+        setText($('#emoji-chain-voting-emoji'), state.roomData.currentEmoji || '—');
+        const guesses = state.roomData.currentGuesses || {};
+        const list = $('#emoji-chain-guess-list');
+        const myUid = state.user && state.user.uid;
+        const myVote = (state.roomData.currentVotes || {})[myUid];
+        if (list) {
+            list.innerHTML = '';
+            for (const [uid, guess] of Object.entries(guesses)) {
+                const li = document.createElement('li');
+                li.className = 'emoji-chain-guess-row';
+                const player = state.roomPlayers.find((p) => p.uid === uid);
+                const name = (player && player.displayName) || 'Player';
+                const canVote = !myVote && uid !== myUid;
+                li.innerHTML =
+                    `<span class="emoji-chain-guess-author">${escapeHtml(name)}</span>` +
+                    `<span class="emoji-chain-guess-text">${escapeHtml(String(guess))}</span>`;
+                if (canVote) {
+                    const btn = document.createElement('button');
+                    btn.type = 'button';
+                    btn.className = 'btn btn-ghost btn-sm';
+                    btn.textContent = 'Vote';
+                    btn.addEventListener('click', () => emojiChainVote(uid));
+                    li.appendChild(btn);
+                }
+                if (myVote === uid) {
+                    const tag = document.createElement('span');
+                    tag.className = 'emoji-chain-voted-tag';
+                    tag.textContent = '✓ Your vote';
+                    li.appendChild(tag);
+                }
+                list.appendChild(li);
+            }
+        }
+        const waiting = $('#emoji-chain-voting-waiting');
+        if (waiting) waiting.hidden = !myVote;
+    } else if (phase === 'reveal') {
+        if (revealEl) revealEl.hidden = false;
+        setText($('#emoji-chain-reveal-secret'), entry.phrase);
+        const guesses = state.roomData.currentGuesses || {};
+        const correctList = Object.entries(guesses)
+            .filter(([, g]) => emojiChainGuessMatches(g, entry.phrase))
+            .map(([uid]) => {
+                const p = state.roomPlayers.find((pp) => pp.uid === uid);
+                return p ? p.displayName : 'Player';
+            });
+        const summaryEl = $('#emoji-chain-reveal-summary');
+        if (summaryEl) {
+            summaryEl.textContent = correctList.length
+                ? `Got it: ${correctList.join(', ')}`
+                : 'Nobody got it this round.';
+        }
+        // Host advance fires from the main timer tick once
+        // REVEAL_TIME_MS has elapsed past revealStartedAt — no separate
+        // setTimeout needed here.
+    }
+
+    renderEmojiChainBoard();
+}
+
+function renderEmojiChainBoard() {
+    const list = $('#mini-board-list-emoji-chain');
+    if (!list) return;
+    list.innerHTML = '';
+    const ranked = Scoring.rankPlayers(state.roomPlayers.map((p) => ({
+        uid: p.uid, displayName: p.displayName,
+        score: p.score || 0, streak: p.streak || 0
+    })));
+    ranked.forEach((p, i) => {
+        const li = document.createElement('li');
+        li.className = 'mini-board-row';
+        if (state.user && p.uid === state.user.uid) li.classList.add('is-me');
+        li.innerHTML =
+            `<span class="mini-board-rank">${i + 1}</span>` +
+            `<span class="mini-board-name">${escapeHtml(p.displayName || 'Player')}</span>` +
+            `<span class="mini-board-score">${p.score}</span>`;
+        list.appendChild(li);
+    });
+}
+
+async function submitEmojiChainPrompter() {
+    if (!state.user || !state.roomCode || !state.roomData) return;
+    if (state.roomData.gameType !== 'emoji-chain') return;
+    if (state.roomData.currentPhase !== 'prompter') return;
+    if (state.roomData.currentPrompterUid !== state.user.uid) return;
+    const input = $('#emoji-chain-prompter-input');
+    const raw = input ? input.value : '';
+    const cleaned = String(raw || '').trim().slice(0, 40);
+    if (!cleaned) return;
+    try {
+        await updateDoc(doc(db, 'triviaRooms', state.roomCode), {
+            currentEmoji: cleaned,
+            currentPhase: 'guessing',
+            questionStartedAt: serverTimestamp()
+        });
+    } catch (err) {
+        console.warn('emoji-chain prompter submit failed:', err);
+    }
+}
+
+async function submitEmojiChainGuess() {
+    if (!state.user || !state.roomCode || !state.roomData) return;
+    if (state.roomData.gameType !== 'emoji-chain') return;
+    if (state.roomData.currentPhase !== 'guessing') return;
+    if (state.roomData.currentPrompterUid === state.user.uid) return;
+    const input = $('#emoji-chain-guesser-input');
+    const raw = input ? input.value : '';
+    const cleaned = String(raw || '').trim().slice(0, 80);
+    if (!cleaned) return;
+    try {
+        await updateDoc(doc(db, 'triviaRooms', state.roomCode), {
+            [`currentGuesses.${state.user.uid}`]: cleaned
+        });
+        // Check whether all non-prompter players have guessed; if so,
+        // flip the room to voting. Best-effort: any racer can run this.
+        const room = state.roomData;
+        const players = state.roomPlayers || [];
+        const expected = players.filter((p) => p.uid !== room.currentPrompterUid).length;
+        const guesses = Object.assign({}, room.currentGuesses || {}, { [state.user.uid]: cleaned });
+        if (Object.keys(guesses).length >= expected) {
+            await updateDoc(doc(db, 'triviaRooms', state.roomCode), {
+                currentPhase: 'voting',
+                // Restart the asking window so the voting phase gets a
+                // fresh timer instead of inheriting the guessing one.
+                questionStartedAt: serverTimestamp()
+            });
+        }
+    } catch (err) {
+        console.warn('emoji-chain guess submit failed:', err);
+    }
+}
+
+async function emojiChainVote(targetUid) {
+    if (!state.user || !state.roomCode || !state.roomData) return;
+    if (state.roomData.gameType !== 'emoji-chain') return;
+    if (state.roomData.currentPhase !== 'voting') return;
+    if (targetUid === state.user.uid) return;
+    try {
+        await updateDoc(doc(db, 'triviaRooms', state.roomCode), {
+            [`currentVotes.${state.user.uid}`]: targetUid
+        });
+        // When everyone has voted, the host scores the round and
+        // flips to reveal. Only the host writes scores to avoid races.
+        const room = state.roomData;
+        const players = state.roomPlayers || [];
+        const expectedVotes = players.length;
+        const votes = Object.assign({}, room.currentVotes || {}, { [state.user.uid]: targetUid });
+        if (Object.keys(votes).length >= expectedVotes && room.hostUid === state.user.uid) {
+            await scoreEmojiChainRound(votes);
+        }
+    } catch (err) {
+        console.warn('emoji-chain vote failed:', err);
+    }
+}
+
+async function scoreEmojiChainRound(votesIn) {
+    if (!state.roomData || !state.roomCode) return;
+    const room = state.roomData;
+    const entry = currentEmojiChainEntry();
+    if (!entry) return;
+    const truth = entry.phrase;
+    const guesses = room.currentGuesses || {};
+    const votes = votesIn || room.currentVotes || {};
+    const prompterUid = room.currentPrompterUid;
+
+    // Tally funniest-guess vote totals per uid (excluding self-votes).
+    const voteTotals = {};
+    for (const [voter, target] of Object.entries(votes)) {
+        if (!target || target === voter) continue;
+        voteTotals[target] = (voteTotals[target] || 0) + 1;
+    }
+    let topVotes = 0;
+    let topUids = [];
+    for (const [uid, count] of Object.entries(voteTotals)) {
+        if (count > topVotes) { topVotes = count; topUids = [uid]; }
+        else if (count === topVotes) topUids.push(uid);
+    }
+
+    // Score correct guesses and the prompter (if anyone got it right).
+    const correctGuessers = Object.entries(guesses)
+        .filter(([, g]) => emojiChainGuessMatches(g, truth))
+        .map(([uid]) => uid);
+    const promptBonus = correctGuessers.length > 0 ? 10 : 0;
+
+    // Each player's delta this round.
+    const deltas = {};
+    for (const uid of correctGuessers) deltas[uid] = (deltas[uid] || 0) + 50;
+    for (const uid of topUids) if (topVotes > 0) deltas[uid] = (deltas[uid] || 0) + 30;
+    if (prompterUid && promptBonus) deltas[prompterUid] = (deltas[prompterUid] || 0) + promptBonus;
+
+    // Write each delta to each player's own doc — host can write any
+    // player doc per rules (open create/update on /players).
+    for (const [uid, delta] of Object.entries(deltas)) {
+        if (!delta) continue;
+        const player = state.roomPlayers.find((p) => p.uid === uid);
+        if (!player) continue;
+        try {
+            await updateDoc(
+                doc(db, 'triviaRooms', state.roomCode, 'players', uid),
+                { score: (player.score || 0) + delta }
+            );
+        } catch (err) {
+            console.warn('emoji-chain score write failed for', uid, err);
+        }
+    }
+
+    try {
+        await updateDoc(doc(db, 'triviaRooms', state.roomCode), {
+            currentPhase: 'reveal',
+            revealStartedAt: serverTimestamp()
+        });
+    } catch (err) {
+        console.warn('emoji-chain reveal flip failed:', err);
+    }
+}
+
 async function submitGuess() {
     if (!state.user || !state.roomCode || !state.roomData) return;
     if (state.roomData.gameType !== 'globe-drop') return;
@@ -4302,7 +5143,35 @@ function startTimerLoop() {
         const duration = currentAskingDurationMs();
         const left = RoomState.timeLeftMs(startMs, now, revealMs, duration);
         const phase = RoomState.questionPhase(startMs, now, revealMs, duration);
-        renderTimer(left, phase, duration);
+
+        // Game-type-specific timer rendering (Items #6 / #9). The Trivia
+        // game timer (#game-timer) is wired by renderTimer; word-blitz /
+        // emoji-chain use their own ring DOM via tickAuxTimer.
+        const gameType = state.roomData.gameType;
+        if (gameType === 'word-blitz') {
+            tickAuxTimer('#word-blitz-timer', '#word-blitz-timer-num',
+                         '#word-blitz-timer-ring-fill', left, phase, duration);
+            // Host force-revealed when nobody got it in time so the
+            // round resolves and the next word can start.
+            if (state.user && state.roomData.hostUid === state.user.uid
+                && phase === 'asking' && !revealMs
+                && state.roomData.currentQuestionId
+                && state.earlyRevealForQuestion !== state.roomData.currentQuestionId
+                && (now - (startMs || now)) >= duration) {
+                state.earlyRevealForQuestion = state.roomData.currentQuestionId;
+                updateDoc(doc(db, 'triviaRooms', state.roomCode), {
+                    revealStartedAt: serverTimestamp()
+                }).catch((err) => {
+                    console.warn('word-blitz timeout reveal failed:', err);
+                    state.earlyRevealForQuestion = null;
+                });
+            }
+        } else if (gameType === 'emoji-chain') {
+            tickAuxTimer('#emoji-chain-timer', '#emoji-chain-timer-num',
+                         '#emoji-chain-timer-ring-fill', left, phase, duration);
+        } else {
+            renderTimer(left, phase, duration);
+        }
 
         const currentQId = state.roomData.currentQuestionId;
         if (phase !== lastRenderedPhase || currentQId !== lastRenderedQuestionId) {
@@ -4310,12 +5179,16 @@ function startTimerLoop() {
             lastRenderedQuestionId = currentQId;
             const pool = Array.isArray(state.roomData.questions) ? state.roomData.questions : [];
             const q = pool.find((cand) => cand && cand.id === currentQId);
-            if (q) {
+            if (q && gameType !== 'word-blitz' && gameType !== 'emoji-chain') {
                 const me = state.roomPlayers.find((p) => state.user && p.uid === state.user.uid);
                 const myAnsweredIndex = (me && me.currentAnsweredFor === q.id && me.currentAnswerIndex != null)
                     ? me.currentAnswerIndex
                     : null;
                 renderQuestion(q, myAnsweredIndex);
+            } else if (gameType === 'word-blitz') {
+                renderWordBlitzStage(state.user && state.roomData.hostUid === state.user.uid);
+            } else if (gameType === 'emoji-chain') {
+                renderEmojiChainStage(state.user && state.roomData.hostUid === state.user.uid);
             }
         }
 
@@ -4327,8 +5200,12 @@ function startTimerLoop() {
         // ensures we fire exactly once per question — rAF is 60fps, the
         // snapshot round-trip is ~150ms, without the guard we'd queue
         // 5-10 redundant writes before state.roomData.revealStartedAt
-        // catches up.
-        if (isHost && phase === 'asking' && !revealMs && currentQId
+        // catches up. Skipped for word-blitz / emoji-chain because those
+        // games have their own round-end signals (winner claim, phase
+        // machine) and "everyone has submitted" doesn't mean the round
+        // is over there.
+        const skipEarlyReveal = gameType === 'word-blitz' || gameType === 'emoji-chain';
+        if (!skipEarlyReveal && isHost && phase === 'asking' && !revealMs && currentQId
             && state.earlyRevealForQuestion !== currentQId
             && state.roomPlayers.length > 0
             && state.roomPlayers.every((p) => p.currentAnsweredFor === currentQId)) {
@@ -4352,6 +5229,30 @@ function startTimerLoop() {
         state.timerRaf = requestAnimationFrame(tick);
     };
     state.timerRaf = requestAnimationFrame(tick);
+}
+
+/**
+ * Generic timer ring renderer used by Word Blitz / Emoji Chain. Same
+ * shape as renderTimer but targets injectable selectors so a new game
+ * stage doesn't have to fork the dataset/ring CSS.
+ */
+function tickAuxTimer(timerSel, numSel, ringSel, leftMs, phase, totalMs) {
+    const total = totalMs || Config.QUESTION_TIME_MS;
+    const fraction = Math.max(0, Math.min(1, leftMs / total));
+    const circumference = 176;
+    const offset = circumference * (1 - fraction);
+    const ring = $(ringSel);
+    if (ring) ring.style.strokeDashoffset = String(offset);
+    const timer = $(timerSel);
+    const seconds = Math.ceil(leftMs / 1000);
+    setText($(numSel), phase === 'reveal' || phase === 'ended' ? '!' : String(seconds));
+    if (!timer) return;
+    const dangerCutoff = Math.max(2000, total * 0.2);
+    const warnCutoff = Math.max(5000, total * 0.45);
+    if (phase === 'reveal' || phase === 'ended') timer.dataset.state = 'reveal';
+    else if (leftMs <= dangerCutoff) timer.dataset.state = 'danger';
+    else if (leftMs <= warnCutoff) timer.dataset.state = 'warn';
+    else timer.dataset.state = 'asking';
 }
 
 function renderTimer(leftMs, phase, totalMs) {
@@ -4411,6 +5312,73 @@ async function startGame() {
             status: 'playing',
             currentQuestionIndex: 0,
             currentQuestionId: firstLoc.id,
+            questionStartedAt: serverTimestamp(),
+            revealStartedAt: null,
+            playedQuestionIds: []
+        });
+        return;
+    }
+
+    if (state.roomData.gameType === 'word-blitz') {
+        // Item #6 — start the typing race. Same sequential model as
+        // Globe Drop; reveal phase is triggered when a winner submits
+        // a correct answer (or the timer runs out without one).
+        const pool = Array.isArray(state.roomData.questions) ? state.roomData.questions : [];
+        const first = pool[0];
+        if (!first) return;
+        await updateDoc(doc(db, 'triviaRooms', state.roomCode), {
+            status: 'playing',
+            currentQuestionIndex: 0,
+            currentQuestionId: first.id,
+            questionStartedAt: serverTimestamp(),
+            revealStartedAt: null,
+            currentWinnerUid: null,
+            currentWinnerName: null,
+            playedQuestionIds: []
+        });
+        return;
+    }
+
+    if (state.roomData.gameType === 'emoji-chain') {
+        // Item #9 — pick the first prompter (round-robin by joinedAt)
+        // and enter the prompter phase. State machine fields live on
+        // the room doc so all clients stay in lockstep.
+        const playersSnap = await getDocs(collection(db, 'triviaRooms', state.roomCode, 'players'));
+        const playerOrder = sortPlayersForRotation(playersSnap.docs.map((d) => d.data()))
+            .map((p) => p.uid)
+            .filter((uid) => typeof uid === 'string' && uid.length > 0);
+        const prompterUid = playerOrder[0] || state.user.uid;
+        const pool = Array.isArray(state.roomData.questions) ? state.roomData.questions : [];
+        const first = pool[0];
+        if (!first) return;
+        await updateDoc(doc(db, 'triviaRooms', state.roomCode), {
+            status: 'playing',
+            currentQuestionIndex: 0,
+            currentQuestionId: first.id,
+            currentPhase: 'prompter',
+            currentPrompterUid: prompterUid,
+            currentEmoji: null,
+            currentGuesses: {},
+            currentVotes: {},
+            questionStartedAt: serverTimestamp(),
+            revealStartedAt: null,
+            playerOrder,
+            playedQuestionIds: []
+        });
+        return;
+    }
+
+    // Daily Trivia (Item #2) — fixed canonical question list, no
+    // picker/decider, no category screen. Plays through questions[0..N]
+    // in order so every player who plays today sees the same sequence.
+    if (state.roomData.playMode === 'daily-trivia') {
+        const pool = Array.isArray(state.roomData.questions) ? state.roomData.questions : [];
+        const first = pool[0];
+        if (!first) return;
+        await updateDoc(doc(db, 'triviaRooms', state.roomCode), {
+            status: 'playing',
+            currentQuestionIndex: 0,
+            currentQuestionId: first.id,
             questionStartedAt: serverTimestamp(),
             revealStartedAt: null,
             playedQuestionIds: []
@@ -4566,6 +5534,66 @@ async function advanceQuestionOrFinish() {
         return;
     }
 
+    if (state.roomData.gameType === 'word-blitz') {
+        // Word Blitz sequential advance — reset winner fields so the
+        // next round opens with no claim.
+        const pool = Array.isArray(state.roomData.questions) ? state.roomData.questions : [];
+        const next = pool[nextIdx];
+        if (!next) return;
+        await updateDoc(doc(db, 'triviaRooms', state.roomCode), {
+            status: 'playing',
+            currentQuestionIndex: nextIdx,
+            currentQuestionId: next.id,
+            questionStartedAt: serverTimestamp(),
+            revealStartedAt: null,
+            currentWinnerUid: null,
+            currentWinnerName: null,
+            playedQuestionIds: playedIds
+        });
+        return;
+    }
+
+    if (state.roomData.gameType === 'emoji-chain') {
+        // Rotate to the next prompter and re-enter the prompter phase.
+        const pool = Array.isArray(state.roomData.questions) ? state.roomData.questions : [];
+        const next = pool[nextIdx];
+        if (!next) return;
+        const playerOrder = Array.isArray(state.roomData.playerOrder) && state.roomData.playerOrder.length
+            ? state.roomData.playerOrder
+            : state.roomPlayers.map((p) => p.uid);
+        const nextPrompter = playerOrder[nextIdx % playerOrder.length] || playerOrder[0];
+        await updateDoc(doc(db, 'triviaRooms', state.roomCode), {
+            status: 'playing',
+            currentQuestionIndex: nextIdx,
+            currentQuestionId: next.id,
+            currentPhase: 'prompter',
+            currentPrompterUid: nextPrompter,
+            currentEmoji: null,
+            currentGuesses: {},
+            currentVotes: {},
+            questionStartedAt: serverTimestamp(),
+            revealStartedAt: null,
+            playedQuestionIds: playedIds
+        });
+        return;
+    }
+
+    // Daily Trivia — same sequential advance as Globe Drop; no picking.
+    if (state.roomData.playMode === 'daily-trivia') {
+        const pool = Array.isArray(state.roomData.questions) ? state.roomData.questions : [];
+        const next = pool[nextIdx];
+        if (!next) return;
+        await updateDoc(doc(db, 'triviaRooms', state.roomCode), {
+            status: 'playing',
+            currentQuestionIndex: nextIdx,
+            currentQuestionId: next.id,
+            questionStartedAt: serverTimestamp(),
+            revealStartedAt: null,
+            playedQuestionIds: playedIds
+        });
+        return;
+    }
+
     // Trivia: rotate decider, re-enter picking stage. Recompute the
     // rotation from the CURRENT player list rather than trusting the
     // stored playerOrder. This means:
@@ -4633,6 +5661,8 @@ async function renderEndStage(isHost) {
     hide($('#stage-game'));
     hide($('#stage-globe-drop'));
     hide($('#stage-picking'));
+    hide($('#stage-word-blitz'));
+    hide($('#stage-emoji-chain'));
     show($('#stage-end'));
 
     // Guest-only sign-up nudge. Only shown to anonymous users — for
@@ -4746,9 +5776,34 @@ async function renderEndStage(isHost) {
         setText($('#end-summary'), 'No scores recorded.');
     }
 
-    // Share result button — visible on the end stage for all game types.
+    // Share buttons — visible on the end stage for all game types.
+    // The "Copy link" button is the primary share path (URL anyone can
+    // open to view the recap); "Share card" still renders the image
+    // for social posts that prefer an image attachment. Both are hidden
+    // for solo runs since there's no group to share *with*.
+    const isSoloLikeMode = ['solo', 'daily', 'daily-trivia'].includes(
+        (state.roomData && state.roomData.playMode) || 'multi'
+    );
     const shareBtn = $('#end-share-btn');
     if (shareBtn) shareBtn.hidden = false;
+    const shareLinkBtn = $('#end-share-link-btn');
+    if (shareLinkBtn) shareLinkBtn.hidden = isSoloLikeMode;
+
+    // Item #3 — host-only "Switch game" button. Lets the host jump the
+    // room to the OTHER game type without leaving (otherwise the only
+    // path is leave → recreate room → re-share the new code).
+    const switchBtn = $('#end-switch-game-btn');
+    if (switchBtn) {
+        const playMode = (state.roomData && state.roomData.playMode) || 'multi';
+        const currentType = (state.roomData && state.roomData.gameType) || 'globe-drop';
+        const showSwitch = isHost && playMode === 'multi';
+        switchBtn.hidden = !showSwitch;
+        if (showSwitch) {
+            const otherLabel = currentType === 'globe-drop' ? 'Switch to Trivia' : 'Switch to Globe Drop';
+            const labelEl = $('#end-switch-game-label');
+            if (labelEl) labelEl.textContent = otherLabel;
+        }
+    }
 
     // Full per-question/per-location recap (free for everyone)
     renderEndRecap();
@@ -4820,13 +5875,32 @@ async function writeEndOfGameStats(me, didWin) {
         const prevBest = (state.profile && state.profile.bestRoundScore) || 0;
         const newBest = Math.max(prevBest, bestRoundThisGame);
 
+        // Item #7 — per-game-type fields written alongside the legacy
+        // mixed counters so the profile tabs can render Globe Drop and
+        // Trivia stats independently. Bullseyes only meaningfully accrue
+        // for Globe Drop; we still merge them into the type bucket so a
+        // future Trivia "perfect round" metric could reuse the slot.
+        const gameType = (state.roomData && state.roomData.gameType) === 'globe-drop'
+            ? 'globe-drop'
+            : 'trivia';
+        const gtPrefix = `triviaProfile.byGameType.${gameType}`;
+        const prevByType = (state.profile && state.profile.byGameType && state.profile.byGameType[gameType]) || {};
+        const prevGtBest = Number(prevByType.bestRoundScore) || 0;
+        const newGtBest = Math.max(prevGtBest, bestRoundThisGame);
+
         await updateDoc(userRef, {
             'triviaProfile.xp': increment(scoreEarned),
             'triviaProfile.gamesPlayed': increment(1),
             'triviaProfile.wins': increment(winsDelta),
             'triviaProfile.lifetimeBullseyes': increment(bullseyesThisGame),
             'triviaProfile.bestRoundScore': newBest,
-            'triviaProfile.lastPlayedAt': serverTimestamp()
+            'triviaProfile.lastPlayedAt': serverTimestamp(),
+            [`${gtPrefix}.xp`]: increment(scoreEarned),
+            [`${gtPrefix}.gamesPlayed`]: increment(1),
+            [`${gtPrefix}.wins`]: increment(winsDelta),
+            [`${gtPrefix}.bullseyes`]: increment(bullseyesThisGame),
+            [`${gtPrefix}.bestRoundScore`]: newGtBest,
+            [`${gtPrefix}.lastPlayedAt`]: serverTimestamp()
         });
         if (state.profile) {
             state.profile.xp = (state.profile.xp || 0) + scoreEarned;
@@ -4834,6 +5908,19 @@ async function writeEndOfGameStats(me, didWin) {
             state.profile.wins = (state.profile.wins || 0) + winsDelta;
             state.profile.lifetimeBullseyes = (state.profile.lifetimeBullseyes || 0) + bullseyesThisGame;
             state.profile.bestRoundScore = newBest;
+            // Mirror byGameType locally so the tabs render immediately
+            // without waiting for the next snapshot tick.
+            if (!state.profile.byGameType || typeof state.profile.byGameType !== 'object') {
+                state.profile.byGameType = {};
+            }
+            const bucket = state.profile.byGameType[gameType] || {};
+            state.profile.byGameType[gameType] = {
+                xp: (Number(bucket.xp) || 0) + scoreEarned,
+                gamesPlayed: (Number(bucket.gamesPlayed) || 0) + 1,
+                wins: (Number(bucket.wins) || 0) + winsDelta,
+                bullseyes: (Number(bucket.bullseyes) || 0) + bullseyesThisGame,
+                bestRoundScore: newGtBest
+            };
         }
         if (!isSolo) {
             // Denormalized leaderboard write — multiplayer + daily only.
@@ -4862,6 +5949,58 @@ async function writeEndOfGameStats(me, didWin) {
         await maybeWriteH2HPairs();
     } catch (err) {
         console.warn('End-of-game profile write failed:', err);
+    }
+}
+
+/**
+ * Item #4 — copy a ?postMatch=CODE deep link to the recap. The
+ * postMatch handler already supports anyone signed in (anon auth via
+ * the guest fallback included) opening that URL and landing on a
+ * read-only end-stage view of this room. Web Share API gets first
+ * crack on mobile so the user can pick a target app instead of
+ * pasting from the clipboard.
+ */
+async function copyResultLink() {
+    if (!state.roomCode) return;
+    const btn = $('#end-share-link-btn');
+    if (btn) btn.disabled = true;
+    const url = `${location.origin}/apps/arena/?postMatch=${encodeURIComponent(state.roomCode)}`;
+    const gameType = (state.roomData && state.roomData.gameType) === 'globe-drop' ? 'Globe Drop' : 'Trivia';
+    try {
+        if (navigator.share && typeof navigator.share === 'function') {
+            try {
+                await navigator.share({
+                    title: `Arena ${gameType} results`,
+                    text: `Check out our Arena ${gameType} results`,
+                    url
+                });
+                return;
+            } catch (e) {
+                // User cancelled or share unavailable — fall through to clipboard.
+                if (e && e.name === 'AbortError') return;
+            }
+        }
+        if (navigator.clipboard && typeof navigator.clipboard.writeText === 'function') {
+            await navigator.clipboard.writeText(url);
+            try { showToast('Recap link copied', { icon: '🔗', key: 'recap-link' }); } catch (_) {}
+            return;
+        }
+        // Legacy fallback for older browsers without async clipboard.
+        const ta = document.createElement('textarea');
+        ta.value = url;
+        ta.setAttribute('readonly', '');
+        ta.style.position = 'absolute';
+        ta.style.left = '-9999px';
+        document.body.appendChild(ta);
+        ta.select();
+        try { document.execCommand('copy'); } catch (_) {}
+        document.body.removeChild(ta);
+        try { showToast('Recap link copied', { icon: '🔗', key: 'recap-link' }); } catch (_) {}
+    } catch (err) {
+        console.warn('copyResultLink failed:', err);
+        try { showToast('Could not copy link', { icon: '⚠️', key: 'recap-link-fail' }); } catch (_) {}
+    } finally {
+        if (btn) btn.disabled = false;
     }
 }
 
@@ -5111,9 +6250,44 @@ async function maybeWriteDailyLeaderboard(me) {
     // change at any time, so their score isn't a "personal best" anyone
     // could ever beat. Rules block the write anyway.
     if (isGuest()) return;
-    if (state.roomData.playMode !== 'daily') return;
+    const playMode = state.roomData.playMode;
+    if (playMode !== 'daily' && playMode !== 'daily-trivia') return;
     const dateKey = state.roomData.dailyDateKey;
     if (!dateKey) return;
+
+    if (playMode === 'daily-trivia') {
+        // Item #2 — Trivia daily leaderboard. Derive correct-count and
+        // total time spent answering from the player's answers[] for
+        // richer leaderboard columns than score alone.
+        const myEntry = state.roomPlayers.find((p) => p.uid === state.user.uid);
+        const myAnswers = (myEntry && Array.isArray(myEntry.answers)) ? myEntry.answers : [];
+        let correctCount = 0;
+        let totalResponseMs = 0;
+        for (const a of myAnswers) {
+            if (a && a.correct) correctCount++;
+            const responseMs = Math.max(0, (Number(a && a.totalMs) || 0) - (Number(a && a.timeLeftMs) || 0));
+            totalResponseMs += responseMs;
+        }
+        const ref = doc(db, 'triviaDailyLeaderboard', dateKey, 'scores', state.user.uid);
+        try {
+            const existing = await getDoc(ref);
+            const prevScore = existing.exists() ? Number(existing.data().score || 0) : -1;
+            if (me.score <= prevScore) return;
+            await setDoc(ref, {
+                uid: state.user.uid,
+                displayName: me.displayName,
+                score: me.score,
+                correctCount,
+                totalQuestions: state.roomData.totalQuestions || myAnswers.length || 0,
+                totalResponseMs,
+                completedAt: serverTimestamp()
+            }, { merge: true });
+        } catch (err) {
+            console.warn('Trivia daily leaderboard write failed:', err);
+        }
+        return;
+    }
+
     const ref = doc(db, 'globeDropDailyLeaderboard', dateKey, 'scores', state.user.uid);
     try {
         const existing = await getDoc(ref);
@@ -5950,6 +7124,100 @@ async function respondToRematch(accept) {
     }
 }
 
+/**
+ * Item #3 — Host-only end-stage action that flips the room to the
+ * alternate game type and routes everyone back to the lobby with the
+ * new gameType already selected. Fetches a fresh question / location
+ * set so Start works immediately without the host re-configuring.
+ * Bumps `round` so player-side resets run via maybeResetForNewRound.
+ */
+async function switchGameAndRestart() {
+    if (!state.roomCode || !state.roomData || !state.user) return;
+    if (state.roomData.hostUid !== state.user.uid) return;
+    if (state.roomData.status !== 'finished') return;
+    if (state.rematchInFlight) return;
+    state.rematchInFlight = true;
+
+    const current = state.roomData.gameType === 'globe-drop' ? 'globe-drop' : 'trivia';
+    const next = current === 'globe-drop' ? 'trivia' : 'globe-drop';
+    const nextRound = (state.roomData.round || 1) + 1;
+    const switchBtn = $('#end-switch-game-btn');
+    if (switchBtn) switchBtn.disabled = true;
+
+    try {
+        if (next === 'globe-drop') {
+            const roundType = 'capitals';
+            const difficulty = Config.GLOBE_DROP_DIFFICULTY_DEFAULT;
+            const diff = GlobeDropScoring.difficultySettings(difficulty);
+            const count = Config.GLOBE_DROP_LOCATIONS_DEFAULT;
+            const meta = GlobeDropLocations.ROUND_TYPES[roundType];
+            let locations = await GlobeDropLocations.fetchLocations(roundType, count, shuffle);
+            locations = applyRoundMultipliers(locations);
+            await updateDoc(doc(db, 'triviaRooms', state.roomCode), {
+                gameType: 'globe-drop',
+                status: 'lobby',
+                packId: meta.packId,
+                packName: meta.packName,
+                roundType,
+                difficulty,
+                totalQuestions: locations.length,
+                questions: locations,
+                questionTimeMs: diff.timerSec * 1000,
+                currentQuestionIndex: 0,
+                currentQuestionId: null,
+                questionStartedAt: null,
+                revealStartedAt: null,
+                playedQuestionIds: [],
+                selectedCategory: null,
+                deciderUid: null,
+                playerOrder: [],
+                finishedAt: null,
+                round: nextRound,
+                rematchProposedBy: null,
+                rematchAcceptedBy: [],
+                rematchDeclinedBy: []
+            });
+        } else {
+            const { questions, packId, packName } = await buildQuestionsForRound('live', 10);
+            const playersSnap = await getDocs(collection(db, 'triviaRooms', state.roomCode, 'players'));
+            const playerOrder = sortPlayersForRotation(playersSnap.docs.map((d) => d.data()))
+                .map((p) => p.uid)
+                .filter((uid) => typeof uid === 'string' && uid.length > 0);
+            await updateDoc(doc(db, 'triviaRooms', state.roomCode), {
+                gameType: 'trivia',
+                status: 'lobby',
+                packId,
+                packName,
+                totalQuestions: 10,
+                questions,
+                questionTimeMs: 15000,
+                currentQuestionIndex: 0,
+                currentQuestionId: null,
+                questionStartedAt: null,
+                revealStartedAt: null,
+                playedQuestionIds: [],
+                selectedCategory: null,
+                deciderUid: null,
+                playerOrder,
+                finishedAt: null,
+                round: nextRound,
+                rematchProposedBy: null,
+                rematchAcceptedBy: [],
+                rematchDeclinedBy: []
+            });
+        }
+        state.currentAnswers = [];
+        endStageWrittenForRoom = null;
+        state.selectedGameType = next;
+    } catch (err) {
+        console.warn('switchGameAndRestart failed:', err);
+        alert('Could not switch game: ' + (err && err.message ? err.message : 'unknown error'));
+    } finally {
+        state.rematchInFlight = false;
+        if (switchBtn) switchBtn.disabled = false;
+    }
+}
+
 async function playAgain() {
     if (!state.roomCode || !state.roomData) return;
     if (!(state.user && state.roomData.hostUid === state.user.uid)) return;
@@ -6065,6 +7333,8 @@ function startLeaderboardListener() {
     // so the date is always today's, and so we drop the listener for an
     // old date when the user comes back tomorrow.
     startDailyLeaderboardListener();
+    // Item #2 — daily Trivia top 10 alongside Globe Drop's.
+    startTriviaDailyLeaderboardListener();
 }
 
 function stopLeaderboardListener() {
@@ -6073,6 +7343,7 @@ function stopLeaderboardListener() {
         state.leaderboardUnsub = null;
     }
     stopDailyLeaderboardListener();
+    stopTriviaDailyLeaderboardListener();
 }
 
 function startDailyLeaderboardListener() {
@@ -6096,6 +7367,57 @@ function stopDailyLeaderboardListener() {
         try { state.dailyLeaderboardUnsub(); } catch (e) {}
         state.dailyLeaderboardUnsub = null;
     }
+}
+
+function startTriviaDailyLeaderboardListener() {
+    stopTriviaDailyLeaderboardListener();
+    const dateKey = GlobeDropDaily.dailyDateKey(Date.now());
+    setText($('#leaderboard-daily-trivia-date'), dateKey);
+    const ref = collection(db, 'triviaDailyLeaderboard', dateKey, 'scores');
+    const q = query(ref, orderBy('score', 'desc'), limit(10));
+    state.triviaDailyLeaderboardUnsub = onSnapshot(q, (snap) => {
+        state.triviaDailyLeaderboardEntries = snap.docs.map((d) => d.data());
+        renderTriviaDailyLeaderboardEntries();
+    }, (err) => {
+        console.warn('Trivia daily leaderboard listener error:', err);
+        state.triviaDailyLeaderboardEntries = [];
+        renderTriviaDailyLeaderboardEntries();
+    });
+}
+
+function stopTriviaDailyLeaderboardListener() {
+    if (state.triviaDailyLeaderboardUnsub) {
+        try { state.triviaDailyLeaderboardUnsub(); } catch (e) {}
+        state.triviaDailyLeaderboardUnsub = null;
+    }
+}
+
+function renderTriviaDailyLeaderboardEntries() {
+    const entries = state.triviaDailyLeaderboardEntries || [];
+    const body = $('#leaderboard-daily-trivia-body');
+    const empty = $('#leaderboard-daily-trivia-empty');
+    if (!body) return;
+    body.innerHTML = '';
+    if (!entries.length) {
+        if (empty) empty.hidden = false;
+        return;
+    }
+    if (empty) empty.hidden = true;
+    entries.forEach((e, i) => {
+        const tr = document.createElement('tr');
+        if (state.user && e.uid === state.user.uid) tr.classList.add('is-me');
+        const correct = Number(e.correctCount) || 0;
+        const total = Number(e.totalQuestions) || 10;
+        const responseMs = Number(e.totalResponseMs) || 0;
+        const responseS = responseMs > 0 ? (responseMs / 1000).toFixed(1) + 's' : '—';
+        tr.innerHTML =
+            `<td>${i + 1}</td>` +
+            `<td>${escapeHtml(e.displayName || 'Player')}</td>` +
+            `<td class="col-xp">${e.score || 0}</td>` +
+            `<td>${correct}/${total}</td>` +
+            `<td>${responseS}</td>`;
+        body.appendChild(tr);
+    });
 }
 
 function renderDailyLeaderboardEntries() {

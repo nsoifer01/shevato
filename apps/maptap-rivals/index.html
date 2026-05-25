@@ -186,6 +186,16 @@
         </details>
       </section>
 
+      <div id="todays-leader-banner" hidden></div>
+
+      <!-- Quick score entry panel — toggle via JS -->
+      <section class="quick-entry-section" id="quick-entry-section">
+        <button type="button" class="btn btn-ghost quick-entry-toggle" id="quick-entry-toggle">
+          + Quick score entry
+        </button>
+        <div id="quick-entry-panel" hidden></div>
+      </section>
+
       <div id="dash-active-season-banner" hidden></div>
 
       <div class="dash-summary" id="dash-summary"></div>
@@ -216,6 +226,19 @@
         <p>No rivals yet. Add a friend to start tracking your daily MapTap battles.</p>
         <button type="button" class="btn btn-primary" style="margin-top:.75rem" id="dash-empty-add-btn">+ Add rival</button>
       </div>
+
+      <!-- Item #10 — cross-app bridge to Arena. MapTap Rivals tracks
+           solo-vs-solo MapTap.gg scores; the live multiplayer counterpart
+           is Arena's Globe Drop. Surfaced as an unobtrusive footer link
+           rather than a popup so it doesn't clutter the dashboard. -->
+      <aside class="cross-app-promo" aria-label="Related Shevato apps">
+        <p class="cross-app-promo-text">
+          <span aria-hidden="true">🗺️</span>
+          Want a live head-to-head with friends? Play
+          <a href="/apps/arena/" class="cross-app-promo-link">Arena&nbsp;Globe&nbsp;Drop</a>
+          — real-time geography rounds in a private room.
+        </p>
+      </aside>
     </section>
 
     <!-- RIVAL DETAIL VIEW -->
@@ -363,6 +386,7 @@
               <th id="lb-th-winpct" class="lb-th-sortable lb-th-sorted" tabindex="0" role="button" aria-sort="descending">Win %</th>
               <th id="lb-th-rivalry" class="lb-th-sortable" tabindex="0" role="button" aria-sort="none">Rivalry <span class="lb-th-hint" title="Rivalry score blends win rate, total games played, recency of results, and average margin. Higher = you are winning the rivalry.">(?)</span></th>
               <th>Avg Δ</th>
+              <th>Best continent</th>
               <th>Streak</th>
               <th>Form</th>
             </tr>

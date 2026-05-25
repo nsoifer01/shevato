@@ -165,3 +165,73 @@ that timestamp — so:
 If that's not what you want (e.g. you'd rather grandfather long-time
 users into permanent premium), gate the backfill on account creation
 time or run a one-off Admin SDK script before flipping the flag.
+
+---
+
+## Grandfathering active users (optional)
+
+If you'd rather thank existing players with permanent premium instead
+of starting their 30-day trial clock on launch day, run this once via
+the Firebase Admin SDK before flipping `PREMIUM_UI_ENABLED`:
+
+```js
+// One-shot grandfather script. Marks every existing triviaProfile as
+// paid premium so the launch-day flag flip doesn't reset their access.
+// Run from a Node script with FIREBASE_SERVICE_ACCOUNT loaded.
+const admin = require('firebase-admin');
+admin.initializeApp({ credential: admin.credential.applicationDefault() });
+const db = admin.firestore();
+(async () => {
+    const snap = await db.collection('users').get();
+    const writer = db.bulkWriter();
+    let count = 0;
+    snap.forEach((doc) => {
+        if (!doc.get('triviaProfile')) return;
+        writer.update(doc.ref, {
+            'triviaProfile.premium': true,
+            'triviaProfile.premiumGrantedAt': admin.firestore.FieldValue.serverTimestamp(),
+            'triviaProfile.premiumReason': 'grandfather'
+        });
+        count++;
+    });
+    await writer.close();
+    console.log('Granted permanent premium to', count, 'profiles.');
+})();
+```
+
+Keep the flag `false` while this runs so users don't see the upgrade UI
+before the grant lands. Then proceed with the steps above.
+
+---
+
+## Pre-launch sanity checklist
+
+Tick this before flipping `PREMIUM_UI_ENABLED: true` in production:
+
+- [ ] `firestore.rules` deployed with the latest paths (incl. the new
+      `triviaDaily`, `triviaDailyLeaderboard`, `triviaResults` collections).
+- [ ] Stripe Payment Link in **live** mode (URL begins `https://buy.stripe.com/`
+      WITHOUT `test_`).
+- [ ] `STRIPE_SECRET_KEY` env var begins `sk_live_…`.
+- [ ] `STRIPE_WEBHOOK_SECRET` is the **live** signing secret (`whsec_…`)
+      from the live webhook endpoint — **not** the test secret.
+- [ ] `FIREBASE_SERVICE_ACCOUNT` minifies to one valid JSON line and
+      no longer mentions `private_key_id` containing `test`.
+- [ ] Webhook endpoint URL points at production
+      (`https://shevato.com/.netlify/functions/stripe-webhook`).
+- [ ] Smoke test: real card → success page reads "Premium is active" within
+      ~2 seconds → refresh `/apps/arena/` → profile shows "Premium active".
+- [ ] (Optional) grandfather script above has run if you chose that path.
+
+Once all boxes are ticked, change `Config.PREMIUM_UI_ENABLED` to `true`
+and ship the deploy.
+
+---
+
+## Why the flag is still `false` after the Item #1 PR
+
+The PR that bundled the 10-improvement batch (incl. this file's update)
+*did not* activate billing. Activation needs three Netlify env vars and
+a live Stripe Payment Link that the maintainer has to create — neither
+the code nor an automated agent can produce those. Treat the flag flip
+as a separate, explicitly-approved release step.

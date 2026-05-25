@@ -134,6 +134,19 @@
           <span aria-hidden="true">👋</span>
           <span id="auth-gate-text">Jump in below to play as a guest, or sign up (top-right) to save your score, wins, and games played across devices.</span>
         </p>
+        <!-- Rejoin banner — surfaced when localStorage shows the same uid
+             was in a still-existing room in the last 2 hours. One tap to
+             rehydrate the room without retyping the code. -->
+        <div class="lobby-rejoin-banner" id="lobby-rejoin-banner" hidden role="status">
+          <span class="lobby-rejoin-text">
+            <span aria-hidden="true">↩️</span>
+            You were just in <strong id="lobby-rejoin-code">XXXXX</strong>. Pick up where you left off?
+          </span>
+          <div class="lobby-rejoin-actions">
+            <button type="button" class="btn btn-primary btn-sm" id="lobby-rejoin-btn">Rejoin</button>
+            <button type="button" class="btn btn-ghost btn-sm" id="lobby-rejoin-dismiss">Dismiss</button>
+          </div>
+        </div>
         <div class="lobby-grid" id="lobby-grid">
           <article class="lobby-card lobby-create">
             <header>
@@ -153,6 +166,14 @@
               <button type="button" class="game-type-btn" data-game-type="trivia" role="tab" aria-selected="false"
                       title="Trivia — multiple-choice questions across categories.">
                 <span aria-hidden="true">🎯</span> Trivia
+              </button>
+              <button type="button" class="game-type-btn" data-game-type="word-blitz" role="tab" aria-selected="false"
+                      title="Word Blitz — fastest finger to type the shown word wins the round.">
+                <span aria-hidden="true">⌨️</span> Word Blitz
+              </button>
+              <button type="button" class="game-type-btn" data-game-type="emoji-chain" role="tab" aria-selected="false"
+                      title="Emoji Chain — emoji-only relay; vote on the funniest guess.">
+                <span aria-hidden="true">🔗</span> Emoji Chain
               </button>
             </div>
 
@@ -229,6 +250,41 @@
                 </select>
               </label>
 
+              <!-- Word Blitz-only fields (Item #6) -->
+              <label class="lobby-field" data-game-type="word-blitz" hidden>
+                <span>Rounds per game</span>
+                <select id="create-word-blitz-count">
+                  <option value="8">8 (short)</option>
+                  <option value="10" selected>10 (standard)</option>
+                  <option value="12">12 (long)</option>
+                </select>
+              </label>
+              <label class="lobby-field" data-game-type="word-blitz" hidden>
+                <span>Time per word</span>
+                <select id="create-word-blitz-time">
+                  <option value="8">8 seconds (manic)</option>
+                  <option value="10" selected>10 seconds (standard)</option>
+                  <option value="15">15 seconds (relaxed)</option>
+                </select>
+              </label>
+
+              <!-- Emoji Chain-only fields (Item #9) -->
+              <label class="lobby-field" data-game-type="emoji-chain" hidden>
+                <span>Rounds per game</span>
+                <select id="create-emoji-chain-count">
+                  <option value="3" selected>3 (sprint)</option>
+                  <option value="5">5 (standard)</option>
+                </select>
+              </label>
+              <label class="lobby-field" data-game-type="emoji-chain" hidden>
+                <span>Time per phase</span>
+                <select id="create-emoji-chain-time">
+                  <option value="30">30 seconds (snappy)</option>
+                  <option value="45" selected>45 seconds (standard)</option>
+                  <option value="60">60 seconds (deliberate)</option>
+                </select>
+              </label>
+
               <!-- Shared fields -->
               <label class="lobby-field lobby-field-toggle"
                      title="Private rooms require a password to join.">
@@ -268,8 +324,34 @@
                   Today's challenge
                 </button>
               </div>
+              <!-- Trivia daily — Item #2. Same idea as Globe Drop daily:
+                   first player to start the day's run seeds the question
+                   set into triviaDaily/{date}; every other player reads
+                   the same 10 questions and posts to a per-day Trivia
+                   leaderboard. Starts hidden (is-hidden class) because
+                   Globe Drop is the default selected tab. -->
+              <div class="lobby-solo-actions is-hidden" data-game-type="trivia">
+                <button type="button" class="btn btn-ghost lobby-solo-btn" id="play-daily-trivia-btn">
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                    <circle cx="12" cy="12" r="9"/>
+                    <path d="M12 7v5l3 2"/>
+                  </svg>
+                  Today's Trivia challenge
+                </button>
+              </div>
             </div>
           </article>
+
+          <!-- Item #10 — cross-app bridge to MapTap Rivals. Same geo-game
+               crowd: solo-vs-solo MapTap.gg scores tracked daily lives
+               there; multiplayer rounds live here. -->
+          <aside class="lobby-cross-app" aria-label="Related Shevato apps">
+            <p>
+              <span aria-hidden="true">📍</span>
+              Play MapTap.gg daily? Track your H2H stats vs friends in
+              <a href="/apps/maptap-rivals/" class="lobby-cross-app-link">MapTap&nbsp;Rivals</a>.
+            </p>
+          </aside>
 
           <article class="lobby-card lobby-join">
             <header>
@@ -660,10 +742,130 @@
           </article>
         </section>
 
+        <!-- STAGE: Word Blitz (Item #6). Typing race — first correct
+             submission per round wins. Simple layout: word card on top,
+             input below, live standings on the right. -->
+        <section class="stage stage-word-blitz" id="stage-word-blitz" hidden>
+          <header class="game-head">
+            <div class="game-progress">
+              <span class="game-progress-label">Word</span>
+              <span class="game-progress-now" id="word-blitz-progress-now">1</span>
+              <span class="game-progress-sep">/</span>
+              <span class="game-progress-total" id="word-blitz-progress-total">10</span>
+            </div>
+            <div class="game-timer" id="word-blitz-timer" data-state="asking">
+              <svg viewBox="0 0 64 64" class="timer-ring" aria-hidden="true">
+                <circle class="timer-ring-track" cx="32" cy="32" r="28"/>
+                <circle class="timer-ring-fill" id="word-blitz-timer-ring-fill" cx="32" cy="32" r="28"/>
+              </svg>
+              <span class="game-timer-num" id="word-blitz-timer-num">10</span>
+            </div>
+          </header>
+
+          <article class="word-blitz-card">
+            <p class="word-blitz-prompt">Type this word as fast as you can:</p>
+            <p class="word-blitz-target" id="word-blitz-target">—</p>
+            <form class="word-blitz-form" id="word-blitz-form" autocomplete="off">
+              <input type="text" class="word-blitz-input" id="word-blitz-input"
+                     placeholder="Type here…" autocomplete="off" autocapitalize="off"
+                     autocorrect="off" spellcheck="false" inputmode="text">
+              <button type="submit" class="btn btn-primary" id="word-blitz-submit-btn">Submit</button>
+            </form>
+            <p class="word-blitz-status" id="word-blitz-status" aria-live="polite"></p>
+            <p class="word-blitz-winner" id="word-blitz-winner" hidden></p>
+            <section class="mini-board mini-board-top">
+              <header class="mini-board-head"><h3>Live standings</h3></header>
+              <ol class="mini-board-list" id="mini-board-list-word-blitz"></ol>
+            </section>
+          </article>
+        </section>
+
+        <!-- STAGE: Emoji Chain (Item #9). Multi-phase game: prompter
+             sees a phrase and sends emoji only; everyone else guesses;
+             votes decide whose guess was funniest. -->
+        <section class="stage stage-emoji-chain" id="stage-emoji-chain" hidden>
+          <header class="game-head">
+            <div class="game-progress">
+              <span class="game-progress-label">Round</span>
+              <span class="game-progress-now" id="emoji-chain-progress-now">1</span>
+              <span class="game-progress-sep">/</span>
+              <span class="game-progress-total" id="emoji-chain-progress-total">3</span>
+            </div>
+            <div class="emoji-chain-phase-badge" id="emoji-chain-phase-badge">Phase</div>
+            <div class="game-timer" id="emoji-chain-timer" data-state="asking">
+              <svg viewBox="0 0 64 64" class="timer-ring" aria-hidden="true">
+                <circle class="timer-ring-track" cx="32" cy="32" r="28"/>
+                <circle class="timer-ring-fill" id="emoji-chain-timer-ring-fill" cx="32" cy="32" r="28"/>
+              </svg>
+              <span class="game-timer-num" id="emoji-chain-timer-num">45</span>
+            </div>
+          </header>
+
+          <article class="emoji-chain-card">
+            <!-- Prompter view: see secret phrase, compose emoji clue. -->
+            <section class="emoji-chain-prompter" id="emoji-chain-prompter" hidden>
+              <p class="emoji-chain-role">You're the prompter</p>
+              <p class="emoji-chain-secret-label">Secret phrase</p>
+              <p class="emoji-chain-secret" id="emoji-chain-secret">—</p>
+              <form class="emoji-chain-form" id="emoji-chain-prompter-form" autocomplete="off">
+                <input type="text" class="emoji-chain-input" id="emoji-chain-prompter-input"
+                       placeholder="Type up to 6 emoji…" maxlength="40" autocomplete="off">
+                <button type="submit" class="btn btn-primary">Send</button>
+              </form>
+            </section>
+
+            <!-- Guesser view: see emoji, type guess. -->
+            <section class="emoji-chain-guesser" id="emoji-chain-guesser" hidden>
+              <p class="emoji-chain-role">Guess the phrase</p>
+              <p class="emoji-chain-emoji" id="emoji-chain-emoji">—</p>
+              <form class="emoji-chain-form" id="emoji-chain-guesser-form" autocomplete="off">
+                <input type="text" class="emoji-chain-input" id="emoji-chain-guesser-input"
+                       placeholder="Your guess…" maxlength="80" autocomplete="off">
+                <button type="submit" class="btn btn-primary">Guess</button>
+              </form>
+              <p class="emoji-chain-waiting" id="emoji-chain-guesser-waiting" hidden>
+                Guess submitted — waiting on others…
+              </p>
+            </section>
+
+            <!-- Voting view: pick the funniest guess. -->
+            <section class="emoji-chain-voting" id="emoji-chain-voting" hidden>
+              <p class="emoji-chain-role">Vote for the funniest guess</p>
+              <p class="emoji-chain-emoji emoji-chain-emoji-sm" id="emoji-chain-voting-emoji">—</p>
+              <ol class="emoji-chain-guess-list" id="emoji-chain-guess-list"></ol>
+              <p class="emoji-chain-waiting" id="emoji-chain-voting-waiting" hidden>
+                Vote in — waiting on others…
+              </p>
+            </section>
+
+            <!-- Reveal view: show truth + winners. -->
+            <section class="emoji-chain-reveal" id="emoji-chain-reveal" hidden>
+              <p class="emoji-chain-role">Reveal</p>
+              <p class="emoji-chain-secret-label">The phrase was</p>
+              <p class="emoji-chain-secret" id="emoji-chain-reveal-secret">—</p>
+              <p class="emoji-chain-reveal-summary" id="emoji-chain-reveal-summary"></p>
+            </section>
+
+            <section class="mini-board mini-board-top">
+              <header class="mini-board-head"><h3>Live standings</h3></header>
+              <ol class="mini-board-list" id="mini-board-list-emoji-chain"></ol>
+            </section>
+          </article>
+        </section>
+
         <!-- STAGE: end of game -->
         <section class="stage stage-end" id="stage-end" hidden>
           <header class="end-head">
             <p id="end-summary"></p>
+            <!-- Item #4 — copy a shareable ?postMatch link. Recipients
+                 sign in (or auto-anon) and land on the read-only recap. -->
+            <button type="button" class="btn btn-ghost btn-sm end-share-btn" id="end-share-link-btn" hidden>
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <path d="M10 13a5 5 0 0 0 7.07 0l3-3a5 5 0 1 0-7.07-7.07l-1 1"/>
+                <path d="M14 11a5 5 0 0 0-7.07 0l-3 3a5 5 0 1 0 7.07 7.07l1-1"/>
+              </svg>
+              Copy link
+            </button>
             <!-- Share result card — generates a canvas image of the
                  final standings and triggers a download / Web Share. -->
             <button type="button" class="btn btn-ghost btn-sm end-share-btn" id="end-share-btn" hidden>
@@ -671,7 +873,18 @@
                 <circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/>
                 <line x1="8.59" y1="13.51" x2="15.42" y2="17.49"/><line x1="15.41" y1="6.51" x2="8.59" y2="10.49"/>
               </svg>
-              Share result
+              Share card
+            </button>
+            <!-- Switch game type in-session (host-only). Re-uses the
+                 rematch flow but flips to the alternate game on the
+                 way back to the lobby. Label is set by JS based on
+                 the current game type. -->
+            <button type="button" class="btn btn-ghost btn-sm" id="end-switch-game-btn" hidden>
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <polyline points="17 1 21 5 17 9"/><path d="M3 11V9a4 4 0 0 1 4-4h14"/>
+                <polyline points="7 23 3 19 7 15"/><path d="M21 13v2a4 4 0 0 1-4 4H3"/>
+              </svg>
+              <span id="end-switch-game-label">Switch game</span>
             </button>
           </header>
 
@@ -886,6 +1099,40 @@
       <p class="empty-state" id="leaderboard-daily-empty">
         No one has finished today's challenge yet. Be first.
       </p>
+
+      <!-- Item #2 — daily Trivia leaderboard (mirror of the Globe Drop
+           one above). Same UTC date boundary; same one-run-per-player
+           rule; same shape, swapped collection. -->
+      <header class="leaderboard-head leaderboard-head-daily">
+        <h2 class="section-title">
+          <span class="section-title-icon" aria-hidden="true">
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round">
+              <circle cx="12" cy="12" r="9"/>
+              <path d="M9 9h6v6H9z"/>
+            </svg>
+          </span>
+          Today's Trivia challenge
+          <span class="leaderboard-date" id="leaderboard-daily-trivia-date"></span>
+        </h2>
+        <p class="leaderboard-sub">Same 10 questions for everyone, one daily run.</p>
+      </header>
+      <div class="leaderboard-wrap">
+        <table class="leaderboard-table" id="leaderboard-daily-trivia-table">
+          <thead>
+            <tr>
+              <th>#</th>
+              <th>Player</th>
+              <th>Score</th>
+              <th>Correct</th>
+              <th>Time</th>
+            </tr>
+          </thead>
+          <tbody id="leaderboard-daily-trivia-body"></tbody>
+        </table>
+      </div>
+      <p class="empty-state" id="leaderboard-daily-trivia-empty">
+        No one has finished today's Trivia challenge yet. Be first.
+      </p>
     </section>
 
     <!-- ====================== H2H VIEW ====================== -->
@@ -952,12 +1199,44 @@
           </div>
         </div>
 
-        <div class="profile-stats" id="profile-stats">
+        <!-- Headline stats stay mixed across game types — the meaningful
+             cross-game story (lifetime games / wins / avg score) is more
+             useful here than 5 separate-but-unlabelled metrics. -->
+        <div class="profile-stats profile-stats-headline" id="profile-stats">
           <div class="profile-stat is-headline"><span class="profile-stat-label">Avg score</span><span class="profile-stat-value" id="stat-avg-score">0</span></div>
           <div class="profile-stat"><span class="profile-stat-label">Games</span><span class="profile-stat-value" id="stat-games">0</span></div>
           <div class="profile-stat"><span class="profile-stat-label">Win %</span><span class="profile-stat-value" id="stat-winpct">0%</span></div>
-          <div class="profile-stat"><span class="profile-stat-label">Bullseyes</span><span class="profile-stat-value" id="stat-bullseyes">0</span></div>
-          <div class="profile-stat"><span class="profile-stat-label">Best round</span><span class="profile-stat-value" id="stat-best-round">0</span></div>
+        </div>
+
+        <!-- Per-game-type breakdown — Item #7. Headline mixes Globe Drop
+             distance scoring with Trivia speed/accuracy scoring, which
+             washes out the signal for players who specialize. The tabs
+             let each game's own meaningful metrics surface separately. -->
+        <div class="profile-game-tabs" role="tablist" aria-label="Profile stats by game">
+          <button type="button" class="profile-game-tab is-active" data-game-tab="globe-drop" role="tab" aria-selected="true">
+            <span aria-hidden="true">🗺️</span> Globe Drop
+          </button>
+          <button type="button" class="profile-game-tab" data-game-tab="trivia" role="tab" aria-selected="false">
+            <span aria-hidden="true">🎯</span> Trivia
+          </button>
+        </div>
+        <div class="profile-game-tab-pane" data-game-pane="globe-drop">
+          <div class="profile-stats">
+            <div class="profile-stat"><span class="profile-stat-label">Games</span><span class="profile-stat-value" id="stat-gd-games">0</span></div>
+            <div class="profile-stat"><span class="profile-stat-label">Wins</span><span class="profile-stat-value" id="stat-gd-wins">0</span></div>
+            <div class="profile-stat"><span class="profile-stat-label">Bullseyes</span><span class="profile-stat-value" id="stat-bullseyes">0</span></div>
+            <div class="profile-stat"><span class="profile-stat-label">Best round</span><span class="profile-stat-value" id="stat-best-round">0</span></div>
+          </div>
+          <p class="profile-game-empty" id="profile-game-empty-gd" hidden>Play a Globe Drop game to start tracking these.</p>
+        </div>
+        <div class="profile-game-tab-pane" data-game-pane="trivia" hidden>
+          <div class="profile-stats">
+            <div class="profile-stat"><span class="profile-stat-label">Games</span><span class="profile-stat-value" id="stat-tr-games">0</span></div>
+            <div class="profile-stat"><span class="profile-stat-label">Wins</span><span class="profile-stat-value" id="stat-tr-wins">0</span></div>
+            <div class="profile-stat"><span class="profile-stat-label">Avg score</span><span class="profile-stat-value" id="stat-tr-avg">0</span></div>
+            <div class="profile-stat"><span class="profile-stat-label">Best round</span><span class="profile-stat-value" id="stat-tr-best-round">0</span></div>
+          </div>
+          <p class="profile-game-empty" id="profile-game-empty-tr" hidden>Play a Trivia game to start tracking these.</p>
         </div>
 
         <div class="profile-premium-card" id="profile-premium-card">
@@ -1129,6 +1408,7 @@
   <script src="js/globe-drop-wikidata.js"></script>
   <script src="js/globe-drop-locations.js"></script>
   <script src="js/globe-drop-daily.js"></script>
+  <script src="js/word-blitz.js"></script>
   <script type="module" src="js/app.js"></script>
 </body>
 </html>

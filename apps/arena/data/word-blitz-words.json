@@ -1,0 +1,30 @@
+{
+  "name": "Word Blitz starter pack",
+  "version": 1,
+  "words": [
+    "lighthouse", "cathedral", "umbrella", "thunderstorm", "harmonica",
+    "compass", "submarine", "telescope", "fireworks", "kangaroo",
+    "playground", "chocolate", "treasure", "blueberry", "fortress",
+    "skyscraper", "butterfly", "marathon", "satellite", "porcupine",
+    "hurricane", "alphabet", "barbecue", "carnival", "diamond",
+    "elephant", "festival", "galaxy", "horizon", "iceberg",
+    "jellybean", "kingdom", "lightning", "mountain", "nightmare",
+    "octopus", "pyramid", "quarry", "rainbow", "starfish",
+    "tornado", "umbrellabird", "volcano", "waterfall", "xylophone",
+    "yellowjacket", "zeppelin", "almond", "bagel", "campfire",
+    "doorbell", "envelope", "footprint", "guitar", "headphones",
+    "instrument", "jukebox", "keyboard", "lavender", "magazine",
+    "notebook", "orchestra", "passport", "quilt", "raincoat",
+    "scarecrow", "tablecloth", "ukelele", "vineyard", "wardrobe",
+    "courageous", "delightful", "energetic", "fabulous", "generous",
+    "humble", "inquisitive", "jubilant", "kindhearted", "luminous",
+    "magnificent", "nostalgic", "optimistic", "peaceful", "quirky",
+    "radiant", "serene", "tranquil", "uplifting", "vivid",
+    "whimsical", "exuberant", "yearning", "zealous", "ambitious",
+    "boulevard", "constellation", "delicatessen", "echolocation", "flamingo",
+    "geyser", "hibernation", "iguana", "jamboree", "kaleidoscope",
+    "labyrinth", "metamorphosis", "narwhal", "obelisk", "panorama",
+    "quokka", "rhinoceros", "stalactite", "tundra", "underground",
+    "violet", "wildflower", "xerography", "yodel", "zodiac"
+  ]
+}
