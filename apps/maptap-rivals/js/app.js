@@ -2240,12 +2240,205 @@
     }
     // 5. Comeback potential
     if (games.length >= 3) {
-      const last = games[games.length - 1];
-      const diff = getMyTotal(last) - getTheirTotal(last);
-      if (diff < 0 && Math.abs(diff) < 100) {
-        return { kind: 'comeback', text: `⚡ Close one last time (${Math.abs(diff)}-pt loss) — get even today` };
+      const last5 = games[games.length - 1];
+      const diff5 = getMyTotal(last5) - getTheirTotal(last5);
+      if (diff5 < 0 && Math.abs(diff5) < 100) {
+        return { kind: 'comeback', text: `⚡ Close one last time (${Math.abs(diff5)}-pt loss) — get even today` };
       }
     }
+
+    // Mirror of prevLongestW for losing streaks, used by scenarios 6 and 7.
+    let prevLongestL = 0;
+    {
+      let lRun = 0;
+      for (let i = 0; i < games.length - curL; i++) {
+        if (resultOf(games[i]) === 'L') { lRun++; if (lRun > prevLongestL) prevLongestL = lRun; }
+        else lRun = 0;
+      }
+    }
+    // 6. About to tie the all-time longest losing streak
+    if (curL >= 2 && curL === prevLongestL) {
+      return { kind: 'loss', text: `❄️ Matching your worst slump vs ${rivalName} (${curL} losses)` };
+    }
+    // 7. About to set a new worst losing-streak record
+    if (curL >= 2 && curL > prevLongestL) {
+      return { kind: 'loss', text: `❄️ Worst-ever slump vs ${rivalName} — snap it today` };
+    }
+
+    // 8. Rival posted today, user hasn't — urgent prompt
+    const rivalPlayedToday = state.games.some(g =>
+      g.rivalId === rivalId && g.date === today && theyPlayed(g) && !iPlayed(g)
+    );
+    if (rivalPlayedToday) {
+      return { kind: 'urgent', text: `⏰ ${rivalName} already posted today — your move` };
+    }
+
+    // Shared references for scenarios below.
+    const last = games[games.length - 1];
+    const lastMy = getMyTotal(last);
+    const lastTheir = getTheirTotal(last);
+    const lastMargin = lastMy - lastTheir;
+    const wins = games.filter(g => resultOf(g) === 'W').length;
+    const losses = games.filter(g => resultOf(g) === 'L').length;
+    const allMy = games.map(getMyTotal);
+    const allTheir = games.map(getTheirTotal);
+    const allMargins = games.map(g => getMyTotal(g) - getTheirTotal(g));
+    const bestMy = Math.max(...allMy);
+    const worstMy = Math.min(...allMy);
+    const bestTheir = Math.max(...allTheir);
+    const biggestWinMargin = Math.max(...allMargins);
+    const biggestLossMargin = Math.min(...allMargins);
+
+    // 9. 100th H2H game next
+    if (games.length === 99) {
+      return { kind: 'milestone', text: `👑 Game #100 vs ${rivalName} up next — legendary rivalry` };
+    }
+    // 10. 50th H2H game next
+    if (games.length === 49) {
+      return { kind: 'milestone', text: `💎 50 H2H games with ${rivalName} on deck` };
+    }
+    // 11. 25th H2H game next
+    if (games.length === 24) {
+      return { kind: 'milestone', text: `🏅 25 H2H games with ${rivalName} on deck` };
+    }
+    // 12. 10th H2H game next
+    if (games.length === 9) {
+      return { kind: 'milestone', text: `🎉 10 H2H games with ${rivalName} — double digits` };
+    }
+
+    // 13. Personal best score in last game
+    if (games.length >= 4 && lastMy > 0 && lastMy === bestMy) {
+      return { kind: 'win', text: `💯 Personal best vs ${rivalName} last time (${lastMy}) — back it up` };
+    }
+    // 14. Personal worst score in last game
+    if (games.length >= 4 && lastMy === worstMy) {
+      return { kind: 'loss', text: `📉 Personal worst vs ${rivalName} last time (${lastMy}) — find your range` };
+    }
+    // 15. Biggest-ever winning margin in last game
+    if (games.length >= 4 && lastMargin > 0 && lastMargin === biggestWinMargin) {
+      return { kind: 'win', text: `💪 Biggest win ever vs ${rivalName} (+${lastMargin}) — keep stomping` };
+    }
+    // 16. Biggest-ever losing margin in last game
+    if (games.length >= 4 && lastMargin < 0 && lastMargin === biggestLossMargin) {
+      return { kind: 'loss', text: `💀 Worst loss ever vs ${rivalName} (${lastMargin}) — bounce back hard` };
+    }
+    // 17. Rival's personal best in last game
+    if (games.length >= 4 && lastTheir > 0 && lastTheir === bestTheir) {
+      return { kind: 'loss', text: `⚠️ ${rivalName} dropped a personal best (${lastTheir}) — answer back` };
+    }
+
+    // 18. Blowout loss last time (>= 150-pt margin)
+    if (lastMargin <= -150) {
+      return { kind: 'loss', text: `💥 ${Math.abs(lastMargin)}-pt blowout loss last time — get back in it` };
+    }
+    // 19. Blowout win last time (>= 150-pt margin)
+    if (lastMargin >= 150) {
+      return { kind: 'win', text: `💪 ${lastMargin}-pt blowout win last time — no mercy today` };
+    }
+
+    // 20. Just snapped a losing streak (won last after 2+ losses)
+    if (curW === 1 && games.length >= 3) {
+      let priorL = 0;
+      for (let i = games.length - 2; i >= 0; i--) {
+        if (resultOf(games[i]) === 'L') priorL++; else break;
+      }
+      if (priorL >= 2) {
+        return { kind: 'comeback', text: `🌅 Snapped a ${priorL}-game losing streak — keep the run going` };
+      }
+    }
+    // 21. Just snapped a winning streak (lost last after 2+ wins)
+    if (curL === 1 && games.length >= 3) {
+      let priorW = 0;
+      for (let i = games.length - 2; i >= 0; i--) {
+        if (resultOf(games[i]) === 'W') priorW++; else break;
+      }
+      if (priorW >= 2) {
+        return { kind: 'loss', text: `🛑 ${priorW}-game win streak snapped last time — start a new one` };
+      }
+    }
+
+    // 22. Series tied
+    if (wins === losses && wins >= 3) {
+      return { kind: 'tie', text: `⚖️ Series tied ${wins}-${losses} vs ${rivalName} — break the deadlock` };
+    }
+    // 23. No wins yet, ≥3 losses
+    if (wins === 0 && losses >= 3) {
+      return { kind: 'comeback', text: `🏆 No wins yet vs ${rivalName} (0-${losses}) — get on the board` };
+    }
+    // 24. Still undefeated
+    if (losses === 0 && wins >= 3) {
+      return { kind: 'win', text: `🛡️ Undefeated vs ${rivalName} (${wins}-0) — keep it spotless` };
+    }
+    // 25. Down 1 in the series (a win evens it)
+    if (losses - wins === 1 && wins >= 2) {
+      return { kind: 'comeback', text: `🎯 Down ${wins}-${losses} vs ${rivalName} — a win evens the series` };
+    }
+    // 26. Up 1 in the series (defend the lead)
+    if (wins - losses === 1 && losses >= 2) {
+      return { kind: 'win', text: `🛡️ Holding a ${wins}-${losses} edge — defend the lead today` };
+    }
+
+    // 27. Photo-finish loss (≤ 10-pt margin)
+    if (lastMargin < 0 && lastMargin >= -10) {
+      const m = Math.abs(lastMargin);
+      return { kind: 'comeback', text: `📸 Photo finish — lost by ${m} pt${m === 1 ? '' : 's'} last time` };
+    }
+    // 28. Photo-finish win (≤ 10-pt margin)
+    if (lastMargin > 0 && lastMargin <= 10) {
+      return { kind: 'win', text: `🍀 Squeaked by — won by ${lastMargin} pt${lastMargin === 1 ? '' : 's'} last time` };
+    }
+    // 29. Exact tie last game
+    if (lastMargin === 0) {
+      return { kind: 'tie', text: `🤝 Exact tie last time (${lastMy}-${lastTheir}) — settle it today` };
+    }
+
+    // 30. Tie streak of 3+
+    {
+      let tStreak = 0;
+      for (let i = games.length - 1; i >= 0; i--) {
+        if (resultOf(games[i]) === 'T') tStreak++; else break;
+      }
+      if (tStreak >= 3) {
+        return { kind: 'tie', text: `🤝 ${tStreak} ties in a row vs ${rivalName} — somebody has to win` };
+      }
+    }
+
+    // 31-32. Hot/cold form across the last 4 games
+    if (games.length >= 4) {
+      const lastFour = games.slice(-4);
+      const wL4 = lastFour.filter(g => resultOf(g) === 'W').length;
+      const lL4 = lastFour.filter(g => resultOf(g) === 'L').length;
+      if (wL4 >= 3 && curW < 3) {
+        return { kind: 'win', text: `🔥 Won ${wL4} of last 4 vs ${rivalName} — hot hand` };
+      }
+      if (lL4 >= 3 && curL < 3) {
+        return { kind: 'loss', text: `🥶 Lost ${lL4} of last 4 vs ${rivalName} — find a spark` };
+      }
+    }
+
+    // 33-34. Score-trend over last 5 own scores
+    if (games.length >= 5) {
+      const slope = linearTrend(games.slice(-5).map(getMyTotal));
+      if (slope >= 10) {
+        return { kind: 'win', text: `📈 Scores trending up vs ${rivalName} — momentum's with you` };
+      }
+      if (slope <= -10) {
+        return { kind: 'loss', text: `📉 Scores trending down vs ${rivalName} — reset today` };
+      }
+    }
+
+    // 35. Long gap since the last H2H game
+    {
+      const lastTs = Date.parse(last.date);
+      const todayTs = Date.parse(today);
+      if (Number.isFinite(lastTs) && Number.isFinite(todayTs)) {
+        const days = Math.round((todayTs - lastTs) / 86400000);
+        if (days >= 21) {
+          return { kind: 'milestone', text: `🌙 ${days} days since you last played ${rivalName} — welcome back` };
+        }
+      }
+    }
+
     return null;
   }
 
@@ -3091,6 +3284,10 @@
 
     // Trend line: my score vs theirs
     destroyChart('trend');
+    const myTotals = last30.map(getMyTotal);
+    const theirTotals = last30.map(getTheirTotal);
+    const trendScores = myTotals.concat(theirTotals).filter(Number.isFinite);
+    const trendYMin = trendScores.length ? Math.min(...trendScores) - 50 : undefined;
     state.charts.trend = new Chart($('#chart-trend'), {
       type: 'line',
       data: {
@@ -3098,7 +3295,7 @@
         datasets: [
           {
             label: 'You',
-            data: last30.map(getMyTotal),
+            data: myTotals,
             borderColor: '#4ade80',
             backgroundColor: 'rgba(74,222,128,0.12)',
             tension: 0.3,
@@ -3109,7 +3306,7 @@
             const rc = chartRivalColor(s.rival.color);
             return {
               label: s.rival.name,
-              data: last30.map(getTheirTotal),
+              data: theirTotals,
               borderColor: rc,
               backgroundColor: hexToRgba(rc, 0.12),
               tension: 0.3,
@@ -3121,7 +3318,7 @@
       },
       options: chartCommon({
         scales: {
-          y: { beginAtZero: false, suggestedMin: 0, suggestedMax: 1000, ticks: { color: '#9aa3b2' }, grid: { color: '#252938' } },
+          y: { beginAtZero: false, min: trendYMin, ticks: { color: '#9aa3b2' }, grid: { color: '#252938' } },
           x: { ticks: { color: '#9aa3b2', maxRotation: 0, autoSkip: true }, grid: { color: '#1f232f' } },
         },
       }),
