@@ -165,8 +165,9 @@
   </script>
   <link rel="stylesheet" href="/assets/css/content-alignment.css" />
   <link rel="stylesheet" href="/assets/css/brand-colors.css" />
+  <link rel="stylesheet" href="assets/css/site.css" />
 </head>
-<body class="is-preload">
+<body class="is-preload" data-page="apps">
   <a class="skip-link" href="#main-content">Skip to main content</a>
   <div data-include="header"></div>
   <main id="main-content" class="wrapper wrapper-inherit-padding">
@@ -175,80 +176,90 @@
         <h1>Free Web Apps</h1>
         <p>Six free web apps we have built and keep online. No ads, no signup required, and they all save locally by default with optional Firebase sync if you want to log in.</p>
       </header>
-      <div class="highlights">
-        <section>
-          <div class="content">
-            <header>
-              <a href="apps/mario-kart/" class="icon fa-gamepad brand-color-primary" aria-label="Open Mario Kart Tracker"></a>
-              <h3>Mario Kart Tracker</h3>
-            </header>
-            <p>Log Mario Kart races, track player stats over time, and dig into performance with charts and achievements.</p>
-            <ul class="actions special">
-              <li><a href="apps/mario-kart/" class="button">Track Races</a></li>
-            </ul>
-          </div>
-        </section>
-        <section>
-          <div class="content">
-            <header>
-              <a href="apps/gym-tracker/" class="icon fa-heartbeat brand-color-primary" aria-label="Open Gym Tracker"></a>
-              <h3>Gym Tracker</h3>
-            </header>
-            <p>An installable PWA for logging workouts, building programs, and watching your numbers move. Works offline once installed.</p>
-            <ul class="actions special">
-              <li><a href="apps/gym-tracker/" class="button">Start Tracking</a></li>
-            </ul>
-          </div>
-        </section>
-        <section>
-          <div class="content">
-            <header>
-              <a href="apps/football-h2h/" class="icon fa-futbol-o brand-color-primary" aria-label="Open Football H2H League"></a>
-              <h3>Football H2H League</h3>
-            </header>
-            <p>Head-to-head football match recorder. Scores, penalty shootouts, team selections, and a player comparison table for the long-running rivalry at home.</p>
-            <ul class="actions special">
-              <li><a href="apps/football-h2h/" class="button">View League</a></li>
-            </ul>
-          </div>
-        </section>
-        <section>
-          <div class="content">
-            <header>
-              <a href="apps/rising-seasons/" class="icon fa-line-chart brand-color-primary" aria-label="Open Rising Seasons"></a>
-              <h3>Rising Seasons</h3>
-            </header>
-            <p>Find TV shows by the shape of their episode ratings. Rising, consistent, slow-burn, big-finale, or rebound seasons across thousands of shows.</p>
-            <ul class="actions special">
-              <li><a href="apps/rising-seasons/" class="button">Browse Seasons</a></li>
-            </ul>
-          </div>
-        </section>
-        <section>
-          <div class="content">
-            <header>
-              <a href="apps/maptap-rivals/" class="icon fa-crosshairs brand-color-primary" aria-label="Open MapTap Rivals"></a>
-              <h3>MapTap Rivals</h3>
-            </header>
-            <p>Log daily MapTap.gg head-to-head scores against named friends. Win streaks, averages, per-rival dashboards, time-boxed rivalry seasons, and a calendar heatmap of daily activity.</p>
-            <ul class="actions special">
-              <li><a href="apps/maptap-rivals/" class="button">Track Rivals</a></li>
-            </ul>
-          </div>
-        </section>
-        <section>
-          <div class="content">
-            <header>
-              <a href="apps/arena/" class="icon fa-trophy brand-color-primary" aria-label="Open Arena"></a>
-              <h3>Arena</h3>
-            </header>
-            <p>Real-time multiplayer hub for private rooms with friends. Create a room, share an invite link, and play across a growing collection of games — Globe Drop geography (pin cities on a 3D globe), head-to-head Trivia, and more on the way.</p>
-            <ul class="actions special">
-              <li><a href="apps/arena/" class="button">Open Arena</a></li>
-            </ul>
-          </div>
-        </section>
+      <div class="app-tiles">
+
+        <article class="app-tile">
+          <picture>
+            <source srcset="/images/apps/mario-kart.webp" type="image/webp">
+            <img class="app-tile-screenshot" src="/images/apps/mario-kart.png" alt="Mario Kart Tracker showing race history and player statistics" loading="lazy" decoding="async">
+          </picture>
+          <span class="app-tile-icon icon fa-gamepad" aria-hidden="true"></span>
+          <h3>Mario Kart Tracker</h3>
+          <p>Log Mario Kart races, track player stats over time, and dig into performance with charts and achievements. Supports Mario Kart 8 Deluxe and Mario Kart World.</p>
+          <a href="apps/mario-kart/" class="button">Track Races</a>
+        </article>
+
+        <article class="app-tile">
+          <picture>
+            <source srcset="/images/apps/gym-tracker.webp" type="image/webp">
+            <img class="app-tile-screenshot" src="/images/apps/gym-tracker.png" alt="Gym Tracker showing workout log and program builder" loading="lazy" decoding="async">
+          </picture>
+          <span class="app-tile-icon icon fa-heartbeat" aria-hidden="true"></span>
+          <h3>Gym Tracker</h3>
+          <p>An installable PWA for logging workouts, building programs, and watching your numbers move. Works offline once installed.</p>
+          <a href="apps/gym-tracker/" class="button">Start Tracking</a>
+        </article>
+
+        <article class="app-tile">
+          <picture>
+            <source srcset="/images/apps/football-h2h.webp" type="image/webp">
+            <img class="app-tile-screenshot" src="/images/apps/football-h2h.png" alt="Football H2H League showing match records and player stats" loading="lazy" decoding="async">
+          </picture>
+          <span class="app-tile-icon icon fa-futbol-o" aria-hidden="true"></span>
+          <h3>Football H2H League</h3>
+          <p>Head-to-head football match recorder. Scores, penalty shootouts, team selections, and a player comparison table for the long-running rivalry at home.</p>
+          <a href="apps/football-h2h/" class="button">View League</a>
+        </article>
+
+        <article class="app-tile">
+          <picture>
+            <source srcset="/images/apps/rising-seasons.webp" type="image/webp">
+            <img class="app-tile-screenshot" src="/images/apps/rising-seasons.png" alt="Rising Seasons showing TV show episode rating curves by shape" loading="lazy" decoding="async">
+          </picture>
+          <span class="app-tile-icon icon fa-line-chart" aria-hidden="true"></span>
+          <h3>Rising Seasons</h3>
+          <p>Find TV shows by the shape of their episode ratings. Rising, consistent, slow-burn, big-finale, or rebound seasons across thousands of shows.</p>
+          <a href="apps/rising-seasons/" class="button">Browse Seasons</a>
+        </article>
+
+        <article class="app-tile">
+          <picture>
+            <source srcset="/images/apps/maptap-rivals.webp" type="image/webp">
+            <img class="app-tile-screenshot" src="/images/apps/maptap-rivals.png" alt="MapTap Rivals showing head-to-head scores and win streaks" loading="lazy" decoding="async">
+          </picture>
+          <span class="app-tile-icon icon fa-crosshairs" aria-hidden="true"></span>
+          <h3>MapTap Rivals</h3>
+          <p>Log daily MapTap.gg head-to-head scores against named friends. Win streaks, averages, per-rival dashboards, time-boxed rivalry seasons, and a calendar heatmap of daily activity.</p>
+          <a href="apps/maptap-rivals/" class="button">Track Rivals</a>
+        </article>
+
+        <article class="app-tile">
+          <picture>
+            <source srcset="/images/apps/arena.webp" type="image/webp">
+            <!-- TODO: Arena screenshot shows empty lobby state; revisit when multiplayer session is active -->
+            <img class="app-tile-screenshot" src="/images/apps/arena.png" alt="Arena showing the multiplayer lobby and game selection" loading="lazy" decoding="async">
+          </picture>
+          <span class="app-tile-icon icon fa-trophy" aria-hidden="true"></span>
+          <h3>Arena</h3>
+          <p>Real-time multiplayer hub for private rooms with friends. Create a room, share an invite link, and play Globe Drop geography, Trivia, and more.</p>
+          <a href="apps/arena/" class="button">Open Arena</a>
+        </article>
+
       </div>
+
+      <div class="data-explainer">
+        <ul>
+          <li>No signup required — all apps work immediately in your browser.</li>
+          <li>Your data is saved locally on your device by default. No account needed.</li>
+          <li>Sign in optionally to sync your data across devices via Firebase. No ads, no tracking.</li>
+        </ul>
+      </div>
+
+      <section class="cta-banner">
+        <h3>Want to see how these were built?</h3>
+        <p>The work page covers the technical decisions, the architecture, and the real-world problems each app solves.</p>
+        <a href="work.html" class="cta-button"><span class="icon fa-code" aria-hidden="true"></span>See the work</a>
+      </section>
     </div>
   </main>
   <div data-include="footer"></div>

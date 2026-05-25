@@ -481,6 +481,217 @@
   .cta-banner h3 { font-size: 1.35rem; }
 }
 
+/* Desktop nav in header -------------------------------------------------------- */
+.desktop-nav {
+  display: flex;
+  align-items: center;
+  gap: 0;
+  margin-left: auto;
+  margin-right: 0.5rem;
+  height: 3.25rem;
+  line-height: 3.25rem;
+}
+.desktop-nav a {
+  color: rgba(255, 255, 255, 0.6);
+  text-decoration: none;
+  padding: 0 0.7rem;
+  font-size: 0.85rem;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  font-weight: 400;
+  transition: color 180ms ease;
+  height: inherit;
+  display: inline-flex;
+  align-items: center;
+}
+.desktop-nav a:hover {
+  color: #ffffff;
+}
+.desktop-nav a[aria-current="page"] {
+  color: #ffffff;
+  font-weight: 600;
+  border-bottom: 2px solid var(--brand-blue);
+}
+@media screen and (max-width: 980px) {
+  .desktop-nav {
+    height: 44px;
+    line-height: 42px;
+  }
+}
+@media screen and (max-width: 736px) {
+  .desktop-nav {
+    display: none;
+  }
+}
+
+/* Footer columns --------------------------------------------------------------- */
+.footer-cols {
+  display: flex;
+  gap: 2.5rem;
+  flex-wrap: wrap;
+}
+.footer-cols .col h4 {
+  font-size: 0.78rem;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: rgba(255, 255, 255, 0.5);
+  margin-bottom: 0.75rem;
+}
+.footer-cols .col ul {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.footer-cols .col ul li {
+  margin-bottom: 0.4rem;
+  padding: 0;
+}
+.footer-cols .col ul li a {
+  color: rgba(255, 255, 255, 0.6);
+  text-decoration: none;
+  font-size: 0.9rem;
+  transition: color 150ms ease;
+}
+.footer-cols .col ul li a:hover {
+  color: #ffffff;
+}
+@media screen and (max-width: 480px) {
+  .footer-cols {
+    flex-direction: column;
+    gap: 1.5rem;
+  }
+}
+
+/* App icon strip on home.html -------------------------------------------------- */
+.app-icon-strip {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.85rem 1rem;
+  justify-content: flex-start;
+  margin: 0.75rem 0 0;
+}
+.app-icon-strip a {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  color: var(--brand-blue);
+  text-decoration: none;
+  font-size: 0.88rem;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+  white-space: nowrap;
+  transition: opacity 180ms ease;
+}
+.app-icon-strip a:hover {
+  opacity: 0.75;
+}
+.app-icon-strip .icon {
+  font-size: 1.05rem;
+}
+
+/* Apps page — tile grid -------------------------------------------------------- */
+.app-tiles {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  gap: 1.25rem;
+  margin: 1rem 0 3rem;
+}
+.app-tile {
+  background: #ffffff;
+  border: 1px solid rgba(var(--brand-blue-rgb), 0.08);
+  border-radius: 10px;
+  padding: 1.6rem 1.5rem 1.35rem;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.04);
+  transition: transform 220ms ease, box-shadow 220ms ease, border-color 220ms ease;
+  display: flex;
+  flex-direction: column;
+}
+.app-tile:hover {
+  transform: translateY(-3px);
+  box-shadow: 0 10px 28px rgba(var(--brand-blue-rgb), 0.12);
+  border-color: rgba(var(--brand-blue-rgb), 0.22);
+}
+.app-tile-screenshot {
+  display: block;
+  width: 100%;
+  border-radius: 6px;
+  margin-bottom: 1.1rem;
+  aspect-ratio: 16/9;
+  object-fit: cover;
+  background: #f0f2f7;
+}
+@media screen and (max-width: 480px) {
+  .app-tile-screenshot { display: none; }
+}
+.app-tile .app-tile-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 2.8rem;
+  height: 2.8rem;
+  border-radius: 8px;
+  background: linear-gradient(135deg, rgba(var(--brand-blue-rgb), 0.08), rgba(74, 144, 255, 0.14));
+  color: var(--brand-blue);
+  font-size: 1.25rem;
+  margin-bottom: 0.85rem;
+}
+.app-tile h3 {
+  font-size: 1.05rem;
+  text-transform: none;
+  font-weight: 600;
+  letter-spacing: -0.005em;
+  margin: 0 0 0.5rem;
+  color: #1c1f24;
+}
+.app-tile p {
+  font-size: 0.95rem;
+  line-height: 1.6;
+  color: #4a4f57;
+  margin: 0 0 1rem;
+  flex: 1;
+}
+.app-tile .button {
+  align-self: flex-start;
+  font-size: 0.82rem;
+  padding: 0.5rem 1.2rem;
+}
+
+/* Data explainer band on apps.html --------------------------------------------- */
+.data-explainer {
+  background: #f8faff;
+  border: 1px solid rgba(var(--brand-blue-rgb), 0.1);
+  border-radius: 10px;
+  padding: 1.5rem 2rem;
+  margin: 0 0 2.5rem;
+}
+.data-explainer ul {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+}
+.data-explainer ul li {
+  font-size: 0.93rem;
+  color: #4a4f57;
+  line-height: 1.55;
+  padding: 0;
+  display: flex;
+  align-items: flex-start;
+  gap: 0.6rem;
+}
+.data-explainer ul li::before {
+  content: "\2022";
+  color: var(--brand-blue);
+  font-weight: bold;
+  flex-shrink: 0;
+  line-height: 1.55;
+}
+@media screen and (max-width: 736px) {
+  .data-explainer { padding: 1.25rem 1.25rem; }
+}
+
 /* Sticky footer + wrapper inherits (mirrors content-alignment.css). --------- */
 html, body { height: 100%; }
 body {

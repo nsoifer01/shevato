@@ -915,6 +915,14 @@
           initializeMenu();
         }
 
+        // Mark the active desktop nav link
+        if (includeFile === 'header.html') {
+          const page = $('body').data('page');
+          if (page) {
+            $('.desktop-nav a[data-nav="' + page + '"]').attr('aria-current', 'page');
+          }
+        }
+
         // Initialize auth UI after header is loaded
         if (includeFile === 'header.html' && window.authUI && window.authUI.onHeaderLoaded) {
           window.authUI.onHeaderLoaded();

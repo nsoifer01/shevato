@@ -17,6 +17,24 @@ These files are reference templates, not loaded at runtime. Pages
 inline the relevant subset directly in a `<script type="application/ld+json">`
 block in `<head>`.
 
+## Resource hints template
+
+Copy this block verbatim into any new marketing page `<head>`. It covers all third-party origins
+used by the site and is safe to include even if a page doesn't use all of them.
+
+```html
+<!-- Resource hints -->
+<link rel="preconnect" href="https://www.gstatic.com" crossorigin>
+<link rel="preconnect" href="https://www.googletagmanager.com" crossorigin>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="dns-prefetch" href="https://www.google-analytics.com">
+```
+
+`preconnect` eliminates the TCP/TLS handshake cost for origins that load scripts or fonts in the
+same request. `dns-prefetch` is a lighter hint for origins that may be contacted later (GA's
+measurement endpoint is not on the critical path but benefits from a pre-resolved hostname).
+
 ## Per-page metadata checklist
 
 When adding a new HTML page, the head should include:

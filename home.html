@@ -137,7 +137,7 @@
   }
   </script>
 </head>
-<body class="is-preload">
+<body class="is-preload" data-page="home">
   <a class="skip-link" href="#main-content">Skip to main content</a>
   <div data-include="header"></div>
   <main id="main-content" class="wrapper wrapper-inherit-padding">
@@ -212,8 +212,15 @@
         <a class="preview-card" href="apps.html">
           <span class="eyebrow">Side projects</span>
           <h3>Free web apps</h3>
-          <p>Mario Kart Tracker, Gym Tracker, Football H2H, Rising Seasons, MapTap Rivals, and Arena. Real apps with real users that we keep online for free.</p>
-          <span class="more">Open the apps</span>
+          <div class="app-icon-strip" aria-label="Apps">
+            <a href="/apps/mario-kart/" onclick="event.stopPropagation()"><span class="icon fa-gamepad" aria-hidden="true"></span>Mario Kart</a>
+            <a href="/apps/gym-tracker/" onclick="event.stopPropagation()"><span class="icon fa-heartbeat" aria-hidden="true"></span>Gym Tracker</a>
+            <a href="/apps/football-h2h/" onclick="event.stopPropagation()"><span class="icon fa-futbol-o" aria-hidden="true"></span>Football H2H</a>
+            <a href="/apps/rising-seasons/" onclick="event.stopPropagation()"><span class="icon fa-line-chart" aria-hidden="true"></span>Rising Seasons</a>
+            <a href="/apps/maptap-rivals/" onclick="event.stopPropagation()"><span class="icon fa-crosshairs" aria-hidden="true"></span>MapTap Rivals</a>
+            <a href="/apps/arena/" onclick="event.stopPropagation()"><span class="icon fa-trophy" aria-hidden="true"></span>Arena</a>
+          </div>
+          <span class="more">See all apps</span>
         </a>
         <a class="preview-card" href="about.html">
           <span class="eyebrow">About</span>
@@ -222,6 +229,12 @@
           <span class="more">Read the about</span>
         </a>
       </div>
+
+      <section class="cta-banner">
+        <h3>Looking for an engineering partner?</h3>
+        <p>If you are weighing whether Shevato is the right fit, a short email is the fastest way to find out.</p>
+        <a href="contact.html" class="cta-button"><span class="icon fa-envelope" aria-hidden="true"></span>Reach out</a>
+      </section>
 
     </div>
   </main>
