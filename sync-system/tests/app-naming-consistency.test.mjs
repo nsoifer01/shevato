@@ -48,7 +48,12 @@ test('no app directory contains a stray non-index *.html entry alongside index.h
     // the canonical app URL in search.
     const apps = listDirs(APPS_DIR);
     const allowedExtras = {
-        'arena': new Set(['success.html'])
+        'arena': new Set(['success.html']),
+        // Local dev seeder for gym-tracker localStorage. Used only to
+        // bootstrap test data into the browser; not linked from any
+        // user-facing nav and noindex, so it can never compete with
+        // index.html for the canonical app URL in search.
+        'gym-tracker': new Set(['dev-seed.html'])
     };
     const offenders = [];
     for (const app of apps) {
