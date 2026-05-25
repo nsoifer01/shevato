@@ -49,3 +49,23 @@ apps/rising-seasons/sitemap-shows.xml
 # build time. Same rationale as Rising Seasons.
 apps/gym-tracker/exercises/
 apps/gym-tracker/sitemap-exercises.xml
+
+# Dev / agent probes — temporary HTML + screenshot artifacts created
+# during local screenshot / smoke-test runs at the repo root. They
+# disappear after the run but show up in `git status` while in flight.
+.dev-*.html
+.dev-*.png
+.gym-*.html
+.gym-*.png
+.mk-*.html
+.mk-*.png
+.rs-*.html
+.rs-*.png
+.seed-*.html
+.seed-*.png
+.dev-screenshot-probe-*.html
+screenshot-*.png
+screenshot.png
+screenshots-tmp/
+gym-seed-temp.html
+apps/rising-seasons/screenshots/test-runs/
