@@ -15,7 +15,7 @@ const path = require('path');
 
 const DATA_DIR = path.join(__dirname, '..', 'data');
 const CACHE_FILE = path.join(DATA_DIR, 'tmdb-cache.json');
-const REQUEST_INTERVAL_MS = 165;
+const REQUEST_INTERVAL_MS = 100;
 const TOKEN = process.env.TMDB_TOKEN || process.env.TMDB_BEARER_TOKEN;
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
