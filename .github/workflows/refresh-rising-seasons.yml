@@ -30,10 +30,12 @@ permissions:
 jobs:
   refresh:
     runs-on: ubuntu-latest
-    # Cold first pass after the TMDB schema changes (language + providers
-    # back-fill) can take ~50 min because both scripts re-fetch everything.
-    # Incremental subsequent runs are typically well under 15 min.
-    timeout-minutes: 75
+    # Cold first pass after a TMDB schema change (cast back-fill,
+    # per-season tvdbId + overview fetch, providers back-fill) re-fetches
+    # tens of thousands of entries at ~8 req/s and needs ~130 min end-to-end.
+    # Incremental subsequent runs are typically well under 15 min, so this
+    # ceiling only matters on the cold pass after a schema bump.
+    timeout-minutes: 180
     steps:
       - name: Checkout
         uses: actions/checkout@v6
