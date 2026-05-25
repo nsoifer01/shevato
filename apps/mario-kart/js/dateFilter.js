@@ -1,6 +1,7 @@
 let currentDateFilter = 'all';
 let customStartDate = null;
 let customEndDate = null;
+let currentModeFilter = 'all';
 
 function setDateFilter(filter) {
     currentDateFilter = filter;
@@ -158,9 +159,34 @@ function getFilteredRaces() {
             // console.log(`All filter: found ${filtered.length} races`);
     }
 
+    // Apply mode filter on top of date filter
+    if (currentModeFilter && currentModeFilter !== 'all') {
+        if (currentModeFilter === 'Items') {
+            filtered = filtered.filter(race => !race.mode || race.mode === 'Items');
+        } else {
+            filtered = filtered.filter(race => race.mode === currentModeFilter);
+        }
+    }
+
     return filtered;
+}
+
+function setModeFilter(mode) {
+    currentModeFilter = mode;
+
+    // Update active pill buttons
+    document.querySelectorAll('.mode-filter-btn').forEach(btn => {
+        btn.classList.toggle('active', btn.dataset.mode === mode);
+    });
+
+    if (window.GlobalPaginationManager) {
+        window.GlobalPaginationManager.reset('mario-kart-races');
+    }
+
+    updateDisplay();
 }
 
 // Export functions to global scope
 window.setDateFilter = setDateFilter;
 window.getFilteredRaces = getFilteredRaces;
+window.setModeFilter = setModeFilter;

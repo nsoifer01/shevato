@@ -209,6 +209,12 @@
         <span class="shape-desc">Show's rating pattern or quality changed significantly late in its run</span>
         <span class="shape-count" data-count="shape-drift"></span>
       </button>
+      <button class="shape-chip" data-shape="outlier-peak" aria-pressed="false" type="button">
+        <span class="shape-icon" aria-hidden="true">⬆</span>
+        <span class="shape-name">Outlier peak</span>
+        <span class="shape-desc">One interior episode is significantly above the rest</span>
+        <span class="shape-count" data-count="outlier-peak"></span>
+      </button>
       <button type="button" class="shapes-more-btn" id="shapesMoreBtn" aria-expanded="false" hidden>
         <span class="shapes-more-label">More shapes</span>
         <span class="shapes-more-count" id="shapesMoreCount"></span>
@@ -248,8 +254,40 @@
           <span class="mood-chip-desc">Seasons that ended way better than they started</span>
           <span class="mood-chip-count"></span>
         </a>
+        <button type="button" class="mood-chip mood-chip-worst-preset" id="worstSeasonPreset" aria-pressed="false" title="Shows rated ≥8 where one season notably underperforms">
+          <span class="mood-chip-icon" aria-hidden="true">▼★</span>
+          <span class="mood-chip-label">Worst season of a good show</span>
+          <span class="mood-chip-desc">High-rated shows with a season that fell behind</span>
+          <span class="mood-chip-count" id="worstSeasonPresetCount"></span>
+        </button>
+        <button type="button" class="mood-chip mood-chip-tonight" id="tonightBtn" aria-pressed="false" title="Get a personalized pick for tonight">
+          <span class="mood-chip-icon" aria-hidden="true">🌙</span>
+          <span class="mood-chip-label">Tonight's watch</span>
+          <span class="mood-chip-desc">Quick 2-step picker: mood + time budget</span>
+        </button>
       </div>
     </section>
+
+    <!-- Tonight's Watch 2-step picker: shown when the Tonight button is clicked -->
+    <div class="tonight-picker" id="tonightPicker" hidden aria-label="Tonight's watch picker">
+      <div class="tonight-step" id="tonightStep1">
+        <p class="tonight-step-label">What mood?</p>
+        <div class="tonight-chips">
+          <button type="button" class="tonight-chip" data-mood="slow-burn">Slow burn</button>
+          <button type="button" class="tonight-chip" data-mood="big-finale">Big finale</button>
+          <button type="button" class="tonight-chip" data-mood="consistent">Consistent</button>
+          <button type="button" class="tonight-chip" data-mood="surprise">Surprise me</button>
+        </div>
+      </div>
+      <div class="tonight-step" id="tonightStep2" hidden>
+        <p class="tonight-step-label">How much time?</p>
+        <div class="tonight-chips">
+          <button type="button" class="tonight-chip" data-time="short">&lt; 2 hrs</button>
+          <button type="button" class="tonight-chip" data-time="full">A full season</button>
+          <button type="button" class="tonight-chip" data-time="any">Doesn't matter</button>
+        </div>
+      </div>
+    </div>
 
     <section class="filters" aria-label="Filters">
       <div class="filter-row primary">
@@ -509,8 +547,15 @@
         <ol class="cast-list" id="showModalCastList"></ol>
       </section>
       <section class="season-overlay" id="showModalOverlay" hidden>
-        <h3 class="modal-section">Seasons overlay</h3>
+        <div class="overlay-header">
+          <h3 class="modal-section">Seasons overlay</h3>
+          <label class="compare-normalize-label">
+            <input type="checkbox" id="showModalNormalize">
+            Normalize length
+          </label>
+        </div>
         <svg class="overlay-curve" id="showModalOverlayCurve" viewBox="0 0 600 200" preserveAspectRatio="none" aria-hidden="true"></svg>
+        <p class="compare-normalize-note" id="showModalNormalizeNote" hidden>X-axis: episode position (0–100%)</p>
         <div class="overlay-legend" id="showModalOverlayLegend"></div>
       </section>
       <h3 class="modal-section">All seasons</h3>
@@ -527,8 +572,13 @@
       <p class="modal-subtitle">Season-average rating trajectory for each show. Click a show name to remove.</p>
       <div class="modal-actions modal-actions-top">
         <button type="button" class="btn btn-ghost" id="compareModalClear">Clear all</button>
+        <label class="compare-normalize-label">
+          <input type="checkbox" id="compareNormalize">
+          Normalize length
+        </label>
       </div>
       <svg class="overlay-curve" id="compareModalCurve" viewBox="0 0 600 240" preserveAspectRatio="none" aria-hidden="true"></svg>
+      <p class="compare-normalize-note" id="compareNormalizeNote" hidden>X-axis: episode position (0–100%)</p>
       <div class="overlay-legend" id="compareModalLegend"></div>
     </article>
   </div>

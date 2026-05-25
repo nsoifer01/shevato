@@ -197,6 +197,34 @@ function isUShaped(episodes, opts = DEFAULTS.uShaped) {
   return dipFound;
 }
 
+// "Outlier peak" — exactly one INTERIOR episode (not first or last) is
+// ≥1.5 points above the season average AND ≥1.5 points above the next-highest
+// episode. Requires at least 4 episodes. This captures the "one standout
+// episode that towers above the rest" pattern.
+function isOutlierPeak(episodes) {
+  const n = episodes.length;
+  if (n < 4) return false;
+  const ratings = episodes.map((e) => e.rating);
+  const seasonAvg = ratings.reduce((s, r) => s + r, 0) / n;
+  // Find the global max and its index.
+  let maxIdx = -1;
+  let maxRating = -Infinity;
+  for (let i = 0; i < n; i++) {
+    if (ratings[i] > maxRating) { maxRating = ratings[i]; maxIdx = i; }
+  }
+  // Must be interior (not first or last).
+  if (maxIdx === 0 || maxIdx === n - 1) return false;
+  // Must be ≥1.5 above season average.
+  if (maxRating - seasonAvg < 1.5) return false;
+  // Must be ≥1.5 above the next-highest episode.
+  let secondMax = -Infinity;
+  for (let i = 0; i < n; i++) {
+    if (i === maxIdx) continue;
+    if (ratings[i] > secondMax) secondMax = ratings[i];
+  }
+  return maxRating - secondMax >= 1.5;
+}
+
 function detectShapes(episodes) {
   const tags = [];
   if (isRising(episodes)) tags.push('rising');
@@ -210,6 +238,7 @@ function detectShapes(episodes) {
   if (isRollercoaster(episodes)) tags.push('rollercoaster');
   if (isMidPeak(episodes)) tags.push('mid-peak');
   if (isUShaped(episodes)) tags.push('u-shaped');
+  if (isOutlierPeak(episodes)) tags.push('outlier-peak');
   return tags;
 }
 
@@ -527,6 +556,24 @@ function tagShapeDrift(matches) {
     }
     // Write the note onto the drifting season only (not all seasons).
     last.driftNote = note;
+    // Store prior/new dominant shapes for the UI to display a from→to annotation.
+    if (lostAll && dominantShapes.length) {
+      last.driftPriorShapes = dominantShapes;
+      // New dominant = highest-confidence non-meta shape on the last season.
+      const metaShapes = new Set(['saved-best-for-last', 'shape-drift']);
+      let newShape = null;
+      let newConf = -1;
+      if (last.confidence) {
+        for (const [sh, conf] of Object.entries(last.confidence)) {
+          if (metaShapes.has(sh)) continue;
+          if (conf > newConf) { newConf = conf; newShape = sh; }
+        }
+      }
+      if (!newShape && last.shapes.length) {
+        newShape = last.shapes.find((s) => !metaShapes.has(s)) || null;
+      }
+      last.driftNewShape = newShape;
+    }
   }
 }
 
@@ -542,6 +589,7 @@ module.exports = {
   isRollercoaster,
   isMidPeak,
   isUShaped,
+  isOutlierPeak,
   detectShapes,
   findMatches,
   tagSavedBestForLast,

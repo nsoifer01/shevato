@@ -337,6 +337,22 @@ class HistoryView {
             <div class="workout-detail-exercises">
         `;
 
+        // Item 9: assign superset letters in order of first appearance.
+        const groupLetters = new Map();
+        const groupCounts = new Map();
+        const letterOf = (gid) => {
+            if (gid == null) return null;
+            if (!groupLetters.has(gid)) {
+                groupLetters.set(gid, String.fromCharCode(65 + groupLetters.size));
+            }
+            return groupLetters.get(gid);
+        };
+        // Count exercises per groupId
+        session.exercises.forEach(ex => {
+            if (ex.groupId == null) return;
+            groupCounts.set(ex.groupId, (groupCounts.get(ex.groupId) || 0) + 1);
+        });
+
         session.exercises.forEach(exercise => {
             const exerciseData = this.app.getExerciseById(exercise.exerciseId);
             const exerciseName = exerciseData ? exerciseData.name : exercise.exerciseName || 'Unknown Exercise';
@@ -344,9 +360,15 @@ class HistoryView {
 
             if (completedSets.length > 0) {
                 const isDuration = completedSets[0].duration > 0;
+                const gid = exercise.groupId;
+                const letter = gid && (groupCounts.get(gid) || 0) > 1 ? letterOf(gid) : null;
+                const supersetLabel = letter
+                    ? `<span class="detail-superset-label">Superset ${letter}</span><br>`
+                    : '';
 
                 html += `
-                    <div class="detail-exercise">
+                    <div class="detail-exercise${letter ? ' detail-superset-group' : ''}">
+                        ${supersetLabel}
                         <h4>${escapeHtml(exerciseName)}</h4>
                         <table class="sets-table">
                             <thead>

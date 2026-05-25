@@ -544,6 +544,246 @@ body.theme .h2h-player-pill {
 }
 
 /* ===========================================
+   Feature 5: Mode Filter Pills
+   =========================================== */
+.mode-filter-btn {
+    padding: 0.3rem 0.75rem;
+    border-radius: 20px;
+    border: 1px solid var(--border-color);
+    background: transparent;
+    color: var(--text-secondary);
+    cursor: pointer;
+    font-size: 0.8em;
+    transition: background 0.15s, color 0.15s;
+}
+.mode-filter-btn.active,
+.mode-filter-btn:hover {
+    background: #667eea;
+    color: #fff;
+    border-color: #667eea;
+}
+.race-mode-tag {
+    display: inline-block;
+    padding: 2px 8px;
+    border-radius: 10px;
+    font-size: 0.78em;
+    font-weight: 600;
+}
+.race-mode-tag.mode-no-items { background: #f59e0b22; color: #f59e0b; }
+.race-mode-tag.mode-200cc { background: #ef444422; color: #ef4444; }
+
+/* ===========================================
+   Feature 1: Tracks View
+   =========================================== */
+.tracks-view {}
+.tracks-table th { background: var(--bg-card); color: var(--text-secondary); font-weight: 600; }
+.tracks-table tr:hover td { background: var(--hover-bg); }
+
+/* ===========================================
+   Feature 6: Championship View
+   =========================================== */
+.championship-view {}
+.champ-row-first td { color: #f59e0b; font-weight: 700; }
+.champ-row-last td { color: #9ca3af; }
+
+/* ===========================================
+   Feature 2: GP Mode
+   =========================================== */
+.gp-race-row {
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    padding: 10px;
+    margin-bottom: 8px;
+    background: var(--bg-input);
+}
+.gp-race-header {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 8px;
+    flex-wrap: wrap;
+}
+.gp-race-label {
+    font-weight: 700;
+    font-size: 0.85em;
+    min-width: 55px;
+    color: var(--text-primary);
+}
+.gp-mode-select, .gp-track-input {
+    padding: 4px 8px;
+    border: 1px solid var(--border-color);
+    border-radius: 6px;
+    font-size: 0.8em;
+    background: var(--bg-dropdown);
+    color: var(--text-primary);
+    flex: 1;
+    min-width: 80px;
+}
+.gp-players-row {
+    display: flex;
+    gap: 6px;
+    flex-wrap: wrap;
+}
+.gp-player-cell {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 3px;
+    flex: 1;
+    min-width: 50px;
+}
+.gp-player-label {
+    font-size: 0.75em;
+    color: var(--text-secondary);
+    text-align: center;
+}
+.gp-position-input {
+    width: 100%;
+    padding: 6px 4px;
+    border: 1px solid var(--border-color);
+    border-radius: 6px;
+    text-align: center;
+    font-size: 0.9em;
+    background: var(--bg-input);
+    color: var(--text-primary);
+}
+
+/* Sidebar extra fields (mode + track in add race form) */
+.sidebar-extra-fields {
+    margin-top: 10px;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+.sidebar-extra-field {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+.sidebar-extra-field label {
+    font-size: 0.8em;
+    color: var(--text-secondary);
+    font-weight: 600;
+}
+.sidebar-mode-select, .sidebar-track-input {
+    padding: 6px 10px;
+    border: 1px solid var(--border-color);
+    border-radius: 6px;
+    background: var(--bg-input);
+    color: var(--text-primary);
+    font-size: 0.85em;
+}
+
+/* ===========================================
+   Feature 4: Rivalry Callouts
+   =========================================== */
+.rivalry-callouts { padding: 4px 0; }
+.rivalry-callout {
+    padding: 8px 12px;
+    border-radius: 8px;
+    margin-bottom: 6px;
+    font-size: 0.9em;
+    line-height: 1.5;
+    background: var(--hover-bg);
+    border-left: 3px solid #667eea;
+}
+.rivalry-callout.rivalry-neutral { border-left-color: #6b7280; color: var(--text-tertiary); }
+.rivalry-name { font-weight: 700; color: var(--text-primary); }
+
+/* ===========================================
+   Feature 7: First-Time Milestones
+   =========================================== */
+.milestones-section { margin-top: 1.5rem; }
+.milestone-card { padding: 1rem; }
+.milestone-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 6px 0;
+    border-bottom: 1px solid var(--border-color);
+    font-size: 0.88em;
+    gap: 8px;
+}
+.milestone-row:last-child { border-bottom: none; }
+.milestone-label { font-weight: 600; color: var(--text-primary); }
+.milestone-date { color: var(--text-tertiary); font-size: 0.9em; white-space: nowrap; }
+
+/* ===========================================
+   Feature 3: Session Recap Button
+   =========================================== */
+.session-recap-btn {
+    padding: 10px 24px;
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    color: #fff;
+    border: none;
+    border-radius: 24px;
+    font-weight: 700;
+    font-size: 0.95em;
+    cursor: pointer;
+    box-shadow: 0 4px 12px rgba(102,126,234,0.3);
+    transition: transform 0.15s, box-shadow 0.15s;
+}
+.session-recap-btn:hover {
+    transform: translateY(-1px);
+    box-shadow: 0 6px 16px rgba(102,126,234,0.4);
+}
+
+/* ===========================================
+   Feature 9: Performance Calendar
+   =========================================== */
+.activity-player-select {
+    padding: 5px 10px;
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    background: var(--bg-input);
+    color: var(--text-primary);
+    font-size: 0.9em;
+}
+.cal-legend { color: var(--text-secondary); }
+.cal-dot {
+    display: inline-block;
+    width: 12px;
+    height: 12px;
+    border-radius: 50%;
+    vertical-align: middle;
+}
+.cal-green { background: #10b981; }
+.cal-red { background: #ef4444; }
+.cal-gray { background: #6b7280; }
+.cal-month-block { margin-bottom: 1.25rem; }
+.cal-month-label {
+    font-weight: 700;
+    font-size: 0.9em;
+    color: var(--text-secondary);
+    margin-bottom: 6px;
+}
+.cal-days-grid {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 5px;
+}
+.cal-day-dot {
+    width: 32px;
+    height: 32px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: default;
+    transition: transform 0.1s;
+    opacity: 0.85;
+}
+.cal-day-dot.cal-green { background: #10b98133; border: 2px solid #10b981; }
+.cal-day-dot.cal-red { background: #ef444433; border: 2px solid #ef4444; }
+.cal-day-dot.cal-gray { background: #6b728033; border: 2px solid #6b7280; }
+.cal-day-dot:hover { transform: scale(1.15); opacity: 1; }
+.cal-day-num {
+    font-size: 0.72em;
+    font-weight: 600;
+    color: var(--text-primary);
+}
+
+/* ===========================================
    Print Styles
    =========================================== */
 

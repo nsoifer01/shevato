@@ -8,6 +8,7 @@ import { formatDate, formatWeight, showConfirmModal, showToast, formatSessionDat
 import { orderPrograms } from '../utils/program-order.js';
 import { renderPausedBannerHTML, wirePausedBannerActions } from './paused-banner.js';
 import { AnalyticsService } from '../services/AnalyticsService.js';
+import { calculatePlates, formatPlateStack } from '../utils/plate-calculator.js';
 
 class HomeView {
     constructor() {
@@ -19,6 +20,54 @@ class HomeView {
         this.app.viewControllers.home = this;
         this.wireFab();
         this.wireHomeActions();
+        this.wirePlateCalculator();
+    }
+
+    wirePlateCalculator() {
+        const openBtn = document.getElementById('open-plate-calc-btn');
+        const modal = document.getElementById('plate-calc-modal');
+        if (!openBtn || !modal) return;
+
+        const targetInput = document.getElementById('plate-calc-target');
+        const barSelect = document.getElementById('plate-calc-bar');
+        const unitSelect = document.getElementById('plate-calc-unit');
+        const resultEl = document.getElementById('plate-calc-result');
+
+        const compute = () => {
+            const target = parseFloat(targetInput.value);
+            const bar = parseFloat(barSelect.value);
+            const unit = unitSelect.value;
+            const plates = Array.isArray(this.app.settings?.plates) ? this.app.settings.plates : [];
+            if (isNaN(target) || target <= 0) {
+                resultEl.textContent = 'Enter a weight above.';
+                return;
+            }
+            const result = calculatePlates(target, bar, plates);
+            const stack = formatPlateStack(result, unit);
+            if (result.reachable) {
+                resultEl.innerHTML = `<strong>Per side:</strong> ${escapeHtml(stack)}`;
+            } else {
+                resultEl.innerHTML = `<strong>Per side:</strong> ${escapeHtml(stack)}<br><small>Closest achievable: ${result.achievable}${unit}</small>`;
+            }
+        };
+
+        if (!openBtn.dataset.wired) {
+            openBtn.dataset.wired = '1';
+            openBtn.addEventListener('click', () => {
+                unitSelect.value = this.app.settings?.weightUnit || 'kg';
+                barSelect.value = String(this.app.settings?.barWeight ?? 20);
+                if (!['0','15','20','25'].includes(barSelect.value)) barSelect.value = '20';
+                targetInput.value = '';
+                resultEl.textContent = 'Enter a weight above.';
+                modal.classList.add('active');
+            });
+            targetInput.addEventListener('input', compute);
+            barSelect.addEventListener('change', compute);
+            unitSelect.addEventListener('change', compute);
+            modal.querySelectorAll('.modal-close').forEach(btn => {
+                btn.addEventListener('click', () => modal.classList.remove('active'));
+            });
+        }
     }
 
     wireFab() {
@@ -256,6 +305,22 @@ class HomeView {
         }
     }
 
+    /**
+     * Item 6: determine which program is "next up" based on the last
+     * completed session's program, rotating through the full list. Falls
+     * back to the first program when no sessions exist yet.
+     */
+    _nextUpProgram(programs) {
+        if (programs.length < 2) return null;
+        const sessions = [...(this.app.workoutSessions || [])]
+            .sort((a, b) => new Date(b.sortTimestamp) - new Date(a.sortTimestamp));
+        const lastProgramId = sessions.length > 0 ? sessions[0].programId : null;
+        if (lastProgramId == null) return programs[0];
+        const idx = programs.findIndex(p => p.id === lastProgramId);
+        if (idx < 0) return programs[0];
+        return programs[(idx + 1) % programs.length];
+    }
+
     renderActiveProgram() {
         const container = document.getElementById('active-program-card');
         // Use the same sort mode + saved drag-order as the Programs page
@@ -274,6 +339,15 @@ class HomeView {
             `;
             return;
         }
+
+        const nextUp = this._nextUpProgram(programs);
+        const nextUpHTML = nextUp && nextUp.exercises.length > 0
+            ? `<div class="next-up-day-banner" data-action="start-program" data-program-id="${nextUp.id}" role="button" tabindex="0" aria-label="Start next program: ${escapeHtml(nextUp.name)}">
+                <i class="fas fa-rotate" aria-hidden="true"></i>
+                <span class="next-up-day-label">Next up: <span class="next-up-day-name">${escapeHtml(nextUp.name)}</span></span>
+                <i class="fas fa-chevron-right next-up-day-arrow" aria-hidden="true"></i>
+               </div>`
+            : '';
 
         container.innerHTML = `
             <div class="program-summary">
@@ -316,6 +390,7 @@ class HomeView {
                         }
                     }).join('')}
                 </div>
+                ${nextUpHTML}
             </div>
         `;
     }

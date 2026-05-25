@@ -92,8 +92,20 @@ function addRace() {
         return;
     }
 
+    // Capture optional track and mode from the sidebar form
+    const modeSelect = document.getElementById('sidebar-mode-select');
+    const trackInput = document.getElementById('sidebar-track-input');
+    const selectedMode = modeSelect ? modeSelect.value : (window.DEFAULT_RACE_MODE || 'Items');
+    const selectedTrack = trackInput ? trackInput.value.trim() : '';
+
     // Create race object with all player data
     const raceObject = { date, timestamp };
+    if (selectedMode && selectedMode !== (window.DEFAULT_RACE_MODE || 'Items')) {
+        raceObject.mode = selectedMode;
+    }
+    if (selectedTrack) {
+        raceObject.track = selectedTrack;
+    }
     allPlayers.forEach(player => {
         raceObject[player] = raceData[player];
     });
@@ -199,6 +211,35 @@ function editRace(index) {
         </div>
 
         ${playerInputs}
+
+        <div style="margin-bottom: 1rem; display: grid; grid-template-columns: 1fr 1fr; gap: 1rem;">
+            <div>
+                <label style="display: block; margin-bottom: 0.5rem; color: #e2e8f0; font-weight: 600; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;">
+                    Mode:
+                </label>
+                <select id="edit-mode"
+                    style="width: 100%; padding: 0.75rem; border: 1px solid #4a5568;
+                    border-radius: 0.5rem; background: #4a5568;
+                    color: #e2e8f0; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;">
+                    ${(window.RACE_MODES || ['Items','No Items','200cc']).map(m =>
+                        `<option value="${m}"${(race.mode || 'Items') === m ? ' selected' : ''}>${m}</option>`
+                    ).join('')}
+                </select>
+            </div>
+            <div>
+                <label style="display: block; margin-bottom: 0.5rem; color: #e2e8f0; font-weight: 600; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;">
+                    Track (optional):
+                </label>
+                <input type="text" id="edit-track" value="${race.track || ''}" list="edit-track-datalist"
+                    style="width: 100%; padding: 0.75rem; border: 1px solid #4a5568;
+                    border-radius: 0.5rem; background: #4a5568;
+                    color: #e2e8f0; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;"
+                    placeholder="Type to search tracks...">
+                <datalist id="edit-track-datalist">
+                    ${(window.getTracksFlatForVersion ? window.getTracksFlatForVersion(window.getCurrentGameVersion ? window.getCurrentGameVersion() : 'mk8d') : []).map(t => `<option value="${t}">`).join('')}
+                </datalist>
+            </div>
+        </div>
 
         <div class="modal-buttons">
             <button id="save-edit" class="modal-btn-primary">Save Changes</button>
@@ -312,12 +353,32 @@ function editRace(index) {
             }
         }
 
+        // Collect mode and track edits
+        const editModeEl = document.getElementById('edit-mode');
+        const editTrackEl = document.getElementById('edit-track');
+        const newMode = editModeEl ? editModeEl.value : (race.mode || 'Items');
+        const newTrack = editTrackEl ? editTrackEl.value.trim() : (race.track || '');
+
         // Update the race
         const updatedRace = {
             ...race,
             date: dateChanged ? newDate : race.date,
             ...newPositions
         };
+
+        // Persist mode (omit if default to keep objects lean for old data)
+        if (newMode && newMode !== (window.DEFAULT_RACE_MODE || 'Items')) {
+            updatedRace.mode = newMode;
+        } else {
+            delete updatedRace.mode;
+        }
+
+        // Persist track
+        if (newTrack) {
+            updatedRace.track = newTrack;
+        } else {
+            delete updatedRace.track;
+        }
 
         // Handle timestamp
         if (newTimestamp) {

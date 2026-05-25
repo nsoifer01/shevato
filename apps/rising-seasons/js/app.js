@@ -14,6 +14,7 @@ const SHAPE_LABELS = {
   'u-shaped': 'U-shaped',
   'saved-best-for-last': 'Saved best for last',
   'shape-drift': 'Shape drift',
+  'outlier-peak': 'Outlier peak',
 };
 
 const SHAPE_DESCS = {
@@ -30,6 +31,7 @@ const SHAPE_DESCS = {
   'u-shaped': 'Strong opener and finale, sag in the middle',
   'saved-best-for-last': 'Final season is the show\'s highest-rated',
   'shape-drift': 'Show\'s rating pattern or quality changed significantly late in its run',
+  'outlier-peak': 'One interior episode is significantly above the rest',
 };
 
 // Mirrors scripts/slugify.js — keep both in sync so the SPA's permalink
@@ -179,6 +181,7 @@ const els = {
 const state = {
   shapes: new Set(),
   search: '',
+  worstPreset: false,
   // When the user picks a series from the search suggestions, we lock the
   // results to that exact seriesId. The displayed search value is the
   // title ("Sherlock"), but the filter ignores `search` and exact-matches
@@ -207,6 +210,7 @@ const state = {
   page: 1,
 };
 
+let worstPresetActive = false;
 let dataset = null;
 let filtered = [];
 let seriesIndex = [];
@@ -1023,6 +1027,13 @@ function buildNonShapeChecker() {
     }
     if (state.poster === 'with' && !m.poster) return false;
     if (state.poster === 'without' && m.poster) return false;
+    if (state.worstPreset) {
+      // Must be the worst season of a good show (seriesRating >= 8, multi-season)
+      if (typeof m.seriesRating !== 'number' || m.seriesRating < 8) return false;
+      if (worstSeasonBySeries.get(m.seriesId) !== m.season) return false;
+      // Shapes: bad-finale or declining
+      if (!m.shapes.includes('bad-finale') && !m.shapes.includes('declining')) return false;
+    }
     return true;
   };
 }
@@ -1124,14 +1135,36 @@ function render() {
   renderFooterMeta();
 }
 
+function relativeDate(iso) {
+  if (!iso) return null;
+  const msPerDay = 86_400_000;
+  const days = Math.floor((Date.now() - new Date(iso).getTime()) / msPerDay);
+  if (days === 0) return 'today';
+  if (days === 1) return 'yesterday';
+  if (days < 7) return `${days} days ago`;
+  if (days < 14) return '1 week ago';
+  if (days < 30) return `${Math.floor(days / 7)} weeks ago`;
+  const months = Math.floor(days / 30);
+  return months === 1 ? '1 month ago' : `${months} months ago`;
+}
+
 function renderFooterMeta() {
   els.footerMeta.replaceChildren();
   if (!dataset?.builtAt) return;
 
-  const text = document.createElement('span');
-  text.className = 'footer-meta-text';
-  text.textContent = `Last updated: ${formatBuiltAt(dataset.builtAt)}`;
-  els.footerMeta.appendChild(text);
+  const ageDays = (Date.now() - new Date(dataset.builtAt).getTime()) / 86_400_000;
+  const isStaleData = ageDays > 21;
+  const rel = relativeDate(dataset.builtAt);
+  let labelText = `Updated ${rel}`;
+  if (isStaleData) labelText += ' — Ratings may have shifted.';
+
+  const freshBtn = document.createElement('button');
+  freshBtn.type = 'button';
+  freshBtn.className = 'footer-freshness-btn' + (isStaleData ? ' is-stale' : '');
+  freshBtn.title = `Dataset built ${formatBuiltAt(dataset.builtAt)} — click to see data freshness`;
+  freshBtn.textContent = labelText;
+  freshBtn.addEventListener('click', () => openChangelogModal());
+  els.footerMeta.appendChild(freshBtn);
 
   const latest = changelog?.updates?.[0];
   if (!latest) return;
@@ -1837,6 +1870,24 @@ function fillProviderTags(container, providers) {
   }
 }
 
+// Variant of fillProviderTags for the show modal: wraps each badge in a
+// JustWatch search link so clicking a provider opens a search page for the show.
+function fillProviderTagsLinked(container, providers, showTitle) {
+  if (!providers || !providers.length) return;
+  const filtered = providers.filter(isMainstreamProvider);
+  const q = encodeURIComponent(showTitle || '');
+  for (const p of filtered) {
+    const a = document.createElement('a');
+    a.href = `https://www.justwatch.com/us/search?q=${q}`;
+    a.target = '_blank';
+    a.rel = 'noopener';
+    a.title = `Find ${showTitle || 'show'} on ${p}`;
+    a.className = 'provider-tag provider-tag-linked';
+    a.textContent = p;
+    container.appendChild(a);
+  }
+}
+
 function buildRankBadge(className, glyph, label, title) {
   const badge = document.createElement('span');
   badge.className = className;
@@ -1895,6 +1946,18 @@ function buildCard(m) {
   // title with a big colored chip.
   const badge = maybeBestBadge(m) || maybeWorstBadge(m);
   if (badge) cardShapes.insertBefore(badge, cardShapes.firstChild);
+  // Confidence annotation on card when exactly one shape filter active.
+  if (state.shapes.size === 1 && m.confidence) {
+    const activeShape = [...state.shapes][0];
+    const score = m.confidence[activeShape];
+    if (score != null && score >= 0.5) {
+      const conf = score >= 0.75 ? 'strong match' : 'moderate match';
+      const note = document.createElement('span');
+      note.className = 'shape-confidence-note';
+      note.textContent = conf;
+      cardShapes.appendChild(note);
+    }
+  }
   fillProviderTags(cardShapes, m.providers);
 
   drawCurve(node.querySelector('.curve'), m.episodes, 300, 70, 0);
@@ -2099,7 +2162,8 @@ function drawCurve(svg, episodes, W, H, opts) {
       if (episodes[i].episode === 0) c.classList.add('special-ep');
       const title = document.createElementNS('http://www.w3.org/2000/svg', 'title');
       const epLabel = episodes[i].episode === 0 ? 'Ep 0 (pre-season special)' : `Ep ${episodes[i].episode}`;
-      title.textContent = `${epLabel}: ${episodes[i].rating.toFixed(1)} · ${episodes[i].votes.toLocaleString()} votes`;
+      const epNamePart = episodes[i].name ? `\n${episodes[i].name}` : '';
+      title.textContent = `${epLabel}: ${episodes[i].rating.toFixed(1)} · ${episodes[i].votes.toLocaleString()} votes${epNamePart}`;
       c.appendChild(title);
       dots.appendChild(c);
     }
@@ -2479,10 +2543,10 @@ function seasonColor(i, total) {
 }
 
 // Draw every season's curve on a shared chart so the user can visually
-// compare per-season shape, slope, and absolute rating. X is normalized to
-// 0..1 (episode index / season length) so seasons of different lengths align.
-// Y range spans the global min/max across all seasons (slightly padded).
-function drawSeasonOverlay(svg, seasons, W, H) {
+// compare per-season shape, slope, and absolute rating.
+// When normalize=true, x maps episode index to 0..1 fraction so seasons of
+// different lengths overlay on the same 0–100% x-axis scale.
+function drawSeasonOverlay(svg, seasons, W, H, { normalize = false } = {}) {
   const padXLeft = 36;
   const padXRight = 10;
   const padY = 12;
@@ -2502,15 +2566,22 @@ function drawSeasonOverlay(svg, seasons, W, H) {
   // Axis first so the season curves draw on top of the gridlines.
   drawYAxis(svg, lo, hi, padXLeft, padXRight, padY, W, H);
 
+  // When not normalized, share the same absolute x scale across all seasons
+  // so episode 5 of S1 aligns with episode 5 of S3 (even if S3 has more eps).
+  const globalMaxEps = normalize ? 1 : Math.max(...seasons.map((s) => s.episodes.length));
+
   const NS = 'http://www.w3.org/2000/svg';
   const colors = [];
   seasons.forEach((s, idx) => {
     const color = seasonColor(idx, seasons.length);
     colors.push({ season: s.season, color });
     const n = s.episodes.length;
-    const xStep = n > 1 ? (W - padXLeft - padXRight) / (n - 1) : 0;
+    const plotW = W - padXLeft - padXRight;
     const points = s.episodes.map((e, i) => {
-      const x = padXLeft + (n > 1 ? i * xStep : (W - padXLeft - padXRight) / 2);
+      const xFrac = normalize
+        ? (n > 1 ? i / (n - 1) : 0.5)
+        : (globalMaxEps > 1 ? i / (globalMaxEps - 1) : 0.5);
+      const x = padXLeft + xFrac * plotW;
       const y = padY + (1 - (e.rating - lo) / span) * (H - padY * 2);
       return [x, y];
     });
@@ -2556,9 +2627,9 @@ function syncCompareButton() {
 
 // Trajectory chart: for each selected series, plot one polyline whose x is
 // the season index (1..N for that show) and y is that season's avg rating.
-// Series with different season counts share a normalized x so they overlay
-// cleanly. Hover the line for series + season detail.
-function drawCompareChart(svg, seriesEntries, W, H) {
+// When normalize=true, x maps to [0,W] as a fraction of season count so
+// shows with different season lengths overlay cleanly on a 0–100% scale.
+function drawCompareChart(svg, seriesEntries, W, H, { normalize = false } = {}) {
   while (svg.firstChild) svg.removeChild(svg.firstChild);
   if (!seriesEntries.length) return;
 
@@ -2577,12 +2648,20 @@ function drawCompareChart(svg, seriesEntries, W, H) {
   hi = Math.min(10, hi + 0.3);
   const span = Math.max(0.1, hi - lo);
 
+  // When not normalized, use the global max season count so all series share
+  // the same absolute x positions (season 1 aligns with season 1, etc.).
+  const globalMaxSeasons = normalize ? 1 : Math.max(...seriesEntries.map(({ seasons }) => seasons.length));
+
   seriesEntries.forEach(({ title, seasons }, idx) => {
     const color = seasonColor(idx, seriesEntries.length);
     const n = seasons.length;
-    const xStep = n > 1 ? (W - padX * 2) / (n - 1) : 0;
     const points = seasons.map((s, i) => {
-      const x = padX + (n > 1 ? i * xStep : (W - padX * 2) / 2);
+      // normalize=true: each series spans 0–100% regardless of season count.
+      // normalize=false: position by absolute season index on shared axis.
+      const xFrac = normalize
+        ? (n > 1 ? i / (n - 1) : 0.5)
+        : (globalMaxSeasons > 1 ? i / (globalMaxSeasons - 1) : 0.5);
+      const x = padX + xFrac * (W - padX * 2);
       const y = padY + (1 - (s.avgRating - lo) / span) * (H - padY * 2);
       return [x, y, s];
     });
@@ -2664,7 +2743,11 @@ function renderCompareModal() {
     closeCompareModal();
     return;
   }
-  drawCompareChart(els.compareModalCurve, entries, 600, 240);
+  const normalizeChk = document.getElementById('compareNormalize');
+  const normalize = normalizeChk ? normalizeChk.checked : false;
+  const noteEl = document.getElementById('compareNormalizeNote');
+  if (noteEl) noteEl.hidden = !normalize;
+  drawCompareChart(els.compareModalCurve, entries, 600, 240, { normalize });
   renderCompareLegend(entries);
 }
 
@@ -2744,6 +2827,19 @@ function openModal(m, opts = {}) {
     m.shapes.filter((s) => s !== 'saved-best-for-last'),
     { clickable: false },
   );
+  // Confidence annotation: when exactly one shape filter is active, show
+  // a subtle "strong/moderate match" label under the matching shape chip.
+  if (state.shapes.size === 1 && m.confidence) {
+    const activeShape = [...state.shapes][0];
+    const score = m.confidence[activeShape];
+    if (score != null && score >= 0.5) {
+      const conf = score >= 0.75 ? 'strong match' : 'moderate match';
+      const note = document.createElement('span');
+      note.className = 'shape-confidence-note';
+      note.textContent = conf;
+      els.modalShapes.appendChild(note);
+    }
+  }
   fillProviderTags(els.modalShapes, m.providers || []);
 
   const climb = m.lastRating - m.firstRating;
@@ -2775,7 +2871,20 @@ function openModal(m, opts = {}) {
       driftNoteEl.className = 'modal-drift-note';
       els.modalOverview.insertAdjacentElement('afterend', driftNoteEl);
     }
-    driftNoteEl.textContent = `⇌ ${m.driftNote}`;
+    driftNoteEl.replaceChildren();
+    const driftIcon = document.createElement('span');
+    driftIcon.setAttribute('aria-hidden', 'true');
+    driftIcon.textContent = '⇌ ';
+    driftNoteEl.appendChild(driftIcon);
+    // Show "from X to Y" annotation when prior/new shapes are known.
+    if (m.driftPriorShapes && m.driftPriorShapes.length && m.driftNewShape) {
+      const prior = m.driftPriorShapes.map((s) => SHAPE_LABELS[s] || s).join('/');
+      const next = SHAPE_LABELS[m.driftNewShape] || m.driftNewShape;
+      driftNoteEl.appendChild(document.createTextNode(
+        `This season shifted from ${prior} to ${next}. `,
+      ));
+    }
+    driftNoteEl.appendChild(document.createTextNode(m.driftNote));
     driftNoteEl.hidden = false;
   } else if (driftNoteEl) {
     driftNoteEl.hidden = true;
@@ -2817,13 +2926,14 @@ function openModal(m, opts = {}) {
     }
 
     // Episode title — populated by build-data.js from IMDb's
-    // title.basics.tsv. Falls back to empty (hidden via CSS) when the
-    // data was built without title support.
+    // title.basics.tsv. When present, promoted to primary label text;
+    // ep number becomes secondary context. Falls back gracefully when absent.
     const name = document.createElement('span');
     name.className = 'ep-name';
     if (e.name) {
       name.textContent = e.name;
       name.title = e.name;     // tooltip when truncated
+      name.classList.add('ep-name-primary');
     }
 
     const meta = document.createElement('span');
@@ -3005,7 +3115,7 @@ function openShowModal(seriesId, opts = {}) {
   // render so streaming chips look identical across every surface. The
   // mainstream-provider filter happens inside fillProviderTags.
   els.showModalProviders.replaceChildren();
-  fillProviderTags(els.showModalProviders, meta.providers || []);
+  fillProviderTagsLinked(els.showModalProviders, meta.providers || [], meta.title);
   syncShowModalWatchOnLink(meta);
 
   els.showModalOverview.textContent = meta.overview || '';
@@ -3038,6 +3148,10 @@ function openShowModal(seriesId, opts = {}) {
   // Overlay chart: only useful when there's >1 season to compare.
   if (seasons.length > 1) {
     els.showModalOverlay.hidden = false;
+    const normalizeChk = document.getElementById('showModalNormalize');
+    if (normalizeChk) normalizeChk.checked = false;
+    const noteEl = document.getElementById('showModalNormalizeNote');
+    if (noteEl) noteEl.hidden = true;
     const colors = drawSeasonOverlay(els.showModalOverlayCurve, seasons, 600, 200);
     const legendFrag = document.createDocumentFragment();
     for (const { season, color } of colors) {
@@ -3788,7 +3902,152 @@ function onToolbarChange() {
 }
 
 function shareSeasonCard(m) {
+  // Try to render a PNG share card via Canvas; fall back to text if Canvas
+  // is unavailable (server-side rendering context, old browser).
+  if (typeof document !== 'undefined' && document.createElement) {
+    try {
+      renderShareCardImage(m, els.modalShareCard);
+      return;
+    } catch (_) { /* fall through to text */ }
+  }
   shareText(buildSeasonShareText(m), els.modalShareCard);
+}
+
+// Render an offscreen Canvas with the season curve, shapes, title, and stats,
+// then trigger a PNG download (or share via Web Share API on mobile).
+function renderShareCardImage(m, buttonEl) {
+  const W = 800, H = 420;
+  const canvas = document.createElement('canvas');
+  canvas.width = W;
+  canvas.height = H;
+  const ctx = canvas.getContext('2d');
+  if (!ctx) { shareText(buildSeasonShareText(m), buttonEl); return; }
+
+  // Background
+  ctx.fillStyle = '#07090f';
+  ctx.fillRect(0, 0, W, H);
+
+  // Subtle gradient wash
+  const grad = ctx.createRadialGradient(W / 2, 0, 0, W / 2, 0, H * 0.8);
+  grad.addColorStop(0, 'rgba(245,197,24,0.07)');
+  grad.addColorStop(1, 'rgba(0,0,0,0)');
+  ctx.fillStyle = grad;
+  ctx.fillRect(0, 0, W, H);
+
+  // Curve area (left side)
+  const curveLeft = 220, curveTop = 100, curveW = W - curveLeft - 32, curveH = 200;
+  const episodes = m.episodes;
+  if (episodes && episodes.length > 0) {
+    const ratings = episodes.map((e) => e.rating);
+    const lo = Math.max(0, Math.min(...ratings) - 0.3);
+    const hi = Math.min(10, Math.max(...ratings) + 0.3);
+    const span = Math.max(0.1, hi - lo);
+    const n = episodes.length;
+    const xStep = n > 1 ? curveW / (n - 1) : 0;
+    const pts = ratings.map((r, i) => [
+      curveLeft + (n > 1 ? i * xStep : curveW / 2),
+      curveTop + (1 - (r - lo) / span) * curveH,
+    ]);
+
+    // Filled area
+    ctx.beginPath();
+    ctx.moveTo(pts[0][0], pts[0][1]);
+    for (let i = 1; i < pts.length; i++) ctx.lineTo(pts[i][0], pts[i][1]);
+    ctx.lineTo(pts[pts.length - 1][0], curveTop + curveH);
+    ctx.lineTo(pts[0][0], curveTop + curveH);
+    ctx.closePath();
+    ctx.fillStyle = 'rgba(245,197,24,0.15)';
+    ctx.fill();
+
+    // Line
+    ctx.beginPath();
+    ctx.moveTo(pts[0][0], pts[0][1]);
+    for (let i = 1; i < pts.length; i++) ctx.lineTo(pts[i][0], pts[i][1]);
+    ctx.strokeStyle = '#f5c518';
+    ctx.lineWidth = 2.5;
+    ctx.lineJoin = 'round';
+    ctx.lineCap = 'round';
+    ctx.stroke();
+
+    // Dots
+    ctx.fillStyle = '#f5c518';
+    for (const [x, y] of pts) {
+      ctx.beginPath();
+      ctx.arc(x, y, 4, 0, Math.PI * 2);
+      ctx.fill();
+    }
+  }
+
+  // Title
+  ctx.font = 'bold 28px system-ui, sans-serif';
+  ctx.fillStyle = '#f1f3f8';
+  ctx.fillText(m.title, 32, 68, 180);
+
+  // Season + year
+  const seasonYearStr = (m.seasonYear || m.year) ? ` · ${m.seasonYear || m.year}` : '';
+  ctx.font = '16px system-ui, sans-serif';
+  ctx.fillStyle = '#a4adbd';
+  ctx.fillText(`Season ${m.season}${seasonYearStr}`, 32, 96);
+
+  // Shape chips (text)
+  const shapes = (m.shapes || []).filter((s) => s !== 'saved-best-for-last');
+  ctx.font = 'bold 13px system-ui, sans-serif';
+  ctx.fillStyle = '#f5c518';
+  let shapeY = 140;
+  for (const s of shapes.slice(0, 4)) {
+    ctx.fillText(SHAPE_LABELS[s] || s, 32, shapeY);
+    shapeY += 22;
+  }
+
+  // Stats
+  const climb = m.lastRating - m.firstRating;
+  const climbStr = (climb >= 0 ? '+' : '') + climb.toFixed(1);
+  ctx.font = '14px system-ui, sans-serif';
+  ctx.fillStyle = '#34d39e';
+  ctx.fillText(`${m.firstRating.toFixed(1)} → ${m.lastRating.toFixed(1)} (${climbStr})`, 32, shapeY + 20);
+  ctx.fillStyle = '#a4adbd';
+  ctx.fillText(`Avg ${m.avgRating.toFixed(1)} · ${m.episodes.length} eps`, 32, shapeY + 44);
+
+  // Watermark
+  ctx.font = '12px system-ui, sans-serif';
+  ctx.fillStyle = 'rgba(164,173,189,0.5)';
+  ctx.fillText('shevato.com/apps/rising-seasons', 32, H - 20);
+
+  const flashLabel = (label) => {
+    if (!buttonEl) return;
+    const orig = buttonEl.dataset.origLabel || buttonEl.textContent;
+    buttonEl.dataset.origLabel = orig;
+    buttonEl.textContent = label;
+    setTimeout(() => {
+      buttonEl.textContent = orig;
+      delete buttonEl.dataset.origLabel;
+    }, 1800);
+  };
+
+  const filename = `${m.title} - Season ${m.season}.png`.replace(/[/\\?%*:|"<>]/g, '-');
+  canvas.toBlob((blob) => {
+    if (!blob) { shareText(buildSeasonShareText(m), buttonEl); return; }
+    if (navigator.share && navigator.canShare && navigator.canShare({ files: [new File([blob], filename, { type: 'image/png' })] })) {
+      const file = new File([blob], filename, { type: 'image/png' });
+      navigator.share({ files: [file], title: `${m.title} Season ${m.season}` })
+        .then(() => flashLabel('Shared!'))
+        .catch(() => downloadBlob(blob, filename, flashLabel));
+    } else {
+      downloadBlob(blob, filename, flashLabel);
+    }
+  }, 'image/png');
+}
+
+function downloadBlob(blob, filename, flashLabel) {
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  setTimeout(() => URL.revokeObjectURL(url), 5000);
+  if (flashLabel) flashLabel('Downloading…');
 }
 
 // Show-level variant — title, year range, season/episode counts,
@@ -3983,6 +4242,29 @@ function bindEvents() {
     });
   }
 
+  const worstBtn = document.getElementById('worstSeasonPreset');
+  if (worstBtn) {
+    worstBtn.addEventListener('click', () => {
+      state.worstPreset = !state.worstPreset;
+      worstBtn.setAttribute('aria-pressed', state.worstPreset ? 'true' : 'false');
+      onFilterChange();
+      updateWorstPresetCount();
+    });
+  }
+  updateWorstPresetCount();
+
+  const tonightBtn = document.getElementById('tonightBtn');
+  const tonightPicker = document.getElementById('tonightPicker');
+  if (tonightBtn && tonightPicker) {
+    tonightBtn.addEventListener('click', () => {
+      const open = !tonightPicker.hidden;
+      tonightPicker.hidden = open;
+      tonightBtn.setAttribute('aria-pressed', !open ? 'true' : 'false');
+      if (!open) resetTonightPicker();
+    });
+    bindTonightPicker(tonightPicker, tonightBtn);
+  }
+
   // Reroll inherits whichever mode opened the modal — 'any' or 'popular' —
   // so the dice button feels consistent with the entry point.
   els.modalReroll.addEventListener('click', () => {
@@ -4086,6 +4368,42 @@ function bindEvents() {
     syncAllCompareClasses();
     closeCompareModal();
   });
+
+  const compareNormalizeChk = document.getElementById('compareNormalize');
+  if (compareNormalizeChk) {
+    compareNormalizeChk.addEventListener('change', renderCompareModal);
+  }
+
+  const showModalNormalizeChk = document.getElementById('showModalNormalize');
+  if (showModalNormalizeChk) {
+    showModalNormalizeChk.addEventListener('change', () => {
+      const noteEl = document.getElementById('showModalNormalizeNote');
+      if (noteEl) noteEl.hidden = !showModalNormalizeChk.checked;
+      if (!showModalState.seriesId) return;
+      const seasons = dataset.matches
+        .filter((m) => m.seriesId === showModalState.seriesId)
+        .sort((a, b) => a.season - b.season);
+      if (seasons.length > 1) {
+        const colors = drawSeasonOverlay(
+          els.showModalOverlayCurve, seasons, 600, 200,
+          { normalize: showModalNormalizeChk.checked },
+        );
+        const legendFrag = document.createDocumentFragment();
+        for (const { season, color } of colors) {
+          const item = document.createElement('span');
+          item.className = 'overlay-legend-item';
+          const swatch = document.createElement('span');
+          swatch.className = 'overlay-legend-swatch';
+          swatch.style.background = color;
+          const label = document.createElement('span');
+          label.textContent = `S${season}`;
+          item.append(swatch, label);
+          legendFrag.appendChild(item);
+        }
+        els.showModalOverlayLegend.replaceChildren(legendFrag);
+      }
+    });
+  }
   els.modalViewShow.addEventListener('click', () => {
     if (!modalState.season) return;
     openShowModal(modalState.season.seriesId);
@@ -4506,7 +4824,7 @@ function buildStickyShapeRow() {
   const frag = document.createDocumentFragment();
   const order = ['rising', 'consistent', 'slow-burn', 'big-finale', 'rebound',
                  'front-loaded', 'declining', 'bad-finale', 'rollercoaster',
-                 'mid-peak', 'u-shaped', 'saved-best-for-last', 'shape-drift'];
+                 'mid-peak', 'u-shaped', 'saved-best-for-last', 'shape-drift', 'outlier-peak'];
   for (const s of order) {
     const btn = document.createElement('button');
     btn.type = 'button';
@@ -4613,6 +4931,8 @@ function renderShapeAnnotationText(m) {
         return `This is the show's highest-rated season — final run averages ${m.avgRating.toFixed(1)}.`;
       case 'shape-drift':
         return `Late-run shape or quality shifted relative to earlier seasons.`;
+      case 'outlier-peak':
+        return `One interior episode (Ep ${maxIdx + 1}, ${max.toFixed(1)}) stands well above the season average of ${m.avgRating.toFixed(1)}.`;
       default:
         return null;
     }
@@ -4715,6 +5035,74 @@ function moveShapeChipFocus(delta) {
   else i = Math.max(0, Math.min(chips.length - 1, i + delta));
   chips[i].focus();
   return true;
+}
+
+function updateWorstPresetCount() {
+  const countEl = document.getElementById('worstSeasonPresetCount');
+  if (!countEl || !dataset) return;
+  let n = 0;
+  for (const m of dataset.matches) {
+    if (typeof m.seriesRating !== 'number' || m.seriesRating < 8) continue;
+    if (worstSeasonBySeries.get(m.seriesId) !== m.season) continue;
+    if (!m.shapes.includes('bad-finale') && !m.shapes.includes('declining')) continue;
+    n++;
+  }
+  countEl.textContent = n.toLocaleString();
+}
+
+function resetTonightPicker() {
+  const step1 = document.getElementById('tonightStep1');
+  const step2 = document.getElementById('tonightStep2');
+  if (step1) step1.hidden = false;
+  if (step2) step2.hidden = true;
+  for (const c of document.querySelectorAll('.tonight-chip')) {
+    c.removeAttribute('aria-pressed');
+  }
+}
+
+function bindTonightPicker(picker, tonightBtn) {
+  let selectedMood = null;
+  const step1 = picker.querySelector('#tonightStep1');
+  const step2 = picker.querySelector('#tonightStep2');
+
+  for (const chip of picker.querySelectorAll('[data-mood]')) {
+    chip.addEventListener('click', () => {
+      selectedMood = chip.dataset.mood;
+      if (step1) step1.hidden = true;
+      if (step2) step2.hidden = false;
+    });
+  }
+
+  for (const chip of picker.querySelectorAll('[data-time]')) {
+    chip.addEventListener('click', () => {
+      const time = chip.dataset.time;
+      // Apply filters based on mood + time
+      state.shapes.clear();
+      if (selectedMood && selectedMood !== 'surprise') {
+        state.shapes.add(selectedMood);
+      }
+      // Time budget: short = ≤6 eps, full = ≥8 eps, any = no constraint
+      state.minEpisodes = null;
+      state.maxEpisodes = null;
+      if (time === 'short') {
+        state.maxEpisodes = 6;
+        els.maxEpisodes.value = '6';
+      } else if (time === 'full') {
+        state.minEpisodes = 8;
+        els.minEpisodes.value = '8';
+      }
+      // Close picker
+      picker.hidden = true;
+      tonightBtn.setAttribute('aria-pressed', 'false');
+      syncShapeChipsAria();
+      onFilterChange();
+      // Pick from popular pool after filter applies
+      requestAnimationFrame(() => {
+        const pick = surprisePick('popular');
+        if (pick) openModal(pick, { surprise: 'popular' });
+      });
+    });
+  }
 }
 
 // Live remote-update channel: another device toggled a watched

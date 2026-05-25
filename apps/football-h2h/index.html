@@ -245,6 +245,12 @@
     <!-- Main Container -->
     <div class="app-container">
         <div class="main-wrapper">
+            <!-- Rematch nudge banner -->
+            <div id="rematch-nudge" class="rematch-nudge" style="display:none;" role="alert">
+                <span class="rematch-nudge-text"></span>
+                <button class="rematch-nudge-dismiss" onclick="dismissRematchNudge()" aria-label="Dismiss">×</button>
+            </div>
+
             <!-- Header Section -->
             <header class="app-header">
                 <h1 class="app-title">
@@ -253,6 +259,46 @@
                     <span class="football-icon">⚽</span>
                 </h1>
             </header>
+
+            <!-- Session bar -->
+            <div class="session-bar">
+                <button id="session-start-btn" class="session-btn session-btn-start" onclick="startSession()">▶ Start Session</button>
+                <button id="session-end-btn" class="session-btn session-btn-end" onclick="endSession()" style="display:none;">■ End Session</button>
+                <div id="session-banner" class="session-active-banner" style="display:none;"></div>
+            </div>
+
+            <!-- Quick-log floating button + panel -->
+            <button class="quick-log-fab" onclick="toggleQuickLog()" aria-label="Quick game log" title="Quick game">+</button>
+            <div id="quick-log-panel" class="quick-log-panel" style="display:none;">
+                <div class="quick-log-header">
+                    <span class="quick-log-title">Quick Game</span>
+                    <span class="quick-log-team" id="ql-team-display">Ultimate Team</span>
+                    <button class="quick-log-close" onclick="toggleQuickLog()" aria-label="Close">×</button>
+                </div>
+                <div class="quick-log-scores">
+                    <div class="quick-log-player">
+                        <label id="ql-p1-label">P1</label>
+                        <input type="number" id="ql-p1-goals" class="quick-log-input" min="0" max="99"
+                               placeholder="0" oninput="checkQuickLogDraw()">
+                    </div>
+                    <span class="quick-log-vs">–</span>
+                    <div class="quick-log-player">
+                        <label id="ql-p2-label">P2</label>
+                        <input type="number" id="ql-p2-goals" class="quick-log-input" min="0" max="99"
+                               placeholder="0" oninput="checkQuickLogDraw()">
+                    </div>
+                </div>
+                <div id="ql-penalty-section" class="quick-log-penalty" style="display:none;">
+                    <label>Penalties:</label>
+                    <select id="ql-penalty-winner" class="quick-log-select">
+                        <option value="">Select result</option>
+                        <option value="1">P1 wins</option>
+                        <option value="2">P2 wins</option>
+                        <option value="draw">Draw</option>
+                    </select>
+                </div>
+                <button class="quick-log-save" onclick="submitQuickLog()">Save</button>
+            </div>
 
 
 
@@ -303,16 +349,21 @@
 
                 <!-- H2H Stats Tab Content -->
                 <section class="stats-overview stats-tab-content active" id="h2h-stats" role="tabpanel" aria-labelledby="tab-h2h">
+                    <!-- Rivalry headline -->
+                    <div id="rivalry-headline" class="rivalry-headline" style="display:none;"></div>
+
                     <!-- Total Wins Row -->
                     <h3 class="h2h-section-title">Total Wins</h3>
                     <div class="stats-grid h2h-row">
                         <div class="stat-card player1-card">
                             <div class="stat-label"><span id="player1StatsName">Player 1</span></div>
                             <div class="stat-value" id="player1Wins">0</div>
+                            <div class="stat-last10" id="last10-p1"></div>
                         </div>
                         <div class="stat-card player2-card">
                             <div class="stat-label"><span id="player2StatsName">Player 2</span></div>
                             <div class="stat-value" id="player2Wins">0</div>
+                            <div class="stat-last10" id="last10-p2"></div>
                         </div>
                         <div class="stat-card draws-card">
                             <div class="stat-label">Draws</div>
@@ -353,6 +404,14 @@
                             <div class="stat-value" id="player2PenaltyWins">0</div>
                         </div>
                     </div>
+
+                    <!-- Goal difference trend chart -->
+                    <h3 class="h2h-section-title">Goal Difference Over Time</h3>
+                    <div id="goal-diff-chart" class="goal-diff-chart"></div>
+
+                    <!-- All-time records wall -->
+                    <h3 class="h2h-section-title">All-Time Records</h3>
+                    <div id="records-wall" class="records-wall"></div>
                 </section>
 
                 <!-- General Stats Tab Content -->
@@ -523,5 +582,6 @@
     <script src="js/sidebar.js"></script>
     <script src="js/football-h2h.js"></script>
     <script src="js/backup.js"></script>
+    <script src="js/features.js"></script>
 </body>
 </html>

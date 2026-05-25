@@ -555,6 +555,52 @@ export class AchievementService {
     }
 
     /**
+     * Check whether any exercise in the just-finished session set a new
+     * weight PR. Returns an array of objects:
+     *   { exerciseId, exerciseName, newMax, prevMax }
+     *
+     * Rate-limit: skip exercises where a PR achievement was already fired
+     * within the last 7 days (avoids deload-week noise). The caller is
+     * responsible for persisting a `prAchievementDates` map (exerciseId →
+     * ISO date string of last PR achievement) alongside stored achievements.
+     *
+     * `priorSessions` must NOT include the just-finished session.
+     */
+    static checkExercisePRs(session, priorSessions, prAchievementDates = {}) {
+        const results = [];
+        const cutoff = Date.now() - 7 * 24 * 60 * 60 * 1000;
+
+        (session.exercises || []).forEach(ex => {
+            const lastFired = prAchievementDates[ex.exerciseId];
+            if (lastFired && new Date(lastFired).getTime() > cutoff) return;
+
+            const sessionMax = (ex.sets || []).reduce((m, s) => Math.max(m, (s.weight || 0)), 0);
+            if (sessionMax <= 0) return;
+
+            let prevMax = 0;
+            priorSessions.forEach(s => {
+                (s.exercises || []).forEach(pe => {
+                    if (pe.exerciseId !== ex.exerciseId) return;
+                    (pe.sets || []).forEach(set => {
+                        if ((set.weight || 0) > prevMax) prevMax = set.weight;
+                    });
+                });
+            });
+
+            if (prevMax > 0 && sessionMax > prevMax) {
+                results.push({
+                    exerciseId: ex.exerciseId,
+                    exerciseName: ex.exerciseName,
+                    newMax: sessionMax,
+                    prevMax,
+                });
+            }
+        });
+
+        return results;
+    }
+
+    /**
      * Whether an achievement is a recurring (resets each period) goal.
      */
     static isRecurring(achievement) {

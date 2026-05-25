@@ -4522,3 +4522,145 @@ body.advanced-drawer-open {
   background: var(--accent-soft);
   color: var(--accent);
 }
+
+/* ---- Item 3: Shape confidence note ---- */
+.shape-confidence-note {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.12rem 0.55rem;
+  border-radius: 999px;
+  font-size: 0.7rem;
+  font-weight: 600;
+  background: rgba(245, 197, 24, 0.1);
+  border: 1px solid rgba(245, 197, 24, 0.25);
+  color: var(--accent);
+  letter-spacing: 0.03em;
+  white-space: nowrap;
+}
+
+/* ---- Item 7: Provider badge as link ---- */
+.provider-tag-linked {
+  cursor: pointer;
+  text-decoration: none !important;
+  color: var(--text) !important;
+  transition: background 0.15s, border-color 0.15s;
+}
+.provider-tag-linked:hover {
+  background: rgba(245, 197, 24, 0.12);
+  border-color: rgba(245, 197, 24, 0.32);
+  color: var(--accent) !important;
+}
+
+/* ---- Item 9: Footer freshness button ---- */
+.footer-freshness-btn {
+  background: none;
+  border: none;
+  padding: 0;
+  font: inherit;
+  font-size: 0.82rem;
+  color: var(--muted);
+  cursor: pointer;
+  text-decoration: underline dotted;
+  text-underline-offset: 3px;
+}
+.footer-freshness-btn:hover { color: var(--text); }
+.footer-freshness-btn.is-stale {
+  color: var(--warn);
+}
+.footer-freshness-btn.is-stale:hover {
+  color: #fb923c;
+}
+
+/* ---- Item 4: Tonight's Watch Picker ---- */
+.tonight-picker {
+  background: var(--surface);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius);
+  padding: 1rem 1.25rem;
+  margin: 0 0 1rem;
+  max-width: 520px;
+  animation: tooltip-in 0.15s var(--ease) both;
+}
+.tonight-picker[hidden] { display: none; }
+.tonight-step-label {
+  font-size: 0.88rem;
+  font-weight: 600;
+  color: var(--muted);
+  margin: 0 0 0.6rem;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+.tonight-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+}
+.tonight-chip {
+  display: inline-flex;
+  align-items: center;
+  height: 30px;
+  padding: 0 0.85rem;
+  border-radius: 999px;
+  border: 1px solid var(--border-strong);
+  background: var(--surface-2);
+  color: var(--text);
+  font: inherit;
+  font-size: 0.82rem;
+  font-weight: 600;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background 0.15s, border-color 0.15s, color 0.15s;
+}
+.tonight-chip:hover {
+  background: rgba(245, 197, 24, 0.1);
+  border-color: rgba(245, 197, 24, 0.35);
+  color: var(--accent);
+}
+.tonight-step[hidden] { display: none; }
+
+/* ---- Item 2: Worst season preset button (re-uses mood-chip, just ensure button resets) ---- */
+button.mood-chip {
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  font-family: inherit;
+}
+
+/* ---- Item 10: Compare normalize toggle ---- */
+.compare-normalize-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  font-size: 0.83rem;
+  color: var(--muted);
+  cursor: pointer;
+  user-select: none;
+}
+.compare-normalize-label input[type="checkbox"] {
+  accent-color: var(--accent);
+  width: 14px;
+  height: 14px;
+}
+.compare-normalize-note {
+  font-size: 0.78rem;
+  color: var(--muted-2);
+  margin: 0.4rem 0 0;
+  font-style: italic;
+}
+.compare-normalize-note[hidden] { display: none; }
+
+/* ---- Item 10: Show modal overlay header with normalize toggle ---- */
+.overlay-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+}
+.overlay-header h3 { margin: 0; }
+
+/* ---- Item 5: Episode name primary label ---- */
+.ep-name-primary {
+  font-weight: 600;
+  color: var(--text);
+}
+
+/* ---- Item 1: Share card button updates — keep same visuals ---- */

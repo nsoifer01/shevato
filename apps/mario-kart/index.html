@@ -166,6 +166,18 @@
                     <span class="add-icon">🏁</span>
                     <span class="add-text">Add Race</span>
                 </button>
+                <button id="gp-mode-btn" class="sidebar-add-race-btn" onclick="toggleGPMode()" style="margin-top:0.5rem;">
+                    <span class="add-icon">🏎️</span>
+                    <span class="add-text">Log GP (4 Races)</span>
+                </button>
+                <div class="sidebar-race-form" id="gp-mode-panel" style="display:none;">
+                    <div class="sidebar-race-error" id="gp-errors" style="display:none;"></div>
+                    <div id="gp-rows-container"><!-- GP rows generated dynamically --></div>
+                    <div class="sidebar-race-actions">
+                        <button class="sidebar-submit-race" onclick="saveGPBatch()">🏆 Save GP</button>
+                        <button class="sidebar-cancel-race" onclick="closeGPMode()">Cancel</button>
+                    </div>
+                </div>
                 <div class="sidebar-race-form" id="sidebar-race-form">
                     <div class="sidebar-race-error" id="sidebar-race-error"></div>
                     <div class="sidebar-race-inputs" id="sidebar-race-inputs">
@@ -250,6 +262,8 @@
             <button class="toggle-btn" onclick="toggleView('analysis')" role="tab" aria-selected="false" aria-controls="stats-display">🔍 Analysis</button>
             <button class="toggle-btn" onclick="toggleView('activity')" role="tab" aria-selected="false" aria-controls="stats-display">📅 Activity</button>
             <button class="toggle-btn" onclick="toggleView('trends')" role="tab" aria-selected="false" aria-controls="stats-display">📈 Trends</button>
+            <button class="toggle-btn" onclick="toggleView('tracks')" role="tab" aria-selected="false" aria-controls="stats-display">🗺️ Tracks</button>
+            <button class="toggle-btn" onclick="toggleView('championship')" role="tab" aria-selected="false" aria-controls="stats-display">🏆 Championship</button>
         </div>
         
         <!-- Help Information Panel (preserved for help tab content) -->
@@ -545,6 +559,12 @@
                 <input type="date" id="filter-end-date" placeholder="End Date">
                 <button onclick="applyCustomDateFilter()">Apply</button>
             </div>
+            <div class="mode-filter-controls" style="margin-top:0.5rem; display:flex; gap:0.4rem; flex-wrap:wrap;">
+                <button class="mode-filter-btn active" data-mode="all" onclick="setModeFilter('all')">All Modes</button>
+                <button class="mode-filter-btn" data-mode="Items" onclick="setModeFilter('Items')">Items</button>
+                <button class="mode-filter-btn" data-mode="No Items" onclick="setModeFilter('No Items')">No Items</button>
+                <button class="mode-filter-btn" data-mode="200cc" onclick="setModeFilter('200cc')">200cc</button>
+            </div>
         </div>
 
 
@@ -585,6 +605,7 @@
     <script src="../../assets/js/escape-html.js"></script>
     <script src="../../assets/js/sync-status.js"></script>
     <script src="js/constants.js"></script>
+    <script src="js/tracks.js"></script>
     <script src="js/gameVersionManager.js"></script>
     <script src="js/modalUtils.js"></script>
     <script src="js/playerNameManager.js"></script>
@@ -635,6 +656,8 @@
     <script src="../../assets/js/main.js"></script>
     <script src="../../assets/js/year-updater.js"></script>
     
+    <script src="js/newViews.js"></script>
+    <script src="js/gpMode.js"></script>
     <!-- Main script must load last -->
     <script src="js/main.js"></script>
 

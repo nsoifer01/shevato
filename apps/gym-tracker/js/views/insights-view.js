@@ -41,19 +41,23 @@ class InsightsView {
         const empty = document.getElementById('insights-empty');
         const volumeSection = document.getElementById('insights-volume-section');
         const heatmapSection = document.getElementById('insights-heatmap-section');
+        const progressionSection = document.getElementById('insights-progression-section');
 
         if (sessions.length === 0) {
             if (empty) empty.hidden = false;
             if (volumeSection) volumeSection.hidden = true;
             if (heatmapSection) heatmapSection.hidden = true;
+            if (progressionSection) progressionSection.hidden = true;
             return;
         }
         if (empty) empty.hidden = true;
         if (volumeSection) volumeSection.hidden = false;
         if (heatmapSection) heatmapSection.hidden = false;
+        if (progressionSection) progressionSection.hidden = false;
 
         this.renderVolumeBars(sessions);
         this.renderHeatmap(sessions);
+        this.renderProgressionChart(sessions);
     }
 
     /**
@@ -182,6 +186,117 @@ class InsightsView {
             const fmt = (d) => d.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' });
             caption.textContent = `${fmt(start)} – ${fmt(today)}`;
         }
+    }
+
+    /**
+     * Exercise progression section: dropdown of all logged exercises,
+     * chart of top-set weight over time using the same inline-SVG pattern
+     * used by the heatmap and measurements sparklines.
+     */
+    renderProgressionChart(sessions) {
+        const section = document.getElementById('insights-progression-section');
+        if (!section) return;
+
+        // Build ordered list of exercises the user has actually logged,
+        // sorted by most-recent session descending (most-used first).
+        const exMap = new Map();
+        sessions.forEach(s => {
+            (s.exercises || []).forEach(ex => {
+                if (!exMap.has(ex.exerciseId)) {
+                    exMap.set(ex.exerciseId, ex.exerciseName || ex.exerciseId);
+                }
+            });
+        });
+
+        if (exMap.size === 0) return;
+
+        const selectEl = section.querySelector('.insights-progression-select');
+        const chartEl = section.querySelector('#insights-prog-chart-host');
+        if (!selectEl || !chartEl) return;
+
+        // Populate dropdown if not yet done (preserve selection across renders).
+        const currentVal = selectEl.value;
+        const optionIds = new Set([...selectEl.options].map(o => o.value));
+        exMap.forEach((name, id) => {
+            const key = String(id);
+            if (!optionIds.has(key)) {
+                const opt = document.createElement('option');
+                opt.value = key;
+                opt.textContent = escapeHtml(name);
+                selectEl.appendChild(opt);
+            }
+        });
+        if (!selectEl.value && selectEl.options.length > 0) {
+            selectEl.value = selectEl.options[0].value;
+        }
+
+        if (!selectEl.dataset.wired) {
+            selectEl.dataset.wired = '1';
+            selectEl.addEventListener('change', () => this._drawProgression(sessions, selectEl, chartEl));
+        }
+
+        this._drawProgression(sessions, selectEl, chartEl);
+    }
+
+    _drawProgression(sessions, selectEl, chartEl) {
+        const exerciseId = Number(selectEl.value) || selectEl.value;
+        const unit = this.app.settings?.weightUnit || 'kg';
+
+        const points = AnalyticsService.getExerciseProgression(exerciseId, sessions);
+        if (points.length < 2) {
+            chartEl.innerHTML = `<p class="insights-prog-empty">Log more sessions to see progress.</p>`;
+            return;
+        }
+
+        const W = 560;
+        const H = 120;
+        const padL = 36;
+        const padR = 10;
+        const padT = 8;
+        const padB = 22;
+        const plotW = W - padL - padR;
+        const plotH = H - padT - padB;
+
+        const weights = points.map(p => p.maxWeight);
+        const minW = Math.min(...weights);
+        const maxW = Math.max(...weights);
+        const rangeW = Math.max(1, maxW - minW);
+
+        const dates = points.map(p => AnalyticsService.toLocalDate(p.date).getTime());
+        const minD = Math.min(...dates);
+        const maxD = Math.max(...dates);
+        const rangeD = Math.max(1, maxD - minD);
+
+        const toX = (d) => padL + ((AnalyticsService.toLocalDate(d).getTime() - minD) / rangeD) * plotW;
+        const toY = (w) => padT + plotH - ((w - minW) / rangeW) * plotH;
+
+        const polyPts = points.map(p => `${toX(p.date).toFixed(1)},${toY(p.maxWeight).toFixed(1)}`).join(' ');
+        const dots = points.map(p =>
+            `<circle class="insights-prog-dot" cx="${toX(p.date).toFixed(1)}" cy="${toY(p.maxWeight).toFixed(1)}" r="3" />`
+        ).join('');
+
+        const fmtDate = (d) => {
+            const dt = AnalyticsService.toLocalDate(d);
+            return dt.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+        };
+
+        const yTicks = [minW, Math.round((minW + maxW) / 2), maxW];
+        const yLabels = yTicks.map(v =>
+            `<text class="insights-prog-label" x="${padL - 4}" y="${toY(v).toFixed(1)}" text-anchor="end" dominant-baseline="middle">${Math.round(v)}</text>`
+        ).join('');
+
+        chartEl.innerHTML = `
+            <svg class="insights-progression-chart" viewBox="0 0 ${W} ${H}" preserveAspectRatio="xMidYMid meet" aria-label="Exercise progression chart">
+                <line class="insights-prog-axis" x1="${padL}" y1="${padT}" x2="${padL}" y2="${padT + plotH}" />
+                <line class="insights-prog-axis" x1="${padL}" y1="${padT + plotH}" x2="${padL + plotW}" y2="${padT + plotH}" />
+                ${yLabels}
+                <text class="insights-prog-label" x="${toX(points[0].date).toFixed(1)}" y="${H - 4}" text-anchor="start">${escapeHtml(fmtDate(points[0].date))}</text>
+                <text class="insights-prog-label" x="${toX(points[points.length - 1].date).toFixed(1)}" y="${H - 4}" text-anchor="end">${escapeHtml(fmtDate(points[points.length - 1].date))}</text>
+                <polyline class="insights-prog-line" points="${polyPts}" />
+                ${dots}
+            </svg>
+            <p style="font-size:0.72rem;color:var(--gt-muted-2);margin:0.2rem 0 0 ${padL}px;">Top-set weight (${escapeHtml(unit)})</p>
+        `;
     }
 }
 

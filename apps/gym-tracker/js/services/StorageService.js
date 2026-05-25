@@ -242,16 +242,17 @@ export class StorageService {
 
     // Data Management
     exportAllData() {
+        const data = {};
+        Object.entries(this.keys).forEach(([, key]) => {
+            const raw = localStorage.getItem(key);
+            if (raw !== null) {
+                try { data[key] = JSON.parse(raw); } catch (_) { data[key] = raw; }
+            }
+        });
         return {
-            programs: this.getPrograms(),
-            sessions: this.getWorkoutSessions(),
-            settings: this.getSettings(),
-            achievements: this.getAchievements(),
-            customExercises: this.getCustomExercises(),
-            measurements: this.getMeasurements(),
-            activeProgram: this.get(this.keys.ACTIVE_PROGRAM),
-            exportDate: new Date().toISOString(),
-            version: StorageService.SCHEMA_VERSION
+            version: StorageService.SCHEMA_VERSION,
+            exportedAt: new Date().toISOString(),
+            data,
         };
     }
 
@@ -310,9 +311,18 @@ export class StorageService {
         return data;
     }
 
-    importAllData(data) {
+    importAllData(payload) {
         try {
-            data = this.migrateImport(data);
+            // Support new { version, exportedAt, data: { ...keys } } shape
+            // and the legacy flat shape for backward compatibility.
+            if (payload && typeof payload.data === 'object' && !Array.isArray(payload.data)) {
+                Object.entries(payload.data).forEach(([key, value]) => {
+                    this.set(key, value);
+                });
+                return true;
+            }
+            // Legacy flat shape
+            const data = this.migrateImport(payload);
             if (data.programs) this.savePrograms(data.programs);
             if (data.sessions) this.saveWorkoutSessions(data.sessions);
             if (data.settings) this.saveSettings(data.settings);

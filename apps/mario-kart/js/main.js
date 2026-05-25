@@ -8,7 +8,7 @@ let sortDirection = 'asc';
 // Matches the pattern gym-tracker and maptap-rivals already use.
 const MARIO_KART_VIEWS = new Set([
     'achievements', 'stats', 'h2h', 'analysis',
-    'activity', 'trends', 'help', 'guide'
+    'activity', 'trends', 'help', 'guide', 'tracks', 'championship'
 ]);
 
 function syncViewFromHash() {
@@ -354,8 +354,31 @@ function generateSidebarRaceInputs() {
         `;
     }
     
+    // Add mode selector and track input below player inputs
+    const gameVer = window.getCurrentGameVersion ? window.getCurrentGameVersion() : 'mk8d';
+    const tracksList = window.getTracksFlatForVersion ? window.getTracksFlatForVersion(gameVer) : [];
+    const modes = window.RACE_MODES || ['Items', 'No Items', '200cc'];
+    html += `
+        <div class="sidebar-extra-fields">
+            <div class="sidebar-extra-field">
+                <label for="sidebar-mode-select">Mode:</label>
+                <select id="sidebar-mode-select" class="sidebar-mode-select">
+                    ${modes.map(m => `<option value="${m}">${m}</option>`).join('')}
+                </select>
+            </div>
+            <div class="sidebar-extra-field">
+                <label for="sidebar-track-input">Track (optional):</label>
+                <input type="text" id="sidebar-track-input" class="sidebar-track-input"
+                    list="sidebar-track-datalist" placeholder="Search tracks..." autocomplete="off">
+                <datalist id="sidebar-track-datalist">
+                    ${tracksList.map(t => `<option value="${escapeHtml ? escapeHtml(t) : t}">`).join('')}
+                </datalist>
+            </div>
+        </div>
+    `;
+
     container.innerHTML = html;
-    
+
     // Add Enter key support for quick submission
     setTimeout(() => {
         const inputs = container.querySelectorAll('input[type="number"]');
@@ -786,8 +809,11 @@ function createH2HView(raceData = null) {
 
     const stats = calculateStats(raceData);
 
+    const rivalryHtml = window.generateRivalryCallouts ? generateRivalryCallouts(stats) : '';
+
     statsDisplay.innerHTML = `
         <div class="h2h-container">
+            ${rivalryHtml ? `<div class="stat-card" style="margin-bottom:1rem;">${rivalryHtml}</div>` : ''}
             <div class="stat-card h2h-card">
                 <div class="h2h-daily-breakdown">
                     <div class="stat-title">Global Head to Head</div>
@@ -1059,6 +1085,8 @@ function updateHistoryTableHeaders() {
         <th>Race #</th>
         <th style="cursor: pointer;" onclick="sortTable('date')" tabindex="0" onkeydown="if(event.key==='Enter'||event.key===' ')sortTable('date')" aria-label="Sort by date">Date ↕</th>
         ${playerHeaders}
+        <th>Mode</th>
+        <th>Track</th>
         <th>Action</th>
     `;
 }
@@ -1110,11 +1138,16 @@ function updateRaceHistoryTable(filteredRaces) {
                 : '<td><span style="color: #718096;">—</span></td>';
         }).join('');
 
+        const modeDisplay = race.mode && race.mode !== 'Items' ? `<span class="race-mode-tag mode-${race.mode.toLowerCase().replace(/\s+/g,'-')}">${race.mode}</span>` : '<span style="color:#718096">—</span>';
+        const trackDisplay = race.track ? escapeHtml(race.track) : '<span style="color:#718096">—</span>';
+
         return `
         <tr>
             <td>${raceNumber}</td>
             <td>${race.date}${race.timestamp ? '<br><small>' + race.timestamp + '</small>' : ''}</td>
             ${playerCells}
+            <td>${modeDisplay}</td>
+            <td style="font-size:0.8em;">${trackDisplay}</td>
             <td>
                 <button class="edit-btn" onclick="editRace(${globalIndex})" title="Edit race">✏️</button>
                 <button class="delete-btn" onclick="deleteRace(${globalIndex})" title="Delete race">🗑️</button>
@@ -1274,6 +1307,12 @@ function updateDisplay() {
             window.updateDynamicUIText();
         }
         return;
+    } else if (currentView === 'tracks') {
+        createTracksView(filteredRaces);
+        return;
+    } else if (currentView === 'championship') {
+        createChampionshipView(filteredRaces);
+        return;
     }
 
     const stats = calculateStats(filteredRaces);
@@ -1380,6 +1419,8 @@ function updateDisplay() {
                     }).join('')}
                 </div>
             </div>
+
+            ${window.renderPodiumPercentCard ? renderPodiumPercentCard(stats) : ''}
         </div>
     `;
 
@@ -1502,11 +1543,38 @@ function createAchievementsView(raceData = null) {
 
         // Update achievements to ensure they're displayed correctly
         updateAchievements(raceData);
-        
+
         // Update player labels to remove tooltips in achievements view
         if (typeof updatePlayerLabels === 'function') {
             updatePlayerLabels();
         }
+    }
+
+    // Add milestones section after the achievements container
+    let milestonesEl = document.getElementById('first-time-milestones-section');
+    if (!milestonesEl) {
+        milestonesEl = document.createElement('div');
+        milestonesEl.id = 'first-time-milestones-section';
+        achievementsViewContainer.appendChild(milestonesEl);
+    }
+    if (window.renderFirstTimeMilestones) {
+        milestonesEl.innerHTML = renderFirstTimeMilestones(raceData);
+    }
+
+    // Show session recap button when 4+ races today
+    const today = new Date().toLocaleDateString('en-CA');
+    const todayCount = raceData.filter(r => r.date === today).length;
+    let recapBtnEl = document.getElementById('session-recap-trigger');
+    if (!recapBtnEl) {
+        recapBtnEl = document.createElement('div');
+        recapBtnEl.id = 'session-recap-trigger';
+        recapBtnEl.style.cssText = 'text-align:center;margin:1rem 0;';
+        achievementsViewContainer.appendChild(recapBtnEl);
+    }
+    if (todayCount >= 4) {
+        recapBtnEl.innerHTML = `<button class="session-recap-btn" onclick="createSessionRecap()">🏁 Tonight's Session (${todayCount} races)</button>`;
+    } else {
+        recapBtnEl.innerHTML = '';
     }
 }
 

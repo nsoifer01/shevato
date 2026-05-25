@@ -14,6 +14,7 @@ const {
   isRollercoaster,
   isMidPeak,
   isUShaped,
+  isOutlierPeak,
   detectShapes,
   findMatches,
   isNonDecreasing,
@@ -251,6 +252,35 @@ test('isUShaped rejects very short seasons (n < 3)', () => {
 
 test('isUShaped rejects a flat season with no real dip', () => {
   assert.equal(isUShaped(season(8.5, 8.4, 8.5, 8.4, 8.5)), false);
+});
+
+// --- isOutlierPeak ---
+
+test('isOutlierPeak matches when one interior episode towers ≥1.5 above avg and next-highest', () => {
+  // Ep 3 at 9.5 is interior; avg of rest ≈ 7.0; next-highest is 7.5 → 9.5-7.5=2.0 ≥1.5
+  assert.equal(isOutlierPeak(season(7.0, 7.5, 9.5, 7.2, 7.1)), true);
+});
+
+test('isOutlierPeak rejects when all episodes are uniformly high (no outlier)', () => {
+  assert.equal(isOutlierPeak(season(8.5, 8.6, 8.7, 8.5, 8.6)), false);
+});
+
+test('isOutlierPeak rejects when spike is at the finale (big-finale, not outlier-peak)', () => {
+  // Spike at last episode — not interior.
+  assert.equal(isOutlierPeak(season(7.0, 7.2, 7.1, 7.0, 9.8)), false);
+});
+
+test('isOutlierPeak rejects when spike is at the opener', () => {
+  assert.equal(isOutlierPeak(season(9.8, 7.0, 7.2, 7.1, 7.0)), false);
+});
+
+test('isOutlierPeak rejects seasons shorter than 4 episodes', () => {
+  assert.equal(isOutlierPeak(season(7.0, 9.5, 7.0)), false);
+});
+
+test('isOutlierPeak rejects when the margin above next-highest is below 1.5', () => {
+  // Ep 3 at 9.0 vs next at 7.8 → margin 1.2 < 1.5
+  assert.equal(isOutlierPeak(season(7.5, 7.8, 9.0, 7.6, 7.5)), false);
 });
 
 // --- detectShapes ---

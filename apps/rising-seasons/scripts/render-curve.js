@@ -35,7 +35,8 @@ function renderCurve(episodes, opts) {
     dotsSvg = points
       .map(([x, y], i) => {
         const ep = episodes[i];
-        const title = `Ep ${ep.episode}: ${ep.rating.toFixed(1)} · ${ep.votes.toLocaleString()} votes`;
+        const namePart = ep.name ? `\n${ep.name}` : '';
+        const title = `Ep ${ep.episode}: ${ep.rating.toFixed(1)} · ${ep.votes.toLocaleString()} votes${namePart}`;
         return `<circle cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="${r}"><title>${escapeXml(title)}</title></circle>`;
       })
       .join('');

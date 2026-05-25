@@ -62,6 +62,9 @@ function undoLastAction() {
         case 'CLEAR_DATA':
             races = action.data.races;
             break;
+        case 'GP_BATCH':
+            races.splice(races.length - action.data.count, action.data.count);
+            break;
     }
 
     const storageKey = window.getStorageKey ? window.getStorageKey('Races') : 'marioKartRaces';
@@ -90,6 +93,9 @@ function redoLastAction() {
             break;
         case 'CLEAR_DATA':
             races = [];
+            break;
+        case 'GP_BATCH':
+            action.data.races.forEach(r => races.push(r));
             break;
     }
 

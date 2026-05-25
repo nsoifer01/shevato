@@ -7,23 +7,21 @@ import { DarkSelect } from '../utils/dark-select.js';
 import { storageService } from '../services/StorageService.js';
 
 function validateImportData(data) {
-    if (!data) {
-        return 'No data provided';
-    }
-
-    if (typeof data !== 'object') {
+    if (!data || typeof data !== 'object') {
         return 'Invalid data format';
     }
-
+    // New shape: { version, exportedAt, data: { ...keys } }
+    if (data.data && typeof data.data === 'object' && !Array.isArray(data.data)) {
+        return null;
+    }
+    // Legacy flat shape
     const hasValidStructure =
         data.hasOwnProperty('programs') ||
         data.hasOwnProperty('sessions') ||
         data.hasOwnProperty('settings');
-
     if (!hasValidStructure) {
-        return 'Invalid data structure';
+        return 'Invalid data structure — not a Gym Tracker backup';
     }
-
     return null;
 }
 
@@ -316,13 +314,16 @@ class SettingsView {
 
                 const confirmed = await showConfirmModal({
                     title: 'Import Data',
-                    message: 'Import this data? It will be merged with your existing programs, workouts, and settings.',
-                    confirmText: 'Import',
+                    message: 'This will replace all current data. Continue?',
+                    warning: 'All existing programs, workouts, achievements, and settings will be overwritten.',
+                    confirmText: 'Replace & Import',
                     cancelText: 'Cancel',
-                    isDangerous: false,
+                    isDangerous: true,
                 });
                 if (confirmed) {
+                    storageService.clearAllData();
                     this.app.importData(data);
+                    location.reload();
                 }
             } catch (error) {
                 showToast('Invalid JSON file', 'error');

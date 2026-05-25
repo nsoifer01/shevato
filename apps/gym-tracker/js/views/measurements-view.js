@@ -95,11 +95,13 @@ class MeasurementsView {
         const empty = document.getElementById('measurements-empty');
         const trends = document.getElementById('measurements-trends-section');
         const history = document.getElementById('measurements-history-section');
+        const bwStrength = document.getElementById('measurements-bw-strength-section');
 
         if (items.length === 0) {
             if (empty) empty.hidden = false;
             if (trends) trends.hidden = true;
             if (history) history.hidden = true;
+            if (bwStrength) bwStrength.hidden = true;
             return;
         }
         if (empty) empty.hidden = true;
@@ -108,6 +110,7 @@ class MeasurementsView {
 
         this.renderTrends(items);
         this.renderHistory(items);
+        this.renderBwStrengthCharts(items);
     }
 
     /**
@@ -299,6 +302,109 @@ class MeasurementsView {
         document.getElementById('measurement-modal').classList.remove('active');
         this.editingId = null;
         this.render();
+    }
+
+    /**
+     * Item 10: strength vs bodyweight ratio charts.
+     * For each of Bench, Squat, Deadlift, OHP: find sessions where the user
+     * logged a top set AND has a bodyweight measurement within ±7 days.
+     * Plot weight/bw ratio over time. Hides lifts with < 2 paired points.
+     */
+    renderBwStrengthCharts(measurements) {
+        const section = document.getElementById('measurements-bw-strength-section');
+        if (!section) return;
+
+        const sessions = this.app.workoutSessions || [];
+        const unit = (this.app.settings || {}).weightUnit || 'kg';
+
+        const LIFTS = [
+            { label: 'Bench', match: 'bench press' },
+            { label: 'Squat', match: 'squat' },
+            { label: 'Deadlift', match: 'deadlift' },
+            { label: 'OHP', match: 'overhead press' },
+        ];
+
+        const bwByDate = new Map();
+        measurements.forEach(m => {
+            if (m.weight != null && m.date) bwByDate.set(m.date, Number(m.weight));
+        });
+
+        const nearestBW = (dateStr) => {
+            const ts = parseLocalDate(dateStr).getTime();
+            let best = null;
+            let bestDist = Infinity;
+            bwByDate.forEach((w, d) => {
+                const dist = Math.abs(parseLocalDate(d).getTime() - ts);
+                if (dist <= 7 * 86400 * 1000 && dist < bestDist) {
+                    bestDist = dist;
+                    best = w;
+                }
+            });
+            return best;
+        };
+
+        const cards = LIFTS.map(lift => {
+            const pairs = [];
+            sessions.forEach(s => {
+                const ex = (s.exercises || []).find(e =>
+                    (e.exerciseName || '').toLowerCase().includes(lift.match)
+                );
+                if (!ex) return;
+                const topWeight = (ex.sets || []).reduce((m, set) => Math.max(m, set.weight || 0), 0);
+                if (topWeight <= 0) return;
+                const bw = nearestBW(s.date);
+                if (bw == null || bw <= 0) return;
+                pairs.push({ date: s.date, ratio: round1(topWeight / bw) });
+            });
+
+            pairs.sort((a, b) => parseLocalDate(a.date) - parseLocalDate(b.date));
+            if (pairs.length < 2) return '';
+
+            return `
+                <div class="bw-strength-chart-card">
+                    <div class="bw-strength-chart-title">${escapeHtml(lift.label)}</div>
+                    ${this._renderBwMiniChart(pairs)}
+                    <div class="bw-strength-axis-labels">
+                        <span>${escapeHtml(pairs[0].date)}</span>
+                        <span>${escapeHtml(pairs[pairs.length - 1].date)}</span>
+                    </div>
+                </div>
+            `;
+        }).filter(Boolean).join('');
+
+        if (!cards) {
+            section.hidden = true;
+            return;
+        }
+        section.hidden = false;
+        const grid = section.querySelector('.bw-strength-grid');
+        if (grid) grid.innerHTML = cards;
+    }
+
+    _renderBwMiniChart(pairs) {
+        const W = 200;
+        const H = 80;
+        const padX = 4;
+        const padY = 4;
+        const ys = pairs.map(p => p.ratio);
+        const min = Math.min(...ys);
+        const max = Math.max(...ys);
+        const rng = Math.max(0.01, max - min);
+        const stepX = (W - padX * 2) / (pairs.length - 1);
+        const toX = (i) => padX + i * stepX;
+        const toY = (v) => padY + (1 - (v - min) / rng) * (H - padY * 2);
+        const pts = pairs.map((p, i) => `${toX(i).toFixed(1)},${toY(p.ratio).toFixed(1)}`).join(' ');
+        const dots = pairs.map((p, i) =>
+            `<circle class="bw-strength-dot" cx="${toX(i).toFixed(1)}" cy="${toY(p.ratio).toFixed(1)}" r="2.5" />`
+        ).join('');
+        const latest = pairs[pairs.length - 1].ratio;
+        return `
+            <svg class="bw-strength-svg" viewBox="0 0 ${W} ${H}" preserveAspectRatio="none" aria-hidden="true">
+                <polyline class="bw-strength-line" points="${pts}" />
+                ${dots}
+            </svg>
+            <div style="font-size:0.72rem;color:var(--gt-muted);text-align:right">Latest: ${latest}× BW</div>
+        `;
     }
 
     async confirmDelete(id) {

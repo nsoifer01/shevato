@@ -431,6 +431,22 @@ function createHeatmapView(raceData = null) {
             window.updateAllPlayerIcons();
         }, 150);
     }
+
+    // Append performance-colored calendar
+    if (window.createActivityCalendarWithPerformance) {
+        const calContainer = document.createElement('div');
+        calContainer.id = 'activity-cal-perf-container';
+        calContainer.style.marginTop = '2rem';
+        const activityContainer = document.querySelector('.activity-container');
+        if (activityContainer) {
+            const calHeader = document.createElement('h3');
+            calHeader.className = 'activity-title';
+            calHeader.textContent = 'Performance Calendar';
+            activityContainer.appendChild(calHeader);
+            calContainer.innerHTML = createActivityCalendarWithPerformance(raceData, players[0]);
+            activityContainer.appendChild(calContainer);
+        }
+    }
 }
 
 function calculateWeeklyActivityData(raceData) {

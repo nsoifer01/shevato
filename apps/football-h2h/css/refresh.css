@@ -1106,3 +1106,410 @@ body.football-h2h-tracker .sidebar-action-btn.summary-btn {
     width: 100%;
     margin-bottom: 0.5rem;
 }
+
+/* ── Feature 1: Post-match share card ─────────────────────────────────── */
+
+body.football-h2h-tracker .share-card-text {
+    font-size: 1rem;
+    font-weight: 600;
+    color: var(--fh-text);
+    background: var(--fh-surface-2);
+    border: 1px solid var(--fh-border);
+    border-radius: 10px;
+    padding: 1rem 1.2rem;
+    text-align: center;
+    line-height: 1.5;
+}
+
+/* ── Feature 2: Rivalry headline ──────────────────────────────────────── */
+
+body.football-h2h-tracker .rivalry-headline {
+    font-size: 0.92rem;
+    font-weight: 700;
+    color: var(--fh-accent);
+    background: var(--fh-accent-soft);
+    border: 1px solid rgba(129, 140, 248, 0.3);
+    border-radius: var(--fh-radius-sm);
+    padding: 0.65rem 1rem;
+    margin-bottom: 0.75rem;
+    text-align: center;
+    letter-spacing: -0.01em;
+}
+
+/* ── Feature 3: Quick-log FAB + panel ─────────────────────────────────── */
+
+body.football-h2h-tracker .quick-log-fab {
+    position: fixed;
+    bottom: 1.5rem;
+    right: 1.5rem;
+    width: 52px;
+    height: 52px;
+    border-radius: 50%;
+    background: linear-gradient(135deg, var(--fh-accent), var(--fh-accent-strong));
+    color: #fff;
+    font-size: 1.6rem;
+    font-weight: 700;
+    border: none;
+    cursor: pointer;
+    box-shadow: 0 6px 22px rgba(99, 102, 241, 0.45);
+    z-index: 400;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    line-height: 1;
+    transition: transform 0.12s ease, box-shadow 0.15s ease;
+}
+body.football-h2h-tracker .quick-log-fab:hover {
+    transform: scale(1.08);
+    box-shadow: 0 8px 28px rgba(99, 102, 241, 0.6);
+}
+
+body.football-h2h-tracker .quick-log-panel {
+    position: fixed;
+    bottom: 5.5rem;
+    right: 1.5rem;
+    width: 240px;
+    background: var(--fh-surface);
+    border: 1px solid var(--fh-border-strong);
+    border-radius: var(--fh-radius);
+    box-shadow: 0 12px 40px rgba(0, 0, 0, 0.55);
+    padding: 1rem;
+    z-index: 400;
+}
+
+body.football-h2h-tracker .quick-log-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 0.75rem;
+}
+body.football-h2h-tracker .quick-log-title {
+    font-weight: 700;
+    font-size: 0.88rem;
+    color: var(--fh-text);
+}
+body.football-h2h-tracker .quick-log-team {
+    font-size: 0.72rem;
+    color: var(--fh-muted);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    max-width: 90px;
+}
+body.football-h2h-tracker .quick-log-close {
+    background: none;
+    border: none;
+    color: var(--fh-muted);
+    font-size: 1.2rem;
+    cursor: pointer;
+    padding: 0;
+    line-height: 1;
+}
+
+body.football-h2h-tracker .quick-log-scores {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    margin-bottom: 0.6rem;
+}
+body.football-h2h-tracker .quick-log-player {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 0.2rem;
+    flex: 1;
+}
+body.football-h2h-tracker .quick-log-player label {
+    font-size: 0.7rem;
+    font-weight: 600;
+    color: var(--fh-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+}
+body.football-h2h-tracker .quick-log-input {
+    width: 100%;
+    text-align: center;
+    font-size: 1.4rem;
+    font-weight: 700;
+    padding: 0.4rem 0.2rem;
+    background: var(--fh-surface-2) !important;
+    border: 1px solid var(--fh-border) !important;
+    border-radius: 10px !important;
+    color: var(--fh-text) !important;
+}
+body.football-h2h-tracker .quick-log-vs {
+    font-size: 1.2rem;
+    font-weight: 700;
+    color: var(--fh-muted-2);
+    flex-shrink: 0;
+    padding-top: 1.1rem;
+}
+body.football-h2h-tracker .quick-log-penalty {
+    display: flex;
+    flex-direction: column;
+    gap: 0.3rem;
+    margin-bottom: 0.6rem;
+    font-size: 0.8rem;
+    color: var(--fh-muted);
+}
+body.football-h2h-tracker .quick-log-select {
+    background: var(--fh-surface-2) !important;
+    border: 1px solid var(--fh-border) !important;
+    border-radius: 8px !important;
+    color: var(--fh-text) !important;
+    padding: 0.35rem 0.5rem;
+    font-size: 0.82rem;
+}
+body.football-h2h-tracker .quick-log-save {
+    width: 100%;
+    background: linear-gradient(135deg, var(--fh-good), #059669);
+    color: #fff;
+    border: none;
+    border-radius: 10px;
+    padding: 0.6rem;
+    font-weight: 700;
+    font-size: 0.95rem;
+    cursor: pointer;
+    transition: filter 0.15s ease;
+    margin-top: 0.2rem;
+}
+body.football-h2h-tracker .quick-log-save:hover { filter: brightness(1.08); }
+
+/* ── Feature 4: Records wall ──────────────────────────────────────────── */
+
+body.football-h2h-tracker .records-wall {
+    display: flex;
+    flex-direction: column;
+    gap: 0.55rem;
+    margin-bottom: 0.5rem;
+}
+
+body.football-h2h-tracker .record-item {
+    display: flex;
+    align-items: flex-start;
+    gap: 0.75rem;
+    background: var(--fh-surface-2);
+    border: 1px solid var(--fh-border);
+    border-radius: var(--fh-radius-sm);
+    padding: 0.65rem 0.9rem;
+}
+body.football-h2h-tracker .record-icon {
+    font-size: 1.2rem;
+    flex-shrink: 0;
+    margin-top: 0.1rem;
+}
+body.football-h2h-tracker .record-body {
+    display: flex;
+    flex-direction: column;
+    gap: 0.1rem;
+    min-width: 0;
+}
+body.football-h2h-tracker .record-label {
+    font-size: 0.68rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: var(--fh-muted-2);
+}
+body.football-h2h-tracker .record-value {
+    font-size: 0.9rem;
+    font-weight: 600;
+    color: var(--fh-text);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+body.football-h2h-tracker .record-date {
+    font-size: 0.7rem;
+    color: var(--fh-muted);
+}
+body.football-h2h-tracker .records-empty {
+    color: var(--fh-muted-2);
+    font-size: 0.85rem;
+    padding: 0.5rem 0;
+}
+
+/* ── Feature 5: Goal difference chart ────────────────────────────────── */
+
+body.football-h2h-tracker .goal-diff-chart {
+    background: var(--fh-surface-2);
+    border: 1px solid var(--fh-border);
+    border-radius: var(--fh-radius-sm);
+    padding: 0.6rem 0.8rem 0.4rem;
+    margin-bottom: 0.5rem;
+}
+body.football-h2h-tracker .gd-chart-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    font-size: 0.68rem;
+    font-weight: 600;
+    color: var(--fh-muted);
+    margin-bottom: 0.25rem;
+}
+body.football-h2h-tracker .gd-chart-title {
+    font-size: 0.68rem;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: var(--fh-muted-2);
+}
+body.football-h2h-tracker .gd-svg {
+    width: 100%;
+    height: auto;
+    display: block;
+}
+body.football-h2h-tracker .gd-current {
+    text-align: center;
+    font-size: 0.75rem;
+    color: var(--fh-muted);
+    margin-top: 0.2rem;
+}
+
+/* ── Feature 6: Last-10 win % ─────────────────────────────────────────── */
+
+body.football-h2h-tracker .stat-last10 {
+    font-size: 0.68rem;
+    color: var(--fh-muted);
+    margin-top: 0.25rem;
+    font-variant-numeric: tabular-nums;
+}
+
+/* ── Feature 7: Game badges ───────────────────────────────────────────── */
+
+body.football-h2h-tracker .badges-row {
+    display: flex;
+    gap: 0.25rem;
+    flex-wrap: wrap;
+    margin-top: 3px;
+}
+body.football-h2h-tracker .game-badge {
+    display: inline-block;
+    font-size: 0.6rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    padding: 1px 5px;
+    border-radius: 999px;
+    line-height: 1.6;
+}
+body.football-h2h-tracker .badge-thrashing {
+    background: rgba(248, 113, 113, 0.2);
+    color: var(--fh-bad);
+    border: 1px solid rgba(248, 113, 113, 0.4);
+}
+body.football-h2h-tracker .badge-comeback {
+    background: rgba(52, 211, 153, 0.2);
+    color: var(--fh-good);
+    border: 1px solid rgba(52, 211, 153, 0.4);
+}
+
+/* ── Feature 8: Session mode ──────────────────────────────────────────── */
+
+body.football-h2h-tracker .session-bar {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    margin: 0.6rem 0 0.9rem;
+    flex-wrap: wrap;
+}
+body.football-h2h-tracker .session-btn {
+    padding: 0.45rem 0.9rem;
+    border: none;
+    border-radius: 999px;
+    font-size: 0.82rem;
+    font-weight: 700;
+    cursor: pointer;
+    transition: filter 0.15s ease;
+}
+body.football-h2h-tracker .session-btn-start {
+    background: linear-gradient(135deg, var(--fh-good), #059669);
+    color: #fff;
+}
+body.football-h2h-tracker .session-btn-end {
+    background: linear-gradient(135deg, var(--fh-bad), #dc2626);
+    color: #fff;
+}
+body.football-h2h-tracker .session-btn:hover { filter: brightness(1.08); }
+body.football-h2h-tracker .session-active-banner {
+    font-size: 0.8rem;
+    color: var(--fh-good);
+    font-weight: 600;
+    background: var(--fh-good-soft);
+    border: 1px solid rgba(52, 211, 153, 0.35);
+    border-radius: 999px;
+    padding: 0.3rem 0.8rem;
+}
+
+body.football-h2h-tracker .session-summary-card {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 0.6rem;
+    margin-bottom: 0.6rem;
+}
+body.football-h2h-tracker .session-summary-stat {
+    background: var(--fh-surface-2);
+    border: 1px solid var(--fh-border);
+    border-radius: 10px;
+    padding: 0.6rem 0.8rem;
+    display: flex;
+    flex-direction: column;
+    gap: 0.15rem;
+}
+body.football-h2h-tracker .session-stat-label {
+    font-size: 0.68rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.07em;
+    color: var(--fh-muted);
+}
+body.football-h2h-tracker .session-stat-value {
+    font-size: 1.35rem;
+    font-weight: 700;
+    color: var(--fh-text);
+    font-variant-numeric: tabular-nums;
+}
+body.football-h2h-tracker .session-winner {
+    grid-column: 1 / -1;
+    text-align: center;
+    font-size: 0.9rem;
+    font-weight: 600;
+    color: var(--fh-text);
+    padding: 0.4rem;
+    background: var(--fh-accent-soft);
+    border-radius: 8px;
+}
+body.football-h2h-tracker .session-times {
+    grid-column: 1 / -1;
+    text-align: center;
+    color: var(--fh-muted);
+    font-size: 0.72rem;
+}
+
+/* ── Feature 10: Rematch nudge ────────────────────────────────────────── */
+
+body.football-h2h-tracker .rematch-nudge {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.75rem;
+    background: var(--fh-warn-soft);
+    border: 1px solid rgba(251, 191, 36, 0.4);
+    border-radius: var(--fh-radius-sm);
+    padding: 0.55rem 1rem;
+    margin-bottom: 0.8rem;
+    font-size: 0.88rem;
+    font-weight: 600;
+    color: var(--fh-warn);
+}
+body.football-h2h-tracker .rematch-nudge-dismiss {
+    background: none;
+    border: none;
+    color: var(--fh-warn);
+    font-size: 1.1rem;
+    cursor: pointer;
+    padding: 0;
+    line-height: 1;
+    opacity: 0.7;
+    flex-shrink: 0;
+}
+body.football-h2h-tracker .rematch-nudge-dismiss:hover { opacity: 1; }

@@ -13,6 +13,7 @@ import { trapModalFocus } from '../utils/modal-focus.js';
 import { renderPausedBannerHTML, wirePausedBannerActions } from './paused-banner.js';
 import { orderPrograms } from '../utils/program-order.js';
 import { AnalyticsService } from '../services/AnalyticsService.js';
+import { AchievementService } from '../services/AchievementService.js';
 import { calculatePlates, formatPlateStack } from '../utils/plate-calculator.js';
 
 class WorkoutView {
@@ -653,6 +654,7 @@ class WorkoutView {
         }
 
         const lastTimeHTML = this.renderLastTimeStrip(previousSets, isDuration, unit);
+        const suggestionHTML = this.renderOverloadSuggestion(exercise.exerciseId, isDuration, unit);
 
         // Feature 5: rest timer pills
         const REST_PILLS = [
@@ -699,6 +701,7 @@ class WorkoutView {
                         ${restPillsHTML}
                     </div>
 
+                    ${suggestionHTML}
                     ${lastTimeHTML}
 
                     <ol class="set-row-list" id="set-row-list-${index}">
@@ -733,7 +736,7 @@ class WorkoutView {
      */
     renderLastTimeStrip(previousSets, isDuration, unit) {
         if (!previousSets || previousSets.length === 0) {
-            return '<div class="previous-sets-label">Last time: <span>No previous data</span></div>';
+            return '';
         }
 
         const chips = previousSets.map((set, i) => {
@@ -751,6 +754,31 @@ class WorkoutView {
                 <div class="previous-sets-row">${chips}</div>
             </div>
         `;
+    }
+
+    /**
+     * Render a one-line progressive overload suggestion for an exercise.
+     * Shows "Last session: 80kg × 5 — try 82.5kg today" when there is
+     * prior data. Returns '' for duration exercises or when no prior data.
+     */
+    renderOverloadSuggestion(exerciseId, isDuration, unit) {
+        if (isDuration) return '';
+        const sessions = this.app.workoutSessions;
+        const lastData = AnalyticsService.getLastWorkoutData(exerciseId, sessions);
+        if (!lastData || !lastData.sets || lastData.sets.length === 0) return '';
+
+        const topSet = lastData.sets.reduce((best, s) =>
+            (s.weight || 0) > (best.weight || 0) ? s : best, lastData.sets[0]);
+        if (!topSet || !topSet.weight) return '';
+
+        const increment = this._overloadIncrement(exerciseId, unit);
+        const suggest = topSet.weight + increment;
+        const repsLabel = topSet.reps ? ` × ${topSet.reps}` : '';
+
+        return `<div class="overload-suggestion" aria-label="Progressive overload suggestion">
+            <i class="fas fa-arrow-trend-up" aria-hidden="true"></i>
+            Last session: ${topSet.weight}${unit}${repsLabel} — try ${suggest}${unit} today
+        </div>`;
     }
 
     /**
@@ -1554,7 +1582,9 @@ class WorkoutView {
         if (calories) this.currentWorkoutSession.caloriesBurned = parseInt(calories);
         if (notes) this.currentWorkoutSession.notes = notes;
 
-        // Save workout session
+        // Save workout session — capture prior sessions BEFORE pushing so
+        // the PR check compares against history, not the session itself.
+        const priorSessions = this.app.workoutSessions.slice();
         this.app.workoutSessions.push(this.currentWorkoutSession);
         this.app.saveWorkoutSessions();
 
@@ -1563,6 +1593,9 @@ class WorkoutView {
 
         // Update achievements
         this.app.updateAchievements();
+
+        // Item 3: per-exercise weight PR achievements, rate-limited to 7 days.
+        this._checkAndFirePRAchievements(this.currentWorkoutSession, priorSessions);
 
         // Stop timer + rest bar
         timerService.stopWorkoutTimer();
@@ -1574,10 +1607,82 @@ class WorkoutView {
         document.getElementById('workout-selection').classList.add('active');
 
         const completedSession = this.currentWorkoutSession;
+        const savedRestOverrides = { ...this.exerciseRestOverrides };
+        const savedProgramId = completedSession.programId;
+        const savedExercises = completedSession.exercises.slice();
         this.currentWorkoutSession = null;
 
         this.showCompletionBurst(completedSession);
         this.render();
+
+        // Item 7: prompt to save rest overrides to the program.
+        if (Object.keys(savedRestOverrides).length > 0) {
+            this._maybeSaveRestOverrides(savedProgramId, savedExercises, savedRestOverrides);
+        }
+    }
+
+    /**
+     * Item 7: if the user changed any rest timers during the session,
+     * offer to persist those overrides to the program. One-shot — does not
+     * re-prompt for the same session.
+     */
+    async _maybeSaveRestOverrides(programId, sessionExercises, overrides) {
+        const program = this.app.getProgramById(programId);
+        if (!program) return;
+
+        const confirmed = await showConfirmModal({
+            title: 'Save rest times',
+            message: `Save these rest times to <strong>${escapeHtml(program.name)}</strong>?`,
+            confirmText: 'Yes, save',
+            cancelText: 'No',
+            isDangerous: false,
+        });
+        if (!confirmed) return;
+
+        Object.entries(overrides).forEach(([idxStr, seconds]) => {
+            const ex = sessionExercises[Number(idxStr)];
+            if (!ex) return;
+            const progIdx = program.exercises.findIndex(pe => pe.exerciseId === ex.exerciseId);
+            if (progIdx >= 0) {
+                program.exercises[progIdx].restSeconds = seconds;
+            }
+        });
+        program.updatedAt = new Date().toISOString();
+        this.app.savePrograms();
+        showToast('Rest times saved to program', 'success');
+    }
+
+    /**
+     * Item 3: check whether the just-saved session contains any new
+     * exercise-weight PRs and surface them via the existing achievement
+     * toast flow. Persists `prAchievementDates` so the 7-day rate limit
+     * survives across sessions.
+     */
+    _checkAndFirePRAchievements(session, priorSessions) {
+        const dateKey = 'gymTrackerPrAchievementDates';
+        let prDates = {};
+        try {
+            prDates = JSON.parse(localStorage.getItem(dateKey) || '{}');
+        } catch (_) { /* corrupt data — start fresh */ }
+
+        const prs = AchievementService.checkExercisePRs(session, priorSessions, prDates);
+        const unit = this.app.settings.weightUnit;
+        const now = new Date().toISOString();
+
+        prs.forEach(pr => {
+            prDates[pr.exerciseId] = now;
+            showToast(
+                `New PR: ${pr.exerciseName} — ${pr.newMax}${unit} (was ${pr.prevMax}${unit})`,
+                'success',
+                5000,
+            );
+        });
+
+        if (prs.length > 0) {
+            try {
+                localStorage.setItem(dateKey, JSON.stringify(prDates));
+            } catch (_) { /* storage full — non-fatal */ }
+        }
     }
 
     /**

@@ -192,6 +192,9 @@
                 <div class="view-header">
                     <h1>Dashboard</h1>
                     <p class="subtitle">Track your fitness journey</p>
+                    <button type="button" class="btn btn-ghost plate-calc-open-btn" id="open-plate-calc-btn" aria-label="Open plate calculator">
+                        <i class="fas fa-dumbbell"></i> Plates
+                    </button>
                 </div>
 
                 <button type="button" id="home-workout-fab" class="workout-fab" hidden aria-label="Start workout">
@@ -846,6 +849,17 @@
                     </div>
                     <div class="insights-heatmap" id="insights-heatmap"></div>
                 </section>
+                <section class="section" id="insights-progression-section" hidden>
+                    <div class="section-header">
+                        <h2>Exercise progression</h2>
+                    </div>
+                    <div class="insights-progression-controls">
+                        <select class="insights-progression-select" aria-label="Select exercise">
+                            <option value="">Select an exercise...</option>
+                        </select>
+                    </div>
+                    <div id="insights-prog-chart-host"></div>
+                </section>
             </div>
 
             <!-- MEASUREMENTS VIEW -->
@@ -877,6 +891,13 @@
                         <h2>History</h2>
                     </div>
                     <div id="measurements-history" class="measurements-history"></div>
+                </section>
+
+                <section class="section" id="measurements-bw-strength-section" hidden>
+                    <div class="section-header">
+                        <h2>Strength vs bodyweight</h2>
+                    </div>
+                    <div class="bw-strength-grid"></div>
                 </section>
 
                 <!-- Add / Edit modal -->
@@ -1150,6 +1171,38 @@
 
     <!-- Toast Container -->
     <div id="toast-container"></div>
+
+    <!-- Plate Calculator Modal (standalone, accessible from Home) -->
+    <div id="plate-calc-modal" class="modal" role="dialog" aria-modal="true" aria-labelledby="plate-calc-title">
+        <div class="modal-content small">
+            <div class="modal-header">
+                <h2 id="plate-calc-title">Plate Calculator</h2>
+                <button class="modal-close" aria-label="Close">&times;</button>
+            </div>
+            <div class="modal-body">
+                <div class="plate-calc-row">
+                    <label for="plate-calc-target">Target weight</label>
+                    <input type="number" id="plate-calc-target" class="plate-calc-input" min="0" step="0.5" placeholder="e.g. 100">
+                    <select id="plate-calc-unit" class="plate-calc-select" aria-label="Unit">
+                        <option value="kg">kg</option>
+                        <option value="lb">lb</option>
+                    </select>
+                </div>
+                <div class="plate-calc-row">
+                    <label for="plate-calc-bar">Bar weight</label>
+                    <select id="plate-calc-bar" class="plate-calc-select" aria-label="Bar weight">
+                        <option value="20">20 kg (Olympic)</option>
+                        <option value="15">15 kg (Women's)</option>
+                        <option value="25">25 kg (Heavy)</option>
+                        <option value="0">No bar</option>
+                    </select>
+                </div>
+                <div class="plate-calc-result" id="plate-calc-result" aria-live="polite">
+                    Enter a weight above.
+                </div>
+            </div>
+        </div>
+    </div>
 
     <!-- Onboarding Welcome Modal (first launch) -->
     <div id="onboarding-modal" class="modal" role="dialog" aria-modal="true" aria-labelledby="onboarding-title" aria-hidden="true">

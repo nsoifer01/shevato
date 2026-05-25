@@ -27,9 +27,35 @@ function updateMaxPositions() {
 // Initial setup
 updateMaxPositions();
 
+// MK8 Deluxe championship points (positions 1-12)
+const MK8DX_POINTS = [15, 12, 10, 8, 7, 6, 5, 4, 3, 2, 1, 0];
+
+// Mario Kart World championship points (positions 1-24)
+const MKWORLD_POINTS = [
+    30, 27, 24, 21, 18, 16, 14, 12, 10, 9, 8, 7,
+    6, 5, 4, 3, 2, 1, 0, 0, 0, 0, 0, 0
+];
+
+function getPointsForPosition(position, gameVersion) {
+    const ver = gameVersion || (window.getCurrentGameVersion && window.getCurrentGameVersion()) || 'mk8d';
+    const table = ver === 'mkworld' ? MKWORLD_POINTS : MK8DX_POINTS;
+    const idx = position - 1;
+    if (idx < 0 || idx >= table.length) return 0;
+    return table[idx];
+}
+
+// Valid game modes
+const RACE_MODES = ['Items', 'No Items', '200cc'];
+const DEFAULT_RACE_MODE = 'Items';
+
 // Export for use in other files
 window.MIN_POSITIONS = MIN_POSITIONS;
 window.MAX_PLAYERS = MAX_PLAYERS;
 window.GAME_MAX_POSITIONS = GAME_MAX_POSITIONS;
 window.getMaxPositions = getMaxPositions;
 window.updateMaxPositions = updateMaxPositions;
+window.MK8DX_POINTS = MK8DX_POINTS;
+window.MKWORLD_POINTS = MKWORLD_POINTS;
+window.getPointsForPosition = getPointsForPosition;
+window.RACE_MODES = RACE_MODES;
+window.DEFAULT_RACE_MODE = DEFAULT_RACE_MODE;
