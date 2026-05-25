@@ -60,6 +60,7 @@ const GlobeDropDaily = window.BrainArena.GlobeDropDaily;
 const WordBlitz = window.BrainArena.WordBlitz;
 const EmojiChain = window.BrainArena.EmojiChain;
 const RejoinStorage = window.BrainArena.RejoinStorage;
+const ProfileStats = window.BrainArena.ProfileStats;
 
 /* =====================================================================
  * State
@@ -5814,16 +5815,20 @@ async function writeEndOfGameStats(me, didWin) {
 
         // Item #7 — per-game-type fields written alongside the legacy
         // mixed counters so the profile tabs can render Globe Drop and
-        // Trivia stats independently. Bullseyes only meaningfully accrue
-        // for Globe Drop; we still merge them into the type bucket so a
-        // future Trivia "perfect round" metric could reuse the slot.
+        // Trivia stats independently. The pure accumulator lives in
+        // ProfileStats.accumulateByGameType — same logic for the
+        // optimistic in-memory mirror below.
         const gameType = (state.roomData && state.roomData.gameType) === 'globe-drop'
             ? 'globe-drop'
             : 'trivia';
         const gtPrefix = `triviaProfile.byGameType.${gameType}`;
         const prevByType = (state.profile && state.profile.byGameType && state.profile.byGameType[gameType]) || {};
-        const prevGtBest = Number(prevByType.bestRoundScore) || 0;
-        const newGtBest = Math.max(prevGtBest, bestRoundThisGame);
+        const nextBucket = ProfileStats.accumulateByGameType(prevByType, {
+            scoreEarned,
+            winsDelta,
+            bullseyesDelta: bullseyesThisGame,
+            bestRoundThisGame
+        });
 
         await updateDoc(userRef, {
             'triviaProfile.xp': increment(scoreEarned),
@@ -5836,7 +5841,7 @@ async function writeEndOfGameStats(me, didWin) {
             [`${gtPrefix}.gamesPlayed`]: increment(1),
             [`${gtPrefix}.wins`]: increment(winsDelta),
             [`${gtPrefix}.bullseyes`]: increment(bullseyesThisGame),
-            [`${gtPrefix}.bestRoundScore`]: newGtBest,
+            [`${gtPrefix}.bestRoundScore`]: nextBucket.bestRoundScore,
             [`${gtPrefix}.lastPlayedAt`]: serverTimestamp()
         });
         if (state.profile) {
@@ -5850,14 +5855,7 @@ async function writeEndOfGameStats(me, didWin) {
             if (!state.profile.byGameType || typeof state.profile.byGameType !== 'object') {
                 state.profile.byGameType = {};
             }
-            const bucket = state.profile.byGameType[gameType] || {};
-            state.profile.byGameType[gameType] = {
-                xp: (Number(bucket.xp) || 0) + scoreEarned,
-                gamesPlayed: (Number(bucket.gamesPlayed) || 0) + 1,
-                wins: (Number(bucket.wins) || 0) + winsDelta,
-                bullseyes: (Number(bucket.bullseyes) || 0) + bullseyesThisGame,
-                bestRoundScore: newGtBest
-            };
+            state.profile.byGameType[gameType] = nextBucket;
         }
         if (!isSolo) {
             // Denormalized leaderboard write — multiplayer + daily only.
@@ -6208,8 +6206,8 @@ async function maybeWriteDailyLeaderboard(me) {
         const ref = doc(db, 'triviaDailyLeaderboard', dateKey, 'scores', state.user.uid);
         try {
             const existing = await getDoc(ref);
-            const prevScore = existing.exists() ? Number(existing.data().score || 0) : -1;
-            if (me.score <= prevScore) return;
+            const prevScore = existing.exists() ? Number(existing.data().score || 0) : null;
+            if (!ProfileStats.isDailyPersonalBest(me.score, prevScore)) return;
             await setDoc(ref, {
                 uid: state.user.uid,
                 displayName: me.displayName,
@@ -6228,8 +6226,10 @@ async function maybeWriteDailyLeaderboard(me) {
     const ref = doc(db, 'globeDropDailyLeaderboard', dateKey, 'scores', state.user.uid);
     try {
         const existing = await getDoc(ref);
-        const prevScore = existing.exists() ? Number(existing.data().score || 0) : -1;
-        if (me.score <= prevScore) return; // not a personal best for today
+        const prevScore = existing.exists() ? Number(existing.data().score || 0) : null;
+        // Skip when the new score isn't a personal best for today —
+        // the leaderboard only shows each player's best run per date.
+        if (!ProfileStats.isDailyPersonalBest(me.score, prevScore)) return;
         await setDoc(ref, {
             uid: state.user.uid,
             displayName: me.displayName,
