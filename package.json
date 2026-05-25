@@ -3,7 +3,8 @@
   "private": true,
   "type": "commonjs",
   "scripts": {
-    "test": "node --test apps/gym-tracker/tests/ apps/football-h2h/tests/ apps/rising-seasons/tests/ apps/mario-kart/tests/ apps/arena/tests/ sync-system/tests/",
+    "test": "node --test apps/gym-tracker/tests/ apps/football-h2h/tests/ apps/rising-seasons/tests/ apps/mario-kart/tests/ apps/arena/tests/ sync-system/tests/ tests/site/",
+    "test:site": "node --test tests/site/",
     "test:gym": "node --test apps/gym-tracker/tests/",
     "test:football": "node --test apps/football-h2h/tests/",
     "test:rising-seasons": "node --test apps/rising-seasons/tests/",

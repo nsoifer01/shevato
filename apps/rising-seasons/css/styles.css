@@ -4622,6 +4622,7 @@ body.advanced-drawer-open {
 button.mood-chip {
   border: 1px solid rgba(255, 255, 255, 0.1);
   font-family: inherit;
+  cursor: pointer;
 }
 
 /* ---- Item 10: Compare normalize toggle ---- */

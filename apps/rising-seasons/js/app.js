@@ -210,7 +210,6 @@ const state = {
   page: 1,
 };
 
-let worstPresetActive = false;
 let dataset = null;
 let filtered = [];
 let seriesIndex = [];
@@ -1549,6 +1548,7 @@ function onFilterChange() {
 // Reset-all-filters button — there's nothing to reset if every knob is
 // already at its default value.
 function hasActiveFilters() {
+  if (state.worstPreset) return true;
   if (state.shapes && state.shapes.size > 0) return true;
   if (state.search && state.search.trim()) return true;
   if (state.minEpisodes != null) return true;
@@ -4277,6 +4277,11 @@ function bindEvents() {
     state.shapes.clear();
     state.search = '';
     state.lockedSeriesId = null;
+    if (state.worstPreset) {
+      state.worstPreset = false;
+      const worstBtn = document.getElementById('worstSeasonPreset');
+      if (worstBtn) worstBtn.setAttribute('aria-pressed', 'false');
+    }
     state.minEpisodes = null;
     state.maxEpisodes = null;
     state.minVotes = null;
@@ -4627,6 +4632,18 @@ function renderActiveFilterBar() {
 
 function describeActiveFilters() {
   const chips = [];
+  if (state.worstPreset) {
+    chips.push({
+      key: 'Mood',
+      value: 'Worst season',
+      remove: () => {
+        state.worstPreset = false;
+        const worstBtn = document.getElementById('worstSeasonPreset');
+        if (worstBtn) worstBtn.setAttribute('aria-pressed', 'false');
+        onFilterChange();
+      },
+    });
+  }
   for (const s of state.shapes) {
     chips.push({
       key: 'Shape',

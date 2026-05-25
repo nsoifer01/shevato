@@ -294,8 +294,6 @@ function calculateFirstTimeMilestones(raceData) {
         }
 
         // First Win
-        const firstWin = chronological.find(r => r[r[p] = r[p], r[p] === 1] === 1 || r[p] === 1);
-        // Redo cleanly:
         const firstWinRace = chronological.find(r => r[p] === 1);
         if (firstWinRace) {
             const idx = raceData.indexOf(firstWinRace);

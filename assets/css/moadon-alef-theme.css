@@ -115,8 +115,10 @@
   100% { transform: scale(1); }
 }
 
-/* Hide language-specific content by default */
-[lang]:not([lang="en"]) {
+/* Hide language-specific content by default.
+   Scope to body descendants only — the <html lang="he"> root must not
+   be hidden or the entire page goes blank before JS can intervene. */
+body :is(h1, h2, h3, h4, h5, h6, p, div, span, section, article, li, dt, dd, blockquote, a)[lang]:not([lang="en"]) {
   display: none;
 }
 

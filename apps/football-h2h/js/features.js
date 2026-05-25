@@ -42,7 +42,10 @@ function computeRivalryHeadline(allGames) {
         const last = leadChanges[leadChanges.length - 1];
         if (last.gameIndex === sorted.length - 1) {
             const name = last.leader === 'p1' ? p1 : p2;
-            if (leadChanges.length === 1) {
+            const priorAsLeader = leadChanges
+                .slice(0, -1)
+                .some(lc => lc.leader === last.leader);
+            if (!priorAsLeader) {
                 return `${name} leads the series for the first time`;
             }
             return `${name} takes the lead — momentum has shifted`;
@@ -341,11 +344,8 @@ function getGameBadges(game) {
     if (margin >= 4) {
         badges.push({ cls: 'badge-thrashing', text: 'Thrashing' });
     }
-    // Comeback: penalty winner was behind in regulation
-    if (game.penaltyWinner === 1 && game.player2Goals > game.player1Goals) {
-        badges.push({ cls: 'badge-comeback', text: 'Comeback' });
-    }
-    if (game.penaltyWinner === 2 && game.player1Goals > game.player2Goals) {
+    // Comeback: game went to penalties and someone won the shootout
+    if (game.penaltyWinner === 1 || game.penaltyWinner === 2) {
         badges.push({ cls: 'badge-comeback', text: 'Comeback' });
     }
     return badges;
@@ -825,7 +825,9 @@ if (typeof _origRenderGamesTableWithData === 'function') {
 
 // ── Init on DOMContentLoaded ──────────────────────────────────────────────
 
-document.addEventListener('DOMContentLoaded', function() {
-    renderSessionControls();
-    // Rematch nudge runs after games load (updateStatisticsWithData will call it)
-});
+if (typeof document !== 'undefined') {
+    document.addEventListener('DOMContentLoaded', function() {
+        renderSessionControls();
+        // Rematch nudge runs after games load (updateStatisticsWithData will call it)
+    });
+}
