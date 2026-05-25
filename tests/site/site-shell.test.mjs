@@ -126,6 +126,10 @@ test('every app linked from the home.html icon strip exists as a directory on di
 
 const APPS = read('apps.html');
 
+test('apps.html loads main.css', () => {
+  assert.match(APPS, /href=".*main\.css"/, 'apps.html is missing the main.css link needed for header/footer base styles');
+});
+
 test('apps.html loads site.css', () => {
   assert.match(APPS, /href=".*site\.css"/);
 });
@@ -160,6 +164,20 @@ test('all app screenshot images referenced by apps.html exist on disk', () => {
     if (!fileExists(`images/apps/${app}.webp`)) missing.push(`images/apps/${app}.webp`);
   }
   assert.deepEqual(missing, [], `screenshot files missing: ${missing.join(', ')}`);
+});
+
+test('apps.html has exactly 6 PNG <img> fallbacks inside <picture> elements', () => {
+  const pngImgCount = (APPS.match(/\.png" alt=/g) || []).length;
+  assert.equal(pngImgCount, 6, `expected 6 PNG <img> fallbacks in app tiles, got ${pngImgCount}`);
+});
+
+test('apps.html tile buttons all link to app directories that exist on disk', () => {
+  const apps = ['mario-kart', 'gym-tracker', 'football-h2h', 'rising-seasons', 'maptap-rivals', 'arena'];
+  const missing = apps.filter(app => {
+    const matched = APPS.includes(`href="apps/${app}/"`);
+    return !matched || !fileExists(`apps/${app}`);
+  });
+  assert.deepEqual(missing, [], `tile links broken or directories missing: ${missing.join(', ')}`);
 });
 
 // ── 5. moadon-alef.html tests ─────────────────────────────────────────────────
