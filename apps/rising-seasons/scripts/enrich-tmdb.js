@@ -260,16 +260,22 @@ async function fetchSeasonExtras(tmdbId, seasonNumber) {
     }
   }
 
-  // Back-fill cast for entries resolved before fetchCast existed, AND
-  // re-fetch entries cached before person.id was added (so cast cards
-  // can link to TMDB person pages). null result is recorded so we
-  // don't retry forever. Entries with a populated cast that already
-  // carry id on the first cast member are left alone.
+  // Back-fill cast for entries resolved before fetchCast existed, entries
+  // where a prior fetchCast errored (cast === null) or returned no credits
+  // (cast === []), and entries cached before person.id was added (so cast
+  // cards can link to TMDB person pages). Brand-new shows often resolve on
+  // TMDB before any cast credits are posted, and pinning their cache row
+  // to null/[] permanently would leave them without a cast strip even
+  // after TMDB fills the credits in — so we retry these every refresh.
+  // Entries with a populated cast that already carry id on the first cast
+  // member are left alone.
   const castBackfill = uniqueSeries.filter((id) => {
     const e = cache[id];
     if (!e || !e.id || e.notFound || e.error) return false;
     if (!('cast' in e)) return true;
-    if (Array.isArray(e.cast) && e.cast.length > 0 && e.cast[0].id == null) return true;
+    if (e.cast === null) return true;
+    if (Array.isArray(e.cast) && e.cast.length === 0) return true;
+    if (Array.isArray(e.cast) && e.cast[0].id == null) return true;
     return false;
   });
   if (castBackfill.length > 0) {
