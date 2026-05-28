@@ -31,7 +31,7 @@ const SHAPE_LABELS = {
 // Build a single static HTML page for one TV series, given every season's
 // data (already grouped from data.json's flat `matches` array). Returns a
 // complete HTML string.
-function renderShowPage({ seriesId, title, year, type, genres, seriesRating, seriesVotes, poster, overview, language, providers, tmdbId, seasons, builtAt, dominantShape, dominantShapeSlug, relatedShows }) {
+function renderShowPage({ seriesId, title, year, type, genres, seriesRating, seriesVotes, poster, overview, language, providers, tmdbId, cast, seasons, builtAt, dominantShape, dominantShapeSlug, relatedShows }) {
   const path = `/apps/rising-seasons/shows/${showPath(title, seriesId)}/`;
   const canonical = `${SITE}${path}`;
   const numberOfSeasons = seasons.length;
@@ -83,7 +83,7 @@ ${jsonLd(buildBreadcrumbs(title, path))}
 
   <!-- TVSeries -->
   <script type="application/ld+json">
-${jsonLd(buildTvSeriesSchema({ seriesId, title, year, canonical, posterUrl, cleanOverview, genres, seriesRating, seriesVotes, seasons, tmdbId }))}
+${jsonLd(buildTvSeriesSchema({ seriesId, title, year, canonical, posterUrl, cleanOverview, genres, seriesRating, seriesVotes, seasons, tmdbId, cast }))}
   </script>
 
   <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ctext y='.9em' font-size='90'%3E📈%3C/text%3E%3C/svg%3E">
@@ -133,12 +133,14 @@ ${jsonLd(buildTvSeriesSchema({ seriesId, title, year, canonical, posterUrl, clea
         </dl>
         <div class="hero-actions">
           ${renderPrimaryCtaBtn(dominantShape, dominantShapeSlug)}
-          <a class="app-btn" href="/apps/rising-seasons/">Open Rising Seasons app →</a>
+          <a class="app-btn" href="/apps/rising-seasons/#show=${escapeHtml(seriesId)}">Open in Rising Seasons app →</a>
           <a class="secondary-btn" href="https://www.imdb.com/title/${seriesId}/" rel="noopener" target="_blank">View on IMDb</a>
         </div>
         ${renderFreshnessLine(builtAt, seasons.length)}
       </div>
     </section>
+
+    ${renderCast(cast)}
 
     <section class="seasons" aria-labelledby="seasons-heading">
       <h2 id="seasons-heading">Seasons</h2>
@@ -165,6 +167,36 @@ function renderHeroPoster(posterUrl, title) {
     return '<div class="show-poster poster-placeholder" aria-hidden="true"></div>';
   }
   return `<img class="show-poster" src="${escapeHtml(posterUrl)}" alt="${escapeHtml(`${title} poster`)}" width="300" height="450" loading="eager" decoding="async">`;
+}
+
+// Top-billed cast strip. `cast` is the array stashed on the series by
+// enrich-tmdb.js — each entry is { id, name, character, profile_path }.
+// Mirrors the in-app show modal's cast cards (same class names) so the
+// shared .cast-* styling applies. Returns '' when there's no cast so the
+// section is omitted entirely.
+const TMDB_PROFILE = 'https://image.tmdb.org/t/p/w185';
+function renderCast(cast) {
+  if (!Array.isArray(cast) || cast.length === 0) return '';
+  const cards = cast.map((person) => {
+    const photo = person.profile_path
+      ? `<img src="${escapeHtml(`${TMDB_PROFILE}${person.profile_path}`)}" alt="" width="90" height="135" loading="lazy" decoding="async">`
+      : `<div class="cast-photo-fallback" aria-hidden="true">${escapeHtml((person.name || '?').charAt(0).toUpperCase())}</div>`;
+    const inner = `<div class="cast-photo">${photo}</div>
+          <span class="cast-name">${escapeHtml(person.name || '')}</span>
+          ${person.character ? `<span class="cast-character">${escapeHtml(person.character)}</span>` : ''}`;
+    // Whole card links to the TMDB person page when we have an id, matching
+    // the app modal. Falls back to a non-interactive card otherwise.
+    const body = Number.isFinite(person.id)
+      ? `<a class="cast-card-inner" href="https://www.themoviedb.org/person/${person.id}" target="_blank" rel="noopener noreferrer" title="${escapeHtml(`View ${person.name || 'cast member'} on TMDB`)}">${inner}</a>`
+      : `<div class="cast-card-inner">${inner}</div>`;
+    return `<li class="cast-card">${body}</li>`;
+  }).join('\n      ');
+  return `<section class="show-cast" aria-labelledby="cast-heading">
+      <h2 id="cast-heading">Cast</h2>
+      <ul class="cast-list">
+      ${cards}
+      </ul>
+    </section>`;
 }
 
 function renderSeasonSection(season, seriesId) {
@@ -307,7 +339,7 @@ function buildBreadcrumbs(title, path) {
   };
 }
 
-function buildTvSeriesSchema({ seriesId, title, year, canonical, posterUrl, cleanOverview, genres, seriesRating, seriesVotes, seasons, tmdbId }) {
+function buildTvSeriesSchema({ seriesId, title, year, canonical, posterUrl, cleanOverview, genres, seriesRating, seriesVotes, seasons, tmdbId, cast }) {
   const sameAs = [`https://www.imdb.com/title/${seriesId}/`];
   if (tmdbId) sameAs.push(`https://www.themoviedb.org/tv/${tmdbId}`);
   const schema = {
@@ -322,6 +354,13 @@ function buildTvSeriesSchema({ seriesId, title, year, canonical, posterUrl, clea
   if (cleanOverview) schema.description = cleanOverview;
   if (posterUrl) schema.image = posterUrl;
   if (genres && genres.length) schema.genre = genres;
+  if (Array.isArray(cast) && cast.length) {
+    schema.actor = cast.map((p) => {
+      const person = { '@type': 'Person', name: p.name };
+      if (Number.isFinite(p.id)) person.sameAs = `https://www.themoviedb.org/person/${p.id}`;
+      return person;
+    });
+  }
   if (seriesRating) {
     schema.aggregateRating = {
       '@type': 'AggregateRating',

@@ -155,10 +155,11 @@ test('renderShowPage hero-actions has three buttons: shape CTA, app-btn, IMDb li
   assert.ok(html.includes('class="primary-btn"'));
   assert.ok(html.includes('class="app-btn"'));
   assert.ok(html.includes('class="secondary-btn"'));
-  // app-btn links to the base app URL with no hash
+  // app-btn deep-links into the app, opening this show's modal via #show=
   const appBtnIdx = html.indexOf('class="app-btn"');
-  const appBtnSnippet = html.slice(appBtnIdx - 60, appBtnIdx + 80);
-  assert.ok(appBtnSnippet.includes('href="/apps/rising-seasons/"'));
+  const appBtnSnippet = html.slice(appBtnIdx - 60, appBtnIdx + 120);
+  assert.ok(appBtnSnippet.includes(`href="/apps/rising-seasons/#show=${BREAKING_BAD.seriesId}"`));
+  assert.ok(appBtnSnippet.includes('Open in Rising Seasons app'));
   // app-btn does NOT carry the shape hash (that's the primary-btn's job)
   assert.ok(!appBtnSnippet.includes('#shape='));
   // Order: primary-btn appears before app-btn, app-btn before secondary-btn
@@ -170,8 +171,32 @@ test('renderShowPage app-btn is present even when show has no dominant shape', (
   const html = renderShowPage({ ...BREAKING_BAD, dominantShape: null, dominantShapeSlug: null, relatedShows: [] });
   assert.ok(html.includes('class="app-btn"'));
   const appBtnIdx = html.indexOf('class="app-btn"');
-  const snippet = html.slice(appBtnIdx - 60, appBtnIdx + 80);
-  assert.ok(snippet.includes('href="/apps/rising-seasons/"'));
+  const snippet = html.slice(appBtnIdx - 60, appBtnIdx + 120);
+  assert.ok(snippet.includes(`href="/apps/rising-seasons/#show=${BREAKING_BAD.seriesId}"`));
+});
+
+test('renderShowPage renders a cast strip when cast is provided', () => {
+  const cast = [
+    { id: 17419, name: 'Bryan Cranston', character: 'Walter White', profile_path: '/bran.jpg' },
+    { id: 134531, name: 'Aaron Paul', character: 'Jesse Pinkman', profile_path: null },
+  ];
+  const html = renderShowPage({ ...BREAKING_BAD, cast, dominantShape: 'rising', dominantShapeSlug: 'rising', relatedShows: [] });
+  assert.ok(html.includes('<h2 id="cast-heading">Cast</h2>'));
+  assert.ok(html.includes('class="cast-name">Bryan Cranston'));
+  assert.ok(html.includes('class="cast-character">Walter White'));
+  // Member with a TMDB id links out to their person page.
+  assert.ok(html.includes('https://www.themoviedb.org/person/17419'));
+  // Member without a profile_path gets the initial fallback, not a broken img.
+  assert.ok(html.includes('class="cast-photo-fallback"'));
+  // Cast feeds the TVSeries JSON-LD actor list for SEO.
+  assert.ok(html.includes('"actor"'));
+  assert.ok(html.includes('"name": "Bryan Cranston"'));
+});
+
+test('renderShowPage omits the cast section when there is no cast', () => {
+  const html = renderShowPage({ ...BREAKING_BAD, cast: null, dominantShape: 'rising', dominantShapeSlug: 'rising', relatedShows: [] });
+  assert.ok(!html.includes('id="cast-heading"'));
+  assert.ok(!html.includes('"actor"'));
 });
 
 test('groupBySeries backfills series-level fields from any season', () => {
