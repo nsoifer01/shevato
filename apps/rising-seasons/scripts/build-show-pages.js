@@ -16,6 +16,7 @@ const { renderShowsSitemap } = require('./render-sitemap.js');
 
 const ROOT = path.join(__dirname, '..');
 const DATA_FILE = path.join(ROOT, 'data.json');
+const EXTRAS_FILE = path.join(ROOT, 'data', 'show-modal-extras.json');
 const SHOWS_DIR = path.join(ROOT, 'shows');
 const SITEMAP_FILE = path.join(ROOT, 'sitemap-shows.xml');
 
@@ -30,6 +31,13 @@ function main() {
   const series = groupBySeries(data.matches);
   console.log(`[build-show-pages] ${series.length} unique series · ${data.matches.length} seasons · builtAt=${data.builtAt}`);
 
+  // Cast lives in show-modal-extras.json (build-data.js strips it out of
+  // data.json's matches), keyed by seriesId. Load it so each show page can
+  // render the same top-billed cast strip the in-app modal shows. Missing
+  // file is non-fatal — pages just render without cast.
+  const extras = fs.existsSync(EXTRAS_FILE) ? JSON.parse(fs.readFileSync(EXTRAS_FILE, 'utf8')) : {};
+  let castCount = 0;
+
   // Build shape → series lookup for recommendations panel.
   const shapeIndex = buildShapeIndex(series);
 
@@ -43,7 +51,9 @@ function main() {
     fs.mkdirSync(dir, { recursive: true });
     const { dominantShape, dominantShapeSlug } = computeDominantShape(s);
     const relatedShows = computeRelatedShows(s, dominantShape, shapeIndex, 4);
-    const html = renderShowPage({ ...s, builtAt: data.builtAt, dominantShape, dominantShapeSlug, relatedShows });
+    const cast = extras[s.seriesId] && extras[s.seriesId].cast ? extras[s.seriesId].cast : null;
+    if (cast) castCount++;
+    const html = renderShowPage({ ...s, cast, builtAt: data.builtAt, dominantShape, dominantShapeSlug, relatedShows });
     fs.writeFileSync(path.join(dir, 'index.html'), html);
     pageCount++;
     if (pageCount % 1000 === 0) {
@@ -58,7 +68,7 @@ function main() {
   fs.writeFileSync(SITEMAP_FILE, renderShowsSitemap(series.map(toIndexEntry), data.builtAt));
 
   const elapsed = ((Date.now() - start) / 1000).toFixed(1);
-  console.log(`[build-show-pages] wrote ${pageCount} show pages + index + sitemap in ${elapsed}s`);
+  console.log(`[build-show-pages] wrote ${pageCount} show pages (${castCount} with cast) + index + sitemap in ${elapsed}s`);
 }
 
 // data.json's `matches` is a flat list of seasons. Group them by series
