@@ -39,3 +39,7 @@ apps/rising-seasons/sitemap-shows.xml
 # build time. Same rationale as Rising Seasons.
 apps/gym-tracker/exercises/
 apps/gym-tracker/sitemap-exercises.xml
+
+# Local-only change-notes / site-comparison docs. Kept on disk for
+# reference, not published to the repo.
+.features/
