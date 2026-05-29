@@ -6,7 +6,7 @@
   <meta name="color-scheme" content="light" />
   <meta name="theme-color" content="#ffffff" />
   <title>Free Apps | Mario Kart, Gym, Football, Rising Seasons, MapTap Rivals & Arena - Shevato</title>
-  <meta name="description" content="Free web apps from Shevato: Mario Kart racing, gym workouts, head-to-head football, Rising Seasons TV analytics, MapTap.gg rivalry tracking, and Arena — multiplayer party games with friends in private rooms (Globe Drop, Trivia, and more)." />
+  <meta name="description" content="Free web apps from Shevato: Mario Kart racing, gym workouts, head-to-head football, Rising Seasons TV analytics, MapTap.gg rivalry tracking, and Arena, a multiplayer party-game hub for friends in private rooms (Globe Drop, Trivia, and more)." />
   <meta name="keywords" content="Mario Kart tracker, gym tracker, workout tracker, football statistics, head to head football, TV show ratings, episode ratings, rising seasons, slow burn shows, big finale, MapTap tracker, MapTap.gg, MapTap rivals, head to head game tracker, gaming apps, race tracker, fitness tracker, sports statistics, free browser apps, Mario Kart 8 Deluxe, Mario Kart World, gym workout log, multiplayer trivia, real-time trivia, brain arena, geography game, globe drop, 3d globe game, world capitals game" />
   <meta name="author" content="Shevato LLC" />
   <meta name="robots" content="index, follow, max-image-preview:large" />
@@ -149,7 +149,7 @@
       {
         "@type": "SoftwareApplication",
         "name": "Arena",
-        "description": "Real-time multiplayer hub for private rooms with friends. Create a room, share an invite link, and play across a growing roster of games — Globe Drop geography (pin cities on a 3D globe), head-to-head Trivia, and more on the way.",
+        "description": "Real-time multiplayer hub for private rooms with friends. Create a room, share an invite link, and play across a growing roster of games: Globe Drop geography (pin cities on a 3D globe), head-to-head Trivia, and more on the way.",
         "url": "https://shevato.com/apps/arena/",
         "applicationCategory": "GameApplication",
         "operatingSystem": "Web Browser",
@@ -165,6 +165,9 @@
   </script>
   <link rel="stylesheet" href="/assets/css/content-alignment.css" />
   <link rel="stylesheet" href="/assets/css/brand-colors.css" />
+  <link rel="stylesheet" href="/assets/css/site.css" />
+  <link rel="stylesheet" href="/assets/css/font-awesome.min.css" media="print" onload="this.media='all'">
+  <noscript><link rel="stylesheet" href="/assets/css/font-awesome.min.css"></noscript>
 </head>
 <body class="is-preload">
   <a class="skip-link" href="#main-content">Skip to main content</a>
@@ -175,8 +178,16 @@
         <h1>Free Web Apps</h1>
         <p>Six free web apps we have built and keep online. No ads, no signup required, and they all save locally by default with optional Firebase sync if you want to log in.</p>
       </header>
+      <div class="app-filter-bar" role="group" aria-label="Filter apps by category">
+        <button data-filter="all" aria-pressed="true">All</button>
+        <button data-filter="game" aria-pressed="false">Games</button>
+        <button data-filter="fitness" aria-pressed="false">Fitness</button>
+        <button data-filter="sports" aria-pressed="false">Sports</button>
+        <button data-filter="tv" aria-pressed="false">TV</button>
+      </div>
+
       <div class="highlights">
-        <section>
+        <section data-category="game">
           <div class="content">
             <header>
               <a href="apps/mario-kart/" class="icon fa-gamepad brand-color-primary" aria-label="Open Mario Kart Tracker"></a>
@@ -188,7 +199,7 @@
             </ul>
           </div>
         </section>
-        <section>
+        <section data-category="fitness">
           <div class="content">
             <header>
               <a href="apps/gym-tracker/" class="icon fa-heartbeat brand-color-primary" aria-label="Open Gym Tracker"></a>
@@ -200,7 +211,7 @@
             </ul>
           </div>
         </section>
-        <section>
+        <section data-category="sports">
           <div class="content">
             <header>
               <a href="apps/football-h2h/" class="icon fa-futbol-o brand-color-primary" aria-label="Open Football H2H League"></a>
@@ -212,7 +223,7 @@
             </ul>
           </div>
         </section>
-        <section>
+        <section data-category="tv">
           <div class="content">
             <header>
               <a href="apps/rising-seasons/" class="icon fa-line-chart brand-color-primary" aria-label="Open Rising Seasons"></a>
@@ -224,7 +235,7 @@
             </ul>
           </div>
         </section>
-        <section>
+        <section data-category="game">
           <div class="content">
             <header>
               <a href="apps/maptap-rivals/" class="icon fa-crosshairs brand-color-primary" aria-label="Open MapTap Rivals"></a>
@@ -236,19 +247,41 @@
             </ul>
           </div>
         </section>
-        <section>
+        <section data-category="game">
           <div class="content">
             <header>
               <a href="apps/arena/" class="icon fa-trophy brand-color-primary" aria-label="Open Arena"></a>
               <h3>Arena</h3>
             </header>
-            <p>Real-time multiplayer hub for private rooms with friends. Create a room, share an invite link, and play across a growing collection of games — Globe Drop geography (pin cities on a 3D globe), head-to-head Trivia, and more on the way.</p>
+            <p>Real-time multiplayer hub for private rooms with friends. Create a room, share an invite link, and play across a growing collection of games: Globe Drop geography (pin cities on a 3D globe), head-to-head Trivia, and more on the way.</p>
             <ul class="actions special">
               <li><a href="apps/arena/" class="button">Open Arena</a></li>
             </ul>
           </div>
         </section>
       </div>
+
+      <script>
+        (function() {
+          var bar = document.querySelector('.app-filter-bar');
+          if (!bar) return;
+          bar.addEventListener('click', function(e) {
+            var btn = e.target.closest('button[data-filter]');
+            if (!btn) return;
+            var filter = btn.getAttribute('data-filter');
+            bar.querySelectorAll('button').forEach(function(b) {
+              b.setAttribute('aria-pressed', b === btn ? 'true' : 'false');
+            });
+            document.querySelectorAll('.highlights section[data-category]').forEach(function(sec) {
+              if (filter === 'all' || sec.getAttribute('data-category') === filter) {
+                sec.style.display = '';
+              } else {
+                sec.style.display = 'none';
+              }
+            });
+          });
+        })();
+      </script>
     </div>
   </main>
   <div data-include="footer"></div>

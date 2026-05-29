@@ -6,7 +6,7 @@
   <meta name="color-scheme" content="light" />
   <meta name="theme-color" content="#ffffff" />
   <title>Shevato | Spring Boot, Microservices, Full Stack Engineering</title>
-  <meta name="description" content="Shevato LLC is a software engineering firm specializing in Spring Boot microservices, REST APIs, and full stack web applications for client teams." />
+  <meta name="description" content="Shevato LLC builds Spring Boot microservices, REST APIs, and full stack web applications for client teams, plus a growing set of free browser apps used daily." />
   <meta name="keywords" content="software engineering firm, freelance Java developer, Spring Boot contractor, full stack software developer, software contractor, microservices, REST API development, Shevato" />
   <meta name="author" content="Shevato LLC" />
   <meta name="robots" content="index, follow, max-image-preview:large" />
@@ -26,6 +26,8 @@
   <link rel="stylesheet" href="assets/css/main.css" />
   <link rel="stylesheet" href="assets/css/brand-colors.css" />
   <link rel="stylesheet" href="assets/css/site.css" />
+  <link rel="stylesheet" href="/assets/css/font-awesome.min.css" media="print" onload="this.media='all'">
+  <noscript><link rel="stylesheet" href="/assets/css/font-awesome.min.css"></noscript>
   <link rel="icon" type="image/png" href="images/white_icon_transparent.png">
   <link rel="apple-touch-icon" sizes="180x180" href="/images/apple-touch-icon.png">
   <link rel="manifest" href="/site.webmanifest">
@@ -79,7 +81,15 @@
         "name": "Shevato",
         "description": "Software engineering services from Shevato LLC: Spring Boot microservices, REST APIs, and full stack web applications.",
         "inLanguage": "en",
-        "publisher": { "@id": "https://shevato.com/#organization" }
+        "publisher": { "@id": "https://shevato.com/#organization" },
+        "potentialAction": {
+          "@type": "SearchAction",
+          "target": {
+            "@type": "EntryPoint",
+            "urlTemplate": "https://shevato.com/apps.html?q={search_term_string}"
+          },
+          "query-input": "required name=search_term_string"
+        }
       },
       {
         "@type": "WebPage",
