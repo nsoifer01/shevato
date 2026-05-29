@@ -5,6 +5,11 @@
   --brand-blue: #0044cc;
   --brand-blue-hover: #003bb5;
   --brand-blue-tint: #1a5fd9;
+  /* Brightened brand blue for dark/near-black surfaces (site header and the
+     slide-in #menu). #0044cc only reaches ~2.5:1 contrast on black and fails
+     WCAG AA; #4d8dff reaches ~6.2:1 while reading as the same brand hue.
+     Use this for active-nav indicators on dark backgrounds. */
+  --brand-blue-on-dark: #4d8dff;
   --brand-blue-rgb: 0, 68, 204;
 }
 
