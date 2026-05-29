@@ -929,6 +929,36 @@
             menuToggle.attr('aria-expanded', 'false');
             menu.attr('aria-hidden', 'true');
           }
+
+          // Active page highlight + aria-current (header inline nav + #menu).
+          // Skipped inside an app (/apps/<name>/): none of the five nav
+          // targets is the current page there, so nothing gets marked.
+          const path = window.location.pathname;
+          const inApp = path.indexOf('/apps/') !== -1;
+          const filename = path.split('/').pop() || 'home.html';
+          if (!inApp) {
+            $('.header-inline-nav a, #menu a').each(function() {
+              const hrefFile = ($(this).attr('href') || '').split('/').pop();
+              if (hrefFile && hrefFile === filename) {
+                $(this).addClass('active').attr('aria-current', 'page');
+              }
+            });
+          }
+        }
+
+        // Footer: hide the Navigate link for the page/section we're on so the
+        // column always shows the other four. Inside an app we're in the
+        // "Apps" section, so the Apps link is the one hidden.
+        if (includeFile === 'footer.html') {
+          const fpath = window.location.pathname;
+          const currentFile = fpath.indexOf('/apps/') !== -1
+            ? 'apps.html'
+            : (fpath.split('/').pop() || 'home.html');
+          $('#footer .footer-nav a').each(function() {
+            if (($(this).attr('href') || '').split('/').pop() === currentFile) {
+              $(this).closest('li').hide();
+            }
+          });
         }
       });
     });
