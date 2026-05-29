@@ -555,7 +555,9 @@ body {
   border: 1px solid rgba(var(--brand-blue-rgb), 0.18);
   border-radius: 999px;
   background: #f1f3f7;
-  color: #444;
+  /* !important overrides the theme's generic `button { color:#555 !important }`
+     in main.css, which otherwise wins regardless of this rule's specificity. */
+  color: #444 !important;
   font-size: 0.82rem;
   font-weight: 600;
   letter-spacing: 0.04em;
@@ -568,13 +570,13 @@ body {
 }
 .app-filter-bar button:hover {
   border-color: var(--brand-blue);
-  color: var(--brand-blue);
+  color: var(--brand-blue) !important;
   background: rgba(var(--brand-blue-rgb), 0.06);
   box-shadow: none;
 }
 .app-filter-bar button[aria-pressed="true"] {
   background: var(--brand-blue);
-  color: #ffffff;
+  color: #ffffff !important;
   border-color: var(--brand-blue);
   box-shadow: none;
 }

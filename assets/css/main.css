@@ -2858,6 +2858,12 @@ body > [data-include="footer"] {
   #header > nav > a[data-js="menu-toggle"] {
     display: none; } }
 
+/* Keep the right-edge header content (Sign In / account) off the viewport
+   edge on desktop, matching the logo's 1.25rem left inset. */
+@media screen and (min-width: 737px) {
+  #header {
+    padding-right: 1.25rem; } }
+
 /* Active-page mark inside the slide-in #menu. Selector mirrors the theme's
    #menu > ul.links > li > a (specificity 1,1,4) so it wins over inherited grey. */
 #menu > ul.links > li > a[aria-current="page"] {
