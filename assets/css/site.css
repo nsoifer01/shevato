@@ -491,3 +491,96 @@ body {
 .wrapper { flex: 1; }
 /* .wrapper-inherit-padding lives in brand-colors.css; it loads on every page. */
 #footer { margin-top: auto; }
+
+/* Process steps (Item 7) --------------------------------------------------- */
+.process-steps {
+  list-style: none;
+  padding: 0;
+  margin: 1.25rem 0 2rem;
+  counter-reset: process-step;
+}
+.process-steps li {
+  display: flex;
+  gap: 1.25rem;
+  align-items: flex-start;
+  padding: 1.25rem 0;
+  border-bottom: 1px solid rgba(var(--brand-blue-rgb), 0.07);
+}
+.process-steps li:last-child {
+  border-bottom: 0;
+}
+.process-steps li::before {
+  counter-increment: process-step;
+  content: counter(process-step, decimal-leading-zero);
+  font-size: 1.8rem;
+  font-weight: 700;
+  line-height: 1;
+  color: rgba(var(--brand-blue-rgb), 0.35);
+  flex-shrink: 0;
+  width: 2.5rem;
+}
+.process-steps li h3 {
+  margin: 0 0 0.3rem;
+  font-size: 1rem;
+  font-weight: 600;
+  text-transform: none;
+  color: #1c1f24;
+}
+.process-steps li p {
+  margin: 0;
+  font-size: 0.95rem;
+  line-height: 1.6;
+  color: #4a4f57;
+}
+@media screen and (max-width: 480px) {
+  .process-steps li {
+    flex-direction: column;
+    gap: 0.5rem;
+  }
+  .process-steps li::before {
+    font-size: 1.4rem;
+  }
+}
+
+/* App category filter bar (Item 3) ----------------------------------------- */
+.app-filter-bar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin: 0 0 2rem;
+  justify-content: center;
+}
+.app-filter-bar button {
+  appearance: none;
+  border: 1px solid rgba(var(--brand-blue-rgb), 0.18);
+  border-radius: 999px;
+  background: #f1f3f7;
+  color: #444;
+  font-size: 0.82rem;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  padding: 0.4rem 1.1rem;
+  cursor: pointer;
+  transition: background-color 180ms ease, color 180ms ease, border-color 180ms ease;
+  height: auto;
+  line-height: 1.4;
+  box-shadow: none;
+}
+.app-filter-bar button:hover {
+  border-color: var(--brand-blue);
+  color: var(--brand-blue);
+  background: rgba(var(--brand-blue-rgb), 0.06);
+  box-shadow: none;
+}
+.app-filter-bar button[aria-pressed="true"] {
+  background: var(--brand-blue);
+  color: #ffffff;
+  border-color: var(--brand-blue);
+  box-shadow: none;
+}
+
+/* NOTE: styles for the SHARED header/footer partials (.header-inline-nav,
+   the desktop menu-toggle hide, #menu aria-current, and the footer two-column
+   layout) live in main.css instead of here, because the apps load main.css
+   but not site.css — keeping them in main.css makes the nav + footer render
+   identically on the marketing pages and inside every app. */
