@@ -183,7 +183,7 @@
 
     /**
      * Aggregate per-player end-of-game stats from a list of per-question
-     * answer records. Used to compute the detailed-stats card (premium).
+     * answer records. Used to compute the detailed-stats card.
      * Each record: { questionId, correct, timeLeftMs, totalMs, category }
      * @param {Array} records
      * @returns {{ accuracy:number, avgResponseMs:number, byCategory: object }}

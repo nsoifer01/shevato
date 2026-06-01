@@ -54,7 +54,7 @@
     "@context": "https://schema.org",
     "@type": "WebApplication",
     "name": "Arena",
-    "description": "Real-time multiplayer hub for private rooms with friends. Create a room, share an invite link, and play across a growing roster of games — Globe Drop geography (pin cities on a 3D globe), head-to-head Trivia, and more on the way. Free to play with an optional premium tier for custom packs and detailed post-game stats.",
+    "description": "Real-time multiplayer hub for private rooms with friends. Create a room, share an invite link, and play across a growing roster of games — Globe Drop geography (pin cities on a 3D globe), head-to-head Trivia, and more on the way. Free to play, with custom question packs and detailed post-game stats.",
     "url": "https://shevato.com/apps/arena/",
     "applicationCategory": "GameApplication",
     "operatingSystem": "Web Browser",
@@ -75,7 +75,7 @@
       "Speed + streak based scoring with instant local reveal after you submit",
       "Per-question / per-location recap table comparing you side-by-side with your opponents",
       "Global score leaderboard and Firebase Auth profiles with total score, games played, and wins",
-      "Premium tier: custom question packs, detailed accuracy / response-time stats"
+      "Custom question packs and detailed accuracy / response-time stats, free for everyone"
     ],
     "author": {
       "@type": "Organization",
@@ -754,21 +754,13 @@
             <p class="end-recap-empty" id="end-recap-empty" hidden>No per-question detail recorded for this game.</p>
           </section>
 
-          <!-- Detailed stats (premium) -->
+          <!-- Detailed stats -->
           <section class="detailed-stats" id="detailed-stats" hidden>
             <header class="detailed-stats-head">
               <h3><span aria-hidden="true">📊</span> Your detailed stats</h3>
-              <span class="premium-chip">Premium</span>
             </header>
             <div class="detailed-stats-grid" id="detailed-stats-grid"></div>
           </section>
-          <div class="detailed-stats-upsell" id="detailed-stats-upsell" hidden>
-            <p>
-              <span aria-hidden="true">📊</span>
-              Want a breakdown of your accuracy, response time, and category strengths?
-            </p>
-            <button type="button" class="btn btn-primary" data-action="open-premium">Go Premium</button>
-          </div>
 
           <!-- In-room session H2H — visible once at least one match has
                finished in this room and there are 2+ players. -->
@@ -960,31 +952,10 @@
           <div class="profile-stat"><span class="profile-stat-label">Best round</span><span class="profile-stat-value" id="stat-best-round">0</span></div>
         </div>
 
-        <div class="profile-premium-card" id="profile-premium-card">
-          <div class="profile-premium-info">
-            <h3><span aria-hidden="true">✨</span> Premium</h3>
-            <p id="profile-premium-status">Every new account gets a 30-day free trial. After that, upgrade for $5 one-time to keep custom question packs and detailed post-game stats unlocked.</p>
-          </div>
-          <button type="button" class="btn btn-primary" id="upgrade-premium-btn">Go Premium · $5</button>
-        </div>
-
-        <!-- Admin-only dev controls. Hidden unless your Firebase uid is in
-             Config.ADMIN_UIDS so you can toggle premium / reset the trial
-             without going through Stripe. Empty list = nothing shown. -->
-        <div class="profile-admin-controls" id="profile-admin-controls" hidden>
-          <h4>Admin (dev)</h4>
-          <p class="profile-admin-hint">These shortcuts are visible because your uid is in <code>Config.ADMIN_UIDS</code>.</p>
-          <div class="profile-admin-actions">
-            <button type="button" class="btn btn-ghost btn-sm" id="admin-toggle-paid-btn">Grant paid premium</button>
-            <button type="button" class="btn btn-ghost btn-sm" id="admin-reset-trial-btn">Reset trial clock</button>
-          </div>
-        </div>
-
-        <!-- Custom pack upload (premium) -->
+        <!-- Custom pack upload -->
         <details class="custom-pack" id="custom-pack-details">
           <summary>
             <span aria-hidden="true">📦</span> Upload a custom question pack
-            <span class="premium-tag" data-feature="custom-packs">Premium</span>
           </summary>
           <div class="custom-pack-body">
             <p class="custom-pack-hint">
@@ -1005,29 +976,6 @@
       </p>
     </section>
   </main>
-
-  <!-- Premium modal -->
-  <div class="modal" id="premium-modal" role="dialog" aria-modal="true" aria-labelledby="premium-modal-title" hidden>
-    <div class="modal-backdrop" data-close="modal" aria-label="Close dialog"></div>
-    <article class="modal-panel modal-panel-sm">
-      <button type="button" class="modal-close" data-close="modal" aria-label="Close">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.85" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 6l12 12"/><path d="M18 6L6 18"/></svg>
-      </button>
-      <h2 id="premium-modal-title"><span aria-hidden="true">✨</span> Arena Premium</h2>
-      <p class="premium-modal-price" id="premium-modal-price"><strong id="premium-modal-price-value">$5 one-time</strong> (no subscription).</p>
-      <ul class="premium-list">
-        <li><span aria-hidden="true">📦</span> Upload custom question packs</li>
-        <li><span aria-hidden="true">📊</span> Detailed post-game stats (accuracy, response time, category breakdown)</li>
-      </ul>
-      <p class="premium-modal-hint">
-        Every new account gets a 30-day free trial automatically. Pay only if you want to keep premium after it ends. Premium is tied to your Shevato account and follows you across devices.
-      </p>
-      <div class="modal-actions">
-        <button type="button" class="btn btn-ghost" data-close="modal">Maybe later</button>
-        <button type="button" class="btn btn-primary" id="premium-checkout-btn">Continue to checkout</button>
-      </div>
-    </article>
-  </div>
 
   <!-- Reusable confirmation modal. openConfirmModal({...}) drops the
        title/body/labels in and returns a Promise<boolean>. Replaces
@@ -1118,7 +1066,6 @@
        namespace. -->
   <script src="js/config.js"></script>
   <script src="js/scoring.js"></script>
-  <script src="js/premium.js"></script>
   <script src="js/feedback.js"></script>
   <script src="js/chat.js"></script>
   <script src="js/room-state.js"></script>
