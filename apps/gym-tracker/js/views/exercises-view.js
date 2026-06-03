@@ -7,10 +7,13 @@ import { trapModalFocus } from '../utils/modal-focus.js';
 import { DarkSelect } from '../utils/dark-select.js';
 import { AnalyticsService } from '../services/AnalyticsService.js';
 
+const EXERCISE_SORT_KEY = 'gymTrackerExerciseSort';
+
 class ExercisesView {
     constructor() {
         this.app = app;
         this.filteredExercises = [];
+        this._detailExerciseId = null;
         this.init();
     }
 
@@ -59,8 +62,16 @@ class ExercisesView {
         const categoryFilter = document.getElementById('exercise-db-category');
         const equipmentFilter = document.getElementById('exercise-db-equipment');
         const historyFilter = document.getElementById('exercise-db-history-filter');
-        const historySort = document.getElementById('exercise-db-history-sort');
+        const sortSelect = document.getElementById('exercise-db-sort');
         const createBtn = document.getElementById('create-custom-exercise-btn');
+
+        // Restore persisted sort choice
+        if (sortSelect) {
+            const saved = localStorage.getItem(EXERCISE_SORT_KEY);
+            if (saved && sortSelect.querySelector(`option[value="${saved}"]`)) {
+                sortSelect.value = saved;
+            }
+        }
 
         if (searchInput) {
             searchInput.addEventListener('input', () => this.filterExercises());
@@ -75,21 +86,14 @@ class ExercisesView {
         }
 
         if (historyFilter) {
-            historyFilter.addEventListener('change', () => {
-                // Show/hide sort dropdown based on history filter
-                if (historySort) {
-                    historySort.style.display = historyFilter.value === 'with-history' ? '' : 'none';
-                    // Reset to default sort when hiding
-                    if (historyFilter.value !== 'with-history') {
-                        historySort.value = 'name';
-                    }
-                }
-                this.filterExercises();
-            });
+            historyFilter.addEventListener('change', () => this.filterExercises());
         }
 
-        if (historySort) {
-            historySort.addEventListener('change', () => this.filterExercises());
+        if (sortSelect) {
+            sortSelect.addEventListener('change', () => {
+                localStorage.setItem(EXERCISE_SORT_KEY, sortSelect.value);
+                this.filterExercises();
+            });
         }
 
         if (createBtn) {
@@ -103,9 +107,9 @@ class ExercisesView {
                 if (categoryFilter) categoryFilter.value = '';
                 if (equipmentFilter) equipmentFilter.value = '';
                 if (historyFilter) historyFilter.value = 'all';
-                if (historySort) {
-                    historySort.value = 'name';
-                    historySort.style.display = 'none';
+                if (sortSelect) {
+                    sortSelect.value = 'name-asc';
+                    localStorage.setItem(EXERCISE_SORT_KEY, 'name-asc');
                 }
                 this.filterExercises();
             });
@@ -153,7 +157,7 @@ class ExercisesView {
         const category = document.getElementById('exercise-db-category')?.value || '';
         const equipment = document.getElementById('exercise-db-equipment')?.value || '';
         const historyFilter = document.getElementById('exercise-db-history-filter')?.value || 'all';
-        const historySort = document.getElementById('exercise-db-history-sort')?.value || 'name';
+        const sortValue = document.getElementById('exercise-db-sort')?.value || 'name-asc';
 
         this.filteredExercises = this.app.exerciseDatabase.filter(ex => {
             const matchesSearch = ex.name.toLowerCase().includes(searchTerm) ||
@@ -173,24 +177,24 @@ class ExercisesView {
             return matchesSearch && matchesCategory && matchesEquipment && matchesHistory;
         });
 
-        // Apply sorting when showing exercises with history
-        if (historyFilter === 'with-history') {
-            if (historySort === 'most-history') {
-                this.filteredExercises.sort((a, b) => {
-                    const countDiff = this.getExerciseHistoryCount(b.id) - this.getExerciseHistoryCount(a.id);
-                    // Secondary sort by name if counts are equal
-                    return countDiff !== 0 ? countDiff : a.name.localeCompare(b.name);
-                });
-            } else if (historySort === 'least-history') {
-                this.filteredExercises.sort((a, b) => {
-                    const countDiff = this.getExerciseHistoryCount(a.id) - this.getExerciseHistoryCount(b.id);
-                    // Secondary sort by name if counts are equal
-                    return countDiff !== 0 ? countDiff : a.name.localeCompare(b.name);
-                });
-            } else {
-                // Default: sort by name
-                this.filteredExercises.sort((a, b) => a.name.localeCompare(b.name));
-            }
+        // Apply sort — works across all filter states
+        if (sortValue === 'name-desc') {
+            this.filteredExercises.sort((a, b) => b.name.localeCompare(a.name));
+        } else if (sortValue === 'most-logged') {
+            this.filteredExercises.sort((a, b) => {
+                const diff = this.getExerciseHistoryCount(b.id) - this.getExerciseHistoryCount(a.id);
+                return diff !== 0 ? diff : a.name.localeCompare(b.name);
+            });
+        } else if (sortValue === 'most-recent') {
+            this.filteredExercises.sort((a, b) => {
+                const tA = this._getExerciseLastUsed(a.id);
+                const tB = this._getExerciseLastUsed(b.id);
+                if (tB !== tA) return tB - tA;
+                return a.name.localeCompare(b.name);
+            });
+        } else {
+            // name-asc (default)
+            this.filteredExercises.sort((a, b) => a.name.localeCompare(b.name));
         }
 
         // Update dropdown states
@@ -200,7 +204,7 @@ class ExercisesView {
         const resetBtn = document.getElementById('exercise-db-reset');
         if (resetBtn) {
             const anyActive = Boolean(searchTerm) || Boolean(category) || Boolean(equipment)
-                || historyFilter !== 'all' || historySort !== 'name';
+                || historyFilter !== 'all' || sortValue !== 'name-asc';
             resetBtn.disabled = !anyActive;
         }
 
@@ -208,6 +212,22 @@ class ExercisesView {
         this.updateCountText(this.filteredExercises.length, this.app.exerciseDatabase.length);
 
         this.renderExerciseList();
+    }
+
+    /**
+     * Returns the epoch ms of the most recent session that logged this exercise,
+     * or 0 if no history. Used by the "Recently Used" sort.
+     */
+    _getExerciseLastUsed(exerciseId) {
+        let latest = 0;
+        this.app.workoutSessions.forEach(session => {
+            const ex = session.exercises.find(e => e.exerciseId === exerciseId);
+            if (ex && ex.sets && ex.sets.some(s => s.completed)) {
+                const ts = new Date(session.sortTimestamp).getTime();
+                if (ts > latest) latest = ts;
+            }
+        });
+        return latest;
     }
 
     updateDropdownStates(searchTerm, currentCategory, currentEquipment, historyFilter) {
@@ -459,6 +479,8 @@ class ExercisesView {
         const groupedHistory = this.getExerciseHistoryGroupedByDate(exerciseId);
         if (history.length === 0) return;
 
+        this._detailExerciseId = exerciseId;
+
         const modal = document.getElementById('exercise-detail-modal');
         document.getElementById('exercise-detail-name').textContent = exercise.name;
 
@@ -623,6 +645,21 @@ class ExercisesView {
         `;
 
         this.renderProgressionChart(exerciseId, isDuration);
+
+        // Delete-history footer — inject after chart, wired via delegation below
+        const existingFooter = modal.querySelector('.exercise-detail-delete-footer');
+        if (existingFooter) existingFooter.remove();
+        const footer = document.createElement('div');
+        footer.className = 'exercise-detail-delete-footer';
+        footer.innerHTML = `
+            <button class="btn btn-danger-outline btn-sm exercise-detail-delete-history-btn" data-exercise-id="${exerciseId}">
+                <i class="fas fa-trash"></i> Remove logged history
+            </button>
+        `;
+        modal.querySelector('.modal-body').appendChild(footer);
+        footer.querySelector('.exercise-detail-delete-history-btn').addEventListener('click', () => {
+            this.deleteExerciseHistory(exerciseId);
+        });
 
         modal.classList.add('active');
         trapModalFocus(modal);
@@ -843,6 +880,43 @@ class ExercisesView {
                 <span class="stat-value">${value}</span>
             </div>
         `;
+    }
+
+    async deleteExerciseHistory(exerciseId) {
+        const exercise = this.app.getExerciseById(exerciseId);
+        if (!exercise) return;
+
+        const sessionCount = this.getExerciseHistoryCount(exerciseId);
+        const message = `Remove all logged history for <strong>"${escapeHtml(exercise.name)}"</strong>?<br><br>`
+            + `This will erase ${sessionCount} session${sessionCount === 1 ? '' : 's'} worth of sets for this exercise. `
+            + `The sessions themselves are kept; only the entries for this exercise are removed.<br><br>`
+            + `<strong>This cannot be undone.</strong>`;
+
+        const confirmed = await showConfirmModal({
+            title: 'Remove Exercise History',
+            message,
+            confirmText: 'Remove History',
+            cancelText: 'Cancel',
+            isDangerous: true,
+        });
+
+        if (!confirmed) return;
+
+        // Remove this exercise's entries from every session in memory
+        this.app.workoutSessions.forEach(session => {
+            session.exercises = session.exercises.filter(ex => ex.exerciseId !== exerciseId);
+        });
+
+        this.app.saveWorkoutSessions();
+
+        showToast(`History removed for ${exercise.name}`, 'info');
+
+        // Close the detail modal and refresh the list
+        const modal = document.getElementById('exercise-detail-modal');
+        if (modal) modal.classList.remove('active');
+
+        this._detailExerciseId = null;
+        this.render();
     }
 
     async deleteCustomExercise(exerciseId) {

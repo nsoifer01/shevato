@@ -6,9 +6,9 @@ A comprehensive, mobile-first workout tracking application built with vanilla Ja
 
 ### 🏋️ Core Functionality
 
-- **Program Builder**: Create workout programs with custom exercises and reorderable exercise lists
-- **Workout Execution**: Mobile-optimized interface for tracking sets, reps, and weight during workouts
-- **Exercise Database**: 500+ exercises categorized by muscle group and equipment
+- **Program Builder**: Create workout programs with custom exercises and reorderable exercise lists; each exercise supports multiple set rows with per-set rep targets or rep ranges (e.g. set 1: 11-12, set 2: 8-10), plus a program-level rest mode (one uniform rest duration for all gaps, or custom per-exercise rest)
+- **Workout Execution**: Mobile-optimized interface for tracking sets, reps, and weight during workouts; per-set rep range labels (shown once per exercise when all sets match), a read-only rest display with -5/+5 second session adjusters, a uniform-rest banner, auto-collapsing completed exercises, an in-card rest countdown chip alongside the bottom rest bar, a final-5-seconds red pulse countdown with audio pings and haptics, and a toggleable plate calculator whose state persists once a workout is saved
+- **Exercise Database**: 500+ exercises categorized by muscle group and equipment, with persistent sorting (name, most recently used, most logged) and the ability to remove a specific exercise's logged history
 - **Custom Exercises**: Create and manage your own custom exercises
 - **Workout History**: Complete history of all workouts with detailed stats and clickable workout details
 - **Progress Tracking**: View previous workout data (all sets) during current workout for progression

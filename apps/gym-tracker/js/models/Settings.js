@@ -39,6 +39,11 @@ export class Settings {
         // (history cards, calendar selected-day rows, workout timer
         // displays). Defaults to 12-hour to match the existing format.
         this.timeFormat = data.timeFormat === '24' ? '24' : '12';
+
+        // Whether plate-calculator hints are visible on planned set rows.
+        // Defaults to true (existing behaviour) so current users are unaffected
+        // until they explicitly toggle it off during a workout.
+        this.plateHintsEnabled = data.plateHintsEnabled !== false;
     }
 
     toJSON() {
@@ -51,7 +56,8 @@ export class Settings {
             vibrationAlerts: this.vibrationAlerts,
             barWeight: this.barWeight,
             plates: this.plates,
-            timeFormat: this.timeFormat
+            timeFormat: this.timeFormat,
+            plateHintsEnabled: this.plateHintsEnabled
         };
     }
 

@@ -17,6 +17,7 @@ import { AchievementService } from './services/AchievementService.js';
 
 import { EXERCISE_DATABASE, loadExerciseDatabase } from '../data/exercises-db.js';
 import { showToast, debugLog } from './utils/helpers.js';
+import { trapModalFocus } from './utils/modal-focus.js';
 import { mountSyncStatusPill } from './utils/sync-status.js';
 import { emit, EVENTS } from './utils/event-bus.js';
 
@@ -115,6 +116,7 @@ class GymTrackerApp {
 
         modal.setAttribute('aria-hidden', 'false');
         modal.classList.add('active');
+        trapModalFocus(modal);
 
         document.getElementById('onboarding-dismiss')?.addEventListener('click', close, { once: true });
         document.getElementById('onboarding-skip')?.addEventListener('click', close, { once: true });

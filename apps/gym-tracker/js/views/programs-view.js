@@ -69,6 +69,27 @@ class ProgramsView {
             addExerciseBtn.addEventListener('click', () => this.openExercisePicker());
         }
 
+        // Rest mode toggle inside the program modal
+        const restModeToggle = document.getElementById('rest-mode-toggle');
+        if (restModeToggle) {
+            restModeToggle.addEventListener('change', () => {
+                if (!this.currentProgram) return;
+                this.currentProgram.restMode = restModeToggle.checked ? 'uniform' : 'custom';
+                const uniformSection = document.getElementById('rest-mode-uniform-section');
+                if (uniformSection) uniformSection.hidden = !restModeToggle.checked;
+                this.renderProgramExercises();
+            });
+        }
+        const uniformInput = document.getElementById('rest-mode-uniform-seconds');
+        if (uniformInput) {
+            uniformInput.addEventListener('change', () => {
+                if (!this.currentProgram) return;
+                const val = Math.max(0, Math.min(900, Math.round(Number(uniformInput.value) || 0)));
+                this.currentProgram.uniformRestSeconds = val;
+                uniformInput.value = val;
+            });
+        }
+
         // Sort dropdown — wrap with DarkSelect for the dark theme
         const sortSelect = document.getElementById('programs-sort');
         if (sortSelect) {
@@ -335,8 +356,23 @@ class ProgramsView {
             this.renderProgramExercises();
         }
 
+        this.syncRestModeUI();
         modal.classList.add('active');
         trapModalFocus(modal);
+    }
+
+    /** Push currentProgram.restMode + uniformRestSeconds into the toggle UI. */
+    syncRestModeUI() {
+        const toggle = document.getElementById('rest-mode-toggle');
+        const uniformSection = document.getElementById('rest-mode-uniform-section');
+        const uniformInput = document.getElementById('rest-mode-uniform-seconds');
+        if (!toggle || !uniformSection || !uniformInput) return;
+        const isUniform = this.currentProgram && this.currentProgram.restMode === 'uniform';
+        toggle.checked = isUniform;
+        uniformSection.hidden = !isUniform;
+        if (isUniform && this.currentProgram) {
+            uniformInput.value = this.currentProgram.uniformRestSeconds;
+        }
     }
 
     renderProgramExercises() {
@@ -364,6 +400,7 @@ class ProgramsView {
         }
 
         const exercises = this.currentProgram.exercises;
+        const isUniform = this.currentProgram.restMode === 'uniform';
         container.innerHTML = exercises.map((exercise, index) => {
             const details = this.app.getExerciseById(exercise.exerciseId);
             const muscle = formatMuscleGroup(details?.muscleGroup);
@@ -395,6 +432,51 @@ class ProgramsView {
                     <i class="fas ${linkBtnIcon}" aria-hidden="true"></i>
                 </button>
             `;
+
+            // Per-set rows: one row per entry in exercise.sets[].
+            const setRowsHTML = exercise.sets.map((setRow, si) => {
+                const isSingle = setRow.repsMin === setRow.repsMax;
+                const canRemove = exercise.sets.length > 1;
+                return `
+                <div class="pex-set-row" data-set-index="${si}">
+                    <span class="pex-set-label">Set ${si + 1}</span>
+                    <div class="pex-set-reps">
+                        <input type="number" class="pex-reps-input"
+                            data-action="set-reps-min"
+                            data-exercise-index="${index}"
+                            data-set-index="${si}"
+                            value="${setRow.repsMin}"
+                            min="1" max="100"
+                            aria-label="Set ${si + 1} min reps">
+                        <span class="pex-reps-sep${isSingle ? ' pex-reps-sep-hidden' : ''}" aria-hidden="true">-</span>
+                        <input type="number" class="pex-reps-input${isSingle ? ' pex-reps-max-hidden' : ''}"
+                            data-action="set-reps-max"
+                            data-exercise-index="${index}"
+                            data-set-index="${si}"
+                            value="${setRow.repsMax}"
+                            min="1" max="100"
+                            aria-label="Set ${si + 1} max reps">
+                        <button type="button" class="pex-range-toggle${isSingle ? '' : ' is-on'}"
+                            data-action="toggle-rep-range"
+                            data-exercise-index="${index}"
+                            data-set-index="${si}"
+                            title="${isSingle ? 'Add rep range' : 'Remove rep range'}"
+                            aria-label="${isSingle ? 'Add rep range' : 'Remove rep range'}">
+                            <i class="fas ${isSingle ? 'fa-arrows-left-right' : 'fa-minus'}"></i>
+                        </button>
+                    </div>
+                    <button type="button" class="pex-set-remove"
+                        data-action="remove-set-row"
+                        data-exercise-index="${index}"
+                        data-set-index="${si}"
+                        title="Remove set"
+                        aria-label="Remove set ${si + 1}"
+                        ${canRemove ? '' : 'disabled'}>
+                        <i class="fas fa-xmark"></i>
+                    </button>
+                </div>`;
+            }).join('');
+
             return `
             <div class="program-exercise-row ${groupClasses}" draggable="true" data-exercise-index="${index}">
                 ${linkedAbove ? `<span class="pex-superset-tag" aria-hidden="true">SUPERSET</span>` : ''}
@@ -425,9 +507,21 @@ class ProgramsView {
                     <span class="pex-name-sub">(${muscle})</span>` : ''}
                 </div>
                 <div class="pex-targets">
-                    ${stepperHTML('sets', index, exercise.targetSets, 1, 20, 'Sets')}
-                    ${stepperHTML('reps', index, exercise.targetReps, 1, 100, 'Reps')}
-                    ${stepperHTML('rest', index, exercise.restSeconds, 0, 600, 'Rest', 15, restLabel)}
+                    <div class="pex-sets-block">
+                        <div class="pex-sets-header">
+                            <span class="pex-stepper-label">Sets / Reps</span>
+                            <button type="button" class="pex-add-set-btn"
+                                data-action="add-set-row"
+                                data-index="${index}"
+                                aria-label="Add set to ${escapeHtml(exercise.exerciseName)}">
+                                <i class="fas fa-plus"></i> Add set
+                            </button>
+                        </div>
+                        <div class="pex-set-rows">
+                            ${setRowsHTML}
+                        </div>
+                    </div>
+                    ${isUniform ? '' : stepperHTML('rest', index, exercise.restSeconds, 0, 900, 'Rest', 15, restLabel)}
                 </div>
                 <div class="pex-row-actions">
                     ${linkBtnHTML}
@@ -446,9 +540,8 @@ class ProgramsView {
     }
 
     /**
-     * Wire up delete + stepper interactions on each program-exercise row.
-     * Uses data-action delegation so we don't paint inline onclicks (safer
-     * + re-renderable).
+     * Wire up delete, set-row, and stepper interactions on each program-exercise row.
+     * Uses data-action delegation so we don't paint inline onclicks.
      */
     wireExerciseRowActions(container) {
         container.querySelectorAll('[data-action="remove-exercise"]').forEach(btn => {
@@ -479,12 +572,62 @@ class ProgramsView {
             });
         });
 
+        // Rest stepper (only present in custom rest mode)
         container.querySelectorAll('[data-stepper]').forEach(btn => {
             btn.addEventListener('click', () => {
                 const idx = Number(btn.dataset.index);
-                const field = btn.dataset.field; // 'sets' | 'reps' | 'rest'
+                const field = btn.dataset.field; // 'rest'
                 const delta = Number(btn.dataset.delta);
                 this.adjustExerciseTarget(idx, field, delta);
+            });
+        });
+
+        // Add set row
+        container.querySelectorAll('[data-action="add-set-row"]').forEach(btn => {
+            btn.addEventListener('click', () => {
+                this.addSetRow(Number(btn.dataset.index));
+            });
+        });
+
+        // Remove set row
+        container.querySelectorAll('[data-action="remove-set-row"]').forEach(btn => {
+            btn.addEventListener('click', () => {
+                this.removeSetRow(
+                    Number(btn.dataset.exerciseIndex),
+                    Number(btn.dataset.setIndex)
+                );
+            });
+        });
+
+        // Toggle rep range on/off for a set
+        container.querySelectorAll('[data-action="toggle-rep-range"]').forEach(btn => {
+            btn.addEventListener('click', () => {
+                this.toggleRepRange(
+                    Number(btn.dataset.exerciseIndex),
+                    Number(btn.dataset.setIndex)
+                );
+            });
+        });
+
+        // Inline rep inputs (min / max)
+        container.querySelectorAll('[data-action="set-reps-min"]').forEach(input => {
+            input.addEventListener('change', () => {
+                this.setRepValue(
+                    Number(input.dataset.exerciseIndex),
+                    Number(input.dataset.setIndex),
+                    'min',
+                    Number(input.value)
+                );
+            });
+        });
+        container.querySelectorAll('[data-action="set-reps-max"]').forEach(input => {
+            input.addEventListener('change', () => {
+                this.setRepValue(
+                    Number(input.dataset.exerciseIndex),
+                    Number(input.dataset.setIndex),
+                    'max',
+                    Number(input.value)
+                );
             });
         });
     }
@@ -552,12 +695,64 @@ class ProgramsView {
         if (!this.currentProgram) return;
         const ex = this.currentProgram.exercises[index];
         if (!ex) return;
-        const patch = {};
-        if (field === 'sets') patch.targetSets = ex.targetSets + delta;
-        else if (field === 'reps') patch.targetReps = ex.targetReps + delta;
-        else if (field === 'rest') patch.restSeconds = ex.restSeconds + delta;
-        else return;
-        this.currentProgram.updateExercise(index, patch);
+        if (field === 'rest') {
+            this.currentProgram.updateExercise(index, { restSeconds: ex.restSeconds + delta });
+            this.renderProgramExercises();
+        }
+    }
+
+    addSetRow(exerciseIndex) {
+        if (!this.currentProgram) return;
+        const ex = this.currentProgram.exercises[exerciseIndex];
+        if (!ex || !Array.isArray(ex.sets)) return;
+        // Clone last set as default for the new row.
+        const last = ex.sets[ex.sets.length - 1] || { repsMin: 10, repsMax: 10 };
+        ex.sets.push({ repsMin: last.repsMin, repsMax: last.repsMax });
+        this.currentProgram.updatedAt = new Date().toISOString();
+        this.renderProgramExercises();
+    }
+
+    removeSetRow(exerciseIndex, setIndex) {
+        if (!this.currentProgram) return;
+        const ex = this.currentProgram.exercises[exerciseIndex];
+        if (!ex || !Array.isArray(ex.sets) || ex.sets.length <= 1) return;
+        ex.sets.splice(setIndex, 1);
+        this.currentProgram.updatedAt = new Date().toISOString();
+        this.renderProgramExercises();
+    }
+
+    toggleRepRange(exerciseIndex, setIndex) {
+        if (!this.currentProgram) return;
+        const ex = this.currentProgram.exercises[exerciseIndex];
+        if (!ex || !Array.isArray(ex.sets)) return;
+        const row = ex.sets[setIndex];
+        if (!row) return;
+        if (row.repsMin === row.repsMax) {
+            // Activate range: default max to min+2 (capped at 100)
+            row.repsMax = Math.min(100, row.repsMin + 2);
+        } else {
+            // Collapse range: set both to repsMax
+            row.repsMin = row.repsMax;
+        }
+        this.currentProgram.updatedAt = new Date().toISOString();
+        this.renderProgramExercises();
+    }
+
+    setRepValue(exerciseIndex, setIndex, minOrMax, rawValue) {
+        if (!this.currentProgram) return;
+        const ex = this.currentProgram.exercises[exerciseIndex];
+        if (!ex || !Array.isArray(ex.sets)) return;
+        const row = ex.sets[setIndex];
+        if (!row) return;
+        const val = Math.max(1, Math.min(100, Math.round(Number(rawValue) || 1)));
+        if (minOrMax === 'min') {
+            row.repsMin = val;
+            if (row.repsMax < row.repsMin) row.repsMax = row.repsMin;
+        } else {
+            row.repsMax = val;
+            if (row.repsMin > row.repsMax) row.repsMin = row.repsMax;
+        }
+        this.currentProgram.updatedAt = new Date().toISOString();
         this.renderProgramExercises();
     }
 
@@ -650,6 +845,17 @@ class ProgramsView {
         // Update current program
         this.currentProgram.name = name;
         this.currentProgram.description = description;
+
+        // Persist rest mode settings from the toggle UI
+        const restModeToggle = document.getElementById('rest-mode-toggle');
+        if (restModeToggle) {
+            this.currentProgram.restMode = restModeToggle.checked ? 'uniform' : 'custom';
+        }
+        const uniformInput = document.getElementById('rest-mode-uniform-seconds');
+        if (uniformInput && this.currentProgram.restMode === 'uniform') {
+            const val = Math.max(0, Math.min(900, Math.round(Number(uniformInput.value) || 0)));
+            this.currentProgram.uniformRestSeconds = val;
+        }
 
         // Check if this is a new program or edit
         const existingIndex = this.app.programs.findIndex(p => p.id === this.currentProgram.id);
