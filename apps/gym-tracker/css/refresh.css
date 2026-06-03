@@ -63,6 +63,13 @@ body.gym-tracker .view-header h1 {
     margin: 0 0 0.35rem;
 }
 
+/* Programs title: "g" descender clips with line-height 1.1 + background-clip:text */
+body.gym-tracker #programs-view .view-header h1 {
+    line-height: 1.3;
+    padding-bottom: 0.1em;
+    margin-bottom: calc(0.35rem - 0.1em);
+}
+
 body.gym-tracker .view-header .subtitle {
     color: var(--gt-muted) !important;
     font-size: 0.97rem;
@@ -551,23 +558,6 @@ body.gym-tracker #recent-workouts .empty-state {
              completion burst, sparkline
    ================================================================ */
 
-/* Feature 1: weight nudge chip */
-body.gym-tracker .weight-nudge-chip {
-    display: inline-flex;
-    align-items: center;
-    gap: 0.3rem;
-    font-size: 0.72rem;
-    font-weight: 600;
-    color: var(--gt-accent);
-    background: var(--gt-accent-soft);
-    border: 1px solid var(--gt-accent-ring);
-    border-radius: 20px;
-    padding: 0.2rem 0.6rem;
-    margin-top: 0.35rem;
-    cursor: default;
-    user-select: none;
-}
-
 /* Feature 3: collapsible exercise blocks */
 body.gym-tracker .exercise-entry-header {
     display: flex;
@@ -590,41 +580,79 @@ body.gym-tracker .exercise-collapse-toggle:hover {
     color: var(--gt-accent);
 }
 
-body.gym-tracker .exercise-collapsed .exercise-body {
-    display: none;
-}
-
 body.gym-tracker .exercise-entry .exercise-body {
     display: block;
 }
 
-/* Feature 5: rest timer pills */
-body.gym-tracker .rest-pills-row {
-    display: flex;
-    gap: 0.4rem;
-    flex-wrap: wrap;
+body.gym-tracker .exercise-entry.exercise-collapsed .exercise-body {
+    display: none;
+}
+
+/* Task 4: per-exercise rest adjuster */
+body.gym-tracker .rest-row {
     margin-bottom: 0.5rem;
 }
 
-body.gym-tracker .rest-pill {
+body.gym-tracker .rest-adjuster {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.25rem;
     background: var(--gt-surface-2);
-    border: 1px solid var(--gt-border-strong);
+    border: 1px solid var(--gt-border);
     border-radius: 20px;
+    padding: 0.15rem 0.4rem;
+}
+
+body.gym-tracker .rest-adj-btn {
+    background: none;
+    border: none;
     color: var(--gt-muted);
-    font-size: 0.73rem;
+    font-size: 0.72rem;
     font-weight: 600;
-    padding: 0.2rem 0.6rem;
     cursor: pointer;
-    transition: background var(--transition-fast), color var(--transition-fast), border-color var(--transition-fast);
+    padding: 0.2rem 0.4rem;
+    min-width: 40px;
+    min-height: 40px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 999px;
+    transition: color var(--transition-fast), background var(--transition-fast);
 }
-body.gym-tracker .rest-pill:hover {
-    border-color: var(--gt-accent);
+body.gym-tracker .rest-adj-btn:hover {
     color: var(--gt-accent);
-}
-body.gym-tracker .rest-pill--active {
     background: var(--gt-accent-soft);
-    border-color: var(--gt-accent);
+}
+
+body.gym-tracker .rest-adj-value {
+    font-size: 0.78rem;
+    font-weight: 600;
+    color: var(--gt-muted);
+    font-variant-numeric: tabular-nums;
+    min-width: 2.5rem;
+    text-align: center;
+}
+
+/* Task 7: uniform rest banner */
+body.gym-tracker .uniform-rest-banner {
+    display: flex;
+    align-items: center;
+    gap: 0.45rem;
+    font-size: 0.82rem;
+    color: var(--gt-muted);
+    background: var(--gt-surface-2);
+    border: 1px solid var(--gt-border);
+    border-radius: 10px;
+    padding: 0.5rem 0.8rem;
+    margin-bottom: 0.75rem;
+}
+body.gym-tracker .uniform-rest-banner strong {
     color: var(--gt-accent);
+    font-weight: 700;
+}
+body.gym-tracker .uniform-rest-note {
+    font-size: 0.72rem;
+    color: var(--gt-muted-2);
 }
 
 /* Feature 2: workout completion burst */
@@ -750,4 +778,56 @@ body.gym-tracker .save-as-program-btn {
     display: block;
     margin: 1.25rem auto 0;
     width: 100%;
+}
+
+/* Task 6: rep-range labels */
+body.gym-tracker .exercise-rep-target {
+    font-size: 0.72rem;
+    font-weight: 500;
+    color: var(--gt-muted-2);
+    margin-left: 0.35rem;
+    white-space: nowrap;
+}
+
+body.gym-tracker .set-rep-target {
+    font-size: 0.72rem;
+    font-weight: 500;
+    color: var(--gt-muted-2);
+    white-space: nowrap;
+    pointer-events: none;
+    user-select: none;
+    padding: 0 0.2rem;
+}
+
+/* Task 8: shrink add-set and remove-set buttons */
+body.gym-tracker .btn-add-set--extra {
+    background: transparent !important;
+    border: 1px solid var(--gt-border) !important;
+    color: var(--gt-muted-2) !important;
+    font-size: 0.72rem !important;
+    font-weight: 500 !important;
+    padding: 0.3rem 0.75rem !important;
+    min-height: 40px;
+    box-shadow: none !important;
+}
+body.gym-tracker .btn-add-set--extra:hover {
+    border-color: var(--gt-border-strong) !important;
+    color: var(--gt-muted) !important;
+    background: var(--gt-surface-2) !important;
+}
+
+body.gym-tracker .btn-remove-set {
+    background: transparent !important;
+    border: 1px solid var(--gt-border) !important;
+    color: var(--gt-muted-2) !important;
+    font-size: 0.72rem !important;
+    padding: 0.3rem 0.55rem !important;
+    min-height: 40px;
+    min-width: 40px;
+    box-shadow: none !important;
+}
+body.gym-tracker .btn-remove-set:hover {
+    border-color: var(--gt-border-strong) !important;
+    color: var(--gt-danger) !important;
+    background: transparent !important;
 }

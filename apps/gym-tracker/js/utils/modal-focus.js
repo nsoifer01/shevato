@@ -7,13 +7,48 @@
  * modal (any element with `[data-modal-close]` or class `.modal-close`,
  * fallback: removes the `.active` class).
  *
+ * Also locks body scroll for the duration: prevents the page behind the
+ * modal from scrolling on both desktop and iOS Safari, with scrollbar-width
+ * compensation to avoid layout jumps. Modal content itself remains
+ * scrollable via .modal-content overflow-y:auto.
+ *
  * The helper is idempotent — calling `trapModalFocus` on an already
  * trapped modal is a no-op. The trap auto-tears down when the modal's
  * `active` class is removed (observed via MutationObserver), and
  * focus is restored to whatever element was focused before the open.
+ *
+ * Stacked modals (e.g. confirm-modal over another modal) are handled: the
+ * scroll lock releases only when the last modal closes, and focus returns
+ * to the previously trapped modal rather than the page.
  */
 
 const TRAPPED = new WeakMap(); // modalEl -> { observer, restore, keyHandler }
+
+// Ordered stack of currently trapped modals (oldest first).
+const TRAP_STACK = [];
+
+// --- Scroll lock -----------------------------------------------------------
+
+let _scrollY = 0;
+
+function lockBodyScroll() {
+    if (TRAP_STACK.length !== 0) return; // already locked
+    _scrollY = window.scrollY;
+    const scrollbarWidth = window.innerWidth - document.documentElement.clientWidth;
+    document.body.style.paddingRight = scrollbarWidth > 0 ? `${scrollbarWidth}px` : '';
+    document.body.style.top = `-${_scrollY}px`;
+    document.body.classList.add('modal-open');
+}
+
+function unlockBodyScroll() {
+    if (TRAP_STACK.length !== 0) return; // other modals still open
+    document.body.classList.remove('modal-open');
+    document.body.style.top = '';
+    document.body.style.paddingRight = '';
+    window.scrollTo(0, _scrollY);
+}
+
+// --------------------------------------------------------------------------
 
 const FOCUSABLE_SELECTOR = [
     'a[href]',
@@ -43,6 +78,8 @@ function closeModal(modalEl) {
 
 export function trapModalFocus(modalEl) {
     if (!modalEl || TRAPPED.has(modalEl)) return;
+
+    lockBodyScroll();
 
     const previouslyFocused = document.activeElement instanceof HTMLElement
         ? document.activeElement
@@ -89,6 +126,7 @@ export function trapModalFocus(modalEl) {
     });
     observer.observe(modalEl, { attributes: true, attributeFilter: ['class'] });
 
+    TRAP_STACK.push(modalEl);
     TRAPPED.set(modalEl, { observer, keyHandler, restore: previouslyFocused });
 }
 
@@ -98,7 +136,21 @@ export function untrapModalFocus(modalEl) {
     entry.observer.disconnect();
     modalEl.removeEventListener('keydown', entry.keyHandler);
     TRAPPED.delete(modalEl);
-    if (entry.restore && typeof entry.restore.focus === 'function') {
+
+    const idx = TRAP_STACK.indexOf(modalEl);
+    if (idx !== -1) TRAP_STACK.splice(idx, 1);
+
+    unlockBodyScroll();
+
+    // Restore focus: if another modal is still open, focus its first
+    // focusable element; otherwise return to wherever focus was before open.
+    if (TRAP_STACK.length > 0) {
+        const topModal = TRAP_STACK[TRAP_STACK.length - 1];
+        setTimeout(() => {
+            const items = focusableElements(topModal);
+            if (items[0]) items[0].focus();
+        }, 0);
+    } else if (entry.restore && typeof entry.restore.focus === 'function') {
         // Defer so any close-side cleanup (e.g. removing the modal from
         // the accessibility tree) finishes before we shift focus.
         setTimeout(() => {

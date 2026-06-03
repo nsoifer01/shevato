@@ -22,6 +22,10 @@ class WorkoutView {
         this.navigationBlocked = false;
         this.activeRestTimerId = null;
         this.restTimerDuration = 0;
+        // Exercise index whose rest timer is currently running; -1 when idle.
+        this.activeRestExerciseIndex = -1;
+        // Last second value for which we played the timer-low ping (guards duplicates).
+        this.lastPingedRestSecond = -1;
         // PRs logged during the current session — surfaced in the finish modal.
         this.sessionPrCount = 0;
         // Slot-keyed record of sets that triggered a PR this session so the
@@ -94,6 +98,9 @@ class WorkoutView {
                     break;
                 case 'unmark-set':
                     e.preventDefault();
+                    if (document.activeElement instanceof HTMLInputElement || document.activeElement instanceof HTMLTextAreaElement) {
+                        document.activeElement.blur();
+                    }
                     this.deleteSet(exerciseIndex, slot, { silent: true });
                     break;
                 case 'edit-set':
@@ -165,6 +172,10 @@ class WorkoutView {
         if (restSkipBtn) restSkipBtn.addEventListener('click', () => this.skipRest());
         const restAddBtn = document.getElementById('rest-add-btn');
         if (restAddBtn) restAddBtn.addEventListener('click', () => this.extendRest(30));
+
+        // Plate-hints toggle
+        const plateToggleBtn = document.getElementById('plate-hints-toggle-btn');
+        if (plateToggleBtn) plateToggleBtn.addEventListener('click', () => this.togglePlateHints());
     }
 
     setupNavigationGuard() {
@@ -436,7 +447,10 @@ class WorkoutView {
             <h2>Select a Program</h2>
             <p class="subtitle">Choose which program you want to do today</p>
             <div class="program-selection-grid">
-                ${programs.map(program => `
+                ${programs.map(program => {
+                    const lastSession = this._lastSessionForProgram(program.id);
+                    const lastDoneHTML = this._renderLastDoneInfo(lastSession);
+                    return `
                     <div class="program-card">
                         <div class="program-header">
                             <h3>${escapeHtml(program.name)}</h3>
@@ -448,6 +462,7 @@ class WorkoutView {
                                 ${program.exercises.length} exercises
                             </div>
                         </div>
+                        ${lastDoneHTML}
                         ${program.exercises.length === 0
                             ? `<p class="text-warning"><i class="fas fa-exclamation-triangle"></i> No exercises in this program</p>`
                             : `<button class="btn btn-primary btn-large" data-action="start-workout" data-program-id="${program.id}">
@@ -455,7 +470,8 @@ class WorkoutView {
                             </button>`
                         }
                     </div>
-                `).join('')}
+                    `;
+                }).join('')}
             </div>
         `;
 
@@ -549,9 +565,26 @@ class WorkoutView {
 
         document.getElementById('workout-title').textContent = this.currentWorkoutSession.workoutDayName;
         this.adjustWorkoutTitleSize();
+        this.syncPlateHintsButton();
 
         const container = document.getElementById('workout-exercises-list');
-        container.innerHTML = this.renderExerciseList(this.currentWorkoutSession.exercises);
+
+        // Task 7: when restMode is 'uniform', show rest once at the top instead
+        // of repeating identical values on every exercise card.
+        const program = this.app.getProgramById(this.currentWorkoutSession.programId);
+        let uniformBannerHTML = '';
+        if (program?.restMode === 'uniform') {
+            const secs = program.uniformRestSeconds ?? 90;
+            uniformBannerHTML = `
+                <div class="uniform-rest-banner" aria-label="Rest time for all exercises">
+                    <i class="fas fa-hourglass-half" aria-hidden="true"></i>
+                    Rest between sets: <strong>${this.formatRest(secs)}</strong>
+                    <span class="uniform-rest-note">(adjust per exercise below)</span>
+                </div>
+            `;
+        }
+
+        container.innerHTML = uniformBannerHTML + this.renderExerciseList(this.currentWorkoutSession.exercises);
     }
 
     /**
@@ -594,14 +627,20 @@ class WorkoutView {
     }
 
     /**
-     * Render a single exercise block: progress header, last-time reference,
-     * and a list of N planned set rows where N = max(targetSets, sets.length).
+     * Render a single exercise block: progress header, and a list of N planned
+     * set rows where N = max(targetSets, sets.length).
      */
     renderExerciseEntry(exercise, index) {
         const exerciseData = this.app.getExerciseById(exercise.exerciseId);
         const isDuration = !!(exerciseData && exerciseData.exerciseType === 'duration');
         const previousSets = this.getPreviousExerciseData(exercise.exerciseId) || [];
         const unit = this.app.settings.weightUnit;
+
+        // Task 6: rep-range labels from the program exercise's sets[].
+        // Fall back gracefully for old sessions/programs that lack sets[].
+        const program = this.app.getProgramById(this.currentWorkoutSession?.programId);
+        const progEx = program?.exercises.find(e => e.exerciseId === exercise.exerciseId);
+        const progSets = (progEx?.sets && progEx.sets.length > 0) ? progEx.sets : null;
         // Plate calculator only meaningful for loaded-bar exercises.
         const equipment = exerciseData?.equipment || '';
         const isBarbell = equipment === 'barbell' || equipment === 'trap-bar';
@@ -632,6 +671,18 @@ class WorkoutView {
             ? (this.collapsedExercises[index] !== false)  // default collapsed when complete
             : !!this.collapsedExercises[index];           // default expanded when in-progress
 
+        // Task 6: determine if all programmed sets share the same rep target.
+        // When they do, show once at exercise level instead of repeating per row.
+        let allSameRepRange = false;
+        let sharedRepLabel = '';
+        if (progSets && progSets.length > 0) {
+            const first = progSets[0];
+            allSameRepRange = progSets.every(s => s.repsMin === first.repsMin && s.repsMax === first.repsMax);
+            if (allSameRepRange) {
+                sharedRepLabel = this.formatRepRange(first.repsMin, first.repsMax);
+            }
+        }
+
         let rowsHTML = '';
         for (let i = 0; i < totalRows; i++) {
             const committed = setsBySlot.get(i);
@@ -648,30 +699,43 @@ class WorkoutView {
                     || previousSets[i]
                     || previousSets[previousSets.length - 1]
                     || null;
-                rowsHTML += this.renderPlannedRow(index, i, prior, isDuration, unit, exercise.targetReps, isBarbell);
+                // Per-slot rep range: only when sets differ and slot is within
+                // the programmed count. Extra added-set rows show nothing.
+                const slotProgSet = (!allSameRepRange && progSets && i < progSets.length)
+                    ? progSets[i] : null;
+                const slotRepLabel = slotProgSet
+                    ? this.formatRepRange(slotProgSet.repsMin, slotProgSet.repsMax) : null;
+                // Prefill each row with its own set's top-of-range target, not set 1's.
+                const slotTargetReps = (progSets && i < progSets.length)
+                    ? progSets[i].repsMax : exercise.targetReps;
+                rowsHTML += this.renderPlannedRow(index, i, prior, isDuration, unit, slotTargetReps, isBarbell, slotRepLabel);
             }
         }
 
-        const lastTimeHTML = this.renderLastTimeStrip(previousSets, isDuration, unit);
-
-        // Feature 5: rest timer pills
-        const REST_PILLS = [
-            { label: '60s', seconds: 60 },
-            { label: '90s', seconds: 90 },
-            { label: '2m',  seconds: 120 },
-            { label: '3m',  seconds: 180 },
-        ];
-        const activeRest = this.exerciseRestOverrides[index] ?? exercise.restSeconds ?? 90;
-        const restPillsHTML = REST_PILLS.map(p => {
-            const isActive = activeRest === p.seconds;
-            return `<button type="button"
-                class="rest-pill${isActive ? ' rest-pill--active' : ''}"
-                data-action="set-rest-override"
-                data-exercise-index="${index}"
-                data-seconds="${p.seconds}"
-                aria-pressed="${isActive ? 'true' : 'false'}"
-                aria-label="Set rest to ${p.label}">${p.label}</button>`;
-        }).join('');
+        // Task 4: per-exercise rest adjuster (-5 / value / +5).
+        // `program` was already fetched above for task 6/7 logic.
+        const isUniform = program?.restMode === 'uniform';
+        const programRestBase = isUniform
+            ? (program.uniformRestSeconds ?? 90)
+            : (exercise.restSeconds ?? 90);
+        const activeRest = this.exerciseRestOverrides[index] ?? programRestBase;
+        const restMinus = Math.max(5, activeRest - 5);
+        const restPlus = activeRest + 5;
+        const restPillsHTML = `
+            <div class="rest-adjuster" aria-label="Rest time for this exercise">
+                <button type="button" class="rest-adj-btn"
+                    data-action="set-rest-override"
+                    data-exercise-index="${index}"
+                    data-seconds="${restMinus}"
+                    aria-label="Decrease rest by 5 seconds">-5</button>
+                <span class="rest-adj-value">${this.formatRest(activeRest)}</span>
+                <button type="button" class="rest-adj-btn"
+                    data-action="set-rest-override"
+                    data-exercise-index="${index}"
+                    data-seconds="${restPlus}"
+                    aria-label="Increase rest by 5 seconds">+5</button>
+            </div>
+        `;
 
         return `
             <div class="exercise-entry ${isComplete ? 'exercise-complete' : ''} ${isCollapsed ? 'exercise-collapsed' : ''}"
@@ -686,7 +750,8 @@ class WorkoutView {
                     </button>
                     <h3>
                         <span class="exercise-name-main">${escapeHtml(exercise.exerciseName)}</span>${muscle ? `
-                        <span class="exercise-name-sub">(${escapeHtml(muscle)})</span>` : ''}
+                        <span class="exercise-name-sub">(${escapeHtml(muscle)})</span>` : ''}${allSameRepRange ? `
+                        <span class="exercise-rep-target" aria-label="Target: ${sharedRepLabel}">${sharedRepLabel}</span>` : ''}
                     </h3>
                     <span class="exercise-progress ${isComplete ? 'is-complete' : ''}" aria-label="Sets ${progressLabel}">
                         ${isComplete ? '<i class="fas fa-check"></i>' : ''}
@@ -695,11 +760,9 @@ class WorkoutView {
                 </div>
 
                 <div class="exercise-body">
-                    <div class="rest-pills-row" aria-label="Rest timer presets">
+                    <div class="rest-row">
                         ${restPillsHTML}
                     </div>
-
-                    ${lastTimeHTML}
 
                     <ol class="set-row-list" id="set-row-list-${index}">
                         ${rowsHTML}
@@ -728,38 +791,12 @@ class WorkoutView {
     }
 
     /**
-     * Compact read-only reference strip: "Last time: 60×8 · 60×8 · 55×8".
-     * Purely informational — per-set defaults live inside each planned row.
-     */
-    renderLastTimeStrip(previousSets, isDuration, unit) {
-        if (!previousSets || previousSets.length === 0) {
-            return '<div class="previous-sets-label">Last time: <span>No previous data</span></div>';
-        }
-
-        const chips = previousSets.map((set, i) => {
-            if (isDuration) {
-                const mins = Math.floor(set.duration / 60);
-                const secs = set.duration % 60;
-                return `<span class="prev-chip"><b>${i + 1}</b> ${mins}:${secs.toString().padStart(2, '0')}</span>`;
-            }
-            return `<span class="prev-chip"><b>${i + 1}</b> ${set.weight.toLocaleString()}${unit}×${set.reps}</span>`;
-        }).join('');
-
-        return `
-            <div class="previous-data">
-                <div class="previous-sets-label">Last time</div>
-                <div class="previous-sets-row">${chips}</div>
-            </div>
-        `;
-    }
-
-    /**
      * A set that has not yet been logged. Shows empty (or prefilled-from-prior)
      * inputs and a pill toggle on the right — tapping the toggle commits the
      * set and starts the rest timer. The row itself is NOT tappable — users
      * deliberately flick the toggle to complete.
      */
-    renderPlannedRow(exerciseIndex, slot, prior, isDuration, unit, targetReps, isBarbell = false) {
+    renderPlannedRow(exerciseIndex, slot, prior, isDuration, unit, targetReps, isBarbell = false, repLabel = null) {
         const setLabel = `${slot + 1}`;
         const toggle = this.renderSetToggle(false, 'commit-planned-set', exerciseIndex, slot, 'Mark set complete');
 
@@ -785,22 +822,8 @@ class WorkoutView {
 
         const weight = prior ? prior.weight : '';
         const reps = prior ? prior.reps : (targetReps || '');
-        const plateHintHTML = isBarbell ? this.renderPlateHint(weight, unit) : '';
-
-        // Feature 1: weight nudge chip — only on slot 0 (first planned row) and
-        // only when auto-bump already happened (suggestIncrement on the prior array).
-        let nudgeChipHTML = '';
-        if (slot === 0 && prior && prior.originalWeight != null && prior.weight !== prior.originalWeight) {
-            const orig = prior.originalWeight;
-            const diff = prior.weight - orig;
-            const sign = diff > 0 ? '+' : '';
-            nudgeChipHTML = `
-                <div class="weight-nudge-chip" data-exercise-index="${exerciseIndex}" data-slot="${slot}" data-nudge-weight="${prior.weight}">
-                    <i class="fas fa-arrow-up" aria-hidden="true"></i>
-                    Auto-bumped ${sign}${diff}${unit} (was ${orig}${unit})
-                </div>
-            `;
-        }
+        const hintsOn = this.app.settings?.plateHintsEnabled !== false;
+        const plateHintHTML = (isBarbell && hintsOn) ? this.renderPlateHint(weight, unit) : '';
 
         return `
             <li class="set-row set-row-planned" data-slot="${slot}">
@@ -814,12 +837,18 @@ class WorkoutView {
                     <input type="number" inputmode="numeric" class="set-reps"
                         id="reps-${exerciseIndex}-${slot}" min="1"
                         value="${reps === '' ? '' : reps}" placeholder="Reps" aria-label="Reps">
+                    ${repLabel ? `<span class="set-rep-target" aria-label="Target: ${repLabel}">${repLabel}</span>` : ''}
                 </div>
                 ${toggle}
-                ${nudgeChipHTML}
                 ${plateHintHTML ? `<div class="plate-hint" id="plate-hint-${exerciseIndex}-${slot}">${plateHintHTML}</div>` : ''}
             </li>
         `;
+    }
+
+    /** Format a rep range for display: "8 reps" or "8-10 reps". */
+    formatRepRange(repsMin, repsMax) {
+        if (repsMin === repsMax) return `${repsMin} reps`;
+        return `${repsMin}-${repsMax} reps`;
     }
 
     /**
@@ -953,7 +982,16 @@ class WorkoutView {
 
     /** Feature 3: toggle collapse state for a single exercise block. */
     toggleExerciseCollapse(exerciseIndex) {
-        this.collapsedExercises[exerciseIndex] = !this.collapsedExercises[exerciseIndex];
+        const exercise = this.currentWorkoutSession?.exercises[exerciseIndex];
+        if (!exercise) return;
+        const targetSets = Math.max(1, exercise.targetSets || 3);
+        const isComplete = exercise.sets.length >= targetSets && targetSets > 0;
+        // Compute the current effective collapsed state (mirrors renderExerciseEntry).
+        const currentlyCollapsed = isComplete
+            ? (this.collapsedExercises[exerciseIndex] !== false)
+            : !!this.collapsedExercises[exerciseIndex];
+        // Store the opposite so re-render produces the toggled state.
+        this.collapsedExercises[exerciseIndex] = !currentlyCollapsed;
         this.rerenderExercise(exerciseIndex);
     }
 
@@ -961,6 +999,27 @@ class WorkoutView {
     setRestOverride(exerciseIndex, seconds) {
         this.exerciseRestOverrides[exerciseIndex] = seconds;
         this.rerenderExercise(exerciseIndex);
+    }
+
+    /**
+     * Toggle plate-calculator hints on/off for the current session.
+     * The new state is persisted immediately so it becomes the default for
+     * future workouts (saved on toggle, not just on finish).
+     */
+    togglePlateHints() {
+        this.app.settings.plateHintsEnabled = !this.app.settings.plateHintsEnabled;
+        this.app.saveSettings();
+        this.syncPlateHintsButton();
+        this.renderActiveWorkout();
+    }
+
+    /** Keep the plate-hints toggle button in sync with the current setting. */
+    syncPlateHintsButton() {
+        const btn = document.getElementById('plate-hints-toggle-btn');
+        if (!btn) return;
+        const enabled = this.app.settings.plateHintsEnabled !== false;
+        btn.setAttribute('aria-pressed', enabled ? 'true' : 'false');
+        btn.classList.toggle('btn-icon-plates--off', !enabled);
     }
 
     /** Re-render just the given exercise block without touching the others. */
@@ -1121,6 +1180,18 @@ class WorkoutView {
             this.announcePR(pr);
         }
 
+        // Auto-collapse when all planned sets are done. Keep the in-progress
+        // exercises expanded by not touching their collapsedExercises entry.
+        const targetSets = Math.max(1, exercise.targetSets || 3);
+        if (exercise.sets.length >= targetSets) {
+            // Only auto-collapse if the user hasn't explicitly expanded it
+            // after a prior auto-collapse (collapsedExercises[i] === false means
+            // the user manually opened it).
+            if (this.collapsedExercises[exerciseIndex] !== false) {
+                this.collapsedExercises[exerciseIndex] = true;
+            }
+        }
+
         this.rerenderExercise(exerciseIndex);
 
         // Superset rest rule: only fire the rest timer once the entire
@@ -1130,7 +1201,7 @@ class WorkoutView {
         // — they should move straight to the next exercise.
         if (this.shouldStartRestForSet(exerciseIndex, exercise)) {
             const restSecs = this.exerciseRestOverrides[exerciseIndex] ?? exercise.restSeconds ?? 90;
-            this.startRest(restSecs);
+            this.startRest(restSecs, exerciseIndex);
         } else {
             this.skipRest();
         }
@@ -1397,16 +1468,20 @@ class WorkoutView {
     // --- Rest timer ---
 
     /** Start (or restart) the persistent rest bar for `seconds` seconds. */
-    startRest(seconds) {
+    startRest(seconds, exerciseIndex = -1) {
         const duration = Math.max(0, Math.floor(seconds || 0));
         if (duration === 0) return;
 
         if (this.activeRestTimerId != null) {
             timerService.stopRestTimer(this.activeRestTimerId);
+            this.clearRestChip();
         }
 
         this.restTimerDuration = duration;
+        this.activeRestExerciseIndex = exerciseIndex;
+        this.lastPingedRestSecond = -1;
         this.showRestBar(duration);
+        this.showRestChip(exerciseIndex, duration);
 
         this.activeRestTimerId = timerService.startRestTimer(
             duration,
@@ -1429,6 +1504,7 @@ class WorkoutView {
         if (this.activeRestTimerId == null) return this.hideRestBar();
         timerService.stopRestTimer(this.activeRestTimerId);
         this.activeRestTimerId = null;
+        this.clearRestChip();
         this.hideRestBar();
     }
 
@@ -1436,7 +1512,7 @@ class WorkoutView {
         const bar = document.getElementById('rest-timer-bar');
         if (!bar) return;
         bar.hidden = false;
-        bar.classList.remove('rest-timer-done');
+        bar.classList.remove('rest-timer-done', 'rest-timer-urgent');
         const valueEl = document.getElementById('rest-timer-value');
         const fill = document.getElementById('rest-timer-progress-fill');
         if (valueEl) valueEl.textContent = this.formatRest(total);
@@ -1455,8 +1531,35 @@ class WorkoutView {
         const bar = document.getElementById('rest-timer-bar');
         if (bar) {
             bar.hidden = true;
-            bar.classList.remove('rest-timer-done');
+            bar.classList.remove('rest-timer-done', 'rest-timer-urgent');
         }
+        this.activeRestExerciseIndex = -1;
+        this.lastPingedRestSecond = -1;
+    }
+
+    /** Render (or refresh) the compact countdown chip inside the exercise card. */
+    showRestChip(exerciseIndex, remaining) {
+        if (exerciseIndex < 0) return;
+        const header = document.querySelector(`#exercise-${exerciseIndex} .rest-row`);
+        if (!header) return;
+        let chip = header.querySelector('.rest-countdown-chip');
+        if (!chip) {
+            chip = document.createElement('div');
+            chip.className = 'rest-countdown-chip';
+            chip.setAttribute('aria-live', 'off');
+            header.appendChild(chip);
+        }
+        const urgent = remaining <= 5 && remaining > 0;
+        chip.className = 'rest-countdown-chip' + (urgent ? ' rest-countdown-chip--urgent' : '');
+        chip.textContent = this.formatRest(remaining);
+    }
+
+    /** Remove the in-card countdown chip from any exercise. */
+    clearRestChip() {
+        const idx = this.activeRestExerciseIndex;
+        if (idx < 0) return;
+        const chip = document.querySelector(`#exercise-${idx} .rest-countdown-chip`);
+        if (chip) chip.remove();
     }
 
     onRestTick(remaining) {
@@ -1467,6 +1570,25 @@ class WorkoutView {
             const ratio = Math.max(0, Math.min(1, remaining / this.restTimerDuration));
             fill.style.transform = `scaleX(${ratio})`;
         }
+
+        // Update in-card chip.
+        this.showRestChip(this.activeRestExerciseIndex, remaining);
+
+        // Final 5-second urgent state: turn both displays red + pulse.
+        const bar = document.getElementById('rest-timer-bar');
+        if (remaining <= 5 && remaining > 0) {
+            if (bar) bar.classList.add('rest-timer-urgent');
+            // One ping per second — guard with lastPingedRestSecond.
+            if (remaining !== this.lastPingedRestSecond) {
+                this.lastPingedRestSecond = remaining;
+                if (this.app.settings?.soundAlerts !== false) playSound('timer-low');
+                if (this.app.settings?.vibrationAlerts !== false && typeof navigator.vibrate === 'function') {
+                    navigator.vibrate(40);
+                }
+            }
+        } else {
+            if (bar) bar.classList.remove('rest-timer-urgent');
+        }
     }
 
     onRestComplete() {
@@ -1474,7 +1596,9 @@ class WorkoutView {
         const bar = document.getElementById('rest-timer-bar');
         const valueEl = document.getElementById('rest-timer-value');
         if (bar) bar.classList.add('rest-timer-done');
+        if (bar) bar.classList.remove('rest-timer-urgent');
         if (valueEl) valueEl.textContent = 'Done';
+        this.clearRestChip();
         // Audio and haptic cues — each opt-outable independently in Settings.
         if (this.app.settings?.vibrationAlerts !== false) vibrate([120, 60, 120]);
         if (this.app.settings?.soundAlerts !== false) playSound('rest-done');
@@ -1508,7 +1632,14 @@ class WorkoutView {
 
         const unit = this.app.settings.weightUnit;
 
-        document.getElementById('summary-duration').textContent = `${minutes} min`;
+        const durationText = `${minutes} min`;
+        document.getElementById('summary-duration').textContent = durationText;
+        const heroEl = document.getElementById('summary-duration-hero');
+        if (heroEl) heroEl.textContent = durationText;
+
+        const titleEl = document.getElementById('finish-workout-title');
+        if (titleEl) titleEl.textContent = this.currentWorkoutSession.workoutDayName || 'Finish Workout';
+
         document.getElementById('summary-volume').textContent =
             `${Math.round(this.currentWorkoutSession.totalVolume).toLocaleString()} ${unit}`;
         document.getElementById('summary-sets').textContent =
@@ -1518,7 +1649,7 @@ class WorkoutView {
         const prsValue = document.getElementById('summary-prs');
         if (prsStat && prsValue) {
             prsStat.hidden = this.sessionPrCount === 0;
-            prsValue.textContent = `🏆 ${this.sessionPrCount}`;
+            prsValue.textContent = `${this.sessionPrCount}`;
         }
 
         const finishModal = document.getElementById('finish-workout-modal');
@@ -1634,6 +1765,86 @@ class WorkoutView {
         overlay.addEventListener('click', dismiss);
         const timerId = setTimeout(dismiss, 4000);
         overlay.addEventListener('click', () => clearTimeout(timerId), { once: true });
+    }
+
+    /**
+     * Return the most recently completed session for a given programId,
+     * or null if the program has never been completed.
+     */
+    _lastSessionForProgram(programId) {
+        const sessions = (this.app.workoutSessions || [])
+            .filter(s => s.programId === programId && s.completed)
+            .sort((a, b) => new Date(b.sortTimestamp) - new Date(a.sortTimestamp));
+        return sessions[0] || null;
+    }
+
+    /**
+     * Build the HTML chip row for the last-done info on a program card.
+     * Returns an empty string when no session exists.
+     */
+    _renderLastDoneInfo(session) {
+        if (!session) {
+            return `<div class="program-last-done program-last-done--never">
+                <i class="fas fa-calendar-xmark" aria-hidden="true"></i>
+                Not done yet
+            </div>`;
+        }
+
+        const relativeLabel = this._relativeDate(session.sortTimestamp || session.date);
+        const absDate = this._absoluteDate(session.sortTimestamp || session.date);
+
+        const chips = [];
+        const duration = session.duration;
+        if (duration > 0) {
+            chips.push(`<span class="psc-chip"><i class="fas fa-clock" aria-hidden="true"></i>${duration} min</span>`);
+        }
+        const unit = this.app.settings.weightUnit;
+        const volume = session.totalVolume;
+        if (volume > 0) {
+            chips.push(`<span class="psc-chip"><i class="fas fa-weight-hanging" aria-hidden="true"></i>${Math.round(volume).toLocaleString()} ${unit}</span>`);
+        }
+        if (session.caloriesBurned) {
+            chips.push(`<span class="psc-chip"><i class="fas fa-fire" aria-hidden="true"></i>${session.caloriesBurned} kcal</span>`);
+        }
+        if (session.avgHeartRate) {
+            chips.push(`<span class="psc-chip"><i class="fas fa-heart-pulse" aria-hidden="true"></i>${session.avgHeartRate} bpm</span>`);
+        }
+
+        const chipsHTML = chips.length > 0
+            ? `<div class="psc-chips">${chips.join('')}</div>`
+            : '';
+
+        return `<div class="program-last-done" title="${escapeHtml(absDate)}">
+            <i class="fas fa-calendar-check" aria-hidden="true"></i>
+            <span class="psc-relative">${escapeHtml(relativeLabel)}</span>
+            ${chipsHTML}
+        </div>`;
+    }
+
+    /** Returns a human-friendly relative date label, e.g. "Today", "2 days ago". */
+    _relativeDate(isoOrDate) {
+        if (!isoOrDate) return '';
+        const then = new Date(isoOrDate);
+        const now = new Date();
+        // Compare calendar days in local time.
+        const thenDay = new Date(then.getFullYear(), then.getMonth(), then.getDate());
+        const nowDay = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+        const diffDays = Math.round((nowDay - thenDay) / 86400000);
+        if (diffDays === 0) return 'Last done: Today';
+        if (diffDays === 1) return 'Last done: Yesterday';
+        if (diffDays < 7) return `Last done: ${diffDays} days ago`;
+        if (diffDays < 14) return 'Last done: 1 week ago';
+        const diffWeeks = Math.floor(diffDays / 7);
+        if (diffDays < 60) return `Last done: ${diffWeeks} weeks ago`;
+        const diffMonths = Math.floor(diffDays / 30);
+        return `Last done: ${diffMonths} months ago`;
+    }
+
+    /** Returns a short absolute date string for the tooltip. */
+    _absoluteDate(isoOrDate) {
+        if (!isoOrDate) return '';
+        const d = new Date(isoOrDate);
+        return d.toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' });
     }
 
     async endWorkout() {
