@@ -216,39 +216,72 @@
     </nav>
 
     <section class="mood-presets" aria-label="Explore by mood">
-      <h2 class="mood-presets-title">Explore by mood</h2>
-      <div class="mood-preset-chips">
-        <a class="mood-chip" href="#minYear=2020&minAvg=8.5&minVotes=1000&sort=avg" title="2020+, avg ≥ 8.5, ≥1,000 votes/episode">
-          <span class="mood-chip-icon" aria-hidden="true">★◉</span>
-          <span class="mood-chip-label">Modern prestige</span>
-          <span class="mood-chip-desc">Recent seasons critics and audiences both love</span>
-          <span class="mood-chip-count"></span>
-        </a>
-        <a class="mood-chip" href="#type=tvMiniSeries&minAvg=8&sort=avg" title="Mini-series only, avg ≥ 8">
-          <span class="mood-chip-icon" aria-hidden="true">❮❯</span>
-          <span class="mood-chip-label">One and done</span>
-          <span class="mood-chip-desc">Top mini-series — one season, full story</span>
-          <span class="mood-chip-count"></span>
-        </a>
-        <a class="mood-chip" href="#above=above&minAvg=8&sort=avg" title="Season avg above the show's IMDb rating, avg ≥ 8">
-          <span class="mood-chip-icon" aria-hidden="true">⇈★</span>
-          <span class="mood-chip-label">Outshines the show</span>
-          <span class="mood-chip-desc">Seasons rated higher than their show overall</span>
-          <span class="mood-chip-count"></span>
-        </a>
-        <a class="mood-chip" href="#minEps=10&minAvg=8&sort=length" title="≥10 episodes, avg ≥ 8, sorted by length">
-          <span class="mood-chip-icon" aria-hidden="true">❯❯❯</span>
-          <span class="mood-chip-label">Marathon material</span>
-          <span class="mood-chip-desc">Long seasons worth committing to</span>
-          <span class="mood-chip-count"></span>
-        </a>
-        <a class="mood-chip" href="#minClimb=1&minAvg=7.5&sort=climb" title="Last episode ≥1 pt higher than the first, avg ≥ 7.5">
-          <span class="mood-chip-icon" aria-hidden="true">↗⇧</span>
-          <span class="mood-chip-label">Biggest glow-ups</span>
-          <span class="mood-chip-desc">Seasons that ended way better than they started</span>
-          <span class="mood-chip-count"></span>
-        </a>
-      </div>
+      <details class="mood-collapsible" open>
+        <summary class="mood-presets-title">
+          <span class="mood-presets-title-text">Explore by mood</span>
+          <span class="mood-toggle-chevron" aria-hidden="true"></span>
+        </summary>
+        <div class="mood-preset-chips">
+          <a class="mood-chip" href="#minYear=2020&minAvg=8.5&minVotes=1000&sort=avg" title="2020+, avg ≥ 8.5, ≥1,000 votes/episode">
+            <span class="mood-chip-icon" aria-hidden="true">★◉</span>
+            <span class="mood-chip-label">Modern prestige</span>
+            <span class="mood-chip-desc">Recent seasons critics and audiences both love</span>
+            <span class="mood-chip-count"></span>
+          </a>
+          <a class="mood-chip" href="#type=tvMiniSeries&minAvg=8&sort=avg" title="Mini-series only, avg ≥ 8">
+            <span class="mood-chip-icon" aria-hidden="true">❮❯</span>
+            <span class="mood-chip-label">One and done</span>
+            <span class="mood-chip-desc">Top mini-series — one season, full story</span>
+            <span class="mood-chip-count"></span>
+          </a>
+          <a class="mood-chip" href="#above=above&minAvg=8&sort=avg" title="Season avg above the show's IMDb rating, avg ≥ 8">
+            <span class="mood-chip-icon" aria-hidden="true">⇈★</span>
+            <span class="mood-chip-label">Outshines the show</span>
+            <span class="mood-chip-desc">Seasons rated higher than their show overall</span>
+            <span class="mood-chip-count"></span>
+          </a>
+          <a class="mood-chip" href="#minEps=10&minAvg=8&sort=length" title="≥10 episodes, avg ≥ 8, sorted by length">
+            <span class="mood-chip-icon" aria-hidden="true">❯❯❯</span>
+            <span class="mood-chip-label">Marathon material</span>
+            <span class="mood-chip-desc">Long seasons worth committing to</span>
+            <span class="mood-chip-count"></span>
+          </a>
+          <a class="mood-chip" href="#minClimb=1&minAvg=7.5&sort=climb" title="Last episode ≥1 pt higher than the first, avg ≥ 7.5">
+            <span class="mood-chip-icon" aria-hidden="true">↗⇧</span>
+            <span class="mood-chip-label">Biggest glow-ups</span>
+            <span class="mood-chip-desc">Seasons that ended way better than they started</span>
+            <span class="mood-chip-count"></span>
+          </a>
+          <a class="mood-chip" href="#shape=rebound&minAvg=7.5&minVotes=500&sort=avg" title="Rebound shape, avg ≥ 7.5, ≥500 votes/episode">
+            <span class="mood-chip-icon" aria-hidden="true">∪★</span>
+            <span class="mood-chip-label">Best rebounders</span>
+            <span class="mood-chip-desc">Shows that dipped, then came back stronger</span>
+            <span class="mood-chip-count"></span>
+          </a>
+          <a class="mood-chip" href="#shape=big-finale&minAvg=8&minVotes=1000&sort=avg" title="Big finale shape, avg ≥ 8, ≥1,000 votes/episode">
+            <span class="mood-chip-icon" aria-hidden="true">⇧★</span>
+            <span class="mood-chip-label">Unmissable finales</span>
+            <span class="mood-chip-desc">Seasons that save the best for the very last episode</span>
+            <span class="mood-chip-count"></span>
+          </a>
+          <a class="mood-chip" href="#shape=slow-burn&minAvg=8&gems=on&sort=avg" title="Slow-burn shape, avg ≥ 8, hidden gems">
+            <span class="mood-chip-icon" aria-hidden="true">🔥💎</span>
+            <span class="mood-chip-label">Hidden slow-burns</span>
+            <span class="mood-chip-desc">Under-the-radar seasons that build to something great</span>
+            <span class="mood-chip-count"></span>
+          </a>
+          <a class="mood-chip" href="#shape=bad-finale&minAvg=7.5&sort=avg" title="Bad finale shape, avg ≥ 7.5">
+            <span class="mood-chip-icon" aria-hidden="true">⇩✗</span>
+            <span class="mood-chip-label">Worst endings</span>
+            <span class="mood-chip-desc">Otherwise solid seasons ruined by the finale</span>
+            <span class="mood-chip-count"></span>
+          </a>
+          <button type="button" class="mood-more-btn" id="moodMoreBtn" aria-expanded="false" hidden>
+            <span class="mood-more-label">More moods</span>
+            <span class="mood-more-count" id="moodMoreCount"></span>
+          </button>
+        </div>
+      </details>
     </section>
 
     <section class="filters" aria-label="Filters">
@@ -303,6 +336,16 @@
         <button type="button" class="advanced-reset" id="resetFilters" hidden>× Clear filters</button>
       </div>
       <div class="label-filters" id="quickFiltersPanel" aria-label="Quick filters">
+        <!-- Feature 6: Quick genre row (top 8 genres, synced with advanced drawer) -->
+        <div class="label-group genre-quick-group" role="group" aria-label="Genre">
+          <span class="label-group-name">Genre</span>
+          <div class="genre-quick-row" id="quickGenreRow"></div>
+        </div>
+        <!-- Feature 9: Decade quick-filter buttons -->
+        <div class="label-group decade-group" role="radiogroup" aria-label="Decade">
+          <span class="label-group-name">Decade</span>
+          <div class="decade-row" id="decadeRow"></div>
+        </div>
         <div class="label-group" role="radiogroup" aria-label="Series type">
           <span class="label-group-name">Type</span>
           <button type="button" class="label-chip" data-filter="seriesType" data-value="all" aria-pressed="true">All</button>
@@ -375,12 +418,9 @@
               <option value="finale">Finale rating</option>
               <option value="avg">Season average rating</option>
               <option value="recent">Most recent</option>
+              <option value="volatility">Most volatile (std dev)</option>
             </select>
           </label>
-        </div>
-        <div class="chip-section">
-          <span class="chip-section-title">Genres</span>
-          <div class="genre-row" id="genres" role="group" aria-label="Filter by genre"></div>
         </div>
         <div class="chip-section">
           <span class="chip-section-title">Language</span>
@@ -447,6 +487,7 @@
     <div class="modal-backdrop" data-close="modal"></div>
     <article class="modal-panel" tabindex="-1">
       <button type="button" class="btn modal-close" data-close="modal" aria-label="Close">×</button>
+      <button type="button" class="btn modal-back" id="modalBack" hidden aria-label="Back to previous view" title="Back"></button>
       <button type="button" class="btn btn-primary modal-reroll" id="modalReroll" hidden>Roll again</button>
       <div class="modal-header">
         <div class="modal-poster" id="modalPoster" aria-hidden="true"></div>
@@ -475,6 +516,14 @@
       </svg>
       <p class="modal-curve-annotation" id="modalCurveAnnotation" hidden></p>
       <ol class="modal-episodes" id="modalEpisodes"></ol>
+      <!-- Feature 5: More seasons like this -->
+      <section class="modal-related" id="modalRelated" hidden>
+        <h3 class="modal-section">More seasons like this</h3>
+        <div class="related-grid"></div>
+      </section>
+      <button type="button" class="btn modal-scroll-top" id="modalScrollTop" aria-label="Scroll back to top" title="Back to top">
+        <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3.5 10 8 5.5 12.5 10"/></svg><span>Top</span>
+      </button>
     </article>
   </div>
 
@@ -483,6 +532,7 @@
     <div class="modal-backdrop" data-close="show-modal"></div>
     <article class="modal-panel" tabindex="-1">
       <button type="button" class="btn modal-close" data-close="show-modal" aria-label="Close">×</button>
+      <button type="button" class="btn modal-back" id="showModalBack" hidden aria-label="Back to previous view" title="Back"></button>
       <div class="modal-header">
         <div class="modal-poster" id="showModalPoster" aria-hidden="true"></div>
         <div class="modal-heading">
@@ -515,6 +565,14 @@
       </section>
       <h3 class="modal-section">All seasons</h3>
       <ol class="show-seasons" id="showModalSeasons"></ol>
+      <!-- Task D: More shows like this -->
+      <section class="show-related" id="showModalRelated" hidden>
+        <h3 class="modal-section">More shows like this</h3>
+        <div class="show-related-grid"></div>
+      </section>
+      <button type="button" class="btn modal-scroll-top" id="showModalScrollTop" aria-label="Scroll back to top" title="Back to top">
+        <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3.5 10 8 5.5 12.5 10"/></svg><span>Top</span>
+      </button>
     </article>
   </div>
 
