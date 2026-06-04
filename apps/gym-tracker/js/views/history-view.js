@@ -7,6 +7,9 @@ import { trapModalFocus } from '../utils/modal-focus.js';
 import { DarkCalendar } from '../utils/dark-calendar.js';
 import { DarkSelect } from '../utils/dark-select.js';
 import { Program } from '../models/Program.js';
+import { makePaginatorState, paginatorInfo, paginatorDualHTML } from '../utils/paginator.js';
+
+const HISTORY_PAGE_SIZE = 15;
 
 class HistoryView {
     constructor() {
@@ -19,6 +22,7 @@ class HistoryView {
         this.currentSort = 'date-desc';
         this.dateFrom = null;
         this.dateTo = null;
+        this._pagination = makePaginatorState(HISTORY_PAGE_SIZE);
         this.setupEventListeners();
         this.wireListActions();
     }
@@ -73,6 +77,7 @@ class HistoryView {
             }
             sortSelect.addEventListener('change', (e) => {
                 this.currentSort = e.target.value;
+                this._pagination.page = 1;
                 this.render();
             });
         }
@@ -86,6 +91,7 @@ class HistoryView {
             dateFromInput.dataset.darkCalendarInit = '1';
             dateFromInput.addEventListener('change', (e) => {
                 this.dateFrom = e.target.value || null;
+                this._pagination.page = 1;
                 this._updateClearButtonState();
                 this.render();
             });
@@ -95,6 +101,7 @@ class HistoryView {
             dateToInput.dataset.darkCalendarInit = '1';
             dateToInput.addEventListener('change', (e) => {
                 this.dateTo = e.target.value || null;
+                this._pagination.page = 1;
                 this._updateClearButtonState();
                 this.render();
             });
@@ -117,6 +124,7 @@ class HistoryView {
                 else if (dateFromInput) dateFromInput.value = '';
                 if (this.toCalendar) this.toCalendar.clearDate();
                 else if (dateToInput) dateToInput.value = '';
+                this._pagination.page = 1;
                 this._updateClearButtonState();
                 this.render();
             });
@@ -180,9 +188,13 @@ class HistoryView {
             return;
         }
 
+        const info = paginatorInfo(this._pagination, sessions.length);
+        this._pagination.page = info.page;
+
+        const pageSessions = sessions.slice(info.start, info.end);
         const unit = this.app.settings.weightUnit;
-        container.innerHTML = sessions.map(session => {
-            // Check for additional metrics
+
+        const cardsHTML = pageSessions.map(session => {
             const hasAdditionalMetrics = session.avgHeartRate || session.maxHeartRate || session.caloriesBurned;
 
             return `
@@ -242,6 +254,41 @@ class HistoryView {
                 </div>
             `;
         }).join('');
+
+        const { top: topPager, bottom: bottomPager } = paginatorDualHTML(info, 'hist');
+        container.innerHTML = topPager + cardsHTML + bottomPager;
+
+        const goToPage = (newPage, scrollToTop) => {
+            this._pagination.page = newPage;
+            this.renderHistoryList();
+            if (scrollToTop) container.scrollIntoView({ block: 'start' });
+        };
+
+        container.querySelectorAll('.pagination-page-btn').forEach(btn => {
+            btn.addEventListener('click', () => {
+                const pg = Number(btn.dataset.page);
+                const fromBottom = btn.closest('[data-paginator="hist-b"]') !== null;
+                goToPage(pg, fromBottom);
+            });
+        });
+
+        container.querySelectorAll('[id^="hist-prev-"]').forEach(btn => {
+            btn.addEventListener('click', () => {
+                if (this._pagination.page > 1) {
+                    const fromBottom = btn.id === 'hist-prev-b';
+                    goToPage(this._pagination.page - 1, fromBottom);
+                }
+            });
+        });
+
+        container.querySelectorAll('[id^="hist-next-"]').forEach(btn => {
+            btn.addEventListener('click', () => {
+                if (this._pagination.page < info.pageCount) {
+                    const fromBottom = btn.id === 'hist-next-b';
+                    goToPage(this._pagination.page + 1, fromBottom);
+                }
+            });
+        });
     }
 
     /**

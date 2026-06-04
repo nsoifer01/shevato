@@ -72,7 +72,10 @@ body.gym-tracker {
     padding: 0;
     padding-top: 3.25rem; /* Account for fixed header */
     min-height: 100vh;
-    overflow-x: hidden;
+    /* clip instead of hidden: prevents horizontal overflow without creating
+       a new scroll container, which would break position:sticky on descendants
+       (iOS Safari / mobile Chrome known issue). */
+    overflow-x: clip;
 }
 
 body.gym-tracker h1,
@@ -727,7 +730,7 @@ body.gym-tracker #footer {
 .program-actions {
     display: flex;
     flex-direction: row;
-    flex-wrap: nowrap;
+    flex-wrap: wrap;
     gap: 0.5rem;
     margin-top: auto;
     padding-top: 0.75rem;
@@ -735,8 +738,8 @@ body.gym-tracker #footer {
 }
 
 .program-actions .btn {
-    flex: 1 1 0;
-    min-width: 0;
+    flex: 1 1 auto;
+    min-width: max-content;
     height: 34px !important;
     min-height: 0 !important;
     padding: 0 0.85rem !important;
@@ -1137,6 +1140,16 @@ body.gym-tracker #footer {
                 outline-color var(--transition-fast);
 }
 
+/* Body scroll lock — applied by modal-focus.js when any modal is open.
+   position:fixed + top offset is the only reliable technique on iOS Safari. */
+body.modal-open {
+    overflow: hidden;
+    position: fixed;
+    left: 0;
+    right: 0;
+    /* top is set inline by JS to preserve scroll position */
+}
+
 /* Modal */
 .modal {
     display: none;
@@ -1531,7 +1544,10 @@ body.gym-tracker #footer {
     border-radius: var(--radius-lg);
     margin-bottom: var(--spacing-md);
     position: sticky;
-    top: 0;
+    /* Offset by the fixed site header so the bar sticks fully below it,
+       not partially behind it. Body uses overflow-x:clip (not hidden) so
+       there is no spurious scroll-container ancestor breaking stickiness. */
+    top: 3.25rem;
     z-index: 100;
     gap: 0.55rem;
     border: 1px solid var(--border-color);
@@ -1701,6 +1717,15 @@ body.gym-tracker #footer {
 
 .workout-content {
     padding-bottom: 90px; /* Extra space for bottom nav on mobile */
+}
+
+/* Ensure exercise cards don't scroll behind the taller sticky header
+   (site header ~52px + workout header ~80px + margin ≈ 140px).
+   scroll-margin-top applies on scrollIntoView(); the scroll-padding-top
+   on html covers keyboard-driven and programmatic scroll. */
+body.gym-tracker #active-workout .exercise-entry,
+body.gym-tracker #active-workout .superset-block {
+    scroll-margin-top: 150px;
 }
 
 @media (min-width: 768px) {
@@ -1919,6 +1944,61 @@ body.gym-tracker #footer {
 @media (prefers-reduced-motion: reduce) {
     .rest-timer-bar { animation: none; }
     .rest-timer-progress-fill { transition: none; }
+}
+
+/* Final-5-seconds urgent state: bar + chip turn red and pulse. */
+@keyframes rest-timer-pulse {
+    0%, 100% { opacity: 1; }
+    50%       { opacity: 0.55; }
+}
+
+.rest-timer-bar.rest-timer-urgent #rest-timer-value,
+.rest-countdown-chip.rest-countdown-chip--urgent {
+    color: #ef4444;
+    border-color: rgba(239, 68, 68, 0.45);
+    animation: rest-timer-pulse 0.65s ease-in-out infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .rest-timer-bar.rest-timer-urgent #rest-timer-value,
+    .rest-countdown-chip.rest-countdown-chip--urgent { animation: none; }
+}
+
+/* In-card rest countdown chip — appears next to the rest adjuster. */
+.rest-countdown-chip {
+    display: inline-flex;
+    align-items: center;
+    font-size: 0.78rem;
+    font-weight: 600;
+    font-variant-numeric: tabular-nums;
+    color: rgba(255, 255, 255, 0.75);
+    background: rgba(108, 99, 255, 0.15);
+    border: 1px solid rgba(108, 99, 255, 0.3);
+    border-radius: 999px;
+    padding: 0.15rem 0.55rem;
+    margin-left: 0.5rem;
+    line-height: 1.4;
+}
+
+/* Plate-hints toggle button — same sizing as other header btn-icons. */
+.workout-header .btn-icon-plates {
+    background: rgba(108, 99, 255, 0.1) !important;
+    border-color: rgba(108, 99, 255, 0.3) !important;
+    color: rgba(167, 139, 250, 0.9) !important;
+}
+
+.workout-header .btn-icon-plates:hover {
+    background: rgba(108, 99, 255, 0.2) !important;
+    border-color: rgba(108, 99, 255, 0.5) !important;
+    color: #a78bfa !important;
+}
+
+/* Dimmed state when plate hints are off. */
+.workout-header .btn-icon-plates--off {
+    background: transparent !important;
+    border-color: var(--border-color) !important;
+    color: var(--text-muted) !important;
+    opacity: 0.6;
 }
 
 .workout-day-list {
@@ -4193,7 +4273,7 @@ body.gym-tracker #footer {
 
 .exercise-picker-tray-row {
     display: grid;
-    grid-template-columns: 1fr auto auto;
+    grid-template-columns: 1fr auto;
     align-items: center;
     gap: 0.55rem;
     background: var(--bg-elevated);
@@ -4209,13 +4289,6 @@ body.gym-tracker #footer {
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
-}
-
-.exercise-picker-tray-row .tray-steppers {
-    display: inline-flex;
-    gap: 0.3rem;
-    flex-wrap: wrap;
-    justify-content: flex-end;
 }
 
 .exercise-picker-tray-row .tray-remove {
@@ -4249,18 +4322,6 @@ body.gym-tracker #footer {
 @media (max-width: 600px) {
     .exercise-picker-tray-row {
         grid-template-columns: 1fr auto;
-        grid-template-areas:
-            "name remove"
-            "steppers remove";
-    }
-    .exercise-picker-tray-row .tray-name { grid-area: name; }
-    .exercise-picker-tray-row .tray-steppers {
-        grid-area: steppers;
-        justify-content: flex-start;
-    }
-    .exercise-picker-tray-row .tray-remove {
-        grid-area: remove;
-        align-self: center;
     }
 }
 
@@ -4519,20 +4580,19 @@ body.gym-tracker #footer {
         opacity: 0.75;
     }
 
-    /* Controls row: three equal columns that SHARE the full card width.
-       `minmax(0, 1fr)` gives each stepper a HARD upper bound — cells shrink
-       instead of forcing the parent wider. Spans all four outer-grid columns
-       via the redefined grid-template-areas above, so it uses the whole card
-       inner width (~660px in a 760px modal) — about 220px per cell. */
+    /* Controls row: sets-block takes the majority of space; rest stepper
+       sits in a fixed-size right column when present (custom mode).
+       Spans all four outer-grid columns via redefined grid-template-areas. */
     .pex-targets {
         display: grid;
-        grid-template-columns: repeat(3, minmax(0, 1fr));
+        grid-template-columns: 1fr auto;
         gap: 0.75rem;
         padding-top: 0.5rem;
         margin-top: 0;
         border-top: 1px dashed var(--border-color);
         min-width: 0;
         width: 100%;
+        align-items: start;
     }
 
     .pex-targets > * {
@@ -4614,16 +4674,8 @@ body.gym-tracker #footer {
     }
 }
 
-/* Hard-stack the Sets/Reps/Rest controls on narrow viewports. Between 641px
-   and 900px the modal is simply not wide enough to comfortably fit three
-   steppers side-by-side, so we stack them one per row — readable, no overlap,
-   no overflow. Above 900px the 3-column grid takes over. Below 641px the
-   base flex-wrap layout applies. */
-@media (min-width: 641px) and (max-width: 900px) {
-    .pex-targets {
-        grid-template-columns: 1fr;
-    }
-}
+/* Between 641px and 900px keep the 2-column layout (sets-block + rest).
+   No special override needed — the 1fr auto grid already stacks gracefully. */
 
 /* Stepper — two zones separated by space-between:
      [ LABEL ]                   [ - value + ]
@@ -7729,6 +7781,19 @@ button.calendar-day {
     }
 }
 
+/* Delete-history footer inside exercise detail modal */
+.exercise-detail-delete-footer {
+    border-top: 1px solid var(--border-color);
+    margin-top: var(--spacing-lg);
+    padding-top: var(--spacing-md);
+    display: flex;
+    justify-content: center;
+}
+
+.exercise-detail-delete-history-btn .fa-trash {
+    color: var(--accent-error) !important;
+}
+
 /* ============================================================
  * Per-exercise progression chart (exercise detail modal)
  * ============================================================ */
@@ -8746,5 +8811,679 @@ button.calendar-day {
     .form-row.form-row-2 {
         grid-template-columns: 1fr;
     }
+}
+
+/* ------------------------------------------------------------------
+   Rest mode toggle (program modal)
+   ------------------------------------------------------------------ */
+
+.rest-mode-group {
+    margin-bottom: 0.75rem;
+}
+
+.rest-mode-toggle-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.75rem;
+    padding: 0.55rem 0.75rem;
+    background: var(--bg-elevated);
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-md);
+}
+
+.rest-mode-label {
+    display: flex;
+    align-items: center;
+    gap: 0.45rem;
+    font-size: 0.875rem;
+    font-weight: 600;
+    color: var(--text-secondary);
+    cursor: pointer;
+    user-select: none;
+}
+
+.rest-mode-label i {
+    color: var(--accent-primary);
+    font-size: 0.9rem;
+}
+
+.rest-mode-uniform-section {
+    margin-top: 0.6rem;
+    display: flex;
+    flex-direction: column;
+    gap: 0.35rem;
+}
+
+.rest-mode-uniform-label {
+    font-size: 0.78rem;
+    font-weight: 600;
+    color: var(--text-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+}
+
+.rest-mode-uniform-input {
+    width: 100%;
+    max-width: 140px;
+    padding: 0.4rem 0.6rem;
+    background: var(--bg-input, var(--bg-elevated));
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-sm);
+    color: var(--text-primary);
+    font-size: 0.9rem;
+    font-variant-numeric: tabular-nums;
+}
+
+.rest-mode-uniform-input:focus {
+    outline: none;
+    border-color: var(--accent-primary);
+    box-shadow: 0 0 0 2px rgba(108, 99, 255, 0.25);
+}
+
+.form-hint {
+    font-size: 0.75rem;
+    color: var(--text-muted);
+    margin: 0;
+}
+
+/* ------------------------------------------------------------------
+   Per-set rep rows in the program builder
+   ------------------------------------------------------------------ */
+
+/* The sets-block replaces the old Sets + Reps steppers. */
+.pex-sets-block {
+    display: flex;
+    flex-direction: column;
+    gap: 0.4rem;
+    min-width: 0;
+}
+
+.pex-sets-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.5rem;
+}
+
+/* Reuse the existing .pex-stepper-label for the "Sets / Reps" heading */
+.pex-sets-header .pex-stepper-label {
+    font-size: 0.65rem;
+    letter-spacing: 0.08em;
+    font-weight: 700;
+    text-transform: uppercase;
+    color: var(--text-muted);
+}
+
+.pex-add-set-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.25rem;
+    padding: 0.15rem 0.5rem;
+    background: transparent;
+    border: 1px solid rgba(108, 99, 255, 0.35);
+    border-radius: var(--radius-sm);
+    color: var(--accent-primary);
+    font-size: 0.7rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: background 120ms ease, border-color 120ms ease;
+    white-space: nowrap;
+}
+
+.pex-add-set-btn:hover,
+.pex-add-set-btn:focus-visible {
+    background: rgba(108, 99, 255, 0.12);
+    border-color: rgba(108, 99, 255, 0.6);
+    outline: none;
+}
+
+.pex-set-rows {
+    display: flex;
+    flex-direction: column;
+    gap: 0.3rem;
+}
+
+.pex-set-row {
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+    min-width: 0;
+}
+
+.pex-set-label {
+    flex: 0 0 auto;
+    font-size: 0.7rem;
+    font-weight: 600;
+    color: var(--text-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    min-width: 3.2rem;
+}
+
+.pex-set-reps {
+    display: flex;
+    align-items: center;
+    gap: 0.25rem;
+    flex: 1 1 auto;
+    min-width: 0;
+}
+
+.pex-reps-input {
+    width: 3.2rem;
+    padding: 0.25rem 0.3rem;
+    background: var(--bg-input, var(--bg-elevated));
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-sm);
+    color: var(--text-primary);
+    font-size: 0.85rem;
+    font-variant-numeric: tabular-nums;
+    text-align: center;
+    -moz-appearance: textfield;
+}
+
+.pex-reps-input::-webkit-inner-spin-button,
+.pex-reps-input::-webkit-outer-spin-button {
+    -webkit-appearance: none;
+}
+
+.pex-reps-input:focus {
+    outline: none;
+    border-color: var(--accent-primary);
+    box-shadow: 0 0 0 2px rgba(108, 99, 255, 0.22);
+}
+
+.pex-reps-sep {
+    flex: 0 0 auto;
+    font-size: 0.8rem;
+    color: var(--text-muted);
+    font-weight: 700;
+}
+
+.pex-reps-sep-hidden,
+.pex-reps-max-hidden {
+    display: none;
+}
+
+/* Toggle that shows/hides the rep range max input */
+.pex-range-toggle {
+    flex: 0 0 auto;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.25rem;
+    min-width: 60px;
+    height: 32px;
+    padding: 0 0.45rem;
+    background: transparent !important;
+    border: 1px solid rgba(255, 255, 255, 0.12) !important;
+    border-radius: 4px;
+    color: rgba(255, 255, 255, 0.7) !important;
+    cursor: pointer;
+    font-size: 0.65rem;
+    transition: background 100ms ease, color 100ms ease, border-color 100ms ease;
+}
+
+.pex-range-toggle:hover,
+.pex-range-toggle:focus-visible {
+    background: rgba(108, 99, 255, 0.14) !important;
+    border-color: rgba(108, 99, 255, 0.5) !important;
+    color: #fff !important;
+    outline: none;
+}
+
+.pex-range-toggle:hover:active {
+    background: rgba(108, 99, 255, 0.25) !important;
+    color: #fff !important;
+}
+
+.pex-range-toggle.is-on {
+    background: rgba(108, 99, 255, 0.2) !important;
+    border-color: rgba(108, 99, 255, 0.6) !important;
+    color: var(--accent-primary) !important;
+}
+
+.pex-range-toggle.is-on:hover,
+.pex-range-toggle.is-on:focus-visible {
+    background: rgba(108, 99, 255, 0.3) !important;
+    color: #fff !important;
+}
+
+.pex-range-toggle-label {
+    font-size: 0.68rem;
+    font-weight: 600;
+    letter-spacing: 0.03em;
+    line-height: 1;
+    color: inherit;
+}
+
+/* Per-exercise hint below the sets/reps header */
+.pex-range-hint {
+    margin: 0.15rem 0 0.35rem;
+    font-size: 0.72rem;
+    color: var(--text-muted);
+    line-height: 1.3;
+}
+
+/* At mobile widths refresh.css forces width:32px on .pex-range-toggle which
+   would clip the text label — override to auto-width with a sensible minimum. */
+@media (max-width: 640px) {
+    body.gym-tracker .pex-range-toggle {
+        width: auto;
+        min-width: 58px;
+        height: 32px;
+        padding: 0 0.4rem;
+    }
+}
+
+.pex-set-remove {
+    flex: 0 0 auto;
+    width: 22px;
+    height: 22px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    background: transparent;
+    border: none;
+    border-radius: 4px;
+    color: rgba(255, 255, 255, 0.3);
+    cursor: pointer;
+    font-size: 0.72rem;
+    transition: color 100ms ease, background 100ms ease;
+}
+
+.pex-set-remove:hover:not(:disabled),
+.pex-set-remove:focus-visible:not(:disabled) {
+    color: var(--color-danger, #ff6b6b);
+    background: rgba(255, 107, 107, 0.1);
+    outline: none;
+}
+
+.pex-set-remove:disabled {
+    opacity: 0.25;
+    cursor: default;
+}
+
+/* When rest stepper is absent (uniform mode), sets-block spans full width. */
+.pex-targets:not(:has(.pex-stepper)) .pex-sets-block {
+    grid-column: 1 / -1;
+}
+
+/* ---- Finish Workout Modal — premium redesign ---- */
+
+.finish-workout-modal-content {
+    background: var(--bg-secondary);
+    border: 1px solid var(--border-light);
+    overflow: hidden;
+}
+
+/* Hero banner: workout name + live duration */
+.finish-modal-hero {
+    background: linear-gradient(135deg, rgba(108, 99, 255, 0.18) 0%, rgba(90, 82, 213, 0.10) 100%);
+    border-bottom: 1px solid rgba(108, 99, 255, 0.25);
+    padding: var(--spacing-lg) var(--spacing-lg) var(--spacing-md);
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: var(--spacing-md);
+}
+
+.finish-modal-hero-text {
+    display: flex;
+    flex-direction: column;
+    gap: 0.25rem;
+    min-width: 0;
+    flex: 1;
+}
+
+.finish-modal-title {
+    margin: 0;
+    font-size: 1.2rem;
+    font-weight: 700;
+    letter-spacing: -0.02em;
+    line-height: 1.2;
+    color: var(--text-primary);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.finish-modal-duration-hero {
+    font-size: 2rem;
+    font-weight: 800;
+    letter-spacing: -0.03em;
+    color: var(--accent-primary);
+    line-height: 1;
+    font-variant-numeric: tabular-nums;
+}
+
+.finish-modal-close {
+    flex-shrink: 0;
+    margin-top: 0.15rem;
+}
+
+/* Summary stat grid */
+.workout-summary {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: var(--spacing-sm);
+    margin-bottom: var(--spacing-lg);
+}
+
+/* When PRs stat is visible the grid expands to 4 columns */
+.workout-summary:has(#summary-prs-stat:not([hidden])) {
+    grid-template-columns: repeat(4, 1fr);
+}
+
+.summary-stat {
+    background: var(--bg-card);
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-lg);
+    padding: var(--spacing-md) var(--spacing-sm);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 0.25rem;
+    text-align: center;
+}
+
+.summary-stat-icon {
+    font-size: 1rem;
+    color: var(--accent-primary);
+    line-height: 1;
+    margin-bottom: 0.1rem;
+}
+
+.summary-stat .value {
+    font-size: 1.15rem;
+    font-weight: 700;
+    letter-spacing: -0.02em;
+    color: var(--text-primary);
+    font-variant-numeric: tabular-nums;
+    line-height: 1;
+}
+
+.summary-stat .label {
+    font-size: 0.7rem;
+    font-weight: 500;
+    color: var(--text-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    line-height: 1;
+}
+
+/* PR stat card gets a gold accent */
+.summary-stat--pr {
+    border-color: rgba(255, 165, 0, 0.4);
+    background: rgba(255, 165, 0, 0.07);
+}
+
+.summary-stat--pr .summary-stat-icon {
+    color: var(--accent-warning);
+}
+
+.summary-stat--pr .value {
+    color: var(--accent-warning);
+}
+
+/* Post-workout metrics section */
+.post-workout-metrics-section {
+    border-top: 1px solid var(--border-color);
+    padding-top: var(--spacing-lg);
+    margin-top: 0;
+}
+
+.post-workout-metrics-header {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    margin-bottom: var(--spacing-md);
+    font-size: 0.85rem;
+    font-weight: 600;
+    color: var(--text-secondary);
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+}
+
+.post-workout-metrics-header i {
+    color: var(--accent-primary);
+    font-size: 0.9rem;
+}
+
+.post-workout-optional {
+    margin-left: auto;
+    font-size: 0.72rem;
+    font-weight: 400;
+    color: var(--text-disabled);
+    text-transform: lowercase;
+    letter-spacing: 0;
+    background: var(--bg-card);
+    border: 1px solid var(--border-color);
+    border-radius: 999px;
+    padding: 0.1em 0.6em;
+}
+
+/* Input with inline unit label */
+.input-with-unit {
+    position: relative;
+    display: flex;
+    align-items: center;
+}
+
+.input-with-unit input {
+    width: 100%;
+    padding: 0.7rem 3.2rem 0.7rem 0.85rem;
+    background: var(--bg-tertiary);
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-md);
+    color: var(--text-primary);
+    font-size: 1rem;
+    transition: border-color var(--transition-base), background var(--transition-base),
+                box-shadow var(--transition-base);
+    outline: none;
+}
+
+.input-with-unit input:focus {
+    border-color: var(--accent-primary);
+    background: var(--bg-card);
+    box-shadow: 0 0 0 3px rgba(108, 99, 255, 0.18);
+}
+
+.input-with-unit input::placeholder {
+    color: var(--text-disabled);
+}
+
+.input-unit {
+    position: absolute;
+    right: 0.75rem;
+    font-size: 0.8rem;
+    font-weight: 600;
+    color: var(--text-muted);
+    pointer-events: none;
+    white-space: nowrap;
+}
+
+/* Override form-group defaults inside the finish modal metrics so the
+   input-with-unit wrapper handles the styling instead. */
+#finish-workout-modal .post-workout-metrics-section .form-group input[type="number"],
+#finish-workout-modal .post-workout-metrics-section .form-group textarea {
+    padding: 0.7rem 3.2rem 0.7rem 0.85rem;
+    background: var(--bg-tertiary);
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-md);
+    transition: border-color var(--transition-base), background var(--transition-base),
+                box-shadow var(--transition-base);
+}
+
+#finish-workout-modal .post-workout-metrics-section .form-group input:focus,
+#finish-workout-modal .post-workout-metrics-section .form-group textarea:focus {
+    border-color: var(--accent-primary);
+    background: var(--bg-card);
+    box-shadow: 0 0 0 3px rgba(108, 99, 255, 0.18);
+    outline: none;
+}
+
+#finish-workout-modal .post-workout-metrics-section .form-group textarea {
+    padding: 0.7rem 0.85rem;
+    resize: none;
+}
+
+/* Action row */
+.finish-workout-actions {
+    display: flex;
+    gap: var(--spacing-md);
+    align-items: center;
+    margin-top: var(--spacing-lg);
+}
+
+.finish-workout-submit {
+    flex: 1;
+    background: var(--gradient-primary) !important;
+    border: none !important;
+    font-weight: 700;
+    letter-spacing: 0.01em;
+    min-height: 52px;
+    font-size: 1rem;
+}
+
+.finish-workout-submit:hover {
+    opacity: 0.92;
+    transform: translateY(-1px);
+    box-shadow: 0 6px 20px rgba(108, 99, 255, 0.38) !important;
+}
+
+.finish-workout-cancel {
+    min-width: 88px;
+    color: var(--text-secondary) !important;
+    min-height: 52px;
+}
+
+/* Mobile: stack cancel below submit, full width */
+@media (max-width: 480px) {
+    .finish-workout-actions {
+        flex-direction: column-reverse;
+        gap: var(--spacing-sm);
+    }
+
+    .finish-workout-actions .btn {
+        width: 100%;
+    }
+
+    .workout-summary {
+        grid-template-columns: repeat(3, 1fr);
+    }
+
+    .summary-stat .value {
+        font-size: 1rem;
+    }
+
+    .finish-modal-duration-hero {
+        font-size: 1.6rem;
+    }
+
+    .finish-modal-title {
+        font-size: 1rem;
+    }
+}
+
+/* ---- Program selection: last-done info ---- */
+
+.program-last-done {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.35rem;
+    font-size: 0.78rem;
+    color: var(--text-secondary);
+    padding: 0.45rem 0.7rem;
+    background: var(--bg-elevated);
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-md);
+}
+
+.program-last-done i {
+    color: var(--accent-primary);
+    font-size: 0.75rem;
+    flex-shrink: 0;
+}
+
+.program-last-done--never {
+    color: var(--text-disabled);
+    border-style: dashed;
+}
+
+.program-last-done--never i {
+    color: var(--text-disabled);
+}
+
+.psc-relative {
+    font-weight: 500;
+    color: var(--text-secondary);
+    white-space: nowrap;
+}
+
+.psc-chips {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.3rem;
+    margin-top: 0.2rem;
+    width: 100%;
+}
+
+.psc-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.25rem;
+    font-size: 0.72rem;
+    font-weight: 600;
+    color: var(--text-muted);
+    background: var(--bg-card);
+    border: 1px solid var(--border-color);
+    border-radius: 999px;
+    padding: 0.15em 0.55em;
+    font-variant-numeric: tabular-nums;
+}
+
+.psc-chip i {
+    color: var(--accent-primary);
+    font-size: 0.65rem;
+}
+
+/* ── Pagination controls ──────────────────────────────────────────── */
+.pagination-controls {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: var(--spacing-md);
+    padding: var(--spacing-md) 0 var(--spacing-sm);
+    grid-column: 1 / -1; /* span full width inside any grid container */
+}
+
+.pagination-label {
+    color: var(--text-secondary);
+    font-size: 0.875rem;
+    min-width: 90px;
+    text-align: center;
+    white-space: nowrap;
+}
+
+.pagination-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
+    min-width: 72px;
+    justify-content: center;
+}
+
+.pagination-btn:disabled,
+.pagination-btn[aria-disabled="true"] {
+    opacity: 0.38;
+    cursor: not-allowed;
+    pointer-events: none;
+}
+
+.pagination-btn:focus-visible {
+    outline: 2px solid var(--accent-primary);
+    outline-offset: 2px;
 }
 
