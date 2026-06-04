@@ -23,13 +23,7 @@
  *       answers: [{questionId, correct, timeLeftMs, totalMs, category, points}] }
  *
  *   users/{uid}.triviaProfile
- *     { displayName, xp, gamesPlayed, wins, premium, signedUpAt,
- *       premiumPaidAt, stripeCheckoutSessionId, lastPlayedAt }
- *
- *   Premium gating rule:
- *     isPremium = (premium === true)  OR  (now < signedUpAt + 30 days)
- *   The webhook at /.netlify/functions/stripe-webhook flips `premium=true`
- *   after a successful Stripe Checkout for the one-time $5 fee.
+ *     { displayName, xp, gamesPlayed, wins, customPack, lastPlayedAt }
  *
  *   triviaLeaderboard/{uid}  (denormalized for cheap reads)
  *     { uid, displayName, xp, gamesPlayed, wins, lastPlayedAt }
@@ -38,8 +32,8 @@
 // All Firestore SDK access flows through firebase-config.js (the single
 // init point) so we don't import the SDK URL directly here — the
 // `no app file imports Firestore directly` invariant test forbids it.
-// Path: this file is /apps/brain-arena/js/app.js, so we go up three
-// directories (js → brain-arena → apps → repo root).
+// Path: this file is /apps/arena/js/app.js, so we go up three
+// directories (js → arena → apps → repo root).
 import { db, firestore } from '../../../firebase-config.js';
 const {
     doc, collection, getDoc, getDocs, setDoc, updateDoc, deleteDoc, addDoc,
@@ -49,7 +43,6 @@ const {
 
 const Config = window.BrainArena.Config;
 const Scoring = window.BrainArena.Scoring;
-const Premium = window.BrainArena.Premium;
 const Feedback = window.BrainArena.Feedback;
 const Chat = window.BrainArena.Chat;
 const RoomState = window.BrainArena.RoomState;
@@ -66,7 +59,7 @@ const state = {
     user: null,                  // Firebase user (or null)
     profile: null,               // users/{uid}.triviaProfile (or null)
     activeView: 'play',          // 'play' | 'leaderboard' | 'profile'
-    customPack: null,            // user's saved custom pack (premium)
+    customPack: null,            // user's saved custom pack
 
     // Room state
     roomCode: null,              // current room code, if any
@@ -117,9 +110,8 @@ const state = {
     dailyLeaderboardEntries: [],
     dailyLeaderboardUnsub: null,
 
-    // Live listener on users/{uid} so the Stripe webhook's flip of
-    // triviaProfile.premium (server-side via Admin SDK) propagates to
-    // the UI without a reload.
+    // Live listener on users/{uid} so profile changes (stats, saved
+    // custom pack) propagate to the UI without a reload.
     profileUnsub: null,
 
     // Room code parsed from `?room=ABCDE` at boot, queued behind sign-in.
@@ -546,35 +538,17 @@ async function loadProfile(uid) {
         const snap = await getDoc(ref);
         const data = snap.exists() ? snap.data() : {};
         const tp = data.triviaProfile || null;
-        if (tp) {
-            // Backfill signedUpAt for accounts created before the trial
-            // tier existed. Without it Premium.isInTrial returns false
-            // even for brand-new users who just happen to predate this
-            // field, which would feel like a regression. We stamp it
-            // server-side once and let the snapshot listener pick it up.
-            if (!tp.signedUpAt) {
-                await updateDoc(ref, { 'triviaProfile.signedUpAt': serverTimestamp() });
-                // Local placeholder until the server stamp lands — the
-                // listener will overwrite this with the real Timestamp.
-                tp.signedUpAt = Date.now();
-            }
-            return tp;
-        }
+        if (tp) return tp;
         // Seed a minimal profile on first run.
         const seeded = {
             displayName: deriveInitialDisplayName(),
             xp: 0,
             gamesPlayed: 0,
             wins: 0,
-            premium: false,
-            signedUpAt: serverTimestamp(),
             lastPlayedAt: null
         };
         await setDoc(ref, { triviaProfile: seeded }, { merge: true });
-        // serverTimestamp() resolves on the server — surface a usable
-        // local value for the first render. The snapshot listener will
-        // replace it with the canonical Timestamp object.
-        return { ...seeded, signedUpAt: Date.now() };
+        return seeded;
     } catch (err) {
         console.warn('Could not load trivia profile:', err);
         return null;
@@ -648,17 +622,14 @@ function applyAuthState(user) {
             state.profile = null;
             state.customPack = null;
             renderProfileView();
-            renderPremiumGates();
             return;
         }
         loadProfile(user.uid).then((p) => {
             state.profile = p;
             renderProfileView();
-            renderPremiumGates();
             state.customPack = (p && p.customPack) ? p.customPack : null;
-            // Live-subscribe so the Stripe webhook's flip of triviaProfile.premium
-            // (server-side via Admin SDK) and trial-time updates surface without
-            // a page reload.
+            // Live-subscribe so profile changes (stats, saved custom pack)
+            // surface without a page reload.
             state.profileUnsub = onSnapshot(doc(db, 'users', user.uid), (snap) => {
                 const data = snap.exists() ? snap.data() : {};
                 const tp = data.triviaProfile;
@@ -666,7 +637,6 @@ function applyAuthState(user) {
                 state.profile = tp;
                 state.customPack = tp.customPack || null;
                 renderProfileView();
-                renderPremiumGates();
             }, (err) => {
                 console.warn('Profile snapshot listener error:', err);
             });
@@ -674,7 +644,6 @@ function applyAuthState(user) {
     } else {
         state.profile = null;
         state.customPack = null;
-        renderPremiumGates();
         if (state.roomCode) leaveRoom({ silent: true });
     }
 }
@@ -720,35 +689,7 @@ function renderProfileView() {
     setText($('#stat-bullseyes'), String(p.lifetimeBullseyes || 0));
     setText($('#stat-best-round'), String(p.bestRoundScore || 0));
 
-    if (Config.PREMIUM_UI_ENABLED) {
-        const now = Date.now();
-        const paid = Premium.isPaidPremium(p);
-        const inTrial = Premium.isInTrial(p, now);
-
-        const premiumCard = $('#profile-premium-card');
-        setClass(premiumCard, 'is-premium', paid);
-        setClass(premiumCard, 'is-trial', !paid && inTrial);
-        setText($('#profile-premium-status'), Premium.premiumStatusText(p, now));
-
-        const upgradeBtn = $('#upgrade-premium-btn');
-        if (upgradeBtn) upgradeBtn.hidden = paid;
-
-        renderAdminControls(p);
-    }
-
     renderCustomPackTextarea();
-}
-
-function renderAdminControls(profile) {
-    const wrap = $('#profile-admin-controls');
-    if (!wrap) return;
-    const show = state.user && Premium.isAdmin(state.user.uid);
-    wrap.hidden = !show;
-    if (!show) return;
-    const togglePaidBtn = $('#admin-toggle-paid-btn');
-    if (togglePaidBtn) {
-        togglePaidBtn.textContent = profile && profile.premium ? 'Remove paid premium' : 'Grant paid premium';
-    }
 }
 
 function wireProfileView() {
@@ -760,9 +701,6 @@ function wireProfileView() {
         renderProfileView();
         renderLeaderboardEntries();
     });
-    if (Config.PREMIUM_UI_ENABLED) {
-        $('#upgrade-premium-btn').addEventListener('click', openPremiumModal);
-    }
 }
 
 /**
@@ -787,126 +725,6 @@ async function propagateDisplayName(displayName) {
             displayName
         }, { merge: true });
     } catch (_) { /* leaderboard doc may not exist yet */ }
-}
-
-/* =====================================================================
- * Premium
- * ===================================================================== */
-
-function isPremium() {
-    // Master switch: when the premium UI is hidden site-wide, every gated
-    // feature is unlocked for every signed-in user. See Config.PREMIUM_UI_ENABLED
-    // and apps/brain-arena/PREMIUM_SETUP.md.
-    if (!Config.PREMIUM_UI_ENABLED) return true;
-    return Premium.isPremium(state.profile, Date.now());
-}
-
-function renderPremiumGates() {
-    // When the premium UI is hidden, CSS pulls every `.premium-tag`,
-    // `.premium-chip`, and `[data-action="open-premium"]` out of layout —
-    // no per-element JS toggling required. Bail early so we don't fight
-    // it with inline styles.
-    if (!Config.PREMIUM_UI_ENABLED) return;
-    const premium = isPremium();
-    $$('.premium-tag').forEach((tag) => {
-        tag.style.display = premium ? 'none' : 'inline-flex';
-    });
-}
-
-function openPremiumModal() {
-    // Hard-stop when the premium UI is disabled. With isPremium() always
-    // true in that mode, the call sites (custom-pack save, lobby gates)
-    // never trigger this — but if any future path does, fail silently
-    // instead of flashing a half-styled hidden modal at the user.
-    if (!Config.PREMIUM_UI_ENABLED) return;
-    const modal = $('#premium-modal');
-    const priceEl = document.getElementById('premium-modal-price-value');
-    if (priceEl) priceEl.textContent = Config.PREMIUM_PRICE_DISPLAY;
-    show(modal);
-    modal.removeAttribute('hidden');
-}
-
-function closePremiumModal() {
-    hide($('#premium-modal'));
-}
-
-function wirePremiumModal() {
-    const modal = $('#premium-modal');
-    modal.addEventListener('click', (e) => {
-        // Use closest() — clicks on the SVG/path inside the X button
-        // surface as e.target=<path>, which would miss .modal-close.
-        if (e.target.closest('[data-close="modal"], .modal-backdrop, .modal-close')) {
-            closePremiumModal();
-        }
-    });
-    $('#premium-checkout-btn').addEventListener('click', () => {
-        if (!state.user) {
-            // Shouldn't happen — the upgrade buttons are gated behind sign-in
-            // by the auth-gate — but be defensive so we don't strand a buyer.
-            return;
-        }
-        if (isGuest()) {
-            // Premium is tied to a real account (Stripe webhook flips
-            // users/{uid}.triviaProfile.premium). Push guests through
-            // sign-up first; their guest session ends when they sign up
-            // for real, but premium needs a stable uid to attach to.
-            openSignInPrompt();
-            return;
-        }
-        const url = buildCheckoutUrl(state.user.uid);
-        window.open(url, '_blank', 'noopener,noreferrer');
-    });
-    // Any [data-action="open-premium"] anywhere opens it.
-    document.addEventListener('click', (e) => {
-        const trigger = e.target.closest('[data-action="open-premium"]');
-        if (trigger) openPremiumModal();
-    });
-}
-
-/**
- * Stripe Checkout / Payment Link URL with client_reference_id and a
- * success redirect appended. The webhook reads client_reference_id off
- * the session to identify the user; the success_url surfaces a "thanks,
- * premium unlocked" page back on shevato.com.
- *
- * Works for both Payment Links (https://buy.stripe.com/...) and full
- * Checkout sessions — both honor `client_reference_id` + `success_url`
- * as query params when appended this way.
- */
-function buildCheckoutUrl(uid) {
-    const base = Config.STRIPE_CHECKOUT_URL;
-    const sep = base.includes('?') ? '&' : '?';
-    const successUrl = new URL('success.html', window.location.href).toString();
-    const params = new URLSearchParams({
-        client_reference_id: uid,
-        // Stripe URL-encodes nested params for us; the success page also
-        // reads `?paid=1` so it can show a confirmation immediately even
-        // before the webhook lands.
-        prefilled_email: state.user?.email || ''
-    });
-    return `${base}${sep}${params.toString()}&success_url=${encodeURIComponent(successUrl + '?paid=1')}`;
-}
-
-function wireAdminControls() {
-    const toggleBtn = $('#admin-toggle-paid-btn');
-    const resetBtn = $('#admin-reset-trial-btn');
-    if (toggleBtn) {
-        toggleBtn.addEventListener('click', async () => {
-            if (!state.user || !Premium.isAdmin(state.user.uid)) return;
-            const next = !(state.profile && state.profile.premium);
-            await saveProfileField({ premium: next });
-            renderProfileView();
-            renderPremiumGates();
-        });
-    }
-    if (resetBtn) {
-        resetBtn.addEventListener('click', async () => {
-            if (!state.user || !Premium.isAdmin(state.user.uid)) return;
-            const ref = doc(db, 'users', state.user.uid);
-            await updateDoc(ref, { 'triviaProfile.signedUpAt': serverTimestamp() });
-            // Snapshot listener will re-render once the server stamp lands.
-        });
-    }
 }
 
 /* =====================================================================
@@ -983,8 +801,8 @@ function applyRoundMultipliers(locations) {
  * category picker has variety: the round plays `count` questions out of a
  * pool of up to 5x that (capped at the live API's 50/request limit).
  *
- * Live source is the only built-in (no offline fallback). Premium custom
- * packs take precedence when explicitly selected. Any fetch failure bubbles
+ * Live source is the only built-in (no offline fallback). A saved custom
+ * pack takes precedence when explicitly selected. Any fetch failure bubbles
  * up — callers should catch and surface a clear error to the host.
  *
  * @param {string} packId — 'live' | 'custom'
@@ -992,7 +810,7 @@ function applyRoundMultipliers(locations) {
  * @returns {Promise<{questions:Array, packId:string, packName:string}>}
  */
 async function buildQuestionsForRound(packId, count) {
-    if (packId === 'custom' && state.customPack && isPremium()) {
+    if (packId === 'custom' && state.customPack) {
         return {
             questions: shuffle(state.customPack.questions || []),
             packId: 'custom',
@@ -1005,7 +823,7 @@ async function buildQuestionsForRound(packId, count) {
 }
 
 /* =====================================================================
- * Custom pack (premium)
+ * Custom pack
  * ===================================================================== */
 
 function renderCustomPackTextarea() {
@@ -1026,12 +844,6 @@ function wireCustomPack() {
     saveBtn.addEventListener('click', async () => {
         msg.classList.remove('is-ok', 'is-err');
         if (!state.user) { setText(msg, 'Sign in first.'); msg.classList.add('is-err'); return; }
-        if (!isPremium()) {
-            setText(msg, 'Custom packs are a premium feature.');
-            msg.classList.add('is-err');
-            openPremiumModal();
-            return;
-        }
         let parsed;
         try {
             parsed = JSON.parse($('#custom-pack-input').value || '');
@@ -1104,14 +916,14 @@ function renderPackOptions() {
     const previouslySelected = sel.value;
     sel.innerHTML = '';
 
-    // Live API is the only built-in question source. Premium users with
-    // a saved custom pack get a second option.
+    // Live API is the only built-in question source. A saved custom pack
+    // gets a second option.
     const live = document.createElement('option');
     live.value = 'live';
     live.textContent = 'Live questions (The Trivia API)';
     sel.appendChild(live);
 
-    if (state.customPack && isPremium()) {
+    if (state.customPack) {
         const c = document.createElement('option');
         c.value = 'custom';
         c.textContent = `${state.customPack.name} (custom)`;
@@ -1525,7 +1337,7 @@ async function createRoom(opts) {
             }));
         } else {
             // The pack-select dropdown was retired — live API is the only
-            // built-in source. Premium custom packs still go through
+            // built-in source. A saved custom pack still goes through
             // buildQuestionsForRound('custom', …) elsewhere; the lobby
             // doesn't expose pack choice anymore.
             const sel = 'live';
@@ -4753,15 +4565,9 @@ async function renderEndStage(isHost) {
     // Full per-question/per-location recap (free for everyone)
     renderEndRecap();
 
-    // Premium: detailed stats
-    if (isPremium()) {
-        renderDetailedStats();
-        show($('#detailed-stats'));
-        hide($('#detailed-stats-upsell'));
-    } else {
-        hide($('#detailed-stats'));
-        show($('#detailed-stats-upsell'));
-    }
+    // Detailed per-question / per-location stats (free for everyone)
+    renderDetailedStats();
+    show($('#detailed-stats'));
 
     // In-room session H2H (one panel showing cumulative wins per player
     // since this room was created). Visible after >=1 match in a multi
@@ -6454,21 +6260,10 @@ function wireLeaderboard() {
  * ===================================================================== */
 
 async function boot() {
-    // Premium UI is opt-in. The body class drives CSS that pulls every
-    // premium-related element out of layout. Skip the JS wiring too so
-    // disabled handlers don't fire on hidden controls.
-    if (!Config.PREMIUM_UI_ENABLED) {
-        document.body.classList.add('premium-disabled');
-    }
-
     installFirestoreNoiseGuard();
 
     wireViewTabs();
     wireLobby();
-    if (Config.PREMIUM_UI_ENABLED) {
-        wirePremiumModal();
-        wireAdminControls();
-    }
     wireProfileView();
     wireCustomPack();
     wireLeaderboard();

@@ -1,5 +1,113 @@
 'use strict';
 
+// --- Feature 7: std dev helper (exported via window for tests) ---
+function computeStdDev(episodes) {
+  const n = episodes.length;
+  if (n === 0) return 0;
+  const ratings = episodes.map((e) => e.rating);
+  const m = ratings.reduce((s, r) => s + r, 0) / n;
+  return Math.sqrt(ratings.reduce((s, r) => s + (r - m) * (r - m), 0) / n);
+}
+
+// --- Feature 5: related-season selection helpers (exported via window for tests) ---
+
+// Likeness score for ranking related seasons.
+// Primary: shared-shape count (desc). Secondary: |avgRating diff| (asc). Tiebreak: minVotes (desc).
+function seasonLikenessScore(m, x) {
+  const sharedShapes = (m.shapes || []).filter((s) => x.shapes && x.shapes.includes(s)).length;
+  const ratingDiff = Math.abs(m.avgRating - x.avgRating);
+  return { sharedShapes, ratingDiff, minVotes: x.minVotes || 0 };
+}
+
+function computeModalRelated(m, matches) {
+  if (!m.shapes || m.shapes.length === 0) return [];
+  const minAvg = m.avgRating - 0.5;
+  const mGenres = m.genres || [];
+  // Same original language only (two unknown languages count as a match);
+  // and a similar-popularity window: votes/episode within one order of
+  // magnitude of the open season (10x either way). Keeps a 60k-votes hit
+  // from suggesting a 400-vote obscurity and vice versa. Skipped when the
+  // open season has no vote data to anchor on.
+  const mLang = m.language || '';
+  const voteAnchor = m.minVotes > 0 ? m.minVotes : 0;
+  return matches
+    .filter((x) => {
+      if (x.seriesId === m.seriesId) return false;
+      if (x.avgRating < minAvg) return false;
+      if ((x.language || '') !== mLang) return false;
+      if (voteAnchor > 0) {
+        const xv = x.minVotes || 0;
+        if (xv < voteAnchor / 10 || xv > voteAnchor * 10) return false;
+      }
+      const xGenres = x.genres || [];
+      if (mGenres.length > 0 && !mGenres.some((g) => xGenres.includes(g))) return false;
+      for (const s of m.shapes) {
+        if (x.shapes && x.shapes.includes(s)) return true;
+      }
+      return false;
+    })
+    .sort((a, b) => {
+      const sa = seasonLikenessScore(m, a);
+      const sb = seasonLikenessScore(m, b);
+      if (sb.sharedShapes !== sa.sharedShapes) return sb.sharedShapes - sa.sharedShapes;
+      if (sa.ratingDiff !== sb.ratingDiff) return sa.ratingDiff - sb.ratingDiff;
+      return sb.minVotes - sa.minVotes;
+    })
+    .slice(0, 10);
+}
+
+// Compute related shows for the show modal.
+// d = mean(season avgRatings) - seriesRating. Requires seriesRating on both shows.
+// Candidates: other series with seriesRating that share at least one genre,
+// have the same original language, and sit within one order of magnitude of
+// the current show's votes/episode (mean of its seasons' minVotes).
+// Sort: |d_current - d_candidate| asc, then shared-genre count desc, then votes desc.
+// Returns up to 10; caller hides section when fewer than 2.
+function computeShowRelated(seriesId, matches) {
+  const bySeriesId = new Map();
+  for (const m of matches) {
+    if (!bySeriesId.has(m.seriesId)) bySeriesId.set(m.seriesId, []);
+    bySeriesId.get(m.seriesId).push(m);
+  }
+  const currentSeasons = bySeriesId.get(seriesId);
+  if (!currentSeasons || currentSeasons.length === 0) return [];
+  const currentMeta = currentSeasons[0];
+  if (typeof currentMeta.seriesRating !== 'number') return [];
+  const meanVotes = (seasons) =>
+    seasons.reduce((s, m) => s + (m.minVotes || 0), 0) / seasons.length;
+  const currentAvg = currentSeasons.reduce((s, m) => s + m.avgRating, 0) / currentSeasons.length;
+  const currentDev = currentAvg - currentMeta.seriesRating;
+  const currentGenres = currentMeta.genres || [];
+  const currentLang = currentMeta.language || '';
+  const voteAnchor = meanVotes(currentSeasons);
+
+  const results = [];
+  for (const [sid, seasons] of bySeriesId) {
+    if (sid === seriesId) continue;
+    const meta = seasons[0];
+    if (typeof meta.seriesRating !== 'number') continue;
+    if ((meta.language || '') !== currentLang) continue;
+    if (voteAnchor > 0) {
+      const xv = meanVotes(seasons);
+      if (xv < voteAnchor / 10 || xv > voteAnchor * 10) continue;
+    }
+    const xGenres = meta.genres || [];
+    const sharedGenreCount = currentGenres.filter((g) => xGenres.includes(g)).length;
+    if (sharedGenreCount === 0) continue;
+    const avg = seasons.reduce((s, m) => s + m.avgRating, 0) / seasons.length;
+    const dev = avg - meta.seriesRating;
+    const devDiff = Math.abs(currentDev - dev);
+    const voteProxy = typeof meta.seriesVotes === 'number' ? meta.seriesVotes : (meta.minVotes || 0);
+    results.push({ meta, avg, devDiff, sharedGenreCount, voteProxy });
+  }
+  results.sort((a, b) => {
+    if (a.devDiff !== b.devDiff) return a.devDiff - b.devDiff;
+    if (b.sharedGenreCount !== a.sharedGenreCount) return b.sharedGenreCount - a.sharedGenreCount;
+    return b.voteProxy - a.voteProxy;
+  });
+  return results.slice(0, 10).map((r) => ({ ...r.meta, _avg: r.avg }));
+}
+
 const SHAPE_LABELS = {
   rising: 'Rising',
   consistent: 'Consistent',
@@ -164,6 +272,11 @@ const els = {
   changelogFreshnessSection: document.getElementById('changelogFreshness'),
   changelogFreshnessContent: document.getElementById('changelogFreshnessContent'),
   activeFilterBar: document.getElementById('activeFilterBar'),
+  quickGenreRow: document.getElementById('quickGenreRow'),
+  decadeRow: document.getElementById('decadeRow'),
+  modalRelated: document.getElementById('modalRelated'),
+  modalBack: document.getElementById('modalBack'),
+  showModalBack: document.getElementById('showModalBack'),
   stickyFilterBar: document.getElementById('stickyFilterBar'),
   stickyShapeRow: document.getElementById('stickyShapeRow'),
   stickySearch: document.getElementById('stickySearch'),
@@ -409,6 +522,8 @@ async function load() {
   // `e.tt`, and `e.runtime` exactly as it did when everything lived in data.json.
   for (const m of dataset.matches) {
     m.titleSearch = normalizeSearch(m.title);
+    // Feature 7: precompute std dev once so the volatility sort is O(1) per comparison.
+    m._stddev = computeStdDev(m.episodes);
     if (extras) {
       const e = extras[m.seriesId];
       if (e) {
@@ -439,9 +554,10 @@ async function load() {
   buildSeriesIndex();
   buildBestSeasonMap();
   buildAboveImdbMap();
-  renderGenreChips();
+  renderQuickGenreRow();
   renderLanguageChips();
   renderProviderChips();
+  renderDecadeRow();
   // Promote each chip's hidden description to a native browser tooltip
   // so the desktop nav stays calm but the teaching content is one
   // hover away.
@@ -634,9 +750,10 @@ function applyStateFromURL() {
   els.sort.value = state.sort;
   syncLabelFiltersAria();
   syncShapeChipsAria();
-  for (const chip of els.genres.querySelectorAll('.genre-chip')) {
+  for (const chip of (els.genres ? els.genres.querySelectorAll('.genre-chip') : [])) {
     syncGenreChipTriState(chip);
   }
+  syncQuickGenreRow();
   for (const chip of els.languages.querySelectorAll('.genre-chip')) {
     chip.setAttribute('aria-pressed', state.languages.has(chip.dataset.language) ? 'true' : 'false');
   }
@@ -658,6 +775,105 @@ function syncLabelFiltersAria() {
     const filter = btn.dataset.filter;
     const val = btn.dataset.value;
     btn.setAttribute('aria-pressed', map[filter] === val ? 'true' : 'false');
+  }
+  syncDecadeRowAria();
+}
+
+// --- Feature 9: Decade quick-filter helpers ---
+
+const DECADE_RANGES = {
+  '80s':  [1980, 1989],
+  '90s':  [1990, 1999],
+  '00s':  [2000, 2009],
+  '10s':  [2010, 2019],
+  '20s':  [2020, 2029],
+};
+
+function activeDecadeKey() {
+  for (const [key, [min, max]] of Object.entries(DECADE_RANGES)) {
+    if (state.minYear === min && state.maxYear === max) return key;
+  }
+  if (state.minYear == null && state.maxYear == null) return 'all';
+  return null;
+}
+
+function syncDecadeRowAria() {
+  const row = els.decadeRow;
+  if (!row) return;
+  const active = activeDecadeKey();
+  for (const btn of row.querySelectorAll('.label-chip')) {
+    btn.setAttribute('aria-pressed', btn.dataset.decade === active ? 'true' : 'false');
+  }
+}
+
+function renderDecadeRow() {
+  const row = els.decadeRow;
+  if (!row) return;
+  const frag = document.createDocumentFragment();
+  const all = document.createElement('button');
+  all.type = 'button';
+  all.className = 'label-chip';
+  all.dataset.decade = 'all';
+  all.textContent = 'All';
+  all.addEventListener('click', () => {
+    state.minYear = null;
+    state.maxYear = null;
+    els.minYear.value = '';
+    els.maxYear.value = '';
+    syncDecadeRowAria();
+    onFilterChange();
+  });
+  frag.appendChild(all);
+  for (const [key, [min, max]] of Object.entries(DECADE_RANGES)) {
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'label-chip';
+    btn.dataset.decade = key;
+    btn.textContent = key;
+    btn.addEventListener('click', () => {
+      state.minYear = min;
+      state.maxYear = max;
+      els.minYear.value = String(min);
+      els.maxYear.value = String(max);
+      syncDecadeRowAria();
+      onFilterChange();
+    });
+    frag.appendChild(btn);
+  }
+  row.replaceChildren(frag);
+  syncDecadeRowAria();
+}
+
+// --- Feature 6: Quick genre row ---
+
+function renderQuickGenreRow() {
+  const row = els.quickGenreRow;
+  if (!row || !dataset) return;
+  const top8 = (dataset.genres || []).slice(0, 8);
+  const frag = document.createDocumentFragment();
+  for (const g of top8) {
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'genre-chip';
+    btn.dataset.genre = g.name;
+    btn.dataset.source = 'quick';
+    btn.textContent = g.name;
+    syncGenreChipTriState(btn);
+    btn.addEventListener('click', () => {
+      cycleGenreState(g.name);
+      syncGenreChipTriState(btn);
+      onFilterChange();
+    });
+    frag.appendChild(btn);
+  }
+  row.replaceChildren(frag);
+}
+
+function syncQuickGenreRow() {
+  const row = els.quickGenreRow;
+  if (!row) return;
+  for (const btn of row.querySelectorAll('.genre-chip')) {
+    syncGenreChipTriState(btn);
   }
 }
 
@@ -847,26 +1063,6 @@ function cycleGenreState(name) {
   }
 }
 
-function renderGenreChips() {
-  const top = (dataset.genres || []).slice(0, 14);
-  const frag = document.createDocumentFragment();
-  for (const g of top) {
-    const btn = document.createElement('button');
-    btn.type = 'button';
-    btn.className = 'genre-chip';
-    btn.dataset.genre = g.name;
-    btn.textContent = g.name;
-    syncGenreChipTriState(btn);
-    btn.addEventListener('click', () => {
-      cycleGenreState(g.name);
-      syncGenreChipTriState(btn);
-      onFilterChange();
-    });
-    frag.appendChild(btn);
-  }
-  els.genres.replaceChildren(frag);
-}
-
 // TMDB stores `original_language` as ISO 639-1 codes (en, ja, ko, ...).
 // The UI shows the English name so users don't need to know codes.
 const LANGUAGE_NAMES = {
@@ -1047,11 +1243,12 @@ function filterAndSort() {
     }
     let primary;
     switch (state.sort) {
-      case 'length': primary = b.episodes.length - a.episodes.length; break;
-      case 'climb':  primary = (b.lastRating - b.firstRating) - (a.lastRating - a.firstRating); break;
-      case 'finale': primary = b.lastRating - a.lastRating; break;
-      case 'avg':    primary = b.avgRating - a.avgRating; break;
-      case 'recent': primary = ((b.seasonYear || b.year) || 0) - ((a.seasonYear || a.year) || 0); break;
+      case 'length':     primary = b.episodes.length - a.episodes.length; break;
+      case 'climb':      primary = (b.lastRating - b.firstRating) - (a.lastRating - a.firstRating); break;
+      case 'finale':     primary = b.lastRating - a.lastRating; break;
+      case 'avg':        primary = b.avgRating - a.avgRating; break;
+      case 'recent':     primary = ((b.seasonYear || b.year) || 0) - ((a.seasonYear || a.year) || 0); break;
+      case 'volatility': primary = (b._stddev || 0) - (a._stddev || 0); break;
       case 'popularity':
       default: {
         // When exactly one shape is selected, boost the most archetypal
@@ -1292,7 +1489,7 @@ function buildEmptyStateSuggestions() {
       label: state.genres.size === 1 ? `Genre: ${[...state.genres][0]}` : `Genres (${state.genres.size})`,
       action: () => {
         state.genres.clear();
-        for (const c of els.genres.querySelectorAll('.genre-chip')) {
+        for (const c of (els.genres ? els.genres.querySelectorAll('.genre-chip') : [])) {
           c.setAttribute('aria-pressed', 'false');
           c.dataset.exclude = 'false';
         }
@@ -1714,8 +1911,49 @@ function syncMoodChipsActive() {
     if (params.has('above')    && state.aboveImdb !== params.get('above'))          match = false;
     if (params.has('gems')     && state.hiddenGems !== params.get('gems'))          match = false;
     if (params.has('sort')     && state.sort !== params.get('sort'))                match = false;
+    if (params.has('shape')) {
+      const chipShapes = new Set(params.get('shape').split(',').filter(Boolean));
+      const stateShapes = state.shapes;
+      if (chipShapes.size !== stateShapes.size) match = false;
+      else for (const s of chipShapes) if (!stateShapes.has(s)) { match = false; break; }
+    }
     chip.setAttribute('aria-pressed', match ? 'true' : 'false');
   }
+  syncMoodOverflow();
+}
+
+// The mood rail shows the first MOOD_CHIP_LIMIT presets; the rest collapse
+// behind a "More moods +N" toggle so the section scales to dozens of moods
+// without dominating the page. An ACTIVE mood is never hidden, even when it
+// sits past the limit — collapsing away the user's current selection would
+// make the pressed state invisible. Same interaction family as the shape
+// bar's "More shapes" overflow.
+const MOOD_CHIP_LIMIT = 6;
+
+function syncMoodOverflow() {
+  const wrap = document.querySelector('.mood-preset-chips');
+  const btn = document.getElementById('moodMoreBtn');
+  if (!wrap || !btn) return;
+  const chips = [...wrap.querySelectorAll('.mood-chip')];
+  // No point trading exactly one hidden chip for a toggle of the same size.
+  if (chips.length <= MOOD_CHIP_LIMIT + 1) {
+    btn.hidden = true;
+    for (const c of chips) c.classList.remove('moods-hidden');
+    return;
+  }
+  const expanded = btn.getAttribute('aria-expanded') === 'true';
+  let hiddenCount = 0;
+  chips.forEach((c, i) => {
+    const hide = !expanded
+      && i >= MOOD_CHIP_LIMIT
+      && c.getAttribute('aria-pressed') !== 'true';
+    c.classList.toggle('moods-hidden', hide);
+    if (hide) hiddenCount++;
+  });
+  btn.hidden = false;
+  btn.querySelector('.mood-more-label').textContent = expanded ? 'Show fewer' : 'More moods';
+  const countEl = document.getElementById('moodMoreCount');
+  if (countEl) countEl.textContent = expanded ? '' : `+${hiddenCount}`;
 }
 
 // Per-mood-chip count. The base set respects user filters that wouldn't
@@ -2524,6 +2762,7 @@ function drawSeasonOverlay(svg, seasons, W, H) {
     path.setAttribute('stroke-linejoin', 'round');
     path.setAttribute('vector-effect', 'non-scaling-stroke');
     path.setAttribute('opacity', '0.85');
+    path.dataset.season = s.season;
     const title = document.createElementNS(NS, 'title');
     title.textContent = `Season ${s.season} — avg ${s.avgRating.toFixed(1)}`;
     path.appendChild(title);
@@ -2703,7 +2942,67 @@ function closeCompareModal() {
 
 // --- modal ---
 
+// --- In-app modal view history ------------------------------------------
+// Drilling through "More seasons/shows like this", season rows, or "View
+// show" stacks up views; the "← Back" button in both modals pops the stack.
+// Kept in-app (not history.pushState) so it composes with the existing
+// replaceState-based filter/URL sync instead of fighting it. The stack
+// clears when the user actually closes a modal (×, backdrop, Esc) — not on
+// the internal close that happens when one modal chains into another.
+
+const modalViewHistory = [];
+
+function currentModalView() {
+  if (!els.modal.hidden && modalState.season) {
+    return { type: 'season', season: modalState.season };
+  }
+  if (!els.showModal.hidden && showModalState.seriesId) {
+    return { type: 'show', seriesId: showModalState.seriesId };
+  }
+  return null;
+}
+
+function modalViewKey(view) {
+  return view.type === 'season'
+    ? `season:${view.season.seriesId}:${view.season.season}`
+    : `show:${view.seriesId}`;
+}
+
+// Record the CURRENT view before a new one replaces it. No-ops when the
+// navigation came from the Back button itself, when no modal is open
+// (fresh open from the result list), or when the "new" view is the one
+// already showing (e.g. a reroll landing on the same season).
+function pushModalHistory(opts, nextKey) {
+  if (opts.fromHistory) return;
+  const prev = currentModalView();
+  if (!prev || modalViewKey(prev) === nextKey) return;
+  modalViewHistory.push(prev);
+  // Safety cap — nobody steps back through more than this anyway.
+  if (modalViewHistory.length > 50) modalViewHistory.shift();
+  syncModalBackButtons();
+}
+
+function clearModalHistory() {
+  modalViewHistory.length = 0;
+  syncModalBackButtons();
+}
+
+function syncModalBackButtons() {
+  const show = modalViewHistory.length > 0;
+  if (els.modalBack) els.modalBack.hidden = !show;
+  if (els.showModalBack) els.showModalBack.hidden = !show;
+}
+
+function goBackModalView() {
+  const prev = modalViewHistory.pop();
+  if (!prev) return;
+  if (prev.type === 'season') openModal(prev.season, { fromHistory: true });
+  else openShowModal(prev.seriesId, { fromHistory: true });
+  syncModalBackButtons();
+}
+
 function openModal(m, opts = {}) {
+  pushModalHistory(opts, `season:${m.seriesId}:${m.season}`);
   const wasOpen = !els.modal.hidden;
   const wasShowOpen = !els.showModal.hidden;
   // Inherit fromChangelog from the show modal we're closing, so closing
@@ -2862,6 +3161,9 @@ function openModal(m, opts = {}) {
   }
   els.modalEpisodes.replaceChildren(epFrag);
 
+  // Feature 5: More like this
+  renderModalRelated(m);
+
   els.modalImdb.href = `https://www.imdb.com/title/${m.seriesId}/episodes/?season=${m.season}`;
 
 
@@ -2886,13 +3188,105 @@ function openModal(m, opts = {}) {
   els.modal.setAttribute('aria-hidden', 'false');
   document.documentElement.style.overflow = 'hidden';
   document.body.style.overflow = 'hidden';
+  const modalPanel = els.modal.querySelector('.modal-panel');
+  if (modalPanel) modalPanel.scrollTop = 0;
   syncModalInert();
   writeStateToURL();
   if (!wasOpen) {
     requestAnimationFrame(() => {
-      const panel = els.modal.querySelector('.modal-panel');
-      if (panel) panel.focus();
+      if (modalPanel) modalPanel.focus();
     });
+  }
+}
+
+// Feature 5: Render "More seasons like this" related seasons in the detail modal.
+// Shows first 4 immediately; extra rows (up to 6 more) are hidden behind a toggle.
+function buildRelatedSeasonRow(r, extraClass) {
+  const row = document.createElement('div');
+  row.className = 'related-row' + (extraClass ? ' ' + extraClass : '');
+  row.tabIndex = 0;
+  row.setAttribute('role', 'button');
+  row.setAttribute('aria-label', `${r.title} season ${r.season}`);
+
+  const posterEl = document.createElement('div');
+  posterEl.className = 'related-poster';
+  if (r.poster) {
+    const img = document.createElement('img');
+    img.src = `https://image.tmdb.org/t/p/w92${r.poster}`;
+    img.alt = '';
+    img.loading = 'lazy';
+    img.width = 40;
+    img.height = 60;
+    posterEl.appendChild(img);
+  } else {
+    posterEl.classList.add('related-poster-fallback');
+    posterEl.style.setProperty('--poster-hue', String(hashHue(r.title)));
+    const init = document.createElement('span');
+    init.textContent = posterInitial(r.title);
+    posterEl.appendChild(init);
+  }
+
+  const info = document.createElement('div');
+  info.className = 'related-info';
+  const title = document.createElement('span');
+  title.className = 'related-title';
+  title.textContent = r.title;
+  const seasonLabel = document.createElement('span');
+  seasonLabel.className = 'related-season';
+  seasonLabel.textContent = `Season ${r.season}`;
+  const shapes = document.createElement('span');
+  shapes.className = 'related-shapes';
+  fillShapeTags(shapes, (r.shapes || []).filter((s) => s !== 'saved-best-for-last'), { clickable: false });
+  info.append(title, seasonLabel, shapes);
+
+  const rating = document.createElement('span');
+  rating.className = 'related-rating';
+  rating.textContent = r.avgRating.toFixed(1);
+
+  row.append(posterEl, info, rating);
+  row.addEventListener('click', () => openModal(r));
+  row.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); openModal(r); }
+  });
+  return row;
+}
+
+function renderModalRelated(m) {
+  const container = els.modalRelated;
+  if (!container) return;
+  if (!dataset) { container.hidden = true; return; }
+  const related = computeModalRelated(m, dataset.matches);
+  if (related.length < 2) { container.hidden = true; return; }
+  container.hidden = false;
+  const grid = container.querySelector('.related-grid') || container;
+
+  const visible = related.slice(0, 4);
+  const extra = related.slice(4);
+
+  const frag = document.createDocumentFragment();
+  for (const r of visible) {
+    frag.appendChild(buildRelatedSeasonRow(r, null));
+  }
+  for (const r of extra) {
+    frag.appendChild(buildRelatedSeasonRow(r, 'related-row-extra'));
+  }
+  grid.replaceChildren(frag);
+  grid.classList.remove('related-extra-expanded');
+
+  // Remove any existing toggle before re-rendering
+  const existingToggle = container.querySelector('.related-more-toggle');
+  if (existingToggle) existingToggle.remove();
+
+  if (extra.length > 0) {
+    const toggle = document.createElement('button');
+    toggle.type = 'button';
+    toggle.className = 'btn btn-ghost related-more-toggle';
+    toggle.textContent = `${extra.length} more`;
+    toggle.addEventListener('click', () => {
+      const expanded = grid.classList.toggle('related-extra-expanded');
+      toggle.textContent = expanded ? 'Show less' : `${extra.length} more`;
+    });
+    container.appendChild(toggle);
   }
 }
 
@@ -2913,6 +3307,9 @@ function closeModal(opts = {}) {
   const reopenChangelog = !opts.suppressReopen
     && modalState.fromChangelog
     && els.showModal.hidden;
+  // A real close (×, backdrop, Esc) ends the drill-down session; an
+  // internal close chaining into another modal keeps the trail alive.
+  if (!opts.suppressReopen && els.showModal.hidden) clearModalHistory();
   modalState.season = null;
   modalState.lastFocus = null;
   modalState.surprise = false;
@@ -2927,6 +3324,7 @@ function openShowModal(seriesId, opts = {}) {
     .sort((a, b) => a.season - b.season);
   if (seasons.length === 0) return;
 
+  pushModalHistory(opts, `show:${seriesId}`);
   const wasSeasonOpen = !els.modal.hidden;
   // Inherit origin from the season modal we're closing, so closing the
   // show modal still returns the user to the changelog.
@@ -3041,14 +3439,28 @@ function openShowModal(seriesId, opts = {}) {
     const colors = drawSeasonOverlay(els.showModalOverlayCurve, seasons, 600, 200);
     const legendFrag = document.createDocumentFragment();
     for (const { season, color } of colors) {
-      const item = document.createElement('span');
-      item.className = 'overlay-legend-item';
+      const item = document.createElement('button');
+      item.type = 'button';
+      item.className = 'overlay-legend-item overlay-legend-toggle';
+      item.setAttribute('aria-pressed', 'true');
+      item.title = `Toggle Season ${season} line`;
+      // Expose the line color to CSS so the chip's filled active state and
+      // swatch glow can derive from the same hue as the chart line.
+      item.style.setProperty('--season-color', color);
       const swatch = document.createElement('span');
       swatch.className = 'overlay-legend-swatch';
       swatch.style.background = color;
       const label = document.createElement('span');
       label.textContent = `S${season}`;
       item.append(swatch, label);
+      item.addEventListener('click', () => {
+        const visible = item.getAttribute('aria-pressed') === 'true';
+        const nowVisible = !visible;
+        item.setAttribute('aria-pressed', String(nowVisible));
+        item.classList.toggle('overlay-legend-toggle--off', !nowVisible);
+        const path = els.showModalOverlayCurve.querySelector(`[data-season="${season}"]`);
+        if (path) path.classList.toggle('overlay-season-hidden', !nowVisible);
+      });
       legendFrag.appendChild(item);
     }
     els.showModalOverlayLegend.replaceChildren(legendFrag);
@@ -3068,15 +3480,18 @@ function openShowModal(seriesId, opts = {}) {
     els.showModalTvdb.hidden = true;
   }
 
+  renderShowRelated(seriesId);
+
   els.showModal.hidden = false;
   els.showModal.setAttribute('aria-hidden', 'false');
   document.documentElement.style.overflow = 'hidden';
   document.body.style.overflow = 'hidden';
+  const showModalPanel = els.showModal.querySelector('.modal-panel');
+  if (showModalPanel) showModalPanel.scrollTop = 0;
   syncModalInert();
   writeStateToURL();
   requestAnimationFrame(() => {
-    const panel = els.showModal.querySelector('.modal-panel');
-    if (panel) panel.focus();
+    if (showModalPanel) showModalPanel.focus();
   });
 }
 
@@ -3177,6 +3592,93 @@ function buildShowSeasonRow(m, bestSeason, worstSeason) {
   return li;
 }
 
+// TASK D: Render "More shows like this" in the show modal.
+// Shows first 4 immediately; extra rows (up to 6 more) behind a toggle.
+function renderShowRelated(seriesId) {
+  const container = document.getElementById('showModalRelated');
+  if (!container) return;
+  if (!dataset) { container.hidden = true; return; }
+  const related = computeShowRelated(seriesId, dataset.matches);
+  if (related.length < 2) { container.hidden = true; return; }
+  container.hidden = false;
+
+  const grid = container.querySelector('.show-related-grid') || container;
+  const visible = related.slice(0, 4);
+  const extra = related.slice(4);
+
+  const frag = document.createDocumentFragment();
+  for (const r of visible) {
+    frag.appendChild(buildShowRelatedRow(r, null));
+  }
+  for (const r of extra) {
+    frag.appendChild(buildShowRelatedRow(r, 'show-related-row-extra'));
+  }
+  grid.replaceChildren(frag);
+  grid.classList.remove('show-related-extra-expanded');
+
+  const existingToggle = container.querySelector('.related-more-toggle');
+  if (existingToggle) existingToggle.remove();
+
+  if (extra.length > 0) {
+    const toggle = document.createElement('button');
+    toggle.type = 'button';
+    toggle.className = 'btn btn-ghost related-more-toggle';
+    toggle.textContent = `${extra.length} more`;
+    toggle.addEventListener('click', () => {
+      const expanded = grid.classList.toggle('show-related-extra-expanded');
+      toggle.textContent = expanded ? 'Show less' : `${extra.length} more`;
+    });
+    container.appendChild(toggle);
+  }
+}
+
+function buildShowRelatedRow(r, extraClass) {
+  const row = document.createElement('div');
+  row.className = 'show-related-row' + (extraClass ? ' ' + extraClass : '');
+  row.tabIndex = 0;
+  row.setAttribute('role', 'button');
+  row.setAttribute('aria-label', `${r.title}`);
+
+  const posterEl = document.createElement('div');
+  posterEl.className = 'related-poster';
+  if (r.poster) {
+    const img = document.createElement('img');
+    img.src = `https://image.tmdb.org/t/p/w92${r.poster}`;
+    img.alt = '';
+    img.loading = 'lazy';
+    img.width = 40;
+    img.height = 60;
+    posterEl.appendChild(img);
+  } else {
+    posterEl.classList.add('related-poster-fallback');
+    posterEl.style.setProperty('--poster-hue', String(hashHue(r.title)));
+    const init = document.createElement('span');
+    init.textContent = posterInitial(r.title);
+    posterEl.appendChild(init);
+  }
+
+  const info = document.createElement('div');
+  info.className = 'show-related-info';
+  const title = document.createElement('span');
+  title.className = 'show-related-title';
+  title.textContent = r.title;
+  const yearVal = r.year || '';
+  const imdbPart = typeof r.seriesRating === 'number' ? `IMDb ${r.seriesRating.toFixed(1)}` : '';
+  const avgPart = typeof r._avg === 'number' ? `avg ep ${r._avg.toFixed(1)}` : '';
+  const metaParts = [imdbPart, avgPart, yearVal].filter(Boolean);
+  const meta = document.createElement('span');
+  meta.className = 'show-related-meta';
+  meta.textContent = metaParts.join(' · ');
+  info.append(title, meta);
+
+  row.append(posterEl, info);
+  row.addEventListener('click', () => openShowModal(r.seriesId));
+  row.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); openShowModal(r.seriesId); }
+  });
+  return row;
+}
+
 function closeShowModal(opts = {}) {
   if (els.showModal.hidden) return;
   els.showModal.hidden = true;
@@ -3192,6 +3694,8 @@ function closeShowModal(opts = {}) {
   const reopenChangelog = !opts.suppressReopen
     && showModalState.fromChangelog
     && els.modal.hidden;
+  // Same rule as closeModal: only a real close ends the drill-down trail.
+  if (!opts.suppressReopen && els.modal.hidden) clearModalHistory();
   showModalState.seriesId = null;
   showModalState.lastFocus = null;
   showModalState.fromChangelog = false;
@@ -4024,16 +4528,18 @@ function bindEvents() {
     els.sort.value = 'popularity';
     syncLabelFiltersAria();
     syncShapeChipsAria();
-    for (const c of els.genres.querySelectorAll('.genre-chip')) {
+    for (const c of (els.genres ? els.genres.querySelectorAll('.genre-chip') : [])) {
       c.setAttribute('aria-pressed', 'false');
       c.dataset.exclude = 'false';
     }
+    syncQuickGenreRow();
     for (const c of els.languages.querySelectorAll('.genre-chip')) {
       c.setAttribute('aria-pressed', 'false');
     }
     for (const c of els.providers.querySelectorAll('.genre-chip')) {
       c.setAttribute('aria-pressed', 'false');
     }
+    syncDecadeRowAria();
     closeSuggestions();
     writeStateToURL();
     syncResetButton();
@@ -4065,6 +4571,29 @@ function bindEvents() {
   for (const closer of els.showModal.querySelectorAll('[data-close="show-modal"]')) {
     closer.addEventListener('click', closeShowModal);
   }
+  if (els.modalBack) els.modalBack.addEventListener('click', goBackModalView);
+  if (els.showModalBack) els.showModalBack.addEventListener('click', goBackModalView);
+
+  // Floating "back to top" inside the season/show modals — fades/scales in
+  // once the panel is scrolled a screen-ish deep, smooth-scrolls back on
+  // click. Visibility is a class (not [hidden]) so the appearance can
+  // animate; the hidden state also drops visibility/pointer-events so the
+  // button can't be tabbed to or clicked while invisible. The scroll
+  // listener also re-hides it whenever openModal/openShowModal reset
+  // scrollTop to 0 (programmatic scrollTop changes fire scroll events).
+  const SCROLL_TOP_THRESHOLD = 400;
+  const bindModalScrollTop = (modalEl, btn) => {
+    const panel = modalEl && modalEl.querySelector('.modal-panel');
+    if (!panel || !btn) return;
+    panel.addEventListener('scroll', () => {
+      btn.classList.toggle('modal-scroll-top--visible', panel.scrollTop >= SCROLL_TOP_THRESHOLD);
+    }, { passive: true });
+    btn.addEventListener('click', () => {
+      panel.scrollTo({ top: 0, behavior: 'smooth' });
+    });
+  };
+  bindModalScrollTop(els.modal, document.getElementById('modalScrollTop'));
+  bindModalScrollTop(els.showModal, document.getElementById('showModalScrollTop'));
   for (const closer of els.compareModal.querySelectorAll('[data-close="compare-modal"]')) {
     closer.addEventListener('click', closeCompareModal);
   }
@@ -4304,6 +4833,30 @@ function renderActiveFilterBar() {
     btn.addEventListener('click', c.remove);
     frag.appendChild(btn);
   }
+
+  // Feature 3: Copy link button — always visible in the active-filter bar.
+  const copyBtn = document.createElement('button');
+  copyBtn.type = 'button';
+  copyBtn.className = 'btn btn-ghost copy-link-btn';
+  copyBtn.textContent = 'Copy link';
+  copyBtn.addEventListener('click', () => {
+    const orig = copyBtn.textContent;
+    if (navigator.clipboard && typeof navigator.clipboard.writeText === 'function') {
+      navigator.clipboard.writeText(location.href)
+        .then(() => {
+          copyBtn.textContent = 'Copied!';
+          setTimeout(() => { copyBtn.textContent = orig; }, 1800);
+        })
+        .catch(() => {
+          copyBtn.textContent = orig;
+        });
+    } else {
+      try { window.prompt('Copy this link:', location.href); }
+      catch { /* ignore */ }
+    }
+  });
+  frag.appendChild(copyBtn);
+
   bar.replaceChildren(frag);
 }
 
@@ -4374,7 +4927,7 @@ function describeActiveFilters() {
       value: g,
       remove: () => {
         state.genres.delete(g);
-        const btn = els.genres.querySelector(`.genre-chip[data-genre="${cssEscape(g)}"]`);
+        const btn = els.genres && els.genres.querySelector(`.genre-chip[data-genre="${cssEscape(g)}"]`);
         if (btn) syncGenreChipTriState(btn);
         onFilterChange();
       },
@@ -4386,7 +4939,7 @@ function describeActiveFilters() {
       value: g,
       remove: () => {
         state.excludeGenres.delete(g);
-        const btn = els.genres.querySelector(`.genre-chip[data-genre="${cssEscape(g)}"]`);
+        const btn = els.genres && els.genres.querySelector(`.genre-chip[data-genre="${cssEscape(g)}"]`);
         if (btn) syncGenreChipTriState(btn);
         onFilterChange();
       },
@@ -4430,6 +4983,7 @@ function describeActiveFilters() {
       finale: 'Finale',
       avg: 'Avg rating',
       recent: 'Most recent',
+      volatility: 'Most volatile',
     };
     chips.push({
       key: 'Sort',
@@ -4451,6 +5005,7 @@ function numericChip(label, displayValue, field) {
     remove: () => {
       state[field] = null;
       if (els[field]) els[field].value = '';
+      if (field === 'minYear' || field === 'maxYear') syncDecadeRowAria();
       onFilterChange();
     },
   };
@@ -4731,5 +5286,51 @@ window.addEventListener('localStorageSync', (e) => {
     render();
   }, 750);
 });
+
+// "Explore by mood" is a <details> that ships open (desktop shows the chips
+// as a plain always-visible section; its summary is pointer-events:none
+// there). On mobile the summary becomes a real toggle, collapsed by
+// default. CSS alone can't force a closed <details> open (modern engines
+// hide closed-details content via content-visibility, which child rules
+// can't override), so the open state is synced to the viewport here.
+const moodCollapsible = document.querySelector('.mood-collapsible');
+if (moodCollapsible && typeof window.matchMedia === 'function') {
+  const moodMq = window.matchMedia('(max-width: 600px)');
+  const syncMoodCollapsible = () => {
+    // Mobile: start collapsed; desktop: always expanded.
+    moodCollapsible.open = !moodMq.matches;
+  };
+  syncMoodCollapsible();
+  if (typeof moodMq.addEventListener === 'function') {
+    moodMq.addEventListener('change', syncMoodCollapsible);
+  }
+}
+
+// "More moods +N" overflow toggle (see syncMoodOverflow).
+const moodMoreBtn = document.getElementById('moodMoreBtn');
+if (moodMoreBtn) {
+  moodMoreBtn.addEventListener('click', () => {
+    const expanded = moodMoreBtn.getAttribute('aria-expanded') === 'true';
+    moodMoreBtn.setAttribute('aria-expanded', expanded ? 'false' : 'true');
+    syncMoodOverflow();
+  });
+  syncMoodOverflow();
+}
+
+// Expose pure helpers for unit tests (node:vm loads this file into a sandbox
+// that provides a `window` stub; same pattern as mario-kart/js/).
+if (typeof window !== 'undefined') {
+  window._rsTestExports = {
+    computeStdDev,
+    computeModalRelated,
+    seasonLikenessScore,
+    computeShowRelated,
+    hasActiveFilters: () => hasActiveFilters(),
+    buildSeasonShareText,
+    activeDecadeKey: () => activeDecadeKey(),
+    DECADE_RANGES,
+    state,
+  };
+}
 
 load();
