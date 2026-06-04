@@ -5,7 +5,11 @@
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Shevato - Software Engineering Services</title>
   <meta name="description" content="Shevato LLC delivers Spring Boot microservices, REST APIs, and full stack web applications for client teams, plus a handful of free web apps." />
-  <meta name="robots" content="noindex, follow" />
+  <!-- NO robots meta here. This stub serves at "/", which Google treats as
+       the site homepage: a noindex on it de-indexes the whole domain root
+       (it did, 2026-06: GSC "excluded by noindex"). In production the edge
+       301 in netlify.toml supersedes this file; the meta-refresh below is
+       the local-dev / no-JS fallback only. -->
   <meta name="google-site-verification" content="IbbJIj83Wn2D-MXH6-ZVYbknM_R1Nst4Z1IAqdEJH_o" />
   <link rel="icon" href="/favicon.ico" sizes="48x48 32x32 16x16">
   <link rel="icon" type="image/png" sizes="192x192" href="/images/favicon-192.png">
