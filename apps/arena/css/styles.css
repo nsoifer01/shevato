@@ -675,32 +675,6 @@ select option { background: var(--surface); color: var(--text); }
   to   { transform: none; opacity: 1; }
 }
 
-/* Premium tags */
-.premium-tag {
-  display: inline-flex;
-  align-items: center;
-  font-size: 0.65rem;
-  font-weight: 700;
-  text-transform: uppercase;
-  letter-spacing: 0.07em;
-  padding: 0.1rem 0.4rem;
-  border-radius: 4px;
-  background: linear-gradient(135deg, rgba(252, 211, 77, 0.18), rgba(251, 146, 60, 0.18));
-  color: var(--gold);
-  border: 1px solid rgba(252, 211, 77, 0.3);
-}
-
-.premium-chip {
-  font-size: 0.7rem;
-  font-weight: 700;
-  text-transform: uppercase;
-  letter-spacing: 0.07em;
-  padding: 0.15rem 0.45rem;
-  border-radius: 4px;
-  background: linear-gradient(135deg, var(--gold), var(--bronze));
-  color: #1a1500;
-}
-
 /* ---------- Room ---------- */
 
 .room-panel { display: flex; flex-direction: column; gap: 1.25rem; }
@@ -4196,7 +4170,7 @@ select option { background: var(--surface); color: var(--text); }
   font-size: 0.9rem;
 }
 
-/* Detailed stats (premium) */
+/* Detailed stats */
 .detailed-stats {
   margin-top: 1.6rem;
   padding: 1.3rem 1.4rem;
@@ -4386,20 +4360,6 @@ select option { background: var(--surface); color: var(--text); }
   .detailed-stats-table td { padding: 0.4rem 0.5rem; }
   .detailed-stats-table { font-size: 0.82rem; }
 }
-
-.detailed-stats-upsell {
-  margin-top: 1.2rem;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 1rem;
-  flex-wrap: wrap;
-  padding: 0.9rem 1.05rem;
-  background: linear-gradient(180deg, rgba(252, 211, 77, 0.06), transparent 80%), var(--surface);
-  border: 1px dashed rgba(252, 211, 77, 0.35);
-  border-radius: var(--radius);
-}
-.detailed-stats-upsell p { margin: 0; color: var(--text); font-size: 0.92rem; }
 
 /* ---------- Leaderboard ---------- */
 
@@ -4607,92 +4567,6 @@ select option { background: var(--surface); color: var(--text); }
   letter-spacing: -0.01em;
 }
 
-.profile-premium-card {
-  position: relative;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 1rem;
-  flex-wrap: wrap;
-  padding: 1.05rem 1.15rem;
-  background:
-    linear-gradient(135deg, rgba(251, 191, 36, 0.12), rgba(168, 85, 247, 0.08)),
-    var(--surface-translucent);
-  -webkit-backdrop-filter: blur(16px);
-  backdrop-filter: blur(16px);
-  border: 1px solid rgba(251, 191, 36, 0.30);
-  border-radius: var(--radius);
-  box-shadow:
-    0 1px 0 rgba(255, 255, 255, 0.04) inset,
-    0 8px 24px rgba(2, 6, 23, 0.35),
-    0 0 24px rgba(251, 191, 36, 0.10);
-  overflow: hidden;
-}
-.profile-premium-card::before {
-  content: "";
-  position: absolute;
-  top: 0; left: 16%; right: 16%; height: 1px;
-  background: linear-gradient(90deg, transparent, rgba(251, 191, 36, 0.55) 50%, transparent);
-  pointer-events: none;
-}
-.profile-premium-info h3 {
-  font-family: "Space Grotesk", "Outfit", sans-serif;
-  font-size: 1.05rem;
-  font-weight: 600;
-  margin: 0 0 0.2rem;
-  display: inline-flex;
-  gap: 0.35rem;
-  align-items: center;
-  color: var(--text);
-}
-.profile-premium-info p { margin: 0; color: var(--muted); font-size: 0.88rem; }
-.profile-premium-card.is-premium {
-  background:
-    linear-gradient(135deg, rgba(16, 185, 129, 0.16), rgba(34, 211, 238, 0.08)),
-    var(--surface-translucent);
-  border-color: rgba(16, 185, 129, 0.45);
-  box-shadow:
-    0 1px 0 rgba(255, 255, 255, 0.04) inset,
-    0 8px 24px rgba(2, 6, 23, 0.35),
-    0 0 24px rgba(16, 185, 129, 0.18);
-}
-.profile-premium-card.is-trial {
-  background:
-    linear-gradient(135deg, rgba(34, 211, 238, 0.12), rgba(251, 191, 36, 0.08)),
-    var(--surface-translucent);
-  border-color: rgba(34, 211, 238, 0.35);
-  box-shadow:
-    0 1px 0 rgba(255, 255, 255, 0.04) inset,
-    0 8px 24px rgba(2, 6, 23, 0.35),
-    0 0 24px rgba(34, 211, 238, 0.14);
-}
-
-/* Master switch: when boot() sees Config.PREMIUM_UI_ENABLED === false it
- * adds `premium-disabled` to <body>, and these rules pull every premium-
- * related affordance out of layout. The pure premium.js helpers stay
- * loaded so we can flip the flag back on without code changes.
- * See apps/brain-arena/PREMIUM_SETUP.md for the rollout checklist. */
-body.premium-disabled #profile-premium-card,
-body.premium-disabled #profile-admin-controls,
-body.premium-disabled #premium-modal,
-body.premium-disabled #custom-pack-details,
-body.premium-disabled #detailed-stats-upsell,
-body.premium-disabled .premium-tag,
-body.premium-disabled .premium-chip,
-body.premium-disabled [data-action="open-premium"] { display: none !important; }
-
-.profile-admin-controls {
-  margin-top: 0.6rem;
-  padding: 0.75rem 0.95rem;
-  background: var(--surface);
-  border: 1px dashed var(--border);
-  border-radius: var(--radius);
-}
-.profile-admin-controls h4 { margin: 0 0 0.2rem; font-size: 0.95rem; color: var(--text); }
-.profile-admin-hint { margin: 0 0 0.55rem; color: var(--muted); font-size: 0.82rem; }
-.profile-admin-hint code { background: var(--surface-2); padding: 0.05rem 0.3rem; border-radius: 4px; font-size: 0.78rem; }
-.profile-admin-actions { display: flex; gap: 0.5rem; flex-wrap: wrap; }
-
 .custom-pack {
   background: var(--surface);
   border: 1px solid var(--border);
@@ -4857,38 +4731,6 @@ body.premium-disabled [data-action="open-premium"] { display: none !important; }
   justify-content: flex-end;
 }
 .modal-actions .btn { height: 34px; padding: 0 0.9rem; font-size: 0.85rem; border-radius: 7px; }
-
-.premium-list {
-  list-style: none;
-  margin: 0.4rem 0 0.6rem;
-  padding: 0;
-  display: flex;
-  flex-direction: column;
-  gap: 0.45rem;
-}
-.premium-list li {
-  display: flex;
-  align-items: center;
-  gap: 0.55rem;
-  padding: 0.55rem 0.7rem;
-  background: var(--surface-2);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-sm);
-  font-size: 0.9rem;
-}
-.premium-modal-hint {
-  margin: 0.8rem 0 0;
-  font-size: 0.82rem;
-  color: var(--muted);
-  text-align: center;
-}
-.premium-modal-price {
-  margin: 0 0 0.75rem;
-  text-align: center;
-  color: var(--text);
-  font-size: 1rem;
-}
-.premium-modal-price strong { font-size: 1.15rem; }
 
 /* Focus-visible outlines for interactive elements missing them */
 .room-code-copy:focus-visible,

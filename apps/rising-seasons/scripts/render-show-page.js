@@ -43,6 +43,22 @@ function renderShowPage({ seriesId, title, year, type, genres, seriesRating, ser
   const posterUrl = poster ? `${TMDB_POSTER}${poster}` : null;
   const ogImage = posterUrl || `${SITE}/images/og-card.png`;
 
+  const dominantShapeLabel = dominantShape ? (SHAPE_LABELS[dominantShape] || dominantShape) : null;
+  const overallAvgRating = computeOverallAvgRating(seasons);
+
+  // Feature 10: richer OG/Twitter meta
+  // When a poster is available, replace the basic alt with a richer one (parens, no em dashes).
+  const ogImageAlt = posterUrl
+    ? escapeHtml(`${title} poster (${dominantShapeLabel || 'TV show'} shape, avg episode ${overallAvgRating})`)
+    : escapeHtml(`${title} poster`);
+  const ogPosterDimensions = posterUrl
+    ? `\n  <meta property="og:image:width" content="500">\n  <meta property="og:image:height" content="750">` : '';
+  const twitterCardMeta = dominantShapeLabel
+    ? `\n  <meta name="twitter:label1" content="Shape">\n  <meta name="twitter:data1" content="${escapeHtml(dominantShapeLabel)}">\n  <meta name="twitter:label2" content="Avg episode rating">\n  <meta name="twitter:data2" content="${escapeHtml(String(overallAvgRating))}">` : '';
+
+  // Feature 4: per-season TVSeason JSON-LD blocks
+  const seasonSchemas = seasons.map((s) => buildTvSeasonSchema(s, title, canonical)).join('\n');
+
   return `<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -65,7 +81,7 @@ function renderShowPage({ seriesId, title, year, type, genres, seriesRating, ser
   <meta property="og:type" content="video.tv_show">
   <meta property="og:url" content="${canonical}">
   <meta property="og:image" content="${ogImage}">
-  <meta property="og:image:alt" content="${escapeHtml(`${title} poster`)}">
+  <meta property="og:image:alt" content="${ogImageAlt}">${ogPosterDimensions}
   <meta property="og:site_name" content="Shevato">
   <meta property="og:locale" content="en_US">
 
@@ -74,7 +90,7 @@ function renderShowPage({ seriesId, title, year, type, genres, seriesRating, ser
   <meta name="twitter:title" content="${escapeHtml(`${title}${yearLabel} — Episode Ratings`)}">
   <meta name="twitter:description" content="${escapeHtml(description)}">
   <meta name="twitter:image" content="${ogImage}">
-  <meta name="twitter:site" content="@shevato">
+  <meta name="twitter:site" content="@shevato">${twitterCardMeta}
 
   <!-- Breadcrumbs -->
   <script type="application/ld+json">
@@ -85,6 +101,9 @@ ${jsonLd(buildBreadcrumbs(title, path))}
   <script type="application/ld+json">
 ${jsonLd(buildTvSeriesSchema({ seriesId, title, year, canonical, posterUrl, cleanOverview, genres, seriesRating, seriesVotes, seasons, tmdbId, cast }))}
   </script>
+
+  <!-- TVSeason per-season rating blocks -->
+${seasonSchemas}
 
   <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ctext y='.9em' font-size='90'%3E📈%3C/text%3E%3C/svg%3E">
   <link rel="stylesheet" href="/apps/rising-seasons/css/show-page.css">
@@ -140,6 +159,8 @@ ${jsonLd(buildTvSeriesSchema({ seriesId, title, year, canonical, posterUrl, clea
       </div>
     </section>
 
+    ${renderSeasonNav(seasons)}
+
     ${renderCast(cast)}
 
     <section class="seasons" aria-labelledby="seasons-heading">
@@ -157,6 +178,7 @@ ${jsonLd(buildTvSeriesSchema({ seriesId, title, year, canonical, posterUrl, clea
 
   ${renderMoreFooter()}
   ${renderStickyBanner(title, dominantShape, dominantShapeSlug)}
+  ${renderScrollToTop()}
 </body>
 </html>
 `;
@@ -197,6 +219,17 @@ function renderCast(cast) {
       ${cards}
       </ul>
     </section>`;
+}
+
+// Feature 8: season jump nav. Only rendered when there are 4+ seasons.
+function renderSeasonNav(seasons) {
+  if (!seasons || seasons.length < 4) return '';
+  const links = seasons
+    .map((s) => `<a href="#season-${s.season}">S${s.season}</a>`)
+    .join('\n    ');
+  return `<nav class="season-jump-nav" aria-label="Jump to season">
+    ${links}
+  </nav>`;
 }
 
 function renderSeasonSection(season, seriesId) {
@@ -282,7 +315,7 @@ function renderStickyBanner(title, dominantShape, dominantShapeSlug) {
       <span class="sticky-cta-title">${escapeHtml(title)}</span>
       <span class="shape-badge sticky-cta-badge">${escapeHtml(shapeLabel)}</span>
       <a class="primary-btn sticky-cta-btn" href="${escapeHtml(link)}">Explore by shape in the app</a>
-      <button type="button" class="sticky-cta-close" aria-label="Dismiss banner" onclick="sessionStorage.setItem('rs-cta-banner-dismissed','1');document.getElementById('stickyCta').hidden=true;document.body.style.paddingBottom=''">×</button>
+      <button type="button" class="sticky-cta-close" aria-label="Dismiss banner" onclick="sessionStorage.setItem('rs-cta-banner-dismissed','1');document.getElementById('stickyCta').hidden=true;document.body.style.paddingBottom='';var p=document.getElementById('pageScrollTop');if(p)p.style.bottom=''">×</button>
     </div>
   </div>
   <script>
@@ -303,6 +336,44 @@ function renderStickyBanner(title, dominantShape, dominantShapeSlug) {
     check();
   })();
   </script>`;
+}
+
+// Feature 4: build a TVSeason JSON-LD block with aggregateRating.
+function buildTvSeasonSchema(season, seriesTitle, seriesCanonical) {
+  const ratingCount = (season.episodes || []).reduce((sum, ep) => sum + (ep.votes || 0), 0);
+  const ratingValue = parseFloat(season.avgRating.toFixed(1));
+  const schema = {
+    '@context': 'https://schema.org',
+    '@type': 'TVSeason',
+    name: `${seriesTitle} Season ${season.season}`,
+    seasonNumber: season.season,
+    url: `${seriesCanonical}#season-${season.season}`,
+    partOfSeries: {
+      '@type': 'TVSeries',
+      url: seriesCanonical,
+    },
+    aggregateRating: {
+      '@type': 'AggregateRating',
+      ratingValue: String(ratingValue),
+      ratingCount,
+      bestRating: 10,
+      worstRating: 1,
+    },
+  };
+  return `  <script type="application/ld+json">\n${jsonLd(schema)}\n  </script>`;
+}
+
+// Compute mean avgRating across all seasons (weighted by episode count).
+function computeOverallAvgRating(seasons) {
+  if (!seasons || seasons.length === 0) return '0.0';
+  let totalWeight = 0;
+  let weightedSum = 0;
+  for (const s of seasons) {
+    const epCount = (s.episodes || []).length || 1;
+    weightedSum += s.avgRating * epCount;
+    totalWeight += epCount;
+  }
+  return (weightedSum / totalWeight).toFixed(1);
 }
 
 function buildDescription(title, year, n, rating, votes, overview) {
@@ -379,6 +450,49 @@ function buildTvSeriesSchema({ seriesId, title, year, canonical, posterUrl, clea
   return schema;
 }
 
+function renderScrollToTop() {
+  return `<button
+    type="button"
+    class="page-scroll-top"
+    id="pageScrollTop"
+    aria-label="Scroll back to top"
+    title="Back to top"
+  >
+    <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true" focusable="false">
+      <path d="M3 10.5 L8 5.5 L13 10.5" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+    </svg>
+    Top
+  </button>
+  <script>
+  (function () {
+    var btn = document.getElementById('pageScrollTop');
+    if (!btn) return;
+    // Ride above the sticky CTA banner while it is visible; both elements
+    // are fixed to the bottom and would otherwise overlap at the right
+    // edge (the pill could cover the CTA's dismiss button).
+    function liftAboveCta() {
+      var cta = document.getElementById('stickyCta');
+      if (cta && !cta.hidden) {
+        btn.style.bottom = (cta.offsetHeight + 16) + 'px';
+      } else {
+        btn.style.bottom = '';
+      }
+    }
+    window.addEventListener('scroll', function () {
+      liftAboveCta();
+      if (window.scrollY >= 400) {
+        btn.classList.add('page-scroll-top--visible');
+      } else {
+        btn.classList.remove('page-scroll-top--visible');
+      }
+    }, { passive: true });
+    btn.addEventListener('click', function () {
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    });
+  })();
+  </script>`;
+}
+
 function jsonLd(obj) {
   return JSON.stringify(obj, null, 2)
     .replace(/<\/(script|style)/gi, '<\\/$1')
@@ -396,4 +510,4 @@ function escapeHtml(s) {
     .replace(/'/g, '&#39;');
 }
 
-module.exports = { renderShowPage, escapeHtml, buildDescription, shapeToSlug, SITE };
+module.exports = { renderShowPage, escapeHtml, buildDescription, shapeToSlug, SITE, buildTvSeasonSchema, renderSeasonNav };

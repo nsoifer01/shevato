@@ -1,9 +1,0 @@
-{
-  "name": "shevato-netlify-functions",
-  "private": true,
-  "description": "Dependencies for Netlify Functions deployed alongside the static site. Kept separate from the repo-root package.json so the static site build doesn't drag server-only packages (stripe SDK, firebase-admin) into anything else.",
-  "dependencies": {
-    "stripe": "^14.25.0",
-    "firebase-admin": "^12.0.0"
-  }
-}
