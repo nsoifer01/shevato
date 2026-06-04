@@ -32,16 +32,39 @@ A season can match more than one shape — the card shows all of them.
 | Feature                  | What it does                                                                                       |
 | ------------------------ | -------------------------------------------------------------------------------------------------- |
 | Shape filter             | Toggle one or more shape chips; AND across selected shapes.                                        |
-| Genre filter (tri-state) | Click a chip to **require** that genre; click again to **exclude** it (red strike); third click clears. AND across required genres. |
+| Mood presets             | One-tap "Explore by mood" chips that apply a curated filter combination, including shape-anchored picks (Best rebounders, Unmissable finales, Hidden slow-burns, Worst endings). The rail shows the first 6 moods; the rest sit behind a "More moods +N" toggle (an active mood is never hidden). On mobile the whole strip is additionally collapsed behind a toggle pill. |
+| Genre filter (tri-state) | Click a chip to **require** that genre; click again to **exclude** it (red strike); third click clears. AND across required genres. The top 8 genres live as chips in the quick-filters panel (the advanced drawer no longer duplicates them). |
+| Decade filter            | "80s / 90s / 00s / 10s / 20s" quick chips set the year range in one tap (synced with the advanced-drawer year inputs); "All" clears it. |
 | Language filter          | Multi-select chips for the top original languages (TMDB `original_language`).                      |
 | Streaming filter         | Multi-select chips for top US watch providers (Netflix, HBO Max, Prime …).                         |
 | Hidden gems toggle       | Surfaces seasons with avg ≥ 8.0 *and* fewer than 1,000 votes per episode.                          |
 | Episode-title search     | Searching ≥3 chars also matches against episode names — "Gray Matter" → Breaking Bad.              |
 | Compare shows            | "+ Add to compare" on each show, then a floating button opens an overlay chart of season-trajectories for up to 5 series (persisted in localStorage). |
-| Season overlay           | In the show modal, all seasons drawn together on one chart with a legend.                          |
+| Season overlay           | In the show modal, all seasons drawn together on one chart with a legend; clicking a legend entry (the swatch or the S-number) hides/restores that season's line. |
 | Best / worst badges      | Inline pill on the highest- and lowest-rated season of each series (skipped when all seasons tie). |
 | Watched tracking         | Per-season toggle; persists in localStorage; "watched / unwatched" filters and stats.              |
 | Above-IMDb badge         | Marks seasons whose average episode rating beats the show's overall IMDb score.                    |
+| Sort options             | Popularity, season length, rating climb (last vs first), finale rating, season average, most recent, and most volatile (episode-to-episode standard deviation). |
+| More seasons like this   | The season detail modal lists up to 10 related seasons (sharing a shape **and** a genre, same original language, similar average, votes/episode within 10x, different series), ranked by a likeness score (shared shapes, then rating closeness, then votes). The first 4 show; a "6 more" toggle expands the rest. Click one to open it. |
+| More shows like this     | The show modal lists up to 10 shows that share a genre, the same original language, and a similar popularity (votes/episode within 10x), with the closest gap between their IMDb rating and their average episode rating. Same 4 + "N more" pattern; click one to open that show. |
+| Copy link                | A "Copy link" button in the active-filter bar copies the current filtered-view URL to the clipboard whenever any filter is active. |
+
+## Static show pages (SEO)
+
+`scripts/build-show-pages.js` (run via `npm run build:rising-seasons:pages`, and on
+every Netlify deploy through `npm run build:site`) renders one static HTML page per
+series under `apps/rising-seasons/shows/` plus an A-Z index and `sitemap-shows.xml`.
+These are gitignored build artifacts, derived from the committed `data.json`.
+
+Each page (`scripts/render-show-page.js`) emits:
+
+- `BreadcrumbList` and `TVSeries` JSON-LD, plus one `TVSeason` block per season with
+  `aggregateRating` (rating value + vote count), `partOfSeries`, and a `#season-N` URL,
+  so search engines can surface per-season rating data.
+- A season jump nav (`S1 S2 S3 …`) on shows with 4 or more seasons, linking to each
+  `#season-N` anchor.
+- Open Graph and Twitter card meta, including `og:image:alt` and `twitter:label`/`data`
+  pairs that carry the dominant shape and average episode rating into link previews.
 
 ## One-time setup
 
