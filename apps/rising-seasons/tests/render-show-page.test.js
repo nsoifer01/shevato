@@ -3,7 +3,7 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 
-const { renderShowPage, buildDescription } = require('../scripts/render-show-page.js');
+const { renderShowPage, buildDescription, buildTvSeasonSchema, renderSeasonNav } = require('../scripts/render-show-page.js');
 const { groupBySeries } = require('../scripts/build-show-pages.js');
 
 const BREAKING_BAD = {
@@ -197,6 +197,144 @@ test('renderShowPage omits the cast section when there is no cast', () => {
   const html = renderShowPage({ ...BREAKING_BAD, cast: null, dominantShape: 'rising', dominantShapeSlug: 'rising', relatedShows: [] });
   assert.ok(!html.includes('id="cast-heading"'));
   assert.ok(!html.includes('"actor"'));
+});
+
+// --- Feature 4: TVSeason JSON-LD per-season aggregateRating ---
+
+test('buildTvSeasonSchema emits correct ratingValue and ratingCount', () => {
+  const season = {
+    season: 4,
+    seasonYear: 2011,
+    avgRating: 8.44,
+    episodes: [
+      { episode: 1, rating: 8.4, votes: 60000 },
+      { episode: 2, rating: 8.5, votes: 40000 },
+    ],
+    shapes: ['rising'],
+  };
+  const canonical = 'https://shevato.com/apps/rising-seasons/shows/breaking-bad-tt0903747/';
+  const block = buildTvSeasonSchema(season, 'Breaking Bad', canonical);
+  assert.ok(block.includes('"@type": "TVSeason"'));
+  assert.ok(block.includes('"ratingValue": "8.4"'));
+  assert.ok(block.includes('"ratingCount": 100000'));
+  assert.ok(block.includes(`"url": "${canonical}#season-4"`));
+  assert.ok(block.includes('"partOfSeries"'));
+});
+
+test('renderShowPage emits TVSeason JSON-LD blocks for each season', () => {
+  const html = renderShowPage(BREAKING_BAD);
+  assert.ok(html.includes('"@type": "TVSeason"'));
+  assert.ok(html.includes('"seasonNumber": 1'));
+  assert.ok(html.includes('#season-1'));
+});
+
+// --- Feature 8: Season jump nav ---
+
+test('renderSeasonNav returns a string with correct href for 4-season fixture', () => {
+  const seasons = [
+    { season: 1, episodes: [] },
+    { season: 2, episodes: [] },
+    { season: 3, episodes: [] },
+    { season: 4, episodes: [] },
+  ];
+  const nav = renderSeasonNav(seasons);
+  assert.ok(nav.includes('href="#season-3"'));
+  assert.ok(nav.includes('href="#season-4"'));
+  assert.ok(nav.includes('class="season-jump-nav"'));
+});
+
+test('renderSeasonNav returns empty string for a 3-season fixture', () => {
+  const seasons = [
+    { season: 1, episodes: [] },
+    { season: 2, episodes: [] },
+    { season: 3, episodes: [] },
+  ];
+  const nav = renderSeasonNav(seasons);
+  assert.ok(!nav);
+});
+
+test('renderShowPage includes season-jump-nav for a 4+ season show', () => {
+  const show = {
+    ...BREAKING_BAD,
+    seasons: [
+      { season: 1, seasonYear: 2008, episodes: [{ episode: 1, rating: 8.0, votes: 1000, name: 'Ep1' }], firstRating: 8.0, lastRating: 8.0, avgRating: 8.0, shapes: ['rising'] },
+      { season: 2, seasonYear: 2009, episodes: [{ episode: 1, rating: 8.1, votes: 900, name: 'Ep1' }], firstRating: 8.1, lastRating: 8.1, avgRating: 8.1, shapes: ['rising'] },
+      { season: 3, seasonYear: 2010, episodes: [{ episode: 1, rating: 8.2, votes: 800, name: 'Ep1' }], firstRating: 8.2, lastRating: 8.2, avgRating: 8.2, shapes: ['rising'] },
+      { season: 4, seasonYear: 2011, episodes: [{ episode: 1, rating: 8.5, votes: 700, name: 'Ep1' }], firstRating: 8.5, lastRating: 8.5, avgRating: 8.5, shapes: ['rising'] },
+    ],
+  };
+  const html = renderShowPage(show);
+  assert.ok(html.includes('class="season-jump-nav"'));
+  assert.ok(html.includes('href="#season-3"'));
+});
+
+test('renderShowPage omits season-jump-nav for a 1-season show', () => {
+  const html = renderShowPage(BREAKING_BAD);
+  assert.ok(!html.includes('class="season-jump-nav"'));
+});
+
+// --- Feature 10: Richer OG/Twitter meta ---
+
+test('renderShowPage emits og:image:width, og:image:height, and richer og:image:alt when poster exists', () => {
+  const html = renderShowPage({ ...BREAKING_BAD, dominantShape: 'rebound', dominantShapeSlug: 'rebound', relatedShows: [] });
+  assert.ok(html.includes('og:image:width" content="500"'));
+  assert.ok(html.includes('og:image:height" content="750"'));
+  assert.ok(html.includes('og:image:alt" content="'));
+  // alt must contain parentheses (not em dashes) and the shape label
+  const altMatch = html.match(/og:image:alt" content="([^"]+)"/);
+  assert.ok(altMatch, 'og:image:alt meta tag missing');
+  assert.ok(altMatch[1].includes('('), 'alt text must use parentheses, not em dashes');
+  assert.ok(!altMatch[1].includes('—'), 'alt text must not contain em dashes');
+});
+
+test('renderShowPage does not emit og:image:width when no poster', () => {
+  const html = renderShowPage({ ...BREAKING_BAD, poster: null });
+  assert.ok(!html.includes('og:image:width'));
+});
+
+test('renderShowPage emits twitter:label1=Shape and twitter:data1 with shape label when dominantShape is set', () => {
+  const html = renderShowPage({ ...BREAKING_BAD, dominantShape: 'rebound', dominantShapeSlug: 'rebound', relatedShows: [] });
+  assert.ok(html.includes('name="twitter:label1" content="Shape"'));
+  assert.ok(html.includes('name="twitter:data1" content="Rebound"'));
+  assert.ok(html.includes('name="twitter:label2" content="Avg episode rating"'));
+  assert.ok(html.includes('name="twitter:data2"'));
+});
+
+test('renderShowPage omits twitter label/data cards when no dominantShape', () => {
+  const html = renderShowPage({ ...BREAKING_BAD, dominantShape: null, dominantShapeSlug: null });
+  assert.ok(!html.includes('twitter:label1'));
+  assert.ok(!html.includes('twitter:data1'));
+});
+
+// --- Scroll-to-top button ---
+
+test('renderShowPage includes scroll-to-top button with aria-label', () => {
+  const html = renderShowPage(BREAKING_BAD);
+  assert.ok(html.includes('class="page-scroll-top"'));
+  assert.ok(html.includes('aria-label="Scroll back to top"'));
+  assert.ok(html.includes('id="pageScrollTop"'));
+});
+
+test('renderShowPage includes inline scroll script for the scroll-to-top button', () => {
+  const html = renderShowPage(BREAKING_BAD);
+  assert.ok(html.includes('pageScrollTop'));
+  assert.ok(html.includes('page-scroll-top--visible'));
+  assert.ok(html.includes("window.scrollTo"));
+});
+
+test('renderShowPage includes scroll-to-top button regardless of season count', () => {
+  const singleSeason = renderShowPage(BREAKING_BAD);
+  const multiSeason = renderShowPage({
+    ...BREAKING_BAD,
+    seasons: [
+      { season: 1, seasonYear: 2008, episodes: [{ episode: 1, rating: 8.0, votes: 1000, name: 'Ep1' }], firstRating: 8.0, lastRating: 8.0, avgRating: 8.0, shapes: ['rising'] },
+      { season: 2, seasonYear: 2009, episodes: [{ episode: 1, rating: 8.1, votes: 900, name: 'Ep1' }], firstRating: 8.1, lastRating: 8.1, avgRating: 8.1, shapes: ['rising'] },
+      { season: 3, seasonYear: 2010, episodes: [{ episode: 1, rating: 8.2, votes: 800, name: 'Ep1' }], firstRating: 8.2, lastRating: 8.2, avgRating: 8.2, shapes: ['rising'] },
+      { season: 4, seasonYear: 2011, episodes: [{ episode: 1, rating: 8.5, votes: 700, name: 'Ep1' }], firstRating: 8.5, lastRating: 8.5, avgRating: 8.5, shapes: ['rising'] },
+    ],
+  });
+  assert.ok(singleSeason.includes('class="page-scroll-top"'));
+  assert.ok(multiSeason.includes('class="page-scroll-top"'));
 });
 
 test('groupBySeries backfills series-level fields from any season', () => {

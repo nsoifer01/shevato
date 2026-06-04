@@ -252,6 +252,35 @@ a.shape-badge:hover {
   margin: 10px 0 0; font-size: 13px; color: var(--muted);
 }
 
+/* --- Season jump nav (Feature 8) --- */
+.season-jump-nav {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  margin: 0 0 20px;
+  padding: 10px 14px;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+}
+.season-jump-nav a {
+  display: inline-block;
+  padding: 4px 10px;
+  border-radius: 6px;
+  background: var(--bg-2);
+  color: var(--text);
+  text-decoration: none;
+  font-size: 13px;
+  font-weight: 500;
+  border: 1px solid var(--border);
+  transition: background 0.12s, border-color 0.12s, color 0.12s;
+}
+.season-jump-nav a:hover {
+  background: var(--shape);
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
 /* --- Related shows --- */
 .related-shows {
   margin: 32px 0 0; padding-top: 24px; border-top: 1px solid var(--border);
@@ -348,6 +377,94 @@ a.cast-card-inner:hover .cast-name { color: var(--accent); }
   cursor: pointer; padding: 0 4px; line-height: 1; flex-shrink: 0;
 }
 .sticky-cta-close:hover { color: var(--text); }
+
+/* --- Scroll-to-top button ---
+   Fixed to the bottom-right corner of the viewport. The visible state
+   materialises out of the corner (fade + rise + scale); the hidden state
+   removes interactivity so it is never reachable by keyboard or pointer
+   while invisible. Mirrors the .modal-scroll-top design in styles.css
+   but adapted for window scrolling (position:fixed, safe-area insets). */
+.page-scroll-top,
+.page-scroll-top:hover,
+.page-scroll-top:hover:active {
+  position: fixed;
+  bottom: calc(1.25rem + env(safe-area-inset-bottom, 0px));
+  right: calc(1.25rem + env(safe-area-inset-right, 0px));
+  z-index: 300;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.45rem;
+  width: auto;
+  height: 42px;
+  min-height: 42px;
+  padding: 0 0.85rem;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  background: linear-gradient(180deg, rgba(56, 62, 82, 0.92), rgba(28, 32, 45, 0.92));
+  -webkit-backdrop-filter: blur(10px);
+  backdrop-filter: blur(10px);
+  color: #ffffff;
+  font-size: 0.85rem;
+  font-weight: 600;
+  letter-spacing: 0.03em;
+  line-height: 1;
+  cursor: pointer;
+  box-shadow:
+    0 6px 20px rgba(0, 0, 0, 0.45),
+    0 0 12px rgba(255, 255, 255, 0.06),
+    0 1px 0 rgba(255, 255, 255, 0.08) inset;
+  opacity: 0;
+  visibility: hidden;
+  pointer-events: none;
+  transform: translateY(8px) scale(0.85);
+  transition: opacity 0.25s cubic-bezier(0.2, 0.7, 0.2, 1),
+              transform 0.25s cubic-bezier(0.2, 0.7, 0.2, 1),
+              background 0.18s cubic-bezier(0.2, 0.7, 0.2, 1),
+              border-color 0.18s cubic-bezier(0.2, 0.7, 0.2, 1),
+              box-shadow 0.18s cubic-bezier(0.2, 0.7, 0.2, 1),
+              bottom 0.25s cubic-bezier(0.2, 0.7, 0.2, 1),
+              visibility 0s linear 0.25s;
+}
+.page-scroll-top--visible,
+.page-scroll-top--visible:hover,
+.page-scroll-top--visible:hover:active {
+  opacity: 1;
+  visibility: visible;
+  pointer-events: auto;
+  transform: translateY(0) scale(1);
+  transition: opacity 0.25s cubic-bezier(0.2, 0.7, 0.2, 1),
+              transform 0.25s cubic-bezier(0.2, 0.7, 0.2, 1),
+              background 0.18s cubic-bezier(0.2, 0.7, 0.2, 1),
+              border-color 0.18s cubic-bezier(0.2, 0.7, 0.2, 1),
+              box-shadow 0.18s cubic-bezier(0.2, 0.7, 0.2, 1),
+              bottom 0.25s cubic-bezier(0.2, 0.7, 0.2, 1),
+              visibility 0s;
+}
+.page-scroll-top svg {
+  display: block;
+  flex-shrink: 0;
+  transition: transform 0.2s cubic-bezier(0.2, 0.7, 0.2, 1);
+}
+.page-scroll-top--visible:hover {
+  background: linear-gradient(180deg, rgba(72, 79, 102, 0.95), rgba(38, 43, 60, 0.95));
+  border-color: rgba(255, 255, 255, 0.3);
+  transform: translateY(-2px);
+  box-shadow:
+    0 8px 24px rgba(0, 0, 0, 0.5),
+    0 0 18px rgba(255, 255, 255, 0.12),
+    0 1px 0 rgba(255, 255, 255, 0.12) inset;
+}
+.page-scroll-top--visible:hover svg {
+  transform: translateY(-1px);
+}
+.page-scroll-top--visible:hover:active {
+  transform: translateY(0) scale(0.95);
+}
+.page-scroll-top:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
 
 /* --- Mobile --- */
 @media (max-width: 700px) {

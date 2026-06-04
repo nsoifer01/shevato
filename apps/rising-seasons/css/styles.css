@@ -928,7 +928,7 @@ body.rising-seasons-app button {
               box-shadow 0.18s var(--ease);
 }
 .filter-row.primary .search input::placeholder {
-  color: rgba(231, 233, 238, 0.42);
+  color: rgba(231, 233, 238, 0.62);
   font-weight: 400;
 }
 .filter-row.primary .search input:hover { background-color: rgba(255, 255, 255, 0.025); }
@@ -978,7 +978,7 @@ body.rising-seasons-app button {
   border-radius: 999px;
   background: rgba(255, 255, 255, 0.035);
   border: 1px solid var(--border);
-  color: rgba(243, 244, 246, 0.78);
+  color: rgba(243, 244, 246, 0.88);
   font-size: 0.72rem;
   font-weight: 600;
   letter-spacing: 0.08em;
@@ -1032,7 +1032,7 @@ body.rising-seasons-app button {
   font-weight: 700;
   letter-spacing: 0.14em;
   text-transform: uppercase;
-  color: rgba(243, 244, 246, 0.78);
+  color: rgba(243, 244, 246, 0.88);
   transition: color 0.15s var(--ease), background 0.15s var(--ease);
 }
 /* The browser draws a default focus ring on <summary> when one of its
@@ -1190,7 +1190,7 @@ body.rising-seasons-app button {
     0 1px 0 rgba(0, 0, 0, 0.18) inset;
 }
 .advanced .filter-row input::placeholder {
-  color: rgba(231, 233, 238, 0.55);
+  color: rgba(231, 233, 238, 0.7);
   font-weight: 400;
 }
 /* Restore the chevron on the slim Sort select (the default arrow gets
@@ -1239,10 +1239,10 @@ body.rising-seasons-app button {
   align-items: center;
   height: 28px;
   padding: 0 0.8rem;
-  background: rgba(255, 255, 255, 0.06);
-  border: 1px solid rgba(255, 255, 255, 0.12);
+  background: rgba(255, 255, 255, 0.075);
+  border: 1px solid rgba(255, 255, 255, 0.16);
   border-radius: 999px;
-  color: var(--text) !important;
+  color: #ffffff !important;
   font: inherit;
   font-size: 0.74rem;
   font-weight: 600;
@@ -1255,9 +1255,19 @@ body.rising-seasons-app button {
   transition: background 0.18s var(--ease), border-color 0.18s var(--ease), color 0.18s var(--ease);
 }
 .genre-chip:hover {
-  background: rgba(255, 255, 255, 0.09);
-  border-color: rgba(255, 255, 255, 0.22);
-  color: var(--text) !important;
+  background: rgba(255, 255, 255, 0.11);
+  border-color: rgba(255, 255, 255, 0.26);
+  color: #ffffff !important;
+}
+/* Pin the pressed-state background (main.css red button:hover:active). */
+.genre-chip:hover:active {
+  background: rgba(255, 255, 255, 0.13);
+}
+.genre-chip[aria-pressed="true"]:hover:active {
+  background: rgba(245, 197, 24, 0.16);
+}
+.genre-chip[data-exclude="true"]:hover:active {
+  background: rgba(248, 113, 113, 0.16);
 }
 .genre-chip[aria-pressed="true"],
 .genre-chip[aria-pressed="true"]:hover {
@@ -1749,7 +1759,7 @@ button.shape-tag.is-clickable:hover {
   line-height: 1;
   text-transform: uppercase;
   letter-spacing: 0.14em;
-  color: rgba(231, 233, 238, 0.55);
+  color: rgba(231, 233, 238, 0.75);
   font-weight: 600;
   border: 0;
   user-select: none;
@@ -1775,7 +1785,11 @@ button.shape-tag.is-clickable:hover {
 .label-chip[aria-pressed="true"]:focus,
 .label-chip[aria-pressed="true"]:focus-visible {
   outline: 0 !important;
-  border: 0 !important;
+  /* One hairline border we own, pinned across every state with !important
+     so main.css's inset rings can never combine with it. State rules below
+     vary only border-color (also !important, later in the file, so they
+     win this tie). */
+  border: 1px solid rgba(255, 255, 255, 0.1) !important;
   box-shadow: none !important;
 }
 
@@ -1787,8 +1801,12 @@ button.shape-tag.is-clickable:hover {
   justify-content: center;
   height: 26px;
   padding: 0 0.65rem;
-  background: transparent;
-  color: var(--text);
+  /* Faint surface + hairline border so inactive options read as quiet
+     controls rather than flat gray text. The color needs !important:
+     main.css paints every button #555555 !important, which silently wins
+     over any non-important color here regardless of specificity. */
+  background: rgba(255, 255, 255, 0.045);
+  color: #ffffff !important;
   font: inherit;
   font-size: 0.76rem;
   font-weight: 600;
@@ -1797,6 +1815,7 @@ button.shape-tag.is-clickable:hover {
   cursor: pointer;
   transition:
     background 0.18s var(--ease),
+    border-color 0.18s var(--ease),
     color 0.18s var(--ease);
   white-space: nowrap;
 }
@@ -1806,12 +1825,22 @@ button.shape-tag.is-clickable:hover {
 .label-chip + .label-chip { margin-left: 0.35rem; }
 .label-chip:hover {
   color: #ffffff !important;
-  background: rgba(255, 255, 255, 0.06);
+  background: rgba(255, 255, 255, 0.08);
+  border-color: rgba(255, 255, 255, 0.22) !important;
+}
+/* Pin the pressed-state background too — main.css gives every
+   button:hover:active a translucent red fill otherwise. */
+.label-chip:hover:active {
+  background: rgba(255, 255, 255, 0.1);
+}
+.label-chip[aria-pressed="true"]:hover:active {
+  background: rgba(245, 197, 24, 0.16);
 }
 .label-chip:focus-visible {
-  /* Background-only focus indicator — no outline, no shadow. Cannot
+  /* Background + border focus indicator — no outline, no shadow. Cannot
      possibly extend into the adjacent chip's space. */
   background: rgba(245, 197, 24, 0.2);
+  border-color: rgba(245, 197, 24, 0.45) !important;
   color: var(--accent) !important;
 }
 
@@ -1821,20 +1850,24 @@ button.shape-tag.is-clickable:hover {
    don't draw attention away from the editorial pattern chips. */
 .label-chip[aria-pressed="true"] {
   background: rgba(245, 197, 24, 0.085);
-  color: rgba(245, 197, 24, 0.92);
+  border-color: rgba(245, 197, 24, 0.4) !important;
+  color: rgba(245, 197, 24, 0.92) !important;
   box-shadow: none;
 }
 .label-chip[aria-pressed="true"]:hover {
   background: rgba(245, 197, 24, 0.14);
-  color: var(--accent);
+  border-color: rgba(245, 197, 24, 0.5) !important;
+  color: var(--accent) !important;
 }
 .label-chip-good[aria-pressed="true"] {
   background: rgba(74, 222, 128, 0.085);
-  color: rgba(74, 222, 128, 0.92);
+  border-color: rgba(74, 222, 128, 0.4) !important;
+  color: rgba(74, 222, 128, 0.92) !important;
 }
 .label-chip-good[aria-pressed="true"]:hover {
   background: rgba(74, 222, 128, 0.14);
-  color: var(--good);
+  border-color: rgba(74, 222, 128, 0.5) !important;
+  color: var(--good) !important;
 }
 
 .search-suggestion-empty {
@@ -2094,6 +2127,83 @@ button.shape-tag.is-clickable:hover {
   width: 0.7rem;
   height: 0.7rem;
   border-radius: 2px;
+}
+
+/* Season visibility chips for the overlay chart. Each chip derives its
+   filled active state and swatch glow from --season-color (set inline by
+   openShowModal to the same hue as its chart line), so the controls read
+   as extensions of the chart rather than form inputs. The :hover /
+   :hover:active twins pin every box property against main.css's button
+   styling (gray/red inset rings, red press fill). */
+.overlay-legend-toggle,
+.overlay-legend-toggle:hover,
+.overlay-legend-toggle:hover:active {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  height: 26px;
+  padding: 0 0.7rem 0 0.5rem;
+  background: color-mix(in srgb, var(--season-color, #888) 13%, rgba(16, 19, 28, 0.55));
+  -webkit-backdrop-filter: blur(6px);
+  backdrop-filter: blur(6px);
+  border: 1px solid color-mix(in srgb, var(--season-color, #888) 30%, transparent);
+  border-radius: 999px;
+  color: rgba(248, 249, 252, 0.95) !important;
+  box-shadow: none !important;
+  font: inherit;
+  font-size: 0.74rem;
+  font-weight: 600;
+  line-height: 1;
+  cursor: pointer;
+  transition: background 0.2s var(--ease), border-color 0.2s var(--ease),
+              color 0.2s var(--ease), transform 0.2s var(--ease),
+              opacity 0.2s var(--ease);
+}
+.overlay-legend-toggle:hover {
+  background: color-mix(in srgb, var(--season-color, #888) 22%, rgba(16, 19, 28, 0.55));
+  border-color: color-mix(in srgb, var(--season-color, #888) 48%, transparent);
+  color: #ffffff !important;
+  transform: translateY(-1px);
+}
+.overlay-legend-toggle:hover:active {
+  transform: translateY(0) scale(0.97);
+}
+.overlay-legend-toggle:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+/* Hidden season: the chip empties out — glassy neutral surface, quiet
+   label, desaturated swatch — so re-enabling it feels like refilling it. */
+.overlay-legend-toggle--off,
+.overlay-legend-toggle--off:hover,
+.overlay-legend-toggle--off:hover:active {
+  background: rgba(255, 255, 255, 0.03);
+  border-color: rgba(255, 255, 255, 0.08);
+  color: rgba(241, 243, 248, 0.45) !important;
+}
+.overlay-legend-toggle--off:hover {
+  background: rgba(255, 255, 255, 0.06);
+  border-color: rgba(255, 255, 255, 0.14);
+  color: rgba(241, 243, 248, 0.7) !important;
+}
+.overlay-legend-toggle--off .overlay-legend-swatch {
+  opacity: 0.35;
+  filter: saturate(0.25);
+  box-shadow: none;
+}
+/* Bigger, glowing color dot inside the toggle chips. (The compare-overlay
+   legend keeps the plain square swatch from the base rule above.) */
+.overlay-legend-toggle .overlay-legend-swatch {
+  width: 0.85rem;
+  height: 0.85rem;
+  border-radius: 50%;
+  flex-shrink: 0;
+  box-shadow: 0 0 7px color-mix(in srgb, var(--season-color, transparent) 55%, transparent);
+  transition: opacity 0.2s var(--ease), filter 0.2s var(--ease),
+              box-shadow 0.2s var(--ease);
+}
+.overlay-season-hidden {
+  display: none;
 }
 
 .compare-fab {
@@ -2533,6 +2643,154 @@ button.shape-tag.is-clickable:hover {
   top: 0.85rem;
   right: 0.85rem;
   z-index: 3;
+}
+
+/* Back: the close button's sibling — same 36px glass circle, anchored just
+   left of the ×, with a CSS-drawn left chevron. Only visible while there is
+   a previous modal view to return to (drill-downs via related cards, season
+   rows, or "View show"). Hover mirrors the × (brighten + soft glow) and
+   nudges the chevron left so the affordance reads as "step back". */
+.modal-back,
+.modal-back:hover {
+  position: absolute;
+  top: 0.85rem;
+  right: 3.6rem;
+  z-index: 3;
+  width: 36px;
+  height: 36px;
+  padding: 0;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.08);
+  -webkit-backdrop-filter: blur(8px);
+  backdrop-filter: blur(8px);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  color: rgba(255, 255, 255, 0.85) !important;
+  font-size: 0;
+  line-height: 1;
+  box-shadow:
+    0 4px 14px rgba(0, 0, 0, 0.3),
+    0 0 0 1px rgba(0, 0, 0, 0.35) inset !important;
+  transition: background 0.18s var(--ease), border-color 0.18s var(--ease),
+              color 0.18s var(--ease), transform 0.08s var(--ease),
+              box-shadow 0.18s var(--ease);
+}
+.modal-back[hidden] { display: none; }
+.modal-back::before {
+  content: '';
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 9px;
+  height: 9px;
+  border-left: 2px solid currentColor;
+  border-bottom: 2px solid currentColor;
+  border-radius: 1px;
+  /* Chevron's optical center sits right of its geometric center. */
+  transform: translate(calc(-50% + 1.5px), -50%) rotate(45deg);
+  transition: transform 0.2s var(--ease);
+}
+.modal-back:hover {
+  background: rgba(255, 255, 255, 0.16);
+  border-color: rgba(255, 255, 255, 0.3);
+  color: #ffffff !important;
+  box-shadow:
+    0 4px 14px rgba(0, 0, 0, 0.35),
+    0 0 0 1px rgba(255, 255, 255, 0.08),
+    0 0 18px rgba(255, 255, 255, 0.12) !important;
+}
+.modal-back:hover::before {
+  transform: translate(calc(-50% + 0.5px), -50%) rotate(45deg);
+}
+.modal-back:active { transform: scale(0.92); }
+.modal-back:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+/* Floating "back to top": a glass pill (arrow + "Top" label) that sits at
+   the END of the panel content with position:sticky, riding the bottom-right
+   corner of the scrollport without ever leaving the panel's bounds.
+   Colors are pinned on base, hover and active so no sitewide button:hover
+   style can bleed in. Visibility is animated: JS toggles
+   .modal-scroll-top--visible; the hidden state fades + sinks + scales down
+   and removes interactivity (visibility/pointer-events), so the pill
+   materializes out of the corner instead of popping in. */
+.modal-scroll-top,
+.modal-scroll-top:hover,
+.modal-scroll-top:hover:active {
+  position: sticky;
+  bottom: 1.1rem;
+  z-index: 4;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.45rem;
+  margin-left: auto;
+  width: auto;
+  height: 42px !important;
+  min-height: 42px;
+  padding: 0 0.85rem;
+  border-radius: 999px;
+  /* Gradient glass: brighter top edge catches light over any content
+     (episode rows, cards) for reliable contrast on the dark panel. */
+  background: linear-gradient(180deg, rgba(56, 62, 82, 0.92), rgba(28, 32, 45, 0.92));
+  -webkit-backdrop-filter: blur(10px);
+  backdrop-filter: blur(10px);
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  color: #ffffff !important;
+  font-size: 0.85rem;
+  font-weight: 600;
+  letter-spacing: 0.03em;
+  line-height: 1;
+  box-shadow:
+    0 6px 20px rgba(0, 0, 0, 0.45),
+    0 0 12px rgba(255, 255, 255, 0.06),
+    0 1px 0 rgba(255, 255, 255, 0.08) inset !important;
+  /* Hidden resting state: faded, sunk and slightly shrunk. */
+  opacity: 0;
+  visibility: hidden;
+  pointer-events: none;
+  transform: translateY(8px) scale(0.85);
+  transition: opacity 0.25s var(--ease), transform 0.25s var(--ease),
+              background 0.18s var(--ease), border-color 0.18s var(--ease),
+              box-shadow 0.18s var(--ease),
+              visibility 0s linear 0.25s;
+}
+.modal-scroll-top--visible,
+.modal-scroll-top--visible:hover,
+.modal-scroll-top--visible:hover:active {
+  opacity: 1;
+  visibility: visible;
+  pointer-events: auto;
+  transform: translateY(0) scale(1);
+  transition: opacity 0.25s var(--ease), transform 0.25s var(--ease),
+              background 0.18s var(--ease), border-color 0.18s var(--ease),
+              box-shadow 0.18s var(--ease),
+              visibility 0s;
+}
+.modal-scroll-top svg {
+  display: block;
+  flex-shrink: 0;
+  transition: transform 0.2s var(--ease);
+}
+.modal-scroll-top--visible:hover {
+  background: linear-gradient(180deg, rgba(72, 79, 102, 0.95), rgba(38, 43, 60, 0.95));
+  border-color: rgba(255, 255, 255, 0.3);
+  transform: translateY(-2px);
+  box-shadow:
+    0 8px 24px rgba(0, 0, 0, 0.5),
+    0 0 18px rgba(255, 255, 255, 0.12),
+    0 1px 0 rgba(255, 255, 255, 0.12) inset !important;
+}
+.modal-scroll-top--visible:hover svg {
+  transform: translateY(-1px);
+}
+.modal-scroll-top--visible:hover:active {
+  transform: translateY(0) scale(0.95);
+}
+.modal-scroll-top:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
 }
 /* Reserve space on the header's right side so long titles don't run
    under the absolutely-positioned close button. ~2.75rem clears the
@@ -3736,9 +3994,9 @@ body.advanced-drawer-open {
 /* ---- Mood presets (NUI-5) ---- */
 
 .mood-presets {
-  /* Bottom padding scales 48 → 64 px between mobile and desktop so the
-     mood strip never crowds the filter toolbar below. */
-  padding: 0.5rem 0 clamp(3rem, 5vw, 4rem);
+  /* Tighter bottom padding than the hero above it, so the mood rail reads
+     as the top of the filter stack rather than a separate hero section. */
+  padding: 0.5rem 0 clamp(1.75rem, 3vw, 2.5rem);
   max-width: 48rem;
   margin: 0 auto;
 }
@@ -3755,7 +4013,7 @@ body.advanced-drawer-open {
   letter-spacing: 0.12em;
   text-transform: uppercase;
   color: var(--muted-2);
-  margin-bottom: 1.5rem;
+  margin-bottom: 1.75rem;
   text-align: center;
 }
 .mood-presets-title::before,
@@ -3764,6 +4022,23 @@ body.advanced-drawer-open {
   flex: 0 1 4rem;
   height: 1px;
   background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.12), transparent);
+}
+
+/* The mood strip is a <details> that ships open. On desktop it reads as a
+   static heading + chips (the summary is not interactive); on mobile the
+   summary becomes a collapse toggle (rules live in the max-width 600px
+   block near the end of this file). app.js syncs the open state to the
+   viewport, since a closed <details> hides its content at the UA level
+   and child CSS cannot force it visible. */
+.mood-collapsible > summary::-webkit-details-marker { display: none; }
+.mood-collapsible > summary::marker { content: ''; }
+@media (min-width: 601px) {
+  .mood-collapsible > summary {
+    cursor: default;
+    pointer-events: none;
+    user-select: none;
+  }
+  .mood-toggle-chevron { display: none; }
 }
 
 .mood-preset-chips {
@@ -3799,26 +4074,36 @@ body.advanced-drawer-open {
 }
 
 .mood-chip:hover {
-  background: rgba(245, 197, 24, 0.06);
-  border-color: rgba(245, 197, 24, 0.32);
+  background: rgba(255, 255, 255, 0.075);
+  border-color: var(--border-strong);
   color: rgba(255, 255, 255, 0.98) !important;
   text-decoration: none !important;
-  transform: scale(1.03);
+  transform: translateY(-1px);
   box-shadow: 0 1px 0 rgba(255, 255, 255, 0.02) inset,
-              0 4px 14px rgba(245, 197, 24, 0.1);
+              0 4px 12px rgba(0, 0, 0, 0.25);
 }
 
+/* Active preset: a hairline accent border and an accent icon carry the
+   selected state — the label stays white and the surface stays dark, so a
+   pressed mood reads clearly without a heavy yellow fill. */
 .mood-chip[aria-pressed="true"],
 .mood-chip[aria-pressed="true"]:hover {
-  background: rgba(245, 197, 24, 0.12);
-  border-color: rgba(245, 197, 24, 0.45);
-  color: var(--accent) !important;
+  background: rgba(245, 197, 24, 0.05);
+  border-color: rgba(245, 197, 24, 0.5);
+  color: var(--text) !important;
+}
+.mood-chip[aria-pressed="true"] .mood-chip-icon {
+  color: var(--accent);
 }
 
 .mood-chip-icon {
   font-size: 0.78rem;
-  color: var(--accent);
+  color: rgba(231, 233, 238, 0.55);
   font-weight: 700;
+  transition: color 0.18s var(--ease);
+}
+.mood-chip:hover .mood-chip-icon {
+  color: rgba(231, 233, 238, 0.85);
 }
 
 .mood-chip-label {
@@ -3847,9 +4132,66 @@ body.advanced-drawer-open {
   color: rgba(231, 233, 238, 0.75);
 }
 .mood-chip[aria-pressed="true"] .mood-chip-count {
-  background: rgba(245, 197, 24, 0.18);
+  background: rgba(245, 197, 24, 0.14);
   color: var(--accent);
 }
+
+/* ---- Mood overflow toggle (mirrors the shape bar's "More shapes") ---- */
+
+.moods-hidden {
+  display: none !important;
+}
+
+.mood-more-btn[hidden] {
+  display: none;
+}
+
+/* Neutral ghost toggle — quieter than the chips it reveals, so the rail's
+   hierarchy stays: active mood > moods > overflow control. The :hover /
+   :hover:active twins defend against the site theme's red button:hover
+   (same idiom as .shapes-more-btn / .shape-chip). */
+.mood-more-btn,
+.mood-more-btn:hover,
+.mood-more-btn:hover:active {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  height: 30px;
+  padding: 0 0.85rem;
+  background: transparent;
+  border: 1px dashed rgba(255, 255, 255, 0.18);
+  border-radius: 999px;
+  color: rgba(231, 233, 238, 0.75) !important;
+  box-shadow: none !important;
+  font: inherit;
+  font-size: 0.8rem;
+  font-weight: 600;
+  line-height: 1;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background 0.18s var(--ease), border-color 0.18s var(--ease),
+              color 0.18s var(--ease);
+}
+
+.mood-more-btn:hover,
+.mood-more-btn:hover:active {
+  background: rgba(255, 255, 255, 0.05);
+  border-color: rgba(255, 255, 255, 0.3);
+  color: rgba(255, 255, 255, 0.95) !important;
+}
+
+.mood-more-count {
+  display: inline-flex;
+  align-items: center;
+  height: 17px;
+  padding: 0 0.45rem;
+  background: rgba(255, 255, 255, 0.06);
+  border-radius: 999px;
+  font-size: 0.68rem;
+  font-variant-numeric: tabular-nums;
+  color: rgba(231, 233, 238, 0.6);
+}
+.mood-more-count:empty { display: none; }
 
 .mood-chip-desc {
   position: absolute;
@@ -3869,7 +4211,15 @@ body.advanced-drawer-open {
   display: none;
 }
 
-.shapes-more-btn {
+/* The :hover/:hover:active selectors are listed alongside the base rule on
+   purpose — the site theme (assets/css/main.css) paints every button red on
+   hover (`button:hover { color: #ce1b28 !important; box-shadow: inset ... }`)
+   and gives it a red fill while pressed (`button:hover:active`). Touch
+   devices keep :hover stuck on the button after a tap, so without these the
+   label flashed red until the next tap elsewhere. Same idiom as .shape-chip. */
+.shapes-more-btn,
+.shapes-more-btn:hover,
+.shapes-more-btn:hover:active {
   display: inline-flex;
   align-items: center;
   gap: 0.4rem;
@@ -3878,7 +4228,10 @@ body.advanced-drawer-open {
   background: rgba(245, 197, 24, 0.08);
   border: 1px solid rgba(245, 197, 24, 0.28);
   border-radius: 999px;
-  color: var(--accent) !important;
+  /* White label like the other shape chips; the yellow border/background
+     tint (and the count badge) stay as the "expandable" accent. */
+  color: #FFFFFF !important;
+  box-shadow: none !important;
   font: inherit;
   font-size: 0.8rem;
   font-weight: 600;
@@ -3887,7 +4240,8 @@ body.advanced-drawer-open {
   transition: background 0.18s var(--ease), border-color 0.18s var(--ease);
 }
 
-.shapes-more-btn:hover {
+.shapes-more-btn:hover,
+.shapes-more-btn:hover:active {
   background: rgba(245, 197, 24, 0.15);
   border-color: rgba(245, 197, 24, 0.45);
 }
@@ -4521,4 +4875,366 @@ body.advanced-drawer-open {
 .shape-chip.is-hover-intersection .shape-count {
   background: var(--accent-soft);
   color: var(--accent);
+}
+
+/* ======= NEW FEATURES ======= */
+
+/* Feature 2: on mobile the mood presets collapse behind a pill toggle
+   (replaces the original horizontal scroll strip). The summary is styled
+   as a pill that mirrors the quick-filters toggle; app.js collapses the
+   <details> on narrow viewports. */
+@media (max-width: 600px) {
+  .mood-collapsible {
+    text-align: center;
+  }
+  /* Chips inherit the base rule's justify-content: center so the wrapped
+     rows stay centered under the centered toggle pill. */
+  .mood-chip {
+    white-space: normal;
+    height: auto;
+    min-height: 36px;
+    padding: 0.4rem 0.85rem;
+  }
+  .mood-collapsible > summary {
+    cursor: pointer;
+    user-select: none;
+  }
+  /* Border-drawn chevron: points right when closed, down when open. */
+  .mood-toggle-chevron {
+    display: inline-block;
+    width: 0.55rem;
+    height: 0.55rem;
+    border-right: 2px solid currentColor;
+    border-bottom: 2px solid currentColor;
+    transform: rotate(-45deg) translateY(-1px);
+    transition: transform 0.2s ease;
+    flex-shrink: 0;
+    margin-left: 0.15rem;
+    opacity: 0.75;
+  }
+  .mood-collapsible[open] .mood-toggle-chevron {
+    transform: rotate(45deg) translateY(-2px);
+  }
+  /* The heading becomes the toggle pill; hide its hairline rules. */
+  .mood-presets-title {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.45rem;
+    padding: 0.4rem 0.85rem;
+    border-radius: 999px;
+    background: rgba(255, 255, 255, 0.035);
+    border: 1px solid var(--border);
+    color: rgba(243, 244, 246, 0.88);
+    font-size: 0.72rem;
+    font-weight: 600;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    margin-bottom: 0;
+    transition: background 0.15s var(--ease), border-color 0.15s var(--ease),
+                color 0.15s var(--ease);
+  }
+  .mood-presets-title::before,
+  .mood-presets-title::after {
+    display: none;
+  }
+  .mood-collapsible > summary:hover {
+    background: rgba(255, 255, 255, 0.06);
+    border-color: var(--border-strong);
+    color: #F3F4F6;
+  }
+  /* Open state: elevated neutral pill with a hairline accent border. The
+     accent is a hint, not a fill, so the open toggle doesn't compete with
+     active filter chips for attention. */
+  .mood-collapsible[open] > summary {
+    background: rgba(255, 255, 255, 0.07);
+    border-color: rgba(245, 197, 24, 0.4);
+    color: #F3F4F6;
+  }
+  .mood-collapsible[open] .mood-preset-chips {
+    margin-top: 0.85rem;
+  }
+}
+
+/* Feature 3: Copy link button in active-filter bar */
+.copy-link-btn {
+  height: var(--ctrl-h-sm);
+  font-size: 0.78rem;
+  padding: 0 0.75rem;
+  margin-left: auto;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+/* Feature 5: More like this section in modal */
+.modal-related {
+  margin-top: 1.5rem;
+}
+
+.related-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.6rem;
+  margin-top: 0.75rem;
+}
+
+.related-row {
+  display: flex;
+  align-items: center;
+  gap: 0.65rem;
+  padding: 0.55rem 0.7rem;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  transition: background 0.15s var(--ease), border-color 0.15s var(--ease);
+}
+.related-row:hover {
+  background: var(--surface-3);
+  border-color: var(--border-strong);
+}
+.related-row:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.related-poster {
+  width: 40px;
+  height: 60px;
+  flex-shrink: 0;
+  border-radius: 4px;
+  overflow: hidden;
+  background: var(--surface-3);
+}
+.related-poster img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+.related-poster-fallback {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 40px;
+  height: 60px;
+  border-radius: 4px;
+  background: hsl(calc(var(--poster-hue, 220)) 30% 18%);
+  font-size: 1.1rem;
+  color: #fff;
+  font-weight: 700;
+}
+
+.related-info {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+}
+.related-title {
+  font-size: 0.83rem;
+  font-weight: 600;
+  color: var(--text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.related-season {
+  font-size: 0.75rem;
+  color: var(--muted);
+}
+.related-shapes {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.2rem;
+}
+
+.related-rating {
+  flex-shrink: 0;
+  font-size: 0.88rem;
+  font-weight: 700;
+  color: var(--accent);
+  font-variant-numeric: tabular-nums;
+}
+
+@media (max-width: 480px) {
+  .related-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* Feature 6: Quick genre row in label-filters panel */
+/* No group-level flex override: the genre group inherits the same wrap
+   behavior as the decade group so the label sits on its own line and the
+   chip row takes the full width (its overflow-x scroll then works on
+   mobile instead of collapsing to a zero-width sliver). */
+.genre-quick-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.3rem;
+  min-width: 0;
+}
+
+@media (max-width: 600px) {
+  /* The group must be pinned to the panel's width — as a content-sized
+     flex item it otherwise grows to fit all 8 chips (≈740px), the row
+     inside it never overflows, and the scroll lands on the panel (which
+     clips). Pinning the group makes the row the overflowing element so
+     its own overflow-x scroll actually works. */
+  .genre-quick-group {
+    width: 100%;
+    min-width: 0;
+  }
+  .genre-quick-row {
+    width: 100%;
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    padding-bottom: 0.3rem;
+  }
+  .genre-quick-row .genre-chip {
+    flex-shrink: 0;
+  }
+}
+
+/* Feature 9: Decade row in label-filters panel */
+.decade-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.3rem;
+}
+
+@media (max-width: 600px) {
+  /* Same group-width pin as .genre-quick-group above — without it the
+     decade chips can push the group past the panel width and the row's
+     own scroll never engages. */
+  .decade-group {
+    width: 100%;
+    min-width: 0;
+  }
+  .decade-row {
+    width: 100%;
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    padding-bottom: 0.3rem;
+  }
+  .decade-row .label-chip {
+    flex-shrink: 0;
+  }
+}
+
+/* Show-modal related-shows section (Tasks C/D) */
+.show-related {
+  margin-top: 1.5rem;
+}
+
+.show-related-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.6rem;
+  margin-top: 0.75rem;
+}
+
+.show-related-row {
+  display: flex;
+  align-items: center;
+  gap: 0.65rem;
+  padding: 0.55rem 0.7rem;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  transition: background 0.15s var(--ease), border-color 0.15s var(--ease);
+}
+.show-related-row:hover {
+  background: var(--surface-3);
+  border-color: var(--border-strong);
+}
+.show-related-row:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.show-related-info {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+}
+.show-related-title {
+  font-size: 0.83rem;
+  font-weight: 600;
+  color: var(--text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.show-related-meta {
+  font-size: 0.75rem;
+  color: var(--muted);
+}
+
+/* "N more" collapsible toggle for both season and show related sections */
+.related-more-toggle {
+  margin-top: 0.5rem;
+  padding: 0.35rem 0.8rem;
+  font-size: 0.82rem;
+  color: var(--muted);
+  background: transparent;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-xs);
+  cursor: pointer;
+  transition: color 0.15s, border-color 0.15s;
+}
+.related-more-toggle:hover {
+  color: var(--text);
+  border-color: var(--border-strong);
+}
+
+/* Hidden rows revealed by the toggle */
+.related-row-extra,
+.show-related-row-extra {
+  display: none;
+}
+.related-extra-expanded .related-row-extra,
+.show-related-extra-expanded .show-related-row-extra {
+  display: flex;
+}
+
+@media (max-width: 480px) {
+  .show-related-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* External-link arrow on linked episode rows — the same trailing "→" the
+   IMDb/TVDB action buttons carry, so a row that opens imdb.com reads as an
+   outbound link. Absolutely positioned at the row's right edge (survives
+   every breakpoint's grid-template override); the extra right padding keeps
+   the rating/votes column clear of it. Rows without an episode tt id get
+   no arrow (no .has-link class). Declared after the responsive blocks so
+   the padding-right wins over their `padding` shorthands. */
+.modal-episodes li.has-link {
+  padding-right: 2.05rem;
+}
+.modal-episodes li.has-link::after {
+  content: '→';
+  position: absolute;
+  right: 0.7rem;
+  top: 50%;
+  transform: translateY(-50%);
+  z-index: 2;
+  pointer-events: none;
+  color: rgba(231, 233, 238, 0.45);
+  font-size: 0.85rem;
+  line-height: 1;
+  transition: color 0.15s var(--ease), transform 0.15s var(--ease);
+}
+.modal-episodes li.has-link:hover::after,
+.modal-episodes li.has-link:focus-within::after {
+  color: var(--accent);
+  transform: translateY(-50%) translateX(2px);
 }
