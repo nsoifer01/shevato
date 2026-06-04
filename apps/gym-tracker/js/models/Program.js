@@ -21,7 +21,7 @@ export class Program {
         this.uniformRestSeconds = clampInt(data.uniformRestSeconds, 0, 900, 90);
     }
 
-    addExercise(exerciseId, exerciseName, targetSets = 3, targetReps = 10, notes = '', restSeconds = null) {
+    addExercise(exerciseId, exerciseName, targetSets = 3, targetReps = 10, notes = '', restSeconds = null, restAfterSeconds = null) {
         const order = this.exercises.length;
         this.exercises.push(normalizeExercise({
             exerciseId,
@@ -29,6 +29,7 @@ export class Program {
             targetSets,
             targetReps,
             restSeconds,
+            restAfterSeconds,
             notes,
             order,
         }));
@@ -137,11 +138,19 @@ function normalizeExercise(ex) {
         sets = Array.from({ length: count }, () => ({ repsMin: reps, repsMax: reps }));
     }
 
+    // restAfterSeconds: rest between exercises (after the last set of this exercise).
+    // Migration: if not present, default from restSeconds (custom mode) or inherit
+    // caller-side from uniformRestSeconds. Stored on the exercise so per-exercise
+    // between-exercise rest works in custom rest mode.
+    const restAfterFallback = clampInt(ex.restSeconds, 0, 900, 90);
     const normalized = {
         exerciseId: ex.exerciseId,
         exerciseName: ex.exerciseName,
         sets,
         restSeconds: clampInt(ex.restSeconds, 0, 900, 90),
+        restAfterSeconds: ex.restAfterSeconds !== undefined && ex.restAfterSeconds !== null
+            ? clampInt(ex.restAfterSeconds, 0, 900, restAfterFallback)
+            : restAfterFallback,
         notes: ex.notes || '',
         order: Number.isFinite(ex.order) ? ex.order : 0,
         // Superset grouping — see original note in previous version.

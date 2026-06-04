@@ -202,3 +202,43 @@ test('Program.toJSON: exercises include sets[] and targetSets/targetReps are not
     assert.ok(!('targetSets' in parsed), 'targetSets absent from JSON.stringify output');
     assert.ok(!('targetReps' in parsed), 'targetReps absent from JSON.stringify output');
 });
+
+// -------------------------------------------------------
+// Tray → exercise list: addExercise builds correct per-set rows
+// -------------------------------------------------------
+
+test('addExercise: tray Sets=3 Reps=10 produces 3 single-value set rows each with 10 reps', () => {
+    // This mirrors the commitExercisePickerSelection path: the tray stepper
+    // values (targetSets, targetReps) become the per-set reps for every row.
+    const p = new Program({ name: 'Tray' });
+    p.addExercise(3, 'Barbell Bench Press', 3, 10, '', 180, 180);
+    const ex = p.exercises[0];
+    assert.equal(ex.sets.length, 3, 'one row per set in the tray');
+    ex.sets.forEach((row, i) => {
+        assert.equal(row.repsMin, 10, `set ${i + 1} repsMin = tray reps`);
+        assert.equal(row.repsMax, 10, `set ${i + 1} repsMax = tray reps (single-value)`);
+    });
+});
+
+test('addExercise: tray Sets=5 Reps=8 produces 5 single-value set rows each with 8 reps', () => {
+    const p = new Program({ name: 'Tray5' });
+    p.addExercise(21, 'Squat', 5, 8, '', 120, 120);
+    const ex = p.exercises[0];
+    assert.equal(ex.sets.length, 5);
+    ex.sets.forEach(row => {
+        assert.equal(row.repsMin, 8);
+        assert.equal(row.repsMax, 8);
+    });
+});
+
+test('addExercise: restAfterSeconds stored and round-tripped correctly', () => {
+    const p = new Program({ name: 'RestAfter' });
+    p.addExercise('e1', 'Press', 3, 10, '', 90, 120);
+    const ex = p.exercises[0];
+    assert.equal(ex.restSeconds, 90);
+    assert.equal(ex.restAfterSeconds, 120);
+    // Confirm round-trip through JSON
+    const clone = Program.fromJSON(p.toJSON());
+    assert.equal(clone.exercises[0].restSeconds, 90);
+    assert.equal(clone.exercises[0].restAfterSeconds, 120);
+});

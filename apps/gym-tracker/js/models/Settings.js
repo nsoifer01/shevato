@@ -44,6 +44,13 @@ export class Settings {
         // Defaults to true (existing behaviour) so current users are unaffected
         // until they explicitly toggle it off during a workout.
         this.plateHintsEnabled = data.plateHintsEnabled !== false;
+
+        // Per-exercise plate-hints override. Maps exerciseId (string) -> boolean.
+        // When an entry exists it overrides plateHintsEnabled for that exercise.
+        // Persisted so the choice survives workout restarts.
+        this.exercisePlateHints = (typeof data.exercisePlateHints === 'object' && data.exercisePlateHints !== null)
+            ? { ...data.exercisePlateHints }
+            : {};
     }
 
     toJSON() {
@@ -57,7 +64,8 @@ export class Settings {
             barWeight: this.barWeight,
             plates: this.plates,
             timeFormat: this.timeFormat,
-            plateHintsEnabled: this.plateHintsEnabled
+            plateHintsEnabled: this.plateHintsEnabled,
+            exercisePlateHints: this.exercisePlateHints,
         };
     }
 

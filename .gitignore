@@ -43,3 +43,7 @@ apps/gym-tracker/sitemap-exercises.xml
 # Local-only change-notes / site-comparison docs. Kept on disk for
 # reference, not published to the repo.
 .features/
+
+# Local screenshot evidence from QA / audit runs. Generated, reviewed
+# locally, deleted at ship time. Never published.
+.screenshots/

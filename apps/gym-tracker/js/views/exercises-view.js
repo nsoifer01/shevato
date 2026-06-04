@@ -6,14 +6,17 @@ import { showToast, parseLocalDate, showConfirmModal, escapeHtml, generateNumeri
 import { trapModalFocus } from '../utils/modal-focus.js';
 import { DarkSelect } from '../utils/dark-select.js';
 import { AnalyticsService } from '../services/AnalyticsService.js';
+import { makePaginatorState, paginatorInfo, paginatorDualHTML } from '../utils/paginator.js';
 
 const EXERCISE_SORT_KEY = 'gymTrackerExerciseSort';
+const EXERCISE_PAGE_SIZE = 15;
 
 class ExercisesView {
     constructor() {
         this.app = app;
         this.filteredExercises = [];
         this._detailExerciseId = null;
+        this._pagination = makePaginatorState(EXERCISE_PAGE_SIZE);
         this.init();
     }
 
@@ -210,6 +213,9 @@ class ExercisesView {
 
         // Update header count text (reflects current filtered view)
         this.updateCountText(this.filteredExercises.length, this.app.exerciseDatabase.length);
+
+        // Any filter/sort change resets to page 1
+        this._pagination.page = 1;
 
         this.renderExerciseList();
     }
@@ -434,7 +440,13 @@ class ExercisesView {
             return;
         }
 
-        container.innerHTML = this.filteredExercises.map(exercise => {
+        const info = paginatorInfo(this._pagination, this.filteredExercises.length);
+        // Clamp page in case total shrank (e.g. after a filter change we already reset, but be safe)
+        this._pagination.page = info.page;
+
+        const pageItems = this.filteredExercises.slice(info.start, info.end);
+
+        const cardsHTML = pageItems.map(exercise => {
             const hasHistory = this.exerciseHasHistory(exercise.id);
             const historyCount = hasHistory ? this.getExerciseHistoryCount(exercise.id) : 0;
             const cardActionAttrs = hasHistory
@@ -469,6 +481,41 @@ class ExercisesView {
                 </div>
             `;
         }).join('');
+
+        const { top: topPager, bottom: bottomPager } = paginatorDualHTML(info, 'ex');
+        container.innerHTML = topPager + cardsHTML + bottomPager;
+
+        const goToPage = (newPage, scrollToTop) => {
+            this._pagination.page = newPage;
+            this.renderExerciseList();
+            if (scrollToTop) container.scrollIntoView({ block: 'start' });
+        };
+
+        container.querySelectorAll('.pagination-page-btn').forEach(btn => {
+            btn.addEventListener('click', () => {
+                const pg = Number(btn.dataset.page);
+                const fromBottom = btn.closest('[data-paginator="ex-b"]') !== null;
+                goToPage(pg, fromBottom);
+            });
+        });
+
+        container.querySelectorAll('[id^="ex-prev-"]').forEach(btn => {
+            btn.addEventListener('click', () => {
+                if (this._pagination.page > 1) {
+                    const fromBottom = btn.id === 'ex-prev-b';
+                    goToPage(this._pagination.page - 1, fromBottom);
+                }
+            });
+        });
+
+        container.querySelectorAll('[id^="ex-next-"]').forEach(btn => {
+            btn.addEventListener('click', () => {
+                if (this._pagination.page < info.pageCount) {
+                    const fromBottom = btn.id === 'ex-next-b';
+                    goToPage(this._pagination.page + 1, fromBottom);
+                }
+            });
+        });
     }
 
     showExerciseHistory(exerciseId) {

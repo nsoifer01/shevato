@@ -1,7 +1,7 @@
 'use strict';
 
 const { labelOf, escapeHtml, SITE } = require('./render-exercise-page.cjs');
-const { renderMoreFooter } = require('./render-footer.cjs');
+const { renderMoreFooter, renderScrollTopButton } = require('./render-footer.cjs');
 
 // Master /exercises/ landing page. Groups every exercise under its
 // primary muscle group with anchor jumps. Internal links here let
@@ -99,6 +99,7 @@ function renderExerciseIndex(exercises, slugs, builtAt) {
   </main>
 
   ${renderMoreFooter()}
+  ${renderScrollTopButton()}
 </body>
 </html>
 `;
@@ -190,6 +191,7 @@ function renderTaxonomyPage({ kind, key, label, exercises, slugs, builtAt }) {
   </main>
 
   ${renderMoreFooter()}
+  ${renderScrollTopButton()}
 </body>
 </html>
 `;
