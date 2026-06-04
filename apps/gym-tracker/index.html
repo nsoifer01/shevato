@@ -303,20 +303,17 @@
                                     <div class="rest-mode-toggle-row">
                                         <label class="rest-mode-label" for="rest-mode-toggle">
                                             <i class="fas fa-stopwatch" aria-hidden="true"></i>
-                                            Uniform rest timer
+                                            Uniform rest between exercises
                                         </label>
-                                        <label class="toggle-switch" aria-label="Use a single rest duration for all exercises">
+                                        <label class="toggle-switch" aria-label="Use a single rest duration between all exercises">
                                             <input type="checkbox" id="rest-mode-toggle" role="switch">
                                             <span class="toggle-slider" aria-hidden="true"></span>
                                         </label>
                                     </div>
                                     <div id="rest-mode-uniform-section" hidden class="rest-mode-uniform-section">
-                                        <label for="rest-mode-uniform-seconds" class="rest-mode-uniform-label">Rest duration (seconds)</label>
-                                        <input type="number" id="rest-mode-uniform-seconds"
-                                            class="rest-mode-uniform-input"
-                                            min="0" max="900" step="15" value="90"
-                                            aria-describedby="rest-mode-uniform-hint">
-                                        <p id="rest-mode-uniform-hint" class="form-hint">Applied between all exercises and sets.</p>
+                                        <span class="rest-mode-uniform-label">Rest duration</span>
+                                        <div id="rest-mode-uniform-stepper"></div>
+                                        <p id="rest-mode-uniform-hint" class="form-hint">Applied after each exercise. Rest between sets stays per exercise.</p>
                                     </div>
                                 </div>
 
@@ -346,6 +343,11 @@
                                     </button>
                                 </div>
                             </form>
+                            <!-- Floating back-to-top inside the program modal -->
+                            <button type="button" id="gt-program-modal-scroll-top" class="gt-scroll-top gt-modal-scroll-top" aria-label="Back to top" tabindex="-1">
+                                <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M8 12V4M4 8l4-4 4 4" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+                                <span>Top</span>
+                            </button>
                         </div>
                     </div>
                 </div>
@@ -457,9 +459,13 @@
                                 <i class="fas fa-clock"></i>
                                 <span id="workout-time">0:00</span>
                             </div>
+                            <div id="workout-rest-between" class="workout-rest-between" hidden>
+                                <i class="fas fa-hourglass-half" aria-hidden="true"></i>
+                                <span class="wrb-label wrb-label--full">Rest between exercises:</span><span class="wrb-label wrb-label--short">Rest:</span> <strong id="workout-rest-between-value"></strong>
+                            </div>
                         </div>
                         <div class="workout-header-actions">
-                            <button class="btn-icon btn-icon-plates" id="plate-hints-toggle-btn" title="Toggle plate hints" aria-label="Toggle plate calculator hints" aria-pressed="true">
+                            <button class="btn-icon btn-icon-plates" id="plate-hints-toggle-btn" title="Set default plate hints on/off for all exercises" aria-label="Toggle default plate calculator hints" aria-pressed="true">
                                 <i class="fas fa-dumbbell"></i>
                             </button>
                             <button class="btn-icon btn-icon-pause" id="pause-workout-btn" title="Pause Workout" aria-label="Pause workout and save progress">
@@ -629,7 +635,7 @@
                 <div class="view-header">
                     <h1>Exercise Database</h1>
                     <p class="subtitle" id="exercise-count-text">Loading exercises...</p>
-                    <p class="subtitle"><a href="exercises/">Browse the public exercise directory →</a></p>
+                    <p class="subtitle"><a href="exercises/" class="gt-exercise-dir-link">Browse the public exercise directory →</a></p>
                     <button class="btn btn-primary" id="create-custom-exercise-btn">
                         <i class="fas fa-plus"></i> Create Custom Exercise
                     </button>
@@ -1194,6 +1200,12 @@
     </div>
 
     <div data-include="footer"></div>
+
+    <!-- Floating back-to-top button (page-level, long views) -->
+    <button type="button" id="gt-page-scroll-top" class="gt-scroll-top" aria-label="Back to top" tabindex="-1">
+        <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M8 12V4M4 8l4-4 4 4" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        <span>Top</span>
+    </button>
 
     <!-- Toast Container -->
     <div id="toast-container"></div>

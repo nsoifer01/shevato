@@ -15,6 +15,8 @@ import { orderPrograms } from '../utils/program-order.js';
 import { AnalyticsService } from '../services/AnalyticsService.js';
 import { calculatePlates, formatPlateStack } from '../utils/plate-calculator.js';
 
+const PLATE_LOADED_EQUIPMENT = new globalThis.Set(['barbell', 'trap-bar', 'machine', 'plate', 'sled']);
+
 class WorkoutView {
     constructor() {
         this.app = app;
@@ -37,7 +39,14 @@ class WorkoutView {
         // marked exercise-complete auto-collapse; the rest start expanded.
         this.collapsedExercises = {};
         // Feature 5: per-exercise rest override for this session (index → seconds).
+        // Overrides apply to both between-set and between-exercise rest for that exercise.
         this.exerciseRestOverrides = {};
+        // Tracks which exercises were complete before the last deleteSet call,
+        // used to reset the manual-expand suppression when going complete->incomplete.
+        this._prevCompleteState = {};
+        // Timer type for the currently active rest: 'set' (between-set, chip only)
+        // or 'exercise' (between-exercise, bottom bar).
+        this._activeRestType = null;
         this.init();
     }
 
@@ -134,6 +143,10 @@ class WorkoutView {
                 case 'set-rest-override':
                     e.preventDefault();
                     this.setRestOverride(exerciseIndex, Number(target.dataset.seconds));
+                    break;
+                case 'toggle-exercise-plate-hints':
+                    e.preventDefault();
+                    this.toggleExercisePlateHints(exerciseIndex);
                     break;
             }
         });
@@ -382,6 +395,15 @@ class WorkoutView {
         this.currentWorkoutSession = WorkoutSession.fromJSON(pausedWorkout);
         this.currentWorkoutSession.resumeWorkout();
 
+        // Reset per-session state, then seed collapse for completed exercises.
+        this.sessionPrCount = 0;
+        this.sessionPrSlots = {};
+        this.collapsedExercises = {};
+        this.exerciseRestOverrides = {};
+        this._prevCompleteState = {};
+        this._activeRestType = null;
+        this._seedCollapseStateFromSession();
+
         // Start timer with saved elapsed time
         timerService.startWorkoutTimer((elapsed) => {
             this.updateWorkoutTimer(elapsed);
@@ -395,6 +417,24 @@ class WorkoutView {
         this.renderActiveWorkout();
 
         showToast('Workout resumed!', 'success');
+    }
+
+    /**
+     * Seed collapsedExercises and _prevCompleteState from the restored session.
+     * Called on resume so completed exercises start collapsed without requiring
+     * any new sets to be committed.
+     */
+    _seedCollapseStateFromSession() {
+        const exercises = this.currentWorkoutSession?.exercises;
+        if (!exercises) return;
+        exercises.forEach((exercise, i) => {
+            const targetSets = Math.max(1, exercise.targetSets || 3);
+            const isComplete = exercise.sets.length >= targetSets;
+            if (isComplete) {
+                this.collapsedExercises[i] = true;
+                this._prevCompleteState[i] = true;
+            }
+        });
     }
 
     async discardPausedWorkout() {
@@ -522,6 +562,8 @@ class WorkoutView {
         this.sessionPrSlots = {};
         this.collapsedExercises = {};
         this.exerciseRestOverrides = {};
+        this._prevCompleteState = {};
+        this._activeRestType = null;
 
         // Start workout timer
         timerService.startWorkoutTimer((elapsed) => {
@@ -569,22 +611,22 @@ class WorkoutView {
 
         const container = document.getElementById('workout-exercises-list');
 
-        // Task 7: when restMode is 'uniform', show rest once at the top instead
-        // of repeating identical values on every exercise card.
+        // When restMode is 'uniform', show between-exercise rest in the sticky header.
         const program = this.app.getProgramById(this.currentWorkoutSession.programId);
-        let uniformBannerHTML = '';
-        if (program?.restMode === 'uniform') {
-            const secs = program.uniformRestSeconds ?? 90;
-            uniformBannerHTML = `
-                <div class="uniform-rest-banner" aria-label="Rest time for all exercises">
-                    <i class="fas fa-hourglass-half" aria-hidden="true"></i>
-                    Rest between sets: <strong>${this.formatRest(secs)}</strong>
-                    <span class="uniform-rest-note">(adjust per exercise below)</span>
-                </div>
-            `;
+        const restBetweenEl = document.getElementById('workout-rest-between');
+        const restBetweenValueEl = document.getElementById('workout-rest-between-value');
+        if (restBetweenEl && restBetweenValueEl) {
+            if (program?.restMode === 'uniform') {
+                const secs = program.uniformRestSeconds ?? 90;
+                restBetweenValueEl.textContent = this.formatRest(secs);
+                restBetweenEl.hidden = false;
+            } else {
+                restBetweenEl.hidden = true;
+                restBetweenValueEl.textContent = '';
+            }
         }
 
-        container.innerHTML = uniformBannerHTML + this.renderExerciseList(this.currentWorkoutSession.exercises);
+        container.innerHTML = this.renderExerciseList(this.currentWorkoutSession.exercises);
     }
 
     /**
@@ -641,9 +683,10 @@ class WorkoutView {
         const program = this.app.getProgramById(this.currentWorkoutSession?.programId);
         const progEx = program?.exercises.find(e => e.exerciseId === exercise.exerciseId);
         const progSets = (progEx?.sets && progEx.sets.length > 0) ? progEx.sets : null;
-        // Plate calculator only meaningful for loaded-bar exercises.
+        // Plate calculator only meaningful for plate-loaded exercises.
         const equipment = exerciseData?.equipment || '';
-        const isBarbell = equipment === 'barbell' || equipment === 'trap-bar';
+        const isPlateLoaded = PLATE_LOADED_EQUIPMENT.has(equipment);
+        const usesBarWeight = equipment === 'barbell' || equipment === 'trap-bar';
 
         // Build a slot → Set lookup so rendering is driven by each set's
         // stable `slot` rather than its position in the dense array. This
@@ -708,34 +751,70 @@ class WorkoutView {
                 // Prefill each row with its own set's top-of-range target, not set 1's.
                 const slotTargetReps = (progSets && i < progSets.length)
                     ? progSets[i].repsMax : exercise.targetReps;
-                rowsHTML += this.renderPlannedRow(index, i, prior, isDuration, unit, slotTargetReps, isBarbell, slotRepLabel);
+                rowsHTML += this.renderPlannedRow(index, i, prior, isDuration, unit, slotTargetReps, isPlateLoaded, usesBarWeight, slotRepLabel);
             }
         }
 
-        // Task 4: per-exercise rest adjuster (-5 / value / +5).
-        // `program` was already fetched above for task 6/7 logic.
+        // Per-exercise rest adjusters — two separate values:
+        //   restSeconds:      between sets of THIS exercise (always per-exercise)
+        //   restAfterSeconds: between exercises; per-exercise in custom mode,
+        //                     uniform value when restMode === 'uniform'
         const isUniform = program?.restMode === 'uniform';
-        const programRestBase = isUniform
+
+        // Between-set rest: always per-exercise; override stored in exerciseRestOverrides
+        const progEx2 = program?.exercises.find(e => e.exerciseId === exercise.exerciseId);
+        const betweenSetBase = progEx2?.restSeconds ?? exercise.restSeconds ?? 90;
+        const betweenSetActive = this.exerciseRestOverrides[index]?.set ?? betweenSetBase;
+        const betweenSetMinus = Math.max(5, betweenSetActive - 5);
+        const betweenSetPlus = betweenSetActive + 5;
+
+        // Between-exercise rest: program-derived, display-only (not adjustable mid-workout)
+        const betweenExActive = isUniform
             ? (program.uniformRestSeconds ?? 90)
-            : (exercise.restSeconds ?? 90);
-        const activeRest = this.exerciseRestOverrides[index] ?? programRestBase;
-        const restMinus = Math.max(5, activeRest - 5);
-        const restPlus = activeRest + 5;
+            : (progEx2?.restAfterSeconds ?? exercise.restAfterSeconds ?? 90);
+
         const restPillsHTML = `
-            <div class="rest-adjuster" aria-label="Rest time for this exercise">
+            <div class="rest-adjuster" aria-label="Rest between sets of this exercise">
+                <span class="rest-adj-label">Between sets</span>
                 <button type="button" class="rest-adj-btn"
                     data-action="set-rest-override"
+                    data-rest-kind="set"
                     data-exercise-index="${index}"
-                    data-seconds="${restMinus}"
-                    aria-label="Decrease rest by 5 seconds">-5</button>
-                <span class="rest-adj-value">${this.formatRest(activeRest)}</span>
+                    data-seconds="${betweenSetMinus}"
+                    aria-label="Decrease between-set rest by 5 seconds">-5</button>
+                <span class="rest-adj-value">${this.formatRest(betweenSetActive)}</span>
                 <button type="button" class="rest-adj-btn"
                     data-action="set-rest-override"
+                    data-rest-kind="set"
                     data-exercise-index="${index}"
-                    data-seconds="${restPlus}"
-                    aria-label="Increase rest by 5 seconds">+5</button>
+                    data-seconds="${betweenSetPlus}"
+                    aria-label="Increase between-set rest by 5 seconds">+5</button>
             </div>
+            ${isUniform ? '' : `
+            <div class="rest-adjuster rest-adjuster--display-only" aria-label="Rest after last set of this exercise">
+                <span class="rest-adj-label">After exercise</span>
+                <span class="rest-adj-value">${this.formatRest(betweenExActive)}</span>
+            </div>
+            `}
         `;
+
+        // Per-exercise plate-hints toggle.
+        // Global OFF overrides everything: hints hidden for ALL exercises.
+        // Global ON: per-exercise preference applies (defaults to ON).
+        const globalHints = this.app.settings?.plateHintsEnabled !== false;
+        const perExHints = this.app.settings?.exercisePlateHints?.[exercise.exerciseId];
+        const hintsOnForExercise = globalHints && (perExHints !== undefined ? perExHints : true);
+        // Per-exercise toggle is only meaningful when global hints are ON.
+        const plateToggleHTML = (isPlateLoaded && globalHints) ? `
+            <button type="button" class="btn-icon btn-icon-plates btn-icon-plates--per-ex${hintsOnForExercise ? '' : ' btn-icon-plates--off'}"
+                data-action="toggle-exercise-plate-hints"
+                data-exercise-index="${index}"
+                aria-pressed="${hintsOnForExercise ? 'true' : 'false'}"
+                aria-label="${hintsOnForExercise ? 'Hide' : 'Show'} plate hints for this exercise"
+                title="${hintsOnForExercise ? 'Hide' : 'Show'} plate hints">
+                <i class="fas fa-dumbbell" aria-hidden="true"></i>
+            </button>
+        ` : '';
 
         return `
             <div class="exercise-entry ${isComplete ? 'exercise-complete' : ''} ${isCollapsed ? 'exercise-collapsed' : ''}"
@@ -762,6 +841,7 @@ class WorkoutView {
                 <div class="exercise-body">
                     <div class="rest-row">
                         ${restPillsHTML}
+                        ${plateToggleHTML}
                     </div>
 
                     <ol class="set-row-list" id="set-row-list-${index}">
@@ -796,7 +876,7 @@ class WorkoutView {
      * set and starts the rest timer. The row itself is NOT tappable — users
      * deliberately flick the toggle to complete.
      */
-    renderPlannedRow(exerciseIndex, slot, prior, isDuration, unit, targetReps, isBarbell = false, repLabel = null) {
+    renderPlannedRow(exerciseIndex, slot, prior, isDuration, unit, targetReps, isPlateLoaded = false, usesBarWeight = false, repLabel = null) {
         const setLabel = `${slot + 1}`;
         const toggle = this.renderSetToggle(false, 'commit-planned-set', exerciseIndex, slot, 'Mark set complete');
 
@@ -822,8 +902,15 @@ class WorkoutView {
 
         const weight = prior ? prior.weight : '';
         const reps = prior ? prior.reps : (targetReps || '');
-        const hintsOn = this.app.settings?.plateHintsEnabled !== false;
-        const plateHintHTML = (isBarbell && hintsOn) ? this.renderPlateHint(weight, unit) : '';
+        // Per-exercise plate hints: global OFF overrides everything.
+        const sessionExercise = this.currentWorkoutSession?.exercises[exerciseIndex];
+        const exerciseId = sessionExercise?.exerciseId;
+        const globalHintsOn = this.app.settings?.plateHintsEnabled !== false;
+        const perExHintsVal = exerciseId !== undefined
+            ? this.app.settings?.exercisePlateHints?.[exerciseId]
+            : undefined;
+        const hintsOn = globalHintsOn && (perExHintsVal !== undefined ? perExHintsVal : true);
+        const plateHintHTML = (isPlateLoaded && hintsOn) ? this.renderPlateHint(weight, unit, usesBarWeight) : '';
 
         return `
             <li class="set-row set-row-planned" data-slot="${slot}">
@@ -856,11 +943,12 @@ class WorkoutView {
      * the user's plate-calculator settings. Returns '' (suppress) when
      * either the weight is empty or the user hasn't configured plates.
      */
-    renderPlateHint(weight, unit) {
+    renderPlateHint(weight, unit, usesBarWeight = true) {
         const settings = this.app.settings;
-        const bar = Number(settings?.barWeight);
+        const bar = usesBarWeight ? Number(settings?.barWeight) : 0;
         const plates = Array.isArray(settings?.plates) ? settings.plates : [];
-        if (!Number.isFinite(bar) || plates.length === 0) return '';
+        if (usesBarWeight && !Number.isFinite(Number(settings?.barWeight))) return '';
+        if (plates.length === 0) return '';
         // The "Plates per side:" wording is wrapped in .plate-hint-label-text
         // so the mobile media query can hide it; the dumbbell icon alone
         // carries the meaning on small screens.
@@ -880,7 +968,18 @@ class WorkoutView {
         const hintEl = document.getElementById(`plate-hint-${exerciseIndex}-${slot}`);
         if (!hintEl) return;
         const unit = this.app.settings.weightUnit;
-        const html = this.renderPlateHint(weight, unit);
+        const sessionExercise = this.currentWorkoutSession?.exercises[exerciseIndex];
+        const exerciseId = sessionExercise?.exerciseId;
+        const globalHintsOn = this.app.settings?.plateHintsEnabled !== false;
+        const perExHintsVal = exerciseId !== undefined
+            ? this.app.settings?.exercisePlateHints?.[exerciseId]
+            : undefined;
+        const hintsOn = globalHintsOn && (perExHintsVal !== undefined ? perExHintsVal : true);
+        if (!hintsOn) return;
+        const exerciseData = exerciseId !== undefined ? this.app.getExerciseById(exerciseId) : null;
+        const equipment = exerciseData?.equipment || '';
+        const usesBarWeight = equipment === 'barbell' || equipment === 'trap-bar';
+        const html = this.renderPlateHint(weight, unit, usesBarWeight);
         if (html) hintEl.innerHTML = html;
     }
 
@@ -990,14 +1089,70 @@ class WorkoutView {
         const currentlyCollapsed = isComplete
             ? (this.collapsedExercises[exerciseIndex] !== false)
             : !!this.collapsedExercises[exerciseIndex];
-        // Store the opposite so re-render produces the toggled state.
-        this.collapsedExercises[exerciseIndex] = !currentlyCollapsed;
+        if (!currentlyCollapsed) {
+            // Collapsing: always store true.
+            this.collapsedExercises[exerciseIndex] = true;
+        } else {
+            // Expanding: only set the sticky-suppress false when the exercise IS
+            // complete (meaning the user opened it after an auto-collapse). When the
+            // exercise is INCOMPLETE, false and undefined are equivalent for rendering
+            // purposes, but a stored false would incorrectly suppress the NEXT
+            // auto-collapse. Use delete (undefined) for incomplete exercises so the
+            // suppress flag is not set prematurely.
+            // Invariant: collapsedExercises[i] === false means "user explicitly
+            // expanded a complete exercise; do NOT auto-collapse on the next re-complete."
+            // It must only be set while the exercise is currently complete.
+            if (isComplete) {
+                this.collapsedExercises[exerciseIndex] = false;
+            } else {
+                delete this.collapsedExercises[exerciseIndex];
+            }
+        }
         this.rerenderExercise(exerciseIndex);
     }
 
-    /** Feature 5: override the rest timer for one exercise in this session. */
+    /**
+     * Override the between-set rest timer for one exercise in this session.
+     * Updates the rest adjuster in-place to avoid remounting completed-set pills.
+     */
     setRestOverride(exerciseIndex, seconds) {
-        this.exerciseRestOverrides[exerciseIndex] = seconds;
+        if (!this.exerciseRestOverrides[exerciseIndex]) {
+            this.exerciseRestOverrides[exerciseIndex] = {};
+        }
+        this.exerciseRestOverrides[exerciseIndex].set = seconds;
+
+        const host = document.getElementById(`exercise-${exerciseIndex}`);
+        if (!host) { this.rerenderExercise(exerciseIndex); return; }
+
+        const newMinus = Math.max(5, seconds - 5);
+        const newPlus = seconds + 5;
+
+        const [minusBtn, plusBtn] = host.querySelectorAll(
+            '[data-action="set-rest-override"][data-rest-kind="set"]'
+        );
+        const valueEl = host.querySelector(
+            '.rest-adjuster:not(.rest-adjuster--display-only) .rest-adj-value'
+        );
+
+        if (!minusBtn || !plusBtn || !valueEl) { this.rerenderExercise(exerciseIndex); return; }
+
+        minusBtn.dataset.seconds = String(newMinus);
+        minusBtn.setAttribute('aria-label', 'Decrease between-set rest by 5 seconds');
+        plusBtn.dataset.seconds = String(newPlus);
+        valueEl.textContent = this.formatRest(seconds);
+    }
+
+    /** Toggle per-exercise plate hints for the exercise at `exerciseIndex`.
+     *  Only reachable when global hints are ON (button is hidden otherwise). */
+    toggleExercisePlateHints(exerciseIndex) {
+        const exercise = this.currentWorkoutSession?.exercises[exerciseIndex];
+        if (!exercise) return;
+        const exerciseId = exercise.exerciseId;
+        const perExHintsVal = this.app.settings?.exercisePlateHints?.[exerciseId];
+        const currentHints = perExHintsVal !== undefined ? perExHintsVal : true;
+        if (!this.app.settings.exercisePlateHints) this.app.settings.exercisePlateHints = {};
+        this.app.settings.exercisePlateHints[exerciseId] = !currentHints;
+        this.app.saveSettings();
         this.rerenderExercise(exerciseIndex);
     }
 
@@ -1183,7 +1338,8 @@ class WorkoutView {
         // Auto-collapse when all planned sets are done. Keep the in-progress
         // exercises expanded by not touching their collapsedExercises entry.
         const targetSets = Math.max(1, exercise.targetSets || 3);
-        if (exercise.sets.length >= targetSets) {
+        const isNowComplete = exercise.sets.length >= targetSets;
+        if (isNowComplete) {
             // Only auto-collapse if the user hasn't explicitly expanded it
             // after a prior auto-collapse (collapsedExercises[i] === false means
             // the user manually opened it).
@@ -1191,17 +1347,31 @@ class WorkoutView {
                 this.collapsedExercises[exerciseIndex] = true;
             }
         }
+        // Track complete state for deleteSet's re-trigger logic.
+        this._prevCompleteState[exerciseIndex] = isNowComplete;
 
         this.rerenderExercise(exerciseIndex);
 
-        // Superset rest rule: only fire the rest timer once the entire
-        // round of the superset is complete. While the user is mid-round
-        // (i.e. another exercise in the same group still has fewer
-        // committed sets than the just-finished one), skip rest entirely
-        // — they should move straight to the next exercise.
+        // Determine rest type: last set of exercise -> between-exercise (bottom bar);
+        // any earlier set -> between-set (inline chip only).
+        // Superset rule: rest fires only when the round is done.
         if (this.shouldStartRestForSet(exerciseIndex, exercise)) {
-            const restSecs = this.exerciseRestOverrides[exerciseIndex] ?? exercise.restSeconds ?? 90;
-            this.startRest(restSecs, exerciseIndex);
+            const program = this.app.getProgramById(this.currentWorkoutSession?.programId);
+            const isUniform = program?.restMode === 'uniform';
+            const progEx = program?.exercises.find(e => e.exerciseId === exercise.exerciseId);
+
+            if (isNowComplete) {
+                // Between-exercise rest -> bottom bar (program-derived; not adjustable mid-workout)
+                const betweenExSecs = isUniform
+                    ? (program.uniformRestSeconds ?? 90)
+                    : (progEx?.restAfterSeconds ?? exercise.restAfterSeconds ?? 90);
+                this.startRest(betweenExSecs, exerciseIndex, 'exercise');
+            } else {
+                // Between-set rest -> inline chip only
+                const betweenSetBase = progEx?.restSeconds ?? exercise.restSeconds ?? 90;
+                const betweenSetSecs = this.exerciseRestOverrides[exerciseIndex]?.set ?? betweenSetBase;
+                this.startRest(betweenSetSecs, exerciseIndex, 'set');
+            }
         } else {
             this.skipRest();
         }
@@ -1454,6 +1624,26 @@ class WorkoutView {
             this.sessionPrCount = Math.max(0, this.sessionPrCount - 1);
         }
 
+        // Auto-collapse re-trigger fix: if the exercise was complete before this
+        // delete and is no longer complete, clear the manual-expand suppression
+        // (collapsedExercises[i] === false). The next time it becomes complete,
+        // auto-collapse will fire again.
+        const targetSets = Math.max(1, exercise.targetSets || 3);
+        const wasComplete = this._prevCompleteState[exerciseIndex] === true;
+        const isStillComplete = exercise.sets.length >= targetSets;
+        if (wasComplete && !isStillComplete) {
+            delete this.collapsedExercises[exerciseIndex];
+        }
+        this._prevCompleteState[exerciseIndex] = isStillComplete;
+
+        // Bugs B+C: unmarking a set cancels any active rest timer that was
+        // started for this exercise (between-set chip or between-exercise bottom
+        // bar). An unmark means the exercise is no longer in the post-set state
+        // that triggered the timer, so the rest is no longer meaningful.
+        if (this.activeRestExerciseIndex === exerciseIndex && this.activeRestTimerId != null) {
+            this.skipRest();
+        }
+
         this.rerenderExercise(exerciseIndex);
         if (!opts.silent) showToast('Set deleted', 'info');
     }
@@ -1467,8 +1657,13 @@ class WorkoutView {
 
     // --- Rest timer ---
 
-    /** Start (or restart) the persistent rest bar for `seconds` seconds. */
-    startRest(seconds, exerciseIndex = -1) {
+    /**
+     * Start (or restart) the rest timer for `seconds` seconds.
+     * `restType` controls where the countdown appears:
+     *   'set'      — between-set: inline chip next to rest adjuster only; bar hidden.
+     *   'exercise' — between-exercise: bottom bar only; no chip.
+     */
+    startRest(seconds, exerciseIndex = -1, restType = 'exercise') {
         const duration = Math.max(0, Math.floor(seconds || 0));
         if (duration === 0) return;
 
@@ -1480,8 +1675,17 @@ class WorkoutView {
         this.restTimerDuration = duration;
         this.activeRestExerciseIndex = exerciseIndex;
         this.lastPingedRestSecond = -1;
-        this.showRestBar(duration);
-        this.showRestChip(exerciseIndex, duration);
+        this._activeRestType = restType;
+
+        if (restType === 'exercise') {
+            this.showRestBar(duration);
+        } else {
+            // Between-set: keep bar hidden; chip only.
+            // Don't call hideRestBar() — that resets activeRestExerciseIndex.
+            const bar = document.getElementById('rest-timer-bar');
+            if (bar) bar.hidden = true;
+            this.showRestChip(exerciseIndex, duration);
+        }
 
         this.activeRestTimerId = timerService.startRestTimer(
             duration,
@@ -1504,6 +1708,7 @@ class WorkoutView {
         if (this.activeRestTimerId == null) return this.hideRestBar();
         timerService.stopRestTimer(this.activeRestTimerId);
         this.activeRestTimerId = null;
+        this._activeRestType = null;
         this.clearRestChip();
         this.hideRestBar();
     }
@@ -1563,21 +1768,25 @@ class WorkoutView {
     }
 
     onRestTick(remaining) {
-        const valueEl = document.getElementById('rest-timer-value');
-        const fill = document.getElementById('rest-timer-progress-fill');
-        if (valueEl) valueEl.textContent = this.formatRest(remaining);
-        if (fill && this.restTimerDuration > 0) {
-            const ratio = Math.max(0, Math.min(1, remaining / this.restTimerDuration));
-            fill.style.transform = `scaleX(${ratio})`;
+        const isExercise = this._activeRestType === 'exercise';
+
+        if (isExercise) {
+            const valueEl = document.getElementById('rest-timer-value');
+            const fill = document.getElementById('rest-timer-progress-fill');
+            if (valueEl) valueEl.textContent = this.formatRest(remaining);
+            if (fill && this.restTimerDuration > 0) {
+                const ratio = Math.max(0, Math.min(1, remaining / this.restTimerDuration));
+                fill.style.transform = `scaleX(${ratio})`;
+            }
+        } else {
+            // Between-set: update chip only.
+            this.showRestChip(this.activeRestExerciseIndex, remaining);
         }
 
-        // Update in-card chip.
-        this.showRestChip(this.activeRestExerciseIndex, remaining);
-
-        // Final 5-second urgent state: turn both displays red + pulse.
+        // Final 5-second urgent state.
         const bar = document.getElementById('rest-timer-bar');
         if (remaining <= 5 && remaining > 0) {
-            if (bar) bar.classList.add('rest-timer-urgent');
+            if (isExercise && bar) bar.classList.add('rest-timer-urgent');
             // One ping per second — guard with lastPingedRestSecond.
             if (remaining !== this.lastPingedRestSecond) {
                 this.lastPingedRestSecond = remaining;
@@ -1593,17 +1802,23 @@ class WorkoutView {
 
     onRestComplete() {
         this.activeRestTimerId = null;
-        const bar = document.getElementById('rest-timer-bar');
-        const valueEl = document.getElementById('rest-timer-value');
-        if (bar) bar.classList.add('rest-timer-done');
-        if (bar) bar.classList.remove('rest-timer-urgent');
-        if (valueEl) valueEl.textContent = 'Done';
-        this.clearRestChip();
+        const isExercise = this._activeRestType === 'exercise';
+        this._activeRestType = null;
+
+        if (isExercise) {
+            const bar = document.getElementById('rest-timer-bar');
+            const valueEl = document.getElementById('rest-timer-value');
+            if (bar) bar.classList.add('rest-timer-done');
+            if (bar) bar.classList.remove('rest-timer-urgent');
+            if (valueEl) valueEl.textContent = 'Done';
+            setTimeout(() => this.hideRestBar(), 2500);
+        } else {
+            this.clearRestChip();
+        }
+
         // Audio and haptic cues — each opt-outable independently in Settings.
         if (this.app.settings?.vibrationAlerts !== false) vibrate([120, 60, 120]);
         if (this.app.settings?.soundAlerts !== false) playSound('rest-done');
-        // Auto-hide after a short celebration so the bar doesn't linger.
-        setTimeout(() => this.hideRestBar(), 2500);
     }
 
     formatRest(seconds) {

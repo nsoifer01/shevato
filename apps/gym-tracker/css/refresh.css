@@ -588,9 +588,13 @@ body.gym-tracker .exercise-entry.exercise-collapsed .exercise-body {
     display: none;
 }
 
-/* Task 4: per-exercise rest adjuster */
+/* Per-exercise rest adjusters (between-set + after-exercise) */
 body.gym-tracker .rest-row {
     margin-bottom: 0.5rem;
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.4rem;
 }
 
 body.gym-tracker .rest-adjuster {
@@ -601,6 +605,50 @@ body.gym-tracker .rest-adjuster {
     border: 1px solid var(--gt-border);
     border-radius: 20px;
     padding: 0.15rem 0.4rem;
+}
+
+body.gym-tracker .rest-adj-label {
+    font-size: 0.68rem;
+    color: var(--gt-muted-2);
+    white-space: nowrap;
+    padding: 0 0.15rem;
+}
+
+/* Per-exercise plate-hints toggle (inline in rest-row) */
+body.gym-tracker .btn-icon-plates--per-ex,
+body.gym-tracker .btn-icon-plates--per-ex:hover:active {
+    background: rgba(108, 99, 255, 0.1);
+    border: 1px solid rgba(108, 99, 255, 0.3);
+    border-radius: 999px;
+    /* !important pins defeat the sitewide main.css `button { color:#555 !important }`
+       that otherwise paints this dumbbell icon gray. */
+    color: rgba(167, 139, 250, 0.9) !important;
+    box-shadow: none !important;
+    font-size: 0.75rem;
+    padding: 0.2rem 0.55rem;
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    min-width: 40px;
+    min-height: 40px;
+    justify-content: center;
+    transition: background var(--transition-fast), color var(--transition-fast);
+    margin-left: auto;
+}
+body.gym-tracker .btn-icon-plates--per-ex:hover {
+    background: rgba(108, 99, 255, 0.2);
+    color: #a78bfa !important;
+}
+body.gym-tracker .btn-icon-plates--per-ex.btn-icon-plates--off,
+body.gym-tracker .btn-icon-plates--per-ex.btn-icon-plates--off:hover {
+    background: transparent;
+    border-color: var(--gt-border);
+    color: var(--gt-muted) !important;
+    opacity: 0.6;
+}
+
+body.gym-tracker .rest-adjuster--display-only {
+    opacity: 0.75;
 }
 
 body.gym-tracker .rest-adj-btn {
@@ -633,22 +681,33 @@ body.gym-tracker .rest-adj-value {
     text-align: center;
 }
 
-/* Task 7: uniform rest banner */
-body.gym-tracker .uniform-rest-banner {
-    display: flex;
+/* Uniform rest-between message in sticky workout header */
+body.gym-tracker .workout-rest-between {
+    display: inline-flex;
     align-items: center;
-    gap: 0.45rem;
-    font-size: 0.82rem;
-    color: var(--gt-muted);
-    background: var(--gt-surface-2);
-    border: 1px solid var(--gt-border);
-    border-radius: 10px;
-    padding: 0.5rem 0.8rem;
-    margin-bottom: 0.75rem;
+    justify-content: center;
+    gap: 0.35rem;
+    font-size: 0.78rem !important;
+    color: #a0a8c0 !important;
+    margin-top: 3px;
+    white-space: nowrap;
+    line-height: 1.2;
 }
-body.gym-tracker .uniform-rest-banner strong {
-    color: var(--gt-accent);
+body.gym-tracker .workout-rest-between i {
+    color: #818cf8 !important;
+    font-size: 0.72rem;
+    opacity: 0.85;
+    flex-shrink: 0;
+}
+body.gym-tracker .workout-rest-between strong {
+    color: #a5b4fc !important;
     font-weight: 700;
+}
+/* Long label on desktop, short label on the cramped mobile header. */
+body.gym-tracker .workout-rest-between .wrb-label--short { display: none; }
+@media (max-width: 640px) {
+    body.gym-tracker .workout-rest-between .wrb-label--full { display: none; }
+    body.gym-tracker .workout-rest-between .wrb-label--short { display: inline; }
 }
 body.gym-tracker .uniform-rest-note {
     font-size: 0.72rem;
@@ -830,4 +889,1533 @@ body.gym-tracker .btn-remove-set:hover {
     border-color: var(--gt-border-strong) !important;
     color: var(--gt-danger) !important;
     background: transparent !important;
+}
+
+/* ================================================================
+   VISUAL POLISH — 2026-06-04
+   All rules scoped to body.gym-tracker so nothing leaks.
+   ================================================================ */
+
+/* ---------- Design token additions ---------- */
+body.gym-tracker {
+    --gt-surface-card: #14172a;
+    --gt-surface-raised: #1c2035;
+    --gt-border-subtle: rgba(255, 255, 255, 0.05);
+    --gt-accent-dim: rgba(129, 140, 248, 0.08);
+    --gt-radius-card: 16px;
+    --gt-radius-inner: 10px;
+    --gt-shadow-card: 0 2px 12px rgba(0, 0, 0, 0.4), 0 0 0 1px rgba(255,255,255,0.04) inset;
+    --gt-shadow-hover: 0 8px 28px rgba(0, 0, 0, 0.5), 0 0 0 1px rgba(129,140,248,0.18) inset;
+}
+
+/* ============================================================
+   1. HOME / DASHBOARD
+   ============================================================ */
+
+/* Stats grid cards — richer surface */
+body.gym-tracker .stat-card {
+    background: var(--gt-surface-card);
+    border-radius: var(--gt-radius-card);
+    border: 1px solid var(--gt-border);
+    box-shadow: var(--gt-shadow-card);
+    padding: 1.25rem 1rem;
+    position: relative;
+    overflow: hidden;
+}
+
+body.gym-tracker .stat-card::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    border-radius: inherit;
+    background: linear-gradient(135deg, rgba(129,140,248,0.06) 0%, transparent 50%);
+    pointer-events: none;
+}
+
+body.gym-tracker .stat-card:hover {
+    border-color: var(--gt-border-strong);
+    box-shadow: var(--gt-shadow-hover);
+}
+
+body.gym-tracker .stat-icon {
+    font-size: 1.5rem;
+    margin-bottom: 0.5rem;
+    color: var(--gt-accent);
+    opacity: 0.9;
+}
+
+/* Stats grid — horizontal row on desktop, wrapping on mobile */
+body.gym-tracker .stats-grid {
+    flex-wrap: wrap;
+}
+
+/* Section headers — stronger visual weight */
+body.gym-tracker .section-header {
+    padding-bottom: 0.65rem;
+    border-bottom: 1px solid var(--gt-border-subtle);
+    margin-bottom: 1rem;
+}
+
+body.gym-tracker .section h2 {
+    font-size: 1.05rem;
+    font-weight: 700;
+    letter-spacing: -0.02em;
+    color: var(--gt-text);
+}
+
+/* "View All" link */
+body.gym-tracker .btn-text {
+    font-size: 0.82rem;
+    font-weight: 600;
+    letter-spacing: 0.01em;
+}
+
+/* Active program card on home — elevated surface */
+body.gym-tracker #active-program-card {
+    background: var(--gt-surface-card);
+    border: 1px solid var(--gt-border);
+    border-radius: var(--gt-radius-card);
+    box-shadow: var(--gt-shadow-card);
+}
+
+/* Week summary card */
+body.gym-tracker .week-summary-card {
+    background: var(--gt-surface-card);
+    border: 1px solid var(--gt-border);
+    border-radius: var(--gt-radius-card);
+    box-shadow: var(--gt-shadow-card);
+}
+
+body.gym-tracker .week-tile {
+    background: var(--gt-surface-2);
+    border: 1px solid var(--gt-border);
+    border-radius: var(--gt-radius-inner);
+}
+
+body.gym-tracker .week-tile-value {
+    color: var(--gt-text);
+    font-size: 1.25rem;
+}
+
+body.gym-tracker .week-tile-label {
+    color: var(--gt-muted);
+    font-size: 0.68rem;
+    letter-spacing: 0.06em;
+}
+
+/* ============================================================
+   2. PROGRAMS VIEW + PROGRAM CARDS
+   ============================================================ */
+
+body.gym-tracker .program-card {
+    background: var(--gt-surface-card);
+    border-radius: var(--gt-radius-card);
+    border: 1px solid var(--gt-border);
+    box-shadow: var(--gt-shadow-card);
+    position: relative;
+    overflow: hidden;
+}
+
+body.gym-tracker .program-card::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: linear-gradient(135deg, rgba(129,140,248,0.04) 0%, transparent 50%);
+    pointer-events: none;
+    border-radius: inherit;
+}
+
+body.gym-tracker .program-card:hover {
+    border-color: var(--gt-border-strong);
+    box-shadow: var(--gt-shadow-hover);
+}
+
+body.gym-tracker .program-card .program-header h3 {
+    font-size: 1.05rem;
+    font-weight: 700;
+    letter-spacing: -0.015em;
+    color: var(--gt-text);
+}
+
+body.gym-tracker .program-card .program-description {
+    color: var(--gt-muted) !important;
+    font-size: 0.875rem;
+    line-height: 1.55;
+}
+
+body.gym-tracker .program-card .program-stats .stat {
+    font-size: 0.82rem;
+    color: var(--gt-muted);
+}
+
+body.gym-tracker .program-card .program-stats .stat i {
+    color: var(--gt-accent);
+    opacity: 0.85;
+}
+
+/* Programs toolbar */
+body.gym-tracker .programs-toolbar {
+    background: var(--gt-surface);
+    border: 1px solid var(--gt-border);
+    border-radius: var(--gt-radius-inner);
+    padding: 0.5rem 0.75rem;
+    margin-bottom: 1.25rem;
+}
+
+body.gym-tracker .programs-sort-label {
+    color: var(--gt-muted-2);
+    font-size: 0.7rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.07em;
+}
+
+/* ============================================================
+   3. EXERCISES VIEW
+   ============================================================ */
+
+/* Search/filter bar */
+body.gym-tracker .exercise-search-bar {
+    background: var(--gt-surface-card);
+    border: 1px solid var(--gt-border);
+    border-radius: var(--gt-radius-card);
+    box-shadow: var(--gt-shadow-card);
+    padding: 1rem;
+}
+
+/* Individual exercise card */
+body.gym-tracker .exercise-db-card {
+    background: var(--gt-surface-card);
+    border: 1px solid var(--gt-border);
+    border-radius: var(--gt-radius-card);
+    box-shadow: var(--gt-shadow-card);
+    transition: border-color 0.15s ease, box-shadow 0.15s ease, transform 0.1s ease;
+    padding: 1rem;
+}
+
+body.gym-tracker .exercise-db-card:hover {
+    border-color: var(--gt-border-strong);
+    box-shadow: var(--gt-shadow-hover);
+    transform: translateY(-2px);
+}
+
+body.gym-tracker .exercise-db-card.has-history:hover {
+    border-color: var(--gt-accent);
+}
+
+body.gym-tracker .exercise-db-card h3 {
+    font-size: 0.95rem;
+    font-weight: 700;
+    color: var(--gt-text);
+    letter-spacing: -0.01em;
+}
+
+body.gym-tracker .exercise-db-card .exercise-muscle {
+    color: var(--gt-muted);
+    font-size: 0.8rem;
+}
+
+body.gym-tracker .exercise-db-card .exercise-muscle i {
+    color: var(--gt-accent);
+    opacity: 0.85;
+}
+
+/* Badges on exercise cards */
+body.gym-tracker .exercise-db-card .badge {
+    background: var(--gt-surface-2);
+    border: 1px solid var(--gt-border);
+    color: var(--gt-muted);
+    font-size: 0.72rem;
+    padding: 0.2rem 0.6rem;
+    border-radius: 999px;
+}
+
+body.gym-tracker .exercise-db-card .badge-category i {
+    color: var(--gt-accent);
+}
+
+body.gym-tracker .exercise-db-card .badge-equipment i {
+    color: var(--gt-good);
+}
+
+/* History count badge */
+body.gym-tracker .history-count-badge {
+    background: var(--gt-accent);
+    box-shadow: 0 2px 8px rgba(129,140,248,0.4);
+    font-size: 0.68rem;
+    font-weight: 700;
+}
+
+/* Pagination controls */
+body.gym-tracker .exercise-pagination,
+body.gym-tracker .pagination-controls {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.5rem;
+    margin-top: 1.25rem;
+    margin-bottom: 0.5rem;
+    flex-wrap: wrap;
+}
+
+body.gym-tracker .pagination-page-btn {
+    min-width: 40px !important;
+    min-height: 40px !important;
+    padding: 0 0.55rem !important;
+    font-size: 0.875rem !important;
+    font-weight: 500 !important;
+    background: transparent !important;
+    border: 1px solid var(--gt-border-strong) !important;
+    color: var(--gt-text) !important;
+    border-radius: var(--gt-radius-sm, 6px) !important;
+    box-shadow: none !important;
+    cursor: pointer !important;
+    line-height: 1 !important;
+    display: inline-flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+}
+
+body.gym-tracker .pagination-page-btn:hover:not(.pagination-page-active) {
+    background: var(--gt-surface-2) !important;
+    border-color: var(--gt-border-strong) !important;
+    color: var(--gt-text) !important;
+}
+
+body.gym-tracker .pagination-page-btn:hover:active:not(.pagination-page-active) {
+    background: var(--gt-surface-2) !important;
+    color: var(--gt-text) !important;
+}
+
+body.gym-tracker .pagination-page-btn.pagination-page-active {
+    background: var(--gt-accent) !important;
+    border-color: var(--gt-accent) !important;
+    color: #ffffff !important;
+    font-weight: 700 !important;
+    box-shadow: 0 2px 8px rgba(129, 140, 248, 0.4) !important;
+    cursor: default !important;
+}
+
+body.gym-tracker .pagination-page-btn.pagination-page-active:hover {
+    background: var(--gt-accent) !important;
+    color: #ffffff !important;
+}
+
+body.gym-tracker .pagination-page-btn.pagination-page-active:hover:active {
+    background: var(--gt-accent) !important;
+    color: #ffffff !important;
+}
+
+body.gym-tracker .pagination-ellipsis {
+    min-width: 24px;
+    text-align: center;
+    color: var(--gt-muted);
+    font-size: 0.875rem;
+    user-select: none;
+    padding: 0 0.1rem;
+}
+
+body.gym-tracker .pagination-btn {
+    min-width: 70px !important;
+    min-height: 40px !important;
+}
+
+@media (max-width: 480px) {
+    body.gym-tracker .pagination-controls {
+        gap: 0.3rem;
+    }
+    body.gym-tracker .pagination-page-btn {
+        min-width: 36px !important;
+        min-height: 36px !important;
+        font-size: 0.8rem !important;
+        padding: 0 0.4rem !important;
+    }
+    body.gym-tracker .pagination-btn {
+        min-width: 60px !important;
+        min-height: 36px !important;
+        font-size: 0.8rem !important;
+    }
+}
+
+/* ============================================================
+   4. HISTORY VIEW
+   ============================================================ */
+
+/* Filter bar */
+body.gym-tracker .history-filters {
+    background: var(--gt-surface-card);
+    border: 1px solid var(--gt-border);
+    border-radius: var(--gt-radius-card);
+    box-shadow: var(--gt-shadow-card);
+}
+
+/* History workout cards */
+body.gym-tracker #history-list .workout-card {
+    background: var(--gt-surface-card);
+    border: 1px solid var(--gt-border);
+    border-radius: var(--gt-radius-card);
+    box-shadow: var(--gt-shadow-card);
+    padding: 1rem 1.1rem;
+    transition: border-color 0.15s ease, box-shadow 0.15s ease, transform 0.1s ease;
+}
+
+body.gym-tracker #history-list .workout-card:hover {
+    border-color: var(--gt-border-strong);
+    box-shadow: var(--gt-shadow-hover);
+    transform: translateY(-1px);
+}
+
+body.gym-tracker #history-list .workout-card-header h3 {
+    color: var(--gt-text);
+    font-size: 1rem;
+    font-weight: 700;
+    letter-spacing: -0.015em;
+}
+
+body.gym-tracker #history-list .workout-card-header .date {
+    color: var(--gt-muted-2);
+    font-size: 0.72rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.07em;
+}
+
+body.gym-tracker #history-list .workout-card-stats .stat {
+    color: var(--gt-muted);
+    font-size: 0.82rem;
+    gap: 0.3rem;
+}
+
+body.gym-tracker #history-list .workout-card-stats .stat i {
+    color: var(--gt-accent);
+    opacity: 0.8;
+}
+
+/* History pagination — reuses .pagination-controls styles above */
+body.gym-tracker .history-pagination {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.5rem;
+    margin-top: 1.5rem;
+    flex-wrap: wrap;
+}
+
+/* ============================================================
+   5. SETTINGS VIEW
+   ============================================================ */
+
+/* Each settings card */
+body.gym-tracker .settings-section {
+    background: var(--gt-surface-card);
+    border: 1px solid var(--gt-border);
+    border-radius: var(--gt-radius-card);
+    box-shadow: var(--gt-shadow-card);
+    padding: 1.25rem;
+    gap: 1rem;
+    margin-bottom: 1rem;
+    position: relative;
+    overflow: hidden;
+}
+
+body.gym-tracker .settings-section::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: linear-gradient(135deg, rgba(129,140,248,0.03) 0%, transparent 50%);
+    pointer-events: none;
+    border-radius: inherit;
+}
+
+/* Section header inside settings */
+body.gym-tracker .settings-section-header {
+    border-bottom: 1px solid var(--gt-border);
+    padding-bottom: 0.85rem;
+    gap: 0.85rem;
+    align-items: flex-start;
+}
+
+body.gym-tracker .settings-section-icon {
+    width: 38px;
+    height: 38px;
+    border-radius: 10px;
+    background: var(--gt-accent-soft);
+    border: 1px solid rgba(129,140,248,0.22);
+    color: var(--gt-accent);
+    font-size: 0.95rem;
+    flex-shrink: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+body.gym-tracker .settings-section h2 {
+    font-size: 0.97rem;
+    font-weight: 700;
+    letter-spacing: -0.01em;
+    color: var(--gt-text);
+    margin: 0;
+    line-height: 1.3;
+}
+
+body.gym-tracker .settings-section-sub {
+    color: var(--gt-muted) !important;
+    font-size: 0.82rem;
+    margin: 0.2rem 0 0;
+    line-height: 1.45;
+}
+
+/* Setting item labels */
+body.gym-tracker .setting-item label {
+    color: var(--gt-muted);
+    font-size: 0.78rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+}
+
+/* Toggle items — label on left, switch on right */
+body.gym-tracker .setting-item.setting-item-toggle {
+    background: var(--gt-surface-2);
+    border: 1px solid var(--gt-border);
+    border-radius: var(--gt-radius-inner);
+    padding: 0.7rem 0.9rem;
+}
+
+body.gym-tracker .setting-toggle-label {
+    color: var(--gt-text) !important;
+    font-size: 0.9rem;
+    font-weight: 500;
+    text-transform: none;
+    letter-spacing: 0;
+}
+
+/* Toggle switch polish */
+body.gym-tracker .toggle-slider {
+    background: rgba(255,255,255,0.08);
+    border: 1px solid var(--gt-border-strong);
+}
+
+body.gym-tracker .toggle-switch input[type="checkbox"]:checked + .toggle-slider {
+    background: var(--gt-accent);
+    border-color: var(--gt-accent);
+}
+
+/* Setting actions row */
+body.gym-tracker .setting-actions {
+    gap: 0.6rem;
+}
+
+body.gym-tracker .setting-actions .btn-secondary {
+    background: var(--gt-surface-2);
+    border: 1px solid var(--gt-border);
+    color: var(--gt-text) !important;
+    border-radius: var(--gt-radius-inner);
+    font-size: 0.875rem;
+    font-weight: 500;
+}
+
+body.gym-tracker .setting-actions .btn-secondary:hover {
+    background: var(--gt-surface-3);
+    border-color: var(--gt-border-strong);
+}
+
+body.gym-tracker .setting-actions .btn-danger {
+    background: rgba(248,113,113,0.1);
+    border: 1px solid rgba(248,113,113,0.3);
+    color: #fca5a5 !important;
+    border-radius: var(--gt-radius-inner);
+    font-size: 0.875rem;
+    font-weight: 500;
+}
+
+body.gym-tracker .setting-actions .btn-danger:hover {
+    background: rgba(248,113,113,0.22);
+    border-color: rgba(248,113,113,0.55);
+    color: #ffffff !important;
+}
+
+/* ============================================================
+   6. ONBOARDING MODAL
+   ============================================================ */
+
+body.gym-tracker .onboarding-modal-content {
+    background: var(--gt-surface);
+    border: 1px solid var(--gt-border);
+    border-radius: 18px;
+    box-shadow: 0 32px 80px -10px rgba(0,0,0,0.75), 0 8px 24px -4px rgba(0,0,0,0.4);
+    overflow: hidden;
+}
+
+body.gym-tracker .onboarding-modal-content .modal-header {
+    background: linear-gradient(135deg, rgba(129,140,248,0.1) 0%, transparent 60%);
+    border-bottom: 1px solid var(--gt-border);
+    padding: 1.1rem 1.25rem;
+}
+
+body.gym-tracker .onboarding-modal-content .modal-header h2 {
+    font-size: 1.15rem;
+    font-weight: 700;
+    letter-spacing: -0.01em;
+    color: var(--gt-text);
+}
+
+body.gym-tracker .onboarding-modal-content .modal-body {
+    padding: 1.1rem 1.25rem 1.25rem;
+}
+
+body.gym-tracker .onboarding-modal-content .modal-body > p {
+    color: var(--gt-muted) !important;
+    font-size: 0.9rem;
+    margin-bottom: 1rem;
+}
+
+/* Onboarding steps */
+body.gym-tracker .onboarding-step {
+    background: var(--gt-surface-2);
+    border: 1px solid var(--gt-border);
+    border-radius: 12px;
+    padding: 0.85rem 1rem;
+    gap: 0.9rem;
+    transition: border-color 0.15s ease;
+}
+
+body.gym-tracker .onboarding-step:hover {
+    border-color: var(--gt-border-strong);
+}
+
+body.gym-tracker .onboarding-step-number {
+    width: 34px;
+    height: 34px;
+    background: var(--gt-accent-soft);
+    border: 1px solid rgba(129,140,248,0.3);
+    color: var(--gt-accent) !important;
+    font-size: 0.88rem;
+    font-weight: 700;
+    border-radius: 50%;
+}
+
+body.gym-tracker .onboarding-step-title {
+    font-size: 0.92rem;
+    font-weight: 700;
+    color: var(--gt-text) !important;
+    margin-bottom: 0.1rem;
+}
+
+body.gym-tracker .onboarding-step-desc {
+    font-size: 0.82rem;
+    color: var(--gt-muted) !important;
+    line-height: 1.4;
+}
+
+/* CTA button within step */
+body.gym-tracker .onboarding-step-cta .btn {
+    height: 34px;
+    padding: 0 0.9rem;
+    font-size: 0.82rem;
+    font-weight: 600;
+    border-radius: 8px;
+}
+
+/* Footer with Skip button */
+body.gym-tracker .onboarding-modal-content .modal-footer,
+body.gym-tracker .onboarding-modal-content > .modal-body > .modal-footer {
+    border-top: 1px solid var(--gt-border);
+    padding: 0.85rem 1.25rem;
+    margin-top: 0;
+}
+
+body.gym-tracker .onboarding-modal-content .btn-ghost {
+    width: 100%;
+    justify-content: center;
+    font-size: 0.9rem;
+    color: var(--gt-muted) !important;
+    border: 1px solid var(--gt-border);
+    border-radius: 10px;
+    height: 40px;
+}
+
+body.gym-tracker .onboarding-modal-content .btn-ghost:hover {
+    background: var(--gt-surface-2);
+    color: var(--gt-text) !important;
+    border-color: var(--gt-border-strong);
+}
+
+/* ============================================================
+   7. ACTIVE WORKOUT VIEW
+   ============================================================ */
+
+/* Workout header bar — subtle glow */
+body.gym-tracker .workout-header {
+    background: var(--gt-surface-card);
+    border: 1px solid var(--gt-border);
+    border-radius: 14px;
+    box-shadow: var(--gt-shadow-card);
+}
+
+body.gym-tracker .workout-header::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: linear-gradient(135deg, rgba(129,140,248,0.06) 0%, transparent 50%);
+    pointer-events: none;
+    border-radius: inherit;
+}
+
+body.gym-tracker .workout-info h2 {
+    color: var(--gt-text);
+    font-weight: 700;
+    letter-spacing: -0.02em;
+}
+
+body.gym-tracker .workout-timer {
+    color: var(--gt-muted);
+}
+
+body.gym-tracker .workout-timer i {
+    color: var(--gt-accent);
+    opacity: 0.8;
+}
+
+/* Exercise entry cards */
+body.gym-tracker .exercise-entry {
+    background: var(--gt-surface-card);
+    border: 1px solid var(--gt-border);
+    border-radius: var(--gt-radius-card);
+    box-shadow: var(--gt-shadow-card);
+    padding: 1rem;
+    margin-bottom: 0.85rem;
+    transition: border-color 0.15s ease;
+}
+
+body.gym-tracker .exercise-entry:hover {
+    border-color: var(--gt-border-strong);
+}
+
+body.gym-tracker .exercise-entry.exercise-complete {
+    border-color: rgba(52,211,153,0.35);
+    box-shadow: 0 0 0 1px rgba(52,211,153,0.12) inset, var(--gt-shadow-card);
+}
+
+/* Exercise entry header */
+body.gym-tracker .exercise-entry-header h3 {
+    color: var(--gt-text);
+}
+
+body.gym-tracker .exercise-name-main {
+    color: var(--gt-text);
+    font-weight: 700;
+}
+
+body.gym-tracker .exercise-name-sub {
+    color: var(--gt-muted-2);
+    opacity: 0.85;
+}
+
+/* Set row inputs — cleaner surfaces */
+body.gym-tracker .set-row {
+    background: var(--gt-surface-2);
+    border: 1px solid var(--gt-border);
+    border-radius: var(--gt-radius-inner);
+}
+
+body.gym-tracker .set-row-planned {
+    background: rgba(255,255,255,0.015);
+    border: 1px dashed var(--gt-border-strong);
+}
+
+body.gym-tracker .set-row-planned:focus-within {
+    background: var(--gt-surface-2);
+    border-style: solid;
+    border-color: rgba(129,140,248,0.45);
+}
+
+body.gym-tracker .set-row-complete {
+    background: rgba(52,211,153,0.07);
+    border-color: rgba(52,211,153,0.28);
+}
+
+/* Set row inputs */
+body.gym-tracker .set-row-inputs input {
+    background: var(--gt-surface-3);
+    border: 1px solid var(--gt-border);
+    color: var(--gt-text);
+    border-radius: 8px;
+}
+
+body.gym-tracker .set-row-inputs input:focus {
+    border-color: var(--gt-accent);
+    background: var(--gt-surface-2);
+    box-shadow: 0 0 0 3px var(--gt-accent-soft);
+}
+
+/* Previous data reference rail */
+body.gym-tracker .previous-data {
+    background: rgba(255,255,255,0.02);
+    border: 1px solid var(--gt-border-subtle);
+    border-radius: var(--gt-radius-inner);
+    padding: 0.5rem 0.65rem;
+}
+
+body.gym-tracker .previous-sets-label {
+    color: var(--gt-muted-2);
+    font-size: 0.62rem;
+}
+
+/* Progress chip on exercise header */
+body.gym-tracker .exercise-progress {
+    background: var(--gt-surface-2);
+    border: 1px solid var(--gt-border);
+    color: var(--gt-muted);
+}
+
+body.gym-tracker .exercise-progress.is-complete {
+    background: rgba(52,211,153,0.12);
+    border-color: rgba(52,211,153,0.4);
+    color: var(--gt-good);
+}
+
+/* Superset block */
+body.gym-tracker .superset-block {
+    background: rgba(129,140,248,0.04);
+    border: 1px solid rgba(129,140,248,0.35);
+    border-radius: var(--gt-radius-card);
+}
+
+body.gym-tracker .superset-block-header {
+    background: var(--gt-surface-card);
+    border: 1px solid rgba(129,140,248,0.4);
+    color: var(--gt-accent);
+    font-size: 0.68rem;
+    letter-spacing: 0.07em;
+}
+
+/* ============================================================
+   8. HISTORY WORKOUT CARDS (general .workout-card elsewhere)
+   ============================================================ */
+
+body.gym-tracker .workout-card {
+    background: var(--gt-surface-card);
+    border: 1px solid var(--gt-border);
+    border-radius: var(--gt-radius-card);
+    box-shadow: var(--gt-shadow-card);
+}
+
+body.gym-tracker .workout-card:hover {
+    border-color: var(--gt-border-strong);
+    box-shadow: var(--gt-shadow-hover);
+}
+
+/* Workout card header title */
+body.gym-tracker .workout-card-header h3,
+body.gym-tracker .workout-card-header h4 {
+    color: var(--gt-text);
+}
+
+/* Additional stat chips */
+body.gym-tracker .additional-stat {
+    background: var(--gt-surface-2);
+    border: 1px solid var(--gt-border);
+    color: var(--gt-muted);
+    border-radius: 999px;
+}
+
+body.gym-tracker .additional-stat i {
+    color: var(--gt-accent);
+}
+
+/* ============================================================
+   9. MODALS — general polish
+   ============================================================ */
+
+body.gym-tracker .modal-content {
+    background: var(--gt-surface);
+    border: 1px solid var(--gt-border);
+    border-radius: 18px;
+    box-shadow: 0 32px 80px -10px rgba(0,0,0,0.75), 0 8px 24px -4px rgba(0,0,0,0.4);
+}
+
+body.gym-tracker .modal-header h2 {
+    color: var(--gt-text);
+    font-size: 1.05rem;
+    font-weight: 700;
+    letter-spacing: -0.01em;
+}
+
+/* Program form inside modal */
+body.gym-tracker #program-form .form-group label {
+    color: var(--gt-muted);
+    font-size: 0.72rem;
+    letter-spacing: 0.07em;
+    text-transform: uppercase;
+}
+
+/* Program exercises section */
+body.gym-tracker .program-exercises-section {
+    background: var(--gt-surface-2);
+    border: 1px solid var(--gt-border);
+    border-radius: var(--gt-radius-inner);
+}
+
+body.gym-tracker .program-exercises-empty {
+    background: var(--gt-surface);
+    border: 1px dashed var(--gt-border-strong);
+    border-radius: var(--gt-radius-inner);
+}
+
+body.gym-tracker .program-exercises-empty i {
+    color: var(--gt-accent);
+    opacity: 0.7;
+}
+
+body.gym-tracker .program-exercises-empty p {
+    color: var(--gt-text) !important;
+    font-weight: 600;
+}
+
+body.gym-tracker .program-exercises-empty small {
+    color: var(--gt-muted) !important;
+}
+
+/* Individual exercise row in program editor */
+body.gym-tracker .program-exercise-row {
+    background: var(--gt-surface);
+    border: 1px solid var(--gt-border);
+    border-radius: var(--gt-radius-inner);
+}
+
+body.gym-tracker .program-exercise-row:hover {
+    background: var(--gt-surface-2);
+    border-color: var(--gt-border-strong);
+}
+
+/* Rest mode toggle row */
+body.gym-tracker .rest-mode-toggle-row {
+    background: var(--gt-surface-2);
+    border: 1px solid var(--gt-border);
+    border-radius: var(--gt-radius-inner);
+}
+
+/* ============================================================
+   10. GENERAL TYPOGRAPHY + EMPTY STATES REFINEMENT
+   ============================================================ */
+
+/* View subtitle */
+body.gym-tracker .view-header .subtitle {
+    color: var(--gt-muted) !important;
+    font-size: 0.9rem;
+    letter-spacing: -0.005em;
+}
+
+/* Empty state badges — softer */
+body.gym-tracker .empty-state {
+    background: var(--gt-surface-card);
+    border: 1px dashed var(--gt-border-strong);
+    border-radius: var(--gt-radius-card);
+    box-shadow: none;
+}
+
+/* Toast notifications */
+body.gym-tracker .toast {
+    background: var(--gt-surface-card);
+    border: 1px solid var(--gt-border-strong);
+    border-radius: 12px;
+    box-shadow: var(--gt-shadow-hover);
+}
+
+/* Badge pill general */
+body.gym-tracker .badge {
+    background: var(--gt-accent-soft);
+    border: 1px solid rgba(129,140,248,0.25);
+    color: var(--gt-accent) !important;
+    border-radius: 999px;
+    padding: 0.2rem 0.65rem;
+    font-size: 0.72rem;
+    font-weight: 600;
+}
+
+/* Quick program items (home view) */
+body.gym-tracker .quick-program-item {
+    background: var(--gt-surface-card);
+    border: 1px solid var(--gt-border);
+    border-radius: var(--gt-radius-inner);
+    transition: border-color 0.15s ease, background 0.15s ease;
+}
+
+body.gym-tracker .quick-program-item:hover {
+    background: var(--gt-surface-2);
+    border-color: var(--gt-border-strong);
+}
+
+body.gym-tracker .quick-program-item .program-info strong {
+    color: var(--gt-text);
+}
+
+body.gym-tracker .quick-program-item .program-info span {
+    color: var(--gt-muted);
+}
+
+/* More menu items (mobile) */
+body.gym-tracker .more-item {
+    background: var(--gt-surface-card);
+    border: 1px solid var(--gt-border);
+    border-radius: var(--gt-radius-card);
+    box-shadow: var(--gt-shadow-card);
+    color: var(--gt-text);
+    transition: border-color 0.15s ease, background 0.15s ease;
+}
+
+body.gym-tracker .more-item:hover {
+    background: var(--gt-surface-2);
+    border-color: var(--gt-border-strong);
+}
+
+body.gym-tracker .more-item i:first-child {
+    color: var(--gt-accent);
+}
+
+/* ============================================================
+   11. CALENDAR VIEW
+   ============================================================ */
+
+body.gym-tracker .calendar {
+    background: var(--gt-surface-card);
+    border: 1px solid var(--gt-border);
+    border-radius: var(--gt-radius-card);
+    box-shadow: var(--gt-shadow-card);
+}
+
+body.gym-tracker .calendar-controls {
+    background: var(--gt-surface-card);
+    border: 1px solid var(--gt-border);
+    border-radius: var(--gt-radius-card);
+    box-shadow: var(--gt-shadow-card);
+}
+
+body.gym-tracker .calendar-detail-card {
+    background: var(--gt-surface-card);
+    border: 1px solid var(--gt-border);
+    border-radius: var(--gt-radius-card);
+    box-shadow: var(--gt-shadow-card);
+}
+
+/* ============================================================
+   12. SPACING / LAYOUT RHYTHM FINE-TUNING
+   ============================================================ */
+
+/* Main content padding — slightly more breathing room */
+body.gym-tracker .main-content {
+    max-width: 1300px;
+}
+
+/* View header title — slightly tighter margin bottom */
+body.gym-tracker .view-header {
+    margin-bottom: 1.4rem;
+}
+
+/* Sections — consistent vertical rhythm */
+body.gym-tracker .section {
+    margin-bottom: 1.75rem;
+}
+
+/* ============================================================
+   12b. EXERCISE VIEW REFINEMENTS
+   ============================================================ */
+
+/* Exercise DB cards — slightly larger name and more breathing room */
+body.gym-tracker .exercise-db-card {
+    padding: 1.1rem;
+    gap: 0.7rem;
+}
+
+body.gym-tracker .exercise-db-card h3 {
+    font-size: 0.9rem;
+    line-height: 1.3;
+}
+
+body.gym-tracker .exercise-db-card .exercise-muscle {
+    font-size: 0.78rem;
+    gap: 0.35rem;
+}
+
+/* Filter row — make filters more compact */
+body.gym-tracker .exercise-search-bar {
+    padding: 0.85rem 1rem;
+    gap: 0.75rem;
+}
+
+/* Exercise search input — cleaner focus */
+body.gym-tracker .exercise-search-bar input,
+body.gym-tracker .exercise-picker-search input {
+    background: var(--gt-surface-3);
+    border: 1px solid var(--gt-border);
+    border-radius: var(--gt-radius-inner);
+    color: var(--gt-text);
+    padding: 0.65rem 0.75rem 0.65rem 2.75rem;
+}
+
+body.gym-tracker .exercise-search-bar input:focus,
+body.gym-tracker .exercise-picker-search input:focus {
+    border-color: var(--gt-accent);
+    box-shadow: 0 0 0 3px var(--gt-accent-soft);
+    background: var(--gt-surface-2);
+}
+
+/* Exercise filter selects - make them shorter */
+body.gym-tracker .exercise-search-bar select,
+body.gym-tracker .exercise-picker-search select {
+    background-color: var(--gt-surface-3);
+    border: 1px solid var(--gt-border);
+    border-radius: var(--gt-radius-inner);
+    color: var(--gt-text);
+    padding: 0.55rem 2.2rem 0.55rem 0.75rem;
+    font-size: 0.875rem;
+}
+
+body.gym-tracker .exercise-search-bar select:focus,
+body.gym-tracker .exercise-picker-search select:focus {
+    border-color: var(--gt-accent);
+    box-shadow: 0 0 0 3px var(--gt-accent-soft);
+    background-color: var(--gt-surface-2);
+    outline: none;
+}
+
+/* View history button on exercise cards */
+body.gym-tracker .btn-view-history {
+    background: var(--gt-accent-dim);
+    border: 1px solid rgba(129,140,248,0.25);
+    color: var(--gt-accent) !important;
+    border-radius: 8px;
+    font-size: 0.78rem;
+    padding: 0.45rem 0.75rem;
+}
+
+body.gym-tracker .exercise-db-card.has-history:hover .btn-view-history {
+    background: rgba(129,140,248,0.18);
+    border-color: var(--gt-accent);
+    box-shadow: 0 0 12px rgba(129,140,248,0.2);
+}
+
+/* ============================================================
+   12c. HISTORY VIEW REFINEMENTS
+   ============================================================ */
+
+/* Tighter history filter bar */
+body.gym-tracker .history-filters {
+    padding: 0.65rem 0.85rem;
+    gap: 0.5rem;
+    margin-bottom: 1.25rem;
+}
+
+/* Dark calendar trigger in history */
+body.gym-tracker .history-filters .dark-calendar-trigger {
+    background: var(--gt-surface-2);
+    border: 1px solid var(--gt-border);
+    color: var(--gt-muted) !important;
+    border-radius: 8px;
+    font-size: 0.85rem;
+}
+
+/* ============================================================
+   13. RESPONSIVE ADJUSTMENTS
+   ============================================================ */
+
+@media (max-width: 767px) {
+    body.gym-tracker .settings-section {
+        padding: 1rem;
+        border-radius: 14px;
+    }
+
+    body.gym-tracker .program-card,
+    body.gym-tracker .workout-card,
+    body.gym-tracker .exercise-db-card {
+        border-radius: 14px;
+    }
+
+    body.gym-tracker .stat-card {
+        border-radius: 14px;
+        min-width: 140px;
+    }
+
+    body.gym-tracker .exercise-entry {
+        border-radius: 14px;
+    }
+}
+
+/* ============================================================
+   14. PAUSED WORKOUT BANNER
+   ============================================================ */
+
+body.gym-tracker .paused-workout-banner {
+    background: linear-gradient(135deg, var(--gt-surface-card) 0%, var(--gt-surface-2) 100%);
+    border: 1.5px solid rgba(251,191,36,0.45);
+    border-radius: var(--gt-radius-card);
+    box-shadow: 0 4px 20px rgba(251,191,36,0.12), var(--gt-shadow-card);
+}
+
+body.gym-tracker .paused-workout-info h3 {
+    color: #fbbf24;
+}
+
+/* ============================================================
+   15. REDUCED MOTION — honor existing app preference
+   ============================================================ */
+
+@media (prefers-reduced-motion: reduce) {
+    body.gym-tracker .stat-card::before,
+    body.gym-tracker .program-card::before,
+    body.gym-tracker .settings-section::before,
+    body.gym-tracker .workout-header::before {
+        display: none;
+    }
+}
+
+/* ============================================================
+   16. FLOATING BACK-TO-TOP BUTTON (page-level + modal)
+   Colors pinned with !important on base, :hover, :hover:active
+   so sitewide button styles can't bleed in.
+   ============================================================ */
+
+/* Page-level: fixed in the viewport bottom-right.
+   On mobile we raise it above the bottom nav (64px) and above the
+   rest-timer bar when visible (~84px + safe-area). We use a CSS custom
+   property so the rest-timer-bar can dynamically stack above it, but
+   default to clearing the nav. */
+body.gym-tracker .gt-scroll-top,
+body.gym-tracker .gt-scroll-top:hover,
+body.gym-tracker .gt-scroll-top:hover:active {
+    position: fixed;
+    right: 1rem;
+    bottom: calc(var(--bottom-nav-height, 64px) + env(safe-area-inset-bottom, 0px) + 0.75rem);
+    z-index: 1200;
+    display: inline-flex !important;
+    align-items: center;
+    justify-content: center;
+    gap: 0.4rem;
+    height: 42px !important;
+    min-height: 42px;
+    width: auto;
+    padding: 0 0.85rem !important;
+    border-radius: 999px;
+    background: linear-gradient(180deg, rgba(42, 46, 68, 0.94), rgba(20, 23, 42, 0.94)) !important;
+    -webkit-backdrop-filter: blur(10px);
+    backdrop-filter: blur(10px);
+    border: 1px solid rgba(129, 140, 248, 0.28) !important;
+    color: #ffffff !important;
+    font-size: 0.85rem !important;
+    font-weight: 600 !important;
+    font-family: inherit !important;
+    letter-spacing: 0.03em;
+    line-height: 1;
+    cursor: pointer;
+    box-shadow: 0 6px 20px rgba(0, 0, 0, 0.5), 0 0 0 1px rgba(129, 140, 248, 0.1) inset !important;
+    opacity: 0;
+    visibility: hidden;
+    pointer-events: none;
+    transform: translateY(8px) scale(0.85);
+    transition: opacity 0.25s ease, transform 0.25s ease,
+                background 0.18s ease, border-color 0.18s ease,
+                box-shadow 0.18s ease,
+                visibility 0s linear 0.25s;
+}
+
+body.gym-tracker .gt-scroll-top--visible,
+body.gym-tracker .gt-scroll-top--visible:hover,
+body.gym-tracker .gt-scroll-top--visible:hover:active {
+    opacity: 1;
+    visibility: visible;
+    pointer-events: auto;
+    transform: translateY(0) scale(1);
+    transition: opacity 0.25s ease, transform 0.25s ease,
+                background 0.18s ease, border-color 0.18s ease,
+                box-shadow 0.18s ease,
+                visibility 0s;
+}
+
+body.gym-tracker .gt-scroll-top svg {
+    display: block;
+    flex-shrink: 0;
+    transition: transform 0.2s ease;
+}
+
+body.gym-tracker .gt-scroll-top--visible:hover,
+body.gym-tracker .gt-scroll-top--visible:hover:active {
+    background: linear-gradient(180deg, rgba(58, 63, 92, 0.96), rgba(28, 32, 54, 0.96)) !important;
+    border-color: rgba(129, 140, 248, 0.55) !important;
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.6), 0 0 0 1px rgba(129, 140, 248, 0.2) inset !important;
+}
+
+body.gym-tracker .gt-scroll-top--visible:hover svg {
+    transform: translateY(-1px);
+}
+
+body.gym-tracker .gt-scroll-top--visible:hover:active {
+    transform: translateY(0) scale(0.95);
+}
+
+body.gym-tracker .gt-scroll-top:focus-visible {
+    outline: 2px solid var(--gt-accent);
+    outline-offset: 2px;
+}
+
+/* On desktop (sidebar layout) no bottom nav — keep it near the bottom */
+@media (min-width: 768px) {
+    body.gym-tracker .gt-scroll-top,
+    body.gym-tracker .gt-scroll-top:hover,
+    body.gym-tracker .gt-scroll-top:hover:active {
+        bottom: 1.5rem;
+        right: 1.5rem;
+    }
+}
+
+/* Modal variant: position:sticky inside the scrolling .modal-body so
+   it sticks at the end of the content, bottom-right of the scroll-port. */
+body.gym-tracker .gt-modal-scroll-top,
+body.gym-tracker .gt-modal-scroll-top:hover,
+body.gym-tracker .gt-modal-scroll-top:hover:active {
+    position: sticky !important;
+    bottom: 1.1rem !important;
+    right: auto !important;
+    top: auto !important;
+    left: auto !important;
+    margin-left: auto;
+    display: flex !important;
+    z-index: 4;
+}
+
+/* ============================================================
+   17. "BROWSE PUBLIC EXERCISE DIRECTORY" LINK — GHOST PILL
+   Colors pinned with !important to defeat sitewide link/button theme.
+   ============================================================ */
+
+body.gym-tracker .gt-exercise-dir-link,
+body.gym-tracker .gt-exercise-dir-link:hover,
+body.gym-tracker .gt-exercise-dir-link:hover:active {
+    display: inline-flex !important;
+    align-items: center;
+    gap: 0.35rem;
+    padding: 0.45rem 1rem !important;
+    border-radius: 999px;
+    border: 1px solid rgba(129, 140, 248, 0.4) !important;
+    background: rgba(129, 140, 248, 0.06) !important;
+    color: var(--gt-accent) !important;
+    font-size: 0.88rem !important;
+    font-weight: 600 !important;
+    font-family: inherit !important;
+    letter-spacing: -0.005em;
+    line-height: 1;
+    text-decoration: none !important;
+    cursor: pointer;
+    transition: background 0.18s ease, border-color 0.18s ease,
+                color 0.18s ease, box-shadow 0.18s ease, transform 0.18s ease;
+    box-shadow: none !important;
+    vertical-align: middle;
+    margin-top: 0.35rem;
+}
+
+body.gym-tracker .gt-exercise-dir-link:hover,
+body.gym-tracker .gt-exercise-dir-link:hover:active {
+    background: rgba(129, 140, 248, 0.14) !important;
+    border-color: rgba(129, 140, 248, 0.7) !important;
+    color: #ffffff !important;
+    box-shadow: 0 0 12px rgba(129, 140, 248, 0.2) !important;
+    transform: translateY(-1px);
+    text-decoration: none !important;
+}
+
+body.gym-tracker .gt-exercise-dir-link:focus-visible {
+    outline: 2px solid var(--gt-accent);
+    outline-offset: 2px;
+    text-decoration: none !important;
+}
+
+/* ============================================================
+   18. PROGRAM MODAL MOBILE ALIGNMENT (max-width: 640px)
+   Fixes alignment of all controls in the Create/Edit Program modal
+   at 390px: consistent gutters, touch targets >=40px, no overflow.
+   ============================================================ */
+
+@media (max-width: 640px) {
+
+    /* Modal body padding — tighter on mobile */
+    body.gym-tracker #program-modal .modal-body {
+        padding: 0.85rem 0.75rem !important;
+    }
+
+    /* Name + description inputs: full width, readable height */
+    body.gym-tracker #program-form .form-group input[type="text"],
+    body.gym-tracker #program-form .form-group textarea {
+        width: 100%;
+        box-sizing: border-box;
+    }
+
+    /* Uniform rest toggle row: fix label wrapping — icon + text shrink,
+       toggle stays on same line */
+    body.gym-tracker .rest-mode-toggle-row {
+        align-items: flex-start;
+        flex-wrap: nowrap;
+        gap: 0.5rem;
+        padding: 0.65rem 0.75rem;
+        min-height: 48px;
+    }
+
+    body.gym-tracker .rest-mode-label {
+        font-size: 0.82rem;
+        flex: 1 1 auto;
+        min-width: 0;
+        flex-wrap: wrap;
+        align-items: flex-start;
+        gap: 0.35rem;
+        padding-top: 0.1rem;
+    }
+
+    body.gym-tracker .rest-mode-label i {
+        flex-shrink: 0;
+        margin-top: 0.1rem;
+    }
+
+    body.gym-tracker .rest-mode-group .toggle-switch {
+        flex-shrink: 0;
+    }
+
+    /* Uniform rest stepper — full width on mobile */
+    body.gym-tracker .rest-mode-uniform-section {
+        padding: 0.5rem 0 0;
+    }
+
+    body.gym-tracker #rest-mode-uniform-stepper .pex-stepper {
+        width: 100%;
+        box-sizing: border-box;
+        display: flex;
+        justify-content: space-between;
+    }
+
+    /* Exercise list section — full-width, no side overflow */
+    body.gym-tracker .program-exercises-section {
+        padding: 0.65rem 0.65rem 0.65rem;
+        overflow: hidden;
+    }
+
+    /* Each exercise row: single-column layout on narrow screens.
+       Stack handle+position+name on top, then targets below. */
+    body.gym-tracker .program-exercise-row {
+        grid-template-columns: auto auto 1fr auto auto;
+        grid-template-areas:
+            "handle position name   actions actions"
+            "targets targets targets targets targets";
+        padding: 0.55rem 0.6rem;
+        gap: 0.4rem;
+        overflow: hidden;
+    }
+
+    body.gym-tracker .program-exercise-row .pex-row-actions {
+        grid-area: actions;
+        align-self: center;
+        justify-self: end;
+        margin-left: 0;
+    }
+
+    /* Targets row spans full width and lays out as a column */
+    body.gym-tracker .program-exercise-row .pex-targets {
+        display: flex;
+        flex-direction: column;
+        gap: 0.5rem;
+        width: 100%;
+        padding-top: 0.4rem;
+        border-top: 1px dashed var(--gt-border);
+        align-items: stretch;
+    }
+
+    /* Sets/reps block fills full width */
+    body.gym-tracker .pex-sets-block {
+        width: 100%;
+    }
+
+    /* Sets header: label + add button on same row, full width */
+    body.gym-tracker .pex-sets-header {
+        width: 100%;
+    }
+
+    /* Each set row: align controls on one line, ensure min touch target */
+    body.gym-tracker .pex-set-row {
+        gap: 0.4rem;
+        min-height: 40px;
+    }
+
+    /* Set label: consistent width */
+    body.gym-tracker .pex-set-label {
+        min-width: 2.8rem;
+        flex-shrink: 0;
+    }
+
+    /* Reps inputs: slightly larger for fat-finger accuracy */
+    body.gym-tracker .pex-reps-input {
+        width: 3rem;
+        min-height: 36px;
+        padding: 0.3rem 0.25rem;
+        font-size: 0.9rem;
+    }
+
+    /* Range toggle + remove set: explicit touch target */
+    body.gym-tracker .pex-range-toggle,
+    body.gym-tracker .pex-set-remove {
+        width: 32px;
+        height: 32px;
+        flex-shrink: 0;
+    }
+
+    /* Rest stepper: full width pill on mobile */
+    body.gym-tracker .program-exercise-row .pex-stepper {
+        width: 100%;
+        box-sizing: border-box;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        padding: 0.35rem 0.6rem;
+        min-height: 40px;
+    }
+
+    body.gym-tracker .program-exercise-row .pex-stepper-btn {
+        width: 32px;
+        height: 32px;
+        font-size: 0.75rem;
+    }
+
+    /* Move buttons: ensure they don't overflow */
+    body.gym-tracker .pex-move-buttons {
+        flex-shrink: 0;
+    }
+
+    /* Delete button: proper touch target */
+    body.gym-tracker .pex-delete {
+        width: 32px !important;
+        height: 32px !important;
+    }
+
+    /* Form footer buttons — full width stack, already handled by gym-tracker.css
+       @media (max-width: 520px) rule, but reinforce for 640px breakpoint */
+    body.gym-tracker .program-form-actions {
+        flex-direction: column-reverse;
+        align-items: stretch;
+        gap: 0.5rem;
+        margin-top: 1rem;
+    }
+
+    body.gym-tracker .program-form-actions .btn {
+        width: 100%;
+        min-width: 0;
+    }
+}
+
+/* Exercise card highlight animation — fires once when a new card is
+   added from the picker. JS adds .gt-exercise-added class immediately,
+   removes it after the animation duration. */
+@keyframes gt-exercise-added-glow {
+    0%   { box-shadow: 0 0 0 2px var(--gt-accent), 0 0 14px rgba(129,140,248,0.45); }
+    60%  { box-shadow: 0 0 0 2px var(--gt-accent), 0 0 10px rgba(129,140,248,0.3); }
+    100% { box-shadow: none; }
+}
+
+body.gym-tracker .program-exercise-row.gt-exercise-added {
+    animation: gt-exercise-added-glow 1.5s ease forwards;
 }

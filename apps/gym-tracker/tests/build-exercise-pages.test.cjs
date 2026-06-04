@@ -52,6 +52,8 @@ test('renderExercisePage produces a valid HTML5 document', () => {
   assert.ok(html.startsWith('<!DOCTYPE html>'));
   assert.ok(html.includes('<html lang="en">'));
   assert.ok(html.trim().endsWith('</html>'));
+  assert.ok(html.includes('class="ex-scroll-top"'), 'back-to-top button must be present');
+  assert.ok(html.includes('ex-scroll-top--visible'), 'back-to-top JS toggle class must be present');
 });
 
 test('renderExercisePage embeds canonical and ExerciseAction JSON-LD', () => {
@@ -88,6 +90,7 @@ test('renderExerciseIndex emits every exercise as a link', () => {
     assert.ok(html.includes(`/apps/gym-tracker/exercises/${slugs.get(ex.id)}/`));
   }
   assert.ok(html.includes(`${SAMPLE.length} exercises`));
+  assert.ok(html.includes('class="ex-scroll-top"'), 'back-to-top button must be present on index');
 });
 
 test('renderTaxonomyPage targets a high-volume query', () => {

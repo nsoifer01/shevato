@@ -77,16 +77,14 @@ class ProgramsView {
                 this.currentProgram.restMode = restModeToggle.checked ? 'uniform' : 'custom';
                 const uniformSection = document.getElementById('rest-mode-uniform-section');
                 if (uniformSection) uniformSection.hidden = !restModeToggle.checked;
+                if (restModeToggle.checked) {
+                    const stepperContainer = document.getElementById('rest-mode-uniform-stepper');
+                    if (stepperContainer) {
+                        this.renderUniformStepper(stepperContainer, this.currentProgram.uniformRestSeconds ?? 90);
+                    }
+                }
                 this.renderProgramExercises();
-            });
-        }
-        const uniformInput = document.getElementById('rest-mode-uniform-seconds');
-        if (uniformInput) {
-            uniformInput.addEventListener('change', () => {
-                if (!this.currentProgram) return;
-                const val = Math.max(0, Math.min(900, Math.round(Number(uniformInput.value) || 0)));
-                this.currentProgram.uniformRestSeconds = val;
-                uniformInput.value = val;
+                this.renderExercisePickerTray();
             });
         }
 
@@ -365,14 +363,33 @@ class ProgramsView {
     syncRestModeUI() {
         const toggle = document.getElementById('rest-mode-toggle');
         const uniformSection = document.getElementById('rest-mode-uniform-section');
-        const uniformInput = document.getElementById('rest-mode-uniform-seconds');
-        if (!toggle || !uniformSection || !uniformInput) return;
+        const stepperContainer = document.getElementById('rest-mode-uniform-stepper');
+        if (!toggle || !uniformSection || !stepperContainer) return;
         const isUniform = this.currentProgram && this.currentProgram.restMode === 'uniform';
         toggle.checked = isUniform;
         uniformSection.hidden = !isUniform;
         if (isUniform && this.currentProgram) {
-            uniformInput.value = this.currentProgram.uniformRestSeconds;
+            this.renderUniformStepper(stepperContainer, this.currentProgram.uniformRestSeconds ?? 90);
         }
+    }
+
+    /**
+     * Render the uniform-rest stepper into `container` and wire its +/-
+     * buttons so they update currentProgram.uniformRestSeconds directly.
+     * Matches the per-exercise stepperHTML pattern exactly.
+     */
+    renderUniformStepper(container, seconds) {
+        const label = formatRestLabel(seconds);
+        container.innerHTML = stepperHTML('uniformRest', 0, seconds, 0, 900, 'Rest', 15, label);
+        container.querySelectorAll('[data-stepper]').forEach(btn => {
+            btn.addEventListener('click', () => {
+                if (!this.currentProgram) return;
+                const cur = this.currentProgram.uniformRestSeconds ?? 90;
+                const next = Math.max(0, Math.min(900, cur + Number(btn.dataset.delta)));
+                this.currentProgram.uniformRestSeconds = next;
+                this.renderUniformStepper(container, next);
+            });
+        });
     }
 
     renderProgramExercises() {
@@ -405,6 +422,7 @@ class ProgramsView {
             const details = this.app.getExerciseById(exercise.exerciseId);
             const muscle = formatMuscleGroup(details?.muscleGroup);
             const restLabel = formatRestLabel(exercise.restSeconds);
+            const restAfterLabel = formatRestLabel(exercise.restAfterSeconds);
             // Visual cues for supersets. Group membership is computed from
             // adjacent rows: if this row shares groupId with the previous,
             // it's "linked above"; if with the next, "linked below". Used
@@ -463,6 +481,7 @@ class ProgramsView {
                             title="${isSingle ? 'Add rep range' : 'Remove rep range'}"
                             aria-label="${isSingle ? 'Add rep range' : 'Remove rep range'}">
                             <i class="fas ${isSingle ? 'fa-arrows-left-right' : 'fa-minus'}"></i>
+                            <span class="pex-range-toggle-label">${isSingle ? 'Range' : 'Single'}</span>
                         </button>
                     </div>
                     <button type="button" class="pex-set-remove"
@@ -517,11 +536,13 @@ class ProgramsView {
                                 <i class="fas fa-plus"></i> Add set
                             </button>
                         </div>
+                        <p class="pex-range-hint">Each set can be a single target or a range.</p>
                         <div class="pex-set-rows">
                             ${setRowsHTML}
                         </div>
                     </div>
-                    ${isUniform ? '' : stepperHTML('rest', index, exercise.restSeconds, 0, 900, 'Rest', 15, restLabel)}
+                    ${stepperHTML('rest', index, exercise.restSeconds, 0, 900, 'Rest between sets', 15, restLabel)}
+                    ${isUniform ? '' : stepperHTML('restAfter', index, exercise.restAfterSeconds, 0, 900, 'Rest after exercise', 15, restAfterLabel)}
                 </div>
                 <div class="pex-row-actions">
                     ${linkBtnHTML}
@@ -698,6 +719,9 @@ class ProgramsView {
         if (field === 'rest') {
             this.currentProgram.updateExercise(index, { restSeconds: ex.restSeconds + delta });
             this.renderProgramExercises();
+        } else if (field === 'restAfter') {
+            this.currentProgram.updateExercise(index, { restAfterSeconds: ex.restAfterSeconds + delta });
+            this.renderProgramExercises();
         }
     }
 
@@ -727,15 +751,26 @@ class ProgramsView {
         if (!ex || !Array.isArray(ex.sets)) return;
         const row = ex.sets[setIndex];
         if (!row) return;
-        if (row.repsMin === row.repsMax) {
+        const activating = row.repsMin === row.repsMax;
+        if (activating) {
             // Activate range: default max to min+2 (capped at 100)
             row.repsMax = Math.min(100, row.repsMin + 2);
         } else {
-            // Collapse range: set both to repsMax
-            row.repsMin = row.repsMax;
+            // Collapse range: keep the first (min) number
+            row.repsMax = row.repsMin;
         }
         this.currentProgram.updatedAt = new Date().toISOString();
         this.renderProgramExercises();
+        if (activating) {
+            // Move focus to the newly revealed max input so Tab flows naturally.
+            const maxInput = document.querySelector(
+                `#program-exercises-list [data-action="set-reps-max"][data-exercise-index="${exerciseIndex}"][data-set-index="${setIndex}"]`
+            );
+            if (maxInput) {
+                maxInput.focus();
+                maxInput.select();
+            }
+        }
     }
 
     setRepValue(exerciseIndex, setIndex, minOrMax, rawValue) {
@@ -746,8 +781,14 @@ class ProgramsView {
         if (!row) return;
         const val = Math.max(1, Math.min(100, Math.round(Number(rawValue) || 1)));
         if (minOrMax === 'min') {
+            const wasSingle = row.repsMin === row.repsMax;
             row.repsMin = val;
-            if (row.repsMax < row.repsMin) row.repsMax = row.repsMin;
+            if (wasSingle) {
+                // Single-mode: keep repsMax in sync so the range UI stays closed.
+                row.repsMax = val;
+            } else if (row.repsMax < row.repsMin) {
+                row.repsMax = row.repsMin;
+            }
         } else {
             row.repsMax = val;
             if (row.repsMin > row.repsMax) row.repsMin = row.repsMax;
@@ -851,11 +892,8 @@ class ProgramsView {
         if (restModeToggle) {
             this.currentProgram.restMode = restModeToggle.checked ? 'uniform' : 'custom';
         }
-        const uniformInput = document.getElementById('rest-mode-uniform-seconds');
-        if (uniformInput && this.currentProgram.restMode === 'uniform') {
-            const val = Math.max(0, Math.min(900, Math.round(Number(uniformInput.value) || 0)));
-            this.currentProgram.uniformRestSeconds = val;
-        }
+        // uniformRestSeconds is already up-to-date: the stepper writes to
+        // currentProgram.uniformRestSeconds directly on every click.
 
         // Check if this is a new program or edit
         const existingIndex = this.app.programs.findIndex(p => p.id === this.currentProgram.id);
@@ -1065,19 +1103,6 @@ class ProgramsView {
                         document.getElementById('exercise-equipment-filter')?.value || '',
                     );
                     this.renderExercisePickerTray();
-                    return;
-                }
-                const stepper = e.target.closest('[data-tray-stepper]');
-                if (stepper) {
-                    const id = Number(stepper.dataset.exerciseId);
-                    const field = stepper.dataset.field;
-                    const delta = Number(stepper.dataset.delta);
-                    const item = this.pickerSelection.get(id);
-                    if (!item) return;
-                    if (field === 'sets') item.targetSets = clampTray(item.targetSets + delta, 1, 20);
-                    else if (field === 'reps') item.targetReps = clampTray(item.targetReps + delta, 1, 100);
-                    else if (field === 'rest') item.restSeconds = clampTray(item.restSeconds + delta, 0, 600);
-                    this.renderExercisePickerTray();
                 }
             });
             trayList.dataset.wired = '1';
@@ -1158,12 +1183,14 @@ class ProgramsView {
         if (this.pickerSelection.has(exerciseId)) {
             this.pickerSelection.delete(exerciseId);
         } else {
+            const defRest = defaultRestForEquipment(exercise.equipment);
             this.pickerSelection.set(exerciseId, {
                 id: exercise.id,
                 name: exercise.name,
                 targetSets: 3,
                 targetReps: 10,
-                restSeconds: defaultRestForEquipment(exercise.equipment),
+                restSeconds: defRest,
+                restAfterSeconds: defRest,
             });
         }
 
@@ -1197,11 +1224,6 @@ class ProgramsView {
         list.innerHTML = items.map((item) => `
             <li class="exercise-picker-tray-row" data-exercise-id="${item.id}">
                 <div class="tray-name">${escapeHtml(item.name)}</div>
-                <div class="tray-steppers">
-                    ${trayStepperHTML(item.id, 'sets', item.targetSets, 'Sets')}
-                    ${trayStepperHTML(item.id, 'reps', item.targetReps, 'Reps')}
-                    ${trayStepperHTML(item.id, 'rest', item.restSeconds, 'Rest', 15, formatRestLabel(item.restSeconds))}
-                </div>
                 <button type="button" class="tray-remove"
                     data-tray-action="remove" data-exercise-id="${item.id}"
                     title="Remove from selection" aria-label="Remove from selection">
@@ -1217,6 +1239,9 @@ class ProgramsView {
             showToast('Pick at least one exercise first', 'error');
             return;
         }
+
+        const firstNewIndex = this.currentProgram ? this.currentProgram.exercises.length : 0;
+
         items.forEach(item => {
             this.currentProgram.addExercise(
                 item.id,
@@ -1225,6 +1250,7 @@ class ProgramsView {
                 item.targetReps,
                 '',
                 item.restSeconds,
+                item.restAfterSeconds ?? item.restSeconds,
             );
         });
 
@@ -1233,6 +1259,18 @@ class ProgramsView {
         this.renderExercisePickerTray();
         this.renderProgramExercises();
         showToast(`Added ${items.length} exercise${items.length === 1 ? '' : 's'}`, 'success');
+
+        // Scroll to and briefly highlight the first newly added exercise row.
+        requestAnimationFrame(() => {
+            const rows = document.querySelectorAll(
+                '#program-exercises-list .program-exercise-row'
+            );
+            const target = rows[firstNewIndex];
+            if (!target) return;
+            target.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+            target.classList.add('gt-exercise-added');
+            setTimeout(() => target.classList.remove('gt-exercise-added'), 1600);
+        });
     }
 
     updatePickerDropdownStates(searchTerm, currentCategory, currentEquipment) {
@@ -1280,8 +1318,19 @@ class ProgramsView {
         }
     }
 
-    removeExerciseFromProgram(index) {
-        if (this.currentProgram) {
+    async removeExerciseFromProgram(index) {
+        if (!this.currentProgram) return;
+        const exercise = this.currentProgram.exercises[index];
+        if (!exercise) return;
+        const name = escapeHtml(exercise.exerciseName || exercise.name || '');
+        const confirmed = await showConfirmModal({
+            title: 'Remove Exercise',
+            message: `Remove <strong>"${name}"</strong> from this program?`,
+            confirmText: 'Remove',
+            cancelText: 'Cancel',
+            isDangerous: true,
+        });
+        if (confirmed) {
             this.currentProgram.removeExercise(index);
             this.renderProgramExercises();
         }
@@ -1344,36 +1393,6 @@ function stepperHTML(field, index, value, min, max, label, step = 1, valueLabel 
     `;
 }
 
-/**
- * Compact stepper used inside the exercise-picker tray. Differs from the
- * program-builder stepper in markup (no per-index lookup; keyed by exercise id).
- */
-function trayStepperHTML(exerciseId, field, value, label, step = 1, valueLabel = null) {
-    const display = valueLabel ?? String(value);
-    return `
-        <span class="pex-stepper" data-field="${field}">
-            <span class="pex-stepper-label">${label}</span>
-            <span class="pex-stepper-controls">
-                <button type="button" class="pex-stepper-btn"
-                    data-tray-stepper data-exercise-id="${exerciseId}" data-field="${field}" data-delta="${-step}"
-                    aria-label="Decrease ${label.toLowerCase()}">
-                    <i class="fas fa-minus"></i>
-                </button>
-                <span class="pex-stepper-value">${display}</span>
-                <button type="button" class="pex-stepper-btn"
-                    data-tray-stepper data-exercise-id="${exerciseId}" data-field="${field}" data-delta="${step}"
-                    aria-label="Increase ${label.toLowerCase()}">
-                    <i class="fas fa-plus"></i>
-                </button>
-            </span>
-        </span>
-    `;
-}
-
-function clampTray(n, min, max) {
-    if (!Number.isFinite(n)) return min;
-    return Math.max(min, Math.min(max, Math.round(n)));
-}
 
 /** "1:30", "45s", "0s" — short display optimized for the stepper pill. */
 function formatRestLabel(seconds) {
