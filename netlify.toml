@@ -8,6 +8,17 @@
 [functions]
   node_bundler = "esbuild"
 
+# The site homepage lives at /home.html; "/" must be a clean edge 301 so
+# Google indexes the real homepage. force = true makes this win over the
+# committed index.html stub (which previously served at "/" carrying a
+# noindex meta that de-indexed the domain root - GSC, 2026-06). The stub
+# remains only as a local-dev / no-JS fallback.
+[[redirects]]
+  from = "/"
+  to = "/home.html"
+  status = 301
+  force = true
+
 # product.html was retired as part of the marketing/portfolio refresh.
 # Its services content now lives at the top of /work.html. Permanent
 # redirect so anyone with a bookmark or inbound link lands cleanly.
