@@ -299,6 +299,24 @@
                                     <textarea id="program-description" placeholder="Program details..." rows="3"></textarea>
                                 </div>
 
+                                <div class="form-group rest-mode-group">
+                                    <div class="rest-mode-toggle-row">
+                                        <label class="rest-mode-label" for="rest-mode-toggle">
+                                            <i class="fas fa-stopwatch" aria-hidden="true"></i>
+                                            Uniform rest between exercises
+                                        </label>
+                                        <label class="toggle-switch" aria-label="Use a single rest duration between all exercises">
+                                            <input type="checkbox" id="rest-mode-toggle" role="switch">
+                                            <span class="toggle-slider" aria-hidden="true"></span>
+                                        </label>
+                                    </div>
+                                    <div id="rest-mode-uniform-section" hidden class="rest-mode-uniform-section">
+                                        <span class="rest-mode-uniform-label">Rest duration</span>
+                                        <div id="rest-mode-uniform-stepper"></div>
+                                        <p id="rest-mode-uniform-hint" class="form-hint">Applied after each exercise. Rest between sets stays per exercise.</p>
+                                    </div>
+                                </div>
+
                                 <section class="program-exercises-section" id="program-exercises-section">
                                     <header class="program-exercises-header">
                                         <h3 class="program-exercises-heading">
@@ -325,6 +343,11 @@
                                     </button>
                                 </div>
                             </form>
+                            <!-- Floating back-to-top inside the program modal -->
+                            <button type="button" id="gt-program-modal-scroll-top" class="gt-scroll-top gt-modal-scroll-top" aria-label="Back to top" tabindex="-1">
+                                <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M8 12V4M4 8l4-4 4 4" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+                                <span>Top</span>
+                            </button>
                         </div>
                     </div>
                 </div>
@@ -436,8 +459,15 @@
                                 <i class="fas fa-clock"></i>
                                 <span id="workout-time">0:00</span>
                             </div>
+                            <div id="workout-rest-between" class="workout-rest-between" hidden>
+                                <i class="fas fa-hourglass-half" aria-hidden="true"></i>
+                                <span class="wrb-label wrb-label--full">Rest between exercises:</span><span class="wrb-label wrb-label--short">Rest:</span> <strong id="workout-rest-between-value"></strong>
+                            </div>
                         </div>
                         <div class="workout-header-actions">
+                            <button class="btn-icon btn-icon-plates" id="plate-hints-toggle-btn" title="Set default plate hints on/off for all exercises" aria-label="Toggle default plate calculator hints" aria-pressed="true">
+                                <i class="fas fa-dumbbell"></i>
+                            </button>
                             <button class="btn-icon btn-icon-pause" id="pause-workout-btn" title="Pause Workout" aria-label="Pause workout and save progress">
                                 <i class="fas fa-pause"></i>
                             </button>
@@ -477,57 +507,79 @@
 
                     <!-- Finish Workout Modal -->
                     <div id="finish-workout-modal" class="modal" role="dialog" aria-modal="true" aria-labelledby="finish-workout-title">
-                        <div class="modal-content">
-                            <div class="modal-header">
-                                <h2 id="finish-workout-title">Finish Workout</h2>
-                                <button class="modal-close" aria-label="Close">&times;</button>
+                        <div class="modal-content finish-workout-modal-content">
+                            <div class="finish-modal-hero">
+                                <div class="finish-modal-hero-text">
+                                    <h2 id="finish-workout-title" class="finish-modal-title">Finish Workout</h2>
+                                    <span class="finish-modal-duration-hero" id="summary-duration-hero">0 min</span>
+                                </div>
+                                <button class="modal-close finish-modal-close" aria-label="Close">&times;</button>
                             </div>
                             <div class="modal-body">
                                 <form id="finish-workout-form">
                                     <div class="workout-summary">
                                         <div class="summary-stat">
+                                            <span class="summary-stat-icon"><i class="fas fa-clock" aria-hidden="true"></i></span>
+                                            <span class="value" id="summary-duration" aria-label="Duration">0 min</span>
                                             <span class="label">Duration</span>
-                                            <span class="value" id="summary-duration">0 min</span>
                                         </div>
                                         <div class="summary-stat">
-                                            <span class="label">Total Volume</span>
-                                            <span class="value" id="summary-volume">0 kg</span>
+                                            <span class="summary-stat-icon"><i class="fas fa-weight-hanging" aria-hidden="true"></i></span>
+                                            <span class="value" id="summary-volume" aria-label="Total volume">0 kg</span>
+                                            <span class="label">Volume</span>
                                         </div>
                                         <div class="summary-stat">
-                                            <span class="label">Sets Completed</span>
-                                            <span class="value" id="summary-sets">0</span>
+                                            <span class="summary-stat-icon"><i class="fas fa-list-check" aria-hidden="true"></i></span>
+                                            <span class="value" id="summary-sets" aria-label="Sets completed">0</span>
+                                            <span class="label">Sets</span>
                                         </div>
-                                        <div class="summary-stat" id="summary-prs-stat" hidden>
-                                            <span class="label">PRs Hit</span>
-                                            <span class="value" id="summary-prs">0</span>
+                                        <div class="summary-stat summary-stat--pr" id="summary-prs-stat" hidden>
+                                            <span class="summary-stat-icon"><i class="fas fa-trophy" aria-hidden="true"></i></span>
+                                            <span class="value" id="summary-prs" aria-label="Personal records">0</span>
+                                            <span class="label">PRs</span>
                                         </div>
                                     </div>
 
-                                    <div id="post-workout-metrics-section">
-                                        <h3>Post-Workout Metrics (Optional)</h3>
-                                        <div class="form-row">
+                                    <div id="post-workout-metrics-section" class="post-workout-metrics-section">
+                                        <div class="post-workout-metrics-header">
+                                            <i class="fas fa-heart-pulse" aria-hidden="true"></i>
+                                            <span>Post-Workout Metrics</span>
+                                            <span class="post-workout-optional">optional</span>
+                                        </div>
+                                        <div class="form-row post-workout-hr-row">
                                             <div class="form-group">
                                                 <label for="avg-heart-rate">Avg Heart Rate</label>
-                                                <input type="number" id="avg-heart-rate" placeholder="bpm" min="30" max="250">
+                                                <div class="input-with-unit">
+                                                    <input type="number" id="avg-heart-rate" placeholder="0" min="30" max="250">
+                                                    <span class="input-unit">bpm</span>
+                                                </div>
                                             </div>
                                             <div class="form-group">
                                                 <label for="max-heart-rate">Max Heart Rate</label>
-                                                <input type="number" id="max-heart-rate" placeholder="bpm" min="30" max="250">
+                                                <div class="input-with-unit">
+                                                    <input type="number" id="max-heart-rate" placeholder="0" min="30" max="250">
+                                                    <span class="input-unit">bpm</span>
+                                                </div>
                                             </div>
                                         </div>
                                         <div class="form-group">
                                             <label for="calories-burned">Calories Burned</label>
-                                            <input type="number" id="calories-burned" placeholder="kcal" min="0" max="5000">
+                                            <div class="input-with-unit">
+                                                <input type="number" id="calories-burned" placeholder="0" min="0" max="5000">
+                                                <span class="input-unit">kcal</span>
+                                            </div>
                                         </div>
                                         <div class="form-group">
-                                            <label for="workout-notes">Notes (Optional)</label>
-                                            <textarea id="workout-notes" placeholder="How did the workout go?" rows="3"></textarea>
+                                            <label for="workout-notes">Notes</label>
+                                            <textarea id="workout-notes" placeholder="How did the workout feel?" rows="3"></textarea>
                                         </div>
                                     </div>
 
-                                    <div class="form-actions">
-                                        <button type="button" class="btn btn-secondary modal-close">Cancel</button>
-                                        <button type="submit" class="btn btn-primary">Complete Workout</button>
+                                    <div class="finish-workout-actions">
+                                        <button type="button" class="btn btn-ghost finish-workout-cancel modal-close">Cancel</button>
+                                        <button type="submit" class="btn btn-primary finish-workout-submit">
+                                            <i class="fas fa-check" aria-hidden="true"></i> Complete Workout
+                                        </button>
                                     </div>
                                 </form>
                             </div>
@@ -583,7 +635,7 @@
                 <div class="view-header">
                     <h1>Exercise Database</h1>
                     <p class="subtitle" id="exercise-count-text">Loading exercises...</p>
-                    <p class="subtitle"><a href="exercises/">Browse the public exercise directory →</a></p>
+                    <p class="subtitle"><a href="exercises/" class="gt-exercise-dir-link">Browse the public exercise directory →</a></p>
                     <button class="btn btn-primary" id="create-custom-exercise-btn">
                         <i class="fas fa-plus"></i> Create Custom Exercise
                     </button>
@@ -640,10 +692,11 @@
                             <option value="with-history">With History</option>
                             <option value="without-history">Without History</option>
                         </select>
-                        <select id="exercise-db-history-sort" style="display: none;">
-                            <option value="name">Sort: A-Z</option>
-                            <option value="most-history">Sort: Most History</option>
-                            <option value="least-history">Sort: Least History</option>
+                        <select id="exercise-db-sort">
+                            <option value="name-asc">Sort: A-Z</option>
+                            <option value="name-desc">Sort: Z-A</option>
+                            <option value="most-logged">Sort: Most Logged</option>
+                            <option value="most-recent">Sort: Recently Used</option>
                         </select>
                         <button type="button" id="exercise-db-reset" class="btn-filter-reset" disabled>
                             <i class="fas fa-rotate-left"></i> Reset
@@ -1147,6 +1200,12 @@
     </div>
 
     <div data-include="footer"></div>
+
+    <!-- Floating back-to-top button (page-level, long views) -->
+    <button type="button" id="gt-page-scroll-top" class="gt-scroll-top" aria-label="Back to top" tabindex="-1">
+        <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M8 12V4M4 8l4-4 4 4" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        <span>Top</span>
+    </button>
 
     <!-- Toast Container -->
     <div id="toast-container"></div>

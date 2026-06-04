@@ -480,6 +480,22 @@ export function playSound(soundType = 'success') {
         } else if (soundType === 'pr') {
             play(1400, 0, 0.22, 0.22);
             play(1800, 0.12, 0.18, 0.18);
+        } else if (soundType === 'timer-low') {
+            // Brief square pip at 880 Hz (matches Arena timerLow).
+            const osc = _audioCtx.createOscillator();
+            const gain = _audioCtx.createGain();
+            const filt = _audioCtx.createBiquadFilter();
+            osc.type = 'square';
+            osc.frequency.value = 880;
+            filt.type = 'lowpass';
+            filt.frequency.value = 2200;
+            const now2 = _audioCtx.currentTime;
+            gain.gain.setValueAtTime(0, now2);
+            gain.gain.linearRampToValueAtTime(0.07, now2 + 0.005);
+            gain.gain.linearRampToValueAtTime(0, now2 + 0.07);
+            osc.connect(filt).connect(gain).connect(_audioCtx.destination);
+            osc.start(now2);
+            osc.stop(now2 + 0.09);
         } else {
             play(800, 0);
         }

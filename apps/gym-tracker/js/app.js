@@ -17,6 +17,7 @@ import { AchievementService } from './services/AchievementService.js';
 
 import { EXERCISE_DATABASE, loadExerciseDatabase } from '../data/exercises-db.js';
 import { showToast, debugLog } from './utils/helpers.js';
+import { trapModalFocus } from './utils/modal-focus.js';
 import { mountSyncStatusPill } from './utils/sync-status.js';
 import { emit, EVENTS } from './utils/event-bus.js';
 
@@ -90,6 +91,9 @@ class GymTrackerApp {
         // the modal stays dismissed (flag persists).
         this.maybeShowOnboarding();
 
+        // Floating back-to-top buttons
+        this.initScrollTopButtons();
+
         debugLog('✅ Gym Tracker App initialized');
     }
 
@@ -103,7 +107,15 @@ class GymTrackerApp {
         const seen = storageService.hasSeenOnboarding();
         const hasData = this.programs.length > 0 || this.workoutSessions.length > 0;
         if (seen || hasData) return;
+        this.openOnboardingModal();
+    }
 
+    /**
+     * Open the onboarding welcome modal unconditionally. Used both by
+     * maybeShowOnboarding (first-time guard) and the Settings "Replay
+     * welcome tour" button (which must work regardless of saved data).
+     */
+    openOnboardingModal() {
         const modal = document.getElementById('onboarding-modal');
         if (!modal) return;
 
@@ -115,6 +127,7 @@ class GymTrackerApp {
 
         modal.setAttribute('aria-hidden', 'false');
         modal.classList.add('active');
+        trapModalFocus(modal);
 
         document.getElementById('onboarding-dismiss')?.addEventListener('click', close, { once: true });
         document.getElementById('onboarding-skip')?.addEventListener('click', close, { once: true });
@@ -524,6 +537,64 @@ class GymTrackerApp {
         this.updateAchievements();
         if (this.currentView && this.viewControllers[this.currentView]) {
             this.onViewChange(this.currentView);
+        }
+    }
+
+    /**
+     * Bind one floating back-to-top button to a scrolling container.
+     * Threshold: show once scrollTop/scrollY >= 400px.
+     */
+    _bindScrollTop(getScrollY, scrollToTop, btn) {
+        if (!btn) return;
+        const THRESHOLD = 400;
+        const onScroll = () => {
+            btn.classList.toggle('gt-scroll-top--visible', getScrollY() >= THRESHOLD);
+        };
+        // page-level: passive window scroll
+        if (getScrollY === (() => window.scrollY || document.documentElement.scrollTop)) {
+            window.addEventListener('scroll', onScroll, { passive: true });
+        } else {
+            // modal-level: passed getScrollY closes over a panel element
+            const panelEl = btn._gtScrollPanel;
+            if (panelEl) {
+                panelEl.addEventListener('scroll', onScroll, { passive: true });
+            }
+        }
+        btn.addEventListener('click', () => {
+            scrollToTop();
+        });
+    }
+
+    initScrollTopButtons() {
+        const THRESHOLD = 400;
+
+        // Page-level button
+        const pageBtn = document.getElementById('gt-page-scroll-top');
+        if (pageBtn) {
+            const getY = () => window.scrollY || document.documentElement.scrollTop || 0;
+            window.addEventListener('scroll', () => {
+                pageBtn.classList.toggle('gt-scroll-top--visible', getY() >= THRESHOLD);
+                pageBtn.tabIndex = pageBtn.classList.contains('gt-scroll-top--visible') ? 0 : -1;
+            }, { passive: true });
+            pageBtn.addEventListener('click', () => {
+                window.scrollTo({ top: 0, behavior: 'smooth' });
+            });
+        }
+
+        // Program modal button — bind to the scrolling .modal-content container
+        const modalBtn = document.getElementById('gt-program-modal-scroll-top');
+        const programModal = document.getElementById('program-modal');
+        if (modalBtn && programModal) {
+            const panel = programModal.querySelector('.modal-content');
+            if (panel) {
+                panel.addEventListener('scroll', () => {
+                    modalBtn.classList.toggle('gt-scroll-top--visible', panel.scrollTop >= THRESHOLD);
+                    modalBtn.tabIndex = modalBtn.classList.contains('gt-scroll-top--visible') ? 0 : -1;
+                }, { passive: true });
+                modalBtn.addEventListener('click', () => {
+                    panel.scrollTo({ top: 0, behavior: 'smooth' });
+                });
+            }
         }
     }
 

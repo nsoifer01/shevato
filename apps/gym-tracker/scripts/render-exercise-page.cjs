@@ -1,6 +1,6 @@
 'use strict';
 
-const { renderMoreFooter } = require('./render-footer.cjs');
+const { renderMoreFooter, renderScrollTopButton } = require('./render-footer.cjs');
 
 const SITE = 'https://shevato.com';
 
@@ -125,6 +125,7 @@ ${jsonLd(buildExerciseSchema({ exercise, canonical, description }))}
   </main>
 
   ${renderMoreFooter()}
+  ${renderScrollTopButton()}
 </body>
 </html>
 `;

@@ -4,7 +4,6 @@
 import { app } from '../app.js';
 import { showToast, downloadJSON, showConfirmModal } from '../utils/helpers.js';
 import { DarkSelect } from '../utils/dark-select.js';
-import { storageService } from '../services/StorageService.js';
 
 function validateImportData(data) {
     if (!data) {
@@ -130,24 +129,12 @@ class SettingsView {
             });
         }
 
-        // Replay onboarding — clear the seen flag and reload so the
-        // welcome modal fires again (the boot path in app.js gates on
-        // `hasSeenOnboarding()` AND a clean data state, so this is mostly
-        // useful for users who skipped the tour and want a refresher).
+        // Replay onboarding — open the welcome modal directly without
+        // requiring a reload, so users with existing data can see it too.
         const replayBtn = document.getElementById('replay-onboarding-btn');
         if (replayBtn) {
-            replayBtn.addEventListener('click', async () => {
-                const confirmed = await showConfirmModal({
-                    title: 'Replay welcome tour',
-                    message: 'Reload the app and show the first-run welcome again? Your data is unaffected.',
-                    confirmText: 'Replay',
-                    cancelText: 'Cancel',
-                    isDangerous: false,
-                });
-                if (confirmed) {
-                    storageService.remove(storageService.keys.ONBOARDING_SEEN);
-                    location.reload();
-                }
+            replayBtn.addEventListener('click', () => {
+                this.app.openOnboardingModal();
             });
         }
 
