@@ -22,7 +22,8 @@ function autoBackupToLocalStorage() {
             actionHistory: actionHistory.slice(-10) // Keep last 10 for recovery
         };
 
-        localStorage.setItem('marioKartAutoBackup', JSON.stringify(backupData));
+        const autoBackupKey = window.getStorageKey ? window.getStorageKey('AutoBackup') : 'marioKartAutoBackup';
+        localStorage.setItem(autoBackupKey, JSON.stringify(backupData));
         console.log('Auto-backup completed');
     } catch (e) {
         console.error('Auto-backup failed:', e);
@@ -31,7 +32,8 @@ function autoBackupToLocalStorage() {
 
 function restoreFromBackup() {
     try {
-        const backup = localStorage.getItem('marioKartAutoBackup');
+        const autoBackupKey = window.getStorageKey ? window.getStorageKey('AutoBackup') : 'marioKartAutoBackup';
+        const backup = localStorage.getItem(autoBackupKey);
         if (!backup) {
             showMessage('No automatic backup found. Backups are created every 10 minutes when you have race data.', true);
             return;
@@ -147,7 +149,8 @@ function restoreFromBackup() {
                 }
             }
             
-            localStorage.setItem('marioKartRaces', JSON.stringify(races));
+            const racesKey = window.getStorageKey ? window.getStorageKey('Races') : 'marioKartRaces';
+            localStorage.setItem(racesKey, JSON.stringify(races));
             
             updateDisplay();
             updateAchievements();
@@ -166,35 +169,7 @@ function restoreFromBackup() {
 
 // Function no longer needed - restore button is now in the sidebar HTML
 
-function backupToGoogleDrive() {
-    const data = {
-        races: races,
-        playerNames: window.PlayerNameManager ? window.PlayerNameManager.getAll() : playerNames,
-        playerSymbols: window.PlayerSymbolManager ? window.PlayerSymbolManager.getAllSymbols() : {},
-        backupDate: new Date().toISOString(),
-        version: '2.2',
-        actionHistory: actionHistory
-    };
-
-    const fileContent = JSON.stringify(data, null, 2);
-    const fileName = `mario-kart-backup-${new Date().toISOString().split('T')[0]}.json`;
-
-    // Create downloadable backup
-    const blob = new Blob([fileContent], { type: 'application/json' });
-    const link = document.createElement('a');
-    link.href = URL.createObjectURL(blob);
-    link.download = fileName;
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-
-    // Also save to auto-backup
-    autoBackupToLocalStorage();
-
-    showMessage('Backup downloaded and auto-backup updated!');
-}
 
 // Export functions to global scope
 window.restoreFromBackup = restoreFromBackup;
 window.autoBackupToLocalStorage = autoBackupToLocalStorage;
-window.backupToGoogleDrive = backupToGoogleDrive;

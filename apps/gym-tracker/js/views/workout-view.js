@@ -839,7 +839,7 @@ class WorkoutView {
                 </div>
 
                 <div class="exercise-body">
-                    <div class="rest-row">
+                    <div class="rest-row${this.activeRestExerciseIndex === index && this._activeRestType === 'set' ? ' rest-row--resting' : ''}">
                         ${restPillsHTML}
                         ${plateToggleHTML}
                     </div>
@@ -1747,6 +1747,7 @@ class WorkoutView {
         if (exerciseIndex < 0) return;
         const header = document.querySelector(`#exercise-${exerciseIndex} .rest-row`);
         if (!header) return;
+        header.classList.add('rest-row--resting');
         let chip = header.querySelector('.rest-countdown-chip');
         if (!chip) {
             chip = document.createElement('div');
@@ -1763,8 +1764,12 @@ class WorkoutView {
     clearRestChip() {
         const idx = this.activeRestExerciseIndex;
         if (idx < 0) return;
-        const chip = document.querySelector(`#exercise-${idx} .rest-countdown-chip`);
-        if (chip) chip.remove();
+        const row = document.querySelector(`#exercise-${idx} .rest-row`);
+        if (row) {
+            row.classList.remove('rest-row--resting');
+            const chip = row.querySelector('.rest-countdown-chip');
+            if (chip) chip.remove();
+        }
     }
 
     onRestTick(remaining) {

@@ -125,36 +125,6 @@ body {
     text-align: center;
 }
 
-/* Input Stepper for Touch */
-.input-stepper {
-    display: flex;
-    align-items: center;
-    gap: 0.5rem;
-    margin-top: 0.5rem;
-}
-
-.stepper-btn {
-    flex: 0 0 2.5rem;
-    width: 2.5rem;
-    height: 2.5rem;
-    border-radius: 50%;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    font-size: 1.25rem;
-    touch-action: manipulation;
-}
-
-.stepper-display {
-    flex: 1;
-    text-align: center;
-    font-size: 1.25rem;
-    font-weight: bold;
-    padding: 0.5rem;
-    background: var(--bg-secondary, #f3f4f6);
-    border-radius: 0.5rem;
-}
-
 /* Action Buttons - Stacked on Mobile */
 .action-buttons {
     display: flex;
@@ -390,11 +360,6 @@ canvas {
 
 /* Hide Desktop Elements on Mobile */
 @media (max-width: 767px) {
-    .fab-button,
-    .quick-race-form {
-        display: none !important;
-    }
-    
     /* Show mobile table cards instead of table */
     .table-container {
         display: none;
@@ -458,11 +423,6 @@ canvas {
         display: grid;
         grid-template-columns: repeat(2, 1fr);
         gap: 1.5rem;
-    }
-    
-    /* Hide steppers on tablet */
-    .input-stepper {
-        display: none;
     }
     
     /* Show number buttons */

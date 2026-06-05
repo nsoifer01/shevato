@@ -1399,6 +1399,31 @@ body.rising-seasons-app button {
   color: var(--muted-2);
 }
 
+/* Data-source attribution (TMDB logo + disclaimer, JustWatch, IMDb).
+   Required by the TMDB API terms. */
+.data-attribution {
+  padding: 0.25rem 1rem 1rem;
+  text-align: center;
+  font-size: 0.72rem;
+  color: var(--muted-2);
+}
+.data-attribution .tmdb-logo {
+  height: 13px;
+  width: auto;
+  vertical-align: middle;
+  opacity: 1;
+}
+.data-attribution p {
+  margin: 0.45rem auto 0;
+  max-width: 640px;
+  line-height: 1.5;
+}
+.data-attribution a {
+  color: var(--muted);
+  text-decoration: underline;
+}
+.data-attribution a:hover { color: var(--text); }
+
 .results-grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));

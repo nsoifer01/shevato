@@ -1088,7 +1088,7 @@ function exportData() {
     const dataStr = JSON.stringify(exportData, null, 2);
     const dataUri = 'data:application/json;charset=utf-8,'+ encodeURIComponent(dataStr);
     
-    const exportFileDefaultName = `football-h2h-${new Date().toISOString().split('T')[0]}.json`;
+    const exportFileDefaultName = `football-h2h-data-${new Date().toISOString().split('T')[0]}.json`;
     
     const linkElement = document.createElement('a');
     linkElement.setAttribute('href', dataUri);

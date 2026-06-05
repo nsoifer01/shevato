@@ -946,19 +946,24 @@
           }
         }
 
-        // Footer: hide the Navigate link for the page/section we're on so the
-        // column always shows the other four. Inside an app we're in the
-        // "Apps" section, so the Apps link is the one hidden.
+        // Footer: hide the Navigate link for the page we're on so the column
+        // shows the other four. Inside an app (/apps/<name>/) all five links
+        // stay visible: the Apps link is the way back to the hub, not the
+        // current page. Compare basenames without the .html extension:
+        // Netlify Pretty URLs rewrites partial hrefs to extensionless
+        // (/apps.html -> /apps) and serves pages at extensionless paths,
+        // so an extension-sensitive match never fires in production.
         if (includeFile === 'footer.html') {
+          const stripExt = function(name) { return name.replace(/\.html$/, ''); };
           const fpath = window.location.pathname;
-          const currentFile = fpath.indexOf('/apps/') !== -1
-            ? 'apps.html'
-            : (fpath.split('/').pop() || 'home.html');
-          $('#footer .footer-nav a').each(function() {
-            if (($(this).attr('href') || '').split('/').pop() === currentFile) {
-              $(this).closest('li').hide();
-            }
-          });
+          if (fpath.indexOf('/apps/') === -1) {
+            const currentPage = stripExt(fpath.split('/').pop() || 'home.html') || 'home';
+            $('#footer .footer-nav a').each(function() {
+              if (stripExt(($(this).attr('href') || '').split('/').pop()) === currentPage) {
+                $(this).closest('li').hide();
+              }
+            });
+          }
         }
       });
     });

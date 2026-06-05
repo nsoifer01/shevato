@@ -400,8 +400,7 @@ body.mario-kart-app .sidebar-add-race-btn.active {
 body.mario-kart-app .sidebar-action-btn,
 body.mario-kart-app .sidebar .action-buttons button,
 body.mario-kart-app .sidebar .action-buttons button[onclick*="exportData"],
-body.mario-kart-app .sidebar .action-buttons button[onclick*="importFile"],
-body.mario-kart-app .sidebar .action-buttons button[onclick*="backupToGoogleDrive"] {
+body.mario-kart-app .sidebar .action-buttons button[onclick*="importFile"] {
     background: var(--mk-surface-2) !important;
     color: var(--mk-text) !important;
     border: 1px solid var(--mk-border-strong) !important;
@@ -421,8 +420,7 @@ body.mario-kart-app .sidebar .action-buttons button[onclick*="backupToGoogleDriv
 body.mario-kart-app .sidebar-action-btn:hover:not(:disabled),
 body.mario-kart-app .sidebar .action-buttons button:hover,
 body.mario-kart-app .sidebar .action-buttons button[onclick*="exportData"]:hover,
-body.mario-kart-app .sidebar .action-buttons button[onclick*="importFile"]:hover,
-body.mario-kart-app .sidebar .action-buttons button[onclick*="backupToGoogleDrive"]:hover {
+body.mario-kart-app .sidebar .action-buttons button[onclick*="importFile"]:hover {
     background: var(--mk-surface-3) !important;
     border-color: #4a4f66 !important;
     color: var(--mk-text) !important;
@@ -541,9 +539,6 @@ body.mario-kart-app .sidebar .action-buttons button[onclick*="exportData"]::firs
 }
 body.mario-kart-app .sidebar .action-buttons button[onclick*="importFile"] .action-icon {
     color: #38b2ac !important;
-}
-body.mario-kart-app .sidebar .action-buttons button[onclick*="backupToGoogleDrive"] .action-icon {
-    color: #4299e1 !important;
 }
 
 /* Icon + text alignment for sidebar action buttons that use
@@ -683,7 +678,6 @@ body.mario-kart-app textarea:focus {
 
 body.mario-kart-app .export-btn,
 body.mario-kart-app .import-btn,
-body.mario-kart-app .backup-btn,
 body.mario-kart-app .clear-btn {
     background: rgba(255, 255, 255, 0.03) !important;
     color: var(--mk-text) !important;
@@ -698,7 +692,6 @@ body.mario-kart-app .clear-btn {
 }
 body.mario-kart-app .export-btn:hover,
 body.mario-kart-app .import-btn:hover,
-body.mario-kart-app .backup-btn:hover,
 body.mario-kart-app .clear-btn:hover {
     background: var(--mk-surface-2) !important;
     border-color: var(--mk-border-strong) !important;

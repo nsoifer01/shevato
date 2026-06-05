@@ -197,21 +197,30 @@
     
     window.updateSidebarPlayerName = function(input) {
         const playerKey = input.dataset.player;
-        const newName = input.value.trim() || `Player ${playerKey.slice(-1)}`;
-        
+        const newName = input.value.trim();
+
+        // If the field was cleared, restore the previous name and bail out.
+        // playerManager.updatePlayerName already ignores empty strings; we
+        // mirror that guard here so the sidebar input shows the current name.
+        if (newName === '') {
+            const currentName = window.PlayerNameManager
+                ? window.PlayerNameManager.get(playerKey)
+                : null;
+            if (currentName) input.value = currentName;
+            return;
+        }
+
         // Update the initial letter in the sidebar (only if no custom icon)
         const playerItem = input.closest('.sidebar-player-item');
         if (playerItem) {
             const initialLetter = playerItem.querySelector('.sidebar-initial-letter');
-            const hasSymbol = window.PlayerSymbolManager ? 
+            const hasSymbol = window.PlayerSymbolManager ?
                 window.PlayerSymbolManager.getSymbol(playerKey) : null;
             if (initialLetter && !hasSymbol) {
-                const nameToUse = newName || playerKey;
-                const firstChar = nameToUse.charAt(0).toUpperCase() || 'P';
-                initialLetter.textContent = firstChar;
+                initialLetter.textContent = newName.charAt(0).toUpperCase() || 'P';
             }
         }
-        
+
         if (typeof updatePlayerName === 'function') {
             updatePlayerName(playerKey, newName);
         }

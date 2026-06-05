@@ -282,7 +282,7 @@ class SettingsView {
 
     exportData() {
         const data = this.app.exportData();
-        const filename = `gym-tracker-backup-${new Date().toISOString().split('T')[0]}.json`;
+        const filename = `gym-tracker-data-${new Date().toISOString().split('T')[0]}.json`;
         downloadJSON(data, filename);
         showToast('Data exported successfully', 'success');
     }

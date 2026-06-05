@@ -140,7 +140,7 @@ function backupToFile() {
         };
 
         const fileContent = JSON.stringify(data, null, 2);
-        const fileName = `football-h2h-backup-${new Date().toISOString().split('T')[0]}.json`;
+        const fileName = `football-h2h-data-${new Date().toISOString().split('T')[0]}.json`;
 
         // Create downloadable backup
         const blob = new Blob([fileContent], { type: 'application/json' });
