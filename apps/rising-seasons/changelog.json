@@ -1,6 +1,345 @@
 {
   "updates": [
     {
+      "builtAt": "2026-06-05T08:22:54.249Z",
+      "totals": {
+        "seasons": 65192,
+        "delta": 7
+      },
+      "shapeCounts": {
+        "mid-peak": 4594,
+        "rebound": 9965,
+        "rising": 2920,
+        "slow-burn": 4318,
+        "big-finale": 11934,
+        "u-shaped": 3062,
+        "rollercoaster": 13940,
+        "saved-best-for-last": 1511,
+        "front-loaded": 3437,
+        "declining": 1831,
+        "bad-finale": 4601,
+        "consistent": 2583,
+        "shape-drift": 1589
+      },
+      "shapeDeltas": {
+        "mid-peak": 1,
+        "rebound": 10,
+        "rising": -3,
+        "slow-burn": 2,
+        "big-finale": -4,
+        "u-shaped": 3,
+        "rollercoaster": 3,
+        "saved-best-for-last": 2,
+        "front-loaded": 2,
+        "consistent": -2
+      },
+      "added": [
+        {
+          "seriesId": "tt35674465",
+          "title": "Made in India: A Titan Story",
+          "season": 1,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt35049607",
+          "title": "Cops",
+          "season": 2,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt38839923",
+          "title": "Murder on Trial",
+          "season": 1,
+          "seasonYear": 2025
+        },
+        {
+          "seriesId": "tt0435566",
+          "title": "Def Comedy Jam",
+          "season": 5,
+          "seasonYear": 1995
+        },
+        {
+          "seriesId": "tt0435566",
+          "title": "Def Comedy Jam",
+          "season": 4,
+          "seasonYear": 1994
+        },
+        {
+          "seriesId": "tt5879522",
+          "title": "Gdgd Fairies",
+          "season": 1,
+          "seasonYear": 2011
+        },
+        {
+          "seriesId": "tt42415992",
+          "title": "Polka Dot",
+          "season": 1,
+          "seasonYear": 2026
+        }
+      ],
+      "removed": [],
+      "ratingSwings": [
+        {
+          "seriesId": "tt15256160",
+          "title": "Unconventional",
+          "season": 1,
+          "from": 7.4,
+          "to": 8.13,
+          "delta": 0.73
+        },
+        {
+          "seriesId": "tt39893694",
+          "title": "Crazy Love, Moo-Moo!",
+          "season": 1,
+          "from": 8.15,
+          "to": 7.53,
+          "delta": -0.62
+        },
+        {
+          "seriesId": "tt42324479",
+          "title": "The 1% Club",
+          "season": 2,
+          "from": 7.8,
+          "to": 7.36,
+          "delta": -0.44
+        },
+        {
+          "seriesId": "tt41978418",
+          "title": "The Many Lives of Benjaman Kyle",
+          "season": 1,
+          "from": 6.33,
+          "to": 5.98,
+          "delta": -0.35
+        },
+        {
+          "seriesId": "tt0435566",
+          "title": "Def Comedy Jam",
+          "season": 3,
+          "from": 7.7,
+          "to": 8.04,
+          "delta": 0.34
+        },
+        {
+          "seriesId": "tt35414278",
+          "title": "Förrädarna - Gravkammaren",
+          "season": 1,
+          "from": 7.13,
+          "to": 6.8,
+          "delta": -0.33
+        },
+        {
+          "seriesId": "tt39962827",
+          "title": "Michael Jackson: The Trial",
+          "season": 1,
+          "from": 5.57,
+          "to": 5.25,
+          "delta": -0.32
+        },
+        {
+          "seriesId": "tt42152890",
+          "title": "Double Helix",
+          "season": 1,
+          "from": 7.66,
+          "to": 7.34,
+          "delta": -0.32
+        },
+        {
+          "seriesId": "tt42027958",
+          "title": "The Cult of NatureBoy",
+          "season": 1,
+          "from": 5.68,
+          "to": 5.98,
+          "delta": 0.3
+        },
+        {
+          "seriesId": "tt35433285",
+          "title": "My Safe Zone",
+          "season": 1,
+          "from": 8.29,
+          "to": 8.01,
+          "delta": -0.28
+        }
+      ],
+      "modifiedCounts": {
+        "seriesVotes": 20725,
+        "avgRating": 668,
+        "shapes": 106,
+        "seriesRating": 176,
+        "episodeCount": 39,
+        "overview": 10,
+        "poster": 2,
+        "providers": 1
+      }
+    },
+    {
+      "builtAt": "2026-06-05T07:43:00.580Z",
+      "totals": {
+        "seasons": 65192,
+        "delta": 7
+      },
+      "shapeCounts": {
+        "mid-peak": 4594,
+        "rebound": 9965,
+        "rising": 2920,
+        "slow-burn": 4318,
+        "big-finale": 11934,
+        "u-shaped": 3062,
+        "rollercoaster": 13940,
+        "saved-best-for-last": 1511,
+        "front-loaded": 3437,
+        "declining": 1831,
+        "bad-finale": 4601,
+        "consistent": 2583,
+        "shape-drift": 1589
+      },
+      "shapeDeltas": {
+        "mid-peak": 1,
+        "rebound": 10,
+        "rising": -3,
+        "slow-burn": 2,
+        "big-finale": -4,
+        "u-shaped": 3,
+        "rollercoaster": 3,
+        "saved-best-for-last": 2,
+        "front-loaded": 2,
+        "consistent": -2
+      },
+      "added": [
+        {
+          "seriesId": "tt35674465",
+          "title": "Made in India: A Titan Story",
+          "season": 1,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt35049607",
+          "title": "Cops",
+          "season": 2,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt38839923",
+          "title": "Murder on Trial",
+          "season": 1,
+          "seasonYear": 2025
+        },
+        {
+          "seriesId": "tt0435566",
+          "title": "Def Comedy Jam",
+          "season": 5,
+          "seasonYear": 1995
+        },
+        {
+          "seriesId": "tt0435566",
+          "title": "Def Comedy Jam",
+          "season": 4,
+          "seasonYear": 1994
+        },
+        {
+          "seriesId": "tt5879522",
+          "title": "Gdgd Fairies",
+          "season": 1,
+          "seasonYear": 2011
+        },
+        {
+          "seriesId": "tt42415992",
+          "title": "Polka Dot",
+          "season": 1,
+          "seasonYear": 2026
+        }
+      ],
+      "removed": [],
+      "ratingSwings": [
+        {
+          "seriesId": "tt15256160",
+          "title": "Unconventional",
+          "season": 1,
+          "from": 7.4,
+          "to": 8.13,
+          "delta": 0.73
+        },
+        {
+          "seriesId": "tt39893694",
+          "title": "Crazy Love, Moo-Moo!",
+          "season": 1,
+          "from": 8.15,
+          "to": 7.53,
+          "delta": -0.62
+        },
+        {
+          "seriesId": "tt42324479",
+          "title": "The 1% Club",
+          "season": 2,
+          "from": 7.8,
+          "to": 7.36,
+          "delta": -0.44
+        },
+        {
+          "seriesId": "tt41978418",
+          "title": "The Many Lives of Benjaman Kyle",
+          "season": 1,
+          "from": 6.33,
+          "to": 5.98,
+          "delta": -0.35
+        },
+        {
+          "seriesId": "tt0435566",
+          "title": "Def Comedy Jam",
+          "season": 3,
+          "from": 7.7,
+          "to": 8.04,
+          "delta": 0.34
+        },
+        {
+          "seriesId": "tt35414278",
+          "title": "Förrädarna - Gravkammaren",
+          "season": 1,
+          "from": 7.13,
+          "to": 6.8,
+          "delta": -0.33
+        },
+        {
+          "seriesId": "tt39962827",
+          "title": "Michael Jackson: The Trial",
+          "season": 1,
+          "from": 5.57,
+          "to": 5.25,
+          "delta": -0.32
+        },
+        {
+          "seriesId": "tt42152890",
+          "title": "Double Helix",
+          "season": 1,
+          "from": 7.66,
+          "to": 7.34,
+          "delta": -0.32
+        },
+        {
+          "seriesId": "tt42027958",
+          "title": "The Cult of NatureBoy",
+          "season": 1,
+          "from": 5.68,
+          "to": 5.98,
+          "delta": 0.3
+        },
+        {
+          "seriesId": "tt35433285",
+          "title": "My Safe Zone",
+          "season": 1,
+          "from": 8.29,
+          "to": 8.01,
+          "delta": -0.28
+        }
+      ],
+      "modifiedCounts": {
+        "seriesVotes": 20725,
+        "avgRating": 668,
+        "shapes": 106,
+        "seriesRating": 176,
+        "episodeCount": 39
+      }
+    },
+    {
       "builtAt": "2026-06-04T08:28:53.049Z",
       "totals": {
         "seasons": 65185,
@@ -9807,74 +10146,6 @@
     },
     {
       "builtAt": "2026-05-23T00:08:19.935Z",
-      "totals": {
-        "seasons": 64877,
-        "delta": 0
-      },
-      "shapeCounts": {
-        "mid-peak": 4569,
-        "rebound": 9853,
-        "rising": 2948,
-        "slow-burn": 4276,
-        "big-finale": 11825,
-        "u-shaped": 3052,
-        "rollercoaster": 13883,
-        "saved-best-for-last": 1495,
-        "front-loaded": 3453,
-        "declining": 1842,
-        "bad-finale": 4569,
-        "consistent": 2574,
-        "shape-drift": 1603
-      },
-      "shapeDeltas": {
-        "shape-drift": 6,
-        "u-shaped": 3052
-      },
-      "added": [],
-      "removed": [],
-      "ratingSwings": [],
-      "modifiedCounts": {
-        "shapes": 3058,
-        "poster": 44747,
-        "overview": 44746
-      }
-    },
-    {
-      "builtAt": "2026-05-22T23:35:49.998Z",
-      "totals": {
-        "seasons": 64877,
-        "delta": 0
-      },
-      "shapeCounts": {
-        "mid-peak": 4569,
-        "rebound": 9853,
-        "rising": 2948,
-        "slow-burn": 4276,
-        "big-finale": 11825,
-        "u-shaped": 3052,
-        "rollercoaster": 13883,
-        "saved-best-for-last": 1495,
-        "front-loaded": 3453,
-        "declining": 1842,
-        "bad-finale": 4569,
-        "consistent": 2574,
-        "shape-drift": 1603
-      },
-      "shapeDeltas": {
-        "shape-drift": 6,
-        "u-shaped": 3052
-      },
-      "added": [],
-      "removed": [],
-      "ratingSwings": [],
-      "modifiedCounts": {
-        "shapes": 3058,
-        "poster": 44747,
-        "overview": 44746
-      }
-    },
-    {
-      "builtAt": "2026-05-22T23:18:35.851Z",
       "totals": {
         "seasons": 64877,
         "delta": 0
