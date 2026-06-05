@@ -110,7 +110,7 @@ export function formatDate(dateString, format = 'short') {
         return date.toLocaleDateString('en-US', {
             weekday: 'long',
             year: 'numeric',
-            month: 'long',
+            month: 'short',
             day: 'numeric'
         });
     }
@@ -181,7 +181,7 @@ export function formatSessionDateTime(session) {
     const timeSrc = session.endTime || session.startTime || session.timestamp;
     if (!timeSrc) return datePart;
     const time = formatTimeOfDay(timeSrc);
-    return time ? `${datePart} • ${time}` : datePart;
+    return time ? `${datePart}, ${time}` : datePart;
 }
 
 /**

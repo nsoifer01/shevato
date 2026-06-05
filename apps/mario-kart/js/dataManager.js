@@ -174,7 +174,7 @@ function editRace(index) {
         <div style="text-align: center; margin-bottom: 1.5rem;">
             <div style="font-size: 2.5rem; margin-bottom: 0.5rem;">✏️</div>
             <h3 style="color: #e2e8f0; margin-bottom: 0.5rem; font-size: 1.5rem; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;">Edit Race</h3>
-            <p style="color: #a0aec0; font-size: 0.9rem; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;">${race.date}${race.timestamp ? ' ' + race.timestamp : ''}</p>
+            <p style="color: #a0aec0; font-size: 0.9rem; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;">${formatDateForDisplay(race.date)}${race.timestamp ? ', ' + race.timestamp : ''}</p>
         </div>
         
         <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; margin-bottom: 1.5rem;">

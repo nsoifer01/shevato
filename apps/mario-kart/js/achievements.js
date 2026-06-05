@@ -937,7 +937,7 @@ function generateAchievementDetail(achievementKey, achievement, player) {
             day: 'numeric', 
             year: 'numeric' 
         });
-        return timeStr ? `${dateFormatted} ${timeStr}` : dateFormatted;
+        return timeStr ? `${dateFormatted}, ${timeStr}` : dateFormatted;
     };
 
     // Helper function to check if streak is active and get breaking position

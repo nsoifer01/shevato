@@ -257,8 +257,8 @@ class CalendarView {
             .filter(s => s.date === this.selectedDate)
             .sort((a, b) => new Date(b.sortTimestamp) - new Date(a.sortTimestamp));
         const dateObj = new Date(this.selectedDate);
-        const headerLabel = dateObj.toLocaleDateString(undefined, {
-            weekday: 'long', month: 'long', day: 'numeric', year: 'numeric',
+        const headerLabel = dateObj.toLocaleDateString('en-US', {
+            weekday: 'long', month: 'short', day: 'numeric', year: 'numeric',
         });
 
         if (daySessions.length === 0) {

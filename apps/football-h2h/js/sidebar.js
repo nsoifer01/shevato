@@ -246,8 +246,8 @@ function updateSidebarDate() {
                 todayBtn.classList.add('hidden');
             }
         } else {
-            // Display the actual date in YYYY-MM-DD format when it's not today
-            if (dateText) dateText.textContent = dateInput.value;
+            // Display the actual date as "Jun 4, 2026" when it's not today
+            if (dateText) dateText.textContent = formatDateForDisplay(dateInput.value);
             // Show the "Set to Today" button when it's not today
             if (todayBtn) {
                 todayBtn.classList.remove('hidden');
@@ -258,17 +258,12 @@ function updateSidebarDate() {
 
 function formatDateForDisplay(dateStr) {
     if (!dateStr) return 'No date';
-    
+
     try {
         const [year, month, day] = dateStr.split('-');
         const date = new Date(parseInt(year), parseInt(month) - 1, parseInt(day));
-        
-        // Format as M/D/YYYY (e.g., 8/20/2025)
-        const displayMonth = parseInt(month);
-        const displayDay = parseInt(day);
-        const displayYear = parseInt(year);
-        
-        return `${displayMonth}/${displayDay}/${displayYear}`;
+
+        return date.toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' });
     } catch (e) {
         return dateStr;
     }
