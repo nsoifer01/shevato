@@ -212,12 +212,7 @@ function formatDateForDisplay(dateStr) {
         const [year, month, day] = dateStr.split('-');
         const date = new Date(parseInt(year), parseInt(month) - 1, parseInt(day));
         
-        // Format as M/D/YYYY (e.g., 8/20/2025)
-        const displayMonth = parseInt(month);
-        const displayDay = parseInt(day);
-        const displayYear = parseInt(year);
-        
-        return `${displayMonth}/${displayDay}/${displayYear}`;
+        return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
     } catch (e) {
         return dateStr;
     }
@@ -1113,7 +1108,7 @@ function updateRaceHistoryTable(filteredRaces) {
         return `
         <tr>
             <td>${raceNumber}</td>
-            <td>${race.date}${race.timestamp ? '<br><small>' + race.timestamp + '</small>' : ''}</td>
+            <td>${formatDateForDisplay(race.date)}${race.timestamp ? '<br><small>' + race.timestamp + '</small>' : ''}</td>
             ${playerCells}
             <td>
                 <button class="edit-btn" onclick="editRace(${globalIndex})" title="Edit race">✏️</button>
@@ -1189,7 +1184,7 @@ function updateMobileRaceCards(filteredRaces) {
         <div class="race-card">
             <div class="race-card-header">
                 <span class="race-number">Race #${raceNumber}</span>
-                <span class="race-date">${race.date}${race.timestamp ? ' ' + race.timestamp : ''}</span>
+                <span class="race-date">${formatDateForDisplay(race.date)}${race.timestamp ? ', ' + race.timestamp : ''}</span>
             </div>
             <div class="race-positions">
                 ${playerPositions}

@@ -79,7 +79,7 @@ class InsightsView {
         const unit = this.app.settings?.weightUnit || 'kg';
 
         if (caption) {
-            const fmt = (d) => d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+            const fmt = (d) => d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
             caption.textContent = `${fmt(start)} – ${fmt(now)}`;
         }
 
@@ -179,7 +179,7 @@ class InsightsView {
         `;
 
         if (caption) {
-            const fmt = (d) => d.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' });
+            const fmt = (d) => d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
             caption.textContent = `${fmt(start)} – ${fmt(today)}`;
         }
     }
