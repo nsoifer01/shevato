@@ -1,6 +1,6 @@
 'use strict';
 
-// Pin timezone so M/D/YYYY assertions on ISO dates are deterministic across
+// Pin timezone so date assertions on ISO dates are deterministic across
 // CI/dev machines. Must be set before any Date objects are constructed.
 process.env.TZ = 'UTC';
 
@@ -639,11 +639,11 @@ test('longestRun: games missing dateTime → length counted, dates can be null',
     assert.equal(run.endDate, null);
 });
 
-test('formatDateShort: renders M/D/YYYY with no leading zeros, no month name', () => {
-    assert.equal(formatDateShort('2026-04-24T12:00:00Z'), '4/24/2026');
-    assert.equal(formatDateShort('2025-01-03T12:00:00Z'), '1/3/2025');
-    assert.equal(formatDateShort('2026-10-07T12:00:00Z'), '10/7/2026');
-    assert.equal(formatDateShort('2026-12-31T12:00:00Z'), '12/31/2026');
+test('formatDateShort: renders abbreviated-month date (e.g. Apr 24, 2026)', () => {
+    assert.equal(formatDateShort('2026-04-24T12:00:00Z'), 'Apr 24, 2026');
+    assert.equal(formatDateShort('2025-01-03T12:00:00Z'), 'Jan 3, 2025');
+    assert.equal(formatDateShort('2026-10-07T12:00:00Z'), 'Oct 7, 2026');
+    assert.equal(formatDateShort('2026-12-31T12:00:00Z'), 'Dec 31, 2026');
 });
 
 test('formatDateShort: bad input → null (no NaN/Invalid Date leaks)', () => {
@@ -653,22 +653,22 @@ test('formatDateShort: bad input → null (no NaN/Invalid Date leaks)', () => {
     assert.equal(formatDateShort('not-a-date'), null);
 });
 
-test('formatRangeText: multi-game run → "(M/D/YYYY – M/D/YYYY)"', () => {
+test('formatRangeText: multi-game run → "(Mon D, YYYY – Mon D, YYYY)"', () => {
     const text = formatRangeText({
         length: 14,
         startDate: '2026-04-10T12:00:00Z',
         endDate: '2026-04-24T12:00:00Z'
     });
-    assert.equal(text, '(4/10/2026 – 4/24/2026)');
+    assert.equal(text, '(Apr 10, 2026 – Apr 24, 2026)');
 });
 
-test('formatRangeText: single-game run collapses to "(M/D/YYYY)"', () => {
+test('formatRangeText: single-game run collapses to "(Mon D, YYYY)"', () => {
     const text = formatRangeText({
         length: 1,
         startDate: '2026-04-24T12:00:00Z',
         endDate: '2026-04-24T12:00:00Z'
     });
-    assert.equal(text, '(4/24/2026)');
+    assert.equal(text, '(Apr 24, 2026)');
 });
 
 test('formatRangeText: length 0 or missing dates → null', () => {
@@ -690,7 +690,7 @@ test('formatRangeText: reversed range is swapped, never displayed backwards', ()
         startDate: '2026-04-24T12:00:00Z', // later
         endDate: '2026-04-10T12:00:00Z'    // earlier
     });
-    assert.equal(text, '(4/10/2026 – 4/24/2026)');
+    assert.equal(text, '(Apr 10, 2026 – Apr 24, 2026)');
 });
 
 // -- Highest-score game (with opponent score and date) --
@@ -778,16 +778,16 @@ test('highestScoreGame: null opponent score is preserved on the result', () => {
     });
 });
 
-test('formatMatchText: full detail → "(M/D/YYYY, me–opp)"', () => {
+test('formatMatchText: full detail → "(Mon D, YYYY, me–opp)"', () => {
     assert.equal(formatMatchText({
         score: 5, opponentScore: 3, date: '2025-01-12T12:00:00Z'
-    }), '(1/12/2025, 5–3)');
+    }), '(Jan 12, 2025, 5–3)');
 });
 
 test('formatMatchText: score of 0 is still valid (shutout loss)', () => {
     assert.equal(formatMatchText({
         score: 0, opponentScore: 2, date: '2025-01-12T12:00:00Z'
-    }), '(1/12/2025, 0–2)');
+    }), '(Jan 12, 2025, 0–2)');
 });
 
 test('formatMatchText: missing date → null (UI falls back to bare value)', () => {
@@ -817,7 +817,7 @@ test('highestScoreGame + formatMatchText: end-to-end produces the displayed stri
         { id: 3, dateTime: '2025-01-14T12:00:00Z', player1Goals: 1, player2Goals: 0 }
     ];
     const best = highestScoreGame(games, 'player1Goals', 'player2Goals');
-    assert.equal(formatMatchText(best), '(1/12/2025, 5–3)');
+    assert.equal(formatMatchText(best), '(Jan 12, 2025, 5–3)');
 });
 
 test('longestRun + formatRangeText: end-to-end produces the displayed string', () => {
@@ -830,7 +830,7 @@ test('longestRun + formatRangeText: end-to-end produces the displayed string', (
     ];
     const run = longestRun(games, 'player1Goals', (s) => s > 0);
     assert.equal(run.length, 3);
-    assert.equal(formatRangeText(run), '(4/10/2026 – 4/20/2026)');
+    assert.equal(formatRangeText(run), '(Apr 10, 2026 – Apr 20, 2026)');
 });
 
 test('longestRun: works for scoreless predicate too', () => {

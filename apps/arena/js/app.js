@@ -4672,140 +4672,77 @@ async function writeEndOfGameStats(me, didWin) {
 }
 
 /**
- * Generate and download (or Web Share) a canvas result card for the
- * current finished game. Card includes: game type, top score, and the
- * final standings for all players.
+ * Build a plain-text share blurb for a finished Arena game.
+ * Pure function — no DOM access, safe to call from tests.
+ *
+ * @param {string} gameTypeLabel - Human-readable game type, e.g. 'Globe Drop'.
+ * @param {Array<{displayName:string,score:number}>} rankedPlayers - Already ranked, highest first.
+ * @param {string} dateStr - Formatted date string, e.g. 'Jun 5, 2026'.
+ * @returns {string}
+ */
+function buildResultShareText(gameTypeLabel, rankedPlayers, dateStr) {
+    const medals = ['🥇', '🥈', '🥉'];
+    const header = `🏆 Arena: ${gameTypeLabel}\n${dateStr}`;
+    const rows = rankedPlayers.map((p, i) => {
+        const prefix = medals[i] || `${i + 1}.`;
+        const name = p.displayName || 'Player';
+        return `${prefix} ${name}: ${p.score}`;
+    }).join('\n');
+    return `${header}\n\n${rows}\n\nshevato.com/apps/arena`;
+}
+
+/**
+ * Copy a plain-text game-result summary to the clipboard.
+ * On success, briefly swaps the button label to confirm the copy.
  */
 async function shareResultCard() {
     if (!state.roomData || !state.roomPlayers) return;
+
+    const gameTypeLabel = state.roomData.gameType === 'globe-drop' ? 'Globe Drop' : 'Trivia';
+    const dateStr = new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+    const ranked = Scoring.rankPlayers(state.roomPlayers.map((p) => ({
+        displayName: p.displayName,
+        score: p.score || 0,
+        streak: p.streak || 0,
+        uid: p.uid
+    })));
+    const text = buildResultShareText(gameTypeLabel, ranked, dateStr);
+
     const btn = $('#end-share-btn');
-    if (btn) btn.disabled = true;
+    const originalLabel = btn ? btn.innerHTML : null;
+
+    const confirmCopy = () => {
+        if (!btn) return;
+        btn.innerHTML = '✓ Copied';
+        setTimeout(() => { btn.innerHTML = originalLabel; }, 1200);
+    };
+
+    // Prefer the async Clipboard API; fall back to execCommand for non-secure contexts.
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+        try {
+            await navigator.clipboard.writeText(text);
+            confirmCopy();
+            return;
+        } catch (_) { /* fall through to execCommand */ }
+    }
 
     try {
-        const W = 600, H = 340;
-        const canvas = document.createElement('canvas');
-        canvas.width = W;
-        canvas.height = H;
-        const ctx = canvas.getContext('2d');
-
-        // Background gradient
-        const bg = ctx.createLinearGradient(0, 0, W, H);
-        bg.addColorStop(0, '#06070d');
-        bg.addColorStop(1, '#0e1220');
-        ctx.fillStyle = bg;
-        ctx.fillRect(0, 0, W, H);
-
-        // Accent border top
-        const topBar = ctx.createLinearGradient(0, 0, W, 0);
-        topBar.addColorStop(0, '#22d3ee');
-        topBar.addColorStop(1, '#a855f7');
-        ctx.fillStyle = topBar;
-        ctx.fillRect(0, 0, W, 3);
-
-        // Title
-        ctx.font = 'bold 22px "Space Grotesk", sans-serif';
-        ctx.fillStyle = '#eef2ff';
-        const gameType = state.roomData.gameType === 'globe-drop' ? 'Globe Drop' : 'Trivia';
-        ctx.fillText(`Arena — ${gameType}`, 28, 40);
-
-        // Date
-        ctx.font = '13px "Outfit", sans-serif';
-        ctx.fillStyle = '#8b95b3';
-        const dateStr = new Date().toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' });
-        ctx.fillText(dateStr, 28, 62);
-
-        // Ranked players
-        const ranked = Scoring.rankPlayers(state.roomPlayers.map((p) => ({
-            displayName: p.displayName,
-            score: p.score || 0,
-            streak: p.streak || 0,
-            uid: p.uid
-        })));
-        const medals = ['🥇', '🥈', '🥉'];
-        const rowH = 44;
-        const startY = 90;
-        ranked.slice(0, 5).forEach((p, i) => {
-            const y = startY + i * rowH;
-            const isWinner = i === 0;
-
-            // Row background for winner
-            if (isWinner) {
-                ctx.fillStyle = 'rgba(251,191,36,0.08)';
-                ctx.beginPath();
-                ctx.roundRect(20, y - 8, W - 40, rowH - 4, 8);
-                ctx.fill();
-            }
-
-            // Medal or rank number
-            if (medals[i]) {
-                ctx.font = '20px serif';
-                ctx.fillText(medals[i], 28, y + 18);
-            } else {
-                ctx.font = 'bold 14px "JetBrains Mono", monospace';
-                ctx.fillStyle = '#22d3ee';
-                ctx.fillText(String(i + 1), 32, y + 18);
-            }
-
-            // Name
-            ctx.font = isWinner ? 'bold 16px "Outfit", sans-serif' : '15px "Outfit", sans-serif';
-            ctx.fillStyle = isWinner ? '#fbbf24' : '#eef2ff';
-            const maxNameW = 340;
-            let name = p.displayName || 'Player';
-            while (ctx.measureText(name).width > maxNameW && name.length > 1) name = name.slice(0, -1);
-            if (name !== p.displayName) name += '…';
-            ctx.fillText(name, 68, y + 18);
-
-            // Score pill
-            ctx.font = 'bold 14px "JetBrains Mono", monospace';
-            ctx.fillStyle = isWinner ? '#fbbf24' : '#22d3ee';
-            const scoreStr = String(p.score);
-            const scoreW = ctx.measureText(scoreStr).width;
-            ctx.fillText(scoreStr, W - 48 - scoreW / 2, y + 18);
-        });
-
-        // Footer
-        ctx.font = '12px "Outfit", sans-serif';
-        ctx.fillStyle = '#5b6585';
-        ctx.fillText('shevato.com/apps/arena', 28, H - 16);
-
-        // Gradient cyan line bottom-right
-        const footerBar = ctx.createLinearGradient(W - 200, 0, W, 0);
-        footerBar.addColorStop(0, 'transparent');
-        footerBar.addColorStop(1, '#22d3ee');
-        ctx.fillStyle = footerBar;
-        ctx.fillRect(W - 200, H - 3, 200, 3);
-
-        const filename = `arena-result-${Date.now()}.png`;
-        const dataUrl = canvas.toDataURL('image/png');
-
-        if (navigator.share && navigator.canShare) {
-            // Attempt Web Share API (mobile)
-            try {
-                const res = await fetch(dataUrl);
-                const blob = await res.blob();
-                const file = new File([blob], filename, { type: 'image/png' });
-                if (navigator.canShare({ files: [file] })) {
-                    await navigator.share({
-                        files: [file],
-                        title: `Arena ${gameType} results`,
-                        text: ranked[0] ? `${ranked[0].displayName} won with ${ranked[0].score} points!` : 'Check out the results!'
-                    });
-                    return;
-                }
-            } catch (_) { /* fall through to download */ }
+        const ta = document.createElement('textarea');
+        ta.value = text;
+        ta.style.position = 'fixed';
+        ta.style.opacity = '0';
+        document.body.appendChild(ta);
+        ta.focus();
+        ta.select();
+        const ok = document.execCommand('copy');
+        document.body.removeChild(ta);
+        if (ok) {
+            confirmCopy();
+        } else {
+            console.warn('shareResultCard: execCommand copy returned false');
         }
-
-        // Fallback: download
-        const a = document.createElement('a');
-        a.href = dataUrl;
-        a.download = filename;
-        document.body.appendChild(a);
-        a.click();
-        document.body.removeChild(a);
     } catch (err) {
         console.warn('shareResultCard failed:', err);
-    } finally {
-        if (btn) btn.disabled = false;
     }
 }
 
@@ -6092,7 +6029,7 @@ function formatRelativeDate(d) {
     if (diff < day) return 'today';
     if (diff < 2 * day) return 'yesterday';
     if (diff < 7 * day) return Math.floor(diff / day) + 'd ago';
-    return d.toLocaleDateString();
+    return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
 }
 
 /* =====================================================================

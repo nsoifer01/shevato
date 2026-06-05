@@ -53,7 +53,7 @@ function restoreFromBackup() {
             return;
         }
 
-        const backupDate = new Date(backupData.backupDate).toLocaleString();
+        const backupDate = new Date(backupData.backupDate).toLocaleString('en-US', { month: 'short', day: 'numeric', year: 'numeric', hour: '2-digit', minute: '2-digit', hour12: false });
         const raceCount = backupData.races.length;
 
         // Create a beautiful confirmation modal

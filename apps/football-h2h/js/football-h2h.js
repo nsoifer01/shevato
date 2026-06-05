@@ -350,18 +350,7 @@ function formatDateTime(dateString) {
         minute: '2-digit',
         hour12: false
     };
-    return date.toLocaleString(undefined, options);
-}
-
-// Format date for display (short version)
-function formatDate(dateString) {
-    const date = new Date(dateString);
-    const options = {
-        year: 'numeric',
-        month: '2-digit',
-        day: '2-digit'
-    };
-    return date.toLocaleDateString('en-US', options);
+    return date.toLocaleString('en-US', options);
 }
 
 // Sort games by column
@@ -1594,7 +1583,7 @@ function renderGamesTableWithData(gamesData) {
         if (winner) row.classList.add(`${winner}-win`);
         
         const date = new Date(game.dateTime);
-        const formattedDate = date.toLocaleDateString();
+        const formattedDate = date.toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' });
         const formattedTime = date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false });
         
         // Score styling and penalty display
@@ -2238,7 +2227,7 @@ function buildSessionSummaryText(gamesData) {
         } else {
             p2Wins++;
         }
-        const dateStr = g.dateTime ? new Date(g.dateTime).toLocaleDateString() : '';
+        const dateStr = g.dateTime ? new Date(g.dateTime).toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' }) : '';
         const noteStr = g.note ? ` — ${g.note}` : '';
         lines.push(`${scoreStr}${suffix} (${dateStr})${noteStr}`);
     }

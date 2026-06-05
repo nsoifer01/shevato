@@ -379,7 +379,7 @@
         const d = new Date(iso);
         if (isNaN(d.getTime())) return null;
         return d.toLocaleDateString('en-US', {
-            month: 'numeric',
+            month: 'short',
             day: 'numeric',
             year: 'numeric'
         });

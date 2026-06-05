@@ -327,7 +327,7 @@
   function fmtDateShort(iso) {
     if (!iso) return '—';
     const d = new Date(iso + 'T00:00:00');
-    return d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+    return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
   }
   // Shared `<MonthName><Day>` token used by both the maptap.gg history
   // deep link and the daily-puzzle data URL. English month names are
@@ -425,7 +425,7 @@
   function fmtDateLong(iso) {
     if (!iso) return '—';
     const d = new Date(iso + 'T00:00:00');
-    return d.toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' });
+    return d.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' });
   }
 
   // ---------- analytics ----------
@@ -1007,7 +1007,7 @@
     if (!g) return;
     const myLabel = iPlayed(g) ? String(getMyTotal(g)) : '—';
     const theirLabel = theyPlayed(g) ? String(getTheirTotal(g)) : '—';
-    if (!confirm(`Delete this game (${fmtDateShort(g.date)}, ${myLabel} vs ${theirLabel})?`)) return;
+    if (!confirm(`Delete this game (${shortDate(g.date)}, ${myLabel} vs ${theirLabel})?`)) return;
     state.games = state.games.filter(x => x.id !== id);
     persistGames();
     if (state.view === 'dashboard') renderDashboard();
@@ -2689,10 +2689,10 @@
       s.streak.curMine > 0 ? `${s.streak.curMine} W` : s.streak.curTheirs > 0 ? `${s.streak.curTheirs} L` : '—',
       `Longest: ${s.streak.longestMine} W / ${s.streak.longestTheirs} L`,
       s.streak.curMine > 0 ? 'is-good' : s.streak.curTheirs > 0 ? 'is-bad' : ''));
-    const bestMineDate  = s.bestMineGame  ? fmtDateShort(s.bestMineGame.date)  : null;
-    const worstMineDate = s.worstMineGame ? fmtDateShort(s.worstMineGame.date) : null;
-    const bestTheirsDate  = s.bestTheirsGame  ? fmtDateShort(s.bestTheirsGame.date)  : null;
-    const worstTheirsDate = s.worstTheirsGame ? fmtDateShort(s.worstTheirsGame.date) : null;
+    const bestMineDate  = s.bestMineGame  ? shortDate(s.bestMineGame.date)  : null;
+    const worstMineDate = s.worstMineGame ? shortDate(s.worstMineGame.date) : null;
+    const bestTheirsDate  = s.bestTheirsGame  ? shortDate(s.bestTheirsGame.date)  : null;
+    const worstTheirsDate = s.worstTheirsGame ? shortDate(s.worstTheirsGame.date) : null;
     cardsHost.appendChild(makeStatCard('Best score (you)', s.bestMine,
       bestMineDate
         ? `${bestMineDate} · Worst ${s.worstMine}${worstMineDate ? ` (${worstMineDate})` : ''}`
@@ -2704,10 +2704,10 @@
         : `Worst: ${s.worstTheirs}`));
     cardsHost.appendChild(makeStatCard('Consistency (you)', s.consistencyMine.toFixed(1), 'σ — lower = steadier'));
     cardsHost.appendChild(makeStatCard('Biggest win', s.biggestWinGame ? `+${s.biggestWinMargin}` : '—',
-      s.biggestWinGame ? `${s.biggestWinGame.myScore}–${s.biggestWinGame.theirScore} on ${fmtDateShort(s.biggestWinGame.date)}` : '—',
+      s.biggestWinGame ? `${s.biggestWinGame.myScore}–${s.biggestWinGame.theirScore} on ${shortDate(s.biggestWinGame.date)}` : '—',
       s.biggestWinGame ? 'is-good' : ''));
     cardsHost.appendChild(makeStatCard('Biggest loss', s.biggestLossGame ? `−${s.biggestLossMargin}` : '—',
-      s.biggestLossGame ? `${s.biggestLossGame.myScore}–${s.biggestLossGame.theirScore} on ${fmtDateShort(s.biggestLossGame.date)}` : '—',
+      s.biggestLossGame ? `${s.biggestLossGame.myScore}–${s.biggestLossGame.theirScore} on ${shortDate(s.biggestLossGame.date)}` : '—',
       s.biggestLossGame ? 'is-bad' : ''));
 
     // callouts
@@ -2716,7 +2716,7 @@
     if (s.onColdStreak) calloutsHost.appendChild(callout('bad', '❄️', `${rivalNameSafe} has won the last <strong>${s.streak.curTheirs} games</strong>. Time to bounce back.`));
     if (s.total >= 3) {
       const pb = s.games.find(g => getMyTotal(g) === s.bestMine);
-      if (pb) calloutsHost.appendChild(callout('good', '⭐', `Personal best <strong>${s.bestMine}</strong> set vs ${rivalNameSafe} on ${fmtDateShort(pb.date)}.`));
+      if (pb) calloutsHost.appendChild(callout('good', '⭐', `Personal best <strong>${s.bestMine}</strong> set vs ${rivalNameSafe} on ${shortDate(pb.date)}.`));
     }
     } // end if (s.total)
     // games table (most recent first), paginated. Use the unfiltered list
@@ -2744,7 +2744,7 @@
       const theirT = themHere ? getTheirTotal(g) : null;
       const diff = (meHere && themHere) ? (myT - theirT) : null;
       tableBody.appendChild(el('tr', { class: r ? '' : 'row-one-sided' }, [
-        el('td', {}, fmtDateShort(g.date)),
+        el('td', {}, shortDate(g.date)),
         el('td', {
           style: 'font-weight:600',
           title: hasLocs(g) ? `Rounds: ${g.myScores.join(' / ')}` : (meHere ? '' : 'You didn\'t play this day'),
@@ -2869,7 +2869,7 @@
       const firstDay = new Date(weeks[wi][0] + 'T00:00:00');
       if (firstDay.getMonth() !== lastMonth) {
         lastMonth = firstDay.getMonth();
-        const mo = firstDay.toLocaleDateString(undefined, { month: 'short' });
+        const mo = firstDay.toLocaleDateString('en-US', { month: 'short' });
         monthLabelItems.push({ colIdx: wi, label: mo });
       }
     }
@@ -3643,7 +3643,7 @@
           : 'tie';
         dots.appendChild(el('span', {
           class: `matrix-form-dot is-${cls}`,
-          title: `${fmtDateShort(m.date)} · ${m.rowScore} vs ${m.colScore}`,
+          title: `${shortDate(m.date)} · ${m.rowScore} vs ${m.colScore}`,
         }));
       });
       // Current streak: walk backward from the latest meeting.
@@ -3891,8 +3891,8 @@
             rel: 'noopener noreferrer',
             class: 'maptap-day-link',
             title: 'Open this day on maptap.gg',
-          }, fmtDateShort(g.date))])
-        : el('td', {}, fmtDateShort(g.date));
+          }, shortDate(g.date))])
+        : el('td', {}, shortDate(g.date));
       tbody.appendChild(el('tr', { class: r ? '' : 'row-one-sided' }, [
         dateCell,
         el('td', {}, rival ? `${rival.icon} ${rival.name}` : '—'),
@@ -4215,9 +4215,9 @@
   }
   function shortDate(iso) {
     if (!iso) return '';
-    const d = new Date(iso);
+    const d = new Date(iso + 'T00:00:00');
     if (isNaN(d)) return '';
-    return d.toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' });
+    return d.toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' });
   }
 
   // Convert profile.gameHistory into { "YYYY-MM-DD": { scores: number[5], cities: {lat,lng,name}[5] } }.
@@ -4982,7 +4982,7 @@
         const diff = g.myScore - g.theirScore;
         const r = diff > 0 ? 'gw' : diff < 0 ? 'gl' : 'gt';
         list.appendChild(el('div', {}, [
-          `${fmtDateShort(g.date)} — `,
+          `${shortDate(g.date)}: `,
           el('span', { class: r }, `${g.myScore} vs ${g.theirScore}`),
           ` (Δ${diff > 0 ? '+' : ''}${diff})`,
         ]));

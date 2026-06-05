@@ -540,7 +540,7 @@ class ExercisesView {
             : history.reduce((best, current) => current.volume > best.volume ? current : best);
 
         // Friendly date helpers — "Mar 25, 2026" instead of "3/25/2026"
-        const fmtDate = (dateStr) => parseLocalDate(dateStr).toLocaleDateString(undefined, {
+        const fmtDate = (dateStr) => parseLocalDate(dateStr).toLocaleDateString('en-US', {
             year: 'numeric', month: 'short', day: 'numeric',
         });
 

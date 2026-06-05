@@ -68,7 +68,7 @@ function restoreFromBackup() {
             return;
         }
 
-        const backupDate = new Date(backupData.backupDate).toLocaleString(undefined, { hour12: false });
+        const backupDate = new Date(backupData.backupDate).toLocaleString('en-US', { year: 'numeric', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit', hour12: false });
         const gameCount = backupData.games.length;
 
         createConfirmationModal({
@@ -190,7 +190,7 @@ function restoreFromFile() {
                     return;
                 }
                 
-                const backupDate = backupData.backupDate ? new Date(backupData.backupDate).toLocaleString(undefined, { hour12: false }) : 'Unknown';
+                const backupDate = backupData.backupDate ? new Date(backupData.backupDate).toLocaleString('en-US', { year: 'numeric', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit', hour12: false }) : 'Unknown';
                 const gameCount = backupData.games.length;
                 
                 createConfirmationModal({

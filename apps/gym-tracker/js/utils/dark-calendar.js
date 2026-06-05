@@ -95,7 +95,7 @@ export class DarkCalendar {
         return `${y}-${m}-${d}`;
     }
     formatDisplay(date) {
-        return date.toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' });
+        return date.toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' });
     }
     isSameDay(a, b) {
         return !!(a && b

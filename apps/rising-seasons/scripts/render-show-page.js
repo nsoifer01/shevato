@@ -273,7 +273,7 @@ function renderPrimaryCtaBtn(dominantShape, dominantShapeSlug) {
 }
 
 function renderFreshnessLine(builtAt, seasonCount) {
-  const dateStr = builtAt ? new Date(builtAt).toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' }) : null;
+  const dateStr = builtAt ? new Date(builtAt).toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' }) : null;
   const text = dateStr
     ? `Ratings refreshed ${escapeHtml(dateStr)} · ${seasonCount} season${seasonCount === 1 ? '' : 's'} indexed`
     : `Data refreshed weekly · ${seasonCount} season${seasonCount === 1 ? '' : 's'} indexed`;
