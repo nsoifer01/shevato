@@ -92,18 +92,12 @@ class TooltipManager {
             '.redo-btn': 'Redo last action',
             '.clear-btn': 'Clear all data',
             '.add-race-btn': 'Add new race',
-            '.widget-btn.players-btn': 'Player settings',
             '.sidebar-toggle': 'Toggle sidebar',
-            '.mobile-menu-toggle': 'Open menu',
-            '.fab-button': 'Quick add race',
             '.close-btn': 'Close',
-            '.dropdown-close': 'Close dropdown',
-            '.stepper-btn': element.textContent === '+' ? 'Increase position' : 'Decrease position',
             
             // Action buttons
-            'button[onclick*="exportData"]': 'Export race data to JSON file',
+            'button[onclick*="exportData"]': 'Export race data to JSON file and refresh auto-backup',
             'button[onclick*="importData"]': 'Import race data from file',
-            'button[onclick*="backupToGoogleDrive"]': 'Download backup file',
             '.toggle-date-btn': 'Set custom race date',
             
             // Tab buttons

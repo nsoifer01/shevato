@@ -1,0 +1,18 @@
+# Line-ending policy: every text file is stored in git AND checked out as LF.
+# Ends the CRLF/LF churn that inflated diffs and hid real changes. The repo
+# runs on Linux/WSL + Netlify, where LF is the standard.
+
+* text=auto eol=lf
+
+# Binaries: never touched.
+*.png   binary
+*.jpg   binary
+*.jpeg  binary
+*.gif   binary
+*.ico   binary
+*.webp  binary
+*.woff  binary
+*.woff2 binary
+*.ttf   binary
+*.eot   binary
+*.pdf   binary

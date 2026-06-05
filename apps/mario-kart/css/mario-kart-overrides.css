@@ -513,8 +513,7 @@ body.theme .h2h-player-pill {
     }
     
     .export-btn,
-    .import-btn,
-    .backup-btn {
+    .import-btn {
         margin-left: 0;
         margin-top: 0.5rem;
         width: 100%;

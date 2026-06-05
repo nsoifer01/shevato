@@ -197,7 +197,7 @@ function updateSidebarDateDisplay(dateStr) {
             todayBtn.classList.add('hidden');
         }
     } else {
-        dateText.textContent = dateStr;
+        dateText.textContent = formatDateForDisplay(dateStr);
         // Show the "Set to Today" button when it's not today
         if (todayBtn) {
             todayBtn.classList.remove('hidden');
@@ -1494,11 +1494,9 @@ function createAchievementsView(raceData = null) {
         const barContainers = inputGroup.querySelectorAll('.bar-container');
         barContainers.forEach(container => container.style.display = 'block');
 
-        // Hide the numeric inputs and steppers in achievements view
+        // Hide the numeric inputs in achievements view
         const inputs = inputGroup.querySelectorAll('input[type="number"]');
-        const steppers = inputGroup.querySelectorAll('.input-stepper');
         inputs.forEach(input => input.style.display = 'none');
-        steppers.forEach(stepper => stepper.style.display = 'none');
 
         // Update achievements to ensure they're displayed correctly
         updateAchievements(raceData);
@@ -1623,11 +1621,9 @@ document.addEventListener('DOMContentLoaded', function() {
     // It will be moved to the achievements container when updateDisplay runs
     const inputGroup = document.querySelector('.input-group');
     if (inputGroup) {
-        // Hide numeric inputs and steppers for achievements view
+        // Hide numeric inputs for achievements view
         const inputs = inputGroup.querySelectorAll('input[type="number"]');
-        const steppers = inputGroup.querySelectorAll('.input-stepper');
         inputs.forEach(input => input.style.display = 'none');
-        steppers.forEach(stepper => stepper.style.display = 'none');
     }
 
     // Wait for sync system before loading data

@@ -107,22 +107,6 @@ body #history-heading {
     color: var(--text-primary);
 }
 
-/* Theme support */
-body .stepper-display {
-    background: var(--bg-input);
-    color: var(--text-primary);
-    border-color: var(--border-color);
-}
-
-body .stepper-btn {
-    background: var(--btn-primary-bg);
-    color: var(--text-white);
-}
-
-body .stepper-btn:hover {
-    background: var(--btn-primary-hover);
-}
-
 body .input-field input[type="number"] {
     background: var(--bg-input);
     color: var(--text-primary);
@@ -442,22 +426,6 @@ body.theme #history-table td {
 
 body.theme #history-heading {
     color: #e2e8f0;
-}
-
-/* Theme support */
-body.theme .stepper-display {
-    background: #4a5568;
-    color: #e2e8f0;
-    border-color: #2d3748;
-}
-
-body.theme .stepper-btn {
-    background: #667eea;
-    color: white;
-}
-
-body.theme .stepper-btn:hover {
-    background: #5a67d8;
 }
 
 body.theme .input-field input[type="number"] {

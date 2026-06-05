@@ -1964,19 +1964,18 @@ body.gym-tracker #active-workout .superset-block {
     .rest-countdown-chip.rest-countdown-chip--urgent { animation: none; }
 }
 
-/* In-card rest countdown chip — appears next to the rest adjuster. */
+/* In-card rest countdown chip — dominant timer element in the rest row. */
 .rest-countdown-chip {
     display: inline-flex;
     align-items: center;
-    font-size: 0.78rem;
-    font-weight: 600;
+    font-size: 1.15rem;
+    font-weight: 700;
     font-variant-numeric: tabular-nums;
-    color: rgba(255, 255, 255, 0.75);
+    color: rgba(255, 255, 255, 0.85);
     background: rgba(108, 99, 255, 0.15);
     border: 1px solid rgba(108, 99, 255, 0.3);
     border-radius: 999px;
-    padding: 0.15rem 0.55rem;
-    margin-left: 0.5rem;
+    padding: 0.3rem 0.9rem;
     line-height: 1.4;
 }
 
@@ -9114,7 +9113,13 @@ button.calendar-day {
 .finish-workout-modal-content {
     background: var(--bg-secondary);
     border: 1px solid var(--border-light);
-    overflow: hidden;
+    /* Clip the hero gradient horizontally to the rounded corners, but let the
+       body scroll vertically when it exceeds the modal height. Without this the
+       heart-rate / calories / notes / Save controls were unreachable on short
+       screens (overflow: hidden clipped them). max-height pins the bound. */
+    overflow-x: hidden;
+    overflow-y: auto;
+    max-height: 90vh;
 }
 
 /* Hero banner: workout name + live duration */
