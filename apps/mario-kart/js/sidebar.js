@@ -47,14 +47,6 @@ function initializeSidebar() {
                 };
             }
             
-            // Re-attach backup button
-            const backupButton = buttonsClone.querySelector('button[onclick*="backupToGoogleDrive"]');
-            if (backupButton) {
-                backupButton.onclick = () => {
-                    if (typeof backupToGoogleDrive === 'function') backupToGoogleDrive();
-                };
-            }
-            
             // Remove date button from cloned action buttons since it's now in the sidebar
             const dateButton = buttonsClone.querySelector('#date-button');
             if (dateButton && dateButton.parentNode) {

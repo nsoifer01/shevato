@@ -17,6 +17,10 @@ function renderMoreFooter() {
         <li><a href="/apps/arena/"><strong>Arena</strong><span> · multiplayer party games with friends in private rooms</span></a></li>
       </ul>
     </nav>
+    <div class="data-attribution">
+      <a class="tmdb-logo-link" href="https://www.themoviedb.org/" target="_blank" rel="noopener noreferrer" aria-label="The Movie Database (TMDB)"><img class="tmdb-logo" src="/apps/rising-seasons/images/tmdb-logo.svg" alt="TMDB" width="108" height="14" loading="lazy"></a>
+      <p>This product uses the TMDB API but is not endorsed or certified by TMDB. Streaming data powered by <a href="https://www.justwatch.com/" target="_blank" rel="noopener noreferrer">JustWatch</a>. Information courtesy of IMDb (<a href="https://www.imdb.com/" target="_blank" rel="noopener noreferrer">https://www.imdb.com</a>). Used with permission.</p>
+    </div>
     <p class="copyright">© Shevato LLC · <a href="/">shevato.com</a> · <a href="/about.html">About</a> · <a href="/contact.html">Contact</a></p>
   </footer>`;
 }

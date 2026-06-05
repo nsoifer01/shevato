@@ -535,18 +535,6 @@ body.theme .sidebar-overlay {
     color: black !important;
 }
 
-/* Backup button */
-.sidebar .action-buttons button[onclick*="backupToGoogleDrive"] {
-    background: #4299E1;
-    color: black !important;
-    border-color: #3182ce;
-}
-
-.sidebar .action-buttons button[onclick*="backupToGoogleDrive"]:hover {
-    background: #3182ce;
-    color: black !important;
-}
-
 .sidebar .custom-date-range {
     margin-top: 10px;
     padding: 15px;
@@ -2030,17 +2018,6 @@ body.theme .sidebar .action-buttons button[onclick*="importFile"] {
 
 body.theme .sidebar .action-buttons button[onclick*="importFile"]:hover {
     background: #38B2AC;
-    color: black !important;
-}
-
-body.theme .sidebar .action-buttons button[onclick*="backupToGoogleDrive"] {
-    background: #63B3ED;
-    color: black !important;
-    border-color: #4299E1;
-}
-
-body.theme .sidebar .action-buttons button[onclick*="backupToGoogleDrive"]:hover {
-    background: #4299E1;
     color: black !important;
 }
 

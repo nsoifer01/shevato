@@ -99,9 +99,8 @@
     <link rel="stylesheet" href="css/charts.css">
     <link rel="stylesheet" href="css/race-history.css">
     <link rel="stylesheet" href="css/responsive.css">
-    <link rel="stylesheet" href="css/add-race-dropdown.css">
     <link rel="stylesheet" href="css/player-display.css">
-    <link rel="stylesheet" href="css/players-dropdown-new.css">
+
     <link rel="stylesheet" href="css/player-icons.css">
     <link rel="stylesheet" href="../../assets/css/pagination.css">
     <link rel="stylesheet" href="../../assets/css/sync-status.css">
@@ -207,10 +206,10 @@
                 <h3 class="sidebar-section-title">Race Date</h3>
                 <div class="sidebar-race-date">
                     <div class="sidebar-date-btn-container">
+                        <input type="date" id="sidebar-date-input" class="sidebar-date-input-hidden" onchange="updateSidebarDate()" aria-label="Set default race date">
                         <span class="date-text" id="sidebar-date-text">Today</span>
                         <div class="sidebar-date-icon-wrapper">
-                            <input type="date" id="sidebar-date-input" class="sidebar-date-input-hidden" onchange="updateSidebarDate()">
-                            <label for="sidebar-date-input" class="sidebar-date-icon-btn" aria-label="Set default race date">
+                            <label for="sidebar-date-input" class="sidebar-date-icon-btn" aria-hidden="true">
                                 <span class="date-icon">📅</span>
                             </label>
                         </div>
@@ -406,7 +405,6 @@
                 <div class="help-section help-disclaimers">
                     <h4>⚠️ Disclaimers</h4>
                     <ul class="help-features disclaimer-list">
-                        <li><strong>Mobile View:</strong> The app is not fully optimized for mobile yet. The Trends chart in particular may not display correctly on smaller screens.</li>
                         <li><strong>Player Count:</strong> The app is optimized for 3 players. Using 1, 2, or 4 players may result in some visual spacing issues.</li>
                         <li><strong>Data Storage:</strong> All data is saved locally in your browser's local storage. This means:
                             <ul>
@@ -451,14 +449,11 @@
             
 
             <div class="action-buttons">
-                <button onclick="exportData()" class="export-btn" aria-describedby="export-help">
+                <button onclick="exportData()" class="export-btn" title="Download all data as a JSON file (also refreshes the auto-backup; auto-backup runs every 10 minutes)">
                     📤 Export Data
                 </button>
                 <button onclick="document.getElementById('importFile').click()" class="import-btn" aria-describedby="import-help">
                     📥 Import Data
-                </button>
-                <button onclick="backupToGoogleDrive()" class="backup-btn" title="Download backup file (auto-backup runs every 10 minutes)">
-                    💻 Backup
                 </button>
                 <input type="file" id="importFile" accept=".json" class="hidden" onchange="importData(event)">
             </div>
@@ -470,11 +465,6 @@
                 <div class="input-field">
                     <label for="player1" class="player-name-label" id="player1-label">Player 1</label>
                     <input type="number" id="player1" aria-describedby="player1-help">
-                    <div class="input-stepper">
-                        <button type="button" class="stepper-btn" onclick="decrementPlayer('player1')" aria-label="Decrease position">−</button>
-                        <div class="stepper-display" id="player1-display">-</div>
-                        <button type="button" class="stepper-btn" onclick="incrementPlayer('player1')" aria-label="Increase position">+</button>
-                    </div>
                     <div class="bar-container">
                         <div class="achievement-bars" id="player1-achievements"></div>
                         <div class="position-heat-bars" id="player1-position-heat"></div>
@@ -485,11 +475,6 @@
                 <div class="input-field">
                     <label for="player2" class="player-name-label" id="player2-label">Player 2</label>
                     <input type="number" id="player2" aria-describedby="player2-help">
-                    <div class="input-stepper">
-                        <button type="button" class="stepper-btn" onclick="decrementPlayer('player2')" aria-label="Decrease position">−</button>
-                        <div class="stepper-display" id="player2-display">-</div>
-                        <button type="button" class="stepper-btn" onclick="incrementPlayer('player2')" aria-label="Increase position">+</button>
-                    </div>
                     <div class="bar-container">
                         <div class="achievement-bars" id="player2-achievements"></div>
                         <div class="position-heat-bars" id="player2-position-heat"></div>
@@ -500,11 +485,6 @@
                 <div class="input-field">
                     <label for="player3" class="player-name-label" id="player3-label">Player 3</label>
                     <input type="number" id="player3" aria-describedby="player3-help">
-                    <div class="input-stepper">
-                        <button type="button" class="stepper-btn" onclick="decrementPlayer('player3')" aria-label="Decrease position">−</button>
-                        <div class="stepper-display" id="player3-display">-</div>
-                        <button type="button" class="stepper-btn" onclick="incrementPlayer('player3')" aria-label="Increase position">+</button>
-                    </div>
                     <div class="bar-container">
                         <div class="achievement-bars" id="player3-achievements"></div>
                         <div class="position-heat-bars" id="player3-position-heat"></div>
@@ -515,11 +495,6 @@
                 <div class="input-field hidden" id="player4-field">
                     <label for="player4" class="player-name-label" id="player4-label">Player 4</label>
                     <input type="number" id="player4" aria-describedby="player4-help">
-                    <div class="input-stepper">
-                        <button type="button" class="stepper-btn" onclick="decrementPlayer('player4')" aria-label="Decrease position">−</button>
-                        <div class="stepper-display" id="player4-display">-</div>
-                        <button type="button" class="stepper-btn" onclick="incrementPlayer('player4')" aria-label="Increase position">+</button>
-                    </div>
                     <div class="bar-container">
                         <div class="achievement-bars" id="player4-achievements"></div>
                         <div class="position-heat-bars" id="player4-position-heat"></div>
@@ -601,11 +576,6 @@
     <script src="js/dataManager.js"></script>
     <script src="js/backup.js"></script>
     <script src="js/theme.js"></script>
-    <script src="js/steppers.js"></script>
-    <script src="js/mobileMenu.js"></script>
-    <script src="js/quickRace.js"></script>
-    <script src="js/addRaceDropdown.js"></script>
-    <script src="js/playersDropdown.js"></script>
     <script src="js/updateInputLimits.js"></script>
     <script src="js/updatePlayerLabels.js"></script>
     <script src="../../assets/js/pagination.js"></script>

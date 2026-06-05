@@ -96,8 +96,10 @@ test('renderShowPage degrades gracefully without TMDB data', () => {
   assert.ok(html.includes('og:image" content="https://shevato.com/images/og-card.png'));
   // Renders a placeholder, not a broken <img>
   assert.ok(html.includes('poster-placeholder'));
-  // Does NOT include the TMDB sameAs reference
-  assert.ok(!html.includes('themoviedb.org'));
+  // Does NOT include the TMDB sameAs reference (the footer's required
+  // TMDB attribution link is unconditional, so match the /tv/ URL shape,
+  // not the bare domain)
+  assert.ok(!html.includes('themoviedb.org/tv/'));
 });
 
 test('renderShowPage XSS-escapes hostile titles', () => {

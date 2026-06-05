@@ -651,16 +651,42 @@ body.gym-tracker .rest-adjuster--display-only {
     opacity: 0.75;
 }
 
+/* Hide both rest-adjuster pills while a between-set rest is active for this exercise. */
+body.gym-tracker .rest-row--resting .rest-adjuster {
+    display: none;
+}
+
+/* While resting, switch the row to a 3-column grid so the countdown chip is
+   truly centered whether or not the plate-hints toggle is present. The toggle
+   keeps its right-edge slot; its flex-era margin-left:auto is cancelled. */
+body.gym-tracker .rest-row--resting {
+    display: grid;
+    grid-template-columns: 1fr auto 1fr;
+    align-items: center;
+}
+
+body.gym-tracker .rest-row--resting .rest-countdown-chip {
+    grid-column: 2;
+    grid-row: 1;
+}
+
+body.gym-tracker .rest-row--resting .btn-icon-plates--per-ex {
+    grid-column: 3;
+    grid-row: 1;
+    justify-self: end;
+    margin-left: 0;
+}
+
 body.gym-tracker .rest-adj-btn {
     background: none;
     border: none;
-    color: var(--gt-muted);
+    color: var(--gt-muted) !important;
     font-size: 0.72rem;
     font-weight: 600;
     cursor: pointer;
-    padding: 0.2rem 0.4rem;
-    min-width: 40px;
-    min-height: 40px;
+    padding: 0.1rem 0.25rem;
+    min-width: 28px;
+    min-height: 28px;
     display: inline-flex;
     align-items: center;
     justify-content: center;

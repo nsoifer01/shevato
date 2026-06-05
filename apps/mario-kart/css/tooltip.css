@@ -168,12 +168,6 @@ body.theme .custom-tooltip {
     }
 }
 
-/* Z-index management to ensure tooltips appear above modals */
-.add-race-dropdown.active ~ .custom-tooltip,
-.quick-race-form:not([style*="display: none"]) ~ .custom-tooltip {
-    z-index: 10001;
-}
-
 /* Special positioning for sidebar tooltips to avoid header overlap */
 .sidebar-header .custom-tooltip,
 .sidebar-header-buttons .custom-tooltip {

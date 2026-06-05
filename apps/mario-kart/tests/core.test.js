@@ -318,3 +318,173 @@ test('calculateStats: h2hByDay buckets by date', () => {
   assert.equal(stats.h2hByDay['2026-01-01'].player1.player2, 2);
   assert.equal(stats.h2hByDay['2026-01-02'].player2.player1, 1);
 });
+
+// --- importData: duplicate-position validation (Bug 20c) -------------------
+
+function makeImportContext() {
+  // FileReader stub that fires onload synchronously with the provided text.
+  function FakeFileReader() {}
+  FakeFileReader.prototype.readAsText = function (file) {
+    this.onload({ target: { result: file._content } });
+  };
+
+  const messages = [];
+  const ctx = makeContext({
+    races: [],
+    players: ['player1', 'player2', 'player3'],
+    playerCount: 3,
+    playerNames: { player1: 'P1', player2: 'P2', player3: 'P3', player4: 'P4' },
+    MIN_POSITIONS: 1,
+    MAX_POSITIONS: 24,
+    FileReader: FakeFileReader,
+    updatePlayerCount: () => {},
+    updateDisplay: () => {},
+    updateAchievements: () => {},
+    updateClearButtonState: () => {},
+    showMessage: (msg, isError) => messages.push({ msg, isError }),
+  });
+  // Expose messages via a property added after context creation.
+  ctx._messages = messages;
+  // Patch showMessage after loading so we can capture messages from the file too.
+  ctx._patchMessages = () => { ctx.showMessage = (msg, isError) => messages.push({ msg, isError }); };
+  return ctx;
+}
+
+function fakeFile(obj) {
+  return { _content: JSON.stringify(obj) };
+}
+
+test('importData: accepts race with distinct positions', () => {
+  const ctx = makeImportContext();
+  loadInto(ctx, 'dataManager.js');
+  ctx._patchMessages();
+  const goodData = {
+    races: [{ date: '2026-01-01', player1: 1, player2: 2, player3: 3, player4: null }],
+    version: '1.4',
+  };
+  ctx.importData({ target: { files: [fakeFile(goodData)], value: '' } });
+  const errors = ctx._messages.filter(m => m.isError);
+  assert.equal(errors.length, 0, 'no error expected for distinct positions');
+  // `races` is a module-level `let` inside the vm, not directly on ctx.
+  // Check persistence via localStorage which importData writes on success.
+  const stored = ctx.localStorage.getItem('marioKartRaces');
+  assert.ok(stored !== null, 'races should be persisted on success');
+  assert.equal(JSON.parse(stored).length, 1);
+});
+
+test('importData: rejects race where two players share a position', () => {
+  const ctx = makeImportContext();
+  loadInto(ctx, 'dataManager.js');
+  ctx._patchMessages();
+  const badData = {
+    races: [{ date: '2026-01-01', player1: 1, player2: 1, player3: 3, player4: null }],
+    version: '1.4',
+  };
+  ctx.importData({ target: { files: [fakeFile(badData)], value: '' } });
+  const errors = ctx._messages.filter(m => m.isError);
+  assert.equal(errors.length, 1, 'expected one error message');
+  assert.ok(
+    errors[0].msg.includes('same position'),
+    `error should mention same position, got: ${errors[0].msg}`,
+  );
+  // On failure, localStorage should not be written (no marioKartRaces key set).
+  const stored = ctx.localStorage.getItem('marioKartRaces');
+  assert.equal(stored, null, 'races must not be persisted on failure');
+});
+
+// --- backup/restore: version-aware storage keys (Bug 20e) ------------------
+
+function makeBackupContext(version) {
+  const prefixes = { mk8d: 'marioKart', mkworld: 'marioKartWorld' };
+  const versionAwareKey = function (key) {
+    const prefix = prefixes[version];
+    if (key.startsWith('marioKart')) key = key.replace(/^marioKart(World)?/, '');
+    return prefix + key;
+  };
+
+  // Stub PlayerNameManager so backup.js skips the fallback branch that
+  // calls updatePlayerLabels (which lives in playerManager.js, not loaded here).
+  const stubNameManager = {
+    getAll: () => ({ player1: 'P1', player2: 'P2', player3: 'P3', player4: 'P4' }),
+    setAll: () => {},
+    get: (k) => 'P',
+    set: () => {},
+    subscribe: () => {},
+  };
+
+  const ctx = makeContext({
+    races: [{ date: '2026-01-01', player1: 1, player2: 2, player3: null, player4: null }],
+    actionHistory: [],
+    playerNames: { player1: 'P1', player2: 'P2', player3: 'P3', player4: 'P4' },
+    updateDisplay: () => {},
+    updateAchievements: () => {},
+    updateClearButtonState: () => {},
+  });
+  ctx.window.PlayerNameManager = stubNameManager;
+  ctx.window.getStorageKey = versionAwareKey;
+  loadInto(ctx, 'backup.js');
+  return ctx;
+}
+
+test('autoBackupToLocalStorage: MK8D writes to marioKartAutoBackup', () => {
+  const ctx = makeBackupContext('mk8d');
+  ctx.autoBackupToLocalStorage();
+  const stored = ctx.localStorage.getItem('marioKartAutoBackup');
+  assert.ok(stored !== null, 'expected marioKartAutoBackup to be set');
+  const parsed = JSON.parse(stored);
+  assert.equal(parsed.races.length, 1);
+});
+
+test('autoBackupToLocalStorage: MK World writes to marioKartWorldAutoBackup, not marioKartAutoBackup', () => {
+  const ctx = makeBackupContext('mkworld');
+  ctx.autoBackupToLocalStorage();
+  assert.equal(
+    ctx.localStorage.getItem('marioKartAutoBackup'),
+    null,
+    'MK8D key must be untouched in MK World mode',
+  );
+  const stored = ctx.localStorage.getItem('marioKartWorldAutoBackup');
+  assert.ok(stored !== null, 'expected marioKartWorldAutoBackup to be set');
+});
+
+test('restoreFromBackup (confirm path): MK World restores to marioKartWorldRaces, leaves marioKartRaces untouched', () => {
+  const ctx = makeBackupContext('mkworld');
+  // Pre-seed an MK8D race to verify isolation.
+  ctx.localStorage.setItem('marioKartRaces', JSON.stringify([{ date: '2025-01-01', player1: 5 }]));
+
+  // Write a World backup into the World-keyed slot.
+  const backupPayload = {
+    races: [{ date: '2026-06-01', player1: 1, player2: 2, player3: null, player4: null }],
+    playerNames: { player1: 'P1', player2: 'P2', player3: 'P3', player4: 'P4' },
+    backupDate: new Date().toISOString(),
+    version: '2.2',
+  };
+  ctx.localStorage.setItem('marioKartWorldAutoBackup', JSON.stringify(backupPayload));
+
+  // restoreFromBackup shows a confirm modal; intercept the onclick directly.
+  // We need getElementById to return a stub element so the modal flow works.
+  const buttons = {};
+  ctx.document.getElementById = (id) => {
+    if (!buttons[id]) buttons[id] = { onclick: null };
+    return buttons[id];
+  };
+  ctx.document.body.appendChild = () => {};
+  ctx.document.body.removeChild = () => {};
+  ctx.document.querySelector = () => null;
+
+  ctx.restoreFromBackup();
+
+  // Simulate user clicking "Confirm restore".
+  assert.ok(buttons['confirm-restore'], 'confirm-restore button should be registered');
+  buttons['confirm-restore'].onclick();
+
+  // World key should have the restored races.
+  const worldRaces = JSON.parse(ctx.localStorage.getItem('marioKartWorldRaces'));
+  assert.ok(Array.isArray(worldRaces), 'marioKartWorldRaces should be set');
+  assert.equal(worldRaces.length, 1);
+  assert.equal(worldRaces[0].date, '2026-06-01');
+
+  // MK8D key must be untouched.
+  const mk8dRaces = JSON.parse(ctx.localStorage.getItem('marioKartRaces'));
+  assert.equal(mk8dRaces[0].date, '2025-01-01', 'marioKartRaces must not be overwritten');
+});
