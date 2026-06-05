@@ -487,31 +487,6 @@
     <!-- Main JavaScript (includes Firebase config and auth) -->
     <script src="../../assets/js/main.js"></script>
     <script>
-        // Minimal include functionality for Football H2H app
-        jQuery(document).ready(function($) {
-            var includes = $('[data-include]');
-            
-            jQuery.each(includes, function(){
-                var includeFile = $(this).data('include') + '.html';
-                var basePath = '../../partials/';
-                var file = basePath + includeFile;
-                var $element = $(this);
-                
-                $.ajax({
-                    url: file,
-                    type: 'GET',
-                    success: function(data) {
-                        $element.html(data);
-                    },
-                    error: function() {
-                        // Silently fail if header/footer not found
-                        $element.remove();
-                    }
-                });
-            });
-        });
-    </script>
-    <script>
         // Apply consistent theme
         document.body.classList.add('theme');
         localStorage.setItem('theme', 'true');

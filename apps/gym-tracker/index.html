@@ -1295,30 +1295,6 @@
     <!-- Main JavaScript (includes Firebase config and auth) -->
     <script src="../../assets/js/main.js"></script>
 
-    <!-- Header/Footer Include Script -->
-    <script>
-        jQuery(document).ready(function($) {
-            var includes = $('[data-include]');
-            jQuery.each(includes, function(){
-                var includeFile = $(this).data('include') + '.html';
-                var basePath = '../../partials/';
-                var file = basePath + includeFile;
-                var $element = $(this);
-
-                $.ajax({
-                    url: file,
-                    type: 'GET',
-                    success: function(data) {
-                        $element.html(data);
-                    },
-                    error: function() {
-                        $element.remove();
-                    }
-                });
-            });
-        });
-    </script>
-
     <!-- Register the service worker so the app shell + JS modules + the
          exercise database are cached on first load and the user can
          continue logging sets even after the network drops. -->

@@ -468,7 +468,8 @@ function exportData() {
         playerNames: window.PlayerNameManager ? window.PlayerNameManager.getAll() : playerNames,  // Include player names in export
         playerSymbols: window.PlayerSymbolManager ? window.PlayerSymbolManager.getAllSymbols() : {},  // Include player symbols
         exportDate: new Date().toISOString(),
-        version: '1.4'  // Updated version
+        version: '1.5',  // Updated version
+        actionHistory: typeof actionHistory !== 'undefined' ? actionHistory : []  // Include undo/redo history (was part of the old backup download)
     };
 
     const dataStr = JSON.stringify(data, null, 2);
@@ -481,7 +482,10 @@ function exportData() {
     link.click();
     document.body.removeChild(link);
 
-    showMessage('Data exported successfully!');
+    // Refresh the auto-backup too (absorbed from the old Download Backup button)
+    if (typeof autoBackupToLocalStorage === 'function') autoBackupToLocalStorage();
+
+    showMessage('Data exported and auto-backup updated!');
 }
 
 function importData(event) {
@@ -517,6 +521,14 @@ function importData(event) {
                         throw new Error(`Invalid race data: invalid ${player} position`);
                     }
                 });
+                // Validate no duplicate positions within this race
+                const racePositions = ['player1', 'player2', 'player3', 'player4']
+                    .map(p => race[p])
+                    .filter(pos => pos !== null && pos !== undefined);
+                const uniqueRacePositions = [...new Set(racePositions)];
+                if (racePositions.length !== uniqueRacePositions.length) {
+                    throw new Error('Players cannot have the same position in a race');
+                }
             }
 
             races = migratedRaces;
@@ -657,7 +669,6 @@ function confirmClearData() {
     modal.onclick = (e) => {
         if (e.target === modal) {
             document.body.removeChild(modal);
-            document.head.removeChild(style);
         }
     };
 
@@ -665,7 +676,6 @@ function confirmClearData() {
     const escapeHandler = (e) => {
         if (e.key === 'Escape') {
             document.body.removeChild(modal);
-            document.head.removeChild(style);
             document.removeEventListener('keydown', escapeHandler);
         }
     };

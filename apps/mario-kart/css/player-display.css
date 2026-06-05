@@ -97,9 +97,8 @@ body.theme .input-field {
     box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
 }
 
-/* Hide the number input and stepper since we're using dropdown only */
-.input-field input[type="number"],
-.input-field .input-stepper {
+/* Hide the number input since we're using dropdown only */
+.input-field input[type="number"] {
     display: none;
 }
 

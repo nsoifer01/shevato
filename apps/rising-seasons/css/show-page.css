@@ -211,6 +211,17 @@ a.shape-badge:hover {
 .footer-more li a span { color: var(--muted); font-size: 12px; }
 .page-footer .copyright { margin: 0; text-align: center; font-size: 12px; }
 
+/* Data-source attribution (TMDB logo + disclaimer, JustWatch, IMDb).
+   Required by the TMDB API terms. */
+.page-footer .data-attribution {
+  margin: 0 0 14px; text-align: center; font-size: 11.5px; color: var(--muted);
+}
+.page-footer .data-attribution .tmdb-logo {
+  height: 13px; width: auto; vertical-align: middle; opacity: 1;
+}
+.page-footer .data-attribution p { margin: 6px auto 0; max-width: 640px; line-height: 1.5; }
+.page-footer .data-attribution a { text-decoration: underline; }
+
 /* --- Shows browse index --- */
 .shows-index .index-hero { margin-bottom: 20px; }
 .shows-index .index-hero h1 { margin: 0 0 8px; font-size: clamp(28px, 4vw, 36px); }
