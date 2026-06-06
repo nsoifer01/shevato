@@ -19,19 +19,21 @@ Mario Kart Race Tracker is a feature-rich web application that allows you to:
 - **Player Management**: Customizable player names and emoji/icons
 - **Date Filtering**: View stats for specific time periods
 - **Undo/Redo**: Full history support for all actions
-- **Data Persistence**: Automatic saving to browser localStorage
+- **Data Persistence**: Automatic saving to browser localStorage, with account sync across devices when signed in
 - **Export/Import**: JSON file support for data backup and transfer
+- **Restore**: One-click recovery from the rolling auto-backup snapshot (taken every 10 minutes)
+- **Safe Deletes**: Deleting a race asks for confirmation first; undo/redo still covers every action
 
 ### Statistics & Analytics
 - **Comprehensive Stats**: Win rates, average positions, streaks, and more
-- **Achievement System**: 5 achievement categories with progress tracking
-- **Head-to-Head Analysis**: Detailed matchup statistics between players
+- **Achievement System**: 5 achievement categories with progress tracking; records show the live active streak count alongside the best, e.g. "10 (3)"
+- **Head-to-Head Analysis**: Detailed matchup statistics between players, including when each longest win streak ended (or that it is still active)
 - **Performance Trends**: Visual charts showing improvement over time
 - **Activity Heatmaps**: Calendar view of racing activity and performance
 - **Position Analysis**: Heat maps and sweet spot visualizations
 
 ### User Interface
-- **Theme**: Toggleable themes (theme recommended)
+- **Theme**: Single cohesive dark theme
 - **Responsive Design**: Works on desktop, tablet, and mobile devices
 - **Modern UI**: Card-based layouts with smooth animations
 - **Multiple Views**: 8 different tabs for various statistics and analyses
@@ -47,9 +49,9 @@ The tracker works best on modern browsers:
 ## ⚠️ Important Notes
 
 ### Mobile Support
-- The application is functional on mobile devices but not fully optimized
-- The Trends chart may not display correctly on smaller screens
-- Touch interactions are supported but may have minor issues
+- Fully responsive: desktop table views switch to card layouts on smaller screens
+- Charts (Trends, Activity) render at all screen sizes
+- Touch targets meet the 40px guideline throughout
 
 ### Player System
 - Players are tracked by their slot position (Player 1, 2, 3, 4)
@@ -60,13 +62,13 @@ The tracker works best on modern browsers:
 ### Data Storage
 - All data is stored locally in your browser's localStorage
 - Data persists between sessions on the same device/browser
-- Clearing browser data will delete all race history
-- No cloud sync or cross-device support
-- Regular backups via Export are recommended
+- Clearing browser data will delete all local race history
+- Sign in to sync your data to your account across devices
+- A rolling auto-backup snapshot is taken every 10 minutes (recoverable via Restore)
+- Regular backups via Export are still recommended
 
 ### Optimal Configuration
-- **Players**: Designed for 3 players (1, 2, or 4 players may have visual issues)
-- **Theme**: Dark mode is the primary theme with better visual consistency
+- **Players**: Supports 1-4 players; layouts verified at all player counts
 - **Browser**: Chrome or Firefox on desktop for best experience
 
 ## 🛠️ Technical Details
@@ -75,13 +77,13 @@ The tracker works best on modern browsers:
 - **Frontend**: Vanilla JavaScript, HTML5, CSS3
 - **Charts**: Chart.js for data visualization
 - **Icons**: Font Awesome for UI icons
-- **Storage**: Browser localStorage for data persistence
-- **Backup**: Google Drive API integration (optional)
+- **Storage**: Browser localStorage, synced to the account when signed in (Firebase sync system)
+- **Backup**: Rolling auto-backup snapshot in localStorage every 10 minutes, plus JSON export/import
 
 ### File Structure
 ```
 mario-kart/
-├── tracker.html          # Main application file
+├── index.html            # Main application file
 ├── css/                  # All styling files
 │   ├── base.css         # Base styles and resets
 │   ├── theme.css        # Theme variables and dark/alternative theme
@@ -97,8 +99,8 @@ mario-kart/
 
 ## 🚀 Getting Started
 
-1. **Access the Tracker**: Navigate to `https://www.shevato.com/apps/mario-kart/tracker.html`
-2. **Set Up Players**: Click the 👤 button to configure player names and icons
+1. **Access the Tracker**: Navigate to `https://www.shevato.com/apps/mario-kart/`
+2. **Set Up Players**: Open the sidebar and use "Manage Players" to configure player names and icons
 3. **Record a Race**: Enter finishing positions and click "Add Race"
 4. **View Statistics**: Explore different tabs to see various analyses
 5. **Backup Your Data**: Use the Export button regularly to save your data
@@ -115,9 +117,7 @@ mario-kart/
 ## 🔮 Future Improvements
 
 Planned enhancements include:
-- Full mobile optimization
 - Player profiles independent of slot positions
-- Cloud sync support
 - More achievement categories
 - Additional chart types
 - Custom race configurations

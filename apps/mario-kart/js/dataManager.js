@@ -126,75 +126,42 @@ function editRace(index) {
     const race = races[index];
     if (!race) return;
 
-    // Create a beautiful edit modal
+    // Create the edit modal (class-driven, matches the clear-data modal)
     const modal = document.createElement('div');
-    modal.style.cssText = `
-        position: fixed;
-        top: 0;
-        left: 0;
-        width: 100%;
-        height: 100%;
-        background: rgba(0, 0, 0, 0.5);
-        display: flex;
-        justify-content: center;
-        align-items: center;
-        z-index: 1000;
-        backdrop-filter: blur(5px);
-    `;
+    modal.className = 'modal-overlay';
 
     const dialog = document.createElement('div');
-    dialog.style.cssText = `
-        background: #2d3748;
-        border-radius: 1rem;
-        padding: 2rem;
-        box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
-        max-width: 500px;
-        width: 90%;
-        max-height: 80vh;
-        overflow-y: auto;
-        animation: modalSlideIn 0.3s ease;
-    `;
+    dialog.className = 'modal-dialog edit-race-dialog';
 
     const playerInputs = players.map(player => {
         const currentValue = race[player] || '';
         return `
-            <div style="margin-bottom: 1rem;">
-                <label style="display: block; margin-bottom: 0.5rem; color: #e2e8f0; font-weight: 600; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;">
+            <div class="edit-race-field">
+                <label class="edit-race-label" for="edit-${player}">
                     ${window.PlayerNameManager ? window.PlayerNameManager.get(player) : getPlayerName(player)}'s Position:
                 </label>
-                <input type="number" id="edit-${player}" min="${MIN_POSITIONS}" max="${MAX_POSITIONS}" value="${currentValue}" 
-                    style="width: 100%; padding: 0.75rem; border: 1px solid #4a5568; 
-                    border-radius: 0.5rem; background: #4a5568; 
-                    color: #e2e8f0; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;" placeholder="${MIN_POSITIONS}-${MAX_POSITIONS} or leave empty">
+                <input type="number" id="edit-${player}" class="edit-race-input" min="${MIN_POSITIONS}" max="${MAX_POSITIONS}" value="${currentValue}" placeholder="${MIN_POSITIONS}-${MAX_POSITIONS} or leave empty">
             </div>
         `;
     }).join('');
 
     dialog.innerHTML = `
-        <div style="text-align: center; margin-bottom: 1.5rem;">
-            <div style="font-size: 2.5rem; margin-bottom: 0.5rem;">✏️</div>
-            <h3 style="color: #e2e8f0; margin-bottom: 0.5rem; font-size: 1.5rem; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;">Edit Race</h3>
-            <p style="color: #a0aec0; font-size: 0.9rem; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;">${formatDateForDisplay(race.date)}${race.timestamp ? ', ' + race.timestamp : ''}</p>
-        </div>
-        
-        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; margin-bottom: 1.5rem;">
-            <div>
-                <label style="display: block; margin-bottom: 0.5rem; color: #e2e8f0; font-weight: 600; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;">
+        <div class="modal-icon">✏️</div>
+        <h3 class="modal-title">Edit Race</h3>
+        <p class="modal-text edit-race-meta">${formatDateForDisplay(race.date)}${race.timestamp ? ', ' + race.timestamp : ''}</p>
+
+        <div class="edit-race-datetime">
+            <div class="edit-race-field">
+                <label class="edit-race-label" for="edit-date">
                     Race Date:
                 </label>
-                <input type="date" id="edit-date" value="${race.date}" 
-                    style="width: 100%; padding: 0.75rem; border: 1px solid #4a5568; 
-                    border-radius: 0.5rem; background: #4a5568; 
-                    color: #e2e8f0; color-scheme: dark; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;">
+                <input type="date" id="edit-date" class="edit-race-input" value="${race.date}">
             </div>
-            <div>
-                <label style="display: block; margin-bottom: 0.5rem; color: #e2e8f0; font-weight: 600; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;">
+            <div class="edit-race-field">
+                <label class="edit-race-label" for="edit-time">
                     Race Time:
                 </label>
-                <input type="time" id="edit-time" value="${race.timestamp ? (race.timestamp.includes(':') ? race.timestamp.split(' ')[0] : '') : ''}" step="1"
-                    style="width: 100%; padding: 0.75rem; border: 1px solid #4a5568; 
-                    border-radius: 0.5rem; background: #4a5568; 
-                    color: #e2e8f0; color-scheme: dark; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;" placeholder="Optional">
+                <input type="time" id="edit-time" class="edit-race-input" value="${race.timestamp ? (race.timestamp.includes(':') ? race.timestamp.split(' ')[0] : '') : ''}" step="1" placeholder="Optional">
             </div>
         </div>
 
@@ -205,19 +172,6 @@ function editRace(index) {
             <button id="cancel-edit" class="modal-btn-secondary ">Cancel</button>
         </div>
     `;
-
-    // Add CSS animation if not already added
-    if (!document.querySelector('#modal-animation-style')) {
-        const style = document.createElement('style');
-        style.id = 'modal-animation-style';
-        style.textContent = `
-            @keyframes modalSlideIn {
-                from { opacity: 0; transform: scale(0.9) translateY(-20px); }
-                to { opacity: 1; transform: scale(1) translateY(0); }
-            }
-        `;
-        document.head.appendChild(style);
-    }
 
     modal.appendChild(dialog);
     document.body.appendChild(modal);
@@ -365,10 +319,54 @@ function editRace(index) {
 }
 
 function deleteRace(index) {
+    const race = races[index];
+    if (!race) return;
+
+    // Confirmation modal (matches the clear-data modal family)
+    const modal = document.createElement('div');
+    modal.className = 'modal-overlay';
+
+    const dialog = document.createElement('div');
+    dialog.className = `modal-dialog `;
+
+    const raceNumber = index + 1;
+    const raceMeta = `Race #${raceNumber}, ${formatDateForDisplay(race.date)}`;
+
+    dialog.innerHTML = `
+        <div class="modal-icon">🗑️</div>
+        <h3 class="modal-title ">Delete this race?</h3>
+        <p class="modal-text ">${raceMeta}</p>
+        <div class="modal-buttons">
+            <button id="confirm-delete-race" class="modal-btn-danger">Delete Race</button>
+            <button id="cancel-delete-race" class="modal-btn-secondary ">Cancel</button>
+        </div>
+    `;
+
+    modal.appendChild(dialog);
+    document.body.appendChild(modal);
+
+    const closeModal = () => {
+        if (modal.parentNode) modal.parentNode.removeChild(modal);
+        document.removeEventListener('keydown', escapeHandler);
+    };
+    const escapeHandler = (e) => { if (e.key === 'Escape') closeModal(); };
+    document.addEventListener('keydown', escapeHandler);
+
+    document.getElementById('cancel-delete-race').onclick = closeModal;
+
+    document.getElementById('confirm-delete-race').onclick = () => {
+        closeModal();
+        performDeleteRace(index);
+    };
+
+    modal.onclick = (e) => { if (e.target === modal) closeModal(); };
+}
+
+function performDeleteRace(index) {
     // Save action for undo/redo before deleting
     const raceToDelete = races[index];
     saveAction('DELETE_RACE', { race: raceToDelete, index });
-    
+
     races.splice(index, 1);
     try {
         const storageKey = window.getStorageKey ? window.getStorageKey('Races') : 'marioKartRaces';

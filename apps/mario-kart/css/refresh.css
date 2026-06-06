@@ -107,11 +107,16 @@ body.mario-kart-app .game-version-toggle {
     box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.02);
 }
 
-body.mario-kart-app .game-version-toggle button.version-btn,
-body.mario-kart-app .game-version-toggle button.version-btn:not(.active) {
-    background: transparent !important;
+/* Shared layout/typography for both states. Deliberately NO background or
+   color here: those are state-specific and live on the `:not(.active)` and
+   `.active` rules below. Setting them on the bare `.version-btn` selector
+   leaked the inactive (transparent/muted) look onto the active button,
+   because that bare selector also matches the active element — the active
+   rule should win on specificity, but the tie produced a render-order
+   inversion (active highlight landed on the wrong button). Scoping the
+   inactive colours strictly to `:not(.active)` removes the ambiguity. */
+body.mario-kart-app .game-version-toggle button.version-btn {
     border: none !important;
-    color: var(--mk-muted) !important;
     border-radius: 999px !important;
     padding: 0.5rem 1.1rem !important;
     font-size: 0.88rem !important;
@@ -126,6 +131,11 @@ body.mario-kart-app .game-version-toggle button.version-btn:not(.active) {
     gap: 0.4rem !important;
     text-align: center !important;
     min-height: 32px;
+}
+
+body.mario-kart-app .game-version-toggle button.version-btn:not(.active) {
+    background: transparent !important;
+    color: var(--mk-muted) !important;
 }
 
 /* Keep the racing-car / globe icons (and any other glyphs) vertically
@@ -144,7 +154,7 @@ body.mario-kart-app .game-version-toggle button.version-btn .version-text {
     line-height: 1;
 }
 
-body.mario-kart-app .game-version-toggle button.version-btn:hover {
+body.mario-kart-app .game-version-toggle button.version-btn:not(.active):hover {
     background: rgba(255, 255, 255, 0.04) !important;
     color: var(--mk-text) !important;
     transform: none !important;
@@ -556,6 +566,43 @@ body.mario-kart-app .sidebar-action-btn .action-text {
     line-height: 1;
 }
 
+/* Date filter buttons — location-independent base. sidebar.js physically
+   moves the date-filter section into the sidebar shortly after load; until
+   that move completes the buttons fall outside `.sidebar`, so the
+   `.sidebar`-scoped rules below didn't apply and the site-wide theme trap
+   (#555) painted the labels gray for ~1-3s (FOUC). `body.mario-kart-app`
+   is on the <body> from first paint, so pinning here makes the colours
+   correct from the very first frame. Values mirror the moved-in state
+   below, so there is no jump when the section is relocated. */
+body.mario-kart-app .filter-btn,
+body.mario-kart-app .date-filter-btn {
+    color: var(--mk-text) !important;
+    background: var(--mk-surface-2) !important;
+}
+body.mario-kart-app .filter-btn.active,
+body.mario-kart-app .date-filter-btn.active {
+    color: var(--mk-text) !important;
+    background: var(--mk-accent-soft) !important;
+}
+
+/* Disabled filter (e.g. Today force-disabled on the Activity view). The
+   JS sets an inline grey background (#6b7280) but the `.sidebar .filter-btn`
+   !important background defeats it, and the theme trap leaves the label at
+   #555 on a dark fill — illegible. Pin a muted-but-legible token text on a
+   visibly dimmed surface. Specificity (with :disabled + the dual-selector)
+   beats both the base and the `.sidebar .filter-btn` rule for the disabled
+   case. */
+body.mario-kart-app .filter-btn:disabled,
+body.mario-kart-app .filter-btn[disabled],
+body.mario-kart-app .sidebar .filter-btn:disabled,
+body.mario-kart-app .sidebar .filter-btn[disabled] {
+    color: var(--mk-muted) !important;
+    background: var(--mk-surface) !important;
+    border-color: var(--mk-border) !important;
+    opacity: 0.6 !important;
+    cursor: not-allowed !important;
+}
+
 /* Date filter buttons in the sidebar */
 body.mario-kart-app .sidebar .date-filter-controls { gap: 0.4rem !important; }
 body.mario-kart-app .sidebar .filter-btn,
@@ -672,6 +719,16 @@ body.mario-kart-app textarea:focus {
     border-color: var(--mk-accent) !important;
     box-shadow: 0 0 0 3px var(--mk-accent-soft) !important;
     background: var(--mk-surface) !important;
+}
+
+/* Out-of-range / invalid number entry (e.g. position > max). Previously the
+   only feedback was on submit; give an immediate visual cue using the danger
+   token. Scoped to filled inputs so empty/required-only fields aren't flagged
+   before the user types. */
+body.mario-kart-app input[type="number"]:out-of-range,
+body.mario-kart-app input[type="number"]:invalid:not(:placeholder-shown) {
+    border-color: var(--mk-danger) !important;
+    box-shadow: 0 0 0 3px var(--mk-danger-soft) !important;
 }
 
 /* ---------- Export/Import/Backup/Clear buttons used in main area ---------- */

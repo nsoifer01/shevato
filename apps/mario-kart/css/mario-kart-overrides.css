@@ -69,6 +69,22 @@ body.theme .pagination-btn:hover:not(:disabled) {
     background: #4b5563 !important;
 }
 
+/* Active page. Without this, `body.theme .pagination-btn` (higher specificity
+   than `.pagination-btn.active`) flattens the active page to the inactive
+   grey. Pin the accent fill + a ring so the current page is unmistakable. */
+body.theme .pagination-btn.active {
+    color: white !important;
+    background: #8b5cf6 !important;
+    border-color: #8b5cf6 !important;
+    box-shadow: 0 0 0 2px rgba(139, 92, 246, 0.35) !important;
+}
+
+body.theme .pagination-btn.active:hover:not(:disabled) {
+    color: white !important;
+    background: #7c4dff !important;
+    border-color: #7c4dff !important;
+}
+
 /* Export / Import / Backup base classes — fully restyled in
    css/refresh.css (`body.mario-kart-app .export-btn` etc.) to live on a
    neutral surface with the new dark palette. The legacy green/teal/blue
@@ -89,7 +105,11 @@ body.theme .pagination-btn:hover:not(:disabled) {
     display: flex;
     justify-content: center;
     align-items: center;
-    z-index: 1000;
+    /* Above the sidebar (z 1001) so the clear-data confirm — opened from a
+       button inside the open sidebar — is never occluded by it at 390/768.
+       Stays below the icon picker (10000), tooltips (10002), back-to-top
+       (9000) and the sync banner (10100), which are unrelated flows. */
+    z-index: 1100;
     backdrop-filter: blur(5px);
 }
 
@@ -102,6 +122,29 @@ body.theme .pagination-btn:hover:not(:disabled) {
     width: 90%;
     text-align: center;
     animation: modalSlideIn 0.3s ease;
+}
+
+@keyframes modalSlideIn {
+    from { opacity: 0; transform: scale(0.9) translateY(-20px); }
+    to { opacity: 1; transform: scale(1) translateY(0); }
+}
+
+/* Default (desktop) modal button row: side by side, centered. The mobile
+   @media block below collapses this to a stacked column. Without this base
+   rule .modal-buttons computes display:block and the buttons stack
+   left-aligned at uneven widths on desktop. */
+.modal-buttons {
+    display: flex;
+    justify-content: center;
+    gap: 0.75rem;
+    margin-top: 1.5rem;
+}
+
+.modal-buttons .modal-btn-primary,
+.modal-buttons .modal-btn-secondary,
+.modal-buttons .modal-btn-danger {
+    flex: 1 1 0;
+    max-width: 220px;
 }
 
 
@@ -150,27 +193,99 @@ body.theme .pagination-btn:hover:not(:disabled) {
     line-height: 1;
 }
 
-
-/* Specific styling for Edit Race modal buttons */
-#save-edit {
-    background: #10b981 !important;
+/* Destructive confirm button ("Delete Everything"). Without this rule the
+   site-wide theme trap (main.css `button { color:#555 !important }`) renders
+   the label gray on the purple primary gradient — a destructive action that
+   looks like a primary one. Red fill + white text pinned !important across
+   base / hover / active so the trap can never reclaim the colour. */
+.modal-btn-danger {
+    background: #ef4444;
     color: white !important;
-    display: flex !important;
-    align-items: center !important;
-    justify-content: center !important;
-    min-height: 44px !important;
-    line-height: 1 !important;
-    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif !important;
+    border: none;
+    padding: 0.75rem 1.5rem;
+    border-radius: 0.5rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.2s;
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 44px;
+    line-height: 1;
 }
 
-#cancel-edit {
+.modal-btn-danger:hover {
+    background: #dc2626;
     color: white !important;
-    display: flex !important;
-    align-items: center !important;
-    justify-content: center !important;
-    min-height: 44px !important;
-    line-height: 1 !important;
-    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif !important;
+}
+
+.modal-btn-danger:hover:active {
+    background: #b91c1c;
+    color: white !important;
+}
+
+
+/* ===========================================
+   Edit Race modal (class-driven, mirrors clear-data modal)
+   =========================================== */
+/* Wider than the confirm dialog: holds date/time + per-player rows. */
+.edit-race-dialog {
+    max-width: 500px;
+    max-height: 80vh;
+    overflow-y: auto;
+    text-align: left;
+}
+
+.edit-race-dialog .modal-icon,
+.edit-race-dialog .modal-title {
+    text-align: center;
+}
+
+.edit-race-meta {
+    text-align: center;
+    margin-bottom: 1.5rem;
+    font-size: 0.9rem;
+    color: var(--modal-text-color, #a0aec0);
+}
+
+.edit-race-datetime {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 1rem;
+    margin-bottom: 0.5rem;
+}
+
+.edit-race-field {
+    margin-bottom: 1rem;
+}
+
+.edit-race-label {
+    display: block;
+    margin-bottom: 0.5rem;
+    color: var(--modal-title-color, #e2e8f0);
+    font-weight: 600;
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+}
+
+/* Scoped under body.mario-kart-app so it outranks the global
+   `body.mario-kart-app input[type=...]` rule in refresh.css that otherwise
+   forces every edit input to the near-black surface token. type="time" is
+   absent from that rule, so without this all three inputs would render with
+   mismatched backgrounds. One uniform surface for date/time/number here. */
+body.mario-kart-app .edit-race-input,
+body.mario-kart-app input[type="number"].edit-race-input,
+body.mario-kart-app input[type="date"].edit-race-input,
+body.mario-kart-app input[type="time"].edit-race-input {
+    width: 100%;
+    padding: 0.75rem;
+    border: 1px solid #4a5568 !important;
+    border-radius: 0.5rem !important;
+    background: #4a5568 !important;
+    color: #e2e8f0 !important;
+    color-scheme: dark;
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+    box-sizing: border-box;
 }
 
 /* ===========================================
@@ -483,6 +598,33 @@ body.theme .h2h-player-pill {
    Responsive Design
    =========================================== */
 
+/* ===========================================
+   Race-history table/card swap breakpoint (loads AFTER responsive.css)
+   =========================================== */
+/* responsive.css swaps table<->cards at 768px. At 768-900 the desktop table
+   is cramped (dates wrap, the two action buttons stack) — a dead-zone. Raise
+   the swap to 900 so tablet-portrait gets the roomy card layout. This block
+   wins because mario-kart-overrides.css loads after responsive.css at equal
+   specificity. KEEP IN SYNC with the pagination-container hide below. */
+@media (max-width: 900px) {
+    .table-container {
+        display: none;
+    }
+
+    .mobile-cards {
+        display: flex;
+    }
+
+    /* Cards render every race and ignore pagination; the desktop-only
+       pagination control would read "Showing 1-10 of N" while the cards run
+       past it. Hide the misleading control whenever cards are the active
+       presentation. The real fix (slicing the cards) is behavioral and
+       deferred to /audit-app. */
+    .pagination-container {
+        display: none !important;
+    }
+}
+
 /* Mobile sidebar toggle improvements */
 @media (max-width: 768px) {
     .sidebar-toggle {
@@ -507,7 +649,19 @@ body.theme .h2h-player-pill {
         flex-direction: column;
         gap: 0.75rem;
     }
-    
+
+    .modal-buttons .modal-btn-primary,
+    .modal-buttons .modal-btn-secondary,
+    .modal-buttons .modal-btn-danger {
+        max-width: none;
+    }
+
+    /* Collapse the date/time pair to one column so the time input + its
+       clock icon never overflow the dialog edge at 390/360. */
+    .edit-race-datetime {
+        grid-template-columns: 1fr;
+    }
+
     .form-grid {
         grid-template-columns: 1fr;
     }

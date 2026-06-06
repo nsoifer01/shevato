@@ -137,6 +137,18 @@
     transition: all 0.3s ease;
 }
 
+/* Live "(N)" active-streak count shown next to the all-time record. Green to
+   echo the active-streak glow on the bar; pinned so the parent's inline color
+   (set in achievements.js) doesn't tint it. */
+.achievement-number .achievement-active-count {
+    font-size: 9px;
+    font-weight: 700;
+    color: #34d399 !important;
+    margin-left: 2px;
+    vertical-align: super;
+    line-height: 1;
+}
+
 /* Modern Toggle Buttons */
 .achievement-buttons-container {
     display: flex;
