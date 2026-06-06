@@ -91,6 +91,7 @@
   <link rel="stylesheet" href="../../assets/css/main.css">
   <link rel="stylesheet" href="../../assets/css/sync-status.css">
   <link rel="stylesheet" href="css/styles.css">
+  <link rel="stylesheet" href="/assets/css/back-to-top.css">
 </head>
 <body class="maptap-rivals-app">
   <!-- Sync status banner — only visible when offline (and briefly on recovery). Managed by assets/js/sync-status.js. -->
@@ -560,7 +561,7 @@
   <!-- Season creation modal -->
   <div class="modal" id="season-modal" role="dialog" aria-modal="true" aria-labelledby="season-modal-title" hidden>
     <div class="modal-backdrop" data-close="season-modal"></div>
-    <article class="modal-panel modal-panel-season">
+    <article class="modal-panel modal-panel-season" data-back-to-top>
       <button type="button" class="modal-close" data-close="season-modal" aria-label="Close">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.85" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M6 6l12 12"/><path d="M18 6L6 18"/></svg>
       </button>
@@ -623,7 +624,7 @@
   <!-- WhatsApp import modal -->
   <div class="modal" id="wa-modal" role="dialog" aria-modal="true" aria-labelledby="wa-modal-title" hidden>
     <div class="modal-backdrop" data-close="modal"></div>
-    <article class="modal-panel modal-panel-wa">
+    <article class="modal-panel modal-panel-wa" data-back-to-top>
       <button type="button" class="modal-close" data-close="modal" aria-label="Close">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.85" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M6 6l12 12"/><path d="M18 6L6 18"/></svg>
       </button>
@@ -678,5 +679,6 @@
 
   <!-- App -->
   <script src="js/app.js" defer></script>
+  <script src="/assets/js/back-to-top.js" defer></script>
 </body>
 </html>

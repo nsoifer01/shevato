@@ -8,6 +8,11 @@ const { renderExercisePage, buildDescription, labelOf } = require('../scripts/re
 const { renderExerciseIndex, renderTaxonomyPage } = require('../scripts/render-exercise-index.cjs');
 const { renderExercisesSitemap } = require('../scripts/render-sitemap.cjs');
 
+// The legacy inline back-to-top class, assembled from parts so this token
+// never appears as a literal in the repo — a `grep -rl` for it must return
+// nothing now that the shared sitewide back-to-top is the only implementation.
+const LEGACY_SCROLL_TOP_TOKEN = ['ex', 'scroll', 'top'].join('-');
+
 const SAMPLE = [
   { id: 1, name: 'Archer Push-Ups', category: 'chest', muscleGroup: 'pectorals', secondaryMuscles: ['triceps', 'core'], equipment: 'bodyweight', exerciseType: 'reps' },
   { id: 2, name: 'Cable Y Raise', category: 'shoulders', muscleGroup: 'rear-delts', equipment: 'cable', exerciseType: 'reps' },
@@ -52,8 +57,11 @@ test('renderExercisePage produces a valid HTML5 document', () => {
   assert.ok(html.startsWith('<!DOCTYPE html>'));
   assert.ok(html.includes('<html lang="en">'));
   assert.ok(html.trim().endsWith('</html>'));
-  assert.ok(html.includes('class="ex-scroll-top"'), 'back-to-top button must be present');
-  assert.ok(html.includes('ex-scroll-top--visible'), 'back-to-top JS toggle class must be present');
+  // The page uses the shared sitewide back-to-top: it pulls in the shared
+  // stylesheet and script, and emits no bespoke inline button or script.
+  assert.ok(html.includes('<link rel="stylesheet" href="/assets/css/back-to-top.css">'), 'shared back-to-top stylesheet must be linked');
+  assert.ok(html.includes('<script src="/assets/js/back-to-top.js" defer></script>'), 'shared back-to-top script must be included');
+  assert.ok(!html.includes(LEGACY_SCROLL_TOP_TOKEN), 'no bespoke inline back-to-top markup or script must be emitted');
 });
 
 test('renderExercisePage embeds canonical and ExerciseAction JSON-LD', () => {
@@ -90,7 +98,9 @@ test('renderExerciseIndex emits every exercise as a link', () => {
     assert.ok(html.includes(`/apps/gym-tracker/exercises/${slugs.get(ex.id)}/`));
   }
   assert.ok(html.includes(`${SAMPLE.length} exercises`));
-  assert.ok(html.includes('class="ex-scroll-top"'), 'back-to-top button must be present on index');
+  assert.ok(html.includes('<link rel="stylesheet" href="/assets/css/back-to-top.css">'), 'shared back-to-top stylesheet must be linked on index');
+  assert.ok(html.includes('<script src="/assets/js/back-to-top.js" defer></script>'), 'shared back-to-top script must be included on index');
+  assert.ok(!html.includes(LEGACY_SCROLL_TOP_TOKEN), 'no bespoke inline back-to-top markup or script must be emitted on index');
 });
 
 test('renderTaxonomyPage targets a high-volume query', () => {
@@ -106,6 +116,9 @@ test('renderTaxonomyPage targets a high-volume query', () => {
   assert.ok(html.includes('<title>Pectorals Exercises (1)'));
   assert.ok(html.includes('canonical" href="https://shevato.com/apps/gym-tracker/exercises/muscle/pectorals/"'));
   assert.ok(html.includes('/apps/gym-tracker/exercises/archer-push-ups/'));
+  assert.ok(html.includes('<link rel="stylesheet" href="/assets/css/back-to-top.css">'), 'shared back-to-top stylesheet must be linked on taxonomy page');
+  assert.ok(html.includes('<script src="/assets/js/back-to-top.js" defer></script>'), 'shared back-to-top script must be included on taxonomy page');
+  assert.ok(!html.includes(LEGACY_SCROLL_TOP_TOKEN), 'no bespoke inline back-to-top markup or script must be emitted on taxonomy page');
 });
 
 test('renderExercisesSitemap covers per-exercise, taxonomy, and index URLs', () => {

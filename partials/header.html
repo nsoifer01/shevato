@@ -7,7 +7,18 @@
   <nav class="header-inline-nav" aria-label="Main navigation">
     <a href="/home.html">Home</a>
     <a href="/work.html">Work</a>
-    <a href="/apps.html">Apps</a>
+    <div class="nav-apps" data-js="nav-apps">
+      <a href="/apps.html" class="nav-apps__toggle" data-js="nav-apps-toggle" aria-haspopup="true" aria-expanded="false" aria-controls="nav-apps-menu">Apps</a>
+      <ul class="nav-apps__menu" id="nav-apps-menu" role="menu" aria-label="Apps">
+        <li role="none"><a role="menuitem" href="/apps/arena/">Arena</a></li>
+        <li role="none"><a role="menuitem" href="/apps/football-h2h/">Football H2H League</a></li>
+        <li role="none"><a role="menuitem" href="/apps/gym-tracker/">Gym Tracker</a></li>
+        <li role="none"><a role="menuitem" href="/apps/maptap-rivals/">MapTap Rivals</a></li>
+        <li role="none"><a role="menuitem" href="/apps/mario-kart/">Mario Kart Tracker</a></li>
+        <li role="none"><a role="menuitem" href="/apps/rising-seasons/">Rising Seasons</a></li>
+        <li role="none" class="nav-apps__divider"><a role="menuitem" href="/apps.html">All Apps</a></li>
+      </ul>
+    </div>
     <a href="/about.html">About</a>
     <a href="/contact.html">Contact</a>
   </nav>
@@ -28,6 +39,16 @@
     <li><a href="/home.html">Home</a></li>
     <li><a href="/work.html">Work</a></li>
     <li><a href="/apps.html">Apps</a></li>
+    <li class="menu-apps">
+      <ul class="menu-apps__sub">
+        <li><a href="/apps/arena/">Arena</a></li>
+        <li><a href="/apps/football-h2h/">Football H2H League</a></li>
+        <li><a href="/apps/gym-tracker/">Gym Tracker</a></li>
+        <li><a href="/apps/maptap-rivals/">MapTap Rivals</a></li>
+        <li><a href="/apps/mario-kart/">Mario Kart Tracker</a></li>
+        <li><a href="/apps/rising-seasons/">Rising Seasons</a></li>
+      </ul>
+    </li>
     <li><a href="/about.html">About</a></li>
     <li><a href="/contact.html">Contact</a></li>
   </ul>

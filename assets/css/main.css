@@ -2409,14 +2409,16 @@ body {
       text-decoration: none;
       -webkit-tap-highlight-color: rgba(0, 0, 0, 0); }
       #header > nav > a[href="#menu"]:before {
-        -webkit-font-smoothing: antialiased;
-        font-family: FontAwesome;
-        font-style: normal;
-        font-weight: normal;
-        text-transform: none !important; }
-      #header > nav > a[href="#menu"]:before {
-        content: '\f0c9';
-        margin: 0 0.5rem 0 0; }
+        content: '';
+        display: inline-block;
+        vertical-align: middle;
+        position: relative;
+        top: -0.0625rem;
+        width: 0.9375rem;
+        height: 0.14rem;
+        margin: 0 0.5rem 0 0;
+        background: currentColor;
+        box-shadow: 0 -0.28rem currentColor, 0 0.28rem currentColor; }
     #header > nav > a + a[href="#menu"]:last-child {
       border-left: solid 1px rgba(255, 255, 255, 0.25);
       margin-left: 0.5rem;
@@ -2447,15 +2449,38 @@ body {
 .user-email-header {
   display: none; }
   @media screen and (max-width: 736px) {
+    /* On mobile the signed-in email is shown as the single flexible item in
+       the header bar. It absorbs the slack between the logo and the right-side
+       controls (Sign Out + Menu) and truncates with an ellipsis, so it can
+       never push other items out of the bar or off the viewport. */
     .user-email-header.signed-in {
       display: block;
+      flex: 1 1 auto;
+      min-width: 0;
       color: rgba(255, 255, 255, 0.7);
       font-size: 0.75rem;
+      line-height: 42px;
       padding: 0 0.5rem;
       white-space: nowrap;
       overflow: hidden;
-      text-overflow: ellipsis;
-      max-width: 150px; } }
+      text-overflow: ellipsis; } }
+
+/* Mobile header single-row layout (signed-in). Keeps logo, Sign Out and Menu
+   at intrinsic widths so only the email line flexes; everything stays centered
+   in one row and nothing escapes the bar. */
+@media screen and (max-width: 736px) {
+  #header > .auth-container {
+    flex: 0 0 auto;
+    min-width: 0;
+    padding-left: 0.5rem; }
+  /* The inline auth name duplicates the mobile email line, so hide it here and
+     let .user-email-header be the single email element on small screens. */
+  #header .auth__user-name {
+    display: none; }
+  #header > nav:last-child {
+    flex: 0 0 auto; }
+  #header > nav > a[data-js="menu-toggle"] {
+    white-space: nowrap; } }
 
 /* Heading */
 #heading {
@@ -2765,15 +2790,26 @@ body {
     top: 0;
     vertical-align: middle;
     width: 7rem; }
+    #menu .close:before,
+    #menu .close:after {
+      content: '';
+      position: absolute;
+      top: 50%;
+      right: 1.25rem;
+      width: 1rem;
+      height: 0.125rem;
+      margin-top: -0.0625rem;
+      background: currentColor; }
     #menu .close:before {
-      -webkit-font-smoothing: antialiased;
-      font-family: FontAwesome;
-      font-style: normal;
-      font-weight: normal;
-      text-transform: none !important; }
-    #menu .close:before {
-      content: '\f00d';
-      font-size: 1.25rem; }
+      -moz-transform: rotate(45deg);
+      -webkit-transform: rotate(45deg);
+      -ms-transform: rotate(45deg);
+      transform: rotate(45deg); }
+    #menu .close:after {
+      -moz-transform: rotate(-45deg);
+      -webkit-transform: rotate(-45deg);
+      -ms-transform: rotate(-45deg);
+      transform: rotate(-45deg); }
     #menu .close:hover {
       color: #ffffff; }
     @media screen and (max-width: 736px) {
@@ -2852,6 +2888,132 @@ body > [data-include="footer"] {
 @media screen and (max-width: 980px) {
   .header-inline-nav a {
     line-height: 44px; } }
+
+/* ==========================================================================
+   Apps dropdown (desktop inline nav). Colors are pinned on every state
+   (normal / hover / focus) because the sitewide theme paints generic
+   interactive hovers red; the dropdown must stay grey/white/blue.
+   ========================================================================== */
+.nav-apps {
+  position: relative;
+  display: -webkit-flex;
+  display: flex;
+  align-items: center; }
+.nav-apps__menu {
+  list-style: none;
+  margin: 0;
+  padding: 0.4rem 0;
+  position: absolute;
+  top: 100%;
+  left: 0;
+  min-width: 13rem;
+  background-color: #1f1f1f;
+  border: solid 1px rgba(255, 255, 255, 0.12);
+  border-radius: 4px;
+  box-shadow: 0 0.5rem 1.5rem rgba(0, 0, 0, 0.35);
+  opacity: 0;
+  pointer-events: none;
+  -webkit-transform: translateY(0.35rem);
+  transform: translateY(0.35rem);
+  transition: opacity 0.18s ease, transform 0.18s ease;
+  z-index: 10003; }
+.nav-apps.is-open .nav-apps__menu,
+.nav-apps:hover .nav-apps__menu,
+.nav-apps:focus-within .nav-apps__menu {
+  opacity: 1;
+  pointer-events: auto;
+  -webkit-transform: translateY(0);
+  transform: translateY(0); }
+/* Escape sets .is-dismissed and refocuses the toggle; since the toggle sits
+   inside .nav-apps the :focus-within rule above would otherwise keep the menu
+   open, so this rule forces it hidden. It is cleared when focus enters a menu
+   item (Tab can still re-enter) or on mouse-leave. */
+.nav-apps.is-dismissed .nav-apps__menu {
+  opacity: 0;
+  pointer-events: none;
+  -webkit-transform: translateY(0.35rem);
+  transform: translateY(0.35rem); }
+.nav-apps__menu li {
+  padding: 0;
+  margin: 0; }
+.nav-apps__menu a {
+  display: block;
+  font-size: 0.8rem;
+  font-weight: 500;
+  letter-spacing: 0.04em;
+  text-transform: none;
+  line-height: 1.4;
+  padding: 0.5rem 1rem;
+  border-bottom: 0;
+  white-space: nowrap;
+  transition: color 0.18s ease, background-color 0.18s ease; }
+/* Color is pinned under #header so the dropdown beats app stylesheets that
+   set broad `body.<app> a { color }` (0,1,2) and load after main.css. The
+   toggle is inside .nav-apps, so the theme's `#header > nav > a` rule does
+   not reach it; these #header-anchored rules (1,1,2 / 1,1,3) do. */
+#header .nav-apps__toggle {
+  color: rgba(255, 255, 255, 0.6); }
+#header .nav-apps__toggle:hover,
+#header .nav-apps__toggle:focus,
+#header .nav-apps.is-open .nav-apps__toggle {
+  color: #ffffff; }
+/* Active-page mark (set by main.js on /apps.html) keeps the brand-blue text
+   and underline bar from .header-inline-nav a.active; re-pinned under #header
+   so it wins over the grey base rule above. */
+#header .nav-apps__toggle.active {
+  color: var(--brand-blue-on-dark, #4d8dff); }
+#header .nav-apps__menu a {
+  color: rgba(255, 255, 255, 0.72); }
+#header .nav-apps__menu a:hover,
+#header .nav-apps__menu a:focus {
+  color: #ffffff;
+  background-color: rgba(77, 141, 255, 0.16);
+  box-shadow: none;
+  outline: none; }
+#header .nav-apps__menu a:focus-visible {
+  outline: 2px solid var(--brand-blue-on-dark, #4d8dff);
+  outline-offset: -2px; }
+.nav-apps__divider {
+  border-top: solid 1px rgba(255, 255, 255, 0.12);
+  margin-top: 0.3rem;
+  padding-top: 0.3rem; }
+#header .nav-apps__divider a {
+  color: var(--brand-blue-on-dark, #4d8dff);
+  font-weight: 600; }
+#header .nav-apps__divider a:hover,
+#header .nav-apps__divider a:focus {
+  color: #ffffff; }
+/* On /apps.html the "All Apps" item points at the current page, so de-emphasise
+   it to a regular menu item (set by main.js adding .is-current-page). Higher
+   specificity than the brand-blue rules above so it wins later in the cascade. */
+#header .nav-apps__divider.is-current-page a {
+  color: rgba(255, 255, 255, 0.72);
+  font-weight: 500; }
+#header .nav-apps__divider.is-current-page a:hover,
+#header .nav-apps__divider.is-current-page a:focus {
+  color: #ffffff;
+  background-color: rgba(77, 141, 255, 0.16); }
+
+/* Apps sub-list inside the slide-in #menu (mobile). Indented, always visible.
+   Pin colors so the theme's red #menu link rule never bleeds through. */
+#menu > ul.links > li.menu-apps {
+  padding: 0; }
+#menu .menu-apps__sub {
+  list-style: none;
+  margin: 0;
+  padding: 0 0 0.5rem 1rem; }
+#menu .menu-apps__sub > li {
+  padding: 0; }
+#menu .menu-apps__sub > li > a {
+  border: 0;
+  color: rgba(255, 255, 255, 0.6);
+  display: block;
+  font-size: 0.9rem;
+  line-height: 2.4rem;
+  text-decoration: none; }
+#menu .menu-apps__sub > li > a:hover,
+#menu .menu-apps__sub > li > a:focus {
+  color: #ffffff; }
 
 /* Hide the slide-in Menu toggle on desktop (the inline nav replaces it) */
 @media screen and (min-width: 737px) {

@@ -20,6 +20,14 @@
   width: 100%;
 }
 
+/* When a category filter is active, the JS hides non-matching cards, leaving
+   incomplete rows. Centering those would let a lone trailing card (e.g. Mario
+   Kart in the Games view) drift inward; left-align so it sits in the first
+   column under the row above. The unfiltered "All" view keeps centering. */
+.highlights.is-filtered {
+  justify-content: flex-start;
+}
+
 /* Wipe legacy per-child width/padding rules from main.css. Flex-basis is
    computed so exactly three cards fit per row at typical widths — 4 cards
    would never fit, so a 5-card layout always reads as 3 + 2 (centered). */

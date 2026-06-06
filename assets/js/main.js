@@ -890,6 +890,99 @@
     handleMenuVisibility();
   }
 
+  /**
+   * Initialize the desktop "Apps" dropdown in the inline header nav.
+   *
+   * Mouse / keyboard: the toggle navigates to /apps.html (anchor default);
+   * the menu opens on hover (CSS) and on keyboard focus (CSS :focus-within).
+   * Touch (no hover): the first tap opens the menu (preventDefault); a second
+   * tap while open navigates. Closes on mouse-leave (CSS), click outside, and
+   * Escape (which hides the menu and returns focus to the toggle). Runs after
+   * the header partial is injected.
+   */
+  function initializeAppsDropdown() {
+    const $wrap = $('[data-js="nav-apps"]');
+    const $toggle = $('[data-js="nav-apps-toggle"]');
+    if (!$wrap.length || !$toggle.length) {
+      return;
+    }
+
+    const close = () => {
+      $wrap.removeClass('is-open');
+      $toggle.attr('aria-expanded', 'false');
+    };
+    const open = () => {
+      $wrap.removeClass('is-dismissed').addClass('is-open');
+      $toggle.attr('aria-expanded', 'true');
+    };
+
+    // Track the pointer type of the gesture that produced the next click so we
+    // can tell a touch tap from a mouse click. Falls back to the hover media
+    // query when PointerEvent is unavailable.
+    let lastPointerType = '';
+    if (window.PointerEvent) {
+      $toggle.on('pointerdown.navApps', (event) => {
+        lastPointerType = event.originalEvent.pointerType || '';
+      });
+    }
+    const hoverNone = window.matchMedia && window.matchMedia('(hover: none)').matches;
+    const isTouch = () => lastPointerType === 'touch' || lastPointerType === 'pen' ||
+      (!lastPointerType && hoverNone);
+
+    // Touch: first tap opens the menu, second tap navigates. Mouse/keyboard:
+    // let the anchor navigate to /apps.html.
+    $toggle.on('click.navApps', (event) => {
+      if (isTouch() && !$wrap.hasClass('is-open')) {
+        event.preventDefault();
+        open();
+      }
+      lastPointerType = '';
+    });
+
+    // Keep aria-expanded in sync with hover-driven opens.
+    $wrap.on('mouseenter.navApps', open).on('mouseleave.navApps', () => {
+      $wrap.removeClass('is-dismissed');
+      close();
+    });
+
+    // Keep aria-expanded in sync with keyboard focus (CSS :focus-within opens
+    // the menu). Entering a menu item also clears an Escape dismissal so Tab
+    // can re-enter the menu after Escape.
+    $wrap.on('focusin.navApps', (event) => {
+      if (event.target !== $toggle[0]) {
+        $wrap.removeClass('is-dismissed');
+      }
+      open();
+    });
+    $wrap.on('focusout.navApps', (event) => {
+      if (!$wrap[0].contains(event.relatedTarget)) {
+        $wrap.removeClass('is-dismissed');
+        close();
+      }
+    });
+
+    // Click outside closes.
+    $(document).on('click.navApps', (event) => {
+      if (!$wrap[0].contains(event.target)) {
+        close();
+      }
+    });
+
+    // Escape hides the menu and returns focus to the toggle. Because the toggle
+    // is inside .nav-apps, :focus-within would keep the menu open; .is-dismissed
+    // forces it hidden until focus leaves the wrapper or enters a menu item.
+    // Focus the toggle first so that the resulting focusin fires (and open()
+    // runs) before we set is-dismissed and call close(); this ensures the
+    // final state is is-dismissed=true, is-open=false, aria-expanded=false.
+    $(document).on('keydown.navApps', (event) => {
+      if (event.key === 'Escape' && ($wrap.hasClass('is-open') || $wrap[0].contains(document.activeElement))) {
+        $toggle.focus();
+        $wrap.addClass('is-dismissed');
+        close();
+      }
+    });
+  }
+
   /* ==========================================================================
      Global Initialization
      ========================================================================== */
@@ -915,6 +1008,11 @@
           initializeMenu();
         }
 
+        // Initialize the desktop Apps dropdown after header is loaded
+        if (includeFile === 'header.html') {
+          initializeAppsDropdown();
+        }
+
         // Initialize auth UI after header is loaded
         if (includeFile === 'header.html' && window.authUI && window.authUI.onHeaderLoaded) {
           window.authUI.onHeaderLoaded();
@@ -937,12 +1035,28 @@
           const inApp = path.indexOf('/apps/') !== -1;
           const filename = path.split('/').pop() || 'home.html';
           if (!inApp) {
-            $('.header-inline-nav a, #menu a').each(function() {
+            // Exclude dropdown/sub-list app links: the desktop dropdown's
+            // "All Apps" item and the per-app entries share basenames with
+            // nothing here, but "All Apps" -> /apps.html would otherwise also
+            // match on /apps.html and steal the highlight from the top-level
+            // Apps toggle. Match only the top-level inline-nav and #menu links.
+            $('.header-inline-nav > a, .nav-apps__toggle, #menu > ul.links > li > a').each(function() {
               const hrefFile = ($(this).attr('href') || '').split('/').pop();
               if (hrefFile && hrefFile === filename) {
                 $(this).addClass('active').attr('aria-current', 'page');
               }
             });
+
+            // On the apps hub, the dropdown's "All Apps" item points at the
+            // current page; de-emphasise it (purely visual, no aria-current).
+            // Extension-tolerant compare for Netlify Pretty URLs: prod serves
+            // /apps while the partial href is /apps.html.
+            const currentBase = (filename || '').replace(/\.html$/, '') || 'home';
+            const $divider = $('.nav-apps__divider');
+            const dividerBase = ($divider.find('a').attr('href') || '').split('/').pop().replace(/\.html$/, '');
+            if (dividerBase && dividerBase === currentBase) {
+              $divider.addClass('is-current-page');
+            }
           }
         }
 

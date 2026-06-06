@@ -94,6 +94,7 @@
   <link rel="stylesheet" href="../../assets/css/main.css">
   <link rel="stylesheet" href="../../assets/css/sync-status.css">
   <link rel="stylesheet" href="css/styles.css">
+  <link rel="stylesheet" href="/assets/css/back-to-top.css">
 </head>
 <body class="rising-seasons-app">
   <!-- Sync status banner — only visible when offline (and briefly on recovery). Managed by assets/js/sync-status.js. -->
@@ -458,7 +459,7 @@
        changelog.json. Hidden until the user activates the chip. -->
   <div class="changelog-modal modal" id="changelogModal" role="dialog" aria-modal="true" aria-labelledby="changelogModalTitle" aria-hidden="true" hidden>
     <div class="modal-backdrop" data-close="changelog-modal"></div>
-    <article class="modal-panel changelog-panel" tabindex="-1">
+    <article class="modal-panel changelog-panel" tabindex="-1" data-back-to-top>
       <button type="button" class="btn modal-close" data-close="changelog-modal" aria-label="Close">×</button>
       <header class="changelog-header">
         <h2 id="changelogModalTitle">What's new</h2>
@@ -493,7 +494,7 @@
   <!-- Detail modal (opens when a card is clicked) -->
   <div class="modal" id="detailModal" role="dialog" aria-modal="true" aria-labelledby="modalTitle" aria-hidden="true" hidden>
     <div class="modal-backdrop" data-close="modal"></div>
-    <article class="modal-panel" tabindex="-1">
+    <article class="modal-panel" tabindex="-1" data-back-to-top>
       <button type="button" class="btn modal-close" data-close="modal" aria-label="Close">×</button>
       <button type="button" class="btn modal-back" id="modalBack" hidden aria-label="Back to previous view" title="Back"></button>
       <button type="button" class="btn btn-primary modal-reroll" id="modalReroll" hidden>Roll again</button>
@@ -529,16 +530,13 @@
         <h3 class="modal-section">More seasons like this</h3>
         <div class="related-grid"></div>
       </section>
-      <button type="button" class="btn modal-scroll-top" id="modalScrollTop" aria-label="Scroll back to top" title="Back to top">
-        <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3.5 10 8 5.5 12.5 10"/></svg><span>Top</span>
-      </button>
     </article>
   </div>
 
   <!-- Show-level modal (all seasons + aggregate info) -->
   <div class="modal" id="showModal" role="dialog" aria-modal="true" aria-labelledby="showModalTitle" aria-hidden="true" hidden>
     <div class="modal-backdrop" data-close="show-modal"></div>
-    <article class="modal-panel" tabindex="-1">
+    <article class="modal-panel" tabindex="-1" data-back-to-top>
       <button type="button" class="btn modal-close" data-close="show-modal" aria-label="Close">×</button>
       <button type="button" class="btn modal-back" id="showModalBack" hidden aria-label="Back to previous view" title="Back"></button>
       <div class="modal-header">
@@ -578,16 +576,13 @@
         <h3 class="modal-section">More shows like this</h3>
         <div class="show-related-grid"></div>
       </section>
-      <button type="button" class="btn modal-scroll-top" id="showModalScrollTop" aria-label="Scroll back to top" title="Back to top">
-        <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3.5 10 8 5.5 12.5 10"/></svg><span>Top</span>
-      </button>
     </article>
   </div>
 
   <!-- Compare modal (overlay trajectory across multiple series) -->
   <div class="modal" id="compareModal" role="dialog" aria-modal="true" aria-labelledby="compareModalTitle" aria-hidden="true" hidden>
     <div class="modal-backdrop" data-close="compare-modal"></div>
-    <article class="modal-panel" tabindex="-1">
+    <article class="modal-panel" tabindex="-1" data-back-to-top>
       <button type="button" class="btn modal-close" data-close="compare-modal" aria-label="Close">×</button>
       <h2 id="compareModalTitle">Compare shows</h2>
       <p class="modal-subtitle">Season-average rating trajectory for each show. Click a show name to remove.</p>
@@ -727,5 +722,6 @@
 
   <!-- App script — vanilla, no jQuery dependency -->
   <script src="js/app.js" defer></script>
+  <script src="/assets/js/back-to-top.js" defer></script>
 </body>
 </html>

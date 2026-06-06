@@ -104,6 +104,7 @@
     <link rel="stylesheet" href="css/gym-tracker.css">
     <!-- Visual refresh layer — must load last so it wins specificity ties. -->
     <link rel="stylesheet" href="css/refresh.css">
+  <link rel="stylesheet" href="/assets/css/back-to-top.css">
 </head>
 <body class="gym-tracker">
     <div data-include="header"></div>
@@ -276,7 +277,7 @@
 
                 <!-- Create/Edit Program Modal -->
                 <div id="program-modal" class="modal" role="dialog" aria-modal="true" aria-labelledby="program-modal-title">
-                    <div class="modal-content">
+                    <div class="modal-content" data-back-to-top>
                         <div class="modal-header">
                             <h2 id="program-modal-title">Create Program</h2>
                             <button class="modal-close" aria-label="Close">&times;</button>
@@ -343,18 +344,13 @@
                                     </button>
                                 </div>
                             </form>
-                            <!-- Floating back-to-top inside the program modal -->
-                            <button type="button" id="gt-program-modal-scroll-top" class="gt-scroll-top gt-modal-scroll-top" aria-label="Back to top" tabindex="-1">
-                                <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M8 12V4M4 8l4-4 4 4" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
-                                <span>Top</span>
-                            </button>
                         </div>
                     </div>
                 </div>
 
                 <!-- Exercise Picker Modal -->
                 <div id="exercise-picker-modal" class="modal" role="dialog" aria-modal="true" aria-labelledby="exercise-picker-title">
-                    <div class="modal-content large">
+                    <div class="modal-content large" data-back-to-top>
                         <div class="modal-header">
                             <h2 id="exercise-picker-title">Select Exercises</h2>
                             <button class="modal-close" aria-label="Close">&times;</button>
@@ -507,7 +503,7 @@
 
                     <!-- Finish Workout Modal -->
                     <div id="finish-workout-modal" class="modal" role="dialog" aria-modal="true" aria-labelledby="finish-workout-title">
-                        <div class="modal-content finish-workout-modal-content">
+                        <div class="modal-content finish-workout-modal-content" data-back-to-top>
                             <div class="finish-modal-hero">
                                 <div class="finish-modal-hero-text">
                                     <h2 id="finish-workout-title" class="finish-modal-title">Finish Workout</h2>
@@ -616,7 +612,7 @@
 
                 <!-- Workout Detail Modal -->
                 <div id="workout-detail-modal" class="modal" role="dialog" aria-modal="true" aria-labelledby="workout-detail-title">
-                    <div class="modal-content">
+                    <div class="modal-content" data-back-to-top>
                         <div class="modal-header">
                             <h2 id="workout-detail-title">Workout Details</h2>
                             <button class="modal-close" aria-label="Close">&times;</button>
@@ -710,7 +706,7 @@
 
                 <!-- Exercise Detail Modal -->
                 <div id="exercise-detail-modal" class="modal" role="dialog" aria-modal="true" aria-labelledby="exercise-detail-name">
-                    <div class="modal-content">
+                    <div class="modal-content" data-back-to-top>
                         <div class="modal-header">
                             <h2 id="exercise-detail-name">Exercise</h2>
                             <button class="modal-close" aria-label="Close">&times;</button>
@@ -728,7 +724,7 @@
 
                 <!-- Create Custom Exercise Modal -->
                 <div id="custom-exercise-modal" class="modal" role="dialog" aria-modal="true" aria-labelledby="custom-exercise-title">
-                    <div class="modal-content custom-exercise-modal-content">
+                    <div class="modal-content custom-exercise-modal-content" data-back-to-top>
                         <div class="modal-header">
                             <h2 id="custom-exercise-title">Create Custom Exercise</h2>
                             <button class="modal-close" aria-label="Close">&times;</button>
@@ -934,7 +930,7 @@
 
                 <!-- Add / Edit modal -->
                 <div id="measurement-modal" class="modal" role="dialog" aria-modal="true" aria-labelledby="measurement-modal-title">
-                    <div class="modal-content">
+                    <div class="modal-content" data-back-to-top>
                         <div class="modal-header">
                             <h2 id="measurement-modal-title">Log measurements</h2>
                             <button class="modal-close" aria-label="Close">&times;</button>
@@ -1201,12 +1197,6 @@
 
     <div data-include="footer"></div>
 
-    <!-- Floating back-to-top button (page-level, long views) -->
-    <button type="button" id="gt-page-scroll-top" class="gt-scroll-top" aria-label="Back to top" tabindex="-1">
-        <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M8 12V4M4 8l4-4 4 4" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
-        <span>Top</span>
-    </button>
-
     <!-- Toast Container -->
     <div id="toast-container"></div>
 
@@ -1320,5 +1310,6 @@
     <script type="module" src="js/views/measurements-view.js"></script>
     <script type="module" src="js/views/settings-view.js"></script>
 
+  <script src="/assets/js/back-to-top.js" defer></script>
 </body>
 </html>

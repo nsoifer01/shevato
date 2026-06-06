@@ -1,11 +1,15 @@
 .auth-container {
-  display: inline-block;
+  display: flex;
+  align-items: center;
+  min-width: 0;
   padding-left: 0.75rem;
 }
 
 /* Auth User Info - styled to match header */
 .auth__user {
-  display: inline-block;
+  display: flex;
+  align-items: center;
+  min-width: 0;
 }
 
 .auth__user-name {
@@ -15,7 +19,9 @@
   overflow: hidden;
   text-overflow: ellipsis;
   max-width: 8rem;
-  display: inline;
+  min-width: 0;
+  flex: 0 1 auto;
+  line-height: normal;
 }
 
 /* Auth Sign-in Prompt - centered container */
@@ -40,8 +46,11 @@
   text-decoration: none;
   display: inline-block;
   white-space: nowrap;
+  height: auto;
+  line-height: normal;
+  flex: 0 0 auto;
   -webkit-tap-highlight-color: rgba(0, 0, 0, 0);
-  
+
   /* Transitions */
   transition: color 0.2s ease;
 }
@@ -1080,14 +1089,14 @@ body.dark-theme #auth-modal .auth-message--warning {
 /* Medium devices (768px and up) */
 @media screen and (min-width: 48rem) {
   .auth__user-name {
-    max-width: 10rem;
+    max-width: 14rem;
   }
 }
 
 /* Large devices (992px and up) */
 @media screen and (min-width: 62rem) {
   .auth__user-name {
-    max-width: 12rem;
+    max-width: 16rem;
   }
 }
 

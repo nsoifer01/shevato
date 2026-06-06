@@ -198,6 +198,9 @@ class HomeView {
      * Otherwise → route to the workout view's program picker.
      */
     handleFabClick() {
+        // Starting (or resuming) a workout is a context switch: land the
+        // user at the top of the page, not wherever they had scrolled to.
+        window.scrollTo(0, 0);
         const paused = storageService.getActiveWorkout();
         if (paused && paused.paused) {
             this.resumeWorkout();
