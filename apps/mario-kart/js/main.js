@@ -1044,15 +1044,27 @@ function updateHistoryTableHeaders() {
     const headerRow = document.querySelector('#history-table thead tr');
     if (!headerRow) return;
 
+    // Indicator reflects the live sort state (sortColumn/sortDirection):
+    // active column shows ↑/↓, the rest show the neutral ↕.
+    const sortIndicator = (column) => {
+        if (sortColumn !== column) return '↕';
+        return sortDirection === 'asc' ? '↑' : '↓';
+    };
+    const ariaSort = (column) => {
+        if (sortColumn !== column) return '';
+        return ` aria-sort="${sortDirection === 'asc' ? 'ascending' : 'descending'}"`;
+    };
+    const sortedClass = (column) => (sortColumn === column ? ' sorted-active' : '');
+
     // Generate dynamic headers
     const playerHeaders = players.map(player => {
         const name = escapeHtml(window.PlayerNameManager ? window.PlayerNameManager.get(player) : getPlayerName(player));
-        return `<th style="cursor: pointer;" onclick="sortTable('${player}')" tabindex="0" onkeydown="if(event.key==='Enter'||event.key===' ')sortTable('${player}')" aria-label="Sort by ${name}'s position">${name} ↕</th>`;
+        return `<th class="sortable-header${sortedClass(player)}"${ariaSort(player)} onclick="sortTable('${player}')" tabindex="0" onkeydown="if(event.key==='Enter'||event.key===' ')sortTable('${player}')" aria-label="Sort by ${name}'s position">${name} <span class="sort-indicator">${sortIndicator(player)}</span></th>`;
     }).join('');
 
     headerRow.innerHTML = `
         <th>Race #</th>
-        <th style="cursor: pointer;" onclick="sortTable('date')" tabindex="0" onkeydown="if(event.key==='Enter'||event.key===' ')sortTable('date')" aria-label="Sort by date">Date ↕</th>
+        <th class="sortable-header${sortedClass('date')}"${ariaSort('date')} onclick="sortTable('date')" tabindex="0" onkeydown="if(event.key==='Enter'||event.key===' ')sortTable('date')" aria-label="Sort by date">Date <span class="sort-indicator">${sortIndicator('date')}</span></th>
         ${playerHeaders}
         <th>Action</th>
     `;
@@ -1522,7 +1534,22 @@ document.addEventListener('DOMContentLoaded', function() {
             updateCallback: updateDisplay
         });
     }
-    
+
+    // When the user changes rows-per-page, jump back to the top of the race
+    // history (the shared component already resets to page 1, but the user
+    // may be scrolled far down). App-level hook so shared pagination.js stays
+    // generic for the other apps.
+    document.addEventListener('change', (event) => {
+        const select = event.target.closest(
+            '.pagination-container[data-pagination-instance="mario-kart-races"] select[data-action="size"]'
+        );
+        if (!select) return;
+        const heading = document.getElementById('history-heading');
+        if (heading) {
+            heading.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        }
+    });
+
     // Set date to user's local timezone
     const localDate = new Date().toLocaleDateString('en-CA');
     const dateInput = document.getElementById('date');
@@ -1583,8 +1610,7 @@ document.addEventListener('DOMContentLoaded', function() {
         }
     }
     
-    // Open sidebar by default
-    openSidebar();
+    // Sidebar stays closed on page load; users open it via the toggle
 
     // Ensure player names are loaded from localStorage
     if (typeof loadPlayerNames === 'function') {
