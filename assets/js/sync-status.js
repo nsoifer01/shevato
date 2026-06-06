@@ -68,7 +68,7 @@
             bannerEl.hidden = false;
             bannerEl.dataset.state = 'offline';
             bannerEl.dataset.fading = 'false';
-            bannerEl.textContent = 'You’re offline — changes saved on this device';
+            bannerEl.textContent = 'You’re offline, changes saved on this device';
             return;
         }
 

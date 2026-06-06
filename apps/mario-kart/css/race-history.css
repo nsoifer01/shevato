@@ -134,8 +134,52 @@
     font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
 }
 
-#history-table th:hover {
-    background: rgba(255, 255, 255, 0.1);
+/* Player-name headers (everything except Race # / Date / Action) can be
+   20-30 chars with the long-names data; cap their width and ellipsize so a
+   single long name can't starve the Date and Action columns into wrapping.
+   nowrap (above) keeps the ellipsis working. */
+#history-table th:not(:first-child):not(:nth-child(2)):not(:last-child) {
+    max-width: 140px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+/* Keep Date and Action columns from being squeezed below a usable width. */
+#history-table th:nth-child(2),
+#history-table td:nth-child(2) {
+    min-width: 110px;
+    white-space: nowrap;
+}
+
+#history-table th:last-child,
+#history-table td:last-child {
+    min-width: 120px;
+    white-space: nowrap;
+}
+
+#history-table th:hover,
+#history-table th.sortable-header:focus-visible {
+    background: rgba(255, 255, 255, 0.12);
+    outline: none;
+}
+
+/* Sort indicator glyph. Dim when neutral (↕), full-opacity + accent tint
+   when the column is the active sort (↑/↓). */
+#history-table th .sort-indicator {
+    display: inline-block;
+    margin-left: 4px;
+    opacity: 0.55;
+    font-size: 0.8em;
+}
+
+#history-table th.sorted-active {
+    background: rgba(255, 255, 255, 0.16);
+}
+
+#history-table th.sorted-active .sort-indicator {
+    opacity: 1;
+    color: #ffffff;
+    font-weight: 700;
 }
 
 /* Add subtle dividers between headers */
@@ -250,18 +294,23 @@
     font-weight: 600;
     cursor: pointer;
     transition: all 0.2s ease;
-    min-width: 45px;
+    min-width: 40px;
     width: 45px;
-    height: 38px;
+    min-height: 40px;
+    height: 40px;
     display: inline-flex;
     align-items: center;
     justify-content: center;
     font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
 }
 
-.edit-btn {
+/* White glyph pinned against the site-wide `button { color:#555 !important }`
+   trap in main.css, across base / hover / active so it can never reclaim it. */
+.edit-btn,
+.edit-btn:hover,
+.edit-btn:hover:active {
     background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-    color: white;
+    color: #ffffff !important;
     box-shadow: 0 2px 8px rgba(102, 126, 234, 0.3);
 }
 
@@ -270,9 +319,11 @@
     box-shadow: 0 4px 12px rgba(102, 126, 234, 0.4);
 }
 
-.delete-btn {
+.delete-btn,
+.delete-btn:hover,
+.delete-btn:hover:active {
     background: linear-gradient(135deg, #ef4444 0%, #dc2626 100%);
-    color: white;
+    color: #ffffff !important;
     box-shadow: 0 2px 8px rgba(239, 68, 68, 0.3);
 }
 
@@ -291,26 +342,20 @@
     background: var(--history-bg-white);
 }
 
-/* Mobile Card Layout */
+/* Mobile Card Layout. NOTE: the table/card SWAP itself lives in
+   responsive.css (`@media (min-width:768px)` shows table / hides cards) and
+   is overridden up to 900px in mario-kart-overrides.css, which loads after
+   responsive.css. Do not re-declare the swap here — it would lose the
+   cascade to responsive.css (which loads after this file). */
 @media (max-width: 768px) {
     .race-history {
         padding: 20px;
         border-radius: 16px;
     }
-    
+
     #history-heading {
         font-size: 1.2em;
         margin-bottom: 20px;
-    }
-    
-    /* Hide table on mobile */
-    .table-container {
-        display: none;
-    }
-    
-    /* Show mobile cards */
-    .mobile-cards {
-        display: block;
     }
 }
 
@@ -319,12 +364,6 @@
     display: none;
     gap: 16px;
     flex-direction: column;
-}
-
-@media (max-width: 768px) {
-    .mobile-cards {
-        display: flex;
-    }
 }
 
 .race-card {
@@ -486,4 +525,37 @@ body.theme .race-card:hover {
 
 .race-card {
     animation: fadeInUp 0.3s ease-out;
+}
+
+/* Dark-theme the rows-per-page select (scoped to the mario-kart app so the
+   shared pagination component keeps its defaults elsewhere). color-scheme:dark
+   makes the native dropdown popup render dark in Chromium. Colors pinned
+   against the main.css theme trap. */
+body.mario-kart-app .pagination-container .pagination-size select {
+    color-scheme: dark;
+    background-color: var(--mk-surface-2, #181c26) !important;
+    color: var(--mk-text, #f1f3f8) !important;
+    border: 1px solid var(--mk-border-strong, #343a4f) !important;
+    border-radius: 8px;
+    padding: 6px 10px;
+    font-weight: 600;
+    cursor: pointer;
+    appearance: auto;
+}
+
+body.mario-kart-app .pagination-container .pagination-size select:hover,
+body.mario-kart-app .pagination-container .pagination-size select:focus {
+    background-color: var(--mk-surface-3, #232836) !important;
+    color: var(--mk-text, #f1f3f8) !important;
+    border-color: var(--mk-accent, #818cf8) !important;
+    outline: none;
+}
+
+body.mario-kart-app .pagination-container .pagination-size select option {
+    background-color: var(--mk-surface-2, #181c26);
+    color: var(--mk-text, #f1f3f8);
+}
+
+body.mario-kart-app .pagination-container .pagination-size label {
+    color: var(--mk-muted, #a4adbd) !important;
 }

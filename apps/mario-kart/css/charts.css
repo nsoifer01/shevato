@@ -232,17 +232,19 @@ body.theme #trends-chart-container {
     padding: 24px;
     backdrop-filter: blur(10px);
     border: 1px solid rgba(255, 255, 255, 0.6);
-    display: flex;
-    align-items: center;
-    justify-content: center;
     position: relative;
     width: 400px;
     height: 400px;
+    box-sizing: border-box;
 }
 
+/* Model the doughnut sizing on the Trends line chart: the canvas fills a
+   block-level relatively-positioned box. Flex-centering the canvas made it
+   collapse to 0 width on first layout in the column (mobile) layout. */
 .activity-chart-wrapper canvas {
-    max-width: 100% !important;
-    max-height: 100% !important;
+    width: 100% !important;
+    height: 100% !important;
+    display: block;
 }
 
 /* Modern Table Styling */
@@ -559,22 +561,33 @@ body.theme .weekly-breakdown-table tbody tr:hover {
         padding: 8px;
         margin: 0 -4px;
     }
-    
+
+    /* Fit the full table in the viewport instead of clipping P2/P3 behind a
+       silent horizontal scroll. table-layout:fixed lets columns share width. */
     .weekly-breakdown-table {
         font-size: 0.65rem;
-        min-width: 450px;
+        min-width: 0;
+        width: 100%;
+        table-layout: fixed;
+        white-space: normal;
     }
-    
+
     .weekly-breakdown-table th,
     .weekly-breakdown-table td {
         padding: 4px 2px !important;
-        min-width: 35px;
+        min-width: 0;
+        white-space: normal;
+        overflow-wrap: break-word;
+        word-break: normal;
+        hyphens: none;
     }
-    
+
     .weekly-breakdown-table th:first-child,
     .weekly-breakdown-table td:first-child {
-        min-width: 70px;
+        min-width: 0;
+        width: 22%;
         font-size: 0.6rem;
+        position: static;
     }
     
     .activity-chart-wrapper {

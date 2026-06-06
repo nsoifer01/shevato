@@ -518,6 +518,16 @@
     line-height: 1.0;
 }
 
+/* Muted date/active suffix on the longest-win-streak line. Cell text is forced
+   white by the colored-background rules below, so we dim via opacity to keep it
+   legible on both the green winner and red loser cards. */
+.h2h-streak-meta {
+    font-size: 0.55rem;
+    font-weight: 500;
+    opacity: 0.85;
+    white-space: nowrap;
+}
+
 /* Biggest win display styles */
 .h2h-biggest-win {
     font-size: 0.6rem;
@@ -689,16 +699,39 @@ body.theme .h2h-table-container {
     .h2h-table-container {
         padding: 1rem;
         overflow-x: auto;
+        -webkit-overflow-scrolling: touch;
+        scroll-padding-right: 1rem;
     }
-    
+
     .h2h-table,
     .h2h-daily-table {
-        min-width: 500px;
+        min-width: 460px;
     }
-    
+
     .h2h-daily-breakdown {
         padding: 1rem;
         margin-top: 1rem;
+        position: relative;
+    }
+
+    /* Scroll affordance: the H2H matrix is wider than the phone viewport, so
+       it scrolls horizontally. A right-edge fade signals "more to the right"
+       and makes the clip at the card's rounded corner look intentional. */
+    .h2h-daily-breakdown::after {
+        content: '';
+        position: absolute;
+        top: 0;
+        right: 0;
+        bottom: 0;
+        width: 32px;
+        pointer-events: none;
+        border-radius: 0 16px 16px 0;
+        background: linear-gradient(
+            to right,
+            rgba(31, 41, 55, 0) 0%,
+            var(--h2h-bg) 90%
+        );
+        z-index: 5;
     }
     
     .h2h-daily-item {
