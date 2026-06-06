@@ -1,6 +1,6 @@
 'use strict';
 
-const { renderMoreFooter, renderScrollTopButton } = require('./render-footer.cjs');
+const { renderMoreFooter } = require('./render-footer.cjs');
 
 const SITE = 'https://shevato.com';
 
@@ -65,6 +65,7 @@ ${jsonLd(buildExerciseSchema({ exercise, canonical, description }))}
 
   <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ctext y='.9em' font-size='90'%3E💪%3C/text%3E%3C/svg%3E">
   <link rel="stylesheet" href="/apps/gym-tracker/css/exercise-page.css">
+  <link rel="stylesheet" href="/assets/css/back-to-top.css">
 
   <script async src="https://www.googletagmanager.com/gtag/js?id=G-GEQGY35JJN"></script>
   <script defer src="/assets/js/analytics.js"></script>
@@ -125,7 +126,7 @@ ${jsonLd(buildExerciseSchema({ exercise, canonical, description }))}
   </main>
 
   ${renderMoreFooter()}
-  ${renderScrollTopButton()}
+  <script src="/assets/js/back-to-top.js" defer></script>
 </body>
 </html>
 `;

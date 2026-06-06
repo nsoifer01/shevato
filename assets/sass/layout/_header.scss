@@ -60,12 +60,20 @@
 				}
 
 				&[href="#menu"] {
-					@include icon;
+					text-decoration: none;
 					-webkit-tap-highlight-color: rgba(0,0,0,0);
 
 					&:before {
-						content: '\f0c9';
+						content: '';
+						display: inline-block;
+						vertical-align: middle;
+						position: relative;
+						top: -0.0625rem;
+						width: 0.9375rem;
+						height: 0.125rem;
 						margin: 0 0.5rem 0 0;
+						background: currentColor;
+						box-shadow: 0 -0.3125rem currentColor, 0 0.3125rem currentColor;
 					}
 				}
 

@@ -19,11 +19,60 @@ function seasonLikenessScore(m, x) {
   return { sharedShapes, ratingDiff, minVotes: x.minVotes || 0 };
 }
 
+// Language-group matching for related suggestions. English stays strict
+// (en only). Each non-English anchor language maps to a broader allowed-set
+// of languages it may suggest from, grouped by linguistic/cultural family so a
+// Korean season can surface other Asian-language shows, a German one other
+// European shows, etc. Groups are derived from the actual data.json language
+// distribution (every language with >=20 seasons is placed). Languages not in
+// any group fall back to exact-match (including two empty-string languages,
+// which match each other). The relation is per-anchor allowed-sets, not a
+// symmetric equivalence class.
+const LANGUAGE_GROUPS = {
+  romance: ['es', 'pt', 'it', 'fr', 'ro', 'ca', 'gl'],
+  european: [
+    'de', 'nl', 'sv', 'da', 'no', 'fi', 'pl', 'cs', 'sk', 'hu', 'ru', 'uk',
+    'el', 'hr', 'sr', 'bg', 'is', 'et', 'lv', 'lt', 'bs', 'sh', 'sl', 'cy',
+    'fr', 'it', 'es', 'pt', 'ro', 'ca', 'gl',
+  ],
+  asian: [
+    'ko', 'ja', 'zh', 'cn', 'th', 'vi', 'id', 'ms', 'tl', 'fil', 'hi', 'ta',
+    'te', 'ml', 'kn', 'bn', 'mr', 'ur',
+  ],
+  middleEastern: ['ar', 'he', 'fa', 'tr'],
+};
+
+// For each anchor language, the set of languages it may suggest from. English
+// is intentionally absent so it keeps strict en-only matching.
+const LANGUAGE_ALLOWED = (() => {
+  const map = new Map();
+  for (const langs of Object.values(LANGUAGE_GROUPS)) {
+    const set = new Set(langs);
+    for (const lang of langs) {
+      if (!map.has(lang)) map.set(lang, new Set());
+      for (const l of set) map.get(lang).add(l);
+    }
+  }
+  return map;
+})();
+
+// True when candidateLang is an acceptable suggestion for anchorLang. Mapped
+// anchors match any language in their group(s); unmapped anchors (and the
+// empty-string language) require an exact match.
+function languagesCompatible(anchorLang, candidateLang) {
+  const anchor = anchorLang || '';
+  const candidate = candidateLang || '';
+  const allowed = LANGUAGE_ALLOWED.get(anchor);
+  if (!allowed) return candidate === anchor;
+  return allowed.has(candidate);
+}
+
 function computeModalRelated(m, matches) {
   if (!m.shapes || m.shapes.length === 0) return [];
   const minAvg = m.avgRating - 0.5;
   const mGenres = m.genres || [];
-  // Same original language only (two unknown languages count as a match);
+  // Same language group (English stays strict en-only; two unknown languages
+  // count as a match) via languagesCompatible;
   // and a similar-popularity window: votes/episode within one order of
   // magnitude of the open season (10x either way). Keeps a 60k-votes hit
   // from suggesting a 400-vote obscurity and vice versa. Skipped when the
@@ -34,7 +83,7 @@ function computeModalRelated(m, matches) {
     .filter((x) => {
       if (x.seriesId === m.seriesId) return false;
       if (x.avgRating < minAvg) return false;
-      if ((x.language || '') !== mLang) return false;
+      if (!languagesCompatible(mLang, x.language)) return false;
       if (voteAnchor > 0) {
         const xv = x.minVotes || 0;
         if (xv < voteAnchor / 10 || xv > voteAnchor * 10) return false;
@@ -59,10 +108,10 @@ function computeModalRelated(m, matches) {
 // Compute related shows for the show modal.
 // d = mean(season avgRatings) - seriesRating. Requires seriesRating on both shows.
 // Candidates: other series with seriesRating that share at least one genre,
-// have the same original language, and sit within one order of magnitude of
+// have a compatible original language (languagesCompatible), and sit within one order of magnitude of
 // the current show's votes/episode (mean of its seasons' minVotes).
 // Sort: |d_current - d_candidate| asc, then shared-genre count desc, then votes desc.
-// Returns up to 10; caller hides section when fewer than 2.
+// Returns up to 10; caller hides section only when there are none.
 function computeShowRelated(seriesId, matches) {
   const bySeriesId = new Map();
   for (const m of matches) {
@@ -86,7 +135,7 @@ function computeShowRelated(seriesId, matches) {
     if (sid === seriesId) continue;
     const meta = seasons[0];
     if (typeof meta.seriesRating !== 'number') continue;
-    if ((meta.language || '') !== currentLang) continue;
+    if (!languagesCompatible(currentLang, meta.language)) continue;
     if (voteAnchor > 0) {
       const xv = meanVotes(seasons);
       if (xv < voteAnchor / 10 || xv > voteAnchor * 10) continue;
@@ -159,6 +208,7 @@ const STORAGE_NS = 'rising-seasons';
 const KEY_WATCHED = `${STORAGE_NS}:watched`;
 const KEY_VIEW = `${STORAGE_NS}:view`;
 const KEY_COMPARE = `${STORAGE_NS}:compare`;
+const KEY_SCROLL = `${STORAGE_NS}:scroll`;
 const COMPARE_LIMIT = 5;
 const PAGE_SIZE = 24;
 const STALE_DAYS = 30;
@@ -483,6 +533,90 @@ const Compare = {
   },
 };
 
+// --- scroll restoration ---
+// The grid renders only after data.json is fetched, so at the moment the
+// browser would natively restore scroll position the document is still just
+// skeletons and short. Native 'auto' restoration clamps the saved offset to
+// that short height, stranding a bottom-of-page refresh in the middle once
+// the real content expands the document. We take it over: switch to 'manual',
+// stash the offset in sessionStorage as the user scrolls / leaves, and restore
+// it ourselves once the height-defining content has rendered.
+if ('scrollRestoration' in history) {
+  history.scrollRestoration = 'manual';
+}
+
+// Clamp a stored offset to what the now-rendered document can actually reach.
+// Pulled out as a pure function so the restore math is unit-testable without a
+// live layout.
+function clampScrollY(stored, maxScrollY) {
+  if (!Number.isFinite(stored) || stored <= 0) return 0;
+  if (!Number.isFinite(maxScrollY) || maxScrollY <= 0) return 0;
+  return Math.min(stored, maxScrollY);
+}
+
+const ScrollMemory = {
+  save() {
+    try {
+      const y = window.scrollY || document.documentElement.scrollTop || 0;
+      if (y > 0) sessionStorage.setItem(KEY_SCROLL, String(y));
+      else sessionStorage.removeItem(KEY_SCROLL);
+    } catch { /* sessionStorage disabled — position just won't persist */ }
+  },
+  read() {
+    try {
+      const raw = sessionStorage.getItem(KEY_SCROLL);
+      if (raw == null) return null;
+      const n = parseInt(raw, 10);
+      return Number.isFinite(n) ? n : null;
+    } catch { return null; }
+  },
+  // Restore after the grid (the content that defines page height) has been
+  // appended. A bare `#key=value` hash is RS's own filter state, not an
+  // anchor; only skip restoration when the hash targets a real element id so
+  // genuine deep-link anchors win over the saved offset.
+  //
+  // The grid's cards lay out (and the fonts/SVG curves settle) over a few
+  // frames after replaceChildren, so scrollHeight can still be growing when we
+  // first try. Re-apply across a handful of frames until the document is tall
+  // enough to reach the stored offset, then stop. Capped so a genuinely short
+  // result set (stored offset unreachable) settles instead of looping.
+  restore() {
+    const hash = location.hash.replace(/^#/, '');
+    if (hash) {
+      let target = null;
+      try { target = document.getElementById(decodeURIComponent(hash)); }
+      catch { target = null; }
+      if (target) return;
+    }
+    const stored = this.read();
+    if (stored == null || stored <= 0) return;
+    let attempts = 0;
+    const apply = () => {
+      const maxScrollY = document.documentElement.scrollHeight - window.innerHeight;
+      const y = clampScrollY(stored, maxScrollY);
+      if (y > 0) window.scrollTo(0, y);
+      attempts++;
+      // Keep re-applying while the page is still too short to reach the saved
+      // offset (layout hasn't finished growing), up to a frame budget.
+      if (maxScrollY < stored && attempts < 20) {
+        requestAnimationFrame(apply);
+      }
+    };
+    apply();
+  },
+};
+
+function bindScrollMemory() {
+  let raf = 0;
+  window.addEventListener('scroll', () => {
+    if (raf) return;
+    raf = requestAnimationFrame(() => { raf = 0; ScrollMemory.save(); });
+  }, { passive: true });
+  // pagehide covers both real unloads and bfcache freezes (and fires on
+  // mobile where 'beforeunload' is unreliable).
+  window.addEventListener('pagehide', () => ScrollMemory.save());
+}
+
 // Chrome (header / footer / menu / auth UI) is loaded by
 // ../../assets/js/main.js — see the script block in index.html. We
 // deliberately do not run a second include loader here: parallel AJAX
@@ -579,6 +713,7 @@ async function load() {
   // Initial reset-button state: disabled unless the URL pre-populated some filters.
   syncResetButton();
   render();
+  bindScrollMemory();
   if (pendingModalKey) {
     const [sid, snStr] = pendingModalKey.split(':');
     const sn = parseInt(snStr, 10);
@@ -590,6 +725,12 @@ async function load() {
       openShowModal(pendingShowKey);
     }
     pendingShowKey = null;
+  } else {
+    // Restore the saved scroll position now that the grid (which defines the
+    // page height) is in the DOM. A modal deep-link opens at the top instead,
+    // so this only runs for the plain grid view. rAF lets layout settle so
+    // scrollHeight reflects the freshly appended cards.
+    requestAnimationFrame(() => ScrollMemory.restore());
   }
 }
 
@@ -3256,7 +3397,7 @@ function renderModalRelated(m) {
   if (!container) return;
   if (!dataset) { container.hidden = true; return; }
   const related = computeModalRelated(m, dataset.matches);
-  if (related.length < 2) { container.hidden = true; return; }
+  if (related.length < 1) { container.hidden = true; return; }
   container.hidden = false;
   const grid = container.querySelector('.related-grid') || container;
 
@@ -3599,7 +3740,7 @@ function renderShowRelated(seriesId) {
   if (!container) return;
   if (!dataset) { container.hidden = true; return; }
   const related = computeShowRelated(seriesId, dataset.matches);
-  if (related.length < 2) { container.hidden = true; return; }
+  if (related.length < 1) { container.hidden = true; return; }
   container.hidden = false;
 
   const grid = container.querySelector('.show-related-grid') || container;
@@ -3725,6 +3866,10 @@ function syncModalInert() {
           : null;
   for (const node of document.body.children) {
     if (node.tagName === 'TEMPLATE' || node.tagName === 'SCRIPT') continue;
+    // The sitewide back-to-top button is a body child too, but while a modal
+    // is open it acts as that modal's own scroll-to-top control, so it must
+    // stay interactive and Tab-reachable instead of going inert.
+    if (node.classList.contains('back-to-top')) continue;
     if (openModal && node !== openModal) node.setAttribute('inert', '');
     else node.removeAttribute('inert');
   }
@@ -4574,26 +4719,6 @@ function bindEvents() {
   if (els.modalBack) els.modalBack.addEventListener('click', goBackModalView);
   if (els.showModalBack) els.showModalBack.addEventListener('click', goBackModalView);
 
-  // Floating "back to top" inside the season/show modals — fades/scales in
-  // once the panel is scrolled a screen-ish deep, smooth-scrolls back on
-  // click. Visibility is a class (not [hidden]) so the appearance can
-  // animate; the hidden state also drops visibility/pointer-events so the
-  // button can't be tabbed to or clicked while invisible. The scroll
-  // listener also re-hides it whenever openModal/openShowModal reset
-  // scrollTop to 0 (programmatic scrollTop changes fire scroll events).
-  const SCROLL_TOP_THRESHOLD = 400;
-  const bindModalScrollTop = (modalEl, btn) => {
-    const panel = modalEl && modalEl.querySelector('.modal-panel');
-    if (!panel || !btn) return;
-    panel.addEventListener('scroll', () => {
-      btn.classList.toggle('modal-scroll-top--visible', panel.scrollTop >= SCROLL_TOP_THRESHOLD);
-    }, { passive: true });
-    btn.addEventListener('click', () => {
-      panel.scrollTo({ top: 0, behavior: 'smooth' });
-    });
-  };
-  bindModalScrollTop(els.modal, document.getElementById('modalScrollTop'));
-  bindModalScrollTop(els.showModal, document.getElementById('showModalScrollTop'));
   for (const closer of els.compareModal.querySelectorAll('[data-close="compare-modal"]')) {
     closer.addEventListener('click', closeCompareModal);
   }
@@ -5325,7 +5450,10 @@ if (typeof window !== 'undefined') {
     computeModalRelated,
     seasonLikenessScore,
     computeShowRelated,
+    languagesCompatible,
     hasActiveFilters: () => hasActiveFilters(),
+    clampScrollY,
+    ScrollMemory,
     buildSeasonShareText,
     activeDecadeKey: () => activeDecadeKey(),
     DECADE_RANGES,

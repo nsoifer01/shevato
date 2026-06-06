@@ -2404,11 +2404,11 @@
     }
 }
 
-/* Sticky Footer Solution for Football H2H */
-html, body {
-  height: 100%;
-}
-
+/* Sticky Footer Solution for Football H2H.
+   The footer is pinned by the flex column below (min-height: 100vh +
+   margin-top: auto), so html/body must NOT be locked to height: 100%:
+   that turns the body into a fixed-height scroller, which steals the page
+   scroll from the window and breaks the shared back-to-top button. */
 body.football-h2h-tracker {
   display: flex;
   flex-direction: column;

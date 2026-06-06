@@ -107,6 +107,7 @@ ${seasonSchemas}
 
   <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ctext y='.9em' font-size='90'%3E📈%3C/text%3E%3C/svg%3E">
   <link rel="stylesheet" href="/apps/rising-seasons/css/show-page.css">
+  <link rel="stylesheet" href="/assets/css/back-to-top.css">
 
   <!-- Google Analytics — shared site tag -->
   <script async src="https://www.googletagmanager.com/gtag/js?id=G-GEQGY35JJN"></script>
@@ -178,7 +179,7 @@ ${seasonSchemas}
 
   ${renderMoreFooter()}
   ${renderStickyBanner(title, dominantShape, dominantShapeSlug)}
-  ${renderScrollToTop()}
+  <script src="/assets/js/back-to-top.js" defer></script>
 </body>
 </html>
 `;
@@ -315,21 +316,28 @@ function renderStickyBanner(title, dominantShape, dominantShapeSlug) {
       <span class="sticky-cta-title">${escapeHtml(title)}</span>
       <span class="shape-badge sticky-cta-badge">${escapeHtml(shapeLabel)}</span>
       <a class="primary-btn sticky-cta-btn" href="${escapeHtml(link)}">Explore by shape in the app</a>
-      <button type="button" class="sticky-cta-close" aria-label="Dismiss banner" onclick="sessionStorage.setItem('rs-cta-banner-dismissed','1');document.getElementById('stickyCta').hidden=true;document.body.style.paddingBottom='';var p=document.getElementById('pageScrollTop');if(p)p.style.bottom=''">×</button>
+      <button type="button" class="sticky-cta-close" aria-label="Dismiss banner" onclick="document.getElementById('stickyCta').dataset.dismissed='1';document.getElementById('stickyCta').hidden=true;document.body.style.paddingBottom=''">×</button>
     </div>
   </div>
   <script>
   (function () {
-    if (sessionStorage.getItem('rs-cta-banner-dismissed') === '1') return;
     var banner = document.getElementById('stickyCta');
-    var hero = document.querySelector('.show-hero');
-    if (!banner || !hero) return;
-    var shown = false;
+    if (!banner) return;
+    // Shown and hidden in lockstep with the shared back-to-top arrow: both
+    // appear past the same 400px scroll threshold and both go away near the
+    // top. Dismissing suppresses the banner for this page view only (the
+    // flag lives on the element, so a reload starts fresh).
+    var THRESHOLD = 400;
     function check() {
-      if (!shown && window.scrollY > hero.offsetHeight) {
-        shown = true;
-        banner.hidden = false;
-        document.body.style.paddingBottom = banner.offsetHeight + 'px';
+      if (banner.dataset.dismissed) return;
+      if (window.scrollY > THRESHOLD) {
+        if (banner.hidden) {
+          banner.hidden = false;
+          document.body.style.paddingBottom = banner.offsetHeight + 'px';
+        }
+      } else if (!banner.hidden) {
+        banner.hidden = true;
+        document.body.style.paddingBottom = '';
       }
     }
     window.addEventListener('scroll', check, { passive: true });
@@ -448,49 +456,6 @@ function buildTvSeriesSchema({ seriesId, title, year, canonical, posterUrl, clea
     ...(s.seasonYear ? { startDate: String(s.seasonYear) } : {}),
   }));
   return schema;
-}
-
-function renderScrollToTop() {
-  return `<button
-    type="button"
-    class="page-scroll-top"
-    id="pageScrollTop"
-    aria-label="Scroll back to top"
-    title="Back to top"
-  >
-    <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true" focusable="false">
-      <path d="M3 10.5 L8 5.5 L13 10.5" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-    </svg>
-    Top
-  </button>
-  <script>
-  (function () {
-    var btn = document.getElementById('pageScrollTop');
-    if (!btn) return;
-    // Ride above the sticky CTA banner while it is visible; both elements
-    // are fixed to the bottom and would otherwise overlap at the right
-    // edge (the pill could cover the CTA's dismiss button).
-    function liftAboveCta() {
-      var cta = document.getElementById('stickyCta');
-      if (cta && !cta.hidden) {
-        btn.style.bottom = (cta.offsetHeight + 16) + 'px';
-      } else {
-        btn.style.bottom = '';
-      }
-    }
-    window.addEventListener('scroll', function () {
-      liftAboveCta();
-      if (window.scrollY >= 400) {
-        btn.classList.add('page-scroll-top--visible');
-      } else {
-        btn.classList.remove('page-scroll-top--visible');
-      }
-    }, { passive: true });
-    btn.addEventListener('click', function () {
-      window.scrollTo({ top: 0, behavior: 'smooth' });
-    });
-  })();
-  </script>`;
 }
 
 function jsonLd(obj) {

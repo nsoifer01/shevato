@@ -1,0 +1,112 @@
+/* ==========================================================================
+   Sitewide "Back to top" button. Injected by back-to-top.js on every page
+   that loads it; no per-page markup. Fully self-contained and theme-agnostic
+   so it works identically on a bare generated page (which loads nothing
+   else) and on the light marketing pages and dark app themes.
+
+   Every interactive state (normal / hover / focus / active / visible) pins
+   its load-bearing properties with `!important`: not just colors but the
+   `background` shorthand (so an app's `button { background: linear-gradient(...) }`
+   cannot paint a gradient through our background-color), `transform` (so an
+   app `button:hover { transform: translateY(-2px) }` cannot shift the button
+   under the user's finger mid-tap), `box-shadow`, `transition`, `padding`,
+   `border-radius`, and the box size. These are pinned per state because app
+   themes set them per state too; without that the button is hijacked on
+   hostile pages. On clean pages it looks identical to before.
+
+   NOTE on position: `right`, `bottom` and `z-index` are deliberately NOT
+   pinned with `!important`. In modal mode back-to-top.js MOVES the button
+   into the scrolling modal container and sets `position`, `top`, `left`,
+   `right`, `bottom` and `z-index` as inline styles to anchor it against the
+   container's padding box and scroll with it; pinned `!important` rules would
+   beat those inline values. The base z-index here (9000) is above app content
+   but below app modals/nav.
+
+   The `[hidden]` attribute is the hidden state, so the button is out of the
+   tab order and hidden from assistive tech until it appears.
+   ========================================================================== */
+.back-to-top,
+.back-to-top:link,
+.back-to-top:visited,
+.back-to-top:hover,
+.back-to-top:focus,
+.back-to-top:active,
+.back-to-top:hover:active {
+  position: fixed;
+  bottom: calc(1.25rem + env(safe-area-inset-bottom, 0px));
+  right: calc(1.25rem + env(safe-area-inset-right, 0px));
+  z-index: 9000;
+  display: -webkit-flex;
+  display: flex;
+  -webkit-align-items: center;
+  align-items: center;
+  -webkit-justify-content: center;
+  justify-content: center;
+  width: 44px !important;
+  height: 44px !important;
+  min-height: 44px !important;
+  padding: 0 !important;
+  margin: 0;
+  border: solid 1px rgba(255, 255, 255, 0.16) !important;
+  border-radius: 50% !important;
+  background: #1f1f1f !important;
+  color: #ffffff !important;
+  box-shadow: 0 0.25rem 0.9rem rgba(0, 0, 0, 0.4) !important;
+  cursor: pointer;
+  -webkit-appearance: none;
+  appearance: none;
+  line-height: 1;
+  text-decoration: none;
+  opacity: 0;
+  -webkit-transform: translateY(0.5rem) !important;
+  transform: translateY(0.5rem) !important;
+  transition: opacity 0.2s ease, transform 0.2s ease, background-color 0.18s ease, box-shadow 0.18s ease !important; }
+
+.back-to-top[hidden] {
+  display: none; }
+
+.back-to-top svg {
+  display: block;
+  width: 20px;
+  height: 20px;
+  fill: none;
+  stroke: #ffffff;
+  stroke-width: 2.25;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  pointer-events: none; }
+
+.back-to-top.back-to-top--visible {
+  opacity: 1;
+  -webkit-transform: translateY(0) !important;
+  transform: translateY(0) !important; }
+
+.back-to-top:hover,
+.back-to-top.back-to-top--visible:hover {
+  background: #333333 !important;
+  color: #ffffff !important;
+  border-color: rgba(255, 255, 255, 0.28) !important;
+  box-shadow: 0 0.35rem 1.1rem rgba(0, 0, 0, 0.5) !important; }
+
+.back-to-top:active,
+.back-to-top:hover:active,
+.back-to-top.back-to-top--visible:active,
+.back-to-top.back-to-top--visible:hover:active {
+  background: #161616 !important;
+  color: #ffffff !important;
+  -webkit-transform: translateY(0) !important;
+  transform: translateY(0) !important; }
+
+.back-to-top:focus {
+  outline: none; }
+
+.back-to-top:focus-visible {
+  outline: 2px solid #4d8dff;
+  outline-offset: 2px; }
+
+@media (prefers-reduced-motion: reduce) {
+  .back-to-top,
+  .back-to-top:hover,
+  .back-to-top:focus,
+  .back-to-top:active {
+    transition: opacity 0.01ms !important; } }

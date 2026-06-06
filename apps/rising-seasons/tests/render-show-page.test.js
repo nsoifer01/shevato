@@ -308,23 +308,24 @@ test('renderShowPage omits twitter label/data cards when no dominantShape', () =
   assert.ok(!html.includes('twitter:data1'));
 });
 
-// --- Scroll-to-top button ---
+// --- Back-to-top (shared sitewide implementation) ---
 
-test('renderShowPage includes scroll-to-top button with aria-label', () => {
+test('renderShowPage loads the shared back-to-top stylesheet and script', () => {
   const html = renderShowPage(BREAKING_BAD);
-  assert.ok(html.includes('class="page-scroll-top"'));
-  assert.ok(html.includes('aria-label="Scroll back to top"'));
-  assert.ok(html.includes('id="pageScrollTop"'));
+  assert.ok(html.includes('<link rel="stylesheet" href="/assets/css/back-to-top.css">'));
+  assert.ok(html.includes('<script src="/assets/js/back-to-top.js" defer></script>'));
 });
 
-test('renderShowPage includes inline scroll script for the scroll-to-top button', () => {
+test('renderShowPage emits no bespoke inline scroll-to-top markup or script', () => {
   const html = renderShowPage(BREAKING_BAD);
-  assert.ok(html.includes('pageScrollTop'));
-  assert.ok(html.includes('page-scroll-top--visible'));
-  assert.ok(html.includes("window.scrollTo"));
+  // The shared script injects the button and drives it; a show page must not
+  // ship its own copy any more.
+  assert.ok(!html.includes('page-scroll-top'));
+  assert.ok(!html.includes('pageScrollTop'));
+  assert.ok(!html.includes('window.scrollTo'));
 });
 
-test('renderShowPage includes scroll-to-top button regardless of season count', () => {
+test('renderShowPage carries the shared back-to-top regardless of season count', () => {
   const singleSeason = renderShowPage(BREAKING_BAD);
   const multiSeason = renderShowPage({
     ...BREAKING_BAD,
@@ -335,8 +336,8 @@ test('renderShowPage includes scroll-to-top button regardless of season count', 
       { season: 4, seasonYear: 2011, episodes: [{ episode: 1, rating: 8.5, votes: 700, name: 'Ep1' }], firstRating: 8.5, lastRating: 8.5, avgRating: 8.5, shapes: ['rising'] },
     ],
   });
-  assert.ok(singleSeason.includes('class="page-scroll-top"'));
-  assert.ok(multiSeason.includes('class="page-scroll-top"'));
+  assert.ok(singleSeason.includes('/assets/js/back-to-top.js'));
+  assert.ok(multiSeason.includes('/assets/js/back-to-top.js'));
 });
 
 test('groupBySeries backfills series-level fields from any season', () => {

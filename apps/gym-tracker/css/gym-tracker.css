@@ -303,8 +303,11 @@ body.gym-tracker #footer {
 @media (min-width: 768px) {
     .workout-fab {
         display: inline-flex;
-        bottom: 1.5rem;
-        right: 1.5rem;
+        /* Sits to the LEFT of the shared back-to-top button (44px circle at
+           right: 1.25rem), which owns the bottom-right corner. Bottoms are
+           aligned so the pill and the circle read as one row. */
+        bottom: 1.25rem;
+        right: calc(1.25rem + 44px + 0.75rem);
     }
 }
 
