@@ -316,23 +316,25 @@ function generateH2HTable(stats) {
                 const displayStreak = longestStreak;
                 
                 if (displayStreak > 0) {
-                    let formattedDate = '';
-                    if (streakDate && !isActiveStreak) {
-                        // Parse date string directly to avoid timezone issues
-                        const [year, month, day] = streakDate.split('-');
-                        const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 
-                                          'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-                        formattedDate = `${monthNames[parseInt(month) - 1]} ${parseInt(day)}`;
+                    // Append the date the streak peaked (its final win). For an
+                    // active streak the record is still ongoing, so we mark it
+                    // active rather than dating it.
+                    let streakSuffix = '';
+                    if (isActiveStreak) {
+                        streakSuffix = ' <span class="h2h-streak-meta">(active)</span>';
+                    } else if (streakDate) {
+                        const formattedDate = (typeof formatDateForDisplay === 'function')
+                            ? formatDateForDisplay(streakDate)
+                            : streakDate;
+                        streakSuffix = ` <span class="h2h-streak-meta">(ended ${formattedDate})</span>`;
                     }
-                    
-                    const activeIndicator = isActiveStreak ? ' (active)' : '';
-                    
+
                     // Format streak details (only show for historical streaks, not current active ones)
                     const detailsText = (streakDetails.length > 0 && !isActiveStreak) ? `: ${streakDetails.join(', ')}` : '';
-                    
+
                     streakDisplay = `
                         <div class="h2h-streak">
-                            <div class="h2h-streak-main">Longest Win Streak - ${displayStreak}${activeIndicator}</div>
+                            <div class="h2h-streak-main">Longest Win Streak - ${displayStreak}${streakSuffix}</div>
                             ${detailsText ? `<div class="h2h-streak-details">${detailsText.substring(2)}</div>` : ''}
                         </div>
                     `;

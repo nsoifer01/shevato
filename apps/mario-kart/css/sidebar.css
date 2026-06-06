@@ -671,13 +671,18 @@ body.theme .sidebar-overlay {
     flex: 1;
 }
 
-/* Date icon wrapper - simplified for ACTIONS button style */
+/* Date icon wrapper - simplified for ACTIONS button style.
+   Absolutely centered against the container (position:relative on
+   .sidebar-date-btn-container): immune to the flex-stack quirks that
+   pinned the icon above the vertical midline. */
 .sidebar-date-icon-wrapper {
-    position: relative;
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    right: 16px;
     display: flex;
     align-items: center;
     justify-content: center;
-    height: 100%;
 }
 
 /* Hidden date input - spans entire button */
@@ -708,6 +713,10 @@ body.theme .sidebar-overlay {
     background: transparent;
     border: none;
     padding: 0;
+    /* base.css gives bare labels margin-bottom:5px; flex centers the margin
+       box, so any label margin pushes the icon off the vertical midline */
+    margin: 0;
+    line-height: 1;
     cursor: pointer;
     transition: all 0.2s ease;
     display: flex;
@@ -715,7 +724,6 @@ body.theme .sidebar-overlay {
     justify-content: center;
     position: relative;
     z-index: 1;
-    height: 100%;
     width: auto;
 }
 
@@ -1755,6 +1763,10 @@ body.theme .sidebar-player-name-input:focus {
     width: 2rem;
     height: 2rem;
     background: transparent;
+    /* Pin a legible text colour: the site-wide theme trap
+       (main.css `button { color:#555 !important }`) otherwise wins here and
+       would render any non-emoji glyph invisible-dark. */
+    color: var(--mk-text, #f1f3f8) !important;
     border: 1px solid transparent;
     border-radius: 0.25rem;
     font-size: 1.25rem;

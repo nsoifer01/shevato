@@ -69,7 +69,8 @@ class TooltipManager {
         this.tooltipElement.setAttribute('role', 'tooltip');
         this.tooltipElement.setAttribute('aria-hidden', 'true');
         this.tooltipElement.style.position = 'absolute';
-        this.tooltipElement.style.zIndex = '9999';
+        // Above the shared site header (z-index 10001), below the sync banner (10100)
+        this.tooltipElement.style.zIndex = '10005';
         this.tooltipElement.style.pointerEvents = 'none';
         document.body.appendChild(this.tooltipElement);
     }
@@ -263,9 +264,11 @@ class TooltipManager {
         // Default position: above the element
         let top = rect.top - tooltipRect.height - 8;
         let left = rect.left + (rect.width - tooltipRect.width) / 2;
-        
-        // Adjust if tooltip would go off-screen
-        if (top < 5) {
+
+        // Adjust if tooltip would go off-screen or under the fixed site header
+        const siteHeader = document.getElementById('header');
+        const headerBottom = siteHeader ? siteHeader.getBoundingClientRect().bottom : 0;
+        if (top < Math.max(5, headerBottom + 4)) {
             // Position below instead
             top = rect.bottom + 8;
         }

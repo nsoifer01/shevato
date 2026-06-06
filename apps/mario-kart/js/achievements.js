@@ -1384,12 +1384,20 @@ function updateAchievements(raceData = null) {
                 return;
             }
 
-            // Show the actual current value
-            numberElement.textContent = achievement.current;
-            
+            // Show the all-time record value, plus the live "(N)" active count
+            // when a streak for this achievement is currently ongoing.
+            const activeCount = getActiveStreakCount(achievementKey, achievement, player, raceData);
+            if (activeCount > 0) {
+                numberElement.innerHTML =
+                    `${achievement.current}<span class="achievement-active-count" title="Active streak: ${activeCount}">(${activeCount})</span>`;
+            } else {
+                numberElement.textContent = achievement.current;
+            }
+
             // Update aria-label and title
             if (achievementBar) {
-                achievementBar.setAttribute('aria-label', `${achievementDef.name}: ${achievementDef.description}`);
+                const activeNote = activeCount > 0 ? `, active streak: ${activeCount}` : '';
+                achievementBar.setAttribute('aria-label', `${achievementDef.name}: ${achievementDef.description}${activeNote}`);
                 achievementBar.setAttribute('title', achievementDef.description);
             }
             
@@ -1548,6 +1556,59 @@ function checkForActiveStreak(achievementKey, achievement, player, raceData) {
             
         default:
             return false;
+    }
+}
+
+// Returns the CURRENT ongoing count for an achievement when its streak is still
+// active (extends to the latest race / today), otherwise 0. Mirrors the active
+// detection in checkForActiveStreak but yields the live count so it can be shown
+// as a small "(N)" next to the all-time record.
+function getActiveStreakCount(achievementKey, achievement, player, raceData) {
+    if (!achievement || !achievement.details || !achievement.current) return 0;
+
+    const playerRaces = raceData.filter(race => race[player] !== null);
+    if (playerRaces.length === 0) return 0;
+
+    const chronologicalRaces = [...playerRaces].sort((a, b) => {
+        const dateA = new Date(a.date + (a.timestamp ? ' ' + a.timestamp : ''));
+        const dateB = new Date(b.date + (b.timestamp ? ' ' + b.timestamp : ''));
+        return dateA - dateB;
+    });
+
+    switch (achievementKey) {
+        case 'winStreak': {
+            // Count trailing consecutive 1st-place finishes.
+            let count = 0;
+            for (let i = chronologicalRaces.length - 1; i >= 0; i--) {
+                if (chronologicalRaces[i][player] === 1) count++;
+                else break;
+            }
+            return count;
+        }
+        case 'hotStreak': {
+            // Count trailing consecutive podium (top 3) finishes.
+            let count = 0;
+            for (let i = chronologicalRaces.length - 1; i >= 0; i--) {
+                if (chronologicalRaces[i][player] <= 3) count++;
+                else break;
+            }
+            return count;
+        }
+        case 'clutchMaster':
+        case 'momentumBuilder':
+            return (achievement.details.currentActiveStreak && achievement.details.currentActiveStreak.count) || 0;
+        case 'perfectDay': {
+            // Active when every race today is a good (top-half) finish.
+            const today = new Date().toLocaleDateString('en-CA');
+            const todayRaces = playerRaces.filter(race => race.date === today);
+            const threshold = getGoodFinishThreshold();
+            if (todayRaces.length > 0 && todayRaces.every(race => race[player] <= threshold)) {
+                return todayRaces.length;
+            }
+            return 0;
+        }
+        default:
+            return 0;
     }
 }
 
