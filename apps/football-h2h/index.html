@@ -107,6 +107,7 @@
     <link rel="stylesheet" href="css/football-h2h.css">
     <!-- Visual refresh layer — must load last so it wins specificity ties. -->
     <link rel="stylesheet" href="css/refresh.css">
+  <link rel="stylesheet" href="/assets/css/back-to-top.css">
 </head>
 <body class="mario-kart-app football-h2h-tracker">
     <!-- Sync status banner — only visible when offline (and briefly on recovery). Managed by assets/js/sync-status.js. -->
@@ -265,22 +266,22 @@
                         <h2 class="modal-title" id="iconModalTitle">Select Player Icon</h2>
                         <button class="modal-close" onclick="closeIconSelector()">&times;</button>
                     </div>
-                    <div class="modal-body">
+                    <div class="modal-body" data-back-to-top>
                         <div class="icon-categories">
                             <button class="category-btn active" onclick="showIconCategory('sports')" id="sportsTab">Sports</button>
                             <button class="category-btn" onclick="showIconCategory('animals')" id="animalsTab">Animals</button>
                             <button class="category-btn" onclick="showIconCategory('general')" id="generalTab">General</button>
                         </div>
                         
-                        <div class="icon-grid" id="sportsIconGrid">
+                        <div class="icon-grid" id="sportsIconGrid" data-back-to-top>
                             <!-- Sports icons will be populated by JavaScript -->
                         </div>
-                        
-                        <div class="icon-grid" id="animalsIconGrid" style="display: none;">
+
+                        <div class="icon-grid" id="animalsIconGrid" style="display: none;" data-back-to-top>
                             <!-- Animal icons will be populated by JavaScript -->
                         </div>
-                        
-                        <div class="icon-grid" id="generalIconGrid" style="display: none;">
+
+                        <div class="icon-grid" id="generalIconGrid" style="display: none;" data-back-to-top>
                             <!-- General icons will be populated by JavaScript -->
                         </div>
                     </div>
@@ -498,5 +499,6 @@
     <script src="js/sidebar.js"></script>
     <script src="js/football-h2h.js"></script>
     <script src="js/backup.js"></script>
+  <script src="/assets/js/back-to-top.js" defer></script>
 </body>
 </html>

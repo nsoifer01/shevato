@@ -123,6 +123,33 @@ try {
 const helpers = ctx._rsTestExports || {};
 
 // ---------------------------------------------------------------------------
+// Scroll restoration: clampScrollY
+// The grid renders after data.json loads, so a restored offset must be clamped
+// to the document height that actually exists once cards are appended.
+// ---------------------------------------------------------------------------
+
+test('clampScrollY: bottom-of-page offset survives when the page is tall enough', () => {
+  // Stored at the bottom (4800) of a page whose max reachable scroll is 5000.
+  assert.equal(helpers.clampScrollY(4800, 5000), 4800);
+});
+
+test('clampScrollY: offset is clamped down to a shorter rendered page', () => {
+  // Stored deep (4800) but the rendered page only reaches 3000 — land at 3000,
+  // not somewhere it can never reach.
+  assert.equal(helpers.clampScrollY(4800, 3000), 3000);
+});
+
+test('clampScrollY: no stored offset (0 / non-finite) restores to top', () => {
+  assert.equal(helpers.clampScrollY(0, 5000), 0);
+  assert.equal(helpers.clampScrollY(NaN, 5000), 0);
+});
+
+test('clampScrollY: a non-scrollable page (maxScrollY <= 0) restores to top', () => {
+  assert.equal(helpers.clampScrollY(800, 0), 0);
+  assert.equal(helpers.clampScrollY(800, -50), 0);
+});
+
+// ---------------------------------------------------------------------------
 // Feature 7: computeStdDev
 // ---------------------------------------------------------------------------
 
@@ -414,6 +441,75 @@ test('computeShowRelated: _avg is set on results', () => {
   assert.equal(result.length, 1);
   assert.ok(typeof result[0]._avg === 'number', '_avg should be set');
   assert.ok(Math.abs(result[0]._avg - 8.0) < 0.001);
+});
+
+// ---------------------------------------------------------------------------
+// languagesCompatible: broadened language-group matching
+// ---------------------------------------------------------------------------
+
+test('languagesCompatible: ko and ja are compatible (Asian group)', () => {
+  assert.equal(helpers.languagesCompatible('ko', 'ja'), true);
+});
+
+test('languagesCompatible: ko and en are NOT compatible', () => {
+  assert.equal(helpers.languagesCompatible('ko', 'en'), false);
+});
+
+test('languagesCompatible: de and fr are compatible (European group)', () => {
+  assert.equal(helpers.languagesCompatible('de', 'fr'), true);
+});
+
+test('languagesCompatible: es and pt are compatible (Romance group)', () => {
+  assert.equal(helpers.languagesCompatible('es', 'pt'), true);
+});
+
+test('languagesCompatible: en matches en (English stays strict)', () => {
+  assert.equal(helpers.languagesCompatible('en', 'en'), true);
+});
+
+test('languagesCompatible: en does NOT match fr (English stays strict)', () => {
+  assert.equal(helpers.languagesCompatible('en', 'fr'), false);
+});
+
+test('languagesCompatible: unmapped language requires exact match', () => {
+  // 'xx' is not in any group -> exact-match fallback.
+  assert.equal(helpers.languagesCompatible('xx', 'xx'), true);
+  assert.equal(helpers.languagesCompatible('xx', 'ja'), false);
+  assert.equal(helpers.languagesCompatible('xx', 'en'), false);
+});
+
+test('languagesCompatible: two empty-string languages are compatible', () => {
+  assert.equal(helpers.languagesCompatible('', ''), true);
+  assert.equal(helpers.languagesCompatible(undefined, undefined), true);
+});
+
+test('languagesCompatible: mapped anchor does not match unmapped/empty candidate', () => {
+  assert.equal(helpers.languagesCompatible('ko', ''), false);
+  assert.equal(helpers.languagesCompatible('ko', 'xx'), false);
+});
+
+test('languagesCompatible: ar matches he (Middle Eastern group)', () => {
+  assert.equal(helpers.languagesCompatible('ar', 'he'), true);
+});
+
+test('computeModalRelated: Korean anchor surfaces Asian-language candidates', () => {
+  const m = { ...mkMatch('tt001', 1, ['rising'], 8.0, 5000, ['Drama']), language: 'ko' };
+  const matches = [
+    { ...mkMatch('tt002', 1, ['rising'], 8.0, 5000, ['Drama']), language: 'ja' }, // Asian — included
+    { ...mkMatch('tt003', 1, ['rising'], 8.0, 5000, ['Drama']), language: 'en' }, // not Asian — excluded
+  ];
+  const result = helpers.computeModalRelated(m, matches);
+  assert.equal(result.map((r) => r.seriesId).join(','), 'tt002');
+});
+
+test('computeShowRelated: German anchor surfaces European-language candidates', () => {
+  const matches = [
+    { ...mkShowMatch('tt001', 1, 8.5, 8.0, ['Drama']), language: 'de' },
+    { ...mkShowMatch('tt002', 1, 8.5, 8.0, ['Drama']), language: 'fr' }, // European — included
+    { ...mkShowMatch('tt003', 1, 8.5, 8.0, ['Drama']), language: 'en' }, // not European — excluded
+  ];
+  const result = helpers.computeShowRelated('tt001', matches);
+  assert.equal(result.map((r) => r.seriesId).join(','), 'tt002');
 });
 
 // ---------------------------------------------------------------------------

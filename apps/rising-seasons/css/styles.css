@@ -2613,6 +2613,16 @@ button.shape-tag.is-clickable:hover {
 }
 .modal[hidden] { display: none; }
 
+/* The sitewide back-to-top button (assets/css/back-to-top.css) sits at
+   z-index 9000 so it stays below the site nav dropdown. This app's modals
+   are at 11000 to clear that same dropdown, which would bury the button's
+   opt-in container behavior. While a modal is open, lift the button above
+   the modal so its data-back-to-top scrolling works; it reverts to the
+   shared z-index when no modal is open. */
+body:has(.modal:not([hidden])) .back-to-top {
+  z-index: 11001 !important;
+}
+
 .modal-backdrop {
   position: absolute;
   inset: 0;
@@ -2732,91 +2742,6 @@ button.shape-tag.is-clickable:hover {
   outline-offset: 2px;
 }
 
-/* Floating "back to top": a glass pill (arrow + "Top" label) that sits at
-   the END of the panel content with position:sticky, riding the bottom-right
-   corner of the scrollport without ever leaving the panel's bounds.
-   Colors are pinned on base, hover and active so no sitewide button:hover
-   style can bleed in. Visibility is animated: JS toggles
-   .modal-scroll-top--visible; the hidden state fades + sinks + scales down
-   and removes interactivity (visibility/pointer-events), so the pill
-   materializes out of the corner instead of popping in. */
-.modal-scroll-top,
-.modal-scroll-top:hover,
-.modal-scroll-top:hover:active {
-  position: sticky;
-  bottom: 1.1rem;
-  z-index: 4;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 0.45rem;
-  margin-left: auto;
-  width: auto;
-  height: 42px !important;
-  min-height: 42px;
-  padding: 0 0.85rem;
-  border-radius: 999px;
-  /* Gradient glass: brighter top edge catches light over any content
-     (episode rows, cards) for reliable contrast on the dark panel. */
-  background: linear-gradient(180deg, rgba(56, 62, 82, 0.92), rgba(28, 32, 45, 0.92));
-  -webkit-backdrop-filter: blur(10px);
-  backdrop-filter: blur(10px);
-  border: 1px solid rgba(255, 255, 255, 0.16);
-  color: #ffffff !important;
-  font-size: 0.85rem;
-  font-weight: 600;
-  letter-spacing: 0.03em;
-  line-height: 1;
-  box-shadow:
-    0 6px 20px rgba(0, 0, 0, 0.45),
-    0 0 12px rgba(255, 255, 255, 0.06),
-    0 1px 0 rgba(255, 255, 255, 0.08) inset !important;
-  /* Hidden resting state: faded, sunk and slightly shrunk. */
-  opacity: 0;
-  visibility: hidden;
-  pointer-events: none;
-  transform: translateY(8px) scale(0.85);
-  transition: opacity 0.25s var(--ease), transform 0.25s var(--ease),
-              background 0.18s var(--ease), border-color 0.18s var(--ease),
-              box-shadow 0.18s var(--ease),
-              visibility 0s linear 0.25s;
-}
-.modal-scroll-top--visible,
-.modal-scroll-top--visible:hover,
-.modal-scroll-top--visible:hover:active {
-  opacity: 1;
-  visibility: visible;
-  pointer-events: auto;
-  transform: translateY(0) scale(1);
-  transition: opacity 0.25s var(--ease), transform 0.25s var(--ease),
-              background 0.18s var(--ease), border-color 0.18s var(--ease),
-              box-shadow 0.18s var(--ease),
-              visibility 0s;
-}
-.modal-scroll-top svg {
-  display: block;
-  flex-shrink: 0;
-  transition: transform 0.2s var(--ease);
-}
-.modal-scroll-top--visible:hover {
-  background: linear-gradient(180deg, rgba(72, 79, 102, 0.95), rgba(38, 43, 60, 0.95));
-  border-color: rgba(255, 255, 255, 0.3);
-  transform: translateY(-2px);
-  box-shadow:
-    0 8px 24px rgba(0, 0, 0, 0.5),
-    0 0 18px rgba(255, 255, 255, 0.12),
-    0 1px 0 rgba(255, 255, 255, 0.12) inset !important;
-}
-.modal-scroll-top--visible:hover svg {
-  transform: translateY(-1px);
-}
-.modal-scroll-top--visible:hover:active {
-  transform: translateY(0) scale(0.95);
-}
-.modal-scroll-top:focus-visible {
-  outline: 2px solid var(--accent);
-  outline-offset: 2px;
-}
 /* Reserve space on the header's right side so long titles don't run
    under the absolutely-positioned close button. ~2.75rem clears the
    36 px button plus the 0.85 rem inset. */
@@ -3802,17 +3727,6 @@ body.advanced-drawer-open {
   }
   .stats-bar > span { justify-content: space-between; }
 }
-
-/* ---------- Tweak shared chrome (#header, #footer, #menu) for our theme ----
-   main.css already styles these dark — these tweaks just make the inline
-   chrome blend with the rest of the IMDb-yellow accent palette. */
-
-#header { background: #181818; }
-#header > nav > a { color: rgba(255, 255, 255, 0.85); }
-#header > nav > a:hover { color: var(--accent); text-decoration: none; }
-
-#footer a { color: var(--accent); }
-#footer a:hover { color: var(--accent); text-decoration: underline; }
 
 /* ---------- Footer "What's new" chip + changelog popover ---------- */
 
@@ -4994,6 +4908,15 @@ body.advanced-drawer-open {
 /* Feature 5: More like this section in modal */
 .modal-related {
   margin-top: 1.5rem;
+}
+
+/* main.css's HTML5 reset sets display:block on all <section> elements, which
+   silently defeats the hidden attribute (author display beats the UA
+   [hidden] rule). Both related sections rely on hidden for their empty
+   state, so pin it here -- same pattern as .modal[hidden] above. */
+.modal-related[hidden],
+.show-related[hidden] {
+  display: none;
 }
 
 .related-grid {

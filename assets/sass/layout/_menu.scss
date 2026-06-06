@@ -58,7 +58,6 @@
 		}
 
 		.close {
-			@include icon;
 			@include vendor('transition', 'color #{_duration(transition)} ease-in-out');
 			-webkit-tap-highlight-color: rgba(0,0,0,0);
 			border: 0;
@@ -75,9 +74,24 @@
 			vertical-align: middle;
 			width: 7rem;
 
+			&:before,
+			&:after {
+				content: '';
+				position: absolute;
+				top: 50%;
+				right: 1.25rem;
+				width: 1rem;
+				height: 0.125rem;
+				margin-top: -0.0625rem;
+				background: currentColor;
+			}
+
 			&:before {
-				content: '\f00d';
-				font-size: 1.25rem;
+				@include vendor('transform', 'rotate(45deg)');
+			}
+
+			&:after {
+				@include vendor('transform', 'rotate(-45deg)');
 			}
 
 			&:hover {

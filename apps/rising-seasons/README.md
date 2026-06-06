@@ -45,9 +45,10 @@ A season can match more than one shape — the card shows all of them.
 | Watched tracking         | Per-season toggle; persists in localStorage; "watched / unwatched" filters and stats.              |
 | Above-IMDb badge         | Marks seasons whose average episode rating beats the show's overall IMDb score.                    |
 | Sort options             | Popularity, season length, rating climb (last vs first), finale rating, season average, most recent, and most volatile (episode-to-episode standard deviation). |
-| More seasons like this   | The season detail modal lists up to 10 related seasons (sharing a shape **and** a genre, same original language, similar average, votes/episode within 10x, different series), ranked by a likeness score (shared shapes, then rating closeness, then votes). The first 4 show; a "6 more" toggle expands the rest. Click one to open it. |
-| More shows like this     | The show modal lists up to 10 shows that share a genre, the same original language, and a similar popularity (votes/episode within 10x), with the closest gap between their IMDb rating and their average episode rating. Same 4 + "N more" pattern; click one to open that show. |
+| More seasons like this   | The season detail modal lists up to 10 related seasons (sharing a shape **and** a genre, a compatible original language, similar average, votes/episode within 10x, different series), ranked by a likeness score (shared shapes, then rating closeness, then votes). English seasons only suggest English; other languages match within broad family groups (Romance, European, Asian, Middle Eastern), so a Korean season can surface Japanese shows. The first 4 show; a "6 more" toggle expands the rest. Click one to open it. The section is shown whenever at least one match exists. |
+| More shows like this     | The show modal lists up to 10 shows that share a genre, a compatible original language (same family-group rule as above), and a similar popularity (votes/episode within 10x), with the closest gap between their IMDb rating and their average episode rating. Same 4 + "N more" pattern; click one to open that show. |
 | Copy link                | A "Copy link" button in the active-filter bar copies the current filtered-view URL to the clipboard whenever any filter is active. |
+| Scroll restoration       | Reloading or returning to the grid restores the previous scroll position (saved per tab in sessionStorage) once the grid has rendered; deep links to a modal or a real anchor win over the saved offset. |
 
 ## Static show pages (SEO)
 
