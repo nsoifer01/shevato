@@ -309,6 +309,34 @@ body.football-h2h-tracker .table-container {
     border: 1px solid var(--fh-border) !important;
     border-radius: var(--fh-radius-sm) !important;
     box-shadow: none !important;
+    /* football-h2h.css line 1072 sets `overflow: hidden`, which clips the
+       Actions column off the right edge when long (25-char) player names
+       blow up the nowrap headers. Switch to horizontal scroll so every
+       column stays reachable. */
+    overflow-x: auto !important;
+    overflow-y: visible !important;
+    -webkit-overflow-scrolling: touch;
+}
+
+/* Keep 7 columns legible: never let the table collapse below a width where
+   cells are readable. With overflow-x:auto on the container, narrow
+   viewports get a horizontal scroll instead of an unreadable squeeze. */
+body.football-h2h-tracker .games-table {
+    min-width: 680px;
+}
+
+/* Long player names in the score headers must not push the Actions column
+   out of reach. Clamp the two player-name headers and ellipsize, keeping
+   the sort indicator visible. */
+body.football-h2h-tracker .games-table thead th {
+    white-space: nowrap;
+}
+body.football-h2h-tracker .games-table thead th.sortable-header,
+body.football-h2h-tracker .games-table thead th#player1TeamHeader,
+body.football-h2h-tracker .games-table thead th#player2TeamHeader {
+    max-width: 180px;
+    overflow: hidden;
+    text-overflow: ellipsis;
 }
 
 body.football-h2h-tracker .games-table thead {
@@ -751,36 +779,46 @@ body.football-h2h-tracker textarea:focus {
 }
 
 /* ---------- Game History row action buttons (edit / delete) ----------
-   The default styling was a 40px solid gradient blue + 40px solid red
-   slab per row — visually heavy and dominated the table. Refine to a
-   compact 28px icon chip with a quiet ghost surface; the delete chip
-   only goes red on hover so unstyled rows don't shout. Both chips lift
-   subtly on hover for clear interactive feedback. */
+   The live rows render `.edit-btn` / `.delete-btn` (js/football-h2h.js
+   renderGamesTableWithData). The shared mario-kart forms.css paints those
+   as solid blue / red slabs whose non-!important `color` loses to the
+   sitewide theme trap (assets/css/main.css `button{color:#555!important}`),
+   leaving gray labels that go red on hover. This block — the intended ghost
+   chip design that previously targeted dead `.btn-icon.edit/.delete`
+   classes — is retargeted onto the live `.edit-btn/.delete-btn` selectors
+   with !important pins on color/background across base/:hover/:hover:active
+   so both forms.css and the theme trap are beaten. */
 
 body.football-h2h-tracker .games-table .action-buttons,
-body.football-h2h-tracker .games-table td .action-buttons {
+body.football-h2h-tracker .games-table td .action-buttons,
+body.football-h2h-tracker .games-table td.actions {
     display: inline-flex !important;
     gap: 0.3rem !important;
     align-items: center;
     justify-content: center;
     margin: 0 !important;
-    padding: 0 !important;
+    padding: 0.7rem 0.9rem !important;
     background: transparent !important;
     border: none !important;
 }
+body.football-h2h-tracker .games-table td.actions {
+    white-space: nowrap;
+}
 
-body.football-h2h-tracker .games-table .btn-icon,
-body.football-h2h-tracker .games-table .btn-icon.edit,
-body.football-h2h-tracker .games-table .btn-icon.delete {
-    width: 28px !important;
-    height: 28px !important;
+body.football-h2h-tracker .games-table .edit-btn,
+body.football-h2h-tracker .games-table .delete-btn {
+    width: 30px !important;
+    height: 30px !important;
+    min-width: 30px !important;
     padding: 0 !important;
+    margin: 0 !important;
     background: rgba(255, 255, 255, 0.04) !important;
     border: 1px solid var(--fh-border) !important;
     border-radius: 7px !important;
     color: var(--fh-muted) !important;
     box-shadow: none !important;
-    font-size: 0.78rem !important;
+    font-size: 0.9rem !important;
+    line-height: 1 !important;
     cursor: pointer;
     display: inline-flex !important;
     align-items: center !important;
@@ -790,19 +828,14 @@ body.football-h2h-tracker .games-table .btn-icon.delete {
                 box-shadow 0.15s ease !important;
 }
 
-body.football-h2h-tracker .games-table .btn-icon i {
-    color: inherit !important;
-    font-size: 0.78rem !important;
-    line-height: 1 !important;
-    width: auto !important;
-    height: auto !important;
-}
-
-/* Edit chip — soft indigo accent. Outline at rest, fills on hover. */
-body.football-h2h-tracker .games-table .btn-icon.edit {
+/* Edit chip — soft indigo accent. Outline at rest, fills on hover.
+   :hover:active is pinned too so the theme trap's red active state can't
+   bleed through. */
+body.football-h2h-tracker .games-table .edit-btn {
     color: #93c5fd !important;
 }
-body.football-h2h-tracker .games-table .btn-icon.edit:hover {
+body.football-h2h-tracker .games-table .edit-btn:hover,
+body.football-h2h-tracker .games-table .edit-btn:hover:active {
     background: rgba(59, 130, 246, 0.18) !important;
     border-color: rgba(96, 165, 250, 0.55) !important;
     color: #dbeafe !important;
@@ -811,10 +844,11 @@ body.football-h2h-tracker .games-table .btn-icon.edit:hover {
 }
 
 /* Delete chip — neutral ghost at rest, danger-red on hover only. */
-body.football-h2h-tracker .games-table .btn-icon.delete {
+body.football-h2h-tracker .games-table .delete-btn {
     color: var(--fh-muted) !important;
 }
-body.football-h2h-tracker .games-table .btn-icon.delete:hover {
+body.football-h2h-tracker .games-table .delete-btn:hover,
+body.football-h2h-tracker .games-table .delete-btn:hover:active {
     background: rgba(248, 113, 113, 0.18) !important;
     border-color: rgba(248, 113, 113, 0.55) !important;
     color: #fecaca !important;
@@ -822,10 +856,12 @@ body.football-h2h-tracker .games-table .btn-icon.delete:hover {
     box-shadow: 0 4px 10px -4px rgba(248, 113, 113, 0.45) !important;
 }
 
-body.football-h2h-tracker .games-table .btn-icon:active {
+body.football-h2h-tracker .games-table .edit-btn:active,
+body.football-h2h-tracker .games-table .delete-btn:active {
     transform: translateY(0) scale(0.98);
 }
-body.football-h2h-tracker .games-table .btn-icon:focus-visible {
+body.football-h2h-tracker .games-table .edit-btn:focus-visible,
+body.football-h2h-tracker .games-table .delete-btn:focus-visible {
     outline: 2px solid var(--fh-accent) !important;
     outline-offset: 2px !important;
 }
@@ -1125,4 +1161,173 @@ body.football-h2h-tracker .session-summary-text {
 body.football-h2h-tracker .sidebar-action-btn.summary-btn {
     width: 100%;
     margin-bottom: 0.5rem;
+}
+
+/* ---------- FIX: restore the game history table at <=900px ----------
+   apps/mario-kart/css/mario-kart-overrides.css:609-617 hides .table-container
+   and shows .mobile-cards below 900px for Mario Kart's table->cards swap.
+   Football H2H imports that sheet but renders NO .mobile-cards markup, so
+   tablet + mobile users saw NO game history (and no #noGames notice) at all.
+   Restore the table here, app-scoped, with horizontal scroll so the 7
+   columns stay legible. (We do NOT touch the shared mario-kart file.) */
+@media (max-width: 900px) {
+    body.football-h2h-tracker .table-container {
+        display: block !important;
+        overflow-x: auto !important;
+        overflow-y: visible !important;
+        -webkit-overflow-scrolling: touch;
+        max-width: 100%;
+    }
+    /* Flexbox intrinsic-width propagation guard: body and .app-container are
+       flex containers, and flex items default to min-width:auto, so the
+       680px-min-width table inflated the wrapper chain
+       (.app-container 762px > .main-wrapper/.game-history 725px) and pushed
+       every section (stat cards included) onto an oversized canvas that body
+       then clipped at the viewport edge. min-width:0 makes the chain respect
+       the viewport so the table scrolls INSIDE its container. */
+    body.football-h2h-tracker .app-container,
+    body.football-h2h-tracker .main-wrapper,
+    body.football-h2h-tracker .game-history {
+        min-width: 0 !important;
+        max-width: 100% !important;
+    }
+    /* Smaller floating sidebar toggle on phones (owner request 2026-06-07):
+       the 48px box sat on top of the centered app title at narrow widths.
+       40px keeps the >=40px touch target; the title also gets symmetric side
+       padding below so it can never run under the toggle. (!important needed:
+       the shared mario-kart-overrides pins 48px at <=768 with !important.) */
+    body.football-h2h-tracker .sidebar-toggle {
+        width: 40px !important;
+        height: 40px !important;
+        top: 58px !important;
+        left: 10px !important;
+        border-radius: 10px !important;
+    }
+    body.football-h2h-tracker .sidebar-toggle svg {
+        width: 18px !important;
+        height: 18px !important;
+    }
+    body.football-h2h-tracker .app-title {
+        padding-left: 56px;
+        padding-right: 56px;
+    }
+    /* #noGames lives inside .table-container; restoring the container above
+       brings the empty-state notice back too. Its block/none visibility is
+       still governed by the inline style the render code sets. */
+    /* Mario Kart's .mobile-cards is shown by the shared override but has no
+       markup here; keep it collapsed so it can't reserve empty space. */
+    body.football-h2h-tracker .mobile-cards {
+        display: none !important;
+    }
+}
+
+/* ---------- FIX: back-to-top FAB above the modal backdrop ----------
+   The sitewide back-to-top button (assets/js/back-to-top.js) only enters its
+   anchored "modal mode" (z-index 11001, above the panel) for containers that
+   carry `data-back-to-top`. The icon-selector modal opts in and is fine. But
+   the dynamic confirm/success/import dialogs (.modal-overlay, z-index 1000)
+   do NOT opt in, so when the page behind them is scrolled past the FAB's
+   400px threshold the FAB stays in window mode at z-index 9000 and floats
+   ABOVE the dialog backdrop. Hide it whenever a .modal-overlay is open. The
+   icon-selector modal uses .modal.active (not .modal-overlay), so its
+   intended FAB behaviour is untouched. */
+body.football-h2h-tracker:has(.modal-overlay) .back-to-top {
+    display: none !important;
+}
+
+/* ---------- FIX: off-palette button cleanup (align to indigo) ---------- */
+
+/* Custom-range Apply button: a bare <button> with no override, so it fell
+   to the sitewide theme trap (gray ghost, red on hover). Give it the app's
+   primary-action look (same indigo family as Add Game), pinned across
+   base/:hover/:hover:active so the trap can't recolour it. */
+body.football-h2h-tracker .custom-date-range button {
+    background: linear-gradient(135deg, var(--fh-accent), var(--fh-accent-strong)) !important;
+    color: #ffffff !important;
+    border: 1px solid transparent !important;
+    border-radius: 10px !important;
+    padding: 0.5rem 1.1rem !important;
+    font-weight: 600 !important;
+    font-size: 0.88rem !important;
+    box-shadow: 0 4px 14px rgba(99, 102, 241, 0.28) !important;
+    cursor: pointer;
+    transition: filter 0.15s ease, transform 0.08s ease, box-shadow 0.15s ease;
+}
+body.football-h2h-tracker .custom-date-range button:hover,
+body.football-h2h-tracker .custom-date-range button:hover:active {
+    color: #ffffff !important;
+    filter: brightness(1.06);
+    transform: translateY(-1px);
+    box-shadow: 0 8px 22px -6px rgba(99, 102, 241, 0.55) !important;
+}
+
+/* Session-summary Copy button (#copy-summary-btn, a .modal-btn-primary that
+   ships purple #8b5cf6): retint to the app's indigo so the modal primaries
+   match the sidebar primary family. color:white is already pinned upstream. */
+body.football-h2h-tracker #copy-summary-btn.modal-btn-primary {
+    background: linear-gradient(135deg, var(--fh-accent), var(--fh-accent-strong)) !important;
+    box-shadow: 0 4px 12px rgba(99, 102, 241, 0.3) !important;
+}
+body.football-h2h-tracker #copy-summary-btn.modal-btn-primary:hover {
+    background: linear-gradient(135deg, var(--fh-accent-strong), #4f46e5) !important;
+    box-shadow: 0 6px 16px rgba(99, 102, 241, 0.4) !important;
+}
+
+/* Icon-selector modal header accent: the underline strip mixed green +
+   indigo + magenta. Align to a clean indigo so it matches the unified
+   accent used by the sidebar panels and buttons. */
+body.football-h2h-tracker #iconSelectorModal .modal-header::after {
+    background: linear-gradient(90deg, var(--fh-accent), var(--fh-accent-strong)) !important;
+}
+
+/* ---------- FIX: player-settings panel headings ----------
+   "Player Names" / "Player Icons" used a large centered .section-title. The
+   blanket `body.football-h2h-tracker .section-title` rule above (1.15rem,
+   left) plus football-h2h.css collide here. Pin them, last-sheet + body
+   prefix, to the sidebar's uppercase muted section-label idiom (matching
+   PLAYER SETTINGS / ACTIONS / DATE FILTER). */
+body.football-h2h-tracker .player-settings-section .section-title {
+    font-size: 0.7rem !important;
+    font-weight: 700 !important;
+    letter-spacing: 0.14em !important;
+    text-transform: uppercase !important;
+    color: var(--fh-muted-2) !important;
+    margin: 0 0 0.75rem !important;
+    border-bottom: none !important;
+    padding-bottom: 0 !important;
+    text-align: left !important;
+}
+
+/* ---------- FIX: add-game form field consistency ----------
+   The goal/team groups read as boxed field groups; Note and Penalty Result
+   sat bare. Give every field group in the add-game form the same quiet
+   boxed surface so the form reads as one set of consistent fields. */
+body.football-h2h-tracker .sidebar-game-form .sidebar-game-goals .sidebar-player-input,
+body.football-h2h-tracker .sidebar-game-form .sidebar-game-goals .sidebar-penalty-section,
+body.football-h2h-tracker .sidebar-game-form .sidebar-game-goals .sidebar-note-section,
+body.football-h2h-tracker .sidebar-game-form .sidebar-game-teams > .sidebar-player-input {
+    background: rgba(255, 255, 255, 0.025);
+    border: 1px solid var(--fh-border);
+    border-radius: 10px;
+    padding: 0.7rem 0.8rem;
+    margin-bottom: 0.7rem;
+}
+
+/* ---------- FIX: toast positioning at small viewports ----------
+   showToast (modalUtils.js) sets top:80px / max-width:400px inline. At 390px
+   that 400px overflows the viewport and the toast crowds the app title.
+   Override with !important (beats inline non-important) to sit below the site
+   header, fit the viewport, and wrap readably. */
+@media (max-width: 480px) {
+    body.football-h2h-tracker .toast {
+        top: 64px !important;
+        left: 50% !important;
+        right: auto !important;
+        transform: translateX(-50%) !important;
+        max-width: calc(100vw - 24px) !important;
+        width: max-content !important;
+        white-space: normal !important;
+        text-align: center;
+        padding: 12px 18px !important;
+    }
 }
