@@ -46,7 +46,8 @@
         const container = document.getElementById('sidebar-player-settings');
         if (!container) return;
 
-        const playerCount = localStorage.getItem('marioKartPlayerCount') || '3';
+        const countKey = window.getStorageKey ? window.getStorageKey('PlayerCount') : 'marioKartPlayerCount';
+        const playerCount = localStorage.getItem(countKey) || '3';
         const playerNames = window.PlayerNameManager ? window.PlayerNameManager.getAll() : 
             { player1: 'Player 1', player2: 'Player 2', player3: 'Player 3', player4: 'Player 4' };
         
