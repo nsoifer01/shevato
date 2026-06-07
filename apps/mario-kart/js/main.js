@@ -1147,8 +1147,9 @@ function updateRaceHistoryTable(filteredRaces) {
         tableContainer.insertAdjacentHTML('afterend', paginationHtml);
     }
 
-    // Also update mobile cards (showing all races for mobile)
-    updateMobileRaceCards(filteredRaces);
+    // Mobile cards render the SAME paginated slice and the SAME index maps as
+    // the table, so the two presentations can never desync.
+    updateMobileRaceCards(filteredRaces, racesToDisplay, filteredIndexMap, racesIndexMap);
 
     // Update player icons in race history after rendering
     if (window.updateAllPlayerIcons) {
@@ -1158,7 +1159,7 @@ function updateRaceHistoryTable(filteredRaces) {
     }
 }
 
-function updateMobileRaceCards(filteredRaces) {
+function updateMobileRaceCards(filteredRaces, racesToDisplay, filteredIndexMap, racesIndexMap) {
     // Get the race history section element
     const raceHistorySection = document.querySelector('.race-history');
 
@@ -1175,9 +1176,14 @@ function updateMobileRaceCards(filteredRaces) {
         raceHistorySection.style.display = 'block';
     }
 
-    const mobileHtml = filteredRaces.slice().reverse().map((race, index) => {
+    // Render the same paginated slice the table renders (latest-first, current
+    // page only) so cards and table stay in lockstep.
+    const mobileHtml = racesToDisplay.map((race) => {
         const positions = players.map(player => race[player]).filter(pos => pos !== null);
-        const raceNumber = filteredRaces.length - index;
+        // Race number is the position within the filtered set (1-based), matching
+        // the table's numbering across pages.
+        const raceNumber = (filteredIndexMap.get(race) ?? -1) + 1;
+        const globalIndex = racesIndexMap.get(race) ?? -1;
 
         const playerPositions = players.map(player => {
             const position = race[player];
@@ -1202,8 +1208,8 @@ function updateMobileRaceCards(filteredRaces) {
                 ${playerPositions}
             </div>
             <div class="race-card-actions">
-                <button class="edit-btn" onclick="editRace(${races.indexOf(race)})" title="Edit race">✏️</button>
-                <button class="delete-btn" onclick="deleteRace(${races.indexOf(race)})" title="Delete race">🗑️</button>
+                <button class="edit-btn" onclick="editRace(${globalIndex})" title="Edit race">✏️</button>
+                <button class="delete-btn" onclick="deleteRace(${globalIndex})" title="Delete race">🗑️</button>
             </div>
         </div>
     `;
