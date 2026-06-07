@@ -246,7 +246,7 @@ function displayFilteredGames(filteredGames) {
     const filteredCount = filteredGames.length;
     
     if (filteredCount < totalCount && window.showToast) {
-        window.showToast(`Showing ${filteredCount} of ${totalCount} games`, 'info');
+        window.showToast(`Showing ${filteredCount} of ${totalCount} ${totalCount === 1 ? 'game' : 'games'}`, 'info');
     }
 }
 
@@ -466,9 +466,9 @@ function initializeSidebar() {
     
     // Initialize undo/redo buttons
     updateUndoRedoButtons();
-    
-    // Open sidebar automatically on page load
-    openSidebar();
+
+    // Sidebar starts CLOSED (owner decision 2026-06-07: it used to auto-open
+    // on every load, covering the content; users open it via the toggle).
 }
 
 // Initialize sidebar on page load (fallback)
