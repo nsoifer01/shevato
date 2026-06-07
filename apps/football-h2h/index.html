@@ -7,6 +7,7 @@
     
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+    <meta name="color-scheme" content="dark">
     <meta name="description" content="Free head-to-head football league manager. Track matches, record scores, manage penalty shootouts, and analyze player statistics with comprehensive team performance analytics.">
     <meta name="keywords" content="football tracker, head to head football, match tracker, football statistics, penalty shootout tracker, soccer league manager, football analytics, free sports tracker">
     <meta name="author" content="Shevato LLC">
@@ -191,14 +192,6 @@
                         <span class="action-icon">📥</span>
                         <span class="action-text">Import</span>
                     </button>
-                    <button class="sidebar-action-btn backup-btn" onclick="toggleBackupMenu(this)" aria-label="Download backup file (auto-backup runs every 10 minutes)">
-                        <span class="action-icon">💾</span>
-                        <span class="action-text">Backup</span>
-                    </button>
-                    <button class="sidebar-action-btn restore-btn" onclick="restoreFromBackup()" aria-label="Restore from auto-backup">
-                        <span class="action-icon">🔄</span>
-                        <span class="action-text">Restore</span>
-                    </button>
                 </div>
             </div>
             
@@ -226,15 +219,15 @@
             <div class="sidebar-section">
                 <h3 class="sidebar-section-title">Game Date</h3>
                 <div class="sidebar-game-date">
-                    <div class="sidebar-date-btn-container">
+                    <label for="sidebar-date-input" class="sidebar-date-btn-container" aria-label="Set default game date">
                         <span class="date-text" id="sidebar-date-text">Today</span>
-                        <div class="sidebar-date-icon-wrapper">
+                        <span class="sidebar-date-icon-wrapper">
                             <input type="date" id="sidebar-date-input" class="sidebar-date-input-hidden" onchange="updateSidebarDate()">
-                            <label for="sidebar-date-input" class="sidebar-date-icon-btn" aria-label="Set default game date">
+                            <span class="sidebar-date-icon-btn">
                                 <span class="date-icon">📅</span>
-                            </label>
-                        </div>
-                    </div>
+                            </span>
+                        </span>
+                    </label>
                     <button class="sidebar-date-today-btn" onclick="setSidebarDateToday()">Set to Today</button>
                 </div>
             </div>
@@ -380,14 +373,14 @@
                             <div class="matchup-select-group">
                                 <label class="matchup-label" id="matchupP1Label">Player 1's Team</label>
                                 <select id="matchupTeam1" class="matchup-select" onchange="updateMatchupResult()">
-                                    <option value="">— any —</option>
+                                    <option value="">Any</option>
                                 </select>
                             </div>
                             <span class="matchup-vs">vs</span>
                             <div class="matchup-select-group">
                                 <label class="matchup-label" id="matchupP2Label">Player 2's Team</label>
                                 <select id="matchupTeam2" class="matchup-select" onchange="updateMatchupResult()">
-                                    <option value="">— any —</option>
+                                    <option value="">Any</option>
                                 </select>
                             </div>
                         </div>
