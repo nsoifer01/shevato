@@ -605,7 +605,7 @@ body.theme .h2h-player-pill {
    is cramped (dates wrap, the two action buttons stack) — a dead-zone. Raise
    the swap to 900 so tablet-portrait gets the roomy card layout. This block
    wins because mario-kart-overrides.css loads after responsive.css at equal
-   specificity. KEEP IN SYNC with the pagination-container hide below. */
+   specificity. */
 @media (max-width: 900px) {
     .table-container {
         display: none;
@@ -613,15 +613,6 @@ body.theme .h2h-player-pill {
 
     .mobile-cards {
         display: flex;
-    }
-
-    /* Cards render every race and ignore pagination; the desktop-only
-       pagination control would read "Showing 1-10 of N" while the cards run
-       past it. Hide the misleading control whenever cards are the active
-       presentation. The real fix (slicing the cards) is behavioral and
-       deferred to /audit-app. */
-    .pagination-container {
-        display: none !important;
     }
 }
 
