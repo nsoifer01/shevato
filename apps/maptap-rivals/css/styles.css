@@ -419,10 +419,14 @@ body.maptap-rivals-app button {
   background: var(--surface);
   border: 1px solid var(--border);
   border-radius: var(--radius);
-  padding: 1rem 1.1rem;
+  /* Kept in place above the dashboard (the hint references the profile
+     card "above") but rendered deliberately compact when collapsed —
+     owner request: this is a secondary, optional entry path. */
+  padding: 0.6rem 0.9rem;
   margin-bottom: 1.25rem;
   box-shadow: 0 8px 24px rgba(0, 0, 0, 0.18);
 }
+.paste-collapse[open] { padding: 0.4rem 0.2rem 0; }
 
 .paste-collapse > summary {
   list-style: none;
@@ -452,15 +456,16 @@ body.maptap-rivals-app button {
   border-radius: var(--radius-sm);
 }
 .paste-collapse-title {
-  font-size: 1.05rem;
-  font-weight: 700;
+  font-size: 0.88rem;
+  font-weight: 600;
   letter-spacing: -0.01em;
-  color: var(--text);
+  color: var(--muted);
 }
 .paste-collapse-hint {
-  color: var(--muted);
-  font-size: 0.82rem;
+  color: var(--muted-2);
+  font-size: 0.72rem;
 }
+.paste-collapse > summary:hover .paste-collapse-title { color: var(--text); }
 .paste-collapse-body { margin-top: 0.9rem; }
 
 .paste-head {
@@ -1043,20 +1048,29 @@ body.maptap-rivals-app button {
    sit on surface-2, today wears a subtle accent ring, and the selected
    pill uses accent-soft + accent border to match the rest of the
    "selected state" treatment elsewhere in the app — no harsh fills. */
+/* ---------- Predictions day selector ----------
+   The 7-day strip is the centrepiece of the predictions view, so the
+   tabs read as premium pills: resting tabs are quiet, the selected day
+   blooms into a larger accent-gradient pill with a soft glow + raised
+   number, and "Today" carries a distinct dot marker. Horizontal scroll
+   is preserved for narrow viewports. Click/aria semantics are untouched. */
 .pred-day-tabs {
   display: flex;
-  gap: 0.4rem;
+  gap: 0.5rem;
   overflow-x: auto;
-  padding: 0.05rem 0.15rem 0.75rem;
-  margin: -0.2rem -0.15rem 0.6rem;
+  padding: 0.35rem 0.2rem 0.85rem;
+  margin: -0.2rem -0.2rem 0.7rem;
   scrollbar-width: thin;
+  scroll-snap-type: x proximity;
+  -webkit-overflow-scrolling: touch;
 }
 .pred-day-tab {
+  position: relative;
   flex: 0 0 auto;
-  min-width: 62px;
-  padding: 0.42rem 0.6rem;
+  min-width: 66px;
+  padding: 0.5rem 0.7rem 0.55rem;
   border: 1px solid var(--border);
-  border-radius: var(--radius-sm);
+  border-radius: var(--radius);
   background: var(--surface-2);
   color: var(--muted);
   font: inherit;
@@ -1064,57 +1078,85 @@ body.maptap-rivals-app button {
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 0.08rem;
-  line-height: 1.1;
-  transition: border-color 0.16s ease, background 0.16s ease, color 0.16s ease, transform 0.12s ease;
+  gap: 0.12rem;
+  line-height: 1.05;
+  scroll-snap-align: center;
+  transition: border-color 0.18s ease, background 0.18s ease,
+              color 0.18s ease, transform 0.16s ease, box-shadow 0.18s ease;
 }
 .pred-day-tab:hover {
   border-color: var(--border-strong);
   background: var(--surface-3);
   color: var(--text);
+  transform: translateY(-1px);
 }
+.pred-day-tab:active { transform: translateY(0); }
+
+/* Today (when not the selected day): subtle accent text so the current
+   day is locatable at a glance. (The little dot marker was removed —
+   owner request; the accent-colored text and "Today" label suffice.) */
 .pred-day-tab.is-today { color: var(--text); }
 .pred-day-tab.is-today .pred-day-tab-num { color: var(--accent-2); }
+
+/* Selected day: the centrepiece. Larger pill via scale, accent gradient
+   fill, layered glow, and a brighter raised number. */
 .pred-day-tab.is-active {
-  background: linear-gradient(180deg,
-              rgba(99, 102, 241, 0.22) 0%,
-              rgba(99, 102, 241, 0.12) 100%);
+  background:
+    radial-gradient(120% 140% at 50% 0%,
+      rgba(129, 140, 248, 0.30) 0%, rgba(99, 102, 241, 0.10) 60%,
+      rgba(99, 102, 241, 0.06) 100%),
+    linear-gradient(180deg, var(--surface-3), var(--surface-2));
   border-color: var(--accent);
   color: var(--accent-2);
-  box-shadow: inset 0 1px 0 0 rgba(255, 255, 255, 0.04),
-              0 0 0 1px rgba(99, 102, 241, 0.18);
+  transform: translateY(-2px) scale(1.06);
+  box-shadow:
+    inset 0 1px 0 0 rgba(255, 255, 255, 0.08),
+    0 0 0 1px rgba(99, 102, 241, 0.35),
+    0 8px 22px -8px rgba(99, 102, 241, 0.55);
 }
+.pred-day-tab.is-active:hover { transform: translateY(-2px) scale(1.06); }
 .pred-day-tab.is-active::after {
   content: '';
   position: absolute;
   left: 50%;
-  top: -1px;
+  bottom: -0.5rem;
   transform: translateX(-50%);
-  width: 24px;
-  height: 2px;
-  border-radius: 0 0 4px 4px;
-  background: var(--accent);
+  width: 26px;
+  height: 3px;
+  border-radius: 999px;
+  background: linear-gradient(90deg, var(--accent), var(--accent-2));
+  box-shadow: 0 0 8px rgba(99, 102, 241, 0.6);
 }
-.pred-day-tab { position: relative; }
-.pred-day-tab.is-active .pred-day-tab-num { color: var(--accent-2); }
-.pred-day-tab.is-loading { opacity: 0.65; }
-.pred-day-tab.is-error   { border-color: rgba(251, 146, 60, 0.45); color: var(--warn); }
-.pred-day-tab:focus-visible { outline: 2px solid var(--accent-2); outline-offset: 2px; }
+.pred-day-tab.is-active .pred-day-tab-num { color: var(--accent-ink); }
+
+.pred-day-tab.is-loading { opacity: 0.6; cursor: progress; }
+.pred-day-tab.is-loading .pred-day-tab-num { color: var(--muted-2); }
+.pred-day-tab.is-error {
+  border-color: rgba(251, 146, 60, 0.45);
+  color: var(--warn);
+}
+.pred-day-tab.is-error .pred-day-tab-name,
+.pred-day-tab.is-error .pred-day-tab-num { color: var(--warn); }
+.pred-day-tab:focus-visible { outline: 2px solid var(--accent-2); outline-offset: 3px; }
+
 .pred-day-tab-name {
-  font-size: 0.62rem;
+  font-size: 0.6rem;
   text-transform: uppercase;
-  letter-spacing: 0.08em;
+  letter-spacing: 0.1em;
   font-weight: 700;
   color: var(--muted);
+  transition: color 0.18s ease;
 }
 .pred-day-tab.is-active .pred-day-tab-name { color: var(--accent-2); }
 .pred-day-tab.is-today  .pred-day-tab-name { color: var(--accent-2); }
 .pred-day-tab-num {
-  font-size: 1.02rem;
-  font-weight: 700;
+  font-size: 1.12rem;
+  font-weight: 800;
   font-variant-numeric: tabular-nums;
-  letter-spacing: -0.01em;
+  letter-spacing: -0.015em;
+  transition: color 0.18s ease;
 }
+.pred-day-tab.is-active .pred-day-tab-num { font-size: 1.22rem; }
 
 /* Per-round chips — premium compact stat modules. A thin top accent
    line keys the chip to its Δ direction; the background carries a
@@ -1252,6 +1294,112 @@ body.maptap-rivals-app button {
   .prc-nums { font-size: 0.86rem; gap: 0.22rem; }
   .prc-head { font-size: 0.55rem; }
   .prc-weight { font-size: 0.5rem; top: 0.25rem; right: 0.28rem; }
+}
+
+/* ---------- Location reveal strip ----------
+   Day-level "Locations" row shown only after the user has logged their own
+   game for the selected day. One toggle per round; revealing fills in the
+   city name in place. Buttons must pin their own colour/box-shadow on hover
+   and focus because site-wide main.css paints `button:hover` red !important. */
+.pred-loc {
+  margin-top: 0.35rem;
+  padding-top: 0.65rem;
+  border-top: 1px solid var(--border);
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+}
+.pred-loc-head {
+  font-size: 0.6rem;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--muted-2);
+}
+.pred-loc-strip {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 0.45rem;
+}
+.pred-loc-btn {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.18rem;
+  min-width: 0;
+  overflow: hidden;
+  /* Override main.css button defaults that break this component:
+     main.css sets height:3.25rem and white-space:nowrap on all buttons;
+     neither works for a multi-line location chip. */
+  height: auto;
+  line-height: inherit;
+  white-space: normal;
+  padding: 0.42rem 0.35rem;
+  border: 1px solid var(--border) !important;
+  border-radius: var(--radius-sm);
+  background: var(--surface-2);
+  color: var(--muted) !important;
+  font: inherit;
+  cursor: pointer;
+  text-align: center;
+  box-shadow: none !important;
+  transition: border-color 0.15s ease, background 0.15s ease, color 0.15s ease;
+}
+.pred-loc-btn:hover {
+  border-color: var(--border-strong) !important;
+  background: var(--surface-3);
+  color: var(--text) !important;
+  box-shadow: none !important;
+}
+.pred-loc-btn:focus-visible {
+  outline: 2px solid var(--accent-2);
+  outline-offset: 2px;
+  color: var(--text) !important;
+  box-shadow: none !important;
+}
+.pred-loc-slot {
+  font-size: 0.55rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--muted-2);
+}
+.pred-loc-name {
+  font-size: 0.72rem;
+  font-weight: 600;
+  line-height: 1.15;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+  hyphens: auto;
+  width: 100%;
+}
+.pred-loc-btn.is-revealed {
+  background: var(--accent-soft);
+  border-color: var(--accent-strong) !important;
+  color: var(--accent-2) !important;
+}
+.pred-loc-btn.is-revealed .pred-loc-slot { color: var(--accent-2); }
+.pred-loc-btn.is-revealed .pred-loc-name { color: var(--text); }
+.pred-loc-btn.is-revealed:hover {
+  background: var(--accent-soft);
+  border-color: var(--accent) !important;
+  color: var(--accent-2) !important;
+}
+.pred-loc-btn.is-loading .pred-loc-name { color: var(--muted-2); }
+.pred-loc-btn.is-error {
+  border-color: rgba(251, 146, 60, 0.45) !important;
+}
+.pred-loc-btn.is-error .pred-loc-name { color: var(--warn); }
+
+@media (max-width: 520px) {
+  /* 3+2 grid: five ~65px columns force mid-word breaks in long names
+     ("Normand y, France"); three ~108px columns let names wrap at
+     spaces instead. */
+  .pred-loc-strip { gap: 0.32rem; grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .pred-loc-btn { padding: 0.36rem 0.22rem; }
+  .pred-loc-name { font-size: 0.66rem; }
+  .pred-loc-slot { font-size: 0.5rem; }
 }
 
 /* ---------- Dashboard rival grid ---------- */
@@ -1406,6 +1554,28 @@ body.maptap-rivals-app button {
   flex-wrap: wrap;
   font-size: 0.8rem;
   color: var(--muted);
+}
+
+.rival-card-note {
+  display: flex;
+  align-items: baseline;
+  gap: 0.35rem;
+  margin-top: 0.55rem;
+  padding-top: 0.5rem;
+  border-top: 1px solid var(--border);
+  font-size: 0.74rem;
+  color: var(--muted);
+}
+.rival-card-note-emoji {
+  flex: none;
+  font-size: 0.8rem;
+  line-height: 1;
+}
+.rival-card-note-text {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .form-pills {
@@ -1580,9 +1750,36 @@ body.maptap-rivals-app button {
   color: var(--muted);
   margin-top: 0.15rem;
 }
+/* Multi-line subs (e.g. the No-multiplier H2H card showing the actual
+   record above its flips note) stack each .sub-line on its own row. */
+.stat-card .sub .sub-line { display: block; }
 .stat-card.is-good .value { color: var(--good); }
 .stat-card.is-bad .value { color: var(--bad); }
 .stat-card.is-accent .value { color: var(--accent-2); }
+
+/* Grouped stat cards (rival view): Performance / Momentum / Key Insights.
+   When #rival-stat-cards holds groups it stacks them vertically; each group
+   keeps its own .stat-cards grid inside, so the card mechanics are unchanged.
+   The takeaway-led cards run longer than the old metric cards, so the value
+   shrinks a touch to read as a sentence rather than a single big number. */
+#rival-stat-cards {
+  display: block;
+}
+.stat-card-group { margin-bottom: 1rem; }
+.stat-card-group:last-child { margin-bottom: 0; }
+.stat-card-group > .stat-cards { margin-bottom: 0; }
+.stat-card-group-title {
+  font-size: 0.74rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.07em;
+  color: var(--muted-2);
+  margin: 0 0 0.5rem;
+}
+.stat-card-group .stat-card .value {
+  font-size: 1.04rem;
+  line-height: 1.25;
+}
 
 .charts-grid {
   display: grid;
@@ -1645,6 +1842,72 @@ body.maptap-rivals-app button {
   gap: 0.5rem;
   margin-bottom: 0.85rem;
 }
+.loc-callouts[hidden] { display: none; }
+
+/* Insight groups: top-of-section, scannable. Each group leads with one big
+   plain-language headline; supporting numbers sit smaller below it. A left
+   accent rail color-codes the category (good / bad / warn / neutral). */
+.loc-insight-groups {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  gap: 0.7rem;
+  margin-bottom: 1.25rem;
+}
+.loc-insight-groups[hidden] { display: none; }
+.loc-insight-group {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-left: 3px solid var(--accent);
+  border-radius: var(--radius-sm);
+  padding: 0.75rem 0.9rem 0.8rem;
+}
+.loc-insight-group.good { border-left-color: var(--good); }
+.loc-insight-group.bad { border-left-color: var(--bad); }
+.loc-insight-group.warn { border-left-color: var(--warn); }
+.lig-title {
+  font-size: 0.7rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.07em;
+  color: var(--muted-2);
+}
+.lig-headline {
+  font-size: 1.02rem;
+  font-weight: 600;
+  color: var(--text);
+  line-height: 1.3;
+  margin-top: 0.25rem;
+}
+.lig-headline strong { color: var(--accent-2); font-weight: 700; }
+.loc-insight-group.good .lig-headline strong { color: var(--good); }
+.loc-insight-group.bad .lig-headline strong { color: var(--bad); }
+.loc-insight-group.warn .lig-headline strong { color: var(--warn); }
+.lig-stats {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+  margin-top: 0.55rem;
+}
+.lig-stat {
+  font-size: 0.72rem;
+  color: var(--muted);
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  padding: 0.12rem 0.5rem;
+  font-variant-numeric: tabular-nums;
+}
+
+/* Sub-headings that demote the dense data (charts, per-round cards) below the
+   insight groups. */
+.loc-subhead {
+  font-size: 0.78rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--muted);
+  margin: 0.25rem 0 0.7rem;
+}
 
 .loc-card-grid {
   display: grid;
@@ -1653,7 +1916,11 @@ body.maptap-rivals-app button {
   margin-top: 1rem;
 }
 .loc-card {
-  background: var(--surface);
+  /* --loc-tint (set inline per card) layers a subtle win-rate tint over the
+     surface: greenest = best round, reddest = worst. Unset → plain surface. */
+  background:
+    linear-gradient(var(--loc-tint, transparent), var(--loc-tint, transparent)),
+    var(--surface);
   border: 1px solid var(--border);
   border-radius: var(--radius-sm);
   padding: 0.7rem 0.65rem;
@@ -1799,8 +2066,10 @@ body.maptap-rivals-app button {
   font-weight: 700;
   line-height: 1.15;
 }
-.continent-scores .col.me .v { color: var(--good); }
-.continent-scores .col.them .v { color: var(--accent-2); }
+/* Winner green / loser red, set per continent by renderContinentSection;
+   ties carry neither class and stay neutral. */
+.continent-scores .col .v.is-win { color: var(--good); }
+.continent-scores .col .v.is-lose { color: var(--bad); }
 
 .continent-record {
   font-size: 0.72rem;
@@ -1927,6 +2196,20 @@ body.maptap-rivals-app button {
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+/* Date links out to maptap.gg — same quiet dotted-underline treatment as
+   the history table's date column (and pinned against main.css link reds). */
+.heatmap-rowlabel .maptap-day-link {
+  color: inherit;
+  text-decoration: none;
+  border-bottom: 1px dotted currentColor;
+  padding-bottom: 1px;
+}
+.heatmap-rowlabel .maptap-day-link:hover,
+.heatmap-rowlabel .maptap-day-link:focus-visible {
+  color: var(--accent-2);
+  border-bottom-style: solid;
+  outline: none;
 }
 /* Round-by-round cells live inside .heatmap-row's 1fr grid columns.
    Scoped to .heatmap-row so the calendar-heatmap dots (.heatmap-cell at
@@ -2102,6 +2385,83 @@ body.maptap-rivals-app button {
   outline: none;
 }
 
+/* History thead — a distinct, intentional legend row. Layered surface +
+   bottom border lift it off the data; small-caps letterspacing matches the
+   section labels elsewhere. Sticky within the table's own scroll so the
+   columns stay legible on long days. Scoped to #history-table so the
+   leaderboard header is untouched. */
+#history-table thead th {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  color: var(--muted);
+  font-weight: 600;
+  letter-spacing: 0.11em;
+  background:
+    linear-gradient(180deg, var(--surface-2), var(--surface));
+  border-bottom: 1px solid var(--border-strong);
+  box-shadow: inset 0 -1px 0 var(--border);
+}
+#history-table thead th:first-child {
+  border-top-left-radius: 12px;
+}
+#history-table thead th:last-child {
+  border-top-right-radius: 12px;
+}
+
+/* ---------- History day grouping ----------
+   The Full Game History is grouped by day so it reads date-by-date
+   instead of as a continuous rival-by-rival mix. Each day opens with a
+   full-width header row carrying the maptap.gg day link; member rows drop
+   their repeated date (first cell left empty as a quiet gutter). Stronger
+   top spacing/divider separates one day from the next. */
+#history-table tbody tr.history-day-header td {
+  padding: 1.05rem 0.95rem 0.5rem;
+  border-bottom: 1px solid var(--border-strong);
+  background: linear-gradient(180deg,
+    rgba(99, 102, 241, 0.07), rgba(99, 102, 241, 0));
+}
+/* No big top gap before the very first day group on a page. */
+#history-table tbody tr.history-day-header:first-child td {
+  padding-top: 0.55rem;
+}
+.history-day-head-inner {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 0.6rem;
+}
+#history-table .history-day-link,
+#history-table .history-day-label {
+  color: var(--text);
+  font-size: 0.92rem;
+  font-weight: 700;
+  letter-spacing: 0.01em;
+  font-variant-numeric: tabular-nums;
+  text-decoration: none;
+  border-bottom: 1px dotted var(--border-strong);
+  padding-bottom: 1px;
+}
+#history-table .history-day-label { border-bottom: 0; }
+#history-table .history-day-link:hover,
+#history-table .history-day-link:focus-visible {
+  color: var(--accent-2);
+  border-bottom-color: var(--accent-2);
+  border-bottom-style: solid;
+  outline: none;
+}
+/* Member rows: the empty leading cell becomes a thin accent gutter so the
+   eye still tracks the day group down the left edge. */
+#history-table tbody tr.history-day-row td.history-row-date {
+  width: 0;
+  padding: 0;
+  border-left: 2px solid var(--accent-soft);
+}
+/* Tighten the divider between rows inside a day; the day header carries
+   the strong divider so member rows stay airy and grouped. */
+#history-table tbody tr.history-day-row td {
+  border-bottom-color: rgba(255, 255, 255, 0.025);
+}
+
 .rounds-cell { width: 0; }
 .rounds-cell .round-dots { display: inline-flex; }
 
@@ -2217,55 +2577,77 @@ body.maptap-rivals-app button {
   font-variant-numeric: tabular-nums;
 }
 
-/* Row action — compact icon button that sits muted until the row is
-   hovered/focused, like Linear / Notion table actions. */
-.icon-btn,
-.icon-btn:hover {
+/* Row action — compact icon button. Reads as clearly interactive at rest
+   (defined surface + border + legible stroke) and brightens on row
+   hover/focus. Used in Full Game History and rival Recent games. */
+.icon-btn {
   width: 24px;
   height: 24px;
   min-width: 36px;
   min-height: 36px;
   padding: 0;
-  border: 0;
-  background: transparent;
-  color: var(--muted-2);
+  border: 1px solid var(--border-strong);
+  background: var(--surface-2);
+  color: var(--muted);
   cursor: pointer;
-  border-radius: 5px;
+  border-radius: 6px;
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  opacity: 0.5;
-  transition: opacity 0.12s ease, background 0.12s ease, color 0.12s ease;
+  opacity: 1;
+  transition: background 0.12s ease, color 0.12s ease,
+    border-color 0.12s ease, box-shadow 0.12s ease;
 }
 .icon-btn svg { width: 13px; height: 13px; display: block; }
 .icon-btn:hover {
-  background: rgba(255, 255, 255, 0.05);
+  background: var(--surface-3);
+  border-color: var(--border-strong);
   color: var(--text);
-  opacity: 1;
 }
 .icon-btn:focus-visible {
   outline: none;
-  opacity: 1;
-  background: rgba(255, 255, 255, 0.05);
+  background: var(--surface-3);
+  color: var(--text);
   box-shadow: 0 0 0 2px var(--accent-soft);
 }
+/* Row hover lifts the action affordance a touch further. */
 tr:hover .icon-btn,
 tr:focus-within .icon-btn {
-  opacity: 1;
+  border-color: var(--border-strong);
+  color: var(--text);
 }
-.icon-btn-danger:hover {
-  background: rgba(248, 113, 113, 0.12);
+/* Danger keeps a persistent red tint so destructive intent reads at rest. */
+.icon-btn-danger {
+  color: var(--bad);
+  border-color: rgba(248, 113, 113, 0.28);
+  background: rgba(248, 113, 113, 0.07);
+}
+.icon-btn-danger:hover,
+tr:hover .icon-btn-danger,
+tr:focus-within .icon-btn-danger {
+  background: rgba(248, 113, 113, 0.16);
+  border-color: rgba(248, 113, 113, 0.45);
   color: var(--bad);
 }
 .icon-btn-danger:focus-visible {
-  box-shadow: 0 0 0 2px rgba(248, 113, 113, 0.22);
+  background: rgba(248, 113, 113, 0.16);
+  box-shadow: 0 0 0 2px rgba(248, 113, 113, 0.3);
 }
-
-.icon-btn-share:hover {
-  background: rgba(99, 102, 241, 0.12);
+/* Share leans into the indigo accent. */
+.icon-btn-share {
+  color: var(--accent-2);
+  border-color: rgba(99, 102, 241, 0.28);
+  background: rgba(99, 102, 241, 0.07);
+}
+.icon-btn-share:hover,
+tr:hover .icon-btn-share,
+tr:focus-within .icon-btn-share {
+  background: rgba(99, 102, 241, 0.16);
+  border-color: rgba(99, 102, 241, 0.45);
   color: var(--accent-2);
 }
 .icon-btn-share:focus-visible {
+  background: rgba(99, 102, 241, 0.16);
   box-shadow: 0 0 0 2px var(--accent-soft);
 }
 
@@ -2348,8 +2730,8 @@ tr:focus-within .icon-btn {
 .pagination-controls {
   display: flex;
   align-items: center;
-  gap: 0;
-  flex-wrap: nowrap;
+  gap: 0.5rem;
+  flex-wrap: wrap;
   line-height: 0;
   font-size: 0;
 }
@@ -2368,8 +2750,7 @@ tr:focus-within .icon-btn {
   padding: 0 0.25rem 0 0.55rem;
   background: var(--surface-2);
   border: 1px solid var(--border);
-  border-radius: 5px 0 0 5px;
-  border-right-width: 0;
+  border-radius: 5px;
   gap: 0.4rem;
   font-size: 0.755rem;
   color: var(--muted);
@@ -2511,6 +2892,77 @@ tr:focus-within .icon-btn {
   line-height: 1;
 }
 
+/* Numbered pager (ported from rising-seasons): Prev, page numbers with
+   ellipsis gaps, Next. Adapted to maptap's dark tokens. The accent-tinted
+   current page replaces rising-seasons' amber. Hover is pinned on .page-btn
+   to defeat the sitewide red button:hover. The parent .pagination-controls
+   zeroes font-size/line-height for its segmented pill, so reset both here. */
+.pager {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+  gap: 0.25rem;
+  font-size: 0.82rem;
+  line-height: 1;
+}
+.pager[hidden] { display: none; }
+.pager .page-btn,
+.pager .page-btn:hover {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 30px;
+  height: 28px;
+  padding: 0 0.5rem;
+  background: transparent;
+  color: var(--muted) !important;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  font: inherit;
+  font-size: 0.8rem;
+  font-weight: 500;
+  font-variant-numeric: tabular-nums;
+  cursor: pointer;
+  box-shadow: none !important;
+  transition: background 0.15s ease, border-color 0.15s ease, color 0.15s ease;
+}
+.pager .page-btn:hover {
+  background: var(--surface-2) !important;
+  border-color: var(--border-strong);
+  color: var(--text) !important;
+}
+.pager .page-btn:focus-visible {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-soft) !important;
+}
+.pager .page-btn[aria-current="page"],
+.pager .page-btn[aria-current="page"]:hover {
+  background: var(--accent-soft) !important;
+  color: var(--accent-2) !important;
+  border-color: var(--accent-strong);
+  font-weight: 700;
+}
+.pager .page-btn:disabled,
+.pager .page-btn[aria-disabled="true"] {
+  opacity: 0.3;
+  cursor: not-allowed;
+  color: var(--muted) !important;
+  background: transparent !important;
+  border-color: transparent;
+}
+.pager .page-ellipsis {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 1.25rem;
+  height: 28px;
+  color: var(--muted-2);
+  user-select: none;
+  font-size: 0.8rem;
+}
+
 @media (max-width: 540px) {
   .pagination {
     justify-content: center;
@@ -2522,16 +2974,42 @@ tr:focus-within .icon-btn {
     order: -1;
   }
   .pagination-controls { gap: 0.3rem; }
+  .pager .page-ellipsis { display: none; }
 }
-.history-filters { display: flex; gap: 0.4rem; flex-wrap: wrap; }
+.history-filters { display: flex; gap: 0.5rem; flex-wrap: wrap; }
+/* Premium filter pills — custom chevron, layered surface, lit accent ring on
+   focus. The trailing-chevron SVG is inlined so the control needs no markup
+   change and no extra request. */
 .history-filters select {
+  -webkit-appearance: none;
+  appearance: none;
   height: var(--ctrl-h);
-  padding: 0 0.65rem;
-  border: 1px solid var(--border);
-  border-radius: var(--ctrl-radius);
-  background: var(--surface-2);
+  padding: 0 2rem 0 0.85rem;
+  border: 1px solid var(--border-strong);
+  border-radius: 999px;
+  background-color: var(--surface-2);
+  background-image:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.04), rgba(255, 255, 255, 0)),
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%23818cf8' stroke-width='2.4' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: center, right 0.7rem center;
   color: var(--text);
-  font-size: 0.9rem;
+  font-size: 0.875rem;
+  font-weight: 500;
+  letter-spacing: 0.01em;
+  cursor: pointer;
+  transition: border-color 0.12s ease, background-color 0.12s ease,
+    box-shadow 0.12s ease;
+}
+.history-filters select:hover {
+  border-color: var(--accent-strong);
+  background-color: var(--surface-3);
+}
+.history-filters select:focus,
+.history-filters select:focus-visible {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-soft);
 }
 
 /* Native <select> dropdown panels render with the OS theme. Color-scheme
@@ -3034,6 +3512,33 @@ body.maptap-rivals-app select option {
   box-shadow: 0 0 0 3px rgba(248, 113, 113, 0.18) !important;
 }
 
+/* Confirmation modal — short prompt + Cancel/Delete grouped on the right.
+   The Delete button stays a solid danger button (overrides the muted-ghost
+   .modal-actions .btn-danger above) and pins its own hover/focus so the
+   sitewide button:hover red can't bleed in. */
+.modal-confirm-body {
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.9rem;
+  line-height: 1.45;
+}
+.modal-actions-confirm { justify-content: flex-end; }
+.modal-actions-confirm .btn-danger,
+.modal-actions-confirm .btn-danger:hover {
+  margin-right: 0;
+  background: var(--bad);
+  color: var(--bad-ink) !important;
+  border-color: transparent;
+  font-weight: 600;
+}
+.modal-actions-confirm .btn-danger:hover { filter: brightness(1.05); }
+.modal-actions-confirm .btn-danger:focus-visible {
+  border-color: transparent;
+  outline: 2px solid var(--bad);
+  outline-offset: 2px;
+  box-shadow: 0 0 0 3px rgba(248, 113, 113, 0.18) !important;
+}
+
 /* ---------- WhatsApp import modal ---------- */
 
 .wa-overview {
@@ -3334,6 +3839,14 @@ body.maptap-rivals-app select option {
   text-overflow: ellipsis;
   max-width: 9rem;
 }
+/* Player's average daily score, shown after the name since the Avg score
+   subtab was removed. Quiet, smaller, never wraps away from the name. */
+.matrix-head-avg {
+  color: var(--muted);
+  font-size: 0.72rem;
+  font-weight: 500;
+  white-space: nowrap;
+}
 
 .matrix-cell {
   text-align: center;
@@ -3483,6 +3996,71 @@ body.maptap-rivals-app select option {
   .matrix-head-name { max-width: 6rem; font-size: 0.82rem; }
 }
 
+/* ---- Confusion Matrix: dedicated small-screen layout (<=640px) ----
+   The desktop grid stops scaling cleanly on phones: records wrap, the avg
+   badge crowds names, and cells lose alignment. Here we collapse column
+   heads to icon-only (full name stays in the th title), keep a short
+   ellipsized row-head name with the avg dropped to its own tiny line, force
+   records onto a single tabular line, and tighten cells to a consistent
+   size. The matrix already scrolls horizontally; the row-head column is
+   pinned so labels stay visible while scrolling the records. */
+@media (max-width: 640px) {
+  .matrix-wrap { padding: 0.5rem; }
+  .matrix-table { border-spacing: 4px; }
+
+  /* Column heads: icon only. Name is preserved in the th `title` attribute. */
+  .matrix-col-head { padding: 0.4rem 0.3rem; }
+  .matrix-col-head .matrix-head-name,
+  .matrix-col-head .matrix-head-avg { display: none; }
+  .matrix-col-head .matrix-head-chip { justify-content: center; gap: 0; }
+  .matrix-head-icon { font-size: 1.05rem; }
+
+  /* Row heads: pinned to the left edge so labels survive horizontal scroll. */
+  .matrix-row-head {
+    position: sticky;
+    left: 0;
+    z-index: 2;
+    padding: 0.45rem 0.5rem;
+    min-width: 5rem;
+    max-width: 7rem;
+  }
+  .matrix-row-head .matrix-head-chip {
+    flex-wrap: wrap;
+    gap: 0 0.3rem;
+    align-items: center;
+  }
+  .matrix-row-head .matrix-head-name {
+    max-width: 4.6rem;
+    font-size: 0.78rem;
+  }
+  /* avg moves UNDER the name as its own quiet line. */
+  .matrix-row-head .matrix-head-avg {
+    flex-basis: 100%;
+    font-size: 0.62rem;
+    line-height: 1.1;
+    margin-top: 0.05rem;
+  }
+
+  /* Cells: consistent size, records forced single-line, tighter padding. */
+  .matrix-cell {
+    min-width: 4.6rem;
+    width: 4.6rem;
+    padding: 0.45rem 0.25rem;
+  }
+  .matrix-record {
+    font-size: 0.9rem;
+    white-space: nowrap;
+    font-variant-numeric: tabular-nums;
+  }
+  .matrix-margin {
+    font-size: 0.66rem;
+    white-space: nowrap;
+  }
+  .matrix-meta { font-size: 0.62rem; white-space: nowrap; }
+  .matrix-cell-empty { font-size: 0.62rem; }
+  .matrix-form-dot { width: 0.55rem; height: 0.55rem; }
+}
+
 /* ---------- Seasons view ---------- */
 
 .seasons-toolbar {
@@ -3510,6 +4088,9 @@ body.maptap-rivals-app select option {
 .season-card {
   background: var(--surface);
   border: 1px solid var(--border);
+  /* Status accent rides the left edge: green = met/on-track, amber = behind,
+     red = missed, neutral = upcoming/no signal. */
+  border-left: 3px solid var(--border-strong);
   border-radius: var(--radius);
   padding: 0.9rem 1rem;
   margin-bottom: 0.65rem;
@@ -3517,8 +4098,24 @@ body.maptap-rivals-app select option {
 
 .season-card-active {
   border-color: var(--accent-strong);
+  border-left-width: 3px;
   background: linear-gradient(135deg, rgba(99,102,241,0.06), transparent 60%), var(--surface);
 }
+
+.season-card-good { border-left-color: var(--good); }
+.season-card-warn { border-left-color: var(--warn); }
+.season-card-bad  { border-left-color: var(--bad); }
+
+.season-card-headline {
+  font-size: 1.02rem;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  color: var(--text);
+  margin: 0.1rem 0 0.15rem;
+}
+.season-card-good .season-card-headline { color: var(--good); }
+.season-card-warn .season-card-headline { color: var(--warn); }
+.season-card-bad  .season-card-headline { color: var(--bad); }
 
 .season-card-past {
   opacity: 0.85;
@@ -3782,20 +4379,24 @@ body.maptap-rivals-app select option {
   color: var(--bad);
 }
 
-/* Dashboard active-season banner */
+/* Dashboard active-season banner — shares the season cards' status-accent
+   language (left edge keyed to on-track/behind). */
 .season-dash-banner {
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 0.75rem;
   padding: 0.65rem 0.9rem;
-  background: var(--accent-soft);
+  background: linear-gradient(135deg, rgba(99,102,241,0.10), transparent 65%), var(--surface);
   border: 1px solid var(--accent-strong);
+  border-left-width: 3px;
   border-radius: var(--radius-sm);
   margin-bottom: 1rem;
   cursor: pointer;
-  transition: background 0.15s;
+  transition: background 0.15s, border-color 0.15s;
 }
+.season-dash-banner.is-on-track { border-left-color: var(--good); }
+.season-dash-banner.is-behind   { border-left-color: var(--warn); }
 
 .season-dash-banner:hover {
   background: rgba(99, 102, 241, 0.22);
@@ -3808,8 +4409,17 @@ body.maptap-rivals-app select option {
 }
 
 .season-dash-banner-name {
-  font-size: 0.88rem;
+  font-size: 0.78rem;
   font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--muted);
+}
+
+.season-dash-banner-headline {
+  font-size: 0.95rem;
+  font-weight: 700;
+  letter-spacing: -0.01em;
   color: var(--text);
 }
 

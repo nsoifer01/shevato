@@ -194,7 +194,8 @@
       <!-- Today's predictions: predicted vs actual head-to-head card.
            Filled in by renderTodaysPredictions() once today's puzzle
            locations are fetched and per-player history is available.
-           Coordinates only — city names are never rendered. -->
+           Only coordinates are persisted; city names render only behind the
+           "user has played this day" gate and are never written to storage. -->
       <section class="todays-card" id="todays-card" hidden>
         <header class="todays-card-head">
           <div class="todays-card-title">
@@ -255,7 +256,9 @@
           <h2 class="section-title">Round-by-round breakdown</h2>
           <span class="loc-section-sub" id="loc-section-sub"></span>
         </header>
-        <div class="loc-callouts" id="loc-callouts"></div>
+        <div class="loc-insight-groups" id="loc-insight-groups"></div>
+        <div class="loc-callouts" id="loc-callouts" hidden></div>
+        <h3 class="loc-subhead">Charts &amp; history</h3>
         <div class="charts-grid">
           <div class="chart-card" id="heatmap-section">
             <div class="chart-card-head">
@@ -285,6 +288,7 @@
             <div class="loc-heatmap" id="loc-heatmap"></div>
           </div>
         </div>
+        <h3 class="loc-subhead">Per-round detail</h3>
         <div class="loc-card-grid" id="loc-card-grid"></div>
       </section>
 
@@ -294,6 +298,7 @@
           <h2 class="section-title">Continent breakdown</h2>
           <span class="loc-section-sub" id="continent-section-sub"></span>
         </header>
+        <div class="loc-insight-groups" id="continent-insight-groups"></div>
         <div class="continent-grid" id="continent-grid"></div>
       </section>
 
@@ -334,15 +339,7 @@
                 <option value="0">All</option>
               </select>
             </label>
-            <div class="pagination-pager">
-              <button type="button" class="pagination-btn" id="rival-games-prev" aria-label="Previous page">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><polyline points="15 18 9 12 15 6"/></svg>
-              </button>
-              <span class="pagination-current" id="rival-games-pagination-current"></span>
-              <button type="button" class="pagination-btn" id="rival-games-next" aria-label="Next page">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><polyline points="9 18 15 12 9 6"/></svg>
-              </button>
-            </div>
+            <div class="pager" id="rival-games-pager"></div>
           </div>
         </nav>
       </div>
@@ -356,15 +353,15 @@
           <thead>
             <tr>
               <th>#</th>
-              <th>Rival</th>
-              <th>Games</th>
-              <th>W</th>
-              <th>L</th>
-              <th>T</th>
+              <th id="lb-th-rival" class="lb-th-sortable" tabindex="0" role="button" aria-sort="none">Rival</th>
+              <th id="lb-th-games" class="lb-th-sortable" tabindex="0" role="button" aria-sort="none">Games</th>
+              <th id="lb-th-wins" class="lb-th-sortable" tabindex="0" role="button" aria-sort="none">W</th>
+              <th id="lb-th-losses" class="lb-th-sortable" tabindex="0" role="button" aria-sort="none">L</th>
+              <th id="lb-th-ties" class="lb-th-sortable" tabindex="0" role="button" aria-sort="none">T</th>
               <th id="lb-th-winpct" class="lb-th-sortable lb-th-sorted" tabindex="0" role="button" aria-sort="descending">Win %</th>
               <th id="lb-th-rivalry" class="lb-th-sortable" tabindex="0" role="button" aria-sort="none">Rivalry <span class="lb-th-hint" title="Rivalry score blends win rate, total games played, recency of results, and average margin. Higher = you are winning the rivalry.">(?)</span></th>
-              <th>Avg Δ</th>
-              <th>Streak</th>
+              <th id="lb-th-avgdiff" class="lb-th-sortable" tabindex="0" role="button" aria-sort="none">Avg Δ</th>
+              <th id="lb-th-streak" class="lb-th-sortable" tabindex="0" role="button" aria-sort="none">Streak</th>
               <th>Form</th>
             </tr>
           </thead>
@@ -408,7 +405,6 @@
         <h2 class="section-title">Rivalry Seasons</h2>
         <button type="button" class="btn btn-primary" id="new-season-btn">+ New season</button>
       </div>
-      <div id="seasons-active-banner"></div>
       <div id="seasons-body"></div>
     </section>
 
@@ -460,15 +456,7 @@
               <option value="0">All</option>
             </select>
           </label>
-          <div class="pagination-pager">
-            <button type="button" class="pagination-btn" id="history-prev" aria-label="Previous page">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><polyline points="15 18 9 12 15 6"/></svg>
-            </button>
-            <span class="pagination-current" id="history-pagination-current"></span>
-            <button type="button" class="pagination-btn" id="history-next" aria-label="Next page">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><polyline points="9 18 15 12 9 6"/></svg>
-            </button>
-          </div>
+          <div class="pager" id="history-pager"></div>
         </div>
       </nav>
       <p class="empty-state" id="history-empty" hidden>No games yet.</p>
@@ -554,6 +542,54 @@
         <button type="button" class="btn btn-ghost" data-close="modal">Cancel</button>
         <button type="button" class="btn btn-danger" id="rival-delete-btn" hidden>Delete</button>
         <button type="button" class="btn btn-primary" id="rival-save-btn">Save</button>
+      </div>
+    </article>
+  </div>
+
+  <!-- Delete game confirmation modal -->
+  <div class="modal" id="delete-game-modal" role="dialog" aria-modal="true" aria-labelledby="delete-game-title" hidden>
+    <div class="modal-backdrop" data-close="delete-game-modal"></div>
+    <article class="modal-panel modal-panel-sm">
+      <button type="button" class="modal-close" data-close="delete-game-modal" aria-label="Close">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.85" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M6 6l12 12"/><path d="M18 6L6 18"/></svg>
+      </button>
+      <h2 id="delete-game-title">Delete game?</h2>
+      <p class="modal-confirm-body" id="delete-game-body"></p>
+      <div class="modal-actions modal-actions-confirm">
+        <button type="button" class="btn btn-ghost" id="delete-game-cancel" data-close="delete-game-modal">Cancel</button>
+        <button type="button" class="btn btn-danger" id="delete-game-confirm">Delete</button>
+      </div>
+    </article>
+  </div>
+
+  <!-- Clear-all-games confirmation modal -->
+  <div class="modal" id="clear-games-modal" role="dialog" aria-modal="true" aria-labelledby="clear-games-title" hidden>
+    <div class="modal-backdrop" data-close="clear-games-modal"></div>
+    <article class="modal-panel modal-panel-sm">
+      <button type="button" class="modal-close" data-close="clear-games-modal" aria-label="Close">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.85" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M6 6l12 12"/><path d="M18 6L6 18"/></svg>
+      </button>
+      <h2 id="clear-games-title">Clear all games?</h2>
+      <p class="modal-confirm-body" id="clear-games-body"></p>
+      <div class="modal-actions modal-actions-confirm">
+        <button type="button" class="btn btn-ghost" id="clear-games-cancel" data-close="clear-games-modal">Cancel</button>
+        <button type="button" class="btn btn-danger" id="clear-games-confirm">Clear games</button>
+      </div>
+    </article>
+  </div>
+
+  <!-- Delete-season confirmation modal -->
+  <div class="modal" id="delete-season-modal" role="dialog" aria-modal="true" aria-labelledby="delete-season-title" hidden>
+    <div class="modal-backdrop" data-close="delete-season-modal"></div>
+    <article class="modal-panel modal-panel-sm">
+      <button type="button" class="modal-close" data-close="delete-season-modal" aria-label="Close">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.85" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M6 6l12 12"/><path d="M18 6L6 18"/></svg>
+      </button>
+      <h2 id="delete-season-title">Delete season?</h2>
+      <p class="modal-confirm-body" id="delete-season-body"></p>
+      <div class="modal-actions modal-actions-confirm">
+        <button type="button" class="btn btn-ghost" id="delete-season-cancel" data-close="delete-season-modal">Cancel</button>
+        <button type="button" class="btn btn-danger" id="delete-season-confirm">Delete</button>
       </div>
     </article>
   </div>
