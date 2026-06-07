@@ -1104,7 +1104,7 @@ function exportData() {
     createSuccessModal({
         icon: '📤',
         title: 'Export Complete',
-        message: `Successfully exported ${games.length} games to <strong>${exportFileDefaultName}</strong>`
+        message: `Successfully exported ${games.length} ${games.length === 1 ? 'game' : 'games'} to <strong>${exportFileDefaultName}</strong>`
     });
 }
 
@@ -1180,7 +1180,7 @@ function importData() {
                     createSuccessModal({
                         icon: '📥',
                         title: 'Import Successful',
-                        message: `Successfully imported ${games.length} games!`
+                        message: `Successfully imported ${games.length} ${games.length === 1 ? 'game' : 'games'}!`
                     });
                 },
                 onCancel: () => {}
@@ -1666,8 +1666,15 @@ function renderGamesTableWithData(gamesData) {
         }
         
         const noteHtml = game.note ? `<div class="game-note">${escapeHtml(game.note)}</div>` : '';
+        // Display-only fallback: games saved before gameNumber existed would
+        // otherwise print "undefined". Show the positional number (1-based
+        // index in the full games list, the same value the migration assigns).
+        // Not persisted; purely what is rendered.
+        const displayGameNumber = game.gameNumber != null
+            ? game.gameNumber
+            : games.findIndex(m => m.id === game.id) + 1;
         row.innerHTML = `
-            <td class="game-number">${game.gameNumber}</td>
+            <td class="game-number">${displayGameNumber}</td>
             <td class="game-date">${formattedDate}<br><small>${formattedTime}</small>${noteHtml}</td>
             <td class="player-score player1-score ${player1ScoreClass}">
                 <span class="score-number">${game.player1Goals}</span>${player1PenaltyText}

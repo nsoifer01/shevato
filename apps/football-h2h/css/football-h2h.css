@@ -348,7 +348,9 @@
     left: 0;
     right: 0;
     height: 3px;
-    background: linear-gradient(90deg, #34d399 0%, #10b981 100%);
+    /* Unified indigo accent so the add-game and player-settings panels read
+       as one family (was green here, pink on player-settings). */
+    background: linear-gradient(90deg, #818cf8 0%, #6366f1 100%);
 }
 
 .sidebar-game-form.open {
@@ -392,7 +394,10 @@
 
 .sidebar-submit-game {
     background: linear-gradient(135deg, #34d399 0%, #10b981 100%);
-    color: white;
+    /* color pinned with !important across all states so the sitewide theme
+       trap (assets/css/main.css button{color:#555!important}) can't gray the
+       label or turn it red on hover/active. */
+    color: white !important;
     border: none;
     border-radius: 0.5rem;
     padding: 0.75rem 1rem;
@@ -409,8 +414,10 @@
     min-width: 120px;
 }
 
-.sidebar-submit-game:hover {
+.sidebar-submit-game:hover,
+.sidebar-submit-game:hover:active {
     background: linear-gradient(135deg, #10b981 0%, #059669 100%);
+    color: white !important;
     box-shadow: 0 4px 12px rgba(52, 211, 153, 0.4);
     transform: translateY(-1px);
 }
@@ -433,8 +440,13 @@
     min-width: 100px;
 }
 
-.sidebar-cancel-game:hover {
+.sidebar-cancel-game:hover,
+.sidebar-cancel-game:hover:active {
     background: #4b5563;
+    /* re-pin color: the base !important does not carry into this :hover
+       block, so the trap's button:hover{color:#ce1b28!important} would win
+       here without an explicit pin. */
+    color: white !important;
     box-shadow: 0 4px 8px rgba(107, 114, 128, 0.4);
     transform: translateY(-1px);
 }
@@ -470,7 +482,8 @@
     left: 0;
     right: 0;
     height: 3px;
-    background: linear-gradient(90deg, #f472b6 0%, #a78bfa 100%);
+    /* Unified indigo accent (was pink) to match the add-game panel. */
+    background: linear-gradient(90deg, #818cf8 0%, #6366f1 100%);
 }
 
 .player-settings-section {
@@ -482,12 +495,18 @@
 }
 
 .player-settings-section .section-title {
-    font-size: 1rem;
-    font-weight: 600;
-    color: #f7fafc;
-    margin-bottom: 1rem;
-    border-bottom: 1px solid #4a5568;
-    padding-bottom: 0.5rem;
+    /* Restyled to the sidebar's uppercase muted section-label idiom; the
+       authoritative pin lives in refresh.css (loads last, beats the blanket
+       .section-title rule). Kept here in sync for the non-refresh path. */
+    font-size: 0.7rem;
+    font-weight: 700;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: #a4adbd;
+    margin-bottom: 0.75rem;
+    border-bottom: none;
+    padding-bottom: 0;
+    text-align: left;
 }
 
 .player-input-group {
@@ -629,7 +648,9 @@
     border: none;
     border-radius: 0.5rem;
     background: #374151;
-    color: #e2e8f0;
+    /* color pinned !important across inactive/hover/active so the sitewide
+       theme trap can't gray the tabs or turn them red on hover. */
+    color: #e2e8f0 !important;
     cursor: pointer;
     transition: all 0.3s ease;
     font-weight: 500;
@@ -638,14 +659,19 @@
     justify-content: center;
 }
 
-.category-btn:hover {
+.category-btn:hover,
+.category-btn:hover:active {
     background: #4a5568;
-    color: #f7fafc;
+    color: #f7fafc !important;
 }
 
 .category-btn.active {
     background: #818cf8;
-    color: white;
+    color: white !important;
+}
+.category-btn.active:hover,
+.category-btn.active:hover:active {
+    color: white !important;
 }
 
 .icon-grid {
