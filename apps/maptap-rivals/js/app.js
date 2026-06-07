@@ -52,9 +52,16 @@
   // JS file at `data/this_day_in_history/<MonthDay>.js`. The file is CORS-
   // open and contains the same 5 cities every player will play that day
   // (it lists more for editorial flexibility, but MapTap only plays the
-  // first N_LOCS in file order — verified empirically across 5+ days). We
-  // fetch the text and pull only lat/lng — names and trivia are dropped
-  // before anything reaches the predictor or the UI.
+  // first N_LOCS in file order — verified empirically across 5+ days).
+  //
+  // We fetch the text and pull only lat/lng for the predictor — those are
+  // the only fields ever persisted (KEY.DAILY_CITIES_PREFIX cache holds
+  // coordinates, never names). City names ARE parsed, but only lazily: they
+  // are fetched on demand the first time an eligible user opts to reveal a
+  // round, kept in a module-level in-memory map (dailyNames), and rendered
+  // strictly behind the "user has played this day" gate. Names never reach
+  // localStorage and never render before the gate is satisfied, so the
+  // puzzle answer can't leak to a player who hasn't finished.
   const MAPTAP_DAILY_URL_BASE = 'https://maptap.gg/data/this_day_in_history/';
 
   const COLORS = [
@@ -305,6 +312,10 @@
     predictWindowAnchorISO: null,
     // ISO date of the day currently shown in the dashboard predictions card.
     predictSelectedISO: null,
+    // Per-selected-day set of round indices whose location name is revealed.
+    // Reset whenever the selected day changes. Only ever populated while the
+    // user has played the selected day (the reveal strip is gated on that).
+    predictRevealedRounds: new Set(),
   };
 
   function persistRivals() { save(KEY.RIVALS, state.rivals); }
@@ -368,9 +379,12 @@
 
   // Pull only the first N_LOCS lat/lng pairs from a daily puzzle file.
   // The MapTap client plays the first 5 cities in file order regardless
-  // of how many the file lists (verified across May 10-14 plays). We
-  // deliberately discard name/trivia/photos so the predictor and any
-  // downstream code never accidentally surface the answer.
+  // of how many the file lists (verified across May 10-14 plays). The
+  // coordinates are all that is ever persisted (see fetchDailyCities) and
+  // all the predictor needs. City names are parsed separately and only
+  // lazily, behind the played gate (see parseDailyNamesText / fetchDailyNames)
+  // — they never enter the localStorage cache and never reach the UI before
+  // the user has logged their own game for that day.
   // Regex: match `lat:` not preceded by a letter (excludes `labelLat:`),
   // then the nearest `lng:` (same letter-boundary exclusion).
   const DAILY_LATLNG_RE =
@@ -422,6 +436,55 @@
       return null;
     }
   }
+  // ---------- daily location names (in-memory only, behind played gate) ----------
+  // Names are never persisted. They live in this module-level map keyed by
+  // ISO date once an eligible user opts to reveal a round; the value is the
+  // first N_LOCS names in file order, paired to rounds the same way
+  // parseDailyCitiesText pairs lat/lng. Cleared implicitly on reload.
+  const dailyNames = new Map();        // iso -> string[N_LOCS]
+  const dailyNamesStatus = new Map();  // iso -> 'fetching' | 'ok' | 'error'
+
+  // Match `name: "City, Country"` only when `name` is not preceded by a
+  // letter (so keys merely ending in "name", e.g. `cityname:`, can't match),
+  // mirroring the letter-boundary guard used for lat/lng.
+  const DAILY_NAME_RE = /(?<![A-Za-z])name\s*:\s*"([^"]*)"/g;
+  function parseDailyNamesText(src) {
+    if (typeof src !== 'string' || !src.length) return null;
+    DAILY_NAME_RE.lastIndex = 0;
+    const out = [];
+    let m;
+    while ((m = DAILY_NAME_RE.exec(src)) !== null) {
+      const name = m[1].trim();
+      if (name) out.push(name);
+      if (out.length >= N_LOCS) break;
+    }
+    return out.length === N_LOCS ? out : null;
+  }
+
+  // Fetch + parse the day's location names into the in-memory map. Resolves
+  // to true on success, false on any failure (network, parse, wrong count).
+  // Idempotent: a second call while one is in flight or after success is a
+  // no-op that resolves immediately.
+  async function fetchDailyNames(iso) {
+    if (dailyNames.has(iso)) return true;
+    if (dailyNamesStatus.get(iso) === 'fetching') return false;
+    const url = mapTapDailyDataUrl(iso);
+    if (!url) { dailyNamesStatus.set(iso, 'error'); return false; }
+    dailyNamesStatus.set(iso, 'fetching');
+    try {
+      const res = await fetch(url, { credentials: 'omit' });
+      if (!res.ok) { dailyNamesStatus.set(iso, 'error'); return false; }
+      const names = parseDailyNamesText(await res.text());
+      if (!names) { dailyNamesStatus.set(iso, 'error'); return false; }
+      dailyNames.set(iso, names);
+      dailyNamesStatus.set(iso, 'ok');
+      return true;
+    } catch (_) {
+      dailyNamesStatus.set(iso, 'error');
+      return false;
+    }
+  }
+
   function fmtDateLong(iso) {
     if (!iso) return '—';
     const d = new Date(iso + 'T00:00:00');
@@ -1005,9 +1068,39 @@
   function deleteGame(id) {
     const g = state.games.find(x => x.id === id);
     if (!g) return;
-    const myLabel = iPlayed(g) ? String(getMyTotal(g)) : '—';
-    const theirLabel = theyPlayed(g) ? String(getTheirTotal(g)) : '—';
-    if (!confirm(`Delete this game (${shortDate(g.date)}, ${myLabel} vs ${theirLabel})?`)) return;
+    openDeleteGameModal(g);
+  }
+
+  function openDeleteGameModal(g) {
+    const modal = $('#delete-game-modal');
+    const body = $('#delete-game-body');
+    const cancelBtn = $('#delete-game-cancel');
+
+    const myLabel = iPlayed(g) ? String(getMyTotal(g)) : '-';
+    const theirLabel = theyPlayed(g) ? String(getTheirTotal(g)) : '-';
+    const rival = state.rivals.find(r => r.id === g.rivalId);
+    const rivalPart = rival ? ` vs ${rival.name}` : '';
+    body.textContent = `${shortDate(g.date)}${rivalPart}: ${myLabel} to ${theirLabel}. This cannot be undone.`;
+
+    state.deleteGameLastFocus = document.activeElement;
+    state.pendingDeleteGameId = g.id;
+    modal.hidden = false;
+    setTimeout(() => cancelBtn.focus(), 30);
+  }
+
+  function closeDeleteGameModal() {
+    $('#delete-game-modal').hidden = true;
+    state.pendingDeleteGameId = null;
+    const prev = state.deleteGameLastFocus;
+    state.deleteGameLastFocus = null;
+    if (prev && document.body.contains(prev)) setTimeout(() => prev.focus(), 0);
+  }
+
+  function confirmDeleteGame() {
+    const id = state.pendingDeleteGameId;
+    closeDeleteGameModal();
+    if (!id) return;
+    if (!state.games.some(x => x.id === id)) return;
     state.games = state.games.filter(x => x.id !== id);
     persistGames();
     if (state.view === 'dashboard') renderDashboard();
@@ -1191,7 +1284,38 @@
   }
 
   function seasonDateRange(season) {
-    return fmtDateShort(season.startDate) + ' – ' + fmtDateShort(season.endDate);
+    return fmtDateShort(season.startDate) + ' to ' + fmtDateShort(season.endDate);
+  }
+
+  // Story-first one-liner for a season card / the dashboard banner. Always
+  // dash-free; phrasing varies by bucket and goal type.
+  function seasonHeadline(season, stats, bucket) {
+    const goalV = Number(season.goalValue);
+    if (bucket === 'upcoming') {
+      const days = Math.max(1, daysBetween(todayISO(), season.startDate));
+      return `Starts in ${days} day${days === 1 ? '' : 's'}`;
+    }
+    const cur = seasonCurrentStat(season, stats);
+    if (season.goalType === 'winPct') {
+      if ((stats.wins + stats.losses) === 0) {
+        return bucket === 'past' ? 'No decided games this season' : 'No decided games yet';
+      }
+      const pct = stats.winPct.toFixed(0);
+      if (bucket === 'past') {
+        return stats.winPct >= goalV
+          ? `Won ${pct}% vs the ${goalV}% target`
+          : `Fell short at ${pct}% vs the ${goalV}% target`;
+      }
+      return `Winning ${pct}% vs the ${goalV}% target`;
+    }
+    const noun = season.goalType === 'wins' ? 'win' : 'game';
+    const nounS = `${noun}${goalV === 1 ? '' : 's'}`;
+    if (bucket === 'past') {
+      return cur >= goalV
+        ? `Goal met: ${cur} of ${goalV} ${nounS}`
+        : `Fell short: ${cur} of ${goalV} ${nounS}`;
+    }
+    return `${cur} of ${goalV} ${nounS} so far`;
   }
 
   function rivalLabel(rivalId) {
@@ -1211,12 +1335,19 @@
 
   function makeSeasonCard(season, bucket) {
     const stats = seasonStats(season);
-    const today = todayISO();
     const isActive = bucket === 'active';
     const isPast = bucket === 'past';
     const isUpcoming = bucket === 'upcoming';
 
-    const card = el('article', { class: 'season-card season-card-' + bucket });
+    // Status drives the card's accent: met/on-track green, behind amber,
+    // missed red, upcoming neutral.
+    const passed = isPast ? seasonVerdict(season, stats) : null;
+    const onTrack = isActive ? seasonOnTrack(season, stats) : null;
+    const statusCls =
+      isPast ? (passed ? ' season-card-good' : ' season-card-bad')
+      : isActive ? (onTrack === null ? '' : onTrack ? ' season-card-good' : ' season-card-warn')
+      : '';
+    const card = el('article', { class: 'season-card season-card-' + bucket + statusCls });
 
     // Header row
     const head = el('div', { class: 'season-card-head' });
@@ -1228,7 +1359,6 @@
     head.appendChild(headRight);
 
     if (isPast) {
-      const passed = seasonVerdict(season, stats);
       headRight.appendChild(el('span', {
         class: 'season-verdict-pill ' + (passed ? 'is-pass' : 'is-fail'),
       }, passed ? 'Passed' : 'Failed'));
@@ -1247,7 +1377,9 @@
 
     card.appendChild(head);
 
-    // Meta row
+    // Story-first headline, then the meta line.
+    card.appendChild(el('div', { class: 'season-card-headline' },
+      seasonHeadline(season, stats, bucket)));
     card.appendChild(el('div', { class: 'season-card-meta' }, [
       el('span', { class: 'season-card-meta-item' }, rivalLabel(season.rivalId)),
       el('span', { class: 'season-card-meta-sep' }, '·'),
@@ -1260,7 +1392,7 @@
     const wld = `${stats.wins}W · ${stats.losses}L · ${stats.ties}T`;
     const winPctStr = (stats.wins + stats.losses) > 0
       ? stats.winPct.toFixed(0) + '% win'
-      : '—';
+      : 'no decided games';
 
     card.appendChild(el('div', { class: 'season-card-stats' }, [
       el('span', { class: 'season-stat-num' }, String(stats.gamesPlayed)),
@@ -1271,18 +1403,19 @@
       el('span', { class: 'season-stat-pct' }, winPctStr),
     ]));
 
-    // Progress toward goal
+    // Progress toward goal. Guard the divisor: a persisted/imported season
+    // with goalValue 0 or non-numeric must not yield width:NaN%.
+    const goalV = Number(season.goalValue);
+    const goalSafe = Number.isFinite(goalV) && goalV > 0;
     const currentVal = seasonCurrentStat(season, stats);
     let progressFraction = 0;
-    if (season.goalType === 'winPct') {
-      progressFraction = stats.winPct / season.goalValue;
-    } else {
-      progressFraction = currentVal / season.goalValue;
+    if (goalSafe) {
+      progressFraction = (season.goalType === 'winPct' ? stats.winPct : currentVal) / goalV;
     }
 
     const progressLabel = season.goalType === 'winPct'
-      ? `${stats.winPct.toFixed(0)}% / ${season.goalValue}%`
-      : `${currentVal} / ${season.goalValue}`;
+      ? `${stats.winPct.toFixed(0)}% / ${goalSafe ? goalV : '?'}%`
+      : `${currentVal} / ${goalSafe ? goalV : '?'}`;
 
     const barCls = progressFraction >= 1 ? 'is-done' : '';
     card.appendChild(el('div', { class: 'season-progress-row' }, [
@@ -1291,13 +1424,10 @@
     ]));
 
     // On-track indicator (active only)
-    if (isActive) {
-      const onTrack = seasonOnTrack(season, stats);
-      if (onTrack !== null) {
-        card.appendChild(el('div', {
-          class: 'season-track-pill ' + (onTrack ? 'is-on-track' : 'is-behind'),
-        }, onTrack ? 'On track' : 'Behind'));
-      }
+    if (isActive && onTrack !== null) {
+      card.appendChild(el('div', {
+        class: 'season-track-pill ' + (onTrack ? 'is-on-track' : 'is-behind'),
+      }, onTrack ? 'On track' : 'Behind'));
     }
 
     return card;
@@ -1306,10 +1436,38 @@
   function deleteSeason(id) {
     const season = state.seasons.find(s => s.id === id);
     if (!season) return;
-    if (!confirm(`Delete season "${season.name}"? This cannot be undone.`)) return;
+    openDeleteSeasonModal(season);
+  }
+
+  // Delete-season confirmation modal — same pattern as the delete-game and
+  // clear-games modals: Cancel gets initial focus; backdrop/X/Escape close
+  // without deleting; focus returns to the trigger afterwards.
+  function openDeleteSeasonModal(season) {
+    const modal = $('#delete-season-modal');
+    $('#delete-season-body').textContent =
+      `${season.name} (${seasonDateRange(season)}). This cannot be undone.`;
+    state.pendingDeleteSeasonId = season.id;
+    state.deleteSeasonLastFocus = document.activeElement;
+    modal.hidden = false;
+    setTimeout(() => $('#delete-season-cancel').focus(), 30);
+  }
+
+  function closeDeleteSeasonModal() {
+    $('#delete-season-modal').hidden = true;
+    state.pendingDeleteSeasonId = null;
+    const prev = state.deleteSeasonLastFocus;
+    state.deleteSeasonLastFocus = null;
+    if (prev && document.body.contains(prev)) setTimeout(() => prev.focus(), 0);
+  }
+
+  function confirmDeleteSeason() {
+    const id = state.pendingDeleteSeasonId;
+    closeDeleteSeasonModal();
+    if (!id) return;
     state.seasons = state.seasons.filter(s => s.id !== id);
     persistSeasons();
     renderSeasons();
+    renderActiveSeasonBanner();
     if (state.view === 'dashboard') renderDashboard();
   }
 
@@ -1456,14 +1614,18 @@
 
     const season = active[0];
     const stats = seasonStats(season);
-    const daysLeft = daysBetween(today, season.endDate);
+    // Inclusive count — on the season's final day this reads "1 day left",
+    // not "0 days left" (the old off-by-one).
+    const daysLeft = Math.max(0, daysBetween(today, season.endDate) + 1);
     const onTrack = seasonOnTrack(season, stats);
     const trackText = onTrack === null ? '' : (onTrack ? ' · On track' : ' · Behind');
+    const statusCls = onTrack === null ? '' : (onTrack ? ' is-on-track' : ' is-behind');
 
     wrap.hidden = false;
-    const banner = el('div', { class: 'season-dash-banner', onclick: () => setView('seasons') }, [
+    const banner = el('div', { class: 'season-dash-banner' + statusCls, onclick: () => setView('seasons') }, [
       el('div', { class: 'season-dash-banner-left' }, [
         el('span', { class: 'season-dash-banner-name' }, season.name + ' is active'),
+        el('span', { class: 'season-dash-banner-headline' }, seasonHeadline(season, stats, 'active')),
         el('span', { class: 'season-dash-banner-meta' }, `${daysLeft} day${daysLeft === 1 ? '' : 's'} left${trackText}`),
       ]),
       el('span', { class: 'season-dash-banner-arrow' }, '→'),
@@ -1643,6 +1805,62 @@
     }, [head, strip]);
   }
 
+  // Day-level location reveal strip. Rendered only when the user has played
+  // the selected day (gate enforced by the caller). One button per round;
+  // each independently toggles its location name. Names are fetched lazily on
+  // the first reveal click and held in memory only — never persisted.
+  function makeLocationRevealStrip(iso) {
+    const status = dailyNamesStatus.get(iso);
+    const names = dailyNames.get(iso) || null;
+    const wrap = el('div', { class: 'pred-loc' }, [
+      el('div', { class: 'pred-loc-head' }, 'Locations'),
+    ]);
+    const strip = el('div', { class: 'pred-loc-strip' });
+    for (let i = 0; i < N_LOCS; i++) {
+      const revealed = state.predictRevealedRounds.has(i);
+      const name = revealed && names ? names[i] : null;
+      const failed = revealed && status === 'error';
+      const loading = revealed && status === 'fetching';
+      const label = name ? name
+                  : failed ? 'Location unavailable'
+                  : loading ? 'Loading…'
+                  : 'Reveal';
+      const btnCls = ['pred-loc-btn'];
+      if (revealed) btnCls.push('is-revealed');
+      if (failed) btnCls.push('is-error');
+      if (loading) btnCls.push('is-loading');
+      const aria = name
+        ? `Round ${i + 1} location: ${name}. Activate to hide.`
+        : `Reveal round ${i + 1} location`;
+      strip.appendChild(el('button', {
+        type: 'button',
+        class: btnCls.join(' '),
+        'aria-pressed': revealed ? 'true' : 'false',
+        'aria-label': aria,
+        onclick: () => {
+          if (state.predictRevealedRounds.has(i)) {
+            state.predictRevealedRounds.delete(i);
+            renderTodaysPredictions();
+            return;
+          }
+          state.predictRevealedRounds.add(i);
+          if (!dailyNames.has(iso) && dailyNamesStatus.get(iso) !== 'fetching') {
+            fetchDailyNames(iso).then(() => {
+              if (state.view === 'dashboard' &&
+                  state.predictSelectedISO === iso) renderTodaysPredictions();
+            });
+          }
+          renderTodaysPredictions();
+        },
+      }, [
+        el('span', { class: 'pred-loc-slot' }, `R${i + 1}`),
+        el('span', { class: 'pred-loc-name' }, label),
+      ]));
+    }
+    wrap.appendChild(strip);
+    return wrap;
+  }
+
   // Day-tab pill. Shows weekday + day-of-month. Today is labelled "Today";
   // tomorrow gets a thinner accent so the upcoming run reads at a glance.
   function makeDayTab(entry, todayIso) {
@@ -1661,6 +1879,7 @@
       onclick: () => {
         if (state.predictSelectedISO === entry.iso) return;
         state.predictSelectedISO = entry.iso;
+        state.predictRevealedRounds = new Set();
         renderTodaysPredictions();
       },
     }, [
@@ -1731,35 +1950,58 @@
     const myRounds = myProfileRounds();
     const myPred = predictRoundsForPlayer(myRounds, selected.cities, selectedISO);
     const myActuals = isPastOrToday ? actualScoresForDay(selectedISO) : { mineScores: null, mineTotal: null };
-    body.appendChild(makePredictionRow({
+
+    // Collect every player's row first, then order the leaderboard:
+    // players who already played rank first by actual score, everyone
+    // else follows by predicted score (actual is the #1 sort key,
+    // predicted the #2). Name is the final tie-break.
+    const rows = [];
+    rows.push({
       label: `${state.myIcon || '🧍'} ${state.me || 'You'}`,
+      sortName: state.me || 'You',
       predictedScores: myPred ? myPred.scores : null,
       actualScores:    myActuals.mineScores,
       predictedTotal:  myPred ? predTotalFromScores(myPred.scores) : null,
       actualTotal:     myActuals.mineTotal,
       isYou: true,
       accentColor: 'var(--accent-2)',
-    }));
+    });
 
     let predictedCount = myPred ? 1 : 0;
-    state.rivals
-      .slice()
-      .sort((a, b) => a.name.localeCompare(b.name))
-      .forEach(r => {
-        const rounds = rivalRounds(r.id);
-        const pred = predictRoundsForPlayer(rounds, selected.cities, selectedISO);
-        if (pred) predictedCount++;
-        const act = isPastOrToday ? actualScoresForRivalDay(r.id, selectedISO) : { scores: null, total: null };
-        body.appendChild(makePredictionRow({
-          label: `${r.icon || '🎯'} ${r.name}`,
-          predictedScores: pred ? pred.scores : null,
-          actualScores:    act.scores,
-          predictedTotal:  pred ? predTotalFromScores(pred.scores) : null,
-          actualTotal:     act.total,
-          isYou: false,
-          accentColor: r.color,
-        }));
+    state.rivals.forEach(r => {
+      const rounds = rivalRounds(r.id);
+      const pred = predictRoundsForPlayer(rounds, selected.cities, selectedISO);
+      if (pred) predictedCount++;
+      const act = isPastOrToday ? actualScoresForRivalDay(r.id, selectedISO) : { scores: null, total: null };
+      rows.push({
+        label: `${r.icon || '🎯'} ${r.name}`,
+        sortName: r.name,
+        predictedScores: pred ? pred.scores : null,
+        actualScores:    act.scores,
+        predictedTotal:  pred ? predTotalFromScores(pred.scores) : null,
+        actualTotal:     act.total,
+        isYou: false,
+        accentColor: r.color,
       });
+    });
+
+    rows.sort((a, b) => {
+      const aPlayed = a.actualTotal != null, bPlayed = b.actualTotal != null;
+      if (aPlayed !== bPlayed) return aPlayed ? -1 : 1;
+      if (aPlayed) return (b.actualTotal - a.actualTotal) ||
+                          ((b.predictedTotal ?? -1) - (a.predictedTotal ?? -1)) ||
+                          a.sortName.localeCompare(b.sortName);
+      return ((b.predictedTotal ?? -1) - (a.predictedTotal ?? -1)) ||
+             a.sortName.localeCompare(b.sortName);
+    });
+    rows.forEach(r => body.appendChild(makePredictionRow(r)));
+
+    // Location reveal strip — gated strictly on the user having logged their
+    // own game for the selected day. No affordance (and no name in the DOM)
+    // exists for unplayed days; names are fetched lazily on first reveal.
+    if (myActuals.mineTotal != null) {
+      body.appendChild(makeLocationRevealStrip(selectedISO));
+    }
 
     if (predictedCount === 0) {
       status.textContent = 'Need more games';
@@ -2138,8 +2380,11 @@
     }
 
     // Refresh the dashboard tiles + summary so saved games land immediately.
+    // The active-season banner counts these games too — without this it
+    // showed stale progress until the next full dashboard render.
     renderDashSummary();
     renderRivalGrid();
+    renderActiveSeasonBanner();
   }
 
   function renderDashSummary() {
@@ -2175,7 +2420,10 @@
     const todayGames = h2hGames.filter(g => g.date === todayISO()).length;
 
     wrap.innerHTML = '';
-    wrap.appendChild(makeSummaryCard('Total games', totalGames, `${wins}W · ${losses}L · ${ties}T`));
+    // "Total games" (a raw logged-game count) was dropped as a headline —
+    // owner request. The record itself is the useful part, so it leads now.
+    wrap.appendChild(makeSummaryCard('Record', `${wins}W · ${losses}L · ${ties}T`,
+      `across ${state.rivals.length} rival${state.rivals.length === 1 ? '' : 's'}`));
     wrap.appendChild(makeSummaryCard('Overall win %', `${winPct.toFixed(0)}%`, totalGames ? `over ${totalGames} games` : '—'));
     wrap.appendChild(makeSummaryCard('Avg score', myAvg ? myAvg.toFixed(0) : '—', 'all-time'));
     wrap.appendChild(makeSummaryCard('Today', todayGames, todayGames === 1 ? 'game logged' : 'games logged'));
@@ -2558,7 +2806,279 @@
     }
     card.appendChild(foot);
 
+    const note = rivalryStatLine(s);
+    if (note) {
+      card.appendChild(el('div', { class: 'rival-card-note' }, [
+        el('span', { class: 'rival-card-note-emoji', 'aria-hidden': 'true' }, note.emoji),
+        el('span', { class: 'rival-card-note-text' }, note.text),
+      ]));
+    }
+
     return card;
+  }
+
+  // One quiet "fun stat" line at the foot of every rivalry card with at
+  // least one H2H game. We gather EVERY candidate whose condition genuinely
+  // holds for this rivalry's data, then pick one deterministically by hashing
+  // (rivalId + today's ISO date) so the stat varies day-to-day and rival-to-
+  // rival yet never flickers within a single day or re-render. Active win/loss
+  // streaks are deliberately excluded: the foot streak-tag already states the
+  // current streak, so we never repeat it here. Honesty rule: a candidate is
+  // only ever in the pool when its numbers are real, so nothing shown is faked.
+  function strHash(str) {
+    let h = 2166136261;
+    for (let i = 0; i < str.length; i++) {
+      h ^= str.charCodeAt(i);
+      h = Math.imul(h, 16777619);
+    }
+    return h >>> 0;
+  }
+
+  function rivalryStatLine(s) {
+    if (!s.total) return null;
+    const games = s.games;                 // H2H games, oldest -> newest
+    const cands = [];
+    const add = (emoji, text) => cands.push({ emoji, text });
+
+    // ----- shared derived values -----
+    const myAvg = s.myAvgAll, theirAvg = s.theirAvgAll;
+    const avgGap = Math.abs(myAvg - theirAvg);
+    const last = games[games.length - 1];
+    const lastDiff = last ? getMyTotal(last) - getTheirTotal(last) : 0;
+    const first = games[0];
+    const firstISO = first ? first.date : null;
+    const daysSinceFirst = firstISO
+      ? Math.round((Date.parse(todayISO()) - Date.parse(firstISO)) / 86400000)
+      : 0;
+
+    // Per-game margins (mine - theirs) with dates.
+    const margins = games.map(g => ({
+      diff: getMyTotal(g) - getTheirTotal(g),
+      date: g.date,
+      my: getMyTotal(g),
+      their: getTheirTotal(g),
+    }));
+    const wins = margins.filter(m => m.diff > 0);
+    const losses = margins.filter(m => m.diff < 0);
+    const ties = margins.filter(m => m.diff === 0);
+
+    // Weekend vs weekday split (Sat/Sun = weekend).
+    const isWeekend = (iso) => {
+      const d = new Date(iso + 'T00:00:00').getDay();
+      return d === 0 || d === 6;
+    };
+    const weekendGames = margins.filter(m => isWeekend(m.date));
+    const weekdayGames = margins.filter(m => !isWeekend(m.date));
+    const weekendWins = weekendGames.filter(m => m.diff > 0).length;
+    const weekdayWins = weekdayGames.filter(m => m.diff > 0).length;
+
+    // Longest gap (in days) between consecutive meetings.
+    let longestGap = 0, gapDate = null;
+    for (let i = 1; i < games.length; i++) {
+      const g = Math.round((Date.parse(games[i].date) - Date.parse(games[i - 1].date)) / 86400000);
+      if (g > longestGap) { longestGap = g; gapDate = games[i].date; }
+    }
+
+    // Comebacks: a win that immediately follows at least two straight losses.
+    let comebacks = 0;
+    let lossRun = 0;
+    for (const m of margins) {
+      if (m.diff < 0) lossRun++;
+      else { if (m.diff > 0 && lossRun >= 2) comebacks++; lossRun = 0; }
+    }
+
+    // Recent form over last 5 (newest-inclusive).
+    const recentForm = s.recentForm;       // ['W','L','T',...] oldest->newest of last5
+    const recentWins = recentForm.filter(r => r === 'W').length;
+    const recentLosses = recentForm.filter(r => r === 'L').length;
+
+    // Score-range spread of my totals.
+    const myTotals = games.map(getMyTotal);
+    const myMax = Math.max(...myTotals), myMin = Math.min(...myTotals);
+    const myRange = myMax - myMin;
+
+    // Both-high / both-low days; identical totals.
+    const bothOver900 = margins.filter(m => m.my >= 900 && m.their >= 900).length;
+    const bothUnder400 = margins.filter(m => m.my <= 400 && m.their <= 400).length;
+    const identical = margins.filter(m => m.diff === 0 && m.my === m.their).length;
+    const blowouts = margins.filter(m => Math.abs(m.diff) >= 200).length;
+
+    // Narrowest win (smallest positive margin).
+    const narrowWin = wins.length
+      ? wins.reduce((a, b) => (b.diff < a.diff ? b : a))
+      : null;
+
+    // Round-tracked extras (only when geo/round data exists).
+    const loc = s.locStats;                // null when no round data
+    const cc = s.carryChoke;
+
+    // ===================================================================
+    //  CANDIDATE POOL (~50). Each guarded so it only enters when true.
+    // ===================================================================
+
+    // -- Result / record shape --
+    if (s.wins > 0 && s.losses === 0 && s.ties === 0 && s.total >= 3)
+      add('\u{1F451}', `Flawless · ${s.wins}-0 all-time vs them`);
+    if (s.losses > 0 && s.wins === 0 && s.ties === 0 && s.total >= 3)
+      add('\u{1F9F1}', `They own you · 0-${s.losses} all-time`);
+    if (s.total >= 5 && s.winPct >= 0.7)
+      add('\u{1F4AA}', `You win ${Math.round(s.winPct * 100)}% of these`);
+    if (s.total >= 5 && s.winPct <= 0.3)
+      add('\u{1F62C}', `You only win ${Math.round(s.winPct * 100)}% of these`);
+    if (s.total >= 4 && s.wins === s.losses)
+      add('⚖️', `Dead even · ${s.wins}-${s.losses} all-time`);
+    if (s.ties >= 1)
+      add('🤝', `${s.ties} dead-heat ${s.ties === 1 ? 'day' : 'days'} between you`);
+    if (s.total >= 10)
+      add('📓', `${s.total} games deep · a real rivalry now`);
+    if (s.total >= 20)
+      add('🏟️', `Veterans · ${s.total} head-to-heads logged`);
+
+    // -- Margins / standout games --
+    if (s.biggestWinMargin >= 150 && s.biggestWinGame)
+      add('💥', `Biggest win · +${s.biggestWinMargin} on ${fmtDateShort(s.biggestWinGame.date)}`);
+    if (s.biggestLossMargin >= 150 && s.biggestLossGame)
+      add('🪓', `Worst loss · -${s.biggestLossMargin} on ${fmtDateShort(s.biggestLossGame.date)}`);
+    if (narrowWin && narrowWin.diff <= 15)
+      add('😮‍💨', `Squeaker · won by just ${narrowWin.diff} on ${fmtDateShort(narrowWin.date)}`);
+    if (blowouts >= 2)
+      add('💣', `${blowouts} blowout days (200+ margin)`);
+    if (s.bestMine >= 850 && s.bestMineGame)
+      add('🚀', `You once hit ${s.bestMine} vs them on ${fmtDateShort(s.bestMineGame.date)}`);
+    if (s.worstMine <= 200 && s.worstMineGame && s.total >= 2)
+      add('😵', `Your low was ${s.worstMine} on ${fmtDateShort(s.worstMineGame.date)}`);
+    if (s.bestTheirs >= 850 && s.bestTheirsGame)
+      add('🔥', `Their best was ${s.bestTheirs} on ${fmtDateShort(s.bestTheirsGame.date)}`);
+
+    // -- Averages / who leads --
+    if (s.total >= 4 && avgGap <= 25)
+      add('🪢', `Razor thin · avg gap only ${avgGap.toFixed(1)} pts`);
+    if (s.total >= 2 && avgGap >= 30) {
+      const ahead = myAvg >= theirAvg;
+      add('📊', ahead
+        ? `You lead by ${avgGap.toFixed(1)} pts avg`
+        : `Behind by ${avgGap.toFixed(1)} pts avg`);
+    }
+    if (s.total >= 5 && myAvg >= 800)
+      add('🎯', `You average ${Math.round(myAvg)} against them`);
+    if (s.total >= 5 && theirAvg >= 800)
+      add('👀', `They average ${Math.round(theirAvg)} · tough out`);
+
+    // -- Streaks (longest, historical, not the current one) --
+    if (s.streak.longestMine >= 3)
+      add('🌊', `Your best run · ${s.streak.longestMine} wins straight`);
+    if (s.streak.longestTheirs >= 3)
+      add('❄️', `Their best run · ${s.streak.longestTheirs} straight over you`);
+    if (comebacks >= 1)
+      add('🔄', `${comebacks} comeback win${comebacks === 1 ? '' : 's'} after losing streaks`);
+
+    // -- Recent form --
+    if (recentForm.length >= 4 && recentWins >= 3)
+      add('📈', `Hot lately · ${recentWins} of last ${recentForm.length}`);
+    if (recentForm.length >= 4 && recentLosses >= 3)
+      add('📉', `Cold lately · lost ${recentLosses} of last ${recentForm.length}`);
+
+    // -- Consistency --
+    if (s.total >= 5 && s.consistencyMine > 0 && s.consistencyMine <= 80)
+      add('📐', `Metronome · your scores swing only ±${Math.round(s.consistencyMine)}`);
+    if (s.total >= 5 && s.consistencyMine >= 180)
+      add('🎢', `Wild ride · your scores swing ±${Math.round(s.consistencyMine)}`);
+    if (s.total >= 5 && s.consistencyTheirs >= 180)
+      add('🌪️', `They're streaky · swing ±${Math.round(s.consistencyTheirs)}`);
+    if (myRange >= 400 && s.total >= 3)
+      add('📈', `Your range vs them: ${myMin} to ${myMax}`);
+
+    // -- Calendar / cadence --
+    if (firstISO)
+      add('📅', `First clash · ${fmtDateShort(firstISO)}`);
+    if (daysSinceFirst >= 30)
+      add('⏳', `${daysSinceFirst} days of rivalry and counting`);
+    if (daysSinceFirst >= 365)
+      add('🎂', `Over a year of head-to-heads`);
+    if (longestGap >= 14 && gapDate)
+      add('🕳️', `Longest break · ${longestGap} days before ${fmtDateShort(gapDate)}`);
+    if (s.total >= 4 && daysSinceFirst >= 7) {
+      const perWeek = (s.total / (daysSinceFirst / 7));
+      if (perWeek >= 1)
+        add('⚡', `Pace · about ${perWeek.toFixed(1)} games a week`);
+    }
+    if (weekendGames.length >= 3 && weekendWins / weekendGames.length >= 0.6)
+      add('🌞', `Weekend warrior · ${weekendWins}/${weekendGames.length} on weekends`);
+    if (weekdayGames.length >= 3 && weekdayWins / weekdayGames.length >= 0.6)
+      add('💼', `Weekday wins · ${weekdayWins}/${weekdayGames.length} Mon-Fri`);
+    if (weekendGames.length >= 2 && weekdayGames.length >= 2) {
+      const wWin = weekendWins / weekendGames.length;
+      const dWin = weekdayWins / weekdayGames.length;
+      if (Math.abs(wWin - dWin) >= 0.3)
+        add('🗓️', wWin > dWin
+          ? "You're better against them on weekends"
+          : "You're better against them on weekdays");
+    }
+
+    // -- Same / mirror days --
+    if (identical >= 1)
+      add('🪞', `${identical} day${identical === 1 ? '' : 's'} you tied to the point`);
+    if (bothOver900 >= 1)
+      add('🌟', `${bothOver900} day${bothOver900 === 1 ? '' : 's'} you both broke 900`);
+    if (bothUnder400 >= 1)
+      add('💤', `${bothUnder400} rough day${bothUnder400 === 1 ? '' : 's'} you both sank under 400`);
+
+    // -- Round-tracked extras (geo data present) --
+    if (loc) {
+      const myPerfRounds = loc.reduce((a, l) => a + l.myPerfects, 0);
+      const theirPerfRounds = loc.reduce((a, l) => a + l.theirPerfects, 0);
+      const mySubs = games.filter(hasLocs).reduce((a, g) =>
+        a + g.myScores.filter(x => x < 20).length, 0);
+      if (myPerfRounds >= 1)
+        add('💯', `${myPerfRounds} perfect-100 round${myPerfRounds === 1 ? '' : 's'} vs them`);
+      if (theirPerfRounds >= 1)
+        add('🎯', `They've nailed ${theirPerfRounds} perfect-100 round${theirPerfRounds === 1 ? '' : 's'}`);
+      if (mySubs >= 2)
+        add('🕳️', `${mySubs} rounds you scored under 20`);
+
+      // Per-round dominance / clutch / choke.
+      const best = loc.slice().filter(l => l.total >= 3).sort((a, b) => b.winPct - a.winPct)[0];
+      const worst = loc.slice().filter(l => l.total >= 3).sort((a, b) => a.winPct - b.winPct)[0];
+      if (best && best.winPct >= 0.7)
+        add('📍', `You dominate ${best.label} · ${Math.round(best.winPct * 100)}% won`);
+      if (worst && worst.winPct <= 0.3)
+        add('🚧', `${worst.label} is your weak spot vs them`);
+      const strongAvg = loc.slice().sort((a, b) => b.myAvg - a.myAvg)[0];
+      if (strongAvg && strongAvg.myAvg >= 70 && s.gamesWithLocsCount >= 3)
+        add('🧭', `Your best round vs them is ${strongAvg.label} (${Math.round(strongAvg.myAvg)} avg)`);
+      if (cc) {
+        const carryIdx = cc.carryInWins.indexOf(Math.max(...cc.carryInWins));
+        const chokeIdx = cc.chokeInLosses.indexOf(Math.max(...cc.chokeInLosses));
+        if (cc.carryInWins[carryIdx] >= 2)
+          add('🦸', `${LOC_LABELS[carryIdx]} carries most of your wins`);
+        if (cc.chokeInLosses[chokeIdx] >= 2)
+          add('🙅', `${LOC_LABELS[chokeIdx]} sinks most of your losses`);
+      }
+    }
+
+    // -- Always-on (sparse-data safety net): these fire from a single game so
+    //    even a brand-new rivalry shows a few honest, distinct candidates. --
+    if (lastDiff > 0)
+      add('🕑', `Last game · won by ${lastDiff} on ${fmtDateShort(last.date)}`);
+    else if (lastDiff < 0)
+      add('🕑', `Last game · lost by ${Math.abs(lastDiff)} on ${fmtDateShort(last.date)}`);
+    else if (last)
+      add('🕑', `Last game · tied ${getMyTotal(last)}-${getMyTotal(last)} on ${fmtDateShort(last.date)}`);
+    if (last)
+      add('🧾', `Latest scoreline · ${getMyTotal(last)}-${getMyTotal(last) - lastDiff} on ${fmtDateShort(last.date)}`);
+    if (s.biggestWinGame && s.biggestWinMargin > 0 && s.biggestWinMargin < 150)
+      add('💢', `Best win so far · +${s.biggestWinMargin} on ${fmtDateShort(s.biggestWinGame.date)}`);
+    if (s.biggestLossGame && s.biggestLossMargin > 0 && s.biggestLossMargin < 150)
+      add('😵‍💫', `Worst loss so far · -${s.biggestLossMargin} on ${fmtDateShort(s.biggestLossGame.date)}`);
+
+    if (!cands.length) return null;
+
+    // Deterministic rotation: index = strHash(rivalId + todayISO) % poolSize.
+    // Same rival + same calendar day -> same pick (no flicker on re-render);
+    // a new day or a different rival rotates to a different candidate.
+    const key = (s.rival && s.rival.id ? s.rival.id : '') + '|' + todayISO();
+    const idx = strHash(key) % cands.length;
+    return cands[idx];
   }
 
   // ---------- rival detail view ----------
@@ -2646,10 +3166,6 @@
       type: 'button', class: 'btn btn-ghost',
       onclick: () => openRivalModal(rival.id),
     }, '✎ Edit'));
-    actions.appendChild(el('button', {
-      type: 'button', class: 'btn btn-ghost',
-      onclick: () => setView('dashboard'),
-    }, '← Back'));
     headerHost.appendChild(actions);
 
     // Reflect any in-flight sync state on the freshly rendered button.
@@ -2674,41 +3190,151 @@
     }
     if (s.total) {
 
-    cardsHost.appendChild(makeStatCard('Win rate', `${(s.winPct * 100).toFixed(1)}%`, `${s.wins}W · ${s.losses}L · ${s.ties}T`, s.winPct >= 0.5 ? 'is-good' : 'is-bad'));
-    // Average per-game point gap rather than cumulative — comparable
-    // across rivals you've played different counts of games against.
+    // Cards are grouped into three clusters so the takeaway reads before the
+    // raw numbers: Performance (where the rivalry stands), Momentum (which way
+    // it's trending), and Key Insights (the standout swing factors). Each card
+    // leads with a plain-language value; supporting figures sit in the sub.
+    const perf = [];
+    const momentum = [];
+    const insights = [];
+
+    // --- Performance ---
+    const winPct100 = s.winPct * 100;
+    const winTakeaway =
+      s.winPct > 0.5 ? `Winning ${winPct100.toFixed(0)}% of meetings`
+      : s.winPct < 0.5 ? `Won only ${winPct100.toFixed(1)}% of meetings`
+      : 'Dead even, 50% of meetings';
+    perf.push(makeStatCard('Head-to-head', winTakeaway,
+      `${s.wins}W · ${s.losses}L · ${s.ties}T over ${s.total} game${s.total === 1 ? '' : 's'}`,
+      s.winPct >= 0.5 ? 'is-good' : 'is-bad'));
+
+    // Per-game point gap rather than cumulative, comparable across rivals
+    // you've played different counts of games against.
     const avgDiffAll = s.total ? (s.cumDiff / s.total) : 0;
-    const avgDiffSign = avgDiffAll > 0 ? '+' : '';
-    cardsHost.appendChild(makeStatCard('Avg Δ per game',
-      `${avgDiffSign}${avgDiffAll.toFixed(1)}`,
-      'your points − theirs',
+    const gapMag = Math.abs(avgDiffAll).toFixed(0);
+    const gapTakeaway =
+      avgDiffAll > 0.5 ? `Beating them by ${gapMag} pts per game`
+      : avgDiffAll < -0.5 ? `Losing by ${gapMag} pts per game`
+      : 'Scores are within a point';
+    // "Scoring edge" card removed (owner request): avg margin per game and
+    // the avg-score gap are the same number with opposite sign, so one card
+    // covers it — the sub line carries both players' averages.
+    perf.push(makeStatCard('Average margin', gapTakeaway,
+      `you ${s.myAvgAll.toFixed(0)} avg · ${rival.name} ${s.theirAvgAll.toFixed(0)} avg`,
       avgDiffAll >= 0 ? 'is-good' : 'is-bad'));
-    cardsHost.appendChild(makeStatCard('Avg score (you)', s.myAvgAll.toFixed(0), `7d ${s.myAvg7 ? s.myAvg7.toFixed(0) : '—'} · 30d ${s.myAvg30 ? s.myAvg30.toFixed(0) : '—'}`));
-    cardsHost.appendChild(makeStatCard(`Avg score (${rival.name})`, s.theirAvgAll.toFixed(0), `7d ${s.theirAvg7 ? s.theirAvg7.toFixed(0) : '—'} · 30d ${s.theirAvg30 ? s.theirAvg30.toFixed(0) : '—'}`));
-    cardsHost.appendChild(makeStatCard('Current streak',
-      s.streak.curMine > 0 ? `${s.streak.curMine} W` : s.streak.curTheirs > 0 ? `${s.streak.curTheirs} L` : '—',
-      `Longest: ${s.streak.longestMine} W / ${s.streak.longestTheirs} L`,
+
+    // --- Momentum ---
+    const streakTakeaway =
+      s.streak.curMine > 0 ? `On a ${s.streak.curMine}-game win streak`
+      : s.streak.curTheirs > 0 ? `On a ${s.streak.curTheirs}-game losing streak`
+      : 'No active streak';
+    momentum.push(makeStatCard('Current form', streakTakeaway,
+      `Longest run: ${s.streak.longestMine}W / ${s.streak.longestTheirs}L`,
       s.streak.curMine > 0 ? 'is-good' : s.streak.curTheirs > 0 ? 'is-bad' : ''));
-    const bestMineDate  = s.bestMineGame  ? shortDate(s.bestMineGame.date)  : null;
-    const worstMineDate = s.worstMineGame ? shortDate(s.worstMineGame.date) : null;
-    const bestTheirsDate  = s.bestTheirsGame  ? shortDate(s.bestTheirsGame.date)  : null;
-    const worstTheirsDate = s.worstTheirsGame ? shortDate(s.worstTheirsGame.date) : null;
-    cardsHost.appendChild(makeStatCard('Best score (you)', s.bestMine,
-      bestMineDate
-        ? `${bestMineDate} · Worst ${s.worstMine}${worstMineDate ? ` (${worstMineDate})` : ''}`
-        : `Worst: ${s.worstMine}`,
-      'is-accent'));
-    cardsHost.appendChild(makeStatCard(`Best score (${rival.name})`, s.bestTheirs,
-      bestTheirsDate
-        ? `${bestTheirsDate} · Worst ${s.worstTheirs}${worstTheirsDate ? ` (${worstTheirsDate})` : ''}`
-        : `Worst: ${s.worstTheirs}`));
-    cardsHost.appendChild(makeStatCard('Consistency (you)', s.consistencyMine.toFixed(1), 'σ — lower = steadier'));
-    cardsHost.appendChild(makeStatCard('Biggest win', s.biggestWinGame ? `+${s.biggestWinMargin}` : '—',
-      s.biggestWinGame ? `${s.biggestWinGame.myScore}–${s.biggestWinGame.theirScore} on ${shortDate(s.biggestWinGame.date)}` : '—',
-      s.biggestWinGame ? 'is-good' : ''));
-    cardsHost.appendChild(makeStatCard('Biggest loss', s.biggestLossGame ? `−${s.biggestLossMargin}` : '—',
-      s.biggestLossGame ? `${s.biggestLossGame.myScore}–${s.biggestLossGame.theirScore} on ${shortDate(s.biggestLossGame.date)}` : '—',
-      s.biggestLossGame ? 'is-bad' : ''));
+
+    // Recent vs all-time average swing tells the trend story.
+    const recentAvg = s.myAvg7 || s.myAvg30;
+    let trendTakeaway = 'Not enough recent games yet';
+    let trendMod = '';
+    if (recentAvg != null) {
+      const delta = recentAvg - s.myAvgAll;
+      trendTakeaway =
+        delta > 3 ? `Trending up, +${delta.toFixed(0)} vs your average`
+        : delta < -3 ? `Trending down, ${delta.toFixed(0)} vs your average`
+        : 'Holding steady near your average';
+      trendMod = delta > 3 ? 'is-good' : delta < -3 ? 'is-bad' : '';
+    }
+    momentum.push(makeStatCard('Recent trend', trendTakeaway,
+      `7d ${s.myAvg7 ? s.myAvg7.toFixed(0) : '—'} · 30d ${s.myAvg30 ? s.myAvg30.toFixed(0) : '—'} · all ${s.myAvgAll.toFixed(0)}`,
+      trendMod));
+
+    const consTakeaway =
+      s.consistencyMine < 10 ? 'Very steady scorer'
+      : s.consistencyMine < 20 ? 'Fairly consistent scorer'
+      : 'Streaky, high-variance scorer';
+    momentum.push(makeStatCard('Consistency', consTakeaway,
+      `σ ${s.consistencyMine.toFixed(1)} (lower is steadier)`));
+
+    // --- Key Insights ---
+    // Parity distance: how many more wins you'd need for wins ≥ losses. Only
+    // shown when behind, verbalized as flipped results to reach parity.
+    if (s.losses > s.wins) {
+      const flipsNeeded = Math.ceil((s.losses - s.wins) / 2);
+      const behindBy = s.losses - s.wins;
+      insights.push(makeStatCard('Path to parity',
+        `Need ${flipsNeeded} flipped result${flipsNeeded === 1 ? '' : 's'} to reach parity`,
+        `currently ${behindBy} game${behindBy === 1 ? '' : 's'} behind`,
+        'is-bad'));
+    }
+
+    // Main swing round: the round whose result most often decides games.
+    if (s.carryChoke) {
+      const swingIdx = argmax(s.carryChoke.decisive);
+      if (swingIdx >= 0 && s.carryChoke.decisive[swingIdx] > 0) {
+        const swingLoc = s.locStats ? s.locStats[swingIdx] : null;
+        const decided = s.carryChoke.decisive[swingIdx];
+        insights.push(makeStatCard('Main swing round',
+          `${LOC_LABELS[swingIdx]} is the main swing round`,
+          swingLoc
+            ? `decided ${decided} game${decided === 1 ? '' : 's'} · ${(swingLoc.winPct * 100).toFixed(0)}% win rate there`
+            : `decided ${decided} game${decided === 1 ? '' : 's'}`,
+          'is-accent'));
+      }
+    }
+
+    // Biggest swings combined into one insight card.
+    if (s.biggestWinGame || s.biggestLossGame) {
+      const swingSub = [];
+      if (s.biggestWinGame) {
+        swingSub.push(el('span', { class: 'sub-line' },
+          `Best win +${s.biggestWinMargin} (${s.biggestWinGame.myScore}–${s.biggestWinGame.theirScore} on ${shortDate(s.biggestWinGame.date)})`));
+      }
+      if (s.biggestLossGame) {
+        swingSub.push(el('span', { class: 'sub-line' },
+          `Worst loss −${s.biggestLossMargin} (${s.biggestLossGame.myScore}–${s.biggestLossGame.theirScore} on ${shortDate(s.biggestLossGame.date)})`));
+      }
+      const spread = (s.biggestWinGame ? s.biggestWinMargin : 0) + (s.biggestLossGame ? s.biggestLossMargin : 0);
+      insights.push(makeStatCard('Biggest swings',
+        `${spread}-point spread, best to worst`,
+        swingSub));
+    }
+
+    // "What might have been": replay the H2H with the round multipliers
+    // removed (plain sum of the 5 raw scores). Only games with both round
+    // arrays can be recomputed; totals-only games are excluded.
+    {
+      const tracked = s.games.filter(hasLocs);
+      if (tracked.length) {
+        let aw = 0, al = 0, at = 0, flips = 0;
+        for (const g of tracked) {
+          const myRaw = g.myScores.reduce((a, v) => a + (v || 0), 0);
+          const theirRaw = g.theirScores.reduce((a, v) => a + (v || 0), 0);
+          const altR = myRaw > theirRaw ? 'W' : myRaw < theirRaw ? 'L' : 'T';
+          if (altR === 'W') aw++; else if (altR === 'L') al++; else at++;
+          if (altR !== resultOf(g)) flips++;
+        }
+        // Two-line sub: the real record right under the alternate one for
+        // direct comparison, then the share of recomputable games whose
+        // outcome differs, with the new-vs-real win rates alongside.
+        const diffPct = Math.round((flips / tracked.length) * 100);
+        const altRate = Math.round((aw / tracked.length) * 100);
+        const realRate = Math.round(s.winPct * 100);
+        const sub = [
+          el('span', { class: 'sub-line' }, `(actual: ${s.wins}W · ${s.losses}L · ${s.ties}T)`),
+          el('span', { class: 'sub-line' },
+            `${diffPct}% of results would differ (win rate ${altRate}% vs ${realRate}% real)`),
+        ];
+        // Net result vs the real H2H decides the tint: more wins than the
+        // real record is good for the user, fewer is bad, equal is neutral.
+        const altDiff = (aw - al) - (s.wins - s.losses);
+        const mod = altDiff > 0 ? 'is-good' : altDiff < 0 ? 'is-bad' : '';
+        insights.push(makeStatCard('No-multiplier H2H', `${aw}W · ${al}L · ${at}T`, sub, mod));
+      }
+    }
+
+    appendStatGroup(cardsHost, 'Performance', perf);
+    appendStatGroup(cardsHost, 'Momentum', momentum);
+    appendStatGroup(cardsHost, 'Key Insights', insights);
 
     // callouts
     const rivalNameSafe = escapeHtml(rival.name);
@@ -2958,12 +3584,14 @@
   function renderContinentSection(s) {
     const section = $('#continent-section');
     const grid = $('#continent-grid');
+    const insightWrap = $('#continent-insight-groups');
     const sub = $('#continent-section-sub');
     const { rows, totalRounds } = continentBreakdown(s.games);
 
     if (!rows.length) {
       section.hidden = true;
       grid.innerHTML = '';
+      if (insightWrap) insightWrap.innerHTML = '';
       return;
     }
     section.hidden = false;
@@ -2973,6 +3601,8 @@
     sub.textContent =
       `${totalRounds} rounds across ${rows.length} continent${rows.length === 1 ? '' : 's'}` +
       (missing > 0 ? ` · ${missing} game${missing === 1 ? '' : 's'} have no geo data (re-sync to backfill)` : '');
+
+    renderContinentInsights(rows);
 
     grid.innerHTML = '';
     for (const r of rows) {
@@ -2990,13 +3620,19 @@
           el('span', { class: 'continent-rounds' }, `${r.rounds} ${r.rounds === 1 ? 'round' : 'rounds'}`),
         ]),
         el('div', { class: 'continent-scores' }, [
+          // Winner's avg renders green, loser's red; a tie leaves both
+          // neutral. Compared per continent, not overall.
           el('div', { class: 'col me' }, [
             el('div', { class: 'k' }, 'You avg'),
-            el('div', { class: 'v' }, r.myAvg.toFixed(1)),
+            el('div', {
+              class: 'v' + (r.myAvg > r.theirAvg ? ' is-win' : r.myAvg < r.theirAvg ? ' is-lose' : ''),
+            }, r.myAvg.toFixed(1)),
           ]),
           el('div', { class: 'col them' }, [
             el('div', { class: 'k' }, `${s.rival.name} avg`),
-            el('div', { class: 'v' }, r.theirAvg.toFixed(1)),
+            el('div', {
+              class: 'v' + (r.theirAvg > r.myAvg ? ' is-win' : r.theirAvg < r.myAvg ? ' is-lose' : ''),
+            }, r.theirAvg.toFixed(1)),
           ]),
         ]),
         el('div', { class: 'continent-record' }, [
@@ -3015,12 +3651,90 @@
     }
   }
 
+  // Story-first headlines above the continent cards. Surfaces the standout
+  // narratives (fortress, trouble spot, biggest gap, most-contested) so users
+  // grasp the geographic story before scanning the per-continent stats below.
+  // Reuses the insightGroup() pattern for visual consistency with the
+  // round-by-round redesign. Continents with too few rounds are excluded from
+  // the "best/worst win rate" picks so a single lucky round can't headline.
+  function renderContinentInsights(rows) {
+    const wrap = $('#continent-insight-groups');
+    if (!wrap) return;
+    wrap.innerHTML = '';
+    const groups = [];
+    const MIN_ROUNDS = 5;
+    const eligible = rows.filter(r => r.rounds >= MIN_ROUNDS);
+
+    if (eligible.length) {
+      // Fortress: best win rate among continents with enough rounds.
+      const fortress = eligible.slice().sort((a, b) => b.winPct - a.winPct)[0];
+      if (fortress.winPct > 0.5) {
+        groups.push(insightGroup('good', 'Fortress',
+          `<strong>${fortress.continent}</strong> is your fortress · <strong>${(fortress.winPct * 100).toFixed(0)}%</strong> of rounds won`,
+          [
+            `${fortress.myWins}/${fortress.rounds} rounds`,
+            `Avg ${fortress.myAvg.toFixed(0)} vs ${fortress.theirAvg.toFixed(0)}`,
+          ]));
+      }
+
+      // Trouble: worst win rate (skip if it's the same continent as fortress).
+      const trouble = eligible.slice().sort((a, b) => a.winPct - b.winPct)[0];
+      if (trouble.winPct < 0.5 && trouble.continent !== fortress.continent) {
+        groups.push(insightGroup('bad', 'Trouble spot',
+          `<strong>${trouble.continent}</strong> is where you struggle · <strong>${(trouble.winPct * 100).toFixed(0)}%</strong> of rounds won`,
+          [
+            `${trouble.myWins}/${trouble.rounds} rounds`,
+            `Avg ${trouble.myAvg.toFixed(0)} vs ${trouble.theirAvg.toFixed(0)}`,
+          ]));
+      }
+    }
+
+    // Biggest gap: largest absolute average margin per round, any round count,
+    // so even a sparse-but-lopsided continent gets a mention.
+    const byGap = rows.slice().sort((a, b) => Math.abs(b.avgDiff) - Math.abs(a.avgDiff))[0];
+    if (byGap && Math.abs(byGap.avgDiff) >= 3) {
+      const ahead = byGap.avgDiff > 0;
+      groups.push(insightGroup(ahead ? 'good' : 'bad', 'Biggest gap',
+        ahead
+          ? `You outscore them by <strong>${byGap.avgDiff.toFixed(0)}</strong> per round in <strong>${byGap.continent}</strong>`
+          : `They outscore you by <strong>${(-byGap.avgDiff).toFixed(0)}</strong> per round in <strong>${byGap.continent}</strong>`,
+        [`${byGap.rounds} rounds`, `Avg ${byGap.myAvg.toFixed(0)} vs ${byGap.theirAvg.toFixed(0)}`]));
+    }
+
+    // Most-contested: most rounds played, framed as the battleground.
+    const contested = rows.slice().sort((a, b) => b.rounds - a.rounds)[0];
+    if (contested && rows.length > 1) {
+      groups.push(insightGroup('warn', 'Most contested',
+        `<strong>${contested.continent}</strong> is your busiest battleground · <strong>${contested.rounds}</strong> rounds`,
+        [
+          `${contested.myWins}W · ${contested.theirWins}L · ${contested.ties}T`,
+          `${(contested.winPct * 100).toFixed(0)}% win rate`,
+        ]));
+    }
+
+    // Keep it scannable: at most three headlines, prioritized as built.
+    const built = groups.filter(Boolean).slice(0, 3);
+    built.forEach(g => wrap.appendChild(g));
+    wrap.hidden = built.length === 0;
+  }
+
   function makeStatCard(label, value, sub, mod) {
     return el('div', { class: 'stat-card ' + (mod || '') }, [
       el('div', { class: 'label' }, label),
       el('div', { class: 'value' }, String(value)),
       sub ? el('div', { class: 'sub' }, sub) : null,
     ]);
+  }
+
+  // Appends a titled cluster of stat cards (Performance / Momentum / Key
+  // Insights). The cards keep the .stat-cards grid mechanics; the group adds a
+  // small header above them. Empty groups render nothing.
+  function appendStatGroup(host, title, cards) {
+    if (!cards.length) return;
+    host.appendChild(el('div', { class: 'stat-card-group' }, [
+      el('div', { class: 'stat-card-group-title' }, title),
+      el('div', { class: 'stat-cards' }, cards),
+    ]));
   }
 
   function callout(kind, icon, html) {
@@ -3070,47 +3784,99 @@
       `${s.gamesWithLocsCount}/${s.total} games have round-by-round data` +
       (s.gamesWithLocsCount === s.total ? '' : ' (older games skipped)');
 
-    // Callouts
-    const cWrap = $('#loc-callouts');
-    cWrap.innerHTML = '';
-    if (s.strongest && s.weakest && s.strongest.locIdx !== s.weakest.locIdx) {
-      cWrap.appendChild(callout('good', '💪',
-        `Strongest at <strong>${s.strongest.label}</strong> — avg <strong>${s.strongest.myAvg.toFixed(1)}</strong> (rival: ${s.strongest.theirAvg.toFixed(1)}).`));
-      cWrap.appendChild(callout('bad', '🪤',
-        `Weakest at <strong>${s.weakest.label}</strong> — avg <strong>${s.weakest.myAvg.toFixed(1)}</strong> (rival: ${s.weakest.theirAvg.toFixed(1)}).`));
-    }
-    if (s.bestRoundWinPct && s.bestRoundWinPct.total >= 2) {
-      cWrap.appendChild(callout('good', '🎯',
-        `Best round win rate: <strong>${s.bestRoundWinPct.label}</strong> — won ${s.bestRoundWinPct.myWins}/${s.bestRoundWinPct.total} (${(s.bestRoundWinPct.winPct * 100).toFixed(0)}%).`));
-    }
-    if (s.worstRoundWinPct && s.worstRoundWinPct.total >= 2 && s.worstRoundWinPct !== s.bestRoundWinPct) {
-      cWrap.appendChild(callout('bad', '⚠️',
-        `Lowest round win rate: <strong>${s.worstRoundWinPct.label}</strong> — won ${s.worstRoundWinPct.myWins}/${s.worstRoundWinPct.total} (${(s.worstRoundWinPct.winPct * 100).toFixed(0)}%).`));
-    }
-    if (s.myTotalPerfects > 0 || s.theirTotalPerfects > 0) {
-      cWrap.appendChild(callout('', '💯',
-        `Perfect 100s — <strong>you ${s.myTotalPerfects}</strong>, ${escapeHtml(s.rival.name)} ${s.theirTotalPerfects}.`));
-    }
-    if (s.mostVolatile && s.mostVolatile.total >= 3) {
-      cWrap.appendChild(callout('', '🎲',
-        `Most volatile round: <strong>${s.mostVolatile.label}</strong> — σ ${s.mostVolatile.myConsistency.toFixed(1)}.`));
-    }
-    if (s.carryChoke) {
-      const carryIdx = argmax(s.carryChoke.carryInWins);
-      const chokeIdx = argmax(s.carryChoke.chokeInLosses);
-      if (carryIdx >= 0 && s.carryChoke.carryInWins[carryIdx] >= 2) {
-        cWrap.appendChild(callout('good', '🛡️',
-          `Carry round: <strong>${LOC_LABELS[carryIdx]}</strong> bailed you out in ${s.carryChoke.carryInWins[carryIdx]} wins.`));
-      }
-      if (chokeIdx >= 0 && s.carryChoke.chokeInLosses[chokeIdx] >= 2) {
-        cWrap.appendChild(callout('bad', '😬',
-          `Choke round: <strong>${LOC_LABELS[chokeIdx]}</strong> sank you in ${s.carryChoke.chokeInLosses[chokeIdx]} losses.`));
-      }
-    }
-
+    renderInsightGroups(s);
     renderLocationCards(s);
     renderHeatmap(s);
     requestAnimationFrame(() => renderLocationCharts(s));
+  }
+
+  // Builds one insight group: a category title, a lead headline (plain
+  // language, big), and a row of smaller supporting stat chips. Returns null
+  // when there's no headline to show so the caller can skip the whole group.
+  function insightGroup(kind, title, headline, supports) {
+    if (!headline) return null;
+    const chips = (supports || []).filter(Boolean).map(t =>
+      el('span', { class: 'lig-stat' }, [el('span', { html: t })]));
+    return el('div', { class: 'loc-insight-group ' + kind }, [
+      el('div', { class: 'lig-title' }, title),
+      el('div', { class: 'lig-headline', html: headline }),
+      chips.length ? el('div', { class: 'lig-stats' }, chips) : null,
+    ]);
+  }
+
+  function renderInsightGroups(s) {
+    const wrap = $('#loc-insight-groups');
+    wrap.innerHTML = '';
+    const groups = [];
+
+    // Strengths — best round by win rate, anchored to the avg-best round.
+    if (s.bestRoundWinPct && s.bestRoundWinPct.total >= 2) {
+      const b = s.bestRoundWinPct;
+      groups.push(insightGroup('good', 'Strengths',
+        `<strong>${b.label}</strong> is your power round · <strong>${(b.winPct * 100).toFixed(0)}%</strong> win rate`,
+        [
+          `Won ${b.myWins}/${b.total}`,
+          `Avg ${b.myAvg.toFixed(1)} vs ${b.theirAvg.toFixed(1)}`,
+          s.strongest && s.strongest.locIdx !== b.locIdx
+            ? `Highest avg: ${s.strongest.label} (${s.strongest.myAvg.toFixed(1)})` : null,
+          (s.myTotalPerfects > 0) ? `${s.myTotalPerfects} perfect 100s` : null,
+        ]));
+    }
+
+    // Weaknesses — lowest win-rate round (skip if it's the same as strongest).
+    if (s.worstRoundWinPct && s.worstRoundWinPct.total >= 2 &&
+        s.worstRoundWinPct !== s.bestRoundWinPct) {
+      const w = s.worstRoundWinPct;
+      groups.push(insightGroup('bad', 'Weaknesses',
+        `<strong>${w.label}</strong> is your weak spot · <strong>${(w.winPct * 100).toFixed(0)}%</strong> win rate`,
+        [
+          `Won ${w.myWins}/${w.total}`,
+          `Avg ${w.myAvg.toFixed(1)} vs ${w.theirAvg.toFixed(1)}`,
+          s.weakest && s.weakest.locIdx !== w.locIdx
+            ? `Lowest avg: ${s.weakest.label} (${s.weakest.myAvg.toFixed(1)})` : null,
+        ]));
+    }
+
+    // Volatility — steadiest vs swingiest round by my σ.
+    if (s.locStats && s.locStats.length) {
+      const byVol = s.locStats.filter(l => l.total >= 3)
+        .slice().sort((a, b) => b.myConsistency - a.myConsistency);
+      if (byVol.length >= 2) {
+        const swing = byVol[0];
+        const steady = byVol[byVol.length - 1];
+        groups.push(insightGroup('warn', 'Volatility',
+          `<strong>${swing.label}</strong> is your swingiest round · σ <strong>${swing.myConsistency.toFixed(1)}</strong>`,
+          [
+            `Steadiest: ${steady.label} (σ ${steady.myConsistency.toFixed(1)})`,
+            `${swing.label} range ${swing.myWorst}–${swing.myBest}`,
+          ]));
+      }
+    }
+
+    // Clutch / choke — which round carries wins vs sinks losses.
+    if (s.carryChoke) {
+      const carryIdx = argmax(s.carryChoke.carryInWins);
+      const chokeIdx = argmax(s.carryChoke.chokeInLosses);
+      const decisiveIdx = argmax(s.carryChoke.decisive);
+      const carryN = carryIdx >= 0 ? s.carryChoke.carryInWins[carryIdx] : 0;
+      const chokeN = chokeIdx >= 0 ? s.carryChoke.chokeInLosses[chokeIdx] : 0;
+      let headline = null;
+      if (carryN >= 2) {
+        headline = `<strong>${LOC_LABELS[carryIdx]}</strong> is your clutch round · carried <strong>${carryN}</strong> wins`;
+      } else if (chokeN >= 2) {
+        headline = `<strong>${LOC_LABELS[chokeIdx]}</strong> is your choke round · sank <strong>${chokeN}</strong> losses`;
+      }
+      groups.push(insightGroup('', 'Clutch / choke', headline, [
+        chokeN >= 1 && chokeIdx >= 0
+          ? `Choke: ${LOC_LABELS[chokeIdx]} sank ${chokeN} losses` : null,
+        decisiveIdx >= 0
+          ? `Most decisive: ${LOC_LABELS[decisiveIdx]} (${s.carryChoke.decisive[decisiveIdx]} games)` : null,
+      ]));
+    }
+
+    const built = groups.filter(Boolean);
+    built.forEach(g => wrap.appendChild(g));
+    wrap.hidden = built.length === 0;
   }
 
   function argmax(arr) {
@@ -3125,10 +3891,25 @@
   function renderLocationCards(s) {
     const grid = $('#loc-card-grid');
     grid.innerHTML = '';
+    // Subtle per-card background tint keyed to win rate: the round with the
+    // highest rate trends green, the lowest red, linearly interpolated
+    // between this rival's extremes (same red/green endpoints as heatColor,
+    // at low alpha). Skipped when all five rates are equal — no signal.
+    const pcts = s.locStats.map(l => l.winPct);
+    const minP = Math.min(...pcts);
+    const span = Math.max(...pcts) - minP;
     s.locStats.forEach(loc => {
+      let tint = '';
+      if (span > 0.001) {
+        const t = (loc.winPct - minP) / span;
+        const r = Math.round(248 + (74 - 248) * t);
+        const g = Math.round(113 + (222 - 113) * t);
+        const b = Math.round(113 + (128 - 113) * t);
+        tint = `--loc-tint:rgba(${r},${g},${b},0.1);`;
+      }
       const card = el('div', {
         class: 'loc-card',
-        style: `--loc-color:${LOC_COLORS[loc.locIdx]}`,
+        style: `--loc-color:${LOC_COLORS[loc.locIdx]};${tint}`,
         title: `${loc.name} · ×${loc.weight} weight`,
       }, [
         el('div', { class: 'lc-label' }, `${loc.label} · ×${loc.weight}`),
@@ -3169,7 +3950,19 @@
     // newest at top
     recent.slice().reverse().forEach(g => {
       const row = el('div', { class: 'heatmap-row' });
-      row.appendChild(el('span', { class: 'heatmap-rowlabel' }, fmtDateShort(g.date)));
+      // Date links out to that day's puzzle on maptap.gg — same pattern as
+      // the history table's date column.
+      const dayUrl = mapTapHistoryUrl(g.date);
+      row.appendChild(el('span', { class: 'heatmap-rowlabel' },
+        dayUrl
+          ? [el('a', {
+              href: dayUrl,
+              target: '_blank',
+              rel: 'noopener noreferrer',
+              class: 'maptap-day-link',
+              title: 'Open this day on maptap.gg',
+            }, fmtDateShort(g.date))]
+          : fmtDateShort(g.date)));
       for (let i = 0; i < N_LOCS; i++) {
         const m = g.myScores[i] || 0;
         const t = g.theirScores[i] || 0;
@@ -3343,24 +4136,67 @@
     // Differential bars
     destroyChart('diff');
     const diffs = last30.map(g => getMyTotal(g) - getTheirTotal(g));
+    // Trailing 5-game rolling average of the differential, overlaid as a line
+    // so the trend (improving / worsening / flat) reads at a glance instead of
+    // having to mentally average the bars. A trailing window (not cumulative)
+    // keeps the line responsive to recent reversals rather than smoothing them
+    // away. For the first few games the window is whatever's available, so the
+    // line is always computable even with < 5 games.
+    const ROLL = 5;
+    const rolling = diffs.map((_, i) => {
+      const start = Math.max(0, i - ROLL + 1);
+      const window = diffs.slice(start, i + 1);
+      return window.reduce((a, v) => a + v, 0) / window.length;
+    });
     state.charts.diff = new Chart($('#chart-diff'), {
-      type: 'bar',
       data: {
         labels: last30.map(g => fmtDateShort(g.date)),
-        datasets: [{
-          label: 'Score Δ',
-          data: diffs,
-          backgroundColor: diffs.map(d => d > 0 ? 'rgba(74,222,128,0.7)' : d < 0 ? 'rgba(248,113,113,0.7)' : 'rgba(154,163,178,0.7)'),
-          borderColor: diffs.map(d => d > 0 ? '#4ade80' : d < 0 ? '#f87171' : '#9aa3b2'),
-          borderWidth: 1,
-        }],
+        datasets: [
+          {
+            type: 'bar',
+            label: 'Score Δ',
+            data: diffs,
+            backgroundColor: diffs.map(d => d > 0 ? 'rgba(74,222,128,0.7)' : d < 0 ? 'rgba(248,113,113,0.7)' : 'rgba(154,163,178,0.7)'),
+            borderColor: diffs.map(d => d > 0 ? '#4ade80' : d < 0 ? '#f87171' : '#9aa3b2'),
+            borderWidth: 1,
+            order: 2,
+          },
+          {
+            type: 'line',
+            label: '5-game avg',
+            data: rolling,
+            borderColor: '#9aa3b2',
+            backgroundColor: 'rgba(154,163,178,0.08)',
+            borderWidth: 2,
+            tension: 0.3,
+            pointRadius: 0,
+            pointHoverRadius: 3,
+            fill: false,
+            order: 1,
+          },
+        ],
       },
       options: chartCommon({
         scales: {
           y: { ticks: { color: '#9aa3b2' }, grid: { color: '#252938' } },
           x: { ticks: { color: '#9aa3b2', maxRotation: 0, autoSkip: true }, grid: { color: '#1f232f' } },
         },
-        plugins: { legend: { display: false } },
+        plugins: {
+          legend: { labels: { color: '#e7e9ee', font: { size: 11 } } },
+          tooltip: {
+            backgroundColor: '#1f232f', borderColor: '#353a4b', borderWidth: 1,
+            titleColor: '#e7e9ee', bodyColor: '#e7e9ee',
+            callbacks: {
+              label: (ctx) => {
+                const v = ctx.parsed.y;
+                const sign = v > 0 ? '+' : '';
+                return ctx.dataset.label === '5-game avg'
+                  ? `5-game avg: ${sign}${v.toFixed(1)}`
+                  : `Score Δ: ${sign}${v}`;
+              },
+            },
+          },
+        },
       }),
     });
   }
@@ -3400,22 +4236,32 @@
     // Annotate each summary with its rivalry score so we compute it once.
     summaries.forEach(s => { s._rivalryScore = rivalryScore(s.rival.id); });
 
-    if (state.lbSort === 'rivalry') {
-      summaries.sort((a, b) => b._rivalryScore - a._rivalryScore || b.total - a.total);
-    } else {
-      summaries.sort((a, b) => b.winPct - a.winPct || b.total - a.total);
-    }
+    // Comparator per sortable column. Numeric columns sort descending;
+    // "rival" sorts A→Z. Ties fall back to games played, then name.
+    const LB_SORTS = {
+      rival:   (a, b) => a.rival.name.localeCompare(b.rival.name),
+      games:   (a, b) => b.total - a.total,
+      wins:    (a, b) => b.wins - a.wins,
+      losses:  (a, b) => b.losses - a.losses,
+      ties:    (a, b) => b.ties - a.ties,
+      winpct:  (a, b) => b.winPct - a.winPct,
+      rivalry: (a, b) => b._rivalryScore - a._rivalryScore,
+      avgdiff: (a, b) => (b.total ? b.cumDiff / b.total : 0) - (a.total ? a.cumDiff / a.total : 0),
+      // Streak: active win streaks (positive) first, then ties at 0, then
+      // active loss streaks (negative, longest = lowest).
+      streak:  (a, b) => (b.streak.curMine - b.streak.curTheirs) - (a.streak.curMine - a.streak.curTheirs),
+    };
+    const cmp = LB_SORTS[state.lbSort] || LB_SORTS.winpct;
+    summaries.sort((a, b) =>
+      cmp(a, b) || b.total - a.total || a.rival.name.localeCompare(b.rival.name));
 
     // Update sort-active state on the column headers.
-    const thWinPct  = $('#lb-th-winpct');
-    const thRivalry = $('#lb-th-rivalry');
-    if (thWinPct) {
-      thWinPct.classList.toggle('lb-th-sorted', state.lbSort === 'winpct');
-      thWinPct.setAttribute('aria-sort', state.lbSort === 'winpct' ? 'descending' : 'none');
-    }
-    if (thRivalry) {
-      thRivalry.classList.toggle('lb-th-sorted', state.lbSort === 'rivalry');
-      thRivalry.setAttribute('aria-sort', state.lbSort === 'rivalry' ? 'descending' : 'none');
+    for (const key of Object.keys(LB_SORTS)) {
+      const th = $('#lb-th-' + key);
+      if (!th) continue;
+      const active = state.lbSort === key;
+      th.classList.toggle('lb-th-sorted', active);
+      th.setAttribute('aria-sort', active ? (key === 'rival' ? 'ascending' : 'descending') : 'none');
     }
 
     summaries.forEach((s, i) => {
@@ -3490,7 +4336,6 @@
   const MATRIX_TABS = [
     { id: 'record', label: 'Record',    icon: '🏆' },
     { id: 'margin', label: 'Margin',    icon: '📐' },
-    { id: 'score',  label: 'Avg score', icon: '📊' },
     { id: 'form',   label: 'Last 5',    icon: '⚡' },
   ];
   function isValidMatrixTab(id) { return MATRIX_TABS.some(t => t.id === id); }
@@ -3606,30 +4451,16 @@
 
     if (subtab === 'margin') {
       const avg = (cell.rowTotal - cell.colTotal) / cell.games;
-      const tone = avg > 5 ? 'win' : avg < -5 ? 'loss' : 'tie';
+      // Any nonzero average margin colors the cell (the old ±5 dead zone hid
+      // real leads, e.g. +4/-4 over 20 games rendered gray on both sides).
+      const tone = avg > 0 ? 'win' : avg < 0 ? 'loss' : 'tie';
       const best = cell.bestMargin;
       return {
         tone,
-        title: `${row.label} vs ${col.label} — avg ${fmtSigned(avg)} per game, best ${fmtSigned(best)}, worst ${fmtSigned(cell.worstMargin)}`,
+        title: `${row.label} vs ${col.label} — avg ${fmtSigned(avg)} per game, best ${fmtSigned(best)}, worst ${fmtSigned(cell.worstMargin)} (${gamesLabel})`,
         content: [
           el('div', { class: 'matrix-record' }, fmtSigned(avg)),
           el('div', { class: 'matrix-margin' }, `best ${fmtSigned(best)}`),
-          el('div', { class: 'matrix-meta' }, gamesLabel),
-        ],
-      };
-    }
-
-    if (subtab === 'score') {
-      const rowAvg = cell.rowTotal / cell.games;
-      const colAvg = cell.colTotal / cell.games;
-      const tone = rowAvg > colAvg + 3 ? 'win' : rowAvg < colAvg - 3 ? 'loss' : 'tie';
-      return {
-        tone,
-        title: `${row.label} averages ${rowAvg.toFixed(0)} vs ${col.label}'s ${colAvg.toFixed(0)} across ${gamesLabel}`,
-        content: [
-          el('div', { class: 'matrix-record' }, String(Math.round(rowAvg))),
-          el('div', { class: 'matrix-margin' }, `vs ${Math.round(colAvg)}`),
-          el('div', { class: 'matrix-meta' }, gamesLabel),
         ],
       };
     }
@@ -3657,15 +4488,46 @@
         else if (kind === streakKind) streakLen++;
         else break;
       }
-      const streakLabel = streakLen > 0 ? `${streakKind}${streakLen}` : '—';
-      const tone = streakKind === 'W' ? 'win' : streakKind === 'L' ? 'loss' : 'tie';
+      // Longest win/loss streaks across the full meeting history.
+      let longW = 0, longL = 0, run = 0, runKind = null;
+      for (const m of cell.meetings) {
+        const kind = m.rowScore > m.colScore ? 'W'
+          : m.rowScore < m.colScore ? 'L'
+          : 'T';
+        if (kind === runKind) run++;
+        else { runKind = kind; run = 1; }
+        if (kind === 'W') longW = Math.max(longW, run);
+        else if (kind === 'L') longL = Math.max(longL, run);
+      }
+      // Label slot: a CURRENT streak only when it exceeds 5 games (a live run
+      // worth shouting about); otherwise the matchup's longest-ever WIN streak
+      // as a quieter "best W<n>" (floor of 2 — a single win is not a streak).
+      // Loss streaks never label a row's own cell: the mirrored cell shows
+      // them as the opponent's win streak. When a 6+ live streak takes the
+      // slot, the all-time best still shows on a smaller line beneath it —
+      // unless the live streak IS the best (no redundant repeat).
+      let streakLabel = null;
+      let bestLine = null;
+      if (streakLen > 5 && (streakKind === 'W' || streakKind === 'L')) {
+        streakLabel = `${streakKind}${streakLen}`;
+        const liveIsBestW = streakKind === 'W' && streakLen >= longW;
+        if (longW >= 2 && !liveIsBestW) bestLine = `best W${longW}`;
+      } else if (longW >= 2) {
+        streakLabel = `best W${longW}`;
+      }
+      // No background tone on Last 5 cells (owner request): the W/L tint
+      // would only re-encode the majority of the dots already on display,
+      // so the cell stays neutral and the dots carry all the signal.
+      const currentLabel = streakLen > 0 ? `${streakKind}${streakLen}` : 'none';
+      // No games-count meta line here — the dots already say how many recent
+      // meetings there are, and the count crowded the cell (owner request).
       return {
-        tone,
-        title: `Last ${last5.length} (oldest → newest), current streak ${streakLabel}`,
+        tone: 'plain',
+        title: `Last ${last5.length} (oldest → newest) · current streak ${currentLabel} · longest W${longW} / L${longL}`,
         content: [
           dots,
-          el('div', { class: 'matrix-margin' }, streakLabel),
-          el('div', { class: 'matrix-meta' }, gamesLabel),
+          streakLabel ? el('div', { class: 'matrix-margin' }, streakLabel) : null,
+          bestLine ? el('div', { class: 'matrix-meta' }, bestLine) : null,
         ],
       };
     }
@@ -3673,7 +4535,10 @@
     // 'record' (default)
     const winPct = (cell.wins + 0.5 * cell.ties) / cell.games;
     const winPctStr = (winPct * 100).toFixed(1) + '%';
-    const tone = winPct > 0.55 ? 'win' : winPct < 0.45 ? 'loss' : 'tie';
+    // Any lead colors the cell; neutral gray is reserved for a dead-even
+    // record. The old 45-55% dead zone hid real leads (e.g. 9-11 = 45.0%
+    // rendered gray instead of red).
+    const tone = winPct > 0.5 ? 'win' : winPct < 0.5 ? 'loss' : 'tie';
     return {
       tone,
       title: `${row.label} vs ${col.label} — ${gamesLabel}, ${winPctStr} win rate`,
@@ -3681,7 +4546,6 @@
         el('div', { class: 'matrix-record' },
           `${cell.wins}-${cell.losses}` + (cell.ties ? `-${cell.ties}` : '')),
         el('div', { class: 'matrix-margin' }, winPctStr),
-        el('div', { class: 'matrix-meta' }, gamesLabel),
       ],
     };
   }
@@ -3735,9 +4599,8 @@
 
   function matrixLegendText(subtab) {
     if (subtab === 'margin') return 'Avg point margin per game from the row\'s perspective; the small line shows the row\'s best single result vs that column.';
-    if (subtab === 'score')  return 'Row participant\'s average score in head-to-head meetings (small line: column\'s average in those same games).';
-    if (subtab === 'form')   return 'Dots = last 5 meetings (oldest left → newest right) from the row\'s perspective. Big label = current streak.';
-    return 'Wins-losses(-ties) and the row\'s win % — ties count as half a win.';
+    if (subtab === 'form')   return 'Dots = last 5 meetings (oldest left → newest right) from the row\'s perspective; cell color follows the dots\' majority. The label shows a live streak only when longer than 5 games, otherwise the row\'s longest win streak ("best W4").';
+    return 'Wins-losses(-ties) and the row\'s win % — ties count as half a win. (avg) next to each name = that player\'s average daily score.';
   }
 
   function renderMatrix() {
@@ -3771,18 +4634,40 @@
 
     const byRival = buildRivalDateIndex(sortedRivals.map(r => r.id));
 
+    // Per-participant average daily score (replaces the old "Avg score"
+    // subtab). Yours dedupes by date — the same daily score repeats across
+    // every rival you played that day.
+    const myByDate = new Map();
+    const rivalAvgById = new Map();
+    byRival.forEach((dates, rid) => {
+      let sum = 0, n = 0;
+      dates.forEach((v, date) => {
+        sum += v.theirs; n++;
+        if (!myByDate.has(date)) myByDate.set(date, v.mine);
+      });
+      rivalAvgById.set(rid, n ? sum / n : null);
+    });
+    let mySum = 0;
+    myByDate.forEach(v => { mySum += v; });
+    const myAvg = myByDate.size ? mySum / myByDate.size : null;
+    const avgFor = p => (p.type === 'you' ? myAvg : rivalAvgById.get(p.id));
+    // The "(avg)" annotation renders on the LEFT column (row heads) only —
+    // owner request; the top row stays just icon + name.
+    const headChip = (p, withAvg) => {
+      const avg = withAvg ? avgFor(p) : null;
+      return el('span', { class: 'matrix-head-chip', style: `--p-color:${p.color}` }, [
+        el('span', { class: 'matrix-head-icon' }, p.icon),
+        el('span', { class: 'matrix-head-name' }, p.label),
+        avg != null ? el('span', { class: 'matrix-head-avg' }, `(${Math.round(avg)})`) : null,
+      ]);
+    };
+
     const table = el('table', { class: 'matrix-table' });
     const thead = el('thead');
     const headRow = el('tr');
     headRow.appendChild(el('th', { class: 'matrix-corner', scope: 'col' }, ''));
     participants.forEach(p => {
-      const th = el('th', { class: 'matrix-col-head', scope: 'col' }, [
-        el('span', { class: 'matrix-head-chip', style: `--p-color:${p.color}` }, [
-          el('span', { class: 'matrix-head-icon' }, p.icon),
-          el('span', { class: 'matrix-head-name' }, p.label),
-        ]),
-      ]);
-      headRow.appendChild(th);
+      headRow.appendChild(el('th', { class: 'matrix-col-head', scope: 'col', title: p.label }, [headChip(p, false)]));
     });
     thead.appendChild(headRow);
     table.appendChild(thead);
@@ -3790,12 +4675,7 @@
     const tbody = el('tbody');
     participants.forEach(row => {
       const tr = el('tr');
-      tr.appendChild(el('th', { class: 'matrix-row-head', scope: 'row' }, [
-        el('span', { class: 'matrix-head-chip', style: `--p-color:${row.color}` }, [
-          el('span', { class: 'matrix-head-icon' }, row.icon),
-          el('span', { class: 'matrix-head-name' }, row.label),
-        ]),
-      ]));
+      tr.appendChild(el('th', { class: 'matrix-row-head', scope: 'row' }, [headChip(row, true)]));
       participants.forEach(col => {
         if (row === col) {
           tr.appendChild(el('td', { class: 'matrix-cell matrix-diag', 'aria-label': 'self' }, '—'));
@@ -3832,13 +4712,68 @@
       size === 0
         ? `Showing all ${total} game${total === 1 ? '' : 's'}`
         : `Showing ${startIdx + 1}–${endIdx} of ${total}`;
-    $('#rival-games-pagination-current').textContent =
-      size === 0 ? '—' : `${state.rivalGamesPage} / ${totalPages}`;
 
-    const prev = $('#rival-games-prev');
-    const next = $('#rival-games-next');
-    prev.disabled = size === 0 || state.rivalGamesPage <= 1;
-    next.disabled = size === 0 || state.rivalGamesPage >= totalPages;
+    renderPager($('#rival-games-pager'), state.rivalGamesPage, totalPages, size, (n) => {
+      state.rivalGamesPage = n;
+      renderRival();
+    });
+  }
+
+  // Numbered pager in the rising-seasons style: Prev, page numbers with
+  // ellipsis gaps, Next. The current page is marked aria-current; disabled
+  // ends are non-interactive. Hidden when there's only one page (or the
+  // page-size is "All"), matching the other apps' behavior.
+  function renderPager(host, current, totalPages, size, onGo) {
+    host.innerHTML = '';
+    if (size === 0 || totalPages <= 1) {
+      host.hidden = true;
+      return;
+    }
+    host.hidden = false;
+    host.appendChild(pageButton('Prev', current - 1, current <= 1, onGo));
+    for (const n of pageNumbers(current, totalPages)) {
+      if (n === '…') {
+        host.appendChild(el('span', { class: 'page-ellipsis', 'aria-hidden': 'true' }, '…'));
+      } else {
+        const btn = pageButton(String(n), n, false, onGo);
+        btn.setAttribute('aria-label', `Page ${n}`);
+        if (n === current) btn.setAttribute('aria-current', 'page');
+        host.appendChild(btn);
+      }
+    }
+    host.appendChild(pageButton('Next', current + 1, current >= totalPages, onGo));
+  }
+
+  function pageButton(label, target, disabled, onGo) {
+    const btn = el('button', { type: 'button', class: 'page-btn' }, label);
+    if (disabled) {
+      btn.disabled = true;
+      btn.setAttribute('aria-disabled', 'true');
+    } else {
+      btn.addEventListener('click', () => onGo(target));
+    }
+    return btn;
+  }
+
+  // Always include the first/last page and the window around the current one,
+  // collapsing the rest into ellipsis markers. Small ranges show every page.
+  function pageNumbers(current, total) {
+    const set = new Set([1, total]);
+    for (let i = current - 1; i <= current + 1; i++) {
+      if (i >= 1 && i <= total) set.add(i);
+    }
+    if (total <= 7) {
+      for (let i = 1; i <= total; i++) set.add(i);
+    }
+    const sorted = [...set].sort((a, b) => a - b);
+    const out = [];
+    let prev = 0;
+    for (const n of sorted) {
+      if (n - prev > 1) out.push('…');
+      out.push(n);
+      prev = n;
+    }
+    return out;
   }
 
   // ---------- history ----------
@@ -3875,7 +4810,34 @@
 
     renderHistoryPagination(total, totalPages, startIdx, endIdx);
 
+    // Group the current page's games by day so the history reads
+    // day-by-day instead of as a continuous rival-by-rival mix. Each
+    // group gets a full-width header row (carrying the maptap.gg day
+    // link); individual rows drop their repeated date. A day split
+    // across a page boundary just shows as two partial groups.
+    const HISTORY_COLSPAN = 10;
+    let lastDate = null;
     pageGames.forEach(g => {
+      if (g.date !== lastDate) {
+        lastDate = g.date;
+        const dayUrl = mapTapHistoryUrl(g.date);
+        const dayLabel = dayUrl
+          ? el('a', {
+              href: dayUrl,
+              target: '_blank',
+              rel: 'noopener noreferrer',
+              class: 'maptap-day-link history-day-link',
+              title: 'Open this day on maptap.gg',
+            }, shortDate(g.date))
+          : el('span', { class: 'history-day-label' }, shortDate(g.date));
+        tbody.appendChild(el('tr', { class: 'history-day-header' }, [
+          el('td', { colspan: String(HISTORY_COLSPAN) }, [
+            el('span', { class: 'history-day-head-inner' }, [
+              dayLabel,
+            ]),
+          ]),
+        ]));
+      }
       const rival = rivalById[g.rivalId];
       const r = resultOf(g);
       const meHere = iPlayed(g);
@@ -3883,17 +4845,8 @@
       const myT = meHere ? getMyTotal(g) : null;
       const theirT = themHere ? getTheirTotal(g) : null;
       const diff = (meHere && themHere) ? (myT - theirT) : null;
-      const dayUrl = mapTapHistoryUrl(g.date);
-      const dateCell = dayUrl
-        ? el('td', {}, [el('a', {
-            href: dayUrl,
-            target: '_blank',
-            rel: 'noopener noreferrer',
-            class: 'maptap-day-link',
-            title: 'Open this day on maptap.gg',
-          }, shortDate(g.date))])
-        : el('td', {}, shortDate(g.date));
-      tbody.appendChild(el('tr', { class: r ? '' : 'row-one-sided' }, [
+      const dateCell = el('td', { class: 'history-row-date' }, '');
+      tbody.appendChild(el('tr', { class: 'history-day-row' + (r ? '' : ' row-one-sided') }, [
         dateCell,
         el('td', {}, rival ? `${rival.icon} ${rival.name}` : '—'),
         el('td', {
@@ -3929,13 +4882,11 @@
       size === 0
         ? `Showing all ${total} game${total === 1 ? '' : 's'}`
         : `Showing ${startIdx + 1}–${endIdx} of ${total}`;
-    $('#history-pagination-current').textContent =
-      size === 0 ? '—' : `${state.historyPage} / ${totalPages}`;
 
-    const prev = $('#history-prev');
-    const next = $('#history-next');
-    prev.disabled = size === 0 || state.historyPage <= 1;
-    next.disabled = size === 0 || state.historyPage >= totalPages;
+    renderPager($('#history-pager'), state.historyPage, totalPages, size, (n) => {
+      state.historyPage = n;
+      renderHistory();
+    });
   }
 
   // ---------- MapTap profile sync ----------
@@ -5071,12 +6022,32 @@
       alert('No games to clear.');
       return;
     }
-    const ok = confirm(
-      `Delete all ${n} game${n === 1 ? '' : 's'}?\n\n` +
-      `Your rivals and their MapTap usernames will be kept, so you can ` +
-      `re-sync fresh. This can't be undone.`
-    );
-    if (!ok) return;
+    openClearGamesModal(n);
+  }
+
+  // Clear-all-games confirmation modal — same pattern as the delete-game
+  // modal: Cancel gets initial focus, backdrop/X/Escape close without
+  // clearing, focus returns to the trigger after close.
+  function openClearGamesModal(n) {
+    const modal = $('#clear-games-modal');
+    $('#clear-games-body').textContent =
+      `Delete all ${n} game${n === 1 ? '' : 's'}? Your rivals and their ` +
+      `MapTap usernames are kept, so you can re-sync fresh. This cannot be undone.`;
+    state.clearGamesLastFocus = document.activeElement;
+    modal.hidden = false;
+    setTimeout(() => $('#clear-games-cancel').focus(), 30);
+  }
+
+  function closeClearGamesModal() {
+    $('#clear-games-modal').hidden = true;
+    const prev = state.clearGamesLastFocus;
+    state.clearGamesLastFocus = null;
+    if (prev && document.body.contains(prev)) setTimeout(() => prev.focus(), 0);
+  }
+
+  function confirmClearGames() {
+    closeClearGamesModal();
+    if (!state.games.length) return;
     state.games = [];
     persistGames();
     if (state.view === 'dashboard') renderDashboard();
@@ -5216,9 +6187,28 @@
     $('#rival-name').addEventListener('keydown', (e) => {
       if (e.key === 'Enter') { e.preventDefault(); saveRivalFromModal(); }
     });
+    // Delete-game confirmation modal
+    $('#delete-game-modal').querySelectorAll('[data-close="delete-game-modal"]').forEach(node => {
+      node.addEventListener('click', closeDeleteGameModal);
+    });
+    $('#delete-game-confirm').addEventListener('click', confirmDeleteGame);
+    // Clear-all-games confirmation modal
+    $('#clear-games-modal').querySelectorAll('[data-close="clear-games-modal"]').forEach(node => {
+      node.addEventListener('click', closeClearGamesModal);
+    });
+    $('#clear-games-confirm').addEventListener('click', confirmClearGames);
+    // Delete-season confirmation modal
+    $('#delete-season-modal').querySelectorAll('[data-close="delete-season-modal"]').forEach(node => {
+      node.addEventListener('click', closeDeleteSeasonModal);
+    });
+    $('#delete-season-confirm').addEventListener('click', confirmDeleteSeason);
+
     document.addEventListener('keydown', (e) => {
       if (e.key !== 'Escape') return;
       if (!$('#wa-modal').hidden) closeWhatsAppModal();
+      else if (!$('#delete-game-modal').hidden) closeDeleteGameModal();
+      else if (!$('#clear-games-modal').hidden) closeClearGamesModal();
+      else if (!$('#delete-season-modal').hidden) closeDeleteSeasonModal();
       else if (!$('#rival-modal').hidden) closeRivalModal();
       else if (!$('#season-modal').hidden) closeSeasonModal();
     });
@@ -5321,33 +6311,20 @@
       renderHistory();
     });
 
-    // history pagination
+    // history pagination — page navigation is delegated to the numbered
+    // pager rendered by renderPager; only the page-size select is wired here.
     $('#history-page-size').value = String(state.historyPageSize);
     $('#history-page-size').addEventListener('change', (e) => {
       state.historyPageSize = Number(e.target.value);
       state.historyPage = 1;
       renderHistory();
     });
-    $('#history-prev').addEventListener('click', () => {
-      if (state.historyPage > 1) { state.historyPage--; renderHistory(); }
-    });
-    $('#history-next').addEventListener('click', () => {
-      state.historyPage++;
-      renderHistory();
-    });
 
-    // rival-detail games pagination
+    // rival-detail games pagination — see note above re: numbered pager.
     $('#rival-games-page-size').value = String(state.rivalGamesPageSize);
     $('#rival-games-page-size').addEventListener('change', (e) => {
       state.rivalGamesPageSize = Number(e.target.value);
       state.rivalGamesPage = 1;
-      renderRival();
-    });
-    $('#rival-games-prev').addEventListener('click', () => {
-      if (state.rivalGamesPage > 1) { state.rivalGamesPage--; renderRival(); }
-    });
-    $('#rival-games-next').addEventListener('click', () => {
-      state.rivalGamesPage++;
       renderRival();
     });
 
@@ -5361,16 +6338,13 @@
         if (state.view === 'leaderboard') renderLeaderboard();
       };
     }
-    const lbThWinPct  = $('#lb-th-winpct');
-    const lbThRivalry = $('#lb-th-rivalry');
-    if (lbThWinPct) {
-      lbThWinPct.addEventListener('click',   makeLbSortHandler('winpct'));
-      lbThWinPct.addEventListener('keydown', makeLbSortHandler('winpct'));
-    }
-    if (lbThRivalry) {
-      lbThRivalry.addEventListener('click',   makeLbSortHandler('rivalry'));
-      lbThRivalry.addEventListener('keydown', makeLbSortHandler('rivalry'));
-    }
+    ['rival', 'games', 'wins', 'losses', 'ties', 'winpct', 'rivalry', 'avgdiff', 'streak']
+      .forEach(key => {
+        const th = $('#lb-th-' + key);
+        if (!th) return;
+        th.addEventListener('click',   makeLbSortHandler(key));
+        th.addEventListener('keydown', makeLbSortHandler(key));
+      });
 
     // cross-tab / sync changes
     window.addEventListener('storage', onExternalStorage);
