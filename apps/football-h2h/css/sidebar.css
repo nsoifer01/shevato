@@ -690,9 +690,12 @@ body.theme .sidebar-overlay {
     flex: 1;
 }
 
-/* Date icon wrapper - simplified for ACTIONS button style */
+/* Date icon wrapper - simplified for ACTIONS button style.
+   NOTE: deliberately NOT position:relative — the hidden date input inside
+   is absolutely positioned and must span the whole .sidebar-date-btn-container
+   (the nearest positioned ancestor) so the entire row opens the picker,
+   not just the calendar icon. */
 .sidebar-date-icon-wrapper {
-    position: relative;
     display: flex;
     align-items: center;
     justify-content: center;

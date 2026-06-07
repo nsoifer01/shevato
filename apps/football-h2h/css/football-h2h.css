@@ -2583,3 +2583,8 @@ body.football-h2h-tracker {
         font-size: 1rem;
     }
 }
+
+/* Lock background scroll while any modal is open */
+body.modal-open {
+    overflow: hidden;
+}

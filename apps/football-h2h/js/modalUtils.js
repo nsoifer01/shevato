@@ -1,5 +1,81 @@
 // Modal utility functions for Football H2H Tracker
 
+// Count of currently-open modals across both modal shapes
+// (.modal-overlay dialogs and the static #iconSelectorModal). Body scroll
+// stays locked while this is > 0 and is restored only when the last
+// modal closes.
+let openModalCount = 0;
+
+function lockBodyScroll() {
+    openModalCount += 1;
+    document.body.classList.add('modal-open');
+}
+
+function unlockBodyScroll() {
+    openModalCount = Math.max(0, openModalCount - 1);
+    if (openModalCount === 0) {
+        document.body.classList.remove('modal-open');
+    }
+}
+
+const FOCUSABLE_SELECTOR = 'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])';
+
+function getFocusable(container) {
+    return Array.from(container.querySelectorAll(FOCUSABLE_SELECTOR))
+        .filter(el => el.offsetParent !== null || el === document.activeElement);
+}
+
+// Move focus into the modal and trap Tab/Shift+Tab within it. Returns a
+// teardown function that removes the trap and restores focus to the
+// previously-focused element if it still exists.
+function trapFocus(modal, dialog) {
+    const previouslyFocused = document.activeElement;
+
+    const focusFirst = () => {
+        const focusable = getFocusable(modal);
+        if (focusable.length) {
+            focusable[0].focus();
+        } else {
+            dialog.setAttribute('tabindex', '-1');
+            dialog.focus();
+        }
+    };
+    focusFirst();
+
+    const keydownHandler = (e) => {
+        if (e.key !== 'Tab') return;
+        const focusable = getFocusable(modal);
+        if (!focusable.length) {
+            e.preventDefault();
+            return;
+        }
+        const first = focusable[0];
+        const last = focusable[focusable.length - 1];
+        if (!modal.contains(document.activeElement)) {
+            // Focus escaped the modal (e.g. a deferred field rebuild
+            // destroyed the focused element); pull the next Tab back in.
+            e.preventDefault();
+            first.focus();
+        } else if (e.shiftKey && document.activeElement === first) {
+            e.preventDefault();
+            last.focus();
+        } else if (!e.shiftKey && document.activeElement === last) {
+            e.preventDefault();
+            first.focus();
+        }
+    };
+    // Listen on document, not the modal: if focus lands outside the modal
+    // the modal's own listener would never see the Tab keydown.
+    document.addEventListener('keydown', keydownHandler);
+
+    return () => {
+        document.removeEventListener('keydown', keydownHandler);
+        if (previouslyFocused && document.body.contains(previouslyFocused)) {
+            previouslyFocused.focus();
+        }
+    };
+}
+
 /**
  * Creates a standardized modal with CSS classes
  * @param {Object} config - Modal configuration
@@ -32,14 +108,22 @@ function createModal({ icon, title, content, buttons = [] }) {
     modal.appendChild(dialog);
     document.body.appendChild(modal);
 
+    lockBodyScroll();
+    const releaseFocusTrap = trapFocus(modal, dialog);
+
     // Single teardown so every close path (button, background, Escape)
     // removes the document-level keydown listener. The previous version
     // only removed the listener on the Escape path, so opening +
     // dismissing modals via background-click or any button stacked
     // listeners that fired forever.
+    let closed = false;
     const closeModal = () => {
+        if (closed) return;
+        closed = true;
         if (modal.parentNode) modal.parentNode.removeChild(modal);
         document.removeEventListener('keydown', escapeHandler);
+        releaseFocusTrap();
+        unlockBodyScroll();
     };
     const escapeHandler = (e) => { if (e.key === 'Escape') closeModal(); };
     document.addEventListener('keydown', escapeHandler);
@@ -62,11 +146,11 @@ function createModal({ icon, title, content, buttons = [] }) {
 /**
  * Creates a confirmation modal
  */
-function createConfirmationModal({ icon, title, message, onConfirm, onCancel, isDestructive = false }) {
+function createConfirmationModal({ icon, title, message, onConfirm, onCancel, isDestructive = false, confirmText = null }) {
     const buttons = [
         {
             id: 'confirm-btn',
-            text: isDestructive ? 'Delete' : 'Confirm',
+            text: confirmText || (isDestructive ? 'Delete' : 'Confirm'),
             type: isDestructive ? 2 : 0, // 2 = danger, 0 = primary
             onClick: onConfirm
         },
@@ -413,3 +497,6 @@ window.createFormModal = createFormModal;
 window.showToast = showToast;
 window.showFormError = showFormError;
 window.hideFormError = hideFormError;
+window.lockBodyScroll = lockBodyScroll;
+window.unlockBodyScroll = unlockBodyScroll;
+window.trapFocus = trapFocus;
