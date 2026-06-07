@@ -24,10 +24,13 @@ function setDateFilter(filter) {
         }
     });
 
-    // Show/hide custom date range
+    // Show/hide custom date range by toggling the .hidden utility class so the
+    // panel's flex layout comes from CSS (.custom-date-range) rather than an
+    // inline style. This keeps working even if .hidden is later hardened with
+    // !important.
     const customRange = document.getElementById('custom-date-range');
     if (customRange) {
-        customRange.style.display = filter === 'custom' ? 'flex' : 'none';
+        customRange.classList.toggle('hidden', filter !== 'custom');
         // Clear any error message when hiding custom range
         if (filter !== 'custom') {
             clearCustomDateError();
