@@ -248,13 +248,22 @@ function applyPlayerNameChanges(newPlayer1Name, newPlayer2Name) {
     
     if (player1Header) {
         const player1IconDisplay = playerIcons.player1 || '⚽';
-        player1Header.innerHTML = `<span class="player-header-icon">${escapeHtml(player1IconDisplay)}</span> ${escapeHtml(player1Name)}`;
+        player1Header.innerHTML = `<span class="player-header-icon">${escapeHtml(player1IconDisplay)}</span> ${escapeHtml(player1Name)} <span class="sort-indicator" id="sort-player1"></span>`;
     }
 
     if (player2Header) {
         const player2IconDisplay = playerIcons.player2 || '⚽';
-        player2Header.innerHTML = `<span class="player-header-icon">${escapeHtml(player2IconDisplay)}</span> ${escapeHtml(player2Name)}`;
+        player2Header.innerHTML = `<span class="player-header-icon">${escapeHtml(player2IconDisplay)}</span> ${escapeHtml(player2Name)} <span class="sort-indicator" id="sort-player2"></span>`;
     }
+
+    // Re-render sort indicators since the header rebuild above replaced the spans
+    updateSortIndicators();
+
+    // Keep the Player Stats comparison headers in sync with renamed players
+    const playerComparisonP1Header = document.getElementById('playerComparisonP1Header');
+    const playerComparisonP2Header = document.getElementById('playerComparisonP2Header');
+    if (playerComparisonP1Header) playerComparisonP1Header.textContent = (playerIcons.player1 || '') + ' ' + player1Name;
+    if (playerComparisonP2Header) playerComparisonP2Header.textContent = (playerIcons.player2 || '') + ' ' + player2Name;
 
     // Update modal labels (if they exist)
     const modalPlayer1Name = document.getElementById('modalPlayer1Name');
@@ -283,28 +292,36 @@ function applyPlayerNameChanges(newPlayer1Name, newPlayer2Name) {
     renderGamesTable();
 }
 
+// Assign dates to legacy games that predate the dateTime field. Spreads
+// undated games across past days based on their position so history still
+// renders in a sensible order. Returns true if any game was migrated.
+// No unit test: football-h2h.js is a DOM-coupled classic script with no
+// module exports, and we deliberately do not restructure exports here.
+function migrateGameDates(gamesArray) {
+    let needsUpdate = false;
+    gamesArray.forEach((game, index) => {
+        if (!game.dateTime) {
+            // Assign a fake date for old games (spread them out over past days)
+            const daysBack = gamesArray.length - index;
+            const fakeDate = new Date();
+            fakeDate.setDate(fakeDate.getDate() - daysBack);
+            game.dateTime = fakeDate.toISOString();
+            game.lastModified = new Date().toISOString();
+            needsUpdate = true;
+        }
+    });
+    return needsUpdate;
+}
+
 // Load games from localStorage
 function loadGames() {
     const savedGames = localStorage.getItem(STORAGE_KEY);
     if (savedGames) {
         games = JSON.parse(savedGames);
         window.games = games; // Update global reference
-        
+
         // Migrate old games without dateTime
-        let needsUpdate = false;
-        games.forEach((game, index) => {
-            if (!game.dateTime) {
-                // Assign a fake date for old games (spread them out over past days)
-                const daysBack = games.length - index;
-                const fakeDate = new Date();
-                fakeDate.setDate(fakeDate.getDate() - daysBack);
-                game.dateTime = fakeDate.toISOString();
-                game.lastModified = new Date().toISOString();
-                needsUpdate = true;
-            }
-        });
-        
-        if (needsUpdate) {
+        if (migrateGameDates(games)) {
             saveGames();
         }
     } else {
@@ -1127,19 +1144,46 @@ function importData() {
                 return;
             }
 
-            player1Name = parsed.players.player1;
-            player2Name = parsed.players.player2;
-            savePlayers();
-            applyPlayerNameChanges(player1Name, player2Name);
+            const incomingPlayer1 = parsed.players.player1;
+            const incomingPlayer2 = parsed.players.player2;
+            const gameCount = parsed.games.length;
 
-            games = parsed.games;
-            saveGames();
-            updateUI();
+            const currentCount = games.length;
+            const plural = (n) => n === 1 ? 'game' : 'games';
+            let message = `The selected file contains ${gameCount} ${plural(gameCount)}.`;
+            if (currentCount > 0) {
+                message += `<br>Importing will replace your current ${currentCount} ${plural(currentCount)}.`;
+            } else {
+                message += `<br>You currently have no saved games.`;
+            }
+            if (incomingPlayer1 !== player1Name || incomingPlayer2 !== player2Name) {
+                message += `<br><br>Player names will change from "${escapeHtml(player1Name)}" and "${escapeHtml(player2Name)}" to "${escapeHtml(incomingPlayer1)}" and "${escapeHtml(incomingPlayer2)}".`;
+            }
 
-            createSuccessModal({
+            createConfirmationModal({
                 icon: '📥',
-                title: 'Import Successful',
-                message: `Successfully imported ${games.length} games!`
+                title: 'Import Data?',
+                message,
+                isDestructive: true,
+                confirmText: 'Import',
+                onConfirm: () => {
+                    player1Name = incomingPlayer1;
+                    player2Name = incomingPlayer2;
+                    savePlayers();
+                    applyPlayerNameChanges(player1Name, player2Name);
+
+                    games = parsed.games;
+                    migrateGameDates(games);
+                    saveGames();
+                    updateUI();
+
+                    createSuccessModal({
+                        icon: '📥',
+                        title: 'Import Successful',
+                        message: `Successfully imported ${games.length} games!`
+                    });
+                },
+                onCancel: () => {}
             });
         };
         reader.readAsText(file);
@@ -1232,13 +1276,16 @@ function updatePlayerIconDisplays() {
     
     if (player1Header) {
         const player1IconDisplay = playerIcons.player1 || '⚽';
-        player1Header.innerHTML = `<span class="player-header-icon">${escapeHtml(player1IconDisplay)}</span> ${escapeHtml(player1Name)}`;
+        player1Header.innerHTML = `<span class="player-header-icon">${escapeHtml(player1IconDisplay)}</span> ${escapeHtml(player1Name)} <span class="sort-indicator" id="sort-player1"></span>`;
     }
 
     if (player2Header) {
         const player2IconDisplay = playerIcons.player2 || '⚽';
-        player2Header.innerHTML = `<span class="player-header-icon">${escapeHtml(player2IconDisplay)}</span> ${escapeHtml(player2Name)}`;
+        player2Header.innerHTML = `<span class="player-header-icon">${escapeHtml(player2IconDisplay)}</span> ${escapeHtml(player2Name)} <span class="sort-indicator" id="sort-player2"></span>`;
     }
+
+    // Re-render sort indicators since the header rebuild above replaced the spans
+    updateSortIndicators();
 
     // Update player management modal if it's open
     const playerModal = document.getElementById('playerManagementModal');
@@ -1263,13 +1310,36 @@ function openIconSelector(playerNumber) {
     const iconModal = document.getElementById('iconSelectorModal');
     if (iconModal) {
         iconModal.classList.add('active');
+        lockBodyScroll();
+        const dialog = iconModal.querySelector('.modal-content') || iconModal;
+        iconSelectorReleaseFocusTrap = trapFocus(iconModal, dialog);
+    }
+
+    document.addEventListener('keydown', iconSelectorEscHandler);
+}
+
+// Focus-trap teardown for the static icon selector modal
+let iconSelectorReleaseFocusTrap = null;
+
+// Close icon selector on Escape key
+function iconSelectorEscHandler(e) {
+    if (e.key === 'Escape') {
+        closeIconSelector();
     }
 }
 
 // Close icon selector
 function closeIconSelector() {
-    document.getElementById('iconSelectorModal').classList.remove('active');
+    const iconModal = document.getElementById('iconSelectorModal');
+    if (!iconModal.classList.contains('active')) return;
+    iconModal.classList.remove('active');
     currentPlayerForIcon = null;
+    document.removeEventListener('keydown', iconSelectorEscHandler);
+    if (iconSelectorReleaseFocusTrap) {
+        iconSelectorReleaseFocusTrap();
+        iconSelectorReleaseFocusTrap = null;
+    }
+    unlockBodyScroll();
 }
 
 // Show icon category
@@ -1351,39 +1421,6 @@ updatePlayerNames = function() {
     originalUpdatePlayerNames.call(this);
     updatePlayerIconDisplays();
 };
-
-// Toggle backup menu dropdown
-function toggleBackupMenu(button) {
-    const menu = document.getElementById('backupMenu');
-    if (!menu) {
-        // If no backup menu exists, just trigger export directly
-        exportData();
-        return;
-    }
-    
-    const isOpen = menu.style.display !== 'none';
-    
-    if (isOpen) {
-        menu.style.display = 'none';
-    } else {
-        menu.style.display = 'block';
-        
-        // Close menu when clicking outside
-        setTimeout(() => {
-            document.addEventListener('click', closeBackupMenu);
-        }, 0);
-    }
-}
-
-function closeBackupMenu(event) {
-    const menu = document.getElementById('backupMenu');
-    const button = event.target.closest('.dropdown');
-    
-    if (!button || !button.contains(event.target)) {
-        menu.style.display = 'none';
-        document.removeEventListener('click', closeBackupMenu);
-    }
-}
 
 // Close modal when clicking outside
 window.onclick = function(event) {
@@ -2134,7 +2171,7 @@ function populateMatchupDropdowns() {
 
     function rebuild(sel, teams) {
         const current = sel.value;
-        sel.innerHTML = '<option value="">— any —</option>';
+        sel.innerHTML = '<option value="">Any</option>';
         for (const t of teams) {
             const opt = document.createElement('option');
             opt.value = t;
@@ -2207,7 +2244,7 @@ function buildSessionSummaryText(gamesData) {
     const p2 = player2Name;
 
     if (gamesData.length === 0) {
-        return `${p1} vs ${p2} — No games recorded.`;
+        return `${p1} vs ${p2}: No games recorded.`;
     }
 
     const lines = [];
@@ -2228,7 +2265,7 @@ function buildSessionSummaryText(gamesData) {
             p2Wins++;
         }
         const dateStr = g.dateTime ? new Date(g.dateTime).toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' }) : '';
-        const noteStr = g.note ? ` — ${g.note}` : '';
+        const noteStr = g.note ? `, ${g.note}` : '';
         lines.push(`${scoreStr}${suffix} (${dateStr})${noteStr}`);
     }
 
@@ -2291,7 +2328,6 @@ window.getCurrentPlayerNames = function() {
 
 // Export functions to global scope
 window.switchStatsTab = switchStatsTab;
-window.toggleBackupMenu = toggleBackupMenu;
 window.updateTeamOptions = updateTeamOptions;
 window.showAddGameModal = showAddGameModal;
 window.closeGameModal = closeGameModal;
@@ -2301,6 +2337,7 @@ window.deleteGame = deleteGame;
 window.confirmClearData = confirmClearData;
 window.exportData = exportData;
 window.importData = importData;
+window.migrateGameDates = migrateGameDates;
 window.sortGames = sortGames;
 window.checkForDraw = checkForDraw;
 window.openIconSelector = openIconSelector;

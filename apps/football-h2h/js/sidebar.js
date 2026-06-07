@@ -21,12 +21,13 @@ function openSidebar() {
     const sidebar = document.getElementById('sidebar');
     const overlay = document.getElementById('sidebar-overlay');
     const toggleBtn = document.getElementById('sidebar-toggle');
-    
+
     sidebar.classList.add('open');
     overlay.classList.add('active');
     document.body.classList.add('sidebar-open');
     toggleBtn.setAttribute('aria-expanded', 'true');
     sidebarOpen = true;
+    document.addEventListener('keydown', sidebarTabTrapHandler);
 }
 
 // Close sidebar
@@ -34,12 +35,45 @@ function closeSidebar() {
     const sidebar = document.getElementById('sidebar');
     const overlay = document.getElementById('sidebar-overlay');
     const toggleBtn = document.getElementById('sidebar-toggle');
-    
+
     sidebar.classList.remove('open');
     overlay.classList.remove('active');
     document.body.classList.remove('sidebar-open');
     toggleBtn.setAttribute('aria-expanded', 'false');
     sidebarOpen = false;
+    document.removeEventListener('keydown', sidebarTabTrapHandler);
+    // Hand focus back to the toggle so keyboard users are not stranded
+    if (sidebar.contains(document.activeElement)) {
+        toggleBtn.focus();
+    }
+}
+
+// Keep Tab inside the open sidebar (it overlays the page content). Modals
+// stack above the sidebar and own the keyboard while open, so the trap
+// stands down whenever one is present.
+function sidebarTabTrapHandler(e) {
+    if (e.key !== 'Tab' || !sidebarOpen) return;
+    if (document.querySelector('.modal-overlay') ||
+        document.querySelector('#iconSelectorModal.active')) return;
+    const sidebar = document.getElementById('sidebar');
+    const focusable = Array.from(sidebar.querySelectorAll(
+        'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])'
+    )).filter(el => el.offsetParent !== null);
+    if (!focusable.length) return;
+    const first = focusable[0];
+    const last = focusable[focusable.length - 1];
+    if (!sidebar.contains(document.activeElement)) {
+        // Focus is outside the sidebar (e.g. on the toggle or page body):
+        // pull the next Tab into the panel instead of the content behind it.
+        e.preventDefault();
+        first.focus();
+    } else if (e.shiftKey && document.activeElement === first) {
+        e.preventDefault();
+        last.focus();
+    } else if (!e.shiftKey && document.activeElement === last) {
+        e.preventDefault();
+        first.focus();
+    }
 }
 
 
@@ -176,8 +210,11 @@ function getFilteredGames() {
             
         case 'custom':
             if (customStartDate && customEndDate) {
-                const fromDate = new Date(customStartDate);
-                const toDate = new Date(customEndDate);
+                // Parse as LOCAL dates to stay consistent with today/week/month filters
+                const [fy, fm, fd] = customStartDate.split('-').map(Number);
+                const [ty, tm, td] = customEndDate.split('-').map(Number);
+                const fromDate = new Date(fy, fm - 1, fd);
+                const toDate = new Date(ty, tm - 1, td);
                 toDate.setHours(23, 59, 59, 999); // Include the entire end date
                 
                 filteredGames = allGames.filter(game => {
@@ -439,11 +476,15 @@ document.addEventListener('DOMContentLoaded', function() {
     // This will be called by football-h2h.js when ready
     
     
-    // Handle escape key to close sidebar
+    // Handle escape key to close sidebar. A modal takes priority: when one
+    // is open, Escape closes only the topmost modal (its own handler), and
+    // a subsequent Escape closes the sidebar.
     document.addEventListener('keydown', function(e) {
-        if (e.key === 'Escape' && sidebarOpen) {
-            closeSidebar();
-        }
+        if (e.key !== 'Escape' || !sidebarOpen) return;
+        const modalOpen = document.querySelector('.modal-overlay') ||
+            document.querySelector('#iconSelectorModal.active');
+        if (modalOpen) return;
+        closeSidebar();
     });
 });
 

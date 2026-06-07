@@ -1018,9 +1018,29 @@ body.football-h2h-tracker .matchup-select {
     border: 1px solid var(--fh-border);
     border-radius: 10px;
     color: var(--fh-text);
+    /* The native dropdown list follows color-scheme, not the box styles */
+    color-scheme: dark;
     padding: 0.45rem 0.7rem;
     font-size: 0.85rem;
     cursor: pointer;
+}
+
+/* Dark theme for the shared pagination rows-per-page select (the shared
+   assets/css/pagination.css hardcodes a white background) */
+body.football-h2h-tracker .pagination-size select {
+    background: var(--fh-surface-2);
+    border-color: var(--fh-border);
+    color: var(--fh-text);
+    color-scheme: dark;
+}
+
+/* Dark dropdown LISTS for every select in the app. The popup follows the
+   DOCUMENT color-scheme (declared via <meta name="color-scheme" content="dark">
+   in index.html) in Chromium; explicit option styling covers browsers/versions
+   that paint options from author styles instead. */
+body.football-h2h-tracker select option {
+    background-color: #181c26;
+    color: #f1f3f8;
 }
 
 body.football-h2h-tracker .matchup-vs {
