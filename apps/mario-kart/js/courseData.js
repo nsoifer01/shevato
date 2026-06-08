@@ -118,8 +118,20 @@
             else if (ca.indexOf(qc) !== -1) bump(38);
         });
 
-        if (norm(course.origin).indexOf(qn) !== -1) bump(22);
-        if ((course.cups || []).some((cup) => norm(cup).indexOf(qn) !== -1)) bump(18);
+        // Game source: substring ("ship"->Wario Shipyard already via name) plus
+        // abbreviation/initials so "mk8" finds Mario Kart 8 Deluxe tracks and
+        // "mk7" finds Mario Kart 7 tracks. `game` is the effective source game
+        // (set on load: the current game for base-game tracks, else the origin).
+        const sourceGame = course.game || course.origin;
+        const cGame = compact(sourceGame);
+        if (cGame && cGame.indexOf(qc) !== -1) bump(24);
+        if (qc.length >= 2 && initialsOf(sourceGame).startsWith(qc)) bump(30);
+
+        // Cup match (name substring or initials, e.g. "sc"->Star/Special Cup).
+        (course.cups || []).forEach((cup) => {
+            if (norm(cup).indexOf(qn) !== -1) bump(18);
+            if (qc.length >= 2 && initialsOf(cup).startsWith(qc)) bump(16);
+        });
 
         return score;
     }
@@ -216,12 +228,15 @@
             cache[gv] = { courses: [], cups: [], source: null };
             return cache[gv];
         }
-        cache[gv] = {
-            courses: flattenCourses(gameNode),
-            cups: groupByCup(gameNode),
-            source: gameNode.source || null,
-            label: gameNode.label || gv
-        };
+        const label = gameNode.label || gv;
+        const courses = flattenCourses(gameNode);
+        // Tag each course with its source game so a base-game ("new") track is
+        // still findable by the game name/abbreviation (e.g. "mk8").
+        courses.forEach((c) => {
+            c.gameKey = gv;
+            c.game = (c.origin === 'new') ? label : c.origin;
+        });
+        cache[gv] = { courses: courses, cups: groupByCup(gameNode), source: gameNode.source || null, label: label };
         return cache[gv];
     }
 
