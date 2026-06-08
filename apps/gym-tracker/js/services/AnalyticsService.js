@@ -351,8 +351,13 @@ export class AnalyticsService {
      *
      * A set is only a PR if there is at least one prior set for the
      * exercise — the first session seeds the baseline and never counts.
+     *
+     * `currentSessionPriorSets` are the earlier committed sets of the
+     * in-progress session for the same exercise. Including them prevents a
+     * second set at the same new max from re-triggering the PR already earned
+     * by the first set this session.
      */
-    static isSetPR(exerciseId, newSet, sessions) {
+    static isSetPR(exerciseId, newSet, sessions, currentSessionPriorSets = []) {
         if (!newSet) return null;
         const priorSets = [];
         sessions.forEach(s => {
@@ -362,6 +367,7 @@ export class AnalyticsService {
                 }
             });
         });
+        (currentSessionPriorSets || []).forEach(set => priorSets.push(set));
         if (priorSets.length === 0) return null;
 
         const isDuration = (newSet.duration || 0) > 0 && (newSet.weight || 0) === 0;

@@ -17,9 +17,10 @@ import { AchievementService } from './services/AchievementService.js';
 
 import { EXERCISE_DATABASE, loadExerciseDatabase } from '../data/exercises-db.js';
 import { showToast, debugLog } from './utils/helpers.js';
-import { trapModalFocus } from './utils/modal-focus.js';
+import { trapModalFocus, closeModalSafely } from './utils/modal-focus.js';
 import { mountSyncStatusPill } from './utils/sync-status.js';
 import { emit, EVENTS } from './utils/event-bus.js';
+import { sameId } from './utils/id-utils.js';
 
 class GymTrackerApp {
     constructor() {
@@ -71,6 +72,7 @@ class GymTrackerApp {
 
         // Set up event listeners
         this.setupEventListeners();
+        this.wireGlobalFab();
 
         // Initialize view controllers
         await this.initializeViews();
@@ -116,9 +118,12 @@ class GymTrackerApp {
         const modal = document.getElementById('onboarding-modal');
         if (!modal) return;
 
-        const close = () => {
-            modal.classList.remove('active');
-            modal.setAttribute('aria-hidden', 'true');
+        // Move focus OUT of the modal BEFORE it goes aria-hidden, otherwise
+        // the just-clicked CTA sits under aria-hidden and the browser logs
+        // "Blocked aria-hidden on an element because its descendant retained
+        // focus" (the R3-6 fix; closeModalSafely handles the focus shuffle).
+        const close = (restoreTo) => {
+            closeModalSafely(modal, restoreTo);
             storageService.markOnboardingSeen();
         };
 
@@ -128,10 +133,25 @@ class GymTrackerApp {
 
         document.getElementById('onboarding-dismiss')?.addEventListener('click', close, { once: true });
         document.getElementById('onboarding-skip')?.addEventListener('click', close, { once: true });
-        document.getElementById('onboarding-go-programs')?.addEventListener('click', () => {
-            close();
-            this.showView('programs');
-        }, { once: true });
+
+        const goTo = (id, view) => {
+            document.getElementById(id)?.addEventListener('click', () => {
+                close();
+                this.showView(view);
+                // The modal's body-scroll lock restores the pre-modal scroll
+                // offset on a deferred microtask as it tears down, which would
+                // otherwise land the destination view at that old offset
+                // (showView's synchronous scroll-to-top runs BEFORE the restore).
+                // Re-assert top on the next frame, after that teardown, so a CTA
+                // always lands at the top of its view. Dismiss/Skip intentionally
+                // keep the restore since they stay on the current view.
+                requestAnimationFrame(() => window.scrollTo(0, 0));
+            }, { once: true });
+        };
+        goTo('onboarding-go-programs', 'programs');
+        goTo('onboarding-go-workout', 'workout');
+        goTo('onboarding-go-calendar', 'calendar');
+        goTo('onboarding-go-settings', 'settings');
     }
 
     /**
@@ -378,7 +398,15 @@ class GymTrackerApp {
 
             e.preventDefault();
             const view = navBtn.dataset.view;
-            this.showView(view);
+            // Tapping the nav item for the view you're already on must still
+            // do something sensible rather than no-op (showView early-returns
+            // on same-view). Mobile-only "Workout" tap mid-session is the case
+            // that prompted this: re-assert + reveal the active workout.
+            if (view === this.currentView) {
+                this.reassertCurrentView(view);
+            } else {
+                this.showView(view);
+            }
         });
 
         // Empty-state CTAs across views (Dashboard, History, Workout) are
@@ -436,6 +464,15 @@ class GymTrackerApp {
             return;
         }
 
+        // Item R2-9: a leaving view may guard navigation (e.g. Settings with
+        // unsaved changes). The guard returns true to proceed now, or false to
+        // defer: it owns re-invoking showView once the user resolves its prompt.
+        const leavingCtrl = this.viewControllers[this.currentView];
+        if (leavingCtrl && typeof leavingCtrl.beforeLeave === 'function') {
+            const proceed = leavingCtrl.beforeLeave(viewName);
+            if (proceed === false) return;
+        }
+
         // Hide all views
         document.querySelectorAll('.view').forEach(view => {
             view.classList.remove('active');
@@ -478,6 +515,30 @@ class GymTrackerApp {
     }
 
     /**
+     * Re-assert the view the user is already on (tapping its own nav item).
+     * showView early-returns on same-view, so a visible nav tap would
+     * otherwise be a no-op. For 'workout' mid-session, reveal the active
+     * workout and jump to the current exercise (first incomplete); with no
+     * active workout, scroll the picker to the top. Other views just scroll
+     * to the top.
+     */
+    reassertCurrentView(viewName) {
+        if (viewName === 'workout') {
+            const workout = this.viewControllers.workout;
+            if (workout?.hasActiveWorkout()) {
+                // render() reveals the active-workout screen via the
+                // hasActiveWorkout gate; jump to the current exercise (the
+                // first incomplete one) — where the user is actually lifting.
+                // The back-to-top arrow stays the plain scroll-to-top.
+                workout.render();
+                workout.scrollToCurrentExercise();
+                return;
+            }
+        }
+        window.scrollTo({ top: 0, behavior: 'smooth' });
+    }
+
+    /**
      * Handle view change
      */
     onViewChange(viewName) {
@@ -485,6 +546,94 @@ class GymTrackerApp {
         if (this.viewControllers[viewName] && this.viewControllers[viewName].render) {
             this.viewControllers[viewName].render();
         }
+        // Keep the global floating workout button in sync on every view.
+        this.updateGlobalFab();
+    }
+
+    /**
+     * Wire the app-level floating workout button once. It lives at
+     * app-container level (not inside the dashboard view) so it persists
+     * across all views on desktop. Mobile keeps it hidden via CSS.
+     */
+    wireGlobalFab() {
+        const fab = document.getElementById('home-workout-fab');
+        if (!fab || fab.dataset.wired) return;
+        fab.addEventListener('click', () => this.handleGlobalFabClick());
+        fab.dataset.wired = '1';
+        this.updateGlobalFab();
+    }
+
+    /**
+     * Show/hide + label the global FAB based on current state:
+     *   - Hidden when there are no programs (nothing to start).
+     *   - Hidden on the active-workout screen (the user is already there).
+     *   - "Resume workout" (green) when a paused session exists.
+     *   - "Start workout" otherwise.
+     */
+    updateGlobalFab() {
+        const fab = document.getElementById('home-workout-fab');
+        if (!fab) return;
+
+        const hasPrograms = this.programs.length > 0;
+        const paused = storageService.getActiveWorkout();
+        const onActiveWorkout = this.currentView === 'workout'
+            && document.getElementById('active-workout')?.classList.contains('active');
+
+        if (!hasPrograms || onActiveWorkout) {
+            fab.hidden = true;
+            return;
+        }
+
+        fab.hidden = false;
+        const label = fab.querySelector('.workout-fab-label');
+        const icon = fab.querySelector('i');
+
+        if (paused && paused.paused) {
+            fab.classList.add('workout-fab--resume');
+            if (label) label.textContent = 'Resume workout';
+            if (icon) {
+                icon.classList.remove('fa-play');
+                icon.classList.add('fa-play-circle');
+            }
+            fab.setAttribute('aria-label', 'Resume paused workout');
+        } else {
+            fab.classList.remove('workout-fab--resume');
+            if (label) label.textContent = 'Start workout';
+            if (icon) {
+                icon.classList.remove('fa-play-circle');
+                icon.classList.add('fa-play');
+            }
+            fab.setAttribute('aria-label', 'Start workout');
+        }
+    }
+
+    /**
+     * Start or resume a workout from anywhere:
+     *   - Paused → resume the saved session.
+     *   - Exactly one program with exercises → auto-start it.
+     *   - Otherwise → route to the workout view's program picker.
+     */
+    handleGlobalFabClick() {
+        window.scrollTo(0, 0);
+        const workoutCtrl = this.viewControllers.workout;
+        const paused = storageService.getActiveWorkout();
+
+        if (paused && paused.paused) {
+            this.showView('workout');
+            setTimeout(() => workoutCtrl?.resumeWorkout(), 100);
+            return;
+        }
+
+        if (this.programs.length === 1) {
+            const only = this.programs[0];
+            if (only.exercises && only.exercises.length > 0) {
+                this.showView('workout');
+                setTimeout(() => workoutCtrl?.startWorkout(only.id), 100);
+                return;
+            }
+        }
+
+        this.showView('workout');
     }
 
     /**
@@ -601,7 +750,7 @@ class GymTrackerApp {
      * Get program by ID
      */
     getProgramById(id) {
-        return this.programs.find(p => p.id === id);
+        return this.programs.find(p => sameId(p.id, id));
     }
 
     /**

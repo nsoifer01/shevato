@@ -313,9 +313,11 @@ export function showToast(message, type = 'info', duration = 3000, opts = {}) {
 
     document.body.appendChild(toast);
 
-    // Stack toasts vertically by calculating offset based on existing toasts
+    // Stack toasts vertically by calculating offset based on existing toasts.
+    // Initial top clears the fixed site header + sticky workout header so a
+    // toast never covers the workout controls (Item R2-8).
     const existingToasts = document.querySelectorAll('.toast.show');
-    let offset = 80; // Initial top position
+    let offset = 116; // Initial top position
     existingToasts.forEach(existingToast => {
         const rect = existingToast.getBoundingClientRect();
         offset = Math.max(offset, rect.bottom + 10);
@@ -452,54 +454,124 @@ export function vibrate(duration = 50) {
  * this would fire. Users who have never tapped anything get silence.
  */
 let _audioCtx = null;
+
+/**
+ * Return a usable AudioContext, recreating it if the cached one was closed.
+ * On iOS/Android the context can transition to `closed` or `interrupted`
+ * (phone call, screen lock, audio focus loss). A `closed` context can never
+ * play again, so it must be discarded and replaced; an `interrupted` /
+ * `suspended` one only needs `resume()`. Returns null when Web Audio is
+ * unavailable (older iOS WebView).
+ */
+function getAudioContext() {
+    const Ctx = window.AudioContext || window.webkitAudioContext;
+    if (!Ctx) return null;
+    if (_audioCtx && _audioCtx.state === 'closed') {
+        _audioCtx = null;
+    }
+    if (!_audioCtx) {
+        _audioCtx = new Ctx();
+    }
+    return _audioCtx;
+}
+
+/**
+ * Emit the tones for `soundType` on `ctx`, scheduling everything relative to
+ * the context's current time. Split out so it can run either immediately or
+ * after an async `resume()` resolves.
+ */
+function emitTones(ctx, soundType) {
+    const now = ctx.currentTime;
+    const play = (freq, startAt, dur = 0.15, vol = 0.18) => {
+        const osc = ctx.createOscillator();
+        const gain = ctx.createGain();
+        osc.type = 'sine';
+        osc.frequency.value = freq;
+        // Short attack/decay envelope so it doesn't click.
+        gain.gain.setValueAtTime(0, now + startAt);
+        gain.gain.linearRampToValueAtTime(vol, now + startAt + 0.01);
+        gain.gain.linearRampToValueAtTime(0, now + startAt + dur);
+        osc.connect(gain).connect(ctx.destination);
+        osc.start(now + startAt);
+        osc.stop(now + startAt + dur + 0.02);
+    };
+
+    if (soundType === 'rest-done') {
+        play(800, 0);
+        play(1200, 0.18);
+    } else if (soundType === 'pr') {
+        play(1400, 0, 0.22, 0.22);
+        play(1800, 0.12, 0.18, 0.18);
+    } else if (soundType === 'timer-warn') {
+        // First-warning cue: a single mid sine tone, clearly distinct from
+        // the per-second square pip used for the final countdown.
+        play(1046, 0, 0.28, 0.2);
+    } else if (soundType === 'timer-low') {
+        // Brief square pip at 880 Hz (matches Arena timerLow).
+        const osc = ctx.createOscillator();
+        const gain = ctx.createGain();
+        const filt = ctx.createBiquadFilter();
+        osc.type = 'square';
+        osc.frequency.value = 880;
+        filt.type = 'lowpass';
+        filt.frequency.value = 2200;
+        gain.gain.setValueAtTime(0, now);
+        gain.gain.linearRampToValueAtTime(0.07, now + 0.005);
+        gain.gain.linearRampToValueAtTime(0, now + 0.07);
+        osc.connect(filt).connect(gain).connect(ctx.destination);
+        osc.start(now);
+        osc.stop(now + 0.09);
+    } else {
+        play(800, 0);
+    }
+}
+
 export function playSound(soundType = 'success') {
     try {
-        const Ctx = window.AudioContext || window.webkitAudioContext;
-        if (!Ctx) return;
-        if (!_audioCtx) _audioCtx = new Ctx();
-        if (_audioCtx.state === 'suspended') _audioCtx.resume();
-
-        const now = _audioCtx.currentTime;
-        const play = (freq, startAt, dur = 0.15, vol = 0.18) => {
-            const osc = _audioCtx.createOscillator();
-            const gain = _audioCtx.createGain();
-            osc.type = 'sine';
-            osc.frequency.value = freq;
-            // Short attack/decay envelope so it doesn't click.
-            gain.gain.setValueAtTime(0, now + startAt);
-            gain.gain.linearRampToValueAtTime(vol, now + startAt + 0.01);
-            gain.gain.linearRampToValueAtTime(0, now + startAt + dur);
-            osc.connect(gain).connect(_audioCtx.destination);
-            osc.start(now + startAt);
-            osc.stop(now + startAt + dur + 0.02);
-        };
-
-        if (soundType === 'rest-done') {
-            play(800, 0);
-            play(1200, 0.18);
-        } else if (soundType === 'pr') {
-            play(1400, 0, 0.22, 0.22);
-            play(1800, 0.12, 0.18, 0.18);
-        } else if (soundType === 'timer-low') {
-            // Brief square pip at 880 Hz (matches Arena timerLow).
-            const osc = _audioCtx.createOscillator();
-            const gain = _audioCtx.createGain();
-            const filt = _audioCtx.createBiquadFilter();
-            osc.type = 'square';
-            osc.frequency.value = 880;
-            filt.type = 'lowpass';
-            filt.frequency.value = 2200;
-            const now2 = _audioCtx.currentTime;
-            gain.gain.setValueAtTime(0, now2);
-            gain.gain.linearRampToValueAtTime(0.07, now2 + 0.005);
-            gain.gain.linearRampToValueAtTime(0, now2 + 0.07);
-            osc.connect(filt).connect(gain).connect(_audioCtx.destination);
-            osc.start(now2);
-            osc.stop(now2 + 0.09);
-        } else {
-            play(800, 0);
+        const ctx = getAudioContext();
+        if (!ctx) return;
+        // resume() is async; a suspended/interrupted context that isn't awaited
+        // swallows the first scheduled tone. Schedule after it resolves so the
+        // first sound following a suspension still plays. currentTime advances
+        // once resumed, so emitTones reads it fresh inside the callback.
+        if (ctx.state !== 'running' && typeof ctx.resume === 'function') {
+            const resumed = ctx.resume();
+            if (resumed && typeof resumed.then === 'function') {
+                resumed.then(() => emitTones(ctx, soundType)).catch(() => {});
+                return;
+            }
         }
+        emitTones(ctx, soundType);
     } catch {
         // Intentionally swallow — audio is a nice-to-have, never critical.
     }
+}
+
+/**
+ * Proactively recover the audio context when the tab/app returns to the
+ * foreground. Mobile browsers suspend or interrupt the context while
+ * backgrounded; resuming on `visibilitychange` means the next timer/PR
+ * sound during a workout isn't lost. Safe to call when Web Audio is
+ * unavailable (no-ops).
+ */
+export function resumeAudioContext() {
+    try {
+        // Only RESUME an already-created context — never create one here.
+        // getAudioContext() lazily news up a context, and this runs from the
+        // visibilitychange listener (no user gesture), which makes Chrome log
+        // "The AudioContext was not allowed to start...". The context is
+        // created on the first real sound during a workout (a user gesture).
+        const ctx = _audioCtx;
+        if (ctx && ctx.state !== 'closed' && ctx.state !== 'running' && typeof ctx.resume === 'function') {
+            ctx.resume().catch(() => {});
+        }
+    } catch {
+        // no-op
+    }
+}
+
+if (typeof document !== 'undefined' && typeof document.addEventListener === 'function') {
+    document.addEventListener('visibilitychange', () => {
+        if (document.visibilityState === 'visible') resumeAudioContext();
+    });
 }

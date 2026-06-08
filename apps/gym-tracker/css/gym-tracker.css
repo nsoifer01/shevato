@@ -895,6 +895,17 @@ body.gym-tracker #footer {
     font-size: 0.9rem;
 }
 
+/* Feature A: program tile schedule line — muted secondary, wraps with 7 days
+   so it never overflows a narrow tile. */
+.program-stats .stat.program-schedule-stat {
+    color: var(--text-secondary);
+    flex-wrap: wrap;
+    min-width: 0;
+}
+.program-stats .stat.program-schedule-stat i {
+    color: var(--text-secondary);
+}
+
 /* History card metric row — tabular numbers + muted icon so stats scan fast */
 #history-list .workout-card-stats {
     gap: 0.9rem 1.1rem;
@@ -1653,6 +1664,35 @@ body.modal-open {
                 0 3px 10px rgba(34, 197, 94, 0.35) !important;
 }
 
+/* Two-row workout header on narrow screens.
+   At full width the six header controls (end + unit toggle + plate/edit/pause/
+   finish) plus the program name + timer don't fit on one row; .workout-info
+   collapsed to 0 and the timer overlapped the unit toggle. Below 640px we wrap
+   into two rows: row 1 = end button + info (name + timer, left-aligned),
+   row 2 = the full action cluster. */
+@media (max-width: 640px) {
+    .workout-header {
+        flex-wrap: wrap;
+        align-items: center;
+        row-gap: 0.5rem;
+    }
+
+    .workout-info {
+        /* Sit next to the end button on row 1, take the remaining width. */
+        flex: 1 1 auto;
+        align-items: flex-start;
+        text-align: left;
+    }
+
+    .workout-header-actions {
+        /* Force onto its own row, right-aligned, allowed to wrap if even this
+           row runs out of room on the very narrowest devices. */
+        flex: 1 0 100%;
+        flex-wrap: wrap;
+        justify-content: flex-end;
+    }
+}
+
 /* Mobile adjustments for workout header */
 @media (max-width: 400px) {
     .workout-header {
@@ -1722,6 +1762,17 @@ body.modal-open {
     padding-bottom: 90px; /* Extra space for bottom nav on mobile */
 }
 
+/* #17: when the between-exercise rest bar is visible on mobile it sits fixed
+   above the nav and would otherwise cover the last exercise's sets / Add-set /
+   finish row. Reserve room so the last actionable row clears the bar when
+   scrolled to the bottom. Sized for the slim bar (~44px) + its 12px gap above
+   the nav + the existing nav clearance, plus breathing room. */
+@media (max-width: 767px) {
+    body.gt-rest-bar-visible .workout-content {
+        padding-bottom: 168px;
+    }
+}
+
 /* Ensure exercise cards don't scroll behind the taller sticky header
    (site header ~52px + workout header ~80px + margin ≈ 140px).
    scroll-margin-top applies on scrollIntoView(); the scroll-padding-top
@@ -1769,6 +1820,70 @@ body.gym-tracker #active-workout .superset-block {
 @keyframes rest-bar-in {
     from { opacity: 0; transform: translate(-50%, 16px) scale(0.97); }
     to   { opacity: 1; transform: translate(-50%, 0) scale(1); }
+}
+
+/* On mobile the rest bar anchors LEFT and stops its right edge clear of the
+   back-to-top arrow (44px circle at right: 1.25rem), leaving a corner pocket so
+   the arrow can sit low beside it instead of being pushed above it. The right
+   inset = arrow right-offset (1.25rem) + arrow width (44px) + a gap (0.75rem),
+   so the bar never touches the arrow circle. The default rest-bar-in keyframe
+   translates by -50% and would yank this now-left-anchored bar off-screen, so
+   the mobile rule uses rest-bar-in-mobile (no translateX) instead. */
+@media (max-width: 767px) {
+    body.gym-tracker .rest-timer-bar {
+        left: 0.5rem;
+        right: calc(1.25rem + 44px + 0.75rem + env(safe-area-inset-right, 0px));
+        transform: none;
+        width: auto;
+        max-width: none;
+        animation-name: rest-bar-in-mobile;
+        /* #17: slim strip just above the nav. Slimmer bar -> tighter gap.
+           Right inset (arrow pocket) is intentionally unchanged. */
+        bottom: calc(var(--bottom-nav-height, 64px) + env(safe-area-inset-bottom, 0px) + 12px);
+        border-radius: 12px;
+        box-shadow:
+            0 1px 0 rgba(255, 255, 255, 0.06) inset,
+            0 6px 18px rgba(0, 0, 0, 0.5);
+    }
+
+    /* #17: condense the inner layout into a slim strip. */
+    body.gym-tracker .rest-timer-bar-inner {
+        gap: 0.55rem;
+        padding: 0.4rem 0.55rem 0.5rem;
+    }
+    body.gym-tracker .rest-timer-info {
+        gap: 0.4rem;
+        font-size: 0.8rem;
+    }
+    body.gym-tracker .rest-timer-info i {
+        width: 18px;
+        height: 18px;
+        font-size: 0.8rem;
+    }
+    body.gym-tracker .rest-timer-label {
+        font-size: 0.58rem;
+    }
+    body.gym-tracker .rest-timer-value {
+        font-size: 1.1rem;
+        padding-left: 0.2rem;
+    }
+    body.gym-tracker .rest-timer-actions {
+        gap: 0.3rem;
+    }
+    body.gym-tracker .rest-timer-action-btn {
+        height: 30px;
+        min-width: 44px;
+        padding: 0 0.6rem;
+        font-size: 0.74rem;
+    }
+    body.gym-tracker .rest-timer-progress {
+        height: 3px;
+    }
+}
+
+@keyframes rest-bar-in-mobile {
+    from { opacity: 0; transform: translateY(16px) scale(0.97); }
+    to   { opacity: 1; transform: none; }
 }
 
 .rest-timer-bar.rest-timer-done {
@@ -1967,7 +2082,9 @@ body.gym-tracker #active-workout .superset-block {
     .rest-countdown-chip.rest-countdown-chip--urgent { animation: none; }
 }
 
-/* In-card rest countdown chip — dominant timer element in the rest row. */
+/* In-card rest countdown chip — dominant timer element in the rest row.
+   Item R2-3: one element, two states. Active (default below) is the live
+   colored countdown; --idle is the static gray between-set duration. */
 .rest-countdown-chip {
     display: inline-flex;
     align-items: center;
@@ -1980,6 +2097,14 @@ body.gym-tracker #active-workout .superset-block {
     border-radius: 999px;
     padding: 0.3rem 0.9rem;
     line-height: 1.4;
+}
+
+/* Idle: static gray duration, same size/position as the active countdown. */
+body.gym-tracker .rest-countdown-chip.rest-countdown-chip--idle {
+    color: var(--gt-muted);
+    background: rgba(255, 255, 255, 0.05);
+    border-color: rgba(255, 255, 255, 0.12);
+    animation: none;
 }
 
 /* Plate-hints toggle button — same sizing as other header btn-icons. */
@@ -3195,26 +3320,62 @@ body.gym-tracker #active-workout .superset-block {
 }
 
 /* Toast Notifications */
+/* Item R2-2/R2-8: the toast container is always pointer-transparent so an
+   empty (or finished) toast never blocks taps on the back-to-top arrow or
+   any control beneath it. */
+#toast-container {
+    pointer-events: none;
+}
+
+/* Item R2-8: restyled toast — design-system card surface, border, subtle
+   slide/fade. Non-interactive by default so it never intercepts taps; only
+   the optional action button re-enables pointer events. */
 .toast {
     position: fixed;
-    top: 80px;
-    right: 20px;
+    /* Sit clear of the fixed site header + the sticky workout header so a
+       toast never covers the workout controls (Item R2-8). */
+    top: 116px;
+    right: 16px;
+    display: flex;
+    align-items: center;
+    gap: var(--spacing-md);
     background: var(--bg-card);
     color: var(--text-primary);
-    padding: var(--spacing-md) var(--spacing-lg);
+    padding: 0.7rem 1rem;
     border-radius: var(--radius-lg);
+    border: 1px solid var(--border-color);
+    border-left: 4px solid var(--accent-primary);
     box-shadow: var(--shadow-xl);
     z-index: 10100;
     opacity: 0;
-    transform: translateX(400px);
-    transition: all var(--transition-slow);
-    border-left: 4px solid var(--accent-primary);
-    max-width: 400px;
+    transform: translateY(-12px);
+    transition: opacity var(--transition-base), transform var(--transition-base);
+    max-width: min(360px, calc(100vw - 32px));
+    font-size: 0.9rem;
+    line-height: 1.4;
+    pointer-events: none;
+}
+
+.toast .toast-message {
+    font-variant-numeric: tabular-nums;
+}
+
+/* On mobile the workout header wraps to two rows and is taller, so the toast
+   sits lower to never cover its controls (Item R2-8). The JS-set inline `top`
+   only widens the initial offset; pin it lower here with !important so a toast
+   never lands on the header buttons. */
+@media (max-width: 600px) {
+    body.gym-tracker .toast {
+        top: 192px !important;
+        left: 16px;
+        right: 16px;
+        max-width: none;
+    }
 }
 
 .toast.show {
     opacity: 1;
-    transform: translateX(0);
+    transform: translateY(0);
 }
 
 .toast.toast-success {
@@ -3237,6 +3398,7 @@ body.gym-tracker #active-workout .superset-block {
 
 .toast .toast-action {
     flex-shrink: 0;
+    pointer-events: auto;
     background: transparent;
     color: var(--accent-primary);
     border: 1px solid var(--accent-primary);
@@ -6955,11 +7117,11 @@ button.calendar-day {
     transition: all 0.2s ease;
 }
 
-.quick-program-item[onclick] {
+.quick-program-item[data-action] {
     cursor: pointer;
 }
 
-.quick-program-item[onclick]:hover {
+.quick-program-item[data-action]:hover {
     background: var(--bg-hover);
     border-color: var(--accent-primary);
     transform: translateX(4px);
@@ -8007,7 +8169,109 @@ button.calendar-day {
  * First-run onboarding modal
  * ============================================================ */
 .onboarding-modal-content {
-    max-width: 460px;
+    max-width: 560px;
+    display: flex;
+    flex-direction: column;
+    max-height: 88vh;
+}
+
+/* Scrollable body — header + footer stay fixed outside the scroll. */
+.onboarding-body {
+    overflow-y: auto;
+    max-height: 70vh;
+    flex: 1 1 auto;
+}
+
+.onboarding-intro {
+    margin: 0 0 var(--spacing-md) 0;
+    color: var(--text-secondary);
+    font-size: 0.9rem;
+    line-height: 1.5;
+}
+
+.onboarding-section {
+    margin-bottom: var(--spacing-lg);
+}
+
+.onboarding-section:last-child {
+    margin-bottom: 0;
+}
+
+.onboarding-section-title {
+    margin: 0 0 var(--spacing-sm) 0;
+    font-size: 0.8rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: var(--accent-primary);
+}
+
+.onboarding-items {
+    list-style: none;
+    padding: 0;
+    margin: 0;
+    display: flex;
+    flex-direction: column;
+    gap: var(--spacing-sm);
+}
+
+.onboarding-item {
+    display: flex;
+    align-items: flex-start;
+    gap: var(--spacing-md);
+    padding: var(--spacing-md);
+    background: var(--bg-tertiary);
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-md);
+}
+
+.onboarding-item-icon {
+    flex: 0 0 auto;
+    width: 32px;
+    height: 32px;
+    border-radius: 50%;
+    background: var(--gradient-primary);
+    color: white;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 0.9rem;
+}
+
+.onboarding-item-body {
+    flex: 1 1 auto;
+    min-width: 0;
+}
+
+.onboarding-item-title {
+    font-weight: 600;
+    color: var(--text-primary);
+    margin: 0 0 2px 0;
+    font-size: 0.95rem;
+}
+
+.onboarding-item-desc {
+    font-size: 0.82rem;
+    color: var(--text-secondary);
+    margin: 0;
+    line-height: 1.45;
+}
+
+.onboarding-item-cta {
+    flex: 0 0 auto;
+    align-self: center;
+}
+
+@media (max-width: 767px) {
+    .onboarding-body {
+        max-height: 68vh;
+    }
+    .onboarding-item {
+        gap: var(--spacing-sm);
+    }
+    .onboarding-item-cta {
+        align-self: flex-start;
+    }
 }
 
 .onboarding-steps {
@@ -9171,6 +9435,26 @@ button.calendar-day {
 }
 
 /* Summary stat grid */
+/* Item R2-8: inline "log a set first" message inside the finish modal. */
+.finish-inline-message {
+    display: flex;
+    align-items: center;
+    gap: 0.6rem;
+    margin-bottom: var(--spacing-md);
+    padding: 0.75rem 0.9rem;
+    border-radius: var(--radius-md);
+    background: rgba(245, 158, 11, 0.12);
+    border: 1px solid rgba(245, 158, 11, 0.4);
+    color: var(--text-primary);
+    font-size: 0.9rem;
+    line-height: 1.4;
+}
+.finish-inline-message i {
+    color: #f59e0b;
+    font-size: 1.05rem;
+    flex-shrink: 0;
+}
+
 .workout-summary {
     display: grid;
     grid-template-columns: repeat(3, 1fr);
@@ -9495,3 +9779,540 @@ button.calendar-day {
     outline-offset: 2px;
 }
 
+
+/* On mobile the back-to-top arrow tucks LOW, hugging just above the fixed
+   bottom-nav band, in ONE fixed position for every view and every state. It
+   reads like the desktop corner button, but referenced to the nav top instead
+   of the screen bottom. The arrow no longer lifts when the between-exercise
+   rest bar appears: the rest bar is narrowed on mobile (see .rest-timer-bar
+   override) to leave a right-corner pocket, so the two sit side by side, both
+   low, rather than stacked.
+
+   The tuck offset above --bottom-nav-height is chosen so the arrow's 44px
+   circle clears the nav's top edge by a real ~16-20px gap at 390x844 (the nav
+   renders ~2px taller than the 64px variable, so the gap runs slightly tight
+   of the nominal value). The arrow's `bottom` is intentionally NOT pinned
+   !important sitewide, so this gym-scoped override wins; other apps/pages are
+   untouched. Desktop (no bottom-nav) keeps the sitewide corner position. */
+@media (max-width: 767px) {
+    body.gym-tracker .back-to-top {
+        bottom: calc(var(--bottom-nav-height, 64px) + env(safe-area-inset-bottom, 0px) + 1.25rem);
+    }
+}
+
+/* ============================================================
+   Wave 2 additions (Items 3, 4, 5, 7, 8, 9)
+   New interactive elements pin their own hover/focus colors so the
+   sitewide button:hover red can't bleed in.
+   ============================================================ */
+
+/* Item 3: Edit-program header button — purple/secondary accent. */
+.workout-header .btn-icon-edit-program {
+    background: rgba(108, 99, 255, 0.10) !important;
+    border-color: rgba(108, 99, 255, 0.30) !important;
+    color: #8b85ff !important;
+}
+.workout-header .btn-icon-edit-program:hover,
+.workout-header .btn-icon-edit-program:focus-visible {
+    background: rgba(108, 99, 255, 0.20) !important;
+    border-color: rgba(108, 99, 255, 0.55) !important;
+    color: #a39dff !important;
+}
+
+/* Item 8: per-session unit toggle (kg | lbs) in the workout header. */
+.workout-unit-toggle {
+    display: inline-flex;
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-md);
+    overflow: hidden;
+    background: var(--bg-elevated);
+    height: 44px;
+}
+.workout-unit-btn {
+    appearance: none;
+    border: 0;
+    background: transparent;
+    color: var(--text-secondary);
+    font: inherit;
+    font-weight: 600;
+    font-size: 0.85rem;
+    padding: 0 0.7rem;
+    min-width: 40px;
+    cursor: pointer;
+    transition: background var(--transition-base), color var(--transition-base);
+}
+.workout-unit-btn + .workout-unit-btn {
+    border-left: 1px solid var(--border-color);
+}
+.workout-unit-btn:hover {
+    background: var(--bg-hover);
+    color: var(--text-primary);
+}
+.workout-unit-btn.is-active {
+    background: #6c63ff;
+    color: #ffffff;
+}
+.workout-unit-btn.is-active:hover {
+    background: #5b53e6;
+    color: #ffffff;
+}
+.workout-unit-btn:focus-visible {
+    outline: none;
+    box-shadow: inset 0 0 0 2px rgba(108, 99, 255, 0.55);
+}
+
+/* Item 4: Return-to-workout button in the program editor footer. */
+.btn.btn-return-workout {
+    background: linear-gradient(135deg, #22c55e 0%, #16a34a 100%);
+    border: 1px solid transparent;
+    color: #ffffff;
+    box-shadow: 0 3px 10px rgba(34, 197, 94, 0.3);
+}
+.btn.btn-return-workout:hover,
+.btn.btn-return-workout:focus-visible {
+    background: linear-gradient(135deg, #22c55e 0%, #16a34a 100%);
+    border-color: transparent;
+    color: #ffffff;
+    filter: brightness(1.07);
+    box-shadow: 0 5px 14px rgba(34, 197, 94, 0.45);
+}
+
+/* Item 5: Leave-workout modal primary action. */
+.btn.btn-leave-workout {
+    background: rgba(251, 191, 36, 0.14);
+    border: 1px solid rgba(251, 191, 36, 0.5);
+    color: #f0b429;
+}
+.btn.btn-leave-workout:hover,
+.btn.btn-leave-workout:focus-visible {
+    background: rgba(251, 191, 36, 0.24);
+    border-color: rgba(251, 191, 36, 0.7);
+    color: #fbbf24;
+}
+
+/* Item R3-4: the chosen-feel toggle icon on the exercise header. Colors are
+   pinned with !important to defeat the sitewide main.css `button` color/hover
+   rules. Tapping cycles good -> bad -> none. */
+.feel-toggle {
+    appearance: none;
+    border: none;
+    background: transparent;
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    margin-left: 0.4rem;
+    padding: 0;
+    font-size: 0.95em;
+    vertical-align: middle;
+    line-height: 1;
+    box-shadow: none !important;
+    transition: color var(--transition-base), transform var(--transition-base);
+}
+/* Pin on BOTH the button and its <i>: main.css `button { color:#555 !important }`
+   does not reach the <i> directly, but raising specificity on the icon keeps
+   the green reliable regardless of inheritance order. */
+.feel-toggle-good,
+.feel-toggle-good i { color: #22c55e !important; }
+.feel-toggle-good:hover,
+.feel-toggle-good:focus-visible,
+.feel-toggle-good:hover i,
+.feel-toggle-good:focus-visible i { color: #16a34a !important; }
+.feel-toggle-good:hover,
+.feel-toggle-good:focus-visible { transform: scale(1.1); }
+.feel-toggle:focus-visible { outline: none; }
+
+/* Item 7: last-feel icon next to the exercise name. */
+.feel-history {
+    display: inline-flex;
+    align-items: center;
+    margin-left: 0.4rem;
+    font-size: 0.9em;
+    vertical-align: middle;
+}
+/* !important + the <i> target so the sitewide main.css `h3 { color:#555 }`
+   inheritance (the history icon lives inside the exercise-header <h3>) cannot
+   wash the smiley back to gray. Good stays green. */
+.feel-history-good,
+.feel-history-good i { color: #22c55e !important; }
+
+/* Item R3-4: the feel picker modal. The intro copy + the single "Felt good"
+   icon button (the only choice) + "Not yet". */
+.feel-intro-lead {
+    margin: 0 0 var(--spacing-md);
+    color: var(--text-secondary);
+    text-align: center;
+}
+.feel-modal-choices {
+    display: flex;
+    gap: 1rem;
+    justify-content: center;
+}
+/* Pinned colors with !important to defeat the sitewide button color/hover. */
+.feel-modal-btn {
+    appearance: none;
+    flex: 1 1 0;
+    max-width: 160px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 1rem 0.75rem;
+    border-radius: var(--radius-lg);
+    border: 1.5px solid transparent;
+    cursor: pointer;
+    font-size: 2.2rem;
+    box-shadow: none !important;
+    transition: background var(--transition-base), border-color var(--transition-base),
+                color var(--transition-base), transform var(--transition-base);
+}
+.feel-modal-btn-label {
+    font-size: 0.85rem;
+    font-weight: 600;
+}
+.feel-modal-btn-good {
+    background: rgba(34, 197, 94, 0.12);
+    border-color: rgba(34, 197, 94, 0.5);
+    color: #22c55e !important;
+}
+.feel-modal-btn-good i { color: #22c55e !important; }
+.feel-modal-btn-good:hover,
+.feel-modal-btn-good:focus-visible {
+    background: rgba(34, 197, 94, 0.22);
+    border-color: rgba(34, 197, 94, 0.8);
+    color: #16a34a !important;
+    transform: translateY(-2px);
+}
+.feel-modal-btn-good:hover i,
+.feel-modal-btn-good:focus-visible i { color: #16a34a !important; }
+.feel-modal-btn:focus-visible { outline: none; }
+
+/* Item 9: weekday chips in the program editor. */
+.program-schedule-days {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.4rem;
+    margin-top: 0.35rem;
+}
+.schedule-day-chip {
+    appearance: none;
+    border: 1px solid var(--border-color);
+    background: var(--bg-elevated);
+    color: var(--text-secondary);
+    font: inherit;
+    font-size: 0.82rem;
+    font-weight: 600;
+    padding: 0.35rem 0.6rem;
+    border-radius: var(--radius-md);
+    cursor: pointer;
+    transition: background var(--transition-base), border-color var(--transition-base),
+                color var(--transition-base);
+}
+.schedule-day-chip:hover {
+    background: var(--bg-hover);
+    border-color: var(--border-light);
+    color: var(--text-primary);
+}
+.schedule-day-chip.is-on {
+    background: #6c63ff;
+    border-color: #6c63ff;
+    color: #ffffff;
+}
+.schedule-day-chip.is-on:hover {
+    background: #5b53e6;
+    border-color: #5b53e6;
+    color: #ffffff;
+}
+.schedule-day-chip:focus-visible {
+    outline: none;
+    box-shadow: 0 0 0 3px rgba(108, 99, 255, 0.35);
+}
+.program-schedule-label {
+    display: block;
+    font-size: 0.85rem;
+    font-weight: 600;
+    color: var(--text-secondary);
+    margin-bottom: 0.2rem;
+}
+
+/* Item 9: calendar schedule marker (distinct from the workout dot/PR star).
+   Positioned bottom-left to avoid overlapping the day number (top-right),
+   PR star (top-left) and workout dot (bottom-center). */
+.calendar-day-schedule {
+    position: absolute;
+    bottom: 0.3rem;
+    left: 0.35rem;
+    font-size: 0.55rem;
+    color: #8b85ff;
+    opacity: 0.85;
+    pointer-events: none;
+}
+.calendar-day.selected .calendar-day-schedule,
+.calendar-day.today .calendar-day-schedule {
+    color: #b9b4ff;
+}
+.calendar-scheduled-list {
+    display: flex;
+    flex-direction: column;
+    gap: 0.35rem;
+    margin: 0.5rem 0;
+}
+.calendar-scheduled-item {
+    display: flex;
+    align-items: center;
+    gap: 0.45rem;
+    font-size: 0.85rem;
+    color: var(--text-secondary);
+    padding: 0.4rem 0.55rem;
+    border: 1px dashed rgba(108, 99, 255, 0.4);
+    border-radius: var(--radius-md);
+    background: rgba(108, 99, 255, 0.07);
+}
+.calendar-scheduled-item i { color: #8b85ff; }
+.legend-schedule-cue { color: #8b85ff; }
+
+/* ============================================================
+   Round 2 Wave B additions
+   ============================================================ */
+
+/* Item R2-6: week strip on the workout selection screen. */
+.week-strip {
+    margin: 0 0 1.25rem;
+    padding: 0.85rem;
+    background: var(--bg-card);
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-lg);
+}
+.week-strip-grid {
+    display: grid;
+    grid-template-columns: repeat(7, 1fr);
+    gap: 0.4rem;
+}
+.week-strip-day {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 0.35rem;
+    min-width: 0;
+    padding: 0.4rem 0.25rem;
+    border-radius: var(--radius-md);
+    background: rgba(255, 255, 255, 0.02);
+    border: 1px solid transparent;
+}
+.week-strip-day.is-today {
+    background: rgba(108, 99, 255, 0.12);
+    border-color: rgba(108, 99, 255, 0.45);
+}
+.week-strip-label {
+    font-size: 0.7rem;
+    font-weight: 700;
+    letter-spacing: 0.03em;
+    text-transform: uppercase;
+    color: var(--text-secondary);
+}
+.week-strip-day.is-today .week-strip-label { color: #b3adff; }
+.week-strip-entries {
+    display: flex;
+    flex-direction: column;
+    gap: 0.25rem;
+    width: 100%;
+    align-items: center;
+    min-height: 1.1rem;
+}
+.week-strip-empty { color: var(--text-muted, #666); font-size: 0.85rem; }
+.week-strip-program {
+    display: flex;
+    align-items: center;
+    gap: 0.25rem;
+    max-width: 100%;
+    padding: 0.2rem 0.3rem;
+    border: none;
+    border-radius: var(--radius-sm, 6px);
+    background: rgba(108, 99, 255, 0.10) !important;
+    color: var(--text-primary) !important;
+    cursor: pointer;
+    font-size: 0.66rem;
+    line-height: 1.1;
+    transition: background var(--transition-fast);
+}
+.week-strip-program:hover {
+    background: rgba(108, 99, 255, 0.22) !important;
+    color: var(--text-primary) !important;
+}
+.week-strip-program:focus-visible {
+    outline: 2px solid var(--accent-primary);
+    outline-offset: 1px;
+}
+.week-strip-day.is-today .week-strip-program {
+    background: rgba(108, 99, 255, 0.28) !important;
+    font-weight: 600;
+}
+.week-strip-day.is-today .week-strip-program:hover {
+    background: rgba(108, 99, 255, 0.4) !important;
+}
+.week-strip-dot {
+    flex: 0 0 auto;
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: #8b85ff;
+}
+.week-strip-program-name {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+/* Item R2-9: unsaved-settings guard modal. Pin button colors so the sitewide
+   button:hover red cannot bleed into these controls. */
+.unsaved-settings-actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: var(--spacing-sm);
+    padding: var(--spacing-md) var(--spacing-lg);
+}
+#unsaved-settings-save,
+#unsaved-settings-save:hover,
+#unsaved-settings-save:focus {
+    background: var(--accent-primary) !important;
+    color: #ffffff !important;
+}
+#unsaved-settings-save:hover { filter: brightness(1.08); }
+#unsaved-settings-discard:hover,
+#unsaved-settings-discard:focus {
+    color: var(--text-primary) !important;
+    background: var(--bg-hover) !important;
+}
+
+/* Item R2-9: settings save control in a sticky header bar, always visible
+   while the settings form scrolls under it. Mirrors the workout header's
+   offset so it sits fully below the fixed site header. */
+.settings-view-header {
+    position: sticky;
+    top: 3.25rem;
+    z-index: 100;
+    display: flex;
+    flex-direction: column;
+    align-items: stretch;
+    gap: 0.6rem;
+    margin-bottom: var(--spacing-lg);
+    padding: 0.7rem 0.85rem;
+    background: var(--bg-card);
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-lg);
+}
+/* Solid bright title inside the card-surfaced sticky header (the sitewide
+   gradient-clip h1 has too little contrast on the card background). */
+.settings-view-header h1 {
+    background: none !important;
+    -webkit-background-clip: border-box !important;
+    background-clip: border-box !important;
+    -webkit-text-fill-color: #ffffff !important;
+    color: #ffffff !important;
+    font-size: 1.5rem !important;
+    line-height: 1.2;
+}
+@media (min-width: 768px) {
+    .settings-view-header h1 { font-size: 1.85rem !important; }
+}
+.settings-view-header .btn-save-settings {
+    margin: 0;
+    white-space: nowrap;
+    width: 100%;
+    justify-content: center;
+}
+/* Desktop: title and Save on one row. */
+@media (min-width: 768px) {
+    .settings-view-header {
+        flex-direction: row;
+        justify-content: space-between;
+        align-items: center;
+        gap: var(--spacing-md);
+        padding: 0.65rem 0.85rem;
+    }
+    .settings-view-header .btn-save-settings {
+        width: auto;
+        flex: 0 0 auto;
+    }
+}
+
+/* Item R2-7: mid-workout program editor sticky header action bar. */
+.program-modal-workout-actions {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    flex-wrap: wrap;
+}
+.program-modal-workout-actions[hidden] { display: none; }
+.program-modal-workout-actions .btn { white-space: nowrap; }
+
+/* In workout mode: pin the header to the top of the scrolling modal content,
+   hide the footer save/return cluster and the corner X (the two header actions
+   are the only controls). */
+#program-modal.program-editor-workout-mode .program-modal-header {
+    position: sticky;
+    top: 0;
+    z-index: 5;
+    background: var(--bg-secondary);
+    border-bottom: 1px solid var(--border-color);
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.35);
+}
+#program-modal.program-editor-workout-mode .modal-close {
+    display: none;
+}
+#program-modal.program-editor-workout-mode .program-form-actions {
+    display: none;
+}
+/* Pin the header action button colors so the sitewide button red can't bleed. */
+#program-modal-save-resume,
+#program-modal-save-resume:hover,
+#program-modal-save-resume:focus {
+    background: var(--accent-primary) !important;
+    color: #ffffff !important;
+}
+#program-modal-save-resume:hover {
+    filter: brightness(1.08);
+}
+#program-modal-cancel-workout:hover,
+#program-modal-cancel-workout:focus {
+    color: var(--text-primary) !important;
+    background: var(--bg-hover) !important;
+}
+
+/* Feature B: normal create/edit mode also pins Save + Cancel in a sticky
+   header at the top of the scrolling modal. Mirrors the R2-7 workout-mode
+   layout for normal entry. */
+.program-modal-normal-actions {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    flex-wrap: wrap;
+}
+.program-modal-normal-actions[hidden] { display: none; }
+.program-modal-normal-actions .btn { white-space: nowrap; }
+
+/* Pin the header in normal mode too (the R2-7 rule only stickies workout mode).
+   Both modes now use the header for actions, so the header is always sticky. */
+#program-modal .program-modal-header {
+    position: sticky;
+    top: 0;
+    z-index: 5;
+    background: var(--bg-secondary);
+    border-bottom: 1px solid var(--border-color);
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.35);
+}
+
+/* The bottom form actions are now redundant in both modes — the header carries
+   Save + Cancel. Hide the footer cluster for this modal entirely. */
+#program-modal .program-form-actions {
+    display: none;
+}
+
+/* Pin the header Save button accent color against the sitewide red button bleed
+   (mirrors #program-modal-save-resume). .btn-save-program already gets the
+   primary gradient, but assert it here in the header context too. */
+.program-modal-normal-actions .btn-save-program,
+.program-modal-normal-actions .btn-save-program:hover,
+.program-modal-normal-actions .btn-save-program:focus {
+    background: var(--gradient-primary) !important;
+    color: #ffffff !important;
+}

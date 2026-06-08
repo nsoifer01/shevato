@@ -25,6 +25,13 @@ export class WorkoutSession {
         this.maxHeartRate = data.maxHeartRate || null;
         this.caloriesBurned = data.caloriesBurned || null;
 
+        // Temporary per-session weight unit (Item 8). Display + entry unit for
+        // THIS workout only; canonical Set weights stay in the account unit.
+        // null means "follow the account unit". Survives pause/resume via JSON.
+        this.sessionUnit = data.sessionUnit === 'kg' || data.sessionUnit === 'lb'
+            ? data.sessionUnit
+            : null;
+
         // Pause/Resume state
         this.paused = data.paused || false;
         this.pausedAt = data.pausedAt || null;
@@ -102,6 +109,7 @@ export class WorkoutSession {
             avgHeartRate: this.avgHeartRate,
             maxHeartRate: this.maxHeartRate,
             caloriesBurned: this.caloriesBurned,
+            sessionUnit: this.sessionUnit,
             paused: this.paused,
             pausedAt: this.pausedAt,
             elapsedBeforePause: this.elapsedBeforePause,
