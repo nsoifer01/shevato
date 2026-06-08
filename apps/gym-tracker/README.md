@@ -159,9 +159,9 @@ The app is optimized for mobile use during workouts:
 ## Dark Theme
 
 Designed for gym environments with low lighting:
-- Deep dark backgrounds (#0f0f23)
-- High contrast text
-- Purple accent colors (#6c63ff)
+- Deep dark backgrounds (#0a0c14)
+- High contrast text in the Inter typeface
+- Azure-blue accent colors (#5b9bff / #2563eb), with emerald reserved for success/PR cues
 - Reduced eye strain
 - OLED-friendly (true blacks)
 

@@ -1,35 +1,36 @@
 /* Gym Tracker - Dark Theme Complete Styling */
 
 :root {
-    /* Dark Theme Colors — 3-layer elevation system */
-    --bg-primary: #0a0a1c;   /* L0: page background (darkest) */
-    --bg-secondary: #1a1a2e; /* container / modal surface */
-    --bg-tertiary: #16213e;  /* form inputs (blue-tinted, separate hue) */
-    --bg-card: #262651;      /* L1: elevated cards */
-    --bg-elevated: #323266;  /* L2: rows sitting on cards */
-    --bg-hover: #3f3f7a;     /* hover state (clearly lighter) */
+    /* Dark Theme Colors — neutral-dark elevation system (unified with the
+       refresh.css --gt-* layer; the old purple-tinted surfaces are retired). */
+    --bg-primary: #0a0c14;   /* L0: page background (darkest) */
+    --bg-secondary: #12151d; /* container / modal surface */
+    --bg-tertiary: #161b25;  /* form inputs */
+    --bg-card: #181c26;      /* L1: elevated cards */
+    --bg-elevated: #232836;  /* L2: rows sitting on cards */
+    --bg-hover: #2c3242;     /* hover state (clearly lighter) */
 
-    /* Accent Colors */
-    --accent-primary: #6c63ff;
-    --accent-secondary: #5a52d5;
-    --accent-success: #00d9a3;
-    --accent-warning: #ffa500;
-    --accent-error: #ff5252;
-    --accent-info: #00b4d8;
+    /* Accent Colors — modern azure (replaces the indigo/violet accent) */
+    --accent-primary: #5b9bff;   /* bright azure: icons, borders, accent text on dark */
+    --accent-secondary: #2563eb; /* deep blue: gradient ends, strong fills */
+    --accent-success: #34d399;
+    --accent-warning: #fbbf24;
+    --accent-error: #f87171;
+    --accent-info: #38bdf8;
 
     /* Text Colors */
     --text-primary: #ffffff;
-    --text-secondary: #b8b8d1;
-    --text-muted: #a8a8c8;
-    --text-disabled: #555570;
+    --text-secondary: #a4adbd;
+    --text-muted: #8b93a4;
+    --text-disabled: #5b6373;
 
     /* Border Colors */
-    --border-color: #3a3a5e;
-    --border-light: #4a4a75;
+    --border-color: #232838;
+    --border-light: #343a4f;
 
-    /* Gradients */
-    --gradient-primary: linear-gradient(135deg, #6c63ff 0%, #5a52d5 100%);
-    --gradient-success: linear-gradient(135deg, #00d9a3 0%, #00b386 100%);
+    /* Gradients — deep azure so white button text stays legible */
+    --gradient-primary: linear-gradient(135deg, #3b82f6 0%, #2563eb 100%);
+    --gradient-success: linear-gradient(135deg, #34d399 0%, #10b981 100%);
 
     /* Spacing */
     --spacing-xs: 0.25rem;
@@ -137,7 +138,7 @@ body.gym-tracker #footer {
     background-image:
         linear-gradient(to right,
             transparent 0%,
-            rgba(108, 99, 255, 0.35) 50%,
+            rgba(91, 155, 255, 0.35) 50%,
             transparent 100%);
     background-repeat: no-repeat;
     background-size: 100% 1px;
@@ -195,7 +196,7 @@ body.gym-tracker #footer {
 /* Active tab — soft purple pill + accent text + bolder label */
 .bottom-nav .nav-item.active {
     color: var(--accent-primary) !important;
-    background: rgba(108, 99, 255, 0.16);
+    background: rgba(91, 155, 255, 0.16);
     border-top: none !important;
     padding-top: 0.5rem;
 }
@@ -209,7 +210,7 @@ body.gym-tracker #footer {
 
 .bottom-nav .nav-item.active i {
     transform: translateY(-1px);
-    filter: drop-shadow(0 0 6px rgba(108, 99, 255, 0.5));
+    filter: drop-shadow(0 0 6px rgba(91, 155, 255, 0.5));
 }
 
 .bottom-nav .nav-item.workout-btn {
@@ -220,8 +221,8 @@ body.gym-tracker #footer {
    action is visually obvious even when inactive. */
 .bottom-nav .nav-item.nav-item-primary {
     color: #ffffff !important;
-    background: linear-gradient(135deg, rgba(108, 99, 255, 0.9), rgba(139, 92, 246, 0.95));
-    box-shadow: 0 4px 14px rgba(108, 99, 255, 0.45);
+    background: linear-gradient(135deg, rgba(91, 155, 255, 0.9), rgba(91, 155, 255, 0.95));
+    box-shadow: 0 4px 14px rgba(91, 155, 255, 0.45);
     margin: -0.4rem 0.25rem 0;
     padding: 0.55rem 0.5rem;
     border-radius: 999px;
@@ -234,7 +235,7 @@ body.gym-tracker #footer {
 
 .bottom-nav .nav-item.nav-item-primary.active {
     background: linear-gradient(135deg, #7c6cff, #9a6cff);
-    box-shadow: 0 6px 18px rgba(108, 99, 255, 0.6);
+    box-shadow: 0 6px 18px rgba(91, 155, 255, 0.6);
 }
 
 /* Floating action button — one-tap Start/Resume workout on Home.
@@ -251,12 +252,12 @@ body.gym-tracker #footer {
     padding: 0.85rem 1.25rem;
     border-radius: 999px;
     border: none;
-    background: linear-gradient(135deg, var(--accent-primary), #8b5cf6);
+    background: linear-gradient(135deg, var(--accent-primary), #1d4ed8);
     color: #ffffff;
     font-weight: 700;
     font-size: 0.95rem;
     letter-spacing: 0.01em;
-    box-shadow: 0 12px 26px rgba(108, 99, 255, 0.45);
+    box-shadow: 0 12px 26px rgba(91, 155, 255, 0.45);
     cursor: pointer;
     z-index: 950;
     transition: transform var(--transition-fast), box-shadow var(--transition-fast), background var(--transition-base);
@@ -270,14 +271,14 @@ body.gym-tracker #footer {
 
 .workout-fab:hover {
     transform: translateY(-2px);
-    box-shadow: 0 16px 30px rgba(108, 99, 255, 0.6);
+    box-shadow: 0 16px 30px rgba(91, 155, 255, 0.6);
 }
 
 .workout-fab:active { transform: scale(0.97); }
 
 .workout-fab:focus-visible {
     outline: none;
-    box-shadow: 0 0 0 4px rgba(108, 99, 255, 0.45), 0 12px 26px rgba(108, 99, 255, 0.45);
+    box-shadow: 0 0 0 4px rgba(91, 155, 255, 0.45), 0 12px 26px rgba(91, 155, 255, 0.45);
 }
 
 .workout-fab[hidden] { display: none; }
@@ -681,9 +682,9 @@ body.gym-tracker #footer {
 .program-card {
     display: flex;
     flex-direction: column;
-    gap: var(--spacing-md);
+    gap: 0.7rem;
     height: 100%;
-    min-height: 220px;
+    min-height: 0;
     min-width: 0;
     width: 100%;
     overflow: hidden;
@@ -774,22 +775,22 @@ body.gym-tracker #footer {
 }
 
 .program-actions .btn-secondary:hover {
-    background: rgba(108, 99, 255, 0.12) !important;
+    background: rgba(91, 155, 255, 0.12) !important;
     border-color: var(--accent-primary) !important;
     color: #ffffff !important;
     transform: translateY(-1px);
-    box-shadow: 0 3px 10px rgba(108, 99, 255, 0.22);
+    box-shadow: 0 3px 10px rgba(91, 155, 255, 0.22);
 }
 
 .program-actions .btn-secondary:active {
     transform: translateY(0);
-    background: rgba(108, 99, 255, 0.18) !important;
+    background: rgba(91, 155, 255, 0.18) !important;
     box-shadow: inset 0 2px 4px rgba(0, 0, 0, 0.25);
 }
 
 .program-actions .btn-secondary:focus-visible {
     outline: none;
-    box-shadow: 0 0 0 3px rgba(108, 99, 255, 0.3);
+    box-shadow: 0 0 0 3px rgba(91, 155, 255, 0.3);
 }
 
 /* Delete — smaller, desaturated destructive fill at rest; intensifies on hover. */
@@ -1142,7 +1143,7 @@ body.gym-tracker #footer {
 .program-card.is-drop-target {
     outline: 2px dashed var(--accent-primary);
     outline-offset: -2px;
-    background: linear-gradient(135deg, var(--bg-card) 0%, rgba(108, 99, 255, 0.08) 100%);
+    background: linear-gradient(135deg, var(--bg-card) 0%, rgba(91, 155, 255, 0.08) 100%);
 }
 
 /* Smooth layout transitions when sorting changes */
@@ -1438,10 +1439,10 @@ body.modal-open {
 }
 
 .confirm-modal-content:not(.confirm-modal-danger) .confirm-modal-icon {
-    background: rgba(108, 99, 255, 0.12);
-    border-color: rgba(108, 99, 255, 0.35);
+    background: rgba(91, 155, 255, 0.12);
+    border-color: rgba(91, 155, 255, 0.35);
     color: var(--accent-primary);
-    box-shadow: 0 0 0 6px rgba(108, 99, 255, 0.06);
+    box-shadow: 0 0 0 6px rgba(91, 155, 255, 0.06);
 }
 
 .confirm-modal-warning {
@@ -1476,7 +1477,7 @@ body.modal-open {
     background: var(--bg-elevated) !important;
     color: var(--text-primary) !important;
     border-color: var(--accent-primary);
-    box-shadow: 0 0 0 3px rgba(108, 99, 255, 0.12);
+    box-shadow: 0 0 0 3px rgba(91, 155, 255, 0.12);
 }
 
 .confirm-modal-content .modal-footer .btn {
@@ -1656,7 +1657,7 @@ body.modal-open {
 
 .workout-header .btn-icon:focus-visible {
     outline: none;
-    box-shadow: 0 0 0 3px rgba(108, 99, 255, 0.35);
+    box-shadow: 0 0 0 3px rgba(91, 155, 255, 0.35);
 }
 
 .workout-header .btn-icon-finish:focus-visible {
@@ -1802,14 +1803,14 @@ body.gym-tracker #active-workout .superset-block {
     background:
         linear-gradient(180deg, rgba(255, 255, 255, 0.04), rgba(255, 255, 255, 0) 40%),
         linear-gradient(135deg, rgba(40, 32, 95, 0.92) 0%, rgba(30, 24, 75, 0.92) 100%);
-    border: 1px solid rgba(108, 99, 255, 0.45);
+    border: 1px solid rgba(91, 155, 255, 0.45);
     border-radius: 18px;
     backdrop-filter: blur(14px) saturate(140%);
     -webkit-backdrop-filter: blur(14px) saturate(140%);
     box-shadow:
         0 1px 0 rgba(255, 255, 255, 0.08) inset,
         0 12px 32px rgba(0, 0, 0, 0.55),
-        0 0 0 1px rgba(108, 99, 255, 0.08);
+        0 0 0 1px rgba(91, 155, 255, 0.08);
     z-index: 90;
     animation: rest-bar-in 260ms cubic-bezier(0.2, 0.8, 0.2, 1);
     overflow: hidden;
@@ -1925,7 +1926,7 @@ body.gym-tracker #active-workout .superset-block {
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    background: rgba(108, 99, 255, 0.18);
+    background: rgba(91, 155, 255, 0.18);
     border-radius: 50%;
     flex-shrink: 0;
 }
@@ -1993,8 +1994,8 @@ body.gym-tracker #active-workout .superset-block {
 }
 
 .rest-timer-action-btn:hover {
-    background: rgba(108, 99, 255, 0.3);
-    border-color: rgba(108, 99, 255, 0.6);
+    background: rgba(91, 155, 255, 0.3);
+    border-color: rgba(91, 155, 255, 0.6);
     color: #ffffff !important;
 }
 
@@ -2002,7 +2003,7 @@ body.gym-tracker #active-workout .superset-block {
 
 .rest-timer-action-btn:focus-visible {
     outline: none;
-    box-shadow: 0 0 0 3px rgba(108, 99, 255, 0.45);
+    box-shadow: 0 0 0 3px rgba(91, 155, 255, 0.45);
 }
 
 .rest-timer-action-btn.rest-timer-skip {
@@ -2042,10 +2043,10 @@ body.gym-tracker #active-workout .superset-block {
     display: block;
     height: 100%;
     width: 100%;
-    background: linear-gradient(90deg, var(--accent-primary) 0%, #a78bfa 70%, #c4b5fd 100%);
+    background: linear-gradient(90deg, var(--accent-primary) 0%, #5b9bff 70%, #93b8ff 100%);
     transform-origin: left center;
     transition: transform 1s linear;
-    box-shadow: 0 0 12px rgba(167, 139, 250, 0.55);
+    box-shadow: 0 0 12px rgba(91, 155, 255, 0.55);
 }
 
 .rest-timer-bar.rest-timer-done .rest-timer-progress-fill {
@@ -2092,8 +2093,8 @@ body.gym-tracker #active-workout .superset-block {
     font-weight: 700;
     font-variant-numeric: tabular-nums;
     color: rgba(255, 255, 255, 0.85);
-    background: rgba(108, 99, 255, 0.15);
-    border: 1px solid rgba(108, 99, 255, 0.3);
+    background: rgba(91, 155, 255, 0.15);
+    border: 1px solid rgba(91, 155, 255, 0.3);
     border-radius: 999px;
     padding: 0.3rem 0.9rem;
     line-height: 1.4;
@@ -2109,15 +2110,15 @@ body.gym-tracker .rest-countdown-chip.rest-countdown-chip--idle {
 
 /* Plate-hints toggle button — same sizing as other header btn-icons. */
 .workout-header .btn-icon-plates {
-    background: rgba(108, 99, 255, 0.1) !important;
-    border-color: rgba(108, 99, 255, 0.3) !important;
-    color: rgba(167, 139, 250, 0.9) !important;
+    background: rgba(91, 155, 255, 0.1) !important;
+    border-color: rgba(91, 155, 255, 0.3) !important;
+    color: rgba(91, 155, 255, 0.9) !important;
 }
 
 .workout-header .btn-icon-plates:hover {
-    background: rgba(108, 99, 255, 0.2) !important;
-    border-color: rgba(108, 99, 255, 0.5) !important;
-    color: #a78bfa !important;
+    background: rgba(91, 155, 255, 0.2) !important;
+    border-color: rgba(91, 155, 255, 0.5) !important;
+    color: #5b9bff !important;
 }
 
 /* Dimmed state when plate hints are off. */
@@ -2274,10 +2275,10 @@ body.gym-tracker .rest-countdown-chip.rest-countdown-chip--idle {
 }
 
 .previous-set-badge:hover {
-    border-color: rgba(108, 99, 255, 0.5);
-    background: rgba(108, 99, 255, 0.08);
+    border-color: rgba(91, 155, 255, 0.5);
+    background: rgba(91, 155, 255, 0.08);
     transform: translateY(-1px);
-    box-shadow: 0 3px 8px rgba(108, 99, 255, 0.18);
+    box-shadow: 0 3px 8px rgba(91, 155, 255, 0.18);
 }
 
 .previous-set-badge:active {
@@ -2290,7 +2291,7 @@ body.gym-tracker .rest-countdown-chip.rest-countdown-chip--idle {
     justify-content: center;
     width: 16px;
     height: 16px;
-    background: rgba(108, 99, 255, 0.4);
+    background: rgba(91, 155, 255, 0.4);
     color: #ffffff;
     border-radius: 50%;
     font-size: 0.58rem;
@@ -2367,7 +2368,7 @@ body.gym-tracker .rest-countdown-chip.rest-countdown-chip--idle {
     outline: none;
     border-color: var(--accent-primary);
     background: var(--bg-elevated);
-    box-shadow: 0 0 0 3px rgba(108, 99, 255, 0.2);
+    box-shadow: 0 0 0 3px rgba(91, 155, 255, 0.2);
 }
 
 /* Add Set — primary positive action. !important beats the global
@@ -2642,13 +2643,13 @@ body.gym-tracker .rest-countdown-chip.rest-countdown-chip--idle {
 .btn-set-action:focus-visible {
     outline: none;
     opacity: 1;
-    box-shadow: 0 0 0 2px rgba(108, 99, 255, 0.4) !important;
+    box-shadow: 0 0 0 2px rgba(91, 155, 255, 0.4) !important;
 }
 
 /* Edit — accent tint on hover */
 .btn-set-action:not(.btn-set-delete):not(.btn-set-save):not(.btn-set-cancel):hover {
-    background: rgba(108, 99, 255, 0.18) !important;
-    border-color: rgba(108, 99, 255, 0.4) !important;
+    background: rgba(91, 155, 255, 0.18) !important;
+    border-color: rgba(91, 155, 255, 0.4) !important;
     color: #ffffff !important;
     opacity: 1;
 }
@@ -2829,8 +2830,8 @@ body.gym-tracker .rest-countdown-chip.rest-countdown-chip--idle {
 .set-row-planned:focus-within {
     background: var(--bg-card);
     border-style: solid;
-    border-color: rgba(108, 99, 255, 0.5);
-    box-shadow: 0 0 0 3px rgba(108, 99, 255, 0.12);
+    border-color: rgba(91, 155, 255, 0.5);
+    box-shadow: 0 0 0 3px rgba(91, 155, 255, 0.12);
 }
 
 .set-row-complete {
@@ -2844,7 +2845,7 @@ body.gym-tracker .rest-countdown-chip.rest-countdown-chip--idle {
 .set-row-editing {
     background: var(--bg-card);
     border-color: var(--accent-primary);
-    box-shadow: 0 0 0 2px rgba(108, 99, 255, 0.2);
+    box-shadow: 0 0 0 2px rgba(91, 155, 255, 0.2);
 }
 
 .set-row-num {
@@ -2852,8 +2853,8 @@ body.gym-tracker .rest-countdown-chip.rest-countdown-chip--idle {
     width: 28px;
     height: 28px;
     border-radius: 50%;
-    background: rgba(108, 99, 255, 0.12);
-    border: 1px solid rgba(108, 99, 255, 0.28);
+    background: rgba(91, 155, 255, 0.12);
+    border: 1px solid rgba(91, 155, 255, 0.28);
     color: var(--accent-primary);
     font-weight: 700;
     font-size: 0.76rem;
@@ -2915,7 +2916,7 @@ body.gym-tracker .rest-countdown-chip.rest-countdown-chip--idle {
     outline: none;
     border-color: var(--accent-primary);
     background: var(--bg-hover);
-    box-shadow: 0 0 0 3px rgba(108, 99, 255, 0.16);
+    box-shadow: 0 0 0 3px rgba(91, 155, 255, 0.16);
 }
 
 .set-row-x,
@@ -3042,7 +3043,7 @@ body.gym-tracker .rest-countdown-chip.rest-countdown-chip--idle {
 .set-toggle:focus-visible {
     outline: none;
     box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.35),
-                0 0 0 3px rgba(108, 99, 255, 0.45);
+                0 0 0 3px rgba(91, 155, 255, 0.45);
 }
 
 .set-toggle[aria-pressed="true"]:focus-visible {
@@ -3213,8 +3214,8 @@ body.gym-tracker .rest-countdown-chip.rest-countdown-chip--idle {
     width: 100%;
     min-height: 44px;
     padding: 0.7rem 1rem;
-    background: rgba(108, 99, 255, 0.12);
-    border: 1px dashed rgba(108, 99, 255, 0.55);
+    background: rgba(91, 155, 255, 0.12);
+    border: 1px dashed rgba(91, 155, 255, 0.55);
     border-radius: var(--radius-md);
     color: #ffffff !important;
     font-family: inherit;
@@ -3240,11 +3241,11 @@ body.gym-tracker .rest-countdown-chip.rest-countdown-chip--idle {
 }
 
 .btn-add-set--extra:hover {
-    background: rgba(108, 99, 255, 0.22);
+    background: rgba(91, 155, 255, 0.22);
     color: #ffffff !important;
     border-color: var(--accent-primary);
     border-style: solid;
-    box-shadow: 0 0 0 3px rgba(108, 99, 255, 0.15), 0 4px 12px rgba(108, 99, 255, 0.2);
+    box-shadow: 0 0 0 3px rgba(91, 155, 255, 0.15), 0 4px 12px rgba(91, 155, 255, 0.2);
 }
 
 .btn-add-set--extra:hover i {
@@ -3254,14 +3255,14 @@ body.gym-tracker .rest-countdown-chip.rest-countdown-chip--idle {
 
 .btn-add-set--extra:active {
     transform: translateY(1px);
-    background: rgba(108, 99, 255, 0.3);
+    background: rgba(91, 155, 255, 0.3);
     color: #ffffff !important;
     box-shadow: inset 0 2px 4px rgba(0, 0, 0, 0.2);
 }
 
 .btn-add-set--extra:focus-visible {
     outline: none;
-    box-shadow: 0 0 0 3px rgba(108, 99, 255, 0.45);
+    box-shadow: 0 0 0 3px rgba(91, 155, 255, 0.45);
 }
 
 @media (max-width: 480px) {
@@ -3309,7 +3310,7 @@ body.gym-tracker .rest-countdown-chip.rest-countdown-chip--idle {
     min-width: 15px;
     height: 15px;
     padding: 0 0.22rem;
-    background: rgba(108, 99, 255, 0.18);
+    background: rgba(91, 155, 255, 0.18);
     border-radius: 999px;
     color: var(--accent-primary);
     font-weight: 700;
@@ -3417,7 +3418,7 @@ body.gym-tracker .rest-countdown-chip.rest-countdown-chip--idle {
 
 .toast .toast-action:focus-visible {
     outline: none;
-    box-shadow: 0 0 0 3px rgba(108, 99, 255, 0.35);
+    box-shadow: 0 0 0 3px rgba(91, 155, 255, 0.35);
 }
 
 /* History Grid */
@@ -3486,7 +3487,7 @@ body.gym-tracker .rest-countdown-chip.rest-countdown-chip--idle {
 
 .history-filters .history-clear-btn:focus-visible {
     outline: none;
-    box-shadow: 0 0 0 3px rgba(108, 99, 255, 0.3) !important;
+    box-shadow: 0 0 0 3px rgba(91, 155, 255, 0.3) !important;
 }
 
 .history-filters .history-clear-btn:disabled,
@@ -3539,7 +3540,7 @@ body.gym-tracker .rest-countdown-chip.rest-countdown-chip--idle {
     border-bottom-right-radius: 0;
     border-color: var(--accent-primary);
     background: var(--bg-hover);
-    box-shadow: 0 0 0 3px rgba(108, 99, 255, 0.22);
+    box-shadow: 0 0 0 3px rgba(91, 155, 255, 0.22);
 }
 
 .history-sort-wrap .dark-select-popup {
@@ -3614,7 +3615,7 @@ body.gym-tracker .rest-countdown-chip.rest-countdown-chip--idle {
     border-color: var(--accent-primary);
     background: var(--bg-elevated);
     color: var(--text-primary) !important;
-    box-shadow: 0 0 0 3px rgba(108, 99, 255, 0.22);
+    box-shadow: 0 0 0 3px rgba(91, 155, 255, 0.22);
 }
 
 .dark-calendar-trigger.has-value {
@@ -3680,7 +3681,7 @@ body.gym-tracker .rest-countdown-chip.rest-countdown-chip--idle {
     padding: 0.85rem;
     box-shadow: 0 24px 48px -12px rgba(0, 0, 0, 0.85),
                 0 8px 24px -8px rgba(0, 0, 0, 0.6),
-                0 0 0 1px rgba(108, 99, 255, 0.08);
+                0 0 0 1px rgba(91, 155, 255, 0.08);
     animation: darkCalFade 0.16s ease;
 }
 
@@ -3800,7 +3801,7 @@ body.gym-tracker .rest-countdown-chip.rest-countdown-chip--idle {
 }
 
 .dark-calendar-day:hover {
-    background: rgba(108, 99, 255, 0.18);
+    background: rgba(91, 155, 255, 0.18);
     color: #ffffff !important;
 }
 
@@ -3809,24 +3810,24 @@ body.gym-tracker .rest-countdown-chip.rest-countdown-chip--idle {
 }
 
 .dark-calendar-day.today {
-    border-color: rgba(108, 99, 255, 0.65);
+    border-color: rgba(91, 155, 255, 0.65);
     color: var(--accent-primary) !important;
     font-weight: 700 !important;
 }
 
 .dark-calendar-day.today:hover {
-    background: rgba(108, 99, 255, 0.18);
+    background: rgba(91, 155, 255, 0.18);
 }
 
 /* Range highlighting — subtle fill for dates between endpoints */
 .dark-calendar-day.in-range {
-    background: rgba(108, 99, 255, 0.18);
+    background: rgba(91, 155, 255, 0.18);
     color: #ffffff !important;
     border-radius: 0 !important;
 }
 
 .dark-calendar-day.in-range:hover {
-    background: rgba(108, 99, 255, 0.28);
+    background: rgba(91, 155, 255, 0.28);
 }
 
 .dark-calendar-day.in-range.other {
@@ -3840,7 +3841,7 @@ body.gym-tracker .rest-countdown-chip.rest-countdown-chip--idle {
     border-color: var(--accent-primary);
     color: #ffffff !important;
     font-weight: 700 !important;
-    box-shadow: 0 4px 12px rgba(108, 99, 255, 0.4);
+    box-shadow: 0 4px 12px rgba(91, 155, 255, 0.4);
     z-index: 2;
 }
 
@@ -3865,11 +3866,11 @@ body.gym-tracker .rest-countdown-chip.rest-countdown-chip--idle {
     border-color: var(--accent-primary);
     color: #ffffff !important;
     font-weight: 700 !important;
-    box-shadow: 0 4px 12px rgba(108, 99, 255, 0.4);
+    box-shadow: 0 4px 12px rgba(91, 155, 255, 0.4);
 }
 
 .dark-calendar-day.selected.today {
-    box-shadow: 0 4px 12px rgba(108, 99, 255, 0.4), 0 0 0 2px rgba(108, 99, 255, 0.25);
+    box-shadow: 0 4px 12px rgba(91, 155, 255, 0.4), 0 0 0 2px rgba(91, 155, 255, 0.25);
 }
 
 .dark-calendar-day:active {
@@ -3921,14 +3922,14 @@ body.gym-tracker .rest-countdown-chip.rest-countdown-chip--idle {
     color: #ffffff !important;
     border-color: var(--accent-primary);
     background: var(--gradient-primary);
-    box-shadow: 0 4px 12px rgba(108, 99, 255, 0.25);
+    box-shadow: 0 4px 12px rgba(91, 155, 255, 0.25);
 }
 
 .dark-calendar-action.primary:hover {
     background: var(--gradient-primary);
     border-color: var(--accent-primary);
     color: #ffffff !important;
-    box-shadow: 0 6px 16px rgba(108, 99, 255, 0.4);
+    box-shadow: 0 6px 16px rgba(91, 155, 255, 0.4);
     transform: translateY(-1px);
 }
 
@@ -3981,7 +3982,7 @@ body.gym-tracker .rest-countdown-chip.rest-countdown-chip--idle {
 .exercise-picker-search input:focus {
     outline: none;
     border-color: var(--accent-primary);
-    box-shadow: 0 0 0 3px rgba(139, 92, 246, 0.1);
+    box-shadow: 0 0 0 3px rgba(91, 155, 255, 0.1);
 }
 
 .exercise-search-bar input:focus ~ .search-icon,
@@ -4025,7 +4026,7 @@ body.gym-tracker .rest-countdown-chip.rest-countdown-chip--idle {
 .exercise-picker-search select:focus {
     outline: none;
     border-color: var(--accent-primary);
-    box-shadow: 0 0 0 3px rgba(108, 99, 255, 0.2);
+    box-shadow: 0 0 0 3px rgba(91, 155, 255, 0.2);
     background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'><path fill='none' stroke='%236c63ff' stroke-width='2' stroke-linecap='round' stroke-linejoin='round' d='M1 6.5l5-5 5 5'/></svg>");
 }
 
@@ -4076,7 +4077,7 @@ body.gym-tracker .rest-countdown-chip.rest-countdown-chip--idle {
     gap: 0.5rem;
     padding: 0.875rem 1.25rem;
     background: transparent;
-    border: 2px solid rgba(108, 99, 255, 0.4);
+    border: 2px solid rgba(91, 155, 255, 0.4);
     border-radius: var(--radius-lg);
     color: var(--accent-primary);
     font-size: 0.95rem;
@@ -4087,15 +4088,15 @@ body.gym-tracker .rest-countdown-chip.rest-countdown-chip--idle {
 }
 
 .btn-filter-reset:hover {
-    background: rgba(108, 99, 255, 0.12);
+    background: rgba(91, 155, 255, 0.12);
     border-color: var(--accent-primary);
     color: #ffffff;
-    box-shadow: 0 0 0 3px rgba(108, 99, 255, 0.15);
+    box-shadow: 0 0 0 3px rgba(91, 155, 255, 0.15);
 }
 
 .btn-filter-reset:active {
     transform: scale(0.97);
-    background: rgba(108, 99, 255, 0.2);
+    background: rgba(91, 155, 255, 0.2);
 }
 
 .btn-filter-reset i {
@@ -4173,7 +4174,7 @@ body.gym-tracker .rest-countdown-chip.rest-countdown-chip--idle {
 
 .exercise-db-card.has-history:hover {
     border-color: var(--accent-primary);
-    box-shadow: var(--shadow-md), 0 0 0 1px rgba(108, 99, 255, 0.15);
+    box-shadow: var(--shadow-md), 0 0 0 1px rgba(91, 155, 255, 0.15);
 }
 
 .exercise-db-card.no-history {
@@ -4273,8 +4274,8 @@ body.gym-tracker .rest-countdown-chip.rest-countdown-chip--idle {
     align-items: center;
     gap: 0.5rem;
     padding: 0.6rem 0.9rem;
-    background: rgba(108, 99, 255, 0.12);
-    border: 1px solid rgba(108, 99, 255, 0.35);
+    background: rgba(91, 155, 255, 0.12);
+    border: 1px solid rgba(91, 155, 255, 0.35);
     border-radius: var(--radius-md);
     color: var(--accent-primary);
     font-size: 0.85rem;
@@ -4290,9 +4291,9 @@ body.gym-tracker .rest-countdown-chip.rest-countdown-chip--idle {
 }
 
 .exercise-db-card.has-history:hover .btn-view-history {
-    background: rgba(108, 99, 255, 0.22);
+    background: rgba(91, 155, 255, 0.22);
     border-color: var(--accent-primary);
-    box-shadow: 0 0 12px rgba(108, 99, 255, 0.25);
+    box-shadow: 0 0 12px rgba(91, 155, 255, 0.25);
 }
 
 .exercise-db-card.has-history:hover .view-history-arrow {
@@ -4330,7 +4331,7 @@ body.gym-tracker .rest-countdown-chip.rest-countdown-chip--idle {
 .exercise-picker-card:hover {
     border-color: var(--accent-primary);
     transform: translateY(-4px);
-    box-shadow: 0 8px 24px rgba(139, 92, 246, 0.2);
+    box-shadow: 0 8px 24px rgba(91, 155, 255, 0.2);
 }
 
 .exercise-picker-card:active {
@@ -4354,8 +4355,8 @@ body.gym-tracker .rest-countdown-chip.rest-countdown-chip--idle {
 
 .exercise-picker-card .badge {
     padding: 0.375rem 0.75rem;
-    background: linear-gradient(135deg, rgba(139, 92, 246, 0.2), rgba(168, 85, 247, 0.2));
-    border: 1px solid rgba(139, 92, 246, 0.3);
+    background: linear-gradient(135deg, rgba(91, 155, 255, 0.2), rgba(168, 85, 247, 0.2));
+    border: 1px solid rgba(91, 155, 255, 0.3);
     border-radius: var(--radius-md);
     font-size: 0.8rem;
     color: var(--accent-primary);
@@ -4374,8 +4375,8 @@ body.gym-tracker .rest-countdown-chip.rest-countdown-chip--idle {
 /* Picked state for multi-select — card stays visible so the user can unselect. */
 .exercise-picker-card.is-picked {
     border-color: var(--accent-primary);
-    background: linear-gradient(135deg, rgba(108, 99, 255, 0.18), rgba(139, 92, 246, 0.22));
-    box-shadow: 0 0 0 1px rgba(108, 99, 255, 0.45) inset;
+    background: linear-gradient(135deg, rgba(91, 155, 255, 0.18), rgba(91, 155, 255, 0.22));
+    box-shadow: 0 0 0 1px rgba(91, 155, 255, 0.45) inset;
 }
 
 .exercise-picker-card.is-picked::before { opacity: 1; }
@@ -4571,7 +4572,7 @@ body.gym-tracker .rest-countdown-chip.rest-countdown-chip--idle {
     outline: none;
     border-color: var(--accent-primary);
     background: var(--bg-card);
-    box-shadow: 0 0 0 3px rgba(108, 99, 255, 0.18);
+    box-shadow: 0 0 0 3px rgba(91, 155, 255, 0.18);
 }
 
 /* Modal body padding tightens slightly inside the program modal */
@@ -4921,7 +4922,7 @@ body.gym-tracker .rest-countdown-chip.rest-countdown-chip--idle {
 
 .pex-stepper-btn:focus-visible {
     outline: none;
-    box-shadow: 0 0 0 2px rgba(108, 99, 255, 0.45);
+    box-shadow: 0 0 0 2px rgba(91, 155, 255, 0.45);
 }
 
 /* Tighter gap specifically between the number badge and the exercise name,
@@ -4944,8 +4945,8 @@ body.gym-tracker .rest-countdown-chip.rest-countdown-chip--idle {
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    background: rgba(108, 99, 255, 0.12);
-    border: 1px solid rgba(108, 99, 255, 0.25);
+    background: rgba(91, 155, 255, 0.12);
+    border: 1px solid rgba(91, 155, 255, 0.25);
     border-radius: 50%;
     color: var(--accent-primary);
     font-size: 0.68rem;
@@ -5090,8 +5091,8 @@ body.gym-tracker .rest-countdown-chip.rest-countdown-chip--idle {
     height: auto !important;
     min-height: 0 !important;
     padding: 0.55rem 1rem !important;
-    background: rgba(108, 99, 255, 0.1) !important;
-    border: 1px dashed rgba(108, 99, 255, 0.4) !important;
+    background: rgba(91, 155, 255, 0.1) !important;
+    border: 1px dashed rgba(91, 155, 255, 0.4) !important;
     border-radius: var(--radius-md);
     color: #ffffff !important;
     font-family: inherit !important;
@@ -5105,16 +5106,16 @@ body.gym-tracker .rest-countdown-chip.rest-countdown-chip--idle {
 }
 
 .btn-add-exercise:hover {
-    background: rgba(108, 99, 255, 0.2) !important;
+    background: rgba(91, 155, 255, 0.2) !important;
     border-color: var(--accent-primary) !important;
     border-style: solid !important;
     transform: translateY(-1px);
-    box-shadow: 0 3px 10px rgba(108, 99, 255, 0.22) !important;
+    box-shadow: 0 3px 10px rgba(91, 155, 255, 0.22) !important;
 }
 
 .btn-add-exercise:active {
     transform: translateY(0);
-    background: rgba(108, 99, 255, 0.28) !important;
+    background: rgba(91, 155, 255, 0.28) !important;
     box-shadow: inset 0 2px 4px rgba(0, 0, 0, 0.25) !important;
 }
 
@@ -5179,7 +5180,7 @@ body.gym-tracker .rest-countdown-chip.rest-countdown-chip--idle {
 
 .program-form-actions .btn-ghost:focus-visible {
     outline: none;
-    box-shadow: 0 0 0 3px rgba(108, 99, 255, 0.25) !important;
+    box-shadow: 0 0 0 3px rgba(91, 155, 255, 0.25) !important;
 }
 
 /* Save — primary CTA. Strong gradient + glow so it's the obvious action. */
@@ -5187,7 +5188,7 @@ body.gym-tracker .rest-countdown-chip.rest-countdown-chip--idle {
     background: var(--gradient-primary) !important;
     border: 1px solid transparent !important;
     color: #ffffff !important;
-    box-shadow: 0 4px 14px rgba(108, 99, 255, 0.4) !important;
+    box-shadow: 0 4px 14px rgba(91, 155, 255, 0.4) !important;
 }
 
 .btn-save-program i {
@@ -5197,20 +5198,20 @@ body.gym-tracker .rest-countdown-chip.rest-countdown-chip--idle {
 
 .btn-save-program:hover {
     transform: translateY(-1px);
-    box-shadow: 0 8px 20px rgba(108, 99, 255, 0.5) !important;
+    box-shadow: 0 8px 20px rgba(91, 155, 255, 0.5) !important;
     filter: brightness(1.06);
 }
 
 .btn-save-program:active {
     transform: translateY(0);
     filter: brightness(0.95);
-    box-shadow: 0 1px 3px rgba(108, 99, 255, 0.25) !important;
+    box-shadow: 0 1px 3px rgba(91, 155, 255, 0.25) !important;
 }
 
 .btn-save-program:focus-visible {
     outline: none;
-    box-shadow: 0 0 0 3px rgba(108, 99, 255, 0.4),
-                0 3px 10px rgba(108, 99, 255, 0.3) !important;
+    box-shadow: 0 0 0 3px rgba(91, 155, 255, 0.4),
+                0 3px 10px rgba(91, 155, 255, 0.3) !important;
 }
 
 @media (max-width: 520px) {
@@ -5349,8 +5350,8 @@ body.gym-tracker .rest-countdown-chip.rest-countdown-chip--idle {
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    background: rgba(108, 99, 255, 0.12);
-    border: 1px solid rgba(108, 99, 255, 0.22);
+    background: rgba(91, 155, 255, 0.12);
+    border: 1px solid rgba(91, 155, 255, 0.22);
     border-radius: var(--radius-sm);
     color: var(--accent-primary);
     font-size: 0.9rem;
@@ -5522,7 +5523,7 @@ body.gym-tracker .rest-countdown-chip.rest-countdown-chip--idle {
     border-bottom-right-radius: 0;
     border-color: var(--accent-primary);
     background: var(--bg-hover);
-    box-shadow: 0 0 0 3px rgba(108, 99, 255, 0.22);
+    box-shadow: 0 0 0 3px rgba(91, 155, 255, 0.22);
 }
 
 .calendar-filter-wrap .dark-select-popup {
@@ -5538,8 +5539,8 @@ body.gym-tracker .rest-countdown-chip.rest-countdown-chip--idle {
 .calendar-today-btn {
     height: 36px !important;
     padding: 0 0.8rem !important;
-    background: rgba(108, 99, 255, 0.14);
-    border: 1px solid rgba(108, 99, 255, 0.45) !important;
+    background: rgba(91, 155, 255, 0.14);
+    border: 1px solid rgba(91, 155, 255, 0.45) !important;
     border-radius: var(--radius-md);
     color: #ffffff !important;
     font-size: 0.82rem !important;
@@ -5564,10 +5565,10 @@ body.gym-tracker .rest-countdown-chip.rest-countdown-chip--idle {
 }
 
 .calendar-today-btn:hover:not(:disabled) {
-    background: rgba(108, 99, 255, 0.26);
+    background: rgba(91, 155, 255, 0.26);
     border-color: var(--accent-primary) !important;
     color: #ffffff !important;
-    box-shadow: 0 4px 12px rgba(108, 99, 255, 0.3);
+    box-shadow: 0 4px 12px rgba(91, 155, 255, 0.3);
     transform: translateY(-1px);
 }
 
@@ -5578,12 +5579,12 @@ body.gym-tracker .rest-countdown-chip.rest-countdown-chip--idle {
 .calendar-today-btn:active:not(:disabled) {
     transform: translateY(0);
     box-shadow: inset 0 2px 5px rgba(0, 0, 0, 0.28);
-    background: rgba(108, 99, 255, 0.32);
+    background: rgba(91, 155, 255, 0.32);
 }
 
 .calendar-today-btn:focus-visible {
     outline: none;
-    box-shadow: 0 0 0 3px rgba(108, 99, 255, 0.35);
+    box-shadow: 0 0 0 3px rgba(91, 155, 255, 0.35);
 }
 
 .calendar-today-btn:disabled {
@@ -5652,7 +5653,7 @@ body.gym-tracker .rest-countdown-chip.rest-countdown-chip--idle {
     height: 7px;
     border-radius: 50%;
     background: var(--accent-primary);
-    box-shadow: 0 0 6px rgba(108, 99, 255, 0.6);
+    box-shadow: 0 0 6px rgba(91, 155, 255, 0.6);
 }
 
 .legend-pr-cue {
@@ -5747,14 +5748,14 @@ button.calendar-day {
 
 /* Days that have a workout — clearly accented so they pop at-a-glance */
 .calendar-day.has-workout {
-    background: linear-gradient(135deg, rgba(108, 99, 255, 0.18) 0%, rgba(108, 99, 255, 0.32) 100%);
-    border-color: rgba(108, 99, 255, 0.4);
-    box-shadow: inset 0 0 0 1px rgba(108, 99, 255, 0.18);
+    background: linear-gradient(135deg, rgba(91, 155, 255, 0.18) 0%, rgba(91, 155, 255, 0.32) 100%);
+    border-color: rgba(91, 155, 255, 0.4);
+    box-shadow: inset 0 0 0 1px rgba(91, 155, 255, 0.18);
 }
 
 .calendar-day.has-workout:hover {
-    background: linear-gradient(135deg, rgba(108, 99, 255, 0.25) 0%, rgba(108, 99, 255, 0.4) 100%);
-    border-color: rgba(108, 99, 255, 0.6);
+    background: linear-gradient(135deg, rgba(91, 155, 255, 0.25) 0%, rgba(91, 155, 255, 0.4) 100%);
+    border-color: rgba(91, 155, 255, 0.6);
 }
 
 /* Today — purple ring outline (second priority) */
@@ -5770,7 +5771,7 @@ button.calendar-day {
     background: var(--gradient-primary) !important;
     border-color: var(--accent-primary) !important;
     color: #ffffff !important;
-    box-shadow: 0 4px 14px rgba(108, 99, 255, 0.4), 0 0 0 1px var(--accent-primary);
+    box-shadow: 0 4px 14px rgba(91, 155, 255, 0.4), 0 0 0 1px var(--accent-primary);
     transform: translateY(-1px);
 }
 
@@ -5795,7 +5796,7 @@ button.calendar-day {
     border-radius: 50%;
     background: #ffffff;
     box-shadow: 0 0 8px rgba(255, 255, 255, 0.8),
-                0 0 12px rgba(108, 99, 255, 0.6);
+                0 0 12px rgba(91, 155, 255, 0.6);
 }
 
 .calendar-day.selected .calendar-day-dot {
@@ -5943,7 +5944,7 @@ button.calendar-day {
 
 .cal-session:focus-visible {
     border-color: var(--accent-primary);
-    box-shadow: 0 0 0 3px rgba(108, 99, 255, 0.25);
+    box-shadow: 0 0 0 3px rgba(91, 155, 255, 0.25);
 }
 
 .cal-session:first-of-type { margin-top: 0; }
@@ -6061,7 +6062,7 @@ button.calendar-day {
 .achievement-control-group select:focus {
     outline: none;
     border-color: var(--accent-primary);
-    box-shadow: 0 0 0 3px rgba(108, 99, 255, 0.2);
+    box-shadow: 0 0 0 3px rgba(91, 155, 255, 0.2);
 }
 
 /* Layout: vertical stack of categories */
@@ -6104,7 +6105,7 @@ button.calendar-day {
 
 .achievement-category.is-expanded .achievement-category-header {
     border-color: var(--accent-primary);
-    background: linear-gradient(135deg, var(--bg-card) 0%, rgba(108, 99, 255, 0.06) 100%);
+    background: linear-gradient(135deg, var(--bg-card) 0%, rgba(91, 155, 255, 0.06) 100%);
 }
 
 .achievement-category-icon {
@@ -6220,8 +6221,8 @@ button.calendar-day {
     height: auto !important;
     min-height: 2.55rem;
     line-height: 1.2 !important;
-    background: rgba(108, 99, 255, 0.1);
-    border: 1px solid rgba(108, 99, 255, 0.35);
+    background: rgba(91, 155, 255, 0.1);
+    border: 1px solid rgba(91, 155, 255, 0.35);
     border-radius: var(--radius-md);
     color: #ffffff !important;
     font-size: 0.88rem !important;
@@ -6236,22 +6237,22 @@ button.calendar-day {
 }
 
 .achievement-bulk-btn:hover:not(:disabled) {
-    background: rgba(108, 99, 255, 0.2);
+    background: rgba(91, 155, 255, 0.2);
     border-color: var(--accent-primary);
     color: #ffffff !important;
-    box-shadow: 0 4px 14px rgba(108, 99, 255, 0.28);
+    box-shadow: 0 4px 14px rgba(91, 155, 255, 0.28);
     transform: translateY(-1px);
 }
 
 .achievement-bulk-btn:active:not(:disabled) {
-    background: rgba(108, 99, 255, 0.28);
+    background: rgba(91, 155, 255, 0.28);
     box-shadow: inset 0 2px 6px rgba(0, 0, 0, 0.28);
     transform: translateY(0);
 }
 
 .achievement-bulk-btn:focus-visible {
     outline: none;
-    box-shadow: 0 0 0 3px rgba(108, 99, 255, 0.35);
+    box-shadow: 0 0 0 3px rgba(91, 155, 255, 0.35);
 }
 
 .achievement-bulk-btn:disabled {
@@ -6311,7 +6312,7 @@ button.calendar-day {
 }
 
 .achievement-card.in-progress {
-    border-color: rgba(108, 99, 255, 0.35);
+    border-color: rgba(91, 155, 255, 0.35);
     box-shadow: var(--shadow-sm);
 }
 
@@ -6348,7 +6349,7 @@ button.calendar-day {
 .achievement-card.in-progress .achievement-icon {
     filter: grayscale(0%);
     opacity: 0.95;
-    border-color: rgba(108, 99, 255, 0.4);
+    border-color: rgba(91, 155, 255, 0.4);
 }
 
 .achievement-card.unlocked .achievement-icon {
@@ -6421,7 +6422,7 @@ button.calendar-day {
     background: var(--accent-primary);
     border-radius: 3px;
     transition: width var(--transition-slow);
-    box-shadow: 0 0 8px rgba(108, 99, 255, 0.35);
+    box-shadow: 0 0 8px rgba(91, 155, 255, 0.35);
 }
 
 .achievement-card .achievement-status {
@@ -6473,8 +6474,8 @@ button.calendar-day {
     display: flex;
     align-items: center;
     justify-content: center;
-    background: rgba(108, 99, 255, 0.15);
-    border: 1px solid rgba(108, 99, 255, 0.3);
+    background: rgba(91, 155, 255, 0.15);
+    border: 1px solid rgba(91, 155, 255, 0.3);
     color: var(--accent-primary);
     border-radius: var(--radius-md);
     font-size: 1rem;
@@ -6553,7 +6554,7 @@ button.calendar-day {
 
 .dark-select.is-open .dark-select-trigger {
     border-color: var(--accent-primary);
-    box-shadow: 0 0 0 3px rgba(108, 99, 255, 0.18);
+    box-shadow: 0 0 0 3px rgba(91, 155, 255, 0.18);
 }
 
 .dark-select-label {
@@ -6586,7 +6587,7 @@ button.calendar-day {
     border-radius: var(--radius-md);
     padding: 0.3rem;
     box-shadow: 0 18px 40px -8px rgba(0, 0, 0, 0.6),
-                0 0 0 1px rgba(108, 99, 255, 0.05);
+                0 0 0 1px rgba(91, 155, 255, 0.05);
     display: flex;
     flex-direction: column;
     gap: 2px;
@@ -6613,7 +6614,11 @@ button.calendar-day {
     background: transparent;
     border: none;
     border-radius: var(--radius-sm);
-    color: var(--text-primary);
+    /* Pinned !important: these options are <button>s, so without it the
+       sitewide main.css `button{color:#555}` paints every dropdown option a
+       disabled gray and `button:hover{color:#ce1b28}` turns the hovered option
+       red. Pin base + hover + selected so all dropdowns read correctly. */
+    color: var(--text-primary) !important;
     font-size: 0.9rem;
     font-weight: 500;
     cursor: pointer;
@@ -6623,16 +6628,22 @@ button.calendar-day {
 
 .dark-select-option:hover:not(.disabled) {
     background: var(--bg-elevated);
+    color: var(--text-primary) !important;
 }
 
-.dark-select-option.selected {
-    background: rgba(108, 99, 255, 0.18);
-    color: var(--accent-primary);
+.dark-select-option.selected,
+.dark-select-option.selected:hover {
+    background: rgba(91, 155, 255, 0.18);
+    color: var(--accent-primary) !important;
     font-weight: 600;
 }
 
 .dark-select-option.selected:hover {
-    background: rgba(108, 99, 255, 0.25);
+    background: rgba(91, 155, 255, 0.25);
+}
+
+.dark-select-option.disabled {
+    color: var(--text-disabled) !important;
 }
 
 .dark-select-check {
@@ -6750,7 +6761,7 @@ button.calendar-day {
     outline: none;
     border-color: var(--accent-primary);
     background: var(--bg-card);
-    box-shadow: 0 0 0 3px rgba(108, 99, 255, 0.18);
+    box-shadow: 0 0 0 3px rgba(91, 155, 255, 0.18);
 }
 
 /* Suppress the harsh native :invalid red outline. We only show error
@@ -6810,13 +6821,13 @@ button.calendar-day {
     background: var(--gradient-primary);
     border: 1px solid transparent;
     color: #ffffff;
-    box-shadow: 0 2px 8px rgba(108, 99, 255, 0.3);
+    box-shadow: 0 2px 8px rgba(91, 155, 255, 0.3);
     transition: all var(--transition-base);
 }
 
 .btn-create-exercise:hover {
     transform: translateY(-1px);
-    box-shadow: 0 6px 18px rgba(108, 99, 255, 0.5);
+    box-shadow: 0 6px 18px rgba(91, 155, 255, 0.5);
     filter: brightness(1.05);
 }
 
@@ -6915,7 +6926,7 @@ button.calendar-day {
     font-weight: 600 !important;
     line-height: 1 !important;
     cursor: pointer;
-    box-shadow: 0 2px 6px rgba(108, 99, 255, 0.22) !important;
+    box-shadow: 0 2px 6px rgba(91, 155, 255, 0.22) !important;
     transition: transform var(--transition-base), box-shadow var(--transition-base),
                 filter var(--transition-base), opacity var(--transition-base);
 }
@@ -6931,7 +6942,7 @@ button.calendar-day {
 
 .btn-save-settings:hover:not(:disabled) {
     transform: translateY(-1px);
-    box-shadow: 0 4px 12px rgba(108, 99, 255, 0.4) !important;
+    box-shadow: 0 4px 12px rgba(91, 155, 255, 0.4) !important;
     filter: brightness(1.06);
     color: #ffffff !important;
 }
@@ -6939,7 +6950,7 @@ button.calendar-day {
 .btn-save-settings:active:not(:disabled) {
     transform: translateY(0);
     filter: brightness(0.96);
-    box-shadow: 0 1px 3px rgba(108, 99, 255, 0.25) !important;
+    box-shadow: 0 1px 3px rgba(91, 155, 255, 0.25) !important;
 }
 
 .btn-save-settings:disabled {
@@ -7058,8 +7069,8 @@ button.calendar-day {
    so the Programs page (which has a different bottom action cluster)
    is unaffected. */
 .program-selection-grid .program-card {
-    min-height: 260px;
-    padding: var(--spacing-lg);
+    min-height: 0;
+    padding: 1.15rem 1.15rem 1.1rem;
 }
 
 /* Reserve room for ~2 lines of title so a 1-line and 2-line title
@@ -7317,7 +7328,7 @@ button.calendar-day {
 .exercise-history-table tbody tr:hover td,
 .exercise-history-table tbody tr:nth-child(2n + 1):hover td,
 .exercise-history-table tbody tr:nth-child(2n):hover td {
-    background-color: rgba(108, 99, 255, 0.08) !important;
+    background-color: rgba(91, 155, 255, 0.08) !important;
     color: var(--text-primary);
 }
 
@@ -7662,7 +7673,7 @@ button.calendar-day {
 .sets-table tbody tr:hover td,
 .sets-table tbody tr:nth-child(2n + 1):hover td,
 .sets-table tbody tr:nth-child(2n):hover td {
-    background-color: rgba(108, 99, 255, 0.08) !important;
+    background-color: rgba(91, 155, 255, 0.08) !important;
     color: var(--text-primary);
 }
 
@@ -7725,7 +7736,7 @@ button.calendar-day {
 #workout-detail-modal .modal-close:focus-visible {
     outline: none;
     border-color: var(--accent-primary);
-    box-shadow: 0 0 0 3px rgba(108, 99, 255, 0.3);
+    box-shadow: 0 0 0 3px rgba(91, 155, 255, 0.3);
 }
 
 #workout-detail-modal .modal-header {
@@ -8419,7 +8430,7 @@ button.calendar-day {
 }
 
 .toggle-switch input[type="checkbox"]:focus-visible + .toggle-slider {
-    box-shadow: 0 0 0 3px rgba(108, 99, 255, 0.4);
+    box-shadow: 0 0 0 3px rgba(91, 155, 255, 0.4);
 }
 
 /* ============================================================
@@ -8614,8 +8625,8 @@ button.calendar-day {
 }
 .btn-icon-move:hover:not(:disabled),
 .btn-icon-move:focus-visible {
-    background: rgba(108, 99, 255, 0.18);
-    border-color: rgba(108, 99, 255, 0.45);
+    background: rgba(91, 155, 255, 0.18);
+    border-color: rgba(91, 155, 255, 0.45);
     color: #fff;
 }
 .btn-icon-move:disabled {
@@ -8668,7 +8679,7 @@ button.calendar-day {
 }
 .settings-form .setting-item input[type="text"]:hover,
 .settings-form .setting-item input[type="number"]:hover {
-    border-color: rgba(108, 99, 255, 0.45);
+    border-color: rgba(91, 155, 255, 0.45);
 }
 .settings-form .setting-item input[type="text"]:focus,
 .settings-form .setting-item input[type="number"]:focus,
@@ -8677,7 +8688,7 @@ button.calendar-day {
     outline: none;
     border-color: var(--accent-primary);
     background: var(--bg-card);
-    box-shadow: 0 0 0 3px rgba(108, 99, 255, 0.18),
+    box-shadow: 0 0 0 3px rgba(91, 155, 255, 0.18),
                 inset 0 1px 0 rgba(255, 255, 255, 0.03);
 }
 /* Hide the spinner on number inputs in the settings form — the value
@@ -8759,13 +8770,13 @@ button.calendar-day {
 }
 .btn-icon-link:hover,
 .btn-icon-link:focus-visible {
-    background: rgba(108, 99, 255, 0.18);
-    border-color: rgba(108, 99, 255, 0.45);
+    background: rgba(91, 155, 255, 0.18);
+    border-color: rgba(91, 155, 255, 0.45);
     color: #fff;
 }
 .btn-icon-link.is-on {
-    background: rgba(108, 99, 255, 0.28);
-    border-color: rgba(108, 99, 255, 0.7);
+    background: rgba(91, 155, 255, 0.28);
+    border-color: rgba(91, 155, 255, 0.7);
     color: #fff;
 }
 
@@ -8773,8 +8784,8 @@ button.calendar-day {
    bottom border of the row above and the top border of the row below
    so they read as one unit, plus a subtle accent stripe. */
 .program-exercise-row.is-grouped {
-    border-color: rgba(108, 99, 255, 0.45);
-    background: rgba(108, 99, 255, 0.05);
+    border-color: rgba(91, 155, 255, 0.45);
+    background: rgba(91, 155, 255, 0.05);
 }
 .program-exercise-row.is-linked-above {
     border-top-color: transparent;
@@ -8793,7 +8804,7 @@ button.calendar-day {
     left: 12px;
     padding: 1px 6px;
     background: var(--bg-card);
-    border: 1px solid rgba(108, 99, 255, 0.55);
+    border: 1px solid rgba(91, 155, 255, 0.55);
     border-radius: 4px;
     color: var(--accent-primary);
     font-size: 0.6rem;
@@ -8810,8 +8821,8 @@ button.calendar-day {
     position: relative;
     margin: 1rem 0;
     padding: 8px;
-    background: rgba(108, 99, 255, 0.05);
-    border: 1px solid rgba(108, 99, 255, 0.4);
+    background: rgba(91, 155, 255, 0.05);
+    border: 1px solid rgba(91, 155, 255, 0.4);
     border-radius: var(--radius-md);
 }
 .superset-block-header {
@@ -8821,7 +8832,7 @@ button.calendar-day {
     padding: 4px 10px;
     margin: -16px 0 8px;
     background: var(--bg-card);
-    border: 1px solid rgba(108, 99, 255, 0.55);
+    border: 1px solid rgba(91, 155, 255, 0.55);
     border-radius: 999px;
     font-size: 0.7rem;
     font-weight: 700;
@@ -8870,7 +8881,7 @@ button.calendar-day {
 .insights-bar-fill {
     display: block;
     height: 100%;
-    background: linear-gradient(90deg, rgba(108, 99, 255, 0.85), rgba(139, 92, 246, 0.85));
+    background: linear-gradient(90deg, rgba(91, 155, 255, 0.85), rgba(91, 155, 255, 0.85));
     border-radius: 999px;
     transition: width 200ms ease;
 }
@@ -8926,10 +8937,10 @@ button.calendar-day {
 }
 .hm-cell:hover { filter: brightness(1.3); }
 .hm-cell-out { visibility: hidden; }
-.hm-cell-l1 { background: rgba(108, 99, 255, 0.25); }
-.hm-cell-l2 { background: rgba(108, 99, 255, 0.5); }
-.hm-cell-l3 { background: rgba(108, 99, 255, 0.75); }
-.hm-cell-l4 { background: rgba(139, 92, 246, 0.95); }
+.hm-cell-l1 { background: rgba(91, 155, 255, 0.25); }
+.hm-cell-l2 { background: rgba(91, 155, 255, 0.5); }
+.hm-cell-l3 { background: rgba(91, 155, 255, 0.75); }
+.hm-cell-l4 { background: rgba(91, 155, 255, 0.95); }
 
 .hm-legend {
     display: inline-flex;
@@ -9040,8 +9051,8 @@ button.calendar-day {
     justify-content: center;
 }
 .measurement-row-actions .btn-icon:hover {
-    background: rgba(108, 99, 255, 0.18);
-    border-color: rgba(108, 99, 255, 0.45);
+    background: rgba(91, 155, 255, 0.18);
+    border-color: rgba(91, 155, 255, 0.45);
     color: #fff;
 }
 .measurement-row-actions .btn-icon-danger:hover {
@@ -9144,7 +9155,7 @@ button.calendar-day {
 .rest-mode-uniform-input:focus {
     outline: none;
     border-color: var(--accent-primary);
-    box-shadow: 0 0 0 2px rgba(108, 99, 255, 0.25);
+    box-shadow: 0 0 0 2px rgba(91, 155, 255, 0.25);
 }
 
 .form-hint {
@@ -9187,7 +9198,7 @@ button.calendar-day {
     gap: 0.25rem;
     padding: 0.15rem 0.5rem;
     background: transparent;
-    border: 1px solid rgba(108, 99, 255, 0.35);
+    border: 1px solid rgba(91, 155, 255, 0.35);
     border-radius: var(--radius-sm);
     color: var(--accent-primary);
     font-size: 0.7rem;
@@ -9199,8 +9210,8 @@ button.calendar-day {
 
 .pex-add-set-btn:hover,
 .pex-add-set-btn:focus-visible {
-    background: rgba(108, 99, 255, 0.12);
-    border-color: rgba(108, 99, 255, 0.6);
+    background: rgba(91, 155, 255, 0.12);
+    border-color: rgba(91, 155, 255, 0.6);
     outline: none;
 }
 
@@ -9256,7 +9267,7 @@ button.calendar-day {
 .pex-reps-input:focus {
     outline: none;
     border-color: var(--accent-primary);
-    box-shadow: 0 0 0 2px rgba(108, 99, 255, 0.22);
+    box-shadow: 0 0 0 2px rgba(91, 155, 255, 0.22);
 }
 
 .pex-reps-sep {
@@ -9292,26 +9303,26 @@ button.calendar-day {
 
 .pex-range-toggle:hover,
 .pex-range-toggle:focus-visible {
-    background: rgba(108, 99, 255, 0.14) !important;
-    border-color: rgba(108, 99, 255, 0.5) !important;
+    background: rgba(91, 155, 255, 0.14) !important;
+    border-color: rgba(91, 155, 255, 0.5) !important;
     color: #fff !important;
     outline: none;
 }
 
 .pex-range-toggle:hover:active {
-    background: rgba(108, 99, 255, 0.25) !important;
+    background: rgba(91, 155, 255, 0.25) !important;
     color: #fff !important;
 }
 
 .pex-range-toggle.is-on {
-    background: rgba(108, 99, 255, 0.2) !important;
-    border-color: rgba(108, 99, 255, 0.6) !important;
+    background: rgba(91, 155, 255, 0.2) !important;
+    border-color: rgba(91, 155, 255, 0.6) !important;
     color: var(--accent-primary) !important;
 }
 
 .pex-range-toggle.is-on:hover,
 .pex-range-toggle.is-on:focus-visible {
-    background: rgba(108, 99, 255, 0.3) !important;
+    background: rgba(91, 155, 255, 0.3) !important;
     color: #fff !important;
 }
 
@@ -9391,8 +9402,8 @@ button.calendar-day {
 
 /* Hero banner: workout name + live duration */
 .finish-modal-hero {
-    background: linear-gradient(135deg, rgba(108, 99, 255, 0.18) 0%, rgba(90, 82, 213, 0.10) 100%);
-    border-bottom: 1px solid rgba(108, 99, 255, 0.25);
+    background: linear-gradient(135deg, rgba(91, 155, 255, 0.18) 0%, rgba(91, 155, 255, 0.10) 100%);
+    border-bottom: 1px solid rgba(91, 155, 255, 0.25);
     padding: var(--spacing-lg) var(--spacing-lg) var(--spacing-md);
     display: flex;
     align-items: flex-start;
@@ -9578,7 +9589,7 @@ button.calendar-day {
 .input-with-unit input:focus {
     border-color: var(--accent-primary);
     background: var(--bg-card);
-    box-shadow: 0 0 0 3px rgba(108, 99, 255, 0.18);
+    box-shadow: 0 0 0 3px rgba(91, 155, 255, 0.18);
 }
 
 .input-with-unit input::placeholder {
@@ -9611,7 +9622,7 @@ button.calendar-day {
 #finish-workout-modal .post-workout-metrics-section .form-group textarea:focus {
     border-color: var(--accent-primary);
     background: var(--bg-card);
-    box-shadow: 0 0 0 3px rgba(108, 99, 255, 0.18);
+    box-shadow: 0 0 0 3px rgba(91, 155, 255, 0.18);
     outline: none;
 }
 
@@ -9641,7 +9652,7 @@ button.calendar-day {
 .finish-workout-submit:hover {
     opacity: 0.92;
     transform: translateY(-1px);
-    box-shadow: 0 6px 20px rgba(108, 99, 255, 0.38) !important;
+    box-shadow: 0 6px 20px rgba(91, 155, 255, 0.38) !important;
 }
 
 .finish-workout-cancel {
@@ -9808,14 +9819,14 @@ button.calendar-day {
 
 /* Item 3: Edit-program header button — purple/secondary accent. */
 .workout-header .btn-icon-edit-program {
-    background: rgba(108, 99, 255, 0.10) !important;
-    border-color: rgba(108, 99, 255, 0.30) !important;
+    background: rgba(91, 155, 255, 0.10) !important;
+    border-color: rgba(91, 155, 255, 0.30) !important;
     color: #8b85ff !important;
 }
 .workout-header .btn-icon-edit-program:hover,
 .workout-header .btn-icon-edit-program:focus-visible {
-    background: rgba(108, 99, 255, 0.20) !important;
-    border-color: rgba(108, 99, 255, 0.55) !important;
+    background: rgba(91, 155, 255, 0.20) !important;
+    border-color: rgba(91, 155, 255, 0.55) !important;
     color: #a39dff !important;
 }
 
@@ -9832,7 +9843,8 @@ button.calendar-day {
     appearance: none;
     border: 0;
     background: transparent;
-    color: var(--text-secondary);
+    /* Pinned !important: <button> hit by main.css `button{color:#555!important}`. */
+    color: var(--text-secondary) !important;
     font: inherit;
     font-weight: 600;
     font-size: 0.85rem;
@@ -9846,33 +9858,32 @@ button.calendar-day {
 }
 .workout-unit-btn:hover {
     background: var(--bg-hover);
-    color: var(--text-primary);
+    color: var(--text-primary) !important;
 }
-.workout-unit-btn.is-active {
-    background: #6c63ff;
-    color: #ffffff;
+.workout-unit-btn.is-active,
+.workout-unit-btn.is-active:hover {
+    background: #2563eb;
+    color: #ffffff !important;
 }
 .workout-unit-btn.is-active:hover {
-    background: #5b53e6;
-    color: #ffffff;
+    background: #1d4ed8;
 }
 .workout-unit-btn:focus-visible {
     outline: none;
-    box-shadow: inset 0 0 0 2px rgba(108, 99, 255, 0.55);
+    box-shadow: inset 0 0 0 2px rgba(91, 155, 255, 0.55);
 }
 
 /* Item 4: Return-to-workout button in the program editor footer. */
-.btn.btn-return-workout {
+.btn.btn-return-workout,
+.btn.btn-return-workout:hover,
+.btn.btn-return-workout:focus-visible {
     background: linear-gradient(135deg, #22c55e 0%, #16a34a 100%);
     border: 1px solid transparent;
-    color: #ffffff;
+    color: #ffffff !important;
     box-shadow: 0 3px 10px rgba(34, 197, 94, 0.3);
 }
 .btn.btn-return-workout:hover,
 .btn.btn-return-workout:focus-visible {
-    background: linear-gradient(135deg, #22c55e 0%, #16a34a 100%);
-    border-color: transparent;
-    color: #ffffff;
     filter: brightness(1.07);
     box-shadow: 0 5px 14px rgba(34, 197, 94, 0.45);
 }
@@ -9881,13 +9892,13 @@ button.calendar-day {
 .btn.btn-leave-workout {
     background: rgba(251, 191, 36, 0.14);
     border: 1px solid rgba(251, 191, 36, 0.5);
-    color: #f0b429;
+    color: #f0b429 !important;
 }
 .btn.btn-leave-workout:hover,
 .btn.btn-leave-workout:focus-visible {
     background: rgba(251, 191, 36, 0.24);
     border-color: rgba(251, 191, 36, 0.7);
-    color: #fbbf24;
+    color: #fbbf24 !important;
 }
 
 /* Item R3-4: the chosen-feel toggle icon on the exercise header. Colors are
@@ -9995,13 +10006,16 @@ button.calendar-day {
 }
 .schedule-day-chip {
     appearance: none;
-    border: 1px solid var(--border-color);
+    border: 1px solid var(--border-light);
     background: var(--bg-elevated);
-    color: var(--text-secondary);
+    /* Pin colour !important across states: these chips are <button>s, so the
+       sitewide main.css `button{color:#555!important}` / `:hover{#ce1b28}` trap
+       would otherwise dim them to a disabled-looking gray. */
+    color: var(--text-primary) !important;
     font: inherit;
     font-size: 0.82rem;
     font-weight: 600;
-    padding: 0.35rem 0.6rem;
+    padding: 0.4rem 0.7rem;
     border-radius: var(--radius-md);
     cursor: pointer;
     transition: background var(--transition-base), border-color var(--transition-base),
@@ -10009,22 +10023,22 @@ button.calendar-day {
 }
 .schedule-day-chip:hover {
     background: var(--bg-hover);
-    border-color: var(--border-light);
-    color: var(--text-primary);
+    border-color: var(--accent-primary);
+    color: var(--text-primary) !important;
 }
-.schedule-day-chip.is-on {
-    background: #6c63ff;
-    border-color: #6c63ff;
-    color: #ffffff;
+.schedule-day-chip.is-on,
+.schedule-day-chip.is-on:hover {
+    background: #2563eb;
+    border-color: #2563eb;
+    color: #ffffff !important;
 }
 .schedule-day-chip.is-on:hover {
-    background: #5b53e6;
-    border-color: #5b53e6;
-    color: #ffffff;
+    background: #1d4ed8;
+    border-color: #1d4ed8;
 }
 .schedule-day-chip:focus-visible {
     outline: none;
-    box-shadow: 0 0 0 3px rgba(108, 99, 255, 0.35);
+    box-shadow: 0 0 0 3px rgba(91, 155, 255, 0.35);
 }
 .program-schedule-label {
     display: block;
@@ -10063,9 +10077,9 @@ button.calendar-day {
     font-size: 0.85rem;
     color: var(--text-secondary);
     padding: 0.4rem 0.55rem;
-    border: 1px dashed rgba(108, 99, 255, 0.4);
+    border: 1px dashed rgba(91, 155, 255, 0.4);
     border-radius: var(--radius-md);
-    background: rgba(108, 99, 255, 0.07);
+    background: rgba(91, 155, 255, 0.07);
 }
 .calendar-scheduled-item i { color: #8b85ff; }
 .legend-schedule-cue { color: #8b85ff; }
@@ -10099,8 +10113,8 @@ button.calendar-day {
     border: 1px solid transparent;
 }
 .week-strip-day.is-today {
-    background: rgba(108, 99, 255, 0.12);
-    border-color: rgba(108, 99, 255, 0.45);
+    background: rgba(91, 155, 255, 0.12);
+    border-color: rgba(91, 155, 255, 0.45);
 }
 .week-strip-label {
     font-size: 0.7rem;
@@ -10127,7 +10141,7 @@ button.calendar-day {
     padding: 0.2rem 0.3rem;
     border: none;
     border-radius: var(--radius-sm, 6px);
-    background: rgba(108, 99, 255, 0.10) !important;
+    background: rgba(91, 155, 255, 0.10) !important;
     color: var(--text-primary) !important;
     cursor: pointer;
     font-size: 0.66rem;
@@ -10135,7 +10149,7 @@ button.calendar-day {
     transition: background var(--transition-fast);
 }
 .week-strip-program:hover {
-    background: rgba(108, 99, 255, 0.22) !important;
+    background: rgba(91, 155, 255, 0.22) !important;
     color: var(--text-primary) !important;
 }
 .week-strip-program:focus-visible {
@@ -10143,11 +10157,11 @@ button.calendar-day {
     outline-offset: 1px;
 }
 .week-strip-day.is-today .week-strip-program {
-    background: rgba(108, 99, 255, 0.28) !important;
+    background: rgba(91, 155, 255, 0.28) !important;
     font-weight: 600;
 }
 .week-strip-day.is-today .week-strip-program:hover {
-    background: rgba(108, 99, 255, 0.4) !important;
+    background: rgba(91, 155, 255, 0.4) !important;
 }
 .week-strip-dot {
     flex: 0 0 auto;

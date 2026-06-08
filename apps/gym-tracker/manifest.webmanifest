@@ -6,8 +6,8 @@
   "scope": "/apps/gym-tracker/",
   "display": "standalone",
   "orientation": "portrait",
-  "background_color": "#0f0f23",
-  "theme_color": "#1a1a2e",
+  "background_color": "#0a0c14",
+  "theme_color": "#0a0c14",
   "icons": [
     {
       "src": "../../images/icon-192.png",

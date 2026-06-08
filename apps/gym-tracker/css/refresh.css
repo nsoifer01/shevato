@@ -16,8 +16,8 @@ body.gym-tracker {
        work; the new tokens are applied where they matter most. */
     --gt-bg: #0a0c14;
     --gt-bg-grad:
-        radial-gradient(ellipse 80% 50% at 50% -10%, rgba(108, 99, 255, 0.10), transparent 60%),
-        radial-gradient(ellipse 60% 40% at 100% 0%, rgba(99, 102, 241, 0.05), transparent 65%),
+        radial-gradient(ellipse 80% 50% at 50% -10%, rgba(59, 130, 246, 0.10), transparent 60%),
+        radial-gradient(ellipse 60% 40% at 100% 0%, rgba(37, 99, 235, 0.05), transparent 65%),
         linear-gradient(180deg, #0a0c14 0%, #07090f 70%, #050609 100%);
     --gt-surface: #12151d;
     --gt-surface-2: #181c26;
@@ -25,19 +25,27 @@ body.gym-tracker {
     --gt-text: #f1f3f8;
     --gt-muted: #a4adbd;
     --gt-muted-2: #6f7785;
-    --gt-accent: #818cf8;
-    --gt-accent-strong: #6c63ff;
-    --gt-accent-soft: rgba(129, 140, 248, 0.14);
-    --gt-accent-ring: rgba(129, 140, 248, 0.35);
+    /* Modern azure accent — replaces the old indigo/violet.
+       --gt-accent is the bright tone for icons/links/borders/focus on dark;
+       --gt-accent-strong + --gt-accent-grad are the deep tones for solid
+       fills so white button text keeps legible contrast. */
+    --gt-accent: #5b9bff;
+    --gt-accent-strong: #2563eb;
+    --gt-accent-grad: linear-gradient(135deg, #3b82f6 0%, #2563eb 100%);
+    --gt-accent-soft: rgba(91, 155, 255, 0.14);
+    --gt-accent-ring: rgba(91, 155, 255, 0.38);
     --gt-good: #34d399;
     --gt-good-soft: rgba(52, 211, 153, 0.14);
     --gt-warn: #fbbf24;
     --gt-danger: #f87171;
     --gt-border: #232838;
     --gt-border-strong: #343a4f;
-    --gt-radius: 14px;
-    --gt-radius-sm: 10px;
+    --gt-radius: 16px;
+    --gt-radius-sm: 11px;
+    --gt-radius-pill: 999px;
     --gt-shadow-lift: 0 6px 22px -8px rgba(0, 0, 0, 0.55), 0 2px 4px rgba(0, 0, 0, 0.3);
+    --gt-shadow-pop: 0 12px 34px -12px rgba(0, 0, 0, 0.65), 0 3px 8px rgba(0, 0, 0, 0.35);
+    --gt-accent-glow: 0 8px 20px -8px rgba(37, 99, 235, 0.55);
 
     font-family: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
     -webkit-font-smoothing: antialiased;
@@ -47,27 +55,42 @@ body.gym-tracker {
     color-scheme: dark;
 }
 
+/* The shared marketing-site backdrop (body::before = a fixed bg.jpg gym photo)
+   bleeds through the app's transparent content areas, making sparse views look
+   busy and unprofessional. Replace it with the app's own dark azure gradient so
+   every view sits on one clean, opaque canvas. */
+body.gym-tracker::before {
+    background-image: var(--gt-bg-grad) !important;
+    background-color: var(--gt-bg) !important;
+}
+
 /* ---------- Typography ---------- */
+
+/* The sitewide marketing theme (main.css) force-uppercases EVERY heading
+   (`h1..h6 { text-transform: uppercase }`). Earlier work only neutralized it
+   for h1 / .section h2 / .modal-header h2, so every naked <h3> — exercise
+   names, workout-detail exercise headers, detail sections — rendered SHOUTY
+   uppercase, the single biggest source of the "heavy / generic" feel. Reset it
+   app-wide here. Intentional eyebrow micro-labels (.stat-label, .input-label,
+   .exercise-detail-section-header h3, etc.) set uppercase via more specific
+   class selectors, so they keep their treatment. */
+body.gym-tracker h1,
+body.gym-tracker h2,
+body.gym-tracker h3,
+body.gym-tracker h4,
+body.gym-tracker h5,
+body.gym-tracker h6 {
+    text-transform: none;
+}
 
 body.gym-tracker .view-header h1 {
     font-size: clamp(1.85rem, 3.5vw, 2.5rem);
-    font-weight: 700;
-    letter-spacing: -0.025em;
-    line-height: 1.1;
+    font-weight: 800;
+    letter-spacing: -0.03em;
+    line-height: 1.15;
     text-transform: none;
-    background: linear-gradient(135deg, #ffffff 0%, var(--gt-accent) 90%);
-    -webkit-background-clip: text;
-    background-clip: text;
-    -webkit-text-fill-color: transparent;
-    color: transparent;
+    color: var(--gt-text);
     margin: 0 0 0.35rem;
-}
-
-/* Programs title: "g" descender clips with line-height 1.1 + background-clip:text */
-body.gym-tracker #programs-view .view-header h1 {
-    line-height: 1.3;
-    padding-bottom: 0.1em;
-    margin-bottom: calc(0.35rem - 0.1em);
 }
 
 body.gym-tracker .view-header .subtitle {
@@ -171,8 +194,8 @@ body.gym-tracker .bottom-nav .nav-item.active {
 }
 
 body.gym-tracker .bottom-nav .nav-item.nav-item-primary {
-    background: linear-gradient(135deg, var(--gt-accent-strong), #8b5cf6);
-    box-shadow: 0 6px 18px rgba(108, 99, 255, 0.45);
+    background: linear-gradient(135deg, var(--gt-accent-strong), #1d4ed8);
+    box-shadow: 0 6px 18px rgba(91, 155, 255, 0.45);
 }
 
 /* ---------- Cards & sections ---------- */
@@ -215,78 +238,173 @@ body.gym-tracker .stat-value .unit {
     font-weight: 500;
 }
 
-/* ---------- Buttons ---------- */
+/* ================================================================
+   BUTTONS — one cohesive, token-driven family.
+
+   Every interactive button shares the same geometry (height, radius,
+   weight, gap) and a single focus-ring treatment, so primary / secondary
+   / ghost / danger / icon / text / sm / large all read as ONE system
+   across in-page views AND every modal.
+
+   Colors are pinned !important across base / :hover / :hover:active to
+   defeat the sitewide main.css traps:
+     button            { color:#555 !important; box-shadow: inset 0 0 0 1px #555 }
+     button:hover      { color:#ce1b28 !important }
+     button:hover:active{ background: rgba(206,27,40,.25) }
+   ================================================================ */
 
 body.gym-tracker .btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.5rem;
     height: 40px;
-    padding: 0 1.05rem;
+    padding: 0 1.15rem;
+    font-family: inherit;
     font-size: 0.9rem;
-    font-weight: 500;
-    border-radius: 10px;
-    transition: background 0.15s ease, border-color 0.15s ease,
-                box-shadow 0.15s ease, transform 0.08s ease, filter 0.15s ease;
+    font-weight: 600;
+    line-height: 1;
+    letter-spacing: -0.005em;
+    white-space: nowrap;
+    border-radius: var(--gt-radius-sm);
+    cursor: pointer;
     box-shadow: none;
+    transition: background 0.15s ease, border-color 0.15s ease,
+                box-shadow 0.18s ease, transform 0.08s ease, filter 0.15s ease, opacity 0.15s ease;
 }
 
-body.gym-tracker .btn-primary {
-    background: linear-gradient(135deg, var(--gt-accent), var(--gt-accent-strong));
+/* Shared focus-visible ring — same on every variant. */
+body.gym-tracker .btn:focus-visible {
+    outline: none;
+    box-shadow: 0 0 0 3px var(--gt-accent-ring);
+}
+
+body.gym-tracker .btn:disabled,
+body.gym-tracker .btn[disabled] {
+    opacity: 0.45;
+    cursor: not-allowed;
+    filter: none !important;
+    transform: none !important;
+    box-shadow: none !important;
+}
+
+/* NOTE on !important discipline: only `color` is pinned !important, because
+   only `color` is forced by main.css (#555 base / #ce1b28 hover). Backgrounds
+   are left non-important so legacy contextual rules that use !important (e.g.
+   the green .workout-header .btn-icon-finish) keep winning; the red
+   :hover:active press-tint from main.css is defeated by out-specifying it
+   with a plain (0,2,2) rule rather than another !important. */
+
+/* ---- Primary: deep azure gradient, legible white text ---- */
+body.gym-tracker .btn-primary,
+body.gym-tracker .btn-primary:hover,
+body.gym-tracker .btn-primary:hover:active,
+body.gym-tracker .btn-primary:active {
+    background: var(--gt-accent-grad);
     color: #ffffff !important;
-    font-weight: 600;
     border: 1px solid transparent;
 }
-
+body.gym-tracker .btn-primary { box-shadow: var(--gt-accent-glow); }
 body.gym-tracker .btn-primary:hover {
-    filter: brightness(1.06);
+    filter: brightness(1.08);
     transform: translateY(-1px);
-    box-shadow: 0 8px 20px -8px rgba(108, 99, 255, 0.5);
+    box-shadow: 0 10px 24px -8px rgba(37, 99, 235, 0.6);
 }
+body.gym-tracker .btn-primary:active,
+body.gym-tracker .btn-primary:hover:active { filter: brightness(0.96); transform: translateY(0); }
 
-body.gym-tracker .btn-secondary {
-    background: var(--gt-surface);
+/* ---- Secondary: solid surface chip ---- */
+body.gym-tracker .btn-secondary,
+body.gym-tracker .btn-secondary:hover,
+body.gym-tracker .btn-secondary:hover:active {
+    color: var(--gt-text) !important;
     border: 1px solid var(--gt-border);
-    color: var(--gt-text) !important;
 }
-
+body.gym-tracker .btn-secondary,
+body.gym-tracker .btn-secondary:hover:active { background: var(--gt-surface-2); }
 body.gym-tracker .btn-secondary:hover {
-    background: var(--gt-surface-2);
+    background: var(--gt-surface-3);
     border-color: var(--gt-border-strong);
-    transform: none;
 }
 
-body.gym-tracker .btn-ghost {
-    background: transparent;
-    border: 1px solid var(--gt-border-strong);
+/* ---- Ghost: outline only ---- */
+body.gym-tracker .btn-ghost,
+body.gym-tracker .btn-ghost:hover,
+body.gym-tracker .btn-ghost:hover:active {
     color: var(--gt-text) !important;
+    border: 1px solid var(--gt-border-strong);
 }
+body.gym-tracker .btn-ghost,
+body.gym-tracker .btn-ghost:hover:active { background: transparent; }
 body.gym-tracker .btn-ghost:hover {
     background: var(--gt-surface-2);
-    border-color: var(--gt-border-strong);
+    border-color: var(--gt-accent);
 }
 
-body.gym-tracker .btn-danger {
+/* ---- Danger: red gradient ---- */
+body.gym-tracker .btn-danger,
+body.gym-tracker .btn-danger:hover,
+body.gym-tracker .btn-danger:hover:active,
+body.gym-tracker .btn-danger:active {
     background: linear-gradient(135deg, #ef4444, #dc2626);
-    border: 1px solid transparent;
     color: #ffffff !important;
-    font-weight: 600;
+    border: 1px solid transparent;
 }
+body.gym-tracker .btn-danger:hover {
+    filter: brightness(1.08);
+    transform: translateY(-1px);
+    box-shadow: 0 10px 24px -8px rgba(220, 38, 38, 0.55);
+}
+body.gym-tracker .btn-danger:active,
+body.gym-tracker .btn-danger:hover:active { filter: brightness(0.96); transform: translateY(0); }
 
-body.gym-tracker .btn-text {
-    color: var(--gt-muted) !important;
+/* ---- Text / link button ---- */
+body.gym-tracker .btn-text,
+body.gym-tracker .btn-text:hover,
+body.gym-tracker .btn-text:hover:active {
+    background: transparent;
+    border-color: transparent;
     font-weight: 500;
 }
-body.gym-tracker .btn-text:hover {
-    color: var(--gt-accent) !important;
-    text-decoration: none !important;
-}
+body.gym-tracker .btn-text { color: var(--gt-muted) !important; }
+body.gym-tracker .btn-text:hover,
+body.gym-tracker .btn-text:hover:active { color: var(--gt-accent) !important; text-decoration: none !important; }
 
+/* ---- Icon button: square, centered, pinned against the gray trap ---- */
 body.gym-tracker .btn-icon {
-    background: var(--gt-surface);
-    border: 1px solid var(--gt-border);
-    color: var(--gt-text);
-}
-body.gym-tracker .btn-icon:hover {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
     background: var(--gt-surface-2);
+    border: 1px solid var(--gt-border);
+    box-shadow: none;
+    border-radius: var(--gt-radius-sm);
+}
+body.gym-tracker .btn-icon,
+body.gym-tracker .btn-icon:hover,
+body.gym-tracker .btn-icon:hover:active { color: var(--gt-text) !important; }
+body.gym-tracker .btn-icon:hover:active { background: var(--gt-surface-3); }
+body.gym-tracker .btn-icon:hover {
+    background: var(--gt-surface-3);
     border-color: var(--gt-border-strong);
+    color: var(--gt-accent) !important;
+}
+body.gym-tracker .btn-icon:focus-visible { box-shadow: 0 0 0 3px var(--gt-accent-ring); }
+
+/* ---- Size modifiers ---- */
+body.gym-tracker .btn-sm {
+    height: 32px;
+    padding: 0 0.8rem;
+    font-size: 0.82rem;
+    border-radius: 9px;
+    gap: 0.4rem;
+}
+body.gym-tracker .btn-large,
+body.gym-tracker .btn-lg {
+    height: 48px;
+    padding: 0 1.6rem;
+    font-size: 1rem;
+    border-radius: 13px;
 }
 
 /* ---------- Empty/zero states ---------- */
@@ -316,7 +434,7 @@ body.gym-tracker .empty-state i {
     height: 3.2rem;
     border-radius: 50%;
     background: var(--gt-accent-soft);
-    box-shadow: inset 0 0 0 1px rgba(129, 140, 248, 0.25);
+    box-shadow: inset 0 0 0 1px rgba(91, 155, 255, 0.25);
 }
 
 body.gym-tracker .empty-state p {
@@ -397,7 +515,7 @@ body.gym-tracker .onboarding-step {
 body.gym-tracker .onboarding-step-number {
     background: var(--gt-accent-soft);
     color: var(--gt-accent) !important;
-    border: 1px solid rgba(129, 140, 248, 0.35);
+    border: 1px solid rgba(91, 155, 255, 0.35);
     font-weight: 700;
 }
 
@@ -483,7 +601,7 @@ body.gym-tracker .toast {
 
 body.gym-tracker .achievement-summary {
     background: var(--gt-accent-soft);
-    border: 1px solid rgba(129, 140, 248, 0.35);
+    border: 1px solid rgba(91, 155, 255, 0.35);
     color: var(--gt-accent) !important;
     padding: 0.35rem 0.8rem;
     border-radius: 999px;
@@ -569,7 +687,8 @@ body.gym-tracker .exercise-entry-header {
 body.gym-tracker .exercise-collapse-toggle {
     background: none;
     border: none;
-    color: var(--gt-muted);
+    /* !important defeats the main.css button{color:#555} trap on this chevron. */
+    color: var(--gt-muted) !important;
     padding: 0.2rem;
     cursor: pointer;
     flex-shrink: 0;
@@ -577,7 +696,7 @@ body.gym-tracker .exercise-collapse-toggle {
     transition: color var(--transition-fast), transform var(--transition-fast);
 }
 body.gym-tracker .exercise-collapse-toggle:hover {
-    color: var(--gt-accent);
+    color: var(--gt-accent) !important;
 }
 
 body.gym-tracker .exercise-entry .exercise-body {
@@ -612,12 +731,12 @@ body.gym-tracker .rest-row .btn-icon-plates--per-ex {
 /* Per-exercise plate-hints toggle (inline in rest-row) */
 body.gym-tracker .btn-icon-plates--per-ex,
 body.gym-tracker .btn-icon-plates--per-ex:hover:active {
-    background: rgba(108, 99, 255, 0.1);
-    border: 1px solid rgba(108, 99, 255, 0.3);
+    background: rgba(91, 155, 255, 0.1);
+    border: 1px solid rgba(91, 155, 255, 0.3);
     border-radius: 999px;
     /* !important pins defeat the sitewide main.css `button { color:#555 !important }`
        that otherwise paints this dumbbell icon gray. */
-    color: rgba(167, 139, 250, 0.9) !important;
+    color: rgba(91, 155, 255, 0.9) !important;
     box-shadow: none !important;
     font-size: 0.75rem;
     padding: 0.2rem 0.55rem;
@@ -631,8 +750,8 @@ body.gym-tracker .btn-icon-plates--per-ex:hover:active {
     margin-left: auto;
 }
 body.gym-tracker .btn-icon-plates--per-ex:hover {
-    background: rgba(108, 99, 255, 0.2);
-    color: #a78bfa !important;
+    background: rgba(91, 155, 255, 0.2);
+    color: #5b9bff !important;
 }
 body.gym-tracker .btn-icon-plates--per-ex.btn-icon-plates--off,
 body.gym-tracker .btn-icon-plates--per-ex.btn-icon-plates--off:hover {
@@ -655,13 +774,13 @@ body.gym-tracker .workout-rest-between {
     line-height: 1.2;
 }
 body.gym-tracker .workout-rest-between i {
-    color: #818cf8 !important;
+    color: #5b9bff !important;
     font-size: 0.72rem;
     opacity: 0.85;
     flex-shrink: 0;
 }
 body.gym-tracker .workout-rest-between strong {
-    color: #a5b4fc !important;
+    color: #8fb8ff !important;
     font-weight: 700;
 }
 /* Long label on desktop, short label on the cramped mobile header. */
@@ -718,7 +837,7 @@ body.gym-tracker .uniform-rest-note {
     font-weight: 700;
     color: #f1f3f8;
     margin: 0 0 1.25rem;
-    background: linear-gradient(135deg, #fff 0%, #818cf8 90%);
+    background: linear-gradient(135deg, #fff 0%, #5b9bff 90%);
     -webkit-background-clip: text;
     background-clip: text;
     -webkit-text-fill-color: transparent;
@@ -739,7 +858,7 @@ body.gym-tracker .uniform-rest-note {
 .completion-burst-value {
     font-size: 1.35rem;
     font-weight: 700;
-    color: #818cf8;
+    color: #5b9bff;
 }
 .completion-burst-stat--pr .completion-burst-value {
     color: #fbbf24;
@@ -771,13 +890,13 @@ body.gym-tracker .exercise-sparkline {
 }
 body.gym-tracker .sparkline-line {
     fill: none;
-    stroke: #818cf8;
+    stroke: #5b9bff;
     stroke-width: 2;
     stroke-linecap: round;
     stroke-linejoin: round;
 }
 body.gym-tracker .sparkline-dot {
-    fill: #818cf8;
+    fill: #5b9bff;
 }
 body.gym-tracker .sparkline-axis-labels {
     display: flex;
@@ -862,11 +981,11 @@ body.gym-tracker {
     --gt-surface-card: #14172a;
     --gt-surface-raised: #1c2035;
     --gt-border-subtle: rgba(255, 255, 255, 0.05);
-    --gt-accent-dim: rgba(129, 140, 248, 0.08);
+    --gt-accent-dim: rgba(91, 155, 255, 0.08);
     --gt-radius-card: 16px;
     --gt-radius-inner: 10px;
     --gt-shadow-card: 0 2px 12px rgba(0, 0, 0, 0.4), 0 0 0 1px rgba(255,255,255,0.04) inset;
-    --gt-shadow-hover: 0 8px 28px rgba(0, 0, 0, 0.5), 0 0 0 1px rgba(129,140,248,0.18) inset;
+    --gt-shadow-hover: 0 8px 28px rgba(0, 0, 0, 0.5), 0 0 0 1px rgba(91, 155, 255,0.18) inset;
 }
 
 /* ============================================================
@@ -889,7 +1008,7 @@ body.gym-tracker .stat-card::before {
     position: absolute;
     inset: 0;
     border-radius: inherit;
-    background: linear-gradient(135deg, rgba(129,140,248,0.06) 0%, transparent 50%);
+    background: linear-gradient(135deg, rgba(91, 155, 255,0.06) 0%, transparent 50%);
     pointer-events: none;
 }
 
@@ -981,7 +1100,7 @@ body.gym-tracker .program-card::before {
     content: '';
     position: absolute;
     inset: 0;
-    background: linear-gradient(135deg, rgba(129,140,248,0.04) 0%, transparent 50%);
+    background: linear-gradient(135deg, rgba(91, 155, 255,0.04) 0%, transparent 50%);
     pointer-events: none;
     border-radius: inherit;
 }
@@ -1102,7 +1221,7 @@ body.gym-tracker .exercise-db-card .badge-equipment i {
 /* History count badge */
 body.gym-tracker .history-count-badge {
     background: var(--gt-accent);
-    box-shadow: 0 2px 8px rgba(129,140,248,0.4);
+    box-shadow: 0 2px 8px rgba(91, 155, 255,0.4);
     font-size: 0.68rem;
     font-weight: 700;
 }
@@ -1153,7 +1272,7 @@ body.gym-tracker .pagination-page-btn.pagination-page-active {
     border-color: var(--gt-accent) !important;
     color: #ffffff !important;
     font-weight: 700 !important;
-    box-shadow: 0 2px 8px rgba(129, 140, 248, 0.4) !important;
+    box-shadow: 0 2px 8px rgba(91, 155, 255, 0.4) !important;
     cursor: default !important;
 }
 
@@ -1288,7 +1407,7 @@ body.gym-tracker .settings-section::before {
     content: '';
     position: absolute;
     inset: 0;
-    background: linear-gradient(135deg, rgba(129,140,248,0.03) 0%, transparent 50%);
+    background: linear-gradient(135deg, rgba(91, 155, 255,0.03) 0%, transparent 50%);
     pointer-events: none;
     border-radius: inherit;
     /* Clip the gradient to the rounded card on its own, independent of the
@@ -1309,7 +1428,7 @@ body.gym-tracker .settings-section-icon {
     height: 38px;
     border-radius: 10px;
     background: var(--gt-accent-soft);
-    border: 1px solid rgba(129,140,248,0.22);
+    border: 1px solid rgba(91, 155, 255,0.22);
     color: var(--gt-accent);
     font-size: 0.95rem;
     flex-shrink: 0;
@@ -1417,7 +1536,7 @@ body.gym-tracker .onboarding-modal-content {
 }
 
 body.gym-tracker .onboarding-modal-content .modal-header {
-    background: linear-gradient(135deg, rgba(129,140,248,0.1) 0%, transparent 60%);
+    background: linear-gradient(135deg, rgba(91, 155, 255,0.1) 0%, transparent 60%);
     border-bottom: 1px solid var(--gt-border);
     padding: 1.1rem 1.25rem;
 }
@@ -1457,7 +1576,7 @@ body.gym-tracker .onboarding-step-number {
     width: 34px;
     height: 34px;
     background: var(--gt-accent-soft);
-    border: 1px solid rgba(129,140,248,0.3);
+    border: 1px solid rgba(91, 155, 255,0.3);
     color: var(--gt-accent) !important;
     font-size: 0.88rem;
     font-weight: 700;
@@ -1513,7 +1632,7 @@ body.gym-tracker .onboarding-item-icon {
     width: 34px;
     height: 34px;
     background: var(--gt-accent-soft);
-    border: 1px solid rgba(129,140,248,0.3);
+    border: 1px solid rgba(91, 155, 255,0.3);
     color: var(--gt-accent) !important;
     border-radius: 50%;
 }
@@ -1571,7 +1690,7 @@ body.gym-tracker .workout-header::before {
     content: '';
     position: absolute;
     inset: 0;
-    background: linear-gradient(135deg, rgba(129,140,248,0.06) 0%, transparent 50%);
+    background: linear-gradient(135deg, rgba(91, 155, 255,0.06) 0%, transparent 50%);
     pointer-events: none;
     border-radius: inherit;
 }
@@ -1649,7 +1768,7 @@ body.gym-tracker .set-row-planned {
 body.gym-tracker .set-row-planned:focus-within {
     background: var(--gt-surface-2);
     border-style: solid;
-    border-color: rgba(129,140,248,0.45);
+    border-color: rgba(91, 155, 255,0.45);
 }
 
 body.gym-tracker .set-row-complete {
@@ -1699,14 +1818,14 @@ body.gym-tracker .exercise-progress.is-complete {
 
 /* Superset block */
 body.gym-tracker .superset-block {
-    background: rgba(129,140,248,0.04);
-    border: 1px solid rgba(129,140,248,0.35);
+    background: rgba(91, 155, 255,0.04);
+    border: 1px solid rgba(91, 155, 255,0.35);
     border-radius: var(--gt-radius-card);
 }
 
 body.gym-tracker .superset-block-header {
     background: var(--gt-surface-card);
-    border: 1px solid rgba(129,140,248,0.4);
+    border: 1px solid rgba(91, 155, 255,0.4);
     color: var(--gt-accent);
     font-size: 0.68rem;
     letter-spacing: 0.07em;
@@ -1848,7 +1967,7 @@ body.gym-tracker .toast {
 /* Badge pill general */
 body.gym-tracker .badge {
     background: var(--gt-accent-soft);
-    border: 1px solid rgba(129,140,248,0.25);
+    border: 1px solid rgba(91, 155, 255,0.25);
     color: var(--gt-accent) !important;
     border-radius: 999px;
     padding: 0.2rem 0.65rem;
@@ -2005,7 +2124,7 @@ body.gym-tracker .exercise-picker-search select:focus {
 /* View history button on exercise cards */
 body.gym-tracker .btn-view-history {
     background: var(--gt-accent-dim);
-    border: 1px solid rgba(129,140,248,0.25);
+    border: 1px solid rgba(91, 155, 255,0.25);
     color: var(--gt-accent) !important;
     border-radius: 8px;
     font-size: 0.78rem;
@@ -2013,9 +2132,9 @@ body.gym-tracker .btn-view-history {
 }
 
 body.gym-tracker .exercise-db-card.has-history:hover .btn-view-history {
-    background: rgba(129,140,248,0.18);
+    background: rgba(91, 155, 255,0.18);
     border-color: var(--gt-accent);
-    box-shadow: 0 0 12px rgba(129,140,248,0.2);
+    box-shadow: 0 0 12px rgba(91, 155, 255,0.2);
 }
 
 /* ============================================================
@@ -2105,8 +2224,8 @@ body.gym-tracker .gt-exercise-dir-link:hover:active {
     gap: 0.35rem;
     padding: 0.45rem 1rem !important;
     border-radius: 999px;
-    border: 1px solid rgba(129, 140, 248, 0.4) !important;
-    background: rgba(129, 140, 248, 0.06) !important;
+    border: 1px solid rgba(91, 155, 255, 0.4) !important;
+    background: rgba(91, 155, 255, 0.06) !important;
     color: var(--gt-accent) !important;
     font-size: 0.88rem !important;
     font-weight: 600 !important;
@@ -2124,10 +2243,10 @@ body.gym-tracker .gt-exercise-dir-link:hover:active {
 
 body.gym-tracker .gt-exercise-dir-link:hover,
 body.gym-tracker .gt-exercise-dir-link:hover:active {
-    background: rgba(129, 140, 248, 0.14) !important;
-    border-color: rgba(129, 140, 248, 0.7) !important;
+    background: rgba(91, 155, 255, 0.14) !important;
+    border-color: rgba(91, 155, 255, 0.7) !important;
     color: #ffffff !important;
-    box-shadow: 0 0 12px rgba(129, 140, 248, 0.2) !important;
+    box-shadow: 0 0 12px rgba(91, 155, 255, 0.2) !important;
     transform: translateY(-1px);
     text-decoration: none !important;
 }
@@ -2320,8 +2439,8 @@ body.gym-tracker .gt-exercise-dir-link:focus-visible {
    added from the picker. JS adds .gt-exercise-added class immediately,
    removes it after the animation duration. */
 @keyframes gt-exercise-added-glow {
-    0%   { box-shadow: 0 0 0 2px var(--gt-accent), 0 0 14px rgba(129,140,248,0.45); }
-    60%  { box-shadow: 0 0 0 2px var(--gt-accent), 0 0 10px rgba(129,140,248,0.3); }
+    0%   { box-shadow: 0 0 0 2px var(--gt-accent), 0 0 14px rgba(91, 155, 255,0.45); }
+    60%  { box-shadow: 0 0 0 2px var(--gt-accent), 0 0 10px rgba(91, 155, 255,0.3); }
     100% { box-shadow: none; }
 }
 
