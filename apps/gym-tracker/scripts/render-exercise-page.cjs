@@ -37,7 +37,7 @@ function renderExercisePage({ exercise, slug, related, builtAt }) {
   <meta name="description" content="${escapeHtml(description)}">
   <meta name="author" content="Shevato LLC">
   <meta name="robots" content="index, follow, max-image-preview:large">
-  <meta name="theme-color" content="#1a1a2e">
+  <meta name="theme-color" content="#0a0c14">
   <meta name="color-scheme" content="dark">
   <link rel="canonical" href="${canonical}">
 

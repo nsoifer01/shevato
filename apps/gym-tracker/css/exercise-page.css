@@ -1,18 +1,22 @@
 /* Standalone styling for static exercise pages and the /exercises/
-   browse + taxonomy index. Same visual language as the Rising Seasons
-   show pages — dark, light, no Google Fonts. */
+   browse + taxonomy index. Matches the Gym Tracker app: neutral-dark
+   surfaces, azure accent, and the Inter typeface. */
+
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap');
 
 * { box-sizing: border-box; }
 
 :root {
-  --bg: #1a1a2e;
-  --bg-2: #20223a;
-  --panel: #262a47;
-  --border: rgba(255, 255, 255, 0.08);
-  --text: #ebe9f5;
-  --muted: #9ca0c2;
-  --accent: #ff8a65;
-  --accent-2: #f7c873;
+  --bg: #0a0c14;
+  --bg-2: #12151d;
+  --panel: #181c26;
+  --border: #232838;
+  --border-strong: #343a4f;
+  --text: #f1f3f8;
+  --muted: #a4adbd;
+  --accent: #5b9bff;
+  --accent-strong: #2563eb;
+  --accent-2: #fbbf24;
 }
 
 html, body { margin: 0; padding: 0; }
@@ -34,14 +38,15 @@ html::-webkit-scrollbar-thumb:hover { background: rgba(255, 255, 255, 0.45); }
 body {
   background: var(--bg);
   color: var(--text);
-  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  font-family: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+  -webkit-font-smoothing: antialiased;
   line-height: 1.55;
   font-size: 16px;
   -webkit-text-size-adjust: 100%;
 }
 
 a { color: var(--accent); }
-a:hover { color: #ffa987; }
+a:hover { color: #8fb8ff; }
 
 .visually-hidden {
   position: absolute !important; width: 1px; height: 1px;
@@ -51,7 +56,7 @@ a:hover { color: #ffa987; }
 
 .skip-link {
   position: absolute; left: -9999px; top: -9999px;
-  background: var(--accent); color: #1a1a2e; padding: 8px 12px; border-radius: 4px;
+  background: var(--accent); color: #fff; padding: 8px 12px; border-radius: 6px;
 }
 .skip-link:focus { left: 12px; top: 12px; z-index: 1000; }
 
@@ -84,11 +89,17 @@ main { max-width: 1080px; margin: 0 auto; padding: 24px; }
 .exercise-hero .lede { color: var(--muted); margin: 0 0 18px; max-width: 70ch; font-size: 16px; }
 .hero-actions { display: flex; gap: 12px; flex-wrap: wrap; }
 .primary-btn {
-  display: inline-block; padding: 10px 16px; border-radius: 8px;
+  display: inline-block; padding: 11px 18px; border-radius: 11px;
   text-decoration: none; font-size: 14px; font-weight: 600;
-  background: var(--accent); color: #1a1a2e;
+  background: linear-gradient(135deg, #3b82f6 0%, var(--accent-strong) 100%);
+  color: #fff;
+  box-shadow: 0 8px 20px -8px rgba(37, 99, 235, 0.55);
+  transition: filter 0.15s ease, transform 0.08s ease, box-shadow 0.18s ease;
 }
-.primary-btn:hover { background: #ffa987; color: #1a1a2e; }
+.primary-btn:hover {
+  color: #fff; filter: brightness(1.08); transform: translateY(-1px);
+  box-shadow: 0 10px 24px -8px rgba(37, 99, 235, 0.6);
+}
 
 /* --- Fact grid --- */
 .facts { margin-bottom: 26px; }
@@ -100,7 +111,8 @@ main { max-width: 1080px; margin: 0 auto; padding: 24px; }
 }
 .fact-grid > div {
   background: var(--panel); border: 1px solid var(--border);
-  padding: 14px 16px; border-radius: 10px;
+  padding: 14px 16px; border-radius: 12px;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.25);
 }
 .fact-grid dt {
   font-size: 11px; text-transform: uppercase; letter-spacing: 0.06em;
@@ -174,7 +186,7 @@ main { max-width: 1080px; margin: 0 auto; padding: 24px; }
   text-decoration: none; font-weight: 500; font-size: 14px;
   background: var(--bg-2); color: var(--text);
 }
-.alpha-jump a:hover { background: var(--accent); color: #1a1a2e; }
+.alpha-jump a:hover { background: var(--accent); color: #fff; }
 
 .alpha-group { margin-bottom: 28px; }
 .alpha-group h2 {
