@@ -183,9 +183,20 @@
 
     const RECENTS_KEY = 'RecentCourses';
     const FAVS_KEY = 'FavoriteCourses';
+    const SEARCHES_KEY = 'RecentSearches';
     const RECENTS_MAX = 6;
 
     function getRecentIds() { return readList(RECENTS_KEY); }
+
+    // Recent *search terms* (distinct from recent courses) for the desktop palette.
+    function getRecentSearches() { return readList(SEARCHES_KEY); }
+
+    function pushRecentSearch(term) {
+        const t = String(term == null ? '' : term).trim();
+        if (t.length < 2) return; // ignore single keystrokes
+        const next = [t].concat(getRecentSearches().filter((x) => x.toLowerCase() !== t.toLowerCase()));
+        writeList(SEARCHES_KEY, next.slice(0, RECENTS_MAX));
+    }
 
     function pushRecent(courseId) {
         if (!courseId) return;
@@ -256,6 +267,8 @@
         // recents & favorites
         getRecentIds: getRecentIds,
         pushRecent: pushRecent,
+        getRecentSearches: getRecentSearches,
+        pushRecentSearch: pushRecentSearch,
         getFavoriteIds: getFavoriteIds,
         isFavorite: isFavorite,
         toggleFavorite: toggleFavorite

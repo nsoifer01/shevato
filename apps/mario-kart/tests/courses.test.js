@@ -171,6 +171,16 @@ test('recents: most-recent-first, de-duplicated, capped', () => {
   assert.equal(new Set(recents).size, recents.length);
 });
 
+test('recent searches: trimmed, deduped, most-recent-first, ignores single chars', () => {
+  const CourseData = loadCourseData();
+  CourseData.pushRecentSearch('x');        // too short, ignored
+  CourseData.pushRecentSearch('dk');
+  CourseData.pushRecentSearch(' Mushroom ');
+  CourseData.pushRecentSearch('DK');       // dedupe (case-insensitive), moves to front
+  const searches = CourseData.getRecentSearches();
+  assert.deepEqual(searches, ['DK', 'Mushroom']);
+});
+
 test('favorites: toggle on then off', () => {
   const CourseData = loadCourseData();
   assert.equal(CourseData.isFavorite('rainbow-road'), false);
