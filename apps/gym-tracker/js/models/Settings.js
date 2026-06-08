@@ -22,6 +22,19 @@ export class Settings {
             ? data.vibrationAlerts
             : (legacy !== undefined ? legacy : true);
 
+        // Rest-timer sound markers (Item R2-1: free numeric, not fixed options).
+        //   timerFirstWarningSeconds: a single early heads-up tone fires when
+        //     this many seconds remain. 0 = Off, capped at 120. Default 10.
+        //   timerCountdownSeconds: per-second pips + urgent styling begin when
+        //     this many seconds remain. Minimum 1, capped at 60. Default 5
+        //     (the prior hard-coded value).
+        // Legacy data (including the old fixed-option values) loads unchanged
+        // because those values fall inside the new accepted ranges.
+        this.timerFirstWarningSeconds = Settings.normalizeFirstWarningSeconds(
+            data.timerFirstWarningSeconds);
+        this.timerCountdownSeconds = Settings.normalizeCountdownSeconds(
+            data.timerCountdownSeconds);
+
         // Plate calculator config. `barWeight` and `plates` are stored in
         // the user's `weightUnit`. Defaults match the most common gym
         // setup: a 20 kg / 45 lb bar plus a standard plate stack.
@@ -51,6 +64,11 @@ export class Settings {
         this.exercisePlateHints = (typeof data.exercisePlateHints === 'object' && data.exercisePlateHints !== null)
             ? { ...data.exercisePlateHints }
             : {};
+
+        // Whether the calendar overlays each program's scheduled weekdays.
+        // Defaults to true (on) so the planned split is visible out of the box;
+        // legacy settings without this key load with the default.
+        this.showProgramSchedule = data.showProgramSchedule !== false;
     }
 
     toJSON() {
@@ -61,12 +79,48 @@ export class Settings {
             firstDayOfWeek: this.firstDayOfWeek,
             soundAlerts: this.soundAlerts,
             vibrationAlerts: this.vibrationAlerts,
+            timerFirstWarningSeconds: this.timerFirstWarningSeconds,
+            timerCountdownSeconds: this.timerCountdownSeconds,
             barWeight: this.barWeight,
             plates: this.plates,
             timeFormat: this.timeFormat,
             plateHintsEnabled: this.plateHintsEnabled,
             exercisePlateHints: this.exercisePlateHints,
+            showProgramSchedule: this.showProgramSchedule,
         };
+    }
+
+    /**
+     * Coerce a stored timer-marker value to one of the allowed options,
+     * falling back to `fallback` for missing/invalid legacy data. Retained for
+     * any callers passing an explicit option list; the free-numeric markers
+     * (Item R2-1) use the range helpers below.
+     */
+    static normalizeTimerSeconds(value, allowed, fallback) {
+        const n = Number(value);
+        return allowed.includes(n) ? n : fallback;
+    }
+
+    /**
+     * Item R2-1: normalize the first-warning marker to an integer in [0, 120].
+     * 0 means Off. Missing/invalid input falls back to the default (10).
+     */
+    static normalizeFirstWarningSeconds(value) {
+        if (value === undefined || value === null || value === '') return 10;
+        const n = Math.round(Number(value));
+        if (!Number.isFinite(n) || n < 0) return 10;
+        return Math.min(n, 120);
+    }
+
+    /**
+     * Item R2-1: normalize the countdown-start marker to an integer in [1, 60].
+     * Missing/invalid input falls back to the default (5).
+     */
+    static normalizeCountdownSeconds(value) {
+        if (value === undefined || value === null || value === '') return 5;
+        const n = Math.round(Number(value));
+        if (!Number.isFinite(n) || n < 1) return 5;
+        return Math.min(n, 60);
     }
 
     static fromJSON(json) {

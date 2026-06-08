@@ -45,9 +45,20 @@
 (function() {
   'use strict';
 
-  var THRESHOLD = 400;
+  // Show/hide use SEPARATE thresholds (hysteresis): the button appears once
+  // scrolled past SHOW_THRESHOLD and only disappears below the lower
+  // HIDE_THRESHOLD. A single threshold made the button flicker (toggle every
+  // frame) when a momentum scroll or URL-bar resize hovered right at the line.
+  var SHOW_THRESHOLD = 400;
+  var HIDE_THRESHOLD = 320;
   var EDGE_GAP = 16;       // px gap between the button and the modal rect edge
   var MODAL_Z_INDEX = 11001; // above apps' modal panels (z up to 11000)
+  // While a finger/pointer is pressing the button (and briefly after release,
+  // covering the synthesized click), the hide path is suppressed so a scroll
+  // event firing mid-gesture cannot set the button display:none and make the
+  // tap fall through to whatever is behind it. ~400ms covers the touch->click
+  // delay on slow devices.
+  var GESTURE_HOLD_MS = 400;
 
   function prefersReducedMotion() {
     return !!(window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches);
@@ -79,6 +90,12 @@
 
     // The container currently driving modal mode, or null for window mode.
     var modalContainer = null;
+
+    // True while the button is being pressed (and for GESTURE_HOLD_MS after
+    // release). Suppresses hide() so a scroll event firing between touchstart
+    // and the synthesized click cannot remove the button from under the finger.
+    var gestureActive = false;
+    var gestureReleaseTimer = null;
 
     // Pick the visible opted-in container that should own modal mode, or
     // null if none are visible (window mode). Greatest scrollTop wins; ties
@@ -115,6 +132,12 @@
     }
 
     function hide() {
+      // Never yank the button out from under an in-progress tap: a scroll
+      // crossing the threshold mid-gesture would otherwise set display:none
+      // and the click would retarget to the element behind.
+      if (gestureActive) {
+        return;
+      }
       if (!button.hidden) {
         button.classList.remove('back-to-top--visible');
         button.hidden = true;
@@ -160,19 +183,26 @@
 
       if (modalContainer) {
         // Modal mode: visibility and position track the container only.
-        if (modalContainer.scrollTop > THRESHOLD) {
+        // Hysteresis: show past SHOW_THRESHOLD, hide only below HIDE_THRESHOLD;
+        // in the band between, keep the current state (no flicker).
+        var mTop = modalContainer.scrollTop;
+        if (mTop > SHOW_THRESHOLD) {
           positionInModal(modalContainer);
           show();
-        } else {
+        } else if (mTop < HIDE_THRESHOLD) {
           hide();
           clearModalPosition();
+        } else if (!button.hidden) {
+          // Stay visible inside the band; keep the anchor fresh.
+          positionInModal(modalContainer);
         }
       } else {
-        // Window mode: today's behavior.
+        // Window mode: today's behavior, with the same hysteresis band.
         clearModalPosition();
-        if (windowScrolled() > THRESHOLD) {
+        var wTop = windowScrolled();
+        if (wTop > SHOW_THRESHOLD) {
           show();
-        } else {
+        } else if (wTop < HIDE_THRESHOLD) {
           hide();
         }
       }
@@ -193,17 +223,15 @@
     function swallow(e) {
       e.stopPropagation();
     }
-    button.addEventListener('pointerdown', swallow);
-    button.addEventListener('mousedown', swallow);
-    button.addEventListener('touchstart', swallow, { passive: true });
 
-    button.addEventListener('click', function(e) {
-      e.stopPropagation();
+    // The scroll-to-top action, shared by the touch/pointer activation and the
+    // mouse click path.
+    function scrollToTop() {
       var behavior = prefersReducedMotion() ? 'auto' : 'smooth';
-      // Recompute the context at click time rather than trusting the cached
-      // modalContainer: closing a modal fires no scroll event, so the cache
-      // can point at a now-hidden container and the click would "scroll" an
-      // invisible element while the page stays put.
+      // Recompute the context at activation time rather than trusting the
+      // cached modalContainer: closing a modal fires no scroll event, so the
+      // cache can point at a now-hidden container and the action would "scroll"
+      // an invisible element while the page stays put.
       var target = findModalContainer();
       if (target) {
         if (typeof target.scrollTo === 'function') {
@@ -218,7 +246,7 @@
         // its desktop sidebar open: body.sidebar-open { overflow:hidden } turns
         // the body into the scroll context). window.scrollTo cannot move a
         // scrolled body/documentElement in those states, so the button would
-        // SHOW (from body.scrollTop) yet the click would do nothing. Scroll
+        // SHOW (from body.scrollTop) yet the action would do nothing. Scroll
         // whatever actually holds the offset back to the top as well.
         if (document.body.scrollTop > 0) {
           if (typeof document.body.scrollTo === 'function') {
@@ -235,9 +263,89 @@
           }
         }
       }
-      // Re-sync visibility shortly after: if the click was a no-op (stale
+      // Re-sync visibility shortly after: if the action was a no-op (stale
       // context, page already at top), the button should still hide.
       window.setTimeout(update, 300);
+    }
+
+    // Touch/pen position tracking so we only activate on a TAP (finger came
+    // down and up on the button without a scrolling drag), not on a scroll
+    // gesture that happened to start on the button.
+    var SCROLL_TOLERANCE = 10; // px of movement still counted as a tap
+    var startX = 0, startY = 0, moved = false;
+
+    // Mark a gesture as in-progress on press, so a scroll event firing before
+    // activation cannot hide the button (see hide()). Release is deferred by
+    // GESTURE_HOLD_MS so the button stays put through the touch->click delay;
+    // the next update() after that re-evaluates visibility normally.
+    function beginGesture(e) {
+      e.stopPropagation();
+      gestureActive = true;
+      moved = false;
+      var pt = (e.touches && e.touches[0]) ? e.touches[0] : e;
+      startX = pt.clientX || 0;
+      startY = pt.clientY || 0;
+      if (gestureReleaseTimer) {
+        window.clearTimeout(gestureReleaseTimer);
+        gestureReleaseTimer = null;
+      }
+    }
+    function trackMove(e) {
+      var pt = (e.touches && e.touches[0]) ? e.touches[0] : e;
+      if (Math.abs((pt.clientX || 0) - startX) > SCROLL_TOLERANCE ||
+          Math.abs((pt.clientY || 0) - startY) > SCROLL_TOLERANCE) {
+        moved = true;
+      }
+    }
+    function scheduleRelease() {
+      if (gestureReleaseTimer) {
+        window.clearTimeout(gestureReleaseTimer);
+      }
+      gestureReleaseTimer = window.setTimeout(function() {
+        gestureActive = false;
+        gestureReleaseTimer = null;
+        onScroll();
+      }, GESTURE_HOLD_MS);
+    }
+    button.addEventListener('pointerdown', beginGesture);
+    button.addEventListener('mousedown', swallow);
+    button.addEventListener('touchstart', beginGesture, { passive: true });
+    button.addEventListener('pointermove', trackMove, { passive: true });
+    button.addEventListener('touchmove', trackMove, { passive: true });
+    button.addEventListener('pointercancel', function(e) { e.stopPropagation(); scheduleRelease(); });
+
+    // Touch is the authoritative activation path on phones. We act on touchend
+    // and call preventDefault() so the browser does NOT synthesize the trailing
+    // ~300ms-delayed `click`. That delayed click is the bug: by the time it
+    // fires, a scroll event may have hidden the button (display:none) and the
+    // click retargets to whatever is behind it. Acting on touchend and killing
+    // the synthesized click makes the tap land deterministically and removes
+    // any possibility of fall-through. The listener is non-passive so
+    // preventDefault is honored.
+    button.addEventListener('touchend', function(e) {
+      e.stopPropagation();
+      if (!moved) {
+        e.preventDefault(); // cancels the synthesized click -> no fall-through
+        scrollToTop();
+      }
+      scheduleRelease();
+    }, { passive: false });
+    button.addEventListener('touchcancel', function() { scheduleRelease(); });
+
+    // Pen: Pointer Events provide a clean up event with no synthesized-click
+    // delay quirk; activate here. Mouse falls through to the click handler so
+    // desktop behavior is byte-for-byte the prior behavior.
+    button.addEventListener('pointerup', function(e) {
+      e.stopPropagation();
+      if (e.pointerType === 'pen' && !moved) {
+        scrollToTop();
+      }
+      scheduleRelease();
+    });
+
+    button.addEventListener('click', function(e) {
+      e.stopPropagation();
+      scrollToTop();
     });
 
     // Capture phase so scroll events from opt-in containers (which do not

@@ -7,6 +7,7 @@ import { app } from '../app.js';
 import { AnalyticsService } from '../services/AnalyticsService.js';
 import { formatDate, escapeHtml } from '../utils/helpers.js';
 import { DarkSelect } from '../utils/dark-select.js';
+import { programsScheduledOnWeekday, weekdayOrder } from '../utils/program-schedule.js';
 
 const MONTH_NAMES = [
     'January', 'February', 'March', 'April', 'May', 'June',
@@ -164,14 +165,26 @@ class CalendarView {
         const sessionsByDate = AnalyticsService.getSessionsByDate(sessions);
         const progressDates = AnalyticsService.getProgressDates(sessions);
 
+        // Item 9: program schedule overlay (toggle in Settings, default on).
+        const showSchedule = this.app.settings?.showProgramSchedule !== false;
+        const programs = this.app.programs || [];
+
+        // Item R2-5: weekday column order follows the user's firstDayOfWeek
+        // preference (0 = Sunday, 1 = Monday; default Sunday).
+        const firstDay = this.app.settings?.firstDayOfWeek === 1 ? 1 : 0;
+        const order = weekdayOrder(firstDay);
+        const dayLabels = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+
         const todayKey = formatISO(new Date());
         const firstDayOfMonth = new Date(this.viewYear, this.viewMonth, 1).getDay();
-        const firstWeekday = firstDayOfMonth === 0 ? 6 : firstDayOfMonth - 1;
+        // Leading blanks before day 1: how far the month's first weekday sits
+        // from the configured first column.
+        const firstWeekday = (firstDayOfMonth - firstDay + 7) % 7;
         const daysInMonth = new Date(this.viewYear, this.viewMonth + 1, 0).getDate();
 
         let html = '';
-        ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'].forEach(d => {
-            html += `<div class="calendar-day-header">${d}</div>`;
+        order.forEach(d => {
+            html += `<div class="calendar-day-header">${dayLabels[d]}</div>`;
         });
 
         // Leading empty placeholders
@@ -184,6 +197,12 @@ class CalendarView {
             const isFuture = new Date(dateStr) > new Date(todayKey);
             const dayHasWorkout = sessionsByDate.has(dateStr);
             const dayHasProgress = progressDates.has(dateStr);
+            // Item 9: weekday of this cell (0 = Sun) -> scheduled programs.
+            const weekday = new Date(this.viewYear, this.viewMonth, day).getDay();
+            const scheduledPrograms = showSchedule
+                ? programsScheduledOnWeekday(programs, weekday)
+                : [];
+            const dayHasSchedule = scheduledPrograms.length > 0;
 
             // Filter: dim days that don't match the filter
             let dimmed = false;
@@ -194,6 +213,7 @@ class CalendarView {
             if (isFuture) classes.push('future');
             if (dayHasWorkout) classes.push('has-workout');
             if (dayHasProgress) classes.push('has-progress');
+            if (dayHasSchedule) classes.push('has-schedule');
             if (isToday) classes.push('today');
             if (isSelected) classes.push('selected');
             if (dimmed) classes.push('dim');
@@ -201,6 +221,7 @@ class CalendarView {
             const ariaParts = [`${MONTH_NAMES[this.viewMonth]} ${day}`];
             if (dayHasWorkout) ariaParts.push('workout logged');
             if (dayHasProgress) ariaParts.push('personal record');
+            if (dayHasSchedule) ariaParts.push('program scheduled');
             if (isToday) ariaParts.push('today');
 
             html += `
@@ -208,6 +229,7 @@ class CalendarView {
                     <span class="calendar-day-num">${day}</span>
                     ${dayHasWorkout ? '<span class="calendar-day-dot" aria-hidden="true"></span>' : ''}
                     ${dayHasProgress ? '<span class="calendar-day-pr" aria-hidden="true"><i class="fas fa-star"></i></span>' : ''}
+                    ${dayHasSchedule ? '<span class="calendar-day-schedule" aria-hidden="true"><i class="fas fa-calendar-day"></i></span>' : ''}
                 </button>
             `;
         }
@@ -239,9 +261,14 @@ class CalendarView {
             return dt.getFullYear() === this.viewYear && dt.getMonth() === this.viewMonth;
         });
 
+        const showSchedule = this.app.settings?.showProgramSchedule !== false;
+        const monthHasSchedule = showSchedule
+            && (this.app.programs || []).some(p => Array.isArray(p.scheduleDays) && p.scheduleDays.length > 0);
+
         const items = [];
         if (monthHasWorkout) items.push('<span class="legend-item"><span class="legend-cue legend-dot-cue"></span>Workout</span>');
         if (monthHasProgress) items.push('<span class="legend-item"><span class="legend-cue legend-pr-cue"><i class="fas fa-star"></i></span>New PR</span>');
+        if (monthHasSchedule) items.push('<span class="legend-item"><span class="legend-cue legend-schedule-cue"><i class="fas fa-calendar-day"></i></span>Scheduled</span>');
         container.innerHTML = items.join('');
     }
 
@@ -261,6 +288,26 @@ class CalendarView {
             weekday: 'long', month: 'short', day: 'numeric', year: 'numeric',
         });
 
+        // Item 9: programs scheduled on this weekday (when the toggle is on).
+        // Parse the selected date as a LOCAL calendar date so the weekday
+        // matches the grid (which uses local Date construction). new Date(iso)
+        // would interpret YYYY-MM-DD as UTC midnight and can shift a day.
+        const showSchedule = this.app.settings?.showProgramSchedule !== false;
+        const [sy, sm, sd] = this.selectedDate.split('-').map(Number);
+        const weekday = new Date(sy, sm - 1, sd).getDay();
+        const scheduled = showSchedule
+            ? programsScheduledOnWeekday(this.app.programs || [], weekday)
+            : [];
+        const scheduledHTML = scheduled.length > 0
+            ? `<div class="calendar-scheduled-list">
+                ${scheduled.map(p => `
+                    <div class="calendar-scheduled-item">
+                        <i class="fas fa-calendar-day" aria-hidden="true"></i>
+                        <span>Scheduled: ${escapeHtml(p.name)}</span>
+                    </div>`).join('')}
+               </div>`
+            : '';
+
         if (daySessions.length === 0) {
             container.innerHTML = `
                 <div class="calendar-detail-card empty">
@@ -270,6 +317,7 @@ class CalendarView {
                             <div class="calendar-detail-sub">No workout logged</div>
                         </div>
                     </div>
+                    ${scheduledHTML}
                     <p class="calendar-detail-empty">
                         <i class="fas fa-bed"></i> Rest day — nothing recorded for this date.
                     </p>
@@ -290,6 +338,7 @@ class CalendarView {
                         <div class="calendar-detail-sub">${daySessions.length} workout${daySessions.length === 1 ? '' : 's'}${isPR ? ' · <span class="pr-tag"><i class=\"fas fa-star\"></i> New PR</span>' : ''}</div>
                     </div>
                 </div>
+                ${scheduledHTML}
                 ${daySessions.map(s => this.renderSessionSummary(s, unit)).join('')}
             </div>
         `;

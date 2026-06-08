@@ -9,6 +9,8 @@ import { trapModalFocus } from '../utils/modal-focus.js';
 import { storageService } from '../services/StorageService.js';
 import { DarkSelect } from '../utils/dark-select.js';
 import { orderPrograms } from '../utils/program-order.js';
+import { weekdayOrder } from '../utils/program-schedule.js';
+import { sameId } from '../utils/id-utils.js';
 
 class ProgramsView {
     constructor() {
@@ -202,13 +204,15 @@ class ProgramsView {
 
     handleDrop(e, targetId) {
         e.preventDefault();
-        const fromIdRaw = e.dataTransfer.getData('text/plain');
-        const fromId = Number(fromIdRaw);
-        if (!fromId || fromId === targetId) return;
+        const fromId = e.dataTransfer.getData('text/plain');
+        if (!fromId || sameId(fromId, targetId)) return;
 
+        // `order` holds canonical program ids (numeric for real data, string
+        // for imported); fromId/targetId come from the DOM as strings. Match
+        // type-insensitively so reordering works for both id kinds.
         const order = this.getCustomOrderedIds();
-        const fromIdx = order.indexOf(fromId);
-        const toIdx = order.indexOf(targetId);
+        const fromIdx = order.findIndex(id => sameId(id, fromId));
+        const toIdx = order.findIndex(id => sameId(id, targetId));
         if (fromIdx < 0 || toIdx < 0) return;
 
         const [moved] = order.splice(fromIdx, 1);
@@ -247,7 +251,19 @@ class ProgramsView {
 
         container.classList.toggle('is-custom-order', isCustom);
 
-        container.innerHTML = ordered.map((program, index) => `
+        const firstDay = this.app.settings?.firstDayOfWeek === 1 ? 1 : 0;
+        const dayLabels = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+
+        container.innerHTML = ordered.map((program, index) => {
+            const hasSchedule = Array.isArray(program.scheduleDays) && program.scheduleDays.length > 0;
+            let scheduleText = '';
+            if (hasSchedule) {
+                const days = new Set(program.scheduleDays);
+                scheduleText = days.size === 7
+                    ? 'Every day'
+                    : weekdayOrder(firstDay).filter(d => days.has(d)).map(d => dayLabels[d]).join(', ');
+            }
+            return `
             <div class="program-card ${isCustom ? 'is-draggable' : ''}"
                  data-program-id="${program.id}"
                  ${isCustom ? 'draggable="true"' : ''}>
@@ -265,6 +281,12 @@ class ProgramsView {
                         <i class="fas fa-dumbbell"></i>
                         ${program.exercises.length} ${program.exercises.length === 1 ? 'exercise' : 'exercises'}
                     </div>
+                    ${hasSchedule ? `
+                    <div class="stat program-schedule-stat">
+                        <i class="fas fa-calendar-day"></i>
+                        ${scheduleText}
+                    </div>
+                    ` : ''}
                 </div>
                 <div class="program-actions">
                     <button class="btn btn-secondary" data-action="edit-program" data-program-id="${program.id}">
@@ -278,11 +300,12 @@ class ProgramsView {
                     </button>
                 </div>
             </div>
-        `).join('');
+        `;
+        }).join('');
 
         // Wire up drag-and-drop on every card so a drag from any sort mode flips to custom
         container.querySelectorAll('.program-card').forEach(card => {
-            const id = Number(card.dataset.programId);
+            const id = card.dataset.programId;
             // Make every card a valid drop target & drag source
             card.draggable = true;
             card.addEventListener('dragstart', (e) => this.handleDragStart(e, id));
@@ -309,7 +332,7 @@ class ProgramsView {
         container.addEventListener('click', (e) => {
             const btn = e.target.closest('[data-action]');
             if (!btn || !container.contains(btn)) return;
-            const id = Number(btn.dataset.programId);
+            const id = btn.dataset.programId;
             switch (btn.dataset.action) {
                 case 'edit-program':
                     e.preventDefault();
@@ -337,7 +360,13 @@ class ProgramsView {
         this.showExercisesError(false);
 
         if (programId) {
-            this.currentProgram = this.app.getProgramById(programId);
+            // R3-3: edit a STAGED deep clone, never the live stored object.
+            // Every in-modal mutation (name, exercises, schedule, rest) writes
+            // to this.currentProgram, so editing the stored reference directly
+            // meant Cancel/X (which never call save) still leaked changes into
+            // memory and into the resumed workout. The clone is committed back
+            // into app.programs only by saveProgram(); Cancel discards it.
+            this.currentProgram = Program.clone(this.app.getProgramById(programId));
             title.textContent = 'Edit Program';
             document.getElementById('program-name').value = this.currentProgram.name;
             document.getElementById('program-description').value = this.currentProgram.description;
@@ -355,8 +384,137 @@ class ProgramsView {
         }
 
         this.syncRestModeUI();
+        this.syncScheduleDaysUI();
+        this.syncReturnToWorkoutButton();
         modal.classList.add('active');
         trapModalFocus(modal);
+
+        // #15: the scroll container retains its previous scrollTop when the
+        // modal is reopened, so a mid-workout "Edit program" could surface the
+        // bottom of the form. Reset to the top once the modal is visible. Scroll
+        // height isn't final synchronously on reveal, so do it after a frame.
+        const resetScroll = () => {
+            const content = modal.querySelector('.modal-content');
+            if (content) content.scrollTop = 0;
+            const body = modal.querySelector('.modal-body');
+            if (body) body.scrollTop = 0;
+        };
+        resetScroll();
+        requestAnimationFrame(resetScroll);
+    }
+
+    /**
+     * Item R2-7: in workout mode the program editor shows a single primary
+     * action ("Save and resume workout") plus "Cancel" in the modal's sticky
+     * header; the footer save/return buttons are hidden. Normal entry keeps the
+     * footer buttons and a non-sticky header (the round-1 layout).
+     */
+    syncReturnToWorkoutButton() {
+        const workoutMode = !!this.enteredFromWorkout;
+        const modal = document.getElementById('program-modal');
+        if (modal) modal.classList.toggle('program-editor-workout-mode', workoutMode);
+
+        // Legacy round-1 return button stays hidden now (its role moved into the
+        // header's "Save and resume workout"), but keep it harmless if present.
+        const legacyReturn = document.getElementById('return-to-workout-btn');
+        if (legacyReturn) legacyReturn.hidden = true;
+
+        const actions = document.getElementById('program-modal-workout-actions');
+        if (actions) actions.hidden = !workoutMode;
+
+        // Feature B: normal-mode header actions are the inverse of workout mode.
+        const normalActions = document.getElementById('program-modal-normal-actions');
+        if (normalActions) normalActions.hidden = workoutMode;
+
+        const saveResume = document.getElementById('program-modal-save-resume');
+        if (saveResume && !saveResume.dataset.wired) {
+            saveResume.addEventListener('click', () => this.returnToWorkout());
+            saveResume.dataset.wired = '1';
+        }
+        const cancelWorkout = document.getElementById('program-modal-cancel-workout');
+        if (cancelWorkout && !cancelWorkout.dataset.wired) {
+            cancelWorkout.addEventListener('click', () => this.cancelWorkoutEdit());
+            cancelWorkout.dataset.wired = '1';
+        }
+    }
+
+    /**
+     * Item R2-7: Cancel in workout mode discards any in-modal program edits and
+     * resumes the paused workout directly (not back to the programs list).
+     */
+    cancelWorkoutEdit() {
+        const modal = document.getElementById('program-modal');
+        if (modal) {
+            modal.classList.remove('active');
+            modal.classList.remove('program-editor-workout-mode');
+        }
+        this.enteredFromWorkout = false;
+        const actions = document.getElementById('program-modal-workout-actions');
+        if (actions) actions.hidden = true;
+        const workoutCtrl = this.app.viewControllers.workout;
+        if (!workoutCtrl) return;
+        this.app.showView('workout');
+        setTimeout(() => workoutCtrl.resumeWorkout(), 100);
+    }
+
+    /**
+     * Item 4: save any committed edits (the modal's save already persisted the
+     * program), close the editor, and resume the paused workout, re-syncing the
+     * session plan with the edited program.
+     */
+    returnToWorkout() {
+        // Persist the current in-modal edits before leaving so the resumed
+        // session merges against the latest program state. saveProgram is a
+        // no-op (modal stays open) when validation fails.
+        const programId = this.currentProgram?.id;
+        this.saveProgram();
+        // If the modal is still open, the save was rejected (validation) — stay.
+        const modalOpen = document.getElementById('program-modal')?.classList.contains('active');
+        if (modalOpen) return;
+
+        this.enteredFromWorkout = false;
+        const workoutCtrl = this.app.viewControllers.workout;
+        if (!workoutCtrl) return;
+        this.app.showView('workout');
+        // Resume and re-sync the paused session with the edited program.
+        setTimeout(() => workoutCtrl.resumeWorkout({ resyncProgramId: programId }), 100);
+    }
+
+    /**
+     * Item 9: render the 7 weekday chips, reflecting currentProgram.scheduleDays.
+     * Chips are laid out starting from the user's firstDayOfWeek preference.
+     */
+    syncScheduleDaysUI() {
+        const container = document.getElementById('program-schedule-days');
+        if (!container || !this.currentProgram) return;
+        const selected = new Set(this.currentProgram.scheduleDays || []);
+        const firstDay = this.app.settings?.firstDayOfWeek === 1 ? 1 : 0;
+        const order = weekdayOrder(firstDay);
+        const labels = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+        const fullLabels = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+        container.innerHTML = order.map(d => {
+            const on = selected.has(d);
+            return `
+                <button type="button" class="schedule-day-chip${on ? ' is-on' : ''}"
+                    data-schedule-day="${d}"
+                    aria-pressed="${on ? 'true' : 'false'}"
+                    aria-label="${fullLabels[d]}">
+                    ${labels[d]}
+                </button>`;
+        }).join('');
+
+        if (!container.dataset.wired) {
+            container.addEventListener('click', (e) => {
+                const chip = e.target.closest('[data-schedule-day]');
+                if (!chip || !this.currentProgram) return;
+                const day = Number(chip.dataset.scheduleDay);
+                const days = new Set(this.currentProgram.scheduleDays || []);
+                if (days.has(day)) days.delete(day); else days.add(day);
+                this.currentProgram.scheduleDays = [...days].sort((a, b) => a - b);
+                this.syncScheduleDaysUI();
+            });
+            container.dataset.wired = '1';
+        }
     }
 
     /** Push currentProgram.restMode + uniformRestSeconds into the toggle UI. */
@@ -780,21 +938,44 @@ class ProgramsView {
         const row = ex.sets[setIndex];
         if (!row) return;
         const val = Math.max(1, Math.min(100, Math.round(Number(rawValue) || 1)));
+        // #16: a plain value edit must NOT re-render #program-exercises-list.
+        // The change event fires on TAB-out (blur); a full re-render destroys
+        // and rebuilds the input being left, so the browser's native "focus the
+        // next tabbable element" lands on a detached node and jumps elsewhere.
+        // Update the model in place; if clamping moved the SIBLING field, write
+        // only that sibling's input value via a targeted selector — no rebuild.
+        let siblingChanged = null; // 'min' | 'max' when the other field was clamped
         if (minOrMax === 'min') {
             const wasSingle = row.repsMin === row.repsMax;
             row.repsMin = val;
             if (wasSingle) {
                 // Single-mode: keep repsMax in sync so the range UI stays closed.
                 row.repsMax = val;
+                siblingChanged = 'max';
             } else if (row.repsMax < row.repsMin) {
                 row.repsMax = row.repsMin;
+                siblingChanged = 'max';
             }
         } else {
             row.repsMax = val;
-            if (row.repsMin > row.repsMax) row.repsMin = row.repsMax;
+            if (row.repsMin > row.repsMax) {
+                row.repsMin = row.repsMax;
+                siblingChanged = 'min';
+            }
         }
         this.currentProgram.updatedAt = new Date().toISOString();
-        this.renderProgramExercises();
+
+        if (siblingChanged === 'max') {
+            const maxInput = document.querySelector(
+                `#program-exercises-list [data-action="set-reps-max"][data-exercise-index="${exerciseIndex}"][data-set-index="${setIndex}"]`
+            );
+            if (maxInput) maxInput.value = row.repsMax;
+        } else if (siblingChanged === 'min') {
+            const minInput = document.querySelector(
+                `#program-exercises-list [data-action="set-reps-min"][data-exercise-index="${exerciseIndex}"][data-set-index="${setIndex}"]`
+            );
+            if (minInput) minInput.value = row.repsMin;
+        }
     }
 
     wireExerciseDragAndDrop(container) {
@@ -986,7 +1167,17 @@ class ProgramsView {
      * Cancel button, X button, and after a successful save.
      */
     closeProgramModal() {
-        document.getElementById('program-modal').classList.remove('active');
+        const modal = document.getElementById('program-modal');
+        modal.classList.remove('active');
+        modal.classList.remove('program-editor-workout-mode');
+        // Item 4: closing via Cancel/X (not the Return button) abandons the
+        // workout-edit context. The paused workout stays resumable from the
+        // banner; we just stop offering the in-editor return button.
+        this.enteredFromWorkout = false;
+        const returnBtn = document.getElementById('return-to-workout-btn');
+        if (returnBtn) returnBtn.hidden = true;
+        const actions = document.getElementById('program-modal-workout-actions');
+        if (actions) actions.hidden = true;
         if (this.returnToView) {
             const target = this.returnToView;
             this.returnToView = null;
@@ -1001,6 +1192,9 @@ class ProgramsView {
             name: `${source.name} (Copy)`,
             description: source.description,
             exercises: source.exercises.map(ex => ({ ...ex })),
+            scheduleDays: [...(source.scheduleDays || [])],
+            restMode: source.restMode,
+            uniformRestSeconds: source.uniformRestSeconds,
         });
         this.app.programs.push(copy);
         this.app.savePrograms();
@@ -1009,7 +1203,7 @@ class ProgramsView {
     }
 
     async deleteProgram(programId) {
-        const program = this.app.programs.find(p => p.id === programId);
+        const program = this.app.programs.find(p => sameId(p.id, programId));
         if (!program) return;
 
         const exerciseCount = program.exercises.length;
@@ -1025,7 +1219,7 @@ class ProgramsView {
         });
 
         if (confirmed) {
-            const index = this.app.programs.findIndex(p => p.id === programId);
+            const index = this.app.programs.findIndex(p => sameId(p.id, programId));
             if (index >= 0) {
                 this.app.programs.splice(index, 1);
                 this.app.savePrograms();

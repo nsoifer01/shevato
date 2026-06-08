@@ -8,12 +8,18 @@ import { WorkoutExercise } from '../models/WorkoutExercise.js';
 import { Set } from '../models/Set.js';
 import { timerService } from '../services/TimerService.js';
 import { storageService } from '../services/StorageService.js';
-import { showToast, showConfirmModal, formatMuscleGroup, vibrate, playSound, escapeHtml, debugLog } from '../utils/helpers.js';
+import { showToast, showConfirmModal, formatMuscleGroup, vibrate, playSound, escapeHtml, debugLog, convertWeight } from '../utils/helpers.js';
 import { trapModalFocus } from '../utils/modal-focus.js';
 import { renderPausedBannerHTML, wirePausedBannerActions } from './paused-banner.js';
 import { orderPrograms } from '../utils/program-order.js';
+import { sameId } from '../utils/id-utils.js';
 import { AnalyticsService } from '../services/AnalyticsService.js';
 import { calculatePlates, formatPlateStack } from '../utils/plate-calculator.js';
+import { restTickCues, isWorkoutComplete } from '../utils/rest-cues.js';
+import { allSetsReachMax, latestFeelForExercise, nextFeel, shouldShowFeelModal } from '../utils/exercise-feel.js';
+import { recordPrSupersede, uniquePrChainCount, recomputePrSlots } from '../utils/pr-session.js';
+import { mergeSessionWithProgram } from '../utils/session-merge.js';
+import { weekStrip } from '../utils/program-schedule.js';
 
 const PLATE_LOADED_EQUIPMENT = new globalThis.Set(['barbell', 'trap-bar', 'machine', 'plate', 'sled']);
 
@@ -28,26 +34,36 @@ class WorkoutView {
         this.activeRestExerciseIndex = -1;
         // Last second value for which we played the timer-low ping (guards duplicates).
         this.lastPingedRestSecond = -1;
-        // PRs logged during the current session — surfaced in the finish modal.
-        this.sessionPrCount = 0;
-        // Slot-keyed record of sets that triggered a PR this session so the
-        // row can render a gold outline even after rerender. Plain object
-        // on purpose: this module imports `Set` from models/Set.js, which
-        // shadows the built-in Set.
+        // Slot-keyed record of sets that hold a surviving PR badge this session
+        // so the row can render a gold outline even after rerender. Item R2-10:
+        // within a session only the best set per exercise keeps its entry here
+        // (earlier PRs are superseded). The finish-modal PR count is derived
+        // from this map via uniquePrChainCount. Plain object on purpose: this
+        // module imports `Set` from models/Set.js, which shadows the built-in.
         this.sessionPrSlots = {};
         // Feature 3: per-exercise collapsed state (index → bool). Exercises
         // marked exercise-complete auto-collapse; the rest start expanded.
         this.collapsedExercises = {};
-        // Feature 5: per-exercise rest override for this session (index → seconds).
-        // Overrides apply to both between-set and between-exercise rest for that exercise.
-        this.exerciseRestOverrides = {};
         // Tracks which exercises were complete before the last deleteSet call,
         // used to reset the manual-expand suppression when going complete->incomplete.
         this._prevCompleteState = {};
         // Timer type for the currently active rest: 'set' (between-set, chip only)
         // or 'exercise' (between-exercise, bottom bar).
         this._activeRestType = null;
+        // Item R3-4: per-session bookkeeping of exercise indices for which the
+        // feel modal has already been shown, so it appears at most once per
+        // exercise per session.
+        this._feelModalShown = {};
         this.init();
+    }
+
+    /**
+     * Item R2-10: PRs surfaced in the finish modal — the number of UNIQUE
+     * exercises with a surviving PR badge (a 100 -> 110 chain counts once).
+     * Derived from sessionPrSlots so supersede bookkeeping has one source.
+     */
+    get sessionPrCount() {
+        return uniquePrChainCount(this.sessionPrSlots || {});
     }
 
     init() {
@@ -99,7 +115,7 @@ class WorkoutView {
             switch (action) {
                 case 'start-workout':
                     e.preventDefault();
-                    this.startWorkout(Number(target.dataset.programId));
+                    this.startWorkout(target.dataset.programId);
                     break;
                 case 'commit-planned-set':
                     e.preventDefault();
@@ -140,13 +156,13 @@ class WorkoutView {
                     e.preventDefault();
                     this.toggleExerciseCollapse(exerciseIndex);
                     break;
-                case 'set-rest-override':
-                    e.preventDefault();
-                    this.setRestOverride(exerciseIndex, Number(target.dataset.seconds));
-                    break;
                 case 'toggle-exercise-plate-hints':
                     e.preventDefault();
                     this.toggleExercisePlateHints(exerciseIndex);
+                    break;
+                case 'cycle-feel':
+                    e.preventDefault();
+                    this.cycleExerciseFeel(exerciseIndex);
                     break;
             }
         });
@@ -189,30 +205,165 @@ class WorkoutView {
         // Plate-hints toggle
         const plateToggleBtn = document.getElementById('plate-hints-toggle-btn');
         if (plateToggleBtn) plateToggleBtn.addEventListener('click', () => this.togglePlateHints());
+
+        // Edit-program button (Item 3): instant pause + open the program editor.
+        const editProgramBtn = document.getElementById('edit-program-btn');
+        if (editProgramBtn) editProgramBtn.addEventListener('click', () => this.editProgramFromWorkout());
+
+        // Session unit toggle (Item 8): kg | lbs for this workout only.
+        document.querySelectorAll('#workout-unit-toggle .workout-unit-btn').forEach(btn => {
+            btn.addEventListener('click', () => this.setSessionUnit(btn.dataset.unit));
+        });
+    }
+
+    /** The unit weights are DISPLAYED/ENTERED in for this session. */
+    sessionUnit() {
+        return this.currentWorkoutSession?.sessionUnit || this.app.settings.weightUnit;
+    }
+
+    /** True when the session display unit differs from the account unit. */
+    unitsDiffer() {
+        return this.sessionUnit() !== this.app.settings.weightUnit;
+    }
+
+    /** Convert a canonical (account-unit) weight into the session display unit. */
+    toSessionWeight(weight) {
+        if (weight === '' || weight === null || weight === undefined) return weight;
+        return convertWeight(Number(weight), this.app.settings.weightUnit, this.sessionUnit());
+    }
+
+    /** Convert a session-unit input value back to the canonical account unit. */
+    toAccountWeight(weight) {
+        return convertWeight(Number(weight), this.sessionUnit(), this.app.settings.weightUnit);
+    }
+
+    /**
+     * Switch the per-session display/entry unit (Item 8). Reads any in-progress
+     * planned-row weight inputs and re-displays them in the new unit so the user
+     * doesn't lose what they typed, then re-renders + persists.
+     */
+    setSessionUnit(unit) {
+        if (!this.currentWorkoutSession) return;
+        if (unit !== 'kg' && unit !== 'lb') return;
+        if (this.sessionUnit() === unit) return;
+
+        const account = this.app.settings.weightUnit;
+        // Read current planned-row weight inputs (in the OLD session unit) and
+        // carry their canonical values onto stickyValues so the re-render
+        // repopulates them converted into the new unit.
+        const oldUnit = this.sessionUnit();
+        this.currentWorkoutSession.exercises.forEach((exercise, eIdx) => {
+            const list = document.querySelectorAll(`#exercise-${eIdx} .set-row-planned`);
+            list.forEach(row => {
+                const slot = Number(row.dataset.slot);
+                const input = row.querySelector('.set-weight');
+                if (!input || input.value === '') return;
+                const canonical = convertWeight(Number(input.value), oldUnit, account);
+                if (!exercise.stickyValues) exercise.stickyValues = {};
+                const reps = row.querySelector('.set-reps');
+                exercise.stickyValues[slot] = {
+                    weight: canonical,
+                    reps: reps && reps.value !== '' ? Number(reps.value) : (exercise.stickyValues[slot]?.reps ?? ''),
+                    duration: exercise.stickyValues[slot]?.duration ?? 0,
+                };
+            });
+        });
+
+        this.currentWorkoutSession.sessionUnit = unit === account ? null : unit;
+        storageService.saveActiveWorkout(this.currentWorkoutSession.toJSON());
+        this.syncSessionUnitToggle();
+        this.renderActiveWorkout();
+    }
+
+    /** Reflect the active session unit in the header toggle button states. */
+    syncSessionUnitToggle() {
+        const unit = this.sessionUnit();
+        document.querySelectorAll('#workout-unit-toggle .workout-unit-btn').forEach(btn => {
+            const on = btn.dataset.unit === unit;
+            btn.classList.toggle('is-active', on);
+            btn.setAttribute('aria-pressed', on ? 'true' : 'false');
+        });
     }
 
     setupNavigationGuard() {
-        // Intercept browser back button and page unload
+        // Refresh / tab close: arm the native confirmation whenever a workout
+        // is active, regardless of whether any sets are committed yet (Item 5).
+        // The native dialog is the only "are you sure" UI browsers allow here.
         window.addEventListener('beforeunload', (e) => {
-            if (this.currentWorkoutSession && !this.currentWorkoutSession.completed) {
-                // Check if any sets were added
-                const hasAnySets = this.currentWorkoutSession.exercises.some(ex =>
-                    ex.sets && ex.sets.length > 0
-                );
-
-                if (hasAnySets) {
-                    // Save workout state before leaving
-                    this.pauseAndSaveWorkout();
-                    // Show browser's native confirmation
-                    e.preventDefault();
-                    e.returnValue = '';
-                    return '';
-                }
+            if (this.hasActiveWorkout()) {
+                e.preventDefault();
+                e.returnValue = '';
+                return '';
             }
+        });
+
+        // Browser BACK trap (Item 5): a sentinel history entry is pushed when
+        // the workout screen opens. On popstate while a workout is active we
+        // immediately re-push the sentinel and show the in-app leave modal.
+        window.addEventListener('popstate', () => {
+            if (!this.hasActiveWorkout() || !this._backSentinelArmed) return;
+            // Re-push so the user stays on the workout screen until they choose.
+            this._pushBackSentinel();
+            this.showBackLeaveModal();
         });
 
         // Intercept in-app navigation
         this.interceptNavigation();
+    }
+
+    /** Push a history sentinel so the next browser BACK lands on popstate
+     *  while keeping the user on the workout screen. Idempotent-ish: callers
+     *  guard with _backSentinelArmed. */
+    _pushBackSentinel() {
+        try {
+            history.pushState({ gtWorkoutSentinel: true }, '', window.location.href);
+        } catch { /* history unavailable (tests / sandbox) */ }
+    }
+
+    /** Arm the back-navigation trap when the active-workout screen opens. */
+    armBackGuard() {
+        if (this._backSentinelArmed) return;
+        this._backSentinelArmed = true;
+        this._pushBackSentinel();
+    }
+
+    /** Disarm the trap on finish/discard/pause so back navigates normally. */
+    disarmBackGuard() {
+        this._backSentinelArmed = false;
+    }
+
+    /**
+     * In-app "Leave workout?" modal for the back-navigation trap. "Stay" keeps
+     * the workout untouched; "Pause and leave" pauses+saves then navigates home.
+     */
+    showBackLeaveModal() {
+        const modal = document.getElementById('leave-workout-modal');
+        if (!modal) return;
+        if (modal.classList.contains('active')) return;
+
+        const stayBtn = document.getElementById('leave-workout-stay');
+        const leaveBtn = document.getElementById('leave-workout-pause-leave');
+
+        const cleanup = () => {
+            // R3-6: drop focus off the clicked button before hiding so no
+            // focused descendant sits inside a closing/aria-hidden dialog.
+            if (modal.contains(document.activeElement)) document.activeElement.blur();
+            modal.classList.remove('active');
+            stayBtn.removeEventListener('click', onStay);
+            leaveBtn.removeEventListener('click', onLeave);
+        };
+        const onStay = () => { cleanup(); };
+        const onLeave = () => {
+            cleanup();
+            this.disarmBackGuard();
+            this.pauseAndSaveWorkout();
+            this.app.showView('home');
+        };
+
+        stayBtn.addEventListener('click', onStay);
+        leaveBtn.addEventListener('click', onLeave);
+        modal.classList.add('active');
+        trapModalFocus(modal);
     }
 
     interceptNavigation() {
@@ -244,7 +395,6 @@ class WorkoutView {
                     } else if (result === 'pause') {
                         // Pause and save, then navigate
                         this.pauseAndSaveWorkout();
-                        showToast('Workout paused. You can resume later.', 'info');
                     } else if (result === 'discard') {
                         // Discard workout
                         this.discardWorkout();
@@ -341,6 +491,8 @@ class WorkoutView {
 
         debugLog('Workout paused and saved', this.currentWorkoutSession.toJSON());
 
+        this.disarmBackGuard();
+
         // Reset UI state so the paused banner shows when returning
         document.getElementById('active-workout').classList.remove('active');
         document.getElementById('workout-selection').classList.add('active');
@@ -363,13 +515,37 @@ class WorkoutView {
         }
 
         this.pauseAndSaveWorkout();
-        showToast('Workout paused. You can resume later.', 'info');
         this.app.showView('home');
+    }
+
+    /**
+     * Item 3: pause the workout (no confirmation) and jump straight into the
+     * program editor for the program this workout was started from. Records
+     * that the editor was entered from workout mode so the editor shows a
+     * "Return to workout" button (Item 4).
+     */
+    editProgramFromWorkout() {
+        if (!this.hasActiveWorkout()) return;
+        const programId = this.currentWorkoutSession.programId;
+
+        // Pause + save silently (same effect as the pause flow, no dialog).
+        this.skipRest();
+        this.pauseAndSaveWorkout();
+
+        const programsCtrl = this.app.viewControllers.programs;
+        if (programsCtrl) programsCtrl.enteredFromWorkout = true;
+
+        this.app.showView('programs');
+        // Open the modal once the programs view is rendered.
+        setTimeout(() => {
+            programsCtrl?.openProgramModal(programId);
+        }, 100);
     }
 
     discardWorkout() {
         timerService.stopWorkoutTimer();
         this.skipRest();
+        this.disarmBackGuard();
         storageService.clearActiveWorkout();
         document.getElementById('active-workout').classList.remove('active');
         document.getElementById('workout-selection').classList.add('active');
@@ -381,10 +557,22 @@ class WorkoutView {
     }
 
     render() {
-        this.renderProgramSelection();
+        // If a workout is live in memory, returning to the workout view must
+        // land on the active session, not the program picker. Otherwise show
+        // the picker as usual (paused/persisted workouts surface their resume
+        // banner from renderProgramSelection).
+        if (this.hasActiveWorkout()) {
+            document.getElementById('workout-selection').classList.remove('active');
+            document.getElementById('active-workout').classList.add('active');
+            this.renderActiveWorkout();
+        } else {
+            document.getElementById('active-workout').classList.remove('active');
+            document.getElementById('workout-selection').classList.add('active');
+            this.renderProgramSelection();
+        }
     }
 
-    async resumeWorkout() {
+    async resumeWorkout(opts = {}) {
         const pausedWorkout = storageService.getActiveWorkout();
         if (!pausedWorkout) {
             showToast('No paused workout found', 'error');
@@ -395,13 +583,26 @@ class WorkoutView {
         this.currentWorkoutSession = WorkoutSession.fromJSON(pausedWorkout);
         this.currentWorkoutSession.resumeWorkout();
 
+        // Item 4: re-sync the session plan with an edited program when the user
+        // returned from the in-workout program editor.
+        if (opts.resyncProgramId != null) {
+            this.resyncSessionWithProgram(opts.resyncProgramId);
+        }
+
         // Reset per-session state, then seed collapse for completed exercises.
-        this.sessionPrCount = 0;
+        // Item R2-10: rebuild PR badges from the persisted committed sets so the
+        // superseded state survives pause/resume (only the best set per exercise
+        // keeps its badge).
         this.sessionPrSlots = {};
+        this.rebuildSessionPrSlots();
         this.collapsedExercises = {};
-        this.exerciseRestOverrides = {};
         this._prevCompleteState = {};
         this._activeRestType = null;
+        this._feelModalShown = {};
+        // Item R3-4: don't re-pop the feel modal on resume for exercises that
+        // already satisfy the all-sets-at-max condition. The modal only fires on
+        // the commit transition; mark satisfied exercises as already shown.
+        this._seedFeelModalShownFromSession();
         this._seedCollapseStateFromSession();
 
         // Start timer with saved elapsed time
@@ -415,8 +616,36 @@ class WorkoutView {
 
         // Render workout
         this.renderActiveWorkout();
+        this.armBackGuard();
+        this.app.updateGlobalFab();
+    }
 
-        showToast('Workout resumed!', 'success');
+    /**
+     * Item 4: reconcile the live (paused) session with the edited program.
+     * Delegates to the pure mergeSessionWithProgram helper, then rehydrates
+     * the merged plain objects into WorkoutExercise instances and persists.
+     */
+    resyncSessionWithProgram(programId) {
+        const program = this.app.getProgramById(programId);
+        if (!program || !this.currentWorkoutSession) return;
+
+        const sessionJson = this.currentWorkoutSession.exercises.map(e => e.toJSON());
+        const merged = mergeSessionWithProgram(
+            sessionJson,
+            program.exercises,
+            (progEx) => ({
+                exerciseId: progEx.exerciseId,
+                exerciseName: progEx.exerciseName,
+                sets: [],
+                targetSets: progEx.targetSets,
+                targetReps: progEx.targetReps,
+                restSeconds: progEx.restSeconds,
+                restAfterSeconds: progEx.restAfterSeconds,
+                groupId: progEx.groupId || null,
+            }),
+        );
+        this.currentWorkoutSession.exercises = merged.map(e => WorkoutExercise.fromJSON(e));
+        storageService.saveActiveWorkout(this.currentWorkoutSession.toJSON());
     }
 
     /**
@@ -454,6 +683,45 @@ class WorkoutView {
         }
     }
 
+    /**
+     * Item R2-6: a calendar-like week strip at the top of the workout selection
+     * screen. Shown only when the program-schedule toggle is on and at least one
+     * program is scheduled. Seven day cells ordered per the firstDayOfWeek
+     * preference, today highlighted, each listing the scheduled program name(s).
+     * Today's scheduled entry is emphasized; tapping a program entry starts that
+     * workout immediately (Item R3-1). Returns '' when nothing should render.
+     */
+    _renderWeekStripHTML(programs) {
+        const showSchedule = this.app.settings?.showProgramSchedule !== false;
+        if (!showSchedule || !programs || programs.length === 0) return '';
+        const anyScheduled = programs.some(p => Array.isArray(p.scheduleDays) && p.scheduleDays.length > 0);
+        if (!anyScheduled) return '';
+
+        const firstDay = this.app.settings?.firstDayOfWeek === 1 ? 1 : 0;
+        const labels = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+        const fullLabels = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+        const cells = weekStrip(programs, firstDay).map(cell => {
+            const entries = cell.programs.map(p => `
+                <button type="button" class="week-strip-program" data-action="start-workout" data-program-id="${p.id}" title="Start ${escapeHtml(p.name)}">
+                    <span class="week-strip-dot" aria-hidden="true"></span>
+                    <span class="week-strip-program-name">${escapeHtml(p.name)}</span>
+                </button>`).join('');
+            const classes = ['week-strip-day'];
+            if (cell.isToday) classes.push('is-today');
+            if (cell.programs.length > 0) classes.push('has-program');
+            return `
+                <div class="${classes.join(' ')}" aria-label="${fullLabels[cell.weekday]}${cell.isToday ? ', today' : ''}">
+                    <span class="week-strip-label">${labels[cell.weekday]}</span>
+                    <div class="week-strip-entries">${entries || '<span class="week-strip-empty" aria-hidden="true">&middot;</span>'}</div>
+                </div>`;
+        }).join('');
+
+        return `
+            <section class="week-strip" aria-label="This week's scheduled programs">
+                <div class="week-strip-grid">${cells}</div>
+            </section>`;
+    }
+
     renderProgramSelection() {
         const container = document.getElementById('workout-program-list');
         // Same ordering source-of-truth as Home + Programs: the user's chosen
@@ -483,6 +751,8 @@ class WorkoutView {
             return;
         }
 
+        html += this._renderWeekStripHTML(programs);
+
         html += `
             <h2>Select a Program</h2>
             <p class="subtitle">Choose which program you want to do today</p>
@@ -491,7 +761,7 @@ class WorkoutView {
                     const lastSession = this._lastSessionForProgram(program.id);
                     const lastDoneHTML = this._renderLastDoneInfo(lastSession);
                     return `
-                    <div class="program-card">
+                    <div class="program-card" data-program-card="${program.id}">
                         <div class="program-header">
                             <h3>${escapeHtml(program.name)}</h3>
                         </div>
@@ -516,6 +786,9 @@ class WorkoutView {
         `;
 
         container.innerHTML = html;
+
+        // Item R3-1: week-strip program entries use data-action="start-workout",
+        // wired by the delegated click handler in wireWorkoutActions.
 
         const banner = container.querySelector('.paused-workout-banner');
         if (banner) {
@@ -558,12 +831,11 @@ class WorkoutView {
         this.currentWorkoutSession.startWorkout();
 
         // Reset per-session state.
-        this.sessionPrCount = 0;
         this.sessionPrSlots = {};
         this.collapsedExercises = {};
-        this.exerciseRestOverrides = {};
         this._prevCompleteState = {};
         this._activeRestType = null;
+        this._feelModalShown = {};
 
         // Start workout timer
         timerService.startWorkoutTimer((elapsed) => {
@@ -576,6 +848,8 @@ class WorkoutView {
 
         // Render workout
         this.renderActiveWorkout();
+        this.armBackGuard();
+        this.app.updateGlobalFab();
     }
 
     adjustWorkoutTitleSize() {
@@ -608,6 +882,7 @@ class WorkoutView {
         document.getElementById('workout-title').textContent = this.currentWorkoutSession.workoutDayName;
         this.adjustWorkoutTitleSize();
         this.syncPlateHintsButton();
+        this.syncSessionUnitToggle();
 
         const container = document.getElementById('workout-exercises-list');
 
@@ -676,7 +951,9 @@ class WorkoutView {
         const exerciseData = this.app.getExerciseById(exercise.exerciseId);
         const isDuration = !!(exerciseData && exerciseData.exerciseType === 'duration');
         const previousSets = this.getPreviousExerciseData(exercise.exerciseId) || [];
-        const unit = this.app.settings.weightUnit;
+        // Item 8: display + entry use the per-session unit; canonical storage
+        // stays in the account unit.
+        const unit = this.sessionUnit();
 
         // Task 6: rep-range labels from the program exercise's sets[].
         // Fall back gracefully for old sessions/programs that lack sets[].
@@ -755,53 +1032,38 @@ class WorkoutView {
             }
         }
 
-        // Per-exercise rest adjusters — two separate values:
-        //   restSeconds:      between sets of THIS exercise (always per-exercise)
-        //   restAfterSeconds: between exercises; per-exercise in custom mode,
-        //                     uniform value when restMode === 'uniform'
-        const isUniform = program?.restMode === 'uniform';
+        // Item R3-4: the chosen feel for THIS session (set via the modal) shows
+        // on the exercise header and toggles good -> none on tap. The inline
+        // prompt row is gone; the picker is the modal (see commitPlannedSet).
+        const sessionFeelHTML = !isDuration ? this.renderFeelToggleIcon(index, exercise.feel) : '';
 
-        // Between-set rest: always per-exercise; override stored in exerciseRestOverrides
+        // Item 7: last feel marking for this exercise across prior sessions,
+        // shown next to the name to inform progression (history, unchanged). Only
+        // when there is no session feel chosen yet so the two icons don't stack.
+        const lastFeel = (!isDuration && exercise.feel !== 'good')
+            ? latestFeelForExercise(this.app.workoutSessions, exercise.exerciseId, s => s.sortTimestamp)
+            : null;
+        const lastFeelHTML = lastFeel ? this.renderFeelHistoryIcon(lastFeel) : '';
+
+        // Item R2-3: the between-set rest is shown as a single in-place chip.
+        // Idle, it renders the duration as a static GRAY number; when a set is
+        // completed the same element becomes the live colored countdown, then
+        // reverts to gray. No "Between sets"/"After exercise" pills.
         const progEx2 = program?.exercises.find(e => e.exerciseId === exercise.exerciseId);
-        const betweenSetBase = progEx2?.restSeconds ?? exercise.restSeconds ?? 90;
-        const betweenSetActive = this.exerciseRestOverrides[index]?.set ?? betweenSetBase;
-        const betweenSetMinus = Math.max(5, betweenSetActive - 5);
-        const betweenSetPlus = betweenSetActive + 5;
-
-        // Between-exercise rest: program-derived, display-only (not adjustable mid-workout)
-        const betweenExActive = isUniform
-            ? (program.uniformRestSeconds ?? 90)
-            : (progEx2?.restAfterSeconds ?? exercise.restAfterSeconds ?? 90);
-
-        const restPillsHTML = `
-            <div class="rest-adjuster" aria-label="Rest between sets of this exercise">
-                <span class="rest-adj-label">Between sets</span>
-                <button type="button" class="rest-adj-btn"
-                    data-action="set-rest-override"
-                    data-rest-kind="set"
-                    data-exercise-index="${index}"
-                    data-seconds="${betweenSetMinus}"
-                    aria-label="Decrease between-set rest by 5 seconds">-5</button>
-                <span class="rest-adj-value">${this.formatRest(betweenSetActive)}</span>
-                <button type="button" class="rest-adj-btn"
-                    data-action="set-rest-override"
-                    data-rest-kind="set"
-                    data-exercise-index="${index}"
-                    data-seconds="${betweenSetPlus}"
-                    aria-label="Increase between-set rest by 5 seconds">+5</button>
-            </div>
-            ${isUniform ? '' : `
-            <div class="rest-adjuster rest-adjuster--display-only" aria-label="Rest after last set of this exercise">
-                <span class="rest-adj-label">After exercise</span>
-                <span class="rest-adj-value">${this.formatRest(betweenExActive)}</span>
-            </div>
-            `}
+        const betweenSetActive = progEx2?.restSeconds ?? exercise.restSeconds ?? 90;
+        const isRestingHere = this.activeRestExerciseIndex === index && this._activeRestType === 'set';
+        const restChipHTML = `
+            <div class="rest-countdown-chip${isRestingHere ? '' : ' rest-countdown-chip--idle'}"
+                 data-rest-idle="${betweenSetActive}" aria-live="off"
+                 title="Rest between sets">${this.formatRest(betweenSetActive)}</div>
         `;
 
         // Per-exercise plate-hints toggle.
         // Global OFF overrides everything: hints hidden for ALL exercises.
         // Global ON: per-exercise preference applies (defaults to ON).
-        const globalHints = this.app.settings?.plateHintsEnabled !== false;
+        // Item 8: plate config is in account units, so hide the toggle and
+        // hints entirely while the session unit differs from the account unit.
+        const globalHints = this.app.settings?.plateHintsEnabled !== false && !this.unitsDiffer();
         const perExHints = this.app.settings?.exercisePlateHints?.[exercise.exerciseId];
         const hintsOnForExercise = globalHints && (perExHints !== undefined ? perExHints : true);
         // Per-exercise toggle is only meaningful when global hints are ON.
@@ -828,7 +1090,7 @@ class WorkoutView {
                         <i class="fas fa-chevron-${isCollapsed ? 'down' : 'up'}" aria-hidden="true"></i>
                     </button>
                     <h3>
-                        <span class="exercise-name-main">${escapeHtml(exercise.exerciseName)}</span>${muscle ? `
+                        <span class="exercise-name-main">${escapeHtml(exercise.exerciseName)}</span>${sessionFeelHTML}${lastFeelHTML}${muscle ? `
                         <span class="exercise-name-sub">(${escapeHtml(muscle)})</span>` : ''}${allSameRepRange ? `
                         <span class="exercise-rep-target" aria-label="Target: ${sharedRepLabel}">${sharedRepLabel}</span>` : ''}
                     </h3>
@@ -839,8 +1101,8 @@ class WorkoutView {
                 </div>
 
                 <div class="exercise-body">
-                    <div class="rest-row${this.activeRestExerciseIndex === index && this._activeRestType === 'set' ? ' rest-row--resting' : ''}">
-                        ${restPillsHTML}
+                    <div class="rest-row${isRestingHere ? ' rest-row--resting' : ''}">
+                        ${restChipHTML}
                         ${plateToggleHTML}
                     </div>
 
@@ -900,12 +1162,17 @@ class WorkoutView {
             `;
         }
 
-        const weight = prior ? prior.weight : '';
+        // Prior weights are canonical (account-unit); convert into the session
+        // display unit for prefill (Item 8). One decimal via convertWeight.
+        const weight = prior && prior.weight !== '' && prior.weight != null
+            ? this.toSessionWeight(prior.weight)
+            : '';
         const reps = prior ? prior.reps : (targetReps || '');
-        // Per-exercise plate hints: global OFF overrides everything.
+        // Per-exercise plate hints: global OFF overrides everything; also off
+        // while the session unit differs from the account unit (Item 8).
         const sessionExercise = this.currentWorkoutSession?.exercises[exerciseIndex];
         const exerciseId = sessionExercise?.exerciseId;
-        const globalHintsOn = this.app.settings?.plateHintsEnabled !== false;
+        const globalHintsOn = this.app.settings?.plateHintsEnabled !== false && !this.unitsDiffer();
         const perExHintsVal = exerciseId !== undefined
             ? this.app.settings?.exercisePlateHints?.[exerciseId]
             : undefined;
@@ -930,6 +1197,139 @@ class WorkoutView {
                 ${plateHintHTML ? `<div class="plate-hint" id="plate-hint-${exerciseIndex}-${slot}">${plateHintHTML}</div>` : ''}
             </li>
         `;
+    }
+
+    /**
+     * Item R3-4: the chosen-feel icon shown on the exercise header for THIS
+     * session. Rendered ONLY when feel === 'good' (green smiley). Tapping it
+     * toggles good -> none (removes the mark); see cycleExerciseFeel. Returns ''
+     * for any other value, so the history icon (if any) shows instead.
+     */
+    renderFeelToggleIcon(exerciseIndex, feel) {
+        if (feel !== 'good') return '';
+        const label = 'Felt good. Tap to remove.';
+        return `
+            <button type="button" class="feel-toggle feel-toggle-good"
+                data-action="cycle-feel" data-exercise-index="${exerciseIndex}"
+                aria-label="${label}" title="${label}">
+                <i class="fas fa-face-smile" aria-hidden="true"></i>
+            </button>
+        `;
+    }
+
+    /**
+     * Item 7: the last-feel icon shown next to the exercise name. Rendered ONLY
+     * when feel === 'good' (green smiley); returns '' otherwise, so legacy
+     * sessions marked 'bad' show no icon.
+     */
+    renderFeelHistoryIcon(feel) {
+        if (feel !== 'good') return '';
+        const label = 'Last time this felt good (you marked it for more weight)';
+        return `<span class="feel-history feel-history-good" role="img" aria-label="${label}" title="${label}"><i class="fas fa-face-smile" aria-hidden="true"></i></span>`;
+    }
+
+    /**
+     * Item R3-4: set the feel marking on a session exercise to an explicit value
+     * (or null). Persisted to the active session so it survives pause/resume.
+     */
+    setExerciseFeel(exerciseIndex, feel) {
+        const exercise = this.currentWorkoutSession?.exercises[exerciseIndex];
+        if (!exercise) return;
+        exercise.feel = feel === 'good' ? 'good' : null;
+        if (this.app.settings?.vibrationAlerts !== false) vibrate(20);
+        storageService.saveActiveWorkout(this.currentWorkoutSession.toJSON());
+        this.rerenderExercise(exerciseIndex);
+    }
+
+    /**
+     * Item R3-4: toggle the header feel icon good -> none. Preserves the
+     * round-1 "change before saving" affordance without an inline prompt row.
+     */
+    cycleExerciseFeel(exerciseIndex) {
+        const exercise = this.currentWorkoutSession?.exercises[exerciseIndex];
+        if (!exercise) return;
+        this.setExerciseFeel(exerciseIndex, nextFeel(exercise.feel));
+    }
+
+    /**
+     * Item R3-4: whether the exercise newly satisfies the all-sets-at-max
+     * condition (every target set completed at the max of its rep range).
+     * Duration exercises never qualify. Shared by the render path and the
+     * commit/resume feel-modal triggers.
+     */
+    _exerciseReachesMax(exercise) {
+        if (!exercise) return false;
+        const exerciseData = this.app.getExerciseById(exercise.exerciseId);
+        if (exerciseData && exerciseData.exerciseType === 'duration') return false;
+        const program = this.app.getProgramById(this.currentWorkoutSession?.programId);
+        const progEx = program?.exercises.find(e => e.exerciseId === exercise.exerciseId);
+        const progSets = (progEx?.sets && progEx.sets.length > 0) ? progEx.sets : null;
+        const targetSets = Math.max(1, exercise.targetSets || 3);
+        return allSetsReachMax(
+            exercise.sets,
+            targetSets,
+            (set, arrIdx) => {
+                const slot = set.slot != null ? set.slot : arrIdx;
+                return (progSets && slot < progSets.length)
+                    ? progSets[slot].repsMax
+                    : exercise.targetReps;
+            },
+        );
+    }
+
+    /**
+     * Item R3-4: on resume, mark exercises that already satisfy the
+     * all-sets-at-max condition as "modal already shown" so the picker does not
+     * re-pop for them (it only fires on the commit transition).
+     */
+    _seedFeelModalShownFromSession() {
+        const exercises = this.currentWorkoutSession?.exercises || [];
+        exercises.forEach((exercise, i) => {
+            if (this._exerciseReachesMax(exercise)) this._feelModalShown[i] = true;
+        });
+    }
+
+    /**
+     * Item R3-4: show the feel picker modal for `exerciseIndex` the FIRST time
+     * the exercise satisfies the all-sets-at-max condition this session. The
+     * modal's green "Felt good" smiley is the only choice: picking it records the
+     * feel, closes the modal and collapses the exercise. "Not yet" (and the X)
+     * closes without recording (the exercise still auto-collapses because it is
+     * complete).
+     */
+    maybeShowFeelModal(exerciseIndex) {
+        const exercise = this.currentWorkoutSession?.exercises[exerciseIndex];
+        if (!exercise) return;
+        const reaches = this._exerciseReachesMax(exercise);
+        if (!shouldShowFeelModal(this._feelModalShown, exerciseIndex, reaches)) return;
+        const modal = document.getElementById('feel-intro-modal');
+        if (!modal) return;
+
+        this._feelModalShown[exerciseIndex] = true;
+
+        modal.classList.add('active');
+        trapModalFocus(modal);
+
+        const close = () => {
+            // R3-6: blur the clicked choice before hiding (no focused descendant
+            // under a closing dialog).
+            if (modal.contains(document.activeElement)) document.activeElement.blur();
+            modal.classList.remove('active');
+            goodBtn?.removeEventListener('click', onGood);
+            skipX?.removeEventListener('click', close);
+            skipBtn?.removeEventListener('click', close);
+        };
+        const onGood = () => {
+            this.setExerciseFeel(exerciseIndex, 'good');
+            close();
+        };
+
+        const goodBtn = document.getElementById('feel-modal-good');
+        const skipX = document.getElementById('feel-modal-skip');
+        const skipBtn = document.getElementById('feel-modal-skip-btn');
+        goodBtn?.addEventListener('click', onGood);
+        skipX?.addEventListener('click', close);
+        skipBtn?.addEventListener('click', close);
     }
 
     /** Format a rep range for display: "8 reps" or "8-10 reps". */
@@ -967,6 +1367,7 @@ class WorkoutView {
     refreshPlateHint(exerciseIndex, slot, weight) {
         const hintEl = document.getElementById(`plate-hint-${exerciseIndex}-${slot}`);
         if (!hintEl) return;
+        if (this.unitsDiffer()) return;
         const unit = this.app.settings.weightUnit;
         const sessionExercise = this.currentWorkoutSession?.exercises[exerciseIndex];
         const exerciseId = sessionExercise?.exerciseId;
@@ -1015,7 +1416,9 @@ class WorkoutView {
             const secs = set.duration % 60;
             details = `<span class="duration-value">${mins}:${secs.toString().padStart(2, '0')}</span>`;
         } else {
-            details = `${set.weight.toLocaleString()}${unit} × ${set.reps}`;
+            // set.weight is canonical (account unit); display in session unit.
+            const shown = this.toSessionWeight(set.weight);
+            details = `${shown.toLocaleString()}${unit} × ${set.reps}`;
         }
 
         const toggle = this.renderSetToggle(true, 'unmark-set', exerciseIndex, slot, 'Unmark set');
@@ -1109,37 +1512,6 @@ class WorkoutView {
             }
         }
         this.rerenderExercise(exerciseIndex);
-    }
-
-    /**
-     * Override the between-set rest timer for one exercise in this session.
-     * Updates the rest adjuster in-place to avoid remounting completed-set pills.
-     */
-    setRestOverride(exerciseIndex, seconds) {
-        if (!this.exerciseRestOverrides[exerciseIndex]) {
-            this.exerciseRestOverrides[exerciseIndex] = {};
-        }
-        this.exerciseRestOverrides[exerciseIndex].set = seconds;
-
-        const host = document.getElementById(`exercise-${exerciseIndex}`);
-        if (!host) { this.rerenderExercise(exerciseIndex); return; }
-
-        const newMinus = Math.max(5, seconds - 5);
-        const newPlus = seconds + 5;
-
-        const [minusBtn, plusBtn] = host.querySelectorAll(
-            '[data-action="set-rest-override"][data-rest-kind="set"]'
-        );
-        const valueEl = host.querySelector(
-            '.rest-adjuster:not(.rest-adjuster--display-only) .rest-adj-value'
-        );
-
-        if (!minusBtn || !plusBtn || !valueEl) { this.rerenderExercise(exerciseIndex); return; }
-
-        minusBtn.dataset.seconds = String(newMinus);
-        minusBtn.setAttribute('aria-label', 'Decrease between-set rest by 5 seconds');
-        plusBtn.dataset.seconds = String(newPlus);
-        valueEl.textContent = this.formatRest(seconds);
     }
 
     /** Toggle per-exercise plate hints for the exercise at `exerciseIndex`.
@@ -1309,12 +1681,14 @@ class WorkoutView {
         } else {
             const weightInput = document.getElementById(`weight-${exerciseIndex}-${slot}`);
             const repsInput = document.getElementById(`reps-${exerciseIndex}-${slot}`);
-            const weight = parseFloat(weightInput?.value);
+            const entered = parseFloat(weightInput?.value);
             const reps = parseInt(repsInput?.value, 10);
-            if (isNaN(weight) || weight < 0 || !reps) {
+            if (isNaN(entered) || entered < 0 || !reps) {
                 showToast('Please enter weight and reps', 'error');
                 return;
             }
+            // The input is in the session unit; store canonical (account unit).
+            const weight = this.toAccountWeight(entered);
             set = new Set({ weight, reps, completed: true, slot });
         }
 
@@ -1322,16 +1696,24 @@ class WorkoutView {
         // not by array index, so order-of-insertion doesn't matter.
         exercise.sets.push(set);
 
+        // Item R2-8: a logged set dismisses the finish-modal "no sets" message.
+        const finishMsg = document.getElementById('finish-inline-message');
+        if (finishMsg) finishMsg.hidden = true;
+
         if (this.app.settings?.vibrationAlerts !== false) vibrate(30);
 
         // PR check — compare the just-logged set against all prior sets of
-        // this exercise (from completed sessions, not the in-progress one).
-        const pr = AnalyticsService.isSetPR(exercise.exerciseId, set, this.app.workoutSessions);
+        // this exercise: completed sessions PLUS earlier committed sets of the
+        // current session, so a repeat at the same new max isn't re-celebrated.
+        const priorSessionSets = exercise.sets.filter(s => s !== set);
+        const pr = AnalyticsService.isSetPR(exercise.exerciseId, set, this.app.workoutSessions, priorSessionSets);
         if (pr) {
-            this.sessionPrCount += 1;
-            // Store the PR payload so the row can render a badge showing
-            // the improvement amount (e.g. "PR +40 lb").
-            this.sessionPrSlots[`${exerciseIndex}:${slot}`] = pr;
+            // Item R2-10: record the PR and supersede any earlier badge for the
+            // same exercise this session — only the best set keeps the badge.
+            // The toast still fires (live celebration). rerenderExercise below
+            // is per-exercise, so an earlier set in the SAME exercise drops its
+            // badge on this rerender; cross-exercise badges are untouched.
+            recordPrSupersede(this.sessionPrSlots, `${exerciseIndex}:${slot}`, pr);
             this.announcePR(pr);
         }
 
@@ -1340,17 +1722,29 @@ class WorkoutView {
         const targetSets = Math.max(1, exercise.targetSets || 3);
         const isNowComplete = exercise.sets.length >= targetSets;
         if (isNowComplete) {
-            // Only auto-collapse if the user hasn't explicitly expanded it
-            // after a prior auto-collapse (collapsedExercises[i] === false means
-            // the user manually opened it).
-            if (this.collapsedExercises[exerciseIndex] !== false) {
-                this.collapsedExercises[exerciseIndex] = true;
-            }
+            // #23: committing a set is a deliberate action, so re-arm auto-collapse
+            // even if the user had manually expanded a previously-complete exercise
+            // (collapsedExercises[i] === false). The manual-expand suppression is
+            // only meant to survive passive re-renders, not a fresh set commit.
+            this.collapsedExercises[exerciseIndex] = true;
         }
         // Track complete state for deleteSet's re-trigger logic.
         this._prevCompleteState[exerciseIndex] = isNowComplete;
 
         this.rerenderExercise(exerciseIndex);
+
+        // Item R3-4: if this commit just made the exercise satisfy the
+        // all-sets-at-max condition, show the feel picker modal (once per
+        // exercise per session). Picking collapses the exercise.
+        this.maybeShowFeelModal(exerciseIndex);
+
+        // Final set of the LAST exercise -> workout complete: no rest of any
+        // kind, and jump to the top where the Finish button lives.
+        if (isWorkoutComplete(this.currentWorkoutSession?.exercises || [])) {
+            this.skipRest();
+            this.scrollWorkoutToTop();
+            return;
+        }
 
         // Determine rest type: last set of exercise -> between-exercise (bottom bar);
         // any earlier set -> between-set (inline chip only).
@@ -1368,8 +1762,7 @@ class WorkoutView {
                 this.startRest(betweenExSecs, exerciseIndex, 'exercise');
             } else {
                 // Between-set rest -> inline chip only
-                const betweenSetBase = progEx?.restSeconds ?? exercise.restSeconds ?? 90;
-                const betweenSetSecs = this.exerciseRestOverrides[exerciseIndex]?.set ?? betweenSetBase;
+                const betweenSetSecs = progEx?.restSeconds ?? exercise.restSeconds ?? 90;
                 this.startRest(betweenSetSecs, exerciseIndex, 'set');
             }
         } else {
@@ -1397,13 +1790,74 @@ class WorkoutView {
         return true;
     }
 
+    /** Smooth-scroll the page to the top (workout header / Finish button). */
+    scrollWorkoutToTop() {
+        if (typeof window === 'undefined' || typeof window.scrollTo !== 'function') return;
+        try {
+            window.scrollTo({ top: 0, behavior: 'smooth' });
+        } catch {
+            window.scrollTo(0, 0);
+        }
+    }
+
+    /** Index of the first incomplete exercise, or -1 if every one is complete. */
+    firstIncompleteExerciseIndex() {
+        const exercises = this.currentWorkoutSession?.exercises;
+        if (!exercises) return -1;
+        for (let i = 0; i < exercises.length; i++) {
+            const targetSets = Math.max(1, exercises[i].targetSets || 3);
+            if ((exercises[i].sets?.length || 0) < targetSets) return i;
+        }
+        return -1;
+    }
+
+    /**
+     * Jump to the exercise the user is actually lifting: the first incomplete
+     * one (lowest index whose sets < target). Lands the block's top just below
+     * the sticky workout header. If the exercise is collapsed, expand it first.
+     * If every exercise is complete, fall back to the top (Finish + timer).
+     */
+    scrollToCurrentExercise() {
+        if (typeof window === 'undefined' || typeof window.scrollTo !== 'function') return;
+        const index = this.firstIncompleteExerciseIndex();
+        if (index < 0) {
+            this.scrollWorkoutToTop();
+            return;
+        }
+
+        // Be safe: an incomplete exercise is normally expanded, but if a stored
+        // collapse flag is suppressing its sets, clear it and rerender so the
+        // target block is fully visible before we measure and scroll.
+        if (this.collapsedExercises[index]) {
+            delete this.collapsedExercises[index];
+            this.rerenderExercise(index);
+        }
+
+        const el = document.getElementById(`exercise-${index}`);
+        if (!el) return;
+
+        // The page (window) is the scroll container; the workout header is
+        // position: sticky, so its on-screen bottom edge is the floor the
+        // target must clear. Use that bottom plus a small gap as the offset.
+        const header = document.querySelector('#active-workout .workout-header');
+        const headerBottom = header ? header.getBoundingClientRect().bottom : 0;
+        const gap = 8;
+        const target = el.getBoundingClientRect().top + window.scrollY - headerBottom - gap;
+        const top = Math.max(0, target);
+        try {
+            window.scrollTo({ top, behavior: 'smooth' });
+        } catch {
+            window.scrollTo(0, top);
+        }
+    }
+
     /**
      * Show a celebratory toast for the given PR + play the chime cue.
      * Respects the user's restAlerts preference for audio (always vibrates
      * and always shows the toast — the toast is the actual info).
      */
     announcePR(pr) {
-        const unit = this.app.settings.weightUnit;
+        const unit = this.sessionUnit();
         const label = `🏆 New PR  ${this.formatPrDelta(pr, unit)}`;
         showToast(label, 'success', 4000);
         if (this.app.settings?.vibrationAlerts !== false) vibrate([40, 60, 120]);
@@ -1420,7 +1874,9 @@ class WorkoutView {
             const secs = pr.delta % 60;
             return `+${mins}:${String(secs).padStart(2, '0')}`;
         }
-        return `+${Math.round(pr.delta)} ${unit}`;
+        // pr.delta is in the account unit; convert to the display unit (Item 8).
+        const delta = convertWeight(pr.delta, this.app.settings.weightUnit, unit);
+        return `+${Math.round(delta)} ${unit}`;
     }
 
     /**
@@ -1459,10 +1915,11 @@ class WorkoutView {
                 </div>
             `;
         } else {
+            const editWeight = this.toSessionWeight(set.weight);
             editFormHTML = `
                 <div class="set-row-inputs">
                     <input type="number" class="set-edit-input"
-                        id="edit-weight-${exerciseIndex}-${slot}" value="${set.weight}" step="0.5" min="0" placeholder="Weight" aria-label="Weight">
+                        id="edit-weight-${exerciseIndex}-${slot}" value="${editWeight}" step="0.5" min="0" placeholder="Weight" aria-label="Weight">
                     <span class="set-row-x">×</span>
                     <input type="number" class="set-edit-input"
                         id="edit-reps-${exerciseIndex}-${slot}" value="${set.reps}" min="1" placeholder="Reps" aria-label="Reps">
@@ -1495,6 +1952,52 @@ class WorkoutView {
         }
     }
 
+    /**
+     * Item R2-4 / #18: after a set is edited or deleted, the per-exercise derived
+     * state (auto-collapse, _prevCompleteState, _feelModalShown) must equal a
+     * fresh evaluation — the commit path keeps these in sync, the edit/delete
+     * paths historically did not. Mirrors commitPlannedSet's bookkeeping:
+     *   - re-evaluate complete/collapse (respecting the user-explicit-expand
+     *     invariant collapsedExercises[i] === false, and clearing that
+     *     suppression on a complete->incomplete transition so auto-collapse can
+     *     fire again);
+     *   - clear _feelModalShown when the exercise no longer reaches max, so
+     *     bringing it back to max re-shows the modal (left as-is if it still
+     *     reaches max, since the modal already fired).
+     * Returns the freshly computed `isNowComplete` so callers can decide whether
+     * to (re)trigger the feel modal.
+     *
+     * `armCollapse` (#23): set true for a DELIBERATE set action (committing a set,
+     * saving a set edit). On such actions a now-complete exercise auto-collapses
+     * even if the user had manually expanded it (collapsedExercises[i] === false).
+     * Passive re-renders / deletes pass false so "opened just to look" stays open.
+     */
+    _recomputeExerciseDerivedState(exerciseIndex, armCollapse = false) {
+        const exercise = this.currentWorkoutSession?.exercises[exerciseIndex];
+        if (!exercise) return false;
+
+        const targetSets = Math.max(1, exercise.targetSets || 3);
+        const isNowComplete = exercise.sets.length >= targetSets;
+        const wasComplete = this._prevCompleteState[exerciseIndex] === true;
+
+        if (isNowComplete) {
+            if (armCollapse || this.collapsedExercises[exerciseIndex] !== false) {
+                this.collapsedExercises[exerciseIndex] = true;
+            }
+        } else if (wasComplete) {
+            // complete -> incomplete: clear the manual-expand suppression so the
+            // next time it completes, auto-collapse fires again.
+            delete this.collapsedExercises[exerciseIndex];
+        }
+        this._prevCompleteState[exerciseIndex] = isNowComplete;
+
+        if (!this._exerciseReachesMax(exercise)) {
+            this._feelModalShown[exerciseIndex] = false;
+        }
+
+        return isNowComplete;
+    }
+
     saveSetEdit(exerciseIndex, slot) {
         if (!this.currentWorkoutSession) return;
 
@@ -1517,65 +2020,56 @@ class WorkoutView {
         } else {
             const weightInput = document.getElementById(`edit-weight-${exerciseIndex}-${slot}`);
             const repsInput = document.getElementById(`edit-reps-${exerciseIndex}-${slot}`);
-            const weight = parseFloat(weightInput.value);
+            const entered = parseFloat(weightInput.value);
             const reps = parseInt(repsInput.value, 10);
-            if (isNaN(weight) || weight < 0 || !reps) {
+            if (isNaN(entered) || entered < 0 || !reps) {
                 showToast('Please enter valid weight and reps', 'error');
                 return;
             }
-            set.weight = weight;
+            // Input is in the session unit; store canonical (account unit).
+            set.weight = this.toAccountWeight(entered);
             set.reps = reps;
         }
 
-        // Edits can turn a set into a PR, out of a PR, or just update the
-        // delta on an already-PR row. Re-evaluate once here instead of
-        // forcing users to toggle off/on.
-        const prTransition = this.reevaluatePrForSlot(exerciseIndex, slot, set, exercise);
+        // Item R3-7: derived PR state must equal a fresh recomputation after
+        // any edit. Recompute the whole session PR map from scratch (so editing
+        // away a superseding set restores an earlier set's badge), then announce
+        // only when THIS slot newly became a PR.
+        const prKey = `${exerciseIndex}:${slot}`;
+        const hadPr = !!(this.sessionPrSlots && this.sessionPrSlots[prKey]);
+        this.rebuildSessionPrSlots();
+        const pr = this.sessionPrSlots[prKey];
+        if (pr && !hadPr) this.announcePR(pr);
+
+        // #18: keep the per-exercise derived state (collapse / complete /
+        // feel-modal) consistent with the edited reps, then mirror the commit
+        // path by (re)showing the feel modal if the edit newly satisfies the
+        // all-sets-at-max condition. maybeShowFeelModal self-guards via
+        // shouldShowFeelModal, so it won't double-show or fire when incomplete.
+        // #23: a save IS a deliberate set action, so re-arm auto-collapse on a
+        // still-complete exercise even if the user had manually expanded it.
+        this._recomputeExerciseDerivedState(exerciseIndex, true);
 
         this.rerenderExercise(exerciseIndex);
 
-        // Suppress the generic "Set updated" toast when a new PR fires —
-        // the PR toast already communicates that the save happened, and
-        // stacking two toasts drowns the celebration.
-        if (prTransition !== 'new') {
-            showToast('Set updated', 'success');
-        }
+        this.maybeShowFeelModal(exerciseIndex);
     }
 
     /**
-     * Recompute PR status for a single set and update the session record
-     * accordingly. Called after any mutation to a committed set's values.
-     *
-     * Returns one of:
-     *   'new'    — wasn't a PR before, is now (fires toast + sound + haptic)
-     *   'update' — was a PR, still is; badge delta refreshed silently
-     *   'lost'   — was a PR, no longer is; badge + count cleared
-     *   'none'   — wasn't a PR, still isn't
-     *
-     * Never re-announces a PR that was already celebrated — "still PR" is
-     * silent so the user isn't chimed at every tiny edit.
+     * Item R2-10 / R3-7: recompute sessionPrSlots from the current session's
+     * committed sets, from scratch. Each exercise's sets are evaluated in slot
+     * order against completed sessions plus earlier sets of the same exercise,
+     * so a later higher set supersedes earlier badges and only the best set per
+     * exercise survives. Called on resume and after EVERY set edit/delete so the
+     * derived PR state always equals a fresh recomputation.
      */
-    reevaluatePrForSlot(exerciseIndex, slot, set, exercise) {
-        const prKey = `${exerciseIndex}:${slot}`;
-        const hadPr = !!(this.sessionPrSlots && this.sessionPrSlots[prKey]);
-        const pr = AnalyticsService.isSetPR(exercise.exerciseId, set, this.app.workoutSessions);
-
-        if (pr && !hadPr) {
-            this.sessionPrCount += 1;
-            this.sessionPrSlots[prKey] = pr;
-            this.announcePR(pr);
-            return 'new';
-        }
-        if (pr && hadPr) {
-            this.sessionPrSlots[prKey] = pr;
-            return 'update';
-        }
-        if (!pr && hadPr) {
-            delete this.sessionPrSlots[prKey];
-            this.sessionPrCount = Math.max(0, this.sessionPrCount - 1);
-            return 'lost';
-        }
-        return 'none';
+    rebuildSessionPrSlots() {
+        const exercises = this.currentWorkoutSession?.exercises || [];
+        this.sessionPrSlots = recomputePrSlots(
+            exercises,
+            (exerciseId, set, priorSessionSets) =>
+                AnalyticsService.isSetPR(exerciseId, set, this.app.workoutSessions, priorSessionSets),
+        );
     }
 
     cancelSetEdit(exerciseIndex) {
@@ -1584,10 +2078,9 @@ class WorkoutView {
     }
 
     /**
-     * Remove a committed set from an exercise. `opts.silent` suppresses the
-     * "Set deleted" toast — used by the pill-toggle un-check flow, where
-     * the knob animation already gives clear visual confirmation and a
-     * duplicate toast would be noise.
+     * Remove a committed set from an exercise. The visible row + knob animation
+     * already confirm the action, so no toast fires (Item R2-8). `opts` is kept
+     * for caller compatibility (pill-toggle un-check passes { silent: true }).
      */
     deleteSet(exerciseIndex, slot, opts = {}) {
         if (!this.currentWorkoutSession) return;
@@ -1616,25 +2109,17 @@ class WorkoutView {
             duration: removed.duration,
         };
 
-        // If this set held a PR for the current session, clear the badge
-        // and decrement the counter. Re-committing recomputes PR fresh.
-        const prKey = `${exerciseIndex}:${slot}`;
-        if (this.sessionPrSlots && this.sessionPrSlots[prKey]) {
-            delete this.sessionPrSlots[prKey];
-            this.sessionPrCount = Math.max(0, this.sessionPrCount - 1);
-        }
+        // Item R3-7: recompute the whole session PR map from scratch after the
+        // delete. Removing a set that had SUPERSEDED an earlier PR must restore
+        // the earlier set's badge, so patching a single slot is not enough.
+        this.rebuildSessionPrSlots();
 
-        // Auto-collapse re-trigger fix: if the exercise was complete before this
-        // delete and is no longer complete, clear the manual-expand suppression
-        // (collapsedExercises[i] === false). The next time it becomes complete,
-        // auto-collapse will fire again.
-        const targetSets = Math.max(1, exercise.targetSets || 3);
-        const wasComplete = this._prevCompleteState[exerciseIndex] === true;
-        const isStillComplete = exercise.sets.length >= targetSets;
-        if (wasComplete && !isStillComplete) {
-            delete this.collapsedExercises[exerciseIndex];
-        }
-        this._prevCompleteState[exerciseIndex] = isStillComplete;
+        // #18: keep collapse / complete / feel-modal derived state consistent
+        // with the post-delete sets. This clears the manual-expand suppression on
+        // a complete->incomplete transition (so auto-collapse re-fires later) and
+        // resets _feelModalShown when the exercise no longer reaches max (so
+        // re-reaching max re-shows the modal).
+        this._recomputeExerciseDerivedState(exerciseIndex);
 
         // Bugs B+C: unmarking a set cancels any active rest timer that was
         // started for this exercise (between-set chip or between-exercise bottom
@@ -1645,7 +2130,6 @@ class WorkoutView {
         }
 
         this.rerenderExercise(exerciseIndex);
-        if (!opts.silent) showToast('Set deleted', 'info');
     }
 
     updateWorkoutTimer(elapsed) {
@@ -1717,6 +2201,8 @@ class WorkoutView {
         const bar = document.getElementById('rest-timer-bar');
         if (!bar) return;
         bar.hidden = false;
+        // Lift the sitewide back-to-top arrow above the rest bar (item 10).
+        document.body.classList.add('gt-rest-bar-visible');
         bar.classList.remove('rest-timer-done', 'rest-timer-urgent');
         const valueEl = document.getElementById('rest-timer-value');
         const fill = document.getElementById('rest-timer-progress-fill');
@@ -1738,38 +2224,44 @@ class WorkoutView {
             bar.hidden = true;
             bar.classList.remove('rest-timer-done', 'rest-timer-urgent');
         }
+        document.body.classList.remove('gt-rest-bar-visible');
         this.activeRestExerciseIndex = -1;
         this.lastPingedRestSecond = -1;
     }
 
-    /** Render (or refresh) the compact countdown chip inside the exercise card. */
+    /**
+     * Item R2-3: switch the persistent in-card chip into the live countdown
+     * state (colored, ticking). The chip element always exists; we never
+     * create or remove it, only toggle its state classes and text.
+     */
     showRestChip(exerciseIndex, remaining) {
         if (exerciseIndex < 0) return;
         const header = document.querySelector(`#exercise-${exerciseIndex} .rest-row`);
         if (!header) return;
+        const chip = header.querySelector('.rest-countdown-chip');
+        if (!chip) return;
         header.classList.add('rest-row--resting');
-        let chip = header.querySelector('.rest-countdown-chip');
-        if (!chip) {
-            chip = document.createElement('div');
-            chip.className = 'rest-countdown-chip';
-            chip.setAttribute('aria-live', 'off');
-            header.appendChild(chip);
-        }
-        const urgent = remaining <= 5 && remaining > 0;
+        const countdown = this.app.settings?.timerCountdownSeconds ?? 5;
+        const urgent = remaining <= countdown && remaining > 0;
         chip.className = 'rest-countdown-chip' + (urgent ? ' rest-countdown-chip--urgent' : '');
         chip.textContent = this.formatRest(remaining);
     }
 
-    /** Remove the in-card countdown chip from any exercise. */
+    /**
+     * Item R2-3: revert the in-card chip to its idle gray state showing the
+     * static between-set rest duration. The chip is never removed.
+     */
     clearRestChip() {
         const idx = this.activeRestExerciseIndex;
         if (idx < 0) return;
         const row = document.querySelector(`#exercise-${idx} .rest-row`);
-        if (row) {
-            row.classList.remove('rest-row--resting');
-            const chip = row.querySelector('.rest-countdown-chip');
-            if (chip) chip.remove();
-        }
+        if (!row) return;
+        row.classList.remove('rest-row--resting');
+        const chip = row.querySelector('.rest-countdown-chip');
+        if (!chip) return;
+        const idle = parseInt(chip.dataset.restIdle, 10) || 0;
+        chip.className = 'rest-countdown-chip rest-countdown-chip--idle';
+        chip.textContent = this.formatRest(idle);
     }
 
     onRestTick(remaining) {
@@ -1788,9 +2280,22 @@ class WorkoutView {
             this.showRestChip(this.activeRestExerciseIndex, remaining);
         }
 
-        // Final 5-second urgent state.
+        const firstWarning = this.app.settings?.timerFirstWarningSeconds ?? 10;
+        const countdown = this.app.settings?.timerCountdownSeconds ?? 5;
+        const { warn, urgent } = restTickCues(remaining, firstWarning, countdown);
+
+        // Single early heads-up tone (distinct from the per-second pip).
+        if (warn && remaining !== this.lastPingedRestSecond) {
+            this.lastPingedRestSecond = remaining;
+            if (this.app.settings?.soundAlerts !== false) playSound('timer-warn');
+            if (this.app.settings?.vibrationAlerts !== false && typeof navigator.vibrate === 'function') {
+                navigator.vibrate(60);
+            }
+        }
+
+        // Final-countdown urgent state — per-second pip + urgent styling.
         const bar = document.getElementById('rest-timer-bar');
-        if (remaining <= 5 && remaining > 0) {
+        if (urgent) {
             if (isExercise && bar) bar.classList.add('rest-timer-urgent');
             // One ping per second — guard with lastPingedRestSecond.
             if (remaining !== this.lastPingedRestSecond) {
@@ -1836,15 +2341,23 @@ class WorkoutView {
     openFinishWorkoutModal() {
         if (!this.currentWorkoutSession) return;
 
+        const finishModal = document.getElementById('finish-workout-modal');
+
         // Check if any sets were completed
         const hasCompletedSets = this.currentWorkoutSession.exercises.some(ex =>
             ex.sets && ex.sets.length > 0 && ex.sets.some(set => set.completed)
         );
 
+        // Item R2-8: no floating toast. With zero sets, open the modal and show
+        // an inline message instead; it dismisses as soon as the user logs a set.
+        const msg = document.getElementById('finish-inline-message');
         if (!hasCompletedSets) {
-            showToast('Cannot finish workout - no sets completed', 'error');
+            if (msg) msg.hidden = false;
+            finishModal.classList.add('active');
+            trapModalFocus(finishModal);
             return;
         }
+        if (msg) msg.hidden = true;
 
         // Update summary
         const duration = timerService.getWorkoutElapsed();
@@ -1872,7 +2385,6 @@ class WorkoutView {
             prsValue.textContent = `${this.sessionPrCount}`;
         }
 
-        const finishModal = document.getElementById('finish-workout-modal');
         finishModal.classList.add('active');
         trapModalFocus(finishModal);
     }
@@ -1886,8 +2398,8 @@ class WorkoutView {
         );
 
         if (!hasCompletedSets) {
-            showToast('Cannot save workout - no sets completed', 'error');
-            document.getElementById('finish-workout-modal').classList.remove('active');
+            const msg = document.getElementById('finish-inline-message');
+            if (msg) msg.hidden = false;
             return;
         }
 
@@ -1918,9 +2430,13 @@ class WorkoutView {
         // Stop timer + rest bar
         timerService.stopWorkoutTimer();
         this.skipRest();
+        this.disarmBackGuard();
 
-        // Close modal and reset
-        document.getElementById('finish-workout-modal').classList.remove('active');
+        // Close modal and reset (R3-6: blur before hide so the confirm button
+        // doesn't retain focus inside the closing dialog).
+        const finishModalEl = document.getElementById('finish-workout-modal');
+        if (finishModalEl.contains(document.activeElement)) document.activeElement.blur();
+        finishModalEl.classList.remove('active');
         document.getElementById('active-workout').classList.remove('active');
         document.getElementById('workout-selection').classList.add('active');
 
@@ -1929,6 +2445,7 @@ class WorkoutView {
 
         this.showCompletionBurst(completedSession);
         this.render();
+        this.app.updateGlobalFab();
     }
 
     /**
@@ -1993,7 +2510,7 @@ class WorkoutView {
      */
     _lastSessionForProgram(programId) {
         const sessions = (this.app.workoutSessions || [])
-            .filter(s => s.programId === programId && s.completed)
+            .filter(s => sameId(s.programId, programId) && s.completed)
             .sort((a, b) => new Date(b.sortTimestamp) - new Date(a.sortTimestamp));
         return sessions[0] || null;
     }
@@ -2079,6 +2596,7 @@ class WorkoutView {
         if (confirmed) {
             timerService.stopWorkoutTimer();
             this.skipRest();
+            this.disarmBackGuard();
             storageService.clearActiveWorkout();
             document.getElementById('active-workout').classList.remove('active');
             document.getElementById('workout-selection').classList.add('active');

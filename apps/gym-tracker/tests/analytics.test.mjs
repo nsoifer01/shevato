@@ -87,6 +87,39 @@ test('isSetPR: heavier weight at fewer reps below volume is NOT a PR', () => {
     assert.equal(result, null);
 });
 
+// Item 11: a PR must beat both completed sessions AND earlier committed sets
+// of the current session, so a repeat at the same new max isn't re-celebrated.
+test('isSetPR: second set at same new max is NOT a PR (in-session dedupe)', () => {
+    const sessions = [makeSession({ date: '2026-04-01', sets: [{ weight: 90, reps: 5 }] })];
+    // Set 1 at 100x5 beats history (450 -> 500) -> PR.
+    const set1 = { weight: 100, reps: 5 };
+    const pr1 = AnalyticsService.isSetPR(100, set1, sessions, []);
+    assert.equal(pr1.kind, 'volume');
+    // Set 2 at 100x5 ties set 1's session volume -> NOT a PR.
+    const pr2 = AnalyticsService.isSetPR(100, { weight: 100, reps: 5 }, sessions, [set1]);
+    assert.equal(pr2, null);
+    // Set 3 at 105x5 beats both -> PR again.
+    const pr3 = AnalyticsService.isSetPR(100, { weight: 105, reps: 5 }, sessions, [set1, { weight: 100, reps: 5 }]);
+    assert.equal(pr3.kind, 'volume');
+});
+
+test('isSetPR: equal-weight-more-reps still PRs across in-session sets', () => {
+    const sessions = [makeSession({ date: '2026-04-01', sets: [{ weight: 90, reps: 8 }] })];
+    const set1 = { weight: 100, reps: 8 }; // 800 vs 720 -> PR
+    assert.ok(AnalyticsService.isSetPR(100, set1, sessions, []));
+    const set2 = { weight: 100, reps: 10 }; // 1000 > 800 -> PR
+    assert.ok(AnalyticsService.isSetPR(100, set2, sessions, [set1]));
+    const set3 = { weight: 100, reps: 10 }; // ties set2 -> not a PR
+    assert.equal(AnalyticsService.isSetPR(100, set3, sessions, [set1, set2]), null);
+});
+
+test('isSetPR: empty currentSessionPriorSets matches the legacy 3-arg behavior', () => {
+    const sessions = [makeSession({ date: '2026-04-01', sets: [{ weight: 100, reps: 5 }] })];
+    const a = AnalyticsService.isSetPR(100, { weight: 100, reps: 6 }, sessions);
+    const b = AnalyticsService.isSetPR(100, { weight: 100, reps: 6 }, sessions, []);
+    assert.deepEqual(a, b);
+});
+
 test('getCurrentStreak: zero when no sessions', () => {
     assert.equal(AnalyticsService.getCurrentStreak([]), 0);
 });

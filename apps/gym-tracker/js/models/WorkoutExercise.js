@@ -23,6 +23,11 @@ export class WorkoutExercise {
         // session so the workout view's render + rest-timer logic can
         // tell which exercises are linked into a superset.
         this.groupId = data.groupId || null;
+        // "How did it feel" marking, revealed once a committed set reaches the
+        // slot's max target reps. 'good' = consider more weight next time.
+        // null = no marking. Legacy 'bad' is preserved here for data integrity
+        // but never produced and never rendered. Toggleable until save.
+        this.feel = data.feel === 'good' || data.feel === 'bad' ? data.feel : null;
     }
 
     get totalVolume() {
@@ -55,6 +60,7 @@ export class WorkoutExercise {
             order: this.order,
             completed: this.completed,
             stickyValues: this.stickyValues,
+            feel: this.feel,
         };
     }
 

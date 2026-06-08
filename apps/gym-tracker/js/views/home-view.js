@@ -8,6 +8,7 @@ import { formatDate, formatWeight, showConfirmModal, showToast, formatSessionDat
 import { orderPrograms } from '../utils/program-order.js';
 import { renderPausedBannerHTML, wirePausedBannerActions } from './paused-banner.js';
 import { AnalyticsService } from '../services/AnalyticsService.js';
+import { sameId } from '../utils/id-utils.js';
 
 class HomeView {
     constructor() {
@@ -17,15 +18,7 @@ class HomeView {
 
     init() {
         this.app.viewControllers.home = this;
-        this.wireFab();
         this.wireHomeActions();
-    }
-
-    wireFab() {
-        const fab = document.getElementById('home-workout-fab');
-        if (!fab || fab.dataset.wired) return;
-        fab.addEventListener('click', () => this.handleFabClick());
-        fab.dataset.wired = '1';
     }
 
     /**
@@ -54,11 +47,11 @@ class HomeView {
                     break;
                 case 'start-program':
                     e.preventDefault();
-                    this.startWorkoutWithProgram(Number(target.dataset.programId));
+                    this.startWorkoutWithProgram(target.dataset.programId);
                     break;
                 case 'edit-program':
                     e.preventDefault();
-                    this.app.viewControllers.programs?.editProgram(Number(target.dataset.programId));
+                    this.app.viewControllers.programs?.editProgram(target.dataset.programId);
                     break;
                 case 'show-session':
                     e.preventDefault();
@@ -85,7 +78,7 @@ class HomeView {
         this.renderWeekSummary();
         this.renderRecentWorkouts();
         this.renderRecentAchievements();
-        this.renderFab();
+        this.app.updateGlobalFab();
     }
 
     /**
@@ -149,71 +142,6 @@ class HomeView {
             const startDate = parseLocalDate(stats.weekStart);
             caption.textContent = `Week of ${startDate.toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}`;
         }
-    }
-
-    /**
-     * The FAB has three states:
-     *   - Hidden when there are no programs yet (nothing to start).
-     *   - "Resume workout" (green) when a paused session exists.
-     *   - "Start workout" (primary) otherwise.
-     * Clicking either state jumps to the workout view; resume re-hydrates.
-     */
-    renderFab() {
-        const fab = document.getElementById('home-workout-fab');
-        if (!fab) return;
-        const hasPrograms = this.app.programs.length > 0;
-        const paused = storageService.getActiveWorkout();
-
-        if (!hasPrograms) {
-            fab.hidden = true;
-            return;
-        }
-
-        fab.hidden = false;
-        const label = fab.querySelector('.workout-fab-label');
-        const icon = fab.querySelector('i');
-
-        if (paused && paused.paused) {
-            fab.classList.add('workout-fab--resume');
-            if (label) label.textContent = 'Resume workout';
-            if (icon) {
-                icon.classList.remove('fa-play');
-                icon.classList.add('fa-play-circle');
-            }
-            fab.setAttribute('aria-label', 'Resume paused workout');
-        } else {
-            fab.classList.remove('workout-fab--resume');
-            if (label) label.textContent = 'Start workout';
-            if (icon) {
-                icon.classList.remove('fa-play-circle');
-                icon.classList.add('fa-play');
-            }
-            fab.setAttribute('aria-label', 'Start workout');
-        }
-    }
-
-    /**
-     * If paused → go to workout view and let it resume automatically.
-     * If exactly one program → auto-start it.
-     * Otherwise → route to the workout view's program picker.
-     */
-    handleFabClick() {
-        // Starting (or resuming) a workout is a context switch: land the
-        // user at the top of the page, not wherever they had scrolled to.
-        window.scrollTo(0, 0);
-        const paused = storageService.getActiveWorkout();
-        if (paused && paused.paused) {
-            this.resumeWorkout();
-            return;
-        }
-        if (this.app.programs.length === 1) {
-            const only = this.app.programs[0];
-            if (only.exercises && only.exercises.length > 0) {
-                this.startWorkoutWithProgram(only.id);
-                return;
-            }
-        }
-        this.app.showView('workout');
     }
 
     renderPausedWorkoutBanner() {
@@ -283,7 +211,7 @@ class HomeView {
                 <h3>Your Programs</h3>
                 <div class="quick-programs">
                     ${programs.map(program => {
-                        const isPaused = pausedWorkout && pausedWorkout.paused && pausedWorkout.programId === program.id;
+                        const isPaused = pausedWorkout && pausedWorkout.paused && sameId(pausedWorkout.programId, program.id);
                         const hasExercises = program.exercises.length > 0;
 
                         if (isPaused) {
