@@ -98,6 +98,14 @@ function addRace() {
         raceObject[player] = raceData[player];
     });
 
+    // Optional course/map (from the course picker). Stored as id + name so
+    // history stays readable even if the course later leaves the dataset.
+    const selectedCourse = window.CoursePicker ? window.CoursePicker.getSelected() : null;
+    if (selectedCourse) {
+        raceObject.courseId = selectedCourse.id;
+        raceObject.course = selectedCourse.name;
+    }
+
     races.push(raceObject);
     
     // Save action for undo/redo
@@ -115,6 +123,12 @@ function addRace() {
         const input = document.getElementById(player);
         if (input) input.value = '';
     });
+
+    // Remember the picked course as "recent" and reset the picker for next time.
+    if (window.CoursePicker) {
+        window.CoursePicker.commit();
+        window.CoursePicker.clear();
+    }
 
     updateDisplay();
     updateAchievements();

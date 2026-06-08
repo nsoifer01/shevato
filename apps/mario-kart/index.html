@@ -111,6 +111,8 @@
       <link rel="stylesheet" href="css/mario-kart-overrides.css">
     <!-- Visual refresh layer — must load last so it wins specificity ties. -->
     <link rel="stylesheet" href="css/refresh.css">
+    <!-- Course picker (after refresh.css so its scoped rules win generic overrides). -->
+    <link rel="stylesheet" href="css/course-picker.css">
     <!-- CRITICAL: Load immediate sync FIRST to catch all localStorage calls -->
     <script src="../../sync-system/sync-immediate.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js" integrity="sha384-bs/nf9FbdNouRbMiFcrcZfLXYPKiPaGVGplVbv7dLGECccEXDW+S3zjqSKR5ZEaD" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
@@ -168,6 +170,7 @@
                 </button>
                 <div class="sidebar-race-form" id="sidebar-race-form">
                     <div class="sidebar-race-error" id="sidebar-race-error"></div>
+                    <div id="sidebar-course-picker"><!-- Course picker injected by coursePicker.js --></div>
                     <div class="sidebar-race-inputs" id="sidebar-race-inputs">
                         <!-- Player inputs will be generated dynamically -->
                     </div>
@@ -573,6 +576,8 @@
     <script src="js/achievements.js"></script>
     <script src="js/statistics.js"></script>
     <script src="js/charts.js"></script>
+    <script src="js/courseData.js"></script>
+    <script src="js/coursePicker.js"></script>
     <script src="js/dataManager.js"></script>
     <script src="js/backup.js"></script>
     <script src="js/theme.js"></script>
