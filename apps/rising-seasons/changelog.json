@@ -1,6 +1,494 @@
 {
   "updates": [
     {
+      "builtAt": "2026-06-08T08:33:53.213Z",
+      "totals": {
+        "seasons": 65258,
+        "delta": 13
+      },
+      "shapeCounts": {
+        "mid-peak": 4602,
+        "rebound": 9984,
+        "rising": 2911,
+        "slow-burn": 4317,
+        "big-finale": 11940,
+        "u-shaped": 3072,
+        "rollercoaster": 13961,
+        "saved-best-for-last": 1511,
+        "front-loaded": 3436,
+        "declining": 1836,
+        "bad-finale": 4601,
+        "consistent": 2578,
+        "shape-drift": 1585
+      },
+      "shapeDeltas": {
+        "mid-peak": 6,
+        "rebound": 10,
+        "rising": -11,
+        "slow-burn": -6,
+        "big-finale": -12,
+        "u-shaped": -7,
+        "rollercoaster": -4,
+        "saved-best-for-last": 1,
+        "front-loaded": 1,
+        "bad-finale": 1,
+        "consistent": -2,
+        "shape-drift": -4
+      },
+      "added": [
+        {
+          "seriesId": "tt43399741",
+          "title": "Blind ermittelt",
+          "season": 1,
+          "seasonYear": 2018
+        },
+        {
+          "seriesId": "tt35509002",
+          "title": "Ravalear: Not for Sale",
+          "season": 1,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt7349460",
+          "title": "Snake City",
+          "season": 2,
+          "seasonYear": 2015
+        },
+        {
+          "seriesId": "tt7349460",
+          "title": "Snake City",
+          "season": 3,
+          "seasonYear": 2017
+        },
+        {
+          "seriesId": "tt5963338",
+          "title": "The Adventures of Superboy",
+          "season": 3,
+          "seasonYear": 1968
+        },
+        {
+          "seriesId": "tt2154793",
+          "title": "Bez Bebek",
+          "season": 2,
+          "seasonYear": 2008
+        },
+        {
+          "seriesId": "tt13117166",
+          "title": "Gekidol",
+          "season": 1,
+          "seasonYear": 2021
+        },
+        {
+          "seriesId": "tt0862622",
+          "title": "Selena",
+          "season": 2,
+          "seasonYear": 2007
+        },
+        {
+          "seriesId": "tt0862622",
+          "title": "Selena",
+          "season": 3,
+          "seasonYear": 2008
+        },
+        {
+          "seriesId": "tt21001730",
+          "title": "My Secret Love",
+          "season": 1,
+          "seasonYear": 2022
+        },
+        {
+          "seriesId": "tt31546636",
+          "title": "Henry and Zak",
+          "season": 3,
+          "seasonYear": 2020
+        },
+        {
+          "seriesId": "tt31546636",
+          "title": "Henry and Zak",
+          "season": 11,
+          "seasonYear": 2022
+        },
+        {
+          "seriesId": "tt31546636",
+          "title": "Henry and Zak",
+          "season": 12,
+          "seasonYear": 2022
+        },
+        {
+          "seriesId": "tt38641109",
+          "title": "Terrible Mouse",
+          "season": 1,
+          "seasonYear": 2025
+        },
+        {
+          "seriesId": "tt38876028",
+          "title": "Különös történések a Szondi utcában",
+          "season": 1,
+          "seasonYear": 2024
+        },
+        {
+          "seriesId": "tt4595916",
+          "title": "LBX: Little Battlers eXperience",
+          "season": 1,
+          "seasonYear": 2014
+        }
+      ],
+      "removed": [
+        {
+          "seriesId": "tt0059978",
+          "title": "Dark Shadows",
+          "season": 6,
+          "seasonYear": 1971
+        },
+        {
+          "seriesId": "tt13998708",
+          "title": "Das Gipfeltreffen - Schubert, Sträter und König retten die Welt",
+          "season": 3,
+          "seasonYear": 2021
+        },
+        {
+          "seriesId": "tt13998708",
+          "title": "Das Gipfeltreffen - Schubert, Sträter und König retten die Welt",
+          "season": 5,
+          "seasonYear": 2023
+        }
+      ],
+      "ratingSwings": [
+        {
+          "seriesId": "tt31546636",
+          "title": "Henry and Zak",
+          "season": 14,
+          "from": 7.64,
+          "to": 6.65,
+          "delta": -0.99
+        },
+        {
+          "seriesId": "tt38976904",
+          "title": "The Daily Life of a Part-Time Torturer",
+          "season": 1,
+          "from": 7.36,
+          "to": 6.54,
+          "delta": -0.82
+        },
+        {
+          "seriesId": "tt9058120",
+          "title": "Grand",
+          "season": 5,
+          "from": 3.84,
+          "to": 4.51,
+          "delta": 0.67
+        },
+        {
+          "seriesId": "tt9058120",
+          "title": "Grand",
+          "season": 4,
+          "from": 3.25,
+          "to": 3.91,
+          "delta": 0.66
+        },
+        {
+          "seriesId": "tt0184167",
+          "title": "Ultraman Dyna",
+          "season": 1,
+          "from": 7.83,
+          "to": 8.48,
+          "delta": 0.65
+        },
+        {
+          "seriesId": "tt41373175",
+          "title": "The 50 Italia",
+          "season": 1,
+          "from": 8.37,
+          "to": 9.02,
+          "delta": 0.65
+        },
+        {
+          "seriesId": "tt1205892",
+          "title": "Ultraman Mebius",
+          "season": 1,
+          "from": 6.97,
+          "to": 7.58,
+          "delta": 0.61
+        },
+        {
+          "seriesId": "tt9058120",
+          "title": "Grand",
+          "season": 3,
+          "from": 3.74,
+          "to": 4.31,
+          "delta": 0.57
+        },
+        {
+          "seriesId": "tt5678870",
+          "title": "Ultraman Orb",
+          "season": 1,
+          "from": 7.5,
+          "to": 8.07,
+          "delta": 0.57
+        },
+        {
+          "seriesId": "tt7944204",
+          "title": "8th Day",
+          "season": 1,
+          "from": 9.56,
+          "to": 9.03,
+          "delta": -0.53
+        }
+      ],
+      "modifiedCounts": {
+        "seriesVotes": 23515,
+        "avgRating": 1356,
+        "seriesRating": 262,
+        "shapes": 214,
+        "episodeCount": 84,
+        "poster": 4,
+        "providers": 1
+      }
+    },
+    {
+      "builtAt": "2026-06-08T07:59:25.870Z",
+      "totals": {
+        "seasons": 65258,
+        "delta": 13
+      },
+      "shapeCounts": {
+        "mid-peak": 4602,
+        "rebound": 9984,
+        "rising": 2911,
+        "slow-burn": 4317,
+        "big-finale": 11940,
+        "u-shaped": 3072,
+        "rollercoaster": 13961,
+        "saved-best-for-last": 1511,
+        "front-loaded": 3436,
+        "declining": 1836,
+        "bad-finale": 4601,
+        "consistent": 2578,
+        "shape-drift": 1585
+      },
+      "shapeDeltas": {
+        "mid-peak": 6,
+        "rebound": 10,
+        "rising": -11,
+        "slow-burn": -6,
+        "big-finale": -12,
+        "u-shaped": -7,
+        "rollercoaster": -4,
+        "saved-best-for-last": 1,
+        "front-loaded": 1,
+        "bad-finale": 1,
+        "consistent": -2,
+        "shape-drift": -4
+      },
+      "added": [
+        {
+          "seriesId": "tt43399741",
+          "title": "Blind ermittelt",
+          "season": 1,
+          "seasonYear": 2018
+        },
+        {
+          "seriesId": "tt35509002",
+          "title": "Ravalear: Not for Sale",
+          "season": 1,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt7349460",
+          "title": "Snake City",
+          "season": 2,
+          "seasonYear": 2015
+        },
+        {
+          "seriesId": "tt7349460",
+          "title": "Snake City",
+          "season": 3,
+          "seasonYear": 2017
+        },
+        {
+          "seriesId": "tt5963338",
+          "title": "The Adventures of Superboy",
+          "season": 3,
+          "seasonYear": 1968
+        },
+        {
+          "seriesId": "tt2154793",
+          "title": "Bez Bebek",
+          "season": 2,
+          "seasonYear": 2008
+        },
+        {
+          "seriesId": "tt13117166",
+          "title": "Gekidol",
+          "season": 1,
+          "seasonYear": 2021
+        },
+        {
+          "seriesId": "tt0862622",
+          "title": "Selena",
+          "season": 2,
+          "seasonYear": 2007
+        },
+        {
+          "seriesId": "tt0862622",
+          "title": "Selena",
+          "season": 3,
+          "seasonYear": 2008
+        },
+        {
+          "seriesId": "tt21001730",
+          "title": "My Secret Love",
+          "season": 1,
+          "seasonYear": 2022
+        },
+        {
+          "seriesId": "tt31546636",
+          "title": "Henry and Zak",
+          "season": 3,
+          "seasonYear": 2020
+        },
+        {
+          "seriesId": "tt31546636",
+          "title": "Henry and Zak",
+          "season": 11,
+          "seasonYear": 2022
+        },
+        {
+          "seriesId": "tt31546636",
+          "title": "Henry and Zak",
+          "season": 12,
+          "seasonYear": 2022
+        },
+        {
+          "seriesId": "tt38641109",
+          "title": "Terrible Mouse",
+          "season": 1,
+          "seasonYear": 2025
+        },
+        {
+          "seriesId": "tt38876028",
+          "title": "Különös történések a Szondi utcában",
+          "season": 1,
+          "seasonYear": 2024
+        },
+        {
+          "seriesId": "tt4595916",
+          "title": "LBX: Little Battlers eXperience",
+          "season": 1,
+          "seasonYear": 2014
+        }
+      ],
+      "removed": [
+        {
+          "seriesId": "tt0059978",
+          "title": "Dark Shadows",
+          "season": 6,
+          "seasonYear": 1971
+        },
+        {
+          "seriesId": "tt13998708",
+          "title": "Das Gipfeltreffen - Schubert, Sträter und König retten die Welt",
+          "season": 3,
+          "seasonYear": 2021
+        },
+        {
+          "seriesId": "tt13998708",
+          "title": "Das Gipfeltreffen - Schubert, Sträter und König retten die Welt",
+          "season": 5,
+          "seasonYear": 2023
+        }
+      ],
+      "ratingSwings": [
+        {
+          "seriesId": "tt31546636",
+          "title": "Henry and Zak",
+          "season": 14,
+          "from": 7.64,
+          "to": 6.65,
+          "delta": -0.99
+        },
+        {
+          "seriesId": "tt38976904",
+          "title": "The Daily Life of a Part-Time Torturer",
+          "season": 1,
+          "from": 7.36,
+          "to": 6.54,
+          "delta": -0.82
+        },
+        {
+          "seriesId": "tt9058120",
+          "title": "Grand",
+          "season": 5,
+          "from": 3.84,
+          "to": 4.51,
+          "delta": 0.67
+        },
+        {
+          "seriesId": "tt9058120",
+          "title": "Grand",
+          "season": 4,
+          "from": 3.25,
+          "to": 3.91,
+          "delta": 0.66
+        },
+        {
+          "seriesId": "tt0184167",
+          "title": "Ultraman Dyna",
+          "season": 1,
+          "from": 7.83,
+          "to": 8.48,
+          "delta": 0.65
+        },
+        {
+          "seriesId": "tt41373175",
+          "title": "The 50 Italia",
+          "season": 1,
+          "from": 8.37,
+          "to": 9.02,
+          "delta": 0.65
+        },
+        {
+          "seriesId": "tt1205892",
+          "title": "Ultraman Mebius",
+          "season": 1,
+          "from": 6.97,
+          "to": 7.58,
+          "delta": 0.61
+        },
+        {
+          "seriesId": "tt9058120",
+          "title": "Grand",
+          "season": 3,
+          "from": 3.74,
+          "to": 4.31,
+          "delta": 0.57
+        },
+        {
+          "seriesId": "tt5678870",
+          "title": "Ultraman Orb",
+          "season": 1,
+          "from": 7.5,
+          "to": 8.07,
+          "delta": 0.57
+        },
+        {
+          "seriesId": "tt7944204",
+          "title": "8th Day",
+          "season": 1,
+          "from": 9.56,
+          "to": 9.03,
+          "delta": -0.53
+        }
+      ],
+      "modifiedCounts": {
+        "seriesVotes": 23515,
+        "avgRating": 1356,
+        "seriesRating": 262,
+        "shapes": 214,
+        "episodeCount": 84
+      }
+    },
+    {
       "builtAt": "2026-06-07T08:01:28.686Z",
       "totals": {
         "seasons": 65245,
@@ -5781,62 +6269,6 @@
         "seriesRating": 179,
         "episodeCount": 36
       }
-    },
-    {
-      "builtAt": "2026-05-26T07:43:05.456Z",
-      "totals": {
-        "seasons": 65053,
-        "delta": 0
-      },
-      "shapeCounts": {
-        "mid-peak": 4594,
-        "rebound": 9894,
-        "rising": 2910,
-        "slow-burn": 4283,
-        "big-finale": 11911,
-        "u-shaped": 3063,
-        "rollercoaster": 13901,
-        "saved-best-for-last": 1514,
-        "front-loaded": 3446,
-        "declining": 1827,
-        "bad-finale": 4589,
-        "consistent": 2574,
-        "shape-drift": 1606
-      },
-      "shapeDeltas": {},
-      "added": [],
-      "removed": [],
-      "ratingSwings": [],
-      "modifiedCounts": {
-        "poster": 2
-      }
-    },
-    {
-      "builtAt": "2026-05-26T07:26:26.802Z",
-      "totals": {
-        "seasons": 65053,
-        "delta": 0
-      },
-      "shapeCounts": {
-        "mid-peak": 4594,
-        "rebound": 9894,
-        "rising": 2910,
-        "slow-burn": 4283,
-        "big-finale": 11911,
-        "u-shaped": 3063,
-        "rollercoaster": 13901,
-        "saved-best-for-last": 1514,
-        "front-loaded": 3446,
-        "declining": 1827,
-        "bad-finale": 4589,
-        "consistent": 2574,
-        "shape-drift": 1606
-      },
-      "shapeDeltas": {},
-      "added": [],
-      "removed": [],
-      "ratingSwings": [],
-      "modifiedCounts": {}
     }
   ]
 }
