@@ -27,6 +27,51 @@
 
     let outsideHandler = null;
     let resizeHandler = null;
+    let savedBodyOverflow = null;
+
+    // Stop the page behind the desktop modal from scrolling.
+    function lockScroll() {
+        if (savedBodyOverflow === null) {
+            savedBodyOverflow = document.body.style.overflow || '';
+            document.body.style.overflow = 'hidden';
+        }
+    }
+    function unlockScroll() {
+        if (savedBodyOverflow !== null) {
+            document.body.style.overflow = savedBodyOverflow;
+            savedBodyOverflow = null;
+        }
+    }
+
+    // Visible, tabbable elements inside the modal (course/fav rows are
+    // tabindex=-1 by design — they're reached via arrow keys, not Tab).
+    function getFocusable() {
+        if (!state.modalRoot) return [];
+        const sel = 'a[href], button:not([disabled]):not([tabindex="-1"]), input:not([disabled]), select, textarea, [tabindex]:not([tabindex="-1"])';
+        return Array.prototype.slice.call(state.modalRoot.querySelectorAll(sel))
+            .filter((el) => el.offsetParent !== null || el === document.activeElement);
+    }
+
+    // Trap Tab within the modal and let Esc close it from anywhere inside.
+    function onModalKeydown(e) {
+        if (e.key === 'Escape') {
+            e.preventDefault();
+            closePanel();
+            const t = container() && container().querySelector('.course-picker-trigger');
+            if (t) t.focus();
+            return;
+        }
+        if (e.key !== 'Tab') return;
+        const fs = getFocusable();
+        if (!fs.length) { e.preventDefault(); return; }
+        const first = fs[0], last = fs[fs.length - 1];
+        const a = document.activeElement;
+        if (e.shiftKey) {
+            if (a === first || !state.modalRoot.contains(a)) { e.preventDefault(); last.focus(); }
+        } else {
+            if (a === last || !state.modalRoot.contains(a)) { e.preventDefault(); first.focus(); }
+        }
+    }
 
     function container() { return document.getElementById('sidebar-course-picker'); }
     function root() { return state.mode === 'modal' ? state.modalRoot : container(); }
@@ -216,8 +261,9 @@
     function renderFilters() {
         const wrap = state.modalRoot && state.modalRoot.querySelector('.cp-filters');
         if (!wrap) return;
-        const chips = [['all', 'All'], ['favorites', 'Favorites'], ['recent', 'Recent'], ['new', 'New']]
-            .concat(distinctGames().map((g) => ['game:' + g, g]));
+        // Keep it to the four essentials — individual games stay reachable by
+        // typing ("mk7", "wii", ...), so they don't need their own chips.
+        const chips = [['all', 'All'], ['favorites', 'Favorites'], ['recent', 'Recent'], ['new', 'New']];
         wrap.innerHTML = chips.map(([f, label]) =>
             '<button type="button" class="cp-filter' + (state.filter === f ? ' is-on' : '') + '" data-filter="' + esc(f) + '">' + esc(label) + '</button>'
         ).join('');
@@ -242,26 +288,26 @@
         if (!course) {
             return '<div class="cp-preview-empty">' +
                 '<div class="cp-preview-emoji">🗺️</div>' +
-                '<p>Hover or arrow through courses to preview details here.</p></div>';
+                '<p>Hover or arrow a course to preview it.</p></div>';
         }
         const fav = window.CourseData.isFavorite(course.id);
         const isNew = course.origin === 'new';
         const game = course.game || (isNew ? '' : course.origin);
-        const rows = [
-            ['Cup', course.cups && course.cups.length ? course.cups.join(' / ') : '—'],
-            ['Game', game || '—'],
-            ['Status', isNew ? 'New track' : 'Returning track']
-        ];
+        const cups = (course.cups && course.cups.length) ? esc(course.cups.join(' / ')) : '—';
         return (
-            '<div class="cp-preview-card">' +
-                '<div class="cp-preview-emoji">' + (isNew ? '✨' : '🏁') + '</div>' +
-                '<div class="cp-preview-name">' + esc(course.name) + '</div>' +
-                '<div class="cp-preview-meta">' +
-                    rows.map(([k, v]) => '<div class="cp-pv-row"><span class="cp-pv-key">' + esc(k) + '</span><span class="cp-pv-val">' + esc(v) + '</span></div>').join('') +
+            '<div class="cp-pv ' + (isNew ? 'cp-pv-new' : 'cp-pv-retro') + '">' +
+                '<div class="cp-pv-hero">' +
+                    '<span class="cp-pv-emoji">' + (isNew ? '✨' : '🏁') + '</span>' +
+                    '<span class="cp-pv-status">' + (isNew ? 'New track' : 'Returning') + '</span>' +
+                    '<button type="button" class="cp-preview-fav' + (fav ? ' is-fav' : '') + '" data-fav="' + esc(course.id) +
+                        '" aria-label="' + (fav ? 'Remove favorite' : 'Add favorite') + '">' + (fav ? '★' : '☆') + '</button>' +
                 '</div>' +
-                '<button type="button" class="cp-preview-fav' + (fav ? ' is-fav' : '') + '" data-fav="' + esc(course.id) + '">' +
-                    (fav ? '★ Favorited' : '☆ Add favorite') + '</button>' +
-                '<button type="button" class="cp-preview-select" data-id="' + esc(course.id) + '">Select course</button>' +
+                '<div class="cp-pv-name">' + esc(course.name) + '</div>' +
+                '<div class="cp-pv-tags">' +
+                    '<span class="cp-pv-tag cp-pv-tag-cup">' + cups + '</span>' +
+                    (game ? '<span class="cp-pv-tag cp-pv-tag-game">' + esc(game) + '</span>' : '') +
+                '</div>' +
+                '<button type="button" class="cp-preview-select" data-id="' + esc(course.id) + '">Select this course</button>' +
             '</div>'
         );
     }
@@ -326,7 +372,9 @@
         }
         overlay.querySelector('.cp-results').addEventListener('mousemove', onPanelHover);
         overlay.addEventListener('click', onModalClick);
+        overlay.addEventListener('keydown', onModalKeydown); // Tab trap + Esc
 
+        lockScroll();
         renderTrigger();
         renderResults();
         if (search) setTimeout(() => search.focus(), 20);
@@ -334,6 +382,7 @@
     }
 
     function closePanel() {
+        unlockScroll();
         if (outsideHandler) { document.removeEventListener('mousedown', outsideHandler, true); outsideHandler = null; }
         if (resizeHandler) { window.removeEventListener('resize', resizeHandler); resizeHandler = null; }
         if (state.mode === 'modal') {
