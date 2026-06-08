@@ -19,6 +19,12 @@ export class Program {
         this.restMode = data.restMode === 'uniform' ? 'uniform' : 'custom';
         // Active only when restMode === 'uniform'.
         this.uniformRestSeconds = clampInt(data.uniformRestSeconds, 0, 900, 90);
+
+        // Scheduled weekday indices (0 = Sunday .. 6 = Saturday) the user plans
+        // to run this program on. Surfaced as markers in the calendar. Legacy
+        // programs without this key default to [] (no schedule). Sanitized to a
+        // deduped, sorted array of valid 0-6 integers.
+        this.scheduleDays = normalizeScheduleDays(data.scheduleDays);
     }
 
     addExercise(exerciseId, exerciseName, targetSets = 3, targetReps = 10, notes = '', restSeconds = null, restAfterSeconds = null) {
@@ -73,6 +79,7 @@ export class Program {
             exercises: this.exercises,
             restMode: this.restMode,
             uniformRestSeconds: this.uniformRestSeconds,
+            scheduleDays: this.scheduleDays,
             createdAt: this.createdAt,
             updatedAt: this.updatedAt
         };
@@ -80,6 +87,17 @@ export class Program {
 
     static fromJSON(json) {
         return new Program(json);
+    }
+
+    /**
+     * Deep, independent copy of a program (same id). Used to STAGE edits in the
+     * editor: the modal mutates the clone, and only saving commits it back into
+     * the stored list, so Cancel/X discard every change. The JSON round-trip
+     * deep-copies the exercises array so editing the clone's exercises cannot
+     * touch the original's.
+     */
+    static clone(program) {
+        return new Program(JSON.parse(JSON.stringify(program.toJSON())));
     }
 }
 
@@ -175,6 +193,21 @@ function normalizeExercise(ex) {
     });
 
     return normalized;
+}
+
+/**
+ * Coerce raw scheduleDays into a deduped, ascending array of valid weekday
+ * indices (0-6). Anything non-array or out of range is dropped. Legacy data
+ * (undefined) yields [].
+ */
+function normalizeScheduleDays(value) {
+    if (!Array.isArray(value)) return [];
+    const seen = new Set();
+    for (const raw of value) {
+        const n = Number(raw);
+        if (Number.isInteger(n) && n >= 0 && n <= 6) seen.add(n);
+    }
+    return [...seen].sort((a, b) => a - b);
 }
 
 function normalizeSetRow(s) {

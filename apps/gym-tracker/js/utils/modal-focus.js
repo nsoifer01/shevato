@@ -168,3 +168,37 @@ export function openModal(modalEl) {
     modalEl.classList.add('active');
     trapModalFocus(modalEl);
 }
+
+/**
+ * R3-6: close a modal without leaving focus on a descendant while the modal
+ * is being hidden / marked aria-hidden. Browsers log
+ * "Blocked aria-hidden on an element because its descendant retained focus"
+ * when an element with `aria-hidden="true"` (or one being hidden) still
+ * contains document.activeElement. Move focus OUT first, then hide.
+ *
+ * `restoreTo` (optional) is where focus should land after closing; defaults
+ * to document.body. Pass the destination view container when navigating away.
+ */
+export function closeModalSafely(modalEl, restoreTo) {
+    if (!modalEl) return;
+    // If focus is on (or inside) the modal, drop it before the modal goes
+    // aria-hidden / display:none, so no focused element sits under aria-hidden.
+    const active = document.activeElement;
+    if (active instanceof HTMLElement && modalEl.contains(active)) {
+        active.blur();
+    }
+    modalEl.classList.remove('active');
+    if (modalEl.hasAttribute('aria-hidden')) {
+        modalEl.setAttribute('aria-hidden', 'true');
+    }
+    const target = restoreTo instanceof HTMLElement ? restoreTo : document.body;
+    if (typeof target.focus === 'function') {
+        // body needs tabindex to be focusable for keyboard users; a transient
+        // -1 tabindex is the standard trick and is removed on blur.
+        if (target === document.body && !target.hasAttribute('tabindex')) {
+            target.setAttribute('tabindex', '-1');
+            target.addEventListener('blur', () => target.removeAttribute('tabindex'), { once: true });
+        }
+        target.focus({ preventScroll: true });
+    }
+}
