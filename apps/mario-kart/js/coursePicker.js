@@ -122,33 +122,30 @@
         return esc(name.slice(0, i)) + '<mark class="cp-hl">' + esc(name.slice(i, i + q.length)) + '</mark>' + esc(name.slice(i + q.length));
     }
 
+    // Uniform, dense row: name (hero) + cup (secondary) + favorite star. Game
+    // origin and new/returning status live in the preview, not on every row, so
+    // the list scans cleanly and every row has the same shape.
     function rowHtml(course, idx) {
         const sel = course.id === state.selectedId;
         const fav = window.CourseData.isFavorite(course.id);
-        const isNew = course.origin === 'new';
         const cups = (course.cups && course.cups.length) ? esc(course.cups.join(' / ')) : '';
         return (
             '<div class="cp-row' + (sel ? ' cp-selected' : '') + (idx === state.active ? ' cp-active' : '') +
                 '" role="option" id="cp-opt-' + idx + '" aria-selected="' + (sel ? 'true' : 'false') + '">' +
                 '<button type="button" class="cp-course" data-id="' + esc(course.id) + '" data-idx="' + idx + '" tabindex="-1">' +
-                    '<span class="cp-line1">' +
-                        '<span class="cp-name">' + highlight(course.name, state.query) + '</span>' +
-                        (isNew ? '<span class="cp-badge">New</span>' : '') +
-                    '</span>' +
-                    '<span class="cp-sub">' +
-                        (cups ? '<span class="cp-cup">' + cups + '</span>' : '') +
-                        (!isNew && course.origin ? '<span class="cp-origin">' + esc(course.origin) + '</span>' : '') +
-                    '</span>' +
+                    '<span class="cp-name">' + highlight(course.name, state.query) + '</span>' +
+                    (cups ? '<span class="cp-cup">' + cups + '</span>' : '') +
                 '</button>' +
                 (sel ? '<span class="cp-check" aria-hidden="true">✓</span>' : '') +
                 '<button type="button" class="cp-fav' + (fav ? ' is-fav' : '') + '" data-fav="' + esc(course.id) +
-                    '" tabindex="-1" aria-label="' + (fav ? 'Remove favorite' : 'Add favorite') + '">' + (fav ? '★' : '☆') + '</button>' +
+                    '" tabindex="-1" aria-label="' + (fav ? 'Remove favorite from ' : 'Add favorite ') + esc(course.name) + '">' +
+                    (fav ? '★' : '☆') + '</button>' +
             '</div>'
         );
     }
 
     function sectionHtml(title, courses, startIdx) {
-        let html = '<div class="cp-section"><div class="cp-section-title">' + esc(title) + '</div>';
+        let html = '<div class="cp-section" role="group" aria-label="' + esc(title) + '"><div class="cp-section-title">' + esc(title) + '</div>';
         let idx = startIdx;
         courses.forEach((course) => { html += rowHtml(course, idx); idx++; });
         return { html: html + '</div>', next: idx };
@@ -191,10 +188,8 @@
 
         if (!q) {
             if (state.filter === 'all') {
-                const recents = window.CourseData.getRecentIds().map((id) => state.byId[id]).filter(Boolean);
-                const favs = window.CourseData.getFavoriteIds().map((id) => state.byId[id]).filter(Boolean);
-                if (recents.length) { const s = sectionHtml('Recent', recents, idx); html += s.html; recents.forEach((c) => options.push(c.id)); idx = s.next; }
-                if (favs.length) { const s = sectionHtml('Favorites', favs, idx); html += s.html; favs.forEach((c) => options.push(c.id)); idx = s.next; }
+                // Cups only — no inline Recent/Favorites sections, so a track never
+                // appears twice. Recent & Favorites live on the filter tabs.
                 state.cups.forEach((cup) => {
                     const courses = cup.courses.map((c) => state.byId[c.id] || c);
                     const s = sectionHtml(cup.name, courses, idx); html += s.html; courses.forEach((c) => options.push(c.id)); idx = s.next;
@@ -223,6 +218,9 @@
         state.options = options;
         if (q && options.length) state.active = 0;
         else if (state.active >= options.length) state.active = options.length - 1;
+
+        const clr = root() && root().querySelector('.cp-search-clear');
+        if (clr) clr.hidden = !state.query;
 
         if (state.mode === 'modal') { renderFilters(); renderEmptyAside(); }
         syncActive();
@@ -261,11 +259,15 @@
     function renderFilters() {
         const wrap = state.modalRoot && state.modalRoot.querySelector('.cp-filters');
         if (!wrap) return;
-        // Keep it to the four essentials — individual games stay reachable by
-        // typing ("mk7", "wii", ...), so they don't need their own chips.
-        const chips = [['all', 'All'], ['favorites', 'Favorites'], ['recent', 'Recent'], ['new', 'New']];
-        wrap.innerHTML = chips.map(([f, label]) =>
-            '<button type="button" class="cp-filter' + (state.filter === f ? ' is-on' : '') + '" data-filter="' + esc(f) + '">' + esc(label) + '</button>'
+        // Four essentials, each with a live count so their meaning is concrete.
+        // Individual games stay reachable by typing ("mk7", "wii", ...).
+        const favN = window.CourseData.getFavoriteIds().map((id) => state.byId[id]).filter(Boolean).length;
+        const recN = window.CourseData.getRecentIds().map((id) => state.byId[id]).filter(Boolean).length;
+        const newN = state.courses.filter((c) => c.origin === 'new').length;
+        const chips = [['all', 'All', state.courses.length], ['favorites', 'Favorites', favN], ['recent', 'Recent', recN], ['new', 'New', newN]];
+        wrap.innerHTML = chips.map(([f, label, n]) =>
+            '<button type="button" class="cp-filter' + (state.filter === f ? ' is-on' : '') + '" data-filter="' + esc(f) + '">' +
+                esc(label) + '<span class="cp-filter-n">' + n + '</span></button>'
         ).join('');
     }
 
@@ -294,20 +296,19 @@
         const isNew = course.origin === 'new';
         const game = course.game || (isNew ? '' : course.origin);
         const cups = (course.cups && course.cups.length) ? esc(course.cups.join(' / ')) : '—';
+        const sel = course.id === state.selectedId;
         return (
-            '<div class="cp-pv ' + (isNew ? 'cp-pv-new' : 'cp-pv-retro') + '">' +
-                '<div class="cp-pv-hero">' +
-                    '<span class="cp-pv-emoji">' + (isNew ? '✨' : '🏁') + '</span>' +
-                    '<span class="cp-pv-status">' + (isNew ? 'New track' : 'Returning') + '</span>' +
-                    '<button type="button" class="cp-preview-fav' + (fav ? ' is-fav' : '') + '" data-fav="' + esc(course.id) +
-                        '" aria-label="' + (fav ? 'Remove favorite' : 'Add favorite') + '">' + (fav ? '★' : '☆') + '</button>' +
-                '</div>' +
+            '<div class="cp-pv">' +
                 '<div class="cp-pv-name">' + esc(course.name) + '</div>' +
-                '<div class="cp-pv-tags">' +
-                    '<span class="cp-pv-tag cp-pv-tag-cup">' + cups + '</span>' +
-                    (game ? '<span class="cp-pv-tag cp-pv-tag-game">' + esc(game) + '</span>' : '') +
+                '<span class="cp-pv-status' + (isNew ? ' is-new' : '') + '">' + (isNew ? 'New track' : 'Returning') + '</span>' +
+                '<div class="cp-pv-meta">' +
+                    '<div class="cp-pv-row"><span class="cp-pv-key">Cup</span><span class="cp-pv-val">' + cups + '</span></div>' +
+                    (game ? '<div class="cp-pv-row"><span class="cp-pv-key">Game</span><span class="cp-pv-val">' + esc(game) + '</span></div>' : '') +
                 '</div>' +
-                '<button type="button" class="cp-preview-select" data-id="' + esc(course.id) + '">Select this course</button>' +
+                '<button type="button" class="cp-preview-fav' + (fav ? ' is-fav' : '') + '" data-fav="' + esc(course.id) + '">' +
+                    (fav ? '★ Favorited' : '☆ Add favorite') + '</button>' +
+                '<button type="button" class="cp-preview-select' + (sel ? ' is-selected' : '') + '" data-id="' + esc(course.id) + '">' +
+                    (sel ? '✓ Selected' : 'Select') + '</button>' +
             '</div>'
         );
     }
@@ -347,8 +348,9 @@
                 '<div class="cp-modal-header">' +
                     '<span class="cp-modal-icon" aria-hidden="true">🔍</span>' +
                     '<input type="text" class="course-picker-search" role="combobox" aria-expanded="true" aria-autocomplete="list" ' +
-                        'placeholder="Search courses, cups, games, or abbreviations" autocomplete="off" spellcheck="false">' +
-                    '<kbd class="cp-esc">Esc</kbd>' +
+                        'placeholder="Search courses…" autocomplete="off" spellcheck="false">' +
+                    '<button type="button" class="cp-search-clear" aria-label="Clear search" hidden>×</button>' +
+                    '<kbd class="cp-esc" title="Close">esc</kbd>' +
                 '</div>' +
                 '<div class="cp-modal-subbar">' +
                     '<div class="cp-filters"></div>' +
@@ -436,6 +438,13 @@
     }
 
     function handleClickWithin(e) {
+        const clearBtn = e.target.closest('.cp-search-clear');
+        if (clearBtn) {
+            e.stopPropagation();
+            const s = searchEl();
+            if (s) { s.value = ''; state.query = ''; state.active = -1; renderResults(); s.focus(); }
+            return true;
+        }
         const fav = e.target.closest('.cp-fav, .cp-preview-fav');
         if (fav) {
             e.stopPropagation();
@@ -511,7 +520,8 @@
                     '<div class="cp-search-wrap">' +
                         '<span class="cp-search-icon" aria-hidden="true">🔍</span>' +
                         '<input type="text" class="course-picker-search" role="combobox" aria-expanded="true" aria-autocomplete="list" ' +
-                            'placeholder="Search course, cup or game" autocomplete="off" spellcheck="false">' +
+                            'placeholder="Search courses…" autocomplete="off" spellcheck="false">' +
+                        '<button type="button" class="cp-search-clear" aria-label="Clear search" hidden>×</button>' +
                         '<span class="cp-count" hidden></span>' +
                     '</div>' +
                     '<div class="cp-results"></div>' +
