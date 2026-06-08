@@ -127,6 +127,26 @@ test('rankCourses: punctuation-insensitive and initials matching', () => {
   assert.ok(CourseData.rankCourses(flat8, 'mks').some((c) => c.id === 'mario-kart-stadium'));
 });
 
+test('rankCourses: forgiving abbreviations (dk / ship / mk8)', () => {
+  const CourseData = loadCourseData();
+  const world = CourseData.flattenCourses(dataset.games.mkworld);
+  const mk8 = CourseData.flattenCourses(dataset.games.mk8d);
+  // "dk" -> DK Spaceport (word-initial)
+  assert.ok(CourseData.rankCourses(world, 'dk').some((c) => c.id === 'dk-spaceport'));
+  // "ship" -> Wario Shipyard (substring)
+  assert.ok(CourseData.rankCourses(world, 'ship').some((c) => c.id === 'wario-shipyard'));
+  // "mk8" -> a Mario Kart 8 Deluxe-sourced track via game initials
+  assert.ok(CourseData.rankCourses(world, 'mk8').some((c) => c.origin === 'Mario Kart 8 Deluxe'));
+});
+
+test('scoreCourse: base-game track is findable by its source game', () => {
+  const CourseData = loadCourseData();
+  // Simulates a loaded base-game track tagged with game = "Mario Kart 8 Deluxe".
+  const track = { id: 'x', name: 'Thwomp Ruins', origin: 'new', aliases: [], cups: ['Mushroom Cup'], game: 'Mario Kart 8 Deluxe' };
+  assert.ok(CourseData.scoreCourse(track, 'mk8') > 0, '"mk8" should match via game initials');
+  assert.equal(CourseData.scoreCourse(track, 'zzzzz'), 0);
+});
+
 test('scoreCourse: non-matching query scores zero', () => {
   const CourseData = loadCourseData();
   const flat = CourseData.flattenCourses(dataset.games.mk8d);

@@ -1,9 +1,8 @@
 // Course picker UI for the sidebar race form.
 //
-// An optional "which course did we play?" selector above the position inputs.
-// Designed to be fast: quick-tap chips for recent + favorite courses, a ranked
-// type-ahead search (fuzzy on name / alias / initials / origin), full keyboard
-// navigation, and a cup-grouped browse list. Selection is read back by
+// A command-palette style course selector: one calm surface, the course name
+// as the hero of every row, forgiving ranked search, recent/favorite/cup
+// groupings, and full keyboard navigation. Selection is read back by
 // dataManager.addRace() via window.CoursePicker.getSelected().
 //
 // Classic-script module. Data + ranking live in courseData.js; this file is
@@ -22,7 +21,7 @@
         selectedName: null,
         open: false,
         query: '',
-        options: [],      // ids in current keyboard-navigable order
+        options: [],      // ids in current keyboard-navigable (top-to-bottom) order
         active: -1        // index into options, -1 = none
     };
 
@@ -51,16 +50,22 @@
         if (state.selectedId) window.CourseData.pushRecent(state.selectedId);
     }
 
-    // ---- Rendering -----------------------------------------------------------
+    // ---- Closed trigger: two-line, always informative ------------------------
     function renderTrigger() {
         const c = container();
         if (!c) return;
-        const label = c.querySelector('.cp-label');
+        const primary = c.querySelector('.cp-trigger-primary');
+        const secondary = c.querySelector('.cp-trigger-secondary');
         const clearBtn = c.querySelector('.cp-clear');
         const trigger = c.querySelector('.course-picker-trigger');
-        if (label) {
-            label.textContent = state.selectedName || 'Select course (optional)';
-            label.classList.toggle('cp-placeholder', !state.selectedName);
+
+        if (state.selectedId) {
+            const course = state.byId[state.selectedId];
+            if (primary) { primary.textContent = state.selectedName; primary.classList.remove('cp-empty-primary'); }
+            if (secondary) secondary.textContent = (course && course.cups && course.cups.length) ? course.cups.join(' / ') : 'Selected';
+        } else {
+            if (primary) { primary.textContent = 'Choose a course'; primary.classList.add('cp-empty-primary'); }
+            if (secondary) secondary.textContent = 'Optional · tap to search';
         }
         if (clearBtn) clearBtn.hidden = !state.selectedId;
         if (trigger) trigger.setAttribute('aria-expanded', state.open ? 'true' : 'false');
@@ -77,35 +82,40 @@
             esc(name.slice(i + q.length));
     }
 
-    function originPill(course) {
-        if (!course.origin) return '';
-        if (course.origin === 'new') return '<span class="cp-pill cp-pill-new">New</span>';
-        return '<span class="cp-pill cp-pill-retro">' + esc(course.origin) + '</span>';
-    }
-
-    // A full browse/search row. `idx` is the keyboard index (or -1 for none).
+    // One uniform row for EVERY context (recent, favorite, cup browse, search).
+    // Line 1: course name (hero) + inline NEW badge. Line 2: cup (secondary) +
+    // game source (tertiary, retro only). Star sits at the row's right edge.
     function rowHtml(course, idx) {
+        const sel = course.id === state.selectedId;
         const fav = window.CourseData.isFavorite(course.id);
+        const isNew = course.origin === 'new';
         const cups = (course.cups && course.cups.length) ? esc(course.cups.join(' / ')) : '';
         return (
-            '<div class="cp-row' + (course.id === state.selectedId ? ' cp-selected' : '') +
-                (idx === state.active ? ' cp-active' : '') + '" role="option" id="cp-opt-' + idx +
-                '" aria-selected="' + (course.id === state.selectedId ? 'true' : 'false') + '">' +
+            '<div class="cp-row' + (sel ? ' cp-selected' : '') + (idx === state.active ? ' cp-active' : '') +
+                '" role="option" id="cp-opt-' + idx + '" aria-selected="' + (sel ? 'true' : 'false') + '">' +
                 '<button type="button" class="cp-course" data-id="' + esc(course.id) + '" data-idx="' + idx + '" tabindex="-1">' +
-                    '<span class="cp-name">' + highlight(course.name, state.query) +
-                        (course.id === state.selectedId ? '<span class="cp-check">✓</span>' : '') + '</span>' +
-                    '<span class="cp-meta">' + (cups ? '<span class="cp-cup">' + cups + '</span>' : '') + originPill(course) + '</span>' +
+                    '<span class="cp-line1">' +
+                        '<span class="cp-name">' + highlight(course.name, state.query) + '</span>' +
+                        (isNew ? '<span class="cp-badge">New</span>' : '') +
+                    '</span>' +
+                    '<span class="cp-sub">' +
+                        (cups ? '<span class="cp-cup">' + cups + '</span>' : '') +
+                        (!isNew && course.origin ? '<span class="cp-origin">' + esc(course.origin) + '</span>' : '') +
+                    '</span>' +
                 '</button>' +
+                (sel ? '<span class="cp-check" aria-hidden="true">✓</span>' : '') +
                 '<button type="button" class="cp-fav' + (fav ? ' is-fav' : '') + '" data-fav="' + esc(course.id) +
-                    '" tabindex="-1" title="' + (fav ? 'Remove favorite' : 'Add favorite') +
-                    '" aria-label="Toggle favorite">' + (fav ? '★' : '☆') + '</button>' +
+                    '" tabindex="-1" aria-label="' + (fav ? 'Remove favorite' : 'Add favorite') + '">' +
+                    (fav ? '★' : '☆') + '</button>' +
             '</div>'
         );
     }
 
-    function chipHtml(course) {
-        return '<button type="button" class="cp-chip' + (course.id === state.selectedId ? ' cp-chip-on' : '') +
-            '" data-id="' + esc(course.id) + '" tabindex="-1">' + esc(course.name) + '</button>';
+    function sectionHtml(title, courses, startIdx) {
+        let html = '<div class="cp-section"><div class="cp-section-title">' + esc(title) + '</div>';
+        let idx = startIdx;
+        courses.forEach((course) => { html += rowHtml(course, idx); idx++; });
+        return { html: html + '</div>', next: idx };
     }
 
     // Build results for the current query and refresh `state.options`.
@@ -119,53 +129,39 @@
         let idx = 0;
         let html = '';
 
+        const push = (courses) => courses.forEach((c) => options.push(c.id));
+
         if (!q) {
-            // Quick-tap chips for recents + favorites (not in keyboard order).
             const recents = window.CourseData.getRecentIds().map((id) => state.byId[id]).filter(Boolean);
             const favs = window.CourseData.getFavoriteIds().map((id) => state.byId[id]).filter(Boolean);
             if (recents.length) {
-                html += '<div class="cp-chips"><div class="cp-section-title">Recent</div>' +
-                    '<div class="cp-chip-row">' + recents.map(chipHtml).join('') + '</div></div>';
+                const s = sectionHtml('Recent', recents, idx); html += s.html; push(recents); idx = s.next;
             }
             if (favs.length) {
-                html += '<div class="cp-chips"><div class="cp-section-title">Favorites</div>' +
-                    '<div class="cp-chip-row">' + favs.map(chipHtml).join('') + '</div></div>';
+                const s = sectionHtml('Favorites', favs, idx); html += s.html; push(favs); idx = s.next;
             }
-            // Cup-grouped browse list (keyboard navigable).
             state.cups.forEach((cup) => {
-                html += '<div class="cp-section"><div class="cp-section-title">' + esc(cup.name) + '</div>';
-                cup.courses.forEach((c) => {
-                    const course = state.byId[c.id] || c;
-                    html += rowHtml(course, idx);
-                    options.push(course.id);
-                    idx++;
-                });
-                html += '</div>';
+                const courses = cup.courses.map((c) => state.byId[c.id] || c);
+                const s = sectionHtml(cup.name, courses, idx); html += s.html; push(courses); idx = s.next;
             });
             if (count) count.hidden = true;
         } else {
             const matches = window.CourseData.rankCourses(state.courses, q);
             if (matches.length) {
-                html += '<div class="cp-section">';
-                matches.forEach((course) => {
-                    html += rowHtml(course, idx);
-                    options.push(course.id);
-                    idx++;
-                });
-                html += '</div>';
+                matches.forEach((course) => { html += rowHtml(course, idx); options.push(course.id); idx++; });
+                html = '<div class="cp-section">' + html + '</div>';
             } else {
-                html = '<div class="cp-empty">No courses match &ldquo;' + esc(q) + '&rdquo;</div>';
+                html = '<div class="cp-noresult">No courses match &ldquo;' + esc(q) + '&rdquo;</div>';
             }
             if (count) {
                 count.hidden = false;
-                count.textContent = matches.length + (matches.length === 1 ? ' course' : ' courses');
+                count.textContent = matches.length + (matches.length === 1 ? ' result' : ' results');
             }
         }
 
         results.innerHTML = html;
         state.options = options;
-        // Keep active in range; default to first option when searching.
-        if (q && options.length) state.active = 0;
+        if (q && options.length) state.active = 0;       // first hit pre-armed for Enter
         else if (state.active >= options.length) state.active = options.length - 1;
         syncActive();
     }
@@ -178,7 +174,6 @@
         results.querySelectorAll('.cp-row').forEach((row) => {
             const on = row.id === 'cp-opt-' + state.active;
             row.classList.toggle('cp-active', on);
-            row.setAttribute('aria-selected', on || row.classList.contains('cp-selected') ? 'true' : 'false');
             if (on) {
                 if (search) search.setAttribute('aria-activedescendant', row.id);
                 if (row.scrollIntoView) row.scrollIntoView({ block: 'nearest' });
@@ -285,8 +280,6 @@
             renderResults();
             return;
         }
-        const chip = e.target.closest('.cp-chip');
-        if (chip) { const c = state.byId[chip.getAttribute('data-id')]; if (c) setSelected(c); return; }
         const courseBtn = e.target.closest('.cp-course');
         if (courseBtn) { const c = state.byId[courseBtn.getAttribute('data-id')]; if (c) setSelected(c); }
     }
@@ -307,15 +300,21 @@
                 '<div class="course-picker-control">' +
                     '<button type="button" class="course-picker-trigger" aria-haspopup="listbox" aria-expanded="false" aria-labelledby="cp-field-label">' +
                         '<span class="cp-icon" aria-hidden="true">🗺️</span>' +
-                        '<span class="cp-label cp-placeholder">Select course (optional)</span>' +
+                        '<span class="cp-trigger-text">' +
+                            '<span class="cp-trigger-primary cp-empty-primary">Choose a course</span>' +
+                            '<span class="cp-trigger-secondary">Optional · tap to search</span>' +
+                        '</span>' +
                         '<span class="cp-caret" aria-hidden="true">▾</span>' +
                     '</button>' +
-                    '<button type="button" class="cp-clear" title="Clear course" aria-label="Clear course" hidden>×</button>' +
+                    '<button type="button" class="cp-clear" aria-label="Clear course" hidden>×</button>' +
                 '</div>' +
                 '<div class="course-picker-panel" role="listbox" aria-label="Courses" hidden>' +
-                    '<input type="text" class="course-picker-search" role="combobox" aria-expanded="true" aria-autocomplete="list" ' +
-                        'placeholder="Search course, cup or game..." autocomplete="off" spellcheck="false">' +
-                    '<div class="cp-count" hidden></div>' +
+                    '<div class="cp-search-wrap">' +
+                        '<span class="cp-search-icon" aria-hidden="true">🔍</span>' +
+                        '<input type="text" class="course-picker-search" role="combobox" aria-expanded="true" aria-autocomplete="list" ' +
+                            'placeholder="Search course, cup or game" autocomplete="off" spellcheck="false">' +
+                        '<span class="cp-count" hidden></span>' +
+                    '</div>' +
                     '<div class="cp-results"></div>' +
                 '</div>' +
             '</div>';
