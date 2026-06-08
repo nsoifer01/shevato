@@ -68,7 +68,12 @@ function switchGameVersion(version) {
     if (window.generateSidebarRaceInputs) {
         window.generateSidebarRaceInputs();
     }
-    
+
+    // Rebuild the course picker for the newly selected game's course list.
+    if (window.CoursePicker) {
+        window.CoursePicker.refresh();
+    }
+
     // Recreate visualization bars with new position limits
     if (window.createAllBars) {
         window.createAllBars();

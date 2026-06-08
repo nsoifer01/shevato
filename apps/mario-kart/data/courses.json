@@ -1,0 +1,192 @@
+{
+  "schemaVersion": 1,
+  "generatedBy": "manual-seed",
+  "note": "Vendored course data. Edit by hand OR regenerate with scripts/sync-courses.mjs. Course names are factual game data; metadata (cups, origins, aliases) is curated for this tracker.",
+  "games": {
+    "mkworld": {
+      "label": "Mario Kart World",
+      "maxPositions": 24,
+      "source": {
+        "name": "Nintendo Life - Mario Kart World Complete Course List",
+        "url": "https://www.nintendolife.com/guides/mario-kart-world-complete-course-list-every-track",
+        "lastSynced": "2026-06-07",
+        "complete": true
+      },
+      "cups": [
+        {
+          "id": "mushroom",
+          "name": "Mushroom Cup",
+          "courses": [
+            { "id": "mario-bros-circuit", "name": "Mario Bros. Circuit", "origin": "new", "aliases": ["mario brothers circuit", "mbc"] },
+            { "id": "crown-city", "name": "Crown City", "origin": "new", "aliases": [] },
+            { "id": "whistlestop-summit", "name": "Whistlestop Summit", "origin": "new", "aliases": [] },
+            { "id": "dk-spaceport", "name": "DK Spaceport", "origin": "new", "aliases": ["donkey kong spaceport"] }
+          ]
+        },
+        {
+          "id": "flower",
+          "name": "Flower Cup",
+          "courses": [
+            { "id": "desert-hills", "name": "Desert Hills", "origin": "Mario Kart DS", "aliases": [] },
+            { "id": "shy-guy-bazaar", "name": "Shy Guy Bazaar", "origin": "Mario Kart 7", "aliases": [] },
+            { "id": "wario-stadium", "name": "Wario Stadium", "origin": "Mario Kart 64", "aliases": [] },
+            { "id": "airship-fortress", "name": "Airship Fortress", "origin": "Mario Kart DS", "aliases": [] }
+          ]
+        },
+        {
+          "id": "star",
+          "name": "Star Cup",
+          "courses": [
+            { "id": "dk-pass", "name": "DK Pass", "origin": "Mario Kart DS", "aliases": ["donkey kong pass"] },
+            { "id": "starview-peak", "name": "Starview Peak", "origin": "new", "aliases": [] },
+            { "id": "sky-high-sundae", "name": "Sky-High Sundae", "origin": "Mario Kart 8 Deluxe", "aliases": [] },
+            { "id": "wario-shipyard", "name": "Wario Shipyard", "origin": "Mario Kart 7", "aliases": [] }
+          ]
+        },
+        {
+          "id": "shell",
+          "name": "Shell Cup",
+          "courses": [
+            { "id": "koopa-troopa-beach", "name": "Koopa Troopa Beach", "origin": "Super Mario Kart", "aliases": ["ktb"] },
+            { "id": "faraway-oasis", "name": "Faraway Oasis", "origin": "new", "aliases": [] },
+            { "id": "crown-city", "name": "Crown City", "origin": "new", "aliases": [] },
+            { "id": "peach-stadium", "name": "Peach Stadium", "origin": "new", "aliases": [] }
+          ]
+        },
+        {
+          "id": "banana",
+          "name": "Banana Cup",
+          "courses": [
+            { "id": "peach-beach", "name": "Peach Beach", "origin": "Mario Kart: Double Dash!!", "aliases": [] },
+            { "id": "salty-salty-speedway", "name": "Salty Salty Speedway", "origin": "new", "aliases": [] },
+            { "id": "dino-dino-jungle", "name": "Dino Dino Jungle", "origin": "Mario Kart: Double Dash!!", "aliases": [] },
+            { "id": "great-block-ruins", "name": "Great ? Block Ruins", "origin": "new", "aliases": ["great question block ruins"] }
+          ]
+        },
+        {
+          "id": "leaf",
+          "name": "Leaf Cup",
+          "courses": [
+            { "id": "cheep-cheep-falls", "name": "Cheep Cheep Falls", "origin": "new", "aliases": [] },
+            { "id": "dandelion-depths", "name": "Dandelion Depths", "origin": "new", "aliases": [] },
+            { "id": "boo-cinema", "name": "Boo Cinema", "origin": "new", "aliases": [] },
+            { "id": "dry-bones-burnout", "name": "Dry Bones Burnout", "origin": "new", "aliases": [] }
+          ]
+        },
+        {
+          "id": "lightning",
+          "name": "Lightning Cup",
+          "courses": [
+            { "id": "moo-moo-meadows", "name": "Moo Moo Meadows", "origin": "Mario Kart Wii", "aliases": [] },
+            { "id": "choco-mountain", "name": "Choco Mountain", "origin": "Mario Kart 64", "aliases": [] },
+            { "id": "toads-factory", "name": "Toad's Factory", "origin": "Mario Kart Wii", "aliases": [] },
+            { "id": "bowsers-castle-world", "name": "Bowser's Castle", "origin": "new", "aliases": ["bc"] }
+          ]
+        },
+        {
+          "id": "special",
+          "name": "Special Cup",
+          "courses": [
+            { "id": "acorn-heights", "name": "Acorn Heights", "origin": "new", "aliases": [] },
+            { "id": "mario-circuit-world", "name": "Mario Circuit", "origin": "new", "aliases": [] },
+            { "id": "peach-stadium", "name": "Peach Stadium", "origin": "new", "aliases": [] },
+            { "id": "rainbow-road-world", "name": "Rainbow Road", "origin": "new", "aliases": ["rr"] }
+          ]
+        }
+      ]
+    },
+    "mk8d": {
+      "label": "Mario Kart 8 Deluxe",
+      "maxPositions": 12,
+      "source": {
+        "name": "Manual seed (base game nitro + retro cups)",
+        "url": "https://www.mariowiki.com/Mario_Kart_8_Deluxe",
+        "lastSynced": "2026-06-07",
+        "complete": false,
+        "todo": "Booster Course Pass (48 DLC courses across 12 cups) not yet vendored; extend via scripts/sync-courses.mjs."
+      },
+      "cups": [
+        {
+          "id": "mushroom",
+          "name": "Mushroom Cup",
+          "courses": [
+            { "id": "mario-kart-stadium", "name": "Mario Kart Stadium", "origin": "new", "aliases": [] },
+            { "id": "water-park", "name": "Water Park", "origin": "new", "aliases": [] },
+            { "id": "sweet-sweet-canyon", "name": "Sweet Sweet Canyon", "origin": "new", "aliases": [] },
+            { "id": "thwomp-ruins", "name": "Thwomp Ruins", "origin": "new", "aliases": [] }
+          ]
+        },
+        {
+          "id": "flower",
+          "name": "Flower Cup",
+          "courses": [
+            { "id": "mario-circuit", "name": "Mario Circuit", "origin": "new", "aliases": [] },
+            { "id": "toad-harbor", "name": "Toad Harbor", "origin": "new", "aliases": [] },
+            { "id": "twisted-mansion", "name": "Twisted Mansion", "origin": "new", "aliases": [] },
+            { "id": "shy-guy-falls", "name": "Shy Guy Falls", "origin": "new", "aliases": [] }
+          ]
+        },
+        {
+          "id": "star",
+          "name": "Star Cup",
+          "courses": [
+            { "id": "sunshine-airport", "name": "Sunshine Airport", "origin": "new", "aliases": [] },
+            { "id": "dolphin-shoals", "name": "Dolphin Shoals", "origin": "new", "aliases": [] },
+            { "id": "electrodrome", "name": "Electrodrome", "origin": "new", "aliases": [] },
+            { "id": "mount-wario", "name": "Mount Wario", "origin": "new", "aliases": [] }
+          ]
+        },
+        {
+          "id": "special",
+          "name": "Special Cup",
+          "courses": [
+            { "id": "cloudtop-cruise", "name": "Cloudtop Cruise", "origin": "new", "aliases": [] },
+            { "id": "bone-dry-dunes", "name": "Bone-Dry Dunes", "origin": "new", "aliases": [] },
+            { "id": "bowsers-castle", "name": "Bowser's Castle", "origin": "new", "aliases": ["bc"] },
+            { "id": "rainbow-road", "name": "Rainbow Road", "origin": "new", "aliases": ["rr"] }
+          ]
+        },
+        {
+          "id": "shell",
+          "name": "Shell Cup",
+          "courses": [
+            { "id": "moo-moo-meadows-8", "name": "Moo Moo Meadows", "origin": "Mario Kart Wii", "aliases": [] },
+            { "id": "mario-circuit-gba", "name": "Mario Circuit (GBA)", "origin": "Mario Kart: Super Circuit", "aliases": [] },
+            { "id": "cheep-cheep-beach", "name": "Cheep Cheep Beach", "origin": "Mario Kart DS", "aliases": [] },
+            { "id": "toads-turnpike", "name": "Toad's Turnpike", "origin": "Mario Kart 64", "aliases": [] }
+          ]
+        },
+        {
+          "id": "banana",
+          "name": "Banana Cup",
+          "courses": [
+            { "id": "dry-dry-desert", "name": "Dry Dry Desert", "origin": "Mario Kart: Double Dash!!", "aliases": [] },
+            { "id": "donut-plains-3", "name": "Donut Plains 3", "origin": "Super Mario Kart", "aliases": [] },
+            { "id": "royal-raceway", "name": "Royal Raceway", "origin": "Mario Kart 64", "aliases": [] },
+            { "id": "dk-jungle", "name": "DK Jungle", "origin": "Mario Kart 7", "aliases": ["donkey kong jungle"] }
+          ]
+        },
+        {
+          "id": "leaf",
+          "name": "Leaf Cup",
+          "courses": [
+            { "id": "wario-stadium-8", "name": "Wario Stadium", "origin": "Mario Kart DS", "aliases": [] },
+            { "id": "sherbet-land", "name": "Sherbet Land", "origin": "Mario Kart 64", "aliases": [] },
+            { "id": "music-park", "name": "Music Park", "origin": "Mario Kart 7", "aliases": [] },
+            { "id": "yoshi-valley", "name": "Yoshi Valley", "origin": "Mario Kart 64", "aliases": [] }
+          ]
+        },
+        {
+          "id": "lightning",
+          "name": "Lightning Cup",
+          "courses": [
+            { "id": "tick-tock-clock", "name": "Tick-Tock Clock", "origin": "Mario Kart DS", "aliases": [] },
+            { "id": "piranha-plant-slide", "name": "Piranha Plant Slide", "origin": "Mario Kart 7", "aliases": [] },
+            { "id": "grumble-volcano", "name": "Grumble Volcano", "origin": "Mario Kart Wii", "aliases": [] },
+            { "id": "rainbow-road-64", "name": "Rainbow Road (N64)", "origin": "Mario Kart 64", "aliases": ["rr 64"] }
+          ]
+        }
+      ]
+    }
+  }
+}
