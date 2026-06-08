@@ -47,3 +47,7 @@ apps/gym-tracker/sitemap-exercises.xml
 # Transient test-run screenshot evidence (written by the test pipeline,
 # reviewed by the owner, deleted at round close). Never committed.
 .screenshots/
+
+# Owner-uploaded reference screenshots (Lightshot drops for design review).
+# Local-only working material, never published to the repo.
+.lightshot-screenshots/
