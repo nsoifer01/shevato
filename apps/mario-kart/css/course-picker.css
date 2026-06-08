@@ -1,0 +1,278 @@
+/* Course picker (sidebar race form).
+   Uses the app's visual-refresh palette (--mk-* tokens from refresh.css) so the
+   picker matches the dark Control Panel. Every text element pins its own
+   line-height because a global button rule sets an oversized line-height that
+   would otherwise collapse the multi-line rows on top of each other. */
+
+#sidebar-course-picker {
+    margin-bottom: 14px;
+}
+
+.cp-field-label {
+    display: block;
+    font-size: 0.7rem;
+    font-weight: 700;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--mk-muted-2, #6f7785);
+    margin-bottom: 6px;
+}
+
+.course-picker { position: relative; }
+
+/* ---- Trigger (closed state) ---- */
+.course-picker-control { position: relative; }
+
+.course-picker .course-picker-trigger {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    width: 100%;
+    padding: 10px 56px 10px 12px;
+    background: var(--mk-surface-2, #181c26);
+    border: 1px solid var(--mk-border, #232838);
+    border-radius: 8px;
+    color: var(--mk-text, #f1f3f8);
+    font-size: 0.9rem;
+    line-height: 1.3;
+    cursor: pointer;
+    text-align: left;
+    transition: border-color 0.15s ease, background 0.15s ease;
+}
+
+.course-picker .course-picker-trigger:hover,
+.course-picker .course-picker-trigger[aria-expanded="true"] {
+    border-color: var(--mk-accent, #818cf8);
+    background: var(--mk-surface-3, #232836);
+}
+
+.course-picker .cp-icon { font-size: 1rem; flex: 0 0 auto; line-height: 1; }
+
+.course-picker .cp-label {
+    flex: 1 1 auto;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    line-height: 1.3;
+}
+
+.course-picker .cp-label.cp-placeholder { color: var(--mk-muted, #a4adbd); }
+
+.course-picker .cp-caret {
+    position: absolute;
+    right: 12px;
+    top: 50%;
+    transform: translateY(-50%);
+    color: var(--mk-muted, #a4adbd);
+    font-size: 0.75rem;
+    line-height: 1;
+    pointer-events: none;
+}
+
+.course-picker .cp-clear {
+    position: absolute;
+    right: 32px;
+    top: 50%;
+    transform: translateY(-50%);
+    width: 20px;
+    height: 20px;
+    line-height: 18px;
+    padding: 0;
+    border: none;
+    border-radius: 50%;
+    background: rgba(148, 163, 184, 0.22);
+    color: var(--mk-text, #f1f3f8);
+    font-size: 0.9rem;
+    cursor: pointer;
+}
+
+.course-picker .cp-clear:hover { background: rgba(239, 68, 68, 0.28); }
+
+/* ---- Dropdown panel ---- */
+.course-picker .course-picker-panel {
+    position: absolute;
+    z-index: 50;
+    top: calc(100% + 6px);
+    left: 0;
+    right: 0;
+    max-height: 340px;
+    overflow-y: auto;
+    padding: 10px;
+    background: var(--mk-surface-2, #181c26);
+    border: 1px solid var(--mk-border-strong, #343a4f);
+    border-radius: 10px;
+    box-shadow: 0 12px 30px rgba(0, 0, 0, 0.5);
+}
+
+.course-picker .course-picker-search {
+    width: 100%;
+    padding: 9px 11px;
+    margin-bottom: 8px;
+    background: var(--mk-surface, #12151d);
+    border: 1px solid var(--mk-border, #232838);
+    border-radius: 7px;
+    color: var(--mk-text, #f1f3f8);
+    font-size: 0.88rem;
+    line-height: 1.3;
+    box-sizing: border-box;
+}
+
+.course-picker .course-picker-search::placeholder { color: var(--mk-muted-2, #6f7785); }
+.course-picker .course-picker-search:focus {
+    outline: none;
+    border-color: var(--mk-accent, #818cf8);
+    box-shadow: 0 0 0 3px var(--mk-accent-soft, rgba(129, 140, 248, 0.14));
+}
+
+.course-picker .cp-count {
+    font-size: 0.72rem;
+    color: var(--mk-muted-2, #6f7785);
+    padding: 0 4px 6px;
+    line-height: 1.3;
+}
+
+/* ---- Quick-tap chips (recents / favorites) ---- */
+.course-picker .cp-chips { margin-bottom: 10px; }
+.course-picker .cp-chip-row {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    padding: 2px 2px 0;
+}
+
+.course-picker .cp-chip {
+    padding: 5px 10px;
+    background: var(--mk-surface-3, #232836);
+    border: 1px solid var(--mk-border, #232838);
+    border-radius: 999px;
+    color: var(--mk-text, #f1f3f8);
+    font-size: 0.78rem;
+    line-height: 1.2;
+    cursor: pointer;
+    white-space: nowrap;
+}
+
+.course-picker .cp-chip:hover { border-color: var(--mk-accent, #818cf8); }
+.course-picker .cp-chip-on {
+    background: var(--mk-accent-soft, rgba(129, 140, 248, 0.14));
+    border-color: var(--mk-accent, #818cf8);
+}
+
+/* ---- Sections + rows ---- */
+.course-picker .cp-section { margin-bottom: 10px; }
+.course-picker .cp-section:last-child { margin-bottom: 0; }
+
+.course-picker .cp-section-title {
+    font-size: 0.68rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    line-height: 1.4;
+    color: var(--mk-muted-2, #6f7785);
+    padding: 2px 4px;
+    margin-bottom: 4px;
+}
+
+.course-picker .cp-row {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    border-radius: 7px;
+}
+
+.course-picker .cp-row.cp-active { background: var(--mk-accent-soft, rgba(129, 140, 248, 0.14)); }
+.course-picker .cp-row.cp-selected { background: var(--mk-accent-strong-soft, rgba(99, 102, 241, 0.32)); }
+
+.course-picker .cp-course {
+    flex: 1 1 auto;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+    padding: 7px 8px;
+    background: transparent;
+    border: none;
+    border-radius: 7px;
+    color: var(--mk-text, #f1f3f8);
+    text-align: left;
+    line-height: 1.25;
+    cursor: pointer;
+}
+
+.course-picker .cp-name {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 0.88rem;
+    font-weight: 500;
+    line-height: 1.25;
+}
+
+.course-picker .cp-check { color: var(--mk-accent, #818cf8); font-size: 0.85rem; }
+
+.course-picker .cp-hl {
+    background: transparent;
+    color: var(--mk-accent, #818cf8);
+    font-weight: 700;
+}
+
+.course-picker .cp-meta {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 6px;
+    line-height: 1.2;
+}
+
+.course-picker .cp-cup { font-size: 0.72rem; color: var(--mk-muted, #a4adbd); }
+
+.course-picker .cp-pill {
+    font-size: 0.62rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    line-height: 1;
+    padding: 3px 6px;
+    border-radius: 4px;
+}
+
+.course-picker .cp-pill-new {
+    color: var(--mk-good, #34d399);
+    background: rgba(52, 211, 153, 0.14);
+}
+
+.course-picker .cp-pill-retro {
+    color: var(--mk-muted, #a4adbd);
+    background: rgba(148, 163, 184, 0.12);
+    text-transform: none;
+    letter-spacing: 0;
+    font-weight: 600;
+}
+
+.course-picker .cp-fav {
+    flex: 0 0 auto;
+    width: 30px;
+    height: 30px;
+    padding: 0;
+    background: transparent;
+    border: none;
+    border-radius: 6px;
+    color: var(--mk-muted-2, #6f7785);
+    font-size: 1rem;
+    line-height: 1;
+    cursor: pointer;
+}
+
+.course-picker .cp-fav:hover { background: var(--mk-accent-soft, rgba(129, 140, 248, 0.14)); color: var(--mk-muted, #a4adbd); }
+.course-picker .cp-fav.is-fav { color: #f59e0b; }
+
+.course-picker .cp-empty {
+    padding: 16px 8px;
+    text-align: center;
+    color: var(--mk-muted, #a4adbd);
+    font-size: 0.85rem;
+    line-height: 1.4;
+}
+
+/* Course badge in race history (date cell / mobile card). */
+.race-course-label { color: var(--mk-muted, #a4adbd); }

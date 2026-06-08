@@ -10,6 +10,7 @@
     "test:mario-kart": "node --test apps/mario-kart/tests/",
     "test:arena": "node --test apps/arena/tests/",
     "test:sync": "node --test sync-system/tests/",
+    "sync:mario-kart-courses": "node apps/mario-kart/scripts/sync-courses.mjs",
     "build:rising-seasons": "node apps/rising-seasons/scripts/build-data.js",
     "build:rising-seasons:pages": "node apps/rising-seasons/scripts/build-show-pages.js",
     "build:gym-tracker:pages": "node apps/gym-tracker/scripts/build-exercise-pages.cjs",

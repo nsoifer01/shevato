@@ -1117,10 +1117,11 @@ function updateRaceHistoryTable(filteredRaces) {
                 : '<td><span style="color: #718096;">—</span></td>';
         }).join('');
 
+        const courseLabel = race.course ? `<br><small class="race-course-label">🗺️ ${escapeHtml(race.course)}</small>` : '';
         return `
         <tr>
             <td>${raceNumber}</td>
-            <td>${formatDateForDisplay(race.date)}${race.timestamp ? '<br><small>' + race.timestamp + '</small>' : ''}</td>
+            <td>${formatDateForDisplay(race.date)}${race.timestamp ? '<br><small>' + race.timestamp + '</small>' : ''}${courseLabel}</td>
             ${playerCells}
             <td>
                 <button class="edit-btn" onclick="editRace(${globalIndex})" title="Edit race">✏️</button>
@@ -1204,6 +1205,7 @@ function updateMobileRaceCards(filteredRaces, racesToDisplay, filteredIndexMap, 
                 <span class="race-number">Race #${raceNumber}</span>
                 <span class="race-date">${formatDateForDisplay(race.date)}${race.timestamp ? ', ' + race.timestamp : ''}</span>
             </div>
+            ${race.course ? `<div class="race-card-course"><small class="race-course-label">🗺️ ${escapeHtml(race.course)}</small></div>` : ''}
             <div class="race-positions">
                 ${playerPositions}
             </div>
@@ -1532,7 +1534,12 @@ document.addEventListener('DOMContentLoaded', function() {
     if (window.updateMaxPositions) {
         window.updateMaxPositions();
     }
-    
+
+    // Build the course picker for the current game version (async, optional).
+    if (window.CoursePicker) {
+        window.CoursePicker.init();
+    }
+
     // Initialize global pagination instance for Mario Kart
     if (window.GlobalPaginationManager) {
         window.GlobalPaginationManager.createInstance('mario-kart-races', {
