@@ -125,6 +125,18 @@
 .course-picker .course-picker-search::placeholder { color: var(--mk-muted-2, #6f7785); }
 .course-picker .cp-count { flex: 0 0 auto; font-size: 0.7rem; color: var(--mk-muted-2, #6f7785); line-height: 1.3; }
 
+/* Inline-field clear button (shared with the desktop palette). */
+.course-picker .cp-search-clear {
+    flex: 0 0 auto;
+    width: 22px; height: 22px; padding: 0;
+    display: inline-flex; align-items: center; justify-content: center;
+    border: none; border-radius: 50%; cursor: pointer;
+    background: rgba(148, 163, 184, 0.20);
+    color: var(--mk-text, #f1f3f8) !important;
+    font-size: 0.95rem; line-height: 1;
+}
+.course-picker .cp-search-clear:hover { background: rgba(148, 163, 184, 0.34); }
+
 .course-picker .cp-results { padding: 6px; }
 
 /* ---- Sections: quiet organizational anchors ---- */
@@ -202,6 +214,8 @@
 /* Line 2: cup (secondary) · game source (tertiary, subtle). */
 .course-picker .cp-sub { display: flex; align-items: center; gap: 7px; min-width: 0; line-height: 1.2; }
 .course-picker .cp-cup {
+    display: block;
+    line-height: 1.25;             /* pin: the row button has a huge global line-height */
     font-size: 0.74rem;
     color: var(--mk-muted, #a4adbd);
     overflow: hidden;
@@ -226,13 +240,13 @@
     flex: 0 0 auto;
     width: 30px; height: 30px; padding: 0;
     background: transparent; border: none; border-radius: 6px;
-    color: var(--mk-muted-2, #6f7785) !important;
+    color: var(--mk-muted, #a4adbd) !important;
     font-size: 0.95rem; line-height: 1; cursor: pointer;
-    opacity: 0.32;
+    opacity: 0.5;
     transition: opacity 0.1s ease, color 0.1s ease;
 }
 .course-picker .cp-row:hover .cp-fav,
-.course-picker .cp-row.cp-active .cp-fav { opacity: 0.85; }
+.course-picker .cp-row.cp-active .cp-fav { opacity: 1; }
 .course-picker .cp-fav:hover { color: var(--mk-text, #f1f3f8) !important; opacity: 1; }
 .course-picker .cp-fav.is-fav { color: #f59e0b !important; opacity: 1; }
 
@@ -251,9 +265,8 @@
    DESKTOP COMMAND PALETTE (overlay, >= 760px) — a Spotlight-style course
    browser. Created in <body>, so the modal box also carries the
    `.course-picker` class to inherit the shared row styles above.
-   Tuned for a premium, playful-but-dark feel: compact chrome, whitespace
-   over dividers, a contained search field, a vivid selected row, and a
-   colorful preview card.
+   Tuned for density + clarity: compact rows, clearly-separated states,
+   readable metadata, one accent gradient, restrained chrome.
    ===================================================================== */
 .cp-modal-backdrop {
     position: fixed; inset: 0; z-index: 4000;
@@ -269,88 +282,97 @@
 
 .cp-modal.course-picker {
     position: relative;
-    width: min(680px, 93vw);
-    max-height: 76vh;
+    width: min(640px, 93vw);
+    max-height: 78vh;
     display: flex;
     flex-direction: column;
     background: var(--mk-surface-2, #181c26);
     border: 1px solid var(--mk-border-strong, #343a4f);
-    border-radius: 16px;
-    box-shadow: 0 30px 80px rgba(0, 0, 0, 0.62);
+    border-radius: 14px;
+    box-shadow: 0 28px 70px rgba(0, 0, 0, 0.6);
     overflow: hidden;
     overscroll-behavior: contain;
     animation: cpRise 0.14s ease;
 }
 @keyframes cpRise { from { transform: translateY(-8px); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
 
-/* A thin colorful accent across the top — the one playful "moment". */
+/* A single thin accent line — the one playful flourish. */
 .cp-modal.course-picker::before {
-    content: "";
-    display: block;
-    height: 3px;
-    background: linear-gradient(90deg, #6366f1 0%, #818cf8 45%, #34d399 100%);
+    content: ""; display: block; height: 3px;
+    background: linear-gradient(90deg, #6366f1 0%, #818cf8 50%, #34d399 100%);
 }
 
-/* ---- Search: a contained, premium field (no divider needed) ---- */
+/* ---- Search: a contained, premium field ---- */
 .cp-modal .cp-modal-header {
-    display: flex; align-items: center; gap: 11px;
-    margin: 14px 14px 6px;
-    padding: 12px 15px;
+    display: flex; align-items: center; gap: 10px;
+    margin: 13px 13px 4px;
+    padding: 11px 14px;
     background: var(--mk-surface, #12151d);
     border: 1px solid var(--mk-border, #232838);
-    border-radius: 12px;
+    border-radius: 11px;
     transition: border-color 0.12s ease, box-shadow 0.12s ease;
 }
 .cp-modal .cp-modal-header:focus-within {
     border-color: var(--mk-accent, #818cf8);
     box-shadow: 0 0 0 3px var(--mk-accent-soft, rgba(129, 140, 248, 0.18));
 }
-.cp-modal .cp-modal-icon { font-size: 1.05rem; opacity: 0.65; line-height: 1; flex: 0 0 auto; }
+.cp-modal .cp-modal-icon { font-size: 1.02rem; opacity: 0.6; line-height: 1; flex: 0 0 auto; }
 .cp-modal .course-picker-search {
     flex: 1 1 auto; min-width: 0;
     padding: 0; margin: 0; border: none; outline: none; background: transparent;
     color: var(--mk-text, #f1f3f8);
-    font-size: 1.12rem; font-weight: 500; line-height: 1.4;
+    font-size: 1.1rem; font-weight: 500; line-height: 1.4;
 }
 .cp-modal .course-picker-search::placeholder { color: var(--mk-muted-2, #6f7785); font-weight: 400; }
 .cp-modal .cp-esc {
     flex: 0 0 auto;
-    font-size: 0.62rem; font-family: inherit; color: var(--mk-muted-2, #6f7785);
+    font-size: 0.6rem; font-family: inherit; text-transform: uppercase; letter-spacing: 0.04em;
+    color: var(--mk-muted-2, #6f7785);
     background: var(--mk-surface-3, #232836);
-    border-radius: 5px; padding: 3px 6px; line-height: 1;
+    border-radius: 4px; padding: 3px 6px; line-height: 1;
 }
 
-/* ---- Quick filters + count: light, secondary ---- */
+/* ---- Quick filters (with counts) + result count ---- */
 .cp-modal .cp-modal-subbar {
     display: flex; align-items: center; gap: 10px;
-    padding: 4px 16px 6px;
+    padding: 4px 14px 6px;
 }
 .cp-modal .cp-filters { display: flex; flex-wrap: wrap; gap: 5px; flex: 1 1 auto; min-width: 0; }
 .cp-modal .cp-filter {
-    padding: 4px 11px;
-    font-size: 0.74rem; font-weight: 600; line-height: 1.2;
-    color: var(--mk-muted-2, #6f7785) !important;
-    background: transparent;
-    border: none; border-radius: 999px; cursor: pointer;
+    display: inline-flex; align-items: center; gap: 5px;
+    padding: 4px 10px;
+    font-size: 0.76rem; font-weight: 600; line-height: 1.2;
+    color: var(--mk-muted, #a4adbd) !important;          /* readable when inactive */
+    background: var(--mk-surface-3, #232836);
+    border: 1px solid transparent; border-radius: 999px; cursor: pointer;
     transition: background 0.1s ease, color 0.1s ease;
 }
-.cp-modal .cp-filter:hover { color: var(--mk-text, #f1f3f8) !important; background: var(--mk-surface-3, #232836); }
+.cp-modal .cp-filter:hover { color: var(--mk-text, #f1f3f8) !important; }
+.cp-modal .cp-filter:focus-visible { outline: 2px solid var(--mk-accent, #818cf8); outline-offset: 2px; }
 .cp-modal .cp-filter.is-on {
     color: #fff !important;
-    background: linear-gradient(135deg, #6366f1, #818cf8);
+    background: var(--mk-accent-strong, #6366f1);
+    border-color: var(--mk-accent, #818cf8);
 }
-.cp-modal .cp-count { flex: 0 0 auto; font-size: 0.74rem; color: var(--mk-muted-2, #6f7785); }
-
-/* ---- Empty-state guidance: borderless, quiet ---- */
-.cp-modal .cp-hint {
-    padding: 2px 16px 8px;
-    font-size: 0.76rem; line-height: 1.5;
+.cp-modal .cp-filter-n {
+    font-size: 0.66rem; font-weight: 700;
     color: var(--mk-muted-2, #6f7785);
+    background: rgba(0, 0, 0, 0.22);
+    border-radius: 999px; padding: 0 5px; min-width: 14px; text-align: center;
 }
-.cp-modal .cp-hint b { color: var(--mk-muted, #a4adbd); font-weight: 600; }
+.cp-modal .cp-filter.is-on .cp-filter-n { color: #fff; background: rgba(255, 255, 255, 0.22); }
+.cp-modal .cp-count { flex: 0 0 auto; font-size: 0.74rem; color: var(--mk-muted, #a4adbd); }
+
+/* ---- Empty-state guidance ---- */
+.cp-modal .cp-hint {
+    padding: 2px 14px 8px;
+    font-size: 0.76rem; line-height: 1.5;
+    color: var(--mk-muted, #a4adbd);
+}
+.cp-modal .cp-hint b { color: var(--mk-text, #f1f3f8); font-weight: 600; }
 .cp-modal .cp-recent-searches {
     display: flex; flex-wrap: wrap; align-items: center; gap: 6px;
-    padding: 0 16px 10px;
+    padding: 0 14px 8px;
 }
 .cp-modal .cp-rs-label { font-size: 0.68rem; text-transform: uppercase; letter-spacing: 0.07em; color: var(--mk-muted-2, #6f7785); margin-right: 2px; }
 .cp-modal .cp-rs-chip {
@@ -361,132 +383,125 @@
 }
 .cp-modal .cp-rs-chip:hover { color: var(--mk-text, #f1f3f8) !important; }
 
-/* ---- Two-column body: results (left) + preview card (right) ---- */
-.cp-modal .cp-modal-body { display: flex; gap: 10px; min-height: 0; flex: 1 1 auto; padding: 2px 12px 12px; }
+/* ---- Clear (x) inside the search field ---- */
+.cp-modal .cp-search-clear { width: 22px; height: 22px; }
+
+/* ---- Two-column body: results (left) + preview (right) ---- */
+.cp-modal .cp-modal-body { display: flex; gap: 12px; min-height: 0; flex: 1 1 auto; padding: 2px 12px 12px; }
 .cp-modal .cp-results {
     flex: 1 1 auto; min-width: 0;
     overflow-y: auto;
     overscroll-behavior: contain;
     padding: 2px;
     scrollbar-width: thin;
-    scrollbar-color: var(--mk-border-strong, #343a4f) transparent;
+    scrollbar-color: var(--mk-muted-2, #6f7785) transparent;
 }
-.cp-modal .cp-results::-webkit-scrollbar { width: 10px; }
+.cp-modal .cp-results::-webkit-scrollbar { width: 12px; }
 .cp-modal .cp-results::-webkit-scrollbar-track { background: transparent; }
-.cp-modal .cp-results::-webkit-scrollbar-thumb { background: var(--mk-border-strong, #343a4f); border-radius: 6px; border: 3px solid transparent; background-clip: padding-box; }
+.cp-modal .cp-results::-webkit-scrollbar-thumb {
+    background: var(--mk-muted-2, #6f7785);    /* higher contrast = discoverable */
+    border-radius: 7px; border: 3px solid transparent; background-clip: padding-box;
+}
+.cp-modal .cp-results::-webkit-scrollbar-thumb:hover { background: var(--mk-muted, #a4adbd); background-clip: padding-box; }
 
-/* Cup headers: more presence (accent tick + brighter), sticky while scrolling. */
+/* Cup headers: clear presence (accent tick + bright label), sticky. */
 .cp-modal .cp-section-title {
     position: sticky; top: -2px; z-index: 1;
     display: flex; align-items: center; gap: 7px;
-    margin: 4px 0 2px;
-    padding: 7px 8px 6px;
-    font-size: 0.68rem; font-weight: 700; letter-spacing: 0.07em;
-    color: var(--mk-muted, #a4adbd); opacity: 1;
+    margin: 6px 0 2px;
+    padding: 6px 8px 5px;
+    font-size: 0.69rem; font-weight: 700; letter-spacing: 0.08em;
+    color: var(--mk-text, #f1f3f8);
     background: var(--mk-surface-2, #181c26);
 }
 .cp-modal .cp-section-title::before {
-    content: ""; flex: 0 0 auto;
-    width: 3px; height: 11px; border-radius: 2px;
-    background: linear-gradient(180deg, #818cf8, #6366f1);
+    content: ""; flex: 0 0 auto; width: 3px; height: 11px; border-radius: 2px;
+    background: var(--mk-accent, #818cf8);
 }
 
-/* Rows: roomier, with a clear hover lift and a vivid selected state. */
-.cp-modal .cp-row { padding: 1px 1px 1px 0; margin-bottom: 1px; }
+/* Rows: dense; states clearly separated (hover faint, selected vivid + bar). */
+.cp-modal .cp-row { padding-left: 0; margin-bottom: 1px; border-left: 3px solid transparent; }
+.cp-modal .cp-course { padding: 6px 8px; gap: 1px; }
+.cp-modal .cp-name { font-size: 0.93rem; }
+.cp-modal .cp-cup { font-size: 0.74rem; color: var(--mk-muted, #a4adbd); }
 .cp-modal .cp-row.cp-active { background: var(--mk-surface-3, #232836); }
 .cp-modal .cp-row.cp-selected {
-    background: linear-gradient(90deg, rgba(99, 102, 241, 0.30), rgba(129, 140, 248, 0.08));
+    background: rgba(99, 102, 241, 0.20);
     border-left-color: var(--mk-accent, #818cf8);
-    box-shadow: inset 0 0 0 1px rgba(129, 140, 248, 0.25);
 }
-.cp-modal .cp-row.cp-selected.cp-active { background: linear-gradient(90deg, rgba(99, 102, 241, 0.42), rgba(129, 140, 248, 0.14)); }
-.cp-modal .cp-name { font-size: 0.97rem; }
-.cp-modal .cp-cup { font-size: 0.76rem; color: var(--mk-muted, #a4adbd); }
+.cp-modal .cp-row.cp-selected .cp-name { color: #fff; }
+.cp-modal .cp-row.cp-selected.cp-active { background: rgba(99, 102, 241, 0.30); }
+.cp-modal .cp-check { color: var(--mk-accent, #818cf8); font-size: 0.9rem; }
+.cp-modal .cp-fav { width: 30px; height: 30px; border-radius: 8px; }
+.cp-modal .cp-fav:focus-visible { outline: 2px solid var(--mk-accent, #818cf8); outline-offset: -2px; }
 
-/* Game source reads as a distinct subtle chip so it never blends with the cup. */
-.cp-modal .cp-origin {
-    font-size: 0.66rem;
-    color: var(--mk-muted-2, #6f7785);
-    background: var(--mk-surface-3, #232836);
-    border-radius: 5px;
-    padding: 1px 6px;
-}
-.cp-modal .cp-origin::before { content: none; }
-
-/* Favorite star feels part of the row: a hover-revealed hit area. */
-.cp-modal .cp-fav { width: 32px; height: 32px; border-radius: 8px; }
-
-/* ---- Preview card: compact, colorful, useful ---- */
-.cp-modal .cp-preview { flex: 0 0 236px; overflow-y: auto; overscroll-behavior: contain; }
+/* ---- Preview: title-first, compact, readable ---- */
+.cp-modal .cp-preview { flex: 0 0 208px; overflow-y: auto; overscroll-behavior: contain; }
 .cp-modal .cp-preview-empty {
     background: var(--mk-surface, #12151d);
-    border-radius: 12px;
-    padding: 30px 16px; text-align: center;
-    color: var(--mk-muted-2, #6f7785);
+    border-radius: 11px;
+    padding: 28px 16px; text-align: center;
+    color: var(--mk-muted, #a4adbd);
 }
-.cp-modal .cp-preview-empty .cp-preview-emoji { font-size: 2rem; line-height: 1; }
-.cp-modal .cp-preview-empty p { font-size: 0.82rem; line-height: 1.5; margin: 12px 0 0; }
+.cp-modal .cp-preview-empty .cp-preview-emoji { font-size: 1.9rem; line-height: 1; }
+.cp-modal .cp-preview-empty p { font-size: 0.8rem; line-height: 1.5; margin: 11px 0 0; }
 
 .cp-modal .cp-pv {
     background: var(--mk-surface, #12151d);
-    border-radius: 12px;
-    overflow: hidden;
+    border-radius: 11px;
+    padding: 15px 15px 14px;
 }
-.cp-modal .cp-pv-hero {
-    display: flex; align-items: center; gap: 9px;
-    padding: 13px 14px;
-    background: linear-gradient(135deg, rgba(99, 102, 241, 0.40), rgba(129, 140, 248, 0.10));
-}
-.cp-modal .cp-pv-new .cp-pv-hero { background: linear-gradient(135deg, rgba(52, 211, 153, 0.34), rgba(52, 211, 153, 0.07)); }
-.cp-modal .cp-pv-emoji { font-size: 1.5rem; line-height: 1; }
-.cp-modal .cp-pv-status {
-    flex: 1 1 auto;
-    font-size: 0.66rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.06em;
-    color: var(--mk-text, #f1f3f8);
-}
-.cp-modal .cp-preview-fav {
-    flex: 0 0 auto;
-    width: 30px; height: 30px; padding: 0;
-    font-size: 1rem; line-height: 1; cursor: pointer;
-    color: var(--mk-text, #f1f3f8) !important;
-    background: rgba(0, 0, 0, 0.22);
-    border: none; border-radius: 8px;
-}
-.cp-modal .cp-preview-fav.is-fav { color: #f59e0b !important; }
 .cp-modal .cp-pv-name {
-    font-size: 1.05rem; font-weight: 700; line-height: 1.3;
+    font-size: 1.12rem; font-weight: 700; line-height: 1.25;
     color: var(--mk-text, #f1f3f8);
-    padding: 13px 14px 9px;
+    margin-bottom: 9px;
 }
-.cp-modal .cp-pv-tags { display: flex; flex-wrap: wrap; gap: 6px; padding: 0 14px 13px; }
-.cp-modal .cp-pv-tag { font-size: 0.71rem; font-weight: 600; line-height: 1.3; padding: 4px 9px; border-radius: 6px; }
-.cp-modal .cp-pv-tag-cup { color: var(--mk-accent, #818cf8); background: var(--mk-accent-soft, rgba(129, 140, 248, 0.16)); }
-.cp-modal .cp-pv-tag-game { color: var(--mk-muted, #a4adbd); background: var(--mk-surface-3, #232836); }
+.cp-modal .cp-pv-status {
+    display: inline-block;
+    font-size: 0.64rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em;
+    color: var(--mk-muted, #a4adbd);
+    background: var(--mk-surface-3, #232836);
+    border-radius: 5px; padding: 3px 7px; margin-bottom: 14px;
+}
+.cp-modal .cp-pv-status.is-new { color: var(--mk-good, #34d399); background: rgba(52, 211, 153, 0.14); }
+.cp-modal .cp-pv-meta { display: flex; flex-direction: column; gap: 8px; margin-bottom: 15px; }
+.cp-modal .cp-pv-row { display: flex; justify-content: space-between; gap: 10px; font-size: 0.82rem; line-height: 1.35; }
+.cp-modal .cp-pv-key { color: var(--mk-muted-2, #6f7785); flex: 0 0 auto; }
+.cp-modal .cp-pv-val { color: var(--mk-text, #f1f3f8); text-align: right; }
+.cp-modal .cp-preview-fav {
+    width: 100%; margin-bottom: 7px; padding: 8px;
+    font-size: 0.8rem; font-weight: 600; cursor: pointer;
+    color: var(--mk-muted, #a4adbd) !important;
+    background: var(--mk-surface-3, #232836);
+    border: 1px solid transparent; border-radius: 8px;
+}
+.cp-modal .cp-preview-fav:hover { color: var(--mk-text, #f1f3f8) !important; }
+.cp-modal .cp-preview-fav.is-fav { color: #f59e0b !important; background: rgba(245, 158, 11, 0.10); border-color: rgba(245, 158, 11, 0.35); }
 .cp-modal .cp-preview-select {
-    display: block; width: calc(100% - 28px); margin: 0 14px 14px;
-    padding: 11px; font-size: 0.86rem; font-weight: 700; cursor: pointer;
+    display: block; width: 100%; padding: 9px;
+    font-size: 0.83rem; font-weight: 700; cursor: pointer;
     color: #fff !important;
-    background: linear-gradient(135deg, #6366f1, #818cf8);
-    border: none; border-radius: 9px;
+    background: var(--mk-accent-strong, #6366f1);
+    border: none; border-radius: 8px;
     transition: filter 0.1s ease;
 }
 .cp-modal .cp-preview-select:hover { filter: brightness(1.1); }
+.cp-modal .cp-preview-select.is-selected { color: var(--mk-good, #34d399) !important; background: rgba(52, 211, 153, 0.12); }
 
 /* ---- Footer keyboard legend: barely there ---- */
 .cp-modal .cp-modal-foot {
-    padding: 7px 16px 11px;
+    padding: 7px 14px 10px;
     text-align: center;
-    font-size: 0.68rem; color: var(--mk-muted-2, #6f7785);
-    opacity: 0.5;
+    font-size: 0.67rem; color: var(--mk-muted-2, #6f7785);
+    opacity: 0.55;
 }
 .cp-modal .cp-modal-foot kbd {
-    font-family: inherit; font-size: 0.66rem;
+    font-family: inherit; font-size: 0.65rem;
     background: transparent;
     border: 1px solid var(--mk-border, #232838);
     border-radius: 4px; padding: 0 4px; margin: 0 1px;
 }
 
-/* On short viewports, drop the preview column so the list can breathe. */
 @media (max-height: 560px) {
     .cp-modal .cp-preview { display: none; }
 }
