@@ -4,6 +4,8 @@
 import { app } from '../app.js';
 import { showToast, downloadJSON, showConfirmModal } from '../utils/helpers.js';
 import { DarkSelect } from '../utils/dark-select.js';
+import { Settings } from '../models/Settings.js';
+import { closeModalSafely } from '../utils/modal-focus.js';
 
 function validateImportData(data) {
     if (!data) {
@@ -67,6 +69,32 @@ class SettingsView {
         const vibrationAlertsInput = document.getElementById('vibration-alerts');
         if (vibrationAlertsInput) {
             vibrationAlertsInput.addEventListener('change', () => this.checkDirty());
+        }
+
+        // Timer sound markers — free numeric inputs (Item R2-1).
+        const firstWarnInput = document.getElementById('timer-first-warning');
+        if (firstWarnInput) {
+            firstWarnInput.addEventListener('input', () => this.checkDirty());
+        }
+        const countdownInput = document.getElementById('timer-countdown-start');
+        if (countdownInput) {
+            countdownInput.addEventListener('input', () => this.checkDirty());
+        }
+
+        // Calendar: first-day-of-week select (Item R2-5).
+        const firstDaySelect = document.getElementById('first-day-of-week');
+        if (firstDaySelect && !firstDaySelect.dataset.darkSelectInit) {
+            this.firstDayDropdown = new DarkSelect(firstDaySelect);
+            firstDaySelect.dataset.darkSelectInit = '1';
+        }
+        if (firstDaySelect) {
+            firstDaySelect.addEventListener('change', () => this.checkDirty());
+        }
+
+        // Calendar: show-program-schedule toggle.
+        const scheduleToggle = document.getElementById('show-program-schedule');
+        if (scheduleToggle) {
+            scheduleToggle.addEventListener('change', () => this.checkDirty());
         }
 
         // Plate calculator inputs — react on input, refresh preview, mark dirty.
@@ -138,6 +166,29 @@ class SettingsView {
             });
         }
 
+        // Item R2-9: unsaved-changes guard modal actions.
+        const unsavedModal = document.getElementById('unsaved-settings-modal');
+        if (unsavedModal && !unsavedModal.dataset.wired) {
+            const close = () => { closeModalSafely(unsavedModal); this.pendingLeaveView = null; };
+            document.getElementById('unsaved-settings-close')?.addEventListener('click', close);
+            document.getElementById('unsaved-settings-save')?.addEventListener('click', () => {
+                const target = this.pendingLeaveView;
+                this.pendingLeaveView = null;
+                closeModalSafely(unsavedModal);
+                this.saveSettings();
+                if (target) this.app.showView(target);
+            });
+            document.getElementById('unsaved-settings-discard')?.addEventListener('click', () => {
+                const target = this.pendingLeaveView;
+                this.pendingLeaveView = null;
+                closeModalSafely(unsavedModal);
+                // Restore the saved values so re-entering Settings shows them.
+                this.render();
+                if (target) this.app.showView(target);
+            });
+            unsavedModal.dataset.wired = '1';
+        }
+
         // Delete cloud data — wipes the user's Firestore document so
         // signing in on a fresh device is a clean slate. Local data
         // remains untouched (the user can wipe that with Clear All Data
@@ -191,6 +242,24 @@ class SettingsView {
         const vibrationAlertsInput = document.getElementById('vibration-alerts');
         if (vibrationAlertsInput) vibrationAlertsInput.checked = settings.vibrationAlerts !== false;
 
+        const firstWarnInput = document.getElementById('timer-first-warning');
+        if (firstWarnInput) {
+            firstWarnInput.value = String(settings.timerFirstWarningSeconds ?? 10);
+        }
+        const countdownInput = document.getElementById('timer-countdown-start');
+        if (countdownInput) {
+            countdownInput.value = String(settings.timerCountdownSeconds ?? 5);
+        }
+
+        const firstDaySelect = document.getElementById('first-day-of-week');
+        if (firstDaySelect) {
+            firstDaySelect.value = String(settings.firstDayOfWeek === 1 ? 1 : 0);
+            if (this.firstDayDropdown) this.firstDayDropdown.sync();
+        }
+
+        const scheduleToggle = document.getElementById('show-program-schedule');
+        if (scheduleToggle) scheduleToggle.checked = settings.showProgramSchedule !== false;
+
         // Plate calculator
         const barInput = document.getElementById('bar-weight');
         if (barInput) barInput.value = settings.barWeight ?? '';
@@ -210,6 +279,10 @@ class SettingsView {
             timeFormat: document.getElementById('time-format')?.value ?? '',
             soundAlerts: document.getElementById('sound-alerts')?.checked ? '1' : '0',
             vibrationAlerts: document.getElementById('vibration-alerts')?.checked ? '1' : '0',
+            timerFirstWarning: document.getElementById('timer-first-warning')?.value ?? '',
+            timerCountdownStart: document.getElementById('timer-countdown-start')?.value ?? '',
+            firstDayOfWeek: document.getElementById('first-day-of-week')?.value ?? '',
+            showProgramSchedule: document.getElementById('show-program-schedule')?.checked ? '1' : '0',
             barWeight: document.getElementById('bar-weight')?.value ?? '',
             plates: document.getElementById('plates-input')?.value ?? '',
         };
@@ -240,14 +313,37 @@ class SettingsView {
             : `Accepted: ${parsed.map(p => `${p}${unit}`).join(', ')}`;
     }
 
+    /** True when any form value differs from the last saved snapshot. */
+    isDirty() {
+        if (!this.savedSnapshot) return false;
+        const current = this.snapshotForm();
+        return Object.keys(this.savedSnapshot)
+            .some(k => this.savedSnapshot[k] !== current[k]);
+    }
+
     /** Compare current form against saved snapshot and toggle Save button. */
     checkDirty() {
         const btn = document.getElementById('save-settings-btn');
         if (!btn || !this.savedSnapshot) return;
-        const current = this.snapshotForm();
-        const dirty = Object.keys(this.savedSnapshot)
-            .some(k => this.savedSnapshot[k] !== current[k]);
-        btn.disabled = !dirty;
+        btn.disabled = !this.isDirty();
+    }
+
+    /**
+     * Item R2-9: navigation guard. When leaving Settings with unsaved diffs,
+     * pop the confirm modal and defer the navigation (return false). The modal
+     * actions re-invoke showView for the deferred target. No diffs => proceed.
+     */
+    beforeLeave(targetView) {
+        if (!this.isDirty()) return true;
+        this.pendingLeaveView = targetView;
+        const modal = document.getElementById('unsaved-settings-modal');
+        if (modal) {
+            // Make the dialog visible to assistive tech while open; the static
+            // aria-hidden="true" in markup is restored on close.
+            modal.setAttribute('aria-hidden', 'false');
+            modal.classList.add('active');
+        }
+        return false;
     }
 
     saveSettings() {
@@ -264,6 +360,23 @@ class SettingsView {
         const vibrationAlertsInput = document.getElementById('vibration-alerts');
         if (vibrationAlertsInput) settings.vibrationAlerts = vibrationAlertsInput.checked;
 
+        const firstWarnInput = document.getElementById('timer-first-warning');
+        if (firstWarnInput) {
+            settings.timerFirstWarningSeconds = Settings.normalizeFirstWarningSeconds(
+                firstWarnInput.value);
+        }
+        const countdownInput = document.getElementById('timer-countdown-start');
+        if (countdownInput) {
+            settings.timerCountdownSeconds = Settings.normalizeCountdownSeconds(
+                countdownInput.value);
+        }
+
+        const firstDaySelect = document.getElementById('first-day-of-week');
+        if (firstDaySelect) settings.firstDayOfWeek = firstDaySelect.value === '1' ? 1 : 0;
+
+        const scheduleToggle = document.getElementById('show-program-schedule');
+        if (scheduleToggle) settings.showProgramSchedule = scheduleToggle.checked;
+
         const barInput = document.getElementById('bar-weight');
         if (barInput && barInput.value !== '') {
             const bar = Number(barInput.value);
@@ -274,6 +387,12 @@ class SettingsView {
 
         this.app.saveSettings();
         showToast('Settings saved successfully', 'success');
+
+        // Item R2-1: reflect the normalized (clamped / defaulted) marker values
+        // back into the inputs so the user sees exactly what persisted instead
+        // of stale invalid text.
+        if (firstWarnInput) firstWarnInput.value = String(settings.timerFirstWarningSeconds);
+        if (countdownInput) countdownInput.value = String(settings.timerCountdownSeconds);
 
         // Form is now clean again — snapshot the just-saved values and disable Save
         this.savedSnapshot = this.snapshotForm();

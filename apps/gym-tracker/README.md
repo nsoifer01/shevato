@@ -13,12 +13,15 @@ A comprehensive, mobile-first workout tracking application built with vanilla Ja
 - **Custom Exercises**: Create and manage your own custom exercises
 - **Workout History**: Complete history of all workouts with detailed stats, numbered pagination, and clickable workout details
 - **Progress Tracking**: View previous workout data (all sets) during current workout for progression
-- **Calendar View**: Visual representation of workout days with progress indicators (week starts Monday)
+- **Calendar View**: Visual representation of workout days with progress indicators (first day of week is configurable, Sunday or Monday)
+- **Program Scheduling**: Assign weekdays to a program; the days show on the program tiles, as markers on the calendar, and as a week strip at the top of the workout screen
+- **Welcome Tour**: A single scrollable onboarding modal that explains the core features, with quick links into Programs, Workout, Calendar, and Settings; replayable any time from Settings
+- **Quick Start**: A floating "Start workout" button on desktop (visible across views; hidden on the active-workout screen) that starts or resumes a workout from anywhere
 - **Achievements**: Unlock achievements for reaching milestones (daily, weekly, monthly, lifetime)
 
 ### 📊 Analytics & Stats
 
-- Weekly workout tracking (Monday-Sunday)
+- Weekly workout tracking (respects the configured first day of week)
 - Exercise frequency analysis
 - Personal records tracking (max weight, reps, volume per exercise)
 - Workout history with filtering and sorting
@@ -28,6 +31,7 @@ A comprehensive, mobile-first workout tracking application built with vanilla Ja
 ### ⚙️ Settings & Customization
 
 - Weight unit selection (kg/lb)
+- First day of week (Sunday or Monday)
 - Configurable rest timer
 - Post-workout metrics (heart rate, calories)
 - Dark theme optimized for gym use with improved text contrast
@@ -265,7 +269,6 @@ Users can create custom exercises with:
 
 ## Future Enhancements
 
-- [ ] Plate calculator for barbell exercises
 - [ ] Workout templates/presets
 - [ ] Exercise form videos/GIFs
 - [ ] Social features (share workouts)
@@ -274,11 +277,8 @@ Users can create custom exercises with:
 - [ ] Integration with fitness trackers
 - [ ] Progressive overload suggestions
 - [ ] Deload week tracking
-- [ ] Body measurements tracking
 - [ ] Nutrition logging
 - [ ] Workout reminders/notifications
-- [ ] Exercise superset grouping
-- [ ] Rest timer auto-start between sets
 
 ## Development
 

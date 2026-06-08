@@ -2,6 +2,8 @@
  * StorageService
  * Manages all data storage operations (localStorage + Firebase sync)
  */
+import { sameId } from '../utils/id-utils.js';
+
 export class StorageService {
     constructor() {
         this.keys = {
@@ -87,7 +89,7 @@ export class StorageService {
 
     getProgramById(id) {
         const programs = this.getPrograms();
-        return programs.find(p => p.id === id);
+        return programs.find(p => sameId(p.id, id));
     }
 
     saveProgram(program) {

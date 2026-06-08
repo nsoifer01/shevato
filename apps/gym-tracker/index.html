@@ -195,11 +195,6 @@
                     <p class="subtitle">Track your fitness journey</p>
                 </div>
 
-                <button type="button" id="home-workout-fab" class="workout-fab" hidden aria-label="Start workout">
-                    <i class="fas fa-play" aria-hidden="true"></i>
-                    <span class="workout-fab-label">Start workout</span>
-                </button>
-
                 <!-- Active Program -->
                 <section class="section">
                     <div id="active-program-card" class="program-card">
@@ -278,8 +273,23 @@
                 <!-- Create/Edit Program Modal -->
                 <div id="program-modal" class="modal" role="dialog" aria-modal="true" aria-labelledby="program-modal-title">
                     <div class="modal-content" data-back-to-top>
-                        <div class="modal-header">
+                        <div class="modal-header program-modal-header">
                             <h2 id="program-modal-title">Create Program</h2>
+                            <!-- Item R2-7: in workout mode these two actions live in
+                                 the sticky header; the footer save/return are hidden. -->
+                            <div class="program-modal-workout-actions" id="program-modal-workout-actions" hidden>
+                                <button type="button" class="btn btn-ghost" id="program-modal-cancel-workout">Cancel</button>
+                                <button type="button" class="btn btn-primary" id="program-modal-save-resume">
+                                    <i class="fas fa-check"></i> Save and resume workout
+                                </button>
+                            </div>
+                            <!-- Feature B: normal create/edit actions, pinned in the sticky header. -->
+                            <div class="program-modal-normal-actions" id="program-modal-normal-actions" hidden>
+                                <button type="button" class="btn btn-ghost modal-close">Cancel</button>
+                                <button type="submit" class="btn btn-primary btn-save-program" form="program-form">
+                                    <i class="fas fa-check"></i> Save Program
+                                </button>
+                            </div>
                             <button class="modal-close" aria-label="Close">&times;</button>
                         </div>
                         <div class="modal-body">
@@ -298,6 +308,12 @@
                                 <div class="form-group">
                                     <label for="program-description">Description (Optional)</label>
                                     <textarea id="program-description" placeholder="Program details..." rows="3"></textarea>
+                                </div>
+
+                                <div class="form-group program-schedule-group">
+                                    <span class="program-schedule-label">Scheduled days (optional)</span>
+                                    <div id="program-schedule-days" class="program-schedule-days" role="group" aria-label="Scheduled days of the week"></div>
+                                    <p class="form-hint">Pick the days you plan to run this program. They show as markers in the calendar.</p>
                                 </div>
 
                                 <div class="form-group rest-mode-group">
@@ -339,6 +355,9 @@
 
                                 <div class="form-actions program-form-actions">
                                     <button type="button" class="btn btn-ghost modal-close">Cancel</button>
+                                    <button type="button" class="btn btn-return-workout" id="return-to-workout-btn" hidden>
+                                        <i class="fas fa-circle-arrow-left"></i> Return to workout
+                                    </button>
                                     <button type="submit" class="btn btn-primary btn-save-program">
                                         <i class="fas fa-check"></i> Save Program
                                     </button>
@@ -461,8 +480,15 @@
                             </div>
                         </div>
                         <div class="workout-header-actions">
+                            <div class="workout-unit-toggle" id="workout-unit-toggle" role="group" aria-label="Weight unit for this session">
+                                <button type="button" class="workout-unit-btn" id="workout-unit-kg" data-unit="kg" aria-pressed="false">kg</button>
+                                <button type="button" class="workout-unit-btn" id="workout-unit-lb" data-unit="lb" aria-pressed="false">lbs</button>
+                            </div>
                             <button class="btn-icon btn-icon-plates" id="plate-hints-toggle-btn" title="Set default plate hints on/off for all exercises" aria-label="Toggle default plate calculator hints" aria-pressed="true">
                                 <i class="fas fa-dumbbell"></i>
+                            </button>
+                            <button class="btn-icon btn-icon-edit-program" id="edit-program-btn" title="Edit program" aria-label="Pause and edit this program">
+                                <i class="fas fa-sliders"></i>
                             </button>
                             <button class="btn-icon btn-icon-pause" id="pause-workout-btn" title="Pause Workout" aria-label="Pause workout and save progress">
                                 <i class="fas fa-pause"></i>
@@ -513,6 +539,10 @@
                             </div>
                             <div class="modal-body">
                                 <form id="finish-workout-form">
+                                    <div class="finish-inline-message" id="finish-inline-message" role="alert" hidden>
+                                        <i class="fas fa-circle-info" aria-hidden="true"></i>
+                                        <span>Log at least one set before finishing your workout.</span>
+                                    </div>
                                     <div class="workout-summary">
                                         <div class="summary-stat">
                                             <span class="summary-stat-icon"><i class="fas fa-clock" aria-hidden="true"></i></span>
@@ -1045,8 +1075,11 @@
 
             <!-- SETTINGS VIEW -->
             <div id="settings-view" class="view">
-                <div class="view-header">
+                <div class="view-header settings-view-header">
                     <h1>Settings</h1>
+                    <button type="submit" form="settings-form" class="btn btn-save-settings" id="save-settings-btn" disabled>
+                        <i class="fas fa-check"></i> Save Settings
+                    </button>
                 </div>
 
                 <form id="settings-form" class="settings-form">
@@ -1096,6 +1129,39 @@
                                 <span class="toggle-slider" aria-hidden="true"></span>
                             </label>
                         </div>
+                        <div class="setting-item">
+                            <label for="timer-first-warning">First warning sound <small>(seconds left, 0 = off)</small></label>
+                            <input type="number" id="timer-first-warning" min="0" max="120" step="1" inputmode="numeric" placeholder="10">
+                        </div>
+                        <div class="setting-item">
+                            <label for="timer-countdown-start">Countdown start <small>(seconds left)</small></label>
+                            <input type="number" id="timer-countdown-start" min="1" max="60" step="1" inputmode="numeric" placeholder="5">
+                        </div>
+                    </section>
+
+                    <section class="settings-section">
+                        <header class="settings-section-header">
+                            <i class="fas fa-calendar-days settings-section-icon"></i>
+                            <div>
+                                <h2>Calendar</h2>
+                                <p class="settings-section-sub">How the planned weekly split appears in the calendar.</p>
+                            </div>
+                        </header>
+                        <div class="setting-item">
+                            <label for="first-day-of-week">Week starts on</label>
+                            <select id="first-day-of-week">
+                                <option value="0">Sunday</option>
+                                <option value="1">Monday</option>
+                            </select>
+                        </div>
+                        <div class="setting-item setting-item-toggle">
+                            <label for="show-program-schedule" class="setting-toggle-label">Show program schedule</label>
+                            <label class="toggle-switch" aria-label="Show program schedule toggle">
+                                <input type="checkbox" id="show-program-schedule">
+                                <span class="toggle-slider" aria-hidden="true"></span>
+                            </label>
+                        </div>
+                        <p class="settings-help-text">Adds your scheduled days to the calendar and the workout screen.</p>
                     </section>
 
                     <section class="settings-section">
@@ -1144,12 +1210,6 @@
                         </div>
                         <input type="file" id="import-file-input" accept=".json" style="display: none;">
                     </section>
-
-                    <div class="settings-actions">
-                        <button type="submit" class="btn btn-save-settings" id="save-settings-btn" disabled>
-                            <i class="fas fa-check"></i> Save Settings
-                        </button>
-                    </div>
                 </form>
             </div>
 
@@ -1193,12 +1253,37 @@
                 </div>
             </div>
         </main>
+
+        <!-- Global floating workout button (desktop only via CSS). Lives at
+             app-container level so it persists across all views, not just the
+             dashboard. Show/hide + label managed by app.updateGlobalFab(). -->
+        <button type="button" id="home-workout-fab" class="workout-fab" hidden aria-label="Start workout">
+            <i class="fas fa-play" aria-hidden="true"></i>
+            <span class="workout-fab-label">Start workout</span>
+        </button>
     </div>
 
     <div data-include="footer"></div>
 
     <!-- Toast Container -->
     <div id="toast-container"></div>
+
+    <!-- Item R2-9: Unsaved settings guard modal -->
+    <div id="unsaved-settings-modal" class="modal" role="dialog" aria-modal="true" aria-labelledby="unsaved-settings-title" aria-hidden="true">
+        <div class="modal-content small">
+            <div class="modal-header">
+                <h2 id="unsaved-settings-title">Unsaved settings</h2>
+                <button class="modal-close" id="unsaved-settings-close" aria-label="Close">&times;</button>
+            </div>
+            <div class="modal-body">
+                <p>You have changes that have not been saved. What would you like to do?</p>
+            </div>
+            <div class="modal-footer unsaved-settings-actions">
+                <button type="button" class="btn btn-ghost" id="unsaved-settings-discard">Discard changes</button>
+                <button type="button" class="btn btn-primary" id="unsaved-settings-save">Save and leave</button>
+            </div>
+        </div>
+    </div>
 
     <!-- Onboarding Welcome Modal (first launch) -->
     <div id="onboarding-modal" class="modal" role="dialog" aria-modal="true" aria-labelledby="onboarding-title" aria-hidden="true">
@@ -1207,37 +1292,168 @@
                 <h2 id="onboarding-title">Welcome to Gym Tracker 💪</h2>
                 <button class="modal-close" id="onboarding-dismiss" aria-label="Close welcome">&times;</button>
             </div>
-            <div class="modal-body">
-                <p style="margin-top:0">Three quick steps to log your first workout:</p>
-                <ol class="onboarding-steps">
-                    <li class="onboarding-step">
-                        <span class="onboarding-step-number">1</span>
-                        <div class="onboarding-step-body">
-                            <p class="onboarding-step-title">Create a program</p>
-                            <p class="onboarding-step-desc">Name it (e.g. "Push Day") — it's a reusable template.</p>
-                        </div>
-                        <div class="onboarding-step-cta">
-                            <button class="btn btn-primary" id="onboarding-go-programs">Go</button>
-                        </div>
-                    </li>
-                    <li class="onboarding-step">
-                        <span class="onboarding-step-number">2</span>
-                        <div class="onboarding-step-body">
-                            <p class="onboarding-step-title">Add exercises</p>
-                            <p class="onboarding-step-desc">Pick from the built-in database or create your own.</p>
-                        </div>
-                    </li>
-                    <li class="onboarding-step">
-                        <span class="onboarding-step-number">3</span>
-                        <div class="onboarding-step-body">
-                            <p class="onboarding-step-title">Start a workout</p>
-                            <p class="onboarding-step-desc">Log sets, track progress, celebrate PRs 🏆</p>
-                        </div>
-                    </li>
-                </ol>
+            <div class="modal-body onboarding-body">
+                <p class="onboarding-intro">A quick tour of everything Gym Tracker can do, from building your first program to reviewing the trends after months of training.</p>
+
+                <section class="onboarding-section">
+                    <h3 class="onboarding-section-title">Getting started</h3>
+                    <ul class="onboarding-items">
+                        <li class="onboarding-item">
+                            <span class="onboarding-item-icon"><i class="fas fa-dumbbell" aria-hidden="true"></i></span>
+                            <div class="onboarding-item-body">
+                                <p class="onboarding-item-title">Create a program</p>
+                                <p class="onboarding-item-desc">Name it for the day or goal, like "Push" or "Leg Day". A program is a reusable template you build once and run every session.</p>
+                            </div>
+                            <div class="onboarding-item-cta">
+                                <button class="btn btn-primary" id="onboarding-go-programs">Go</button>
+                            </div>
+                        </li>
+                        <li class="onboarding-item">
+                            <span class="onboarding-item-icon"><i class="fas fa-list-check" aria-hidden="true"></i></span>
+                            <div class="onboarding-item-body">
+                                <p class="onboarding-item-title">Add exercises</p>
+                                <p class="onboarding-item-desc">Choose from hundreds of built-in exercises, filtered by muscle group or equipment. Don't see yours? Create a custom exercise in seconds.</p>
+                            </div>
+                        </li>
+                        <li class="onboarding-item">
+                            <span class="onboarding-item-icon"><i class="fas fa-play" aria-hidden="true"></i></span>
+                            <div class="onboarding-item-body">
+                                <p class="onboarding-item-title">Start a workout</p>
+                                <p class="onboarding-item-desc">Pick your program on the Workout tab and tap Start. Log each set as you go, weight and reps, right at the rack. Tap once to commit a planned set, or freestyle it.</p>
+                            </div>
+                            <div class="onboarding-item-cta">
+                                <button class="btn btn-primary" id="onboarding-go-workout">Go</button>
+                            </div>
+                        </li>
+                    </ul>
+                </section>
+
+                <section class="onboarding-section">
+                    <h3 class="onboarding-section-title">Plan smarter</h3>
+                    <ul class="onboarding-items">
+                        <li class="onboarding-item">
+                            <span class="onboarding-item-icon"><i class="fas fa-calendar-days" aria-hidden="true"></i></span>
+                            <div class="onboarding-item-body">
+                                <p class="onboarding-item-title">Schedule your program days</p>
+                                <p class="onboarding-item-desc">Assign weekdays to each program (Mon/Wed/Fri, for example). Scheduled days show as markers on the Calendar and as a week strip at the top of the workout screen.</p>
+                            </div>
+                        </li>
+                        <li class="onboarding-item">
+                            <span class="onboarding-item-icon"><i class="fas fa-stopwatch" aria-hidden="true"></i></span>
+                            <div class="onboarding-item-body">
+                                <p class="onboarding-item-title">Rest timers, your way</p>
+                                <p class="onboarding-item-desc">Set one rest time for the whole program (uniform mode) or a different rest per exercise (custom mode). A countdown bar runs between exercises so you never lose track.</p>
+                            </div>
+                        </li>
+                    </ul>
+                </section>
+
+                <section class="onboarding-section">
+                    <h3 class="onboarding-section-title">During your workout</h3>
+                    <ul class="onboarding-items">
+                        <li class="onboarding-item">
+                            <span class="onboarding-item-icon"><i class="fas fa-trophy" aria-hidden="true"></i></span>
+                            <div class="onboarding-item-body">
+                                <p class="onboarding-item-title">PR badges</p>
+                                <p class="onboarding-item-desc">Beat your all-time best weight or reps on any exercise and the set gets a gold PR badge on the spot. Your finish summary shows how many PRs you hit that session.</p>
+                            </div>
+                        </li>
+                        <li class="onboarding-item">
+                            <span class="onboarding-item-icon"><i class="fas fa-calculator" aria-hidden="true"></i></span>
+                            <div class="onboarding-item-body">
+                                <p class="onboarding-item-title">Plate calculator hints</p>
+                                <p class="onboarding-item-desc">For barbell exercises, a small hint below the weight field tells you exactly which plates to load on each side. Configure your bar weight and available plates in Settings.</p>
+                            </div>
+                        </li>
+                    </ul>
+                </section>
+
+                <section class="onboarding-section">
+                    <h3 class="onboarding-section-title">After the workout</h3>
+                    <ul class="onboarding-items">
+                        <li class="onboarding-item">
+                            <span class="onboarding-item-icon"><i class="fas fa-calendar-check" aria-hidden="true"></i></span>
+                            <div class="onboarding-item-body">
+                                <p class="onboarding-item-title">Calendar</p>
+                                <p class="onboarding-item-desc">Every completed session lands on the Calendar. See your training history at a glance, tap any day to review what you lifted, and spot gaps in your consistency.</p>
+                            </div>
+                            <div class="onboarding-item-cta">
+                                <button class="btn btn-primary" id="onboarding-go-calendar">Open</button>
+                            </div>
+                        </li>
+                        <li class="onboarding-item">
+                            <span class="onboarding-item-icon"><i class="fas fa-chart-bar" aria-hidden="true"></i></span>
+                            <div class="onboarding-item-body">
+                                <p class="onboarding-item-title">Insights</p>
+                                <p class="onboarding-item-desc">A 4-week volume breakdown by muscle group shows where you are training hard and where you are skipping. A 12-month heatmap gives the full picture of your consistency.</p>
+                            </div>
+                        </li>
+                        <li class="onboarding-item">
+                            <span class="onboarding-item-icon"><i class="fas fa-ruler" aria-hidden="true"></i></span>
+                            <div class="onboarding-item-body">
+                                <p class="onboarding-item-title">Measurements</p>
+                                <p class="onboarding-item-desc">Log body weight, body fat %, and tape measurements (chest, waist, hips, arms, thighs). Each metric shows a sparkline and a 30-day delta so you can see the trend, not just the number.</p>
+                            </div>
+                        </li>
+                        <li class="onboarding-item">
+                            <span class="onboarding-item-icon"><i class="fas fa-medal" aria-hidden="true"></i></span>
+                            <div class="onboarding-item-body">
+                                <p class="onboarding-item-title">Achievements</p>
+                                <p class="onboarding-item-desc">Milestone badges for total workouts, volume lifted, weekly streaks, and more. Categories collapse so you can focus on what is in reach. They update automatically after every session.</p>
+                            </div>
+                        </li>
+                    </ul>
+                </section>
+
+                <section class="onboarding-section">
+                    <h3 class="onboarding-section-title">Your data</h3>
+                    <ul class="onboarding-items">
+                        <li class="onboarding-item">
+                            <span class="onboarding-item-icon"><i class="fas fa-sliders" aria-hidden="true"></i></span>
+                            <div class="onboarding-item-body">
+                                <p class="onboarding-item-title">Units and preferences</p>
+                                <p class="onboarding-item-desc">Switch between kg and lbs at any time. Set your first day of the week, toggle sound and vibration cues for the rest timer, and configure the plate calculator in Settings.</p>
+                            </div>
+                            <div class="onboarding-item-cta">
+                                <button class="btn btn-primary" id="onboarding-go-settings">Open</button>
+                            </div>
+                        </li>
+                        <li class="onboarding-item">
+                            <span class="onboarding-item-icon"><i class="fas fa-file-export" aria-hidden="true"></i></span>
+                            <div class="onboarding-item-body">
+                                <p class="onboarding-item-title">Export and import</p>
+                                <p class="onboarding-item-desc">Your data lives on your device. Export a full JSON backup any time from Settings, and import it back on any browser. No account needed, no lock-in.</p>
+                            </div>
+                        </li>
+                    </ul>
+                </section>
             </div>
             <div class="modal-footer" style="display:flex;justify-content:flex-end;padding:var(--spacing-md) var(--spacing-lg);gap:var(--spacing-sm);">
                 <button class="btn btn-ghost" id="onboarding-skip">Skip tour</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Feel picker (Item R3-4): the modal is the actual chooser, shown once
+         per exercise per session when all sets hit max reps. -->
+    <div id="feel-intro-modal" class="modal" role="dialog" aria-modal="true" aria-labelledby="feel-intro-title">
+        <div class="modal-content small feel-intro-modal-content">
+            <div class="modal-header">
+                <h2 id="feel-intro-title">All sets at max reps!</h2>
+                <button class="modal-close" id="feel-modal-skip" aria-label="Skip">&times;</button>
+            </div>
+            <div class="modal-body">
+                <p class="feel-intro-lead">Felt strong on every set? Mark it so you know to try more weight next time.</p>
+                <div class="feel-modal-choices" role="group" aria-label="How did this exercise feel">
+                    <button type="button" class="feel-modal-btn feel-modal-btn-good" id="feel-modal-good"
+                        aria-label="Felt good, consider more weight next time">
+                        <i class="fas fa-face-smile" aria-hidden="true"></i>
+                        <span class="feel-modal-btn-label">Felt good</span>
+                    </button>
+                </div>
+            </div>
+            <div class="modal-footer" style="display:flex;justify-content:center;">
+                <button class="btn btn-ghost" id="feel-modal-skip-btn">Not yet</button>
             </div>
         </div>
     </div>
@@ -1261,6 +1477,25 @@
             <div class="modal-footer">
                 <button class="btn btn-ghost" id="confirm-modal-cancel">Cancel</button>
                 <button class="btn btn-danger" id="confirm-modal-confirm">Delete</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Leave-workout confirmation (back-navigation trap, Item 5) -->
+    <div id="leave-workout-modal" class="modal" role="dialog" aria-modal="true" aria-labelledby="leave-workout-modal-title">
+        <div class="modal-content small confirm-modal-content">
+            <div class="confirm-modal-icon">
+                <i class="fas fa-triangle-exclamation"></i>
+            </div>
+            <div class="modal-header">
+                <h2 id="leave-workout-modal-title">Leave workout?</h2>
+            </div>
+            <div class="modal-body">
+                <p>You have an active workout. Leaving now pauses it so you can resume later.</p>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-ghost" id="leave-workout-stay">Stay</button>
+                <button type="button" class="btn btn-leave-workout" id="leave-workout-pause-leave">Pause and leave</button>
             </div>
         </div>
     </div>
