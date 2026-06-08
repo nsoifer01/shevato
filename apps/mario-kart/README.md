@@ -16,6 +16,7 @@ Mario Kart Race Tracker is a feature-rich web application that allows you to:
 
 ### Core Functionality
 - **Race Recording**: Quick and easy race result entry with multiple input methods
+- **Course Selection**: Tag each race with the course/map you played on, via a searchable picker (an inline dropdown on mobile, a command-palette overlay on desktop). Course data is data-driven and easy to update (see "Updating Course Data" below)
 - **Player Management**: Customizable player names and emoji/icons
 - **Date Filtering**: View stats for specific time periods
 - **Undo/Redo**: Full history support for all actions
@@ -93,9 +94,59 @@ mario-kart/
 │   ├── main.js          # Main application logic
 │   ├── dataManager.js   # Data handling and storage
 │   ├── statistics.js    # Statistics calculations
+│   ├── courseData.js    # Course data source abstraction + ranked search
+│   ├── coursePicker.js  # Course picker UI (inline dropdown + desktop palette)
 │   └── ...              # Other feature modules
+├── data/
+│   └── courses.json     # Vendored course/map data (cups, courses, aliases)
+├── scripts/
+│   └── sync-courses.mjs # Validate / normalize / regenerate courses.json
 └── README.md            # This file
 ```
+
+## 🗺️ Updating Course Data
+
+Courses are vendored in `data/courses.json` and read through a swappable source (`js/courseData.js` → `CourseDataConfig`). There is no live API to break, so the list stays stable. Run all commands from the repo root.
+
+### Option A — add or edit a course by hand (most common)
+
+1. Open `apps/mario-kart/data/courses.json`.
+2. Pick the game under `games`: `mk8d` (Mario Kart 8 Deluxe) or `mkworld` (Mario Kart World).
+3. In that game's `cups` array, find the cup — or add a new one: `{ "id": "leaf", "name": "Leaf Cup", "courses": [] }`.
+4. Add the course to that cup's `courses` array:
+   ```json
+   { "id": "dry-bones-burnout", "name": "Dry Bones Burnout", "origin": "new", "aliases": ["dbb"] }
+   ```
+   - **id** — unique, kebab-case, stable. Never reuse an id for a different course. A course that appears in two cups must use the **same id and name** in both (that is how variants like Crown City merge into a single entry).
+   - **name** — exactly as shown in-game.
+   - **origin** — `"new"` if the track debuts in this game, otherwise the source game (e.g. `"Mario Kart 64"`). Drives the "New" filter and the preview's status.
+   - **aliases** — optional search shortcuts. Search already handles punctuation and word-initials (so "dk", "mk8", "rr" work without aliases); only add genuinely different spellings.
+5. (Optional) update that game's `source.lastSynced` date, and set `source.complete` to `true` once a game is fully entered.
+6. **Validate**: `npm run sync:mario-kart-courses -- --check` → must print `Validation passed.`
+7. **Test**: `npm test` (dataset-integrity checks live in `tests/courses.test.js`).
+8. **Verify in the app**: open Add Race → Course and confirm the course appears and is searchable.
+
+### Option B — regenerate with the sync script
+
+- Validate only (CI-friendly, non-zero exit on error): `npm run sync:mario-kart-courses -- --check`
+- Normalize the file and restamp every game's `lastSynced` to today: `node apps/mario-kart/scripts/sync-courses.mjs --write`
+- From a remote source (future): implement the mapping in `SOURCES.remote` inside `scripts/sync-courses.mjs`, then `MK_COURSES_URL=<url> node apps/mario-kart/scripts/sync-courses.mjs --source=remote --write`.
+
+### Pointing the app at a different data source
+
+Edit `js/courseData.js` → `CourseDataConfig`. Nothing else (picker, search, recents, favorites) needs to change:
+
+```js
+const CourseDataConfig = {
+  active: 'static', // 'static' reads the bundled data/courses.json
+  sources: {
+    static: { type: 'json', url: 'data/courses.json' }
+    // remote: { type: 'json', url: 'https://.../courses.json' }  // then set active: 'remote'
+  }
+};
+```
+
+> Note: MK8 Deluxe is currently `source.complete: false` — the 48 Booster Course Pass tracks are not vendored yet. Add them as new cups the same way.
 
 ## 🚀 Getting Started
 
