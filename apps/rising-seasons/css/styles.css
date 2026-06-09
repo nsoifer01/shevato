@@ -5186,3 +5186,293 @@ body.advanced-drawer-open {
   color: var(--accent);
   transform: translateY(-50%) translateX(2px);
 }
+
+/* --- Show Finder --- */
+
+.mode-hidden { display: none !important; }
+
+.mode-switch {
+  display: inline-flex;
+  gap: 4px;
+  margin: 0 auto 18px;
+  padding: 4px;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+}
+
+.mode-btn {
+  appearance: none;
+  border: 1px solid transparent !important;
+  background: transparent !important;
+  color: var(--muted) !important;
+  font: inherit;
+  font-weight: 600;
+  padding: 8px 18px;
+  border-radius: 999px;
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s, border-color 0.15s;
+}
+
+.mode-btn:hover {
+  background: var(--surface-3) !important;
+  color: var(--text) !important;
+  border-color: var(--border-strong) !important;
+}
+
+.mode-btn[aria-pressed="true"] {
+  background: linear-gradient(135deg, var(--accent-warm), var(--accent) 55%, #e0b00f) !important;
+  color: var(--accent-ink) !important;
+  border-color: var(--accent) !important;
+}
+
+.finder {
+  margin-top: 8px;
+}
+
+.finder-chips,
+.finder-seg {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.finder-chip,
+.finder-seg-btn {
+  appearance: none;
+  font: inherit;
+  font-size: 0.82rem;
+  font-weight: 600;
+  padding: 6px 12px;
+  border-radius: 999px;
+  cursor: pointer;
+  background: var(--surface-2) !important;
+  color: var(--muted) !important;
+  border: 1px solid var(--border) !important;
+  transition: background 0.15s, color 0.15s, border-color 0.15s;
+}
+
+.finder-chip:hover,
+.finder-seg-btn:hover {
+  background: var(--surface-3) !important;
+  color: var(--text) !important;
+  border-color: var(--border-strong) !important;
+}
+
+.finder-chip[aria-pressed="true"],
+.finder-seg-btn[aria-pressed="true"] {
+  background: var(--accent-soft) !important;
+  color: var(--accent) !important;
+  border-color: var(--accent) !important;
+}
+
+.finder-seg {
+  border-radius: 999px;
+}
+
+.finder-count {
+  margin: 16px 2px 10px;
+  font-weight: 700;
+  color: var(--text);
+}
+
+.finder-table {
+  width: 100%;
+  border-collapse: collapse;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  overflow: hidden;
+}
+
+.finder-table thead th {
+  text-align: left;
+  padding: 12px 14px;
+  font-size: 0.78rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--muted-2) !important;
+  background: var(--surface-2) !important;
+  border-bottom: 1px solid var(--border);
+  cursor: pointer;
+  user-select: none;
+  transition: background 0.12s, color 0.12s;
+}
+
+.finder-table thead th:hover,
+.finder-table thead th:focus-visible {
+  color: var(--text) !important;
+  background: var(--surface-3) !important;
+  outline: none;
+}
+
+.finder-table thead th[aria-sort="ascending"],
+.finder-table thead th[aria-sort="descending"] {
+  color: var(--text) !important;
+}
+
+.finder-th-arrow {
+  font-size: 0.7rem;
+}
+
+.finder-table th:not(.finder-col-show),
+.finder-table td:not(.finder-col-show) {
+  text-align: right;
+  white-space: nowrap;
+}
+
+.finder-row {
+  cursor: pointer;
+  transition: background 0.12s;
+}
+
+.finder-row:hover,
+.finder-row:focus-visible {
+  background: var(--surface-2);
+  outline: none;
+}
+
+.finder-row td {
+  padding: 12px 14px;
+  border-bottom: 1px solid var(--border);
+  color: var(--text);
+  font-variant-numeric: tabular-nums;
+}
+
+.finder-row:last-child td { border-bottom: none; }
+
+.finder-show-title {
+  display: block;
+  font-weight: 600;
+}
+
+.finder-genre-line {
+  display: block;
+  margin-top: 2px;
+  font-size: 0.78rem;
+  color: var(--muted-2);
+}
+
+/* Poster thumbnail in the Show column, mirroring the Seasons list row.
+   Smaller than .row-poster (44px) so the table row height stays tight. */
+.finder-col-show {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.finder-row-poster {
+  width: 44px;
+  flex: 0 0 auto;
+}
+.finder-show-text {
+  min-width: 0;
+}
+
+.finder-row td.finder-gap-pos { color: var(--good); font-weight: 700; }
+.finder-row td.finder-gap-neg { color: var(--danger); font-weight: 700; }
+
+.finder-empty {
+  padding: 40px 20px;
+  text-align: center;
+  color: var(--muted);
+  background: var(--surface);
+  border: 1px dashed var(--border-strong);
+  border-radius: var(--radius);
+}
+
+/* The list/table view is a single full-width table inside the results grid. */
+.finder-results.finder-list-view { display: block; }
+.finder-results.finder-list-view .finder-table { width: 100%; }
+
+/* Grid-view card stats: show-level metrics in the same chip-grid spirit as
+   the Seasons card .card-stats, reusing .card / .card-stats structure. */
+.finder-card-stats {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 4px 12px;
+}
+
+.finder-card-stats .stat-gap.finder-gap-pos { color: var(--good); font-weight: 700; }
+.finder-card-stats .stat-gap.finder-gap-neg { color: var(--danger); font-weight: 700; }
+
+/* Per-show season-average sparkline. Colors pinned explicitly so the sitewide
+   main.css (which bleeds red/gray onto generic selectors) cannot override. */
+.finder-spark .curve-line {
+  stroke: #f5c518 !important;
+  fill: none !important;
+}
+.finder-spark .curve-area { fill: rgba(245, 197, 24, 0.18) !important; }
+.finder-spark .finder-spark-dot circle { fill: #f5c518 !important; }
+
+/* Single-season shows: distinct amber/orange hue + a visible centered dot,
+   since one point has no line to draw. */
+.finder-spark--single .finder-spark-dot circle {
+  fill: #ff8519 !important;
+  stroke: rgba(11, 13, 18, 0.85) !important;
+  stroke-width: 1.5 !important;
+}
+.finder-spark--single .curve-line { stroke: #ff8519 !important; }
+.finder-spark--single .curve-area { fill: rgba(255, 133, 25, 0.16) !important; }
+
+/* List-view Trend column: compact sparkline sized for a table row. */
+.finder-table th.finder-col-trend,
+.finder-table td.finder-col-trend {
+  text-align: left;
+  white-space: nowrap;
+  width: 132px;
+}
+
+.finder-row-spark {
+  display: block;
+  width: 120px;
+  height: 36px;
+}
+
+@media (max-width: 640px) {
+  .finder-table,
+  .finder-table tbody,
+  .finder-table tr {
+    display: block;
+  }
+
+  .finder-table thead { display: none; }
+
+  .finder-row {
+    margin-bottom: 12px;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    background: var(--surface);
+    overflow: hidden;
+  }
+
+  .finder-row td {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    gap: 12px;
+    text-align: right !important;
+    white-space: normal !important;
+    padding: 10px 14px;
+  }
+
+  .finder-row td.finder-col-show {
+    flex-direction: row;
+    align-items: center;
+    background: var(--surface-2);
+    text-align: left !important;
+  }
+
+  .finder-row td:not(.finder-col-show)::before {
+    content: attr(data-label);
+    font-size: 0.78rem;
+    font-weight: 600;
+    color: var(--muted);
+    text-transform: none;
+    letter-spacing: 0;
+  }
+
+  .finder-table td.finder-col-trend {
+    width: auto;
+    align-items: center;
+  }
+}
