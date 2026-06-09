@@ -7,7 +7,8 @@ A comprehensive, mobile-first workout tracking application built with vanilla Ja
 ### 🏋️ Core Functionality
 
 - **Program Builder**: Create workout programs with custom exercises and reorderable exercise lists; each set row has a labeled toggle for a single rep target or a rep range (e.g. set 1: 11-12, set 2: 8-10); a program-level rest mode (one uniform between-exercises duration set with an M:SS stepper, or custom per-exercise rest); the exercise picker adds your picks as simple rows you then refine per set; removing an exercise asks for confirmation
-- **Workout Execution**: Mobile-optimized interface for tracking sets, reps, and weight during workouts; per-set rep range labels (shown once per exercise when all sets match); between-set rest shows an in-card countdown chip with -5/+5 second session adjusters, while between-exercise rest shows in the bottom bar and, for uniform programs, in the sticky workout header; after-exercise rest is read-only during a workout (it is set in the program); auto-collapsing completed exercises that re-collapse after un-marking and stay collapsed across a pause/resume; a final-5-seconds red pulse countdown with audio pings and haptics; and a plate calculator for all plate-loaded equipment (barbell, trap-bar, and plate-loaded machines such as the leg press) with per-exercise and global toggles whose state persists once a workout is saved
+- **Supersets**: Link consecutive exercises into a superset so they are grouped together in both the program builder and the workout view
+- **Workout Execution**: Mobile-optimized interface for tracking sets, reps, and weight during workouts; per-set rep range labels (shown once per exercise when all sets match); between-set rest shows an in-card countdown chip with a +30s extend button and a Skip control, while between-exercise rest shows in the bottom bar and, for uniform programs, in the sticky workout header; after-exercise rest is read-only during a workout (it is set in the program); auto-collapsing completed exercises that re-collapse after un-marking and stay collapsed across a pause/resume; a final-5-seconds red pulse countdown with audio pings and haptics; and a plate calculator for all plate-loaded equipment (barbell, trap-bar, and plate-loaded machines such as the leg press) with per-exercise and global toggles whose state persists once a workout is saved
 - **Exercise Database**: 500+ exercises categorized by muscle group and equipment, with persistent sorting (name, most recently used, most logged), numbered pagination, and the ability to remove a specific exercise's logged history
 - **Back to top**: A floating button appears on long pages and tall modals, and on the public exercise directory pages, to jump back to the top
 - **Custom Exercises**: Create and manage your own custom exercises
@@ -27,6 +28,7 @@ A comprehensive, mobile-first workout tracking application built with vanilla Ja
 - Workout history with filtering and sorting
 - Clickable workout cards for detailed views
 - Exercise history with best set tracking
+- Insights view: a 4-week volume-by-muscle-group breakdown and a 12-month consistency heatmap
 
 ### ⚙️ Settings & Customization
 
@@ -151,7 +153,7 @@ The app is optimized for mobile use during workouts:
 ### Desktop Features
 - Side navigation for easy access
 - Comprehensive analytics dashboard
-- Program builder with drag-drop (planned)
+- Program builder with drag-drop reordering
 - Multi-column layouts
 - Detailed history views
 - Advanced filtering and sorting
