@@ -127,6 +127,11 @@
       </p>
     </header>
 
+    <div class="mode-switch" id="modeSwitch" role="radiogroup" aria-label="View mode">
+      <button type="button" class="mode-btn" data-mode="seasons" aria-pressed="true">Seasons</button>
+      <button type="button" class="mode-btn" data-mode="finder" aria-pressed="false">Show Finder</button>
+    </div>
+
     <nav class="shapes" id="shapes" aria-label="Rating shape">
       <button class="shape-chip" data-shape="all" aria-pressed="true" type="button">
         <span class="shape-name">All</span>
@@ -444,6 +449,137 @@
 
     <nav class="pager" id="pager" aria-label="Pagination" hidden></nav>
 
+    <section class="finder" id="finder" aria-label="Show Finder" hidden>
+      <div class="filters" aria-label="Show Finder filters">
+        <div class="filter-row primary">
+          <div class="search-cluster">
+            <div class="search">
+              <label>
+                <span class="visually-hidden">Search show title</span>
+                <input type="search" id="finderSearch"
+                       placeholder="Search show title"
+                       autocomplete="off"
+                       aria-label="Search show title">
+              </label>
+            </div>
+          </div>
+          <div class="view-toggle" id="finderViewToggle" role="radiogroup" aria-label="View mode">
+            <button type="button" class="btn view-btn" data-view="grid" aria-pressed="true" aria-label="Grid view" title="Grid view">▦</button>
+            <button type="button" class="btn view-btn" data-view="list" aria-pressed="false" aria-label="List view" title="List view">☰</button>
+          </div>
+        </div>
+
+        <div class="active-filter-bar" id="finderActiveFilterBar" hidden aria-label="Active filters"></div>
+
+        <div class="quick-filters-row">
+          <details class="quick-filters-wrap">
+            <summary class="quick-filters-summary">
+              <span aria-hidden="true">⌕</span>
+              <span>Quick filters</span>
+            </summary>
+          </details>
+          <button type="button" class="advanced-reset" id="finderReset" hidden>× Clear filters</button>
+        </div>
+
+        <div class="label-filters" aria-label="Quick filters">
+          <div class="label-group genre-quick-group" role="group" aria-label="Genre">
+            <span class="label-group-name">Genre</span>
+            <div class="genre-quick-row" id="finderGenres" role="group" aria-label="Filter by genre"></div>
+          </div>
+          <div class="label-group decade-group" role="radiogroup" aria-label="Decade">
+            <span class="label-group-name">Decade</span>
+            <div class="decade-row" id="finderDecadeRow"></div>
+          </div>
+          <div class="label-group" role="group" aria-label="Gap direction">
+            <span class="label-group-name">Gap</span>
+            <div class="finder-seg" id="finderGapDir" role="radiogroup" aria-label="Gap direction">
+              <button type="button" class="finder-seg-btn" data-dir="any" aria-pressed="true">Any</button>
+              <button type="button" class="finder-seg-btn" data-dir="up" aria-pressed="false">Episodes beat show</button>
+              <button type="button" class="finder-seg-btn" data-dir="down" aria-pressed="false">Show beats episodes</button>
+            </div>
+          </div>
+          <div class="label-group" role="group" aria-label="Quick vote thresholds">
+            <span class="label-group-name">Votes</span>
+            <div class="finder-chips" id="finderVotesChips" role="group" aria-label="Quick vote thresholds">
+              <button type="button" class="finder-chip" data-votes="0" aria-pressed="true">Any</button>
+              <button type="button" class="finder-chip" data-votes="10000" aria-pressed="false">10k+</button>
+              <button type="button" class="finder-chip" data-votes="50000" aria-pressed="false">50k+</button>
+              <button type="button" class="finder-chip" data-votes="100000" aria-pressed="false">100k+</button>
+            </div>
+          </div>
+        </div>
+
+        <details class="advanced">
+          <summary>
+            <span class="advanced-summary-label">More filters</span>
+          </summary>
+          <div class="filter-row">
+            <label>
+              Min total episodes
+              <input type="number" id="finderMinEpisodes" min="0" step="1" placeholder="any" inputmode="numeric">
+            </label>
+            <label>
+              Min IMDb votes
+              <input type="number" id="finderMinVotes" min="0" step="1000" placeholder="any" inputmode="numeric">
+            </label>
+            <label>
+              Min show rating
+              <input type="number" id="finderMinShowRating" min="0" max="10" step="0.1" placeholder="any" inputmode="decimal">
+            </label>
+            <label>
+              Min avg episode rating
+              <input type="number" id="finderMinAvgEpisode" min="0" max="10" step="0.1" placeholder="any" inputmode="decimal">
+            </label>
+            <label>
+              Min gap magnitude
+              <input type="number" id="finderMinGap" min="0" step="0.01" placeholder="any" inputmode="decimal">
+            </label>
+            <label>
+              Year ≥
+              <input type="number" id="finderMinYear" min="1950" max="2100" placeholder="any">
+            </label>
+            <label>
+              Year ≤
+              <input type="number" id="finderMaxYear" min="1950" max="2100" placeholder="any">
+            </label>
+            <label>
+              Sort by
+              <select id="finderSort">
+                <option value="votes">Popularity (votes)</option>
+                <option value="gap">Gap size</option>
+                <option value="showRating">Show rating</option>
+                <option value="avgEpisode">Avg episode rating</option>
+                <option value="episodes">Episode count</option>
+                <option value="seasonsCount">Season count</option>
+                <option value="year">Year</option>
+                <option value="runtimeHrs">Runtime</option>
+                <option value="title">Title (A–Z)</option>
+              </select>
+            </label>
+            <label>
+              Direction
+              <select id="finderSortDir">
+                <option value="desc">Descending</option>
+                <option value="asc">Ascending</option>
+              </select>
+            </label>
+          </div>
+          <div class="chip-section">
+            <span class="chip-section-title">Language</span>
+            <div class="genre-row" id="finderLanguages" role="group" aria-label="Filter by language"></div>
+          </div>
+        </details>
+      </div>
+
+      <p class="meta finder-count" id="finderCount" aria-live="polite"></p>
+
+      <nav class="pager pager-top" id="finderPagerTop" aria-label="Pagination (top)" hidden></nav>
+
+      <div class="finder-results results-grid" id="finderResults"></div>
+
+      <nav class="pager" id="finderPager" aria-label="Pagination" hidden></nav>
+    </section>
+
     <p class="footer-meta" id="footer-meta"></p>
 
     <!-- Data-source attribution. Required by the TMDB API terms (logo +
@@ -680,6 +816,39 @@
       <button type="button" class="watch-toggle row-watch" aria-pressed="false" aria-label="Mark as watched" title="Mark as watched">
         <span class="watch-icon" aria-hidden="true">✓</span>
       </button>
+    </article>
+  </template>
+
+  <!-- Show Finder grid card template (show-level data) -->
+  <template id="finder-card-template">
+    <article class="card finder-card" tabindex="0" role="button">
+      <div class="card-poster">
+        <div class="poster-fallback" aria-hidden="true"></div>
+      </div>
+      <div class="card-body">
+        <header class="card-head">
+          <h2 class="card-title"></h2>
+          <span class="card-season finder-card-year"></span>
+        </header>
+        <div class="card-meta">
+          <span class="card-genres finder-card-genres"></span>
+        </div>
+        <div class="card-shapes finder-card-badges"></div>
+      </div>
+      <div class="curve-wrap finder-spark-wrap">
+        <svg class="curve finder-spark" viewBox="0 0 300 70" preserveAspectRatio="none" aria-hidden="true">
+          <path class="curve-area" />
+          <path class="curve-line" />
+          <g class="finder-spark-dot"></g>
+        </svg>
+      </div>
+      <div class="card-stats finder-card-stats">
+        <span class="stat-show"></span>
+        <span class="stat-avg"></span>
+        <span class="stat-gap"></span>
+        <span class="stat-votes"></span>
+        <span class="stat-runtime"></span>
+      </div>
     </article>
   </template>
 

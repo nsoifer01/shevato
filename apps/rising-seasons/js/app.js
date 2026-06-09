@@ -335,6 +335,31 @@ const els = {
   shortcutLegend: document.getElementById('shortcutLegend'),
   modalCurveAnnotation: document.getElementById('modalCurveAnnotation'),
   showModalWatchOn: document.getElementById('showModalWatchOn'),
+  modeSwitch: document.getElementById('modeSwitch'),
+  finder: document.getElementById('finder'),
+  finderSearch: document.getElementById('finderSearch'),
+  finderViewToggle: document.getElementById('finderViewToggle'),
+  finderActiveFilterBar: document.getElementById('finderActiveFilterBar'),
+  finderMinEpisodes: document.getElementById('finderMinEpisodes'),
+  finderMinVotes: document.getElementById('finderMinVotes'),
+  finderVotesChips: document.getElementById('finderVotesChips'),
+  finderMinShowRating: document.getElementById('finderMinShowRating'),
+  finderMinAvgEpisode: document.getElementById('finderMinAvgEpisode'),
+  finderGapDir: document.getElementById('finderGapDir'),
+  finderMinGap: document.getElementById('finderMinGap'),
+  finderMinYear: document.getElementById('finderMinYear'),
+  finderMaxYear: document.getElementById('finderMaxYear'),
+  finderDecadeRow: document.getElementById('finderDecadeRow'),
+  finderGenres: document.getElementById('finderGenres'),
+  finderLanguages: document.getElementById('finderLanguages'),
+  finderSort: document.getElementById('finderSort'),
+  finderSortDir: document.getElementById('finderSortDir'),
+  finderReset: document.getElementById('finderReset'),
+  finderCount: document.getElementById('finderCount'),
+  finderResults: document.getElementById('finderResults'),
+  finderPager: document.getElementById('finderPager'),
+  finderPagerTop: document.getElementById('finderPagerTop'),
+  finderCardTpl: document.getElementById('finder-card-template'),
 };
 
 // --- mutable state ---
@@ -372,6 +397,26 @@ const state = {
 
 let dataset = null;
 let filtered = [];
+let mode = 'seasons';
+let showAgg = null;
+const finderState = {
+  search: '',
+  minEpisodes: 0,
+  minVotes: 0,
+  minShowRating: 0,
+  minAvgEpisode: 0,
+  gapDir: 'any',
+  minGap: 0,
+  minYear: null,
+  maxYear: null,
+  genres: new Set(),
+  genresExclude: new Set(),
+  languages: new Set(),
+  sort: 'votes',
+  sortDir: 'desc',
+  view: 'grid',
+  page: 1,
+};
 let seriesIndex = [];
 let bestSeasonBySeries = new Map();
 let worstSeasonBySeries = new Map();
@@ -712,6 +757,19 @@ async function load() {
   bindShortcutLegend();
   // Initial reset-button state: disabled unless the URL pre-populated some filters.
   syncResetButton();
+  showAgg = buildShowAgg();
+  renderFinderGenres();
+  renderFinderLanguages();
+  renderFinderDecadeRow();
+  bindFinder();
+  // mode + finderState were already populated by applyStateFromURL (which ran
+  // before showAgg existed); now that the finder controls are in the DOM,
+  // push that state onto them.
+  syncFinderControls();
+  syncFinderSortControls();
+  applyFinderViewClasses();
+  applyModeClasses();
+  if (mode === 'finder') renderFinder();
   render();
   bindScrollMemory();
   if (pendingModalKey) {
@@ -828,6 +886,16 @@ function buildSeriesIndex() {
 
 function applyStateFromURL() {
   const p = new URLSearchParams(location.hash.replace(/^#/, ''));
+
+  // A hash with view=finder reopens the Show Finder with its filters; any
+  // other hash (or none) loads the Seasons view. Mode is URL-derived only —
+  // there is no localStorage persistence, so a refresh/base URL is Seasons.
+  if (p.get('view') === 'finder') {
+    mode = 'finder';
+    applyFinderStateFromParams(p);
+  } else {
+    mode = 'seasons';
+  }
 
   // Reset every URL-backed field to its default first so that removing a
   // parameter from the hash (e.g. user deletes &gems=on) actually clears
@@ -3884,6 +3952,1045 @@ function applyViewClasses() {
   }
 }
 
+// --- Show Finder ---
+
+// Compact vote formatting: 721000 -> "721k", 2620000 -> "2.6M".
+function formatCompactVotes(n) {
+  if (n >= 1_000_000) {
+    const m = n / 1_000_000;
+    return `${m >= 10 ? Math.round(m) : Math.round(m * 10) / 10}M`;
+  }
+  if (n >= 1_000) {
+    const k = n / 1_000;
+    return `${k >= 10 ? Math.round(k) : Math.round(k * 10) / 10}k`;
+  }
+  return String(n);
+}
+
+// Group season-matches by seriesId into one row per show. Computed once after
+// data.json loads (memoized in showAgg) so live filtering never re-aggregates.
+function buildShowAgg() {
+  const byId = new Map();
+  for (const m of dataset.matches) {
+    let s = byId.get(m.seriesId);
+    if (!s) {
+      s = {
+        seriesId: m.seriesId,
+        title: m.title,
+        year: m.year,
+        language: m.language,
+        poster: m.poster,
+        showRating: m.seriesRating,
+        votes: m.seriesVotes,
+        genres: new Set(),
+        ratingSum: 0,
+        episodes: 0,
+        runtimeHrs: 0,
+        seasonsCount: 0,
+        seasonAvgs: [],
+        seasonEpisodeSeries: [],
+      };
+      byId.set(m.seriesId, s);
+    }
+    for (const g of (m.genres || [])) s.genres.add(g);
+    let seasonRated = 0;
+    let seasonRatingSum = 0;
+    const seasonEpisodes = [];
+    for (const e of m.episodes) {
+      if (typeof e.rating === 'number') {
+        s.ratingSum += e.rating;
+        s.episodes++;
+        seasonRated++;
+        seasonRatingSum += e.rating;
+        seasonEpisodes.push({ episode: e.episode, rating: e.rating, votes: e.votes });
+      }
+    }
+    s.seasonEpisodeSeries.push(seasonEpisodes);
+    s.seasonsCount++;
+    const seasonAvg = typeof m.avgRating === 'number'
+      ? m.avgRating
+      : (seasonRated > 0 ? seasonRatingSum / seasonRated : null);
+    if (typeof seasonAvg === 'number' && typeof m.season === 'number') {
+      s.seasonAvgs.push({ season: m.season, year: (m.seasonYear ?? m.year), avg: seasonAvg });
+    }
+    if (typeof m.avgRuntime === 'number') {
+      s.runtimeHrs += (seasonRated * m.avgRuntime) / 60;
+    }
+  }
+
+  const out = [];
+  for (const s of byId.values()) {
+    if (s.episodes === 0) continue;
+    if (typeof s.showRating !== 'number' || typeof s.votes !== 'number') continue;
+    const avgEpisode = Math.round((s.ratingSum / s.episodes) * 100) / 100;
+    const gap = Math.round((avgEpisode - s.showRating) * 100) / 100;
+    const episodeSeries = s.seasonsCount === 1 ? s.seasonEpisodeSeries[0] : undefined;
+    out.push({
+      seriesId: s.seriesId,
+      title: s.title,
+      year: s.year,
+      language: s.language,
+      poster: s.poster,
+      genres: [...s.genres].sort(),
+      showRating: s.showRating,
+      votes: s.votes,
+      episodes: s.episodes,
+      avgEpisode,
+      gap,
+      runtimeHrs: Math.round((s.runtimeHrs) * 10) / 10,
+      seasonsCount: s.seasonsCount,
+      seasonAvgs: s.seasonAvgs.slice().sort((a, b) => a.season - b.season),
+      episodeSeries,
+    });
+  }
+  return out;
+}
+
+function applyModeClasses() {
+  const finderActive = mode === 'finder';
+  const seasonEls = [
+    els.shapes,
+    document.querySelector('.mood-presets'),
+    document.querySelector('.filters'),
+    els.statsBar,
+    els.meta,
+    els.pagerTop,
+    els.pager,
+    els.results,
+  ];
+  for (const el of seasonEls) {
+    if (el) el.classList.toggle('mode-hidden', finderActive);
+  }
+  els.finder.hidden = !finderActive;
+  for (const btn of els.modeSwitch.querySelectorAll('.mode-btn')) {
+    btn.setAttribute('aria-pressed', btn.dataset.mode === mode ? 'true' : 'false');
+  }
+}
+
+function setMode(next) {
+  if (next !== 'seasons' && next !== 'finder') return;
+  mode = next;
+  applyModeClasses();
+  if (mode === 'finder') {
+    writeFinderStateToURL();
+    renderFinder();
+  } else {
+    // Switching back to Seasons clears the finder hash and restores the
+    // Seasons filter hash (a base URL when no Seasons filters are active).
+    writeStateToURL();
+    render();
+  }
+}
+
+// Genre tri-state chips mirror the Seasons quick-genre row: click once to
+// require, again to exclude (rendered RED via [data-exclude]), again to clear.
+function renderFinderGenres() {
+  const seen = new Set();
+  for (const s of showAgg) for (const g of s.genres) seen.add(g);
+  const genres = [...seen].sort();
+  const frag = document.createDocumentFragment();
+  for (const g of genres) {
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'genre-chip';
+    btn.dataset.genre = g;
+    btn.textContent = g;
+    syncFinderGenreChipTriState(btn);
+    frag.appendChild(btn);
+  }
+  els.finderGenres.replaceChildren(frag);
+}
+
+function syncFinderGenreChipTriState(btn) {
+  const name = btn.dataset.genre;
+  if (finderState.genresExclude.has(name)) {
+    btn.setAttribute('aria-pressed', 'false');
+    btn.dataset.exclude = 'true';
+    btn.title = `Excluded — click to clear (currently hiding ${name})`;
+  } else if (finderState.genres.has(name)) {
+    btn.setAttribute('aria-pressed', 'true');
+    btn.dataset.exclude = 'false';
+    btn.title = `Required — click again to exclude ${name}`;
+  } else {
+    btn.setAttribute('aria-pressed', 'false');
+    btn.dataset.exclude = 'false';
+    btn.title = `Click to require ${name}; click again to exclude it`;
+  }
+}
+
+function cycleFinderGenreState(name) {
+  if (!finderState.genres.has(name) && !finderState.genresExclude.has(name)) {
+    finderState.genres.add(name);
+  } else if (finderState.genres.has(name)) {
+    finderState.genres.delete(name);
+    finderState.genresExclude.add(name);
+  } else {
+    finderState.genresExclude.delete(name);
+  }
+}
+
+function renderFinderLanguages() {
+  const top = (dataset.languages || []).slice(0, 12);
+  const frag = document.createDocumentFragment();
+  for (const l of top) {
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'genre-chip';
+    btn.dataset.language = l.code;
+    btn.setAttribute('aria-pressed', finderState.languages.has(l.code) ? 'true' : 'false');
+    btn.textContent = languageLabel(l.code);
+    btn.addEventListener('click', () => {
+      if (finderState.languages.has(l.code)) finderState.languages.delete(l.code);
+      else finderState.languages.add(l.code);
+      btn.setAttribute('aria-pressed', finderState.languages.has(l.code) ? 'true' : 'false');
+      onFinderFilterChange();
+    });
+    frag.appendChild(btn);
+  }
+  els.finderLanguages.replaceChildren(frag);
+}
+
+function finderActiveDecadeKey() {
+  for (const [key, [min, max]] of Object.entries(DECADE_RANGES)) {
+    if (finderState.minYear === min && finderState.maxYear === max) return key;
+  }
+  if (finderState.minYear == null && finderState.maxYear == null) return 'all';
+  return null;
+}
+
+function syncFinderDecadeRowAria() {
+  const row = els.finderDecadeRow;
+  if (!row) return;
+  const active = finderActiveDecadeKey();
+  for (const btn of row.querySelectorAll('.label-chip')) {
+    btn.setAttribute('aria-pressed', btn.dataset.decade === active ? 'true' : 'false');
+  }
+}
+
+function renderFinderDecadeRow() {
+  const row = els.finderDecadeRow;
+  if (!row) return;
+  const frag = document.createDocumentFragment();
+  const all = document.createElement('button');
+  all.type = 'button';
+  all.className = 'label-chip';
+  all.dataset.decade = 'all';
+  all.textContent = 'All';
+  all.addEventListener('click', () => {
+    finderState.minYear = null;
+    finderState.maxYear = null;
+    els.finderMinYear.value = '';
+    els.finderMaxYear.value = '';
+    syncFinderDecadeRowAria();
+    onFinderFilterChange();
+  });
+  frag.appendChild(all);
+  for (const [key, [min, max]] of Object.entries(DECADE_RANGES)) {
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'label-chip';
+    btn.dataset.decade = key;
+    btn.textContent = key;
+    btn.addEventListener('click', () => {
+      finderState.minYear = min;
+      finderState.maxYear = max;
+      els.finderMinYear.value = String(min);
+      els.finderMaxYear.value = String(max);
+      syncFinderDecadeRowAria();
+      onFinderFilterChange();
+    });
+    frag.appendChild(btn);
+  }
+  row.replaceChildren(frag);
+  syncFinderDecadeRowAria();
+}
+
+const FINDER_COLUMNS = [
+  { key: 'title', label: 'Show' },
+  { key: 'showRating', label: 'Show rating' },
+  { key: 'avgEpisode', label: 'Avg episode' },
+  { key: 'gap', label: 'Gap' },
+  { key: 'episodes', label: 'Episodes' },
+  { key: 'seasonsCount', label: 'Seasons' },
+  { key: 'year', label: 'Year' },
+  { key: 'votes', label: 'Votes' },
+  { key: 'runtimeHrs', label: 'Runtime' },
+];
+
+function filterAndSortFinder() {
+  const f = finderState;
+  const q = f.search.trim().toLowerCase();
+  const rows = showAgg.filter((s) => {
+    if (q && !s.title.toLowerCase().includes(q)) return false;
+    if (s.episodes < f.minEpisodes) return false;
+    if (s.votes < f.minVotes) return false;
+    if (s.showRating < f.minShowRating) return false;
+    if (s.avgEpisode < f.minAvgEpisode) return false;
+    if (f.gapDir === 'up') {
+      if (s.gap <= 0) return false;
+      if (s.gap < f.minGap) return false;
+    } else if (f.gapDir === 'down') {
+      if (s.gap >= 0) return false;
+      if (-s.gap < f.minGap) return false;
+    } else if (f.minGap > 0 && Math.abs(s.gap) < f.minGap) {
+      return false;
+    }
+    if (f.minYear != null && (s.year == null || s.year < f.minYear)) return false;
+    if (f.maxYear != null && (s.year == null || s.year > f.maxYear)) return false;
+    if (f.genres.size) {
+      for (const g of f.genres) if (!s.genres.includes(g)) return false;
+    }
+    if (f.genresExclude.size) {
+      for (const g of s.genres) if (f.genresExclude.has(g)) return false;
+    }
+    if (f.languages.size && !f.languages.has(s.language)) return false;
+    return true;
+  });
+
+  const key = f.sort;
+  const mul = f.sortDir === 'asc' ? 1 : -1;
+  rows.sort((a, b) => {
+    // Unknown years always sink to the bottom, independent of sort direction.
+    if (key === 'year' && (a.year == null || b.year == null)) {
+      if (a.year == null && b.year == null) return b.votes - a.votes;
+      return a.year == null ? 1 : -1;
+    }
+    let d = key === 'title' ? a.title.localeCompare(b.title) : a[key] - b[key];
+    if (d === 0 && key !== 'votes') d = b.votes - a.votes;
+    return d * mul;
+  });
+  return rows;
+}
+
+function renderFinder() {
+  if (!showAgg) return;
+  renderFinderActiveFilterBar();
+  syncFinderResetButton();
+  const rows = filterAndSortFinder();
+  els.finderCount.textContent = rows.length === 1
+    ? '1 show matches your filters'
+    : `${rows.length.toLocaleString()} shows match your filters`;
+
+  if (rows.length === 0) {
+    const empty = document.createElement('p');
+    empty.className = 'finder-empty';
+    empty.textContent = 'No shows match these filters.';
+    els.finderResults.replaceChildren(empty);
+    renderFinderPager(0, 1);
+    return;
+  }
+
+  const totalPages = Math.max(1, Math.ceil(rows.length / PAGE_SIZE));
+  const requested = finderState.page;
+  if (finderState.page > totalPages) finderState.page = totalPages;
+  if (finderState.page < 1) finderState.page = 1;
+  if (requested !== finderState.page) writeFinderStateToURL();
+
+  const start = (finderState.page - 1) * PAGE_SIZE;
+  const end = Math.min(start + PAGE_SIZE, rows.length);
+  const page = rows.slice(start, end);
+
+  if (finderState.view === 'list') {
+    els.finderResults.classList.add('finder-list-view');
+    els.finderResults.replaceChildren(buildFinderTable(page));
+  } else {
+    els.finderResults.classList.remove('finder-list-view');
+    const frag = document.createDocumentFragment();
+    for (const s of page) frag.appendChild(buildFinderCard(s));
+    els.finderResults.replaceChildren(frag);
+  }
+
+  renderFinderPager(totalPages, finderState.page);
+}
+
+function buildFinderTable(page) {
+  const table = document.createElement('table');
+  table.className = 'finder-table';
+
+  const thead = document.createElement('thead');
+  const headRow = document.createElement('tr');
+  for (const col of FINDER_COLUMNS) {
+    const th = document.createElement('th');
+    th.dataset.sort = col.key;
+    if (col.key === 'title') th.className = 'finder-col-show';
+    th.tabIndex = 0;
+    th.setAttribute('role', 'button');
+    const active = finderState.sort === col.key;
+    th.setAttribute('aria-sort', active ? (finderState.sortDir === 'asc' ? 'ascending' : 'descending') : 'none');
+    const labelEl = document.createElement('span');
+    labelEl.className = 'finder-th-label';
+    labelEl.textContent = col.label;
+    th.appendChild(labelEl);
+    const arrow = document.createElement('span');
+    arrow.className = 'finder-th-arrow';
+    arrow.setAttribute('aria-hidden', 'true');
+    arrow.textContent = active ? (finderState.sortDir === 'asc' ? ' ▲' : ' ▼') : '';
+    th.appendChild(arrow);
+    headRow.appendChild(th);
+  }
+  const trendTh = document.createElement('th');
+  trendTh.className = 'finder-col-trend';
+  const trendLabel = document.createElement('span');
+  trendLabel.className = 'finder-th-label';
+  trendLabel.textContent = 'Trend';
+  trendTh.appendChild(trendLabel);
+  headRow.appendChild(trendTh);
+  thead.appendChild(headRow);
+  table.appendChild(thead);
+
+  const tbody = document.createElement('tbody');
+  for (const s of page) {
+    const tr = document.createElement('tr');
+    tr.className = 'finder-row';
+    tr.tabIndex = 0;
+    tr.dataset.seriesId = s.seriesId;
+
+    const gapClass = s.gap > 0 ? 'finder-gap-pos' : (s.gap < 0 ? 'finder-gap-neg' : '');
+    const gapStr = `${s.gap > 0 ? '+' : ''}${s.gap.toFixed(2)}`;
+
+    const showCell = document.createElement('td');
+    showCell.className = 'finder-col-show';
+    showCell.dataset.label = 'Show';
+
+    const posterEl = document.createElement('div');
+    posterEl.className = 'row-poster finder-row-poster';
+    if (s.poster) {
+      const img = document.createElement('img');
+      img.src = `https://image.tmdb.org/t/p/w185${s.poster}`;
+      img.alt = `${s.title} poster`;
+      img.loading = 'lazy';
+      posterEl.appendChild(img);
+    } else {
+      const fb = document.createElement('div');
+      fb.className = 'poster-fallback';
+      posterEl.appendChild(fb);
+      populatePosterFallback(fb, s.title);
+    }
+    showCell.appendChild(posterEl);
+
+    const showText = document.createElement('div');
+    showText.className = 'finder-show-text';
+    const titleEl = document.createElement('span');
+    titleEl.className = 'finder-show-title';
+    titleEl.textContent = s.title;
+    showText.appendChild(titleEl);
+    if (s.genres.length) {
+      const genreEl = document.createElement('span');
+      genreEl.className = 'finder-genre-line';
+      genreEl.textContent = s.genres.join(', ');
+      showText.appendChild(genreEl);
+    }
+    showCell.appendChild(showText);
+    tr.appendChild(showCell);
+
+    const cells = [
+      { label: 'Show rating', text: s.showRating.toFixed(1) },
+      { label: 'Avg episode', text: s.avgEpisode.toFixed(2) },
+      { label: 'Gap', text: gapStr, cls: gapClass },
+      { label: 'Episodes', text: s.episodes.toLocaleString() },
+      { label: 'Seasons', text: s.seasonsCount.toLocaleString() },
+      { label: 'Year', text: s.year != null ? String(s.year) : '—' },
+      { label: 'Votes', text: formatCompactVotes(s.votes) },
+      { label: 'Runtime', text: `${s.runtimeHrs.toFixed(1)}h` },
+    ];
+    for (const c of cells) {
+      const td = document.createElement('td');
+      td.dataset.label = c.label;
+      if (c.cls) td.className = c.cls;
+      td.textContent = c.text;
+      tr.appendChild(td);
+    }
+
+    const trendTd = document.createElement('td');
+    trendTd.className = 'finder-col-trend';
+    trendTd.dataset.label = 'Trend';
+    const svgNS = 'http://www.w3.org/2000/svg';
+    const spark = document.createElementNS(svgNS, 'svg');
+    spark.setAttribute('class', 'curve finder-spark finder-row-spark');
+    spark.setAttribute('viewBox', '0 0 200 56');
+    spark.setAttribute('preserveAspectRatio', 'none');
+    spark.setAttribute('aria-hidden', 'true');
+    const area = document.createElementNS(svgNS, 'path');
+    area.setAttribute('class', 'curve-area');
+    const line = document.createElementNS(svgNS, 'path');
+    line.setAttribute('class', 'curve-line');
+    const dot = document.createElementNS(svgNS, 'g');
+    dot.setAttribute('class', 'finder-spark-dot');
+    spark.append(area, line, dot);
+    trendTd.appendChild(spark);
+    drawFinderSpark(spark, s.seasonAvgs, s.episodeSeries, 200, 56);
+    tr.appendChild(trendTd);
+
+    tbody.appendChild(tr);
+  }
+  table.appendChild(tbody);
+  return table;
+}
+
+// Show-level trajectory. Multi-season shows draw one point per season's
+// average rating, in season order (yellow). Reuses drawCurve (no .curve-dots
+// in the markup, so no misleading "Ep N" tooltips). Single-season shows have
+// no season line to draw, so they show that season's within-season EPISODE
+// curve (amber, .finder-spark--single) instead; a season with a single rated
+// episode has no line either, so it falls back to a visible centered dot.
+function drawFinderSpark(svg, seasonAvgs, episodeSeries, W = 300, H = 70) {
+  const dotGroup = svg.querySelector('.finder-spark-dot');
+  if (dotGroup) dotGroup.replaceChildren();
+  const single = seasonAvgs.length === 1;
+  svg.classList.toggle('finder-spark--single', single);
+
+  if (single) {
+    if (episodeSeries && episodeSeries.length > 1) {
+      drawCurve(svg, episodeSeries, W, H, 0);
+      return;
+    }
+    svg.querySelector('.curve-line').setAttribute('d', '');
+    svg.querySelector('.curve-area').setAttribute('d', '');
+    if (dotGroup) {
+      const c = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+      c.setAttribute('cx', String(W / 2));
+      c.setAttribute('cy', String(H / 2));
+      c.setAttribute('r', '5');
+      const t = document.createElementNS('http://www.w3.org/2000/svg', 'title');
+      const sa = seasonAvgs[0];
+      t.textContent = `S${sa.season}: ${sa.avg.toFixed(2)}`;
+      c.appendChild(t);
+      dotGroup.appendChild(c);
+    }
+    return;
+  }
+
+  drawCurve(svg, seasonAvgs.map((s) => ({ rating: s.avg, episode: s.season, votes: 0 })), W, H, 0);
+}
+
+// Grid card mirrors the Seasons card layout but carries show-level data.
+function buildFinderCard(s) {
+  const node = els.finderCardTpl.content.firstElementChild.cloneNode(true);
+  node.dataset.seriesId = s.seriesId;
+
+  node.querySelector('.card-title').textContent = s.title;
+  node.querySelector('.finder-card-year').textContent =
+    `${s.year || 'year unknown'} · ${s.seasonsCount} season${s.seasonsCount === 1 ? '' : 's'}`;
+  node.querySelector('.finder-card-genres').textContent = s.genres.slice(0, 3).join(' · ');
+
+  const gapStr = `${s.gap > 0 ? '+' : ''}${s.gap.toFixed(2)}`;
+  const gapEl = node.querySelector('.stat-gap');
+  gapEl.textContent = `Gap ${gapStr}`;
+  if (s.gap > 0) gapEl.classList.add('finder-gap-pos');
+  else if (s.gap < 0) gapEl.classList.add('finder-gap-neg');
+
+  node.querySelector('.stat-show').textContent = `Show ${s.showRating.toFixed(1)}`;
+  node.querySelector('.stat-avg').textContent = `Avg ep ${s.avgEpisode.toFixed(2)}`;
+  node.querySelector('.stat-votes').textContent = `${formatCompactVotes(s.votes)} votes`;
+  node.querySelector('.stat-runtime').textContent = `${s.runtimeHrs.toFixed(1)}h`;
+
+  drawFinderSpark(node.querySelector('.finder-spark'), s.seasonAvgs, s.episodeSeries);
+
+  const posterEl = node.querySelector('.card-poster');
+  if (s.poster) {
+    const img = document.createElement('img');
+    img.src = `https://image.tmdb.org/t/p/w342${s.poster}`;
+    img.alt = `${s.title} poster`;
+    img.loading = 'lazy';
+    posterEl.appendChild(img);
+  } else {
+    populatePosterFallback(posterEl.querySelector('.poster-fallback'), s.title);
+  }
+
+  node.setAttribute('aria-label', s.title);
+  node.addEventListener('click', () => openShowModal(s.seriesId));
+  node.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter' || e.key === ' ') {
+      e.preventDefault();
+      openShowModal(s.seriesId);
+    }
+  });
+  return node;
+}
+
+function renderFinderPager(totalPages, current) {
+  const targets = [
+    [els.finderPagerTop, false],
+    [els.finderPager, true],
+  ].filter(([t]) => t);
+  if (totalPages <= 1) {
+    for (const [t] of targets) {
+      t.replaceChildren();
+      t.hidden = true;
+    }
+    return;
+  }
+  for (const [t, scrollAfter] of targets) {
+    const frag = document.createDocumentFragment();
+    frag.appendChild(finderPageButton('Prev', current - 1, current === 1, scrollAfter));
+    for (const n of pageNumbers(current, totalPages)) {
+      if (n === '…') {
+        const span = document.createElement('span');
+        span.className = 'page-ellipsis';
+        span.textContent = '…';
+        span.setAttribute('aria-hidden', 'true');
+        frag.appendChild(span);
+      } else {
+        const btn = finderPageButton(String(n), n, false, scrollAfter);
+        if (n === current) btn.setAttribute('aria-current', 'page');
+        btn.setAttribute('aria-label', `Page ${n}`);
+        frag.appendChild(btn);
+      }
+    }
+    frag.appendChild(finderPageButton('Next', current + 1, current === totalPages, scrollAfter));
+    t.replaceChildren(frag);
+    t.hidden = false;
+  }
+}
+
+function finderPageButton(label, target, disabled, scrollAfter = true) {
+  const btn = document.createElement('button');
+  btn.type = 'button';
+  btn.className = 'page-btn';
+  btn.textContent = label;
+  if (disabled) {
+    btn.disabled = true;
+    btn.setAttribute('aria-disabled', 'true');
+  } else {
+    btn.addEventListener('click', () => goToFinderPage(target, scrollAfter));
+  }
+  return btn;
+}
+
+function goToFinderPage(n, scrollAfter = true) {
+  finderState.page = n;
+  writeFinderStateToURL();
+  renderFinder();
+  if (scrollAfter) {
+    const top = els.finderResults.getBoundingClientRect().top + window.scrollY - 70;
+    window.scrollTo({ top, behavior: 'smooth' });
+  }
+}
+
+const renderFinderDebounced = debounce(renderFinder, 120);
+
+// Page resets to 1 whenever a filter or sort changes (matches Seasons).
+function onFinderFilterChange() {
+  finderState.page = 1;
+  writeFinderStateToURL();
+  renderFinder();
+}
+
+function finderHasActiveFilters() {
+  const f = finderState;
+  if (f.search && f.search.trim()) return true;
+  if (f.minEpisodes > 0) return true;
+  if (f.minVotes > 0) return true;
+  if (f.minShowRating > 0) return true;
+  if (f.minAvgEpisode > 0) return true;
+  if (f.gapDir !== 'any') return true;
+  if (f.minGap > 0) return true;
+  if (f.minYear != null) return true;
+  if (f.maxYear != null) return true;
+  if (f.genres.size) return true;
+  if (f.genresExclude.size) return true;
+  if (f.languages.size) return true;
+  if (f.sort !== 'votes') return true;
+  if (f.sortDir !== 'desc') return true;
+  return false;
+}
+
+function syncFinderResetButton() {
+  if (!els.finderReset) return;
+  const active = finderHasActiveFilters();
+  els.finderReset.hidden = !active;
+  els.finderReset.disabled = !active;
+}
+
+function resetFinderState() {
+  finderState.search = '';
+  finderState.minEpisodes = 0;
+  finderState.minVotes = 0;
+  finderState.minShowRating = 0;
+  finderState.minAvgEpisode = 0;
+  finderState.gapDir = 'any';
+  finderState.minGap = 0;
+  finderState.minYear = null;
+  finderState.maxYear = null;
+  finderState.genres = new Set();
+  finderState.genresExclude = new Set();
+  finderState.languages = new Set();
+  finderState.sort = 'votes';
+  finderState.sortDir = 'desc';
+  finderState.page = 1;
+  els.finderSearch.value = '';
+  els.finderMinEpisodes.value = '';
+  els.finderMinVotes.value = '';
+  els.finderMinShowRating.value = '';
+  els.finderMinAvgEpisode.value = '';
+  els.finderMinGap.value = '';
+  els.finderMinYear.value = '';
+  els.finderMaxYear.value = '';
+  syncFinderSortControls();
+  syncFinderControls();
+  syncFinderDecadeRowAria();
+}
+
+// Push finderState onto every control. Number inputs show blank for zero/null
+// defaults (parity with Seasons' "any" placeholders) rather than a literal 0.
+function syncFinderControls() {
+  els.finderSearch.value = finderState.search;
+  els.finderMinEpisodes.value = finderState.minEpisodes > 0 ? String(finderState.minEpisodes) : '';
+  els.finderMinVotes.value = finderState.minVotes > 0 ? String(finderState.minVotes) : '';
+  els.finderMinShowRating.value = finderState.minShowRating > 0 ? String(finderState.minShowRating) : '';
+  els.finderMinAvgEpisode.value = finderState.minAvgEpisode > 0 ? String(finderState.minAvgEpisode) : '';
+  els.finderMinGap.value = finderState.minGap > 0 ? String(finderState.minGap) : '';
+  els.finderMinYear.value = finderState.minYear ?? '';
+  els.finderMaxYear.value = finderState.maxYear ?? '';
+  for (const chip of els.finderVotesChips.querySelectorAll('.finder-chip')) {
+    chip.setAttribute('aria-pressed', Number(chip.dataset.votes) === finderState.minVotes ? 'true' : 'false');
+  }
+  for (const btn of els.finderGapDir.querySelectorAll('.finder-seg-btn')) {
+    btn.setAttribute('aria-pressed', btn.dataset.dir === finderState.gapDir ? 'true' : 'false');
+  }
+  for (const chip of els.finderGenres.querySelectorAll('.genre-chip')) {
+    syncFinderGenreChipTriState(chip);
+  }
+  for (const chip of els.finderLanguages.querySelectorAll('.genre-chip')) {
+    chip.setAttribute('aria-pressed', finderState.languages.has(chip.dataset.language) ? 'true' : 'false');
+  }
+  syncFinderDecadeRowAria();
+}
+
+function syncFinderSortControls() {
+  els.finderSort.value = finderState.sort;
+  els.finderSortDir.value = finderState.sortDir;
+}
+
+function applyFinderViewClasses() {
+  els.finderResults.classList.toggle('list-view', finderState.view === 'list');
+  for (const btn of els.finderViewToggle.querySelectorAll('.view-btn')) {
+    btn.setAttribute('aria-pressed', btn.dataset.view === finderState.view ? 'true' : 'false');
+  }
+}
+
+function applyFinderSort(key, dir) {
+  finderState.sort = key;
+  if (dir) finderState.sortDir = dir;
+  syncFinderSortControls();
+  onFinderFilterChange();
+}
+
+// Header click-sort drives ordering in the list/table view.
+function handleFinderHeaderActivate(key) {
+  if (finderState.sort === key) {
+    applyFinderSort(key, finderState.sortDir === 'desc' ? 'asc' : 'desc');
+  } else {
+    applyFinderSort(key, key === 'title' ? 'asc' : 'desc');
+  }
+}
+
+function renderFinderActiveFilterBar() {
+  const bar = els.finderActiveFilterBar;
+  if (!bar) return;
+  const chips = describeFinderActiveFilters();
+  if (chips.length === 0) {
+    bar.replaceChildren();
+    bar.hidden = true;
+    return;
+  }
+  bar.hidden = false;
+  const frag = document.createDocumentFragment();
+  const label = document.createElement('span');
+  label.className = 'active-filter-label';
+  label.textContent = 'Active filters';
+  frag.appendChild(label);
+  for (const c of chips) {
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'active-filter-chip';
+    btn.title = `Remove ${c.key}: ${c.value}`;
+    const k = document.createElement('span');
+    k.className = 'chip-key';
+    k.textContent = c.key;
+    const v = document.createElement('span');
+    v.className = 'chip-val';
+    v.textContent = c.value;
+    const x = document.createElement('span');
+    x.className = 'chip-x';
+    x.textContent = '×';
+    btn.append(k, v, x);
+    btn.addEventListener('click', c.remove);
+    frag.appendChild(btn);
+  }
+
+  const copyBtn = document.createElement('button');
+  copyBtn.type = 'button';
+  copyBtn.className = 'btn btn-ghost copy-link-btn';
+  copyBtn.textContent = 'Copy link';
+  copyBtn.addEventListener('click', () => {
+    const orig = copyBtn.textContent;
+    if (navigator.clipboard && typeof navigator.clipboard.writeText === 'function') {
+      navigator.clipboard.writeText(location.href)
+        .then(() => {
+          copyBtn.textContent = 'Copied!';
+          setTimeout(() => { copyBtn.textContent = orig; }, 1800);
+        })
+        .catch(() => { copyBtn.textContent = orig; });
+    } else {
+      try { window.prompt('Copy this link:', location.href); }
+      catch { /* ignore */ }
+    }
+  });
+  frag.appendChild(copyBtn);
+
+  bar.replaceChildren(frag);
+}
+
+function describeFinderActiveFilters() {
+  const f = finderState;
+  const chips = [];
+  if (f.search) {
+    chips.push({
+      key: 'Search',
+      value: f.search,
+      remove: () => { f.search = ''; els.finderSearch.value = ''; onFinderFilterChange(); },
+    });
+  }
+  for (const g of f.genres) {
+    chips.push({
+      key: 'Genre',
+      value: g,
+      remove: () => {
+        f.genres.delete(g);
+        const btn = els.finderGenres.querySelector(`.genre-chip[data-genre="${cssEscape(g)}"]`);
+        if (btn) syncFinderGenreChipTriState(btn);
+        onFinderFilterChange();
+      },
+    });
+  }
+  for (const g of f.genresExclude) {
+    chips.push({
+      key: 'Not',
+      value: g,
+      remove: () => {
+        f.genresExclude.delete(g);
+        const btn = els.finderGenres.querySelector(`.genre-chip[data-genre="${cssEscape(g)}"]`);
+        if (btn) syncFinderGenreChipTriState(btn);
+        onFinderFilterChange();
+      },
+    });
+  }
+  for (const l of f.languages) {
+    chips.push({
+      key: 'Language',
+      value: languageLabel(l),
+      remove: () => {
+        f.languages.delete(l);
+        const btn = els.finderLanguages.querySelector(`.genre-chip[data-language="${l}"]`);
+        if (btn) btn.setAttribute('aria-pressed', 'false');
+        onFinderFilterChange();
+      },
+    });
+  }
+  if (f.gapDir !== 'any') {
+    chips.push({
+      key: 'Gap',
+      value: f.gapDir === 'up' ? 'Episodes beat show' : 'Show beats episodes',
+      remove: () => { f.gapDir = 'any'; syncFinderControls(); onFinderFilterChange(); },
+    });
+  }
+  if (f.minEpisodes > 0) chips.push(finderNumericChip('Min eps', f.minEpisodes, 'minEpisodes', els.finderMinEpisodes));
+  if (f.minVotes > 0) chips.push(finderNumericChip('Min votes', f.minVotes.toLocaleString(), 'minVotes', els.finderMinVotes));
+  if (f.minShowRating > 0) chips.push(finderNumericChip('Min show', f.minShowRating, 'minShowRating', els.finderMinShowRating));
+  if (f.minAvgEpisode > 0) chips.push(finderNumericChip('Min avg ep', f.minAvgEpisode, 'minAvgEpisode', els.finderMinAvgEpisode));
+  if (f.minGap > 0) chips.push(finderNumericChip('Min gap', f.minGap, 'minGap', els.finderMinGap));
+  if (f.minYear != null) chips.push(finderYearChip('Year ≥', f.minYear, 'minYear', els.finderMinYear));
+  if (f.maxYear != null) chips.push(finderYearChip('Year ≤', f.maxYear, 'maxYear', els.finderMaxYear));
+  if (f.sort !== 'votes' || f.sortDir !== 'desc') {
+    const sortLabels = {
+      votes: 'Popularity', gap: 'Gap size', showRating: 'Show rating',
+      avgEpisode: 'Avg episode', episodes: 'Episode count', seasonsCount: 'Season count',
+      year: 'Year', runtimeHrs: 'Runtime', title: 'Title',
+    };
+    chips.push({
+      key: 'Sort',
+      value: `${sortLabels[f.sort] || f.sort} ${f.sortDir === 'asc' ? '↑' : '↓'}`,
+      remove: () => { f.sort = 'votes'; f.sortDir = 'desc'; syncFinderSortControls(); onFinderFilterChange(); },
+    });
+  }
+  return chips;
+}
+
+function finderNumericChip(label, displayValue, prop, el) {
+  return {
+    key: label,
+    value: String(displayValue),
+    remove: () => { finderState[prop] = 0; if (el) el.value = ''; onFinderFilterChange(); },
+  };
+}
+
+function finderYearChip(label, displayValue, prop, el) {
+  return {
+    key: label,
+    value: String(displayValue),
+    remove: () => {
+      finderState[prop] = null;
+      if (el) el.value = '';
+      syncFinderDecadeRowAria();
+      onFinderFilterChange();
+    },
+  };
+}
+
+function bindFinder() {
+  els.modeSwitch.addEventListener('click', (e) => {
+    const btn = e.target.closest('.mode-btn');
+    if (btn) setMode(btn.dataset.mode);
+  });
+
+  els.finderSearch.addEventListener('input', () => {
+    finderState.search = els.finderSearch.value;
+    onFinderFilterChangeDebounced();
+  });
+
+  const numHandler = (el, prop, allowNull) => {
+    el.addEventListener('input', () => {
+      const v = parseFloat(el.value);
+      if (allowNull) finderState[prop] = Number.isFinite(v) ? v : null;
+      else finderState[prop] = Number.isFinite(v) ? v : 0;
+      if (prop === 'minVotes') {
+        for (const chip of els.finderVotesChips.querySelectorAll('.finder-chip')) {
+          chip.setAttribute('aria-pressed', Number(chip.dataset.votes) === finderState.minVotes ? 'true' : 'false');
+        }
+      }
+      if (prop === 'minYear' || prop === 'maxYear') syncFinderDecadeRowAria();
+      onFinderFilterChangeDebounced();
+    });
+  };
+  numHandler(els.finderMinEpisodes, 'minEpisodes', false);
+  numHandler(els.finderMinVotes, 'minVotes', false);
+  numHandler(els.finderMinShowRating, 'minShowRating', false);
+  numHandler(els.finderMinAvgEpisode, 'minAvgEpisode', false);
+  numHandler(els.finderMinGap, 'minGap', false);
+  numHandler(els.finderMinYear, 'minYear', true);
+  numHandler(els.finderMaxYear, 'maxYear', true);
+
+  els.finderVotesChips.addEventListener('click', (e) => {
+    const chip = e.target.closest('.finder-chip');
+    if (!chip) return;
+    finderState.minVotes = Number(chip.dataset.votes);
+    els.finderMinVotes.value = finderState.minVotes > 0 ? String(finderState.minVotes) : '';
+    for (const c of els.finderVotesChips.querySelectorAll('.finder-chip')) {
+      c.setAttribute('aria-pressed', Number(c.dataset.votes) === finderState.minVotes ? 'true' : 'false');
+    }
+    onFinderFilterChange();
+  });
+
+  els.finderGapDir.addEventListener('click', (e) => {
+    const btn = e.target.closest('.finder-seg-btn');
+    if (!btn) return;
+    finderState.gapDir = btn.dataset.dir;
+    for (const b of els.finderGapDir.querySelectorAll('.finder-seg-btn')) {
+      b.setAttribute('aria-pressed', b.dataset.dir === finderState.gapDir ? 'true' : 'false');
+    }
+    onFinderFilterChange();
+  });
+
+  els.finderGenres.addEventListener('click', (e) => {
+    const chip = e.target.closest('.genre-chip');
+    if (!chip) return;
+    cycleFinderGenreState(chip.dataset.genre);
+    syncFinderGenreChipTriState(chip);
+    onFinderFilterChange();
+  });
+
+  els.finderSort.addEventListener('change', () => {
+    applyFinderSort(els.finderSort.value);
+  });
+
+  els.finderSortDir.addEventListener('change', () => {
+    applyFinderSort(finderState.sort, els.finderSortDir.value);
+  });
+
+  for (const btn of els.finderViewToggle.querySelectorAll('.view-btn')) {
+    btn.addEventListener('click', () => {
+      finderState.view = btn.dataset.view;
+      applyFinderViewClasses();
+      writeFinderStateToURL();
+      renderFinder();
+    });
+  }
+
+  els.finderReset.addEventListener('click', () => {
+    resetFinderState();
+    // Clearing every finder filter drops the finder hash (back to the base
+    // finder URL: view=finder only).
+    writeFinderStateToURL();
+    renderFinder();
+  });
+
+  els.finderResults.addEventListener('click', (e) => {
+    const th = e.target.closest('th[data-sort]');
+    if (th) { handleFinderHeaderActivate(th.dataset.sort); return; }
+    const row = e.target.closest('.finder-row');
+    if (row) { openShowModal(row.dataset.seriesId); return; }
+  });
+  els.finderResults.addEventListener('keydown', (e) => {
+    if (e.key !== 'Enter' && e.key !== ' ') return;
+    const th = e.target.closest('th[data-sort]');
+    if (th) { e.preventDefault(); handleFinderHeaderActivate(th.dataset.sort); return; }
+    const row = e.target.closest('.finder-row');
+    if (row) { e.preventDefault(); openShowModal(row.dataset.seriesId); }
+  });
+}
+
+const onFinderFilterChangeDebounced = debounce(onFinderFilterChange, 200);
+
+// --- Show Finder URL state ---
+
+function writeFinderStateToURL() {
+  const f = finderState;
+  const p = new URLSearchParams();
+  p.set('view', 'finder');
+  if (f.search) p.set('q', f.search);
+  if (f.view !== 'grid') p.set('fView', f.view);
+  if (f.sort !== 'votes') p.set('fSort', f.sort);
+  if (f.sortDir !== 'desc') p.set('fDir', f.sortDir);
+  if (f.minEpisodes > 0) p.set('fMinEps', f.minEpisodes);
+  if (f.minVotes > 0) p.set('fMinVotes', f.minVotes);
+  if (f.minShowRating > 0) p.set('fMinShow', f.minShowRating);
+  if (f.minAvgEpisode > 0) p.set('fMinAvg', f.minAvgEpisode);
+  if (f.gapDir !== 'any') p.set('fGapDir', f.gapDir);
+  if (f.minGap > 0) p.set('fMinGap', f.minGap);
+  if (f.minYear != null) p.set('fMinYear', f.minYear);
+  if (f.maxYear != null) p.set('fMaxYear', f.maxYear);
+  if (f.genres.size) p.set('fg', [...f.genres].join(','));
+  if (f.genresExclude.size) p.set('fxg', [...f.genresExclude].join(','));
+  if (f.languages.size) p.set('fl', [...f.languages].join(','));
+  if (f.page > 1) p.set('page', f.page);
+  history.replaceState(null, '', `#${p.toString()}`);
+}
+
+// Read finder params off the hash into finderState. Called from
+// applyStateFromURL when the hash carries view=finder. Does NOT touch the DOM
+// controls (they may not exist yet at first load); syncFinderControls handles
+// that once the controls are rendered.
+function applyFinderStateFromParams(p) {
+  const f = finderState;
+  f.search = p.get('q') || '';
+  f.view = p.get('fView') === 'list' ? 'list' : 'grid';
+  f.sort = p.get('fSort') || 'votes';
+  f.sortDir = p.get('fDir') === 'asc' ? 'asc' : 'desc';
+  f.minEpisodes = parseFloat(p.get('fMinEps')) || 0;
+  f.minVotes = parseFloat(p.get('fMinVotes')) || 0;
+  f.minShowRating = parseFloat(p.get('fMinShow')) || 0;
+  f.minAvgEpisode = parseFloat(p.get('fMinAvg')) || 0;
+  f.gapDir = ['up', 'down'].includes(p.get('fGapDir')) ? p.get('fGapDir') : 'any';
+  f.minGap = parseFloat(p.get('fMinGap')) || 0;
+  f.minYear = p.has('fMinYear') ? (parseInt(p.get('fMinYear'), 10) || null) : null;
+  f.maxYear = p.has('fMaxYear') ? (parseInt(p.get('fMaxYear'), 10) || null) : null;
+  f.genres = new Set((p.get('fg') || '').split(',').filter(Boolean));
+  f.genresExclude = new Set((p.get('fxg') || '').split(',').filter(Boolean));
+  f.languages = new Set((p.get('fl') || '').split(',').filter(Boolean));
+  f.page = Math.max(1, parseInt(p.get('page'), 10) || 1);
+}
+
 // --- last-updated / stale ---
 
 function isStale() {
@@ -4707,6 +5814,14 @@ function bindEvents() {
   window.addEventListener('hashchange', () => {
     applyStateFromURL();
     syncResetButton();
+    // applyStateFromURL set `mode` from the hash; reflect it in the DOM and
+    // re-render whichever view is now active (finder controls were already
+    // populated by applyStateFromURL via applyFinderStateFromParams).
+    syncFinderControls();
+    syncFinderSortControls();
+    applyFinderViewClasses();
+    applyModeClasses();
+    if (mode === 'finder') renderFinder();
     render();
   });
 
