@@ -16,7 +16,7 @@ Mario Kart Race Tracker is a feature-rich web application that allows you to:
 
 ### Core Functionality
 - **Race Recording**: Quick and easy race result entry with multiple input methods
-- **Course Selection**: Tag each race with the course/map you played on, via a searchable picker (an inline dropdown on mobile, a command-palette overlay on desktop). Course data is data-driven and easy to update (see "Updating Course Data" below)
+- **Course Selection**: Tag each race with the course/map you played on, via a searchable picker (an inline dropdown on mobile, a command-palette overlay on desktop) with favorites, recent searches, and game-version / new-course filters. Course data is data-driven and easy to update (see "Updating Course Data" below)
 - **Player Management**: Customizable player names and emoji/icons
 - **Date Filtering**: View stats for specific time periods
 - **Undo/Redo**: Full history support for all actions
@@ -24,6 +24,7 @@ Mario Kart Race Tracker is a feature-rich web application that allows you to:
 - **Export/Import**: JSON file support for data backup and transfer
 - **Restore**: One-click recovery from the rolling auto-backup snapshot (taken every 10 minutes)
 - **Safe Deletes**: Deleting a race asks for confirmation first; undo/redo still covers every action
+- **Sortable History**: Sort the race-history table by date or by any player's finishing position
 
 ### Statistics & Analytics
 - **Comprehensive Stats**: Win rates, average positions, streaks, and more
@@ -158,7 +159,7 @@ const CourseDataConfig = {
 
 ## 💡 Tips & Tricks
 
-- Use the Quick Add widget (🏁+) for faster race entry
+- Star your most-played courses to pin them to the top of the course picker
 - Click on achievements to see detailed progress
 - Use date filters to analyze specific time periods
 - Export your data regularly as backup
