@@ -1,12 +1,13 @@
 # Rising Seasons
 
-Find TV shows by the **shape** of their IMDb episode ratings, not the average. Browse seasons that rise, stay consistently great, slow-burn into the back half, build to a big finale, or rebound after a mid-season dip.
+Find TV shows by the **shape** of their IMDb episode ratings, not the average. Browse seasons that rise, stay consistently great, slow-burn into the back half, build to a big finale, or rebound after a mid-season dip. Or flip to **Show Finder** to rank whole shows by how their episodes stack up against the show's own IMDb rating — the hidden gems whose episodes outscore their reputation, and the overrated ones where they don't.
 
 ## How it works
 
 1. A Node script (`scripts/build-data.js`) streams three gzipped TSV dumps from IMDb, joins episodes with their ratings, runs each season through eleven shape detectors (plus two series-level shapes applied across a show's seasons in a post-pass), and writes `data.json` with every season that passes the vote/episode floor (tagged with every shape it fits — seasons matching no shape are still included with `shapes: []`).
 2. Two optional enrichment scripts pull TMDB metadata: `scripts/enrich-tmdb.js` for posters, overviews, and language; `scripts/enrich-providers.js` for US streaming providers (Netflix / Max / Prime / …). Both cache to `data/tmdb-cache.json` so they survive rebuilds.
 3. `index.html` loads `data.json` in the browser and renders shape chips, filters, an SVG curve per season, and a per-season detail modal. The browser app supports grid + list views, watched tracking (localStorage), pagination via IntersectionObserver, and shareable URL state.
+4. The same page also has a **Show Finder** mode that aggregates the loaded per-season data up to one row per show (total rated episodes, episode-weighted average episode rating, the gap vs the show's IMDb rating, votes, total runtime) and ranks shows across those axes. It mirrors the Seasons UI (search, grid/list, tri-state genres, decade/year, language, sort, pagination, active-filter bar) and draws a season-average sparkline per show — single-season shows draw their episode trajectory in a distinct orange. Its mode and filters live in the `view=finder&…` URL hash, so a base URL opens Seasons and a shared finder link reopens the finder. No extra data or backend: it derives everything client-side from the fields already in `data.json`. See the feature table below.
 
 `data.json` is committed to the repo and refreshed weekly by GitHub Actions — no manual updates needed. See [`DATA_README.md`](DATA_README.md) for the auto-refresh details.
 
