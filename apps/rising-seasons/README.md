@@ -4,7 +4,7 @@ Find TV shows by the **shape** of their IMDb episode ratings, not the average. B
 
 ## How it works
 
-1. A Node script (`scripts/build-data.js`) streams three gzipped TSV dumps from IMDb, joins episodes with their ratings, runs each season through ten shape detectors, and writes `data.json` with every season that passes the vote/episode floor (tagged with every shape it fits — seasons matching no shape are still included with `shapes: []`).
+1. A Node script (`scripts/build-data.js`) streams three gzipped TSV dumps from IMDb, joins episodes with their ratings, runs each season through eleven shape detectors (plus two series-level shapes applied across a show's seasons in a post-pass), and writes `data.json` with every season that passes the vote/episode floor (tagged with every shape it fits — seasons matching no shape are still included with `shapes: []`).
 2. Two optional enrichment scripts pull TMDB metadata: `scripts/enrich-tmdb.js` for posters, overviews, and language; `scripts/enrich-providers.js` for US streaming providers (Netflix / Max / Prime / …). Both cache to `data/tmdb-cache.json` so they survive rebuilds.
 3. `index.html` loads `data.json` in the browser and renders shape chips, filters, an SVG curve per season, and a per-season detail modal. The browser app supports grid + list views, watched tracking (localStorage), pagination via IntersectionObserver, and shareable URL state.
 
@@ -17,13 +17,16 @@ Find TV shows by the **shape** of their IMDb episode ratings, not the average. B
 | Rising         | Each episode's rating ≥ the previous one (non-decreasing).                    |
 | Consistent     | All episodes ≥ 8.0 with a spread of ≤ 0.5.                                    |
 | Slow burn      | Second-half average ≥ first-half average + 0.6.                               |
-| Big finale     | Finale is the season's peak AND ≥ season average + 0.5.                       |
+| Big finale     | Finale beats every other episode by at least one IMDb step (0.1), so it is the season's clear peak. |
 | Rebound        | A real interior dip (≥ 0.4 below the start/end), recovers above the start.    |
 | Front-loaded   | First-half average ≥ second-half average + 0.6 (mirror of slow burn).         |
 | Declining      | Each episode's rating ≤ the previous one, with first strictly > last.         |
 | Bad finale     | Finale is the season's trough AND ≤ season average − 0.5.                     |
 | Rollercoaster  | Many large adjacent direction-flips with a wide range (chaotic seasons).      |
 | Mid-peak       | Peak sits in the middle half of the season, well above both edges.            |
+| U-shaped       | Opener and finale are both season peaks (each strictly above every interior episode), with at least one interior dip ≥ 0.5 below the opener or finale. |
+| Saved best for last | Series-level: a show with 3+ seasons whose final, highest-numbered season is also its highest-rated. |
+| Shape drift    | Series-level: a show's final season changes its dominant shape from earlier seasons, or extends a ≥ 0.5 cross-season ratings decline. |
 
 A season can match more than one shape — the card shows all of them.
 
@@ -37,7 +40,8 @@ A season can match more than one shape — the card shows all of them.
 | Decade filter            | "80s / 90s / 00s / 10s / 20s" quick chips set the year range in one tap (synced with the advanced-drawer year inputs); "All" clears it. |
 | Language filter          | Multi-select chips for the top original languages (TMDB `original_language`).                      |
 | Streaming filter         | Multi-select chips for top US watch providers (Netflix, HBO Max, Prime …).                         |
-| Hidden gems toggle       | Surfaces seasons with avg ≥ 8.0 *and* fewer than 1,000 votes per episode.                          |
+| Hidden gems toggle       | Surfaces seasons with avg ≥ 8.5 *and* fewer than 500 votes per episode.                             |
+| Surprise me / Popular pick | "Surprise me" jumps to a random season matching the active filters; "Popular pick" draws that random pick from the 50 most-watched matches. |
 | Episode-title search     | Searching ≥3 chars also matches against episode names — "Gray Matter" → Breaking Bad.              |
 | Compare shows            | "+ Add to compare" on each show, then a floating button opens an overlay chart of season-trajectories for up to 5 series (persisted in localStorage). |
 | Season overlay           | In the show modal, all seasons drawn together on one chart with a legend; clicking a legend entry (the swatch or the S-number) hides/restores that season's line. |
