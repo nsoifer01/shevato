@@ -338,6 +338,7 @@ const els = {
   modeSwitch: document.getElementById('modeSwitch'),
   finder: document.getElementById('finder'),
   finderSearch: document.getElementById('finderSearch'),
+  finderSuggestions: document.getElementById('finderSearchSuggestions'),
   finderViewToggle: document.getElementById('finderViewToggle'),
   finderActiveFilterBar: document.getElementById('finderActiveFilterBar'),
   finderMinEpisodes: document.getElementById('finderMinEpisodes'),
@@ -428,6 +429,7 @@ let showModalState = { seriesId: null, lastFocus: null, fromChangelog: false };
 let changelog = null;
 let changelogState = { lastFocus: null };
 const suggestState = { items: [], active: -1, open: false };
+const finderSuggestState = { items: [], active: -1, open: false };
 
 function debounce(fn, ms) {
   let t;
@@ -4221,7 +4223,7 @@ function filterAndSortFinder() {
   const f = finderState;
   const q = f.search.trim().toLowerCase();
   const rows = showAgg.filter((s) => {
-    if (q && !s.title.toLowerCase().includes(q)) return false;
+    if (q && !s.title.toLowerCase().includes(q) && !s.seriesId.toLowerCase().includes(q)) return false;
     if (s.episodes < f.minEpisodes) return false;
     if (s.votes < f.minVotes) return false;
     if (s.showRating < f.minShowRating) return false;
@@ -4352,6 +4354,13 @@ function buildFinderTable(page) {
     showCell.className = 'finder-col-show';
     showCell.dataset.label = 'Show';
 
+    // Inner flex wrapper so the <td> itself stays a table-cell (its
+    // border-bottom aligns with the rest of the row); flexing the td
+    // directly shrinks its box and strands a short divider under only
+    // this column.
+    const showInner = document.createElement('div');
+    showInner.className = 'finder-show-inner';
+
     const posterEl = document.createElement('div');
     posterEl.className = 'row-poster finder-row-poster';
     if (s.poster) {
@@ -4366,7 +4375,7 @@ function buildFinderTable(page) {
       posterEl.appendChild(fb);
       populatePosterFallback(fb, s.title);
     }
-    showCell.appendChild(posterEl);
+    showInner.appendChild(posterEl);
 
     const showText = document.createElement('div');
     showText.className = 'finder-show-text';
@@ -4380,7 +4389,8 @@ function buildFinderTable(page) {
       genreEl.textContent = s.genres.join(', ');
       showText.appendChild(genreEl);
     }
-    showCell.appendChild(showText);
+    showInner.appendChild(showText);
+    showCell.appendChild(showInner);
     tr.appendChild(showCell);
 
     const cells = [
@@ -4846,7 +4856,31 @@ function bindFinder() {
 
   els.finderSearch.addEventListener('input', () => {
     finderState.search = els.finderSearch.value;
+    updateFinderSuggestions();
     onFinderFilterChangeDebounced();
+  });
+  els.finderSearch.addEventListener('focus', () => {
+    if (els.finderSearch.value.trim()) updateFinderSuggestions();
+  });
+  els.finderSearch.addEventListener('blur', () => {
+    closeFinderSuggestions();
+  });
+  els.finderSearch.addEventListener('keydown', (e) => {
+    if (e.key === 'ArrowDown') {
+      if (!finderSuggestState.open && els.finderSearch.value.trim()) updateFinderSuggestions();
+      if (moveFinderSuggestionActive(1)) e.preventDefault();
+    } else if (e.key === 'ArrowUp') {
+      if (moveFinderSuggestionActive(-1)) e.preventDefault();
+    } else if (e.key === 'Enter') {
+      if (finderSuggestState.open && finderSuggestState.active >= 0) {
+        e.preventDefault();
+        selectFinderSuggestion(finderSuggestState.active);
+      }
+    } else if (e.key === 'Escape' && finderSuggestState.open) {
+      e.preventDefault();
+      e.stopPropagation();
+      closeFinderSuggestions();
+    }
   });
 
   const numHandler = (el, prop, allowNull) => {
@@ -5526,6 +5560,212 @@ function selectSuggestion(i) {
   openShowModal(s.seriesId);
 }
 
+// --- finder search suggestions (autocomplete, scoped to whole shows) ---
+// Parallel to the Seasons suggestion machinery: same .search-suggestion CSS,
+// but it ranks rows from showAgg (one per series) and matches title or IMDb
+// series id only — no episode-name or fuzzy fallback.
+function computeFinderSuggestions(rawQuery) {
+  const q = rawQuery.trim().toLowerCase();
+  if (!q || !showAgg) return [];
+  const titleStarts = [];
+  const titleContains = [];
+  const idMatches = [];
+  for (const s of showAgg) {
+    const titleL = s.title.toLowerCase();
+    const idL = s.seriesId.toLowerCase();
+    if (titleL.startsWith(q)) titleStarts.push(s);
+    else if (titleL.includes(q)) titleContains.push(s);
+    else if (idL.includes(q)) idMatches.push(s);
+  }
+  const byVotes = (a, b) => (b.votes || 0) - (a.votes || 0);
+  titleStarts.sort(byVotes);
+  titleContains.sort(byVotes);
+  idMatches.sort(byVotes);
+  const strictAll = [...titleStarts, ...titleContains, ...idMatches];
+  const out = strictAll.slice(0, MAX_SUGGESTIONS);
+
+  // fuzzy-search: mirror the Seasons suggestion builder, but over whole
+  // shows. Append up to FUZZY_MAX_RESULTS typo-tolerant titles under a
+  // "Did you mean?" subheader. Runs even when the strict bucket is full,
+  // and is suppressed when a multi-word query exactly matches a real
+  // title ("Breaking Bad" shouldn't suggest "Breaking In").
+  const FUZZY_MIN_QUERY_LEN = 4;
+  const FUZZY_DICE_THRESHOLD = 0.6;
+  const FUZZY_MAX_RESULTS = 3;
+  const matchedIds = new Set(strictAll.map((s) => s.seriesId));
+  const hasExactTitle = showAgg.some((s) => s.title.toLowerCase() === q);
+  const suppressFuzzy = hasExactTitle && q.includes(' ');
+  if (q.length >= FUZZY_MIN_QUERY_LEN && !suppressFuzzy) {
+    const qBigrams = searchBigrams(q);
+    const scored = [];
+    for (const s of showAgg) {
+      if (matchedIds.has(s.seriesId)) continue;
+      const titleL = s.title.toLowerCase();
+      if (titleL === q) continue;
+      const score = searchDice(qBigrams, searchBigrams(titleL));
+      if (score >= FUZZY_DICE_THRESHOLD) scored.push({ s, score });
+    }
+    scored.sort((a, b) => {
+      if (b.score !== a.score) return b.score - a.score;
+      return (b.s.votes || 0) - (a.s.votes || 0);
+    });
+    for (let i = 0; i < scored.length && i < FUZZY_MAX_RESULTS; i++) {
+      out.push({ ...scored[i].s, isFuzzy: true });
+    }
+  }
+
+  return out;
+}
+
+function renderFinderSuggestionItems() {
+  const items = finderSuggestState.items;
+  const ul = els.finderSuggestions;
+  if (!items.length) {
+    closeFinderSuggestions();
+    return;
+  }
+  const q = els.finderSearch.value.trim().toLowerCase();
+  const frag = document.createDocumentFragment();
+  // fuzzy-search: only the very first fuzzy item gets a preceding
+  // "Did you mean?" subheader; later fuzzy items share that section.
+  let fuzzyHeaderRendered = false;
+  items.forEach((s, i) => {
+    if (s.isFuzzy && !fuzzyHeaderRendered) {
+      const head = document.createElement('li');
+      head.className = 'search-suggestion-subheader';
+      head.setAttribute('aria-hidden', 'true');
+      head.textContent = 'Did you mean?';
+      frag.appendChild(head);
+      fuzzyHeaderRendered = true;
+    }
+    const li = document.createElement('li');
+    li.className = 'search-suggestion';
+    li.setAttribute('role', 'option');
+    li.id = `fss-${i}`;
+    li.dataset.index = String(i);
+    li.setAttribute('aria-selected', i === finderSuggestState.active ? 'true' : 'false');
+
+    const poster = document.createElement('div');
+    poster.className = 'ss-poster';
+    if (s.poster) {
+      const img = document.createElement('img');
+      img.src = `https://image.tmdb.org/t/p/w92${s.poster}`;
+      img.alt = '';
+      img.loading = 'lazy';
+      poster.appendChild(img);
+    } else {
+      poster.classList.add('ss-poster-fallback');
+      poster.style.setProperty('--poster-hue', String(hashHue(s.title || 'unknown')));
+      const initial = document.createElement('span');
+      initial.className = 'ss-poster-initial';
+      initial.textContent = posterInitial(s.title);
+      poster.appendChild(initial);
+    }
+
+    const text = document.createElement('div');
+    text.className = 'ss-text';
+
+    const title = document.createElement('span');
+    title.className = 'ss-title';
+    for (const node of highlightFragment(s.title, q)) title.appendChild(node);
+
+    const meta = document.createElement('span');
+    meta.className = 'ss-meta';
+    const seasonLabel = s.seasonsCount === 1 ? 'season' : 'seasons';
+    if (s.year) meta.appendChild(document.createTextNode(`${s.year} · ${s.seasonsCount} ${seasonLabel}`));
+    else meta.appendChild(document.createTextNode(`${s.seasonsCount} ${seasonLabel}`));
+
+    text.append(title, meta);
+    li.append(poster, text);
+
+    li.addEventListener('mousedown', (e) => e.preventDefault());
+    li.addEventListener('click', (e) => {
+      e.preventDefault();
+      selectFinderSuggestion(i);
+    });
+    frag.appendChild(li);
+  });
+  ul.replaceChildren(frag);
+  ul.hidden = false;
+  els.finderSearch.setAttribute('aria-expanded', 'true');
+  if (finderSuggestState.active >= 0) {
+    els.finderSearch.setAttribute('aria-activedescendant', `fss-${finderSuggestState.active}`);
+  } else {
+    els.finderSearch.removeAttribute('aria-activedescendant');
+  }
+  finderSuggestState.open = true;
+}
+
+function updateFinderSuggestions() {
+  const q = els.finderSearch.value.trim();
+  if (!q) {
+    closeFinderSuggestions();
+    return;
+  }
+  finderSuggestState.items = computeFinderSuggestions(q);
+  finderSuggestState.active = -1;
+  if (!finderSuggestState.items.length) {
+    renderFinderEmptySuggestion();
+    return;
+  }
+  renderFinderSuggestionItems();
+}
+
+function renderFinderEmptySuggestion() {
+  const ul = els.finderSuggestions;
+  const li = document.createElement('li');
+  li.className = 'search-suggestion search-suggestion-empty';
+  li.setAttribute('role', 'option');
+  li.setAttribute('aria-disabled', 'true');
+  li.textContent = 'No matches';
+  ul.replaceChildren(li);
+  ul.hidden = false;
+  els.finderSearch.setAttribute('aria-expanded', 'true');
+  els.finderSearch.removeAttribute('aria-activedescendant');
+  finderSuggestState.open = true;
+}
+
+function closeFinderSuggestions() {
+  els.finderSuggestions.hidden = true;
+  els.finderSuggestions.replaceChildren();
+  els.finderSearch.setAttribute('aria-expanded', 'false');
+  els.finderSearch.removeAttribute('aria-activedescendant');
+  finderSuggestState.items = [];
+  finderSuggestState.active = -1;
+  finderSuggestState.open = false;
+}
+
+function moveFinderSuggestionActive(delta) {
+  if (!finderSuggestState.open) return false;
+  const n = finderSuggestState.items.length;
+  if (n === 0) return false;
+  let next = finderSuggestState.active + delta;
+  if (next < -1) next = n - 1;
+  if (next >= n) next = -1;
+  finderSuggestState.active = next;
+  for (const li of els.finderSuggestions.querySelectorAll('.search-suggestion')) {
+    const idx = parseInt(li.dataset.index, 10);
+    const isActive = idx === finderSuggestState.active;
+    li.setAttribute('aria-selected', isActive ? 'true' : 'false');
+    if (isActive) li.scrollIntoView({ block: 'nearest' });
+  }
+  if (finderSuggestState.active >= 0) {
+    els.finderSearch.setAttribute('aria-activedescendant', `fss-${finderSuggestState.active}`);
+  } else {
+    els.finderSearch.removeAttribute('aria-activedescendant');
+  }
+  return true;
+}
+
+function selectFinderSuggestion(i) {
+  const s = finderSuggestState.items[i];
+  if (!s) return;
+  closeFinderSuggestions();
+  // Mirror the Seasons "pick a series" behavior: jump straight to the
+  // picked show's modal.
+  openShowModal(s.seriesId);
+}
+
 function readToolbarInputs() {
   state.search = els.search.value.trim();
   state.minEpisodes = parseInt(els.minEpisodes.value, 10) || null;
@@ -5886,8 +6126,9 @@ function bindKeyboard() {
   document.addEventListener('keydown', (e) => {
     if (e.key === '/' && !isTypingTarget(e.target)) {
       e.preventDefault();
-      els.search.focus();
-      els.search.select();
+      const input = mode === 'finder' ? els.finderSearch : els.search;
+      input.focus();
+      input.select();
       return;
     }
     if (e.key === '?' && !isTypingTarget(e.target)) {

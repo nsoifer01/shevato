@@ -1090,6 +1090,16 @@ body.rising-seasons-app button {
   margin-top: 0.5rem;
 }
 
+/* Show Finder reuses the same collapse mechanism. Its panel needs its own
+   id (the Seasons one is unique) but the .filters:has([open]) ancestor rule
+   is identical, so the "Quick filters" summary actually toggles the panel
+   instead of just recoloring itself. */
+#finderQuickFiltersPanel { display: none; }
+.filters:has(.quick-filters-wrap[open]) #finderQuickFiltersPanel {
+  display: flex;
+  margin-top: 0.5rem;
+}
+
 .advanced summary .advanced-summary-label { display: inline-flex; align-items: center; }
 
 /* "Clear filters" pill — anchored to the right side of the Quick filters
@@ -5356,9 +5366,13 @@ body.advanced-drawer-open {
 /* Poster thumbnail in the Show column, mirroring the Seasons list row.
    Smaller than .row-poster (44px) so the table row height stays tight. */
 .finder-col-show {
+  vertical-align: middle;
+}
+.finder-show-inner {
   display: flex;
   align-items: center;
   gap: 10px;
+  min-width: 0;
 }
 .finder-row-poster {
   width: 44px;
