@@ -1,6 +1,597 @@
 {
   "updates": [
     {
+      "builtAt": "2026-06-10T08:17:23.755Z",
+      "totals": {
+        "seasons": 65295,
+        "delta": 24
+      },
+      "shapeCounts": {
+        "mid-peak": 4608,
+        "rebound": 9993,
+        "rising": 2910,
+        "slow-burn": 4309,
+        "big-finale": 11926,
+        "u-shaped": 3068,
+        "rollercoaster": 13968,
+        "saved-best-for-last": 1512,
+        "front-loaded": 3431,
+        "declining": 1837,
+        "bad-finale": 4602,
+        "consistent": 2583,
+        "shape-drift": 1589
+      },
+      "shapeDeltas": {
+        "mid-peak": 5,
+        "rebound": 8,
+        "rising": 3,
+        "slow-burn": 3,
+        "big-finale": -3,
+        "u-shaped": -4,
+        "rollercoaster": -4,
+        "front-loaded": -1,
+        "declining": 4,
+        "shape-drift": -3
+      },
+      "added": [
+        {
+          "seriesId": "tt0315652",
+          "title": "Broken Silence",
+          "season": 1,
+          "seasonYear": 2000
+        },
+        {
+          "seriesId": "tt35728748",
+          "title": "Alice and Steve",
+          "season": 1,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt1868207",
+          "title": "Atop the Fourth Wall",
+          "season": 11,
+          "seasonYear": 2018
+        },
+        {
+          "seriesId": "tt0190897",
+          "title": "The All-New Popeye Hour",
+          "season": 4,
+          "seasonYear": 1981
+        },
+        {
+          "seriesId": "tt0190897",
+          "title": "The All-New Popeye Hour",
+          "season": 2,
+          "seasonYear": 1981
+        },
+        {
+          "seriesId": "tt6848578",
+          "title": "Victor Lessard",
+          "season": 3,
+          "seasonYear": 2019
+        },
+        {
+          "seriesId": "tt6848578",
+          "title": "Victor Lessard",
+          "season": 2,
+          "seasonYear": 2018
+        },
+        {
+          "seriesId": "tt43421281",
+          "title": "Second Sight Paranormal TV",
+          "season": 1,
+          "seasonYear": 2019
+        },
+        {
+          "seriesId": "tt9304958",
+          "title": "Ben 10: Alien Worlds",
+          "season": 3,
+          "seasonYear": 2019
+        },
+        {
+          "seriesId": "tt9304958",
+          "title": "Ben 10: Alien Worlds",
+          "season": 2,
+          "seasonYear": 2018
+        },
+        {
+          "seriesId": "tt42314056",
+          "title": "Ahlelele Ahlelas",
+          "season": 1,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt0442730",
+          "title": "Tayny sledstviya",
+          "season": 23,
+          "seasonYear": 2023
+        },
+        {
+          "seriesId": "tt13028308",
+          "title": "I Want You to Show Me Your Panties with a Disgusted Face",
+          "season": 4,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt15754974",
+          "title": "Project 863",
+          "season": 1,
+          "seasonYear": 2018
+        },
+        {
+          "seriesId": "tt16283458",
+          "title": "Forever and Ever",
+          "season": 1,
+          "seasonYear": 2021
+        },
+        {
+          "seriesId": "tt36951033",
+          "title": "Parlor Room",
+          "season": 2,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt39003317",
+          "title": "Ground Up",
+          "season": 1,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt33265684",
+          "title": "Sniper Butterfly",
+          "season": 1,
+          "seasonYear": 2025
+        },
+        {
+          "seriesId": "tt39053780",
+          "title": "Mark Rober's CrunchLabs",
+          "season": 2,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt39053780",
+          "title": "Mark Rober's CrunchLabs",
+          "season": 3,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt39184653",
+          "title": "Doctor on the Edge",
+          "season": 1,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt32592348",
+          "title": "Born with Luck",
+          "season": 1,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt43227998",
+          "title": "Ward Ala Foll Wa Yasmeen",
+          "season": 1,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt2339457",
+          "title": "Foute Vrienden",
+          "season": 1,
+          "seasonYear": 2013
+        },
+        {
+          "seriesId": "tt2339457",
+          "title": "Foute Vrienden",
+          "season": 2,
+          "seasonYear": 2014
+        },
+        {
+          "seriesId": "tt2339457",
+          "title": "Foute Vrienden",
+          "season": 3,
+          "seasonYear": 2015
+        }
+      ],
+      "removed": [
+        {
+          "seriesId": "tt37563402",
+          "title": "Metal Tears",
+          "season": 1,
+          "seasonYear": 2025
+        },
+        {
+          "seriesId": "tt14545226",
+          "title": "Mukesh Jasoos",
+          "season": 1,
+          "seasonYear": 2021
+        }
+      ],
+      "ratingSwings": [
+        {
+          "seriesId": "tt42071698",
+          "title": "Cousins and Kalyanams",
+          "season": 1,
+          "from": 3.85,
+          "to": 4.88,
+          "delta": 1.03
+        },
+        {
+          "seriesId": "tt8566938",
+          "title": "Engineering Catastrophes",
+          "season": 5,
+          "from": 7.72,
+          "to": 6.9,
+          "delta": -0.82
+        },
+        {
+          "seriesId": "tt8566938",
+          "title": "Engineering Catastrophes",
+          "season": 6,
+          "from": 7.9,
+          "to": 7.1,
+          "delta": -0.8
+        },
+        {
+          "seriesId": "tt13028308",
+          "title": "I Want You to Show Me Your Panties with a Disgusted Face",
+          "season": 2,
+          "from": 5.2,
+          "to": 5.98,
+          "delta": 0.78
+        },
+        {
+          "seriesId": "tt0168313",
+          "title": "Cliff Dexter",
+          "season": 1,
+          "from": 9.44,
+          "to": 8.86,
+          "delta": -0.58
+        },
+        {
+          "seriesId": "tt38589437",
+          "title": "The Pyramid Scheme",
+          "season": 1,
+          "from": 7.6,
+          "to": 7.04,
+          "delta": -0.56
+        },
+        {
+          "seriesId": "tt14365118",
+          "title": "The Abyss: Rise and Fall of the Nazis",
+          "season": 1,
+          "from": 8.55,
+          "to": 8.07,
+          "delta": -0.48
+        },
+        {
+          "seriesId": "tt35823838",
+          "title": "Not Suitable for Work",
+          "season": 1,
+          "from": 7.5,
+          "to": 7.03,
+          "delta": -0.47
+        },
+        {
+          "seriesId": "tt32729968",
+          "title": "The Call Boy I Met in Paris",
+          "season": 1,
+          "from": 8.67,
+          "to": 8.23,
+          "delta": -0.44
+        },
+        {
+          "seriesId": "tt40757829",
+          "title": "Human Being",
+          "season": 1,
+          "from": 7.45,
+          "to": 7.85,
+          "delta": 0.4
+        }
+      ],
+      "modifiedCounts": {
+        "seriesVotes": 18644,
+        "avgRating": 1161,
+        "shapes": 215,
+        "seriesRating": 265,
+        "episodeCount": 82,
+        "poster": 3
+      }
+    },
+    {
+      "builtAt": "2026-06-10T07:42:49.472Z",
+      "totals": {
+        "seasons": 65295,
+        "delta": 24
+      },
+      "shapeCounts": {
+        "mid-peak": 4608,
+        "rebound": 9993,
+        "rising": 2910,
+        "slow-burn": 4309,
+        "big-finale": 11926,
+        "u-shaped": 3068,
+        "rollercoaster": 13968,
+        "saved-best-for-last": 1512,
+        "front-loaded": 3431,
+        "declining": 1837,
+        "bad-finale": 4602,
+        "consistent": 2583,
+        "shape-drift": 1589
+      },
+      "shapeDeltas": {
+        "mid-peak": 5,
+        "rebound": 8,
+        "rising": 3,
+        "slow-burn": 3,
+        "big-finale": -3,
+        "u-shaped": -4,
+        "rollercoaster": -4,
+        "front-loaded": -1,
+        "declining": 4,
+        "shape-drift": -3
+      },
+      "added": [
+        {
+          "seriesId": "tt0315652",
+          "title": "Broken Silence",
+          "season": 1,
+          "seasonYear": 2000
+        },
+        {
+          "seriesId": "tt35728748",
+          "title": "Alice and Steve",
+          "season": 1,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt1868207",
+          "title": "Atop the Fourth Wall",
+          "season": 11,
+          "seasonYear": 2018
+        },
+        {
+          "seriesId": "tt0190897",
+          "title": "The All-New Popeye Hour",
+          "season": 4,
+          "seasonYear": 1981
+        },
+        {
+          "seriesId": "tt0190897",
+          "title": "The All-New Popeye Hour",
+          "season": 2,
+          "seasonYear": 1981
+        },
+        {
+          "seriesId": "tt6848578",
+          "title": "Victor Lessard",
+          "season": 3,
+          "seasonYear": 2019
+        },
+        {
+          "seriesId": "tt6848578",
+          "title": "Victor Lessard",
+          "season": 2,
+          "seasonYear": 2018
+        },
+        {
+          "seriesId": "tt43421281",
+          "title": "Second Sight Paranormal TV",
+          "season": 1,
+          "seasonYear": 2019
+        },
+        {
+          "seriesId": "tt9304958",
+          "title": "Ben 10: Alien Worlds",
+          "season": 3,
+          "seasonYear": 2019
+        },
+        {
+          "seriesId": "tt9304958",
+          "title": "Ben 10: Alien Worlds",
+          "season": 2,
+          "seasonYear": 2018
+        },
+        {
+          "seriesId": "tt42314056",
+          "title": "Ahlelele Ahlelas",
+          "season": 1,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt0442730",
+          "title": "Tayny sledstviya",
+          "season": 23,
+          "seasonYear": 2023
+        },
+        {
+          "seriesId": "tt13028308",
+          "title": "I Want You to Show Me Your Panties with a Disgusted Face",
+          "season": 4,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt15754974",
+          "title": "Project 863",
+          "season": 1,
+          "seasonYear": 2018
+        },
+        {
+          "seriesId": "tt16283458",
+          "title": "Forever and Ever",
+          "season": 1,
+          "seasonYear": 2021
+        },
+        {
+          "seriesId": "tt36951033",
+          "title": "Parlor Room",
+          "season": 2,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt39003317",
+          "title": "Ground Up",
+          "season": 1,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt33265684",
+          "title": "Sniper Butterfly",
+          "season": 1,
+          "seasonYear": 2025
+        },
+        {
+          "seriesId": "tt39053780",
+          "title": "Mark Rober's CrunchLabs",
+          "season": 2,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt39053780",
+          "title": "Mark Rober's CrunchLabs",
+          "season": 3,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt39184653",
+          "title": "Doctor on the Edge",
+          "season": 1,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt32592348",
+          "title": "Born with Luck",
+          "season": 1,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt43227998",
+          "title": "Ward Ala Foll Wa Yasmeen",
+          "season": 1,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt2339457",
+          "title": "Foute Vrienden",
+          "season": 1,
+          "seasonYear": 2013
+        },
+        {
+          "seriesId": "tt2339457",
+          "title": "Foute Vrienden",
+          "season": 2,
+          "seasonYear": 2014
+        },
+        {
+          "seriesId": "tt2339457",
+          "title": "Foute Vrienden",
+          "season": 3,
+          "seasonYear": 2015
+        }
+      ],
+      "removed": [
+        {
+          "seriesId": "tt37563402",
+          "title": "Metal Tears",
+          "season": 1,
+          "seasonYear": 2025
+        },
+        {
+          "seriesId": "tt14545226",
+          "title": "Mukesh Jasoos",
+          "season": 1,
+          "seasonYear": 2021
+        }
+      ],
+      "ratingSwings": [
+        {
+          "seriesId": "tt42071698",
+          "title": "Cousins and Kalyanams",
+          "season": 1,
+          "from": 3.85,
+          "to": 4.88,
+          "delta": 1.03
+        },
+        {
+          "seriesId": "tt8566938",
+          "title": "Engineering Catastrophes",
+          "season": 5,
+          "from": 7.72,
+          "to": 6.9,
+          "delta": -0.82
+        },
+        {
+          "seriesId": "tt8566938",
+          "title": "Engineering Catastrophes",
+          "season": 6,
+          "from": 7.9,
+          "to": 7.1,
+          "delta": -0.8
+        },
+        {
+          "seriesId": "tt13028308",
+          "title": "I Want You to Show Me Your Panties with a Disgusted Face",
+          "season": 2,
+          "from": 5.2,
+          "to": 5.98,
+          "delta": 0.78
+        },
+        {
+          "seriesId": "tt0168313",
+          "title": "Cliff Dexter",
+          "season": 1,
+          "from": 9.44,
+          "to": 8.86,
+          "delta": -0.58
+        },
+        {
+          "seriesId": "tt38589437",
+          "title": "The Pyramid Scheme",
+          "season": 1,
+          "from": 7.6,
+          "to": 7.04,
+          "delta": -0.56
+        },
+        {
+          "seriesId": "tt14365118",
+          "title": "The Abyss: Rise and Fall of the Nazis",
+          "season": 1,
+          "from": 8.55,
+          "to": 8.07,
+          "delta": -0.48
+        },
+        {
+          "seriesId": "tt35823838",
+          "title": "Not Suitable for Work",
+          "season": 1,
+          "from": 7.5,
+          "to": 7.03,
+          "delta": -0.47
+        },
+        {
+          "seriesId": "tt32729968",
+          "title": "The Call Boy I Met in Paris",
+          "season": 1,
+          "from": 8.67,
+          "to": 8.23,
+          "delta": -0.44
+        },
+        {
+          "seriesId": "tt40757829",
+          "title": "Human Being",
+          "season": 1,
+          "from": 7.45,
+          "to": 7.85,
+          "delta": 0.4
+        }
+      ],
+      "modifiedCounts": {
+        "seriesVotes": 18644,
+        "avgRating": 1161,
+        "shapes": 215,
+        "seriesRating": 265,
+        "episodeCount": 82
+      }
+    },
+    {
       "builtAt": "2026-06-09T07:52:34.489Z",
       "totals": {
         "seasons": 65271,
@@ -5925,519 +6516,6 @@
         "shapes": 193,
         "episodeCount": 63,
         "seriesRating": 238
-      }
-    },
-    {
-      "builtAt": "2026-05-28T07:51:36.700Z",
-      "totals": {
-        "seasons": 65077,
-        "delta": 21
-      },
-      "shapeCounts": {
-        "mid-peak": 4591,
-        "rebound": 9917,
-        "rising": 2911,
-        "slow-burn": 4296,
-        "big-finale": 11911,
-        "u-shaped": 3061,
-        "rollercoaster": 13909,
-        "saved-best-for-last": 1504,
-        "front-loaded": 3441,
-        "declining": 1830,
-        "bad-finale": 4593,
-        "consistent": 2578,
-        "shape-drift": 1603
-      },
-      "shapeDeltas": {
-        "mid-peak": 4,
-        "rebound": 13,
-        "rising": -1,
-        "slow-burn": 9,
-        "big-finale": -9,
-        "u-shaped": -7,
-        "rollercoaster": 5,
-        "saved-best-for-last": -7,
-        "front-loaded": -3,
-        "declining": 3,
-        "bad-finale": 5,
-        "consistent": 7,
-        "shape-drift": -3
-      },
-      "added": [
-        {
-          "seriesId": "tt0112090",
-          "title": "The Naked Truth",
-          "season": 3,
-          "seasonYear": 1997
-        },
-        {
-          "seriesId": "tt30460310",
-          "title": "Spider-Noir",
-          "season": 1,
-          "seasonYear": 2026
-        },
-        {
-          "seriesId": "tt40385200",
-          "title": "World War II with Tom Hanks",
-          "season": 1,
-          "seasonYear": 2026
-        },
-        {
-          "seriesId": "tt0062588",
-          "title": "Mister Rogers' Neighborhood",
-          "season": 3,
-          "seasonYear": 1970
-        },
-        {
-          "seriesId": "tt23731346",
-          "title": "Sofia the First: Royal Magic",
-          "season": 1,
-          "seasonYear": 2026
-        },
-        {
-          "seriesId": "tt0085010",
-          "title": "The Dukes",
-          "season": 1,
-          "seasonYear": 1983
-        },
-        {
-          "seriesId": "tt31976132",
-          "title": "24 in 24: Last Chef Standing",
-          "season": 3,
-          "seasonYear": 2026
-        },
-        {
-          "seriesId": "tt4049416",
-          "title": "Lego Friends",
-          "season": 3,
-          "seasonYear": 2015
-        },
-        {
-          "seriesId": "tt11310352",
-          "title": "Canal Boat Diaries",
-          "season": 6,
-          "seasonYear": 2025
-        },
-        {
-          "seriesId": "tt38856253",
-          "title": "Exam",
-          "season": 1,
-          "seasonYear": 2026
-        },
-        {
-          "seriesId": "tt0164299",
-          "title": "Tucker's Luck",
-          "season": 2,
-          "seasonYear": 1984
-        },
-        {
-          "seriesId": "tt0164299",
-          "title": "Tucker's Luck",
-          "season": 3,
-          "seasonYear": 1985
-        },
-        {
-          "seriesId": "tt7686456",
-          "title": "Jersey Shore: Family Vacation",
-          "season": 9,
-          "seasonYear": 2026
-        },
-        {
-          "seriesId": "tt2317751",
-          "title": "Indian Premier League",
-          "season": 19,
-          "seasonYear": 2026
-        },
-        {
-          "seriesId": "tt14435292",
-          "title": "Kees van der Spek: Oplichters Aangepakt!",
-          "season": 8,
-          "seasonYear": 2023
-        },
-        {
-          "seriesId": "tt14435292",
-          "title": "Kees van der Spek: Oplichters Aangepakt!",
-          "season": 9,
-          "seasonYear": 2023
-        },
-        {
-          "seriesId": "tt2537956",
-          "title": "Wives with Knives",
-          "season": 1,
-          "seasonYear": 2012
-        },
-        {
-          "seriesId": "tt31721916",
-          "title": "Vanina",
-          "season": 2,
-          "seasonYear": 2026
-        },
-        {
-          "seriesId": "tt33695087",
-          "title": "Only Joling",
-          "season": 2,
-          "seasonYear": 2025
-        },
-        {
-          "seriesId": "tt34127005",
-          "title": "Minimum Wage",
-          "season": 1,
-          "seasonYear": 2024
-        },
-        {
-          "seriesId": "tt41776981",
-          "title": "Zero Stars",
-          "season": 1,
-          "seasonYear": 2026
-        }
-      ],
-      "removed": [],
-      "ratingSwings": [
-        {
-          "seriesId": "tt40150035",
-          "title": "Hocus Pocus",
-          "season": 1,
-          "from": 9.52,
-          "to": 7.66,
-          "delta": -1.86
-        },
-        {
-          "seriesId": "tt21272398",
-          "title": "The Traitors: Spain",
-          "season": 2,
-          "from": 7.13,
-          "to": 8.28,
-          "delta": 1.15
-        },
-        {
-          "seriesId": "tt4049416",
-          "title": "Lego Friends",
-          "season": 4,
-          "from": 7.64,
-          "to": 6.63,
-          "delta": -1.01
-        },
-        {
-          "seriesId": "tt5678870",
-          "title": "Ultraman Orb",
-          "season": 1,
-          "from": 8.48,
-          "to": 7.49,
-          "delta": -0.99
-        },
-        {
-          "seriesId": "tt14253638",
-          "title": "Express",
-          "season": 2,
-          "from": 4.77,
-          "to": 5.57,
-          "delta": 0.8
-        },
-        {
-          "seriesId": "tt1205892",
-          "title": "Ultraman Mebius",
-          "season": 1,
-          "from": 7.71,
-          "to": 6.97,
-          "delta": -0.74
-        },
-        {
-          "seriesId": "tt41559289",
-          "title": "Carizzma",
-          "season": 1,
-          "from": 5.6,
-          "to": 4.98,
-          "delta": -0.62
-        },
-        {
-          "seriesId": "tt6091552",
-          "title": "Prisoner of Love",
-          "season": 1,
-          "from": 7.35,
-          "to": 6.77,
-          "delta": -0.58
-        },
-        {
-          "seriesId": "tt1538296",
-          "title": "Hoarding: Buried Alive",
-          "season": 5,
-          "from": 6.71,
-          "to": 6.13,
-          "delta": -0.58
-        },
-        {
-          "seriesId": "tt0280277",
-          "title": "Mr. Bean: The Animated Series",
-          "season": 6,
-          "from": 9.42,
-          "to": 8.85,
-          "delta": -0.57
-        }
-      ],
-      "modifiedCounts": {
-        "seriesVotes": 25186,
-        "avgRating": 1599,
-        "shapes": 281,
-        "seriesRating": 449,
-        "poster": 3,
-        "episodeCount": 112,
-        "providers": 2,
-        "overview": 3
-      }
-    },
-    {
-      "builtAt": "2026-05-28T07:35:05.860Z",
-      "totals": {
-        "seasons": 65077,
-        "delta": 21
-      },
-      "shapeCounts": {
-        "mid-peak": 4591,
-        "rebound": 9917,
-        "rising": 2911,
-        "slow-burn": 4296,
-        "big-finale": 11911,
-        "u-shaped": 3061,
-        "rollercoaster": 13909,
-        "saved-best-for-last": 1504,
-        "front-loaded": 3441,
-        "declining": 1830,
-        "bad-finale": 4593,
-        "consistent": 2578,
-        "shape-drift": 1603
-      },
-      "shapeDeltas": {
-        "mid-peak": 4,
-        "rebound": 13,
-        "rising": -1,
-        "slow-burn": 9,
-        "big-finale": -9,
-        "u-shaped": -7,
-        "rollercoaster": 5,
-        "saved-best-for-last": -7,
-        "front-loaded": -3,
-        "declining": 3,
-        "bad-finale": 5,
-        "consistent": 7,
-        "shape-drift": -3
-      },
-      "added": [
-        {
-          "seriesId": "tt0112090",
-          "title": "The Naked Truth",
-          "season": 3,
-          "seasonYear": 1997
-        },
-        {
-          "seriesId": "tt30460310",
-          "title": "Spider-Noir",
-          "season": 1,
-          "seasonYear": 2026
-        },
-        {
-          "seriesId": "tt40385200",
-          "title": "World War II with Tom Hanks",
-          "season": 1,
-          "seasonYear": 2026
-        },
-        {
-          "seriesId": "tt0062588",
-          "title": "Mister Rogers' Neighborhood",
-          "season": 3,
-          "seasonYear": 1970
-        },
-        {
-          "seriesId": "tt23731346",
-          "title": "Sofia the First: Royal Magic",
-          "season": 1,
-          "seasonYear": 2026
-        },
-        {
-          "seriesId": "tt0085010",
-          "title": "The Dukes",
-          "season": 1,
-          "seasonYear": 1983
-        },
-        {
-          "seriesId": "tt31976132",
-          "title": "24 in 24: Last Chef Standing",
-          "season": 3,
-          "seasonYear": 2026
-        },
-        {
-          "seriesId": "tt4049416",
-          "title": "Lego Friends",
-          "season": 3,
-          "seasonYear": 2015
-        },
-        {
-          "seriesId": "tt11310352",
-          "title": "Canal Boat Diaries",
-          "season": 6,
-          "seasonYear": 2025
-        },
-        {
-          "seriesId": "tt38856253",
-          "title": "Exam",
-          "season": 1,
-          "seasonYear": 2026
-        },
-        {
-          "seriesId": "tt0164299",
-          "title": "Tucker's Luck",
-          "season": 2,
-          "seasonYear": 1984
-        },
-        {
-          "seriesId": "tt0164299",
-          "title": "Tucker's Luck",
-          "season": 3,
-          "seasonYear": 1985
-        },
-        {
-          "seriesId": "tt7686456",
-          "title": "Jersey Shore: Family Vacation",
-          "season": 9,
-          "seasonYear": 2026
-        },
-        {
-          "seriesId": "tt2317751",
-          "title": "Indian Premier League",
-          "season": 19,
-          "seasonYear": 2026
-        },
-        {
-          "seriesId": "tt14435292",
-          "title": "Kees van der Spek: Oplichters Aangepakt!",
-          "season": 8,
-          "seasonYear": 2023
-        },
-        {
-          "seriesId": "tt14435292",
-          "title": "Kees van der Spek: Oplichters Aangepakt!",
-          "season": 9,
-          "seasonYear": 2023
-        },
-        {
-          "seriesId": "tt2537956",
-          "title": "Wives with Knives",
-          "season": 1,
-          "seasonYear": 2012
-        },
-        {
-          "seriesId": "tt31721916",
-          "title": "Vanina",
-          "season": 2,
-          "seasonYear": 2026
-        },
-        {
-          "seriesId": "tt33695087",
-          "title": "Only Joling",
-          "season": 2,
-          "seasonYear": 2025
-        },
-        {
-          "seriesId": "tt34127005",
-          "title": "Minimum Wage",
-          "season": 1,
-          "seasonYear": 2024
-        },
-        {
-          "seriesId": "tt41776981",
-          "title": "Zero Stars",
-          "season": 1,
-          "seasonYear": 2026
-        }
-      ],
-      "removed": [],
-      "ratingSwings": [
-        {
-          "seriesId": "tt40150035",
-          "title": "Hocus Pocus",
-          "season": 1,
-          "from": 9.52,
-          "to": 7.66,
-          "delta": -1.86
-        },
-        {
-          "seriesId": "tt21272398",
-          "title": "The Traitors: Spain",
-          "season": 2,
-          "from": 7.13,
-          "to": 8.28,
-          "delta": 1.15
-        },
-        {
-          "seriesId": "tt4049416",
-          "title": "Lego Friends",
-          "season": 4,
-          "from": 7.64,
-          "to": 6.63,
-          "delta": -1.01
-        },
-        {
-          "seriesId": "tt5678870",
-          "title": "Ultraman Orb",
-          "season": 1,
-          "from": 8.48,
-          "to": 7.49,
-          "delta": -0.99
-        },
-        {
-          "seriesId": "tt14253638",
-          "title": "Express",
-          "season": 2,
-          "from": 4.77,
-          "to": 5.57,
-          "delta": 0.8
-        },
-        {
-          "seriesId": "tt1205892",
-          "title": "Ultraman Mebius",
-          "season": 1,
-          "from": 7.71,
-          "to": 6.97,
-          "delta": -0.74
-        },
-        {
-          "seriesId": "tt41559289",
-          "title": "Carizzma",
-          "season": 1,
-          "from": 5.6,
-          "to": 4.98,
-          "delta": -0.62
-        },
-        {
-          "seriesId": "tt6091552",
-          "title": "Prisoner of Love",
-          "season": 1,
-          "from": 7.35,
-          "to": 6.77,
-          "delta": -0.58
-        },
-        {
-          "seriesId": "tt1538296",
-          "title": "Hoarding: Buried Alive",
-          "season": 5,
-          "from": 6.71,
-          "to": 6.13,
-          "delta": -0.58
-        },
-        {
-          "seriesId": "tt0280277",
-          "title": "Mr. Bean: The Animated Series",
-          "season": 6,
-          "from": 9.42,
-          "to": 8.85,
-          "delta": -0.57
-        }
-      ],
-      "modifiedCounts": {
-        "seriesVotes": 25186,
-        "avgRating": 1599,
-        "shapes": 281,
-        "seriesRating": 449,
-        "episodeCount": 112
       }
     }
   ]
