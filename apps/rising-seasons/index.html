@@ -455,12 +455,17 @@
           <div class="search-cluster">
             <div class="search">
               <label>
-                <span class="visually-hidden">Search show title</span>
+                <span class="visually-hidden">Search show title or IMDb ID</span>
                 <input type="search" id="finderSearch"
-                       placeholder="Search show title"
+                       placeholder="Search show title or IMDb ID (press / to focus)"
                        autocomplete="off"
-                       aria-label="Search show title">
+                       role="combobox"
+                       aria-expanded="false"
+                       aria-autocomplete="list"
+                       aria-controls="finderSearchSuggestions"
+                       aria-label="Search show title or IMDb ID">
               </label>
+              <ul id="finderSearchSuggestions" class="search-suggestions" role="listbox" hidden></ul>
             </div>
           </div>
           <div class="view-toggle" id="finderViewToggle" role="radiogroup" aria-label="View mode">
@@ -481,7 +486,7 @@
           <button type="button" class="advanced-reset" id="finderReset" hidden>× Clear filters</button>
         </div>
 
-        <div class="label-filters" aria-label="Quick filters">
+        <div class="label-filters" id="finderQuickFiltersPanel" aria-label="Quick filters">
           <div class="label-group genre-quick-group" role="group" aria-label="Genre">
             <span class="label-group-name">Genre</span>
             <div class="genre-quick-row" id="finderGenres" role="group" aria-label="Filter by genre"></div>
