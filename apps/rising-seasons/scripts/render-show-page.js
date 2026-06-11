@@ -28,6 +28,39 @@ const SHAPE_LABELS = {
   'mid-peak': 'Mid-peak',
 };
 
+// --- sensitive (adult) posters ---
+// Titles carrying the IMDb "Adult" genre get their poster blurred behind a
+// CSS-only (checkbox) reveal — these static pages ship no app JS, so the
+// reveal must not depend on it. Social/search previews can't be blurred, so
+// the OG/Twitter/JSON-LD image is swapped for the neutral site card instead.
+function isAdultGenres(genres) {
+  return Array.isArray(genres) && genres.includes('Adult');
+}
+
+// Small corner "sensitive" flag (eye-off icon).
+const REVEAL_BADGE =
+  '<span class="poster-reveal-badge" aria-hidden="true">'
+  + '<svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" '
+  + 'stroke-width="2" stroke-linecap="round" stroke-linejoin="round">'
+  + '<path d="M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 10 8 10 8a18.5 18.5 0 0 1-2.16 3.19"/>'
+  + '<path d="M6.61 6.61A18.5 18.5 0 0 0 2 12s3 8 10 8a9.12 9.12 0 0 0 5.39-1.61"/>'
+  + '<path d="M14.12 14.12A3 3 0 1 1 9.88 9.88"/><line x1="2" y1="2" x2="22" y2="22"/>'
+  + '</svg></span>';
+
+// Wrap an <img> HTML string in a blur + reveal overlay: a small corner badge
+// flags the content and (for non-compact posters) a centred "Tap to reveal"
+// pill is the action. `id` must be unique per page (drives the checkbox/label
+// pair); `compact` drops the pill for small thumbnails (badge only).
+function wrapSensitivePoster(imgHtml, id, compact) {
+  return `<span class="poster-sensitive${compact ? ' poster-sensitive-sm' : ''}">`
+    + `<input type="checkbox" class="poster-reveal-toggle" id="${escapeHtml(id)}">`
+    + imgHtml
+    + `<label class="poster-reveal" for="${escapeHtml(id)}">`
+    + REVEAL_BADGE
+    + (compact ? '' : '<span class="poster-reveal-cta">Tap to reveal</span>')
+    + '</label></span>';
+}
+
 // Build a single static HTML page for one TV series, given every season's
 // data (already grouped from data.json's flat `matches` array). Returns a
 // complete HTML string.
@@ -41,18 +74,24 @@ function renderShowPage({ seriesId, title, year, type, genres, seriesRating, ser
   const description = buildDescription(title, year, numberOfSeasons, seriesRating, seriesVotes, cleanOverview);
 
   const posterUrl = poster ? `${TMDB_POSTER}${poster}` : null;
-  const ogImage = posterUrl || `${SITE}/images/og-card.png`;
+  const isAdult = isAdultGenres(genres);
+  // Adult posters are never exposed in link/search previews (which can't be
+  // blurred) — fall back to the neutral site card instead.
+  const exposePoster = !!posterUrl && !isAdult;
+  const ogImage = exposePoster ? posterUrl : `${SITE}/images/og-card.png`;
 
   const dominantShapeLabel = dominantShape ? (SHAPE_LABELS[dominantShape] || dominantShape) : null;
   const overallAvgRating = computeOverallAvgRating(seasons);
 
   // Feature 10: richer OG/Twitter meta
-  // When a poster is available, replace the basic alt with a richer one (parens, no em dashes).
-  const ogImageAlt = posterUrl
+  // When a real poster is exposed, use a richer alt; otherwise describe the
+  // neutral fallback card (no poster wording, since none is shown).
+  const ogImageAlt = exposePoster
     ? escapeHtml(`${title} poster (${dominantShapeLabel || 'TV show'} shape, avg episode ${overallAvgRating})`)
-    : escapeHtml(`${title} poster`);
-  const ogPosterDimensions = posterUrl
-    ? `\n  <meta property="og:image:width" content="500">\n  <meta property="og:image:height" content="750">` : '';
+    : escapeHtml(`${title} on Rising Seasons`);
+  const ogPosterDimensions = exposePoster
+    ? `\n  <meta property="og:image:width" content="500">\n  <meta property="og:image:height" content="750">`
+    : `\n  <meta property="og:image:width" content="1200">\n  <meta property="og:image:height" content="630">`;
   const twitterCardMeta = dominantShapeLabel
     ? `\n  <meta name="twitter:label1" content="Shape">\n  <meta name="twitter:data1" content="${escapeHtml(dominantShapeLabel)}">\n  <meta name="twitter:label2" content="Avg episode rating">\n  <meta name="twitter:data2" content="${escapeHtml(String(overallAvgRating))}">` : '';
 
@@ -99,7 +138,7 @@ ${jsonLd(buildBreadcrumbs(title, path))}
 
   <!-- TVSeries -->
   <script type="application/ld+json">
-${jsonLd(buildTvSeriesSchema({ seriesId, title, year, canonical, posterUrl, cleanOverview, genres, seriesRating, seriesVotes, seasons, tmdbId, cast }))}
+${jsonLd(buildTvSeriesSchema({ seriesId, title, year, canonical, posterUrl: exposePoster ? posterUrl : null, cleanOverview, genres, seriesRating, seriesVotes, seasons, tmdbId, cast }))}
   </script>
 
   <!-- TVSeason per-season rating blocks -->
@@ -139,7 +178,7 @@ ${seasonSchemas}
     </nav>
 
     <section class="show-hero">
-      ${renderHeroPoster(posterUrl, title)}
+      ${renderHeroPoster(posterUrl, title, isAdult)}
       <div class="show-meta">
         <h1>${escapeHtml(title)}${year ? ` <span class="show-year">(${year})</span>` : ''}</h1>
         ${genres && genres.length ? `<p class="show-genres">${genres.map(escapeHtml).join(' · ')}</p>` : ''}
@@ -185,11 +224,12 @@ ${seasonSchemas}
 `;
 }
 
-function renderHeroPoster(posterUrl, title) {
+function renderHeroPoster(posterUrl, title, isAdult) {
   if (!posterUrl) {
     return '<div class="show-poster poster-placeholder" aria-hidden="true"></div>';
   }
-  return `<img class="show-poster" src="${escapeHtml(posterUrl)}" alt="${escapeHtml(`${title} poster`)}" width="300" height="450" loading="eager" decoding="async">`;
+  const img = `<img class="show-poster" src="${escapeHtml(posterUrl)}" alt="${escapeHtml(`${title} poster`)}" width="300" height="450" loading="eager" decoding="async">`;
+  return isAdult ? wrapSensitivePoster(img, 'rs-reveal-hero', false) : img;
 }
 
 // Top-billed cast strip. `cast` is the array stashed on the series by
@@ -285,9 +325,12 @@ function renderRelatedShows(relatedShows, dominantShape, dominantShapeSlug) {
   if (!relatedShows || relatedShows.length === 0 || !dominantShape) return '';
   const shapeLabel = SHAPE_LABELS[dominantShape] || dominantShape;
   const cards = relatedShows.map((s) => {
-    const posterEl = s.poster
+    let posterEl = s.poster
       ? `<img class="rec-poster" src="${escapeHtml(`https://image.tmdb.org/t/p/w185${s.poster}`)}" alt="${escapeHtml(`${s.title} poster`)}" width="92" height="138" loading="lazy" decoding="async">`
       : `<div class="rec-poster rec-poster-placeholder" aria-hidden="true"></div>`;
+    if (s.poster && isAdultGenres(s.genres)) {
+      posterEl = wrapSensitivePoster(posterEl, `rs-reveal-${s.seriesId}`, true);
+    }
     const badge = s.dominantShape
       ? `<span class="shape-badge rec-shape-badge">${escapeHtml(SHAPE_LABELS[s.dominantShape] || s.dominantShape)}</span>`
       : '';

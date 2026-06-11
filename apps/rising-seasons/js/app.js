@@ -351,6 +351,8 @@ const els = {
   finderMinYear: document.getElementById('finderMinYear'),
   finderMaxYear: document.getElementById('finderMaxYear'),
   finderDecadeRow: document.getElementById('finderDecadeRow'),
+  finderShapes: document.getElementById('finderShapes'),
+  finderMoodChips: document.getElementById('finderMoodChips'),
   finderGenres: document.getElementById('finderGenres'),
   finderLanguages: document.getElementById('finderLanguages'),
   finderSort: document.getElementById('finderSort'),
@@ -413,12 +415,19 @@ const finderState = {
   genres: new Set(),
   genresExclude: new Set(),
   languages: new Set(),
+  // Show-level rating shapes (AND semantics, like the Seasons view). A show's
+  // shape is classified from the curve of its per-season episode averages.
+  shapes: new Set(),
   sort: 'votes',
   sortDir: 'desc',
   view: 'grid',
   page: 1,
 };
 let seriesIndex = [];
+// Series IDs carrying the IMDb "Adult" genre on any season — used to blur
+// their posters even on lightweight surfaces (suggestions) where the item
+// object doesn't include the genres array. Populated by buildSeriesIndex.
+let adultSeriesIds = new Set();
 let bestSeasonBySeries = new Map();
 let worstSeasonBySeries = new Map();
 let aboveImdbBySeries = new Map();
@@ -458,6 +467,51 @@ function populatePosterFallback(el, title) {
   label.className = 'poster-fallback-title';
   label.textContent = title || '?';
   el.appendChild(label);
+}
+
+// --- sensitive (adult) posters ---
+// The dataset carries no explicit adult flag, but IMDb tags adult titles with
+// the "Adult" genre. Posters for those titles are blurred behind a tap-to-
+// reveal overlay so explicit art never renders unprompted. Reveal is per-
+// poster and per-session (re-blurs on reload) — the safe default for
+// sensitive content.
+function isAdultItem(item) {
+  if (!item) return false;
+  if (Array.isArray(item.genres) && item.genres.includes('Adult')) return true;
+  // Fallback for lightweight items (e.g. search suggestions) that carry a
+  // seriesId but no genres array.
+  return !!item.seriesId && adultSeriesIds.has(item.seriesId);
+}
+
+// Blur `posterEl` and lay a reveal button over it when `item` is adult.
+// No-ops otherwise, so it's safe to call at every poster render site. Call
+// AFTER the <img>/fallback has been appended.
+function markSensitivePoster(posterEl, item) {
+  if (!posterEl || !isAdultItem(item)) return;
+  // Only blur a real poster image. Fallback tiles are just the title on a
+  // colored block — not explicit — so leave them legible.
+  if (!posterEl.querySelector('img')) return;
+  posterEl.classList.add('poster-sensitive');
+  const overlay = document.createElement('button');
+  overlay.type = 'button';
+  overlay.className = 'poster-reveal';
+  overlay.setAttribute('aria-label', 'Sensitive content — click to reveal poster');
+  overlay.innerHTML =
+    '<span class="poster-reveal-badge" aria-hidden="true">'
+    + '<svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" '
+    + 'stroke-width="2" stroke-linecap="round" stroke-linejoin="round">'
+    + '<path d="M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 10 8 10 8a18.5 18.5 0 0 1-2.16 3.19"/>'
+    + '<path d="M6.61 6.61A18.5 18.5 0 0 0 2 12s3 8 10 8a9.12 9.12 0 0 0 5.39-1.61"/>'
+    + '<path d="M14.12 14.12A3 3 0 1 1 9.88 9.88"/><line x1="2" y1="2" x2="22" y2="22"/>'
+    + '</svg></span>'
+    + '<span class="poster-reveal-cta">Tap to reveal</span>';
+  // Reveal without bubbling to the card/row click (which would open a modal).
+  overlay.addEventListener('click', (e) => {
+    e.stopPropagation();
+    e.preventDefault();
+    posterEl.classList.add('revealed');
+  });
+  posterEl.appendChild(overlay);
 }
 
 // First meaningful character of the title — skips leading articles
@@ -760,6 +814,8 @@ async function load() {
   // Initial reset-button state: disabled unless the URL pre-populated some filters.
   syncResetButton();
   showAgg = buildShowAgg();
+  renderFinderShapes();
+  renderFinderMoods();
   renderFinderGenres();
   renderFinderLanguages();
   renderFinderDecadeRow();
@@ -880,6 +936,7 @@ function buildSeriesIndex() {
       if (!entry.year && m.year) entry.year = m.year;
       if (m.seriesVotes && m.seriesVotes > entry.seriesVotes) entry.seriesVotes = m.seriesVotes;
     }
+    if (Array.isArray(m.genres) && m.genres.includes('Adult')) adultSeriesIds.add(m.seriesId);
   }
   seriesIndex = [...map.values()].sort((a, b) => a.title.localeCompare(b.title));
 }
@@ -2368,6 +2425,7 @@ function buildCard(m) {
   } else {
     populatePosterFallback(posterEl.querySelector('.poster-fallback'), m.title);
   }
+  markSensitivePoster(posterEl, m);
 
   applyWatchedState(node, node.querySelector('.watch-toggle'), m);
   node.dataset.seriesId = m.seriesId;
@@ -2438,6 +2496,7 @@ function buildRow(m) {
   } else {
     populatePosterFallback(posterEl.querySelector('.poster-fallback'), m.title);
   }
+  markSensitivePoster(posterEl, m);
 
   applyWatchedState(node, node.querySelector('.watch-toggle'), m);
   node.dataset.seriesId = m.seriesId;
@@ -3292,6 +3351,7 @@ function openModal(m, opts = {}) {
   }
 
   els.modalPoster.replaceChildren();
+  els.modalPoster.classList.remove('poster-sensitive', 'revealed');
   if (m.poster) {
     const img = document.createElement('img');
     img.src = `https://image.tmdb.org/t/p/w342${m.poster}`;
@@ -3303,6 +3363,7 @@ function openModal(m, opts = {}) {
     populatePosterFallback(fallback, m.title);
     els.modalPoster.appendChild(fallback);
   }
+  markSensitivePoster(els.modalPoster, m);
 
   drawCurve(els.modalCurve, m.episodes, 600, 180, { showAxis: true });
   drawCurveAnnotations(els.modalCurve, m.episodes, m.shapes);
@@ -3436,6 +3497,7 @@ function buildRelatedSeasonRow(r, extraClass) {
     init.textContent = posterInitial(r.title);
     posterEl.appendChild(init);
   }
+  markSensitivePoster(posterEl, r);
 
   const info = document.createElement('div');
   info.className = 'related-info';
@@ -3624,6 +3686,7 @@ function openShowModal(seriesId, opts = {}) {
   renderShowModalCast(meta.cast);
 
   els.showModalPoster.replaceChildren();
+  els.showModalPoster.classList.remove('poster-sensitive', 'revealed');
   if (meta.poster) {
     const img = document.createElement('img');
     img.src = `https://image.tmdb.org/t/p/w342${meta.poster}`;
@@ -3635,6 +3698,7 @@ function openShowModal(seriesId, opts = {}) {
     populatePosterFallback(fb, meta.title);
     els.showModalPoster.appendChild(fb);
   }
+  markSensitivePoster(els.showModalPoster, meta);
 
   const bestSeason = bestSeasonBySeries.get(seriesId);
   const worstSeason = worstSeasonBySeries.get(seriesId);
@@ -3867,6 +3931,7 @@ function buildShowRelatedRow(r, extraClass) {
     init.textContent = posterInitial(r.title);
     posterEl.appendChild(init);
   }
+  markSensitivePoster(posterEl, r);
 
   const info = document.createElement('div');
   info.className = 'show-related-info';
@@ -4027,6 +4092,15 @@ function buildShowAgg() {
     const avgEpisode = Math.round((s.ratingSum / s.episodes) * 100) / 100;
     const gap = Math.round((avgEpisode - s.showRating) * 100) / 100;
     const episodeSeries = s.seasonsCount === 1 ? s.seasonEpisodeSeries[0] : undefined;
+    const seasonAvgs = s.seasonAvgs.slice().sort((a, b) => a.season - b.season);
+    // Whole-show shape: feed the ordered per-season averages to the same shape
+    // detectors the Seasons view uses per episode. A single season has no
+    // cross-season trajectory, so such shows carry no shape and are excluded
+    // when a shape filter is active. `detectShapes` comes from match.js, loaded
+    // before this script; guard so a missing global never breaks the finder.
+    const shapes = (seasonAvgs.length >= 2 && typeof detectShapes === 'function')
+      ? detectShapes(seasonAvgs.map((a) => ({ rating: a.avg })))
+      : [];
     out.push({
       seriesId: s.seriesId,
       title: s.title,
@@ -4041,7 +4115,8 @@ function buildShowAgg() {
       gap,
       runtimeHrs: Math.round((s.runtimeHrs) * 10) / 10,
       seasonsCount: s.seasonsCount,
-      seasonAvgs: s.seasonAvgs.slice().sort((a, b) => a.season - b.season),
+      seasonAvgs,
+      shapes,
       episodeSeries,
     });
   }
@@ -4129,6 +4204,255 @@ function cycleFinderGenreState(name) {
   } else {
     finderState.genresExclude.delete(name);
   }
+}
+
+// ---- Finder: show-level shape chips ----
+
+// Core shapes detectShapes() can emit, in display order. (saved-best-for-last
+// and shape-drift are season-level tags, never produced by detectShapes, so
+// they don't apply at the whole-show level and are intentionally omitted.)
+const FINDER_SHAPE_ORDER = [
+  'rising', 'consistent', 'slow-burn', 'big-finale', 'rebound',
+  'front-loaded', 'declining', 'bad-finale', 'rollercoaster', 'mid-peak', 'u-shaped',
+];
+
+const FINDER_SHAPE_ICONS = {
+  rising: '↗', consistent: '═', 'slow-burn': '⤴', 'big-finale': '⇧', rebound: '∪',
+  'front-loaded': '↘', declining: '↘↘', 'bad-finale': '⇩', rollercoaster: '∿',
+  'mid-peak': '∩', 'u-shaped': '⌣',
+};
+
+// Whole-show wording for each shape (the Seasons descriptions are per-episode;
+// at the show level every data point is one season's average).
+const FINDER_SHAPE_DESCS = {
+  rising: 'Each season at least as good as the last',
+  consistent: 'Great across every season, no weak one',
+  'slow-burn': 'Later seasons lift off',
+  'big-finale': 'The final season is the peak',
+  rebound: 'Dips, then comes back stronger',
+  'front-loaded': 'Strong early seasons, weaker later',
+  declining: 'Each season no better than the last',
+  'bad-finale': 'The final season is the worst',
+  rollercoaster: 'Big swings from season to season',
+  'mid-peak': 'Peaks mid-run, falls after',
+  'u-shaped': 'Strong first and last seasons, a sag between',
+};
+
+function finderShapeCounts(rows) {
+  const counts = {};
+  for (const s of rows) for (const sh of s.shapes) counts[sh] = (counts[sh] || 0) + 1;
+  return counts;
+}
+
+// Build the show-shape chip row once: an "All" chip plus every shape that
+// occurs anywhere in the catalogue. Per-filter counts and pressed-state are
+// applied by syncFinderShapeChips so chips don't churn on every keystroke.
+function renderFinderShapes() {
+  if (!els.finderShapes || !showAgg) return;
+  const universe = finderShapeCounts(showAgg);
+  const frag = document.createDocumentFragment();
+  frag.appendChild(makeFinderShapeChip('all', 'All', null));
+  for (const sh of FINDER_SHAPE_ORDER) {
+    if (!universe[sh]) continue;
+    frag.appendChild(makeFinderShapeChip(sh, SHAPE_LABELS[sh] || sh, FINDER_SHAPE_ICONS[sh]));
+  }
+  els.finderShapes.replaceChildren(frag);
+  syncFinderShapeChips();
+}
+
+function makeFinderShapeChip(shape, name, icon) {
+  const btn = document.createElement('button');
+  btn.type = 'button';
+  btn.className = 'shape-chip';
+  btn.dataset.shape = shape;
+  if (shape !== 'all') btn.title = FINDER_SHAPE_DESCS[shape] || '';
+  if (icon) {
+    const i = document.createElement('span');
+    i.className = 'shape-icon';
+    i.setAttribute('aria-hidden', 'true');
+    i.textContent = icon;
+    btn.appendChild(i);
+  }
+  const nm = document.createElement('span');
+  nm.className = 'shape-name';
+  nm.textContent = name;
+  btn.appendChild(nm);
+  const c = document.createElement('span');
+  c.className = 'shape-count';
+  btn.appendChild(c);
+  return btn;
+}
+
+// Refresh pressed-state + live counts. Counts mirror the Seasons view so they
+// update as shapes are picked:
+//   - "All"          = result set with no shape filter (clear-shapes count).
+//   - active shape   = the current result total (every result already has it).
+//   - inactive shape = how many current results ALSO carry it — i.e. what
+//                      you'd get by adding it on top of the current selection.
+// An inactive shape that would drop results to zero is disabled (greyed), not
+// hidden, so the row stays stable as you select.
+function syncFinderShapeChips() {
+  if (!els.finderShapes) return;
+  const base = finderRowsBeforeShape();
+  const current = base.filter((s) => passesShapeAnd(s, finderState.shapes));
+  const counts = finderShapeCounts(current);
+  for (const btn of els.finderShapes.querySelectorAll('.shape-chip')) {
+    const shape = btn.dataset.shape;
+    const isAll = shape === 'all';
+    const selected = isAll ? finderState.shapes.size === 0 : finderState.shapes.has(shape);
+    btn.setAttribute('aria-pressed', selected ? 'true' : 'false');
+
+    let n;
+    if (isAll) n = base.length;
+    else if (finderState.shapes.has(shape)) n = current.length;
+    else n = counts[shape] || 0;
+    const c = btn.querySelector('.shape-count');
+    if (c) c.textContent = n.toLocaleString();
+
+    if (!isAll) {
+      const disable = !finderState.shapes.has(shape) && n === 0;
+      btn.disabled = disable;
+      btn.classList.toggle('is-disabled', disable);
+    }
+  }
+}
+
+function toggleFinderShape(shape) {
+  if (shape === 'all') {
+    finderState.shapes.clear();
+  } else if (finderState.shapes.has(shape)) {
+    finderState.shapes.delete(shape);
+  } else {
+    finderState.shapes.add(shape);
+  }
+}
+
+// ---- Finder: mood presets ----
+// Fresh, whole-show-oriented presets (the Seasons moods are season-level and
+// reference per-episode climb / mini-series, which don't map to show stats).
+// Each preset is an absolute filter set: applying it replaces the current
+// filters. A couple lean on the new show-level shapes (rising / rebound).
+const FINDER_MOODS = [
+  { id: 'modern-prestige', icon: '★', label: 'Modern prestige',
+    desc: 'Recent shows critics and audiences both love',
+    filters: { minYear: 2020, minAvgEpisode: 8.5, sort: 'avgEpisode' } },
+  { id: 'crowd-favorites', icon: '◉', label: 'Crowd favorites',
+    desc: 'Hugely popular and still highly rated',
+    filters: { minVotes: 100000, minAvgEpisode: 8, sort: 'votes' } },
+  { id: 'kept-climbing', icon: '↗', label: 'Kept climbing',
+    desc: 'Each season topped the one before',
+    filters: { shapes: ['rising'], minAvgEpisode: 7.5, sort: 'seasonsCount' } },
+  { id: 'comeback-stories', icon: '∪', label: 'Comeback stories',
+    desc: 'Dipped, then bounced back stronger',
+    filters: { shapes: ['rebound'], sort: 'seasonsCount' } },
+  { id: 'marathon-worthy', icon: '❯❯❯', label: 'Marathon-worthy',
+    desc: 'Long shows that stay good throughout',
+    filters: { minEpisodes: 60, minAvgEpisode: 7.5, sort: 'episodes' } },
+  { id: 'outshines-reputation', icon: '⇈', label: 'Outshines its reputation',
+    desc: 'Episodes rate higher than the show overall',
+    filters: { gapDir: 'up', minAvgEpisode: 8, sort: 'gap' } },
+];
+
+// Canonical comparison of a filter set, defaults filled in, so a mood reads as
+// "active" only when the live finder filters exactly equal its preset (and no
+// stray search). Sets and arrays both normalise to sorted arrays.
+function finderFilterSignature(src) {
+  return JSON.stringify({
+    search: (src.search || '').trim().toLowerCase(),
+    minEpisodes: src.minEpisodes || 0,
+    minVotes: src.minVotes || 0,
+    minShowRating: src.minShowRating || 0,
+    minAvgEpisode: src.minAvgEpisode || 0,
+    gapDir: src.gapDir || 'any',
+    minGap: src.minGap || 0,
+    minYear: src.minYear ?? null,
+    maxYear: src.maxYear ?? null,
+    genres: [...(src.genres || [])].sort(),
+    genresExclude: [...(src.genresExclude || [])].sort(),
+    languages: [...(src.languages || [])].sort(),
+    shapes: [...(src.shapes || [])].sort(),
+    sort: src.sort || 'votes',
+    sortDir: src.sortDir || 'desc',
+  });
+}
+
+// How many shows a preset yields. Presets are absolute (clicking one replaces
+// the current filters), so these counts are independent of the live filters
+// and computed once at render. Covers exactly the fields the presets use.
+function countShowsForFilters(ff) {
+  const shapes = ff.shapes || [];
+  let n = 0;
+  for (const s of showAgg) {
+    if (ff.minEpisodes && s.episodes < ff.minEpisodes) continue;
+    if (ff.minVotes && s.votes < ff.minVotes) continue;
+    if (ff.minShowRating && s.showRating < ff.minShowRating) continue;
+    if (ff.minAvgEpisode && s.avgEpisode < ff.minAvgEpisode) continue;
+    if (ff.gapDir === 'up' && s.gap <= 0) continue;
+    if (ff.gapDir === 'down' && s.gap >= 0) continue;
+    if (ff.minYear != null && (s.year == null || s.year < ff.minYear)) continue;
+    if (ff.maxYear != null && (s.year == null || s.year > ff.maxYear)) continue;
+    let ok = true;
+    for (const sh of shapes) if (!s.shapes.includes(sh)) { ok = false; break; }
+    if (ok) n++;
+  }
+  return n;
+}
+
+function renderFinderMoods() {
+  if (!els.finderMoodChips || !showAgg) return;
+  const frag = document.createDocumentFragment();
+  for (const mood of FINDER_MOODS) {
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'mood-chip';
+    btn.dataset.mood = mood.id;
+    btn.title = mood.desc;
+    btn.setAttribute('aria-pressed', 'false');
+    const i = document.createElement('span');
+    i.className = 'mood-chip-icon';
+    i.setAttribute('aria-hidden', 'true');
+    i.textContent = mood.icon;
+    const l = document.createElement('span');
+    l.className = 'mood-chip-label';
+    l.textContent = mood.label;
+    const c = document.createElement('span');
+    c.className = 'mood-chip-count';
+    c.textContent = countShowsForFilters(mood.filters).toLocaleString();
+    btn.append(i, l, c);
+    frag.appendChild(btn);
+  }
+  els.finderMoodChips.replaceChildren(frag);
+  updateFinderMoodActive();
+}
+
+function updateFinderMoodActive() {
+  if (!els.finderMoodChips) return;
+  const current = finderFilterSignature(finderState);
+  for (const btn of els.finderMoodChips.querySelectorAll('.mood-chip')) {
+    const mood = FINDER_MOODS.find((m) => m.id === btn.dataset.mood);
+    const active = !!mood && finderFilterSignature(mood.filters) === current;
+    btn.setAttribute('aria-pressed', active ? 'true' : 'false');
+  }
+}
+
+// Apply a preset by resetting to defaults then overlaying the preset's filters.
+// Does not render — the caller follows with onFinderFilterChange().
+function applyFinderMood(mood) {
+  resetFinderState();
+  const ff = mood.filters;
+  if (ff.minEpisodes) finderState.minEpisodes = ff.minEpisodes;
+  if (ff.minVotes) finderState.minVotes = ff.minVotes;
+  if (ff.minShowRating) finderState.minShowRating = ff.minShowRating;
+  if (ff.minAvgEpisode) finderState.minAvgEpisode = ff.minAvgEpisode;
+  if (ff.gapDir) finderState.gapDir = ff.gapDir;
+  if (ff.minGap) finderState.minGap = ff.minGap;
+  if (ff.minYear != null) finderState.minYear = ff.minYear;
+  if (ff.maxYear != null) finderState.maxYear = ff.maxYear;
+  if (ff.shapes) finderState.shapes = new Set(ff.shapes);
+  if (ff.sort) finderState.sort = ff.sort;
+  if (ff.sortDir) finderState.sortDir = ff.sortDir;
+  syncFinderControls();
+  syncFinderSortControls();
 }
 
 function renderFinderLanguages() {
@@ -4219,10 +4543,13 @@ const FINDER_COLUMNS = [
   { key: 'runtimeHrs', label: 'Runtime' },
 ];
 
-function filterAndSortFinder() {
+// Rows passing every finder filter EXCEPT the shape filter. Kept separate so
+// the shape chips can show live counts (how many shows of each shape survive
+// the other active filters) — the same pattern the Seasons view uses.
+function finderRowsBeforeShape() {
   const f = finderState;
   const q = f.search.trim().toLowerCase();
-  const rows = showAgg.filter((s) => {
+  return showAgg.filter((s) => {
     if (q && !s.title.toLowerCase().includes(q) && !s.seriesId.toLowerCase().includes(q)) return false;
     if (s.episodes < f.minEpisodes) return false;
     if (s.votes < f.minVotes) return false;
@@ -4248,6 +4575,12 @@ function filterAndSortFinder() {
     if (f.languages.size && !f.languages.has(s.language)) return false;
     return true;
   });
+}
+
+function filterAndSortFinder() {
+  const f = finderState;
+  const rows = finderRowsBeforeShape()
+    .filter((s) => passesShapeAnd(s, f.shapes));
 
   const key = f.sort;
   const mul = f.sortDir === 'asc' ? 1 : -1;
@@ -4268,6 +4601,8 @@ function renderFinder() {
   if (!showAgg) return;
   renderFinderActiveFilterBar();
   syncFinderResetButton();
+  syncFinderShapeChips();
+  updateFinderMoodActive();
   const rows = filterAndSortFinder();
   els.finderCount.textContent = rows.length === 1
     ? '1 show matches your filters'
@@ -4375,6 +4710,7 @@ function buildFinderTable(page) {
       posterEl.appendChild(fb);
       populatePosterFallback(fb, s.title);
     }
+    markSensitivePoster(posterEl, s);
     showInner.appendChild(posterEl);
 
     const showText = document.createElement('div');
@@ -4506,6 +4842,7 @@ function buildFinderCard(s) {
   } else {
     populatePosterFallback(posterEl.querySelector('.poster-fallback'), s.title);
   }
+  markSensitivePoster(posterEl, s);
 
   node.setAttribute('aria-label', s.title);
   node.addEventListener('click', () => openShowModal(s.seriesId));
@@ -4600,6 +4937,7 @@ function finderHasActiveFilters() {
   if (f.genres.size) return true;
   if (f.genresExclude.size) return true;
   if (f.languages.size) return true;
+  if (f.shapes.size) return true;
   if (f.sort !== 'votes') return true;
   if (f.sortDir !== 'desc') return true;
   return false;
@@ -4625,6 +4963,7 @@ function resetFinderState() {
   finderState.genres = new Set();
   finderState.genresExclude = new Set();
   finderState.languages = new Set();
+  finderState.shapes = new Set();
   finderState.sort = 'votes';
   finderState.sortDir = 'desc';
   finderState.page = 1;
@@ -4639,6 +4978,7 @@ function resetFinderState() {
   syncFinderSortControls();
   syncFinderControls();
   syncFinderDecadeRowAria();
+  syncFinderShapeChips();
 }
 
 // Push finderState onto every control. Number inputs show blank for zero/null
@@ -4798,6 +5138,13 @@ function describeFinderActiveFilters() {
       },
     });
   }
+  for (const sh of f.shapes) {
+    chips.push({
+      key: 'Shape',
+      value: SHAPE_LABELS[sh] || sh,
+      remove: () => { f.shapes.delete(sh); onFinderFilterChange(); },
+    });
+  }
   if (f.gapDir !== 'any') {
     chips.push({
       key: 'Gap',
@@ -4934,6 +5281,24 @@ function bindFinder() {
     onFinderFilterChange();
   });
 
+  els.finderShapes.addEventListener('click', (e) => {
+    const btn = e.target.closest('.shape-chip');
+    if (!btn) return;
+    toggleFinderShape(btn.dataset.shape);
+    onFinderFilterChange();
+  });
+
+  els.finderMoodChips.addEventListener('click', (e) => {
+    const btn = e.target.closest('.mood-chip');
+    if (!btn) return;
+    const mood = FINDER_MOODS.find((m) => m.id === btn.dataset.mood);
+    if (!mood) return;
+    // Clicking the active preset clears it; otherwise apply it.
+    if (btn.getAttribute('aria-pressed') === 'true') resetFinderState();
+    else applyFinderMood(mood);
+    onFinderFilterChange();
+  });
+
   els.finderSort.addEventListener('change', () => {
     applyFinderSort(els.finderSort.value);
   });
@@ -4997,6 +5362,7 @@ function writeFinderStateToURL() {
   if (f.genres.size) p.set('fg', [...f.genres].join(','));
   if (f.genresExclude.size) p.set('fxg', [...f.genresExclude].join(','));
   if (f.languages.size) p.set('fl', [...f.languages].join(','));
+  if (f.shapes.size) p.set('fShape', [...f.shapes].join(','));
   if (f.page > 1) p.set('page', f.page);
   history.replaceState(null, '', `#${p.toString()}`);
 }
@@ -5022,6 +5388,7 @@ function applyFinderStateFromParams(p) {
   f.genres = new Set((p.get('fg') || '').split(',').filter(Boolean));
   f.genresExclude = new Set((p.get('fxg') || '').split(',').filter(Boolean));
   f.languages = new Set((p.get('fl') || '').split(',').filter(Boolean));
+  f.shapes = new Set((p.get('fShape') || '').split(',').filter(Boolean));
   f.page = Math.max(1, parseInt(p.get('page'), 10) || 1);
 }
 
@@ -5435,6 +5802,7 @@ function renderSuggestionItems() {
       initial.textContent = posterInitial(s.title);
       poster.appendChild(initial);
     }
+    markSensitivePoster(poster, s);
 
     const text = document.createElement('div');
     text.className = 'ss-text';
@@ -5661,6 +6029,7 @@ function renderFinderSuggestionItems() {
       initial.textContent = posterInitial(s.title);
       poster.appendChild(initial);
     }
+    markSensitivePoster(poster, s);
 
     const text = document.createElement('div');
     text.className = 'ss-text';
@@ -6774,12 +7143,13 @@ window.addEventListener('localStorageSync', (e) => {
 // default. CSS alone can't force a closed <details> open (modern engines
 // hide closed-details content via content-visibility, which child rules
 // can't override), so the open state is synced to the viewport here.
-const moodCollapsible = document.querySelector('.mood-collapsible');
-if (moodCollapsible && typeof window.matchMedia === 'function') {
+// Both mood rails (Seasons + Show Finder) use .mood-collapsible, so sync them
+// together: mobile starts collapsed behind the toggle pill, desktop expanded.
+const moodCollapsibles = document.querySelectorAll('.mood-collapsible');
+if (moodCollapsibles.length && typeof window.matchMedia === 'function') {
   const moodMq = window.matchMedia('(max-width: 600px)');
   const syncMoodCollapsible = () => {
-    // Mobile: start collapsed; desktop: always expanded.
-    moodCollapsible.open = !moodMq.matches;
+    for (const el of moodCollapsibles) el.open = !moodMq.matches;
   };
   syncMoodCollapsible();
   if (typeof moodMq.addEventListener === 'function') {

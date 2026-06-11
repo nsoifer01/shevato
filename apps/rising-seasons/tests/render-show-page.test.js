@@ -289,9 +289,52 @@ test('renderShowPage emits og:image:width, og:image:height, and richer og:image:
   assert.ok(!altMatch[1].includes('—'), 'alt text must not contain em dashes');
 });
 
-test('renderShowPage does not emit og:image:width when no poster', () => {
+test('renderShowPage falls back to the 1200x630 site card dimensions when no poster', () => {
   const html = renderShowPage({ ...BREAKING_BAD, poster: null });
-  assert.ok(!html.includes('og:image:width'));
+  // No real poster → og:image is the neutral site card, so emit its true
+  // 1200x630 dimensions (not the 500x750 of a TMDB poster).
+  assert.ok(html.includes('images/og-card.png'));
+  assert.ok(html.includes('og:image:width" content="1200"'));
+  assert.ok(html.includes('og:image:height" content="630"'));
+  assert.ok(!html.includes('content="500"'));
+});
+
+test('renderShowPage blurs an adult poster and never exposes it in previews', () => {
+  const adult = { ...BREAKING_BAD, genres: ['Adult', 'Animation'], dominantShape: 'rebound', dominantShapeSlug: 'rebound', relatedShows: [] };
+  const html = renderShowPage(adult);
+  const posterUrl = 'https://image.tmdb.org/t/p/w500/poster.jpg';
+  // Visible hero poster is wrapped in the CSS-only reveal overlay.
+  assert.ok(html.includes('poster-sensitive'), 'adult hero poster must be wrapped for blur');
+  assert.ok(html.includes('class="poster-reveal-toggle"'), 'reveal checkbox must be present');
+  assert.ok(html.includes('poster-reveal-cta'), 'reveal action pill must be present');
+  assert.ok(html.includes('Tap to reveal'), 'reveal label must be present');
+  // Social/search previews must NOT carry the real poster.
+  assert.ok(!html.includes(`property="og:image" content="${posterUrl}"`), 'og:image must not be the adult poster');
+  assert.ok(!html.includes(`name="twitter:image" content="${posterUrl}"`), 'twitter:image must not be the adult poster');
+  assert.ok(html.includes('images/og-card.png'), 'previews must fall back to the site card');
+  // JSON-LD TVSeries image must not be the adult poster either.
+  assert.ok(!html.includes(`"image": "${posterUrl}"`) && !html.includes(`"image":"${posterUrl}"`), 'schema image must not be the adult poster');
+});
+
+test('renderShowPage leaves a non-adult poster fully exposed', () => {
+  const html = renderShowPage({ ...BREAKING_BAD, dominantShape: 'rebound', dominantShapeSlug: 'rebound', relatedShows: [] });
+  assert.ok(!html.includes('poster-sensitive'), 'non-adult poster must not be blurred');
+  assert.ok(html.includes('property="og:image" content="https://image.tmdb.org/t/p/w500/poster.jpg"'));
+});
+
+test('renderShowPage blurs an adult related-show thumbnail (compact, icon-only)', () => {
+  const html = renderShowPage({
+    ...BREAKING_BAD, dominantShape: 'rebound', dominantShapeSlug: 'rebound',
+    relatedShows: [
+      { seriesId: 'tt55', title: 'Adult Rel', year: 2019, poster: '/a.jpg', genres: ['Adult', 'Animation'], dominantShape: 'rebound', dominantShapeSlug: 'rebound', slug: 'adult-rel-tt55' },
+      { seriesId: 'tt66', title: 'Clean Rel', year: 2018, poster: '/c.jpg', genres: ['Drama'], dominantShape: 'rebound', dominantShapeSlug: 'rebound', slug: 'clean-rel-tt66' },
+    ],
+  });
+  // Adult related thumbnail wrapped with the compact (icon-only) variant and a unique id.
+  assert.ok(html.includes('poster-sensitive-sm'), 'adult related thumb must use the compact blur');
+  assert.ok(html.includes('id="rs-reveal-tt55"'), 'related reveal id must be series-scoped');
+  // The clean related thumbnail must NOT be wrapped.
+  assert.ok(!html.includes('id="rs-reveal-tt66"'), 'non-adult related thumb must stay plain');
 });
 
 test('renderShowPage emits twitter:label1=Shape and twitter:data1 with shape label when dominantShape is set', () => {
