@@ -1,6 +1,349 @@
 {
   "updates": [
     {
+      "builtAt": "2026-06-11T08:33:25.740Z",
+      "totals": {
+        "seasons": 65302,
+        "delta": 7
+      },
+      "shapeCounts": {
+        "mid-peak": 4611,
+        "rebound": 9994,
+        "rising": 2911,
+        "slow-burn": 4314,
+        "big-finale": 11931,
+        "u-shaped": 3066,
+        "rollercoaster": 13964,
+        "saved-best-for-last": 1514,
+        "front-loaded": 3432,
+        "declining": 1835,
+        "bad-finale": 4611,
+        "consistent": 2589,
+        "shape-drift": 1585
+      },
+      "shapeDeltas": {
+        "mid-peak": 3,
+        "rebound": 1,
+        "rising": 1,
+        "slow-burn": 5,
+        "big-finale": 5,
+        "u-shaped": -2,
+        "rollercoaster": -4,
+        "saved-best-for-last": 2,
+        "front-loaded": 1,
+        "declining": -2,
+        "bad-finale": 9,
+        "consistent": 6,
+        "shape-drift": -4
+      },
+      "added": [
+        {
+          "seriesId": "tt27589772",
+          "title": "Blue Ridge: The Series",
+          "season": 2,
+          "seasonYear": 2025
+        },
+        {
+          "seriesId": "tt5676412",
+          "title": "Sin Senos Sí Hay Paraíso",
+          "season": 2,
+          "seasonYear": 2017
+        },
+        {
+          "seriesId": "tt11377920",
+          "title": "Black Dog",
+          "season": 1,
+          "seasonYear": 2019
+        },
+        {
+          "seriesId": "tt28939650",
+          "title": "Garmi",
+          "season": 1,
+          "seasonYear": 2022
+        },
+        {
+          "seriesId": "tt28972232",
+          "title": "Lost In",
+          "season": 1,
+          "seasonYear": 2023
+        },
+        {
+          "seriesId": "tt41840765",
+          "title": "The Old Stories: Moses",
+          "season": 1,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt42751057",
+          "title": "Quem Ama Cuida",
+          "season": 1,
+          "seasonYear": 2026
+        }
+      ],
+      "removed": [],
+      "ratingSwings": [
+        {
+          "seriesId": "tt39184653",
+          "title": "Doctor on the Edge",
+          "season": 1,
+          "from": 7.67,
+          "to": 8.4,
+          "delta": 0.73
+        },
+        {
+          "seriesId": "tt42171045",
+          "title": "Between Father and Son",
+          "season": 1,
+          "from": 6.17,
+          "to": 5.63,
+          "delta": -0.54
+        },
+        {
+          "seriesId": "tt1069275",
+          "title": "Skunk Fu!",
+          "season": 1,
+          "from": 7.47,
+          "to": 8.01,
+          "delta": 0.54
+        },
+        {
+          "seriesId": "tt0290117",
+          "title": "The Ripping Friends",
+          "season": 1,
+          "from": 6.88,
+          "to": 7.34,
+          "delta": 0.46
+        },
+        {
+          "seriesId": "tt37543237",
+          "title": "Cartoonified with Phineas and Ferb",
+          "season": 1,
+          "from": 8.17,
+          "to": 7.71,
+          "delta": -0.46
+        },
+        {
+          "seriesId": "tt0044282",
+          "title": "My Hero",
+          "season": 1,
+          "from": 5.67,
+          "to": 6.1,
+          "delta": 0.43
+        },
+        {
+          "seriesId": "tt39893694",
+          "title": "Crazy Love, Moo-Moo!",
+          "season": 1,
+          "from": 8.1,
+          "to": 7.68,
+          "delta": -0.42
+        },
+        {
+          "seriesId": "tt6941980",
+          "title": "Warrior",
+          "season": 2,
+          "from": 8.89,
+          "to": 8.51,
+          "delta": -0.38
+        },
+        {
+          "seriesId": "tt1245565",
+          "title": "Don't Mess with an Angel",
+          "season": 1,
+          "from": 8.94,
+          "to": 8.57,
+          "delta": -0.37
+        },
+        {
+          "seriesId": "tt0124228",
+          "title": "Astro Boy",
+          "season": 1,
+          "from": 6.42,
+          "to": 6.05,
+          "delta": -0.37
+        }
+      ],
+      "modifiedCounts": {
+        "seriesVotes": 18745,
+        "avgRating": 1195,
+        "shapes": 223,
+        "seriesRating": 291,
+        "episodeCount": 76,
+        "poster": 8
+      }
+    },
+    {
+      "builtAt": "2026-06-11T07:55:33.158Z",
+      "totals": {
+        "seasons": 65302,
+        "delta": 7
+      },
+      "shapeCounts": {
+        "mid-peak": 4611,
+        "rebound": 9994,
+        "rising": 2911,
+        "slow-burn": 4314,
+        "big-finale": 11931,
+        "u-shaped": 3066,
+        "rollercoaster": 13964,
+        "saved-best-for-last": 1514,
+        "front-loaded": 3432,
+        "declining": 1835,
+        "bad-finale": 4611,
+        "consistent": 2589,
+        "shape-drift": 1585
+      },
+      "shapeDeltas": {
+        "mid-peak": 3,
+        "rebound": 1,
+        "rising": 1,
+        "slow-burn": 5,
+        "big-finale": 5,
+        "u-shaped": -2,
+        "rollercoaster": -4,
+        "saved-best-for-last": 2,
+        "front-loaded": 1,
+        "declining": -2,
+        "bad-finale": 9,
+        "consistent": 6,
+        "shape-drift": -4
+      },
+      "added": [
+        {
+          "seriesId": "tt27589772",
+          "title": "Blue Ridge: The Series",
+          "season": 2,
+          "seasonYear": 2025
+        },
+        {
+          "seriesId": "tt5676412",
+          "title": "Sin Senos Sí Hay Paraíso",
+          "season": 2,
+          "seasonYear": 2017
+        },
+        {
+          "seriesId": "tt11377920",
+          "title": "Black Dog",
+          "season": 1,
+          "seasonYear": 2019
+        },
+        {
+          "seriesId": "tt28939650",
+          "title": "Garmi",
+          "season": 1,
+          "seasonYear": 2022
+        },
+        {
+          "seriesId": "tt28972232",
+          "title": "Lost In",
+          "season": 1,
+          "seasonYear": 2023
+        },
+        {
+          "seriesId": "tt41840765",
+          "title": "The Old Stories: Moses",
+          "season": 1,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt42751057",
+          "title": "Quem Ama Cuida",
+          "season": 1,
+          "seasonYear": 2026
+        }
+      ],
+      "removed": [],
+      "ratingSwings": [
+        {
+          "seriesId": "tt39184653",
+          "title": "Doctor on the Edge",
+          "season": 1,
+          "from": 7.67,
+          "to": 8.4,
+          "delta": 0.73
+        },
+        {
+          "seriesId": "tt42171045",
+          "title": "Between Father and Son",
+          "season": 1,
+          "from": 6.17,
+          "to": 5.63,
+          "delta": -0.54
+        },
+        {
+          "seriesId": "tt1069275",
+          "title": "Skunk Fu!",
+          "season": 1,
+          "from": 7.47,
+          "to": 8.01,
+          "delta": 0.54
+        },
+        {
+          "seriesId": "tt0290117",
+          "title": "The Ripping Friends",
+          "season": 1,
+          "from": 6.88,
+          "to": 7.34,
+          "delta": 0.46
+        },
+        {
+          "seriesId": "tt37543237",
+          "title": "Cartoonified with Phineas and Ferb",
+          "season": 1,
+          "from": 8.17,
+          "to": 7.71,
+          "delta": -0.46
+        },
+        {
+          "seriesId": "tt0044282",
+          "title": "My Hero",
+          "season": 1,
+          "from": 5.67,
+          "to": 6.1,
+          "delta": 0.43
+        },
+        {
+          "seriesId": "tt39893694",
+          "title": "Crazy Love, Moo-Moo!",
+          "season": 1,
+          "from": 8.1,
+          "to": 7.68,
+          "delta": -0.42
+        },
+        {
+          "seriesId": "tt6941980",
+          "title": "Warrior",
+          "season": 2,
+          "from": 8.89,
+          "to": 8.51,
+          "delta": -0.38
+        },
+        {
+          "seriesId": "tt1245565",
+          "title": "Don't Mess with an Angel",
+          "season": 1,
+          "from": 8.94,
+          "to": 8.57,
+          "delta": -0.37
+        },
+        {
+          "seriesId": "tt0124228",
+          "title": "Astro Boy",
+          "season": 1,
+          "from": 6.42,
+          "to": 6.05,
+          "delta": -0.37
+        }
+      ],
+      "modifiedCounts": {
+        "seriesVotes": 18745,
+        "avgRating": 1195,
+        "shapes": 223,
+        "seriesRating": 291,
+        "episodeCount": 76
+      }
+    },
+    {
       "builtAt": "2026-06-10T08:17:23.755Z",
       "totals": {
         "seasons": 65295,
@@ -6149,373 +6492,6 @@
         "avgRating": 6,
         "shapes": 5,
         "episodeCount": 6
-      }
-    },
-    {
-      "builtAt": "2026-05-28T18:11:37.769Z",
-      "totals": {
-        "seasons": 65086,
-        "delta": 9
-      },
-      "shapeCounts": {
-        "mid-peak": 4585,
-        "rebound": 9923,
-        "rising": 2914,
-        "slow-burn": 4302,
-        "big-finale": 11919,
-        "u-shaped": 3055,
-        "rollercoaster": 13905,
-        "saved-best-for-last": 1505,
-        "front-loaded": 3436,
-        "declining": 1833,
-        "bad-finale": 4596,
-        "consistent": 2579,
-        "shape-drift": 1603
-      },
-      "shapeDeltas": {
-        "mid-peak": -6,
-        "rebound": 6,
-        "rising": 3,
-        "slow-burn": 6,
-        "big-finale": 8,
-        "u-shaped": -6,
-        "rollercoaster": -4,
-        "saved-best-for-last": 1,
-        "front-loaded": -5,
-        "declining": 3,
-        "bad-finale": 3,
-        "consistent": 1
-      },
-      "added": [
-        {
-          "seriesId": "tt35946742",
-          "title": "Maximum Pleasure Guaranteed",
-          "season": 1,
-          "seasonYear": 2026
-        },
-        {
-          "seriesId": "tt28118211",
-          "title": "A Good Girl's Guide to Murder",
-          "season": 2,
-          "seasonYear": 2026
-        },
-        {
-          "seriesId": "tt38821531",
-          "title": "My Two Cents",
-          "season": 1,
-          "seasonYear": 2026
-        },
-        {
-          "seriesId": "tt43053187",
-          "title": "Billiard Baby",
-          "season": 1,
-          "seasonYear": 2026
-        },
-        {
-          "seriesId": "tt6119230",
-          "title": "The Warfighters",
-          "season": 1,
-          "seasonYear": 2016
-        },
-        {
-          "seriesId": "tt13937900",
-          "title": "Kuch Toh Hai: Naagin Ek Naye Rang Mein",
-          "season": 1,
-          "seasonYear": 2021
-        },
-        {
-          "seriesId": "tt18270066",
-          "title": "Be My Guest with Ina Garten",
-          "season": 2,
-          "seasonYear": 2022
-        },
-        {
-          "seriesId": "tt42322841",
-          "title": "Love Beyond Dreams",
-          "season": 1,
-          "seasonYear": 2026
-        },
-        {
-          "seriesId": "tt27190804",
-          "title": "Operatsiya Neman",
-          "season": 1,
-          "seasonYear": 2023
-        }
-      ],
-      "removed": [],
-      "ratingSwings": [
-        {
-          "seriesId": "tt38626513",
-          "title": "The Legend of Kitchen Soldier",
-          "season": 1,
-          "from": 9.18,
-          "to": 6.43,
-          "delta": -2.75
-        },
-        {
-          "seriesId": "tt32756638",
-          "title": "The Cheesey Show",
-          "season": 2,
-          "from": 8.74,
-          "to": 7.66,
-          "delta": -1.08
-        },
-        {
-          "seriesId": "tt32756638",
-          "title": "The Cheesey Show",
-          "season": 1,
-          "from": 9.15,
-          "to": 8.1,
-          "delta": -1.05
-        },
-        {
-          "seriesId": "tt2789238",
-          "title": "Strike the Blood",
-          "season": 5,
-          "from": 7.8,
-          "to": 6.8,
-          "delta": -1
-        },
-        {
-          "seriesId": "tt30460310",
-          "title": "Spider-Noir",
-          "season": 1,
-          "from": 9.61,
-          "to": 8.79,
-          "delta": -0.82
-        },
-        {
-          "seriesId": "tt2789238",
-          "title": "Strike the Blood",
-          "season": 4,
-          "from": 7.78,
-          "to": 6.97,
-          "delta": -0.81
-        },
-        {
-          "seriesId": "tt1356884",
-          "title": "White Album",
-          "season": 1,
-          "from": 6.47,
-          "to": 7.25,
-          "delta": 0.78
-        },
-        {
-          "seriesId": "tt2789238",
-          "title": "Strike the Blood",
-          "season": 3,
-          "from": 7.52,
-          "to": 6.84,
-          "delta": -0.68
-        },
-        {
-          "seriesId": "tt21979954",
-          "title": "Project 209",
-          "season": 1,
-          "from": 8.18,
-          "to": 7.53,
-          "delta": -0.65
-        },
-        {
-          "seriesId": "tt1538296",
-          "title": "Hoarding: Buried Alive",
-          "season": 3,
-          "from": 7.18,
-          "to": 6.6,
-          "delta": -0.58
-        }
-      ],
-      "modifiedCounts": {
-        "seriesVotes": 22474,
-        "avgRating": 1105,
-        "shapes": 193,
-        "episodeCount": 63,
-        "seriesRating": 238,
-        "poster": 6,
-        "overview": 6,
-        "providers": 2
-      }
-    },
-    {
-      "builtAt": "2026-05-28T17:46:24.132Z",
-      "totals": {
-        "seasons": 65086,
-        "delta": 9
-      },
-      "shapeCounts": {
-        "mid-peak": 4585,
-        "rebound": 9923,
-        "rising": 2914,
-        "slow-burn": 4302,
-        "big-finale": 11919,
-        "u-shaped": 3055,
-        "rollercoaster": 13905,
-        "saved-best-for-last": 1505,
-        "front-loaded": 3436,
-        "declining": 1833,
-        "bad-finale": 4596,
-        "consistent": 2579,
-        "shape-drift": 1603
-      },
-      "shapeDeltas": {
-        "mid-peak": -6,
-        "rebound": 6,
-        "rising": 3,
-        "slow-burn": 6,
-        "big-finale": 8,
-        "u-shaped": -6,
-        "rollercoaster": -4,
-        "saved-best-for-last": 1,
-        "front-loaded": -5,
-        "declining": 3,
-        "bad-finale": 3,
-        "consistent": 1
-      },
-      "added": [
-        {
-          "seriesId": "tt35946742",
-          "title": "Maximum Pleasure Guaranteed",
-          "season": 1,
-          "seasonYear": 2026
-        },
-        {
-          "seriesId": "tt28118211",
-          "title": "A Good Girl's Guide to Murder",
-          "season": 2,
-          "seasonYear": 2026
-        },
-        {
-          "seriesId": "tt38821531",
-          "title": "My Two Cents",
-          "season": 1,
-          "seasonYear": 2026
-        },
-        {
-          "seriesId": "tt43053187",
-          "title": "Billiard Baby",
-          "season": 1,
-          "seasonYear": 2026
-        },
-        {
-          "seriesId": "tt6119230",
-          "title": "The Warfighters",
-          "season": 1,
-          "seasonYear": 2016
-        },
-        {
-          "seriesId": "tt13937900",
-          "title": "Kuch Toh Hai: Naagin Ek Naye Rang Mein",
-          "season": 1,
-          "seasonYear": 2021
-        },
-        {
-          "seriesId": "tt18270066",
-          "title": "Be My Guest with Ina Garten",
-          "season": 2,
-          "seasonYear": 2022
-        },
-        {
-          "seriesId": "tt42322841",
-          "title": "Love Beyond Dreams",
-          "season": 1,
-          "seasonYear": 2026
-        },
-        {
-          "seriesId": "tt27190804",
-          "title": "Operatsiya Neman",
-          "season": 1,
-          "seasonYear": 2023
-        }
-      ],
-      "removed": [],
-      "ratingSwings": [
-        {
-          "seriesId": "tt38626513",
-          "title": "The Legend of Kitchen Soldier",
-          "season": 1,
-          "from": 9.18,
-          "to": 6.43,
-          "delta": -2.75
-        },
-        {
-          "seriesId": "tt32756638",
-          "title": "The Cheesey Show",
-          "season": 2,
-          "from": 8.74,
-          "to": 7.66,
-          "delta": -1.08
-        },
-        {
-          "seriesId": "tt32756638",
-          "title": "The Cheesey Show",
-          "season": 1,
-          "from": 9.15,
-          "to": 8.1,
-          "delta": -1.05
-        },
-        {
-          "seriesId": "tt2789238",
-          "title": "Strike the Blood",
-          "season": 5,
-          "from": 7.8,
-          "to": 6.8,
-          "delta": -1
-        },
-        {
-          "seriesId": "tt30460310",
-          "title": "Spider-Noir",
-          "season": 1,
-          "from": 9.61,
-          "to": 8.79,
-          "delta": -0.82
-        },
-        {
-          "seriesId": "tt2789238",
-          "title": "Strike the Blood",
-          "season": 4,
-          "from": 7.78,
-          "to": 6.97,
-          "delta": -0.81
-        },
-        {
-          "seriesId": "tt1356884",
-          "title": "White Album",
-          "season": 1,
-          "from": 6.47,
-          "to": 7.25,
-          "delta": 0.78
-        },
-        {
-          "seriesId": "tt2789238",
-          "title": "Strike the Blood",
-          "season": 3,
-          "from": 7.52,
-          "to": 6.84,
-          "delta": -0.68
-        },
-        {
-          "seriesId": "tt21979954",
-          "title": "Project 209",
-          "season": 1,
-          "from": 8.18,
-          "to": 7.53,
-          "delta": -0.65
-        },
-        {
-          "seriesId": "tt1538296",
-          "title": "Hoarding: Buried Alive",
-          "season": 3,
-          "from": 7.18,
-          "to": 6.6,
-          "delta": -0.58
-        }
-      ],
-      "modifiedCounts": {
-        "seriesVotes": 22474,
-        "avgRating": 1105,
-        "shapes": 193,
-        "episodeCount": 63,
-        "seriesRating": 238
       }
     }
   ]
