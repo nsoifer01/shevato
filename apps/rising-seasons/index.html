@@ -132,6 +132,8 @@
       <button type="button" class="mode-btn" data-mode="finder" aria-pressed="false">Show Finder</button>
     </div>
 
+    <div class="mode-divider" aria-hidden="true"></div>
+
     <nav class="shapes" id="shapes" aria-label="Rating shape">
       <button class="shape-chip" data-shape="all" aria-pressed="true" type="button">
         <span class="shape-name">All</span>
@@ -450,6 +452,28 @@
     <nav class="pager" id="pager" aria-label="Pagination" hidden></nav>
 
     <section class="finder" id="finder" aria-label="Show Finder" hidden>
+      <!-- Show-level shape chips. A show's shape is classified from the curve
+           of its per-season episode averages (not per episode), so a "rising"
+           show is one whose seasons kept getting better. Rendered by app.js
+           from showAgg; chips with a zero count are hidden. -->
+      <nav class="shapes finder-shapes" id="finderShapes" aria-label="Show shape"></nav>
+
+      <section class="mood-presets finder-moods" aria-label="Explore by mood">
+        <!-- Same .mood-collapsible structure as the Seasons mood rail, so it
+             centers and collapses behind a toggle pill on mobile identically.
+             The chips keep a distinct class (.finder-mood-chips, not
+             .mood-preset-chips) so the Seasons-view mood logic — count-fill,
+             click-binding, aria sync — never touches these finder presets;
+             app.js owns them via #finderMoodChips. -->
+        <details class="mood-collapsible" open>
+          <summary class="mood-presets-title">
+            <span class="mood-presets-title-text">Explore by mood</span>
+            <span class="mood-toggle-chevron" aria-hidden="true"></span>
+          </summary>
+          <div class="finder-mood-chips" id="finderMoodChips"></div>
+        </details>
+      </section>
+
       <div class="filters" aria-label="Show Finder filters">
         <div class="filter-row primary">
           <div class="search-cluster">
@@ -894,7 +918,10 @@
        overwrite the just-injected auth UI. -->
   <script src="../../assets/js/main.js"></script>
 
-  <!-- App script — vanilla, no jQuery dependency -->
+  <!-- App script — vanilla, no jQuery dependency. match.js ships the shape
+       classifiers (one source of truth with the build/tests) and must load
+       first so app.js can classify whole shows by their per-season averages. -->
+  <script src="scripts/match.js" defer></script>
   <script src="js/app.js" defer></script>
   <script src="/assets/js/back-to-top.js" defer></script>
 </body>

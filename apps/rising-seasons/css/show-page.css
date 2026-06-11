@@ -102,6 +102,102 @@ main { max-width: 1080px; margin: 0 auto; padding: 24px; }
   background: linear-gradient(135deg, #1f2c4d 0%, #2d1f4d 100%);
   border-radius: 10px;
 }
+
+/* Sensitive (adult) poster — CSS-only blur + click-to-reveal. These static
+   pages carry no app JS, so the reveal is a hidden checkbox toggled by the
+   overlay label. The overlay is light: a small corner badge flags the content
+   and a centred "Tap to reveal" pill is the action, so the blurred artwork
+   stays visible for context. Social/search previews are handled server-side
+   (the poster is swapped for the neutral site card, which can't be blurred). */
+.poster-sensitive {
+  position: relative;
+  display: inline-block;
+  line-height: 0;
+  border-radius: 10px;
+  overflow: hidden;
+  box-shadow: 0 12px 36px rgba(0, 0, 0, 0.45);
+}
+.poster-sensitive > img {
+  display: block;
+  box-shadow: none;
+  border-radius: 0;
+  filter: blur(16px);
+  transform: scale(1.08);
+}
+.poster-reveal-toggle {
+  position: absolute;
+  opacity: 0;
+  width: 1px;
+  height: 1px;
+  margin: 0;
+}
+.poster-reveal-toggle:checked ~ img {
+  filter: none;
+  transform: none;
+}
+.poster-reveal {
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: transparent;
+  cursor: pointer;
+  transition: background 0.18s ease;
+}
+.poster-reveal:hover { background: rgba(7, 9, 15, 0.22); }
+.poster-reveal-toggle:checked ~ .poster-reveal { display: none; }
+.poster-reveal-toggle:focus-visible ~ .poster-reveal {
+  outline: 2px solid var(--gold);
+  outline-offset: -3px;
+}
+
+/* Corner flag. */
+.poster-reveal-badge {
+  position: absolute;
+  top: 8px;
+  left: 8px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  border-radius: 999px;
+  background: rgba(7, 9, 15, 0.7);
+  color: rgba(255, 255, 255, 0.9);
+  line-height: 0;
+}
+.poster-reveal-badge svg { width: 15px; height: 15px; }
+
+/* Prominent action pill. */
+.poster-reveal-cta {
+  display: inline-flex;
+  align-items: center;
+  padding: 8px 16px;
+  border-radius: 999px;
+  background: rgba(13, 15, 20, 0.82);
+  color: #fff;
+  border: 1px solid rgba(255, 255, 255, 0.24);
+  font-size: 13px;
+  font-weight: 700;
+  line-height: 1;
+  white-space: nowrap;
+  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.4);
+  transition: background 0.18s ease, color 0.18s ease, border-color 0.18s ease;
+}
+.poster-reveal:hover .poster-reveal-cta {
+  background: var(--gold);
+  color: #1a1500;
+  border-color: var(--gold);
+}
+
+/* Compact variant — related-shows thumbnails: corner badge only. */
+.poster-sensitive-sm { border-radius: 8px; box-shadow: none; }
+.poster-sensitive-sm > img { filter: blur(12px); transform: scale(1.12); }
+.poster-sensitive-sm .poster-reveal-cta { display: none; }
+.poster-sensitive-sm .poster-reveal-badge { top: 4px; left: 4px; width: 18px; height: 18px; }
+.poster-sensitive-sm .poster-reveal-badge svg { width: 11px; height: 11px; }
 .show-meta h1 {
   font-size: clamp(28px, 4.5vw, 40px); margin: 0 0 6px; line-height: 1.15;
 }

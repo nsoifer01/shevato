@@ -530,23 +530,31 @@ function tagShapeDrift(matches) {
   }
 }
 
-module.exports = {
-  isRising,
-  isConsistent,
-  isSlowBurn,
-  isBigFinale,
-  isRebound,
-  isFrontLoaded,
-  isDeclining,
-  isBadFinale,
-  isRollercoaster,
-  isMidPeak,
-  isUShaped,
-  detectShapes,
-  findMatches,
-  tagSavedBestForLast,
-  tagShapeDrift,
-  shapeConfidence,
-  // Back-compat with earlier API name.
-  isNonDecreasing: isRising,
-};
+// CommonJS export for the build scripts and the test suite. Guarded so this
+// same file can also be loaded as a classic <script> in the browser (where
+// `module` is undefined) without throwing — the top-level function
+// declarations are then available as globals to app.js. This keeps one source
+// of truth for the shape classifiers across build, tests, and the runtime
+// Show Finder (which classifies whole shows by their per-season averages).
+if (typeof module !== 'undefined' && module.exports) {
+  module.exports = {
+    isRising,
+    isConsistent,
+    isSlowBurn,
+    isBigFinale,
+    isRebound,
+    isFrontLoaded,
+    isDeclining,
+    isBadFinale,
+    isRollercoaster,
+    isMidPeak,
+    isUShaped,
+    detectShapes,
+    findMatches,
+    tagSavedBestForLast,
+    tagShapeDrift,
+    shapeConfidence,
+    // Back-compat with earlier API name.
+    isNonDecreasing: isRising,
+  };
+}
