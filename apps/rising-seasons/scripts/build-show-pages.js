@@ -177,6 +177,7 @@ function computeRelatedShows(show, dominantShape, shapeIndex, limit) {
       title: s.title,
       year: s.year,
       poster: s.poster,
+      genres: s.genres,
       dominantShape: rShape,
       dominantShapeSlug: rSlug,
       slug: showPath(s.title, s.seriesId),

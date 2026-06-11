@@ -1511,6 +1511,115 @@ body.rising-seasons-app button {
   transition: opacity 0.2s;
 }
 
+/* --- Sensitive (adult) posters ---
+   Posters for IMDb "Adult"-genre titles are blurred so explicit detail never
+   renders unprompted — but the overlay is deliberately light: a small corner
+   badge flags the content and a prominent centred pill is the reveal action.
+   No full-width gray banner, so the blurred artwork (and the always-visible
+   title below) still give enough context to decide. Applied to any poster
+   container (card, list row, related row, suggestion thumb, or modal). */
+.poster-sensitive {
+  position: relative;
+  overflow: hidden;
+}
+.poster-sensitive img {
+  /* Strong enough to obscure explicit detail; scaled to hide the blurred rim.
+     The title below the poster carries the real "what is this" signal. */
+  filter: blur(14px);
+  transform: scale(1.1);
+}
+.poster-sensitive.revealed img {
+  filter: none;
+  transform: none;
+}
+
+/* Full-area click target — no heavy scrim, just a faint darken on hover so
+   the reveal pill lifts off the artwork. width/height/line-height are forced
+   because main.css gives every <button> a fixed height: 3.25rem, which would
+   otherwise collapse this overlay to a 52px band pinned at the top. */
+.poster-reveal {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  z-index: 3;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  line-height: 1;
+  cursor: pointer;
+  font: inherit;
+  transition: background 0.18s var(--ease);
+}
+.poster-reveal:hover { background: rgba(7, 9, 15, 0.22); }
+.poster-reveal:focus-visible { outline: 2px solid var(--accent); outline-offset: -3px; }
+.poster-sensitive.revealed .poster-reveal { display: none; }
+
+/* Corner flag — small, top-left (the watch toggle owns top-right). */
+.poster-reveal-badge {
+  position: absolute;
+  top: 6px;
+  left: 6px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  border-radius: 999px;
+  background: rgba(7, 9, 15, 0.7);
+  color: rgba(255, 255, 255, 0.9);
+  -webkit-backdrop-filter: blur(2px);
+  backdrop-filter: blur(2px);
+}
+.poster-reveal-badge svg { width: 14px; height: 14px; }
+
+/* The prominent action pill. */
+.poster-reveal-cta {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 7px 15px;
+  border-radius: 999px;
+  background: rgba(13, 15, 20, 0.82);
+  color: #fff;
+  border: 1px solid rgba(255, 255, 255, 0.24);
+  font-size: 0.74rem;
+  font-weight: 700;
+  letter-spacing: 0.01em;
+  white-space: nowrap;
+  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.4);
+  -webkit-backdrop-filter: blur(3px);
+  backdrop-filter: blur(3px);
+  transition: background 0.18s var(--ease), color 0.18s var(--ease), border-color 0.18s var(--ease);
+}
+.poster-reveal:hover .poster-reveal-cta,
+.poster-reveal:focus-visible .poster-reveal-cta {
+  background: var(--accent);
+  color: var(--accent-ink);
+  border-color: var(--accent);
+}
+
+/* Small slots (list rows, related, suggestions): corner badge only — the
+   adjacent title already says what the title is. */
+.row-poster .poster-reveal-cta,
+.related-poster .poster-reveal-cta,
+.ss-poster .poster-reveal-cta { display: none; }
+.row-poster .poster-reveal-badge,
+.related-poster .poster-reveal-badge,
+.ss-poster .poster-reveal-badge {
+  top: 3px;
+  left: 3px;
+  width: 18px;
+  height: 18px;
+}
+.row-poster .poster-reveal-badge svg,
+.related-poster .poster-reveal-badge svg,
+.ss-poster .poster-reveal-badge svg { width: 11px; height: 11px; }
+
 .poster-fallback {
   --poster-hue: 220;
   position: absolute;
@@ -4023,23 +4132,25 @@ body.advanced-drawer-open {
 }
 
 .mood-chip:hover {
-  background: rgba(255, 255, 255, 0.075);
-  border-color: var(--border-strong);
-  color: rgba(255, 255, 255, 0.98) !important;
+  /* Gold-tinted hover that foreshadows the active state — same treatment
+     as .shape-chip so moods, shapes, and the mode toggle share one
+     interaction language. */
+  background: rgba(245, 197, 24, 0.06);
+  border-color: rgba(245, 197, 24, 0.32);
+  color: #FFFFFF !important;
   text-decoration: none !important;
-  transform: translateY(-1px);
+  transform: scale(1.03);
   box-shadow: 0 1px 0 rgba(255, 255, 255, 0.02) inset,
-              0 4px 12px rgba(0, 0, 0, 0.25);
+              0 4px 14px rgba(245, 197, 24, 0.1);
 }
 
-/* Active preset: a hairline accent border and an accent icon carry the
-   selected state — the label stays white and the surface stays dark, so a
-   pressed mood reads clearly without a heavy yellow fill. */
+/* Active preset: the refined gold wash + accent border + gold label, in
+   step with the active shape chip and the active mode toggle. */
 .mood-chip[aria-pressed="true"],
 .mood-chip[aria-pressed="true"]:hover {
-  background: rgba(245, 197, 24, 0.05);
-  border-color: rgba(245, 197, 24, 0.5);
-  color: var(--text) !important;
+  background: rgba(245, 197, 24, 0.12);
+  border-color: rgba(245, 197, 24, 0.45);
+  color: var(--accent) !important;
 }
 .mood-chip[aria-pressed="true"] .mood-chip-icon {
   color: var(--accent);
@@ -4900,7 +5011,8 @@ body.advanced-drawer-open {
     border-color: rgba(245, 197, 24, 0.4);
     color: #F3F4F6;
   }
-  .mood-collapsible[open] .mood-preset-chips {
+  .mood-collapsible[open] .mood-preset-chips,
+  .mood-collapsible[open] .finder-mood-chips {
     margin-top: 0.85rem;
   }
 }
@@ -5201,43 +5313,93 @@ body.advanced-drawer-open {
 
 .mode-hidden { display: none !important; }
 
+/* Mode toggle — speaks the same visual language as the shape chips below:
+   translucent dark surface, hairline border, pill radius, inset highlight,
+   gold-tinted hover. The inactive button reads as an elevated dark pill
+   (chip surface + a soft drop shadow to lift it), and the active button is
+   the app's gold accent — a refined two-stop fill with restrained glow
+   rather than a heavy bright slab. */
 .mode-switch {
-  display: inline-flex;
-  gap: 4px;
-  margin: 0 auto 18px;
-  padding: 4px;
-  background: var(--surface-2);
-  border: 1px solid var(--border);
-  border-radius: 999px;
+  display: flex;
+  width: fit-content;
+  gap: 0.5rem;
+  margin: 1.25rem auto 1rem;
+}
+
+/* Hairline rule under the toggle — the same gradient hairline used to flank
+   the "Explore by mood" title, so the toggle reads as its own band above the
+   shapes/filters below. Shown in both modes (it sits outside #finder). */
+.mode-divider {
+  width: min(640px, 92%);
+  height: 1px;
+  margin: 0 auto 1.4rem;
+  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.12), transparent);
 }
 
 .mode-btn {
   appearance: none;
-  border: 1px solid transparent !important;
-  background: transparent !important;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  height: 36px;
+  padding: 0 1.25rem;
+  background: rgba(255, 255, 255, 0.05) !important;
+  border: 1px solid rgba(255, 255, 255, 0.1) !important;
+  border-radius: 999px;
   color: var(--muted) !important;
   font: inherit;
+  font-size: 0.85rem;
   font-weight: 600;
-  padding: 8px 18px;
-  border-radius: 999px;
+  letter-spacing: 0.005em;
+  line-height: 1;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
   cursor: pointer;
-  transition: background 0.15s, color 0.15s, border-color 0.15s;
+  box-shadow: 0 1px 0 rgba(255, 255, 255, 0.02) inset,
+              0 2px 8px rgba(0, 0, 0, 0.25) !important;
+  transition: background 0.18s var(--ease), border-color 0.18s var(--ease),
+              color 0.18s var(--ease), transform 0.18s var(--ease),
+              box-shadow 0.18s var(--ease);
 }
 
 .mode-btn:hover {
-  background: var(--surface-3) !important;
-  color: var(--text) !important;
-  border-color: var(--border-strong) !important;
+  background: rgba(245, 197, 24, 0.06) !important;
+  border-color: rgba(245, 197, 24, 0.32) !important;
+  color: #FFFFFF !important;
+  transform: scale(1.03);
+  box-shadow: 0 1px 0 rgba(255, 255, 255, 0.02) inset,
+              0 4px 14px rgba(245, 197, 24, 0.1) !important;
 }
 
-.mode-btn[aria-pressed="true"] {
-  background: linear-gradient(135deg, var(--accent-warm), var(--accent) 55%, #e0b00f) !important;
-  color: var(--accent-ink) !important;
-  border-color: var(--accent) !important;
+.mode-btn:focus-visible {
+  outline: 2px solid rgba(245, 197, 24, 0.65);
+  outline-offset: 2px;
 }
+
+.mode-btn[aria-pressed="true"],
+.mode-btn[aria-pressed="true"]:hover {
+  background: rgba(245, 197, 24, 0.12) !important;
+  border-color: rgba(245, 197, 24, 0.45) !important;
+  color: var(--accent) !important;
+  transform: none;
+  box-shadow: 0 1px 0 rgba(255, 255, 255, 0.02) inset,
+              0 2px 12px rgba(245, 197, 24, 0.12) !important;
+}
+
+.finder[hidden] { display: none; }
 
 .finder {
   margin-top: 8px;
+}
+
+/* Finder mood presets reuse the .mood-chip look but a distinct container class
+   (kept off .mood-preset-chips so the Seasons mood logic ignores them). Mirror
+   the .mood-preset-chips flex layout. */
+.finder-mood-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  justify-content: center;
 }
 
 .finder-chips,
