@@ -920,8 +920,12 @@
 
   <!-- App script — vanilla, no jQuery dependency. match.js ships the shape
        classifiers (one source of truth with the build/tests) and must load
-       first so app.js can classify whole shows by their per-season averages. -->
+       first so app.js can classify whole shows by their per-season averages.
+       finder-lib.js ships the Show Finder aggregation/filtering shared with
+       the Node export pipeline (Kometa Finder presets) and must also load
+       before app.js. -->
   <script src="scripts/match.js" defer></script>
+  <script src="scripts/finder-lib.js" defer></script>
   <script src="js/app.js" defer></script>
   <script src="/assets/js/back-to-top.js" defer></script>
 </body>
