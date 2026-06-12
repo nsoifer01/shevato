@@ -1,6 +1,143 @@
 {
   "updates": [
     {
+      "builtAt": "2026-06-12T08:19:29.560Z",
+      "totals": {
+        "seasons": 65303,
+        "delta": 1
+      },
+      "shapeCounts": {
+        "mid-peak": 4615,
+        "rebound": 9993,
+        "rising": 2911,
+        "slow-burn": 4314,
+        "big-finale": 11932,
+        "u-shaped": 3068,
+        "rollercoaster": 13967,
+        "saved-best-for-last": 1513,
+        "front-loaded": 3431,
+        "declining": 1834,
+        "bad-finale": 4610,
+        "consistent": 2589,
+        "shape-drift": 1585
+      },
+      "shapeDeltas": {
+        "mid-peak": 4,
+        "rebound": -1,
+        "big-finale": 1,
+        "u-shaped": 2,
+        "rollercoaster": 3,
+        "saved-best-for-last": -1,
+        "front-loaded": -1,
+        "declining": -1,
+        "bad-finale": -1
+      },
+      "added": [
+        {
+          "seriesId": "tt0439351",
+          "title": "Border Security: Australia's Front Line",
+          "season": 1,
+          "seasonYear": 2004
+        }
+      ],
+      "removed": [],
+      "ratingSwings": [
+        {
+          "seriesId": "tt1069275",
+          "title": "Skunk Fu!",
+          "season": 1,
+          "from": 8.01,
+          "to": 8.41,
+          "delta": 0.4
+        },
+        {
+          "seriesId": "tt0433740",
+          "title": "Legend of Heavenly Sphere Shurato",
+          "season": 1,
+          "from": 7.93,
+          "to": 7.6,
+          "delta": -0.33
+        }
+      ],
+      "modifiedCounts": {
+        "seriesVotes": 2013,
+        "avgRating": 135,
+        "shapes": 25,
+        "providers": 34,
+        "overview": 15,
+        "seriesRating": 26,
+        "episodeCount": 6,
+        "poster": 1
+      }
+    },
+    {
+      "builtAt": "2026-06-12T07:51:17.010Z",
+      "totals": {
+        "seasons": 65303,
+        "delta": 1
+      },
+      "shapeCounts": {
+        "mid-peak": 4615,
+        "rebound": 9993,
+        "rising": 2911,
+        "slow-burn": 4314,
+        "big-finale": 11932,
+        "u-shaped": 3068,
+        "rollercoaster": 13967,
+        "saved-best-for-last": 1513,
+        "front-loaded": 3431,
+        "declining": 1834,
+        "bad-finale": 4610,
+        "consistent": 2589,
+        "shape-drift": 1585
+      },
+      "shapeDeltas": {
+        "mid-peak": 4,
+        "rebound": -1,
+        "big-finale": 1,
+        "u-shaped": 2,
+        "rollercoaster": 3,
+        "saved-best-for-last": -1,
+        "front-loaded": -1,
+        "declining": -1,
+        "bad-finale": -1
+      },
+      "added": [
+        {
+          "seriesId": "tt0439351",
+          "title": "Border Security: Australia's Front Line",
+          "season": 1,
+          "seasonYear": 2004
+        }
+      ],
+      "removed": [],
+      "ratingSwings": [
+        {
+          "seriesId": "tt1069275",
+          "title": "Skunk Fu!",
+          "season": 1,
+          "from": 8.01,
+          "to": 8.41,
+          "delta": 0.4
+        },
+        {
+          "seriesId": "tt0433740",
+          "title": "Legend of Heavenly Sphere Shurato",
+          "season": 1,
+          "from": 7.93,
+          "to": 7.6,
+          "delta": -0.33
+        }
+      ],
+      "modifiedCounts": {
+        "seriesVotes": 2013,
+        "avgRating": 135,
+        "shapes": 25,
+        "seriesRating": 26,
+        "episodeCount": 6
+      }
+    },
+    {
       "builtAt": "2026-06-11T08:33:25.740Z",
       "totals": {
         "seasons": 65302,
@@ -6384,108 +6521,6 @@
           "from": 6.38,
           "to": 6.14,
           "delta": -0.24
-        }
-      ],
-      "modifiedCounts": {
-        "avgRating": 6,
-        "shapes": 5,
-        "episodeCount": 6
-      }
-    },
-    {
-      "builtAt": "2026-05-28T19:03:04.037Z",
-      "totals": {
-        "seasons": 65086,
-        "delta": 0
-      },
-      "shapeCounts": {
-        "mid-peak": 4585,
-        "rebound": 9923,
-        "rising": 2914,
-        "slow-burn": 4301,
-        "big-finale": 11923,
-        "u-shaped": 3055,
-        "rollercoaster": 13905,
-        "saved-best-for-last": 1505,
-        "front-loaded": 3436,
-        "declining": 1833,
-        "bad-finale": 4596,
-        "consistent": 2579,
-        "shape-drift": 1603
-      },
-      "shapeDeltas": {
-        "slow-burn": -1,
-        "big-finale": 4
-      },
-      "added": [],
-      "removed": [],
-      "ratingSwings": [
-        {
-          "seriesId": "tt1733604",
-          "title": "Stacey Dooley Investigates",
-          "season": 11,
-          "from": 7.08,
-          "to": 7.33,
-          "delta": 0.25
-        },
-        {
-          "seriesId": "tt34119820",
-          "title": "The Beginning After the End",
-          "season": 2,
-          "from": 6.14,
-          "to": 6.38,
-          "delta": 0.24
-        }
-      ],
-      "modifiedCounts": {
-        "avgRating": 6,
-        "shapes": 5,
-        "episodeCount": 6
-      }
-    },
-    {
-      "builtAt": "2026-05-28T18:33:04.660Z",
-      "totals": {
-        "seasons": 65086,
-        "delta": 0
-      },
-      "shapeCounts": {
-        "mid-peak": 4585,
-        "rebound": 9923,
-        "rising": 2914,
-        "slow-burn": 4301,
-        "big-finale": 11923,
-        "u-shaped": 3055,
-        "rollercoaster": 13905,
-        "saved-best-for-last": 1505,
-        "front-loaded": 3436,
-        "declining": 1833,
-        "bad-finale": 4596,
-        "consistent": 2579,
-        "shape-drift": 1603
-      },
-      "shapeDeltas": {
-        "slow-burn": -1,
-        "big-finale": 4
-      },
-      "added": [],
-      "removed": [],
-      "ratingSwings": [
-        {
-          "seriesId": "tt1733604",
-          "title": "Stacey Dooley Investigates",
-          "season": 11,
-          "from": 7.08,
-          "to": 7.33,
-          "delta": 0.25
-        },
-        {
-          "seriesId": "tt34119820",
-          "title": "The Beginning After the End",
-          "season": 2,
-          "from": 6.14,
-          "to": 6.38,
-          "delta": 0.24
         }
       ],
       "modifiedCounts": {
