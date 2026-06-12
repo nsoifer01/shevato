@@ -4036,91 +4036,16 @@ function formatCompactVotes(n) {
 
 // Group season-matches by seriesId into one row per show. Computed once after
 // data.json loads (memoized in showAgg) so live filtering never re-aggregates.
+// The aggregation itself lives in finder-lib.js — shared with the Node export
+// pipeline (scripts/export-integrations.js) so Finder presets exported to
+// Kometa are built from exactly the rows this view shows. `detectShapes` comes
+// from match.js, loaded before this script; guard so a missing global never
+// breaks the finder.
 function buildShowAgg() {
-  const byId = new Map();
-  for (const m of dataset.matches) {
-    let s = byId.get(m.seriesId);
-    if (!s) {
-      s = {
-        seriesId: m.seriesId,
-        title: m.title,
-        year: m.year,
-        language: m.language,
-        poster: m.poster,
-        showRating: m.seriesRating,
-        votes: m.seriesVotes,
-        genres: new Set(),
-        ratingSum: 0,
-        episodes: 0,
-        runtimeHrs: 0,
-        seasonsCount: 0,
-        seasonAvgs: [],
-        seasonEpisodeSeries: [],
-      };
-      byId.set(m.seriesId, s);
-    }
-    for (const g of (m.genres || [])) s.genres.add(g);
-    let seasonRated = 0;
-    let seasonRatingSum = 0;
-    const seasonEpisodes = [];
-    for (const e of m.episodes) {
-      if (typeof e.rating === 'number') {
-        s.ratingSum += e.rating;
-        s.episodes++;
-        seasonRated++;
-        seasonRatingSum += e.rating;
-        seasonEpisodes.push({ episode: e.episode, rating: e.rating, votes: e.votes });
-      }
-    }
-    s.seasonEpisodeSeries.push(seasonEpisodes);
-    s.seasonsCount++;
-    const seasonAvg = typeof m.avgRating === 'number'
-      ? m.avgRating
-      : (seasonRated > 0 ? seasonRatingSum / seasonRated : null);
-    if (typeof seasonAvg === 'number' && typeof m.season === 'number') {
-      s.seasonAvgs.push({ season: m.season, year: (m.seasonYear ?? m.year), avg: seasonAvg });
-    }
-    if (typeof m.avgRuntime === 'number') {
-      s.runtimeHrs += (seasonRated * m.avgRuntime) / 60;
-    }
-  }
-
-  const out = [];
-  for (const s of byId.values()) {
-    if (s.episodes === 0) continue;
-    if (typeof s.showRating !== 'number' || typeof s.votes !== 'number') continue;
-    const avgEpisode = Math.round((s.ratingSum / s.episodes) * 100) / 100;
-    const gap = Math.round((avgEpisode - s.showRating) * 100) / 100;
-    const episodeSeries = s.seasonsCount === 1 ? s.seasonEpisodeSeries[0] : undefined;
-    const seasonAvgs = s.seasonAvgs.slice().sort((a, b) => a.season - b.season);
-    // Whole-show shape: feed the ordered per-season averages to the same shape
-    // detectors the Seasons view uses per episode. A single season has no
-    // cross-season trajectory, so such shows carry no shape and are excluded
-    // when a shape filter is active. `detectShapes` comes from match.js, loaded
-    // before this script; guard so a missing global never breaks the finder.
-    const shapes = (seasonAvgs.length >= 2 && typeof detectShapes === 'function')
-      ? detectShapes(seasonAvgs.map((a) => ({ rating: a.avg })))
-      : [];
-    out.push({
-      seriesId: s.seriesId,
-      title: s.title,
-      year: s.year,
-      language: s.language,
-      poster: s.poster,
-      genres: [...s.genres].sort(),
-      showRating: s.showRating,
-      votes: s.votes,
-      episodes: s.episodes,
-      avgEpisode,
-      gap,
-      runtimeHrs: Math.round((s.runtimeHrs) * 10) / 10,
-      seasonsCount: s.seasonsCount,
-      seasonAvgs,
-      shapes,
-      episodeSeries,
-    });
-  }
-  return out;
+  return RisingSeasonsFinder.buildShowAgg(
+    dataset.matches,
+    typeof detectShapes === 'function' ? detectShapes : null,
+  );
 }
 
 function applyModeClasses() {
@@ -4546,54 +4471,17 @@ const FINDER_COLUMNS = [
 // Rows passing every finder filter EXCEPT the shape filter. Kept separate so
 // the shape chips can show live counts (how many shows of each shape survive
 // the other active filters) — the same pattern the Seasons view uses.
+// Predicate + comparator live in finder-lib.js, shared with the Node export
+// pipeline (one source of truth — Kometa preset exports cannot drift).
 function finderRowsBeforeShape() {
-  const f = finderState;
-  const q = f.search.trim().toLowerCase();
-  return showAgg.filter((s) => {
-    if (q && !s.title.toLowerCase().includes(q) && !s.seriesId.toLowerCase().includes(q)) return false;
-    if (s.episodes < f.minEpisodes) return false;
-    if (s.votes < f.minVotes) return false;
-    if (s.showRating < f.minShowRating) return false;
-    if (s.avgEpisode < f.minAvgEpisode) return false;
-    if (f.gapDir === 'up') {
-      if (s.gap <= 0) return false;
-      if (s.gap < f.minGap) return false;
-    } else if (f.gapDir === 'down') {
-      if (s.gap >= 0) return false;
-      if (-s.gap < f.minGap) return false;
-    } else if (f.minGap > 0 && Math.abs(s.gap) < f.minGap) {
-      return false;
-    }
-    if (f.minYear != null && (s.year == null || s.year < f.minYear)) return false;
-    if (f.maxYear != null && (s.year == null || s.year > f.maxYear)) return false;
-    if (f.genres.size) {
-      for (const g of f.genres) if (!s.genres.includes(g)) return false;
-    }
-    if (f.genresExclude.size) {
-      for (const g of s.genres) if (f.genresExclude.has(g)) return false;
-    }
-    if (f.languages.size && !f.languages.has(s.language)) return false;
-    return true;
-  });
+  return showAgg.filter((s) => RisingSeasonsFinder.passesFinderFilters(s, finderState));
 }
 
 function filterAndSortFinder() {
   const f = finderState;
   const rows = finderRowsBeforeShape()
     .filter((s) => passesShapeAnd(s, f.shapes));
-
-  const key = f.sort;
-  const mul = f.sortDir === 'asc' ? 1 : -1;
-  rows.sort((a, b) => {
-    // Unknown years always sink to the bottom, independent of sort direction.
-    if (key === 'year' && (a.year == null || b.year == null)) {
-      if (a.year == null && b.year == null) return b.votes - a.votes;
-      return a.year == null ? 1 : -1;
-    }
-    let d = key === 'title' ? a.title.localeCompare(b.title) : a[key] - b[key];
-    if (d === 0 && key !== 'votes') d = b.votes - a.votes;
-    return d * mul;
-  });
+  rows.sort(RisingSeasonsFinder.finderComparator(f.sort, f.sortDir));
   return rows;
 }
 
@@ -5370,26 +5258,10 @@ function writeFinderStateToURL() {
 // Read finder params off the hash into finderState. Called from
 // applyStateFromURL when the hash carries view=finder. Does NOT touch the DOM
 // controls (they may not exist yet at first load); syncFinderControls handles
-// that once the controls are rendered.
+// that once the controls are rendered. Parsing lives in finder-lib.js so the
+// Node export pipeline reads preset queries with identical semantics.
 function applyFinderStateFromParams(p) {
-  const f = finderState;
-  f.search = p.get('q') || '';
-  f.view = p.get('fView') === 'list' ? 'list' : 'grid';
-  f.sort = p.get('fSort') || 'votes';
-  f.sortDir = p.get('fDir') === 'asc' ? 'asc' : 'desc';
-  f.minEpisodes = parseFloat(p.get('fMinEps')) || 0;
-  f.minVotes = parseFloat(p.get('fMinVotes')) || 0;
-  f.minShowRating = parseFloat(p.get('fMinShow')) || 0;
-  f.minAvgEpisode = parseFloat(p.get('fMinAvg')) || 0;
-  f.gapDir = ['up', 'down'].includes(p.get('fGapDir')) ? p.get('fGapDir') : 'any';
-  f.minGap = parseFloat(p.get('fMinGap')) || 0;
-  f.minYear = p.has('fMinYear') ? (parseInt(p.get('fMinYear'), 10) || null) : null;
-  f.maxYear = p.has('fMaxYear') ? (parseInt(p.get('fMaxYear'), 10) || null) : null;
-  f.genres = new Set((p.get('fg') || '').split(',').filter(Boolean));
-  f.genresExclude = new Set((p.get('fxg') || '').split(',').filter(Boolean));
-  f.languages = new Set((p.get('fl') || '').split(',').filter(Boolean));
-  f.shapes = new Set((p.get('fShape') || '').split(',').filter(Boolean));
-  f.page = Math.max(1, parseInt(p.get('page'), 10) || 1);
+  Object.assign(finderState, RisingSeasonsFinder.parseFinderQuery(p));
 }
 
 // --- last-updated / stale ---
