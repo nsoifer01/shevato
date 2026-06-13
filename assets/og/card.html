@@ -1,0 +1,167 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <!--
+    Open Graph card template. Rendered headlessly to a 1200x630 PNG by
+    assets/og/build-og-cards.mjs (one PNG per entry in assets/og/cards.json).
+    Never linked at runtime - it exists only to be screenshotted at build time.
+
+    Fill it via query string, e.g.
+      card.html?title=MapTap%20Rivals&subtitle=Daily%20MapTap.gg%20head-to-head&eyebrow=Score%20tracker&accent=%2338bdf8
+  -->
+  <style>
+    @page { margin: 0; }
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+
+    html, body {
+      width: 1200px;
+      height: 630px;
+      overflow: hidden;
+    }
+
+    body {
+      /* DejaVu Sans / Ubuntu are guaranteed present in the headless renderer. */
+      font-family: "Ubuntu", "DejaVu Sans", sans-serif;
+      color: #f5f7fa;
+      background: #0b0d12;
+      position: relative;
+    }
+
+    /* Accent glow, tinted per app via --accent. */
+    .bg {
+      position: absolute;
+      inset: 0;
+      background:
+        radial-gradient(900px 520px at 100% 0%, color-mix(in srgb, var(--accent) 42%, transparent), transparent 60%),
+        radial-gradient(700px 600px at 0% 100%, color-mix(in srgb, var(--accent) 16%, transparent), transparent 55%),
+        linear-gradient(135deg, #11141d 0%, #0b0d12 55%, #070810 100%);
+    }
+
+    /* Subtle dotted texture so the flat areas don't band. */
+    .grid {
+      position: absolute;
+      inset: 0;
+      background-image: radial-gradient(rgba(255, 255, 255, 0.05) 1.5px, transparent 1.5px);
+      background-size: 38px 38px;
+      opacity: 0.5;
+    }
+
+    .frame {
+      position: absolute;
+      inset: 0;
+      padding: 72px 80px;
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+    }
+
+    .brand {
+      display: flex;
+      align-items: center;
+      gap: 18px;
+    }
+
+    /* full-logo.svg ships dark; brightness(0) invert(1) flattens it to white. */
+    .brand img {
+      height: 60px;
+      width: auto;
+      filter: brightness(0) invert(1);
+    }
+
+    .brand .dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: var(--accent);
+      box-shadow: 0 0 16px 2px var(--accent);
+    }
+
+    .brand .host {
+      font-size: 26px;
+      font-weight: 500;
+      letter-spacing: 0.04em;
+      color: #aab4c5;
+    }
+
+    .body { max-width: 980px; }
+
+    .eyebrow {
+      display: inline-block;
+      font-size: 24px;
+      font-weight: 700;
+      letter-spacing: 0.14em;
+      text-transform: uppercase;
+      color: var(--accent);
+      padding: 10px 20px;
+      border: 2px solid color-mix(in srgb, var(--accent) 55%, transparent);
+      border-radius: 999px;
+      background: color-mix(in srgb, var(--accent) 12%, transparent);
+      margin-bottom: 28px;
+    }
+
+    .title {
+      font-size: 86px;
+      line-height: 1.02;
+      font-weight: 700;
+      letter-spacing: -0.02em;
+      color: #ffffff;
+      text-wrap: balance;
+    }
+
+    .subtitle {
+      margin-top: 26px;
+      font-size: 38px;
+      line-height: 1.32;
+      font-weight: 400;
+      color: #c4ccda;
+      max-width: 900px;
+    }
+
+    .accent-rail {
+      position: absolute;
+      left: 0;
+      top: 0;
+      bottom: 0;
+      width: 14px;
+      background: linear-gradient(180deg, var(--accent), color-mix(in srgb, var(--accent) 25%, transparent));
+    }
+  </style>
+</head>
+<body>
+  <div class="bg"></div>
+  <div class="grid"></div>
+  <div class="accent-rail"></div>
+
+  <div class="frame">
+    <div class="brand">
+      <img src="../../images/full-logo.svg" alt="Shevato">
+      <span class="dot"></span>
+      <span class="host">shevato.com</span>
+    </div>
+
+    <div class="body">
+      <span class="eyebrow" id="eyebrow"></span>
+      <div class="title" id="title"></div>
+      <div class="subtitle" id="subtitle"></div>
+    </div>
+  </div>
+
+  <script>
+    const params = new URLSearchParams(location.search);
+    const accent = params.get('accent') || '#38bdf8';
+    document.documentElement.style.setProperty('--accent', accent);
+
+    const eyebrow = params.get('eyebrow') || '';
+    const eyebrowEl = document.getElementById('eyebrow');
+    if (eyebrow) {
+      eyebrowEl.textContent = eyebrow;
+    } else {
+      eyebrowEl.style.display = 'none';
+    }
+
+    document.getElementById('title').textContent = params.get('title') || 'Shevato';
+    document.getElementById('subtitle').textContent = params.get('subtitle') || '';
+  </script>
+</body>
+</html>
