@@ -269,11 +269,15 @@ function buildFinderCollection(preset, rows, info = {}) {
     lines.push(`    template: {name: ${tpl.name}}`);
   }
   if (preset.summary) lines.push(`    summary: ${yamlString(preset.summary)}`);
-  lines.push(`    sort_title: ${yamlString(preset.sort_title || `!rsf_${preset.slug}`)}`);
+  // `!000_` prefix sorts these ahead of everything else in the Plex library
+  // collection list (punctuation/zero beats the consuming instance's own
+  // `!001_`+ sort titles and all unprefixed collections).
+  lines.push(`    sort_title: ${yamlString(preset.sort_title || `!000_rsf_${preset.slug}`)}`);
   // A tmdb_show/tvdb_show/imdb_id LIST expands to one builder per ID, so
   // `collection_order: custom` (single-builder only) makes Kometa reject the
-  // whole collection. Use alpha - the same order the shape collections use.
-  lines.push(`    collection_order: alpha`);
+  // whole collection. release is the only date/rank-ish order Plex collections
+  // support besides alpha; custom would need a single ordered builder.
+  lines.push(`    collection_order: release`);
   lines.push(`    sync_mode: ${preset.sync_mode || 'sync'}`);
   if (tmdbIds.length) {
     lines.push(`    tmdb_show:`);
