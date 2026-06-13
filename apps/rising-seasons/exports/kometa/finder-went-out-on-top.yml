@@ -11,7 +11,7 @@ collections:
     template: {name: rs_went_out_on_top}
     summary: "Shows that saved their best season for last - no limp endings here. From the Rising Seasons Show Finder."
     sort_title: "!rsf_went-out-on-top"
-    collection_order: custom
+    collection_order: alpha
     sync_mode: sync
     tmdb_show:
       - 1396

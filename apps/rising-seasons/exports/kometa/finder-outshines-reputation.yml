@@ -11,7 +11,7 @@ collections:
     template: {name: rs_outshines_reputation}
     summary: "Shows whose episodes rate well above the show's own IMDb score - the audience that stayed loved what it found. From the Rising Seasons Show Finder."
     sort_title: "!rsf_outshines-reputation"
-    collection_order: custom
+    collection_order: alpha
     sync_mode: sync
     tmdb_show:
       - 44606

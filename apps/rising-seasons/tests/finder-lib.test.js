@@ -192,6 +192,10 @@ test('buildFinderCollection renders YAML with ID fallbacks', () => {
   assert.match(y, /^ {4}summary: "A \\"demo\\" list"$/m);
   assert.match(y, /^ {4}sort_title: "!rsf_demo"$/m);
   assert.match(y, /^ {4}sync_mode: sync$/m);
+  // A multi-ID builder list = one builder per ID, so `custom` (single-builder
+  // only) would make Kometa reject the collection. Must be alpha.
+  assert.match(y, /^ {4}collection_order: alpha$/m);
+  assert.doesNotMatch(y, /collection_order: custom/);
   assert.match(y, /^ {4}tmdb_show:\n {6}- 101$/m);
   assert.match(y, /^ {4}tvdb_show:\n {6}- 202$/m);
   assert.match(y, /^ {4}imdb_id:\n {6}- tt3$/m);
