@@ -11,7 +11,7 @@ collections:
     template: {name: rs_consistently_great}
     summary: "Highly-rated live-action shows whose seasons never wavered - from the Rising Seasons Show Finder."
     sort_title: "!rsf_consistently-great"
-    collection_order: custom
+    collection_order: alpha
     sync_mode: sync
     tmdb_show:
       - 1438

@@ -270,8 +270,10 @@ function buildFinderCollection(preset, rows, info = {}) {
   }
   if (preset.summary) lines.push(`    summary: ${yamlString(preset.summary)}`);
   lines.push(`    sort_title: ${yamlString(preset.sort_title || `!rsf_${preset.slug}`)}`);
-  // custom keeps the preset query's sort order (Kometa preserves builder order).
-  lines.push(`    collection_order: custom`);
+  // A tmdb_show/tvdb_show/imdb_id LIST expands to one builder per ID, so
+  // `collection_order: custom` (single-builder only) makes Kometa reject the
+  // whole collection. Use alpha - the same order the shape collections use.
+  lines.push(`    collection_order: alpha`);
   lines.push(`    sync_mode: ${preset.sync_mode || 'sync'}`);
   if (tmdbIds.length) {
     lines.push(`    tmdb_show:`);
