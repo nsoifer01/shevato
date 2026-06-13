@@ -3,8 +3,8 @@
  *
  * Four round types, each with its own data source:
  *
- *   'capitals'    → REST Countries API   (in this file)
- *   'countries'   → REST Countries API   (in this file, country-centroid flip)
+ *   'capitals'    → local countries.json (in this file)
+ *   'countries'   → local countries.json (in this file, country-centroid flip)
  *   'major-cities'→ Wikidata SPARQL      (globe-drop-wikidata.js)
  *   'landmarks'   → Wikidata SPARQL      (globe-drop-wikidata.js)
  *
@@ -12,7 +12,9 @@
  * everything else here is the capitals/countries implementation +
  * normalization (kept pure so it's directly testable).
  *
- * REST Countries: https://restcountries.com (free, no key, CORS-enabled).
+ * Country data: data/countries.json, vendored from the REST Countries
+ * v3.1 dataset (the public API was shut down in June 2026; v5 requires
+ * an API key, which a client-side static app cannot keep secret).
  * Wikidata SPARQL: lives in globe-drop-wikidata.js so the queries can be
  * unit-tested without dragging the network fetch through this module.
  */
@@ -28,12 +30,14 @@
 }(typeof self !== 'undefined' ? self : this, function (Wikidata, Scoring) {
     'use strict';
 
-    // NOTE: REST Countries /all caps the `fields` list at 10 entries
-    // and returns HTTP 400 over that. `ccn3` is the numeric ISO-3166
-    // code we use to match locations against world-110m TopoJSON for
-    // the reveal-phase country-border overlay; `flag` was unused, so
-    // we swapped it out.
-    const REST_COUNTRIES_URL = 'https://restcountries.com/v3.1/all?fields=name,capital,capitalInfo,region,subregion,ccn3,latlng,area,independent,population';
+    // Vendored REST Countries v3.1 dump (250 countries), slimmed to the
+    // ten fields this module reads: name, capital, capitalInfo, region,
+    // subregion, ccn3, latlng, area, independent, population. `ccn3` is
+    // the numeric ISO-3166 code we use to match locations against
+    // world-110m TopoJSON for the reveal-phase country-border overlay.
+    // Relative URL: resolved against apps/arena/index.html, same as the
+    // globe textures.
+    const COUNTRIES_DATA_URL = 'data/countries.json';
 
     /**
      * Convert one REST Countries record into our location shape, or null
@@ -185,12 +189,12 @@
     }
 
     async function fetchRestCountries(normalizer, count, shuffleFn) {
-        const res = await fetch(REST_COUNTRIES_URL, { cache: 'force-cache' });
-        if (!res.ok) throw new Error(`REST Countries HTTP ${res.status}`);
+        const res = await fetch(COUNTRIES_DATA_URL, { cache: 'force-cache' });
+        if (!res.ok) throw new Error(`Countries data HTTP ${res.status}`);
         const raw = await res.json();
-        if (!Array.isArray(raw) || !raw.length) throw new Error('REST Countries empty response');
+        if (!Array.isArray(raw) || !raw.length) throw new Error('Countries data empty response');
         const normalized = raw.map(normalizer).filter((q) => q !== null);
-        if (!normalized.length) throw new Error('REST Countries returned no usable locations');
+        if (!normalized.length) throw new Error('Countries data returned no usable locations');
         const shuffled = typeof shuffleFn === 'function' ? shuffleFn(normalized) : normalized.slice();
         // Apply small-island cap BEFORE the take-N slice so the head of
         // the playlist gets at most GLOBE_DROP_SMALL_ISLAND_MAX_PER_GAME
@@ -236,7 +240,7 @@
         if (_countryMetaPromise) return _countryMetaPromise;
         _countryMetaPromise = (async () => {
             try {
-                const res = await fetch(REST_COUNTRIES_URL, { cache: 'force-cache' });
+                const res = await fetch(COUNTRIES_DATA_URL, { cache: 'force-cache' });
                 if (!res.ok) return {};
                 const raw = await res.json();
                 const idx = {};
@@ -301,6 +305,12 @@
      * keeps the first N for each country; any further entries are
      * filtered out entirely. So a pool that pulls 5 Chinese cities in
      * a row keeps the first 2 and discards the rest.
+     *
+     * Entries WITHOUT a country are exempt: in the 'countries' round
+     * every location is itself a country and carries country: '', so
+     * bucketing them under the empty string would collapse the whole
+     * pool to the first N entries (the round-killing bug this guard
+     * exists to prevent).
      */
     function capByCountry(locs, maxPerCountry) {
         if (!Array.isArray(locs)) return [];
@@ -308,6 +318,7 @@
         const count = {};
         return locs.filter((loc) => {
             const c = String(loc && loc.country || '');
+            if (!c) return true;
             const used = count[c] || 0;
             if (used >= cap) return false;
             count[c] = used + 1;
@@ -375,6 +386,128 @@
     }
 
     /**
+     * Repair continent diversity in an already-picked set. If `picked`
+     * spans fewer than `minRegions` distinct `region` values while the
+     * larger `pool` has unused locations from regions not yet present,
+     * swap out a location from an over-represented region for one from a
+     * missing region. Diversity takes priority over multiplier variety,
+     * but we prefer swapping out the most-duplicated region (and prefer
+     * pulling in KNOWN regions over 'Unknown') to disturb the spread as
+     * little as possible.
+     *
+     * Pure: returns a NEW array of length `picked.length`, never mutates
+     * inputs, never duplicates a location, never throws on degenerate
+     * input. The cap on achievable regions is whatever the union of
+     * picked+pool actually contains.
+     */
+    function ensureMinContinents(picked, pool, target, minRegions) {
+        const out = Array.isArray(picked) ? picked.slice() : [];
+        const safePool = Array.isArray(pool) ? pool : [];
+        const want = Math.max(1, Number(minRegions) || 3);
+        const regionOf = (loc) => String(loc && loc.region || 'Unknown');
+
+        const inPicked = new Set(out);
+        // Candidates: pool entries not already in the picked set.
+        const remaining = safePool.filter((loc) => loc && !inPicked.has(loc));
+
+        let guard = out.length + 1;
+        while (guard-- > 0) {
+            const regionCounts = new Map();
+            for (const loc of out) {
+                const r = regionOf(loc);
+                regionCounts.set(r, (regionCounts.get(r) || 0) + 1);
+            }
+            if (regionCounts.size >= want) break;
+
+            // A candidate brings diversity only if its region isn't
+            // already represented. Prefer KNOWN regions over 'Unknown'.
+            const newRegionCandidates = remaining.filter((loc) => !regionCounts.has(regionOf(loc)));
+            if (!newRegionCandidates.length) break;
+            newRegionCandidates.sort((a, b) => {
+                const au = regionOf(a) === 'Unknown' ? 1 : 0;
+                const bu = regionOf(b) === 'Unknown' ? 1 : 0;
+                return au - bu;
+            });
+            const incoming = newRegionCandidates[0];
+
+            // Swap out a location from the most over-represented region
+            // so we never drop a region below 1.
+            let victimRegion = null;
+            let victimCount = 1;
+            for (const [r, c] of regionCounts) {
+                if (c > victimCount) { victimCount = c; victimRegion = r; }
+            }
+            if (!victimRegion) break; // no region has >1; can't free a slot
+            const victimIdx = out.findIndex((loc) => regionOf(loc) === victimRegion);
+            if (victimIdx === -1) break;
+
+            out[victimIdx] = incoming;
+            const remIdx = remaining.indexOf(incoming);
+            if (remIdx !== -1) remaining.splice(remIdx, 1);
+        }
+        return out;
+    }
+
+    /**
+     * Cap how many "hard" locations (multiplier >= `hardThreshold`, i.e.
+     * the x2.5 / x3.0 top tiers) land in one game, so a game never turns
+     * into "name five obscure specks". Limit is `ceil(target * maxFraction)`
+     * (default 40% -> 2 in a 3/4/5-game, 4 in a 10-game).
+     *
+     * When the pick exceeds the cap, swap the LEAST-hard excess pick (the
+     * lowest multiplier still at/above the threshold) for the EASIEST
+     * not-yet-picked location from the pool. Removing the least-hard first
+     * preserves the single hardest location for the climactic final round
+     * (the ascending applyRoundMultipliers sort still puts it last).
+     *
+     * Pure: returns a NEW array of length `picked.length`, never mutates
+     * inputs, never duplicates, never throws. RELAXES gracefully — if the
+     * pool has no easier locations left to swap in, the cap is not enforced
+     * further (filling the game to `target` always wins over the cap).
+     * Applies to ALL round types. When multipliers are absent (no Scoring
+     * module) every multiplier reads as 1, so nothing is "hard" and this is
+     * a no-op. Only changes WHICH locations are in the set, never the order.
+     */
+    function capHardLocations(picked, pool, target, maxFraction, hardThreshold) {
+        const out = Array.isArray(picked) ? picked.slice() : [];
+        const safePool = Array.isArray(pool) ? pool : [];
+        const t = Math.max(1, Number(target) || out.length);
+        const thresh = Number(hardThreshold) || 2.5;
+        // Subtract a tiny epsilon before ceil so a whole product (e.g.
+        // 5 * 0.4 = 2) can't drift up to 3 via float error.
+        const cap = Math.max(0, Math.ceil(t * (Number(maxFraction) || 0.4) - 1e-9));
+        const multOf = (loc) => Number(loc && loc.multiplier) || 1;
+        const isHard = (loc) => multOf(loc) >= thresh;
+
+        const inPicked = new Set(out);
+        // Easier (below-threshold) candidates not already picked, easiest first.
+        const easierPool = safePool
+            .filter((loc) => loc && !inPicked.has(loc) && !isHard(loc))
+            .sort((a, b) => multOf(a) - multOf(b));
+
+        let ei = 0;
+        let guard = out.length + 1;
+        while (guard-- > 0) {
+            const hardCount = out.filter(isHard).length;
+            if (hardCount <= cap) break;
+            if (ei >= easierPool.length) break; // relaxation: nothing easier left
+            // Victim = the least-hard pick at/above the threshold, so the
+            // single hardest location survives for the finale.
+            let victimIdx = -1;
+            let victimMult = Infinity;
+            for (let i = 0; i < out.length; i++) {
+                if (isHard(out[i]) && multOf(out[i]) < victimMult) {
+                    victimMult = multOf(out[i]);
+                    victimIdx = i;
+                }
+            }
+            if (victimIdx === -1) break;
+            out[victimIdx] = easierPool[ei++];
+        }
+        return out;
+    }
+
+    /**
      * Dispatcher — picks the right fetch for the host-selected round type.
      * Falls back to 'capitals' for unknown / missing values so legacy rooms
      * persisted before this feature shipped still play exactly as before.
@@ -382,7 +515,10 @@
      * Over-fetches each pack and then enriches + applies country (max 2)
      * and continent (max 30%) diversity caps before slicing to `count`.
      * That fixes the "5 Chinese cities" and "all 5 from Asia" failure
-     * modes the user hit on top-cities-by-country.
+     * modes the user hit on top-cities-by-country. A hard-location cap
+     * (max 40% at x2.5/x3.0) then prevents a bimodal pool from stacking
+     * 3+ obscure specks into one game, and ensureMinContinents guarantees
+     * >= 3 continents for the four place-on-Earth round types.
      */
     async function fetchLocations(roundType, count, shuffleFn) {
         // Back-compat: callers that haven't migrated yet pass (count, shuffleFn).
@@ -412,10 +548,26 @@
         // items spread across difficulty tiers via round-robin. This
         // is the actual fix for "5 famous capitals → all ×1": we look
         // at every tier in the pool and pull from each in turn.
+        // roundType is passed so 'major-cities' gets continent-based
+        // multipliers (and the variety pick spreads across continents).
         const stamped = Scoring && Scoring.assignDifficultyMultipliers
-            ? Scoring.assignDifficultyMultipliers(continentFiltered)
+            ? Scoring.assignDifficultyMultipliers(continentFiltered, roundType)
             : continentFiltered;
-        return pickWithMultiplierVariety(stamped, target);
+        const picked = pickWithMultiplierVariety(stamped, target);
+        // Hard-location cap (ALL round types): keep at most 40% of the game
+        // at the x2.5 / x3.0 top tiers so a bimodal pool (famous capitals +
+        // obscure island specks) can't stack 3+ very-hard locations into one
+        // game. Runs before the continent repair so diversity gets the final
+        // say if the two ever pull in opposite directions.
+        const capped = capHardLocations(picked, stamped, target, 0.4, 2.5);
+        // Continent-diversity guarantee for the four place-on-Earth round
+        // types (NOT landmarks, whose selection is intentionally left as
+        // chosen). Only changes WHICH locations are in the set, never the
+        // order — applyRoundMultipliers re-derives the ascending order.
+        if (roundType !== 'landmarks') {
+            return ensureMinContinents(capped, stamped, target, 3);
+        }
+        return capped;
     }
 
     /**
@@ -447,7 +599,7 @@
     }
 
     return {
-        REST_COUNTRIES_URL,
+        COUNTRIES_DATA_URL,
         ROUND_TYPES,
         normalizeCountry,
         normalizeAsCountry,
@@ -456,6 +608,8 @@
         capByCountry,
         capByContinent,
         pickWithMultiplierVariety,
+        ensureMinContinents,
+        capHardLocations,
         loadCountryMetaIndex,
         enrichWithCountryMeta,
         fetchLocations,

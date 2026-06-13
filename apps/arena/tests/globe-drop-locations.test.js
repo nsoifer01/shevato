@@ -12,6 +12,8 @@ const {
     capByCountry,
     capByContinent,
     pickWithMultiplierVariety,
+    ensureMinContinents,
+    capHardLocations,
     ROUND_TYPES
 } = require('../js/globe-drop-locations.js');
 
@@ -255,6 +257,24 @@ test('capByCountry: cap of 1 dedupes one per country', () => {
     assert.deepEqual(out.map((l) => l.country), ['A', 'B']);
 });
 
+test('capByCountry: empty-country entries are exempt from the cap', () => {
+    // The 'countries' round sets country: '' on every location (the
+    // location IS the country). Bucketing those under '' used to
+    // collapse the whole pool to the first N entries.
+    const arr = [
+        { id: 'c1', name: 'France',  country: '' },
+        { id: 'c2', name: 'Brazil',  country: '' },
+        { id: 'c3', name: 'Japan',   country: '' },
+        { id: 'c4', name: 'Kenya',   country: '' },
+        { id: 'x1', name: 'Wuhan',   country: 'China' },
+        { id: 'x2', name: 'Beijing', country: 'China' },
+        { id: 'x3', name: 'Changsha', country: 'China' }
+    ];
+    const out = capByCountry(arr, 2);
+    // All four countries survive; China still capped at 2.
+    assert.deepEqual(out.map((l) => l.id), ['c1', 'c2', 'c3', 'c4', 'x1', 'x2']);
+});
+
 // --- capByContinent ----------------------------------------------------
 
 test('capByContinent: 30% cap on a 5-slot game keeps max 2 per continent', () => {
@@ -326,4 +346,191 @@ test('pickWithMultiplierVariety: unknown multipliers fall into the ×1 bucket', 
     const out = pickWithMultiplierVariety(pool, 3);
     // ×1 bucket gets x + y (off-ladder fallback). Order: x (×1), a (×1.5), y (×1).
     assert.deepEqual(out.map((l) => l.id), ['x', 'a', 'y']);
+});
+
+// --- ensureMinContinents -----------------------------------------------
+
+function distinctRegions(arr) {
+    return new Set(arr.map((l) => String(l && l.region || 'Unknown'))).size;
+}
+
+test('ensureMinContinents: a 2-region pick rises to 3 when the pool has a 3rd', () => {
+    const picked = [
+        { id: 'a1', region: 'Asia' },
+        { id: 'a2', region: 'Asia' },
+        { id: 'e1', region: 'Europe' }
+    ];
+    const pool = picked.concat([{ id: 'f1', region: 'Africa' }]);
+    const out = ensureMinContinents(picked, pool, 3, 3);
+    assert.equal(out.length, 3);
+    assert.equal(distinctRegions(out), 3);
+    // The over-represented Asia bucket is what got trimmed, not Europe.
+    assert.ok(out.some((l) => l.region === 'Europe'));
+    assert.ok(out.some((l) => l.region === 'Africa'));
+});
+
+test('ensureMinContinents: target=4 pick with a >=3-region pool spans >=3 regions', () => {
+    // The specific gap this fixes: capByContinent(cap=2) allows a 2+2
+    // split into only 2 continents for a 4-location game.
+    const picked = [
+        { id: 'a1', region: 'Asia' },
+        { id: 'a2', region: 'Asia' },
+        { id: 'e1', region: 'Europe' },
+        { id: 'e2', region: 'Europe' }
+    ];
+    const pool = picked.concat([
+        { id: 'f1', region: 'Africa' },
+        { id: 'o1', region: 'Oceania' }
+    ]);
+    const out = ensureMinContinents(picked, pool, 4, 3);
+    assert.equal(out.length, 4);
+    assert.ok(distinctRegions(out) >= 3, `expected >=3 regions, got ${distinctRegions(out)}`);
+});
+
+test('ensureMinContinents: degenerate pool with only 2 regions returns target items', () => {
+    const picked = [
+        { id: 'a1', region: 'Asia' },
+        { id: 'a2', region: 'Asia' },
+        { id: 'e1', region: 'Europe' }
+    ];
+    const pool = picked.concat([{ id: 'e2', region: 'Europe' }]);
+    const out = ensureMinContinents(picked, pool, 3, 3);
+    assert.equal(out.length, 3);
+    // Only 2 regions exist anywhere; it spans exactly those 2, no throw.
+    assert.equal(distinctRegions(out), 2);
+});
+
+test('ensureMinContinents: never introduces duplicates and keeps length == target', () => {
+    const picked = [
+        { id: 'a1', region: 'Asia' },
+        { id: 'a2', region: 'Asia' },
+        { id: 'a3', region: 'Asia' }
+    ];
+    const pool = picked.concat([
+        { id: 'e1', region: 'Europe' },
+        { id: 'f1', region: 'Africa' }
+    ]);
+    const out = ensureMinContinents(picked, pool, 3, 3);
+    assert.equal(out.length, 3);
+    assert.equal(new Set(out).size, 3, 'no duplicate location references');
+    assert.equal(distinctRegions(out), 3);
+});
+
+test('ensureMinContinents: prefers KNOWN regions over Unknown when swapping in', () => {
+    const picked = [
+        { id: 'a1', region: 'Asia' },
+        { id: 'a2', region: 'Asia' },
+        { id: 'e1', region: 'Europe' }
+    ];
+    // Pool offers both an Unknown and a known Africa for the 3rd slot.
+    const pool = picked.concat([
+        { id: 'u1', region: 'Unknown' },
+        { id: 'f1', region: 'Africa' }
+    ]);
+    const out = ensureMinContinents(picked, pool, 3, 3);
+    assert.ok(out.some((l) => l.region === 'Africa'), 'should pull the known region in');
+    assert.ok(!out.some((l) => l.region === 'Unknown'), 'should not pull Unknown when a known region is available');
+});
+
+test('ensureMinContinents: already-diverse pick is returned unchanged', () => {
+    const picked = [
+        { id: 'a1', region: 'Asia' },
+        { id: 'e1', region: 'Europe' },
+        { id: 'f1', region: 'Africa' }
+    ];
+    const out = ensureMinContinents(picked, picked.slice(), 3, 3);
+    assert.deepEqual(out.map((l) => l.id), ['a1', 'e1', 'f1']);
+});
+
+test('ensureMinContinents: degenerate inputs do not throw', () => {
+    assert.deepEqual(ensureMinContinents(null, null, 3, 3), []);
+    assert.deepEqual(ensureMinContinents([], [], 3, 3), []);
+});
+
+// --- capHardLocations --------------------------------------------------
+
+const hardCount = (arr, thresh = 2.5) => arr.filter((l) => (Number(l.multiplier) || 1) >= thresh).length;
+
+test('capHardLocations: trims a bimodal 5-pick from 3 hard down to the 40% cap of 2', () => {
+    // The real-world failure: 2 famous capitals + 3 obscure island specks.
+    const picked = [
+        { id: 'easy1',  region: 'Africa',   multiplier: 1.0 },
+        { id: 'easy2',  region: 'Africa',   multiplier: 1.0 },
+        { id: 'hard25a', region: 'Americas', multiplier: 2.5 },
+        { id: 'hard25b', region: 'Europe',   multiplier: 2.5 },
+        { id: 'hard30',  region: 'Oceania',  multiplier: 3.0 }
+    ];
+    // Pool has easier spares to swap in.
+    const pool = picked.concat([
+        { id: 'spare15', region: 'Asia',     multiplier: 1.5 },
+        { id: 'spare20', region: 'Americas', multiplier: 2.0 }
+    ]);
+    const out = capHardLocations(picked, pool, 5, 0.4, 2.5);
+    assert.equal(out.length, 5, 'length stays == target');
+    assert.ok(hardCount(out) <= 2, `expected <=2 hard, got ${hardCount(out)}`);
+    // The single hardest (x3.0) is preserved for the finale; a x2.5 is dropped.
+    assert.ok(out.some((l) => l.id === 'hard30'), 'keeps the x3.0 for the climactic round');
+});
+
+test('capHardLocations: relaxes when the pool has no easier locations to swap in', () => {
+    // Everything is hard; the cap cannot be met without dropping below target.
+    const picked = [
+        { id: 'h1', region: 'Asia',    multiplier: 2.5 },
+        { id: 'h2', region: 'Europe',  multiplier: 3.0 },
+        { id: 'h3', region: 'Africa',  multiplier: 2.5 }
+    ];
+    const out = capHardLocations(picked, picked.slice(), 3, 0.4, 2.5);
+    assert.equal(out.length, 3, 'filling the game to target wins over the cap');
+    assert.equal(new Set(out).size, 3, 'no duplicates introduced');
+});
+
+test('capHardLocations: a pick already within the cap is returned unchanged', () => {
+    const picked = [
+        { id: 'e1', region: 'Asia',    multiplier: 1.0 },
+        { id: 'e2', region: 'Europe',  multiplier: 1.5 },
+        { id: 'h1', region: 'Africa',  multiplier: 3.0 }
+    ];
+    const pool = picked.concat([{ id: 'e3', region: 'Americas', multiplier: 1.0 }]);
+    const out = capHardLocations(picked, pool, 3, 0.4, 2.5);
+    assert.deepEqual(out.map((l) => l.id), ['e1', 'e2', 'h1']);
+});
+
+test('capHardLocations: no duplicates and length stable after a swap', () => {
+    const picked = [
+        { id: 'h1', region: 'Asia',     multiplier: 2.5 },
+        { id: 'h2', region: 'Europe',   multiplier: 2.5 },
+        { id: 'h3', region: 'Africa',   multiplier: 3.0 }
+    ];
+    const pool = picked.concat([
+        { id: 'e1', region: 'Americas', multiplier: 1.0 },
+        { id: 'e2', region: 'Oceania',  multiplier: 1.0 }
+    ]);
+    const out = capHardLocations(picked, pool, 3, 0.4, 2.5);
+    assert.equal(out.length, 3);
+    assert.equal(new Set(out).size, 3, 'no duplicate references');
+    // 3-game cap = ceil(3*0.4) = 2; 3 hard picked -> trimmed to 2.
+    assert.equal(hardCount(out), 2, `expected 2 hard after trim, got ${hardCount(out)}`);
+});
+
+test('capHardLocations: cap is ceil(target*0.4) -> 2 for a 5-game, 4 for a 10-game', () => {
+    const mk = (n, mult) => Array.from({ length: n }, (_, i) => ({ id: `${mult}_${i}`, region: 'Asia', multiplier: mult }));
+    // 5-game: 5 hard picked, plenty of easy spares -> trimmed to 2 hard.
+    const picked5 = mk(5, 3.0);
+    const pool5 = picked5.concat(mk(10, 1.0));
+    assert.equal(hardCount(capHardLocations(picked5, pool5, 5, 0.4, 2.5)), 2);
+    // 10-game: 10 hard picked, easy spares -> trimmed to 4 hard.
+    const picked10 = mk(10, 3.0);
+    const pool10 = picked10.concat(mk(20, 1.0));
+    assert.equal(hardCount(capHardLocations(picked10, pool10, 10, 0.4, 2.5)), 4);
+});
+
+test('capHardLocations: no-op when multipliers are absent (no Scoring module)', () => {
+    const picked = [{ id: 'a' }, { id: 'b' }, { id: 'c' }];
+    const out = capHardLocations(picked, picked.slice(), 3, 0.4, 2.5);
+    assert.deepEqual(out.map((l) => l.id), ['a', 'b', 'c']);
+});
+
+test('capHardLocations: degenerate inputs do not throw', () => {
+    assert.deepEqual(capHardLocations(null, null, 5, 0.4, 2.5), []);
+    assert.deepEqual(capHardLocations([], [], 5, 0.4, 2.5), []);
 });
