@@ -47,15 +47,56 @@
         // and the Ready bar so players who want to skip the wait can.
         GLOBE_DROP_REVEAL_TIME_MS: 10000,
 
-        // Scoring is exponential decay: base * exp(-distance / scaleKm).
-        // At 0km you get base * multiplier; at scaleKm you get ~37% of base.
+        // Globe Drop base (0-100) curve. It blends an EXPONENTIAL term (sharp
+        // near the target, rewards precision) with a LINEAR ramp to the
+        // antipode (keeps a real slope all the way through the tail so far
+        // guesses still differentiate), then maps onto [MIN_BASE, BASE]:
+        //   base = MIN_BASE + (BASE - MIN_BASE) *
+        //          ( EXP_WEIGHT * exp(-d / SCALE)
+        //            + (1 - EXP_WEIGHT) * max(0, 1 - d / MAX_DISTANCE) )
+        // Strictly decreasing in distance, so a closer guess ALWAYS scores
+        // more; never flattens into a constant floor. base = BASE at 0 km and
+        // -> MIN_BASE at the antipode.
         GLOBE_DROP_BASE_POINTS: 100,
-        GLOBE_DROP_DISTANCE_SCALE_KM: 1500,
+        // Exponential decay scale (km) for the near-target term. Smaller =
+        // steeper precision reward near 0.
+        GLOBE_DROP_DISTANCE_SCALE_KM: 2500,
+        // Fraction of the curve governed by the exponential term (the rest is
+        // the linear-to-antipode ramp). Higher = sharper near 0 / flatter tail;
+        // lower = more tail sensitivity. 0.6 keeps near-range precision while
+        // the 0.4 linear share gives ~9-10 base points of slope per 5,000 km in
+        // the tail (so a far-but-closer guess clearly out-scores a worse one).
+        GLOBE_DROP_DISTANCE_EXP_WEIGHT: 0.6,
+        // Worst-possible guess distance (km) — Earth half-circumference, the
+        // antipode. The linear ramp reaches 0 here so the base bottoms out at
+        // MIN_BASE for a truly antipodal guess.
+        GLOBE_DROP_MAX_DISTANCE_KM: 20015,
 
-        // Hard floor so even an antipodal guess still earns 1-10 points
-        // (no "you got 0" frustration). Tunable; lifts the worst possible
-        // result enough to feel like effort was rewarded.
+        // Minimum BASE (0-100) score, the bottom of the curve above, applied
+        // BEFORE the round multiplier. Keeps basePoints × multiplier = points
+        // exact and guarantees even an antipodal guess earns a few points
+        // instead of 0.
+        GLOBE_DROP_MIN_BASE_POINTS: 10,
+
+        // Legacy-only floor on the FINAL score, used by the pre-migration
+        // compound-multiplier path. The current per-location multiplier model
+        // floors the base via GLOBE_DROP_MIN_BASE_POINTS instead.
         GLOBE_DROP_MIN_POINTS: 5,
+
+        // Major-cities round type ONLY: the round multiplier is keyed off the
+        // city's CONTINENT (every city in that pack is a big famous metropolis,
+        // so population barely separates them — but a major city in Europe is
+        // far easier to place than one in Africa or Oceania). Keyed by the
+        // lowercased REST Countries `region`; values are exact ladder rungs
+        // ([1.0, 1.5, 2.0, 2.5, 3.0]). Missing / Antarctic -> 1.0. Other round
+        // types keep the per-location difficulty model.
+        GLOBE_DROP_MAJOR_CITIES_CONTINENT_MULT: {
+            europe:   1.0,
+            americas: 1.5,
+            asia:     2.0,
+            africa:   2.5,
+            oceania:  3.0
+        },
 
         // Population obscurity weight. Smaller, less globally-famous places
         // are worth more so the game rewards real geographic knowledge
@@ -87,13 +128,20 @@
         // Default round size dropdown for GlobeDrop (locations per game).
         GLOBE_DROP_LOCATIONS_DEFAULT: 5,
 
+        // Minimum locations per GlobeDrop game. Below 3 the continent-
+        // diversity guarantee can't span 3 regions, so the create/edit
+        // inputs floor at this value (legacy rooms with fewer still play).
+        GLOBE_DROP_LOCATIONS_MIN: 3,
+
         // Globe Drop bullseye streak. A streak increments when a player earns
-        // base score >= 98 (near-perfect guess). Consecutive bullseyes add a
-        // multiplier capped at GLOBE_DROP_STREAK_MULTIPLIER_CAP consecutive
-        // bullseyes. The multiplier is applied on top of the distance/continent
-        // score so a hot streak can meaningfully swing the leaderboard.
-        GLOBE_DROP_STREAK_MULTIPLIER_STEP: 0.1,   // +10% per consecutive bullseye
-        GLOBE_DROP_STREAK_MULTIPLIER_CAP: 5,       // capped at 5 in a row (=> 1.5x)
+        // base score >= 98 (near-perfect guess) and drives the 🎯 heater chip
+        // only. It does NOT add points: the round score is exactly
+        // basePoints × multiplier, with no hidden streak bonus, so the
+        // mid-game total and the final recap always agree. (These two
+        // constants are retained for the chip cap / legacy data and are no
+        // longer applied to scoring.)
+        GLOBE_DROP_STREAK_MULTIPLIER_STEP: 0.1,
+        GLOBE_DROP_STREAK_MULTIPLIER_CAP: 5,
 
         // Cap on small-island-nation entries per playlist. Without this,
         // luck-of-the-shuffle can pack three Maldives-class capitals into

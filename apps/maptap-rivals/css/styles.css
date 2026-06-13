@@ -1029,6 +1029,13 @@ body.maptap-rivals-app button {
   .pred-delta-badge { font-size: 0.78rem; padding: 0.15rem 0.4rem; }
 }
 
+/* On the very narrowest phones the totals row's fixed column minimums
+   (100px label + 3×58px) outgrow the available width and push the Δ badge
+   off the right edge. Tighten the minimums so all four columns fit. */
+@media (max-width: 360px) {
+  .pred-row { grid-template-columns: minmax(74px, 1.1fr) repeat(3, minmax(42px, 1fr)); gap: 0.3rem; }
+}
+
 /* Wraps a player row + its per-round chip strip into one visual block
    so the strip reads as belonging to the totals above. Inherits the
    per-player left accent so the totals row and chip strip share it. */
@@ -1290,10 +1297,27 @@ body.maptap-rivals-app button {
 
 @media (max-width: 520px) {
   .pred-round-strip { gap: 0.32rem; }
-  .prc { padding: 0.45rem 0.3rem 0.4rem; }
-  .prc-nums { font-size: 0.86rem; gap: 0.22rem; }
+  /* Five equal-width chips have to share a phone's width, which leaves each
+     one too narrow to hold "predicted → actual" side by side (a 3-digit 100
+     overflowed and clipped). Stack the two numbers vertically instead so
+     every value stays fully visible; predicted (accent) sits above actual
+     (text), with the Δ below. The horizontal arrow is dropped — the colour
+     split + the Predicted/Actual column headers carry the distinction. */
+  .prc { padding: 0.4rem 0.18rem 0.4rem; }
+  .prc-nums {
+    flex-direction: column;
+    align-items: center;
+    gap: 0.04rem;
+    font-size: 0.92rem;
+    line-height: 1.08;
+  }
+  .prc-arrow { display: none; }
   .prc-head { font-size: 0.55rem; }
-  .prc-weight { font-size: 0.5rem; top: 0.25rem; right: 0.28rem; }
+  /* Keep the ×weight badge clear of the round label: left-align the label so
+     the corner badge no longer lands on top of it on the narrowest chips. */
+  .prc-head { justify-content: flex-start; width: 100%; padding-left: 0.05rem; }
+  .prc-weight { font-size: 0.48rem; top: 0.28rem; right: 0.2rem; padding: 0.04rem 0.16rem; }
+  .prc-delta { font-size: 0.64rem; }
 }
 
 /* ---------- Location reveal strip ----------
