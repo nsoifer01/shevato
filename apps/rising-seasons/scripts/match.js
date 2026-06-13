@@ -521,7 +521,7 @@ function tagShapeDrift(matches) {
     if (lostAll && ratingDecline) {
       note = `Dominant ${dominantShapes.join('/')} pattern through S${prior[prior.length - 1].season}, then shape changed and ratings fell in S${last.season}.`;
     } else if (lostAll) {
-      note = `${dominantShapes.join('/')} through S${prior[prior.length - 1].season} — shape shifted in S${last.season}.`;
+      note = `${dominantShapes.join('/')} through S${prior[prior.length - 1].season} - shape shifted in S${last.season}.`;
     } else {
       note = `Rating dropped ${(prev.avgRating - last.avgRating).toFixed(1)} pts from S${prev.season} (${prev.avgRating.toFixed(1)}) to S${last.season} (${last.avgRating.toFixed(1)}).`;
     }

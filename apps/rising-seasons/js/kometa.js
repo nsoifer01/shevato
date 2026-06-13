@@ -306,7 +306,7 @@
     if (!f) return;
     navigator.clipboard.writeText(f.contents).then(
       () => toast('Copied ' + f.filename),
-      () => toast('Copy failed — select the text manually'),
+      () => toast('Copy failed - select the text manually'),
     );
   }
 
