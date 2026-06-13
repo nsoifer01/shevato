@@ -495,7 +495,7 @@ function markSensitivePoster(posterEl, item) {
   const overlay = document.createElement('button');
   overlay.type = 'button';
   overlay.className = 'poster-reveal';
-  overlay.setAttribute('aria-label', 'Sensitive content — click to reveal poster');
+  overlay.setAttribute('aria-label', 'Sensitive content - click to reveal poster');
   overlay.innerHTML =
     '<span class="poster-reveal-badge" aria-hidden="true">'
     + '<svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" '
@@ -1308,11 +1308,11 @@ function syncGenreChipTriState(btn) {
   if (state.excludeGenres.has(name)) {
     btn.setAttribute('aria-pressed', 'false');
     btn.dataset.exclude = 'true';
-    btn.title = `Excluded — click to clear (currently hiding ${name})`;
+    btn.title = `Excluded - click to clear (currently hiding ${name})`;
   } else if (state.genres.has(name)) {
     btn.setAttribute('aria-pressed', 'true');
     btn.dataset.exclude = 'false';
-    btn.title = `Required — click again to exclude ${name}`;
+    btn.title = `Required - click again to exclude ${name}`;
   } else {
     btn.setAttribute('aria-pressed', 'false');
     btn.dataset.exclude = 'false';
@@ -2045,7 +2045,7 @@ function fillShapeTags(container, shapes, { clickable = true } = {}) {
       tag.className = 'shape-tag is-clickable' + (state.shapes.has(s) ? ' active' : '');
       tag.textContent = SHAPE_LABELS[s] || s;
       tag.title = desc
-        ? (state.shapes.has(s) ? `Remove this shape filter — ${desc}` : `Filter by this shape — ${desc}`)
+        ? (state.shapes.has(s) ? `Remove this shape filter - ${desc}` : `Filter by this shape - ${desc}`)
         : (state.shapes.has(s) ? 'Remove this shape filter' : 'Filter by this shape');
       tag.addEventListener('click', (e) => {
         e.stopPropagation();
@@ -2377,7 +2377,7 @@ function aboveImdbBadge(m) {
   badge.className = 'above-imdb';
   badge.textContent = '↑';
   badge.title =
-    `Episodes average ${m.avgRating.toFixed(1)} — higher than the show's IMDb rating of ${m.seriesRating.toFixed(1)}`;
+    `Episodes average ${m.avgRating.toFixed(1)} - higher than the show's IMDb rating of ${m.seriesRating.toFixed(1)}`;
   return badge;
 }
 
@@ -3034,7 +3034,7 @@ function drawSeasonOverlay(svg, seasons, W, H) {
     path.setAttribute('opacity', '0.85');
     path.dataset.season = s.season;
     const title = document.createElementNS(NS, 'title');
-    title.textContent = `Season ${s.season} — avg ${s.avgRating.toFixed(1)}`;
+    title.textContent = `Season ${s.season} - avg ${s.avgRating.toFixed(1)}`;
     path.appendChild(title);
     svg.appendChild(path);
   });
@@ -3059,7 +3059,7 @@ function syncCompareButton() {
   els.showModalCompare.classList.toggle('is-in-compare', inSet);
   els.showModalCompare.disabled = atLimit;
   els.showModalCompare.title = atLimit
-    ? `Compare set is full (${COMPARE_LIMIT} max) — remove one first`
+    ? `Compare set is full (${COMPARE_LIMIT} max) - remove one first`
     : inSet ? 'Remove this show from the compare set' : 'Add this show to the compare set';
 }
 
@@ -3116,7 +3116,7 @@ function drawCompareChart(svg, seriesEntries, W, H) {
       dot.setAttribute('r', '3.5');
       dot.setAttribute('fill', color);
       const dotTitle = document.createElementNS(NS, 'title');
-      dotTitle.textContent = `${title} — S${s.season}: avg ${s.avgRating.toFixed(1)}`;
+      dotTitle.textContent = `${title} - S${s.season}: avg ${s.avgRating.toFixed(1)}`;
       dot.appendChild(dotTitle);
       svg.appendChild(dot);
     }
@@ -3425,7 +3425,7 @@ function openModal(m, opts = {}) {
       link.href = `https://www.imdb.com/title/${e.tt}/`;
       link.target = '_blank';
       link.rel = 'noopener';
-      link.setAttribute('aria-label', `Open ${num.textContent}${e.name ? ' — ' + e.name : ''} on IMDb`);
+      link.setAttribute('aria-label', `Open ${num.textContent}${e.name ? ' - ' + e.name : ''} on IMDb`);
       li.appendChild(link);
     }
 
@@ -4108,11 +4108,11 @@ function syncFinderGenreChipTriState(btn) {
   if (finderState.genresExclude.has(name)) {
     btn.setAttribute('aria-pressed', 'false');
     btn.dataset.exclude = 'true';
-    btn.title = `Excluded — click to clear (currently hiding ${name})`;
+    btn.title = `Excluded - click to clear (currently hiding ${name})`;
   } else if (finderState.genres.has(name)) {
     btn.setAttribute('aria-pressed', 'true');
     btn.dataset.exclude = 'false';
-    btn.title = `Required — click again to exclude ${name}`;
+    btn.title = `Required - click again to exclude ${name}`;
   } else {
     btn.setAttribute('aria-pressed', 'false');
     btn.dataset.exclude = 'false';
@@ -6068,7 +6068,7 @@ function shareText(text, buttonEl) {
 function buildSeasonShareText(m) {
   const lines = [];
   const seasonYear = m.seasonYear || m.year;
-  lines.push(`${m.title} — Season ${m.season}` + (seasonYear ? ` (${seasonYear})` : ''));
+  lines.push(`${m.title} - Season ${m.season}` + (seasonYear ? ` (${seasonYear})` : ''));
   const shapeLabels = (m.shapes || [])
     .filter((s) => s !== 'saved-best-for-last')
     .map((s) => SHAPE_LABELS[s] || s);
@@ -6867,27 +6867,27 @@ function renderShapeAnnotationText(m) {
   function sentence(shape) {
     switch (shape) {
       case 'rising':
-        return `Each episode is rated at least as high as the one before — climbs from ${m.firstRating.toFixed(1)} to ${m.lastRating.toFixed(1)}.`;
+        return `Each episode is rated at least as high as the one before - climbs from ${m.firstRating.toFixed(1)} to ${m.lastRating.toFixed(1)}.`;
       case 'slow-burn':
-        return `Second half (eps ${half + 1}–${n}) averages ${secondAvg.toFixed(1)}, vs. ${firstAvg.toFixed(1)} in the first half — a lift of ${(secondAvg - firstAvg).toFixed(1)}.`;
+        return `Second half (eps ${half + 1}–${n}) averages ${secondAvg.toFixed(1)}, vs. ${firstAvg.toFixed(1)} in the first half - a lift of ${(secondAvg - firstAvg).toFixed(1)}.`;
       case 'big-finale':
-        return `Finale (Ep ${n}) lands at ${ratings[n - 1].toFixed(1)} — the season high, vs. an average of ${m.avgRating.toFixed(1)}.`;
+        return `Finale (Ep ${n}) lands at ${ratings[n - 1].toFixed(1)} - the season high, vs. an average of ${m.avgRating.toFixed(1)}.`;
       case 'rebound':
         return `Dips to ${min.toFixed(1)} at Ep ${minIdx + 1}, then recovers to ${m.lastRating.toFixed(1)} by the finale.`;
       case 'front-loaded':
-        return `Opens strong (${m.firstRating.toFixed(1)}) then trends down to ${m.lastRating.toFixed(1)} — a drop of ${(m.firstRating - m.lastRating).toFixed(1)}.`;
+        return `Opens strong (${m.firstRating.toFixed(1)}) then trends down to ${m.lastRating.toFixed(1)} - a drop of ${(m.firstRating - m.lastRating).toFixed(1)}.`;
       case 'declining':
-        return `Each episode is rated no higher than the one before — slides from ${m.firstRating.toFixed(1)} to ${m.lastRating.toFixed(1)}.`;
+        return `Each episode is rated no higher than the one before - slides from ${m.firstRating.toFixed(1)} to ${m.lastRating.toFixed(1)}.`;
       case 'bad-finale':
-        return `Finale (Ep ${n}) is the season's weakest — ${ratings[n - 1].toFixed(1)} vs. an average of ${m.avgRating.toFixed(1)}.`;
+        return `Finale (Ep ${n}) is the season's weakest - ${ratings[n - 1].toFixed(1)} vs. an average of ${m.avgRating.toFixed(1)}.`;
       case 'rollercoaster':
-        return `Range spans ${(max - min).toFixed(1)} points (${min.toFixed(1)}–${max.toFixed(1)}) — big swings episode to episode.`;
+        return `Range spans ${(max - min).toFixed(1)} points (${min.toFixed(1)}–${max.toFixed(1)}) - big swings episode to episode.`;
       case 'mid-peak':
         return `Peak at Ep ${maxIdx + 1} (${max.toFixed(1)}); first half avg ${firstAvg.toFixed(1)}, finale ${m.lastRating.toFixed(1)}.`;
       case 'u-shaped':
         return `Strong opener (${m.firstRating.toFixed(1)}) and finale (${m.lastRating.toFixed(1)}); midpoint dips to ${min.toFixed(1)} at Ep ${minIdx + 1}.`;
       case 'saved-best-for-last':
-        return `This is the show's highest-rated season — final run averages ${m.avgRating.toFixed(1)}.`;
+        return `This is the show's highest-rated season - final run averages ${m.avgRating.toFixed(1)}.`;
       case 'shape-drift':
         return `Late-run shape or quality shifted relative to earlier seasons.`;
       default:
@@ -6903,7 +6903,7 @@ function renderShapeAnnotationText(m) {
     p.style.display = 'block';
     const label = document.createElement('span');
     label.className = 'ann-shape';
-    label.textContent = `${SHAPE_LABELS[shape] || shape} — `;
+    label.textContent = `${SHAPE_LABELS[shape] || shape} - `;
     p.append(label, document.createTextNode(text));
     el.appendChild(p);
   }
