@@ -50,7 +50,8 @@ collection attributes.
 
 | Preset | File | Shows (of matched) |
 |---|---|---:|
-| Kept Climbing | `kometa/finder-kept-climbing.yml` | 25 of 120 |
+| Steady Climbers | `kometa/finder-steady-climbers.yml` | 25 of 30 |
+| Consistently Great | `kometa/finder-consistently-great.yml` | 25 of 86 |
 
 ## ids/
 
