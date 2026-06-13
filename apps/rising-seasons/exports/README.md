@@ -50,8 +50,11 @@ collection attributes.
 
 | Preset | File | Shows (of matched) |
 |---|---|---:|
-| Steady Climbers | `kometa/finder-steady-climbers.yml` | 25 of 30 |
 | Consistently Great | `kometa/finder-consistently-great.yml` | 25 of 86 |
+| Went Out On Top | `kometa/finder-went-out-on-top.yml` | 25 of 46 |
+| Better Than You Heard | `kometa/finder-outshines-reputation.yml` | 25 of 38 |
+| Marathon Material | `kometa/finder-marathon-material.yml` | 25 of 119 |
+| Modern Prestige | `kometa/finder-modern-prestige.yml` | 25 of 38 |
 
 ## ids/
 
