@@ -79,10 +79,12 @@ function bestConfidenceForShape(matches, shape) {
 // contain characters with YAML meaning (`:` `'` `#` `&` etc.) need quoting.
 function yamlString(s) {
   if (typeof s !== 'string') return JSON.stringify(s);
-  // Always double-quote and escape backslash + double-quote. That covers
-  // every special character we care about (titles, summaries, etc.) without
-  // having to maintain a special-character allowlist.
-  return '"' + s.replace(/\\/g, '\\\\').replace(/"/g, '\\"') + '"';
+  // Always double-quote and escape backslash + double-quote + newline. That
+  // covers every special character we care about (titles, summaries, etc.)
+  // without having to maintain a special-character allowlist. Newlines become
+  // a literal \n escape so multi-line summaries survive as real line breaks
+  // (an unescaped newline in a double-quoted scalar folds to a space).
+  return '"' + s.replace(/\\/g, '\\\\').replace(/"/g, '\\"').replace(/\n/g, '\\n') + '"';
 }
 
 // Per-shape Kometa collection YAML.
@@ -227,6 +229,62 @@ function buildSeasonOverlays(matches, opts = {}) {
   return { contents: lines.join('\n') + '\n', shapesEmitted: emitted };
 }
 
+// Human-readable labels for the Show Finder sort + shape params, mirroring the
+// browser UI (index.html sort <option>s and js/app.js SHAPE_LABELS) so the Plex
+// summary speaks the same language as the site.
+const FINDER_SORT_LABELS = {
+  gap: 'gap size',
+  showRating: 'show rating',
+  avgEpisode: 'avg episode rating',
+  episodes: 'episode count',
+  votes: 'votes',
+};
+const FINDER_SHAPE_LABELS = {
+  rising: 'Rising', consistent: 'Consistent', 'slow-burn': 'Slow burn',
+  'big-finale': 'Big finale', 'saved-best-for-last': 'Saved best for last',
+  rebound: 'Rebound', 'front-loaded': 'Front-loaded', declining: 'Declining',
+  'bad-finale': 'Bad finale', rollercoaster: 'Rollercoaster', 'mid-peak': 'Mid-peak',
+  'u-shaped': 'U-shaped',
+};
+
+// Public Show Finder URL with this preset's filters pre-applied. The preset
+// `query` IS the page's URL hash (see finder-presets.json), so the link drops
+// a viewer straight into the same filtered Finder view.
+const FINDER_BASE_URL = 'https://shevato.com/apps/rising-seasons/';
+function finderShareUrl(query) {
+  return `${FINDER_BASE_URL}#${String(query || '').replace(/^#/, '')}`;
+}
+
+// One-line, human-readable digest of a preset's Finder filters for the Plex
+// summary. Deliberately omits genre (fxg) and language (fl) - noise for a Plex
+// browser. Returns '' when nothing notable is set.
+function describeFinderFilters(query) {
+  const p = new URLSearchParams(String(query || '').replace(/^#/, ''));
+  const pos = (k) => { const v = parseFloat(p.get(k)); return Number.isFinite(v) && v > 0 ? v : null; };
+  const n = (v) => v.toLocaleString('en-US');
+  const parts = [];
+  const eps = pos('fMinEps'); if (eps) parts.push(`${n(eps)}+ episodes`);
+  const votes = pos('fMinVotes'); if (votes) parts.push(`${n(votes)}+ votes`);
+  const show = pos('fMinShow'); if (show) parts.push(`show IMDb ${show}+`);
+  const avg = pos('fMinAvg'); if (avg) parts.push(`episode avg ${avg}+`);
+  const gap = pos('fMinGap');
+  const gapDir = p.get('fGapDir');
+  if (gap && gapDir === 'up') parts.push(`episodes beat the show by ${gap}+`);
+  else if (gap && gapDir === 'down') parts.push(`episodes trail the show by ${gap}+`);
+  else if (gap) parts.push(`episode/show gap ${gap}+`);
+  const minYear = parseInt(p.get('fMinYear'), 10) || null;
+  const maxYear = parseInt(p.get('fMaxYear'), 10) || null;
+  if (minYear && maxYear) parts.push(`${minYear}-${maxYear}`);
+  else if (minYear) parts.push(`since ${minYear}`);
+  else if (maxYear) parts.push(`through ${maxYear}`);
+  const shapes = (p.get('fShape') || '').split(',').filter(Boolean)
+    .map((s) => FINDER_SHAPE_LABELS[s] || s);
+  if (shapes.length) parts.push(`shape: ${shapes.join(' / ')}`);
+  const sort = p.get('fSort');
+  if (sort && FINDER_SORT_LABELS[sort]) parts.push(`sorted by ${FINDER_SORT_LABELS[sort]}`);
+  return parts.join(' · ');
+}
+
 // Kometa collection YAML for one Show Finder preset (finder-presets.json).
 // `rows` are show-agg rows already filtered/sorted/limited by the caller -
 // scripts/finder-lib.js owns the selection (one source of truth with the
@@ -268,7 +326,15 @@ function buildFinderCollection(preset, rows, info = {}) {
   if (tpl && tpl.name && tplSource) {
     lines.push(`    template: {name: ${tpl.name}}`);
   }
-  if (preset.summary) lines.push(`    summary: ${yamlString(preset.summary)}`);
+  // Summary shown in Plex: the curated blurb, then the actual filter thresholds
+  // (so the collection is self-documenting), then a link back into the Finder
+  // with those filters live. yamlString turns the \n joins into real line breaks.
+  const summaryParts = [];
+  if (preset.summary) summaryParts.push(preset.summary);
+  const filters = describeFinderFilters(preset.query);
+  if (filters) summaryParts.push(`Filters: ${filters}`);
+  summaryParts.push(`Explore on Rising Seasons: ${finderShareUrl(preset.query)}`);
+  lines.push(`    summary: ${yamlString(summaryParts.join('\n'))}`);
   // `!000_` prefix sorts these ahead of everything else in the Plex library
   // collection list (punctuation/zero beats the consuming instance's own
   // `!001_`+ sort titles and all unprefixed collections).
@@ -336,6 +402,8 @@ const API = {
   // Exposed for tests:
   yamlString,
   bestConfidenceForShape,
+  describeFinderFilters,
+  finderShareUrl,
 };
 
 if (typeof module !== 'undefined' && module.exports) {

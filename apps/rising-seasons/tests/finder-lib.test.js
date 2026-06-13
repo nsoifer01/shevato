@@ -11,7 +11,11 @@ const {
   finderComparator,
   filterAndSortRows,
 } = require('../scripts/finder-lib.js');
-const { buildFinderCollection } = require('../scripts/integrations-lib.js');
+const {
+  buildFinderCollection,
+  describeFinderFilters,
+  finderShareUrl,
+} = require('../scripts/integrations-lib.js');
 
 // Deterministic stand-in for match.js detectShapes: a curve is "rising" when
 // every point meets or exceeds the previous one. Enough to verify the wiring
@@ -189,7 +193,11 @@ test('buildFinderCollection renders YAML with ID fallbacks', () => {
   assert.equal(col.seriesCount, 3);
   const y = col.contents;
   assert.match(y, /^ {2}"Demo: List":$/m);
-  assert.match(y, /^ {4}summary: "A \\"demo\\" list"$/m);
+  // Summary = curated blurb, then the filter digest, then a Finder link, joined
+  // by \n escapes (yamlString renders real newlines as a literal \n).
+  assert.match(y, /^ {4}summary: "A \\"demo\\" list\\nFilters: /m);
+  assert.match(y, /\\nFilters: 1,000\+ votes\\n/);
+  assert.match(y, /\\nExplore on Rising Seasons: https:\/\/shevato\.com\/apps\/rising-seasons\/#fMinVotes=1000"$/m);
   // `!000_` prefix floats finder collections ahead of everything in Plex.
   assert.match(y, /^ {4}sort_title: "!000_rsf_demo"$/m);
   assert.match(y, /^ {4}sync_mode: sync$/m);
@@ -204,6 +212,37 @@ test('buildFinderCollection renders YAML with ID fallbacks', () => {
   // No template declared → no external reference emitted.
   assert.doesNotMatch(y, /external_templates/);
   assert.doesNotMatch(y, /^ {4}template:/m);
+});
+
+test('describeFinderFilters renders thresholds and omits genre + language', () => {
+  // genre (fxg) and language (fl) are present in the query but must NOT appear.
+  const q = 'view=finder&fSort=showRating&fMinEps=12&fMinVotes=25000'
+    + '&fMinShow=7.5&fMinYear=1980&fxg=Animation%2CNews&fl=en&fShape=consistent';
+  assert.equal(
+    describeFinderFilters(q),
+    '12+ episodes · 25,000+ votes · show IMDb 7.5+ · since 1980 · shape: Consistent · sorted by show rating',
+  );
+});
+
+test('describeFinderFilters handles gap direction, episode avg, and a year range', () => {
+  const q = 'fSort=gap&fMinAvg=8&fGapDir=up&fMinGap=0.3&fMinYear=2000&fMaxYear=2010';
+  assert.equal(
+    describeFinderFilters(q),
+    'episode avg 8+ · episodes beat the show by 0.3+ · 2000-2010 · sorted by gap size',
+  );
+});
+
+test('describeFinderFilters is empty when only genre/language (or nothing) is set', () => {
+  assert.equal(describeFinderFilters(''), '');
+  assert.equal(describeFinderFilters('fxg=Animation&fl=en'), '');
+});
+
+test('finderShareUrl builds a Finder hash link and tolerates a leading #', () => {
+  assert.equal(
+    finderShareUrl('view=finder&fShape=consistent'),
+    'https://shevato.com/apps/rising-seasons/#view=finder&fShape=consistent',
+  );
+  assert.equal(finderShareUrl('#view=finder'), 'https://shevato.com/apps/rising-seasons/#view=finder');
 });
 
 test('buildFinderCollection emits the local template hook when declared', () => {
