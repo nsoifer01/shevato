@@ -42,6 +42,34 @@
       "title": "Rising Seasons",
       "subtitle": "Discover TV by the shape of its episode ratings",
       "accent": "#eab308"
+    },
+    {
+      "slug": "about",
+      "eyebrow": "About",
+      "title": "Shevato",
+      "subtitle": "Java and Spring Boot microservices and full-stack web apps for client teams.",
+      "accent": "#ce1b28"
+    },
+    {
+      "slug": "work",
+      "eyebrow": "Selected work",
+      "title": "What we build",
+      "subtitle": "Spring Boot microservices, e-commerce, partner integrations, and web apps.",
+      "accent": "#ce1b28"
+    },
+    {
+      "slug": "contact",
+      "eyebrow": "Get in touch",
+      "title": "Contact Shevato",
+      "subtitle": "Java, Spring Boot, and full-stack contracting. Email, phone, or LinkedIn.",
+      "accent": "#ce1b28"
+    },
+    {
+      "slug": "apps",
+      "eyebrow": "Free apps",
+      "title": "Shevato Apps",
+      "subtitle": "Free web apps for games, fitness, football, TV analytics, and MapTap rivalries.",
+      "accent": "#ce1b28"
     }
   ]
 }

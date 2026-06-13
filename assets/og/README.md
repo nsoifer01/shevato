@@ -21,6 +21,16 @@ looked like the homepage. This folder fixes that by giving each page its own car
 The generated PNGs live in `images/og/` and are **committed** (Netlify does not
 run Chromium at deploy time, so the output cannot be built on the server).
 
+## Coverage
+
+The six app pages plus the marketing pages `about`, `work`, `contact`, and `apps`
+each have their own card. Two pages intentionally do not use a generated card:
+
+- `home.html` keeps the bespoke brand card `images/og-card.png` - it is the
+  canonical Shevato card and the right preview for the site root.
+- `moadon-alef.html` is a separately branded landing and uses its own
+  `images/og-card-moadon-alef.png`.
+
 ## Regenerate the cards
 
 ```bash
