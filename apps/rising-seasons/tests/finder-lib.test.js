@@ -23,7 +23,7 @@ function stubDetectShapes(eps) {
 
 // Season-level fixture in data.json `matches` shape.
 const MATCHES = [
-  // Show X — two seasons trending up. Carries both external IDs (on the
+  // Show X - two seasons trending up. Carries both external IDs (on the
   // second record only, to prove ID pickup isn't first-record-dependent).
   { seriesId: 'tt0000010', title: 'Xray', year: 2018, language: 'en', season: 1,
     genres: ['Drama'], seriesRating: 7, seriesVotes: 100000, avgRuntime: 60,
@@ -33,18 +33,18 @@ const MATCHES = [
     genres: ['Drama', 'Crime'], seriesRating: 7, seriesVotes: 100000, avgRuntime: 60,
     episodes: [{ episode: 1, rating: 8, votes: 100 }, { episode: 2, rating: 9, votes: 100 }] },
 
-  // Show Y — single season, episodes rate below the show. TVDB ID only.
+  // Show Y - single season, episodes rate below the show. TVDB ID only.
   { seriesId: 'tt0000011', title: 'Yankee', year: 2005, language: 'ja', season: 1,
     tvdbId: 22,
     genres: ['Comedy'], seriesRating: 8, seriesVotes: 5000,
     episodes: [{ episode: 1, rating: 6, votes: 50 }, { episode: 2, rating: 6, votes: 50 }] },
 
-  // Show Z — no rated episodes: dropped from the aggregate.
+  // Show Z - no rated episodes: dropped from the aggregate.
   { seriesId: 'tt0000012', title: 'Zulu', year: 2020, language: 'en', season: 1,
     genres: [], seriesRating: 7.5, seriesVotes: 900,
     episodes: [{ episode: 1 }] },
 
-  // Show W — missing series rating: dropped from the aggregate.
+  // Show W - missing series rating: dropped from the aggregate.
   { seriesId: 'tt0000013', title: 'Whiskey', year: 2021, language: 'en', season: 1,
     genres: [], seriesVotes: 1200,
     episodes: [{ episode: 1, rating: 7, votes: 10 }] },

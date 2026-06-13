@@ -6,7 +6,7 @@
 //
 //   exports/kometa/<shape>.yml           (Kometa show collections)
 //   exports/kometa/finder-<slug>.yml     (Kometa collections from Show Finder
-//                                         presets — see finder-presets.json)
+//                                         presets - see finder-presets.json)
 //   exports/kometa/season-overlays.yml   (Kometa season-poster badges)
 //   exports/ids/<shape>.txt              (flat IMDb-ID lists for MDBList)
 //   exports/README.md                    (regenerated index of what's here)
@@ -39,7 +39,7 @@ const DATA_FILE = path.join(__dirname, '..', 'data.json');
 const PRESETS_FILE = path.join(__dirname, '..', 'finder-presets.json');
 const EXPORT_ROOT = path.join(__dirname, '..', 'exports');
 
-// Top-N cap per Finder preset when the preset doesn't set its own `limit` —
+// Top-N cap per Finder preset when the preset doesn't set its own `limit` -
 // an unbounded filter could turn a collection into thousands of shows.
 const DEFAULT_FINDER_LIMIT = 50;
 
@@ -108,7 +108,7 @@ function writeFileIfChanged(filePath, contents) {
         limit,
       });
       if (!col) {
-        console.warn(`  kometa/finder-${preset.slug}.yml SKIPPED — query matched no shows with usable IDs`);
+        console.warn(`  kometa/finder-${preset.slug}.yml SKIPPED - query matched no shows with usable IDs`);
         continue;
       }
       finderCollections.push({ ...col, preset, matched: rows.length });
@@ -164,7 +164,7 @@ function writeFileIfChanged(filePath, contents) {
   }
   readmeLines.push('');
   if (finderCollections.length) {
-    readmeLines.push('## kometa/ — Show Finder presets');
+    readmeLines.push('## kometa/ - Show Finder presets');
     readmeLines.push('');
     readmeLines.push('Plex collections built from saved Show Finder filters (`finder-presets.json`).');
     readmeLines.push('Each replays its Finder URL hash against the latest data, so the list');

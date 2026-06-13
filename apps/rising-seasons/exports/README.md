@@ -40,7 +40,7 @@ libraries:
 | Declining Seasons | `kometa/declining.yml` | 879 |
 | Bad Finale Seasons | `kometa/bad-finale.yml` | 2,041 |
 
-## kometa/ — Show Finder presets
+## kometa/ - Show Finder presets
 
 Plex collections built from saved Show Finder filters (`finder-presets.json`).
 Each replays its Finder URL hash against the latest data, so the list

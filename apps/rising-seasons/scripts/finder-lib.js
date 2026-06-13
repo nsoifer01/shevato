@@ -4,10 +4,10 @@
 // (scripts/export-integrations.js) so a Finder preset exported to Kometa is
 // guaranteed to match exactly what the Show Finder view displays for the same
 // hash. Keep this file free of Node-specific APIs (no fs/path/process) and
-// free of DOM access — see the UMD-style export at the bottom.
+// free of DOM access - see the UMD-style export at the bottom.
 'use strict';
 
-// Defaults mirror `finderState` in js/app.js — a missing query param always
+// Defaults mirror `finderState` in js/app.js - a missing query param always
 // means "filter inactive", so parse + serialize round-trip cleanly.
 const FINDER_DEFAULTS = {
   search: '',
@@ -26,7 +26,7 @@ const FINDER_DEFAULTS = {
 };
 
 // Aggregate per-season records (data.json `matches`) into one row per series.
-// `detectShapes` is the per-episode shape classifier from match.js — passed in
+// `detectShapes` is the per-episode shape classifier from match.js - passed in
 // rather than required so the browser can hand over its global and a missing
 // classifier degrades to "no shapes" instead of throwing.
 function buildShowAgg(matches, detectShapes) {
@@ -153,7 +153,7 @@ function parseFinderQuery(query) {
 }
 
 // Every Finder filter EXCEPT the shape filter (shape chips need live counts of
-// rows passing everything else — see finderRowsBeforeShape in app.js).
+// rows passing everything else - see finderRowsBeforeShape in app.js).
 function passesFinderFilters(s, f) {
   const q = (f.search || '').trim().toLowerCase();
   if (q && !s.title.toLowerCase().includes(q) && !s.seriesId.toLowerCase().includes(q)) return false;
