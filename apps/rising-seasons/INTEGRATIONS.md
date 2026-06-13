@@ -135,15 +135,15 @@ when you built the filter.
 1. Open `https://shevato.com/apps/rising-seasons/`, switch to **Show
    Finder**, and dial in filters until the result list is what you want.
 2. Copy everything after `#` in the address bar — e.g.
-   `view=finder&fShape=rising&fMinAvg=7.5&fMinVotes=25000`.
+   `view=finder&fSort=showRating&fMinVotes=25000&fShape=consistent`.
 3. Add an entry to `apps/rising-seasons/finder-presets.json`:
 
    ```json
    {
-     "slug": "kept-climbing",
-     "name": "Kept Climbing",
-     "summary": "Shows where every season topped the one before.",
-     "query": "view=finder&fShape=rising&fMinAvg=7.5&fMinVotes=25000",
+     "slug": "consistently-great",
+     "name": "Consistently Great",
+     "summary": "Highly-rated shows whose seasons never wavered.",
+     "query": "view=finder&fSort=showRating&fMinVotes=25000&fShape=consistent",
      "limit": 25
    }
    ```
@@ -154,6 +154,9 @@ when you built the filter.
    `finder-presets.json` + the generated
    `exports/kometa/finder-<slug>.yml`.
 
+See `finder-presets.json` for the full set of live presets; the generated
+files and their current counts are indexed in `exports/README.md`.
+
 ### Wiring into Kometa
 
 Reference the raw GitHub URL so every Kometa run picks up the latest list
@@ -163,29 +166,31 @@ without touching the NAS:
 libraries:
   TV Shows:
     collection_files:
-      - url: https://raw.githubusercontent.com/nsoifer01/shevato/master/apps/rising-seasons/exports/kometa/finder-kept-climbing.yml
+      - url: https://raw.githubusercontent.com/nsoifer01/shevato/master/apps/rising-seasons/exports/kometa/finder-consistently-great.yml
 ```
 
 ### Local template hook (optional)
 
-A preset may carry a `template` field:
+A preset may carry a `template` field (one template name per preset, so
+each collection can get its own local attributes):
 
 ```json
-"template": { "name": "rs_local", "file": "config/rising-seasons-local.yml" }
+"template": { "name": "rs_consistently_great", "file": "config/rising-seasons-local.yml" }
 ```
 
 The generated YAML then references that template via Kometa's
 `external_templates`, with the template file living **on the consuming
 Kometa instance**, not in this repo. That lets you layer any extra
-collection attributes you manage privately (labels, schedules, visibility,
-whatever Kometa supports) on top of the generated list without editing the
-generated file — your local `config/rising-seasons-local.yml` would look
-like:
+collection attributes you manage privately (posters, labels, schedules,
+visibility, whatever Kometa supports) on top of the generated list without
+editing the generated file — your local `config/rising-seasons-local.yml`
+would look like:
 
 ```yaml
 templates:
-  rs_local:
+  rs_consistently_great:
     # any Kometa collection attributes you want applied locally
+    file_poster: config/posters/consistently-great.png
     label: Auto List
 ```
 
