@@ -4036,7 +4036,7 @@ function formatCompactVotes(n) {
 
 // Group season-matches by seriesId into one row per show. Computed once after
 // data.json loads (memoized in showAgg) so live filtering never re-aggregates.
-// The aggregation itself lives in finder-lib.js — shared with the Node export
+// The aggregation itself lives in finder-lib.js - shared with the Node export
 // pipeline (scripts/export-integrations.js) so Finder presets exported to
 // Kometa are built from exactly the rows this view shows. `detectShapes` comes
 // from match.js, loaded before this script; guard so a missing global never
@@ -4472,7 +4472,7 @@ const FINDER_COLUMNS = [
 // the shape chips can show live counts (how many shows of each shape survive
 // the other active filters) — the same pattern the Seasons view uses.
 // Predicate + comparator live in finder-lib.js, shared with the Node export
-// pipeline (one source of truth — Kometa preset exports cannot drift).
+// pipeline (one source of truth - Kometa preset exports cannot drift).
 function finderRowsBeforeShape() {
   return showAgg.filter((s) => RisingSeasonsFinder.passesFinderFilters(s, finderState));
 }
