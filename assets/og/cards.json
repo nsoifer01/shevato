@@ -1,0 +1,47 @@
+{
+  "_comment": "Source of truth for per-page social-share images. Each entry renders assets/og/card.html to images/og/<slug>.png at 1200x630. To add a page: add an entry here, run `npm run build:og-cards`, then point that page's og:image + twitter:image at https://shevato.com/images/og/<slug>.png.",
+  "cards": [
+    {
+      "slug": "maptap-rivals",
+      "eyebrow": "Score tracker",
+      "title": "MapTap Rivals",
+      "subtitle": "Daily MapTap.gg head-to-head",
+      "accent": "#38bdf8"
+    },
+    {
+      "slug": "arena",
+      "eyebrow": "Party games",
+      "title": "Arena",
+      "subtitle": "Real-time multiplayer party games with friends",
+      "accent": "#a855f7"
+    },
+    {
+      "slug": "football-h2h",
+      "eyebrow": "Match tracker",
+      "title": "Football H2H",
+      "subtitle": "Head-to-head match tracker with full stats and shootouts",
+      "accent": "#22c55e"
+    },
+    {
+      "slug": "gym-tracker",
+      "eyebrow": "Workout log",
+      "title": "Gym Tracker",
+      "subtitle": "Log workouts, track strength and body progress. Free PWA.",
+      "accent": "#f97316"
+    },
+    {
+      "slug": "mario-kart",
+      "eyebrow": "Race tracker",
+      "title": "Mario Kart Tracker",
+      "subtitle": "Track MK8 Deluxe and Mario Kart World races and stats",
+      "accent": "#ef4444"
+    },
+    {
+      "slug": "rising-seasons",
+      "eyebrow": "TV finder",
+      "title": "Rising Seasons",
+      "subtitle": "Discover TV by the shape of its episode ratings",
+      "accent": "#eab308"
+    }
+  ]
+}
