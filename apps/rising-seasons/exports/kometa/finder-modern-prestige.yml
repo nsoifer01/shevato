@@ -11,7 +11,7 @@ collections:
     template: {name: rs_modern_prestige}
     summary: "The defining shows of the last few years - 2018 onward, huge audiences, top-shelf ratings. From the Rising Seasons Show Finder."
     sort_title: "!rsf_modern-prestige"
-    collection_order: custom
+    collection_order: alpha
     sync_mode: sync
     tmdb_show:
       - 250307

@@ -11,7 +11,7 @@ collections:
     template: {name: rs_marathon_material}
     summary: "100+ episodes and still rated 7.5 or better - shows you can live in for months. From the Rising Seasons Show Finder."
     sort_title: "!rsf_marathon-material"
-    collection_order: custom
+    collection_order: alpha
     sync_mode: sync
     tmdb_show:
       - 2734
