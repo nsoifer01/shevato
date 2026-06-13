@@ -180,8 +180,6 @@
               <label class="lobby-field" data-game-type="globe-drop">
                 <span>Locations per game</span>
                 <select id="create-locations-count">
-                  <option value="1">1</option>
-                  <option value="2">2</option>
                   <option value="3">3</option>
                   <option value="4">4</option>
                   <option value="5" selected>5</option>
@@ -449,7 +447,7 @@
               <label class="lobby-field room-settings-field">
                 <span>Locations</span>
                 <select id="room-settings-edit-count">
-                  <option value="1">1</option><option value="2">2</option><option value="3">3</option>
+                  <option value="3">3</option>
                   <option value="4">4</option><option value="5">5</option><option value="6">6</option>
                   <option value="7">7</option><option value="8">8</option><option value="9">9</option>
                   <option value="10">10</option>
@@ -573,6 +571,18 @@
             </header>
 
 
+            <!-- Mobile-only standings toggle. Collapses the live standings +
+                 rounds-history boards by default on phones so the globe is
+                 the focus. The collapse state changes only by user tap or
+                 the per-question reset; submitting pulses this toggle (is-
+                 pulsing) instead of auto-expanding, so the globe never
+                 moves mid-reveal. Hidden on desktop where both boards are
+                 always visible. -->
+            <button type="button" class="globe-drop-standings-toggle" id="globe-drop-standings-toggle" aria-expanded="false" hidden>
+              <span class="globe-drop-standings-toggle-label">Standings</span>
+              <svg class="globe-drop-standings-toggle-chevron" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg>
+            </button>
+
             <!-- Live standings + opponent submission indicators. Submit-
                  state badges flash next to each name as they commit. -->
             <section class="mini-board mini-board-top" id="mini-board-globe-drop">
@@ -591,36 +601,10 @@
               <header class="mini-board-head">
                 <h3>Rounds so far</h3>
               </header>
-              <ol class="rounds-history-list" id="rounds-history-list"></ol>
-            </section>
-
-            <!-- Reveal panel — just above the globe so the result is
-                 visible without scrolling. Countdown ticks 5→1. -->
-            <section class="globe-drop-reveal" id="globe-drop-reveal" hidden>
-              <div class="globe-drop-reveal-head">
-                <p class="globe-drop-reveal-distance" id="globe-drop-reveal-distance"></p>
-                <div class="globe-drop-countdown" id="globe-drop-countdown" hidden>
-                  <span class="globe-drop-countdown-num" id="globe-drop-countdown-num">5</span>
-                  <span class="globe-drop-countdown-label">to next</span>
-                </div>
-              </div>
-              <p class="globe-drop-reveal-trivia" id="globe-drop-reveal-trivia" hidden></p>
-              <!-- Always-visible Wikipedia escape hatch. Wired up by
-                   drawGlobeDropReveal whenever the reveal opens so
-                   players can read more about the location even if
-                   the inline trivia summary fetch failed. -->
-              <a class="globe-drop-reveal-wiki" id="globe-drop-reveal-wiki" target="_blank" rel="noopener" hidden>
-                <span aria-hidden="true">📖</span> Read on Wikipedia
-              </a>
-              <!-- Ready-for-next bar. During the reveal window, any
-                   player can click "Ready" to vote to skip the wait;
-                   if every player is ready the host advances early. -->
-              <div class="globe-drop-ready-bar" id="globe-drop-ready-bar" hidden>
-                <button type="button" class="btn btn-ghost btn-sm" id="globe-drop-ready-btn">
-                  <span aria-hidden="true">⏭</span> Ready
-                </button>
-                <span class="globe-drop-ready-status" id="globe-drop-ready-status" aria-live="polite"></span>
-              </div>
+              <!-- One row per player. Each round pill carries everything:
+                   R#: base × multiplier (final). No separate per-location
+                   rows. Populated by renderRoundsHistoryBoard. -->
+              <div class="rounds-history-scoreboard" id="rounds-history-scoreboard"></div>
             </section>
 
             <p class="globe-drop-hint" id="globe-drop-hint" hidden></p>
@@ -630,10 +614,42 @@
             <p class="answer-status globe-drop-status" id="globe-drop-status" hidden></p>
             <!-- Wrapper holds the globe + overlay UI as siblings; globe.gl
                  owns the inner contents of #globe-drop-map (canvas) so
-                 the FAB stack + timer overlay MUST live outside that
-                 element or they get wiped during scene init. -->
+                 the FAB stack + timer overlay + reveal panel MUST live
+                 outside that element or they get wiped during scene init.
+                 globe.gl only wipes #globe-drop-map's children, not the
+                 wrap's, so the reveal panel is safe here. -->
             <div class="globe-drop-map-wrap">
               <div id="globe-drop-map" class="globe-drop-map" role="img" aria-label="Interactive 3D world globe — click to place your guess pin"></div>
+              <!-- Reveal panel — overlays the TOP of the globe so the
+                   result is visible without the globe moving or the page
+                   scrolling. Inset to the right of the timer overlay on
+                   desktop; full-width below the timer on mobile. -->
+              <section class="globe-drop-reveal" id="globe-drop-reveal" hidden>
+                <div class="globe-drop-reveal-head">
+                  <p class="globe-drop-reveal-distance" id="globe-drop-reveal-distance"></p>
+                  <div class="globe-drop-countdown" id="globe-drop-countdown" hidden>
+                    <span class="globe-drop-countdown-num" id="globe-drop-countdown-num">5</span>
+                    <span class="globe-drop-countdown-label">to next</span>
+                  </div>
+                </div>
+                <p class="globe-drop-reveal-trivia" id="globe-drop-reveal-trivia" hidden></p>
+                <!-- Always-visible Wikipedia escape hatch. Wired up by
+                     drawGlobeDropReveal whenever the reveal opens so
+                     players can read more about the location even if
+                     the inline trivia summary fetch failed. -->
+                <a class="globe-drop-reveal-wiki" id="globe-drop-reveal-wiki" target="_blank" rel="noopener" hidden>
+                  <span aria-hidden="true">📖</span> Read on Wikipedia
+                </a>
+                <!-- Ready-for-next bar. During the reveal window, any
+                     player can click "Ready" to vote to skip the wait;
+                     if every player is ready the host advances early. -->
+                <div class="globe-drop-ready-bar" id="globe-drop-ready-bar" hidden>
+                  <button type="button" class="btn btn-ghost btn-sm" id="globe-drop-ready-btn">
+                    <span aria-hidden="true">⏭</span> Ready
+                  </button>
+                  <span class="globe-drop-ready-status" id="globe-drop-ready-status" aria-live="polite"></span>
+                </div>
+              </section>
               <!-- In-globe timer ring (top-left overlay). Drives the
                    countdown visualization for the current question. -->
               <div class="game-timer globe-drop-timer-overlay" id="globe-drop-timer" data-state="asking">
@@ -665,6 +681,10 @@
         <section class="stage stage-end" id="stage-end" hidden>
           <header class="end-head">
             <p id="end-summary"></p>
+            <!-- Globe Drop only: which round type this game was played with
+                 (World capitals, Countries, Major cities, ...). Populated and
+                 toggled by renderEndStage; hidden for Trivia. -->
+            <p class="end-round-type" id="end-round-type" hidden></p>
             <!-- Copy result — builds a plain-text standings summary and
                  writes it to the clipboard. -->
             <button type="button" class="btn btn-ghost btn-sm end-share-btn" id="end-share-btn" hidden>

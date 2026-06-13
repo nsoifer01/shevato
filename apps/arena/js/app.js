@@ -88,6 +88,14 @@ const state = {
     // per-marker handles because globe.gl is declarative — call
     // pointsData()/arcsData() with the full set on every update.
     globe: null,
+    globeResizeAttached: false,          // guard so the ResizeObserver attaches once
+    globeResizeObserver: null,           // RO handle (cleaned up in teardownMap)
+    lastGlobeWidth: 0,                   // last applied canvas width (RO short-circuit)
+    lastGlobeHeight: 0,                  // last applied canvas height (RO short-circuit)
+    globeTexturePreloaded: false,        // guard so the lobby prefetch fires once
+    globeTapHintShown: false,            // first-use tap hint shown this session
+    standingsCollapsed: true,            // mobile: live-standings board collapsed
+    standingsToggleQId: null,            // question id the collapse state was reset for
     pendingGuess: null,                  // { lat, lng } selected but not yet submitted
     lastRenderedMapQuestion: null,       // location id currently shown on the globe
     lastRevealedMapQuestion: null,       // '{locId}:local' or '{locId}:global' — what we've drawn
@@ -791,8 +799,8 @@ function shuffle(arr, rand = Math.random) {
  * stability so two ×1 capitals don't always appear in the same
  * order across games.
  */
-function applyRoundMultipliers(locations) {
-    const stamped = GlobeDropScoring.assignDifficultyMultipliers(locations);
+function applyRoundMultipliers(locations, roundType) {
+    const stamped = GlobeDropScoring.assignDifficultyMultipliers(locations, roundType);
     return stamped.slice().sort((a, b) => (a.multiplier || 1) - (b.multiplier || 1));
 }
 
@@ -1124,6 +1132,13 @@ function wireLobby() {
     if (readyBtn) readyBtn.addEventListener('click', () => markReadyForNext());
     const clearBtn = $('#globe-drop-clear-btn');
     if (clearBtn) clearBtn.addEventListener('click', () => { Feedback.pinCleared(); clearMyPin(); });
+    const standingsToggle = $('#globe-drop-standings-toggle');
+    if (standingsToggle) standingsToggle.addEventListener('click', () => {
+        state.standingsCollapsed = !state.standingsCollapsed;
+        applyStandingsCollapsed();
+        // Expanding satisfies the "something new to see" cue — stop pulsing.
+        if (!state.standingsCollapsed) standingsToggle.classList.remove('is-pulsing');
+    });
 
     $('#room-code-copy').addEventListener('click', async () => {
         if (!state.roomCode) return;
@@ -1279,7 +1294,10 @@ async function createRoom(opts) {
 
         if (gameType === 'globe-drop') {
             btn.innerHTML = mode === 'daily' ? "Loading today's challenge…" : 'Fetching locations…';
-            const count = parseInt($('#create-locations-count').value, 10) || Config.GLOBE_DROP_LOCATIONS_DEFAULT;
+            const count = Math.max(
+                Config.GLOBE_DROP_LOCATIONS_MIN,
+                parseInt($('#create-locations-count').value, 10) || Config.GLOBE_DROP_LOCATIONS_DEFAULT
+            );
             // Daily is the only mode that forces its settings (so every
             // player who plays a given day faces the same parameters).
             // Solo passes through the form selections the user picked.
@@ -1318,8 +1336,10 @@ async function createRoom(opts) {
             // a multiplier from the [1.0, 1.5, 2.0, 2.5, 3.0] ladder
             // based on its own continent rarity × population obscurity
             // — NOT its position in the playlist. Famous capitals are
-            // worth less; obscure island states are worth more.
-            locations = applyRoundMultipliers(locations);
+            // worth less; obscure island states are worth more. (Major-cities
+            // is the exception: its multiplier is continent-based — see
+            // applyRoundMultipliers / assignDifficultyMultipliers.)
+            locations = applyRoundMultipliers(locations, roundType);
 
             await setDoc(ref, Object.assign({}, shared, {
                 packId: meta.packId,
@@ -2459,7 +2479,7 @@ async function saveRoomSettings() {
 
     const newRoundType = $('#room-settings-edit-round-type').value || 'capitals';
     const newDifficulty = $('#room-settings-edit-difficulty').value || 'medium';
-    const newCount = Math.max(1, Math.min(10, parseInt($('#room-settings-edit-count').value, 10) || 5));
+    const newCount = Math.max(Config.GLOBE_DROP_LOCATIONS_MIN, Math.min(10, parseInt($('#room-settings-edit-count').value, 10) || 5));
     const newSeconds = parseInt($('#room-settings-edit-time').value, 10) || 120;
     const diff = GlobeDropScoring.difficultySettings(newDifficulty);
 
@@ -2491,7 +2511,7 @@ async function saveRoomSettings() {
         };
         if (needsRefetch) {
             const locations = await GlobeDropLocations.fetchLocations(newRoundType, newCount, shuffle);
-            update.questions = applyRoundMultipliers(locations);
+            update.questions = applyRoundMultipliers(locations, newRoundType);
             update.totalQuestions = update.questions.length;
             update.currentQuestionIndex = 0;
             update.currentQuestionId = null;
@@ -2591,6 +2611,16 @@ function renderLobbyStage(isHost) {
     // Room settings panel — show current room settings to everyone in
     // the lobby. Host can edit (click event handled separately).
     renderRoomSettings(isHost);
+
+    // Item 8: warm the Earth texture while players wait in the lobby so the
+    // globe paints instantly on game start. Fires once per session for the
+    // exact asset ensureGlobe() will pick (2K on phones, 8K on desktop).
+    const lobbyGameType = (state.roomData && state.roomData.gameType) || state.selectedGameType;
+    if (lobbyGameType === 'globe-drop' && !state.globeTexturePreloaded) {
+        state.globeTexturePreloaded = true;
+        const img = new Image();
+        img.src = isMobileGlobeViewport() ? 'data/earth-2k.jpg' : 'data/earth-8k.jpg';
+    }
 
     const list = $('#lobby-player-grid');
     list.innerHTML = '';
@@ -2877,6 +2907,21 @@ function renderMiniBoard(currentQuestionId) {
  * assets, no API key). No labels, no political boundaries — pure Earth
  * from space, so a geography game stays a real challenge.
  */
+// Single source of truth for the "treat this as a phone" breakpoint used by
+// the texture pick, control tuning, and texture preload. Matches the 768px
+// CSS breakpoint the mobile layout rules key off.
+function isMobileGlobeViewport() {
+    return (typeof window !== 'undefined' ? window.innerWidth : 1024) < 768;
+}
+
+// Rotate speed scales with zoom: full speed when zoomed out (altitude 1.0)
+// so a drag sweeps the globe, easing to a 0.10 floor when zoomed in so the
+// same drag distance doesn't whip past the spot you're aiming for.
+function globeRotateSpeedForAltitude(altitude) {
+    const alt = typeof altitude === 'number' && altitude > 0 ? altitude : 1.0;
+    return Math.max(0.10, Math.min(0.45, 0.45 * alt));
+}
+
 function ensureGlobe() {
     if (state.globe) return state.globe;
     if (typeof Globe === 'undefined') {
@@ -2885,21 +2930,39 @@ function ensureGlobe() {
     }
     const el = document.getElementById('globe-drop-map');
     if (!el) return null;
+    // Mobile (viewport < 768px): use a downscaled 2K texture (~210 KB vs
+    // ~4.5 MB) and drop the bump map entirely. The bump map's relief is
+    // invisible at phone screen sizes but still costs an extra ~380 KB
+    // decode + a normal-map pass on a weaker GPU. Desktop keeps the full
+    // 8K daymap + topology bump exactly as before.
+    const useMobileTexture = isMobileGlobeViewport();
+    // Item 9: pulse the atmosphere ring while the scene + texture upload.
+    // Removed on onGlobeReady (with a 2s fallback) so it never lingers.
+    el.classList.add('is-loading');
+    let loadingCleared = false;
+    const clearLoading = () => {
+        if (loadingCleared) return;
+        loadingCleared = true;
+        el.classList.remove('is-loading');
+    };
+    setTimeout(clearLoading, 2000);
     state.globe = Globe()(el)
         // Bundled 8K (8192×4096) Earth daymap from Solar System Scope
         // (CC BY 4.0, attributed in the GlobeDrop stage footer). Local so we
         // don't depend on a third-party CDN and skip any CORS surprises.
         // ~4.5 MB; the browser caches it after the first room creation.
-        .globeImageUrl('data/earth-8k.jpg')
+        .globeImageUrl(useMobileTexture ? 'data/earth-2k.jpg' : 'data/earth-8k.jpg')
         // Self-hosted topology bump map (from three-globe@2.31.1's
         // example assets). Keeping it local matches earth-8k.jpg and
-        // means the globe build doesn't touch unpkg at all.
-        .bumpImageUrl('data/earth-topology.png')
+        // means the globe build doesn't touch unpkg at all. Skipped on
+        // mobile where the relief never reads at that pixel density.
+        .bumpImageUrl(useMobileTexture ? '' : 'data/earth-topology.png')
         .showAtmosphere(true)
         .atmosphereColor('#6366f1')
         .atmosphereAltitude(0.18)
         .backgroundColor('rgba(0, 0, 0, 0)')
         .onGlobeClick(({ lat, lng }) => onGlobeClick(lat, lng))
+        .onGlobeReady(clearLoading)
         .pointLat('lat')
         .pointLng('lng')
         .pointColor('color')
@@ -2940,18 +3003,23 @@ function ensureGlobe() {
     const controls = state.globe.controls();
     if (controls) {
         // Camera feel:
-        //   - rotateSpeed 0.45: drag tracks the cursor without over-shoot
-        //   - zoomSpeed 4: pinch / pinpoint zooms feel intentional
-        //   - dampingFactor 0.3: drag inertia bleeds off in ~5 frames so
-        //     the globe stops where you let go instead of "spinning for
-        //     no reason" after release
+        //   - rotateSpeed scales with altitude (full 0.45 zoomed out, 0.10
+        //     floor zoomed in) so a drag never over-shoots up close
+        //   - zoomSpeed 4 / damping 0.3 on desktop; gentler 2 / 0.15 on
+        //     mobile so a flick doesn't fling the camera on a touchscreen
         //   - autoRotate explicitly OFF so a stray default doesn't kick
         //     the globe into continuous spin between rounds
-        controls.zoomSpeed = 4;
-        controls.rotateSpeed = 0.45;
+        const mobile = isMobileGlobeViewport();
+        controls.zoomSpeed = mobile ? 2 : 4;
+        controls.rotateSpeed = globeRotateSpeedForAltitude(state.globe.pointOfView().altitude);
         controls.enableDamping = true;
-        controls.dampingFactor = 0.3;
+        controls.dampingFactor = mobile ? 0.15 : 0.3;
         controls.autoRotate = false;
+        // Keep rotateSpeed in step with the live altitude as the user zooms.
+        controls.addEventListener('change', () => {
+            if (!state.globe) return;
+            controls.rotateSpeed = globeRotateSpeedForAltitude(state.globe.pointOfView().altitude);
+        });
     }
 
     // Custom wheel zoom: multiplicative altitude change per scroll click,
@@ -2967,6 +3035,8 @@ function ensureGlobe() {
         const maxAlt = 4.0;
         const nextAlt = Math.max(minAlt, Math.min(maxAlt, pov.altitude * factor));
         state.globe.pointOfView({ lat: pov.lat, lng: pov.lng, altitude: nextAlt }, 240);
+        const c = state.globe.controls();
+        if (c) c.rotateSpeed = globeRotateSpeedForAltitude(nextAlt);
     }, { passive: false });
 
     // Ask the device for the actual pixel ratio so the globe canvas is
@@ -2974,10 +3044,49 @@ function ensureGlobe() {
     // 1.0 which looks blurry on hi-DPI displays.
     const renderer = state.globe.renderer && state.globe.renderer();
     if (renderer && typeof renderer.setPixelRatio === 'function') {
-        renderer.setPixelRatio(window.devicePixelRatio || 1);
+        // Cap at 2: above that the extra pixels are invisible but the
+        // fragment-shader cost (≈ ratio²) tanks frame rate on 3x phones.
+        renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
     }
 
+    // Item 3: keep the canvas matched to its container across viewport /
+    // orientation changes. Attach once; the globe instance lives for the
+    // app's lifetime so we guard against double-attach via state.
+    attachGlobeResizeHandling(el);
+
     return state.globe;
+}
+
+// Re-apply container dimensions to the globe whenever #globe-drop-map
+// changes size (rotation, browser chrome show/hide, split-screen). Prefers
+// ResizeObserver; falls back to debounced resize + orientationchange.
+// Short-circuits when dimensions are unchanged to avoid RO feedback loops.
+function attachGlobeResizeHandling(el) {
+    if (state.globeResizeAttached) return;
+    state.globeResizeAttached = true;
+    const apply = () => {
+        if (!state.globe || !el) return;
+        const w = el.clientWidth;
+        const h = el.clientHeight;
+        if (w === state.lastGlobeWidth && h === state.lastGlobeHeight) return;
+        state.lastGlobeWidth = w;
+        state.lastGlobeHeight = h;
+        state.globe.width(w);
+        state.globe.height(h);
+    };
+    if (typeof ResizeObserver === 'function') {
+        const ro = new ResizeObserver(() => apply());
+        ro.observe(el);
+        state.globeResizeObserver = ro;
+    } else {
+        let t = null;
+        const debounced = () => {
+            if (t) clearTimeout(t);
+            t = setTimeout(apply, 100);
+        };
+        window.addEventListener('resize', debounced);
+        window.addEventListener('orientationchange', debounced);
+    }
 }
 
 function teardownMap() {
@@ -2985,6 +3094,13 @@ function teardownMap() {
     // the container so the WebGL renderer + canvas get GC'd.
     const el = document.getElementById('globe-drop-map');
     if (el) el.innerHTML = '';
+    if (state.globeResizeObserver) {
+        state.globeResizeObserver.disconnect();
+        state.globeResizeObserver = null;
+    }
+    state.globeResizeAttached = false;
+    state.lastGlobeWidth = 0;
+    state.lastGlobeHeight = 0;
     state.globe = null;
     state.pendingGuess = null;
     state.lastRenderedMapQuestion = null;
@@ -3060,6 +3176,7 @@ function onGlobeClick(lat, lng) {
     const me = state.roomPlayers.find((p) => state.user && p.uid === state.user.uid);
     if (me && me.currentAnsweredFor === loc.id) return;
 
+    dismissGlobeTapHint();
     state.pendingGuess = { lat, lng };
     drawMyPinOnly(lat, lng);
     $('#globe-drop-submit-btn').disabled = false;
@@ -3067,6 +3184,28 @@ function onGlobeClick(lat, lng) {
     setText($('#globe-drop-status'), 'Pin placed. Submit when you\'re sure.');
     $('#globe-drop-status').classList.remove('is-correct', 'is-wrong');
     Feedback.pinPlaced();
+}
+
+// Item 12: one-time "tap the globe" coach mark. Lives in .globe-drop-map-wrap
+// (NOT #globe-drop-map — globe.gl wipes that element's children on init).
+// pointer-events:none so it never eats the very tap it's teaching. Shown on
+// the first question of a session only, auto-hides after 5s or on first click.
+function showGlobeTapHintOnce() {
+    if (state.globeTapHintShown) return;
+    if (state.pendingGuess) return;
+    const wrap = document.querySelector('.globe-drop-map-wrap');
+    if (!wrap) return;
+    state.globeTapHintShown = true;
+    const hint = document.createElement('div');
+    hint.className = 'globe-drop-tap-hint';
+    hint.textContent = 'Tap anywhere on the globe to drop your pin';
+    wrap.appendChild(hint);
+    setTimeout(dismissGlobeTapHint, 5000);
+}
+
+function dismissGlobeTapHint() {
+    const hint = document.querySelector('.globe-drop-tap-hint');
+    if (hint) hint.hidden = true;
 }
 
 function drawMyPinOnly(lat, lng) {
@@ -3229,17 +3368,29 @@ function renderGlobeDropStage() {
         // then the globe sits naturally below — no hunting for the
         // prompt after a long live-standings panel. Once per question
         // so the viewport doesn't yank mid-round.
+        // On mobile the prompt row is position:sticky (item 11), so a
+        // scrollIntoView on every new question just yanks the viewport for
+        // no benefit — skip it there. Desktop keeps the smooth scroll.
         const promptRow = document.querySelector('.globe-drop-prompt-row');
-        if (promptRow && state.lastScrolledToGlobeForQId !== currentGlobeDropLocationId()) {
+        if (promptRow && window.innerWidth > 768
+            && state.lastScrolledToGlobeForQId !== currentGlobeDropLocationId()) {
             state.lastScrolledToGlobeForQId = currentGlobeDropLocationId();
-            try {
-                promptRow.scrollIntoView({ behavior: 'smooth', block: 'start' });
-            } catch (_) { /* older browsers */ }
+            // Only scroll if the prompt row is actually off-screen — when
+            // it's already in view, an unconditional scrollIntoView just
+            // yanks the viewport for no reason. block:'nearest' nudges the
+            // minimum amount needed instead of slamming it to the top.
+            const rect = promptRow.getBoundingClientRect();
+            if (rect.top < 0 || rect.bottom > window.innerHeight) {
+                try {
+                    promptRow.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+                } catch (_) { /* older browsers */ }
+            }
         }
         const g = ensureGlobe();
         if (!g) return;
         const el = document.getElementById('globe-drop-map');
         if (el) { g.width(el.clientWidth); g.height(el.clientHeight); }
+        showGlobeTapHintOnce();
 
         // New question? Wipe overlays and re-arm the controls. Camera
         // stays where the last reveal left it — the user can pan / zoom
@@ -3302,6 +3453,7 @@ function renderGlobeDropStage() {
     }, 50);
 
     renderMiniBoardGlobeDrop(loc.id);
+    syncStandingsCollapse(loc);
     startGlobeDropTimerLoop();
 }
 
@@ -3512,19 +3664,16 @@ function drawGlobeDropReveal(loc, me, { showOthers = true } = {}) {
             distanceKm: d,
             multiplier: loc.multiplier
         });
-        // Show "× mult = +final" whenever the final differs from base —
-        // either because mult > 1 OR because the MIN_POINTS floor kicked
-        // in for a really-far guess (base 0 → final 5). Without the
-        // second case, the floor was invisible to the player.
+        // Always basePoints × multiplier = points. The base is floored so it
+        // is never 0, and there is no streak/bonus addition, so this equation
+        // is exact and matches the recap table. For a x1 round the base IS the
+        // total, so we skip the redundant "× 1 =" tail.
         const multNum = typeof loc.multiplier === 'number' ? loc.multiplier : 1;
         const multStr = multNum.toFixed(2).replace(/0+$/, '').replace(/\.$/, '');
-        const showFinal = points !== basePoints;
-        const multTxt = showFinal
-            ? (multNum !== 1
-                ? ` × ${multStr} = <strong>+${points}</strong>`
-                : ` = <strong>+${points}</strong> <small>(min)</small>`)
+        const multTxt = multNum !== 1
+            ? ` × ${multStr} = <strong>${points}</strong>`
             : '';
-        distEl.innerHTML = `${Math.round(d).toLocaleString()} km off — <strong>${basePoints}</strong>/100${multTxt}`;
+        distEl.innerHTML = `${Math.round(d).toLocaleString()} km off: <strong>${basePoints}</strong>/100${multTxt}`;
         let sentiment;
         if (d < 100) sentiment = '🎯 Bullseye!';
         else if (d < 500) sentiment = 'Close, nicely done.';
@@ -3571,9 +3720,10 @@ function drawGlobeDropReveal(loc, me, { showOthers = true } = {}) {
         void distEl.offsetWidth;
         distEl.classList.add('is-pulse');
     }
-    // The asking-phase hint becomes irrelevant once the reveal panel is up.
-    const hint = $('#globe-drop-hint');
-    if (hint) hint.hidden = true;
+    // The hint is an empty contentless paragraph; the reveal panel is now
+    // a globe overlay, so toggling the hint's visibility here would only
+    // shift the globe up mid-reveal. Leave it as-is across the
+    // submit -> reveal window (item 5) so the globe never moves.
 
     // Wikipedia trivia (best-effort; silently skipped on failure). Fetch
     // once per question — the local reveal kicks off the request so it's
@@ -3596,6 +3746,43 @@ function drawGlobeDropReveal(loc, me, { showOthers = true } = {}) {
     }
 }
 
+// Item 13: mobile collapse of the live-standings + rounds-history boards.
+// State lives as a class on #stage-globe-drop (CSS does the actual hiding,
+// and only on <=768px). Desktop ignores the class entirely.
+function applyStandingsCollapsed() {
+    const stage = document.getElementById('stage-globe-drop');
+    if (stage) stage.classList.toggle('standings-collapsed', state.standingsCollapsed);
+    const toggle = document.getElementById('globe-drop-standings-toggle');
+    if (toggle) toggle.setAttribute('aria-expanded', String(!state.standingsCollapsed));
+}
+
+// Reset the collapse to its default (collapsed) once per question. The
+// collapse state only ever changes by user toggle or this per-question
+// reset — submitting no longer auto-expands the board (that pushed the
+// globe down mid-reveal). Instead, while the local player has submitted
+// (reveal live) and the board is still collapsed, a subtle pulse cue
+// nudges the toggle. Desktop is unaffected (CSS no-ops the class there).
+function syncStandingsCollapse(loc) {
+    if (!loc) return;
+    if (state.standingsToggleQId !== loc.id) {
+        state.standingsToggleQId = loc.id;
+        state.standingsCollapsed = true;
+    }
+    const me = state.user
+        ? state.roomPlayers.find((p) => p.uid === state.user.uid)
+        : null;
+    const meSubmitted = !!(me && me.currentAnsweredFor === loc.id);
+    applyStandingsCollapsed();
+    // Pulse the toggle when there's something new to see (I've submitted)
+    // but the board is still collapsed. Clears the moment it's expanded or
+    // the next question resets the collapse.
+    const toggle = document.getElementById('globe-drop-standings-toggle');
+    if (toggle) {
+        const shouldPulse = meSubmitted && state.standingsCollapsed;
+        toggle.classList.toggle('is-pulsing', shouldPulse);
+    }
+}
+
 function renderMiniBoardGlobeDrop(currentQuestionId) {
     const list = $('#mini-board-list-globe-drop');
     list.innerHTML = '';
@@ -3609,15 +3796,23 @@ function renderMiniBoardGlobeDrop(currentQuestionId) {
         ? state.roomPlayers.find((p) => p.uid === state.user.uid)
         : null;
     const meSubmittedCurrent = !!(me && currentQuestionId && me.currentAnsweredFor === currentQuestionId);
+    // Totals are recomputed from distance (see globeDropDisplayScore) so the
+    // live standings use one formula for everyone and stay consistent with the
+    // "Rounds so far" board + the recap, instead of trusting each client's
+    // stored p.score.
     const adjustedScore = (p) => {
-        if (!currentQuestionId) return p.score || 0;
+        const fullTotal = globeDropPlayerTotal(p);
+        if (!currentQuestionId) return fullTotal;
         const isMe = state.user && p.uid === state.user.uid;
-        if (isMe || meSubmittedCurrent) return p.score || 0;
-        // Strip the current round's points from their displayed total.
+        if (isMe || meSubmittedCurrent) return fullTotal;
+        // Strip the current round's (recomputed) points so we don't reveal an
+        // opponent's result before the local player has submitted.
         const answers = Array.isArray(p.answers) ? p.answers : [];
         const rec = answers.find((a) => a && a.locationId === currentQuestionId);
-        const pts = rec && typeof rec.points === 'number' ? rec.points : 0;
-        return (p.score || 0) - pts;
+        if (!rec) return fullTotal;
+        const pool = (state.roomData && Array.isArray(state.roomData.questions)) ? state.roomData.questions : [];
+        const loc = pool.find((q) => q && q.id === currentQuestionId);
+        return fullTotal - globeDropDisplayScore(rec, loc).points;
     };
     // Carry each player's globeDropStreak from the Firestore doc so the
     // streak chip renders correctly in the mini-board.
@@ -3682,10 +3877,46 @@ function renderMiniBoardGlobeDrop(currentQuestionId) {
  * guess appends to) — same source as the end-of-game recap, so the
  * numbers are guaranteed to match.
  */
+// --- Canonical Globe Drop scoring for DISPLAY ----------------------------
+// Round scores are computed client-side at submit time and stored per player,
+// so a stale/old client and a current client can store DIFFERENT points for
+// the SAME distance (an older build used a steeper decay and no base floor).
+// That made a closer guess look worse than a farther one across players. To
+// guarantee one formula for everyone, the standings + recap RECOMPUTE each
+// player's score from the stored great-circle distance and the location's
+// room-canonical multiplier, using the single current scoreGuess. Records with
+// no usable distance (legacy data, or a timed-out no-guess) keep their stored
+// values.
+function globeDropDisplayScore(ans, loc) {
+    const mult = (loc && typeof loc.multiplier === 'number' && loc.multiplier > 0) ? loc.multiplier : 1;
+    const d = ans ? Number(ans.distanceKm) : NaN;
+    if (ans && Number.isFinite(d)) {
+        const r = GlobeDropScoring.scoreGuess({ distanceKm: d, multiplier: mult });
+        return { basePoints: r.basePoints, points: r.points };
+    }
+    const base = ans && typeof ans.basePoints === 'number' ? Math.max(0, Math.round(ans.basePoints)) : 0;
+    const points = ans && typeof ans.points === 'number' ? Math.max(0, Math.round(ans.points)) : 0;
+    return { basePoints: base, points };
+}
+
+// Sum a player's Globe Drop total the SAME recomputed way, so the podium /
+// standings agree with the per-round recap regardless of client version skew.
+function globeDropPlayerTotal(player) {
+    const answers = player && Array.isArray(player.answers) ? player.answers : [];
+    const pool = (state.roomData && Array.isArray(state.roomData.questions)) ? state.roomData.questions : [];
+    let total = 0;
+    for (const ans of answers) {
+        if (!ans) continue;
+        const loc = pool.find((q) => q && q.id === ans.locationId);
+        total += globeDropDisplayScore(ans, loc).points;
+    }
+    return total;
+}
+
 function renderRoundsHistoryBoard() {
     const board = $('#rounds-history-board');
-    const list = $('#rounds-history-list');
-    if (!board || !list) return;
+    const scoreboard = $('#rounds-history-scoreboard');
+    if (!board || !scoreboard) return;
 
     const room = state.roomData;
     if (!room || !Array.isArray(room.questions)) { board.hidden = true; return; }
@@ -3703,66 +3934,69 @@ function renderRoundsHistoryBoard() {
         : null;
     const meSubmittedCurrent = !!(me && curLoc && me.currentAnsweredFor === curLoc.id);
 
-    list.innerHTML = '';
-    for (let r = 0; r < idx; r++) {
-        const loc = room.questions[r];
-        if (!loc || !loc.id) continue;
-        const isCurrentRound = curLoc && loc.id === curLoc.id;
-        const maskOthers = isCurrentRound && !meSubmittedCurrent;
-        // For each player, find the answer record matching this round's location.
-        // Chip shows the BASE (0-100) score so the cap stays visible — the
-        // round multiplier is rendered once next to the R# label and the
-        // final score lives in the recap.
-        const perPlayer = state.roomPlayers.map((p) => {
-            const answers = Array.isArray(p.answers) ? p.answers : [];
+    const fmt = (n) => n.toFixed(2).replace(/0+$/, '').replace(/\.$/, '');
+
+    // One compact row per player. Each pill carries the full round breakdown:
+    //   R#: base × multiplier   (and "(final)" when the multiplier > 1)
+    // so no separate per-location rows are needed. base × multiplier = final
+    // exactly (no hidden bonus), and the pills' finals sum to the Total.
+    // Opponents' current-round cell stays masked (and is excluded from their
+    // shown Total) until the local player has submitted, so the running total
+    // never leaks a result.
+    scoreboard.innerHTML = '';
+    const players = state.roomPlayers.slice().sort((a, b) => (b.score || 0) - (a.score || 0));
+    for (const p of players) {
+        const isMe = !!(state.user && p.uid === state.user.uid);
+        const answers = Array.isArray(p.answers) ? p.answers : [];
+        let total = 0;
+        const pills = [];
+        for (let r = 0; r < idx; r++) {
+            const loc = room.questions[r];
+            if (!loc || !loc.id) continue;
+            const isCurrentRound = curLoc && loc.id === curLoc.id;
+            const maskOthers = isCurrentRound && !meSubmittedCurrent && !isMe;
             const rec = answers.find((a) => a && a.locationId === loc.id);
-            let basePts = null;
-            if (rec) {
-                if (typeof rec.basePoints === 'number') basePts = Math.max(0, Math.round(rec.basePoints));
-                else if (typeof rec.points === 'number') {
-                    const m = typeof rec.multiplier === 'number' && rec.multiplier > 0 ? rec.multiplier : 1;
-                    basePts = Math.max(0, Math.round(rec.points / m));
-                } else basePts = 0;
+            const mult = (typeof loc.multiplier === 'number' && loc.multiplier > 0) ? loc.multiplier : 1;
+            let valHtml;
+            let zero = false;
+            let masked = false;
+            if (maskOthers) {
+                valHtml = '🔒';
+                masked = true;
+            } else if (!rec) {
+                valHtml = '—';
+            } else if (rec.gaveUp) {
+                valHtml = 'X';
+                zero = true;
+            } else {
+                // Recompute from distance so every player's score uses the
+                // same formula (see globeDropDisplayScore) instead of whatever
+                // their client happened to store.
+                const recomputed = globeDropDisplayScore(rec, loc);
+                const base = recomputed.basePoints;
+                const fin = recomputed.points;
+                total += fin;
+                zero = fin === 0;
+                // "base×mult" always; append " (final)" only when mult > 1.
+                valHtml = `${base}×${escapeHtml(fmt(mult))}`
+                    + (mult !== 1 ? ` <strong>(${fin})</strong>` : '');
             }
-            return {
-                uid: p.uid,
-                displayName: p.displayName,
-                roundPoints: basePts,
-                gaveUp: !!(rec && rec.gaveUp)
-            };
-        });
-        perPlayer.sort((a, b) => {
-            const av = a.roundPoints == null ? -1 : a.roundPoints;
-            const bv = b.roundPoints == null ? -1 : b.roundPoints;
-            return bv - av;
-        });
-        const li = document.createElement('li');
-        li.className = 'rounds-history-row';
-        // Round multiplier: single value baked onto the location at
-        // room-creation time via the 1.0 → 3.0 ladder. Same number
-        // applies to every chip in the round, so we render it once
-        // next to the R# label.
-        const roundMult = (typeof loc.multiplier === 'number') ? loc.multiplier : 1;
-        const fmt = (n) => n.toFixed(2).replace(/0+$/, '').replace(/\.$/, '');
-        const multHtml = ` <em class="rounds-history-mult">×${escapeHtml(fmt(roundMult))}</em>`;
-        const chips = perPlayer.map((pp) => {
-            const isMe = state.user && pp.uid === state.user.uid;
-            const cls = 'rounds-history-chip'
-                + (isMe ? ' is-me' : '')
-                + ((pp.roundPoints || 0) === 0 ? ' is-zero' : '');
-            let val;
-            if (maskOthers && !isMe) val = '🔒';
-            else if (pp.roundPoints == null) val = '—';
-            else if (pp.gaveUp) val = 'X';
-            else val = String(pp.roundPoints);
-            return `<span class="${cls}"><span>${escapeHtml(pp.displayName)}</span><strong>${escapeHtml(val)}</strong></span>`;
-        }).join('');
-        li.innerHTML =
-            `<span class="rounds-history-label">R${r + 1}${multHtml}</span>` +
-            `<span class="rounds-history-loc">${escapeHtml(loc.name || '')}</span>` +
-            `<span class="rounds-history-scores">${chips}</span>`;
-        list.appendChild(li);
+            const cls = 'rh-score-pill'
+                + (zero ? ' is-zero' : '')
+                + (masked ? ' is-masked' : '');
+            pills.push(
+                `<span class="${cls}"><span class="rh-score-pill-r">R${r + 1}:</span> ${valHtml}</span>`
+            );
+        }
+        const row = document.createElement('div');
+        row.className = 'rh-score-row' + (isMe ? ' is-me' : '');
+        row.innerHTML =
+            `<span class="rh-score-name">${escapeHtml(p.displayName || 'Player')}</span>`
+            + `<span class="rh-score-pills">${pills.join('')}</span>`
+            + `<span class="rh-score-total">Total: <strong>${total}</strong></span>`;
+        scoreboard.appendChild(row);
     }
+
     board.hidden = idx === 0;
 }
 
@@ -3820,16 +4054,13 @@ async function submitGuess() {
             const cur = snap.data();
             if (cur.currentAnsweredFor === loc.id) return; // already submitted
 
-            // Globe Drop streak: consecutive bullseyes (basePoints >= 98) add a
-            // multiplier on top of the distance/continent score.
+            // Bullseye streak COUNTER only (drives the 🎯 heater chip). It no
+            // longer adds any points: the round score is exactly basePoints ×
+            // multiplier (computed in scoreGuess), with no hidden bonus, so the
+            // mid-game "Rounds so far" total and the final recap always agree.
             const prevStreak = cur.globeDropStreak || 0;
             const isBullseye = basePoints >= 98;
             const newStreak = isBullseye ? prevStreak + 1 : 0;
-            const cappedStreak = Math.min(newStreak, Config.GLOBE_DROP_STREAK_MULTIPLIER_CAP);
-            const streakMult = 1 + cappedStreak * Config.GLOBE_DROP_STREAK_MULTIPLIER_STEP;
-            // Only apply the streak bonus when there is at least one prior
-            // bullseye in the run (cappedStreak >= 2 means the second+ in a row).
-            const finalPoints = cappedStreak >= 2 ? Math.round(points * streakMult) : points;
 
             // Append a per-location record so the recap can show actual
             // vs guess + distance + points for every play.
@@ -3845,13 +4076,13 @@ async function submitGuess() {
                 distanceKm: distance,
                 basePoints,
                 multiplier: typeof loc.multiplier === 'number' ? loc.multiplier : 1,
-                points: finalPoints
+                points
             };
             tx.update(pref, {
                 currentGuess: guess,
                 currentAnswerAt: serverTimestamp(),
                 currentAnsweredFor: loc.id,
-                score: (cur.score || 0) + finalPoints,
+                score: (cur.score || 0) + points,
                 globeDropStreak: newStreak,
                 answers: [...(Array.isArray(cur.answers) ? cur.answers : []), guessRecord],
                 lastSeen: serverTimestamp()
@@ -4463,10 +4694,14 @@ async function renderEndStage(isHost) {
 
     if (state.timerRaf) { cancelAnimationFrame(state.timerRaf); state.timerRaf = null; }
 
+    // Globe Drop: rank by the recomputed-from-distance total so the podium /
+    // board / winner match the per-round recap and never inherit a stale
+    // client's score (see globeDropDisplayScore). Trivia keeps p.score.
+    const isGlobeDropEnd = state.roomData && state.roomData.gameType === 'globe-drop';
     const ranked = Scoring.rankPlayers(state.roomPlayers.map((p) => ({
         uid: p.uid,
         displayName: p.displayName,
-        score: p.score || 0,
+        score: isGlobeDropEnd ? globeDropPlayerTotal(p) : (p.score || 0),
         streak: p.streak || 0
     })));
 
@@ -4487,9 +4722,19 @@ async function renderEndStage(isHost) {
             ? state.roomPlayers.find((p) => p.uid === state.user.uid)
             : null;
         const answers = (meEntry && Array.isArray(meEntry.answers)) ? meEntry.answers : [];
-        const scored = answers.filter((a) => a && typeof a.points === 'number');
-        const finalScore = meEntry ? (meEntry.score || 0) : 0;
-        const bestRound = scored.reduce((m, a) => Math.max(m, a.points || 0), 0);
+        // Recompute final + best-round from distance for Globe Drop so the
+        // solo hero matches the recap; Trivia keeps the stored values.
+        const pool = (state.roomData && Array.isArray(state.roomData.questions)) ? state.roomData.questions : [];
+        const finalScore = isGlobeDropEnd
+            ? globeDropPlayerTotal(meEntry)
+            : (meEntry ? (meEntry.score || 0) : 0);
+        const bestRound = answers.reduce((m, a) => {
+            if (!a) return m;
+            const pts = isGlobeDropEnd
+                ? globeDropDisplayScore(a, pool.find((q) => q && q.id === a.locationId)).points
+                : (typeof a.points === 'number' ? a.points : 0);
+            return Math.max(m, pts);
+        }, 0);
         const distances = answers.map((a) => a && typeof a.distanceKm === 'number' ? a.distanceKm : null).filter((d) => d != null);
         const avgDist = distances.length
             ? Math.round(distances.reduce((s, d) => s + d, 0) / distances.length)
@@ -4556,6 +4801,22 @@ async function renderEndStage(isHost) {
         setText($('#end-summary'), `${winner.displayName} took it home with ${winner.score} points.`);
     } else {
         setText($('#end-summary'), 'No scores recorded.');
+    }
+
+    // Round type label (Globe Drop only) — shows which pack this game used
+    // (World capitals, Countries, Major cities, ...). Hidden for Trivia,
+    // which has no round type.
+    const roundTypeEl = $('#end-round-type');
+    if (roundTypeEl) {
+        const isGlobeDrop = state.roomData && state.roomData.gameType === 'globe-drop';
+        if (isGlobeDrop) {
+            const rt = (state.roomData && state.roomData.roundType) || 'capitals';
+            const meta = GlobeDropLocations.ROUND_TYPES[rt] || GlobeDropLocations.ROUND_TYPES.capitals;
+            roundTypeEl.innerHTML = `<span aria-hidden="true">🌍</span> ${escapeHtml(meta.label || rt)}`;
+            roundTypeEl.hidden = false;
+        } else {
+            roundTypeEl.hidden = true;
+        }
     }
 
     // Share result button — visible on the end stage for all game types.
@@ -4698,11 +4959,12 @@ function buildResultShareText(gameTypeLabel, rankedPlayers, dateStr) {
 async function shareResultCard() {
     if (!state.roomData || !state.roomPlayers) return;
 
-    const gameTypeLabel = state.roomData.gameType === 'globe-drop' ? 'Globe Drop' : 'Trivia';
+    const isGlobeDropShare = state.roomData.gameType === 'globe-drop';
+    const gameTypeLabel = isGlobeDropShare ? 'Globe Drop' : 'Trivia';
     const dateStr = new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
     const ranked = Scoring.rankPlayers(state.roomPlayers.map((p) => ({
         displayName: p.displayName,
-        score: p.score || 0,
+        score: isGlobeDropShare ? globeDropPlayerTotal(p) : (p.score || 0),
         streak: p.streak || 0,
         uid: p.uid
     })));
@@ -4950,7 +5212,7 @@ function renderEndRecap() {
     const rankedAll = Scoring.rankPlayers(players.map((p) => ({
         uid: p.uid,
         displayName: p.displayName,
-        score: p.score || 0,
+        score: isGlobeDrop ? globeDropPlayerTotal(p) : (p.score || 0),
         streak: p.streak || 0
     })));
     const columns = [];
@@ -5056,6 +5318,13 @@ function renderEndRecap() {
         const colResults = columns.map((col) => {
             const ans = (answersByUid[col.uid] || [])
                 .find((a) => (a.locationId || a.questionId) === q.id);
+            // Globe Drop: recompute from distance + the location's canonical
+            // multiplier so both players use the same formula. Trivia keeps
+            // its stored points (not distance-based).
+            if (isGlobeDrop) {
+                const s = ans ? globeDropDisplayScore(ans, q) : { basePoints: 0, points: 0 };
+                return { col, ans, points: s.points, basePoints: s.basePoints };
+            }
             const points = ans ? (Number(ans.points) || 0) : 0;
             return { col, ans, points };
         });
@@ -5064,10 +5333,11 @@ function renderEndRecap() {
         const isTie = winnersOfRow.length > 1;
 
         let scoreCells = '';
-        colResults.forEach(({ col, ans, points }) => {
+        colResults.forEach(({ col, ans, points, basePoints }) => {
             const isMe = state.user && col.uid === state.user.uid;
             const isWinner = !isTie && points === bestPoints && points > 0;
             let cls = 'recap-score-cell';
+            if (isGlobeDrop) cls += ' recap-gd';
             if (points === 0) cls += ' is-zero';
             if (isMe) cls += ' is-mine';
             if (isWinner) cls += ' is-winner';
@@ -5078,26 +5348,31 @@ function renderEndRecap() {
             }
             if (isGlobeDrop) {
                 // Show base score (0-100) prominently, then the
-                // multiplied final + distance meta. The user-facing
-                // rule is "round score is 0-100, multiplier is applied
-                // afterwards" — so the 0-100 is the primary number.
-                const base = ans && typeof ans.basePoints === 'number'
-                    ? Math.max(0, Math.round(ans.basePoints))
-                    : (points > 0 && typeof q.multiplier === 'number' && q.multiplier > 0
-                        ? Math.round(points / q.multiplier)
-                        : points);
-                // Surface the multiplied final when it differs from base —
-                // happens whenever multiplier > 1 OR the MIN_POINTS floor
-                // kicked in for a really-far guess (e.g. base 0 → final 5).
-                // Without this, the floor was silently invisible.
-                const showFinal = points !== base;
-                const finalTxt = showFinal ? `→ +${points}` : '';
+                // "× multiplier = total" meta + distance. base + points are
+                // recomputed from distance (see colResults) so they are
+                // consistent across players and base × multiplier = total.
+                const base = typeof basePoints === 'number' ? basePoints : 0;
+                const mult = (typeof q.multiplier === 'number' && q.multiplier > 0) ? q.multiplier : 1;
+                const multStr = mult.toFixed(2).replace(/0+$/, '').replace(/\.$/, '');
+                const finalTxt = mult !== 1 ? `× ${multStr} = ${points}` : '';
                 const distTxt = (ans && ans.distanceKm != null)
                     ? `${Math.round(Number(ans.distanceKm) || 0).toLocaleString()} km`
                     : '';
                 const metaParts = [finalTxt, distTxt].filter(Boolean).join(' · ');
                 const metaHtml = metaParts ? `<span class="recap-score-meta">${escapeHtml(metaParts)}</span>` : '';
-                scoreCells += `<td class="${cls}"><span class="recap-base">${base}</span>${metaHtml}</td>`;
+                // Green FILL intensity scales with the BASE score (0-100), so the
+                // color tracks performance CONSISTENTLY across rows: 99 ≈ max,
+                // 80 clearly weaker, a 1-point gap ~invisible. The round winner
+                // is shown separately by a subtle left-accent marker
+                // (.recap-gd.is-winner in CSS), NOT a brighter fill — so a
+                // 1-point win never looks like a blowout. Only the answered
+                // cells get tinted; a no-guess stays neutral via is-zero.
+                const clampedBase = Math.max(0, Math.min(100, base));
+                const alpha = base > 0 ? (0.05 + 0.30 * clampedBase / 100) : 0;
+                const styleAttr = alpha > 0
+                    ? ` style="background-color: rgba(16, 185, 129, ${alpha.toFixed(3)})"`
+                    : '';
+                scoreCells += `<td class="${cls}"${styleAttr}><span class="recap-base">${base}</span>${metaHtml}</td>`;
             } else {
                 const pickClass = ans && ans.correct ? 'is-correct' : 'is-wrong';
                 const pickHtml = ans
@@ -5138,10 +5413,16 @@ function renderEndRecap() {
 
 function computeGlobeDropAggregates(columns, answersByUid) {
     const cards = [];
+    const pool = (state.roomData && Array.isArray(state.roomData.questions)) ? state.roomData.questions : [];
     columns.forEach((col) => {
         const ans = answersByUid[col.uid] || [];
         if (!ans.length) return;
-        const totalPts = ans.reduce((s, a) => s + (Number(a.points) || 0), 0);
+        // Recompute from distance so the score tile matches the recap and is
+        // consistent across players (see globeDropDisplayScore).
+        const totalPts = ans.reduce((s, a) => {
+            const loc = pool.find((q) => q && q.id === (a && a.locationId));
+            return s + globeDropDisplayScore(a, loc).points;
+        }, 0);
         const totalDist = ans.reduce((s, a) => s + (Number(a.distanceKm) || 0), 0);
         const avgDist = Math.round(totalDist / ans.length);
         const isMine = state.user && col.uid === state.user.uid;
@@ -5235,11 +5516,12 @@ function renderGlobeDropComparisonTable(host) {
 
     // Order: me first, then opponents by total points desc (so the
     // strongest opponent reads next to me). Cap at 4 columns total
-    // for table width sanity on phones.
+    // for table width sanity on phones. Globe Drop ranks by the
+    // recomputed-from-distance total for cross-player consistency.
     const ranked = Scoring.rankPlayers(state.roomPlayers.map((p) => ({
         uid: p.uid,
         displayName: p.displayName,
-        score: p.score || 0,
+        score: globeDropPlayerTotal(p),
         streak: p.streak || 0
     })));
     const cols = [];
@@ -5709,11 +5991,16 @@ async function playAgain() {
             // Re-fetch fresh locations using the same round type the room
             // was created with — host can't switch round types mid-replay,
             // that's a fresh-room move.
-            const locations = await GlobeDropLocations.fetchLocations(
+            const fetched = await GlobeDropLocations.fetchLocations(
                 state.roomData.roundType || 'capitals',
                 state.roomData.totalQuestions,
                 shuffle
             );
+            // Same difficulty ramp as createRoom / settings-change: stamp
+            // multipliers and sort ascending so a rematch also plays easy
+            // to hard. Without this, rematches got the variety picker's
+            // lap order (the ladder restarts mid-game: 1, 1.5, 2, 3, 1).
+            const locations = applyRoundMultipliers(fetched, state.roomData.roundType || 'capitals');
             // One-click rematch: write 'playing' directly with the first
             // location armed, so the host doesn't have to click Start
             // again. The intermediate 'lobby' status used to flash here;

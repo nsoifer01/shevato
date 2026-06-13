@@ -14,6 +14,8 @@ const {
     roundMultiplierForIndex,
     assignRoundMultipliers,
     quantizeToLadder,
+    cityPopulationObscurity,
+    majorCitiesContinentMultiplier,
     locationDifficultyScore,
     assignDifficultyMultipliers
 } = require('../js/globe-drop-scoring.js');
@@ -110,6 +112,113 @@ test('scoreGuess: far-side-of-the-world guess lands at the score floor (never 0)
 test('scoreGuess: negative / missing distance treated as 0', () => {
     assert.equal(scoreGuess({ distanceKm: -100, region: 'Europe' }).points, Config.GLOBE_DROP_BASE_POINTS);
     assert.equal(scoreGuess({ distanceKm: null, region: 'Europe' }).points, Config.GLOBE_DROP_BASE_POINTS);
+});
+
+// --- distance -> points curve audit (Item 4) --------------------------
+
+test('scoreGuess: points are non-increasing as distance grows (fixed multiplier)', () => {
+    // Closer must always score >= farther for a fixed multiplier.
+    const sweep = [0, 100, 500, 1000, 1500, 3000, 5000, 10000, 20000];
+    for (const mult of [1.0, 2.0, 3.0]) {
+        let prev = Infinity;
+        for (const d of sweep) {
+            const p = scoreGuess({ distanceKm: d, multiplier: mult }).points;
+            assert.ok(p <= prev, `mult=${mult} d=${d} points=${p} should be <= prev ${prev}`);
+            prev = p;
+        }
+    }
+});
+
+// Mirror of the production base curve (exp + linear-to-antipode blend), read
+// from config so these tests track the tunables instead of hard-coding values.
+function expectedBase(d) {
+    const max = Config.GLOBE_DROP_BASE_POINTS;
+    const floor = Config.GLOBE_DROP_MIN_BASE_POINTS;
+    const scale = Config.GLOBE_DROP_DISTANCE_SCALE_KM;
+    const w = Config.GLOBE_DROP_DISTANCE_EXP_WEIGHT;
+    const D = Config.GLOBE_DROP_MAX_DISTANCE_KM;
+    const shape = w * Math.exp(-d / scale) + (1 - w) * Math.max(0, 1 - d / D);
+    return Math.round(floor + (max - floor) * shape);
+}
+
+test('scoreGuess: documented curve anchors (0 -> 100, d=scale matches the blend, far -> floor)', () => {
+    const base = Config.GLOBE_DROP_BASE_POINTS;
+    const scale = Config.GLOBE_DROP_DISTANCE_SCALE_KM;
+    // 0 km -> full base.
+    assert.equal(scoreGuess({ distanceKm: 0, multiplier: 1.0 }).points, base);
+    assert.equal(scoreGuess({ distanceKm: 0, multiplier: 1.0 }).basePoints, base);
+    // d=scale matches the blended curve exactly.
+    assert.equal(scoreGuess({ distanceKm: scale, multiplier: 1.0 }).basePoints, expectedBase(scale));
+});
+
+test('scoreGuess: base matches the exp+linear blend across the whole range', () => {
+    for (const d of [0, 500, 1000, 2500, 5000, 8000, 12000, 16000, 20015]) {
+        assert.equal(scoreGuess({ distanceKm: d, multiplier: 1.0 }).basePoints, expectedBase(d),
+            `base at ${d} km should match the blended curve`);
+    }
+});
+
+test('scoreGuess: the tail stays distance-sensitive (no near-constant floor plateau)', () => {
+    // The reported flaw: once guesses got bad, the curve collapsed toward the
+    // floor so 10k / 14k / 18k all scored ~the same. The linear ramp keeps a
+    // real slope, so they must differ meaningfully.
+    const b10 = scoreGuess({ distanceKm: 10000, multiplier: 1.0 }).basePoints;
+    const b14 = scoreGuess({ distanceKm: 14000, multiplier: 1.0 }).basePoints;
+    const b18 = scoreGuess({ distanceKm: 18000, multiplier: 1.0 }).basePoints;
+    assert.ok(b10 > b14 && b14 > b18, `10k/14k/18k must strictly decrease, got ${b10}/${b14}/${b18}`);
+    assert.ok(b10 - b14 >= 4, `10k->14k should drop >= 4 base points, got ${b10 - b14}`);
+    assert.ok(b14 - b18 >= 4, `14k->18k should drop >= 4 base points, got ${b14 - b18}`);
+});
+
+test('scoreGuess: a 3,000-5,000 km-closer poor guess earns noticeably more (real reports)', () => {
+    // Round 4 (Zhoukou x2): player 11874 km vs you 17188 km (5,314 km closer).
+    const r4closer = scoreGuess({ distanceKm: 11874, multiplier: 1.0 }).basePoints;
+    const r4far    = scoreGuess({ distanceKm: 17188, multiplier: 1.0 }).basePoints;
+    assert.ok(r4closer - r4far >= 5, `R4: 5,314 km closer should be >= 5 base pts more, got ${r4closer - r4far}`);
+    // Round 5 (Kinshasa x2.5): player 10701 km vs you 13926 km (3,225 km closer).
+    const r5closer = scoreGuess({ distanceKm: 10701, multiplier: 1.0 }).basePoints;
+    const r5far    = scoreGuess({ distanceKm: 13926, multiplier: 1.0 }).basePoints;
+    assert.ok(r5closer - r5far >= 3, `R5: 3,225 km closer should be >= 3 base pts more, got ${r5closer - r5far}`);
+});
+
+test('scoreGuess: far distance floors the BASE (20000 km, x1 => MIN_BASE_POINTS)', () => {
+    // New model: the floor is on the 0-100 base, not the total. At x1 the
+    // base IS the total, so a far guess returns exactly MIN_BASE_POINTS.
+    const r = scoreGuess({ distanceKm: 20000, multiplier: 1.0 });
+    assert.equal(r.basePoints, Config.GLOBE_DROP_MIN_BASE_POINTS);
+    assert.equal(r.points, Config.GLOBE_DROP_MIN_BASE_POINTS);
+});
+
+test('scoreGuess: identity basePoints x multiplier = points holds exactly', () => {
+    // The core guarantee the UI and recap both rely on: the round total is
+    // always round(basePoints x multiplier) with no hidden floor/bonus.
+    const dists = [0, 250, 1000, 2500, 6000, 20015];
+    for (const d of dists) {
+        for (const mult of [1.0, 1.5, 2.0, 2.5, 3.0]) {
+            const r = scoreGuess({ distanceKm: d, multiplier: mult });
+            assert.equal(r.points, Math.round(r.basePoints * mult),
+                `d=${d} mult=${mult}: points ${r.points} != round(base ${r.basePoints} x ${mult})`);
+        }
+    }
+});
+
+test('scoreGuess: base never drops below MIN_BASE_POINTS, so far guesses still score', () => {
+    // Worst-possible guess (antipode): base floors at MIN_BASE_POINTS and the
+    // total is that floor x the round multiplier (e.g. 10 x 3 = 30), never 0.
+    const floor = Config.GLOBE_DROP_MIN_BASE_POINTS;
+    for (const mult of [1.0, 1.5, 2.0, 2.5, 3.0]) {
+        const r = scoreGuess({ distanceKm: 20015, multiplier: mult });
+        assert.equal(r.basePoints, floor, `mult=${mult} antipode base should floor at ${floor}`);
+        assert.equal(r.points, Math.round(floor * mult), `mult=${mult} antipode total should be floor x mult`);
+        assert.notEqual(r.points, 0, 'antipode must never return 0');
+    }
+});
+
+test('scoreGuess: no floored flag (the floor is on the base, not the total)', () => {
+    // Regression guard: the old floored flag and the floor-on-total path are
+    // gone; the result shape carries only the clean fields.
+    const r = scoreGuess({ distanceKm: 20015, multiplier: 3.0 });
+    assert.equal(r.floored, undefined, 'floored flag must no longer exist');
 });
 
 // --- difficultySettings ------------------------------------------------
@@ -490,6 +599,146 @@ test('assignDifficultyMultipliers: empty / non-array => []', () => {
     assert.deepEqual(assignDifficultyMultipliers([]), []);
     assert.deepEqual(assignDifficultyMultipliers(null), []);
     assert.deepEqual(assignDifficultyMultipliers(undefined), []);
+});
+
+// --- major-cities continent multipliers ------------------------------
+
+test('majorCitiesContinentMultiplier: each continent maps to its ladder rung', () => {
+    assert.equal(majorCitiesContinentMultiplier('Europe'), 1.0);
+    assert.equal(majorCitiesContinentMultiplier('Americas'), 1.5);
+    assert.equal(majorCitiesContinentMultiplier('Asia'), 2.0);
+    assert.equal(majorCitiesContinentMultiplier('Africa'), 2.5);
+    assert.equal(majorCitiesContinentMultiplier('Oceania'), 3.0);
+});
+
+test('majorCitiesContinentMultiplier: case-insensitive; unknown/missing => 1.0', () => {
+    assert.equal(majorCitiesContinentMultiplier('africa'), 2.5);
+    assert.equal(majorCitiesContinentMultiplier('  Oceania '), 3.0);
+    assert.equal(majorCitiesContinentMultiplier('Antarctic'), 1.0);
+    assert.equal(majorCitiesContinentMultiplier(''), 1.0);
+    assert.equal(majorCitiesContinentMultiplier(undefined), 1.0);
+    assert.equal(majorCitiesContinentMultiplier('Atlantis'), 1.0);
+});
+
+test("assignDifficultyMultipliers: roundType 'major-cities' uses continent, not population", () => {
+    const cities = [
+        { id: 'lon', region: 'Europe',   population: 9_000_000 },  // huge but easy continent
+        { id: 'lag', region: 'Africa',   population: 15_000_000 }, // huge but hard continent
+        { id: 'syd', region: 'Oceania',  population: 5_000_000 },
+        { id: 'nyc', region: 'Americas', population: 8_000_000 },
+        { id: 'tok', region: 'Asia',     population: 14_000_000 }
+    ];
+    const out = assignDifficultyMultipliers(cities, 'major-cities');
+    const byId = Object.fromEntries(out.map((l) => [l.id, l.multiplier]));
+    assert.equal(byId.lon, 1.0, 'Europe -> 1.0');
+    assert.equal(byId.nyc, 1.5, 'Americas -> 1.5');
+    assert.equal(byId.tok, 2.0, 'Asia -> 2.0');
+    assert.equal(byId.lag, 2.5, 'Africa -> 2.5 (continent beats its 15M population)');
+    assert.equal(byId.syd, 3.0, 'Oceania -> 3.0');
+});
+
+test('assignDifficultyMultipliers: non-major-cities rounds ignore the continent table', () => {
+    // Same cities, but as a 'top-cities-by-country' round -> per-location
+    // (population) model, so a huge city is NOT forced to its continent rung.
+    const cities = [
+        { id: 'lag', region: 'Africa', population: 15_000_000 }
+    ];
+    const major = assignDifficultyMultipliers(cities, 'major-cities')[0].multiplier;
+    const top   = assignDifficultyMultipliers(cities, 'top-cities-by-country')[0].multiplier;
+    const none  = assignDifficultyMultipliers(cities)[0].multiplier;
+    assert.equal(major, 2.5, 'major-cities pins Africa to 2.5');
+    assert.equal(top, none, 'other round types use the difficulty model (no roundType == default)');
+    assert.notEqual(top, 2.5, 'a 15M African megacity is NOT 2.5 under the population model');
+});
+
+test('assignDifficultyMultipliers: major-cities stamps are valid ladder values', () => {
+    const ladder = [1.0, 1.5, 2.0, 2.5, 3.0];
+    const cities = [
+        { id: 'a', region: 'Europe', population: 3_000_000 },
+        { id: 'b', region: 'Unknown', population: 2_500_000 },  // -> 1.0 fallback
+        { id: 'c', region: 'Africa', population: 4_000_000 }
+    ];
+    const out = assignDifficultyMultipliers(cities, 'major-cities');
+    for (const l of out) {
+        assert.ok(ladder.includes(l.multiplier), `multiplier ${l.multiplier} not on the ladder`);
+    }
+    assert.equal(out[1].multiplier, 1.0, 'Unknown region falls back to 1.0');
+});
+
+// --- cityPopulationObscurity (city-target rounds) ---------------------
+
+test('cityPopulationObscurity: each tier boundary returns its weight', () => {
+    assert.equal(cityPopulationObscurity(8_000_000), 0.0);
+    assert.equal(cityPopulationObscurity(4_000_000), 0.3);
+    assert.equal(cityPopulationObscurity(2_000_000), 0.6);
+    assert.equal(cityPopulationObscurity(1_000_000), 0.9);
+    assert.equal(cityPopulationObscurity(500_000), 1.2);
+    assert.equal(cityPopulationObscurity(250_000), 1.5);
+    assert.equal(cityPopulationObscurity(100_000), 1.8);
+});
+
+test('cityPopulationObscurity: missing / invalid => 1.8 (hardest)', () => {
+    assert.equal(cityPopulationObscurity(undefined), 1.8);
+    assert.equal(cityPopulationObscurity(null), 1.8);
+    assert.equal(cityPopulationObscurity(0), 1.8);
+    assert.equal(cityPopulationObscurity(-1), 1.8);
+    assert.equal(cityPopulationObscurity(NaN), 1.8);
+});
+
+test('locationDifficultyScore: small city is harder than a megacity', () => {
+    const smallCity = { population: 300_000, region: 'Oceania', subregion: '', independent: true };
+    const megaCity  = { population: 9_000_000, region: 'Asia' };
+    assert.ok(
+        locationDifficultyScore(smallCity) > locationDifficultyScore(megaCity),
+        'small city should outrank megacity on difficulty'
+    );
+});
+
+test('locationDifficultyScore: city pop drives score, not country size (no auto-x1)', () => {
+    // 300k top-city in a huge famous country: country pop/area would have
+    // collapsed this to ~x1, but the city-pop path keeps it hard.
+    const topCity = { region: 'Americas', countryPopulation: 340_000_000, population: 300_000 };
+    assert.ok(
+        quantizeToLadder(locationDifficultyScore(topCity)) >= 1.5,
+        'small top-city in a big country should still be >= 1.5'
+    );
+});
+
+test('assignDifficultyMultipliers: city-target pool spans multiple tiers', () => {
+    const cities = [
+        { id: 'mega',  region: 'Asia',     population: 9_000_000 },
+        { id: 'mid',   region: 'Americas', population: 3_400_000 },
+        { id: 'small', region: 'Oceania',  population: 300_000, independent: true }
+    ];
+    const out = assignDifficultyMultipliers(cities);
+    const mults = out.map((l) => l.multiplier);
+    assert.ok(new Set(mults).size > 1, `expected varied tiers, got ${JSON.stringify(mults)}`);
+    assert.ok(mults[2] > mults[0], 'small city should outrank megacity');
+});
+
+test('locationDifficultyScore: capitals path unchanged (no population field)', () => {
+    // Tiny country, no city population => country path => very hard.
+    const tinyCountry = { countryPopulation: 11_000, countryAreaSqKm: 26, region: 'Oceania' };
+    assert.ok(
+        quantizeToLadder(locationDifficultyScore(tinyCountry)) >= 2.5,
+        'tiny micro-state capital should still be >= 2.5'
+    );
+    // Big country, no city population => country path => easy.
+    const bigCountry = { countryPopulation: 120_000_000, region: 'Asia', countryAreaSqKm: 380_000 };
+    assert.equal(
+        quantizeToLadder(locationDifficultyScore(bigCountry)), 1.0,
+        'big-country capital should still be ~x1'
+    );
+});
+
+test('locationDifficultyScore: landmark with no pop/countryPop uses country path', () => {
+    // Pre-enrichment landmark: no signals at all => neutral country path.
+    const landmark = locationDifficultyScore({ region: 'Europe' });
+    const same     = locationDifficultyScore({ region: 'Europe', countryPopulation: undefined });
+    assert.equal(landmark, same);
+    // Once enriched with countryPopulation only, still country-keyed.
+    const enriched = { region: 'Europe', countryPopulation: 67_000_000, countryAreaSqKm: 242000 };
+    assert.equal(quantizeToLadder(locationDifficultyScore(enriched)), 1.0);
 });
 
 test('assignDifficultyMultipliers: same location ALWAYS gets same multiplier', () => {

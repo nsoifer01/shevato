@@ -215,6 +215,26 @@
     }
 
     /**
+     * City-population obscurity tiers, used for city-target rounds
+     * (major-cities, top-cities-by-country) where the guess target is
+     * a CITY rather than a capital/country. Here the city's OWN size is
+     * the difficulty signal: a 200k city is far harder to place than an
+     * 8M megacity even in the same famous country, so a smaller city
+     * yields a higher obscurity weight. Step function mirroring
+     * populationObscurity / areaObscurity for explicit, tunable cutoffs.
+     */
+    function cityPopulationObscurity(pop) {
+        if (!Number.isFinite(pop) || pop <= 0) return 1.8; // missing / invalid -> hardest
+        if (pop >= 8_000_000) return 0.0;
+        if (pop >= 4_000_000) return 0.3;
+        if (pop >= 2_000_000) return 0.6;
+        if (pop >= 1_000_000) return 0.9;
+        if (pop >=   500_000) return 1.2;
+        if (pop >=   250_000) return 1.5;
+        return 1.8;
+    }
+
+    /**
      * Per-location difficulty score combining every signal we have:
      *
      *   continent   0.0 – 0.5  (Europe easiest, Antarctic hardest)
@@ -234,15 +254,25 @@
      *   St. George's / Castries / Roseau (Caribbean capitals)        → ×2.0–2.5
      *   The Valley (Anguilla, dependent)                             → ×3.0
      *   Funafuti (Tuvalu) / Yaren (Nauru) / Palikir (FSM)            → ×3.0
+     *
+     * City-target rounds (major-cities, top-cities-by-country) carry a
+     * finite positive `population` (the city's own size). For those we
+     * swap the country population+area terms for cityPopulationObscurity
+     * keyed on the city's population, so a small top-city in a famous
+     * big country no longer collapses to ×1 purely from country size.
      */
     function locationDifficultyScore(loc) {
         if (!loc) return 1;
         const region = String(loc.region || '').toLowerCase();
         const cont = (region in CONTINENT_OBSCURITY) ? CONTINENT_OBSCURITY[region] : 0.2;
-        const pop  = populationObscurity(Number(loc.countryPopulation));
-        const area = areaObscurity(Number(loc.countryAreaSqKm));
         const subBoost = OBSCURE_SUBREGIONS.indexOf(String(loc.subregion || '')) !== -1 ? 0.5 : 0;
         const depBoost = loc.independent === false ? 0.3 : 0;
+        const cityPop = Number(loc.population);
+        if (Number.isFinite(cityPop) && cityPop > 0) {
+            return cont + cityPopulationObscurity(cityPop) + subBoost + depBoost;
+        }
+        const pop  = populationObscurity(Number(loc.countryPopulation));
+        const area = areaObscurity(Number(loc.countryAreaSqKm));
         return cont + pop + area + subBoost + depBoost;
     }
 
@@ -256,11 +286,27 @@
      * This replaces assignRoundMultipliers as the production path:
      *   - assignRoundMultipliers — position-based ladder (legacy)
      *   - assignDifficultyMultipliers — per-location difficulty (current)
+     *
+     * `roundType` (optional): for 'major-cities' the multiplier is keyed off
+     * the city's CONTINENT instead of the per-location difficulty score,
+     * because every city in that pack is a big famous metropolis and
+     * population barely separates them. All other round types use the
+     * per-location difficulty model.
      */
-    function assignDifficultyMultipliers(locations) {
+    function majorCitiesContinentMultiplier(region) {
+        const table = Config.GLOBE_DROP_MAJOR_CITIES_CONTINENT_MULT || {};
+        const key = String(region || '').trim().toLowerCase();
+        const m = table[key];
+        return (typeof m === 'number' && Number.isFinite(m)) ? m : 1.0;
+    }
+
+    function assignDifficultyMultipliers(locations, roundType) {
         if (!Array.isArray(locations)) return [];
+        const continentMode = roundType === 'major-cities';
         return locations.map((loc) => Object.assign({}, loc, {
-            multiplier: quantizeToLadder(locationDifficultyScore(loc))
+            multiplier: continentMode
+                ? quantizeToLadder(majorCitiesContinentMultiplier(loc && loc.region))
+                : quantizeToLadder(locationDifficultyScore(loc))
         }));
     }
 
@@ -268,8 +314,17 @@
      * Score a single guess.
      *
      * New model (preferred): pass `multiplier` directly. Score is
-     *   round(base × exp(-distance / scaleKm) × multiplier)
-     * floored at GLOBE_DROP_MIN_POINTS.
+     *   basePoints × multiplier
+     * where basePoints maps a blended shape onto [floor, max]:
+     *   shape = EXP_WEIGHT·exp(-d/scale) + (1-EXP_WEIGHT)·max(0, 1 - d/maxDist)
+     *   basePoints = round(floor + (max - floor)·shape)
+     * (floor = GLOBE_DROP_MIN_BASE_POINTS). The exponential term is sharp near
+     * the target; the linear-to-antipode term keeps a real slope through the
+     * whole tail so two far guesses still differ. basePoints is strictly
+     * decreasing in distance — a closer guess always scores more, with no flat
+     * floor plateau. Flooring the BASE (not the total) keeps basePoints ×
+     * multiplier = points exact (no hidden floor/streak) and the base never
+     * reaches 0.
      *
      * Legacy model (only when `multiplier` is not provided): falls
      * back to compounding continent × difficulty × population
@@ -293,12 +348,31 @@
         // New model: single round multiplier.
         if (args && typeof args.multiplier === 'number' && Number.isFinite(args.multiplier)) {
             const mult = args.multiplier;
-            const points = Math.max(floor, Math.round(base * mult));
+            // Base curve = EXPONENTIAL (sharp near the target) blended with a
+            // LINEAR ramp to the antipode (keeps a real slope through the whole
+            // tail, so two far-but-different guesses still differ instead of
+            // both pinning to the floor), mapped onto [baseFloor, max]. The
+            // floor is the ASYMPTOTIC bottom, not a hard max(), so the base is
+            // STRICTLY decreasing in distance — a closer guess always scores
+            // more. Flooring the BASE (not the total) keeps basePoints ×
+            // multiplier = points exact, and the base never reaches 0.
+            const baseFloor = typeof Config.GLOBE_DROP_MIN_BASE_POINTS === 'number'
+                ? Config.GLOBE_DROP_MIN_BASE_POINTS : 0;
+            const span = Math.max(0, max - baseFloor);
+            const w = typeof Config.GLOBE_DROP_DISTANCE_EXP_WEIGHT === 'number'
+                ? Config.GLOBE_DROP_DISTANCE_EXP_WEIGHT : 1;
+            const maxDist = typeof Config.GLOBE_DROP_MAX_DISTANCE_KM === 'number' && Config.GLOBE_DROP_MAX_DISTANCE_KM > 0
+                ? Config.GLOBE_DROP_MAX_DISTANCE_KM : 20015;
+            const expPart = Math.exp(-d / scale);
+            const linPart = Math.max(0, 1 - d / maxDist);
+            const shape = w * expPart + (1 - w) * linPart;
+            const basePoints = Math.round(baseFloor + span * shape);
+            const points = Math.round(basePoints * mult);
             return {
                 points,
                 distanceKm: d,
                 multiplier: mult,
-                basePoints: Math.round(base)
+                basePoints
             };
         }
 
@@ -332,6 +406,8 @@
         roundMultiplierForIndex,
         assignRoundMultipliers,
         quantizeToLadder,
+        cityPopulationObscurity,
+        majorCitiesContinentMultiplier,
         locationDifficultyScore,
         assignDifficultyMultipliers
     };
