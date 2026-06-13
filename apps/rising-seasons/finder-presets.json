@@ -19,12 +19,20 @@
   ],
   "presets": [
     {
-      "slug": "kept-climbing",
-      "name": "Kept Climbing",
-      "summary": "Shows where every season topped the one before — from the Rising Seasons Show Finder.",
-      "query": "view=finder&fShape=rising&fMinAvg=7.5&fMinVotes=25000",
+      "slug": "steady-climbers",
+      "name": "Steady Climbers",
+      "summary": "Highly-rated live-action shows that stayed strong and kept improving season over season — from the Rising Seasons Show Finder.",
+      "query": "view=finder&fSort=showRating&fMinEps=12&fMinVotes=25000&fMinShow=7.5&fMinYear=1980&fxg=Animation%2CBiography%2CDocumentary%2CGame-Show%2CReality-TV%2CNews%2CMusical%2CTalk-Show&fl=en&fShape=rising%2Cconsistent",
       "limit": 25,
-      "template": { "name": "rs_local", "file": "config/rising-seasons-local.yml" }
+      "template": { "name": "rs_steady_climbers", "file": "config/rising-seasons-local.yml" }
+    },
+    {
+      "slug": "consistently-great",
+      "name": "Consistently Great",
+      "summary": "Highly-rated live-action shows whose seasons never wavered — from the Rising Seasons Show Finder.",
+      "query": "view=finder&fSort=showRating&fMinEps=12&fMinVotes=25000&fMinShow=7.5&fMinYear=1980&fxg=Animation%2CBiography%2CDocumentary%2CGame-Show%2CReality-TV%2CNews%2CMusical%2CTalk-Show&fl=en&fShape=consistent",
+      "limit": 25,
+      "template": { "name": "rs_consistently_great", "file": "config/rising-seasons-local.yml" }
     }
   ]
 }
