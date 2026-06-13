@@ -1,6 +1,240 @@
 {
   "updates": [
     {
+      "builtAt": "2026-06-13T07:56:03.421Z",
+      "totals": {
+        "seasons": 65309,
+        "delta": 6
+      },
+      "shapeCounts": {
+        "mid-peak": 4609,
+        "rebound": 9996,
+        "rising": 2909,
+        "slow-burn": 4318,
+        "big-finale": 11938,
+        "u-shaped": 3066,
+        "rollercoaster": 13970,
+        "saved-best-for-last": 1513,
+        "front-loaded": 3432,
+        "declining": 1836,
+        "bad-finale": 4612,
+        "consistent": 2588,
+        "shape-drift": 1586
+      },
+      "shapeDeltas": {
+        "mid-peak": -6,
+        "rebound": 3,
+        "rising": -2,
+        "slow-burn": 4,
+        "big-finale": 6,
+        "u-shaped": -2,
+        "rollercoaster": 3,
+        "front-loaded": 1,
+        "declining": 2,
+        "bad-finale": 2,
+        "consistent": -1,
+        "shape-drift": 1
+      },
+      "added": [
+        {
+          "seriesId": "tt33055254",
+          "title": "Every Year After",
+          "season": 1,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt0118252",
+          "title": "All Dogs Go to Heaven: The Series",
+          "season": 3,
+          "seasonYear": 1998
+        },
+        {
+          "seriesId": "tt21056976",
+          "title": "Dragon Striker",
+          "season": 1,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt1114703",
+          "title": "3-2-1 Penguins!",
+          "season": 3,
+          "seasonYear": 2008
+        },
+        {
+          "seriesId": "tt14883574",
+          "title": "Harmony and Horror",
+          "season": 1,
+          "seasonYear": 2019
+        },
+        {
+          "seriesId": "tt38784667",
+          "title": "The Academy",
+          "season": 1,
+          "seasonYear": 2025
+        }
+      ],
+      "removed": [],
+      "ratingSwings": [
+        {
+          "seriesId": "tt0805905",
+          "title": "My Friends Tigger & Pooh",
+          "season": 2,
+          "from": 6.32,
+          "to": 6.73,
+          "delta": 0.41
+        },
+        {
+          "seriesId": "tt0319935",
+          "title": "Angelina Ballerina",
+          "season": 2,
+          "from": 7.4,
+          "to": 7.08,
+          "delta": -0.32
+        },
+        {
+          "seriesId": "tt0118252",
+          "title": "All Dogs Go to Heaven: The Series",
+          "season": 1,
+          "from": 7.26,
+          "to": 7,
+          "delta": -0.26
+        },
+        {
+          "seriesId": "tt1153059",
+          "title": "Physics or Chemistry",
+          "season": 4,
+          "from": 7.59,
+          "to": 7.39,
+          "delta": -0.2
+        }
+      ],
+      "modifiedCounts": {
+        "seriesVotes": 3671,
+        "avgRating": 340,
+        "seriesRating": 70,
+        "shapes": 50,
+        "episodeCount": 27,
+        "poster": 1,
+        "overview": 1
+      }
+    },
+    {
+      "builtAt": "2026-06-13T07:30:38.839Z",
+      "totals": {
+        "seasons": 65309,
+        "delta": 6
+      },
+      "shapeCounts": {
+        "mid-peak": 4609,
+        "rebound": 9996,
+        "rising": 2909,
+        "slow-burn": 4318,
+        "big-finale": 11938,
+        "u-shaped": 3066,
+        "rollercoaster": 13970,
+        "saved-best-for-last": 1513,
+        "front-loaded": 3432,
+        "declining": 1836,
+        "bad-finale": 4612,
+        "consistent": 2588,
+        "shape-drift": 1586
+      },
+      "shapeDeltas": {
+        "mid-peak": -6,
+        "rebound": 3,
+        "rising": -2,
+        "slow-burn": 4,
+        "big-finale": 6,
+        "u-shaped": -2,
+        "rollercoaster": 3,
+        "front-loaded": 1,
+        "declining": 2,
+        "bad-finale": 2,
+        "consistent": -1,
+        "shape-drift": 1
+      },
+      "added": [
+        {
+          "seriesId": "tt33055254",
+          "title": "Every Year After",
+          "season": 1,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt0118252",
+          "title": "All Dogs Go to Heaven: The Series",
+          "season": 3,
+          "seasonYear": 1998
+        },
+        {
+          "seriesId": "tt21056976",
+          "title": "Dragon Striker",
+          "season": 1,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt1114703",
+          "title": "3-2-1 Penguins!",
+          "season": 3,
+          "seasonYear": 2008
+        },
+        {
+          "seriesId": "tt14883574",
+          "title": "Harmony and Horror",
+          "season": 1,
+          "seasonYear": 2019
+        },
+        {
+          "seriesId": "tt38784667",
+          "title": "The Academy",
+          "season": 1,
+          "seasonYear": 2025
+        }
+      ],
+      "removed": [],
+      "ratingSwings": [
+        {
+          "seriesId": "tt0805905",
+          "title": "My Friends Tigger & Pooh",
+          "season": 2,
+          "from": 6.32,
+          "to": 6.73,
+          "delta": 0.41
+        },
+        {
+          "seriesId": "tt0319935",
+          "title": "Angelina Ballerina",
+          "season": 2,
+          "from": 7.4,
+          "to": 7.08,
+          "delta": -0.32
+        },
+        {
+          "seriesId": "tt0118252",
+          "title": "All Dogs Go to Heaven: The Series",
+          "season": 1,
+          "from": 7.26,
+          "to": 7,
+          "delta": -0.26
+        },
+        {
+          "seriesId": "tt1153059",
+          "title": "Physics or Chemistry",
+          "season": 4,
+          "from": 7.59,
+          "to": 7.39,
+          "delta": -0.2
+        }
+      ],
+      "modifiedCounts": {
+        "seriesVotes": 3671,
+        "avgRating": 340,
+        "seriesRating": 70,
+        "shapes": 50,
+        "episodeCount": 27
+      }
+    },
+    {
       "builtAt": "2026-06-12T08:19:29.560Z",
       "totals": {
         "seasons": 65303,
@@ -6423,110 +6657,6 @@
         "shapes": 204,
         "seriesRating": 303,
         "episodeCount": 93
-      }
-    },
-    {
-      "builtAt": "2026-05-29T07:58:56.680Z",
-      "totals": {
-        "seasons": 65086,
-        "delta": 0
-      },
-      "shapeCounts": {
-        "mid-peak": 4585,
-        "rebound": 9923,
-        "rising": 2914,
-        "slow-burn": 4302,
-        "big-finale": 11919,
-        "u-shaped": 3055,
-        "rollercoaster": 13905,
-        "saved-best-for-last": 1505,
-        "front-loaded": 3436,
-        "declining": 1833,
-        "bad-finale": 4596,
-        "consistent": 2579,
-        "shape-drift": 1603
-      },
-      "shapeDeltas": {
-        "slow-burn": 1,
-        "big-finale": -4
-      },
-      "added": [],
-      "removed": [],
-      "ratingSwings": [
-        {
-          "seriesId": "tt1733604",
-          "title": "Stacey Dooley Investigates",
-          "season": 11,
-          "from": 7.33,
-          "to": 7.08,
-          "delta": -0.25
-        },
-        {
-          "seriesId": "tt34119820",
-          "title": "The Beginning After the End",
-          "season": 2,
-          "from": 6.38,
-          "to": 6.14,
-          "delta": -0.24
-        }
-      ],
-      "modifiedCounts": {
-        "avgRating": 6,
-        "shapes": 5,
-        "episodeCount": 6,
-        "poster": 1,
-        "overview": 6
-      }
-    },
-    {
-      "builtAt": "2026-05-29T07:34:14.174Z",
-      "totals": {
-        "seasons": 65086,
-        "delta": 0
-      },
-      "shapeCounts": {
-        "mid-peak": 4585,
-        "rebound": 9923,
-        "rising": 2914,
-        "slow-burn": 4302,
-        "big-finale": 11919,
-        "u-shaped": 3055,
-        "rollercoaster": 13905,
-        "saved-best-for-last": 1505,
-        "front-loaded": 3436,
-        "declining": 1833,
-        "bad-finale": 4596,
-        "consistent": 2579,
-        "shape-drift": 1603
-      },
-      "shapeDeltas": {
-        "slow-burn": 1,
-        "big-finale": -4
-      },
-      "added": [],
-      "removed": [],
-      "ratingSwings": [
-        {
-          "seriesId": "tt1733604",
-          "title": "Stacey Dooley Investigates",
-          "season": 11,
-          "from": 7.33,
-          "to": 7.08,
-          "delta": -0.25
-        },
-        {
-          "seriesId": "tt34119820",
-          "title": "The Beginning After the End",
-          "season": 2,
-          "from": 6.38,
-          "to": 6.14,
-          "delta": -0.24
-        }
-      ],
-      "modifiedCounts": {
-        "avgRating": 6,
-        "shapes": 5,
-        "episodeCount": 6
       }
     }
   ]
