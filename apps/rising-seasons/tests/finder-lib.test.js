@@ -190,12 +190,13 @@ test('buildFinderCollection renders YAML with ID fallbacks', () => {
   const y = col.contents;
   assert.match(y, /^ {2}"Demo: List":$/m);
   assert.match(y, /^ {4}summary: "A \\"demo\\" list"$/m);
-  assert.match(y, /^ {4}sort_title: "!rsf_demo"$/m);
+  // `!000_` prefix floats finder collections ahead of everything in Plex.
+  assert.match(y, /^ {4}sort_title: "!000_rsf_demo"$/m);
   assert.match(y, /^ {4}sync_mode: sync$/m);
   // A multi-ID builder list = one builder per ID, so `custom` (single-builder
-  // only) would make Kometa reject the collection. Must be alpha.
-  assert.match(y, /^ {4}collection_order: alpha$/m);
-  assert.doesNotMatch(y, /collection_order: custom/);
+  // only) would make Kometa reject the collection. release is the safe order.
+  assert.match(y, /^ {4}collection_order: release$/m);
+  assert.doesNotMatch(y, /collection_order: (custom|alpha)/);
   assert.match(y, /^ {4}tmdb_show:\n {6}- 101$/m);
   assert.match(y, /^ {4}tvdb_show:\n {6}- 202$/m);
   assert.match(y, /^ {4}imdb_id:\n {6}- tt3$/m);
