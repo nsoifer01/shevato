@@ -5448,6 +5448,18 @@ body.advanced-drawer-open {
   color: var(--text);
 }
 
+.finder-plex-note {
+  margin: -2px 2px 14px;
+  font-size: 0.82rem;
+}
+.finder-plex-note a {
+  color: var(--accent, var(--link, inherit));
+  text-decoration: none;
+}
+.finder-plex-note a:hover {
+  text-decoration: underline;
+}
+
 .finder-table {
   width: 100%;
   border-collapse: collapse;

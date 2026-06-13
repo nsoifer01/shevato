@@ -485,6 +485,9 @@
   grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 1rem;
 }
+.kometa-finder-grid {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
 @media (max-width: 980px) {
   .kometa-howto-grid {
     grid-template-columns: 1fr;
