@@ -4,6 +4,8 @@
  */
 import { Achievement } from '../models/Achievement.js';
 import { AnalyticsService } from './AnalyticsService.js';
+import { storageService } from './StorageService.js';
+import { convertWeight } from '../utils/helpers.js';
 
 export class AchievementService {
     /**
@@ -387,6 +389,113 @@ export class AchievementService {
         }
 
         return newlyUnlocked;
+    }
+
+    /**
+     * Feature 4: persistent per-exercise strength-PR achievements.
+     *
+     * Award a PR when the just-finished session's top completed set for an
+     * exercise beats the all-time best weight ever recorded for that exercise
+     * across all PRIOR sessions, AND the lifter has at least 2 prior sessions
+     * that contained the exercise (so a brand-new exercise never fires, and a
+     * single prior baseline session isn't enough either).
+     *
+     * Reps-type only: sets whose top entry is duration-based are skipped.
+     *
+     * Persists newly-awarded PRs via the same achievements storage path the
+     * rest of the app uses, guarding against a duplicate id so finishing the
+     * same session twice (crash-resume) does not double-award. Returns the
+     * array of newly-awarded Achievement objects (possibly empty).
+     *
+     * @param finishedSession the session just saved to history
+     * @param allSessions the full workoutSessions array INCLUDING finishedSession
+     */
+    static checkExercisePRs(finishedSession, allSessions) {
+        if (!finishedSession || !Array.isArray(allSessions)) return [];
+
+        // Display unit comes from current settings; stored set weights are in
+        // that account unit, so the comparison space is consistent and we only
+        // convert to kg for the persisted canonical value.
+        const unit = storageService.getSettings()?.weightUnit === 'lb' ? 'lb' : 'kg';
+
+        const stored = storageService.getAchievements() || [];
+        const existingIds = new Set(stored.map(a => a.id));
+        const date = finishedSession.date;
+
+        // Best completed reps-set weight for an exerciseId within a session.
+        const topWeight = (session, exerciseId) => {
+            let best = null;
+            (session.exercises || []).forEach(ex => {
+                if (ex.exerciseId !== exerciseId) return;
+                (ex.sets || []).forEach(set => {
+                    if (!set.completed) return;
+                    // Duration-type set: skip (not a weighted lift).
+                    if ((set.duration || 0) > 0) return;
+                    const w = set.weight || 0;
+                    if (w <= 0) return;
+                    if (best == null || w > best) best = w;
+                });
+            });
+            return best;
+        };
+
+        const priorSessions = allSessions.filter(s => s.id !== finishedSession.id);
+        const newlyAwarded = [];
+        const seenExerciseIds = new Set();
+
+        for (const ex of (finishedSession.exercises || [])) {
+            const exId = ex.exerciseId;
+            if (!exId || seenExerciseIds.has(exId)) continue;
+            seenExerciseIds.add(exId);
+
+            const sessionTop = topWeight(finishedSession, exId);
+            if (sessionTop == null) continue; // no completed weighted set
+
+            // Prior sessions that actually contained a weighted set for this
+            // exercise, plus the all-time best among them.
+            let priorCount = 0;
+            let priorBest = null;
+            for (const s of priorSessions) {
+                const w = topWeight(s, exId);
+                if (w == null) continue;
+                priorCount += 1;
+                if (priorBest == null || w > priorBest) priorBest = w;
+            }
+
+            if (priorCount < 2) continue;            // needs 2+ prior sessions
+            if (!(sessionTop > priorBest)) continue; // must strictly beat best
+
+            const id = `pr-${exId}-${date}`;
+            if (existingIds.has(id)) continue;       // idempotent by id
+
+            const weightKg = unit === 'lb'
+                ? convertWeight(sessionTop, 'lb', 'kg')
+                : sessionTop;
+
+            const achievement = new Achievement({
+                id,
+                name: `${ex.exerciseName} PR`,
+                description: `New personal record on ${ex.exerciseName}`,
+                type: 'strength-pr',
+                icon: '🏅',
+                requirement: { type: 'strength-pr', exerciseId: exId },
+                target: 1,
+                prWeightKg: Math.round(weightKg * 100) / 100,
+                prUnit: unit,
+                prExerciseName: ex.exerciseName,
+                prDate: date,
+            });
+            achievement.unlock();
+
+            stored.push(achievement.toJSON());
+            existingIds.add(id);
+            newlyAwarded.push(achievement);
+        }
+
+        if (newlyAwarded.length > 0) {
+            storageService.saveAchievements(stored);
+        }
+        return newlyAwarded;
     }
 
     /**

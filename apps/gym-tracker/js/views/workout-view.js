@@ -14,6 +14,7 @@ import { renderPausedBannerHTML, wirePausedBannerActions } from './paused-banner
 import { orderPrograms } from '../utils/program-order.js';
 import { sameId } from '../utils/id-utils.js';
 import { AnalyticsService } from '../services/AnalyticsService.js';
+import { AchievementService } from '../services/AchievementService.js';
 import { calculatePlates, formatPlateStack } from '../utils/plate-calculator.js';
 import { restTickCues, isWorkoutComplete } from '../utils/rest-cues.js';
 import { allSetsReachMax, latestFeelForExercise, nextFeel, shouldShowFeelModal } from '../utils/exercise-feel.js';
@@ -91,7 +92,25 @@ class WorkoutView {
         // exists on barbell rows.
         view.addEventListener('input', (e) => {
             const t = e.target;
+            // Feature 5: persist per-exercise notes on every keystroke, same
+            // pattern as the stickyValues persistence (save the active workout).
+            if (t instanceof HTMLTextAreaElement && t.classList.contains('gt-exercise-notes-input')) {
+                const eIdx = Number(t.dataset.exerciseIndex);
+                const exercise = this.currentWorkoutSession?.exercises[eIdx];
+                if (exercise) {
+                    exercise.notes = t.value;
+                    storageService.saveActiveWorkout(this.currentWorkoutSession.toJSON());
+                    const toggle = document.querySelector(`.gt-notes-toggle[data-exercise-index="${eIdx}"]`);
+                    if (toggle) toggle.classList.toggle('gt-notes-toggle--has-notes', t.value.trim() !== '');
+                }
+                return;
+            }
             if (!(t instanceof HTMLInputElement)) return;
+            // Feature 6: a weight/reps edit on a planned row may surface (or hide)
+            // the "same as last time" restore chip.
+            if (t.classList.contains('set-weight') || t.classList.contains('set-reps')) {
+                this.maybeToggleRestoreChip(t.closest('.set-row-planned'));
+            }
             const target = t.dataset.plateHintTarget;
             if (!target) return;
             const [eIdx, slot] = target.split('-').map(Number);
@@ -116,6 +135,11 @@ class WorkoutView {
                 case 'start-workout':
                     e.preventDefault();
                     this.startWorkout(target.dataset.programId);
+                    break;
+                case 'select-week-day':
+                    e.preventDefault();
+                    this.selectedWeekday = Number(target.dataset.weekday);
+                    this.renderProgramSelection();
                     break;
                 case 'commit-planned-set':
                     e.preventDefault();
@@ -163,6 +187,14 @@ class WorkoutView {
                 case 'cycle-feel':
                     e.preventDefault();
                     this.cycleExerciseFeel(exerciseIndex);
+                    break;
+                case 'toggle-exercise-notes':
+                    e.preventDefault();
+                    this.toggleExerciseNotes(exerciseIndex);
+                    break;
+                case 'restore-last-time':
+                    e.preventDefault();
+                    this.restoreLastTime(exerciseIndex, slot, target);
                     break;
             }
         });
@@ -213,6 +245,53 @@ class WorkoutView {
         // Session unit toggle (Item 8): kg | lbs for this workout only.
         document.querySelectorAll('#workout-unit-toggle .workout-unit-btn').forEach(btn => {
             btn.addEventListener('click', () => this.setSessionUnit(btn.dataset.unit));
+        });
+
+        // Header overflow ("...") menu: edit program / plate hints / discard.
+        this.setupOverflowMenu();
+    }
+
+    /**
+     * Accessible "..." popover for the low-priority + destructive header
+     * actions. The menu items keep their original IDs and handlers (wired
+     * elsewhere); this only manages open/close + closes the menu after a
+     * menu item fires. Opens on click, closes on outside-click / Escape.
+     */
+    setupOverflowMenu() {
+        const btn = document.getElementById('workout-overflow-btn');
+        const menu = document.getElementById('workout-overflow-menu');
+        if (!btn || !menu) return;
+
+        const close = () => {
+            if (menu.hidden) return;
+            menu.hidden = true;
+            btn.setAttribute('aria-expanded', 'false');
+            document.removeEventListener('click', onOutside, true);
+            document.removeEventListener('keydown', onKey, true);
+        };
+        const open = () => {
+            menu.hidden = false;
+            btn.setAttribute('aria-expanded', 'true');
+            document.addEventListener('click', onOutside, true);
+            document.addEventListener('keydown', onKey, true);
+            const first = menu.querySelector('.gt-overflow-item');
+            if (first) first.focus();
+        };
+        const onOutside = (e) => {
+            if (!menu.contains(e.target) && e.target !== btn) close();
+        };
+        const onKey = (e) => {
+            if (e.key === 'Escape') { close(); btn.focus(); }
+        };
+
+        btn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            menu.hidden ? open() : close();
+        });
+        // Close after any menu item is activated (the item's own handler runs
+        // first; this just dismisses the popover).
+        menu.querySelectorAll('.gt-overflow-item').forEach(item => {
+            item.addEventListener('click', () => close());
         });
     }
 
@@ -700,25 +779,56 @@ class WorkoutView {
         const firstDay = this.app.settings?.firstDayOfWeek === 1 ? 1 : 0;
         const labels = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
         const fullLabels = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
-        const cells = weekStrip(programs, firstDay).map(cell => {
-            const entries = cell.programs.map(p => `
-                <button type="button" class="week-strip-program" data-action="start-workout" data-program-id="${p.id}" title="Start ${escapeHtml(p.name)}">
-                    <span class="week-strip-dot" aria-hidden="true"></span>
-                    <span class="week-strip-program-name">${escapeHtml(p.name)}</span>
-                </button>`).join('');
-            const classes = ['week-strip-day'];
+        const cells = weekStrip(programs, firstDay);
+        const todayWeekday = cells.find(c => c.isToday)?.weekday ?? new Date().getDay();
+        // Default the selection to today so "today's workout" shows immediately.
+        if (this.selectedWeekday == null) this.selectedWeekday = todayWeekday;
+        const selected = cells.find(c => c.weekday === this.selectedWeekday)
+            || cells.find(c => c.isToday) || cells[0];
+
+        // Compact day pills: label + a dot only when that day has a workout.
+        // Tapping a pill selects the day (it does not start a workout); the
+        // selected day's full workout details appear in the panel below.
+        const pills = cells.map(cell => {
+            const classes = ['week-day-pill'];
             if (cell.isToday) classes.push('is-today');
-            if (cell.programs.length > 0) classes.push('has-program');
+            if (cell.weekday === selected.weekday) classes.push('is-selected');
+            if (cell.programs.length > 0) classes.push('has-workout');
+            const aria = `${fullLabels[cell.weekday]}${cell.isToday ? ', today' : ''}, ${cell.programs.length ? cell.programs.length + ' workout' + (cell.programs.length > 1 ? 's' : '') : 'no workout'}`;
             return `
-                <div class="${classes.join(' ')}" aria-label="${fullLabels[cell.weekday]}${cell.isToday ? ', today' : ''}">
-                    <span class="week-strip-label">${labels[cell.weekday]}</span>
-                    <div class="week-strip-entries">${entries || '<span class="week-strip-empty" aria-hidden="true">&middot;</span>'}</div>
-                </div>`;
+                <button type="button" class="${classes.join(' ')}"
+                    data-action="select-week-day" data-weekday="${cell.weekday}"
+                    aria-pressed="${cell.weekday === selected.weekday ? 'true' : 'false'}"
+                    aria-label="${aria}">
+                    <span class="week-day-pill-label">${labels[cell.weekday]}</span>
+                    <span class="week-day-pill-dot" aria-hidden="true"></span>
+                </button>`;
         }).join('');
 
+        const isSelToday = selected.weekday === todayWeekday;
+        const dayTitle = isSelToday ? `Today, ${fullLabels[selected.weekday]}` : fullLabels[selected.weekday];
+        let detail;
+        if (selected.programs.length === 0) {
+            detail = `
+                <p class="week-detail-day">${dayTitle}</p>
+                <p class="week-detail-empty">No workout scheduled. Pick any program below.</p>`;
+        } else {
+            const items = selected.programs.map(p => `
+                <div class="week-detail-item">
+                    <span class="week-detail-name">${escapeHtml(p.name)}</span>
+                    <button type="button" class="btn btn-primary week-detail-start" data-action="start-workout" data-program-id="${p.id}" title="Start ${escapeHtml(p.name)}">
+                        <i class="fas fa-play" aria-hidden="true"></i> Start
+                    </button>
+                </div>`).join('');
+            detail = `
+                <p class="week-detail-day">${dayTitle}</p>
+                <div class="week-detail-list">${items}</div>`;
+        }
+
         return `
-            <section class="week-strip" aria-label="This week's scheduled programs">
-                <div class="week-strip-grid">${cells}</div>
+            <section class="week-strip" aria-label="Weekly workout schedule">
+                <div class="week-strip-pills" role="group" aria-label="Days of the week">${pills}</div>
+                <div class="week-strip-detail">${detail}</div>
             </section>`;
     }
 
@@ -753,6 +863,12 @@ class WorkoutView {
 
         html += this._renderWeekStripHTML(programs);
 
+        // Connect the selected day (set by the week strip) to the cards below:
+        // the program(s) scheduled on the selected day get a highlight + chip.
+        const selWeekday = this.selectedWeekday;
+        const todayWeekday = new Date().getDay();
+        const fullDayLabels = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+
         html += `
             <h2>Select a Program</h2>
             <p class="subtitle">Choose which program you want to do today</p>
@@ -760,10 +876,15 @@ class WorkoutView {
                 ${programs.map(program => {
                     const lastSession = this._lastSessionForProgram(program.id);
                     const lastDoneHTML = this._renderLastDoneInfo(lastSession);
+                    const scheduledSel = selWeekday != null
+                        && Array.isArray(program.scheduleDays)
+                        && program.scheduleDays.includes(selWeekday);
+                    const chipText = selWeekday === todayWeekday ? 'Today' : fullDayLabels[selWeekday];
                     return `
-                    <div class="program-card" data-program-card="${program.id}">
+                    <div class="program-card${scheduledSel ? ' program-card--scheduled' : ''}" data-program-card="${program.id}">
                         <div class="program-header">
                             <h3>${escapeHtml(program.name)}</h3>
+                            ${scheduledSel ? `<span class="program-sched-chip"><i class="fas fa-calendar-check" aria-hidden="true"></i> ${escapeHtml(chipText)}</span>` : ''}
                         </div>
                         ${program.description && program.description.trim() ? `<p>${escapeHtml(program.description)}</p>` : ''}
                         <div class="program-stats">
@@ -1055,7 +1176,7 @@ class WorkoutView {
         const restChipHTML = `
             <div class="rest-countdown-chip${isRestingHere ? '' : ' rest-countdown-chip--idle'}"
                  data-rest-idle="${betweenSetActive}" aria-live="off"
-                 title="Rest between sets">${this.formatRest(betweenSetActive)}</div>
+                 title="Rest between sets"><i class="fas fa-clock" aria-hidden="true"></i> ${this.formatRest(betweenSetActive)}</div>
         `;
 
         // Per-exercise plate-hints toggle.
@@ -1068,7 +1189,7 @@ class WorkoutView {
         const hintsOnForExercise = globalHints && (perExHints !== undefined ? perExHints : true);
         // Per-exercise toggle is only meaningful when global hints are ON.
         const plateToggleHTML = (isPlateLoaded && globalHints) ? `
-            <button type="button" class="btn-icon btn-icon-plates btn-icon-plates--per-ex${hintsOnForExercise ? '' : ' btn-icon-plates--off'}"
+            <button type="button" class="gt-iconbtn btn-icon-plates--per-ex${hintsOnForExercise ? '' : ' btn-icon-plates--off'}"
                 data-action="toggle-exercise-plate-hints"
                 data-exercise-index="${index}"
                 aria-pressed="${hintsOnForExercise ? 'true' : 'false'}"
@@ -1082,28 +1203,44 @@ class WorkoutView {
             <div class="exercise-entry ${isComplete ? 'exercise-complete' : ''} ${isCollapsed ? 'exercise-collapsed' : ''}"
                  id="exercise-${index}" data-exercise-type="${isDuration ? 'duration' : 'reps'}">
                 <div class="exercise-entry-header">
-                    <button type="button" class="exercise-collapse-toggle"
-                        data-action="toggle-exercise-collapse"
-                        data-exercise-index="${index}"
-                        aria-expanded="${isCollapsed ? 'false' : 'true'}"
-                        aria-label="${isCollapsed ? 'Expand' : 'Collapse'} exercise">
-                        <i class="fas fa-chevron-${isCollapsed ? 'down' : 'up'}" aria-hidden="true"></i>
-                    </button>
-                    <h3>
-                        <span class="exercise-name-main">${escapeHtml(exercise.exerciseName)}</span>${sessionFeelHTML}${lastFeelHTML}${muscle ? `
-                        <span class="exercise-name-sub">(${escapeHtml(muscle)})</span>` : ''}${allSameRepRange ? `
-                        <span class="exercise-rep-target" aria-label="Target: ${sharedRepLabel}">${sharedRepLabel}</span>` : ''}
-                    </h3>
-                    <span class="exercise-progress ${isComplete ? 'is-complete' : ''}" aria-label="Sets ${progressLabel}">
-                        ${isComplete ? '<i class="fas fa-check"></i>' : ''}
-                        ${progressLabel}
-                    </span>
+                    <div class="exercise-title-block">
+                        <h3>
+                            <span class="exercise-name-main">${escapeHtml(exercise.exerciseName)}</span>${sessionFeelHTML}${lastFeelHTML}
+                        </h3>
+                        <div class="exercise-subtitle">
+                            <span class="exercise-progress ${isComplete ? 'is-complete' : ''}" aria-label="Sets ${progressLabel}">
+                                ${isComplete ? '<i class="fas fa-check" aria-hidden="true"></i>' : ''}${progressLabel}
+                            </span>${muscle ? `
+                            <span class="exercise-name-sub">${escapeHtml(muscle)}</span>` : ''}${allSameRepRange ? `
+                            <span class="exercise-rep-target" aria-label="Target: ${sharedRepLabel}">${sharedRepLabel}</span>` : ''}
+                            ${restChipHTML}
+                        </div>
+                    </div>
+                    <div class="exercise-header-controls">
+                        <button type="button" class="gt-iconbtn gt-notes-toggle${exercise.notes ? ' gt-notes-toggle--has-notes' : ''}"
+                            data-action="toggle-exercise-notes"
+                            data-exercise-index="${index}"
+                            aria-expanded="false"
+                            aria-label="Notes for this exercise"
+                            title="Notes for this exercise">
+                            <i class="fas fa-pen" aria-hidden="true"></i>
+                        </button>
+                        ${plateToggleHTML}
+                        <button type="button" class="gt-iconbtn exercise-collapse-toggle"
+                            data-action="toggle-exercise-collapse"
+                            data-exercise-index="${index}"
+                            aria-expanded="${isCollapsed ? 'false' : 'true'}"
+                            aria-label="${isCollapsed ? 'Expand' : 'Collapse'} exercise">
+                            <i class="fas fa-chevron-${isCollapsed ? 'down' : 'up'}" aria-hidden="true"></i>
+                        </button>
+                    </div>
                 </div>
 
                 <div class="exercise-body">
-                    <div class="rest-row${isRestingHere ? ' rest-row--resting' : ''}">
-                        ${restChipHTML}
-                        ${plateToggleHTML}
+                    <div class="gt-exercise-notes" id="exercise-notes-${index}" hidden>
+                        <textarea class="gt-exercise-notes-input" data-exercise-index="${index}"
+                            placeholder="Notes for this exercise (form cues, how it felt, etc.)"
+                            aria-label="Exercise notes">${escapeHtml(exercise.notes || '')}</textarea>
                     </div>
 
                     <ol class="set-row-list" id="set-row-list-${index}">
@@ -1179,8 +1316,16 @@ class WorkoutView {
         const hintsOn = globalHintsOn && (perExHintsVal !== undefined ? perExHintsVal : true);
         const plateHintHTML = (isPlateLoaded && hintsOn) ? this.renderPlateHint(weight, unit, usesBarWeight) : '';
 
+        // Feature 6: prior pre-filled values stored on the row so an input that
+        // drifts from them can surface a "same as last time" restore chip. Only
+        // present when prior data exists; the chip itself is created on input
+        // (see maybeToggleRestoreChip), not at render.
+        const restoreData = (prior && weight !== '' && reps !== '' && reps != null)
+            ? `data-prior-weight="${weight}" data-prior-reps="${reps}"`
+            : '';
+
         return `
-            <li class="set-row set-row-planned" data-slot="${slot}">
+            <li class="set-row set-row-planned" data-slot="${slot}" ${restoreData}>
                 <span class="set-row-num">${setLabel}</span>
                 <div class="set-row-inputs">
                     <input type="number" inputmode="decimal" class="set-weight"
@@ -1197,6 +1342,69 @@ class WorkoutView {
                 ${plateHintHTML ? `<div class="plate-hint" id="plate-hint-${exerciseIndex}-${slot}">${plateHintHTML}</div>` : ''}
             </li>
         `;
+    }
+
+    /**
+     * Feature 6: show/hide the "same as last time" restore chip on a planned
+     * row based on whether the current weight/reps differ from the prior
+     * pre-filled values stored on the row.
+     */
+    maybeToggleRestoreChip(row) {
+        if (!row) return;
+        const existing = row.querySelector('.gt-restore-chip');
+        // No prior data on this row -> never show.
+        if (row.dataset.priorWeight === undefined || row.dataset.priorReps === undefined) {
+            if (existing) existing.remove();
+            return;
+        }
+        const priorWeight = Number(row.dataset.priorWeight);
+        const priorReps = Number(row.dataset.priorReps);
+        const weightInput = row.querySelector('.set-weight');
+        const repsInput = row.querySelector('.set-reps');
+        const curWeight = weightInput && weightInput.value !== '' ? Number(weightInput.value) : null;
+        const curReps = repsInput && repsInput.value !== '' ? Number(repsInput.value) : null;
+        const diverged = (curWeight !== null && curWeight !== priorWeight)
+            || (curReps !== null && curReps !== priorReps);
+
+        if (!diverged) {
+            if (existing) existing.remove();
+            return;
+        }
+        if (existing) return;
+
+        const slot = Number(row.dataset.slot);
+        const exerciseIndex = Number(weightInput?.id.split('-')[1]);
+        const unit = this.sessionUnit();
+        const chip = document.createElement('button');
+        chip.type = 'button';
+        chip.className = 'gt-restore-chip';
+        chip.dataset.action = 'restore-last-time';
+        chip.dataset.exerciseIndex = String(exerciseIndex);
+        chip.dataset.slot = String(slot);
+        chip.title = "Restore last session's weight and reps";
+        chip.textContent = `last time: ${priorWeight}${unit} x ${priorReps}`;
+        // Append after the toggle (own full-width line beneath the inputs), the
+        // same placement the Feature 1 bump chip uses.
+        row.appendChild(chip);
+    }
+
+    /**
+     * Feature 6: restore BOTH the weight and reps inputs to the prior pre-filled
+     * values stored on the row, then remove the restore chip.
+     */
+    restoreLastTime(exerciseIndex, slot, chip) {
+        const row = chip.closest('.set-row-planned');
+        if (!row) { chip.remove(); return; }
+        const weightInput = document.getElementById(`weight-${exerciseIndex}-${slot}`);
+        const repsInput = document.getElementById(`reps-${exerciseIndex}-${slot}`);
+        if (weightInput && row.dataset.priorWeight !== undefined) {
+            weightInput.value = row.dataset.priorWeight;
+            this.refreshPlateHint(exerciseIndex, slot, weightInput.value);
+        }
+        if (repsInput && row.dataset.priorReps !== undefined) {
+            repsInput.value = row.dataset.priorReps;
+        }
+        chip.remove();
     }
 
     /**
@@ -1514,6 +1722,60 @@ class WorkoutView {
         this.rerenderExercise(exerciseIndex);
     }
 
+    /**
+     * Feature 5: expand/collapse the per-exercise notes textarea WITHOUT
+     * re-rendering the exercise, so typed-but-unsaved keystrokes are never
+     * lost (the value is also persisted on every input). Expanding focuses the
+     * textarea and arms a one-shot outside-tap listener that collapses it.
+     */
+    toggleExerciseNotes(exerciseIndex) {
+        const region = document.getElementById(`exercise-notes-${exerciseIndex}`);
+        const btn = document.querySelector(`.gt-notes-toggle[data-exercise-index="${exerciseIndex}"]`);
+        if (!region) return;
+        const willOpen = region.hidden;
+        region.hidden = !willOpen;
+        if (btn) btn.setAttribute('aria-expanded', willOpen ? 'true' : 'false');
+        if (btn) btn.classList.toggle('gt-notes-toggle--open', willOpen);
+
+        if (willOpen) {
+            const textarea = region.querySelector('.gt-exercise-notes-input');
+            // preventScroll: focusing must not jump/scroll the page (avoids the
+            // flicker); the only effect of tapping the pencil is the note opening.
+            if (textarea) textarea.focus({ preventScroll: true });
+            // Tap outside the open notes region (and not the toggle) collapses it.
+            const onOutside = (e) => {
+                if (region.contains(e.target) || (btn && btn.contains(e.target))) return;
+                this._collapseExerciseNotes(exerciseIndex);
+                document.removeEventListener('pointerdown', onOutside, true);
+            };
+            this._notesOutsideHandlers = this._notesOutsideHandlers || {};
+            this._notesOutsideHandlers[exerciseIndex] = onOutside;
+            document.addEventListener('pointerdown', onOutside, true);
+        } else {
+            this._removeNotesOutsideHandler(exerciseIndex);
+        }
+    }
+
+    /** Feature 5: collapse the notes region for an exercise (text preserved). */
+    _collapseExerciseNotes(exerciseIndex) {
+        const region = document.getElementById(`exercise-notes-${exerciseIndex}`);
+        const btn = document.querySelector(`.gt-notes-toggle[data-exercise-index="${exerciseIndex}"]`);
+        if (region) region.hidden = true;
+        if (btn) {
+            btn.setAttribute('aria-expanded', 'false');
+            btn.classList.remove('gt-notes-toggle--open');
+        }
+        this._removeNotesOutsideHandler(exerciseIndex);
+    }
+
+    _removeNotesOutsideHandler(exerciseIndex) {
+        const handler = this._notesOutsideHandlers?.[exerciseIndex];
+        if (handler) {
+            document.removeEventListener('pointerdown', handler, true);
+            delete this._notesOutsideHandlers[exerciseIndex];
+        }
+    }
+
     /** Toggle per-exercise plate hints for the exercise at `exerciseIndex`.
      *  Only reachable when global hints are ON (button is hidden otherwise). */
     toggleExercisePlateHints(exerciseIndex) {
@@ -1547,6 +1809,8 @@ class WorkoutView {
         const enabled = this.app.settings.plateHintsEnabled !== false;
         btn.setAttribute('aria-pressed', enabled ? 'true' : 'false');
         btn.classList.toggle('btn-icon-plates--off', !enabled);
+        const state = btn.querySelector('.gt-overflow-state');
+        if (state) state.textContent = enabled ? 'On' : 'Off';
     }
 
     /** Re-render just the given exercise block without touching the others. */
@@ -1880,6 +2144,16 @@ class WorkoutView {
     }
 
     /**
+     * Integration 4: format a persisted PR achievement's weight for its toast.
+     * prWeightKg is canonical kg; show it in the user's current display unit.
+     */
+    _formatPrAchievementWeight(pr) {
+        const unit = this.app.settings.weightUnit;
+        const shown = convertWeight(pr.prWeightKg, 'kg', unit);
+        return `${Math.round(shown * 10) / 10}${unit}`;
+    }
+
+    /**
      * Find a committed set in the exercise by its stable slot. Legacy sets
      * (no `slot` field yet) fall back to their array index so sessions
      * saved before this change still behave correctly.
@@ -2161,15 +2435,9 @@ class WorkoutView {
         this.lastPingedRestSecond = -1;
         this._activeRestType = restType;
 
-        if (restType === 'exercise') {
-            this.showRestBar(duration);
-        } else {
-            // Between-set: keep bar hidden; chip only.
-            // Don't call hideRestBar() — that resets activeRestExerciseIndex.
-            const bar = document.getElementById('rest-timer-bar');
-            if (bar) bar.hidden = true;
-            this.showRestChip(exerciseIndex, duration);
-        }
+        // The floating dial is the single rest display for BOTH rest types,
+        // color-coded by type (green between sets, blue between exercises).
+        this.showRestBar(duration, restType);
 
         this.activeRestTimerId = timerService.startRestTimer(
             duration,
@@ -2197,24 +2465,32 @@ class WorkoutView {
         this.hideRestBar();
     }
 
-    showRestBar(total) {
+    showRestBar(total, restType = 'exercise') {
         const bar = document.getElementById('rest-timer-bar');
         if (!bar) return;
         bar.hidden = false;
-        // Lift the sitewide back-to-top arrow above the rest bar (item 10).
+        // Hide the sitewide back-to-top arrow while the dial owns the bottom.
         document.body.classList.add('gt-rest-bar-visible');
-        bar.classList.remove('rest-timer-done', 'rest-timer-urgent');
+        bar.classList.remove('rest-timer-done', 'rest-timer-urgent', 'rest-timer--set', 'rest-timer--exercise');
+        // Color code: green between sets, blue between exercises.
+        bar.classList.add(restType === 'set' ? 'rest-timer--set' : 'rest-timer--exercise');
+        const captionEl = document.getElementById('rest-timer-caption');
+        if (captionEl) captionEl.textContent = restType === 'set' ? 'Next set in' : 'Next exercise in';
         const valueEl = document.getElementById('rest-timer-value');
         const fill = document.getElementById('rest-timer-progress-fill');
         if (valueEl) valueEl.textContent = this.formatRest(total);
         if (fill) {
-            // Reset transition so the starting frame is 100% width before shrinking.
+            // Circular progress ring: full at start (offset 0), drains to empty
+            // (offset = circumference) as the countdown runs.
+            const len = (typeof fill.getTotalLength === 'function' ? fill.getTotalLength() : 0) || (2 * Math.PI * 24);
+            this._restRingLen = len;
             fill.style.transition = 'none';
-            fill.style.transform = 'scaleX(1)';
-            // Force reflow so the next transform transitions smoothly.
+            fill.style.strokeDasharray = String(len);
+            fill.style.strokeDashoffset = '0';
+            // Force reflow so the next offset change transitions smoothly.
             // eslint-disable-next-line no-unused-expressions
-            fill.offsetHeight;
-            fill.style.transition = 'transform 1s linear';
+            fill.getBoundingClientRect();
+            fill.style.transition = 'stroke-dashoffset 1s linear';
         }
     }
 
@@ -2222,7 +2498,7 @@ class WorkoutView {
         const bar = document.getElementById('rest-timer-bar');
         if (bar) {
             bar.hidden = true;
-            bar.classList.remove('rest-timer-done', 'rest-timer-urgent');
+            bar.classList.remove('rest-timer-done', 'rest-timer-urgent', 'rest-timer--set', 'rest-timer--exercise');
         }
         document.body.classList.remove('gt-rest-bar-visible');
         this.activeRestExerciseIndex = -1;
@@ -2236,15 +2512,12 @@ class WorkoutView {
      */
     showRestChip(exerciseIndex, remaining) {
         if (exerciseIndex < 0) return;
-        const header = document.querySelector(`#exercise-${exerciseIndex} .rest-row`);
-        if (!header) return;
-        const chip = header.querySelector('.rest-countdown-chip');
+        const chip = document.querySelector(`#exercise-${exerciseIndex} .rest-countdown-chip`);
         if (!chip) return;
-        header.classList.add('rest-row--resting');
         const countdown = this.app.settings?.timerCountdownSeconds ?? 5;
         const urgent = remaining <= countdown && remaining > 0;
         chip.className = 'rest-countdown-chip' + (urgent ? ' rest-countdown-chip--urgent' : '');
-        chip.textContent = this.formatRest(remaining);
+        chip.innerHTML = `<i class="fas fa-clock" aria-hidden="true"></i> ${this.formatRest(remaining)}`;
     }
 
     /**
@@ -2254,30 +2527,22 @@ class WorkoutView {
     clearRestChip() {
         const idx = this.activeRestExerciseIndex;
         if (idx < 0) return;
-        const row = document.querySelector(`#exercise-${idx} .rest-row`);
-        if (!row) return;
-        row.classList.remove('rest-row--resting');
-        const chip = row.querySelector('.rest-countdown-chip');
+        const chip = document.querySelector(`#exercise-${idx} .rest-countdown-chip`);
         if (!chip) return;
         const idle = parseInt(chip.dataset.restIdle, 10) || 0;
         chip.className = 'rest-countdown-chip rest-countdown-chip--idle';
-        chip.textContent = this.formatRest(idle);
+        chip.innerHTML = `<i class="fas fa-clock" aria-hidden="true"></i> ${this.formatRest(idle)}`;
     }
 
     onRestTick(remaining) {
-        const isExercise = this._activeRestType === 'exercise';
-
-        if (isExercise) {
-            const valueEl = document.getElementById('rest-timer-value');
-            const fill = document.getElementById('rest-timer-progress-fill');
-            if (valueEl) valueEl.textContent = this.formatRest(remaining);
-            if (fill && this.restTimerDuration > 0) {
-                const ratio = Math.max(0, Math.min(1, remaining / this.restTimerDuration));
-                fill.style.transform = `scaleX(${ratio})`;
-            }
-        } else {
-            // Between-set: update chip only.
-            this.showRestChip(this.activeRestExerciseIndex, remaining);
+        // The floating dial is the live display for both rest types.
+        const valueEl = document.getElementById('rest-timer-value');
+        const fill = document.getElementById('rest-timer-progress-fill');
+        if (valueEl) valueEl.textContent = this.formatRest(remaining);
+        if (fill && this.restTimerDuration > 0) {
+            const ratio = Math.max(0, Math.min(1, remaining / this.restTimerDuration));
+            const len = this._restRingLen || (2 * Math.PI * 82);
+            fill.style.strokeDashoffset = String(len * (1 - ratio));
         }
 
         const firstWarning = this.app.settings?.timerFirstWarningSeconds ?? 10;
@@ -2296,7 +2561,7 @@ class WorkoutView {
         // Final-countdown urgent state — per-second pip + urgent styling.
         const bar = document.getElementById('rest-timer-bar');
         if (urgent) {
-            if (isExercise && bar) bar.classList.add('rest-timer-urgent');
+            if (bar) bar.classList.add('rest-timer-urgent');
             // One ping per second — guard with lastPingedRestSecond.
             if (remaining !== this.lastPingedRestSecond) {
                 this.lastPingedRestSecond = remaining;
@@ -2312,19 +2577,19 @@ class WorkoutView {
 
     onRestComplete() {
         this.activeRestTimerId = null;
-        const isExercise = this._activeRestType === 'exercise';
         this._activeRestType = null;
 
-        if (isExercise) {
-            const bar = document.getElementById('rest-timer-bar');
-            const valueEl = document.getElementById('rest-timer-value');
-            if (bar) bar.classList.add('rest-timer-done');
-            if (bar) bar.classList.remove('rest-timer-urgent');
-            if (valueEl) valueEl.textContent = 'Done';
-            setTimeout(() => this.hideRestBar(), 2500);
-        } else {
-            this.clearRestChip();
+        // Both rest types use the floating dial: flip to the done state, then
+        // auto-hide. Also revert the in-card chip to its idle static state.
+        const bar = document.getElementById('rest-timer-bar');
+        const valueEl = document.getElementById('rest-timer-value');
+        if (bar) {
+            bar.classList.add('rest-timer-done');
+            bar.classList.remove('rest-timer-urgent');
         }
+        if (valueEl) valueEl.textContent = 'Done';
+        this.clearRestChip();
+        setTimeout(() => this.hideRestBar(), 2500);
 
         // Audio and haptic cues — each opt-outable independently in Settings.
         if (this.app.settings?.vibrationAlerts !== false) vibrate([120, 60, 120]);
@@ -2373,10 +2638,29 @@ class WorkoutView {
         const titleEl = document.getElementById('finish-workout-title');
         if (titleEl) titleEl.textContent = this.currentWorkoutSession.workoutDayName || 'Finish Workout';
 
+        const totalVolume = this.currentWorkoutSession.totalVolume;
         document.getElementById('summary-volume').textContent =
-            `${Math.round(this.currentWorkoutSession.totalVolume).toLocaleString()} ${unit}`;
+            `${Math.round(totalVolume).toLocaleString()} ${unit}`;
         document.getElementById('summary-sets').textContent =
             this.currentWorkoutSession.totalSets;
+
+        // Feature 7: volume delta vs the previous session of the SAME program.
+        // First session for a program shows raw totals only (no delta).
+        const deltaEl = document.getElementById('summary-volume-delta');
+        if (deltaEl) {
+            const prev = this._lastSessionForProgram(this.currentWorkoutSession.programId);
+            const prevVolume = prev ? prev.totalVolume : 0;
+            if (prev && prevVolume > 0) {
+                const pct = Math.round(((totalVolume - prevVolume) / prevVolume) * 100);
+                const sign = pct >= 0 ? '+' : '';
+                deltaEl.textContent = `(${sign}${pct}% vs last time)`;
+                deltaEl.classList.toggle('gt-volume-delta--down', pct < 0);
+                deltaEl.classList.toggle('gt-volume-delta--up', pct >= 0);
+                deltaEl.hidden = false;
+            } else {
+                deltaEl.hidden = true;
+            }
+        }
 
         const prsStat = document.getElementById('summary-prs-stat');
         const prsValue = document.getElementById('summary-prs');
@@ -2420,6 +2704,17 @@ class WorkoutView {
         // Save workout session
         this.app.workoutSessions.push(this.currentWorkoutSession);
         this.app.saveWorkoutSessions();
+
+        // Integration 4: persistent per-exercise PR achievements. Fires only for
+        // exercises that beat their all-time best with 2+ prior sessions; the
+        // service persists + is idempotent by id and returns the new awards.
+        const newPRs = AchievementService.checkExercisePRs(this.currentWorkoutSession, this.app.workoutSessions);
+        if (newPRs.length > 0) {
+            this.app.achievements.push(...newPRs);
+            newPRs.forEach((pr) => {
+                showToast(`New PR: ${pr.prExerciseName} ${this._formatPrAchievementWeight(pr)}`, 'success', 4000);
+            });
+        }
 
         // Clear any paused workout from storage since we're finishing
         storageService.clearActiveWorkout();
