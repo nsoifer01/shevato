@@ -10,8 +10,8 @@ collections:
   "Better Than You Heard":
     template: {name: rs_outshines_reputation}
     summary: "Shows whose episodes rate well above the show's own IMDb score - the audience that stayed loved what it found. From the Rising Seasons Show Finder."
-    sort_title: "!rsf_outshines-reputation"
-    collection_order: alpha
+    sort_title: "!000_rsf_outshines-reputation"
+    collection_order: release
     sync_mode: sync
     tmdb_show:
       - 44606
