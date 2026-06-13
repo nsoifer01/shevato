@@ -12,7 +12,7 @@
   <meta name="theme-color" content="#0b0d12">
   <meta name="color-scheme" content="dark">
   <link rel="canonical" href="https://shevato.com/apps/rising-seasons/kometa/" />
-  <title>Rising Seasons for Plex + Kometa — Shevato</title>
+  <title>Rising Seasons for Plex + Kometa - Shevato</title>
 
   <meta property="og:title" content="Rising Seasons for Plex + Kometa" />
   <meta property="og:description" content="Generate Plex collections and season-poster badges from season-rating shapes. Drop the YAML into your Kometa config." />
@@ -61,17 +61,22 @@
       <div class="kometa-tile">
         <div class="kometa-tile-icon" aria-hidden="true">📚</div>
         <h2>Shape collections</h2>
-        <p>One Plex collection per shape — "Slow Burn Seasons", "Big Finale Seasons", "Rebound Seasons". Kometa builds them from TMDB / TVDB IDs.</p>
+        <p>One Plex collection per shape - "Slow Burn Seasons", "Big Finale Seasons", "Rebound Seasons". Kometa builds them from TMDB / TVDB IDs.</p>
       </div>
       <div class="kometa-tile">
         <div class="kometa-tile-icon" aria-hidden="true">🏷️</div>
         <h2>Season-poster badges</h2>
-        <p>Small text overlays — <span class="badge-demo">FINALE</span> <span class="badge-demo">BURN</span> <span class="badge-demo">BEST</span> — appear on individual season posters so you spot the standouts at a glance.</p>
+        <p>Small text overlays - <span class="badge-demo">FINALE</span> <span class="badge-demo">BURN</span> <span class="badge-demo">BEST</span> - appear on individual season posters so you spot the standouts at a glance.</p>
       </div>
       <div class="kometa-tile">
         <div class="kometa-tile-icon" aria-hidden="true">📋</div>
         <h2>MDBList lists</h2>
         <p>Plain IMDb-ID text files you can paste into MDBList to share or chain into other tooling.</p>
+      </div>
+      <div class="kometa-tile">
+        <div class="kometa-tile-icon" aria-hidden="true">🔭</div>
+        <h2>Show Finder presets</h2>
+        <p>Saved <a href="../index.html#view=finder">Show Finder</a> filters published as ready-made Plex collections that rebuild themselves every time the data refreshes. <a href="#finderPresets">Details below ↓</a></p>
       </div>
     </section>
 
@@ -145,13 +150,35 @@
       </div>
     </section>
 
+    <section class="kometa-howto" aria-label="Show Finder preset collections" id="finderPresets">
+      <h2>Show Finder → Plex collections</h2>
+      <p class="kometa-builder-sub">Any filter you can build in the <a href="../index.html#view=finder">Show Finder</a> - shapes, votes, years, genres, rating gaps - can live on as a Plex collection that keeps itself current. Preset lists are replayed against fresh IMDb data on every refresh and published under <code>exports/kometa/finder-*.yml</code>, so a show that newly qualifies tomorrow joins the collection on its own.</p>
+      <div class="kometa-howto-grid kometa-finder-grid">
+        <article class="kometa-step">
+          <header><span class="kometa-step-num">1</span><h3>Use a ready-made preset</h3></header>
+          <p>Curated collections like <em>Consistently Great</em> (seasons never wavered) or <em>Went Out On Top</em> (final season rated best) ship pre-built. Point Kometa at a raw URL once and you're done:</p>
+<pre><code>libraries:
+  TV Shows:
+    collection_files:
+      - url: https://raw.githubusercontent.com/nsoifer01/shevato/master/apps/rising-seasons/exports/kometa/finder-consistently-great.yml</code></pre>
+          <p class="kometa-help">The live preset index with current counts is in <a href="https://github.com/nsoifer01/shevato/blob/master/apps/rising-seasons/exports/README.md" target="_blank" rel="noopener">exports/README.md ↗</a>.</p>
+        </article>
+
+        <article class="kometa-step">
+          <header><span class="kometa-step-num">2</span><h3>Roll your own</h3></header>
+          <p>Dial in a filter in the <a href="../index.html#view=finder">Show Finder</a>, copy everything after <code>#</code> in the address bar, and add it as a preset in <code>finder-presets.json</code>. From the next data refresh on, your collection publishes and updates itself.</p>
+          <p class="kometa-help">Full walkthrough - preset fields, limits, and the optional local-template hook for your own collection attributes - in the <a href="https://github.com/nsoifer01/shevato/blob/master/apps/rising-seasons/INTEGRATIONS.md" target="_blank" rel="noopener">integration guide ↗</a>.</p>
+        </article>
+      </div>
+    </section>
+
     <section class="kometa-howto" aria-label="How to use the output">
       <h2>How to use it</h2>
       <div class="kometa-howto-grid">
         <article class="kometa-step">
           <header><span class="kometa-step-num">1</span><h3>Drop the YAMLs into your Kometa config</h3></header>
           <p>Save downloaded files under <code>config/rising-seasons/</code> in your Kometa install.</p>
-          <p>Prefer no copying? Point Kometa at the GitHub raw URLs — they're regenerated weekly when the dataset refreshes:</p>
+          <p>Prefer no copying? Point Kometa at the GitHub raw URLs - they're regenerated automatically whenever the dataset refreshes:</p>
 <pre><code>libraries:
   TV Shows:
     collection_files:
@@ -181,12 +208,12 @@ docker exec kometa python kometa.py --run --overlays-only</code></pre>
         </article>
 
         <article class="kometa-step kometa-step-watch">
-          <header><span class="kometa-step-num">★</span><h3>"What to watch next" — CLI</h3></header>
+          <header><span class="kometa-step-num">★</span><h3>"What to watch next" - CLI</h3></header>
           <p>If you have the repo on your NAS, you can also ask which seasons of a given shape live in your Plex library right now:</p>
 <pre><code>export PLEX_URL=http://nas.local:32400
 export PLEX_TOKEN=&lt;your token&gt;
 npm run watch-next -- --shape slow-burn --limit 10</code></pre>
-          <p class="kometa-help">Pipes a JSON shape via <code>--json</code> — wire it into Discord, Notifiarr, Homarr, or any cron-driven feed.</p>
+          <p class="kometa-help">Pipes a JSON shape via <code>--json</code> - wire it into Discord, Notifiarr, Homarr, or any cron-driven feed.</p>
         </article>
       </div>
     </section>

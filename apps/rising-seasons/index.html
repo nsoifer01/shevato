@@ -239,7 +239,7 @@
           <a class="mood-chip" href="#type=tvMiniSeries&minAvg=8&sort=avg" title="Mini-series only, avg ≥ 8">
             <span class="mood-chip-icon" aria-hidden="true">❮❯</span>
             <span class="mood-chip-label">One and done</span>
-            <span class="mood-chip-desc">Top mini-series — one season, full story</span>
+            <span class="mood-chip-desc">Top mini-series - one season, full story</span>
             <span class="mood-chip-count"></span>
           </a>
           <a class="mood-chip" href="#above=above&minAvg=8&sort=avg" title="Season avg above the show's IMDb rating, avg ≥ 8">
@@ -299,7 +299,7 @@
             <label>
               <span class="visually-hidden">Search title, episode, or IMDb ID</span>
               <input type="search" id="search"
-                     placeholder="Search title, episode, or IMDb ID — press / to focus"
+                     placeholder="Search title, episode, or IMDb ID - press / to focus"
                      autocomplete="off"
                      role="combobox"
                      aria-expanded="false"
@@ -601,6 +601,8 @@
       </div>
 
       <p class="meta finder-count" id="finderCount" aria-live="polite"></p>
+
+      <p class="meta finder-plex-note">Like this list? Any Finder filter can become a self-updating Plex collection - <a href="kometa/#finderPresets">see how →</a></p>
 
       <nav class="pager pager-top" id="finderPagerTop" aria-label="Pagination (top)" hidden></nav>
 
@@ -920,8 +922,12 @@
 
   <!-- App script — vanilla, no jQuery dependency. match.js ships the shape
        classifiers (one source of truth with the build/tests) and must load
-       first so app.js can classify whole shows by their per-season averages. -->
+       first so app.js can classify whole shows by their per-season averages.
+       finder-lib.js ships the Show Finder aggregation/filtering shared with
+       the Node export pipeline (Kometa Finder presets) and must also load
+       before app.js. -->
   <script src="scripts/match.js" defer></script>
+  <script src="scripts/finder-lib.js" defer></script>
   <script src="js/app.js" defer></script>
   <script src="/assets/js/back-to-top.js" defer></script>
 </body>
