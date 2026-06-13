@@ -5,6 +5,8 @@
 // artifacts the NAS-side integrations consume:
 //
 //   exports/kometa/<shape>.yml           (Kometa show collections)
+//   exports/kometa/finder-<slug>.yml     (Kometa collections from Show Finder
+//                                         presets - see finder-presets.json)
 //   exports/kometa/season-overlays.yml   (Kometa season-poster badges)
 //   exports/ids/<shape>.txt              (flat IMDb-ID lists for MDBList)
 //   exports/README.md                    (regenerated index of what's here)
@@ -26,12 +28,20 @@ const {
   SHAPE_META,
   DEFAULT_CONFIDENCE_FLOOR,
   buildKometaCollections,
+  buildFinderCollection,
   buildSeasonOverlays,
   buildIdLists,
 } = require('./integrations-lib.js');
+const { detectShapes } = require('./match.js');
+const { buildShowAgg, parseFinderQuery, filterAndSortRows } = require('./finder-lib.js');
 
 const DATA_FILE = path.join(__dirname, '..', 'data.json');
+const PRESETS_FILE = path.join(__dirname, '..', 'finder-presets.json');
 const EXPORT_ROOT = path.join(__dirname, '..', 'exports');
+
+// Top-N cap per Finder preset when the preset doesn't set its own `limit` -
+// an unbounded filter could turn a collection into thousands of shows.
+const DEFAULT_FINDER_LIMIT = 50;
 
 const floor = parseFloat(process.env.RS_CONFIDENCE_FLOOR || String(DEFAULT_CONFIDENCE_FLOOR));
 const minSeries = parseInt(process.env.RS_MIN_SERIES || '3', 10);
@@ -76,6 +86,36 @@ function writeFileIfChanged(filePath, contents) {
     const p = path.join(kometaDir, c.filename);
     if (writeFileIfChanged(p, c.contents)) writes++;
     console.log(`  kometa/${c.filename.padEnd(30)} ${c.seriesCount.toLocaleString().padStart(6)} series`);
+  }
+
+  // Show Finder preset collections. Each preset in finder-presets.json is a
+  // saved Finder URL hash; replaying it through finder-lib.js (the exact code
+  // the browser runs) yields the same rows the user saw, capped at `limit`.
+  const finderCollections = [];
+  let presets = [];
+  if (fs.existsSync(PRESETS_FILE)) {
+    presets = JSON.parse(fs.readFileSync(PRESETS_FILE, 'utf8')).presets || [];
+  }
+  if (presets.length) {
+    const showRows = buildShowAgg(dataset.matches, detectShapes);
+    console.log('');
+    for (const preset of presets) {
+      const filter = parseFinderQuery(preset.query || '');
+      const rows = filterAndSortRows(showRows, filter);
+      const limit = preset.limit ?? DEFAULT_FINDER_LIMIT;
+      const col = buildFinderCollection(preset, rows.slice(0, limit), {
+        matched: rows.length,
+        limit,
+      });
+      if (!col) {
+        console.warn(`  kometa/finder-${preset.slug}.yml SKIPPED - query matched no shows with usable IDs`);
+        continue;
+      }
+      finderCollections.push({ ...col, preset, matched: rows.length });
+      const p = path.join(kometaDir, col.filename);
+      if (writeFileIfChanged(p, col.contents)) writes++;
+      console.log(`  kometa/${col.filename.padEnd(30)} ${String(col.seriesCount).padStart(6)} of ${rows.length.toLocaleString()} matched`);
+    }
   }
 
   // Kometa season-poster overlays.
@@ -123,6 +163,22 @@ function writeFileIfChanged(filePath, contents) {
     readmeLines.push(`| ${SHAPE_META[c.shape].title} | \`kometa/${c.filename}\` | ${c.seriesCount.toLocaleString()} |`);
   }
   readmeLines.push('');
+  if (finderCollections.length) {
+    readmeLines.push('## kometa/ - Show Finder presets');
+    readmeLines.push('');
+    readmeLines.push('Plex collections built from saved Show Finder filters (`finder-presets.json`).');
+    readmeLines.push('Each replays its Finder URL hash against the latest data, so the list');
+    readmeLines.push('refreshes itself on every data update. A preset can reference a template');
+    readmeLines.push('defined on the consuming Kometa instance to layer on locally-managed');
+    readmeLines.push('collection attributes.');
+    readmeLines.push('');
+    readmeLines.push('| Preset | File | Shows (of matched) |');
+    readmeLines.push('|---|---|---:|');
+    for (const c of finderCollections) {
+      readmeLines.push(`| ${c.preset.name} | \`kometa/${c.filename}\` | ${c.seriesCount} of ${c.matched.toLocaleString()} |`);
+    }
+    readmeLines.push('');
+  }
   readmeLines.push('## ids/');
   readmeLines.push('');
   readmeLines.push('Plain-text IMDb (`tt`) IDs per shape, one per line. Paste into MDBList to create a list,');
