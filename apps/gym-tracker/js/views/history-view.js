@@ -440,6 +440,24 @@ class HistoryView {
                 html += `
                             </tbody>
                         </table>
+                `;
+
+                // Feature 2: per-exercise strength trend chart (reps-type only).
+                if (!isDuration) {
+                    html += this.buildExerciseTrendChart(exercise.exerciseId, unit);
+                }
+
+                // Feature 5 (display half): read-only per-exercise notes.
+                if (exercise.notes && exercise.notes.trim()) {
+                    html += `
+                        <div class="gt-detail-exercise-notes">
+                            <span class="gt-detail-exercise-notes-label">Notes</span>
+                            <p class="gt-detail-exercise-notes-text">${escapeHtml(exercise.notes)}</p>
+                        </div>
+                    `;
+                }
+
+                html += `
                     </div>
                 `;
             }
@@ -470,6 +488,78 @@ class HistoryView {
 
         modal.classList.add('active');
         trapModalFocus(modal);
+    }
+
+    /**
+     * Feature 2: inline-SVG strength trend for a reps-type exercise.
+     *
+     * Collects every workout session that contains this exercise (matched by
+     * exerciseId), reduces each to its TOP committed set weight, orders them
+     * oldest-first by sortTimestamp, and plots the last 12 as a line chart.
+     * The current session is included so the open detail sits on the line.
+     *
+     * Renders nothing for fewer than 3 data points (no empty-state clutter).
+     * Returns an HTML string (possibly empty).
+     */
+    buildExerciseTrendChart(exerciseId, unit) {
+        if (exerciseId == null) return '';
+
+        const topWeightFor = (ex) => {
+            const committed = (ex.sets || []).filter(s => s.completed && !(s.duration > 0));
+            if (committed.length === 0) return null;
+            return committed.reduce((max, s) => Math.max(max, s.weight || 0), 0);
+        };
+
+        const points = this.app.workoutSessions
+            .map(session => {
+                const ex = (session.exercises || []).find(e => e.exerciseId === exerciseId);
+                if (!ex) return null;
+                const weight = topWeightFor(ex);
+                if (weight == null) return null;
+                return { ts: session.sortTimestamp, weight };
+            })
+            .filter(Boolean)
+            .sort((a, b) => new Date(a.ts) - new Date(b.ts))
+            .slice(-12);
+
+        if (points.length < 3) return '';
+
+        const weights = points.map(p => p.weight);
+        const min = Math.min(...weights);
+        const max = Math.max(...weights);
+        // Y-axis floor sits BELOW the minimum plotted weight so a cluster of
+        // similar weights still spreads across the chart instead of flattening
+        // to the bottom. Use a slice of the spread, with a small absolute
+        // fallback when every weight is identical.
+        const spread = max - min;
+        const floor = Math.max(0, min - (spread > 0 ? spread * 0.15 : Math.max(1, min * 0.05)));
+        const range = Math.max(1e-9, max - floor);
+
+        const W = 240;
+        const H = 80;
+        const pad = 6;
+        const stepX = (W - pad * 2) / (points.length - 1);
+        const coords = points.map((p, i) => {
+            const x = pad + i * stepX;
+            const y = pad + (1 - (p.weight - floor) / range) * (H - pad * 2);
+            return `${x.toFixed(1)},${y.toFixed(1)}`;
+        });
+
+        const dots = coords.map(c => {
+            const [x, y] = c.split(',');
+            return `<circle cx="${x}" cy="${y}" r="2.2" fill="#3a6df0" />`;
+        }).join('');
+
+        return `
+            <div class="gt-exercise-trend">
+                <span class="gt-exercise-trend-label">Exercise trend</span>
+                <svg class="exercise-trend-chart" viewBox="0 0 ${W} ${H}" preserveAspectRatio="none" role="img" aria-label="Top set weight across last ${points.length} sessions, in ${unit}">
+                    <polyline points="${coords.join(' ')}" fill="none" stroke="#3a6df0" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" />
+                    ${dots}
+                </svg>
+                <span class="gt-exercise-trend-range">${min.toLocaleString()}${unit} to ${max.toLocaleString()}${unit}</span>
+            </div>
+        `;
     }
 
     async saveSessionAsProgram(sessionId) {

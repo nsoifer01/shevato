@@ -67,6 +67,13 @@ class GymTrackerApp {
             }
         }
 
+        // Self-heal: if loadAllData filtered out malformed achievement records
+        // (e.g. legacy strength-PR entries missing weight/date), rewrite storage
+        // so the orphaned records do not linger across sessions or sync.
+        if ((storageService.getAchievements() || []).length > this.achievements.length) {
+            this.saveAchievements();
+        }
+
         // Update achievement progress
         this.updateAchievements();
 
@@ -178,7 +185,9 @@ class GymTrackerApp {
 
         this.achievements = this._safeLoad('achievements',
             () => storageService.getAchievements(),
-            (data) => Array.isArray(data) ? data.map(a => Achievement.fromJSON(a)) : [],
+            (data) => Array.isArray(data)
+                ? data.map(a => Achievement.fromJSON(a)).filter(Achievement.isRenderable)
+                : [],
             []
         );
 
