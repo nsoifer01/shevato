@@ -3,9 +3,10 @@
  * Renders achievements as a grouped progression system rather than a flat list.
  */
 import { app } from '../app.js';
+import { Achievement } from '../models/Achievement.js';
 import { AchievementService } from '../services/AchievementService.js';
 import { DarkSelect } from '../utils/dark-select.js';
-import { escapeHtml } from '../utils/helpers.js';
+import { escapeHtml, convertWeight, formatDate } from '../utils/helpers.js';
 
 const VOLUME_TYPES = new Set(['total-volume', 'daily-volume']);
 
@@ -112,21 +113,80 @@ class AchievementsView {
         return text.replace(/kg\b/g, unit);
     }
 
+    /** Feature 4: per-exercise strength-PR achievements, newest first. */
+    get prAchievements() {
+        return (this.app.achievements || [])
+            .filter(a => a.requirement?.type === 'strength-pr')
+            // Defense-in-depth: a legacy or partially-synced PR record missing
+            // its weight/date would render as "0 kg" / "Invalid Date". Skip it.
+            .filter(a => Achievement.isRenderable(a))
+            .sort((a, b) => String(b.prDate || '').localeCompare(String(a.prDate || '')));
+    }
+
+    /**
+     * Render the distinct "Strength PRs" section above the standard
+     * volume/streak categories. Each row shows exercise name, weight + unit,
+     * and date. Weights are stored canonical kg; convert to the row's saved
+     * display unit. Returns the section HTML (empty string when none exist).
+     */
+    renderPRSection() {
+        const prs = this.prAchievements;
+        if (prs.length === 0) return '';
+        const rows = prs.map(a => {
+            const unit = a.prUnit === 'lb' ? 'lb' : 'kg';
+            const weight = unit === 'lb'
+                ? convertWeight(a.prWeightKg || 0, 'kg', 'lb')
+                : (a.prWeightKg || 0);
+            const weightLabel = `${Number(weight).toLocaleString()} ${unit}`;
+            const name = a.prExerciseName || a.name;
+            return `
+                <div class="strength-pr-card">
+                    <span class="strength-pr-medal" aria-hidden="true">${escapeHtml(a.icon || '🏅')}</span>
+                    <div class="strength-pr-info">
+                        <h3 class="strength-pr-name">${escapeHtml(name)}</h3>
+                        <span class="strength-pr-meta">
+                            <span class="strength-pr-weight">${escapeHtml(weightLabel)}</span>
+                            <span class="strength-pr-date">${escapeHtml(formatDate(a.prDate))}</span>
+                        </span>
+                    </div>
+                </div>
+            `;
+        }).join('');
+        return `
+            <section class="strength-pr-section">
+                <header class="strength-pr-header">
+                    <span class="strength-pr-header-icon" aria-hidden="true">🏅</span>
+                    <div>
+                        <h2>Strength PRs</h2>
+                        <p>Personal records: your heaviest set yet on an exercise</p>
+                    </div>
+                    <span class="strength-pr-count">${prs.length}</span>
+                </header>
+                <div class="strength-pr-list">${rows}</div>
+            </section>
+        `;
+    }
+
     render() {
         const container = document.getElementById('achievements-list');
         if (!container) return;
 
-        const all = this.app.achievements;
+        // Strength PRs live outside the standard category groups; render them
+        // in their own visually distinct section and keep them out of the
+        // category/filter machinery below.
+        const all = this.app.achievements.filter(a => a.requirement?.type !== 'strength-pr');
+        const prSectionHtml = this.renderPRSection();
         const sessions = this.app.workoutSessions || [];
 
         // Header counts always reflect the full set
-        document.getElementById('unlocked-count').textContent = all.filter(a => a.unlocked).length;
-        document.getElementById('total-achievements').textContent = all.length;
+        const fullSet = this.app.achievements;
+        document.getElementById('unlocked-count').textContent = fullSet.filter(a => a.unlocked).length;
+        document.getElementById('total-achievements').textContent = fullSet.length;
 
         // Apply status filter
         const filtered = all.filter(a => this.matchesFilter(a));
         if (filtered.length === 0) {
-            container.innerHTML = `
+            container.innerHTML = prSectionHtml + `
                 <div class="empty-state">
                     <i class="fas fa-trophy"></i>
                     <p>No achievements match this filter.</p>
@@ -142,7 +202,7 @@ class AchievementsView {
                 if (a.unlocked !== b.unlocked) return a.unlocked ? 1 : -1;
                 return (b.progressPercentage || 0) - (a.progressPercentage || 0);
             });
-            container.innerHTML = `
+            container.innerHTML = prSectionHtml + `
                 <div class="achievement-chain">
                     ${sorted.map(a => this.renderCard(a, sessions)).join('')}
                 </div>
@@ -156,7 +216,7 @@ class AchievementsView {
                 const bd = b.unlockedAt ? new Date(b.unlockedAt).getTime() : 0;
                 return bd - ad;
             });
-            container.innerHTML = `
+            container.innerHTML = prSectionHtml + `
                 <div class="achievement-chain">
                     ${sorted.map(a => this.renderCard(a, sessions)).join('')}
                 </div>
@@ -180,7 +240,7 @@ class AchievementsView {
             return (ai === -1 ? 999 : ai) - (bi === -1 ? 999 : bi);
         });
 
-        container.innerHTML = ordered.map(([type, items]) => {
+        container.innerHTML = prSectionHtml + ordered.map(([type, items]) => {
             const meta = CATEGORY_META[type] || { name: type, icon: '🏆', desc: '' };
             const done = items.filter(a => a.unlocked).length;
             const isExpanded = this.expandedCategories.has(type);

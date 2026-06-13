@@ -1577,93 +1577,6 @@ body.modal-open {
 /* Unified sizing for every header control — creates one visual system.
    Minimum 44px tap target (WCAG 2.2 AA) so sweaty mid-workout fingers
    can't accidentally trigger Discard instead of Pause/Finish. */
-.workout-header .btn-icon {
-    width: 44px !important;
-    height: 44px !important;
-    padding: 0 !important;
-    border-radius: var(--radius-md);
-    font-size: 0.95rem !important;
-    line-height: 1 !important;
-    font-family: inherit !important;
-    font-weight: 500 !important;
-    border: 1px solid var(--border-color);
-    background: var(--bg-elevated);
-    color: var(--text-secondary) !important;
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    transition: background var(--transition-base), border-color var(--transition-base),
-                color var(--transition-base), box-shadow var(--transition-base),
-                transform var(--transition-base);
-}
-
-.workout-header .btn-icon i {
-    color: inherit;
-    font-size: inherit;
-}
-
-.workout-header .btn-icon:hover {
-    border-color: var(--border-light);
-    background: var(--bg-hover);
-    color: var(--text-primary) !important;
-}
-
-/* End/Close — most subtle. Muted outline, reads as "cancel/exit" */
-.workout-header .btn-icon-end {
-    background: transparent !important;
-    border-color: var(--border-color) !important;
-    color: var(--text-muted) !important;
-}
-
-.workout-header .btn-icon-end:hover {
-    background: rgba(239, 68, 68, 0.1) !important;
-    border-color: rgba(239, 68, 68, 0.45) !important;
-    color: #ef4444 !important;
-}
-
-/* Pause — neutral/secondary. Softer amber so it doesn't fight with Finish */
-.workout-header .btn-icon-pause {
-    background: rgba(251, 191, 36, 0.08) !important;
-    border-color: rgba(251, 191, 36, 0.28) !important;
-    color: #f0b429 !important;
-}
-
-.workout-header .btn-icon-pause:hover {
-    background: rgba(251, 191, 36, 0.18) !important;
-    border-color: rgba(251, 191, 36, 0.5) !important;
-    color: #fbbf24 !important;
-}
-
-/* Finish — primary action. Filled green gradient so it reads as the CTA */
-.workout-header .btn-icon-finish {
-    background: linear-gradient(135deg, #22c55e 0%, #16a34a 100%) !important;
-    border-color: transparent !important;
-    color: #ffffff !important;
-    box-shadow: 0 3px 10px rgba(34, 197, 94, 0.35) !important;
-}
-
-.workout-header .btn-icon-finish:hover {
-    border-color: transparent !important;
-    color: #ffffff !important;
-    box-shadow: 0 5px 14px rgba(34, 197, 94, 0.5) !important;
-    transform: translateY(-1px);
-    filter: brightness(1.06);
-}
-
-.workout-header .btn-icon-finish:active {
-    transform: translateY(0);
-    filter: brightness(0.95);
-}
-
-.workout-header .btn-icon:focus-visible {
-    outline: none;
-    box-shadow: 0 0 0 3px rgba(91, 155, 255, 0.35);
-}
-
-.workout-header .btn-icon-finish:focus-visible {
-    box-shadow: 0 0 0 3px rgba(34, 197, 94, 0.4),
-                0 3px 10px rgba(34, 197, 94, 0.35) !important;
-}
 
 /* Two-row workout header on narrow screens.
    At full width the six header controls (end + unit toggle + plate/edit/pause/
@@ -1789,280 +1702,211 @@ body.gym-tracker #active-workout .superset-block {
     }
 }
 
-/* Rest timer — persistent floating pill above the bottom nav.
-   Sits well clear of the nav (20px gap + drop shadow) so it always reads
-   as an elevated, separate layer. Uses a contained palette that matches
-   the app's purple/green language without overwhelming the workout content. */
+/* ==========================================================================
+   Rest timer: a large FLOATING circular dial (countdown is the focus inside a
+   glowing progress ring) with a separate round Skip button beside it.
+   Color-coded by rest type: GREEN between sets, BLUE between exercises.
+   Floats above the bottom nav; soft shadow; minimal borders.
+   ========================================================================== */
 .rest-timer-bar {
     position: fixed;
     left: 50%;
+    /* Self-contained dial: centered over the Workout tab (viewport center). */
     transform: translateX(-50%);
-    bottom: calc(var(--bottom-nav-height, 64px) + env(safe-area-inset-bottom, 0px) + 20px);
-    width: calc(100% - 1rem);
-    max-width: 520px;
-    background:
-        linear-gradient(180deg, rgba(255, 255, 255, 0.04), rgba(255, 255, 255, 0) 40%),
-        linear-gradient(135deg, rgba(40, 32, 95, 0.92) 0%, rgba(30, 24, 75, 0.92) 100%);
-    border: 1px solid rgba(91, 155, 255, 0.45);
-    border-radius: 18px;
-    backdrop-filter: blur(14px) saturate(140%);
-    -webkit-backdrop-filter: blur(14px) saturate(140%);
-    box-shadow:
-        0 1px 0 rgba(255, 255, 255, 0.08) inset,
-        0 12px 32px rgba(0, 0, 0, 0.55),
-        0 0 0 1px rgba(91, 155, 255, 0.08);
+    bottom: calc(var(--bottom-nav-height, 64px) + env(safe-area-inset-bottom, 0px) + 10px);
     z-index: 90;
-    animation: rest-bar-in 260ms cubic-bezier(0.2, 0.8, 0.2, 1);
-    overflow: hidden;
+    display: inline-flex;
+    /* Accent for the active rest type; overridden by the type classes below. */
+    --rest-accent: var(--accent-primary);
+    --rest-glow: rgba(91, 155, 255, 0.45);
+    animation: rest-bar-in 240ms cubic-bezier(0.2, 0.8, 0.2, 1);
 }
 
 .rest-timer-bar[hidden] { display: none; }
 
 @keyframes rest-bar-in {
-    from { opacity: 0; transform: translate(-50%, 16px) scale(0.97); }
+    from { opacity: 0; transform: translate(-50%, 14px) scale(0.96); }
     to   { opacity: 1; transform: translate(-50%, 0) scale(1); }
 }
 
-/* On mobile the rest bar anchors LEFT and stops its right edge clear of the
-   back-to-top arrow (44px circle at right: 1.25rem), leaving a corner pocket so
-   the arrow can sit low beside it instead of being pushed above it. The right
-   inset = arrow right-offset (1.25rem) + arrow width (44px) + a gap (0.75rem),
-   so the bar never touches the arrow circle. The default rest-bar-in keyframe
-   translates by -50% and would yank this now-left-anchored bar off-screen, so
-   the mobile rule uses rest-bar-in-mobile (no translateX) instead. */
-@media (max-width: 767px) {
-    body.gym-tracker .rest-timer-bar {
-        left: 0.5rem;
-        right: calc(1.25rem + 44px + 0.75rem + env(safe-area-inset-right, 0px));
-        transform: none;
-        width: auto;
-        max-width: none;
-        animation-name: rest-bar-in-mobile;
-        /* #17: slim strip just above the nav. Slimmer bar -> tighter gap.
-           Right inset (arrow pocket) is intentionally unchanged. */
-        bottom: calc(var(--bottom-nav-height, 64px) + env(safe-area-inset-bottom, 0px) + 12px);
-        border-radius: 12px;
-        box-shadow:
-            0 1px 0 rgba(255, 255, 255, 0.06) inset,
-            0 6px 18px rgba(0, 0, 0, 0.5);
-    }
-
-    /* #17: condense the inner layout into a slim strip. */
-    body.gym-tracker .rest-timer-bar-inner {
-        gap: 0.55rem;
-        padding: 0.4rem 0.55rem 0.5rem;
-    }
-    body.gym-tracker .rest-timer-info {
-        gap: 0.4rem;
-        font-size: 0.8rem;
-    }
-    body.gym-tracker .rest-timer-info i {
-        width: 18px;
-        height: 18px;
-        font-size: 0.8rem;
-    }
-    body.gym-tracker .rest-timer-label {
-        font-size: 0.58rem;
-    }
-    body.gym-tracker .rest-timer-value {
-        font-size: 1.1rem;
-        padding-left: 0.2rem;
-    }
-    body.gym-tracker .rest-timer-actions {
-        gap: 0.3rem;
-    }
-    body.gym-tracker .rest-timer-action-btn {
-        height: 30px;
-        min-width: 44px;
-        padding: 0 0.6rem;
-        font-size: 0.74rem;
-    }
-    body.gym-tracker .rest-timer-progress {
-        height: 3px;
-    }
+/* Color coding by rest type. */
+.rest-timer-bar.rest-timer--set {
+    --rest-accent: var(--accent-success);
+    --rest-glow: rgba(52, 211, 153, 0.45);
+}
+.rest-timer-bar.rest-timer--exercise {
+    --rest-accent: var(--accent-primary);
+    --rest-glow: rgba(91, 155, 255, 0.45);
 }
 
-@keyframes rest-bar-in-mobile {
-    from { opacity: 0; transform: translateY(16px) scale(0.97); }
-    to   { opacity: 1; transform: none; }
-}
-
-.rest-timer-bar.rest-timer-done {
-    background:
-        linear-gradient(180deg, rgba(255, 255, 255, 0.05), rgba(255, 255, 255, 0) 40%),
-        linear-gradient(135deg, rgba(20, 83, 45, 0.92) 0%, rgba(15, 60, 35, 0.92) 100%);
-    border-color: rgba(34, 197, 94, 0.6);
-    box-shadow:
-        0 1px 0 rgba(255, 255, 255, 0.08) inset,
-        0 12px 32px rgba(0, 0, 0, 0.55),
-        0 0 0 1px rgba(34, 197, 94, 0.18),
-        0 0 24px rgba(34, 197, 94, 0.25);
-}
-
-.rest-timer-bar-inner {
+/* The circular dial. */
+.rest-timer-dial {
     position: relative;
-    display: grid;
-    grid-template-columns: 1fr auto;
-    align-items: center;
-    gap: 0.8rem;
-    padding: 0.7rem 0.9rem 0.85rem;
-}
-
-.rest-timer-info {
-    display: inline-flex;
-    align-items: center;
-    gap: 0.6rem;
-    color: var(--text-primary);
-    font-weight: 600;
-    font-size: 0.92rem;
-    min-width: 0;
-}
-
-.rest-timer-info i {
-    color: var(--accent-primary);
-    font-size: 0.95rem;
-    width: 22px;
-    height: 22px;
+    width: 146px;
+    height: 146px;
+    flex-shrink: 0;
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    background: rgba(91, 155, 255, 0.18);
     border-radius: 50%;
-    flex-shrink: 0;
+    background:
+        radial-gradient(circle at 50% 40%, rgba(255, 255, 255, 0.04), rgba(0, 0, 0, 0) 70%),
+        var(--bg-secondary);
+    box-shadow:
+        0 10px 34px rgba(0, 0, 0, 0.5),
+        0 0 0 1px rgba(255, 255, 255, 0.03),
+        0 0 26px var(--rest-glow);
 }
 
-.rest-timer-bar.rest-timer-done .rest-timer-info i {
-    color: #4ade80;
-    background: rgba(34, 197, 94, 0.22);
+.rest-timer-ring {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    transform: rotate(-90deg);
+}
+
+.rest-timer-ring-track {
+    fill: none;
+    stroke: rgba(255, 255, 255, 0.08);
+    stroke-width: 6;
+}
+
+.rest-timer-ring-fill {
+    fill: none;
+    stroke: var(--rest-accent);
+    stroke-width: 6;
+    stroke-linecap: round;
+    filter: drop-shadow(0 0 5px var(--rest-glow));
+    transition: stroke-dashoffset 1s linear, stroke var(--transition-base);
+}
+
+.rest-timer-dial-content {
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 0.05rem;
+    line-height: 1;
+}
+
+.rest-timer-icon {
+    color: var(--rest-accent);
+    font-size: 0.72rem;
 }
 
 .rest-timer-label {
-    color: var(--text-muted);
+    color: var(--rest-accent);
     text-transform: uppercase;
-    letter-spacing: 0.1em;
-    font-size: 0.64rem;
+    letter-spacing: 0.14em;
+    font-size: 0.55rem;
     font-weight: 700;
-    line-height: 1;
+    margin-bottom: 0.02rem;
 }
 
 .rest-timer-value {
     font-variant-numeric: tabular-nums;
-    font-size: 1.3rem;
-    font-weight: 700;
-    color: #ffffff;
+    font-size: 1.5rem;
+    font-weight: 800;
+    color: var(--text-primary);
     letter-spacing: -0.02em;
-    line-height: 1;
-    margin-left: auto;
-    padding-left: 0.3rem;
 }
 
-.rest-timer-bar.rest-timer-done .rest-timer-value {
-    color: #4ade80;
+.rest-timer-caption {
+    color: var(--text-muted);
+    font-size: 0.58rem;
+    font-weight: 500;
 }
 
+/* Action row: +30s and Skip as two equal pills, centered inside the dial so
+   the timer is a single self-contained control (no detached button). */
 .rest-timer-actions {
-    display: inline-flex;
+    display: flex;
     align-items: center;
-    gap: 0.4rem;
-    flex-shrink: 0;
+    justify-content: center;
+    gap: 0.3rem;
+    margin-top: 0.32rem;
 }
 
-/* Uniform 38px pills. +30s uses an accent tint to hint "add time," while
-   Skip stays quiet so "end rest early" doesn't feel like the primary CTA.
-   !important on `color` is required because assets/css/main.css applies
-   `button { color: #555555 !important; }` globally with higher priority. */
-.rest-timer-action-btn {
-    background: rgba(255, 255, 255, 0.08);
-    color: #ffffff !important;
-    border: 1px solid rgba(255, 255, 255, 0.14);
+.rest-timer-btn,
+.rest-timer-btn:hover,
+.rest-timer-btn:focus-visible {
+    box-sizing: border-box;
+    height: 24px;
+    min-width: 46px;
+    padding: 0 0.55rem;
     border-radius: 999px;
-    padding: 0 0.95rem;
-    font-weight: 700;
-    font-size: 0.82rem;
-    letter-spacing: 0.01em;
-    cursor: pointer;
-    height: 38px;
-    min-width: 52px;
     display: inline-flex;
     align-items: center;
     justify-content: center;
+    gap: 0.22rem;
     font-family: inherit;
+    font-weight: 700;
+    font-size: 0.64rem;
+    line-height: 1;
     font-variant-numeric: tabular-nums;
-    transition: background var(--transition-fast), border-color var(--transition-fast),
-                transform var(--transition-fast), color var(--transition-fast);
+    cursor: pointer;
+    box-shadow: none !important;
     -webkit-tap-highlight-color: transparent;
+    transition: background var(--transition-fast), border-color var(--transition-fast), color var(--transition-fast);
 }
 
-.rest-timer-action-btn:hover {
-    background: rgba(91, 155, 255, 0.3);
-    border-color: rgba(91, 155, 255, 0.6);
-    color: #ffffff !important;
-}
-
-.rest-timer-action-btn:active { transform: scale(0.96); }
-
-.rest-timer-action-btn:focus-visible {
-    outline: none;
-    box-shadow: 0 0 0 3px rgba(91, 155, 255, 0.45);
-}
-
-.rest-timer-action-btn.rest-timer-skip {
+/* +30s — accent-outlined (primary of the pair). */
+.rest-timer-add,
+.rest-timer-add:hover,
+.rest-timer-add:focus-visible {
+    border: 1.5px solid color-mix(in srgb, var(--rest-accent) 50%, transparent);
     background: transparent;
-    color: #e5e7eb !important;
-    border-color: rgba(255, 255, 255, 0.18);
+    color: var(--rest-accent) !important;
+}
+.rest-timer-add:hover {
+    background: color-mix(in srgb, var(--rest-accent) 16%, transparent);
 }
 
-.rest-timer-action-btn.rest-timer-skip:hover {
+/* Skip — neutral filled (visually secondary, still easy to tap). */
+.rest-timer-skip,
+.rest-timer-skip:hover,
+.rest-timer-skip:focus-visible {
+    border: 1.5px solid rgba(255, 255, 255, 0.12);
     background: rgba(255, 255, 255, 0.06);
-    color: #ffffff !important;
-    border-color: rgba(255, 255, 255, 0.3);
+    color: var(--text-secondary) !important;
+}
+.rest-timer-skip:hover {
+    background: rgba(255, 255, 255, 0.12);
+    color: var(--text-primary) !important;
+}
+.rest-timer-skip i { font-size: 0.6rem; }
+
+.rest-timer-btn:focus-visible {
+    outline: none;
+    box-shadow: 0 0 0 3px var(--rest-glow) !important;
 }
 
-.rest-timer-bar.rest-timer-done .rest-timer-action-btn {
-    border-color: rgba(34, 197, 94, 0.35);
+/* Done: ring + countdown go green (completion), then auto-hide. */
+.rest-timer-bar.rest-timer-done {
+    --rest-accent: var(--accent-success);
+    --rest-glow: rgba(52, 211, 153, 0.5);
+}
+.rest-timer-bar.rest-timer-done .rest-timer-value { color: var(--accent-success); }
+
+/* Urgent (final seconds): ring + value turn red (value via the shared rule). */
+.rest-timer-bar.rest-timer-urgent {
+    --rest-accent: var(--accent-error);
+    --rest-glow: rgba(248, 113, 113, 0.5);
 }
 
-.rest-timer-bar.rest-timer-done .rest-timer-action-btn:hover {
-    background: rgba(34, 197, 94, 0.25);
-    border-color: rgba(34, 197, 94, 0.65);
-}
-
-/* Thicker, unbroken progress line anchored to the bar's bottom edge so it
-   reads as part of the pill itself — not a floating extra element. */
-.rest-timer-progress {
-    position: absolute;
-    left: 0;
-    right: 0;
-    bottom: 0;
-    height: 4px;
-    background: rgba(255, 255, 255, 0.08);
-    overflow: hidden;
-}
-
-.rest-timer-progress-fill {
-    display: block;
-    height: 100%;
-    width: 100%;
-    background: linear-gradient(90deg, var(--accent-primary) 0%, #5b9bff 70%, #93b8ff 100%);
-    transform-origin: left center;
-    transition: transform 1s linear;
-    box-shadow: 0 0 12px rgba(91, 155, 255, 0.55);
-}
-
-.rest-timer-bar.rest-timer-done .rest-timer-progress-fill {
-    background: linear-gradient(90deg, #22c55e 0%, #4ade80 100%);
-    box-shadow: 0 0 12px rgba(74, 222, 128, 0.6);
-}
-
+/* Desktop has no bottom nav, so sit just above the viewport bottom. */
 @media (min-width: 768px) {
-    .rest-timer-bar {
-        bottom: 20px;
-    }
+    .rest-timer-bar { bottom: 24px; }
 }
+
+/* During rest the dial owns the bottom-center; hide the scroll-to-top arrow
+   so the two never collide. */
+body.gt-rest-bar-visible .back-to-top { display: none !important; }
 
 @media (prefers-reduced-motion: reduce) {
     .rest-timer-bar { animation: none; }
-    .rest-timer-progress-fill { transition: none; }
+    .rest-timer-ring-fill { transition: stroke var(--transition-base); }
 }
 
 /* Final-5-seconds urgent state: bar + chip turn red and pulse. */
@@ -2086,26 +1930,33 @@ body.gym-tracker #active-workout .superset-block {
 /* In-card rest countdown chip — dominant timer element in the rest row.
    Item R2-3: one element, two states. Active (default below) is the live
    colored countdown; --idle is the static gray between-set duration. */
+/* Pass 2 #2: integrated into the subtitle row as a small neutral chip.
+   Idle = quiet meta; only the live countdown picks up the azure accent. */
 .rest-countdown-chip {
     display: inline-flex;
     align-items: center;
-    font-size: 1.15rem;
-    font-weight: 700;
+    gap: 0.3rem;
+    font-size: 0.78rem;
+    font-weight: 600;
     font-variant-numeric: tabular-nums;
-    color: rgba(255, 255, 255, 0.85);
-    background: rgba(91, 155, 255, 0.15);
-    border: 1px solid rgba(91, 155, 255, 0.3);
-    border-radius: 999px;
-    padding: 0.3rem 0.9rem;
-    line-height: 1.4;
+    color: var(--accent-primary);
+    background: transparent;
+    border: 1px solid var(--accent-primary);
+    border-radius: var(--radius-sm);
+    padding: 0.15rem 0.5rem;
+    line-height: 1.3;
 }
+.rest-countdown-chip i { font-size: 0.7rem; }
 
-/* Idle: static gray duration, same size/position as the active countdown. */
+/* Idle: static neutral duration, same size/position as the active countdown. */
 body.gym-tracker .rest-countdown-chip.rest-countdown-chip--idle {
-    color: var(--gt-muted);
-    background: rgba(255, 255, 255, 0.05);
-    border-color: rgba(255, 255, 255, 0.12);
+    color: var(--text-secondary);
+    background: transparent;
+    border-color: var(--border-color);
     animation: none;
+}
+body.gym-tracker .rest-countdown-chip.rest-countdown-chip--idle i {
+    color: var(--text-muted);
 }
 
 /* Plate-hints toggle button — same sizing as other header btn-icons. */
@@ -2169,14 +2020,16 @@ body.gym-tracker .rest-countdown-chip.rest-countdown-chip--idle {
 }
 
 /* Exercise Entry Card (Mobile-Optimized) */
+/* Pass 2 #2: the card is the only large container — one border, one radius,
+   no inset/stacked shadows. */
 .exercise-entry {
     background: var(--bg-card);
     border-radius: var(--radius-lg);
-    padding: 0.95rem 0.95rem 0.85rem;
+    padding: 0.85rem 0.9rem;
     margin-bottom: 0.85rem;
     border: 1px solid var(--border-color);
-    box-shadow: 0 1px 0 rgba(255, 255, 255, 0.02) inset, var(--shadow-sm);
-    transition: border-color var(--transition-base), box-shadow var(--transition-base);
+    box-shadow: none;
+    transition: border-color var(--transition-base);
 }
 
 .exercise-entry-header {
@@ -2184,7 +2037,7 @@ body.gym-tracker .rest-countdown-chip.rest-countdown-chip--idle {
     justify-content: space-between;
     align-items: flex-start;
     gap: 0.6rem;
-    margin-bottom: 0.6rem;
+    margin-bottom: 0.75rem;
 }
 
 .exercise-entry-header h3 {
@@ -2199,7 +2052,6 @@ body.gym-tracker .rest-countdown-chip.rest-countdown-chip--idle {
     gap: 0.45rem;
     line-height: 1.25;
     min-width: 0;
-    flex: 1;
 }
 
 .exercise-name-main {
@@ -2207,12 +2059,20 @@ body.gym-tracker .rest-countdown-chip.rest-countdown-chip--idle {
     font-weight: 700;
 }
 
+/* Pass 2 #2: subtitle row under the name — progress pill, muscle, rep range,
+   rest chip all on one calm meta line. */
+.exercise-subtitle {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.4rem;
+}
+
 .exercise-name-sub {
-    color: var(--text-muted);
-    font-size: 0.74rem;
+    color: var(--text-secondary);
+    font-size: 0.78rem;
     font-weight: 500;
     white-space: nowrap;
-    opacity: 0.7;
     letter-spacing: 0.005em;
 }
 
@@ -2758,6 +2618,7 @@ body.gym-tracker .rest-countdown-chip.rest-countdown-chip--idle {
    Each exercise renders an <ol> of rows where `i < sets.length` is a
    committed set (locked, edit/delete) and later rows are planned inputs
    with a tap-to-complete button. */
+/* Pass 2 #2: progress badge sits in the subtitle row beside the name. */
 .exercise-progress {
     flex-shrink: 0;
     font-size: 0.72rem;
@@ -2766,22 +2627,22 @@ body.gym-tracker .rest-countdown-chip.rest-countdown-chip--idle {
     font-variant-numeric: tabular-nums;
     background: var(--bg-elevated);
     border: 1px solid var(--border-color);
-    border-radius: 999px;
-    padding: 0.25rem 0.7rem;
+    border-radius: var(--radius-sm);
+    padding: 0.15rem 0.5rem;
     letter-spacing: 0.04em;
     text-transform: uppercase;
     display: inline-flex;
     align-items: center;
-    gap: 0.35rem;
-    line-height: 1;
+    gap: 0.3rem;
+    line-height: 1.3;
     transition: background var(--transition-base), border-color var(--transition-base),
                 color var(--transition-base);
 }
 
 .exercise-progress.is-complete {
-    background: rgba(34, 197, 94, 0.16);
-    border-color: rgba(34, 197, 94, 0.5);
-    color: #4ade80;
+    background: rgba(52, 211, 153, 0.14);
+    border-color: var(--accent-success);
+    color: var(--accent-success);
 }
 
 .exercise-progress.is-complete i {
@@ -2789,9 +2650,8 @@ body.gym-tracker .rest-countdown-chip.rest-countdown-chip--idle {
 }
 
 .exercise-entry.exercise-complete {
-    border-color: rgba(34, 197, 94, 0.38);
-    box-shadow: 0 0 0 1px rgba(34, 197, 94, 0.2) inset,
-                0 6px 16px rgba(34, 197, 94, 0.1);
+    border-color: var(--accent-success);
+    box-shadow: none;
 }
 
 .set-row-list {
@@ -2800,62 +2660,58 @@ body.gym-tracker .rest-countdown-chip.rest-countdown-chip--idle {
     padding: 0;
     display: flex;
     flex-direction: column;
-    gap: 0.5rem;
+    gap: 0.4rem;
 }
 
 /* Horizontal three-zone layout: [ num ] [ content ] [ actions + check ].
    Flex with align-items:center gives bulletproof vertical centering so the
    set number, the "55lb × 8" text, and the right-side icons always share
    the same baseline — no matter how tall the row grows. */
+/* Pass 2 #3/#4: clean, quiet, consistent rows. One border style (solid 1px),
+   tighter padding/height, no dashed borders. The active cue is a single
+   left accent border applied on focus-within only. */
 .set-row {
     display: flex;
     align-items: center;
     flex-wrap: wrap;
-    gap: 0.6rem;
-    padding: 0.7rem 0.6rem 0.7rem 0.6rem;
-    background: rgba(255, 255, 255, 0.02);
+    gap: 0.5rem;
+    padding: 0.5rem 0.55rem;
+    background: var(--bg-tertiary);
     border: 1px solid var(--border-color);
-    border-radius: var(--radius-md);
-    min-height: 60px;
-    transition: background var(--transition-fast), border-color var(--transition-fast),
-                box-shadow var(--transition-fast);
+    border-left: 3px solid var(--border-color);
+    border-radius: var(--radius-sm);
+    min-height: 48px;
+    transition: background var(--transition-fast), border-color var(--transition-fast);
 }
 
 .set-row-planned {
-    background: rgba(255, 255, 255, 0.02);
-    border-style: dashed;
-    border-color: rgba(74, 74, 117, 0.7);
+    background: var(--bg-tertiary);
+    border-color: var(--border-color);
 }
 
+/* Active cue: a single left accent border (no glow, no fill, no outline). */
 .set-row-planned:focus-within {
-    background: var(--bg-card);
-    border-style: solid;
-    border-color: rgba(91, 155, 255, 0.5);
-    box-shadow: 0 0 0 3px rgba(91, 155, 255, 0.12);
+    border-left-color: var(--accent-primary);
 }
 
 .set-row-complete {
-    background: rgba(34, 197, 94, 0.08);
-    border-color: rgba(34, 197, 94, 0.3);
-    border-left: 3px solid rgba(34, 197, 94, 0.7);
-    /* Border-left adds 2px — compensate so text alignment with planned rows stays flush. */
-    padding-left: calc(0.6rem - 2px);
+    background: rgba(52, 211, 153, 0.07);
+    border-color: var(--border-color);
+    border-left-color: var(--accent-success);
 }
 
 .set-row-editing {
-    background: var(--bg-card);
-    border-color: var(--accent-primary);
-    box-shadow: 0 0 0 2px rgba(91, 155, 255, 0.2);
+    border-left-color: var(--accent-primary);
 }
 
 .set-row-num {
     flex-shrink: 0;
-    width: 28px;
-    height: 28px;
-    border-radius: 50%;
-    background: rgba(91, 155, 255, 0.12);
-    border: 1px solid rgba(91, 155, 255, 0.28);
-    color: var(--accent-primary);
+    width: 24px;
+    height: 24px;
+    border-radius: var(--radius-sm);
+    background: var(--bg-elevated);
+    border: 1px solid var(--border-light);
+    color: var(--text-secondary);
     font-weight: 700;
     font-size: 0.76rem;
     display: inline-flex;
@@ -2867,16 +2723,10 @@ body.gym-tracker .rest-countdown-chip.rest-countdown-chip--idle {
                 color var(--transition-base);
 }
 
-.set-row-planned .set-row-num {
-    background: transparent;
-    border-color: var(--border-color);
-    color: var(--text-muted);
-}
-
 .set-row-complete .set-row-num {
-    background: rgba(34, 197, 94, 0.2);
-    border-color: rgba(34, 197, 94, 0.55);
-    color: #4ade80;
+    background: rgba(52, 211, 153, 0.16);
+    border-color: var(--accent-success);
+    color: var(--accent-success);
 }
 
 .set-row-inputs {
@@ -2889,24 +2739,23 @@ body.gym-tracker .rest-countdown-chip.rest-countdown-chip--idle {
 }
 
 .set-row-inputs input {
-    width: 76px;
-    padding: 0.5rem 0.55rem;
-    background: var(--bg-tertiary);
+    width: 68px;
+    height: 40px;
+    padding: 0.4rem 0.5rem;
+    background: var(--bg-card);
     border: 1px solid var(--border-color);
-    border-radius: var(--radius-md);
+    border-radius: var(--radius-sm);
     color: var(--text-primary);
-    font-size: 1rem;
+    font-size: 0.95rem;
     font-weight: 700;
     text-align: center;
     font-variant-numeric: tabular-nums;
     letter-spacing: -0.01em;
-    transition: border-color var(--transition-fast), background var(--transition-fast),
-                box-shadow var(--transition-fast);
+    transition: border-color var(--transition-fast);
 }
 
 .set-row-inputs input::placeholder {
     color: var(--text-muted);
-    opacity: 0.5;
     font-weight: 500;
 }
 
@@ -2915,16 +2764,14 @@ body.gym-tracker .rest-countdown-chip.rest-countdown-chip--idle {
 .set-row-inputs input:focus {
     outline: none;
     border-color: var(--accent-primary);
-    background: var(--bg-hover);
-    box-shadow: 0 0 0 3px rgba(91, 155, 255, 0.16);
+    box-shadow: none;
 }
 
 .set-row-x,
 .set-row-inputs .duration-separator {
     color: var(--text-muted);
-    font-weight: 700;
-    font-size: 0.9rem;
-    opacity: 0.8;
+    font-weight: 600;
+    font-size: 0.8rem;
 }
 
 .set-row-details {
@@ -2943,9 +2790,12 @@ body.gym-tracker .rest-countdown-chip.rest-countdown-chip--idle {
    slides from left (incomplete) to right (completed). The knob's checkmark
    fades in as it lands, and a soft green glow confirms the ON state.
    Driven purely by `aria-pressed` so the DOM stays identical between states. */
+/* Pass 2 #3: smaller resting footprint, neutral off, green only when ON.
+   A transparent 40px tap padding keeps the touch target while the visible
+   track stays compact. One emphasis cue per state (no stacked glows). */
 .set-toggle {
-    --toggle-width: 54px;
-    --toggle-height: 30px;
+    --toggle-width: 40px;
+    --toggle-height: 22px;
     --toggle-pad: 3px;
     --toggle-knob: calc(var(--toggle-height) - (var(--toggle-pad) * 2));
     --toggle-travel: calc(var(--toggle-width) - var(--toggle-knob) - (var(--toggle-pad) * 2));
@@ -2955,14 +2805,16 @@ body.gym-tracker .rest-countdown-chip.rest-countdown-chip--idle {
     width: var(--toggle-width);
     height: var(--toggle-height);
     padding: 0;
+    box-sizing: content-box;
+    /* Transparent border supplies a >=40px tap target without inflating the
+       visible track (the green fill paints to padding-box only). */
+    border: 9px solid transparent;
     border-radius: 999px;
-    border: 1px solid var(--border-light);
-    background: var(--bg-tertiary);
+    background: var(--bg-elevated) padding-box;
     cursor: pointer;
-    box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.35);
+    box-shadow: none;
     transition: background 220ms cubic-bezier(0.2, 0.8, 0.2, 1),
-                border-color 220ms ease,
-                box-shadow 220ms ease;
+                border-color 220ms ease;
     -webkit-tap-highlight-color: transparent;
     font-family: inherit;
 }
@@ -2974,12 +2826,11 @@ body.gym-tracker .rest-countdown-chip.rest-countdown-chip--idle {
     width: var(--toggle-knob);
     height: var(--toggle-knob);
     border-radius: 50%;
-    background: linear-gradient(180deg, #c7c7d8 0%, #8a8aa6 100%);
+    background: var(--text-muted);
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.45),
-                0 0 0 1px rgba(0, 0, 0, 0.1);
+    box-shadow: none;
     transition: transform 180ms cubic-bezier(0.2, 0.8, 0.2, 1),
                 background 200ms ease;
     will-change: transform;
@@ -2987,7 +2838,7 @@ body.gym-tracker .rest-countdown-chip.rest-countdown-chip--idle {
 
 .set-toggle-knob i {
     color: #ffffff !important;
-    font-size: 0.62rem;
+    font-size: 0.58rem;
     font-weight: 900;
     opacity: 0;
     transform: scale(0.7);
@@ -2995,24 +2846,18 @@ body.gym-tracker .rest-countdown-chip.rest-countdown-chip--idle {
     line-height: 1;
 }
 
-/* ---- ON state: completed ---- */
+/* ---- ON state: completed (green = completion semantics) ---- */
 .set-toggle[aria-pressed="true"] {
-    background: linear-gradient(135deg, #22c55e 0%, #16a34a 100%);
-    border-color: rgba(34, 197, 94, 0.85);
-    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.18),
-                0 0 0 1px rgba(34, 197, 94, 0.3),
-                0 2px 10px rgba(34, 197, 94, 0.35);
+    background: var(--accent-success) padding-box;
 }
 
 .set-toggle[aria-pressed="true"] .set-toggle-knob {
     transform: translateX(var(--toggle-travel));
-    background: linear-gradient(180deg, #ffffff 0%, #e8eae7 100%);
-    box-shadow: 0 2px 6px rgba(0, 0, 0, 0.35),
-                0 0 0 1px rgba(0, 0, 0, 0.08);
+    background: #ffffff;
+    box-shadow: none;
 }
 
 .set-toggle[aria-pressed="true"] .set-toggle-knob i {
-    /* Dark green check reads cleanly on the white knob. */
     color: #15803d !important;
     opacity: 1;
     transform: scale(1);
@@ -3021,13 +2866,10 @@ body.gym-tracker .rest-countdown-chip.rest-countdown-chip--idle {
 /* ---- Affordances on pointer devices ---- */
 @media (hover: hover) {
     .set-toggle:hover {
-        border-color: var(--text-muted);
+        background: var(--bg-hover) padding-box;
     }
     .set-toggle[aria-pressed="true"]:hover {
         filter: brightness(1.06);
-        box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.2),
-                    0 0 0 1px rgba(34, 197, 94, 0.4),
-                    0 4px 14px rgba(34, 197, 94, 0.5);
     }
 }
 
@@ -3042,27 +2884,17 @@ body.gym-tracker .rest-countdown-chip.rest-countdown-chip--idle {
 
 .set-toggle:focus-visible {
     outline: none;
-    box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.35),
-                0 0 0 3px rgba(91, 155, 255, 0.45);
+    box-shadow: 0 0 0 3px rgba(91, 155, 255, 0.45);
 }
 
 .set-toggle[aria-pressed="true"]:focus-visible {
-    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.18),
-                0 0 0 3px rgba(34, 197, 94, 0.45),
-                0 2px 10px rgba(34, 197, 94, 0.35);
+    box-shadow: 0 0 0 3px rgba(52, 211, 153, 0.45);
 }
 
-/* Highlight the toggle when the user is entering weight/reps — subtle hint
-   about what to do next, without switching state. */
-.set-row-planned:focus-within .set-toggle:not([aria-pressed="true"]) {
-    border-color: rgba(34, 197, 94, 0.55);
-    background: rgba(34, 197, 94, 0.1);
-    box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.25),
-                0 0 0 3px rgba(34, 197, 94, 0.12);
-}
-
+/* Hint the toggle while the user is entering weight/reps — single neutral
+   nudge (the knob brightens slightly), no competing fill/glow. */
 .set-row-planned:focus-within .set-toggle:not([aria-pressed="true"]) .set-toggle-knob {
-    background: linear-gradient(180deg, #e5e7eb 0%, #9ca3af 100%);
+    background: var(--text-secondary);
 }
 
 /* Celebratory pulse when a row transitions to the completed state. Triggers
@@ -3145,11 +2977,13 @@ body.gym-tracker .rest-countdown-chip.rest-countdown-chip--idle {
 
 /* Row of add/remove controls under the set list. Remove is a compact square
    icon button that only renders when there's an uncommitted row to drop. */
+/* Pass 2 #5: compact set-management row — minus (neutral, red-on-hover) sits
+   tight beside an azure-affordance Add-set. One border style, no dashed. */
 .set-row-footer {
-    margin-top: 0.6rem;
+    margin-top: 0.55rem;
     display: flex;
     align-items: stretch;
-    gap: 0.5rem;
+    gap: 0.4rem;
 }
 
 .set-row-footer .btn-add-set--extra {
@@ -3159,13 +2993,14 @@ body.gym-tracker .rest-countdown-chip.rest-countdown-chip--idle {
 
 .btn-remove-set {
     flex: 0 0 auto;
-    width: 44px;
-    min-height: 44px;
+    width: 40px;
+    height: 40px;
+    min-height: 40px;
     padding: 0;
-    background: rgba(239, 68, 68, 0.07);
-    border: 1px dashed rgba(239, 68, 68, 0.4);
-    border-radius: var(--radius-md);
-    color: #fca5a5 !important;
+    background: var(--bg-elevated);
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-sm);
+    color: var(--text-secondary) !important;
     font-family: inherit;
     font-size: 0.85rem;
     font-weight: 700;
@@ -3174,8 +3009,7 @@ body.gym-tracker .rest-countdown-chip.rest-countdown-chip--idle {
     align-items: center;
     justify-content: center;
     transition: background var(--transition-fast), color var(--transition-fast),
-                border-color var(--transition-fast), transform var(--transition-fast),
-                box-shadow var(--transition-fast);
+                border-color var(--transition-fast);
     -webkit-tap-highlight-color: transparent;
 }
 
@@ -3185,79 +3019,65 @@ body.gym-tracker .rest-countdown-chip.rest-countdown-chip--idle {
 }
 
 .btn-remove-set:hover {
-    background: rgba(239, 68, 68, 0.18);
-    color: #ffffff !important;
-    border-color: rgba(239, 68, 68, 0.7);
-    border-style: solid;
-    box-shadow: 0 0 0 3px rgba(239, 68, 68, 0.12);
+    background: var(--bg-elevated);
+    color: var(--accent-error) !important;
+    border-color: var(--accent-error);
 }
 
 .btn-remove-set:active {
-    transform: translateY(1px);
-    background: rgba(239, 68, 68, 0.28);
-    box-shadow: inset 0 2px 4px rgba(0, 0, 0, 0.2);
+    background: var(--bg-hover);
 }
 
 .btn-remove-set:focus-visible {
     outline: none;
-    box-shadow: 0 0 0 3px rgba(239, 68, 68, 0.4);
+    box-shadow: 0 0 0 3px rgba(91, 155, 255, 0.4);
 }
 
-/* Secondary CTA — reads as clearly clickable at rest (primary-text color,
-   visible tinted surface). Hover ramps brightness + border solidifies so the
-   affordance upgrade feels tactile.
-   !important on `color` is required because assets/css/main.css applies
-   `button { color: #555555 !important; }` globally with higher cascade
-   priority than our variable reference. */
+/* Add-set: the primary action of the row — quiet neutral surface with an
+   azure label + "+" icon. One solid border, no dashed.
+   !important on `color` defeats main.css `button { color:#555 !important }`. */
 .btn-add-set--extra {
-    margin-top: 0.6rem;
+    margin-top: 0.55rem;
     width: 100%;
-    min-height: 44px;
-    padding: 0.7rem 1rem;
-    background: rgba(91, 155, 255, 0.12);
-    border: 1px dashed rgba(91, 155, 255, 0.55);
-    border-radius: var(--radius-md);
-    color: #ffffff !important;
+    height: 40px;
+    min-height: 40px;
+    padding: 0 1rem;
+    background: var(--bg-elevated);
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-sm);
+    color: var(--accent-primary) !important;
     font-family: inherit;
-    font-size: 0.9rem;
-    font-weight: 700;
+    font-size: 0.85rem;
+    font-weight: 600;
     letter-spacing: 0.01em;
     line-height: 1;
     cursor: pointer;
     display: flex;
     align-items: center;
     justify-content: center;
-    gap: 0.5rem;
-    transition: background var(--transition-fast), color var(--transition-fast),
-                border-color var(--transition-fast), transform var(--transition-fast),
-                box-shadow var(--transition-fast);
+    gap: 0.45rem;
+    transition: background var(--transition-fast), border-color var(--transition-fast);
     -webkit-tap-highlight-color: transparent;
 }
 
 .btn-add-set--extra i {
-    font-size: 0.8rem;
+    font-size: 0.78rem;
     color: var(--accent-primary) !important;
-    transition: transform var(--transition-fast), color var(--transition-fast);
 }
 
 .btn-add-set--extra:hover {
-    background: rgba(91, 155, 255, 0.22);
-    color: #ffffff !important;
+    background: var(--bg-hover);
+    color: var(--accent-primary) !important;
     border-color: var(--accent-primary);
-    border-style: solid;
-    box-shadow: 0 0 0 3px rgba(91, 155, 255, 0.15), 0 4px 12px rgba(91, 155, 255, 0.2);
 }
 
 .btn-add-set--extra:hover i {
-    transform: scale(1.15);
-    color: #ffffff !important;
+    color: var(--accent-primary) !important;
 }
 
 .btn-add-set--extra:active {
-    transform: translateY(1px);
-    background: rgba(91, 155, 255, 0.3);
-    color: #ffffff !important;
-    box-shadow: inset 0 2px 4px rgba(0, 0, 0, 0.2);
+    background: var(--bg-hover);
+    color: var(--accent-primary) !important;
 }
 
 .btn-add-set--extra:focus-visible {
@@ -3267,15 +3087,12 @@ body.gym-tracker .rest-countdown-chip.rest-countdown-chip--idle {
 
 @media (max-width: 480px) {
     .set-row {
-        gap: 0.5rem;
-        padding: 0.7rem 0.5rem 0.7rem 0.55rem;
-    }
-    .set-row-complete {
-        padding-left: calc(0.55rem - 2px);
+        gap: 0.45rem;
+        padding: 0.5rem 0.5rem;
     }
     /* Slightly smaller input width so the planned-row [weight × reps] line
        doesn't wrap on narrow phones. */
-    .set-row-inputs input { width: 70px; }
+    .set-row-inputs input { width: 62px; }
     /* Tighter action spacing on phones to keep the right cluster compact. */
     .set-row-actions { gap: 0.25rem; }
 }
@@ -4544,10 +4361,10 @@ body.gym-tracker .rest-countdown-chip.rest-countdown-chip--idle {
 
 #program-form .form-group label {
     margin-bottom: 0.4rem;
-    font-size: 0.74rem;
-    font-weight: 700;
-    text-transform: uppercase;
-    letter-spacing: 0.05em;
+    font-size: 0.85rem;
+    font-weight: 600;
+    text-transform: none;
+    letter-spacing: 0;
     color: var(--text-secondary);
 }
 
@@ -4613,16 +4430,16 @@ body.gym-tracker .rest-countdown-chip.rest-countdown-chip--idle {
 }
 
 .program-exercises-heading i {
-    color: var(--accent-primary);
-    font-size: 0.85rem;
+    color: var(--text-muted);
+    font-size: 0.8rem;
 }
 
 .program-exercises-count {
     font-size: 0.75rem;
     color: var(--text-muted);
-    font-weight: 600;
-    text-transform: uppercase;
-    letter-spacing: 0.04em;
+    font-weight: 500;
+    text-transform: none;
+    letter-spacing: 0;
 }
 
 .program-exercises-count:empty { display: none; }
@@ -4642,7 +4459,7 @@ body.gym-tracker .rest-countdown-chip.rest-countdown-chip--idle {
     padding: 1.4rem 1rem;
     background: var(--bg-card);
     border: 1px dashed var(--border-color);
-    border-radius: var(--radius-md);
+    border-radius: var(--radius-lg);
     text-align: center;
 }
 
@@ -4682,7 +4499,7 @@ body.gym-tracker .rest-countdown-chip.rest-countdown-chip--idle {
     padding: 0.55rem 0.7rem;
     background: var(--bg-card);
     border: 1px solid var(--border-color);
-    border-radius: var(--radius-md);
+    border-radius: var(--radius-lg);
     box-shadow: var(--shadow-sm);
     transition: transform var(--transition-fast), background var(--transition-fast),
                 border-color var(--transition-fast), box-shadow var(--transition-fast);
@@ -4741,8 +4558,8 @@ body.gym-tracker .rest-countdown-chip.rest-countdown-chip--idle {
     .program-exercise-row .pex-name-main { font-size: 1.05rem; }
 
     .program-exercise-row .pex-name-sub {
-        font-size: 0.78rem;
-        opacity: 0.75;
+        font-size: 0.8rem;
+        opacity: 1;
     }
 
     /* Controls row: sets-block takes the majority of space; rest stepper
@@ -4784,9 +4601,8 @@ body.gym-tracker .rest-countdown-chip.rest-countdown-chip--idle {
     }
 
     .program-exercise-row .pex-stepper-label {
-        font-size: 0.68rem;
-        letter-spacing: 0.08em;
-        opacity: 0.8;
+        font-size: 0.76rem;
+        letter-spacing: 0;
         padding-left: 0.1rem;
     }
 
@@ -4798,7 +4614,7 @@ body.gym-tracker .rest-countdown-chip.rest-countdown-chip--idle {
         padding: 0.4rem 0.65rem;
         background: var(--bg-elevated);
         border: 1px solid var(--border-color);
-        border-radius: var(--radius-md);
+        border-radius: var(--radius-sm);
         min-width: 0;
         box-sizing: border-box;
     }
@@ -4826,9 +4642,9 @@ body.gym-tracker .rest-countdown-chip.rest-countdown-chip--idle {
         font-size: 0.9rem;
     }
     .program-exercise-row .pex-position {
-        width: 24px;
-        height: 24px;
-        font-size: 0.7rem;
+        width: 22px;
+        height: 22px;
+        font-size: 0.8rem;
     }
 
     /* Delete stays tertiary at rest; aligned to the identity row's right edge. */
@@ -4857,7 +4673,7 @@ body.gym-tracker .rest-countdown-chip.rest-countdown-chip--idle {
     gap: 0.5rem;
     background: var(--bg-elevated);
     border: 1px solid var(--border-color);
-    border-radius: var(--radius-md);
+    border-radius: var(--radius-sm);
     padding: 0.15rem 0.35rem;
     font-size: 0.78rem;
     min-width: 0;
@@ -4867,10 +4683,10 @@ body.gym-tracker .rest-countdown-chip.rest-countdown-chip--idle {
 .pex-stepper-label {
     flex-shrink: 0;
     font-weight: 600;
-    color: var(--text-muted);
-    text-transform: uppercase;
-    letter-spacing: 0.04em;
-    font-size: 0.65rem;
+    color: var(--text-secondary);
+    text-transform: none;
+    letter-spacing: 0;
+    font-size: 0.78rem;
     white-space: nowrap;
 }
 
@@ -4938,19 +4754,19 @@ body.gym-tracker .rest-countdown-chip.rest-countdown-chip--idle {
     box-shadow: var(--shadow-md);
 }
 
+/* Neutral, low-emphasis index marker (not a bold blue circle). */
 .pex-position {
-    width: 22px;
-    height: 22px;
+    width: 20px;
+    height: 20px;
     flex-shrink: 0;
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    background: rgba(91, 155, 255, 0.12);
-    border: 1px solid rgba(91, 155, 255, 0.25);
-    border-radius: 50%;
-    color: var(--accent-primary);
-    font-size: 0.68rem;
-    font-weight: 700;
+    background: transparent;
+    border: none;
+    color: var(--text-muted);
+    font-size: 0.78rem;
+    font-weight: 600;
     font-variant-numeric: tabular-nums;
 }
 
@@ -4960,12 +4776,12 @@ body.gym-tracker .rest-countdown-chip.rest-countdown-chip--idle {
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    width: 18px;
-    height: 24px;
+    width: 20px;
+    height: 26px;
     color: var(--text-muted);
-    opacity: 0.5;
+    opacity: 0.85;
     cursor: grab;
-    font-size: 0.85rem;
+    font-size: 0.95rem;
     transition: color var(--transition-fast), opacity var(--transition-fast);
     flex-shrink: 0;
 }
@@ -5029,9 +4845,9 @@ body.gym-tracker .rest-countdown-chip.rest-countdown-chip--idle {
 
 .pex-name-sub {
     font-weight: 500;
-    color: var(--text-muted);
-    font-size: 0.72rem;
-    opacity: 0.7;
+    color: var(--text-secondary);
+    font-size: 0.78rem;
+    opacity: 1;
     white-space: nowrap;
 }
 
@@ -5066,17 +4882,19 @@ body.gym-tracker .rest-countdown-chip.rest-countdown-chip--idle {
 
 .pex-delete:hover,
 .pex-delete:focus-visible {
-    color: #ffffff !important;
-    background: rgba(239, 68, 68, 0.85);
-    border-color: rgba(239, 68, 68, 0.9) !important;
+    color: var(--accent-error) !important;
+    background: var(--bg-elevated);
+    border-color: var(--accent-error) !important;
     opacity: 1;
     outline: none;
-    transform: scale(1.05);
+}
+
+.pex-delete:focus-visible {
+    box-shadow: 0 0 0 3px rgba(91, 155, 255, 0.4) !important;
 }
 
 .pex-delete:active {
-    transform: scale(0.94);
-    background: #dc2626;
+    transform: scale(0.96);
 }
 
 /* Add Exercise — full-width secondary action. Subtle tinted surface at rest,
@@ -5090,11 +4908,11 @@ body.gym-tracker .rest-countdown-chip.rest-countdown-chip--idle {
     margin: 0;
     height: auto !important;
     min-height: 0 !important;
-    padding: 0.55rem 1rem !important;
-    background: rgba(91, 155, 255, 0.1) !important;
-    border: 1px dashed rgba(91, 155, 255, 0.4) !important;
-    border-radius: var(--radius-md);
-    color: #ffffff !important;
+    padding: 0.6rem 1rem !important;
+    background: var(--bg-elevated) !important;
+    border: 1px dashed var(--border-light) !important;
+    border-radius: var(--radius-lg);
+    color: var(--text-secondary) !important;
     font-family: inherit !important;
     font-weight: 600 !important;
     font-size: 0.85rem !important;
@@ -5102,31 +4920,35 @@ body.gym-tracker .rest-countdown-chip.rest-countdown-chip--idle {
     cursor: pointer;
     box-shadow: none !important;
     transition: background var(--transition-base), border-color var(--transition-base),
-                transform var(--transition-base), box-shadow var(--transition-base);
+                color var(--transition-base), box-shadow var(--transition-base);
 }
 
 .btn-add-exercise:hover {
-    background: rgba(91, 155, 255, 0.2) !important;
-    border-color: var(--accent-primary) !important;
-    border-style: solid !important;
-    transform: translateY(-1px);
-    box-shadow: 0 3px 10px rgba(91, 155, 255, 0.22) !important;
+    background: var(--bg-hover) !important;
+    border-color: var(--border-light) !important;
+    color: var(--text-primary) !important;
+    box-shadow: none !important;
 }
 
 .btn-add-exercise:active {
-    transform: translateY(0);
-    background: rgba(91, 155, 255, 0.28) !important;
+    background: var(--bg-hover) !important;
     box-shadow: inset 0 2px 4px rgba(0, 0, 0, 0.25) !important;
+}
+
+.btn-add-exercise:focus-visible {
+    outline: none;
+    color: var(--text-primary) !important;
+    box-shadow: 0 0 0 3px rgba(91, 155, 255, 0.4) !important;
 }
 
 .btn-add-exercise i {
     font-size: 0.78rem;
-    color: var(--accent-primary) !important;
+    color: inherit !important;
     transition: color var(--transition-base);
 }
 
 .btn-add-exercise:hover i {
-    color: #ffffff !important;
+    color: inherit !important;
 }
 
 /* Bottom action row — anchored footer with clear Cancel/Save hierarchy. */
@@ -5184,34 +5006,36 @@ body.gym-tracker .rest-countdown-chip.rest-countdown-chip--idle {
 }
 
 /* Save — primary CTA. Strong gradient + glow so it's the obvious action. */
+/* Calmer azure primary: flat fill, standard height, no glow/heavy shadow. */
 .btn-save-program {
-    background: var(--gradient-primary) !important;
+    background: var(--accent-primary) !important;
     border: 1px solid transparent !important;
     color: #ffffff !important;
-    box-shadow: 0 4px 14px rgba(91, 155, 255, 0.4) !important;
+    box-shadow: none !important;
+    padding: 0.5rem 1rem !important;
+    height: auto !important;
+    min-height: 0 !important;
+    font-size: 0.85rem !important;
 }
 
 .btn-save-program i {
     color: #ffffff !important;
-    font-size: 0.85rem;
+    font-size: 0.82rem;
 }
 
 .btn-save-program:hover {
-    transform: translateY(-1px);
-    box-shadow: 0 8px 20px rgba(91, 155, 255, 0.5) !important;
-    filter: brightness(1.06);
+    filter: brightness(1.08);
+    box-shadow: none !important;
 }
 
 .btn-save-program:active {
-    transform: translateY(0);
     filter: brightness(0.95);
-    box-shadow: 0 1px 3px rgba(91, 155, 255, 0.25) !important;
+    box-shadow: none !important;
 }
 
 .btn-save-program:focus-visible {
     outline: none;
-    box-shadow: 0 0 0 3px rgba(91, 155, 255, 0.4),
-                0 3px 10px rgba(91, 155, 255, 0.3) !important;
+    box-shadow: 0 0 0 3px rgba(91, 155, 255, 0.4) !important;
 }
 
 @media (max-width: 520px) {
@@ -8802,14 +8626,14 @@ button.calendar-day {
     position: absolute;
     top: -8px;
     left: 12px;
-    padding: 1px 6px;
-    background: var(--bg-card);
-    border: 1px solid rgba(91, 155, 255, 0.55);
-    border-radius: 4px;
-    color: var(--accent-primary);
-    font-size: 0.6rem;
-    font-weight: 700;
-    letter-spacing: 0.06em;
+    padding: 1px 7px;
+    background: var(--bg-elevated);
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-sm);
+    color: var(--text-secondary);
+    font-size: 0.65rem;
+    font-weight: 600;
+    letter-spacing: 0;
 }
 .program-exercise-row { position: relative; }
 
@@ -9106,7 +8930,7 @@ button.calendar-day {
     padding: 0.55rem 0.75rem;
     background: var(--bg-elevated);
     border: 1px solid var(--border-color);
-    border-radius: var(--radius-md);
+    border-radius: var(--radius-lg);
 }
 
 .rest-mode-label {
@@ -9121,7 +8945,7 @@ button.calendar-day {
 }
 
 .rest-mode-label i {
-    color: var(--accent-primary);
+    color: var(--text-muted);
     font-size: 0.9rem;
 }
 
@@ -9135,9 +8959,9 @@ button.calendar-day {
 .rest-mode-uniform-label {
     font-size: 0.78rem;
     font-weight: 600;
-    color: var(--text-muted);
-    text-transform: uppercase;
-    letter-spacing: 0.04em;
+    color: var(--text-secondary);
+    text-transform: none;
+    letter-spacing: 0;
 }
 
 .rest-mode-uniform-input {
@@ -9183,36 +9007,46 @@ button.calendar-day {
     gap: 0.5rem;
 }
 
-/* Reuse the existing .pex-stepper-label for the "Sets / Reps" heading */
+/* Reuse the existing .pex-stepper-label for the "Sets / Reps" heading.
+   Reduced emphasis: smaller, lighter, Title Case. */
 .pex-sets-header .pex-stepper-label {
-    font-size: 0.65rem;
-    letter-spacing: 0.08em;
-    font-weight: 700;
-    text-transform: uppercase;
-    color: var(--text-muted);
+    font-size: 0.76rem;
+    letter-spacing: 0;
+    font-weight: 600;
+    text-transform: none;
+    color: var(--text-secondary);
 }
 
+/* Add set: a quiet neutral chip that reads as part of the sets block.
+   Clearly clickable (filled elevated surface) without a blue border. */
 .pex-add-set-btn {
     display: inline-flex;
     align-items: center;
-    gap: 0.25rem;
-    padding: 0.15rem 0.5rem;
-    background: transparent;
-    border: 1px solid rgba(91, 155, 255, 0.35);
+    gap: 0.3rem;
+    padding: 0.25rem 0.6rem;
+    background: var(--bg-elevated) !important;
+    border: 1px solid transparent !important;
     border-radius: var(--radius-sm);
-    color: var(--accent-primary);
-    font-size: 0.7rem;
+    color: var(--text-secondary) !important;
+    font-size: 0.72rem;
     font-weight: 600;
     cursor: pointer;
-    transition: background 120ms ease, border-color 120ms ease;
+    transition: background 120ms ease, color 120ms ease;
     white-space: nowrap;
 }
 
-.pex-add-set-btn:hover,
-.pex-add-set-btn:focus-visible {
-    background: rgba(91, 155, 255, 0.12);
-    border-color: rgba(91, 155, 255, 0.6);
+.pex-add-set-btn i { color: inherit !important; }
+
+.pex-add-set-btn:hover {
+    background: var(--bg-hover) !important;
+    color: var(--text-primary) !important;
     outline: none;
+}
+
+.pex-add-set-btn:focus-visible {
+    color: var(--text-primary) !important;
+    outline: none;
+    box-shadow: 0 0 0 3px rgba(91, 155, 255, 0.4) !important;
 }
 
 .pex-set-rows {
@@ -9230,11 +9064,11 @@ button.calendar-day {
 
 .pex-set-label {
     flex: 0 0 auto;
-    font-size: 0.7rem;
+    font-size: 0.78rem;
     font-weight: 600;
-    color: var(--text-muted);
-    text-transform: uppercase;
-    letter-spacing: 0.04em;
+    color: var(--text-secondary);
+    text-transform: none;
+    letter-spacing: 0;
     min-width: 3.2rem;
 }
 
@@ -9282,54 +9116,58 @@ button.calendar-day {
     display: none;
 }
 
-/* Toggle that shows/hides the rep range max input */
+/* Single/Range selector: a quiet neutral segmented-style toggle, not a
+   bordered blue button. Borderless quiet fill at rest; subtle elevated fill
+   when on. */
 .pex-range-toggle {
     flex: 0 0 auto;
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    gap: 0.25rem;
-    min-width: 60px;
+    gap: 0.3rem;
+    min-width: 64px;
     height: 32px;
-    padding: 0 0.45rem;
-    background: transparent !important;
-    border: 1px solid rgba(255, 255, 255, 0.12) !important;
-    border-radius: 4px;
-    color: rgba(255, 255, 255, 0.7) !important;
+    padding: 0 0.55rem;
+    background: var(--bg-elevated) !important;
+    border: 1px solid transparent !important;
+    border-radius: var(--radius-sm);
+    color: var(--text-secondary) !important;
     cursor: pointer;
-    font-size: 0.65rem;
+    font-size: 0.7rem;
     transition: background 100ms ease, color 100ms ease, border-color 100ms ease;
 }
 
-.pex-range-toggle:hover,
+.pex-range-toggle:hover {
+    background: var(--bg-hover) !important;
+    color: var(--text-primary) !important;
+}
+
 .pex-range-toggle:focus-visible {
-    background: rgba(91, 155, 255, 0.14) !important;
-    border-color: rgba(91, 155, 255, 0.5) !important;
-    color: #fff !important;
+    color: var(--text-primary) !important;
+    border-color: transparent !important;
     outline: none;
+    box-shadow: 0 0 0 3px rgba(91, 155, 255, 0.4) !important;
 }
 
 .pex-range-toggle:hover:active {
-    background: rgba(91, 155, 255, 0.25) !important;
-    color: #fff !important;
+    background: var(--bg-hover) !important;
 }
 
 .pex-range-toggle.is-on {
-    background: rgba(91, 155, 255, 0.2) !important;
-    border-color: rgba(91, 155, 255, 0.6) !important;
-    color: var(--accent-primary) !important;
+    background: var(--bg-hover) !important;
+    border-color: transparent !important;
+    color: var(--text-primary) !important;
 }
 
-.pex-range-toggle.is-on:hover,
-.pex-range-toggle.is-on:focus-visible {
-    background: rgba(91, 155, 255, 0.3) !important;
-    color: #fff !important;
+.pex-range-toggle.is-on:hover {
+    background: var(--bg-hover) !important;
+    color: var(--text-primary) !important;
 }
 
 .pex-range-toggle-label {
-    font-size: 0.68rem;
+    font-size: 0.72rem;
     font-weight: 600;
-    letter-spacing: 0.03em;
+    letter-spacing: 0;
     line-height: 1;
     color: inherit;
 }
@@ -9362,18 +9200,23 @@ button.calendar-day {
     justify-content: center;
     background: transparent;
     border: none;
-    border-radius: 4px;
-    color: rgba(255, 255, 255, 0.3);
+    border-radius: var(--radius-sm);
+    color: var(--text-disabled);
     cursor: pointer;
     font-size: 0.72rem;
     transition: color 100ms ease, background 100ms ease;
 }
 
-.pex-set-remove:hover:not(:disabled),
-.pex-set-remove:focus-visible:not(:disabled) {
-    color: var(--color-danger, #ff6b6b);
-    background: rgba(255, 107, 107, 0.1);
+.pex-set-remove:hover:not(:disabled) {
+    color: var(--accent-error);
+    background: var(--bg-elevated);
     outline: none;
+}
+
+.pex-set-remove:focus-visible:not(:disabled) {
+    color: var(--accent-error);
+    outline: none;
+    box-shadow: 0 0 0 3px rgba(91, 155, 255, 0.4);
 }
 
 .pex-set-remove:disabled {
@@ -9400,13 +9243,14 @@ button.calendar-day {
     max-height: 90vh;
 }
 
-/* Hero banner: workout name + live duration */
+/* Hero banner: workout name + live duration. Calmer: single subtle azure
+   tint, consistent padding with the body, one bottom border (no glow). */
 .finish-modal-hero {
-    background: linear-gradient(135deg, rgba(91, 155, 255, 0.18) 0%, rgba(91, 155, 255, 0.10) 100%);
-    border-bottom: 1px solid rgba(91, 155, 255, 0.25);
-    padding: var(--spacing-lg) var(--spacing-lg) var(--spacing-md);
+    background: rgba(91, 155, 255, 0.08);
+    border-bottom: 1px solid var(--border-color);
+    padding: var(--spacing-md) var(--spacing-lg);
     display: flex;
-    align-items: flex-start;
+    align-items: center;
     justify-content: space-between;
     gap: var(--spacing-md);
 }
@@ -9432,7 +9276,7 @@ button.calendar-day {
 }
 
 .finish-modal-duration-hero {
-    font-size: 2rem;
+    font-size: 1.6rem;
     font-weight: 800;
     letter-spacing: -0.03em;
     color: var(--accent-primary);
@@ -9440,9 +9284,23 @@ button.calendar-day {
     font-variant-numeric: tabular-nums;
 }
 
-.finish-modal-close {
+/* Small neutral close button matching .gt-iconbtn (decision #8 modal system). */
+.finish-modal-close,
+.feel-intro-modal-content .modal-close {
     flex-shrink: 0;
-    margin-top: 0.15rem;
+    margin-top: 0;
+    width: 26px;
+    height: 26px;
+    font-size: 1.02rem;
+    border-radius: var(--radius-sm);
+    border: 1px solid transparent;
+    background: var(--bg-elevated) !important;
+    color: var(--text-muted) !important;
+}
+.finish-modal-close:hover,
+.feel-intro-modal-content .modal-close:hover {
+    background: var(--bg-hover) !important;
+    color: var(--text-primary) !important;
 }
 
 /* Summary stat grid */
@@ -9632,46 +9490,63 @@ button.calendar-day {
 }
 
 /* Action row */
+/* #7 Complete / Cancel — calm green primary + tight neutral secondary that
+   read as one action group (decision #2). No heavy glow, standard height. */
 .finish-workout-actions {
+    /* Complete Workout on top (primary focus); Cancel as a plain centered
+       text link directly below it, tight gap. */
     display: flex;
-    gap: var(--spacing-md);
+    flex-direction: column-reverse;
+    gap: 0.3rem;
     align-items: center;
     margin-top: var(--spacing-lg);
 }
 
-.finish-workout-submit {
-    flex: 1;
-    background: var(--gradient-primary) !important;
-    border: none !important;
+.finish-workout-submit,
+.finish-workout-submit:hover,
+.finish-workout-submit:focus-visible {
+    width: 100%;
+    background: var(--accent-success) !important;
+    border: 1px solid transparent !important;
+    border-radius: var(--radius-lg);
+    color: #07140d !important;
     font-weight: 700;
     letter-spacing: 0.01em;
-    min-height: 52px;
+    min-height: 48px;
     font-size: 1rem;
+    box-shadow: none !important;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.45rem;
+}
+.finish-workout-submit i { color: inherit !important; }
+.finish-workout-submit:hover { filter: brightness(1.06); }
+.finish-workout-submit:focus-visible {
+    box-shadow: 0 0 0 3px rgba(52, 211, 153, 0.45) !important;
 }
 
-.finish-workout-submit:hover {
-    opacity: 0.92;
-    transform: translateY(-1px);
-    box-shadow: 0 6px 20px rgba(91, 155, 255, 0.38) !important;
+/* Cancel: a plain centered text button (no pill, no border/fill), muted. */
+.finish-workout-cancel,
+.finish-workout-cancel:hover,
+.finish-workout-cancel:focus-visible {
+    flex: 0 0 auto;
+    min-width: 0;
+    min-height: 0;
+    padding: 0.5rem 1rem;
+    border: none !important;
+    background: transparent !important;
+    box-shadow: none !important;
+    border-radius: var(--radius-sm);
+    color: var(--text-muted) !important;
+    font-weight: 500;
+    text-align: center;
 }
-
-.finish-workout-cancel {
-    min-width: 88px;
+.finish-workout-cancel:hover {
     color: var(--text-secondary) !important;
-    min-height: 52px;
 }
 
-/* Mobile: stack cancel below submit, full width */
 @media (max-width: 480px) {
-    .finish-workout-actions {
-        flex-direction: column-reverse;
-        gap: var(--spacing-sm);
-    }
-
-    .finish-workout-actions .btn {
-        width: 100%;
-    }
-
     .workout-summary {
         grid-template-columns: repeat(3, 1fr);
     }
@@ -9948,64 +9823,110 @@ button.calendar-day {
 
 /* Item R3-4: the feel picker modal. The intro copy + the single "Felt good"
    icon button (the only choice) + "Not yet". */
+/* #8 Feel modal: shorter, consistent padding, calm rewarding green primary
+   + neutral secondary as one action group. One accent, no stacked glow. */
+.feel-modal-header {
+    padding: var(--spacing-md) var(--spacing-xl);
+    border-bottom: none;
+}
+.feel-modal-header h2 {
+    font-size: 1.15rem;
+}
+.feel-modal-body {
+    /* Roomier: clear top gap below the header, generous side padding, and a
+       comfortable bottom so the actions are not cramped. */
+    padding: var(--spacing-lg) var(--spacing-xl) var(--spacing-xl);
+}
 .feel-intro-lead {
-    margin: 0 0 var(--spacing-md);
+    margin: 0 0 var(--spacing-lg);
     color: var(--text-secondary);
-    text-align: center;
+    text-align: left;
+    font-size: 0.9rem;
+    line-height: 1.5;
 }
-.feel-modal-choices {
+.feel-modal-actions {
     display: flex;
-    gap: 1rem;
-    justify-content: center;
+    align-items: stretch;
+    gap: var(--spacing-md);
 }
-/* Pinned colors with !important to defeat the sitewide button color/hover. */
+/* "Felt good" — primary. Calm green: solid-tinted, content-hugging row, one
+   border (no glow). Pinned !important to defeat sitewide button color/hover. */
 .feel-modal-btn {
     appearance: none;
-    flex: 1 1 0;
-    max-width: 160px;
-    display: flex;
-    flex-direction: column;
+    flex: 0 1 auto;
+    display: inline-flex;
     align-items: center;
+    justify-content: center;
     gap: 0.5rem;
-    padding: 1rem 0.75rem;
+    padding: 0.6rem 1.35rem;
+    min-height: 46px;
     border-radius: var(--radius-lg);
-    border: 1.5px solid transparent;
+    border: 1px solid transparent;
     cursor: pointer;
-    font-size: 2.2rem;
+    /* Smaller icon so the smiley reads friendly, not heavy. */
+    font-size: 1.05rem;
     box-shadow: none !important;
-    transition: background var(--transition-base), border-color var(--transition-base),
-                color var(--transition-base), transform var(--transition-base);
+    transition: filter var(--transition-base), box-shadow var(--transition-base);
 }
 .feel-modal-btn-label {
-    font-size: 0.85rem;
-    font-weight: 600;
+    font-size: 0.92rem;
+    font-weight: 700;
 }
 .feel-modal-btn-good {
-    background: rgba(34, 197, 94, 0.12);
-    border-color: rgba(34, 197, 94, 0.5);
-    color: #22c55e !important;
+    background: var(--accent-success) !important;
+    border-color: transparent;
+    color: #0a3a26 !important;
 }
-.feel-modal-btn-good i { color: #22c55e !important; }
+/* Premium two-tone smiley: a filled darker-green face with the button's green
+   showing through the eyes/smile, so it reads as an intentional crafted mark
+   (not a default emoji). Sized slightly larger than the label for presence and
+   vertically centered with the text. */
+.feel-modal-smiley {
+    width: 1.5em;
+    height: 1.5em;
+    flex-shrink: 0;
+    display: block;
+}
 .feel-modal-btn-good:hover,
 .feel-modal-btn-good:focus-visible {
-    background: rgba(34, 197, 94, 0.22);
-    border-color: rgba(34, 197, 94, 0.8);
-    color: #16a34a !important;
-    transform: translateY(-2px);
+    filter: brightness(1.06);
+    color: #0a3a26 !important;
 }
-.feel-modal-btn-good:hover i,
-.feel-modal-btn-good:focus-visible i { color: #16a34a !important; }
-.feel-modal-btn:focus-visible { outline: none; }
+.feel-modal-btn:focus-visible {
+    outline: none;
+    box-shadow: 0 0 0 3px rgba(52, 211, 153, 0.45) !important;
+}
+/* "Not yet" — clear secondary (neutral ghost), matched height + roomy padding. */
+.feel-modal-skip-secondary,
+.feel-modal-skip-secondary:hover,
+.feel-modal-skip-secondary:focus-visible {
+    flex: 0 0 auto;
+    min-width: 96px;
+    min-height: 46px;
+    padding: 0.6rem 1.35rem;
+    color: var(--text-secondary) !important;
+    border-radius: var(--radius-lg);
+}
 
 /* Item 9: weekday chips in the program editor. */
 .program-schedule-days {
     display: flex;
-    flex-wrap: wrap;
     gap: 0.4rem;
     margin-top: 0.35rem;
 }
 .schedule-day-chip {
     appearance: none;
+    /* Every day is an identical cell: equal width (flex share) + fixed height,
+       border-box so the 1px border never shifts size. Selection changes ONLY
+       background/border/text color, never the box dimensions. */
+    flex: 1 1 0;
+    min-width: 0;
+    box-sizing: border-box;
+    height: 40px;
+    padding: 0;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
     border: 1px solid var(--border-light);
     background: var(--bg-elevated);
     /* Pin colour !important across states: these chips are <button>s, so the
@@ -10015,7 +9936,6 @@ button.calendar-day {
     font: inherit;
     font-size: 0.82rem;
     font-weight: 600;
-    padding: 0.4rem 0.7rem;
     border-radius: var(--radius-md);
     cursor: pointer;
     transition: background var(--transition-base), border-color var(--transition-base),
@@ -10089,90 +10009,152 @@ button.calendar-day {
    ============================================================ */
 
 /* Item R2-6: week strip on the workout selection screen. */
+/* ==========================================================================
+   Workout-selection week schedule (mobile-first): a row of compact day pills
+   (label + a dot when that day has a workout) and a detail panel below that
+   shows the SELECTED day's full workout name(s). The selected day also
+   highlights the matching program card(s) further down. Tapping a pill selects
+   a day; it does not start a workout.
+   ========================================================================== */
 .week-strip {
     margin: 0 0 1.25rem;
-    padding: 0.85rem;
+    padding: 0.75rem;
     background: var(--bg-card);
     border: 1px solid var(--border-color);
     border-radius: var(--radius-lg);
 }
-.week-strip-grid {
-    display: grid;
-    grid-template-columns: repeat(7, 1fr);
-    gap: 0.4rem;
+.week-strip-pills {
+    display: flex;
+    gap: 0.3rem;
 }
-.week-strip-day {
+.week-day-pill {
+    flex: 1 1 0;
+    min-width: 0;
     display: flex;
     flex-direction: column;
     align-items: center;
-    gap: 0.35rem;
-    min-width: 0;
-    padding: 0.4rem 0.25rem;
-    border-radius: var(--radius-md);
-    background: rgba(255, 255, 255, 0.02);
+    justify-content: center;
+    gap: 0.32rem;
+    min-height: 48px;
+    padding: 0.4rem 0.15rem;
+    border-radius: var(--radius-sm);
     border: 1px solid transparent;
+    background: var(--bg-elevated) !important;
+    color: var(--text-secondary) !important;
+    cursor: pointer;
+    font-family: inherit;
+    box-shadow: none !important;
+    -webkit-tap-highlight-color: transparent;
+    transition: background var(--transition-fast), color var(--transition-fast), border-color var(--transition-fast);
 }
-.week-strip-day.is-today {
-    background: rgba(91, 155, 255, 0.12);
+.week-day-pill-label {
+    font-size: 0.72rem;
+    font-weight: 700;
+    letter-spacing: 0.02em;
+}
+.week-day-pill-dot {
+    width: 5px;
+    height: 5px;
+    border-radius: 50%;
+    background: transparent;
+}
+/* Empty days stay quiet (no dot); only workout days show the accent dot. */
+.week-day-pill.has-workout .week-day-pill-dot { background: var(--accent-primary); }
+.week-day-pill:hover {
+    background: var(--bg-hover) !important;
+    color: var(--text-primary) !important;
+}
+/* Today: subtle accent ring (when not the selected day). */
+.week-day-pill.is-today {
+    color: var(--text-primary) !important;
     border-color: rgba(91, 155, 255, 0.45);
 }
-.week-strip-label {
-    font-size: 0.7rem;
+/* Selected day: strong filled state. */
+.week-day-pill.is-selected,
+.week-day-pill.is-selected:hover {
+    background: var(--accent-primary) !important;
+    color: #0a1020 !important;
+    border-color: transparent;
+}
+.week-day-pill.is-selected .week-day-pill-dot,
+.week-day-pill.is-selected.has-workout .week-day-pill-dot { background: #0a1020; }
+.week-day-pill:focus-visible {
+    outline: none;
+    box-shadow: 0 0 0 3px rgba(91, 155, 255, 0.45) !important;
+}
+
+/* Selected-day detail: full workout name(s) with room to breathe. */
+.week-strip-detail { margin-top: 0.75rem; }
+.week-detail-day {
+    margin: 0 0 0.45rem;
+    font-size: 0.74rem;
     font-weight: 700;
-    letter-spacing: 0.03em;
-    text-transform: uppercase;
     color: var(--text-secondary);
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
 }
-.week-strip-day.is-today .week-strip-label { color: #b3adff; }
-.week-strip-entries {
-    display: flex;
-    flex-direction: column;
-    gap: 0.25rem;
-    width: 100%;
-    align-items: center;
-    min-height: 1.1rem;
-}
-.week-strip-empty { color: var(--text-muted, #666); font-size: 0.85rem; }
-.week-strip-program {
+.week-detail-empty { margin: 0; color: var(--text-secondary); font-size: 0.9rem; }
+.week-detail-list { display: flex; flex-direction: column; gap: 0.45rem; }
+.week-detail-item {
     display: flex;
     align-items: center;
-    gap: 0.25rem;
-    max-width: 100%;
-    padding: 0.2rem 0.3rem;
+    justify-content: space-between;
+    gap: 0.6rem;
+    padding: 0.55rem 0.7rem;
+    background: var(--bg-elevated);
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-sm);
+}
+.week-detail-name {
+    font-weight: 700;
+    color: var(--text-primary);
+    font-size: 0.95rem;
+    line-height: 1.3;
+}
+.week-detail-start,
+.week-detail-start:hover,
+.week-detail-start:focus-visible {
+    flex-shrink: 0;
+    background: var(--accent-primary) !important;
+    color: #0a1020 !important;
     border: none;
-    border-radius: var(--radius-sm, 6px);
-    background: rgba(91, 155, 255, 0.10) !important;
-    color: var(--text-primary) !important;
+    border-radius: 999px;
+    padding: 0.4rem 0.95rem;
+    font-weight: 700;
+    font-size: 0.82rem;
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
+    box-shadow: none !important;
     cursor: pointer;
-    font-size: 0.66rem;
-    line-height: 1.1;
-    transition: background var(--transition-fast);
 }
-.week-strip-program:hover {
-    background: rgba(91, 155, 255, 0.22) !important;
-    color: var(--text-primary) !important;
+.week-detail-start:hover { filter: brightness(1.06); }
+.week-detail-start:focus-visible { box-shadow: 0 0 0 3px rgba(91, 155, 255, 0.45) !important; }
+
+/* Selected day highlights the matching program card(s) below. */
+.program-selection-grid .program-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.5rem;
 }
-.week-strip-program:focus-visible {
-    outline: 2px solid var(--accent-primary);
-    outline-offset: 1px;
+.program-card--scheduled {
+    border-color: var(--accent-primary) !important;
+    box-shadow: 0 0 0 1px var(--accent-primary);
 }
-.week-strip-day.is-today .week-strip-program {
-    background: rgba(91, 155, 255, 0.28) !important;
-    font-weight: 600;
-}
-.week-strip-day.is-today .week-strip-program:hover {
-    background: rgba(91, 155, 255, 0.4) !important;
-}
-.week-strip-dot {
-    flex: 0 0 auto;
-    width: 6px;
-    height: 6px;
-    border-radius: 50%;
-    background: #8b85ff;
-}
-.week-strip-program-name {
-    overflow: hidden;
-    text-overflow: ellipsis;
+.program-sched-chip {
+    flex-shrink: 0;
+    display: inline-flex;
+    align-items: center;
+    gap: 0.25rem;
+    font-size: 0.62rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    color: var(--accent-primary);
+    background: rgba(91, 155, 255, 0.14);
+    border-radius: 999px;
+    padding: 0.18rem 0.5rem;
     white-space: nowrap;
 }
 
@@ -10268,7 +10250,7 @@ button.calendar-day {
     z-index: 5;
     background: var(--bg-secondary);
     border-bottom: 1px solid var(--border-color);
-    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.35);
+    box-shadow: none;
 }
 #program-modal.program-editor-workout-mode .modal-close {
     display: none;
@@ -10305,15 +10287,45 @@ button.calendar-day {
 .program-modal-normal-actions .btn { white-space: nowrap; }
 
 /* Pin the header in normal mode too (the R2-7 rule only stickies workout mode).
-   Both modes now use the header for actions, so the header is always sticky. */
+   Both modes now use the header for actions, so the header is always sticky.
+   Reads as a flat navigation bar: title left, actions right, a single bottom
+   border (no card elevation / drop shadow). */
 #program-modal .program-modal-header {
     position: sticky;
     top: 0;
     z-index: 5;
     background: var(--bg-secondary);
     border-bottom: 1px solid var(--border-color);
-    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.35);
+    box-shadow: none;
+    align-items: center;
+    gap: 0.75rem;
+    padding: 0.85rem var(--spacing-lg);
 }
+
+/* Title is the focal point of the bar: larger + stronger than the generic
+   modal-header h2. Stays on one line; actions (Cancel + Save) sit on the right. */
+#program-modal-title {
+    font-size: 1.25rem;
+    font-weight: 700;
+    letter-spacing: -0.01em;
+    line-height: 1.15;
+    white-space: nowrap;
+    margin: 0;
+    margin-right: auto;
+}
+
+/* Cancel: a plain muted text button (no border/fill), pairs with the blue Save. */
+#program-modal .program-modal-cancel,
+#program-modal .program-modal-cancel:hover,
+#program-modal .program-modal-cancel:focus-visible {
+    background: transparent !important;
+    border: none !important;
+    box-shadow: none !important;
+    color: var(--text-secondary) !important;
+    padding: 0.5rem 0.6rem;
+    font-weight: 600;
+}
+#program-modal .program-modal-cancel:hover { color: var(--text-primary) !important; }
 
 /* The bottom form actions are now redundant in both modes — the header carries
    Save + Cancel. Hide the footer cluster for this modal entirely. */
@@ -10327,6 +10339,34 @@ button.calendar-day {
 .program-modal-normal-actions .btn-save-program,
 .program-modal-normal-actions .btn-save-program:hover,
 .program-modal-normal-actions .btn-save-program:focus {
-    background: var(--gradient-primary) !important;
+    background: var(--accent-primary) !important;
     color: #ffffff !important;
+}
+
+/* Cancel: small, quiet ghost text, not a heavy button. Applies to both the
+   normal and workout header action clusters. */
+.program-modal-normal-actions .btn-ghost,
+.program-modal-workout-actions .btn-ghost {
+    padding: 0.5rem 0.65rem !important;
+    height: auto !important;
+    min-height: 0 !important;
+    font-size: 0.85rem !important;
+    font-weight: 500 !important;
+    background: transparent !important;
+    border: 1px solid transparent !important;
+    color: var(--text-secondary) !important;
+    box-shadow: none !important;
+}
+.program-modal-normal-actions .btn-ghost:hover,
+.program-modal-normal-actions .btn-ghost:focus-visible,
+.program-modal-workout-actions .btn-ghost:hover,
+.program-modal-workout-actions .btn-ghost:focus-visible {
+    background: var(--bg-hover) !important;
+    color: var(--text-primary) !important;
+    border-color: transparent !important;
+    outline: none;
+}
+.program-modal-normal-actions .btn-ghost:focus-visible,
+.program-modal-workout-actions .btn-ghost:focus-visible {
+    box-shadow: 0 0 0 3px rgba(91, 155, 255, 0.4) !important;
 }

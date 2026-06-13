@@ -8,17 +8,17 @@ A comprehensive, mobile-first workout tracking application built with vanilla Ja
 
 - **Program Builder**: Create workout programs with custom exercises and reorderable exercise lists; each set row has a labeled toggle for a single rep target or a rep range (e.g. set 1: 11-12, set 2: 8-10); a program-level rest mode (one uniform between-exercises duration set with an M:SS stepper, or custom per-exercise rest); the exercise picker adds your picks as simple rows you then refine per set; removing an exercise asks for confirmation
 - **Supersets**: Link consecutive exercises into a superset so they are grouped together in both the program builder and the workout view
-- **Workout Execution**: Mobile-optimized interface for tracking sets, reps, and weight during workouts; per-set rep range labels (shown once per exercise when all sets match); between-set rest shows an in-card countdown chip with a +30s extend button and a Skip control, while between-exercise rest shows in the bottom bar and, for uniform programs, in the sticky workout header; after-exercise rest is read-only during a workout (it is set in the program); auto-collapsing completed exercises that re-collapse after un-marking and stay collapsed across a pause/resume; a final-5-seconds red pulse countdown with audio pings and haptics; and a plate calculator for all plate-loaded equipment (barbell, trap-bar, and plate-loaded machines such as the leg press) with per-exercise and global toggles whose state persists once a workout is saved
+- **Workout Execution**: Mobile-optimized interface for tracking sets, reps, and weight during workouts; per-set rep range labels (shown once per exercise when all sets match); rest is shown by a compact floating circular timer dial, color-coded (green between sets, blue between exercises), with the countdown centered and +30s / Skip controls inside it, and for uniform programs the between-exercise rest also shows in the sticky workout header; after-exercise rest is read-only during a workout (it is set in the program); a pencil button on each exercise opens an inline notes field saved as you type, and a "same as last time" chip restores the previous session's weight and reps on a row; auto-collapsing completed exercises that re-collapse after un-marking and stay collapsed across a pause/resume (the edit and plate-hint buttons hide while a card is collapsed); a final-5-seconds red pulse countdown with audio pings and haptics; the finish summary shows total volume with a percentage delta versus your previous session of the same program; and a plate calculator for all plate-loaded equipment (barbell, trap-bar, and plate-loaded machines such as the leg press) with per-exercise and global toggles whose state persists once a workout is saved
 - **Exercise Database**: 500+ exercises categorized by muscle group and equipment, with persistent sorting (name, most recently used, most logged), numbered pagination, and the ability to remove a specific exercise's logged history
 - **Back to top**: A floating button appears on long pages and tall modals, and on the public exercise directory pages, to jump back to the top
 - **Custom Exercises**: Create and manage your own custom exercises
-- **Workout History**: Complete history of all workouts with detailed stats, numbered pagination, and clickable workout details
+- **Workout History**: Complete history of all workouts with detailed stats, numbered pagination, and clickable workout details; each exercise in the session detail shows a small inline strength-trend chart of its top-set weight over recent sessions, plus any per-exercise notes you logged
 - **Progress Tracking**: View previous workout data (all sets) during current workout for progression
 - **Calendar View**: Visual representation of workout days with progress indicators (first day of week is configurable, Sunday or Monday)
-- **Program Scheduling**: Assign weekdays to a program; the days show on the program tiles, as markers on the calendar, and as a week strip at the top of the workout screen
+- **Program Scheduling**: Assign weekdays to a program; the days show on the program tiles, as markers on the calendar, and as a compact day-pill week strip at the top of the workout screen where tapping a day shows that day's scheduled workout below the pills and highlights the matching program card
 - **Welcome Tour**: A single scrollable onboarding modal that explains the core features, with quick links into Programs, Workout, Calendar, and Settings; replayable any time from Settings
 - **Quick Start**: A floating "Start workout" button on desktop (visible across views; hidden on the active-workout screen) that starts or resumes a workout from anywhere
-- **Achievements**: Unlock achievements for reaching milestones (daily, weekly, monthly, lifetime)
+- **Achievements**: Unlock achievements for reaching milestones (daily, weekly, monthly, lifetime), plus per-exercise personal-record achievements shown in a dedicated "Strength PRs" section when you beat your all-time best on an exercise
 
 ### 📊 Analytics & Stats
 
@@ -261,6 +261,10 @@ Users can create custom exercises with:
 - Exercise variety goals
 - Workout streaks
 - Personal records
+
+### Strength PRs
+- Per-exercise personal-record achievements, awarded when a finished session's top set beats your all-time best for that exercise (requires 2+ prior sessions with that exercise; reps-based exercises only)
+- Shown in a dedicated "Strength PRs" section on the Achievements screen with the exercise name, PR weight, and date
 
 ## Browser Compatibility
 

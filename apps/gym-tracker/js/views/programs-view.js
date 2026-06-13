@@ -656,7 +656,7 @@ class ProgramsView {
 
             return `
             <div class="program-exercise-row ${groupClasses}" draggable="true" data-exercise-index="${index}">
-                ${linkedAbove ? `<span class="pex-superset-tag" aria-hidden="true">SUPERSET</span>` : ''}
+                ${linkedAbove ? `<span class="pex-superset-tag" aria-hidden="true">Superset</span>` : ''}
                 <span class="pex-drag-handle" aria-hidden="true" title="Drag to reorder">
                     <i class="fas fa-grip-vertical"></i>
                 </span>
