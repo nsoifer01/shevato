@@ -350,6 +350,9 @@ body.brain-arena-app button {
   border-radius: 999px;
   background: transparent;
   color: var(--muted-2) !important;
+  /* Pin off main.css's global `button` gray ring (inset 0 0 0 1px #555);
+     an inactive pill is borderless. The .is-active variant sets its own. */
+  box-shadow: none !important;
   font-size: 0.9rem;
   font-weight: 500;
   letter-spacing: 0.015em;
@@ -361,6 +364,7 @@ body.brain-arena-app button {
   background: rgba(34, 211, 238, 0.05);
   border-color: rgba(34, 211, 238, 0.20);
   color: var(--text) !important;
+  box-shadow: none !important;
 }
 .view-tab.is-active,
 .view-tab.is-active:hover {
@@ -979,6 +983,9 @@ select option { background: var(--surface); color: var(--text); }
      dim against the recessed track; bumped up to a soft white so
      the option clearly looks clickable. */
   color: #d1d5db !important;
+  /* Pin off main.css's global `button` gray ring (inset 0 0 0 1px #555);
+     an inactive segment is borderless. The .is-active variant sets its own. */
+  box-shadow: none !important;
   font: inherit;
   font-size: 0.9rem;
   font-weight: 600;
@@ -993,6 +1000,7 @@ select option { background: var(--surface); color: var(--text); }
 .game-type-btn:hover {
   color: #ffffff !important;
   background: rgba(255, 255, 255, 0.04);
+  box-shadow: none !important;
 }
 .game-type-btn.is-active,
 .game-type-btn.is-active:hover {

@@ -4652,6 +4652,8 @@ body.advanced-drawer-open {
   background: rgba(245, 197, 24, 0.06);
   border-color: rgba(245, 197, 24, 0.32);
   color: #FFFFFF !important;
+  /* Pin to defeat global main.css button:hover red ring (#ce1b28). */
+  box-shadow: 0 1px 0 rgba(255, 255, 255, 0.02) inset !important;
   transform: translateY(-1px);
 }
 .sticky-shape-chip.is-active,
