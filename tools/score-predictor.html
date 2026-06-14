@@ -278,6 +278,7 @@
         <button type="button" class="wc-btn" id="wc-refresh" title="Ignore the 6 hour cache and refetch odds and results now">Refresh</button>
         <label class="wc-nodraw" title="Only for games that score the result AFTER extra time. If draws at 90 minutes count (they do in your game), leave this off."><input type="checkbox" id="wc-nodraw"> My game scores the result after extra time (kills draw picks)</label>
         <label class="wc-nodraw" title="Keep this tab open. 10 minutes before each kickoff the page checks whether a realistic late odds move could flip either model's pick; only then does it spend credits on a live refresh."><input type="checkbox" id="wc-auto"> Auto-refresh 10 min before kickoff if a pick could flip</label>
+        <label class="wc-nodraw" title="Keep this tab open. Plays a chime 10 minutes before each kickoff so you can lock in your pick in time. Works on its own and spends no credits."><input type="checkbox" id="wc-sound"> Sound alert 10 min before kickoff</label>
         <span class="wc-status" id="wc-status">No fixtures loaded yet. Paste your key and hit Load fixtures (or use the key "demo" to preview with sample data).</span>
         <span class="wc-status" id="wc-auto-status" hidden></span>
       </div>
@@ -555,6 +556,7 @@
   const WC_LOCKS_LS = 'sp-wc-locks';      // odds frozen at kickoff, per event id
   const WC_RESULTS_LS = 'sp-wc-results';  // final/live scores, per event id
   const WC_AUTO_LS = 'sp-wc-auto';
+  const WC_SOUND_LS = 'sp-wc-sound';
   const WC_CACHE_MS = 6 * 60 * 60 * 1000;
 
   const wcKeyInput = document.getElementById('wc-key');
@@ -566,12 +568,14 @@
   const wcBody = document.getElementById('wc-body');
   const wcSummary = document.getElementById('wc-summary');
   const wcAuto = document.getElementById('wc-auto');
+  const wcSound = document.getElementById('wc-sound');
   const wcAutoStatus = document.getElementById('wc-auto-status');
 
   let wcEvents = null;     // live odds events from the last fetch (may be null)
   let wcMeta = '';
   let wcChanged = {};      // event id -> true when the last live refresh flipped a future pick
   let wcAutoTimer = null;
+  let wcAudioCtx = null;   // created on first user gesture (the sound toggle)
   let wcLocks = {};        // event id -> { home, away, commence_time, home_team, away_team }
   let wcResults = {};      // event id -> { completed, home_score, away_score, ... }
 
@@ -832,10 +836,11 @@
     wcSummary.hidden = false;
     wcSummary.innerHTML =
       '<span class="wc-sum-title">Through ' + n + ' completed match' + (n === 1 ? '' : 'es') + '</span>' +
-      '<span class="wc-sum-item"><b>Points model:</b> ' + (ptsTotal / n).toFixed(2) + ' pts/match (' +
-        ptsTotal + ' total, ' + ptsExact + ' exact, ' + ptsOutcome + ' outcome-only)</span>' +
-      '<span class="wc-sum-item"><b>Exact model:</b> ' + Math.round((exactHits / n) * 100) + '% exact (' +
-        exactHits + '/' + n + '), ' + (exactPts / n).toFixed(2) + ' pts/match if scored the same way</span>';
+      '<span class="wc-sum-item"><b>Points model:</b> ' + ptsTotal + ' pts total (' +
+        (ptsTotal / n).toFixed(2) + '/match, ' + ptsExact + ' exact, ' + ptsOutcome + ' outcome-only)</span>' +
+      '<span class="wc-sum-item"><b>Exact model:</b> ' + exactPts + ' pts total (' +
+        (exactPts / n).toFixed(2) + '/match, ' + exactHits + ' exact = ' +
+        Math.round((exactHits / n) * 100) + '%)</span>';
   }
 
   function showFixtures(events, meta, live) {
@@ -951,6 +956,42 @@
     return false;
   }
 
+  // --- pre-kickoff chime (Web Audio, no external file) ----------------------
+  // Unlocked by the user gesture of ticking the sound box; once unlocked the
+  // scheduled timer can sound it later without a fresh gesture.
+  function ensureAudio() {
+    try {
+      if (!wcAudioCtx) {
+        const AC = window.AudioContext || window.webkitAudioContext;
+        if (!AC) return null;
+        wcAudioCtx = new AC();
+      }
+      if (wcAudioCtx.state === 'suspended') wcAudioCtx.resume();
+      return wcAudioCtx;
+    } catch (e) { return null; }
+  }
+  function chirp(ctx, at, freq, dur) {
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+    osc.type = 'sine';
+    osc.frequency.value = freq;
+    gain.gain.setValueAtTime(0.0001, at);
+    gain.gain.exponentialRampToValueAtTime(0.25, at + 0.02);
+    gain.gain.exponentialRampToValueAtTime(0.0001, at + dur);
+    osc.connect(gain).connect(ctx.destination);
+    osc.start(at);
+    osc.stop(at + dur + 0.02);
+  }
+  // Three rising notes, distinctive enough to notice from another tab.
+  function playKickoffSound() {
+    const ctx = ensureAudio();
+    if (!ctx) return;
+    const t = ctx.currentTime;
+    chirp(ctx, t,        880, 0.18);
+    chirp(ctx, t + 0.22, 1175, 0.18);
+    chirp(ctx, t + 0.44, 1568, 0.32);
+  }
+
   const WC_LEAD_MS = 10 * 60 * 1000;
 
   function nextFire() {
@@ -967,7 +1008,7 @@
     clearTimeout(wcAutoTimer);
     wcAutoTimer = null;
     updateAutoStatus();
-    if (!wcAuto.checked) return;
+    if (!wcAuto.checked && !wcSound.checked) return;
     const next = nextFire();
     if (!next) return;
     // setTimeout overflows past ~24.8 days; clamp and re-arm when it fires.
@@ -982,27 +1023,31 @@
       const k = ts(ev.commence_time);
       return k > n && k - n <= WC_LEAD_MS + 2 * 60 * 1000;
     });
+    // Sound the chime for any imminent kickoff, independent of refreshing.
+    if (due.length && wcSound.checked) playKickoffSound();
     const risky = due.filter(atRisk);
     const key = wcKeyInput.value.trim();
-    if (risky.length && key && key !== 'demo') {
+    if (wcAuto.checked && risky.length && key && key !== 'demo') {
       fetchFixtures(true); // showFixtures re-arms the timer afterwards
       return;
     }
-    if (due.length) {
+    if (due.length && wcAuto.checked) {
       wcStatus.textContent = 'Pre-kickoff check: no pick close enough to flip, refresh skipped.';
     }
     scheduleAuto();
   }
 
   function updateAutoStatus() {
-    if (!wcAuto.checked) { wcAutoStatus.hidden = true; return; }
+    if (!wcAuto.checked && !wcSound.checked) { wcAutoStatus.hidden = true; return; }
+    const what = wcAuto.checked && wcSound.checked ? 'Pre-kickoff sound + auto-check'
+      : wcAuto.checked ? 'Pre-kickoff auto-check' : 'Pre-kickoff sound alert';
     const next = nextFire();
     if (!next) {
-      wcAutoStatus.textContent = 'Auto-check is on, but there are no upcoming kickoffs loaded.';
+      wcAutoStatus.textContent = what + ' is on, but there are no upcoming kickoffs loaded.';
       wcAutoStatus.hidden = false;
       return;
     }
-    wcAutoStatus.textContent = 'Next pre-kickoff check: ' + fmtWhen(next.at) + ' (' +
+    wcAutoStatus.textContent = what + ': ' + fmtWhen(next.at) + ' (10 min before ' +
       next.ev.home_team + ' vs ' + next.ev.away_team + '). Keep this tab open.';
     wcAutoStatus.hidden = false;
   }
@@ -1015,11 +1060,18 @@
   wcResults = loadResults();
   wcKeyInput.value = localStorage.getItem(WC_KEY_LS) || '';
   wcAuto.checked = localStorage.getItem(WC_AUTO_LS) === '1';
+  wcSound.checked = localStorage.getItem(WC_SOUND_LS) === '1';
   wcLoadBtn.addEventListener('click', function () { fetchFixtures(false); });
   wcRefreshBtn.addEventListener('click', function () { fetchFixtures(true); });
   wcNodraw.addEventListener('change', renderFixtures);
   wcAuto.addEventListener('change', function () {
     localStorage.setItem(WC_AUTO_LS, wcAuto.checked ? '1' : '0');
+    scheduleAuto();
+  });
+  wcSound.addEventListener('change', function () {
+    localStorage.setItem(WC_SOUND_LS, wcSound.checked ? '1' : '0');
+    // Ticking the box is a user gesture: unlock audio and preview the chime.
+    if (wcSound.checked) playKickoffSound();
     scheduleAuto();
   });
 
