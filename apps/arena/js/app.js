@@ -6465,7 +6465,6 @@ function wireH2H() {
 
 function wireLeaderboard() {
     $('#leaderboard-period').addEventListener('change', renderLeaderboardEntries);
-    $('#leaderboard-category').addEventListener('change', renderLeaderboardEntries);
     bindLeaderboardSortHandlers();
     // Admin: delete-row clicks. Delegated to the leaderboard body so we
     // don't have to re-bind on every render.
