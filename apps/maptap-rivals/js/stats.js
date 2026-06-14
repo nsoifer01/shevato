@@ -132,10 +132,16 @@
   // coordinates (cityLat/cityLng/cityName) so the continent breakdown can light
   // up. MapTap's newer iOS client (v4.04+) stops writing `roundData` and emits
   // only `rounds`, which still has the per-round score and the answer-city NAME
-  // (targetCity) but no coordinates. We fall back to `rounds` ONLY when a clean
-  // `roundData` array is absent, so those games still pair on score — their
-  // cities are left coordinate-less, which classifyContinent already tolerates
-  // (it buckets them as 'Unknown', same as any pre-cities game today).
+  // (targetCity) but no coordinates.
+  //
+  // The `rounds` fallback is consulted ONLY when `roundData` is entirely absent
+  // from the entry. Any entry that carries a `roundData` field at all — which
+  // the web/legacy client always does — is handled exactly as before, including
+  // being dropped when malformed. That makes this byte-for-byte unchanged for
+  // non-iOS players; only entries that omit roundData (iOS) take the fallback.
+  // Fallback games still pair on score; their cities are left coordinate-less,
+  // which classifyContinent already tolerates (it buckets them as 'Unknown',
+  // same as any pre-cities game today).
   //
   // Either source must yield a clean 5-round score breakdown; entries that
   // don't are rejected so we never store partial data — those days just won't
@@ -144,7 +150,9 @@
     const out = {};
     for (const [date, entry] of Object.entries(gameHistory || {})) {
       if (!entry) continue;
-      const parsed = roundsFromRoundData(entry.roundData) || roundsFromRounds(entry.rounds);
+      const parsed = entry.roundData != null
+        ? roundsFromRoundData(entry.roundData)
+        : roundsFromRounds(entry.rounds);
       if (parsed) out[date] = parsed;
     }
     return out;

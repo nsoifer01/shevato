@@ -242,6 +242,18 @@ test('mapTapHistoryToRounds: rejects out-of-range or non-numeric scores on eithe
   assert.deepEqual(mapTapHistoryToRounds({ d: badRounds }), {});
 });
 
+test('mapTapHistoryToRounds: a present-but-malformed roundData is dropped, NOT recovered via rounds', () => {
+  // Web-safety guarantee: the rounds fallback fires only when roundData is
+  // entirely ABSENT. Any entry that carries roundData (the web shape always
+  // does) behaves exactly as it did before — including being dropped when
+  // malformed — even if a valid `rounds` sits alongside it. This keeps non-iOS
+  // players byte-for-byte unchanged.
+  const wrongLen  = { roundData: roundDataDay.roundData.slice(0, 4), rounds: iosRoundsDay.rounds };
+  const outOfRange = { roundData: roundDataDay.roundData.map((r, i) => i === 0 ? { ...r, score: 101 } : r), rounds: iosRoundsDay.rounds };
+  assert.deepEqual(mapTapHistoryToRounds({ d: wrongLen }), {});
+  assert.deepEqual(mapTapHistoryToRounds({ d: outOfRange }), {});
+});
+
 // --- results ---------------------------------------------------------------
 
 test('resultOf: W / L / T from totals', () => {
