@@ -1,6 +1,233 @@
 {
   "updates": [
     {
+      "builtAt": "2026-06-14T08:13:37.605Z",
+      "totals": {
+        "seasons": 65313,
+        "delta": 4
+      },
+      "shapeCounts": {
+        "mid-peak": 4606,
+        "rebound": 10001,
+        "rising": 2908,
+        "slow-burn": 4317,
+        "big-finale": 11934,
+        "u-shaped": 3062,
+        "rollercoaster": 13973,
+        "saved-best-for-last": 1514,
+        "front-loaded": 3432,
+        "declining": 1838,
+        "bad-finale": 4608,
+        "consistent": 2592,
+        "shape-drift": 1587
+      },
+      "shapeDeltas": {
+        "mid-peak": -3,
+        "rebound": 5,
+        "rising": -1,
+        "slow-burn": -1,
+        "big-finale": -4,
+        "u-shaped": -4,
+        "rollercoaster": 3,
+        "saved-best-for-last": 1,
+        "declining": 2,
+        "bad-finale": -4,
+        "consistent": 4,
+        "shape-drift": 1
+      },
+      "added": [
+        {
+          "seriesId": "tt15156682",
+          "title": "SuperMarioLogan",
+          "season": 11,
+          "seasonYear": 2017
+        },
+        {
+          "seriesId": "tt28254897",
+          "title": "Mystery Files",
+          "season": 2,
+          "seasonYear": 2024
+        },
+        {
+          "seriesId": "tt21057376",
+          "title": "Acting Good",
+          "season": 3,
+          "seasonYear": 2024
+        },
+        {
+          "seriesId": "tt26929559",
+          "title": "100% Wolf: Book of Hath",
+          "season": 2,
+          "seasonYear": 2023
+        }
+      ],
+      "removed": [],
+      "ratingSwings": [
+        {
+          "seriesId": "tt21056976",
+          "title": "Dragon Striker",
+          "season": 1,
+          "from": 8.23,
+          "to": 8.54,
+          "delta": 0.31
+        },
+        {
+          "seriesId": "tt28285951",
+          "title": "Tuition Teacher",
+          "season": 1,
+          "from": 7.63,
+          "to": 7.93,
+          "delta": 0.3
+        },
+        {
+          "seriesId": "tt38784667",
+          "title": "The Academy",
+          "season": 1,
+          "from": 9.57,
+          "to": 9.28,
+          "delta": -0.29
+        },
+        {
+          "seriesId": "tt27237449",
+          "title": "Khan Al Zahab",
+          "season": 1,
+          "from": 9.33,
+          "to": 9.05,
+          "delta": -0.28
+        },
+        {
+          "seriesId": "tt31521718",
+          "title": "The Unclouded Soul",
+          "season": 1,
+          "from": 7.56,
+          "to": 7.31,
+          "delta": -0.25
+        }
+      ],
+      "modifiedCounts": {
+        "seriesVotes": 3336,
+        "avgRating": 385,
+        "episodeCount": 29,
+        "shapes": 64,
+        "seriesRating": 68,
+        "poster": 11,
+        "overview": 1,
+        "providers": 5
+      }
+    },
+    {
+      "builtAt": "2026-06-14T07:48:01.342Z",
+      "totals": {
+        "seasons": 65313,
+        "delta": 4
+      },
+      "shapeCounts": {
+        "mid-peak": 4606,
+        "rebound": 10001,
+        "rising": 2908,
+        "slow-burn": 4317,
+        "big-finale": 11934,
+        "u-shaped": 3062,
+        "rollercoaster": 13973,
+        "saved-best-for-last": 1514,
+        "front-loaded": 3432,
+        "declining": 1838,
+        "bad-finale": 4608,
+        "consistent": 2592,
+        "shape-drift": 1587
+      },
+      "shapeDeltas": {
+        "mid-peak": -3,
+        "rebound": 5,
+        "rising": -1,
+        "slow-burn": -1,
+        "big-finale": -4,
+        "u-shaped": -4,
+        "rollercoaster": 3,
+        "saved-best-for-last": 1,
+        "declining": 2,
+        "bad-finale": -4,
+        "consistent": 4,
+        "shape-drift": 1
+      },
+      "added": [
+        {
+          "seriesId": "tt15156682",
+          "title": "SuperMarioLogan",
+          "season": 11,
+          "seasonYear": 2017
+        },
+        {
+          "seriesId": "tt28254897",
+          "title": "Mystery Files",
+          "season": 2,
+          "seasonYear": 2024
+        },
+        {
+          "seriesId": "tt21057376",
+          "title": "Acting Good",
+          "season": 3,
+          "seasonYear": 2024
+        },
+        {
+          "seriesId": "tt26929559",
+          "title": "100% Wolf: Book of Hath",
+          "season": 2,
+          "seasonYear": 2023
+        }
+      ],
+      "removed": [],
+      "ratingSwings": [
+        {
+          "seriesId": "tt21056976",
+          "title": "Dragon Striker",
+          "season": 1,
+          "from": 8.23,
+          "to": 8.54,
+          "delta": 0.31
+        },
+        {
+          "seriesId": "tt28285951",
+          "title": "Tuition Teacher",
+          "season": 1,
+          "from": 7.63,
+          "to": 7.93,
+          "delta": 0.3
+        },
+        {
+          "seriesId": "tt38784667",
+          "title": "The Academy",
+          "season": 1,
+          "from": 9.57,
+          "to": 9.28,
+          "delta": -0.29
+        },
+        {
+          "seriesId": "tt27237449",
+          "title": "Khan Al Zahab",
+          "season": 1,
+          "from": 9.33,
+          "to": 9.05,
+          "delta": -0.28
+        },
+        {
+          "seriesId": "tt31521718",
+          "title": "The Unclouded Soul",
+          "season": 1,
+          "from": 7.56,
+          "to": 7.31,
+          "delta": -0.25
+        }
+      ],
+      "modifiedCounts": {
+        "seriesVotes": 3336,
+        "avgRating": 385,
+        "episodeCount": 29,
+        "shapes": 64,
+        "seriesRating": 68
+      }
+    },
+    {
       "builtAt": "2026-06-13T07:56:03.421Z",
       "totals": {
         "seasons": 65309,
@@ -6159,504 +6386,6 @@
         "seriesRating": 307,
         "shapes": 193,
         "episodeCount": 99
-      }
-    },
-    {
-      "builtAt": "2026-05-30T07:37:04.912Z",
-      "totals": {
-        "seasons": 65106,
-        "delta": 20
-      },
-      "shapeCounts": {
-        "mid-peak": 4582,
-        "rebound": 9934,
-        "rising": 2917,
-        "slow-burn": 4304,
-        "big-finale": 11928,
-        "u-shaped": 3059,
-        "rollercoaster": 13906,
-        "saved-best-for-last": 1509,
-        "front-loaded": 3432,
-        "declining": 1832,
-        "bad-finale": 4589,
-        "consistent": 2579,
-        "shape-drift": 1596
-      },
-      "shapeDeltas": {
-        "mid-peak": -3,
-        "rebound": 11,
-        "rising": 3,
-        "slow-burn": 2,
-        "big-finale": 9,
-        "u-shaped": 4,
-        "rollercoaster": 1,
-        "saved-best-for-last": 4,
-        "front-loaded": -4,
-        "declining": -1,
-        "bad-finale": -7,
-        "shape-drift": -7
-      },
-      "added": [
-        {
-          "seriesId": "tt30826447",
-          "title": "The Four Seasons",
-          "season": 2,
-          "seasonYear": 2026
-        },
-        {
-          "seriesId": "tt1868207",
-          "title": "Atop the Fourth Wall",
-          "season": 8,
-          "seasonYear": 2015
-        },
-        {
-          "seriesId": "tt0229149",
-          "title": "Mythic Warriors: Guardians of the Legend",
-          "season": 2,
-          "seasonYear": 1999
-        },
-        {
-          "seriesId": "tt1481601",
-          "title": "Der Lehrer",
-          "season": 10,
-          "seasonYear": 2026
-        },
-        {
-          "seriesId": "tt1571437",
-          "title": "Bad Universe",
-          "season": 1,
-          "seasonYear": 2010
-        },
-        {
-          "seriesId": "tt41978418",
-          "title": "The Many Lives of Benjaman Kyle",
-          "season": 1,
-          "seasonYear": 2026
-        },
-        {
-          "seriesId": "tt41878195",
-          "title": "Journey with You",
-          "season": 1,
-          "seasonYear": 2026
-        },
-        {
-          "seriesId": "tt3777108",
-          "title": "The Video Game Years",
-          "season": 4,
-          "seasonYear": 2015
-        },
-        {
-          "seriesId": "tt23052950",
-          "title": "Deli Boys",
-          "season": 2,
-          "seasonYear": 2026
-        },
-        {
-          "seriesId": "tt27953039",
-          "title": "Seconds",
-          "season": 2,
-          "seasonYear": 2026
-        },
-        {
-          "seriesId": "tt28300326",
-          "title": "Almost Friday TV",
-          "season": 7,
-          "seasonYear": 2025
-        },
-        {
-          "seriesId": "tt3878948",
-          "title": "Morph",
-          "season": 1,
-          "seasonYear": 2014
-        },
-        {
-          "seriesId": "tt2250138",
-          "title": "Tanken Driland",
-          "season": 1,
-          "seasonYear": 2012
-        },
-        {
-          "seriesId": "tt15052428",
-          "title": "Open",
-          "season": 2,
-          "seasonYear": 2023
-        },
-        {
-          "seriesId": "tt26891766",
-          "title": "The Future with Hannah Fry",
-          "season": 1,
-          "seasonYear": 2023
-        },
-        {
-          "seriesId": "tt28489780",
-          "title": "The Hardacres",
-          "season": 2,
-          "seasonYear": 2026
-        },
-        {
-          "seriesId": "tt30217222",
-          "title": "Murder Mindfully",
-          "season": 2,
-          "seasonYear": 2026
-        },
-        {
-          "seriesId": "tt2215950",
-          "title": "Dream Girl: The Making of Marilyn Monroe",
-          "season": 1,
-          "seasonYear": 2022
-        },
-        {
-          "seriesId": "tt41565634",
-          "title": "O Humnava Tum Dena Saath Mera",
-          "season": 1,
-          "seasonYear": 2026
-        },
-        {
-          "seriesId": "tt6722972",
-          "title": "Hot Dog",
-          "season": 5,
-          "seasonYear": 2013
-        }
-      ],
-      "removed": [],
-      "ratingSwings": [
-        {
-          "seriesId": "tt28118211",
-          "title": "A Good Girl's Guide to Murder",
-          "season": 2,
-          "from": 8.63,
-          "to": 7.83,
-          "delta": -0.8
-        },
-        {
-          "seriesId": "tt8422138",
-          "title": "Makura no Danshi",
-          "season": 1,
-          "from": 2.93,
-          "to": 3.63,
-          "delta": 0.7
-        },
-        {
-          "seriesId": "tt31260463",
-          "title": "Our Stupid School",
-          "season": 2,
-          "from": 5.07,
-          "to": 5.73,
-          "delta": 0.66
-        },
-        {
-          "seriesId": "tt11128176",
-          "title": "Turma da Mônica Jovem",
-          "season": 1,
-          "from": 6.65,
-          "to": 7.29,
-          "delta": 0.64
-        },
-        {
-          "seriesId": "tt9897038",
-          "title": "Chip and Potato",
-          "season": 1,
-          "from": 9.32,
-          "to": 8.76,
-          "delta": -0.56
-        },
-        {
-          "seriesId": "tt11638962",
-          "title": "The Game",
-          "season": 5,
-          "from": 6.89,
-          "to": 7.44,
-          "delta": 0.55
-        },
-        {
-          "seriesId": "tt3777108",
-          "title": "The Video Game Years",
-          "season": 3,
-          "from": 7.37,
-          "to": 7.91,
-          "delta": 0.54
-        },
-        {
-          "seriesId": "tt13241650",
-          "title": "Ada Twist, Scientist",
-          "season": 1,
-          "from": 4.93,
-          "to": 4.42,
-          "delta": -0.51
-        },
-        {
-          "seriesId": "tt5853206",
-          "title": "The Highschool Life of a Fudanshi",
-          "season": 1,
-          "from": 5.52,
-          "to": 6.03,
-          "delta": 0.51
-        },
-        {
-          "seriesId": "tt1162658",
-          "title": "Demonbane",
-          "season": 1,
-          "from": 9.83,
-          "to": 9.36,
-          "delta": -0.47
-        }
-      ],
-      "modifiedCounts": {
-        "seriesVotes": 23805,
-        "avgRating": 1105,
-        "shapes": 204,
-        "seriesRating": 303,
-        "episodeCount": 93,
-        "poster": 16,
-        "overview": 7
-      }
-    },
-    {
-      "builtAt": "2026-05-30T07:12:21.561Z",
-      "totals": {
-        "seasons": 65106,
-        "delta": 20
-      },
-      "shapeCounts": {
-        "mid-peak": 4582,
-        "rebound": 9934,
-        "rising": 2917,
-        "slow-burn": 4304,
-        "big-finale": 11928,
-        "u-shaped": 3059,
-        "rollercoaster": 13906,
-        "saved-best-for-last": 1509,
-        "front-loaded": 3432,
-        "declining": 1832,
-        "bad-finale": 4589,
-        "consistent": 2579,
-        "shape-drift": 1596
-      },
-      "shapeDeltas": {
-        "mid-peak": -3,
-        "rebound": 11,
-        "rising": 3,
-        "slow-burn": 2,
-        "big-finale": 9,
-        "u-shaped": 4,
-        "rollercoaster": 1,
-        "saved-best-for-last": 4,
-        "front-loaded": -4,
-        "declining": -1,
-        "bad-finale": -7,
-        "shape-drift": -7
-      },
-      "added": [
-        {
-          "seriesId": "tt30826447",
-          "title": "The Four Seasons",
-          "season": 2,
-          "seasonYear": 2026
-        },
-        {
-          "seriesId": "tt1868207",
-          "title": "Atop the Fourth Wall",
-          "season": 8,
-          "seasonYear": 2015
-        },
-        {
-          "seriesId": "tt0229149",
-          "title": "Mythic Warriors: Guardians of the Legend",
-          "season": 2,
-          "seasonYear": 1999
-        },
-        {
-          "seriesId": "tt1481601",
-          "title": "Der Lehrer",
-          "season": 10,
-          "seasonYear": 2026
-        },
-        {
-          "seriesId": "tt1571437",
-          "title": "Bad Universe",
-          "season": 1,
-          "seasonYear": 2010
-        },
-        {
-          "seriesId": "tt41978418",
-          "title": "The Many Lives of Benjaman Kyle",
-          "season": 1,
-          "seasonYear": 2026
-        },
-        {
-          "seriesId": "tt41878195",
-          "title": "Journey with You",
-          "season": 1,
-          "seasonYear": 2026
-        },
-        {
-          "seriesId": "tt3777108",
-          "title": "The Video Game Years",
-          "season": 4,
-          "seasonYear": 2015
-        },
-        {
-          "seriesId": "tt23052950",
-          "title": "Deli Boys",
-          "season": 2,
-          "seasonYear": 2026
-        },
-        {
-          "seriesId": "tt27953039",
-          "title": "Seconds",
-          "season": 2,
-          "seasonYear": 2026
-        },
-        {
-          "seriesId": "tt28300326",
-          "title": "Almost Friday TV",
-          "season": 7,
-          "seasonYear": 2025
-        },
-        {
-          "seriesId": "tt3878948",
-          "title": "Morph",
-          "season": 1,
-          "seasonYear": 2014
-        },
-        {
-          "seriesId": "tt2250138",
-          "title": "Tanken Driland",
-          "season": 1,
-          "seasonYear": 2012
-        },
-        {
-          "seriesId": "tt15052428",
-          "title": "Open",
-          "season": 2,
-          "seasonYear": 2023
-        },
-        {
-          "seriesId": "tt26891766",
-          "title": "The Future with Hannah Fry",
-          "season": 1,
-          "seasonYear": 2023
-        },
-        {
-          "seriesId": "tt28489780",
-          "title": "The Hardacres",
-          "season": 2,
-          "seasonYear": 2026
-        },
-        {
-          "seriesId": "tt30217222",
-          "title": "Murder Mindfully",
-          "season": 2,
-          "seasonYear": 2026
-        },
-        {
-          "seriesId": "tt2215950",
-          "title": "Dream Girl: The Making of Marilyn Monroe",
-          "season": 1,
-          "seasonYear": 2022
-        },
-        {
-          "seriesId": "tt41565634",
-          "title": "O Humnava Tum Dena Saath Mera",
-          "season": 1,
-          "seasonYear": 2026
-        },
-        {
-          "seriesId": "tt6722972",
-          "title": "Hot Dog",
-          "season": 5,
-          "seasonYear": 2013
-        }
-      ],
-      "removed": [],
-      "ratingSwings": [
-        {
-          "seriesId": "tt28118211",
-          "title": "A Good Girl's Guide to Murder",
-          "season": 2,
-          "from": 8.63,
-          "to": 7.83,
-          "delta": -0.8
-        },
-        {
-          "seriesId": "tt8422138",
-          "title": "Makura no Danshi",
-          "season": 1,
-          "from": 2.93,
-          "to": 3.63,
-          "delta": 0.7
-        },
-        {
-          "seriesId": "tt31260463",
-          "title": "Our Stupid School",
-          "season": 2,
-          "from": 5.07,
-          "to": 5.73,
-          "delta": 0.66
-        },
-        {
-          "seriesId": "tt11128176",
-          "title": "Turma da Mônica Jovem",
-          "season": 1,
-          "from": 6.65,
-          "to": 7.29,
-          "delta": 0.64
-        },
-        {
-          "seriesId": "tt9897038",
-          "title": "Chip and Potato",
-          "season": 1,
-          "from": 9.32,
-          "to": 8.76,
-          "delta": -0.56
-        },
-        {
-          "seriesId": "tt11638962",
-          "title": "The Game",
-          "season": 5,
-          "from": 6.89,
-          "to": 7.44,
-          "delta": 0.55
-        },
-        {
-          "seriesId": "tt3777108",
-          "title": "The Video Game Years",
-          "season": 3,
-          "from": 7.37,
-          "to": 7.91,
-          "delta": 0.54
-        },
-        {
-          "seriesId": "tt13241650",
-          "title": "Ada Twist, Scientist",
-          "season": 1,
-          "from": 4.93,
-          "to": 4.42,
-          "delta": -0.51
-        },
-        {
-          "seriesId": "tt5853206",
-          "title": "The Highschool Life of a Fudanshi",
-          "season": 1,
-          "from": 5.52,
-          "to": 6.03,
-          "delta": 0.51
-        },
-        {
-          "seriesId": "tt1162658",
-          "title": "Demonbane",
-          "season": 1,
-          "from": 9.83,
-          "to": 9.36,
-          "delta": -0.47
-        }
-      ],
-      "modifiedCounts": {
-        "seriesVotes": 23805,
-        "avgRating": 1105,
-        "shapes": 204,
-        "seriesRating": 303,
-        "episodeCount": 93
       }
     }
   ]
