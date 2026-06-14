@@ -125,6 +125,65 @@
     return { rounds, finalScore, computedTotal, date, totalMismatch };
   }
 
+  // ---------- MapTap profile history → per-day rounds ----------
+  // Convert profile.gameHistory into { "YYYY-MM-DD": { scores: number[5], cities: {lat,lng,name}[5] } }.
+  //
+  // Prefers `roundData` — the web/legacy shape that carries answer-city
+  // coordinates (cityLat/cityLng/cityName) so the continent breakdown can light
+  // up. MapTap's newer iOS client (v4.04+) stops writing `roundData` and emits
+  // only `rounds`, which still has the per-round score and the answer-city NAME
+  // (targetCity) but no coordinates. We fall back to `rounds` ONLY when a clean
+  // `roundData` array is absent, so those games still pair on score — their
+  // cities are left coordinate-less, which classifyContinent already tolerates
+  // (it buckets them as 'Unknown', same as any pre-cities game today).
+  //
+  // Either source must yield a clean 5-round score breakdown; entries that
+  // don't are rejected so we never store partial data — those days just won't
+  // pair.
+  function mapTapHistoryToRounds(gameHistory) {
+    const out = {};
+    for (const [date, entry] of Object.entries(gameHistory || {})) {
+      if (!entry) continue;
+      const parsed = roundsFromRoundData(entry.roundData) || roundsFromRounds(entry.rounds);
+      if (parsed) out[date] = parsed;
+    }
+    return out;
+  }
+
+  // Validate a 5-element score array against MapTap's 0-100 raw range.
+  function validRawScores(scores) {
+    return scores.length === N_LOCS
+      && scores.every(s => Number.isFinite(s) && s >= 0 && s <= MAX_RAW);
+  }
+
+  // Web/legacy shape: roundData[] carrying answer-city coordinates.
+  function roundsFromRoundData(roundData) {
+    if (!Array.isArray(roundData) || roundData.length !== N_LOCS) return null;
+    const scores = roundData.map(r => Number(r.score));
+    if (!validRawScores(scores)) return null;
+    const cities = roundData.map(r => ({
+      lat: Number(r.cityLat),
+      lng: Number(r.cityLng),
+      name: typeof r.cityName === 'string' ? r.cityName : '',
+    }));
+    return { scores, cities };
+  }
+
+  // iOS 4.04+ shape: rounds[] with score + answer-city NAME (targetCity) but no
+  // coordinates. Used only when roundData is absent. Cities keep the name and
+  // get NaN coords, so continent classification falls back to 'Unknown'.
+  function roundsFromRounds(rounds) {
+    if (!Array.isArray(rounds) || rounds.length !== N_LOCS) return null;
+    const scores = rounds.map(r => Number(r.score));
+    if (!validRawScores(scores)) return null;
+    const cities = rounds.map(r => ({
+      lat: NaN,
+      lng: NaN,
+      name: typeof r.targetCity === 'string' ? r.targetCity : '',
+    }));
+    return { scores, cities };
+  }
+
   // ---------- results ----------
   function resultOf(g) {
     // Rival-only (or me-only) days have no W/L semantics — neither side beat
@@ -239,7 +298,7 @@
     weightedTotal, predTotalFromScores, hasLocs, iPlayed, theyPlayed, bothPlayed, arrEq,
     getMyTotal, getTheirTotal,
     // parsing
-    parseMapTapScore,
+    parseMapTapScore, mapTapHistoryToRounds,
     // results / aggregates
     resultOf, resultLoc, stdDev, average, streaks, linearTrend, projectNext,
     rivalryScoreFromGames,
