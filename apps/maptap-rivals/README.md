@@ -43,7 +43,7 @@ python3 -m http.server 8000
 
 ## Running tests
 
-The scoring and stats core (weighted daily totals, side-presence, the MapTap paste parser, results, streaks, averages, trend/projection, and the composite rivalry score) lives in `js/stats.js` as a pure module so it can be unit-tested without a DOM or Firebase. `app.js` loads that module and binds its functions, so the tests exercise the same code the app runs.
+The scoring and stats core (weighted daily totals, the predicted-total reconciliation that keeps the predictions card's total equal to the sum of its per-round chips, side-presence, the MapTap paste parser, results, streaks, averages, trend/projection, and the composite rivalry score) lives in `js/stats.js` as a pure module so it can be unit-tested without a DOM or Firebase. `app.js` loads that module and binds its functions, so the tests exercise the same code the app runs.
 
 ```sh
 npm run test:maptap
