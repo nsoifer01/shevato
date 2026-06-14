@@ -271,7 +271,6 @@
         <input type="password" id="wc-key" placeholder="The Odds API key" autocomplete="off" aria-label="The Odds API key">
         <button type="button" class="wc-btn" id="wc-load">Load fixtures</button>
         <button type="button" class="wc-btn" id="wc-refresh" title="Ignore the 6 hour cache and refetch odds and results now">Refresh</button>
-        <label class="wc-nodraw" title="Only for games that score the result AFTER extra time. If draws at 90 minutes count (they do in your game), leave this off."><input type="checkbox" id="wc-nodraw"> My game scores the result after extra time (kills draw picks)</label>
         <label class="wc-nodraw" title="Keep this tab open. 10 minutes before each kickoff the page checks whether a realistic late odds move could flip either model's pick; only then does it spend credits on a live refresh."><input type="checkbox" id="wc-auto"> Auto-refresh 10 min before kickoff if a pick could flip</label>
         <label class="wc-nodraw" title="Keep this tab open. Plays a chime 10 minutes before each kickoff so you can lock in your pick in time. Works on its own and spends no credits."><input type="checkbox" id="wc-sound"> Sound alert 10 min before kickoff</label>
         <button type="button" class="wc-btn" id="wc-test-sound" title="Play the kickoff chime right now to check your sound works">Test sound</button>
@@ -619,7 +618,6 @@
   const wcKeyInput = document.getElementById('wc-key');
   const wcLoadBtn = document.getElementById('wc-load');
   const wcRefreshBtn = document.getElementById('wc-refresh');
-  const wcNodraw = document.getElementById('wc-nodraw');
   const wcStatus = document.getElementById('wc-status');
   const wcWrap = document.getElementById('wc-wrap');
   const wcBody = document.getElementById('wc-body');
@@ -705,20 +703,12 @@
   }
 
   // --- predictions (home-first) --------------------------------------------
-  // No-draw rule: a draw pick converts to 1-0 for the (slight) favorite.
-  function applyNodraw(p, homeOdds, awayOdds) {
-    if (!p) return null;
-    if (wcNodraw.checked && p.outcome === 'draw') {
-      const homeIsFav = homeOdds <= awayOdds;
-      return { scoreA: homeIsFav ? 1 : 0, scoreB: homeIsFav ? 0 : 1, outcome: homeIsFav ? 'A' : 'B' };
-    }
-    return { scoreA: p.scoreA, scoreB: p.scoreB, outcome: p.outcome };
-  }
-  // Both models' picks for a fixture, home goals first.
+  // Both models' picks for a fixture, home goals first. Draws are valid picks:
+  // the game scores the result at the end of ordinary time, so a 1-1 stands.
   function picksFor(homeOdds, awayOdds) {
     return {
-      points: applyNodraw(predictScoreMode('points', homeOdds, awayOdds), homeOdds, awayOdds),
-      exact: applyNodraw(predictScoreMode('exact', homeOdds, awayOdds), homeOdds, awayOdds),
+      points: predictScoreMode('points', homeOdds, awayOdds),
+      exact: predictScoreMode('exact', homeOdds, awayOdds),
     };
   }
   function pickStr(p) { return p ? p.scoreA + '-' + p.scoreB : '?'; }
@@ -1141,7 +1131,6 @@
   wcSound.checked = localStorage.getItem(WC_SOUND_LS) === '1';
   wcLoadBtn.addEventListener('click', function () { fetchFixtures(false); });
   wcRefreshBtn.addEventListener('click', function () { fetchFixtures(true); });
-  wcNodraw.addEventListener('change', renderFixtures);
   wcAuto.addEventListener('change', function () {
     localStorage.setItem(WC_AUTO_LS, wcAuto.checked ? '1' : '0');
     scheduleAuto();
