@@ -10,7 +10,7 @@ const assert = require('node:assert/strict');
 const {
   N_LOCS, WEIGHTS, MAX_RAW, MONTHS,
   weightedTotal, predTotalFromScores, hasLocs, iPlayed, theyPlayed, bothPlayed, arrEq,
-  getMyTotal, getTheirTotal, parseMapTapScore,
+  getMyTotal, getTheirTotal, parseMapTapScore, mapTapHistoryToRounds,
   resultOf, resultLoc, stdDev, average, streaks, linearTrend, projectNext,
   rivalryScoreFromGames,
 } = require('../js/stats.js');
@@ -167,6 +167,91 @@ test('parseMapTapScore: empty / blank / junk input returns null', () => {
   assert.equal(parseMapTapScore('   \n  '), null);
   assert.equal(parseMapTapScore('hello world'), null);
   assert.equal(parseMapTapScore(null), null);
+});
+
+// --- mapTapHistoryToRounds -------------------------------------------------
+
+// Web/legacy day: roundData[] carrying answer-city coordinates.
+const roundDataDay = {
+  date: '2026-06-14', finalScore: 920,
+  roundData: [
+    { round: 1, score: 95, cityLat: 35.96, cityLng: -83.92, cityName: 'Knoxville, Tennessee' },
+    { round: 2, score: 80, cityLat: 46.84, cityLng: 0.91,   cityName: 'Châtellerault, France' },
+    { round: 3, score: 70, cityLat: 54.51, cityLng: 9.69,   cityName: 'Schleswig, Germany' },
+    { round: 4, score: 90, cityLat: 49.92, cityLng: 7.74,   cityName: 'Bingen, Germany' },
+    { round: 5, score: 60, cityLat: 57.36, cityLng: 33.66,  cityName: 'Ostashkov, Russia' },
+  ],
+};
+// iOS 4.04+ day: rounds[] only — score + targetCity name, no coordinates.
+const iosRoundsDay = {
+  date: '2026-06-14', finalScore: 957, clientPlatform: 'ios', clientVersion: '4.04 (4)',
+  rounds: [
+    { roundNumber: 1, targetCity: 'Knoxville, Tennessee', userLat: 37.9, userLng: -87.7, score: 95, timeSpent: 4457 },
+    { roundNumber: 2, targetCity: 'Châtellerault, France', userLat: 46.0, userLng: 0.0,  score: 95, timeSpent: 3000 },
+    { roundNumber: 3, targetCity: 'Schleswig, Germany',    userLat: 54.0, userLng: 9.0,  score: 94, timeSpent: 3000 },
+    { roundNumber: 4, targetCity: 'Bingen, Germany',       userLat: 49.0, userLng: 7.0,  score: 98, timeSpent: 3000 },
+    { roundNumber: 5, targetCity: 'Ostashkov, Russia',     userLat: 57.0, userLng: 33.0, score: 95, timeSpent: 3000 },
+  ],
+};
+
+test('mapTapHistoryToRounds: parses the web/legacy roundData shape with city coords', () => {
+  const out = mapTapHistoryToRounds({ '2026-06-14': roundDataDay });
+  assert.deepEqual(out['2026-06-14'].scores, [95, 80, 70, 90, 60]);
+  assert.deepEqual(out['2026-06-14'].cities[0], { lat: 35.96, lng: -83.92, name: 'Knoxville, Tennessee' });
+});
+
+test('mapTapHistoryToRounds: falls back to the iOS 4.04 rounds shape when roundData is absent', () => {
+  const out = mapTapHistoryToRounds({ '2026-06-14': iosRoundsDay });
+  // Scores still pair, which is the whole point of the fallback.
+  assert.deepEqual(out['2026-06-14'].scores, [95, 95, 94, 98, 95]);
+  // City name is kept (from targetCity); coordinates are unavailable → NaN.
+  assert.equal(out['2026-06-14'].cities[0].name, 'Knoxville, Tennessee');
+  assert.ok(Number.isNaN(out['2026-06-14'].cities[0].lat));
+  assert.ok(Number.isNaN(out['2026-06-14'].cities[0].lng));
+});
+
+test('mapTapHistoryToRounds: prefers roundData when an entry has BOTH (web shape)', () => {
+  // The web client writes both keys; we must keep the coordinate-rich one.
+  const both = { ...roundDataDay, rounds: iosRoundsDay.rounds };
+  const out = mapTapHistoryToRounds({ '2026-06-14': both });
+  assert.deepEqual(out['2026-06-14'].scores, [95, 80, 70, 90, 60]); // roundData scores
+  assert.equal(out['2026-06-14'].cities[0].lat, 35.96);            // roundData coords
+});
+
+test('mapTapHistoryToRounds: keeps each day in its own correct format', () => {
+  const out = mapTapHistoryToRounds({ '2026-06-13': roundDataDay, '2026-06-14': iosRoundsDay });
+  assert.equal(Object.keys(out).length, 2);
+  assert.equal(out['2026-06-13'].cities[0].lat, 35.96);
+  assert.ok(Number.isNaN(out['2026-06-14'].cities[0].lat));
+});
+
+test('mapTapHistoryToRounds: rejects entries with neither a clean roundData nor rounds array', () => {
+  assert.deepEqual(mapTapHistoryToRounds({}), {});
+  assert.deepEqual(mapTapHistoryToRounds(null), {});
+  assert.deepEqual(mapTapHistoryToRounds({ d: null }), {});
+  assert.deepEqual(mapTapHistoryToRounds({ d: { finalScore: 500 } }), {}); // no rounds at all
+  // Wrong length is rejected on both paths.
+  assert.deepEqual(mapTapHistoryToRounds({ d: { roundData: roundDataDay.roundData.slice(0, 4) } }), {});
+  assert.deepEqual(mapTapHistoryToRounds({ d: { rounds: iosRoundsDay.rounds.slice(0, 4) } }), {});
+});
+
+test('mapTapHistoryToRounds: rejects out-of-range or non-numeric scores on either path', () => {
+  const badRoundData = { roundData: roundDataDay.roundData.map((r, i) => i === 0 ? { ...r, score: 101 } : r) };
+  const badRounds = { rounds: iosRoundsDay.rounds.map((r, i) => i === 0 ? { ...r, score: 'NaN' } : r) };
+  assert.deepEqual(mapTapHistoryToRounds({ d: badRoundData }), {});
+  assert.deepEqual(mapTapHistoryToRounds({ d: badRounds }), {});
+});
+
+test('mapTapHistoryToRounds: a present-but-malformed roundData is dropped, NOT recovered via rounds', () => {
+  // Web-safety guarantee: the rounds fallback fires only when roundData is
+  // entirely ABSENT. Any entry that carries roundData (the web shape always
+  // does) behaves exactly as it did before — including being dropped when
+  // malformed — even if a valid `rounds` sits alongside it. This keeps non-iOS
+  // players byte-for-byte unchanged.
+  const wrongLen  = { roundData: roundDataDay.roundData.slice(0, 4), rounds: iosRoundsDay.rounds };
+  const outOfRange = { roundData: roundDataDay.roundData.map((r, i) => i === 0 ? { ...r, score: 101 } : r), rounds: iosRoundsDay.rounds };
+  assert.deepEqual(mapTapHistoryToRounds({ d: wrongLen }), {});
+  assert.deepEqual(mapTapHistoryToRounds({ d: outOfRange }), {});
 });
 
 // --- results ---------------------------------------------------------------
