@@ -145,7 +145,7 @@
   // here so every call site below keeps using them unchanged.
   const {
     N_LOCS, WEIGHTS, MAX_RAW,
-    weightedTotal, hasLocs, iPlayed, theyPlayed, bothPlayed, arrEq,
+    weightedTotal, predTotalFromScores, hasLocs, iPlayed, theyPlayed, bothPlayed, arrEq,
     getMyTotal, getTheirTotal, parseMapTapScore,
     resultOf, resultLoc, stdDev, average, streaks, linearTrend, projectNext,
     rivalryScoreFromGames,
@@ -1826,14 +1826,6 @@
       status.textContent = selectedISO === today ? 'Pre-game' : 'Not logged';
       status.className = 'todays-card-status is-accent';
     }
-  }
-
-  // Sum a round score array using the standard WEIGHTS.
-  function predTotalFromScores(scores) {
-    if (!Array.isArray(scores) || scores.length !== N_LOCS) return null;
-    let t = 0;
-    for (let i = 0; i < N_LOCS; i++) t += scores[i] * WEIGHTS[i];
-    return Math.round(Math.max(0, Math.min(1000, t)));
   }
 
   // ---------- paste-mode entry on dashboard ----------

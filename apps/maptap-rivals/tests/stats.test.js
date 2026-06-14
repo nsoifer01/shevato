@@ -9,7 +9,7 @@ const assert = require('node:assert/strict');
 
 const {
   N_LOCS, WEIGHTS, MAX_RAW, MONTHS,
-  weightedTotal, hasLocs, iPlayed, theyPlayed, bothPlayed, arrEq,
+  weightedTotal, predTotalFromScores, hasLocs, iPlayed, theyPlayed, bothPlayed, arrEq,
   getMyTotal, getTheirTotal, parseMapTapScore,
   resultOf, resultLoc, stdDev, average, streaks, linearTrend, projectNext,
   rivalryScoreFromGames,
@@ -292,4 +292,53 @@ test('rivalryScoreFromGames: recency weighting favors the latest games', () => {
   assert.ok(rivalryScoreFromGames([loss, win]) > 0);
   // and the mirror nets negative.
   assert.ok(rivalryScoreFromGames([win, loss]) < 0);
+});
+
+// --- predTotalFromScores ---------------------------------------------------
+// The predicted-total column must always equal the sum of the whole-number
+// per-round chips the dashboard shows (chips = Math.round(score)). The total
+// therefore rounds each round BEFORE weighting, never the raw float sum.
+
+// Mirror of the dashboard chip math: round each round, then weight and sum.
+const sumOfRoundedChips = (scores) =>
+  scores.reduce((t, s, i) => t + Math.round(s) * WEIGHTS[i], 0);
+
+test('predTotalFromScores: whole-number rounds equal the plain weighted total', () => {
+  assert.equal(predTotalFromScores([10, 20, 30, 40, 50]), weightedTotal([10, 20, 30, 40, 50])); // 360
+});
+
+test('predTotalFromScores: reconciles with the rounded chips (no compound-rounding drift)', () => {
+  // Floats whose raw weighted sum would round UP past the chip sum: each round
+  // carries a +0.1 fraction that, weighted by [1,1,2,3,3], adds exactly 1.0.
+  const scores = [91.1, 91.1, 92.1, 91.1, 89.1];
+  const chipSum = sumOfRoundedChips(scores); // 91 + 91 + 92*2 + 91*3 + 89*3 = 906
+  assert.equal(chipSum, 906);
+  // Raw weighted sum is 907.0 and rounds to 907 under the old logic.
+  assert.equal(Math.round(weightedTotal(scores)), 907);
+  // New logic matches the chips exactly.
+  assert.equal(predTotalFromScores(scores), 906);
+});
+
+test('predTotalFromScores: always equals the chip sum across mixed fractions', () => {
+  const cases = [
+    [91.4, 91.4, 92.2, 91.1, 89.3],
+    [0.5, 1.5, 2.5, 3.5, 4.5],
+    [99.6, 99.6, 99.6, 99.6, 99.6],
+    [10.49, 20.5, 30.51, 40.4, 50.6],
+  ];
+  for (const scores of cases) {
+    assert.equal(predTotalFromScores(scores), sumOfRoundedChips(scores), `scores=${scores}`);
+  }
+});
+
+test('predTotalFromScores: clamps to [0, 1000] and floors at 0', () => {
+  assert.equal(predTotalFromScores([100, 100, 100, 100, 100]), 1000);
+  assert.equal(predTotalFromScores([120, 120, 120, 120, 120]), 1000); // over-cap raw clamps down
+  assert.equal(predTotalFromScores([0, 0, 0, 0, 0]), 0);
+});
+
+test('predTotalFromScores: malformed input returns null (distinct from a 0 total)', () => {
+  assert.equal(predTotalFromScores([1, 2, 3]), null);
+  assert.equal(predTotalFromScores('nope'), null);
+  assert.equal(predTotalFromScores(null), null);
 });
