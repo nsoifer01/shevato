@@ -24,6 +24,19 @@
     return t;
   }
 
+  // Weighted total of a *predicted* round array, for the leaderboard's
+  // predicted-score column. Predictions are floats (e.g. 91.4); the per-round
+  // chips display Math.round(score), so this rounds each round the same way
+  // BEFORE weighting. That guarantees the total always equals the sum of the
+  // whole-number chips the user sees (no compound-rounding drift). Returns
+  // null for a malformed array so callers can distinguish "no prediction".
+  function predTotalFromScores(scores) {
+    if (!Array.isArray(scores) || scores.length !== N_LOCS) return null;
+    let t = 0;
+    for (let i = 0; i < N_LOCS; i++) t += Math.round(scores[i] || 0) * WEIGHTS[i];
+    return Math.max(0, Math.min(1000, t));
+  }
+
   function hasLocs(g) { return Array.isArray(g.myScores) && Array.isArray(g.theirScores); }
 
   // Side presence. A rival-only game (saved by sync when the rival played but
@@ -223,7 +236,7 @@
     // constants
     N_LOCS, WEIGHTS, MAX_RAW, MONTHS,
     // scoring
-    weightedTotal, hasLocs, iPlayed, theyPlayed, bothPlayed, arrEq,
+    weightedTotal, predTotalFromScores, hasLocs, iPlayed, theyPlayed, bothPlayed, arrEq,
     getMyTotal, getTheirTotal,
     // parsing
     parseMapTapScore,
