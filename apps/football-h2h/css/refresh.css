@@ -520,7 +520,10 @@ body.football-h2h-tracker .sidebar-add-race-btn {
     transition: filter 0.15s ease, transform 0.08s ease, box-shadow 0.15s ease;
 }
 body.football-h2h-tracker .sidebar-player-settings-btn:hover,
-body.football-h2h-tracker .sidebar-add-game-btn:hover {
+body.football-h2h-tracker .sidebar-add-game-btn:hover,
+body.football-h2h-tracker .sidebar-player-settings-btn:hover:active,
+body.football-h2h-tracker .sidebar-add-game-btn:hover:active {
+    background: linear-gradient(135deg, var(--fh-accent), var(--fh-accent-strong)) !important;
     filter: brightness(1.06);
     transform: translateY(-1px);
     box-shadow: 0 8px 22px -6px rgba(99, 102, 241, 0.55) !important;
@@ -1261,6 +1264,7 @@ body.football-h2h-tracker .custom-date-range button {
 }
 body.football-h2h-tracker .custom-date-range button:hover,
 body.football-h2h-tracker .custom-date-range button:hover:active {
+    background: linear-gradient(135deg, var(--fh-accent), var(--fh-accent-strong)) !important;
     color: #ffffff !important;
     filter: brightness(1.06);
     transform: translateY(-1px);

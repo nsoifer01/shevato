@@ -29,7 +29,10 @@
     background: var(--mk-surface-2, #181c26);
     border: 1px solid var(--mk-border, #232838);
     border-radius: 9px;
-    color: var(--mk-text, #f1f3f8);
+    /* color pinned !important to beat the global `button{color:#555!important}`
+       trap in assets/css/main.css; child spans set their own colour but the
+       button's own text colour (and the hover/active red traps) need pinning. */
+    color: var(--mk-text, #f1f3f8) !important;
     cursor: pointer;
     text-align: left;
     transition: border-color 0.12s ease, background 0.12s ease;
@@ -39,6 +42,13 @@
 .course-picker .course-picker-trigger[aria-expanded="true"] {
     border-color: var(--mk-accent, #818cf8);
     background: var(--mk-surface-3, #232836);
+    color: var(--mk-text, #f1f3f8) !important;
+}
+/* Pressed: main.css `button:hover:active{background:rgba(206,27,40,.25)}`
+   would flash a red fill on click — pin the intended surface instead. */
+.course-picker .course-picker-trigger:hover:active {
+    background: var(--mk-surface-3, #232836) !important;
+    color: var(--mk-text, #f1f3f8) !important;
 }
 
 .course-picker .cp-icon { font-size: 1.05rem; flex: 0 0 auto; line-height: 1; opacity: 0.9; }
@@ -74,10 +84,22 @@
     position: absolute; right: 32px; top: 50%; transform: translateY(-50%);
     width: 20px; height: 20px; line-height: 18px; padding: 0;
     border: none; border-radius: 50%;
-    background: rgba(148, 163, 184, 0.20); color: var(--mk-text, #f1f3f8);
+    background: rgba(148, 163, 184, 0.20);
+    /* The "x" is direct text on the button, so the global
+       `button{color:#555!important}` trap in main.css renders it gray. Pin
+       across base/hover/active so it stays legible. */
+    color: var(--mk-text, #f1f3f8) !important;
     font-size: 0.9rem; cursor: pointer;
 }
-.course-picker .cp-clear:hover { background: rgba(239, 68, 68, 0.28); }
+.course-picker .cp-clear:hover {
+    background: rgba(239, 68, 68, 0.28);
+    color: var(--mk-text, #f1f3f8) !important;
+}
+/* Pin the pressed state: defeat main.css `button:hover:active` red bg + red text. */
+.course-picker .cp-clear:hover:active {
+    background: rgba(239, 68, 68, 0.40) !important;
+    color: var(--mk-text, #f1f3f8) !important;
+}
 
 /* ---- Open panel: a single unified surface ---- */
 .course-picker .course-picker-panel {
