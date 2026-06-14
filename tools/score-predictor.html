@@ -282,7 +282,7 @@
         <span class="wc-status" id="wc-status">No fixtures loaded yet. Paste your key and hit Load fixtures (or use the key "demo" to preview with sample data).</span>
         <span class="wc-status" id="wc-auto-status" hidden></span>
       </div>
-      <p class="section-sub wc-note">Both columns are scored in your points (3 exact, 2 outcome, 0 otherwise), so a 1-1 pick on a 2-2 result reads "2 pts" in either column. Use the Points model for your entries: it is built to maximize these points. The Exact column is only a sanity check; it chases the perfect scoreline and ignores the 2-point partial credit, so it should trail Points over a full tournament even if it gets lucky on a single match.</p>
+      <p class="section-sub wc-note">Both columns are scored in your points (3 exact, 2 outcome, 0 otherwise), so a 1-1 pick on a 2-2 result earns 2 in either column. The models differ only in how they choose a pick: the Points model picks the score that maximizes expected points, so it leans toward the most likely outcome, while the Exact model chases the single most likely exact scoreline. An Exact pick still earns 2 whenever its outcome is right; the difference is that the Points model is optimizing for the points you actually score, so it should come out ahead over a full tournament. Use Points for your entries; the Exact column is just a sanity check, and any single match can go either way.</p>
       <div class="wc-summary" id="wc-summary" hidden></div>
       <div class="bands-table-wrap" id="wc-wrap" hidden>
         <table class="bands-table wc-table">
