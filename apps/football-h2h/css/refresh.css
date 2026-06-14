@@ -487,6 +487,9 @@ body.football-h2h-tracker .sidebar-header-clear {
     background: rgba(255, 255, 255, 0.03) !important;
     border: 1px solid var(--fh-border) !important;
     color: var(--fh-muted) !important;
+    /* Kill the sitewide theme trap's inset #555 ring (main.css
+       button{box-shadow: inset 0 0 0 1px #555}); this chip is border-only. */
+    box-shadow: none !important;
     border-radius: 8px !important;
     transition: background 0.15s ease, color 0.15s ease, border-color 0.15s ease;
 }
@@ -750,6 +753,9 @@ body.football-h2h-tracker.theme .sidebar-date-today-btn:hover {
 body.football-h2h-tracker .sidebar-toggle,
 body.football-h2h-tracker.theme .sidebar-toggle {
     background: linear-gradient(135deg, var(--fh-accent), var(--fh-accent-strong)) !important;
+    /* Pin white so the sitewide theme trap (main.css button{color:#555!important})
+       can't gray the hamburger icon's currentColor. */
+    color: #ffffff !important;
     box-shadow: 0 6px 20px rgba(99, 102, 241, 0.35) !important;
     border: 1px solid rgba(255, 255, 255, 0.08) !important;
 }

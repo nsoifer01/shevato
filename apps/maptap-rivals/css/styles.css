@@ -3431,7 +3431,8 @@ body.maptap-rivals-app select option {
    current icon, with a floating grid flyout that mirrors the rival
    icon-swatch palette but at a slightly tighter density. */
 .my-icon-wrap { position: relative; display: inline-flex; }
-.my-icon-btn {
+.my-icon-btn,
+.my-icon-btn:hover {
   width: 28px;
   height: 28px;
   border-radius: 7px;
@@ -3444,6 +3445,8 @@ body.maptap-rivals-app select option {
   padding: 0;
   font-size: 1.02rem;
   line-height: 1;
+  color: var(--text) !important;
+  box-shadow: none !important;
   transition: background 0.15s ease, border-color 0.15s ease;
 }
 .my-icon-btn:hover { background: var(--surface-3); border-color: var(--border-strong); }

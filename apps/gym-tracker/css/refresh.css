@@ -55,14 +55,10 @@ body.gym-tracker {
     color-scheme: dark;
 }
 
-/* The shared marketing-site backdrop (body::before = a fixed bg.jpg gym photo)
-   bleeds through the app's transparent content areas, making sparse views look
-   busy and unprofessional. Replace it with the app's own dark azure gradient so
-   every view sits on one clean, opaque canvas. */
-body.gym-tracker::before {
-    background-image: var(--gt-bg-grad) !important;
-    background-color: var(--gt-bg) !important;
-}
+/* Keep the shared marketing-site backdrop (main.css `body::before` = a fixed
+   bg.jpg photo at 5% opacity) so Gym Tracker carries the same faint site
+   texture as the other apps, layered over the app's own dark azure body
+   gradient. */
 
 /* ---------- Typography ---------- */
 
@@ -142,6 +138,15 @@ body.gym-tracker .section {
         -webkit-text-fill-color: transparent;
     }
 
+    body.gym-tracker .side-nav .nav-link,
+    body.gym-tracker .side-nav .nav-link:hover,
+    body.gym-tracker .side-nav .nav-link:hover:active {
+        /* main.css paints inset 0 0 0 1px #555 (gray) / #ce1b28 (red hover)
+           on every <button>; nav links are borderless so it shows as a ring.
+           Pin box-shadow off; .active re-asserts its accent marker below. */
+        box-shadow: none !important;
+    }
+
     body.gym-tracker .side-nav .nav-link {
         font-size: 0.9rem;
         font-weight: 500;
@@ -168,10 +173,11 @@ body.gym-tracker .section {
     body.gym-tracker .side-nav .nav-link:hover i,
     body.gym-tracker .side-nav .nav-link:hover span { color: var(--gt-text); }
 
-    body.gym-tracker .side-nav .nav-link.active {
+    body.gym-tracker .side-nav .nav-link.active,
+    body.gym-tracker .side-nav .nav-link.active:hover {
         background: var(--gt-accent-soft);
         color: var(--gt-text) !important;
-        box-shadow: inset 2px 0 0 var(--gt-accent);
+        box-shadow: inset 2px 0 0 var(--gt-accent) !important;
     }
     body.gym-tracker .side-nav .nav-link.active i,
     body.gym-tracker .side-nav .nav-link.active span {
@@ -364,6 +370,7 @@ body.gym-tracker .btn-text:hover,
 body.gym-tracker .btn-text:hover:active {
     background: transparent;
     border-color: transparent;
+    box-shadow: none !important;
     font-weight: 500;
 }
 body.gym-tracker .btn-text { color: var(--gt-muted) !important; }
@@ -494,6 +501,13 @@ body.gym-tracker .modal-close {
     border-radius: 50%;
     font-size: 1rem;
     transition: background 0.15s ease, border-color 0.15s ease;
+}
+/* main.css's inset 1px #555/#ce1b28 ring paints a square inside this circle;
+   pin it off across base/hover/active (focus-visible ring untouched). */
+body.gym-tracker .modal-close,
+body.gym-tracker .modal-close:hover,
+body.gym-tracker .modal-close:hover:active {
+    box-shadow: none !important;
 }
 body.gym-tracker .modal-close:hover {
     background: var(--gt-surface-2);

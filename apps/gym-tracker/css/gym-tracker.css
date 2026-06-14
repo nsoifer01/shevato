@@ -170,6 +170,17 @@ body.gym-tracker #footer {
     -webkit-tap-highlight-color: transparent;
 }
 
+/* main.css paints inset 0 0 0 1px #555 (gray) / #ce1b28 (red hover) on every
+   <button>; the bottom-nav items are borderless so it leaks as a ring. Pin it
+   off across base/hover/active (the active tab uses a background pill, not a
+   ring). Caught on the 390px mobile bottom-nav. */
+.bottom-nav .nav-item,
+.bottom-nav .nav-item:hover,
+.bottom-nav .nav-item:hover:active,
+.bottom-nav .nav-item.active {
+    box-shadow: none !important;
+}
+
 .bottom-nav .nav-item:hover:not(.active) {
     color: #ffffff !important;
     background: rgba(255, 255, 255, 0.04);
