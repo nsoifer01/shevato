@@ -581,6 +581,22 @@ body {
   box-shadow: none;
 }
 
+/* Keyboard focus rings (Item 1) -------------------------------------------- */
+/* main.css sets `outline:0` on inputs and paints buttons gray/red via global
+   `!important`, so keyboard users get no visible focus indicator on the
+   marketing-page CTAs, filter buttons, preview cards, and contact tiles.
+   Pin a single brand-blue ring via :focus-visible (not :focus, so a mouse
+   click leaves no permanent ring). The skip-link keeps its own ring from
+   brand-colors.css and is intentionally not overridden here. */
+.hero .cta-row .button:focus-visible,
+.cta-banner .cta-button:focus-visible,
+.app-filter-bar button:focus-visible,
+.preview-card:focus-visible,
+.contact-methods a:focus-visible {
+  outline: 2px solid var(--brand-blue) !important;
+  outline-offset: 2px !important;
+}
+
 /* NOTE: styles for the SHARED header/footer partials (.header-inline-nav,
    the desktop menu-toggle hide, #menu aria-current, and the footer two-column
    layout) live in main.css instead of here, because the apps load main.css
