@@ -80,14 +80,6 @@ html {
   background-attachment: fixed;
   background-color: var(--bg);
   min-height: 100%;
-  /* Always show the vertical scrollbar so its gutter is permanently
-     reserved. Without this, expanding the More-filters panel grows the
-     page tall enough to surface the scrollbar, which steals ~15px from
-     the viewport width and yanks the centered .page sideways. Using
-     overflow-y:scroll instead of scrollbar-gutter:stable for universal
-     browser support (Safari < 18 ignores scrollbar-gutter). */
-  overflow-y: scroll;
-  scrollbar-gutter: stable;
 }
 
 body.rising-seasons-app {
