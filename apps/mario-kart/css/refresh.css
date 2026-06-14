@@ -655,6 +655,17 @@ body.mario-kart-app .sidebar-date-today-btn:hover {
 
 /* Sidebar toggle button (the hamburger floating outside the sidebar) */
 body.mario-kart-app .sidebar-toggle,
+body.mario-kart-app.theme .sidebar-toggle,
+body.mario-kart-app .sidebar-toggle:hover,
+body.mario-kart-app.theme .sidebar-toggle:hover,
+body.mario-kart-app .sidebar-toggle:hover:active,
+body.mario-kart-app.theme .sidebar-toggle:hover:active {
+    /* color pinned to beat global `button{color:#555!important}` /
+       `button:hover{color:#ce1b28!important}` from assets/css/main.css */
+    color: #fff !important;
+}
+
+body.mario-kart-app .sidebar-toggle,
 body.mario-kart-app.theme .sidebar-toggle {
     background: linear-gradient(135deg, var(--mk-accent), var(--mk-accent-strong)) !important;
     box-shadow: 0 6px 20px rgba(99, 102, 241, 0.35) !important;

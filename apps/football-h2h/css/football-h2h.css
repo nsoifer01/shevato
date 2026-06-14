@@ -649,8 +649,10 @@
     border-radius: 0.5rem;
     background: #374151;
     /* color pinned !important across inactive/hover/active so the sitewide
-       theme trap can't gray the tabs or turn them red on hover. */
+       theme trap can't gray the tabs or turn them red on hover. box-shadow
+       pinned to kill the trap's inset #555 ring (these tabs are borderless). */
     color: #e2e8f0 !important;
+    box-shadow: none !important;
     cursor: pointer;
     transition: all 0.3s ease;
     font-weight: 500;
@@ -1662,7 +1664,11 @@
     background: rgba(255, 255, 255, 0.1);
     border: none;
     font-size: 1.75rem;
-    color: white;
+    /* color + box-shadow pinned !important across base/hover/active so the
+       sitewide theme trap can't gray the white close glyph, paint it red on
+       hover, or add its inset #555 ring (this button is borderless). */
+    color: #ffffff !important;
+    box-shadow: none !important;
     cursor: pointer;
     line-height: 1;
     padding: 0;
@@ -1675,8 +1681,11 @@
     transition: all 0.2s ease;
 }
 
-.modal-close:hover {
+.modal-close:hover,
+.modal-close:hover:active {
     background: rgba(255, 255, 255, 0.25);
+    color: #ffffff !important;
+    box-shadow: none !important;
     transform: scale(1.05);
 }
 
