@@ -35,7 +35,12 @@
   padding: 12px 24px;
   border: 2px solid var(--medical-blue);
   background: white;
-  color: var(--medical-blue);
+  /* main.css paints `button{color:#555!important; box-shadow: inset 0 0 0 1px
+     #555}` and `button:hover{color:#ce1b28!important}` on every <button>; pin
+     color + ring across base/hover/active so the brand blue/white wins and no
+     gray ring or red hover text leaks onto the green pill. */
+  color: var(--medical-blue) !important;
+  box-shadow: none !important;
   border-radius: 25px;
   cursor: pointer;
   font-weight: 600;
@@ -47,7 +52,8 @@
 
 .lang-btn:hover {
   background: #28a745;
-  color: white;
+  color: white !important;
+  box-shadow: none !important;
   border-color: #28a745;
   transform: translateY(-2px);
 }
@@ -55,7 +61,8 @@
 
 .lang-btn.active {
   background: #28a745;
-  color: white;
+  color: white !important;
+  box-shadow: none !important;
   border-color: #28a745;
 }
 
