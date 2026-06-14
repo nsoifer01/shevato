@@ -229,6 +229,29 @@
     letter-spacing: 0.04em; margin-left: 0.35rem;
   }
 
+  /* Collapsible sections (calculator, mapping, methodology, help) */
+  details.wc-collapse { margin-bottom: 1.25rem; border-top: 1px solid var(--border); }
+  details.wc-collapse > summary,
+  details.wc-done > summary {
+    cursor: pointer; list-style: none; user-select: none;
+    padding: 0.85rem 0.2rem; font-weight: 700; color: var(--text); font-size: 1.02rem;
+  }
+  details.wc-collapse > summary::-webkit-details-marker,
+  details.wc-done > summary::-webkit-details-marker { display: none; }
+  details.wc-collapse > summary::before,
+  details.wc-done > summary::before {
+    content: '\25B8'; color: var(--muted); margin-right: 0.5rem;
+    display: inline-block; transition: transform 0.15s ease;
+  }
+  details[open] > summary::before { transform: rotate(90deg); }
+  details.wc-collapse > summary:hover,
+  details.wc-done > summary:hover { color: var(--accent-2); }
+  .wc-collapse-body { padding: 0.25rem 0 0.5rem; }
+
+  /* Completed matches sit in their own block below the upcoming table */
+  details.wc-done { margin: 1.25rem 0 0; }
+  details.wc-done > summary { color: var(--muted); font-size: 0.95rem; font-weight: 600; }
+
   @media (max-width: 540px) {
     .calc-inputs { flex-direction: column; align-items: stretch; gap: 0.5rem; }
     .odds-field { max-width: none; }
@@ -240,38 +263,10 @@
   <main class="page">
     <header class="hero">
       <h1>⚽ Score Predictor</h1>
-      <p class="tagline">Type both teams' win odds and get the score to predict, based on 61,860 real matches. Points mode plays your scoring rules (3 exact, 2 outcome); exact mode just chases the scoreline.</p>
+      <p class="tagline">World Cup score picks under both scoring models, with live results and a running scoreboard for how each model does.</p>
     </header>
 
-    <section class="calc-card" aria-label="Score calculator">
-      <div class="mode-toggle" role="radiogroup" aria-label="Scoring mode">
-        <button type="button" class="mode-btn is-active" data-mode="points" role="radio" aria-checked="true">Points game: 3 exact, 2 outcome</button>
-        <button type="button" class="mode-btn" data-mode="exact" role="radio" aria-checked="false">Exact score only</button>
-      </div>
-
-      <div class="calc-inputs">
-        <label class="odds-field" for="odds-a">
-          <span class="odds-label">Team A win odds</span>
-          <input type="number" id="odds-a" min="1.01" max="1000" step="0.01" inputmode="decimal" placeholder="e.g. 1.45" autocomplete="off">
-        </label>
-        <span class="calc-vs" aria-hidden="true">vs</span>
-        <label class="odds-field" for="odds-b">
-          <span class="odds-label">Team B win odds</span>
-          <input type="number" id="odds-b" min="1.01" max="1000" step="0.01" inputmode="decimal" placeholder="e.g. 7.50" autocomplete="off">
-        </label>
-      </div>
-
-      <div class="result" id="result" role="status" aria-live="polite">
-        <p class="result-hint" id="result-hint">Enter both teams' win odds to get a score.</p>
-        <div class="result-score" id="result-score"></div>
-        <div class="result-outcome" id="result-outcome"></div>
-        <p class="result-detail" id="result-detail"></p>
-      </div>
-    </section>
-
     <section class="bands-section wc-section" aria-label="World Cup fixtures">
-      <h2 class="section-title">World Cup fixtures</h2>
-      <p class="section-sub">Upcoming and played matches with median 1X2 odds from The Odds API, scored under both models so you can watch how each one does as the tournament unfolds. Once a match kicks off its odds and picks lock and never change; only future matches update when you Load or Refresh. Your key is stored in this browser only, never in this file. Odds are cached for 6 hours; Refresh refetches odds plus final scores (about 3 credits) and the standings build up over time.</p>
       <div class="wc-controls">
         <input type="password" id="wc-key" placeholder="The Odds API key" autocomplete="off" aria-label="The Odds API key">
         <button type="button" class="wc-btn" id="wc-load">Load fixtures</button>
@@ -279,11 +274,13 @@
         <label class="wc-nodraw" title="Only for games that score the result AFTER extra time. If draws at 90 minutes count (they do in your game), leave this off."><input type="checkbox" id="wc-nodraw"> My game scores the result after extra time (kills draw picks)</label>
         <label class="wc-nodraw" title="Keep this tab open. 10 minutes before each kickoff the page checks whether a realistic late odds move could flip either model's pick; only then does it spend credits on a live refresh."><input type="checkbox" id="wc-auto"> Auto-refresh 10 min before kickoff if a pick could flip</label>
         <label class="wc-nodraw" title="Keep this tab open. Plays a chime 10 minutes before each kickoff so you can lock in your pick in time. Works on its own and spends no credits."><input type="checkbox" id="wc-sound"> Sound alert 10 min before kickoff</label>
+        <button type="button" class="wc-btn" id="wc-test-sound" title="Play the kickoff chime right now to check your sound works">Test sound</button>
         <span class="wc-status" id="wc-status">No fixtures loaded yet. Paste your key and hit Load fixtures (or use the key "demo" to preview with sample data).</span>
         <span class="wc-status" id="wc-auto-status" hidden></span>
       </div>
-      <p class="section-sub wc-note">Both columns are scored in your points (3 exact, 2 outcome, 0 otherwise), so a 1-1 pick on a 2-2 result earns 2 in either column. The models differ only in how they choose a pick: the Points model picks the score that maximizes expected points, so it leans toward the most likely outcome, while the Exact model chases the single most likely exact scoreline. An Exact pick still earns 2 whenever its outcome is right; the difference is that the Points model is optimizing for the points you actually score, so it should come out ahead over a full tournament. Use Points for your entries; the Exact column is just a sanity check, and any single match can go either way.</p>
+
       <div class="wc-summary" id="wc-summary" hidden></div>
+
       <div class="bands-table-wrap" id="wc-wrap" hidden>
         <table class="bands-table wc-table">
           <thead>
@@ -292,47 +289,107 @@
           <tbody id="wc-body"></tbody>
         </table>
       </div>
+
+      <details class="wc-done" id="wc-done" hidden>
+        <summary id="wc-done-summary">Completed matches</summary>
+        <div class="bands-table-wrap">
+          <table class="bands-table wc-table">
+            <thead>
+              <tr><th>Kickoff</th><th>Match</th><th>Odds H / A</th><th>Points pick</th><th>Exact pick</th><th>Result</th></tr>
+            </thead>
+            <tbody id="wc-done-body"></tbody>
+          </table>
+        </div>
+      </details>
+
+      <details class="wc-collapse wc-help">
+        <summary>How this works</summary>
+        <div class="wc-collapse-body">
+          <p class="section-sub">Upcoming and played matches use median 1X2 odds from The Odds API, scored under both models. Once a match kicks off its odds and picks lock and never change; only future matches update when you Load or Refresh. Your key is stored in this browser only, never in this file. Odds are cached for 6 hours; Refresh refetches odds plus final scores (about 3 credits) and the scoreboard builds up over time.</p>
+          <p class="section-sub">Both columns are scored in your points (3 exact, 2 outcome, 0 otherwise), so a 1-1 pick on a 2-2 result earns 2 in either column. The models differ only in how they choose a pick: the Points model picks the score that maximizes expected points, so it leans toward the most likely outcome, while the Exact model chases the single most likely exact scoreline. An Exact pick still earns 2 whenever its outcome is right; the difference is that the Points model is optimizing for the points you actually score, so it should come out ahead over a full tournament. Use Points for your entries; the Exact column is just a sanity check, and any single match can go either way.</p>
+        </div>
+      </details>
     </section>
 
-    <section class="bands-section" aria-label="Odds to score reference table">
-      <h2 class="section-title">The full mapping</h2>
-      <p class="section-sub" id="bands-sub"></p>
-      <div class="bands-table-wrap">
-        <table class="bands-table">
-          <thead>
-            <tr id="bands-head"></tr>
-          </thead>
-          <tbody id="bands-body"></tbody>
-        </table>
+    <details class="wc-collapse">
+      <summary>Manual odds calculator</summary>
+      <div class="wc-collapse-body">
+        <p class="section-sub">Type any two teams' win odds to get the score to predict, based on 61,860 real matches. The Points / Exact toggle here also controls the reference mapping below.</p>
+        <section class="calc-card" aria-label="Score calculator">
+          <div class="mode-toggle" role="radiogroup" aria-label="Scoring mode">
+            <button type="button" class="mode-btn is-active" data-mode="points" role="radio" aria-checked="true">Points game: 3 exact, 2 outcome</button>
+            <button type="button" class="mode-btn" data-mode="exact" role="radio" aria-checked="false">Exact score only</button>
+          </div>
+
+          <div class="calc-inputs">
+            <label class="odds-field" for="odds-a">
+              <span class="odds-label">Team A win odds</span>
+              <input type="number" id="odds-a" min="1.01" max="1000" step="0.01" inputmode="decimal" placeholder="e.g. 1.45" autocomplete="off">
+            </label>
+            <span class="calc-vs" aria-hidden="true">vs</span>
+            <label class="odds-field" for="odds-b">
+              <span class="odds-label">Team B win odds</span>
+              <input type="number" id="odds-b" min="1.01" max="1000" step="0.01" inputmode="decimal" placeholder="e.g. 7.50" autocomplete="off">
+            </label>
+          </div>
+
+          <div class="result" id="result" role="status" aria-live="polite">
+            <p class="result-hint" id="result-hint">Enter both teams' win odds to get a score.</p>
+            <div class="result-score" id="result-score"></div>
+            <div class="result-outcome" id="result-outcome"></div>
+            <p class="result-detail" id="result-detail"></p>
+          </div>
+        </section>
       </div>
-    </section>
+    </details>
 
-    <section class="method-card" aria-label="Methodology">
-      <h2 class="section-title">Where the numbers come from</h2>
-      <p>
-        Everything on this page is empirical. The data covers 61,860 matches (123,720
-        team-observations) across the Premier League, Championship, La Liga, Bundesliga, Serie A,
-        Ligue 1, Eredivisie, and Primeira Liga, seasons 2005/06 through 2025/26, with closing 1X2
-        odds from football-data.co.uk.
-      </p>
-      <p>
-        Points mode maximizes expected points under the scoring 3 for the exact score, 2 for the
-        right outcome, 0 otherwise. Because the outcome is worth two thirds of the prize, the draw
-        band nearly disappears: predicting the favorite to win 1-0 beats 1-1 until the favorite's
-        own odds reach 2.70, the point where draws finally overtake the favorite's win probability.
-        Backtested on 17,716 held-out matches (seasons 2020/21 to 2025/26) this table averages 1.17
-        points per match versus 0.98 for the exact-score table and 0.63 for always predicting 1-1.
-      </p>
-      <p>
-        Exact mode maximizes the chance of nailing the scoreline, ignoring partial credit. Each
-        range's score is the single most common exact final score among matches where a team's win
-        odds fell in that range. Here the draw band is huge (1.71 to 4.50) because the favorite's
-        win probability spreads across many scorelines while the draw concentrates on 1-1. In the
-        same backtest no fancier method (home/away splits, draw-odds refinements, Poisson models)
-        beat this simple table on exact-score hit rate.
-      </p>
-      <p class="method-note">Built for score-prediction games with friends, not betting advice.</p>
-    </section>
+    <details class="wc-collapse">
+      <summary>The full odds-to-score mapping</summary>
+      <div class="wc-collapse-body">
+        <section class="bands-section" aria-label="Odds to score reference table">
+          <p class="section-sub" id="bands-sub"></p>
+          <div class="bands-table-wrap">
+            <table class="bands-table">
+              <thead>
+                <tr id="bands-head"></tr>
+              </thead>
+              <tbody id="bands-body"></tbody>
+            </table>
+          </div>
+        </section>
+      </div>
+    </details>
+
+    <details class="wc-collapse">
+      <summary>Where the numbers come from</summary>
+      <div class="wc-collapse-body">
+        <section class="method-card" aria-label="Methodology">
+          <p>
+            Everything on this page is empirical. The data covers 61,860 matches (123,720
+            team-observations) across the Premier League, Championship, La Liga, Bundesliga, Serie A,
+            Ligue 1, Eredivisie, and Primeira Liga, seasons 2005/06 through 2025/26, with closing 1X2
+            odds from football-data.co.uk.
+          </p>
+          <p>
+            Points mode maximizes expected points under the scoring 3 for the exact score, 2 for the
+            right outcome, 0 otherwise. Because the outcome is worth two thirds of the prize, the draw
+            band nearly disappears: predicting the favorite to win 1-0 beats 1-1 until the favorite's
+            own odds reach 2.70, the point where draws finally overtake the favorite's win probability.
+            Backtested on 17,716 held-out matches (seasons 2020/21 to 2025/26) this table averages 1.17
+            points per match versus 0.98 for the exact-score table and 0.63 for always predicting 1-1.
+          </p>
+          <p>
+            Exact mode maximizes the chance of nailing the scoreline, ignoring partial credit. Each
+            range's score is the single most common exact final score among matches where a team's win
+            odds fell in that range. Here the draw band is huge (1.71 to 4.50) because the favorite's
+            win probability spreads across many scorelines while the draw concentrates on 1-1. In the
+            same backtest no fancier method (home/away splits, draw-odds refinements, Poisson models)
+            beat this simple table on exact-score hit rate.
+          </p>
+          <p class="method-note">Built for score-prediction games with friends, not betting advice.</p>
+        </section>
+      </div>
+    </details>
   </main>
 
 <script>
@@ -567,8 +624,12 @@
   const wcWrap = document.getElementById('wc-wrap');
   const wcBody = document.getElementById('wc-body');
   const wcSummary = document.getElementById('wc-summary');
+  const wcDone = document.getElementById('wc-done');
+  const wcDoneBody = document.getElementById('wc-done-body');
+  const wcDoneSummary = document.getElementById('wc-done-summary');
   const wcAuto = document.getElementById('wc-auto');
   const wcSound = document.getElementById('wc-sound');
+  const wcTestSound = document.getElementById('wc-test-sound');
   const wcAutoStatus = document.getElementById('wc-auto-status');
 
   let wcEvents = null;     // live odds events from the last fetch (may be null)
@@ -771,50 +832,61 @@
       '">' + g.pts + ' pt' + (g.pts === 1 ? '' : 's') + '</span>';
   }
 
+  function buildRow(r) {
+    const changed = r.id && wcChanged[r.id] && !r.started;
+    const res = r.result;
+    const done = res && res.completed;
+    const live = res && !res.completed;
+
+    let ptsCell = '<span class="wc-pick">' + pickStr(r.picks.points) + '</span>';
+    let exactCell = '<span class="wc-pick">' + pickStr(r.picks.exact) + '</span>';
+    let resultCell;
+    if (done) {
+      ptsCell += ' ' + ptsBadge(grade(r.picks.points, res.home_score, res.away_score));
+      exactCell += ' ' + ptsBadge(grade(r.picks.exact, res.home_score, res.away_score));
+      resultCell = '<span class="wc-result">' + res.home_score + '-' + res.away_score + '</span>';
+    } else if (live) {
+      resultCell = '<span class="wc-result wc-live">' + res.home_score + '-' + res.away_score + ' live</span>';
+    } else {
+      resultCell = '<span class="wc-pending">' + (r.started ? 'awaiting result' : 'not started') + '</span>';
+    }
+
+    const lockTag = r.started ? '<span class="wc-lock" title="Kicked off: odds and picks are locked">locked</span>' : '';
+    const changedTag = changed ? '<span class="wc-changed-tag">updated</span>' : '';
+
+    const tr = document.createElement('tr');
+    if (changed) tr.className = 'wc-changed';
+    tr.innerHTML =
+      '<td class="wc-time">' + fmtWhen(r.commence_time) + ' ' + lockTag + '</td>' +
+      '<td class="wc-match">' + r.home_team + ' vs ' + r.away_team + changedTag + '</td>' +
+      '<td class="wc-odds">' + r.home.toFixed(2) + ' / ' + r.away.toFixed(2) + '</td>' +
+      '<td>' + ptsCell + '</td>' +
+      '<td>' + exactCell + '</td>' +
+      '<td>' + resultCell + '</td>';
+    return tr;
+  }
+
   function renderFixtures() {
     const rows = buildRows();
-    const hasData = rows.length > 0;
-    wcWrap.hidden = !hasData;
+    // Upcoming and in-progress fill the main table; finished games drop into
+    // their own collapsible block (newest first) so they never crowd the top.
+    const upcoming = rows.filter(function (r) { return !(r.result && r.result.completed); });
+    const finished = rows.filter(function (r) { return r.result && r.result.completed; })
+      .sort(function (a, b) { return ts(b.commence_time) - ts(a.commence_time); });
+
     wcBody.innerHTML = '';
+    upcoming.forEach(function (r) { wcBody.appendChild(buildRow(r)); });
+    wcWrap.hidden = upcoming.length === 0;
 
-    rows.forEach(function (r) {
-      const changed = r.id && wcChanged[r.id] && !r.started;
-      const res = r.result;
-      const done = res && res.completed;
-      const live = res && !res.completed;
-
-      let ptsCell = '<span class="wc-pick">' + pickStr(r.picks.points) + '</span>';
-      let exactCell = '<span class="wc-pick">' + pickStr(r.picks.exact) + '</span>';
-      let resultCell;
-      if (done) {
-        ptsCell += ' ' + ptsBadge(grade(r.picks.points, res.home_score, res.away_score));
-        exactCell += ' ' + ptsBadge(grade(r.picks.exact, res.home_score, res.away_score));
-        resultCell = '<span class="wc-result">' + res.home_score + '-' + res.away_score + '</span>';
-      } else if (live) {
-        resultCell = '<span class="wc-result wc-live">' + res.home_score + '-' + res.away_score + ' live</span>';
-      } else {
-        resultCell = '<span class="wc-pending">' + (r.started ? 'awaiting result' : 'not started') + '</span>';
-      }
-
-      const lockTag = r.started ? '<span class="wc-lock" title="Kicked off: odds and picks are locked">locked</span>' : '';
-      const changedTag = changed ? '<span class="wc-changed-tag">updated</span>' : '';
-
-      const tr = document.createElement('tr');
-      if (changed) tr.className = 'wc-changed';
-      tr.innerHTML =
-        '<td class="wc-time">' + fmtWhen(r.commence_time) + ' ' + lockTag + '</td>' +
-        '<td class="wc-match">' + r.home_team + ' vs ' + r.away_team + changedTag + '</td>' +
-        '<td class="wc-odds">' + r.home.toFixed(2) + ' / ' + r.away.toFixed(2) + '</td>' +
-        '<td>' + ptsCell + '</td>' +
-        '<td>' + exactCell + '</td>' +
-        '<td>' + resultCell + '</td>';
-      wcBody.appendChild(tr);
-    });
+    wcDoneBody.innerHTML = '';
+    finished.forEach(function (r) { wcDoneBody.appendChild(buildRow(r)); });
+    wcDone.hidden = finished.length === 0;
+    wcDoneSummary.textContent = 'Completed matches (' + finished.length + ')';
 
     renderSummary(rows);
 
-    wcStatus.textContent = hasData
-      ? rows.length + ' match' + (rows.length === 1 ? '' : 'es') + wcMeta
+    wcStatus.textContent = rows.length
+      ? rows.length + ' match' + (rows.length === 1 ? '' : 'es') + ' loaded' + wcMeta
       : 'No fixtures loaded yet. Paste your key and hit Load fixtures (or use the key "demo" to preview).';
     updateAutoStatus();
   }
@@ -976,20 +1048,26 @@
     osc.type = 'sine';
     osc.frequency.value = freq;
     gain.gain.setValueAtTime(0.0001, at);
-    gain.gain.exponentialRampToValueAtTime(0.25, at + 0.02);
+    gain.gain.exponentialRampToValueAtTime(0.6, at + 0.02);
     gain.gain.exponentialRampToValueAtTime(0.0001, at + dur);
     osc.connect(gain).connect(ctx.destination);
     osc.start(at);
     osc.stop(at + dur + 0.02);
   }
-  // Three rising notes, distinctive enough to notice from another tab.
+  // A ~5 second alarm: three rising notes repeated, loud enough to catch
+  // from another tab. Distinctive triad so it does not sound like a notification.
   function playKickoffSound() {
     const ctx = ensureAudio();
     if (!ctx) return;
-    const t = ctx.currentTime;
-    chirp(ctx, t,        880, 0.18);
-    chirp(ctx, t + 0.22, 1175, 0.18);
-    chirp(ctx, t + 0.44, 1568, 0.32);
+    const t0 = ctx.currentTime;
+    const cycle = 0.85;   // one rising motif plus a short gap
+    const cycles = 6;     // 6 x 0.85 = ~5.1 seconds
+    for (let i = 0; i < cycles; i++) {
+      const t = t0 + i * cycle;
+      chirp(ctx, t,        880, 0.18);
+      chirp(ctx, t + 0.22, 1175, 0.18);
+      chirp(ctx, t + 0.44, 1568, 0.34);
+    }
   }
 
   const WC_LEAD_MS = 10 * 60 * 1000;
@@ -1073,6 +1151,14 @@
     // Ticking the box is a user gesture: unlock audio and preview the chime.
     if (wcSound.checked) playKickoffSound();
     scheduleAuto();
+  });
+  wcTestSound.addEventListener('click', function () {
+    // A click is a user gesture, so this also unlocks audio for later alerts.
+    const ctx = ensureAudio();
+    if (ctx) playKickoffSound();
+    wcStatus.textContent = ctx
+      ? 'Played the kickoff chime. If you heard it, the 10-min alert uses the same sound (keep this tab open and in the foreground).'
+      : 'This browser blocked audio for the page. Check the tab is not muted, then press Test sound again.';
   });
 
   renderTable();
