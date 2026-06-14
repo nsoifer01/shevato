@@ -2946,3 +2946,67 @@ body.gym-tracker .gt-overflow-item--danger:hover i,
 body.gym-tracker .gt-overflow-item--danger:focus-visible i {
     color: var(--accent-error) !important;
 }
+
+/* ================================================================
+   THEME-COLLISION GUARDS — custom widgets hit by sitewide main.css
+
+   main.css forces on every <button>:
+     button             { color:#555 !important; box-shadow: inset 0 0 0 1px #555 }
+     button:hover       { color:#ce1b28 !important; box-shadow: inset 0 0 0 1px #ce1b28 }
+     button:hover:active{ background: rgba(206,27,40,.25) }
+
+   The custom dark-select / dark-calendar triggers and the achievement /
+   filter-reset buttons set their colors WITHOUT !important, so the gray
+   base / red hover text and the inset gray/red ring bleed through. Pin
+   the intended values !important across base / :hover / :hover:active.
+   The .is-open / .has-value / :focus-visible rings these widgets set
+   themselves are NOT targeted here, so they stay intact.
+   ================================================================ */
+
+/* Custom select trigger: keep light text, kill the inset gray/red ring. */
+body.gym-tracker .dark-select-trigger,
+body.gym-tracker .dark-select-trigger:hover,
+body.gym-tracker .dark-select-trigger:hover:active {
+    color: var(--text-primary) !important;
+    box-shadow: none !important;
+}
+
+/* Date trigger: text is already pinned; only the inset ring bleeds. */
+body.gym-tracker .dark-calendar-trigger,
+body.gym-tracker .dark-calendar-trigger:hover,
+body.gym-tracker .dark-calendar-trigger:hover:active {
+    box-shadow: none !important;
+}
+
+/* Filter-reset (exercise DB): azure idle, white on hover, muted disabled. */
+body.gym-tracker .btn-filter-reset {
+    color: var(--accent-primary) !important;
+    box-shadow: none !important;
+}
+body.gym-tracker .btn-filter-reset:hover {
+    color: #ffffff !important;
+}
+body.gym-tracker .btn-filter-reset:disabled,
+body.gym-tracker .btn-filter-reset[disabled],
+body.gym-tracker .btn-filter-reset:disabled:hover,
+body.gym-tracker .btn-filter-reset[disabled]:hover {
+    color: var(--text-muted) !important;
+    box-shadow: none !important;
+}
+
+/* Achievement category header: keep light text, kill the inset ring. */
+body.gym-tracker .achievement-category-header,
+body.gym-tracker .achievement-category-header:hover:active {
+    color: var(--text-primary) !important;
+}
+body.gym-tracker .achievement-category-header {
+    box-shadow: none !important;
+}
+body.gym-tracker .achievement-category-header:hover {
+    color: var(--text-primary) !important;
+}
+
+/* Achievement bulk button: text already white; kill the idle inset ring. */
+body.gym-tracker .achievement-bulk-btn {
+    box-shadow: none !important;
+}

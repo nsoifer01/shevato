@@ -2362,7 +2362,10 @@ button.shape-tag.is-clickable:hover {
   border-radius: 999px;
   border: 1px solid var(--accent);
   background: var(--accent);
-  color: #1a1300;
+  /* !important defeats main.css `button { color:#555555 !important }`,
+     which otherwise greys out this dark-on-yellow FAB. Hover/active are
+     pinned too so the site's red `button:hover` colour can't bleed in. */
+  color: #1a1300 !important;
   font-weight: 700;
   font-size: 0.9rem;
   cursor: pointer;
@@ -2372,6 +2375,8 @@ button.shape-tag.is-clickable:hover {
   transition: transform 0.12s var(--ease), box-shadow 0.2s var(--ease);
 }
 .compare-fab[hidden] { display: none; }
+.compare-fab:hover,
+.compare-fab:hover:active { color: #1a1300 !important; background: var(--accent); }
 .compare-fab:hover { transform: translateY(-1px); }
 .compare-fab-icon { font-size: 1.05rem; }
 .compare-fab-count {

@@ -109,6 +109,9 @@ body.maptap-rivals-app select,
 body.maptap-rivals-app textarea,
 body.maptap-rivals-app button {
   font-family: inherit;
+  /* Baseline text colour so main.css's `input,select,textarea { color:#555 }`
+     can't gray out controls we don't otherwise paint (radios, file inputs). */
+  color: var(--text);
 }
 
 /* ---------- Buttons ----------
