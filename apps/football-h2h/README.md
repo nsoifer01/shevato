@@ -20,7 +20,7 @@ All state lives in the browser's `localStorage` — there is no backend or accou
 | General Stats tab | Total games, goals per game, total penalty shootouts, and a team-matchup lookup. |
 | Team matchup lookup | Pick a team for either side ("Any" allowed) to see the win/draw/win record across only the games with that team pairing. |
 | Player Stats tab | A side-by-side comparison table of per-player derived stats with the better value tinted toward its player. |
-| Comparison-table stats | Total goals, goals/game, highest score (with the match detail), median score, scoring rate, multi-goal-game %, current & longest winning/losing/scoring/scoreless streaks (penalty-aware, with date spans), last-3 and last-5 averages, and a consistency (std-dev) row. |
+| Comparison-table stats | Total goals, goals/game, highest score (with the match detail), median score, scoring rate, multi-goal-game %, current winning/losing/scoring/scoreless streaks plus longest winning/scoring/scoreless streaks (penalty-aware, with date spans), last-3 and last-5 averages, and a consistency (std-dev) row. |
 | Streak badge | Surfaces the live rivalry streak — e.g. "Alex – 3 match winning streak" — using penalty-aware match results, or "No current streak". |
 | Recent form strip | A W/L/D dot strip of each player's last 5 match results. |
 | Session summary | Generates a copyable text recap of the (filtered) games: per-player win record, total goals, the session winner, and a line per match. |
