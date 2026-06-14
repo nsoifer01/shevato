@@ -6,7 +6,7 @@
     <meta name="color-scheme" content="light" />
     <meta name="theme-color" content="#ffffff" />
     <title>404 – Page Not Found | Shevato</title>
-    <meta name="description" content="The page you requested could not be found on shevato.com. You will be redirected to the home page." />
+    <meta name="description" content="The page you requested could not be found on shevato.com. Use the links to head to the home, work, or apps pages." />
     <meta name="robots" content="noindex, follow" />
 
     <!-- Resource hints -->
@@ -38,24 +38,23 @@
 
 <main id="main-content" class="wrapper wrapper-inherit-padding">
     <div class="inner">
-        <header class="special">
-            <h2>
-                <img src="/images/full-logo.svg" alt="Shevato – Expert Software Engineering Services Logo" width="250" height="219" fetchpriority="high" decoding="async">
-            </h2>
-            <p>Sorry, we couldn’t find that page.</p>
+        <div class="hero">
             <p>
-                Redirecting to our <a href="/">home page</a> in
-                <strong><span id="redirect-countdown" aria-live="polite" aria-atomic="true">5</span> seconds</strong>.
+                <img class="hero-logo" src="/images/full-logo.svg" alt="Shevato, Expert Software Engineering Services Logo" width="250" height="219" fetchpriority="high" decoding="async">
             </p>
-        </header>
+            <h1>Page not found</h1>
+            <p class="lede">Sorry, we could not find that page. Try one of these instead.</p>
+            <div class="cta-row">
+                <a href="/home.html" class="button primary">Home</a>
+                <a href="/work.html" class="button ghost">Work</a>
+                <a href="/apps.html" class="button ghost">Apps</a>
+            </div>
+        </div>
     </div>
 </main>
 
 <!-- footer include -->
 <div data-include="footer"></div>
-
-<!-- countdown + redirect script -->
-<script defer src="/assets/js/redirect-countdown.js"></script>
 
 <!-- Scripts: deferred so they run in document order after parse, before DOMContentLoaded. -->
 <script defer src="/assets/js/passive-events-fix.js"></script>
