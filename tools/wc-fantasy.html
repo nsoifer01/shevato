@@ -1,0 +1,1296 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="robots" content="noindex, nofollow">
+<title>WC Fantasy Coach</title>
+<link rel="icon" type="image/svg+xml" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>🏆</text></svg>">
+<style>
+  /*
+   * WC Fantasy Coach — fully self-contained local tool for the official
+   * FIFA World Cup Fantasy game (play.fifa.com/fantasy). Pulls the live
+   * player/fixture database from FIFA's open JSON endpoints and match odds
+   * from The Odds API, projects expected fantasy points, and recommends
+   * the squad, lineup, captain, transfers, and chip plan for every round.
+   */
+  :root {
+    color-scheme: dark;
+    --bg: #0b0d12;
+    --surface: #161922;
+    --surface-2: #1f232f;
+    --text: #e7e9ee;
+    --muted: #9aa3b2;
+    --muted-2: #6b7280;
+    --accent: #6366f1;
+    --accent-2: #818cf8;
+    --accent-soft: rgba(99, 102, 241, 0.16);
+    --good: #4ade80;
+    --good-soft: rgba(74, 222, 128, 0.12);
+    --warn: #fb923c;
+    --bad: #f87171;
+    --border: #252938;
+    --border-strong: #353a4b;
+    --radius: 14px;
+    --mono: "JetBrains Mono", "SF Mono", ui-monospace, "Roboto Mono", Menlo, monospace;
+  }
+  * { box-sizing: border-box; }
+  html {
+    background: var(--bg);
+    background-image:
+      radial-gradient(circle at 18% 0%, rgba(99, 102, 241, 0.10), transparent 55%),
+      radial-gradient(circle at 82% 0%, rgba(74, 222, 128, 0.06), transparent 55%);
+    background-attachment: fixed;
+    min-height: 100%;
+  }
+  body {
+    margin: 0; color: var(--text); line-height: 1.5;
+    font-family: -apple-system, BlinkMacSystemFont, "Inter", "Segoe UI", system-ui, sans-serif;
+    -webkit-font-smoothing: antialiased;
+  }
+  .page { max-width: 980px; margin: 0 auto; padding: 1.5rem 1rem 4rem; }
+  .hero { text-align: center; padding: 1.2rem 0 1.4rem; }
+  .hero h1 { margin: 0; font-size: clamp(1.7rem, 4.5vw, 2.3rem); font-weight: 800; letter-spacing: -0.02em; }
+  .tagline { color: var(--muted); margin: 0.5rem auto 0; max-width: 40rem; }
+  .hero a { color: var(--accent-2); text-decoration: none; }
+
+  .card {
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: var(--radius); padding: 1.3rem; margin-bottom: 1.5rem;
+  }
+  .section-title { font-size: 1.1rem; font-weight: 700; margin: 0 0 0.3rem; }
+  .section-sub { color: var(--muted); font-size: 0.88rem; margin: 0 0 0.9rem; }
+
+  .controls { display: flex; align-items: center; gap: 0.6rem; flex-wrap: wrap; }
+  .controls input[type="password"] {
+    background: var(--surface-2); border: 1px solid var(--border-strong);
+    border-radius: 8px; color: var(--text); font-family: var(--mono);
+    font-size: 0.9rem; padding: 0.45rem 0.7rem; flex: 1; min-width: 11rem; max-width: 18rem;
+  }
+  .controls input:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
+  .btn {
+    background: var(--accent-soft); border: 1px solid var(--accent);
+    border-radius: 8px; color: var(--accent-2); font: inherit; font-size: 0.9rem;
+    font-weight: 600; padding: 0.45rem 1rem; cursor: pointer;
+  }
+  .btn:hover { background: rgba(99, 102, 241, 0.28); }
+  .btn-ghost { background: transparent; border-color: var(--border-strong); color: var(--muted); }
+  .btn-ghost:hover { color: var(--text); }
+  .status { color: var(--muted); font-size: 0.85rem; width: 100%; }
+
+  /* plan card */
+  .plan-head { display: flex; justify-content: space-between; align-items: baseline; flex-wrap: wrap; gap: 0.4rem; }
+  .deadline { font-family: var(--mono); color: var(--warn); font-size: 0.9rem; }
+  .chip-call {
+    background: var(--good-soft); border: 1px solid rgba(74, 222, 128, 0.4);
+    border-radius: 8px; padding: 0.6rem 0.9rem; margin: 0.8rem 0;
+    font-size: 0.92rem;
+  }
+  .chip-call strong { color: var(--good); }
+  .transfers-block { margin: 0.8rem 0; }
+  .transfers-block h3, .xi-block h3, .bench-block h3 {
+    font-size: 0.8rem; text-transform: uppercase; letter-spacing: 0.07em;
+    color: var(--muted); margin: 0 0 0.4rem;
+  }
+  .transfer-row { font-size: 0.92rem; padding: 0.2rem 0; }
+  .transfer-row .out { color: var(--bad); }
+  .transfer-row .in { color: var(--good); }
+  .transfer-row .gain { font-family: var(--mono); color: var(--muted); font-size: 0.85rem; }
+
+  .xi-grid { display: flex; flex-direction: column; gap: 0.45rem; margin-top: 0.4rem; }
+  .xi-row { display: flex; gap: 0.45rem; flex-wrap: wrap; justify-content: center; }
+  .pcard {
+    background: var(--surface-2); border: 1px solid var(--border-strong);
+    border-radius: 8px; padding: 0.35rem 0.6rem; min-width: 8.2rem;
+    font-size: 0.83rem; text-align: center; position: relative;
+  }
+  .pcard .pname { font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 10rem; }
+  .pcard .pmeta { color: var(--muted); font-size: 0.74rem; font-family: var(--mono); }
+  .pcard.cap { border-color: var(--good); }
+  .pcard .badge {
+    position: absolute; top: -0.5rem; right: -0.3rem;
+    background: var(--good); color: #052e1c; font-weight: 800; font-size: 0.68rem;
+    border-radius: 999px; padding: 0.05rem 0.4rem;
+  }
+  .pcard .badge.vc { background: var(--accent-2); color: #11133a; }
+  .bench-list { display: flex; gap: 0.45rem; flex-wrap: wrap; }
+  .note { color: var(--muted-2); font-size: 0.82rem; margin-top: 0.7rem; }
+
+  /* tables */
+  table { width: 100%; border-collapse: collapse; font-size: 0.88rem; }
+  th, td { padding: 0.45rem 0.6rem; text-align: left; white-space: nowrap; }
+  th {
+    font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.06em;
+    color: var(--muted); border-bottom: 1px solid var(--border-strong);
+  }
+  td { border-bottom: 1px solid var(--border); }
+  tbody tr:last-child td { border-bottom: none; }
+  .num { font-family: var(--mono); }
+  .table-wrap { overflow-x: auto; }
+  select {
+    background: var(--surface-2); border: 1px solid var(--border-strong);
+    border-radius: 6px; color: var(--text); font-size: 0.82rem; padding: 0.25rem 0.4rem;
+    max-width: 13rem;
+  }
+  .pos-tag { font-family: var(--mono); font-size: 0.75rem; color: var(--accent-2); }
+  .own-low { color: var(--good); }
+  .roadmap-chip { color: var(--good); font-weight: 700; }
+  .muted { color: var(--muted); }
+  .filters { display: flex; gap: 0.4rem; margin-bottom: 0.7rem; flex-wrap: wrap; }
+  .fbtn {
+    background: var(--surface-2); border: 1px solid var(--border-strong); border-radius: 999px;
+    color: var(--muted); font: inherit; font-size: 0.8rem; padding: 0.25rem 0.8rem; cursor: pointer;
+  }
+  .fbtn.is-active { background: var(--accent-soft); border-color: var(--accent); color: var(--accent-2); }
+  .method p { color: var(--muted); font-size: 0.9rem; margin: 0 0 0.8rem; }
+  .method p:last-child { margin-bottom: 0; }
+  @media (max-width: 540px) { .pcard { min-width: 7rem; } }
+</style>
+</head>
+<body>
+<main class="page">
+  <header class="hero">
+    <h1>🏆 WC Fantasy Coach</h1>
+    <p class="tagline">Round-by-round orders for the official <a href="https://play.fifa.com/fantasy/" target="_blank" rel="noopener">FIFA World Cup Fantasy</a>: exact squad, lineup, captain, transfers, and chip plan, projected from live player data and betting odds.</p>
+  </header>
+
+  <!-- Data controls -->
+  <section class="card" aria-label="Data">
+    <h2 class="section-title">Data</h2>
+    <p class="section-sub">Player database, fixtures, and round structure come from FIFA's own endpoints (free, no login). Betting odds sharpen the projections; the same The Odds API key as the Score Predictor page is used and shared automatically. Without odds the model falls back to FIFA seedings.</p>
+    <div class="controls">
+      <button type="button" class="btn" id="load-btn">Load / refresh FIFA data</button>
+      <input type="password" id="odds-key" placeholder="The Odds API key (optional)" autocomplete="off" aria-label="The Odds API key">
+      <button type="button" class="btn btn-ghost" id="odds-btn">Refresh odds</button>
+      <span class="status" id="data-status">Nothing loaded yet. Hit "Load / refresh FIFA data" to begin.</span>
+    </div>
+  </section>
+
+  <!-- The plan -->
+  <section class="card" id="plan-card" hidden aria-label="Plan for the next round">
+    <div class="plan-head">
+      <h2 class="section-title" id="plan-title">This round's orders</h2>
+      <span class="deadline" id="plan-deadline"></span>
+    </div>
+    <div class="chip-call" id="chip-call"></div>
+    <div class="transfers-block" id="transfers-block">
+      <h3>Transfers</h3>
+      <div id="transfers-list"></div>
+      <div class="controls" style="margin-top:0.5rem">
+        <button type="button" class="btn btn-ghost" id="pair-btn">Search two-move combos (slower)</button>
+        <span class="status" id="pair-status"></span>
+      </div>
+      <div id="pair-result"></div>
+    </div>
+    <div class="xi-block">
+      <h3 id="xi-title">Starting XI</h3>
+      <div class="xi-grid" id="xi-grid"></div>
+    </div>
+    <div class="bench-block" style="margin-top:0.8rem">
+      <h3>Bench (auto-sub priority order)</h3>
+      <div class="bench-list" id="bench-list"></div>
+    </div>
+    <p class="note" id="plan-notes"></p>
+  </section>
+
+  <!-- Squad editor -->
+  <section class="card" id="squad-card" hidden aria-label="My squad">
+    <h2 class="section-title">My 15-man squad</h2>
+    <p class="section-sub">Mirror your real FIFA squad here so the advice matches your team. Change any slot with its dropdown (only legal, affordable picks are listed). Everything is saved in this browser.</p>
+    <div class="controls" style="margin-bottom:0.8rem">
+      <button type="button" class="btn" id="use-reco-btn">Use recommended squad</button>
+      <button type="button" class="btn btn-ghost" id="import-toggle">Import from FIFA</button>
+      <span class="status" id="squad-status"></span>
+    </div>
+    <div id="import-block" hidden style="margin-bottom:1rem">
+      <p class="section-sub" style="margin-bottom:0.5rem">
+        FIFA's login API blocks outside pages, so this is the quickest sync: 1) open
+        play.fifa.com/fantasy with your team showing, 2) press F12, Network tab, reload, and click the
+        request that contains your picks (look in the response previews for a list of 15 players),
+        3) right click the response body, Copy, and paste it below. The importer finds your 15 players
+        in any response shape.
+      </p>
+      <textarea id="import-text" rows="4" spellcheck="false" placeholder="Paste the JSON here"
+        style="width:100%;background:var(--surface-2);border:1px solid var(--border-strong);border-radius:8px;color:var(--text);font-family:var(--mono);font-size:0.8rem;padding:0.5rem"></textarea>
+      <div class="controls" style="margin-top:0.5rem">
+        <button type="button" class="btn" id="import-btn">Import squad</button>
+        <span class="status" id="import-status"></span>
+      </div>
+    </div>
+    <div class="table-wrap">
+      <table id="squad-table">
+        <thead><tr><th>Pos</th><th>Player</th><th>Team</th><th>Price</th><th>Own%</th><th>xPts horizon</th><th>Replace with</th></tr></thead>
+        <tbody></tbody>
+      </table>
+    </div>
+  </section>
+
+  <!-- Chip roadmap -->
+  <section class="card" id="roadmap-card" hidden aria-label="Chip roadmap">
+    <h2 class="section-title">Chip roadmap (all 8 rounds)</h2>
+    <p class="section-sub">One chip per round maximum, five chips total. This plan re-optimizes every time data refreshes.</p>
+    <div class="table-wrap">
+      <table id="roadmap-table">
+        <thead><tr><th>Round</th><th>Starts</th><th>Chip</th><th>Why</th></tr></thead>
+        <tbody></tbody>
+      </table>
+    </div>
+  </section>
+
+  <!-- Player explorer -->
+  <section class="card" id="explorer-card" hidden aria-label="Player explorer">
+    <h2 class="section-title">Player explorer</h2>
+    <p class="section-sub">Top projected players for the next round. Own% under 5 (green) also carries the +2 scouting bonus when they return 4+ points.</p>
+    <div class="filters" id="explorer-filters">
+      <button type="button" class="fbtn is-active" data-pos="ALL">All</button>
+      <button type="button" class="fbtn" data-pos="GK">GK</button>
+      <button type="button" class="fbtn" data-pos="DEF">DEF</button>
+      <button type="button" class="fbtn" data-pos="MID">MID</button>
+      <button type="button" class="fbtn" data-pos="FWD">FWD</button>
+    </div>
+    <div class="table-wrap">
+      <table id="explorer-table">
+        <thead><tr><th>#</th><th>Player</th><th>Pos</th><th>Team</th><th>Price</th><th>Own%</th><th>xPts next</th><th>xPts horizon</th><th>Value</th></tr></thead>
+        <tbody></tbody>
+      </table>
+    </div>
+  </section>
+
+  <!-- Methodology -->
+  <section class="card method" aria-label="Methodology">
+    <h2 class="section-title">How the projections work</h2>
+    <p>
+      Match odds are converted to each team's expected goals with a Poisson model (the same machinery
+      validated on 61,860 club matches for the Score Predictor page). Expected goals are distributed to
+      players using position weights and each player's price and ownership within their squad, then run
+      through the official scoring: goals are worth 9/7/6/5 points for GK/DEF/MID/FWD, assists 3, clean
+      sheets 5 for GK/DEF and 1 for MID, minus goals-conceded penalties, plus appearance points and
+      small terms for saves, tackles, chances created, shots, cards, and the under-5%-ownership
+      scouting bonus.
+    </p>
+    <p>
+      Lineups, captaincy, transfers, and chips are then optimized against your squad: best XI across all
+      valid formations, captain and vice as the two highest projections, transfer suggestions only when
+      the gain over the remaining horizon beats the 3-point hit (the free allowance is used first), and
+      chips placed where their computed value is highest. Player starts are estimated from price and
+      ownership, so check confirmed lineups before kickoff; the model cannot know rotation news.
+    </p>
+    <p>
+      Sources: play.fifa.com fantasy JSON endpoints (players, squads, rounds) and The Odds API.
+      Built for a private fantasy league, not betting advice.
+    </p>
+  </section>
+</main>
+
+<script>
+(function () {
+  'use strict';
+
+  // ---- game rules ----------------------------------------------------------
+  const RULES = {
+    budget: { group: 100, knockout: 105 },
+    quota: { 1: 3, 2: 3, 3: 3, 4: 3, 5: 4, 6: 5, 7: 6, 8: 8 },   // max per country by round id
+    freeTransfers: { 1: 2, 2: 2, 3: 2, 4: Infinity, 5: 4, 6: 4, 7: 5, 8: 6 },
+    transferHit: 3,
+    composition: { GK: 2, DEF: 5, MID: 5, FWD: 3 },
+    goalPts: { GK: 9, DEF: 7, MID: 6, FWD: 5 },
+    csPts: { GK: 5, DEF: 5, MID: 1, FWD: 0 },
+    roundNames: { 1: 'Group MD1', 2: 'Group MD2', 3: 'Group MD3', 4: 'Round of 32', 5: 'Round of 16', 6: 'Quarter-finals', 7: 'Semi-finals', 8: 'Final' },
+  };
+
+  const FIFA_BASE = 'https://play.fifa.com/json/fantasy/';
+  const ODDS_URL = 'https://api.the-odds-api.com/v4/sports/soccer_fifa_world_cup/odds/?regions=eu&markets=h2h&oddsFormat=decimal&apiKey=';
+  const ODDS_KEY_LS = 'sp-wc-key';        // shared with the Score Predictor page
+  const ODDS_CACHE_LS = 'sp-wc-cache';    // shared 6h odds cache
+  const SQUAD_LS = 'wcf-squad';
+  const CACHE_PREFIX = 'wcf-';
+  const FIFA_CACHE_MS = 60 * 60 * 1000;   // 1 hour
+  const ODDS_CACHE_MS = 6 * 60 * 60 * 1000;
+
+  // Odds API team names that differ from FIFA squad names.
+  const TEAM_ALIASES = {
+    'south korea': 'korea republic', 'korea': 'korea republic',
+    'iran': 'ir iran', 'usa': 'united states', 'united states of america': 'united states',
+    'czech republic': 'czechia', 'ivory coast': 'cote divoire',
+    'cape verde': 'cabo verde', 'curacao': 'curacao', 'turkey': 'turkiye',
+  };
+
+  // ---- state ---------------------------------------------------------------
+  const S = {
+    players: null, squads: null, rounds: null,
+    teamById: {}, playersById: {},
+    odds: {},            // 'homeId|awayId' -> {pH, pD, pA} vig-free
+    lambdas: {},         // matchId -> {home, away}
+    proj: {},            // playerId -> {byRound: {rid: pts}, horizon, next}
+    mySquad: null,       // array of 15 player ids
+    reco: null,
+    currentRound: 1,
+    explorerPos: 'ALL',
+  };
+
+  const $ = function (id) { return document.getElementById(id); };
+  const dataStatus = $('data-status');
+
+  // ---- fetch & cache -------------------------------------------------------
+  function cacheGet(name, maxAge) {
+    try {
+      const raw = JSON.parse(localStorage.getItem(CACHE_PREFIX + name));
+      if (raw && Date.now() - raw.ts < maxAge) return raw.data;
+    } catch (e) { /* ignore */ }
+    return null;
+  }
+  function cacheSet(name, data) {
+    try { localStorage.setItem(CACHE_PREFIX + name, JSON.stringify({ ts: Date.now(), data: data })); }
+    catch (e) { /* players.json can exceed quota on some browsers; live fetch still works */ }
+  }
+
+  function loadFifa(force) {
+    dataStatus.textContent = 'Loading FIFA data...';
+    const names = ['players', 'squads', 'rounds'];
+    Promise.all(names.map(function (n) {
+      if (!force) {
+        const c = cacheGet(n, FIFA_CACHE_MS);
+        if (c) return Promise.resolve(c);
+      }
+      return fetch(FIFA_BASE + n + '.json').then(function (r) {
+        if (!r.ok) throw new Error(n + '.json HTTP ' + r.status);
+        return r.json();
+      }).then(function (d) { cacheSet(n, d); return d; });
+    })).then(function (res) {
+      S.players = res[0].filter(function (p) { return p.status === 'playing'; });
+      S.squads = res[1];
+      S.rounds = res[2];
+      indexData();
+      loadOdds(false, true);
+    }).catch(function (err) {
+      dataStatus.textContent = 'FIFA data failed: ' + err.message + ' (endpoints can be picky; try again or check the network tab).';
+    });
+  }
+
+  function loadOdds(force, thenCompute) {
+    const key = $('odds-key').value.trim();
+    if (key) localStorage.setItem(ODDS_KEY_LS, key);
+    if (!key) {
+      if (thenCompute) { computeAll(); dataStatus.textContent = statusLine('no odds key, using FIFA seedings'); }
+      return;
+    }
+    if (!force) {
+      try {
+        const c = JSON.parse(localStorage.getItem(ODDS_CACHE_LS));
+        if (c && Date.now() - c.ts < ODDS_CACHE_MS) {
+          ingestOdds(c.events);
+          if (thenCompute !== false) { computeAll(); dataStatus.textContent = statusLine('odds cached ' + new Date(c.ts).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })); }
+          return;
+        }
+      } catch (e) { /* fall through */ }
+    }
+    dataStatus.textContent = 'Fetching odds...';
+    fetch(ODDS_URL + encodeURIComponent(key))
+      .then(function (r) {
+        if (r.status === 401) throw new Error('invalid odds API key');
+        if (r.status === 429) throw new Error('odds API quota exhausted');
+        if (!r.ok) throw new Error('odds API HTTP ' + r.status);
+        return r.json();
+      })
+      .then(function (events) {
+        localStorage.setItem(ODDS_CACHE_LS, JSON.stringify({ ts: Date.now(), events: events }));
+        ingestOdds(events);
+        computeAll();
+        dataStatus.textContent = statusLine('odds live, ' + events.length + ' priced matches');
+      })
+      .catch(function (err) {
+        if (S.players) { computeAll(); }
+        dataStatus.textContent = statusLine('odds unavailable (' + err.message + '), using FIFA seedings');
+      });
+  }
+
+  function statusLine(oddsNote) {
+    if (!S.players) return oddsNote;
+    return S.players.length + ' players, ' + S.squads.length + ' teams, ' +
+      allMatches().length + ' fixtures loaded · ' + oddsNote;
+  }
+
+  // ---- indexing ------------------------------------------------------------
+  function allMatches() {
+    const out = [];
+    (S.rounds || []).forEach(function (r) {
+      (r.tournaments || []).forEach(function (m) { out.push({ round: r.id, m: m }); });
+    });
+    return out;
+  }
+
+  function indexData() {
+    S.teamById = {};
+    S.squads.forEach(function (t) { S.teamById[t.id] = t; });
+    S.playersById = {};
+    S.players.forEach(function (p) { S.playersById[p.id] = p; });
+    // current round: first not finished
+    const now = Date.now();
+    S.currentRound = 1;
+    for (let i = 0; i < S.rounds.length; i++) {
+      if (new Date(S.rounds[i].endDate).getTime() > now) { S.currentRound = S.rounds[i].id; break; }
+      S.currentRound = S.rounds[i].id;
+    }
+    // seeds from squads_fifa are not loaded; derive a strength prior from group seeding implicit in odds or fallback flat
+  }
+
+  function normName(s) {
+    s = s.toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/[^a-z ]/g, '').trim();
+    return TEAM_ALIASES[s] || s;
+  }
+
+  function ingestOdds(events) {
+    S.odds = {};
+    if (!S.squads) return;
+    const idByName = {};
+    S.squads.forEach(function (t) { idByName[normName(t.name)] = t.id; });
+    events.forEach(function (ev) {
+      const h = idByName[normName(ev.home_team)];
+      const a = idByName[normName(ev.away_team)];
+      if (!h || !a) return;
+      const hs = [], ds = [], as = [];
+      (ev.bookmakers || []).forEach(function (bk) {
+        const mk = (bk.markets || []).find(function (x) { return x.key === 'h2h'; });
+        if (!mk) return;
+        mk.outcomes.forEach(function (o) {
+          if (normName(o.name) === normName(ev.home_team)) hs.push(o.price);
+          else if (o.name === 'Draw') ds.push(o.price);
+          else as.push(o.price);
+        });
+      });
+      if (!hs.length || !as.length || !ds.length) return;
+      const iH = 1 / median(hs), iD = 1 / median(ds), iA = 1 / median(as);
+      const sum = iH + iD + iA;
+      S.odds[h + '|' + a] = { pH: iH / sum, pD: iD / sum, pA: iA / sum };
+    });
+  }
+
+  function median(arr) {
+    const s = arr.slice().sort(function (x, y) { return x - y; });
+    const mid = Math.floor(s.length / 2);
+    return s.length % 2 ? s[mid] : (s[mid - 1] + s[mid]) / 2;
+  }
+
+  // ---- Poisson machinery -----------------------------------------------------
+  const MAXG = 10;
+  let LGRID = null;
+  function poisRow(lambda) {
+    const row = [Math.exp(-lambda)];
+    for (let k = 1; k <= MAXG; k++) row.push(row[k - 1] * lambda / k);
+    return row;
+  }
+  function buildGrid() {
+    LGRID = [];
+    for (let lh = 0.25; lh <= 3.6 + 1e-9; lh += 0.07) {
+      const ph = poisRow(lh);
+      for (let la = 0.25; la <= 3.6 + 1e-9; la += 0.07) {
+        const pa = poisRow(la);
+        let pH = 0, pD = 0;
+        for (let i = 0; i <= MAXG; i++) for (let j = 0; j <= MAXG; j++) {
+          const p = ph[i] * pa[j];
+          if (i > j) pH += p; else if (i === j) pD += p;
+        }
+        LGRID.push({ lh: lh, la: la, pH: pH, pD: pD });
+      }
+    }
+  }
+  function lambdasFromProbs(pH, pD) {
+    if (!LGRID) buildGrid();
+    let best = null, err = Infinity;
+    for (let i = 0; i < LGRID.length; i++) {
+      const g = LGRID[i];
+      const e = (g.pH - pH) * (g.pH - pH) + (g.pD - pD) * (g.pD - pD);
+      if (e < err) { err = e; best = g; }
+    }
+    return { home: best.lh, away: best.la };
+  }
+
+  function computeLambdas() {
+    S.lambdas = {};
+    // first pass: odds-priced matches
+    const teamLam = {}; // accumulate for fallback team strength
+    allMatches().forEach(function (x) {
+      const m = x.m;
+      const o = S.odds[m.homeSquadId + '|' + m.awaySquadId];
+      if (o) {
+        const l = lambdasFromProbs(o.pH, o.pD);
+        S.lambdas[m.id] = l;
+        (teamLam[m.homeSquadId] = teamLam[m.homeSquadId] || []).push(l.home - l.away);
+        (teamLam[m.awaySquadId] = teamLam[m.awaySquadId] || []).push(l.away - l.home);
+      }
+    });
+    const strength = {}; // average lambda differential per team, 0 if unknown
+    Object.keys(teamLam).forEach(function (id) {
+      strength[id] = teamLam[id].reduce(function (a, b) { return a + b; }, 0) / teamLam[id].length;
+    });
+    // second pass: unpriced matches get strength-differential fallback
+    allMatches().forEach(function (x) {
+      const m = x.m;
+      if (S.lambdas[m.id]) return;
+      const dh = strength[m.homeSquadId] || 0;
+      const da = strength[m.awaySquadId] || 0;
+      const diff = (dh - da) / 2;
+      S.lambdas[m.id] = {
+        home: Math.min(3.2, Math.max(0.4, 1.3 + diff)),
+        away: Math.min(3.2, Math.max(0.4, 1.3 - diff)),
+      };
+    });
+  }
+
+  // ---- player projections ----------------------------------------------------
+  const POS_GOAL_W = { GK: 0.01, DEF: 0.16, MID: 0.62, FWD: 1.0 };
+  const POS_AST_W = { GK: 0.02, DEF: 0.30, MID: 1.0, FWD: 0.60 };
+
+  function startProb(p, rankInPos) {
+    const base = { GK: [0.85, 0.10], DEF: [0.85, 0.80, 0.74, 0.62, 0.30, 0.16, 0.08],
+                   MID: [0.85, 0.80, 0.70, 0.50, 0.28, 0.14, 0.08], FWD: [0.85, 0.66, 0.34, 0.16, 0.08] };
+    const arr = base[p.position];
+    let b = arr[Math.min(rankInPos, arr.length - 1)];
+    // nudge by ownership: the crowd knows leaked lineups before the model does
+    b += Math.min(0.08, (p.percentSelected || 0) / 100 * 0.25);
+    return Math.min(0.92, b);
+  }
+
+  function computeProjections() {
+    // per-team, per-position price ranking
+    const byTeamPos = {};
+    S.players.forEach(function (p) {
+      const k = p.squadId + '|' + p.position;
+      (byTeamPos[k] = byTeamPos[k] || []).push(p);
+    });
+    Object.keys(byTeamPos).forEach(function (k) {
+      byTeamPos[k].sort(function (a, b) { return (b.price - a.price) || (b.percentSelected - a.percentSelected); });
+    });
+    const rank = {};
+    Object.keys(byTeamPos).forEach(function (k) {
+      byTeamPos[k].forEach(function (p, i) { rank[p.id] = i; });
+    });
+
+    // share weights per team per match
+    const teamPlayers = {};
+    S.players.forEach(function (p) { (teamPlayers[p.squadId] = teamPlayers[p.squadId] || []).push(p); });
+    const maxPrice = {};
+    Object.keys(teamPlayers).forEach(function (id) {
+      maxPrice[id] = Math.max.apply(null, teamPlayers[id].map(function (p) { return p.price; }));
+    });
+
+    S.proj = {};
+    S.players.forEach(function (p) { S.proj[p.id] = { byRound: {}, next: 0, horizon: 0 }; });
+
+    const matchesByTeamRound = {};
+    allMatches().forEach(function (x) {
+      [x.m.homeSquadId, x.m.awaySquadId].forEach(function (tid) {
+        const k = tid + '|' + x.round;
+        (matchesByTeamRound[k] = matchesByTeamRound[k] || []).push(x);
+      });
+    });
+
+    Object.keys(teamPlayers).forEach(function (tid) {
+      const squadEliminated = S.teamById[tid] && S.teamById[tid].isEliminated;
+      const roster = teamPlayers[tid];
+      S.rounds.forEach(function (r) {
+        const games = matchesByTeamRound[tid + '|' + r.id] || [];
+        if (!games.length || (squadEliminated && r.id >= S.currentRound)) return;
+        games.forEach(function (x) {
+          const m = x.m;
+          if (m.status === 'played' || m.status === 'completed') return;  // only project unplayed games
+          const home = m.homeSquadId === +tid || m.homeSquadId === tid * 1;
+          const lam = S.lambdas[m.id] || { home: 1.3, away: 1.3 };
+          const lamFor = m.homeSquadId == tid ? lam.home : lam.away;
+          const lamAgainst = m.homeSquadId == tid ? lam.away : lam.home;
+
+          // normalize goal/assist shares across the roster
+          let gSum = 0, aSum = 0;
+          const w = roster.map(function (p) {
+            const ps = startProb(p, rank[p.id]);
+            const pw = Math.pow(p.price / maxPrice[tid], 2.2);
+            const gw = POS_GOAL_W[p.position] * pw * ps;
+            const aw = POS_AST_W[p.position] * pw * ps;
+            gSum += gw; aSum += aw;
+            return { p: p, ps: ps, gw: gw, aw: aw };
+          });
+          const pCS = Math.exp(-lamAgainst);
+          const xConcExtra = lamAgainst - 1 + Math.exp(-lamAgainst); // E[max(0, conceded-1)]
+          w.forEach(function (e) {
+            const p = e.p, ps = e.ps;
+            const xG = lamFor * (gSum ? e.gw / gSum : 0);
+            const xA = lamFor * 0.72 * (aSum ? e.aw / aSum : 0);
+            let pts = ps * 1.9;                                  // appearance
+            pts += RULES.goalPts[p.position] * xG;
+            pts += 3 * xA;
+            pts += RULES.csPts[p.position] * pCS * ps * 0.92;     // CS needs 60+ minutes
+            if (p.position === 'GK' || p.position === 'DEF') pts -= xConcExtra * ps;
+            if (p.position === 'GK') pts += 0.55 * lamAgainst * ps;        // saves
+            if (p.position === 'MID') pts += 0.45 * ps;                    // tackles + chances
+            if (p.position === 'FWD') pts += 0.30 * ps + 0.25 * xG;        // shots on target
+            pts -= 0.18 * ps;                                              // cards
+            if ((p.percentSelected || 0) < 5) pts += 0.20 * ps;            // scouting bonus EV
+            S.proj[p.id].byRound[r.id] = (S.proj[p.id].byRound[r.id] || 0) + Math.max(0, pts);
+          });
+        });
+      });
+    });
+
+    // horizon: remaining group rounds (or current knockout round) discounted
+    const weights = [1, 0.85, 0.7];
+    S.players.forEach(function (p) {
+      const pr = S.proj[p.id];
+      pr.next = pr.byRound[S.currentRound] || 0;
+      let wsum = 0, i = 0;
+      for (let rid = S.currentRound; rid <= 8 && i < 3; rid++, i++) {
+        wsum += (pr.byRound[rid] || 0) * weights[i];
+      }
+      pr.horizon = wsum;
+    });
+  }
+
+  // ---- squad / XI optimization ------------------------------------------------
+  function squadLegal(ids, roundId) {
+    const comp = { GK: 0, DEF: 0, MID: 0, FWD: 0 };
+    const perTeam = {};
+    let cost = 0;
+    for (let i = 0; i < ids.length; i++) {
+      const p = S.playersById[ids[i]];
+      if (!p) return false;
+      comp[p.position]++;
+      perTeam[p.squadId] = (perTeam[p.squadId] || 0) + 1;
+      cost += p.price;
+    }
+    if (comp.GK !== 2 || comp.DEF !== 5 || comp.MID !== 5 || comp.FWD !== 3) return false;
+    const quota = RULES.quota[roundId] || 3;
+    for (const t in perTeam) if (perTeam[t] > quota) return false;
+    const budget = roundId >= 4 ? RULES.budget.knockout : RULES.budget.group;
+    return cost <= budget + 1e-9;
+  }
+
+  function bestXI(ids, roundId) {
+    const by = { GK: [], DEF: [], MID: [], FWD: [] };
+    ids.forEach(function (id) {
+      const p = S.playersById[id];
+      by[p.position].push({ id: id, pts: (S.proj[id] && S.proj[id].byRound[roundId]) || 0 });
+    });
+    Object.keys(by).forEach(function (k) { by[k].sort(function (a, b) { return b.pts - a.pts; }); });
+    let best = null;
+    for (let d = 3; d <= 5; d++) for (let m = 3; m <= 5; m++) for (let f = 1; f <= 3; f++) {
+      if (d + m + f !== 10) continue;
+      if (d > by.DEF.length || m > by.MID.length || f > by.FWD.length) continue;
+      const xi = [by.GK[0]].concat(by.DEF.slice(0, d), by.MID.slice(0, m), by.FWD.slice(0, f));
+      const pts = xi.reduce(function (s, e) { return s + e.pts; }, 0);
+      if (!best || pts > best.pts) best = { pts: pts, xi: xi, formation: d + '-' + m + '-' + f, d: d, m: m, f: f };
+    }
+    return best;
+  }
+
+  function squadScore(ids) {
+    let total = 0;
+    const weights = [1, 0.85, 0.7];
+    let i = 0;
+    for (let rid = S.currentRound; rid <= 8 && i < 3; rid++, i++) {
+      const xi = bestXI(ids, rid);
+      if (!xi) return -1;
+      let bench = 0;
+      ids.forEach(function (id) {
+        if (!xi.xi.some(function (e) { return e.id === id; })) bench += (S.proj[id].byRound[rid] || 0);
+      });
+      // captain doubles the top projection
+      const cap = Math.max.apply(null, xi.xi.map(function (e) { return e.pts; }));
+      total += weights[i] * (xi.pts + cap + 0.12 * bench);
+    }
+    return total;
+  }
+
+  function optimizeSquad() {
+    // greedy seed: best value per position slot, then local search swaps
+    const pool = { GK: [], DEF: [], MID: [], FWD: [] };
+    S.players.forEach(function (p) {
+      if (S.proj[p.id].horizon > 0.2) pool[p.position].push(p);
+    });
+    Object.keys(pool).forEach(function (k) {
+      pool[k].sort(function (a, b) { return S.proj[b.id].horizon - S.proj[a.id].horizon; });
+      pool[k] = pool[k].slice(0, 60);
+    });
+    // seed: cheap-ish but strong: alternate star + value picks
+    let squad = [];
+    const need = { GK: 2, DEF: 5, MID: 5, FWD: 3 };
+    Object.keys(need).forEach(function (pos) {
+      const byValue = pool[pos].slice().sort(function (a, b) {
+        return S.proj[b.id].horizon / Math.pow(b.price, 0.9) - S.proj[a.id].horizon / Math.pow(a.price, 0.9);
+      });
+      let taken = 0;
+      // top raw pick first, then value picks
+      for (const list of [pool[pos].slice(0, 2), byValue]) {
+        for (const p of list) {
+          if (taken >= need[pos]) break;
+          if (squad.indexOf(p.id) >= 0) continue;
+          const cand = squad.concat([p.id]);
+          const counts = {};
+          let cost = 0;
+          let ok = true;
+          cand.forEach(function (id) {
+            const q = S.playersById[id];
+            counts[q.squadId] = (counts[q.squadId] || 0) + 1;
+            if (counts[q.squadId] > (RULES.quota[S.currentRound] || 3)) ok = false;
+            cost += q.price;
+          });
+          // keep budget headroom proportional to slots left
+          const slotsLeft = 15 - cand.length;
+          const budget = S.currentRound >= 4 ? RULES.budget.knockout : RULES.budget.group;
+          if (cost > budget - slotsLeft * 4.0) ok = false;
+          if (ok) { squad.push(p.id); taken++; }
+        }
+      }
+    });
+    if (squad.length !== 15 || !squadLegal(squad, S.currentRound)) {
+      // emergency: cheapest legal fill
+      squad = [];
+      Object.keys(need).forEach(function (pos) {
+        pool[pos].slice().sort(function (a, b) { return a.price - b.price; })
+          .slice(0, need[pos]).forEach(function (p) { squad.push(p.id); });
+      });
+    }
+    // Deterministic multi-start local search: seeded PRNG so the same data
+    // always yields the same recommendation; three restarts, keep the best.
+    function mulberry32(a) {
+      return function () {
+        a |= 0; a = a + 0x6D2B79F5 | 0;
+        let t = Math.imul(a ^ a >>> 15, 1 | a);
+        t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t;
+        return ((t ^ t >>> 14) >>> 0) / 4294967296;
+      };
+    }
+    const allPool = pool.GK.concat(pool.DEF, pool.MID, pool.FWD);
+    let bestSquad = squad.slice();
+    let bestScore = squadScore(bestSquad);
+    for (let seed = 1; seed <= 3; seed++) {
+      const rng = mulberry32(seed * 9301 + 49297);
+      let cur = squad.slice();
+      let score = squadScore(cur);
+      for (let iter = 0; iter < 1500; iter++) {
+        const outIdx = Math.floor(rng() * 15);
+        const outP = S.playersById[cur[outIdx]];
+        const inP = allPool[Math.floor(rng() * allPool.length)];
+        if (!inP || inP.position !== outP.position || cur.indexOf(inP.id) >= 0) continue;
+        const cand = cur.slice();
+        cand[outIdx] = inP.id;
+        if (!squadLegal(cand, S.currentRound)) continue;
+        const cs = squadScore(cand);
+        if (cs > score) { cur = cand; score = cs; }
+      }
+      if (score > bestScore) { bestScore = score; bestSquad = cur; }
+    }
+    // single-swap polish, then a pair-polish at the same depth as the
+    // "Search two-move combos" button, so the recommendation is also a
+    // two-move optimum and the button stays quiet on it
+    bestSquad = polishSquad(bestSquad);
+    for (let round = 0; round < 2; round++) {
+      const pair = bestPairSwap(bestSquad, 12);
+      if (!pair || pair.gain < 0.4) break;
+      bestSquad = polishSquad(pair.squad);
+    }
+    return bestSquad;
+  }
+
+  // ---- advice rendering --------------------------------------------------------
+  function playerName(p) { return p.knownName || ((p.firstName ? p.firstName[0] + '. ' : '') + p.lastName); }
+  function teamAbbr(p) { return (S.teamById[p.squadId] || {}).abbr || '?'; }
+
+  // Shared candidate pool: top 40 projections per position. Used by BOTH the
+  // optimizer's final polish and the transfer advisor, so they can never
+  // disagree about which swaps exist.
+  function topCandidates(position, excludeIds) {
+    return S.players
+      .filter(function (p) { return p.position === position && excludeIds.indexOf(p.id) < 0; })
+      .sort(function (a, b) { return S.proj[b.id].horizon - S.proj[a.id].horizon; })
+      .slice(0, 40);
+  }
+
+  // Exhaustive single-swap polish: sweep every slot x every candidate until
+  // no swap improves the whole-team score. Guarantees the result is a true
+  // single-swap optimum over the shared candidate pool.
+  function polishSquad(squad) {
+    let score = squadScore(squad);
+    for (let sweep = 0; sweep < 6; sweep++) {
+      let improved = false;
+      for (let idx = 0; idx < squad.length; idx++) {
+        const op = S.playersById[squad[idx]];
+        const cands = topCandidates(op.position, squad);
+        for (let c = 0; c < cands.length; c++) {
+          const cand = squad.slice();
+          cand[idx] = cands[c].id;
+          if (!squadLegal(cand, S.currentRound)) continue;
+          const cs = squadScore(cand);
+          if (cs > score + 1e-9) { squad = cand; score = cs; improved = true; }
+        }
+      }
+      if (!improved) break;
+    }
+    return squad;
+  }
+
+  // Best simultaneous two-slot swap. K caps candidates per slot; the full
+  // button search uses K=12, the optimizer's polish pass uses K=8.
+  function bestPairSwap(squad, K) {
+    const base = squadScore(squad);
+    let best = null;
+    for (let i = 0; i < squad.length; i++) {
+      const pi = S.playersById[squad[i]];
+      const candsI = topCandidates(pi.position, squad).slice(0, K);
+      for (let j = i + 1; j < squad.length; j++) {
+        const pj = S.playersById[squad[j]];
+        const candsJ = topCandidates(pj.position, squad).slice(0, K);
+        for (let a = 0; a < candsI.length; a++) {
+          for (let b = 0; b < candsJ.length; b++) {
+            if (candsI[a].id === candsJ[b].id) continue;
+            const cand = squad.slice();
+            cand[i] = candsI[a].id;
+            cand[j] = candsJ[b].id;
+            if (!squadLegal(cand, S.currentRound)) continue;
+            const gain = squadScore(cand) - base;
+            if (!best || gain > best.gain) {
+              best = { gain: gain, squad: cand, outA: pi, inA: candsI[a], outB: pj, inB: candsJ[b] };
+            }
+          }
+        }
+      }
+    }
+    return best && best.gain > 1e-9 ? best : null;
+  }
+
+  function bestSingleSwap(squad) {
+    const base = squadScore(squad);
+    let best = null;
+    for (let i = 0; i < squad.length; i++) {
+      const op = S.playersById[squad[i]];
+      topCandidates(op.position, squad).forEach(function (np) {
+        const cand = squad.slice();
+        cand[i] = np.id;
+        if (!squadLegal(cand, S.currentRound)) return;
+        const gain = squadScore(cand) - base;
+        if (!best || gain > best.gain) best = { gain: gain, squad: cand };
+      });
+    }
+    return best && best.gain > 1e-9 ? best : null;
+  }
+
+  function transferAdvice() {
+    // Gain is measured with the SAME whole-team objective the squad
+    // optimizer uses (best XI + captain + discounted bench), so holding the
+    // recommended squad yields no suggestions.
+    const out = [];
+    const base = squadScore(S.mySquad);
+    S.mySquad.forEach(function (oid) {
+      const op = S.playersById[oid];
+      if (!op) return;
+      let best = null;
+      topCandidates(op.position, S.mySquad).forEach(function (np) {
+        const cand = S.mySquad.map(function (id) { return id === oid ? np.id : id; });
+        if (!squadLegal(cand, S.currentRound)) return;
+        const gain = squadScore(cand) - base;
+        if (!best || gain > best.gain) best = { out: op, in_: np, gain: gain };
+      });
+      if (best && best.gain > 0.8) out.push(best);
+    });
+    out.sort(function (a, b) { return b.gain - a.gain; });
+    return out.slice(0, 5);
+  }
+
+  function chipPlan() {
+    // value of each chip per round, then a greedy assignment (one chip per round)
+    const plan = {};
+    const rounds = S.rounds.map(function (r) { return r.id; }).filter(function (id) { return id >= S.currentRound; });
+    const xiCache = {};
+    rounds.forEach(function (rid) { xiCache[rid] = bestXI(S.mySquad, rid); });
+
+    // 12th man: best bench projection per round
+    let twelfth = { rid: null, val: 0 };
+    rounds.forEach(function (rid) {
+      const xi = xiCache[rid];
+      if (!xi) return;
+      let benchBest = 0;
+      S.mySquad.forEach(function (id) {
+        if (!xi.xi.some(function (e) { return e.id === id; })) benchBest = Math.max(benchBest, S.proj[id].byRound[rid] || 0);
+      });
+      if (benchBest > twelfth.val) twelfth = { rid: rid, val: benchBest };
+    });
+
+    // max captaincy: rounds where top captain options are flat
+    let maxcap = { rid: null, val: -1 };
+    rounds.forEach(function (rid) {
+      const xi = xiCache[rid];
+      if (!xi || xi.xi.length < 2) return;
+      const sorted = xi.xi.map(function (e) { return e.pts; }).sort(function (a, b) { return b - a; });
+      const flatness = 1 - Math.min(1, (sorted[0] - sorted[2] || 0));
+      const val = flatness * sorted[0] * 0.25;
+      if (val > maxcap.val) maxcap = { rid: rid, val: val };
+    });
+
+    // qualification booster: R32 onwards, estimate players advancing
+    let qual = { rid: null, val: 0 };
+    rounds.filter(function (rid) { return rid >= 4; }).forEach(function (rid) {
+      // rough: assume ~70% of a good squad advances in R32, less later but fewer players survive
+      const survivors = S.mySquad.filter(function (id) {
+        const t = S.teamById[S.playersById[id].squadId];
+        return t && !t.isEliminated;
+      }).length;
+      const advanceP = rid === 4 ? 0.7 : 0.55;
+      const val = 2 * survivors * advanceP * (rid === 4 ? 1 : 0.8);
+      if (val > qual.val) qual = { rid: rid, val: val };
+    });
+
+    // wildcard: improvement of optimal over current squad, best used MD3 or R16
+    const curScore = squadScore(S.mySquad);
+    const recoScore = S.reco ? squadScore(S.reco) : curScore;
+    const wcGain = Math.max(0, recoScore - curScore);
+    const wcRid = S.currentRound <= 3 ? 3 : (S.currentRound === 4 ? 5 : S.currentRound); // never R32
+
+    const assign = {};
+    if (twelfth.rid) assign[twelfth.rid] = { chip: '12th Man', why: 'Best bench player projects ' + twelfth.val.toFixed(1) + ' pts that round; bank them on top of your XI.' };
+    if (qual.rid && !assign[qual.rid]) assign[qual.rid] = { chip: 'Qualification Booster', why: 'Roughly +' + qual.val.toFixed(0) + ' pts expected from squad members advancing.' };
+    if (wcRid && !assign[wcRid] && wcRid !== 4) assign[wcRid] = { chip: 'Wildcard', why: wcGain > 8 ? 'Your squad trails the optimal one by ~' + wcGain.toFixed(0) + ' pts over the horizon; rebuild free of charge.' : 'Rebuild for the knockout bracket once it is known (cannot be used in the Round of 32).' };
+    if (maxcap.rid && !assign[maxcap.rid]) assign[maxcap.rid] = { chip: 'Maximum Captaincy', why: 'No standout captain that round; let the game pick your best scorer in hindsight.' };
+    // mystery booster: unknown until R32 opens
+    for (const rid of rounds) {
+      if (!assign[rid] && rid >= 4) { assign[rid] = { chip: 'Mystery Booster?', why: 'Revealed when the Round of 32 opens; slot it here if it beats holding.' }; break; }
+    }
+    rounds.forEach(function (rid) { plan[rid] = assign[rid] || null; });
+    return plan;
+  }
+
+  function computeAll() {
+    if (!S.players) return;
+    computeLambdas();
+    computeProjections();
+    if (!S.reco) S.reco = optimizeSquad();
+    if (!S.mySquad) {
+      const saved = (function () { try { return JSON.parse(localStorage.getItem(SQUAD_LS)); } catch (e) { return null; } })();
+      S.mySquad = (saved && saved.length === 15 && saved.every(function (id) { return S.playersById[id]; })) ? saved : S.reco.slice();
+    }
+    renderAll();
+  }
+
+  // ---- rendering ----------------------------------------------------------------
+  function renderAll() {
+    renderPlan();
+    renderSquad();
+    renderRoadmap();
+    renderExplorer();
+  }
+
+  function renderPlan() {
+    const card = $('plan-card');
+    card.hidden = false;
+    const round = S.rounds.find(function (r) { return r.id === S.currentRound; });
+    $('plan-title').textContent = 'Orders for ' + (RULES.roundNames[S.currentRound] || ('Round ' + S.currentRound));
+    const matches = (round.tournaments || []).filter(function (m) { return m.status === 'scheduled'; });
+    const firstKick = matches.length ? matches.map(function (m) { return new Date(m.date).getTime(); }).sort()[0] : new Date(round.startDate).getTime();
+    $('plan-deadline').textContent = 'Deadline: ' + new Date(firstKick).toLocaleString([], { weekday: 'short', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
+
+    // chip call for this round
+    const plan = chipPlan();
+    const thisChip = plan[S.currentRound];
+    $('chip-call').innerHTML = thisChip
+      ? '<strong>Chip this round: ' + thisChip.chip + '.</strong> ' + thisChip.why
+      : '<strong>No chip this round.</strong> Hold them; the roadmap below shows where each is best spent.';
+
+    // transfers
+    const advice = transferAdvice();
+    const free = RULES.freeTransfers[S.currentRound];
+    const list = $('transfers-list');
+    list.innerHTML = '';
+    if (!advice.length) {
+      list.innerHTML = '<div class="transfer-row muted">No transfers worth making: nobody outside your squad beats a current player by enough to matter.</div>';
+    } else {
+      advice.forEach(function (t, i) {
+        const freeNote = i < (free === Infinity ? 99 : free) ? 'free' : '-' + RULES.transferHit + ' pts';
+        const worth = i < (free === Infinity ? 99 : free) ? t.gain > 0.8 : t.gain > RULES.transferHit;
+        const div = document.createElement('div');
+        div.className = 'transfer-row';
+        div.innerHTML = (worth ? 'DO IT: ' : 'Optional: ') +
+          '<span class="out">' + playerName(t.out) + ' (' + teamAbbr(t.out) + ')</span> → ' +
+          '<span class="in">' + playerName(t.in_) + ' (' + teamAbbr(t.in_) + ')</span> ' +
+          '<span class="gain">+' + t.gain.toFixed(1) + ' xPts over the horizon, ' + freeNote + '</span>';
+        list.appendChild(div);
+      });
+      const capNote = document.createElement('div');
+      capNote.className = 'transfer-row muted';
+      capNote.textContent = free === Infinity ? 'Transfers are unlimited this round.' : 'You have ' + free + ' free transfers this round; each extra costs 3 points.';
+      list.appendChild(capNote);
+    }
+
+    // XI after applying recommended "DO IT" transfers (display only)
+    let lineupIds = S.mySquad.slice();
+    const xi = bestXI(lineupIds, S.currentRound);
+    if (!xi) return;
+    $('xi-title').textContent = 'Starting XI (' + xi.formation + ')';
+    const sortedXi = xi.xi.slice().sort(function (a, b) { return b.pts - a.pts; });
+    const cap = sortedXi[0], vc = sortedXi[1];
+    const grid = $('xi-grid');
+    grid.innerHTML = '';
+    [['GK', 1], ['DEF', xi.d], ['MID', xi.m], ['FWD', xi.f]].forEach(function (rowDef) {
+      const row = document.createElement('div');
+      row.className = 'xi-row';
+      xi.xi.filter(function (e) { return S.playersById[e.id].position === rowDef[0]; }).forEach(function (e) {
+        const p = S.playersById[e.id];
+        const div = document.createElement('div');
+        div.className = 'pcard' + (e.id === cap.id ? ' cap' : '');
+        div.innerHTML = '<div class="pname">' + playerName(p) + '</div>' +
+          '<div class="pmeta">' + teamAbbr(p) + ' · ' + e.pts.toFixed(1) + ' xPts</div>' +
+          (e.id === cap.id ? '<span class="badge">C</span>' : e.id === vc.id ? '<span class="badge vc">VC</span>' : '');
+        row.appendChild(div);
+      });
+      grid.appendChild(row);
+    });
+
+    // bench order: remaining 4 sorted by projection, GK flagged
+    const benchIds = lineupIds.filter(function (id) { return !xi.xi.some(function (e) { return e.id === id; }); });
+    const bench = benchIds.map(function (id) { return { id: id, pts: S.proj[id].byRound[S.currentRound] || 0, p: S.playersById[id] }; });
+    bench.sort(function (a, b) { return (a.p.position === 'GK') - (b.p.position === 'GK') || b.pts - a.pts; });
+    const bl = $('bench-list');
+    bl.innerHTML = '';
+    bench.forEach(function (e, i) {
+      const div = document.createElement('div');
+      div.className = 'pcard';
+      div.innerHTML = '<div class="pname">' + (e.p.position === 'GK' ? 'GK: ' : (i + 1) + '. ') + playerName(e.p) + '</div>' +
+        '<div class="pmeta">' + e.p.position + ' · ' + teamAbbr(e.p) + ' · ' + e.pts.toFixed(1) + ' xPts</div>';
+      bl.appendChild(div);
+    });
+
+    $('plan-notes').textContent = 'Captain ' + playerName(S.playersById[cap.id]) + ', vice ' + playerName(S.playersById[vc.id]) +
+      '. Set this order in the FIFA app before the deadline. Do not make manual changes once the round is live or you lose auto-subs. ' +
+      'If your captain plays an early match and blanks, you may switch the armband to a not-yet-played player mid-round.';
+  }
+
+  function renderSquad() {
+    const card = $('squad-card');
+    card.hidden = false;
+    const tbody = $('squad-table').querySelector('tbody');
+    tbody.innerHTML = '';
+    const order = { GK: 0, DEF: 1, MID: 2, FWD: 3 };
+    const ids = S.mySquad.slice().sort(function (a, b) {
+      return order[S.playersById[a].position] - order[S.playersById[b].position] || S.proj[b].horizon - S.proj[a].horizon;
+    });
+    let cost = 0;
+    ids.forEach(function (id) {
+      const p = S.playersById[id];
+      cost += p.price;
+      const tr = document.createElement('tr');
+      const sel = document.createElement('select');
+      sel.innerHTML = '<option value="">keep</option>';
+      S.players
+        .filter(function (n) { return n.position === p.position && S.mySquad.indexOf(n.id) < 0; })
+        .sort(function (a, b) { return S.proj[b.id].horizon - S.proj[a.id].horizon; })
+        .slice(0, 40)
+        .forEach(function (n) {
+          const cand = S.mySquad.map(function (x) { return x === id ? n.id : x; });
+          if (!squadLegal(cand, S.currentRound)) return;
+          const o = document.createElement('option');
+          o.value = String(n.id);
+          o.textContent = playerName(n) + ' (' + teamAbbr(n) + ') $' + n.price + 'm · ' + S.proj[n.id].horizon.toFixed(1);
+          sel.appendChild(o);
+        });
+      sel.addEventListener('change', function () {
+        if (!sel.value) return;
+        S.mySquad = S.mySquad.map(function (x) { return x === id ? +sel.value : x; });
+        localStorage.setItem(SQUAD_LS, JSON.stringify(S.mySquad));
+        renderAll();
+      });
+      tr.innerHTML = '<td class="pos-tag">' + p.position + '</td>' +
+        '<td>' + playerName(p) + '</td><td>' + teamAbbr(p) + '</td>' +
+        '<td class="num">$' + p.price.toFixed(1) + 'm</td>' +
+        '<td class="num' + ((p.percentSelected || 0) < 5 ? ' own-low' : '') + '">' + (p.percentSelected || 0).toFixed(1) + '</td>' +
+        '<td class="num">' + S.proj[id].horizon.toFixed(1) + '</td>';
+      const tdSel = document.createElement('td');
+      tdSel.appendChild(sel);
+      tr.appendChild(tdSel);
+      tbody.appendChild(tr);
+    });
+    const budget = S.currentRound >= 4 ? RULES.budget.knockout : RULES.budget.group;
+    $('squad-status').textContent = 'Squad cost $' + cost.toFixed(1) + 'm of $' + budget + 'm (' + (budget - cost).toFixed(1) + ' in the bank).';
+  }
+
+  function renderRoadmap() {
+    const card = $('roadmap-card');
+    card.hidden = false;
+    const plan = chipPlan();
+    const tbody = $('roadmap-table').querySelector('tbody');
+    tbody.innerHTML = '';
+    S.rounds.forEach(function (r) {
+      const tr = document.createElement('tr');
+      const entry = r.id < S.currentRound ? null : plan[r.id];
+      tr.innerHTML = '<td>' + (RULES.roundNames[r.id] || r.id) + '</td>' +
+        '<td class="num">' + new Date(r.startDate).toLocaleDateString([], { month: 'short', day: 'numeric' }) + '</td>' +
+        '<td>' + (r.id < S.currentRound ? '<span class="muted">past</span>' : entry ? '<span class="roadmap-chip">' + entry.chip + '</span>' : '<span class="muted">hold</span>') + '</td>' +
+        '<td class="muted">' + (entry && r.id >= S.currentRound ? entry.why : '') + '</td>';
+      tbody.appendChild(tr);
+    });
+  }
+
+  function renderExplorer() {
+    const card = $('explorer-card');
+    card.hidden = false;
+    const tbody = $('explorer-table').querySelector('tbody');
+    tbody.innerHTML = '';
+    let list = S.players.slice();
+    if (S.explorerPos !== 'ALL') list = list.filter(function (p) { return p.position === S.explorerPos; });
+    list.sort(function (a, b) { return S.proj[b.id].next - S.proj[a.id].next; });
+    list.slice(0, 30).forEach(function (p, i) {
+      const tr = document.createElement('tr');
+      tr.innerHTML = '<td class="num">' + (i + 1) + '</td>' +
+        '<td>' + playerName(p) + '</td><td class="pos-tag">' + p.position + '</td>' +
+        '<td>' + teamAbbr(p) + '</td>' +
+        '<td class="num">$' + p.price.toFixed(1) + 'm</td>' +
+        '<td class="num' + ((p.percentSelected || 0) < 5 ? ' own-low' : '') + '">' + (p.percentSelected || 0).toFixed(1) + '</td>' +
+        '<td class="num">' + S.proj[p.id].next.toFixed(1) + '</td>' +
+        '<td class="num">' + S.proj[p.id].horizon.toFixed(1) + '</td>' +
+        '<td class="num">' + (S.proj[p.id].horizon / p.price).toFixed(2) + '</td>';
+      tbody.appendChild(tr);
+    });
+  }
+
+  // ---- FIFA team import -------------------------------------------------------
+  // Walks any pasted JSON and looks for the array that best matches a legal
+  // 15-man fantasy squad (player ids exist and composition is 2/5/5/3), so the
+  // exact response shape of FIFA's team endpoint does not matter.
+  function importSquadFromJson(text) {
+    let root;
+    try { root = JSON.parse(text); } catch (e) { return { error: 'That is not valid JSON. Copy the whole response body.' }; }
+
+    // 1) FIFA's real team shape: an object holding lineup + bench maps of
+    //    position -> arrays of player ids, plus captain/vice ids.
+    let structured = null;
+    (function walkS(node) {
+      if (structured || !node || typeof node !== 'object') return;
+      if (!Array.isArray(node) && node.lineup && node.bench &&
+          typeof node.lineup === 'object' && typeof node.bench === 'object') {
+        const ids = [];
+        [node.lineup, node.bench].forEach(function (grp) {
+          Object.keys(grp).forEach(function (pos) {
+            if (Array.isArray(grp[pos])) grp[pos].forEach(function (id) {
+              if (typeof id === 'number' && S.playersById[id] && ids.indexOf(id) < 0) ids.push(id);
+            });
+          });
+        });
+        if (ids.length >= 11) {
+          structured = { ids: ids, captain: node.captain, vice: node.vice };
+          return;
+        }
+      }
+      if (Array.isArray(node)) node.forEach(walkS);
+      else Object.keys(node).forEach(function (k) { walkS(node[k]); });
+    })(root);
+    if (structured) {
+      const comp = { GK: 0, DEF: 0, MID: 0, FWD: 0 };
+      structured.ids.forEach(function (id) { comp[S.playersById[id].position]++; });
+      if (structured.ids.length === 15 && comp.GK === 2 && comp.DEF === 5 && comp.MID === 5 && comp.FWD === 3) {
+        return { ids: structured.ids, captain: structured.captain, vice: structured.vice };
+      }
+      return { error: 'Found a lineup/bench block but it resolved to ' + structured.ids.length + ' players (' + comp.GK + '/' + comp.DEF + '/' + comp.MID + '/' + comp.FWD + '), not a 2/5/5/3 squad of 15. Did FIFA data finish loading?' };
+    }
+
+    // 2) Generic fallback: any array resolving to a legal 15-man squad.
+    const candidates = [];
+    (function walk(node) {
+      if (Array.isArray(node)) {
+        if (node.length >= 11 && node.length <= 20) candidates.push(node);
+        node.forEach(walk);
+      } else if (node && typeof node === 'object') {
+        Object.keys(node).forEach(function (k) { walk(node[k]); });
+      }
+    })(root);
+    let best = null;
+    candidates.forEach(function (arr) {
+      const ids = [];
+      arr.forEach(function (el) {
+        let id = null;
+        if (typeof el === 'number') id = el;
+        else if (el && typeof el === 'object') {
+          for (const k of ['playerId', 'elementId', 'player_id', 'id']) {
+            if (typeof el[k] === 'number') { id = el[k]; break; }
+          }
+        }
+        if (id !== null && S.playersById[id] && ids.indexOf(id) < 0) ids.push(id);
+      });
+      if (ids.length < 11) return;
+      const comp = { GK: 0, DEF: 0, MID: 0, FWD: 0 };
+      ids.forEach(function (id) { comp[S.playersById[id].position]++; });
+      const compScore = -Math.abs(comp.GK - 2) - Math.abs(comp.DEF - 5) - Math.abs(comp.MID - 5) - Math.abs(comp.FWD - 3);
+      const score = ids.length + compScore * 2;
+      if (!best || score > best.score) best = { ids: ids.slice(0, 15), score: score, comp: comp };
+    });
+    if (!best) return { error: 'No squad found in that JSON. Make sure the response actually contains your 15 picks.' };
+    if (best.ids.length !== 15 || best.comp.GK !== 2 || best.comp.DEF !== 5 || best.comp.MID !== 5 || best.comp.FWD !== 3) {
+      return { error: 'Found ' + best.ids.length + ' players (' + best.comp.GK + ' GK, ' + best.comp.DEF + ' DEF, ' + best.comp.MID + ' MID, ' + best.comp.FWD + ' FWD) but not a clean 2/5/5/3 squad of 15. Try copying the team response specifically.' };
+    }
+    return { ids: best.ids };
+  }
+
+  // ---- wiring ---------------------------------------------------------------
+  $('odds-key').value = localStorage.getItem(ODDS_KEY_LS) || '';
+  $('load-btn').addEventListener('click', function () { S.reco = null; loadFifa(true); });
+  $('odds-btn').addEventListener('click', function () { if (S.players) loadOdds(true, true); else loadFifa(false); });
+  $('use-reco-btn').addEventListener('click', function () {
+    if (!S.reco) S.reco = optimizeSquad();
+    S.mySquad = S.reco.slice();
+    localStorage.setItem(SQUAD_LS, JSON.stringify(S.mySquad));
+    renderAll();
+  });
+  $('pair-btn').addEventListener('click', function () {
+    if (!S.players || !S.mySquad) { $('pair-status').textContent = 'Load FIFA data first.'; return; }
+    $('pair-status').textContent = 'Searching about 20,000 combinations...';
+    $('pair-result').innerHTML = '';
+    setTimeout(function () {
+      const pair = bestPairSwap(S.mySquad, 12);
+      // compare against doing the two best sequential singles
+      let chainGain = 0;
+      const s1 = bestSingleSwap(S.mySquad);
+      if (s1) {
+        chainGain = s1.gain;
+        const s2 = bestSingleSwap(s1.squad);
+        if (s2) chainGain += s2.gain;
+      }
+      if (pair && pair.gain > chainGain + 0.8 && pair.gain > 1.5) {
+        $('pair-status').textContent = '';
+        $('pair-result').innerHTML =
+          '<div class="transfer-row">COMBO: <span class="out">' + playerName(pair.outA) + ' (' + teamAbbr(pair.outA) + ')</span> → ' +
+          '<span class="in">' + playerName(pair.inA) + ' (' + teamAbbr(pair.inA) + ')</span> AND ' +
+          '<span class="out">' + playerName(pair.outB) + ' (' + teamAbbr(pair.outB) + ')</span> → ' +
+          '<span class="in">' + playerName(pair.inB) + ' (' + teamAbbr(pair.inB) + ')</span> ' +
+          '<span class="gain">+' + pair.gain.toFixed(1) + ' team xPts together (best singles chain: +' + chainGain.toFixed(1) + '). Uses 2 transfers.</span></div>';
+      } else {
+        $('pair-status').textContent = 'No two-move combo beats the straightforward single transfers' +
+          (chainGain > 0.8 ? ' (best: two singles worth +' + chainGain.toFixed(1) + ' shown above).' : '. Your squad holds up.');
+      }
+    }, 30);
+  });
+  $('import-toggle').addEventListener('click', function () {
+    $('import-block').hidden = !$('import-block').hidden;
+  });
+  $('import-btn').addEventListener('click', function () {
+    if (!S.players) { $('import-status').textContent = 'Load FIFA data first.'; return; }
+    const res = importSquadFromJson($('import-text').value);
+    if (res.error) { $('import-status').textContent = res.error; return; }
+    S.mySquad = res.ids;
+    localStorage.setItem(SQUAD_LS, JSON.stringify(S.mySquad));
+    let msg = 'Imported 15 players. All advice now uses your real squad.';
+    if (res.captain && S.playersById[res.captain]) {
+      msg += ' Your current armband: ' + playerName(S.playersById[res.captain]) +
+        (res.vice && S.playersById[res.vice] ? ' (vice ' + playerName(S.playersById[res.vice]) + ')' : '') +
+        '. Compare with the recommendation above.';
+    }
+    $('import-status').textContent = msg;
+    renderAll();
+  });
+  document.querySelectorAll('#explorer-filters .fbtn').forEach(function (b) {
+    b.addEventListener('click', function () {
+      document.querySelectorAll('#explorer-filters .fbtn').forEach(function (x) { x.classList.toggle('is-active', x === b); });
+      S.explorerPos = b.dataset.pos;
+      renderExplorer();
+    });
+  });
+
+  // auto-load from cache on open
+  if (cacheGet('players', FIFA_CACHE_MS)) loadFifa(false);
+})();
+</script>
+</body>
+</html>
