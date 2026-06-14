@@ -409,19 +409,25 @@ body.brain-arena-app button {
   margin-bottom: 1rem;
 }
 
-.auth-gate .link-btn {
+.link-btn {
   background: none;
   border: none;
-  color: var(--accent);
+  /* `!important` + box-shadow:none pin off main.css's global `button`
+     rules (gray #555 text/ring, red hover). The end-screen sign-up CTA
+     uses .link-btn outside .auth-gate, so target the class directly. */
+  color: var(--accent) !important;
+  box-shadow: none !important;
   text-decoration: underline;
   cursor: pointer;
   font: inherit;
   padding: 0;
 }
-.auth-gate .link-btn:hover,
-.auth-gate .link-btn:focus-visible {
-  color: var(--cyan-2);
+.link-btn:hover,
+.link-btn:focus-visible {
+  color: var(--cyan-2) !important;
+  box-shadow: none !important;
 }
+.link-btn:hover:active { background: none; }
 
 .lobby-grid {
   display: grid;
@@ -776,12 +782,17 @@ select option { background: var(--surface); color: var(--text); }
   color: var(--muted) !important;
   border-radius: 8px;
   cursor: pointer;
+  /* Pin off main.css's global `button` ring (inset 0 0 0 1px #555) + its
+     red hover/active repaint; this is a borderless icon button. */
+  box-shadow: none !important;
   transition: background 0.18s ease, color 0.18s ease, transform 0.05s ease;
 }
 .room-code-copy:hover {
   background: rgba(34, 211, 238, 0.12);
   color: var(--cyan-2) !important;
+  box-shadow: none !important;
 }
+.room-code-copy:hover:active { background: rgba(34, 211, 238, 0.12); }
 .room-code-copy:active { transform: scale(0.94); }
 .room-code-copy svg { width: 14px; height: 14px; }
 
@@ -1936,6 +1947,9 @@ select option { background: var(--surface); color: var(--text); }
     border-radius: 999px;
     background: rgba(8, 11, 22, 0.55);
     color: #e2e8f0 !important;
+    /* Pin off main.css's global `button` ring (inset 0 0 0 1px #555) + its
+       red hover/active repaint; this pill carries its own border. */
+    box-shadow: none !important;
     font: inherit;
     font-size: 0.82rem;
     font-weight: 600;
@@ -1950,6 +1964,10 @@ select option { background: var(--surface); color: var(--text); }
     border-color: rgba(34, 211, 238, 0.55);
     background: rgba(12, 18, 34, 0.7);
     color: #67e8f9 !important;
+    box-shadow: none !important;
+  }
+  .globe-drop-standings-toggle:hover:active {
+    background: rgba(12, 18, 34, 0.7);
   }
   /* Pulse cue (item 2): while the local player has submitted but the
      board is still collapsed, breathe a soft cyan glow + a glowing dot so
@@ -2346,7 +2364,10 @@ select option { background: var(--surface); color: var(--text); }
   background: rgba(255, 255, 255, 0.025);
   border: 1px solid var(--border);
   border-radius: 9px;
-  color: var(--text);
+  /* `!important` + box-shadow:none pin off main.css's global `button`
+     rules (gray #555 text/ring, red hover/active). */
+  color: var(--text) !important;
+  box-shadow: none !important;
   font-size: 1.05rem;
   line-height: 1;
   cursor: pointer;
@@ -2358,9 +2379,11 @@ select option { background: var(--surface); color: var(--text); }
 .room-chat-quick-btn:hover {
   background: rgba(34, 211, 238, 0.08);
   border-color: rgba(34, 211, 238, 0.35);
-  box-shadow: 0 0 12px rgba(34, 211, 238, 0.18);
+  color: var(--text) !important;
+  box-shadow: 0 0 12px rgba(34, 211, 238, 0.18) !important;
   transform: translateY(-1px);
 }
+.room-chat-quick-btn:hover:active { background: rgba(34, 211, 238, 0.08); }
 .room-chat-quick-btn:active { transform: scale(0.92); }
 @media (max-width: 380px) {
   .room-chat-quick { grid-template-columns: repeat(4, 1fr); }
@@ -5001,9 +5024,13 @@ select option { background: var(--surface); color: var(--text); }
   display: inline-flex;
   align-items: center;
   justify-content: center;
+  /* Pin off main.css's global `button` ring (inset 0 0 0 1px #555) + red
+     hover/active repaint; this is a borderless icon button. */
+  box-shadow: none !important;
   transition: background 0.15s, color 0.15s;
 }
-.modal-close:hover { background: rgba(255, 255, 255, 0.06); color: var(--text) !important; }
+.modal-close:hover { background: rgba(255, 255, 255, 0.06); color: var(--text) !important; box-shadow: none !important; }
+.modal-close:hover:active { background: rgba(255, 255, 255, 0.06); }
 .modal-close svg { width: 13px; height: 13px; display: block; }
 
 .modal-actions {
