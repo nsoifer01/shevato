@@ -146,7 +146,7 @@
   const {
     N_LOCS, WEIGHTS, MAX_RAW,
     weightedTotal, predTotalFromScores, hasLocs, iPlayed, theyPlayed, bothPlayed, arrEq,
-    getMyTotal, getTheirTotal, parseMapTapScore,
+    getMyTotal, getTheirTotal, parseMapTapScore, mapTapHistoryToRounds,
     resultOf, resultLoc, stdDev, average, streaks, linearTrend, projectNext,
     rivalryScoreFromGames,
   } = window.MapTapStats;
@@ -4973,24 +4973,8 @@
     return d.toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' });
   }
 
-  // Convert profile.gameHistory into { "YYYY-MM-DD": { scores: number[5], cities: {lat,lng,name}[5] } }.
-  // Rejects entries missing a clean 5-round breakdown so we never store
-  // partial data — those days just won't pair.
-  function mapTapHistoryToRounds(gameHistory) {
-    const out = {};
-    for (const [date, entry] of Object.entries(gameHistory || {})) {
-      if (!entry || !Array.isArray(entry.roundData) || entry.roundData.length !== 5) continue;
-      const scores = entry.roundData.map(r => Number(r.score));
-      if (!scores.every(s => Number.isFinite(s) && s >= 0 && s <= 100)) continue;
-      const cities = entry.roundData.map(r => ({
-        lat: Number(r.cityLat),
-        lng: Number(r.cityLng),
-        name: typeof r.cityName === 'string' ? r.cityName : '',
-      }));
-      out[date] = { scores, cities };
-    }
-    return out;
-  }
+  // mapTapHistoryToRounds lives in stats.js (bound at the top of this IIFE) so
+  // the profile-history → per-day-rounds conversion can be unit-tested in node.
 
   // Geographic continent from (lat, lng). Order matters — overlapping
   // bounding boxes are resolved by the first matching rule (Africa
