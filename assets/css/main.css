@@ -3052,3 +3052,119 @@ body > [data-include="footer"] {
   #footer .content--two-col section:last-child {
     padding-left: 0; } }
 
+/* ==========================================================================
+   Shared header/footer typography lock
+   The header/footer partials are identical on every page, but their text
+   inherits font-family from body/*, which each app overrides. Pin the
+   typography here so the chrome renders identically site-wide regardless of
+   app CSS load order. Scoped to #header/#footer/#menu; !important because app
+   stylesheets load after main.css. Does NOT touch nav-link color/font-weight
+   (those carry the current-page indicator) or .icon/<i> (FontAwesome glyphs).
+   ========================================================================== */
+#header,
+#footer,
+#menu,
+#header .logo,
+#header .header-inline-nav a,
+#header .nav-apps__toggle,
+#header .nav-apps__menu a,
+#header [data-js="menu-toggle"],
+#header .auth-container .auth__button,
+#header .auth-container .auth__user-name,
+#header #header-user-email,
+#menu .links a,
+#footer h4,
+#footer .copyright {
+  font-family: "Raleway", Arial, Helvetica, sans-serif !important; }
+
+/* Normalize font rendering so the chrome looks the same on WebKit/macOS too;
+   several apps set `-webkit-font-smoothing: antialiased` on body/*, which makes
+   the header/footer text render thinner than on the marketing pages. */
+#header, #header *, #footer, #footer *, #menu, #menu * {
+  -webkit-font-smoothing: auto !important;
+  -moz-osx-font-smoothing: auto !important; }
+
+/* Pin the footer's base text color. Some apps set a white body/* color that the
+   footer containers inherit, which (via currentColor) tinted their borders and
+   any non-link text differently from the marketing pages. Links/headings/
+   copyright keep their own pinned colors above; this only fixes the base. */
+#footer,
+#footer .inner,
+#footer .content--two-col,
+#footer section,
+#footer ul,
+#footer li { color: rgba(255, 255, 255, 0.5) !important; }
+
+#footer h4 {
+  font-weight: 300 !important;
+  line-height: 1.5 !important;
+  letter-spacing: normal !important;
+  text-transform: uppercase !important;
+  color: #ffffff !important; }
+
+/* Logo is an image-only anchor; pin its (invisible) text styling so the
+   computed values match across pages and app `a {}` rules cannot bleed in. */
+#header .logo {
+  color: #ce1b28 !important;
+  text-decoration: none !important; }
+
+#footer .content--two-col a {
+  line-height: 1.65 !important; }
+
+#footer .copyright {
+  line-height: 1.65 !important; }
+
+#header .auth-container .auth__button:hover,
+#header .auth-container .auth__button:focus,
+#header .auth-container .auth__button:active {
+  color: #ffffff !important; }
+
+/* Signed-in user email in the header. It uses `color: inherit`, so on apps that
+   set a white body text color (e.g. gym-tracker `body { color: white }`) the
+   email rendered bright white while every other page showed it muted gray. Pin
+   it to the canonical header text color so the signed-in email matches the nav
+   links site-wide (the Sign Out button stays white via the rule above). */
+#header .auth-container .auth__user,
+#header .auth-container .auth__user-name {
+  color: rgba(255, 255, 255, 0.5) !important; }
+
+/* ==========================================================================
+   Site-wide page scrollbar
+   Normalize the main (page) scrollbar so it looks the same on every page.
+   Without this, marketing pages show a light native scrollbar, gym-tracker a
+   custom dark one, and the other apps a dark native one (via color-scheme).
+   A neutral gray thumb on a transparent track reads on both light and dark
+   backgrounds. `html`-scoped so it only affects the page scrollbar (apps keep
+   their own inner/modal scrollbars). Does not touch color-scheme, so native
+   form controls are unaffected.
+   ========================================================================== */
+html {
+  scrollbar-width: thin !important;
+  scrollbar-color: #6f7785 transparent !important; }
+html::-webkit-scrollbar { width: 12px; height: 12px; }
+html::-webkit-scrollbar-track { background: transparent; }
+html::-webkit-scrollbar-thumb {
+  background: #6f7785;
+  border-radius: 8px;
+  border: 3px solid transparent;
+  background-clip: padding-box; }
+html::-webkit-scrollbar-thumb:hover {
+  background: #8b93a4;
+  background-clip: padding-box; }
+html::-webkit-scrollbar-corner { background: transparent; }
+
+/* ==========================================================================
+   Footer contact icons (inline SVG)
+   These are inline SVG instead of FontAwesome so they render identically on
+   every page. Marketing pages load Font Awesome 4 and app pages load Font
+   Awesome 6, which draw the phone and LinkedIn glyphs differently - using SVG
+   removes that dependency entirely. Pinned so app `svg {}` rules cannot resize
+   or recolor them; fill follows the link color (currentColor).
+   ========================================================================== */
+#footer .footer-contact-icon {
+  width: 1.05em !important;
+  height: 1.05em !important;
+  fill: currentColor !important;
+  vertical-align: -0.16em;
+  margin-right: 0.5rem;
+  flex-shrink: 0; }
