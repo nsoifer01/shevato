@@ -1,6 +1,347 @@
 {
   "updates": [
     {
+      "builtAt": "2026-06-15T08:43:48.963Z",
+      "totals": {
+        "seasons": 65320,
+        "delta": 7
+      },
+      "shapeCounts": {
+        "mid-peak": 4610,
+        "rebound": 10002,
+        "rising": 2906,
+        "slow-burn": 4314,
+        "big-finale": 11934,
+        "u-shaped": 3061,
+        "rollercoaster": 13975,
+        "saved-best-for-last": 1515,
+        "front-loaded": 3433,
+        "declining": 1840,
+        "bad-finale": 4613,
+        "consistent": 2593,
+        "shape-drift": 1585
+      },
+      "shapeDeltas": {
+        "mid-peak": 4,
+        "rebound": 1,
+        "rising": -2,
+        "slow-burn": -3,
+        "u-shaped": -1,
+        "rollercoaster": 2,
+        "saved-best-for-last": 1,
+        "front-loaded": 1,
+        "declining": 2,
+        "bad-finale": 5,
+        "consistent": 1,
+        "shape-drift": -2
+      },
+      "added": [
+        {
+          "seriesId": "tt32915471",
+          "title": "2026 FIFA World Cup",
+          "season": 1,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt39400589",
+          "title": "Viral Hit",
+          "season": 1,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt31712270",
+          "title": "Selat Rahem",
+          "season": 1,
+          "seasonYear": 2024
+        },
+        {
+          "seriesId": "tt32593167",
+          "title": "The Embers",
+          "season": 1,
+          "seasonYear": 2025
+        },
+        {
+          "seriesId": "tt9077540",
+          "title": "Sweet Magnolias",
+          "season": 5,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt8712456",
+          "title": "The Inmortal",
+          "season": 3,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt33080707",
+          "title": "Dracula Raps",
+          "season": 1,
+          "seasonYear": 2022
+        }
+      ],
+      "removed": [],
+      "ratingSwings": [
+        {
+          "seriesId": "tt26929559",
+          "title": "100% Wolf: Book of Hath",
+          "season": 2,
+          "from": 7.47,
+          "to": 7.98,
+          "delta": 0.51
+        },
+        {
+          "seriesId": "tt7838238",
+          "title": "Samantha Brown's Places to Love",
+          "season": 7,
+          "from": 6.44,
+          "to": 6.1,
+          "delta": -0.34
+        },
+        {
+          "seriesId": "tt0118252",
+          "title": "All Dogs Go to Heaven: The Series",
+          "season": 2,
+          "from": 8.26,
+          "to": 7.93,
+          "delta": -0.33
+        },
+        {
+          "seriesId": "tt0452046",
+          "title": "Criminal Minds",
+          "season": 19,
+          "from": 7.5,
+          "to": 7.8,
+          "delta": 0.3
+        },
+        {
+          "seriesId": "tt33059022",
+          "title": "Perdiendo el juicio",
+          "season": 1,
+          "from": 6.16,
+          "to": 6.45,
+          "delta": 0.29
+        },
+        {
+          "seriesId": "tt4770018",
+          "title": "Love Island",
+          "season": 13,
+          "from": 6.28,
+          "to": 6.02,
+          "delta": -0.26
+        },
+        {
+          "seriesId": "tt0309141",
+          "title": "Cyberchase",
+          "season": 15,
+          "from": 8.3,
+          "to": 8.56,
+          "delta": 0.26
+        },
+        {
+          "seriesId": "tt29267609",
+          "title": "Hameln",
+          "season": 1,
+          "from": 5.47,
+          "to": 5.23,
+          "delta": -0.24
+        },
+        {
+          "seriesId": "tt21056976",
+          "title": "Dragon Striker",
+          "season": 1,
+          "from": 8.54,
+          "to": 8.75,
+          "delta": 0.21
+        },
+        {
+          "seriesId": "tt6294706",
+          "title": "The Chi",
+          "season": 8,
+          "from": 8.63,
+          "to": 8.43,
+          "delta": -0.2
+        }
+      ],
+      "modifiedCounts": {
+        "avgRating": 426,
+        "seriesVotes": 1766,
+        "shapes": 81,
+        "seriesRating": 92,
+        "episodeCount": 27,
+        "providers": 2
+      }
+    },
+    {
+      "builtAt": "2026-06-15T08:18:17.846Z",
+      "totals": {
+        "seasons": 65320,
+        "delta": 7
+      },
+      "shapeCounts": {
+        "mid-peak": 4610,
+        "rebound": 10002,
+        "rising": 2906,
+        "slow-burn": 4314,
+        "big-finale": 11934,
+        "u-shaped": 3061,
+        "rollercoaster": 13975,
+        "saved-best-for-last": 1515,
+        "front-loaded": 3433,
+        "declining": 1840,
+        "bad-finale": 4613,
+        "consistent": 2593,
+        "shape-drift": 1585
+      },
+      "shapeDeltas": {
+        "mid-peak": 4,
+        "rebound": 1,
+        "rising": -2,
+        "slow-burn": -3,
+        "u-shaped": -1,
+        "rollercoaster": 2,
+        "saved-best-for-last": 1,
+        "front-loaded": 1,
+        "declining": 2,
+        "bad-finale": 5,
+        "consistent": 1,
+        "shape-drift": -2
+      },
+      "added": [
+        {
+          "seriesId": "tt32915471",
+          "title": "2026 FIFA World Cup",
+          "season": 1,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt39400589",
+          "title": "Viral Hit",
+          "season": 1,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt31712270",
+          "title": "Selat Rahem",
+          "season": 1,
+          "seasonYear": 2024
+        },
+        {
+          "seriesId": "tt32593167",
+          "title": "The Embers",
+          "season": 1,
+          "seasonYear": 2025
+        },
+        {
+          "seriesId": "tt9077540",
+          "title": "Sweet Magnolias",
+          "season": 5,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt8712456",
+          "title": "The Inmortal",
+          "season": 3,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt33080707",
+          "title": "Dracula Raps",
+          "season": 1,
+          "seasonYear": 2022
+        }
+      ],
+      "removed": [],
+      "ratingSwings": [
+        {
+          "seriesId": "tt26929559",
+          "title": "100% Wolf: Book of Hath",
+          "season": 2,
+          "from": 7.47,
+          "to": 7.98,
+          "delta": 0.51
+        },
+        {
+          "seriesId": "tt7838238",
+          "title": "Samantha Brown's Places to Love",
+          "season": 7,
+          "from": 6.44,
+          "to": 6.1,
+          "delta": -0.34
+        },
+        {
+          "seriesId": "tt0118252",
+          "title": "All Dogs Go to Heaven: The Series",
+          "season": 2,
+          "from": 8.26,
+          "to": 7.93,
+          "delta": -0.33
+        },
+        {
+          "seriesId": "tt0452046",
+          "title": "Criminal Minds",
+          "season": 19,
+          "from": 7.5,
+          "to": 7.8,
+          "delta": 0.3
+        },
+        {
+          "seriesId": "tt33059022",
+          "title": "Perdiendo el juicio",
+          "season": 1,
+          "from": 6.16,
+          "to": 6.45,
+          "delta": 0.29
+        },
+        {
+          "seriesId": "tt4770018",
+          "title": "Love Island",
+          "season": 13,
+          "from": 6.28,
+          "to": 6.02,
+          "delta": -0.26
+        },
+        {
+          "seriesId": "tt0309141",
+          "title": "Cyberchase",
+          "season": 15,
+          "from": 8.3,
+          "to": 8.56,
+          "delta": 0.26
+        },
+        {
+          "seriesId": "tt29267609",
+          "title": "Hameln",
+          "season": 1,
+          "from": 5.47,
+          "to": 5.23,
+          "delta": -0.24
+        },
+        {
+          "seriesId": "tt21056976",
+          "title": "Dragon Striker",
+          "season": 1,
+          "from": 8.54,
+          "to": 8.75,
+          "delta": 0.21
+        },
+        {
+          "seriesId": "tt6294706",
+          "title": "The Chi",
+          "season": 8,
+          "from": 8.63,
+          "to": 8.43,
+          "delta": -0.2
+        }
+      ],
+      "modifiedCounts": {
+        "avgRating": 426,
+        "seriesVotes": 1766,
+        "shapes": 81,
+        "seriesRating": 92,
+        "episodeCount": 27
+      }
+    },
+    {
       "builtAt": "2026-06-14T08:13:37.605Z",
       "totals": {
         "seasons": 65313,
@@ -5958,434 +6299,6 @@
         "shapes": 204,
         "seriesRating": 371,
         "episodeCount": 98
-      }
-    },
-    {
-      "builtAt": "2026-05-31T07:54:47.024Z",
-      "totals": {
-        "seasons": 65118,
-        "delta": 12
-      },
-      "shapeCounts": {
-        "mid-peak": 4578,
-        "rebound": 9939,
-        "rising": 2913,
-        "slow-burn": 4306,
-        "big-finale": 11940,
-        "u-shaped": 3061,
-        "rollercoaster": 13907,
-        "saved-best-for-last": 1507,
-        "front-loaded": 3428,
-        "declining": 1835,
-        "bad-finale": 4589,
-        "consistent": 2576,
-        "shape-drift": 1595
-      },
-      "shapeDeltas": {
-        "mid-peak": -4,
-        "rebound": 5,
-        "rising": -4,
-        "slow-burn": 2,
-        "big-finale": 12,
-        "u-shaped": 2,
-        "rollercoaster": 1,
-        "saved-best-for-last": -2,
-        "front-loaded": -4,
-        "declining": 3,
-        "consistent": -3,
-        "shape-drift": -1
-      },
-      "added": [
-        {
-          "seriesId": "tt35052852",
-          "title": "Rafa",
-          "season": 1,
-          "seasonYear": 2026
-        },
-        {
-          "seriesId": "tt30291840",
-          "title": "Tenchi in Tokyo",
-          "season": 1,
-          "seasonYear": 1997
-        },
-        {
-          "seriesId": "tt11595618",
-          "title": "American Detective with Lt. Joe Kenda",
-          "season": 6,
-          "seasonYear": 2026
-        },
-        {
-          "seriesId": "tt1426343",
-          "title": "Brain Rush",
-          "season": 1,
-          "seasonYear": 2009
-        },
-        {
-          "seriesId": "tt37041010",
-          "title": "Brazil '70: The Third Star",
-          "season": 1,
-          "seasonYear": 2026
-        },
-        {
-          "seriesId": "tt0200325",
-          "title": "Antiques Roadshow",
-          "season": 48,
-          "seasonYear": 2025
-        },
-        {
-          "seriesId": "tt8026264",
-          "title": "Krylya Imperii",
-          "season": 1,
-          "seasonYear": 2017
-        },
-        {
-          "seriesId": "tt0450948",
-          "title": "Viola Tarakanova",
-          "season": 1,
-          "seasonYear": 2004
-        },
-        {
-          "seriesId": "tt3528306",
-          "title": "This Is Not Happening",
-          "season": 1,
-          "seasonYear": 2013
-        },
-        {
-          "seriesId": "tt40757829",
-          "title": "Human Being",
-          "season": 4,
-          "seasonYear": 2026
-        },
-        {
-          "seriesId": "tt40757829",
-          "title": "Human Being",
-          "season": 5,
-          "seasonYear": 2026
-        },
-        {
-          "seriesId": "tt4228830",
-          "title": "Love in Vegas",
-          "season": 1,
-          "seasonYear": 2014
-        },
-        {
-          "seriesId": "tt41302276",
-          "title": "Satrangi: Badle Ka Khel",
-          "season": 1,
-          "seasonYear": 2026
-        }
-      ],
-      "removed": [
-        {
-          "seriesId": "tt34133054",
-          "title": "The Heir",
-          "season": 1,
-          "seasonYear": 2026
-        }
-      ],
-      "ratingSwings": [
-        {
-          "seriesId": "tt12895894",
-          "title": "Bigtop Burger",
-          "season": 3,
-          "from": 9.15,
-          "to": 8,
-          "delta": -1.15
-        },
-        {
-          "seriesId": "tt30291774",
-          "title": "Tenchi Muyo! Tenchi Universe",
-          "season": 1,
-          "from": 7.8,
-          "to": 6.71,
-          "delta": -1.09
-        },
-        {
-          "seriesId": "tt11766306",
-          "title": "Attaway General",
-          "season": 4,
-          "from": 3.64,
-          "to": 4.63,
-          "delta": 0.99
-        },
-        {
-          "seriesId": "tt41565634",
-          "title": "O Humnava Tum Dena Saath Mera",
-          "season": 1,
-          "from": 9.95,
-          "to": 9.07,
-          "delta": -0.88
-        },
-        {
-          "seriesId": "tt1849622",
-          "title": "Tanked",
-          "season": 11,
-          "from": 7.9,
-          "to": 7.16,
-          "delta": -0.74
-        },
-        {
-          "seriesId": "tt29261323",
-          "title": "Campus Beats",
-          "season": 6,
-          "from": 6.26,
-          "to": 6.86,
-          "delta": 0.6
-        },
-        {
-          "seriesId": "tt12895894",
-          "title": "Bigtop Burger",
-          "season": 2,
-          "from": 8.88,
-          "to": 8.32,
-          "delta": -0.56
-        },
-        {
-          "seriesId": "tt30217222",
-          "title": "Murder Mindfully",
-          "season": 2,
-          "from": 8.44,
-          "to": 7.88,
-          "delta": -0.56
-        },
-        {
-          "seriesId": "tt0172061",
-          "title": "Tales of the South Seas",
-          "season": 1,
-          "from": 7.31,
-          "to": 7.87,
-          "delta": 0.56
-        },
-        {
-          "seriesId": "tt11766306",
-          "title": "Attaway General",
-          "season": 3,
-          "from": 2.32,
-          "to": 2.87,
-          "delta": 0.55
-        }
-      ],
-      "modifiedCounts": {
-        "seriesVotes": 21348,
-        "avgRating": 1107,
-        "seriesRating": 307,
-        "shapes": 193,
-        "episodeCount": 99,
-        "overview": 7,
-        "poster": 6
-      }
-    },
-    {
-      "builtAt": "2026-05-31T07:29:53.785Z",
-      "totals": {
-        "seasons": 65118,
-        "delta": 12
-      },
-      "shapeCounts": {
-        "mid-peak": 4578,
-        "rebound": 9939,
-        "rising": 2913,
-        "slow-burn": 4306,
-        "big-finale": 11940,
-        "u-shaped": 3061,
-        "rollercoaster": 13907,
-        "saved-best-for-last": 1507,
-        "front-loaded": 3428,
-        "declining": 1835,
-        "bad-finale": 4589,
-        "consistent": 2576,
-        "shape-drift": 1595
-      },
-      "shapeDeltas": {
-        "mid-peak": -4,
-        "rebound": 5,
-        "rising": -4,
-        "slow-burn": 2,
-        "big-finale": 12,
-        "u-shaped": 2,
-        "rollercoaster": 1,
-        "saved-best-for-last": -2,
-        "front-loaded": -4,
-        "declining": 3,
-        "consistent": -3,
-        "shape-drift": -1
-      },
-      "added": [
-        {
-          "seriesId": "tt35052852",
-          "title": "Rafa",
-          "season": 1,
-          "seasonYear": 2026
-        },
-        {
-          "seriesId": "tt30291840",
-          "title": "Tenchi in Tokyo",
-          "season": 1,
-          "seasonYear": 1997
-        },
-        {
-          "seriesId": "tt11595618",
-          "title": "American Detective with Lt. Joe Kenda",
-          "season": 6,
-          "seasonYear": 2026
-        },
-        {
-          "seriesId": "tt1426343",
-          "title": "Brain Rush",
-          "season": 1,
-          "seasonYear": 2009
-        },
-        {
-          "seriesId": "tt37041010",
-          "title": "Brazil '70: The Third Star",
-          "season": 1,
-          "seasonYear": 2026
-        },
-        {
-          "seriesId": "tt0200325",
-          "title": "Antiques Roadshow",
-          "season": 48,
-          "seasonYear": 2025
-        },
-        {
-          "seriesId": "tt8026264",
-          "title": "Krylya Imperii",
-          "season": 1,
-          "seasonYear": 2017
-        },
-        {
-          "seriesId": "tt0450948",
-          "title": "Viola Tarakanova",
-          "season": 1,
-          "seasonYear": 2004
-        },
-        {
-          "seriesId": "tt3528306",
-          "title": "This Is Not Happening",
-          "season": 1,
-          "seasonYear": 2013
-        },
-        {
-          "seriesId": "tt40757829",
-          "title": "Human Being",
-          "season": 4,
-          "seasonYear": 2026
-        },
-        {
-          "seriesId": "tt40757829",
-          "title": "Human Being",
-          "season": 5,
-          "seasonYear": 2026
-        },
-        {
-          "seriesId": "tt4228830",
-          "title": "Love in Vegas",
-          "season": 1,
-          "seasonYear": 2014
-        },
-        {
-          "seriesId": "tt41302276",
-          "title": "Satrangi: Badle Ka Khel",
-          "season": 1,
-          "seasonYear": 2026
-        }
-      ],
-      "removed": [
-        {
-          "seriesId": "tt34133054",
-          "title": "The Heir",
-          "season": 1,
-          "seasonYear": 2026
-        }
-      ],
-      "ratingSwings": [
-        {
-          "seriesId": "tt12895894",
-          "title": "Bigtop Burger",
-          "season": 3,
-          "from": 9.15,
-          "to": 8,
-          "delta": -1.15
-        },
-        {
-          "seriesId": "tt30291774",
-          "title": "Tenchi Muyo! Tenchi Universe",
-          "season": 1,
-          "from": 7.8,
-          "to": 6.71,
-          "delta": -1.09
-        },
-        {
-          "seriesId": "tt11766306",
-          "title": "Attaway General",
-          "season": 4,
-          "from": 3.64,
-          "to": 4.63,
-          "delta": 0.99
-        },
-        {
-          "seriesId": "tt41565634",
-          "title": "O Humnava Tum Dena Saath Mera",
-          "season": 1,
-          "from": 9.95,
-          "to": 9.07,
-          "delta": -0.88
-        },
-        {
-          "seriesId": "tt1849622",
-          "title": "Tanked",
-          "season": 11,
-          "from": 7.9,
-          "to": 7.16,
-          "delta": -0.74
-        },
-        {
-          "seriesId": "tt29261323",
-          "title": "Campus Beats",
-          "season": 6,
-          "from": 6.26,
-          "to": 6.86,
-          "delta": 0.6
-        },
-        {
-          "seriesId": "tt12895894",
-          "title": "Bigtop Burger",
-          "season": 2,
-          "from": 8.88,
-          "to": 8.32,
-          "delta": -0.56
-        },
-        {
-          "seriesId": "tt30217222",
-          "title": "Murder Mindfully",
-          "season": 2,
-          "from": 8.44,
-          "to": 7.88,
-          "delta": -0.56
-        },
-        {
-          "seriesId": "tt0172061",
-          "title": "Tales of the South Seas",
-          "season": 1,
-          "from": 7.31,
-          "to": 7.87,
-          "delta": 0.56
-        },
-        {
-          "seriesId": "tt11766306",
-          "title": "Attaway General",
-          "season": 3,
-          "from": 2.32,
-          "to": 2.87,
-          "delta": 0.55
-        }
-      ],
-      "modifiedCounts": {
-        "seriesVotes": 21348,
-        "avgRating": 1107,
-        "seriesRating": 307,
-        "shapes": 193,
-        "episodeCount": 99
       }
     }
   ]
