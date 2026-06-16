@@ -1,6 +1,360 @@
 {
   "updates": [
     {
+      "builtAt": "2026-06-16T08:37:05.757Z",
+      "totals": {
+        "seasons": 65328,
+        "delta": 8
+      },
+      "shapeCounts": {
+        "mid-peak": 4611,
+        "rebound": 10000,
+        "rising": 2911,
+        "slow-burn": 4322,
+        "big-finale": 11934,
+        "u-shaped": 3060,
+        "rollercoaster": 13976,
+        "saved-best-for-last": 1516,
+        "front-loaded": 3436,
+        "declining": 1841,
+        "bad-finale": 4612,
+        "consistent": 2590,
+        "shape-drift": 1586
+      },
+      "shapeDeltas": {
+        "mid-peak": 1,
+        "rebound": -2,
+        "rising": 5,
+        "slow-burn": 8,
+        "u-shaped": -1,
+        "rollercoaster": 1,
+        "saved-best-for-last": 1,
+        "front-loaded": 3,
+        "declining": 1,
+        "bad-finale": -1,
+        "consistent": -3,
+        "shape-drift": 1
+      },
+      "added": [
+        {
+          "seriesId": "tt34675596",
+          "title": "Cape Fear",
+          "season": 1,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt35870921",
+          "title": "Raakh",
+          "season": 1,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt36461751",
+          "title": "El Diario de Jonathan",
+          "season": 1,
+          "seasonYear": 2013
+        },
+        {
+          "seriesId": "tt36461751",
+          "title": "El Diario de Jonathan",
+          "season": 2,
+          "seasonYear": 2014
+        },
+        {
+          "seriesId": "tt36983305",
+          "title": "Drag Brunch Saved My Life",
+          "season": 1,
+          "seasonYear": 2025
+        },
+        {
+          "seriesId": "tt27238424",
+          "title": "The Whole Story with Anderson Cooper",
+          "season": 3,
+          "seasonYear": 2025
+        },
+        {
+          "seriesId": "tt36508039",
+          "title": "In höchster Not - Bergretter im Einsatz",
+          "season": 1,
+          "seasonYear": 2025
+        },
+        {
+          "seriesId": "tt38610771",
+          "title": "Jinn Ki Shadi Unki Shadi",
+          "season": 1,
+          "seasonYear": 2025
+        }
+      ],
+      "removed": [],
+      "ratingSwings": [
+        {
+          "seriesId": "tt34691876",
+          "title": "Gupi",
+          "season": 1,
+          "from": 5.48,
+          "to": 6.02,
+          "delta": 0.54
+        },
+        {
+          "seriesId": "tt23058150",
+          "title": "LOL: Qui Rira Le Dernier?",
+          "season": 3,
+          "from": 6.3,
+          "to": 6.7,
+          "delta": 0.4
+        },
+        {
+          "seriesId": "tt6491484",
+          "title": "Tales from Outer Suburbia",
+          "season": 1,
+          "from": 9.04,
+          "to": 8.66,
+          "delta": -0.38
+        },
+        {
+          "seriesId": "tt31260463",
+          "title": "Our Stupid School",
+          "season": 2,
+          "from": 5.73,
+          "to": 5.37,
+          "delta": -0.36
+        },
+        {
+          "seriesId": "tt4859164",
+          "title": "The Loud House",
+          "season": 10,
+          "from": 7.86,
+          "to": 7.53,
+          "delta": -0.33
+        },
+        {
+          "seriesId": "tt38733253",
+          "title": "High Horse: The Black Cowboy",
+          "season": 1,
+          "from": 7.63,
+          "to": 7.33,
+          "delta": -0.3
+        },
+        {
+          "seriesId": "tt20887486",
+          "title": "SisterS",
+          "season": 2,
+          "from": 8.23,
+          "to": 7.95,
+          "delta": -0.28
+        },
+        {
+          "seriesId": "tt37452743",
+          "title": "Meet Iron Man and His Awesome Friends",
+          "season": 1,
+          "from": 8.04,
+          "to": 8.32,
+          "delta": 0.28
+        },
+        {
+          "seriesId": "tt32915471",
+          "title": "2026 FIFA World Cup",
+          "season": 1,
+          "from": 6.18,
+          "to": 6.44,
+          "delta": 0.26
+        },
+        {
+          "seriesId": "tt37403273",
+          "title": "Two Years Later",
+          "season": 1,
+          "from": 7.58,
+          "to": 7.84,
+          "delta": 0.26
+        }
+      ],
+      "modifiedCounts": {
+        "seriesVotes": 2157,
+        "avgRating": 637,
+        "shapes": 114,
+        "seriesRating": 152,
+        "episodeCount": 47,
+        "poster": 3,
+        "overview": 3
+      }
+    },
+    {
+      "builtAt": "2026-06-16T08:11:24.817Z",
+      "totals": {
+        "seasons": 65328,
+        "delta": 8
+      },
+      "shapeCounts": {
+        "mid-peak": 4611,
+        "rebound": 10000,
+        "rising": 2911,
+        "slow-burn": 4322,
+        "big-finale": 11934,
+        "u-shaped": 3060,
+        "rollercoaster": 13976,
+        "saved-best-for-last": 1516,
+        "front-loaded": 3436,
+        "declining": 1841,
+        "bad-finale": 4612,
+        "consistent": 2590,
+        "shape-drift": 1586
+      },
+      "shapeDeltas": {
+        "mid-peak": 1,
+        "rebound": -2,
+        "rising": 5,
+        "slow-burn": 8,
+        "u-shaped": -1,
+        "rollercoaster": 1,
+        "saved-best-for-last": 1,
+        "front-loaded": 3,
+        "declining": 1,
+        "bad-finale": -1,
+        "consistent": -3,
+        "shape-drift": 1
+      },
+      "added": [
+        {
+          "seriesId": "tt34675596",
+          "title": "Cape Fear",
+          "season": 1,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt35870921",
+          "title": "Raakh",
+          "season": 1,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt36461751",
+          "title": "El Diario de Jonathan",
+          "season": 1,
+          "seasonYear": 2013
+        },
+        {
+          "seriesId": "tt36461751",
+          "title": "El Diario de Jonathan",
+          "season": 2,
+          "seasonYear": 2014
+        },
+        {
+          "seriesId": "tt36983305",
+          "title": "Drag Brunch Saved My Life",
+          "season": 1,
+          "seasonYear": 2025
+        },
+        {
+          "seriesId": "tt27238424",
+          "title": "The Whole Story with Anderson Cooper",
+          "season": 3,
+          "seasonYear": 2025
+        },
+        {
+          "seriesId": "tt36508039",
+          "title": "In höchster Not - Bergretter im Einsatz",
+          "season": 1,
+          "seasonYear": 2025
+        },
+        {
+          "seriesId": "tt38610771",
+          "title": "Jinn Ki Shadi Unki Shadi",
+          "season": 1,
+          "seasonYear": 2025
+        }
+      ],
+      "removed": [],
+      "ratingSwings": [
+        {
+          "seriesId": "tt34691876",
+          "title": "Gupi",
+          "season": 1,
+          "from": 5.48,
+          "to": 6.02,
+          "delta": 0.54
+        },
+        {
+          "seriesId": "tt23058150",
+          "title": "LOL: Qui Rira Le Dernier?",
+          "season": 3,
+          "from": 6.3,
+          "to": 6.7,
+          "delta": 0.4
+        },
+        {
+          "seriesId": "tt6491484",
+          "title": "Tales from Outer Suburbia",
+          "season": 1,
+          "from": 9.04,
+          "to": 8.66,
+          "delta": -0.38
+        },
+        {
+          "seriesId": "tt31260463",
+          "title": "Our Stupid School",
+          "season": 2,
+          "from": 5.73,
+          "to": 5.37,
+          "delta": -0.36
+        },
+        {
+          "seriesId": "tt4859164",
+          "title": "The Loud House",
+          "season": 10,
+          "from": 7.86,
+          "to": 7.53,
+          "delta": -0.33
+        },
+        {
+          "seriesId": "tt38733253",
+          "title": "High Horse: The Black Cowboy",
+          "season": 1,
+          "from": 7.63,
+          "to": 7.33,
+          "delta": -0.3
+        },
+        {
+          "seriesId": "tt20887486",
+          "title": "SisterS",
+          "season": 2,
+          "from": 8.23,
+          "to": 7.95,
+          "delta": -0.28
+        },
+        {
+          "seriesId": "tt37452743",
+          "title": "Meet Iron Man and His Awesome Friends",
+          "season": 1,
+          "from": 8.04,
+          "to": 8.32,
+          "delta": 0.28
+        },
+        {
+          "seriesId": "tt32915471",
+          "title": "2026 FIFA World Cup",
+          "season": 1,
+          "from": 6.18,
+          "to": 6.44,
+          "delta": 0.26
+        },
+        {
+          "seriesId": "tt37403273",
+          "title": "Two Years Later",
+          "season": 1,
+          "from": 7.58,
+          "to": 7.84,
+          "delta": 0.26
+        }
+      ],
+      "modifiedCounts": {
+        "seriesVotes": 2157,
+        "avgRating": 637,
+        "shapes": 114,
+        "seriesRating": 152,
+        "episodeCount": 47
+      }
+    },
+    {
       "builtAt": "2026-06-15T08:43:48.963Z",
       "totals": {
         "seasons": 65320,
@@ -5849,456 +6203,6 @@
         "shapes": 233,
         "seriesRating": 362,
         "episodeCount": 86
-      }
-    },
-    {
-      "builtAt": "2026-06-01T08:29:11.581Z",
-      "totals": {
-        "seasons": 65132,
-        "delta": 14
-      },
-      "shapeCounts": {
-        "mid-peak": 4578,
-        "rebound": 9946,
-        "rising": 2919,
-        "slow-burn": 4305,
-        "big-finale": 11946,
-        "u-shaped": 3062,
-        "rollercoaster": 13912,
-        "saved-best-for-last": 1507,
-        "front-loaded": 3429,
-        "declining": 1832,
-        "bad-finale": 4588,
-        "consistent": 2584,
-        "shape-drift": 1594
-      },
-      "shapeDeltas": {
-        "rebound": 7,
-        "rising": 6,
-        "slow-burn": -1,
-        "big-finale": 6,
-        "u-shaped": 1,
-        "rollercoaster": 5,
-        "front-loaded": 1,
-        "declining": -3,
-        "bad-finale": -1,
-        "consistent": 8,
-        "shape-drift": -1
-      },
-      "added": [
-        {
-          "seriesId": "tt14873528",
-          "title": "The Nate & Jeremiah Home Project",
-          "season": 1,
-          "seasonYear": 2021
-        },
-        {
-          "seriesId": "tt6833398",
-          "title": "Nate & Jeremiah by Design",
-          "season": 2,
-          "seasonYear": 2018
-        },
-        {
-          "seriesId": "tt6833398",
-          "title": "Nate & Jeremiah by Design",
-          "season": 3,
-          "seasonYear": 2019
-        },
-        {
-          "seriesId": "tt12011572",
-          "title": "Nate & Jeremiah Save My House",
-          "season": 1,
-          "seasonYear": 2020
-        },
-        {
-          "seriesId": "tt12011572",
-          "title": "Nate & Jeremiah Save My House",
-          "season": 3,
-          "seasonYear": 2021
-        },
-        {
-          "seriesId": "tt37150794",
-          "title": "Bachelor Mansion Takeover",
-          "season": 1,
-          "seasonYear": 2026
-        },
-        {
-          "seriesId": "tt36626294",
-          "title": "4 Element: The Air",
-          "season": 1,
-          "seasonYear": 2026
-        },
-        {
-          "seriesId": "tt7150338",
-          "title": "Black Jack",
-          "season": 1,
-          "seasonYear": 2004
-        },
-        {
-          "seriesId": "tt38774373",
-          "title": "Chaotic Good Barbarian",
-          "season": 1,
-          "seasonYear": 2023
-        },
-        {
-          "seriesId": "tt1837341",
-          "title": "Realnye patsany",
-          "season": 7,
-          "seasonYear": 2019
-        },
-        {
-          "seriesId": "tt7030294",
-          "title": "Team Bachstad",
-          "season": 11,
-          "seasonYear": 2025
-        },
-        {
-          "seriesId": "tt0346285",
-          "title": "Neighborhood Story",
-          "season": 1,
-          "seasonYear": 1995
-        },
-        {
-          "seriesId": "tt36596401",
-          "title": "Minecraft Cops and Robbers",
-          "season": 1,
-          "seasonYear": 2014
-        },
-        {
-          "seriesId": "tt35636900",
-          "title": "James.",
-          "season": 1,
-          "seasonYear": 2026
-        },
-        {
-          "seriesId": "tt42445481",
-          "title": "Lost to You",
-          "season": 1,
-          "seasonYear": 2026
-        }
-      ],
-      "removed": [
-        {
-          "seriesId": "tt35713755",
-          "title": "Black Jack",
-          "season": 1,
-          "seasonYear": 2004
-        }
-      ],
-      "ratingSwings": [
-        {
-          "seriesId": "tt1261356",
-          "title": "The Wendy Williams Show",
-          "season": 5,
-          "from": 8.43,
-          "to": 7.42,
-          "delta": -1.01
-        },
-        {
-          "seriesId": "tt0268084",
-          "title": "Hyakujuu Sentai Gaoranger",
-          "season": 1,
-          "from": 8.32,
-          "to": 9.11,
-          "delta": 0.79
-        },
-        {
-          "seriesId": "tt37041010",
-          "title": "Brazil '70: The Third Star",
-          "season": 1,
-          "from": 7.57,
-          "to": 8.34,
-          "delta": 0.77
-        },
-        {
-          "seriesId": "tt6833398",
-          "title": "Nate & Jeremiah by Design",
-          "season": 1,
-          "from": 9.09,
-          "to": 9.84,
-          "delta": 0.75
-        },
-        {
-          "seriesId": "tt36667165",
-          "title": "La casa nostra",
-          "season": 1,
-          "from": 7.05,
-          "to": 7.59,
-          "delta": 0.54
-        },
-        {
-          "seriesId": "tt20737440",
-          "title": "Sam and Colby: The Paranormal",
-          "season": 8,
-          "from": 8.8,
-          "to": 8.29,
-          "delta": -0.51
-        },
-        {
-          "seriesId": "tt0446809",
-          "title": "Deadliest Catch",
-          "season": 22,
-          "from": 8.1,
-          "to": 7.62,
-          "delta": -0.48
-        },
-        {
-          "seriesId": "tt31365727",
-          "title": "A renitens",
-          "season": 3,
-          "from": 4.83,
-          "to": 4.37,
-          "delta": -0.46
-        },
-        {
-          "seriesId": "tt39643967",
-          "title": "Desi Bling",
-          "season": 1,
-          "from": 6.63,
-          "to": 6.2,
-          "delta": -0.43
-        },
-        {
-          "seriesId": "tt30469812",
-          "title": "Kache Rishtey",
-          "season": 1,
-          "from": 7.15,
-          "to": 7.58,
-          "delta": 0.43
-        }
-      ],
-      "modifiedCounts": {
-        "seriesVotes": 22562,
-        "avgRating": 1107,
-        "shapes": 204,
-        "seriesRating": 371,
-        "episodeCount": 98,
-        "poster": 10,
-        "overview": 1
-      }
-    },
-    {
-      "builtAt": "2026-06-01T08:04:16.056Z",
-      "totals": {
-        "seasons": 65132,
-        "delta": 14
-      },
-      "shapeCounts": {
-        "mid-peak": 4578,
-        "rebound": 9946,
-        "rising": 2919,
-        "slow-burn": 4305,
-        "big-finale": 11946,
-        "u-shaped": 3062,
-        "rollercoaster": 13912,
-        "saved-best-for-last": 1507,
-        "front-loaded": 3429,
-        "declining": 1832,
-        "bad-finale": 4588,
-        "consistent": 2584,
-        "shape-drift": 1594
-      },
-      "shapeDeltas": {
-        "rebound": 7,
-        "rising": 6,
-        "slow-burn": -1,
-        "big-finale": 6,
-        "u-shaped": 1,
-        "rollercoaster": 5,
-        "front-loaded": 1,
-        "declining": -3,
-        "bad-finale": -1,
-        "consistent": 8,
-        "shape-drift": -1
-      },
-      "added": [
-        {
-          "seriesId": "tt14873528",
-          "title": "The Nate & Jeremiah Home Project",
-          "season": 1,
-          "seasonYear": 2021
-        },
-        {
-          "seriesId": "tt6833398",
-          "title": "Nate & Jeremiah by Design",
-          "season": 2,
-          "seasonYear": 2018
-        },
-        {
-          "seriesId": "tt6833398",
-          "title": "Nate & Jeremiah by Design",
-          "season": 3,
-          "seasonYear": 2019
-        },
-        {
-          "seriesId": "tt12011572",
-          "title": "Nate & Jeremiah Save My House",
-          "season": 1,
-          "seasonYear": 2020
-        },
-        {
-          "seriesId": "tt12011572",
-          "title": "Nate & Jeremiah Save My House",
-          "season": 3,
-          "seasonYear": 2021
-        },
-        {
-          "seriesId": "tt37150794",
-          "title": "Bachelor Mansion Takeover",
-          "season": 1,
-          "seasonYear": 2026
-        },
-        {
-          "seriesId": "tt36626294",
-          "title": "4 Element: The Air",
-          "season": 1,
-          "seasonYear": 2026
-        },
-        {
-          "seriesId": "tt7150338",
-          "title": "Black Jack",
-          "season": 1,
-          "seasonYear": 2004
-        },
-        {
-          "seriesId": "tt38774373",
-          "title": "Chaotic Good Barbarian",
-          "season": 1,
-          "seasonYear": 2023
-        },
-        {
-          "seriesId": "tt1837341",
-          "title": "Realnye patsany",
-          "season": 7,
-          "seasonYear": 2019
-        },
-        {
-          "seriesId": "tt7030294",
-          "title": "Team Bachstad",
-          "season": 11,
-          "seasonYear": 2025
-        },
-        {
-          "seriesId": "tt0346285",
-          "title": "Neighborhood Story",
-          "season": 1,
-          "seasonYear": 1995
-        },
-        {
-          "seriesId": "tt36596401",
-          "title": "Minecraft Cops and Robbers",
-          "season": 1,
-          "seasonYear": 2014
-        },
-        {
-          "seriesId": "tt35636900",
-          "title": "James.",
-          "season": 1,
-          "seasonYear": 2026
-        },
-        {
-          "seriesId": "tt42445481",
-          "title": "Lost to You",
-          "season": 1,
-          "seasonYear": 2026
-        }
-      ],
-      "removed": [
-        {
-          "seriesId": "tt35713755",
-          "title": "Black Jack",
-          "season": 1,
-          "seasonYear": 2004
-        }
-      ],
-      "ratingSwings": [
-        {
-          "seriesId": "tt1261356",
-          "title": "The Wendy Williams Show",
-          "season": 5,
-          "from": 8.43,
-          "to": 7.42,
-          "delta": -1.01
-        },
-        {
-          "seriesId": "tt0268084",
-          "title": "Hyakujuu Sentai Gaoranger",
-          "season": 1,
-          "from": 8.32,
-          "to": 9.11,
-          "delta": 0.79
-        },
-        {
-          "seriesId": "tt37041010",
-          "title": "Brazil '70: The Third Star",
-          "season": 1,
-          "from": 7.57,
-          "to": 8.34,
-          "delta": 0.77
-        },
-        {
-          "seriesId": "tt6833398",
-          "title": "Nate & Jeremiah by Design",
-          "season": 1,
-          "from": 9.09,
-          "to": 9.84,
-          "delta": 0.75
-        },
-        {
-          "seriesId": "tt36667165",
-          "title": "La casa nostra",
-          "season": 1,
-          "from": 7.05,
-          "to": 7.59,
-          "delta": 0.54
-        },
-        {
-          "seriesId": "tt20737440",
-          "title": "Sam and Colby: The Paranormal",
-          "season": 8,
-          "from": 8.8,
-          "to": 8.29,
-          "delta": -0.51
-        },
-        {
-          "seriesId": "tt0446809",
-          "title": "Deadliest Catch",
-          "season": 22,
-          "from": 8.1,
-          "to": 7.62,
-          "delta": -0.48
-        },
-        {
-          "seriesId": "tt31365727",
-          "title": "A renitens",
-          "season": 3,
-          "from": 4.83,
-          "to": 4.37,
-          "delta": -0.46
-        },
-        {
-          "seriesId": "tt39643967",
-          "title": "Desi Bling",
-          "season": 1,
-          "from": 6.63,
-          "to": 6.2,
-          "delta": -0.43
-        },
-        {
-          "seriesId": "tt30469812",
-          "title": "Kache Rishtey",
-          "season": 1,
-          "from": 7.15,
-          "to": 7.58,
-          "delta": 0.43
-        }
-      ],
-      "modifiedCounts": {
-        "seriesVotes": 22562,
-        "avgRating": 1107,
-        "shapes": 204,
-        "seriesRating": 371,
-        "episodeCount": 98
       }
     }
   ]
