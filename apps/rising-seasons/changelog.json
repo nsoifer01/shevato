@@ -1,6 +1,462 @@
 {
   "updates": [
     {
+      "builtAt": "2026-06-17T08:34:35.913Z",
+      "totals": {
+        "seasons": 65345,
+        "delta": 17
+      },
+      "shapeCounts": {
+        "mid-peak": 4608,
+        "rebound": 10004,
+        "rising": 2918,
+        "slow-burn": 4329,
+        "big-finale": 11949,
+        "u-shaped": 3060,
+        "rollercoaster": 13982,
+        "saved-best-for-last": 1516,
+        "front-loaded": 3436,
+        "declining": 1842,
+        "bad-finale": 4610,
+        "consistent": 2586,
+        "shape-drift": 1587
+      },
+      "shapeDeltas": {
+        "mid-peak": -3,
+        "rebound": 4,
+        "rising": 7,
+        "slow-burn": 7,
+        "big-finale": 15,
+        "rollercoaster": 6,
+        "declining": 1,
+        "bad-finale": -2,
+        "consistent": -4,
+        "shape-drift": 1
+      },
+      "added": [
+        {
+          "seriesId": "tt0086723",
+          "title": "Guest from the Future",
+          "season": 1,
+          "seasonYear": 1985
+        },
+        {
+          "seriesId": "tt10530900",
+          "title": "Gullak",
+          "season": 5,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt37096911",
+          "title": "The First Jasmine",
+          "season": 1,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt0874001",
+          "title": "Flag",
+          "season": 1,
+          "seasonYear": 2006
+        },
+        {
+          "seriesId": "tt8291962",
+          "title": "The Phantom Menace: Web Documentaries",
+          "season": 1,
+          "seasonYear": 1998
+        },
+        {
+          "seriesId": "tt37232828",
+          "title": "Mickey & Minnie's Holiday Songs: Halloween",
+          "season": 1,
+          "seasonYear": 2025
+        },
+        {
+          "seriesId": "tt39443474",
+          "title": "Chasing Love",
+          "season": 1,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt10665386",
+          "title": "Couples Therapy",
+          "season": 5,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt21980396",
+          "title": "Five Nights at Freddy's: The Musical",
+          "season": 2,
+          "seasonYear": 2016
+        },
+        {
+          "seriesId": "tt28510783",
+          "title": "G'wed",
+          "season": 3,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt40761508",
+          "title": "Bon Cop, Bad Cop",
+          "season": 1,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt38355364",
+          "title": "Magic Move",
+          "season": 1,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt42575478",
+          "title": "AAA on FOX",
+          "season": 1,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt32645659",
+          "title": "Bi Atefe",
+          "season": 1,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt43219806",
+          "title": "The Tom Green Farm",
+          "season": 1,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt37596295",
+          "title": "Ecos do Mar",
+          "season": 1,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt43349460",
+          "title": "Squatters: Get the F*** Out of My House",
+          "season": 1,
+          "seasonYear": 2026
+        }
+      ],
+      "removed": [],
+      "ratingSwings": [
+        {
+          "seriesId": "tt39387426",
+          "title": "Jae-seok's B&B Rules!",
+          "season": 1,
+          "from": 9.08,
+          "to": 8.46,
+          "delta": -0.62
+        },
+        {
+          "seriesId": "tt13028308",
+          "title": "I Want You to Show Me Your Panties with a Disgusted Face",
+          "season": 4,
+          "from": 7.45,
+          "to": 6.92,
+          "delta": -0.53
+        },
+        {
+          "seriesId": "tt42206645",
+          "title": "Reborn Rookie",
+          "season": 1,
+          "from": 8.82,
+          "to": 9.15,
+          "delta": 0.33
+        },
+        {
+          "seriesId": "tt42152890",
+          "title": "Double Helix",
+          "season": 1,
+          "from": 7.42,
+          "to": 7.72,
+          "delta": 0.3
+        },
+        {
+          "seriesId": "tt39400589",
+          "title": "Viral Hit",
+          "season": 1,
+          "from": 8.23,
+          "to": 8.53,
+          "delta": 0.3
+        },
+        {
+          "seriesId": "tt10183798",
+          "title": "Rock the Block",
+          "season": 7,
+          "from": 6.89,
+          "to": 6.59,
+          "delta": -0.3
+        },
+        {
+          "seriesId": "tt1433870",
+          "title": "MasterChef: Australia",
+          "season": 18,
+          "from": 7.75,
+          "to": 7.45,
+          "delta": -0.3
+        },
+        {
+          "seriesId": "tt2926368",
+          "title": "When a Man's in Love",
+          "season": 1,
+          "from": 6.53,
+          "to": 6.83,
+          "delta": 0.3
+        },
+        {
+          "seriesId": "tt43227998",
+          "title": "Ward Ala Foll Wa Yasmeen",
+          "season": 1,
+          "from": 7.66,
+          "to": 7.95,
+          "delta": 0.29
+        },
+        {
+          "seriesId": "tt39044698",
+          "title": "Enemies with Benefits",
+          "season": 1,
+          "from": 9.6,
+          "to": 9.32,
+          "delta": -0.28
+        }
+      ],
+      "modifiedCounts": {
+        "seriesVotes": 3603,
+        "seriesRating": 156,
+        "avgRating": 793,
+        "shapes": 164,
+        "episodeCount": 104
+      }
+    },
+    {
+      "builtAt": "2026-06-17T08:06:18.302Z",
+      "totals": {
+        "seasons": 65345,
+        "delta": 17
+      },
+      "shapeCounts": {
+        "mid-peak": 4608,
+        "rebound": 10004,
+        "rising": 2918,
+        "slow-burn": 4329,
+        "big-finale": 11949,
+        "u-shaped": 3060,
+        "rollercoaster": 13982,
+        "saved-best-for-last": 1516,
+        "front-loaded": 3436,
+        "declining": 1842,
+        "bad-finale": 4610,
+        "consistent": 2586,
+        "shape-drift": 1587
+      },
+      "shapeDeltas": {
+        "mid-peak": -3,
+        "rebound": 4,
+        "rising": 7,
+        "slow-burn": 7,
+        "big-finale": 15,
+        "rollercoaster": 6,
+        "declining": 1,
+        "bad-finale": -2,
+        "consistent": -4,
+        "shape-drift": 1
+      },
+      "added": [
+        {
+          "seriesId": "tt0086723",
+          "title": "Guest from the Future",
+          "season": 1,
+          "seasonYear": 1985
+        },
+        {
+          "seriesId": "tt10530900",
+          "title": "Gullak",
+          "season": 5,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt37096911",
+          "title": "The First Jasmine",
+          "season": 1,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt0874001",
+          "title": "Flag",
+          "season": 1,
+          "seasonYear": 2006
+        },
+        {
+          "seriesId": "tt8291962",
+          "title": "The Phantom Menace: Web Documentaries",
+          "season": 1,
+          "seasonYear": 1998
+        },
+        {
+          "seriesId": "tt37232828",
+          "title": "Mickey & Minnie's Holiday Songs: Halloween",
+          "season": 1,
+          "seasonYear": 2025
+        },
+        {
+          "seriesId": "tt39443474",
+          "title": "Chasing Love",
+          "season": 1,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt10665386",
+          "title": "Couples Therapy",
+          "season": 5,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt21980396",
+          "title": "Five Nights at Freddy's: The Musical",
+          "season": 2,
+          "seasonYear": 2016
+        },
+        {
+          "seriesId": "tt28510783",
+          "title": "G'wed",
+          "season": 3,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt40761508",
+          "title": "Bon Cop, Bad Cop",
+          "season": 1,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt38355364",
+          "title": "Magic Move",
+          "season": 1,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt42575478",
+          "title": "AAA on FOX",
+          "season": 1,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt32645659",
+          "title": "Bi Atefe",
+          "season": 1,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt43219806",
+          "title": "The Tom Green Farm",
+          "season": 1,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt37596295",
+          "title": "Ecos do Mar",
+          "season": 1,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt43349460",
+          "title": "Squatters: Get the F*** Out of My House",
+          "season": 1,
+          "seasonYear": 2026
+        }
+      ],
+      "removed": [],
+      "ratingSwings": [
+        {
+          "seriesId": "tt39387426",
+          "title": "Jae-seok's B&B Rules!",
+          "season": 1,
+          "from": 9.08,
+          "to": 8.46,
+          "delta": -0.62
+        },
+        {
+          "seriesId": "tt13028308",
+          "title": "I Want You to Show Me Your Panties with a Disgusted Face",
+          "season": 4,
+          "from": 7.45,
+          "to": 6.92,
+          "delta": -0.53
+        },
+        {
+          "seriesId": "tt42206645",
+          "title": "Reborn Rookie",
+          "season": 1,
+          "from": 8.82,
+          "to": 9.15,
+          "delta": 0.33
+        },
+        {
+          "seriesId": "tt42152890",
+          "title": "Double Helix",
+          "season": 1,
+          "from": 7.42,
+          "to": 7.72,
+          "delta": 0.3
+        },
+        {
+          "seriesId": "tt39400589",
+          "title": "Viral Hit",
+          "season": 1,
+          "from": 8.23,
+          "to": 8.53,
+          "delta": 0.3
+        },
+        {
+          "seriesId": "tt10183798",
+          "title": "Rock the Block",
+          "season": 7,
+          "from": 6.89,
+          "to": 6.59,
+          "delta": -0.3
+        },
+        {
+          "seriesId": "tt1433870",
+          "title": "MasterChef: Australia",
+          "season": 18,
+          "from": 7.75,
+          "to": 7.45,
+          "delta": -0.3
+        },
+        {
+          "seriesId": "tt2926368",
+          "title": "When a Man's in Love",
+          "season": 1,
+          "from": 6.53,
+          "to": 6.83,
+          "delta": 0.3
+        },
+        {
+          "seriesId": "tt43227998",
+          "title": "Ward Ala Foll Wa Yasmeen",
+          "season": 1,
+          "from": 7.66,
+          "to": 7.95,
+          "delta": 0.29
+        },
+        {
+          "seriesId": "tt39044698",
+          "title": "Enemies with Benefits",
+          "season": 1,
+          "from": 9.6,
+          "to": 9.32,
+          "delta": -0.28
+        }
+      ],
+      "modifiedCounts": {
+        "seriesVotes": 3603,
+        "seriesRating": 156,
+        "avgRating": 793,
+        "shapes": 164,
+        "episodeCount": 104
+      }
+    },
+    {
       "builtAt": "2026-06-16T08:37:05.757Z",
       "totals": {
         "seasons": 65328,
@@ -5635,574 +6091,6 @@
         "seriesRating": 320,
         "shapes": 240,
         "episodeCount": 104
-      }
-    },
-    {
-      "builtAt": "2026-06-02T08:21:30.461Z",
-      "totals": {
-        "seasons": 65156,
-        "delta": 24
-      },
-      "shapeCounts": {
-        "mid-peak": 4583,
-        "rebound": 9937,
-        "rising": 2919,
-        "slow-burn": 4315,
-        "big-finale": 11947,
-        "u-shaped": 3059,
-        "rollercoaster": 13928,
-        "saved-best-for-last": 1506,
-        "front-loaded": 3436,
-        "declining": 1832,
-        "bad-finale": 4592,
-        "consistent": 2585,
-        "shape-drift": 1594
-      },
-      "shapeDeltas": {
-        "mid-peak": 5,
-        "rebound": -9,
-        "slow-burn": 10,
-        "big-finale": 1,
-        "u-shaped": -3,
-        "rollercoaster": 16,
-        "saved-best-for-last": -1,
-        "front-loaded": 7,
-        "bad-finale": 4,
-        "consistent": 1
-      },
-      "added": [
-        {
-          "seriesId": "tt0194605",
-          "title": "The Demon Headmaster",
-          "season": 3,
-          "seasonYear": 1998
-        },
-        {
-          "seriesId": "tt1868207",
-          "title": "Atop the Fourth Wall",
-          "season": 9,
-          "seasonYear": 2016
-        },
-        {
-          "seriesId": "tt0820392",
-          "title": "Come Dine with Me",
-          "season": 10,
-          "seasonYear": 2009
-        },
-        {
-          "seriesId": "tt23052556",
-          "title": "Katar - WM der Schande",
-          "season": 1,
-          "seasonYear": 2022
-        },
-        {
-          "seriesId": "tt27723333",
-          "title": "Club Hooligans",
-          "season": 2,
-          "seasonYear": 2026
-        },
-        {
-          "seriesId": "tt3469050",
-          "title": "90 Day Fiancé",
-          "season": 12,
-          "seasonYear": 2026
-        },
-        {
-          "seriesId": "tt12941202",
-          "title": "Mortal Glitch",
-          "season": 1,
-          "seasonYear": 2020
-        },
-        {
-          "seriesId": "tt1773182",
-          "title": "Love It or List It",
-          "season": 20,
-          "seasonYear": 2025
-        },
-        {
-          "seriesId": "tt31433766",
-          "title": "Dear England",
-          "season": 1,
-          "seasonYear": 2026
-        },
-        {
-          "seriesId": "tt34724697",
-          "title": "Only Child",
-          "season": 2,
-          "seasonYear": 2026
-        },
-        {
-          "seriesId": "tt35725229",
-          "title": "Falling",
-          "season": 1,
-          "seasonYear": 2026
-        },
-        {
-          "seriesId": "tt43029507",
-          "title": "Make That Movie",
-          "season": 1,
-          "seasonYear": 2026
-        },
-        {
-          "seriesId": "tt0172062",
-          "title": "Undermind",
-          "season": 1,
-          "seasonYear": 1965
-        },
-        {
-          "seriesId": "tt13998708",
-          "title": "Das Gipfeltreffen - Schubert, Sträter und König retten die Welt",
-          "season": 3,
-          "seasonYear": 2021
-        },
-        {
-          "seriesId": "tt13998708",
-          "title": "Das Gipfeltreffen - Schubert, Sträter und König retten die Welt",
-          "season": 5,
-          "seasonYear": 2023
-        },
-        {
-          "seriesId": "tt16384576",
-          "title": "Underground of Berlin",
-          "season": 3,
-          "seasonYear": 2022
-        },
-        {
-          "seriesId": "tt16385150",
-          "title": "Shark Tank India",
-          "season": 5,
-          "seasonYear": 2026
-        },
-        {
-          "seriesId": "tt22688206",
-          "title": "Strula",
-          "season": 5,
-          "seasonYear": 2023
-        },
-        {
-          "seriesId": "tt36118374",
-          "title": "Two Weeks in August",
-          "season": 1,
-          "seasonYear": 2026
-        },
-        {
-          "seriesId": "tt35932342",
-          "title": "Alejandro Sanz: When No One Sees Me",
-          "season": 1,
-          "seasonYear": 2026
-        },
-        {
-          "seriesId": "tt39089566",
-          "title": "Death Cap: The Mushroom Murders",
-          "season": 1,
-          "seasonYear": 2025
-        },
-        {
-          "seriesId": "tt40757829",
-          "title": "Human Being",
-          "season": 1,
-          "seasonYear": 2026
-        },
-        {
-          "seriesId": "tt40757829",
-          "title": "Human Being",
-          "season": 2,
-          "seasonYear": 2026
-        },
-        {
-          "seriesId": "tt40757829",
-          "title": "Human Being",
-          "season": 3,
-          "seasonYear": 2026
-        },
-        {
-          "seriesId": "tt3676076",
-          "title": "Foot 2 Rue Extreme",
-          "season": 1,
-          "seasonYear": 2014
-        }
-      ],
-      "removed": [
-        {
-          "seriesId": "tt0820392",
-          "title": "Come Dine with Me",
-          "season": 6,
-          "seasonYear": 2009
-        }
-      ],
-      "ratingSwings": [
-        {
-          "seriesId": "tt22688206",
-          "title": "Strula",
-          "season": 2,
-          "from": 6.7,
-          "to": 7.76,
-          "delta": 1.06
-        },
-        {
-          "seriesId": "tt41302276",
-          "title": "Satrangi: Badle Ka Khel",
-          "season": 1,
-          "from": 8.89,
-          "to": 7.86,
-          "delta": -1.03
-        },
-        {
-          "seriesId": "tt40757829",
-          "title": "Human Being",
-          "season": 4,
-          "from": 9.3,
-          "to": 8.53,
-          "delta": -0.77
-        },
-        {
-          "seriesId": "tt0068120",
-          "title": "The Price Is Right",
-          "season": 1,
-          "from": 8.43,
-          "to": 9.13,
-          "delta": 0.7
-        },
-        {
-          "seriesId": "tt40757829",
-          "title": "Human Being",
-          "season": 5,
-          "from": 9.4,
-          "to": 8.7,
-          "delta": -0.7
-        },
-        {
-          "seriesId": "tt21105044",
-          "title": "Bir Küçük Gün Isigi",
-          "season": 1,
-          "from": 9.16,
-          "to": 8.47,
-          "delta": -0.69
-        },
-        {
-          "seriesId": "tt0845088",
-          "title": "Back Streets",
-          "season": 6,
-          "from": 5.87,
-          "to": 6.45,
-          "delta": 0.58
-        },
-        {
-          "seriesId": "tt22688206",
-          "title": "Strula",
-          "season": 3,
-          "from": 7.12,
-          "to": 7.68,
-          "delta": 0.56
-        },
-        {
-          "seriesId": "tt22688206",
-          "title": "Strula",
-          "season": 8,
-          "from": 6.38,
-          "to": 6.93,
-          "delta": 0.55
-        },
-        {
-          "seriesId": "tt0194605",
-          "title": "The Demon Headmaster",
-          "season": 2,
-          "from": 6.56,
-          "to": 7.09,
-          "delta": 0.53
-        }
-      ],
-      "modifiedCounts": {
-        "seriesVotes": 23707,
-        "avgRating": 1269,
-        "shapes": 233,
-        "seriesRating": 362,
-        "episodeCount": 86,
-        "poster": 17,
-        "overview": 12
-      }
-    },
-    {
-      "builtAt": "2026-06-02T07:53:04.142Z",
-      "totals": {
-        "seasons": 65156,
-        "delta": 24
-      },
-      "shapeCounts": {
-        "mid-peak": 4583,
-        "rebound": 9937,
-        "rising": 2919,
-        "slow-burn": 4315,
-        "big-finale": 11947,
-        "u-shaped": 3059,
-        "rollercoaster": 13928,
-        "saved-best-for-last": 1506,
-        "front-loaded": 3436,
-        "declining": 1832,
-        "bad-finale": 4592,
-        "consistent": 2585,
-        "shape-drift": 1594
-      },
-      "shapeDeltas": {
-        "mid-peak": 5,
-        "rebound": -9,
-        "slow-burn": 10,
-        "big-finale": 1,
-        "u-shaped": -3,
-        "rollercoaster": 16,
-        "saved-best-for-last": -1,
-        "front-loaded": 7,
-        "bad-finale": 4,
-        "consistent": 1
-      },
-      "added": [
-        {
-          "seriesId": "tt0194605",
-          "title": "The Demon Headmaster",
-          "season": 3,
-          "seasonYear": 1998
-        },
-        {
-          "seriesId": "tt1868207",
-          "title": "Atop the Fourth Wall",
-          "season": 9,
-          "seasonYear": 2016
-        },
-        {
-          "seriesId": "tt0820392",
-          "title": "Come Dine with Me",
-          "season": 10,
-          "seasonYear": 2009
-        },
-        {
-          "seriesId": "tt23052556",
-          "title": "Katar - WM der Schande",
-          "season": 1,
-          "seasonYear": 2022
-        },
-        {
-          "seriesId": "tt27723333",
-          "title": "Club Hooligans",
-          "season": 2,
-          "seasonYear": 2026
-        },
-        {
-          "seriesId": "tt3469050",
-          "title": "90 Day Fiancé",
-          "season": 12,
-          "seasonYear": 2026
-        },
-        {
-          "seriesId": "tt12941202",
-          "title": "Mortal Glitch",
-          "season": 1,
-          "seasonYear": 2020
-        },
-        {
-          "seriesId": "tt1773182",
-          "title": "Love It or List It",
-          "season": 20,
-          "seasonYear": 2025
-        },
-        {
-          "seriesId": "tt31433766",
-          "title": "Dear England",
-          "season": 1,
-          "seasonYear": 2026
-        },
-        {
-          "seriesId": "tt34724697",
-          "title": "Only Child",
-          "season": 2,
-          "seasonYear": 2026
-        },
-        {
-          "seriesId": "tt35725229",
-          "title": "Falling",
-          "season": 1,
-          "seasonYear": 2026
-        },
-        {
-          "seriesId": "tt43029507",
-          "title": "Make That Movie",
-          "season": 1,
-          "seasonYear": 2026
-        },
-        {
-          "seriesId": "tt0172062",
-          "title": "Undermind",
-          "season": 1,
-          "seasonYear": 1965
-        },
-        {
-          "seriesId": "tt13998708",
-          "title": "Das Gipfeltreffen - Schubert, Sträter und König retten die Welt",
-          "season": 3,
-          "seasonYear": 2021
-        },
-        {
-          "seriesId": "tt13998708",
-          "title": "Das Gipfeltreffen - Schubert, Sträter und König retten die Welt",
-          "season": 5,
-          "seasonYear": 2023
-        },
-        {
-          "seriesId": "tt16384576",
-          "title": "Underground of Berlin",
-          "season": 3,
-          "seasonYear": 2022
-        },
-        {
-          "seriesId": "tt16385150",
-          "title": "Shark Tank India",
-          "season": 5,
-          "seasonYear": 2026
-        },
-        {
-          "seriesId": "tt22688206",
-          "title": "Strula",
-          "season": 5,
-          "seasonYear": 2023
-        },
-        {
-          "seriesId": "tt36118374",
-          "title": "Two Weeks in August",
-          "season": 1,
-          "seasonYear": 2026
-        },
-        {
-          "seriesId": "tt35932342",
-          "title": "Alejandro Sanz: When No One Sees Me",
-          "season": 1,
-          "seasonYear": 2026
-        },
-        {
-          "seriesId": "tt39089566",
-          "title": "Death Cap: The Mushroom Murders",
-          "season": 1,
-          "seasonYear": 2025
-        },
-        {
-          "seriesId": "tt40757829",
-          "title": "Human Being",
-          "season": 1,
-          "seasonYear": 2026
-        },
-        {
-          "seriesId": "tt40757829",
-          "title": "Human Being",
-          "season": 2,
-          "seasonYear": 2026
-        },
-        {
-          "seriesId": "tt40757829",
-          "title": "Human Being",
-          "season": 3,
-          "seasonYear": 2026
-        },
-        {
-          "seriesId": "tt3676076",
-          "title": "Foot 2 Rue Extreme",
-          "season": 1,
-          "seasonYear": 2014
-        }
-      ],
-      "removed": [
-        {
-          "seriesId": "tt0820392",
-          "title": "Come Dine with Me",
-          "season": 6,
-          "seasonYear": 2009
-        }
-      ],
-      "ratingSwings": [
-        {
-          "seriesId": "tt22688206",
-          "title": "Strula",
-          "season": 2,
-          "from": 6.7,
-          "to": 7.76,
-          "delta": 1.06
-        },
-        {
-          "seriesId": "tt41302276",
-          "title": "Satrangi: Badle Ka Khel",
-          "season": 1,
-          "from": 8.89,
-          "to": 7.86,
-          "delta": -1.03
-        },
-        {
-          "seriesId": "tt40757829",
-          "title": "Human Being",
-          "season": 4,
-          "from": 9.3,
-          "to": 8.53,
-          "delta": -0.77
-        },
-        {
-          "seriesId": "tt0068120",
-          "title": "The Price Is Right",
-          "season": 1,
-          "from": 8.43,
-          "to": 9.13,
-          "delta": 0.7
-        },
-        {
-          "seriesId": "tt40757829",
-          "title": "Human Being",
-          "season": 5,
-          "from": 9.4,
-          "to": 8.7,
-          "delta": -0.7
-        },
-        {
-          "seriesId": "tt21105044",
-          "title": "Bir Küçük Gün Isigi",
-          "season": 1,
-          "from": 9.16,
-          "to": 8.47,
-          "delta": -0.69
-        },
-        {
-          "seriesId": "tt0845088",
-          "title": "Back Streets",
-          "season": 6,
-          "from": 5.87,
-          "to": 6.45,
-          "delta": 0.58
-        },
-        {
-          "seriesId": "tt22688206",
-          "title": "Strula",
-          "season": 3,
-          "from": 7.12,
-          "to": 7.68,
-          "delta": 0.56
-        },
-        {
-          "seriesId": "tt22688206",
-          "title": "Strula",
-          "season": 8,
-          "from": 6.38,
-          "to": 6.93,
-          "delta": 0.55
-        },
-        {
-          "seriesId": "tt0194605",
-          "title": "The Demon Headmaster",
-          "season": 2,
-          "from": 6.56,
-          "to": 7.09,
-          "delta": 0.53
-        }
-      ],
-      "modifiedCounts": {
-        "seriesVotes": 23707,
-        "avgRating": 1269,
-        "shapes": 233,
-        "seriesRating": 362,
-        "episodeCount": 86
       }
     }
   ]
