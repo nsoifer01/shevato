@@ -2539,26 +2539,46 @@ body.gym-tracker .strength-pr-date {
    ========================================================================== */
 
 /* Feature 6: one-tap restore-to-last-time chip. */
+/* Secondary "previous performance" affordance. Reads as muted helper text
+   beneath the inputs (icon + "Previous: 130lb × 8"), not a primary pill.
+   Still a button: tap to restore last session's numbers. */
 body.gym-tracker .gt-restore-chip {
     flex: 0 0 100%;
-    margin-top: 0.35rem;
-    padding: 0.25rem 0.5rem;
-    text-align: center;
-    border: 1px solid #3a6df0;
-    border-radius: 999px;
-    background: rgba(58, 109, 240, 0.12);
-    color: #8fb0ff;
-    font-size: 0.72rem;
-    line-height: 1.4;
+    display: inline-flex;
+    align-items: center;
+    gap: 0.3rem;
+    align-self: flex-start;
+    width: fit-content;
+    max-width: 100%;
+    margin-top: 0.15rem;
+    padding: 0.2rem 0.4rem;
+    border: 0;
+    border-radius: 6px;
+    background: transparent;
+    color: var(--gt-muted-2, #8b93a7);
+    font-size: 0.68rem;
+    font-weight: 600;
+    line-height: 1.3;
+    letter-spacing: 0.01em;
     cursor: pointer;
     white-space: nowrap;
+    transition: color var(--transition-fast), background var(--transition-fast);
+}
+
+body.gym-tracker .gt-restore-chip i {
+    font-size: 0.66rem;
+    opacity: 0.7;
 }
 
 body.gym-tracker .gt-restore-chip:hover,
 body.gym-tracker .gt-restore-chip:focus-visible {
-    background: rgba(58, 109, 240, 0.22);
+    background: rgba(58, 109, 240, 0.12);
     color: #b9cdff;
-    border-color: #3a6df0;
+}
+
+body.gym-tracker .gt-restore-chip:hover i,
+body.gym-tracker .gt-restore-chip:focus-visible i {
+    opacity: 1;
 }
 
 /* Pass 2 #2: the notes toggle is now a .gt-iconbtn (sizing/colors inherited).

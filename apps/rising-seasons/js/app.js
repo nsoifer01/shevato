@@ -3063,39 +3063,145 @@ function syncCompareButton() {
     : inSet ? 'Remove this show from the compare set' : 'Add this show to the compare set';
 }
 
-// Trajectory chart: for each selected series, plot one polyline whose x is
-// the season index (1..N for that show) and y is that season's avg rating.
-// Series with different season counts share a normalized x so they overlay
-// cleanly. Hover the line for series + season detail.
+// Round a raw axis step up to a "nice" 1/2/5 × 10^n value so rating
+// gridlines land on readable numbers (…0.5, 1, 2…) instead of arbitrary
+// fractions.
+function niceStep(rawStep) {
+  if (!(rawStep > 0)) return 1;
+  const mag = Math.pow(10, Math.floor(Math.log10(rawStep)));
+  const norm = rawStep / mag;
+  let step;
+  if (norm <= 1) step = 1;
+  else if (norm <= 2) step = 2;
+  else if (norm <= 5) step = 5;
+  else step = 10;
+  return step * mag;
+}
+
+// Trajectory chart: for each selected series, plot one line whose x is the
+// actual season number (so S1..Sn line up across shows and the magnitude of
+// each season-to-season change reads honestly) and y is that season's avg
+// rating. The SVG (preserveAspectRatio="none") carries only vector geometry —
+// gridlines, axis lines, area fills, the trend lines — while crisp dots and
+// all text live in an HTML overlay positioned by percent, so nothing is
+// stretched and labels stay at their CSS size on every viewport.
 function drawCompareChart(svg, seriesEntries, W, H) {
   while (svg.firstChild) svg.removeChild(svg.firstChild);
+  const host = svg.parentElement;
+  if (host) {
+    const old = host.querySelector(':scope > .compare-overlay');
+    if (old) old.remove();
+  }
   if (!seriesEntries.length) return;
 
-  const padX = 14;
-  const padY = 16;
   const NS = 'http://www.w3.org/2000/svg';
+  // Plot margins (viewBox units): left holds rating labels, bottom holds
+  // season labels, top leaves room for single-series value callouts.
+  const mL = 40, mR = 16, mT = 18, mB = 30;
+  const x0 = mL, x1 = W - mR, y0 = mT, y1 = H - mB;
+  const plotW = x1 - x0, plotH = y1 - y0;
 
-  let lo = Infinity, hi = -Infinity;
+  // --- domains -------------------------------------------------------------
+  let lo = Infinity, hi = -Infinity, maxSeason = 1;
   for (const { seasons } of seriesEntries) {
     for (const s of seasons) {
       if (s.avgRating < lo) lo = s.avgRating;
       if (s.avgRating > hi) hi = s.avgRating;
+      if (s.season > maxSeason) maxSeason = s.season;
     }
   }
-  lo = Math.max(0, lo - 0.3);
-  hi = Math.min(10, hi + 0.3);
+  // Snap the rating domain to half-points and guarantee at least a 1.0 span
+  // so a tight cluster of seasons still gets readable gridlines.
+  lo = Math.max(0, Math.floor((lo - 0.4) * 2) / 2);
+  hi = Math.min(10, Math.ceil((hi + 0.4) * 2) / 2);
+  if (hi - lo < 1) hi = Math.min(10, lo + 1);
   const span = Math.max(0.1, hi - lo);
 
+  const xMin = 1, xMax = Math.max(2, maxSeason);
+  const xPx = (season) => x0 + (xMax === xMin ? plotW / 2 : (season - xMin) / (xMax - xMin) * plotW);
+  const yPx = (r) => y0 + (1 - (r - lo) / span) * plotH;
+
+  const overlay = document.createElement('div');
+  overlay.className = 'compare-overlay';
+  overlay.setAttribute('aria-hidden', 'true');
+  const xPct = (px) => (px / W * 100).toFixed(3);
+  const yPct = (py) => (py / H * 100).toFixed(3);
+
+  const mkLine = (xa, ya, xb, yb, cls) => {
+    const ln = document.createElementNS(NS, 'line');
+    ln.setAttribute('x1', xa.toFixed(1)); ln.setAttribute('y1', ya.toFixed(1));
+    ln.setAttribute('x2', xb.toFixed(1)); ln.setAttribute('y2', yb.toFixed(1));
+    ln.setAttribute('class', cls);
+    ln.setAttribute('vector-effect', 'non-scaling-stroke');
+    svg.appendChild(ln);
+  };
+  const mkLabel = (cls, left, top, text) => {
+    const el = document.createElement('span');
+    el.className = cls;
+    el.style.left = `${left}%`;
+    el.style.top = `${top}%`;
+    el.textContent = text;
+    overlay.appendChild(el);
+  };
+
+  // --- Y gridlines + rating labels ----------------------------------------
+  const yStep = niceStep((hi - lo) / 4);
+  const fmtRating = (v) => (Math.abs(v - Math.round(v)) < 1e-6 ? String(Math.round(v)) : v.toFixed(1));
+  for (let v = Math.ceil(lo / yStep) * yStep; v <= hi + 1e-6; v += yStep) {
+    const y = yPx(v);
+    mkLine(x0, y, x1, y, 'compare-grid');
+    mkLabel('compare-axis-label compare-axis-y', xPct(x0 - 8), yPct(y), fmtRating(v));
+  }
+
+  // --- X gridlines + season labels ----------------------------------------
+  const seasonSpan = xMax - xMin + 1;
+  const xStep = Math.max(1, Math.ceil(seasonSpan / 12));
+  const seasonTicks = [];
+  for (let s = xMin; s <= xMax; s += xStep) seasonTicks.push(s);
+  if (seasonTicks[seasonTicks.length - 1] !== xMax) seasonTicks.push(xMax);
+  for (const s of seasonTicks) {
+    const x = xPx(s);
+    mkLine(x, y0, x, y1, 'compare-grid compare-grid-v');
+    mkLabel('compare-axis-label compare-axis-x', xPct(x), yPct(y1 + 9), `S${s}`);
+  }
+
+  // --- axis lines ----------------------------------------------------------
+  mkLine(x0, y0, x0, y1, 'compare-axis-line');
+  mkLine(x0, y1, x1, y1, 'compare-axis-line');
+
+  // --- series --------------------------------------------------------------
+  const single = seriesEntries.length === 1;
   seriesEntries.forEach(({ title, seasons }, idx) => {
     const color = seasonColor(idx, seriesEntries.length);
-    const n = seasons.length;
-    const xStep = n > 1 ? (W - padX * 2) / (n - 1) : 0;
-    const points = seasons.map((s, i) => {
-      const x = padX + (n > 1 ? i * xStep : (W - padX * 2) / 2);
-      const y = padY + (1 - (s.avgRating - lo) / span) * (H - padY * 2);
-      return [x, y, s];
-    });
-    const d = points.map(([x, y], i) => `${i === 0 ? 'M' : 'L'}${x.toFixed(1)},${y.toFixed(1)}`).join(' ');
+    const pts = seasons.map((s) => [xPx(s.season), yPx(s.avgRating), s]);
+
+    // Soft area fill under a lone series so the trajectory (and its final-
+    // season cliff) reads as a deliberate shape rather than a stray line.
+    if (single && pts.length > 1) {
+      const grad = document.createElementNS(NS, 'linearGradient');
+      const gid = 'compareFill';
+      grad.setAttribute('id', gid);
+      grad.setAttribute('x1', '0'); grad.setAttribute('y1', '0');
+      grad.setAttribute('x2', '0'); grad.setAttribute('y2', '1');
+      const stops = [['0%', 0.28], ['100%', 0.02]];
+      for (const [off, op] of stops) {
+        const st = document.createElementNS(NS, 'stop');
+        st.setAttribute('offset', off);
+        st.setAttribute('stop-color', color);
+        st.setAttribute('stop-opacity', String(op));
+        grad.appendChild(st);
+      }
+      svg.appendChild(grad);
+      const area = document.createElementNS(NS, 'path');
+      const dArea = pts.map(([x, y], i) => `${i === 0 ? 'M' : 'L'}${x.toFixed(1)},${y.toFixed(1)}`).join(' ')
+        + ` L${pts[pts.length - 1][0].toFixed(1)},${y1.toFixed(1)} L${pts[0][0].toFixed(1)},${y1.toFixed(1)} Z`;
+      area.setAttribute('d', dArea);
+      area.setAttribute('fill', `url(#${gid})`);
+      area.setAttribute('stroke', 'none');
+      svg.appendChild(area);
+    }
+
+    const d = pts.map(([x, y], i) => `${i === 0 ? 'M' : 'L'}${x.toFixed(1)},${y.toFixed(1)}`).join(' ');
     const path = document.createElementNS(NS, 'path');
     path.setAttribute('d', d);
     path.setAttribute('fill', 'none');
@@ -3104,23 +3210,36 @@ function drawCompareChart(svg, seriesEntries, W, H) {
     path.setAttribute('stroke-linecap', 'round');
     path.setAttribute('stroke-linejoin', 'round');
     path.setAttribute('vector-effect', 'non-scaling-stroke');
-    path.setAttribute('opacity', '0.9');
-    const title2 = document.createElementNS(NS, 'title');
-    title2.textContent = title;
-    path.appendChild(title2);
+    const ttl = document.createElementNS(NS, 'title');
+    ttl.textContent = title;
+    path.appendChild(ttl);
     svg.appendChild(path);
-    for (const [x, y, s] of points) {
-      const dot = document.createElementNS(NS, 'circle');
-      dot.setAttribute('cx', x.toFixed(1));
-      dot.setAttribute('cy', y.toFixed(1));
-      dot.setAttribute('r', '3.5');
-      dot.setAttribute('fill', color);
-      const dotTitle = document.createElementNS(NS, 'title');
-      dotTitle.textContent = `${title} - S${s.season}: avg ${s.avgRating.toFixed(1)}`;
-      dot.appendChild(dotTitle);
-      svg.appendChild(dot);
-    }
+
+    // Crisp HTML dots (round on every viewport) + per-point tooltip.
+    pts.forEach(([x, y, s], i) => {
+      const dot = document.createElement('span');
+      dot.className = 'compare-dot';
+      dot.style.left = `${xPct(x)}%`;
+      dot.style.top = `${yPct(y)}%`;
+      dot.style.background = color;
+      dot.title = `${title} — S${s.season}: avg ${s.avgRating.toFixed(1)}`;
+      overlay.appendChild(dot);
+      // For a lone series, call out each season's value above its dot.
+      if (single) {
+        const above = y - mT * 0.55 > y0;
+        mkLabel(
+          `compare-val-label${above ? '' : ' compare-val-label-below'}`,
+          xPct(x),
+          yPct(above ? y - 11 : y + 11),
+          s.avgRating.toFixed(1),
+        );
+        const last = overlay.lastChild;
+        if (last) last.style.color = color;
+      }
+    });
   });
+
+  if (host) host.appendChild(overlay);
 }
 
 function buildCompareEntries() {
@@ -3142,14 +3261,17 @@ function renderCompareLegend(entries) {
     const item = document.createElement('button');
     item.type = 'button';
     item.className = 'overlay-legend-item compare-legend-remove';
-    item.title = 'Remove from compare';
+    item.title = `Remove ${e.title} from compare`;
+    item.setAttribute('aria-label', `Remove ${e.title} from comparison`);
     const swatch = document.createElement('span');
     swatch.className = 'overlay-legend-swatch';
     swatch.style.background = colors[i];
     const label = document.createElement('span');
+    label.className = 'compare-legend-name';
     label.textContent = e.title;
     const x = document.createElement('span');
     x.className = 'compare-legend-x';
+    x.setAttribute('aria-hidden', 'true');
     x.textContent = '×';
     item.append(swatch, label, x);
     item.addEventListener('click', () => {
@@ -3173,7 +3295,7 @@ function renderCompareModal() {
     closeCompareModal();
     return;
   }
-  drawCompareChart(els.compareModalCurve, entries, 600, 240);
+  drawCompareChart(els.compareModalCurve, entries, 600, 260);
   renderCompareLegend(entries);
 }
 

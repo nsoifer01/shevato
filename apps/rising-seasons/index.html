@@ -749,15 +749,19 @@
   <!-- Compare modal (overlay trajectory across multiple series) -->
   <div class="modal" id="compareModal" role="dialog" aria-modal="true" aria-labelledby="compareModalTitle" aria-hidden="true" hidden>
     <div class="modal-backdrop" data-close="compare-modal"></div>
-    <article class="modal-panel" tabindex="-1" data-back-to-top>
+    <article class="modal-panel compare-panel" tabindex="-1" data-back-to-top>
       <button type="button" class="btn modal-close" data-close="compare-modal" aria-label="Close">×</button>
-      <h2 id="compareModalTitle">Compare shows</h2>
-      <p class="modal-subtitle">Season-average rating trajectory for each show. Click a show name to remove.</p>
-      <div class="modal-actions modal-actions-top">
-        <button type="button" class="btn btn-ghost" id="compareModalClear">Clear all</button>
+      <header class="compare-heading">
+        <h2 id="compareModalTitle">Compare shows</h2>
+        <p class="modal-subtitle">Season-average rating trajectory. Click a show in the legend to remove it.</p>
+      </header>
+      <div class="compare-legend-row">
+        <div class="overlay-legend compare-legend" id="compareModalLegend"></div>
+        <button type="button" class="btn btn-ghost compare-clear" id="compareModalClear">Clear all</button>
       </div>
-      <svg class="overlay-curve" id="compareModalCurve" viewBox="0 0 600 240" preserveAspectRatio="none" aria-hidden="true"></svg>
-      <div class="overlay-legend" id="compareModalLegend"></div>
+      <div class="compare-chart">
+        <svg class="overlay-curve compare-curve" id="compareModalCurve" viewBox="0 0 600 260" preserveAspectRatio="none" role="img" aria-label="Season-average rating trajectory chart"></svg>
+      </div>
     </article>
   </div>
 
