@@ -2403,6 +2403,148 @@ button.shape-tag.is-clickable:hover {
   font-weight: 700;
 }
 
+/* ----- Compare modal: dashboard-style trajectory chart ----- */
+.compare-panel {
+  gap: 1rem;
+}
+.compare-heading {
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+}
+.compare-heading h2 {
+  margin: 0;
+}
+.compare-heading .modal-subtitle {
+  font-size: 0.85rem;
+}
+
+/* Legend sits directly above the chart and reads as its key; "Clear all"
+   rides flush-right on the same line so the controls stay compact. */
+.compare-legend-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.6rem 0.9rem;
+  flex-wrap: wrap;
+}
+.compare-legend {
+  flex: 1 1 auto;
+}
+.compare-legend-name {
+  font-weight: 600;
+  color: var(--text);
+}
+.compare-clear {
+  flex: 0 0 auto;
+  padding: 0.32rem 0.7rem;
+  font-size: 0.78rem;
+}
+.compare-legend-remove .overlay-legend-swatch {
+  width: 0.85rem;
+  height: 0.32rem;
+  border-radius: 999px;
+}
+
+/* The chart is the focus: a single elevated card, generous but balanced
+   padding, no wasted vertical space. */
+.compare-chart {
+  position: relative;
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.02), transparent 40%),
+    var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  padding: 0.9rem 1rem 0.7rem;
+}
+.compare-chart .compare-curve {
+  display: block;
+  width: 100%;
+  height: 270px;
+  background: none;
+  border-radius: 0;
+  padding: 0;
+}
+
+/* Vector layer: subtle grid, slightly firmer axis lines. Strokes are
+   non-scaling so they stay crisp under preserveAspectRatio="none". */
+.compare-grid {
+  stroke: rgba(255, 255, 255, 0.07);
+  stroke-width: 1;
+}
+.compare-grid-v {
+  stroke: rgba(255, 255, 255, 0.04);
+}
+.compare-axis-line {
+  stroke: rgba(255, 255, 255, 0.16);
+  stroke-width: 1;
+}
+
+/* HTML overlay: crisp dots + all text, positioned by percent so nothing is
+   stretched by the SVG's non-uniform scale. */
+.compare-overlay {
+  position: absolute;
+  inset: 0.9rem 1rem 0.7rem;
+  pointer-events: none;
+}
+.compare-dot {
+  position: absolute;
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  transform: translate(-50%, -50%);
+  box-shadow: 0 0 0 2px var(--surface-2);
+  pointer-events: auto;
+  cursor: default;
+}
+.compare-axis-label {
+  position: absolute;
+  font-size: 0.68rem;
+  line-height: 1;
+  color: var(--muted-2);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.compare-axis-y {
+  transform: translate(-100%, -50%);
+  padding-right: 0.3rem;
+}
+.compare-axis-x {
+  transform: translateX(-50%);
+  font-weight: 600;
+}
+.compare-val-label {
+  position: absolute;
+  transform: translate(-50%, -50%);
+  font-size: 0.68rem;
+  font-weight: 700;
+  line-height: 1;
+  color: var(--text);
+  font-variant-numeric: tabular-nums;
+  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.8);
+  white-space: nowrap;
+}
+
+@media (max-width: 600px) {
+  .compare-chart {
+    padding: 0.75rem 0.7rem 0.6rem;
+  }
+  .compare-chart .compare-curve {
+    height: 220px;
+  }
+  .compare-overlay {
+    inset: 0.75rem 0.7rem 0.6rem;
+  }
+  .compare-axis-label,
+  .compare-val-label {
+    font-size: 0.62rem;
+  }
+  .compare-dot {
+    width: 8px;
+    height: 8px;
+  }
+}
+
 .provider-badges {
   display: flex;
   flex-wrap: wrap;

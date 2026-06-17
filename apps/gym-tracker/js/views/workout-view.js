@@ -1382,9 +1382,12 @@ class WorkoutView {
         chip.dataset.exerciseIndex = String(exerciseIndex);
         chip.dataset.slot = String(slot);
         chip.title = "Restore last session's weight and reps";
-        chip.textContent = `last time: ${priorWeight}${unit} x ${priorReps}`;
-        // Append after the toggle (own full-width line beneath the inputs), the
-        // same placement the Feature 1 bump chip uses.
+        chip.setAttribute('aria-label', `Previous: ${priorWeight}${unit} by ${priorReps} reps. Tap to restore.`);
+        // Compact, muted helper line: a history icon + "Previous: 130lb × 8".
+        // Reads as secondary metadata beneath the inputs while staying tappable.
+        chip.innerHTML = `<i class="fas fa-clock-rotate-left" aria-hidden="true"></i><span class="gt-restore-chip-text">Previous: ${priorWeight}${unit} × ${priorReps}</span>`;
+        // Append after the toggle (own line beneath the inputs), the same
+        // placement the Feature 1 bump chip uses.
         row.appendChild(chip);
     }
 
