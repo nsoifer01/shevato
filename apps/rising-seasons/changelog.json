@@ -1,6 +1,710 @@
 {
   "updates": [
     {
+      "builtAt": "2026-06-18T08:21:07.447Z",
+      "totals": {
+        "seasons": 65382,
+        "delta": 37
+      },
+      "shapeCounts": {
+        "mid-peak": 4600,
+        "rebound": 10028,
+        "rising": 2904,
+        "slow-burn": 4325,
+        "big-finale": 11942,
+        "u-shaped": 3062,
+        "rollercoaster": 13985,
+        "saved-best-for-last": 1517,
+        "front-loaded": 3432,
+        "declining": 1844,
+        "bad-finale": 4614,
+        "consistent": 2596,
+        "shape-drift": 1596
+      },
+      "shapeDeltas": {
+        "mid-peak": -8,
+        "rebound": 24,
+        "rising": -14,
+        "slow-burn": -4,
+        "big-finale": -7,
+        "u-shaped": 2,
+        "rollercoaster": 3,
+        "saved-best-for-last": 1,
+        "front-loaded": -4,
+        "declining": 2,
+        "bad-finale": 4,
+        "consistent": 10,
+        "shape-drift": 9
+      },
+      "added": [
+        {
+          "seriesId": "tt34930106",
+          "title": "Ticket to Heaven",
+          "season": 1,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt11011104",
+          "title": "Game Changer",
+          "season": 8,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt43507442",
+          "title": "Outlast: The Jungle",
+          "season": 1,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt43128066",
+          "title": "Kaccha Aam",
+          "season": 1,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt38683169",
+          "title": "The Trio",
+          "season": 1,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt42764103",
+          "title": "Daha on Yedi",
+          "season": 1,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt43402281",
+          "title": "WM 1994: Elf Helden - Ein Albtraum",
+          "season": 1,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt34929415",
+          "title": "A Dog and a Plane",
+          "season": 1,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt39749708",
+          "title": "The Evil Lawyer",
+          "season": 1,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt42835175",
+          "title": "Bring Me the Beauties: A Model Cult",
+          "season": 1,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt1817054",
+          "title": "The World According to Paris",
+          "season": 1,
+          "seasonYear": 2011
+        },
+        {
+          "seriesId": "tt42669045",
+          "title": "Birodalom",
+          "season": 1,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt11333522",
+          "title": "Bruno ja Pjarta",
+          "season": 1,
+          "seasonYear": 2019
+        },
+        {
+          "seriesId": "tt15210882",
+          "title": "The Dry",
+          "season": 3,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt39380468",
+          "title": "Payback",
+          "season": 1,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt42907659",
+          "title": "Big Girls Wanted: Escaping Pearadise",
+          "season": 1,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt43291642",
+          "title": "The Mother of All Cons",
+          "season": 1,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt0168358",
+          "title": "Parkinson",
+          "season": 2,
+          "seasonYear": 1972
+        },
+        {
+          "seriesId": "tt0845088",
+          "title": "Back Streets",
+          "season": 10,
+          "seasonYear": 2015
+        },
+        {
+          "seriesId": "tt10038720",
+          "title": "Restoring Galveston",
+          "season": 1,
+          "seasonYear": 2019
+        },
+        {
+          "seriesId": "tt10752770",
+          "title": "Sistas",
+          "season": 10,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt0397221",
+          "title": "1986 FIFA World Cup Mexico",
+          "season": 1,
+          "seasonYear": 1986
+        },
+        {
+          "seriesId": "tt14402938",
+          "title": "Tesla Note",
+          "season": 1,
+          "seasonYear": 2021
+        },
+        {
+          "seriesId": "tt36503976",
+          "title": "Castle Impossible",
+          "season": 2,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt40617563",
+          "title": "Vimal Khanna",
+          "season": 1,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt5622304",
+          "title": "The Great British Baking Show: The Professionals",
+          "season": 11,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt4025894",
+          "title": "Folkeopplysningen",
+          "season": 4,
+          "seasonYear": 2018
+        },
+        {
+          "seriesId": "tt12423408",
+          "title": "In Search of the Automatic House",
+          "season": 14,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt12879782",
+          "title": "A Mortal's Journey",
+          "season": 3,
+          "seasonYear": 2022
+        },
+        {
+          "seriesId": "tt28088954",
+          "title": "The Traitors NZ",
+          "season": 3,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt31531564",
+          "title": "The Real Housewives van het Zuiden",
+          "season": 2,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt31713273",
+          "title": "Atasco",
+          "season": 4,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt38783037",
+          "title": "The Fortune",
+          "season": 1,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt39366612",
+          "title": "Morpheus",
+          "season": 1,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt42576938",
+          "title": "MDRJago: Liars of MDR",
+          "season": 1,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt6773194",
+          "title": "Kakû OL Nikki",
+          "season": 1,
+          "seasonYear": 2017
+        },
+        {
+          "seriesId": "tt6195256",
+          "title": "Der Krieg und ich",
+          "season": 1,
+          "seasonYear": 2019
+        }
+      ],
+      "removed": [],
+      "ratingSwings": [
+        {
+          "seriesId": "tt41840765",
+          "title": "The Old Stories: Moses",
+          "season": 1,
+          "from": 8.23,
+          "to": 7.07,
+          "delta": -1.16
+        },
+        {
+          "seriesId": "tt26929559",
+          "title": "100% Wolf: Book of Hath",
+          "season": 2,
+          "from": 7.98,
+          "to": 6.88,
+          "delta": -1.1
+        },
+        {
+          "seriesId": "tt0118252",
+          "title": "All Dogs Go to Heaven: The Series",
+          "season": 2,
+          "from": 7.93,
+          "to": 7.03,
+          "delta": -0.9
+        },
+        {
+          "seriesId": "tt13028308",
+          "title": "I Want You to Show Me Your Panties with a Disgusted Face",
+          "season": 4,
+          "from": 6.92,
+          "to": 6.1,
+          "delta": -0.82
+        },
+        {
+          "seriesId": "tt38626513",
+          "title": "The Legend of Kitchen Soldier",
+          "season": 1,
+          "from": 7.26,
+          "to": 8.03,
+          "delta": 0.77
+        },
+        {
+          "seriesId": "tt4859164",
+          "title": "The Loud House",
+          "season": 10,
+          "from": 7.39,
+          "to": 6.89,
+          "delta": -0.5
+        },
+        {
+          "seriesId": "tt0118252",
+          "title": "All Dogs Go to Heaven: The Series",
+          "season": 3,
+          "from": 5.61,
+          "to": 6.09,
+          "delta": 0.48
+        },
+        {
+          "seriesId": "tt0078658",
+          "title": "The Misadventures of Sheriff Lobo",
+          "season": 2,
+          "from": 7.3,
+          "to": 6.83,
+          "delta": -0.47
+        },
+        {
+          "seriesId": "tt8819906",
+          "title": "Love Island USA",
+          "season": 8,
+          "from": 7.86,
+          "to": 7.39,
+          "delta": -0.47
+        },
+        {
+          "seriesId": "tt32045959",
+          "title": "Balance: A Perimenopause Journey",
+          "season": 1,
+          "from": 4.03,
+          "to": 4.5,
+          "delta": 0.47
+        }
+      ],
+      "modifiedCounts": {
+        "seriesVotes": 31346,
+        "avgRating": 2556,
+        "shapes": 430,
+        "seriesRating": 793,
+        "episodeCount": 205,
+        "poster": 6,
+        "overview": 7
+      }
+    },
+    {
+      "builtAt": "2026-06-18T07:55:48.758Z",
+      "totals": {
+        "seasons": 65382,
+        "delta": 37
+      },
+      "shapeCounts": {
+        "mid-peak": 4600,
+        "rebound": 10028,
+        "rising": 2904,
+        "slow-burn": 4325,
+        "big-finale": 11942,
+        "u-shaped": 3062,
+        "rollercoaster": 13985,
+        "saved-best-for-last": 1517,
+        "front-loaded": 3432,
+        "declining": 1844,
+        "bad-finale": 4614,
+        "consistent": 2596,
+        "shape-drift": 1596
+      },
+      "shapeDeltas": {
+        "mid-peak": -8,
+        "rebound": 24,
+        "rising": -14,
+        "slow-burn": -4,
+        "big-finale": -7,
+        "u-shaped": 2,
+        "rollercoaster": 3,
+        "saved-best-for-last": 1,
+        "front-loaded": -4,
+        "declining": 2,
+        "bad-finale": 4,
+        "consistent": 10,
+        "shape-drift": 9
+      },
+      "added": [
+        {
+          "seriesId": "tt34930106",
+          "title": "Ticket to Heaven",
+          "season": 1,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt11011104",
+          "title": "Game Changer",
+          "season": 8,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt43507442",
+          "title": "Outlast: The Jungle",
+          "season": 1,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt43128066",
+          "title": "Kaccha Aam",
+          "season": 1,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt38683169",
+          "title": "The Trio",
+          "season": 1,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt42764103",
+          "title": "Daha on Yedi",
+          "season": 1,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt43402281",
+          "title": "WM 1994: Elf Helden - Ein Albtraum",
+          "season": 1,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt34929415",
+          "title": "A Dog and a Plane",
+          "season": 1,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt39749708",
+          "title": "The Evil Lawyer",
+          "season": 1,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt42835175",
+          "title": "Bring Me the Beauties: A Model Cult",
+          "season": 1,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt1817054",
+          "title": "The World According to Paris",
+          "season": 1,
+          "seasonYear": 2011
+        },
+        {
+          "seriesId": "tt42669045",
+          "title": "Birodalom",
+          "season": 1,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt11333522",
+          "title": "Bruno ja Pjarta",
+          "season": 1,
+          "seasonYear": 2019
+        },
+        {
+          "seriesId": "tt15210882",
+          "title": "The Dry",
+          "season": 3,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt39380468",
+          "title": "Payback",
+          "season": 1,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt42907659",
+          "title": "Big Girls Wanted: Escaping Pearadise",
+          "season": 1,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt43291642",
+          "title": "The Mother of All Cons",
+          "season": 1,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt0168358",
+          "title": "Parkinson",
+          "season": 2,
+          "seasonYear": 1972
+        },
+        {
+          "seriesId": "tt0845088",
+          "title": "Back Streets",
+          "season": 10,
+          "seasonYear": 2015
+        },
+        {
+          "seriesId": "tt10038720",
+          "title": "Restoring Galveston",
+          "season": 1,
+          "seasonYear": 2019
+        },
+        {
+          "seriesId": "tt10752770",
+          "title": "Sistas",
+          "season": 10,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt0397221",
+          "title": "1986 FIFA World Cup Mexico",
+          "season": 1,
+          "seasonYear": 1986
+        },
+        {
+          "seriesId": "tt14402938",
+          "title": "Tesla Note",
+          "season": 1,
+          "seasonYear": 2021
+        },
+        {
+          "seriesId": "tt36503976",
+          "title": "Castle Impossible",
+          "season": 2,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt40617563",
+          "title": "Vimal Khanna",
+          "season": 1,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt5622304",
+          "title": "The Great British Baking Show: The Professionals",
+          "season": 11,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt4025894",
+          "title": "Folkeopplysningen",
+          "season": 4,
+          "seasonYear": 2018
+        },
+        {
+          "seriesId": "tt12423408",
+          "title": "In Search of the Automatic House",
+          "season": 14,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt12879782",
+          "title": "A Mortal's Journey",
+          "season": 3,
+          "seasonYear": 2022
+        },
+        {
+          "seriesId": "tt28088954",
+          "title": "The Traitors NZ",
+          "season": 3,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt31531564",
+          "title": "The Real Housewives van het Zuiden",
+          "season": 2,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt31713273",
+          "title": "Atasco",
+          "season": 4,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt38783037",
+          "title": "The Fortune",
+          "season": 1,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt39366612",
+          "title": "Morpheus",
+          "season": 1,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt42576938",
+          "title": "MDRJago: Liars of MDR",
+          "season": 1,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt6773194",
+          "title": "Kakû OL Nikki",
+          "season": 1,
+          "seasonYear": 2017
+        },
+        {
+          "seriesId": "tt6195256",
+          "title": "Der Krieg und ich",
+          "season": 1,
+          "seasonYear": 2019
+        }
+      ],
+      "removed": [],
+      "ratingSwings": [
+        {
+          "seriesId": "tt41840765",
+          "title": "The Old Stories: Moses",
+          "season": 1,
+          "from": 8.23,
+          "to": 7.07,
+          "delta": -1.16
+        },
+        {
+          "seriesId": "tt26929559",
+          "title": "100% Wolf: Book of Hath",
+          "season": 2,
+          "from": 7.98,
+          "to": 6.88,
+          "delta": -1.1
+        },
+        {
+          "seriesId": "tt0118252",
+          "title": "All Dogs Go to Heaven: The Series",
+          "season": 2,
+          "from": 7.93,
+          "to": 7.03,
+          "delta": -0.9
+        },
+        {
+          "seriesId": "tt13028308",
+          "title": "I Want You to Show Me Your Panties with a Disgusted Face",
+          "season": 4,
+          "from": 6.92,
+          "to": 6.1,
+          "delta": -0.82
+        },
+        {
+          "seriesId": "tt38626513",
+          "title": "The Legend of Kitchen Soldier",
+          "season": 1,
+          "from": 7.26,
+          "to": 8.03,
+          "delta": 0.77
+        },
+        {
+          "seriesId": "tt4859164",
+          "title": "The Loud House",
+          "season": 10,
+          "from": 7.39,
+          "to": 6.89,
+          "delta": -0.5
+        },
+        {
+          "seriesId": "tt0118252",
+          "title": "All Dogs Go to Heaven: The Series",
+          "season": 3,
+          "from": 5.61,
+          "to": 6.09,
+          "delta": 0.48
+        },
+        {
+          "seriesId": "tt0078658",
+          "title": "The Misadventures of Sheriff Lobo",
+          "season": 2,
+          "from": 7.3,
+          "to": 6.83,
+          "delta": -0.47
+        },
+        {
+          "seriesId": "tt8819906",
+          "title": "Love Island USA",
+          "season": 8,
+          "from": 7.86,
+          "to": 7.39,
+          "delta": -0.47
+        },
+        {
+          "seriesId": "tt32045959",
+          "title": "Balance: A Perimenopause Journey",
+          "season": 1,
+          "from": 4.03,
+          "to": 4.5,
+          "delta": 0.47
+        }
+      ],
+      "modifiedCounts": {
+        "seriesVotes": 31346,
+        "avgRating": 2556,
+        "shapes": 430,
+        "seriesRating": 793,
+        "episodeCount": 205
+      }
+    },
+    {
       "builtAt": "2026-06-17T08:34:35.913Z",
       "totals": {
         "seasons": 65345,
@@ -5675,422 +6379,6 @@
         "avgRating": 1129,
         "shapes": 225,
         "episodeCount": 92
-      }
-    },
-    {
-      "builtAt": "2026-06-03T08:31:30.399Z",
-      "totals": {
-        "seasons": 65169,
-        "delta": 13
-      },
-      "shapeCounts": {
-        "mid-peak": 4587,
-        "rebound": 9944,
-        "rising": 2918,
-        "slow-burn": 4312,
-        "big-finale": 11937,
-        "u-shaped": 3061,
-        "rollercoaster": 13929,
-        "saved-best-for-last": 1510,
-        "front-loaded": 3433,
-        "declining": 1830,
-        "bad-finale": 4594,
-        "consistent": 2587,
-        "shape-drift": 1590
-      },
-      "shapeDeltas": {
-        "mid-peak": 4,
-        "rebound": 7,
-        "rising": -1,
-        "slow-burn": -3,
-        "big-finale": -10,
-        "u-shaped": 2,
-        "rollercoaster": 1,
-        "saved-best-for-last": 4,
-        "front-loaded": -3,
-        "declining": -2,
-        "bad-finale": 2,
-        "consistent": 2,
-        "shape-drift": -4
-      },
-      "added": [
-        {
-          "seriesId": "tt36460202",
-          "title": "You're Killing Me",
-          "season": 1,
-          "seasonYear": 2026
-        },
-        {
-          "seriesId": "tt0105970",
-          "title": "The Chevy Chase Show",
-          "season": 1,
-          "seasonYear": 1993
-        },
-        {
-          "seriesId": "tt0891395",
-          "title": "Mega Mindy",
-          "season": 1,
-          "seasonYear": 2006
-        },
-        {
-          "seriesId": "tt0084991",
-          "title": "Brass",
-          "season": 2,
-          "seasonYear": 1984
-        },
-        {
-          "seriesId": "tt3787912",
-          "title": "Best of the Worst",
-          "season": 14,
-          "seasonYear": 2026
-        },
-        {
-          "seriesId": "tt1596561",
-          "title": "Spliced",
-          "season": 1,
-          "seasonYear": 2009
-        },
-        {
-          "seriesId": "tt27155510",
-          "title": "Myorzlaya Zemlya",
-          "season": 1,
-          "seasonYear": 2023
-        },
-        {
-          "seriesId": "tt39029529",
-          "title": "When Oranges Fall",
-          "season": 1,
-          "seasonYear": 2026
-        },
-        {
-          "seriesId": "tt0163963",
-          "title": "This Hour Has 22 Minutes",
-          "season": 33,
-          "seasonYear": 2025
-        },
-        {
-          "seriesId": "tt10005160",
-          "title": "Adventuring Academy",
-          "season": 1,
-          "seasonYear": 2018
-        },
-        {
-          "seriesId": "tt7112114",
-          "title": "Nosotros los guapos",
-          "season": 4,
-          "seasonYear": 2019
-        },
-        {
-          "seriesId": "tt8467296",
-          "title": "Love Island Australia",
-          "season": 5,
-          "seasonYear": 2023
-        },
-        {
-          "seriesId": "tt5324938",
-          "title": "Csak színház és más semmi",
-          "season": 1,
-          "seasonYear": 2016
-        }
-      ],
-      "removed": [],
-      "ratingSwings": [
-        {
-          "seriesId": "tt0252019",
-          "title": "Strong Medicine",
-          "season": 5,
-          "from": 8.88,
-          "to": 7.33,
-          "delta": -1.55
-        },
-        {
-          "seriesId": "tt0252019",
-          "title": "Strong Medicine",
-          "season": 4,
-          "from": 8.53,
-          "to": 7.06,
-          "delta": -1.47
-        },
-        {
-          "seriesId": "tt8467296",
-          "title": "Love Island Australia",
-          "season": 6,
-          "from": 7.87,
-          "to": 6.65,
-          "delta": -1.22
-        },
-        {
-          "seriesId": "tt0252019",
-          "title": "Strong Medicine",
-          "season": 3,
-          "from": 8.34,
-          "to": 7.14,
-          "delta": -1.2
-        },
-        {
-          "seriesId": "tt4770018",
-          "title": "Love Island",
-          "season": 9,
-          "from": 6.79,
-          "to": 5.73,
-          "delta": -1.06
-        },
-        {
-          "seriesId": "tt38805313",
-          "title": "Ayse",
-          "season": 1,
-          "from": 9.3,
-          "to": 8.3,
-          "delta": -1
-        },
-        {
-          "seriesId": "tt0252019",
-          "title": "Strong Medicine",
-          "season": 2,
-          "from": 8.35,
-          "to": 7.39,
-          "delta": -0.96
-        },
-        {
-          "seriesId": "tt0252019",
-          "title": "Strong Medicine",
-          "season": 6,
-          "from": 8.26,
-          "to": 7.31,
-          "delta": -0.95
-        },
-        {
-          "seriesId": "tt8467296",
-          "title": "Love Island Australia",
-          "season": 7,
-          "from": 7.22,
-          "to": 6.28,
-          "delta": -0.94
-        },
-        {
-          "seriesId": "tt32801346",
-          "title": "The Haggies",
-          "season": 1,
-          "from": 7.07,
-          "to": 6.2,
-          "delta": -0.87
-        }
-      ],
-      "modifiedCounts": {
-        "seriesVotes": 19768,
-        "avgRating": 1202,
-        "seriesRating": 320,
-        "shapes": 240,
-        "episodeCount": 104,
-        "poster": 16,
-        "overview": 7
-      }
-    },
-    {
-      "builtAt": "2026-06-03T07:56:42.150Z",
-      "totals": {
-        "seasons": 65169,
-        "delta": 13
-      },
-      "shapeCounts": {
-        "mid-peak": 4587,
-        "rebound": 9944,
-        "rising": 2918,
-        "slow-burn": 4312,
-        "big-finale": 11937,
-        "u-shaped": 3061,
-        "rollercoaster": 13929,
-        "saved-best-for-last": 1510,
-        "front-loaded": 3433,
-        "declining": 1830,
-        "bad-finale": 4594,
-        "consistent": 2587,
-        "shape-drift": 1590
-      },
-      "shapeDeltas": {
-        "mid-peak": 4,
-        "rebound": 7,
-        "rising": -1,
-        "slow-burn": -3,
-        "big-finale": -10,
-        "u-shaped": 2,
-        "rollercoaster": 1,
-        "saved-best-for-last": 4,
-        "front-loaded": -3,
-        "declining": -2,
-        "bad-finale": 2,
-        "consistent": 2,
-        "shape-drift": -4
-      },
-      "added": [
-        {
-          "seriesId": "tt36460202",
-          "title": "You're Killing Me",
-          "season": 1,
-          "seasonYear": 2026
-        },
-        {
-          "seriesId": "tt0105970",
-          "title": "The Chevy Chase Show",
-          "season": 1,
-          "seasonYear": 1993
-        },
-        {
-          "seriesId": "tt0891395",
-          "title": "Mega Mindy",
-          "season": 1,
-          "seasonYear": 2006
-        },
-        {
-          "seriesId": "tt0084991",
-          "title": "Brass",
-          "season": 2,
-          "seasonYear": 1984
-        },
-        {
-          "seriesId": "tt3787912",
-          "title": "Best of the Worst",
-          "season": 14,
-          "seasonYear": 2026
-        },
-        {
-          "seriesId": "tt1596561",
-          "title": "Spliced",
-          "season": 1,
-          "seasonYear": 2009
-        },
-        {
-          "seriesId": "tt27155510",
-          "title": "Myorzlaya Zemlya",
-          "season": 1,
-          "seasonYear": 2023
-        },
-        {
-          "seriesId": "tt39029529",
-          "title": "When Oranges Fall",
-          "season": 1,
-          "seasonYear": 2026
-        },
-        {
-          "seriesId": "tt0163963",
-          "title": "This Hour Has 22 Minutes",
-          "season": 33,
-          "seasonYear": 2025
-        },
-        {
-          "seriesId": "tt10005160",
-          "title": "Adventuring Academy",
-          "season": 1,
-          "seasonYear": 2018
-        },
-        {
-          "seriesId": "tt7112114",
-          "title": "Nosotros los guapos",
-          "season": 4,
-          "seasonYear": 2019
-        },
-        {
-          "seriesId": "tt8467296",
-          "title": "Love Island Australia",
-          "season": 5,
-          "seasonYear": 2023
-        },
-        {
-          "seriesId": "tt5324938",
-          "title": "Csak színház és más semmi",
-          "season": 1,
-          "seasonYear": 2016
-        }
-      ],
-      "removed": [],
-      "ratingSwings": [
-        {
-          "seriesId": "tt0252019",
-          "title": "Strong Medicine",
-          "season": 5,
-          "from": 8.88,
-          "to": 7.33,
-          "delta": -1.55
-        },
-        {
-          "seriesId": "tt0252019",
-          "title": "Strong Medicine",
-          "season": 4,
-          "from": 8.53,
-          "to": 7.06,
-          "delta": -1.47
-        },
-        {
-          "seriesId": "tt8467296",
-          "title": "Love Island Australia",
-          "season": 6,
-          "from": 7.87,
-          "to": 6.65,
-          "delta": -1.22
-        },
-        {
-          "seriesId": "tt0252019",
-          "title": "Strong Medicine",
-          "season": 3,
-          "from": 8.34,
-          "to": 7.14,
-          "delta": -1.2
-        },
-        {
-          "seriesId": "tt4770018",
-          "title": "Love Island",
-          "season": 9,
-          "from": 6.79,
-          "to": 5.73,
-          "delta": -1.06
-        },
-        {
-          "seriesId": "tt38805313",
-          "title": "Ayse",
-          "season": 1,
-          "from": 9.3,
-          "to": 8.3,
-          "delta": -1
-        },
-        {
-          "seriesId": "tt0252019",
-          "title": "Strong Medicine",
-          "season": 2,
-          "from": 8.35,
-          "to": 7.39,
-          "delta": -0.96
-        },
-        {
-          "seriesId": "tt0252019",
-          "title": "Strong Medicine",
-          "season": 6,
-          "from": 8.26,
-          "to": 7.31,
-          "delta": -0.95
-        },
-        {
-          "seriesId": "tt8467296",
-          "title": "Love Island Australia",
-          "season": 7,
-          "from": 7.22,
-          "to": 6.28,
-          "delta": -0.94
-        },
-        {
-          "seriesId": "tt32801346",
-          "title": "The Haggies",
-          "season": 1,
-          "from": 7.07,
-          "to": 6.2,
-          "delta": -0.87
-        }
-      ],
-      "modifiedCounts": {
-        "seriesVotes": 19768,
-        "avgRating": 1202,
-        "seriesRating": 320,
-        "shapes": 240,
-        "episodeCount": 104
       }
     }
   ]
