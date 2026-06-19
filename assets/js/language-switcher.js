@@ -20,6 +20,13 @@ function isStructuralLangHost(el) {
   return el === document.documentElement || el === document.body;
 }
 
+function isLangContainer(el) {
+  // The brand H1 carries a `lang` attribute for a11y/SEO but stays visible in
+  // every language; its inner spans are the ones toggled. It is handled
+  // explicitly below so the default-hide CSS rule never collapses it.
+  return el.classList.contains('brand-title');
+}
+
 function switchLanguage(lang) {
   if (!SUPPORTED_LANGS.has(lang)) return;
 
@@ -30,16 +37,25 @@ function switchLanguage(lang) {
   });
 
   document.querySelectorAll('[lang]').forEach(el => {
-    if (el.classList.contains('lang-btn') || isStructuralLangHost(el)) return;
+    if (el.classList.contains('lang-btn') || isStructuralLangHost(el) || isLangContainer(el)) return;
     el.style.display = 'none';
   });
 
   document.querySelectorAll(`[lang="${lang}"]`).forEach(el => {
-    if (el.classList.contains('lang-btn') || isStructuralLangHost(el)) return;
+    if (el.classList.contains('lang-btn') || isStructuralLangHost(el) || isLangContainer(el)) return;
     el.style.display = LANG_BLOCK_ELEMENTS.has(el.tagName) ? 'block' : 'inline';
   });
 
   document.body.dir = (lang === 'he') ? 'rtl' : 'ltr';
+  document.documentElement.lang = lang;
+
+  const brandTitle = document.querySelector('h1.brand-title');
+  if (brandTitle) {
+    // Updating the H1's own lang would otherwise trip the default-hide CSS
+    // rule for non-English; pin its display so it stays visible in every lang.
+    brandTitle.lang = lang;
+    brandTitle.style.display = 'block';
+  }
 
   try {
     localStorage.setItem(STORAGE_KEY, lang);

@@ -208,7 +208,8 @@
     view: 'dashboard',
     matrixSelection: load(KEY.MATRIX_SEL, null), // string[] of rivalIds, or null = "all"
     matrixTab: 'record',           // overridden by URL hash on first paint
-    lbSort: 'winpct',              // 'winpct' | 'rivalry'
+    lbSort: 'winpct',              // sortable column key, e.g. 'winpct' | 'rivalry'
+    lbDir: 1,                      // 1 = column's natural order, -1 = reversed (toggled by re-clicking the header)
     historyFilters: { rival: 'all', result: 'all' },
     historyPage: 1,
     historyPageSize: 25,
@@ -4053,17 +4054,30 @@
       // active loss streaks (negative, longest = lowest).
       streak:  (a, b) => (b.streak.curMine - b.streak.curTheirs) - (a.streak.curMine - a.streak.curTheirs),
     };
+    // Each comparator above encodes the column's *natural* order (numeric
+    // columns descending, "rival" A→Z). Re-clicking the active header flips
+    // state.lbDir to -1, which reverses just the primary key; the games/name
+    // tie-breakers stay stable so equal rows keep a predictable order.
+    const dir = state.lbDir === -1 ? -1 : 1;
     const cmp = LB_SORTS[state.lbSort] || LB_SORTS.winpct;
     summaries.sort((a, b) =>
-      cmp(a, b) || b.total - a.total || a.rival.name.localeCompare(b.rival.name));
+      dir * cmp(a, b) || b.total - a.total || a.rival.name.localeCompare(b.rival.name));
 
-    // Update sort-active state on the column headers.
+    // Update sort-active state on the column headers. aria-sort reflects the
+    // actual direction (the ::after caret follows aria-sort in CSS), so the
+    // "rival" column reads ascending by default and the numeric ones descending.
     for (const key of Object.keys(LB_SORTS)) {
       const th = $('#lb-th-' + key);
       if (!th) continue;
       const active = state.lbSort === key;
       th.classList.toggle('lb-th-sorted', active);
-      th.setAttribute('aria-sort', active ? (key === 'rival' ? 'ascending' : 'descending') : 'none');
+      if (active) {
+        const naturalAscending = key === 'rival';
+        const ascending = dir === 1 ? naturalAscending : !naturalAscending;
+        th.setAttribute('aria-sort', ascending ? 'ascending' : 'descending');
+      } else {
+        th.setAttribute('aria-sort', 'none');
+      }
     }
 
     summaries.forEach((s, i) => {
@@ -6119,8 +6133,14 @@
       return function (e) {
         if (e.type === 'keydown' && e.key !== 'Enter' && e.key !== ' ') return;
         if (e.type === 'keydown') e.preventDefault();
-        if (state.lbSort === sortKey) return;
-        state.lbSort = sortKey;
+        if (state.lbSort === sortKey) {
+          // Re-clicking the active column rotates the direction.
+          state.lbDir = state.lbDir === -1 ? 1 : -1;
+        } else {
+          // A new column starts in its natural order.
+          state.lbSort = sortKey;
+          state.lbDir = 1;
+        }
         if (state.view === 'leaderboard') renderLeaderboard();
       };
     }
