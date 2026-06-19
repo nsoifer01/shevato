@@ -46,8 +46,14 @@
    top-level page that loads this stylesheet. */
 .skip-link {
   position: absolute;
-  top: -40px;
+  top: 0;
   left: 0;
+  /* Hide by the link's own full height (height-independent) rather than a
+     magic top:-40px. The old fixed offset assumed the link was exactly 40px
+     tall, so a 1-2px blue sliver peeked below y=0; on pages with the fixed
+     header that sliver is hidden behind it, but moadon-alef has no header so
+     it showed as a stray blue line in the top-left corner. */
+  transform: translateY(-100%);
   z-index: 1000;
   padding: 8px 16px;
   background: var(--brand-blue);
@@ -56,7 +62,7 @@
   font-weight: 600;
 }
 .skip-link:focus {
-  top: 0;
+  transform: translateY(0);
   outline: 2px solid #ffffff;
   outline-offset: -2px;
 }
