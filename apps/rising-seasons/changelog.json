@@ -1,6 +1,531 @@
 {
   "updates": [
     {
+      "builtAt": "2026-06-20T07:57:52.770Z",
+      "totals": {
+        "seasons": 65425,
+        "delta": 16
+      },
+      "shapeCounts": {
+        "mid-peak": 4596,
+        "rebound": 10030,
+        "rising": 2909,
+        "slow-burn": 4328,
+        "big-finale": 11951,
+        "u-shaped": 3060,
+        "rollercoaster": 13985,
+        "saved-best-for-last": 1512,
+        "front-loaded": 3431,
+        "declining": 1848,
+        "bad-finale": 4619,
+        "consistent": 2598,
+        "shape-drift": 1595
+      },
+      "shapeDeltas": {
+        "mid-peak": -1,
+        "rebound": 3,
+        "rising": 4,
+        "slow-burn": -3,
+        "big-finale": -19,
+        "u-shaped": -4,
+        "rollercoaster": -3,
+        "saved-best-for-last": -3,
+        "front-loaded": 3,
+        "bad-finale": 2,
+        "consistent": -4,
+        "shape-drift": 1
+      },
+      "added": [
+        {
+          "seriesId": "tt32915471",
+          "title": "2026 FIFA World Cup",
+          "season": 2,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt13045860",
+          "title": "Hiç Komik Degil",
+          "season": 3,
+          "seasonYear": 2014
+        },
+        {
+          "seriesId": "tt34771210",
+          "title": "I Will Find You",
+          "season": 1,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt16636212",
+          "title": "Godfathers",
+          "season": 1,
+          "seasonYear": 2022
+        },
+        {
+          "seriesId": "tt7895046",
+          "title": "Village of the Damned",
+          "season": 1,
+          "seasonYear": 2017
+        },
+        {
+          "seriesId": "tt17640316",
+          "title": "Would I Lie to You?",
+          "season": 1,
+          "seasonYear": 2022
+        },
+        {
+          "seriesId": "tt0759364",
+          "title": "America's Got Talent",
+          "season": 22,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt0353099",
+          "title": "Saygilar Bizden",
+          "season": 1,
+          "seasonYear": 1992
+        },
+        {
+          "seriesId": "tt14671508",
+          "title": "Password",
+          "season": 3,
+          "seasonYear": 2025
+        },
+        {
+          "seriesId": "tt28304310",
+          "title": "90 Day: The Last Resort",
+          "season": 3,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt27643238",
+          "title": "SpongeBong HempPants",
+          "season": 1,
+          "seasonYear": 2004
+        },
+        {
+          "seriesId": "tt39366674",
+          "title": "Metoda Markovic: Straka",
+          "season": 1,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt41546963",
+          "title": "Rainmarks",
+          "season": 1,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt42543947",
+          "title": "The Polygamist",
+          "season": 1,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt5276152",
+          "title": "Norn9",
+          "season": 1,
+          "seasonYear": 2016
+        },
+        {
+          "seriesId": "tt1626459",
+          "title": "My Kitchen Rules",
+          "season": 14,
+          "seasonYear": 2024
+        },
+        {
+          "seriesId": "tt6274184",
+          "title": "Hoodies Squad",
+          "season": 1,
+          "seasonYear": 2013
+        },
+        {
+          "seriesId": "tt33749166",
+          "title": "The Green Hornet Strikes Again!",
+          "season": 1,
+          "seasonYear": 1940
+        },
+        {
+          "seriesId": "tt38627818",
+          "title": "Then You Try Making It!",
+          "season": 1,
+          "seasonYear": 2025
+        }
+      ],
+      "removed": [
+        {
+          "seriesId": "tt12749392",
+          "title": "Sharpe",
+          "season": 5,
+          "seasonYear": 1997
+        },
+        {
+          "seriesId": "tt5574940",
+          "title": "The New Edition Story",
+          "season": 1,
+          "seasonYear": 2017
+        },
+        {
+          "seriesId": "tt0075538",
+          "title": "Miss Jones and Son",
+          "season": 1,
+          "seasonYear": 1977
+        }
+      ],
+      "ratingSwings": [
+        {
+          "seriesId": "tt14144758",
+          "title": "Mann Kee Awaaz Pratigya 2",
+          "season": 1,
+          "from": 10,
+          "to": 8.83,
+          "delta": -1.17
+        },
+        {
+          "seriesId": "tt32463887",
+          "title": "9-nine- Ruler's Crown",
+          "season": 1,
+          "from": 8.65,
+          "to": 7.57,
+          "delta": -1.08
+        },
+        {
+          "seriesId": "tt28088954",
+          "title": "The Traitors NZ",
+          "season": 3,
+          "from": 7,
+          "to": 6.08,
+          "delta": -0.92
+        },
+        {
+          "seriesId": "tt10895604",
+          "title": "Power Players",
+          "season": 1,
+          "from": 9.34,
+          "to": 8.51,
+          "delta": -0.83
+        },
+        {
+          "seriesId": "tt0861751",
+          "title": "Hungarian Folk Tales",
+          "season": 8,
+          "from": 7.5,
+          "to": 8.28,
+          "delta": 0.78
+        },
+        {
+          "seriesId": "tt39673631",
+          "title": "Monster Eater",
+          "season": 1,
+          "from": 5.56,
+          "to": 6.25,
+          "delta": 0.69
+        },
+        {
+          "seriesId": "tt0175738",
+          "title": "Histeria!",
+          "season": 1,
+          "from": 5.5,
+          "to": 6.17,
+          "delta": 0.67
+        },
+        {
+          "seriesId": "tt39387426",
+          "title": "Jae-seok's B&B Rules!",
+          "season": 1,
+          "from": 7.36,
+          "to": 6.76,
+          "delta": -0.6
+        },
+        {
+          "seriesId": "tt6354120",
+          "title": "Brave Witches",
+          "season": 1,
+          "from": 5.81,
+          "to": 6.38,
+          "delta": 0.57
+        },
+        {
+          "seriesId": "tt8819906",
+          "title": "Love Island USA",
+          "season": 8,
+          "from": 7.48,
+          "to": 6.94,
+          "delta": -0.54
+        }
+      ],
+      "modifiedCounts": {
+        "seriesVotes": 18605,
+        "avgRating": 1583,
+        "episodeCount": 192,
+        "shapes": 277,
+        "seriesRating": 280,
+        "poster": 1,
+        "overview": 1,
+        "providers": 9
+      }
+    },
+    {
+      "builtAt": "2026-06-20T07:32:01.816Z",
+      "totals": {
+        "seasons": 65425,
+        "delta": 16
+      },
+      "shapeCounts": {
+        "mid-peak": 4596,
+        "rebound": 10030,
+        "rising": 2909,
+        "slow-burn": 4328,
+        "big-finale": 11951,
+        "u-shaped": 3060,
+        "rollercoaster": 13985,
+        "saved-best-for-last": 1512,
+        "front-loaded": 3431,
+        "declining": 1848,
+        "bad-finale": 4619,
+        "consistent": 2598,
+        "shape-drift": 1595
+      },
+      "shapeDeltas": {
+        "mid-peak": -1,
+        "rebound": 3,
+        "rising": 4,
+        "slow-burn": -3,
+        "big-finale": -19,
+        "u-shaped": -4,
+        "rollercoaster": -3,
+        "saved-best-for-last": -3,
+        "front-loaded": 3,
+        "bad-finale": 2,
+        "consistent": -4,
+        "shape-drift": 1
+      },
+      "added": [
+        {
+          "seriesId": "tt32915471",
+          "title": "2026 FIFA World Cup",
+          "season": 2,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt13045860",
+          "title": "Hiç Komik Degil",
+          "season": 3,
+          "seasonYear": 2014
+        },
+        {
+          "seriesId": "tt34771210",
+          "title": "I Will Find You",
+          "season": 1,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt16636212",
+          "title": "Godfathers",
+          "season": 1,
+          "seasonYear": 2022
+        },
+        {
+          "seriesId": "tt7895046",
+          "title": "Village of the Damned",
+          "season": 1,
+          "seasonYear": 2017
+        },
+        {
+          "seriesId": "tt17640316",
+          "title": "Would I Lie to You?",
+          "season": 1,
+          "seasonYear": 2022
+        },
+        {
+          "seriesId": "tt0759364",
+          "title": "America's Got Talent",
+          "season": 22,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt0353099",
+          "title": "Saygilar Bizden",
+          "season": 1,
+          "seasonYear": 1992
+        },
+        {
+          "seriesId": "tt14671508",
+          "title": "Password",
+          "season": 3,
+          "seasonYear": 2025
+        },
+        {
+          "seriesId": "tt28304310",
+          "title": "90 Day: The Last Resort",
+          "season": 3,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt27643238",
+          "title": "SpongeBong HempPants",
+          "season": 1,
+          "seasonYear": 2004
+        },
+        {
+          "seriesId": "tt39366674",
+          "title": "Metoda Markovic: Straka",
+          "season": 1,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt41546963",
+          "title": "Rainmarks",
+          "season": 1,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt42543947",
+          "title": "The Polygamist",
+          "season": 1,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt5276152",
+          "title": "Norn9",
+          "season": 1,
+          "seasonYear": 2016
+        },
+        {
+          "seriesId": "tt1626459",
+          "title": "My Kitchen Rules",
+          "season": 14,
+          "seasonYear": 2024
+        },
+        {
+          "seriesId": "tt6274184",
+          "title": "Hoodies Squad",
+          "season": 1,
+          "seasonYear": 2013
+        },
+        {
+          "seriesId": "tt33749166",
+          "title": "The Green Hornet Strikes Again!",
+          "season": 1,
+          "seasonYear": 1940
+        },
+        {
+          "seriesId": "tt38627818",
+          "title": "Then You Try Making It!",
+          "season": 1,
+          "seasonYear": 2025
+        }
+      ],
+      "removed": [
+        {
+          "seriesId": "tt12749392",
+          "title": "Sharpe",
+          "season": 5,
+          "seasonYear": 1997
+        },
+        {
+          "seriesId": "tt5574940",
+          "title": "The New Edition Story",
+          "season": 1,
+          "seasonYear": 2017
+        },
+        {
+          "seriesId": "tt0075538",
+          "title": "Miss Jones and Son",
+          "season": 1,
+          "seasonYear": 1977
+        }
+      ],
+      "ratingSwings": [
+        {
+          "seriesId": "tt14144758",
+          "title": "Mann Kee Awaaz Pratigya 2",
+          "season": 1,
+          "from": 10,
+          "to": 8.83,
+          "delta": -1.17
+        },
+        {
+          "seriesId": "tt32463887",
+          "title": "9-nine- Ruler's Crown",
+          "season": 1,
+          "from": 8.65,
+          "to": 7.57,
+          "delta": -1.08
+        },
+        {
+          "seriesId": "tt28088954",
+          "title": "The Traitors NZ",
+          "season": 3,
+          "from": 7,
+          "to": 6.08,
+          "delta": -0.92
+        },
+        {
+          "seriesId": "tt10895604",
+          "title": "Power Players",
+          "season": 1,
+          "from": 9.34,
+          "to": 8.51,
+          "delta": -0.83
+        },
+        {
+          "seriesId": "tt0861751",
+          "title": "Hungarian Folk Tales",
+          "season": 8,
+          "from": 7.5,
+          "to": 8.28,
+          "delta": 0.78
+        },
+        {
+          "seriesId": "tt39673631",
+          "title": "Monster Eater",
+          "season": 1,
+          "from": 5.56,
+          "to": 6.25,
+          "delta": 0.69
+        },
+        {
+          "seriesId": "tt0175738",
+          "title": "Histeria!",
+          "season": 1,
+          "from": 5.5,
+          "to": 6.17,
+          "delta": 0.67
+        },
+        {
+          "seriesId": "tt39387426",
+          "title": "Jae-seok's B&B Rules!",
+          "season": 1,
+          "from": 7.36,
+          "to": 6.76,
+          "delta": -0.6
+        },
+        {
+          "seriesId": "tt6354120",
+          "title": "Brave Witches",
+          "season": 1,
+          "from": 5.81,
+          "to": 6.38,
+          "delta": 0.57
+        },
+        {
+          "seriesId": "tt8819906",
+          "title": "Love Island USA",
+          "season": 8,
+          "from": 7.48,
+          "to": 6.94,
+          "delta": -0.54
+        }
+      ],
+      "modifiedCounts": {
+        "seriesVotes": 18605,
+        "avgRating": 1583,
+        "episodeCount": 192,
+        "shapes": 277,
+        "seriesRating": 280
+      }
+    },
+    {
       "builtAt": "2026-06-19T08:31:14.748Z",
       "totals": {
         "seasons": 65409,
@@ -6195,345 +6720,6 @@
         "shapes": 319,
         "episodeCount": 136,
         "seriesRating": 444
-      }
-    },
-    {
-      "builtAt": "2026-06-05T08:22:54.249Z",
-      "totals": {
-        "seasons": 65192,
-        "delta": 7
-      },
-      "shapeCounts": {
-        "mid-peak": 4594,
-        "rebound": 9965,
-        "rising": 2920,
-        "slow-burn": 4318,
-        "big-finale": 11934,
-        "u-shaped": 3062,
-        "rollercoaster": 13940,
-        "saved-best-for-last": 1511,
-        "front-loaded": 3437,
-        "declining": 1831,
-        "bad-finale": 4601,
-        "consistent": 2583,
-        "shape-drift": 1589
-      },
-      "shapeDeltas": {
-        "mid-peak": 1,
-        "rebound": 10,
-        "rising": -3,
-        "slow-burn": 2,
-        "big-finale": -4,
-        "u-shaped": 3,
-        "rollercoaster": 3,
-        "saved-best-for-last": 2,
-        "front-loaded": 2,
-        "consistent": -2
-      },
-      "added": [
-        {
-          "seriesId": "tt35674465",
-          "title": "Made in India: A Titan Story",
-          "season": 1,
-          "seasonYear": 2026
-        },
-        {
-          "seriesId": "tt35049607",
-          "title": "Cops",
-          "season": 2,
-          "seasonYear": 2026
-        },
-        {
-          "seriesId": "tt38839923",
-          "title": "Murder on Trial",
-          "season": 1,
-          "seasonYear": 2025
-        },
-        {
-          "seriesId": "tt0435566",
-          "title": "Def Comedy Jam",
-          "season": 5,
-          "seasonYear": 1995
-        },
-        {
-          "seriesId": "tt0435566",
-          "title": "Def Comedy Jam",
-          "season": 4,
-          "seasonYear": 1994
-        },
-        {
-          "seriesId": "tt5879522",
-          "title": "Gdgd Fairies",
-          "season": 1,
-          "seasonYear": 2011
-        },
-        {
-          "seriesId": "tt42415992",
-          "title": "Polka Dot",
-          "season": 1,
-          "seasonYear": 2026
-        }
-      ],
-      "removed": [],
-      "ratingSwings": [
-        {
-          "seriesId": "tt15256160",
-          "title": "Unconventional",
-          "season": 1,
-          "from": 7.4,
-          "to": 8.13,
-          "delta": 0.73
-        },
-        {
-          "seriesId": "tt39893694",
-          "title": "Crazy Love, Moo-Moo!",
-          "season": 1,
-          "from": 8.15,
-          "to": 7.53,
-          "delta": -0.62
-        },
-        {
-          "seriesId": "tt42324479",
-          "title": "The 1% Club",
-          "season": 2,
-          "from": 7.8,
-          "to": 7.36,
-          "delta": -0.44
-        },
-        {
-          "seriesId": "tt41978418",
-          "title": "The Many Lives of Benjaman Kyle",
-          "season": 1,
-          "from": 6.33,
-          "to": 5.98,
-          "delta": -0.35
-        },
-        {
-          "seriesId": "tt0435566",
-          "title": "Def Comedy Jam",
-          "season": 3,
-          "from": 7.7,
-          "to": 8.04,
-          "delta": 0.34
-        },
-        {
-          "seriesId": "tt35414278",
-          "title": "Förrädarna - Gravkammaren",
-          "season": 1,
-          "from": 7.13,
-          "to": 6.8,
-          "delta": -0.33
-        },
-        {
-          "seriesId": "tt39962827",
-          "title": "Michael Jackson: The Trial",
-          "season": 1,
-          "from": 5.57,
-          "to": 5.25,
-          "delta": -0.32
-        },
-        {
-          "seriesId": "tt42152890",
-          "title": "Double Helix",
-          "season": 1,
-          "from": 7.66,
-          "to": 7.34,
-          "delta": -0.32
-        },
-        {
-          "seriesId": "tt42027958",
-          "title": "The Cult of NatureBoy",
-          "season": 1,
-          "from": 5.68,
-          "to": 5.98,
-          "delta": 0.3
-        },
-        {
-          "seriesId": "tt35433285",
-          "title": "My Safe Zone",
-          "season": 1,
-          "from": 8.29,
-          "to": 8.01,
-          "delta": -0.28
-        }
-      ],
-      "modifiedCounts": {
-        "seriesVotes": 20725,
-        "avgRating": 668,
-        "shapes": 106,
-        "seriesRating": 176,
-        "episodeCount": 39,
-        "overview": 10,
-        "poster": 2,
-        "providers": 1
-      }
-    },
-    {
-      "builtAt": "2026-06-05T07:43:00.580Z",
-      "totals": {
-        "seasons": 65192,
-        "delta": 7
-      },
-      "shapeCounts": {
-        "mid-peak": 4594,
-        "rebound": 9965,
-        "rising": 2920,
-        "slow-burn": 4318,
-        "big-finale": 11934,
-        "u-shaped": 3062,
-        "rollercoaster": 13940,
-        "saved-best-for-last": 1511,
-        "front-loaded": 3437,
-        "declining": 1831,
-        "bad-finale": 4601,
-        "consistent": 2583,
-        "shape-drift": 1589
-      },
-      "shapeDeltas": {
-        "mid-peak": 1,
-        "rebound": 10,
-        "rising": -3,
-        "slow-burn": 2,
-        "big-finale": -4,
-        "u-shaped": 3,
-        "rollercoaster": 3,
-        "saved-best-for-last": 2,
-        "front-loaded": 2,
-        "consistent": -2
-      },
-      "added": [
-        {
-          "seriesId": "tt35674465",
-          "title": "Made in India: A Titan Story",
-          "season": 1,
-          "seasonYear": 2026
-        },
-        {
-          "seriesId": "tt35049607",
-          "title": "Cops",
-          "season": 2,
-          "seasonYear": 2026
-        },
-        {
-          "seriesId": "tt38839923",
-          "title": "Murder on Trial",
-          "season": 1,
-          "seasonYear": 2025
-        },
-        {
-          "seriesId": "tt0435566",
-          "title": "Def Comedy Jam",
-          "season": 5,
-          "seasonYear": 1995
-        },
-        {
-          "seriesId": "tt0435566",
-          "title": "Def Comedy Jam",
-          "season": 4,
-          "seasonYear": 1994
-        },
-        {
-          "seriesId": "tt5879522",
-          "title": "Gdgd Fairies",
-          "season": 1,
-          "seasonYear": 2011
-        },
-        {
-          "seriesId": "tt42415992",
-          "title": "Polka Dot",
-          "season": 1,
-          "seasonYear": 2026
-        }
-      ],
-      "removed": [],
-      "ratingSwings": [
-        {
-          "seriesId": "tt15256160",
-          "title": "Unconventional",
-          "season": 1,
-          "from": 7.4,
-          "to": 8.13,
-          "delta": 0.73
-        },
-        {
-          "seriesId": "tt39893694",
-          "title": "Crazy Love, Moo-Moo!",
-          "season": 1,
-          "from": 8.15,
-          "to": 7.53,
-          "delta": -0.62
-        },
-        {
-          "seriesId": "tt42324479",
-          "title": "The 1% Club",
-          "season": 2,
-          "from": 7.8,
-          "to": 7.36,
-          "delta": -0.44
-        },
-        {
-          "seriesId": "tt41978418",
-          "title": "The Many Lives of Benjaman Kyle",
-          "season": 1,
-          "from": 6.33,
-          "to": 5.98,
-          "delta": -0.35
-        },
-        {
-          "seriesId": "tt0435566",
-          "title": "Def Comedy Jam",
-          "season": 3,
-          "from": 7.7,
-          "to": 8.04,
-          "delta": 0.34
-        },
-        {
-          "seriesId": "tt35414278",
-          "title": "Förrädarna - Gravkammaren",
-          "season": 1,
-          "from": 7.13,
-          "to": 6.8,
-          "delta": -0.33
-        },
-        {
-          "seriesId": "tt39962827",
-          "title": "Michael Jackson: The Trial",
-          "season": 1,
-          "from": 5.57,
-          "to": 5.25,
-          "delta": -0.32
-        },
-        {
-          "seriesId": "tt42152890",
-          "title": "Double Helix",
-          "season": 1,
-          "from": 7.66,
-          "to": 7.34,
-          "delta": -0.32
-        },
-        {
-          "seriesId": "tt42027958",
-          "title": "The Cult of NatureBoy",
-          "season": 1,
-          "from": 5.68,
-          "to": 5.98,
-          "delta": 0.3
-        },
-        {
-          "seriesId": "tt35433285",
-          "title": "My Safe Zone",
-          "season": 1,
-          "from": 8.29,
-          "to": 8.01,
-          "delta": -0.28
-        }
-      ],
-      "modifiedCounts": {
-        "seriesVotes": 20725,
-        "avgRating": 668,
-        "shapes": 106,
-        "seriesRating": 176,
-        "episodeCount": 39
       }
     }
   ]
