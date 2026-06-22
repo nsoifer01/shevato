@@ -1,6 +1,438 @@
 {
   "updates": [
     {
+      "builtAt": "2026-06-22T08:49:45.339Z",
+      "totals": {
+        "seasons": 65453,
+        "delta": 15
+      },
+      "shapeCounts": {
+        "mid-peak": 4600,
+        "rebound": 10024,
+        "rising": 2911,
+        "slow-burn": 4330,
+        "big-finale": 11952,
+        "u-shaped": 3051,
+        "rollercoaster": 13990,
+        "saved-best-for-last": 1513,
+        "front-loaded": 3428,
+        "declining": 1849,
+        "bad-finale": 4626,
+        "consistent": 2594,
+        "shape-drift": 1603
+      },
+      "shapeDeltas": {
+        "mid-peak": 5,
+        "rebound": 1,
+        "slow-burn": -2,
+        "big-finale": -2,
+        "u-shaped": -1,
+        "rollercoaster": 7,
+        "front-loaded": 3,
+        "declining": 2,
+        "bad-finale": 4,
+        "shape-drift": 4
+      },
+      "added": [
+        {
+          "seriesId": "tt17492848",
+          "title": "Goodbye Earth",
+          "season": 1,
+          "seasonYear": 2024
+        },
+        {
+          "seriesId": "tt1544603",
+          "title": "Are We There Yet?",
+          "season": 1,
+          "seasonYear": 2010
+        },
+        {
+          "seriesId": "tt14183290",
+          "title": "Glass Ceilings",
+          "season": 1,
+          "seasonYear": 2021
+        },
+        {
+          "seriesId": "tt1544603",
+          "title": "Are We There Yet?",
+          "season": 2,
+          "seasonYear": 2010
+        },
+        {
+          "seriesId": "tt1663764",
+          "title": "Nihonjin no shiranai nihongo",
+          "season": 1,
+          "seasonYear": 2010
+        },
+        {
+          "seriesId": "tt27412343",
+          "title": "Saving the Tigers",
+          "season": 3,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt7673112",
+          "title": "Round Planet",
+          "season": 1,
+          "seasonYear": 2016
+        },
+        {
+          "seriesId": "tt4291050",
+          "title": "Hey Duggee",
+          "season": 3,
+          "seasonYear": 2019
+        },
+        {
+          "seriesId": "tt1544603",
+          "title": "Are We There Yet?",
+          "season": 3,
+          "seasonYear": 2012
+        },
+        {
+          "seriesId": "tt38821672",
+          "title": "Phoenix",
+          "season": 1,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt4508624",
+          "title": "My Lottery Dream Home",
+          "season": 13,
+          "seasonYear": 2022
+        },
+        {
+          "seriesId": "tt9690112",
+          "title": "Um, Actually",
+          "season": 11,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt32146518",
+          "title": "America's Sweethearts: Dallas Cowboys Cheerleaders",
+          "season": 3,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt33092060",
+          "title": "Your Honor",
+          "season": 1,
+          "seasonYear": 2024
+        },
+        {
+          "seriesId": "tt40210399",
+          "title": "One Day in My Body",
+          "season": 1,
+          "seasonYear": 2026
+        }
+      ],
+      "removed": [],
+      "ratingSwings": [
+        {
+          "seriesId": "tt9690112",
+          "title": "Um, Actually",
+          "season": 10,
+          "from": 8.33,
+          "to": 7.7,
+          "delta": -0.63
+        },
+        {
+          "seriesId": "tt4508624",
+          "title": "My Lottery Dream Home",
+          "season": 14,
+          "from": 6.45,
+          "to": 7.04,
+          "delta": 0.59
+        },
+        {
+          "seriesId": "tt40617561",
+          "title": "Kaptaan",
+          "season": 1,
+          "from": 7.68,
+          "to": 7.15,
+          "delta": -0.53
+        },
+        {
+          "seriesId": "tt4291050",
+          "title": "Hey Duggee",
+          "season": 1,
+          "from": 6.41,
+          "to": 6.8,
+          "delta": 0.39
+        },
+        {
+          "seriesId": "tt42933387",
+          "title": "Sule: Senin Hikayen",
+          "season": 1,
+          "from": 6.22,
+          "to": 6.61,
+          "delta": 0.39
+        },
+        {
+          "seriesId": "tt39400589",
+          "title": "Viral Hit",
+          "season": 1,
+          "from": 8.74,
+          "to": 8.44,
+          "delta": -0.3
+        },
+        {
+          "seriesId": "tt40002165",
+          "title": "The Neighbourhood",
+          "season": 1,
+          "from": 7.95,
+          "to": 7.67,
+          "delta": -0.28
+        },
+        {
+          "seriesId": "tt0206512",
+          "title": "SpongeBob SquarePants",
+          "season": 17,
+          "from": 7.5,
+          "to": 7.77,
+          "delta": 0.27
+        },
+        {
+          "seriesId": "tt0046659",
+          "title": "The Vise",
+          "season": 6,
+          "from": 7.15,
+          "to": 6.88,
+          "delta": -0.27
+        },
+        {
+          "seriesId": "tt26687217",
+          "title": "Solo",
+          "season": 1,
+          "from": 8.2,
+          "to": 7.93,
+          "delta": -0.27
+        }
+      ],
+      "modifiedCounts": {
+        "seriesVotes": 13773,
+        "avgRating": 621,
+        "shapes": 114,
+        "seriesRating": 213,
+        "episodeCount": 47
+      }
+    },
+    {
+      "builtAt": "2026-06-22T08:18:52.967Z",
+      "totals": {
+        "seasons": 65453,
+        "delta": 15
+      },
+      "shapeCounts": {
+        "mid-peak": 4600,
+        "rebound": 10024,
+        "rising": 2911,
+        "slow-burn": 4330,
+        "big-finale": 11952,
+        "u-shaped": 3051,
+        "rollercoaster": 13990,
+        "saved-best-for-last": 1513,
+        "front-loaded": 3428,
+        "declining": 1849,
+        "bad-finale": 4626,
+        "consistent": 2594,
+        "shape-drift": 1603
+      },
+      "shapeDeltas": {
+        "mid-peak": 5,
+        "rebound": 1,
+        "slow-burn": -2,
+        "big-finale": -2,
+        "u-shaped": -1,
+        "rollercoaster": 7,
+        "front-loaded": 3,
+        "declining": 2,
+        "bad-finale": 4,
+        "shape-drift": 4
+      },
+      "added": [
+        {
+          "seriesId": "tt17492848",
+          "title": "Goodbye Earth",
+          "season": 1,
+          "seasonYear": 2024
+        },
+        {
+          "seriesId": "tt1544603",
+          "title": "Are We There Yet?",
+          "season": 1,
+          "seasonYear": 2010
+        },
+        {
+          "seriesId": "tt14183290",
+          "title": "Glass Ceilings",
+          "season": 1,
+          "seasonYear": 2021
+        },
+        {
+          "seriesId": "tt1544603",
+          "title": "Are We There Yet?",
+          "season": 2,
+          "seasonYear": 2010
+        },
+        {
+          "seriesId": "tt1663764",
+          "title": "Nihonjin no shiranai nihongo",
+          "season": 1,
+          "seasonYear": 2010
+        },
+        {
+          "seriesId": "tt27412343",
+          "title": "Saving the Tigers",
+          "season": 3,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt7673112",
+          "title": "Round Planet",
+          "season": 1,
+          "seasonYear": 2016
+        },
+        {
+          "seriesId": "tt4291050",
+          "title": "Hey Duggee",
+          "season": 3,
+          "seasonYear": 2019
+        },
+        {
+          "seriesId": "tt1544603",
+          "title": "Are We There Yet?",
+          "season": 3,
+          "seasonYear": 2012
+        },
+        {
+          "seriesId": "tt38821672",
+          "title": "Phoenix",
+          "season": 1,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt4508624",
+          "title": "My Lottery Dream Home",
+          "season": 13,
+          "seasonYear": 2022
+        },
+        {
+          "seriesId": "tt9690112",
+          "title": "Um, Actually",
+          "season": 11,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt32146518",
+          "title": "America's Sweethearts: Dallas Cowboys Cheerleaders",
+          "season": 3,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt33092060",
+          "title": "Your Honor",
+          "season": 1,
+          "seasonYear": 2024
+        },
+        {
+          "seriesId": "tt40210399",
+          "title": "One Day in My Body",
+          "season": 1,
+          "seasonYear": 2026
+        }
+      ],
+      "removed": [],
+      "ratingSwings": [
+        {
+          "seriesId": "tt9690112",
+          "title": "Um, Actually",
+          "season": 10,
+          "from": 8.33,
+          "to": 7.7,
+          "delta": -0.63
+        },
+        {
+          "seriesId": "tt4508624",
+          "title": "My Lottery Dream Home",
+          "season": 14,
+          "from": 6.45,
+          "to": 7.04,
+          "delta": 0.59
+        },
+        {
+          "seriesId": "tt40617561",
+          "title": "Kaptaan",
+          "season": 1,
+          "from": 7.68,
+          "to": 7.15,
+          "delta": -0.53
+        },
+        {
+          "seriesId": "tt4291050",
+          "title": "Hey Duggee",
+          "season": 1,
+          "from": 6.41,
+          "to": 6.8,
+          "delta": 0.39
+        },
+        {
+          "seriesId": "tt42933387",
+          "title": "Sule: Senin Hikayen",
+          "season": 1,
+          "from": 6.22,
+          "to": 6.61,
+          "delta": 0.39
+        },
+        {
+          "seriesId": "tt39400589",
+          "title": "Viral Hit",
+          "season": 1,
+          "from": 8.74,
+          "to": 8.44,
+          "delta": -0.3
+        },
+        {
+          "seriesId": "tt40002165",
+          "title": "The Neighbourhood",
+          "season": 1,
+          "from": 7.95,
+          "to": 7.67,
+          "delta": -0.28
+        },
+        {
+          "seriesId": "tt0206512",
+          "title": "SpongeBob SquarePants",
+          "season": 17,
+          "from": 7.5,
+          "to": 7.77,
+          "delta": 0.27
+        },
+        {
+          "seriesId": "tt0046659",
+          "title": "The Vise",
+          "season": 6,
+          "from": 7.15,
+          "to": 6.88,
+          "delta": -0.27
+        },
+        {
+          "seriesId": "tt26687217",
+          "title": "Solo",
+          "season": 1,
+          "from": 8.2,
+          "to": 7.93,
+          "delta": -0.27
+        }
+      ],
+      "modifiedCounts": {
+        "seriesVotes": 13773,
+        "avgRating": 621,
+        "shapes": 114,
+        "seriesRating": 213,
+        "episodeCount": 47
+      }
+    },
+    {
       "builtAt": "2026-06-21T08:30:38.545Z",
       "totals": {
         "seasons": 65438,
@@ -6202,468 +6634,6 @@
         "seriesRating": 262,
         "shapes": 214,
         "episodeCount": 84
-      }
-    },
-    {
-      "builtAt": "2026-06-07T08:01:28.686Z",
-      "totals": {
-        "seasons": 65245,
-        "delta": 17
-      },
-      "shapeCounts": {
-        "mid-peak": 4596,
-        "rebound": 9974,
-        "rising": 2922,
-        "slow-burn": 4323,
-        "big-finale": 11952,
-        "u-shaped": 3079,
-        "rollercoaster": 13965,
-        "saved-best-for-last": 1510,
-        "front-loaded": 3435,
-        "declining": 1836,
-        "bad-finale": 4600,
-        "consistent": 2580,
-        "shape-drift": 1589
-      },
-      "shapeDeltas": {
-        "mid-peak": -5,
-        "rebound": 15,
-        "rising": 2,
-        "slow-burn": -1,
-        "big-finale": 17,
-        "u-shaped": 9,
-        "rollercoaster": 16,
-        "saved-best-for-last": -3,
-        "front-loaded": -4,
-        "declining": -6,
-        "bad-finale": 1,
-        "consistent": -5
-      },
-      "added": [
-        {
-          "seriesId": "tt32140872",
-          "title": "Star City",
-          "season": 1,
-          "seasonYear": 2026
-        },
-        {
-          "seriesId": "tt34809853",
-          "title": "Teach You a Lesson",
-          "season": 1,
-          "seasonYear": 2026
-        },
-        {
-          "seriesId": "tt37403273",
-          "title": "Two Years Later",
-          "season": 1,
-          "seasonYear": 2026
-        },
-        {
-          "seriesId": "tt0129723",
-          "title": "Z Cars",
-          "season": 3,
-          "seasonYear": 1963
-        },
-        {
-          "seriesId": "tt28230655",
-          "title": "Among Us",
-          "season": 1,
-          "seasonYear": 2026
-        },
-        {
-          "seriesId": "tt6294706",
-          "title": "The Chi",
-          "season": 8,
-          "seasonYear": 2026
-        },
-        {
-          "seriesId": "tt22178806",
-          "title": "Chasing the Rains",
-          "season": 1,
-          "seasonYear": 2022
-        },
-        {
-          "seriesId": "tt0442730",
-          "title": "Tayny sledstviya",
-          "season": 22,
-          "seasonYear": 2022
-        },
-        {
-          "seriesId": "tt8188422",
-          "title": "Oswaldo",
-          "season": 2,
-          "seasonYear": 2019
-        },
-        {
-          "seriesId": "tt11834102",
-          "title": "IDOLiSH7",
-          "season": 2,
-          "seasonYear": 2020
-        },
-        {
-          "seriesId": "tt11834102",
-          "title": "IDOLiSH7",
-          "season": 3,
-          "seasonYear": 2021
-        },
-        {
-          "seriesId": "tt3730294",
-          "title": "Combat Dealers",
-          "season": 1,
-          "seasonYear": 2014
-        },
-        {
-          "seriesId": "tt38990636",
-          "title": "La Chaparra",
-          "season": 1,
-          "seasonYear": 2026
-        },
-        {
-          "seriesId": "tt39387426",
-          "title": "Jae-seok's B&B Rules!",
-          "season": 1,
-          "seasonYear": 2026
-        },
-        {
-          "seriesId": "tt42446103",
-          "title": "Warrant",
-          "season": 1,
-          "seasonYear": 2026
-        },
-        {
-          "seriesId": "tt5137202",
-          "title": "Killer Confessions",
-          "season": 1,
-          "seasonYear": 2015
-        },
-        {
-          "seriesId": "tt5152136",
-          "title": "Yo Soy Franky",
-          "season": 2,
-          "seasonYear": 2016
-        }
-      ],
-      "removed": [],
-      "ratingSwings": [
-        {
-          "seriesId": "tt26997679",
-          "title": "Chiikawa",
-          "season": 1,
-          "from": 8.3,
-          "to": 6.3,
-          "delta": -2
-        },
-        {
-          "seriesId": "tt16305162",
-          "title": "Good Old Days",
-          "season": 1,
-          "from": 6.6,
-          "to": 5.58,
-          "delta": -1.02
-        },
-        {
-          "seriesId": "tt30959036",
-          "title": "Bir Sevdadir",
-          "season": 1,
-          "from": 9.42,
-          "to": 8.7,
-          "delta": -0.72
-        },
-        {
-          "seriesId": "tt35636900",
-          "title": "James.",
-          "season": 1,
-          "from": 8.47,
-          "to": 7.8,
-          "delta": -0.67
-        },
-        {
-          "seriesId": "tt40431769",
-          "title": "K9 PD with Jim Belushi",
-          "season": 1,
-          "from": 7.57,
-          "to": 8.19,
-          "delta": 0.62
-        },
-        {
-          "seriesId": "tt8566938",
-          "title": "Engineering Catastrophes",
-          "season": 3,
-          "from": 6.84,
-          "to": 6.24,
-          "delta": -0.6
-        },
-        {
-          "seriesId": "tt2575740",
-          "title": "Revenge",
-          "season": 2,
-          "from": 5.89,
-          "to": 6.48,
-          "delta": 0.59
-        },
-        {
-          "seriesId": "tt9646834",
-          "title": "RuPaul's Drag Race All Stars: Untucked!",
-          "season": 8,
-          "from": 6.98,
-          "to": 7.52,
-          "delta": 0.54
-        },
-        {
-          "seriesId": "tt8566938",
-          "title": "Engineering Catastrophes",
-          "season": 1,
-          "from": 6.93,
-          "to": 6.4,
-          "delta": -0.53
-        },
-        {
-          "seriesId": "tt11834102",
-          "title": "IDOLiSH7",
-          "season": 1,
-          "from": 6.54,
-          "to": 7.01,
-          "delta": 0.47
-        }
-      ],
-      "modifiedCounts": {
-        "seriesVotes": 24359,
-        "avgRating": 1091,
-        "shapes": 223,
-        "seriesRating": 259,
-        "episodeCount": 102,
-        "poster": 6,
-        "overview": 6
-      }
-    },
-    {
-      "builtAt": "2026-06-07T07:35:53.625Z",
-      "totals": {
-        "seasons": 65245,
-        "delta": 17
-      },
-      "shapeCounts": {
-        "mid-peak": 4596,
-        "rebound": 9974,
-        "rising": 2922,
-        "slow-burn": 4323,
-        "big-finale": 11952,
-        "u-shaped": 3079,
-        "rollercoaster": 13965,
-        "saved-best-for-last": 1510,
-        "front-loaded": 3435,
-        "declining": 1836,
-        "bad-finale": 4600,
-        "consistent": 2580,
-        "shape-drift": 1589
-      },
-      "shapeDeltas": {
-        "mid-peak": -5,
-        "rebound": 15,
-        "rising": 2,
-        "slow-burn": -1,
-        "big-finale": 17,
-        "u-shaped": 9,
-        "rollercoaster": 16,
-        "saved-best-for-last": -3,
-        "front-loaded": -4,
-        "declining": -6,
-        "bad-finale": 1,
-        "consistent": -5
-      },
-      "added": [
-        {
-          "seriesId": "tt32140872",
-          "title": "Star City",
-          "season": 1,
-          "seasonYear": 2026
-        },
-        {
-          "seriesId": "tt34809853",
-          "title": "Teach You a Lesson",
-          "season": 1,
-          "seasonYear": 2026
-        },
-        {
-          "seriesId": "tt37403273",
-          "title": "Two Years Later",
-          "season": 1,
-          "seasonYear": 2026
-        },
-        {
-          "seriesId": "tt0129723",
-          "title": "Z Cars",
-          "season": 3,
-          "seasonYear": 1963
-        },
-        {
-          "seriesId": "tt28230655",
-          "title": "Among Us",
-          "season": 1,
-          "seasonYear": 2026
-        },
-        {
-          "seriesId": "tt6294706",
-          "title": "The Chi",
-          "season": 8,
-          "seasonYear": 2026
-        },
-        {
-          "seriesId": "tt22178806",
-          "title": "Chasing the Rains",
-          "season": 1,
-          "seasonYear": 2022
-        },
-        {
-          "seriesId": "tt0442730",
-          "title": "Tayny sledstviya",
-          "season": 22,
-          "seasonYear": 2022
-        },
-        {
-          "seriesId": "tt8188422",
-          "title": "Oswaldo",
-          "season": 2,
-          "seasonYear": 2019
-        },
-        {
-          "seriesId": "tt11834102",
-          "title": "IDOLiSH7",
-          "season": 2,
-          "seasonYear": 2020
-        },
-        {
-          "seriesId": "tt11834102",
-          "title": "IDOLiSH7",
-          "season": 3,
-          "seasonYear": 2021
-        },
-        {
-          "seriesId": "tt3730294",
-          "title": "Combat Dealers",
-          "season": 1,
-          "seasonYear": 2014
-        },
-        {
-          "seriesId": "tt38990636",
-          "title": "La Chaparra",
-          "season": 1,
-          "seasonYear": 2026
-        },
-        {
-          "seriesId": "tt39387426",
-          "title": "Jae-seok's B&B Rules!",
-          "season": 1,
-          "seasonYear": 2026
-        },
-        {
-          "seriesId": "tt42446103",
-          "title": "Warrant",
-          "season": 1,
-          "seasonYear": 2026
-        },
-        {
-          "seriesId": "tt5137202",
-          "title": "Killer Confessions",
-          "season": 1,
-          "seasonYear": 2015
-        },
-        {
-          "seriesId": "tt5152136",
-          "title": "Yo Soy Franky",
-          "season": 2,
-          "seasonYear": 2016
-        }
-      ],
-      "removed": [],
-      "ratingSwings": [
-        {
-          "seriesId": "tt26997679",
-          "title": "Chiikawa",
-          "season": 1,
-          "from": 8.3,
-          "to": 6.3,
-          "delta": -2
-        },
-        {
-          "seriesId": "tt16305162",
-          "title": "Good Old Days",
-          "season": 1,
-          "from": 6.6,
-          "to": 5.58,
-          "delta": -1.02
-        },
-        {
-          "seriesId": "tt30959036",
-          "title": "Bir Sevdadir",
-          "season": 1,
-          "from": 9.42,
-          "to": 8.7,
-          "delta": -0.72
-        },
-        {
-          "seriesId": "tt35636900",
-          "title": "James.",
-          "season": 1,
-          "from": 8.47,
-          "to": 7.8,
-          "delta": -0.67
-        },
-        {
-          "seriesId": "tt40431769",
-          "title": "K9 PD with Jim Belushi",
-          "season": 1,
-          "from": 7.57,
-          "to": 8.19,
-          "delta": 0.62
-        },
-        {
-          "seriesId": "tt8566938",
-          "title": "Engineering Catastrophes",
-          "season": 3,
-          "from": 6.84,
-          "to": 6.24,
-          "delta": -0.6
-        },
-        {
-          "seriesId": "tt2575740",
-          "title": "Revenge",
-          "season": 2,
-          "from": 5.89,
-          "to": 6.48,
-          "delta": 0.59
-        },
-        {
-          "seriesId": "tt9646834",
-          "title": "RuPaul's Drag Race All Stars: Untucked!",
-          "season": 8,
-          "from": 6.98,
-          "to": 7.52,
-          "delta": 0.54
-        },
-        {
-          "seriesId": "tt8566938",
-          "title": "Engineering Catastrophes",
-          "season": 1,
-          "from": 6.93,
-          "to": 6.4,
-          "delta": -0.53
-        },
-        {
-          "seriesId": "tt11834102",
-          "title": "IDOLiSH7",
-          "season": 1,
-          "from": 6.54,
-          "to": 7.01,
-          "delta": 0.47
-        }
-      ],
-      "modifiedCounts": {
-        "seriesVotes": 24359,
-        "avgRating": 1091,
-        "shapes": 223,
-        "seriesRating": 259,
-        "episodeCount": 102
       }
     }
   ]
