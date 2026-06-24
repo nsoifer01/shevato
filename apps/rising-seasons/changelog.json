@@ -1,6 +1,356 @@
 {
   "updates": [
     {
+      "builtAt": "2026-06-24T07:59:09.878Z",
+      "totals": {
+        "seasons": 65482,
+        "delta": 8
+      },
+      "shapeCounts": {
+        "mid-peak": 4604,
+        "rebound": 10019,
+        "rising": 2909,
+        "slow-burn": 4333,
+        "big-finale": 11963,
+        "u-shaped": 3054,
+        "rollercoaster": 13979,
+        "saved-best-for-last": 1513,
+        "front-loaded": 3438,
+        "declining": 1849,
+        "bad-finale": 4627,
+        "consistent": 2593,
+        "shape-drift": 1608
+      },
+      "shapeDeltas": {
+        "mid-peak": 1,
+        "rebound": 4,
+        "rising": 1,
+        "slow-burn": 1,
+        "big-finale": -6,
+        "u-shaped": -1,
+        "rollercoaster": -7,
+        "saved-best-for-last": 1,
+        "front-loaded": 2,
+        "shape-drift": -3
+      },
+      "added": [
+        {
+          "seriesId": "tt0478074",
+          "title": "G.I. Joe: Sigma 6",
+          "season": 1,
+          "seasonYear": 2005
+        },
+        {
+          "seriesId": "tt0124229",
+          "title": "Attack of the Killer Tomatoes",
+          "season": 2,
+          "seasonYear": 1991
+        },
+        {
+          "seriesId": "tt0890871",
+          "title": "Destiny of the Shrine Maiden",
+          "season": 1,
+          "seasonYear": 2004
+        },
+        {
+          "seriesId": "tt0144065",
+          "title": "Ri¢hie Ri¢h",
+          "season": 4,
+          "seasonYear": 1983
+        },
+        {
+          "seriesId": "tt7860280",
+          "title": "Surgeons: At the Edge of Life",
+          "season": 3,
+          "seasonYear": 2020
+        },
+        {
+          "seriesId": "tt22174292",
+          "title": "More Than Words",
+          "season": 1,
+          "seasonYear": 2022
+        },
+        {
+          "seriesId": "tt20852220",
+          "title": "One Cent Thief",
+          "season": 2,
+          "seasonYear": 2025
+        },
+        {
+          "seriesId": "tt6508182",
+          "title": "H.I.M",
+          "season": 1,
+          "seasonYear": 2017
+        }
+      ],
+      "removed": [],
+      "ratingSwings": [
+        {
+          "seriesId": "tt38734636",
+          "title": "Oasis",
+          "season": 1,
+          "from": 8.65,
+          "to": 7.86,
+          "delta": -0.79
+        },
+        {
+          "seriesId": "tt3522052",
+          "title": "Ex on the Beach",
+          "season": 7,
+          "from": 6.33,
+          "to": 7.06,
+          "delta": 0.73
+        },
+        {
+          "seriesId": "tt32645659",
+          "title": "The Heartless",
+          "season": 1,
+          "from": 6.17,
+          "to": 5.53,
+          "delta": -0.64
+        },
+        {
+          "seriesId": "tt42071698",
+          "title": "Cousins and Kalyanams",
+          "season": 1,
+          "from": 4.88,
+          "to": 5.43,
+          "delta": 0.55
+        },
+        {
+          "seriesId": "tt6472898",
+          "title": "Lion Guard: It's Unbungalievable",
+          "season": 1,
+          "from": 4.77,
+          "to": 5.23,
+          "delta": 0.46
+        },
+        {
+          "seriesId": "tt34929415",
+          "title": "A Dog and a Plane",
+          "season": 1,
+          "from": 9,
+          "to": 8.55,
+          "delta": -0.45
+        },
+        {
+          "seriesId": "tt12169634",
+          "title": "Der Penny-Markt auf der Reeperbahn",
+          "season": 1,
+          "from": 9.48,
+          "to": 9.05,
+          "delta": -0.43
+        },
+        {
+          "seriesId": "tt36982964",
+          "title": "Never-Ending Summer",
+          "season": 1,
+          "from": 7.15,
+          "to": 7.57,
+          "delta": 0.42
+        },
+        {
+          "seriesId": "tt22889156",
+          "title": "The Magical Revolution of the Reincarnated Princess and the Genius Young Lady",
+          "season": 1,
+          "from": 8.01,
+          "to": 7.71,
+          "delta": -0.3
+        },
+        {
+          "seriesId": "tt11278600",
+          "title": "Pacific Criminal",
+          "season": 5,
+          "from": 6.8,
+          "to": 7.1,
+          "delta": 0.3
+        }
+      ],
+      "modifiedCounts": {
+        "seriesVotes": 11722,
+        "avgRating": 560,
+        "shapes": 110,
+        "episodeCount": 40,
+        "seriesRating": 140,
+        "poster": 2,
+        "overview": 3
+      }
+    },
+    {
+      "builtAt": "2026-06-24T07:24:10.570Z",
+      "totals": {
+        "seasons": 65482,
+        "delta": 8
+      },
+      "shapeCounts": {
+        "mid-peak": 4604,
+        "rebound": 10019,
+        "rising": 2909,
+        "slow-burn": 4333,
+        "big-finale": 11963,
+        "u-shaped": 3054,
+        "rollercoaster": 13979,
+        "saved-best-for-last": 1513,
+        "front-loaded": 3438,
+        "declining": 1849,
+        "bad-finale": 4627,
+        "consistent": 2593,
+        "shape-drift": 1608
+      },
+      "shapeDeltas": {
+        "mid-peak": 1,
+        "rebound": 4,
+        "rising": 1,
+        "slow-burn": 1,
+        "big-finale": -6,
+        "u-shaped": -1,
+        "rollercoaster": -7,
+        "saved-best-for-last": 1,
+        "front-loaded": 2,
+        "shape-drift": -3
+      },
+      "added": [
+        {
+          "seriesId": "tt0478074",
+          "title": "G.I. Joe: Sigma 6",
+          "season": 1,
+          "seasonYear": 2005
+        },
+        {
+          "seriesId": "tt0124229",
+          "title": "Attack of the Killer Tomatoes",
+          "season": 2,
+          "seasonYear": 1991
+        },
+        {
+          "seriesId": "tt0890871",
+          "title": "Destiny of the Shrine Maiden",
+          "season": 1,
+          "seasonYear": 2004
+        },
+        {
+          "seriesId": "tt0144065",
+          "title": "Ri¢hie Ri¢h",
+          "season": 4,
+          "seasonYear": 1983
+        },
+        {
+          "seriesId": "tt7860280",
+          "title": "Surgeons: At the Edge of Life",
+          "season": 3,
+          "seasonYear": 2020
+        },
+        {
+          "seriesId": "tt22174292",
+          "title": "More Than Words",
+          "season": 1,
+          "seasonYear": 2022
+        },
+        {
+          "seriesId": "tt20852220",
+          "title": "One Cent Thief",
+          "season": 2,
+          "seasonYear": 2025
+        },
+        {
+          "seriesId": "tt6508182",
+          "title": "H.I.M",
+          "season": 1,
+          "seasonYear": 2017
+        }
+      ],
+      "removed": [],
+      "ratingSwings": [
+        {
+          "seriesId": "tt38734636",
+          "title": "Oasis",
+          "season": 1,
+          "from": 8.65,
+          "to": 7.86,
+          "delta": -0.79
+        },
+        {
+          "seriesId": "tt3522052",
+          "title": "Ex on the Beach",
+          "season": 7,
+          "from": 6.33,
+          "to": 7.06,
+          "delta": 0.73
+        },
+        {
+          "seriesId": "tt32645659",
+          "title": "The Heartless",
+          "season": 1,
+          "from": 6.17,
+          "to": 5.53,
+          "delta": -0.64
+        },
+        {
+          "seriesId": "tt42071698",
+          "title": "Cousins and Kalyanams",
+          "season": 1,
+          "from": 4.88,
+          "to": 5.43,
+          "delta": 0.55
+        },
+        {
+          "seriesId": "tt6472898",
+          "title": "Lion Guard: It's Unbungalievable",
+          "season": 1,
+          "from": 4.77,
+          "to": 5.23,
+          "delta": 0.46
+        },
+        {
+          "seriesId": "tt34929415",
+          "title": "A Dog and a Plane",
+          "season": 1,
+          "from": 9,
+          "to": 8.55,
+          "delta": -0.45
+        },
+        {
+          "seriesId": "tt12169634",
+          "title": "Der Penny-Markt auf der Reeperbahn",
+          "season": 1,
+          "from": 9.48,
+          "to": 9.05,
+          "delta": -0.43
+        },
+        {
+          "seriesId": "tt36982964",
+          "title": "Never-Ending Summer",
+          "season": 1,
+          "from": 7.15,
+          "to": 7.57,
+          "delta": 0.42
+        },
+        {
+          "seriesId": "tt22889156",
+          "title": "The Magical Revolution of the Reincarnated Princess and the Genius Young Lady",
+          "season": 1,
+          "from": 8.01,
+          "to": 7.71,
+          "delta": -0.3
+        },
+        {
+          "seriesId": "tt11278600",
+          "title": "Pacific Criminal",
+          "season": 5,
+          "from": 6.8,
+          "to": 7.1,
+          "delta": 0.3
+        }
+      ],
+      "modifiedCounts": {
+        "seriesVotes": 11722,
+        "avgRating": 560,
+        "shapes": 110,
+        "episodeCount": 40,
+        "seriesRating": 140
+      }
+    },
+    {
       "builtAt": "2026-06-23T08:08:17.898Z",
       "totals": {
         "seasons": 65474,
@@ -6195,494 +6545,6 @@
         "shapes": 215,
         "seriesRating": 265,
         "episodeCount": 82
-      }
-    },
-    {
-      "builtAt": "2026-06-09T07:52:34.489Z",
-      "totals": {
-        "seasons": 65271,
-        "delta": 13
-      },
-      "shapeCounts": {
-        "mid-peak": 4603,
-        "rebound": 9985,
-        "rising": 2907,
-        "slow-burn": 4306,
-        "big-finale": 11929,
-        "u-shaped": 3072,
-        "rollercoaster": 13972,
-        "saved-best-for-last": 1512,
-        "front-loaded": 3432,
-        "declining": 1833,
-        "bad-finale": 4602,
-        "consistent": 2583,
-        "shape-drift": 1592
-      },
-      "shapeDeltas": {
-        "mid-peak": 1,
-        "rebound": 1,
-        "rising": -4,
-        "slow-burn": -11,
-        "big-finale": -11,
-        "rollercoaster": 11,
-        "saved-best-for-last": 1,
-        "front-loaded": -4,
-        "declining": -3,
-        "bad-finale": 1,
-        "consistent": 5,
-        "shape-drift": 7
-      },
-      "added": [
-        {
-          "seriesId": "tt2861424",
-          "title": "Rick and Morty",
-          "season": 9,
-          "seasonYear": 2026
-        },
-        {
-          "seriesId": "tt35768911",
-          "title": "Tip Toe",
-          "season": 1,
-          "seasonYear": 2026
-        },
-        {
-          "seriesId": "tt26766517",
-          "title": "Brown",
-          "season": 1,
-          "seasonYear": 2026
-        },
-        {
-          "seriesId": "tt10741030",
-          "title": "Homegrown",
-          "season": 1,
-          "seasonYear": 2021
-        },
-        {
-          "seriesId": "tt42206645",
-          "title": "Reborn Rookie",
-          "season": 1,
-          "seasonYear": 2026
-        },
-        {
-          "seriesId": "tt26692417",
-          "title": "Pokémon Horizons: The Series",
-          "season": 8,
-          "seasonYear": 2026
-        },
-        {
-          "seriesId": "tt38786276",
-          "title": "P.A.Y.",
-          "season": 1,
-          "seasonYear": 2026
-        },
-        {
-          "seriesId": "tt1433870",
-          "title": "MasterChef: Australia",
-          "season": 18,
-          "seasonYear": 2026
-        },
-        {
-          "seriesId": "tt0108864",
-          "title": "Mother's Ruin",
-          "season": 1,
-          "seasonYear": 1994
-        },
-        {
-          "seriesId": "tt16991152",
-          "title": "Lucky",
-          "season": 1,
-          "seasonYear": 2021
-        },
-        {
-          "seriesId": "tt15491454",
-          "title": "Innocent",
-          "season": 1,
-          "seasonYear": 2021
-        },
-        {
-          "seriesId": "tt36296119",
-          "title": "The Tormentors",
-          "season": 1,
-          "seasonYear": 2025
-        },
-        {
-          "seriesId": "tt37810816",
-          "title": "Hirayasumi",
-          "season": 1,
-          "seasonYear": 2025
-        },
-        {
-          "seriesId": "tt38589437",
-          "title": "The Pyramid Scheme",
-          "season": 1,
-          "seasonYear": 2026
-        },
-        {
-          "seriesId": "tt3811304",
-          "title": "Sanadamaru",
-          "season": 1,
-          "seasonYear": 2016
-        },
-        {
-          "seriesId": "tt6697296",
-          "title": "Infini-T Force",
-          "season": 1,
-          "seasonYear": 2017
-        }
-      ],
-      "removed": [
-        {
-          "seriesId": "tt0086723",
-          "title": "Guest from the Future",
-          "season": 1,
-          "seasonYear": 1984
-        },
-        {
-          "seriesId": "tt4605814",
-          "title": "Newzoids",
-          "season": 1,
-          "seasonYear": 2015
-        },
-        {
-          "seriesId": "tt16384576",
-          "title": "Underground of Berlin",
-          "season": 3,
-          "seasonYear": 2022
-        }
-      ],
-      "ratingSwings": [
-        {
-          "seriesId": "tt6348126",
-          "title": "Beyblade Burst",
-          "season": 6,
-          "from": 8.09,
-          "to": 7.09,
-          "delta": -1
-        },
-        {
-          "seriesId": "tt0441824",
-          "title": "Ninja Nonsense",
-          "season": 1,
-          "from": 6.55,
-          "to": 5.8,
-          "delta": -0.75
-        },
-        {
-          "seriesId": "tt0086696",
-          "title": "Double Trouble",
-          "season": 2,
-          "from": 5.27,
-          "to": 5.87,
-          "delta": 0.6
-        },
-        {
-          "seriesId": "tt13028308",
-          "title": "I Want You to Show Me Your Panties with a Disgusted Face",
-          "season": 1,
-          "from": 4.3,
-          "to": 4.9,
-          "delta": 0.6
-        },
-        {
-          "seriesId": "tt42024186",
-          "title": "Your Dear Daddy",
-          "season": 1,
-          "from": 6.83,
-          "to": 7.43,
-          "delta": 0.6
-        },
-        {
-          "seriesId": "tt6636246",
-          "title": "Ackley Bridge",
-          "season": 2,
-          "from": 8.42,
-          "to": 7.89,
-          "delta": -0.53
-        },
-        {
-          "seriesId": "tt0083412",
-          "title": "Fame",
-          "season": 5,
-          "from": 5.98,
-          "to": 6.41,
-          "delta": 0.43
-        },
-        {
-          "seriesId": "tt26997679",
-          "title": "Chiikawa",
-          "season": 1,
-          "from": 6.3,
-          "to": 6.73,
-          "delta": 0.43
-        },
-        {
-          "seriesId": "tt27598137",
-          "title": "Hitler: The Lost Tapes of the Third Reich",
-          "season": 1,
-          "from": 8.37,
-          "to": 7.98,
-          "delta": -0.39
-        },
-        {
-          "seriesId": "tt39601175",
-          "title": "Amar Vishwas",
-          "season": 1,
-          "from": 7.27,
-          "to": 7.63,
-          "delta": 0.36
-        }
-      ],
-      "modifiedCounts": {
-        "seriesVotes": 19708,
-        "avgRating": 1180,
-        "shapes": 233,
-        "episodeCount": 79,
-        "seriesRating": 270,
-        "poster": 4,
-        "overview": 5
-      }
-    },
-    {
-      "builtAt": "2026-06-09T07:27:48.996Z",
-      "totals": {
-        "seasons": 65271,
-        "delta": 13
-      },
-      "shapeCounts": {
-        "mid-peak": 4603,
-        "rebound": 9985,
-        "rising": 2907,
-        "slow-burn": 4306,
-        "big-finale": 11929,
-        "u-shaped": 3072,
-        "rollercoaster": 13972,
-        "saved-best-for-last": 1512,
-        "front-loaded": 3432,
-        "declining": 1833,
-        "bad-finale": 4602,
-        "consistent": 2583,
-        "shape-drift": 1592
-      },
-      "shapeDeltas": {
-        "mid-peak": 1,
-        "rebound": 1,
-        "rising": -4,
-        "slow-burn": -11,
-        "big-finale": -11,
-        "rollercoaster": 11,
-        "saved-best-for-last": 1,
-        "front-loaded": -4,
-        "declining": -3,
-        "bad-finale": 1,
-        "consistent": 5,
-        "shape-drift": 7
-      },
-      "added": [
-        {
-          "seriesId": "tt2861424",
-          "title": "Rick and Morty",
-          "season": 9,
-          "seasonYear": 2026
-        },
-        {
-          "seriesId": "tt35768911",
-          "title": "Tip Toe",
-          "season": 1,
-          "seasonYear": 2026
-        },
-        {
-          "seriesId": "tt26766517",
-          "title": "Brown",
-          "season": 1,
-          "seasonYear": 2026
-        },
-        {
-          "seriesId": "tt10741030",
-          "title": "Homegrown",
-          "season": 1,
-          "seasonYear": 2021
-        },
-        {
-          "seriesId": "tt42206645",
-          "title": "Reborn Rookie",
-          "season": 1,
-          "seasonYear": 2026
-        },
-        {
-          "seriesId": "tt26692417",
-          "title": "Pokémon Horizons: The Series",
-          "season": 8,
-          "seasonYear": 2026
-        },
-        {
-          "seriesId": "tt38786276",
-          "title": "P.A.Y.",
-          "season": 1,
-          "seasonYear": 2026
-        },
-        {
-          "seriesId": "tt1433870",
-          "title": "MasterChef: Australia",
-          "season": 18,
-          "seasonYear": 2026
-        },
-        {
-          "seriesId": "tt0108864",
-          "title": "Mother's Ruin",
-          "season": 1,
-          "seasonYear": 1994
-        },
-        {
-          "seriesId": "tt16991152",
-          "title": "Lucky",
-          "season": 1,
-          "seasonYear": 2021
-        },
-        {
-          "seriesId": "tt15491454",
-          "title": "Innocent",
-          "season": 1,
-          "seasonYear": 2021
-        },
-        {
-          "seriesId": "tt36296119",
-          "title": "The Tormentors",
-          "season": 1,
-          "seasonYear": 2025
-        },
-        {
-          "seriesId": "tt37810816",
-          "title": "Hirayasumi",
-          "season": 1,
-          "seasonYear": 2025
-        },
-        {
-          "seriesId": "tt38589437",
-          "title": "The Pyramid Scheme",
-          "season": 1,
-          "seasonYear": 2026
-        },
-        {
-          "seriesId": "tt3811304",
-          "title": "Sanadamaru",
-          "season": 1,
-          "seasonYear": 2016
-        },
-        {
-          "seriesId": "tt6697296",
-          "title": "Infini-T Force",
-          "season": 1,
-          "seasonYear": 2017
-        }
-      ],
-      "removed": [
-        {
-          "seriesId": "tt0086723",
-          "title": "Guest from the Future",
-          "season": 1,
-          "seasonYear": 1984
-        },
-        {
-          "seriesId": "tt4605814",
-          "title": "Newzoids",
-          "season": 1,
-          "seasonYear": 2015
-        },
-        {
-          "seriesId": "tt16384576",
-          "title": "Underground of Berlin",
-          "season": 3,
-          "seasonYear": 2022
-        }
-      ],
-      "ratingSwings": [
-        {
-          "seriesId": "tt6348126",
-          "title": "Beyblade Burst",
-          "season": 6,
-          "from": 8.09,
-          "to": 7.09,
-          "delta": -1
-        },
-        {
-          "seriesId": "tt0441824",
-          "title": "Ninja Nonsense",
-          "season": 1,
-          "from": 6.55,
-          "to": 5.8,
-          "delta": -0.75
-        },
-        {
-          "seriesId": "tt0086696",
-          "title": "Double Trouble",
-          "season": 2,
-          "from": 5.27,
-          "to": 5.87,
-          "delta": 0.6
-        },
-        {
-          "seriesId": "tt13028308",
-          "title": "I Want You to Show Me Your Panties with a Disgusted Face",
-          "season": 1,
-          "from": 4.3,
-          "to": 4.9,
-          "delta": 0.6
-        },
-        {
-          "seriesId": "tt42024186",
-          "title": "Your Dear Daddy",
-          "season": 1,
-          "from": 6.83,
-          "to": 7.43,
-          "delta": 0.6
-        },
-        {
-          "seriesId": "tt6636246",
-          "title": "Ackley Bridge",
-          "season": 2,
-          "from": 8.42,
-          "to": 7.89,
-          "delta": -0.53
-        },
-        {
-          "seriesId": "tt0083412",
-          "title": "Fame",
-          "season": 5,
-          "from": 5.98,
-          "to": 6.41,
-          "delta": 0.43
-        },
-        {
-          "seriesId": "tt26997679",
-          "title": "Chiikawa",
-          "season": 1,
-          "from": 6.3,
-          "to": 6.73,
-          "delta": 0.43
-        },
-        {
-          "seriesId": "tt27598137",
-          "title": "Hitler: The Lost Tapes of the Third Reich",
-          "season": 1,
-          "from": 8.37,
-          "to": 7.98,
-          "delta": -0.39
-        },
-        {
-          "seriesId": "tt39601175",
-          "title": "Amar Vishwas",
-          "season": 1,
-          "from": 7.27,
-          "to": 7.63,
-          "delta": 0.36
-        }
-      ],
-      "modifiedCounts": {
-        "seriesVotes": 19708,
-        "avgRating": 1180,
-        "shapes": 233,
-        "episodeCount": 79,
-        "seriesRating": 270
       }
     }
   ]
