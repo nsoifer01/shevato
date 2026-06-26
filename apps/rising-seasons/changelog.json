@@ -1,6 +1,383 @@
 {
   "updates": [
     {
+      "builtAt": "2026-06-26T08:05:30.824Z",
+      "totals": {
+        "seasons": 65520,
+        "delta": 10
+      },
+      "shapeCounts": {
+        "mid-peak": 4600,
+        "rebound": 10021,
+        "rising": 2903,
+        "slow-burn": 4336,
+        "big-finale": 11973,
+        "u-shaped": 3059,
+        "rollercoaster": 13971,
+        "saved-best-for-last": 1509,
+        "front-loaded": 3439,
+        "declining": 1856,
+        "bad-finale": 4623,
+        "consistent": 2596,
+        "shape-drift": 1601
+      },
+      "shapeDeltas": {
+        "mid-peak": -7,
+        "rebound": -1,
+        "rising": -1,
+        "slow-burn": 5,
+        "big-finale": 10,
+        "u-shaped": -1,
+        "rollercoaster": 2,
+        "saved-best-for-last": -3,
+        "front-loaded": 2,
+        "declining": 1,
+        "consistent": 1
+      },
+      "added": [
+        {
+          "seriesId": "tt21824196",
+          "title": "Road Wars",
+          "season": 1,
+          "seasonYear": 2022
+        },
+        {
+          "seriesId": "tt13634306",
+          "title": "Mystery at Blind Frog Ranch",
+          "season": 6,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt32159560",
+          "title": "Fursan Quraih",
+          "season": 2,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt5536392",
+          "title": "Henry Danger Motion Comic",
+          "season": 1,
+          "seasonYear": 2015
+        },
+        {
+          "seriesId": "tt6994648",
+          "title": "Saiyuki Reload Blast",
+          "season": 1,
+          "seasonYear": 2017
+        },
+        {
+          "seriesId": "tt0395861",
+          "title": "Sanremo Music Festival",
+          "season": 74,
+          "seasonYear": 2024
+        },
+        {
+          "seriesId": "tt0463827",
+          "title": "Mock the Week",
+          "season": 23,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt22796478",
+          "title": "Kamen Rider Outsiders",
+          "season": 1,
+          "seasonYear": 2022
+        },
+        {
+          "seriesId": "tt39151104",
+          "title": "Best of the World with Antoni Porowski",
+          "season": 1,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt40184737",
+          "title": "Ab Hoga Hisaab",
+          "season": 1,
+          "seasonYear": 2026
+        }
+      ],
+      "removed": [],
+      "ratingSwings": [
+        {
+          "seriesId": "tt11070216",
+          "title": "Dirin Dirin",
+          "season": 1,
+          "from": 8.77,
+          "to": 8.22,
+          "delta": -0.55
+        },
+        {
+          "seriesId": "tt31180109",
+          "title": "Der Upir",
+          "season": 1,
+          "from": 8.54,
+          "to": 8.01,
+          "delta": -0.53
+        },
+        {
+          "seriesId": "tt39044698",
+          "title": "Enemies with Benefits",
+          "season": 1,
+          "from": 9.29,
+          "to": 8.85,
+          "delta": -0.44
+        },
+        {
+          "seriesId": "tt21212064",
+          "title": "Tomorrow's Pioneers",
+          "season": 4,
+          "from": 1.88,
+          "to": 2.25,
+          "delta": 0.37
+        },
+        {
+          "seriesId": "tt42322841",
+          "title": "Love Beyond Dreams",
+          "season": 1,
+          "from": 9.76,
+          "to": 9.4,
+          "delta": -0.36
+        },
+        {
+          "seriesId": "tt39159596",
+          "title": "Just a Dash",
+          "season": 3,
+          "from": 6.68,
+          "to": 6.32,
+          "delta": -0.36
+        },
+        {
+          "seriesId": "tt29719779",
+          "title": "Seven",
+          "season": 1,
+          "from": 5.86,
+          "to": 5.55,
+          "delta": -0.31
+        },
+        {
+          "seriesId": "tt42445481",
+          "title": "Lost to You",
+          "season": 1,
+          "from": 8.18,
+          "to": 8.47,
+          "delta": 0.29
+        },
+        {
+          "seriesId": "tt0355096",
+          "title": "I'm a Celebrity, Get Me Out of Here!",
+          "season": 2,
+          "from": 2.57,
+          "to": 2.85,
+          "delta": 0.28
+        },
+        {
+          "seriesId": "tt1216257",
+          "title": "Psychic Squad",
+          "season": 1,
+          "from": 4.6,
+          "to": 4.87,
+          "delta": 0.27
+        }
+      ],
+      "modifiedCounts": {
+        "seriesVotes": 13168,
+        "avgRating": 617,
+        "shapes": 122,
+        "seriesRating": 162,
+        "episodeCount": 38,
+        "poster": 2,
+        "overview": 2,
+        "providers": 1
+      }
+    },
+    {
+      "builtAt": "2026-06-26T07:31:01.690Z",
+      "totals": {
+        "seasons": 65520,
+        "delta": 10
+      },
+      "shapeCounts": {
+        "mid-peak": 4600,
+        "rebound": 10021,
+        "rising": 2903,
+        "slow-burn": 4336,
+        "big-finale": 11973,
+        "u-shaped": 3059,
+        "rollercoaster": 13971,
+        "saved-best-for-last": 1509,
+        "front-loaded": 3439,
+        "declining": 1856,
+        "bad-finale": 4623,
+        "consistent": 2596,
+        "shape-drift": 1601
+      },
+      "shapeDeltas": {
+        "mid-peak": -7,
+        "rebound": -1,
+        "rising": -1,
+        "slow-burn": 5,
+        "big-finale": 10,
+        "u-shaped": -1,
+        "rollercoaster": 2,
+        "saved-best-for-last": -3,
+        "front-loaded": 2,
+        "declining": 1,
+        "consistent": 1
+      },
+      "added": [
+        {
+          "seriesId": "tt21824196",
+          "title": "Road Wars",
+          "season": 1,
+          "seasonYear": 2022
+        },
+        {
+          "seriesId": "tt13634306",
+          "title": "Mystery at Blind Frog Ranch",
+          "season": 6,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt32159560",
+          "title": "Fursan Quraih",
+          "season": 2,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt5536392",
+          "title": "Henry Danger Motion Comic",
+          "season": 1,
+          "seasonYear": 2015
+        },
+        {
+          "seriesId": "tt6994648",
+          "title": "Saiyuki Reload Blast",
+          "season": 1,
+          "seasonYear": 2017
+        },
+        {
+          "seriesId": "tt0395861",
+          "title": "Sanremo Music Festival",
+          "season": 74,
+          "seasonYear": 2024
+        },
+        {
+          "seriesId": "tt0463827",
+          "title": "Mock the Week",
+          "season": 23,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt22796478",
+          "title": "Kamen Rider Outsiders",
+          "season": 1,
+          "seasonYear": 2022
+        },
+        {
+          "seriesId": "tt39151104",
+          "title": "Best of the World with Antoni Porowski",
+          "season": 1,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt40184737",
+          "title": "Ab Hoga Hisaab",
+          "season": 1,
+          "seasonYear": 2026
+        }
+      ],
+      "removed": [],
+      "ratingSwings": [
+        {
+          "seriesId": "tt11070216",
+          "title": "Dirin Dirin",
+          "season": 1,
+          "from": 8.77,
+          "to": 8.22,
+          "delta": -0.55
+        },
+        {
+          "seriesId": "tt31180109",
+          "title": "Der Upir",
+          "season": 1,
+          "from": 8.54,
+          "to": 8.01,
+          "delta": -0.53
+        },
+        {
+          "seriesId": "tt39044698",
+          "title": "Enemies with Benefits",
+          "season": 1,
+          "from": 9.29,
+          "to": 8.85,
+          "delta": -0.44
+        },
+        {
+          "seriesId": "tt21212064",
+          "title": "Tomorrow's Pioneers",
+          "season": 4,
+          "from": 1.88,
+          "to": 2.25,
+          "delta": 0.37
+        },
+        {
+          "seriesId": "tt42322841",
+          "title": "Love Beyond Dreams",
+          "season": 1,
+          "from": 9.76,
+          "to": 9.4,
+          "delta": -0.36
+        },
+        {
+          "seriesId": "tt39159596",
+          "title": "Just a Dash",
+          "season": 3,
+          "from": 6.68,
+          "to": 6.32,
+          "delta": -0.36
+        },
+        {
+          "seriesId": "tt29719779",
+          "title": "Seven",
+          "season": 1,
+          "from": 5.86,
+          "to": 5.55,
+          "delta": -0.31
+        },
+        {
+          "seriesId": "tt42445481",
+          "title": "Lost to You",
+          "season": 1,
+          "from": 8.18,
+          "to": 8.47,
+          "delta": 0.29
+        },
+        {
+          "seriesId": "tt0355096",
+          "title": "I'm a Celebrity, Get Me Out of Here!",
+          "season": 2,
+          "from": 2.57,
+          "to": 2.85,
+          "delta": 0.28
+        },
+        {
+          "seriesId": "tt1216257",
+          "title": "Psychic Squad",
+          "season": 1,
+          "from": 4.6,
+          "to": 4.87,
+          "delta": 0.27
+        }
+      ],
+      "modifiedCounts": {
+        "seriesVotes": 13168,
+        "avgRating": 617,
+        "shapes": 122,
+        "seriesRating": 162,
+        "episodeCount": 38
+      }
+    },
+    {
       "builtAt": "2026-06-25T07:49:38.919Z",
       "totals": {
         "seasons": 65510,
@@ -6279,349 +6656,6 @@
         "shapes": 25,
         "seriesRating": 26,
         "episodeCount": 6
-      }
-    },
-    {
-      "builtAt": "2026-06-11T08:33:25.740Z",
-      "totals": {
-        "seasons": 65302,
-        "delta": 7
-      },
-      "shapeCounts": {
-        "mid-peak": 4611,
-        "rebound": 9994,
-        "rising": 2911,
-        "slow-burn": 4314,
-        "big-finale": 11931,
-        "u-shaped": 3066,
-        "rollercoaster": 13964,
-        "saved-best-for-last": 1514,
-        "front-loaded": 3432,
-        "declining": 1835,
-        "bad-finale": 4611,
-        "consistent": 2589,
-        "shape-drift": 1585
-      },
-      "shapeDeltas": {
-        "mid-peak": 3,
-        "rebound": 1,
-        "rising": 1,
-        "slow-burn": 5,
-        "big-finale": 5,
-        "u-shaped": -2,
-        "rollercoaster": -4,
-        "saved-best-for-last": 2,
-        "front-loaded": 1,
-        "declining": -2,
-        "bad-finale": 9,
-        "consistent": 6,
-        "shape-drift": -4
-      },
-      "added": [
-        {
-          "seriesId": "tt27589772",
-          "title": "Blue Ridge: The Series",
-          "season": 2,
-          "seasonYear": 2025
-        },
-        {
-          "seriesId": "tt5676412",
-          "title": "Sin Senos Sí Hay Paraíso",
-          "season": 2,
-          "seasonYear": 2017
-        },
-        {
-          "seriesId": "tt11377920",
-          "title": "Black Dog",
-          "season": 1,
-          "seasonYear": 2019
-        },
-        {
-          "seriesId": "tt28939650",
-          "title": "Garmi",
-          "season": 1,
-          "seasonYear": 2022
-        },
-        {
-          "seriesId": "tt28972232",
-          "title": "Lost In",
-          "season": 1,
-          "seasonYear": 2023
-        },
-        {
-          "seriesId": "tt41840765",
-          "title": "The Old Stories: Moses",
-          "season": 1,
-          "seasonYear": 2026
-        },
-        {
-          "seriesId": "tt42751057",
-          "title": "Quem Ama Cuida",
-          "season": 1,
-          "seasonYear": 2026
-        }
-      ],
-      "removed": [],
-      "ratingSwings": [
-        {
-          "seriesId": "tt39184653",
-          "title": "Doctor on the Edge",
-          "season": 1,
-          "from": 7.67,
-          "to": 8.4,
-          "delta": 0.73
-        },
-        {
-          "seriesId": "tt42171045",
-          "title": "Between Father and Son",
-          "season": 1,
-          "from": 6.17,
-          "to": 5.63,
-          "delta": -0.54
-        },
-        {
-          "seriesId": "tt1069275",
-          "title": "Skunk Fu!",
-          "season": 1,
-          "from": 7.47,
-          "to": 8.01,
-          "delta": 0.54
-        },
-        {
-          "seriesId": "tt0290117",
-          "title": "The Ripping Friends",
-          "season": 1,
-          "from": 6.88,
-          "to": 7.34,
-          "delta": 0.46
-        },
-        {
-          "seriesId": "tt37543237",
-          "title": "Cartoonified with Phineas and Ferb",
-          "season": 1,
-          "from": 8.17,
-          "to": 7.71,
-          "delta": -0.46
-        },
-        {
-          "seriesId": "tt0044282",
-          "title": "My Hero",
-          "season": 1,
-          "from": 5.67,
-          "to": 6.1,
-          "delta": 0.43
-        },
-        {
-          "seriesId": "tt39893694",
-          "title": "Crazy Love, Moo-Moo!",
-          "season": 1,
-          "from": 8.1,
-          "to": 7.68,
-          "delta": -0.42
-        },
-        {
-          "seriesId": "tt6941980",
-          "title": "Warrior",
-          "season": 2,
-          "from": 8.89,
-          "to": 8.51,
-          "delta": -0.38
-        },
-        {
-          "seriesId": "tt1245565",
-          "title": "Don't Mess with an Angel",
-          "season": 1,
-          "from": 8.94,
-          "to": 8.57,
-          "delta": -0.37
-        },
-        {
-          "seriesId": "tt0124228",
-          "title": "Astro Boy",
-          "season": 1,
-          "from": 6.42,
-          "to": 6.05,
-          "delta": -0.37
-        }
-      ],
-      "modifiedCounts": {
-        "seriesVotes": 18745,
-        "avgRating": 1195,
-        "shapes": 223,
-        "seriesRating": 291,
-        "episodeCount": 76,
-        "poster": 8
-      }
-    },
-    {
-      "builtAt": "2026-06-11T07:55:33.158Z",
-      "totals": {
-        "seasons": 65302,
-        "delta": 7
-      },
-      "shapeCounts": {
-        "mid-peak": 4611,
-        "rebound": 9994,
-        "rising": 2911,
-        "slow-burn": 4314,
-        "big-finale": 11931,
-        "u-shaped": 3066,
-        "rollercoaster": 13964,
-        "saved-best-for-last": 1514,
-        "front-loaded": 3432,
-        "declining": 1835,
-        "bad-finale": 4611,
-        "consistent": 2589,
-        "shape-drift": 1585
-      },
-      "shapeDeltas": {
-        "mid-peak": 3,
-        "rebound": 1,
-        "rising": 1,
-        "slow-burn": 5,
-        "big-finale": 5,
-        "u-shaped": -2,
-        "rollercoaster": -4,
-        "saved-best-for-last": 2,
-        "front-loaded": 1,
-        "declining": -2,
-        "bad-finale": 9,
-        "consistent": 6,
-        "shape-drift": -4
-      },
-      "added": [
-        {
-          "seriesId": "tt27589772",
-          "title": "Blue Ridge: The Series",
-          "season": 2,
-          "seasonYear": 2025
-        },
-        {
-          "seriesId": "tt5676412",
-          "title": "Sin Senos Sí Hay Paraíso",
-          "season": 2,
-          "seasonYear": 2017
-        },
-        {
-          "seriesId": "tt11377920",
-          "title": "Black Dog",
-          "season": 1,
-          "seasonYear": 2019
-        },
-        {
-          "seriesId": "tt28939650",
-          "title": "Garmi",
-          "season": 1,
-          "seasonYear": 2022
-        },
-        {
-          "seriesId": "tt28972232",
-          "title": "Lost In",
-          "season": 1,
-          "seasonYear": 2023
-        },
-        {
-          "seriesId": "tt41840765",
-          "title": "The Old Stories: Moses",
-          "season": 1,
-          "seasonYear": 2026
-        },
-        {
-          "seriesId": "tt42751057",
-          "title": "Quem Ama Cuida",
-          "season": 1,
-          "seasonYear": 2026
-        }
-      ],
-      "removed": [],
-      "ratingSwings": [
-        {
-          "seriesId": "tt39184653",
-          "title": "Doctor on the Edge",
-          "season": 1,
-          "from": 7.67,
-          "to": 8.4,
-          "delta": 0.73
-        },
-        {
-          "seriesId": "tt42171045",
-          "title": "Between Father and Son",
-          "season": 1,
-          "from": 6.17,
-          "to": 5.63,
-          "delta": -0.54
-        },
-        {
-          "seriesId": "tt1069275",
-          "title": "Skunk Fu!",
-          "season": 1,
-          "from": 7.47,
-          "to": 8.01,
-          "delta": 0.54
-        },
-        {
-          "seriesId": "tt0290117",
-          "title": "The Ripping Friends",
-          "season": 1,
-          "from": 6.88,
-          "to": 7.34,
-          "delta": 0.46
-        },
-        {
-          "seriesId": "tt37543237",
-          "title": "Cartoonified with Phineas and Ferb",
-          "season": 1,
-          "from": 8.17,
-          "to": 7.71,
-          "delta": -0.46
-        },
-        {
-          "seriesId": "tt0044282",
-          "title": "My Hero",
-          "season": 1,
-          "from": 5.67,
-          "to": 6.1,
-          "delta": 0.43
-        },
-        {
-          "seriesId": "tt39893694",
-          "title": "Crazy Love, Moo-Moo!",
-          "season": 1,
-          "from": 8.1,
-          "to": 7.68,
-          "delta": -0.42
-        },
-        {
-          "seriesId": "tt6941980",
-          "title": "Warrior",
-          "season": 2,
-          "from": 8.89,
-          "to": 8.51,
-          "delta": -0.38
-        },
-        {
-          "seriesId": "tt1245565",
-          "title": "Don't Mess with an Angel",
-          "season": 1,
-          "from": 8.94,
-          "to": 8.57,
-          "delta": -0.37
-        },
-        {
-          "seriesId": "tt0124228",
-          "title": "Astro Boy",
-          "season": 1,
-          "from": 6.42,
-          "to": 6.05,
-          "delta": -0.37
-        }
-      ],
-      "modifiedCounts": {
-        "seriesVotes": 18745,
-        "avgRating": 1195,
-        "shapes": 223,
-        "seriesRating": 291,
-        "episodeCount": 76
       }
     }
   ]
