@@ -1,6 +1,572 @@
 {
   "updates": [
     {
+      "builtAt": "2026-06-27T07:41:02.040Z",
+      "totals": {
+        "seasons": 65542,
+        "delta": 22
+      },
+      "shapeCounts": {
+        "mid-peak": 4606,
+        "rebound": 10025,
+        "rising": 2903,
+        "slow-burn": 4336,
+        "big-finale": 11986,
+        "u-shaped": 3066,
+        "rollercoaster": 13989,
+        "saved-best-for-last": 1509,
+        "front-loaded": 3443,
+        "declining": 1857,
+        "bad-finale": 4630,
+        "consistent": 2597,
+        "shape-drift": 1601
+      },
+      "shapeDeltas": {
+        "mid-peak": 6,
+        "rebound": 4,
+        "big-finale": 13,
+        "u-shaped": 7,
+        "rollercoaster": 18,
+        "front-loaded": 4,
+        "declining": 1,
+        "bad-finale": 7,
+        "consistent": 1
+      },
+      "added": [
+        {
+          "seriesId": "tt9018736",
+          "title": "Avatar: The Last Airbender",
+          "season": 2,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt14452776",
+          "title": "The Bear",
+          "season": 5,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt0476042",
+          "title": "Gunslinger Girl",
+          "season": 2,
+          "seasonYear": 2008
+        },
+        {
+          "seriesId": "tt32915471",
+          "title": "2026 FIFA World Cup",
+          "season": 3,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt1144841",
+          "title": "Kimikiss: Pure Rouge",
+          "season": 1,
+          "seasonYear": 2007
+        },
+        {
+          "seriesId": "tt42834589",
+          "title": "100 Cooks",
+          "season": 1,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt0404629",
+          "title": "Man Alive",
+          "season": 7,
+          "seasonYear": 1972
+        },
+        {
+          "seriesId": "tt7924262",
+          "title": "Help! My House Is Haunted",
+          "season": 7,
+          "seasonYear": 2025
+        },
+        {
+          "seriesId": "tt0259128",
+          "title": "BattleBots",
+          "season": 1,
+          "seasonYear": 2000
+        },
+        {
+          "seriesId": "tt0983805",
+          "title": "Where Did It Come From?",
+          "season": 1,
+          "seasonYear": 2006
+        },
+        {
+          "seriesId": "tt38776795",
+          "title": "Summer of 36",
+          "season": 1,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt7860280",
+          "title": "Surgeons: At the Edge of Life",
+          "season": 6,
+          "seasonYear": 2024
+        },
+        {
+          "seriesId": "tt10533938",
+          "title": "Reel Stories",
+          "season": 1,
+          "seasonYear": 2018
+        },
+        {
+          "seriesId": "tt11081102",
+          "title": "The Sommerdahl Murders",
+          "season": 7,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt13081914",
+          "title": "Home Town Takeover",
+          "season": 2,
+          "seasonYear": 2023
+        },
+        {
+          "seriesId": "tt12362302",
+          "title": "Hypnosis Mic: Division Rap Battle - Rhyme Anima",
+          "season": 1,
+          "seasonYear": 2020
+        },
+        {
+          "seriesId": "tt1985904",
+          "title": "Ultraman Neos",
+          "season": 1,
+          "seasonYear": 2000
+        },
+        {
+          "seriesId": "tt14899624",
+          "title": "Another Self",
+          "season": 3,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt15754974",
+          "title": "Project 863",
+          "season": 3,
+          "seasonYear": 2021
+        },
+        {
+          "seriesId": "tt35712820",
+          "title": "Funboys",
+          "season": 2,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt41411354",
+          "title": "Ghulam Badshah Sundari",
+          "season": 1,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt42605728",
+          "title": "The American Experiment",
+          "season": 1,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt42851287",
+          "title": "Dragon Striker: Meet the Players",
+          "season": 1,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt43562869",
+          "title": "The Crow",
+          "season": 1,
+          "seasonYear": 2026
+        }
+      ],
+      "removed": [
+        {
+          "seriesId": "tt11198330",
+          "title": "House of the Dragon",
+          "season": 3,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt1161656",
+          "title": "Gunslinger Girl: Il Teatrino",
+          "season": 1,
+          "seasonYear": 2008
+        }
+      ],
+      "ratingSwings": [
+        {
+          "seriesId": "tt34773311",
+          "title": "Gram Chikitsalay",
+          "season": 2,
+          "from": 9.3,
+          "to": 8.28,
+          "delta": -1.02
+        },
+        {
+          "seriesId": "tt31616178",
+          "title": "At 25:00 in Akasaka",
+          "season": 1,
+          "from": 8.15,
+          "to": 7.45,
+          "delta": -0.7
+        },
+        {
+          "seriesId": "tt36351994",
+          "title": "Doctor's Mine",
+          "season": 1,
+          "from": 7.13,
+          "to": 6.56,
+          "delta": -0.57
+        },
+        {
+          "seriesId": "tt23030000",
+          "title": "Jet Lag: The Game",
+          "season": 17,
+          "from": 8,
+          "to": 8.56,
+          "delta": 0.56
+        },
+        {
+          "seriesId": "tt32645659",
+          "title": "The Heartless",
+          "season": 1,
+          "from": 5.53,
+          "to": 5.01,
+          "delta": -0.52
+        },
+        {
+          "seriesId": "tt0944181",
+          "title": "Most Shocking",
+          "season": 6,
+          "from": 9.73,
+          "to": 9.23,
+          "delta": -0.5
+        },
+        {
+          "seriesId": "tt6491484",
+          "title": "Tales from Outer Suburbia",
+          "season": 1,
+          "from": 8.52,
+          "to": 8.04,
+          "delta": -0.48
+        },
+        {
+          "seriesId": "tt12928756",
+          "title": "My Unicorn Girl",
+          "season": 1,
+          "from": 6.15,
+          "to": 6.61,
+          "delta": 0.46
+        },
+        {
+          "seriesId": "tt35890969",
+          "title": "Love Between Lines",
+          "season": 1,
+          "from": 9.04,
+          "to": 8.6,
+          "delta": -0.44
+        },
+        {
+          "seriesId": "tt0165006",
+          "title": "Crusade in Europe",
+          "season": 1,
+          "from": 6.41,
+          "to": 5.98,
+          "delta": -0.43
+        }
+      ],
+      "modifiedCounts": {
+        "seriesVotes": 21703,
+        "seriesRating": 357,
+        "avgRating": 1543,
+        "shapes": 280,
+        "episodeCount": 125,
+        "overview": 2,
+        "providers": 1
+      }
+    },
+    {
+      "builtAt": "2026-06-27T07:16:06.241Z",
+      "totals": {
+        "seasons": 65542,
+        "delta": 22
+      },
+      "shapeCounts": {
+        "mid-peak": 4606,
+        "rebound": 10025,
+        "rising": 2903,
+        "slow-burn": 4336,
+        "big-finale": 11986,
+        "u-shaped": 3066,
+        "rollercoaster": 13989,
+        "saved-best-for-last": 1509,
+        "front-loaded": 3443,
+        "declining": 1857,
+        "bad-finale": 4630,
+        "consistent": 2597,
+        "shape-drift": 1601
+      },
+      "shapeDeltas": {
+        "mid-peak": 6,
+        "rebound": 4,
+        "big-finale": 13,
+        "u-shaped": 7,
+        "rollercoaster": 18,
+        "front-loaded": 4,
+        "declining": 1,
+        "bad-finale": 7,
+        "consistent": 1
+      },
+      "added": [
+        {
+          "seriesId": "tt9018736",
+          "title": "Avatar: The Last Airbender",
+          "season": 2,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt14452776",
+          "title": "The Bear",
+          "season": 5,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt0476042",
+          "title": "Gunslinger Girl",
+          "season": 2,
+          "seasonYear": 2008
+        },
+        {
+          "seriesId": "tt32915471",
+          "title": "2026 FIFA World Cup",
+          "season": 3,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt1144841",
+          "title": "Kimikiss: Pure Rouge",
+          "season": 1,
+          "seasonYear": 2007
+        },
+        {
+          "seriesId": "tt42834589",
+          "title": "100 Cooks",
+          "season": 1,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt0404629",
+          "title": "Man Alive",
+          "season": 7,
+          "seasonYear": 1972
+        },
+        {
+          "seriesId": "tt7924262",
+          "title": "Help! My House Is Haunted",
+          "season": 7,
+          "seasonYear": 2025
+        },
+        {
+          "seriesId": "tt0259128",
+          "title": "BattleBots",
+          "season": 1,
+          "seasonYear": 2000
+        },
+        {
+          "seriesId": "tt0983805",
+          "title": "Where Did It Come From?",
+          "season": 1,
+          "seasonYear": 2006
+        },
+        {
+          "seriesId": "tt38776795",
+          "title": "Summer of 36",
+          "season": 1,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt7860280",
+          "title": "Surgeons: At the Edge of Life",
+          "season": 6,
+          "seasonYear": 2024
+        },
+        {
+          "seriesId": "tt10533938",
+          "title": "Reel Stories",
+          "season": 1,
+          "seasonYear": 2018
+        },
+        {
+          "seriesId": "tt11081102",
+          "title": "The Sommerdahl Murders",
+          "season": 7,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt13081914",
+          "title": "Home Town Takeover",
+          "season": 2,
+          "seasonYear": 2023
+        },
+        {
+          "seriesId": "tt12362302",
+          "title": "Hypnosis Mic: Division Rap Battle - Rhyme Anima",
+          "season": 1,
+          "seasonYear": 2020
+        },
+        {
+          "seriesId": "tt1985904",
+          "title": "Ultraman Neos",
+          "season": 1,
+          "seasonYear": 2000
+        },
+        {
+          "seriesId": "tt14899624",
+          "title": "Another Self",
+          "season": 3,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt15754974",
+          "title": "Project 863",
+          "season": 3,
+          "seasonYear": 2021
+        },
+        {
+          "seriesId": "tt35712820",
+          "title": "Funboys",
+          "season": 2,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt41411354",
+          "title": "Ghulam Badshah Sundari",
+          "season": 1,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt42605728",
+          "title": "The American Experiment",
+          "season": 1,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt42851287",
+          "title": "Dragon Striker: Meet the Players",
+          "season": 1,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt43562869",
+          "title": "The Crow",
+          "season": 1,
+          "seasonYear": 2026
+        }
+      ],
+      "removed": [
+        {
+          "seriesId": "tt11198330",
+          "title": "House of the Dragon",
+          "season": 3,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt1161656",
+          "title": "Gunslinger Girl: Il Teatrino",
+          "season": 1,
+          "seasonYear": 2008
+        }
+      ],
+      "ratingSwings": [
+        {
+          "seriesId": "tt34773311",
+          "title": "Gram Chikitsalay",
+          "season": 2,
+          "from": 9.3,
+          "to": 8.28,
+          "delta": -1.02
+        },
+        {
+          "seriesId": "tt31616178",
+          "title": "At 25:00 in Akasaka",
+          "season": 1,
+          "from": 8.15,
+          "to": 7.45,
+          "delta": -0.7
+        },
+        {
+          "seriesId": "tt36351994",
+          "title": "Doctor's Mine",
+          "season": 1,
+          "from": 7.13,
+          "to": 6.56,
+          "delta": -0.57
+        },
+        {
+          "seriesId": "tt23030000",
+          "title": "Jet Lag: The Game",
+          "season": 17,
+          "from": 8,
+          "to": 8.56,
+          "delta": 0.56
+        },
+        {
+          "seriesId": "tt32645659",
+          "title": "The Heartless",
+          "season": 1,
+          "from": 5.53,
+          "to": 5.01,
+          "delta": -0.52
+        },
+        {
+          "seriesId": "tt0944181",
+          "title": "Most Shocking",
+          "season": 6,
+          "from": 9.73,
+          "to": 9.23,
+          "delta": -0.5
+        },
+        {
+          "seriesId": "tt6491484",
+          "title": "Tales from Outer Suburbia",
+          "season": 1,
+          "from": 8.52,
+          "to": 8.04,
+          "delta": -0.48
+        },
+        {
+          "seriesId": "tt12928756",
+          "title": "My Unicorn Girl",
+          "season": 1,
+          "from": 6.15,
+          "to": 6.61,
+          "delta": 0.46
+        },
+        {
+          "seriesId": "tt35890969",
+          "title": "Love Between Lines",
+          "season": 1,
+          "from": 9.04,
+          "to": 8.6,
+          "delta": -0.44
+        },
+        {
+          "seriesId": "tt0165006",
+          "title": "Crusade in Europe",
+          "season": 1,
+          "from": 6.41,
+          "to": 5.98,
+          "delta": -0.43
+        }
+      ],
+      "modifiedCounts": {
+        "seriesVotes": 21703,
+        "seriesRating": 357,
+        "avgRating": 1543,
+        "shapes": 280,
+        "episodeCount": 125
+      }
+    },
+    {
       "builtAt": "2026-06-26T08:05:30.824Z",
       "totals": {
         "seasons": 65520,
@@ -6519,143 +7085,6 @@
         "seriesRating": 70,
         "shapes": 50,
         "episodeCount": 27
-      }
-    },
-    {
-      "builtAt": "2026-06-12T08:19:29.560Z",
-      "totals": {
-        "seasons": 65303,
-        "delta": 1
-      },
-      "shapeCounts": {
-        "mid-peak": 4615,
-        "rebound": 9993,
-        "rising": 2911,
-        "slow-burn": 4314,
-        "big-finale": 11932,
-        "u-shaped": 3068,
-        "rollercoaster": 13967,
-        "saved-best-for-last": 1513,
-        "front-loaded": 3431,
-        "declining": 1834,
-        "bad-finale": 4610,
-        "consistent": 2589,
-        "shape-drift": 1585
-      },
-      "shapeDeltas": {
-        "mid-peak": 4,
-        "rebound": -1,
-        "big-finale": 1,
-        "u-shaped": 2,
-        "rollercoaster": 3,
-        "saved-best-for-last": -1,
-        "front-loaded": -1,
-        "declining": -1,
-        "bad-finale": -1
-      },
-      "added": [
-        {
-          "seriesId": "tt0439351",
-          "title": "Border Security: Australia's Front Line",
-          "season": 1,
-          "seasonYear": 2004
-        }
-      ],
-      "removed": [],
-      "ratingSwings": [
-        {
-          "seriesId": "tt1069275",
-          "title": "Skunk Fu!",
-          "season": 1,
-          "from": 8.01,
-          "to": 8.41,
-          "delta": 0.4
-        },
-        {
-          "seriesId": "tt0433740",
-          "title": "Legend of Heavenly Sphere Shurato",
-          "season": 1,
-          "from": 7.93,
-          "to": 7.6,
-          "delta": -0.33
-        }
-      ],
-      "modifiedCounts": {
-        "seriesVotes": 2013,
-        "avgRating": 135,
-        "shapes": 25,
-        "providers": 34,
-        "overview": 15,
-        "seriesRating": 26,
-        "episodeCount": 6,
-        "poster": 1
-      }
-    },
-    {
-      "builtAt": "2026-06-12T07:51:17.010Z",
-      "totals": {
-        "seasons": 65303,
-        "delta": 1
-      },
-      "shapeCounts": {
-        "mid-peak": 4615,
-        "rebound": 9993,
-        "rising": 2911,
-        "slow-burn": 4314,
-        "big-finale": 11932,
-        "u-shaped": 3068,
-        "rollercoaster": 13967,
-        "saved-best-for-last": 1513,
-        "front-loaded": 3431,
-        "declining": 1834,
-        "bad-finale": 4610,
-        "consistent": 2589,
-        "shape-drift": 1585
-      },
-      "shapeDeltas": {
-        "mid-peak": 4,
-        "rebound": -1,
-        "big-finale": 1,
-        "u-shaped": 2,
-        "rollercoaster": 3,
-        "saved-best-for-last": -1,
-        "front-loaded": -1,
-        "declining": -1,
-        "bad-finale": -1
-      },
-      "added": [
-        {
-          "seriesId": "tt0439351",
-          "title": "Border Security: Australia's Front Line",
-          "season": 1,
-          "seasonYear": 2004
-        }
-      ],
-      "removed": [],
-      "ratingSwings": [
-        {
-          "seriesId": "tt1069275",
-          "title": "Skunk Fu!",
-          "season": 1,
-          "from": 8.01,
-          "to": 8.41,
-          "delta": 0.4
-        },
-        {
-          "seriesId": "tt0433740",
-          "title": "Legend of Heavenly Sphere Shurato",
-          "season": 1,
-          "from": 7.93,
-          "to": 7.6,
-          "delta": -0.33
-        }
-      ],
-      "modifiedCounts": {
-        "seriesVotes": 2013,
-        "avgRating": 135,
-        "shapes": 25,
-        "seriesRating": 26,
-        "episodeCount": 6
       }
     }
   ]
