@@ -1,6 +1,360 @@
 {
   "updates": [
     {
+      "builtAt": "2026-06-29T08:40:32.869Z",
+      "totals": {
+        "seasons": 65562,
+        "delta": 8
+      },
+      "shapeCounts": {
+        "mid-peak": 4613,
+        "rebound": 10016,
+        "rising": 2904,
+        "slow-burn": 4332,
+        "big-finale": 11994,
+        "u-shaped": 3067,
+        "rollercoaster": 14006,
+        "saved-best-for-last": 1509,
+        "front-loaded": 3438,
+        "declining": 1854,
+        "bad-finale": 4629,
+        "consistent": 2598,
+        "shape-drift": 1602
+      },
+      "shapeDeltas": {
+        "mid-peak": -1,
+        "rebound": 3,
+        "rising": -7,
+        "slow-burn": -5,
+        "big-finale": 5,
+        "u-shaped": -4,
+        "rollercoaster": 6,
+        "front-loaded": -3,
+        "declining": 1,
+        "bad-finale": 2,
+        "consistent": 4,
+        "shape-drift": -2
+      },
+      "added": [
+        {
+          "seriesId": "tt14681924",
+          "title": "My Adventures with Superman",
+          "season": 3,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt0983973",
+          "title": "Mamotte! Lollipop",
+          "season": 1,
+          "seasonYear": 2006
+        },
+        {
+          "seriesId": "tt4291050",
+          "title": "Hey Duggee",
+          "season": 2,
+          "seasonYear": 2017
+        },
+        {
+          "seriesId": "tt3778126",
+          "title": "Junior League",
+          "season": 3,
+          "seasonYear": 2015
+        },
+        {
+          "seriesId": "tt38448408",
+          "title": "The Killings at Parrish Station",
+          "season": 1,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt39999771",
+          "title": "Kan Yama Kan",
+          "season": 1,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt7995922",
+          "title": "Feuer & Flamme: Mit Feuerwehrmännern im Einsatz",
+          "season": 11,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt42416598",
+          "title": "Abandonados",
+          "season": 1,
+          "seasonYear": 2026
+        }
+      ],
+      "removed": [],
+      "ratingSwings": [
+        {
+          "seriesId": "tt42024186",
+          "title": "Your Dear Daddy",
+          "season": 1,
+          "from": 8.1,
+          "to": 6.05,
+          "delta": -2.05
+        },
+        {
+          "seriesId": "tt35613505",
+          "title": "Just Kidding",
+          "season": 4,
+          "from": 9.98,
+          "to": 8.65,
+          "delta": -1.33
+        },
+        {
+          "seriesId": "tt35613505",
+          "title": "Just Kidding",
+          "season": 3,
+          "from": 9.98,
+          "to": 8.72,
+          "delta": -1.26
+        },
+        {
+          "seriesId": "tt35613505",
+          "title": "Just Kidding",
+          "season": 2,
+          "from": 10,
+          "to": 8.83,
+          "delta": -1.17
+        },
+        {
+          "seriesId": "tt35613505",
+          "title": "Just Kidding",
+          "season": 1,
+          "from": 9.98,
+          "to": 8.89,
+          "delta": -1.09
+        },
+        {
+          "seriesId": "tt42605728",
+          "title": "The American Experiment",
+          "season": 1,
+          "from": 7.77,
+          "to": 6.86,
+          "delta": -0.91
+        },
+        {
+          "seriesId": "tt37503095",
+          "title": "Istanbul My Love",
+          "season": 1,
+          "from": 8.64,
+          "to": 7.92,
+          "delta": -0.72
+        },
+        {
+          "seriesId": "tt9471340",
+          "title": "4 Week Continuous Special Super Sentai Strongest Battle!!",
+          "season": 1,
+          "from": 7.98,
+          "to": 8.53,
+          "delta": 0.55
+        },
+        {
+          "seriesId": "tt0177438",
+          "title": "Dynomutt Dog Wonder",
+          "season": 2,
+          "from": 7.35,
+          "to": 6.87,
+          "delta": -0.48
+        },
+        {
+          "seriesId": "tt4648640",
+          "title": "Talking Tom & Friends",
+          "season": 2,
+          "from": 8.6,
+          "to": 8.14,
+          "delta": -0.46
+        }
+      ],
+      "modifiedCounts": {
+        "seriesVotes": 18539,
+        "avgRating": 1145,
+        "shapes": 205,
+        "episodeCount": 84,
+        "seriesRating": 283,
+        "poster": 2,
+        "overview": 1
+      }
+    },
+    {
+      "builtAt": "2026-06-29T08:00:21.246Z",
+      "totals": {
+        "seasons": 65562,
+        "delta": 8
+      },
+      "shapeCounts": {
+        "mid-peak": 4613,
+        "rebound": 10016,
+        "rising": 2904,
+        "slow-burn": 4332,
+        "big-finale": 11994,
+        "u-shaped": 3067,
+        "rollercoaster": 14006,
+        "saved-best-for-last": 1509,
+        "front-loaded": 3438,
+        "declining": 1854,
+        "bad-finale": 4629,
+        "consistent": 2598,
+        "shape-drift": 1602
+      },
+      "shapeDeltas": {
+        "mid-peak": -1,
+        "rebound": 3,
+        "rising": -7,
+        "slow-burn": -5,
+        "big-finale": 5,
+        "u-shaped": -4,
+        "rollercoaster": 6,
+        "front-loaded": -3,
+        "declining": 1,
+        "bad-finale": 2,
+        "consistent": 4,
+        "shape-drift": -2
+      },
+      "added": [
+        {
+          "seriesId": "tt14681924",
+          "title": "My Adventures with Superman",
+          "season": 3,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt0983973",
+          "title": "Mamotte! Lollipop",
+          "season": 1,
+          "seasonYear": 2006
+        },
+        {
+          "seriesId": "tt4291050",
+          "title": "Hey Duggee",
+          "season": 2,
+          "seasonYear": 2017
+        },
+        {
+          "seriesId": "tt3778126",
+          "title": "Junior League",
+          "season": 3,
+          "seasonYear": 2015
+        },
+        {
+          "seriesId": "tt38448408",
+          "title": "The Killings at Parrish Station",
+          "season": 1,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt39999771",
+          "title": "Kan Yama Kan",
+          "season": 1,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt7995922",
+          "title": "Feuer & Flamme: Mit Feuerwehrmännern im Einsatz",
+          "season": 11,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt42416598",
+          "title": "Abandonados",
+          "season": 1,
+          "seasonYear": 2026
+        }
+      ],
+      "removed": [],
+      "ratingSwings": [
+        {
+          "seriesId": "tt42024186",
+          "title": "Your Dear Daddy",
+          "season": 1,
+          "from": 8.1,
+          "to": 6.05,
+          "delta": -2.05
+        },
+        {
+          "seriesId": "tt35613505",
+          "title": "Just Kidding",
+          "season": 4,
+          "from": 9.98,
+          "to": 8.65,
+          "delta": -1.33
+        },
+        {
+          "seriesId": "tt35613505",
+          "title": "Just Kidding",
+          "season": 3,
+          "from": 9.98,
+          "to": 8.72,
+          "delta": -1.26
+        },
+        {
+          "seriesId": "tt35613505",
+          "title": "Just Kidding",
+          "season": 2,
+          "from": 10,
+          "to": 8.83,
+          "delta": -1.17
+        },
+        {
+          "seriesId": "tt35613505",
+          "title": "Just Kidding",
+          "season": 1,
+          "from": 9.98,
+          "to": 8.89,
+          "delta": -1.09
+        },
+        {
+          "seriesId": "tt42605728",
+          "title": "The American Experiment",
+          "season": 1,
+          "from": 7.77,
+          "to": 6.86,
+          "delta": -0.91
+        },
+        {
+          "seriesId": "tt37503095",
+          "title": "Istanbul My Love",
+          "season": 1,
+          "from": 8.64,
+          "to": 7.92,
+          "delta": -0.72
+        },
+        {
+          "seriesId": "tt9471340",
+          "title": "4 Week Continuous Special Super Sentai Strongest Battle!!",
+          "season": 1,
+          "from": 7.98,
+          "to": 8.53,
+          "delta": 0.55
+        },
+        {
+          "seriesId": "tt0177438",
+          "title": "Dynomutt Dog Wonder",
+          "season": 2,
+          "from": 7.35,
+          "to": 6.87,
+          "delta": -0.48
+        },
+        {
+          "seriesId": "tt4648640",
+          "title": "Talking Tom & Friends",
+          "season": 2,
+          "from": 8.6,
+          "to": 8.14,
+          "delta": -0.46
+        }
+      ],
+      "modifiedCounts": {
+        "seriesVotes": 18539,
+        "avgRating": 1145,
+        "shapes": 205,
+        "episodeCount": 84,
+        "seriesRating": 283
+      }
+    },
+    {
       "builtAt": "2026-06-28T08:13:00.998Z",
       "totals": {
         "seasons": 65554,
@@ -7268,233 +7622,6 @@
         "shapes": 81,
         "seriesRating": 92,
         "episodeCount": 27
-      }
-    },
-    {
-      "builtAt": "2026-06-14T08:13:37.605Z",
-      "totals": {
-        "seasons": 65313,
-        "delta": 4
-      },
-      "shapeCounts": {
-        "mid-peak": 4606,
-        "rebound": 10001,
-        "rising": 2908,
-        "slow-burn": 4317,
-        "big-finale": 11934,
-        "u-shaped": 3062,
-        "rollercoaster": 13973,
-        "saved-best-for-last": 1514,
-        "front-loaded": 3432,
-        "declining": 1838,
-        "bad-finale": 4608,
-        "consistent": 2592,
-        "shape-drift": 1587
-      },
-      "shapeDeltas": {
-        "mid-peak": -3,
-        "rebound": 5,
-        "rising": -1,
-        "slow-burn": -1,
-        "big-finale": -4,
-        "u-shaped": -4,
-        "rollercoaster": 3,
-        "saved-best-for-last": 1,
-        "declining": 2,
-        "bad-finale": -4,
-        "consistent": 4,
-        "shape-drift": 1
-      },
-      "added": [
-        {
-          "seriesId": "tt15156682",
-          "title": "SuperMarioLogan",
-          "season": 11,
-          "seasonYear": 2017
-        },
-        {
-          "seriesId": "tt28254897",
-          "title": "Mystery Files",
-          "season": 2,
-          "seasonYear": 2024
-        },
-        {
-          "seriesId": "tt21057376",
-          "title": "Acting Good",
-          "season": 3,
-          "seasonYear": 2024
-        },
-        {
-          "seriesId": "tt26929559",
-          "title": "100% Wolf: Book of Hath",
-          "season": 2,
-          "seasonYear": 2023
-        }
-      ],
-      "removed": [],
-      "ratingSwings": [
-        {
-          "seriesId": "tt21056976",
-          "title": "Dragon Striker",
-          "season": 1,
-          "from": 8.23,
-          "to": 8.54,
-          "delta": 0.31
-        },
-        {
-          "seriesId": "tt28285951",
-          "title": "Tuition Teacher",
-          "season": 1,
-          "from": 7.63,
-          "to": 7.93,
-          "delta": 0.3
-        },
-        {
-          "seriesId": "tt38784667",
-          "title": "The Academy",
-          "season": 1,
-          "from": 9.57,
-          "to": 9.28,
-          "delta": -0.29
-        },
-        {
-          "seriesId": "tt27237449",
-          "title": "Khan Al Zahab",
-          "season": 1,
-          "from": 9.33,
-          "to": 9.05,
-          "delta": -0.28
-        },
-        {
-          "seriesId": "tt31521718",
-          "title": "The Unclouded Soul",
-          "season": 1,
-          "from": 7.56,
-          "to": 7.31,
-          "delta": -0.25
-        }
-      ],
-      "modifiedCounts": {
-        "seriesVotes": 3336,
-        "avgRating": 385,
-        "episodeCount": 29,
-        "shapes": 64,
-        "seriesRating": 68,
-        "poster": 11,
-        "overview": 1,
-        "providers": 5
-      }
-    },
-    {
-      "builtAt": "2026-06-14T07:48:01.342Z",
-      "totals": {
-        "seasons": 65313,
-        "delta": 4
-      },
-      "shapeCounts": {
-        "mid-peak": 4606,
-        "rebound": 10001,
-        "rising": 2908,
-        "slow-burn": 4317,
-        "big-finale": 11934,
-        "u-shaped": 3062,
-        "rollercoaster": 13973,
-        "saved-best-for-last": 1514,
-        "front-loaded": 3432,
-        "declining": 1838,
-        "bad-finale": 4608,
-        "consistent": 2592,
-        "shape-drift": 1587
-      },
-      "shapeDeltas": {
-        "mid-peak": -3,
-        "rebound": 5,
-        "rising": -1,
-        "slow-burn": -1,
-        "big-finale": -4,
-        "u-shaped": -4,
-        "rollercoaster": 3,
-        "saved-best-for-last": 1,
-        "declining": 2,
-        "bad-finale": -4,
-        "consistent": 4,
-        "shape-drift": 1
-      },
-      "added": [
-        {
-          "seriesId": "tt15156682",
-          "title": "SuperMarioLogan",
-          "season": 11,
-          "seasonYear": 2017
-        },
-        {
-          "seriesId": "tt28254897",
-          "title": "Mystery Files",
-          "season": 2,
-          "seasonYear": 2024
-        },
-        {
-          "seriesId": "tt21057376",
-          "title": "Acting Good",
-          "season": 3,
-          "seasonYear": 2024
-        },
-        {
-          "seriesId": "tt26929559",
-          "title": "100% Wolf: Book of Hath",
-          "season": 2,
-          "seasonYear": 2023
-        }
-      ],
-      "removed": [],
-      "ratingSwings": [
-        {
-          "seriesId": "tt21056976",
-          "title": "Dragon Striker",
-          "season": 1,
-          "from": 8.23,
-          "to": 8.54,
-          "delta": 0.31
-        },
-        {
-          "seriesId": "tt28285951",
-          "title": "Tuition Teacher",
-          "season": 1,
-          "from": 7.63,
-          "to": 7.93,
-          "delta": 0.3
-        },
-        {
-          "seriesId": "tt38784667",
-          "title": "The Academy",
-          "season": 1,
-          "from": 9.57,
-          "to": 9.28,
-          "delta": -0.29
-        },
-        {
-          "seriesId": "tt27237449",
-          "title": "Khan Al Zahab",
-          "season": 1,
-          "from": 9.33,
-          "to": 9.05,
-          "delta": -0.28
-        },
-        {
-          "seriesId": "tt31521718",
-          "title": "The Unclouded Soul",
-          "season": 1,
-          "from": 7.56,
-          "to": 7.31,
-          "delta": -0.25
-        }
-      ],
-      "modifiedCounts": {
-        "seriesVotes": 3336,
-        "avgRating": 385,
-        "episodeCount": 29,
-        "shapes": 64,
-        "seriesRating": 68
       }
     }
   ]
