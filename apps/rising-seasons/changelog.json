@@ -1,6 +1,519 @@
 {
   "updates": [
     {
+      "builtAt": "2026-06-30T08:11:17.807Z",
+      "totals": {
+        "seasons": 65573,
+        "delta": 11
+      },
+      "shapeCounts": {
+        "mid-peak": 4616,
+        "rebound": 10016,
+        "rising": 2908,
+        "slow-burn": 4337,
+        "big-finale": 11999,
+        "u-shaped": 3068,
+        "rollercoaster": 14002,
+        "saved-best-for-last": 1513,
+        "front-loaded": 3435,
+        "declining": 1852,
+        "bad-finale": 4630,
+        "consistent": 2591,
+        "shape-drift": 1604
+      },
+      "shapeDeltas": {
+        "mid-peak": 3,
+        "rising": 4,
+        "slow-burn": 5,
+        "big-finale": 5,
+        "u-shaped": 1,
+        "rollercoaster": -4,
+        "saved-best-for-last": 4,
+        "front-loaded": -3,
+        "declining": -2,
+        "bad-finale": 1,
+        "consistent": -7,
+        "shape-drift": 2
+      },
+      "added": [
+        {
+          "seriesId": "tt3747572",
+          "title": "Grantchester",
+          "season": 11,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt0096658",
+          "title": "Navarro",
+          "season": 18,
+          "seasonYear": 2005
+        },
+        {
+          "seriesId": "tt0096658",
+          "title": "Navarro",
+          "season": 15,
+          "seasonYear": 2003
+        },
+        {
+          "seriesId": "tt0096658",
+          "title": "Navarro",
+          "season": 14,
+          "seasonYear": 2002
+        },
+        {
+          "seriesId": "tt0096658",
+          "title": "Navarro",
+          "season": 16,
+          "seasonYear": 2004
+        },
+        {
+          "seriesId": "tt0096658",
+          "title": "Navarro",
+          "season": 17,
+          "seasonYear": 2004
+        },
+        {
+          "seriesId": "tt0096658",
+          "title": "Navarro",
+          "season": 19,
+          "seasonYear": 2005
+        },
+        {
+          "seriesId": "tt0352110",
+          "title": "TV Burp",
+          "season": 7,
+          "seasonYear": 2007
+        },
+        {
+          "seriesId": "tt8141256",
+          "title": "Restored",
+          "season": 7,
+          "seasonYear": 2022
+        },
+        {
+          "seriesId": "tt31502547",
+          "title": "Året var...",
+          "season": 5,
+          "seasonYear": 2023
+        },
+        {
+          "seriesId": "tt40903597",
+          "title": "Naked and Afraid: Global Showdown",
+          "season": 1,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt1704499",
+          "title": "Originalos?",
+          "season": 1,
+          "seasonYear": 2017
+        },
+        {
+          "seriesId": "tt0372047",
+          "title": "Balamory",
+          "season": 5,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt21057046",
+          "title": "The Doomies",
+          "season": 1,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt29242849",
+          "title": "My Family",
+          "season": 2,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt30527052",
+          "title": "Bandy's Universe",
+          "season": 1,
+          "seasonYear": 2022
+        }
+      ],
+      "removed": [
+        {
+          "seriesId": "tt1857432",
+          "title": "Shua Kalakshi",
+          "season": 4,
+          "seasonYear": 2008
+        },
+        {
+          "seriesId": "tt6722972",
+          "title": "Hot Dog",
+          "season": 2,
+          "seasonYear": 2004
+        },
+        {
+          "seriesId": "tt6722972",
+          "title": "Hot Dog",
+          "season": 3,
+          "seasonYear": 2005
+        },
+        {
+          "seriesId": "tt6722972",
+          "title": "Hot Dog",
+          "season": 4,
+          "seasonYear": 2013
+        },
+        {
+          "seriesId": "tt6722972",
+          "title": "Hot Dog",
+          "season": 5,
+          "seasonYear": 2013
+        }
+      ],
+      "ratingSwings": [
+        {
+          "seriesId": "tt43592231",
+          "title": "The Lie We Lived In",
+          "season": 1,
+          "from": 7.22,
+          "to": 8.73,
+          "delta": 1.51
+        },
+        {
+          "seriesId": "tt1715368",
+          "title": "The Annoying Orange",
+          "season": 7,
+          "from": 9.78,
+          "to": 8.63,
+          "delta": -1.15
+        },
+        {
+          "seriesId": "tt1715368",
+          "title": "The Annoying Orange",
+          "season": 10,
+          "from": 9.44,
+          "to": 8.32,
+          "delta": -1.12
+        },
+        {
+          "seriesId": "tt1715368",
+          "title": "The Annoying Orange",
+          "season": 9,
+          "from": 9.46,
+          "to": 8.36,
+          "delta": -1.1
+        },
+        {
+          "seriesId": "tt1715368",
+          "title": "The Annoying Orange",
+          "season": 6,
+          "from": 9.71,
+          "to": 8.62,
+          "delta": -1.09
+        },
+        {
+          "seriesId": "tt1715368",
+          "title": "The Annoying Orange",
+          "season": 14,
+          "from": 9.66,
+          "to": 8.58,
+          "delta": -1.08
+        },
+        {
+          "seriesId": "tt37096911",
+          "title": "The First Jasmine",
+          "season": 1,
+          "from": 9.25,
+          "to": 8.18,
+          "delta": -1.07
+        },
+        {
+          "seriesId": "tt1715368",
+          "title": "The Annoying Orange",
+          "season": 5,
+          "from": 9.27,
+          "to": 8.22,
+          "delta": -1.05
+        },
+        {
+          "seriesId": "tt1715368",
+          "title": "The Annoying Orange",
+          "season": 13,
+          "from": 9.19,
+          "to": 8.14,
+          "delta": -1.05
+        },
+        {
+          "seriesId": "tt1715368",
+          "title": "The Annoying Orange",
+          "season": 15,
+          "from": 9.68,
+          "to": 8.65,
+          "delta": -1.03
+        }
+      ],
+      "modifiedCounts": {
+        "seriesVotes": 19066,
+        "avgRating": 1284,
+        "episodeCount": 98,
+        "shapes": 239,
+        "seriesRating": 257,
+        "poster": 1,
+        "providers": 1,
+        "overview": 2
+      }
+    },
+    {
+      "builtAt": "2026-06-30T07:31:04.201Z",
+      "totals": {
+        "seasons": 65573,
+        "delta": 11
+      },
+      "shapeCounts": {
+        "mid-peak": 4616,
+        "rebound": 10016,
+        "rising": 2908,
+        "slow-burn": 4337,
+        "big-finale": 11999,
+        "u-shaped": 3068,
+        "rollercoaster": 14002,
+        "saved-best-for-last": 1513,
+        "front-loaded": 3435,
+        "declining": 1852,
+        "bad-finale": 4630,
+        "consistent": 2591,
+        "shape-drift": 1604
+      },
+      "shapeDeltas": {
+        "mid-peak": 3,
+        "rising": 4,
+        "slow-burn": 5,
+        "big-finale": 5,
+        "u-shaped": 1,
+        "rollercoaster": -4,
+        "saved-best-for-last": 4,
+        "front-loaded": -3,
+        "declining": -2,
+        "bad-finale": 1,
+        "consistent": -7,
+        "shape-drift": 2
+      },
+      "added": [
+        {
+          "seriesId": "tt3747572",
+          "title": "Grantchester",
+          "season": 11,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt0096658",
+          "title": "Navarro",
+          "season": 18,
+          "seasonYear": 2005
+        },
+        {
+          "seriesId": "tt0096658",
+          "title": "Navarro",
+          "season": 15,
+          "seasonYear": 2003
+        },
+        {
+          "seriesId": "tt0096658",
+          "title": "Navarro",
+          "season": 14,
+          "seasonYear": 2002
+        },
+        {
+          "seriesId": "tt0096658",
+          "title": "Navarro",
+          "season": 16,
+          "seasonYear": 2004
+        },
+        {
+          "seriesId": "tt0096658",
+          "title": "Navarro",
+          "season": 17,
+          "seasonYear": 2004
+        },
+        {
+          "seriesId": "tt0096658",
+          "title": "Navarro",
+          "season": 19,
+          "seasonYear": 2005
+        },
+        {
+          "seriesId": "tt0352110",
+          "title": "TV Burp",
+          "season": 7,
+          "seasonYear": 2007
+        },
+        {
+          "seriesId": "tt8141256",
+          "title": "Restored",
+          "season": 7,
+          "seasonYear": 2022
+        },
+        {
+          "seriesId": "tt31502547",
+          "title": "Året var...",
+          "season": 5,
+          "seasonYear": 2023
+        },
+        {
+          "seriesId": "tt40903597",
+          "title": "Naked and Afraid: Global Showdown",
+          "season": 1,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt1704499",
+          "title": "Originalos?",
+          "season": 1,
+          "seasonYear": 2017
+        },
+        {
+          "seriesId": "tt0372047",
+          "title": "Balamory",
+          "season": 5,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt21057046",
+          "title": "The Doomies",
+          "season": 1,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt29242849",
+          "title": "My Family",
+          "season": 2,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt30527052",
+          "title": "Bandy's Universe",
+          "season": 1,
+          "seasonYear": 2022
+        }
+      ],
+      "removed": [
+        {
+          "seriesId": "tt1857432",
+          "title": "Shua Kalakshi",
+          "season": 4,
+          "seasonYear": 2008
+        },
+        {
+          "seriesId": "tt6722972",
+          "title": "Hot Dog",
+          "season": 2,
+          "seasonYear": 2004
+        },
+        {
+          "seriesId": "tt6722972",
+          "title": "Hot Dog",
+          "season": 3,
+          "seasonYear": 2005
+        },
+        {
+          "seriesId": "tt6722972",
+          "title": "Hot Dog",
+          "season": 4,
+          "seasonYear": 2013
+        },
+        {
+          "seriesId": "tt6722972",
+          "title": "Hot Dog",
+          "season": 5,
+          "seasonYear": 2013
+        }
+      ],
+      "ratingSwings": [
+        {
+          "seriesId": "tt43592231",
+          "title": "The Lie We Lived In",
+          "season": 1,
+          "from": 7.22,
+          "to": 8.73,
+          "delta": 1.51
+        },
+        {
+          "seriesId": "tt1715368",
+          "title": "The Annoying Orange",
+          "season": 7,
+          "from": 9.78,
+          "to": 8.63,
+          "delta": -1.15
+        },
+        {
+          "seriesId": "tt1715368",
+          "title": "The Annoying Orange",
+          "season": 10,
+          "from": 9.44,
+          "to": 8.32,
+          "delta": -1.12
+        },
+        {
+          "seriesId": "tt1715368",
+          "title": "The Annoying Orange",
+          "season": 9,
+          "from": 9.46,
+          "to": 8.36,
+          "delta": -1.1
+        },
+        {
+          "seriesId": "tt1715368",
+          "title": "The Annoying Orange",
+          "season": 6,
+          "from": 9.71,
+          "to": 8.62,
+          "delta": -1.09
+        },
+        {
+          "seriesId": "tt1715368",
+          "title": "The Annoying Orange",
+          "season": 14,
+          "from": 9.66,
+          "to": 8.58,
+          "delta": -1.08
+        },
+        {
+          "seriesId": "tt37096911",
+          "title": "The First Jasmine",
+          "season": 1,
+          "from": 9.25,
+          "to": 8.18,
+          "delta": -1.07
+        },
+        {
+          "seriesId": "tt1715368",
+          "title": "The Annoying Orange",
+          "season": 5,
+          "from": 9.27,
+          "to": 8.22,
+          "delta": -1.05
+        },
+        {
+          "seriesId": "tt1715368",
+          "title": "The Annoying Orange",
+          "season": 13,
+          "from": 9.19,
+          "to": 8.14,
+          "delta": -1.05
+        },
+        {
+          "seriesId": "tt1715368",
+          "title": "The Annoying Orange",
+          "season": 15,
+          "from": 9.68,
+          "to": 8.65,
+          "delta": -1.03
+        }
+      ],
+      "modifiedCounts": {
+        "seriesVotes": 19066,
+        "avgRating": 1284,
+        "episodeCount": 98,
+        "shapes": 239,
+        "seriesRating": 257
+      }
+    },
+    {
       "builtAt": "2026-06-29T08:40:32.869Z",
       "totals": {
         "seasons": 65562,
@@ -7281,347 +7794,6 @@
         "shapes": 114,
         "seriesRating": 152,
         "episodeCount": 47
-      }
-    },
-    {
-      "builtAt": "2026-06-15T08:43:48.963Z",
-      "totals": {
-        "seasons": 65320,
-        "delta": 7
-      },
-      "shapeCounts": {
-        "mid-peak": 4610,
-        "rebound": 10002,
-        "rising": 2906,
-        "slow-burn": 4314,
-        "big-finale": 11934,
-        "u-shaped": 3061,
-        "rollercoaster": 13975,
-        "saved-best-for-last": 1515,
-        "front-loaded": 3433,
-        "declining": 1840,
-        "bad-finale": 4613,
-        "consistent": 2593,
-        "shape-drift": 1585
-      },
-      "shapeDeltas": {
-        "mid-peak": 4,
-        "rebound": 1,
-        "rising": -2,
-        "slow-burn": -3,
-        "u-shaped": -1,
-        "rollercoaster": 2,
-        "saved-best-for-last": 1,
-        "front-loaded": 1,
-        "declining": 2,
-        "bad-finale": 5,
-        "consistent": 1,
-        "shape-drift": -2
-      },
-      "added": [
-        {
-          "seriesId": "tt32915471",
-          "title": "2026 FIFA World Cup",
-          "season": 1,
-          "seasonYear": 2026
-        },
-        {
-          "seriesId": "tt39400589",
-          "title": "Viral Hit",
-          "season": 1,
-          "seasonYear": 2026
-        },
-        {
-          "seriesId": "tt31712270",
-          "title": "Selat Rahem",
-          "season": 1,
-          "seasonYear": 2024
-        },
-        {
-          "seriesId": "tt32593167",
-          "title": "The Embers",
-          "season": 1,
-          "seasonYear": 2025
-        },
-        {
-          "seriesId": "tt9077540",
-          "title": "Sweet Magnolias",
-          "season": 5,
-          "seasonYear": 2026
-        },
-        {
-          "seriesId": "tt8712456",
-          "title": "The Inmortal",
-          "season": 3,
-          "seasonYear": 2026
-        },
-        {
-          "seriesId": "tt33080707",
-          "title": "Dracula Raps",
-          "season": 1,
-          "seasonYear": 2022
-        }
-      ],
-      "removed": [],
-      "ratingSwings": [
-        {
-          "seriesId": "tt26929559",
-          "title": "100% Wolf: Book of Hath",
-          "season": 2,
-          "from": 7.47,
-          "to": 7.98,
-          "delta": 0.51
-        },
-        {
-          "seriesId": "tt7838238",
-          "title": "Samantha Brown's Places to Love",
-          "season": 7,
-          "from": 6.44,
-          "to": 6.1,
-          "delta": -0.34
-        },
-        {
-          "seriesId": "tt0118252",
-          "title": "All Dogs Go to Heaven: The Series",
-          "season": 2,
-          "from": 8.26,
-          "to": 7.93,
-          "delta": -0.33
-        },
-        {
-          "seriesId": "tt0452046",
-          "title": "Criminal Minds",
-          "season": 19,
-          "from": 7.5,
-          "to": 7.8,
-          "delta": 0.3
-        },
-        {
-          "seriesId": "tt33059022",
-          "title": "Perdiendo el juicio",
-          "season": 1,
-          "from": 6.16,
-          "to": 6.45,
-          "delta": 0.29
-        },
-        {
-          "seriesId": "tt4770018",
-          "title": "Love Island",
-          "season": 13,
-          "from": 6.28,
-          "to": 6.02,
-          "delta": -0.26
-        },
-        {
-          "seriesId": "tt0309141",
-          "title": "Cyberchase",
-          "season": 15,
-          "from": 8.3,
-          "to": 8.56,
-          "delta": 0.26
-        },
-        {
-          "seriesId": "tt29267609",
-          "title": "Hameln",
-          "season": 1,
-          "from": 5.47,
-          "to": 5.23,
-          "delta": -0.24
-        },
-        {
-          "seriesId": "tt21056976",
-          "title": "Dragon Striker",
-          "season": 1,
-          "from": 8.54,
-          "to": 8.75,
-          "delta": 0.21
-        },
-        {
-          "seriesId": "tt6294706",
-          "title": "The Chi",
-          "season": 8,
-          "from": 8.63,
-          "to": 8.43,
-          "delta": -0.2
-        }
-      ],
-      "modifiedCounts": {
-        "avgRating": 426,
-        "seriesVotes": 1766,
-        "shapes": 81,
-        "seriesRating": 92,
-        "episodeCount": 27,
-        "providers": 2
-      }
-    },
-    {
-      "builtAt": "2026-06-15T08:18:17.846Z",
-      "totals": {
-        "seasons": 65320,
-        "delta": 7
-      },
-      "shapeCounts": {
-        "mid-peak": 4610,
-        "rebound": 10002,
-        "rising": 2906,
-        "slow-burn": 4314,
-        "big-finale": 11934,
-        "u-shaped": 3061,
-        "rollercoaster": 13975,
-        "saved-best-for-last": 1515,
-        "front-loaded": 3433,
-        "declining": 1840,
-        "bad-finale": 4613,
-        "consistent": 2593,
-        "shape-drift": 1585
-      },
-      "shapeDeltas": {
-        "mid-peak": 4,
-        "rebound": 1,
-        "rising": -2,
-        "slow-burn": -3,
-        "u-shaped": -1,
-        "rollercoaster": 2,
-        "saved-best-for-last": 1,
-        "front-loaded": 1,
-        "declining": 2,
-        "bad-finale": 5,
-        "consistent": 1,
-        "shape-drift": -2
-      },
-      "added": [
-        {
-          "seriesId": "tt32915471",
-          "title": "2026 FIFA World Cup",
-          "season": 1,
-          "seasonYear": 2026
-        },
-        {
-          "seriesId": "tt39400589",
-          "title": "Viral Hit",
-          "season": 1,
-          "seasonYear": 2026
-        },
-        {
-          "seriesId": "tt31712270",
-          "title": "Selat Rahem",
-          "season": 1,
-          "seasonYear": 2024
-        },
-        {
-          "seriesId": "tt32593167",
-          "title": "The Embers",
-          "season": 1,
-          "seasonYear": 2025
-        },
-        {
-          "seriesId": "tt9077540",
-          "title": "Sweet Magnolias",
-          "season": 5,
-          "seasonYear": 2026
-        },
-        {
-          "seriesId": "tt8712456",
-          "title": "The Inmortal",
-          "season": 3,
-          "seasonYear": 2026
-        },
-        {
-          "seriesId": "tt33080707",
-          "title": "Dracula Raps",
-          "season": 1,
-          "seasonYear": 2022
-        }
-      ],
-      "removed": [],
-      "ratingSwings": [
-        {
-          "seriesId": "tt26929559",
-          "title": "100% Wolf: Book of Hath",
-          "season": 2,
-          "from": 7.47,
-          "to": 7.98,
-          "delta": 0.51
-        },
-        {
-          "seriesId": "tt7838238",
-          "title": "Samantha Brown's Places to Love",
-          "season": 7,
-          "from": 6.44,
-          "to": 6.1,
-          "delta": -0.34
-        },
-        {
-          "seriesId": "tt0118252",
-          "title": "All Dogs Go to Heaven: The Series",
-          "season": 2,
-          "from": 8.26,
-          "to": 7.93,
-          "delta": -0.33
-        },
-        {
-          "seriesId": "tt0452046",
-          "title": "Criminal Minds",
-          "season": 19,
-          "from": 7.5,
-          "to": 7.8,
-          "delta": 0.3
-        },
-        {
-          "seriesId": "tt33059022",
-          "title": "Perdiendo el juicio",
-          "season": 1,
-          "from": 6.16,
-          "to": 6.45,
-          "delta": 0.29
-        },
-        {
-          "seriesId": "tt4770018",
-          "title": "Love Island",
-          "season": 13,
-          "from": 6.28,
-          "to": 6.02,
-          "delta": -0.26
-        },
-        {
-          "seriesId": "tt0309141",
-          "title": "Cyberchase",
-          "season": 15,
-          "from": 8.3,
-          "to": 8.56,
-          "delta": 0.26
-        },
-        {
-          "seriesId": "tt29267609",
-          "title": "Hameln",
-          "season": 1,
-          "from": 5.47,
-          "to": 5.23,
-          "delta": -0.24
-        },
-        {
-          "seriesId": "tt21056976",
-          "title": "Dragon Striker",
-          "season": 1,
-          "from": 8.54,
-          "to": 8.75,
-          "delta": 0.21
-        },
-        {
-          "seriesId": "tt6294706",
-          "title": "The Chi",
-          "season": 8,
-          "from": 8.63,
-          "to": 8.43,
-          "delta": -0.2
-        }
-      ],
-      "modifiedCounts": {
-        "avgRating": 426,
-        "seriesVotes": 1766,
-        "shapes": 81,
-        "seriesRating": 92,
-        "episodeCount": 27
       }
     }
   ]
