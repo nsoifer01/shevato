@@ -1,6 +1,371 @@
 {
   "updates": [
     {
+      "builtAt": "2026-07-01T08:11:21.596Z",
+      "totals": {
+        "seasons": 65582,
+        "delta": 9
+      },
+      "shapeCounts": {
+        "mid-peak": 4617,
+        "rebound": 10017,
+        "rising": 2907,
+        "slow-burn": 4337,
+        "big-finale": 11992,
+        "u-shaped": 3070,
+        "rollercoaster": 14010,
+        "saved-best-for-last": 1516,
+        "front-loaded": 3439,
+        "declining": 1856,
+        "bad-finale": 4631,
+        "consistent": 2596,
+        "shape-drift": 1605
+      },
+      "shapeDeltas": {
+        "mid-peak": 1,
+        "rebound": 1,
+        "rising": -1,
+        "big-finale": -7,
+        "u-shaped": 2,
+        "rollercoaster": 8,
+        "saved-best-for-last": 3,
+        "front-loaded": 4,
+        "declining": 4,
+        "bad-finale": 1,
+        "consistent": 5,
+        "shape-drift": 1
+      },
+      "added": [
+        {
+          "seriesId": "tt0066696",
+          "title": "Owen Marshall, Counselor at Law",
+          "season": 2,
+          "seasonYear": 1972
+        },
+        {
+          "seriesId": "tt43551392",
+          "title": "Deep In",
+          "season": 1,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt0805418",
+          "title": "Masterchef Goes Large",
+          "season": 22,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt10580092",
+          "title": "The Oval",
+          "season": 7,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt14321632",
+          "title": "All the Queen's Men",
+          "season": 5,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt1394123",
+          "title": "Tom und das Erdbeermarmeladebrot mit Honig",
+          "season": 2,
+          "seasonYear": 2008
+        },
+        {
+          "seriesId": "tt16384576",
+          "title": "Underground of Berlin",
+          "season": 3,
+          "seasonYear": 2022
+        },
+        {
+          "seriesId": "tt39014301",
+          "title": "Tide of Love",
+          "season": 1,
+          "seasonYear": 2025
+        },
+        {
+          "seriesId": "tt42207122",
+          "title": "Xatar: Ein Leben ist nicht genug",
+          "season": 1,
+          "seasonYear": 2026
+        }
+      ],
+      "removed": [],
+      "ratingSwings": [
+        {
+          "seriesId": "tt28088954",
+          "title": "The Traitors NZ",
+          "season": 3,
+          "from": 6.08,
+          "to": 5.33,
+          "delta": -0.75
+        },
+        {
+          "seriesId": "tt8319428",
+          "title": "American Soul",
+          "season": 2,
+          "from": 8.01,
+          "to": 7.33,
+          "delta": -0.68
+        },
+        {
+          "seriesId": "tt24828460",
+          "title": "Kaisi Teri Khudgarzi",
+          "season": 1,
+          "from": 4.56,
+          "to": 5.22,
+          "delta": 0.66
+        },
+        {
+          "seriesId": "tt0206512",
+          "title": "SpongeBob SquarePants",
+          "season": 17,
+          "from": 7.43,
+          "to": 6.78,
+          "delta": -0.65
+        },
+        {
+          "seriesId": "tt35406274",
+          "title": "Ms. Rachel",
+          "season": 1,
+          "from": 5.57,
+          "to": 6.1,
+          "delta": 0.53
+        },
+        {
+          "seriesId": "tt0449545",
+          "title": "Curious George",
+          "season": 8,
+          "from": 7.58,
+          "to": 8.1,
+          "delta": 0.52
+        },
+        {
+          "seriesId": "tt0449545",
+          "title": "Curious George",
+          "season": 6,
+          "from": 7.46,
+          "to": 7.97,
+          "delta": 0.51
+        },
+        {
+          "seriesId": "tt0449545",
+          "title": "Curious George",
+          "season": 9,
+          "from": 7.69,
+          "to": 8.2,
+          "delta": 0.51
+        },
+        {
+          "seriesId": "tt41672842",
+          "title": "Salish & Jordan Matter",
+          "season": 1,
+          "from": 4.15,
+          "to": 3.66,
+          "delta": -0.49
+        },
+        {
+          "seriesId": "tt0449545",
+          "title": "Curious George",
+          "season": 11,
+          "from": 7.91,
+          "to": 8.37,
+          "delta": 0.46
+        }
+      ],
+      "modifiedCounts": {
+        "seriesVotes": 14380,
+        "avgRating": 618,
+        "shapes": 116,
+        "episodeCount": 43,
+        "seriesRating": 202,
+        "poster": 1
+      }
+    },
+    {
+      "builtAt": "2026-07-01T07:43:32.363Z",
+      "totals": {
+        "seasons": 65582,
+        "delta": 9
+      },
+      "shapeCounts": {
+        "mid-peak": 4617,
+        "rebound": 10017,
+        "rising": 2907,
+        "slow-burn": 4337,
+        "big-finale": 11992,
+        "u-shaped": 3070,
+        "rollercoaster": 14010,
+        "saved-best-for-last": 1516,
+        "front-loaded": 3439,
+        "declining": 1856,
+        "bad-finale": 4631,
+        "consistent": 2596,
+        "shape-drift": 1605
+      },
+      "shapeDeltas": {
+        "mid-peak": 1,
+        "rebound": 1,
+        "rising": -1,
+        "big-finale": -7,
+        "u-shaped": 2,
+        "rollercoaster": 8,
+        "saved-best-for-last": 3,
+        "front-loaded": 4,
+        "declining": 4,
+        "bad-finale": 1,
+        "consistent": 5,
+        "shape-drift": 1
+      },
+      "added": [
+        {
+          "seriesId": "tt0066696",
+          "title": "Owen Marshall, Counselor at Law",
+          "season": 2,
+          "seasonYear": 1972
+        },
+        {
+          "seriesId": "tt43551392",
+          "title": "Deep In",
+          "season": 1,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt0805418",
+          "title": "Masterchef Goes Large",
+          "season": 22,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt10580092",
+          "title": "The Oval",
+          "season": 7,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt14321632",
+          "title": "All the Queen's Men",
+          "season": 5,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt1394123",
+          "title": "Tom und das Erdbeermarmeladebrot mit Honig",
+          "season": 2,
+          "seasonYear": 2008
+        },
+        {
+          "seriesId": "tt16384576",
+          "title": "Underground of Berlin",
+          "season": 3,
+          "seasonYear": 2022
+        },
+        {
+          "seriesId": "tt39014301",
+          "title": "Tide of Love",
+          "season": 1,
+          "seasonYear": 2025
+        },
+        {
+          "seriesId": "tt42207122",
+          "title": "Xatar: Ein Leben ist nicht genug",
+          "season": 1,
+          "seasonYear": 2026
+        }
+      ],
+      "removed": [],
+      "ratingSwings": [
+        {
+          "seriesId": "tt28088954",
+          "title": "The Traitors NZ",
+          "season": 3,
+          "from": 6.08,
+          "to": 5.33,
+          "delta": -0.75
+        },
+        {
+          "seriesId": "tt8319428",
+          "title": "American Soul",
+          "season": 2,
+          "from": 8.01,
+          "to": 7.33,
+          "delta": -0.68
+        },
+        {
+          "seriesId": "tt24828460",
+          "title": "Kaisi Teri Khudgarzi",
+          "season": 1,
+          "from": 4.56,
+          "to": 5.22,
+          "delta": 0.66
+        },
+        {
+          "seriesId": "tt0206512",
+          "title": "SpongeBob SquarePants",
+          "season": 17,
+          "from": 7.43,
+          "to": 6.78,
+          "delta": -0.65
+        },
+        {
+          "seriesId": "tt35406274",
+          "title": "Ms. Rachel",
+          "season": 1,
+          "from": 5.57,
+          "to": 6.1,
+          "delta": 0.53
+        },
+        {
+          "seriesId": "tt0449545",
+          "title": "Curious George",
+          "season": 8,
+          "from": 7.58,
+          "to": 8.1,
+          "delta": 0.52
+        },
+        {
+          "seriesId": "tt0449545",
+          "title": "Curious George",
+          "season": 6,
+          "from": 7.46,
+          "to": 7.97,
+          "delta": 0.51
+        },
+        {
+          "seriesId": "tt0449545",
+          "title": "Curious George",
+          "season": 9,
+          "from": 7.69,
+          "to": 8.2,
+          "delta": 0.51
+        },
+        {
+          "seriesId": "tt41672842",
+          "title": "Salish & Jordan Matter",
+          "season": 1,
+          "from": 4.15,
+          "to": 3.66,
+          "delta": -0.49
+        },
+        {
+          "seriesId": "tt0449545",
+          "title": "Curious George",
+          "season": 11,
+          "from": 7.91,
+          "to": 8.37,
+          "delta": 0.46
+        }
+      ],
+      "modifiedCounts": {
+        "seriesVotes": 14380,
+        "avgRating": 618,
+        "shapes": 116,
+        "episodeCount": 43,
+        "seriesRating": 202
+      }
+    },
+    {
       "builtAt": "2026-06-30T08:11:17.807Z",
       "totals": {
         "seasons": 65573,
@@ -7440,360 +7805,6 @@
         "avgRating": 793,
         "shapes": 164,
         "episodeCount": 104
-      }
-    },
-    {
-      "builtAt": "2026-06-16T08:37:05.757Z",
-      "totals": {
-        "seasons": 65328,
-        "delta": 8
-      },
-      "shapeCounts": {
-        "mid-peak": 4611,
-        "rebound": 10000,
-        "rising": 2911,
-        "slow-burn": 4322,
-        "big-finale": 11934,
-        "u-shaped": 3060,
-        "rollercoaster": 13976,
-        "saved-best-for-last": 1516,
-        "front-loaded": 3436,
-        "declining": 1841,
-        "bad-finale": 4612,
-        "consistent": 2590,
-        "shape-drift": 1586
-      },
-      "shapeDeltas": {
-        "mid-peak": 1,
-        "rebound": -2,
-        "rising": 5,
-        "slow-burn": 8,
-        "u-shaped": -1,
-        "rollercoaster": 1,
-        "saved-best-for-last": 1,
-        "front-loaded": 3,
-        "declining": 1,
-        "bad-finale": -1,
-        "consistent": -3,
-        "shape-drift": 1
-      },
-      "added": [
-        {
-          "seriesId": "tt34675596",
-          "title": "Cape Fear",
-          "season": 1,
-          "seasonYear": 2026
-        },
-        {
-          "seriesId": "tt35870921",
-          "title": "Raakh",
-          "season": 1,
-          "seasonYear": 2026
-        },
-        {
-          "seriesId": "tt36461751",
-          "title": "El Diario de Jonathan",
-          "season": 1,
-          "seasonYear": 2013
-        },
-        {
-          "seriesId": "tt36461751",
-          "title": "El Diario de Jonathan",
-          "season": 2,
-          "seasonYear": 2014
-        },
-        {
-          "seriesId": "tt36983305",
-          "title": "Drag Brunch Saved My Life",
-          "season": 1,
-          "seasonYear": 2025
-        },
-        {
-          "seriesId": "tt27238424",
-          "title": "The Whole Story with Anderson Cooper",
-          "season": 3,
-          "seasonYear": 2025
-        },
-        {
-          "seriesId": "tt36508039",
-          "title": "In höchster Not - Bergretter im Einsatz",
-          "season": 1,
-          "seasonYear": 2025
-        },
-        {
-          "seriesId": "tt38610771",
-          "title": "Jinn Ki Shadi Unki Shadi",
-          "season": 1,
-          "seasonYear": 2025
-        }
-      ],
-      "removed": [],
-      "ratingSwings": [
-        {
-          "seriesId": "tt34691876",
-          "title": "Gupi",
-          "season": 1,
-          "from": 5.48,
-          "to": 6.02,
-          "delta": 0.54
-        },
-        {
-          "seriesId": "tt23058150",
-          "title": "LOL: Qui Rira Le Dernier?",
-          "season": 3,
-          "from": 6.3,
-          "to": 6.7,
-          "delta": 0.4
-        },
-        {
-          "seriesId": "tt6491484",
-          "title": "Tales from Outer Suburbia",
-          "season": 1,
-          "from": 9.04,
-          "to": 8.66,
-          "delta": -0.38
-        },
-        {
-          "seriesId": "tt31260463",
-          "title": "Our Stupid School",
-          "season": 2,
-          "from": 5.73,
-          "to": 5.37,
-          "delta": -0.36
-        },
-        {
-          "seriesId": "tt4859164",
-          "title": "The Loud House",
-          "season": 10,
-          "from": 7.86,
-          "to": 7.53,
-          "delta": -0.33
-        },
-        {
-          "seriesId": "tt38733253",
-          "title": "High Horse: The Black Cowboy",
-          "season": 1,
-          "from": 7.63,
-          "to": 7.33,
-          "delta": -0.3
-        },
-        {
-          "seriesId": "tt20887486",
-          "title": "SisterS",
-          "season": 2,
-          "from": 8.23,
-          "to": 7.95,
-          "delta": -0.28
-        },
-        {
-          "seriesId": "tt37452743",
-          "title": "Meet Iron Man and His Awesome Friends",
-          "season": 1,
-          "from": 8.04,
-          "to": 8.32,
-          "delta": 0.28
-        },
-        {
-          "seriesId": "tt32915471",
-          "title": "2026 FIFA World Cup",
-          "season": 1,
-          "from": 6.18,
-          "to": 6.44,
-          "delta": 0.26
-        },
-        {
-          "seriesId": "tt37403273",
-          "title": "Two Years Later",
-          "season": 1,
-          "from": 7.58,
-          "to": 7.84,
-          "delta": 0.26
-        }
-      ],
-      "modifiedCounts": {
-        "seriesVotes": 2157,
-        "avgRating": 637,
-        "shapes": 114,
-        "seriesRating": 152,
-        "episodeCount": 47,
-        "poster": 3,
-        "overview": 3
-      }
-    },
-    {
-      "builtAt": "2026-06-16T08:11:24.817Z",
-      "totals": {
-        "seasons": 65328,
-        "delta": 8
-      },
-      "shapeCounts": {
-        "mid-peak": 4611,
-        "rebound": 10000,
-        "rising": 2911,
-        "slow-burn": 4322,
-        "big-finale": 11934,
-        "u-shaped": 3060,
-        "rollercoaster": 13976,
-        "saved-best-for-last": 1516,
-        "front-loaded": 3436,
-        "declining": 1841,
-        "bad-finale": 4612,
-        "consistent": 2590,
-        "shape-drift": 1586
-      },
-      "shapeDeltas": {
-        "mid-peak": 1,
-        "rebound": -2,
-        "rising": 5,
-        "slow-burn": 8,
-        "u-shaped": -1,
-        "rollercoaster": 1,
-        "saved-best-for-last": 1,
-        "front-loaded": 3,
-        "declining": 1,
-        "bad-finale": -1,
-        "consistent": -3,
-        "shape-drift": 1
-      },
-      "added": [
-        {
-          "seriesId": "tt34675596",
-          "title": "Cape Fear",
-          "season": 1,
-          "seasonYear": 2026
-        },
-        {
-          "seriesId": "tt35870921",
-          "title": "Raakh",
-          "season": 1,
-          "seasonYear": 2026
-        },
-        {
-          "seriesId": "tt36461751",
-          "title": "El Diario de Jonathan",
-          "season": 1,
-          "seasonYear": 2013
-        },
-        {
-          "seriesId": "tt36461751",
-          "title": "El Diario de Jonathan",
-          "season": 2,
-          "seasonYear": 2014
-        },
-        {
-          "seriesId": "tt36983305",
-          "title": "Drag Brunch Saved My Life",
-          "season": 1,
-          "seasonYear": 2025
-        },
-        {
-          "seriesId": "tt27238424",
-          "title": "The Whole Story with Anderson Cooper",
-          "season": 3,
-          "seasonYear": 2025
-        },
-        {
-          "seriesId": "tt36508039",
-          "title": "In höchster Not - Bergretter im Einsatz",
-          "season": 1,
-          "seasonYear": 2025
-        },
-        {
-          "seriesId": "tt38610771",
-          "title": "Jinn Ki Shadi Unki Shadi",
-          "season": 1,
-          "seasonYear": 2025
-        }
-      ],
-      "removed": [],
-      "ratingSwings": [
-        {
-          "seriesId": "tt34691876",
-          "title": "Gupi",
-          "season": 1,
-          "from": 5.48,
-          "to": 6.02,
-          "delta": 0.54
-        },
-        {
-          "seriesId": "tt23058150",
-          "title": "LOL: Qui Rira Le Dernier?",
-          "season": 3,
-          "from": 6.3,
-          "to": 6.7,
-          "delta": 0.4
-        },
-        {
-          "seriesId": "tt6491484",
-          "title": "Tales from Outer Suburbia",
-          "season": 1,
-          "from": 9.04,
-          "to": 8.66,
-          "delta": -0.38
-        },
-        {
-          "seriesId": "tt31260463",
-          "title": "Our Stupid School",
-          "season": 2,
-          "from": 5.73,
-          "to": 5.37,
-          "delta": -0.36
-        },
-        {
-          "seriesId": "tt4859164",
-          "title": "The Loud House",
-          "season": 10,
-          "from": 7.86,
-          "to": 7.53,
-          "delta": -0.33
-        },
-        {
-          "seriesId": "tt38733253",
-          "title": "High Horse: The Black Cowboy",
-          "season": 1,
-          "from": 7.63,
-          "to": 7.33,
-          "delta": -0.3
-        },
-        {
-          "seriesId": "tt20887486",
-          "title": "SisterS",
-          "season": 2,
-          "from": 8.23,
-          "to": 7.95,
-          "delta": -0.28
-        },
-        {
-          "seriesId": "tt37452743",
-          "title": "Meet Iron Man and His Awesome Friends",
-          "season": 1,
-          "from": 8.04,
-          "to": 8.32,
-          "delta": 0.28
-        },
-        {
-          "seriesId": "tt32915471",
-          "title": "2026 FIFA World Cup",
-          "season": 1,
-          "from": 6.18,
-          "to": 6.44,
-          "delta": 0.26
-        },
-        {
-          "seriesId": "tt37403273",
-          "title": "Two Years Later",
-          "season": 1,
-          "from": 7.58,
-          "to": 7.84,
-          "delta": 0.26
-        }
-      ],
-      "modifiedCounts": {
-        "seriesVotes": 2157,
-        "avgRating": 637,
-        "shapes": 114,
-        "seriesRating": 152,
-        "episodeCount": 47
       }
     }
   ]
