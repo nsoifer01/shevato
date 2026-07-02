@@ -1,6 +1,773 @@
 {
   "updates": [
     {
+      "builtAt": "2026-07-02T08:00:14.488Z",
+      "totals": {
+        "seasons": 65612,
+        "delta": 30
+      },
+      "shapeCounts": {
+        "mid-peak": 4620,
+        "rebound": 10022,
+        "rising": 2913,
+        "slow-burn": 4343,
+        "big-finale": 12003,
+        "u-shaped": 3064,
+        "rollercoaster": 14011,
+        "saved-best-for-last": 1515,
+        "front-loaded": 3440,
+        "declining": 1857,
+        "bad-finale": 4635,
+        "consistent": 2595,
+        "shape-drift": 1608
+      },
+      "shapeDeltas": {
+        "mid-peak": 3,
+        "rebound": 5,
+        "rising": 6,
+        "slow-burn": 6,
+        "big-finale": 11,
+        "u-shaped": -6,
+        "rollercoaster": 1,
+        "saved-best-for-last": -1,
+        "front-loaded": 1,
+        "declining": 1,
+        "bad-finale": 4,
+        "consistent": -1,
+        "shape-drift": 3
+      },
+      "added": [
+        {
+          "seriesId": "tt32915471",
+          "title": "2026 FIFA World Cup",
+          "season": 4,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt38960812",
+          "title": "See You at Work Tomorrow!",
+          "season": 1,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt0050013",
+          "title": "The DuPont Show of the Month",
+          "season": 4,
+          "seasonYear": 1960
+        },
+        {
+          "seriesId": "tt32603995",
+          "title": "Adventure Time: Side Quests",
+          "season": 1,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt0106042",
+          "title": "Julie Lescaut",
+          "season": 20,
+          "seasonYear": 2009
+        },
+        {
+          "seriesId": "tt0106042",
+          "title": "Julie Lescaut",
+          "season": 11,
+          "seasonYear": 2001
+        },
+        {
+          "seriesId": "tt0106042",
+          "title": "Julie Lescaut",
+          "season": 15,
+          "seasonYear": 2004
+        },
+        {
+          "seriesId": "tt0106042",
+          "title": "Julie Lescaut",
+          "season": 13,
+          "seasonYear": 2004
+        },
+        {
+          "seriesId": "tt0106042",
+          "title": "Julie Lescaut",
+          "season": 16,
+          "seasonYear": 2005
+        },
+        {
+          "seriesId": "tt0106042",
+          "title": "Julie Lescaut",
+          "season": 17,
+          "seasonYear": 2006
+        },
+        {
+          "seriesId": "tt0106042",
+          "title": "Julie Lescaut",
+          "season": 18,
+          "seasonYear": 2008
+        },
+        {
+          "seriesId": "tt0115303",
+          "title": "Omertà, la loi du silence",
+          "season": 3,
+          "seasonYear": 1999
+        },
+        {
+          "seriesId": "tt2716158",
+          "title": "Merhamet",
+          "season": 2,
+          "seasonYear": 2013
+        },
+        {
+          "seriesId": "tt36237567",
+          "title": "The Season",
+          "season": 1,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt0365980",
+          "title": "Asmali Konak",
+          "season": 1,
+          "seasonYear": 2002
+        },
+        {
+          "seriesId": "tt13650480",
+          "title": "Marvel Studios: Legends",
+          "season": 3,
+          "seasonYear": 2025
+        },
+        {
+          "seriesId": "tt18644688",
+          "title": "Actually You Are Free",
+          "season": 1,
+          "seasonYear": 2022
+        },
+        {
+          "seriesId": "tt16311786",
+          "title": "Laissez-vous guider",
+          "season": 1,
+          "seasonYear": 2023
+        },
+        {
+          "seriesId": "tt33084218",
+          "title": "Die StiNos",
+          "season": 1,
+          "seasonYear": 2024
+        },
+        {
+          "seriesId": "tt1334307",
+          "title": "Unsung",
+          "season": 15,
+          "seasonYear": 2021
+        },
+        {
+          "seriesId": "tt0165001",
+          "title": "CBS News Sunday Morning with Jane Pauley",
+          "season": 48,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt1189017",
+          "title": "The Royal Today",
+          "season": 1,
+          "seasonYear": 2008
+        },
+        {
+          "seriesId": "tt2403697",
+          "title": "Oh Noah!",
+          "season": 2,
+          "seasonYear": 2012
+        },
+        {
+          "seriesId": "tt2403697",
+          "title": "Oh Noah!",
+          "season": 1,
+          "seasonYear": 2011
+        },
+        {
+          "seriesId": "tt6293468",
+          "title": "All New Traffic Cops",
+          "season": 12,
+          "seasonYear": 2023
+        },
+        {
+          "seriesId": "tt6293468",
+          "title": "All New Traffic Cops",
+          "season": 1,
+          "seasonYear": 2016
+        },
+        {
+          "seriesId": "tt32230529",
+          "title": "Fotbollens historia",
+          "season": 1,
+          "seasonYear": 2024
+        },
+        {
+          "seriesId": "tt37842627",
+          "title": "Pompeii: Life in the City with Dan Snow",
+          "season": 1,
+          "seasonYear": 2025
+        },
+        {
+          "seriesId": "tt37894291",
+          "title": "Butchers of L.A.",
+          "season": 1,
+          "seasonYear": 2025
+        },
+        {
+          "seriesId": "tt38873788",
+          "title": "Ancient Autopsy: Mysteries of the Dead",
+          "season": 1,
+          "seasonYear": 2025
+        },
+        {
+          "seriesId": "tt42287789",
+          "title": "Space Jam Roblox",
+          "season": 1,
+          "seasonYear": 2024
+        },
+        {
+          "seriesId": "tt42287789",
+          "title": "Space Jam Roblox",
+          "season": 2,
+          "seasonYear": 2024
+        },
+        {
+          "seriesId": "tt42287789",
+          "title": "Space Jam Roblox",
+          "season": 3,
+          "seasonYear": 2025
+        },
+        {
+          "seriesId": "tt43586569",
+          "title": "Alti Ustu Istanbul",
+          "season": 1,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt43620256",
+          "title": "Baahubali: The Torch Bearer",
+          "season": 1,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt9384044",
+          "title": "Date with Saie",
+          "season": 1,
+          "seasonYear": 2018
+        }
+      ],
+      "removed": [
+        {
+          "seriesId": "tt36709973",
+          "title": "Telltale's the Walking Dead",
+          "season": 2,
+          "seasonYear": 2014
+        },
+        {
+          "seriesId": "tt36709973",
+          "title": "Telltale's the Walking Dead",
+          "season": 5,
+          "seasonYear": 2018
+        },
+        {
+          "seriesId": "tt36709973",
+          "title": "Telltale's the Walking Dead",
+          "season": 1,
+          "seasonYear": 2012
+        },
+        {
+          "seriesId": "tt36709973",
+          "title": "Telltale's the Walking Dead",
+          "season": 4,
+          "seasonYear": 2017
+        },
+        {
+          "seriesId": "tt36709973",
+          "title": "Telltale's the Walking Dead",
+          "season": 3,
+          "seasonYear": 2016
+        },
+        {
+          "seriesId": "tt42851287",
+          "title": "Dragon Striker: Meet the Players",
+          "season": 1,
+          "seasonYear": 2026
+        }
+      ],
+      "ratingSwings": [
+        {
+          "seriesId": "tt5443200",
+          "title": "Mbc the Voice Kids",
+          "season": 1,
+          "from": 8.2,
+          "to": 7.2,
+          "delta": -1
+        },
+        {
+          "seriesId": "tt7967882",
+          "title": "Rainbow Rangers",
+          "season": 1,
+          "from": 7.38,
+          "to": 6.62,
+          "delta": -0.76
+        },
+        {
+          "seriesId": "tt19299920",
+          "title": "Black Money",
+          "season": 1,
+          "from": 6.53,
+          "to": 5.78,
+          "delta": -0.75
+        },
+        {
+          "seriesId": "tt42933387",
+          "title": "Sule: Senin Hikayen",
+          "season": 1,
+          "from": 6.67,
+          "to": 5.99,
+          "delta": -0.68
+        },
+        {
+          "seriesId": "tt34376827",
+          "title": "Wild Cherry",
+          "season": 1,
+          "from": 6.2,
+          "to": 5.58,
+          "delta": -0.62
+        },
+        {
+          "seriesId": "tt38940120",
+          "title": "In the City",
+          "season": 1,
+          "from": 7.1,
+          "to": 6.52,
+          "delta": -0.58
+        },
+        {
+          "seriesId": "tt0069577",
+          "title": "Dusty's Trail",
+          "season": 1,
+          "from": 5.41,
+          "to": 5.92,
+          "delta": 0.51
+        },
+        {
+          "seriesId": "tt1502749",
+          "title": "The Chase",
+          "season": 1,
+          "from": 7.93,
+          "to": 8.4,
+          "delta": 0.47
+        },
+        {
+          "seriesId": "tt42071698",
+          "title": "Cousins and Kalyanams",
+          "season": 1,
+          "from": 6.52,
+          "to": 6.94,
+          "delta": 0.42
+        },
+        {
+          "seriesId": "tt9304958",
+          "title": "Ben 10: Alien Worlds",
+          "season": 3,
+          "from": 5.2,
+          "to": 5.6,
+          "delta": 0.4
+        }
+      ],
+      "modifiedCounts": {
+        "seriesVotes": 22274,
+        "avgRating": 1559,
+        "shapes": 287,
+        "seriesRating": 394,
+        "episodeCount": 119,
+        "poster": 4,
+        "overview": 2,
+        "providers": 4
+      }
+    },
+    {
+      "builtAt": "2026-07-02T07:18:57.471Z",
+      "totals": {
+        "seasons": 65612,
+        "delta": 30
+      },
+      "shapeCounts": {
+        "mid-peak": 4620,
+        "rebound": 10022,
+        "rising": 2913,
+        "slow-burn": 4343,
+        "big-finale": 12003,
+        "u-shaped": 3064,
+        "rollercoaster": 14011,
+        "saved-best-for-last": 1515,
+        "front-loaded": 3440,
+        "declining": 1857,
+        "bad-finale": 4635,
+        "consistent": 2595,
+        "shape-drift": 1608
+      },
+      "shapeDeltas": {
+        "mid-peak": 3,
+        "rebound": 5,
+        "rising": 6,
+        "slow-burn": 6,
+        "big-finale": 11,
+        "u-shaped": -6,
+        "rollercoaster": 1,
+        "saved-best-for-last": -1,
+        "front-loaded": 1,
+        "declining": 1,
+        "bad-finale": 4,
+        "consistent": -1,
+        "shape-drift": 3
+      },
+      "added": [
+        {
+          "seriesId": "tt32915471",
+          "title": "2026 FIFA World Cup",
+          "season": 4,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt38960812",
+          "title": "See You at Work Tomorrow!",
+          "season": 1,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt0050013",
+          "title": "The DuPont Show of the Month",
+          "season": 4,
+          "seasonYear": 1960
+        },
+        {
+          "seriesId": "tt32603995",
+          "title": "Adventure Time: Side Quests",
+          "season": 1,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt0106042",
+          "title": "Julie Lescaut",
+          "season": 20,
+          "seasonYear": 2009
+        },
+        {
+          "seriesId": "tt0106042",
+          "title": "Julie Lescaut",
+          "season": 11,
+          "seasonYear": 2001
+        },
+        {
+          "seriesId": "tt0106042",
+          "title": "Julie Lescaut",
+          "season": 15,
+          "seasonYear": 2004
+        },
+        {
+          "seriesId": "tt0106042",
+          "title": "Julie Lescaut",
+          "season": 13,
+          "seasonYear": 2004
+        },
+        {
+          "seriesId": "tt0106042",
+          "title": "Julie Lescaut",
+          "season": 16,
+          "seasonYear": 2005
+        },
+        {
+          "seriesId": "tt0106042",
+          "title": "Julie Lescaut",
+          "season": 17,
+          "seasonYear": 2006
+        },
+        {
+          "seriesId": "tt0106042",
+          "title": "Julie Lescaut",
+          "season": 18,
+          "seasonYear": 2008
+        },
+        {
+          "seriesId": "tt0115303",
+          "title": "Omertà, la loi du silence",
+          "season": 3,
+          "seasonYear": 1999
+        },
+        {
+          "seriesId": "tt2716158",
+          "title": "Merhamet",
+          "season": 2,
+          "seasonYear": 2013
+        },
+        {
+          "seriesId": "tt36237567",
+          "title": "The Season",
+          "season": 1,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt0365980",
+          "title": "Asmali Konak",
+          "season": 1,
+          "seasonYear": 2002
+        },
+        {
+          "seriesId": "tt13650480",
+          "title": "Marvel Studios: Legends",
+          "season": 3,
+          "seasonYear": 2025
+        },
+        {
+          "seriesId": "tt18644688",
+          "title": "Actually You Are Free",
+          "season": 1,
+          "seasonYear": 2022
+        },
+        {
+          "seriesId": "tt16311786",
+          "title": "Laissez-vous guider",
+          "season": 1,
+          "seasonYear": 2023
+        },
+        {
+          "seriesId": "tt33084218",
+          "title": "Die StiNos",
+          "season": 1,
+          "seasonYear": 2024
+        },
+        {
+          "seriesId": "tt1334307",
+          "title": "Unsung",
+          "season": 15,
+          "seasonYear": 2021
+        },
+        {
+          "seriesId": "tt0165001",
+          "title": "CBS News Sunday Morning with Jane Pauley",
+          "season": 48,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt1189017",
+          "title": "The Royal Today",
+          "season": 1,
+          "seasonYear": 2008
+        },
+        {
+          "seriesId": "tt2403697",
+          "title": "Oh Noah!",
+          "season": 2,
+          "seasonYear": 2012
+        },
+        {
+          "seriesId": "tt2403697",
+          "title": "Oh Noah!",
+          "season": 1,
+          "seasonYear": 2011
+        },
+        {
+          "seriesId": "tt6293468",
+          "title": "All New Traffic Cops",
+          "season": 12,
+          "seasonYear": 2023
+        },
+        {
+          "seriesId": "tt6293468",
+          "title": "All New Traffic Cops",
+          "season": 1,
+          "seasonYear": 2016
+        },
+        {
+          "seriesId": "tt32230529",
+          "title": "Fotbollens historia",
+          "season": 1,
+          "seasonYear": 2024
+        },
+        {
+          "seriesId": "tt37842627",
+          "title": "Pompeii: Life in the City with Dan Snow",
+          "season": 1,
+          "seasonYear": 2025
+        },
+        {
+          "seriesId": "tt37894291",
+          "title": "Butchers of L.A.",
+          "season": 1,
+          "seasonYear": 2025
+        },
+        {
+          "seriesId": "tt38873788",
+          "title": "Ancient Autopsy: Mysteries of the Dead",
+          "season": 1,
+          "seasonYear": 2025
+        },
+        {
+          "seriesId": "tt42287789",
+          "title": "Space Jam Roblox",
+          "season": 1,
+          "seasonYear": 2024
+        },
+        {
+          "seriesId": "tt42287789",
+          "title": "Space Jam Roblox",
+          "season": 2,
+          "seasonYear": 2024
+        },
+        {
+          "seriesId": "tt42287789",
+          "title": "Space Jam Roblox",
+          "season": 3,
+          "seasonYear": 2025
+        },
+        {
+          "seriesId": "tt43586569",
+          "title": "Alti Ustu Istanbul",
+          "season": 1,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt43620256",
+          "title": "Baahubali: The Torch Bearer",
+          "season": 1,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt9384044",
+          "title": "Date with Saie",
+          "season": 1,
+          "seasonYear": 2018
+        }
+      ],
+      "removed": [
+        {
+          "seriesId": "tt36709973",
+          "title": "Telltale's the Walking Dead",
+          "season": 2,
+          "seasonYear": 2014
+        },
+        {
+          "seriesId": "tt36709973",
+          "title": "Telltale's the Walking Dead",
+          "season": 5,
+          "seasonYear": 2018
+        },
+        {
+          "seriesId": "tt36709973",
+          "title": "Telltale's the Walking Dead",
+          "season": 1,
+          "seasonYear": 2012
+        },
+        {
+          "seriesId": "tt36709973",
+          "title": "Telltale's the Walking Dead",
+          "season": 4,
+          "seasonYear": 2017
+        },
+        {
+          "seriesId": "tt36709973",
+          "title": "Telltale's the Walking Dead",
+          "season": 3,
+          "seasonYear": 2016
+        },
+        {
+          "seriesId": "tt42851287",
+          "title": "Dragon Striker: Meet the Players",
+          "season": 1,
+          "seasonYear": 2026
+        }
+      ],
+      "ratingSwings": [
+        {
+          "seriesId": "tt5443200",
+          "title": "Mbc the Voice Kids",
+          "season": 1,
+          "from": 8.2,
+          "to": 7.2,
+          "delta": -1
+        },
+        {
+          "seriesId": "tt7967882",
+          "title": "Rainbow Rangers",
+          "season": 1,
+          "from": 7.38,
+          "to": 6.62,
+          "delta": -0.76
+        },
+        {
+          "seriesId": "tt19299920",
+          "title": "Black Money",
+          "season": 1,
+          "from": 6.53,
+          "to": 5.78,
+          "delta": -0.75
+        },
+        {
+          "seriesId": "tt42933387",
+          "title": "Sule: Senin Hikayen",
+          "season": 1,
+          "from": 6.67,
+          "to": 5.99,
+          "delta": -0.68
+        },
+        {
+          "seriesId": "tt34376827",
+          "title": "Wild Cherry",
+          "season": 1,
+          "from": 6.2,
+          "to": 5.58,
+          "delta": -0.62
+        },
+        {
+          "seriesId": "tt38940120",
+          "title": "In the City",
+          "season": 1,
+          "from": 7.1,
+          "to": 6.52,
+          "delta": -0.58
+        },
+        {
+          "seriesId": "tt0069577",
+          "title": "Dusty's Trail",
+          "season": 1,
+          "from": 5.41,
+          "to": 5.92,
+          "delta": 0.51
+        },
+        {
+          "seriesId": "tt1502749",
+          "title": "The Chase",
+          "season": 1,
+          "from": 7.93,
+          "to": 8.4,
+          "delta": 0.47
+        },
+        {
+          "seriesId": "tt42071698",
+          "title": "Cousins and Kalyanams",
+          "season": 1,
+          "from": 6.52,
+          "to": 6.94,
+          "delta": 0.42
+        },
+        {
+          "seriesId": "tt9304958",
+          "title": "Ben 10: Alien Worlds",
+          "season": 3,
+          "from": 5.2,
+          "to": 5.6,
+          "delta": 0.4
+        }
+      ],
+      "modifiedCounts": {
+        "seriesVotes": 22274,
+        "avgRating": 1559,
+        "shapes": 287,
+        "seriesRating": 394,
+        "episodeCount": 119
+      }
+    },
+    {
       "builtAt": "2026-07-01T08:11:21.596Z",
       "totals": {
         "seasons": 65582,
@@ -7349,462 +8116,6 @@
         "shapes": 430,
         "seriesRating": 793,
         "episodeCount": 205
-      }
-    },
-    {
-      "builtAt": "2026-06-17T08:34:35.913Z",
-      "totals": {
-        "seasons": 65345,
-        "delta": 17
-      },
-      "shapeCounts": {
-        "mid-peak": 4608,
-        "rebound": 10004,
-        "rising": 2918,
-        "slow-burn": 4329,
-        "big-finale": 11949,
-        "u-shaped": 3060,
-        "rollercoaster": 13982,
-        "saved-best-for-last": 1516,
-        "front-loaded": 3436,
-        "declining": 1842,
-        "bad-finale": 4610,
-        "consistent": 2586,
-        "shape-drift": 1587
-      },
-      "shapeDeltas": {
-        "mid-peak": -3,
-        "rebound": 4,
-        "rising": 7,
-        "slow-burn": 7,
-        "big-finale": 15,
-        "rollercoaster": 6,
-        "declining": 1,
-        "bad-finale": -2,
-        "consistent": -4,
-        "shape-drift": 1
-      },
-      "added": [
-        {
-          "seriesId": "tt0086723",
-          "title": "Guest from the Future",
-          "season": 1,
-          "seasonYear": 1985
-        },
-        {
-          "seriesId": "tt10530900",
-          "title": "Gullak",
-          "season": 5,
-          "seasonYear": 2026
-        },
-        {
-          "seriesId": "tt37096911",
-          "title": "The First Jasmine",
-          "season": 1,
-          "seasonYear": 2026
-        },
-        {
-          "seriesId": "tt0874001",
-          "title": "Flag",
-          "season": 1,
-          "seasonYear": 2006
-        },
-        {
-          "seriesId": "tt8291962",
-          "title": "The Phantom Menace: Web Documentaries",
-          "season": 1,
-          "seasonYear": 1998
-        },
-        {
-          "seriesId": "tt37232828",
-          "title": "Mickey & Minnie's Holiday Songs: Halloween",
-          "season": 1,
-          "seasonYear": 2025
-        },
-        {
-          "seriesId": "tt39443474",
-          "title": "Chasing Love",
-          "season": 1,
-          "seasonYear": 2026
-        },
-        {
-          "seriesId": "tt10665386",
-          "title": "Couples Therapy",
-          "season": 5,
-          "seasonYear": 2026
-        },
-        {
-          "seriesId": "tt21980396",
-          "title": "Five Nights at Freddy's: The Musical",
-          "season": 2,
-          "seasonYear": 2016
-        },
-        {
-          "seriesId": "tt28510783",
-          "title": "G'wed",
-          "season": 3,
-          "seasonYear": 2026
-        },
-        {
-          "seriesId": "tt40761508",
-          "title": "Bon Cop, Bad Cop",
-          "season": 1,
-          "seasonYear": 2026
-        },
-        {
-          "seriesId": "tt38355364",
-          "title": "Magic Move",
-          "season": 1,
-          "seasonYear": 2026
-        },
-        {
-          "seriesId": "tt42575478",
-          "title": "AAA on FOX",
-          "season": 1,
-          "seasonYear": 2026
-        },
-        {
-          "seriesId": "tt32645659",
-          "title": "Bi Atefe",
-          "season": 1,
-          "seasonYear": 2026
-        },
-        {
-          "seriesId": "tt43219806",
-          "title": "The Tom Green Farm",
-          "season": 1,
-          "seasonYear": 2026
-        },
-        {
-          "seriesId": "tt37596295",
-          "title": "Ecos do Mar",
-          "season": 1,
-          "seasonYear": 2026
-        },
-        {
-          "seriesId": "tt43349460",
-          "title": "Squatters: Get the F*** Out of My House",
-          "season": 1,
-          "seasonYear": 2026
-        }
-      ],
-      "removed": [],
-      "ratingSwings": [
-        {
-          "seriesId": "tt39387426",
-          "title": "Jae-seok's B&B Rules!",
-          "season": 1,
-          "from": 9.08,
-          "to": 8.46,
-          "delta": -0.62
-        },
-        {
-          "seriesId": "tt13028308",
-          "title": "I Want You to Show Me Your Panties with a Disgusted Face",
-          "season": 4,
-          "from": 7.45,
-          "to": 6.92,
-          "delta": -0.53
-        },
-        {
-          "seriesId": "tt42206645",
-          "title": "Reborn Rookie",
-          "season": 1,
-          "from": 8.82,
-          "to": 9.15,
-          "delta": 0.33
-        },
-        {
-          "seriesId": "tt42152890",
-          "title": "Double Helix",
-          "season": 1,
-          "from": 7.42,
-          "to": 7.72,
-          "delta": 0.3
-        },
-        {
-          "seriesId": "tt39400589",
-          "title": "Viral Hit",
-          "season": 1,
-          "from": 8.23,
-          "to": 8.53,
-          "delta": 0.3
-        },
-        {
-          "seriesId": "tt10183798",
-          "title": "Rock the Block",
-          "season": 7,
-          "from": 6.89,
-          "to": 6.59,
-          "delta": -0.3
-        },
-        {
-          "seriesId": "tt1433870",
-          "title": "MasterChef: Australia",
-          "season": 18,
-          "from": 7.75,
-          "to": 7.45,
-          "delta": -0.3
-        },
-        {
-          "seriesId": "tt2926368",
-          "title": "When a Man's in Love",
-          "season": 1,
-          "from": 6.53,
-          "to": 6.83,
-          "delta": 0.3
-        },
-        {
-          "seriesId": "tt43227998",
-          "title": "Ward Ala Foll Wa Yasmeen",
-          "season": 1,
-          "from": 7.66,
-          "to": 7.95,
-          "delta": 0.29
-        },
-        {
-          "seriesId": "tt39044698",
-          "title": "Enemies with Benefits",
-          "season": 1,
-          "from": 9.6,
-          "to": 9.32,
-          "delta": -0.28
-        }
-      ],
-      "modifiedCounts": {
-        "seriesVotes": 3603,
-        "seriesRating": 156,
-        "avgRating": 793,
-        "shapes": 164,
-        "episodeCount": 104
-      }
-    },
-    {
-      "builtAt": "2026-06-17T08:06:18.302Z",
-      "totals": {
-        "seasons": 65345,
-        "delta": 17
-      },
-      "shapeCounts": {
-        "mid-peak": 4608,
-        "rebound": 10004,
-        "rising": 2918,
-        "slow-burn": 4329,
-        "big-finale": 11949,
-        "u-shaped": 3060,
-        "rollercoaster": 13982,
-        "saved-best-for-last": 1516,
-        "front-loaded": 3436,
-        "declining": 1842,
-        "bad-finale": 4610,
-        "consistent": 2586,
-        "shape-drift": 1587
-      },
-      "shapeDeltas": {
-        "mid-peak": -3,
-        "rebound": 4,
-        "rising": 7,
-        "slow-burn": 7,
-        "big-finale": 15,
-        "rollercoaster": 6,
-        "declining": 1,
-        "bad-finale": -2,
-        "consistent": -4,
-        "shape-drift": 1
-      },
-      "added": [
-        {
-          "seriesId": "tt0086723",
-          "title": "Guest from the Future",
-          "season": 1,
-          "seasonYear": 1985
-        },
-        {
-          "seriesId": "tt10530900",
-          "title": "Gullak",
-          "season": 5,
-          "seasonYear": 2026
-        },
-        {
-          "seriesId": "tt37096911",
-          "title": "The First Jasmine",
-          "season": 1,
-          "seasonYear": 2026
-        },
-        {
-          "seriesId": "tt0874001",
-          "title": "Flag",
-          "season": 1,
-          "seasonYear": 2006
-        },
-        {
-          "seriesId": "tt8291962",
-          "title": "The Phantom Menace: Web Documentaries",
-          "season": 1,
-          "seasonYear": 1998
-        },
-        {
-          "seriesId": "tt37232828",
-          "title": "Mickey & Minnie's Holiday Songs: Halloween",
-          "season": 1,
-          "seasonYear": 2025
-        },
-        {
-          "seriesId": "tt39443474",
-          "title": "Chasing Love",
-          "season": 1,
-          "seasonYear": 2026
-        },
-        {
-          "seriesId": "tt10665386",
-          "title": "Couples Therapy",
-          "season": 5,
-          "seasonYear": 2026
-        },
-        {
-          "seriesId": "tt21980396",
-          "title": "Five Nights at Freddy's: The Musical",
-          "season": 2,
-          "seasonYear": 2016
-        },
-        {
-          "seriesId": "tt28510783",
-          "title": "G'wed",
-          "season": 3,
-          "seasonYear": 2026
-        },
-        {
-          "seriesId": "tt40761508",
-          "title": "Bon Cop, Bad Cop",
-          "season": 1,
-          "seasonYear": 2026
-        },
-        {
-          "seriesId": "tt38355364",
-          "title": "Magic Move",
-          "season": 1,
-          "seasonYear": 2026
-        },
-        {
-          "seriesId": "tt42575478",
-          "title": "AAA on FOX",
-          "season": 1,
-          "seasonYear": 2026
-        },
-        {
-          "seriesId": "tt32645659",
-          "title": "Bi Atefe",
-          "season": 1,
-          "seasonYear": 2026
-        },
-        {
-          "seriesId": "tt43219806",
-          "title": "The Tom Green Farm",
-          "season": 1,
-          "seasonYear": 2026
-        },
-        {
-          "seriesId": "tt37596295",
-          "title": "Ecos do Mar",
-          "season": 1,
-          "seasonYear": 2026
-        },
-        {
-          "seriesId": "tt43349460",
-          "title": "Squatters: Get the F*** Out of My House",
-          "season": 1,
-          "seasonYear": 2026
-        }
-      ],
-      "removed": [],
-      "ratingSwings": [
-        {
-          "seriesId": "tt39387426",
-          "title": "Jae-seok's B&B Rules!",
-          "season": 1,
-          "from": 9.08,
-          "to": 8.46,
-          "delta": -0.62
-        },
-        {
-          "seriesId": "tt13028308",
-          "title": "I Want You to Show Me Your Panties with a Disgusted Face",
-          "season": 4,
-          "from": 7.45,
-          "to": 6.92,
-          "delta": -0.53
-        },
-        {
-          "seriesId": "tt42206645",
-          "title": "Reborn Rookie",
-          "season": 1,
-          "from": 8.82,
-          "to": 9.15,
-          "delta": 0.33
-        },
-        {
-          "seriesId": "tt42152890",
-          "title": "Double Helix",
-          "season": 1,
-          "from": 7.42,
-          "to": 7.72,
-          "delta": 0.3
-        },
-        {
-          "seriesId": "tt39400589",
-          "title": "Viral Hit",
-          "season": 1,
-          "from": 8.23,
-          "to": 8.53,
-          "delta": 0.3
-        },
-        {
-          "seriesId": "tt10183798",
-          "title": "Rock the Block",
-          "season": 7,
-          "from": 6.89,
-          "to": 6.59,
-          "delta": -0.3
-        },
-        {
-          "seriesId": "tt1433870",
-          "title": "MasterChef: Australia",
-          "season": 18,
-          "from": 7.75,
-          "to": 7.45,
-          "delta": -0.3
-        },
-        {
-          "seriesId": "tt2926368",
-          "title": "When a Man's in Love",
-          "season": 1,
-          "from": 6.53,
-          "to": 6.83,
-          "delta": 0.3
-        },
-        {
-          "seriesId": "tt43227998",
-          "title": "Ward Ala Foll Wa Yasmeen",
-          "season": 1,
-          "from": 7.66,
-          "to": 7.95,
-          "delta": 0.29
-        },
-        {
-          "seriesId": "tt39044698",
-          "title": "Enemies with Benefits",
-          "season": 1,
-          "from": 9.6,
-          "to": 9.32,
-          "delta": -0.28
-        }
-      ],
-      "modifiedCounts": {
-        "seriesVotes": 3603,
-        "seriesRating": 156,
-        "avgRating": 793,
-        "shapes": 164,
-        "episodeCount": 104
       }
     }
   ]
