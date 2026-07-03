@@ -21,5 +21,8 @@
     "enrich:rising-seasons:providers": "node apps/rising-seasons/scripts/enrich-providers.js",
     "export:rising-seasons": "node apps/rising-seasons/scripts/export-integrations.js",
     "watch-next": "node apps/rising-seasons/scripts/watch-next.js"
+  },
+  "dependencies": {
+    "@netlify/blobs": "^8.1.0"
   }
 }
