@@ -1,131 +1,126 @@
-// Score Predictor — server-side results collector (scheduled).
+// Score Predictor — server-side data collector (scheduled).
 //
-// Why this exists: the browser page grades picks against final scores, but
-// The Odds API /scores endpoint only returns games from the last 3 days, so
-// a match whose final was never captured while a tab happened to be open
-// (and inside that 3-day window) could never be back-filled and was stuck
-// showing "awaiting result" forever. This function removes the tab entirely
-// from data collection: it runs on a schedule, pulls the World Cup fixtures
-// from API-Football, and accumulates results into a Netlify Blob that the
-// page reads on load. Once a result is stored it persists indefinitely.
+// Why this exists: the browser page grades picks against odds it freezes at
+// kickoff and scores it fetches from The Odds API, but that /scores endpoint
+// only returns games from the last 3 days, and odds vanish from the feed once
+// a match starts. So anything not captured while a tab happened to be open
+// (inside those windows) was lost forever. This function removes the tab from
+// data collection entirely: on a schedule it freezes upcoming odds into a
+// locks blob and accumulates final scores into a results blob, both of which
+// the page reads on load. Once stored, data persists indefinitely.
 //
-// It also fixes the knockout problem: we store the 90-minute (regulation)
-// score only. API-Football exposes score.fulltime as the score at the end of
-// normal time, kept separate from score.extratime and score.penalty, so a
-// knockout that finishes 1-1 after 90 and 2-1 after extra time is stored as
-// 1-1. That is the only number the page cares about.
+// Both feeds come from The Odds API (the same provider the fixtures come
+// from), so team names line up exactly on both sides. Scores are the feed's
+// final score: for group-stage matches that is the 90-minute result; knockout
+// matches that go to extra time would include it (that feed exposes no
+// regulation-only split).
 //
 // Required env var (set in the Netlify UI, never in the repo):
-//   APIFOOTBALL_KEY   — api-sports.io key (header x-apisports-key)
-// Optional overrides:
-//   WC_APIFOOTBALL_LEAGUE  (default 1 = FIFA World Cup)
-//   WC_APIFOOTBALL_SEASON  (default 2026)
+//   ODDS_API_KEY — The Odds API key
+//
+// Credits: to avoid burning the monthly Odds API quota, each feed is only
+// called when it can actually do something — scores only when a known match
+// kicked off in the last 3 days and is not yet final; odds only when a known
+// match kicks off within 12 hours or the last snapshot is over 6 hours old.
+// A cold start (no data yet) calls both once to bootstrap.
 
 import { getStore } from '@netlify/blobs';
 import { STORE_NAME, RESULTS_KEY, LOCKS_KEY, matchKey, oddsConsensus } from './lib/wc-store.mjs';
 
-// Hourly. Idle runs are cheap: one API-Football call returns the whole
-// tournament, and results only ever change right after a match, so an hour
-// of latency is invisible while the 3-day-window problem disappears entirely.
 export const config = { schedule: '0 * * * *' };
 
-const API_URL = 'https://v3.football.api-sports.io/fixtures';
-const LEAGUE = process.env.WC_APIFOOTBALL_LEAGUE || '1';
-const SEASON = process.env.WC_APIFOOTBALL_SEASON || '2026';
+const SPORT = 'soccer_fifa_world_cup';
+const ODDS_URL = `https://api.the-odds-api.com/v4/sports/${SPORT}/odds/?regions=eu&markets=h2h&oddsFormat=decimal&apiKey=`;
+const SCORES_URL = `https://api.the-odds-api.com/v4/sports/${SPORT}/scores/?daysFrom=3&apiKey=`;
 
-// The Odds API — same feed the page uses, polled server-side so odds are
-// frozen into locks before kickoff even when no tab is open. Without this the
-// page could never show picks for a match nobody had open at kickoff.
-const ODDS_URL = 'https://api.the-odds-api.com/v4/sports/soccer_fifa_world_cup/odds/?regions=eu&markets=h2h&oddsFormat=decimal&apiKey=';
-
-// API-Football status short codes. Once a match is at or past full time the
-// 90-minute score can no longer change, so score.fulltime is final even while
-// the game continues into extra time or penalties.
-const POST_REGULATION = new Set(['FT', 'AET', 'PEN', 'ET', 'BT', 'P', 'LIVE']);
+const DAY = 86400000;
+const HOUR = 3600000;
 
 export default async function handler() {
-  const key = process.env.APIFOOTBALL_KEY;
-  if (!key) {
-    return new Response('APIFOOTBALL_KEY is not configured', { status: 500 });
-  }
-
-  let body;
-  try {
-    const res = await fetch(`${API_URL}?league=${LEAGUE}&season=${SEASON}`, {
-      headers: { 'x-apisports-key': key },
-    });
-    if (!res.ok) {
-      return new Response(`api-football ${res.status}`, { status: 502 });
-    }
-    body = await res.json();
-  } catch (err) {
-    return new Response(`fetch failed: ${err.message}`, { status: 502 });
-  }
+  const key = process.env.ODDS_API_KEY;
+  if (!key) return new Response('ODDS_API_KEY is not configured', { status: 500 });
 
   const store = getStore(STORE_NAME);
-  const prev = (await store.get(RESULTS_KEY, { type: 'json' })) || {};
-  const results = { ...(prev.results || {}) };
+  const prevResults = (await store.get(RESULTS_KEY, { type: 'json' })) || {};
+  const prevLocks = (await store.get(LOCKS_KEY, { type: 'json' })) || {};
+  const results = { ...(prevResults.results || {}) };
+  const locks = { ...(prevLocks.locks || {}) };
+  const now = Date.now();
 
-  let stored = 0;
-  for (const item of body.response || []) {
-    const home = item?.teams?.home?.name;
-    const away = item?.teams?.away?.name;
-    const commence = item?.fixture?.date;
-    const status = item?.fixture?.status?.short;
-    const ft = item?.score?.fulltime;
-    if (!home || !away || !commence || !ft) continue;
+  // Kickoff time per known match, from everything we have already stored.
+  const commenceByKey = {};
+  for (const [k, v] of Object.entries(locks)) if (v.commence_time) commenceByKey[k] = v.commence_time;
+  for (const [k, v] of Object.entries(results)) if (v.commence_time) commenceByKey[k] = v.commence_time;
+  const cold = Object.keys(commenceByKey).length === 0;
 
-    const hs = Number(ft.home);
-    const as = Number(ft.away);
-    // fulltime is null until 90 minutes are played; guard against half-time.
-    if (!Number.isFinite(hs) || !Number.isFinite(as)) continue;
+  // Scores: worth a call only if some known match kicked off within the /scores
+  // window (3 days) and is not yet recorded as final.
+  const scoresNeeded = Object.entries(commenceByKey).some(function ([k, c]) {
+    const t = Date.parse(c);
+    return t <= now && t >= now - 3 * DAY && !(results[k] && results[k].completed);
+  });
+  // Odds: worth a call if a known match kicks off soon, or our snapshot is stale
+  // (stale also re-discovers newly listed fixtures).
+  const upcomingSoon = Object.values(locks).some(function (l) {
+    const t = Date.parse(l.commence_time);
+    return t > now && t <= now + 12 * HOUR;
+  });
+  const oddsStale = !prevLocks.updated || (now - Date.parse(prevLocks.updated)) > 6 * HOUR;
 
-    const completed = POST_REGULATION.has(status);
-    const k = matchKey(home, away, commence);
-    results[k] = {
-      home_score: hs,
-      away_score: as,
-      completed,
-      status,
-      home_team: home,
-      away_team: away,
-      commence_time: commence,
-    };
-    stored += 1;
+  const scoresMsg = (cold || scoresNeeded) ? await collectScores(key, results, store) : 'skipped';
+  const locksMsg = (cold || upcomingSoon || oddsStale) ? await snapshotOdds(key, locks, store, now) : 'skipped';
+
+  return new Response(`ok: results ${scoresMsg}, locks ${locksMsg}`);
+}
+
+// Accumulate final scores from The Odds API /scores into the results blob.
+async function collectScores(key, results, store) {
+  let arr;
+  try {
+    const res = await fetch(SCORES_URL + encodeURIComponent(key));
+    if (!res.ok) return `scores ${res.status}`;
+    arr = await res.json();
+  } catch (err) {
+    return `scores failed: ${err.message}`;
   }
 
-  await store.setJSON(RESULTS_KEY, {
-    updated: new Date().toISOString(),
-    league: LEAGUE,
-    season: SEASON,
-    results,
-  });
+  let n = 0;
+  for (const g of arr || []) {
+    if (!g || !g.home_team || !g.away_team || !g.commence_time || !g.scores) continue;
+    let hs = null, as = null;
+    for (const s of g.scores) {
+      const v = Number(s.score);
+      if (s.name === g.home_team) hs = v;
+      else if (s.name === g.away_team) as = v;
+    }
+    if (!Number.isFinite(hs) || !Number.isFinite(as)) continue;
+    results[matchKey(g.home_team, g.away_team, g.commence_time)] = {
+      home_score: hs,
+      away_score: as,
+      completed: !!g.completed,
+      home_team: g.home_team,
+      away_team: g.away_team,
+      commence_time: g.commence_time,
+    };
+    n += 1;
+  }
 
-  const locked = await snapshotOdds(store);
-
-  return new Response(`ok: scanned ${(body.response || []).length}, results ${stored}, locks ${locked}`);
+  await store.setJSON(RESULTS_KEY, { updated: new Date().toISOString(), results });
+  return String(n);
 }
 
 // Freeze median odds for every not-yet-started match into the locks blob so the
-// page can compute picks from the server alone. Best-effort: a failure here
-// must not affect the results already stored above. Once a match kicks off it
-// drops out of the odds feed, so its last snapshot persists untouched.
-async function snapshotOdds(store) {
-  const key = process.env.ODDS_API_KEY;
-  if (!key) return 'skipped (no ODDS_API_KEY)';
-
+// page can compute picks from the server alone. Once a match kicks off it drops
+// out of the odds feed, so its last snapshot persists untouched.
+async function snapshotOdds(key, locks, store, now) {
   let events;
   try {
     const res = await fetch(ODDS_URL + encodeURIComponent(key));
     if (!res.ok) return `odds ${res.status}`;
     events = await res.json();
   } catch (err) {
-    return `odds fetch failed: ${err.message}`;
+    return `odds failed: ${err.message}`;
   }
-
-  const prev = (await store.get(LOCKS_KEY, { type: 'json' })) || {};
-  const locks = { ...(prev.locks || {}) };
-  const now = Date.now();
 
   let n = 0;
   for (const ev of events || []) {

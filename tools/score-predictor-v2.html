@@ -350,7 +350,7 @@
         <summary>How this works</summary>
         <div class="wc-collapse-body">
           <p class="section-sub">Upcoming and played matches use median 1X2 odds from The Odds API, scored under both models. Once a match kicks off its odds and picks lock and never change; only future matches update when you Load or Refresh. Your key is stored in this browser only, never in this file. Odds are cached for 6 hours; Refresh refetches odds plus final scores (about 3 credits) and the scoreboard builds up over time.</p>
-          <p class="section-sub">Both the odds (frozen before each kickoff) and the final scores are collected server-side every hour, so the full table and scoreboard rebuild themselves even on a brand-new browser and even if this tab was never open during a match. Your own key is still only needed to pull fresh odds for matches you want to watch live. Every result is the 90-minute (regulation) score only: for knockout games that go to extra time or penalties, the extra-time and shootout goals are ignored, so a match that is 1-1 after 90 counts as 1-1 in both models.</p>
+          <p class="section-sub">Both the odds (frozen before each kickoff) and the final scores are collected server-side every hour, so the full table and scoreboard rebuild themselves even on a brand-new browser and even if this tab was never open during a match. Your own key is still only needed to pull fresh odds for matches you want to watch live. Scores are the feed's final result: for group-stage matches that is the 90-minute score, so a 1-1 group game counts as 1-1 in both models. Knockout games that go to extra time would include those goals, since the feed exposes no regulation-only split.</p>
           <p class="section-sub">Both columns are scored in your points (3 exact, 2 outcome, 0 otherwise), so a 1-1 pick on a 2-2 result earns 2 in either column. The models differ only in how they choose a pick: the Points model picks the score that maximizes expected points, so it leans toward the most likely outcome, while the Exact model chases the single most likely exact scoreline. An Exact pick still earns 2 whenever its outcome is right; the difference is that the Points model is optimizing for the points you actually score, so it should come out ahead over a full tournament. Use Points for your entries; the Exact column is just a sanity check, and any single match can go either way.</p>
         </div>
       </details>
@@ -1113,7 +1113,7 @@
 
     wcSummary.innerHTML =
       '<div class="wc-sb-head">Model scoreboard <span class="wc-sb-sub">· through ' + n +
-        ' completed match' + (n === 1 ? '' : 'es') + ' · 90-minute scores</span></div>' +
+        ' completed match' + (n === 1 ? '' : 'es') + ' · final scores</span></div>' +
       '<div class="wc-sb-cards">' + pointsCard + '<div class="wc-sb-vs">vs</div>' + exactCard + '</div>';
   }
 
