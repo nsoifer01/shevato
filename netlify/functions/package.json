@@ -1,0 +1,9 @@
+{
+  "name": "shevato-netlify-functions",
+  "private": true,
+  "type": "module",
+  "description": "Runtime dependencies for Netlify Functions. node_modules and lockfile are gitignored; Netlify installs from this manifest at build time.",
+  "dependencies": {
+    "@netlify/blobs": "^8.1.0"
+  }
+}
