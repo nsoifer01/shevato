@@ -1090,7 +1090,11 @@
       resultCell = '<span class="wc-pending">' + (r.started ? 'awaiting result' : 'not started') + '</span>';
     }
 
-    const lockTag = r.started ? '<span class="wc-lock" title="Kicked off: odds and picks are locked">locked</span>' : '';
+    // "locked" only means something when a pick was actually frozen; a
+    // result-only row (no odds captured) shows "result only" instead.
+    const lockTag = noPick
+      ? '<span class="wc-lock wc-lock-none" title="No odds were captured before kickoff, so there is no pick for this match">result only</span>'
+      : (r.started ? '<span class="wc-lock" title="Kicked off: odds and picks are locked">locked</span>' : '');
     const changedTag = changed ? '<span class="wc-changed-tag">updated</span>' : '';
 
     const tr = document.createElement('tr');
