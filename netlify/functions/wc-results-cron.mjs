@@ -1,28 +1,15 @@
 // Score Predictor — server-side data collector (scheduled).
 //
-// Why this exists: the browser page grades picks against odds it freezes at
-// kickoff and scores it fetches from The Odds API, but that /scores endpoint
-// only returns games from the last 3 days, and odds vanish from the feed once
-// a match starts. So anything not captured while a tab happened to be open
-// (inside those windows) was lost forever. This function removes the tab from
-// data collection entirely: on a schedule it freezes upcoming odds into a
-// locks blob and accumulates final scores into a results blob, both of which
-// the page reads on load. Once stored, data persists indefinitely.
+// Scores come from football-data.org: it carries the full World Cup schedule
+// (no 3-day window) and lets us compute the 90-minute (regulation) score, which
+// is the only number this tool cares about. The Odds API is used only for odds,
+// frozen into locks before kickoff so the page can show picks without a tab
+// open. Both feeds come from services whose team names line up with The Odds
+// API fixtures after the shared normalizer.
 //
-// Both feeds come from The Odds API (the same provider the fixtures come
-// from), so team names line up exactly on both sides. Scores are the feed's
-// final score: for group-stage matches that is the 90-minute result; knockout
-// matches that go to extra time would include it (that feed exposes no
-// regulation-only split).
-//
-// Required env var (set in the Netlify UI, never in the repo):
-//   ODDS_API_KEY — The Odds API key
-//
-// Credits: to avoid burning the monthly Odds API quota, each feed is only
-// called when it can actually do something — scores only when a known match
-// kicked off in the last 3 days and is not yet final; odds only when a known
-// match kicks off within 12 hours or the last snapshot is over 6 hours old.
-// A cold start (no data yet) calls both once to bootstrap.
+// This site does not inject env vars into functions, so both credentials live
+// in the Blob `config` (fields oddsApiKey, footballDataToken), written once via
+// the one-time ?setkey= / ?setfd= query params below.
 
 import { getStore } from '@netlify/blobs';
 import { STORE_NAME, RESULTS_KEY, LOCKS_KEY, CONFIG_KEY, matchKey, oddsConsensus } from './lib/wc-store.mjs';
@@ -31,87 +18,106 @@ export const config = { schedule: '0 * * * *' };
 
 const SPORT = 'soccer_fifa_world_cup';
 const ODDS_URL = `https://api.the-odds-api.com/v4/sports/${SPORT}/odds/?regions=eu&markets=h2h&oddsFormat=decimal&apiKey=`;
-const SCORES_URL = `https://api.the-odds-api.com/v4/sports/${SPORT}/scores/?daysFrom=3&apiKey=`;
-
-const DAY = 86400000;
+const FD_URL = 'https://api.football-data.org/v4/competitions/WC/matches';
 const HOUR = 3600000;
 
-export default async function handler() {
+// 90-minute score from a football-data score object. regularTime is populated
+// for some knockout games but null for others, so fall back to
+// fullTime minus extra-time minus penalties (fullTime bundles them all in).
+function score90(s) {
+  if (!s) return null;
+  const rt = s.regularTime;
+  if (rt && rt.home != null && rt.away != null) {
+    return { home: Number(rt.home), away: Number(rt.away) };
+  }
+  const ft = s.fullTime;
+  if (!ft || ft.home == null || ft.away == null) return null;
+  let h = Number(ft.home), a = Number(ft.away);
+  const et = s.extraTime, pen = s.penalties;
+  if (et && et.home != null) { h -= Number(et.home); a -= Number(et.away); }
+  if (pen && pen.home != null) { h -= Number(pen.home); a -= Number(pen.away); }
+  return { home: h, away: a };
+}
+
+export default async function handler(req) {
   const store = getStore(STORE_NAME);
 
-  // The key lives in the config blob (this site does not inject env vars into
-  // functions). It was written once through this function's own store; env var
-  // is still preferred if it ever starts resolving.
-  const cfg = (await store.get(CONFIG_KEY, { type: 'json' })) || {};
-  const key = process.env.ODDS_API_KEY || cfg.oddsApiKey;
-  if (!key) return new Response('Odds API key not configured (env or config blob)', { status: 500 });
+  // One-time credential setup (env vars are not injected into functions here).
+  try {
+    const u = new URL(req.url);
+    const setfd = u.searchParams.get('setfd');
+    const setkey = u.searchParams.get('setkey');
+    if (setfd || setkey) {
+      const c = (await store.get(CONFIG_KEY, { type: 'json' })) || {};
+      if (setfd) c.footballDataToken = setfd;
+      if (setkey) c.oddsApiKey = setkey;
+      await store.setJSON(CONFIG_KEY, c);
+      return new Response('config stored');
+    }
+  } catch (e) { /* scheduled run: no url */ }
 
-  const prevResults = (await store.get(RESULTS_KEY, { type: 'json' })) || {};
+  const cfg = (await store.get(CONFIG_KEY, { type: 'json' })) || {};
+  const oddsKey = process.env.ODDS_API_KEY || cfg.oddsApiKey;
+  const fdToken = process.env.FD_TOKEN || cfg.footballDataToken;
+
   const prevLocks = (await store.get(LOCKS_KEY, { type: 'json' })) || {};
-  const results = { ...(prevResults.results || {}) };
   const locks = { ...(prevLocks.locks || {}) };
   const now = Date.now();
 
-  // Kickoff time per known match, from everything we have already stored.
-  const commenceByKey = {};
-  for (const [k, v] of Object.entries(locks)) if (v.commence_time) commenceByKey[k] = v.commence_time;
-  for (const [k, v] of Object.entries(results)) if (v.commence_time) commenceByKey[k] = v.commence_time;
-  const cold = Object.keys(commenceByKey).length === 0;
+  // Scores: football-data every run (free, generous limits, full history).
+  const resultsMsg = fdToken ? await collectResults(fdToken, store) : 'no fd token';
 
-  // Scores: worth a call only if some known match kicked off within the /scores
-  // window (3 days) and is not yet recorded as final.
-  const scoresNeeded = Object.entries(commenceByKey).some(function ([k, c]) {
-    const t = Date.parse(c);
-    return t <= now && t >= now - 3 * DAY && !(results[k] && results[k].completed);
-  });
-  // Odds: worth a call if a known match kicks off soon, or our snapshot is stale
-  // (stale also re-discovers newly listed fixtures).
+  // Odds: gated to save Odds API credits — only when a match kicks off within
+  // 12h or the snapshot is over 6h old (or nothing is locked yet).
   const upcomingSoon = Object.values(locks).some(function (l) {
     const t = Date.parse(l.commence_time);
     return t > now && t <= now + 12 * HOUR;
   });
   const oddsStale = !prevLocks.updated || (now - Date.parse(prevLocks.updated)) > 6 * HOUR;
+  const cold = Object.keys(locks).length === 0;
+  const locksMsg = (oddsKey && (cold || upcomingSoon || oddsStale))
+    ? await snapshotOdds(oddsKey, locks, store, now)
+    : 'skipped';
 
-  const scoresMsg = (cold || scoresNeeded) ? await collectScores(key, results, store) : 'skipped';
-  const locksMsg = (cold || upcomingSoon || oddsStale) ? await snapshotOdds(key, locks, store, now) : 'skipped';
-
-  return new Response(`ok: results ${scoresMsg}, locks ${locksMsg}`);
+  return new Response(`ok: results ${resultsMsg}, locks ${locksMsg}`);
 }
 
-// Accumulate final scores from The Odds API /scores into the results blob.
-async function collectScores(key, results, store) {
-  let arr;
+// Rebuild the results blob from football-data's finished matches, storing the
+// 90-minute score. Rebuilt fresh each run so a corrected score replaces any
+// earlier value; skipped entirely if the feed returns nothing (never wipes).
+async function collectResults(token, store) {
+  let body;
   try {
-    const res = await fetch(SCORES_URL + encodeURIComponent(key));
-    if (!res.ok) return `scores ${res.status}`;
-    arr = await res.json();
+    const res = await fetch(FD_URL, { headers: { 'X-Auth-Token': token } });
+    if (!res.ok) return `fd ${res.status}`;
+    body = await res.json();
   } catch (err) {
-    return `scores failed: ${err.message}`;
+    return `fd failed: ${err.message}`;
   }
 
-  let n = 0;
-  for (const g of arr || []) {
-    if (!g || !g.home_team || !g.away_team || !g.commence_time || !g.scores) continue;
-    let hs = null, as = null;
-    for (const s of g.scores) {
-      const v = Number(s.score);
-      if (s.name === g.home_team) hs = v;
-      else if (s.name === g.away_team) as = v;
-    }
-    if (!Number.isFinite(hs) || !Number.isFinite(as)) continue;
-    results[matchKey(g.home_team, g.away_team, g.commence_time)] = {
-      home_score: hs,
-      away_score: as,
-      completed: !!g.completed,
-      home_team: g.home_team,
-      away_team: g.away_team,
-      commence_time: g.commence_time,
+  const finished = (body.matches || []).filter(function (m) { return m.status === 'FINISHED'; });
+  if (!finished.length) return 'no finished games';
+
+  const results = {};
+  for (const m of finished) {
+    const s90 = score90(m.score);
+    if (!s90 || !Number.isFinite(s90.home) || !Number.isFinite(s90.away)) continue;
+    const home = m.homeTeam && m.homeTeam.name;
+    const away = m.awayTeam && m.awayTeam.name;
+    const commence = m.utcDate;
+    if (!home || !away || !commence) continue;
+    results[matchKey(home, away, commence)] = {
+      home_score: s90.home,
+      away_score: s90.away,
+      completed: true,
+      home_team: home,
+      away_team: away,
+      commence_time: commence,
     };
-    n += 1;
   }
 
   await store.setJSON(RESULTS_KEY, { updated: new Date().toISOString(), results });
-  return String(n);
+  return String(Object.keys(results).length);
 }
 
 // Freeze median odds for every not-yet-started match into the locks blob so the
