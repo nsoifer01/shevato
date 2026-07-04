@@ -14,6 +14,7 @@ A comprehensive, mobile-first workout tracking application built with vanilla Ja
 - **Custom Exercises**: Create and manage your own custom exercises
 - **Workout History**: Complete history of all workouts with detailed stats, numbered pagination, and clickable workout details; each exercise in the session detail shows a small inline strength-trend chart of its top-set weight over recent sessions, plus any per-exercise notes you logged
 - **Progress Tracking**: View previous workout data (all sets) during current workout for progression
+- **Body Measurements**: A dedicated Measurements view (its own nav entry) to log body measurements over time via an add-measurement modal; included in the welcome tour
 - **Calendar View**: Visual representation of workout days with progress indicators (first day of week is configurable, Sunday or Monday)
 - **Program Scheduling**: Assign weekdays to a program; the days show on the program tiles, as markers on the calendar, and as a compact day-pill week strip at the top of the workout screen where tapping a day shows that day's scheduled workout below the pills and highlights the matching program card
 - **Welcome Tour**: A single scrollable onboarding modal that explains the core features, with quick links into Programs, Workout, Calendar, and Settings; replayable any time from Settings
@@ -49,8 +50,7 @@ A comprehensive, mobile-first workout tracking application built with vanilla Ja
 gym-tracker/
 ├── index.html                  # Main app entry point
 ├── css/
-│   ├── gym-tracker.css        # Main dark theme styles
-│   └── gym-tracker-old.css    # Backup of original styles
+│   └── gym-tracker.css        # Main dark theme styles
 ├── js/
 │   ├── app.js                 # Main application controller
 │   ├── models/                # Data models
@@ -59,7 +59,6 @@ gym-tracker/
 │   │   ├── WorkoutSession.js
 │   │   ├── WorkoutExercise.js
 │   │   ├── Set.js
-│   │   ├── Exercise.js
 │   │   ├── Achievement.js
 │   │   └── Settings.js
 │   ├── services/              # Business logic
