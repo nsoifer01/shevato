@@ -4416,7 +4416,7 @@
   function matrixLegendText(subtab) {
     if (subtab === 'margin') return 'Avg point margin per game from the row\'s perspective; the small line shows the row\'s best single result vs that column.';
     if (subtab === 'form')   return 'Dots = last 5 meetings (oldest left → newest right) from the row\'s perspective; cell color follows the dots\' majority. The label shows a live streak only when longer than 5 games, otherwise the row\'s longest win streak ("best W4").';
-    return 'Wins-losses(-ties) and the row\'s win % — ties count as half a win. (avg) next to each name = that player\'s average daily score.';
+    return 'Wins-losses(-ties) and the row\'s win % — ties count as half a win. The number under each name is that player\'s average daily score.';
   }
 
   function renderMatrix() {
@@ -4471,10 +4471,15 @@
     // owner request; the top row stays just icon + name.
     const headChip = (p, withAvg) => {
       const avg = withAvg ? avgFor(p) : null;
+      // Name and avg stack in a text column beside the icon so the score sits
+      // directly under the name. The cell is already two lines tall (data cells
+      // carry a value + a sub-line), so this adds no height.
       return el('span', { class: 'matrix-head-chip', style: `--p-color:${p.color}` }, [
         el('span', { class: 'matrix-head-icon' }, p.icon),
-        el('span', { class: 'matrix-head-name' }, p.label),
-        avg != null ? el('span', { class: 'matrix-head-avg' }, `(${Math.round(avg)})`) : null,
+        el('span', { class: 'matrix-head-text' }, [
+          el('span', { class: 'matrix-head-name' }, p.label),
+          avg != null ? el('span', { class: 'matrix-head-avg' }, `${Math.round(avg)}`) : null,
+        ]),
       ]);
     };
 
