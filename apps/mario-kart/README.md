@@ -38,7 +38,7 @@ Mario Kart Race Tracker is a feature-rich web application that allows you to:
 - **Theme**: Single cohesive dark theme
 - **Responsive Design**: Works on desktop, tablet, and mobile devices
 - **Modern UI**: Card-based layouts with smooth animations
-- **Multiple Views**: 8 different tabs for various statistics and analyses
+- **Multiple Views**: 8 tabs - six statistics/analysis views plus Help and Guide
 
 ## 📱 Browser Compatibility
 
@@ -88,7 +88,7 @@ mario-kart/
 ├── index.html            # Main application file
 ├── css/                  # All styling files
 │   ├── base.css         # Base styles and resets
-│   ├── theme.css        # Theme variables and dark/alternative theme
+│   ├── theme.css        # Theme variables and dark theme
 │   ├── charts.css       # Chart and visualization styles
 │   └── ...              # Other component-specific styles
 ├── js/                   # JavaScript modules
