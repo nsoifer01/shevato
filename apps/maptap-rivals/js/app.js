@@ -35,6 +35,7 @@
     SETTINGS: 'maptapRivalsSettings',
     SELECTED: 'maptapRivalsSelectedRivalId',
     MATRIX_SEL: 'maptapRivalsMatrixSelection',
+    MATRIX_SORT: 'maptapRivalsMatrixSort',
     SEASONS: 'maptapRivalsSeasons',
     // Per-ISO-date cache of the day's 5 puzzle lat/lng pairs. Values are
     // stored under `KEY.DAILY_CITIES_PREFIX + isoDate`. Only coordinates
@@ -207,6 +208,7 @@
     selectedRivalId: loadString(KEY.SELECTED, null),
     view: 'dashboard',
     matrixSelection: load(KEY.MATRIX_SEL, null), // string[] of rivalIds, or null = "all"
+    matrixSort: loadString(KEY.MATRIX_SORT, 'name'), // 'name' | 'win' | 'avg' row order
     matrixTab: 'record',           // overridden by URL hash on first paint
     lbSort: 'winpct',              // sortable column key, e.g. 'winpct' | 'rivalry'
     lbDir: 1,                      // 1 = column's natural order, -1 = reversed (toggled by re-clicking the header)
@@ -245,6 +247,7 @@
   function persistMyProfile() { save(KEY.MY_PROFILE, state.myProfile); }
   function persistSelected() { saveString(KEY.SELECTED, state.selectedRivalId); }
   function persistMatrixSelection() { save(KEY.MATRIX_SEL, state.matrixSelection); }
+  function persistMatrixSort() { saveString(KEY.MATRIX_SORT, state.matrixSort); }
 
   // ---------- date utils ----------
   function daysBetween(aISO, bISO) {
@@ -4258,6 +4261,37 @@
     };
   }
 
+  // Merge several H2H cells into one aggregate with the same shape, so the
+  // per-tab renderer can draw a row's "Overall" total across every opponent.
+  // Meetings are concatenated and re-sorted by date so Last-5 form reflects a
+  // player's most recent results regardless of which opponent they came from.
+  function mergeMatrixCells(cells) {
+    const merged = {
+      games: 0, wins: 0, losses: 0, ties: 0,
+      rowTotal: 0, colTotal: 0,
+      bestMargin: null, worstMargin: null,
+      meetings: [],
+    };
+    cells.forEach(c => {
+      if (!c) return;
+      merged.games += c.games;
+      merged.wins += c.wins;
+      merged.losses += c.losses;
+      merged.ties += c.ties;
+      merged.rowTotal += c.rowTotal;
+      merged.colTotal += c.colTotal;
+      if (c.bestMargin != null) {
+        merged.bestMargin = merged.bestMargin == null ? c.bestMargin : Math.max(merged.bestMargin, c.bestMargin);
+      }
+      if (c.worstMargin != null) {
+        merged.worstMargin = merged.worstMargin == null ? c.worstMargin : Math.min(merged.worstMargin, c.worstMargin);
+      }
+      merged.meetings.push(...c.meetings);
+    });
+    merged.meetings.sort((a, b) => a.date.localeCompare(b.date));
+    return merged;
+  }
+
   // Build the visible content for one matrix cell based on the active sub-tab.
   // Returns { tone, title, content } where tone drives the W/L/T tint and
   // content is the array of child nodes for the <td>.
@@ -4414,15 +4448,28 @@
   }
 
   function matrixLegendText(subtab) {
-    if (subtab === 'margin') return 'Avg point margin per game from the row\'s perspective; the small line shows the row\'s best single result vs that column.';
-    if (subtab === 'form')   return 'Dots = last 5 meetings (oldest left → newest right) from the row\'s perspective; cell color follows the dots\' majority. The label shows a live streak only when longer than 5 games, otherwise the row\'s longest win streak ("best W4").';
-    return 'Wins-losses(-ties) and the row\'s win % — ties count as half a win. The number under each name is that player\'s average daily score.';
+    const overall = ' The Overall column combines each row across all opponents; a player\'s own cell shows their average daily score and games logged.';
+    if (subtab === 'margin') return 'Avg point margin per game from the row\'s perspective; the small line shows the row\'s best single result vs that column.' + overall;
+    if (subtab === 'form')   return 'Dots = last 5 meetings (oldest left → newest right) from the row\'s perspective; cell color follows the dots\' majority. The label shows a live streak only when longer than 5 games, otherwise the row\'s longest win streak ("best W4").' + overall;
+    return 'Wins-losses(-ties) and the row\'s win % — ties count as half a win. The number under each name is that player\'s average daily score.' + overall;
+  }
+
+  function renderMatrixSort() {
+    const sel = $('#matrix-sort-select');
+    if (!sel) return;
+    sel.value = state.matrixSort || 'name';
+    sel.onchange = () => {
+      state.matrixSort = sel.value;
+      persistMatrixSort();
+      renderMatrix();
+    };
   }
 
   function renderMatrix() {
     if (!isValidMatrixTab(state.matrixTab)) state.matrixTab = 'record';
     renderMatrixChips();
     renderMatrixSubtabs();
+    renderMatrixSort();
 
     const wrap = $('#matrix-wrap');
     wrap.innerHTML = '';
@@ -4441,14 +4488,7 @@
       return;
     }
 
-    // Participants in display order: You first, then rivals alphabetically.
-    const sortedRivals = rivals.slice().sort((a, b) => a.name.localeCompare(b.name));
-    const participants = [
-      { type: 'you', label: state.me || 'You', icon: state.myIcon || '🧍', color: 'var(--accent-2)' },
-      ...sortedRivals.map(r => ({ type: 'rival', id: r.id, label: r.name, icon: r.icon, color: r.color })),
-    ];
-
-    const byRival = buildRivalDateIndex(sortedRivals.map(r => r.id));
+    const byRival = buildRivalDateIndex(rivals.map(r => r.id));
 
     // Per-participant average daily score (replaces the old "Avg score"
     // subtab). Yours dedupes by date — the same daily score repeats across
@@ -4467,8 +4507,43 @@
     myByDate.forEach(v => { mySum += v; });
     const myAvg = myByDate.size ? mySum / myByDate.size : null;
     const avgFor = p => (p.type === 'you' ? myAvg : rivalAvgById.get(p.id));
-    // The "(avg)" annotation renders on the LEFT column (row heads) only —
-    // owner request; the top row stays just icon + name.
+    const gamesFor = p => (p.type === 'you' ? myByDate.size : (byRival.get(p.id) ? byRival.get(p.id).size : 0));
+
+    // You is always the anchor (first row + column); rivals fill the rest.
+    const you = { type: 'you', label: state.me || 'You', icon: state.myIcon || '🧍', color: 'var(--accent-2)' };
+    const rivalParts = rivals.map(r => ({ type: 'rival', id: r.id, label: r.name, icon: r.icon, color: r.color }));
+    const allParts = [you, ...rivalParts];
+    const pkey = p => (p.type === 'you' ? 'you' : 'r:' + p.id);
+
+    // Precompute every ordered-pair cell once, then derive each row's Overall
+    // aggregate from its cells. Sorting reorders both axes so the diagonal
+    // stays aligned; the "avg"/"win" keys read from these aggregates.
+    const cellByPair = new Map();
+    allParts.forEach(rp => allParts.forEach(cp => {
+      if (rp === cp) return;
+      cellByPair.set(pkey(rp) + '|' + pkey(cp), computeMatrixCell(rp, cp, byRival));
+    }));
+    const aggByKey = new Map();
+    allParts.forEach(p => {
+      const cells = allParts.filter(o => o !== p).map(o => cellByPair.get(pkey(p) + '|' + pkey(o)));
+      aggByKey.set(pkey(p), mergeMatrixCells(cells));
+    });
+    const winRateOf = p => {
+      const a = aggByKey.get(pkey(p));
+      return a.games ? (a.wins + 0.5 * a.ties) / a.games : -1;
+    };
+
+    const sortKey = state.matrixSort || 'name';
+    const sortedRivalParts = rivalParts.slice().sort((a, b) => {
+      if (sortKey === 'win') return winRateOf(b) - winRateOf(a) || a.label.localeCompare(b.label);
+      if (sortKey === 'avg') {
+        const av = avgFor(a), bv = avgFor(b);
+        return (bv == null ? -Infinity : bv) - (av == null ? -Infinity : av) || a.label.localeCompare(b.label);
+      }
+      return a.label.localeCompare(b.label);
+    });
+    const participants = [you, ...sortedRivalParts];
+
     const headChip = (p, withAvg) => {
       const avg = withAvg ? avgFor(p) : null;
       // Name and avg stack in a text column beside the icon so the score sits
@@ -4490,6 +4565,9 @@
     participants.forEach(p => {
       headRow.appendChild(el('th', { class: 'matrix-col-head', scope: 'col', title: p.label }, [headChip(p, false)]));
     });
+    // Overall (totals) column header.
+    headRow.appendChild(el('th', { class: 'matrix-col-head matrix-total-head', scope: 'col' },
+      [el('span', { class: 'matrix-total-label' }, 'Overall')]));
     thead.appendChild(headRow);
     table.appendChild(thead);
 
@@ -4499,10 +4577,23 @@
       tr.appendChild(el('th', { class: 'matrix-row-head', scope: 'row' }, [headChip(row, true)]));
       participants.forEach(col => {
         if (row === col) {
-          tr.appendChild(el('td', { class: 'matrix-cell matrix-diag', 'aria-label': 'self' }, '—'));
+          // Self-cell: the player can't play themselves, so show an identity
+          // stat (their average daily score + games logged) rather than a hole.
+          const avg = avgFor(row);
+          const g = gamesFor(row);
+          const gLabel = `${g} game${g === 1 ? '' : 's'}`;
+          tr.appendChild(el('td', {
+            class: 'matrix-cell matrix-diag matrix-diag-self',
+            'aria-label': 'self',
+            title: avg == null ? `${row.label}: no games logged`
+              : `${row.label}: ${Math.round(avg)} avg over ${gLabel}`,
+          }, avg == null ? '—' : [
+            el('div', { class: 'matrix-record matrix-diag-avg' }, `${Math.round(avg)}`),
+            el('div', { class: 'matrix-meta' }, gLabel),
+          ]));
           return;
         }
-        const cell = computeMatrixCell(row, col, byRival);
+        const cell = cellByPair.get(pkey(row) + '|' + pkey(col));
         if (!cell || cell.games === 0) {
           tr.appendChild(el('td', { class: 'matrix-cell matrix-empty matrix-cell-empty' }, [
             el('span', {}, 'no games'),
@@ -4515,6 +4606,19 @@
           title: vm.title,
         }, vm.content));
       });
+      // Overall (totals) cell: the row aggregated across all opponents.
+      const agg = aggByKey.get(pkey(row));
+      if (!agg || agg.games === 0) {
+        tr.appendChild(el('td', { class: 'matrix-cell matrix-total matrix-empty matrix-cell-empty' }, [
+          el('span', {}, '—'),
+        ]));
+      } else {
+        const tvm = matrixCellViewModel(agg, state.matrixTab, row, { label: 'all opponents' });
+        tr.appendChild(el('td', {
+          class: `matrix-cell matrix-total matrix-${tvm.tone}`,
+          title: `${row.label} vs all opponents: ${tvm.title}`,
+        }, tvm.content));
+      }
       tbody.appendChild(tr);
     });
     table.appendChild(tbody);
