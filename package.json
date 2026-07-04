@@ -3,24 +3,24 @@
   "private": true,
   "type": "commonjs",
   "scripts": {
-    "test": "node --test apps/gym-tracker/tests/ apps/football-h2h/tests/ apps/rising-seasons/tests/ apps/mario-kart/tests/ apps/arena/tests/ apps/maptap-rivals/tests/ sync-system/tests/",
+    "test": "node --test apps/gym-tracker/tests/ apps/football-h2h/tests/ apps/rising-shows/tests/ apps/mario-kart/tests/ apps/arena/tests/ apps/maptap-rivals/tests/ sync-system/tests/",
     "test:gym": "node --test apps/gym-tracker/tests/",
     "test:football": "node --test apps/football-h2h/tests/",
-    "test:rising-seasons": "node --test apps/rising-seasons/tests/",
+    "test:rising-shows": "node --test apps/rising-shows/tests/",
     "test:mario-kart": "node --test apps/mario-kart/tests/",
     "test:arena": "node --test apps/arena/tests/",
     "test:maptap": "node --test apps/maptap-rivals/tests/",
     "test:sync": "node --test sync-system/tests/",
     "sync:mario-kart-courses": "node apps/mario-kart/scripts/sync-courses.mjs",
-    "build:rising-seasons": "node apps/rising-seasons/scripts/build-data.js",
-    "build:rising-seasons:pages": "node apps/rising-seasons/scripts/build-show-pages.js",
+    "build:rising-shows": "node apps/rising-shows/scripts/build-data.js",
+    "build:rising-shows:pages": "node apps/rising-shows/scripts/build-show-pages.js",
     "build:gym-tracker:pages": "node apps/gym-tracker/scripts/build-exercise-pages.cjs",
-    "build:site": "node apps/rising-seasons/scripts/build-show-pages.js && node apps/gym-tracker/scripts/build-exercise-pages.cjs",
+    "build:site": "node apps/rising-shows/scripts/build-show-pages.js && node apps/gym-tracker/scripts/build-exercise-pages.cjs",
     "build:og-cards": "node assets/og/build-og-cards.mjs",
-    "enrich:rising-seasons": "node apps/rising-seasons/scripts/enrich-tmdb.js",
-    "enrich:rising-seasons:providers": "node apps/rising-seasons/scripts/enrich-providers.js",
-    "export:rising-seasons": "node apps/rising-seasons/scripts/export-integrations.js",
-    "watch-next": "node apps/rising-seasons/scripts/watch-next.js"
+    "enrich:rising-shows": "node apps/rising-shows/scripts/enrich-tmdb.js",
+    "enrich:rising-shows:providers": "node apps/rising-shows/scripts/enrich-providers.js",
+    "export:rising-shows": "node apps/rising-shows/scripts/export-integrations.js",
+    "watch-next": "node apps/rising-shows/scripts/watch-next.js"
   },
   "dependencies": {
     "@netlify/blobs": "^8.1.0"

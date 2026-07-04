@@ -1,0 +1,526 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <!-- CRITICAL: load immediate sync override FIRST so it catches every
+       localStorage.setItem / removeItem from the moment the page parses.
+       Anything that touches localStorage before this script runs would be
+       invisible to the Firestore mirror. -->
+  <script src="../../sync-system/sync-immediate.js"></script>
+
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="description" content="Rank whole TV shows by the shape of their IMDb rating trend - rising, consistent, slow-burn, big-finale, rebound, mid-peak, and more. Filter thousands of shows by trend shape, genre, decade, and streaming service.">
+  <meta name="keywords" content="rising shows, TV show ratings, IMDb ratings, TV show finder, rating trend, slow burn shows, big finale shows, rebound shows, mid-peak shows, TV analytics, best TV shows, show rating chart">
+  <meta name="author" content="Shevato LLC">
+  <meta name="robots" content="index, follow, max-image-preview:large">
+  <meta name="theme-color" content="#0b0d12">
+  <meta name="color-scheme" content="dark">
+  <link rel="canonical" href="https://shevato.com/apps/rising-shows/" />
+  <title>Rising Shows | Rank TV shows by the shape of their rating trend - Shevato</title>
+
+  <!-- Open Graph -->
+  <meta property="og:title" content="Rising Shows | Rank TV shows by the shape of their rating trend" />
+  <meta property="og:description" content="Rank thousands of TV shows by the shape of their IMDb rating trend - rising, consistent, slow-burn, big-finale, rebound, mid-peak, and more." />
+  <meta property="og:type" content="website" />
+  <meta property="og:url" content="https://shevato.com/apps/rising-shows/" />
+  <meta property="og:image" content="https://shevato.com/images/og/rising-shows.png" />
+  <meta property="og:image:width" content="1200" />
+  <meta property="og:image:height" content="630" />
+  <meta property="og:image:type" content="image/png" />
+  <meta property="og:image:alt" content="Rising Shows - rank TV shows by the shape of their rating trend" />
+  <meta property="og:site_name" content="Shevato" />
+  <meta property="og:locale" content="en_US" />
+
+  <!-- Twitter Card -->
+  <meta name="twitter:card" content="summary_large_image" />
+  <meta name="twitter:title" content="Rising Shows | Rank TV shows by the shape of their rating trend" />
+  <meta name="twitter:description" content="Rank thousands of TV shows by the shape of their IMDb rating trend - rising, slow-burn, big-finale, rebound, mid-peak, and more." />
+  <meta name="twitter:image" content="https://shevato.com/images/og/rising-shows.png" />
+  <meta name="twitter:site" content="@shevato" />
+
+  <!-- Breadcrumbs -->
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@type": "BreadcrumbList",
+    "itemListElement": [
+      { "@type": "ListItem", "position": 1, "name": "Home", "item": "https://shevato.com/home.html" },
+      { "@type": "ListItem", "position": 2, "name": "Apps", "item": "https://shevato.com/apps.html" },
+      { "@type": "ListItem", "position": 3, "name": "Rising Shows", "item": "https://shevato.com/apps/rising-shows/" }
+    ]
+  }
+  </script>
+
+  <!-- WebApplication -->
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@type": "WebApplication",
+    "name": "Rising Shows",
+    "description": "Rank whole TV shows by the shape of their IMDb rating trend. Explore rising, consistent, slow-burn, big-finale, rebound, mid-peak, and other trend patterns across thousands of shows.",
+    "url": "https://shevato.com/apps/rising-shows/",
+    "applicationCategory": "MultimediaApplication",
+    "operatingSystem": "Web Browser",
+    "browserRequirements": "Requires JavaScript. Works on all modern browsers.",
+    "offers": {
+      "@type": "Offer",
+      "price": "0",
+      "priceCurrency": "USD"
+    },
+    "featureList": [
+      "Show-level trend classification (rising, consistent, slow-burn, big-finale, rebound, front-loaded, declining, bad-finale, rollercoaster, mid-peak)",
+      "Season-by-season rating trend for every show",
+      "Filter by trend shape, genre, decade, votes, and streaming service",
+      "Search by show title or IMDb ID",
+      "Gap filter - shows whose episodes beat (or trail) the show's IMDb score",
+      "Aggregate stats per show (episodes, votes, runtime, average rating)",
+      "Compare the rating trajectory of multiple shows",
+      "Per-show detail with cast, streaming providers, and a seasons overlay"
+    ],
+    "author": {
+      "@type": "Organization",
+      "name": "Shevato LLC",
+      "url": "https://shevato.com"
+    }
+  }
+  </script>
+
+  <!-- Favicon: rising-curve glyph -->
+  <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>📈</text></svg>">
+
+  <!-- Site chrome: main.css for #header / #footer / #menu styling, font-awesome
+       for footer icons. App styles override what they need to. -->
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" integrity="sha384-iw3OoTErCYJJB9mCa8LNS2hbsQ7M3C0EpIsO/H5+EGAkPGc6rk+V8i04oW/K5xq0" crossorigin="anonymous" referrerpolicy="no-referrer">
+  <link rel="stylesheet" href="../../assets/css/main.css">
+  <link rel="stylesheet" href="../../assets/css/sync-status.css">
+  <link rel="stylesheet" href="css/styles.css">
+  <link rel="stylesheet" href="/assets/css/back-to-top.css">
+</head>
+<body class="rising-shows-app">
+  <!-- Sync status banner — only visible when offline (and briefly on recovery). Managed by assets/js/sync-status.js. -->
+  <div id="sync-banner" class="sync-banner" role="status" aria-live="polite" hidden></div>
+  <div data-include="header"></div>
+
+  <main class="page">
+    <header class="hero">
+      <h1>Rising Shows</h1>
+      <p class="tagline">Rank TV shows by the <em>shape</em> of their rating trend</p>
+      <p class="hero-secondary">
+        <a href="shows/" class="hero-link">Browse all shows A–Z →</a>
+        <span class="hero-sep" aria-hidden="true">•</span>
+        <a href="kometa/" class="hero-link" title="Build Plex collections and badges from these trend shapes via Kometa">Use with Plex + Kometa →</a>
+      </p>
+    </header>
+
+    <section class="finder" id="finder" aria-label="Show Finder">
+      <!-- Show-level shape chips. A show's shape is classified from the curve
+           of its per-season episode averages (not per episode), so a "rising"
+           show is one whose seasons kept getting better. Rendered by app.js
+           from showAgg; chips with a zero count are hidden. -->
+      <nav class="shapes finder-shapes" id="finderShapes" aria-label="Show shape"></nav>
+
+      <section class="mood-presets finder-moods" aria-label="Explore by mood">
+        <!-- Same .mood-collapsible structure as the Seasons mood rail, so it
+             centers and collapses behind a toggle pill on mobile identically.
+             The chips keep a distinct class (.finder-mood-chips, not
+             .mood-preset-chips) so the Seasons-view mood logic — count-fill,
+             click-binding, aria sync — never touches these finder presets;
+             app.js owns them via #finderMoodChips. -->
+        <details class="mood-collapsible" open>
+          <summary class="mood-presets-title">
+            <span class="mood-presets-title-text">Explore by mood</span>
+            <span class="mood-toggle-chevron" aria-hidden="true"></span>
+          </summary>
+          <div class="finder-mood-chips" id="finderMoodChips"></div>
+        </details>
+      </section>
+
+      <div class="filters" aria-label="Show Finder filters">
+        <div class="filter-row primary">
+          <div class="search-cluster">
+            <div class="search">
+              <label>
+                <span class="visually-hidden">Search show title or IMDb ID</span>
+                <input type="search" id="finderSearch"
+                       placeholder="Search show title or IMDb ID (press / to focus)"
+                       autocomplete="off"
+                       role="combobox"
+                       aria-expanded="false"
+                       aria-autocomplete="list"
+                       aria-controls="finderSearchSuggestions"
+                       aria-label="Search show title or IMDb ID">
+              </label>
+              <ul id="finderSearchSuggestions" class="search-suggestions" role="listbox" hidden></ul>
+            </div>
+          </div>
+          <div class="view-toggle" id="finderViewToggle" role="radiogroup" aria-label="View mode">
+            <button type="button" class="btn view-btn" data-view="grid" aria-pressed="true" aria-label="Grid view" title="Grid view">▦</button>
+            <button type="button" class="btn view-btn" data-view="list" aria-pressed="false" aria-label="List view" title="List view">☰</button>
+          </div>
+          <button type="button" class="btn shortcut-legend-btn" id="shortcutLegendBtn"
+                  aria-haspopup="dialog" aria-controls="shortcutLegend" aria-expanded="false"
+                  title="Keyboard shortcuts (press ?)">?</button>
+        </div>
+
+        <div class="active-filter-bar" id="finderActiveFilterBar" hidden aria-label="Active filters"></div>
+
+        <div class="quick-filters-row">
+          <details class="quick-filters-wrap">
+            <summary class="quick-filters-summary">
+              <span aria-hidden="true">⌕</span>
+              <span>Quick filters</span>
+            </summary>
+          </details>
+          <button type="button" class="advanced-reset" id="finderReset" hidden>× Clear filters</button>
+        </div>
+
+        <div class="label-filters" id="finderQuickFiltersPanel" aria-label="Quick filters">
+          <div class="label-group genre-quick-group" role="group" aria-label="Genre">
+            <span class="label-group-name">Genre</span>
+            <div class="genre-quick-row" id="finderGenres" role="group" aria-label="Filter by genre"></div>
+          </div>
+          <div class="label-group decade-group" role="radiogroup" aria-label="Decade">
+            <span class="label-group-name">Decade</span>
+            <div class="decade-row" id="finderDecadeRow"></div>
+          </div>
+          <div class="label-group" role="group" aria-label="Gap direction">
+            <span class="label-group-name">Gap</span>
+            <div class="finder-seg" id="finderGapDir" role="radiogroup" aria-label="Gap direction">
+              <button type="button" class="finder-seg-btn" data-dir="any" aria-pressed="true">Any</button>
+              <button type="button" class="finder-seg-btn" data-dir="up" aria-pressed="false">Episodes beat show</button>
+              <button type="button" class="finder-seg-btn" data-dir="down" aria-pressed="false">Show beats episodes</button>
+            </div>
+          </div>
+          <div class="label-group" role="group" aria-label="Quick vote thresholds">
+            <span class="label-group-name">Votes</span>
+            <div class="finder-chips" id="finderVotesChips" role="group" aria-label="Quick vote thresholds">
+              <button type="button" class="finder-chip" data-votes="0" aria-pressed="true">Any</button>
+              <button type="button" class="finder-chip" data-votes="10000" aria-pressed="false">10k+</button>
+              <button type="button" class="finder-chip" data-votes="50000" aria-pressed="false">50k+</button>
+              <button type="button" class="finder-chip" data-votes="100000" aria-pressed="false">100k+</button>
+            </div>
+          </div>
+        </div>
+
+        <details class="advanced">
+          <summary>
+            <span class="advanced-summary-label">More filters</span>
+          </summary>
+          <div class="filter-row">
+            <label>
+              Min total episodes
+              <input type="number" id="finderMinEpisodes" min="0" step="1" placeholder="any" inputmode="numeric">
+            </label>
+            <label>
+              Min IMDb votes
+              <input type="number" id="finderMinVotes" min="0" step="1000" placeholder="any" inputmode="numeric">
+            </label>
+            <label>
+              Min show rating
+              <input type="number" id="finderMinShowRating" min="0" max="10" step="0.1" placeholder="any" inputmode="decimal">
+            </label>
+            <label>
+              Min avg episode rating
+              <input type="number" id="finderMinAvgEpisode" min="0" max="10" step="0.1" placeholder="any" inputmode="decimal">
+            </label>
+            <label>
+              Min gap magnitude
+              <input type="number" id="finderMinGap" min="0" step="0.01" placeholder="any" inputmode="decimal">
+            </label>
+            <label>
+              Year ≥
+              <input type="number" id="finderMinYear" min="1950" max="2100" placeholder="any">
+            </label>
+            <label>
+              Year ≤
+              <input type="number" id="finderMaxYear" min="1950" max="2100" placeholder="any">
+            </label>
+            <label>
+              Sort by
+              <select id="finderSort">
+                <option value="votes">Popularity (votes)</option>
+                <option value="gap">Gap size</option>
+                <option value="showRating">Show rating</option>
+                <option value="avgEpisode">Avg episode rating</option>
+                <option value="episodes">Episode count</option>
+                <option value="seasonsCount">Season count</option>
+                <option value="year">Year</option>
+                <option value="runtimeHrs">Runtime</option>
+                <option value="title">Title (A–Z)</option>
+              </select>
+            </label>
+            <label>
+              Direction
+              <select id="finderSortDir">
+                <option value="desc">Descending</option>
+                <option value="asc">Ascending</option>
+              </select>
+            </label>
+          </div>
+          <div class="chip-section">
+            <span class="chip-section-title">Language</span>
+            <div class="genre-row" id="finderLanguages" role="group" aria-label="Filter by language"></div>
+          </div>
+        </details>
+      </div>
+
+      <p class="meta finder-count" id="finderCount" aria-live="polite"></p>
+
+      <p class="meta finder-plex-note">Like this list? Any Finder filter can become a self-updating Plex collection - <a href="kometa/#finderPresets">see how →</a></p>
+
+      <nav class="pager pager-top" id="finderPagerTop" aria-label="Pagination (top)" hidden></nav>
+
+      <div class="finder-results results-grid" id="finderResults"></div>
+
+      <nav class="pager" id="finderPager" aria-label="Pagination" hidden></nav>
+    </section>
+
+    <p class="footer-meta" id="footer-meta"></p>
+
+    <!-- Data-source attribution. Required by the TMDB API terms (logo +
+         disclaimer), JustWatch (provider data) and IMDb's non-commercial
+         dataset license. Static HTML so it shows without JS too. -->
+    <div class="data-attribution">
+      <a class="tmdb-logo-link" href="https://www.themoviedb.org/" target="_blank" rel="noopener noreferrer" aria-label="The Movie Database (TMDB)"><img class="tmdb-logo" src="images/tmdb-logo.svg" alt="TMDB" width="108" height="14" loading="lazy"></a>
+      <p>This product uses the TMDB API but is not endorsed or certified by TMDB. Streaming data powered by <a href="https://www.justwatch.com/" target="_blank" rel="noopener noreferrer">JustWatch</a>. Information courtesy of IMDb (<a href="https://www.imdb.com/" target="_blank" rel="noopener noreferrer">https://www.imdb.com</a>). Used with permission.</p>
+    </div>
+  </main>
+
+  <!-- "What's new" popover — anchored to the footer chip, populated from
+       changelog.json. Hidden until the user activates the chip. -->
+  <div class="changelog-modal modal" id="changelogModal" role="dialog" aria-modal="true" aria-labelledby="changelogModalTitle" aria-hidden="true" hidden>
+    <div class="modal-backdrop" data-close="changelog-modal"></div>
+    <article class="modal-panel changelog-panel" tabindex="-1" data-back-to-top>
+      <button type="button" class="btn modal-close" data-close="changelog-modal" aria-label="Close">×</button>
+      <header class="changelog-header">
+        <h2 id="changelogModalTitle">What's new</h2>
+        <p class="modal-subtitle" id="changelogSubtitle"></p>
+      </header>
+      <section class="changelog-section" id="changelogTotals"></section>
+      <section class="changelog-section" id="changelogShapes" hidden>
+        <h3 class="modal-section">Shape shifts</h3>
+        <div class="changelog-shape-pills" id="changelogShapesList"></div>
+      </section>
+      <section class="changelog-section" id="changelogAdded" hidden>
+        <h3 class="modal-section">Added this refresh</h3>
+        <ul class="changelog-list" id="changelogAddedList"></ul>
+      </section>
+      <section class="changelog-section" id="changelogRemoved" hidden>
+        <h3 class="modal-section">Dropped</h3>
+        <ul class="changelog-list changelog-list-muted" id="changelogRemovedList"></ul>
+      </section>
+      <section class="changelog-section" id="changelogSwings" hidden>
+        <h3 class="modal-section">Notable rating swings</h3>
+        <ul class="changelog-list" id="changelogSwingsList"></ul>
+      </section>
+      <section class="changelog-section" id="changelogFreshness">
+        <h3 class="modal-section">Data freshness</h3>
+        <div id="changelogFreshnessContent"></div>
+      </section>
+    </article>
+  </div>
+
+  <div data-include="footer"></div>
+
+  <!-- Detail modal (opens when a card is clicked) -->
+  <div class="modal" id="detailModal" role="dialog" aria-modal="true" aria-labelledby="modalTitle" aria-hidden="true" hidden>
+    <div class="modal-backdrop" data-close="modal"></div>
+    <article class="modal-panel" tabindex="-1" data-back-to-top>
+      <button type="button" class="btn modal-close" data-close="modal" aria-label="Close">×</button>
+      <button type="button" class="btn modal-back" id="modalBack" hidden aria-label="Back to previous view" title="Back"></button>
+      <button type="button" class="btn btn-primary modal-reroll" id="modalReroll" hidden>Roll again</button>
+      <div class="modal-header">
+        <div class="modal-poster" id="modalPoster" aria-hidden="true"></div>
+        <div class="modal-heading">
+          <h2 id="modalTitle"></h2>
+          <p class="modal-subtitle" id="modalSubtitle"></p>
+          <div class="modal-shapes" id="modalShapes"></div>
+          <p class="modal-stats" id="modalStats"></p>
+          <div class="modal-primary-actions">
+            <button type="button" class="btn btn-ghost" id="modalShareCard">Share card</button>
+            <button type="button" class="btn watch-btn" id="modalWatchBtn"></button>
+          </div>
+        </div>
+      </div>
+      <div class="modal-actions modal-actions-top">
+        <button type="button" class="btn btn-ghost" id="modalViewShow">📺 View show</button>
+        <a class="btn btn-ghost modal-imdb" id="modalImdb" target="_blank" rel="noopener">View season on IMDb →</a>
+        <a class="btn btn-ghost" id="modalTvdb" target="_blank" rel="noopener" hidden>View series on TVDB →</a>
+      </div>
+      <p class="modal-overview" id="modalOverview"></p>
+      <h3 class="modal-section">Episode ratings</h3>
+      <svg class="modal-curve" id="modalCurve" viewBox="0 0 600 180" preserveAspectRatio="none" tabindex="0" aria-label="Episode ratings curve">
+        <path class="curve-area" />
+        <path class="curve-line" />
+        <g class="curve-dots"></g>
+      </svg>
+      <p class="modal-curve-annotation" id="modalCurveAnnotation" hidden></p>
+      <ol class="modal-episodes" id="modalEpisodes"></ol>
+    </article>
+  </div>
+
+  <!-- Show-level modal (all seasons + aggregate info) -->
+  <div class="modal" id="showModal" role="dialog" aria-modal="true" aria-labelledby="showModalTitle" aria-hidden="true" hidden>
+    <div class="modal-backdrop" data-close="show-modal"></div>
+    <article class="modal-panel" tabindex="-1" data-back-to-top>
+      <button type="button" class="btn modal-close" data-close="show-modal" aria-label="Close">×</button>
+      <button type="button" class="btn modal-back" id="showModalBack" hidden aria-label="Back to previous view" title="Back"></button>
+      <div class="modal-header">
+        <div class="modal-poster" id="showModalPoster" aria-hidden="true"></div>
+        <div class="modal-heading">
+          <h2 id="showModalTitle"></h2>
+          <p class="modal-subtitle" id="showModalSubtitle"></p>
+          <p class="modal-stats" id="showModalStats"></p>
+          <div class="modal-shapes" id="showModalShapes"></div>
+          <div class="provider-badges" id="showModalProviders"></div>
+          <div class="modal-primary-actions">
+            <button type="button" class="btn btn-ghost" id="showModalShareCard">Share card</button>
+            <button type="button" class="btn compare-btn" id="showModalCompare">＋ Add to compare</button>
+          </div>
+        </div>
+      </div>
+      <div class="modal-actions modal-actions-top">
+        <a class="btn btn-ghost" id="showModalWatchOn" target="_blank" rel="noopener" hidden></a>
+        <a class="btn btn-ghost" id="showModalPermalink">Permalink →</a>
+        <a class="btn btn-ghost" id="showModalImdb" target="_blank" rel="noopener">View show on IMDb →</a>
+        <a class="btn btn-ghost" id="showModalTvdb" target="_blank" rel="noopener" hidden>View show on TVDB →</a>
+      </div>
+      <p class="modal-overview" id="showModalOverview"></p>
+      <section class="cast-section" id="showModalCast" hidden>
+        <h3 class="modal-section">Cast</h3>
+        <ol class="cast-list" id="showModalCastList"></ol>
+      </section>
+      <section class="season-overlay" id="showModalOverlay" hidden>
+        <h3 class="modal-section">Seasons overlay</h3>
+        <svg class="overlay-curve" id="showModalOverlayCurve" viewBox="0 0 600 200" preserveAspectRatio="none" aria-hidden="true"></svg>
+        <div class="overlay-legend" id="showModalOverlayLegend"></div>
+      </section>
+      <h3 class="modal-section">All seasons</h3>
+      <ol class="show-seasons" id="showModalSeasons"></ol>
+      <!-- Task D: More shows like this -->
+      <section class="show-related" id="showModalRelated" hidden>
+        <h3 class="modal-section">More shows like this</h3>
+        <div class="show-related-grid"></div>
+      </section>
+    </article>
+  </div>
+
+  <!-- Compare modal (overlay trajectory across multiple series) -->
+  <div class="modal" id="compareModal" role="dialog" aria-modal="true" aria-labelledby="compareModalTitle" aria-hidden="true" hidden>
+    <div class="modal-backdrop" data-close="compare-modal"></div>
+    <article class="modal-panel compare-panel" tabindex="-1" data-back-to-top>
+      <button type="button" class="btn modal-close" data-close="compare-modal" aria-label="Close">×</button>
+      <header class="compare-heading">
+        <h2 id="compareModalTitle">Compare shows</h2>
+        <p class="modal-subtitle">Season-average rating trajectory. Click a show in the legend to remove it.</p>
+      </header>
+      <div class="compare-legend-row">
+        <div class="overlay-legend compare-legend" id="compareModalLegend"></div>
+        <button type="button" class="btn btn-ghost compare-clear" id="compareModalClear">Clear all</button>
+      </div>
+      <div class="compare-chart">
+        <svg class="overlay-curve compare-curve" id="compareModalCurve" viewBox="0 0 600 260" preserveAspectRatio="none" role="img" aria-label="Season-average rating trajectory chart"></svg>
+      </div>
+    </article>
+  </div>
+
+  <!-- Floating button: opens compare modal when compareSet has entries -->
+  <button type="button" class="compare-fab" id="compareFab" hidden aria-label="Open compare modal">
+    <span class="compare-fab-icon" aria-hidden="true">⇄</span>
+    <span class="compare-fab-label">Compare</span>
+    <span class="compare-fab-count" id="compareFabCount">0</span>
+  </button>
+
+  <!-- Keyboard shortcuts popover (toggled by the ? button and the ? key). -->
+  <div class="shortcut-legend" id="shortcutLegend" role="dialog" aria-label="Keyboard shortcuts" hidden>
+    <h3 class="shortcut-legend-title">Keyboard shortcuts</h3>
+    <ul class="shortcut-legend-list">
+      <li><kbd>/</kbd> <span>Focus search</span></li>
+      <li><kbd>Esc</kbd> <span>Close any open modal</span></li>
+      <li><kbd>?</kbd> <span>Toggle this list</span></li>
+    </ul>
+    <p class="shortcut-legend-note">Modal curve: focus the chart and use <kbd>←</kbd>/<kbd>→</kbd> to step episodes.</p>
+  </div>
+
+  <!-- Show Finder grid card template (show-level data) -->
+  <template id="finder-card-template">
+    <article class="card finder-card" tabindex="0" role="button">
+      <div class="card-poster">
+        <div class="poster-fallback" aria-hidden="true"></div>
+      </div>
+      <div class="card-body">
+        <header class="card-head">
+          <h2 class="card-title"></h2>
+          <span class="card-season finder-card-year"></span>
+        </header>
+        <div class="card-meta">
+          <span class="card-genres finder-card-genres"></span>
+        </div>
+        <div class="card-shapes finder-card-badges"></div>
+      </div>
+      <div class="curve-wrap finder-spark-wrap">
+        <svg class="curve finder-spark" viewBox="0 0 300 70" preserveAspectRatio="none" aria-hidden="true">
+          <path class="curve-area" />
+          <path class="curve-line" />
+          <g class="finder-spark-dot"></g>
+        </svg>
+      </div>
+      <div class="card-stats finder-card-stats">
+        <span class="stat-show"></span>
+        <span class="stat-avg"></span>
+        <span class="stat-gap"></span>
+        <span class="stat-votes"></span>
+        <span class="stat-runtime"></span>
+      </div>
+    </article>
+  </template>
+
+  <!-- Skeleton card template -->
+  <template id="skeleton-template">
+    <article class="card skeleton" aria-hidden="true">
+      <div class="card-poster"><div class="skeleton-block"></div></div>
+      <div class="card-body">
+        <div class="skeleton-line w-70"></div>
+        <div class="skeleton-line w-40"></div>
+        <div class="skeleton-block sk-curve"></div>
+        <div class="skeleton-line w-90"></div>
+      </div>
+    </article>
+  </template>
+
+  <!-- Site JS preamble (required by main.js — same order all the other apps use) -->
+  <script src="../../assets/js/passive-events-fix.js"></script>
+  <script src="../../assets/js/sync-status.js"></script>
+  <script src="../../assets/js/jquery.min.js"></script>
+  <script src="../../assets/js/browser.min.js"></script>
+  <script src="../../assets/js/breakpoints.min.js"></script>
+  <script src="../../assets/js/util.js"></script>
+
+  <!-- Firebase storage sync stack — mirrors localStorage to Firestore for
+       any signed-in user. Without these, watched-state and view preference
+       stay device-local (still fully functional). -->
+  <script type="module" src="../../firebase-config.js"></script>
+  <script type="module" src="../../sync-system/storage-sync-robust.js"></script>
+  <script type="module" src="../../sync-system/app-sync-init.js"></script>
+  <script src="../../sync-system/sync-debug.js"></script>
+  <script src="../../sync-system/sync-loading-modal.js"></script>
+  <script src="../../sync-system/sync-modal-integration.js"></script>
+
+  <!-- Site main JS — injects header/footer partials AND mounts the AuthUI
+       (sign in / sign out) into #auth-container. Do NOT add a parallel
+       include loader; a second AJAX include would race main.js and
+       overwrite the just-injected auth UI. -->
+  <script src="../../assets/js/main.js"></script>
+
+  <!-- App script — vanilla, no jQuery dependency. match.js ships the shape
+       classifiers (one source of truth with the build/tests) and must load
+       first so app.js can classify whole shows by their per-season averages.
+       finder-lib.js ships the Show Finder aggregation/filtering shared with
+       the Node export pipeline (Kometa Finder presets) and must also load
+       before app.js. -->
+  <script src="scripts/match.js" defer></script>
+  <script src="scripts/finder-lib.js" defer></script>
+  <script src="js/app.js" defer></script>
+  <script src="/assets/js/back-to-top.js" defer></script>
+</body>
+</html>

@@ -1,0 +1,155 @@
+name: Refresh Rising Shows data
+
+# Pulls IMDb's daily TSV dumps, runs the build, optionally enriches with
+# TMDB metadata, and commits the regenerated apps/rising-shows/data.json
+# back to the repo if anything changed. Runs weekly so the static site
+# never needs manual updates. See apps/rising-shows/DATA_README.md.
+
+on:
+  schedule:
+    # Every day at 06:00 UTC — keeps the static site current with IMDb's
+    # daily TSV publishing cadence. Incremental TMDB cache hits keep
+    # runtimes well under 15 min once the cold-start bootstrap is done.
+    - cron: '0 6 * * *'
+  workflow_dispatch:
+    inputs:
+      skip_tmdb:
+        description: 'Skip TMDB enrichment (faster, no posters/overviews)'
+        required: false
+        type: boolean
+        default: false
+
+concurrency:
+  group: refresh-rising-shows
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  refresh:
+    runs-on: ubuntu-latest
+    # Cold first pass after a TMDB schema change (cast back-fill,
+    # per-season tvdbId + overview fetch, providers back-fill) re-fetches
+    # tens of thousands of entries and, in practice, needs ~3–4 hours
+    # end-to-end. Incremental subsequent runs are typically well under
+    # 15 min, so this ceiling only matters on the cold pass after a
+    # schema bump.
+    timeout-minutes: 240
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Setup Node
+        uses: actions/setup-node@v6
+        with:
+          node-version: '20'
+
+      - name: Download IMDb datasets
+        working-directory: apps/rising-shows/data
+        run: |
+          curl -fsSL -o title.basics.tsv.gz https://datasets.imdbws.com/title.basics.tsv.gz
+          curl -fsSL -o title.episode.tsv.gz https://datasets.imdbws.com/title.episode.tsv.gz
+          curl -fsSL -o title.ratings.tsv.gz https://datasets.imdbws.com/title.ratings.tsv.gz
+          ls -lh
+
+      # Restore the TMDB cache from the most recent successful run so we
+      # only fetch newly-discovered series, not the whole catalogue.
+      - name: Restore TMDB cache
+        uses: actions/cache/restore@v5
+        with:
+          path: apps/rising-shows/data/tmdb-cache.json
+          key: tmdb-cache-${{ github.run_id }}
+          restore-keys: |
+            tmdb-cache-
+
+      - name: Initial build
+        run: node --max-old-space-size=4096 apps/rising-shows/scripts/build-data.js
+
+      - name: Enrich with TMDB
+        if: ${{ inputs.skip_tmdb != true }}
+        env:
+          TMDB_TOKEN: ${{ secrets.TMDB_TOKEN }}
+        run: |
+          if [ -z "$TMDB_TOKEN" ]; then
+            echo "::warning::TMDB_TOKEN secret not configured — skipping enrichment."
+            exit 0
+          fi
+          # Step 1: posters / overviews / original language.
+          node apps/rising-shows/scripts/enrich-tmdb.js
+          # Step 2: US watch providers (separate call per series; incremental).
+          node apps/rising-shows/scripts/enrich-providers.js
+          # Merge both into data.json.
+          node --max-old-space-size=4096 apps/rising-shows/scripts/build-data.js
+
+      # Persist the cache for the next run regardless of whether the
+      # enrichment step ran (we still want to keep what we had).
+      - name: Save TMDB cache
+        if: always()
+        uses: actions/cache/save@v5
+        with:
+          path: apps/rising-shows/data/tmdb-cache.json
+          key: tmdb-cache-${{ github.run_id }}
+
+      - name: Build changelog entry
+        # Diffs the new data.json against the version in HEAD and appends a
+        # summary to apps/rising-shows/changelog.json. Powers the
+        # "What's new" popover in the footer. Skipped when data.json is
+        # unchanged — no point recording a noop entry.
+        run: |
+          if git diff --quiet apps/rising-shows/data.json; then
+            echo "data.json unchanged — skipping changelog."
+            exit 0
+          fi
+          node apps/rising-shows/scripts/build-changelog.js
+
+      - name: Regenerate integration exports
+        # Kometa/MDBList artifacts under exports/ (shape collections, Show
+        # Finder preset collections, season overlays, ID lists) are derived
+        # from data.json and committed so NAS-side Kometa can pull them from
+        # raw GitHub URLs. Rebuild them whenever the data refreshes.
+        run: node apps/rising-shows/scripts/export-integrations.js
+
+      - name: Run tests
+        run: npm test
+
+      # master is protected by a "PR before Merge" ruleset, so direct pushes
+      # are rejected. We push to a short-lived branch, open a PR, and merge
+      # it immediately — the ruleset requires 0 approvals and no status
+      # checks, and tests already ran above on this exact tree.
+      - name: Open and merge PR if data changed
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -e
+          # show-modal-extras.json carries cast strips + per-season overviews
+          # for the modal — it's regenerated by build-data.js but lives in a
+          # side-file (data.json + side-file together avoid GitHub's 100 MB
+          # cap). It must be committed alongside data.json or new shows ship
+          # with no cast on the live site.
+          if git diff --quiet \
+              apps/rising-shows/data.json \
+              apps/rising-shows/data/show-modal-extras.json \
+              apps/rising-shows/exports/; then
+            echo "No changes — nothing to commit."
+            exit 0
+          fi
+          DATE=$(date -u +%Y-%m-%d)
+          BRANCH="bot/refresh-rising-shows-$(date -u +%Y%m%d-%H%M%S)"
+          git config user.name "shevato-bot"
+          git config user.email "actions@users.noreply.github.com"
+          git checkout -b "$BRANCH"
+          git add \
+            apps/rising-shows/data.json \
+            apps/rising-shows/data/show-modal-extras.json \
+            apps/rising-shows/changelog.json \
+            apps/rising-shows/exports/
+          git commit -m "chore(rising-shows): refresh data $DATE"
+          git push --set-upstream origin "$BRANCH"
+          gh pr create \
+            --base master \
+            --head "$BRANCH" \
+            --title "chore(rising-shows): refresh data $DATE" \
+            --body "Automated refresh of IMDb + TMDB data."
+          gh pr merge "$BRANCH" --merge --delete-branch

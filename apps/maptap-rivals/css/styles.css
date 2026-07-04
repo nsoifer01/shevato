@@ -5,14 +5,14 @@
  * keeps its dark styling from main.css; this file enforces the dark theme on
  * the body and supplies the dashboard surfaces, charts, tables, and modal.
  *
- * Color tokens align with rising-seasons (consistent across apps).
+ * Color tokens align with rising-shows (consistent across apps).
  */
 
 :root {
   color-scheme: dark;
   /* Background tokens.
      - --bg-grad: subtle indigo/green corner washes, same vibe as
-       Rising Seasons.
+       Rising Shows.
      - --bg-dots: faint inline-SVG dot-grid overlay applied on body::before
        so the page surface picks up the same texture the site chrome uses
        (main.css lays a bg.jpg overlay; we use a self-contained SVG dot
@@ -2922,9 +2922,9 @@ tr:focus-within .icon-btn-share {
   line-height: 1;
 }
 
-/* Numbered pager (ported from rising-seasons): Prev, page numbers with
+/* Numbered pager (ported from rising-shows): Prev, page numbers with
    ellipsis gaps, Next. Adapted to maptap's dark tokens. The accent-tinted
-   current page replaces rising-seasons' amber. Hover is pinned on .page-btn
+   current page replaces rising-shows' amber. Hover is pinned on .page-btn
    to defeat the sitewide red button:hover. The parent .pagination-controls
    zeroes font-size/line-height for its segmented pill, so reset both here. */
 .pager {
