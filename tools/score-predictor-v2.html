@@ -1000,23 +1000,36 @@
     Object.keys(wcResults).forEach(function (id) { ids[id] = true; });
     Object.keys(liveById).forEach(function (id) { ids[id] = true; });
 
-    // Drop a synthetic server ('srv:') id when a real id (live event or
-    // browser-captured lock/result) already covers the same match, so a match
-    // the browser knows first-hand is never rendered twice.
-    const realMatchKeys = {};
+    // Collapse the ids so each match renders once, preferring the row that has
+    // ODDS. A browser-captured lock (or a live event) is first-hand and wins.
+    // But a bare stored result (no odds) must NOT hide a server lock we later
+    // added, so we only let odds-bearing real ids suppress a server row, and we
+    // drop a result-only real id when a server lock now supplies the odds.
+    function hasOdds(id) {
+      if (liveById[id]) return true;
+      const l = wcLocks[id];
+      return !!(l && Number.isFinite(l.home) && Number.isFinite(l.away));
+    }
+    const realOddsKeys = {}; // matches the browser has real odds for
+    const srvOddsKeys = {};  // matches a server lock supplies odds for
     Object.keys(ids).forEach(function (id) {
-      if (id.indexOf('srv:') === 0) return;
       const m = liveById[id] || wcLocks[id] || wcResults[id];
-      if (m && m.home_team && m.away_team && m.commence_time) {
-        realMatchKeys[normTeam(m.home_team) + '|' + normTeam(m.away_team) + '|' + dayKey(m.commence_time)] = true;
-      }
+      if (!m || !m.home_team || !m.away_team || !m.commence_time) return;
+      const k = normTeam(m.home_team) + '|' + normTeam(m.away_team) + '|' + dayKey(m.commence_time);
+      if (id.indexOf('srv:') === 0) { if (hasOdds(id)) srvOddsKeys[k] = true; }
+      else if (hasOdds(id)) realOddsKeys[k] = true;
     });
     Object.keys(ids).forEach(function (id) {
-      if (id.indexOf('srv:') !== 0) return;
-      const m = wcLocks[id] || wcResults[id];
+      const m = liveById[id] || wcLocks[id] || wcResults[id];
       if (!m || !m.home_team) return;
       const variants = keyVariants(m.home_team, m.away_team, m.commence_time);
-      if (variants.some(function (k) { return realMatchKeys[k]; })) delete ids[id];
+      if (id.indexOf('srv:') === 0) {
+        // drop a server row only when the browser already has real odds for it
+        if (variants.some(function (k) { return realOddsKeys[k]; })) delete ids[id];
+      } else if (!hasOdds(id) && variants.some(function (k) { return srvOddsKeys[k]; })) {
+        // drop a bare local result-only row when a server lock now provides odds
+        delete ids[id];
+      }
     });
 
     const rows = [];
