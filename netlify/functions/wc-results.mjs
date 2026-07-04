@@ -13,10 +13,14 @@ export default async function handler(req) {
   // Temporary diagnostic: report which env vars reach this function at runtime
   // (booleans only, never values). Remove once the cron env issue is resolved.
   if (req && typeof req.url === 'string' && req.url.includes('debug=env')) {
+    const names = Object.keys(process.env)
+      .filter((k) => !/AWS|LAMBDA|SECRET|SESSION|TOKEN|KEY|PASS/i.test(k))
+      .sort();
     return new Response(JSON.stringify({
       ODDS_API_KEY: !!process.env.ODDS_API_KEY,
       FIREBASE_API_KEY: !!process.env.FIREBASE_API_KEY,
       total_env_keys: Object.keys(process.env).length,
+      safe_names: names,
     }), { status: 200, headers: { 'content-type': 'application/json' } });
   }
 
