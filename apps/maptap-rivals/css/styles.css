@@ -3863,13 +3863,19 @@ body.maptap-rivals-app select option {
   gap: 0.35rem;
   color: #fff;
   opacity: 1;
+  /* Never exceed the (fixed-layout) cell; the name shrinks so the icon and
+     the (avg) annotation always stay inside the cell. */
+  max-width: 100%;
 }
 .matrix-head-chip .matrix-head-name { color: #fff; }
-.matrix-head-icon { font-size: 1rem; }
+/* Icon and avg keep their intrinsic width; only the name gives ground. */
+.matrix-head-icon { font-size: 1rem; flex: none; }
 .matrix-head-name {
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+  min-width: 0;
+  flex: 0 1 auto;
   max-width: 9rem;
 }
 /* Player's average daily score, shown after the name since the Avg score
@@ -3879,6 +3885,7 @@ body.maptap-rivals-app select option {
   font-size: 0.72rem;
   font-weight: 500;
   white-space: nowrap;
+  flex: none;
 }
 
 .matrix-cell {
