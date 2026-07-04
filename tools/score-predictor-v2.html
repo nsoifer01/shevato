@@ -205,6 +205,7 @@
   .wc-status { color: var(--muted); font-size: 0.85rem; width: 100%; }
   .wc-table .wc-match { white-space: normal; min-width: 12rem; }
   .wc-table .wc-pick { font-family: var(--mono); font-weight: 700; color: var(--good); }
+  .wc-table .wc-nopick { color: var(--muted-2); font-weight: 400; }
   .wc-table .wc-odds, .wc-table .wc-time { font-family: var(--mono); }
   .wc-table tr.wc-changed td { background: rgba(74, 222, 128, 0.10); }
   .wc-changed-tag {
@@ -802,16 +803,56 @@
     if (touched) saveResults();
     return touched;
   }
+  // Every match key currently represented by a row (real or synthetic), with
+  // the +/- 1 day variants, so a server result already shown isn't duplicated.
+  function coveredMatchKeys() {
+    const set = {};
+    [wcLocks, wcResults].forEach(function (map) {
+      Object.keys(map).forEach(function (id) {
+        const m = map[id];
+        if (m && m.home_team && m.away_team && m.commence_time) {
+          keyVariants(m.home_team, m.away_team, m.commence_time).forEach(function (k) { set[k] = true; });
+        }
+      });
+    });
+    return set;
+  }
+  // Add a result-only row for every completed server match that no lock covers,
+  // so finished games nobody predicted still show their score (ungraded).
+  function mergeServerResults() {
+    if (!wcServer) return false;
+    const covered = coveredMatchKeys();
+    let touched = false;
+    Object.keys(wcServer).forEach(function (k) {
+      const sr = wcServer[k];
+      if (!sr || !Number.isFinite(sr.home_score) || !Number.isFinite(sr.away_score)) return;
+      const variants = keyVariants(sr.home_team, sr.away_team, sr.commence_time);
+      if (variants.some(function (v) { return covered[v]; })) return; // a lock/result already shows it
+      const id = 'srv:' + k;
+      const cur = wcResults[id];
+      if (cur && cur.home_score === sr.home_score && cur.away_score === sr.away_score) return;
+      wcResults[id] = {
+        completed: !!sr.completed, home_score: sr.home_score, away_score: sr.away_score,
+        home_team: sr.home_team, away_team: sr.away_team,
+        commence_time: sr.commence_time, src: 'reg', noPick: true,
+      };
+      touched = true;
+    });
+    if (touched) saveResults();
+    return touched;
+  }
   function fetchServerState() {
     return fetch(WC_RESULTS_FN, { cache: 'no-store' })
       .then(function (res) { return res.ok ? res.json() : null; })
       .then(function (data) {
         if (!data) return;
         wcServer = data.results || {};
-        // Locks first (they create the rows), then results (they grade them).
+        // Locks first (they create predicted rows), then attach results to
+        // them, then add result-only rows for completed games nobody locked.
         const a = mergeServerLocks(data.locks || {});
         const b = applyServerResults();
-        if (a || b) renderFixtures();
+        const c = mergeServerResults();
+        if (a || b || c) renderFixtures();
       })
       .catch(function () { /* offline or not deployed yet: leave local data */ });
   }
@@ -982,7 +1023,16 @@
       if (started && lock) { home = lock.home; away = lock.away; locked = true; }
       else if (live) { const o = consensus(live); home = o.home; away = o.away; locked = started; }
       else if (lock) { home = lock.home; away = lock.away; locked = started; }
-      if (!Number.isFinite(home) || !Number.isFinite(away)) return;
+
+      if (!Number.isFinite(home) || !Number.isFinite(away)) {
+        // No odds were ever captured for this match, but if it finished we can
+        // still show the score (ungraded, no pick) so no completed game is hidden.
+        if (res && res.completed) {
+          rows.push({ id: id, home_team: home_team, away_team: away_team, commence_time: commence_time,
+            started: true, locked: false, home: NaN, away: NaN, picks: null, result: res });
+        }
+        return;
+      }
 
       rows.push({ id: id, home_team: home_team, away_team: away_team, commence_time: commence_time,
         started: started, locked: locked, home: home, away: away,
@@ -1016,13 +1066,19 @@
     const res = r.result;
     const done = res && res.completed;
     const live = res && !res.completed;
+    const noPick = !r.picks;
 
-    let ptsCell = '<span class="wc-pick">' + pickStr(r.picks.points) + '</span>';
-    let exactCell = '<span class="wc-pick">' + pickStr(r.picks.exact) + '</span>';
+    // Result-only row: a finished match nobody had odds/picks for. Show the
+    // score, dash out the odds and both picks, and don't grade it.
+    let ptsCell = noPick ? '<span class="wc-pick wc-nopick">&mdash;</span>' : '<span class="wc-pick">' + pickStr(r.picks.points) + '</span>';
+    let exactCell = noPick ? '<span class="wc-pick wc-nopick">&mdash;</span>' : '<span class="wc-pick">' + pickStr(r.picks.exact) + '</span>';
+    const oddsCell = noPick ? '<span class="wc-nopick">&mdash;</span>' : (r.home.toFixed(2) + ' / ' + r.away.toFixed(2));
     let resultCell;
     if (done) {
-      ptsCell += ' ' + ptsBadge(grade(r.picks.points, res.home_score, res.away_score));
-      exactCell += ' ' + ptsBadge(grade(r.picks.exact, res.home_score, res.away_score));
+      if (!noPick) {
+        ptsCell += ' ' + ptsBadge(grade(r.picks.points, res.home_score, res.away_score));
+        exactCell += ' ' + ptsBadge(grade(r.picks.exact, res.home_score, res.away_score));
+      }
       resultCell = '<span class="wc-result">' + res.home_score + '-' + res.away_score + '</span>';
     } else if (live) {
       resultCell = '<span class="wc-result wc-live">' + res.home_score + '-' + res.away_score + ' live</span>';
@@ -1038,7 +1094,7 @@
     tr.innerHTML =
       '<td class="wc-time">' + fmtWhen(r.commence_time) + ' ' + lockTag + '</td>' +
       '<td class="wc-match">' + r.home_team + ' vs ' + r.away_team + changedTag + '</td>' +
-      '<td class="wc-odds">' + r.home.toFixed(2) + ' / ' + r.away.toFixed(2) + '</td>' +
+      '<td class="wc-odds">' + oddsCell + '</td>' +
       '<td>' + ptsCell + '</td>' +
       '<td>' + exactCell + '</td>' +
       '<td>' + resultCell + '</td>';
@@ -1073,7 +1129,7 @@
   function renderSummary(rows) {
     let n = 0, ptsTotal = 0, ptsExact = 0, ptsOutcome = 0, exactHits = 0, exactPts = 0;
     rows.forEach(function (r) {
-      if (!r.result || !r.result.completed) return;
+      if (!r.result || !r.result.completed || !r.picks) return; // result-only rows aren't graded
       n++;
       const hs = r.result.home_score, as = r.result.away_score;
       const gp = grade(r.picks.points, hs, as);
