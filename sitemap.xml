@@ -2,7 +2,7 @@
 <!--
   Sitemap index file. References the three sub-sitemaps:
     - sitemap-pages.xml      — static marketing + app-landing pages
-    - sitemap-shows.xml      — auto-generated per-show pages for Rising Seasons
+    - sitemap-shows.xml      — auto-generated per-show pages for Rising Shows
     - sitemap-exercises.xml  — auto-generated per-exercise pages for Gym Tracker
   Submitting this single URL to Google Search Console covers all three.
 -->
@@ -12,7 +12,7 @@
     <lastmod>2026-06-13</lastmod>
   </sitemap>
   <sitemap>
-    <loc>https://shevato.com/apps/rising-seasons/sitemap-shows.xml</loc>
+    <loc>https://shevato.com/apps/rising-shows/sitemap-shows.xml</loc>
     <lastmod>2026-05-19</lastmod>
   </sitemap>
   <sitemap>

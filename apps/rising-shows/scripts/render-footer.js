@@ -3,7 +3,7 @@
 // Shared footer used by every static page in this app. Inlined into the
 // HTML at build time — no JS partial-include — so the cross-app links
 // are visible to Googlebot and to JS-disabled visitors. Keep this in
-// sync with apps/rising-shows/scripts/render-footer.js.
+// sync with apps/gym-tracker/scripts/render-footer.cjs.
 function renderMoreFooter() {
   return `<footer class="page-footer">
     <nav class="footer-more" aria-label="More Shevato apps">
@@ -17,6 +17,10 @@ function renderMoreFooter() {
         <li><a href="/apps/rising-shows/"><strong>Rising Shows</strong><span> · TV shows by the shape of their rating trend</span></a></li>
       </ul>
     </nav>
+    <div class="data-attribution">
+      <a class="tmdb-logo-link" href="https://www.themoviedb.org/" target="_blank" rel="noopener noreferrer" aria-label="The Movie Database (TMDB)"><img class="tmdb-logo" src="/apps/rising-shows/images/tmdb-logo.svg" alt="TMDB" width="108" height="14" loading="lazy"></a>
+      <p>This product uses the TMDB API but is not endorsed or certified by TMDB. Streaming data powered by <a href="https://www.justwatch.com/" target="_blank" rel="noopener noreferrer">JustWatch</a>. Information courtesy of IMDb (<a href="https://www.imdb.com/" target="_blank" rel="noopener noreferrer">https://www.imdb.com</a>). Used with permission.</p>
+    </div>
     <p class="copyright">© Shevato LLC · <a href="/">shevato.com</a> · <a href="/about.html">About</a> · <a href="/contact.html">Contact</a></p>
   </footer>`;
 }
