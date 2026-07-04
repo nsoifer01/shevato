@@ -203,7 +203,10 @@
     color: var(--muted); font-size: 0.85rem; cursor: pointer;
   }
   .wc-status { color: var(--muted); font-size: 0.85rem; width: 100%; }
-  .wc-table .wc-match { white-space: normal; min-width: 12rem; }
+  /* Tighter cells + a narrower Match column so all six columns (through
+     Result) fit the page width on desktop without horizontal clipping. */
+  .wc-table th, .wc-table td { padding: 0.55rem 0.6rem; }
+  .wc-table .wc-match { white-space: normal; min-width: 8.5rem; }
   .wc-table .wc-pick { font-family: var(--mono); font-weight: 700; color: var(--good); }
   .wc-table .wc-nopick { color: var(--muted-2); font-weight: 400; }
   .wc-table .wc-odds, .wc-table .wc-time { font-family: var(--mono); }
@@ -268,8 +271,9 @@
   .wc-table .wc-result.wc-live { color: var(--accent-2); }
   .wc-pending { color: var(--muted-2); font-size: 0.85rem; }
   .wc-lock {
+    display: block; margin-top: 0.15rem;
     color: var(--muted-2); font-size: 0.68rem; font-weight: 700; text-transform: uppercase;
-    letter-spacing: 0.04em; margin-left: 0.35rem;
+    letter-spacing: 0.04em;
   }
 
   /* Collapsible sections (calculator, mapping, methodology, help) */
