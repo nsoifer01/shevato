@@ -3864,28 +3864,37 @@ body.maptap-rivals-app select option {
   color: #fff;
   opacity: 1;
   /* Never exceed the (fixed-layout) cell; the name shrinks so the icon and
-     the (avg) annotation always stay inside the cell. */
+     the text column always stay inside the cell. */
   max-width: 100%;
 }
 .matrix-head-chip .matrix-head-name { color: #fff; }
-/* Icon and avg keep their intrinsic width; only the name gives ground. */
+/* Icon keeps its intrinsic width; the text column gives ground. */
 .matrix-head-icon { font-size: 1rem; flex: none; }
+/* Name over avg: a vertical column beside the icon. The name uses the full
+   remaining width for its single (ellipsized) line; the avg sits under it. */
+.matrix-head-text {
+  display: inline-flex;
+  flex-direction: column;
+  justify-content: center;
+  min-width: 0;
+  flex: 0 1 auto;
+  line-height: 1.1;
+}
 .matrix-head-name {
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
   min-width: 0;
-  flex: 0 1 auto;
   max-width: 9rem;
 }
-/* Player's average daily score, shown after the name since the Avg score
-   subtab was removed. Quiet, smaller, never wraps away from the name. */
+/* Player's average daily score, stacked directly under the name. Quiet and
+   smaller; a tight line-height keeps the two lines within the cell height. */
 .matrix-head-avg {
   color: var(--muted);
   font-size: 0.72rem;
   font-weight: 500;
+  line-height: 1.1;
   white-space: nowrap;
-  flex: none;
 }
 
 .matrix-cell {
@@ -4064,21 +4073,15 @@ body.maptap-rivals-app select option {
     min-width: 5rem;
     max-width: 7rem;
   }
-  .matrix-row-head .matrix-head-chip {
-    flex-wrap: wrap;
-    gap: 0 0.3rem;
-    align-items: center;
-  }
+  .matrix-row-head .matrix-head-chip { gap: 0.3rem; align-items: center; }
   .matrix-row-head .matrix-head-name {
     max-width: 4.6rem;
     font-size: 0.78rem;
   }
-  /* avg moves UNDER the name as its own quiet line. */
+  /* avg stays UNDER the name (the text column stacks it) as a quiet line. */
   .matrix-row-head .matrix-head-avg {
-    flex-basis: 100%;
     font-size: 0.62rem;
     line-height: 1.1;
-    margin-top: 0.05rem;
   }
 
   /* Cells: consistent size, records forced single-line, tighter padding. */
