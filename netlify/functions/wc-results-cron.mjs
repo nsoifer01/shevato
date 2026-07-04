@@ -36,12 +36,20 @@ const SCORES_URL = `https://api.the-odds-api.com/v4/sports/${SPORT}/scores/?days
 const DAY = 86400000;
 const HOUR = 3600000;
 
-export default async function handler() {
+export default async function handler(req) {
   const store = getStore(STORE_NAME);
 
-  // This site does not inject env vars into functions, so the key is read from
-  // a Blob written out-of-band (netlify blobs:set). Env var is still preferred
-  // if it ever starts working.
+  // One-time setup. This site does not inject env vars into functions, and the
+  // CLI blob store is a different context from the function runtime store, so
+  // the key is written through the function itself and read back from the same
+  // store on later runs. This path is removed once the key is stored.
+  let setkey = null;
+  try { setkey = new URL(req.url).searchParams.get('setkey'); } catch (e) { /* scheduled run: no url */ }
+  if (setkey) {
+    await store.setJSON(CONFIG_KEY, { oddsApiKey: setkey });
+    return new Response('config stored');
+  }
+
   const cfg = (await store.get(CONFIG_KEY, { type: 'json' })) || {};
   const key = process.env.ODDS_API_KEY || cfg.oddsApiKey;
   if (!key) return new Response('Odds API key not configured (env or config blob)', { status: 500 });
