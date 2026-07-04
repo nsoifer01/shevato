@@ -9,6 +9,9 @@
 export const STORE_NAME = 'score-predictor';
 export const RESULTS_KEY = 'results';
 export const LOCKS_KEY = 'locks';
+// Holds { oddsApiKey } written out-of-band (netlify blobs:set) because this
+// site does not inject env vars into functions. Never served to the browser.
+export const CONFIG_KEY = 'config';
 
 // Median of a numeric list (used for consensus odds across bookmakers).
 export function median(arr) {

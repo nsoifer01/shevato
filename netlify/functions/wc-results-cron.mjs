@@ -25,7 +25,7 @@
 // A cold start (no data yet) calls both once to bootstrap.
 
 import { getStore } from '@netlify/blobs';
-import { STORE_NAME, RESULTS_KEY, LOCKS_KEY, matchKey, oddsConsensus } from './lib/wc-store.mjs';
+import { STORE_NAME, RESULTS_KEY, LOCKS_KEY, CONFIG_KEY, matchKey, oddsConsensus } from './lib/wc-store.mjs';
 
 export const config = { schedule: '0 * * * *' };
 
@@ -37,10 +37,15 @@ const DAY = 86400000;
 const HOUR = 3600000;
 
 export default async function handler() {
-  const key = process.env.ODDS_API_KEY;
-  if (!key) return new Response('ODDS_API_KEY is not configured', { status: 500 });
-
   const store = getStore(STORE_NAME);
+
+  // This site does not inject env vars into functions, so the key is read from
+  // a Blob written out-of-band (netlify blobs:set). Env var is still preferred
+  // if it ever starts working.
+  const cfg = (await store.get(CONFIG_KEY, { type: 'json' })) || {};
+  const key = process.env.ODDS_API_KEY || cfg.oddsApiKey;
+  if (!key) return new Response('Odds API key not configured (env or config blob)', { status: 500 });
+
   const prevResults = (await store.get(RESULTS_KEY, { type: 'json' })) || {};
   const prevLocks = (await store.get(LOCKS_KEY, { type: 'json' })) || {};
   const results = { ...(prevResults.results || {}) };
