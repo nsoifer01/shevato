@@ -39,23 +39,11 @@ function score90(s) {
   return { home: h, away: a };
 }
 
-export default async function handler(req) {
+export default async function handler() {
   const store = getStore(STORE_NAME);
 
-  // One-time credential setup (env vars are not injected into functions here).
-  try {
-    const u = new URL(req.url);
-    const setfd = u.searchParams.get('setfd');
-    const setkey = u.searchParams.get('setkey');
-    if (setfd || setkey) {
-      const c = (await store.get(CONFIG_KEY, { type: 'json' })) || {};
-      if (setfd) c.footballDataToken = setfd;
-      if (setkey) c.oddsApiKey = setkey;
-      await store.setJSON(CONFIG_KEY, c);
-      return new Response('config stored');
-    }
-  } catch (e) { /* scheduled run: no url */ }
-
+  // Credentials live in the config blob (oddsApiKey, footballDataToken),
+  // written once out-of-band; env vars are not injected into functions here.
   const cfg = (await store.get(CONFIG_KEY, { type: 'json' })) || {};
   const oddsKey = process.env.ODDS_API_KEY || cfg.oddsApiKey;
   const fdToken = process.env.FD_TOKEN || cfg.footballDataToken;
