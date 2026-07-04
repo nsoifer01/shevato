@@ -3,7 +3,7 @@
  *
  * Loaded LAST so it wins specificity ties against the older gym-tracker.css
  * rules. The goal is to align typography, surfaces, spacing, and empty/zero
- * states with the polished Rising Seasons / MapTap reference apps without
+ * states with the polished Rising Shows / MapTap reference apps without
  * changing any JS, IDs, or event handlers.
  *
  * Scope: every selector is body.gym-tracker-scoped (or uses a more specific

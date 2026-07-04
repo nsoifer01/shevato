@@ -4535,7 +4535,7 @@
     });
   }
 
-  // Numbered pager in the rising-seasons style: Prev, page numbers with
+  // Numbered pager in the rising-shows style: Prev, page numbers with
   // ellipsis gaps, Next. The current page is marked aria-current; disabled
   // ends are non-interactive. Hidden when there's only one page (or the
   // page-size is "All"), matching the other apps' behavior.

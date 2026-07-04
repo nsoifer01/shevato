@@ -1,0 +1,164 @@
+# Rising Shows
+
+Rank whole TV shows by the **shape** of their IMDb episode ratings, not the average. The **Show Finder** aggregates every rated episode of a series into one row per show (total rated episodes, episode-weighted average episode rating, and the gap between that and the show's own IMDb rating), then lets you filter and sort to surface the shows whose seasons kept climbing, stayed consistently great, slow-burned into their back half, built to a big finale, or rebounded after a mid-run dip - plus the hidden gems whose episodes outscore their reputation. Open any show to see its season-by-season trajectory.
+
+## How it works
+
+1. A Node script (`scripts/build-data.js`) streams three gzipped TSV dumps from IMDb, joins episodes with their ratings, runs each season through eleven shape detectors (plus two series-level shapes applied across a show's seasons in a post-pass), and writes `data.json` with every season that passes the vote/episode floor (tagged with every shape it fits — seasons matching no shape are still included with `shapes: []`).
+2. Two optional enrichment scripts pull TMDB metadata: `scripts/enrich-tmdb.js` for posters, overviews, and language; `scripts/enrich-providers.js` for US streaming providers (Netflix / Max / Prime / …). Both cache to `data/tmdb-cache.json` so they survive rebuilds.
+3. `index.html` loads `data.json` in the browser and renders the **Show Finder**: one row per show (total rated episodes, episode-weighted average episode rating, the gap vs the show's IMDb rating, votes, total runtime) with show-shape chips, mood presets, search, grid + list views, tri-state genres, decade/year, language, sort, pagination via IntersectionObserver, and an active-filter bar. It draws a season-average sparkline per show - single-season shows draw their episode trajectory in a distinct orange. Watched tracking persists to localStorage, and all filter/view state lives in the URL hash so any view is shareable. No extra data or backend: it derives everything client-side from the fields already in `data.json`.
+4. The show-shape chips classify each show by the shape of its per-season averages (the same eleven detectors `match.js` runs per episode, now loaded in the browser too, so there is one source of truth), so a "rising" show is one whose seasons kept getting better; a show needs 2+ seasons to carry a cross-season shape, so single-season shows have no shape. Open any show to see a detail modal with its season-by-season trajectory. See the feature table below.
+
+`data.json` is committed to the repo and refreshed weekly by GitHub Actions — no manual updates needed. See [`DATA_README.md`](DATA_README.md) for the auto-refresh details.
+
+## Shapes
+
+| Shape          | Rule                                                                          |
+| -------------- | ----------------------------------------------------------------------------- |
+| Rising         | Each episode's rating ≥ the previous one (non-decreasing).                    |
+| Consistent     | All episodes ≥ 8.0 with a spread of ≤ 0.5.                                    |
+| Slow burn      | Second-half average ≥ first-half average + 0.6.                               |
+| Big finale     | Finale beats every other episode by at least one IMDb step (0.1), so it is the season's clear peak. |
+| Rebound        | A real interior dip (≥ 0.4 below the start/end), recovers above the start.    |
+| Front-loaded   | First-half average ≥ second-half average + 0.6 (mirror of slow burn).         |
+| Declining      | Each episode's rating ≤ the previous one, with first strictly > last.         |
+| Bad finale     | Finale is the season's trough AND ≤ season average − 0.5.                     |
+| Rollercoaster  | Many large adjacent direction-flips with a wide range (chaotic seasons).      |
+| Mid-peak       | Peak sits in the middle half of the season, well above both edges.            |
+| U-shaped       | Opener and finale are both season peaks (each strictly above every interior episode), with at least one interior dip ≥ 0.5 below the opener or finale. |
+| Saved best for last | Series-level: a show with 3+ seasons whose final, highest-numbered season is also its highest-rated. |
+| Shape drift    | Series-level: a show's final season changes its dominant shape from earlier seasons, or extends a ≥ 0.5 cross-season ratings decline. |
+
+A season can match more than one shape — the card shows all of them.
+
+## Browser app features
+
+| Feature                  | What it does                                                                                       |
+| ------------------------ | -------------------------------------------------------------------------------------------------- |
+| Show Finder (main view)  | The app's single view: one result per show, aggregated across all of a show's seasons (total rated episodes, episode-weighted average episode rating, the gap vs the show's IMDb rating, votes, and total runtime). A row of **show-shape chips** and **mood presets** (see below), a search box with autocomplete suggestions (matching show title or IMDb ID, with typo-tolerant "Did you mean?" results, picking one opens that show), grid/list view toggle, tri-state genre chips (require / exclude in red / clear), decade buttons and a year range, a language filter, quick vote-threshold chips, gap-direction segments, and advanced numeric thresholds plus a sort dropdown. List view is a sortable table with clickable column headers; grid view shows show cards with a color-coded gap badge. Results are paginated (24 per page) with an active-filter chip bar, a "Clear filters" button, and a "Copy link" button. All filters live in the URL hash, so a shared or refreshed link reopens the same view. Click a card or row to open the show modal. |
+| Show-shape filter        | Toggle one or more shape chips to filter shows by the **shape of their per-season averages** (not per episode): a "rising" show is one whose season averages keep climbing, "rebound" dips then recovers, "declining" never improves, and so on. Classified by the same eleven detectors `scripts/match.js` runs per episode, loaded in the browser so there's one source of truth. A show needs ≥ 2 seasons to have a cross-season shape, so single-season shows carry no shape and are excluded while a shape filter is active. AND across selected shapes. Each chip's count updates as you pick shapes: an inactive chip shows how many current results would remain if you added it, and a shape that would drop results to zero is greyed/disabled rather than hidden so the row stays stable. Selected shapes show as removable chips in the active-filter bar and serialize to the hash (`fShape=`). |
+| Mood presets             | One-tap "Explore by mood" chips tuned to whole-show stats (Modern prestige, Crowd favorites, Kept climbing, Comeback stories, Marathon-worthy, Outshines its reputation), each with a count of how many shows it yields. Each applies an absolute filter combination - a couple lean on the show-level shapes (Kept climbing = rising, Comeback stories = rebound). Clicking the active preset clears it. The `.mood-collapsible` rail centers and collapses behind an "Explore by mood" toggle pill on mobile. |
+| Genre filter (tri-state) | Click a chip to **require** that genre; click again to **exclude** it (red strike); third click clears. AND across required genres. The top 8 genres live as chips in the quick-filters panel (the advanced drawer no longer duplicates them). |
+| Decade filter            | "80s / 90s / 00s / 10s / 20s" quick chips set the year range in one tap (synced with the advanced-drawer year inputs); "All" clears it. |
+| Language filter          | Multi-select chips for the top original languages (TMDB `original_language`).                      |
+| Streaming filter         | Multi-select chips for top US watch providers (Netflix, HBO Max, Prime …).                         |
+| Hidden gems toggle       | Surfaces shows with a high average episode rating *and* few votes per episode.                       |
+| Surprise me / Popular pick | "Surprise me" jumps to a random show matching the active filters; "Popular pick" draws that random pick from the 50 most-watched matches. |
+| Episode-title search     | Searching ≥3 chars also matches against episode names - "Gray Matter" opens Breaking Bad.           |
+| Compare shows            | "+ Add to compare" on each show, then a floating button opens an overlay chart of season-trajectories for up to 5 series (persisted in localStorage). |
+| Season overlay           | In the show modal, all seasons drawn together on one chart with a legend; clicking a legend entry (the swatch or the S-number) hides/restores that season's line. |
+| Best / worst badges      | Inline pill on the highest- and lowest-rated season of each series (skipped when all seasons tie). |
+| Cast strip               | The show modal shows a top-billed cast strip, populated from the TMDB enrichment in `data.json`; the section stays hidden for series with no cast data. |
+| Watched tracking         | Per-season toggle; persists in localStorage; "watched / unwatched" filters and stats.              |
+| Sensitive posters        | Posters for titles carrying the IMDb "Adult" genre render blurred, with a light overlay: a small eye-off badge flags the content in the top-left corner and a prominent centered "Tap to reveal" pill is the action (badge-only on small thumbnails). The blur is deliberately the only obstruction, so the blurred artwork and the always-visible title still give context. Clicking reveals that one poster without opening its modal; the reveal is per-poster and per-session (re-blurs on reload). Applies to every surface: Seasons + Finder cards and list rows, both detail modals, related-show rows, and search-suggestion thumbnails. Adult titles are detected by genre on any season; lightweight surfaces (suggestions) fall back to a precomputed adult-series-ID set. Fallback poster tiles (no TMDB image, just the title) are left legible since they show no art. |
+| Above-IMDb badge         | Marks seasons whose average episode rating beats the show's overall IMDb score.                    |
+| More shows like this     | The show modal lists up to 10 shows that share a genre, a compatible original language (English suggests English; other languages match within broad family groups - Romance, European, Asian, Middle Eastern), and a similar popularity (votes/episode within 10x), with the closest gap between their IMDb rating and their average episode rating. The first 4 show; an "N more" toggle expands the rest; click one to open that show. |
+| Copy link                | A "Copy link" button in the active-filter bar copies the current filtered-view URL to the clipboard whenever any filter is active. |
+| Scroll restoration       | Reloading or returning to the grid restores the previous scroll position (saved per tab in sessionStorage) once the grid has rendered; deep links to a modal or a real anchor win over the saved offset. |
+
+## Static show pages (SEO)
+
+`scripts/build-show-pages.js` (run via `npm run build:rising-shows:pages`, and on
+every Netlify deploy through `npm run build:site`) renders one static HTML page per
+series under `apps/rising-shows/shows/` plus an A-Z index and `sitemap-shows.xml`.
+These are gitignored build artifacts, derived from the committed `data.json`.
+
+Each page (`scripts/render-show-page.js`) emits:
+
+- `BreadcrumbList` and `TVSeries` JSON-LD, plus one `TVSeason` block per season with
+  `aggregateRating` (rating value + vote count), `partOfSeries`, and a `#season-N` URL,
+  so search engines can surface per-season rating data.
+- A season jump nav (`S1 S2 S3 …`) on shows with 4 or more seasons, linking to each
+  `#season-N` anchor.
+- Open Graph and Twitter card meta, including `og:image:alt` and `twitter:label`/`data`
+  pairs that carry the dominant shape and average episode rating into link previews.
+
+**Sensitive (adult) posters.** Pages for titles carrying the IMDb "Adult" genre blur
+the hero poster (and any adult related-show thumbnail) behind a CSS-only click-to-reveal
+overlay — a hidden checkbox toggled by the overlay label, since these static pages ship
+no app JS. Because a link/search preview image can't be blurred, the `og:image`,
+`twitter:image`, and the `TVSeries` JSON-LD `image` are swapped for the neutral site card
+(`/images/og-card.png`, 1200x630) for adult titles, so no explicit art leaks into social
+or search results.
+
+## One-time setup
+
+1. Download the three dataset files from <https://datasets.imdbws.com/> into `apps/rising-shows/data/`:
+
+   ```sh
+   cd apps/rising-shows/data
+   curl -O https://datasets.imdbws.com/title.basics.tsv.gz
+   curl -O https://datasets.imdbws.com/title.episode.tsv.gz
+   curl -O https://datasets.imdbws.com/title.ratings.tsv.gz
+   ```
+
+   ~250 MB compressed. The TSVs are git-ignored.
+
+2. From the repo root:
+
+   ```sh
+   npm run build:rising-shows
+   ```
+
+   ~20 seconds. Writes `apps/rising-shows/data.json` (also git-ignored — it's a build artifact). IMDb republishes the dumps daily, so re-running picks up new ratings.
+
+## Optional: TMDB enrichment
+
+The app uses TMDB for posters, plot summaries, original language, and US streaming providers. All of it is optional — `data.json` is valid without any of it.
+
+1. Sign up at <https://www.themoviedb.org/signup>.
+2. Generate a v4 read access token at <https://www.themoviedb.org/settings/api>.
+3. Run the two enrichment scripts in order, then rebuild so `data.json` picks up the cache:
+
+   ```sh
+   # Posters + overviews + original_language (one /find call per series).
+   TMDB_TOKEN=eyJh...your_token... npm run enrich:rising-shows
+
+   # US watch providers (one /tv/{id}/watch/providers call per series).
+   TMDB_TOKEN=eyJh...your_token... npm run enrich:rising-shows:providers
+
+   # Merge both into data.json.
+   npm run build:rising-shows
+   ```
+
+   Both scripts are incremental: they skip cache entries that already have the data they fetch, so re-runs only hit TMDB for new or previously-failed series. First-run cost is ~15-20 minutes for posters and another ~25-30 for providers (both throttled to ~6 req/s).
+
+The app degrades gracefully without each layer:
+- No posters → cards show a gradient placeholder.
+- No language → language filter chips just don't render.
+- No providers → streaming filter and show-modal badges don't render.
+
+## Build tunables
+
+Pass via env vars to `build-data.js`:
+
+| Var            | Default | Meaning                                          |
+| -------------- | ------- | ------------------------------------------------ |
+| `MIN_EPISODES` | `3`     | Skip seasons with fewer rated episodes           |
+| `MIN_VOTES`    | `5`     | Every episode must have at least this many votes |
+
+The default vote floor is deliberately low — IMDb's per-episode vote counts can be tiny for older shows, foreign series, reality TV, and short-run formats, and a high floor at build time wipes them out. The browser UI exposes its own minimum-votes filter and a popularity-sorted view, so building wide and filtering narrow in the UI is the easy path.
+
+## Viewing locally
+
+The page loads `data.json` via `fetch`, so serve the directory rather than opening `file://`:
+
+```sh
+cd apps/rising-shows
+python3 -m http.server 8000
+# open http://localhost:8000
+```
+
+The browser URL preserves your shape/genre/sort/search selection — paste a link to share a specific view.
+
+## Running tests
+
+```sh
+npm run test:rising-shows
+```
+
+## Plex + Kometa + MDBList integrations
+
+Rising Shows ships static Kometa collection YAMLs, season-poster overlay YAMLs, and flat MDBList ID lists under `exports/` — regenerated by `npm run export:rising-shows` and consumable directly from raw GitHub URLs without cloning. There is also a browser builder UI at `/apps/rising-shows/kometa/` and a `scripts/watch-next.js` CLI that queries a live Plex server.
+
+See [`INTEGRATIONS.md`](INTEGRATIONS.md) for end-to-end setup, troubleshooting, and the customization seams.

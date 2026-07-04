@@ -1,7 +1,7 @@
 [build]
-  # Regenerate Rising Seasons per-show SEO pages (and their sitemap)
+  # Regenerate Rising Shows per-show SEO pages (and their sitemap)
   # from the committed data.json on every deploy. The output lives at
-  # apps/rising-seasons/shows/ and is intentionally gitignored.
+  # apps/rising-shows/shows/ and is intentionally gitignored.
   command = "npm run build:site"
   functions = "netlify/functions"
 
@@ -52,6 +52,18 @@
 [[redirects]]
   from = "/apps/brain-arena/*"
   to = "/apps/arena/:splat"
+  status = 301
+  force = true
+
+# Rising Seasons was rebranded to "Rising Shows" and refocused from browsing
+# individual seasons to ranking whole shows by the shape of their rating
+# trend. The directory moved from /apps/rising-seasons/ → /apps/rising-shows/.
+# The splat catches every deep link (the ~400 per-show SEO pages, the kometa
+# builder, the A-Z index) so existing bookmarks and indexed pages forward
+# cleanly with a permanent 301.
+[[redirects]]
+  from = "/apps/rising-seasons/*"
+  to = "/apps/rising-shows/:splat"
   status = 301
   force = true
 
