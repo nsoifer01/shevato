@@ -1,0 +1,244 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <script src="../../../sync-system/sync-immediate.js"></script>
+
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="description" content="Build Plex collections and season-poster badges from Rising Shows. Pick which shape patterns (rising, slow-burn, big-finale, rebound, …) to surface in your Plex library via Kometa.">
+  <meta name="keywords" content="rising shows, plex, kometa, plex meta manager, season shapes, plex collections, season overlays, mdblist, tv show curation">
+  <meta name="author" content="Shevato LLC">
+  <meta name="robots" content="index, follow">
+  <meta name="theme-color" content="#0b0d12">
+  <meta name="color-scheme" content="dark">
+  <link rel="canonical" href="https://shevato.com/apps/rising-shows/kometa/" />
+  <title>Rising Shows for Plex + Kometa - Shevato</title>
+
+  <meta property="og:title" content="Rising Shows for Plex + Kometa" />
+  <meta property="og:description" content="Generate Plex collections and season-poster badges from season-rating shapes. Drop the YAML into your Kometa config." />
+  <meta property="og:type" content="website" />
+  <meta property="og:url" content="https://shevato.com/apps/rising-shows/kometa/" />
+  <meta property="og:image" content="https://shevato.com/images/og-card.png" />
+  <meta property="og:image:width" content="1200" />
+  <meta property="og:image:height" content="630" />
+  <meta property="og:image:type" content="image/png" />
+  <meta property="og:image:alt" content="Shevato logo" />
+  <meta property="og:site_name" content="Shevato" />
+  <meta property="og:locale" content="en_US" />
+
+  <meta name="twitter:card" content="summary_large_image" />
+  <meta name="twitter:title" content="Rising Shows for Plex + Kometa" />
+  <meta name="twitter:description" content="Build Plex collections and badges from season-rating shapes. Free." />
+  <meta name="twitter:image" content="https://shevato.com/images/og-card.png" />
+  <meta name="twitter:image:alt" content="Shevato logo" />
+  <meta name="twitter:site" content="@shevato" />
+
+  <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>📈</text></svg>">
+
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" integrity="sha384-iw3OoTErCYJJB9mCa8LNS2hbsQ7M3C0EpIsO/H5+EGAkPGc6rk+V8i04oW/K5xq0" crossorigin="anonymous" referrerpolicy="no-referrer">
+  <link rel="stylesheet" href="../../../assets/css/main.css">
+  <link rel="stylesheet" href="../../../assets/css/sync-status.css">
+  <link rel="stylesheet" href="../css/styles.css">
+  <link rel="stylesheet" href="../css/kometa.css">
+  <link rel="stylesheet" href="/assets/css/back-to-top.css">
+</head>
+<body class="rising-shows-app rising-shows-kometa">
+  <div id="sync-banner" class="sync-banner" role="status" aria-live="polite" hidden></div>
+  <div data-include="header"></div>
+
+  <main class="page kometa-page">
+    <header class="hero kometa-hero">
+      <h1>Plex + Kometa</h1>
+      <p class="tagline">Turn season-rating <em>shapes</em> into Plex collections and poster badges</p>
+      <p class="hero-secondary">
+        <a href="../index.html" class="hero-link">← Back to Rising Shows</a>
+        <span class="hero-sep" aria-hidden="true">•</span>
+        <a href="https://kometa.wiki/" target="_blank" rel="noopener" class="hero-link">What is Kometa? ↗</a>
+      </p>
+    </header>
+
+    <section class="kometa-intro" aria-label="What this does">
+      <div class="kometa-tile">
+        <div class="kometa-tile-icon" aria-hidden="true">📚</div>
+        <h2>Shape collections</h2>
+        <p>One Plex collection per shape - "Slow Burn Seasons", "Big Finale Seasons", "Rebound Seasons". Kometa builds them from TMDB / TVDB IDs.</p>
+      </div>
+      <div class="kometa-tile">
+        <div class="kometa-tile-icon" aria-hidden="true">🏷️</div>
+        <h2>Season-poster badges</h2>
+        <p>Small text overlays - <span class="badge-demo">FINALE</span> <span class="badge-demo">BURN</span> <span class="badge-demo">BEST</span> - appear on individual season posters so you spot the standouts at a glance.</p>
+      </div>
+      <div class="kometa-tile">
+        <div class="kometa-tile-icon" aria-hidden="true">📋</div>
+        <h2>MDBList lists</h2>
+        <p>Plain IMDb-ID text files you can paste into MDBList to share or chain into other tooling.</p>
+      </div>
+      <div class="kometa-tile">
+        <div class="kometa-tile-icon" aria-hidden="true">🔭</div>
+        <h2>Show Finder presets</h2>
+        <p>Saved <a href="../index.html#view=finder">Show Finder</a> filters published as ready-made Plex collections that rebuild themselves every time the data refreshes. <a href="#finderPresets">Details below ↓</a></p>
+      </div>
+    </section>
+
+    <section class="kometa-builder" aria-label="Build your Kometa config" id="builderSection">
+      <header class="kometa-builder-head">
+        <h2>Build your config</h2>
+        <p class="kometa-builder-sub">Pick the shapes you want, adjust the confidence floor, then copy the YAML or download it.</p>
+      </header>
+
+      <div class="kometa-status" id="kometaStatus" role="status" aria-live="polite">
+        Loading dataset…
+      </div>
+
+      <div class="kometa-builder-grid" hidden id="builderGrid">
+        <aside class="kometa-controls">
+          <fieldset class="kometa-fieldset">
+            <legend>Shapes</legend>
+            <div class="kometa-shape-actions">
+              <button type="button" class="btn btn-ghost btn-xs" id="shapesSelectAll">Select all</button>
+              <button type="button" class="btn btn-ghost btn-xs" id="shapesClearAll">Clear</button>
+              <button type="button" class="btn btn-ghost btn-xs" id="shapesDefaults" title="Rising, Slow burn, Big finale, Rebound, Saved best for last">Defaults</button>
+            </div>
+            <div class="kometa-shape-list" id="shapeList"></div>
+          </fieldset>
+
+          <fieldset class="kometa-fieldset">
+            <legend>Confidence floor</legend>
+            <p class="kometa-help">Higher values keep only the strongest-matching seasons. 0.35 is a good default.</p>
+            <div class="kometa-slider-row">
+              <input type="range" id="confidenceSlider" min="0.10" max="0.90" step="0.05" value="0.35">
+              <output id="confidenceValue">0.35</output>
+            </div>
+            <p class="kometa-help kometa-floor-effect" id="floorEffect"></p>
+          </fieldset>
+
+          <fieldset class="kometa-fieldset">
+            <legend>Output</legend>
+            <label class="kometa-radio">
+              <input type="radio" name="outputMode" value="collections" checked>
+              <span>Collections YAML <small>(one file per shape)</small></span>
+            </label>
+            <label class="kometa-radio">
+              <input type="radio" name="outputMode" value="overlays">
+              <span>Season-poster overlays</span>
+            </label>
+            <label class="kometa-radio">
+              <input type="radio" name="outputMode" value="ids">
+              <span>MDBList IMDb-ID lists</span>
+            </label>
+          </fieldset>
+        </aside>
+
+        <section class="kometa-output" aria-label="Generated YAML">
+          <header class="kometa-output-head">
+            <div class="kometa-output-tabs" role="tablist" id="fileTabs"></div>
+            <div class="kometa-output-actions">
+              <button type="button" class="btn btn-ghost" id="copyBtn" title="Copy to clipboard">
+                <i class="fa-regular fa-copy" aria-hidden="true"></i> Copy
+              </button>
+              <button type="button" class="btn btn-ghost" id="downloadBtn" title="Download this file">
+                <i class="fa-solid fa-download" aria-hidden="true"></i> Download
+              </button>
+              <button type="button" class="btn btn-ghost" id="downloadAllBtn" title="Download all files as a single combined YAML">
+                <i class="fa-solid fa-file-zipper" aria-hidden="true"></i> Combined
+              </button>
+            </div>
+          </header>
+          <pre class="kometa-output-pre"><code id="outputCode"></code></pre>
+          <p class="kometa-output-meta" id="outputMeta"></p>
+        </section>
+      </div>
+    </section>
+
+    <section class="kometa-howto" aria-label="Show Finder preset collections" id="finderPresets">
+      <h2>Show Finder → Plex collections</h2>
+      <p class="kometa-builder-sub">Any filter you can build in the <a href="../index.html#view=finder">Show Finder</a> - shapes, votes, years, genres, rating gaps - can live on as a Plex collection that keeps itself current. Preset lists are replayed against fresh IMDb data on every refresh and published under <code>exports/kometa/finder-*.yml</code>, so a show that newly qualifies tomorrow joins the collection on its own.</p>
+      <div class="kometa-howto-grid kometa-finder-grid">
+        <article class="kometa-step">
+          <header><span class="kometa-step-num">1</span><h3>Use a ready-made preset</h3></header>
+          <p>Curated collections like <em>Consistently Great</em> (seasons never wavered) or <em>Went Out On Top</em> (final season rated best) ship pre-built. Point Kometa at a raw URL once and you're done:</p>
+<pre><code>libraries:
+  TV Shows:
+    collection_files:
+      - url: https://raw.githubusercontent.com/nsoifer01/shevato/master/apps/rising-shows/exports/kometa/finder-consistently-great.yml</code></pre>
+          <p class="kometa-help">The live preset index with current counts is in <a href="https://github.com/nsoifer01/shevato/blob/master/apps/rising-shows/exports/README.md" target="_blank" rel="noopener">exports/README.md ↗</a>.</p>
+        </article>
+
+        <article class="kometa-step">
+          <header><span class="kometa-step-num">2</span><h3>Roll your own</h3></header>
+          <p>Dial in a filter in the <a href="../index.html#view=finder">Show Finder</a>, copy everything after <code>#</code> in the address bar, and add it as a preset in <code>finder-presets.json</code>. From the next data refresh on, your collection publishes and updates itself.</p>
+          <p class="kometa-help">Full walkthrough - preset fields, limits, and the optional local-template hook for your own collection attributes - in the <a href="https://github.com/nsoifer01/shevato/blob/master/apps/rising-shows/INTEGRATIONS.md" target="_blank" rel="noopener">integration guide ↗</a>.</p>
+        </article>
+      </div>
+    </section>
+
+    <section class="kometa-howto" aria-label="How to use the output">
+      <h2>How to use it</h2>
+      <div class="kometa-howto-grid">
+        <article class="kometa-step">
+          <header><span class="kometa-step-num">1</span><h3>Drop the YAMLs into your Kometa config</h3></header>
+          <p>Save downloaded files under <code>config/rising-shows/</code> in your Kometa install.</p>
+          <p>Prefer no copying? Point Kometa at the GitHub raw URLs - they're regenerated automatically whenever the dataset refreshes:</p>
+<pre><code>libraries:
+  TV Shows:
+    collection_files:
+      - file: config/tv_shows_collections.yml
+      - file: config/rising-shows/slow-burn.yml
+      - file: config/rising-shows/big-finale.yml
+      # …add other shape files as needed</code></pre>
+        </article>
+
+        <article class="kometa-step">
+          <header><span class="kometa-step-num">2</span><h3>Wire up season-poster overlays</h3></header>
+          <p>Add <code>season-overlays.yml</code> to your TV library's <code>overlay_files</code>:</p>
+<pre><code>libraries:
+  TV Shows:
+    overlay_files:
+      - file: config/tv_shows_overlays.yml
+      - file: config/rising-shows/season-overlays.yml</code></pre>
+          <p class="kometa-help">Run Kometa with <code>--overlays-only</code> on the first pass so you can verify a few posters before committing the full overlay run.</p>
+        </article>
+
+        <article class="kometa-step">
+          <header><span class="kometa-step-num">3</span><h3>Run Kometa</h3></header>
+<pre><code>docker exec kometa python kometa.py --run --collections-only
+# then later, once collections look good:
+docker exec kometa python kometa.py --run --overlays-only</code></pre>
+          <p>Open Plex → TV Shows → Collections. New collections appear sorted with <code>!rs_</code>-prefixed titles.</p>
+        </article>
+
+        <article class="kometa-step kometa-step-watch">
+          <header><span class="kometa-step-num">★</span><h3>"What to watch next" - CLI</h3></header>
+          <p>If you have the repo on your NAS, you can also ask which seasons of a given shape live in your Plex library right now:</p>
+<pre><code>export PLEX_URL=http://nas.local:32400
+export PLEX_TOKEN=&lt;your token&gt;
+npm run watch-next -- --shape slow-burn --limit 10</code></pre>
+          <p class="kometa-help">Pipes a JSON shape via <code>--json</code> - wire it into Discord, Notifiarr, Homarr, or any cron-driven feed.</p>
+        </article>
+      </div>
+    </section>
+  </main>
+
+  <div data-include="footer"></div>
+
+  <script src="../../../assets/js/passive-events-fix.js"></script>
+  <script src="../../../assets/js/sync-status.js"></script>
+  <script src="../../../assets/js/jquery.min.js"></script>
+  <script src="../../../assets/js/browser.min.js"></script>
+  <script src="../../../assets/js/breakpoints.min.js"></script>
+  <script src="../../../assets/js/util.js"></script>
+
+  <script type="module" src="../../../firebase-config.js"></script>
+  <script type="module" src="../../../sync-system/storage-sync-robust.js"></script>
+  <script type="module" src="../../../sync-system/app-sync-init.js"></script>
+  <script src="../../../sync-system/sync-debug.js"></script>
+
+  <script src="../../../assets/js/main.js"></script>
+
+  <!-- Shared logic: builds the YAML strings the Node export pipeline writes.
+       Loaded as a classic script so it can attach to window.RisingSeasonsIntegrations. -->
+  <script src="../scripts/integrations-lib.js"></script>
+  <script src="../js/kometa.js" defer></script>
+  <script src="/assets/js/back-to-top.js" defer></script>
+</body>
+</html>

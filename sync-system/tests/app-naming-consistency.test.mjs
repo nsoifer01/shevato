@@ -128,7 +128,7 @@ test('sitemap.xml is a sitemap-index that references every sub-sitemap', () => {
     assert.match(index, /<sitemapindex /, 'sitemap.xml should be a sitemapindex, not a flat urlset');
     const required = [
         'https://shevato.com/sitemap-pages.xml',
-        'https://shevato.com/apps/rising-seasons/sitemap-shows.xml',
+        'https://shevato.com/apps/rising-shows/sitemap-shows.xml',
         'https://shevato.com/apps/gym-tracker/sitemap-exercises.xml',
     ];
     const missing = required.filter((u) => !index.includes(`<loc>${u}</loc>`));

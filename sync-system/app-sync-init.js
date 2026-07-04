@@ -60,11 +60,16 @@ const APP_SYNC_CONFIG = {
     ]
   },
 
-  'rising-seasons': {
+  // App key + URL path are 'rising-shows' (rebranded from 'rising-seasons').
+  // The Firestore namespace and the 'rising-seasons:*' localStorage keys are
+  // deliberately kept at their legacy values so signed-in users' already-synced
+  // data (watched shows, grid/list preference) carries over the rename instead
+  // of being orphaned under a fresh namespace. app.js keeps STORAGE_NS the same
+  // for the same reason.
+  'rising-shows': {
     namespace: 'risingSeasonsApp',
     keys: [
-      'rising-seasons:watched',     // Set of watched (seriesId, season) keys
-      'rising-seasons:view'         // UI view preference (grid / list)
+      'rising-seasons:watched'      // Set of watched (seriesId, season) keys
     ]
   },
 
@@ -109,8 +114,8 @@ export async function initAppSync() {
     currentApp = 'gym-tracker';
   } else if (currentPath.includes('/maptap-rivals/')) {
     currentApp = 'maptap-rivals';
-  } else if (currentPath.includes('/rising-seasons/')) {
-    currentApp = 'rising-seasons';
+  } else if (currentPath.includes('/rising-shows/')) {
+    currentApp = 'rising-shows';
   }
 
   // Only sync the current app's namespace plus shared global prefs.

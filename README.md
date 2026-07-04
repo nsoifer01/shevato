@@ -27,7 +27,7 @@ shevato/
 │   ├── mario-kart/                   # Mario Kart race tracker (8 Deluxe + World)
 │   ├── gym-tracker/                  # Gym workout tracker (PWA, manifest + service worker)
 │   ├── football-h2h/                 # Head-to-head football league manager
-│   ├── rising-seasons/               # TV episode-rating shape analyzer + Plex/Kometa integration
+│   ├── rising-shows/                 # TV shows ranked by rating-trend shape + Plex/Kometa integration
 │   ├── maptap-rivals/                # Daily MapTap.gg head-to-head tracker
 │   └── arena/                        # Real-time multiplayer hub (Firestore Realtime DB)
 │
@@ -64,7 +64,7 @@ shevato/
 | Mario Kart Tracker | `apps/mario-kart/` | Game stats | Race log, charts, achievements. Supports MK8 Deluxe + Mario Kart World |
 | Gym Tracker | `apps/gym-tracker/` | Health | Installable PWA, offline support, programs + measurements |
 | Football H2H League | `apps/football-h2h/` | Sports stats | Match log, penalty shootouts, player comparison table |
-| Rising Seasons | `apps/rising-seasons/` | TV / multimedia | Episode-rating shape detection across thousands of shows; Plex + Kometa integration under `apps/rising-seasons/kometa/` |
+| Rising Shows | `apps/rising-shows/` | TV / multimedia | Whole TV shows ranked by the shape of their rating trend across thousands of shows; Plex + Kometa integration under `apps/rising-shows/kometa/` |
 | MapTap Rivals | `apps/maptap-rivals/` | Game tracker | Daily MapTap.gg H2H against named friends; rivalry seasons + calendar heatmap |
 | Arena | `apps/arena/` | Real-time multiplayer | Private rooms for friends — Globe Drop, Trivia, more. Requires Firestore + Realtime Database |
 
@@ -76,7 +76,7 @@ shevato/
 - Optional Firebase email/password auth for cross-device sync (apps work fine signed-out via localStorage).
 - Multi-language support (English, Russian, Hebrew) on the separately-branded landing via per-element `lang` attributes and a small switcher.
 - Reference SEO assets under `assets/seo/` (canonical Organization/WebSite JSON-LD plus a per-page metadata checklist).
-- Rising Seasons integrations: Plex + Kometa YAML builder under `apps/rising-seasons/kometa/`, plus a `watch-next` CLI for personalized recommendations. See `apps/rising-seasons/INTEGRATIONS.md`.
+- Rising Shows integrations: Plex + Kometa YAML builder under `apps/rising-shows/kometa/`, plus a `watch-next` CLI for personalized recommendations. See `apps/rising-shows/INTEGRATIONS.md`.
 
 ## Local Development
 
@@ -107,7 +107,7 @@ Node's built-in test runner is used for the apps and the shared sync system:
 npm test                            # runs every suite below
 npm run test:gym
 npm run test:football
-npm run test:rising-seasons         # render + integrations-lib
+npm run test:rising-shows           # render + integrations-lib
 npm run test:mario-kart
 npm run test:arena
 npm run test:sync                   # cross-cutting sync-system invariants

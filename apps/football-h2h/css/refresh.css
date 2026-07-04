@@ -4,7 +4,7 @@
  * Loaded LAST so it wins specificity ties. Football H2H reuses several
  * Mario Kart stylesheets (utilities/base/theme/layout/forms/overrides) +
  * a Football-specific sheet. This refresh layer aligns the hero, tabs,
- * stat cards, sidebar, and tables with the Rising Seasons / MapTap
+ * stat cards, sidebar, and tables with the Rising Shows / MapTap
  * reference apps without changing any JS, IDs, or event handlers.
  */
 

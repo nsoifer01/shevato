@@ -29,14 +29,14 @@ WhatsApp Chat *.txt:Zone.Identifier
 # Windows / WSL download metadata
 *:Zone.Identifier
 
-# Rising Seasons static SEO pages — derived from data.json at build
+# Rising Shows static SEO pages — derived from data.json at build
 # time (Netlify or the GitHub Actions refresh workflow). Not committed
 # to keep git history clean.
-apps/rising-seasons/shows/
-apps/rising-seasons/sitemap-shows.xml
+apps/rising-shows/shows/
+apps/rising-shows/sitemap-shows.xml
 
 # Gym Tracker static SEO pages — derived from exercises-db.json at
-# build time. Same rationale as Rising Seasons.
+# build time. Same rationale as Rising Shows.
 apps/gym-tracker/exercises/
 apps/gym-tracker/sitemap-exercises.xml
 
