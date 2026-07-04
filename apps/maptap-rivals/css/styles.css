@@ -3796,6 +3796,28 @@ body.maptap-rivals-app select option {
   letter-spacing: 0.04em;
 }
 
+/* Row-sort control, pushed to the right end of the controls row. */
+.matrix-sort {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+  margin-left: auto;
+}
+.matrix-sort-select {
+  font: inherit;
+  font-size: 0.85rem;
+  padding: 0.35rem 0.6rem;
+  color: #fff;
+  background: var(--surface-2);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+}
+.matrix-sort-select:focus-visible {
+  outline: 2px solid var(--accent-strong);
+  outline-offset: 1px;
+}
+
 .matrix-chip-row {
   display: flex;
   flex-wrap: wrap;
@@ -3913,6 +3935,31 @@ body.maptap-rivals-app select option {
   border: 1px dashed var(--border-strong);
   color: var(--muted-2);
   font-size: 1.1rem;
+}
+
+/* Self-cell identity stat: the player's own average + games logged. Muted so
+   it reads as an anchor, never as a win/loss result. */
+.matrix-diag-self { font-size: inherit; }
+.matrix-diag-avg {
+  color: var(--muted);
+  font-weight: 700;
+  font-size: 0.95rem;
+}
+.matrix-diag-self .matrix-meta { color: var(--muted-2); }
+
+/* Overall (totals) column: separated from the matchup grid by a divider and
+   given a heavier weight so the aggregate reads as a summary, not a matchup. */
+.matrix-total-head,
+.matrix-total {
+  border-left: 2px solid var(--border-strong);
+}
+.matrix-total .matrix-record { font-weight: 800; }
+.matrix-total-label {
+  font-size: 0.8rem;
+  font-weight: 700;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
 }
 
 .matrix-empty {
@@ -4057,11 +4104,24 @@ body.maptap-rivals-app select option {
   .matrix-wrap { padding: 0.5rem; }
   .matrix-table { border-spacing: 4px; }
 
-  /* Column heads: icon only. Name is preserved in the th `title` attribute. */
+  /* Column heads: icon over a small truncated name so each column is legible
+     without a tap. Full name still lives in the th `title` attribute. */
   .matrix-col-head { padding: 0.4rem 0.3rem; }
-  .matrix-col-head .matrix-head-name,
   .matrix-col-head .matrix-head-avg { display: none; }
-  .matrix-col-head .matrix-head-chip { justify-content: center; gap: 0; }
+  .matrix-col-head .matrix-head-chip {
+    flex-direction: column;
+    justify-content: center;
+    gap: 0.1rem;
+  }
+  .matrix-col-head .matrix-head-text { align-items: center; }
+  .matrix-col-head .matrix-head-name {
+    max-width: 4rem;
+    font-size: 0.6rem;
+    font-weight: 600;
+    text-align: center;
+    line-height: 1.1;
+  }
+  .matrix-total-head .matrix-total-label { font-size: 0.58rem; }
   .matrix-head-icon { font-size: 1.05rem; }
 
   /* Row heads: pinned to the left edge so labels survive horizontal scroll. */
