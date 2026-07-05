@@ -71,7 +71,7 @@ test('renderShowPage links to the IMDb canonical and the shape-filtered explorer
 
 test('renderShowPage CTA falls back when show has no shape', () => {
   const html = renderShowPage({ ...BREAKING_BAD, dominantShape: null, dominantShapeSlug: null, relatedShows: [] });
-  assert.ok(html.includes('Browse seasons by rating shape'));
+  assert.ok(html.includes('Browse shows by rating shape'));
   assert.ok(html.includes('href="/apps/rising-shows/"'));
 });
 
