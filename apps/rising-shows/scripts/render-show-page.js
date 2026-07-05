@@ -308,9 +308,9 @@ function renderSeasonSection(season, seriesId) {
 function renderPrimaryCtaBtn(dominantShape, dominantShapeSlug) {
   if (dominantShape && dominantShapeSlug) {
     const label = SHAPE_LABELS[dominantShape] || dominantShape;
-    return `<a class="primary-btn" href="/apps/rising-shows/#shape=${escapeHtml(dominantShapeSlug)}">Browse all ${escapeHtml(label)} seasons in the explorer →</a>`;
+    return `<a class="primary-btn" href="/apps/rising-shows/#shape=${escapeHtml(dominantShapeSlug)}">Browse all ${escapeHtml(label)} shows in the explorer →</a>`;
   }
-  return `<a class="primary-btn" href="/apps/rising-shows/">Browse seasons by rating shape →</a>`;
+  return `<a class="primary-btn" href="/apps/rising-shows/">Browse shows by rating shape →</a>`;
 }
 
 function renderFreshnessLine(builtAt, seasonCount) {
@@ -346,7 +346,7 @@ function renderRelatedShows(relatedShows, dominantShape, dominantShapeSlug) {
   return `<section class="related-shows" aria-labelledby="related-heading">
     <h2 id="related-heading">Shows like this</h2>
     <div class="rec-strip">${cards}</div>
-    <p class="rec-see-all"><a href="/apps/rising-shows/#shape=${escapeHtml(dominantShapeSlug)}">See all ${escapeHtml(shapeLabel)} seasons in the explorer →</a></p>
+    <p class="rec-see-all"><a href="/apps/rising-shows/#shape=${escapeHtml(dominantShapeSlug)}">See all ${escapeHtml(shapeLabel)} shows in the explorer →</a></p>
   </section>`;
 }
 

@@ -79,9 +79,9 @@ test('buildShowAgg aggregates seasons into show rows', () => {
 
 test('parseFinderQuery: full hash round-trips into a filter object', () => {
   const f = parseFinderQuery(
-    '#q=foo&fShape=rising,rebound&fMinVotes=50000&fMinEps=10' +
-    '&fMinShow=7&fMinAvg=7.5&fGapDir=up&fMinGap=0.5&fMinYear=2010&fMaxYear=2020' +
-    '&fg=Drama&fxg=Reality-TV&fl=en,ja&fSort=gap&fDir=asc&fView=list&page=3',
+    '#q=foo&shape=rising,rebound&minVotes=50000&minEps=10' +
+    '&minShow=7&minAvg=7.5&gapDir=up&minGap=0.5&minYear=2010&maxYear=2020' +
+    '&genres=Drama&xgenres=Reality-TV&langs=en,ja&sort=gap&dir=asc&view=list&page=3',
   );
   assert.equal(f.search, 'foo');
   assert.deepEqual([...f.shapes].sort(), ['rebound', 'rising']);
@@ -102,10 +102,39 @@ test('parseFinderQuery: full hash round-trips into a filter object', () => {
   assert.equal(f.page, 3);
 });
 
+test('parseFinderQuery: legacy f-prefixed hash parses identically to the clean one', () => {
+  // A pre-rename shared link, verbatim: every param in its old spelling.
+  const legacy = parseFinderQuery(
+    '#q=foo&fShape=rising,rebound&fMinVotes=50000&fMinEps=10' +
+    '&fMinShow=7&fMinAvg=7.5&fGapDir=up&fMinGap=0.5&fMinYear=2010&fMaxYear=2020' +
+    '&fg=Drama&fxg=Reality-TV&fl=en,ja&fSort=gap&fDir=asc&fView=list&page=3',
+  );
+  const clean = parseFinderQuery(
+    '#q=foo&shape=rising,rebound&minVotes=50000&minEps=10' +
+    '&minShow=7&minAvg=7.5&gapDir=up&minGap=0.5&minYear=2010&maxYear=2020' +
+    '&genres=Drama&xgenres=Reality-TV&langs=en,ja&sort=gap&dir=asc&view=list&page=3',
+  );
+  assert.deepEqual(legacy, clean);
+});
+
+test('parseFinderQuery: clean name wins when both spellings are present', () => {
+  const f = parseFinderQuery('minVotes=100&fMinVotes=999&sort=gap&fSort=title');
+  assert.equal(f.minVotes, 100);
+  assert.equal(f.sort, 'gap');
+});
+
+test('parseFinderQuery: legacy view=finder does not shadow fView', () => {
+  // Pre-rename links carried BOTH view=finder (the retired view selector) and
+  // fView=list (the layout). The retired selector must not eat the layout.
+  assert.equal(parseFinderQuery('view=finder&fView=list').view, 'list');
+  assert.equal(parseFinderQuery('view=list').view, 'list');
+  assert.equal(parseFinderQuery('view=finder').view, 'grid');
+});
+
 test('parseFinderQuery: empty/garbage/legacy queries fall back to inactive defaults', () => {
   // 'view=finder' is the legacy always-on hash key: old bookmarks that still
   // carry it must parse as a plain default finder.
-  for (const q of ['', 'view=finder', 'fGapDir=sideways&fMinVotes=lots&page=-2']) {
+  for (const q of ['', 'view=finder', 'gapDir=sideways&minVotes=lots&page=-2']) {
     const f = parseFinderQuery(q);
     for (const [k, v] of Object.entries(FINDER_DEFAULTS)) {
       assert.deepEqual(f[k], v, `default for ${k} on query "${q}"`);
@@ -119,27 +148,27 @@ test('passesFinderFilters applies every non-shape filter', () => {
   const x = rows.find((r) => r.seriesId === 'tt0000010');
   const y = rows.find((r) => r.seriesId === 'tt0000011');
 
-  assert.ok(passesFinderFilters(x, parseFinderQuery('fMinVotes=50000')));
-  assert.ok(!passesFinderFilters(y, parseFinderQuery('fMinVotes=50000')));
+  assert.ok(passesFinderFilters(x, parseFinderQuery('minVotes=50000')));
+  assert.ok(!passesFinderFilters(y, parseFinderQuery('minVotes=50000')));
 
-  assert.ok(passesFinderFilters(x, parseFinderQuery('fMinYear=2010&fMaxYear=2019')));
-  assert.ok(!passesFinderFilters(y, parseFinderQuery('fMinYear=2010')));
+  assert.ok(passesFinderFilters(x, parseFinderQuery('minYear=2010&maxYear=2019')));
+  assert.ok(!passesFinderFilters(y, parseFinderQuery('minYear=2010')));
 
-  assert.ok(passesFinderFilters(x, parseFinderQuery('fg=Drama,Crime')));
-  assert.ok(!passesFinderFilters(y, parseFinderQuery('fg=Drama')));
-  assert.ok(!passesFinderFilters(x, parseFinderQuery('fxg=Crime')));
+  assert.ok(passesFinderFilters(x, parseFinderQuery('genres=Drama,Crime')));
+  assert.ok(!passesFinderFilters(y, parseFinderQuery('genres=Drama')));
+  assert.ok(!passesFinderFilters(x, parseFinderQuery('xgenres=Crime')));
 
-  assert.ok(passesFinderFilters(y, parseFinderQuery('fl=ja')));
-  assert.ok(!passesFinderFilters(x, parseFinderQuery('fl=ja')));
+  assert.ok(passesFinderFilters(y, parseFinderQuery('langs=ja')));
+  assert.ok(!passesFinderFilters(x, parseFinderQuery('langs=ja')));
 
   // Gap direction: X has +1, Y has -2.
-  assert.ok(passesFinderFilters(x, parseFinderQuery('fGapDir=up&fMinGap=0.5')));
-  assert.ok(!passesFinderFilters(x, parseFinderQuery('fGapDir=down')));
-  assert.ok(passesFinderFilters(y, parseFinderQuery('fGapDir=down&fMinGap=1')));
-  assert.ok(!passesFinderFilters(y, parseFinderQuery('fGapDir=down&fMinGap=3')));
+  assert.ok(passesFinderFilters(x, parseFinderQuery('gapDir=up&minGap=0.5')));
+  assert.ok(!passesFinderFilters(x, parseFinderQuery('gapDir=down')));
+  assert.ok(passesFinderFilters(y, parseFinderQuery('gapDir=down&minGap=1')));
+  assert.ok(!passesFinderFilters(y, parseFinderQuery('gapDir=down&minGap=3')));
   // Directionless magnitude.
-  assert.ok(passesFinderFilters(y, parseFinderQuery('fMinGap=1.5')));
-  assert.ok(!passesFinderFilters(x, parseFinderQuery('fMinGap=1.5')));
+  assert.ok(passesFinderFilters(y, parseFinderQuery('minGap=1.5')));
+  assert.ok(!passesFinderFilters(x, parseFinderQuery('minGap=1.5')));
 
   // Search matches title or IMDb id, case-insensitive.
   assert.ok(passesFinderFilters(x, parseFinderQuery('q=xRaY')));
@@ -148,8 +177,8 @@ test('passesFinderFilters applies every non-shape filter', () => {
 });
 
 test('parseFinderQuery reads the hidden-gems flag', () => {
-  assert.equal(parseFinderQuery('fGems=on').hiddenGems, true);
-  assert.equal(parseFinderQuery('fGems=off').hiddenGems, false);
+  assert.equal(parseFinderQuery('gems=on').hiddenGems, true);
+  assert.equal(parseFinderQuery('gems=off').hiddenGems, false);
   assert.equal(parseFinderQuery('').hiddenGems, false);
 });
 
@@ -158,7 +187,7 @@ test('passesFinderFilters hidden gems: high rating AND low votes-per-episode', (
     title: 'x', seriesId: 'tt', genres: [], shapes: [], gap: 0,
     showRating: 8, year: 2020, language: 'en',
   };
-  const on = parseFinderQuery('fGems=on');
+  const on = parseFinderQuery('gems=on');
 
   // Qualifies: avg 8.6 (>= 8.5), 4000/10 = 400 votes/ep (< 500).
   assert.ok(passesFinderFilters({ ...base, avgEpisode: 8.6, episodes: 10, votes: 4000 }, on));
@@ -200,7 +229,7 @@ test('finderComparator: direction, title sort, year-null sinking, vote tiebreak'
 
 test('filterAndSortRows replays a preset query end to end', () => {
   const rows = buildShowAgg(MATCHES, stubDetectShapes);
-  const out = filterAndSortRows(rows, parseFinderQuery('fShape=rising&fMinVotes=1000'));
+  const out = filterAndSortRows(rows, parseFinderQuery('shape=rising&minVotes=1000'));
   assert.deepEqual(out.map((r) => r.seriesId), ['tt0000010']);
 });
 
@@ -209,7 +238,7 @@ test('buildFinderCollection renders YAML with ID fallbacks', () => {
     slug: 'demo',
     name: 'Demo: List',
     summary: 'A "demo" list',
-    query: 'fMinVotes=1000',
+    query: 'minVotes=1000',
   };
   const rows = [
     { seriesId: 'tt1', tmdbId: 101, tvdbId: 201 },   // prefers tmdb
@@ -225,7 +254,7 @@ test('buildFinderCollection renders YAML with ID fallbacks', () => {
   // by \n escapes (yamlString renders real newlines as a literal \n).
   assert.match(y, /^ {4}summary: "A \\"demo\\" list\\nFilters: /m);
   assert.match(y, /\\nFilters: 1,000\+ votes\\n/);
-  assert.match(y, /\\nExplore on Rising Shows: https:\/\/shevato\.com\/apps\/rising-shows\/#fMinVotes=1000"$/m);
+  assert.match(y, /\\nExplore on Rising Shows: https:\/\/shevato\.com\/apps\/rising-shows\/#minVotes=1000"$/m);
   // `!000_` prefix floats finder collections ahead of everything in Plex.
   assert.match(y, /^ {4}sort_title: "!000_rsf_demo"$/m);
   assert.match(y, /^ {4}sync_mode: sync$/m);
@@ -243,17 +272,22 @@ test('buildFinderCollection renders YAML with ID fallbacks', () => {
 });
 
 test('describeFinderFilters renders thresholds and omits genre + language', () => {
-  // genre (fxg) and language (fl) are present in the query but must NOT appear.
-  const q = 'fSort=showRating&fMinEps=12&fMinVotes=25000'
-    + '&fMinShow=7.5&fMinYear=1980&fxg=Animation%2CNews&fl=en&fShape=consistent';
+  // genre (xgenres) and language (langs) are present in the query but must NOT appear.
+  const q = 'sort=showRating&minEps=12&minVotes=25000'
+    + '&minShow=7.5&minYear=1980&xgenres=Animation%2CNews&langs=en&shape=consistent';
   assert.equal(
     describeFinderFilters(q),
     '12+ episodes · 25,000+ votes · show IMDb 7.5+ · since 1980 · shape: Consistent · sorted by show rating',
   );
+  // Legacy f-prefixed spellings (a user preset copied from a pre-rename Finder
+  // URL) must produce the same digest.
+  const legacy = 'fSort=showRating&fMinEps=12&fMinVotes=25000'
+    + '&fMinShow=7.5&fMinYear=1980&fxg=Animation%2CNews&fl=en&fShape=consistent';
+  assert.equal(describeFinderFilters(legacy), describeFinderFilters(q));
 });
 
 test('describeFinderFilters handles gap direction, episode avg, and a year range', () => {
-  const q = 'fSort=gap&fMinAvg=8&fGapDir=up&fMinGap=0.3&fMinYear=2000&fMaxYear=2010';
+  const q = 'sort=gap&minAvg=8&gapDir=up&minGap=0.3&minYear=2000&maxYear=2010';
   assert.equal(
     describeFinderFilters(q),
     'episode avg 8+ · episodes beat the show by 0.3+ · 2000-2010 · sorted by gap size',
@@ -262,22 +296,22 @@ test('describeFinderFilters handles gap direction, episode avg, and a year range
 
 test('describeFinderFilters is empty when only genre/language (or nothing) is set', () => {
   assert.equal(describeFinderFilters(''), '');
-  assert.equal(describeFinderFilters('fxg=Animation&fl=en'), '');
+  assert.equal(describeFinderFilters('xgenres=Animation&langs=en'), '');
 });
 
 test('finderShareUrl builds a Finder hash link and tolerates a leading #', () => {
   assert.equal(
-    finderShareUrl('fShape=consistent'),
-    'https://shevato.com/apps/rising-shows/#fShape=consistent',
+    finderShareUrl('shape=consistent'),
+    'https://shevato.com/apps/rising-shows/#shape=consistent',
   );
-  assert.equal(finderShareUrl('#fMinVotes=25000'), 'https://shevato.com/apps/rising-shows/#fMinVotes=25000');
+  assert.equal(finderShareUrl('#minVotes=25000'), 'https://shevato.com/apps/rising-shows/#minVotes=25000');
 });
 
 test('buildFinderCollection emits the local template hook when declared', () => {
   const preset = {
     slug: 'demo',
     name: 'Demo',
-    query: 'fMinVotes=1000',
+    query: 'minVotes=1000',
     template: { name: 'rs_local', file: 'config/rising-shows-local.yml' },
   };
   const y = buildFinderCollection(preset, [{ seriesId: 'tt1', tmdbId: 101 }]).contents;
