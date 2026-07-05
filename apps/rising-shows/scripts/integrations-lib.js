@@ -409,5 +409,5 @@ const API = {
 if (typeof module !== 'undefined' && module.exports) {
   module.exports = API;
 } else if (typeof window !== 'undefined') {
-  window.RisingSeasonsIntegrations = API;
+  window.RisingShowsIntegrations = API;
 }

@@ -1,11 +1,11 @@
 /* Rising Shows → Plex + Kometa builder UI.
    Loads data.json (the same file the main app uses, so the browser cache
-   carries over), and calls into window.RisingSeasonsIntegrations to build
+   carries over), and calls into window.RisingShowsIntegrations to build
    YAML / ID-list output on the fly as the user changes settings. */
 'use strict';
 
 (function () {
-  const API = window.RisingSeasonsIntegrations;
+  const API = window.RisingShowsIntegrations;
   if (!API) {
     setStatusError('Integration library failed to load. Refresh the page.');
     return;

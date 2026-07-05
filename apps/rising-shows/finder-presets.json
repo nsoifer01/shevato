@@ -22,7 +22,7 @@
       "slug": "consistently-great",
       "name": "Consistently Great",
       "summary": "Highly-rated live-action shows whose seasons never wavered - from the Rising Shows Show Finder.",
-      "query": "view=finder&fSort=showRating&fMinEps=12&fMinVotes=25000&fMinShow=7.5&fMinYear=1980&fxg=Animation%2CBiography%2CDocumentary%2CGame-Show%2CReality-TV%2CNews%2CMusical%2CTalk-Show&fl=en&fShape=consistent",
+      "query": "fSort=showRating&fMinEps=12&fMinVotes=25000&fMinShow=7.5&fMinYear=1980&fxg=Animation%2CBiography%2CDocumentary%2CGame-Show%2CReality-TV%2CNews%2CMusical%2CTalk-Show&fl=en&fShape=consistent",
       "limit": 25,
       "template": { "name": "rs_consistently_great", "file": "config/rising-shows-local.yml" }
     },
@@ -30,7 +30,7 @@
       "slug": "went-out-on-top",
       "name": "Went Out On Top",
       "summary": "Shows that saved their best season for last - no limp endings here. From the Rising Shows Show Finder.",
-      "query": "view=finder&fSort=showRating&fMinEps=12&fMinVotes=25000&fMinShow=7.5&fMinYear=1980&fxg=Animation%2CBiography%2CDocumentary%2CGame-Show%2CReality-TV%2CNews%2CMusical%2CTalk-Show&fl=en&fShape=big-finale",
+      "query": "fSort=showRating&fMinEps=12&fMinVotes=25000&fMinShow=7.5&fMinYear=1980&fxg=Animation%2CBiography%2CDocumentary%2CGame-Show%2CReality-TV%2CNews%2CMusical%2CTalk-Show&fl=en&fShape=big-finale",
       "limit": 25,
       "template": { "name": "rs_went_out_on_top", "file": "config/rising-shows-local.yml" }
     },
@@ -38,7 +38,7 @@
       "slug": "outshines-reputation",
       "name": "Better Than You Heard",
       "summary": "Shows whose episodes rate well above the show's own IMDb score - the audience that stayed loved what it found. From the Rising Shows Show Finder.",
-      "query": "view=finder&fSort=gap&fMinEps=12&fMinVotes=25000&fMinShow=7&fMinAvg=8&fMinYear=1980&fGapDir=up&fMinGap=0.3&fxg=Animation%2CBiography%2CDocumentary%2CGame-Show%2CReality-TV%2CNews%2CMusical%2CTalk-Show&fl=en",
+      "query": "fSort=gap&fMinEps=12&fMinVotes=25000&fMinShow=7&fMinAvg=8&fMinYear=1980&fGapDir=up&fMinGap=0.3&fxg=Animation%2CBiography%2CDocumentary%2CGame-Show%2CReality-TV%2CNews%2CMusical%2CTalk-Show&fl=en",
       "limit": 25,
       "template": { "name": "rs_outshines_reputation", "file": "config/rising-shows-local.yml" }
     },
@@ -46,7 +46,7 @@
       "slug": "marathon-material",
       "name": "Marathon Material",
       "summary": "100+ episodes and still rated 7.5 or better - shows you can live in for months. From the Rising Shows Show Finder.",
-      "query": "view=finder&fSort=episodes&fMinEps=100&fMinVotes=25000&fMinShow=7.5&fMinYear=1980&fxg=Animation%2CBiography%2CDocumentary%2CGame-Show%2CReality-TV%2CNews%2CMusical%2CTalk-Show&fl=en",
+      "query": "fSort=episodes&fMinEps=100&fMinVotes=25000&fMinShow=7.5&fMinYear=1980&fxg=Animation%2CBiography%2CDocumentary%2CGame-Show%2CReality-TV%2CNews%2CMusical%2CTalk-Show&fl=en",
       "limit": 25,
       "template": { "name": "rs_marathon_material", "file": "config/rising-shows-local.yml" }
     },
@@ -54,7 +54,7 @@
       "slug": "modern-prestige",
       "name": "Modern Prestige",
       "summary": "The defining shows of the last few years - 2018 onward, huge audiences, top-shelf ratings. From the Rising Shows Show Finder.",
-      "query": "view=finder&fSort=showRating&fMinEps=12&fMinVotes=100000&fMinShow=8&fMinYear=2018&fxg=Animation%2CBiography%2CDocumentary%2CGame-Show%2CReality-TV%2CNews%2CMusical%2CTalk-Show&fl=en",
+      "query": "fSort=showRating&fMinEps=12&fMinVotes=100000&fMinShow=8&fMinYear=2018&fxg=Animation%2CBiography%2CDocumentary%2CGame-Show%2CReality-TV%2CNews%2CMusical%2CTalk-Show&fl=en",
       "limit": 25,
       "template": { "name": "rs_modern_prestige", "file": "config/rising-shows-local.yml" }
     }

@@ -79,7 +79,7 @@ test('buildShowAgg aggregates seasons into show rows', () => {
 
 test('parseFinderQuery: full hash round-trips into a filter object', () => {
   const f = parseFinderQuery(
-    '#view=finder&q=foo&fShape=rising,rebound&fMinVotes=50000&fMinEps=10' +
+    '#q=foo&fShape=rising,rebound&fMinVotes=50000&fMinEps=10' +
     '&fMinShow=7&fMinAvg=7.5&fGapDir=up&fMinGap=0.5&fMinYear=2010&fMaxYear=2020' +
     '&fg=Drama&fxg=Reality-TV&fl=en,ja&fSort=gap&fDir=asc&fView=list&page=3',
   );
@@ -102,7 +102,9 @@ test('parseFinderQuery: full hash round-trips into a filter object', () => {
   assert.equal(f.page, 3);
 });
 
-test('parseFinderQuery: empty/garbage queries fall back to inactive defaults', () => {
+test('parseFinderQuery: empty/garbage/legacy queries fall back to inactive defaults', () => {
+  // 'view=finder' is the legacy always-on hash key: old bookmarks that still
+  // carry it must parse as a plain default finder.
   for (const q of ['', 'view=finder', 'fGapDir=sideways&fMinVotes=lots&page=-2']) {
     const f = parseFinderQuery(q);
     for (const [k, v] of Object.entries(FINDER_DEFAULTS)) {
@@ -242,7 +244,7 @@ test('buildFinderCollection renders YAML with ID fallbacks', () => {
 
 test('describeFinderFilters renders thresholds and omits genre + language', () => {
   // genre (fxg) and language (fl) are present in the query but must NOT appear.
-  const q = 'view=finder&fSort=showRating&fMinEps=12&fMinVotes=25000'
+  const q = 'fSort=showRating&fMinEps=12&fMinVotes=25000'
     + '&fMinShow=7.5&fMinYear=1980&fxg=Animation%2CNews&fl=en&fShape=consistent';
   assert.equal(
     describeFinderFilters(q),
@@ -265,10 +267,10 @@ test('describeFinderFilters is empty when only genre/language (or nothing) is se
 
 test('finderShareUrl builds a Finder hash link and tolerates a leading #', () => {
   assert.equal(
-    finderShareUrl('view=finder&fShape=consistent'),
-    'https://shevato.com/apps/rising-shows/#view=finder&fShape=consistent',
+    finderShareUrl('fShape=consistent'),
+    'https://shevato.com/apps/rising-shows/#fShape=consistent',
   );
-  assert.equal(finderShareUrl('#view=finder'), 'https://shevato.com/apps/rising-shows/#view=finder');
+  assert.equal(finderShareUrl('#fMinVotes=25000'), 'https://shevato.com/apps/rising-shows/#fMinVotes=25000');
 });
 
 test('buildFinderCollection emits the local template hook when declared', () => {
