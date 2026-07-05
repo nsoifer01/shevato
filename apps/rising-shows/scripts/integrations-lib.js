@@ -256,31 +256,35 @@ function finderShareUrl(query) {
 }
 
 // One-line, human-readable digest of a preset's Finder filters for the Plex
-// summary. Deliberately omits genre (fxg) and language (fl) - noise for a Plex
-// browser. Returns '' when nothing notable is set.
+// summary. Deliberately omits genre (xgenres) and language (langs) - noise for
+// a Plex browser. Returns '' when nothing notable is set. Accepts both the
+// clean param names and their legacy f-prefixed spellings (fMinEps, fShape,
+// ...) so user-authored presets copied from pre-rename Finder URLs keep
+// working; the clean name wins when both are present.
 function describeFinderFilters(query) {
   const p = new URLSearchParams(String(query || '').replace(/^#/, ''));
-  const pos = (k) => { const v = parseFloat(p.get(k)); return Number.isFinite(v) && v > 0 ? v : null; };
+  const get = (name, legacy) => (p.get(name) != null ? p.get(name) : p.get(legacy));
+  const pos = (name, legacy) => { const v = parseFloat(get(name, legacy)); return Number.isFinite(v) && v > 0 ? v : null; };
   const n = (v) => v.toLocaleString('en-US');
   const parts = [];
-  const eps = pos('fMinEps'); if (eps) parts.push(`${n(eps)}+ episodes`);
-  const votes = pos('fMinVotes'); if (votes) parts.push(`${n(votes)}+ votes`);
-  const show = pos('fMinShow'); if (show) parts.push(`show IMDb ${show}+`);
-  const avg = pos('fMinAvg'); if (avg) parts.push(`episode avg ${avg}+`);
-  const gap = pos('fMinGap');
-  const gapDir = p.get('fGapDir');
+  const eps = pos('minEps', 'fMinEps'); if (eps) parts.push(`${n(eps)}+ episodes`);
+  const votes = pos('minVotes', 'fMinVotes'); if (votes) parts.push(`${n(votes)}+ votes`);
+  const show = pos('minShow', 'fMinShow'); if (show) parts.push(`show IMDb ${show}+`);
+  const avg = pos('minAvg', 'fMinAvg'); if (avg) parts.push(`episode avg ${avg}+`);
+  const gap = pos('minGap', 'fMinGap');
+  const gapDir = get('gapDir', 'fGapDir');
   if (gap && gapDir === 'up') parts.push(`episodes beat the show by ${gap}+`);
   else if (gap && gapDir === 'down') parts.push(`episodes trail the show by ${gap}+`);
   else if (gap) parts.push(`episode/show gap ${gap}+`);
-  const minYear = parseInt(p.get('fMinYear'), 10) || null;
-  const maxYear = parseInt(p.get('fMaxYear'), 10) || null;
+  const minYear = parseInt(get('minYear', 'fMinYear'), 10) || null;
+  const maxYear = parseInt(get('maxYear', 'fMaxYear'), 10) || null;
   if (minYear && maxYear) parts.push(`${minYear}-${maxYear}`);
   else if (minYear) parts.push(`since ${minYear}`);
   else if (maxYear) parts.push(`through ${maxYear}`);
-  const shapes = (p.get('fShape') || '').split(',').filter(Boolean)
+  const shapes = (get('shape', 'fShape') || '').split(',').filter(Boolean)
     .map((s) => FINDER_SHAPE_LABELS[s] || s);
   if (shapes.length) parts.push(`shape: ${shapes.join(' / ')}`);
-  const sort = p.get('fSort');
+  const sort = get('sort', 'fSort');
   if (sort && FINDER_SORT_LABELS[sort]) parts.push(`sorted by ${FINDER_SORT_LABELS[sort]}`);
   return parts.join(' · ');
 }

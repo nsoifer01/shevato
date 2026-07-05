@@ -807,7 +807,8 @@ function buildSeriesIndex() {
 function applyStateFromURL() {
   const p = new URLSearchParams(location.hash.replace(/^#/, ''));
 
-  // Show Finder is the only view. Its filters live in the hash (fSort=...&fMinVotes=...);
+  // Show Finder is the only view. Its filters live in the hash (sort=...&minVotes=...,
+  // with legacy f-prefixed spellings still accepted - see parseFinderQuery);
   // parseFinderQuery resets to defaults for any key that's absent, so a bare hash
   // just opens the default finder. Legacy keys like view=finder are ignored, so
   // old bookmarks keep working. The DOM controls are synced separately by
@@ -3825,22 +3826,22 @@ function writeFinderStateToURL() {
   const f = finderState;
   const p = new URLSearchParams();
   if (f.search) p.set('q', f.search);
-  if (f.view !== 'grid') p.set('fView', f.view);
-  if (f.sort !== 'votes') p.set('fSort', f.sort);
-  if (f.sortDir !== 'desc') p.set('fDir', f.sortDir);
-  if (f.minEpisodes > 0) p.set('fMinEps', f.minEpisodes);
-  if (f.minVotes > 0) p.set('fMinVotes', f.minVotes);
-  if (f.minShowRating > 0) p.set('fMinShow', f.minShowRating);
-  if (f.minAvgEpisode > 0) p.set('fMinAvg', f.minAvgEpisode);
-  if (f.gapDir !== 'any') p.set('fGapDir', f.gapDir);
-  if (f.minGap > 0) p.set('fMinGap', f.minGap);
-  if (f.minYear != null) p.set('fMinYear', f.minYear);
-  if (f.maxYear != null) p.set('fMaxYear', f.maxYear);
-  if (f.hiddenGems) p.set('fGems', 'on');
-  if (f.genres.size) p.set('fg', [...f.genres].join(','));
-  if (f.genresExclude.size) p.set('fxg', [...f.genresExclude].join(','));
-  if (f.languages.size) p.set('fl', [...f.languages].join(','));
-  if (f.shapes.size) p.set('fShape', [...f.shapes].join(','));
+  if (f.view !== 'grid') p.set('view', f.view);
+  if (f.sort !== 'votes') p.set('sort', f.sort);
+  if (f.sortDir !== 'desc') p.set('dir', f.sortDir);
+  if (f.minEpisodes > 0) p.set('minEps', f.minEpisodes);
+  if (f.minVotes > 0) p.set('minVotes', f.minVotes);
+  if (f.minShowRating > 0) p.set('minShow', f.minShowRating);
+  if (f.minAvgEpisode > 0) p.set('minAvg', f.minAvgEpisode);
+  if (f.gapDir !== 'any') p.set('gapDir', f.gapDir);
+  if (f.minGap > 0) p.set('minGap', f.minGap);
+  if (f.minYear != null) p.set('minYear', f.minYear);
+  if (f.maxYear != null) p.set('maxYear', f.maxYear);
+  if (f.hiddenGems) p.set('gems', 'on');
+  if (f.genres.size) p.set('genres', [...f.genres].join(','));
+  if (f.genresExclude.size) p.set('xgenres', [...f.genresExclude].join(','));
+  if (f.languages.size) p.set('langs', [...f.languages].join(','));
+  if (f.shapes.size) p.set('shape', [...f.shapes].join(','));
   if (f.page > 1) p.set('page', f.page);
   // Append the open-modal deep-link key so a shared/refreshed link reopens the
   // finder AND the modal. A season detail (in-show drill-down) wins over the
