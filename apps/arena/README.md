@@ -29,6 +29,7 @@ The pure game logic (scoring, room state, location/question normalization) is sp
 | Head-to-head (H2H) | Per-room cumulative head-to-head record across rematches, plus a global pairwise H2H stats view. |
 | Profiles | Firebase Auth profiles tracking total score, games played, and wins. |
 | Post-game recap | Final scoreboard plus a side-by-side per-question / per-location recap table and detailed per-player accuracy / response-time (Trivia) or distance / region (Globe Drop) stats. |
+| Sound + haptics | WebAudio sound effects and device haptics fire on gameplay events (guess submitted, pin placed/cleared, opponent submitted, score reveal, timer low/expired, chat message, game start/end) via `js/feedback.js`. |
 
 ### Trivia
 
