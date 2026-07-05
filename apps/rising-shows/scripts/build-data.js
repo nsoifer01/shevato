@@ -373,7 +373,9 @@ function loadSeasonOverviews() {
   // GitHub's 100 MB file-size cap. The browser app fetches both files in
   // parallel from load() and merges show-modal-extras.json onto each match
   // before the user opens any modal — see apps/rising-shows/js/app.js.
-  const modalExtras = {}; // seriesId -> { cast, seasons: { seasonNum -> { ov, eps: { epNum -> { tt, rt } } } } }
+  // Episode titles moved here 2026-07-05 when data.json itself crossed the
+  // cap (names alone were ~23 MiB); they are modal/tooltip-only in the UI.
+  const modalExtras = {}; // seriesId -> { cast, seasons: { seasonNum -> { ov, eps: { epNum -> { tt, rt, n } } } } }
   const seenCastSeries = new Set();
   for (const m of matches) {
     const sid = m.seriesId;
@@ -394,13 +396,14 @@ function loadSeasonOverviews() {
     }
     if (Array.isArray(m.episodes)) {
       for (const ep of m.episodes) {
-        if (!ep.tt && ep.runtime === undefined) continue;
+        if (!ep.tt && ep.runtime === undefined && !ep.name) continue;
         if (!modalExtras[sid]) modalExtras[sid] = { cast: null, seasons: {} };
         const key = String(m.season);
         if (!modalExtras[sid].seasons[key]) modalExtras[sid].seasons[key] = { ov: null, eps: {} };
         const rec = {};
         if (ep.tt) { rec.tt = ep.tt; delete ep.tt; }
         if (ep.runtime !== undefined) { rec.rt = ep.runtime; delete ep.runtime; }
+        if (ep.name) { rec.n = ep.name; delete ep.name; }
         modalExtras[sid].seasons[key].eps[String(ep.episode)] = rec;
       }
     }
@@ -427,6 +430,26 @@ function loadSeasonOverviews() {
   const seconds = ((Date.now() - t0) / 1000).toFixed(1);
   console.log(`Wrote ${OUT_FILE} in ${seconds}s`);
   console.log(`Wrote ${EXTRAS_FILE} (${Object.keys(modalExtras).length.toLocaleString()} shows with modal extras)`);
+
+  // Both output files are committed to GitHub, which hard-rejects any file
+  // of 100 MiB or more at push time. Fail the build here instead so the
+  // refresh workflow dies with an actionable message at the build step,
+  // not with a cryptic pre-receive error at the push step. If this fires,
+  // move more per-match fields into show-modal-extras.json (or shard it).
+  const GITHUB_FILE_CAP = 100 * 1024 * 1024;
+  const SIZE_WARN = 90 * 1024 * 1024;
+  for (const f of [OUT_FILE, EXTRAS_FILE]) {
+    const bytes = fs.statSync(f).size;
+    const mib = (bytes / 1048576).toFixed(1);
+    console.log(`  ${path.basename(f)}: ${mib} MiB`);
+    if (bytes >= GITHUB_FILE_CAP) {
+      console.error(`ERROR: ${f} is ${mib} MiB — at or over GitHub's 100 MiB file cap; the refresh push would be rejected. Move more per-match fields into the side-file split in build-data.js.`);
+      process.exit(1);
+    }
+    if (bytes >= SIZE_WARN) {
+      console.warn(`WARNING: ${f} is ${mib} MiB — within 10 MiB of GitHub's 100 MiB file cap.`);
+    }
+  }
 
   // Diff against the previously-committed data.json and update changelog.json
   // so the "What's new" footer chip stays in sync. The footer guards the chip

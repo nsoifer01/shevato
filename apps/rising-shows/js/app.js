@@ -611,10 +611,10 @@ async function load() {
   try {
     // data.json carries everything needed to filter, sort, and render the
     // grid. show-modal-extras.json carries cast, per-season plot overviews,
-    // and per-episode IMDb deep-link IDs / runtimes — kept separate so
-    // data.json stays under GitHub's 100 MB file-size cap. Fetched in
+    // and per-episode IMDb deep-link IDs / runtimes / titles — kept separate
+    // so data.json stays under GitHub's 100 MB file-size cap. Fetched in
     // parallel; the extras file is optional, so a failure there doesn't
-    // block the grid.
+    // block the grid (episode rows just lose their titles).
     const [dataRes, extrasRes] = await Promise.all([
       fetch('data.json', { cache: 'no-store' }),
       fetch('data/show-modal-extras.json', { cache: 'no-store' }).catch(() => null),
@@ -632,9 +632,9 @@ async function load() {
   // Precompute normalized title once per match so the search hot path doesn't
   // re-derive it on every filter pass. [[normalizeSearch]] for the rule.
   // Same pass attaches per-match modal extras (cast, season overview, per-episode
-  // tt + runtime) from show-modal-extras.json. The fields are placed directly on
-  // each match object so downstream code can keep reading `m.cast`, `m.seasonOverview`,
-  // `e.tt`, and `e.runtime` exactly as it did when everything lived in data.json.
+  // tt + runtime + title) from show-modal-extras.json. The fields are placed directly
+  // on each match object so downstream code can keep reading `m.cast`, `m.seasonOverview`,
+  // `e.tt`, `e.runtime`, and `e.name` exactly as it did when everything lived in data.json.
   for (const m of dataset.matches) {
     m.titleSearch = normalizeSearch(m.title);
     // Feature 7: precompute std dev once so the volatility sort is O(1) per comparison.
@@ -652,6 +652,9 @@ async function load() {
               if (rec) {
                 if (rec.tt) ep.tt = rec.tt;
                 if (rec.rt !== undefined) ep.runtime = rec.rt;
+                // Guarded so a pre-split data.json (inline names, no rec.n)
+                // keeps working while the daily refresh flips the format.
+                if (rec.n && !ep.name) ep.name = rec.n;
               }
             }
           }
@@ -804,9 +807,10 @@ function buildSeriesIndex() {
 function applyStateFromURL() {
   const p = new URLSearchParams(location.hash.replace(/^#/, ''));
 
-  // Show Finder is the only view. Its filters live in the hash (view=finder&...);
+  // Show Finder is the only view. Its filters live in the hash (fSort=...&fMinVotes=...);
   // parseFinderQuery resets to defaults for any key that's absent, so a bare hash
-  // just opens the default finder. The DOM controls are synced separately by
+  // just opens the default finder. Legacy keys like view=finder are ignored, so
+  // old bookmarks keep working. The DOM controls are synced separately by
   // syncFinderControls once they exist.
   mode = 'finder';
   applyFinderStateFromParams(p);
@@ -2621,7 +2625,7 @@ function formatCompactVotes(n) {
 // from match.js, loaded before this script; guard so a missing global never
 // breaks the finder.
 function buildShowAgg() {
-  return RisingSeasonsFinder.buildShowAgg(
+  return RisingShowsFinder.buildShowAgg(
     dataset.matches,
     typeof detectShapes === 'function' ? detectShapes : null,
   );
@@ -3017,14 +3021,14 @@ const FINDER_COLUMNS = [
 // Predicate + comparator live in finder-lib.js, shared with the Node export
 // pipeline (one source of truth - Kometa preset exports cannot drift).
 function finderRowsBeforeShape() {
-  return showAgg.filter((s) => RisingSeasonsFinder.passesFinderFilters(s, finderState));
+  return showAgg.filter((s) => RisingShowsFinder.passesFinderFilters(s, finderState));
 }
 
 function filterAndSortFinder() {
   const f = finderState;
   const rows = finderRowsBeforeShape()
     .filter((s) => passesShapeAnd(s, f.shapes));
-  rows.sort(RisingSeasonsFinder.finderComparator(f.sort, f.sortDir));
+  rows.sort(RisingShowsFinder.finderComparator(f.sort, f.sortDir));
   return rows;
 }
 
@@ -3627,18 +3631,8 @@ function describeFinderActiveFilters() {
   }
   if (f.minYear != null) chips.push(finderYearChip('Year ≥', f.minYear, 'minYear', els.finderMinYear));
   if (f.maxYear != null) chips.push(finderYearChip('Year ≤', f.maxYear, 'maxYear', els.finderMaxYear));
-  if (f.sort !== 'votes' || f.sortDir !== 'desc') {
-    const sortLabels = {
-      votes: 'Popularity', gap: 'Gap size', showRating: 'Show rating',
-      avgEpisode: 'Avg episode', episodes: 'Episode count', seasonsCount: 'Season count',
-      year: 'Year', runtimeHrs: 'Runtime', title: 'Title',
-    };
-    chips.push({
-      key: 'Sort',
-      value: `${sortLabels[f.sort] || f.sort} ${f.sortDir === 'asc' ? '↑' : '↓'}`,
-      remove: () => { f.sort = 'votes'; f.sortDir = 'desc'; syncFinderSortControls(); onFinderFilterChange(); },
-    });
-  }
+  // Sort deliberately does NOT get a chip: it narrows nothing, so it is not an
+  // active filter. The sort dropdown (and table-header arrows) already show it.
   return chips;
 }
 
@@ -3802,8 +3796,8 @@ function bindFinder() {
 
   els.finderReset.addEventListener('click', () => {
     resetFinderState();
-    // Clearing every finder filter drops the finder hash (back to the base
-    // finder URL: view=finder only).
+    // Clearing every finder filter drops the hash entirely (back to the bare
+    // finder URL).
     writeFinderStateToURL();
     renderFinder();
   });
@@ -3830,7 +3824,6 @@ const onFinderFilterChangeDebounced = debounce(onFinderFilterChange, 200);
 function writeFinderStateToURL() {
   const f = finderState;
   const p = new URLSearchParams();
-  p.set('view', 'finder');
   if (f.search) p.set('q', f.search);
   if (f.view !== 'grid') p.set('fView', f.view);
   if (f.sort !== 'votes') p.set('fSort', f.sort);
@@ -3857,16 +3850,19 @@ function writeFinderStateToURL() {
   } else if (els.showModal && !els.showModal.hidden && showModalState.seriesId) {
     p.set('show', showModalState.seriesId);
   }
-  history.replaceState(null, '', `#${p.toString()}`);
+  // With everything at defaults there is nothing to encode: drop the hash
+  // entirely instead of leaving a dangling `#`.
+  const q = p.toString();
+  history.replaceState(null, '', q ? `#${q}` : location.pathname + location.search);
 }
 
 // Read finder params off the hash into finderState. Called from
-// applyStateFromURL when the hash carries view=finder. Does NOT touch the DOM
+// applyStateFromURL for every hash. Does NOT touch the DOM
 // controls (they may not exist yet at first load); syncFinderControls handles
 // that once the controls are rendered. Parsing lives in finder-lib.js so the
 // Node export pipeline reads preset queries with identical semantics.
 function applyFinderStateFromParams(p) {
-  Object.assign(finderState, RisingSeasonsFinder.parseFinderQuery(p));
+  Object.assign(finderState, RisingShowsFinder.parseFinderQuery(p));
 }
 
 // --- last-updated / stale ---

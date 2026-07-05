@@ -31,10 +31,12 @@ function main() {
   const series = groupBySeries(data.matches);
   console.log(`[build-show-pages] ${series.length} unique series · ${data.matches.length} seasons · builtAt=${data.builtAt}`);
 
-  // Cast lives in show-modal-extras.json (build-data.js strips it out of
-  // data.json's matches), keyed by seriesId. Load it so each show page can
-  // render the same top-billed cast strip the in-app modal shows. Missing
-  // file is non-fatal — pages just render without cast.
+  // Cast and per-episode titles live in show-modal-extras.json
+  // (build-data.js strips them out of data.json's matches), keyed by
+  // seriesId. Load it so each show page can render the same top-billed
+  // cast strip the in-app modal shows, plus episode names in the
+  // per-season tables. Missing file is non-fatal — pages just render
+  // without cast and with blank episode-title cells.
   const extras = fs.existsSync(EXTRAS_FILE) ? JSON.parse(fs.readFileSync(EXTRAS_FILE, 'utf8')) : {};
   let castCount = 0;
 
@@ -51,8 +53,22 @@ function main() {
     fs.mkdirSync(dir, { recursive: true });
     const { dominantShape, dominantShapeSlug } = computeDominantShape(s);
     const relatedShows = computeRelatedShows(s, dominantShape, shapeIndex, 4);
-    const cast = extras[s.seriesId] && extras[s.seriesId].cast ? extras[s.seriesId].cast : null;
+    const ex = extras[s.seriesId];
+    const cast = ex && ex.cast ? ex.cast : null;
     if (cast) castCount++;
+    // Merge per-episode titles back onto the season episode rows.
+    // Guarded with `!ep.name` so a pre-split data.json (inline names)
+    // keeps working while the daily refresh flips the format.
+    if (ex && ex.seasons) {
+      for (const season of s.seasons) {
+        const sRec = ex.seasons[String(season.season)];
+        if (!sRec || !sRec.eps || !Array.isArray(season.episodes)) continue;
+        for (const ep of season.episodes) {
+          const rec = sRec.eps[String(ep.episode)];
+          if (rec && rec.n && !ep.name) ep.name = rec.n;
+        }
+      }
+    }
     const html = renderShowPage({ ...s, cast, builtAt: data.builtAt, dominantShape, dominantShapeSlug, relatedShows });
     fs.writeFileSync(path.join(dir, 'index.html'), html);
     pageCount++;
