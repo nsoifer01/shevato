@@ -134,28 +134,40 @@ function buildShowAgg(matches, detectShapes) {
 // `#`) or a URLSearchParams into a full filter-state object. Unknown params
 // are ignored; missing params fall back to the inactive-filter defaults, so
 // pasting any shared Finder link reproduces that exact view.
+//
+// Params use clean names (sort, minVotes, shape, ...). Each also accepts its
+// legacy `f`-prefixed spelling (fSort, fMinVotes, fShape, ...) from the era
+// when the Finder shared the hash with the Seasons view, so pre-rename shared
+// links and bookmarks keep working. The clean name wins when both are present;
+// writeFinderStateToURL emits clean names only.
 function parseFinderQuery(query) {
   const p = (typeof query === 'string')
     ? new URLSearchParams(query.replace(/^#/, ''))
     : query;
+  const get = (name, legacy) => (p.get(name) != null ? p.get(name) : p.get(legacy));
+  const has = (name, legacy) => p.has(name) || p.has(legacy);
+  // `view` is special: legacy links carry `view=finder` (a retired view
+  // selector, not a layout), so only grid/list counts before falling back.
+  const view = ['grid', 'list'].includes(p.get('view')) ? p.get('view') : p.get('fView');
+  const gapDir = get('gapDir', 'fGapDir');
   return {
     search: p.get('q') || '',
-    view: p.get('fView') === 'list' ? 'list' : 'grid',
-    sort: p.get('fSort') || 'votes',
-    sortDir: p.get('fDir') === 'asc' ? 'asc' : 'desc',
-    minEpisodes: parseFloat(p.get('fMinEps')) || 0,
-    minVotes: parseFloat(p.get('fMinVotes')) || 0,
-    minShowRating: parseFloat(p.get('fMinShow')) || 0,
-    minAvgEpisode: parseFloat(p.get('fMinAvg')) || 0,
-    gapDir: ['up', 'down'].includes(p.get('fGapDir')) ? p.get('fGapDir') : 'any',
-    minGap: parseFloat(p.get('fMinGap')) || 0,
-    minYear: p.has('fMinYear') ? (parseInt(p.get('fMinYear'), 10) || null) : null,
-    maxYear: p.has('fMaxYear') ? (parseInt(p.get('fMaxYear'), 10) || null) : null,
-    hiddenGems: p.get('fGems') === 'on',
-    genres: new Set((p.get('fg') || '').split(',').filter(Boolean)),
-    genresExclude: new Set((p.get('fxg') || '').split(',').filter(Boolean)),
-    languages: new Set((p.get('fl') || '').split(',').filter(Boolean)),
-    shapes: new Set((p.get('fShape') || '').split(',').filter(Boolean)),
+    view: view === 'list' ? 'list' : 'grid',
+    sort: get('sort', 'fSort') || 'votes',
+    sortDir: get('dir', 'fDir') === 'asc' ? 'asc' : 'desc',
+    minEpisodes: parseFloat(get('minEps', 'fMinEps')) || 0,
+    minVotes: parseFloat(get('minVotes', 'fMinVotes')) || 0,
+    minShowRating: parseFloat(get('minShow', 'fMinShow')) || 0,
+    minAvgEpisode: parseFloat(get('minAvg', 'fMinAvg')) || 0,
+    gapDir: ['up', 'down'].includes(gapDir) ? gapDir : 'any',
+    minGap: parseFloat(get('minGap', 'fMinGap')) || 0,
+    minYear: has('minYear', 'fMinYear') ? (parseInt(get('minYear', 'fMinYear'), 10) || null) : null,
+    maxYear: has('maxYear', 'fMaxYear') ? (parseInt(get('maxYear', 'fMaxYear'), 10) || null) : null,
+    hiddenGems: get('gems', 'fGems') === 'on',
+    genres: new Set((get('genres', 'fg') || '').split(',').filter(Boolean)),
+    genresExclude: new Set((get('xgenres', 'fxg') || '').split(',').filter(Boolean)),
+    languages: new Set((get('langs', 'fl') || '').split(',').filter(Boolean)),
+    shapes: new Set((get('shape', 'fShape') || '').split(',').filter(Boolean)),
     page: Math.max(1, parseInt(p.get('page'), 10) || 1),
   };
 }
