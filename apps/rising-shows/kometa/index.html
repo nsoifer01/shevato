@@ -76,7 +76,7 @@
       <div class="kometa-tile">
         <div class="kometa-tile-icon" aria-hidden="true">🔭</div>
         <h2>Show Finder presets</h2>
-        <p>Saved <a href="../index.html#view=finder">Show Finder</a> filters published as ready-made Plex collections that rebuild themselves every time the data refreshes. <a href="#finderPresets">Details below ↓</a></p>
+        <p>Saved <a href="../index.html">Show Finder</a> filters published as ready-made Plex collections that rebuild themselves every time the data refreshes. <a href="#finderPresets">Details below ↓</a></p>
       </div>
     </section>
 
@@ -152,7 +152,7 @@
 
     <section class="kometa-howto" aria-label="Show Finder preset collections" id="finderPresets">
       <h2>Show Finder → Plex collections</h2>
-      <p class="kometa-builder-sub">Any filter you can build in the <a href="../index.html#view=finder">Show Finder</a> - shapes, votes, years, genres, rating gaps - can live on as a Plex collection that keeps itself current. Preset lists are replayed against fresh IMDb data on every refresh and published under <code>exports/kometa/finder-*.yml</code>, so a show that newly qualifies tomorrow joins the collection on its own.</p>
+      <p class="kometa-builder-sub">Any filter you can build in the <a href="../index.html">Show Finder</a> - shapes, votes, years, genres, rating gaps - can live on as a Plex collection that keeps itself current. Preset lists are replayed against fresh IMDb data on every refresh and published under <code>exports/kometa/finder-*.yml</code>, so a show that newly qualifies tomorrow joins the collection on its own.</p>
       <div class="kometa-howto-grid kometa-finder-grid">
         <article class="kometa-step">
           <header><span class="kometa-step-num">1</span><h3>Use a ready-made preset</h3></header>
@@ -166,7 +166,7 @@
 
         <article class="kometa-step">
           <header><span class="kometa-step-num">2</span><h3>Roll your own</h3></header>
-          <p>Dial in a filter in the <a href="../index.html#view=finder">Show Finder</a>, copy everything after <code>#</code> in the address bar, and add it as a preset in <code>finder-presets.json</code>. From the next data refresh on, your collection publishes and updates itself.</p>
+          <p>Dial in a filter in the <a href="../index.html">Show Finder</a>, copy everything after <code>#</code> in the address bar, and add it as a preset in <code>finder-presets.json</code>. From the next data refresh on, your collection publishes and updates itself.</p>
           <p class="kometa-help">Full walkthrough - preset fields, limits, and the optional local-template hook for your own collection attributes - in the <a href="https://github.com/nsoifer01/shevato/blob/master/apps/rising-shows/INTEGRATIONS.md" target="_blank" rel="noopener">integration guide ↗</a>.</p>
         </article>
       </div>
@@ -236,7 +236,7 @@ npm run watch-next -- --shape slow-burn --limit 10</code></pre>
   <script src="../../../assets/js/main.js"></script>
 
   <!-- Shared logic: builds the YAML strings the Node export pipeline writes.
-       Loaded as a classic script so it can attach to window.RisingSeasonsIntegrations. -->
+       Loaded as a classic script so it can attach to window.RisingShowsIntegrations. -->
   <script src="../scripts/integrations-lib.js"></script>
   <script src="../js/kometa.js" defer></script>
   <script src="/assets/js/back-to-top.js" defer></script>
