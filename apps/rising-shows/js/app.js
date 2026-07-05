@@ -214,7 +214,6 @@ const els = {
   showModalShareCard: document.getElementById('showModalShareCard'),
   modalPoster: document.getElementById('modalPoster'),
   modalWatchBtn: document.getElementById('modalWatchBtn'),
-  modalReroll: document.getElementById('modalReroll'),
   modalViewShow: document.getElementById('modalViewShow'),
   showModal: document.getElementById('showModal'),
   showModalTitle: document.getElementById('showModalTitle'),
@@ -260,10 +259,13 @@ const els = {
   finderSearch: document.getElementById('finderSearch'),
   finderSuggestions: document.getElementById('finderSearchSuggestions'),
   finderViewToggle: document.getElementById('finderViewToggle'),
+  finderSurprise: document.getElementById('finderSurprise'),
+  finderPopularPick: document.getElementById('finderPopularPick'),
   finderActiveFilterBar: document.getElementById('finderActiveFilterBar'),
   finderMinEpisodes: document.getElementById('finderMinEpisodes'),
   finderMinVotes: document.getElementById('finderMinVotes'),
   finderVotesChips: document.getElementById('finderVotesChips'),
+  finderGemsChip: document.getElementById('finderGemsChip'),
   finderMinShowRating: document.getElementById('finderMinShowRating'),
   finderMinAvgEpisode: document.getElementById('finderMinAvgEpisode'),
   finderGapDir: document.getElementById('finderGapDir'),
@@ -303,6 +305,7 @@ const finderState = {
   minGap: 0,
   minYear: null,
   maxYear: null,
+  hiddenGems: false,
   genres: new Set(),
   genresExclude: new Set(),
   languages: new Set(),
@@ -2130,7 +2133,6 @@ function openModal(m, opts = {}) {
     els.modalTvdb.hidden = true;
   }
   syncModalWatchBtn();
-  els.modalReroll.hidden = !modalState.surprise;
 
   els.modal.hidden = false;
   els.modal.setAttribute('aria-hidden', 'false');
@@ -3384,6 +3386,7 @@ function finderHasActiveFilters() {
   if (f.minGap > 0) return true;
   if (f.minYear != null) return true;
   if (f.maxYear != null) return true;
+  if (f.hiddenGems) return true;
   if (f.genres.size) return true;
   if (f.genresExclude.size) return true;
   if (f.languages.size) return true;
@@ -3410,6 +3413,7 @@ function resetFinderState() {
   finderState.minGap = 0;
   finderState.minYear = null;
   finderState.maxYear = null;
+  finderState.hiddenGems = false;
   finderState.genres = new Set();
   finderState.genresExclude = new Set();
   finderState.languages = new Set();
@@ -3444,6 +3448,9 @@ function syncFinderControls() {
   els.finderMaxYear.value = finderState.maxYear ?? '';
   for (const chip of els.finderVotesChips.querySelectorAll('.finder-chip')) {
     chip.setAttribute('aria-pressed', Number(chip.dataset.votes) === finderState.minVotes ? 'true' : 'false');
+  }
+  if (els.finderGemsChip) {
+    els.finderGemsChip.setAttribute('aria-pressed', finderState.hiddenGems ? 'true' : 'false');
   }
   for (const btn of els.finderGapDir.querySelectorAll('.finder-seg-btn')) {
     btn.setAttribute('aria-pressed', btn.dataset.dir === finderState.gapDir ? 'true' : 'false');
@@ -3607,6 +3614,17 @@ function describeFinderActiveFilters() {
   if (f.minShowRating > 0) chips.push(finderNumericChip('Min show', f.minShowRating, 'minShowRating', els.finderMinShowRating));
   if (f.minAvgEpisode > 0) chips.push(finderNumericChip('Min avg ep', f.minAvgEpisode, 'minAvgEpisode', els.finderMinAvgEpisode));
   if (f.minGap > 0) chips.push(finderNumericChip('Min gap', f.minGap, 'minGap', els.finderMinGap));
+  if (f.hiddenGems) {
+    chips.push({
+      key: 'Hidden gems',
+      value: 'On',
+      remove: () => {
+        f.hiddenGems = false;
+        if (els.finderGemsChip) els.finderGemsChip.setAttribute('aria-pressed', 'false');
+        onFinderFilterChange();
+      },
+    });
+  }
   if (f.minYear != null) chips.push(finderYearChip('Year ≥', f.minYear, 'minYear', els.finderMinYear));
   if (f.maxYear != null) chips.push(finderYearChip('Year ≤', f.maxYear, 'maxYear', els.finderMaxYear));
   if (f.sort !== 'votes' || f.sortDir !== 'desc') {
@@ -3708,6 +3726,27 @@ function bindFinder() {
     onFinderFilterChange();
   });
 
+  els.finderGemsChip.addEventListener('click', () => {
+    finderState.hiddenGems = !finderState.hiddenGems;
+    els.finderGemsChip.setAttribute('aria-pressed', finderState.hiddenGems ? 'true' : 'false');
+    onFinderFilterChange();
+  });
+
+  els.finderSurprise.addEventListener('click', () => {
+    const rows = filterAndSortFinder();
+    if (rows.length === 0) return;
+    const pick = rows[Math.floor(Math.random() * rows.length)];
+    openShowModal(pick.seriesId);
+  });
+
+  els.finderPopularPick.addEventListener('click', () => {
+    const rows = filterAndSortFinder();
+    if (rows.length === 0) return;
+    const top = rows.slice().sort((a, b) => b.votes - a.votes).slice(0, 50);
+    const pick = top[Math.floor(Math.random() * top.length)];
+    openShowModal(pick.seriesId);
+  });
+
   els.finderGapDir.addEventListener('click', (e) => {
     const btn = e.target.closest('.finder-seg-btn');
     if (!btn) return;
@@ -3804,6 +3843,7 @@ function writeFinderStateToURL() {
   if (f.minGap > 0) p.set('fMinGap', f.minGap);
   if (f.minYear != null) p.set('fMinYear', f.minYear);
   if (f.maxYear != null) p.set('fMaxYear', f.maxYear);
+  if (f.hiddenGems) p.set('fGems', 'on');
   if (f.genres.size) p.set('fg', [...f.genres].join(','));
   if (f.genresExclude.size) p.set('fxg', [...f.genresExclude].join(','));
   if (f.languages.size) p.set('fl', [...f.languages].join(','));

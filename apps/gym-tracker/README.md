@@ -49,36 +49,29 @@ A comprehensive, mobile-first workout tracking application built with vanilla Ja
 ```
 gym-tracker/
 ├── index.html                  # Main app entry point
+├── manifest.webmanifest        # PWA manifest
+├── sw.js                       # Service worker (offline support)
+├── package.json                # npm test script + metadata
+├── sitemap-exercises.xml       # Generated sitemap for the exercise directory pages
 ├── css/
-│   └── gym-tracker.css        # Main dark theme styles
+│   ├── gym-tracker.css         # Main dark theme styles
+│   ├── exercise-page.css       # Public exercise-directory page styles
+│   └── refresh.css             # Shared refresh/polish styles
 ├── js/
-│   ├── app.js                 # Main application controller
-│   ├── models/                # Data models
-│   │   ├── Program.js
-│   │   ├── WorkoutDay.js
-│   │   ├── WorkoutSession.js
-│   │   ├── WorkoutExercise.js
-│   │   ├── Set.js
-│   │   ├── Achievement.js
-│   │   └── Settings.js
-│   ├── services/              # Business logic
-│   │   ├── StorageService.js
-│   │   ├── TimerService.js
-│   │   ├── AnalyticsService.js
-│   │   └── AchievementService.js
-│   ├── utils/                 # Helper functions
-│   │   └── helpers.js
-│   └── views/                 # View controllers
-│       ├── home-view.js
-│       ├── programs-view.js
-│       ├── workout-view.js
-│       ├── history-view.js
-│       ├── exercises-view.js
-│       ├── calendar-view.js
-│       ├── achievements-view.js
-│       └── settings-view.js
-└── data/
-    └── exercises-db.js        # 500+ exercise database
+│   ├── app.js                  # Main application controller
+│   ├── models/                 # Program, WorkoutDay, WorkoutSession, WorkoutExercise,
+│   │                           #   Set, Achievement, Measurement, Settings
+│   ├── services/               # Storage, Timer, Analytics, Achievement
+│   ├── utils/                  # plate-calculator, program-schedule, pr-session, rest-cues,
+│   │                           #   session-merge, paginator, event-bus, dark-select, helpers, ...
+│   └── views/                  # home, programs, workout, history, exercises, calendar,
+│                               #   achievements, insights, measurements, settings, paused-banner
+├── data/
+│   ├── exercises-db.js         # 500+ exercise database (JS module)
+│   └── exercises-db.json       # Same data as JSON (for the page generator)
+├── exercises/                  # Generated static exercise-directory pages (gitignored)
+├── scripts/                    # Static-page + sitemap generators (build-exercise-pages.cjs, ...)
+└── tests/                      # node:test unit suites
 ```
 
 ### Data Models
@@ -315,24 +308,3 @@ Built with:
 ## License
 
 Copyright © 2024 Shevato LLC
-
----
-
-**Version**: 2.1.0
-**Last Updated**: 2025-01-20
-**Author**: Nikita Soifer
-
-## Recent Updates (v2.1.0)
-
-- Expanded exercise database from 210 to 500+ exercises
-- Split categories: Arms → Biceps/Triceps, Legs → Quads/Hamstrings/Calves
-- Added custom exercise creation with full integration
-- Implemented exercise reordering in program builder
-- Added previous workout data display (all sets) during workouts
-- Improved text contrast and readability throughout app
-- Replaced browser confirm dialogs with custom styled modals
-- Made workout tiles clickable for detailed views
-- Changed week start to Monday throughout the app
-- Removed difficulty field from exercises
-- Enhanced dashboard with cleaner layout
-- Added workout validation (requires at least one completed set)
