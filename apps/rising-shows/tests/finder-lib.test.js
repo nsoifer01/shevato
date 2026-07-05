@@ -145,6 +145,32 @@ test('passesFinderFilters applies every non-shape filter', () => {
   assert.ok(!passesFinderFilters(x, parseFinderQuery('q=yankee')));
 });
 
+test('parseFinderQuery reads the hidden-gems flag', () => {
+  assert.equal(parseFinderQuery('fGems=on').hiddenGems, true);
+  assert.equal(parseFinderQuery('fGems=off').hiddenGems, false);
+  assert.equal(parseFinderQuery('').hiddenGems, false);
+});
+
+test('passesFinderFilters hidden gems: high rating AND low votes-per-episode', () => {
+  const base = {
+    title: 'x', seriesId: 'tt', genres: [], shapes: [], gap: 0,
+    showRating: 8, year: 2020, language: 'en',
+  };
+  const on = parseFinderQuery('fGems=on');
+
+  // Qualifies: avg 8.6 (>= 8.5), 4000/10 = 400 votes/ep (< 500).
+  assert.ok(passesFinderFilters({ ...base, avgEpisode: 8.6, episodes: 10, votes: 4000 }, on));
+  // Fails the rating condition: avg 8.4 < 8.5.
+  assert.ok(!passesFinderFilters({ ...base, avgEpisode: 8.4, episodes: 10, votes: 4000 }, on));
+  // Fails the popularity condition: 6000/10 = 600 votes/ep >= 500.
+  assert.ok(!passesFinderFilters({ ...base, avgEpisode: 8.6, episodes: 10, votes: 6000 }, on));
+  // Boundaries: exactly 8.5 avg passes; exactly 500 votes/ep is excluded.
+  assert.ok(passesFinderFilters({ ...base, avgEpisode: 8.5, episodes: 10, votes: 4990 }, on));
+  assert.ok(!passesFinderFilters({ ...base, avgEpisode: 8.5, episodes: 10, votes: 5000 }, on));
+  // Flag off: an over-watched popular show passes.
+  assert.ok(passesFinderFilters({ ...base, avgEpisode: 8.6, episodes: 10, votes: 6000 }, parseFinderQuery('')));
+});
+
 test('passesShapeAnd requires every selected shape', () => {
   const row = { shapes: ['rising', 'slow-burn'] };
   assert.ok(passesShapeAnd(row, new Set()));

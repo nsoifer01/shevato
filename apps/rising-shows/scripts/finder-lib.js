@@ -19,11 +19,18 @@ const FINDER_DEFAULTS = {
   minGap: 0,
   minYear: null,
   maxYear: null,
+  hiddenGems: false,
   sort: 'votes',
   sortDir: 'desc',
   view: 'grid',
   page: 1,
 };
+
+// A show is a "hidden gem" when it is highly rated yet under-watched:
+// episode-weighted average episode rating >= 8.5 and fewer than 500 IMDb votes
+// per rated episode. Mirrors the old per-season hidden-gem rule.
+const HIDDEN_GEM_MIN_AVG = 8.5;
+const HIDDEN_GEM_MAX_VOTES_PER_EP = 500;
 
 // Aggregate per-season records (data.json `matches`) into one row per series.
 // `detectShapes` is the per-episode shape classifier from match.js - passed in
@@ -144,6 +151,7 @@ function parseFinderQuery(query) {
     minGap: parseFloat(p.get('fMinGap')) || 0,
     minYear: p.has('fMinYear') ? (parseInt(p.get('fMinYear'), 10) || null) : null,
     maxYear: p.has('fMaxYear') ? (parseInt(p.get('fMaxYear'), 10) || null) : null,
+    hiddenGems: p.get('fGems') === 'on',
     genres: new Set((p.get('fg') || '').split(',').filter(Boolean)),
     genresExclude: new Set((p.get('fxg') || '').split(',').filter(Boolean)),
     languages: new Set((p.get('fl') || '').split(',').filter(Boolean)),
@@ -172,6 +180,10 @@ function passesFinderFilters(s, f) {
   }
   if (f.minYear != null && (s.year == null || s.year < f.minYear)) return false;
   if (f.maxYear != null && (s.year == null || s.year > f.maxYear)) return false;
+  if (f.hiddenGems) {
+    if (s.avgEpisode < HIDDEN_GEM_MIN_AVG) return false;
+    if (s.episodes === 0 || (s.votes / s.episodes) >= HIDDEN_GEM_MAX_VOTES_PER_EP) return false;
+  }
   if (f.genres.size) {
     for (const g of f.genres) if (!s.genres.includes(g)) return false;
   }
@@ -213,6 +225,8 @@ function filterAndSortRows(rows, f) {
 
 const API = {
   FINDER_DEFAULTS,
+  HIDDEN_GEM_MIN_AVG,
+  HIDDEN_GEM_MAX_VOTES_PER_EP,
   buildShowAgg,
   parseFinderQuery,
   passesFinderFilters,

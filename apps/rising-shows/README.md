@@ -42,6 +42,8 @@ A season can match more than one shape — the card shows all of them.
 | Decade filter            | "80s / 90s / 00s / 10s / 20s" quick chips set the year range in one tap (synced with the advanced-drawer year inputs); "All" clears it. |
 | Language filter          | Multi-select chips for the top original languages (TMDB `original_language`).                      |
 | Streaming filter         | Multi-select chips for top US watch providers (Netflix, HBO Max, Prime …).                         |
+| Hidden gems              | A "💎 Hidden gems" quick-filter chip surfaces highly rated but under-watched shows: episode-weighted average episode rating ≥ 8.5 and under 500 IMDb votes per rated episode. Composes with every other filter, shows as a removable chip in the active-filter bar, and serializes to the hash (`fGems=on`). |
+| Surprise me / Popular pick | Two toolbar buttons for discovery. "🎲 Surprise me" opens a random show from the current filtered results; "🔥 Popular pick" opens a random show from the 50 most-voted of those results. Both do nothing when no shows match, and neither changes the URL. |
 | Episode-title search     | Searching ≥3 chars also matches against episode names - "Gray Matter" opens Breaking Bad.           |
 | Compare shows            | "+ Add to compare" on each show, then a floating button opens an overlay chart of season-trajectories for up to 5 series (persisted in localStorage). |
 | Season overlay           | In the show modal, all seasons drawn together on one chart with a legend; clicking a legend entry (the swatch or the S-number) hides/restores that season's line. |
