@@ -2919,57 +2919,8 @@ body:has(.modal:not([hidden])) .back-to-top {
   padding-right: 2.75rem;
 }
 
-/* Roll-again is anchored directly above the poster — same width, slim
-   height, square-ish corners — so it reads as part of the poster card
-   rather than a floating CTA. The shared --modal-poster-w token keeps
-   it locked to the poster on every breakpoint. */
+/* Shared token so the modal poster keeps a consistent width across breakpoints. */
 .modal-panel { --modal-poster-w: 120px; }
-.modal-reroll {
-  position: absolute;
-  top: 1.75rem;            /* matches .modal-panel padding */
-  left: 1.75rem;           /* matches .modal-panel padding */
-  width: var(--modal-poster-w);
-  height: 30px;
-  z-index: 3;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  gap: 0.4rem;
-  padding: 0 0.55rem;
-  border: 1px solid rgba(245, 197, 24, 0.55);
-  border-radius: 8px;
-  background: linear-gradient(180deg, var(--accent) 0%, #d8a912 100%);
-  color: var(--accent-ink) !important;
-  font-size: 0.78rem;
-  font-weight: 700;
-  line-height: 1;
-  letter-spacing: 0.02em;
-  cursor: pointer;
-  box-shadow:
-    0 4px 14px rgba(245, 197, 24, 0.22),
-    0 0 0 1px rgba(0, 0, 0, 0.18) inset !important;
-  transition: filter 0.18s var(--ease), transform 0.08s var(--ease), box-shadow 0.18s var(--ease);
-}
-.modal-reroll:hover {
-  filter: brightness(1.06);
-  box-shadow:
-    0 6px 18px rgba(245, 197, 24, 0.32),
-    0 0 0 1px rgba(0, 0, 0, 0.18) inset !important;
-}
-.modal-reroll:active { transform: translateY(1px); }
-.modal-reroll:focus-visible {
-  outline: 2px solid #fff8d2;
-  outline-offset: 2px;
-}
-.modal-reroll[hidden] { display: none !important; }
-
-/* When Roll-again is visible (surprise pick), shift the modal header
-   down by the button's height + a small breathing gap so the poster
-   sits flush beneath it. Sibling combinator works because the reroll
-   button precedes .modal-header in DOM order. */
-.modal-reroll:not([hidden]) ~ .modal-header {
-  margin-top: calc(30px - 0.4rem);
-}
 
 .modal-header {
   display: flex;
@@ -3531,15 +3482,6 @@ body.advanced-drawer-open {
     margin-bottom: -1.5rem;
     /* Float the close button over the header — it stays reachable at
        the top of the sheet without consuming a full row of padding. */
-  }
-  .modal-reroll {
-    top: 1rem;
-    left: 1rem;
-    height: 28px;
-    font-size: 0.72rem;
-  }
-  .modal-reroll:not([hidden]) ~ .modal-header {
-    margin-top: calc(28px - 0.4rem);
   }
   .modal-header { gap: 0.85rem; }
   .modal-heading h2 { font-size: 1.35rem; line-height: 1.2; }

@@ -157,6 +157,10 @@
             <button type="button" class="btn view-btn" data-view="grid" aria-pressed="true" aria-label="Grid view" title="Grid view">▦</button>
             <button type="button" class="btn view-btn" data-view="list" aria-pressed="false" aria-label="List view" title="List view">☰</button>
           </div>
+          <button type="button" class="btn" id="finderSurprise"
+                  title="Open a random show from the current results">🎲 Surprise me</button>
+          <button type="button" class="btn" id="finderPopularPick"
+                  title="Open a random popular show from the current results">🔥 Popular pick</button>
           <button type="button" class="btn shortcut-legend-btn" id="shortcutLegendBtn"
                   aria-haspopup="dialog" aria-controls="shortcutLegend" aria-expanded="false"
                   title="Keyboard shortcuts (press ?)">?</button>
@@ -198,6 +202,13 @@
               <button type="button" class="finder-chip" data-votes="10000" aria-pressed="false">10k+</button>
               <button type="button" class="finder-chip" data-votes="50000" aria-pressed="false">50k+</button>
               <button type="button" class="finder-chip" data-votes="100000" aria-pressed="false">100k+</button>
+            </div>
+          </div>
+          <div class="label-group" role="group" aria-label="Discovery">
+            <span class="label-group-name">Discovery</span>
+            <div class="finder-chips" role="group" aria-label="Hidden gems">
+              <button type="button" class="finder-chip" id="finderGemsChip" data-gems="on" aria-pressed="false"
+                      title="Highly rated but under-watched: avg episode 8.5+ and under 500 votes per episode">💎 Hidden gems</button>
             </div>
           </div>
         </div>
@@ -328,7 +339,6 @@
     <article class="modal-panel" tabindex="-1" data-back-to-top>
       <button type="button" class="btn modal-close" data-close="modal" aria-label="Close">×</button>
       <button type="button" class="btn modal-back" id="modalBack" hidden aria-label="Back to previous view" title="Back"></button>
-      <button type="button" class="btn btn-primary modal-reroll" id="modalReroll" hidden>Roll again</button>
       <div class="modal-header">
         <div class="modal-poster" id="modalPoster" aria-hidden="true"></div>
         <div class="modal-heading">
