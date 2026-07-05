@@ -135,7 +135,7 @@ when you built the filter.
 1. Open `https://shevato.com/apps/rising-shows/` (the **Show Finder** is the
    app's view) and dial in filters until the result list is what you want.
 2. Copy everything after `#` in the address bar - e.g.
-   `view=finder&fSort=showRating&fMinVotes=25000&fShape=consistent`.
+   `fSort=showRating&fMinVotes=25000&fShape=consistent`.
 3. Add an entry to `apps/rising-shows/finder-presets.json`:
 
    ```json
@@ -143,7 +143,7 @@ when you built the filter.
      "slug": "consistently-great",
      "name": "Consistently Great",
      "summary": "Highly-rated shows whose seasons never wavered.",
-     "query": "view=finder&fSort=showRating&fMinVotes=25000&fShape=consistent",
+     "query": "fSort=showRating&fMinVotes=25000&fShape=consistent",
      "limit": 25
    }
    ```

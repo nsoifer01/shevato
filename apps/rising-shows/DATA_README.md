@@ -98,7 +98,7 @@ gh run watch
       "title": "...", "year": 2020, "seasonYear": 2021, "type": "tvSeries",
       "genres": ["Drama", "Crime"],
       "season": 1,
-      "episodes": [{"episode": 1, "rating": 7.4, "votes": 1234, "name": "Pilot"}, ...],
+      "episodes": [{"episode": 1, "rating": 7.4, "votes": 1234}, ...],
       "firstRating": 7.4, "lastRating": 9.1, "avgRating": 8.2,
       "minVotes": 1234,
       "shapes": ["rising", "slow-burn"],
@@ -116,7 +116,7 @@ gh run watch
 Notes on individual fields:
 
 - `year` is the show's start year; `seasonYear` is the air year of the earliest-aired episode in this specific season. The UI prefers `seasonYear` everywhere a single season is rendered and falls back to `year` if absent.
-- `episodes[].name` is present when IMDb has an episode title for it. Per-episode `tconst` and `year` are intentionally dropped from the projection to keep `data.json` small — the UI doesn't read them.
+- `episodes[]` carries only the fields the grid needs to filter, sort, and draw curves. Episode titles, IMDb deep-link IDs, and runtimes live in `data/show-modal-extras.json` (see below). Per-episode `year` is intentionally dropped from the projection — the UI doesn't read it.
 - `seriesRating` / `seriesVotes` are the show-level IMDb score (not the average of episode ratings).
 - `language` is a TMDB-supplied ISO 639-1 code (e.g. `en`, `ja`, `ko`). Missing for series TMDB couldn't match.
 - `providers` is a deduped, brand-normalized list of US streaming providers (Netflix Standard with Ads → "Netflix", Peacock Premium Plus → "Peacock", etc.). Missing for series with no US streaming availability or before `enrich-providers.js` has run.
@@ -125,6 +125,42 @@ Notes on individual fields:
 The browser app reads `builtAt` to display "Built [date]" and to flag
 the data as stale (with a `console.warn` and UI badge) if it's older
 than 30 days.
+
+## `data/show-modal-extras.json`
+
+A committed side-file that keeps `data.json` under GitHub's hard
+100 MiB per-file cap. `build-data.js` writes both files in one pass:
+anything the grid needs to filter, sort, and draw curves stays in
+`data.json`; enrichment that's only read once a modal (or static show
+page) opens moves here, keyed by series ID:
+
+```jsonc
+{
+  "tt0944947": {
+    "cast": [{"id": 22970, "name": "Peter Dinklage", "character": "...", "profile_path": "/....jpg"}, ...],
+    "seasons": {
+      "1": {
+        "ov": "Season 1 plot overview...",
+        "eps": {
+          "1": {"tt": "tt1480055", "rt": 62, "n": "Winter Is Coming"}   // IMDb id, runtime (min), episode title
+        }
+      }
+    }
+  }
+}
+```
+
+Consumers merge it back onto each match so downstream code is agnostic
+to the split: `js/app.js` fetches it in parallel with `data.json` at
+load, and `scripts/build-show-pages.js` reads it when rendering static
+show pages. The file is optional for both — if it's missing, the app
+still works, just without cast strips, season overviews, episode
+titles, runtimes, or IMDb episode deep-links.
+
+`build-data.js` logs both file sizes on every build and fails hard if
+either reaches 100 MiB, so the refresh workflow dies at the build step
+with an actionable message instead of at `git push`. If that fires,
+move more per-match fields into the side-file (or shard it).
 
 ## `changelog.json`
 
@@ -193,10 +229,14 @@ and let users narrow in the UI.
 
 ## Repo size considerations
 
-`data.json` is ~85 MB after both enrichment passes (posters + providers).
-Weekly commits will grow git history by roughly a few MB/week (most fields
-are stable; only ratings, votes, and counts change). If history bloat
-becomes an issue, options:
+`data.json` is ~77 MB and `data/show-modal-extras.json` ~68 MB after
+both enrichment passes (posters + providers). GitHub rejects any file
+at 100 MiB, which is why the dataset is split across the two files —
+`data.json` hit the cap on 2026-07-05 and episode titles moved to the
+side-file. Daily commits also grow git history by roughly a few MB/week
+(most fields are stable; only ratings, votes, and counts change). If
+either file approaches the cap again or history bloat becomes an
+issue, options:
 
 - Move to a `data` orphan branch the site fetches from.
 - Build at deploy time on Netlify (would need to download IMDb dumps
