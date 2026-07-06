@@ -21,6 +21,7 @@ Seasons, the matrix selection, and the currently focused rival are persisted und
 | MapTap profile auto-sync | Link your MapTap profile (and a rival's username) to pull game history automatically from the public MapTap profile endpoint instead of pasting. |
 | Dashboard | A rival grid of summary cards (record, streak, averages) with an at-a-glance summary strip and a "today's predictions" card when the day's puzzle data is available. |
 | Per-rival dashboard | A focused head-to-head view: stat cards, score-over-time and win-distribution and score-differential charts (Chart.js), recent-games table with pagination, and narrative callouts. |
+| Outbound maptap.gg links | In the history and recent-games tables, dates link to that day's puzzle page (`maptap.gg/history/...`) and score numbers link to the player's profile (`maptap.gg/u/...`) when that player has a linked username. |
 | Round-by-round breakdown | Per-round (location) stats, win-rate-per-round chart, a last-10-games round heatmap, carry/choke insights, and a calendar heatmap of game history. |
 | Continent breakdown | Per-continent stats for games that carry synced geo data. |
 | Win/loss/tie + streaks | Computes wins, losses, ties, win %, current and longest streaks, biggest win/loss margins, and best/worst scores per rival. |
