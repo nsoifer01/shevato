@@ -276,6 +276,35 @@
     const tok = maptapMonthDay(iso);
     return tok ? `https://maptap.gg/history/${tok}` : null;
   }
+  function mapTapProfileUrl(username) {
+    const u = normalizeMapTapUsername(username);
+    return u ? `https://maptap.gg/u/${encodeURIComponent(u)}` : null;
+  }
+  // Score <td> for the games/history tables. When the player has a known
+  // maptap.gg username the score number links to their profile. maptap.gg
+  // has no per-day profile anchor (its router only reads the nickname), so
+  // the profile top is the closest target; the date column's day link
+  // already covers that day's puzzle.
+  function scoreCell(played, total, roundsTitle, username, ownerPossessive) {
+    if (!played) {
+      return el('td', { style: 'font-weight:600', title: roundsTitle }, '—');
+    }
+    const url = mapTapProfileUrl(username);
+    if (!url) {
+      return el('td', { style: 'font-weight:600', title: roundsTitle }, String(total));
+    }
+    const linkTitle = (roundsTitle ? roundsTitle + ' · ' : '') +
+      `Open ${ownerPossessive} maptap.gg profile`;
+    return el('td', { style: 'font-weight:600' }, [
+      el('a', {
+        href: url,
+        target: '_blank',
+        rel: 'noopener noreferrer',
+        class: 'score-profile-link',
+        title: linkTitle,
+      }, String(total)),
+    ]);
+  }
   function mapTapDailyDataUrl(iso) {
     const tok = maptapMonthDay(iso);
     return tok ? `${MAPTAP_DAILY_URL_BASE}${tok}.js` : null;
@@ -3177,14 +3206,12 @@
       const diff = (meHere && themHere) ? (myT - theirT) : null;
       tableBody.appendChild(el('tr', { class: r ? '' : 'row-one-sided' }, [
         el('td', {}, shortDate(g.date)),
-        el('td', {
-          style: 'font-weight:600',
-          title: hasLocs(g) ? `Rounds: ${g.myScores.join(' / ')}` : (meHere ? '' : 'You didn\'t play this day'),
-        }, meHere ? String(myT) : '—'),
-        el('td', {
-          style: 'font-weight:600',
-          title: Array.isArray(g.theirScores) ? `Rounds: ${g.theirScores.join(' / ')}` : '',
-        }, themHere ? String(theirT) : '—'),
+        scoreCell(meHere, myT,
+          hasLocs(g) ? `Rounds: ${g.myScores.join(' / ')}` : (meHere ? '' : 'You didn\'t play this day'),
+          state.myMapTap, 'your'),
+        scoreCell(themHere, theirT,
+          Array.isArray(g.theirScores) ? `Rounds: ${g.theirScores.join(' / ')}` : '',
+          rival.maptapUsername, `${rival.name}'s`),
         diff === null
           ? el('td', { class: 'delta-zero', title: 'Only one side played' }, '—')
           : el('td', { class: diff > 0 ? 'delta-pos' : diff < 0 ? 'delta-neg' : 'delta-zero' },
@@ -4774,14 +4801,13 @@
       tbody.appendChild(el('tr', { class: 'history-day-row' + (r ? '' : ' row-one-sided') }, [
         dateCell,
         el('td', {}, rival ? `${rival.icon} ${rival.name}` : '—'),
-        el('td', {
-          style: 'font-weight:600',
-          title: hasLocs(g) ? `Rounds: ${g.myScores.join(' / ')}` : (meHere ? '' : 'You didn\'t play this day'),
-        }, meHere ? String(myT) : '—'),
-        el('td', {
-          style: 'font-weight:600',
-          title: Array.isArray(g.theirScores) ? `Rounds: ${g.theirScores.join(' / ')}` : '',
-        }, themHere ? String(theirT) : '—'),
+        scoreCell(meHere, myT,
+          hasLocs(g) ? `Rounds: ${g.myScores.join(' / ')}` : (meHere ? '' : 'You didn\'t play this day'),
+          state.myMapTap, 'your'),
+        scoreCell(themHere, theirT,
+          Array.isArray(g.theirScores) ? `Rounds: ${g.theirScores.join(' / ')}` : '',
+          rival ? rival.maptapUsername : null,
+          rival ? `${rival.name}'s` : 'their'),
         diff === null
           ? el('td', { class: 'delta-zero', title: 'Only one side played' }, '—')
           : el('td', { class: diff > 0 ? 'delta-pos' : diff < 0 ? 'delta-neg' : 'delta-zero' },
