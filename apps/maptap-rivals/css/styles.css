@@ -2412,6 +2412,22 @@ body.maptap-rivals-app button {
   outline: none;
 }
 
+/* Score cells: when the player has a linked maptap.gg profile the score
+   number itself links to it. Same dotted affordance as the day links, but
+   keeps the score's own (non-muted) color until hover. */
+.games-table tbody td .score-profile-link {
+  color: inherit;
+  text-decoration: none;
+  border-bottom: 1px dotted var(--muted);
+  padding-bottom: 1px;
+}
+.games-table tbody td .score-profile-link:hover,
+.games-table tbody td .score-profile-link:focus-visible {
+  color: var(--accent-2);
+  border-bottom: 1px solid currentColor;
+  outline: none;
+}
+
 /* History thead — a distinct, intentional legend row. Layered surface +
    bottom border lift it off the data; small-caps letterspacing matches the
    section labels elsewhere. Sticky within the table's own scroll so the
