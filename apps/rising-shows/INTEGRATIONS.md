@@ -2,10 +2,10 @@
 
 Five ways Rising Shows plugs into a Plex + Kometa stack. The
 exports under `apps/rising-shows/exports/` are produced by
-`npm run export:rising-shows` and committed alongside `data.json` (the
-data-refresh workflow regenerates them on every run), so the
-NAS side can pull them directly from GitHub raw URLs without running the
-repo locally.
+`npm run export:rising-shows` and committed (the data-refresh workflow
+regenerates them on every run, alongside the `data.json` it publishes
+to the `rising-shows-data` release), so the NAS side can pull them
+directly from GitHub raw URLs without running the repo locally.
 
 ```
 exports/

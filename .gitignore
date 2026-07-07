@@ -35,6 +35,13 @@ WhatsApp Chat *.txt:Zone.Identifier
 apps/rising-shows/shows/
 apps/rising-shows/sitemap-shows.xml
 
+# Rising Shows datasets — published to the rolling "rising-shows-data"
+# GitHub release by the refresh workflow and downloaded at build time
+# (scripts/fetch-data.js). Never committed: the pair is ~150 MB per
+# refresh and was bloating git history.
+apps/rising-shows/data.json
+apps/rising-shows/data/show-modal-extras.json
+
 # Gym Tracker static SEO pages — derived from exercises-db.json at
 # build time. Same rationale as Rising Shows.
 apps/gym-tracker/exercises/
