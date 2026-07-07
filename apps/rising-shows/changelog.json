@@ -1,6 +1,577 @@
 {
   "updates": [
     {
+      "builtAt": "2026-07-07T09:42:12.584Z",
+      "totals": {
+        "seasons": 65683,
+        "delta": 20
+      },
+      "shapeCounts": {
+        "mid-peak": 4634,
+        "rebound": 10044,
+        "rising": 2911,
+        "slow-burn": 4354,
+        "big-finale": 11992,
+        "u-shaped": 3067,
+        "rollercoaster": 14021,
+        "saved-best-for-last": 1523,
+        "front-loaded": 3435,
+        "declining": 1859,
+        "bad-finale": 4640,
+        "consistent": 2606,
+        "shape-drift": 1613
+      },
+      "shapeDeltas": {
+        "rebound": 2,
+        "rising": -10,
+        "slow-burn": 8,
+        "big-finale": 5,
+        "u-shaped": -2,
+        "rollercoaster": -4,
+        "saved-best-for-last": 2,
+        "front-loaded": -2,
+        "declining": 2,
+        "consistent": 8,
+        "shape-drift": 5
+      },
+      "added": [
+        {
+          "seriesId": "tt11198330",
+          "title": "House of the Dragon",
+          "season": 3,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt32915471",
+          "title": "2026 FIFA World Cup",
+          "season": 5,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt13045860",
+          "title": "Hiç Komik Degil",
+          "season": 7,
+          "seasonYear": 2020
+        },
+        {
+          "seriesId": "tt13045860",
+          "title": "Hiç Komik Degil",
+          "season": 6,
+          "seasonYear": 2019
+        },
+        {
+          "seriesId": "tt28077038",
+          "title": "Pritam Pedro",
+          "season": 1,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt0426769",
+          "title": "Peppa Pig",
+          "season": 9,
+          "seasonYear": 2025
+        },
+        {
+          "seriesId": "tt32985844",
+          "title": "SHIROHIYO - Reincarnated as a Neglected Noble: Raising My Baby Brother with Memories from My Past Life",
+          "season": 1,
+          "seasonYear": 2025
+        },
+        {
+          "seriesId": "tt0096563",
+          "title": "Cops",
+          "season": 36,
+          "seasonYear": 2024
+        },
+        {
+          "seriesId": "tt12916182",
+          "title": "My Kind of Country",
+          "season": 1,
+          "seasonYear": 2023
+        },
+        {
+          "seriesId": "tt32490790",
+          "title": "Camp Snoopy",
+          "season": 2,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt40123463",
+          "title": "The Tony Blair Story",
+          "season": 1,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt40231500",
+          "title": "The Edge of Horizon",
+          "season": 1,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt43592244",
+          "title": "The Prosecutor's Proposal",
+          "season": 1,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt4892108",
+          "title": "Life on the Reef",
+          "season": 1,
+          "seasonYear": 2015
+        },
+        {
+          "seriesId": "tt0096588",
+          "title": "Fredrikssons fabrikk",
+          "season": 3,
+          "seasonYear": 1993
+        },
+        {
+          "seriesId": "tt0210462",
+          "title": "Vintiöt",
+          "season": 1,
+          "seasonYear": 1994
+        },
+        {
+          "seriesId": "tt7252086",
+          "title": "Patrick Willems Video Essays",
+          "season": 8,
+          "seasonYear": 2022
+        },
+        {
+          "seriesId": "tt4565380",
+          "title": "Fauda",
+          "season": 5,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt12192948",
+          "title": "Any Malu Show",
+          "season": 1,
+          "seasonYear": 2020
+        },
+        {
+          "seriesId": "tt14077264",
+          "title": "Fuerza de paz",
+          "season": 1,
+          "seasonYear": 2022
+        },
+        {
+          "seriesId": "tt36623923",
+          "title": "The Million Game: Academy",
+          "season": 1,
+          "seasonYear": 2025
+        },
+        {
+          "seriesId": "tt34387798",
+          "title": "2025-2026 UEFA Champions League",
+          "season": 11,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt34387798",
+          "title": "2025-2026 UEFA Champions League",
+          "season": 12,
+          "seasonYear": 2026
+        }
+      ],
+      "removed": [
+        {
+          "seriesId": "tt13045860",
+          "title": "Hiç Komik Degil",
+          "season": 3,
+          "seasonYear": 2014
+        },
+        {
+          "seriesId": "tt12511004",
+          "title": "Stampy's Lovely World",
+          "season": 2,
+          "seasonYear": 2013
+        },
+        {
+          "seriesId": "tt12511004",
+          "title": "Stampy's Lovely World",
+          "season": 3,
+          "seasonYear": 2013
+        }
+      ],
+      "ratingSwings": [
+        {
+          "seriesId": "tt14321632",
+          "title": "All the Queen's Men",
+          "season": 5,
+          "from": 9.1,
+          "to": 7.93,
+          "delta": -1.17
+        },
+        {
+          "seriesId": "tt26684155",
+          "title": "The Real Deal Has Come!",
+          "season": 1,
+          "from": 7.99,
+          "to": 6.95,
+          "delta": -1.04
+        },
+        {
+          "seriesId": "tt34498121",
+          "title": "Thukra Ke Mera Pyaar",
+          "season": 2,
+          "from": 5.15,
+          "to": 6.18,
+          "delta": 1.03
+        },
+        {
+          "seriesId": "tt0320037",
+          "title": "Jimmy Kimmel Live!",
+          "season": 14,
+          "from": 6.94,
+          "to": 5.99,
+          "delta": -0.95
+        },
+        {
+          "seriesId": "tt9572814",
+          "title": "The Dream Motel",
+          "season": 2,
+          "from": 8.65,
+          "to": 7.88,
+          "delta": -0.77
+        },
+        {
+          "seriesId": "tt3644256",
+          "title": "Marvel Disk Wars: The Avengers",
+          "season": 1,
+          "from": 7.14,
+          "to": 7.9,
+          "delta": 0.76
+        },
+        {
+          "seriesId": "tt11128176",
+          "title": "Turma da Mônica Jovem",
+          "season": 1,
+          "from": 7.28,
+          "to": 8.04,
+          "delta": 0.76
+        },
+        {
+          "seriesId": "tt0391666",
+          "title": "Morangos com Açúcar",
+          "season": 1,
+          "from": 7.1,
+          "to": 6.42,
+          "delta": -0.68
+        },
+        {
+          "seriesId": "tt30761494",
+          "title": "Mickey Mouse Classic Shorts",
+          "season": 1,
+          "from": 6.5,
+          "to": 5.83,
+          "delta": -0.67
+        },
+        {
+          "seriesId": "tt5297548",
+          "title": "Admirable Animation",
+          "season": 1,
+          "from": 5.8,
+          "to": 5.16,
+          "delta": -0.64
+        }
+      ],
+      "modifiedCounts": {
+        "seriesVotes": 23439,
+        "seriesRating": 467,
+        "avgRating": 1865,
+        "shapes": 363,
+        "episodeCount": 139,
+        "poster": 13,
+        "overview": 7,
+        "providers": 4
+      }
+    },
+    {
+      "builtAt": "2026-07-07T09:01:58.709Z",
+      "totals": {
+        "seasons": 65683,
+        "delta": 20
+      },
+      "shapeCounts": {
+        "mid-peak": 4634,
+        "rebound": 10044,
+        "rising": 2911,
+        "slow-burn": 4354,
+        "big-finale": 11992,
+        "u-shaped": 3067,
+        "rollercoaster": 14021,
+        "saved-best-for-last": 1523,
+        "front-loaded": 3435,
+        "declining": 1859,
+        "bad-finale": 4640,
+        "consistent": 2606,
+        "shape-drift": 1613
+      },
+      "shapeDeltas": {
+        "rebound": 2,
+        "rising": -10,
+        "slow-burn": 8,
+        "big-finale": 5,
+        "u-shaped": -2,
+        "rollercoaster": -4,
+        "saved-best-for-last": 2,
+        "front-loaded": -2,
+        "declining": 2,
+        "consistent": 8,
+        "shape-drift": 5
+      },
+      "added": [
+        {
+          "seriesId": "tt11198330",
+          "title": "House of the Dragon",
+          "season": 3,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt32915471",
+          "title": "2026 FIFA World Cup",
+          "season": 5,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt13045860",
+          "title": "Hiç Komik Degil",
+          "season": 7,
+          "seasonYear": 2020
+        },
+        {
+          "seriesId": "tt13045860",
+          "title": "Hiç Komik Degil",
+          "season": 6,
+          "seasonYear": 2019
+        },
+        {
+          "seriesId": "tt28077038",
+          "title": "Pritam Pedro",
+          "season": 1,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt0426769",
+          "title": "Peppa Pig",
+          "season": 9,
+          "seasonYear": 2025
+        },
+        {
+          "seriesId": "tt32985844",
+          "title": "SHIROHIYO - Reincarnated as a Neglected Noble: Raising My Baby Brother with Memories from My Past Life",
+          "season": 1,
+          "seasonYear": 2025
+        },
+        {
+          "seriesId": "tt0096563",
+          "title": "Cops",
+          "season": 36,
+          "seasonYear": 2024
+        },
+        {
+          "seriesId": "tt12916182",
+          "title": "My Kind of Country",
+          "season": 1,
+          "seasonYear": 2023
+        },
+        {
+          "seriesId": "tt32490790",
+          "title": "Camp Snoopy",
+          "season": 2,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt40123463",
+          "title": "The Tony Blair Story",
+          "season": 1,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt40231500",
+          "title": "The Edge of Horizon",
+          "season": 1,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt43592244",
+          "title": "The Prosecutor's Proposal",
+          "season": 1,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt4892108",
+          "title": "Life on the Reef",
+          "season": 1,
+          "seasonYear": 2015
+        },
+        {
+          "seriesId": "tt0096588",
+          "title": "Fredrikssons fabrikk",
+          "season": 3,
+          "seasonYear": 1993
+        },
+        {
+          "seriesId": "tt0210462",
+          "title": "Vintiöt",
+          "season": 1,
+          "seasonYear": 1994
+        },
+        {
+          "seriesId": "tt7252086",
+          "title": "Patrick Willems Video Essays",
+          "season": 8,
+          "seasonYear": 2022
+        },
+        {
+          "seriesId": "tt4565380",
+          "title": "Fauda",
+          "season": 5,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt12192948",
+          "title": "Any Malu Show",
+          "season": 1,
+          "seasonYear": 2020
+        },
+        {
+          "seriesId": "tt14077264",
+          "title": "Fuerza de paz",
+          "season": 1,
+          "seasonYear": 2022
+        },
+        {
+          "seriesId": "tt36623923",
+          "title": "The Million Game: Academy",
+          "season": 1,
+          "seasonYear": 2025
+        },
+        {
+          "seriesId": "tt34387798",
+          "title": "2025-2026 UEFA Champions League",
+          "season": 11,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt34387798",
+          "title": "2025-2026 UEFA Champions League",
+          "season": 12,
+          "seasonYear": 2026
+        }
+      ],
+      "removed": [
+        {
+          "seriesId": "tt13045860",
+          "title": "Hiç Komik Degil",
+          "season": 3,
+          "seasonYear": 2014
+        },
+        {
+          "seriesId": "tt12511004",
+          "title": "Stampy's Lovely World",
+          "season": 2,
+          "seasonYear": 2013
+        },
+        {
+          "seriesId": "tt12511004",
+          "title": "Stampy's Lovely World",
+          "season": 3,
+          "seasonYear": 2013
+        }
+      ],
+      "ratingSwings": [
+        {
+          "seriesId": "tt14321632",
+          "title": "All the Queen's Men",
+          "season": 5,
+          "from": 9.1,
+          "to": 7.93,
+          "delta": -1.17
+        },
+        {
+          "seriesId": "tt26684155",
+          "title": "The Real Deal Has Come!",
+          "season": 1,
+          "from": 7.99,
+          "to": 6.95,
+          "delta": -1.04
+        },
+        {
+          "seriesId": "tt34498121",
+          "title": "Thukra Ke Mera Pyaar",
+          "season": 2,
+          "from": 5.15,
+          "to": 6.18,
+          "delta": 1.03
+        },
+        {
+          "seriesId": "tt0320037",
+          "title": "Jimmy Kimmel Live!",
+          "season": 14,
+          "from": 6.94,
+          "to": 5.99,
+          "delta": -0.95
+        },
+        {
+          "seriesId": "tt9572814",
+          "title": "The Dream Motel",
+          "season": 2,
+          "from": 8.65,
+          "to": 7.88,
+          "delta": -0.77
+        },
+        {
+          "seriesId": "tt3644256",
+          "title": "Marvel Disk Wars: The Avengers",
+          "season": 1,
+          "from": 7.14,
+          "to": 7.9,
+          "delta": 0.76
+        },
+        {
+          "seriesId": "tt11128176",
+          "title": "Turma da Mônica Jovem",
+          "season": 1,
+          "from": 7.28,
+          "to": 8.04,
+          "delta": 0.76
+        },
+        {
+          "seriesId": "tt0391666",
+          "title": "Morangos com Açúcar",
+          "season": 1,
+          "from": 7.1,
+          "to": 6.42,
+          "delta": -0.68
+        },
+        {
+          "seriesId": "tt30761494",
+          "title": "Mickey Mouse Classic Shorts",
+          "season": 1,
+          "from": 6.5,
+          "to": 5.83,
+          "delta": -0.67
+        },
+        {
+          "seriesId": "tt5297548",
+          "title": "Admirable Animation",
+          "season": 1,
+          "from": 5.8,
+          "to": 5.16,
+          "delta": -0.64
+        }
+      ],
+      "modifiedCounts": {
+        "seriesVotes": 23439,
+        "seriesRating": 467,
+        "avgRating": 1865,
+        "shapes": 363,
+        "episodeCount": 139
+      }
+    },
+    {
       "builtAt": "2026-07-06T10:18:41.956Z",
       "totals": {
         "seasons": 65663,
@@ -7056,664 +7627,6 @@
         "shapes": 114,
         "seriesRating": 213,
         "episodeCount": 47
-      }
-    },
-    {
-      "builtAt": "2026-06-21T08:30:38.545Z",
-      "totals": {
-        "seasons": 65438,
-        "delta": 13
-      },
-      "shapeCounts": {
-        "mid-peak": 4595,
-        "rebound": 10023,
-        "rising": 2911,
-        "slow-burn": 4332,
-        "big-finale": 11954,
-        "u-shaped": 3052,
-        "rollercoaster": 13983,
-        "saved-best-for-last": 1513,
-        "front-loaded": 3425,
-        "declining": 1847,
-        "bad-finale": 4622,
-        "consistent": 2594,
-        "shape-drift": 1599
-      },
-      "shapeDeltas": {
-        "mid-peak": -1,
-        "rebound": -7,
-        "rising": 2,
-        "slow-burn": 4,
-        "big-finale": 3,
-        "u-shaped": -8,
-        "rollercoaster": -2,
-        "saved-best-for-last": 1,
-        "front-loaded": -6,
-        "declining": -1,
-        "bad-finale": 3,
-        "consistent": -4,
-        "shape-drift": 4
-      },
-      "added": [
-        {
-          "seriesId": "tt0075538",
-          "title": "Miss Jones and Son",
-          "season": 1,
-          "seasonYear": 1977
-        },
-        {
-          "seriesId": "tt14299086",
-          "title": "Higurashi no Naku Koro ni Kai: Ura Higu",
-          "season": 1,
-          "seasonYear": 2007
-        },
-        {
-          "seriesId": "tt0206512",
-          "title": "SpongeBob SquarePants",
-          "season": 17,
-          "seasonYear": 2026
-        },
-        {
-          "seriesId": "tt0459618",
-          "title": "Biker Mice from Mars",
-          "season": 1,
-          "seasonYear": 2006
-        },
-        {
-          "seriesId": "tt10038720",
-          "title": "Restoring Galveston",
-          "season": 3,
-          "seasonYear": 2021
-        },
-        {
-          "seriesId": "tt8447844",
-          "title": "Clifford the Big Red Dog",
-          "season": 1,
-          "seasonYear": 2019
-        },
-        {
-          "seriesId": "tt21001320",
-          "title": "Prima Doll",
-          "season": 1,
-          "seasonYear": 2022
-        },
-        {
-          "seriesId": "tt31556788",
-          "title": "Lethally Blonde",
-          "season": 2,
-          "seasonYear": 2026
-        },
-        {
-          "seriesId": "tt0877508",
-          "title": "Jigoku sensei Nube",
-          "season": 1,
-          "seasonYear": 1996
-        },
-        {
-          "seriesId": "tt0301263",
-          "title": "Eco moda",
-          "season": 1,
-          "seasonYear": 2001
-        },
-        {
-          "seriesId": "tt15138382",
-          "title": "Ziddi Dil Maane Na",
-          "season": 1,
-          "seasonYear": 2021
-        },
-        {
-          "seriesId": "tt7980994",
-          "title": "Vete a la Versh",
-          "season": 3,
-          "seasonYear": 2015
-        },
-        {
-          "seriesId": "tt29007168",
-          "title": "Inspirez Expirez",
-          "season": 2,
-          "seasonYear": 2025
-        },
-        {
-          "seriesId": "tt31811424",
-          "title": "Tochka nol",
-          "season": 1,
-          "seasonYear": 2024
-        },
-        {
-          "seriesId": "tt34881067",
-          "title": "Baylen Out Loud",
-          "season": 3,
-          "seasonYear": 2026
-        },
-        {
-          "seriesId": "tt38711470",
-          "title": "High School! Kimengumi",
-          "season": 1,
-          "seasonYear": 2026
-        },
-        {
-          "seriesId": "tt39382982",
-          "title": "Barbeint i snøen",
-          "season": 1,
-          "seasonYear": 2026
-        },
-        {
-          "seriesId": "tt38984263",
-          "title": "Good Boys Go to Heaven",
-          "season": 1,
-          "seasonYear": 2026
-        },
-        {
-          "seriesId": "tt41672842",
-          "title": "Salish & Jordan Matter",
-          "season": 1,
-          "seasonYear": 2026
-        },
-        {
-          "seriesId": "tt42933387",
-          "title": "Sule: Senin Hikayen",
-          "season": 1,
-          "seasonYear": 2026
-        },
-        {
-          "seriesId": "tt36982964",
-          "title": "Never-Ending Summer",
-          "season": 1,
-          "seasonYear": 2026
-        },
-        {
-          "seriesId": "tt43587069",
-          "title": "Triple T Adventures",
-          "season": 1,
-          "seasonYear": 2026
-        },
-        {
-          "seriesId": "tt7905120",
-          "title": "Turning Mecard",
-          "season": 1,
-          "seasonYear": 2015
-        }
-      ],
-      "removed": [
-        {
-          "seriesId": "tt17492848",
-          "title": "Goodbye Earth",
-          "season": 1,
-          "seasonYear": 2024
-        },
-        {
-          "seriesId": "tt0106053",
-          "title": "Late Show with David Letterman",
-          "season": 14,
-          "seasonYear": 2006
-        },
-        {
-          "seriesId": "tt1544603",
-          "title": "Are We There Yet?",
-          "season": 1,
-          "seasonYear": 2010
-        },
-        {
-          "seriesId": "tt14183290",
-          "title": "Glass Ceilings",
-          "season": 1,
-          "seasonYear": 2021
-        },
-        {
-          "seriesId": "tt5017396",
-          "title": "MTV Roadies",
-          "season": 20,
-          "seasonYear": 2025
-        },
-        {
-          "seriesId": "tt1544603",
-          "title": "Are We There Yet?",
-          "season": 2,
-          "seasonYear": 2010
-        },
-        {
-          "seriesId": "tt7673112",
-          "title": "Round Planet",
-          "season": 1,
-          "seasonYear": 2016
-        },
-        {
-          "seriesId": "tt5017396",
-          "title": "MTV Roadies",
-          "season": 1,
-          "seasonYear": 2003
-        },
-        {
-          "seriesId": "tt1544603",
-          "title": "Are We There Yet?",
-          "season": 3,
-          "seasonYear": 2012
-        },
-        {
-          "seriesId": "tt5017396",
-          "title": "MTV Roadies",
-          "season": 19,
-          "seasonYear": 2023
-        }
-      ],
-      "ratingSwings": [
-        {
-          "seriesId": "tt41976477",
-          "title": "Shaidai",
-          "season": 1,
-          "from": 9.4,
-          "to": 8.14,
-          "delta": -1.26
-        },
-        {
-          "seriesId": "tt39205437",
-          "title": "Jazz City",
-          "season": 1,
-          "from": 8.24,
-          "to": 7.18,
-          "delta": -1.06
-        },
-        {
-          "seriesId": "tt34117673",
-          "title": "Generation to Generation",
-          "season": 1,
-          "from": 7.66,
-          "to": 8.67,
-          "delta": 1.01
-        },
-        {
-          "seriesId": "tt7142738",
-          "title": "SuperHigh",
-          "season": 1,
-          "from": 7.93,
-          "to": 6.96,
-          "delta": -0.97
-        },
-        {
-          "seriesId": "tt10530900",
-          "title": "Gullak",
-          "season": 5,
-          "from": 7.8,
-          "to": 8.59,
-          "delta": 0.79
-        },
-        {
-          "seriesId": "tt39443868",
-          "title": "Kirio Fan Club",
-          "season": 1,
-          "from": 8.11,
-          "to": 8.62,
-          "delta": 0.51
-        },
-        {
-          "seriesId": "tt8819906",
-          "title": "Love Island USA",
-          "season": 8,
-          "from": 6.94,
-          "to": 6.44,
-          "delta": -0.5
-        },
-        {
-          "seriesId": "tt2147999",
-          "title": "Devon Ke Dev... Mahadev",
-          "season": 1,
-          "from": 7.79,
-          "to": 7.29,
-          "delta": -0.5
-        },
-        {
-          "seriesId": "tt2014553",
-          "title": "Daniel Tiger's Neighborhood",
-          "season": 7,
-          "from": 8.23,
-          "to": 8.72,
-          "delta": 0.49
-        },
-        {
-          "seriesId": "tt0177438",
-          "title": "Dynomutt Dog Wonder",
-          "season": 2,
-          "from": 6.87,
-          "to": 7.35,
-          "delta": 0.48
-        }
-      ],
-      "modifiedCounts": {
-        "seriesVotes": 18738,
-        "avgRating": 1191,
-        "episodeCount": 160,
-        "shapes": 233,
-        "seriesRating": 348,
-        "poster": 9,
-        "providers": 3
-      }
-    },
-    {
-      "builtAt": "2026-06-21T07:50:34.397Z",
-      "totals": {
-        "seasons": 65438,
-        "delta": 13
-      },
-      "shapeCounts": {
-        "mid-peak": 4595,
-        "rebound": 10023,
-        "rising": 2911,
-        "slow-burn": 4332,
-        "big-finale": 11954,
-        "u-shaped": 3052,
-        "rollercoaster": 13983,
-        "saved-best-for-last": 1513,
-        "front-loaded": 3425,
-        "declining": 1847,
-        "bad-finale": 4622,
-        "consistent": 2594,
-        "shape-drift": 1599
-      },
-      "shapeDeltas": {
-        "mid-peak": -1,
-        "rebound": -7,
-        "rising": 2,
-        "slow-burn": 4,
-        "big-finale": 3,
-        "u-shaped": -8,
-        "rollercoaster": -2,
-        "saved-best-for-last": 1,
-        "front-loaded": -6,
-        "declining": -1,
-        "bad-finale": 3,
-        "consistent": -4,
-        "shape-drift": 4
-      },
-      "added": [
-        {
-          "seriesId": "tt0075538",
-          "title": "Miss Jones and Son",
-          "season": 1,
-          "seasonYear": 1977
-        },
-        {
-          "seriesId": "tt14299086",
-          "title": "Higurashi no Naku Koro ni Kai: Ura Higu",
-          "season": 1,
-          "seasonYear": 2007
-        },
-        {
-          "seriesId": "tt0206512",
-          "title": "SpongeBob SquarePants",
-          "season": 17,
-          "seasonYear": 2026
-        },
-        {
-          "seriesId": "tt0459618",
-          "title": "Biker Mice from Mars",
-          "season": 1,
-          "seasonYear": 2006
-        },
-        {
-          "seriesId": "tt10038720",
-          "title": "Restoring Galveston",
-          "season": 3,
-          "seasonYear": 2021
-        },
-        {
-          "seriesId": "tt8447844",
-          "title": "Clifford the Big Red Dog",
-          "season": 1,
-          "seasonYear": 2019
-        },
-        {
-          "seriesId": "tt21001320",
-          "title": "Prima Doll",
-          "season": 1,
-          "seasonYear": 2022
-        },
-        {
-          "seriesId": "tt31556788",
-          "title": "Lethally Blonde",
-          "season": 2,
-          "seasonYear": 2026
-        },
-        {
-          "seriesId": "tt0877508",
-          "title": "Jigoku sensei Nube",
-          "season": 1,
-          "seasonYear": 1996
-        },
-        {
-          "seriesId": "tt0301263",
-          "title": "Eco moda",
-          "season": 1,
-          "seasonYear": 2001
-        },
-        {
-          "seriesId": "tt15138382",
-          "title": "Ziddi Dil Maane Na",
-          "season": 1,
-          "seasonYear": 2021
-        },
-        {
-          "seriesId": "tt7980994",
-          "title": "Vete a la Versh",
-          "season": 3,
-          "seasonYear": 2015
-        },
-        {
-          "seriesId": "tt29007168",
-          "title": "Inspirez Expirez",
-          "season": 2,
-          "seasonYear": 2025
-        },
-        {
-          "seriesId": "tt31811424",
-          "title": "Tochka nol",
-          "season": 1,
-          "seasonYear": 2024
-        },
-        {
-          "seriesId": "tt34881067",
-          "title": "Baylen Out Loud",
-          "season": 3,
-          "seasonYear": 2026
-        },
-        {
-          "seriesId": "tt38711470",
-          "title": "High School! Kimengumi",
-          "season": 1,
-          "seasonYear": 2026
-        },
-        {
-          "seriesId": "tt39382982",
-          "title": "Barbeint i snøen",
-          "season": 1,
-          "seasonYear": 2026
-        },
-        {
-          "seriesId": "tt38984263",
-          "title": "Good Boys Go to Heaven",
-          "season": 1,
-          "seasonYear": 2026
-        },
-        {
-          "seriesId": "tt41672842",
-          "title": "Salish & Jordan Matter",
-          "season": 1,
-          "seasonYear": 2026
-        },
-        {
-          "seriesId": "tt42933387",
-          "title": "Sule: Senin Hikayen",
-          "season": 1,
-          "seasonYear": 2026
-        },
-        {
-          "seriesId": "tt36982964",
-          "title": "Never-Ending Summer",
-          "season": 1,
-          "seasonYear": 2026
-        },
-        {
-          "seriesId": "tt43587069",
-          "title": "Triple T Adventures",
-          "season": 1,
-          "seasonYear": 2026
-        },
-        {
-          "seriesId": "tt7905120",
-          "title": "Turning Mecard",
-          "season": 1,
-          "seasonYear": 2015
-        }
-      ],
-      "removed": [
-        {
-          "seriesId": "tt17492848",
-          "title": "Goodbye Earth",
-          "season": 1,
-          "seasonYear": 2024
-        },
-        {
-          "seriesId": "tt0106053",
-          "title": "Late Show with David Letterman",
-          "season": 14,
-          "seasonYear": 2006
-        },
-        {
-          "seriesId": "tt1544603",
-          "title": "Are We There Yet?",
-          "season": 1,
-          "seasonYear": 2010
-        },
-        {
-          "seriesId": "tt14183290",
-          "title": "Glass Ceilings",
-          "season": 1,
-          "seasonYear": 2021
-        },
-        {
-          "seriesId": "tt5017396",
-          "title": "MTV Roadies",
-          "season": 20,
-          "seasonYear": 2025
-        },
-        {
-          "seriesId": "tt1544603",
-          "title": "Are We There Yet?",
-          "season": 2,
-          "seasonYear": 2010
-        },
-        {
-          "seriesId": "tt7673112",
-          "title": "Round Planet",
-          "season": 1,
-          "seasonYear": 2016
-        },
-        {
-          "seriesId": "tt5017396",
-          "title": "MTV Roadies",
-          "season": 1,
-          "seasonYear": 2003
-        },
-        {
-          "seriesId": "tt1544603",
-          "title": "Are We There Yet?",
-          "season": 3,
-          "seasonYear": 2012
-        },
-        {
-          "seriesId": "tt5017396",
-          "title": "MTV Roadies",
-          "season": 19,
-          "seasonYear": 2023
-        }
-      ],
-      "ratingSwings": [
-        {
-          "seriesId": "tt41976477",
-          "title": "Shaidai",
-          "season": 1,
-          "from": 9.4,
-          "to": 8.14,
-          "delta": -1.26
-        },
-        {
-          "seriesId": "tt39205437",
-          "title": "Jazz City",
-          "season": 1,
-          "from": 8.24,
-          "to": 7.18,
-          "delta": -1.06
-        },
-        {
-          "seriesId": "tt34117673",
-          "title": "Generation to Generation",
-          "season": 1,
-          "from": 7.66,
-          "to": 8.67,
-          "delta": 1.01
-        },
-        {
-          "seriesId": "tt7142738",
-          "title": "SuperHigh",
-          "season": 1,
-          "from": 7.93,
-          "to": 6.96,
-          "delta": -0.97
-        },
-        {
-          "seriesId": "tt10530900",
-          "title": "Gullak",
-          "season": 5,
-          "from": 7.8,
-          "to": 8.59,
-          "delta": 0.79
-        },
-        {
-          "seriesId": "tt39443868",
-          "title": "Kirio Fan Club",
-          "season": 1,
-          "from": 8.11,
-          "to": 8.62,
-          "delta": 0.51
-        },
-        {
-          "seriesId": "tt8819906",
-          "title": "Love Island USA",
-          "season": 8,
-          "from": 6.94,
-          "to": 6.44,
-          "delta": -0.5
-        },
-        {
-          "seriesId": "tt2147999",
-          "title": "Devon Ke Dev... Mahadev",
-          "season": 1,
-          "from": 7.79,
-          "to": 7.29,
-          "delta": -0.5
-        },
-        {
-          "seriesId": "tt2014553",
-          "title": "Daniel Tiger's Neighborhood",
-          "season": 7,
-          "from": 8.23,
-          "to": 8.72,
-          "delta": 0.49
-        },
-        {
-          "seriesId": "tt0177438",
-          "title": "Dynomutt Dog Wonder",
-          "season": 2,
-          "from": 6.87,
-          "to": 7.35,
-          "delta": 0.48
-        }
-      ],
-      "modifiedCounts": {
-        "seriesVotes": 18738,
-        "avgRating": 1191,
-        "episodeCount": 160,
-        "shapes": 233,
-        "seriesRating": 348
       }
     }
   ]
