@@ -620,20 +620,23 @@ body.rising-shows-app button {
    the controls. Only shown at viewports wide enough that everything
    sits on a single line. */
 @media (min-width: 760px) {
-  /* 5-column grid: [left spacer 1fr] [search ≤600px] [right spacer 1fr]
-     [view-toggle auto] [surprise-group auto]. Matching 1fr columns
-     visually center the search; trailing auto columns keep the
-     view/surprise controls pinned to the right edge. */
+  /* 7-column grid: [left spacer 1fr] [search ≤600px] [right spacer 1fr]
+     [view-toggle] [surprise] [popular-pick] [shortcut-legend]. Matching
+     1fr columns visually center the search; trailing auto columns keep
+     the view/discover controls pinned to the right edge. The legend
+     button gets the LAST column explicitly — with fewer columns the
+     auto-placed surprise/popular buttons collide with it and push it
+     onto a second toolbar row. */
   .filter-row.primary {
     display: grid;
-    grid-template-columns: 1fr minmax(0, 600px) 1fr auto auto auto;
+    grid-template-columns: 1fr minmax(0, 600px) 1fr auto auto auto auto;
   }
   .filter-row.primary .search-cluster { grid-column: 2; }
   .filter-row.primary .view-toggle {
     position: relative;
     grid-column: 4;
   }
-  .filter-row.primary .shortcut-legend-btn { grid-column: 6; }
+  .filter-row.primary .shortcut-legend-btn { grid-column: 7; }
   .filter-row.primary .view-toggle::before {
     content: '';
     position: absolute;
@@ -690,7 +693,10 @@ body.rising-shows-app button {
   .search { flex: 1 1 240px !important; }
 }
 
-.search > label { display: block; }
+/* main.css gives every <label> a 1rem bottom margin — inside the search
+   it added ~15px of phantom height below the input, making the field
+   read taller than it is and pushing it off vertical center. */
+.search > label { display: block; margin: 0; }
 
 .search-suggestions {
   position: absolute;
@@ -866,16 +872,21 @@ body.rising-shows-app button {
    look so the surface reads as one piece, not nested boxes. Lighter and
    smaller text reads as a refined search field, not a heavy form input. */
 .filter-row.primary .search input {
+  /* Slightly shorter than the row's 32px controls — the field reads
+     sleeker while text and icon stay vertically centered by the row's
+     align-items:center (mobile: 44px - 4 = 40px, still a full tap
+     target). */
+  height: calc(var(--ctrl-h) - 4px);
   background: transparent;
   border-color: transparent;
-  padding: 0 0.8rem 0 2.15rem;
+  padding: 0 0.8rem 0 1.9rem;
   font-size: 0.82rem;
   font-weight: 400;
   border-radius: 999px;
   background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23a4adbd' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'><circle cx='11' cy='11' r='7'/><path d='M21 21l-4.35-4.35'/></svg>");
   background-repeat: no-repeat;
-  background-position: 0.7rem center;
-  background-size: 0.9rem 0.9rem;
+  background-position: 0.55rem center;
+  background-size: 0.85rem 0.85rem;
   transition: background-color 0.18s var(--ease), border-color 0.18s var(--ease),
               box-shadow 0.18s var(--ease);
 }
@@ -3404,7 +3415,7 @@ body.advanced-drawer-open {
   .filter-row.primary .search { flex: 1 1 100% !important; order: 1; }
   .filter-row.primary .search input {
     font-size: 16px;          /* prevents iOS auto-zoom on focus */
-    padding-left: 2.4rem;
+    padding-left: 2.15rem;
   }
   .filter-row.primary .view-toggle {
     order: 2;
@@ -4334,10 +4345,16 @@ body.advanced-drawer-open {
   justify-content: center;
   width: 18px;
   height: 18px;
+  /* Optical correction: the × glyph's ink sits ~0.5px below the circle's
+     geometric center; the asymmetric bottom padding lifts the flex-centered
+     glyph without moving the circle. */
+  padding-bottom: 1px;
+  box-sizing: border-box;
   border-radius: 50%;
   background: rgba(255, 255, 255, 0.12);
   color: var(--text);
   font-size: 0.95rem;
+  line-height: 1;
   font-weight: 700;
 }
 .active-filter-chip:hover .chip-x { background: var(--accent); color: var(--accent-ink); }
