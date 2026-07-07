@@ -9,7 +9,7 @@ Rank whole TV shows by the **shape** of their IMDb episode ratings, not the aver
 3. `index.html` loads `data.json` in the browser and renders the **Show Finder**: one row per show (total rated episodes, episode-weighted average episode rating, the gap vs the show's IMDb rating, votes, total runtime) with show-shape chips, mood presets, search, grid + list views, tri-state genres, decade/year, language, sort, pagination (24 per page), and an active-filter bar. It draws a season-average sparkline per show - single-season shows draw their episode trajectory in a distinct orange. Watched tracking persists to localStorage, and all filter/view state lives in the URL hash so any view is shareable. No extra data or backend: it derives everything client-side from the fields already in `data.json`.
 4. The show-shape chips classify each show by the shape of its per-season averages (the same eleven detectors `match.js` runs per episode, now loaded in the browser too, so there is one source of truth), so a "rising" show is one whose seasons kept getting better; a show needs 2+ seasons to carry a cross-season shape, so single-season shows have no shape. Open any show to see a detail modal with its season-by-season trajectory. See the feature table below.
 
-`data.json` is committed to the repo and refreshed weekly by GitHub Actions — no manual updates needed. See [`DATA_README.md`](DATA_README.md) for the auto-refresh details.
+`data.json` and `data/show-modal-extras.json` are not tracked in git (they are ~150 MB per refresh and were bloating history). They live as gzipped assets on the rolling [`rising-shows-data` GitHub release](https://github.com/nsoifer01/shevato/releases/tag/rising-shows-data), refreshed daily by GitHub Actions and downloaded at build time by `scripts/fetch-data.js` (locally: `npm run fetch:rising-shows-data`). See [`DATA_README.md`](DATA_README.md) for the auto-refresh details.
 
 ## Shapes
 
@@ -63,7 +63,7 @@ A season can match more than one shape — the card shows all of them.
 `scripts/build-show-pages.js` (run via `npm run build:rising-shows:pages`, and on
 every Netlify deploy through `npm run build:site`) renders one static HTML page per
 series under `apps/rising-shows/shows/` plus an A-Z index and `sitemap-shows.xml`.
-These are gitignored build artifacts, derived from the committed `data.json`.
+These are gitignored build artifacts, derived from `data.json` (which the build downloads from the `rising-shows-data` release first).
 
 Each page (`scripts/render-show-page.js`) emits:
 
@@ -84,6 +84,15 @@ no app JS. Because a link/search preview image can't be blurred, the `og:image`,
 or search results.
 
 ## One-time setup
+
+To just run the app locally, skip the build entirely and download the
+current dataset from the release:
+
+```sh
+npm run fetch:rising-shows-data
+```
+
+To rebuild the dataset from scratch instead:
 
 1. Download the three dataset files from <https://datasets.imdbws.com/> into `apps/rising-shows/data/`:
 
