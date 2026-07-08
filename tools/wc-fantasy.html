@@ -134,6 +134,7 @@
   }
   .pos-tag { font-family: var(--mono); font-size: 0.75rem; color: var(--accent-2); }
   .own-low { color: var(--good); }
+  .out-flag { font-family: var(--mono); font-size: 0.72rem; font-weight: 800; color: var(--bad); }
   .roadmap-chip { color: var(--good); font-weight: 700; }
   .muted { color: var(--muted); }
   .filters { display: flex; gap: 0.4rem; margin-bottom: 0.7rem; flex-wrap: wrap; }
@@ -317,7 +318,7 @@
 
   // ---- state ---------------------------------------------------------------
   const S = {
-    players: null, squads: null, rounds: null,
+    players: null, playersAll: null, squads: null, rounds: null,
     teamById: {}, playersById: {},
     odds: {},            // 'homeId|awayId' -> {pH, pD, pA} vig-free
     lambdas: {},         // matchId -> {home, away}
@@ -357,6 +358,9 @@
         return r.json();
       }).then(function (d) { cacheSet(n, d); return d; });
     })).then(function (res) {
+      // Keep every player (eliminated, transferred, injured...) so an imported
+      // real squad always resolves; recommendations only draw from S.players.
+      S.playersAll = res[0];
       S.players = res[0].filter(function (p) { return p.status === 'playing'; });
       S.squads = res[1];
       S.rounds = res[2];
@@ -423,7 +427,7 @@
     S.teamById = {};
     S.squads.forEach(function (t) { S.teamById[t.id] = t; });
     S.playersById = {};
-    S.players.forEach(function (p) { S.playersById[p.id] = p; });
+    S.playersAll.forEach(function (p) { S.playersById[p.id] = p; });
     // current round: first not finished
     const now = Date.now();
     S.currentRound = 1;
@@ -575,7 +579,7 @@
     });
 
     S.proj = {};
-    S.players.forEach(function (p) { S.proj[p.id] = { byRound: {}, next: 0, horizon: 0 }; });
+    S.playersAll.forEach(function (p) { S.proj[p.id] = { byRound: {}, next: 0, horizon: 0 }; });
 
     const matchesByTeamRound = {};
     allMatches().forEach(function (x) {
@@ -633,7 +637,7 @@
 
     // horizon: remaining group rounds (or current knockout round) discounted
     const weights = [1, 0.85, 0.7];
-    S.players.forEach(function (p) {
+    S.playersAll.forEach(function (p) {
       const pr = S.proj[p.id];
       pr.next = pr.byRound[S.currentRound] || 0;
       let wsum = 0, i = 0;
@@ -793,6 +797,7 @@
   // ---- advice rendering --------------------------------------------------------
   function playerName(p) { return p.knownName || ((p.firstName ? p.firstName[0] + '. ' : '') + p.lastName); }
   function teamAbbr(p) { return (S.teamById[p.squadId] || {}).abbr || '?'; }
+  function playerOut(p) { return p.status !== 'playing'; }
 
   // Shared candidate pool: top 40 projections per position. Used by BOTH the
   // optimizer's final polish and the transfer advisor, so they can never
@@ -1034,7 +1039,7 @@
         const div = document.createElement('div');
         div.className = 'pcard' + (e.id === cap.id ? ' cap' : '');
         div.innerHTML = '<div class="pname">' + playerName(p) + '</div>' +
-          '<div class="pmeta">' + teamAbbr(p) + ' · ' + e.pts.toFixed(1) + ' xPts</div>' +
+          '<div class="pmeta">' + teamAbbr(p) + ' · ' + (playerOut(p) ? '<span class="out-flag">' + p.status.toUpperCase() + '</span>' : e.pts.toFixed(1) + ' xPts') + '</div>' +
           (e.id === cap.id ? '<span class="badge">C</span>' : e.id === vc.id ? '<span class="badge vc">VC</span>' : '');
         row.appendChild(div);
       });
@@ -1051,7 +1056,7 @@
       const div = document.createElement('div');
       div.className = 'pcard';
       div.innerHTML = '<div class="pname">' + (e.p.position === 'GK' ? 'GK: ' : (i + 1) + '. ') + playerName(e.p) + '</div>' +
-        '<div class="pmeta">' + e.p.position + ' · ' + teamAbbr(e.p) + ' · ' + e.pts.toFixed(1) + ' xPts</div>';
+        '<div class="pmeta">' + e.p.position + ' · ' + teamAbbr(e.p) + ' · ' + (playerOut(e.p) ? '<span class="out-flag">' + e.p.status.toUpperCase() + '</span>' : e.pts.toFixed(1) + ' xPts') + '</div>';
       bl.appendChild(div);
     });
 
@@ -1095,7 +1100,7 @@
         renderAll();
       });
       tr.innerHTML = '<td class="pos-tag">' + p.position + '</td>' +
-        '<td>' + playerName(p) + '</td><td>' + teamAbbr(p) + '</td>' +
+        '<td>' + playerName(p) + (playerOut(p) ? ' <span class="out-flag">' + p.status.toUpperCase() + '</span>' : '') + '</td><td>' + teamAbbr(p) + '</td>' +
         '<td class="num">$' + p.price.toFixed(1) + 'm</td>' +
         '<td class="num' + ((p.percentSelected || 0) < 5 ? ' own-low' : '') + '">' + (p.percentSelected || 0).toFixed(1) + '</td>' +
         '<td class="num">' + S.proj[id].horizon.toFixed(1) + '</td>';
@@ -1271,7 +1276,9 @@
     if (res.error) { $('import-status').textContent = res.error; return; }
     S.mySquad = res.ids;
     localStorage.setItem(SQUAD_LS, JSON.stringify(S.mySquad));
+    const outCount = res.ids.filter(function (id) { return playerOut(S.playersById[id]); }).length;
     let msg = 'Imported 15 players. All advice now uses your real squad.';
+    if (outCount) msg = 'Imported 15 players, ' + outCount + ' of them out of the tournament (flagged in the squad table). All advice now uses your real squad.';
     if (res.captain && S.playersById[res.captain]) {
       msg += ' Your current armband: ' + playerName(S.playersById[res.captain]) +
         (res.vice && S.playersById[res.vice] ? ' (vice ' + playerName(S.playersById[res.vice]) + ')' : '') +
