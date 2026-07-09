@@ -223,3 +223,46 @@
     line-height: 1.2;
   }
 }
+
+/* RTL mirroring (Hebrew).
+   language-switcher.js sets body[dir="rtl"] for Hebrew, but the shared
+   .highlights grid in main.css and the footer contact icons use physical
+   left/right values. These overrides mirror only the elements this page
+   actually renders. English (dir="ltr") is untouched.
+
+   The grid gutter rules in main.css zero the outer edge of each row via
+   physical padding-left/padding-right on nth-child selectors. In RTL the
+   flex row reverses, so the swapped edge must be zeroed. Each rule is
+   width-bounded so the desktop (3-col) override never leaks into the tablet
+   (2-col) range and neither leaks into the single-column mobile layout,
+   where main.css already zeroes both sides symmetrically. */
+
+/* Desktop: 3-column grid gutters. */
+@media screen and (min-width: 981px) {
+  body[dir="rtl"] .highlights > :nth-child(3n + 1) {
+    padding-left: 1.5rem;
+    padding-right: 0;
+  }
+  body[dir="rtl"] .highlights > :nth-child(3n) {
+    padding-right: 1.5rem;
+    padding-left: 0;
+  }
+}
+
+/* Tablet: 2-column grid gutters. */
+@media screen and (min-width: 737px) and (max-width: 980px) {
+  body[dir="rtl"] .highlights > :nth-child(2n + 1) {
+    padding-left: 1rem;
+    padding-right: 0;
+  }
+  body[dir="rtl"] .highlights > :nth-child(2n) {
+    padding-right: 1rem;
+    padding-left: 0;
+  }
+}
+
+/* Footer contact list: icon-to-label spacing sits on the wrong side in RTL. */
+body[dir="rtl"] ul.plain li .icon {
+  margin-right: 0;
+  margin-left: 1rem;
+}

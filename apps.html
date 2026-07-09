@@ -170,6 +170,46 @@
   <link rel="stylesheet" href="/assets/css/font-awesome.min.css" media="print" onload="this.media='all'">
   <noscript><link rel="stylesheet" href="/assets/css/font-awesome.min.css"></noscript>
   <link rel="stylesheet" href="/assets/css/back-to-top.css">
+  <style>
+    .app-search-bar {
+      max-width: 34rem;
+      margin: 0 auto 2rem;
+    }
+    .app-search-bar input[type="search"] {
+      width: 100%;
+      height: 3.25rem;
+      padding: 0 1.1rem;
+      font-size: 1rem;
+      color: #41474f;
+      background-color: #ffffff;
+      border: solid 1px rgba(0, 0, 0, 0.25);
+      border-radius: 6px;
+      box-shadow: none;
+      -webkit-appearance: none;
+      appearance: none;
+      transition: border-color 0.15s ease, box-shadow 0.15s ease;
+    }
+    .app-search-bar input[type="search"]::placeholder { color: #9aa1a9; opacity: 1; }
+    .app-search-bar input[type="search"]:hover,
+    .app-search-bar input[type="search"]:focus {
+      color: #41474f;
+      background-color: #ffffff;
+      border-color: #2044c9;
+      outline: none;
+      box-shadow: 0 0 0 2px rgba(32, 68, 201, 0.22);
+    }
+    .highlights .app-preview {
+      display: block;
+      width: 100%;
+      height: auto;
+      aspect-ratio: 16 / 10;
+      object-fit: cover;
+      object-position: top center;
+      border-radius: 6px;
+      margin-bottom: 1.5rem;
+      border: solid 1px rgba(0, 0, 0, 0.08);
+    }
+  </style>
 </head>
 <body class="is-preload">
   <a class="skip-link" href="#main-content">Skip to main content</a>
@@ -186,10 +226,14 @@
         <button data-filter="game" aria-pressed="false">Games</button>
         <button data-filter="tv" aria-pressed="false">TV</button>
       </div>
+      <div class="app-search-bar">
+        <input type="search" id="app-search" name="q" placeholder="Search apps by name or description" aria-label="Search apps by name or description" autocomplete="off" />
+      </div>
 
       <div class="highlights">
         <section data-category="fitness">
           <div class="content">
+            <img class="app-preview" src="images/app-previews/gym-tracker.webp" width="640" height="400" loading="lazy" decoding="async" alt="Gym Tracker dashboard showing the programs and recent workouts panels" />
             <header>
               <a href="apps/gym-tracker/" class="icon fa-heartbeat brand-color-primary" aria-label="Open Gym Tracker"></a>
               <h3>Gym Tracker</h3>
@@ -202,6 +246,7 @@
         </section>
         <section data-category="game">
           <div class="content">
+            <img class="app-preview" src="images/app-previews/arena.webp" width="640" height="400" loading="lazy" decoding="async" alt="Arena lobby with Create a room and Join a room panels for multiplayer games" />
             <header>
               <a href="apps/arena/" class="icon fa-trophy brand-color-primary" aria-label="Open Arena"></a>
               <h3>Arena</h3>
@@ -214,6 +259,7 @@
         </section>
         <section data-category="game">
           <div class="content">
+            <img class="app-preview" src="images/app-previews/football-h2h.webp" width="640" height="400" loading="lazy" decoding="async" alt="Football H2H League stats view with total wins, streaks, and penalty win tallies" />
             <header>
               <a href="apps/football-h2h/" class="icon fa-futbol-o brand-color-primary" aria-label="Open Football H2H League"></a>
               <h3>Football H2H League</h3>
@@ -226,6 +272,7 @@
         </section>
         <section data-category="game">
           <div class="content">
+            <img class="app-preview" src="images/app-previews/maptap-rivals.webp" width="640" height="400" loading="lazy" decoding="async" alt="MapTap Rivals dashboard with the profile setup and rivalries panels" />
             <header>
               <a href="apps/maptap-rivals/" class="icon fa-crosshairs brand-color-primary" aria-label="Open MapTap Rivals"></a>
               <h3>MapTap Rivals</h3>
@@ -238,6 +285,7 @@
         </section>
         <section data-category="game">
           <div class="content">
+            <img class="app-preview" src="images/app-previews/mario-kart.webp" width="640" height="400" loading="lazy" decoding="async" alt="Mario Kart 8 Deluxe Tracker overview with tabs and feature cards" />
             <header>
               <a href="apps/mario-kart/" class="icon fa-gamepad brand-color-primary" aria-label="Open Mario Kart Tracker"></a>
               <h3>Mario Kart Tracker</h3>
@@ -250,6 +298,7 @@
         </section>
         <section data-category="tv">
           <div class="content">
+            <img class="app-preview" src="images/app-previews/rising-shows.webp" width="640" height="400" loading="lazy" decoding="async" alt="Rising Shows finder with rating-trend category filters and mood chips" />
             <header>
               <a href="apps/rising-shows/" class="icon fa-line-chart brand-color-primary" aria-label="Open Rising Shows"></a>
               <h3>Rising Shows</h3>
@@ -265,25 +314,50 @@
       <script>
         (function() {
           var bar = document.querySelector('.app-filter-bar');
-          if (!bar) return;
-          bar.addEventListener('click', function(e) {
-            var btn = e.target.closest('button[data-filter]');
-            if (!btn) return;
-            var filter = btn.getAttribute('data-filter');
-            bar.querySelectorAll('button').forEach(function(b) {
-              b.setAttribute('aria-pressed', b === btn ? 'true' : 'false');
-            });
+          var input = document.getElementById('app-search');
+          var sections = Array.prototype.slice.call(
+            document.querySelectorAll('.highlights section[data-category]')
+          );
+          var activeCategory = 'all';
+          var searchTerm = '';
+
+          function apply() {
+            var filtered = activeCategory !== 'all' || searchTerm !== '';
             document.querySelectorAll('.highlights').forEach(function(hl) {
-              hl.classList.toggle('is-filtered', filter !== 'all');
+              hl.classList.toggle('is-filtered', filtered);
             });
-            document.querySelectorAll('.highlights section[data-category]').forEach(function(sec) {
-              if (filter === 'all' || sec.getAttribute('data-category') === filter) {
-                sec.style.display = '';
-              } else {
-                sec.style.display = 'none';
-              }
+            sections.forEach(function(sec) {
+              var catOk = activeCategory === 'all' || sec.getAttribute('data-category') === activeCategory;
+              var textOk = searchTerm === '' || sec.textContent.toLowerCase().indexOf(searchTerm) !== -1;
+              sec.style.display = (catOk && textOk) ? '' : 'none';
             });
-          });
+          }
+
+          if (bar) {
+            bar.addEventListener('click', function(e) {
+              var btn = e.target.closest('button[data-filter]');
+              if (!btn) return;
+              activeCategory = btn.getAttribute('data-filter');
+              bar.querySelectorAll('button').forEach(function(b) {
+                b.setAttribute('aria-pressed', b === btn ? 'true' : 'false');
+              });
+              apply();
+            });
+          }
+
+          if (input) {
+            var q = new URLSearchParams(location.search).get('q');
+            if (q) {
+              input.value = q;
+              searchTerm = q.trim().toLowerCase();
+            }
+            input.addEventListener('input', function() {
+              searchTerm = input.value.trim().toLowerCase();
+              apply();
+            });
+          }
+
+          apply();
         })();
       </script>
     </div>
