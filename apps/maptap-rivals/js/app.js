@@ -991,16 +991,16 @@
     const tieSquare    = '⬛';       // black (tie)
 
     let lines = [];
-    lines.push(`MapTap Rivals — ${meName} vs ${rivalName}`);
+    lines.push(`MapTap Rivals: ${meName} vs ${rivalName}`);
     lines.push(g.date);
     lines.push('');
 
     if (diff > 0) {
-      lines.push(`${winnerSquare} ${winnerScore} — ${loserScore} ${loserSquare}  (${result} by ${margin})`);
+      lines.push(`${winnerSquare} ${winnerScore} - ${loserScore} ${loserSquare}  (${result} by ${margin})`);
     } else if (diff < 0) {
-      lines.push(`${loserSquare} ${loserScore} — ${winnerScore} ${winnerSquare}  (${result} by ${margin})`);
+      lines.push(`${loserSquare} ${loserScore} - ${winnerScore} ${winnerSquare}  (${result} by ${margin})`);
     } else {
-      lines.push(`${tieSquare} ${myT} — ${theirT} ${tieSquare}  (tie)`);
+      lines.push(`${tieSquare} ${myT} - ${theirT} ${tieSquare}  (tie)`);
     }
 
     if (hasLocs(g)) {
@@ -2005,7 +2005,7 @@
     if (l) wlt.push(`${l}L`);
     if (t) wlt.push(`${t}T`);
     if (wlt.length) parts.push(wlt.join(' · '));
-    if (typedNotParsed.length) parts.push(`(${typedNotParsed.length} skipped — can't parse)`);
+    if (typedNotParsed.length) parts.push(`(${typedNotParsed.length} skipped, can't parse)`);
     summary.textContent = parts.join(' · ');
   }
 
@@ -2307,7 +2307,7 @@
 
     // 1. About to break personal best win streak (tie record with next win)
     if (curW >= 2 && curW === prevLongestW) {
-      return { kind: 'win', text: `🔥 On a ${curW}-game win streak — match your record today` };
+      return { kind: 'win', text: `🔥 On a ${curW}-game win streak, match your record today` };
     }
     // 2. About to extend personal best win streak (already surpassed old record)
     if (curW >= 2 && curW > prevLongestW) {
@@ -2319,14 +2319,14 @@
     }
     // 4. About to end a losing streak
     if (curL >= 3) {
-      return { kind: 'loss', text: `❄️ ${curL}-game losing streak — turn it around today` };
+      return { kind: 'loss', text: `❄️ ${curL}-game losing streak, turn it around today` };
     }
     // 5. Comeback potential
     if (games.length >= 3) {
       const last5 = games[games.length - 1];
       const diff5 = getMyTotal(last5) - getTheirTotal(last5);
       if (diff5 < 0 && Math.abs(diff5) < 100) {
-        return { kind: 'comeback', text: `⚡ Close one last time (${Math.abs(diff5)}-pt loss) — get even today` };
+        return { kind: 'comeback', text: `⚡ Close one last time (${Math.abs(diff5)}-pt loss), get even today` };
       }
     }
 
@@ -2345,7 +2345,7 @@
     }
     // 7. About to set a new worst losing-streak record
     if (curL >= 2 && curL > prevLongestL) {
-      return { kind: 'loss', text: `❄️ Worst-ever slump vs ${rivalName} — snap it today` };
+      return { kind: 'loss', text: `❄️ Worst-ever slump vs ${rivalName}, snap it today` };
     }
 
     // 8. Rival posted today, user hasn't — urgent prompt
@@ -2353,7 +2353,7 @@
       g.rivalId === rivalId && g.date === today && theyPlayed(g) && !iPlayed(g)
     );
     if (rivalPlayedToday) {
-      return { kind: 'urgent', text: `⏰ ${rivalName} already posted today — your move` };
+      return { kind: 'urgent', text: `⏰ ${rivalName} already posted today, your move` };
     }
 
     // Shared references for scenarios below.
@@ -2374,7 +2374,7 @@
 
     // 9. 100th H2H game next
     if (games.length === 99) {
-      return { kind: 'milestone', text: `👑 Game #100 vs ${rivalName} up next — legendary rivalry` };
+      return { kind: 'milestone', text: `👑 Game #100 vs ${rivalName} up next, legendary rivalry` };
     }
     // 10. 50th H2H game next
     if (games.length === 49) {
@@ -2386,37 +2386,37 @@
     }
     // 12. 10th H2H game next
     if (games.length === 9) {
-      return { kind: 'milestone', text: `🎉 10 H2H games with ${rivalName} — double digits` };
+      return { kind: 'milestone', text: `🎉 10 H2H games with ${rivalName}, double digits` };
     }
 
     // 13. Personal best score in last game
     if (games.length >= 4 && lastMy > 0 && lastMy === bestMy) {
-      return { kind: 'win', text: `💯 Personal best vs ${rivalName} last time (${lastMy}) — back it up` };
+      return { kind: 'win', text: `💯 Personal best vs ${rivalName} last time (${lastMy}), back it up` };
     }
     // 14. Personal worst score in last game
     if (games.length >= 4 && lastMy === worstMy) {
-      return { kind: 'loss', text: `📉 Personal worst vs ${rivalName} last time (${lastMy}) — find your range` };
+      return { kind: 'loss', text: `📉 Personal worst vs ${rivalName} last time (${lastMy}), find your range` };
     }
     // 15. Biggest-ever winning margin in last game
     if (games.length >= 4 && lastMargin > 0 && lastMargin === biggestWinMargin) {
-      return { kind: 'win', text: `💪 Biggest win ever vs ${rivalName} (+${lastMargin}) — keep stomping` };
+      return { kind: 'win', text: `💪 Biggest win ever vs ${rivalName} (+${lastMargin}), keep stomping` };
     }
     // 16. Biggest-ever losing margin in last game
     if (games.length >= 4 && lastMargin < 0 && lastMargin === biggestLossMargin) {
-      return { kind: 'loss', text: `💀 Worst loss ever vs ${rivalName} (${lastMargin}) — bounce back hard` };
+      return { kind: 'loss', text: `💀 Worst loss ever vs ${rivalName} (${lastMargin}), bounce back hard` };
     }
     // 17. Rival's personal best in last game
     if (games.length >= 4 && lastTheir > 0 && lastTheir === bestTheir) {
-      return { kind: 'loss', text: `⚠️ ${rivalName} dropped a personal best (${lastTheir}) — answer back` };
+      return { kind: 'loss', text: `⚠️ ${rivalName} dropped a personal best (${lastTheir}), answer back` };
     }
 
     // 18. Blowout loss last time (>= 150-pt margin)
     if (lastMargin <= -150) {
-      return { kind: 'loss', text: `💥 ${Math.abs(lastMargin)}-pt blowout loss last time — get back in it` };
+      return { kind: 'loss', text: `💥 ${Math.abs(lastMargin)}-pt blowout loss last time, get back in it` };
     }
     // 19. Blowout win last time (>= 150-pt margin)
     if (lastMargin >= 150) {
-      return { kind: 'win', text: `💪 ${lastMargin}-pt blowout win last time — no mercy today` };
+      return { kind: 'win', text: `💪 ${lastMargin}-pt blowout win last time, no mercy today` };
     }
 
     // 20. Just snapped a losing streak (won last after 2+ losses)
@@ -2426,7 +2426,7 @@
         if (resultOf(games[i]) === 'L') priorL++; else break;
       }
       if (priorL >= 2) {
-        return { kind: 'comeback', text: `🌅 Snapped a ${priorL}-game losing streak — keep the run going` };
+        return { kind: 'comeback', text: `🌅 Snapped a ${priorL}-game losing streak, keep the run going` };
       }
     }
     // 21. Just snapped a winning streak (lost last after 2+ wins)
@@ -2436,43 +2436,43 @@
         if (resultOf(games[i]) === 'W') priorW++; else break;
       }
       if (priorW >= 2) {
-        return { kind: 'loss', text: `🛑 ${priorW}-game win streak snapped last time — start a new one` };
+        return { kind: 'loss', text: `🛑 ${priorW}-game win streak snapped last time, start a new one` };
       }
     }
 
     // 22. Series tied
     if (wins === losses && wins >= 3) {
-      return { kind: 'tie', text: `⚖️ Series tied ${wins}-${losses} vs ${rivalName} — break the deadlock` };
+      return { kind: 'tie', text: `⚖️ Series tied ${wins}-${losses} vs ${rivalName}, break the deadlock` };
     }
     // 23. No wins yet, ≥3 losses
     if (wins === 0 && losses >= 3) {
-      return { kind: 'comeback', text: `🏆 No wins yet vs ${rivalName} (0-${losses}) — get on the board` };
+      return { kind: 'comeback', text: `🏆 No wins yet vs ${rivalName} (0-${losses}), get on the board` };
     }
     // 24. Still undefeated
     if (losses === 0 && wins >= 3) {
-      return { kind: 'win', text: `🛡️ Undefeated vs ${rivalName} (${wins}-0) — keep it spotless` };
+      return { kind: 'win', text: `🛡️ Undefeated vs ${rivalName} (${wins}-0), keep it spotless` };
     }
     // 25. Down 1 in the series (a win evens it)
     if (losses - wins === 1 && wins >= 2) {
-      return { kind: 'comeback', text: `🎯 Down ${wins}-${losses} vs ${rivalName} — a win evens the series` };
+      return { kind: 'comeback', text: `🎯 Down ${wins}-${losses} vs ${rivalName}, a win evens the series` };
     }
     // 26. Up 1 in the series (defend the lead)
     if (wins - losses === 1 && losses >= 2) {
-      return { kind: 'win', text: `🛡️ Holding a ${wins}-${losses} edge — defend the lead today` };
+      return { kind: 'win', text: `🛡️ Holding a ${wins}-${losses} edge, defend the lead today` };
     }
 
     // 27. Photo-finish loss (≤ 10-pt margin)
     if (lastMargin < 0 && lastMargin >= -10) {
       const m = Math.abs(lastMargin);
-      return { kind: 'comeback', text: `📸 Photo finish — lost by ${m} pt${m === 1 ? '' : 's'} last time` };
+      return { kind: 'comeback', text: `📸 Photo finish, lost by ${m} pt${m === 1 ? '' : 's'} last time` };
     }
     // 28. Photo-finish win (≤ 10-pt margin)
     if (lastMargin > 0 && lastMargin <= 10) {
-      return { kind: 'win', text: `🍀 Squeaked by — won by ${lastMargin} pt${lastMargin === 1 ? '' : 's'} last time` };
+      return { kind: 'win', text: `🍀 Squeaked by, won by ${lastMargin} pt${lastMargin === 1 ? '' : 's'} last time` };
     }
     // 29. Exact tie last game
     if (lastMargin === 0) {
-      return { kind: 'tie', text: `🤝 Exact tie last time (${lastMy}-${lastTheir}) — settle it today` };
+      return { kind: 'tie', text: `🤝 Exact tie last time (${lastMy}-${lastTheir}), settle it today` };
     }
 
     // 30. Tie streak of 3+
@@ -2482,7 +2482,7 @@
         if (resultOf(games[i]) === 'T') tStreak++; else break;
       }
       if (tStreak >= 3) {
-        return { kind: 'tie', text: `🤝 ${tStreak} ties in a row vs ${rivalName} — somebody has to win` };
+        return { kind: 'tie', text: `🤝 ${tStreak} ties in a row vs ${rivalName}, somebody has to win` };
       }
     }
 
@@ -2492,10 +2492,10 @@
       const wL4 = lastFour.filter(g => resultOf(g) === 'W').length;
       const lL4 = lastFour.filter(g => resultOf(g) === 'L').length;
       if (wL4 >= 3 && curW < 3) {
-        return { kind: 'win', text: `🔥 Won ${wL4} of last 4 vs ${rivalName} — hot hand` };
+        return { kind: 'win', text: `🔥 Won ${wL4} of last 4 vs ${rivalName}, hot hand` };
       }
       if (lL4 >= 3 && curL < 3) {
-        return { kind: 'loss', text: `🥶 Lost ${lL4} of last 4 vs ${rivalName} — find a spark` };
+        return { kind: 'loss', text: `🥶 Lost ${lL4} of last 4 vs ${rivalName}, find a spark` };
       }
     }
 
@@ -2503,10 +2503,10 @@
     if (games.length >= 5) {
       const slope = linearTrend(games.slice(-5).map(getMyTotal));
       if (slope >= 10) {
-        return { kind: 'win', text: `📈 Scores trending up vs ${rivalName} — momentum's with you` };
+        return { kind: 'win', text: `📈 Scores trending up vs ${rivalName}, momentum's with you` };
       }
       if (slope <= -10) {
-        return { kind: 'loss', text: `📉 Scores trending down vs ${rivalName} — reset today` };
+        return { kind: 'loss', text: `📉 Scores trending down vs ${rivalName}, reset today` };
       }
     }
 
@@ -2517,7 +2517,7 @@
       if (Number.isFinite(lastTs) && Number.isFinite(todayTs)) {
         const days = Math.round((todayTs - lastTs) / 86400000);
         if (days >= 21) {
-          return { kind: 'milestone', text: `🌙 ${days} days since you last played ${rivalName} — welcome back` };
+          return { kind: 'milestone', text: `🌙 ${days} days since you last played ${rivalName}, welcome back` };
         }
       }
     }
@@ -2967,8 +2967,8 @@
               ? ` · +${s.rivalOnlyGames.length} day${s.rivalOnlyGames.length === 1 ? '' : 's'} they played without you`
               : '')
           : (s.rivalOnlyGames && s.rivalOnlyGames.length
-              ? `No head-to-head games yet — ${rival.name} has played ${s.rivalOnlyGames.length} day${s.rivalOnlyGames.length === 1 ? '' : 's'} on their own.`
-              : 'No games yet — log your first one above.')
+              ? `No head-to-head games yet. ${rival.name} has played ${s.rivalOnlyGames.length} day${s.rivalOnlyGames.length === 1 ? '' : 's'} on their own.`
+              : 'No games yet. Log your first one above.')
       ),
     ]));
     const actions = el('div', { class: 'rival-header-actions' });
@@ -3597,7 +3597,7 @@
       const r = resultLoc(m, t);
       wrap.appendChild(el('span', {
         class: 'round-dot ' + r,
-        title: `${LOC_LABELS[i]} (×${WEIGHTS[i]}) — you ${m}, them ${t}`,
+        title: `${LOC_LABELS[i]} (×${WEIGHTS[i]}): you ${m}, them ${t}`,
       }));
     }
     return wrap;
@@ -3803,7 +3803,7 @@
         const cell = el('span', {
           class: 'heatmap-cell ' + (r === 'L' ? 'lost' : r === 'T' ? 'tied' : ''),
           style: `background:${heatColor(m)}`,
-          title: `${LOC_LABELS[i]} — you ${m}, ${s.rival.name} ${t} (${r})`,
+          title: `${LOC_LABELS[i]}: you ${m}, ${s.rival.name} ${t} (${r})`,
         }, String(m));
         row.appendChild(cell);
       }
@@ -3816,7 +3816,7 @@
       // isn't read as "is my score high?".
       row.appendChild(el('span', {
         class: 'heatmap-totalcol ' + (tr === 'W' ? 'win' : tr === 'L' ? 'loss' : 'tie'),
-        title: `You ${total} vs ${s.rival.name} ${theirTotal} — ${tr === 'W' ? 'Win' : tr === 'L' ? 'Loss' : 'Tie'}`,
+        title: `You ${total} vs ${s.rival.name} ${theirTotal}: ${tr === 'W' ? 'Win' : tr === 'L' ? 'Loss' : 'Tie'}`,
       }, [
         el('span', { class: 'heatmap-total-num' }, String(total)),
         el('span', { class: 'heatmap-total-result' }, tr),
@@ -4334,7 +4334,7 @@
       const best = cell.bestMargin;
       return {
         tone,
-        title: `${row.label} vs ${col.label} — avg ${fmtSigned(avg)} per game, best ${fmtSigned(best)}, worst ${fmtSigned(cell.worstMargin)} (${gamesLabel})`,
+        title: `${row.label} vs ${col.label}: avg ${fmtSigned(avg)} per game, best ${fmtSigned(best)}, worst ${fmtSigned(cell.worstMargin)} (${gamesLabel})`,
         content: [
           el('div', { class: 'matrix-record' }, fmtSigned(avg)),
           el('div', { class: 'matrix-margin' }, `best ${fmtSigned(best)}`),
@@ -4418,7 +4418,7 @@
     const tone = winPct > 0.5 ? 'win' : winPct < 0.5 ? 'loss' : 'tie';
     return {
       tone,
-      title: `${row.label} vs ${col.label} — ${gamesLabel}, ${winPctStr} win rate`,
+      title: `${row.label} vs ${col.label}: ${gamesLabel}, ${winPctStr} win rate`,
       content: [
         el('div', { class: 'matrix-record' },
           `${cell.wins}-${cell.losses}` + (cell.ties ? `-${cell.ties}` : '')),
@@ -4478,7 +4478,7 @@
     const overall = ' The Overall column combines each row across all opponents; a player\'s own cell shows their average daily score and games logged.';
     if (subtab === 'margin') return 'Avg point margin per game from the row\'s perspective; the small line shows the row\'s best single result vs that column.' + overall;
     if (subtab === 'form')   return 'Dots = last 5 meetings (oldest left → newest right) from the row\'s perspective; cell color follows the dots\' majority. The label shows a live streak only when longer than 5 games, otherwise the row\'s longest win streak ("best W4").' + overall;
-    return 'Wins-losses(-ties) and the row\'s win % — ties count as half a win. The number under each name is that player\'s average daily score.' + overall;
+    return 'Wins-losses(-ties) and the row\'s win %. Ties count as half a win. The number under each name is that player\'s average daily score.' + overall;
   }
 
   function renderMatrixSort() {
@@ -5084,7 +5084,7 @@
       if (tracked > 0 && diff >= 5) {
         body.appendChild(el('div', { class: 'profile-hint' }, [
           el('strong', {}, 'Different averages by design. '),
-          `MapTap (${p.avgScore.toFixed(0)}) averages every daily game you've ever played. The app's H2H avg (${myAppAvg.toFixed(0)}) only includes the ${tracked} days a tracked rival also played — solo days aren't counted here. The gap (~${diff}) is usually because some of your best/worst days had no rival paired.`,
+          `MapTap (${p.avgScore.toFixed(0)}) averages every daily game you've ever played. The app's H2H avg (${myAppAvg.toFixed(0)}) only includes the ${tracked} days a tracked rival also played; solo days aren't counted here. The gap (~${diff}) is usually because some of your best/worst days had no rival paired.`,
         ]));
       }
 
