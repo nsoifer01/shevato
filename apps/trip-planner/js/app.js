@@ -766,9 +766,23 @@
   // ---------- route helper modal ----------
   let routeToken = 0;
   let routeDate = '';
+  // The pair the current result belongs to. While the inputs still match
+  // it there is nothing new to check, so the Check button grays out;
+  // editing either place (or swapping) re-arms it.
+  let lastRouteKey = '';
+  const routeKeyNow = () => ($('#routeFrom').value.trim() + '|' + $('#routeTo').value.trim()).toLowerCase();
+  function syncRouteCheckBtn() {
+    const from = $('#routeFrom').value.trim(), to = $('#routeTo').value.trim();
+    const btn = $('#routeCheckBtn');
+    const alreadyShown = !!lastRouteKey && routeKeyNow() === lastRouteKey;
+    btn.disabled = !from || !to || alreadyShown;
+    btn.title = alreadyShown ? 'This route is already shown. Change a place to check a different one.'
+      : (!from || !to ? 'Enter both places first.' : '');
+  }
 
   function openRouteModal(from, to, date) {
     routeDate = date || '';
+    lastRouteKey = '';
     // suggest places already used in this trip
     const locs = [...new Set(activeTrip().items.map(it => (it.location || '').trim()).filter(Boolean))];
     $('#placeList').innerHTML = locs.map(l => `<option value="${esc(l)}">`).join('');
@@ -796,13 +810,20 @@
     $('#rlFly').href = ok ? `https://www.google.com/travel/flights?q=${enc(`Flights from ${from} to ${to}` + (routeDate ? ` on ${routeDate}` : ''))}` : '#';
     $('#rlR2R').href = ok ? `https://www.rome2rio.com/map/${enc(from)}/${enc(to)}` : '#';
     ['rlTransit', 'rlDrive', 'rlFly', 'rlR2R'].forEach(id => { $('#' + id).style.opacity = ok ? '' : '0.45'; $('#' + id).style.pointerEvents = ok ? '' : 'none'; });
+    syncRouteCheckBtn();
   }
 
   async function checkRoute() {
     const from = $('#routeFrom').value.trim(), to = $('#routeTo').value.trim();
     updateRouteLinks();
     if (!from || !to) { setRouteResult('Enter both places first.'); return; }
-    if (from.toLowerCase() === to.toLowerCase()) { setRouteResult('Those are the same place. Pick two different spots.', true); return; }
+    if (from.toLowerCase() === to.toLowerCase()) {
+      setRouteResult('Those are the same place. Pick two different spots.', true);
+      lastRouteKey = routeKeyNow();
+      syncRouteCheckBtn();
+      return;
+    }
+    // offline: leave the button armed so a retry after reconnecting works
     if (!navigator.onLine) { setRouteResult('You look offline: place lookup needs internet. The link buttons will still work once you reconnect.', true); return; }
 
     const token = ++routeToken;
@@ -812,11 +833,14 @@
 
     if (!a.ok || !b.ok) {
       if (a.reason === 'network' || b.reason === 'network') {
+        // transient: keep the button armed for a retry
         setRouteResult('The place lookup service did not answer (network hiccup or rate limit). Try again in a few seconds, or just use the link buttons below: they work without the lookup.', true);
         return;
       }
       const missing = [!a.ok && from, !b.ok && to].filter(Boolean).map(esc).join('" and "');
       setRouteResult(`Could not find "<b>${missing}</b>" on the map. Try adding the country ("Railay Beach, Thailand") or the nearest town. The link buttons below still work with whatever you typed.`, true);
+      lastRouteKey = routeKeyNow();
+      syncRouteCheckBtn();
       return;
     }
 
@@ -843,6 +867,8 @@
       <div class="route-pills">${pills}</div>
       ${modes}
       <div class="route-note">Durations are straight-line estimates padded for real roads, not schedules. The buttons below open live schedules and prices with your places pre-filled.</div>`);
+    lastRouteKey = routeKeyNow();
+    syncRouteCheckBtn();
   }
 
   // ---------- map ----------
