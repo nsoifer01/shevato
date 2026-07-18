@@ -173,11 +173,49 @@ const TripLogic = (() => {
     return rows.slice(0, 4);
   }
 
+  // ---------- visa helpers ----------
+  // Values in the Passport Index dataset: a number of visa-free days,
+  // 'visa free', 'visa on arrival', 'e-visa', 'eta', 'visa required',
+  // 'no admission', or '-1' for the passport's own country.
+  function classifyVisa(raw) {
+    const v = String(raw == null ? '' : raw).trim().toLowerCase();
+    if (v === '-1') return { cls: 'home', label: 'Your passport country' };
+    if (/^\d+$/.test(v)) return { cls: 'free', label: `Visa-free · up to ${v} days` };
+    if (v === 'visa free' || v === 'visa-free' || v === 'freedom of movement') return { cls: 'free', label: 'Visa-free' };
+    if (v.includes('on arrival')) return { cls: 'arrival', label: 'Visa on arrival' };
+    if (v === 'e-visa' || v === 'evisa') return { cls: 'evisa', label: 'e-Visa required' };
+    if (v === 'eta') return { cls: 'evisa', label: 'eTA required (electronic travel authorization)' };
+    if (v.includes('no admission')) return { cls: 'required', label: 'Entry restricted' };
+    if (v.includes('required')) return { cls: 'required', label: 'Visa required' };
+    return { cls: 'unknown', label: 'Check requirements' };
+  }
+
+  // Parses the passport-index iso2 matrix CSV (header: Passport,AL,DZ,...)
+  // into { codes, matrix } where matrix[passport][destination] = raw value.
+  function parseVisaMatrix(csv) {
+    const lines = String(csv || '').trim().split(/\r?\n/);
+    if (lines.length < 2) return null;
+    const header = lines[0].split(',').map(s => s.trim());
+    const dests = header.slice(1);
+    const matrix = {};
+    for (let i = 1; i < lines.length; i++) {
+      const cells = lines[i].split(',');
+      const p = (cells[0] || '').trim().toUpperCase();
+      if (!/^[A-Z]{2}$/.test(p)) continue;
+      const row = {};
+      for (let j = 0; j < dests.length; j++) row[dests[j]] = (cells[j + 1] || '').trim();
+      matrix[p] = row;
+    }
+    const codes = Object.keys(matrix);
+    return codes.length ? { codes, matrix } : null;
+  }
+
   return {
     isIsoDate, toUtc, diffDays, addDays,
     isStay, nights, sortKey, sortedItems, tripLegs,
     validateItem, coverageGaps, tripStats,
-    ISLANDISH, distKm, flagEmoji, compass, fmtDur, modeOptions, hasFastRail,
+    ISLANDISH, distKm, flagEmoji, compass, fmtDur, modeOptions,
+    classifyVisa, parseVisaMatrix, hasFastRail,
   };
 })();
 

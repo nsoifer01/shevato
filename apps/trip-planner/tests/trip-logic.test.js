@@ -214,3 +214,28 @@ test('ISLANDISH matches Thai island spots but not cities', () => {
   assert.ok(L.ISLANDISH.test('Railay Beach'));
   assert.ok(!L.ISLANDISH.test('Bangkok'));
 });
+
+// ---------- visa helpers ----------
+
+test('classifyVisa maps dataset values to categories', () => {
+  assert.deepEqual(L.classifyVisa('90'), { cls: 'free', label: 'Visa-free · up to 90 days' });
+  assert.equal(L.classifyVisa('visa free').cls, 'free');
+  assert.equal(L.classifyVisa('visa on arrival').cls, 'arrival');
+  assert.equal(L.classifyVisa('e-visa').cls, 'evisa');
+  assert.equal(L.classifyVisa('eta').cls, 'evisa');
+  assert.equal(L.classifyVisa('visa required').cls, 'required');
+  assert.equal(L.classifyVisa('no admission').cls, 'required');
+  assert.equal(L.classifyVisa('-1').cls, 'home');
+  assert.equal(L.classifyVisa('gibberish').cls, 'unknown');
+  assert.equal(L.classifyVisa(null).cls, 'unknown');
+});
+
+test('parseVisaMatrix builds a passport x destination lookup', () => {
+  const m = L.parseVisaMatrix('Passport,JP,TH,US\nUS,90,60,-1\nIL,90,visa free,eta\n');
+  assert.deepEqual(m.codes, ['US', 'IL']);
+  assert.equal(m.matrix.US.JP, '90');
+  assert.equal(m.matrix.IL.TH, 'visa free');
+  assert.equal(m.matrix.US.US, '-1');
+  assert.equal(L.parseVisaMatrix(''), null);
+  assert.equal(L.parseVisaMatrix('Passport,JP\nnot-a-code,90\n'), null);
+});

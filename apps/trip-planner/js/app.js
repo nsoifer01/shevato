@@ -25,7 +25,8 @@
     isIsoDate, toUtc, diffDays, addDays,
     isStay, nights, sortKey, sortedItems, tripLegs,
     validateItem, coverageGaps, tripStats,
-    ISLANDISH, distKm, flagEmoji, compass, fmtDur, modeOptions, hasFastRail,
+    ISLANDISH, distKm, flagEmoji, compass, fmtDur, modeOptions,
+    classifyVisa, parseVisaMatrix, hasFastRail,
   } = window.TripLogic;
 
   // ---------- state ----------
@@ -1027,6 +1028,121 @@
       (failed.length ? ` · could not locate: ${failed.join(', ')} (use a more specific place name)` : '') + '.';
   }
 
+  // ---------- visa requirements ----------
+  const VISA_KEY = 'trip-planner:visa:v1';
+  const PASSPORT_KEY = 'trip-planner:passport';
+  const VISA_URL = 'https://raw.githubusercontent.com/ilyankou/passport-index-dataset/master/passport-index-matrix-iso2.csv';
+  const VISA_TTL = 30 * 86400000; // refresh the cached dataset monthly
+  let visaMatrix = null;
+  let visaDests = [];   // [{cc, name, places:[...]}] in visit order
+  let visaToken = 0;
+
+  function regionName(cc) {
+    try { return new Intl.DisplayNames(['en'], { type: 'region' }).of(cc) || cc; }
+    catch { return cc; }
+  }
+
+  async function ensureVisaMatrix() {
+    if (visaMatrix) return visaMatrix;
+    try {
+      const cached = JSON.parse(localStorage.getItem(VISA_KEY) || 'null');
+      if (cached && cached.csv && Date.now() - cached.at < VISA_TTL) {
+        visaMatrix = parseVisaMatrix(cached.csv);
+        if (visaMatrix) return visaMatrix;
+      }
+    } catch { /* fall through to a fresh fetch */ }
+    const ctrl = new AbortController();
+    const timer = setTimeout(() => ctrl.abort(), 15000);
+    try {
+      const res = await fetch(VISA_URL, { signal: ctrl.signal });
+      if (!res.ok) throw new Error('http ' + res.status);
+      const csv = await res.text();
+      visaMatrix = parseVisaMatrix(csv);
+      if (!visaMatrix) throw new Error('unparseable dataset');
+      try { localStorage.setItem(VISA_KEY, JSON.stringify({ at: Date.now(), csv })); } catch { /* cache is best-effort */ }
+      return visaMatrix;
+    } finally { clearTimeout(timer); }
+  }
+
+  async function openVisaModal() {
+    const token = ++visaToken;
+    openOverlay('#visaOverlay');
+    const box = $('#visaResults');
+    box.innerHTML = '<div class="route-loading"><span class="spinner"></span>Loading visa dataset...</div>';
+    if (!navigator.onLine && !localStorage.getItem(VISA_KEY)) {
+      box.innerHTML = 'The visa dataset needs internet for its first download. Reconnect and reopen this dialog.';
+      return;
+    }
+    let matrix;
+    try { matrix = await ensureVisaMatrix(); }
+    catch {
+      box.innerHTML = 'Could not load the visa dataset (network hiccup?). Close and reopen to retry, or search "visa requirements for <your country> citizens" on Wikipedia.';
+      return;
+    }
+    if (token !== visaToken) return;
+
+    // passport dropdown, once
+    const sel = $('#passportSel');
+    if (sel.options.length <= 1) {
+      const opts = matrix.codes
+        .map(cc => ({ cc, name: regionName(cc) }))
+        .sort((a, b) => a.name.localeCompare(b.name))
+        .map(o => `<option value="${o.cc}">${flagEmoji(o.cc)} ${esc(o.name)}</option>`)
+        .join('');
+      sel.insertAdjacentHTML('beforeend', opts);
+    }
+    const saved = localStorage.getItem(PASSPORT_KEY) || '';
+    if (saved && matrix.matrix[saved]) sel.value = saved;
+
+    // destination countries from the itinerary, in visit order
+    const stops = mapStops(activeTrip());
+    if (!stops.length) {
+      box.innerHTML = 'Add items with a "Place" (Tokyo, Bangkok, ...) and the countries you visit will be listed here.';
+      return;
+    }
+    box.innerHTML = '<div class="route-loading"><span class="spinner"></span>Locating your destinations...</div>';
+    const byCc = new Map();
+    const unlocated = [];
+    for (const stop of stops) {
+      const hit = await geocode(stop.name);
+      if (token !== visaToken) return;
+      if (!hit.ok || !hit.cc) { unlocated.push(stop.name); continue; }
+      if (!byCc.has(hit.cc)) byCc.set(hit.cc, { cc: hit.cc, name: regionName(hit.cc), places: [] });
+      byCc.get(hit.cc).places.push(stop.name);
+    }
+    visaDests = [...byCc.values()];
+    renderVisaRows(unlocated);
+  }
+
+  function renderVisaRows(unlocated = []) {
+    const box = $('#visaResults');
+    const passport = $('#passportSel').value;
+    if (!visaDests.length) {
+      box.innerHTML = 'Could not locate any destination countries. Make each item\'s "Place" more specific (add the country) and try again.';
+      return;
+    }
+    if (!passport) {
+      box.innerHTML = `Found <b>${visaDests.length}</b> destination countr${visaDests.length === 1 ? 'y' : 'ies'} on this trip: ${visaDests.map(d => flagEmoji(d.cc) + ' ' + esc(d.name)).join(', ')}.<br><br>Pick your passport above to see the requirement for each.`;
+      return;
+    }
+    const row = visaMatrix.matrix[passport] || {};
+    const rows = visaDests.map(d => {
+      const info = classifyVisa(row[d.cc]);
+      const wiki = 'https://en.wikipedia.org/wiki/Special:Search?search=' + encodeURIComponent('Visa policy of ' + d.name);
+      return `
+        <div class="visa-row">
+          <span class="visa-flag">${flagEmoji(d.cc)}</span>
+          <span class="visa-name">${esc(d.name)}<small>${esc(d.places.join(', '))}</small></span>
+          <span class="visa-pill vp-${info.cls}">${esc(info.label)}</span>
+          <a class="visa-verify" href="${wiki}" target="_blank" rel="noopener">verify ↗</a>
+        </div>`;
+    }).join('');
+    const missing = unlocated.length
+      ? `<div class="visa-row"><span class="visa-flag">❓</span><span class="visa-name">Could not locate<small>${esc(unlocated.join(', '))}</small></span><span class="visa-pill vp-unknown">Add the country to the place name</span></div>`
+      : '';
+    box.innerHTML = rows + missing;
+  }
+
   // ---------- overlays / toast ----------
   const FOCUSABLE = 'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])';
   let overlayReturnFocus = null;
@@ -1085,6 +1201,12 @@
   $('#addBtn').addEventListener('click', () => openItemModal(null));
   $('#shiftTripBtn').addEventListener('click', () => openShiftModal(null));
   $('#routeBtn').addEventListener('click', () => openRouteModal('', ''));
+  $('#visaBtn').addEventListener('click', openVisaModal);
+  $('#passportSel').addEventListener('change', () => {
+    const v = $('#passportSel').value;
+    if (v) localStorage.setItem(PASSPORT_KEY, v);
+    renderVisaRows();
+  });
   $('#undoBtn').addEventListener('click', undo);
   $('#redoBtn').addEventListener('click', redo);
   $('#viewTimeline').addEventListener('click', () => { ui.view = 'timeline'; applyView(); });

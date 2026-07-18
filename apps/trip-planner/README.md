@@ -23,6 +23,7 @@ The only network calls are opt-in and key-free: place lookup via OpenStreetMap N
 | Route map | Numbered stops in visit order connected by a dashed route line (Leaflet + OSM, dark-mode tiles) |
 | How to get there | Between consecutive stays in different places: distance (km/mi), compass heading, international-border flag, per-mode duration estimates, and pre-filled links to Google transit/driving, Google Flights and Rome2Rio |
 | Import / export | JSON per trip, full backup of all trips, CSV export; import accepts trip files or full backups |
+| Visa requirements | 🛂 Visas: pick your passport once (saved) and every country on the itinerary shows its requirement (visa-free with days, visa on arrival, e-Visa/eTA, visa required), derived live from the geocoded places via the community Passport Index dataset (cached monthly), with per-country Wikipedia verify links and an always-verify-officially caveat |
 | Settings | 12/24-hour time format (saved and synced), dark/light theme |
 | Cloud sync | Optional: sign in via the site header and trips/preferences sync across devices via Firestore (`sync-system/`), same as the other apps |
 
