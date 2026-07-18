@@ -41,7 +41,7 @@
   <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🧭</text></svg>">
   <link rel="stylesheet" href="../../assets/css/main.css">
   <link rel="stylesheet" href="../../assets/css/sync-status.css">
-  <link rel="stylesheet" href="css/styles.css?v=8">
+  <link rel="stylesheet" href="css/styles.css?v=9">
 </head>
 <body class="trip-planner-app">
   <div id="sync-banner" class="sync-banner" role="status" aria-live="polite" hidden></div>
@@ -99,16 +99,23 @@
 
   <div class="toolbar">
     <button class="btn primary" id="addBtn">+ Add item</button>
-    <button class="btn" id="shiftTripBtn" title="Shift the whole trip by N days">⇄ Shift trip</button>
-    <button class="btn" id="routeBtn" title="How to get from A to B">🧭 Route</button>
-    <button class="btn" id="visaBtn" title="Visa requirements for the countries on this trip">🛂 Visas</button>
-    <button class="icon-btn" id="undoBtn" title="Undo (Ctrl+Z)" aria-label="Undo" disabled><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 14L4 9l5-5"/><path d="M4 9h10a6 6 0 0 1 0 12h-3"/></svg></button>
-    <button class="icon-btn" id="redoBtn" title="Redo (Ctrl+Y)" aria-label="Redo" disabled><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 14l5-5-5-5"/><path d="M20 9H10a6 6 0 0 0 0 12h3"/></svg></button>
+    <span class="tb-sep" aria-hidden="true"></span>
+    <div class="tb-group" role="group" aria-label="Trip tools">
+      <button class="btn" id="shiftTripBtn" title="Shift the whole trip by N days">⇄ Shift trip</button>
+      <button class="btn" id="routeBtn" title="How to get from A to B">🧭 Route</button>
+      <button class="btn" id="visaBtn" title="Visa requirements for the countries on this trip">🛂 Visas</button>
+    </div>
+    <span class="tb-sep" aria-hidden="true"></span>
+    <div class="tb-pair" role="group" aria-label="Undo and redo">
+      <button class="icon-btn" id="undoBtn" title="Undo (Ctrl+Z)" aria-label="Undo" disabled><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 14L4 9l5-5"/><path d="M4 9h10a6 6 0 0 1 0 12h-3"/></svg></button>
+      <button class="icon-btn" id="redoBtn" title="Redo (Ctrl+Y)" aria-label="Redo" disabled><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 14l5-5-5-5"/><path d="M20 9H10a6 6 0 0 0 0 12h3"/></svg></button>
+    </div>
+    <span class="tb-sep" aria-hidden="true"></span>
     <span class="view-switch" role="tablist">
       <button id="viewTimeline" class="on">Timeline</button>
       <button id="viewMap">Map</button>
     </span>
-    <span class="spacer"></span>
+    <div class="tb-group tb-filters" role="group" aria-label="Search and filters">
     <input type="search" id="searchBox" placeholder="Search title, place, details...">
     <select id="filterType" aria-label="Filter by type">
       <option value="">All types</option>
@@ -125,6 +132,7 @@
       <option value="decide">Decide later</option>
       <option value="cancelled">Cancelled</option>
     </select>
+    </div>
   </div>
 
   <div class="issues" id="issuesBox" hidden>
