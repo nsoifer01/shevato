@@ -46,9 +46,52 @@
     } catch { /* corrupted storage falls through to a fresh db */ }
     return { version: 1, activeTripId: null, trips: [] };
   }
+  // ---------- undo / redo ----------
+  // State-snapshot history fed from save(), the single choke point every
+  // data mutation already flows through. Settings (theme, time format)
+  // bypass save() so they stay out of the history.
+  const HISTORY_MAX = 50;
+  const undoPast = [];
+  const undoFuture = [];
+  let lastSaved = null;
+
   function save() {
-    try { localStorage.setItem(LS_KEY, JSON.stringify(db)); }
+    try {
+      const next = JSON.stringify(db);
+      if (lastSaved !== null && next !== lastSaved) {
+        undoPast.push(lastSaved);
+        if (undoPast.length > HISTORY_MAX) undoPast.shift();
+        undoFuture.length = 0;
+      }
+      lastSaved = next;
+      localStorage.setItem(LS_KEY, next);
+    }
     catch (err) { toast('Could not save (storage full?). Export a backup now to be safe.'); }
+  }
+
+  function restoreSnapshot(snapshot) {
+    lastSaved = snapshot;
+    db = JSON.parse(snapshot);
+    try { localStorage.setItem(LS_KEY, snapshot); }
+    catch { /* storage write is best-effort here; state is in memory */ }
+    render();
+  }
+  function undo() {
+    if (!undoPast.length) return;
+    undoFuture.push(lastSaved);
+    restoreSnapshot(undoPast.pop());
+    toast('Undone');
+  }
+  function redo() {
+    if (!undoFuture.length) return;
+    undoPast.push(lastSaved);
+    restoreSnapshot(undoFuture.pop());
+    toast('Redone');
+  }
+  function syncUndoButtons() {
+    const u = $('#undoBtn'), r = $('#redoBtn');
+    if (u) u.disabled = !undoPast.length;
+    if (r) r.disabled = !undoFuture.length;
   }
 
   // Repair anything structurally broken (hand-edited storage, partial imports)
@@ -186,6 +229,7 @@
       renderIssues(issues);
       renderBoard(trip, issues);
       applyView();
+      syncUndoButtons();
     } catch (err) {
       $('#board').innerHTML = `
         <div class="error-card">
@@ -1012,6 +1056,8 @@
   $('#addBtn').addEventListener('click', () => openItemModal(null));
   $('#shiftTripBtn').addEventListener('click', () => openShiftModal(null));
   $('#routeBtn').addEventListener('click', () => openRouteModal('', ''));
+  $('#undoBtn').addEventListener('click', undo);
+  $('#redoBtn').addEventListener('click', redo);
   $('#viewTimeline').addEventListener('click', () => { ui.view = 'timeline'; applyView(); });
   $('#viewMap').addEventListener('click', () => { ui.view = 'map'; applyView(); });
   $('#routeForm').addEventListener('submit', e => { e.preventDefault(); checkRoute(); });
@@ -1163,6 +1209,13 @@
       }
       return;
     }
+    // undo/redo shortcuts; the overlay-trap above already returned when a
+    // dialog is open, and form fields keep their native text undo
+    if ((e.ctrlKey || e.metaKey) && !e.target.closest('input, textarea, select')) {
+      const k = e.key.toLowerCase();
+      if (k === 'z' && !e.shiftKey) { e.preventDefault(); undo(); return; }
+      if (k === 'y' || (k === 'z' && e.shiftKey)) { e.preventDefault(); redo(); return; }
+    }
     if ((e.key === 'n' || e.key === 'N') && !e.ctrlKey && !e.metaKey && !e.target.closest('input, textarea, select')) {
       openItemModal(null);
     }
@@ -1189,6 +1242,11 @@
       db = loadDb();
       repairDb();
       ensureTrip();
+      // a remote merge invalidates local history: undoing another
+      // device's change from here would push a stale state back up
+      undoPast.length = 0;
+      undoFuture.length = 0;
+      lastSaved = JSON.stringify(db);
       render();
     } else if (key === THEME_KEY) {
       applyThemeClass(localStorage.getItem(THEME_KEY) || 'dark');
@@ -1203,5 +1261,6 @@
   syncTimefmtLabel();
   repairDb();
   ensureTrip();
+  if (lastSaved === null) lastSaved = JSON.stringify(db);
   render();
 })();

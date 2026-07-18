@@ -135,6 +135,7 @@
     padding: 8px 11px; color: var(--text); line-height: 1;
     transition: border-color .15s, color .15s, background .15s;
   }
+  .icon-btn svg { display: block; }
   .icon-btn:hover { color: var(--text); border-color: var(--accent); }
   .btn {
     border: 1px solid var(--border); background: var(--bg-card); border-radius: 10px;

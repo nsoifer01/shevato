@@ -12,7 +12,8 @@ The only network calls are opt-in and key-free: place lookup via OpenStreetMap N
 
 | Feature | What it does |
 | ------- | ------------ |
-| Timeline | Chronological board of all items with per-night rates, status pills (quick-change), duplicate/delete with undo, and double-click editing |
+| Timeline | Chronological board of all items with per-night rates, status pills (quick-change), duplicate/delete, and double-click editing |
+| Undo / redo | Every data change (add, edit, delete, duplicate, shift, status, import, trip ops) is undoable 50 steps deep: toolbar buttons or Ctrl+Z / Ctrl+Y; history resets when a remote sync merge lands |
 | Multiple trips | Create, rename, duplicate and delete trips; per-trip currency (USD, EUR, GBP, ILS, JPY, THB, ...) |
 | Validation | Blocks bad input (missing title, check-out before check-in, arrival before departure, negative cost); timezone-aware: a flight may land the same day at an "earlier" local time |
 | Warnings | Date collisions (two stays covering the same night), uncovered nights up to the trip's end, past items still "To book"; click-through from the warnings panel to the row |
