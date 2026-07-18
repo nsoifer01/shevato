@@ -305,6 +305,17 @@
   .totals .t .k { font-size: 11px; text-transform: uppercase; letter-spacing: 0.7px; color: var(--text-faint); }
   .totals .t .v { font-size: 17px; font-weight: 800; font-variant-numeric: tabular-nums; }
   .totals .t.confirmed .v { color: var(--green); }
+  .totals .t.currency-pick { margin-right: auto; text-align: left; }
+  .currency-sel {
+    background: var(--bg-card); border: 1px solid var(--border); border-radius: 8px;
+    padding: 4px 10px; font-size: 13px; font-weight: 600; margin-top: 2px;
+  }
+  .cost-input-wrap { position: relative; }
+  .cost-prefix {
+    position: absolute; left: 12px; top: 50%; transform: translateY(-50%);
+    color: var(--text-dim); font-weight: 600; font-size: 14px; pointer-events: none;
+  }
+  .cost-input-wrap input { padding-left: 34px; }
 
   /* ---------- empty state ---------- */
   .empty { text-align: center; padding: 70px 20px; }

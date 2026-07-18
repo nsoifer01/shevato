@@ -14,7 +14,7 @@ The only network calls are opt-in and key-free: place lookup via OpenStreetMap N
 | ------- | ------------ |
 | Timeline | Chronological board of all items with per-night rates, status pills (quick-change), duplicate/delete, and double-click editing |
 | Undo / redo | Every data change (add, edit, delete, duplicate, shift, status, import, trip ops) is undoable 50 steps deep: toolbar buttons or Ctrl+Z / Ctrl+Y; history resets when a remote sync merge lands |
-| Multiple trips | Create, rename, duplicate and delete trips; per-trip currency (USD, EUR, GBP, ILS, JPY, THB, ...) |
+| Multiple trips | Create, rename, duplicate and delete trips; per-trip currency (USD, EUR, GBP, ILS, JPY, THB, ...) switchable from the totals footer picker, with the symbol shown in the Cost column header and as a prefix inside the Cost input |
 | Validation | Blocks bad input (missing title, check-out before check-in, arrival before departure, negative cost); timezone-aware: a flight may land the same day at an "earlier" local time |
 | Warnings | Date collisions (two stays covering the same night), uncovered nights up to the trip's end, past items still "To book"; click-through from the warnings panel to the row |
 | Night coverage strip | One cell per night, colored booked / decide later / to book / in transit / no stay; hover for details, click to jump |

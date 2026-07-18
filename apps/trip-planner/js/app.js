@@ -154,6 +154,14 @@
   function todayIso() { return new Date().toISOString().slice(0, 10); }
 
   // ---------- money ----------
+  const CURRENCIES = ['USD', 'EUR', 'GBP', 'ILS', 'JPY', 'THB', 'CAD', 'AUD', 'CHF'];
+  function currencySymbol(code) {
+    try {
+      return new Intl.NumberFormat('en-US', { style: 'currency', currency: code || 'USD' })
+        .formatToParts(0).find(p => p.type === 'currency').value;
+    } catch { return '$'; }
+  }
+
   function moneyFmt(trip) {
     try { return new Intl.NumberFormat('en-US', { style: 'currency', currency: trip.currency || 'USD' }); }
     catch { return new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }); }
@@ -366,10 +374,11 @@
     }
     const gaps = issues.filter(i => i.gap).map(i => i.gap);
 
+    const sym = currencySymbol(trip.currency);
     let html = `
       <div class="thead">
         <div>Dates</div><div style="text-align:center">Nights</div><div>Type</div>
-        <div>Destination / details</div><div>Status</div><div style="text-align:right">Cost</div><div></div>
+        <div>Destination / details</div><div>Status</div><div style="text-align:right">Cost (${esc(sym)})</div><div></div>
       </div>`;
 
     const legsByToId = {};
@@ -398,8 +407,10 @@
     }
 
     const s = tripStats(trip);
+    const curOptions = CURRENCIES.map(c => `<option value="${c}" ${c === (trip.currency || 'USD') ? 'selected' : ''}>${c} (${esc(currencySymbol(c))})</option>`).join('');
     html += `
       <div class="totals">
+        <div class="t currency-pick"><div class="k">Currency</div><select id="currencySel" class="currency-sel" aria-label="Trip currency">${curOptions}</select></div>
         ${s.planned > s.confirmed ? `<div class="t"><div class="k">Full plan</div><div class="v">${fmtMoney(trip, s.planned)}</div></div>` : ''}
         <div class="t confirmed"><div class="k">Confirmed bookings</div><div class="v">${fmtMoney(trip, s.confirmed)}</div></div>
       </div>`;
@@ -486,6 +497,9 @@
     $('#inArrTime').value = it ? (it.endTime || '') : '';
     $('#inTime').value = it ? (it.startTime || '') : '';
     $('#inStatus').value = it ? it.status : 'to-book';
+    const sym = currencySymbol(activeTrip().currency);
+    $('#costPrefix').textContent = sym;
+    $('#inCost').style.paddingLeft = (sym.length > 1 ? 18 + sym.length * 9 : 34) + 'px';
     $('#inCost').value = it && it.cost != null ? it.cost : '';
     $('#inCostNote').value = it ? (it.costNote || '') : '';
     $('#inDetails').value = it ? (it.details || '') : '';
@@ -1179,6 +1193,14 @@
   });
 
   $('#board').addEventListener('change', e => {
+    if (e.target.id === 'currencySel') {
+      const trip = activeTrip();
+      trip.currency = e.target.value;
+      save();
+      render();
+      toast(`Costs now shown in ${trip.currency} (${currencySymbol(trip.currency)})`);
+      return;
+    }
     const sel = e.target.closest('select[data-status-for]');
     if (!sel) return;
     const it = activeTrip().items.find(x => x.id === sel.dataset.statusFor);
