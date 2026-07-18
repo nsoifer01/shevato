@@ -154,17 +154,31 @@
   function todayIso() { return new Date().toISOString().slice(0, 10); }
 
   // ---------- money ----------
-  const CURRENCIES = ['USD', 'EUR', 'GBP', 'ILS', 'JPY', 'THB', 'CAD', 'AUD', 'CHF'];
+  // CHF is deliberately absent: the Swiss franc has no real symbol (it
+  // renders as the bare code even with narrowSymbol), which broke the
+  // symbol-everywhere contract. Legacy trips that stored it keep working
+  // via the picker's fallback option below.
+  const CURRENCIES = ['USD', 'EUR', 'GBP', 'ILS', 'JPY', 'THB', 'CAD', 'AUD'];
   function currencySymbol(code) {
+    // narrowSymbol yields the tightest real symbol (THB -> baht sign,
+    // CAD/AUD -> $); fall back for engines without narrowSymbol support
     try {
-      return new Intl.NumberFormat('en-US', { style: 'currency', currency: code || 'USD' })
+      return new Intl.NumberFormat('en-US', { style: 'currency', currency: code || 'USD', currencyDisplay: 'narrowSymbol' })
         .formatToParts(0).find(p => p.type === 'currency').value;
-    } catch { return '$'; }
+    } catch {
+      try {
+        return new Intl.NumberFormat('en-US', { style: 'currency', currency: code || 'USD' })
+          .formatToParts(0).find(p => p.type === 'currency').value;
+      } catch { return '$'; }
+    }
   }
 
   function moneyFmt(trip) {
-    try { return new Intl.NumberFormat('en-US', { style: 'currency', currency: trip.currency || 'USD' }); }
-    catch { return new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }); }
+    try { return new Intl.NumberFormat('en-US', { style: 'currency', currency: trip.currency || 'USD', currencyDisplay: 'narrowSymbol' }); }
+    catch {
+      try { return new Intl.NumberFormat('en-US', { style: 'currency', currency: trip.currency || 'USD' }); }
+      catch { return new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }); }
+    }
   }
   function fmtMoney(trip, n) { return moneyFmt(trip).format(n); }
 
@@ -407,7 +421,8 @@
     }
 
     const s = tripStats(trip);
-    const curOptions = CURRENCIES.map(c => `<option value="${c}" ${c === (trip.currency || 'USD') ? 'selected' : ''}>${c} (${esc(currencySymbol(c))})</option>`).join('');
+    const curList = CURRENCIES.includes(trip.currency || 'USD') ? CURRENCIES : [...CURRENCIES, trip.currency];
+    const curOptions = curList.map(c => `<option value="${c}" ${c === (trip.currency || 'USD') ? 'selected' : ''}>${c} (${esc(currencySymbol(c))})</option>`).join('');
     html += `
       <div class="totals">
         <div class="t currency-pick"><div class="k">Currency</div><select id="currencySel" class="currency-sel" aria-label="Trip currency">${curOptions}</select></div>
