@@ -198,6 +198,13 @@ diffs the previous `data.json` (downloaded from the
 node apps/rising-shows/scripts/build-changelog.js
 ```
 
+Without `--prev` there is no baseline (data.json is not in git, so the
+HEAD fallback finds nothing), and the script then refuses to append to
+a non-empty changelog: a baseline-less diff would record the entire
+catalogue (~65k seasons, ~5 MB) as "added", and repeated daily that
+grew changelog.json past GitHub's 100 MB push limit. An initial
+full-catalogue entry is only written when the changelog is empty.
+
 Or against explicit before/after files (useful for seeding history
 from past commits):
 
