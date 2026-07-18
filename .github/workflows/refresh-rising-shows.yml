@@ -55,8 +55,10 @@ jobs:
       # The previous dataset is the diff baseline for change detection and
       # the changelog entry. It lives on the rolling release, not in git.
       # A missing asset (first run after the migration, manual deletion) is
-      # non-fatal: everything then counts as changed and the changelog
-      # records an initial entry.
+      # non-fatal: everything then counts as changed, but build-changelog
+      # skips the entry rather than record the whole catalogue as "added"
+      # (an initial full-catalogue entry is only written when the changelog
+      # itself is empty).
       - name: Download previous release data
         run: |
           mkdir -p /tmp/rs-prev

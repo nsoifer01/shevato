@@ -451,10 +451,13 @@ function loadSeasonOverviews() {
     }
   }
 
-  // Diff against the previously-committed data.json and update changelog.json
-  // so the "What's new" footer chip stays in sync. The footer guards the chip
-  // on `latest.builtAt === dataset.builtAt`, so writing a new data.json without
-  // also writing a matching changelog entry silently hides the chip.
+  // Update changelog.json so the "What's new" footer chip stays in sync. The
+  // footer guards the chip on `latest.builtAt === dataset.builtAt`, so writing
+  // a new data.json without also writing a matching changelog entry silently
+  // hides the chip. data.json no longer lives in git, so build-changelog's
+  // HEAD fallback finds no baseline here: it only writes an initial entry
+  // when the changelog is empty and skips otherwise (the refresh workflow
+  // writes the real entry via --prev against the release baseline).
   // Skip when explicitly opted out (e.g., test fixtures, dry runs).
   if (process.env.SKIP_CHANGELOG !== '1') {
     try {

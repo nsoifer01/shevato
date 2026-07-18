@@ -166,3 +166,73 @@ test('appendEntry handles an empty/missing changelog', () => {
   assert.equal(result.updates.length, 1);
   assert.equal(result.updates[0].builtAt, '2026-05-14T06:00:00.000Z');
 });
+
+// --- missing-baseline guard (CLI) ---
+//
+// data.json is not committed to git (it lives on the rising-shows-data
+// release), so the script's HEAD fallback never finds a baseline. On an
+// established changelog that must NOT append a full-catalogue "everything
+// added" entry; repeated daily it grew changelog.json past GitHub's 100 MB
+// push limit and broke the refresh workflow.
+
+const fs = require('fs');
+const os = require('os');
+const path = require('path');
+const { execFileSync } = require('child_process');
+
+const SCRIPT = path.join(__dirname, '..', 'scripts', 'build-changelog.js');
+
+function runCli(args) {
+  return execFileSync(process.execPath, [SCRIPT, ...args], { encoding: 'utf8' });
+}
+
+function tmpDataset() {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'rs-changelog-test-'));
+  const dataPath = path.join(dir, 'data.json');
+  fs.writeFileSync(dataPath, JSON.stringify(dataset([match('tt1', 'Alpha', 1)])));
+  return { dir, dataPath, outPath: path.join(dir, 'changelog.json') };
+}
+
+test('CLI skips when there is no baseline and the changelog already has entries', () => {
+  const { dataPath, outPath } = tmpDataset();
+  const existing = { updates: [
+    { builtAt: '2026-05-13T06:00:00.000Z', totals: { seasons: 10, delta: 0 }, added: [], removed: [] },
+  ] };
+  fs.writeFileSync(outPath, JSON.stringify(existing, null, 2) + '\n');
+  const before = fs.readFileSync(outPath, 'utf8');
+  runCli(['--new', dataPath, '--out', outPath]);
+  assert.equal(fs.readFileSync(outPath, 'utf8'), before);
+});
+
+test('CLI skips when --prev points at a missing file and the changelog has entries', () => {
+  const { dir, dataPath, outPath } = tmpDataset();
+  const existing = { updates: [
+    { builtAt: '2026-05-13T06:00:00.000Z', totals: { seasons: 10, delta: 0 }, added: [], removed: [] },
+  ] };
+  fs.writeFileSync(outPath, JSON.stringify(existing, null, 2) + '\n');
+  const before = fs.readFileSync(outPath, 'utf8');
+  runCli(['--new', dataPath, '--out', outPath, '--prev', path.join(dir, 'nope.json')]);
+  assert.equal(fs.readFileSync(outPath, 'utf8'), before);
+});
+
+test('CLI still records an initial entry when the changelog is empty', () => {
+  const { dataPath, outPath } = tmpDataset();
+  runCli(['--new', dataPath, '--out', outPath]);
+  const written = JSON.parse(fs.readFileSync(outPath, 'utf8'));
+  assert.equal(written.updates.length, 1);
+  assert.equal(written.updates[0].added.length, 1);
+});
+
+test('CLI appends a normal diff entry when --prev exists', () => {
+  const { dir, dataPath, outPath } = tmpDataset();
+  const prevPath = path.join(dir, 'prev.json');
+  fs.writeFileSync(prevPath, JSON.stringify(dataset([])));
+  const existing = { updates: [
+    { builtAt: '2026-05-13T06:00:00.000Z', totals: { seasons: 0, delta: 0 }, added: [], removed: [] },
+  ] };
+  fs.writeFileSync(outPath, JSON.stringify(existing, null, 2) + '\n');
+  runCli(['--new', dataPath, '--out', outPath, '--prev', prevPath]);
+  const written = JSON.parse(fs.readFileSync(outPath, 'utf8'));
+  assert.equal(written.updates.length, 2);
+  assert.equal(written.updates[0].added.length, 1);
+});

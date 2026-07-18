@@ -201,11 +201,9 @@ function run(argv) {
   } else {
     prev = loadJsonFromGit('HEAD', relData, repoRoot);
     if (!prev) {
-      console.log('build-changelog: no prior data.json in HEAD — recording initial entry.');
+      console.log('build-changelog: no prior data.json in HEAD.');
     }
   }
-
-  const entry = diffDatasets(prev, next);
 
   let existing = null;
   if (fs.existsSync(outPath)) {
@@ -215,6 +213,19 @@ function run(argv) {
       console.warn(`build-changelog: could not parse ${outPath}: ${err.message}. Starting fresh.`);
     }
   }
+
+  // No baseline means every season in data.json would be recorded as
+  // freshly added: a multi-MB "everything is new" entry. That is only
+  // meaningful once, when the changelog itself is brand new. On an
+  // established changelog it is always a caller bug (e.g. data.json no
+  // longer lives in git, so the HEAD fallback finds nothing) and repeated
+  // daily it balloons the file past GitHub's 100 MB push limit.
+  if (!prev && existing?.updates?.length) {
+    console.warn('build-changelog: no previous data.json baseline and changelog already has entries; skipping to avoid a bogus full-catalogue entry.');
+    return 0;
+  }
+
+  const entry = diffDatasets(prev, next);
   const updated = appendEntry(existing, entry, maxEntries);
 
   fs.writeFileSync(outPath, JSON.stringify(updated, null, 2) + '\n');
