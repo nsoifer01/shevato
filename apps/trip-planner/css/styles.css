@@ -368,6 +368,49 @@
 
   .trip-planner-app footer.page-foot { margin-top: 26px; color: var(--text-faint); font-size: 12.5px; display: flex; gap: 14px; flex-wrap: wrap; }
 
+  /* ---------- main.css !important counter-pins ----------
+     main.css paints ALL buttons `color: #555 !important`, red text on
+     hover, and a translucent red flash on press (the sitewide
+     "gray buttons, red hovers" trap). Those beat any specificity, so the
+     app pins its own button colors with !important; among !important
+     rules normal cascade applies, so the specific variants below the
+     base win as usual. */
+  .trip-planner-app button,
+  .trip-planner-app a.btn { color: var(--text) !important; }
+  .trip-planner-app button:hover,
+  .trip-planner-app a.btn:hover { color: var(--text) !important; }
+  .trip-planner-app .row-btn { color: var(--text-dim) !important; }
+  .trip-planner-app .row-btn:hover { color: var(--text) !important; }
+  .trip-planner-app .row-btn.danger { color: color-mix(in srgb, var(--red) 72%, var(--text-faint)) !important; }
+  .trip-planner-app .row-btn.danger:hover { color: var(--red) !important; }
+  .trip-planner-app .row-btn.danger:active { color: #fff !important; }
+  .trip-planner-app .btn.danger { color: color-mix(in srgb, var(--red) 75%, var(--text-dim)) !important; }
+  .trip-planner-app .btn.danger:hover { color: var(--red) !important; }
+  .trip-planner-app .btn.danger:active { color: #fff !important; }
+  .trip-planner-app .btn.primary,
+  .trip-planner-app .btn.primary:hover,
+  .trip-planner-app .btn.primary:active { color: #fff !important; }
+  .trip-planner-app .view-switch button.on,
+  .trip-planner-app .view-switch button.on:hover,
+  .trip-planner-app .view-switch button.on:focus,
+  .trip-planner-app .view-switch button.on:active { color: #fff !important; }
+  .trip-planner-app .type-picker button.on,
+  .trip-planner-app .type-picker button.on:hover,
+  .trip-planner-app .type-picker button.on:focus { color: #fff !important; }
+  .trip-planner-app .tp-menu-panel button.danger { color: var(--red) !important; }
+  .trip-planner-app .leg-btn:hover { color: var(--accent) !important; }
+  .trip-planner-app .icon-btn:hover { color: var(--text) !important; }
+  .trip-planner-app button:disabled { color: var(--text-faint) !important; }
+  /* main.css also flashes rgba-red backgrounds on :hover:active */
+  .trip-planner-app button:hover:active { background-color: transparent; }
+  .trip-planner-app .btn:hover:active { background-color: var(--bg-card); }
+  .trip-planner-app .btn.primary:hover:active { background-color: var(--accent); }
+  .trip-planner-app .btn.danger:hover:active,
+  .trip-planner-app .row-btn.danger:hover:active { background-color: var(--red); }
+  .trip-planner-app .tp-menu-panel button:hover:active { background-color: var(--accent-soft); }
+  .trip-planner-app .view-switch button.on:hover:active,
+  .trip-planner-app .type-picker button.on:hover:active { background-color: var(--accent); }
+
   /* ---------- view switch ---------- */
   .view-switch {
     display: inline-flex; background: var(--bg-card); border: 1px solid var(--border);
