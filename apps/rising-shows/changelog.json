@@ -1,6 +1,36 @@
 {
   "updates": [
     {
+      "builtAt": "2026-07-18T15:02:52.171Z",
+      "totals": {
+        "seasons": 65841,
+        "delta": 0
+      },
+      "shapeCounts": {
+        "mid-peak": 4622,
+        "rebound": 10068,
+        "rising": 2895,
+        "slow-burn": 4355,
+        "big-finale": 12009,
+        "u-shaped": 3080,
+        "rollercoaster": 14023,
+        "saved-best-for-last": 1529,
+        "front-loaded": 3443,
+        "declining": 1875,
+        "bad-finale": 4649,
+        "consistent": 2618,
+        "shape-drift": 1621
+      },
+      "shapeDeltas": {},
+      "added": [],
+      "removed": [],
+      "ratingSwings": [],
+      "modifiedCounts": {
+        "avgRating": 1,
+        "episodeCount": 1
+      }
+    },
+    {
       "builtAt": "2026-07-17T08:30:14.159Z",
       "totals": {
         "seasons": 65828,
