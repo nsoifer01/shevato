@@ -1087,7 +1087,10 @@
       const opts = matrix.codes
         .map(cc => ({ cc, name: regionName(cc) }))
         .sort((a, b) => a.name.localeCompare(b.name))
-        .map(o => `<option value="${o.cc}">${flagEmoji(o.cc)} ${esc(o.name)}</option>`)
+        // name FIRST: the browser's native type-ahead ("uni" -> United...)
+        // matches the start of the option text, so a leading flag emoji
+        // would break typing in the dropdown
+        .map(o => `<option value="${o.cc}">${esc(o.name)} \u00A0${flagEmoji(o.cc)}</option>`)
         .join('');
       sel.insertAdjacentHTML('beforeend', opts);
     }
