@@ -85,6 +85,17 @@ const APP_SYNC_CONFIG = {
       'maptapRivalsSettings',       // UI prefs (last-selected rival, etc.)
       'maptapRivalsSelectedRivalId' // Currently focused rival on detail view
     ]
+  },
+
+  'trip-planner': {
+    namespace: 'tripPlannerApp',
+    keys: [
+      'trip-planner:v1',            // All trips + items (the entire planner state)
+      'trip-planner:theme',         // dark / light preference
+      'trip-planner:timefmt'        // 12 / 24-hour time display preference
+      // trip-planner:geo:v2 (geocode cache) deliberately NOT synced:
+      // large, derivable, and device-local by nature.
+    ]
   }
 };
 
@@ -116,6 +127,8 @@ export async function initAppSync() {
     currentApp = 'maptap-rivals';
   } else if (currentPath.includes('/rising-shows/')) {
     currentApp = 'rising-shows';
+  } else if (currentPath.includes('/trip-planner/')) {
+    currentApp = 'trip-planner';
   }
 
   // Only sync the current app's namespace plus shared global prefs.

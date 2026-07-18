@@ -29,7 +29,8 @@ shevato/
 │   ├── football-h2h/                 # Head-to-head football league manager
 │   ├── rising-shows/                 # TV shows ranked by rating-trend shape + Plex/Kometa integration
 │   ├── maptap-rivals/                # Daily MapTap.gg head-to-head tracker
-│   └── arena/                        # Real-time multiplayer hub (Firestore Realtime DB)
+│   ├── arena/                        # Real-time multiplayer hub (Firestore Realtime DB)
+│   └── trip-planner/                 # Day-by-day trip itinerary builder with route map
 │
 ├── partials/                         # Header/footer fragments loaded by main.js
 │   ├── header.html
@@ -67,6 +68,7 @@ shevato/
 | Rising Shows | `apps/rising-shows/` | TV / multimedia | Whole TV shows ranked by the shape of their rating trend across thousands of shows; Plex + Kometa integration under `apps/rising-shows/kometa/` |
 | MapTap Rivals | `apps/maptap-rivals/` | Game tracker | Daily MapTap.gg H2H against named friends; rivalry seasons + calendar heatmap |
 | Arena | `apps/arena/` | Real-time multiplayer | Private rooms for friends — Globe Drop, Trivia, more. Requires Firestore + Realtime Database |
+| Trip Planner | `apps/trip-planner/` | Travel | Day-by-day itineraries: flights, stays, costs, night coverage, collision and gap warnings, route map, A-to-B travel options. Optional Firestore sync via site sign-in |
 
 ## Key Features
 

@@ -1,0 +1,354 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <!-- CRITICAL: immediate sync override must run before any localStorage call -->
+  <script src="../../sync-system/sync-immediate.js"></script>
+
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  <meta name="description" content="Free trip planner: build a day-by-day itinerary with flights, stays and activities, see costs and night coverage, get date-collision and gap warnings, view your route on a map, and compare ways to get from A to B.">
+  <meta name="keywords" content="trip planner, travel itinerary planner, itinerary builder, travel budget tracker, trip organizer, route planner, travel gap checker, vacation planner, free trip planner app">
+  <meta name="author" content="Shevato LLC">
+  <meta name="robots" content="index, follow, max-image-preview:large">
+  <link rel="canonical" href="https://shevato.com/apps/trip-planner/">
+
+  <meta property="og:type" content="website">
+  <meta property="og:site_name" content="Shevato">
+  <meta property="og:title" content="Trip Planner - plan it, move it, book it">
+  <meta property="og:description" content="Build a day-by-day itinerary with flights, stays and activities. Costs, night coverage, collision warnings, a route map, and A-to-B travel options.">
+  <meta property="og:url" content="https://shevato.com/apps/trip-planner/">
+  <meta property="og:image" content="https://shevato.com/images/og/trip-planner.png">
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="Trip Planner - plan it, move it, book it">
+  <meta name="twitter:description" content="Build a day-by-day itinerary with flights, stays and activities. Costs, night coverage, collision warnings, a route map, and A-to-B travel options.">
+  <meta name="twitter:image" content="https://shevato.com/images/og/trip-planner.png">
+
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@type": "SoftwareApplication",
+    "name": "Trip Planner",
+    "description": "Free trip planner that builds a day-by-day itinerary with flights, stays and activities, tracks costs and night coverage, warns about date collisions and gaps, and maps the route.",
+    "url": "https://shevato.com/apps/trip-planner/",
+    "applicationCategory": "TravelApplication",
+    "operatingSystem": "Any",
+    "offers": { "@type": "Offer", "price": "0", "priceCurrency": "USD" },
+    "publisher": { "@type": "Organization", "name": "Shevato LLC" }
+  }
+  </script>
+
+  <title>Trip Planner - Free Itinerary Builder with Route Map & Cost Tracking | Shevato</title>
+  <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🧭</text></svg>">
+  <link rel="stylesheet" href="../../assets/css/main.css">
+  <link rel="stylesheet" href="../../assets/css/sync-status.css">
+  <link rel="stylesheet" href="css/styles.css">
+</head>
+<body class="trip-planner-app">
+  <div id="sync-banner" class="sync-banner" role="status" aria-live="polite" hidden></div>
+  <div data-include="header"></div>
+
+<div class="tp-wrap">
+
+  <header class="tp-head">
+    <div class="logo">
+      <div class="mark">🧭</div>
+      <div>
+        <h1>Trip Planner</h1>
+        <div class="sub">plan it, move it, book it</div>
+      </div>
+    </div>
+    <div class="trip-bar">
+      <select class="trip-select" id="tripSelect" aria-label="Active trip"></select>
+      <div class="tp-menu" id="tripMenu">
+        <button class="icon-btn" id="tripMenuBtn" title="Trip actions" aria-haspopup="true">⋯</button>
+        <div class="tp-menu-panel">
+          <button data-act="new-trip">➕ New trip</button>
+          <button data-act="rename-trip">✏️ Rename / currency</button>
+          <button data-act="duplicate-trip">📄 Duplicate trip</button>
+          <div class="sep"></div>
+          <button data-act="export-trip">⬇️ Export trip (JSON)</button>
+          <button data-act="export-csv">⬇️ Export trip (CSV)</button>
+          <button data-act="export-all">⬇️ Backup all trips</button>
+          <button data-act="import">⬆️ Import JSON</button>
+          <div class="sep"></div>
+          <button data-act="timefmt" id="timefmtBtn">🕐 Use 24-hour times</button>
+          <div class="sep"></div>
+          <button data-act="delete-trip" class="danger">🗑 Delete trip</button>
+        </div>
+      </div>
+      <button class="icon-btn" id="themeBtn" title="Toggle theme">◐</button>
+    </div>
+  </header>
+
+  <div class="summary" id="summary"></div>
+
+  <div class="strip-box" id="stripBox" hidden>
+    <div class="strip-head">
+      <span class="t">Night coverage</span>
+      <span class="strip-legend">
+        <span><span class="dot" style="background:var(--green)"></span>Booked</span>
+        <span><span class="dot" style="background:var(--purple)"></span>Decide later</span>
+        <span><span class="dot" style="background:var(--amber)"></span>To book</span>
+        <span><span class="dot" style="background:var(--accent)"></span>In transit</span>
+        <span><span class="dot" style="background:repeating-linear-gradient(45deg,var(--red) 0 3px,transparent 3px 6px);border:1px solid var(--red)"></span>No stay</span>
+      </span>
+    </div>
+    <div class="strip" id="strip"></div>
+    <div class="strip-dates" id="stripDates"></div>
+  </div>
+
+  <div class="toolbar">
+    <button class="btn primary" id="addBtn">+ Add item</button>
+    <button class="btn" id="shiftTripBtn" title="Shift the whole trip by N days">⇄ Shift trip</button>
+    <button class="btn" id="routeBtn" title="How to get from A to B">🧭 Route</button>
+    <span class="view-switch" role="tablist">
+      <button id="viewTimeline" class="on">Timeline</button>
+      <button id="viewMap">Map</button>
+    </span>
+    <span class="spacer"></span>
+    <input type="search" id="searchBox" placeholder="Search title, place, details...">
+    <select id="filterType" aria-label="Filter by type">
+      <option value="">All types</option>
+      <option value="flight">Flights</option>
+      <option value="stay">Stays</option>
+      <option value="transport">Transport</option>
+      <option value="activity">Activities</option>
+      <option value="note">Notes</option>
+    </select>
+    <select id="filterStatus" aria-label="Filter by status">
+      <option value="">All statuses</option>
+      <option value="booked">Booked</option>
+      <option value="to-book">To book</option>
+      <option value="decide">Decide later</option>
+      <option value="cancelled">Cancelled</option>
+    </select>
+  </div>
+
+  <div class="issues" id="issuesBox" hidden>
+    <details id="issuesDetails">
+      <summary id="issuesSummary"></summary>
+      <ul id="issuesList"></ul>
+    </details>
+  </div>
+
+  <div class="board" id="board"></div>
+
+  <div class="map-box" id="mapBox">
+    <div class="map-status" id="mapStatus"></div>
+    <div id="mapCanvas"></div>
+  </div>
+
+  <footer class="page-foot">
+    <span>Everything is saved locally in this browser as you type.</span>
+    <span>Use "Backup all trips" before clearing browser data.</span>
+  </footer>
+</div>
+
+<!-- item modal -->
+<div class="overlay" id="itemOverlay">
+  <form class="modal" id="itemForm" novalidate role="dialog" aria-modal="true" aria-labelledby="itemModalTitle" tabindex="-1">
+    <h2 id="itemModalTitle">Add item</h2>
+    <div class="field">
+      <label>Type</label>
+      <div class="type-picker" id="typePicker">
+        <button type="button" data-type="flight">✈️ Flight</button>
+        <button type="button" data-type="stay">🏨 Stay</button>
+        <button type="button" data-type="transport">🚆 Transport</button>
+        <button type="button" data-type="activity">🎟️ Activity</button>
+        <button type="button" data-type="note">📝 Note</button>
+      </div>
+    </div>
+    <div class="field" id="fTitle">
+      <label id="titleLabel">Title</label>
+      <input id="inTitle" maxlength="120" placeholder="e.g. Shreveport to Tokyo (HND)">
+      <div class="err">Title is required.</div>
+    </div>
+    <div class="field">
+      <label>Place <small style="font-weight:400">(optional)</small></label>
+      <input id="inLocation" maxlength="80" placeholder="e.g. Tokyo">
+    </div>
+    <div class="grid3">
+      <div class="field" id="fStart">
+        <label id="startLabel">Date</label>
+        <input type="date" id="inStart">
+        <div class="err">A valid date is required.</div>
+      </div>
+      <div class="field" id="fEnd">
+        <label>Check-out</label>
+        <input type="date" id="inEnd">
+        <div class="err" id="endErr">Check-out must be after check-in.</div>
+      </div>
+      <div class="field" id="fTime">
+        <label id="timeLabel">Time <small style="font-weight:400">(optional)</small></label>
+        <input type="time" id="inTime">
+      </div>
+    </div>
+    <div class="grid2" id="fArrivalRow">
+      <div class="field" id="fArrDate">
+        <label id="arrDateLabel">Lands on <small style="font-weight:400">(optional, for overnight legs)</small></label>
+        <input type="date" id="inArrDate">
+        <div class="err">Arrival cannot be before departure.</div>
+      </div>
+      <div class="field">
+        <label id="arrTimeLabel">Landing time <small style="font-weight:400">(optional)</small></label>
+        <input type="time" id="inArrTime">
+      </div>
+    </div>
+    <div class="grid2">
+      <div class="field">
+        <label>Status</label>
+        <select id="inStatus">
+          <option value="booked">Booked</option>
+          <option value="to-book" selected>To book</option>
+          <option value="decide">Decide later</option>
+          <option value="cancelled">Cancelled</option>
+        </select>
+      </div>
+      <div class="field" id="fCost">
+        <label>Cost</label>
+        <input type="number" id="inCost" min="0" step="0.01" inputmode="decimal" placeholder="0.00">
+        <div class="err">Cost cannot be negative.</div>
+      </div>
+    </div>
+    <div class="field">
+      <label>Cost note <small style="font-weight:400">(optional, shown instead of a blank cost, e.g. "Included in intl flights")</small></label>
+      <input id="inCostNote" maxlength="80">
+    </div>
+    <div class="field">
+      <label>Details <small style="font-weight:400">(optional)</small></label>
+      <textarea id="inDetails" maxlength="500" placeholder="Hotel name, confirmation number, terminal, links..."></textarea>
+    </div>
+    <div class="modal-foot">
+      <button type="button" class="btn left" data-close>Cancel</button>
+      <button type="submit" class="btn primary" id="itemSaveBtn">Save item</button>
+    </div>
+  </form>
+</div>
+
+<!-- shift modal -->
+<div class="overlay" id="shiftOverlay">
+  <form class="modal small" id="shiftForm" role="dialog" aria-modal="true" aria-labelledby="shiftTitle" tabindex="-1">
+    <h2 id="shiftTitle">Shift dates</h2>
+    <div class="field">
+      <label>Shift by</label>
+      <div class="stepper">
+        <button type="button" class="btn" id="shiftMinus">-1</button>
+        <input type="number" id="shiftDays" value="1" step="1">
+        <button type="button" class="btn" id="shiftPlus">+1</button>
+        <span style="color:var(--text-dim)">day(s)</span>
+      </div>
+      <div class="hint">Use a negative number to move earlier.</div>
+    </div>
+    <div class="field" id="shiftScopeField">
+      <label>Apply to</label>
+      <div class="radio-row">
+        <label><input type="radio" name="shiftScope" value="one" checked> Only this item</label>
+        <label><input type="radio" name="shiftScope" value="after"> This item and everything after it</label>
+        <label><input type="radio" name="shiftScope" value="all"> The entire trip</label>
+      </div>
+    </div>
+    <div class="modal-foot">
+      <button type="button" class="btn left" data-close>Cancel</button>
+      <button type="submit" class="btn primary">Shift</button>
+    </div>
+  </form>
+</div>
+
+<!-- trip modal -->
+<div class="overlay" id="tripOverlay">
+  <form class="modal small" id="tripForm" role="dialog" aria-modal="true" aria-labelledby="tripModalTitle" tabindex="-1">
+    <h2 id="tripModalTitle">New trip</h2>
+    <div class="field" id="fTripName">
+      <label>Trip name</label>
+      <input id="inTripName" maxlength="60" placeholder="e.g. Japan and Thailand 2027">
+      <div class="err">A name is required.</div>
+    </div>
+    <div class="field">
+      <label>Currency</label>
+      <select id="inTripCurrency">
+        <option value="USD">USD ($)</option>
+        <option value="EUR">EUR (€)</option>
+        <option value="GBP">GBP (£)</option>
+        <option value="ILS">ILS (₪)</option>
+        <option value="JPY">JPY (¥)</option>
+        <option value="THB">THB (฿)</option>
+        <option value="CAD">CAD ($)</option>
+        <option value="AUD">AUD ($)</option>
+        <option value="CHF">CHF</option>
+      </select>
+    </div>
+    <div class="modal-foot">
+      <button type="button" class="btn left" data-close>Cancel</button>
+      <button type="submit" class="btn primary" id="tripSaveBtn">Create trip</button>
+    </div>
+  </form>
+</div>
+
+<!-- confirm modal -->
+<div class="overlay" id="confirmOverlay">
+  <div class="modal small" role="dialog" aria-modal="true" aria-labelledby="confirmTitle" tabindex="-1">
+    <h2 id="confirmTitle">Are you sure?</h2>
+    <p id="confirmText" style="color:var(--text-dim); margin:0 0 4px;"></p>
+    <div class="modal-foot">
+      <button type="button" class="btn left" data-close>Cancel</button>
+      <button type="button" class="btn danger" id="confirmYes">Delete</button>
+    </div>
+  </div>
+</div>
+
+<!-- route helper modal -->
+<div class="overlay" id="routeOverlay">
+  <form class="modal" id="routeForm" role="dialog" aria-modal="true" aria-labelledby="routeModalTitle" tabindex="-1">
+    <h2 id="routeModalTitle">How to get there</h2>
+    <div class="route-io">
+      <div class="field">
+        <label>From</label>
+        <input id="routeFrom" maxlength="80" placeholder="e.g. Tokyo" list="placeList" autocomplete="off">
+      </div>
+      <button type="button" class="icon-btn route-swap" id="routeSwap" title="Swap from and to">⇅</button>
+      <div class="field">
+        <label>To</label>
+        <input id="routeTo" maxlength="80" placeholder="e.g. Kyoto" list="placeList" autocomplete="off">
+      </div>
+    </div>
+    <datalist id="placeList"></datalist>
+    <div class="route-result" id="routeResult">Enter two places and hit "Check route".</div>
+    <div class="route-links">
+      <a class="btn" id="rlTransit" target="_blank" rel="noopener">🚆 Google transit</a>
+      <a class="btn" id="rlDrive" target="_blank" rel="noopener">🚗 Google driving</a>
+      <a class="btn" id="rlFly" target="_blank" rel="noopener">✈️ Google Flights</a>
+      <a class="btn" id="rlR2R" target="_blank" rel="noopener">🌐 Rome2Rio</a>
+    </div>
+    <div class="modal-foot">
+      <button type="button" class="btn left" data-close>Close</button>
+      <button type="submit" class="btn primary">Check route</button>
+    </div>
+  </form>
+</div>
+
+<input type="file" id="importFile" accept="application/json,.json" hidden>
+<div class="toasts" id="toasts"></div>
+  <div data-include="footer"></div>
+
+  <script src="../../assets/js/passive-events-fix.js"></script>
+  <script src="../../assets/js/sync-status.js"></script>
+  <script src="../../assets/js/jquery.min.js"></script>
+  <script src="../../assets/js/browser.min.js"></script>
+  <script src="../../assets/js/breakpoints.min.js"></script>
+  <script src="../../assets/js/util.js"></script>
+
+  <!-- Firebase storage sync (matches other apps) -->
+  <script type="module" src="../../firebase-config.js"></script>
+  <script type="module" src="../../sync-system/storage-sync-robust.js"></script>
+  <script type="module" src="../../sync-system/app-sync-init.js"></script>
+  <script src="../../sync-system/sync-debug.js"></script>
+  <script src="../../sync-system/sync-loading-modal.js"></script>
+  <script src="../../sync-system/sync-modal-integration.js"></script>
+
+  <!-- Site main JS: injects header/footer partials and mounts the auth UI -->
+  <script src="../../assets/js/main.js"></script>
+
+  <script src="js/trip-logic.js"></script>
+  <script src="js/app.js"></script>
+</body>
+</html>

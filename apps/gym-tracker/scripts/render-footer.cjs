@@ -15,6 +15,7 @@ function renderMoreFooter() {
         <li><a href="/apps/maptap-rivals/"><strong>MapTap Rivals</strong><span> · daily MapTap.gg tracker</span></a></li>
         <li><a href="/apps/mario-kart/"><strong>Mario Kart Tracker</strong><span> · race tracker and stats</span></a></li>
         <li><a href="/apps/rising-shows/"><strong>Rising Shows</strong><span> · TV shows by the shape of their rating trend</span></a></li>
+        <li><a href="/apps/trip-planner/"><strong>Trip Planner</strong><span> · itineraries with maps, costs and warnings</span></a></li>
       </ul>
     </nav>
     <p class="copyright">© Shevato LLC · <a href="/">shevato.com</a> · <a href="/about.html">About</a> · <a href="/contact.html">Contact</a></p>
