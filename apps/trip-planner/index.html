@@ -41,7 +41,7 @@
   <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🧭</text></svg>">
   <link rel="stylesheet" href="../../assets/css/main.css">
   <link rel="stylesheet" href="../../assets/css/sync-status.css">
-  <link rel="stylesheet" href="css/styles.css?v=9">
+  <link rel="stylesheet" href="css/styles.css?v=10">
 </head>
 <body class="trip-planner-app">
   <div id="sync-banner" class="sync-banner" role="status" aria-live="polite" hidden></div>
@@ -318,6 +318,11 @@
       <select id="passportSel"><option value="">Select your passport country...</option></select>
     </div>
     <div class="visa-results" id="visaResults">Loading...</div>
+    <div class="visa-add">
+      <select id="visaAddSel" aria-label="Add another country">
+        <option value="">+ Add another country (layover, border crossing, road trip)...</option>
+      </select>
+    </div>
     <div class="route-note">Source: the community-maintained Passport Index dataset, refreshed monthly and cached in your browser. Rules change and transit countries can have their own requirements: always verify with the destination's embassy or official site before booking.</div>
     <div class="modal-foot">
       <button type="button" class="btn left" data-close>Close</button>
@@ -378,6 +383,6 @@
   <script src="../../assets/js/main.js"></script>
 
   <script src="js/trip-logic.js?v=2"></script>
-  <script src="js/app.js?v=9"></script>
+  <script src="js/app.js?v=10"></script>
 </body>
 </html>

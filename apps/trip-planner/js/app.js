@@ -105,6 +105,8 @@
       if (typeof t.name !== 'string' || !t.name) t.name = 'Untitled trip';
       if (!/^[A-Z]{3}$/.test(t.currency || '')) t.currency = 'USD';
       if (!Array.isArray(t.items)) t.items = [];
+      if (!Array.isArray(t.visaExtras)) t.visaExtras = [];
+      t.visaExtras = t.visaExtras.filter(c => typeof c === 'string' && /^[A-Z]{2}$/.test(c));
       t.items = t.items.filter(it => it && typeof it === 'object');
       for (const it of t.items) {
         if (!it.id) it.id = uid();
@@ -727,6 +729,7 @@
             id: uid(),
             name: String(t.name || 'Imported trip').slice(0, 60),
             currency: /^[A-Z]{3}$/.test(t.currency || '') ? t.currency : 'USD',
+            visaExtras: (Array.isArray(t.visaExtras) ? t.visaExtras : []).filter(c => typeof c === 'string' && /^[A-Z]{2}$/.test(c)),
             items: t.items.map(sanitizeItem).filter(Boolean),
           };
           db.trips.push(nt);
@@ -1035,6 +1038,7 @@
   const VISA_TTL = 30 * 86400000; // refresh the cached dataset monthly
   let visaMatrix = null;
   let visaDests = [];   // [{cc, name, places:[...]}] in visit order
+  let visaUnlocated = [];
   let visaToken = 0;
 
   function regionName(cc) {
@@ -1096,52 +1100,73 @@
     }
     const saved = localStorage.getItem(PASSPORT_KEY) || '';
     if (saved && matrix.matrix[saved]) sel.value = saved;
+    const addSel = $('#visaAddSel');
+    if (addSel.options.length <= 1) {
+      const opts = matrix.codes
+        .map(cc => ({ cc, name: regionName(cc) }))
+        .sort((a, b) => a.name.localeCompare(b.name))
+        .map(o => `<option value="${o.cc}">${esc(o.name)} \u00A0${flagEmoji(o.cc)}</option>`)
+        .join('');
+      addSel.insertAdjacentHTML('beforeend', opts);
+    }
 
     // destination countries from the itinerary, in visit order
     const stops = mapStops(activeTrip());
-    if (!stops.length) {
-      box.innerHTML = 'Add items with a "Place" (Tokyo, Bangkok, ...) and the countries you visit will be listed here.';
-      return;
+    visaDests = [];
+    visaUnlocated = [];
+    if (stops.length) {
+      box.innerHTML = '<div class="route-loading"><span class="spinner"></span>Locating your destinations...</div>';
+      const byCc = new Map();
+      for (const stop of stops) {
+        const hit = await geocode(stop.name);
+        if (token !== visaToken) return;
+        if (!hit.ok || !hit.cc) { visaUnlocated.push(stop.name); continue; }
+        if (!byCc.has(hit.cc)) byCc.set(hit.cc, { cc: hit.cc, name: regionName(hit.cc), places: [] });
+        byCc.get(hit.cc).places.push(stop.name);
+      }
+      visaDests = [...byCc.values()];
     }
-    box.innerHTML = '<div class="route-loading"><span class="spinner"></span>Locating your destinations...</div>';
-    const byCc = new Map();
-    const unlocated = [];
-    for (const stop of stops) {
-      const hit = await geocode(stop.name);
-      if (token !== visaToken) return;
-      if (!hit.ok || !hit.cc) { unlocated.push(stop.name); continue; }
-      if (!byCc.has(hit.cc)) byCc.set(hit.cc, { cc: hit.cc, name: regionName(hit.cc), places: [] });
-      byCc.get(hit.cc).places.push(stop.name);
-    }
-    visaDests = [...byCc.values()];
-    renderVisaRows(unlocated);
+    renderVisaRows();
   }
 
-  function renderVisaRows(unlocated = []) {
+  // itinerary countries + manually added ones (layovers, land borders)
+  function combinedVisaDests() {
+    const auto = new Set(visaDests.map(d => d.cc));
+    const extras = (activeTrip().visaExtras || [])
+      .filter(cc => !auto.has(cc))
+      .map(cc => ({ cc, name: regionName(cc), places: [], manual: true }));
+    return [...visaDests, ...extras];
+  }
+
+  function renderVisaRows() {
     const box = $('#visaResults');
     const passport = $('#passportSel').value;
-    if (!visaDests.length) {
-      box.innerHTML = 'Could not locate any destination countries. Make each item\'s "Place" more specific (add the country) and try again.';
+    const dests = combinedVisaDests();
+    if (!dests.length && !visaUnlocated.length) {
+      box.innerHTML = 'Add items with a "Place" (Tokyo, Bangkok, ...) and the countries you visit will be listed here. You can also add a country manually below (layovers, road trips).';
       return;
     }
     if (!passport) {
-      box.innerHTML = `Found <b class="visa-count">${visaDests.length}</b> destination countr${visaDests.length === 1 ? 'y' : 'ies'} on this trip: ${visaDests.map(d => flagEmoji(d.cc) + ' ' + esc(d.name)).join(', ')}.<br><br>Pick your passport above to see the requirement for each.`;
+      box.innerHTML = `Found <b class="visa-count">${dests.length}</b> destination countr${dests.length === 1 ? 'y' : 'ies'} on this trip: ${dests.map(d => flagEmoji(d.cc) + ' ' + esc(d.name)).join(', ')}.<br><br>Pick your passport above to see the requirement for each.`;
       return;
     }
     const row = visaMatrix.matrix[passport] || {};
-    const rows = visaDests.map(d => {
+    const rows = dests.map(d => {
       const info = classifyVisa(row[d.cc]);
       const wiki = 'https://en.wikipedia.org/wiki/Special:Search?search=' + encodeURIComponent('Visa policy of ' + d.name);
+      const sub = d.manual ? 'added manually · transit / overland' : d.places.join(', ');
+      const remove = d.manual ? `<button type="button" class="visa-remove" data-remove-cc="${d.cc}" title="Remove ${esc(d.name)}" aria-label="Remove ${esc(d.name)}">✕</button>` : '';
       return `
         <div class="visa-row">
           <span class="visa-flag">${flagEmoji(d.cc)}</span>
-          <span class="visa-name">${esc(d.name)}<small>${esc(d.places.join(', '))}</small></span>
+          <span class="visa-name">${esc(d.name)}<small>${esc(sub)}</small></span>
           <span class="visa-pill vp-${info.cls}">${esc(info.label)}</span>
           <a class="visa-verify" href="${wiki}" target="_blank" rel="noopener">verify ↗</a>
+          ${remove}
         </div>`;
     }).join('');
-    const missing = unlocated.length
-      ? `<div class="visa-row"><span class="visa-flag">❓</span><span class="visa-name">Could not locate<small>${esc(unlocated.join(', '))}</small></span><span class="visa-pill vp-unknown">Add the country to the place name</span></div>`
+    const missing = visaUnlocated.length
+      ? `<div class="visa-row"><span class="visa-flag">❓</span><span class="visa-name">Could not locate<small>${esc(visaUnlocated.join(', '))}</small></span><span class="visa-pill vp-unknown">Add the country to the place name</span></div>`
       : '';
     box.innerHTML = rows + missing;
   }
@@ -1208,6 +1233,27 @@
   $('#passportSel').addEventListener('change', () => {
     const v = $('#passportSel').value;
     if (v) localStorage.setItem(PASSPORT_KEY, v);
+    renderVisaRows();
+  });
+  $('#visaAddSel').addEventListener('change', () => {
+    const cc = $('#visaAddSel').value;
+    $('#visaAddSel').value = '';
+    if (!cc) return;
+    const trip = activeTrip();
+    if (!Array.isArray(trip.visaExtras)) trip.visaExtras = [];
+    if (!trip.visaExtras.includes(cc)) {
+      trip.visaExtras.push(cc);
+      save();
+      toast(`${regionName(cc)} added to the visa check`);
+    }
+    renderVisaRows();
+  });
+  $('#visaResults').addEventListener('click', e => {
+    const btn = e.target.closest('button[data-remove-cc]');
+    if (!btn) return;
+    const trip = activeTrip();
+    trip.visaExtras = (trip.visaExtras || []).filter(c => c !== btn.dataset.removeCc);
+    save();
     renderVisaRows();
   });
   $('#undoBtn').addEventListener('click', undo);
