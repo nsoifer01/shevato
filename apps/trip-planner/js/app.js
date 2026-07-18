@@ -1122,7 +1122,7 @@
       return;
     }
     if (!passport) {
-      box.innerHTML = `Found <b>${visaDests.length}</b> destination countr${visaDests.length === 1 ? 'y' : 'ies'} on this trip: ${visaDests.map(d => flagEmoji(d.cc) + ' ' + esc(d.name)).join(', ')}.<br><br>Pick your passport above to see the requirement for each.`;
+      box.innerHTML = `Found <b class="visa-count">${visaDests.length}</b> destination countr${visaDests.length === 1 ? 'y' : 'ies'} on this trip: ${visaDests.map(d => flagEmoji(d.cc) + ' ' + esc(d.name)).join(', ')}.<br><br>Pick your passport above to see the requirement for each.`;
       return;
     }
     const row = visaMatrix.matrix[passport] || {};
