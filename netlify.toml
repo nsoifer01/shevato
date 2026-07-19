@@ -67,6 +67,14 @@
   status = 301
   force = true
 
+# Trip Planner started life as tools/trip-planner.html before graduating to
+# a full app; keep the old URL working (extensionless variant included).
+[[redirects]]
+  from = "/tools/trip-planner*"
+  to = "/apps/trip-planner/"
+  status = 301
+  force = true
+
 # Baseline security headers for every response. The CSP is intentionally
 # Report-Only because main.js (jQuery + the auth modal) sets element
 # styles at runtime and writes inline event-style attributes via

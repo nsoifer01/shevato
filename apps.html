@@ -5,9 +5,9 @@
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <meta name="color-scheme" content="light" />
   <meta name="theme-color" content="#ffffff" />
-  <title>Free Apps | Mario Kart, Gym, Football, Rising Shows, MapTap Rivals & Arena - Shevato</title>
-  <meta name="description" content="Free web apps from Shevato: Mario Kart racing, gym workouts, head-to-head football, Rising Shows TV analytics, MapTap.gg rivalry tracking, and Arena, a multiplayer party-game hub for friends in private rooms (Globe Drop, Trivia, and more)." />
-  <meta name="keywords" content="Mario Kart tracker, gym tracker, workout tracker, football statistics, head to head football, TV show ratings, episode ratings, rising shows, slow burn shows, big finale, MapTap tracker, MapTap.gg, MapTap rivals, head to head game tracker, gaming apps, race tracker, fitness tracker, sports statistics, free browser apps, Mario Kart 8 Deluxe, Mario Kart World, gym workout log, multiplayer trivia, real-time trivia, brain arena, geography game, globe drop, 3d globe game, world capitals game" />
+  <title>Free Apps | Mario Kart, Gym, Football, Rising Shows, MapTap Rivals, Arena & Trip Planner - Shevato</title>
+  <meta name="description" content="Free web apps from Shevato: Mario Kart racing, gym workouts, head-to-head football, Rising Shows TV analytics, MapTap.gg rivalry tracking, Arena, a multiplayer party-game hub for friends in private rooms (Globe Drop, Trivia, and more), and a day-by-day trip planner with route maps." />
+  <meta name="keywords" content="Mario Kart tracker, gym tracker, workout tracker, football statistics, head to head football, TV show ratings, episode ratings, rising shows, slow burn shows, big finale, MapTap tracker, MapTap.gg, MapTap rivals, head to head game tracker, gaming apps, race tracker, fitness tracker, sports statistics, free browser apps, Mario Kart 8 Deluxe, Mario Kart World, gym workout log, multiplayer trivia, real-time trivia, brain arena, geography game, globe drop, 3d globe game, world capitals game, trip planner, travel itinerary builder, itinerary planner" />
   <meta name="author" content="Shevato LLC" />
   <meta name="robots" content="index, follow, max-image-preview:large" />
 
@@ -39,7 +39,7 @@
   <meta property="og:image:width" content="1200" />
   <meta property="og:image:height" content="630" />
   <meta property="og:image:type" content="image/png" />
-  <meta property="og:image:alt" content="Shevato apps including Mario Kart, Gym Tracker, Football H2H, Rising Shows, MapTap Rivals" />
+  <meta property="og:image:alt" content="Shevato apps including Mario Kart, Gym Tracker, Football H2H, Rising Shows, MapTap Rivals, Arena, Trip Planner" />
   <meta property="og:site_name" content="Shevato" />
   <meta property="og:locale" content="en_US" />
 
@@ -48,7 +48,7 @@
   <meta name="twitter:title" content="Free Apps | Games, Fitness and TV Trackers from Shevato" />
   <meta name="twitter:description" content="Free web apps for racing, gym, football, TV episode-rating analytics, MapTap.gg head-to-head tracking, and Arena multiplayer party games." />
   <meta name="twitter:image" content="https://shevato.com/images/og/apps.png" />
-  <meta name="twitter:image:alt" content="Shevato apps including Mario Kart, Gym Tracker, Football H2H, Rising Shows, MapTap Rivals" />
+  <meta name="twitter:image:alt" content="Shevato apps including Mario Kart, Gym Tracker, Football H2H, Rising Shows, MapTap Rivals, Arena, Trip Planner" />
   <meta name="twitter:site" content="@shevato" />
   
   <!-- Breadcrumbs -->
@@ -69,7 +69,7 @@
     "@context": "https://schema.org",
     "@type": "CollectionPage",
     "name": "Shevato Apps",
-    "description": "Free web applications including Mario Kart race tracker, gym workout logger, head-to-head football league manager, Rising Shows TV rating-trend analytics, and MapTap Rivals daily MapTap.gg head-to-head tracker",
+    "description": "Free web applications including Mario Kart race tracker, gym workout logger, head-to-head football league manager, Rising Shows TV rating-trend analytics, MapTap Rivals daily MapTap.gg head-to-head tracker, Arena multiplayer party games, and a day-by-day Trip Planner",
     "url": "https://shevato.com/apps",
     "publisher": {
       "@type": "Organization",
@@ -160,6 +160,15 @@
           "price": "0",
           "priceCurrency": "USD"
         }
+      },
+      {
+        "@type": "SoftwareApplication",
+        "name": "Trip Planner",
+        "description": "Day-by-day trip itinerary builder. Flights, stays and activities with costs, night coverage, date-collision and gap warnings, a route map, and A-to-B travel options",
+        "url": "https://shevato.com/apps/trip-planner/",
+        "applicationCategory": "TravelApplication",
+        "operatingSystem": "Any",
+        "offers": { "@type": "Offer", "price": "0", "priceCurrency": "USD" }
       }
     ]
   }
@@ -218,13 +227,14 @@
     <div class="inner">
       <header class="special">
         <h1>Free Web Apps</h1>
-        <p>Six free web apps we have built and keep online. No ads, no signup required, and they all save locally by default with optional Firebase sync if you want to log in.</p>
+        <p>Seven free web apps we have built and keep online. No ads, no signup required, and they all save locally by default with optional Firebase sync if you want to log in.</p>
       </header>
       <div class="app-filter-bar" role="group" aria-label="Filter apps by category">
         <button data-filter="all" aria-pressed="true">All</button>
         <button data-filter="fitness" aria-pressed="false">Fitness</button>
         <button data-filter="game" aria-pressed="false">Games</button>
         <button data-filter="tv" aria-pressed="false">TV</button>
+        <button data-filter="travel" aria-pressed="false">Travel</button>
       </div>
       <div class="app-search-bar">
         <input type="search" id="app-search" name="q" placeholder="Search apps by name or description" aria-label="Search apps by name or description" autocomplete="off" />
@@ -306,6 +316,19 @@
             <p>Rank whole TV shows by the shape of their IMDb rating trend - rising, slow-burn, big-finale, rebound, and more.</p>
             <ul class="actions special">
               <li><a href="apps/rising-shows/" class="button" aria-label="Browse Shows, Rising Shows">Browse Shows</a></li>
+            </ul>
+          </div>
+        </section>
+        <section data-category="travel">
+          <div class="content">
+            <img class="app-preview" src="images/app-previews/trip-planner.webp" width="720" height="450" loading="lazy" decoding="async" alt="Trip Planner itinerary timeline with flights and hotel stays, night coverage strip, status pills, and a confirmed bookings total" />
+            <header>
+              <a href="apps/trip-planner/" class="icon fa-map brand-color-primary" aria-label="Open Trip Planner"></a>
+              <h3>Trip Planner</h3>
+            </header>
+            <p>Build a day-by-day trip itinerary with flights, stays and activities. Costs and night coverage add up live, date collisions and uncovered nights get flagged, the route draws itself on a map, and every leg links to real A-to-B travel options.</p>
+            <ul class="actions special">
+              <li><a href="apps/trip-planner/" class="button" aria-label="Plan a Trip, Trip Planner">Plan a Trip</a></li>
             </ul>
           </div>
         </section>

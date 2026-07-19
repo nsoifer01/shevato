@@ -29,7 +29,8 @@ shevato/
 │   ├── football-h2h/                 # Head-to-head football league manager
 │   ├── rising-shows/                 # TV shows ranked by rating-trend shape + Plex/Kometa integration
 │   ├── maptap-rivals/                # Daily MapTap.gg head-to-head tracker
-│   └── arena/                        # Real-time multiplayer hub (Firestore Realtime DB)
+│   ├── arena/                        # Real-time multiplayer hub (Firestore Realtime DB)
+│   └── trip-planner/                 # Day-by-day trip itinerary builder with route map
 │
 ├── partials/                         # Header/footer fragments loaded by main.js
 │   ├── header.html
@@ -67,6 +68,47 @@ shevato/
 | Rising Shows | `apps/rising-shows/` | TV / multimedia | Whole TV shows ranked by the shape of their rating trend across thousands of shows; Plex + Kometa integration under `apps/rising-shows/kometa/` |
 | MapTap Rivals | `apps/maptap-rivals/` | Game tracker | Daily MapTap.gg H2H against named friends; rivalry seasons + calendar heatmap |
 | Arena | `apps/arena/` | Real-time multiplayer | Private rooms for friends — Globe Drop, Trivia, more. Requires Firestore + Realtime Database |
+| Trip Planner | `apps/trip-planner/` | Travel | Day-by-day itineraries: flights, stays, costs, night coverage, collision and gap warnings, route map, A-to-B travel options. Optional Firestore sync via site sign-in |
+
+### Adding a new app (required surfaces checklist)
+
+Every place an existing app is referenced must reference the new one in the
+SAME round. Wire the app into ALL of these:
+
+1. `apps/<slug>/` - index.html (shared header/footer includes, full SEO head:
+   canonical, OG + Twitter cards, SoftwareApplication JSON-LD, emoji favicon),
+   scoped `css/` (pin colors against main.css's `!important` button rules),
+   `js/`, `tests/`, README.md.
+2. `apps.html` - visible card with `data-category` (add a filter-bar button if
+   the category is new), CollectionPage JSON-LD `hasPart` entry AND its
+   `description`, `<title>`, meta description, meta keywords,
+   `og:image:alt`, `twitter:image:alt`, and the "Seven free web apps" count
+   wording. The two `image:alt` tags and the JSON-LD description are the
+   classic misses.
+3. `home.html` - side-projects prose list + count, "Free web apps"
+   preview-card list, `og:description` count.
+4. `work.html` - personal-projects work-item.
+5. `partials/header.html` - desktop dropdown AND mobile nav list.
+6. `apps/rising-shows/scripts/render-footer.js` AND
+   `apps/gym-tracker/scripts/render-footer.cjs` (kept in sync by convention).
+7. `sitemap-pages.xml` `<url>` entry (plus `sitemap.xml` index only if the app
+   ships its own sub-sitemap).
+8. `netlify.toml` - redirects only if a path moved.
+9. `assets/og/cards.json` entry + `node assets/og/build-og-cards.mjs <slug>`
+   (commit the generated `images/og/<slug>.png`).
+10. `images/app-previews/<slug>.webp` (720x450) - rendered from SAMPLE data
+    only, never a real user's content.
+11. Root `README.md` - repo tree line + Apps table row above.
+12. `package.json` - aggregate `test` script list + `test:<slug>`.
+13. `sync-system/app-sync-init.js` - namespace + URL routing (only if the app
+    syncs).
+14. Local (gitignored) surfaces: `.claude/agents/<slug>-pm.md`, the app
+    enumerations inside the developer/PM agent briefs, and the app list at the
+    top of `.features/PROMPTS.md`.
+
+Enforcement: grep an established slug (e.g. `maptap-rivals`) across the repo;
+every file it appears in must also mention the new app, or be a consciously
+skipped context. Then run `/doc-coverage` from clean master after shipping.
 
 ## Key Features
 
