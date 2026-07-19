@@ -2,7 +2,7 @@
 (() => {
 
   // ---------- constants ----------
-  const TP_BUILD = 15; // bump with every asset-version bump; shown in the footer
+  const TP_BUILD = 17; // bump with every asset-version bump; shown in the footer
   const LS_KEY = 'trip-planner:v1';
   const THEME_KEY = 'trip-planner:theme';
   const TIMEFMT_KEY = 'trip-planner:timefmt';
@@ -27,7 +27,7 @@
     isStay, nights, sortKey, sortedItems, tripLegs,
     validateItem, coverageGaps, tripStats,
     ISLANDISH, distKm, flagEmoji, compass, fmtDur, modeOptions,
-    classifyVisa, parseVisaMatrix, hasFastRail,
+    classifyVisa, parseVisaMatrix, slimTripForShare, hasFastRail,
     buildIcs, convertAmount, sumInCurrency,
     bytesToBase64url, base64urlToBytes,
     transportGaps, tripPhase, isPastRow,
@@ -1282,13 +1282,18 @@
   async function shareTrip() {
     if (typeof CompressionStream === 'undefined') { toast('Sharing is not supported in this browser'); return; }
     const t = activeTrip();
-    const json = JSON.stringify({ version: 1, trip: t });
+    const json = JSON.stringify({ version: 1, trip: slimTripForShare(t) });
     const compressed = await streamThrough(CompressionStream, new TextEncoder().encode(json));
     const url = shareBaseUrl() + SHARE_PREFIX + bytesToBase64url(compressed);
-    if (url.length > 8000) { toast('This trip is too large to share by link. Use Export trip (JSON) instead.'); return; }
+    // The fragment never travels to a server, so browsers handle very long
+    // links fine; the real-world limit is chat apps truncating them. Hard
+    // stop only at absurd sizes, advisory warning in between.
+    if (url.length > 30000) { toast('This trip is too large to share by link. Use Export trip (JSON) instead.'); return; }
     try {
       await navigator.clipboard.writeText(url);
-      toast('Share link copied to clipboard');
+      toast(url.length > 8000
+        ? 'Share link copied. It is a LONG link: if a chat app truncates it, send the Export trip (JSON) file instead.'
+        : 'Share link copied to clipboard');
     } catch {
       window.prompt('Copy this share link:', url);
     }

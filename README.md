@@ -78,7 +78,13 @@ SAME round. Wire the app into ALL of these:
 1. `apps/<slug>/` - index.html (shared header/footer includes, full SEO head:
    canonical, OG + Twitter cards, SoftwareApplication JSON-LD, emoji favicon),
    scoped `css/` (pin colors against main.css's `!important` button rules),
-   `js/`, `tests/`, README.md.
+   `js/`, `tests/`, README.md. SCOPING RULE: the app's style scope class goes
+   on a ROOT WRAPPER `<div>`, never on `<body>`; shared chrome (header,
+   footer, the firebase-auth sign-out modal, #sync-banner) is appended to
+   `<body>` and must never inherit app typography. Never restyle shared
+   selectors from app CSS (layout-positioning of bare `#header`/`#footer` is
+   the only exception). Enforced by
+   `sync-system/tests/shared-ui-consistency.test.mjs`.
 2. `apps.html` - visible card with `data-category` (add a filter-bar button if
    the category is new), CollectionPage JSON-LD `hasPart` entry AND its
    `description`, `<title>`, meta description, meta keywords,
