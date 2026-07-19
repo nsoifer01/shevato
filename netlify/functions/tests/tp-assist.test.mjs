@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import handler from '../tp-assist.mjs';
+import handler, { GENERATION_CONFIG, readCandidate } from '../tp-assist.mjs';
 
 // These exercise only the guard paths that return BEFORE any Blob I/O: the
 // origin/referer guard, the method guard, and the body clamp. The quota logic
@@ -72,4 +72,40 @@ test('rejects an oversized tripContext', async () => {
   const body = JSON.stringify({ clientId: 'c1', messages: [{ role: 'user', content: 'hi' }], tripContext: { blob: big } });
   const res = await handler(req({ origin: 'https://shevato.com', body }));
   assert.equal(res.status, 400);
+});
+
+// ---------- generation config + reply reading ----------
+// Regression cover for the 2026-07-19 truncation bug: Gemini 3.x bills its
+// internal reasoning to maxOutputTokens, so the old 1000 cap returned a
+// half-sentence with the tripActions JSON cut off.
+
+test('the generation budget leaves room for reasoning plus a full answer', () => {
+  assert.ok(GENERATION_CONFIG.maxOutputTokens >= 4000,
+    'a measured turn spends ~800 tokens thinking before writing a word');
+  assert.equal(GENERATION_CONFIG.thinkingConfig.thinkingLevel, 'low');
+});
+
+test('readCandidate joins text parts and ignores thought-signature parts', () => {
+  const data = { candidates: [{ finishReason: 'STOP', content: { parts: [
+    { text: 'Dinner first. ' },
+    { thoughtSignature: 'abc' },
+    { text: 'Then drinks.' },
+  ] } }] };
+  const out = readCandidate(data);
+  assert.equal(out.text, 'Dinner first. Then drinks.');
+  assert.equal(out.truncated, false);
+});
+
+test('readCandidate flags a MAX_TOKENS reply and tells the traveller', () => {
+  const data = { candidates: [{ finishReason: 'MAX_TOKENS', content: { parts: [{ text: 'For dinner, I' }] } }] };
+  const out = readCandidate(data);
+  assert.equal(out.truncated, true);
+  assert.match(out.text, /^For dinner, I/);
+  assert.match(out.text, /cut short/);
+});
+
+test('readCandidate survives an empty or malformed candidate', () => {
+  assert.deepEqual(readCandidate({}), { text: '', truncated: false });
+  assert.deepEqual(readCandidate({ candidates: [] }), { text: '', truncated: false });
+  assert.deepEqual(readCandidate({ candidates: [{ finishReason: 'MAX_TOKENS' }] }), { text: '', truncated: true });
 });

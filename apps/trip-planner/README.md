@@ -63,8 +63,19 @@ traveller to use Tier 1 or bring their own key. Tiers 1 and 2 need no setup.
 Two failure modes look alike from the browser but are not: `503 not_configured`
 means the key is missing from *this* project's store, while `502 upstream` means
 the key was found and Gemini itself rejected the call (most often a retired
-`GEMINI_MODEL` pin, see the note in `tp-assist.mjs`). The function logs the
+`GEMINI_MODEL` pin, see the note in `tp-assist.mjs`). A `429` means a quota was
+hit, either this function's own daily limits or Google's. The function logs the
 upstream status and body; the key is never logged.
+
+**Google's free tier is the real ceiling, not our limiter.** Measured
+2026-07-19 on a free key: `gemini-3.5-flash` allows 5 requests/minute and
+250K tokens/minute, and the API refuses further calls once a
+`generate_content_free_tier_requests` allowance of about 20 (apparently daily)
+is spent. This function's own caps (10/client/hour, 30/client/day, 400/day
+global, in `lib/tp-assist-quota.mjs`) are far above that, so on the free tier
+travellers hit Google's wall first and see "at capacity". Check the real numbers
+at https://aistudio.google.com/rate-limit; enabling billing on the Google Cloud
+project raises the limits and costs fractions of a cent per turn.
 
 ## File structure
 
