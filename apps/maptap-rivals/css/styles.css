@@ -114,6 +114,18 @@ body.maptap-rivals-app button {
   color: var(--text);
 }
 
+/* Focus baseline. main.css paints every text input/select/textarea focus
+   with the theme red (`:focus { border-color:#ce1b28; box-shadow:0 0 0 1px
+   #ce1b28 }`). Neutralize it app-wide here; this rule sits EARLY on purpose
+   so the specific focus styles further down (profile input, modal fields,
+   history filters, paste textareas) win their ties by order. */
+body.maptap-rivals-app input:focus,
+body.maptap-rivals-app select:focus,
+body.maptap-rivals-app textarea:focus {
+  border-color: var(--accent);
+  box-shadow: none;
+}
+
 /* ---------- Buttons ----------
    main.css line ~322 has `button:hover { color: #ce1b28 !important }`.
    We force our colors with !important so the site's red link hover loses. */
@@ -146,6 +158,10 @@ body.maptap-rivals-app button {
   box-shadow: none !important;
 }
 .btn:active { transform: translateY(1px); }
+/* Pressed: main.css `button:hover:active { background-color: rgba(206,27,40,.25) }`
+   would flash the theme red; keep the hover surface instead. Variant press
+   pins below (same specificity) win by order. */
+.btn:hover:active { background-color: var(--surface-2); }
 .btn:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 .btn:disabled, .btn[aria-disabled="true"] { opacity: 0.5; cursor: not-allowed; }
 /* Defeat `.btn { display: inline-flex }` overriding UA `[hidden] { display: none }`. */
@@ -158,12 +174,16 @@ body.maptap-rivals-app button {
   font-weight: 600;
 }
 .btn-primary:hover { filter: brightness(1.1); }
+/* Gradient is opaque; pin the color layer so the red press tint can't sit
+   underneath it. */
+.btn-primary:hover:active { background-color: transparent; }
 
 .btn-ghost, .btn-ghost:hover {
   background: var(--surface-2);
   color: var(--text) !important;
 }
 .btn-ghost:hover { background: var(--surface-3); }
+.btn-ghost:hover:active { background-color: var(--surface-3); }
 
 .btn-danger, .btn-danger:hover {
   background: var(--bad);
@@ -172,6 +192,7 @@ body.maptap-rivals-app button {
   font-weight: 600;
 }
 .btn-danger:hover { filter: brightness(1.05); }
+.btn-danger:hover:active { background-color: var(--bad); }
 
 /* Ghost variant for destructive actions — subtle until hovered. */
 .btn-danger-ghost,
@@ -184,6 +205,7 @@ body.maptap-rivals-app button {
   background: var(--bad-soft);
   border-color: rgba(248, 113, 113, 0.45);
 }
+.btn-danger-ghost:hover:active { background-color: var(--bad-soft); }
 
 /* ---------- Layout ---------- */
 
@@ -242,6 +264,9 @@ body.maptap-rivals-app button {
   transition: background 0.15s, border-color 0.15s, color 0.15s;
 }
 .view-tab:hover { background: var(--surface-2); border-color: var(--border-strong); }
+/* Pressed: defeat main.css red press tint; .is-active:hover below outranks
+   this by order for the active tab. */
+.view-tab:hover:active { background-color: var(--surface-2); }
 .view-tab.is-active,
 .view-tab.is-active:hover {
   background: var(--accent-soft);
@@ -1082,7 +1107,11 @@ body.maptap-rivals-app button {
   border: 1px solid var(--border);
   border-radius: var(--radius);
   background: var(--surface-2);
-  color: var(--muted);
+  /* !important pins: main.css paints every button gray (#555 !important +
+     inset ring) and red on hover (#ce1b28 !important + red ring + red
+     press tint). */
+  color: var(--muted) !important;
+  box-shadow: none !important;
   font: inherit;
   cursor: pointer;
   display: flex;
@@ -1097,15 +1126,17 @@ body.maptap-rivals-app button {
 .pred-day-tab:hover {
   border-color: var(--border-strong);
   background: var(--surface-3);
-  color: var(--text);
+  color: var(--text) !important;
+  box-shadow: none !important;
   transform: translateY(-1px);
 }
 .pred-day-tab:active { transform: translateY(0); }
+.pred-day-tab:hover:active { background-color: var(--surface-3); }
 
 /* Today (when not the selected day): subtle accent text so the current
    day is locatable at a glance. (The little dot marker was removed —
    owner request; the accent-colored text and "Today" label suffice.) */
-.pred-day-tab.is-today { color: var(--text); }
+.pred-day-tab.is-today { color: var(--text) !important; }
 .pred-day-tab.is-today .pred-day-tab-num { color: var(--accent-2); }
 
 /* Selected day: the centrepiece. Larger pill via scale, accent gradient
@@ -1117,12 +1148,14 @@ body.maptap-rivals-app button {
       rgba(99, 102, 241, 0.06) 100%),
     linear-gradient(180deg, var(--surface-3), var(--surface-2));
   border-color: var(--accent);
-  color: var(--accent-2);
+  color: var(--accent-2) !important;
   transform: translateY(-2px) scale(1.06);
+  /* !important so the base `box-shadow: none !important` pin above doesn't
+     strip the selected-day glow. */
   box-shadow:
     inset 0 1px 0 0 rgba(255, 255, 255, 0.08),
     0 0 0 1px rgba(99, 102, 241, 0.35),
-    0 8px 22px -8px rgba(99, 102, 241, 0.55);
+    0 8px 22px -8px rgba(99, 102, 241, 0.55) !important;
 }
 .pred-day-tab.is-active:hover { transform: translateY(-2px) scale(1.06); }
 .pred-day-tab.is-active::after {
@@ -1379,6 +1412,9 @@ body.maptap-rivals-app button {
   color: var(--text) !important;
   box-shadow: none !important;
 }
+/* Pressed: defeat main.css red press tint; .is-revealed:hover below wins
+   its tie by order. */
+.pred-loc-btn:hover:active { background-color: var(--surface-3); }
 .pred-loc-btn:focus-visible {
   outline: 2px solid var(--accent-2);
   outline-offset: 2px;
@@ -1512,7 +1548,10 @@ body.maptap-rivals-app button {
   padding: 0;
   border: 0;
   background: transparent;
-  color: var(--muted);
+  /* !important pins vs main.css gray/red button theme (color + inset ring
+     + press tint). */
+  color: var(--muted) !important;
+  box-shadow: none !important;
   cursor: pointer;
   border-radius: 6px;
   display: inline-flex;
@@ -1523,13 +1562,16 @@ body.maptap-rivals-app button {
 .rival-card-edit:hover,
 .rival-card-sync:hover {
   background: rgba(255, 255, 255, 0.06);
-  color: var(--text);
+  color: var(--text) !important;
+  box-shadow: none !important;
 }
+.rival-card-edit:hover:active,
+.rival-card-sync:hover:active { background-color: rgba(255, 255, 255, 0.06); }
 .rival-card-edit:focus-visible,
 .rival-card-sync:focus-visible {
   outline: none;
   background: rgba(255, 255, 255, 0.06);
-  box-shadow: 0 0 0 2px var(--accent-soft);
+  box-shadow: 0 0 0 2px var(--accent-soft) !important;
 }
 .rival-card-edit svg,
 .rival-card-sync svg {
@@ -1538,7 +1580,7 @@ body.maptap-rivals-app button {
   display: block;
 }
 .rival-card-sync[disabled] { opacity: 0.45; cursor: not-allowed; }
-.rival-card-sync.is-loading { color: var(--accent-2); animation: spin 0.9s linear infinite; }
+.rival-card-sync.is-loading { color: var(--accent-2) !important; animation: spin 0.9s linear infinite; }
 @keyframes spin { from { transform: rotate(0); } to { transform: rotate(360deg); } }
 
 .rival-sync-status {
@@ -2634,7 +2676,11 @@ body.maptap-rivals-app button {
   padding: 0;
   border: 1px solid var(--border-strong);
   background: var(--surface-2);
-  color: var(--muted);
+  /* !important pins vs main.css gray/red button theme (color + inset ring
+     + press tint); every color/box-shadow in this icon-btn family carries
+     one for the same reason. */
+  color: var(--muted) !important;
+  box-shadow: none !important;
   cursor: pointer;
   border-radius: 6px;
   display: inline-flex;
@@ -2648,23 +2694,25 @@ body.maptap-rivals-app button {
 .icon-btn:hover {
   background: var(--surface-3);
   border-color: var(--border-strong);
-  color: var(--text);
+  color: var(--text) !important;
+  box-shadow: none !important;
 }
+.icon-btn:hover:active { background-color: var(--surface-3); }
 .icon-btn:focus-visible {
   outline: none;
   background: var(--surface-3);
-  color: var(--text);
-  box-shadow: 0 0 0 2px var(--accent-soft);
+  color: var(--text) !important;
+  box-shadow: 0 0 0 2px var(--accent-soft) !important;
 }
 /* Row hover lifts the action affordance a touch further. */
 tr:hover .icon-btn,
 tr:focus-within .icon-btn {
   border-color: var(--border-strong);
-  color: var(--text);
+  color: var(--text) !important;
 }
 /* Danger keeps a persistent red tint so destructive intent reads at rest. */
 .icon-btn-danger {
-  color: var(--bad);
+  color: var(--bad) !important;
   border-color: rgba(248, 113, 113, 0.28);
   background: rgba(248, 113, 113, 0.07);
 }
@@ -2673,15 +2721,16 @@ tr:hover .icon-btn-danger,
 tr:focus-within .icon-btn-danger {
   background: rgba(248, 113, 113, 0.16);
   border-color: rgba(248, 113, 113, 0.45);
-  color: var(--bad);
+  color: var(--bad) !important;
 }
+.icon-btn-danger:hover:active { background-color: rgba(248, 113, 113, 0.16); }
 .icon-btn-danger:focus-visible {
   background: rgba(248, 113, 113, 0.16);
-  box-shadow: 0 0 0 2px rgba(248, 113, 113, 0.3);
+  box-shadow: 0 0 0 2px rgba(248, 113, 113, 0.3) !important;
 }
 /* Share leans into the indigo accent. */
 .icon-btn-share {
-  color: var(--accent-2);
+  color: var(--accent-2) !important;
   border-color: rgba(99, 102, 241, 0.28);
   background: rgba(99, 102, 241, 0.07);
 }
@@ -2690,11 +2739,12 @@ tr:hover .icon-btn-share,
 tr:focus-within .icon-btn-share {
   background: rgba(99, 102, 241, 0.16);
   border-color: rgba(99, 102, 241, 0.45);
-  color: var(--accent-2);
+  color: var(--accent-2) !important;
 }
+.icon-btn-share:hover:active { background-color: rgba(99, 102, 241, 0.16); }
 .icon-btn-share:focus-visible {
   background: rgba(99, 102, 241, 0.16);
-  box-shadow: 0 0 0 2px var(--accent-soft);
+  box-shadow: 0 0 0 2px var(--accent-soft) !important;
 }
 
 /* Floating clipboard-confirmation pill — bottom center, doesn't affect layout. */
@@ -3188,6 +3238,8 @@ body.maptap-rivals-app select option {
   color: var(--text) !important;
 }
 .settings-btn:active { transform: translateY(0.5px); }
+/* Pressed: defeat main.css red press tint (danger pin below wins by order). */
+.settings-btn:hover:active { background-color: rgba(255, 255, 255, 0.045); }
 .settings-btn:focus-visible {
   outline: none;
   border-color: var(--accent);
@@ -3212,6 +3264,7 @@ body.maptap-rivals-app select option {
   background: rgba(248, 113, 113, 0.09);
   color: var(--bad) !important;
 }
+.settings-btn-danger:hover:active { background-color: rgba(248, 113, 113, 0.09); }
 .settings-btn-danger:focus-visible {
   border-color: var(--bad);
   box-shadow: 0 0 0 3px rgba(248, 113, 113, 0.18) !important;
@@ -3291,6 +3344,8 @@ body.maptap-rivals-app select option {
   border: 0;
   background: transparent;
   color: var(--muted) !important;
+  /* main.css paints buttons with a gray/red inset ring + red press tint. */
+  box-shadow: none !important;
   font-size: 0;
   cursor: pointer;
   line-height: 1;
@@ -3303,10 +3358,11 @@ body.maptap-rivals-app select option {
   background: rgba(255, 255, 255, 0.06);
   color: var(--text) !important;
 }
+.modal-close:hover:active { background-color: rgba(255, 255, 255, 0.06); }
 .modal-close:focus-visible {
   outline: none;
   background: rgba(255, 255, 255, 0.06);
-  box-shadow: 0 0 0 2px var(--accent-soft);
+  box-shadow: 0 0 0 2px var(--accent-soft) !important;
 }
 .modal-close svg {
   width: 13px;
@@ -3401,10 +3457,19 @@ body.maptap-rivals-app select option {
   cursor: pointer;
   border: 0;
   padding: 0;
+  /* color pinned (no visible text) purely so main.css's gray/red button
+     text theme can't leak into computed styles. */
+  color: var(--text) !important;
   box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.25);
   transition: transform 0.15s ease, box-shadow 0.18s ease;
 }
-.color-swatch:hover { transform: scale(1.12); }
+.color-swatch:hover {
+  transform: scale(1.12);
+  color: var(--text) !important;
+  /* re-state the notch ring so main.css `button:hover` can't swap in its
+     red inset ring (.is-selected below wins its tie by order). */
+  box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.25);
+}
 .color-swatch:focus-visible {
   outline: none;
   box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.25), 0 0 0 3px var(--accent-soft);
@@ -3426,6 +3491,10 @@ body.maptap-rivals-app select option {
   cursor: pointer;
   background: rgba(255, 255, 255, 0.025);
   border: 1px solid var(--border);
+  /* !important pins vs main.css gray/red button theme (color + inset ring
+     + press tint). */
+  color: var(--text) !important;
+  box-shadow: none !important;
   font-size: 0.98rem;
   line-height: 1;
   padding: 0;
@@ -3434,18 +3503,21 @@ body.maptap-rivals-app select option {
 .icon-swatch:hover {
   background: var(--surface-3);
   border-color: var(--border-strong);
+  color: var(--text) !important;
+  box-shadow: none !important;
   transform: translateY(-1px);
 }
+.icon-swatch:hover:active { background-color: var(--surface-3); }
 .icon-swatch:focus-visible {
   outline: none;
   border-color: var(--accent);
-  box-shadow: 0 0 0 3px var(--accent-soft);
+  box-shadow: 0 0 0 3px var(--accent-soft) !important;
 }
 .icon-swatch.is-selected,
 .icon-swatch.is-selected:hover {
   background: var(--accent-soft);
   border-color: var(--accent);
-  color: var(--accent-2);
+  color: var(--accent-2) !important;
   transform: none;
 }
 
@@ -3472,6 +3544,8 @@ body.maptap-rivals-app select option {
   transition: background 0.15s ease, border-color 0.15s ease;
 }
 .my-icon-btn:hover { background: var(--surface-3); border-color: var(--border-strong); }
+/* Pressed: defeat main.css red press tint. */
+.my-icon-btn:hover:active { background-color: var(--surface-3); }
 .my-icon-btn:focus-visible {
   outline: none;
   border-color: var(--accent);
@@ -3504,16 +3578,21 @@ body.maptap-rivals-app select option {
   cursor: pointer;
   background: rgba(255, 255, 255, 0.03);
   border: 1px solid var(--border);
+  /* !important pins vs main.css gray/red button theme (color + inset ring
+     + press tint). */
+  color: var(--text) !important;
+  box-shadow: none !important;
   font-size: 0.98rem;
   line-height: 1;
   padding: 0;
   transition: background 0.12s ease, border-color 0.12s ease;
 }
-.my-icon-swatch:hover  { background: var(--surface-3); border-color: var(--border-strong); }
+.my-icon-swatch:hover  { background: var(--surface-3); border-color: var(--border-strong); color: var(--text) !important; }
+.my-icon-swatch:hover:active { background-color: var(--surface-3); }
 .my-icon-swatch:focus-visible {
   outline: none;
   border-color: var(--accent);
-  box-shadow: 0 0 0 3px var(--accent-soft);
+  box-shadow: 0 0 0 3px var(--accent-soft) !important;
 }
 .my-icon-swatch.is-selected,
 .my-icon-swatch.is-selected:hover {
@@ -3849,6 +3928,8 @@ body.maptap-rivals-app select option {
   border-radius: 999px;
   background: var(--surface-2);
   color: #fff !important;
+  /* main.css paints buttons with a gray/red inset ring + red press tint. */
+  box-shadow: none !important;
   opacity: 1;
   font: inherit;
   font-size: 0.85rem;
@@ -3857,6 +3938,7 @@ body.maptap-rivals-app select option {
   transition: transform 0.1s, background 0.15s, border-color 0.15s, color 0.15s;
 }
 .matrix-chip:hover { transform: translateY(-1px); color: #fff !important; }
+.matrix-chip:hover:active { background-color: var(--surface-2); }
 .matrix-chip.is-on { color: #fff !important; font-weight: 600; }
 
 .matrix-wrap {
@@ -4063,6 +4145,8 @@ body.maptap-rivals-app select option {
   border-radius: 999px;
   background: transparent;
   color: #fff !important;
+  /* main.css paints buttons with a gray/red inset ring + red press tint. */
+  box-shadow: none !important;
   font: inherit;
   font-size: 0.85rem;
   font-weight: 500;
@@ -4073,6 +4157,9 @@ body.maptap-rivals-app select option {
   background: var(--surface-2);
   color: #fff !important;
 }
+/* Pressed: defeat main.css red press tint; .is-active:hover below wins its
+   tie by order. */
+.matrix-subtab:hover:active { background-color: var(--surface-2); }
 .matrix-subtab.is-active,
 .matrix-subtab.is-active:hover {
   background: var(--accent-soft);

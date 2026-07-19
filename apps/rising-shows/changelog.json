@@ -1,6 +1,252 @@
 {
   "updates": [
     {
+      "builtAt": "2026-07-19T08:34:41.868Z",
+      "totals": {
+        "seasons": 65858,
+        "delta": 17
+      },
+      "shapeCounts": {
+        "mid-peak": 4623,
+        "rebound": 10076,
+        "rising": 2906,
+        "slow-burn": 4359,
+        "big-finale": 12016,
+        "u-shaped": 3081,
+        "rollercoaster": 14027,
+        "saved-best-for-last": 1527,
+        "front-loaded": 3446,
+        "declining": 1880,
+        "bad-finale": 4641,
+        "consistent": 2617,
+        "shape-drift": 1619
+      },
+      "shapeDeltas": {
+        "mid-peak": 1,
+        "rebound": 8,
+        "rising": 11,
+        "slow-burn": 4,
+        "big-finale": 7,
+        "u-shaped": 1,
+        "rollercoaster": 4,
+        "saved-best-for-last": -2,
+        "front-loaded": 3,
+        "declining": 5,
+        "bad-finale": -8,
+        "consistent": -1,
+        "shape-drift": -2
+      },
+      "added": [
+        {
+          "seriesId": "tt14688458",
+          "title": "Silo",
+          "season": 3,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt39246964",
+          "title": "Kaiju Girl Caramelise",
+          "season": 1,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt35051401",
+          "title": "The East Palace",
+          "season": 1,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt33094114",
+          "title": "India's Got Latent",
+          "season": 2,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt41054252",
+          "title": "The Frontier Lord Begins with Zero Subjects",
+          "season": 1,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt36290385",
+          "title": "Draw This, Then Die!",
+          "season": 1,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt39443204",
+          "title": "I Became a Legend after My 10 Year-Long Last Stand",
+          "season": 1,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt1230180",
+          "title": "The Angry Video Game Nerd",
+          "season": 20,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt38646634",
+          "title": "Hell Mode: The Hardcore Gamer Dominates in Another World with Garbage Balancing",
+          "season": 2,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt4353976",
+          "title": "Antiques Road Trip",
+          "season": 9,
+          "seasonYear": 2014
+        },
+        {
+          "seriesId": "tt12347286",
+          "title": "Raktanchal",
+          "season": 3,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt10887470",
+          "title": "Breaking News",
+          "season": 6,
+          "seasonYear": 2023
+        },
+        {
+          "seriesId": "tt27422891",
+          "title": "LOL: Last One Laughing Poland",
+          "season": 4,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt36856056",
+          "title": "Fated Hearts",
+          "season": 1,
+          "seasonYear": 2025
+        },
+        {
+          "seriesId": "tt43440117",
+          "title": "Love in Sync",
+          "season": 1,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt43321335",
+          "title": "Bittersweet Love",
+          "season": 1,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt39195667",
+          "title": "Dara-san of the Reiwa Era",
+          "season": 1,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt41293320",
+          "title": "Please Excuse My Younger Brothers",
+          "season": 1,
+          "seasonYear": 2026
+        }
+      ],
+      "removed": [
+        {
+          "seriesId": "tt0983197",
+          "title": "Four Corners",
+          "season": 63,
+          "seasonYear": 2023
+        }
+      ],
+      "ratingSwings": [
+        {
+          "seriesId": "tt39779622",
+          "title": "Jesy Nelson: Life After Little Mix",
+          "season": 1,
+          "from": 4.77,
+          "to": 5.48,
+          "delta": 0.71
+        },
+        {
+          "seriesId": "tt13763690",
+          "title": "Godmother",
+          "season": 1,
+          "from": 5.23,
+          "to": 5.87,
+          "delta": 0.64
+        },
+        {
+          "seriesId": "tt6859260",
+          "title": "The King's Avatar",
+          "season": 3,
+          "from": 5.85,
+          "to": 6.43,
+          "delta": 0.58
+        },
+        {
+          "seriesId": "tt10023178",
+          "title": "A Little Late with Lilly Singh",
+          "season": 2,
+          "from": 3.75,
+          "to": 4.32,
+          "delta": 0.57
+        },
+        {
+          "seriesId": "tt0784939",
+          "title": "Inspector Mom",
+          "season": 1,
+          "from": 7.01,
+          "to": 6.47,
+          "delta": -0.54
+        },
+        {
+          "seriesId": "tt39309656",
+          "title": "I'm Kishi Knight: Your Private Tutor",
+          "season": 1,
+          "from": 8.42,
+          "to": 7.9,
+          "delta": -0.52
+        },
+        {
+          "seriesId": "tt21086460",
+          "title": "Soho Theatre Live",
+          "season": 2,
+          "from": 7.5,
+          "to": 7.04,
+          "delta": -0.46
+        },
+        {
+          "seriesId": "tt37455125",
+          "title": "Trophy Wife: Murder on Safari",
+          "season": 1,
+          "from": 6.77,
+          "to": 6.37,
+          "delta": -0.4
+        },
+        {
+          "seriesId": "tt40550160",
+          "title": "From Overshadowed to Overpowered: Second Reincarnation of a Talentless Sage",
+          "season": 1,
+          "from": 7.93,
+          "to": 8.32,
+          "delta": 0.39
+        },
+        {
+          "seriesId": "tt0437043",
+          "title": "Untold Stories of the ER",
+          "season": 4,
+          "from": 8.94,
+          "to": 8.57,
+          "delta": -0.37
+        }
+      ],
+      "modifiedCounts": {
+        "seriesVotes": 19367,
+        "avgRating": 1173,
+        "shapes": 209,
+        "seriesRating": 323,
+        "episodeCount": 90,
+        "providers": 1,
+        "overview": 1
+      }
+    },
+    {
       "builtAt": "2026-07-18T15:02:52.171Z",
       "totals": {
         "seasons": 65841,

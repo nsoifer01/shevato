@@ -2,7 +2,7 @@
 (() => {
 
   // ---------- constants ----------
-  const TP_BUILD = 19; // bump with every asset-version bump; shown in the footer
+  const TP_BUILD = 20; // bump with every asset-version bump; shown in the footer
   const LS_KEY = 'trip-planner:v1';
   const THEME_KEY = 'trip-planner:theme';
   const TIMEFMT_KEY = 'trip-planner:timefmt';

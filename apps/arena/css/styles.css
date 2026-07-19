@@ -186,6 +186,9 @@ body.brain-arena-app button {
   transform: translateY(-1px);
 }
 .btn:active { transform: translateY(0); box-shadow: none !important; }
+/* Pin off main.css's `button:hover:active { background-color: rgba(206,27,40,0.25) }`
+   red pressed flash (its 0-2-1 specificity beats the single-class rules above). */
+.btn:hover:active { background-color: var(--surface-2); }
 .btn:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 .btn:disabled, .btn[aria-disabled="true"] { opacity: 0.5; cursor: not-allowed; }
 
@@ -202,6 +205,8 @@ body.brain-arena-app button {
   box-shadow: 0 0 0 1px rgba(34, 211, 238, 0.6), 0 10px 32px rgba(34, 211, 238, 0.4) !important;
   transform: translateY(-1px);
 }
+/* See .btn:hover:active note; the gradient supplies the fill here. */
+.btn-primary:hover:active { background-color: transparent; }
 
 .btn-ghost, .btn-ghost:hover {
   background: rgba(255, 255, 255, 0.03);
@@ -212,6 +217,8 @@ body.brain-arena-app button {
   background: rgba(34, 211, 238, 0.07);
   border-color: rgba(34, 211, 238, 0.35);
 }
+/* See .btn:hover:active note. */
+.btn-ghost:hover:active { background-color: rgba(34, 211, 238, 0.07); }
 
 /* ---------- Layout ---------- */
 
@@ -1350,7 +1357,11 @@ select option { background: var(--surface); color: var(--text); }
 .btn-icon-danger {
   background: transparent;
   border: 1px solid rgba(248, 113, 113, 0.4);
-  color: rgb(252, 165, 165);
+  /* `!important` + box-shadow pins off main.css's global `button` rules
+     (gray #555 text/ring, red hover/active repaint), same approach as
+     .link-btn / .room-code-copy. */
+  color: rgb(252, 165, 165) !important;
+  box-shadow: none;
   width: 28px;
   height: 28px;
   border-radius: 6px;
@@ -1362,8 +1373,10 @@ select option { background: var(--surface); color: var(--text); }
 }
 .btn-icon-danger:hover {
   background: rgba(248, 113, 113, 0.12);
-  color: rgb(254, 202, 202);
+  color: rgb(254, 202, 202) !important;
+  box-shadow: none;
 }
+.btn-icon-danger:hover:active { background: rgba(248, 113, 113, 0.12); }
 .leaderboard-table .col-admin { width: 40px; text-align: center; }
 
 .room-host-actions {
@@ -1377,16 +1390,23 @@ select option { background: var(--surface); color: var(--text); }
   font-size: 0.82rem;
   line-height: 1.1;
 }
-.btn-danger-ghost {
-  color: rgb(252, 165, 165);
+.btn-danger-ghost,
+.btn-danger-ghost:hover {
+  /* `!important` + grouped :hover so the pink survives .btn / .btn:hover's
+     own `color: var(--text) !important` counter-pins (added vs main.css). */
+  color: rgb(252, 165, 165) !important;
   border-color: rgba(248, 113, 113, 0.4);
 }
 .btn-danger-ghost:hover {
   background: rgba(248, 113, 113, 0.10);
 }
-.btn-danger {
+.btn-danger-ghost:hover:active { background-color: rgba(248, 113, 113, 0.10); }
+.btn-danger,
+.btn-danger:hover {
   background: rgb(220, 38, 38) !important;
   border-color: rgb(220, 38, 38) !important;
+  /* Grouped :hover so white beats .btn-primary:hover's
+     `color: #051b22 !important` on the confirm-modal danger variant. */
   color: white !important;
 }
 .btn-danger:hover { background: rgb(185, 28, 28) !important; }
@@ -1835,6 +1855,10 @@ select option { background: var(--surface); color: var(--text); }
 }
 .globe-drop-fab-ghost:hover .globe-drop-fab-icon { color: #fde68a; }
 .globe-drop-fab-ghost:active { transform: translateY(0); }
+/* Pin off main.css's `button:hover:active` red background flash; restate
+   the color layer of the shorthand backgrounds above. */
+.globe-drop-fab-primary:hover:active { background-color: transparent; }
+.globe-drop-fab-ghost:hover:active { background-color: rgba(20, 11, 4, 0.55); }
 
 @media (max-width: 540px) {
   .globe-drop-fab-stack { top: 0.5rem; right: 0.5rem; gap: 0.35rem; }
@@ -2918,7 +2942,7 @@ select option { background: var(--surface); color: var(--text); }
 /* Wikipedia escape hatch — small pill below the reveal so players can
    read more about the location regardless of whether the inline trivia
    fetch returned anything. */
-.globe-drop-reveal-wiki {
+.globe-drop-reveal .globe-drop-reveal-wiki {
   display: inline-flex;
   align-items: center;
   gap: 0.35rem;
@@ -2933,9 +2957,10 @@ select option { background: var(--surface); color: var(--text); }
   text-decoration: none;
   transition: background 0.18s ease, border-color 0.18s ease;
 }
-.globe-drop-reveal-wiki:hover {
+.globe-drop-reveal .globe-drop-reveal-wiki:hover {
   background: rgba(34, 211, 238, 0.16);
   border-color: rgba(34, 211, 238, 0.45);
+  text-decoration: none;
 }
 
 /* Pin styling is now handled by globe.gl's pointColor() (no DOM nodes
@@ -3051,6 +3076,10 @@ select option { background: var(--surface); color: var(--text); }
   border: 1px solid var(--border-strong);
   border-radius: 12px;
   color: var(--text) !important;
+  /* Base box-shadow + :hover color pins off main.css's global `button`
+     rules (gray #555 ring, `button:hover { color: #ce1b28 !important }`
+     which outranks the single-class pin above). */
+  box-shadow: none;
   font: inherit;
   cursor: pointer;
   transition: background 0.15s, border-color 0.15s, transform 0.05s, box-shadow 0.15s;
@@ -3060,7 +3089,9 @@ select option { background: var(--surface); color: var(--text); }
   background: var(--surface-3);
   border-color: var(--accent);
   box-shadow: 0 0 0 3px var(--accent-soft);
+  color: var(--text) !important;
 }
+.pick-cat-btn:hover:active { background-color: var(--surface-3); }
 .pick-cat-btn:active { transform: translateY(1px); }
 .pick-cat-btn:disabled {
   opacity: 0.55;
@@ -3219,6 +3250,10 @@ select option { background: var(--surface); color: var(--text); }
   border: 1px solid var(--border-strong);
   border-radius: 12px;
   color: var(--text) !important;
+  /* Base box-shadow + :hover color pins off main.css's global `button`
+     rules (gray #555 ring, `button:hover { color: #ce1b28 !important }`
+     which outranks the single-class pin above). */
+  box-shadow: none;
   font: inherit;
   font-size: 1rem;
   text-align: left;
@@ -3230,7 +3265,11 @@ select option { background: var(--surface); color: var(--text); }
   background: var(--surface-3);
   border-color: var(--accent);
   box-shadow: 0 0 0 3px var(--accent-soft);
+  color: var(--text) !important;
 }
+/* Pin off main.css's `button:hover:active` red background flash. */
+.answer-btn:hover:active { background-color: var(--surface-3); }
+.answer-btn.is-picked:hover:active { background-color: var(--accent-soft); }
 .answer-btn:active { transform: translateY(1px); }
 .answer-btn:disabled { cursor: default; }
 

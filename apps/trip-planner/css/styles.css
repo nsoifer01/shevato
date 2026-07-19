@@ -521,7 +521,10 @@
   .trip-planner-app .visa-remind:hover { color: var(--accent) !important; }
   .trip-planner-app .doc-remove { color: var(--text-faint) !important; }
   .trip-planner-app .doc-remove:hover { color: var(--red) !important; }
-  .trip-planner-app .rates-retry { color: var(--accent) !important; }
+  .trip-planner-app .rates-retry,
+  .trip-planner-app .rates-retry:hover { color: var(--accent) !important; }
+  .trip-planner-app .toast button,
+  .trip-planner-app .toast button:hover { color: var(--accent) !important; }
   /* assistant: accept stays white-on-green, reject reads neutral then red on
      hover, maps links read as links (main.css would gray them all) */
   .trip-planner-app [data-act="accept-proposal"] {
@@ -545,6 +548,14 @@
   .trip-planner-app .tp-menu-panel button:hover:active { background-color: var(--accent-soft); }
   .trip-planner-app .view-switch button.on:hover:active,
   .trip-planner-app .type-picker button.on:hover:active { background-color: var(--accent); }
+  /* ...and a 1px red inset ring on every button hover, a red hover
+     background on .primary buttons, and a red focus ring on text fields
+     (none of those are !important, so specificity pins suffice) */
+  .trip-planner-app button:hover { box-shadow: none; }
+  .trip-planner-app .btn.primary:hover { background-color: var(--accent); }
+  .trip-planner-app input:focus,
+  .trip-planner-app select:focus,
+  .trip-planner-app textarea:focus { box-shadow: none; }
 
   /* ---------- view switch ---------- */
   .view-switch {
