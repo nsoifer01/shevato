@@ -574,3 +574,155 @@ test('slimTripForShare drops empties, timestamps and long ids but keeps data', (
   assert.equal(slim.visaExtras, undefined);
   assert.ok(JSON.stringify(slim).length < JSON.stringify(trip).length * 0.6);
 });
+
+// ---------- assistant: extractTripActions ----------
+
+test('extractTripActions pulls actions from a ```json fence and cleans the prose', () => {
+  const text = 'Sure, here is a plan.\n\n```json\n{"tripActions":[{"op":"add","item":{"title":"Louvre"}}]}\n```\n\nEnjoy!';
+  const { actions, cleanedText } = L.extractTripActions(text);
+  assert.equal(actions.length, 1);
+  assert.equal(actions[0].item.title, 'Louvre');
+  assert.doesNotMatch(cleanedText, /tripActions/);
+  assert.match(cleanedText, /Sure, here is a plan/);
+  assert.match(cleanedText, /Enjoy!/);
+});
+
+test('extractTripActions reads a bare {"tripActions"} object amid prose', () => {
+  const text = 'Add this: {"tripActions":[{"op":"remove","match":{"title":"Old"}}]} done.';
+  const { actions, cleanedText } = L.extractTripActions(text);
+  assert.equal(actions.length, 1);
+  assert.equal(actions[0].op, 'remove');
+  assert.doesNotMatch(cleanedText, /tripActions/);
+  assert.match(cleanedText, /Add this:/);
+  assert.match(cleanedText, /done\./);
+});
+
+test('extractTripActions treats pure prose as no actions and preserves the text verbatim', () => {
+  const text = '  Just some advice about Tokyo, no edits here.  ';
+  const out = L.extractTripActions(text);
+  assert.deepEqual(out.actions, []);
+  assert.equal(out.cleanedText, text);
+});
+
+test('extractTripActions concatenates two blocks in document order', () => {
+  const text = 'First\n```json\n{"tripActions":[{"op":"add","item":{"title":"A"}}]}\n```\n'
+    + 'then {"tripActions":[{"op":"add","item":{"title":"B"}}]} last.';
+  const { actions } = L.extractTripActions(text);
+  assert.deepEqual(actions.map(a => a.item.title), ['A', 'B']);
+});
+
+test('extractTripActions leaves a truncated block in the prose and never throws', () => {
+  const text = 'Here is the start ```json\n{"tripActions":[{"op":"add","item":{"title":"Cut off"';
+  const { actions, cleanedText } = L.extractTripActions(text);
+  assert.deepEqual(actions, []);
+  assert.match(cleanedText, /Cut off/);
+});
+
+test('extractTripActions skips malformed JSON but keeps well-formed siblings', () => {
+  const text = '```json\n{"tripActions":[{oops not json]}\n```\n'
+    + 'and {"tripActions":[{"op":"add","item":{"title":"Good"}}]}';
+  const { actions } = L.extractTripActions(text);
+  assert.deepEqual(actions.map(a => a.item.title), ['Good']);
+});
+
+// ---------- assistant: validateTripAction ----------
+
+const tripWith = items => ({ name: 'T', currency: 'USD', items });
+
+test('validateTripAction add: valid item yields a to-book proposal', () => {
+  const r = L.validateTripAction({ op: 'add', item: { type: 'activity', title: 'Louvre', startDate: '2027-05-01', mapsQuery: 'Louvre Paris' } }, tripWith([]));
+  assert.equal(r.ok, true);
+  assert.equal(r.proposal.op, 'add');
+  assert.equal(r.proposal.status, 'to-book');
+  assert.equal(r.proposal.fields.title, 'Louvre');
+  assert.equal(r.proposal.display.mapsQuery, 'Louvre Paris');
+});
+
+test('validateTripAction add: missing title and bad type are rejected with reasons', () => {
+  assert.equal(L.validateTripAction({ op: 'add', item: { type: 'activity', title: '  ', startDate: '2027-05-01' } }, tripWith([])).ok, false);
+  const badType = L.validateTripAction({ op: 'add', item: { type: 'hovercraft', title: 'X', startDate: '2027-05-01' } }, tripWith([]));
+  assert.equal(badType.ok, false);
+  assert.match(badType.reason, /type/);
+});
+
+test('validateTripAction add: no silent type coercion (unknown type never becomes note)', () => {
+  const r = L.validateTripAction({ op: 'add', item: { type: 'spaceship', title: 'X', startDate: '2027-05-01' } }, tripWith([]));
+  assert.equal(r.ok, false);
+});
+
+test('validateTripAction add: start date must be ISO', () => {
+  assert.equal(L.validateTripAction({ op: 'add', item: { type: 'note', title: 'X', startDate: 'May 1st' } }, tripWith([])).ok, false);
+});
+
+test('validateTripAction add: stay needs check-out strictly after check-in', () => {
+  assert.equal(L.validateTripAction({ op: 'add', item: { type: 'stay', title: 'H', startDate: '2027-05-01', endDate: '2027-05-01' } }, tripWith([])).ok, false);
+  assert.equal(L.validateTripAction({ op: 'add', item: { type: 'stay', title: 'H', startDate: '2027-05-01', endDate: '2027-05-03' } }, tripWith([])).ok, true);
+});
+
+test('validateTripAction add: non-stay end date may equal but not precede the start', () => {
+  assert.equal(L.validateTripAction({ op: 'add', item: { type: 'flight', title: 'F', startDate: '2027-05-01', endDate: '2027-05-01' } }, tripWith([])).ok, true);
+  assert.equal(L.validateTripAction({ op: 'add', item: { type: 'flight', title: 'F', startDate: '2027-05-02', endDate: '2027-05-01' } }, tripWith([])).ok, false);
+});
+
+test('validateTripAction add: model status booked/cancelled is forced to to-book, decide survives', () => {
+  assert.equal(L.validateTripAction({ op: 'add', item: { type: 'note', title: 'X', startDate: '2027-05-01', status: 'booked' } }, tripWith([])).proposal.status, 'to-book');
+  assert.equal(L.validateTripAction({ op: 'add', item: { type: 'note', title: 'X', startDate: '2027-05-01', status: 'cancelled' } }, tripWith([])).proposal.status, 'to-book');
+  assert.equal(L.validateTripAction({ op: 'add', item: { type: 'note', title: 'X', startDate: '2027-05-01', status: 'decide' } }, tripWith([])).proposal.status, 'decide');
+});
+
+test('validateTripAction add: negative cost and bad currency drop, valid ones survive', () => {
+  const bad = L.validateTripAction({ op: 'add', item: { type: 'note', title: 'X', startDate: '2027-05-01', cost: -5, costCurrency: 'dollars' } }, tripWith([]));
+  assert.equal(bad.proposal.fields.cost, null);
+  assert.equal(bad.proposal.fields.costCurrency, undefined);
+  const good = L.validateTripAction({ op: 'add', item: { type: 'note', title: 'X', startDate: '2027-05-01', cost: 40, costCurrency: 'EUR' } }, tripWith([]));
+  assert.equal(good.proposal.fields.cost, 40);
+  assert.equal(good.proposal.fields.costCurrency, 'EUR');
+});
+
+test('validateTripAction update/remove resolve by exact id or case-insensitive exact title', () => {
+  const trip = tripWith([{ id: 'abc', type: 'stay', title: 'Hotel Nikko', startDate: '2027-05-01', endDate: '2027-05-04' }]);
+  assert.equal(L.validateTripAction({ op: 'remove', match: { id: 'abc' } }, trip).proposal.targetId, 'abc');
+  assert.equal(L.validateTripAction({ op: 'remove', match: { title: 'hotel nikko' } }, trip).proposal.targetId, 'abc');
+  const upd = L.validateTripAction({ op: 'update', match: { title: 'Hotel Nikko' }, set: { cost: 300 } }, trip);
+  assert.equal(upd.ok, true);
+  assert.equal(upd.proposal.fields.cost, 300);
+});
+
+test('validateTripAction update/remove: zero matches and ambiguous matches are rejected with the exact reasons', () => {
+  const trip = tripWith([
+    { id: 'a', type: 'note', title: 'Museum', startDate: '2027-05-01' },
+    { id: 'b', type: 'note', title: 'museum', startDate: '2027-05-02' },
+  ]);
+  assert.equal(L.validateTripAction({ op: 'remove', match: { title: 'Nope' } }, trip).reason, 'No matching item found.');
+  assert.equal(L.validateTripAction({ op: 'update', match: { title: 'Museum' }, set: {} }, trip).reason, 'Multiple items match, name it more specifically.');
+  assert.equal(L.validateTripAction({ op: 'update', set: { cost: 1 } }, trip).ok, false);
+});
+
+// ---------- assistant: prompt builders ----------
+
+test('buildAssistPackage embeds the slim trip, schema, contract, request and focus day', () => {
+  const trip = tripWith([{ id: 'x', type: 'stay', title: 'Ryokan', location: 'Kyoto', startDate: '2027-05-01', endDate: '2027-05-03', createdAt: '2026-01-01T00:00:00Z' }]);
+  const pkg = L.buildAssistPackage({ trip, focusDate: '2027-05-02', request: 'What should I do on day 2?' });
+  assert.match(pkg, /"tripActions"/);
+  assert.match(pkg, /mapsQuery/);
+  assert.match(pkg, /Ryokan/);
+  assert.match(pkg, /2027-05-02/);
+  assert.match(pkg, /What should I do on day 2\?/);
+  // slimmed: the createdAt timestamp is stripped before the trip is shared
+  assert.doesNotMatch(pkg, /createdAt/);
+});
+
+test('buildAssistPackage omits the focus-day line when no day is focused', () => {
+  const pkg = L.buildAssistPackage({ trip: tripWith([]), focusDate: '', request: 'hi' });
+  assert.doesNotMatch(pkg, /focused on this day/);
+});
+
+test('buildAssistSystemPrompt carries the honesty note, schema, contract, today and trip', () => {
+  const trip = tripWith([{ id: 'x', type: 'note', title: 'Idea', startDate: '2027-05-01' }]);
+  const sys = L.buildAssistSystemPrompt({ trip, focusDate: '2027-05-01', today: '2026-07-19' });
+  assert.match(sys, /Google Maps/);
+  assert.match(sys, /"tripActions"/);
+  assert.match(sys, /Today is 2026-07-19/);
+  assert.match(sys, /focused on this day: 2027-05-01/);
+  assert.match(sys, /Idea/);
+});

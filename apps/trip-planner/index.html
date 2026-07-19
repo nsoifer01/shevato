@@ -43,7 +43,7 @@
   <meta name="theme-color" content="#0e1116">
   <link rel="stylesheet" href="../../assets/css/main.css">
   <link rel="stylesheet" href="../../assets/css/sync-status.css">
-  <link rel="stylesheet" href="css/styles.css?v=17">
+  <link rel="stylesheet" href="css/styles.css?v=18">
 </head>
 <body class="tp-page">
   <div id="sync-banner" class="sync-banner" role="status" aria-live="polite" hidden></div>
@@ -110,6 +110,7 @@
       <button class="btn" id="shiftTripBtn" title="Shift the whole trip by N days">⇄ Shift trip</button>
       <button class="btn" id="routeBtn" title="How to get from A to B">🧭 Route</button>
       <button class="btn" id="visaBtn" title="Visa requirements for the countries on this trip">🛂 Visas</button>
+      <button class="btn" id="assistBtn" title="Plan with an AI assistant">🤖 Assistant</button>
     </div>
     <span class="tb-sep" aria-hidden="true"></span>
     <div class="tb-pair" role="group" aria-label="Undo and redo">
@@ -387,6 +388,28 @@
 
 <input type="file" id="importFile" accept="application/json,.json" hidden>
 <div class="toasts" id="toasts"></div>
+
+<!-- AI assistant panel (direct child of .trip-planner-app) -->
+<aside class="tp-assist-panel" id="assistPanel" hidden aria-label="AI assistant">
+  <div class="tp-assist-head">
+    <h2>🤖 Assistant</h2>
+    <button type="button" class="icon-btn" id="assistCloseBtn" title="Close" aria-label="Close assistant">✕</button>
+  </div>
+  <div class="tp-assist-scroll">
+    <div class="assist-honesty" id="assistHonestyNote">The assistant can't check live reviews or availability. Suggestions include a Google Maps link so you can verify hours, prices and reviews yourself.</div>
+    <div id="assistFocusChip" class="assist-focus-chip" hidden></div>
+    <div class="tier-group" id="assistTierGroup" role="radiogroup" aria-label="How to use the assistant"></div>
+    <div class="tier-body" id="assistTierBody"></div>
+    <div class="assist-messages" id="assistMessages" aria-live="polite"></div>
+    <div class="assist-composer" id="assistComposer" hidden>
+      <textarea id="assistInput" rows="2" maxlength="1000" placeholder="Ask the assistant... (Enter to send, Shift+Enter for a new line)"></textarea>
+      <div class="assist-composer-row">
+        <button type="button" class="btn assist-clear" id="assistClearChat">Clear chat</button>
+        <button type="button" class="btn primary" id="assistSend">Send</button>
+      </div>
+    </div>
+  </div>
+</aside>
 </div><!-- /.trip-planner-app -->
 
   <div data-include="footer"></div>
@@ -420,7 +443,7 @@
     }
   </script>
 
-  <script src="js/trip-logic.js?v=5"></script>
-  <script src="js/app.js?v=18"></script>
+  <script src="js/trip-logic.js?v=6"></script>
+  <script src="js/app.js?v=20"></script>
 </body>
 </html>

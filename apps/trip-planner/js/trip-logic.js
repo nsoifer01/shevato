@@ -482,6 +482,211 @@ const TripLogic = (() => {
     return slim;
   }
 
+  // ---------- assistant: parse the AI reply ----------
+  // The model is asked to emit machine-readable edits as a JSON object
+  // {"tripActions":[...]} either inside a ```json fence or bare amid prose.
+  // extractTripActions pulls every such block out (in order) and returns the
+  // remaining human-readable prose as cleanedText. Malformed or truncated
+  // blocks are left untouched in the prose and never throw.
+  const ASSIST_ACTION_TYPES = new Set(['flight', 'transport', 'activity', 'stay', 'note']);
+
+  function tryParseActions(chunk) {
+    try {
+      const obj = JSON.parse(String(chunk).trim());
+      if (obj && typeof obj === 'object' && Array.isArray(obj.tripActions)) return obj.tripActions;
+    } catch { /* malformed / truncated: skip, leave in prose */ }
+    return null;
+  }
+
+  // Index of the matching '}' for the '{' at openIdx, respecting strings and
+  // escapes. Returns -1 when the object is truncated (never throws).
+  function matchBrace(str, openIdx) {
+    let depth = 0, inStr = false, esc = false;
+    for (let i = openIdx; i < str.length; i++) {
+      const c = str[i];
+      if (inStr) {
+        if (esc) esc = false;
+        else if (c === '\\') esc = true;
+        else if (c === '"') inStr = false;
+      } else if (c === '"') inStr = true;
+      else if (c === '{') depth++;
+      else if (c === '}') { depth--; if (depth === 0) return i; }
+    }
+    return -1;
+  }
+
+  function extractTripActions(text) {
+    const src = String(text == null ? '' : text);
+    const spans = []; // {start, end, actions}
+
+    // 1) fenced code blocks: ```json ... ``` (the language tag is optional)
+    const fence = /```(?:json)?[ \t]*\r?\n?([\s\S]*?)```/g;
+    let m;
+    while ((m = fence.exec(src)) !== null) {
+      const actions = tryParseActions(m[1]);
+      if (actions) spans.push({ start: m.index, end: m.index + m[0].length, actions });
+    }
+
+    // 2) bare {"tripActions":[...]} objects sitting in prose, skipping any that
+    // fall inside a fenced span already captured above
+    const bare = /\{\s*"tripActions"\s*:/g;
+    while ((m = bare.exec(src)) !== null) {
+      if (spans.some(s => m.index >= s.start && m.index < s.end)) continue;
+      const end = matchBrace(src, m.index);
+      if (end < 0) continue; // truncated object: leave it in the prose
+      const actions = tryParseActions(src.slice(m.index, end + 1));
+      if (actions) spans.push({ start: m.index, end: end + 1, actions });
+    }
+
+    if (!spans.length) return { actions: [], cleanedText: src };
+
+    spans.sort((a, b) => a.start - b.start);
+    const actions = [];
+    let cleaned = '', cursor = 0;
+    for (const s of spans) {
+      if (s.start < cursor) continue; // overlap guard
+      cleaned += src.slice(cursor, s.start);
+      for (const a of s.actions) actions.push(a);
+      cursor = s.end;
+    }
+    cleaned += src.slice(cursor);
+    return { actions, cleanedText: cleaned.replace(/\n{3,}/g, '\n\n').trim() };
+  }
+
+  // ---------- assistant: validate one proposed action ----------
+  const clampStr = (v, n) => String(v == null ? '' : v).slice(0, n);
+
+  // Sanitizes the model's proposed fields the same way the import path does:
+  // only keys the model actually supplied are returned, so an `update` never
+  // silently blanks fields it didn't mention. Bad costs/currencies/dates drop.
+  function sanitizeActionFields(raw) {
+    const f = {};
+    if (typeof raw.type === 'string' && ASSIST_ACTION_TYPES.has(raw.type)) f.type = raw.type;
+    if (raw.title != null) f.title = clampStr(raw.title, 120).trim();
+    if (raw.location != null) f.location = clampStr(raw.location, 80).trim();
+    if (raw.startDate != null) f.startDate = isIsoDate(raw.startDate) ? raw.startDate : '';
+    if (raw.endDate != null) f.endDate = isIsoDate(raw.endDate) ? raw.endDate : '';
+    if (raw.startTime != null) f.startTime = /^\d{2}:\d{2}$/.test(raw.startTime) ? raw.startTime : '';
+    if (raw.endTime != null) f.endTime = /^\d{2}:\d{2}$/.test(raw.endTime) ? raw.endTime : '';
+    if (raw.cost != null && raw.cost !== '') f.cost = (!isNaN(raw.cost) && Number(raw.cost) >= 0) ? Number(raw.cost) : null;
+    if (raw.costCurrency != null && /^[A-Z]{3}$/.test(raw.costCurrency)) f.costCurrency = raw.costCurrency;
+    if (raw.costNote != null) f.costNote = clampStr(raw.costNote, 80).trim();
+    if (raw.details != null) f.details = clampStr(raw.details, 500).trim();
+    if (raw.mapsQuery != null) f.mapsQuery = clampStr(raw.mapsQuery, 200).trim();
+    return f;
+  }
+
+  // Booked/cancelled never pass from an AI suggestion: a proposal is always
+  // something the traveller still has to act on, so it lands as "to book"
+  // unless the model explicitly said "decide" (decide later).
+  const forceProposalStatus = raw => (raw === 'decide' ? 'decide' : 'to-book');
+
+  function displayFor(bag, status, mapsQuery) {
+    return {
+      title: bag.title || '', startDate: bag.startDate || '', startTime: bag.startTime || '',
+      endDate: bag.endDate || '', cost: bag.cost != null ? bag.cost : null,
+      costCurrency: bag.costCurrency || '', mapsQuery: mapsQuery || '', status,
+    };
+  }
+
+  function validateTripAction(action, trip) {
+    if (!action || typeof action !== 'object') return { ok: false, reason: 'This is not a valid action.' };
+    const op = action.op;
+    const items = (trip && Array.isArray(trip.items)) ? trip.items : [];
+
+    if (op === 'add') {
+      const item = action.item;
+      if (!item || typeof item !== 'object') return { ok: false, reason: 'This add has no item details.' };
+      const title = typeof item.title === 'string' ? item.title.trim() : '';
+      if (!title) return { ok: false, reason: 'This add is missing a title.' };
+      if (!ASSIST_ACTION_TYPES.has(item.type)) return { ok: false, reason: 'This add has an unknown type. Use flight, transport, activity, stay or note.' };
+      if (!isIsoDate(item.startDate)) return { ok: false, reason: 'This add needs a valid start date (YYYY-MM-DD).' };
+      if (item.type === 'stay') {
+        if (!isIsoDate(item.endDate) || diffDays(item.startDate, item.endDate) <= 0) {
+          return { ok: false, reason: 'A stay needs a check-out date after the check-in date.' };
+        }
+      } else if (item.endDate != null && item.endDate !== '') {
+        if (!isIsoDate(item.endDate)) return { ok: false, reason: 'The end date is not a valid date.' };
+        if (diffDays(item.startDate, item.endDate) < 0) return { ok: false, reason: 'The end date is before the start date.' };
+      }
+      const status = forceProposalStatus(item.status);
+      const fields = sanitizeActionFields(item);
+      return { ok: true, proposal: { op: 'add', status, fields, display: displayFor(fields, status, fields.mapsQuery) } };
+    }
+
+    if (op === 'update' || op === 'remove') {
+      const match = action.match || {};
+      const id = match.id != null && String(match.id).trim() !== '' ? String(match.id) : '';
+      const title = match.title != null && String(match.title).trim() !== '' ? String(match.title).trim() : '';
+      if (!id && !title) return { ok: false, reason: 'An update or remove needs an id or a title to match.' };
+      let found = id ? items.filter(it => it.id === id) : [];
+      if (!found.length && title) {
+        const t = title.toLowerCase();
+        found = items.filter(it => (it.title || '').trim().toLowerCase() === t);
+      }
+      if (!found.length) return { ok: false, reason: 'No matching item found.' };
+      if (found.length > 1) return { ok: false, reason: 'Multiple items match, name it more specifically.' };
+      const target = found[0];
+
+      if (op === 'remove') {
+        return { ok: true, proposal: { op: 'remove', targetId: target.id, status: forceProposalStatus(target.status), display: displayFor(target, target.status, '') } };
+      }
+      const raw = action.set || action.item || {};
+      const status = raw.status != null ? forceProposalStatus(raw.status) : forceProposalStatus(target.status);
+      const fields = sanitizeActionFields(raw);
+      const merged = { ...target, ...fields };
+      return { ok: true, proposal: { op: 'update', targetId: target.id, status, fields, display: displayFor(merged, status, fields.mapsQuery) } };
+    }
+
+    return { ok: false, reason: 'Unknown operation. Use add, update or remove.' };
+  }
+
+  // ---------- assistant: prompt builders ----------
+  const ASSIST_SCHEMA = 'Each item has: type (one of flight, transport, activity, stay, note), '
+    + 'title, location, startDate (YYYY-MM-DD), startTime (HH:MM, 24h), endDate (YYYY-MM-DD, '
+    + 'the check-out date for a stay or the arrival date for an overnight leg), endTime (HH:MM), '
+    + 'cost (a number), costCurrency (a 3-letter code like USD), details, and mapsQuery '
+    + '(a place to search on Google Maps so the traveller can verify hours, prices and reviews).';
+
+  const ASSIST_CONTRACT = 'When you want to add, change or remove items, include a JSON object '
+    + 'in a ```json fenced block shaped exactly like '
+    + '{"tripActions":[{"op":"add","item":{...}},{"op":"update","match":{"title":"..."},"set":{...}},'
+    + '{"op":"remove","match":{"title":"..."}}]}. '
+    + 'Use op "add" with a full item, "update" with a match (by id or exact title) and the fields to set, '
+    + 'or "remove" with a match. Never set status to booked or cancelled. '
+    + 'Write your normal explanation as plain prose around the JSON block.';
+
+  const ASSIST_HONESTY = 'You cannot check live reviews, prices or availability. For anything you '
+    + 'suggest, include a mapsQuery so the traveller can open Google Maps and verify hours, prices '
+    + 'and reviews themselves.';
+
+  function buildAssistPackage({ trip, focusDate, request }) {
+    const parts = [];
+    parts.push('You are a travel-planning assistant helping edit a trip itinerary.');
+    parts.push(ASSIST_HONESTY);
+    parts.push('Here is the current trip as JSON:');
+    parts.push(JSON.stringify(slimTripForShare(trip)));
+    parts.push(ASSIST_SCHEMA);
+    parts.push(ASSIST_CONTRACT);
+    if (focusDate && isIsoDate(focusDate)) parts.push(`The traveller is focused on this day: ${focusDate}.`);
+    parts.push('The traveller asks:');
+    parts.push(String(request == null ? '' : request).trim());
+    return parts.join('\n\n');
+  }
+
+  function buildAssistSystemPrompt({ trip, focusDate, today }) {
+    const parts = [];
+    parts.push('You are a travel-planning assistant helping edit a trip itinerary.');
+    parts.push(ASSIST_HONESTY);
+    parts.push(ASSIST_SCHEMA);
+    parts.push(ASSIST_CONTRACT);
+    if (today && isIsoDate(today)) parts.push(`Today is ${today}.`);
+    if (focusDate && isIsoDate(focusDate)) parts.push(`The traveller is focused on this day: ${focusDate}.`);
+    parts.push('Here is the current trip as JSON:');
+    parts.push(JSON.stringify(slimTripForShare(trip)));
+    return parts.join('\n\n');
+  }
+
   return {
     isIsoDate, toUtc, diffDays, addDays,
     isStay, nights, sortKey, sortedItems, tripLegs,
@@ -493,6 +698,7 @@ const TripLogic = (() => {
     bytesToBase64url, base64urlToBytes,
     transportGaps, tripPhase, isPastRow,
     dayCards, weatherKey, summarizeClimate, weatherLine, docGuard,
+    extractTripActions, validateTripAction, buildAssistPackage, buildAssistSystemPrompt,
   };
 })();
 
