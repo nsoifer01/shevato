@@ -28,6 +28,40 @@ import { checkQuota } from './lib/tp-assist-quota.mjs';
 // ("no longer available to new users"); verify any replacement pin with a
 // freshly created key before shipping it.
 const GEMINI_MODEL = 'gemini-3.5-flash';
+
+// Gemini 3.x charges its internal reasoning to maxOutputTokens. At the old cap
+// of 1000 a normal "suggest dinner and a bar" turn spent ~960 tokens thinking
+// and returned 37 tokens of prose, cut off before the ```json block that
+// becomes the proposal cards: the traveller saw a half-sentence and lost half
+// the suggestions. Measured against the live model on 2026-07-19:
+//   1000, default thinking -> MAX_TOKENS, 37 output tokens, no json block
+//   4000, default thinking -> STOP, 1554 thinking, 589 output
+//   4000, thinkingLevel low -> STOP,  799 thinking, 512 output  <- this
+// thinkingLevel 'low' keeps the answers complete while roughly halving the
+// billed reasoning. Raise maxOutputTokens if truncation shows up in the logs.
+const GENERATION_CONFIG = {
+  maxOutputTokens: 4000,
+  temperature: 0.5,
+  thinkingConfig: { thinkingLevel: 'low' },
+};
+
+// A truncated reply is worse than a short one here: the fenced tripActions JSON
+// lands at the END of the answer, so losing the tail silently drops the
+// proposal cards. Surface it as prose the traveller can act on instead.
+const TRUNCATION_NOTE = '\n\n_(This answer was cut short. Ask me to continue, or for fewer suggestions at a time.)_';
+
+// Exported for the unit tests: joins the text parts and reports whether the
+// model stopped naturally. Gemini returns thought-signature parts with no
+// text, so the join has to tolerate part objects that carry no `text`.
+export function readCandidate(data) {
+  const cand = (data && data.candidates && data.candidates[0]) || {};
+  const parts = (cand.content && cand.content.parts) || [];
+  const text = parts.map(p => (p && p.text) || '').join('');
+  const truncated = cand.finishReason === 'MAX_TOKENS';
+  return { text: truncated && text ? text + TRUNCATION_NOTE : text, truncated };
+}
+
+export { GENERATION_CONFIG };
 const MAX_MESSAGES = 40;
 const MAX_CONTENT = 4000;
 const MAX_TRIP_JSON = 30000;
@@ -86,11 +120,17 @@ export default async function handler(req) {
   let reply;
   try {
     reply = await callGemini(geminiKey, sys, contents);
-  } catch {
+  } catch (err) {
+    if (err && err.rateLimited) return json({ error: 'quota_exceeded', scope: 'upstream' }, 429);
     return json({ error: 'upstream' }, 502);
   }
 
-  // (8) Success.
+  // (8) An empty reply (safety block, or a turn that spent its whole budget
+  // thinking) would render as a blank chat bubble. Treat it as an upstream
+  // failure so the UI shows its "try again, or use Tier 1" message instead.
+  if (!reply.trim()) return json({ error: 'upstream' }, 502);
+
+  // (9) Success.
   return json({ reply }, 200);
 }
 
@@ -148,19 +188,29 @@ async function callGemini(key, sys, contents) {
     body: JSON.stringify({
       systemInstruction: { parts: [{ text: sys }] },
       contents,
-      generationConfig: { maxOutputTokens: 1000, temperature: 0.5 },
+      generationConfig: GENERATION_CONFIG,
     }),
   });
   if (!res.ok) {
     // function logs only; body helps diagnose, key never logged
     const body = await res.text().catch(() => '');
     console.error('tp-assist gemini error', res.status, body.slice(0, 500));
-    throw new Error('gemini ' + res.status);
+    const err = new Error('gemini ' + res.status);
+    // Google's free tier caps requests per minute as well as per day, so a
+    // busy minute is a capacity problem, not a broken assistant. Flagged here
+    // so the handler can answer 429 and the UI can say "at capacity" rather
+    // than "could not answer right now".
+    err.rateLimited = res.status === 429;
+    throw err;
   }
   const data = await res.json();
-  const parts = (data && data.candidates && data.candidates[0]
-    && data.candidates[0].content && data.candidates[0].content.parts) || [];
-  return parts.map(p => (p && p.text) || '').join('');
+  const out = readCandidate(data);
+  if (out.truncated) {
+    // Worth a log line: a recurring MAX_TOKENS means GENERATION_CONFIG needs
+    // raising again, and the traveller only sees a half-written suggestion.
+    console.error('tp-assist gemini truncated', JSON.stringify(data.usageMetadata || {}));
+  }
+  return out.text;
 }
 
 function json(obj, status) {
