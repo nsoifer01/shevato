@@ -2,7 +2,7 @@
 (() => {
 
   // ---------- constants ----------
-  const TP_BUILD = 17; // bump with every asset-version bump; shown in the footer
+  const TP_BUILD = 19; // bump with every asset-version bump; shown in the footer
   const LS_KEY = 'trip-planner:v1';
   const THEME_KEY = 'trip-planner:theme';
   const TIMEFMT_KEY = 'trip-planner:timefmt';
@@ -32,6 +32,7 @@
     bytesToBase64url, base64urlToBytes,
     transportGaps, tripPhase, isPastRow,
     dayCards, weatherKey, summarizeClimate, weatherLine, docGuard,
+    extractTripActions, validateTripAction, buildAssistPackage, buildAssistSystemPrompt,
   } = window.TripLogic;
 
   // ---------- state ----------
@@ -365,6 +366,7 @@
       applyView();
       syncUndoButtons();
       refreshDocIndicators();
+      syncAssistPanel();
     } catch (err) {
       $('#board').innerHTML = `
         <div class="error-card">
@@ -642,6 +644,7 @@
         <div class="c-cost">${cost}</div>
         <div class="c-meta-mobile"><span class="type-pill ${tm.cls}">${tm.icon} ${tm.label}</span>${n ? `<span style="color:var(--text-dim)">${n} night${n === 1 ? '' : 's'}</span>` : ''}<span class="cost-m">${cost}</span></div>
         <div class="c-actions">
+          <button class="row-btn" data-act="ask-day" data-date="${esc(it.startDate)}" title="Ask the assistant about this day">🤖</button>
           <button class="row-btn" data-act="shift-item" title="Shift dates">⇄</button>
           <button class="row-btn" data-act="edit" title="Edit">✏️</button>
           <button class="row-btn" data-act="duplicate" title="Duplicate">📄</button>
@@ -707,6 +710,7 @@
         <div class="dc-head">
           <span class="dc-day">Day ${card.dayNumber} <small>of ${card.totalDays}</small></span>
           <span class="dc-date">${fmtDate(card.date)}</span>
+          <button class="row-btn" data-act="ask-day" data-date="${card.date}" title="Ask the assistant about this day">🤖</button>
         </div>
         <div class="dc-weather" hidden></div>
         <div class="dc-body">${body}</div>
@@ -1781,6 +1785,612 @@
     box.innerHTML = rows + missing;
   }
 
+  // ---------- AI assistant ----------
+  const ASSIST_TIER_KEY = 'trip-planner:assist:tier';
+  let assistTier = localStorage.getItem(ASSIST_TIER_KEY) || 'copy';
+  if (!['copy', 'byok', 'site'].includes(assistTier)) assistTier = 'copy';
+  let assistFocusDate = null;
+  let assistPropSeq = 0;
+  const assistActions = new Map(); // proposal id -> raw action, for re-validation on accept
+
+  const TIER_META = {
+    copy: { label: 'Copy and paste with any AI - free, no account', privacy: 'Nothing is sent anywhere until you paste the package into an AI yourself.' },
+    byok: { label: 'Use your own API key', privacy: 'Requests go straight from your browser to the provider you choose, using your key. Provider charges are yours.' },
+    site: { label: "Use the site's free assistant", privacy: "Requests go through this site's server to Google's Gemini API using a shared key, with daily limits." },
+  };
+
+  function openAssist(focusDate) {
+    const panel = $('#assistPanel');
+    const trip = activeTrip();
+    const id = trip ? trip.id : '';
+    if (panel.dataset.tripId !== id) {
+      panel.dataset.tripId = id;
+      $('#assistMessages').innerHTML = '';
+      assistActions.clear();
+      assistFocusDate = null;
+    }
+    if (focusDate && isIsoDate(focusDate)) assistFocusDate = focusDate;
+    if (assistFocusDate) panel.dataset.focusDate = assistFocusDate; else delete panel.dataset.focusDate;
+    panel.hidden = false;
+    document.body.classList.add('assist-open');
+    renderTierGroup();
+    renderTierBody(assistTier);
+    renderFocusChip();
+    $('#assistCloseBtn').focus();
+  }
+
+  function closeAssist() {
+    $('#assistPanel').hidden = true;
+    document.body.classList.remove('assist-open');
+  }
+
+  // Switching the active trip with the panel open must not show one trip's
+  // proposals against another; clear the rendered log + focus (stored history
+  // per trip is a Batch B concern, this only resets what's on screen).
+  function syncAssistPanel() {
+    const panel = $('#assistPanel');
+    if (!panel || panel.hidden) return;
+    const trip = activeTrip();
+    const id = trip ? trip.id : '';
+    if (panel.dataset.tripId !== id) {
+      panel.dataset.tripId = id;
+      $('#assistMessages').innerHTML = '';
+      assistActions.clear();
+      assistFocusDate = null;
+      delete panel.dataset.focusDate;
+      renderFocusChip();
+      if (assistTier !== 'copy') restoreChat(); // load the new trip's chat
+    }
+  }
+
+  function renderTierGroup() {
+    $('#assistTierGroup').innerHTML = ['copy', 'byok', 'site'].map(t => {
+      const m = TIER_META[t];
+      const on = t === assistTier;
+      return `<label class="tier-card ${on ? 'on' : ''}">
+        <input type="radio" name="assistTier" value="${t}" ${on ? 'checked' : ''}>
+        <span class="tier-label">${esc(m.label)}</span>
+        <span class="tier-privacy">${esc(m.privacy)}</span>
+      </label>`;
+    }).join('');
+  }
+
+  function setAssistTier(t) {
+    assistTier = t;
+    localStorage.setItem(ASSIST_TIER_KEY, t);
+    renderTierGroup();
+    renderTierBody(t);
+  }
+
+  // Per-tier body. Inactive tiers' fields never enter the DOM (rendered on
+  // selection, not hidden). The copy tier (Tier 1) hides the chat composer and
+  // uses its own paste flow; byok/site (Tiers 2/3) share the live chat.
+  function renderTierBody(tier) {
+    const body = $('#assistTierBody');
+    const composer = $('#assistComposer');
+    if (tier === 'copy') {
+      body.innerHTML = copyTierHtml();
+      composer.hidden = true;
+      return;
+    }
+    body.innerHTML = tier === 'byok' ? byokTierHtml() : siteTierHtml();
+    composer.hidden = false;
+    syncSendState();
+    restoreChat();
+  }
+
+  // ---------- Tier 2: bring your own key ----------
+  // Model ids and CORS verified 2026-07-19: both providers echo the request
+  // Origin on an OPTIONS preflight, so browser-to-provider calls work with no
+  // proxy. Gemini rejects a bad key with HTTP 400 (API_KEY_INVALID), not 401,
+  // so callByokProvider maps 400/401/403 to the invalid-key message.
+  const PROVIDER_META = {
+    openai: {
+      label: 'OpenAI',
+      keyLink: 'https://platform.openai.com/api-keys',
+      models: [
+        { id: 'gpt-4o-mini', label: 'GPT-4o mini' },
+        { id: 'gpt-4o', label: 'GPT-4o' },
+      ],
+    },
+    gemini: {
+      label: 'Gemini',
+      keyLink: 'https://aistudio.google.com/apikey',
+      models: [
+        { id: 'gemini-2.5-flash', label: 'Gemini 2.5 Flash' },
+      ],
+    },
+  };
+  const AI_KEY_PREFIX = 'trip-planner:aikey:';
+  const AI_PROVIDER_KEY = 'trip-planner:assist:provider';
+  const aiModelKey = p => 'trip-planner:assist:model:' + p;
+  const CLIENT_ID_KEY = 'trip-planner:assist:clientId';
+  const chatKey = tripId => 'trip-planner:chat:' + tripId;
+  const CHAT_CAP = 40;
+
+  let assistSending = false;
+
+  function assistProvider() {
+    const p = localStorage.getItem(AI_PROVIDER_KEY);
+    return PROVIDER_META[p] ? p : 'openai';
+  }
+  function assistModel() {
+    const p = assistProvider();
+    const saved = localStorage.getItem(aiModelKey(p));
+    return PROVIDER_META[p].models.some(m => m.id === saved) ? saved : PROVIDER_META[p].models[0].id;
+  }
+  function loadKey(provider) { return localStorage.getItem(AI_KEY_PREFIX + provider) || ''; }
+
+  function byokTierHtml() {
+    const provider = assistProvider();
+    const meta = PROVIDER_META[provider];
+    const model = assistModel();
+    const hasKey = !!loadKey(provider);
+    const providerOpts = Object.entries(PROVIDER_META)
+      .map(([k, v]) => `<option value="${k}" ${k === provider ? 'selected' : ''}>${esc(v.label)}</option>`).join('');
+    const modelOpts = meta.models
+      .map(m => `<option value="${m.id}" ${m.id === model ? 'selected' : ''}>${esc(m.label)}</option>`).join('');
+    return `
+      <div class="assist-byok">
+        <div class="assist-two-col">
+          <div class="field assist-field">
+            <label for="assistProviderSelect">Provider</label>
+            <select id="assistProviderSelect">${providerOpts}</select>
+          </div>
+          <div class="field assist-field">
+            <label for="assistModelSelect">Model</label>
+            <select id="assistModelSelect">${modelOpts}</select>
+          </div>
+        </div>
+        <div class="field assist-field">
+          <label for="assistKeyInput">${esc(meta.label)} API key</label>
+          <input type="password" id="assistKeyInput" autocomplete="off" spellcheck="false"
+            placeholder="${hasKey ? 'Key saved (hidden)' : 'Paste your ' + esc(meta.label) + ' API key'}">
+        </div>
+        <div class="assist-key-actions">
+          <button type="button" class="btn" id="assistKeySave">Save key</button>
+          <button type="button" class="btn" id="assistKeyRemove" ${hasKey ? '' : 'disabled'}>Remove key</button>
+          <a href="${meta.keyLink}" target="_blank" rel="noopener" class="assist-key-link">Get a key</a>
+        </div>
+        <div class="assist-key-note">Your key stays only in this browser.</div>
+      </div>`;
+  }
+
+  function siteTierHtml() {
+    return `<div class="assist-site-note">Free shared assistant with daily limits, powered by Google Gemini. No key needed, nothing to set up.</div>`;
+  }
+
+  function setAssistProvider(p) {
+    if (!PROVIDER_META[p]) return;
+    localStorage.setItem(AI_PROVIDER_KEY, p);
+    localStorage.removeItem(aiModelKey(p)); // fall back to the provider default
+    $('#assistTierBody').innerHTML = byokTierHtml();
+  }
+  function setAssistModel(id) {
+    const p = assistProvider();
+    if (PROVIDER_META[p].models.some(m => m.id === id)) localStorage.setItem(aiModelKey(p), id);
+  }
+  function handleKeySave() {
+    const input = $('#assistKeyInput');
+    const val = (input.value || '').trim();
+    if (!val) return;
+    localStorage.setItem(AI_KEY_PREFIX + assistProvider(), val);
+    input.value = '';
+    $('#assistTierBody').innerHTML = byokTierHtml();
+    toast('API key saved in this browser.');
+  }
+  function handleKeyRemove() {
+    localStorage.removeItem(AI_KEY_PREFIX + assistProvider());
+    $('#assistTierBody').innerHTML = byokTierHtml();
+    toast('API key removed.');
+  }
+
+  // ---------- chat history (per trip, capped) ----------
+  function loadChat(tripId) {
+    try {
+      const arr = JSON.parse(localStorage.getItem(chatKey(tripId)) || '[]');
+      return Array.isArray(arr) ? arr.filter(m => m && (m.role === 'user' || m.role === 'assistant') && typeof m.content === 'string') : [];
+    } catch { return []; }
+  }
+  function saveChat(tripId, history) {
+    const capped = history.slice(-CHAT_CAP);
+    try { localStorage.setItem(chatKey(tripId), JSON.stringify(capped)); } catch { /* best effort */ }
+    return capped;
+  }
+  function assistClientId() {
+    let id = localStorage.getItem(CLIENT_ID_KEY);
+    if (!id) { id = uid(); localStorage.setItem(CLIENT_ID_KEY, id); }
+    return id;
+  }
+
+  function restoreChat() {
+    const trip = activeTrip();
+    if (!trip) return;
+    const msgs = $('#assistMessages');
+    msgs.innerHTML = '';
+    assistActions.clear();
+    for (const m of loadChat(trip.id)) {
+      if (m.role === 'user') appendBubble('user', m.content);
+      else appendBubble('assistant', m.content);
+    }
+    scrollMessages();
+  }
+
+  function clearChat() {
+    const trip = activeTrip();
+    if (!trip) return;
+    try { localStorage.removeItem(chatKey(trip.id)); } catch { /* best effort */ }
+    $('#assistMessages').innerHTML = '';
+    assistActions.clear();
+  }
+
+  // ---------- chat UI helpers ----------
+  function scrollMessages() { const m = $('#assistMessages'); m.scrollTop = m.scrollHeight; }
+
+  function appendBubble(role, text) {
+    const b = document.createElement('div');
+    b.className = 'assist-msg ' + role;
+    b.textContent = text; // textContent escapes any markup in the message
+    $('#assistMessages').appendChild(b);
+    scrollMessages();
+    return b;
+  }
+  function appendError(text) {
+    const e = document.createElement('div');
+    e.className = 'assist-error';
+    e.textContent = text;
+    $('#assistMessages').appendChild(e);
+    scrollMessages();
+  }
+  function showTyping() {
+    const t = document.createElement('div');
+    t.className = 'assist-msg assistant assist-typing';
+    t.innerHTML = '<span></span><span></span><span></span>';
+    $('#assistMessages').appendChild(t);
+    scrollMessages();
+    return t;
+  }
+  function syncSendState() {
+    const send = $('#assistSend');
+    const input = $('#assistInput');
+    if (send) { send.disabled = assistSending; send.textContent = assistSending ? 'Sending...' : 'Send'; }
+    if (input) input.disabled = assistSending;
+  }
+
+  // Turn the assistant's raw reply into a prose bubble plus proposal cards, then
+  // persist the prose to history (proposal cards are transient by design).
+  function handleAssistantReply(reply, tripId) {
+    const { actions, cleanedText } = extractTripActions(reply);
+    if (cleanedText) appendBubble('assistant', cleanedText);
+    if (actions.length) {
+      const container = document.createElement('div');
+      container.className = 'assist-proposals';
+      $('#assistMessages').appendChild(container);
+      renderProposals(actions, container);
+    }
+    if (!cleanedText && !actions.length) appendBubble('assistant', 'No reply came back. Try rephrasing your request.');
+    const history = loadChat(tripId);
+    history.push({ role: 'assistant', content: cleanedText || reply });
+    saveChat(tripId, history);
+    scrollMessages();
+  }
+
+  async function sendChat() {
+    if (assistSending) return;
+    const input = $('#assistInput');
+    const text = (input.value || '').trim();
+    if (!text) return;
+    const trip = activeTrip();
+    if (!trip) return;
+    const tripId = trip.id;
+    input.value = '';
+    appendBubble('user', text);
+    let history = loadChat(tripId);
+    history.push({ role: 'user', content: text });
+    history = saveChat(tripId, history);
+
+    assistSending = true;
+    syncSendState();
+    const typing = showTyping();
+    try {
+      const reply = assistTier === 'site'
+        ? await callSiteAssistant(history, trip)
+        : await callByokProvider(history, trip);
+      typing.remove();
+      handleAssistantReply(reply, tripId);
+    } catch (err) {
+      typing.remove();
+      appendError(err && err.userMessage ? err.userMessage : 'Something went wrong. Try again.');
+    } finally {
+      assistSending = false;
+      syncSendState();
+    }
+  }
+
+  function assistError(msg) { const e = new Error(msg); e.userMessage = msg; return e; }
+
+  // ---------- provider requests ----------
+  async function callByokProvider(history, trip) {
+    const provider = assistProvider();
+    const model = assistModel();
+    const key = loadKey(provider);
+    if (!key) throw assistError('Add your ' + PROVIDER_META[provider].label + ' API key first.');
+    const sys = buildAssistSystemPrompt({ trip, focusDate: assistFocusDate, today: todayIso() });
+
+    const ctrl = new AbortController();
+    const timer = setTimeout(() => ctrl.abort(), 60000);
+    let res;
+    try {
+      if (provider === 'openai') {
+        res = await fetch('https://api.openai.com/v1/chat/completions', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + key },
+          body: JSON.stringify({ model, messages: [{ role: 'system', content: sys }, ...history.map(m => ({ role: m.role, content: m.content }))] }),
+          signal: ctrl.signal,
+        });
+      } else {
+        // key travels in the x-goog-api-key header, never the URL: the newer
+        // AQ.-prefixed Google keys 404 on the legacy ?key= query param, and
+        // header auth also keeps the key out of URLs/logs/screenshots
+        const url = 'https://generativelanguage.googleapis.com/v1beta/models/' + model + ':generateContent';
+        res = await fetch(url, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'x-goog-api-key': key },
+          body: JSON.stringify({
+            systemInstruction: { parts: [{ text: sys }] },
+            contents: history.map(m => ({ role: m.role === 'assistant' ? 'model' : 'user', parts: [{ text: m.content }] })),
+          }),
+          signal: ctrl.signal,
+        });
+      }
+    } catch {
+      throw assistError('Network error, check your connection and try again.');
+    } finally {
+      clearTimeout(timer);
+    }
+    const rawBody = await res.text();
+    if (!res.ok) {
+      // diagnostics for the console: full provider response, masked key only
+      console.error('[assistant] provider error',
+        { provider, url: res.url, status: res.status, key: maskKey(key), body: rawBody.slice(0, 2000) });
+      if (res.status === 400 || res.status === 401 || res.status === 403) throw assistError('That API key looks invalid (' + res.status + '). Double-check it and try again.');
+      if (res.status === 429) throw assistError("You've hit your provider's rate limit or quota (429). Wait a bit or check your plan.");
+      if (res.status === 404) throw assistError('The provider says this model does not exist (404). Pick another model and try again.');
+      throw assistError('The provider returned an error (' + res.status + '). Try again in a moment.');
+    }
+    let data;
+    try { data = JSON.parse(rawBody); } catch { throw assistError('Network error, check your connection and try again.'); }
+    return provider === 'openai' ? openaiText(data) : geminiText(data);
+  }
+
+  // never print a full key anywhere: first 6 chars is enough to identify it
+  function maskKey(key) {
+    return key ? String(key).slice(0, 6) + '\u2026 (masked)' : '(none)';
+  }
+
+  function openaiText(data) {
+    return (data && data.choices && data.choices[0] && data.choices[0].message && data.choices[0].message.content) || '';
+  }
+  function geminiText(data) {
+    const parts = (data && data.candidates && data.candidates[0] && data.candidates[0].content && data.candidates[0].content.parts) || [];
+    return parts.map(p => (p && p.text) || '').join('');
+  }
+
+  // ---------- Tier 3: site assistant ----------
+  async function callSiteAssistant(history, trip) {
+    const ctrl = new AbortController();
+    const timer = setTimeout(() => ctrl.abort(), 60000);
+    let res;
+    try {
+      res = await fetch('/.netlify/functions/tp-assist', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          tripContext: { trip: slimTripForShare(trip), focusDate: assistFocusDate || null, today: todayIso() },
+          messages: history.slice(-CHAT_CAP),
+          clientId: assistClientId(),
+        }),
+        signal: ctrl.signal,
+      });
+    } catch {
+      throw assistError('Network error, check your connection and try again.');
+    } finally {
+      clearTimeout(timer);
+    }
+    if (!res.ok) {
+      let body = {};
+      try { body = await res.json(); } catch { /* non-JSON error body */ }
+      if (res.status === 503 || body.error === 'not_configured') throw assistError("The site's free assistant isn't set up yet. Try Tier 1 or bring your own key.");
+      if (res.status === 429 || body.error === 'quota_exceeded') throw assistError('The shared assistant is at capacity today. Use Tier 1 or add your own API key.');
+      throw assistError('The shared assistant could not answer right now. Try again, or use Tier 1.');
+    }
+    let data;
+    try { data = await res.json(); } catch { throw assistError('Network error, check your connection and try again.'); }
+    return data.reply || '';
+  }
+
+  function copyTierHtml() {
+    return `
+      <div class="field assist-field">
+        <label for="assistRequest">What do you want help with?</label>
+        <textarea id="assistRequest" maxlength="1000" placeholder="e.g. Suggest two activities near my Kyoto hotel and add them"></textarea>
+      </div>
+      <button type="button" class="btn primary" id="assistCopyBtn">Copy assistant package</button>
+      <div class="assist-quick-links">
+        <span class="aql-label">Open an AI:</span>
+        <a href="https://chatgpt.com" target="_blank" rel="noopener">ChatGPT</a>
+        <a href="https://gemini.google.com" target="_blank" rel="noopener">Gemini</a>
+        <a href="https://claude.ai" target="_blank" rel="noopener">Claude</a>
+      </div>
+      <div class="field assist-field">
+        <label for="assistPasteBox">Paste the AI's reply here</label>
+        <textarea id="assistPasteBox" placeholder="Paste the whole reply, including any JSON, and I'll turn it into proposed changes"></textarea>
+      </div>
+      <button type="button" class="btn" id="assistPasteParse">Add the AI's reply</button>`;
+  }
+
+  function renderFocusChip() {
+    const chip = $('#assistFocusChip');
+    if (!assistFocusDate || !isIsoDate(assistFocusDate)) { chip.hidden = true; chip.innerHTML = ''; return; }
+    const st = tripStats(activeTrip());
+    const dayNum = isIsoDate(st.start) ? diffDays(st.start, assistFocusDate) + 1 : null;
+    const label = (dayNum && dayNum > 0)
+      ? `Focused: Day ${dayNum} (${fmtDate(assistFocusDate)})`
+      : `Focused: ${fmtDate(assistFocusDate)}`;
+    chip.hidden = false;
+    chip.innerHTML = `<span>${esc(label)}</span><button type="button" class="chip-x" id="assistFocusClear" title="Clear focus" aria-label="Clear focus">✕</button>`;
+  }
+
+  async function copyAssistPackage() {
+    const trip = activeTrip();
+    const reqEl = $('#assistRequest');
+    const pkg = buildAssistPackage({ trip, focusDate: assistFocusDate, request: reqEl ? reqEl.value : '' });
+    try { await navigator.clipboard.writeText(pkg); toast('Assistant package copied. Paste it into any AI.'); }
+    catch { window.prompt('Copy the assistant package:', pkg); }
+  }
+
+  function handleAssistPaste() {
+    const boxEl = $('#assistPasteBox');
+    const raw = boxEl ? boxEl.value : '';
+    if (!raw.trim()) return;
+    const { actions, cleanedText } = extractTripActions(raw);
+    const msgs = $('#assistMessages');
+    if (cleanedText) {
+      const bubble = document.createElement('div');
+      bubble.className = 'assist-msg assistant';
+      bubble.textContent = cleanedText; // textContent escapes any markup in the reply
+      msgs.appendChild(bubble);
+    }
+    if (actions.length) {
+      const container = document.createElement('div');
+      container.className = 'assist-proposals';
+      msgs.appendChild(container);
+      renderProposals(actions, container);
+    } else if (!cleanedText) {
+      toast('No changes found in that reply.');
+    }
+    if (boxEl) boxEl.value = '';
+    msgs.scrollTop = msgs.scrollHeight;
+  }
+
+  // ---------- proposal machinery ----------
+  // No save() happens on receive/render; only Accept writes to storage.
+  function renderProposals(actions, container) {
+    const trip = activeTrip();
+    for (const action of actions) {
+      const res = validateTripAction(action, trip);
+      const pid = 'ap' + (++assistPropSeq);
+      if (!res.ok) {
+        const card = document.createElement('div');
+        card.className = 'assist-proposal invalid';
+        card.dataset.proposalId = pid;
+        card.innerHTML = `<div class="ap-reason">⚠️ ${esc(res.reason)}</div>
+          <div class="ap-actions"><button type="button" class="row-btn" data-act="reject-proposal" title="Dismiss">✕</button></div>`;
+        container.appendChild(card);
+        continue;
+      }
+      assistActions.set(pid, action);
+      container.appendChild(proposalCard(pid, res.proposal, trip));
+    }
+  }
+
+  function proposalCard(pid, p, trip) {
+    const d = p.display;
+    const card = document.createElement('div');
+    card.className = 'assist-proposal';
+    card.dataset.op = p.op;
+    card.dataset.proposalId = pid;
+    const meta = [isIsoDate(d.startDate) ? fmtDate(d.startDate) : '', d.startTime ? fmtTime(d.startTime) : ''].filter(Boolean).join(' · ');
+    let costStr = '';
+    if (d.cost != null) costStr = d.costCurrency ? fmtMoneyIn(d.costCurrency, d.cost) : fmtMoney(trip, d.cost);
+    const maps = d.mapsQuery
+      ? `<a class="assist-maps-link" href="https://www.google.com/maps/search/?api=1&amp;query=${encodeURIComponent(d.mapsQuery)}" target="_blank" rel="noopener">📍 Verify on Google Maps</a>`
+      : '';
+    const acceptLabel = p.op === 'add' ? '✓ Add' : (p.op === 'update' ? '✓ Apply' : '✓ Remove');
+    const opWord = p.op === 'add' ? 'Add' : (p.op === 'update' ? 'Update' : 'Remove');
+    card.innerHTML = `
+      <div class="ap-op">${opWord}</div>
+      <div class="ap-title">${esc(d.title || '(no title)')}</div>
+      ${meta ? `<div class="ap-meta">${esc(meta)}</div>` : ''}
+      ${costStr ? `<div class="ap-cost">${esc(costStr)}</div>` : ''}
+      ${maps}
+      <div class="ap-actions">
+        <button type="button" class="btn assist-accept" data-act="accept-proposal">${acceptLabel}</button>
+        <button type="button" class="row-btn" data-act="reject-proposal" title="Reject">✕</button>
+      </div>`;
+    return card;
+  }
+
+  // mapsQuery is not an item field: it rides along in the details text as a
+  // clickable Maps line, respecting the 500-char details clamp.
+  function appendMaps(details, mapsQuery) {
+    const base = String(details || '');
+    if (!mapsQuery) return base.slice(0, 500);
+    const link = 'Maps: https://www.google.com/maps/search/?api=1&query=' + encodeURIComponent(mapsQuery);
+    return (base ? base + '\n' + link : link).slice(0, 500);
+  }
+
+  function proposalToItem(p, trip) {
+    const f = p.fields;
+    const cost = f.cost != null ? f.cost : null;
+    const item = {
+      id: uid(), type: f.type, title: f.title, location: f.location || '',
+      startDate: f.startDate, endDate: f.endDate || '',
+      startTime: f.startTime || '', endTime: f.endTime || '',
+      status: p.status, cost, costNote: f.costNote || '',
+      details: appendMaps(f.details || '', f.mapsQuery),
+      createdAt: new Date().toISOString(),
+    };
+    if (cost != null) item.costCurrency = f.costCurrency || (trip.currency || 'USD');
+    return item;
+  }
+
+  function applyProposalUpdate(it, p, trip) {
+    const f = p.fields;
+    for (const k of ['type', 'title', 'location', 'startDate', 'endDate', 'startTime', 'endTime', 'cost', 'costNote']) {
+      if (f[k] !== undefined) it[k] = f[k];
+    }
+    if (f.costCurrency !== undefined) it.costCurrency = f.costCurrency;
+    if (it.cost != null && !it.costCurrency) it.costCurrency = trip.currency || 'USD';
+    if (f.mapsQuery) it.details = appendMaps(f.details !== undefined ? f.details : (it.details || ''), f.mapsQuery);
+    it.status = p.status;
+  }
+
+  function markProposalStale(card) {
+    card.classList.add('stale');
+    card.innerHTML = '<div class="ap-reason">This item already changed, nothing applied.</div>';
+  }
+  function markProposalDone(card, op) {
+    card.classList.remove('invalid');
+    card.classList.add('done');
+    const word = op === 'add' ? 'Added to your trip' : (op === 'update' ? 'Updated' : 'Removed');
+    card.innerHTML = `<div class="ap-done">✓ ${word}</div>`;
+  }
+
+  function acceptProposal(pid, card) {
+    const action = assistActions.get(pid);
+    if (!action) return;
+    const trip = activeTrip();
+    const res = validateTripAction(action, trip); // re-validate against CURRENT state
+    if (!res.ok) { assistActions.delete(pid); markProposalStale(card); return; }
+    const p = res.proposal;
+    if (p.op === 'add') {
+      trip.items.push(proposalToItem(p, trip));
+    } else if (p.op === 'update') {
+      const it = trip.items.find(x => x.id === p.targetId);
+      if (!it) { assistActions.delete(pid); markProposalStale(card); return; }
+      applyProposalUpdate(it, p, trip);
+    } else {
+      const idx = trip.items.findIndex(x => x.id === p.targetId);
+      if (idx < 0) { assistActions.delete(pid); markProposalStale(card); return; }
+      trip.items.splice(idx, 1);
+    }
+    save(); // undo history covers accepts automatically via the save() choke point
+    render();
+    assistActions.delete(pid);
+    markProposalDone(card, p.op);
+  }
+
   // ---------- overlays / toast ----------
   const FOCUSABLE = 'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])';
   let overlayReturnFocus = null;
@@ -1841,6 +2451,46 @@
   $('#shiftTripBtn').addEventListener('click', () => openShiftModal(null));
   $('#routeBtn').addEventListener('click', () => openRouteModal('', ''));
   $('#visaBtn').addEventListener('click', openVisaModal);
+  $('#assistBtn').addEventListener('click', () => openAssist(null));
+  $('#assistCloseBtn').addEventListener('click', closeAssist);
+  $('#assistTierGroup').addEventListener('change', e => {
+    const r = e.target.closest('input[name="assistTier"]');
+    if (r) setAssistTier(r.value);
+  });
+  $('#assistTierBody').addEventListener('click', e => {
+    if (e.target.closest('#assistCopyBtn')) copyAssistPackage();
+    else if (e.target.closest('#assistPasteParse')) handleAssistPaste();
+    else if (e.target.closest('#assistKeySave')) handleKeySave();
+    else if (e.target.closest('#assistKeyRemove')) handleKeyRemove();
+  });
+  $('#assistTierBody').addEventListener('change', e => {
+    if (e.target.id === 'assistProviderSelect') setAssistProvider(e.target.value);
+    else if (e.target.id === 'assistModelSelect') setAssistModel(e.target.value);
+  });
+  $('#assistSend').addEventListener('click', sendChat);
+  $('#assistClearChat').addEventListener('click', clearChat);
+  $('#assistInput').addEventListener('keydown', e => {
+    if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendChat(); }
+  });
+  $('#assistFocusChip').addEventListener('click', e => {
+    if (!e.target.closest('#assistFocusClear')) return;
+    assistFocusDate = null;
+    delete $('#assistPanel').dataset.focusDate;
+    renderFocusChip();
+  });
+  $('#assistMessages').addEventListener('click', e => {
+    const btn = e.target.closest('button[data-act]');
+    if (!btn) return;
+    const card = btn.closest('.assist-proposal');
+    if (!card) return;
+    const pid = card.dataset.proposalId;
+    if (btn.dataset.act === 'reject-proposal') { assistActions.delete(pid); card.remove(); }
+    else if (btn.dataset.act === 'accept-proposal') acceptProposal(pid, card);
+  });
+  $('#daysList').addEventListener('click', e => {
+    const btn = e.target.closest('button[data-act="ask-day"]');
+    if (btn) openAssist(btn.dataset.date);
+  });
   $('#passportSel').addEventListener('change', () => {
     const v = $('#passportSel').value;
     if (v) localStorage.setItem(PASSPORT_KEY, v);
@@ -2020,7 +2670,8 @@
     const it = trip.items.find(x => x.id === id);
     if (!it) return;
     const act = btn.dataset.act;
-    if (act === 'edit') openItemModal(id);
+    if (act === 'ask-day') openAssist(btn.dataset.date || it.startDate);
+    else if (act === 'edit') openItemModal(id);
     else if (act === 'shift-item') openShiftModal(id);
     else if (act === 'duplicate') {
       const copy = { ...it, id: uid(), createdAt: new Date().toISOString(), title: it.title + ' (copy)' };
@@ -2080,7 +2731,11 @@
   });
   document.querySelectorAll('[data-close]').forEach(b => b.addEventListener('click', closeOverlays));
   document.addEventListener('keydown', e => {
-    if (e.key === 'Escape') { closeOverlays(); return; }
+    if (e.key === 'Escape') {
+      if (document.querySelector('.overlay.open')) { closeOverlays(); return; }
+      if (!$('#assistPanel').hidden) { closeAssist(); return; }
+      return;
+    }
     const top = topOverlay();
     if (top) {
       // trap Tab inside the open modal so focus never reaches the page behind it

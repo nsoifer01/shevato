@@ -377,10 +377,12 @@
   .shared-banner .sb-actions { margin-left: auto; display: flex; gap: 8px; flex-wrap: wrap; }
   body.tp-shared #addBtn,
   body.tp-shared #shiftTripBtn,
+  body.tp-shared #assistBtn,
   body.tp-shared .tb-pair,
   body.tp-shared .c-actions,
   body.tp-shared .leg-row { display: none !important; }
   body.tp-shared #tripSelect { pointer-events: none; opacity: 0.7; }
+  body.tp-shared [data-act="ask-day"] { display: none !important; }
 
   /* ---------- visa modal ---------- */
   .visa-results { max-height: 46vh; overflow-y: auto; margin: 4px 0 12px; color: var(--text-dim); }
@@ -520,6 +522,17 @@
   .trip-planner-app .doc-remove { color: var(--text-faint) !important; }
   .trip-planner-app .doc-remove:hover { color: var(--red) !important; }
   .trip-planner-app .rates-retry { color: var(--accent) !important; }
+  /* assistant: accept stays white-on-green, reject reads neutral then red on
+     hover, maps links read as links (main.css would gray them all) */
+  .trip-planner-app [data-act="accept-proposal"] {
+    color: #fff !important; background: var(--green); border-color: var(--green);
+  }
+  .trip-planner-app [data-act="accept-proposal"]:hover { color: #fff !important; filter: brightness(1.08); }
+  .trip-planner-app [data-act="reject-proposal"] { color: var(--text-dim) !important; }
+  .trip-planner-app [data-act="reject-proposal"]:hover { color: var(--red) !important; border-color: var(--red); background: var(--red-soft); }
+  .trip-planner-app .assist-maps-link,
+  .trip-planner-app .assist-key-link,
+  .trip-planner-app .assist-quick-links a { color: var(--accent) !important; }
   .trip-planner-app button:disabled { color: var(--text-faint) !important; }
   /* main.css also flashes rgba-red backgrounds on :hover:active */
   .trip-planner-app button:hover:active { background-color: transparent; }
@@ -527,6 +540,8 @@
   .trip-planner-app .btn.primary:hover:active { background-color: var(--accent); }
   .trip-planner-app .btn.danger:hover:active,
   .trip-planner-app .row-btn.danger:hover:active { background-color: var(--red); }
+  .trip-planner-app [data-act="accept-proposal"]:hover:active { background-color: var(--green); }
+  .trip-planner-app [data-act="reject-proposal"]:hover:active { background-color: var(--red-soft); }
   .trip-planner-app .tp-menu-panel button:hover:active { background-color: var(--accent-soft); }
   .trip-planner-app .view-switch button.on:hover:active,
   .trip-planner-app .type-picker button.on:hover:active { background-color: var(--accent); }
@@ -677,8 +692,122 @@
   .error-card h2 { color: var(--red); margin: 0 0 8px; }
   .error-card p { color: var(--text-dim); margin: 0 0 18px; overflow-wrap: anywhere; }
 
+  /* ---------- AI assistant panel ----------
+     Fixed side panel (desktop) / full-screen sheet (mobile). Sits ABOVE the
+     board but BELOW the .overlay modals (z-index 90) so a modal opened from
+     the panel still covers it. */
+  .tp-assist-panel {
+    position: fixed; top: 0; right: 0; height: 100%; width: 420px; max-width: 100%;
+    z-index: 80; background: var(--bg-card); border-left: 1px solid var(--border);
+    box-shadow: -14px 0 40px rgba(0, 0, 0, 0.4);
+    display: flex; flex-direction: column;
+    /* the shared site header is fixed at z-index 10001; pad the panel down so
+       its own head (title + close) is never buried under it */
+    padding-top: 3.25rem;
+  }
+  .tp-assist-panel[hidden] { display: none; }
+  .tp-assist-head {
+    display: flex; align-items: center; gap: 10px; padding: 14px 16px;
+    border-bottom: 1px solid var(--border-soft); flex: none;
+  }
+  .tp-assist-head h2 { margin: 0; font-size: 17px; margin-right: auto; }
+  .tp-assist-scroll { flex: 1 1 auto; overflow-y: auto; padding: 14px 16px 24px; display: flex; flex-direction: column; gap: 14px; }
+  .assist-honesty {
+    background: var(--amber-soft); border: 1px solid color-mix(in srgb, var(--amber) 40%, var(--border));
+    border-radius: 10px; padding: 10px 12px; font-size: 12.5px; color: var(--text-dim); line-height: 1.45;
+  }
+  .assist-focus-chip[hidden] { display: none; }
+  .assist-focus-chip {
+    display: flex; align-items: center; gap: 8px; background: var(--accent-soft);
+    border: 1px solid var(--accent); border-radius: 999px; padding: 5px 6px 5px 13px;
+    font-size: 13px; font-weight: 600; color: var(--text); align-self: flex-start;
+  }
+  .assist-focus-chip .chip-x {
+    background: none; border: 0; padding: 2px 6px; line-height: 1; font-size: 13px; border-radius: 999px;
+  }
+  .tier-group { display: flex; flex-direction: column; gap: 8px; }
+  .tier-card {
+    display: flex; flex-direction: column; gap: 4px; padding: 11px 13px 11px 34px; position: relative;
+    border: 1px solid var(--border); border-radius: 12px; background: var(--bg-soft); cursor: pointer;
+  }
+  .tier-card.on { border-color: var(--accent); background: var(--accent-soft); }
+  .tier-card input { position: absolute; left: 12px; top: 13px; width: auto; margin: 0; }
+  .tier-label { font-weight: 700; font-size: 14px; color: var(--text); }
+  .tier-privacy { font-size: 12px; color: var(--text-dim); line-height: 1.4; }
+  .tier-body { display: flex; flex-direction: column; gap: 10px; }
+  .assist-field { margin-bottom: 0; }
+  .assist-field textarea { min-height: 66px; }
+  .assist-quick-links { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; font-size: 13px; }
+  .assist-quick-links .aql-label { color: var(--text-faint); }
+  .assist-quick-links a { color: var(--accent); text-decoration: none; font-weight: 600; }
+  .assist-quick-links a:hover { text-decoration: underline; }
+  .assist-messages { display: flex; flex-direction: column; gap: 12px; }
+  .assist-msg {
+    border-radius: 12px; padding: 10px 13px; font-size: 13.5px; line-height: 1.5;
+    white-space: pre-wrap; overflow-wrap: anywhere;
+  }
+  .assist-msg.assistant { background: var(--bg-soft); border: 1px solid var(--border-soft); color: var(--text); }
+  .assist-msg.user { background: var(--accent-soft); border: 1px solid var(--accent); color: var(--text); align-self: flex-end; max-width: 88%; }
+  .assist-error {
+    background: var(--red-soft); border: 1px solid color-mix(in srgb, var(--red) 45%, var(--border));
+    color: var(--text); border-radius: 12px; padding: 10px 13px; font-size: 13px; line-height: 1.5;
+  }
+  /* typing indicator: three pulsing dots in an assistant-style bubble */
+  .assist-typing { display: inline-flex; gap: 5px; align-items: center; align-self: flex-start; }
+  .assist-typing span {
+    width: 7px; height: 7px; border-radius: 50%; background: var(--text-faint);
+    animation: assistBlink 1.2s infinite ease-in-out both;
+  }
+  .assist-typing span:nth-child(2) { animation-delay: 0.15s; }
+  .assist-typing span:nth-child(3) { animation-delay: 0.3s; }
+  @keyframes assistBlink { 0%, 80%, 100% { opacity: 0.25; } 40% { opacity: 1; } }
+  /* Tier 2 (bring your own key) fields */
+  .assist-byok { display: flex; flex-direction: column; gap: 10px; }
+  .assist-two-col { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+  .assist-byok .field label { display: block; font-size: 12.5px; font-weight: 600; color: var(--text-dim); margin-bottom: 5px; }
+  .assist-byok select, .assist-byok input[type="password"] { width: 100%; }
+  .assist-key-actions { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+  .assist-key-link { font-size: 12.5px; text-decoration: none; margin-left: auto; }
+  .assist-key-link:hover { text-decoration: underline; }
+  .assist-key-note { font-size: 12px; color: var(--text-faint); }
+  .assist-site-note {
+    background: var(--bg-soft); border: 1px solid var(--border-soft); border-radius: 12px;
+    padding: 11px 13px; font-size: 12.5px; color: var(--text-dim); line-height: 1.45;
+  }
+  /* shared chat composer (Tiers 2 and 3) */
+  .assist-composer[hidden] { display: none; }
+  .assist-composer { display: flex; flex-direction: column; gap: 8px; }
+  .assist-composer textarea {
+    width: 100%; min-height: 52px; resize: vertical; border-radius: 12px;
+    padding: 10px 12px; font: inherit; font-size: 13.5px; line-height: 1.45;
+    background: var(--bg-soft); border: 1px solid var(--border); color: var(--text);
+  }
+  .assist-composer textarea:focus { outline: none; border-color: var(--accent); }
+  .assist-composer-row { display: flex; align-items: center; gap: 8px; }
+  .assist-composer-row .assist-clear { margin-right: auto; }
+  .assist-composer-row #assistSend { min-width: 92px; }
+  .assist-proposals { display: flex; flex-direction: column; gap: 10px; }
+  .assist-proposal {
+    border: 1px solid var(--border); border-radius: 12px; padding: 11px 13px;
+    background: var(--bg-raised); display: flex; flex-direction: column; gap: 4px;
+  }
+  .assist-proposal.invalid { border-color: color-mix(in srgb, var(--amber) 50%, var(--border)); background: var(--amber-soft); }
+  .assist-proposal.done { border-color: var(--green); background: var(--green-soft); }
+  .assist-proposal.stale { border-color: var(--border); background: var(--bg-soft); }
+  .ap-op { font-size: 11px; text-transform: uppercase; letter-spacing: 0.7px; color: var(--text-faint); font-weight: 700; }
+  .ap-title { font-weight: 700; font-size: 14.5px; color: var(--text); }
+  .ap-meta, .ap-cost { font-size: 12.5px; color: var(--text-dim); }
+  .ap-cost { font-weight: 700; }
+  .assist-maps-link { font-size: 12.5px; color: var(--accent); text-decoration: none; align-self: flex-start; }
+  .assist-maps-link:hover { text-decoration: underline; }
+  .ap-actions { display: flex; gap: 8px; align-items: center; margin-top: 6px; }
+  .assist-proposal .assist-accept { padding: 6px 14px; font-size: 13px; }
+  .ap-reason { font-size: 13px; color: var(--text); }
+  .ap-done { font-weight: 700; color: var(--green); font-size: 13.5px; }
+
   /* ---------- responsive ---------- */
   @media (max-width: 900px) {
+    .tp-assist-panel { inset: 0; width: 100%; border-left: 0; }
     .thead { display: none; }
     .tp-row {
       grid-template-columns: 1fr auto;

@@ -37,6 +37,25 @@ The only network calls are opt-in and key-free: place lookup via OpenStreetMap N
 | Visa requirements | 🛂 Visas: pick your passport once (saved) and every country on the itinerary shows its requirement (visa-free with days, visa on arrival, e-Visa/eTA, visa required), derived live from the geocoded places via the community Passport Index dataset (cached monthly), with per-country Wikipedia verify links and an always-verify-officially caveat; countries can also be added manually (layovers, border crossings, road trips), stored per trip and removable |
 | Settings | 12/24-hour time format (saved and synced), dark/light theme; a small "build N" tag at the bottom of the trip menu identifies the loaded code version (staleness diagnostics for the PWA cache) |
 | Cloud sync | Optional: sign in via the site header and trips/preferences sync across devices via Firestore (`sync-system/`), same as the other apps |
+| AI assistant | 🤖 Assistant proposes itinerary edits as accept/reject proposal cards (never auto-applied, never marked Booked, and every accept flows through undo). Three tiers you choose from a privacy-labelled picker: (1) copy/paste a ready-made package into any AI and paste its reply back, no key and nothing sent; (2) bring your own OpenAI or Gemini key, stored only in this browser, calling the provider directly; (3) the site's free shared assistant (Google Gemini, rate-limited per day). Chat history is kept per trip in `localStorage` (capped at 40 messages) and can be cleared; suggestions always include a Google Maps verify link |
+
+## Site assistant setup (owner)
+
+Tier 3 (the free shared assistant) is served by the Netlify function
+`netlify/functions/tp-assist.mjs`, which proxies Google Gemini behind per-client
+and global daily rate limits. Env vars are not injected into functions on this
+site, so the shared key lives in a Blob, written once out-of-band:
+
+```
+# 1. Get a free Gemini API key at https://aistudio.google.com/apikey
+# 2. Store it (the key never travels over HTTP; it is set via the CLI):
+netlify blobs:set trip-planner-assist config '{"geminiKey":"<key>"}' --json
+# Disable the shared assistant again:
+netlify blobs:set trip-planner-assist config '{}' --json
+```
+
+With no key set the endpoint returns `503 not_configured` and the UI tells the
+traveller to use Tier 1 or bring their own key. Tiers 1 and 2 need no setup.
 
 ## File structure
 
@@ -47,10 +66,17 @@ apps/trip-planner/
 ├── sw.js                 # Service worker: network-first, offline fallback caches
 ├── css/styles.css        # All styles, scoped under body.trip-planner-app
 ├── js/trip-logic.js      # Pure logic: dates, validation, coverage, stats, route,
-│                         #   ICS builder, currency math, day cards, visa + doc guards
+│                         #   ICS builder, currency math, day cards, visa + doc guards,
+│                         #   assistant reply parsing, action validation, prompt builders
 ├── js/app.js             # UI: rendering, modals, storage, geocoding, map, sync,
-│                         #   share links, IndexedDB documents, weather, rates
+│                         #   share links, IndexedDB documents, weather, rates, assistant
 └── tests/trip-logic.test.js
+
+netlify/functions/            # Tier 3 site assistant (server-side, unversioned)
+├── tp-assist.mjs             # Rate-limited Gemini proxy (origin guard, quota, no key leak)
+├── lib/tp-assist-store.mjs   # Blob store handles (config + usage)
+├── lib/tp-assist-quota.mjs   # Pure per-client / global daily quota math
+└── tests/                    # node:test for the quota math + handler guards
 ```
 
 ## Tests
@@ -60,3 +86,5 @@ npm run test:trip-planner
 ```
 
 Pure-logic tests via `node --test` against `js/trip-logic.js` (dual-exposed as `window.TripLogic` and a CommonJS module). No installs, no config.
+
+The Tier 3 function's quota math and request guards have their own suite (run by the root `npm test`, or on their own with `npm run test:tp-assist-quota`).
