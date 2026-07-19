@@ -27,7 +27,19 @@ import { checkQuota } from './lib/tp-assist-quota.mjs';
 // surfaces here as a generic 502 upstream. gemini-2.5-flash reached that state
 // ("no longer available to new users"); verify any replacement pin with a
 // freshly created key before shipping it.
-const GEMINI_MODEL = 'gemini-3.5-flash';
+//
+// Pinned to flash-lite on cost: measured 2026-07-19 against the real system
+// contract, every candidate held the tripActions format (add / update / remove
+// / a 9-item multi-day plan, all passing validateTripAction, and all correctly
+// refusing a "mark it confirmed" request), so the only difference was price:
+//   gemini-3.1-flash-lite    $0.0005-0.0029 per turn   <- this
+//   gemini-3-flash-preview   $0.0019-0.0076 per turn   (also 503'd 3 of 4
+//                                                       calls; preview models
+//                                                       carry no availability
+//                                                       guarantee - avoid)
+//   gemini-3.5-flash         $0.0132 per turn
+// If answer quality ever slips, gemini-3.5-flash is the known-good step up.
+const GEMINI_MODEL = 'gemini-3.1-flash-lite';
 
 // Gemini 3.x charges its internal reasoning to maxOutputTokens. At the old cap
 // of 1000 a normal "suggest dinner and a bar" turn spent ~960 tokens thinking
