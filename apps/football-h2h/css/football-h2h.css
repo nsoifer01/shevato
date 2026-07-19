@@ -1469,8 +1469,13 @@
     box-shadow: 0 4px 12px rgba(139, 92, 246, 0.3);
 }
 
-.modal-btn-primary:hover {
+.modal-btn-primary:hover,
+.modal-btn-primary:hover:active {
     background: linear-gradient(135deg, #7c3aed 0%, #6d28d9 100%);
+    /* color re-pinned: the sitewide theme trap's `button:hover
+       { color: #ce1b28 !important }` (main.css) outspecifies the base
+       `.modal-btn-primary` pin, so hover/press text silently went red. */
+    color: white !important;
     transform: translateY(-2px);
     box-shadow: 0 6px 16px rgba(139, 92, 246, 0.4);
 }
@@ -1478,6 +1483,9 @@
 .modal-btn-secondary {
     background: #374151;
     color: #cbd5e0 !important;
+    /* Kill the theme trap's inset ring (gray #555 at rest, red #ce1b28 on
+       hover) — this button already carries a real border. */
+    box-shadow: none !important;
     border: 1px solid #4a5568;
     padding: 0.75rem 1.75rem;
     border-radius: 0.5rem;
@@ -1492,7 +1500,11 @@
     line-height: 1;
 }
 
-.modal-btn-secondary:hover {
+.modal-btn-secondary:hover,
+.modal-btn-secondary:hover:active {
+    /* :hover:active included so the theme trap's press state
+       (`button:hover:active { background-color: rgba(206,27,40,0.25) }`,
+       specificity (0,2,1)) can't tint the pressed button red. */
     background: #4a5568;
     border-color: #5a6678;
     color: #e2e8f0 !important;
@@ -1502,6 +1514,10 @@
 .modal-btn-danger {
     background: #ef4444;
     color: white !important;
+    /* Kill the theme trap's inset ring (gray #555 at rest, red #ce1b28 on
+       hover) — the red fill is the affordance, no ring wanted. Press bg is
+       already protected by mario-kart-overrides' `.modal-btn-danger:hover:active`. */
+    box-shadow: none !important;
     border: none;
     padding: 0.75rem 1.5rem;
     border-radius: 0.5rem;

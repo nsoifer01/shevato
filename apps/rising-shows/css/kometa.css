@@ -356,6 +356,10 @@
   background: rgba(255, 255, 255, 0.05);
   box-shadow: none;
 }
+/* main.css `button:hover:active` (0,2,1) flashes a translucent red press
+   background; pin the press to the hover surface. Kept above the
+   .is-active rules so an active tab's own press styling still wins. */
+.kometa-output-tab:hover:active { background: rgba(255, 255, 255, 0.05); }
 .kometa-output-tab.is-active {
   background: rgba(245, 197, 24, 0.18);
   color: var(--accent-warm) !important;

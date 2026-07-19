@@ -1070,6 +1070,21 @@ body.football-h2h-tracker .matchup-select {
     cursor: pointer;
 }
 
+/* Pagination buttons: the shared mario-kart-overrides.css pins color and
+   background against the sitewide theme trap, but not box-shadow, so
+   main.css `button { box-shadow: inset 0 0 0 1px #555555 }` painted a gray
+   inner ring on every non-active pagination button. Pin flat at rest and
+   restore pagination.css's intended indigo hover lift across hover/press.
+   The active-page ring (`body.theme .pagination-btn.active` in
+   mario-kart-overrides, !important at higher specificity) still wins. */
+body.football-h2h-tracker .pagination-btn {
+    box-shadow: none !important;
+}
+body.football-h2h-tracker .pagination-btn:hover:not(:disabled),
+body.football-h2h-tracker .pagination-btn:hover:active:not(:disabled) {
+    box-shadow: 0 2px 8px rgba(102, 126, 234, 0.3) !important;
+}
+
 /* Dark theme for the shared pagination rows-per-page select (the shared
    assets/css/pagination.css hardcodes a white background) */
 body.football-h2h-tracker .pagination-size select {

@@ -347,6 +347,34 @@ body.rising-shows-app button {
   border-color: var(--good);
 }
 
+/* ---------- Press-state background counter-pins ----------
+   main.css ~line 328 has `button:hover:active { background-color:
+   rgba(206, 27, 40, 0.25) }`, the site's translucent red press flash.
+   That selector (0,2,1) outweighs our single-class :hover rules (0,2,0),
+   so every button pins its press background explicitly at (0,3,0)+. Each
+   value repeats the control's own hover background: a press keeps the
+   hover surface, and the :active transform rules stay the only visible
+   press feedback. */
+.btn:hover:active { background-color: var(--surface-2); }
+.btn-primary:hover:active { background-color: transparent; }
+.view-btn:hover:active { background-color: var(--surface-3); }
+.view-btn[aria-pressed="true"]:hover:active { background-color: var(--accent); }
+.modal-close:hover:active,
+.modal-back:hover:active { background-color: rgba(255, 255, 255, 0.16); }
+.watch-btn.is-watched:hover:active,
+.compare-btn.is-in-compare:hover:active { background-color: var(--good); }
+.watch-toggle:hover:active { background-color: rgba(0, 0, 0, 0.75); }
+.watch-toggle[aria-pressed="true"]:hover:active { background-color: var(--good); }
+.shape-chip:hover:active { background-color: rgba(245, 197, 24, 0.06); }
+.shape-chip[aria-pressed="true"]:hover:active { background-color: rgba(245, 197, 24, 0.12); }
+.mood-chip:hover:active { background-color: rgba(245, 197, 24, 0.06); }
+.mood-chip[aria-pressed="true"]:hover:active { background-color: rgba(245, 197, 24, 0.12); }
+.advanced-reset:hover:active { background-color: rgba(248, 113, 113, 0.2); }
+.whats-new-chip:hover:active { background-color: rgba(245, 197, 24, 0.14); }
+.shortcut-legend-btn:hover:active { background-color: var(--accent); }
+.poster-reveal:hover:active { background-color: rgba(7, 9, 15, 0.22); }
+.active-filter-chip:hover:active { background-color: var(--accent-soft); }
+
 /* ---------- Page layout ---------- */
 
 .page {
@@ -1463,6 +1491,9 @@ body.rising-shows-app button {
   padding: 0;
   border: 0;
   background: transparent;
+  /* Pin away main.css's gray/red 1px inset button ring, which otherwise
+     frames the whole poster. */
+  box-shadow: none !important;
   line-height: 1;
   cursor: pointer;
   font: inherit;
@@ -2289,7 +2320,15 @@ button.shape-tag.is-clickable:hover {
 }
 .compare-fab[hidden] { display: none; }
 .compare-fab:hover,
-.compare-fab:hover:active { color: #1a1300 !important; background: var(--accent); }
+.compare-fab:hover:active {
+  color: #1a1300 !important;
+  background: var(--accent);
+  /* Repeat the base shadow: main.css `button:hover` otherwise swaps the
+     FAB's lift for its red 1px inset ring. */
+  box-shadow:
+    0 10px 24px rgba(0, 0, 0, 0.45),
+    0 2px 8px rgba(245, 197, 24, 0.35);
+}
 .compare-fab:hover { transform: translateY(-1px); }
 .compare-fab-icon { font-size: 1.05rem; }
 .compare-fab-count {
@@ -4319,7 +4358,10 @@ body.advanced-drawer-open {
   border-radius: 999px;
   border: 1px solid var(--border-strong);
   background: var(--surface-2);
-  color: var(--text);
+  /* !important twins defeat main.css `button { color: #555 !important;
+     box-shadow: inset 0 0 0 1px #555 }` and its red hover variants. */
+  color: var(--text) !important;
+  box-shadow: none !important;
   font-size: 0.88rem;
   cursor: pointer;
   line-height: 1;
@@ -4327,6 +4369,8 @@ body.advanced-drawer-open {
 .active-filter-chip:hover {
   border-color: var(--accent-strong);
   background: var(--accent-soft);
+  color: var(--text) !important;
+  box-shadow: none !important;
 }
 .active-filter-chip .chip-key {
   color: var(--accent);
@@ -4447,7 +4491,10 @@ body.advanced-drawer-open {
 .shortcut-legend-btn:hover,
 .shortcut-legend-btn[aria-expanded="true"] {
   background: var(--accent);
-  color: var(--accent-ink);
+  /* !important: the button also carries .btn, whose `color: var(--text)
+     !important` counter-pin (itself needed against main.css) would
+     otherwise leave light text on the yellow hover surface. */
+  color: var(--accent-ink) !important;
   border-color: var(--accent);
 }
 .shortcut-legend {
@@ -4862,6 +4909,9 @@ body.advanced-drawer-open {
   background: var(--surface-2) !important;
   color: var(--muted) !important;
   border: 1px solid var(--border) !important;
+  /* main.css buttons carry `box-shadow: inset 0 0 0 1px #555` (red on
+     hover); without a pin these pills render that stray inner ring. */
+  box-shadow: none !important;
   transition: background 0.15s, color 0.15s, border-color 0.15s;
 }
 
@@ -4870,6 +4920,7 @@ body.advanced-drawer-open {
   background: var(--surface-3) !important;
   color: var(--text) !important;
   border-color: var(--border-strong) !important;
+  box-shadow: none !important;
 }
 
 .finder-chip[aria-pressed="true"],

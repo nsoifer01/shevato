@@ -176,6 +176,24 @@ body.theme .pagination-btn.active:hover:not(:disabled) {
     line-height: 1;
 }
 
+/* Hover/pressed pins for the primary/secondary modal buttons. The base rules
+   below pin white text, but main.css `button:hover { color:#ce1b28 !important }`
+   (higher specificity) turned the labels red on hover, and
+   `button:hover:active { background: rgba(206,27,40,0.25) }` washed the fill
+   red on press. Pin both states to the buttons' own colors, mirroring the
+   .modal-btn-danger block further down. */
+.modal-btn-primary:hover,
+.modal-btn-primary:hover:active {
+    background: #8b5cf6 !important;
+    color: white !important;
+}
+
+.modal-btn-secondary:hover,
+.modal-btn-secondary:hover:active {
+    background: var(--modal-secondary-bg, #4a5568) !important;
+    color: white !important;
+}
+
 .modal-btn-secondary {
     background: var(--modal-secondary-bg, #4a5568);
     color: white !important;
