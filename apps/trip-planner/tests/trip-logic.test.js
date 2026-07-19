@@ -239,3 +239,320 @@ test('parseVisaMatrix builds a passport x destination lookup', () => {
   assert.equal(L.parseVisaMatrix(''), null);
   assert.equal(L.parseVisaMatrix('Passport,JP\nnot-a-code,90\n'), null);
 });
+
+// ---------- ICS export ----------
+
+test('buildIcs maps a stay to an all-day event with exclusive end', () => {
+  const ics = L.buildIcs({ name: 'Trip', items: [
+    stay('s', 'Tokyo', '2027-01-10', '2027-01-14'),
+  ] });
+  assert.match(ics, /DTSTART;VALUE=DATE:20270110/);
+  assert.match(ics, /DTEND;VALUE=DATE:20270114/);
+  assert.match(ics, /SUMMARY:Tokyo hotel/);
+  // CRLF line endings in the generated string
+  assert.ok(ics.includes('\r\n'));
+});
+
+test('buildIcs makes an overnight timed flight a floating VEVENT (no Z, no TZID)', () => {
+  const it = { id: 'f', type: 'flight', title: 'SHV to HND', location: '', startDate: '2027-01-01', endDate: '2027-01-02', startTime: '23:30', endTime: '06:15', status: 'booked' };
+  const ics = L.buildIcs({ name: 'T', items: [it] });
+  assert.match(ics, /DTSTART:20270101T233000/);
+  assert.match(ics, /DTEND:20270102T061500/);
+  assert.ok(!/DTSTART:20270101T233000Z/.test(ics));
+  assert.ok(!ics.includes('TZID'));
+  assert.ok(!ics.includes('VTIMEZONE'));
+});
+
+test('buildIcs: timed event with no arrival date/time ends at DTSTART', () => {
+  const it = { id: 'f', type: 'transport', title: 'Train', location: '', startDate: '2027-01-05', endDate: '', startTime: '09:00', endTime: '', status: 'booked' };
+  const ics = L.buildIcs({ name: 'T', items: [it] });
+  assert.match(ics, /DTSTART:20270105T090000/);
+  assert.match(ics, /DTEND:20270105T090000/);
+});
+
+test('buildIcs makes untimed items single all-day events', () => {
+  const it = { id: 'a', type: 'activity', title: 'Museum', location: 'Rome', startDate: '2027-01-05', endDate: '', startTime: '', status: 'to-book' };
+  const ics = L.buildIcs({ name: 'T', items: [it] });
+  assert.match(ics, /DTSTART;VALUE=DATE:20270105/);
+  assert.match(ics, /DTEND;VALUE=DATE:20270106/);
+});
+
+test('buildIcs excludes cancelled items', () => {
+  const ics = L.buildIcs({ name: 'T', items: [
+    stay('keep', 'Tokyo', '2027-01-10', '2027-01-12'),
+    stay('drop', 'Osaka', '2027-01-12', '2027-01-14', 'cancelled'),
+  ] });
+  assert.ok(ics.includes('keep@trip-planner.shevato.com'));
+  assert.ok(!ics.includes('drop@trip-planner.shevato.com'));
+});
+
+test('buildIcs uses a stable per-item UID', () => {
+  const ics = L.buildIcs({ name: 'T', items: [stay('abc-123', 'Tokyo', '2027-01-10', '2027-01-12')] });
+  assert.match(ics, /UID:abc-123@trip-planner\.shevato\.com/);
+});
+
+test('buildIcs escapes commas, semicolons and newlines per RFC 5545', () => {
+  const it = { id: 'n', type: 'note', title: 'Pack; check, twice', location: '', startDate: '2027-01-05', endDate: '', startTime: '', status: 'booked', details: 'line1\nline2' };
+  const ics = L.buildIcs({ name: 'T', items: [it] });
+  assert.match(ics, /SUMMARY:Pack\\; check\\, twice/);
+  assert.match(ics, /DESCRIPTION:line1\\nline2/);
+});
+
+// ---------- currency conversion ----------
+
+test('convertAmount returns the amount unchanged for same currency (no rates needed)', () => {
+  assert.equal(L.convertAmount(100, 'USD', 'USD', null), 100);
+});
+
+test('convertAmount converts foreign into base using the rate table', () => {
+  const rates = { base: 'USD', rates: { EUR: 0.9, JPY: 150 } };
+  // 90 EUR into USD base = 90 / 0.9 = 100
+  assert.equal(L.convertAmount(90, 'EUR', 'USD', rates), 100);
+  // base into foreign
+  assert.equal(L.convertAmount(1, 'USD', 'JPY', rates), 150);
+});
+
+test('convertAmount returns null when a needed rate is missing', () => {
+  const rates = { base: 'USD', rates: { EUR: 0.9 } };
+  assert.equal(L.convertAmount(100, 'THB', 'USD', rates), null);
+  assert.equal(L.convertAmount(100, 'EUR', 'USD', null), null);
+});
+
+test('sumInCurrency totals convertible items and flags the rest', () => {
+  const rates = { base: 'USD', rates: { EUR: 0.5 } };
+  const items = [
+    { cost: 100, costCurrency: 'USD' },   // 100
+    { cost: 50, costCurrency: 'EUR' },    // 50 / 0.5 = 100
+    { cost: 30, costCurrency: 'THB' },    // no rate -> unconverted
+    { cost: null, costCurrency: 'USD' },  // ignored
+  ];
+  const res = L.sumInCurrency(items, 'USD', rates);
+  assert.equal(res.total, 200);
+  assert.equal(res.unconverted.length, 1);
+  assert.equal(res.unconverted[0].costCurrency, 'THB');
+});
+
+test('sumInCurrency treats a missing costCurrency as the trip currency', () => {
+  const items = [{ cost: 40 }, { cost: 60 }];
+  const res = L.sumInCurrency(items, 'USD', null);
+  assert.equal(res.total, 100);
+  assert.equal(res.unconverted.length, 0);
+});
+
+// ---------- base64url ----------
+
+test('base64url round-trips arbitrary bytes', () => {
+  const bytes = new Uint8Array([0, 1, 2, 3, 250, 251, 252, 253, 254, 255, 42]);
+  const str = L.bytesToBase64url(bytes);
+  assert.ok(!/[+/=]/.test(str));
+  assert.deepEqual([...L.base64urlToBytes(str)], [...bytes]);
+});
+
+test('base64url round-trips every remainder length', () => {
+  for (let n = 0; n < 8; n++) {
+    const bytes = new Uint8Array(Array.from({ length: n }, (_, i) => (i * 37 + 11) & 255));
+    assert.deepEqual([...L.base64urlToBytes(L.bytesToBase64url(bytes))], [...bytes]);
+  }
+});
+
+// ---------- continuity gaps ----------
+
+function transport(id, title, startDate, endDate = '', status = 'booked', type = 'flight') {
+  return { id, type, title, location: '', startDate, endDate, status };
+}
+
+test('transportGaps flags a city change with no flight or transport between', () => {
+  const trip = { items: [
+    stay('t', 'Tokyo', '2027-01-01', '2027-01-05'),
+    stay('k', 'Kyoto', '2027-01-05', '2027-01-08'),
+  ] };
+  const gaps = L.transportGaps(trip);
+  assert.equal(gaps.length, 1);
+  assert.deepEqual(
+    { from: gaps[0].fromLocation, to: gaps[0].toLocation, s: gaps[0].gapStart, e: gaps[0].gapEnd },
+    { from: 'Tokyo', to: 'Kyoto', s: '2027-01-05', e: '2027-01-05' },
+  );
+});
+
+test('transportGaps: a transport dated inside the window clears the gap', () => {
+  const trip = { items: [
+    stay('t', 'Tokyo', '2027-01-01', '2027-01-05'),
+    transport('x', 'Tokyo to Kyoto', '2027-01-05', '', 'booked', 'transport'),
+    stay('k', 'Kyoto', '2027-01-05', '2027-01-08'),
+  ] };
+  assert.equal(L.transportGaps(trip).length, 0);
+});
+
+test('transportGaps skips same-city consecutive stays', () => {
+  const trip = { items: [
+    stay('a', 'Tokyo', '2027-01-01', '2027-01-05'),
+    stay('b', 'Tokyo', '2027-01-05', '2027-01-08'),
+  ] };
+  assert.equal(L.transportGaps(trip).length, 0);
+});
+
+test('transportGaps ignores a cancelled transport (gap stays)', () => {
+  const trip = { items: [
+    stay('t', 'Tokyo', '2027-01-01', '2027-01-05'),
+    transport('x', 'Tokyo to Kyoto', '2027-01-05', '', 'cancelled', 'transport'),
+    stay('k', 'Kyoto', '2027-01-05', '2027-01-08'),
+  ] };
+  assert.equal(L.transportGaps(trip).length, 1);
+});
+
+test('transportGaps skips a cancelled stay in the pairing', () => {
+  const trip = { items: [
+    stay('t', 'Tokyo', '2027-01-01', '2027-01-05'),
+    stay('x', 'Osaka', '2027-01-05', '2027-01-06', 'cancelled'),
+    stay('k', 'Kyoto', '2027-01-06', '2027-01-08'),
+  ] };
+  const gaps = L.transportGaps(trip);
+  assert.equal(gaps.length, 1);
+  assert.equal(gaps[0].fromLocation, 'Tokyo');
+  assert.equal(gaps[0].toLocation, 'Kyoto');
+});
+
+// ---------- trip phase ----------
+
+test('tripPhase: before, during (first/last day) and after boundaries', () => {
+  assert.equal(L.tripPhase('2027-01-10', '2027-01-14', '2027-01-09').phase, 'before');
+  const first = L.tripPhase('2027-01-10', '2027-01-14', '2027-01-10');
+  assert.equal(first.phase, 'during');
+  assert.equal(first.dayNumber, 1);
+  assert.equal(first.totalDays, 5);
+  const last = L.tripPhase('2027-01-10', '2027-01-14', '2027-01-14');
+  assert.equal(last.phase, 'during');
+  assert.equal(last.dayNumber, 5);
+  assert.equal(L.tripPhase('2027-01-10', '2027-01-14', '2027-01-15').phase, 'after');
+});
+
+test('isPastRow: stays by check-out, others by end or start', () => {
+  const today = '2027-01-10';
+  assert.equal(L.isPastRow(stay('s', 'Tokyo', '2027-01-05', '2027-01-09'), today), true);
+  assert.equal(L.isPastRow(stay('s', 'Tokyo', '2027-01-05', '2027-01-10'), today), false);
+  assert.equal(L.isPastRow(flight('f', 'X', '2027-01-08', '2027-01-09'), today), true);
+  assert.equal(L.isPastRow(flight('f', 'X', '2027-01-11'), today), false);
+  assert.equal(L.isPastRow(flight('f', 'X', '2027-01-09'), today), true);
+});
+
+// ---------- day cards ----------
+
+function timedItem(id, type, title, startDate, startTime = '', status = 'booked') {
+  return { id, type, title, location: '', startDate, endDate: '', startTime, status, createdAt: id };
+}
+
+test('dayCards yields one card per date, start..end inclusive', () => {
+  const trip = { items: [
+    flight('f', 'JFK to FCO', '2027-03-01'),
+    stay('h', 'Rome', '2027-03-01', '2027-03-05'),
+  ] };
+  const cards = L.dayCards(trip);
+  assert.equal(cards.length, 5); // Mar 1..5 inclusive
+  assert.equal(cards[0].date, '2027-03-01');
+  assert.equal(cards[4].date, '2027-03-05');
+  assert.equal(cards[0].dayNumber, 1);
+  assert.equal(cards[4].dayNumber, 5);
+  assert.equal(cards[0].totalDays, 5);
+});
+
+test('dayCards splits a stay into checkin and checkout on different days', () => {
+  const trip = { items: [ stay('h', 'Rome', '2027-03-01', '2027-03-05') ] };
+  const cards = L.dayCards(trip);
+  assert.deepEqual(cards[0].events.map(e => e.kind), ['checkin']);
+  assert.deepEqual(cards[4].events.map(e => e.kind), ['checkout']);
+  assert.equal(cards[0].events[0].item.id, 'h');
+});
+
+test('dayCards reports stayingAt for interior days with no events', () => {
+  const trip = { items: [ stay('h', 'Rome', '2027-03-01', '2027-03-05') ] };
+  const cards = L.dayCards(trip);
+  assert.equal(cards[1].stayingAt, 'Rome');
+  assert.equal(cards[1].empty, false);
+  assert.equal(cards[1].events.length, 0);
+  // checkin/checkout days are not "staying" days
+  assert.equal(cards[0].stayingAt, null);
+  assert.equal(cards[4].stayingAt, null);
+});
+
+test('dayCards marks a bare day empty', () => {
+  const trip = { items: [
+    flight('a', 'A to B', '2027-03-01'),
+    flight('b', 'B to C', '2027-03-03'),
+  ] };
+  const cards = L.dayCards(trip);
+  assert.equal(cards[1].date, '2027-03-02');
+  assert.equal(cards[1].empty, true);
+  assert.equal(cards[1].stayingAt, null);
+});
+
+test('dayCards orders a day by time then type, checkout before checkin', () => {
+  const trip = { items: [
+    stay('leave', 'Rome', '2027-02-28', '2027-03-01'),
+    stay('arrive', 'Florence', '2027-03-01', '2027-03-04'),
+    timedItem('train', 'transport', 'Rome to Florence', '2027-03-01', '09:30'),
+    timedItem('flight', 'flight', 'early flight', '2027-03-01', '07:00'),
+  ] };
+  const day = L.dayCards(trip).find(c => c.date === '2027-03-01');
+  assert.deepEqual(
+    day.events.map(e => e.kind === 'item' ? e.item.id : e.kind),
+    ['flight', 'train', 'checkout', 'checkin']
+  );
+});
+
+test('dayCards passes cancelled items through with their status', () => {
+  // non-cancelled flights anchor the date range (tripStats drops cancelled),
+  // so the cancelled stay's span stays visible in the cards.
+  const trip = { items: [
+    flight('f1', 'A to B', '2027-03-01'),
+    flight('f2', 'B to C', '2027-03-05'),
+    stay('h', 'Rome', '2027-03-01', '2027-03-05', 'cancelled'),
+  ] };
+  const cards = L.dayCards(trip);
+  const checkin = cards[0].events.find(e => e.kind === 'checkin');
+  assert.equal(checkin.item.status, 'cancelled');
+  // a cancelled stay does not make an interior day a "staying" day
+  assert.equal(cards[1].stayingAt, null);
+  assert.equal(cards[1].empty, true);
+});
+
+test('dayCards returns [] without dated items', () => {
+  assert.deepEqual(L.dayCards({ items: [] }), []);
+});
+
+// ---------- climate / weather ----------
+
+test('weatherKey lowercases the place and pads the month', () => {
+  assert.equal(L.weatherKey('Tokyo', 1), 'tokyo|01');
+  assert.equal(L.weatherKey('  Rome ', 12), 'rome|12');
+});
+
+test('summarizeClimate averages and rounds, drops null samples', () => {
+  const s = L.summarizeClimate([4, 6, null, 5], [14, 16, 15], [0, 0, 0]);
+  assert.equal(s.lo, 5);   // (4+6+5)/3 = 5
+  assert.equal(s.hi, 15);  // (14+16+15)/3 = 15
+  assert.equal(s.wet, false);
+});
+
+test('summarizeClimate flags wet when >=30% of days rain', () => {
+  assert.equal(L.summarizeClimate([10], [20], [2, 0, 3, 0, 1]).wet, true);   // 3/5
+  assert.equal(L.summarizeClimate([10], [20], [2, 0, 0, 0, 0]).wet, false);  // 1/5
+  assert.equal(L.summarizeClimate([10], [20]).wet, false);                   // no precip data
+});
+
+test('weatherLine says Typically and never forecasts', () => {
+  const line = L.weatherLine('Tokyo', { lo: 3, hi: 10, wet: true });
+  assert.match(line, /Typically/);
+  assert.match(line, /Tokyo/);
+  assert.match(line, /often rainy/);
+  assert.doesNotMatch(line, /forecast|will be/);
+  assert.equal(L.weatherLine('Tokyo', { lo: null, hi: 10, wet: false }), '');
+});
+
+// ---------- documents pocket guards ----------
+
+test('docGuard enforces the 10-file and 2MB limits', () => {
+  assert.deepEqual(L.docGuard(0, 1024), { ok: true });
+  assert.deepEqual(L.docGuard(10, 1024), { ok: false, reason: 'count' });
+  assert.deepEqual(L.docGuard(2, 2 * 1024 * 1024 + 1), { ok: false, reason: 'size' });
+  assert.deepEqual(L.docGuard(2, 2 * 1024 * 1024), { ok: true });
+});

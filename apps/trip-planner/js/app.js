@@ -2,6 +2,7 @@
 (() => {
 
   // ---------- constants ----------
+  const TP_BUILD = 15; // bump with every asset-version bump; shown in the footer
   const LS_KEY = 'trip-planner:v1';
   const THEME_KEY = 'trip-planner:theme';
   const TIMEFMT_KEY = 'trip-planner:timefmt';
@@ -27,11 +28,22 @@
     validateItem, coverageGaps, tripStats,
     ISLANDISH, distKm, flagEmoji, compass, fmtDur, modeOptions,
     classifyVisa, parseVisaMatrix, hasFastRail,
+    buildIcs, convertAmount, sumInCurrency,
+    bytesToBase64url, base64urlToBytes,
+    transportGaps, tripPhase, isPastRow,
+    dayCards, weatherKey, summarizeClimate, weatherLine, docGuard,
   } = window.TripLogic;
 
   // ---------- state ----------
   let db = loadDb();
   const ui = { search: '', filterType: '', filterStatus: '', editingId: null, shiftTarget: null, tripModalMode: 'new', confirmAction: null, flashId: null, view: 'timeline' };
+
+  // read-only share view: the real db is parked in realDb; save() is a no-op
+  // so nothing the visitor touches ever reaches trip-planner:v1.
+  let sharedMode = false;
+  let realDb = null;
+  let sharedTrip = null;
+  let didAutoScroll = false;
 
   function uid() {
     return (crypto.randomUUID ? crypto.randomUUID() : 'id-' + Date.now() + '-' + Math.random().toString(36).slice(2, 9));
@@ -57,6 +69,7 @@
   let lastSaved = null;
 
   function save() {
+    if (sharedMode) return; // shared view never writes to storage
     try {
       const next = JSON.stringify(db);
       if (lastSaved !== null && next !== lastSaved) {
@@ -104,6 +117,7 @@
       if (!t.id) t.id = uid();
       if (typeof t.name !== 'string' || !t.name) t.name = 'Untitled trip';
       if (!/^[A-Z]{3}$/.test(t.currency || '')) t.currency = 'USD';
+      t.budget = (t.budget != null && t.budget !== '' && !isNaN(t.budget) && Number(t.budget) >= 0) ? Number(t.budget) : null;
       if (!Array.isArray(t.items)) t.items = [];
       if (!Array.isArray(t.visaExtras)) t.visaExtras = [];
       t.visaExtras = t.visaExtras.filter(c => typeof c === 'string' && /^[A-Z]{2}$/.test(c));
@@ -117,6 +131,8 @@
         if (typeof it.endDate !== 'string') it.endDate = '';
         if (typeof it.endTime !== 'string') it.endTime = '';
         if (it.cost != null && (it.cost === '' || isNaN(it.cost))) it.cost = null;
+        if (it.costCurrency != null && !/^[A-Z]{3}$/.test(it.costCurrency)) delete it.costCurrency;
+        if (it.cost != null && it.cost !== '' && !it.costCurrency) it.costCurrency = t.currency || 'USD';
       }
     }
   }
@@ -176,6 +192,16 @@
     }
   }
 
+  // Older items carry no costCurrency (it used to mean "same as the trip
+  // currency"). Before the trip's display currency changes, pin those
+  // amounts to the currency they were entered in, so $200 stays $200 and
+  // converts, rather than silently becoming 200 of the new currency.
+  function stampCostCurrencies(trip, currentCurrency) {
+    for (const it of trip.items) {
+      if (it.cost != null && it.cost !== '' && !it.costCurrency) it.costCurrency = currentCurrency;
+    }
+  }
+
   function moneyFmt(trip) {
     try { return new Intl.NumberFormat('en-US', { style: 'currency', currency: trip.currency || 'USD', currencyDisplay: 'narrowSymbol' }); }
     catch {
@@ -184,6 +210,71 @@
     }
   }
   function fmtMoney(trip, n) { return moneyFmt(trip).format(n); }
+
+  function fmtMoneyIn(code, n) {
+    try { return new Intl.NumberFormat('en-US', { style: 'currency', currency: code || 'USD', currencyDisplay: 'narrowSymbol' }).format(n); }
+    catch {
+      try { return new Intl.NumberFormat('en-US', { style: 'currency', currency: code || 'USD' }).format(n); }
+      catch { return `${code} ${Number(n).toFixed(2)}`; }
+    }
+  }
+
+  // ---------- exchange rates (frankfurter.app, cached 24h) ----------
+  const RATES_KEY = 'trip-planner:rates:v1';
+  const RATES_TTL = 24 * 3600 * 1000;
+  let rates = null; // { base, at, rates }
+  try { rates = JSON.parse(localStorage.getItem(RATES_KEY) || 'null'); } catch { rates = null; }
+  let ratesFetching = false;
+  let ratesFailed = false;
+  let lastRateAttempt = { base: null, at: 0 };
+
+  function tripHasForeignCost(trip) {
+    const base = trip.currency || 'USD';
+    return trip.items.some(it => it.costCurrency && it.costCurrency !== base && it.cost != null);
+  }
+  // rates usable for this trip: same base, even if stale (staleness only
+  // changes the note, never fabricates a conversion)
+  function activeRates(trip) {
+    const base = trip.currency || 'USD';
+    return (rates && rates.base === base && rates.rates) ? rates : null;
+  }
+  function ensureRates(trip) {
+    const base = trip.currency || 'USD';
+    if (!tripHasForeignCost(trip)) return;
+    const have = rates && rates.base === base && rates.rates;
+    const stale = have && Date.now() - rates.at > RATES_TTL;
+    if (have && !stale) return;
+    if (ratesFetching) return;
+    // one network attempt per base per minute so keystroke re-renders (or an
+    // offline device) never hammer the endpoint
+    if (lastRateAttempt.base === base && Date.now() - lastRateAttempt.at < 60000) return;
+    lastRateAttempt = { base, at: Date.now() };
+    ratesFetching = true;
+    fetch('https://api.frankfurter.dev/v1/latest?from=' + encodeURIComponent(base))
+      .then(r => { if (!r.ok) throw new Error('http ' + r.status); return r.json(); })
+      .then(data => {
+        if (data && data.base && data.rates) {
+          rates = { base: data.base, at: Date.now(), rates: data.rates };
+          try { localStorage.setItem(RATES_KEY, JSON.stringify(rates)); } catch { /* best effort */ }
+          ratesFailed = false;
+          render();
+        }
+      })
+      .catch(() => { ratesFailed = true; render(); })
+      .finally(() => { ratesFetching = false; });
+  }
+
+  // Converted money totals in the trip currency. Returns confirmed/planned as
+  // { total, unconverted:[items] } plus a stale flag for the note.
+  function tripMoney(trip) {
+    const base = trip.currency || 'USD';
+    const ratesObj = activeRates(trip);
+    const items = trip.items.filter(it => it.status !== 'cancelled');
+    const confirmed = sumInCurrency(items.filter(it => it.status === 'booked'), base, ratesObj);
+    const planned = sumInCurrency(items, base, ratesObj);
+    const stale = !!(ratesObj && Date.now() - ratesObj.at > RATES_TTL);
+    return { confirmed, planned, base, ratesObj, stale };
+  }
 
   // ---------- validation / warnings ----------
 
@@ -236,7 +327,24 @@
         issues.push({ level: 'warn', text: `"${it.title}" is in the past but still marked "To book".`, ids: [it.id] });
       }
     }
+
+    // city changes with no flight/transport logged between them (only when
+    // both places are already geocoded, so we never touch the network here)
+    for (const g of transportGaps(trip)) {
+      if (geoResolved(g.fromLocation) && geoResolved(g.toLocation)) {
+        issues.push({
+          level: 'warn',
+          text: `No flight or transport is logged between "${g.fromLocation}" and "${g.toLocation}" (${fmtDate(g.gapStart)} to ${fmtDate(g.gapEnd)}).`,
+          ids: [g.fromId, g.toId],
+        });
+      }
+    }
     return issues;
+  }
+
+  // reads the geocode cache directly, never the network
+  function geoResolved(place) {
+    return !!geoCache[String(place || '').trim().toLowerCase()];
   }
 
   // ---------- rendering ----------
@@ -248,6 +356,7 @@
       ensureTrip();
       renderTripSelect();
       const trip = activeTrip();
+      ensureRates(trip);
       const issues = computeIssues(trip);
       renderSummary(trip, issues);
       renderStrip(trip);
@@ -255,6 +364,7 @@
       renderBoard(trip, issues);
       applyView();
       syncUndoButtons();
+      refreshDocIndicators();
     } catch (err) {
       $('#board').innerHTML = `
         <div class="error-card">
@@ -268,12 +378,16 @@
   }
 
   function applyView() {
-    const mapMode = ui.view === 'map';
-    $('#board').style.display = mapMode ? 'none' : '';
-    $('#mapBox').classList.toggle('on', mapMode);
-    $('#viewTimeline').classList.toggle('on', !mapMode);
-    $('#viewMap').classList.toggle('on', mapMode);
-    if (mapMode) renderMap();
+    const v = ui.view;
+    $('#board').style.display = v === 'timeline' ? '' : 'none';
+    $('#mapBox').classList.toggle('on', v === 'map');
+    $('#daysBox').classList.toggle('on', v === 'days');
+    $('#viewTimeline').classList.toggle('on', v === 'timeline');
+    $('#viewDays').classList.toggle('on', v === 'days');
+    $('#viewMap').classList.toggle('on', v === 'map');
+    document.body.classList.toggle('view-days', v === 'days');
+    if (v === 'map') renderMap();
+    if (v === 'days') renderDays();
   }
 
   // ---------- night coverage strip ----------
@@ -315,19 +429,31 @@
 
   function renderSummary(trip, issues) {
     const s = tripStats(trip);
+    const money = tripMoney(trip);
     const chips = [];
     if (s.start && s.end) {
       chips.push(chip('Dates', s.start === s.end ? fmtDate(s.start) : fmtRange(s.start, s.end)));
       chips.push(chip('Length', `${diffDays(s.start, s.end) + 1} days <small>/ ${s.totalTripNights} nights</small>`));
-      const until = diffDays(todayIso(), s.start);
-      if (until > 0) chips.push(chip('Countdown', `${until} day${until === 1 ? '' : 's'} to go`));
+      const phase = tripPhase(s.start, s.end, todayIso());
+      if (phase.phase === 'before') {
+        const until = diffDays(todayIso(), s.start);
+        if (until > 0) chips.push(chip('Countdown', `${until} day${until === 1 ? '' : 's'} to go`));
+      } else if (phase.phase === 'during') {
+        chips.push(chip('Progress', `Day ${phase.dayNumber} <small>of ${phase.totalDays}</small>`, 'ok-chip'));
+      } else {
+        chips.push(chip('Status', 'Trip completed'));
+      }
     }
     if (s.totalTripNights > 0) {
       const cls = s.bookedNights >= s.totalTripNights ? 'ok-chip' : '';
       chips.push(chip('Nights booked', `${s.bookedNights} <small>of ${s.totalTripNights}</small>`, cls));
     }
-    chips.push(chip('Confirmed', fmtMoney(trip, s.confirmed), 'ok-chip'));
-    if (s.planned > s.confirmed) chips.push(chip('Full plan', fmtMoney(trip, s.planned)));
+    chips.push(chip('Confirmed', fmtMoney(trip, money.confirmed.total), 'ok-chip'));
+    if (money.planned.total > money.confirmed.total) chips.push(chip('Full plan', fmtMoney(trip, money.planned.total)));
+    if (trip.budget != null) {
+      const within = money.confirmed.total <= trip.budget;
+      chips.push(chip('Budget', `${fmtMoney(trip, money.confirmed.total)} <small>of ${fmtMoney(trip, trip.budget)}</small>`, within ? 'ok-chip' : 'warn-chip'));
+    }
     const warnCount = issues.length;
     chips.push(chip('Issues', warnCount ? String(warnCount) : 'None', warnCount ? 'warn-chip' : 'ok-chip'));
     $('#summary').innerHTML = chips.join('');
@@ -390,6 +516,9 @@
       issueById[id] = issueById[id] === 'error' ? 'error' : iss.level;
     }
     const gaps = issues.filter(i => i.gap).map(i => i.gap);
+    const st = tripStats(trip);
+    const phase = (st.start && st.end) ? tripPhase(st.start, st.end, todayIso()) : { phase: 'before' };
+    const today = todayIso();
 
     const sym = currencySymbol(trip.currency);
     let html = `
@@ -413,7 +542,8 @@
       if (leg) {
         html += `<div class="leg-row"><button class="leg-btn" data-leg-from="${esc(leg.from)}" data-leg-to="${esc(leg.to)}" data-leg-date="${esc(leg.date)}">🧭 ${esc(leg.from)} → ${esc(leg.to)} · how to get there?</button></div>`;
       }
-      html += rowHtml(trip, it, issueById[it.id]);
+      const isPast = phase.phase === 'during' && isPastRow(it, today);
+      html += rowHtml(trip, it, issueById[it.id], isPast);
     }
     for (const g of gaps) {
       if (!g.rendered) html += `<div class="gap-row">⚠️ ${g.nights} night${g.nights === 1 ? '' : 's'} without a stay: ${g.nights === 1 ? fmtDate(g.start) : fmtRange(g.start, g.end)}</div>`;
@@ -423,17 +553,26 @@
       html += `<div class="empty" style="padding:36px"><p>No items match the current filters.</p></div>`;
     }
 
-    const s = tripStats(trip);
+    const money = tripMoney(trip);
     const curList = CURRENCIES.includes(trip.currency || 'USD') ? CURRENCIES : [...CURRENCIES, trip.currency];
     const curOptions = curList.map(c => `<option value="${c}" ${c === (trip.currency || 'USD') ? 'selected' : ''}>${c} (${esc(currencySymbol(c))})</option>`).join('');
+    const curDisabled = sharedMode ? 'disabled' : '';
     html += `
       <div class="totals">
-        <div class="t currency-pick"><div class="k">Currency</div><select id="currencySel" class="currency-sel" aria-label="Trip currency">${curOptions}</select></div>
-        ${s.planned > s.confirmed ? `<div class="t"><div class="k">Full plan</div><div class="v">${fmtMoney(trip, s.planned)}</div></div>` : ''}
-        <div class="t confirmed"><div class="k">Confirmed bookings</div><div class="v">${fmtMoney(trip, s.confirmed)}</div></div>
+        <div class="t currency-pick"><div class="k">Currency</div><select id="currencySel" class="currency-sel" aria-label="Trip currency" ${curDisabled}>${curOptions}</select></div>
+        ${money.planned.total > money.confirmed.total ? `<div class="t"><div class="k">Full plan</div><div class="v">${fmtMoney(trip, money.planned.total)}</div></div>` : ''}
+        <div class="t confirmed"><div class="k">Confirmed bookings</div><div class="v">${fmtMoney(trip, money.confirmed.total)}</div></div>
       </div>`;
+    const notes = moneyNotes(trip, money);
+    if (notes) html += notes;
 
     board.innerHTML = html;
+
+    if (phase.phase === 'during' && !didAutoScroll) {
+      const target = shown.find(it => isIsoDate(it.startDate) && it.startDate >= today);
+      const el = target && board.querySelector(`[data-id="${target.id}"]`);
+      if (el) { el.scrollIntoView({ block: 'center' }); didAutoScroll = true; }
+    }
 
     if (ui.flashId) {
       const el = board.querySelector(`[data-id="${ui.flashId}"]`);
@@ -442,7 +581,30 @@
     }
   }
 
-  function rowHtml(trip, it, issueLevel) {
+  // Note under the totals: which items could not be converted, and how old the
+  // rates are when we fell back to a stale cache.
+  function moneyNotes(trip, money) {
+    const parts = [];
+    const unconv = new Set([...money.confirmed.unconverted, ...money.planned.unconverted].map(i => i.id));
+    if (unconv.size) {
+      if (ratesFetching) {
+        parts.push('Fetching exchange rates...');
+      } else if (ratesFailed) {
+        parts.push('Could not fetch exchange rates, so some amounts are shown unconverted in their own currency.');
+      } else {
+        parts.push(`${unconv.size} item${unconv.size === 1 ? '' : 's'} in a currency we could not convert are shown in their own currency and are not converted into the totals.`);
+      }
+    }
+    if (money.stale && money.ratesObj) {
+      parts.push(`Rates from ${fmtDate(new Date(money.ratesObj.at).toISOString().slice(0, 10))}.`);
+    }
+    if (!parts.length) return '';
+    const retry = (ratesFailed && unconv.size && !ratesFetching)
+      ? ' <button type="button" class="btn rates-retry" id="ratesRetryBtn">Retry</button>' : '';
+    return `<div class="totals-note">${parts.map(esc).join(' ')}${retry}</div>`;
+  }
+
+  function rowHtml(trip, it, issueLevel, isPast) {
     const tm = TYPE_META[it.type] || TYPE_META.note;
     const sm = STATUS_META[it.status] || STATUS_META['to-book'];
     const n = nights(it);
@@ -464,11 +626,11 @@
     const cost = costCell(trip, it, n);
     const issueCls = issueLevel === 'error' ? 'has-err' : (issueLevel === 'warn' ? 'has-warn' : '');
     const statusSel = `
-      <select class="status-sel ${sm.cls}" data-status-for="${it.id}" aria-label="Status">
+      <select class="status-sel ${sm.cls}" data-status-for="${it.id}" aria-label="Status" ${sharedMode ? 'disabled' : ''}>
         ${Object.entries(STATUS_META).map(([k, v]) => `<option value="${k}" ${k === it.status ? 'selected' : ''}>${v.label}</option>`).join('')}
       </select>`;
     return `
-      <div class="tp-row ${issueCls} ${it.status === 'cancelled' ? 'is-cancelled' : ''}" data-id="${it.id}">
+      <div class="tp-row ${issueCls} ${it.status === 'cancelled' ? 'is-cancelled' : ''} ${isPast ? 'is-past' : ''}" data-id="${it.id}">
         <div class="c-dates">${dates}${time}</div>
         <div class="c-nights">${n ?? '-'}</div>
         <div class="c-type"><span class="type-pill ${tm.cls}">${tm.icon} ${tm.label}</span></div>
@@ -490,12 +652,297 @@
 
   function costCell(trip, it, n) {
     if (it.cost != null && it.cost !== '' && !isNaN(it.cost)) {
-      const total = fmtMoney(trip, Number(it.cost));
-      const per = n ? `<span class="per-night">${fmtMoney(trip, Number(it.cost) / n)}/night</span>` : '';
+      const base = trip.currency || 'USD';
+      const from = it.costCurrency || base;
+      const amount = Number(it.cost);
+      if (from !== base) {
+        const conv = convertAmount(amount, from, base, activeRates(trip));
+        const entered = esc(fmtMoneyIn(from, amount));
+        if (conv === null) {
+          // no rate yet: show the entered amount in its own currency only
+          return `<span class="conv-off" title="Not converted (no exchange rate)">${entered}</span>`;
+        }
+        const per = n ? `<span class="per-night">${fmtMoney(trip, conv / n)}/night</span>` : '';
+        return `${entered} <span class="conv">(~${fmtMoney(trip, conv)})</span>${per}`;
+      }
+      const total = fmtMoney(trip, amount);
+      const per = n ? `<span class="per-night">${fmtMoney(trip, amount / n)}/night</span>` : '';
       return `${total}${per}`;
     }
     if (it.costNote) return `<span class="note">${esc(it.costNote)}</span>`;
     return '<span style="color:var(--text-faint)">-</span>';
+  }
+
+  // ---------- days view ----------
+  // The non-cancelled, located stay you sleep under on a given date (its night
+  // runs [checkin, checkout)); used to attach the typical-weather line.
+  function dayNightStay(trip, date) {
+    return trip.items.find(it => isStay(it) && it.status !== 'cancelled' && (it.location || '').trim()
+      && isIsoDate(it.startDate) && isIsoDate(it.endDate) && it.startDate <= date && date < it.endDate) || null;
+  }
+
+  function dayEventHtml(ev) {
+    const it = ev.item;
+    const tm = TYPE_META[it.type] || TYPE_META.note;
+    const loc = it.location ? ` <span class="loc">· ${esc(it.location)}</span>` : '';
+    let label;
+    if (ev.kind === 'checkin') label = `<b>Check in:</b> ${esc(it.title)}${loc}`;
+    else if (ev.kind === 'checkout') label = `<b>Check out:</b> ${esc(it.title)}`;
+    else label = `<b>${esc(it.title)}</b>${loc}`;
+    const t = ev.time ? `<span class="dc-time">${esc(fmtTime(ev.time))}</span>` : '';
+    // paperclip only where docs attach once per item (skip checkout dupes)
+    const clip = ev.kind === 'checkout' ? '' : `<span class="dc-clip" data-clip-for="${it.id}" hidden>📎</span>`;
+    return `<div class="dc-event ${it.status === 'cancelled' ? 'is-cancelled' : ''}">
+      <span class="dc-ico">${tm.icon}</span>
+      <span class="dc-label">${label}${clip}</span>${t}</div>`;
+  }
+
+  function dayCardHtml(card, isToday) {
+    let body;
+    if (card.empty) body = `<div class="dc-empty">No plans yet</div>`;
+    else if (!card.events.length && card.stayingAt) body = `<div class="dc-staying">🏨 Staying in ${esc(card.stayingAt)}</div>`;
+    else body = card.events.map(dayEventHtml).join('');
+    return `
+      <div class="day-card ${isToday ? 'is-today' : ''}" data-date="${card.date}">
+        <div class="dc-head">
+          <span class="dc-day">Day ${card.dayNumber} <small>of ${card.totalDays}</small></span>
+          <span class="dc-date">${fmtDate(card.date)}</span>
+        </div>
+        <div class="dc-weather" hidden></div>
+        <div class="dc-body">${body}</div>
+      </div>`;
+  }
+
+  function renderDays() {
+    const trip = activeTrip();
+    const box = $('#daysList');
+    const cards = dayCards(trip);
+    if (!cards.length) {
+      box.innerHTML = `<div class="empty" style="padding:40px 24px"><p>Add items with dates and a day-by-day plan appears here.</p></div>`;
+      return;
+    }
+    const st = tripStats(trip);
+    const phase = (st.start && st.end) ? tripPhase(st.start, st.end, todayIso()) : { phase: 'before' };
+    const today = todayIso();
+    box.innerHTML = cards.map(c => dayCardHtml(c, phase.phase === 'during' && c.date === today)).join('');
+    loadWeatherForDays(trip);
+    refreshDocIndicators();
+  }
+
+  // ---------- typical weather (Open-Meteo archive, cached) ----------
+  const WEATHER_KEY = 'trip-planner:weather:v1';
+  let weatherCache = {};
+  try { weatherCache = JSON.parse(localStorage.getItem(WEATHER_KEY) || '{}') || {}; } catch { weatherCache = {}; }
+  const weatherInflight = new Map();
+
+  function writeWeatherSlot(slot, place, rec) {
+    const line = weatherLine(place, rec);
+    if (!line) return;
+    slot.textContent = line;
+    slot.hidden = false;
+  }
+  function applyWeather(key, place, rec) {
+    document.querySelectorAll('#daysList .dc-weather').forEach(slot => {
+      if (slot.dataset.weatherKey === key) writeWeatherSlot(slot, slot.dataset.weatherPlace || place, rec);
+    });
+  }
+
+  // For each distinct (located stay, month) pair on screen, show the cached
+  // climate line now and lazily fetch any we're missing (one call per pair).
+  function loadWeatherForDays(trip) {
+    const pairs = new Map();
+    document.querySelectorAll('#daysList .day-card').forEach(card => {
+      const date = card.dataset.date;
+      const stay = dayNightStay(trip, date);
+      if (!stay) return;
+      const place = stay.location.trim();
+      const month = Number(date.slice(5, 7));
+      const key = weatherKey(place.toLowerCase(), month);
+      const slot = card.querySelector('.dc-weather');
+      slot.dataset.weatherKey = key;
+      slot.dataset.weatherPlace = place;
+      if (!pairs.has(key)) pairs.set(key, { place, month, key, date });
+      const cached = weatherCache[key];
+      if (cached) writeWeatherSlot(slot, place, cached);
+    });
+    for (const pair of pairs.values()) {
+      if (!weatherCache[pair.key]) ensureWeather(pair);
+    }
+  }
+
+  function ensureWeather(pair) {
+    const { key, place, month, date } = pair;
+    if (weatherCache[key] || weatherInflight.has(key) || !navigator.onLine) return;
+    const p = (async () => {
+      const hit = await geocode(place);
+      if (!hit.ok) return null;
+      // typical = the SAME month one year before this trip date (archive data
+      // lags a few days, so last year is always safely available)
+      const year = Number(date.slice(0, 4)) - 1;
+      const mm = String(month).padStart(2, '0');
+      const lastDay = new Date(Date.UTC(year, month, 0)).getUTCDate();
+      const url = 'https://archive-api.open-meteo.com/v1/archive'
+        + `?latitude=${hit.lat}&longitude=${hit.lon}`
+        + `&start_date=${year}-${mm}-01&end_date=${year}-${mm}-${String(lastDay).padStart(2, '0')}`
+        + '&daily=temperature_2m_max,temperature_2m_min,precipitation_sum&timezone=auto';
+      const res = await fetch(url);
+      if (!res.ok) throw new Error('http ' + res.status);
+      const data = await res.json();
+      const daily = data && data.daily;
+      if (!daily) return null;
+      const s = summarizeClimate(daily.temperature_2m_min, daily.temperature_2m_max, daily.precipitation_sum);
+      if (s.lo == null || s.hi == null) return null;
+      const rec = { at: Date.now(), lo: s.lo, hi: s.hi, wet: s.wet };
+      weatherCache[key] = rec;
+      try { localStorage.setItem(WEATHER_KEY, JSON.stringify(weatherCache)); } catch { /* best effort */ }
+      return rec;
+    })()
+      .then(rec => { if (rec && ui.view === 'days') applyWeather(key, place, rec); return rec; })
+      .catch(() => { /* offline / geocode miss / bad response: leave the slot empty */ })
+      .finally(() => weatherInflight.delete(key));
+    weatherInflight.set(key, p);
+  }
+
+  // ---------- documents pocket (IndexedDB, device-local) ----------
+  let docsDbPromise = null;
+  function docsDb() {
+    if (!docsDbPromise) {
+      docsDbPromise = new Promise((resolve, reject) => {
+        const req = indexedDB.open('trip-planner-docs', 1);
+        req.onupgradeneeded = () => {
+          const store = req.result.createObjectStore('docs', { keyPath: 'id', autoIncrement: true });
+          store.createIndex('byItem', 'itemId');
+        };
+        req.onsuccess = () => resolve(req.result);
+        req.onerror = () => reject(req.error);
+      });
+    }
+    return docsDbPromise;
+  }
+  // Every helper issues its request in the SAME tick the transaction is
+  // created: an IndexedDB transaction auto-commits once it goes idle, so an
+  // await between `db.transaction()` and the request would kill it.
+  async function addDoc(itemId, file) {
+    const db = await docsDb();
+    return new Promise((res, rej) => {
+      const rq = db.transaction('docs', 'readwrite').objectStore('docs')
+        .add({ itemId, name: file.name, type: file.type, size: file.size, blob: file });
+      rq.onsuccess = () => res({ id: rq.result });
+      rq.onerror = () => rej(rq.error);
+    });
+  }
+  async function listDocs(itemId) {
+    const db = await docsDb();
+    return new Promise((res, rej) => {
+      const rq = db.transaction('docs', 'readonly').objectStore('docs').index('byItem').getAll(itemId);
+      rq.onsuccess = () => res(rq.result);
+      rq.onerror = () => rej(rq.error);
+    });
+  }
+  async function deleteDoc(id) {
+    const db = await docsDb();
+    return new Promise((res, rej) => {
+      const rq = db.transaction('docs', 'readwrite').objectStore('docs').delete(id);
+      rq.onsuccess = () => res();
+      rq.onerror = () => rej(rq.error);
+    });
+  }
+  async function deleteDocsForItem(itemId) {
+    const db = await docsDb();
+    return new Promise((res, rej) => {
+      const tx = db.transaction('docs', 'readwrite');
+      const store = tx.objectStore('docs');
+      const rq = store.index('byItem').getAllKeys(itemId);
+      rq.onsuccess = () => { for (const k of rq.result) store.delete(k); };
+      tx.oncomplete = () => res();
+      tx.onerror = () => rej(tx.error);
+    });
+  }
+
+  // In-memory itemId -> doc count, refreshed by one full sweep per render, then
+  // patched onto timeline rows and day cards (both may be in the DOM at once).
+  let docCounts = new Map();
+  async function refreshDocIndicators() {
+    try {
+      const db = await docsDb();
+      const all = await new Promise((res, rej) => {
+        const rq = db.transaction('docs', 'readonly').objectStore('docs').getAll();
+        rq.onsuccess = () => res(rq.result);
+        rq.onerror = () => rej(rq.error);
+      });
+      docCounts = new Map();
+      for (const d of all) docCounts.set(d.itemId, (docCounts.get(d.itemId) || 0) + 1);
+    } catch { docCounts = new Map(); }
+    applyDocIndicators();
+  }
+  function applyDocIndicators() {
+    document.querySelectorAll('.dc-clip[data-clip-for]').forEach(el => {
+      el.hidden = !(docCounts.get(el.dataset.clipFor) > 0);
+    });
+    document.querySelectorAll('#board .tp-row[data-id]').forEach(row => {
+      const title = row.querySelector('.c-title');
+      if (!title) return;
+      let clip = title.querySelector('.tp-clip');
+      const has = docCounts.get(row.dataset.id) > 0;
+      if (has && !clip) {
+        clip = document.createElement('span');
+        clip.className = 'tp-clip';
+        clip.textContent = ' 📎';
+        clip.title = 'Has attached documents';
+        title.appendChild(clip);
+      } else if (!has && clip) {
+        clip.remove();
+      }
+    });
+  }
+
+  // Object URLs for the current thumbnail list; revoked on rebuild/close.
+  let docObjectUrls = [];
+  function revokeDocUrls() { docObjectUrls.forEach(u => URL.revokeObjectURL(u)); docObjectUrls = []; }
+
+  async function renderDocsList(itemId) {
+    const list = $('#docsList');
+    revokeDocUrls();
+    const docs = await listDocs(itemId);
+    list.innerHTML = docs.map(d => {
+      let preview;
+      if ((d.type || '').startsWith('image/')) {
+        const url = URL.createObjectURL(d.blob);
+        docObjectUrls.push(url);
+        preview = `<img src="${url}" alt="">`;
+      } else {
+        preview = `<span class="doc-file">📄</span>`;
+      }
+      return `<div class="doc-thumb" data-doc-id="${d.id}">
+        <div class="doc-preview">${preview}</div>
+        <span class="doc-name">${esc(d.name)}</span>
+        <button type="button" class="doc-remove" data-doc-remove="${d.id}" aria-label="Remove ${esc(d.name)}">✕</button>
+      </div>`;
+    }).join('');
+  }
+
+  async function attachDocs(files) {
+    const itemId = ui.editingId;
+    if (!itemId || !files.length) return;
+    const errBox = $('#docsErr');
+    let count = (await listDocs(itemId)).length;
+    const problems = [];
+    let added = 0;
+    for (const f of files) {
+      const g = docGuard(count, f.size);
+      if (!g.ok) {
+        if (g.reason === 'count') { problems.push('You can attach at most 10 files to an item.'); break; }
+        problems.push(`"${f.name}" is over the 2MB limit and was not added.`);
+        continue;
+      }
+      await addDoc(itemId, f);
+      count++; added++;
+    }
+    if (problems.length) { errBox.textContent = problems.join(' '); errBox.hidden = false; }
+    else errBox.hidden = true;
+    await renderDocsList(itemId);
+    refreshDocIndicators();
+    if (added) toast(`${added} document${added === 1 ? '' : 's'} attached`);
   }
 
   // ---------- item modal ----------
@@ -515,15 +962,36 @@
     $('#inArrTime').value = it ? (it.endTime || '') : '';
     $('#inTime').value = it ? (it.startTime || '') : '';
     $('#inStatus').value = it ? it.status : 'to-book';
-    const sym = currencySymbol(activeTrip().currency);
+    const base = activeTrip().currency || 'USD';
+    const itemCur = it && it.costCurrency ? it.costCurrency : base;
+    const curList = [...new Set([...CURRENCIES, base, itemCur])];
+    $('#inCostCurrency').innerHTML = curList.map(c => `<option value="${c}">${c} (${esc(currencySymbol(c))})</option>`).join('');
+    $('#inCostCurrency').value = itemCur;
+    const sym = currencySymbol(itemCur);
     $('#costPrefix').textContent = sym;
     $('#inCost').style.paddingLeft = (sym.length > 1 ? 18 + sym.length * 9 : 34) + 'px';
     $('#inCost').value = it && it.cost != null ? it.cost : '';
     $('#inCostNote').value = it ? (it.costNote || '') : '';
     $('#inDetails').value = it ? (it.details || '') : '';
+    syncDocsSection(it);
     clearFieldErrors();
     openOverlay('#itemOverlay');
     $('#inTitle').focus();
+  }
+
+  // Documents attach to a saved item, so the section only appears when editing
+  // (never on a brand-new item, never in the read-only shared view).
+  function syncDocsSection(it) {
+    const section = $('#docsSection');
+    if (sharedMode) { section.hidden = true; return; }
+    section.hidden = false;
+    const editing = !!(it && it.id);
+    $('#docsNew').hidden = editing;
+    $('#docsExisting').hidden = !editing;
+    $('#docsErr').hidden = true;
+    revokeDocUrls();
+    if (editing) renderDocsList(it.id);
+    else $('#docsList').innerHTML = '';
   }
 
   function setModalType(t) {
@@ -559,9 +1027,13 @@
       startTime: modalType === 'stay' ? '' : $('#inTime').value,
       status: $('#inStatus').value,
       cost: $('#inCost').value === '' ? null : Number($('#inCost').value),
+      // always stamp the entered currency so a later change of the trip's
+      // display currency converts this amount instead of relabeling it
+      costCurrency: $('#inCost').value === '' ? undefined : $('#inCostCurrency').value,
       costNote: $('#inCostNote').value.trim(),
       details: $('#inDetails').value.trim(),
     };
+    if (it.costCurrency === undefined) delete it.costCurrency;
     const errs = validateItem(it);
     if (errs.title) $('#fTitle').classList.add('invalid');
     if (errs.start) $('#fStart').classList.add('invalid');
@@ -639,6 +1111,7 @@
     $('#tripSaveBtn').textContent = mode === 'new' ? 'Create trip' : 'Save';
     $('#inTripName').value = mode === 'rename' && t ? t.name : '';
     $('#inTripCurrency').value = mode === 'rename' && t ? (t.currency || 'USD') : 'USD';
+    $('#inTripBudget').value = mode === 'rename' && t && t.budget != null ? t.budget : '';
     $('#fTripName').classList.remove('invalid');
     openOverlay('#tripOverlay');
     $('#inTripName').focus();
@@ -649,14 +1122,17 @@
     const name = $('#inTripName').value.trim();
     if (!name) { $('#fTripName').classList.add('invalid'); return; }
     const currency = $('#inTripCurrency').value;
+    const rawBudget = $('#inTripBudget').value.trim();
+    const budget = rawBudget !== '' && !isNaN(rawBudget) && Number(rawBudget) >= 0 ? Number(rawBudget) : null;
     if (ui.tripModalMode === 'new') {
-      const t = { id: uid(), name, currency, items: [] };
+      const t = { id: uid(), name, currency, budget, items: [] };
       db.trips.push(t);
       db.activeTripId = t.id;
       toast(`Trip "${name}" created`);
     } else {
       const t = activeTrip();
-      t.name = name; t.currency = currency;
+      if ((t.currency || 'USD') !== currency) stampCostCurrencies(t, t.currency || 'USD');
+      t.name = name; t.currency = currency; t.budget = budget;
       toast('Trip updated');
     }
     save();
@@ -698,15 +1174,23 @@
     const t = activeTrip();
     download(`${slug(t.name)}.json`, JSON.stringify({ version: 1, trip: t }, null, 2));
   }
+  function exportIcs() {
+    const t = activeTrip();
+    download(`${slug(t.name)}.ics`, buildIcs(t), 'text/calendar');
+  }
   function exportAll() {
     download('trip-planner-backup.json', JSON.stringify(db, null, 2));
   }
   function exportCsv() {
     const t = activeTrip();
-    const cols = ['startDate', 'startTime', 'endDate', 'endTime', 'nights', 'type', 'title', 'location', 'details', 'status', 'cost', 'costNote'];
+    const base = t.currency || 'USD';
+    const ratesObj = activeRates(t);
+    const cols = ['startDate', 'startTime', 'endDate', 'endTime', 'nights', 'type', 'title', 'location', 'details', 'status', 'cost', 'costCurrency', `costIn${base}`, 'costNote'];
     const lines = [cols.join(',')];
     for (const it of sortedItems(t)) {
-      const vals = [it.startDate, it.startTime || '', it.endDate || '', it.endTime || '', nights(it) ?? '', it.type, it.title, it.location || '', it.details || '', STATUS_META[it.status]?.label || it.status, it.cost ?? '', it.costNote || ''];
+      const from = it.costCurrency || base;
+      const conv = it.cost != null ? convertAmount(Number(it.cost), from, base, ratesObj) : null;
+      const vals = [it.startDate, it.startTime || '', it.endDate || '', it.endTime || '', nights(it) ?? '', it.type, it.title, it.location || '', it.details || '', STATUS_META[it.status]?.label || it.status, it.cost ?? '', from, conv == null ? '' : conv.toFixed(2), it.costNote || ''];
       lines.push(vals.map(v => `"${String(v).replace(/"/g, '""')}"`).join(','));
     }
     download(`${slug(t.name)}.csv`, lines.join('\n'), 'text/csv');
@@ -725,13 +1209,7 @@
         let added = 0;
         for (const t of incoming) {
           if (!t || !Array.isArray(t.items)) continue;
-          const nt = {
-            id: uid(),
-            name: String(t.name || 'Imported trip').slice(0, 60),
-            currency: /^[A-Z]{3}$/.test(t.currency || '') ? t.currency : 'USD',
-            visaExtras: (Array.isArray(t.visaExtras) ? t.visaExtras : []).filter(c => typeof c === 'string' && /^[A-Z]{2}$/.test(c)),
-            items: t.items.map(sanitizeItem).filter(Boolean),
-          };
+          const nt = buildImportedTrip(t);
           db.trips.push(nt);
           db.activeTripId = nt.id;
           added++;
@@ -746,9 +1224,24 @@
     reader.readAsText(file);
   }
 
+  // shared sanitizer for both file import and share-link import: a fresh id,
+  // clamped strings, and the visaExtras/budget/currency shape the app expects
+  function buildImportedTrip(t) {
+    const nt = {
+      id: uid(),
+      name: String(t.name || 'Imported trip').slice(0, 60),
+      currency: /^[A-Z]{3}$/.test(t.currency || '') ? t.currency : 'USD',
+      budget: (t.budget != null && t.budget !== '' && !isNaN(t.budget) && Number(t.budget) >= 0) ? Number(t.budget) : null,
+      visaExtras: (Array.isArray(t.visaExtras) ? t.visaExtras : []).filter(c => typeof c === 'string' && /^[A-Z]{2}$/.test(c)),
+      items: t.items.map(sanitizeItem).filter(Boolean),
+    };
+    stampCostCurrencies(nt, nt.currency);
+    return nt;
+  }
+
   function sanitizeItem(raw) {
     if (!raw || typeof raw !== 'object') return null;
-    return {
+    const out = {
       id: uid(),
       type: TYPE_META[raw.type] ? raw.type : 'note',
       title: String(raw.title || '').slice(0, 120),
@@ -763,6 +1256,114 @@
       details: String(raw.details || '').slice(0, 500),
       createdAt: new Date().toISOString(),
     };
+    if (/^[A-Z]{3}$/.test(raw.costCurrency || '')) out.costCurrency = raw.costCurrency;
+    else if (out.cost != null) out.costCurrency = undefined; // stamped by the caller with the trip currency
+    return out;
+  }
+
+  // ---------- share link ----------
+  const SHARE_PREFIX = '#share=';
+
+  function shareBaseUrl() {
+    const host = location.hostname;
+    const local = host === 'localhost' || host === '127.0.0.1' || host === '' || host.endsWith('.local');
+    return local ? location.href.split('#')[0] : 'https://shevato.com/apps/trip-planner/';
+  }
+
+  async function streamThrough(Ctor, bytes) {
+    const s = new Ctor('deflate');
+    const writer = s.writable.getWriter();
+    writer.write(bytes);
+    writer.close();
+    const ab = await new Response(s.readable).arrayBuffer();
+    return new Uint8Array(ab);
+  }
+
+  async function shareTrip() {
+    if (typeof CompressionStream === 'undefined') { toast('Sharing is not supported in this browser'); return; }
+    const t = activeTrip();
+    const json = JSON.stringify({ version: 1, trip: t });
+    const compressed = await streamThrough(CompressionStream, new TextEncoder().encode(json));
+    const url = shareBaseUrl() + SHARE_PREFIX + bytesToBase64url(compressed);
+    if (url.length > 8000) { toast('This trip is too large to share by link. Use Export trip (JSON) instead.'); return; }
+    try {
+      await navigator.clipboard.writeText(url);
+      toast('Share link copied to clipboard');
+    } catch {
+      window.prompt('Copy this share link:', url);
+    }
+  }
+
+  async function decodeShare(hash) {
+    if (typeof DecompressionStream === 'undefined') { toast('Sharing is not supported in this browser'); return null; }
+    try {
+      const bytes = base64urlToBytes(hash.slice(SHARE_PREFIX.length));
+      const out = await streamThrough(DecompressionStream, bytes);
+      const parsed = JSON.parse(new TextDecoder().decode(out));
+      const trip = parsed && parsed.trip;
+      if (!trip || !Array.isArray(trip.items)) throw new Error('bad payload');
+      return trip;
+    } catch { toast('This share link could not be opened'); return null; }
+  }
+
+  async function enterSharedMode() {
+    const trip = await decodeShare(location.hash);
+    if (!trip) {
+      history.replaceState(null, '', location.pathname + location.search);
+      ensureTrip();
+      if (lastSaved === null) lastSaved = JSON.stringify(db);
+      render();
+      return;
+    }
+    realDb = db;
+    sharedMode = true;
+    const st = buildImportedTrip(trip);
+    sharedTrip = st;
+    db = { version: 1, activeTripId: st.id, trips: [st] };
+    document.body.classList.add('tp-shared');
+    render();
+    showSharedBanner(st);
+  }
+
+  function showSharedBanner(trip) {
+    let b = $('#sharedBanner');
+    if (!b) {
+      b = document.createElement('div');
+      b.id = 'sharedBanner';
+      b.className = 'shared-banner';
+      const wrap = document.querySelector('.tp-wrap');
+      wrap.insertBefore(b, wrap.firstChild);
+    }
+    b.innerHTML = `
+      <span class="sb-text">👀 You're viewing a shared copy of "${esc(trip.name)}"</span>
+      <span class="sb-actions">
+        <button type="button" class="btn primary" id="sharedImport">Import as my trip</button>
+        <button type="button" class="btn" id="sharedDismiss">Dismiss</button>
+      </span>`;
+    $('#sharedImport').addEventListener('click', importSharedTrip);
+    $('#sharedDismiss').addEventListener('click', dismissShared);
+  }
+
+  function importSharedTrip() {
+    const nt = buildImportedTrip(sharedTrip);
+    db = realDb;
+    realDb = null;
+    sharedMode = false;
+    if (lastSaved === null) lastSaved = JSON.stringify(db);
+    db.trips.push(nt);
+    db.activeTripId = nt.id;
+    save();
+    history.replaceState(null, '', location.pathname + location.search);
+    document.body.classList.remove('tp-shared');
+    const b = $('#sharedBanner');
+    if (b) b.remove();
+    render();
+    toast(`Imported "${nt.name}"`);
+  }
+
+  function dismissShared() {
+    history.replaceState(null, '', location.pathname + location.search);
+    location.reload();
   }
 
   // ---------- sample ----------
@@ -1156,12 +1757,16 @@
       const wiki = 'https://en.wikipedia.org/wiki/Special:Search?search=' + encodeURIComponent('Visa policy of ' + d.name);
       const sub = d.manual ? 'added manually · transit / overland' : d.places.join(', ');
       const remove = d.manual ? `<button type="button" class="visa-remove" data-remove-cc="${d.cc}" title="Remove ${esc(d.name)}" aria-label="Remove ${esc(d.name)}">✕</button>` : '';
+      const remind = (info.cls === 'evisa' || info.cls === 'required')
+        ? `<button type="button" class="row-btn visa-remind" data-remind-cc="${d.cc}" data-remind-name="${esc(d.name)}">➕ Add reminder</button>`
+        : '';
       return `
         <div class="visa-row">
           <span class="visa-flag">${flagEmoji(d.cc)}</span>
           <span class="visa-name">${esc(d.name)}<small>${esc(sub)}</small></span>
           <span class="visa-pill vp-${info.cls}">${esc(info.label)}</span>
           <a class="visa-verify" href="${wiki}" target="_blank" rel="noopener">verify ↗</a>
+          ${remind}
           ${remove}
         </div>`;
     }).join('');
@@ -1191,6 +1796,7 @@
   }
   function closeOverlays() {
     const wasOpen = document.querySelector('.overlay.open');
+    if (wasOpen && wasOpen.id === 'itemOverlay') revokeDocUrls();
     document.querySelectorAll('.overlay.open').forEach(o => o.classList.remove('open'));
     document.body.classList.remove('tp-modal-open');
     ui.confirmAction = null;
@@ -1249,6 +1855,8 @@
     renderVisaRows();
   });
   $('#visaResults').addEventListener('click', e => {
+    const rem = e.target.closest('button[data-remind-cc]');
+    if (rem) { addVisaReminder(rem.dataset.remindName); return; }
     const btn = e.target.closest('button[data-remove-cc]');
     if (!btn) return;
     const trip = activeTrip();
@@ -1256,9 +1864,27 @@
     save();
     renderVisaRows();
   });
+
+  function addVisaReminder(country) {
+    const trip = activeTrip();
+    const title = `Apply for ${country} visa`;
+    if (trip.items.some(it => it.title === title)) { toast('Reminder already added'); return; }
+    const start = tripStats(trip).start;
+    trip.items.push({
+      id: uid(), type: 'note', title, status: 'to-book', location: country,
+      startDate: isIsoDate(start) ? addDays(start, -30) : '',
+      endDate: '', startTime: '', endTime: '', cost: null, costNote: '', details: '',
+      createdAt: new Date().toISOString(),
+    });
+    save();
+    toast(`Reminder added: ${title}`);
+    render();
+    renderVisaRows();
+  }
   $('#undoBtn').addEventListener('click', undo);
   $('#redoBtn').addEventListener('click', redo);
   $('#viewTimeline').addEventListener('click', () => { ui.view = 'timeline'; applyView(); });
+  $('#viewDays').addEventListener('click', () => { ui.view = 'days'; applyView(); });
   $('#viewMap').addEventListener('click', () => { ui.view = 'map'; applyView(); });
   $('#routeForm').addEventListener('submit', e => { e.preventDefault(); checkRoute(); });
   $('#routeSwap').addEventListener('click', () => {
@@ -1275,11 +1901,30 @@
     if (cell) { ui.view = 'timeline'; ui.flashId = cell.dataset.goto; render(); }
   });
   $('#itemForm').addEventListener('submit', submitItemForm);
+  $('#docsAttachBtn').addEventListener('click', () => $('#inDocs').click());
+  $('#inDocs').addEventListener('change', e => {
+    const files = [...e.target.files];
+    e.target.value = '';
+    attachDocs(files);
+  });
+  $('#docsList').addEventListener('click', async e => {
+    const btn = e.target.closest('button[data-doc-remove]');
+    if (!btn || !ui.editingId) return;
+    await deleteDoc(Number(btn.dataset.docRemove));
+    await renderDocsList(ui.editingId);
+    refreshDocIndicators();
+    toast('Document removed');
+  });
   $('#shiftForm').addEventListener('submit', submitShiftForm);
   $('#tripForm').addEventListener('submit', submitTripForm);
   $('#typePicker').addEventListener('click', e => {
     const b = e.target.closest('button[data-type]');
     if (b) setModalType(b.dataset.type);
+  });
+  $('#inCostCurrency').addEventListener('change', () => {
+    const sym = currencySymbol($('#inCostCurrency').value);
+    $('#costPrefix').textContent = sym;
+    $('#inCost').style.paddingLeft = (sym.length > 1 ? 18 + sym.length * 9 : 34) + 'px';
   });
   $('#shiftMinus').addEventListener('click', () => { $('#shiftDays').value = (parseInt($('#shiftDays').value, 10) || 0) - 1; });
   $('#shiftPlus').addEventListener('click', () => { $('#shiftDays').value = (parseInt($('#shiftDays').value, 10) || 0) + 1; });
@@ -1297,12 +1942,16 @@
     if (!b) return;
     $('#tripMenu').classList.remove('open');
     const act = b.dataset.act;
+    // shared view is read-only: only the export/share actions are allowed
+    if (sharedMode && !['export-trip', 'export-csv', 'export-ics', 'export-all', 'share-trip'].includes(act)) return;
     if (act === 'new-trip') openTripModal('new');
     else if (act === 'rename-trip') openTripModal('rename');
     else if (act === 'duplicate-trip') duplicateTrip();
     else if (act === 'export-trip') exportTrip();
     else if (act === 'export-csv') exportCsv();
+    else if (act === 'export-ics') exportIcs();
     else if (act === 'export-all') exportAll();
+    else if (act === 'share-trip') shareTrip();
     else if (act === 'import') $('#importFile').click();
     else if (act === 'timefmt') {
       use24h = !use24h;
@@ -1314,6 +1963,7 @@
     else if (act === 'delete-trip') {
       const t = activeTrip();
       confirmDialog('Delete this trip?', `"${t.name}" and its ${t.items.length} item(s) will be permanently deleted.`, 'Delete trip', () => {
+        for (const it of t.items) deleteDocsForItem(it.id);
         db.trips = db.trips.filter(x => x.id !== t.id);
         db.activeTripId = db.trips.length ? db.trips[0].id : null;
         save(); render();
@@ -1348,6 +1998,12 @@
   });
 
   $('#board').addEventListener('click', e => {
+    if (e.target.id === 'ratesRetryBtn') {
+      lastRateAttempt = { base: '', at: 0 };
+      ratesFailed = false;
+      render();
+      return;
+    }
     const legBtn = e.target.closest('button[data-leg-from]');
     if (legBtn) { openRouteModal(legBtn.dataset.legFrom, legBtn.dataset.legTo, legBtn.dataset.legDate); return; }
     const btn = e.target.closest('button[data-act]');
@@ -1367,6 +2023,20 @@
       save(); ui.flashId = copy.id; render();
       toast('Item duplicated');
     } else if (act === 'delete') {
+      // Items with attached documents can't use the quick undo path: the docs
+      // live in IndexedDB and undo restores only the item, so require a
+      // confirm and warn that the documents are gone for good.
+      if ((docCounts.get(id) || 0) > 0) {
+        confirmDialog('Delete this item?', `"${it.title}" will be permanently deleted. Attached documents cannot be recovered.`, 'Delete item', () => {
+          const idx = trip.items.findIndex(x => x.id === id);
+          if (idx < 0) return;
+          trip.items.splice(idx, 1);
+          deleteDocsForItem(id);
+          save(); render();
+          toast(`Deleted "${it.title}"`);
+        });
+        return;
+      }
       const idx = trip.items.findIndex(x => x.id === id);
       lastDeleted = { item: it, idx, tripId: trip.id };
       trip.items.splice(idx, 1);
@@ -1381,10 +2051,11 @@
   $('#board').addEventListener('change', e => {
     if (e.target.id === 'currencySel') {
       const trip = activeTrip();
+      stampCostCurrencies(trip, trip.currency || 'USD');
       trip.currency = e.target.value;
       save();
       render();
-      toast(`Costs now shown in ${trip.currency} (${currencySymbol(trip.currency)})`);
+      toast(`Costs now shown in ${trip.currency} (${currencySymbol(trip.currency)}); amounts keep their entered currency and convert`);
       return;
     }
     const sel = e.target.closest('select[data-status-for]');
@@ -1394,6 +2065,7 @@
   });
 
   $('#board').addEventListener('dblclick', e => {
+    if (sharedMode) return;
     const row = e.target.closest('.tp-row');
     if (row && !e.target.closest('select, button, a')) openItemModal(row.dataset.id);
   });
@@ -1443,6 +2115,7 @@
   // localStorage. Reload state from disk and re-render; gate on
   // source === 'remote' so our own writes don't echo.
   window.addEventListener('localStorageSync', (e) => {
+    if (sharedMode) return; // never let a remote change overwrite the shared view
     const key = e.detail && e.detail.key;
     if (typeof key !== 'string' || !key.startsWith('trip-planner:')) return;
     if (!e.detail || e.detail.source !== 'remote') return;
@@ -1465,10 +2138,18 @@
     }
   });
 
+  const buildTag = $('#buildTag');
+  if (buildTag) buildTag.textContent = 'build ' + TP_BUILD;
+  window.__TP_BUILD = TP_BUILD;
+
   // ---------- boot ----------
   syncTimefmtLabel();
   repairDb();
-  ensureTrip();
-  if (lastSaved === null) lastSaved = JSON.stringify(db);
-  render();
+  if (location.hash.startsWith(SHARE_PREFIX)) {
+    enterSharedMode();
+  } else {
+    ensureTrip();
+    if (lastSaved === null) lastSaved = JSON.stringify(db);
+    render();
+  }
 })();

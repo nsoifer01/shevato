@@ -39,9 +39,11 @@
 
   <title>Trip Planner - Free Itinerary Builder with Route Map & Cost Tracking | Shevato</title>
   <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🧭</text></svg>">
+  <link rel="manifest" href="manifest.webmanifest">
+  <meta name="theme-color" content="#0e1116">
   <link rel="stylesheet" href="../../assets/css/main.css">
   <link rel="stylesheet" href="../../assets/css/sync-status.css">
-  <link rel="stylesheet" href="css/styles.css?v=10">
+  <link rel="stylesheet" href="css/styles.css?v=14">
 </head>
 <body class="trip-planner-app">
   <div id="sync-banner" class="sync-banner" role="status" aria-live="polite" hidden></div>
@@ -68,7 +70,9 @@
           <div class="sep"></div>
           <button data-act="export-trip">⬇️ Export trip (JSON)</button>
           <button data-act="export-csv">⬇️ Export trip (CSV)</button>
+          <button data-act="export-ics">⬇️ Export trip (.ics)</button>
           <button data-act="export-all">⬇️ Backup all trips</button>
+          <button data-act="share-trip">🔗 Share itinerary</button>
           <button data-act="import">⬆️ Import JSON</button>
           <div class="sep"></div>
           <button data-act="timefmt" id="timefmtBtn">🕐 Use 24-hour times</button>
@@ -113,6 +117,7 @@
     <span class="tb-sep" aria-hidden="true"></span>
     <span class="view-switch" role="tablist">
       <button id="viewTimeline" class="on">Timeline</button>
+      <button id="viewDays">Days</button>
       <button id="viewMap">Map</button>
     </span>
     <div class="tb-group tb-filters" role="group" aria-label="Search and filters">
@@ -144,6 +149,10 @@
 
   <div class="board" id="board"></div>
 
+  <div class="days-box" id="daysBox">
+    <div class="days-list" id="daysList"></div>
+  </div>
+
   <div class="map-box" id="mapBox">
     <div class="map-status" id="mapStatus"></div>
     <div id="mapCanvas"></div>
@@ -152,6 +161,7 @@
   <footer class="page-foot">
     <span>Everything is saved locally in this browser as you type.</span>
     <span>Use "Backup all trips" before clearing browser data.</span>
+    <span id="buildTag" class="build-tag"></span>
   </footer>
 </div>
 
@@ -217,9 +227,12 @@
       </div>
       <div class="field" id="fCost">
         <label>Cost</label>
-        <div class="cost-input-wrap">
-          <span class="cost-prefix" id="costPrefix" aria-hidden="true">$</span>
-          <input type="number" id="inCost" min="0" step="0.01" inputmode="decimal" placeholder="0.00">
+        <div class="cost-row">
+          <div class="cost-input-wrap">
+            <span class="cost-prefix" id="costPrefix" aria-hidden="true">$</span>
+            <input type="number" id="inCost" min="0" step="0.01" inputmode="decimal" placeholder="0.00">
+          </div>
+          <select id="inCostCurrency" class="cost-cur-sel" aria-label="Cost currency"></select>
         </div>
         <div class="err">Cost cannot be negative.</div>
       </div>
@@ -231,6 +244,17 @@
     <div class="field">
       <label>Details <small style="font-weight:400">(optional)</small></label>
       <textarea id="inDetails" maxlength="500" placeholder="Hotel name, confirmation number, terminal, links..."></textarea>
+    </div>
+    <div class="field" id="docsSection">
+      <label>Documents</label>
+      <div class="docs-hint" id="docsNew" hidden>Save the item first, then attach documents.</div>
+      <div id="docsExisting" hidden>
+        <input type="file" id="inDocs" accept="image/*,application/pdf" multiple hidden>
+        <button type="button" class="btn" id="docsAttachBtn">📎 Attach files</button>
+        <div class="docs-list" id="docsList"></div>
+        <div class="docs-err" id="docsErr" hidden></div>
+        <div class="hint">Stored only on this device. Not included in exports or sync. Undoing a delete does not bring documents back.</div>
+      </div>
     </div>
     <div class="modal-foot">
       <button type="button" class="btn left" data-close>Cancel</button>
@@ -289,6 +313,10 @@
         <option value="CAD">CAD ($)</option>
         <option value="AUD">AUD ($)</option>
       </select>
+    </div>
+    <div class="field">
+      <label>Budget <small style="font-weight:400">(optional)</small></label>
+      <input type="number" id="inTripBudget" min="0" step="0.01" inputmode="decimal" placeholder="e.g. 3000">
     </div>
     <div class="modal-foot">
       <button type="button" class="btn left" data-close>Cancel</button>
@@ -382,7 +410,18 @@
   <!-- Site main JS: injects header/footer partials and mounts the auth UI -->
   <script src="../../assets/js/main.js"></script>
 
-  <script src="js/trip-logic.js?v=2"></script>
-  <script src="js/app.js?v=10"></script>
+  <!-- Register the service worker so the app shell + logic + CSS are cached
+       on first load and the planner keeps working offline. -->
+  <script>
+    if ('serviceWorker' in navigator) {
+      window.addEventListener('load', function () {
+        navigator.serviceWorker.register('sw.js', { scope: '/apps/trip-planner/' })
+          .catch(function () { /* registration is best-effort */ });
+      });
+    }
+  </script>
+
+  <script src="js/trip-logic.js?v=4"></script>
+  <script src="js/app.js?v=15"></script>
 </body>
 </html>

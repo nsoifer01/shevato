@@ -22,7 +22,18 @@ The only network calls are opt-in and key-free: place lookup via OpenStreetMap N
 | Shift dates | Move one item, everything after it, or the whole trip by N days in one action |
 | Route map | Numbered stops in visit order connected by a dashed route line (Leaflet + OSM, dark-mode tiles) |
 | How to get there | Between consecutive stays in different places: distance (km/mi), compass heading, international-border flag, per-mode duration estimates, and pre-filled links to Google transit/driving, Google Flights and Rome2Rio |
-| Import / export | JSON per trip, full backup of all trips, CSV export; import accepts trip files or full backups |
+| Import / export | JSON per trip, full backup of all trips, CSV export (includes per-item currency + converted columns); import accepts trip files or full backups. Attached documents are never included in exports |
+| Calendar export | Export trip (.ics) in the trip menu: stays as all-day ranges, flights/transport as floating local-time events (overnight arrivals land on the right day), cancelled items excluded; imports into Google/Apple Calendar |
+| Installable PWA | manifest.webmanifest + sw.js (network-first: online loads always get the newest code; caches are an offline fallback only); timeline works offline after one visit, external APIs are never intercepted |
+| Days view | Third view tab: one card per trip day with check-ins, check-outs, timed events, "Staying in X" and honest "No plans yet" days; today highlighted; print-friendly (printing in Days view outputs just the cards) |
+| Budget | Optional per-trip budget in the trip dialog; summary chip shows confirmed-vs-budget and turns amber when exceeded |
+| Multi-currency costs | Each item's cost can be entered in its own currency and converts into the trip's display currency using daily rates (api.frankfurter.dev, cached 24h); switching the display currency converts, never relabels; failed rate fetches show a note + Retry instead of fake 1:1 rates |
+| Share link | Share itinerary produces a URL with the whole trip compressed into the fragment (no server); it opens read-only with a banner and an "Import as my trip" action |
+| Continuity warnings | Consecutive stays in different (geocoded) cities with no flight/transport between them raise a warning naming both cities |
+| Typical weather | Day cards show "Typically X-Y°C in {place} this time of year" from Open-Meteo history (cached per place+month); always "typically", never a forecast |
+| Visa reminders | Visa rows marked e-Visa/visa required offer "Add reminder", creating an "Apply for {country} visa" to-book item dated 30 days before the trip |
+| Documents pocket | Attach images/PDFs (booking confirmations, QR codes) to saved items; stored on-device in IndexedDB (2MB/file, 10/item), paperclip indicators, purged with the item, excluded from exports and sync |
+| Trip-in-progress | During the trip the countdown chip becomes "Day X of Y", past rows dim, and the page opens scrolled to today; afterwards it reads "Trip completed" |
 | Visa requirements | 🛂 Visas: pick your passport once (saved) and every country on the itinerary shows its requirement (visa-free with days, visa on arrival, e-Visa/eTA, visa required), derived live from the geocoded places via the community Passport Index dataset (cached monthly), with per-country Wikipedia verify links and an always-verify-officially caveat; countries can also be added manually (layovers, border crossings, road trips), stored per trip and removable |
 | Settings | 12/24-hour time format (saved and synced), dark/light theme |
 | Cloud sync | Optional: sign in via the site header and trips/preferences sync across devices via Firestore (`sync-system/`), same as the other apps |
@@ -32,9 +43,13 @@ The only network calls are opt-in and key-free: place lookup via OpenStreetMap N
 ```
 apps/trip-planner/
 ├── index.html            # App shell (shared site header/footer + app markup)
+├── manifest.webmanifest  # PWA manifest (installable, standalone)
+├── sw.js                 # Service worker: network-first, offline fallback caches
 ├── css/styles.css        # All styles, scoped under body.trip-planner-app
-├── js/trip-logic.js      # Pure logic: dates, validation, coverage, stats, route math
-├── js/app.js             # UI: rendering, modals, storage, geocoding, map
+├── js/trip-logic.js      # Pure logic: dates, validation, coverage, stats, route,
+│                         #   ICS builder, currency math, day cards, visa + doc guards
+├── js/app.js             # UI: rendering, modals, storage, geocoding, map, sync,
+│                         #   share links, IndexedDB documents, weather, rates
 └── tests/trip-logic.test.js
 ```
 

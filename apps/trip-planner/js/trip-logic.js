@@ -190,6 +190,260 @@ const TripLogic = (() => {
     return { cls: 'unknown', label: 'Check requirements' };
   }
 
+  // ---------- ICS calendar export ----------
+  const ICS_STATUS = { booked: 'Booked', 'to-book': 'To book', decide: 'Decide later', cancelled: 'Cancelled' };
+
+  // RFC 5545 text escaping: backslash, semicolon, comma and newlines.
+  function icsEscapeText(s) {
+    return String(s == null ? '' : s)
+      .replace(/\\/g, '\\\\')
+      .replace(/;/g, '\\;')
+      .replace(/,/g, '\\,')
+      .replace(/\r?\n/g, '\\n');
+  }
+
+  function icsEvent(it) {
+    if (!isIsoDate(it.startDate)) return null;
+    const compact = d => d.replace(/-/g, '');
+    const lines = ['BEGIN:VEVENT', `UID:${it.id}@trip-planner.shevato.com`];
+    const timed = (it.type === 'flight' || it.type === 'transport') && /^\d{2}:\d{2}$/.test(it.startTime || '');
+    if (isStay(it)) {
+      // all-day, exclusive end (matches the app's night semantics)
+      const end = isIsoDate(it.endDate) && diffDays(it.startDate, it.endDate) > 0 ? it.endDate : addDays(it.startDate, 1);
+      lines.push(`DTSTART;VALUE=DATE:${compact(it.startDate)}`);
+      lines.push(`DTEND;VALUE=DATE:${compact(end)}`);
+    } else if (timed) {
+      // timed floating event (no Z, no TZID): the traveller's local wall clock
+      const st = `${compact(it.startDate)}T${it.startTime.replace(':', '')}00`;
+      lines.push(`DTSTART:${st}`);
+      if (isIsoDate(it.endDate) && /^\d{2}:\d{2}$/.test(it.endTime || '')) {
+        lines.push(`DTEND:${compact(it.endDate)}T${it.endTime.replace(':', '')}00`);
+      } else {
+        lines.push(`DTEND:${st}`);
+      }
+    } else {
+      // untimed: single all-day event
+      lines.push(`DTSTART;VALUE=DATE:${compact(it.startDate)}`);
+      lines.push(`DTEND;VALUE=DATE:${compact(addDays(it.startDate, 1))}`);
+    }
+    lines.push(`SUMMARY:${icsEscapeText(it.title)}`);
+    if (it.location) lines.push(`LOCATION:${icsEscapeText(it.location)}`);
+    const descParts = [];
+    if (it.details) descParts.push(it.details);
+    descParts.push('Status: ' + (ICS_STATUS[it.status] || it.status || ''));
+    if (it.costNote) descParts.push(it.costNote);
+    lines.push(`DESCRIPTION:${icsEscapeText(descParts.join('\n'))}`);
+    lines.push('END:VEVENT');
+    return lines;
+  }
+
+  // Builds a VCALENDAR string with CRLF line endings (RFC 5545 requires them
+  // inside the file content; this is the generated STRING, not a source file).
+  function buildIcs(trip) {
+    const out = [
+      'BEGIN:VCALENDAR', 'VERSION:2.0', 'PRODID:-//Shevato//Trip Planner//EN',
+      `X-WR-CALNAME:${icsEscapeText(trip.name || 'Trip')}`,
+    ];
+    for (const it of sortedItems(trip)) {
+      if (!it || it.status === 'cancelled') continue;
+      const ev = icsEvent(it);
+      if (ev) out.push(...ev);
+    }
+    out.push('END:VCALENDAR');
+    return out.join('\r\n') + '\r\n';
+  }
+
+  // ---------- currency conversion ----------
+  // ratesObj = { base, rates } where rates[X] = units of X per 1 base unit
+  // (the shape frankfurter.app returns for ?from=<base>). Returns null when a
+  // needed rate is missing so callers can flag the amount as unconverted.
+  function convertAmount(amount, from, to, ratesObj) {
+    if (from === to) return amount;
+    if (!ratesObj || !ratesObj.rates) return null;
+    const base = ratesObj.base, table = ratesObj.rates;
+    const inBase = from === base ? amount : (table[from] != null ? amount / table[from] : null);
+    if (inBase === null) return null;
+    if (to === base) return inBase;
+    if (table[to] == null) return null;
+    return inBase * table[to];
+  }
+
+  // Sums item costs into toCurrency. Items whose currency cannot be converted
+  // are collected in `unconverted` and left out of the total (never a 1:1 fake).
+  function sumInCurrency(items, toCurrency, ratesObj) {
+    let total = 0;
+    const unconverted = [];
+    for (const it of items) {
+      if (it.cost == null || it.cost === '' || isNaN(it.cost)) continue;
+      const from = it.costCurrency || toCurrency;
+      const c = convertAmount(Number(it.cost), from, toCurrency, ratesObj);
+      if (c === null) unconverted.push(it);
+      else total += c;
+    }
+    return { total, unconverted };
+  }
+
+  // ---------- base64url (share links) ----------
+  const B64URL = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_';
+  function bytesToBase64url(bytes) {
+    let out = '';
+    for (let i = 0; i < bytes.length; i += 3) {
+      const b0 = bytes[i], b1 = bytes[i + 1], b2 = bytes[i + 2];
+      const has1 = i + 1 < bytes.length, has2 = i + 2 < bytes.length;
+      out += B64URL[b0 >> 2];
+      out += B64URL[((b0 & 3) << 4) | (has1 ? b1 >> 4 : 0)];
+      if (has1) out += B64URL[((b1 & 15) << 2) | (has2 ? b2 >> 6 : 0)];
+      if (has2) out += B64URL[b2 & 63];
+    }
+    return out;
+  }
+  function base64urlToBytes(str) {
+    const lookup = {};
+    for (let i = 0; i < B64URL.length; i++) lookup[B64URL[i]] = i;
+    const bytes = [];
+    for (let i = 0; i < str.length; i += 4) {
+      const c0 = lookup[str[i]], c1 = lookup[str[i + 1]];
+      const c2 = str[i + 2] !== undefined ? lookup[str[i + 2]] : undefined;
+      const c3 = str[i + 3] !== undefined ? lookup[str[i + 3]] : undefined;
+      bytes.push((c0 << 2) | (c1 >> 4));
+      if (c2 !== undefined) bytes.push(((c1 & 15) << 4) | (c2 >> 2));
+      if (c3 !== undefined) bytes.push(((c2 & 3) << 6) | c3);
+    }
+    return new Uint8Array(bytes);
+  }
+
+  // ---------- continuity gaps ----------
+  // Consecutive non-cancelled stays in different cities (the tripLegs pairing)
+  // with no non-cancelled flight/transport dated inside [from.endDate, to.startDate].
+  function transportGaps(trip) {
+    const stays = sortedItems(trip).filter(it => isStay(it) && it.status !== 'cancelled' && (it.location || '').trim());
+    const transports = trip.items.filter(it => (it.type === 'flight' || it.type === 'transport') && it.status !== 'cancelled');
+    const gaps = [];
+    for (let i = 1; i < stays.length; i++) {
+      const from = stays[i - 1], to = stays[i];
+      if (from.location.trim().toLowerCase() === to.location.trim().toLowerCase()) continue;
+      const gapStart = from.endDate, gapEnd = to.startDate;
+      if (!isIsoDate(gapStart) || !isIsoDate(gapEnd)) continue;
+      const covered = transports.some(tr => {
+        const inRange = d => isIsoDate(d) && d >= gapStart && d <= gapEnd;
+        return inRange(tr.startDate) || inRange(tr.endDate);
+      });
+      if (!covered) {
+        gaps.push({
+          fromId: from.id, toId: to.id,
+          fromLocation: from.location.trim(), toLocation: to.location.trim(),
+          gapStart, gapEnd,
+        });
+      }
+    }
+    return gaps;
+  }
+
+  // ---------- trip-in-progress ----------
+  function tripPhase(startDate, endDate, todayStr) {
+    if (!isIsoDate(startDate) || !isIsoDate(endDate) || !isIsoDate(todayStr)) {
+      return { phase: 'before', dayNumber: 0, totalDays: 0 };
+    }
+    const totalDays = diffDays(startDate, endDate) + 1;
+    if (todayStr < startDate) return { phase: 'before', dayNumber: 0, totalDays };
+    if (todayStr > endDate) return { phase: 'after', dayNumber: totalDays, totalDays };
+    return { phase: 'during', dayNumber: diffDays(startDate, todayStr) + 1, totalDays };
+  }
+
+  // A row is "past" when its whole span is behind today: stays by check-out,
+  // everything else by its end (or start when it has no end).
+  function isPastRow(it, todayStr) {
+    if (!isIsoDate(todayStr)) return false;
+    if (isStay(it)) return isIsoDate(it.endDate) && it.endDate < todayStr;
+    const end = isIsoDate(it.endDate) ? it.endDate : it.startDate;
+    return isIsoDate(end) && end < todayStr;
+  }
+
+  // ---------- day-by-day cards ----------
+  // One card per calendar date from the trip's first dated item to its last,
+  // inclusive. Stays split into a 'checkin' event on their start date and a
+  // separate 'checkout' event on their end date; a date sitting fully inside a
+  // stay with nothing else scheduled reports where you're staying; a date with
+  // neither is empty. Cancelled items are kept (with their status) so the day
+  // view mirrors the timeline.
+  const EVENT_KIND_ORDER = { checkout: 0, item: 1, checkin: 2 };
+  function eventSortKey(ev) {
+    const t = ev.time || '99:99';
+    const typeOrd = TYPE_ORDER[ev.item.type] !== undefined ? TYPE_ORDER[ev.item.type] : 9;
+    return `${t}|${typeOrd}|${EVENT_KIND_ORDER[ev.kind]}|${ev.item.createdAt || ''}`;
+  }
+  function dayCards(trip) {
+    const stats = tripStats(trip);
+    if (!isIsoDate(stats.start) || !isIsoDate(stats.end)) return [];
+    const totalDays = diffDays(stats.start, stats.end) + 1;
+    const items = trip.items || [];
+    const cards = [];
+    for (let d = stats.start, i = 0; d <= stats.end; d = addDays(d, 1), i++) {
+      const events = [];
+      for (const it of items) {
+        if (isStay(it)) {
+          if (it.startDate === d) events.push({ kind: 'checkin', item: it, time: '' });
+          if (isIsoDate(it.endDate) && it.endDate === d) events.push({ kind: 'checkout', item: it, time: '' });
+        } else if (it.startDate === d) {
+          events.push({ kind: 'item', item: it, time: it.startTime || '' });
+        }
+      }
+      events.sort((a, b) => eventSortKey(a) < eventSortKey(b) ? -1 : 1);
+      let stayingAt = null;
+      if (!events.length) {
+        const host = items.find(it => isStay(it) && it.status !== 'cancelled' && (it.location || '').trim()
+          && isIsoDate(it.startDate) && isIsoDate(it.endDate) && it.startDate < d && d < it.endDate);
+        if (host) stayingAt = host.location.trim();
+      }
+      cards.push({ date: d, dayNumber: i + 1, totalDays, events, stayingAt, empty: !events.length && !stayingAt });
+    }
+    return cards;
+  }
+
+  // ---------- typical weather (climate) ----------
+  // Cache key for one (place, month) climate lookup. Month is a 1-12 number.
+  function weatherKey(placeKey, month) {
+    const p = String(placeKey == null ? '' : placeKey).trim().toLowerCase();
+    const m = String(month).padStart(2, '0');
+    return `${p}|${m}`;
+  }
+
+  // Averages daily min/max into rounded lo/hi and decides "wet" from the share
+  // of rainy days (>=1mm). Non-numeric samples (API nulls) are dropped.
+  function summarizeClimate(mins, maxs, precip) {
+    // Number(null) is 0, not NaN, so drop nulls/blanks BEFORE coercing or the
+    // API's missing-day nulls would drag the average toward zero.
+    const clean = arr => (arr || []).filter(v => v != null && v !== '').map(Number).filter(v => !Number.isNaN(v));
+    const avg = arr => {
+      const nums = clean(arr);
+      return nums.length ? nums.reduce((s, v) => s + v, 0) / nums.length : null;
+    };
+    const loA = avg(mins), hiA = avg(maxs);
+    let wet = false;
+    if (precip) {
+      const nums = clean(precip);
+      if (nums.length) wet = nums.filter(v => v >= 1).length / nums.length >= 0.3;
+    }
+    return { lo: loA === null ? null : Math.round(loA), hi: hiA === null ? null : Math.round(hiA), wet };
+  }
+
+  // Human line for a day card. Deliberately says "Typically ... this time of
+  // year" (climate, not a forecast) and never promises what the weather will be.
+  function weatherLine(place, summary) {
+    if (!summary || summary.lo == null || summary.hi == null) return '';
+    return `Typically ${summary.lo}-${summary.hi}°C in ${place} this time of year` +
+      (summary.wet ? ', often rainy' : '');
+  }
+
+  // ---------- documents pocket guards ----------
+  const MAX_DOC_BYTES = 2 * 1024 * 1024;
+  const MAX_DOCS_PER_ITEM = 10;
+  function docGuard(existingCount, fileSize) {
+    if (existingCount >= MAX_DOCS_PER_ITEM) return { ok: false, reason: 'count' };
+    if (fileSize > MAX_DOC_BYTES) return { ok: false, reason: 'size' };
+    return { ok: true };
+  }
+
   // Parses the passport-index iso2 matrix CSV (header: Passport,AL,DZ,...)
   // into { codes, matrix } where matrix[passport][destination] = raw value.
   function parseVisaMatrix(csv) {
@@ -216,6 +470,10 @@ const TripLogic = (() => {
     validateItem, coverageGaps, tripStats,
     ISLANDISH, distKm, flagEmoji, compass, fmtDur, modeOptions,
     classifyVisa, parseVisaMatrix, hasFastRail,
+    buildIcs, convertAmount, sumInCurrency,
+    bytesToBase64url, base64urlToBytes,
+    transportGaps, tripPhase, isPastRow,
+    dayCards, weatherKey, summarizeClimate, weatherLine, docGuard,
   };
 })();
 

@@ -1,0 +1,25 @@
+{
+  "name": "Trip Planner",
+  "short_name": "Trip Planner",
+  "description": "Build a day-by-day trip itinerary with flights, stays, activities, costs and a route map.",
+  "start_url": "/apps/trip-planner/",
+  "scope": "/apps/trip-planner/",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#0e1116",
+  "theme_color": "#0e1116",
+  "icons": [
+    {
+      "src": "../../images/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "../../images/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ]
+}
