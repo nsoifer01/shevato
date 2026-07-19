@@ -2,7 +2,7 @@
 (() => {
 
   // ---------- constants ----------
-  const TP_BUILD = 20; // bump with every asset-version bump; shown in the footer
+  const TP_BUILD = 21; // bump with every asset-version bump; shown in the footer
   const LS_KEY = 'trip-planner:v1';
   const THEME_KEY = 'trip-planner:theme';
   const TIMEFMT_KEY = 'trip-planner:timefmt';
@@ -1897,7 +1897,12 @@
       label: 'Gemini',
       keyLink: 'https://aistudio.google.com/apikey',
       models: [
-        { id: 'gemini-2.5-flash', label: 'Gemini 2.5 Flash' },
+        // Keep in step with GEMINI_MODEL in netlify/functions/tp-assist.mjs:
+        // Google refuses retired models for newly created keys, so an old pin
+        // breaks Tier 2 for exactly the travellers who just made a key.
+        // assistModel() falls back to models[0] when a saved id is gone, so
+        // changing this id migrates a stale localStorage preference by itself.
+        { id: 'gemini-3.5-flash', label: 'Gemini 3.5 Flash' },
       ],
     },
   };

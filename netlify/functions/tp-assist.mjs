@@ -7,10 +7,14 @@
 // OWNER SETUP (one-time, out-of-band; env vars are NOT injected into functions
 // on this site, so the key lives in a Blob):
 //   1. Get a free Gemini API key at https://aistudio.google.com/apikey
-//   2. netlify blobs:set trip-planner-assist config '{"geminiKey":"<key>"}' --json
-//   3. Disable again with: netlify blobs:set trip-planner-assist config '{}' --json
+//   2. netlify blobs:set trip-planner-assist config '{"geminiKey":"<key>"}'
+//   3. Disable again with: netlify blobs:set trip-planner-assist config '{}'
 // With no key set the endpoint returns 503 not_configured and the UI falls back
 // to Tier 1 / bring-your-own-key.
+//
+// The CLI must be linked to the site that actually serves shevato.com before
+// running those commands; the blob store is per-site, so writing it while
+// linked to any other project leaves this endpoint on 503.
 
 import { checkQuota } from './lib/tp-assist-quota.mjs';
 
@@ -18,7 +22,12 @@ import { checkQuota } from './lib/tp-assist-quota.mjs';
 // gitignored locally). It is imported lazily below, after the origin/method/
 // body guards, so those guards stay unit-testable without the dependency.
 
-const GEMINI_MODEL = 'gemini-2.5-flash';
+// Google retires older models for NEW api keys while still listing them in
+// ListModels, so a stale pin fails only at generateContent time, as a 404 that
+// surfaces here as a generic 502 upstream. gemini-2.5-flash reached that state
+// ("no longer available to new users"); verify any replacement pin with a
+// freshly created key before shipping it.
+const GEMINI_MODEL = 'gemini-3.5-flash';
 const MAX_MESSAGES = 40;
 const MAX_CONTENT = 4000;
 const MAX_TRIP_JSON = 30000;
