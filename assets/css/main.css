@@ -3084,6 +3084,16 @@ body > [data-include="footer"] {
   -webkit-font-smoothing: auto !important;
   -moz-osx-font-smoothing: auto !important; }
 
+/* The firebase-auth sign-out modal is appended to <body>, so on app pages it
+   sits inside whatever element scope the app styles. Pin its typography the
+   same way the header/footer are pinned, so it renders identically on every
+   page regardless of app CSS. Colors/sizes come from firebase-auth.css,
+   which already defends them. */
+.signout-modal, .signout-modal * {
+  font-family: "Raleway", Arial, Helvetica, sans-serif !important;
+  -webkit-font-smoothing: auto !important;
+  -moz-osx-font-smoothing: auto !important; }
+
 /* Pin the footer's base text color. Some apps set a white body/* color that the
    footer containers inherit, which (via currentColor) tinted their borders and
    any non-link text differently from the marketing pages. Links/headings/

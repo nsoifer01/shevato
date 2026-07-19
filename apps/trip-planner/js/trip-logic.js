@@ -464,12 +464,31 @@ const TripLogic = (() => {
     return codes.length ? { codes, matrix } : null;
   }
 
+  // Share links carry the whole trip inside the URL, so every byte counts.
+  // Strip empty fields, timestamps and long ids before compressing; the
+  // import sanitizer tolerates all of these being absent.
+  function slimTripForShare(trip) {
+    const keep = v => !(v == null || v === '');
+    const slim = { name: trip.name, currency: trip.currency, items: [] };
+    if (trip.budget != null) slim.budget = trip.budget;
+    if (Array.isArray(trip.visaExtras) && trip.visaExtras.length) slim.visaExtras = trip.visaExtras;
+    slim.items = trip.items.map((it, i) => {
+      const out = { id: 'i' + (i + 1) };
+      for (const k of ['type', 'title', 'location', 'startDate', 'endDate', 'startTime', 'endTime', 'status', 'cost', 'costCurrency', 'costNote', 'details']) {
+        if (keep(it[k])) out[k] = it[k];
+      }
+      return out;
+    });
+    return slim;
+  }
+
   return {
     isIsoDate, toUtc, diffDays, addDays,
     isStay, nights, sortKey, sortedItems, tripLegs,
     validateItem, coverageGaps, tripStats,
     ISLANDISH, distKm, flagEmoji, compass, fmtDur, modeOptions,
-    classifyVisa, parseVisaMatrix, hasFastRail,
+    classifyVisa, parseVisaMatrix,
+    slimTripForShare, hasFastRail,
     buildIcs, convertAmount, sumInCurrency,
     bytesToBase64url, base64urlToBytes,
     transportGaps, tripPhase, isPastRow,

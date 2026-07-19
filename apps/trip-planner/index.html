@@ -43,12 +43,13 @@
   <meta name="theme-color" content="#0e1116">
   <link rel="stylesheet" href="../../assets/css/main.css">
   <link rel="stylesheet" href="../../assets/css/sync-status.css">
-  <link rel="stylesheet" href="css/styles.css?v=14">
+  <link rel="stylesheet" href="css/styles.css?v=16">
 </head>
-<body class="trip-planner-app">
+<body class="tp-page">
   <div id="sync-banner" class="sync-banner" role="status" aria-live="polite" hidden></div>
   <div data-include="header"></div>
 
+<div class="trip-planner-app">
 <div class="tp-wrap">
 
   <header class="tp-head">
@@ -78,6 +79,7 @@
           <button data-act="timefmt" id="timefmtBtn">🕐 Use 24-hour times</button>
           <div class="sep"></div>
           <button data-act="delete-trip" class="danger">🗑 Delete trip</button>
+          <div class="tp-menu-build" id="buildTag" aria-hidden="true"></div>
         </div>
       </div>
       <button class="icon-btn" id="themeBtn" title="Toggle theme">◐</button>
@@ -158,11 +160,6 @@
     <div id="mapCanvas"></div>
   </div>
 
-  <footer class="page-foot">
-    <span>Everything is saved locally in this browser as you type.</span>
-    <span>Use "Backup all trips" before clearing browser data.</span>
-    <span id="buildTag" class="build-tag"></span>
-  </footer>
 </div>
 
 <!-- item modal -->
@@ -390,6 +387,8 @@
 
 <input type="file" id="importFile" accept="application/json,.json" hidden>
 <div class="toasts" id="toasts"></div>
+</div><!-- /.trip-planner-app -->
+
   <div data-include="footer"></div>
 
   <script src="../../assets/js/passive-events-fix.js"></script>
@@ -421,7 +420,7 @@
     }
   </script>
 
-  <script src="js/trip-logic.js?v=4"></script>
-  <script src="js/app.js?v=15"></script>
+  <script src="js/trip-logic.js?v=5"></script>
+  <script src="js/app.js?v=17"></script>
 </body>
 </html>

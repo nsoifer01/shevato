@@ -1287,6 +1287,9 @@ body.dark-theme .signout-modal span {
   color: #000000 !important;
   font-weight: 700;
   letter-spacing: -0.025em;
+  /* main.css uppercases every h2 globally; the modal's approved look is
+     proper case on EVERY page, so pin it here at the source */
+  text-transform: none;
 }
 
 /* Override dark theme for signout modal */
@@ -1440,4 +1443,48 @@ body.dark-theme .signout-confirm-btn:active {
   body.dark-theme .auth-modal__close {
     transition: none !important;
   }
+}
+
+
+/* ==========================================================================
+   Scheme + autofill immunity (added 2026-07-18)
+   These components are white-surfaced BY DESIGN on every page. App pages set
+   color-scheme: dark on <body>, and because the modals are appended to
+   <body> they inherited it - flipping Chrome's UA rendering (autofill
+   backgrounds, native widgets, scrollbars) to dark gray inside the white
+   card. Pin the scheme at the component root, and neutralize autofill's
+   paint (which ignores author background-color entirely) with the inset
+   box-shadow technique, so email/password fields look identical in default,
+   focused and autofilled states on every page of the site.
+   ========================================================================== */
+#auth-modal,
+html #auth-modal,
+#auth-modal *,
+.auth-modal,
+html .auth-modal,
+.auth-modal *,
+.signout-modal,
+html .signout-modal,
+.signout-modal * {
+  /* !important + the id-level selectors: this stylesheet's own
+     `all: unset !important` input reset would otherwise revert
+     color-scheme to inherit (= the page's dark scheme) */
+  color-scheme: light !important;
+}
+
+input.auth-form__input:-webkit-autofill,
+input.auth-form__input:-webkit-autofill:hover,
+input.auth-form__input:-webkit-autofill:focus,
+body input.auth-form__input:-webkit-autofill {
+  -webkit-box-shadow: 0 0 0 1000px #ffffff inset !important;
+  box-shadow: 0 0 0 1000px #ffffff inset !important;
+  -webkit-text-fill-color: #000000 !important;
+  caret-color: #000000 !important;
+}
+
+/* standard :autofill kept as its own rule: an unsupported selector would
+   invalidate a shared group in older engines */
+input.auth-form__input:autofill {
+  box-shadow: 0 0 0 1000px #ffffff inset !important;
+  caret-color: #000000 !important;
 }

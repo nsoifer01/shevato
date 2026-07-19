@@ -28,14 +28,14 @@ The only network calls are opt-in and key-free: place lookup via OpenStreetMap N
 | Days view | Third view tab: one card per trip day with check-ins, check-outs, timed events, "Staying in X" and honest "No plans yet" days; today highlighted; print-friendly (printing in Days view outputs just the cards) |
 | Budget | Optional per-trip budget in the trip dialog; summary chip shows confirmed-vs-budget and turns amber when exceeded |
 | Multi-currency costs | Each item's cost can be entered in its own currency and converts into the trip's display currency using daily rates (api.frankfurter.dev, cached 24h); switching the display currency converts, never relabels; failed rate fetches show a note + Retry instead of fake 1:1 rates |
-| Share link | Share itinerary produces a URL with the whole trip compressed into the fragment (no server); it opens read-only with a banner and an "Import as my trip" action |
+| Share link | Share itinerary produces a URL with the whole trip compressed into the fragment (no server, payload slimmed of empty fields); opens read-only with a banner and "Import as my trip". Links over ~8k chars copy with a truncation warning; a 30k hard cap points to JSON export |
 | Continuity warnings | Consecutive stays in different (geocoded) cities with no flight/transport between them raise a warning naming both cities |
 | Typical weather | Day cards show "Typically X-Y°C in {place} this time of year" from Open-Meteo history (cached per place+month); always "typically", never a forecast |
 | Visa reminders | Visa rows marked e-Visa/visa required offer "Add reminder", creating an "Apply for {country} visa" to-book item dated 30 days before the trip |
 | Documents pocket | Attach images/PDFs (booking confirmations, QR codes) to saved items; stored on-device in IndexedDB (2MB/file, 10/item), paperclip indicators, purged with the item, excluded from exports and sync |
 | Trip-in-progress | During the trip the countdown chip becomes "Day X of Y", past rows dim, and the page opens scrolled to today; afterwards it reads "Trip completed" |
 | Visa requirements | 🛂 Visas: pick your passport once (saved) and every country on the itinerary shows its requirement (visa-free with days, visa on arrival, e-Visa/eTA, visa required), derived live from the geocoded places via the community Passport Index dataset (cached monthly), with per-country Wikipedia verify links and an always-verify-officially caveat; countries can also be added manually (layovers, border crossings, road trips), stored per trip and removable |
-| Settings | 12/24-hour time format (saved and synced), dark/light theme |
+| Settings | 12/24-hour time format (saved and synced), dark/light theme; a small "build N" tag at the bottom of the trip menu identifies the loaded code version (staleness diagnostics for the PWA cache) |
 | Cloud sync | Optional: sign in via the site header and trips/preferences sync across devices via Firestore (`sync-system/`), same as the other apps |
 
 ## File structure

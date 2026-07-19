@@ -556,3 +556,21 @@ test('docGuard enforces the 10-file and 2MB limits', () => {
   assert.deepEqual(L.docGuard(2, 2 * 1024 * 1024 + 1), { ok: false, reason: 'size' });
   assert.deepEqual(L.docGuard(2, 2 * 1024 * 1024), { ok: true });
 });
+
+test('slimTripForShare drops empties, timestamps and long ids but keeps data', () => {
+  const trip = { name: 'T', currency: 'USD', budget: null, visaExtras: [],
+    items: [{ id: 'f9b2c8d1-aaaa-bbbb-cccc-1234567890ab', type: 'flight', title: 'A to B',
+      location: '', startDate: '2027-01-01', endDate: '', startTime: '07:35', endTime: '',
+      status: 'booked', cost: 200, costCurrency: 'USD', costNote: '', details: '',
+      createdAt: '2026-07-18T00:00:00Z' }] };
+  const slim = L.slimTripForShare(trip);
+  assert.equal(slim.items[0].id, 'i1');
+  assert.equal(slim.items[0].createdAt, undefined);
+  assert.equal(slim.items[0].location, undefined);
+  assert.equal(slim.items[0].endTime, undefined);
+  assert.equal(slim.items[0].title, 'A to B');
+  assert.equal(slim.items[0].cost, 200);
+  assert.equal(slim.budget, undefined);
+  assert.equal(slim.visaExtras, undefined);
+  assert.ok(JSON.stringify(slim).length < JSON.stringify(trip).length * 0.6);
+});

@@ -1,7 +1,15 @@
-/* Trip Planner - scoped under body.trip-planner-app so main.css and the
-   shared header/footer keep their own look. Theme switch = .tp-light. */
+/* Trip Planner.
+   SCOPING CONTRACT: the class .trip-planner-app lives on the app ROOT
+   WRAPPER (a div inside <body>), NEVER on <body> itself. Shared page
+   components (site header/footer, the firebase-auth sign-out modal,
+   #sync-banner, toasts injected by shared scripts) render OUTSIDE that
+   wrapper and therefore can never be touched by app styles: the sign-out
+   modal once diverged on this page purely because these rules sat on
+   <body>. Page-level look (background, theme vars, mode classes
+   tp-light / tp-shared / view-days) lives on body.tp-page. Enforced by
+   sync-system/tests/shared-ui-consistency.test.mjs. */
 
-  body.trip-planner-app {
+  body.tp-page {
     /* single typography token: themes NEVER redefine it, so dark and light
        render identical type; controls reference it explicitly below instead
        of relying on a fragile inherit chain */
@@ -30,7 +38,7 @@
     --radius: 14px;
     color-scheme: dark;
   }
-  body.trip-planner-app.tp-light {
+  body.tp-page.tp-light {
     --bg: #f3f5f9;
     --bg-soft: #ffffff;
     --bg-card: #ffffff;
@@ -55,9 +63,13 @@
     color-scheme: light;
   }
   .trip-planner-app *, .trip-planner-app *::before, .trip-planner-app *::after { box-sizing: border-box; }
-  body.trip-planner-app {
+  body.tp-page {
     margin: 0;
     background: var(--bg);
+  }
+  /* typography/color live on the app root, NOT body, so they cannot
+     inherit into shared components appended to <body> */
+  .trip-planner-app {
     color: var(--text);
     font: 15px/1.5 var(--tp-font);
     -webkit-font-smoothing: antialiased;
@@ -168,6 +180,7 @@
   .trip-planner-app .tp-menu-panel button:hover,
   .trip-planner-app .tp-menu-panel button:focus { background: var(--accent-soft); color: var(--text); }
   .tp-menu-panel .sep { height: 1px; background: var(--border-soft); margin: 5px 4px; }
+  .tp-menu-build { padding: 6px 10px 2px; font-size: 10.5px; color: var(--text-faint); text-align: right; user-select: none; }
   .trip-planner-app .tp-menu-panel button.danger { color: var(--red); }
 
   /* interaction-state contract: dim/faint foregrounds are reserved for
@@ -469,8 +482,6 @@
   }
   .toast button { background: none; border: 0; color: var(--accent); font-weight: 700; padding: 0; }
 
-  .build-tag { margin-left: auto; opacity: 0.7; }
-  .trip-planner-app footer.page-foot { margin-top: 26px; color: var(--text-faint); font-size: 12.5px; display: flex; gap: 14px; flex-wrap: wrap; }
 
   /* ---------- main.css !important counter-pins ----------
      main.css paints ALL buttons `color: #555 !important`, red text on
@@ -605,8 +616,8 @@
     background: var(--bg-card); z-index: 1;
   }
   .map-status { color: var(--text-dim); font-size: 13px; padding: 9px 4px; min-height: 34px; }
-  body.trip-planner-app:not(.tp-light) #mapCanvas .leaflet-tile { filter: invert(1) hue-rotate(180deg) brightness(0.9) contrast(0.9) saturate(0.6); }
-  body.trip-planner-app:not(.tp-light) #mapCanvas { background: #1a1f29; }
+  body.tp-page:not(.tp-light) #mapCanvas .leaflet-tile { filter: invert(1) hue-rotate(180deg) brightness(0.9) contrast(0.9) saturate(0.6); }
+  body.tp-page:not(.tp-light) #mapCanvas { background: #1a1f29; }
   .stop-pin {
     background: var(--accent); color: #fff; border-radius: 50%; width: 26px; height: 26px;
     display: flex; align-items: center; justify-content: center; font-weight: 800; font-size: 13px;
@@ -697,7 +708,8 @@
 
   @media print {
     .toolbar, .c-actions, .tp-head .trip-bar, .issues, .empty .actions, .toasts { display: none !important; }
-    body.trip-planner-app { background: #fff; color: #000; }
+    body.tp-page { background: #fff; }
+    .trip-planner-app { color: #000; }
     .board { border-color: #bbb; }
     .day-card { break-inside: avoid; }
     /* Days view: print only the day cards, not the (hidden) timeline/strip. */
