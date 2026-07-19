@@ -584,6 +584,12 @@ body.theme .sidebar-overlay {
     box-shadow: var(--shadow-md);
 }
 
+/* Pin the pressed state: main.css `button:hover:active` layers its red wash
+   (rgba(206,27,40,0.25)) behind the gradient; keep the button on its own fill. */
+.sidebar .custom-date-range button:hover:active {
+    background: var(--primary-gradient) !important;
+}
+
 /* Custom Date Error Message in Sidebar */
 .sidebar #custom-date-error {
     margin-top: 8px;
@@ -1198,6 +1204,17 @@ body.theme .sidebar-cancel-race:hover {
 
 .position-picker-toggle:active {
     transform: translateY(0);
+}
+
+/* White glyph pinned against the site-wide button trap in main.css
+   (`button { color:#555 !important }`, `:hover { color:#ce1b28 !important }`).
+   The visible glyph lives in .picker-icon (pinned white by the body.theme rule
+   below), but the button's own color chain went gray at rest and site-red on
+   hover/press; pin base/hover/active together so the trap can never surface. */
+body.mario-kart-app .position-picker-toggle,
+body.mario-kart-app .position-picker-toggle:hover,
+body.mario-kart-app .position-picker-toggle:hover:active {
+    color: white !important;
 }
 
 .picker-icon {

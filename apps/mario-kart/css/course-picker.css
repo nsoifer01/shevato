@@ -206,6 +206,21 @@
     cursor: pointer;
 }
 
+/* Counter-pin against the main.css button trap (`button{color:#555!important}`,
+   `:hover{color:#ce1b28!important}`, `:hover:active{background:rgba(206,27,40,0.25)}`).
+   Without this, every course-row press flashes the site-red wash and the row
+   button's own color chain goes gray/red. Row highlight is owned by .cp-row,
+   so the button stays transparent across base / hover / pressed. */
+.course-picker .cp-course,
+.cp-modal .cp-course,
+.course-picker .cp-course:hover,
+.cp-modal .cp-course:hover,
+.course-picker .cp-course:hover:active,
+.cp-modal .cp-course:hover:active {
+    background: transparent !important;
+    color: var(--mk-text, #f1f3f8) !important;
+}
+
 /* Line 1: name (hero) + inline NEW badge — one unified line, no layout shift. */
 .course-picker .cp-line1 { display: flex; align-items: center; gap: 7px; min-width: 0; }
 .course-picker .cp-name {
@@ -271,6 +286,11 @@
 .course-picker .cp-row.cp-active .cp-fav { opacity: 1; }
 .course-picker .cp-fav:hover { color: var(--mk-text, #f1f3f8) !important; opacity: 1; }
 .course-picker .cp-fav.is-fav { color: #f59e0b !important; opacity: 1; }
+/* Pin the pressed state: defeat main.css `button:hover:active` red wash. */
+.course-picker .cp-fav:hover:active,
+.cp-modal .cp-fav:hover:active {
+    background: transparent !important;
+}
 
 .course-picker .cp-noresult {
     padding: 22px 12px;
@@ -370,6 +390,12 @@
     transition: background 0.1s ease, color 0.1s ease;
 }
 .cp-modal .cp-filter:hover { color: var(--mk-text, #f1f3f8) !important; }
+/* Pin the pressed state: defeat main.css `button:hover:active` red wash.
+   `.cp-filter.is-on` (0,3,0) already outranks the trap; the inactive chip
+   (0,2,0) does not, so pin its surface here. */
+.cp-modal .cp-filter:hover:active {
+    background: var(--mk-surface-3, #232836) !important;
+}
 .cp-modal .cp-filter:focus-visible { outline: 2px solid var(--mk-accent, #818cf8); outline-offset: 2px; }
 .cp-modal .cp-filter.is-on {
     color: #fff !important;
@@ -404,6 +430,10 @@
     border: none; border-radius: 999px; cursor: pointer;
 }
 .cp-modal .cp-rs-chip:hover { color: var(--mk-text, #f1f3f8) !important; }
+/* Pin the pressed state: defeat main.css `button:hover:active` red wash. */
+.cp-modal .cp-rs-chip:hover:active {
+    background: var(--mk-surface-3, #232836) !important;
+}
 
 /* ---- Clear (x) inside the search field ---- */
 .cp-modal .cp-search-clear { width: 22px; height: 22px; }
@@ -498,6 +528,10 @@
     border: 1px solid transparent; border-radius: 8px;
 }
 .cp-modal .cp-preview-fav:hover { color: var(--mk-text, #f1f3f8) !important; }
+/* Pin the pressed state: defeat main.css `button:hover:active` red wash. */
+.cp-modal .cp-preview-fav:hover:active {
+    background: var(--mk-surface-3, #232836) !important;
+}
 .cp-modal .cp-preview-fav.is-fav { color: #f59e0b !important; background: rgba(245, 158, 11, 0.10); border-color: rgba(245, 158, 11, 0.35); }
 .cp-modal .cp-preview-select {
     display: block; width: 100%; padding: 9px;
@@ -508,7 +542,12 @@
     transition: filter 0.1s ease;
 }
 .cp-modal .cp-preview-select:hover { filter: brightness(1.1); }
+/* Pin the pressed state: defeat main.css `button:hover:active` red wash. */
+.cp-modal .cp-preview-select:hover:active {
+    background: var(--mk-accent-strong, #6366f1) !important;
+}
 .cp-modal .cp-preview-select.is-selected { color: var(--mk-good, #34d399) !important; background: rgba(52, 211, 153, 0.12); }
+.cp-modal .cp-preview-select.is-selected:hover:active { background: rgba(52, 211, 153, 0.12) !important; }
 
 /* ---- Footer keyboard legend: barely there ---- */
 .cp-modal .cp-modal-foot {

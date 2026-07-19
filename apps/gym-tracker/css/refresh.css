@@ -3030,3 +3030,108 @@ body.gym-tracker .achievement-category-header:hover {
 body.gym-tracker .achievement-bulk-btn {
     box-shadow: none !important;
 }
+
+/* ---- 2026-07 theme-collision audit additions ----------------------------
+   Computed-style probes (base / :hover / :hover:active simulated across all
+   stylesheets, transitions disabled) surfaced the remaining <button>s that
+   main.css still bleeds into. Two flavors:
+   1. box-shadow / color forced with !important by main.css: counter-pin the
+      intended value with !important, then re-pin any focus ring the widget
+      sets itself (our blanket `box-shadow: none !important` would eat it).
+   2. the :hover:active red press-tint (plain rule, specificity (0,2,1)):
+      defeated by out-specifying with plain body.gym-tracker-scoped rules
+      mirroring each control's own hover background, per the NOTE above. */
+
+/* Set-completion toggle (active workout): borderless pill track, so the
+   red hover ring paints inside it and the press-tint fills it. */
+body.gym-tracker .set-toggle,
+body.gym-tracker .set-toggle:hover,
+body.gym-tracker .set-toggle:hover:active {
+    box-shadow: none !important;
+    /* No visible glyphs today (the knob icon pins its own colors), but the
+       forced gray/red would surface on any future text/icon addition. */
+    color: var(--text-primary) !important;
+}
+body.gym-tracker .set-toggle:focus-visible {
+    box-shadow: 0 0 0 3px rgba(91, 155, 255, 0.45) !important;
+}
+body.gym-tracker .set-toggle[aria-pressed="true"]:focus-visible {
+    box-shadow: 0 0 0 3px rgba(52, 211, 153, 0.45) !important;
+}
+body.gym-tracker .set-toggle:hover:active {
+    background: var(--bg-hover) padding-box;
+}
+body.gym-tracker .set-toggle[aria-pressed="true"]:hover:active {
+    background: var(--accent-success) padding-box;
+}
+
+/* Program-modal weekday chips: they use a real 1px border, so the leaked
+   inset ring double-strokes them gray and turns red on hover. */
+body.gym-tracker .schedule-day-chip,
+body.gym-tracker .schedule-day-chip:hover,
+body.gym-tracker .schedule-day-chip:hover:active {
+    box-shadow: none !important;
+}
+body.gym-tracker .schedule-day-chip:focus-visible {
+    box-shadow: 0 0 0 3px rgba(91, 155, 255, 0.35) !important;
+}
+body.gym-tracker .schedule-day-chip:hover:active {
+    background: var(--bg-hover);
+}
+body.gym-tracker .schedule-day-chip.is-on:hover:active {
+    background: #1d4ed8;
+}
+
+/* Desktop workout FAB and mobile More-menu rows: their labels/icons are
+   saved by child pins (`body.gym-tracker span { color: white }` etc.), but
+   the buttons' own declared colors are silently forced gray/red. Pin them
+   so nothing depends on that masking. */
+body.gym-tracker .workout-fab,
+body.gym-tracker .workout-fab:hover,
+body.gym-tracker .workout-fab:hover:active {
+    color: #ffffff !important;
+}
+body.gym-tracker .workout-fab:hover:active {
+    background: linear-gradient(135deg, var(--accent-primary), #1d4ed8);
+}
+body.gym-tracker .workout-fab--resume:hover:active {
+    background: linear-gradient(135deg, #22c55e, #16a34a);
+}
+body.gym-tracker .more-item,
+body.gym-tracker .more-item:hover,
+body.gym-tracker .more-item:hover:active {
+    color: var(--gt-text) !important;
+}
+
+/* Press-tint counters for controls whose base background sits below the
+   (0,2,1) main.css rule: mirror each control's own hover background.
+   (.calendar-day.selected keeps its own !important gradient; .empty cells
+   are pointer-events: none, so neither can tint.) */
+body.gym-tracker .calendar-day:hover:active {
+    background: var(--bg-elevated);
+}
+body.gym-tracker .calendar-day.future:hover:active {
+    background: var(--bg-card);
+}
+body.gym-tracker .calendar-day.has-workout:hover:active {
+    background: linear-gradient(135deg, rgba(91, 155, 255, 0.25) 0%, rgba(91, 155, 255, 0.4) 100%);
+}
+body.gym-tracker .dark-select-trigger:hover:active {
+    background: var(--bg-hover);
+}
+body.gym-tracker .dark-calendar-trigger:hover:active {
+    background: var(--bg-elevated);
+}
+body.gym-tracker .achievement-category-header:hover:active {
+    background: var(--bg-elevated);
+}
+body.gym-tracker .achievement-bulk-btn:hover:active {
+    background: rgba(91, 155, 255, 0.2);
+}
+body.gym-tracker .btn-save-settings:hover:active {
+    background: var(--gradient-primary);
+}
+body.gym-tracker .btn-remove-set:hover:active,
+body.gym-tracker .btn-add-set--extra:hover:active {
+    background: var(--bg-hover);
+}
