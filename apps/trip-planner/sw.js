@@ -17,7 +17,7 @@
  * MINOR when the strategy changes, MAJOR for a back-compat break.
  */
 
-const CACHE_VERSION = '2.0.5';
+const CACHE_VERSION = '2.0.6';
 const PRECACHE = `trip-precache-${CACHE_VERSION}`;
 const RUNTIME = `trip-runtime-${CACHE_VERSION}`;
 
@@ -27,7 +27,7 @@ const PRECACHE_URLS = [
   './manifest.webmanifest',
   './css/styles.css?v=18',
   './js/trip-logic.js?v=6',
-  './js/app.js?v=20',
+  './js/app.js?v=21',
   '../../assets/css/main.css',
   '../../assets/css/sync-status.css',
   '../../assets/js/passive-events-fix.js',

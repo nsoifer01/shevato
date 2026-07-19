@@ -48,14 +48,23 @@ site, so the shared key lives in a Blob, written once out-of-band:
 
 ```
 # 1. Get a free Gemini API key at https://aistudio.google.com/apikey
-# 2. Store it (the key never travels over HTTP; it is set via the CLI):
-netlify blobs:set trip-planner-assist config '{"geminiKey":"<key>"}' --json
+# 2. Point the CLI at the project that serves shevato.com (blob stores are
+#    per-project, so writing this while linked elsewhere silently does nothing):
+netlify status
+# 3. Store it (the key never travels over HTTP; it is set via the CLI):
+netlify blobs:set trip-planner-assist config '{"geminiKey":"<key>"}'
 # Disable the shared assistant again:
-netlify blobs:set trip-planner-assist config '{}' --json
+netlify blobs:set trip-planner-assist config '{}'
 ```
 
 With no key set the endpoint returns `503 not_configured` and the UI tells the
 traveller to use Tier 1 or bring their own key. Tiers 1 and 2 need no setup.
+
+Two failure modes look alike from the browser but are not: `503 not_configured`
+means the key is missing from *this* project's store, while `502 upstream` means
+the key was found and Gemini itself rejected the call (most often a retired
+`GEMINI_MODEL` pin, see the note in `tp-assist.mjs`). The function logs the
+upstream status and body; the key is never logged.
 
 ## File structure
 
