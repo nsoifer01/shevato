@@ -2,6 +2,13 @@
   "_comment": "Source of truth for per-page social-share images. Each entry renders assets/og/card.html to images/og/<slug>.png at 1200x630. To add a page: add an entry here, run `npm run build:og-cards`, then point that page's og:image + twitter:image at https://shevato.com/images/og/<slug>.png.",
   "cards": [
     {
+      "slug": "privacy",
+      "eyebrow": "Privacy",
+      "title": "Data Handling",
+      "subtitle": "What stays in your browser, what syncs, and who else sees it.",
+      "accent": "#ce1b28"
+    },
+    {
       "slug": "trip-planner",
       "eyebrow": "Itinerary builder",
       "title": "Trip Planner",
