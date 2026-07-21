@@ -48,6 +48,74 @@
     }
 
     /**
+     * Default display name for a player who hasn't picked one yet.
+     *
+     * NEVER derive this from the account email: the name is denormalized
+     * into triviaLeaderboard, which every signed-in user can read, and
+     * email local parts routinely carry a real first + last name. The
+     * suffix is a stable hash of the uid — the leaderboard row already
+     * stores the uid in the clear, so it leaks nothing new, and it keeps
+     * two defaults in the same room distinguishable.
+     * @param {string} uid
+     * @returns {string}
+     */
+    function defaultDisplayName(uid) {
+        const key = String(uid || '');
+        if (!key) return 'Player';
+        const alpha = Config.ROOM_CODE_ALPHABET;
+        let h = 0x811c9dc5; // FNV-1a
+        for (let i = 0; i < key.length; i++) {
+            h ^= key.charCodeAt(i);
+            h = Math.imul(h, 0x01000193) >>> 0;
+        }
+        let suffix = '';
+        for (let i = 0; i < 4; i++) {
+            suffix += alpha.charAt(h % alpha.length);
+            h = Math.floor(h / alpha.length);
+        }
+        return `Player ${suffix}`;
+    }
+
+    /**
+     * True when `name` is exactly what the retired email-derived default
+     * would have produced for `email`. Used to avoid re-suggesting a
+     * leaked name back to a user who never chose it.
+     * @param {string} name
+     * @param {string} email
+     * @returns {boolean}
+     */
+    function isEmailDerivedName(name, email) {
+        const addr = String(email || '');
+        const at = addr.indexOf('@');
+        if (at <= 0) return false;
+        const legacy = addr.slice(0, at).slice(0, Config.MAX_DISPLAY_NAME);
+        return String(name || '').trim() === legacy;
+    }
+
+    /**
+     * Decide whether to ask the player to confirm the name they are about
+     * to publish, and what to pre-fill the field with.
+     *
+     * `needed` is true until the player has explicitly saved a name
+     * (profile.displayNameChosen). Profiles created before that flag
+     * existed count as un-chosen, which is deliberate: those are exactly
+     * the accounts carrying an email-derived name they never approved.
+     * @param {{displayName?:string, displayNameChosen?:boolean}|null} profile
+     * @param {string} email
+     * @param {string} uid
+     * @returns {{ needed:boolean, suggested:string }}
+     */
+    function displayNamePrompt(profile, email, uid) {
+        const p = profile || {};
+        const current = String(p.displayName || '').trim();
+        const keepCurrent = current && !isEmailDerivedName(current, email);
+        return {
+            needed: !p.displayNameChosen,
+            suggested: keepCurrent ? current : defaultDisplayName(uid)
+        };
+    }
+
+    /**
      * Decide the current "phase" of an active question.
      *   - 'idle'    : no question started yet (lobby/picking)
      *   - 'asking'  : within QUESTION_TIME_MS of questionStartedAt
@@ -304,6 +372,9 @@
     return {
         generateRoomCode,
         normalizeRoomCode,
+        defaultDisplayName,
+        isEmailDerivedName,
+        displayNamePrompt,
         questionPhase,
         timeLeftMs,
         pickNextHost,

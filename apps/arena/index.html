@@ -1005,6 +1005,28 @@
     </article>
   </div>
 
+  <!-- One-time display-name confirmation. Shown before a player's first
+       game that publishes their name to a surface other players read
+       (room player list, chat, leaderboards). -->
+  <div class="modal" id="name-prompt-modal" role="dialog" aria-modal="true" aria-labelledby="name-prompt-title" hidden>
+    <div class="modal-backdrop" data-name-prompt-close aria-label="Close dialog"></div>
+    <article class="modal-panel modal-panel-sm">
+      <button type="button" class="modal-close" data-name-prompt-close aria-label="Close">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.85" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 6l12 12"/><path d="M18 6L6 18"/></svg>
+      </button>
+      <h2 id="name-prompt-title">Pick your player name</h2>
+      <p class="confirm-modal-body">This is the name other players see in the room and on the public leaderboard. Your email address is never shown.</p>
+      <label class="lobby-field profile-display-field">
+        <span>Display name</span>
+        <input type="text" id="name-prompt-input" maxlength="20" placeholder="Pick a name" autocomplete="off">
+      </label>
+      <div class="modal-actions">
+        <button type="button" class="btn btn-ghost" data-name-prompt-close>Cancel</button>
+        <button type="button" class="btn btn-primary" id="name-prompt-confirm">Play as this name</button>
+      </div>
+    </article>
+  </div>
+
   <!-- Restart-proposal "waiting" modal. Stays open on the proposer's
        screen while opponents accept / decline; closes on unanimous
        accept, any decline, or after a 10s timeout. -->
