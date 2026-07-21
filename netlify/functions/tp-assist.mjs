@@ -17,6 +17,12 @@
 // linked to any other project leaves this endpoint on 503.
 
 import { checkQuota } from './lib/tp-assist-quota.mjs';
+// SINGLE SOURCE OF TRUTH for the assistant contract. This used to be a
+// hand-copied SYSTEM_PREAMBLE, which meant Tier 3 silently kept the old shape
+// every time the client contract changed. trip-logic.js is a classic script
+// that also sets module.exports, so Node's CJS interop gives us the namespace
+// here and esbuild inlines it into the function bundle at build time.
+import TripLogic from '../../apps/trip-planner/js/trip-logic.js';
 
 // The Blob store pulls in @netlify/blobs (installed only in the Netlify build,
 // gitignored locally). It is imported lazily below, after the origin/method/
@@ -48,11 +54,25 @@ const GEMINI_MODEL = 'gemini-3.1-flash-lite';
 // the suggestions. Measured against the live model on 2026-07-19:
 //   1000, default thinking -> MAX_TOKENS, 37 output tokens, no json block
 //   4000, default thinking -> STOP, 1554 thinking, 589 output
-//   4000, thinkingLevel low -> STOP,  799 thinking, 512 output  <- this
+//   4000, thinkingLevel low -> STOP,  799 thinking, 512 output
 // thinkingLevel 'low' keeps the answers complete while roughly halving the
-// billed reasoning. Raise maxOutputTokens if truncation shows up in the logs.
+// billed reasoning.
+//
+// Raised to 12000 for the "plan my day" contract, which asks for far more per
+// turn than that measurement: one action per agenda entry, PLUS 2-3 alternative
+// candidates for every meal and drinks slot. A full day is ~3 activities +
+// 3 meals x 3 candidates + 2 drinks x 3 candidates + a return-to-hotel leg,
+// so ~19 add actions. Each action serializes to roughly 70-90 tokens (title,
+// location, both dates and times, cost, currency, details, mapsQuery, group),
+// i.e. 1300-1700 tokens of JSON, plus ~400-600 of prose around it, on top of
+// ~800-1500 of reasoning over a longer system instruction. That lands at
+// 2500-3800 in the good case and blows straight through 4000 on a busy day,
+// which fails in the worst possible way: MAX_TOKENS truncates the tail, and
+// the tail is the tripActions block. Output tokens are billed on what is
+// actually produced, not on the cap, so the headroom is free unless used;
+// 12000 is ~3x the expected worst case and still bounds a runaway loop.
 const GENERATION_CONFIG = {
-  maxOutputTokens: 4000,
+  maxOutputTokens: 12000,
   temperature: 0.5,
   thinkingConfig: { thinkingLevel: 'low' },
 };
@@ -78,16 +98,6 @@ const MAX_MESSAGES = 40;
 const MAX_CONTENT = 4000;
 const MAX_TRIP_JSON = 30000;
 
-// Pinned server-side system instruction. Mirrors the client's assistant
-// contract (js/trip-logic.js) so the model emits the same tripActions JSON the
-// browser knows how to parse into proposal cards.
-const SYSTEM_PREAMBLE = [
-  'You are a travel-planning assistant helping edit a trip itinerary.',
-  'You cannot check live reviews, prices or availability. For anything you suggest, include a mapsQuery so the traveller can open Google Maps and verify hours, prices and reviews themselves.',
-  'Each item has: type (one of flight, transport, activity, stay, note), title, location, startDate (YYYY-MM-DD), startTime (HH:MM, 24h), endDate (YYYY-MM-DD, the check-out date for a stay or the arrival date for an overnight leg), endTime (HH:MM), cost (a number), costCurrency (a 3-letter code like USD), details, and mapsQuery (a place to search on Google Maps so the traveller can verify hours, prices and reviews).',
-  'When you want to add, change or remove items, include a JSON object in a ```json fenced block shaped exactly like {"tripActions":[{"op":"add","item":{...}},{"op":"update","match":{"title":"..."},"set":{...}},{"op":"remove","match":{"title":"..."}}]}. Use op "add" with a full item, "update" with a match (by id or exact title) and the fields to set, or "remove" with a match. Never set status to booked or cancelled. Write your normal explanation as plain prose around the JSON block.',
-].join('\n\n');
-
 export default async function handler(req) {
   // (1) Origin/Referer guard first: only our own site and local dev.
   if (!originAllowed(req)) return json({ error: 'origin_rejected' }, 403);
@@ -100,13 +110,22 @@ export default async function handler(req) {
   try { body = await req.json(); }
   catch { return json({ error: 'bad_request' }, 400); }
   const clamped = clampBody(body);
+  // A trip too big to send even after trimming gets its own answer: the UI can
+  // then tell the traveller what happened and what to do, instead of showing
+  // the generic failure a bare 400 produced.
+  if (clamped.tooLarge) return json({ error: 'trip_too_large' }, 413);
   if (!clamped.ok) return json({ error: 'bad_request' }, 400);
 
   // (4) Shared key from the config blob; absent -> not configured.
   const { assistStore, CONFIG_KEY, USAGE_KEY } = await import('./lib/tp-assist-store.mjs');
   const store = assistStore();
   const cfg = (await store.get(CONFIG_KEY, { type: 'json' })) || {};
-  const geminiKey = cfg.geminiKey;
+  // LOCAL DEVELOPMENT AFFORDANCE, not the production path: `netlify dev` serves
+  // functions against a LOCAL blob store, which is empty, so Tier 3 would 503
+  // on localhost even when the deployed site is configured. Deployed functions
+  // on this site get no env vars injected (verified), so this fallback is inert
+  // in production and the blob remains the only way the key is ever set there.
+  const geminiKey = cfg.geminiKey || process.env.TP_GEMINI_KEY;
   if (!geminiKey) return json({ error: 'not_configured' }, 503);
 
   // (5) Quota check against the usage blob; rejected calls never hit upstream.
@@ -122,7 +141,7 @@ export default async function handler(req) {
 
   // (6) Build the system instruction server-side from the pinned constant plus
   // the client-supplied trip context (messages were already role-filtered).
-  const sys = buildSystemInstruction(clamped.tripContext);
+  const sys = buildSystemInstruction(clamped.tripContext, clamped.truncated);
   const contents = clamped.messages.map(m => ({
     role: m.role === 'assistant' ? 'model' : 'user',
     parts: [{ text: m.content }],
@@ -172,21 +191,33 @@ function clampBody(body) {
   if (!messages.length) return { ok: false };
 
   const tripContext = (body.tripContext && typeof body.tripContext === 'object') ? body.tripContext : {};
-  if (JSON.stringify(tripContext).length > MAX_TRIP_JSON) return { ok: false };
+  // A heavy trip is TRIMMED to fit, not rejected. This used to be a hard
+  // `return { ok: false }`, i.e. a bare 400 with no explanation for a traveller
+  // whose only mistake was writing long descriptions on ~40 items.
+  // fitAssistContext drops free-text `details` first and never touches the
+  // structural facts; `truncated` then has to reach the system instruction, or
+  // the model reasons about a shortened trip as if it were complete.
+  const fit = TripLogic.fitAssistContext(tripContext, MAX_TRIP_JSON);
+  // 'untrimmable' is an oversize body with no trip in it: malformed, answered
+  // as it always was. Only a REAL trip that still does not fit earns the
+  // dedicated answer.
+  if (!fit.ok) return { ok: false, tooLarge: fit.reason === 'still_too_big' };
 
-  return { ok: true, clientId, messages, tripContext };
+  return { ok: true, clientId, messages, tripContext: fit.ctx, truncated: fit.truncated };
 }
 
-function buildSystemInstruction(ctx) {
-  const parts = [SYSTEM_PREAMBLE];
-  const today = typeof ctx.today === 'string' ? ctx.today.slice(0, 10) : '';
-  const focus = typeof ctx.focusDate === 'string' ? ctx.focusDate.slice(0, 10) : '';
-  if (today) parts.push('Today is ' + today + '.');
-  if (focus) parts.push('The traveller is focused on this day: ' + focus + '.');
-  if (ctx.trip && typeof ctx.trip === 'object') {
-    parts.push('Here is the current trip as JSON:\n' + JSON.stringify(ctx.trip).slice(0, MAX_TRIP_JSON));
-  }
-  return parts.join('\n\n');
+// Exported for the unit tests: the whole instruction comes from the shared
+// client builder, so there is exactly one definition of the contract. The trip
+// itself is already size-bounded by clampBody, which TRIMS an oversize trip and
+// reports whether it had to; `truncated` carries that into the prompt so the
+// model is told its view of the trip is incomplete.
+export function buildSystemInstruction(ctx, truncated) {
+  return TripLogic.buildAssistSystemPrompt({
+    trip: (ctx.trip && typeof ctx.trip === 'object') ? ctx.trip : null,
+    focusDate: typeof ctx.focusDate === 'string' ? ctx.focusDate.slice(0, 10) : '',
+    today: typeof ctx.today === 'string' ? ctx.today.slice(0, 10) : '',
+    truncated: !!truncated,
+  });
 }
 
 async function callGemini(key, sys, contents) {
