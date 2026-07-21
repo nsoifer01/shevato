@@ -43,7 +43,7 @@
   <meta name="theme-color" content="#0e1116">
   <link rel="stylesheet" href="../../assets/css/main.css">
   <link rel="stylesheet" href="../../assets/css/sync-status.css">
-  <link rel="stylesheet" href="css/styles.css?v=18">
+  <link rel="stylesheet" href="css/styles.css?v=23">
 </head>
 <body class="tp-page">
   <div id="sync-banner" class="sync-banner" role="status" aria-live="polite" hidden></div>
@@ -106,7 +106,7 @@
   <div class="toolbar">
     <button class="btn primary" id="addBtn">+ Add item</button>
     <span class="tb-sep" aria-hidden="true"></span>
-    <div class="tb-group" role="group" aria-label="Trip tools">
+    <div class="tb-group tb-tools" role="group" aria-label="Trip tools">
       <button class="btn" id="shiftTripBtn" title="Shift the whole trip by N days">⇄ Shift trip</button>
       <button class="btn" id="routeBtn" title="How to get from A to B">🧭 Route</button>
       <button class="btn" id="visaBtn" title="Visa requirements for the countries on this trip">🛂 Visas</button>
@@ -130,6 +130,7 @@
       <option value="flight">Flights</option>
       <option value="stay">Stays</option>
       <option value="transport">Transport</option>
+      <option value="local">Local travel</option>
       <option value="activity">Activities</option>
       <option value="note">Notes</option>
     </select>
@@ -166,96 +167,133 @@
 <!-- item modal -->
 <div class="overlay" id="itemOverlay">
   <form class="modal" id="itemForm" novalidate role="dialog" aria-modal="true" aria-labelledby="itemModalTitle" tabindex="-1">
-    <h2 id="itemModalTitle">Add item</h2>
-    <div class="field">
-      <label>Type</label>
-      <div class="type-picker" id="typePicker">
-        <button type="button" data-type="flight">✈️ Flight</button>
-        <button type="button" data-type="stay">🏨 Stay</button>
-        <button type="button" data-type="transport">🚆 Transport</button>
-        <button type="button" data-type="activity">🎟️ Activity</button>
-        <button type="button" data-type="note">📝 Note</button>
-      </div>
+    <div class="m-head">
+      <h2 id="itemModalTitle">Add item</h2>
     </div>
-    <div class="field" id="fTitle">
-      <label id="titleLabel">Title</label>
-      <input id="inTitle" maxlength="120" placeholder="e.g. Shreveport to Tokyo (HND)">
-      <div class="err">Title is required.</div>
-    </div>
-    <div class="field">
-      <label>Place <small style="font-weight:400">(optional)</small></label>
-      <input id="inLocation" maxlength="80" placeholder="e.g. Tokyo">
-    </div>
-    <div class="grid3">
-      <div class="field" id="fStart">
-        <label id="startLabel">Date</label>
-        <input type="date" id="inStart">
-        <div class="err">A valid date is required.</div>
-      </div>
-      <div class="field" id="fEnd">
-        <label>Check-out</label>
-        <input type="date" id="inEnd">
-        <div class="err" id="endErr">Check-out must be after check-in.</div>
-      </div>
-      <div class="field" id="fTime">
-        <label id="timeLabel">Time <small style="font-weight:400">(optional)</small></label>
-        <input type="time" id="inTime">
-      </div>
-    </div>
-    <div class="grid2" id="fArrivalRow">
-      <div class="field" id="fArrDate">
-        <label id="arrDateLabel">Lands on <small style="font-weight:400">(optional, for overnight legs)</small></label>
-        <input type="date" id="inArrDate">
-        <div class="err">Arrival cannot be before departure.</div>
-      </div>
-      <div class="field">
-        <label id="arrTimeLabel">Landing time <small style="font-weight:400">(optional)</small></label>
-        <input type="time" id="inArrTime">
-      </div>
-    </div>
-    <div class="grid2">
-      <div class="field">
-        <label>Status</label>
-        <select id="inStatus">
-          <option value="booked">Booked</option>
-          <option value="to-book" selected>To book</option>
-          <option value="decide">Decide later</option>
-          <option value="cancelled">Cancelled</option>
-        </select>
-      </div>
-      <div class="field" id="fCost">
-        <label>Cost</label>
-        <div class="cost-row">
-          <div class="cost-input-wrap">
-            <span class="cost-prefix" id="costPrefix" aria-hidden="true">$</span>
-            <input type="number" id="inCost" min="0" step="0.01" inputmode="decimal" placeholder="0.00">
+    <div class="m-body">
+      <section class="m-section">
+        <div class="m-section-head"><h3>Basics</h3></div>
+        <div class="field">
+          <label id="typeLabel">Type</label>
+          <div class="seg seg-grid" id="typePicker" role="group" aria-labelledby="typeLabel">
+            <button type="button" data-type="flight"><span class="seg-ico" aria-hidden="true">✈️</span><span>Flight</span></button>
+            <button type="button" data-type="stay"><span class="seg-ico" aria-hidden="true">🏨</span><span>Stay</span></button>
+            <button type="button" data-type="transport"><span class="seg-ico" aria-hidden="true">🚆</span><span>Transport</span></button>
+            <button type="button" data-type="local"><span class="seg-ico" aria-hidden="true">🚕</span><span>Local travel</span></button>
+            <button type="button" data-type="activity"><span class="seg-ico" aria-hidden="true">🎟️</span><span>Activity</span></button>
+            <button type="button" data-type="note"><span class="seg-ico" aria-hidden="true">📝</span><span>Note</span></button>
           </div>
-          <select id="inCostCurrency" class="cost-cur-sel" aria-label="Cost currency"></select>
         </div>
-        <div class="err">Cost cannot be negative.</div>
-      </div>
-    </div>
-    <div class="field">
-      <label>Cost note <small style="font-weight:400">(optional, shown instead of a blank cost, e.g. "Included in intl flights")</small></label>
-      <input id="inCostNote" maxlength="80">
-    </div>
-    <div class="field">
-      <label>Details <small style="font-weight:400">(optional)</small></label>
-      <textarea id="inDetails" maxlength="500" placeholder="Hotel name, confirmation number, terminal, links..."></textarea>
-    </div>
-    <div class="field" id="docsSection">
-      <label>Documents</label>
-      <div class="docs-hint" id="docsNew" hidden>Save the item first, then attach documents.</div>
-      <div id="docsExisting" hidden>
-        <input type="file" id="inDocs" accept="image/*,application/pdf" multiple hidden>
-        <button type="button" class="btn" id="docsAttachBtn">📎 Attach files</button>
-        <div class="docs-list" id="docsList"></div>
-        <div class="docs-err" id="docsErr" hidden></div>
-        <div class="hint">Stored only on this device. Not included in exports or sync. Undoing a delete does not bring documents back.</div>
-      </div>
+        <div class="field" id="fTitle">
+          <label id="titleLabel" for="inTitle">Title</label>
+          <input id="inTitle" maxlength="120" placeholder="e.g. Shreveport to Tokyo (HND)">
+          <div class="hint" id="mealHint" hidden></div>
+          <div class="err">Title is required.</div>
+        </div>
+        <div class="field">
+          <label for="inLocation">Place <small>(optional)</small></label>
+          <input id="inLocation" maxlength="80" placeholder="e.g. Tokyo">
+        </div>
+      </section>
+
+      <section class="m-section">
+        <div class="m-section-head"><h3>When</h3></div>
+        <div class="m-row">
+          <div class="field" id="fStart">
+            <label id="startLabel" for="inStart">Date</label>
+            <input type="date" id="inStart">
+            <div class="err" id="startErr">A valid date is required.</div>
+          </div>
+          <div class="field" id="fEnd">
+            <label for="inEnd">Check-out</label>
+            <input type="date" id="inEnd">
+            <div class="err" id="endErr">Check-out must be after check-in.</div>
+          </div>
+          <div class="field" id="fTime">
+            <label id="timeLabel" for="inTime">Time <small>(optional)</small></label>
+            <input type="time" id="inTime">
+          </div>
+        </div>
+        <div class="m-row" id="fArrivalRow">
+          <div class="field" id="fArrDate">
+            <label id="arrDateLabel" for="inArrDate">Lands on <small>(optional, for overnight legs)</small></label>
+            <input type="date" id="inArrDate">
+            <div class="err" id="arrErr">Arrival cannot be before departure.</div>
+          </div>
+          <div class="field">
+            <label id="arrTimeLabel" for="inArrTime">Landing time <small>(optional)</small></label>
+            <input type="time" id="inArrTime">
+          </div>
+        </div>
+      </section>
+
+      <section class="m-section">
+        <div class="m-section-head"><h3>Booking</h3></div>
+        <div class="m-row">
+          <div class="field">
+            <label for="inStatus">Status</label>
+            <div class="sel-wrap">
+              <select id="inStatus">
+                <option value="booked">Booked</option>
+                <option value="to-book" selected>To book</option>
+                <option value="decide">Decide later</option>
+                <option value="cancelled">Cancelled</option>
+              </select>
+            </div>
+          </div>
+          <div class="field is-wide" id="fCost">
+            <label for="inCost">Cost</label>
+            <div class="input-group">
+              <div class="cost-input-wrap">
+                <span class="cost-prefix" id="costPrefix" aria-hidden="true">$</span>
+                <input type="number" id="inCost" step="0.01" inputmode="decimal" placeholder="0.00">
+              </div>
+              <span class="sel-wrap cost-cur-wrap">
+                <select id="inCostCurrency" class="cost-cur-sel" aria-label="Cost currency"></select>
+              </span>
+            </div>
+            <div class="err">Cost must be a number.</div>
+            <div class="hint">A negative amount is a refund or a credit, e.g. -120 for a refunded booking.</div>
+            <div class="cost-est" id="costEstHint" hidden></div>
+          </div>
+        </div>
+        <div class="field">
+          <label for="inCostNote">Cost note <small>(optional, shown instead of a blank cost, e.g. "Included in intl flights")</small></label>
+          <input id="inCostNote" maxlength="80">
+        </div>
+      </section>
+
+      <section class="m-section">
+        <div class="m-section-head"><h3>Notes</h3></div>
+        <div class="field">
+          <label for="inDetails">Details <small>(optional)</small></label>
+          <textarea id="inDetails" maxlength="500" placeholder="Hotel name, confirmation number, terminal, links..."></textarea>
+          <div class="detail-links" id="inDetailLinks" hidden></div>
+        </div>
+      </section>
+
+      <section class="m-section" id="docsSection">
+        <div class="m-section-head"><h3>Documents</h3></div>
+        <div class="m-empty" id="docsNew" hidden>
+          <span class="me-ico" aria-hidden="true">📎</span>
+          <span>Save the item first, then attach documents.</span>
+        </div>
+        <div class="docs-body" id="docsExisting" hidden>
+          <input type="file" id="inDocs" accept="image/*,application/pdf" multiple hidden>
+          <div class="docs-list" id="docsList"></div>
+          <div class="m-empty docs-empty">
+            <span class="me-ico" aria-hidden="true">📎</span>
+            <span class="me-title">No documents yet</span>
+            <span>Attach a booking confirmation, a ticket or a voucher.</span>
+          </div>
+          <button type="button" class="btn" id="docsAttachBtn">📎 Attach files</button>
+          <div class="docs-err" id="docsErr" hidden></div>
+          <div class="hint">Stored only on this device. Not included in exports or sync. Undoing a delete does not bring documents back.</div>
+        </div>
+      </section>
     </div>
     <div class="modal-foot">
-      <button type="button" class="btn left" data-close>Cancel</button>
+      <button type="button" class="btn ghost" data-close>Cancel</button>
       <button type="submit" class="btn primary" id="itemSaveBtn">Save item</button>
     </div>
   </form>
@@ -264,27 +302,35 @@
 <!-- shift modal -->
 <div class="overlay" id="shiftOverlay">
   <form class="modal small" id="shiftForm" role="dialog" aria-modal="true" aria-labelledby="shiftTitle" tabindex="-1">
-    <h2 id="shiftTitle">Shift dates</h2>
-    <div class="field">
-      <label>Shift by</label>
-      <div class="stepper">
-        <button type="button" class="btn" id="shiftMinus">-1</button>
-        <input type="number" id="shiftDays" value="1" step="1">
-        <button type="button" class="btn" id="shiftPlus">+1</button>
-        <span style="color:var(--text-dim)">day(s)</span>
-      </div>
-      <div class="hint">Use a negative number to move earlier.</div>
+    <div class="m-head">
+      <h2 id="shiftTitle">Shift dates</h2>
     </div>
-    <div class="field" id="shiftScopeField">
-      <label>Apply to</label>
-      <div class="radio-row">
-        <label><input type="radio" name="shiftScope" value="one" checked> Only this item</label>
-        <label><input type="radio" name="shiftScope" value="after"> This item and everything after it</label>
-        <label><input type="radio" name="shiftScope" value="all"> The entire trip</label>
-      </div>
+    <div class="m-body">
+      <section class="m-section">
+        <div class="field">
+          <label for="shiftDays">Shift by</label>
+          <div class="m-row">
+            <div class="input-group stepper">
+              <button type="button" class="btn" id="shiftMinus" aria-label="One day earlier">-1</button>
+              <input type="number" id="shiftDays" value="1" step="1">
+              <button type="button" class="btn" id="shiftPlus" aria-label="One day later">+1</button>
+            </div>
+            <span class="stepper-unit">day(s)</span>
+          </div>
+          <div class="hint">Use a negative number to move earlier.</div>
+        </div>
+      </section>
+      <section class="m-section" id="shiftScopeField">
+        <div class="m-section-head"><h3>Apply to</h3></div>
+        <div class="radio-row">
+          <label><input type="radio" name="shiftScope" value="one" checked> Only this item</label>
+          <label><input type="radio" name="shiftScope" value="after"> This item and everything after it</label>
+          <label><input type="radio" name="shiftScope" value="all"> The entire trip</label>
+        </div>
+      </section>
     </div>
     <div class="modal-foot">
-      <button type="button" class="btn left" data-close>Cancel</button>
+      <button type="button" class="btn ghost" data-close>Cancel</button>
       <button type="submit" class="btn primary">Shift</button>
     </div>
   </form>
@@ -293,31 +339,44 @@
 <!-- trip modal -->
 <div class="overlay" id="tripOverlay">
   <form class="modal small" id="tripForm" role="dialog" aria-modal="true" aria-labelledby="tripModalTitle" tabindex="-1">
-    <h2 id="tripModalTitle">New trip</h2>
-    <div class="field" id="fTripName">
-      <label>Trip name</label>
-      <input id="inTripName" maxlength="60" placeholder="e.g. Japan and Thailand 2027">
-      <div class="err">A name is required.</div>
+    <div class="m-head">
+      <h2 id="tripModalTitle">New trip</h2>
     </div>
-    <div class="field">
-      <label>Currency</label>
-      <select id="inTripCurrency">
-        <option value="USD">USD ($)</option>
-        <option value="EUR">EUR (€)</option>
-        <option value="GBP">GBP (£)</option>
-        <option value="ILS">ILS (₪)</option>
-        <option value="JPY">JPY (¥)</option>
-        <option value="THB">THB (฿)</option>
-        <option value="CAD">CAD ($)</option>
-        <option value="AUD">AUD ($)</option>
-      </select>
-    </div>
-    <div class="field">
-      <label>Budget <small style="font-weight:400">(optional)</small></label>
-      <input type="number" id="inTripBudget" min="0" step="0.01" inputmode="decimal" placeholder="e.g. 3000">
+    <div class="m-body">
+      <section class="m-section">
+        <div class="field" id="fTripName">
+          <label for="inTripName">Trip name</label>
+          <input id="inTripName" maxlength="60" placeholder="e.g. Japan and Thailand 2027" list="tripNameList" autocomplete="off">
+          <datalist id="tripNameList"></datalist>
+          <div class="hint" id="tripNameHint" hidden></div>
+          <div class="err">A name is required.</div>
+        </div>
+        <div class="m-row">
+          <div class="field">
+            <label for="inTripCurrency">Currency</label>
+            <div class="sel-wrap">
+              <select id="inTripCurrency">
+                <option value="USD">USD ($)</option>
+                <option value="EUR">EUR (€)</option>
+                <option value="GBP">GBP (£)</option>
+                <option value="ILS">ILS (₪)</option>
+                <option value="JPY">JPY (¥)</option>
+                <option value="THB">THB (฿)</option>
+                <option value="CAD">CAD ($)</option>
+                <option value="AUD">AUD ($)</option>
+              </select>
+            </div>
+          </div>
+          <div class="field" id="fTripBudget">
+            <label for="inTripBudget">Budget <small>(optional)</small></label>
+            <input type="number" id="inTripBudget" min="0" step="0.01" inputmode="decimal" placeholder="e.g. 3000">
+            <div class="err">A budget cannot be negative.</div>
+          </div>
+        </div>
+      </section>
     </div>
     <div class="modal-foot">
-      <button type="button" class="btn left" data-close>Cancel</button>
+      <button type="button" class="btn ghost" data-close>Cancel</button>
       <button type="submit" class="btn primary" id="tripSaveBtn">Create trip</button>
     </div>
   </form>
@@ -325,11 +384,16 @@
 
 <!-- confirm modal -->
 <div class="overlay" id="confirmOverlay">
-  <div class="modal small" role="dialog" aria-modal="true" aria-labelledby="confirmTitle" tabindex="-1">
-    <h2 id="confirmTitle">Are you sure?</h2>
-    <p id="confirmText" style="color:var(--text-dim); margin:0 0 4px;"></p>
+  <div class="modal compact" role="alertdialog" aria-modal="true" aria-labelledby="confirmTitle" aria-describedby="confirmText" tabindex="-1">
+    <div class="m-head">
+      <span class="m-icon danger" aria-hidden="true">🗑</span>
+      <h2 id="confirmTitle">Are you sure?</h2>
+    </div>
+    <div class="m-body">
+      <p class="m-prose" id="confirmText"></p>
+    </div>
     <div class="modal-foot">
-      <button type="button" class="btn left" data-close>Cancel</button>
+      <button type="button" class="btn ghost" data-close>Cancel</button>
       <button type="button" class="btn danger" id="confirmYes">Delete</button>
     </div>
   </div>
@@ -337,21 +401,32 @@
 
 <!-- visa requirements modal -->
 <div class="overlay" id="visaOverlay">
-  <div class="modal">
-    <h2>Visa requirements</h2>
-    <div class="field">
-      <label>Your passport</label>
-      <select id="passportSel"><option value="">Select your passport country...</option></select>
+  <div class="modal" role="dialog" aria-modal="true" aria-labelledby="visaModalTitle" tabindex="-1">
+    <div class="m-head">
+      <h2 id="visaModalTitle">Visa requirements</h2>
     </div>
-    <div class="visa-results" id="visaResults">Loading...</div>
-    <div class="visa-add">
-      <select id="visaAddSel" aria-label="Add another country">
-        <option value="">+ Add another country (layover, border crossing, road trip)...</option>
-      </select>
+    <div class="m-body">
+      <section class="m-section">
+        <div class="field">
+          <label for="passportSel">Your passport</label>
+          <div class="sel-wrap">
+            <select id="passportSel"><option value="">Select your passport country...</option></select>
+          </div>
+          <p class="hint passport-guess" id="passportGuess" hidden></p>
+        </div>
+        <div class="m-panel visa-results" id="visaResults">Loading...</div>
+        <div class="field">
+          <div class="sel-wrap">
+            <select id="visaAddSel" aria-label="Add another country">
+              <option value="">+ Add another country (layover, border crossing, road trip)...</option>
+            </select>
+          </div>
+        </div>
+        <div class="route-note">Source: the community-maintained Passport Index dataset. <b id="visaVintage"></b> Rules change constantly and transit countries can have their own requirements, so this is a starting point, never an answer: always verify with the destination's embassy or official government site before you book.</div>
+      </section>
     </div>
-    <div class="route-note">Source: the community-maintained Passport Index dataset, refreshed monthly and cached in your browser. Rules change and transit countries can have their own requirements: always verify with the destination's embassy or official site before booking.</div>
     <div class="modal-foot">
-      <button type="button" class="btn left" data-close>Close</button>
+      <button type="button" class="btn ghost" data-close>Close</button>
     </div>
   </div>
 </div>
@@ -359,28 +434,34 @@
 <!-- route helper modal -->
 <div class="overlay" id="routeOverlay">
   <form class="modal" id="routeForm" role="dialog" aria-modal="true" aria-labelledby="routeModalTitle" tabindex="-1">
-    <h2 id="routeModalTitle">How to get there</h2>
-    <div class="route-io">
-      <div class="field">
-        <label>From</label>
-        <input id="routeFrom" maxlength="80" placeholder="e.g. Tokyo" list="placeList" autocomplete="off">
-      </div>
-      <button type="button" class="icon-btn route-swap" id="routeSwap" title="Swap from and to">⇅</button>
-      <div class="field">
-        <label>To</label>
-        <input id="routeTo" maxlength="80" placeholder="e.g. Kyoto" list="placeList" autocomplete="off">
-      </div>
+    <div class="m-head">
+      <span class="m-icon" aria-hidden="true">🧭</span>
+      <h2 id="routeModalTitle">How to get there</h2>
     </div>
-    <datalist id="placeList"></datalist>
-    <div class="route-result" id="routeResult">Enter two places and hit "Check route".</div>
-    <div class="route-links">
-      <a class="btn" id="rlTransit" target="_blank" rel="noopener">🚆 Google transit</a>
-      <a class="btn" id="rlDrive" target="_blank" rel="noopener">🚗 Google driving</a>
-      <a class="btn" id="rlFly" target="_blank" rel="noopener">✈️ Google Flights</a>
-      <a class="btn" id="rlR2R" target="_blank" rel="noopener">🌐 Rome2Rio</a>
+    <div class="m-body">
+      <section class="m-section">
+        <div class="route-io">
+          <div class="field">
+            <label for="routeFrom">From</label>
+            <input id="routeFrom" maxlength="80" placeholder="e.g. Tokyo" list="placeList" autocomplete="off">
+          </div>
+          <button type="button" class="icon-btn route-swap" id="routeSwap" title="Swap from and to" aria-label="Swap from and to">⇅</button>
+          <div class="field">
+            <label for="routeTo">To</label>
+            <input id="routeTo" maxlength="80" placeholder="e.g. Kyoto" list="placeList" autocomplete="off">
+          </div>
+        </div>
+        <datalist id="placeList"></datalist>
+        <div class="m-panel route-result" id="routeResult">Enter two places and hit "Check route".</div>
+      </section>
+      <section class="m-section">
+        <div class="m-section-head"><h3>Book or check elsewhere</h3></div>
+        <div class="route-links" id="routeLinks"></div>
+        <p class="hint" id="routeLinksHint">Official operators first. Rome2Rio is a discovery tool: good for spotting which operators run a route, not a source for fares.</p>
+      </section>
     </div>
     <div class="modal-foot">
-      <button type="button" class="btn left" data-close>Close</button>
+      <button type="button" class="btn ghost" data-close>Close</button>
       <button type="submit" class="btn primary" id="routeCheckBtn">Check route</button>
     </div>
   </form>
@@ -392,25 +473,55 @@
 <!-- AI assistant panel (direct child of .trip-planner-app) -->
 <aside class="tp-assist-panel" id="assistPanel" hidden aria-label="AI assistant">
   <div class="tp-assist-head">
-    <h2>🤖 Assistant</h2>
-    <button type="button" class="icon-btn" id="assistCloseBtn" title="Close" aria-label="Close assistant">✕</button>
+    <span class="ah-avatar" aria-hidden="true">🤖</span>
+    <h2>Assistant</h2>
+    <button type="button" class="ah-btn" id="assistMinBtn" title="Minimize" aria-label="Minimize assistant" aria-expanded="true"><svg class="min-ico" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" aria-hidden="true"><line x1="5" y1="12" x2="19" y2="12"/></svg><svg class="max-ico" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 15l6-6 6 6"/></svg></button>
+    <button type="button" class="ah-btn" id="assistCloseBtn" title="Close" aria-label="Close assistant"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" aria-hidden="true"><line x1="6" y1="6" x2="18" y2="18"/><line x1="18" y1="6" x2="6" y2="18"/></svg></button>
   </div>
   <div class="tp-assist-scroll">
-    <div class="assist-honesty" id="assistHonestyNote">The assistant can't check live reviews or availability. Suggestions include a Google Maps link so you can verify hours, prices and reviews yourself.</div>
-    <div id="assistFocusChip" class="assist-focus-chip" hidden></div>
-    <div class="tier-group" id="assistTierGroup" role="radiogroup" aria-label="How to use the assistant"></div>
-    <div class="tier-body" id="assistTierBody"></div>
+    <p class="assist-honesty" id="assistHonestyNote"><span class="ah-note-ico" aria-hidden="true">!</span><span>No live prices or availability. Star ratings come from Google Maps. Open a suggestion's link to check for yourself.</span></p>
+    <div class="assist-setup" id="assistSetup">
+      <section class="as-step" aria-labelledby="asStepPlanLbl">
+        <div class="as-step-head">
+          <span class="as-step-n" aria-hidden="true">1</span>
+          <h3 id="asStepPlanLbl">Plan my day</h3>
+          <div id="assistFocusChip" class="assist-focus-chip" hidden></div>
+        </div>
+        <div class="assist-planner" id="assistPlanner"></div>
+      </section>
+      <section class="as-step" aria-labelledby="asStepAiLbl">
+        <div class="as-step-head">
+          <span class="as-step-n" aria-hidden="true">2</span>
+          <h3 id="asStepAiLbl">Send it</h3>
+        </div>
+        <div class="tier-group" id="assistTierGroup"></div>
+        <div class="tier-body" id="assistTierBody"></div>
+        <div class="assist-review" id="assistReview"></div>
+      </section>
+    </div>
+    <div class="assist-setup-bar" id="assistSetupBar" hidden></div>
     <div class="assist-messages" id="assistMessages" aria-live="polite"></div>
-    <div class="assist-composer" id="assistComposer" hidden>
-      <textarea id="assistInput" rows="2" maxlength="1000" placeholder="Ask the assistant... (Enter to send, Shift+Enter for a new line)"></textarea>
-      <div class="assist-composer-row">
-        <button type="button" class="btn assist-clear" id="assistClearChat">Clear chat</button>
-        <button type="button" class="btn primary" id="assistSend">Send</button>
-      </div>
+  </div>
+  <div class="assist-composer" id="assistComposer" hidden>
+    <textarea id="assistInput" rows="3" maxlength="1000" placeholder="Ask the assistant..."></textarea>
+    <p class="assist-composer-hint">Enter sends, Shift+Enter adds a line</p>
+    <div class="assist-composer-row">
+      <button type="button" class="btn assist-clear" id="assistClearChat">Clear chat</button>
+      <button type="button" class="btn primary" id="assistSend">Send</button>
     </div>
   </div>
 </aside>
 </div><!-- /.trip-planner-app -->
+
+  <!-- Data-source attribution. Licence conditions, not courtesies: OpenStreetMap
+       data is ODbL (it drives place lookup for the route modal, the visa
+       country list and the weather chips, none of which are covered by the
+       Leaflet tile credit on the Map view), and Open-Meteo publishes under
+       CC BY 4.0. Static HTML so it shows without JS too. Mirrors the
+       .data-attribution block in apps/rising-shows/index.html. -->
+  <div class="data-attribution">
+    <p class="da-text">Place lookup and map data &copy; <a class="da-link" href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener noreferrer">OpenStreetMap</a> contributors, available under the <a class="da-link" href="https://opendatacommons.org/licenses/odbl/" target="_blank" rel="noopener noreferrer">Open Database License</a>, via <a class="da-link" href="https://nominatim.openstreetmap.org/" target="_blank" rel="noopener noreferrer">Nominatim</a>. Typical weather from <a class="da-link" href="https://open-meteo.com/" target="_blank" rel="noopener noreferrer">Open-Meteo</a>, licensed <a class="da-link" href="https://creativecommons.org/licenses/by/4.0/" target="_blank" rel="noopener noreferrer">CC BY 4.0</a>. Visa requirements from the community-maintained <a class="da-link" href="https://github.com/imorte/passport-index-data" target="_blank" rel="noopener noreferrer">Passport Index dataset</a>. Exchange rates from <a class="da-link" href="https://frankfurter.app/" target="_blank" rel="noopener noreferrer">Frankfurter</a>. None of these are official sources for entry requirements.</p>
+  </div>
 
   <div data-include="footer"></div>
 
@@ -443,7 +554,7 @@
     }
   </script>
 
-  <script src="js/trip-logic.js?v=6"></script>
-  <script src="js/app.js?v=21"></script>
+  <script src="js/trip-logic.js?v=12"></script>
+  <script src="js/app.js?v=27"></script>
 </body>
 </html>
