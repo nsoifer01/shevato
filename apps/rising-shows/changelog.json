@@ -1,6 +1,214 @@
 {
   "updates": [
     {
+      "builtAt": "2026-07-21T08:31:52.374Z",
+      "totals": {
+        "seasons": 65890,
+        "delta": 13
+      },
+      "shapeCounts": {
+        "mid-peak": 4631,
+        "rebound": 10067,
+        "rising": 2906,
+        "slow-burn": 4348,
+        "big-finale": 12006,
+        "u-shaped": 3088,
+        "rollercoaster": 14033,
+        "saved-best-for-last": 1523,
+        "front-loaded": 3449,
+        "declining": 1878,
+        "bad-finale": 4646,
+        "consistent": 2613,
+        "shape-drift": 1625
+      },
+      "shapeDeltas": {
+        "mid-peak": 1,
+        "rebound": -4,
+        "rising": -1,
+        "big-finale": -1,
+        "u-shaped": 4,
+        "rollercoaster": 7,
+        "saved-best-for-last": -4,
+        "front-loaded": 3,
+        "declining": 3,
+        "bad-finale": 1,
+        "consistent": -2,
+        "shape-drift": 2
+      },
+      "added": [
+        {
+          "seriesId": "tt13168898",
+          "title": "James and the Giant Peach with Taika and Friends",
+          "season": 1,
+          "seasonYear": 2020
+        },
+        {
+          "seriesId": "tt31328588",
+          "title": "My Love",
+          "season": 1,
+          "seasonYear": 2024
+        },
+        {
+          "seriesId": "tt37788031",
+          "title": "Ann Droid",
+          "season": 1,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt11161138",
+          "title": "Dr. Gokú Super",
+          "season": 2,
+          "seasonYear": 2016
+        },
+        {
+          "seriesId": "tt11161138",
+          "title": "Dr. Gokú Super",
+          "season": 3,
+          "seasonYear": 2017
+        },
+        {
+          "seriesId": "tt14128936",
+          "title": "British Columbia: An Untold History",
+          "season": 1,
+          "seasonYear": 2021
+        },
+        {
+          "seriesId": "tt1796154",
+          "title": "Papiny dochki",
+          "season": 12,
+          "seasonYear": 2010
+        },
+        {
+          "seriesId": "tt38689352",
+          "title": "The F Ward",
+          "season": 1,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt4277128",
+          "title": "Die Anstalt",
+          "season": 11,
+          "seasonYear": 2024
+        },
+        {
+          "seriesId": "tt9875860",
+          "title": "Ms Sweet",
+          "season": 1,
+          "seasonYear": 2019
+        },
+        {
+          "seriesId": "tt3544978",
+          "title": "Josephine Klick - Allein unter Cops",
+          "season": 2,
+          "seasonYear": 2015
+        },
+        {
+          "seriesId": "tt35668156",
+          "title": "Better Late Than Single",
+          "season": 2,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt43439241",
+          "title": "Headline",
+          "season": 1,
+          "seasonYear": 2026
+        }
+      ],
+      "removed": [],
+      "ratingSwings": [
+        {
+          "seriesId": "tt10752770",
+          "title": "Sistas",
+          "season": 10,
+          "from": 9.4,
+          "to": 8.13,
+          "delta": -1.27
+        },
+        {
+          "seriesId": "tt10752770",
+          "title": "Sistas",
+          "season": 9,
+          "from": 9.32,
+          "to": 8.35,
+          "delta": -0.97
+        },
+        {
+          "seriesId": "tt32088318",
+          "title": "Sauria",
+          "season": 1,
+          "from": 8.6,
+          "to": 7.77,
+          "delta": -0.83
+        },
+        {
+          "seriesId": "tt11306366",
+          "title": "Ruthless",
+          "season": 5,
+          "from": 9,
+          "to": 8.23,
+          "delta": -0.77
+        },
+        {
+          "seriesId": "tt11306366",
+          "title": "Ruthless",
+          "season": 4,
+          "from": 8.51,
+          "to": 7.75,
+          "delta": -0.76
+        },
+        {
+          "seriesId": "tt10752770",
+          "title": "Sistas",
+          "season": 8,
+          "from": 8.93,
+          "to": 8.2,
+          "delta": -0.73
+        },
+        {
+          "seriesId": "tt27422891",
+          "title": "LOL: Last One Laughing Poland",
+          "season": 4,
+          "from": 6.6,
+          "to": 5.9,
+          "delta": -0.7
+        },
+        {
+          "seriesId": "tt11306366",
+          "title": "Ruthless",
+          "season": 2,
+          "from": 9.53,
+          "to": 8.91,
+          "delta": -0.62
+        },
+        {
+          "seriesId": "tt11306366",
+          "title": "Ruthless",
+          "season": 3,
+          "from": 9.1,
+          "to": 8.5,
+          "delta": -0.6
+        },
+        {
+          "seriesId": "tt11306366",
+          "title": "Ruthless",
+          "season": 1,
+          "from": 9.57,
+          "to": 9.05,
+          "delta": -0.52
+        }
+      ],
+      "modifiedCounts": {
+        "seriesVotes": 12897,
+        "avgRating": 620,
+        "shapes": 95,
+        "seriesRating": 209,
+        "episodeCount": 37,
+        "poster": 7,
+        "overview": 5
+      }
+    },
+    {
       "builtAt": "2026-07-20T09:11:01.697Z",
       "totals": {
         "seasons": 65877,
