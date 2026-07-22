@@ -25,6 +25,13 @@
     --text-faint: #6b7789;
     --accent: #4f8cff;
     --accent-soft: rgba(79, 140, 255, 0.14);
+    /* --accent is tuned to read as blue TEXT on a dark surface; white on it is
+       only 3.2:1. Filled controls (primary buttons, the active view tab, the
+       today badge) therefore paint --accent-fill instead, which carries white
+       at 5.1:1 in both themes. One token, every filled surface. */
+    --accent-fill: #2a67dd;
+    /* width of the day-card time rail; see .dc-event */
+    --dc-rail-w: 86px;
     --green: #34c98e;
     --green-soft: rgba(52, 201, 142, 0.14);
     --amber: #f0b34e;
@@ -34,7 +41,15 @@
     --red: #f2657a;
     --red-soft: rgba(242, 101, 122, 0.13);
     --gray-soft: rgba(154, 167, 186, 0.13);
+    /* transport gets its own hue so the three travel types (plane, train,
+       taxi) never read as the same thing; it used to be a raw hex in the
+       type pill, which meant the light theme inherited a dark-theme cyan */
+    --cyan: #46b9d8;
+    --cyan-soft: rgba(70, 185, 216, 0.14);
     --shadow: 0 12px 34px rgba(0, 0, 0, 0.45);
+    /* the card lift on hover: small enough to read as interactive rather
+       than as a dialog floating over the page */
+    --shadow-sm: 0 3px 10px rgba(0, 0, 0, 0.35);
     --radius: 14px;
     color-scheme: dark;
   }
@@ -59,20 +74,36 @@
     --red: #d43d55;
     --red-soft: rgba(212, 61, 85, 0.10);
     --gray-soft: rgba(85, 97, 116, 0.10);
+    --cyan: #0d7290;
+    --cyan-soft: rgba(13, 114, 144, 0.11);
     --shadow: 0 10px 28px rgba(28, 36, 50, 0.14);
+    --shadow-sm: 0 3px 10px rgba(28, 36, 50, 0.10);
     color-scheme: light;
   }
+  body.tp-page.tp-24h { --dc-rail-w: 60px; }
   .trip-planner-app *, .trip-planner-app *::before, .trip-planner-app *::after { box-sizing: border-box; }
   body.tp-page {
     margin: 0;
     background: var(--bg);
   }
+  /* main.css paints a fixed, viewport-tall hero photo at 5% opacity behind the
+     page (body::before, z-index -1). Every transparent block in this app -
+     #board, .tl-kids, .tl-day - therefore showed the photograph through it, with
+     a hard seam at the bottom of the viewport where the image stops. The dark
+     theme hid it; the light theme did not. The app owns a flat --bg surface, so
+     the hero layer is switched off on this page rather than every container
+     being made opaque one at a time. */
+  body.tp-page::before { display: none; }
   /* typography/color live on the app root, NOT body, so they cannot
      inherit into shared components appended to <body> */
   .trip-planner-app {
     color: var(--text);
     font: 15px/1.5 var(--tp-font);
     -webkit-font-smoothing: antialiased;
+    /* the label of a SELECTED segment. Flat --accent on an --accent-soft tint
+       lands at ~3.6:1 in both themes; blending it toward --text keeps the blue
+       read and clears 4.5:1. Derived from theme tokens, so it flips for free. */
+    --seg-on-fg: color-mix(in srgb, var(--accent) 55%, var(--text));
   }
   :where(.trip-planner-app) button { color: inherit; cursor: pointer; }
   .trip-planner-app input, .trip-planner-app select, .trip-planner-app textarea { color: var(--text); }
@@ -136,7 +167,7 @@
   .logo { display: flex; align-items: center; gap: 10px; margin-right: auto; }
   .logo .mark { font-size: 26px; }
   .logo h1 { font-size: 21px; margin: 0; letter-spacing: 0.2px; }
-  .logo .sub { color: var(--text-faint); font-size: 12px; margin-top: -3px; }
+  .logo .sub { color: var(--text-dim); font-size: 12px; margin-top: -3px; }
   .trip-bar { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
   select.trip-select {
     background: var(--bg-card); border: 1px solid var(--border); border-radius: 10px;
@@ -160,7 +191,7 @@
   .btn:hover { color: var(--text); border-color: var(--accent); }
   .btn:active { transform: translateY(1px); }
   .btn.primary {
-    background: var(--accent); border-color: var(--accent); color: #fff;
+    background: var(--accent-fill); border-color: var(--accent-fill); color: #fff;
   }
   .btn.primary:hover { filter: brightness(1.08); }
   .btn.danger { color: color-mix(in srgb, var(--red) 75%, var(--text-dim)); border-color: color-mix(in srgb, var(--red) 45%, var(--border)); }
@@ -194,7 +225,10 @@
   .trip-planner-app select:focus-visible,
   .trip-planner-app input:focus-visible,
   .trip-planner-app textarea:focus-visible,
-  .trip-planner-app a.btn:focus-visible {
+  .trip-planner-app a.btn:focus-visible,
+  /* the day row's Maps chip is an action button in everything but tag name, so
+     it takes the same ring instead of the browser's default outline */
+  .trip-planner-app .dc-tail .assist-maps-link:focus-visible {
     outline: 2px solid var(--accent); outline-offset: 2px;
   }
 
@@ -204,7 +238,7 @@
     background: var(--bg-card); border: 1px solid var(--border-soft); border-radius: 12px;
     padding: 9px 14px; min-width: 118px;
   }
-  .chip .k { font-size: 11px; text-transform: uppercase; letter-spacing: 0.7px; color: var(--text-faint); }
+  .chip .k { font-size: 11px; text-transform: uppercase; letter-spacing: 0.7px; color: var(--text-dim); }
   .chip .v { font-size: 16px; font-weight: 700; margin-top: 1px; white-space: nowrap; }
   .chip .v small { font-weight: 500; color: var(--text-dim); font-size: 12px; }
   .chip.warn-chip .v { color: var(--amber); }
@@ -233,7 +267,7 @@
   .tb-pair .icon-btn:first-child { border-top-right-radius: 0; border-bottom-right-radius: 0; }
   .tb-pair .icon-btn + .icon-btn { border-left: 0; border-top-left-radius: 0; border-bottom-left-radius: 0; }
   .toolbar .btn, .toolbar .icon-btn { background: var(--bg-soft); }
-  .toolbar .btn.primary { background: var(--accent); }
+  .toolbar .btn.primary { background: var(--accent-fill); }
   .toolbar input[type="search"], .toolbar select {
     background: var(--bg-soft); border: 1px solid var(--border); border-radius: 10px;
     padding: 8px 12px;
@@ -263,84 +297,206 @@
   .issues li a { color: var(--accent); cursor: pointer; text-decoration: none; }
   .issues li a:hover { text-decoration: underline; }
 
-  /* ---------- timeline ---------- */
-  .board { background: var(--bg-card); border: 1px solid var(--border-soft); border-radius: var(--radius); overflow: hidden; }
-  .thead, .tp-row {
+  /* ---------- timeline ----------
+     The board is a stack of cards on a spine, not a table: every item owns a
+     surface, and the type accent (--row-accent / --row-soft, set once per type
+     below and reused by the day view) is what makes a row scannable without
+     reading it. */
+  .board { display: flex; flex-direction: column; gap: 8px; }
+
+  /* type accents. One declaration per type, shared by the timeline card, the
+     day-view row and every dot/rail that derives from currentColor. */
+  .tp-t-flight    { --row-accent: var(--accent);     --row-soft: var(--accent-soft); }
+  .tp-t-transport { --row-accent: var(--cyan);       --row-soft: var(--cyan-soft); }
+  .tp-t-local     { --row-accent: var(--text-dim);   --row-soft: var(--gray-soft); }
+  .tp-t-stay      { --row-accent: var(--purple);     --row-soft: var(--purple-soft); }
+  .tp-t-activity  { --row-accent: var(--green);      --row-soft: var(--green-soft); }
+  .tp-t-meal      { --row-accent: var(--amber);      --row-soft: var(--amber-soft); }
+  .tp-t-note      { --row-accent: var(--text-faint); --row-soft: var(--gray-soft); }
+
+  .tl-node { position: relative; }
+  /* nested levels hang off ONE guide line instead of gaining a border each,
+     so three levels of hierarchy stay legible */
+  .tl-sub { margin: 6px 0 2px 20px; padding-left: 14px; border-left: 2px solid var(--border); }
+  .tl-kids { display: flex; flex-direction: column; gap: 2px; padding-top: 4px; }
+  .tl-day-items { display: flex; flex-direction: column; gap: 6px; margin: 4px 0 8px 12px; }
+  .tl-kids[hidden], .tl-day-items[hidden] { display: none; }
+  .tl-day { margin: 2px 0; }
+  /* inside an expanded day the date is already the group heading, so the row
+     shows only the clock reading and gets the space back */
+  .tl-day-items .tp-row { grid-template-columns: 30px minmax(0, 84px) minmax(0, 1fr) minmax(0, auto) auto; }
+  .tl-day-items .c-date { display: none; }
+
+  .tl-toggle {
+    display: flex; align-items: center; gap: 9px; width: 100%;
+    background: none; border: 1px solid transparent; border-radius: 10px;
+    padding: 7px 10px; font-size: 13px; font-weight: 600; text-align: left;
+    box-shadow: none; transition: background .13s, border-color .13s;
+  }
+  .tl-toggle:hover { background: var(--bg-raised); border-color: var(--border-soft); box-shadow: none; }
+  .tl-toggle:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+  .tl-caret {
+    flex: none; width: 0; height: 0;
+    border-left: 5px solid currentColor;
+    border-top: 4.5px solid transparent; border-bottom: 4.5px solid transparent;
+    transition: transform .15s ease;
+  }
+  .tl-stay.is-open > .tl-sub > .tl-toggle .tl-caret,
+  .tl-day.is-open > .tl-toggle .tl-caret { transform: rotate(90deg) translateX(1px); }
+  .tl-toggle-count { color: var(--text-dim); font-weight: 600; }
+  .tl-toggle-date { color: var(--text); font-weight: 700; font-variant-numeric: tabular-nums; }
+  .tl-toggle-date + .tl-toggle-count::before { content: "\00b7"; margin-right: 7px; color: var(--text-faint); }
+  /* a collapsed stay has to advertise the warning it is hiding */
+  .tl-warn { font-size: 12.5px; margin-left: 2px; }
+
+  .tp-row {
+    position: relative;
     display: grid;
-    grid-template-columns: 150px 52px 118px minmax(220px, 2fr) 128px 150px 152px;
-    gap: 12px; align-items: center; padding: 12px 18px;
+    grid-template-columns: 30px minmax(0, 152px) minmax(0, 1fr) minmax(0, auto) auto;
+    grid-template-areas: "dot when main side acts";
+    gap: 0 14px; align-items: start;
+    padding: 12px 15px 12px 14px;
+    background: var(--bg-card);
+    border: 1px solid var(--border-soft);
+    border-radius: 12px;
+    overflow: hidden;
+    transition: border-color .15s, box-shadow .15s, background .15s;
   }
-  .thead {
-    font-size: 11px; text-transform: uppercase; letter-spacing: 0.8px; color: var(--text-faint);
-    border-bottom: 1px solid var(--border); padding-top: 14px; padding-bottom: 10px;
-    position: sticky; top: 0; background: var(--bg-card); z-index: 5;
+  /* the accent edge: solid for a place you stop at, dashed for a move */
+  .tp-row::before {
+    content: ""; position: absolute; left: 0; top: 0; bottom: 0; width: 3px;
+    background: var(--row-accent, var(--text-dim));
   }
-  .tp-row { border-bottom: 1px solid var(--border-soft); position: relative; transition: background .15s; }
-  .tp-row:last-child { border-bottom: 0; }
-  .tp-row:hover { background: var(--bg-raised); }
+  .tp-row:hover { border-color: var(--border); box-shadow: var(--shadow-sm); }
   .tp-row.flash { animation: flash 1.6s ease-out; }
-  @keyframes flash { 0%, 40% { background: var(--accent-soft); } 100% { background: transparent; } }
-  .tp-row.has-err { box-shadow: inset 3px 0 0 var(--red); }
-  .tp-row.has-warn { box-shadow: inset 3px 0 0 var(--amber); }
+  @keyframes flash { 0%, 40% { background: var(--accent-soft); } 100% { background: var(--bg-card); } }
+  .tp-row.has-err { border-color: var(--red); }
+  .tp-row.has-warn { border-color: var(--amber); }
   .tp-row.is-cancelled .c-title, .tp-row.is-cancelled .c-details, .tp-row.is-cancelled .c-cost { opacity: 0.45; text-decoration: line-through; }
-  .c-dates { font-weight: 700; font-size: 14px; }
-  .c-dates .time { display: block; font-weight: 500; color: var(--text-faint); font-size: 12px; }
-  .c-nights { color: var(--text-dim); text-align: center; font-variant-numeric: tabular-nums; }
-  .type-pill {
-    display: inline-flex; align-items: center; gap: 6px; font-size: 12px; font-weight: 600;
-    padding: 4px 10px; border-radius: 999px; background: var(--gray-soft); color: var(--text-dim);
-    white-space: nowrap;
+
+  .c-dot {
+    grid-area: dot; display: inline-flex; align-items: center; justify-content: center;
+    width: 28px; height: 28px; border-radius: 9px; flex: none;
+    font-size: 14px; line-height: 1; background: var(--row-soft, var(--gray-soft));
   }
-  .type-flight { background: var(--accent-soft); color: var(--accent); }
-  .type-stay { background: var(--purple-soft); color: var(--purple); }
-  .type-transport { background: rgba(66, 190, 224, 0.14); color: #46b9d8; }
-  .type-activity { background: var(--green-soft); color: var(--green); }
-  .c-title { font-weight: 600; }
-  .c-title .loc { color: var(--text-dim); font-weight: 500; }
-  .c-details { color: var(--text-dim); font-size: 13.5px; overflow-wrap: anywhere; }
-  .c-details a { color: var(--accent); }
+  .c-when { grid-area: when; display: flex; flex-direction: column; gap: 1px; padding-top: 4px; min-width: 0; }
+  .c-date { font-size: 13px; font-weight: 700; color: var(--text); font-variant-numeric: tabular-nums; }
+  /* the clock reading is the one thing that carries the type colour in text
+     form, which is what makes a timeline scannable at a glance */
+  .c-time { font-size: 12px; font-weight: 600; color: var(--row-accent, var(--text-dim)); font-variant-numeric: tabular-nums; }
+  .c-nights { font-size: 11.5px; font-weight: 500; color: var(--text-dim); }
+
+  .c-main { grid-area: main; min-width: 0; display: flex; flex-direction: column; gap: 2px; padding-top: 1px; }
+  .c-title {
+    font-size: 16px; font-weight: 700; line-height: 1.3; letter-spacing: -0.005em;
+    color: var(--text); overflow-wrap: anywhere;
+  }
+  .c-loc { font-size: 12.5px; font-weight: 500; color: var(--text-dim); overflow-wrap: anywhere; }
+  .c-loc::before { content: "\1F4CD"; margin-right: 5px; font-size: 10.5px; opacity: 0.75; }
+  .c-details { margin-top: 5px; color: var(--text-dim); font-size: 13px; line-height: 1.5; overflow-wrap: anywhere; }
+
+  /* long free text is clamped to three lines behind a toggle so one verbose
+     item cannot make the page four screens tall */
+  .det-body.is-clamped .det-text {
+    display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden;
+  }
+  .det-more {
+    display: block; background: none; border: 0; padding: 3px 0 0;
+    font-size: 12.5px; font-weight: 700; box-shadow: none;
+  }
+  .det-more:hover { text-decoration: underline; box-shadow: none; }
+  .det-chips { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 7px; }
+  /* Maps is an ACTION, so it reads as a chip, not as a blue word in a
+     sentence (see also the !important colour pins further down) */
+  .c-details .assist-maps-link {
+    display: inline-flex; align-items: center; gap: 5px; margin: 0;
+    padding: 5px 11px; border-radius: 999px; text-decoration: none;
+    background: var(--accent-soft); border: 1px solid transparent;
+    font-size: 12.5px; font-weight: 600; line-height: 1.25; white-space: nowrap;
+  }
+  .c-details .assist-maps-link:hover { border-color: var(--accent); text-decoration: none; }
+
+  .c-side { grid-area: side; display: flex; flex-direction: column; align-items: flex-end; gap: 6px; padding-top: 2px; }
   select.status-sel {
-    appearance: none; border: 0; border-radius: 999px; font-size: 12.5px; font-weight: 700;
+    appearance: none; border: 0; border-radius: 999px; font-size: 12px; font-weight: 700;
     padding: 5px 24px 5px 12px; cursor: pointer; width: max-content; max-width: 100%;
     background-repeat: no-repeat; background-position: right 9px center;
     background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='9' height='6'%3E%3Cpath d='M1 1l3.5 3.5L8 1' stroke='currentColor' stroke-width='1.5' fill='none' stroke-linecap='round'/%3E%3C/svg%3E");
   }
-  .st-booked { background: var(--green-soft); color: var(--green); }
-  .st-to-book { background: var(--amber-soft); color: var(--amber); }
-  .st-decide { background: var(--purple-soft); color: var(--purple); }
-  .st-cancelled { background: var(--gray-soft); color: var(--text-faint); }
-  /* generous gap between the price (primary) and the row actions
-     (secondary) so the shift arrows never read as attached to the cost;
-     the matching header cell gets the same padding to stay aligned */
-  .c-cost { text-align: right; font-weight: 700; font-variant-numeric: tabular-nums; padding-right: 20px; }
-  .thead > div:nth-last-child(2) { padding-right: 20px; }
-  .c-cost .per-night { display: block; font-weight: 500; font-size: 12px; color: var(--text-dim); }
-  .c-cost .note { display: block; font-weight: 600; font-size: 12.5px; color: var(--text-dim); }
-  .c-actions { display: flex; gap: 4px; justify-content: flex-end; opacity: 0; transition: opacity .12s; }
+  /* two classes deep on purpose: the main.css neutralizer near the top of this
+     file paints every .trip-planner-app select with --text (0,2,0), which is
+     enough to swallow a one-class status colour */
+  .trip-planner-app select.st-booked { background: var(--green-soft); color: var(--green); }
+  .trip-planner-app select.st-to-book { background: var(--amber-soft); color: var(--amber); }
+  .trip-planner-app select.st-decide { background: var(--purple-soft); color: var(--purple); }
+  .trip-planner-app select.st-cancelled { background: var(--gray-soft); color: var(--text-dim); }
+  .c-cost { text-align: right; font-size: 14px; font-weight: 800; font-variant-numeric: tabular-nums; white-space: nowrap; }
+  .c-cost .per-night { display: block; font-weight: 500; font-size: 11.5px; color: var(--text-dim); }
+  .c-cost .note { display: block; font-weight: 600; font-size: 12px; color: var(--text-dim); white-space: normal; }
+  .c-cost .conv { display: block; font-weight: 500; font-size: 11.5px; color: var(--text-dim); }
+  .c-cost .conv-off { color: var(--amber); }
+  /* ---------- refunds ----------
+     A negative amount is money coming BACK, and it must never be mistakable
+     for a charge. Two independent signals carry that, never colour alone:
+     the literal word ("Refund" / "Net refund", written by moneyHtml) and the
+     green credit hue. Nothing prints a bare minus sign next to a currency
+     symbol, because a hyphen at 11px is exactly the character a reader drops. */
+  .money-refund { color: var(--green); font-weight: 700; white-space: nowrap; }
+  .money-refund + .per-night, .c-cost .money-refund ~ .conv { color: var(--text-dim); }
+  .dc-cost.is-refund { background: var(--green-soft); }
+
+  .c-actions { grid-area: acts; display: flex; gap: 2px; justify-content: flex-end; align-items: flex-start; opacity: 0; transition: opacity .12s; }
   .tp-row:hover .c-actions, .tp-row:focus-within .c-actions { opacity: 1; }
   .row-btn {
     background: none; border: 1px solid transparent; border-radius: 8px; padding: 5px 7px;
-    color: var(--text-dim); line-height: 1; font-size: 14px;
+    color: var(--text-dim); line-height: 1; font-size: 14px; box-shadow: none;
   }
-  .row-btn:hover { color: var(--text); border-color: var(--border); background: var(--bg-soft); }
+  .row-btn:hover { color: var(--text); border-color: var(--border); background: var(--bg-soft); box-shadow: none; }
   .row-btn.danger { color: color-mix(in srgb, var(--red) 72%, var(--text-faint)); }
   .row-btn.danger:hover { color: var(--red); border-color: var(--red); background: var(--red-soft); }
   .row-btn.danger:active { color: #fff; background: var(--red); border-color: var(--red); }
+
+  /* ---------- per-type card treatments ---------- */
+  /* a stay is where the trip rests: heavier surface, bigger title, and it is
+     the only card that owns a collapsible subtree */
+  .tp-row.tp-t-stay { background: var(--bg-raised); }
+  .tp-row.tp-t-stay .c-title { font-size: 17px; }
+  @keyframes flash-stay { 0%, 40% { background: var(--accent-soft); } 100% { background: var(--bg-raised); } }
+  .tp-row.tp-t-stay.flash { animation-name: flash-stay; }
+  /* travel is connective tissue, not a destination: flatter surface, dashed
+     accent, smaller title, so a taxi never outweighs the museum it goes to */
+  /* light and dark differ in how many surfaces exist (in light, --bg-soft and
+     --bg-card are both white), so travel takes a wash of its OWN accent
+     instead of a surface token: distinct in both themes, and each of the three
+     travel types stays distinguishable from the other two. */
+  .tp-row.is-travel { background: color-mix(in srgb, var(--row-accent, var(--text-dim)) 5%, var(--bg-card)); padding-top: 10px; padding-bottom: 10px; }
+  .tp-row.is-travel::before {
+    background: repeating-linear-gradient(to bottom, var(--row-accent, var(--text-dim)) 0 6px, transparent 6px 11px);
+  }
+  .tp-row.is-travel .c-title { font-size: 14.5px; font-weight: 600; }
+  @keyframes flash-travel { 0%, 40% { background: var(--accent-soft); } 100% { background: color-mix(in srgb, var(--row-accent, var(--text-dim)) 5%, var(--bg-card)); } }
+  .tp-row.is-travel.flash { animation-name: flash-travel; }
+  /* meals get a warm wash on top of the card so they are recognisable before
+     the title is read; the icon comes from the same prefix match */
+  .tp-row.tp-t-meal { background: color-mix(in srgb, var(--amber) 7%, var(--bg-card)); }
+  @keyframes flash-meal { 0%, 40% { background: var(--accent-soft); } 100% { background: color-mix(in srgb, var(--amber) 7%, var(--bg-card)); } }
+  .tp-row.tp-t-meal.flash { animation-name: flash-meal; }
+
   .gap-row {
-    display: flex; align-items: center; gap: 10px; padding: 8px 18px;
+    display: flex; align-items: center; gap: 10px; padding: 10px 15px;
     background: var(--amber-soft); color: var(--amber); font-size: 13px; font-weight: 600;
-    border-bottom: 1px solid var(--border-soft);
+    border: 1px solid var(--amber); border-radius: 12px;
   }
   .day-sep {
     padding: 5px 18px; font-size: 11px; letter-spacing: 1px; text-transform: uppercase;
-    color: var(--text-faint); background: var(--bg-soft); border-bottom: 1px solid var(--border-soft);
+    color: var(--text-dim); background: var(--bg-soft); border-bottom: 1px solid var(--border-soft);
   }
   .totals {
-    display: flex; justify-content: flex-end; gap: 34px; padding: 15px 18px;
-    border-top: 1px solid var(--border); background: var(--bg-soft); flex-wrap: wrap;
+    display: flex; justify-content: flex-end; gap: 34px; padding: 15px 18px; margin-top: 4px;
+    border: 1px solid var(--border-soft); border-radius: 12px; background: var(--bg-soft); flex-wrap: wrap;
   }
   .totals .t { text-align: right; }
-  .totals .t .k { font-size: 11px; text-transform: uppercase; letter-spacing: 0.7px; color: var(--text-faint); }
+  .totals .t .k { font-size: 11px; text-transform: uppercase; letter-spacing: 0.7px; color: var(--text-dim); }
   .totals .t .v { font-size: 17px; font-weight: 800; font-variant-numeric: tabular-nums; }
   .totals .t.confirmed .v { color: var(--green); }
   .totals .t.currency-pick { margin-right: auto; text-align: left; }
@@ -348,24 +504,37 @@
     background: var(--bg-card); border: 1px solid var(--border); border-radius: 8px;
     padding: 4px 10px; font-size: 13px; font-weight: 600; margin-top: 2px;
   }
-  .cost-input-wrap { position: relative; flex: 1 1 auto; min-width: 0; }
+  /* cost + currency are ONE amount, so they share one .input-group frame; the
+     symbol is absolutely placed because app.js pads the input to fit symbols
+     of different widths */
+  .cost-input-wrap { position: relative; flex: 1 1 auto; min-width: 0; display: flex; }
   .cost-prefix {
     position: absolute; left: 12px; top: 50%; transform: translateY(-50%);
     color: var(--text-dim); font-weight: 600; font-size: 14px; pointer-events: none;
   }
   .cost-input-wrap input { padding-left: 34px; }
-  .cost-row { display: flex; gap: 8px; align-items: stretch; }
-  .field .cost-cur-sel { width: auto; flex: none; min-width: 108px; font-weight: 600; }
-  /* per-item converted cost hint next to the entered foreign amount */
-  .c-cost .conv { display: block; font-weight: 500; font-size: 12px; color: var(--text-dim); }
-  .c-cost .conv-off { color: var(--amber); }
-  .c-meta-mobile .conv { color: var(--text-dim); font-weight: 500; }
-  .totals-note { padding: 8px 18px; background: var(--bg-soft); color: var(--text-dim); font-size: 12.5px; border-top: 1px solid var(--border-soft); }
+  .field .cost-cur-wrap { flex: none; width: auto; }
+  .trip-planner-app .cost-cur-sel { width: auto; min-width: 112px; font-weight: 600; }
+  /* suggested-price hint under the cost field: the guess is visible but the
+     input stays empty until the traveller adopts it */
+  .cost-est {
+    display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+    margin-top: 7px; padding: 8px 10px;
+    border: 1px dashed var(--border); border-radius: 10px; background: var(--bg-soft);
+    font-size: 12.5px; color: var(--text-dim);
+  }
+  .trip-planner-app .cost-est .btn-mini {
+    border: 1px solid var(--border); border-radius: 8px; background: var(--bg-card);
+    padding: 4px 10px; font-size: 12px; font-weight: 700; cursor: pointer;
+    color: var(--text) !important;
+  }
+  .trip-planner-app .cost-est .btn-mini:hover { border-color: var(--accent); color: var(--accent) !important; }
+  .totals-note { padding: 10px 15px; background: var(--bg-soft); color: var(--text-dim); font-size: 12.5px; border: 1px solid var(--border-soft); border-radius: 12px; }
 
   /* ---------- trip-in-progress dimming (distinct from cancelled: no strike) ---------- */
-  .tp-row.is-past .c-dates, .tp-row.is-past .c-nights, .tp-row.is-past .c-type,
-  .tp-row.is-past .c-title, .tp-row.is-past .c-details, .tp-row.is-past .c-status,
-  .tp-row.is-past .c-cost, .tp-row.is-past .c-meta-mobile { opacity: 0.55; }
+  .tp-row.is-past .c-when, .tp-row.is-past .c-dot,
+  .tp-row.is-past .c-title, .tp-row.is-past .c-loc, .tp-row.is-past .c-details,
+  .tp-row.is-past .c-side { opacity: 0.55; }
 
   /* ---------- shared (read-only) view ---------- */
   .shared-banner {
@@ -375,6 +544,16 @@
   }
   .shared-banner .sb-text { font-weight: 700; }
   .shared-banner .sb-actions { margin-left: auto; display: flex; gap: 8px; flex-wrap: wrap; }
+  /* Same shape as the shared banner, painted in the danger colours: it says the
+     data on screen is not stored, so it must not read like an informational
+     notice, and it stays until a save succeeds. */
+  .save-banner {
+    display: flex; align-items: center; gap: 12px; flex-wrap: wrap;
+    background: var(--red-soft); border: 1px solid var(--red); border-radius: 12px;
+    padding: 12px 16px; margin: 0 0 14px; color: var(--text);
+  }
+  .save-banner .sb-text { font-weight: 700; }
+  .save-banner .sb-actions { margin-left: auto; display: flex; gap: 8px; flex-wrap: wrap; }
   body.tp-shared #addBtn,
   body.tp-shared #shiftTripBtn,
   body.tp-shared #assistBtn,
@@ -384,14 +563,26 @@
   body.tp-shared #tripSelect { pointer-events: none; opacity: 0.7; }
   body.tp-shared [data-act="ask-day"] { display: none !important; }
 
-  /* ---------- visa modal ---------- */
-  .visa-results { max-height: 46vh; overflow-y: auto; margin: 4px 0 12px; color: var(--text-dim); }
-  .visa-row { display: flex; align-items: center; gap: 11px; padding: 10px 2px; border-top: 1px solid var(--border-soft); }
+  /* ---------- visa modal ----------
+     per-modal layout only: a scrollable country list with a pill per row is
+     not something any shared primitive can express */
+  /* the panel keeps its shared surface but hands vertical padding to the
+     rows, which draw their own hairlines and must span its full width */
+  .m-panel.visa-results { padding: 2px 14px; }
+  /* the row WRAPS: the pill labels run to "ETA required (electronic travel
+     authorization)", and with every child flex:none a long label used to push
+     the country name until it broke across the pill. Wrapping moves the pill to
+     its own line instead of overlapping the name it describes. */
+  .visa-row { display: flex; align-items: center; gap: 6px 11px; flex-wrap: wrap; padding: 10px 2px; border-top: 1px solid var(--border-soft); }
   .visa-row:first-child { border-top: 0; }
   .visa-flag { font-size: 20px; flex: none; }
-  .visa-name { font-weight: 600; color: var(--text); flex: 1; min-width: 0; }
-  .visa-name small { display: block; font-weight: 500; color: var(--text-faint); font-size: 11.5px; }
-  .visa-pill { padding: 3px 11px; border-radius: 999px; font-size: 12.5px; font-weight: 700; white-space: nowrap; }
+  .visa-name { font-weight: 600; color: var(--text); flex: 1 1 140px; min-width: 0; }
+  /* the visited-cities line is one line, with the full list on hover */
+  .visa-name small {
+    display: block; font-weight: 500; color: var(--text-dim); font-size: 11.5px;
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  }
+  .visa-pill { padding: 3px 11px; border-radius: 999px; font-size: 12.5px; font-weight: 700; white-space: nowrap; max-width: 100%; }
   .vp-free { background: var(--green-soft); color: var(--green); }
   .vp-arrival { background: var(--amber-soft); color: var(--amber); }
   .vp-evisa { background: var(--accent-soft); color: var(--accent); }
@@ -400,17 +591,12 @@
   .visa-verify { font-size: 12.5px; color: var(--accent); text-decoration: none; flex: none; }
   .visa-verify:hover { text-decoration: underline; }
   .rates-retry { padding: 2px 10px; font-size: 12px; margin-left: 8px; border-radius: 8px; }
-  .visa-add { margin: 0 0 12px; }
-  .visa-add select {
-    width: 100%; background: var(--bg-soft); border: 1px solid var(--border);
-    border-radius: 10px; padding: 8px 12px; color: var(--text-dim);
-  }
   .visa-remove {
     background: none; border: 1px solid transparent; border-radius: 8px;
     padding: 3px 8px; font-size: 13px; line-height: 1; flex: none;
   }
   .visa-remove:hover { border-color: var(--red); }
-  .trip-planner-app .visa-remove { color: var(--text-faint) !important; }
+  .trip-planner-app .visa-remove { color: var(--text-dim) !important; }
   .trip-planner-app .visa-remove:hover { color: var(--red) !important; }
   .visa-remind {
     flex: none; white-space: nowrap; border: 1px solid var(--border); border-radius: 8px;
@@ -418,6 +604,15 @@
   }
   .visa-remind:hover { border-color: var(--accent); background: var(--accent-soft); }
   .visa-count { color: var(--accent); font-weight: 800; }
+  /* the assumption line under the passport picker: a shared .hint plus a
+     tap target big enough to overrule it on a phone */
+  .passport-guess { display: flex; align-items: center; gap: 4px; flex-wrap: wrap; margin: 7px 0 0; }
+  .passport-guess-country { color: var(--text); font-weight: 700; }
+  .passport-guess-src { color: var(--text-dim); }
+  .passport-change {
+    background: none; border: 0; padding: 0 8px; min-height: 44px; min-width: 44px;
+    font-size: var(--m-help, 12px); font-weight: 700; text-decoration: underline;
+  }
 
   /* ---------- empty state ---------- */
   .empty { text-align: center; padding: 70px 20px; }
@@ -425,8 +620,42 @@
   .empty h2 { margin: 10px 0 6px; }
   .empty p { color: var(--text-dim); margin: 0 0 22px; }
   .empty .actions { display: flex; gap: 10px; justify-content: center; flex-wrap: wrap; }
+  /* "Load an example trip" plus the destination it would load: one control in
+     two halves, so they wrap together rather than splitting across lines. */
+  .sample-pick { display: flex; align-items: stretch; gap: 8px; flex-wrap: wrap; justify-content: center; }
+  .sample-pick .sel-wrap { display: inline-block; }
+  .trip-planner-app select.sample-select {
+    width: auto; max-width: 260px; appearance: none; -webkit-appearance: none;
+    background: var(--bg-card); border: 1px solid var(--border); border-radius: 10px;
+    padding: 8px 34px 8px 12px; font-weight: 600; color: var(--text); height: 100%;
+  }
+  .trip-planner-app select.sample-select:hover { border-color: var(--accent); }
+  .empty .sample-note { margin: 16px 0 0; font-size: 12.5px; color: var(--text-dim); }
 
-  /* ---------- modal ---------- */
+  /* =====================================================================
+     MODAL DESIGN SYSTEM
+     ONE set of primitives, shared by EVERY dialog in the app. A new modal
+     inherits the whole look by using these class names; nothing outside
+     this block may re-declare modal padding, radius, control sizing,
+     label/helper typography or footer button styling.
+
+       shell      .overlay > .modal            + .small (narrow) / .compact (prompt)
+       regions    .m-head / .m-body / .modal-foot
+       section    .m-section > .m-section-head > h3
+       field      .field > label (+ small) > control (+ .hint / .err)
+       row        .m-row            fields that share a line and split it evenly
+       segmented  .seg > button     + .seg-grid (icon over label)
+       group      .input-group      several controls that are ONE value
+       choice     .radio-row label  radio option cards
+       empty      .m-empty          polished empty state
+       panel      .m-panel          recessed read-only surface
+       prose      .m-prose          dialog body copy
+       icon       .m-icon           tone badge for prompts
+
+     Every size is a token on .modal, so a variant re-points tokens instead
+     of restyling parts. Colours are theme variables (or color-mix of them)
+     only: never a literal.
+     ===================================================================== */
   .overlay {
     position: fixed; inset: 0; background: rgba(5, 8, 14, 0.62); z-index: 90;
     display: none; align-items: flex-start; justify-content: center; padding: 6vh 16px 16px;
@@ -435,45 +664,259 @@
   .overlay.open { display: flex; }
   body.tp-modal-open { overflow: hidden; }
   .modal:focus { outline: none; }
+  /* [hidden] has to outrank the flex/grid display values the primitives set,
+     or toggling `el.hidden` inside a modal (documents, arrival row, link list)
+     silently stops working */
+  .modal [hidden] { display: none !important; }
+
   .modal {
-    background: var(--bg-card); border: 1px solid var(--border); border-radius: 16px;
-    box-shadow: var(--shadow); width: 560px; max-width: 100%; padding: 22px 24px 20px;
+    --m-w: 600px;
+    --m-pad: 24px;
+    --m-gap: 14px;          /* between rows inside a section */
+    --m-sec-gap: 18px;      /* between sections */
+    --m-radius: 18px;
+    --m-ctl-h: 40px;
+    --m-ctl-radius: 10px;
+    --m-ctl-px: 12px;
+    --m-label: 12.5px;
+    --m-help: 12px;
+    --m-title: 19px;
+    display: flex; flex-direction: column; max-height: 100%;
+    width: var(--m-w); max-width: 100%;
+    background: var(--bg-card); border: 1px solid var(--border);
+    border-radius: var(--m-radius); box-shadow: var(--shadow);
     animation: pop .16s ease-out;
   }
-  .modal.small { width: 420px; }
+  .modal.small { --m-w: 460px; --m-pad: 22px; }
+  /* the destructive prompt: same tokens, same footer, tighter shell, and no
+     form chrome so it never reads as something to fill in */
+  .modal.compact { --m-w: 420px; --m-pad: 22px; --m-title: 17px; }
   @keyframes pop { from { transform: translateY(10px) scale(.98); opacity: 0; } }
-  .modal h2 { margin: 0 0 16px; font-size: 18px; }
-  .field { margin-bottom: 13px; }
-  .field label { display: block; font-size: 12.5px; font-weight: 600; color: var(--text); margin-bottom: 5px; }
-  .field label small { color: var(--text-dim); }
+
+  .m-head {
+    flex: none; display: flex; align-items: center; gap: 12px;
+    padding: 18px var(--m-pad); border-bottom: 1px solid var(--border-soft);
+  }
+  .modal h2 { margin: 0; font-size: var(--m-title); font-weight: 700; letter-spacing: -0.01em; }
+  /* the body is the only scroller: a long form never pushes its heading under
+     the fixed site header or its primary action off the screen */
+  .m-body {
+    flex: 1 1 auto; min-height: 0; overflow-y: auto; overscroll-behavior: contain;
+    padding: var(--m-pad); display: flex; flex-direction: column;
+  }
+  .modal-foot {
+    flex: none; display: flex; align-items: center; justify-content: flex-end; gap: 10px;
+    padding: 13px var(--m-pad); background: var(--bg-raised);
+    border-top: 1px solid var(--border-soft);
+    border-radius: 0 0 calc(var(--m-radius) - 1px) calc(var(--m-radius) - 1px);
+  }
+  .modal-foot .btn {
+    min-height: var(--m-ctl-h); padding: 0 16px; border-radius: var(--m-ctl-radius);
+    display: inline-flex; align-items: center; justify-content: center;
+  }
+  /* the primary action carries a lift; the secondary keeps a full-size target
+     and a readable label but drops the border that made it compete */
+  .modal-foot .btn.primary { padding: 0 22px; box-shadow: var(--shadow-sm); }
+  .modal-foot .btn.ghost { background: transparent; border-color: transparent; }
+  .modal-foot .btn.ghost:hover { background: var(--bg-card); border-color: var(--border-soft); }
+
+  .m-icon {
+    flex: none; width: 38px; height: 38px; border-radius: 12px; font-size: 17px; line-height: 1;
+    display: inline-flex; align-items: center; justify-content: center;
+    background: var(--accent-soft); color: var(--accent);
+  }
+  .m-icon.danger { background: var(--red-soft); color: var(--red); }
+  .m-prose { margin: 0; color: var(--text-dim); font-size: 13.5px; line-height: 1.55; }
+
+  .m-section { display: flex; flex-direction: column; gap: var(--m-gap); }
+  .m-section + .m-section {
+    margin-top: var(--m-sec-gap); padding-top: var(--m-sec-gap);
+    border-top: 1px solid var(--border-soft);
+  }
+  .m-section-head { display: flex; align-items: baseline; gap: 8px; }
+  .m-section-head h3 {
+    margin: 0; font-size: 11px; font-weight: 700; letter-spacing: 0.9px;
+    text-transform: uppercase; color: var(--text-dim);
+  }
+  /* fields that share a line: they SPLIT it, so a hidden sibling (check-out on
+     a flight, time on a stay) leaves no dead column behind */
+  .m-row { display: flex; flex-wrap: wrap; gap: var(--m-gap) 12px; align-items: flex-start; }
+  .m-row > .field { flex: 1 1 150px; }
+  /* a field that needs real room (an amount plus its currency) states its own
+     minimum and drops to a full line when the viewport cannot give it */
+  .m-row > .field.is-wide { flex: 1 1 265px; }
+
+  .field { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+  /* margin: main.css gives every bare <label> a 1rem bottom margin; the field's
+     own flex gap owns that spacing here */
+  .field > label {
+    margin: 0; font-size: var(--m-label); font-weight: 650; color: var(--text);
+    letter-spacing: 0.01em; line-height: 1.35;
+  }
+  /* optional / helper text rides with the label but never reads as the label */
+  /* --text-dim, not --text-faint: faint lands at 3.0:1 (light) and 3.5:1
+     (dark) on the modal surface, so secondary type has to stop one step short
+     of the faintest token to stay readable */
+  .field > label small { font-size: var(--m-help); font-weight: 400; color: var(--text-dim); margin-left: 6px; }
+  .hint, .route-note { font-size: var(--m-help, 12px); color: var(--text-dim); line-height: 1.5; }
+  .route-note { border-top: 1px solid var(--border-soft); padding-top: 11px; }
   .trip-planner-app ::placeholder { color: var(--text-faint); opacity: 1; }
+
   .field input, .field select, .field textarea {
-    width: 100%; background: var(--bg-soft); border: 1px solid var(--border); border-radius: 10px;
-    padding: 9px 12px; outline: none; transition: border-color .15s;
+    width: 100%; min-height: var(--m-ctl-h);
+    background: var(--bg-soft); color: var(--text);
+    border: 1px solid var(--border); border-radius: var(--m-ctl-radius);
+    padding: 9px var(--m-ctl-px); outline: none;
+    transition: border-color .15s, background .15s, box-shadow .15s;
   }
-  .field textarea { resize: vertical; min-height: 60px; }
-  .field input:focus, .field select:focus, .field textarea:focus { border-color: var(--accent); }
-  .field.invalid input, .field.invalid select { border-color: var(--red); }
-  .field .err { display: none; color: var(--red); font-size: 12.5px; margin-top: 4px; }
+  .field input:hover:not(:focus):not(:disabled),
+  .field select:hover:not(:focus):not(:disabled),
+  .field textarea:hover:not(:focus):not(:disabled),
+  .input-group:hover:not(:focus-within) { border-color: color-mix(in srgb, var(--text-dim) 45%, var(--border)); }
+  /* the focus ring IS the focus indicator here: a 3px accent halo plus the
+     accent border, which is why the generic outline is suppressed for these */
+  .modal .field input:focus, .modal .field select:focus, .modal .field textarea:focus,
+  .modal .input-group:focus-within {
+    border-color: var(--accent);
+    box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 22%, transparent);
+  }
+  .modal .field input:focus-visible, .modal .field select:focus-visible,
+  .modal .field textarea:focus-visible { outline: none; }
+  .trip-planner-app .field input:disabled,
+  .trip-planner-app .field select:disabled,
+  .trip-planner-app .field textarea:disabled {
+    background: var(--bg-raised); border-color: var(--border-soft);
+    color: var(--text-faint); opacity: 1; cursor: not-allowed;
+  }
+  /* long free text must not become the tallest thing in the dialog */
+  .field textarea { resize: vertical; min-height: 84px; max-height: 240px; line-height: 1.55; }
+  .field.invalid input, .field.invalid select, .field.invalid textarea,
+  .field.invalid .input-group { border-color: var(--red); }
+  .field .err { display: none; color: var(--red); font-size: var(--m-help); font-weight: 600; }
   .field.invalid .err { display: block; }
-  .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
-  .grid3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 12px; }
-  .type-picker { display: flex; gap: 6px; flex-wrap: wrap; }
-  .type-picker button {
-    border: 1px solid var(--border); background: var(--bg-soft); border-radius: 999px;
-    padding: 7px 13px; font-size: 13px; font-weight: 600; color: var(--text);
+  /* native date and time inputs stay native: their popups cannot be styled on
+     iOS or Android, so only the closed control is dressed */
+  .field input[type="date"], .field input[type="time"] { appearance: none; }
+  .field input[type="date"]::-webkit-calendar-picker-indicator,
+  .field input[type="time"]::-webkit-calendar-picker-indicator { opacity: 0.55; cursor: pointer; }
+  .field input[type="date"]:hover::-webkit-calendar-picker-indicator,
+  .field input[type="time"]:hover::-webkit-calendar-picker-indicator { opacity: 1; }
+  /* selects reuse the assistant's caret wrapper (currentColor, so it follows
+     the theme) because main.css strips the native arrow sitewide */
+  .field .sel-wrap { display: block; color: var(--text-dim); }
+  .field .sel-wrap select { padding-right: 34px; }
+
+  /* controls that together hold ONE value read as one control */
+  .input-group {
+    display: flex; align-items: stretch; min-height: var(--m-ctl-h);
+    background: var(--bg-soft); border: 1px solid var(--border);
+    border-radius: var(--m-ctl-radius); overflow: hidden;
+    transition: border-color .15s, box-shadow .15s;
   }
-  .trip-planner-app .type-picker button.on,
-  .trip-planner-app .type-picker button.on:hover,
-  .trip-planner-app .type-picker button.on:focus { border-color: var(--accent); color: #fff; background: var(--accent); }
-  .modal-foot { display: flex; justify-content: flex-end; gap: 10px; margin-top: 18px; }
-  .modal-foot .left { margin-right: auto; }
+  .input-group > * + * { border-left: 1px solid var(--border); }
+  .trip-planner-app .input-group input,
+  .trip-planner-app .input-group select,
+  .trip-planner-app .input-group .btn {
+    border: 0; border-radius: 0; background: transparent; box-shadow: none; min-height: 0;
+  }
+  .input-group .btn:hover { background: var(--bg-raised); }
+  .input-group > .sel-wrap::after { right: 12px; }
+
+  /* segmented control. ONE track style for the item type picker here and the
+     assistant's own pickers, so the app never grows a second look for
+     "pick exactly one of a few". */
+  .seg, .pl-seg, .tier-seg {
+    display: flex; gap: 3px; padding: 3px; min-width: 0;
+    background: var(--bg-raised); border: 1px solid var(--border-soft); border-radius: 12px;
+  }
+  .trip-planner-app .seg > button, .pl-seg-b, .tier-opt {
+    flex: 1 1 0; min-width: 0; border: 0; background: transparent; border-radius: 9px;
+    min-height: 34px; padding: 0 8px; font-size: 12.5px; font-weight: 600;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+    transition: background .13s, box-shadow .13s, color .13s;
+  }
+  .trip-planner-app .seg > button:hover:not(.on), .pl-seg-b:hover:not(.on) { background: var(--gray-soft); }
+  /* selected: an accent tint and an accent hairline, not a solid slab */
+  .seg > button.on, .pl-seg-b.on, .tier-opt.on {
+    background: var(--accent-soft);
+    box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--accent) 42%, transparent);
+  }
+  .seg > button:focus-visible { outline: 2px solid var(--accent); outline-offset: -1px; }
+  /* the grid variant: six equal cells, icon over label, so six options fit one
+     block at every width instead of wrapping into ragged pill rows */
+  .seg-grid { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); }
+  .trip-planner-app .seg-grid > button {
+    flex: none; display: flex; flex-direction: column; align-items: center; justify-content: center;
+    gap: 4px; min-height: 58px; padding: 7px 4px; font-size: 11.5px; line-height: 1.2;
+    white-space: normal; text-overflow: clip;
+  }
+  .seg-ico { font-size: 16px; line-height: 1; }
+
+  /* radio option cards. main.css hides every native radio (opacity 0,
+     z-index -1) and draws a fake box on the NEXT SIBLING label; these inputs
+     sit INSIDE their label, so the real control has to be handed back or the
+     choice renders as three lines of unmarked text. */
   .radio-row { display: flex; flex-direction: column; gap: 8px; }
-  .radio-row label { display: flex; gap: 9px; align-items: center; font-size: 14px; font-weight: 500; color: var(--text); cursor: pointer; }
-  .radio-row input { width: auto; }
-  .stepper { display: flex; align-items: center; gap: 8px; }
-  .stepper input { width: 90px; text-align: center; }
-  .hint { font-size: 12.5px; color: var(--text-dim); margin-top: 5px; }
+  .radio-row label {
+    margin: 0; display: flex; gap: 11px; align-items: center; cursor: pointer;
+    min-height: 44px; padding: 9px 13px; font-size: 13.5px; font-weight: 600; color: var(--text);
+    background: var(--bg-soft); border: 1px solid var(--border); border-radius: var(--m-ctl-radius);
+    transition: border-color .15s, background .15s;
+  }
+  .radio-row label:hover { border-color: color-mix(in srgb, var(--text-dim) 45%, var(--border)); }
+  .radio-row label:has(input:checked) {
+    background: var(--accent-soft);
+    border-color: color-mix(in srgb, var(--accent) 55%, var(--border));
+  }
+  .radio-row label:focus-within { outline: 2px solid var(--accent); outline-offset: 2px; }
+  /* ONE radio, drawn by this file, used by every choice list in the app
+     (shift scope, the assistant's pick-one options).
+     Two problems forced it: main.css hides every native radio (opacity 0,
+     z-index -1) to draw a fake box on a SIBLING label, which our inputs do not
+     have; and handing the native control back left Chromium's dark-mode
+     unchecked radio as a warm beige/olive filled dot, next to a correctly blue
+     selected one. `appearance: none` plus theme tokens makes both states the
+     app's own in both themes. */
+  .trip-planner-app .radio-row input[type="radio"],
+  .trip-planner-app .as-pick input[type="radio"] {
+    -webkit-appearance: none; appearance: none;
+    display: inline-block; float: none; opacity: 1; z-index: auto;
+    box-sizing: border-box; padding: 0; cursor: pointer;
+    margin: 0; width: 18px; height: 18px; flex: none; min-height: 0;
+    border: 2px solid var(--text-faint); border-radius: 50%;
+    background: var(--bg-card); box-shadow: none;
+    transition: border-color .12s, box-shadow .12s;
+  }
+  .trip-planner-app .radio-row label:hover input[type="radio"],
+  .trip-planner-app .as-pick:hover input[type="radio"] { border-color: var(--text-dim); }
+  .trip-planner-app .radio-row input[type="radio"]:checked,
+  .trip-planner-app .as-pick input[type="radio"]:checked {
+    border-color: var(--accent);
+    /* the inner dot: an inset ring, so it scales with the border and needs no
+       pseudo-element on a replaced element */
+    box-shadow: inset 0 0 0 4px var(--accent);
+  }
+
+  .m-empty {
+    display: flex; flex-direction: column; align-items: center; gap: 7px; text-align: center;
+    padding: 22px 16px; border: 1px dashed var(--border); border-radius: 12px;
+    background: var(--bg-soft); color: var(--text-dim); font-size: 12.5px; line-height: 1.5;
+  }
+  .m-empty .me-ico { font-size: 21px; line-height: 1; opacity: 0.8; }
+  .m-empty .me-title { font-size: 13px; font-weight: 700; color: var(--text); }
+
+  .m-panel {
+    background: var(--bg-soft); border: 1px solid var(--border-soft); border-radius: 12px;
+    padding: 13px 15px; font-size: 13.5px; color: var(--text-dim);
+  }
+
+  /* the stepper is an .input-group with its own -1 / +1 buttons, so the native
+     spinners would be a second, tinier copy of the same control */
+  .trip-planner-app .stepper input { width: 78px; text-align: center; -moz-appearance: textfield; font-weight: 700; }
+  .stepper input::-webkit-outer-spin-button,
+  .stepper input::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
+  .trip-planner-app .stepper .btn { padding: 0 14px; font-weight: 700; }
+  .stepper-unit { align-self: center; font-size: 13.5px; font-weight: 600; color: var(--text-dim); }
 
   /* ---------- toast ---------- */
   .toasts { position: fixed; bottom: 18px; left: 50%; transform: translateX(-50%); z-index: 120; display: flex; flex-direction: column; gap: 8px; align-items: center; }
@@ -511,48 +954,121 @@
   .trip-planner-app .view-switch button.on:hover,
   .trip-planner-app .view-switch button.on:focus,
   .trip-planner-app .view-switch button.on:active { color: #fff !important; }
-  .trip-planner-app .type-picker button.on,
-  .trip-planner-app .type-picker button.on:hover,
-  .trip-planner-app .type-picker button.on:focus { color: #fff !important; }
+  /* segmented control: unselected reads muted, selected reads accent, in every
+     state (main.css repaints button text gray, then red on hover, and flashes
+     a translucent red background on press) */
+  .trip-planner-app .seg > button { color: var(--text-dim) !important; }
+  .trip-planner-app .seg > button:hover { color: var(--text) !important; }
+  .trip-planner-app .seg > button.on,
+  .trip-planner-app .seg > button.on:hover,
+  .trip-planner-app .seg > button.on:focus,
+  .trip-planner-app .seg > button.on:active { color: var(--seg-on-fg) !important; }
+  .trip-planner-app .seg > button.on:hover:active { background-color: var(--accent-soft); }
+  .trip-planner-app .seg > button:hover:active { background-color: var(--gray-soft); }
+  /* the secondary footer action: quieter than the primary, still readable */
+  .trip-planner-app .modal-foot .btn.ghost { color: var(--text-dim) !important; }
+  .trip-planner-app .modal-foot .btn.ghost:hover { color: var(--text) !important; }
+  .trip-planner-app .modal-foot .btn.ghost:hover:active { background-color: var(--bg-card); }
+  /* main.css paints bare labels; the choice cards carry real content */
+  .trip-planner-app .radio-row label { color: var(--text); }
   .trip-planner-app .tp-menu-panel button.danger { color: var(--red) !important; }
+  /* itinerary chrome: the expand toggles read as structure, the "Show more"
+     link reads as an action, and neither may take main.css's gray-then-red */
+  .trip-planner-app .tl-toggle,
+  .trip-planner-app .tl-toggle:hover { color: var(--text) !important; }
+  .trip-planner-app .det-more,
+  .trip-planner-app .det-more:hover { color: var(--accent) !important; }
+  .trip-planner-app .tl-toggle:hover:active,
+  .trip-planner-app .det-more:hover:active { background-color: transparent; }
   .trip-planner-app .leg-btn:hover { color: var(--accent) !important; }
   .trip-planner-app .icon-btn:hover { color: var(--text) !important; }
   .trip-planner-app .visa-remind { color: var(--accent) !important; }
   .trip-planner-app .visa-remind:hover { color: var(--accent) !important; }
-  .trip-planner-app .doc-remove { color: var(--text-faint) !important; }
+  .trip-planner-app .passport-change,
+  .trip-planner-app .passport-change:hover { color: var(--accent) !important; }
+  .trip-planner-app .passport-change:hover:active { background-color: transparent; }
+  .trip-planner-app .doc-remove { color: var(--text-dim) !important; }
   .trip-planner-app .doc-remove:hover { color: var(--red) !important; }
   .trip-planner-app .rates-retry,
   .trip-planner-app .rates-retry:hover { color: var(--accent) !important; }
   .trip-planner-app .toast button,
   .trip-planner-app .toast button:hover { color: var(--accent) !important; }
-  /* assistant: accept stays white-on-green, reject reads neutral then red on
-     hover, maps links read as links (main.css would gray them all) */
-  .trip-planner-app [data-act="accept-proposal"] {
-    color: #fff !important; background: var(--green); border-color: var(--green);
+  /* assistant: the proposal cards use the MODAL system's button language -
+     one filled primary plus a ghost dismiss - instead of a mint-green pill set
+     used nowhere else. A destructive proposal (op=remove) takes .btn.danger, so
+     "Remove" no longer reads green. Maps links stay links (main.css would gray
+     them all). */
+  .trip-planner-app .assist-reject { color: var(--text-dim) !important; }
+  .trip-planner-app .assist-reject:hover { color: var(--text) !important; border-color: var(--border); background: var(--bg-raised); }
+  /* main.css hides every radio (opacity 0, z-index -1) because its own forms
+     draw a fake box on the sibling label; our set card wraps the input INSIDE
+     the label, so the native control has to be handed back. */
+  .trip-planner-app .as-pick input[type="radio"] { margin: 2px 0 0; }
+  /* a disabled primary must not stay a filled blue slab: white-on-washed-blue
+     reads as a live button that is broken. It drops to the outline treatment
+     every other disabled control in the app uses. Shared with #routeCheckBtn. */
+  .trip-planner-app .btn.primary:disabled,
+  .trip-planner-app .btn.primary:disabled:hover {
+    color: var(--text-faint) !important; background: var(--bg-card);
+    border-color: var(--border); filter: none; box-shadow: none;
   }
-  .trip-planner-app [data-act="accept-proposal"]:hover { color: #fff !important; filter: brightness(1.08); }
-  .trip-planner-app [data-act="reject-proposal"] { color: var(--text-dim) !important; }
-  .trip-planner-app [data-act="reject-proposal"]:hover { color: var(--red) !important; border-color: var(--red); background: var(--red-soft); }
+  /* picker controls: unselected reads muted, selected reads accent, in every
+     state (main.css would repaint the text gray, then red on hover, and flash
+     a translucent red background on press) */
+  .trip-planner-app .pl-seg-b,
+  .trip-planner-app .pl-tag { color: var(--text-dim) !important; }
+  .trip-planner-app .pl-seg-b:hover,
+  .trip-planner-app .pl-tag:hover { color: var(--text) !important; }
+  /* same segmented control, same accessible selected label */
+  .trip-planner-app .pl-seg-b.on,
+  .trip-planner-app .pl-seg-b.on:hover,
+  .trip-planner-app .pl-seg-b.on:focus,
+  .trip-planner-app .pl-seg-b.on:active { color: var(--seg-on-fg) !important; }
+  .trip-planner-app .pl-tag.on,
+  .trip-planner-app .pl-tag.on:hover,
+  .trip-planner-app .pl-tag.on:focus,
+  .trip-planner-app .pl-tag.on:active { color: var(--accent) !important; }
+  .trip-planner-app .pl-seg-b.on:hover:active,
+  .trip-planner-app .pl-tag.on:hover:active { background-color: var(--accent-soft); }
+  .trip-planner-app .pl-seg-b:hover:active { background-color: var(--gray-soft); }
+  .trip-planner-app .pl-tag:hover:active { background-color: var(--bg-card); }
+  /* header ghost buttons read as chrome, not as content */
+  .trip-planner-app .ah-btn { color: var(--text-dim) !important; }
+  .trip-planner-app .ah-btn:hover { color: var(--text) !important; }
+  .trip-planner-app .ah-btn:hover:active { background-color: var(--bg-raised); }
+  /* the tier segments are <label>s, so main.css's red anchor/button colors do
+     not reach them, but main.css does paint bare labels: pin both states */
+  .trip-planner-app .tier-opt { color: var(--text-dim); }
+  .trip-planner-app .tier-opt.on { color: var(--seg-on-fg); }
   .trip-planner-app .assist-maps-link,
   .trip-planner-app .assist-key-link,
-  .trip-planner-app .assist-quick-links a { color: var(--accent) !important; }
+  .trip-planner-app .detail-links a,
+  .trip-planner-app .c-details a,
+  .trip-planner-app .dc-details a,
+  .trip-planner-app .assist-quick-links a,
+  .trip-planner-app .assist-md a { color: var(--accent) !important; }
+  /* main.css paints every <a> #ce1b28; the Google chip must keep theme text
+     colors or the attribution reads as decoration */
+  .trip-planner-app .apr-chip,
+  .trip-planner-app .apr-chip:hover,
+  .trip-planner-app .apr-brand { color: var(--text) !important; }
+  .trip-planner-app .apr-count { color: var(--text-dim) !important; }
+  .trip-planner-app .apr-star { color: var(--amber) !important; }
   .trip-planner-app button:disabled { color: var(--text-faint) !important; }
   /* main.css also flashes rgba-red backgrounds on :hover:active */
   .trip-planner-app button:hover:active { background-color: transparent; }
   .trip-planner-app .btn:hover:active { background-color: var(--bg-card); }
-  .trip-planner-app .btn.primary:hover:active { background-color: var(--accent); }
+  .trip-planner-app .btn.primary:hover:active { background-color: var(--accent-fill); }
   .trip-planner-app .btn.danger:hover:active,
   .trip-planner-app .row-btn.danger:hover:active { background-color: var(--red); }
-  .trip-planner-app [data-act="accept-proposal"]:hover:active { background-color: var(--green); }
-  .trip-planner-app [data-act="reject-proposal"]:hover:active { background-color: var(--red-soft); }
+  .trip-planner-app .assist-reject:hover:active { background-color: var(--bg-raised); }
   .trip-planner-app .tp-menu-panel button:hover:active { background-color: var(--accent-soft); }
-  .trip-planner-app .view-switch button.on:hover:active,
-  .trip-planner-app .type-picker button.on:hover:active { background-color: var(--accent); }
+  .trip-planner-app .view-switch button.on:hover:active { background-color: var(--accent-fill); }
   /* ...and a 1px red inset ring on every button hover, a red hover
      background on .primary buttons, and a red focus ring on text fields
      (none of those are !important, so specificity pins suffice) */
   .trip-planner-app button:hover { box-shadow: none; }
-  .trip-planner-app .btn.primary:hover { background-color: var(--accent); }
+  .trip-planner-app .btn.primary:hover { background-color: var(--accent-fill); }
   .trip-planner-app input:focus,
   .trip-planner-app select:focus,
   .trip-planner-app textarea:focus { box-shadow: none; }
@@ -571,7 +1087,7 @@
   .trip-planner-app .view-switch button.on,
   .trip-planner-app .view-switch button.on:hover,
   .trip-planner-app .view-switch button.on:focus,
-  .trip-planner-app .view-switch button.on:active { background: var(--accent); color: #fff; }
+  .trip-planner-app .view-switch button.on:active { background: var(--accent-fill); color: #fff; }
 
   /* ---------- night coverage strip ---------- */
   .strip-box {
@@ -579,7 +1095,7 @@
     padding: 12px 16px 10px; margin: 0 0 14px;
   }
   .strip-head { display: flex; justify-content: space-between; align-items: baseline; gap: 10px; margin-bottom: 8px; }
-  .strip-head .t { font-size: 11px; text-transform: uppercase; letter-spacing: 0.8px; color: var(--text-faint); font-weight: 700; }
+  .strip-head .t { font-size: 11px; text-transform: uppercase; letter-spacing: 0.8px; color: var(--text-dim); font-weight: 700; }
   .strip-legend { display: flex; gap: 12px; flex-wrap: wrap; font-size: 11.5px; color: var(--text-dim); }
   .strip-legend .dot { display: inline-block; width: 9px; height: 9px; border-radius: 3px; margin-right: 5px; vertical-align: -1px; }
   .strip { display: flex; gap: 2px; }
@@ -591,7 +1107,7 @@
   .cell.cv-transit { background: var(--accent); }
   .cell.cv-gap { background: repeating-linear-gradient(45deg, var(--red) 0 4px, transparent 4px 8px); border: 1px solid var(--red); }
   .cell.cv-none { background: var(--bg-raised); }
-  .strip-dates { display: flex; justify-content: space-between; font-size: 11px; color: var(--text-faint); margin-top: 6px; }
+  .strip-dates { display: flex; justify-content: space-between; font-size: 11px; color: var(--text-dim); margin-top: 6px; }
 
   /* ---------- route legs ---------- */
   .leg-row { display: flex; justify-content: center; padding: 4px 18px; border-bottom: 1px solid var(--border-soft); background: var(--bg-soft); }
@@ -600,30 +1116,115 @@
     padding: 4px 14px; font-size: 12.5px; font-weight: 600; color: var(--text);
   }
   .leg-btn:hover { color: var(--accent); border-color: var(--accent); background: var(--accent-soft); }
-  .route-io { display: grid; grid-template-columns: 1fr auto 1fr; gap: 8px; align-items: start; }
-  .route-io .field { margin-bottom: 8px; }
-  .route-swap { align-self: end; margin-bottom: 13px; font-size: 15px; }
-  .route-result {
-    background: var(--bg-soft); border: 1px solid var(--border-soft); border-radius: 12px;
-    padding: 13px 15px; margin: 4px 0 12px; font-size: 14px; color: var(--text-dim); min-height: 46px;
+  /* per-modal layout, not a new look: the swap button has to sit BETWEEN the
+     two place fields, which no shared row primitive can express */
+  .route-io { display: grid; grid-template-columns: 1fr auto 1fr; gap: 10px; align-items: end; }
+  /* the swap control is a round exchange affordance sitting on the field
+     baseline, so it gets the control height and a rotation on press rather
+     than the square icon-button look used in list rows */
+  .trip-planner-app .route-swap {
+    width: var(--m-ctl-h); height: var(--m-ctl-h); border-radius: 50%;
+    background: var(--bg-soft); border: 1px solid var(--border); color: var(--text-dim);
+    font-size: 15px; line-height: 1;
+    transition: background .15s, border-color .15s, color .15s, transform .2s ease;
   }
+  .trip-planner-app .route-swap:hover {
+    background: var(--accent-soft); border-color: var(--accent); color: var(--accent);
+    transform: rotate(180deg);
+  }
+  .trip-planner-app .route-swap:active { transform: rotate(180deg) scale(.92); }
+  .route-result { min-height: 46px; }
+  /* the blank state uses the shared .m-empty card, so the recessed panel would
+     be a second box around it */
+  .route-result:has(.m-empty) { background: none; border: 0; padding: 0; }
+  /* the result BODY is content the lookup writes, not modal chrome: a
+     headline, a pill strip and one row per travel mode. It has no shared
+     equivalent because nothing else in the app renders a comparison list. */
   .route-result b { color: var(--text); }
   .route-result.err { border-color: var(--red); background: var(--red-soft); color: var(--text); }
   .route-head { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; font-size: 16px; font-weight: 700; color: var(--text); margin-bottom: 9px; }
   .route-head .arrow { color: var(--text-faint); font-weight: 400; }
-  .route-head small { font-weight: 500; color: var(--text-faint); font-size: 12px; }
+  .route-head small { font-weight: 500; color: var(--text-dim); font-size: 12px; }
+  /* Correction guidance only earns colour when the match is actually shaky:
+     a confident match stays as quiet as the rest of the line. */
+  .route-head .rh-note { flex: 1 1 auto; min-width: 0; }
+  .route-head .rh-note.is-ambiguous,
+  .route-head .rh-note.is-low { color: var(--amber); }
   .route-pills { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 11px; }
   .route-pills .rp {
     background: var(--bg-card); border: 1px solid var(--border-soft); border-radius: 999px;
     padding: 3px 11px; font-size: 12.5px; font-weight: 600; color: var(--text-dim); white-space: nowrap;
   }
   .route-pills .rp.intl { color: var(--amber); border-color: var(--amber); background: var(--amber-soft); }
-  .mode-row { display: flex; gap: 11px; padding: 8px 0; border-top: 1px solid var(--border-soft); align-items: baseline; }
-  .mode-row .mi { font-size: 17px; flex: none; width: 24px; text-align: center; }
-  .mode-row b { color: var(--text); }
-  .mode-row .dur { color: var(--accent); font-weight: 700; white-space: nowrap; }
-  .mode-row small { display: block; color: var(--text-faint); margin-top: 1px; }
-  .route-note { border-top: 1px solid var(--border-soft); padding-top: 9px; font-size: 12px; color: var(--text-faint); }
+
+  /* one card per travel mode. Cards, not rows, because each one carries four
+     things to compare (time, cost, CO2, badges) plus its own action; the
+     shared primitives have nothing shaped like a comparison card. */
+  .mode-cards { display: flex; flex-direction: column; gap: 9px; }
+  .mode-card {
+    position: relative; display: flex; gap: 12px; align-items: flex-start;
+    padding: 12px 13px; border-radius: 13px;
+    /* --bg-raised, not --bg-card: in the light theme the modal surface IS
+       --bg-card, so a card painted with it would be an outline and nothing
+       else. Raised reads as a lifted tile in both themes. */
+    background: var(--bg-raised); border: 1px solid var(--border-soft);
+    transition: border-color .15s, box-shadow .15s, transform .15s;
+  }
+  .mode-card:hover { border-color: color-mix(in srgb, var(--accent) 45%, var(--border)); box-shadow: var(--shadow-sm); transform: translateY(-1px); }
+  /* the action link stretches over the whole card, so the card is clickable
+     while staying ONE tab stop with one accessible name */
+  .mode-card:focus-within { border-color: var(--accent); box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 22%, transparent); }
+  .mc-ico {
+    flex: none; width: 38px; height: 38px; border-radius: 11px; font-size: 18px; line-height: 1;
+    display: inline-flex; align-items: center; justify-content: center;
+    background: var(--bg-card);
+  }
+  .mc-main { flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; gap: 4px; }
+  .mc-top { display: flex; align-items: center; gap: 7px; flex-wrap: wrap; }
+  /* main.css uppercases and thins EVERY heading sitewide, which turns a mode
+     name into a shouty label; the mode name is a title, not a section head */
+  .trip-planner-app .mc-top h4 {
+    margin: 0; font-size: 14.5px; font-weight: 700; color: var(--text);
+    text-transform: none; line-height: 1.3;
+  }
+  .mc-badge {
+    font-size: 10.5px; font-weight: 700; letter-spacing: 0.02em; white-space: nowrap;
+    padding: 2px 8px; border-radius: 999px;
+    background: var(--gray-soft); color: var(--text-dim);
+  }
+  .mc-badge.is-recommended { background: var(--accent-soft); color: color-mix(in srgb, var(--accent) 60%, var(--text)); }
+  .mc-badge.is-fastest { background: var(--cyan-soft); color: color-mix(in srgb, var(--cyan) 60%, var(--text)); }
+  .mc-badge.is-cheapest { background: var(--amber-soft); color: color-mix(in srgb, var(--amber) 55%, var(--text)); }
+  .mc-badge.is-greenest { background: var(--green-soft); color: color-mix(in srgb, var(--green) 55%, var(--text)); }
+  .mc-figs { display: flex; flex-wrap: wrap; gap: 4px 14px; align-items: baseline; }
+  .mc-fig { font-size: 13.5px; font-weight: 700; color: var(--text); white-space: nowrap; }
+  .mc-fig small { font-weight: 500; font-size: 11px; color: var(--text-dim); margin-left: 5px; }
+  .mc-dur { color: var(--accent); }
+  .mc-co2 { color: var(--text-dim); font-weight: 600; }
+  .trip-planner-app .mc-note { margin: 0; font-size: 12px; color: var(--text-dim); line-height: 1.45; }
+  /* main.css underlines every anchor: this one is a button, so it must not
+     read as body-copy link text */
+  .trip-planner-app a.btn.mc-act {
+    flex: none; align-self: center; min-height: 36px; padding: 0 13px;
+    display: inline-flex; align-items: center; font-size: 12.5px;
+    background: var(--bg-soft); text-decoration: none;
+  }
+  .mc-act::after { content: ''; position: absolute; inset: 0; border-radius: inherit; }
+  .mode-card:hover .mc-act { border-color: var(--accent); color: var(--accent) !important; }
+
+  /* what is actually known about this corridor: structural facts and tips.
+     Absent entirely when nothing is known, which is the common case. */
+  .route-know { margin-top: 12px; padding-top: 11px; border-top: 1px solid var(--border-soft); display: flex; flex-direction: column; gap: 7px; }
+  .trip-planner-app ul.route-flags { list-style: none; margin: 0; padding: 0; display: flex; flex-wrap: wrap; gap: 5px 8px; }
+  .route-flags li {
+    display: inline-flex; align-items: center; gap: 6px;
+    font-size: 12px; font-weight: 600; color: var(--text-dim);
+    background: var(--bg-card); border: 1px solid var(--border-soft);
+    border-radius: 999px; padding: 3px 10px;
+  }
+  .trip-planner-app p.route-tip {
+    margin: 0; display: flex; gap: 8px; font-size: 12.5px; line-height: 1.5; color: var(--text-dim);
+  }
   .route-loading { display: flex; align-items: center; gap: 10px; padding: 6px 0; }
   .spinner {
     width: 16px; height: 16px; border-radius: 50%; flex: none;
@@ -632,7 +1233,16 @@
   }
   @keyframes spin { to { transform: rotate(360deg); } }
   .route-links { display: flex; gap: 8px; flex-wrap: wrap; }
-  .route-links a { text-decoration: none; display: inline-flex; align-items: center; gap: 6px; font-size: 13.5px; }
+  .route-links a { text-decoration: none; display: inline-flex; align-items: center; gap: 6px; }
+  .trip-planner-app a.btn.rl-btn { min-height: 38px; }
+  /* the "no links yet" card is a flex item in this row, so it has to be told
+     to take the whole line instead of shrinking to its text */
+  .route-links .m-empty { flex: 1 1 100%; }
+  /* the official operator reads first, the discovery tool reads last: same
+     control, different weight, so nothing looks like a fare source it is not */
+  .trip-planner-app a.btn.rl-btn.is-official { border-color: color-mix(in srgb, var(--accent) 45%, var(--border)); background: var(--accent-soft); }
+  .trip-planner-app a.btn.rl-btn.is-discovery { color: var(--text-dim) !important; border-style: dashed; }
+  .trip-planner-app a.btn.rl-btn.is-discovery:hover { color: var(--text) !important; }
 
   /* ---------- map ---------- */
   .map-box { display: none; }
@@ -642,10 +1252,42 @@
     background: var(--bg-card); z-index: 1;
   }
   .map-status { color: var(--text-dim); font-size: 13px; padding: 9px 4px; min-height: 34px; }
+  /* nothing to draw (no places, offline, Leaflet blocked): the message stands
+     on its own instead of on top of a 540px empty slab */
+  .map-box.is-blank #mapCanvas { display: none; }
+  /* working: the box says so, and the bar tracks the one-stop-per-second
+     geocoder instead of leaving a blank rectangle for a dozen seconds */
+  .map-box.is-loading #mapCanvas {
+    position: relative; overflow: hidden;
+    background:
+      repeating-linear-gradient(115deg, transparent 0 26px, var(--border) 26px 52px),
+      var(--bg-card);
+  }
+  /* a sweep over the stripes, so a long geocode run reads as WORKING rather
+     than as a card that failed to draw */
+  .map-box.is-loading #mapCanvas::before {
+    content: ""; position: absolute; inset: 0;
+    background: linear-gradient(100deg, transparent 35%, var(--bg-raised) 50%, transparent 65%);
+    background-size: 260% 100%;
+    animation: map-sweep 1.5s linear infinite;
+  }
+  @keyframes map-sweep { from { background-position: 130% 0; } to { background-position: -130% 0; } }
+  @media (prefers-reduced-motion: reduce) {
+    .map-box.is-loading #mapCanvas::before { animation: none; }
+  }
+  .map-box.is-loading #mapCanvas::after {
+    content: ""; position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%);
+    width: min(280px, 70%); height: 8px; border-radius: 999px;
+    background:
+      linear-gradient(var(--accent), var(--accent)) left / max(8%, var(--map-progress, 0%)) 100% no-repeat,
+      var(--bg-soft);
+    box-shadow: 0 0 0 1px var(--border);
+    transition: background-size .3s linear;
+  }
   body.tp-page:not(.tp-light) #mapCanvas .leaflet-tile { filter: invert(1) hue-rotate(180deg) brightness(0.9) contrast(0.9) saturate(0.6); }
   body.tp-page:not(.tp-light) #mapCanvas { background: #1a1f29; }
   .stop-pin {
-    background: var(--accent); color: #fff; border-radius: 50%; width: 26px; height: 26px;
+    background: var(--accent-fill); color: #fff; border-radius: 50%; width: 26px; height: 26px;
     display: flex; align-items: center; justify-content: center; font-weight: 800; font-size: 13px;
     border: 2px solid #fff; box-shadow: 0 2px 8px rgba(0, 0, 0, 0.45);
   }
@@ -654,49 +1296,231 @@
   /* ---------- days view ---------- */
   .days-box { display: none; }
   .days-box.on { display: block; }
-  .days-list { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 12px; }
+  .days-list { display: grid; grid-template-columns: repeat(auto-fill, minmax(400px, 1fr)); gap: 12px; align-items: start; }
+  /* the filter feedback line spans the whole grid: hiding days silently is
+     what makes a search feel broken */
+  .days-note {
+    grid-column: 1 / -1; display: flex; align-items: center; gap: 12px; flex-wrap: wrap;
+    padding: 9px 14px; border: 1px solid var(--border-soft); border-radius: 12px;
+    background: var(--bg-soft); color: var(--text-dim); font-size: 13px; font-weight: 600;
+  }
+  .days-clear { padding: 4px 12px; font-size: 12.5px; }
+  /* the weather caveat + its required credit, under the grid rather than in a
+     tooltip no touch device can reach */
+  .days-wx { margin-top: 12px; font-weight: 500; font-size: 12px; }
+  /* the shared "your filters hid everything" card. It lives in the days-note
+     family so the timeline and the day view give the identical answer (and the
+     identical way out) to the identical user action. */
+  .filter-empty { justify-content: center; text-align: center; padding: 26px 18px; font-weight: 500; }
+  .filter-empty .fe-text { font-weight: 600; }
+
   .day-card {
     background: var(--bg-card); border: 1px solid var(--border-soft); border-radius: var(--radius);
-    padding: 13px 15px; display: flex; flex-direction: column; gap: 8px;
+    display: flex; flex-direction: column; overflow: hidden;
+    transition: border-color .15s, box-shadow .15s;
   }
-  .day-card.is-today { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent); }
-  .dc-head { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; }
-  .dc-day { font-weight: 700; color: var(--text); }
-  .dc-day small { font-weight: 500; color: var(--text-faint); }
-  .dc-date { font-size: 12.5px; color: var(--text-dim); white-space: nowrap; }
-  .dc-weather { font-size: 12.5px; color: var(--accent); background: var(--accent-soft); border-radius: 8px; padding: 5px 9px; }
-  .dc-body { display: flex; flex-direction: column; gap: 6px; }
-  .dc-event { display: flex; align-items: baseline; gap: 8px; font-size: 14px; }
-  .dc-event .dc-ico { flex: none; font-size: 15px; }
-  .dc-event .dc-label { flex: 1; color: var(--text); min-width: 0; }
-  .dc-event .dc-label b { font-weight: 700; }
-  .dc-event .dc-label .loc { color: var(--text-dim); font-weight: 400; }
-  .dc-event .dc-time { flex: none; color: var(--text-dim); font-size: 12.5px; white-space: nowrap; }
-  .dc-event.is-cancelled .dc-label { opacity: 0.5; text-decoration: line-through; }
-  .dc-clip { margin-left: 4px; }
-  .dc-staying { font-size: 14px; color: var(--text-dim); }
-  .dc-empty { font-size: 13.5px; color: var(--text-faint); font-style: italic; }
+  .day-card:hover { border-color: var(--border); box-shadow: var(--shadow-sm); }
+  .day-card.is-today { border-color: var(--accent); }
+
+  /* ---------- the day header toolbar ---------- */
+  /* ONE row, at every width: day badge, the date block, a hairline, the
+     city+weather chip, then the actions hard right. Nothing here wraps - the
+     city ellipsizes instead, because a header that reflows moves the delete
+     button under the traveller's thumb mid-tap. */
+  .dc-head {
+    display: flex; align-items: center; gap: 9px; flex-wrap: nowrap;
+    padding: 9px 10px 9px 11px; border-bottom: 1px solid var(--border-soft); background: var(--bg-soft);
+  }
+  .dc-daynum {
+    display: inline-flex; align-items: baseline; justify-content: center; gap: 1px; flex: none;
+    min-width: 38px; padding: 4px 7px; border-radius: 9px;
+    background: var(--accent-soft); color: var(--accent); white-space: nowrap;
+  }
+  .dc-daynum b { font-size: 14px; font-weight: 800; line-height: 1; }
+  .dc-daynum small { font-size: 10px; font-weight: 600; opacity: 0.75; }
+  .day-card.is-today .dc-daynum { background: var(--accent-fill); color: #fff; }
+  .dc-headings { display: flex; flex-direction: column; min-width: 0; flex: none; }
+  .dc-dow {
+    font-size: 10px; font-weight: 700; letter-spacing: 0.8px; text-transform: uppercase;
+    color: var(--text-dim); white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  }
+  .dc-today { color: var(--accent); }
+  .dc-date { font-size: 13px; font-weight: 700; color: var(--text); white-space: nowrap; }
+  .dc-vr { flex: none; align-self: stretch; width: 1px; background: var(--border); opacity: 0.8; }
+  /* one chip carries city and typical temperature: the pin and the weather
+     glyph are decoration on the same chip, so the name and the temperature can
+     never describe two different places */
+  .dc-chip {
+    display: inline-flex; align-items: center; gap: 5px;
+    flex: 0 1 auto; min-width: 0; font-size: 11.5px; font-weight: 600;
+    color: var(--accent); background: var(--accent-soft); border-radius: 999px; padding: 3px 9px;
+  }
+  .dc-chip[hidden] { display: none; }
+  .dc-chip-city { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+  .dc-chip-city::before { content: "\1F4CD"; margin-right: 4px; font-size: 10px; opacity: 0.85; }
+  .dc-chip-sep[hidden] { display: none; }
+  .dc-chip-sep { flex: none; width: 1px; align-self: stretch; margin: 1px 1px; background: currentColor; opacity: 0.28; }
+  .dc-chip-temp { white-space: pre; flex: none; }
+  .dc-chip-temp:not(:empty)::before { content: "\1F324\FE0F"; margin-right: 4px; font-size: 10.5px; }
+  .dc-acts { display: flex; align-items: center; gap: 2px; flex: none; margin-left: auto; }
+
+  .dc-body { display: flex; flex-direction: column; gap: 5px; padding: 8px 10px 9px; }
+
+  /* ---------- a day row ----------
+     A status rail on the left (dot + time, both in the status colour, joined by
+     a connector line) and one soft card per item on the right. The four
+     statuses are the dot's whole job, which is why the day view carries no
+     status pill: a pill on every row repeats what the rail already says and
+     costs a line of height on a phone. Cancelled additionally strikes the
+     title and location, so it never depends on colour alone. */
+  .dc-event {
+    position: relative; display: grid;
+    /* the rail column has to hold the WIDEST clock reading the current format
+       can produce, or the card overlaps it and eats the meridiem ("12:30 PM"
+       became "12:30", which makes morning and afternoon identical). 12-hour
+       needs ~64px of text plus the 20px dot cluster; 24-hour needs ~36px, and
+       body.tp-24h hands that width back rather than paying for a suffix that
+       is never printed. */
+    grid-template-columns: var(--dc-rail-w) minmax(0, 1fr);
+    align-items: stretch; gap: 0 4px; font-size: 13.5px;
+    --dc-dot: var(--row-accent, var(--text-dim));
+  }
+  .dc-event.st-booked    { --dc-dot: var(--green); }
+  .dc-event.st-to-book   { --dc-dot: var(--amber); }
+  .dc-event.st-decide    { --dc-dot: var(--purple); }
+  .dc-event.st-cancelled { --dc-dot: var(--text-faint); }
+  /* 46px = the card's top padding + the icon tile + its bottom padding, so the
+     dot and the time sit on the TITLE line however tall the card grows */
+  .dc-rail { display: flex; align-items: center; align-self: start; height: 46px; gap: 6px; padding-left: 4px; }
+  .dc-dot {
+    flex: none; width: 10px; height: 10px; border-radius: 50%;
+    background: var(--dc-dot); box-shadow: 0 0 0 3px color-mix(in srgb, var(--dc-dot) 20%, transparent);
+  }
+  /* the connector: from this row's dot to the next one, so the day reads as one
+     thread rather than as loose cards */
+  .dc-event:not(:last-child)::after {
+    content: ""; position: absolute; left: 8px; top: 33px; bottom: -5px;
+    width: 2px; border-radius: 2px; background: var(--border);
+  }
+  /* the DOT carries the status colour; the clock reading does not. Painting the
+     time in the status hue put it at 4.1:1 on the light theme (green) and
+     3.9:1 (amber), which is under AA for 12px text, and the dot 6px to its left
+     already says the same thing in the same colour. */
+  .dc-when {
+    font-size: 12px; font-weight: 700; color: var(--text-dim);
+    font-variant-numeric: tabular-nums; white-space: nowrap;
+  }
+  .dc-item {
+    min-width: 0; border-radius: 13px; padding: 8px 9px;
+    /* --bg-raised, not --bg-soft: the light theme's --bg-soft IS the card, so a
+       soft-fill row would be invisible on it */
+    background: var(--bg-raised); transition: background .13s, box-shadow .13s;
+  }
+  .dc-item:hover { box-shadow: inset 3px 0 0 var(--row-accent, var(--text-dim)), var(--shadow-sm); }
+  .dc-main { display: flex; align-items: flex-start; gap: 8px; min-width: 0; }
+  /* a tinted tile per type: the icon is the type, the rail dot is the status */
+  .dc-event .dc-ico {
+    display: inline-flex; align-items: center; justify-content: center; flex: none;
+    width: 30px; height: 30px; border-radius: 9px;
+    font-size: 14px; line-height: 1;
+    background: var(--row-soft, var(--gray-soft));
+  }
+  /* a single long place name (Llanfairpwllgwyngyll...) must break rather than
+     run out of the card */
+  .dc-event .dc-label { flex: 1 1 auto; min-width: 0; overflow-wrap: anywhere; }
+  .dc-tag {
+    display: inline-block; margin-bottom: 2px; padding: 1px 6px; border-radius: 5px;
+    font-size: 9.5px; font-weight: 800; letter-spacing: 0.6px; text-transform: uppercase;
+    background: var(--row-soft, var(--gray-soft)); color: var(--row-accent, var(--text-dim));
+  }
+  .dc-title { font-size: 13.5px; font-weight: 700; line-height: 1.3; color: var(--text); }
+  .dc-loc { font-size: 11.5px; font-weight: 500; color: var(--text-dim); margin-top: 1px; }
+  .dc-loc::before { content: "\1F4CD"; margin-right: 4px; font-size: 10px; opacity: 0.75; }
+  .dc-details { margin-top: 5px; font-size: 12px; color: var(--text-dim); line-height: 1.5; overflow-wrap: anywhere; }
+  .dc-tail { display: flex; align-items: center; gap: 4px; flex: none; }
+  .dc-cost {
+    font-size: 11px; font-weight: 700; color: var(--text); white-space: nowrap;
+    background: var(--gray-soft); border-radius: 999px; padding: 4px 9px;
+  }
+  .dc-cost small { font-weight: 500; color: var(--text-dim); }
+  .dc-cost.is-note { font-weight: 600; color: var(--text-dim); }
+  /* Maps is an action, so it rides in the action cluster as a bordered button,
+     not as a blue word under the description */
+  .dc-tail .assist-maps-link {
+    display: inline-flex; align-items: center; gap: 4px; flex: none;
+    padding: 4px 10px; border-radius: 9px; text-decoration: none; white-space: nowrap;
+    font-size: 11.5px; font-weight: 700; line-height: 1.25;
+    background: var(--accent-soft); border: 1px solid color-mix(in srgb, var(--accent) 30%, transparent);
+  }
+  .dc-tail .assist-maps-link:hover { border-color: var(--accent); text-decoration: none; }
+  .dc-event.is-cancelled .dc-title, .dc-event.is-cancelled .dc-loc { opacity: 0.5; text-decoration: line-through; }
+  .dc-clip { margin-left: 5px; }
+  /* Per-row edit and delete. They sit in a FIXED slot at the end of every row,
+     aligned with the cost badge, instead of floating next to whatever the row
+     happens to end with; they read muted until the row is hovered or one takes
+     focus. They are never hover-GATED: the day card is the surface people use
+     on a phone, where there is no hover at all. */
+  .dc-edit, .dc-del { flex: none; opacity: 0.55; transition: opacity .12s; }
+  .dc-event:hover .dc-edit, .dc-event:hover .dc-del,
+  .dc-edit:focus, .dc-del:focus { opacity: 1; }
+  /* stay rows have no real time (the assumed ones only sort them), so the
+     check-in / check-out tag is what marks them, not an invented clock reading */
+  .dc-event.is-stay .dc-item { background: var(--row-soft, var(--gray-soft)); box-shadow: inset 3px 0 0 var(--row-accent, var(--text-dim)); }
+  .dc-event.is-stay .dc-item:hover { box-shadow: inset 3px 0 0 var(--row-accent, var(--text-dim)), var(--shadow-sm); }
+  .dc-event.is-travel .dc-title { font-weight: 600; }
+  .dc-event.tp-t-meal .dc-item { background: color-mix(in srgb, var(--amber) 8%, var(--bg-raised)); }
+  /* the thread stops at the last timed row: it must not run through the
+     dashed "No time set" divider */
+  .dc-event:has(+ .dc-untimed)::after { display: none; }
+  .dc-untimed { display: flex; flex-direction: column; gap: 5px; margin-top: 3px; padding-top: 7px; border-top: 1px dashed var(--border); }
+  /* --text-dim, not --text-faint. --text-faint lands at 2.99:1 light / 3.51:1
+     dark, which no content a user must READ may sit at, so an audit of all 32
+     call sites split them rather than retoning the token:
+       -> --text-dim, anything carrying information: chip and totals labels
+          (they name the number beside them), "5 nights", the strip dates, the
+          day-card weekday, the timeline day separator, the Cancelled status
+          label, the visa passport-assumption provenance, the sample-data
+          disclaimer, "your key stays in this browser", the proposal op labels,
+          and the two icon-button glyphs (1.4.11 wants 3:1; light was at 2.99).
+       stays --text-faint, things WCAG 1.4.3 exempts or that break if darkened:
+          disabled controls (explicitly exempt), placeholders (a --text-dim
+          placeholder reads as a FILLED VALUE, a worse bug than the contrast),
+          the middot and arrow separator glyphs, list markers, the aria-hidden
+          build tag, and the past-day de-emphasis in the planner.
+     The token keeps its value, so the faint/dim distinction survives. */
+  .dc-untimed-label {
+    display: block; padding: 0 0 2px 4px; font-size: 10px; letter-spacing: 0.8px;
+    text-transform: uppercase; font-weight: 700; color: var(--text-dim);
+  }
+  .dc-untimed .dc-title { font-weight: 600; color: var(--text-dim); }
+  .dc-empty { padding: 6px 4px 8px; font-size: 12.5px; color: var(--text-dim); font-style: italic; }
   .tp-clip { color: var(--text-dim); font-size: 13px; }
 
-  /* ---------- documents pocket ---------- */
-  .docs-hint { font-size: 13px; color: var(--text-dim); }
-  .docs-list { display: flex; flex-wrap: wrap; gap: 10px; margin: 10px 0 6px; }
-  .docs-list:empty { margin: 0; }
+  /* ---------- documents pocket ----------
+     per-modal layout only: a wrapping grid of file tiles with a per-tile
+     remove affordance is specific to this section. Everything else it uses
+     (empty state, hint, error text, button) comes from the shared system. */
+  .docs-body { display: flex; flex-direction: column; gap: 10px; align-items: flex-start; }
+  .docs-body .m-empty, .docs-body .hint { align-self: stretch; }
+  .docs-list { display: flex; flex-wrap: wrap; gap: 10px; width: 100%; }
+  .docs-list:empty { display: none; }
+  /* the polished empty state replaces the tile grid, never sits under it */
+  .docs-list:not(:empty) + .docs-empty { display: none; }
   .doc-thumb {
-    position: relative; width: 84px; display: flex; flex-direction: column; align-items: center; gap: 4px;
+    position: relative; width: 92px; display: flex; flex-direction: column; align-items: center; gap: 5px;
   }
   .doc-preview {
-    width: 64px; height: 64px; border-radius: 8px; border: 1px solid var(--border-soft);
+    width: 72px; height: 72px; border-radius: 10px; border: 1px solid var(--border-soft);
     background: var(--bg-soft); display: flex; align-items: center; justify-content: center; overflow: hidden;
   }
   .doc-preview img { width: 100%; height: 100%; object-fit: cover; }
   .doc-preview .doc-file { font-size: 28px; }
-  .doc-name { font-size: 11px; color: var(--text-dim); max-width: 84px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .doc-name { font-size: 11px; color: var(--text-dim); max-width: 92px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .doc-remove {
-    position: absolute; top: -6px; right: 2px; width: 20px; height: 20px; line-height: 1; padding: 0;
+    position: absolute; top: -6px; right: 4px; width: 22px; height: 22px; line-height: 1; padding: 0;
     border: 1px solid var(--border); background: var(--bg-card); border-radius: 50%; font-size: 12px;
   }
-  .docs-err { color: var(--red); font-size: 12.5px; margin: 2px 0 6px; }
+  .docs-err { color: var(--red); font-size: var(--m-help, 12px); font-weight: 600; }
 
   /* ---------- error card ---------- */
   .error-card { padding: 40px 24px; text-align: center; }
@@ -706,9 +1530,19 @@
   /* ---------- AI assistant panel ----------
      Fixed side panel (desktop) / full-screen sheet (mobile). Sits ABOVE the
      board but BELOW the .overlay modals (z-index 90) so a modal opened from
-     the panel still covers it. */
+     the panel still covers it.
+
+     LAYOUT CONTRACT: the panel is conversation-first. Setup is two steps (plan
+     the day, then choose how to use AI and press the one primary button), both
+     visible at once and separated by hairlines rather than nested cards. Steps
+     are NOT a wizard: someone who only ever copies and pastes must not click
+     through two screens to reach the paste box. Once a message is sent the
+     whole setup block folds into one summary bar so the thread owns the panel.
+     The composer is pinned outside the scroller, because it is where the time
+     is spent. Surfaces get at most one border: nothing inside a step draws
+     another big rounded box around itself. */
   .tp-assist-panel {
-    position: fixed; top: 0; right: 0; height: 100%; width: 420px; max-width: 100%;
+    position: fixed; top: 0; right: 0; height: 100%; width: 430px; max-width: 100%;
     z-index: 80; background: var(--bg-card); border-left: 1px solid var(--border);
     box-shadow: -14px 0 40px rgba(0, 0, 0, 0.4);
     display: flex; flex-direction: column;
@@ -718,47 +1552,347 @@
   }
   .tp-assist-panel[hidden] { display: none; }
   .tp-assist-head {
-    display: flex; align-items: center; gap: 10px; padding: 14px 16px;
+    display: flex; align-items: center; gap: 9px; padding: 11px 12px 11px 16px;
     border-bottom: 1px solid var(--border-soft); flex: none;
   }
-  .tp-assist-head h2 { margin: 0; font-size: 17px; margin-right: auto; }
-  .tp-assist-scroll { flex: 1 1 auto; overflow-y: auto; padding: 14px 16px 24px; display: flex; flex-direction: column; gap: 14px; }
-  .assist-honesty {
-    background: var(--amber-soft); border: 1px solid color-mix(in srgb, var(--amber) 40%, var(--border));
-    border-radius: 10px; padding: 10px 12px; font-size: 12.5px; color: var(--text-dim); line-height: 1.45;
+  .ah-avatar { font-size: 16px; line-height: 1; }
+  .tp-assist-head h2 {
+    margin: 0 auto 0 0; font-size: 15.5px; font-weight: 700; line-height: 1.2;
   }
+  /* ghost square buttons: the header should read as a title bar, not two more
+     bordered controls competing with the content below */
+  .ah-btn {
+    width: 32px; height: 32px; flex: none; border: 0; border-radius: 9px;
+    background: transparent; padding: 0;
+    display: inline-flex; align-items: center; justify-content: center;
+    transition: background .15s, color .15s;
+  }
+  .ah-btn svg { display: block; }
+  .ah-btn:hover { background: var(--bg-raised); }
+  /* overscroll-behavior: reaching the end of the thread must not hand the wheel
+     to the page behind the panel (and back again) */
+  .tp-assist-scroll {
+    flex: 1 1 auto; min-height: 0; overflow-y: auto; overscroll-behavior: contain;
+    padding: 13px 16px 16px; display: flex; flex-direction: column; gap: 13px;
+  }
+  /* the composer is a sibling of the scroller, so a minimized panel has to hide
+     it too or the pill grows a textarea */
+  .tp-assist-panel.is-min .assist-composer { display: none; }
+  /* minimized: the panel keeps every node (chat, picker values, pending
+     proposals) and just collapses to a pill in the corner */
+  .tp-assist-panel.is-min {
+    top: auto; left: auto; bottom: 16px; right: 16px;
+    height: auto; width: auto; max-width: calc(100% - 32px);
+    padding-top: 0; border: 1px solid var(--border); border-radius: 999px;
+    box-shadow: var(--shadow);
+  }
+  /* the pill IS the control surface once the panel is collapsed, so its two
+     buttons carry the full touch target at every width, not the 32px chrome
+     size they inherit from the expanded title bar */
+  .tp-assist-panel.is-min .ah-btn { width: 44px; height: 44px; }
+  .tp-assist-panel.is-min .tp-assist-head { border-bottom: 0; padding: 3px 5px 3px 15px; }
+  .tp-assist-panel.is-min .tp-assist-head h2 { font-size: 14px; }
+  .tp-assist-panel.is-min .tp-assist-scroll { display: none; }
+  .tp-assist-panel .max-ico { display: none; }
+  .tp-assist-panel.is-min .min-ico { display: none; }
+  .tp-assist-panel.is-min .max-ico { display: block; }
+
+  /* The honesty notice is a standing caveat, not an alert: it keeps every word
+     but drops the amber slab that used to be the loudest thing in the panel. */
+  /* STICKY: this is the panel's standing caveat, and it lives inside the
+     scroller, so it used to leave the screen the moment the conversation grew
+     past one turn - i.e. it was gone for every message after the first, which
+     is exactly when the model starts making claims. It stays pinned to the top
+     of the thread instead. z-index over the messages that scroll under it. */
+  .assist-honesty {
+    position: sticky; top: -13px; z-index: 2;
+    display: flex; gap: 9px; align-items: flex-start; margin: 0; flex: none;
+    background: var(--bg-card); border: 1px solid var(--border-soft);
+    border-radius: 11px; padding: 9px 12px;
+    font-size: 11.5px; color: var(--text-dim); line-height: 1.5;
+    box-shadow: 0 4px 10px -6px rgba(0, 0, 0, 0.5);
+  }
+  .ah-note-ico {
+    flex: none; width: 17px; height: 17px; margin-top: 1px; border-radius: 50%;
+    background: var(--amber-soft); color: var(--amber);
+    font-size: 11px; font-weight: 800; line-height: 1;
+    display: inline-flex; align-items: center; justify-content: center;
+  }
+
+  /* ---------- steps ---------- */
+  .assist-setup { display: flex; flex-direction: column; gap: 13px; flex: none; }
+  .assist-setup[hidden] { display: none; }
+  /* what the setup block folds into once the conversation starts */
+  .assist-setup-bar[hidden] { display: none; }
+  .assist-setup-bar {
+    display: flex; align-items: center; gap: 10px; flex: none;
+    background: var(--bg-soft); border: 1px solid var(--border-soft);
+    border-radius: 11px; padding: 7px 8px 7px 12px;
+    font-size: 12px; color: var(--text-dim); line-height: 1.35;
+  }
+  .asb-txt { min-width: 0; overflow-wrap: anywhere; }
+  .trip-planner-app .asb-change {
+    flex: none; margin-left: auto; min-height: 32px; padding: 0 12px;
+    border: 1px solid var(--border); border-radius: 8px; background: var(--bg-card);
+    font-size: 12px; font-weight: 600; color: var(--text-dim) !important;
+  }
+  .trip-planner-app .asb-change:hover {
+    border-color: var(--accent); background: var(--bg-raised); color: var(--text) !important;
+  }
+  .as-step { display: flex; flex-direction: column; gap: 10px; }
+  .as-step + .as-step { border-top: 1px solid var(--border-soft); padding-top: 13px; }
+  .as-step-head { display: flex; align-items: center; gap: 9px; flex-wrap: wrap; }
+  .as-step-n {
+    flex: none; width: 19px; height: 19px; border-radius: 50%;
+    background: var(--gray-soft); color: var(--text-dim);
+    font-size: 11px; font-weight: 700; line-height: 1;
+    display: inline-flex; align-items: center; justify-content: center;
+  }
+  .as-step-head h3 { margin: 0; font-size: 13.5px; font-weight: 700; color: var(--text); }
+
+  /* the day dropdown is the focused-day indicator when the trip has dated days;
+     this chip is the fallback for a focus set on a trip that has none */
   .assist-focus-chip[hidden] { display: none; }
   .assist-focus-chip {
-    display: flex; align-items: center; gap: 8px; background: var(--accent-soft);
-    border: 1px solid var(--accent); border-radius: 999px; padding: 5px 6px 5px 13px;
-    font-size: 13px; font-weight: 600; color: var(--text); align-self: flex-start;
+    display: flex; align-items: center; gap: 4px; margin-left: auto;
+    background: var(--accent-soft); border-radius: 999px; padding: 3px 4px 3px 11px;
+    font-size: 11.5px; font-weight: 600; color: var(--text);
   }
   .assist-focus-chip .chip-x {
-    background: none; border: 0; padding: 2px 6px; line-height: 1; font-size: 13px; border-radius: 999px;
+    background: none; border: 0; padding: 2px 6px; line-height: 1; font-size: 12px; border-radius: 999px;
   }
-  .tier-group { display: flex; flex-direction: column; gap: 8px; }
-  .tier-card {
-    display: flex; flex-direction: column; gap: 4px; padding: 11px 13px 11px 34px; position: relative;
-    border: 1px solid var(--border); border-radius: 12px; background: var(--bg-soft); cursor: pointer;
+
+  /* ---------- "Plan my day" picker ----------
+     Two control kinds, and only two: a segmented track means "pick one", a tag
+     means "pick as many as you like". The old design used one 44px outlined
+     pill for both, which is why a screenful of them read as noise. */
+  .pl-body { display: flex; flex-direction: column; gap: 12px; }
+  .pl-rows { display: flex; flex-direction: column; gap: 11px; }
+  .pl-empty { margin: 0; font-size: 12.5px; color: var(--text-dim); line-height: 1.5; }
+  .pl-row { display: grid; grid-template-columns: 82px minmax(0, 1fr); align-items: center; gap: 10px; }
+  .pl-row-wide { grid-template-columns: minmax(0, 1fr); gap: 7px; }
+  .pl-row-top { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+  .pl-label { font-size: 12.5px; font-weight: 600; color: var(--text-dim); line-height: 1.3; }
+  .pl-label small { font-size: 11px; font-weight: 500; color: var(--text-dim); }
+
+  /* Native <select> on purpose: iOS and Android draw the open list themselves
+     and ignore option colors, so a custom listbox would look right on a desktop
+     and wrong on the phone. The CLOSED control is styleable, which is where the
+     today / past state is shown. main.css strips the native arrow off every
+     select sitewide, so the chevron is drawn here with currentColor rather than
+     a data-URI: it follows the state color and both themes for free. */
+  .pl-day-field, .sel-wrap { position: relative; color: var(--text-dim); }
+  .pl-day-field::after, .sel-wrap::after {
+    content: ''; position: absolute; right: 15px; top: 50%; width: 7px; height: 7px;
+    border-right: 1.8px solid currentColor; border-bottom: 1.8px solid currentColor;
+    transform: translateY(-70%) rotate(45deg); pointer-events: none; opacity: 0.7;
   }
-  .tier-card.on { border-color: var(--accent); background: var(--accent-soft); }
-  .tier-card input { position: absolute; left: 12px; top: 13px; width: auto; margin: 0; }
-  .tier-label { font-weight: 700; font-size: 14px; color: var(--text); }
-  .tier-privacy { font-size: 12px; color: var(--text-dim); line-height: 1.4; }
+  .trip-planner-app select.pl-day-select {
+    width: 100%; appearance: none; -webkit-appearance: none;
+    border: 1px solid var(--border); border-radius: 11px;
+    background: var(--bg-soft); color: var(--text);
+    font-size: 14px; font-weight: 600; line-height: 1.3;
+    padding: 11px 38px 11px 13px; min-height: 46px;
+  }
+  .pl-day-field.is-today { color: var(--accent); }
+  .trip-planner-app .pl-day-field.is-today select.pl-day-select {
+    border-color: color-mix(in srgb, var(--accent) 50%, var(--border));
+    background: var(--accent-soft); color: var(--accent);
+  }
+  .pl-day-field.is-past { color: var(--text-faint); }
+  .trip-planner-app .pl-day-field.is-past select.pl-day-select {
+    background: var(--bg-raised); color: var(--text-dim);
+  }
+
+  /* track, segment and selected state come from the shared .seg primitive in
+     the modal design system; only the panel's tighter metrics differ */
+  .pl-seg { border-radius: 10px; }
+  .pl-seg-b { border-radius: 7px; min-height: 32px; padding: 0 7px; }
+
+  .pl-tags { display: flex; flex-wrap: wrap; gap: 6px; min-width: 0; }
+  .pl-tag {
+    border: 1px solid var(--border); background: var(--bg-card); border-radius: 8px;
+    padding: 0 10px; min-height: 32px; font-size: 12.5px; font-weight: 500;
+  }
+  .pl-tag.on {
+    border-color: color-mix(in srgb, var(--accent) 50%, var(--border));
+    background: var(--accent-soft); font-weight: 600;
+  }
+  .pl-time {
+    border: 1px solid var(--border); border-radius: 8px; background: var(--bg-card);
+    padding: 3px 8px; font-size: 12.5px; min-height: 32px; color: var(--text);
+  }
+  /* .trip-planner-app prefix: class-level specificity to beat the
+     .trip-planner-app input/select/textarea/option reset above (same
+     technique that rule's own comment documents), otherwise this loses to
+     that reset's font-size/line-height on specificity, not source order. */
+  .trip-planner-app .pl-note-box {
+    width: 100%; resize: vertical; border-radius: 10px; padding: 9px 11px;
+    font: inherit; font-size: 13px; line-height: 1.5; min-height: 58px;
+    background: var(--bg-soft); border: 1px solid var(--border); color: var(--text);
+  }
+  .pl-note-box:focus { outline: none; border-color: var(--accent); }
+  .pl-count { font-size: 11px; color: var(--text-dim); flex: none; }
+  .pl-err {
+    display: flex; gap: 8px; align-items: center;
+    background: var(--red-soft); border: 1px solid color-mix(in srgb, var(--red) 35%, transparent);
+    border-radius: 9px; padding: 8px 11px; font-size: 12.5px; font-weight: 600; color: var(--text);
+  }
+  .pl-err::before {
+    content: '!'; flex: none; width: 16px; height: 16px; border-radius: 50%;
+    background: var(--red); color: var(--bg-card); font-size: 11px; font-weight: 800; line-height: 1;
+    display: inline-flex; align-items: center; justify-content: center;
+  }
+
+  /* ---------- the request ----------
+     Collapsed to a one-line read of the picker with an Expand next to it. The
+     traveller can always see the exact words that will be sent; they just do
+     not have to scroll past them every time. */
+  .pl-review { display: flex; flex-direction: column; gap: 9px; }
+  .pl-sum { display: flex; align-items: center; gap: 10px; }
+  .pl-sum-txt { min-width: 0; font-size: 12.5px; color: var(--text-dim); line-height: 1.4; overflow-wrap: anywhere; }
+  .trip-planner-app .pl-expand {
+    flex: none; margin-left: auto; min-height: 32px; padding: 0 11px;
+    border: 1px solid var(--border); border-radius: 8px; background: var(--bg-soft);
+    font-size: 12px; font-weight: 600; color: var(--text-dim) !important;
+  }
+  .trip-planner-app .pl-expand:hover {
+    border-color: var(--accent); background: var(--bg-raised); color: var(--text) !important;
+  }
+  .pl-preview[hidden] { display: none; }
+  .pl-preview {
+    background: var(--bg-soft); border: 1px solid var(--border-soft);
+    border-left: 3px solid color-mix(in srgb, var(--accent) 55%, var(--border));
+    border-radius: 4px 11px 11px 4px; padding: 11px 13px;
+    font-size: 12.5px; line-height: 1.55; color: var(--text);
+    white-space: pre-wrap; overflow-wrap: anywhere;
+  }
+  .pl-go { width: 100%; min-height: 46px; font-size: 14.5px; }
+  /* a disabled primary must not still read as the thing to press */
+  .trip-planner-app .btn.primary.pl-go:disabled,
+  .trip-planner-app .btn.primary.pl-go:disabled:hover {
+    background: var(--bg-raised); border-color: var(--border);
+    color: var(--text-faint) !important; opacity: 1; filter: none;
+  }
+
+  /* ---------- how to use AI ---------- */
+  .tier-group { display: flex; flex-direction: column; gap: 9px; }
+  /* same shared .seg primitive; a tier segment is a <label> wrapping a radio,
+     so it adds the positioning and centring a <button> gets for free */
+  .tier-seg { border-radius: 11px; }
+  .tier-opt {
+    position: relative; margin: 0; cursor: pointer;
+    display: flex; align-items: center; justify-content: center; text-align: center;
+    border-radius: 8px; min-height: 36px; padding: 5px 6px;
+    white-space: normal; line-height: 1.25;
+  }
+  /* main.css hides every radio and draws a fake box on the NEXT sibling label;
+     here the input is inside its own label, so it is stretched over the segment
+     and left invisible: real control, real keyboard behaviour, no fake box. */
+  .trip-planner-app .tier-opt input[type="radio"] {
+    position: absolute; inset: 0; width: 100%; height: 100%; margin: 0;
+    float: none; opacity: 0; z-index: 1; appearance: none; -webkit-appearance: none;
+    cursor: pointer;
+  }
+  .tier-opt:hover:not(.on) { background: var(--gray-soft); color: var(--text); }
+  .tier-opt:focus-within { outline: 2px solid var(--accent); outline-offset: 2px; }
+  /* the one line that says where the trip goes on this tier */
+  .tier-note { margin: 0; font-size: 12px; color: var(--text-dim); line-height: 1.45; }
   .tier-body { display: flex; flex-direction: column; gap: 10px; }
-  .assist-field { margin-bottom: 0; }
-  .assist-field textarea { min-height: 66px; }
-  .assist-quick-links { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; font-size: 13px; }
-  .assist-quick-links .aql-label { color: var(--text-faint); }
-  .assist-quick-links a { color: var(--accent); text-decoration: none; font-weight: 600; }
-  .assist-quick-links a:hover { text-decoration: underline; }
-  .assist-messages { display: flex; flex-direction: column; gap: 12px; }
+  /* tier 1 copies first, then works the reply back in, so its body follows the
+     primary action instead of preceding it */
+  .tp-assist-panel.tier-copy .tier-body { order: 1; }
+
+  /* ---------- tier 1: the copy / paste loop ----------
+     Three lettered moves, so the two textareas are never mistaken for each
+     other: write the ask, take it to an AI, bring the reply back. */
+  .assist-flow { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 14px; }
+  .af-move { display: flex; flex-direction: column; gap: 7px; }
+  .af-head { display: flex; align-items: center; gap: 8px; }
+  .af-n {
+    flex: none; width: 18px; height: 18px; border-radius: 50%;
+    background: var(--gray-soft); color: var(--text-dim);
+    font-size: 10.5px; font-weight: 700; line-height: 1; text-transform: uppercase;
+    display: inline-flex; align-items: center; justify-content: center;
+  }
+  .af-head label, .af-label { margin: 0; font-size: 12.5px; font-weight: 600; color: var(--text-dim); }
+  /* .trip-planner-app prefix: same specificity fix as .pl-note-box above */
+  .trip-planner-app .af-input {
+    width: 100%; resize: vertical; border-radius: 10px; padding: 10px 12px;
+    font: inherit; font-size: 13px; line-height: 1.5; min-height: 64px;
+    background: var(--bg-soft); border: 1px solid var(--border); color: var(--text);
+  }
+  .af-input:focus { outline: none; border-color: var(--accent); }
+  .af-go { align-self: flex-start; min-height: 38px; }
+  .assist-quick-links { display: flex; flex-wrap: wrap; gap: 7px; }
+  .assist-quick-links a {
+    display: inline-flex; align-items: center; min-height: 34px; padding: 0 12px;
+    border: 1px solid var(--border); border-radius: 999px; background: var(--bg-card);
+    font-size: 12.5px; font-weight: 600; text-decoration: none;
+  }
+  .assist-quick-links a:hover { border-color: var(--accent); text-decoration: none; }
+  .assist-quick-links a span { margin-left: 5px; font-size: 11px; opacity: 0.75; }
+
+  /* ---------- chat thread ---------- */
+  /* the thread takes every pixel the setup block is not using, so collapsing
+     the setup after a send actually hands the panel to the conversation */
+  .assist-messages { display: flex; flex-direction: column; gap: 12px; flex: 1 1 auto; }
+  .assist-messages:empty { flex: 0 0 auto; }
   .assist-msg {
-    border-radius: 12px; padding: 10px 13px; font-size: 13.5px; line-height: 1.5;
+    border-radius: 12px; padding: 10px 13px; font-size: 13px; line-height: 1.55;
     white-space: pre-wrap; overflow-wrap: anywhere;
   }
   .assist-msg.assistant { background: var(--bg-soft); border: 1px solid var(--border-soft); color: var(--text); }
-  .assist-msg.user { background: var(--accent-soft); border: 1px solid var(--accent); color: var(--text); align-self: flex-end; max-width: 88%; }
+  .assist-msg.user {
+    background: var(--accent-soft); border: 1px solid color-mix(in srgb, var(--accent) 35%, transparent);
+    color: var(--text); align-self: flex-end; max-width: 88%;
+  }
+  /* Assistant replies are Markdown: trip-logic parses them into a data tree and
+     app.js builds real elements, so these rules style the rendered result.
+     Sizes stay near the bubble's own type so a heading never dwarfs it, and the
+     bubble's pre-wrap is dropped because the blocks carry their own spacing. */
+  .assist-msg.assist-md { white-space: normal; }
+  .assist-md > :first-child { margin-top: 0; }
+  .assist-md > :last-child { margin-bottom: 0; }
+  .assist-md p { margin: 0 0 8px; }
+  /* main.css paints strong/b #555555, which reads as dimmer than the prose
+     around it; bold in a reply has to be the emphatic thing on the line */
+  .assist-md strong, .assist-md b { color: var(--text); font-weight: 700; }
+  .assist-md em, .assist-md i { color: inherit; }
+  .assist-md h1, .assist-md h2, .assist-md h3,
+  .assist-md h4, .assist-md h5, .assist-md h6 {
+    margin: 12px 0 5px; line-height: 1.3; font-weight: 700;
+    color: var(--text); letter-spacing: 0; text-transform: none;
+  }
+  .assist-md h1 { font-size: 15.5px; }
+  .assist-md h2 { font-size: 14.5px; }
+  .assist-md h3 { font-size: 14px; }
+  .assist-md h4, .assist-md h5, .assist-md h6 { font-size: 13px; }
+  .assist-md ul, .assist-md ol { margin: 0 0 8px; padding-left: 19px; }
+  .assist-md li { margin: 2px 0; }
+  .assist-md li::marker { color: var(--text-faint); }
+  /* main.css gives blockquote an italic 0.5rem rule and code a 1px border plus
+     side margins; both are reset here so the bubble keeps its own look */
+  .assist-md blockquote {
+    margin: 0 0 8px; padding: 1px 0 1px 10px; font-style: normal;
+    border-left: 3px solid var(--border); color: var(--text-dim);
+  }
+  .assist-md code {
+    font-family: ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace;
+    font-size: 12px; background: var(--bg-raised); border-radius: 5px;
+    padding: 1px 5px; margin: 0; border: 0; color: var(--text);
+  }
+  /* a code fence scrolls itself rather than widening the panel on a phone */
+  .assist-md pre {
+    margin: 0 0 8px; max-width: 100%; overflow-x: auto;
+    padding: 9px 11px; border-radius: 10px;
+    background: var(--bg-raised); border: 1px solid var(--border-soft);
+  }
+  .assist-md pre code {
+    display: block; background: none; padding: 0; border-radius: 0;
+    line-height: 1.5; white-space: pre; overflow-wrap: normal;
+  }
+  .assist-md a { color: var(--accent); text-decoration: underline; }
   .assist-error {
     background: var(--red-soft); border: 1px solid color-mix(in srgb, var(--red) 45%, var(--border));
     color: var(--text); border-radius: 12px; padding: 10px 13px; font-size: 13px; line-height: 1.5;
@@ -772,86 +1906,348 @@
   .assist-typing span:nth-child(2) { animation-delay: 0.15s; }
   .assist-typing span:nth-child(3) { animation-delay: 0.3s; }
   @keyframes assistBlink { 0%, 80%, 100% { opacity: 0.25; } 40% { opacity: 1; } }
-  /* Tier 2 (bring your own key) fields */
-  .assist-byok { display: flex; flex-direction: column; gap: 10px; }
+
+  /* ---------- tier 2 (bring your own key) and tier 3 fields ---------- */
+  .assist-byok { display: flex; flex-direction: column; gap: 11px; }
   .assist-two-col { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
-  .assist-byok .field label { display: block; font-size: 12.5px; font-weight: 600; color: var(--text-dim); margin-bottom: 5px; }
-  .assist-byok select, .assist-byok input[type="password"] { width: 100%; }
+  .assist-field { margin-bottom: 0; }
+  /* the shared .field stacks with a flex gap, so the label owns no margin */
+  .assist-byok .field label { display: block; font-size: 12px; font-weight: 600; color: var(--text-dim); margin-bottom: 0; }
+  .trip-planner-app .assist-byok select,
+  .trip-planner-app .assist-byok input[type="password"] {
+    width: 100%; min-height: 40px; border-radius: 10px; padding: 8px 11px;
+    font-size: 13px; background: var(--bg-soft); border: 1px solid var(--border); color: var(--text);
+  }
+  .trip-planner-app .assist-byok .sel-wrap select { padding-right: 30px; }
   .assist-key-actions { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+  .assist-key-actions .btn { min-height: 38px; }
   .assist-key-link { font-size: 12.5px; text-decoration: none; margin-left: auto; }
   .assist-key-link:hover { text-decoration: underline; }
-  .assist-key-note { font-size: 12px; color: var(--text-faint); }
-  .assist-site-note {
-    background: var(--bg-soft); border: 1px solid var(--border-soft); border-radius: 12px;
-    padding: 11px 13px; font-size: 12.5px; color: var(--text-dim); line-height: 1.45;
-  }
-  /* shared chat composer (Tiers 2 and 3) */
+  .assist-key-note { font-size: 11.5px; color: var(--text-dim); }
+  /* ---------- chat composer (Tiers 2 and 3) ----------
+     Pinned below the scroller, not scrolled with the setup block: this is where
+     the traveller spends the whole conversation. It opens at three lines, grows
+     with the typing and stops at eight-ish so it can never eat the thread.
+     16px is deliberate: anything smaller makes iOS zoom the page on focus. */
   .assist-composer[hidden] { display: none; }
-  .assist-composer { display: flex; flex-direction: column; gap: 8px; }
-  .assist-composer textarea {
-    width: 100%; min-height: 52px; resize: vertical; border-radius: 12px;
-    padding: 10px 12px; font: inherit; font-size: 13.5px; line-height: 1.45;
+  .assist-composer {
+    flex: none; display: flex; flex-direction: column; gap: 7px;
+    padding: 10px 16px calc(12px + env(safe-area-inset-bottom, 0px));
+    border-top: 1px solid var(--border-soft); background: var(--bg-card);
+  }
+  .trip-planner-app .assist-composer textarea {
+    width: 100%; min-height: 92px; max-height: 208px; resize: none; border-radius: 14px;
+    padding: 11px 13px; font: inherit; font-size: 16px; line-height: 1.5;
     background: var(--bg-soft); border: 1px solid var(--border); color: var(--text);
+    overflow-y: auto; overscroll-behavior: contain;
   }
   .assist-composer textarea:focus { outline: none; border-color: var(--accent); }
-  .assist-composer-row { display: flex; align-items: center; gap: 8px; }
-  .assist-composer-row .assist-clear { margin-right: auto; }
-  .assist-composer-row #assistSend { min-width: 92px; }
+  /* the hint gets its own line: squeezed between two buttons it wrapped to two
+     lines at BOTH viewports, and 10.5px at --text-faint was 2.99:1 */
+  .assist-composer-row { display: flex; align-items: center; gap: 8px; justify-content: flex-end; }
+  .assist-composer-hint { margin: -1px 0 0; font-size: 12px; color: var(--text-dim); line-height: 1.35; }
+  .assist-composer-row .btn { min-height: 40px; }
+  .assist-composer-row #assistSend { min-width: 88px; }
+
+  /* ---------- proposal cards ---------- */
   .assist-proposals { display: flex; flex-direction: column; gap: 10px; }
   .assist-proposal {
-    border: 1px solid var(--border); border-radius: 12px; padding: 11px 13px;
-    background: var(--bg-raised); display: flex; flex-direction: column; gap: 4px;
+    border: 1px solid var(--border-soft); border-radius: 12px; padding: 11px 13px;
+    background: var(--bg-soft); display: flex; flex-direction: column; gap: 4px;
   }
   .assist-proposal.invalid { border-color: color-mix(in srgb, var(--amber) 50%, var(--border)); background: var(--amber-soft); }
   .assist-proposal.done { border-color: var(--green); background: var(--green-soft); }
   .assist-proposal.stale { border-color: var(--border); background: var(--bg-soft); }
-  .ap-op { font-size: 11px; text-transform: uppercase; letter-spacing: 0.7px; color: var(--text-faint); font-weight: 700; }
-  .ap-title { font-weight: 700; font-size: 14.5px; color: var(--text); }
+  .ap-op { font-size: 10.5px; text-transform: uppercase; letter-spacing: 0.7px; color: var(--text-dim); font-weight: 700; }
+  .ap-title { font-weight: 700; font-size: 14px; color: var(--text); }
   .ap-meta, .ap-cost { font-size: 12.5px; color: var(--text-dim); }
   .ap-cost { font-weight: 700; }
   .assist-maps-link { font-size: 12.5px; color: var(--accent); text-decoration: none; align-self: flex-start; }
   .assist-maps-link:hover { text-decoration: underline; }
+  /* the rating chip IS the link to the same Google Maps result, so once it
+     paints, the standalone "Verify on Google Maps" line underneath is the same
+     destination twice (a three-option pick-one card carried six of them). The
+     slot is empty until a rating arrives, so the link stays for every venue
+     that never gets one. */
+  .ap-rating:not(:empty) + .assist-maps-link { display: none; }
+
+  /* ---------- Google rating chip ----------
+     Google Maps Platform attribution: rating, review count and the "Google
+     Maps" wordmark sit together in ONE chip with its own border and tinted
+     background, which is the required visual separation from the card's own
+     content. The chip IS the link to that result. The wordmark never wraps,
+     truncates or shrinks below the surrounding text size, so it can neither be
+     altered nor obscured. The slot is empty (and hidden) until a rating
+     arrives, so an unconfigured or throttled endpoint leaves no trace. */
+  .ap-rating { align-self: flex-start; max-width: 100%; }
+  .ap-rating:empty { display: none; }
+  .apr-chip {
+    display: inline-flex; align-items: center; gap: 6px;
+    border: 1px solid var(--border); border-radius: 999px;
+    background: var(--gray-soft); padding: 3px 11px; min-height: 30px;
+    font-family: var(--tp-font); font-size: 12.5px; line-height: 1.2;
+    color: var(--text); text-decoration: none;
+  }
+  .apr-chip:hover { border-color: var(--accent); text-decoration: none; }
+  .apr-star { color: var(--amber); font-size: 13px; }
+  .apr-score { font-weight: 700; }
+  .apr-count { color: var(--text-dim); }
+  .apr-brand {
+    color: var(--text); white-space: nowrap;
+    padding-left: 7px; border-left: 1px solid var(--border);
+  }
   .ap-actions { display: flex; gap: 8px; align-items: center; margin-top: 6px; }
   .assist-proposal .assist-accept { padding: 6px 14px; font-size: 13px; }
   .ap-reason { font-size: 13px; color: var(--text); }
   .ap-done { font-weight: 700; color: var(--green); font-size: 13.5px; }
 
+  /* ---------- alternative-set proposal card ----------
+     One card, one decision. No candidate is styled as a default until the
+     traveller picks it. The candidates are rows of ONE list surface, not a
+     stack of cards inside a card. */
+  .assist-set { gap: 8px; }
+  .as-lead { font-size: 12.5px; color: var(--text-dim); line-height: 1.45; }
+  .as-options {
+    display: flex; flex-direction: column; gap: 0;
+    border: 1px solid var(--border-soft); border-radius: 10px; overflow: hidden;
+    background: var(--bg-card);
+  }
+  .as-opt { padding: 9px 11px; display: flex; flex-direction: column; gap: 5px; }
+  .as-opt + .as-opt { border-top: 1px solid var(--border-soft); }
+  .as-opt.picked { background: var(--accent-soft); }
+  /* main.css sets `label { font-weight: 600 }`, which inherited into the meta
+     and detail lines and made them read as a second title on every option */
+  .trip-planner-app .as-pick { font-weight: 400; }
+  .as-pick { display: flex; align-items: flex-start; gap: 10px; cursor: pointer; min-height: 40px; }
+  .as-pick input[type="radio"] { margin: 3px 0 0; }
+  .as-body { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
+  .as-title { font-weight: 700; font-size: 13.5px; color: var(--text); }
+  .as-meta { font-size: 12.5px; color: var(--text-dim); }
+  .as-detail { font-size: 12.5px; color: var(--text-dim); overflow-wrap: anywhere; }
+  .as-opt .assist-maps-link { margin-left: 28px; min-height: 24px; }
+  .as-opt .ap-rating { margin-left: 28px; }
+  .assist-set .ap-actions { flex-wrap: wrap; }
+  .assist-set .ap-actions .btn { min-height: 40px; }
+
+  /* links surfaced under the details textarea in the item modal. A textarea
+     cannot hold live links, so this list is content generated from the
+     field's own text: no shared primitive owns it. */
+  .detail-links { display: flex; flex-direction: column; gap: 4px; margin-top: 6px; }
+  .detail-links[hidden] { display: none; }
+  .detail-links a { font-size: 12.5px; overflow-wrap: anywhere; }
+
+  /* Data-source attribution: sits OUTSIDE .trip-planner-app (it is page chrome,
+     like the footer), so it takes its colours from the page tokens directly. */
+  body.tp-page .data-attribution {
+    max-width: 1180px; margin: 0 auto; padding: 4px 22px 26px;
+    font: 400 11.5px/1.6 var(--tp-font); color: var(--text-dim); text-align: center;
+  }
+  .data-attribution .da-text { margin: 0; }
+  .data-attribution .da-link { color: var(--text-dim); text-decoration: underline; }
+  .data-attribution .da-link:hover { color: var(--text); }
+
   /* ---------- responsive ---------- */
   @media (max-width: 900px) {
     .tp-assist-panel { inset: 0; width: 100%; border-left: 0; }
-    .thead { display: none; }
+    /* the full-screen sheet above would otherwise re-expand the pill */
+    .tp-assist-panel.is-min { inset: auto 12px 12px auto; width: auto; border-left: 1px solid var(--border); }
+    /* thumb targets on the touch layout */
+    .trip-planner-app .asb-change,
+    .trip-planner-app .pl-expand { min-height: 44px; padding: 0 14px; }
+    .assist-composer-row .btn { min-height: 44px; }
+    /* the card folds to two columns: the rail + when strip stays, everything
+       else stacks under the title, and the actions become a real row */
     .tp-row {
-      grid-template-columns: 1fr auto;
-      grid-template-areas: "dates status" "title title" "details details" "meta meta" "actions actions";
-      gap: 6px 10px; padding: 14px 16px;
+      grid-template-columns: 30px minmax(0, 1fr);
+      grid-template-areas: "dot when" "main main" "side side" "acts acts";
+      gap: 4px 12px; padding: 12px 13px;
     }
-    .c-dates { grid-area: dates; }
-    .c-status { grid-area: status; justify-self: end; }
-    .c-title { grid-area: title; font-size: 15.5px; }
-    .c-details { grid-area: details; }
-    .c-meta-mobile { grid-area: meta; display: flex !important; gap: 10px; align-items: center; flex-wrap: wrap; }
-    .c-nights, .c-type, .c-cost { display: none; }
-    .c-actions { grid-area: actions; opacity: 1; justify-content: flex-start; padding-top: 4px; }
+    .c-when { flex-direction: row; align-items: baseline; gap: 8px; flex-wrap: wrap; padding-top: 5px; }
+    .c-main { padding-top: 4px; }
+    .c-title { font-size: 15.5px; }
+    .c-side { flex-direction: row; align-items: center; justify-content: space-between; width: 100%; padding-top: 4px; }
+    .c-actions { opacity: 1; justify-content: flex-start; padding-top: 6px; }
+    /* the nested-row override in the desktop block outranks the fold above,
+       so it has to be restated here or nested rows keep five columns */
+    .tl-day-items .tp-row { grid-template-columns: 30px minmax(0, 1fr); }
+    .tl-day-items .c-date { display: none; }
+    .tl-sub { margin-left: 8px; padding-left: 10px; }
+    .tl-day-items { margin-left: 6px; }
+    .days-list { grid-template-columns: 1fr; }
     .row-btn { border-color: var(--border); padding: 7px 11px; }
     .totals { justify-content: space-between; gap: 16px; }
     .tb-sep { display: none; }
+    /* the trip-tools cluster is wider than a phone; let it break instead of
+       forcing the whole page into horizontal scroll */
+    .tb-group { flex-wrap: wrap; }
     .tb-filters { flex-wrap: wrap; }
     .tb-filters input[type="search"] { width: 100%; flex: 1 1 100%; min-width: 0; max-width: none; margin-right: 0; }
     .tb-filters select { flex: 1 1 0; }
-    .grid3 { grid-template-columns: 1fr; }
   }
-  .c-meta-mobile { display: none; }
-  .c-meta-mobile .cost-m { font-weight: 700; }
-  .c-meta-mobile .cost-m small { color: var(--text-dim); font-weight: 500; }
-  .c-meta-mobile .per-night { display: inline; font-weight: 500; color: var(--text-dim); font-size: 12.5px; }
-  .c-meta-mobile .per-night::before { content: " · "; }
 
+  /* ---------- phones ----------
+     Thumb-sized targets and one-column forms. Kept in its own query so the
+     tablet range above (max-width 900px) is untouched. */
+  @media (max-width: 560px) {
+    .tp-wrap { padding: 16px 14px 72px; }
+    /* trip picker, actions menu and theme toggle share one row: the select
+       has to be allowed to shrink or the theme button drops to its own line */
+    .trip-bar { width: 100%; flex-wrap: nowrap; }
+    select.trip-select { flex: 1 1 auto; min-width: 0; max-width: none; min-height: 44px; }
+    .currency-sel { min-height: 44px; }
+
+    .btn, .icon-btn, .view-switch button,
+    .toolbar input[type="search"], .toolbar select { min-height: 44px; }
+    .icon-btn { min-width: 44px; }
+    .view-switch { width: 100%; }
+    .view-switch button { flex: 1 1 0; }
+
+    .row-btn { min-width: 44px; min-height: 44px; }
+    .tl-toggle { min-height: 44px; }
+    .det-more { min-height: 44px; }
+    /* the rail stays (it is what carries the status), but 44px targets cannot
+       share a line with the title on a phone: the action cluster drops under
+       the title inside the same card, right-aligned */
+    /* 11.5px text, so the same 12-hour label needs less room than at desktop */
+    body.tp-page { --dc-rail-w: 78px; }
+    body.tp-page.tp-24h { --dc-rail-w: 54px; }
+    .dc-rail { gap: 4px; padding-left: 2px; }
+    .dc-when { font-size: 11.5px; }
+    .dc-event:not(:last-child)::after { left: 6px; }
+    /* display:contents dissolves .dc-main so the tile, the text and the action
+       cluster become cells of the card itself: the 44px targets then get their
+       own full-width row UNDER the description, not wedged into the title */
+    .dc-main { display: contents; }
+    .dc-item {
+      display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 4px 8px;
+      grid-template-areas: "ico label" "det det" "tail tail";
+    }
+    .dc-item .dc-ico { grid-area: ico; }
+    .dc-item .dc-label { grid-area: label; }
+    .dc-details { grid-area: det; margin-top: 1px; }
+    .dc-tail { grid-area: tail; justify-content: flex-end; gap: 2px; }
+    .dc-tail .assist-maps-link { min-height: 44px; padding: 0 13px; }
+    /* the header must stay ONE row at 390 with three 44px targets on it, so
+       everything that is not a target gives up width: the day badge drops the
+       "/ total" (the aria-label still says it), the date steps down a size and
+       the hairline goes */
+    .dc-head { gap: 4px; padding: 8px 3px 8px 5px; }
+    .dc-daynum { min-width: 0; padding: 3px 5px; }
+    .dc-daynum b { font-size: 13px; }
+    .dc-daynum small { display: none; }
+    .dc-date { font-size: 11.5px; }
+    .dc-dow { font-size: 9px; letter-spacing: 0.5px; }
+    .dc-vr { display: none; }
+    /* the glyphs are the first thing to go: three 44px targets plus the date
+       leave the chip ~115px, and a pin and a sun cost 22 of them */
+    .dc-chip { font-size: 10px; padding: 3px 5px; gap: 3px; }
+    .dc-chip-city::before, .dc-chip-temp:not(:empty)::before { content: none; }
+    .dc-acts { gap: 0; }
+    /* status is a label first and a control second: WCAG 2.2 target size with
+       room to spare, without a 44px amber slab dominating every card */
+    select.status-sel { min-height: 34px; }
+    .leg-btn { min-height: 44px; }
+
+    .leaflet-control-zoom a { width: 44px; height: 44px; line-height: 44px; font-size: 22px; }
+    /* assistant panel on a phone: thumb-sized targets, and every text field at
+       16px so focusing one does not zoom the whole sheet on iOS */
+    .assist-quick-links { gap: 6px; }
+    .assist-quick-links a { min-height: 42px; padding: 0 14px; }
+    .pl-seg-b, .pl-tag, .pl-time { min-height: 38px; }
+    .trip-planner-app select.pl-day-select { min-height: 48px; font-size: 16px; }
+    /* :not() keeps the full-width rows full width: a bare .pl-row here would
+       outrank .pl-row-wide purely by coming later in the file */
+    .pl-row:not(.pl-row-wide) { grid-template-columns: 76px minmax(0, 1fr); }
+    .tier-opt { min-height: 42px; }
+    .ah-btn { width: 44px; height: 44px; }
+    .trip-planner-app .af-input, .trip-planner-app .pl-note-box, .trip-planner-app .assist-composer textarea { font-size: 16px; }
+    .assist-key-actions .btn, .assist-set .ap-actions .btn { min-height: 44px; }
+    .trip-planner-app .assist-byok select,
+    .trip-planner-app .assist-byok input[type="password"] { min-height: 44px; font-size: 16px; }
+    /* On a phone the seven chips stacked two-up cost four rows, and together
+       with the coverage strip and the toolbar that was the entire first screen
+       before a single itinerary row. They become ONE swipeable row instead:
+       nothing is dropped, the ones that matter on the road (dates, length,
+       countdown) lead, and ~240px of vertical space goes back to the plan.
+       The negative margin lets the strip bleed to the screen edges so the
+       eighth chip is visibly cut off, which is what says "scroll me". */
+    .summary {
+      display: flex; flex-wrap: nowrap; gap: 8px; overflow-x: auto;
+      margin: 4px -14px 12px; padding: 0 14px 4px;
+      scroll-snap-type: x proximity; scrollbar-width: none;
+    }
+    .summary::-webkit-scrollbar { display: none; }
+    .chip { flex: 0 0 auto; min-width: 0; scroll-snap-align: start; padding: 8px 12px; }
+    .chip .v { white-space: nowrap; }
+
+    /* the coverage legend wrapped to two lines above a 16px strip */
+    .strip-box { padding: 10px 12px 9px; }
+    /* "eTA required (electronic travel authorization)" is wider than a phone:
+       nowrap ran it off the edge of the dialog, so on a phone it wraps */
+    .visa-pill { white-space: normal; }
+
+    .strip-head { flex-wrap: wrap; gap: 3px 10px; margin-bottom: 6px; }
+    .strip-legend { gap: 3px 8px; font-size: 10px; }
+    .strip-legend .dot { width: 8px; height: 8px; margin-right: 4px; }
+
+    /* toolbar: the undo/redo pair sat alone on its own row inside a wide empty
+       box. It rides with the primary instead, and the four trip tools become a
+       2x2 block, which takes the toolbar from four button rows to three. */
+    .toolbar { gap: 8px; padding: 8px; }
+    .toolbar .btn { padding: 8px 10px; }
+    /* `order` regroups without touching the DOM order the keyboard follows on
+       desktop: the primary and the history pair share row 1, the four tools
+       become a 2x2 block, and the toolbar drops from four button rows to three */
+    #addBtn { order: 1; flex: 1 1 auto; }
+    .tb-pair { order: 2; flex: none; }
+    .tb-tools { order: 3; flex: 1 1 100%; gap: 8px; }
+    .tb-tools .btn { flex: 1 1 40%; justify-content: center; }
+    .toolbar .view-switch { order: 4; }
+    .tb-filters { order: 5; }
+
+    /* keep the 6vh top gap: it is what clears the fixed site header so a
+       modal heading is never hidden under it */
+    .overlay { padding: 6vh 12px 24px; }
+    /* the shell re-points its tokens; nothing here restyles a part */
+    /* 46, not 44: an .input-group's own border eats 2px, so its inner buttons
+       (the stepper) would land at 42 and miss the 44px target rule */
+    .modal { --m-pad: 18px; --m-ctl-h: 46px; --m-gap: 13px; --m-sec-gap: 16px; --m-title: 17.5px; }
+    /* 16px is NOT cosmetic: anything smaller makes iOS zoom the page when a
+       field takes focus, and the zoom never comes back on its own */
+    .field input, .field select, .field textarea { font-size: 16px; }
+    .field textarea { min-height: 92px; }
+    .trip-planner-app .cost-cur-sel { min-width: 100px; }
+    /* six type cells never fit one phone row */
+    .seg-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+    .trip-planner-app .seg > button { min-height: 44px; }
+    .trip-planner-app .seg-grid > button { min-height: 62px; }
+    .modal-foot { flex-wrap: wrap; }
+    .modal-foot .btn { min-height: 44px; }
+    /* the attribution link is a tap target like any other */
+    .apr-chip { min-height: 44px; padding: 6px 13px; }
+    /* a mode card cannot keep its action beside the figures on a phone: the
+       figures do not wrap mid-number, so the button gets its own full-width
+       row under them instead of squeezing them into overflow */
+    .mode-card { flex-wrap: wrap; padding: 12px; }
+    /* basis 0, or the figures' natural width pushes the text column below the
+       icon and leaves a lonely emoji on its own line */
+    .mc-main { flex: 1 1 0; }
+    .trip-planner-app a.btn.mc-act { flex: 1 1 100%; justify-content: center; min-height: 44px; margin-top: 2px; }
+    /* these outrank the blanket .btn phone rule by specificity, so they have
+       to restate the 44px target themselves */
+    .trip-planner-app a.btn.rl-btn { min-height: 44px; }
+    .route-swap { width: 46px; height: 46px; }
+  }
   @media print {
-    .toolbar, .c-actions, .tp-head .trip-bar, .issues, .empty .actions, .toasts { display: none !important; }
+    .toolbar, .c-actions, .dc-acts, .dc-edit, .dc-del, .tp-head .trip-bar, .issues, .empty .actions, .toasts { display: none !important; }
     body.tp-page { background: #fff; }
     .trip-planner-app { color: #000; }
-    .board { border-color: #bbb; }
-    .day-card { break-inside: avoid; }
+    .tp-row, .day-card, .totals { border-color: #bbb; }
+    .day-card, .tl-node { break-inside: avoid; }
+    /* paper has no expand affordance: a printed itinerary must contain every
+       activity, not only the ones that happened to be open on screen */
+    .tl-kids[hidden], .tl-day-items[hidden] { display: flex !important; }
+    .tl-toggle .tl-caret { display: none; }
     /* Days view: print only the day cards, not the (hidden) timeline/strip. */
     body.view-days .board, body.view-days .strip-box, body.view-days .summary { display: none !important; }
     body.view-days .days-box { display: block !important; }

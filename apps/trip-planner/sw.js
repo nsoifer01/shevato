@@ -17,7 +17,7 @@
  * MINOR when the strategy changes, MAJOR for a back-compat break.
  */
 
-const CACHE_VERSION = '2.0.6';
+const CACHE_VERSION = '2.1.0';
 const PRECACHE = `trip-precache-${CACHE_VERSION}`;
 const RUNTIME = `trip-runtime-${CACHE_VERSION}`;
 
@@ -25,9 +25,9 @@ const PRECACHE_URLS = [
   './',
   './index.html',
   './manifest.webmanifest',
-  './css/styles.css?v=18',
-  './js/trip-logic.js?v=6',
-  './js/app.js?v=21',
+  './css/styles.css?v=23',
+  './js/trip-logic.js?v=12',
+  './js/app.js?v=27',
   '../../assets/css/main.css',
   '../../assets/css/sync-status.css',
   '../../assets/js/passive-events-fix.js',
@@ -38,6 +38,10 @@ const PRECACHE_URLS = [
   '../../assets/js/main.js',
   '../../images/icon-192.png',
   '../../images/icon-512.png',
+  // self-hosted Leaflet (see ensureLeaflet): precached so the Map view is not
+  // hostage to a third-party CDN with no SLA
+  './vendor/leaflet/leaflet.css',
+  './vendor/leaflet/leaflet.js',
 ];
 
 self.addEventListener('install', (event) => {

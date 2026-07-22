@@ -251,6 +251,51 @@ function wireConfirmModal() {
     });
 }
 
+/**
+ * One-time "this is the name everyone will see" prompt. Resolves with the
+ * trimmed name, or null if the player closed it without confirming.
+ */
+let namePromptResolve = null;
+function openNamePrompt(suggested) {
+    const modal = document.getElementById('name-prompt-modal');
+    if (!modal) return Promise.resolve(suggested);
+    const input = document.getElementById('name-prompt-input');
+    input.value = suggested;
+    modal.removeAttribute('hidden');
+    return new Promise((resolve) => {
+        if (namePromptResolve) {
+            try { namePromptResolve(null); } catch (_) {}
+        }
+        namePromptResolve = resolve;
+        input.focus();
+        input.select();
+    });
+}
+function closeNamePrompt(accepted) {
+    const modal = document.getElementById('name-prompt-modal');
+    const input = document.getElementById('name-prompt-input');
+    const value = String(input.value || '').trim().slice(0, Config.MAX_DISPLAY_NAME);
+    if (accepted && !value) { input.focus(); return; }
+    if (modal) modal.setAttribute('hidden', '');
+    const r = namePromptResolve;
+    namePromptResolve = null;
+    if (r) r(accepted ? value : null);
+}
+function wireNamePrompt() {
+    const modal = document.getElementById('name-prompt-modal');
+    if (!modal) return;
+    modal.addEventListener('click', (e) => {
+        if (e.target.closest('[data-name-prompt-close]')) closeNamePrompt(false);
+    });
+    document.getElementById('name-prompt-confirm').addEventListener('click', () => closeNamePrompt(true));
+    document.getElementById('name-prompt-input').addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') { e.preventDefault(); closeNamePrompt(true); }
+    });
+    document.addEventListener('keydown', (e) => {
+        if (e.key === 'Escape' && !modal.hasAttribute('hidden')) closeNamePrompt(false);
+    });
+}
+
 function avatarLetter(displayName) {
     const s = String(displayName || '').trim();
     if (!s) return '?';
@@ -550,6 +595,9 @@ async function loadProfile(uid) {
         // Seed a minimal profile on first run.
         const seeded = {
             displayName: deriveInitialDisplayName(),
+            // Not a choice, just a placeholder — ensureDisplayNameChosen
+            // asks the player to confirm before anything is published.
+            displayNameChosen: false,
             xp: 0,
             gamesPlayed: 0,
             wins: 0,
@@ -563,10 +611,47 @@ async function loadProfile(uid) {
     }
 }
 
+/**
+ * Fallback name for a player who hasn't picked one. Deliberately carries
+ * no identity: this value is denormalized into triviaLeaderboard, which
+ * any signed-in user can read.
+ */
 function deriveInitialDisplayName() {
-    const email = state.user?.email || '';
-    if (email) return email.split('@')[0].slice(0, Config.MAX_DISPLAY_NAME);
-    return 'Player';
+    return RoomState.defaultDisplayName(state.user?.uid);
+}
+
+/**
+ * Make sure the player has explicitly approved the name they're about to
+ * publish to shared surfaces (room player list, chat, leaderboard) before
+ * their first multiplayer game. Returns the name to use, or null if the
+ * player dismissed the prompt (caller aborts the create/join).
+ *
+ * Guests are exempt — they have no persistent profile and never reach the
+ * leaderboard, so there's nothing to remember and nothing to publish.
+ */
+async function ensureDisplayNameChosen() {
+    if (!state.user || isGuest()) return deriveInitialDisplayName();
+    // The invite-link path races loadProfile, so a null profile here can
+    // just mean "not back yet" — resolve it before deciding to prompt,
+    // otherwise we'd re-ask a player who already picked a name.
+    if (!state.profile) state.profile = await loadProfile(state.user.uid);
+    const { needed, suggested } = RoomState.displayNamePrompt(
+        state.profile, state.user.email, state.user.uid
+    );
+    if (!needed) return state.profile.displayName || suggested;
+    const picked = await openNamePrompt(suggested);
+    if (!picked) return null;
+    if (!state.profile) state.profile = {};
+    try {
+        await saveProfileField({ displayName: picked, displayNameChosen: true });
+    } catch (err) {
+        // Profile doc unreachable — play on with the name they picked
+        // rather than blocking the game; we'll ask again next time.
+        console.warn('Could not save display name:', err);
+    }
+    renderProfileView();
+    await propagateDisplayName(picked);
+    return picked;
 }
 
 async function saveProfileField(patch) {
@@ -704,7 +789,7 @@ function wireProfileView() {
     $('#profile-display-name').addEventListener('change', async (e) => {
         const v = String(e.target.value || '').trim().slice(0, Config.MAX_DISPLAY_NAME);
         if (!v) return;
-        await saveProfileField({ displayName: v });
+        await saveProfileField({ displayName: v, displayNameChosen: true });
         await propagateDisplayName(v);
         renderProfileView();
         renderLeaderboardEntries();
@@ -1266,6 +1351,15 @@ async function createRoom(opts) {
         return;
     }
 
+    // Anything but pure solo publishes the name to a surface other
+    // players read (room player list + chat for multi, the daily board
+    // for daily), so confirm it first.
+    let chosenName = (state.profile && state.profile.displayName) || deriveInitialDisplayName();
+    if (mode !== 'solo') {
+        chosenName = await ensureDisplayNameChosen();
+        if (!chosenName) return;
+    }
+
     const btn = isSoloLike
         ? (mode === 'daily' ? $('#play-daily-btn') : $('#play-solo-btn'))
         : $('#create-room-btn');
@@ -1277,7 +1371,7 @@ async function createRoom(opts) {
     try {
         const code = await reserveUniqueRoomCode();
         const ref = doc(db, 'triviaRooms', code);
-        const displayName = (state.profile && state.profile.displayName) || deriveInitialDisplayName();
+        const displayName = chosenName;
         const shared = {
             code,
             hostUid: state.user.uid,
@@ -1507,7 +1601,8 @@ async function joinRoom() {
         return;
     }
 
-    const displayName = (state.profile && state.profile.displayName) || deriveInitialDisplayName();
+    const displayName = await ensureDisplayNameChosen();
+    if (!displayName) return;
     // Mark the player as a spectator if they're joining mid-game so the UI
     // can show a "Spectating — joining next round" banner and gate submitting.
     const isSpectator = data.status === 'playing';
@@ -6493,6 +6588,7 @@ async function boot() {
     wireH2H();
     wireChat();
     wireConfirmModal();
+    wireNamePrompt();
     renderPackOptions();
 
     // Read tab + queued room from the URL BEFORE auth wires up, so a

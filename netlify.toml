@@ -81,6 +81,18 @@
 # jQuery internals, so style-src 'unsafe-inline' is still required.
 # Once that path is removed (or every offender is hashed), graduate to
 # a real Content-Security-Policy header by renaming the directive below.
+#
+# connect-src is derived from every fetch() call site in client JS, not
+# from memory - it drifted badly once already (2026-07-20 audit) and a
+# Report-Only policy gives no feedback when it does. If you add a fetch
+# to a new origin, add it here in the same change. Current non-obvious
+# entries: *.googleapis.com already covers Gemini (generativelanguage)
+# and Firestore; raw.githubusercontent.com is the Trip Planner visa
+# matrix; the-trivia-api.com, query.wikidata.org and en.wikipedia.org
+# are Arena question/location data; *.google-analytics.com (not just
+# www) is required because GA4 beacons go to region1.google-analytics.com.
+# Leaflet is NOT listed: it was self-hosted under apps/trip-planner/
+# vendor/leaflet/ on 2026-07-20 and now loads from 'self'.
 [[headers]]
   for = "/*"
   [headers.values]
@@ -89,7 +101,7 @@
     Referrer-Policy = "strict-origin-when-cross-origin"
     Permissions-Policy = "geolocation=(), microphone=(), camera=(), interest-cohort=()"
     Strict-Transport-Security = "max-age=31536000; includeSubDomains"
-    Content-Security-Policy-Report-Only = "default-src 'self'; script-src 'self' 'unsafe-inline' https://www.gstatic.com https://cdnjs.cloudflare.com https://www.googletagmanager.com https://apis.google.com; style-src 'self' 'unsafe-inline' https://cdnjs.cloudflare.com https://fonts.googleapis.com; font-src 'self' data: https://cdnjs.cloudflare.com https://fonts.gstatic.com; img-src 'self' data: blob: https:; connect-src 'self' https://*.googleapis.com https://*.firebaseio.com https://*.firebasedatabase.app https://*.firebaseapp.com https://www.google-analytics.com https://*.analytics.google.com https://www.purgomalum.com https://us-central1-jjexperiment-12af6.cloudfunctions.net https://maptap.gg wss://*.firebaseio.com; frame-src 'self' https://shevato-site.firebaseapp.com https://apis.google.com; object-src 'none'; base-uri 'self'; form-action 'self'"
+    Content-Security-Policy-Report-Only = "default-src 'self'; script-src 'self' 'unsafe-inline' https://www.gstatic.com https://cdnjs.cloudflare.com https://www.googletagmanager.com https://apis.google.com; style-src 'self' 'unsafe-inline' https://cdnjs.cloudflare.com https://fonts.googleapis.com; font-src 'self' data: https://cdnjs.cloudflare.com https://fonts.gstatic.com; img-src 'self' data: blob: https:; connect-src 'self' https://*.googleapis.com https://*.firebaseio.com https://*.firebasedatabase.app https://*.firebaseapp.com https://*.google-analytics.com https://*.analytics.google.com https://us-central1-jjexperiment-12af6.cloudfunctions.net https://maptap.gg https://nominatim.openstreetmap.org https://archive-api.open-meteo.com https://api.frankfurter.dev https://api.openai.com https://raw.githubusercontent.com https://the-trivia-api.com https://query.wikidata.org https://en.wikipedia.org wss://*.firebaseio.com; frame-src 'self' https://shevato-site.firebaseapp.com https://apis.google.com; object-src 'none'; base-uri 'self'; form-action 'self'"
 
 # Long-cache static asset families. The exercise DB is content-addressed
 # only by name today; if we add hashed bundles later, bump these and

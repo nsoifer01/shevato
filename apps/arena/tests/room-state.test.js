@@ -14,7 +14,10 @@ const {
     aggregateGlobeDropStats,
     pickDecider,
     availableCategoriesFromPool,
-    pickQuestionFromPool
+    pickQuestionFromPool,
+    defaultDisplayName,
+    isEmailDerivedName,
+    displayNamePrompt
 } = require('../js/room-state.js');
 
 // --- generateRoomCode --------------------------------------------------
@@ -353,4 +356,67 @@ test('aggregateGlobeDropStats: empty records + totalRounds=5 still returns null'
     // game ran 5 rounds. Caller (renderDetailedStats) shows a "no
     // guesses recorded" hint in this case rather than divide-by-zero.
     assert.equal(aggregateGlobeDropStats([], 5), null);
+});
+
+// --- display name defaults --------------------------------------------
+
+test('defaultDisplayName: never contains anything derived from the email', () => {
+    // The regression this guards: the old default was
+    // email.split('@')[0], which published a real name to
+    // triviaLeaderboard (readable by every signed-in user).
+    const name = defaultDisplayName('abc123UID');
+    assert.ok(name.startsWith('Player '), name);
+    assert.ok(!/john|doe|@/i.test(name));
+    assert.ok(name.length <= Config.MAX_DISPLAY_NAME);
+});
+
+test('defaultDisplayName: stable per uid and distinct across uids', () => {
+    assert.equal(defaultDisplayName('uid-one'), defaultDisplayName('uid-one'));
+    assert.notEqual(defaultDisplayName('uid-one'), defaultDisplayName('uid-two'));
+});
+
+test('defaultDisplayName: suffix uses the unambiguous alphabet', () => {
+    const suffix = defaultDisplayName('some-firebase-uid').split(' ')[1];
+    assert.equal(suffix.length, 4);
+    for (const ch of suffix) assert.ok(Config.ROOM_CODE_ALPHABET.includes(ch), ch);
+});
+
+test('defaultDisplayName: no uid falls back to the bare neutral name', () => {
+    assert.equal(defaultDisplayName(''), 'Player');
+    assert.equal(defaultDisplayName(null), 'Player');
+});
+
+test('isEmailDerivedName: matches the retired local-part default', () => {
+    assert.equal(isEmailDerivedName('john.doe', 'john.doe@gmail.com'), true);
+    assert.equal(isEmailDerivedName('Ace', 'john.doe@gmail.com'), false);
+    assert.equal(isEmailDerivedName('john.doe', ''), false);
+});
+
+test('displayNamePrompt: asks until the player has explicitly chosen', () => {
+    const p = displayNamePrompt({ displayName: 'Player ABCD' }, 'a@b.com', 'uid1');
+    assert.equal(p.needed, true);
+    const chosen = displayNamePrompt(
+        { displayName: 'Ace', displayNameChosen: true }, 'a@b.com', 'uid1'
+    );
+    assert.equal(chosen.needed, false);
+});
+
+test('displayNamePrompt: legacy email-derived name is never suggested back', () => {
+    // A pre-fix account carries displayName === email local part. We must
+    // not pre-fill the prompt with it, or the player one-clicks their own
+    // real name onto the public leaderboard.
+    const p = displayNamePrompt({ displayName: 'john.doe' }, 'john.doe@gmail.com', 'uid1');
+    assert.equal(p.needed, true);
+    assert.equal(p.suggested, defaultDisplayName('uid1'));
+});
+
+test('displayNamePrompt: keeps a non-email name as the suggestion', () => {
+    const p = displayNamePrompt({ displayName: 'Ace' }, 'john.doe@gmail.com', 'uid1');
+    assert.equal(p.suggested, 'Ace');
+});
+
+test('displayNamePrompt: missing profile suggests the neutral default', () => {
+    const p = displayNamePrompt(null, 'john.doe@gmail.com', 'uid9');
+    assert.equal(p.needed, true);
+    assert.equal(p.suggested, defaultDisplayName('uid9'));
 });

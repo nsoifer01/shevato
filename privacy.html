@@ -1,0 +1,348 @@
+<!DOCTYPE HTML>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="color-scheme" content="light" />
+  <meta name="theme-color" content="#ffffff" />
+  <title>Privacy &amp; Data Handling | Shevato</title>
+  <meta name="description" content="How shevato.com handles your data. What stays in your browser, what syncs to Firestore when you sign in, and exactly which third-party services receive data from the apps." />
+  <meta name="keywords" content="Shevato privacy, data handling, localStorage, Firestore sync, third-party services, web app privacy" />
+  <meta name="author" content="Shevato LLC" />
+  <meta name="robots" content="index, follow, max-image-preview:large" />
+
+  <link rel="preconnect" href="https://www.gstatic.com" crossorigin>
+  <link rel="preconnect" href="https://www.googletagmanager.com" crossorigin>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="dns-prefetch" href="https://www.google-analytics.com">
+
+  <script async src="https://www.googletagmanager.com/gtag/js?id=G-GEQGY35JJN"></script>
+  <script defer src="/assets/js/analytics.js"></script>
+
+  <link rel="stylesheet" href="assets/css/main.css" />
+  <link rel="stylesheet" href="assets/css/brand-colors.css" />
+  <link rel="stylesheet" href="assets/css/site.css" />
+  <link rel="stylesheet" href="/assets/css/font-awesome.min.css" media="print" onload="this.media='all'">
+  <noscript><link rel="stylesheet" href="/assets/css/font-awesome.min.css"></noscript>
+  <link rel="icon" href="/favicon.ico" sizes="48x48 32x32 16x16">
+  <link rel="icon" type="image/png" sizes="192x192" href="/images/favicon-192.png">
+  <link rel="apple-touch-icon" sizes="180x180" href="/images/apple-touch-icon.png">
+  <link rel="manifest" href="/site.webmanifest">
+
+  <link rel="canonical" href="https://shevato.com/privacy" />
+
+  <meta property="og:title" content="Privacy &amp; Data Handling | Shevato" />
+  <meta property="og:description" content="What stays in your browser, what syncs when you sign in, and exactly which third-party services receive data from the Shevato apps." />
+  <meta property="og:type" content="website" />
+  <meta property="og:url" content="https://shevato.com/privacy" />
+  <meta property="og:image" content="https://shevato.com/images/og/privacy.png" />
+  <meta property="og:image:width" content="1200" />
+  <meta property="og:image:height" content="630" />
+  <meta property="og:image:type" content="image/png" />
+  <meta property="og:image:alt" content="Shevato logo" />
+  <meta property="og:site_name" content="Shevato" />
+  <meta property="og:locale" content="en_US" />
+
+  <meta name="twitter:card" content="summary_large_image" />
+  <meta name="twitter:title" content="Privacy &amp; Data Handling | Shevato" />
+  <meta name="twitter:description" content="What stays in your browser, what syncs when you sign in, and which third parties receive data." />
+  <meta name="twitter:image" content="https://shevato.com/images/og/privacy.png" />
+  <meta name="twitter:image:alt" content="Shevato logo" />
+  <meta name="twitter:site" content="@shevato" />
+
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@type": "WebPage",
+    "@id": "https://shevato.com/privacy#webpage",
+    "name": "Privacy & Data Handling",
+    "url": "https://shevato.com/privacy",
+    "isPartOf": { "@id": "https://shevato.com/#website" },
+    "about": { "@id": "https://shevato.com/#organization" },
+    "inLanguage": "en"
+  }
+  </script>
+
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@type": "BreadcrumbList",
+    "itemListElement": [
+      { "@type": "ListItem", "position": 1, "name": "Home", "item": "https://shevato.com/home" },
+      { "@type": "ListItem", "position": 2, "name": "Privacy", "item": "https://shevato.com/privacy" }
+    ]
+  }
+  </script>
+  <link rel="stylesheet" href="/assets/css/back-to-top.css">
+</head>
+<body class="is-preload">
+  <a class="skip-link" href="#main-content">Skip to main content</a>
+  <div data-include="header"></div>
+  <main id="main-content" class="wrapper wrapper-inherit-padding">
+    <div class="inner">
+
+      <section class="hero" aria-labelledby="privacy-hero-title">
+        <span class="eyebrow">Privacy</span>
+        <h1 id="privacy-hero-title">What we do with your data.</h1>
+        <p class="lede">This page describes what the code on shevato.com actually does. Everything below was written by reading the source, not by adapting a template. Where the site does something you might not expect, it is stated here rather than left out.</p>
+      </section>
+
+      <article class="about-shell">
+
+        <p><strong>Last reviewed:</strong> 20 July 2026. <!-- TODO(owner): update this date whenever the behaviour described below changes. --></p>
+
+        <h2>The short version</h2>
+
+        <p>Every app on this site keeps your data in your own browser and works fully without an account. If you never sign in, nothing you enter into an app is sent to us. Signing in is optional and exists for one reason: to copy a specific, listed set of your data between your devices.</p>
+
+        <p>The exceptions are worth reading, because they are real. The Trip Planner assistant and the venue-ratings lookup send trip contents to Google when you use them. Arena is a multiplayer game, so the things you do there are visible to the people you play with. Details on both are below.</p>
+
+        <h2>What stays on your device</h2>
+
+        <p>Each app stores its working data in your browser's <code>localStorage</code>, under keys scoped to that app. This includes your Mario Kart races and player names, your Football H2H games, your Gym Tracker programs, sessions, settings and body measurements, your Rising Shows watched list, your MapTap Rivals rivals and games, and your Trip Planner trips and items.</p>
+
+        <p>The Trip Planner also stores files you attach to a trip (booking confirmations, tickets, vouchers) as blobs in an IndexedDB database named <code>trip-planner-docs</code>. Those files never leave your device: they are not part of any export, not part of any share link, and not part of sync. The app says so in its own attachment dialog, and that claim is accurate.</p>
+
+        <p>Clearing your browser's site data for shevato.com removes all of it. If you are not signed in, there is no other copy.</p>
+
+        <h2>Accounts and sync</h2>
+
+        <p>You can create an account with an email address and a password. Authentication is handled by Firebase Authentication, a Google service, which is what stores your email address and password credential.</p>
+
+        <p>While you are signed in on an app page, that app's data is copied to Google Cloud Firestore at the path <code>users/&lt;your account id&gt;/apps/&lt;app namespace&gt;</code>, and changes flow both ways so your devices stay in step. The security rules restrict every document under <code>users/&lt;your account id&gt;</code> to that account alone.</p>
+
+        <p>Sync is not a blanket upload. Each app has an explicit list of storage keys that are allowed to sync, and only those are copied:</p>
+
+        <div class="skill-rows">
+          <div class="skill-row">
+            <h3>Mario Kart</h3>
+            <p>Races, player names, symbols, icons and player count for both game versions, the selected version, the sidebar open state, undo history and the automatic backup.</p>
+          </div>
+          <div class="skill-row">
+            <h3>Football H2H</h3>
+            <p>Games, players, player icons and the automatic backup.</p>
+          </div>
+          <div class="skill-row">
+            <h3>Gym Tracker</h3>
+            <p>Programs, program order and sort preference, sessions, settings, achievements, the active program, custom exercises and body measurements.</p>
+          </div>
+          <div class="skill-row">
+            <h3>Rising Shows</h3>
+            <p>Your watched list only.</p>
+          </div>
+          <div class="skill-row">
+            <h3>MapTap Rivals</h3>
+            <p>Your rival list, your games, your display name and icon, your MapTap.gg username, a snapshot of your verified MapTap profile, and UI preferences.</p>
+          </div>
+          <div class="skill-row">
+            <h3>Trip Planner</h3>
+            <p>All trips and their items, plus your theme and time-format preferences. Nothing else.</p>
+          </div>
+        </div>
+
+        <p>One shared preference, your light or dark theme choice, syncs across apps. Arena is not part of this system at all; it is covered separately below.</p>
+
+        <h2>What is deliberately not synced</h2>
+
+        <p>Some things stay on your device on purpose, even when you are signed in. In the Trip Planner these are: any AI provider API key you supply, your passport nationality for the visa checker, your assistant conversation history, the geocoding cache, the cached exchange rates, weather and visa data, the per-browser identifier described below, and the venue-lookup owner token. Attached documents, as noted, are also excluded.</p>
+
+        <h2>Arena is different, and more public</h2>
+
+        <p>Arena is a real-time multiplayer game, so it writes to shared locations rather than to your private area. If you play it, you should know the following.</p>
+
+        <ol class="process-steps">
+          <li>
+            <div>
+              <h3>Your display name is published, and you choose it first</h3>
+              <p>Arena asks you to choose a display name before your first multiplayer or daily game, and suggests a neutral default such as "Player 7KQD". Whatever you choose is written to shared records that any signed-in visitor can read. Your email address is never used to build that name.</p>
+              <p>This changed. Earlier versions defaulted your display name to the part of your sign-in email before the <code>@</code>, and published it the first time you played. If you played before this change and your email is name-based, your real name may already be on those shared records. Changing your name now updates the main leaderboard, but head-to-head and daily-challenge entries keep the old one until you play those modes again.</p>
+            </div>
+          </li>
+          <li>
+            <div>
+              <h3>The leaderboard is shared</h3>
+              <p>Playing a multiplayer or daily-challenge game writes your display name, XP, games played, wins, best round score and last-played time to a leaderboard that any signed-in visitor can read. Solo games are not written to it.</p>
+            </div>
+          </li>
+          <li>
+            <div>
+              <h3>Chat is permanent and readable by any signed-in visitor</h3>
+              <p>Room chat messages are stored with your display name and account id. The security rules allow no edits and no deletions by anyone, including you. Treat anything you type there as permanent.</p>
+            </div>
+          </li>
+          <li>
+            <div>
+              <h3>Chat text is sent to an outside moderation service</h3>
+              <p>Before a chat message is posted, its full text is sent to PurgoMalum, a free third-party profanity-checking API, which answers whether it contains profanity. If that service is unreachable the message is posted anyway.</p>
+            </div>
+          </li>
+          <li>
+            <div>
+              <h3>Head-to-head records and rooms are shared too</h3>
+              <p>Multiplayer results create per-pair win/loss records carrying both players' display names, readable by any signed-in visitor. Game rooms themselves are readable by any signed-in visitor who has the room code.</p>
+            </div>
+          </li>
+          <li>
+            <div>
+              <h3>Guest play uses an anonymous account</h3>
+              <p>Playing as a guest signs you in anonymously to Firebase. Guest sessions cannot write to the leaderboard, head-to-head records or the daily board.</p>
+            </div>
+          </li>
+        </ol>
+
+        <h2>The Trip Planner assistant</h2>
+
+        <p>The assistant has three modes and you choose which one to use. The default, on a fresh browser, is the copy-and-paste mode, which sends nothing anywhere.</p>
+
+        <ol class="process-steps">
+          <li>
+            <div>
+              <h3>Copy and paste (the default)</h3>
+              <p>The app builds a block of text and puts it on your clipboard. You take it to whichever AI tool you prefer. No network request is made by us, and whatever happens next is between you and that tool.</p>
+            </div>
+          </li>
+          <li>
+            <div>
+              <h3>Your own API key</h3>
+              <p>You paste in an OpenAI or Google Gemini API key. It is stored in your browser only, is never synced, and never reaches our servers. Requests go straight from your browser to that provider, so the trip contents and your key are covered by your agreement with them, not by ours.</p>
+            </div>
+          </li>
+          <li>
+            <div>
+              <h3>The site's own key</h3>
+              <p>Requests go to a function we host, which forwards them to Google Gemini using our API key. In this mode the trip contents pass through our server on the way to Google.</p>
+            </div>
+          </li>
+        </ol>
+
+        <p>In the second and third modes, what is sent is a trimmed copy of the current trip: its name, currency, budget, and for each item the type, title, location, dates, times, status, costs and cost notes, the map query, and the free-text <strong>details</strong> field. If you keep confirmation numbers, seat assignments or personal notes in an item's details, they are part of what is sent. Attached documents and your passport setting are not.</p>
+
+        <h2>Other services that receive data</h2>
+
+        <p>These are the outside services the site contacts, and what reaches each one.</p>
+
+        <div class="skill-rows">
+          <div class="skill-row">
+            <h3>Google Firebase</h3>
+            <p>Authentication and Firestore, as described above. Receives your email address, your password credential and your synced app data.</p>
+          </div>
+          <div class="skill-row">
+            <h3>Google Gemini</h3>
+            <p>Receives Trip Planner trip contents, but only in the assistant modes described above, and only when you use them.</p>
+          </div>
+          <div class="skill-row">
+            <h3>Google Places</h3>
+            <p>Reached through a function we host, to fetch ratings for venues in your trip. It receives the venue search text for the items being looked up, not the whole trip.</p>
+          </div>
+          <div class="skill-row">
+            <h3>Nominatim (OpenStreetMap)</h3>
+            <p>Receives place names from your Trip Planner items so they can be turned into map coordinates. Results are cached in your browser and are not synced.</p>
+          </div>
+          <div class="skill-row">
+            <h3>OpenStreetMap tiles</h3>
+            <p>The trip map loads its map tiles from OpenStreetMap, which therefore sees your IP address and which area you are looking at. The mapping library itself is served from this site, so opening the map does not contact a code CDN.</p>
+          </div>
+          <div class="skill-row">
+            <h3>Open-Meteo</h3>
+            <p>Receives the coordinates and dates of your trip to return historical climate figures. No account or trip identity is attached.</p>
+          </div>
+          <div class="skill-row">
+            <h3>Frankfurter</h3>
+            <p>Receives a currency code to return exchange rates. Nothing about you or your trip.</p>
+          </div>
+          <div class="skill-row">
+            <h3>GitHub</h3>
+            <p>The Trip Planner's visa checker downloads its passport-index dataset from GitHub the first time you open it. GitHub sees the request; your passport setting is chosen locally after the file arrives and is never sent.</p>
+          </div>
+          <div class="skill-row">
+            <h3>The Trivia API, Wikidata and Wikipedia</h3>
+            <p>Arena fetches quiz questions from The Trivia API, place data from Wikidata, and short location summaries from Wikipedia. These carry no account information, but each sees your IP address and what was requested.</p>
+          </div>
+          <div class="skill-row">
+            <h3>PurgoMalum</h3>
+            <p>Receives the text of Arena chat messages for profanity checking, as described above.</p>
+          </div>
+          <div class="skill-row">
+            <h3>MapTap.gg</h3>
+            <p>MapTap Rivals sends the MapTap usernames you enter, yours and your rivals', to a MapTap endpoint to fetch public profiles, and downloads each day's puzzle from MapTap.gg.</p>
+          </div>
+          <div class="skill-row">
+            <h3>TMDB</h3>
+            <p>Rising Shows loads poster and cast images directly from TMDB's image servers, which therefore see your IP address and which shows you are viewing.</p>
+          </div>
+          <div class="skill-row">
+            <h3>cdnjs and Google Fonts</h3>
+            <p>Some pages load icon fonts, a charting library and web fonts from these CDNs. They see your IP address and the referring page.</p>
+          </div>
+        </div>
+
+        <h2>Analytics and cookies</h2>
+
+        <p>Our own code sets no cookies. The marketing pages you are reading now, and the individual show pages under Rising Shows, load Google Analytics 4 with its default configuration, which stores its own identifier cookie in your browser and reports page views to Google.</p>
+
+        <p>The app pages themselves do not load Google Analytics. Opening Mario Kart, Football H2H, Gym Tracker, MapTap Rivals, Trip Planner, Arena or the main Rising Shows app does not send anything to Analytics.</p>
+
+        <p>There is no contact form on this site; the contact page is a set of links. Nothing you type is collected there because there is nothing to type into.</p>
+
+        <h2>Logs and server-side records</h2>
+
+        <p>The two functions we host, for the AI assistant and for venue ratings, log HTTP status codes and truncated error responses from the service upstream when something fails. They do not log your trip, your prompt or the assistant's reply.</p>
+
+        <p>Both functions apply usage limits, and to do that they count requests against a random identifier that the Trip Planner generates once per browser and stores locally. It is not derived from you or from your account, and it is not linked to either. It is, however, the one identifier about you that we hold on a server, and there is no control in the app to view, reset or clear it; clearing your browser's site data for shevato.com discards it and the app generates a fresh one. The counters it keys are kept in server-side storage and are discarded automatically when their hourly, daily or monthly window rolls over.</p>
+
+        <p>The venue-ratings function also keeps a small server-side configuration holding our own Google Places API key and a secret token that lets the site owner's browsers use a higher rate limit than the public one. Neither value is ever sent to your browser, and neither has anything to do with your data. If you are not the owner, your requests simply count against the public limits.</p>
+
+        <p><!-- TODO(owner): Netlify itself keeps standard access logs (including IP addresses) for the site and its functions, on Netlify's own retention schedule. Confirm the current retention window for your plan and state it here rather than leaving this vague. --></p>
+
+        <h2>Share links</h2>
+
+        <p>The Trip Planner can turn a trip into a link you can send to someone. The trip is compressed and placed after the <code>#</code> in the URL, which means it never travels to our server: everything needed to rebuild the trip is inside the link itself.</p>
+
+        <p>That has a consequence worth being explicit about. The link is compressed and encoded, <em>not encrypted</em>. Anyone who has the link can read the whole trip, including every item's details field. There is no password on it and it cannot be revoked once sent. Attached documents are not included.</p>
+
+        <h2>Getting your data out, and deleting it</h2>
+
+        <p>Every app keeps your data in your browser, so you can remove all local data at any time by clearing site data for shevato.com in your browser settings. The Trip Planner can also export a single trip or your whole planner as a JSON file, plus calendar and spreadsheet exports for a trip.</p>
+
+        <p>For synced data, the picture is uneven today and we would rather say so than imply otherwise:</p>
+
+        <ul>
+          <li>Gym Tracker is the only app that can erase its own synced data: there is a control in its settings that deletes its Firestore copy.</li>
+          <li>Mario Kart, Football H2H, Rising Shows, MapTap Rivals and the Trip Planner have no equivalent control. Their synced copies stay in Firestore until removed for you.</li>
+          <li>Arena's leaderboard, head-to-head and daily-challenge entries are outside that system too, and cannot be removed from within the app.</li>
+          <li>There is no self-service account deletion and no self-service password reset anywhere on the site. Both have to be done for you.</li>
+          <li>Arena's chat messages cannot be deleted by anyone, by design.</li>
+        </ul>
+
+        <p>If you want your account removed, your synced data deleted, or a password reset, email <a href="mailto:nikita@shevato.com">nikita@shevato.com</a> and it will be done manually.
+        <!-- TODO(owner): state a turnaround commitment you can actually keep (for example "within 30 days"), and decide whether to build self-service deletion instead. As written, this paragraph is accurate but puts a manual obligation on you. --></p>
+
+        <p>This page describes what the code actually does. It is written to be accurate rather than to serve a formal compliance purpose, so it makes no statement about legal basis, statutory rights, where data is transferred, use by children, or how changes to this page are announced.
+        <!-- TODO(owner): the sentence above is deliberately scoped. Add legal basis, GDPR/CCPA rights, data-transfer locations, children's use, and a policy-change notification process if you need this page to serve a compliance purpose rather than an informational one. None of those are decisions the code can answer. --></p>
+
+        <h2>Questions</h2>
+
+        <p>If something here does not match what you observe, that is a bug and we want to hear about it. Email <a href="mailto:nikita@shevato.com">nikita@shevato.com</a>.</p>
+
+      </article>
+
+      <section class="cta-banner">
+        <h3>Something here look wrong?</h3>
+        <p>If you spot a gap between what this page says and what the site does, tell us and we will fix one or the other.</p>
+        <a href="contact.html" class="cta-button"><span class="icon fa-envelope" aria-hidden="true"></span>Get in touch</a>
+      </section>
+
+    </div>
+  </main>
+  <div data-include="footer"></div>
+  <script defer src="assets/js/passive-events-fix.js"></script>
+  <script defer src="assets/js/jquery.min.js"></script>
+  <script defer src="assets/js/browser.min.js"></script>
+  <script defer src="assets/js/breakpoints.min.js"></script>
+  <script defer src="assets/js/util.js"></script>
+  <script type="module" src="firebase-config.js"></script>
+  <script defer src="assets/js/main.js"></script>
+  <script src="/assets/js/back-to-top.js" defer></script>
+</body>
+</html>
