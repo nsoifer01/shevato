@@ -486,8 +486,9 @@
                     <div id="signin-password-error" class="auth-form__error" role="alert"></div>
                   </div>
                   <button type="submit" class="auth-form__button">Sign In</button>
+                  <button type="button" class="auth-form__forgot" data-js="forgot-password">Forgot password?</button>
                 </form>
-                
+
               </div>
               
               <div id="auth-signup-form" class="auth-form" role="tabpanel" aria-hidden="true">
@@ -550,6 +551,12 @@
       $(document).on('submit.authui', SELECTORS.signupForm + ' form', async (event) => {
         event.preventDefault();
         await this.handleSignUp(event.target);
+      });
+
+      // Forgot password
+      $(document).on('click.authui', '[data-js="forgot-password"]', async (event) => {
+        event.preventDefault();
+        await this.handleForgotPassword();
       });
 
     }
@@ -639,6 +646,37 @@
       }
     }
 
+
+    /**
+     * Handle "Forgot password?" click. Reads the email already typed into the
+     * sign-in form and asks Firebase to send a reset link. The confirmation is
+     * deliberately the same whether or not the address is registered, so the
+     * modal cannot be used to probe which emails exist.
+     * @private
+     * @async
+     */
+    async handleForgotPassword() {
+      const email = $('#signin-email').val().trim();
+      this.clearAuthFormErrors();
+
+      if (!email) {
+        this.showFieldError('#signin-email', '#signin-email-error', 'Enter your email above first, then tap Forgot password.');
+        return;
+      }
+      if (!isValidEmail(email)) {
+        this.showFieldError('#signin-email', '#signin-email-error', 'Please enter a valid email address');
+        return;
+      }
+
+      try {
+        this.showMessage('Sending reset link...', 'info');
+        await window.firebaseAuth.resetPassword(email);
+        this.showMessage('If that address has an account, a reset link is on its way. Check your email.', 'success');
+      } catch (error) {
+        console.error('Password reset error:', error);
+        this.showMessage(error.message, 'error');
+      }
+    }
 
     /**
      * Clear inline error state from all auth form inputs.

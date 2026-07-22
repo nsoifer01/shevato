@@ -46,6 +46,7 @@ import {
   onAuthStateChanged,
   signInWithEmailAndPassword,
   createUserWithEmailAndPassword,
+  sendPasswordResetEmail,
   signInAnonymously,
   signOut,
   setPersistence,
@@ -188,6 +189,23 @@ window.firebaseAuth = {
       return cred.user;
     } catch (err) {
       console.error('Sign up error:', err);
+      throw formatAuthError(err);
+    }
+  },
+  // Send a password-reset email. Privacy: never reveal whether an address is
+  // registered. Firebase throws `auth/user-not-found` for unknown emails
+  // unless the project has Email Enumeration Protection enabled, so we swallow
+  // that specific code and resolve as if it succeeded. The caller shows the
+  // same neutral confirmation either way, so the modal cannot be used to probe
+  // which emails exist. Other errors (invalid address, rate limit) still throw.
+  async resetPassword(email) {
+    try {
+      await sendPasswordResetEmail(auth, email);
+    } catch (err) {
+      if (err?.code === 'auth/user-not-found') {
+        return;
+      }
+      console.error('Password reset error:', err);
       throw formatAuthError(err);
     }
   },

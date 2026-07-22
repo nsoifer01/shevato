@@ -913,6 +913,79 @@ body.dark-theme #auth-modal .auth-form__button:active {
   transform: translateY(0) !important;
 }
 
+/* FORGOT PASSWORD LINK - Complete isolation.
+   Rendered as a <button> for correct semantics but styled as a text link.
+   Colors are pinned so main.css's `button { color:#555 !important }` and the
+   red `button:hover` rule cannot restyle it. */
+.auth-form__forgot,
+.auth-modal .auth-form__forgot,
+#auth-modal .auth-form__forgot,
+body .auth-form__forgot,
+body .auth-modal .auth-form__forgot,
+body #auth-modal .auth-form__forgot,
+body.dark-theme .auth-form__forgot,
+body.dark-theme .auth-modal .auth-form__forgot,
+body.dark-theme #auth-modal .auth-form__forgot,
+button.auth-form__forgot,
+body button.auth-form__forgot,
+body.dark-theme button.auth-form__forgot {
+  /* Reset all */
+  all: unset !important;
+  /* Reapply specific properties */
+  display: inline-block !important;
+  width: auto !important;
+  margin-top: 0.75rem !important;
+  margin-bottom: 0 !important;
+  margin-left: 0 !important;
+  margin-right: 0 !important;
+  padding: 0.25rem 0.25rem !important;
+  background: transparent !important;
+  color: #5a67d8 !important;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif !important;
+  font-size: 0.875rem !important;
+  font-weight: 500 !important;
+  line-height: 1.5 !important;
+  text-align: left !important;
+  text-decoration: none !important;
+  text-transform: none !important;
+  text-shadow: none !important;
+  letter-spacing: normal !important;
+  cursor: pointer !important;
+  border: none !important;
+  border-radius: 0.25rem !important;
+  outline: none !important;
+  box-shadow: none !important;
+  box-sizing: border-box !important;
+  transition: color 0.2s ease !important;
+}
+
+.auth-form__forgot:hover,
+.auth-form__forgot:focus,
+.auth-modal .auth-form__forgot:hover,
+.auth-modal .auth-form__forgot:focus,
+#auth-modal .auth-form__forgot:hover,
+#auth-modal .auth-form__forgot:focus,
+body .auth-form__forgot:hover,
+body .auth-form__forgot:focus,
+body #auth-modal .auth-form__forgot:hover,
+body #auth-modal .auth-form__forgot:focus {
+  color: #4c51bf !important;
+  background: transparent !important;
+  text-decoration: underline !important;
+}
+
+.auth-form__forgot:focus,
+#auth-modal .auth-form__forgot:focus,
+body #auth-modal .auth-form__forgot:focus {
+  box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.4) !important;
+}
+
+/* The auth modal card is forced to a white background in both themes (see the
+   `.auth-modal__content` rule above, which bundles `body.dark-theme` into the
+   same `background:#ffffff` group), so the link keeps its dark-purple color in
+   dark theme too. A lighter dark-theme variant would sit on white and fail
+   contrast. */
+
 /* AUTH FORM LABELS - Complete isolation */
 .auth-form__label,
 label.auth-form__label,
