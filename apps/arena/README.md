@@ -24,8 +24,9 @@ The pure game logic (scoring, room state, location/question normalization) is sp
 | Spectator / latecomer flow | A friend who joins mid-round spectates and is folded into the next round automatically. |
 | Host handoff | If the host disconnects, the earliest remaining joiner deterministically becomes the new host (`pickNextHost`). |
 | Solo + Daily challenge | Globe Drop can be played solo (a private room of one that auto-starts) or as a Daily challenge that gives every player worldwide the same locations for the UTC calendar day. |
-| In-room chat | Per-room chat (subscribed to `triviaRooms/{code}/chat`) with input sanitization, a client-side rate limit, and profanity moderation via an external API (fail-open if it's unreachable). |
+| In-room chat | Per-room chat (subscribed to `triviaRooms/{code}/chat`) with input sanitization, a client-side rate limit, and local profanity moderation (a word-boundary wordlist, so nothing leaves the browser; fail-open if the filter errors). |
 | Leaderboard | Global score leaderboard (filterable by time period) plus a separate Daily challenge board scoped to the current UTC day. |
+| Display names | You choose a display name before your first published game; the default is a neutral `Player XXXX` derived from your uid, never from your email address. Whatever you choose is written to the shared leaderboard, head-to-head and daily records that any signed-in visitor can read. |
 | Head-to-head (H2H) | Per-room cumulative head-to-head record across rematches, plus a global pairwise H2H stats view. |
 | Profiles | Firebase Auth profiles tracking total score, games played, and wins. |
 | Post-game recap | Final scoreboard plus a side-by-side per-question / per-location recap table and detailed per-player accuracy / response-time (Trivia) or distance / region (Globe Drop) stats. |
