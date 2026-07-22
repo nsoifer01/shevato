@@ -1,6 +1,353 @@
 {
   "updates": [
     {
+      "builtAt": "2026-07-22T08:45:21.720Z",
+      "totals": {
+        "seasons": 65924,
+        "delta": 34
+      },
+      "shapeCounts": {
+        "mid-peak": 4628,
+        "rebound": 10063,
+        "rising": 2917,
+        "slow-burn": 4363,
+        "big-finale": 12002,
+        "u-shaped": 3088,
+        "rollercoaster": 14038,
+        "saved-best-for-last": 1530,
+        "front-loaded": 3454,
+        "declining": 1881,
+        "bad-finale": 4646,
+        "consistent": 2621,
+        "shape-drift": 1636
+      },
+      "shapeDeltas": {
+        "mid-peak": -3,
+        "rebound": -4,
+        "rising": 11,
+        "slow-burn": 15,
+        "big-finale": -4,
+        "rollercoaster": 5,
+        "saved-best-for-last": 7,
+        "front-loaded": 5,
+        "declining": 3,
+        "consistent": 8,
+        "shape-drift": 11
+      },
+      "added": [
+        {
+          "seriesId": "tt36034547",
+          "title": "You and I Are Polar Opposites",
+          "season": 2,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt38939446",
+          "title": "Sparks of Tomorrow",
+          "season": 1,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt39304754",
+          "title": "Love Unseen Beneath the Clear Night Sky",
+          "season": 1,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt41278615",
+          "title": "Oh Boy, Was I Wrong About Her",
+          "season": 1,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt38049145",
+          "title": "Goodbye, Lara",
+          "season": 1,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt28919914",
+          "title": "The 100 Girlfriends Who Really, Really, Really, Really, REALLY Love You",
+          "season": 3,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt8086718",
+          "title": "Grand Blue Dreaming",
+          "season": 3,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt31849235",
+          "title": "The Westies",
+          "season": 1,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt0118375",
+          "title": "King of the Hill",
+          "season": 15,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt41293112",
+          "title": "Sekai Saikyou no Kouei: Meikyuukoku no Shinjin Tansakusha",
+          "season": 1,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt2577388",
+          "title": "Shuga",
+          "season": 1,
+          "seasonYear": 2009
+        },
+        {
+          "seriesId": "tt39028251",
+          "title": "Dream to You",
+          "season": 1,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt42963873",
+          "title": "Tetsunabe no Jan!",
+          "season": 1,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt0297536",
+          "title": "Cosmo Warrior Zero",
+          "season": 1,
+          "seasonYear": 2001
+        },
+        {
+          "seriesId": "tt14476236",
+          "title": "Skeleton Knight in Another World",
+          "season": 2,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt33014623",
+          "title": "In the Eye of the Storm",
+          "season": 4,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt0327277",
+          "title": "David Copperfield",
+          "season": 1,
+          "seasonYear": 1966
+        },
+        {
+          "seriesId": "tt39551287",
+          "title": "A Livid Lady's Guide to Getting Even: How I Crushed My Homeland with My Mighty Grimoires",
+          "season": 1,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt32862795",
+          "title": "The Insipid Prince's Furtive Grab for the Throne",
+          "season": 1,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt41277587",
+          "title": "The Duke's Son Claims He Won't Love Me, But Showers Me with Adoration",
+          "season": 1,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt37443650",
+          "title": "Overdo",
+          "season": 1,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt1587934",
+          "title": "American Ninja Warrior",
+          "season": 18,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt12719686",
+          "title": "Super Sema",
+          "season": 1,
+          "seasonYear": 2021
+        },
+        {
+          "seriesId": "tt15372356",
+          "title": "Encouragement of Climb: Next Summit",
+          "season": 1,
+          "seasonYear": 2022
+        },
+        {
+          "seriesId": "tt31939466",
+          "title": "After",
+          "season": 1,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt42205302",
+          "title": "Twenty One",
+          "season": 1,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt6546832",
+          "title": "YouTube Money",
+          "season": 1,
+          "seasonYear": 2014
+        },
+        {
+          "seriesId": "tt0805825",
+          "title": "Dinosapien",
+          "season": 1,
+          "seasonYear": 2007
+        },
+        {
+          "seriesId": "tt11168052",
+          "title": "The Art Mysteries",
+          "season": 2,
+          "seasonYear": 2022
+        },
+        {
+          "seriesId": "tt19362818",
+          "title": "Close Friend",
+          "season": 2,
+          "seasonYear": 2022
+        },
+        {
+          "seriesId": "tt23030000",
+          "title": "Jet Lag: The Game",
+          "season": 18,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt32751895",
+          "title": "2024-2025 UEFA Champions League",
+          "season": 4,
+          "seasonYear": 2025
+        },
+        {
+          "seriesId": "tt38068966",
+          "title": "The Chit Show",
+          "season": 1,
+          "seasonYear": 2025
+        },
+        {
+          "seriesId": "tt40906144",
+          "title": "In the Eye of the Storm: Chasers",
+          "season": 1,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt43686248",
+          "title": "Roblox Analog Horror",
+          "season": 1,
+          "seasonYear": 2025
+        }
+      ],
+      "removed": [
+        {
+          "seriesId": "tt33312074",
+          "title": "She, Damned Soul",
+          "season": 1,
+          "seasonYear": 2025
+        }
+      ],
+      "ratingSwings": [
+        {
+          "seriesId": "tt38689352",
+          "title": "The F Ward",
+          "season": 1,
+          "from": 6.37,
+          "to": 5.1,
+          "delta": -1.27
+        },
+        {
+          "seriesId": "tt43658562",
+          "title": "Asirlik Gece",
+          "season": 1,
+          "from": 4.15,
+          "to": 3.11,
+          "delta": -1.04
+        },
+        {
+          "seriesId": "tt32907375",
+          "title": "Meet You at the Blossom",
+          "season": 1,
+          "from": 8.82,
+          "to": 7.86,
+          "delta": -0.96
+        },
+        {
+          "seriesId": "tt11161138",
+          "title": "Dr. Gokú Super",
+          "season": 3,
+          "from": 6.47,
+          "to": 7.4,
+          "delta": 0.93
+        },
+        {
+          "seriesId": "tt0212662",
+          "title": "Get Real",
+          "season": 1,
+          "from": 4.44,
+          "to": 3.52,
+          "delta": -0.92
+        },
+        {
+          "seriesId": "tt0320037",
+          "title": "Jimmy Kimmel Live!",
+          "season": 13,
+          "from": 7.13,
+          "to": 6.41,
+          "delta": -0.72
+        },
+        {
+          "seriesId": "tt36144166",
+          "title": "Love Overboard",
+          "season": 1,
+          "from": 7.3,
+          "to": 6.66,
+          "delta": -0.64
+        },
+        {
+          "seriesId": "tt39366612",
+          "title": "Morpheus",
+          "season": 1,
+          "from": 7.61,
+          "to": 8.23,
+          "delta": 0.62
+        },
+        {
+          "seriesId": "tt43440117",
+          "title": "Love in Sync",
+          "season": 1,
+          "from": 7.93,
+          "to": 8.53,
+          "delta": 0.6
+        },
+        {
+          "seriesId": "tt43351313",
+          "title": "Muhtemel ask",
+          "season": 1,
+          "from": 8.73,
+          "to": 8.14,
+          "delta": -0.59
+        }
+      ],
+      "modifiedCounts": {
+        "seriesVotes": 24247,
+        "avgRating": 1742,
+        "shapes": 315,
+        "episodeCount": 120,
+        "seriesRating": 537,
+        "poster": 5,
+        "overview": 5,
+        "providers": 2
+      }
+    },
+    {
       "builtAt": "2026-07-21T08:31:52.374Z",
       "totals": {
         "seasons": 65890,
