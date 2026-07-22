@@ -6,9 +6,6 @@ const assert = require('node:assert/strict');
 const {
     MAX_LEN,
     RATE_LIMIT_MS,
-    MODERATION_TIMEOUT_MS,
-    setModerationEndpoint,
-    getModerationEndpoint,
     sanitizeText,
     checkProfanity,
     shouldRateLimit,
@@ -43,89 +40,60 @@ test('sanitizeText: caps length at MAX_LEN', () => {
     assert.equal(out.length, MAX_LEN);
 });
 
-// --- moderation endpoint plumbing ------------------------------------
+// --- checkProfanity (local wordlist) ---------------------------------
+//
+// The check runs entirely in-process against a curated wordlist; no
+// network. Whole-word (\b-anchored) matching is what keeps ordinary
+// words that merely contain a flagged substring from being flagged.
 
-test('setModerationEndpoint / getModerationEndpoint round-trip', () => {
-    const original = getModerationEndpoint();
-    setModerationEndpoint('https://example.test/moderation');
-    assert.equal(getModerationEndpoint(), 'https://example.test/moderation');
-    // Bad input is ignored, prior value preserved
-    setModerationEndpoint('');
-    setModerationEndpoint(null);
-    assert.equal(getModerationEndpoint(), 'https://example.test/moderation');
-    setModerationEndpoint(original);
+test('checkProfanity: empty input short-circuits to clean', () => {
+    assert.deepEqual(checkProfanity(''), { ok: true, blocked: false });
 });
 
-test('setModerationEndpoint default is a real URL', () => {
-    assert.match(getModerationEndpoint(), /^https?:\/\//);
+test('checkProfanity: clean sentence is not blocked', () => {
+    assert.deepEqual(checkProfanity('good game everyone, nice round'), { ok: true, blocked: false });
 });
 
-// --- checkProfanity (with stubbed fetch) -----------------------------
+test('checkProfanity: an actual profanity is caught', () => {
+    assert.deepEqual(checkProfanity('you are a shit player'), { ok: true, blocked: true });
+    assert.equal(checkProfanity('fuck this').blocked, true);
+});
 
-function withFetchStub(impl, fn) {
+test('checkProfanity: caught regardless of case', () => {
+    assert.equal(checkProfanity('SHIT').blocked, true);
+    assert.equal(checkProfanity('WhAt An AsShOlE').blocked, true);
+});
+
+test('checkProfanity: caught next to punctuation', () => {
+    assert.equal(checkProfanity('well, fuck!').blocked, true);
+    assert.equal(checkProfanity('(bitch)').blocked, true);
+});
+
+// Scunthorpe problem: clean words containing a flagged substring must pass.
+test('checkProfanity: substring-only matches are NOT flagged', () => {
+    for (const clean of ['class', 'assess', 'assassin', 'cockpit', 'cocktail',
+                         'bass', 'grass', 'pass the ball', 'Scunthorpe',
+                         'analysis', 'dickinson', 'shitake']) {
+        assert.equal(checkProfanity(clean).blocked, false, `"${clean}" should be clean`);
+    }
+});
+
+test('checkProfanity: never leaves the browser (no fetch involved)', () => {
     const original = global.fetch;
-    global.fetch = impl;
-    return Promise.resolve().then(fn).finally(() => {
-        global.fetch = original;
-    });
-}
-
-test('checkProfanity: empty input short-circuits to clean', async () => {
-    const r = await checkProfanity('');
-    assert.deepEqual(r, { ok: true, blocked: false });
-});
-
-test('checkProfanity: API returns "true" -> blocked', async () => {
-    await withFetchStub(
-        async () => ({ ok: true, text: async () => 'true' }),
-        async () => {
-            const r = await checkProfanity('anything');
-            assert.deepEqual(r, { ok: true, blocked: true });
-        }
-    );
-});
-
-test('checkProfanity: API returns "false" -> clean', async () => {
-    await withFetchStub(
-        async () => ({ ok: true, text: async () => 'false' }),
-        async () => {
-            const r = await checkProfanity('hello world');
-            assert.deepEqual(r, { ok: true, blocked: false });
-        }
-    );
-});
-
-test('checkProfanity: API non-2xx -> fail-open with http-N error', async () => {
-    await withFetchStub(
-        async () => ({ ok: false, status: 503, text: async () => '' }),
-        async () => {
-            const r = await checkProfanity('hello');
-            assert.equal(r.ok, false);
-            assert.equal(r.error, 'http-503');
-        }
-    );
-});
-
-test('checkProfanity: fetch throws -> fail-open with network error', async () => {
-    await withFetchStub(
-        async () => { throw new Error('boom'); },
-        async () => {
-            const r = await checkProfanity('hello');
-            assert.deepEqual(r, { ok: false, error: 'network' });
-        }
-    );
-});
-
-test('checkProfanity: missing fetch (no DOM) returns fetch-unavailable', async () => {
-    const original = global.fetch;
-    delete global.fetch;
+    global.fetch = () => { throw new Error('network must not be touched'); };
     try {
-        const r = await checkProfanity('hello');
-        assert.equal(r.ok, false);
-        assert.equal(r.error, 'fetch-unavailable');
+        assert.equal(checkProfanity('fuck').blocked, true);
+        assert.equal(checkProfanity('hello').blocked, false);
     } finally {
         global.fetch = original;
     }
+});
+
+test('checkProfanity: fail-open if the matcher throws', () => {
+    // A non-string sneaking past sanitizeText must not block chat.
+    const r = checkProfanity({ toString() { throw new Error('boom'); } });
+    assert.equal(r.ok, false);
+    assert.equal(r.error, 'filter-error');
 });
 
 // --- shouldRateLimit -------------------------------------------------
@@ -160,5 +128,4 @@ test('formatTimestamp: empty string for invalid input', () => {
 test('constants exported for callers', () => {
     assert.equal(typeof MAX_LEN, 'number');
     assert.equal(typeof RATE_LIMIT_MS, 'number');
-    assert.equal(typeof MODERATION_TIMEOUT_MS, 'number');
 });

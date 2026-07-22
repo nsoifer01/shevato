@@ -1,21 +1,21 @@
 /*
- * Brain Arena — chat client helpers.
+ * Brain Arena - chat client helpers.
  *
  * Pure utilities (sanitization, rate-limit, timestamp formatting) live
- * here alongside the moderation hook. Moderation is delegated to an
- * external API so this file never needs to enumerate the words it's
- * trying to keep out of chat — the API maintains the list, we just ask
- * "does this message contain profanity?" and trust the answer.
+ * here alongside the profanity check. Moderation is done entirely
+ * locally against a small curated wordlist: nothing about a chat
+ * message ever leaves the browser. (This replaced a remote lookup that
+ * put the full message text in a third party's query string / access
+ * logs.) This is best-effort politeness filtering for a friends' party
+ * game, not adversarial moderation.
  *
- * Default backend is the free PurgoMalum service
- * (https://www.purgomalum.com). Override via `setModerationEndpoint`
- * if you want to point at your own moderation proxy (OpenAI moderation,
- * Cloudflare AI, Perspective API, etc.).
+ * Matching is whole-word (word-boundary anchored), so ordinary words
+ * that merely contain a flagged substring pass cleanly (the classic
+ * "Scunthorpe problem": "class", "assess", "cockpit" are all fine).
  *
- * Failure mode: if the API is unreachable, slow, or returns non-2xx,
- * messages pass through (fail-open). Rationale — chat is non-critical
- * social glue; blocking everyone on a third-party outage is worse UX
- * than the occasional escape. Errors are logged so you can spot drift.
+ * Failure mode: if the check throws for any reason, the message passes
+ * through (fail-open). Rationale - chat is non-critical social glue; a
+ * filter bug must never be able to block the chat surface.
  *
  * UMD: CommonJS for node:test + window.BrainArena.Chat for the browser.
  */
@@ -31,20 +31,38 @@
 
     const MAX_LEN = 280;
     const RATE_LIMIT_MS = 1500;
-    const MODERATION_TIMEOUT_MS = 2500;
 
-    // Default endpoint — accepts ?text= and returns plain-text "true" or
-    // "false". Swappable via setModerationEndpoint for self-hosted or
-    // paid moderation backends.
-    let moderationEndpoint = 'https://www.purgomalum.com/service/containsprofanity';
+    // Curated profanity list. Kept short on purpose: a huge list in a
+    // game full of place names and player handles generates more false
+    // positives than it prevents. Add words (and their common inflected
+    // forms) here as needed; each entry is matched as a whole word.
+    const PROFANITY = [
+        'fuck', 'fucks', 'fucked', 'fucker', 'fuckers', 'fucking', 'fuckin',
+        'motherfucker', 'motherfuckers', 'motherfucking',
+        'shit', 'shits', 'shitty', 'shithead', 'bullshit',
+        'ass', 'asses', 'asshole', 'assholes', 'jackass',
+        'bitch', 'bitches', 'bitching',
+        'bastard', 'bastards',
+        'dick', 'dicks', 'dickhead', 'dickheads',
+        'cock', 'cocks', 'cocksucker',
+        'pussy', 'pussies',
+        'cunt', 'cunts',
+        'slut', 'sluts',
+        'whore', 'whores',
+        'douche', 'douchebag',
+        'wanker', 'wankers',
+        'twat', 'twats',
+        'prick', 'pricks',
+        'bollocks',
+        'nigger', 'niggers', 'nigga', 'niggas',
+        'faggot', 'faggots', 'fag', 'fags',
+        'retard', 'retards', 'retarded'
+    ];
 
-    function setModerationEndpoint(url) {
-        if (typeof url === 'string' && url.length > 0) moderationEndpoint = url;
-    }
-
-    function getModerationEndpoint() {
-        return moderationEndpoint;
-    }
+    // \b...\b anchors each match to word boundaries, so a flagged word
+    // is only caught as a standalone token. "class" / "assess" contain
+    // "ass" but never as a bounded word, so they pass.
+    const PROFANITY_RE = new RegExp('\\b(' + PROFANITY.join('|') + ')\\b', 'i');
 
     function sanitizeText(raw) {
         if (typeof raw !== 'string') return '';
@@ -54,33 +72,21 @@
     }
 
     /**
-     * Ask the external moderation API whether `text` contains anything
-     * it considers profane. Returns a Promise that resolves to one of:
-     *   { ok: true,  blocked: false }                       — clean
-     *   { ok: true,  blocked: true  }                       — API said no
-     *   { ok: false, error: 'timeout' | 'network' | string} — fail-open
+     * Check whether `text` contains a listed profane word, locally.
+     * Nothing leaves the browser. Returns one of:
+     *   { ok: true,  blocked: false }        — clean
+     *   { ok: true,  blocked: true  }        — a flagged word matched
+     *   { ok: false, error: 'filter-error' } — the check itself threw
+     * Synchronous, but the bundled app.js `await`s it, which is fine.
      * Callers can decide whether to treat ok=false as block or allow;
-     * the bundled app.js treats it as allow so a third-party outage
-     * doesn't paralyse the chat surface.
+     * app.js treats it as allow so a filter bug can't paralyse chat.
      */
-    async function checkProfanity(text) {
+    function checkProfanity(text) {
         if (!text) return { ok: true, blocked: false };
-        if (typeof fetch !== 'function') {
-            return { ok: false, error: 'fetch-unavailable' };
-        }
-        const url = `${moderationEndpoint}?text=${encodeURIComponent(text)}`;
-        const ctrl = (typeof AbortController === 'function') ? new AbortController() : null;
-        const timer = ctrl ? setTimeout(() => ctrl.abort(), MODERATION_TIMEOUT_MS) : null;
         try {
-            const res = await fetch(url, ctrl ? { signal: ctrl.signal } : undefined);
-            if (timer) clearTimeout(timer);
-            if (!res.ok) return { ok: false, error: `http-${res.status}` };
-            const body = (await res.text()).trim().toLowerCase();
-            return { ok: true, blocked: body === 'true' };
+            return { ok: true, blocked: PROFANITY_RE.test(text) };
         } catch (err) {
-            if (timer) clearTimeout(timer);
-            const code = err && err.name === 'AbortError' ? 'timeout' : 'network';
-            return { ok: false, error: code };
+            return { ok: false, error: 'filter-error' };
         }
     }
 
@@ -105,9 +111,6 @@
     return {
         MAX_LEN,
         RATE_LIMIT_MS,
-        MODERATION_TIMEOUT_MS,
-        setModerationEndpoint,
-        getModerationEndpoint,
         sanitizeText,
         checkProfanity,
         shouldRateLimit,
