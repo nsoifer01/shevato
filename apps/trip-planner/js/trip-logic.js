@@ -678,6 +678,37 @@ const TripLogic = (() => {
   // Nang, Israel via Tel Aviv/Jerusalem). Silence is the correct trade here.
   const visaCountryUsable = conf => conf === 'confident';
 
+  // Which suppressed stops are still WORTH SAYING OUT LOUD. Every stop rejected
+  // by visaCountryUsable used to print a "Country not confirmed" row asking the
+  // traveller to go add a country. On the Israel sample that row said "Masada",
+  // whose best guess is IL, on a screen already listing Israel from Tel Aviv,
+  // Ramat Gan, Jerusalem and Beer Sheva. Doing as it asked would have changed
+  // NOTHING on screen: the visa rows are identical either way, so the warning
+  // was work with no outcome, printed in a dialog about legal entry rules where
+  // an unexplained question mark reads as a problem with the trip.
+  //
+  // This is NOT a loosening of visaCountryUsable, and deliberately so. The
+  // guessed country still may not CREATE a row, and the place name is still not
+  // attached to anybody's `places` list, so a wrong guess remains incapable of
+  // stating a false requirement or of mislabelling a true one. The only thing
+  // it may now do is stay quiet, and only when the country it guessed is
+  // already listed on the strength of a CONFIDENT stop somewhere else. Nara ->
+  // United States on a Japan trip still warns, because the US is not otherwise
+  // on the trip; so do Maras -> Turkmenistan and Ha Long -> Lesotho. That is
+  // the whole point: suppression tracks "this row would tell you nothing new",
+  // never "this guess is probably fine".
+  //
+  // Takes the countries derived from the confident stops, so the caller must
+  // finish that pass BEFORE resolving these. Stop order is not evidence: Masada
+  // is day 9, but a national park could as easily be day 1, ahead of the city
+  // that vindicates it.
+  function visaUnconfirmedNames(deferred, confirmedCcs) {
+    const listed = new Set([...(confirmedCcs || [])].map(cc => String(cc || '').toUpperCase()));
+    return (Array.isArray(deferred) ? deferred : [])
+      .filter(d => d && !listed.has(String(d.cc || '').toUpperCase()))
+      .map(d => d.name);
+  }
+
   // The VINTAGE of the visa data, said out loud. The old wording claimed the
   // dataset was "refreshed monthly", which actually described our browser cache
   // TTL, not the data: the source we pinned had not moved since January 2025,
@@ -3013,7 +3044,7 @@ const TripLogic = (() => {
     routeLinks, modeLink, ROUTE_HONESTY,
     classifyGeoMatch, geoInputIsQualified, geoMatchNote,
     GEO_RIVAL_GAP, GEO_WEAK_IMPORTANCE, GEO_SETTLEMENT_KINDS, GEO_MATCH_RANK, GEO_MATCH_TEXT,
-    classifyVisa, parseVisaMatrix, visaCountryUsable, visaVintageNote,
+    classifyVisa, parseVisaMatrix, visaCountryUsable, visaUnconfirmedNames, visaVintageNote,
     slimTripForShare, hasFastRail, viewFromHash, hashForView,
     buildIcs, buildCsv, csvColumns, convertAmount, sumInCurrency,
     bytesToBase64url, base64urlToBytes,

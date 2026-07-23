@@ -404,15 +404,28 @@
     appearance: none; border: 0; border-radius: 999px; font-size: 12px; font-weight: 700;
     padding: 5px 24px 5px 12px; cursor: pointer; width: max-content; max-width: 100%;
     background-repeat: no-repeat; background-position: right 9px center;
-    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='9' height='6'%3E%3Cpath d='M1 1l3.5 3.5L8 1' stroke='currentColor' stroke-width='1.5' fill='none' stroke-linecap='round'/%3E%3C/svg%3E");
+    /* background-size is pinned because main.css paints EVERY select with
+       `background-size: 1.25rem`, which blows this 9x6 glyph up to 18px and
+       walks it into the "Decide later" label. */
+    background-size: 9px 6px;
+    /* the stroke is #9aa7ba, the value of --text-dim: an SVG loaded as a CSS
+       image has no CSS context, so `currentColor` there resolves to the
+       initial colour (black) rather than the pill's status colour, and a
+       black chevron on these dark tinted pills reads as a hole. A var() cannot
+       reach inside a url(), so the token's value is spelled out here. */
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='9' height='6'%3E%3Cpath d='M1 1l3.5 3.5L8 1' stroke='%239aa7ba' stroke-width='1.5' fill='none' stroke-linecap='round'/%3E%3C/svg%3E");
   }
   /* two classes deep on purpose: the main.css neutralizer near the top of this
      file paints every .trip-planner-app select with --text (0,2,0), which is
-     enough to swallow a one-class status colour */
-  .trip-planner-app select.st-booked { background: var(--green-soft); color: var(--green); }
-  .trip-planner-app select.st-to-book { background: var(--amber-soft); color: var(--amber); }
-  .trip-planner-app select.st-decide { background: var(--purple-soft); color: var(--purple); }
-  .trip-planner-app select.st-cancelled { background: var(--gray-soft); color: var(--text-dim); }
+     enough to swallow a one-class status colour.
+     background-COLOR, never the `background` shorthand: every status select
+     carries both classes, these rules win on specificity, and the shorthand's
+     implicit `background-image: none` silently deleted the chevron above on
+     every row. */
+  .trip-planner-app select.st-booked { background-color: var(--green-soft); color: var(--green); }
+  .trip-planner-app select.st-to-book { background-color: var(--amber-soft); color: var(--amber); }
+  .trip-planner-app select.st-decide { background-color: var(--purple-soft); color: var(--purple); }
+  .trip-planner-app select.st-cancelled { background-color: var(--gray-soft); color: var(--text-dim); }
   .c-cost { text-align: right; font-size: 14px; font-weight: 800; font-variant-numeric: tabular-nums; white-space: nowrap; }
   .c-cost .per-night { display: block; font-weight: 500; font-size: 11.5px; color: var(--text-dim); }
   .c-cost .note { display: block; font-weight: 600; font-size: 12px; color: var(--text-dim); white-space: normal; }
@@ -482,6 +495,10 @@
   .totals .t .k { font-size: 11px; text-transform: uppercase; letter-spacing: 0.7px; color: var(--text-dim); }
   .totals .t .v { font-size: 17px; font-weight: 800; font-variant-numeric: tabular-nums; }
   .totals .t.confirmed .v { color: var(--green); }
+  /* same condition as the amber "Confirmed" summary chip (renderSummary):
+     an amount we could not convert is not in this number, so it must not
+     paint green as if it were complete */
+  .totals .t.confirmed.incomplete .v { color: var(--amber); }
   .totals .t.currency-pick { margin-right: auto; text-align: left; }
   .currency-sel {
     background: var(--bg-card); border: 1px solid var(--border); border-radius: 8px;
@@ -1289,6 +1306,32 @@
     border: 2px solid #fff; box-shadow: 0 2px 8px rgba(0, 0, 0, 0.45);
   }
   .leaflet-popup-content { font: 13px/1.5 "Segoe UI", system-ui, sans-serif; }
+  /* leaflet.css is injected into <head> at runtime (ensureLeaflet), so it always
+     lands AFTER this file: matching its one-class selectors would lose the
+     cascade. Scoped through body.tp-page #mapCanvas, same as the tile filter
+     above, so its `background: white; color: #333` is actually overridden.
+     The surface is the .tp-menu-panel recipe exactly (bg-card + border +
+     shadow): a popup floats over the page the way that menu does, and that
+     pairing is also what lets the --border-soft rule between two stops read at
+     all, since on --bg-raised the hairline and the surface are one step per
+     channel apart, i.e. nothing. */
+  body.tp-page #mapCanvas .leaflet-popup-content-wrapper {
+    background: var(--bg-card); color: var(--text);
+    border: 1px solid var(--border); box-shadow: var(--shadow);
+  }
+  body.tp-page #mapCanvas .leaflet-popup-tip {
+    background: var(--bg-card); box-shadow: var(--shadow);
+  }
+  /* main.css paints every strong/b #555555, which was legible on leaflet's
+     white popup and is 1.9:1 on the dark one. Same counter-pin the assistant
+     prose and the route result already carry. */
+  .trip-planner-app #mapCanvas .leaflet-popup-content b { color: var(--text); }
+  /* no `a` in the selector: the root-wrapper scoping test forbids element
+     selectors under body.<class>. The #mapCanvas id already outranks
+     leaflet's `.leaflet-container a.leaflet-popup-close-button`. */
+  body.tp-page #mapCanvas .leaflet-popup-close-button { color: var(--text-dim); }
+  body.tp-page #mapCanvas .leaflet-popup-close-button:hover,
+  body.tp-page #mapCanvas .leaflet-popup-close-button:focus { color: var(--text); }
 
   /* ---------- days view ---------- */
   .days-box { display: none; }
@@ -2320,6 +2363,14 @@
     .strip-head { flex-wrap: wrap; gap: 3px 10px; margin-bottom: 6px; }
     .strip-legend { gap: 3px 8px; font-size: 10px; }
     .strip-legend .dot { width: 8px; height: 8px; margin-right: 4px; }
+    /* a long trip on a phone squeezed every night down towards the 3px floor,
+       where the colours stop reading as separate blocks. 6px is the width at
+       which a single night is still a block; past that the strip scrolls
+       sideways inside its own box rather than the page. The vertical padding
+       is what the :hover scaleY needs, and the matching negative margin keeps
+       the strip-dates line exactly where it was. */
+    .strip { overflow-x: auto; overflow-y: hidden; padding: 3px 0; margin: -3px 0; scrollbar-width: thin; }
+    .strip .cell { min-width: 6px; }
 
     /* toolbar: the undo/redo pair sat alone on its own row inside a wide empty
        box. It rides with the primary instead, and the four trip tools become a

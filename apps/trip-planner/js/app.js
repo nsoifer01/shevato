@@ -50,7 +50,7 @@
     ISLANDISH, distKm, flagEmoji, compass, fmtDur, modeOptions,
     routeBadges, routeFlags, routeTips, routeLinks, modeLink, ROUTE_HONESTY,
     classifyGeoMatch, geoMatchNote, GEO_MATCH_RANK, GEO_MATCH_TEXT,
-    classifyVisa, parseVisaMatrix, visaCountryUsable, visaVintageNote, slimTripForShare, hasFastRail, viewFromHash, hashForView,
+    classifyVisa, parseVisaMatrix, visaCountryUsable, visaUnconfirmedNames, visaVintageNote, slimTripForShare, hasFastRail, viewFromHash, hashForView,
     buildIcs, buildCsv, convertAmount, sumInCurrency,
     bytesToBase64url, base64urlToBytes,
     transportGaps, tripPhase, isPastRow,
@@ -742,7 +742,7 @@
       (errs ? `<span class="count-err">${errs} error${errs === 1 ? '' : 's'}</span>` : '') +
       (errs && warns ? ' · ' : '') +
       (warns ? `<span class="count-warn">${warns} warning${warns === 1 ? '' : 's'}</span>` : '') +
-      `</span><span style="color:var(--text-faint);font-weight:400;font-size:13px">(click to review)</span>`;
+      `</span><span style="color:var(--text-dim);font-weight:400;font-size:13px">(click to review)</span>`;
     $('#issuesList').innerHTML = issues.map((iss, idx) => `
       <li>
         <span class="tag ${iss.level === 'error' ? 'err' : 'warn'}">${iss.level === 'error' ? 'ERROR' : 'WARN'}</span>
@@ -871,7 +871,7 @@
       <div class="totals">
         <div class="t currency-pick"><div class="k">Currency</div><select id="currencySel" class="currency-sel" aria-label="Trip currency" ${curDisabled}>${curOptions}</select></div>
         ${money.planned.total !== money.confirmed.total ? `<div class="t"><div class="k">Full plan</div><div class="v">${moneyHtml(trip, money.planned.total, undefined, 'total')}</div></div>` : ''}
-        <div class="t confirmed"><div class="k">Confirmed bookings</div><div class="v">${moneyHtml(trip, money.confirmed.total, undefined, 'total')}</div></div>
+        <div class="t confirmed${money.confirmed.unconverted.length ? ' incomplete' : ''}"><div class="k">Confirmed bookings</div><div class="v">${moneyHtml(trip, money.confirmed.total, undefined, 'total')}</div></div>
       </div>`;
     const notes = moneyNotes(trip, money);
     if (notes) html += notes;
@@ -2609,8 +2609,8 @@
       const icon = L.divIcon({ className: '', html: `<div class="stop-pin">${i + 1}</div>`, iconSize: [26, 26], iconAnchor: [13, 13] });
       const lines = stop.items.slice(0, 5).map(it => {
         const range = isStay(it) && isIsoDate(it.endDate) ? fmtRange(it.startDate, it.endDate) : fmtDate(it.startDate);
-        return `${TYPE_META[it.type].icon} ${esc(it.title)}<br><small style="color:#777">${range}</small>`;
-      }).join('<hr style="border:none;border-top:1px solid #ddd;margin:6px 0">');
+        return `${TYPE_META[it.type].icon} ${esc(it.title)}<br><small style="color:var(--text-dim)">${range}</small>`;
+      }).join('<hr style="border:none;border-top:1px solid var(--border-soft);margin:6px 0">');
       L.marker(ll, { icon }).addTo(mapInstance).bindPopup(`<b>${i + 1}. ${esc(stop.name)}</b><br>${lines}`);
     });
     if (latlngs.length > 1) {
@@ -2746,6 +2746,7 @@
     if (stops.length) {
       box.innerHTML = '<div class="route-loading"><span class="spinner"></span>Locating your destinations...</div>';
       const byCc = new Map();
+      const deferred = [];
       for (const stop of stops) {
         const hit = await geocode(stop.name);
         if (token !== visaToken) return;
@@ -2754,7 +2755,10 @@
         // visaCountryUsable). A contested or weak match must not name a country
         // here, and it must not attach its place name to somebody else's row
         // either: an unreliable country code is unreliable in both directions.
-        if (!visaCountryUsable(hit.conf)) { visaUnconfirmed.push(stop.name); continue; }
+        // Held aside rather than warned about on the spot: whether this one is
+        // worth mentioning depends on the countries the OTHER stops confirm,
+        // and some of those have not been read yet (see visaUnconfirmedNames).
+        if (!visaCountryUsable(hit.conf)) { deferred.push({ name: stop.name, cc: hit.cc }); continue; }
         if (!byCc.has(hit.cc)) byCc.set(hit.cc, { cc: hit.cc, name: regionName(hit.cc), places: [] });
         // mapStops collapses only ADJACENT repeats, because a city you come
         // back to is a real second stop on a ROUTE. This list is not a route:
@@ -2764,6 +2768,7 @@
         if (!places.some(p => p.toLowerCase() === stop.name.toLowerCase())) places.push(stop.name);
       }
       visaDests = [...byCc.values()];
+      visaUnconfirmed = visaUnconfirmedNames(deferred, byCc.keys());
     }
     renderVisaRows();
   }

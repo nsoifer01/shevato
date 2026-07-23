@@ -211,6 +211,59 @@ test('a traveller who disambiguated the place themselves is trusted', () => {
   assert.equal(L.visaCountryUsable(qualified), true);
 });
 
+test('a suppressed stop is not warned about when its country is ALREADY listed', () => {
+  // The Israel sample. "Masada" is a national park, so Nominatim's top hit is
+  // an `historic` / archaeological_site (measured 2026-07-23, importance 0.53,
+  // country IL), which is not a settlement and so classifies 'low' whatever
+  // else is in the list. Israel is already on screen from four confident city
+  // stops, so the row asking the traveller to disambiguate Masada could not
+  // have changed a single visa row: it was work with no outcome.
+  const masada = L.classifyGeoMatch('Masada', [
+    { name: 'Masada', cc: 'IL', country: 'Israel', state: 'South District', importance: 0.5291182090199721, kind: 'historic' },
+    { name: 'Massada', cc: 'IL', country: 'Israel', state: 'North District', importance: 0.3523323513289129, kind: 'village' },
+    { name: 'Masada', cc: 'IN', country: 'India', state: 'Andhra Pradesh', importance: 0.14670416800183103, kind: 'village' },
+  ]);
+  assert.equal(masada, 'low');
+  assert.equal(L.visaCountryUsable(masada), false);
+  assert.deepEqual(L.visaUnconfirmedNames([{ name: 'Masada', cc: 'IL' }], ['IL']), []);
+});
+
+test('a suppressed stop IS still warned about when its country is not listed', () => {
+  // The regression that matters. Suppression tracks "this row would tell you
+  // nothing new", never "this guess is probably fine", so every documented
+  // wrong-country case keeps its warning: none of these countries is otherwise
+  // on the trip, and staying quiet would silently drop the stop instead.
+  assert.deepEqual(L.visaUnconfirmedNames([{ name: 'Nara', cc: 'US' }], ['JP']), ['Nara']);
+  assert.deepEqual(L.visaUnconfirmedNames([{ name: 'Maras', cc: 'TM' }], ['PE']), ['Maras']);
+  assert.deepEqual(L.visaUnconfirmedNames([{ name: 'Ha Long', cc: 'LS' }], ['VN']), ['Ha Long']);
+  // and the mixed case: one vindicated, one not, on the same trip
+  assert.deepEqual(
+    L.visaUnconfirmedNames([{ name: 'Masada', cc: 'IL' }, { name: 'Nara', cc: 'US' }], ['IL', 'JO']),
+    ['Nara'],
+  );
+});
+
+test('suppression does not depend on the order the stops were read in', () => {
+  // Masada is day 9 of the Israel sample, but a national park could as easily
+  // be day 1. The caller collects the confident countries FIRST and resolves
+  // these against the finished set, so an unconfirmed stop that arrives before
+  // the confident sibling vindicating it is treated identically.
+  const early = L.visaUnconfirmedNames([{ name: 'Masada', cc: 'IL' }], ['IL', 'JO']);
+  const late = L.visaUnconfirmedNames([{ name: 'Masada', cc: 'IL' }], ['JO', 'IL']);
+  assert.deepEqual(early, []);
+  assert.deepEqual(late, []);
+});
+
+test('visaUnconfirmedNames handles the empty and country-less cases', () => {
+  assert.deepEqual(L.visaUnconfirmedNames([], ['IL']), []);
+  assert.deepEqual(L.visaUnconfirmedNames([{ name: 'Masada', cc: 'IL' }], []), ['Masada']);
+  // no best guess at all is no reason for silence: nothing on screen covers it
+  assert.deepEqual(L.visaUnconfirmedNames([{ name: 'Somewhere', cc: '' }], ['IL']), ['Somewhere']);
+  // the caller passes Map keys, which are already uppercase, but a cache entry
+  // that predates that normalisation must not read as a DIFFERENT country
+  assert.deepEqual(L.visaUnconfirmedNames([{ name: 'Masada', cc: 'il' }], ['IL']), []);
+});
+
 // ---------- assistant: a heavy trip is trimmed, not rejected ----------
 
 function heavyContext(n, detailChars) {
