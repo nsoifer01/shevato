@@ -17,7 +17,7 @@
  * MINOR when the strategy changes, MAJOR for a back-compat break.
  */
 
-const CACHE_VERSION = '2.1.0';
+const CACHE_VERSION = '2.1.1';
 const PRECACHE = `trip-precache-${CACHE_VERSION}`;
 const RUNTIME = `trip-runtime-${CACHE_VERSION}`;
 

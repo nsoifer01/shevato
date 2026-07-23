@@ -6,13 +6,12 @@
    wrapper and therefore can never be touched by app styles: the sign-out
    modal once diverged on this page purely because these rules sat on
    <body>. Page-level look (background, theme vars, mode classes
-   tp-light / tp-shared / view-days) lives on body.tp-page. Enforced by
+   tp-shared / view-days) lives on body.tp-page. Enforced by
    sync-system/tests/shared-ui-consistency.test.mjs. */
 
   body.tp-page {
-    /* single typography token: themes NEVER redefine it, so dark and light
-       render identical type; controls reference it explicitly below instead
-       of relying on a fragile inherit chain */
+    /* single typography token: controls reference it explicitly below
+       instead of relying on a fragile inherit chain */
     --tp-font: "Segoe UI", system-ui, -apple-system, "Helvetica Neue", Arial, sans-serif;
     --bg: #0e1116;
     --bg-soft: #161b23;
@@ -28,7 +27,7 @@
     /* --accent is tuned to read as blue TEXT on a dark surface; white on it is
        only 3.2:1. Filled controls (primary buttons, the active view tab, the
        today badge) therefore paint --accent-fill instead, which carries white
-       at 5.1:1 in both themes. One token, every filled surface. */
+       at 5.1:1. One token, every filled surface. */
     --accent-fill: #2a67dd;
     /* width of the day-card time rail; see .dc-event */
     --dc-rail-w: 86px;
@@ -42,8 +41,8 @@
     --red-soft: rgba(242, 101, 122, 0.13);
     --gray-soft: rgba(154, 167, 186, 0.13);
     /* transport gets its own hue so the three travel types (plane, train,
-       taxi) never read as the same thing; it used to be a raw hex in the
-       type pill, which meant the light theme inherited a dark-theme cyan */
+       taxi) never read as the same thing; it lives as a token here rather
+       than a raw hex in the type pill */
     --cyan: #46b9d8;
     --cyan-soft: rgba(70, 185, 216, 0.14);
     --shadow: 0 12px 34px rgba(0, 0, 0, 0.45);
@@ -53,47 +52,12 @@
     --radius: 14px;
     color-scheme: dark;
   }
-  body.tp-page.tp-light {
-    --bg: #f3f5f9;
-    --bg-soft: #ffffff;
-    --bg-card: #ffffff;
-    --bg-raised: #eef1f7;
-    --border: #d6dce7;
-    --border-soft: #e3e8f0;
-    --text: #1c2432;
-    --text-dim: #556174;
-    --text-faint: #8b96a8;
-    --accent: #2f6fe4;
-    --accent-soft: rgba(47, 111, 228, 0.10);
-    --green: #148f60;
-    --green-soft: rgba(20, 143, 96, 0.11);
-    --amber: #b07514;
-    --amber-soft: rgba(176, 117, 20, 0.12);
-    --purple: #7857d6;
-    --purple-soft: rgba(120, 87, 214, 0.11);
-    --red: #d43d55;
-    --red-soft: rgba(212, 61, 85, 0.10);
-    --gray-soft: rgba(85, 97, 116, 0.10);
-    --cyan: #0d7290;
-    --cyan-soft: rgba(13, 114, 144, 0.11);
-    --shadow: 0 10px 28px rgba(28, 36, 50, 0.14);
-    --shadow-sm: 0 3px 10px rgba(28, 36, 50, 0.10);
-    color-scheme: light;
-  }
   body.tp-page.tp-24h { --dc-rail-w: 60px; }
   .trip-planner-app *, .trip-planner-app *::before, .trip-planner-app *::after { box-sizing: border-box; }
   body.tp-page {
     margin: 0;
     background: var(--bg);
   }
-  /* main.css paints a fixed, viewport-tall hero photo at 5% opacity behind the
-     page (body::before, z-index -1). Every transparent block in this app -
-     #board, .tl-kids, .tl-day - therefore showed the photograph through it, with
-     a hard seam at the bottom of the viewport where the image stops. The dark
-     theme hid it; the light theme did not. The app owns a flat --bg surface, so
-     the hero layer is switched off on this page rather than every container
-     being made opaque one at a time. */
-  body.tp-page::before { display: none; }
   /* typography/color live on the app root, NOT body, so they cannot
      inherit into shared components appended to <body> */
   .trip-planner-app {
@@ -101,8 +65,8 @@
     font: 15px/1.5 var(--tp-font);
     -webkit-font-smoothing: antialiased;
     /* the label of a SELECTED segment. Flat --accent on an --accent-soft tint
-       lands at ~3.6:1 in both themes; blending it toward --text keeps the blue
-       read and clears 4.5:1. Derived from theme tokens, so it flips for free. */
+       lands at ~3.6:1; blending it toward --text keeps the blue read and
+       clears 4.5:1. Derived from the theme tokens. */
     --seg-on-fg: color-mix(in srgb, var(--accent) 55%, var(--text));
   }
   :where(.trip-planner-app) button { color: inherit; cursor: pointer; }
@@ -1048,9 +1012,13 @@
   .trip-planner-app .assist-quick-links a,
   .trip-planner-app .assist-md a { color: var(--accent) !important; }
   /* main.css paints every <a> #ce1b28; the Google chip must keep theme text
-     colors or the attribution reads as decoration */
-  .trip-planner-app .apr-chip,
-  .trip-planner-app .apr-chip:hover,
+     colors or the attribution reads as decoration. The element qualifier
+     (a.apr-chip, not just .apr-chip) matters: on the Timeline the chip sits
+     inside .c-details, so it also matches ".c-details a" above at the same
+     !important tier; without the extra specificity point that rule would
+     win on source order and paint the chip --accent blue instead of --text. */
+  .trip-planner-app a.apr-chip,
+  .trip-planner-app a.apr-chip:hover,
   .trip-planner-app .apr-brand { color: var(--text) !important; }
   .trip-planner-app .apr-count { color: var(--text-dim) !important; }
   .trip-planner-app .apr-star { color: var(--amber) !important; }
@@ -1284,8 +1252,8 @@
     box-shadow: 0 0 0 1px var(--border);
     transition: background-size .3s linear;
   }
-  body.tp-page:not(.tp-light) #mapCanvas .leaflet-tile { filter: invert(1) hue-rotate(180deg) brightness(0.9) contrast(0.9) saturate(0.6); }
-  body.tp-page:not(.tp-light) #mapCanvas { background: #1a1f29; }
+  body.tp-page #mapCanvas .leaflet-tile { filter: invert(1) hue-rotate(180deg) brightness(0.9) contrast(0.9) saturate(0.6); }
+  body.tp-page #mapCanvas { background: #1a1f29; }
   .stop-pin {
     background: var(--accent-fill); color: #fff; border-radius: 50%; width: 26px; height: 26px;
     display: flex; align-items: center; justify-content: center; font-weight: 800; font-size: 13px;
@@ -1453,6 +1421,12 @@
     background: var(--accent-soft); border: 1px solid color-mix(in srgb, var(--accent) 30%, transparent);
   }
   .dc-tail .assist-maps-link:hover { border-color: var(--accent); text-decoration: none; }
+  /* The day-row Google rating chip gets its own line under the row rather than a
+     seat in the action cluster: the "Google Maps" wordmark must never wrap or
+     shrink, and it does not fit beside three 44px targets at 390. The slot is
+     display:none while empty (see .ap-rating:empty), so a row whose rating never
+     arrives is untouched. */
+  .dc-item > .ap-rating { margin-top: 6px; }
   .dc-event.is-cancelled .dc-title, .dc-event.is-cancelled .dc-loc { opacity: 0.5; text-decoration: line-through; }
   .dc-clip { margin-left: 5px; }
   /* Per-row edit and delete. They sit in a FIXED slot at the end of every row,
@@ -2090,8 +2064,8 @@
      tablet range above (max-width 900px) is untouched. */
   @media (max-width: 560px) {
     .tp-wrap { padding: 16px 14px 72px; }
-    /* trip picker, actions menu and theme toggle share one row: the select
-       has to be allowed to shrink or the theme button drops to its own line */
+    /* trip picker and actions menu share one row: the select has to be
+       allowed to shrink or the menu button drops to its own line */
     .trip-bar { width: 100%; flex-wrap: nowrap; }
     select.trip-select { flex: 1 1 auto; min-width: 0; max-width: none; min-height: 44px; }
     .currency-sel { min-height: 44px; }
@@ -2125,6 +2099,11 @@
     .dc-item .dc-ico { grid-area: ico; }
     .dc-item .dc-label { grid-area: label; }
     .dc-details { grid-area: det; margin-top: 1px; }
+    /* No grid-area on purpose: while empty the chip is display:none and creates
+       no track, so an unrated row keeps its exact height. When it paints it
+       auto-places into a new full-width implicit row below the action cluster;
+       the grid row-gap already separates it, so the desktop margin is dropped. */
+    .dc-item > .ap-rating { grid-column: 1 / -1; margin-top: 0; }
     .dc-tail { grid-area: tail; justify-content: flex-end; gap: 2px; }
     .dc-tail .assist-maps-link { min-height: 44px; padding: 0 13px; }
     /* the header must stay ONE row at 390 with three 44px targets on it, so
