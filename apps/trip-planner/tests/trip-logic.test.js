@@ -2539,6 +2539,54 @@ test('normalizePlaceQuery clamps to the 200 chars the server accepts', () => {
   assert.equal(q.length, 200);
 });
 
+// itemMapsQuery decides which rows get a Google Maps section at all, so it is
+// also the thing that decides which rows can BILL a lookup. Both halves matter:
+// every place a traveller walks into must qualify, and nothing that is not a
+// place may.
+test('itemMapsQuery prefers the item own mapsQuery over anything derived', () => {
+  assert.equal(
+    L.itemMapsQuery({ type: 'activity', title: 'Dinner: Narisawa', location: 'Tokyo', mapsQuery: 'Narisawa Minato Tokyo' }),
+    'Narisawa Minato Tokyo');
+});
+
+test('itemMapsQuery derives a query for every accommodation and attraction', () => {
+  // a hotel, a hostel, a ryokan, a villa: all `stay`, all places you can visit,
+  // none of them tagged by hand
+  assert.equal(L.itemMapsQuery({ type: 'stay', title: 'Hotel Okura', location: 'Tokyo' }), 'Hotel Okura Tokyo');
+  assert.equal(L.itemMapsQuery({ type: 'stay', title: 'Hoshinoya Kyoto', location: 'Kyoto' }), 'Hoshinoya Kyoto');
+  assert.equal(L.itemMapsQuery({ type: 'activity', title: 'Acropolis Museum', location: 'Athens' }), 'Acropolis Museum Athens');
+});
+
+test('itemMapsQuery strips the slot prefix, which is a label and not a venue', () => {
+  assert.equal(L.itemMapsQuery({ type: 'activity', title: 'Dinner: Fiskfelagid', location: 'Reykjavik' }), 'Fiskfelagid Reykjavik');
+  assert.equal(L.itemMapsQuery({ type: 'activity', title: 'Cancelled: Blue Lagoon', location: 'Grindavik', status: 'cancelled' }), 'Blue Lagoon Grindavik');
+});
+
+test('itemMapsQuery derives nothing for the things that are not a place', () => {
+  // a leg goes BETWEEN places, a taxi hop is not a destination, and a note is
+  // not anywhere at all: "Return to hotel Lisbon" is the exact query that sends
+  // a traveller to the wrong pin
+  assert.equal(L.itemMapsQuery({ type: 'flight', title: 'BOS to KEF', location: 'Boston' }), '');
+  assert.equal(L.itemMapsQuery({ type: 'transport', title: 'Reykjavik to Akureyri' }), '');
+  assert.equal(L.itemMapsQuery({ type: 'local', title: 'Return to hotel', location: 'Lisbon' }), '');
+  assert.equal(L.itemMapsQuery({ type: 'note', title: 'About this trip' }), '');
+  assert.equal(L.itemMapsQuery({ type: 'activity', title: '', location: 'Tokyo' }), '');
+  assert.equal(L.itemMapsQuery(null), '');
+});
+
+test('itemMapsQuery does not repeat a location the title already names', () => {
+  assert.equal(L.itemMapsQuery({ type: 'activity', title: 'Godafoss and Akureyri', location: 'Akureyri' }), 'Godafoss and Akureyri');
+});
+
+test('displayTitle drops the status prefix ONLY where a badge now says it', () => {
+  assert.equal(L.displayTitle({ title: 'Cancelled: Fado night', status: 'cancelled' }), 'Fado night');
+  // not cancelled: the words are the traveller's own title, so they stay
+  assert.equal(L.displayTitle({ title: 'Cancelled: Fado night', status: 'to-book' }), 'Cancelled: Fado night');
+  // a title that is nothing BUT the prefix keeps its text rather than vanishing
+  assert.equal(L.displayTitle({ title: 'Cancelled', status: 'cancelled' }), 'Cancelled');
+  assert.equal(L.displayTitle({ title: 'Cancelled:', status: 'cancelled' }), 'Cancelled:');
+});
+
 test('planPlacesLookup drops duplicates within one render so a card bills once', () => {
   const { misses, batches } = L.planPlacesLookup(
     ['Narisawa Tokyo', 'narisawa  tokyo', 'Den Tokyo', '', null], new Set());
