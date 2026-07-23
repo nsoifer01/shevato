@@ -2894,9 +2894,11 @@ const TripLogic = (() => {
 
   // `place` is the label without its "(city and city)" tail: the short form the
   // trip-name datalist offers, which is also a name the matcher resolves.
+  // Sorted by label for the dropdown/datalist; SAMPLE_TRIPS itself stays in
+  // its deliberate short-to-long order (see SAMPLE_SHAPES in the tests).
   const sampleTripOptions = () => SAMPLE_TRIPS.map(t => ({
     id: t.id, label: t.label, place: t.label.replace(/\s*\(.*$/, ''), summary: t.summary,
-  }));
+  })).sort((a, b) => a.label.localeCompare(b.label));
 
   function expandSampleItem(spec, tplId, base, index, createdAt, currency) {
     const it = {

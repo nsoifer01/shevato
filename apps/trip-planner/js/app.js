@@ -2,9 +2,8 @@
 (() => {
 
   // ---------- constants ----------
-  const TP_BUILD = 27; // bump with every asset-version bump; shown in the footer
+  const TP_BUILD = 28; // bump with every asset-version bump; shown in the footer
   const LS_KEY = 'trip-planner:v1';
-  const THEME_KEY = 'trip-planner:theme';
   const TIMEFMT_KEY = 'trip-planner:timefmt';
   const TYPE_META = {
     flight:    { label: 'Flight',    icon: '✈️', order: 0, cls: 'type-flight' },
@@ -116,7 +115,7 @@
   }
   // ---------- undo / redo ----------
   // State-snapshot history fed from save(), the single choke point every
-  // data mutation already flows through. Settings (theme, time format)
+  // data mutation already flows through. Settings (the time format)
   // bypass save() so they stay out of the history.
   const HISTORY_MAX = 50;
   const undoPast = [];
@@ -857,6 +856,11 @@
     if (notes) html += notes;
 
     board.innerHTML = html;
+    // Paint any ratings the session already knows and batch-fetch only the
+    // genuinely-missing queries. Routing through hydrateRatings means a re-render
+    // or a repeat venue costs nothing (placesKnown dedups), and a trip with no
+    // mapsQuery items fires no request at all.
+    hydrateRatings(board);
 
     if (phase.phase === 'during' && !didAutoScroll) {
       const target = items.find(it => isIsoDate(it.startDate) && it.startDate >= today);
@@ -1054,7 +1058,13 @@
         + (long ? `<button type="button" class="det-more" data-act="more" aria-expanded="false">Show more</button>` : '')
         + `</div>`);
     }
-    if (withMaps && it.mapsQuery) parts.push(`<div class="det-chips">${mapsLinkHtml(it.mapsQuery)}</div>`);
+    // The Google rating chip rides in the timeline chip row, before the standalone
+    // Maps link so the CSS that hides a redundant link once the chip paints has an
+    // adjacent sibling to hide. The days view passes withMaps=false and gets its
+    // chip from a bare, self-collapsing slot in dayEventHtml instead, because an
+    // always-present det-chips wrapper would leave a margin gap on the rows whose
+    // rating never arrives.
+    if (withMaps && it.mapsQuery) parts.push(`<div class="det-chips">${ratingSlotHtml(it.mapsQuery)}${mapsLinkHtml(it.mapsQuery)}</div>`);
     return parts.length ? `<div class="${cls}">${parts.join('')}</div>` : '';
   }
 
@@ -1127,6 +1137,13 @@
     // Maps leaves the description block and joins the row's action cluster: it
     // is an action like edit and delete, not part of the note text.
     const details = ev.kind === 'checkout' ? '' : detailsHtml(it, 'dc-details', false);
+    // The Google rating chip is a bare, self-collapsing slot rather than a member
+    // of the action cluster: the full "Google Maps" wordmark plus a rating and a
+    // count is wider than the three 44px targets already leave on a 390 row, so it
+    // gets its own full-width line under the row. Empty until (and unless) a
+    // rating arrives, and display:none while empty, so a row whose rating never
+    // lands keeps its exact previous height (no implicit grid row, no gap).
+    const rating = ev.kind === 'checkout' ? '' : ratingSlotHtml(it.mapsQuery);
     const maps = ev.kind === 'checkout' ? '' : mapsLinkHtml(it.mapsQuery, '📍 Maps');
     const cost = ev.kind === 'checkout' ? '' : dayCostBadge(trip, it);
     // stay rows carry no real time (the assumed ones are for ordering only), so
@@ -1165,6 +1182,7 @@
           <div class="dc-tail">${cost}${maps}${edit}${del}</div>
         </div>
         ${details}
+        ${rating}
       </div>
     </div>`;
   }
@@ -1380,6 +1398,10 @@
       + WEATHER_YEARS + ' years of records, not a forecast. Weather data by '
       + '<a href="https://open-meteo.com/" target="_blank" rel="noopener">Open-Meteo</a> (CC BY 4.0).</div>';
     box.innerHTML = note + cards.map(c => dayCardHtml(c, phase.phase === 'during' && c.date === today, trip)).join('') + wx;
+    // Same one batched lookup as the timeline: paints from the shared session
+    // cache instantly, so switching into the days view never refetches a key the
+    // board already resolved.
+    hydrateRatings(box);
     loadWeatherForDays();
     refreshDocIndicators();
   }
@@ -4164,20 +4186,6 @@
     setTimeout(() => { el.style.opacity = '0'; el.style.transition = 'opacity .4s'; setTimeout(() => el.remove(), 450); }, undoFn ? 6000 : 2600);
   }
 
-  // ---------- theme ----------
-  function applyThemeClass(t) {
-    document.body.classList.toggle('tp-light', t === 'light');
-  }
-  function applyTheme(t) {
-    applyThemeClass(t);
-    localStorage.setItem(THEME_KEY, t);
-  }
-  (function initTheme() {
-    const saved = localStorage.getItem(THEME_KEY);
-    if (saved) applyTheme(saved);
-    else if (window.matchMedia && window.matchMedia('(prefers-color-scheme: light)').matches) applyTheme('light');
-  })();
-
   // ---------- events ----------
   $('#addBtn').addEventListener('click', () => openItemModal(null));
   $('#shiftTripBtn').addEventListener('click', () => openShiftModal(null));
@@ -4385,10 +4393,6 @@
   $('#shiftMinus').addEventListener('click', () => { $('#shiftDays').value = (parseInt($('#shiftDays').value, 10) || 0) - 1; });
   $('#shiftPlus').addEventListener('click', () => { $('#shiftDays').value = (parseInt($('#shiftDays').value, 10) || 0) + 1; });
 
-  $('#themeBtn').addEventListener('click', () => {
-    applyTheme(document.body.classList.contains('tp-light') ? 'dark' : 'light');
-  });
-
   $('#tripSelect').addEventListener('change', e => { db.activeTripId = e.target.value; save(); render(); });
 
   $('#tripMenuBtn').addEventListener('click', e => { e.stopPropagation(); $('#tripMenu').classList.toggle('open'); });
@@ -4562,8 +4566,6 @@
       undoFuture.length = 0;
       markSaved();
       render();
-    } else if (key === THEME_KEY) {
-      applyThemeClass(localStorage.getItem(THEME_KEY) || 'dark');
     } else if (key === TIMEFMT_KEY) {
       use24h = localStorage.getItem(TIMEFMT_KEY) === '24';
       syncTimefmtLabel();
