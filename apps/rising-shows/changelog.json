@@ -1,6 +1,228 @@
 {
   "updates": [
     {
+      "builtAt": "2026-07-23T08:31:23.460Z",
+      "totals": {
+        "seasons": 65939,
+        "delta": 15
+      },
+      "shapeCounts": {
+        "mid-peak": 4625,
+        "rebound": 10065,
+        "rising": 2919,
+        "slow-burn": 4373,
+        "big-finale": 12015,
+        "u-shaped": 3083,
+        "rollercoaster": 14036,
+        "saved-best-for-last": 1532,
+        "front-loaded": 3460,
+        "declining": 1883,
+        "bad-finale": 4642,
+        "consistent": 2620,
+        "shape-drift": 1635
+      },
+      "shapeDeltas": {
+        "mid-peak": -3,
+        "rebound": 2,
+        "rising": 2,
+        "slow-burn": 10,
+        "big-finale": 13,
+        "u-shaped": -5,
+        "rollercoaster": -2,
+        "saved-best-for-last": 2,
+        "front-loaded": 6,
+        "declining": 2,
+        "bad-finale": -4,
+        "consistent": -1,
+        "shape-drift": -1
+      },
+      "added": [
+        {
+          "seriesId": "tt36517689",
+          "title": "The Ghost in the Shell",
+          "season": 1,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt36056731",
+          "title": "I Want to Love You Till Your Dying Day",
+          "season": 1,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt37015024",
+          "title": "Young Ladies Don't Play Fighting Games",
+          "season": 1,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt43696866",
+          "title": "Clone",
+          "season": 1,
+          "seasonYear": 2021
+        },
+        {
+          "seriesId": "tt0472989",
+          "title": "Wild 'N Out",
+          "season": 2,
+          "seasonYear": 2006
+        },
+        {
+          "seriesId": "tt36614693",
+          "title": "WWE: Unreal",
+          "season": 3,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt41095208",
+          "title": "The Forsaken Saintess and Her Foodie Roadtrip in Another World",
+          "season": 1,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt11161138",
+          "title": "Dr. Gokú Super",
+          "season": 4,
+          "seasonYear": 2019
+        },
+        {
+          "seriesId": "tt4104710",
+          "title": "Bayki Mityaya",
+          "season": 1,
+          "seasonYear": 2012
+        },
+        {
+          "seriesId": "tt4277128",
+          "title": "Die Anstalt",
+          "season": 13,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt16354496",
+          "title": "Bite Sisters",
+          "season": 1,
+          "seasonYear": 2021
+        },
+        {
+          "seriesId": "tt33312074",
+          "title": "She, Damned Soul",
+          "season": 1,
+          "seasonYear": 2025
+        },
+        {
+          "seriesId": "tt3252896",
+          "title": "Britain and the Sea",
+          "season": 1,
+          "seasonYear": 2013
+        },
+        {
+          "seriesId": "tt38273525",
+          "title": "Victoria of Many Faces",
+          "season": 1,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt36204806",
+          "title": "Blossoms of Power",
+          "season": 1,
+          "seasonYear": 2026
+        }
+      ],
+      "removed": [],
+      "ratingSwings": [
+        {
+          "seriesId": "tt0472989",
+          "title": "Wild 'N Out",
+          "season": 14,
+          "from": 9.04,
+          "to": 7.84,
+          "delta": -1.2
+        },
+        {
+          "seriesId": "tt0472989",
+          "title": "Wild 'N Out",
+          "season": 10,
+          "from": 8.13,
+          "to": 7.03,
+          "delta": -1.1
+        },
+        {
+          "seriesId": "tt0472989",
+          "title": "Wild 'N Out",
+          "season": 13,
+          "from": 8.07,
+          "to": 7,
+          "delta": -1.07
+        },
+        {
+          "seriesId": "tt0472989",
+          "title": "Wild 'N Out",
+          "season": 12,
+          "from": 8.09,
+          "to": 7.1,
+          "delta": -0.99
+        },
+        {
+          "seriesId": "tt0472989",
+          "title": "Wild 'N Out",
+          "season": 7,
+          "from": 8.6,
+          "to": 7.63,
+          "delta": -0.97
+        },
+        {
+          "seriesId": "tt0472989",
+          "title": "Wild 'N Out",
+          "season": 8,
+          "from": 8.37,
+          "to": 7.44,
+          "delta": -0.93
+        },
+        {
+          "seriesId": "tt4458594",
+          "title": "Blaze and the Monster Machines",
+          "season": 9,
+          "from": 8.76,
+          "to": 7.9,
+          "delta": -0.86
+        },
+        {
+          "seriesId": "tt0472989",
+          "title": "Wild 'N Out",
+          "season": 9,
+          "from": 8.27,
+          "to": 7.42,
+          "delta": -0.85
+        },
+        {
+          "seriesId": "tt0472989",
+          "title": "Wild 'N Out",
+          "season": 5,
+          "from": 7.88,
+          "to": 7.18,
+          "delta": -0.7
+        },
+        {
+          "seriesId": "tt40358752",
+          "title": "Amor Animal",
+          "season": 1,
+          "from": 5.18,
+          "to": 5.88,
+          "delta": 0.7
+        }
+      ],
+      "modifiedCounts": {
+        "seriesVotes": 20039,
+        "avgRating": 1357,
+        "seriesRating": 307,
+        "shapes": 241,
+        "episodeCount": 84,
+        "poster": 1,
+        "overview": 1,
+        "providers": 1
+      }
+    },
+    {
       "builtAt": "2026-07-22T08:45:21.720Z",
       "totals": {
         "seasons": 65924,
