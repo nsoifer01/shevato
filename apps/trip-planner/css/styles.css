@@ -190,9 +190,9 @@
   .trip-planner-app input:focus-visible,
   .trip-planner-app textarea:focus-visible,
   .trip-planner-app a.btn:focus-visible,
-  /* the day row's Maps chip is an action button in everything but tag name, so
+  /* the day row's Maps link is an action button in everything but tag name, so
      it takes the same ring instead of the browser's default outline */
-  .trip-planner-app .dc-tail .assist-maps-link:focus-visible {
+  .trip-planner-app .dc-tail .tp-maps-link:focus-visible {
     outline: 2px solid var(--accent); outline-offset: 2px;
   }
 
@@ -370,15 +370,20 @@
   }
   .det-more:hover { text-decoration: underline; box-shadow: none; }
   .det-chips { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 7px; }
-  /* Maps is an ACTION, so it reads as a chip, not as a blue word in a
-     sentence (see also the !important colour pins further down) */
-  .c-details .assist-maps-link {
+  /* the combined Maps+rating link is an ACTION, so it reads as a chip, not as a
+     blue word in a sentence (see also the !important colour pins further down) */
+  .c-details .tp-maps-link {
     display: inline-flex; align-items: center; gap: 5px; margin: 0;
     padding: 5px 11px; border-radius: 999px; text-decoration: none;
     background: var(--accent-soft); border: 1px solid transparent;
     font-size: 12.5px; font-weight: 600; line-height: 1.25; white-space: nowrap;
   }
-  .c-details .assist-maps-link:hover { border-color: var(--accent); text-decoration: none; }
+  .c-details .tp-maps-link:hover { border-color: var(--accent); text-decoration: none; }
+  /* the "Google Maps" wordmark is verbatim attribution: never wrap, never
+     ellipsize. The rating segment rides after it on the same line. */
+  .tp-maps-link .tpm-label, .tp-maps-link .tpm-rating { white-space: nowrap; }
+  .tp-maps-link .tpm-rating { display: inline-flex; align-items: center; gap: 5px; }
+  .tpm-star { font-size: 12px; }
 
   .c-side { grid-area: side; display: flex; flex-direction: column; align-items: flex-end; gap: 6px; padding-top: 2px; }
   select.status-sel {
@@ -1022,6 +1027,16 @@
   .trip-planner-app .apr-brand { color: var(--text) !important; }
   .trip-planner-app .apr-count { color: var(--text-dim) !important; }
   .trip-planner-app .apr-star { color: var(--amber) !important; }
+  /* the itinerary combined Maps link reads as ONE link, not a blue action word
+     and not main.css's red anchor: the whole element is --text, the review count
+     dims, the star is amber. Same specificity trap as a.apr-chip above (this sits
+     inside .c-details on the Timeline), so the element qualifier a.tp-maps-link
+     plus source order after ".c-details a" is what wins. */
+  .trip-planner-app a.tp-maps-link,
+  .trip-planner-app a.tp-maps-link:hover,
+  .trip-planner-app .tp-maps-link .tpm-label { color: var(--text) !important; }
+  .trip-planner-app .tp-maps-link .tpm-count { color: var(--text-dim) !important; }
+  .trip-planner-app .tp-maps-link .tpm-star { color: var(--amber) !important; }
   .trip-planner-app button:disabled { color: var(--text-faint) !important; }
   /* main.css also flashes rgba-red backgrounds on :hover:active */
   .trip-planner-app button:hover:active { background-color: transparent; }
@@ -1385,7 +1400,13 @@
     background: var(--bg-raised); transition: background .13s, box-shadow .13s;
   }
   .dc-item:hover { box-shadow: inset 3px 0 0 var(--row-accent, var(--text-dim)), var(--shadow-sm); }
-  .dc-main { display: flex; align-items: flex-start; gap: 8px; min-width: 0; }
+  /* wrap: the combined Maps+rating link now rides in the action cluster, and in
+     a narrow day-card column (the grid is min 400px, so ~2 up on a laptop) the
+     "Google Maps" wordmark plus a rating is too wide to sit beside the title.
+     Rather than crush the title to one character per line, the whole action
+     cluster drops to its own line under the title (right-aligned) when it will
+     not fit; a row whose cluster is just cost + edit + delete still sits inline. */
+  .dc-main { display: flex; align-items: flex-start; flex-wrap: wrap; gap: 8px; min-width: 0; }
   /* a tinted tile per type: the icon is the type, the rail dot is the status */
   .dc-event .dc-ico {
     display: inline-flex; align-items: center; justify-content: center; flex: none;
@@ -1395,7 +1416,12 @@
   }
   /* a single long place name (Llanfairpwllgwyngyll...) must break rather than
      run out of the card */
-  .dc-event .dc-label { flex: 1 1 auto; min-width: 0; overflow-wrap: anywhere; }
+  /* 7em floor (not min-width:0): keeps the title readable and is what forces the
+     wide action cluster onto its own line instead of squeezing the title to
+     nothing. The grid layout at <=560px overrides .dc-main to display:contents,
+     so this floor only governs the flex-row desktop layout. */
+  .dc-event .dc-label { flex: 1 1 auto; min-width: 7em; overflow-wrap: anywhere; }
+  .dc-tail { margin-left: auto; }
   .dc-tag {
     display: inline-block; margin-bottom: 2px; padding: 1px 6px; border-radius: 5px;
     font-size: 9.5px; font-weight: 800; letter-spacing: 0.6px; text-transform: uppercase;
@@ -1414,19 +1440,13 @@
   .dc-cost.is-note { font-weight: 600; color: var(--text-dim); }
   /* Maps is an action, so it rides in the action cluster as a bordered button,
      not as a blue word under the description */
-  .dc-tail .assist-maps-link {
+  .dc-tail .tp-maps-link {
     display: inline-flex; align-items: center; gap: 4px; flex: none;
     padding: 4px 10px; border-radius: 9px; text-decoration: none; white-space: nowrap;
     font-size: 11.5px; font-weight: 700; line-height: 1.25;
     background: var(--accent-soft); border: 1px solid color-mix(in srgb, var(--accent) 30%, transparent);
   }
-  .dc-tail .assist-maps-link:hover { border-color: var(--accent); text-decoration: none; }
-  /* The day-row Google rating chip gets its own line under the row rather than a
-     seat in the action cluster: the "Google Maps" wordmark must never wrap or
-     shrink, and it does not fit beside three 44px targets at 390. The slot is
-     display:none while empty (see .ap-rating:empty), so a row whose rating never
-     arrives is untouched. */
-  .dc-item > .ap-rating { margin-top: 6px; }
+  .dc-tail .tp-maps-link:hover { border-color: var(--accent); text-decoration: none; }
   .dc-event.is-cancelled .dc-title, .dc-event.is-cancelled .dc-loc { opacity: 0.5; text-decoration: line-through; }
   .dc-clip { margin-left: 5px; }
   /* Per-row edit and delete. They sit in a FIXED slot at the end of every row,
@@ -2099,13 +2119,17 @@
     .dc-item .dc-ico { grid-area: ico; }
     .dc-item .dc-label { grid-area: label; }
     .dc-details { grid-area: det; margin-top: 1px; }
-    /* No grid-area on purpose: while empty the chip is display:none and creates
-       no track, so an unrated row keeps its exact height. When it paints it
-       auto-places into a new full-width implicit row below the action cluster;
-       the grid row-gap already separates it, so the desktop margin is dropped. */
-    .dc-item > .ap-rating { grid-column: 1 / -1; margin-top: 0; }
-    .dc-tail { grid-area: tail; justify-content: flex-end; gap: 2px; }
-    .dc-tail .assist-maps-link { min-height: 44px; padding: 0 13px; }
+    /* the action cluster is its own full-width row at 390. The combined Maps link
+       plus a rating plus two 44px targets cannot share one 350px line, so the
+       Maps link takes its own full-width line (order:-1, above the buttons) and
+       cost + edit + delete keep the line below, right-aligned. This is the
+       sanctioned "own line" fallback: the wordmark still never wraps, and the
+       full-width pill is a comfortable thumb target. */
+    .dc-tail { grid-area: tail; justify-content: flex-end; flex-wrap: wrap; gap: 4px 2px; }
+    .dc-tail .tp-maps-link {
+      order: -1; flex: 1 0 100%; justify-content: flex-start;
+      min-height: 44px; padding: 0 13px;
+    }
     /* the header must stay ONE row at 390 with three 44px targets on it, so
        everything that is not a target gives up width: the day badge drops the
        "/ total" (the aria-label still says it), the date steps down a size and

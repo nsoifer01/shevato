@@ -2,7 +2,7 @@
 (() => {
 
   // ---------- constants ----------
-  const TP_BUILD = 28; // bump with every asset-version bump; shown in the footer
+  const TP_BUILD = 29; // bump with every asset-version bump; shown in the footer
   const LS_KEY = 'trip-planner:v1';
   const TIMEFMT_KEY = 'trip-planner:timefmt';
   const TYPE_META = {
@@ -556,6 +556,19 @@
       + ` href="${esc(link.href)}" target="_blank" rel="noopener">${esc(link.label)}</a>`;
   }
 
+  // Itinerary cards (Timeline + Days) carry ONE combined element: the item's
+  // Google Maps link with its rating inline. It starts as a search anchor and is
+  // upgraded in place by paintTripMapsLink once the batched lookup resolves the
+  // place (href -> mapsUri, rating segment appended, accessible name set). The
+  // "Google Maps" wordmark is verbatim and never wraps (CSS nowraps the label).
+  function tripMapsRatingHtml(mapsQuery) {
+    const key = placeCacheKey(mapsQuery);
+    if (!key) return '';
+    return `<a class="tp-maps-link" data-place-key="${esc(key)}" data-place-query="${esc(mapsQuery)}"`
+      + ` href="${esc(mapsSearchUrl(mapsQuery))}" target="_blank" rel="noopener">`
+      + `<span class="tpm-label">📍 Google Maps</span></a>`;
+  }
+
   function render() {
     try {
       ensureTrip();
@@ -1058,13 +1071,10 @@
         + (long ? `<button type="button" class="det-more" data-act="more" aria-expanded="false">Show more</button>` : '')
         + `</div>`);
     }
-    // The Google rating chip rides in the timeline chip row, before the standalone
-    // Maps link so the CSS that hides a redundant link once the chip paints has an
-    // adjacent sibling to hide. The days view passes withMaps=false and gets its
-    // chip from a bare, self-collapsing slot in dayEventHtml instead, because an
-    // always-present det-chips wrapper would leave a margin gap on the rows whose
-    // rating never arrives.
-    if (withMaps && it.mapsQuery) parts.push(`<div class="det-chips">${ratingSlotHtml(it.mapsQuery)}${mapsLinkHtml(it.mapsQuery)}</div>`);
+    // One combined element: the item's Google Maps link with its rating inline
+    // (see tripMapsRatingHtml). The days view passes withMaps=false and puts the
+    // same element in its action cluster instead.
+    if (withMaps && it.mapsQuery) parts.push(`<div class="det-chips">${tripMapsRatingHtml(it.mapsQuery)}</div>`);
     return parts.length ? `<div class="${cls}">${parts.join('')}</div>` : '';
   }
 
@@ -1135,16 +1145,10 @@
     // details and cost ride on the check-in row only: a checkout row is the
     // same item again, and repeating them would double-count the trip on screen
     // Maps leaves the description block and joins the row's action cluster: it
-    // is an action like edit and delete, not part of the note text.
+    // is an action like edit and delete, not part of the note text. The combined
+    // element carries the Google rating inline once the lookup resolves it.
     const details = ev.kind === 'checkout' ? '' : detailsHtml(it, 'dc-details', false);
-    // The Google rating chip is a bare, self-collapsing slot rather than a member
-    // of the action cluster: the full "Google Maps" wordmark plus a rating and a
-    // count is wider than the three 44px targets already leave on a 390 row, so it
-    // gets its own full-width line under the row. Empty until (and unless) a
-    // rating arrives, and display:none while empty, so a row whose rating never
-    // lands keeps its exact previous height (no implicit grid row, no gap).
-    const rating = ev.kind === 'checkout' ? '' : ratingSlotHtml(it.mapsQuery);
-    const maps = ev.kind === 'checkout' ? '' : mapsLinkHtml(it.mapsQuery, '📍 Maps');
+    const maps = ev.kind === 'checkout' ? '' : tripMapsRatingHtml(it.mapsQuery);
     const cost = ev.kind === 'checkout' ? '' : dayCostBadge(trip, it);
     // stay rows carry no real time (the assumed ones are for ordering only), so
     // the when column stays EMPTY for them rather than printing a guess
@@ -1182,7 +1186,6 @@
           <div class="dc-tail">${cost}${maps}${edit}${del}</div>
         </div>
         ${details}
-        ${rating}
       </div>
     </div>`;
   }
@@ -3844,10 +3847,34 @@
     if (el.textContent !== link.label) el.textContent = link.label;
   }
 
+  // Itinerary combined link: once the lookup resolves this place, upgrade the
+  // href to the real mapsUri, append the rating segment ` • ⭐ 4.7 (1,800)` and
+  // move the rating into the accessible name. Idempotent: the painted flag makes
+  // a repeat paintPlaces call (a later batch, a re-render sharing the cache) a
+  // no-op, and the count parenthetical is dropped when Google has no reviews.
+  function paintTripMapsLink(el) {
+    if (el.dataset.painted === '1') return;
+    const entry = placesCache.get(el.dataset.placeKey || '');
+    if (!entry || entry.status !== 'ok') return;
+    el.dataset.painted = '1';
+    const count = entry.userRatingCount ? entry.userRatingCount.toLocaleString() : '';
+    const aria = `${entry.rating} out of 5 on Google Maps${count ? ', ' + count + ' reviews' : ''}. Opens Google Maps.`;
+    el.setAttribute('aria-label', aria);
+    if (entry.mapsUri) el.setAttribute('href', entry.mapsUri);
+    const seg = document.createElement('span');
+    seg.className = 'tpm-rating';
+    seg.innerHTML = ` <span class="tpm-sep" aria-hidden="true">•</span> `
+      + `<span class="tpm-star" aria-hidden="true">⭐</span> `
+      + `<span class="tpm-score">${esc(entry.rating.toFixed(1))}</span>`
+      + (count ? ` <span class="tpm-count">(${esc(count)})</span>` : '');
+    el.appendChild(seg);
+  }
+
   function paintPlaces(root) {
     const scope = root && root.querySelectorAll ? root : document;
     scope.querySelectorAll('.ap-rating[data-place-key]').forEach(paintRatingSlot);
     scope.querySelectorAll('.assist-maps-link[data-place-key]').forEach(paintMapsLink);
+    scope.querySelectorAll('.tp-maps-link[data-place-key]').forEach(paintTripMapsLink);
   }
 
   // Called once per rendered batch of proposal cards. Paints whatever the
@@ -3855,7 +3882,7 @@
   // then asks only for what is genuinely missing.
   function hydrateRatings(container) {
     paintPlaces(container);
-    const queries = [...container.querySelectorAll('.ap-rating[data-place-key]')]
+    const queries = [...container.querySelectorAll('.ap-rating[data-place-key], .tp-maps-link[data-place-key]')]
       .map(el => el.dataset.placeQuery || '')
       .filter(Boolean);
     if (queries.length) fetchRatings(queries);
