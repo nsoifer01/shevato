@@ -2,7 +2,7 @@
 (() => {
 
   // ---------- constants ----------
-  const TP_BUILD = 29; // bump with every asset-version bump; shown in the footer
+  const TP_BUILD = 30; // bump with every asset-version bump; shown in the footer
   const LS_KEY = 'trip-planner:v1';
   const TIMEFMT_KEY = 'trip-planner:timefmt';
   const TYPE_META = {
@@ -55,7 +55,7 @@
     bytesToBase64url, base64urlToBytes,
     transportGaps, tripPhase, isPastRow,
     dayCards, dayMorningCity, emptyDayNote, departureOrigin, suggestedPassport, passportAssumptionParts, defaultPlanDay, planDayGroups, overnightTransit,
-    timelineGroups, mealKind, isFoodOrDrink, isLongDetails, mealTitlePrefixes,
+    timelineGroups, mealKind, isFoodOrDrink, isLongDetails, mealTitlePrefixes, itemMapsQuery, displayTitle,
     weatherKey, summarizeClimate, weatherLine, weatherRange, pickMonthSamples, docGuard,
     extractTripActions, validateTripAction, buildAssistPackage, buildAssistSystemPrompt,
     buildPlanRequest, groupProposals, linkifySegments, parseMarkdown,
@@ -561,13 +561,21 @@
   // upgraded in place by paintTripMapsLink once the batched lookup resolves the
   // place (href -> mapsUri, rating segment appended, accessible name set). The
   // "Google Maps" wordmark is verbatim and never wraps (CSS nowraps the label).
+  // Unrated and rated read as the same control at the same height: the rating is
+  // a suffix on the pill, never a differently-shaped chip, so the eye finds it
+  // in the same spot on every card whether or not Google had a number for it.
   function tripMapsRatingHtml(mapsQuery) {
     const key = placeCacheKey(mapsQuery);
     if (!key) return '';
     return `<a class="tp-maps-link" data-place-key="${esc(key)}" data-place-query="${esc(mapsQuery)}"`
       + ` href="${esc(mapsSearchUrl(mapsQuery))}" target="_blank" rel="noopener">`
-      + `<span class="tpm-label">📍 Google Maps</span></a>`;
+      + `<span class="tpm-label">Google Maps</span></a>`;
   }
+
+  // The one place both views ask "does this item open on Maps at all?", so a
+  // hotel, a restaurant and a museum can never diverge on whether they get the
+  // section (see itemMapsQuery for which types derive a query).
+  const mapsHtmlFor = it => tripMapsRatingHtml(itemMapsQuery(it));
 
   function render() {
     try {
@@ -1038,7 +1046,7 @@
           <span class="c-date">${dates}</span>${time}${n ? `<span class="c-nights">${n} night${n === 1 ? '' : 's'}</span>` : ''}
         </div>
         <div class="c-main">
-          <div class="c-title">${esc(it.title)}</div>
+          <div class="c-title">${esc(displayTitle(it))}</div>
           ${it.location ? `<div class="c-loc">${esc(it.location)}</div>` : ''}
           ${detailsHtml(it)}
         </div>
@@ -1074,7 +1082,10 @@
     // One combined element: the item's Google Maps link with its rating inline
     // (see tripMapsRatingHtml). The days view passes withMaps=false and puts the
     // same element in its action cluster instead.
-    if (withMaps && it.mapsQuery) parts.push(`<div class="det-chips">${tripMapsRatingHtml(it.mapsQuery)}</div>`);
+    if (withMaps) {
+      const maps = mapsHtmlFor(it);
+      if (maps) parts.push(`<div class="det-chips">${maps}</div>`);
+    }
     return parts.length ? `<div class="${cls}">${parts.join('')}</div>` : '';
   }
 
@@ -1140,6 +1151,9 @@
     // A check-out row names the place you are leaving; the location line would
     // just repeat the city you are still standing in.
     const loc = (it.location && ev.kind !== 'checkout') ? `<div class="dc-loc">${esc(it.location)}</div>` : '';
+    // A strikethrough alone carried the whole message and lost it the moment
+    // the title wrapped or the row was skimmed, so the status says itself.
+    const cancelled = it.status === 'cancelled';
     // paperclip only where docs attach once per item (skip checkout dupes)
     const clip = ev.kind === 'checkout' ? '' : `<span class="dc-clip" data-clip-for="${it.id}" hidden>📎</span>`;
     // details and cost ride on the check-in row only: a checkout row is the
@@ -1148,7 +1162,7 @@
     // is an action like edit and delete, not part of the note text. The combined
     // element carries the Google rating inline once the lookup resolves it.
     const details = ev.kind === 'checkout' ? '' : detailsHtml(it, 'dc-details', false);
-    const maps = ev.kind === 'checkout' ? '' : tripMapsRatingHtml(it.mapsQuery);
+    const maps = ev.kind === 'checkout' ? '' : mapsHtmlFor(it);
     const cost = ev.kind === 'checkout' ? '' : dayCostBadge(trip, it);
     // stay rows carry no real time (the assumed ones are for ordering only), so
     // the when column stays EMPTY for them rather than printing a guess
@@ -1170,7 +1184,11 @@
     // four statuses stay legible at a glance without a pill on every row. The
     // dot carries the label in text for anyone who cannot use the colour.
     const sm = STATUS_META[it.status] || STATUS_META['to-book'];
-    return `<div class="dc-event ${look.cls}${travelCls}${isStayRow ? ' is-stay' : ''} ${sm.cls} ${it.status === 'cancelled' ? 'is-cancelled' : ''}">
+    // Two tags can be true at once (a cancelled booking still checks in on this
+    // day), so they share one line rather than one slot.
+    const tags = (tag ? `<span class="dc-tag">${tag}</span>` : '')
+      + (cancelled ? '<span class="dc-tag is-cancelled">Cancelled</span>' : '');
+    return `<div class="dc-event ${look.cls}${travelCls}${isStayRow ? ' is-stay' : ''} ${sm.cls} ${cancelled ? 'is-cancelled' : ''}">
       <div class="dc-rail">
         <span class="dc-dot" role="img" aria-label="${esc(sm.label)}" title="${esc(sm.label)}"></span>
         ${when ? `<span class="dc-when">${when}</span>` : ''}
@@ -1179,11 +1197,12 @@
         <div class="dc-main">
           <span class="dc-ico" role="img" aria-label="${esc(look.label)}" title="${esc(look.label)}">${look.icon}</span>
           <div class="dc-label">
-            ${tag ? `<span class="dc-tag">${tag}</span>` : ''}
-            <div class="dc-title">${esc(it.title)}${clip}</div>
+            ${tags}
+            <div class="dc-title">${esc(displayTitle(it))}${clip}</div>
             ${loc}
           </div>
-          <div class="dc-tail">${cost}${maps}${edit}${del}</div>
+          <div class="dc-facts">${cost}${maps}</div>
+          <div class="dc-btns">${edit}${del}</div>
         </div>
         ${details}
       </div>
@@ -3863,7 +3882,7 @@
     if (entry.mapsUri) el.setAttribute('href', entry.mapsUri);
     const seg = document.createElement('span');
     seg.className = 'tpm-rating';
-    seg.innerHTML = ` <span class="tpm-sep" aria-hidden="true">•</span> `
+    seg.innerHTML = ` <span class="tpm-sep" aria-hidden="true">·</span> `
       + `<span class="tpm-star" aria-hidden="true">⭐</span> `
       + `<span class="tpm-score">${esc(entry.rating.toFixed(1))}</span>`
       + (count ? ` <span class="tpm-count">(${esc(count)})</span>` : '');

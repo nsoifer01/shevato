@@ -1791,6 +1791,66 @@ const TripLogic = (() => {
     return { href: search, label: '📍 Verify on Google Maps', resolved: false };
   }
 
+  // ---------- itinerary: which query an item opens on Google Maps ----------
+  // Every place a traveller can actually walk into deserves the same Maps
+  // section: a hotel, a ryokan, a hostel or an apartment is a place the same way
+  // a museum or a restaurant is, and a rating that only ever showed up on the
+  // ones the assistant happened to tag read as a bug.
+  //
+  // `mapsQuery` is still the truth when it exists (the assistant writes it, an
+  // edit carries it across). This fills the gap for everything else - anything
+  // typed by hand, and any assistant item that omitted it - by asking for the
+  // item's OWN words: its title plus its location, which is exactly what a
+  // traveller would type into Maps themselves.
+  //
+  // Only `stay` and `activity` derive one. A flight, a between-cities leg, a
+  // taxi hop and a note are not places you visit, and "Return to hotel Lisbon"
+  // is the documented way to send someone to the wrong pin (see
+  // ASSIST_MAPSQUERY). The server's own generic-query filter is the second net:
+  // a derived query that names no venue is rejected there before it costs
+  // anything, and the row keeps its plain "Google Maps" search button.
+  const PLACE_TYPES = { stay: 1, activity: 1 };
+
+  // A meal prefix is a slot label, not part of the venue's name: "Dinner:
+  // Fiskfelagid" is searched as "Fiskfelagid". "Cancelled:" goes the same way,
+  // since the status is now a badge of its own.
+  const TITLE_PREFIX_RE = /^\s*cancelled\s*:\s*/i;
+  function stripTitlePrefixes(title) {
+    let t = String(title == null ? '' : title).replace(TITLE_PREFIX_RE, '');
+    for (const p of mealTitlePrefixes()) {
+      const re = new RegExp('^\\s*' + p.trim().replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '\\s*', 'i');
+      if (re.test(t)) { t = t.replace(re, ''); break; }
+    }
+    return t.trim();
+  }
+
+  // The title as a human should read it on a card: the status prefix goes,
+  // because a "Cancelled" badge now says it, and a title that is nothing BUT
+  // the prefix keeps its original text rather than becoming blank.
+  function displayTitle(item) {
+    const raw = String(item && item.title != null ? item.title : '');
+    if (!item || item.status !== 'cancelled') return raw;
+    const stripped = raw.replace(TITLE_PREFIX_RE, '').trim();
+    return stripped || raw;
+  }
+
+  // The query this item opens on Google Maps: its own mapsQuery when it has
+  // one, otherwise the derived "<venue> <location>" for place-like types, and
+  // '' for everything that is not a place.
+  function itemMapsQuery(item) {
+    if (!item) return '';
+    const own = normalizePlaceQuery(item.mapsQuery);
+    if (own) return own;
+    if (!PLACE_TYPES[item.type]) return '';
+    const name = stripTitlePrefixes(item.title);
+    if (name.length < 2) return '';
+    const where = String(item.location == null ? '' : item.location).trim();
+    // A location already spelled inside the title ("Godafoss and Lake Myvatn"
+    // in Akureyri) is not repeated: a doubled place name is a worse search.
+    const dup = where && name.toLowerCase().includes(where.toLowerCase());
+    return normalizePlaceQuery(where && !dup ? `${name} ${where}` : name);
+  }
+
   // ---------- assistant: link segments ----------
   // Splits assistant prose into plain-text and URL segments. Returns DATA ONLY:
   // the caller renders and escapes, so nothing here produces or trusts HTML.
@@ -2967,7 +3027,7 @@ const TripLogic = (() => {
     buildPlanRequest, groupProposals, linkifySegments,
     parseMarkdown, parseMarkdownInline,
     normalizePlaceQuery, placeCacheKey, planPlacesLookup, placesCacheUpdates,
-    mapsSearchUrl, assistMapsLink, showsCostBadge, isFoodOrDrink, isEstimatedCost, costDisplayParts, mealTitlePrefixes,
+    mapsSearchUrl, assistMapsLink, itemMapsQuery, displayTitle, showsCostBadge, isFoodOrDrink, isEstimatedCost, costDisplayParts, mealTitlePrefixes,
     hasEstimate, displayCostOf, parseMoney, roundMoney, budgetVerdict, refundParts,
     mealKind, isLongDetails,
     matchSampleTrip, normalizeTripName, sampleTrip, sampleTripOptions, buildSampleTrip, SAMPLE_START_OFFSET,
