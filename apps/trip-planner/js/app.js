@@ -51,9 +51,9 @@
     routeBadges, routeFlags, routeTips, routeLinks, modeLink, ROUTE_HONESTY,
     classifyGeoMatch, geoMatchNote, GEO_MATCH_RANK, GEO_MATCH_TEXT,
     classifyVisa, parseVisaMatrix, visaCountryUsable, visaUnconfirmedNames, visaVintageNote, slimTripForShare, hasFastRail, viewFromHash, hashForView,
-    buildIcs, buildCsv, convertAmount, sumInCurrency,
+    buildIcs, buildCsv, convertAmount, sumInCurrency, normalizeTravelers, travelerTotals,
     bytesToBase64url, base64urlToBytes,
-    transportGaps, tripPhase, isPastRow,
+    transportGaps, connectionWarnings, sameTimeCollisions, TIGHT_CONNECTION_MIN, tripPhase, isPastRow,
     dayCards, dayMorningCity, emptyDayNote, departureOrigin, suggestedPassport, passportAssumptionParts, defaultPlanDay, planDayGroups, overnightTransit,
     timelineGroups, mealKind, isFoodOrDrink, isLongDetails, mealTitlePrefixes, itemMapsQuery, displayTitle,
     weatherKey, summarizeClimate, weatherLine, weatherRange, pickMonthSamples, docGuard,
@@ -513,6 +513,25 @@
         });
       }
     }
+
+    // back-to-back legs that cannot hold: the second one leaves before the
+    // first one lands, or so soon after that a small delay breaks the trip
+    for (const c of connectionWarnings(items)) {
+      const text = c.kind === 'impossible'
+        ? `Impossible connection: "${c.toTitle}" leaves ${fmtDate(c.departDate)} at ${fmtTime(c.departTime)}, before "${c.fromTitle}" arrives (${fmtDate(c.arriveDate)} at ${fmtTime(c.arriveTime)}). Check both times.`
+        : `Tight connection: only ${c.minutes} ${c.minutes === 1 ? 'minute' : 'minutes'} between "${c.fromTitle}" arriving (${fmtTime(c.arriveTime)}) and "${c.toTitle}" leaving (${fmtTime(c.departTime)}) on ${fmtDate(c.departDate)}. Under ${TIGHT_CONNECTION_MIN} minutes is easy to miss.`;
+      issues.push({ level: 'warn', text, ids: [c.fromId, c.toId] });
+    }
+
+    // two things pencilled in for the exact same clock time. A pair can be
+    // deliberate, so this only asks for a second look.
+    for (const c of sameTimeCollisions(items)) {
+      issues.push({
+        level: 'warn',
+        text: `Same time: "${c.aTitle}" and "${c.bTitle}" are both set for ${fmtDate(c.date)} at ${fmtTime(c.time)}. Worth a quick check in case one of them should move.`,
+        ids: [c.aId, c.bId],
+      });
+    }
     return issues;
   }
 
@@ -757,7 +776,9 @@
     if (ui.filterStatus && it.status !== ui.filterStatus) return false;
     if (ui.search) {
       const q = ui.search.toLowerCase();
-      const hay = `${it.title} ${it.location || ''} ${it.details || ''}`.toLowerCase();
+      // the confirmation code is searchable too: pasting the code out of an
+      // email is the fastest way to find the booking it belongs to
+      const hay = `${it.title} ${it.location || ''} ${it.details || ''} ${it.confirmation || ''}`.toLowerCase();
       if (!hay.includes(q)) return false;
     }
     return true;
@@ -873,6 +894,7 @@
         ${money.planned.total !== money.confirmed.total ? `<div class="t"><div class="k">Full plan</div><div class="v">${moneyHtml(trip, money.planned.total, undefined, 'total')}</div></div>` : ''}
         <div class="t confirmed${money.confirmed.unconverted.length ? ' incomplete' : ''}"><div class="k">Confirmed bookings</div><div class="v">${moneyHtml(trip, money.confirmed.total, undefined, 'total')}</div></div>
       </div>`;
+    html += travelerTotalsHtml(trip);
     const notes = moneyNotes(trip, money);
     if (notes) html += notes;
 
@@ -894,6 +916,27 @@
       if (el) { el.classList.add('flash'); el.scrollIntoView({ behavior: 'smooth', block: 'center' }); }
       ui.flashId = null;
     }
+  }
+
+  // "Cost per traveller" block: one row per named traveller, rendered ONLY when
+  // the trip names two or more (a solo trip gets nothing here, the totals bar is
+  // byte for byte what it was before this feature). A traveller who owes an
+  // amount we could not convert is flagged amber with a count, the same honesty
+  // the Confirmed total already carries, so a share is never silently short.
+  function travelerTotalsHtml(trip) {
+    const names = normalizeTravelers(trip.travelers);
+    if (names.length < 2) return '';
+    const totals = travelerTotals(trip, activeRates(trip));
+    const unconv = totals.unconverted;
+    const short = n => n ? ` <small>+ ${n} not converted</small>` : '';
+    const rows = names.map(n => {
+      const missing = (unconv[n] || []).length;
+      return `<div class="tt-row${missing ? ' incomplete' : ''}">`
+        + `<span class="tt-name">${esc(n)}</span>`
+        + `<span class="tt-val">${moneyHtml(trip, totals[n] || 0, undefined, 'total')}${short(missing)}</span>`
+        + `</div>`;
+    }).join('');
+    return `<div class="traveler-totals"><div class="tt-head">Cost per traveler</div><div class="tt-list">${rows}</div></div>`;
   }
 
   // Note under the totals: which items could not be converted, and how old the
@@ -1048,6 +1091,7 @@
         <div class="c-main">
           <div class="c-title">${esc(displayTitle(it))}</div>
           ${it.location ? `<div class="c-loc">${esc(it.location)}</div>` : ''}
+          ${refTagHtml(it)}
           ${detailsHtml(it)}
         </div>
         <div class="c-side">
@@ -1062,6 +1106,15 @@
           <button class="row-btn danger" data-act="delete" title="Delete" aria-label="Delete">${TRASH_SVG}</button>
         </div>
       </div>`;
+  }
+
+  // A confirmation code is the one thing a traveller needs on their feet, at a
+  // counter or a gate, so it gets its own tag instead of being read back out of
+  // a details paragraph. Empty (or absent, on every item saved before the field
+  // existed) renders nothing at all, not an empty tag holding space open.
+  function refTagHtml(it) {
+    const ref = (it.confirmation || '').trim();
+    return ref ? `<span class="tp-ref" title="Confirmation / reference number">Ref: ${esc(ref)}</span>` : '';
   }
 
   // details text with live links, plus the item's own Maps link. mapsQuery is a
@@ -1151,6 +1204,9 @@
     // A check-out row names the place you are leaving; the location line would
     // just repeat the city you are still standing in.
     const loc = (it.location && ev.kind !== 'checkout') ? `<div class="dc-loc">${esc(it.location)}</div>` : '';
+    // the code rides on the check-in row only, for the same reason cost and the
+    // Maps link do: a checkout row is the same booking a second time
+    const ref = ev.kind === 'checkout' ? '' : refTagHtml(it);
     // A strikethrough alone carried the whole message and lost it the moment
     // the title wrapped or the row was skimmed, so the status says itself.
     const cancelled = it.status === 'cancelled';
@@ -1200,6 +1256,7 @@
             ${tags}
             <div class="dc-title">${esc(displayTitle(it))}${clip}</div>
             ${loc}
+            ${ref}
           </div>
           <div class="dc-facts">${cost}${maps}</div>
           <div class="dc-btns">${edit}${del}</div>
@@ -1241,6 +1298,7 @@
     const canClear = !sharedMode && (card.clearCount != null ? card.clearCount : dayClearCount(card)) > 0;
     const editBtns = sharedMode ? '' : `
             <button class="row-btn" data-act="add-day" data-date="${card.date}" title="Add an item on this day" aria-label="Add an item on ${esc(fmtDate(card.date))}">+</button>
+            <button class="row-btn" data-act="duplicate-day" data-date="${card.date}"${canClear ? '' : ' disabled'} title="${canClear ? 'Copy every item on this day to another date' : 'Nothing on this day to copy'}" aria-label="Copy everything on ${esc(fmtDate(card.date))} to another date">📄</button>
             ${canClear ? `<button class="row-btn danger" data-act="clear-day" data-date="${card.date}" title="Delete every item on this day" aria-label="Delete every item on ${esc(fmtDate(card.date))}">${TRASH_SVG}</button>` : ''}`;
     return `
       <section class="day-card ${isToday ? 'is-today' : ''}" data-date="${card.date}" aria-label="${esc(fmtDate(card.date))}">
@@ -1368,6 +1426,68 @@
         // since would be what undo() actually reverses
         if (lastSaved === snapshot) undo();
       });
+    });
+  }
+
+  // Copying a day is the same selection as clearing one (see clearDay): the
+  // items that START here. A day in one base city usually repeats its shape -
+  // breakfast, something to do, dinner - and only the venues change, so the
+  // copy is the cheap way to build the next one.
+  let dupDaySource = null;
+  function openDupDayModal(date) {
+    const trip = activeTrip();
+    const n = trip.items.filter(it => it.startDate === date).length;
+    if (!n) return;
+    dupDaySource = date;
+    $('#fDupDayDate').classList.remove('invalid');
+    $('#dupDayDate').value = addDays(date, 1);
+    $('#dupDayHint').textContent = `${n} item${n === 1 ? '' : 's'} from ${fmtDate(date)} are copied to the date you pick. The originals stay where they are, and a stay keeps the same number of nights.`;
+    openOverlay('#dupDayOverlay');
+    $('#dupDayDate').focus();
+  }
+
+  function submitDupDayForm(e) {
+    e.preventDefault();
+    const target = $('#dupDayDate').value;
+    // #dupDayForm is novalidate like #itemForm, so the input's own min/max never
+    // fire on a typed value; these are the same bounds they are stamped from.
+    if (!isIsoDate(target) || !isDateInRange(target)) {
+      $('#fDupDayDate').classList.add('invalid');
+      $('#dupDayErr').textContent = isIsoDate(target) ? `Use a date between ${DATE_MIN} and ${DATE_MAX}.` : 'A valid date is required.';
+      return;
+    }
+    const source = dupDaySource;
+    closeOverlays();
+    duplicateDay(source, target);
+  }
+
+  // A copy, never a move: the source day is untouched and whatever the target
+  // day already holds is kept. Every clone is shifted by the same day delta, so
+  // a 3-night stay copied forward is still 3 nights. One save() means one undo
+  // takes the whole copied day back out again.
+  function duplicateDay(date, targetDate) {
+    const trip = activeTrip();
+    const sources = trip.items.filter(it => it.startDate === date);
+    if (!sources.length) return;
+    const delta = diffDays(date, targetDate);
+    const copies = sources.map(it => {
+      const copy = { ...it, id: uid(), createdAt: new Date().toISOString(), title: it.title + ' (copy)', startDate: targetDate };
+      // A blank or broken end date stays exactly as it is. Shifting a date that
+      // was never a date only invents a different wrong one, which is the same
+      // guard submitShiftForm uses.
+      if (isIsoDate(it.endDate)) copy.endDate = addDays(it.endDate, delta);
+      return copy;
+    });
+    trip.items.push(...copies);
+    const n = copies.length;
+    const label = `${n} item${n === 1 ? '' : 's'}`;
+    const ok = save();
+    const snapshot = lastSaved;
+    render();
+    if (ok) toast(`Copied ${label} to ${fmtDate(targetDate, false)}`, () => {
+      // only safe while ours is still the newest snapshot; anything saved
+      // since would be what undo() actually reverses
+      if (lastSaved === snapshot) undo();
     });
   }
 
@@ -1731,6 +1851,10 @@
     estAdopted = false;
     renderCostEstimateHint(it);
     $('#inCostNote').value = it ? (it.costNote || '') : '';
+    // items saved before this field existed carry no `confirmation` key at all,
+    // which reads as empty here and needs no migration
+    $('#inConfirmation').value = it ? (it.confirmation || '') : '';
+    renderWhoFor(it);
     $('#inDetails').value = it ? (it.details || '') : '';
     renderDetailLinks(it);
     syncDocsSection(it);
@@ -1739,6 +1863,27 @@
     // preventScroll keeps the modal parked at its heading; without it the
     // overlay scrolls the title field up and hides the heading on phones
     $('#inTitle').focus({ preventScroll: true });
+  }
+
+  // "Who's this for": a checkbox per traveller, shown ONLY when the trip names
+  // two or more. Below that the whole control (legend and boxes) is not built at
+  // all, so a solo trip's item modal has no trace of it in the DOM, never a
+  // hidden node. None checked, or all checked, both mean Everyone and persist as
+  // no `travelers` key; a proper subset persists as that subset.
+  function renderWhoFor(it) {
+    const box = $('#fItemTravelers');
+    const names = normalizeTravelers(activeTrip().travelers);
+    if (names.length < 2) { box.innerHTML = ''; box.hidden = true; return; }
+    box.hidden = false;
+    const picked = new Set((Array.isArray(it && it.travelers) ? it.travelers : []).map(n => String(n).toLowerCase()));
+    box.innerHTML = `
+      <fieldset class="who-for" id="whoFor">
+        <legend>Who's this for <small>(optional)</small></legend>
+        <div class="who-list">
+          ${names.map(n => `<label class="who-chk"><input type="checkbox" value="${esc(n)}"${picked.has(n.toLowerCase()) ? ' checked' : ''}>${esc(n)}</label>`).join('')}
+        </div>
+        <div class="hint">Leave all unchecked to split this cost evenly across everyone. Pick some to split it only among them.</div>
+      </fieldset>`;
   }
 
   // A textarea can't hold live links, so the edit view lists every link the item
@@ -1842,12 +1987,26 @@
       // display currency converts this amount instead of relabeling it
       costCurrency: $('#inCost').value === '' ? undefined : $('#inCostCurrency').value,
       costNote: $('#inCostNote').value.trim(),
+      confirmation: $('#inConfirmation').value.trim(),
       details: $('#inDetails').value.trim(),
     };
     if (it.costCurrency === undefined) delete it.costCurrency;
     // the Maps field is not user-editable, so carry it across an edit instead
     // of silently dropping it
     if (prev.mapsQuery) it.mapsQuery = prev.mapsQuery;
+    // Who's this for. The control only exists with 2+ travellers, so when it is
+    // absent (solo trip, or the read-only shared view) the previous assignment
+    // is carried rather than blanked. All-checked and none-checked both collapse
+    // to Everyone and store nothing, so a proper subset is the only thing kept.
+    const whoFor = $('#whoFor');
+    if (whoFor) {
+      const names = normalizeTravelers(activeTrip().travelers);
+      const picked = [...whoFor.querySelectorAll('input:checked')].map(c => c.value)
+        .filter(n => names.includes(n));
+      if (picked.length && picked.length < names.length) it.travelers = picked;
+    } else if (Array.isArray(prev.travelers) && prev.travelers.length) {
+      it.travelers = prev.travelers;
+    }
     // The estimate survives an ordinary edit and dies on adoption, because
     // adopting has already copied the number into the cost field above. But
     // "adopted, then changed my mind and cleared the box" is not an adoption:
@@ -1964,6 +2123,7 @@
     syncTripNameHint();
     $('#inTripCurrency').value = mode === 'rename' && t ? (t.currency || 'USD') : 'USD';
     $('#inTripBudget').value = mode === 'rename' && t && t.budget != null ? t.budget : '';
+    $('#inTripTravelers').value = mode === 'rename' && t && Array.isArray(t.travelers) ? t.travelers.join(', ') : '';
     $('#fTripName').classList.remove('invalid');
     openOverlay('#tripOverlay');
     $('#inTripName').focus();
@@ -1980,8 +2140,13 @@
     // #tripForm's native min="0" is the only thing that was refusing a negative
     // budget. A budget is a ceiling, not a transaction, so it is checked here.
     if (budget != null && budget < 0) { $('#fTripBudget').classList.add('invalid'); return; }
+    // trimmed, deduped, capped at 6 by the one gate in trip-logic; an empty list
+    // leaves the trip with no `travelers` key at all, so a solo trip is byte for
+    // byte the trip it was before this field existed
+    const travelers = normalizeTravelers($('#inTripTravelers').value.split(','));
     if (ui.tripModalMode === 'new') {
       const t = { id: uid(), name, currency, budget, items: [] };
+      if (travelers.length) t.travelers = travelers;
       db.trips.push(t);
       db.activeTripId = t.id;
       // A brand-new trip has nothing to show on the map or the day grid, so
@@ -1992,6 +2157,8 @@
       const t = activeTrip();
       if ((t.currency || 'USD') !== currency) stampCostCurrencies(t, t.currency || 'USD');
       t.name = name; t.currency = currency; t.budget = budget;
+      if (travelers.length) t.travelers = travelers;
+      else delete t.travelers;
     }
     save(ui.tripModalMode === 'new' ? `Trip "${name}" created` : 'Trip updated');
     closeOverlays();
@@ -2082,14 +2249,18 @@
     const notes = drops || [];
     const budget = parseMoney(t.budget);
     if (!budget.ok) notes.push(`Trip budget ${budget.reason}, so it was left unset.`);
+    // clamp to 6 trimmed unique names FIRST: the item sanitizer needs the final
+    // list to reject an item assigned to someone the trip does not name
+    const travelers = normalizeTravelers(t.travelers);
     const nt = {
       id: uid(),
       name: String(t.name || 'Imported trip').slice(0, 60),
       currency: /^[A-Z]{3}$/.test(t.currency || '') ? t.currency : 'USD',
       budget: budget.value,
       visaExtras: (Array.isArray(t.visaExtras) ? t.visaExtras : []).filter(c => typeof c === 'string' && /^[A-Z]{2}$/.test(c)),
-      items: t.items.map(raw => sanitizeItem(raw, notes)).filter(Boolean),
+      items: t.items.map(raw => sanitizeItem(raw, notes, travelers)).filter(Boolean),
     };
+    if (travelers.length) nt.travelers = travelers;
     stampCostCurrencies(nt, nt.currency);
     return nt;
   }
@@ -2104,7 +2275,7 @@
     toast(`${headline}. ${shown}${rest}`);
   }
 
-  function sanitizeItem(raw, drops) {
+  function sanitizeItem(raw, drops, knownTravelers) {
     if (!raw || typeof raw !== 'object') return null;
     const notes = drops || [];
     const label = String((raw && raw.title) || '(untitled)').slice(0, 60);
@@ -2127,6 +2298,9 @@
       status: STATUS_META[raw.status] ? raw.status : 'to-book',
       cost: cost.value,
       costNote: String(raw.costNote || '').slice(0, 80),
+      // same 40 as the form: an import or a share link must not be able to
+      // smuggle in a code longer than the field that has to render it
+      confirmation: String(raw.confirmation || '').slice(0, 40),
       details: String(raw.details || '').slice(0, 500),
       createdAt: new Date().toISOString(),
     };
@@ -2140,6 +2314,20 @@
     // a shared/imported venue must keep its verified place, or the receiving
     // end silently loses its Maps link and star rating
     if (raw.mapsQuery != null && String(raw.mapsQuery).trim()) out.mapsQuery = String(raw.mapsQuery).slice(0, 200).trim();
+    // who a cost is split between is only meaningful against names the trip
+    // actually carries: an import can list anyone, so each is matched (case
+    // -insensitively) to a known traveller and mapped to that canonical spelling.
+    // An empty or all-hands result is Everyone and stays unset.
+    const known = normalizeTravelers(knownTravelers);
+    if (known.length >= 2 && Array.isArray(raw.travelers)) {
+      const canon = new Map(known.map(n => [n.toLowerCase(), n]));
+      const picked = [];
+      for (const n of raw.travelers) {
+        const c = canon.get(String(n == null ? '' : n).trim().toLowerCase());
+        if (c && !picked.includes(c)) picked.push(c);
+      }
+      if (picked.length && picked.length < known.length) out.travelers = picked;
+    }
     return out;
   }
 
@@ -4325,6 +4513,7 @@
     if (act === 'ask-day') openAssist(date);
     else if (sharedMode) return;
     else if (act === 'add-day') openItemModal(null, date);
+    else if (act === 'duplicate-day') openDupDayModal(date);
     else if (act === 'clear-day') clearDay(date);
     else if (act === 'edit') openItemModal(btn.dataset.id);
     else if (act === 'delete') deleteItem(btn.dataset.id);
@@ -4431,6 +4620,7 @@
     toast('Document removed');
   });
   $('#shiftForm').addEventListener('submit', submitShiftForm);
+  $('#dupDayForm').addEventListener('submit', submitDupDayForm);
   $('#tripForm').addEventListener('submit', submitTripForm);
   $('#inTripName').addEventListener('input', syncTripNameHint);
   $('#typePicker').addEventListener('click', e => {
@@ -4633,7 +4823,7 @@
   // the submit handler is what actually enforces DATE_MIN/DATE_MAX. Stamping
   // them from the same constants keeps the widget and the check in step, and
   // keeps the bounds out of the markup entirely.
-  for (const id of ['#inStart', '#inEnd', '#inArrDate']) {
+  for (const id of ['#inStart', '#inEnd', '#inArrDate', '#dupDayDate']) {
     $(id).min = DATE_MIN;
     $(id).max = DATE_MAX;
   }

@@ -43,7 +43,7 @@
   <meta name="theme-color" content="#0e1116">
   <link rel="stylesheet" href="../../assets/css/main.css">
   <link rel="stylesheet" href="../../assets/css/sync-status.css">
-  <link rel="stylesheet" href="css/styles.css?v=27">
+  <link rel="stylesheet" href="css/styles.css?v=28">
 </head>
 <body class="tp-page">
   <div id="sync-banner" class="sync-banner" role="status" aria-live="polite" hidden></div>
@@ -240,6 +240,10 @@
               </select>
             </div>
           </div>
+          <div class="field">
+            <label for="inConfirmation">Confirmation / reference # <small>(optional)</small></label>
+            <input id="inConfirmation" maxlength="40" placeholder="e.g. XJ7K2Q">
+          </div>
           <div class="field is-wide" id="fCost">
             <label for="inCost">Cost</label>
             <div class="input-group">
@@ -260,6 +264,7 @@
           <label for="inCostNote">Cost note <small>(optional, shown instead of a blank cost, e.g. "Included in intl flights")</small></label>
           <input id="inCostNote" maxlength="80">
         </div>
+        <div class="field who-for-field" id="fItemTravelers" hidden></div>
       </section>
 
       <section class="m-section">
@@ -335,6 +340,29 @@
   </form>
 </div>
 
+<!-- duplicate day modal -->
+<div class="overlay" id="dupDayOverlay">
+  <form class="modal small" id="dupDayForm" role="dialog" aria-modal="true" aria-labelledby="dupDayTitle" tabindex="-1" novalidate>
+    <div class="m-head">
+      <h2 id="dupDayTitle">Copy this day</h2>
+    </div>
+    <div class="m-body">
+      <section class="m-section">
+        <div class="field" id="fDupDayDate">
+          <label for="dupDayDate">Copy to</label>
+          <input type="date" id="dupDayDate">
+          <div class="err" id="dupDayErr">A valid date is required.</div>
+          <div class="hint" id="dupDayHint"></div>
+        </div>
+      </section>
+    </div>
+    <div class="modal-foot">
+      <button type="button" class="btn ghost" data-close>Cancel</button>
+      <button type="submit" class="btn primary">Copy day</button>
+    </div>
+  </form>
+</div>
+
 <!-- trip modal -->
 <div class="overlay" id="tripOverlay">
   <form class="modal small" id="tripForm" role="dialog" aria-modal="true" aria-labelledby="tripModalTitle" tabindex="-1">
@@ -371,6 +399,11 @@
             <input type="number" id="inTripBudget" min="0" step="0.01" inputmode="decimal" placeholder="e.g. 3000">
             <div class="err">A budget cannot be negative.</div>
           </div>
+        </div>
+        <div class="field" id="fTripTravelers">
+          <label for="inTripTravelers">Travelers <small>(optional, comma-separated, up to 6)</small></label>
+          <input id="inTripTravelers" maxlength="160" placeholder="e.g. Alex, Sam" autocomplete="off">
+          <div class="hint">Name two or more people to split each cost and see who is paying for what.</div>
         </div>
       </section>
     </div>
@@ -553,7 +586,7 @@
     }
   </script>
 
-  <script src="js/trip-logic.js?v=15"></script>
-  <script src="js/app.js?v=31"></script>
+  <script src="js/trip-logic.js?v=16"></script>
+  <script src="js/app.js?v=32"></script>
 </body>
 </html>

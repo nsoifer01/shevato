@@ -787,6 +787,11 @@ const TripLogic = (() => {
     if (it.location) lines.push(`LOCATION:${icsEscapeText(it.location)}`);
     const descParts = [];
     if (it.details) descParts.push(it.details);
+    // The confirmation code IS carried into the calendar, labelled, on its own
+    // line: the phone calendar entry is what a traveller opens at the gate, and
+    // that is precisely the moment the code is needed. It rides in DESCRIPTION
+    // rather than a column of its own because ICS has no field for it.
+    if (it.confirmation) descParts.push('Ref: ' + it.confirmation);
     descParts.push('Status: ' + (ICS_STATUS[it.status] || it.status || ''));
     if (it.costNote) descParts.push(it.costNote);
     lines.push(`DESCRIPTION:${icsEscapeText(descParts.join('\n'))}`);
@@ -816,10 +821,19 @@ const TripLogic = (() => {
   // own total even with refunds in the mix. Display wording ("Refund $120.00")
   // never reaches this file. estCost keeps its own column for the same reason:
   // a guess must not land in a column people total.
+  // `confirmation` IS exported, and it is appended rather than slotted next to
+  // the other booking columns: a spreadsheet people already built against this
+  // header keeps every existing column at the index it had. Leaving the code out
+  // would make the CSV the one export that silently drops it.
+  // `travelers` is appended last for the same reason `confirmation` is: a
+  // spreadsheet already built against this header keeps every prior column at
+  // the index it had. It carries who a cost is split between (the whole point of
+  // a CSV export of a shared trip is a split-the-bill sheet), empty meaning the
+  // cost is shared across everyone.
   function csvColumns(base) {
     return ['startDate', 'startTime', 'endDate', 'endTime', 'nights', 'type', 'title', 'location',
       'details', 'status', 'cost', 'costCurrency', `costIn${base}`, 'estimatedCost',
-      'estimatedCostCurrency', 'costNote'];
+      'estimatedCostCurrency', 'costNote', 'confirmation', 'travelers'];
   }
   const csvCell = v => `"${String(v).replace(/"/g, '""')}"`;
   function buildCsv(trip, base, ratesObj) {
@@ -834,7 +848,8 @@ const TripLogic = (() => {
         ICS_STATUS[it.status] || it.status || '',
         it.cost ?? '', from, conv == null ? '' : conv.toFixed(2),
         it.estCost ?? '', it.estCost != null ? (it.estCostCurrency || cur) : '',
-        it.costNote || '',
+        it.costNote || '', it.confirmation || '',
+        Array.isArray(it.travelers) ? it.travelers.join('; ') : '',
       ].map(csvCell).join(','));
     }
     return lines.join('\n');
@@ -868,6 +883,76 @@ const TripLogic = (() => {
       else total += c;
     }
     return { total, unconverted };
+  }
+
+  // ---------- per-traveller cost split ----------
+  // Trimmed, de-duplicated (case-insensitive) traveller names, capped at 6.
+  // This cap and trim are the ONE gate every path funnels through: the trip
+  // form, a JSON/backup import and an item's own assignment all normalize here,
+  // so a malformed name cannot enter from any direction.
+  function normalizeTravelers(list) {
+    if (!Array.isArray(list)) return [];
+    const out = [], seen = new Set();
+    for (const raw of list) {
+      const name = String(raw == null ? '' : raw).trim().slice(0, 40);
+      if (!name) continue;
+      const key = name.toLowerCase();
+      if (seen.has(key)) continue;
+      seen.add(key);
+      out.push(name);
+      if (out.length === 6) break;
+    }
+    return out;
+  }
+
+  // Per-traveller cost split, in the trip's own currency.
+  //
+  // RETURN SHAPE: a plain object mapping each named traveller to their numeric
+  // share total, converted amounts only, e.g. { Alex: 130, Sam: 80 }. That map
+  // is the whole ENUMERABLE return, so it compares equal to the bare totals a
+  // caller expects and iterates cleanly. The per-traveller list of amounts that
+  // could NOT be converted rides along as a NON-ENUMERABLE `unconverted`
+  // property ({ [name]: [item, ...] }): the render reads it to flag a traveller
+  // amber (their number is honestly short, never silently under-counted),
+  // exactly as the trip-wide Confirmed total flags itself, while an equality
+  // check or a for..in over the totals never trips on it.
+  //
+  // Which items count: every NON-CANCELLED item carrying a finite cost, matching
+  // tripStats/tripMoney's base filter (cancelled is the one status dropped). An
+  // item assigned to nobody (item.travelers empty or absent) is "Everyone" and
+  // splits evenly across ALL named travellers; an item assigned to a subset
+  // splits evenly across that subset. Division is at full precision and only
+  // formatted at display, so a $60 item split two ways is exactly $30 each.
+  // `ratesObj` is the same { base, rates } sumInCurrency takes; an amount whose
+  // currency cannot be converted adds nothing to the number and is recorded
+  // under every traveller who owed a share of it.
+  function travelerTotals(trip, ratesObj) {
+    const names = normalizeTravelers(trip && trip.travelers);
+    const totals = {}, unconverted = {};
+    Object.defineProperty(totals, 'unconverted', { value: unconverted, enumerable: false });
+    if (names.length < 2) return totals;
+    for (const n of names) { totals[n] = 0; unconverted[n] = []; }
+    const base = (trip && trip.currency) || 'USD';
+    const canon = new Map(names.map(n => [n.toLowerCase(), n]));
+    for (const it of (trip.items || [])) {
+      if (it.status === 'cancelled') continue;
+      if (it.cost == null || it.cost === '' || isNaN(it.cost)) continue;
+      const assigned = [];
+      if (Array.isArray(it.travelers)) {
+        for (const raw of it.travelers) {
+          const c = canon.get(String(raw == null ? '' : raw).trim().toLowerCase());
+          if (c && !assigned.includes(c)) assigned.push(c);
+        }
+      }
+      const payers = assigned.length ? assigned : names; // Everyone, never "nobody"
+      const from = it.costCurrency || base;
+      const conv = convertAmount(Number(it.cost), from, base, ratesObj);
+      for (const n of payers) {
+        if (conv === null) unconverted[n].push(it);
+        else totals[n] += conv / payers.length;
+      }
+    }
+    return totals;
   }
 
   // ---------- base64url (share links) ----------
@@ -927,6 +1012,100 @@ const TripLogic = (() => {
       }
     }
     return gaps;
+  }
+
+  // ---------- connections between travel legs ----------
+  const TRAVEL_TYPE = { flight: 1, transport: 1, local: 1 };
+  const TIME_RE = /^\d{2}:\d{2}$/;
+  // Under this many minutes between landing and the next departure is worth a
+  // second look. 45 is the low end of what airports themselves publish as a
+  // minimum connecting time, and it is also about the shortest station-to-train
+  // change that survives a small delay.
+  const TIGHT_CONNECTION_MIN = 45;
+  // Two legs are only a CONNECTION when they belong to the same journey. Sort
+  // adjacency alone cannot tell an outbound from a return: on a two-flight trip
+  // the flight home is adjacent to the flight out, and one mistyped arrival date
+  // would then be reported as an "impossible connection" across three weeks,
+  // which is noise on top of the far-outside-date error that already names the
+  // typo. A day is the honest cutoff: it still covers a red-eye that lands at
+  // 06:00 and a same-evening change, and nothing anybody would call a connection
+  // sits further apart than that.
+  const CONNECTION_WINDOW_MIN = 24 * 60;
+
+  function stampMin(date, time) {
+    const [h, m] = time.split(':').map(Number);
+    return Math.round(toUtc(date).getTime() / 60000) + h * 60 + m;
+  }
+
+  // When a leg lands: its arrival date/time, falling back to the departure
+  // date/time for a leg saved with only one clock value (a short hop where the
+  // traveller filled in departure alone). Returns null when no time at all was
+  // entered, because guessing one would invent the very number being judged.
+  function legArrival(it) {
+    const date = isIsoDate(it.endDate) ? it.endDate : it.startDate;
+    const time = TIME_RE.test(it.endTime || '') ? it.endTime : (TIME_RE.test(it.startTime || '') ? it.startTime : '');
+    if (!isIsoDate(date) || !time) return null;
+    return { date, time, min: stampMin(date, time) };
+  }
+  function legDeparture(it) {
+    if (!isIsoDate(it.startDate) || !TIME_RE.test(it.startTime || '')) return null;
+    return { date: it.startDate, time: it.startTime, min: stampMin(it.startDate, it.startTime) };
+  }
+
+  // Adjacent travel legs (nothing else scheduled between them) where the second
+  // one leaves before the first one lands, or so soon after that the change is
+  // unlikely to hold.
+  function connectionWarnings(items) {
+    const live = [...(items || [])].filter(it => it && it.status !== 'cancelled').sort((a, b) => sortKey(a) < sortKey(b) ? -1 : 1);
+    const stays = live.filter(it => isStay(it) && isIsoDate(it.startDate));
+    const out = [];
+    for (let i = 1; i < live.length; i++) {
+      const from = live[i - 1], to = live[i];
+      if (!TRAVEL_TYPE[from.type] || !TRAVEL_TYPE[to.type]) continue;
+      const arr = legArrival(from), dep = legDeparture(to);
+      if (!arr || !dep) continue;
+      const gap = dep.min - arr.min;
+      if (gap >= TIGHT_CONNECTION_MIN) continue;
+      if (Math.abs(gap) > CONNECTION_WINDOW_MIN) continue;
+      // A bed booked for a night the two legs straddle means this is a stopover,
+      // not a connection. Only checked when they actually straddle a night: on a
+      // single travel day the hotel you check into that evening says nothing
+      // about the twenty minutes between landing and the next departure.
+      if (dep.date > arr.date && stays.some(s => s.startDate >= arr.date && s.startDate <= dep.date)) continue;
+      out.push({
+        kind: gap <= 0 ? 'impossible' : 'tight',
+        minutes: gap,
+        fromId: from.id, toId: to.id,
+        fromTitle: from.title || '', toTitle: to.title || '',
+        arriveDate: arr.date, arriveTime: arr.time,
+        departDate: dep.date, departTime: dep.time,
+      });
+    }
+    return out;
+  }
+
+  // ---------- same-clock-time double bookings ----------
+  // Two things saved for the identical date AND identical time. Exact match
+  // only: the app never asks how long anything lasts, so any "close enough"
+  // window would be a guess about durations it does not have. Stays are out by
+  // construction (the item form hides the time field for them).
+  function sameTimeCollisions(items) {
+    const live = [...(items || [])]
+      .filter(it => it && it.status !== 'cancelled' && !isStay(it) && isIsoDate(it.startDate) && TIME_RE.test(it.startTime || ''))
+      .sort((a, b) => sortKey(a) < sortKey(b) ? -1 : 1);
+    const out = [];
+    for (let i = 0; i < live.length; i++) {
+      for (let j = i + 1; j < live.length; j++) {
+        const a = live[i], b = live[j];
+        if (a.startDate !== b.startDate || a.startTime !== b.startTime) continue;
+        out.push({
+          aId: a.id, bId: b.id,
+          aTitle: a.title || '', bTitle: b.title || '',
+          date: a.startDate, time: a.startTime,
+        });
+      }
+    }
+    return out;
   }
 
   // ---------- trip-in-progress ----------
@@ -1343,6 +1522,11 @@ const TripLogic = (() => {
     const slim = { name: trip.name, currency: trip.currency, items: [] };
     if (trip.budget != null) slim.budget = trip.budget;
     if (Array.isArray(trip.visaExtras) && trip.visaExtras.length) slim.visaExtras = trip.visaExtras;
+    // travellers ride along: the person you share a trip with IS the other
+    // traveller on it, so a copy that quietly lost the cost split would be worse
+    // than no copy. normalizeTravelers runs again on the far side (import), so a
+    // hand-edited link can never inject more than six or a junk name.
+    if (Array.isArray(trip.travelers) && trip.travelers.length) slim.travelers = normalizeTravelers(trip.travelers);
     slim.items = trip.items.map((it, i) => {
       const out = { id: 'i' + (i + 1) };
       // mapsQuery rides along because this is also the trip JSON the assistant
@@ -1350,9 +1534,16 @@ const TripLogic = (() => {
       // place attached and re-suggests the same venue.
       // estCost rides along so a shared itinerary still shows what to expect;
       // it stays out of every total on the far side exactly as it does here.
-      for (const k of ['type', 'title', 'location', 'startDate', 'endDate', 'startTime', 'endTime', 'status', 'cost', 'costCurrency', 'estCost', 'estCostCurrency', 'costNote', 'details', 'mapsQuery']) {
+      // confirmation rides along for the same reason `details` always has: the
+      // person you share a trip with is the person travelling on it, and a copy
+      // that quietly lost every booking code would be worse than no copy. It is
+      // no more exposed than a code typed into the details box already was.
+      for (const k of ['type', 'title', 'location', 'startDate', 'endDate', 'startTime', 'endTime', 'status', 'cost', 'costCurrency', 'estCost', 'estCostCurrency', 'costNote', 'confirmation', 'details', 'mapsQuery']) {
         if (keep(it[k])) out[k] = it[k];
       }
+      // who owes this cost travels with the item; the far side clamps it to the
+      // shared traveller list, so an empty or all-hands assignment stays absent
+      if (Array.isArray(it.travelers) && it.travelers.length) out.travelers = it.travelers;
       return out;
     });
     return slim;
@@ -2123,6 +2314,11 @@ const TripLogic = (() => {
     if (raw.costNote != null) f.costNote = clampStr(raw.costNote, 80).trim();
     if (raw.details != null) f.details = clampStr(raw.details, 500).trim();
     if (raw.mapsQuery != null) f.mapsQuery = clampStr(raw.mapsQuery, 200).trim();
+    // `confirmation` is deliberately NOT read here. A booking reference is a
+    // fact only the traveller holds; a model can only guess one, and a guessed
+    // code that looks real is worse at a check-in counter than an empty field.
+    // An update never touches the traveller's own code either, because the
+    // merge below only copies the keys this function returns.
     return f;
   }
 
@@ -3047,8 +3243,9 @@ const TripLogic = (() => {
     classifyVisa, parseVisaMatrix, visaCountryUsable, visaUnconfirmedNames, visaVintageNote,
     slimTripForShare, hasFastRail, viewFromHash, hashForView,
     buildIcs, buildCsv, csvColumns, convertAmount, sumInCurrency,
+    normalizeTravelers, travelerTotals,
     bytesToBase64url, base64urlToBytes,
-    transportGaps, tripPhase, isPastRow,
+    transportGaps, connectionWarnings, sameTimeCollisions, TIGHT_CONNECTION_MIN, tripPhase, isPastRow,
     dayCards, dayHostStay, emptyDayNote, stripPlaceCode, parseTravelOrigin, dayMorningCity,
     departureOrigin, suggestedPassport, passportAssumptionParts,
     coveringStay, timelineGroups,
