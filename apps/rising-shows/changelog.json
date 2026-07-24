@@ -1,6 +1,282 @@
 {
   "updates": [
     {
+      "builtAt": "2026-07-24T08:43:25.508Z",
+      "totals": {
+        "seasons": 65961,
+        "delta": 22
+      },
+      "shapeCounts": {
+        "mid-peak": 4629,
+        "rebound": 10064,
+        "rising": 2928,
+        "slow-burn": 4371,
+        "big-finale": 12025,
+        "u-shaped": 3090,
+        "rollercoaster": 14026,
+        "saved-best-for-last": 1536,
+        "front-loaded": 3461,
+        "declining": 1875,
+        "bad-finale": 4647,
+        "consistent": 2619,
+        "shape-drift": 1631
+      },
+      "shapeDeltas": {
+        "mid-peak": 4,
+        "rebound": -1,
+        "rising": 9,
+        "slow-burn": -2,
+        "big-finale": 10,
+        "u-shaped": 7,
+        "rollercoaster": -10,
+        "saved-best-for-last": 4,
+        "front-loaded": 1,
+        "declining": -8,
+        "bad-finale": 5,
+        "consistent": -1,
+        "shape-drift": -4
+      },
+      "added": [
+        {
+          "seriesId": "tt34866681",
+          "title": "Lucky",
+          "season": 1,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt6455986",
+          "title": "Saga of Tanya the Evil",
+          "season": 2,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt32991344",
+          "title": "Clevatess",
+          "season": 2,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt32869308",
+          "title": "Tomb Raider King",
+          "season": 1,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt10982034",
+          "title": "Trying",
+          "season": 5,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt1161656",
+          "title": "Gunslinger Girl: Il Teatrino",
+          "season": 1,
+          "seasonYear": 2008
+        },
+        {
+          "seriesId": "tt16255458",
+          "title": "Trapped in a Dating Sim: The World of Otome Games Is Tough for Mobs",
+          "season": 2,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt3355142",
+          "title": "Chefs",
+          "season": 1,
+          "seasonYear": 2015
+        },
+        {
+          "seriesId": "tt35346717",
+          "title": "From Old Country Bumpkin to Master Swordsman",
+          "season": 2,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt3069720",
+          "title": "The Amazing Race Canada",
+          "season": 12,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt12463898",
+          "title": "Kamiondzije d.o.o.",
+          "season": 2,
+          "seasonYear": 2022
+        },
+        {
+          "seriesId": "tt39046052",
+          "title": "Mr. Kill",
+          "season": 1,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt5472884",
+          "title": "Drunk History: El Lado Borroso De La Historia",
+          "season": 1,
+          "seasonYear": 2016
+        },
+        {
+          "seriesId": "tt7414406",
+          "title": "All American",
+          "season": 8,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt3355142",
+          "title": "Chefs",
+          "season": 2,
+          "seasonYear": 2016
+        },
+        {
+          "seriesId": "tt42262913",
+          "title": "Pac-Man: Snack Breaks",
+          "season": 1,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt0175398",
+          "title": "Die Neue - Eine Frau mit Kaliber",
+          "season": 1,
+          "seasonYear": 1998
+        },
+        {
+          "seriesId": "tt42211778",
+          "title": "Zanjeerain",
+          "season": 1,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt43250938",
+          "title": "AI Girl",
+          "season": 1,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt41276849",
+          "title": "Recommendations from Iwamoto-Senpai",
+          "season": 1,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt43609776",
+          "title": "Bai Ri Cheng Wang",
+          "season": 1,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt35495063",
+          "title": "Elite Force",
+          "season": 1,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt5599232",
+          "title": "Battle Girls: Time Paradox",
+          "season": 1,
+          "seasonYear": 2011
+        }
+      ],
+      "removed": [
+        {
+          "seriesId": "tt0476042",
+          "title": "Gunslinger Girl",
+          "season": 2,
+          "seasonYear": 2008
+        }
+      ],
+      "ratingSwings": [
+        {
+          "seriesId": "tt27422891",
+          "title": "LOL: Last One Laughing Poland",
+          "season": 4,
+          "from": 6.23,
+          "to": 6.95,
+          "delta": 0.72
+        },
+        {
+          "seriesId": "tt37483753",
+          "title": "Umayuru: Pretty Gray",
+          "season": 1,
+          "from": 7.3,
+          "to": 7.98,
+          "delta": 0.68
+        },
+        {
+          "seriesId": "tt6164342",
+          "title": "The Hill",
+          "season": 1,
+          "from": 7.13,
+          "to": 7.78,
+          "delta": 0.65
+        },
+        {
+          "seriesId": "tt39028251",
+          "title": "Dream to You",
+          "season": 1,
+          "from": 8.15,
+          "to": 7.55,
+          "delta": -0.6
+        },
+        {
+          "seriesId": "tt28919914",
+          "title": "The 100 Girlfriends Who Really, Really, Really, Really, REALLY Love You",
+          "season": 3,
+          "from": 8.6,
+          "to": 8.03,
+          "delta": -0.57
+        },
+        {
+          "seriesId": "tt27429868",
+          "title": "Umayuru",
+          "season": 1,
+          "from": 7.39,
+          "to": 7.89,
+          "delta": 0.5
+        },
+        {
+          "seriesId": "tt27589772",
+          "title": "Blue Ridge: The Series",
+          "season": 2,
+          "from": 8.25,
+          "to": 7.75,
+          "delta": -0.5
+        },
+        {
+          "seriesId": "tt36614693",
+          "title": "WWE: Unreal",
+          "season": 3,
+          "from": 8.9,
+          "to": 8.42,
+          "delta": -0.48
+        },
+        {
+          "seriesId": "tt1570957",
+          "title": "Worst Cooks in America",
+          "season": 17,
+          "from": 6.77,
+          "to": 7.23,
+          "delta": 0.46
+        },
+        {
+          "seriesId": "tt37094589",
+          "title": "Ms. X",
+          "season": 1,
+          "from": 7.98,
+          "to": 8.43,
+          "delta": 0.45
+        }
+      ],
+      "modifiedCounts": {
+        "seriesVotes": 19572,
+        "avgRating": 1125,
+        "shapes": 189,
+        "seriesRating": 310,
+        "episodeCount": 67,
+        "poster": 4,
+        "overview": 5
+      }
+    },
+    {
       "builtAt": "2026-07-23T08:31:23.460Z",
       "totals": {
         "seasons": 65939,
