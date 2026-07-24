@@ -1287,6 +1287,107 @@ test('sumInCurrency treats a missing costCurrency as the trip currency', () => {
   assert.equal(res.unconverted.length, 0);
 });
 
+// ---------- per-traveller cost split ----------
+
+test('normalizeTravelers trims, dedupes case-insensitively and caps at 6', () => {
+  assert.deepEqual(L.normalizeTravelers([' Alex ', 'Sam', 'alex']), ['Alex', 'Sam']);
+  assert.deepEqual(L.normalizeTravelers(['a', 'b', 'c', 'd', 'e', 'f', 'g']), ['a', 'b', 'c', 'd', 'e', 'f']);
+  assert.deepEqual(L.normalizeTravelers(['  ', '', 'Sam']), ['Sam']);
+  assert.deepEqual(L.normalizeTravelers('not an array'), []);
+  assert.deepEqual(L.normalizeTravelers(undefined), []);
+});
+
+test('travelerTotals splits solo, subset and Everyone items exactly (the contract)', () => {
+  const trip = {
+    currency: 'USD',
+    travelers: ['Alex', 'Sam'],
+    items: [
+      { id: 'a', status: 'booked', cost: 100, travelers: ['Alex'] }, // Alex only
+      { id: 'b', status: 'booked', cost: 50, travelers: ['Sam'] },   // Sam only
+      { id: 'c', status: 'booked', cost: 60 },                       // Everyone -> $30 each
+    ],
+  };
+  assert.deepEqual(L.travelerTotals(trip), { Alex: 130, Sam: 80 });
+});
+
+test('travelerTotals: a $60 Everyone item is an exact $30 split, no rounding drift', () => {
+  const trip = { currency: 'USD', travelers: ['Alex', 'Sam'], items: [{ id: 'c', status: 'booked', cost: 60 }] };
+  const t = L.travelerTotals(trip);
+  assert.equal(t.Alex, 30);
+  assert.equal(t.Sam, 30);
+});
+
+test('travelerTotals excludes cancelled items from every share', () => {
+  const trip = {
+    currency: 'USD', travelers: ['Alex', 'Sam'],
+    items: [
+      { id: 'a', status: 'booked', cost: 100, travelers: ['Alex'] },
+      { id: 'x', status: 'cancelled', cost: 500, travelers: ['Alex'] },
+      { id: 'y', status: 'cancelled', cost: 200 },
+    ],
+  };
+  assert.deepEqual(L.travelerTotals(trip), { Alex: 100, Sam: 0 });
+});
+
+test('travelerTotals counts non-booked (planned) items too, cancelled aside', () => {
+  const trip = {
+    currency: 'USD', travelers: ['Alex', 'Sam'],
+    items: [
+      { id: 'a', status: 'to-book', cost: 40, travelers: ['Alex'] },
+      { id: 'b', status: 'decide', cost: 20, travelers: ['Sam'] },
+    ],
+  };
+  assert.deepEqual(L.travelerTotals(trip), { Alex: 40, Sam: 20 });
+});
+
+test('travelerTotals: an unconvertible amount is flagged per owed traveller, never counted', () => {
+  const rates = { base: 'USD', rates: { EUR: 0.9 } }; // no THB rate
+  const trip = {
+    currency: 'USD', travelers: ['Alex', 'Sam'],
+    items: [
+      { id: 'a', status: 'booked', cost: 100, costCurrency: 'USD' },      // Everyone -> 50 each
+      { id: 'b', status: 'booked', cost: 900, costCurrency: 'THB' },      // Everyone, unconvertible
+    ],
+  };
+  const t = L.travelerTotals(trip, rates);
+  assert.equal(t.Alex, 50);
+  assert.equal(t.Sam, 50);
+  assert.equal(t.unconverted.Alex.length, 1);
+  assert.equal(t.unconverted.Sam.length, 1);
+  assert.equal(t.unconverted.Alex[0].id, 'b');
+});
+
+test('travelerTotals treats an empty pick and an unknown name as Everyone, never nobody', () => {
+  const trip = {
+    currency: 'USD', travelers: ['Alex', 'Sam'],
+    items: [
+      { id: 'a', status: 'booked', cost: 80, travelers: [] },        // Everyone -> 40 each
+      { id: 'b', status: 'booked', cost: 60, travelers: ['Ghost'] }, // unknown only -> Everyone -> 30 each
+    ],
+  };
+  assert.deepEqual(L.travelerTotals(trip), { Alex: 70, Sam: 70 });
+});
+
+test('travelerTotals matches an item assignment case-insensitively to the trip roster', () => {
+  const trip = {
+    currency: 'USD', travelers: ['Alex', 'Sam'],
+    items: [{ id: 'a', status: 'booked', cost: 100, travelers: ['alex'] }],
+  };
+  assert.deepEqual(L.travelerTotals(trip), { Alex: 100, Sam: 0 });
+});
+
+test('travelerTotals returns an empty map for a trip that never names a second traveller', () => {
+  assert.deepEqual(L.travelerTotals({ currency: 'USD', items: [{ id: 'a', status: 'booked', cost: 100 }] }), {});
+  assert.deepEqual(L.travelerTotals({ currency: 'USD', travelers: ['Solo'], items: [{ id: 'a', status: 'booked', cost: 100 }] }), {});
+});
+
+test('travelerTotals keeps its unconverted breakdown off the enumerable totals', () => {
+  const trip = { currency: 'USD', travelers: ['Alex', 'Sam'], items: [{ id: 'a', status: 'booked', cost: 100 }] };
+  const t = L.travelerTotals(trip);
+  assert.deepEqual(Object.keys(t), ['Alex', 'Sam']); // unconverted is non-enumerable
+  assert.deepEqual(t.unconverted, { Alex: [], Sam: [] });
+});
+
 // ---------- base64url ----------
 
 test('base64url round-trips arbitrary bytes', () => {
@@ -1868,6 +1969,40 @@ test('slimTripForShare carries the estimate so a shared plan shows what to expec
   // it is still not a cost on the far side
   assert.equal(slim.items[0].cost, undefined);
   assert.equal(L.tripStats({ items: slim.items }).planned, 0);
+});
+
+test('slimTripForShare carries the traveller roster and per-item split', () => {
+  const trip = { name: 'T', currency: 'USD', travelers: ['Alex', 'Sam'], items: [
+    { id: 'x1', type: 'stay', title: 'Hotel', startDate: '2027-01-01', endDate: '2027-01-03',
+      status: 'booked', cost: 200, travelers: ['Alex'], createdAt: 'z' },
+    { id: 'x2', type: 'flight', title: 'Home', startDate: '2027-01-03', status: 'booked',
+      cost: 100, travelers: [], createdAt: 'z' },
+  ] };
+  const slim = L.slimTripForShare(trip);
+  assert.deepEqual(slim.travelers, ['Alex', 'Sam']);
+  assert.deepEqual(slim.items[0].travelers, ['Alex']);
+  // an Everyone (empty) assignment stays absent on the far side, not [] noise
+  assert.equal(slim.items[1].travelers, undefined);
+});
+
+test('slimTripForShare omits the roster entirely for a solo trip', () => {
+  const slim = L.slimTripForShare({ name: 'T', currency: 'USD', items: [] });
+  assert.equal(slim.travelers, undefined);
+});
+
+test('buildCsv appends a travelers column without disturbing the cost total', () => {
+  const cols = L.csvColumns('USD');
+  assert.equal(cols[cols.length - 1], 'travelers');
+  assert.equal(cols.indexOf('cost'), 10); // cost column index is unchanged by the append
+  const trip = { currency: 'USD', items: [
+    { id: 'a', type: 'stay', title: 'Hotel', startDate: '2027-01-01', endDate: '2027-01-02',
+      status: 'booked', cost: 200, travelers: ['Alex', 'Sam'] },
+    { id: 'b', type: 'flight', title: 'Home', startDate: '2027-01-02', status: 'booked', cost: 100 },
+  ] };
+  const csv = L.buildCsv(trip, 'USD', null);
+  assert.ok(csv.includes('"Alex; Sam"'));
+  const rows = csv.split('\n').slice(1);
+  assert.ok(rows[1].endsWith(',""')); // the Everyone item leaves the last cell empty
 });
 
 test('the ICS export has nowhere honest to put a guess, so it carries none', () => {
@@ -3749,4 +3884,261 @@ test('viewFromHash falls back for a fragment that names no view', () => {
   assert.deepEqual(L.viewFromHash('#nonsense', 'map'), { view: 'map', isShare: false });
   assert.equal(L.hashForView('map'), '#map');
   assert.equal(L.hashForView('timeline'), '');
+});
+
+// ---------- connections between legs ----------
+
+function cLeg(id, title, startDate, startTime, endDate = '', endTime = '', type = 'flight', status = 'booked') {
+  return { id, type, title, location: '', startDate, startTime, endDate, endTime, status };
+}
+function cAct(id, title, startDate, startTime, status = 'booked') {
+  return { id, type: 'activity', title, location: '', startDate, startTime, endDate: '', endTime: '', status };
+}
+
+test('connectionWarnings flags a departure at or before the previous arrival', () => {
+  const items = [
+    cLeg('a', 'BOS to CDG', '2026-09-01', '18:00', '2026-09-02', '07:30'),
+    cLeg('b', 'CDG to FCO', '2026-09-02', '07:10'),
+  ];
+  const out = L.connectionWarnings(items);
+  assert.equal(out.length, 1);
+  assert.equal(out[0].kind, 'impossible');
+  assert.deepEqual([out[0].fromId, out[0].toId], ['a', 'b']);
+});
+
+test('connectionWarnings treats an exactly equal departure and arrival as impossible', () => {
+  const out = L.connectionWarnings([
+    cLeg('a', 'BOS to CDG', '2026-09-02', '05:00', '', '07:30'),
+    cLeg('b', 'CDG to FCO', '2026-09-02', '07:30'),
+  ]);
+  assert.equal(out.length, 1);
+  assert.equal(out[0].kind, 'impossible');
+  assert.equal(out[0].minutes, 0);
+});
+
+test('connectionWarnings reports the gap in minutes under the tight cutoff', () => {
+  const out = L.connectionWarnings([
+    cLeg('a', 'BOS to CDG', '2026-09-02', '05:00', '', '07:30'),
+    cLeg('b', 'CDG to FCO', '2026-09-02', '07:45'),
+  ]);
+  assert.equal(out.length, 1);
+  assert.equal(out[0].kind, 'tight');
+  assert.equal(out[0].minutes, 15);
+});
+
+test('connectionWarnings goes quiet at exactly the tight cutoff', () => {
+  const at = L.connectionWarnings([
+    cLeg('a', 'BOS to CDG', '2026-09-02', '05:00', '', '07:30'),
+    cLeg('b', 'CDG to FCO', '2026-09-02', '08:15'),
+  ]);
+  assert.deepEqual(at, []);
+  assert.equal(L.TIGHT_CONNECTION_MIN, 45);
+  const under = L.connectionWarnings([
+    cLeg('a', 'BOS to CDG', '2026-09-02', '05:00', '', '07:30'),
+    cLeg('b', 'CDG to FCO', '2026-09-02', '08:14'),
+  ]);
+  assert.equal(under.length, 1);
+  assert.equal(under[0].minutes, 44);
+});
+
+// A leg saved with no clock value at all could only be judged by inventing one.
+test('connectionWarnings says nothing when either leg has no time', () => {
+  assert.deepEqual(L.connectionWarnings([
+    cLeg('a', 'BOS to CDG', '2026-09-02', '', '', ''),
+    cLeg('b', 'CDG to FCO', '2026-09-02', '07:45'),
+  ]), []);
+  assert.deepEqual(L.connectionWarnings([
+    cLeg('a', 'BOS to CDG', '2026-09-02', '05:00', '', '07:30'),
+    cLeg('b', 'CDG to FCO', '2026-09-02', ''),
+  ]), []);
+});
+
+test('connectionWarnings ignores a non-travel item and a cancelled leg', () => {
+  // an activity between the two legs means they are not back to back
+  assert.deepEqual(L.connectionWarnings([
+    cLeg('a', 'BOS to CDG', '2026-09-02', '05:00', '', '07:30'),
+    cAct('m', 'Coffee', '2026-09-02', '07:35'),
+    cLeg('b', 'CDG to FCO', '2026-09-02', '07:45'),
+  ]), []);
+  assert.deepEqual(L.connectionWarnings([
+    cLeg('a', 'BOS to CDG', '2026-09-02', '05:00', '', '07:30'),
+    cLeg('b', 'CDG to FCO', '2026-09-02', '07:45', '', '', 'flight', 'cancelled'),
+  ]), []);
+});
+
+// A bed booked for the night the two legs straddle makes this a stopover.
+test('connectionWarnings drops a pair with a stay covering the night between', () => {
+  const items = [
+    cLeg('a', 'BOS to CDG', '2026-09-01', '18:00', '2026-09-01', '23:50'),
+    stay('h', 'Paris', '2026-09-01', '2026-09-02'),
+    cLeg('b', 'CDG to FCO', '2026-09-02', '00:05'),
+  ];
+  assert.deepEqual(L.connectionWarnings(items), []);
+});
+
+// ...but a hotel check-in later the same day says nothing about the twenty
+// minutes between landing and the next departure, so the warning survives it.
+test('connectionWarnings keeps a same-day tight change despite that evening stay', () => {
+  const items = [
+    cLeg('a', 'BOS to CDG', '2026-09-01', '06:00', '', '10:00'),
+    cLeg('b', 'CDG to FCO', '2026-09-01', '10:20'),
+    stay('h', 'Rome', '2026-09-01', '2026-09-04'),
+  ];
+  const out = L.connectionWarnings(items);
+  assert.equal(out.length, 1);
+  assert.equal(out[0].kind, 'tight');
+});
+
+// Sort adjacency cannot tell an outbound from a return: on a two-flight trip
+// they sit next to each other. A mistyped arrival year must not be reported as
+// an impossible connection weeks later.
+test('connectionWarnings ignores two legs further than a day apart', () => {
+  assert.deepEqual(L.connectionWarnings([
+    cLeg('a', '2026-09-01 out', '2026-09-01', '09:00', '2026-12-01', '11:00'),
+    cLeg('b', 'return', '2026-09-08', '09:00'),
+  ]), []);
+  // and the honest same-journey case still fires across midnight
+  const overnight = L.connectionWarnings([
+    cLeg('a', 'LHR to DXB', '2026-09-01', '21:00', '2026-09-02', '06:40'),
+    cLeg('b', 'DXB to SIN', '2026-09-02', '07:00'),
+  ]);
+  assert.equal(overnight.length, 1);
+  assert.equal(overnight[0].minutes, 20);
+});
+
+test('connectionWarnings covers transport and local legs, not just flights', () => {
+  const out = L.connectionWarnings([
+    cLeg('a', 'Taxi to Termini', '2026-09-03', '08:00', '', '08:30', 'local'),
+    cLeg('b', 'Rome to Florence', '2026-09-03', '08:35', '', '10:07', 'transport'),
+  ]);
+  assert.equal(out.length, 1);
+  assert.equal(out[0].minutes, 5);
+});
+
+// ---------- same-clock-time double bookings ----------
+
+test('sameTimeCollisions pairs two items on the same date and time', () => {
+  const out = L.sameTimeCollisions([
+    cAct('a', 'Louvre', '2026-09-05', '14:00'),
+    cAct('b', 'Cooking class', '2026-09-05', '14:00'),
+  ]);
+  assert.equal(out.length, 1);
+  assert.deepEqual([out[0].aId, out[0].bId], ['a', 'b']);
+  assert.deepEqual([out[0].aTitle, out[0].bTitle], ['Louvre', 'Cooking class']);
+  assert.deepEqual([out[0].date, out[0].time], ['2026-09-05', '14:00']);
+});
+
+// The app never records how long anything lasts, so a five-minute offset is not
+// evidence of a clash. Exact match only.
+test('sameTimeCollisions is silent one minute apart, on another date, or cancelled', () => {
+  assert.deepEqual(L.sameTimeCollisions([
+    cAct('a', 'Louvre', '2026-09-05', '14:00'),
+    cAct('b', 'Cooking class', '2026-09-05', '14:05'),
+  ]), []);
+  assert.deepEqual(L.sameTimeCollisions([
+    cAct('a', 'Louvre', '2026-09-05', '14:00'),
+    cAct('b', 'Cooking class', '2026-09-06', '14:00'),
+  ]), []);
+  assert.deepEqual(L.sameTimeCollisions([
+    cAct('a', 'Louvre', '2026-09-05', '14:00'),
+    cAct('b', 'Cooking class', '2026-09-05', '14:00', 'cancelled'),
+  ]), []);
+});
+
+test('sameTimeCollisions ignores items with no time and stays', () => {
+  assert.deepEqual(L.sameTimeCollisions([
+    cAct('a', 'Louvre', '2026-09-05', ''),
+    cAct('b', 'Cooking class', '2026-09-05', ''),
+  ]), []);
+  assert.deepEqual(L.sameTimeCollisions([
+    stay('h1', 'Paris', '2026-09-05', '2026-09-08'),
+    stay('h2', 'Paris annexe', '2026-09-05', '2026-09-07'),
+  ]), []);
+});
+
+test('sameTimeCollisions reports every pair in a three-way pile-up', () => {
+  const out = L.sameTimeCollisions([
+    cAct('a', 'Louvre', '2026-09-05', '14:00'),
+    cAct('b', 'Cooking class', '2026-09-05', '14:00'),
+    cAct('c', 'Seine cruise', '2026-09-05', '14:00'),
+  ]);
+  assert.equal(out.length, 3);
+});
+
+// ---------- confirmation / booking reference ----------
+
+test('CSV exports the confirmation code, and every older column keeps its index', () => {
+  const cols = L.csvColumns('USD');
+  // confirmation is now second to last, travelers was appended after it; both
+  // were added by appending, never inserting, so a spreadsheet built against the
+  // old header still reads the same values out of the same columns
+  assert.equal(cols[cols.length - 1], 'travelers');
+  assert.equal(cols[cols.length - 2], 'confirmation');
+  assert.deepEqual(cols.slice(0, -2), ['startDate', 'startTime', 'endDate', 'endTime', 'nights',
+    'type', 'title', 'location', 'details', 'status', 'cost', 'costCurrency', 'costInUSD',
+    'estimatedCost', 'estimatedCostCurrency', 'costNote']);
+});
+
+test('a confirmation code survives the CSV export, and an item without one exports blank', () => {
+  const trip = { name: 'T', currency: 'USD', items: [
+    { id: 'a', type: 'flight', title: 'SHV to HND', startDate: '2027-05-01', status: 'booked', confirmation: 'XJ7K2Q' },
+    { id: 'b', type: 'activity', title: 'Museum', startDate: '2027-05-02', status: 'booked' },
+  ] };
+  const rows = parseCsv(L.buildCsv(trip, 'USD', null));
+  const col = rows[0].indexOf('confirmation');
+  assert.equal(rows[1][col], 'XJ7K2Q');
+  // no key at all on the older item: a blank cell, not "undefined"
+  assert.equal(rows[2][col], '');
+});
+
+test('a confirmation code with a comma or a quote stays one CSV cell', () => {
+  const trip = { name: 'T', currency: 'USD', items: [
+    { id: 'a', type: 'stay', title: 'Hotel', startDate: '2027-05-01', endDate: '2027-05-03', status: 'booked', confirmation: 'AB,12"X' },
+  ] };
+  const rows = parseCsv(L.buildCsv(trip, 'USD', null));
+  assert.equal(rows[1].length, rows[0].length);
+  assert.equal(rows[1][rows[0].indexOf('confirmation')], 'AB,12"X');
+});
+
+test('the calendar export carries the confirmation code, labelled, and omits it when there is none', () => {
+  const withRef = L.buildIcs({ name: 'T', items: [
+    { id: 'a', type: 'flight', title: 'SHV to HND', startDate: '2027-05-01', status: 'booked', confirmation: 'XJ7K2Q' },
+  ] });
+  assert.ok(withRef.includes('Ref: XJ7K2Q'));
+  const without = L.buildIcs({ name: 'T', items: [
+    { id: 'a', type: 'flight', title: 'SHV to HND', startDate: '2027-05-01', status: 'booked' },
+  ] });
+  assert.equal(without.includes('Ref:'), false);
+});
+
+test('a confirmation code survives a share link, and an empty one is not carried', () => {
+  const slim = L.slimTripForShare({ name: 'T', currency: 'USD', items: [
+    { id: 'a', type: 'flight', title: 'SHV to HND', startDate: '2027-05-01', status: 'booked', confirmation: 'XJ7K2Q' },
+    { id: 'b', type: 'activity', title: 'Museum', startDate: '2027-05-02', status: 'booked', confirmation: '' },
+    { id: 'c', type: 'activity', title: 'Park', startDate: '2027-05-03', status: 'booked' },
+  ] });
+  assert.equal(slim.items[0].confirmation, 'XJ7K2Q');
+  assert.equal('confirmation' in slim.items[1], false);
+  assert.equal('confirmation' in slim.items[2], false);
+});
+
+test('an assistant can never write a booking reference', () => {
+  // a guessed code that looks real is worse at a check-in counter than none
+  const add = L.validateTripAction({ op: 'add', item: {
+    type: 'activity', title: 'Tour', startDate: '2027-05-01', confirmation: 'FAKE99',
+  } }, { items: [] });
+  assert.equal(add.ok, true);
+  assert.equal('confirmation' in add.proposal.fields, false);
+  // and an update leaves the traveller's own code exactly where it was
+  const trip = { items: [{ id: 'x', type: 'stay', title: 'Hotel', startDate: '2027-05-01', endDate: '2027-05-03', status: 'booked', confirmation: 'REAL42' }] };
+  const upd = L.validateTripAction({ op: 'update', match: { id: 'x' }, set: { location: 'Kyoto', confirmation: 'FAKE99' } }, trip);
+  assert.equal('confirmation' in upd.proposal.fields, false);
+  assert.equal(trip.items[0].confirmation, 'REAL42');
+});
+
+test('an item with no confirmation key validates exactly as one with an empty code', () => {
+  const base = { type: 'activity', title: 'Museum', startDate: '2027-05-01' };
+  assert.deepEqual(L.validateItem(base), {});
+  assert.deepEqual(L.validateItem({ ...base, confirmation: '' }), {});
+  assert.deepEqual(L.validateItem({ ...base, confirmation: 'XJ7K2Q' }), {});
 });
