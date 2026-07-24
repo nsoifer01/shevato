@@ -407,7 +407,13 @@
     if (lastRateAttempt.base === base && Date.now() - lastRateAttempt.at < 60000) return;
     lastRateAttempt = { base, at: Date.now() };
     ratesFetching = true;
-    fetch('https://api.frankfurter.dev/v1/latest?from=' + encodeURIComponent(base))
+    // Bound the request the same way the places lookup is (app.js fetchRatingBatch):
+    // without this, a hung connection leaves ratesFetching true forever and the
+    // "Fetching exchange rates..." note never clears. On abort the catch below
+    // flips ratesFailed, so the note falls back to "Could not fetch..." instead.
+    const ctrl = new AbortController();
+    const timer = setTimeout(() => ctrl.abort(), 8000);
+    fetch('https://api.frankfurter.dev/v1/latest?from=' + encodeURIComponent(base), { signal: ctrl.signal })
       .then(r => { if (!r.ok) throw new Error('http ' + r.status); return r.json(); })
       .then(data => {
         if (data && data.base && data.rates) {
@@ -418,7 +424,7 @@
         }
       })
       .catch(() => { ratesFailed = true; render(); })
-      .finally(() => { ratesFetching = false; });
+      .finally(() => { clearTimeout(timer); ratesFetching = false; });
   }
 
   // Converted money totals in the trip currency. Returns confirmed/planned as
@@ -802,6 +808,17 @@
     render();
   }
 
+  // item id -> highest issue severity ('error' beats 'warn'). Both the timeline
+  // and the day view colour their rows from this same map, so a flagged item
+  // reads the same in either view.
+  function buildIssueById(issues) {
+    const map = {};
+    for (const iss of issues) for (const id of iss.ids) {
+      map[id] = map[id] === 'error' ? 'error' : iss.level;
+    }
+    return map;
+  }
+
   function renderBoard(trip, issues) {
     const board = $('#board');
     const items = sortedItems(trip);
@@ -833,10 +850,7 @@
       return;
     }
 
-    const issueById = {};
-    for (const iss of issues) for (const id of iss.ids) {
-      issueById[id] = issueById[id] === 'error' ? 'error' : iss.level;
-    }
+    const issueById = buildIssueById(issues);
     const gaps = issues.filter(i => i.gap).map(i => i.gap);
     const st = tripStats(trip);
     const phase = (st.start && st.end) ? tripPhase(st.start, st.end, todayIso()) : { phase: 'before' };
@@ -1196,9 +1210,11 @@
     return `<span class="dc-cost${refund}">${est}${moneyHtml(trip, amount, digits, 'item')}</span>`;
   }
 
-  function dayEventHtml(ev, trip) {
+  function dayEventHtml(ev, trip, issueById) {
     const it = ev.item;
     const look = rowLook(it);
+    const issueLevel = issueById && issueById[it.id];
+    const issueCls = issueLevel === 'error' ? ' has-err' : (issueLevel === 'warn' ? ' has-warn' : '');
     const isStayRow = ev.kind === 'checkin' || ev.kind === 'checkout';
     const tag = ev.kind === 'checkin' ? 'Check in' : (ev.kind === 'checkout' ? 'Check out' : '');
     // A check-out row names the place you are leaving; the location line would
@@ -1244,7 +1260,7 @@
     // day), so they share one line rather than one slot.
     const tags = (tag ? `<span class="dc-tag">${tag}</span>` : '')
       + (cancelled ? '<span class="dc-tag is-cancelled">Cancelled</span>' : '');
-    return `<div class="dc-event ${look.cls}${travelCls}${isStayRow ? ' is-stay' : ''} ${sm.cls} ${cancelled ? 'is-cancelled' : ''}">
+    return `<div class="dc-event ${look.cls}${travelCls}${isStayRow ? ' is-stay' : ''}${issueCls} ${sm.cls} ${cancelled ? 'is-cancelled' : ''}">
       <div class="dc-rail">
         <span class="dc-dot" role="img" aria-label="${esc(sm.label)}" title="${esc(sm.label)}"></span>
         ${when ? `<span class="dc-when">${when}</span>` : ''}
@@ -1284,11 +1300,11 @@
   // belongs to a stay that began earlier, so it is not "an event on this day".
   const dayClearCount = card => card.events.filter(ev => ev.kind !== 'checkout').length + card.untimed.length;
 
-  function dayCardHtml(card, isToday, trip) {
+  function dayCardHtml(card, isToday, trip, issueById) {
     const parts = [];
-    if (card.events.length) parts.push(card.events.map(ev => dayEventHtml(ev, trip)).join(''));
+    if (card.events.length) parts.push(card.events.map(ev => dayEventHtml(ev, trip, issueById)).join(''));
     if (card.untimed.length) {
-      parts.push(`<div class="dc-untimed"><span class="dc-untimed-label">No time set</span>${card.untimed.map(ev => dayEventHtml(ev, trip)).join('')}</div>`);
+      parts.push(`<div class="dc-untimed"><span class="dc-untimed-label">No time set</span>${card.untimed.map(ev => dayEventHtml(ev, trip, issueById)).join('')}</div>`);
     }
     // A day with nothing on it still has a bed if a stay spans it, and saying
     // "No plans yet" there would be false (see emptyDayNote).
@@ -1496,9 +1512,15 @@
     const box = $('#daysList');
     const all = dayCards(trip);
     if (!all.length) {
-      box.innerHTML = `<div class="empty" style="padding:40px 24px"><p>Add items with dates and a day-by-day plan appears here.</p></div>`;
+      box.innerHTML = `
+        <div class="empty">
+          <div class="big">📅</div>
+          <h2>No day-by-day plan yet</h2>
+          <p>Add items with dates and a day-by-day plan appears here.</p>
+        </div>`;
       return;
     }
+    const issueById = buildIssueById(computeIssues(trip));
     const st = tripStats(trip);
     const phase = (st.start && st.end) ? tripPhase(st.start, st.end, todayIso()) : { phase: 'before' };
     const today = todayIso();
@@ -1539,7 +1561,7 @@
     const wx = '<div class="days-note days-wx">Temperatures are typical for that month across the last '
       + WEATHER_YEARS + ' years of records, not a forecast. Weather data by '
       + '<a href="https://open-meteo.com/" target="_blank" rel="noopener">Open-Meteo</a> (CC BY 4.0).</div>';
-    box.innerHTML = note + cards.map(c => dayCardHtml(c, phase.phase === 'during' && c.date === today, trip)).join('') + wx;
+    box.innerHTML = note + cards.map(c => dayCardHtml(c, phase.phase === 'during' && c.date === today, trip, issueById)).join('') + wx;
     // Same one batched lookup as the timeline: paints from the shared session
     // cache instantly, so switching into the days view never refetches a key the
     // board already resolved.
@@ -2235,7 +2257,7 @@
         const stored = save(); render();
         if (stored) reportImportDrops(`Imported ${added} trip${added === 1 ? '' : 's'}`, drops);
       } catch (err) {
-        toast(`Import failed: ${err.message}`);
+        toastError(`Import failed: ${err.message}`);
       }
     };
     reader.readAsText(file);
@@ -2350,7 +2372,7 @@
   }
 
   async function shareTrip() {
-    if (typeof CompressionStream === 'undefined') { toast('Sharing is not supported in this browser'); return; }
+    if (typeof CompressionStream === 'undefined') { toastError('Sharing is not supported in this browser'); return; }
     const t = activeTrip();
     const json = JSON.stringify({ version: 1, trip: slimTripForShare(t) });
     const compressed = await streamThrough(CompressionStream, new TextEncoder().encode(json));
@@ -2358,7 +2380,7 @@
     // The fragment never travels to a server, so browsers handle very long
     // links fine; the real-world limit is chat apps truncating them. Hard
     // stop only at absurd sizes, advisory warning in between.
-    if (url.length > 30000) { toast('This trip is too large to share by link. Use Export trip (JSON) instead.'); return; }
+    if (url.length > 30000) { toastError('This trip is too large to share by link. Use Export trip (JSON) instead.'); return; }
     try {
       await navigator.clipboard.writeText(url);
       toast(url.length > 8000
@@ -2370,7 +2392,7 @@
   }
 
   async function decodeShare(hash) {
-    if (typeof DecompressionStream === 'undefined') { toast('Sharing is not supported in this browser'); return null; }
+    if (typeof DecompressionStream === 'undefined') { toastError('Sharing is not supported in this browser'); return null; }
     try {
       const bytes = base64urlToBytes(hash.slice(SHARE_PREFIX.length));
       const out = await streamThrough(DecompressionStream, bytes);
@@ -2378,7 +2400,7 @@
       const trip = parsed && parsed.trip;
       if (!trip || !Array.isArray(trip.items)) throw new Error('bad payload');
       return trip;
-    } catch { toast('This share link could not be opened'); return null; }
+    } catch { toastError('This share link could not be opened'); return null; }
   }
 
   async function enterSharedMode() {
@@ -2750,8 +2772,11 @@
     box.classList.toggle('is-blank', state === 'blank');
     box.style.setProperty('--map-progress', typeof pct === 'number' ? Math.round(pct) + '%' : '0%');
   }
-  function mapFailed(msg) {
-    $('#mapStatus').textContent = msg;
+  // Same polished empty block the timeline and days views use, so a map with
+  // nothing to draw reads as a considered state rather than a broken card. The
+  // icon distinguishes the reason at a glance (no places / offline / not found).
+  function mapFailed(icon, heading, msg) {
+    $('#mapStatus').innerHTML = `<div class="empty"><div class="big">${icon}</div><h2>${esc(heading)}</h2><p>${esc(msg)}</p></div>`;
     setMapState('blank');
   }
 
@@ -2762,14 +2787,14 @@
     const stops = mapStops(trip);
     if (!stops.length) {
       if (mapInstance) { mapInstance.remove(); mapInstance = null; }
-      mapFailed('Add items with a "Place" (Tokyo, Kyoto, ...) and they will show up here as a route.');
+      mapFailed('🗺️', 'No places to map yet', 'Add items with a "Place" (Tokyo, Kyoto, ...) and they will show up here as a route.');
       return;
     }
-    if (!navigator.onLine) { mapFailed('The map needs an internet connection (tiles + place lookup).'); return; }
+    if (!navigator.onLine) { mapFailed('📡', 'The map is offline', 'The map needs an internet connection (tiles + place lookup).'); return; }
     setMapState('loading', 0);
     status.textContent = 'Loading map...';
     const ok = await ensureLeaflet();
-    if (!ok) { mapFailed('Could not load the map library (offline?). The timeline is unaffected.'); return; }
+    if (!ok) { mapFailed('📡', 'The map could not load', 'Could not load the map library (offline?). The timeline is unaffected.'); return; }
     if (token !== mapRunToken) return;
 
     const located = [], failed = [];
@@ -2781,7 +2806,7 @@
       if (hit.ok) located.push({ ...stops[i], ...hit });
       else failed.push(stops[i].name);
     }
-    if (!located.length) { mapFailed(`Could not locate: ${failed.join(', ')}. Try more specific place names (add the country).`); return; }
+    if (!located.length) { mapFailed('📍', 'Could not find those places', `Could not locate: ${failed.join(', ')}. Try more specific place names (add the country).`); return; }
     setMapState('ready');
 
     if (mapInstance) { mapInstance.remove(); mapInstance = null; }
@@ -4415,15 +4440,18 @@
   }
 
   let lastDeleted = null;
-  function toast(msg, undoFn) {
+  function toast(msg, undoFn, opts) {
     const box = $('#toasts');
     const el = document.createElement('div');
-    el.className = 'toast';
+    el.className = 'toast' + (opts && opts.error ? ' toast-error' : '');
     el.innerHTML = `<span>${esc(msg)}</span>${undoFn ? '<button type="button">Undo</button>' : ''}`;
     if (undoFn) el.querySelector('button').addEventListener('click', () => { undoFn(); el.remove(); });
     box.appendChild(el);
     setTimeout(() => { el.style.opacity = '0'; el.style.transition = 'opacity .4s'; setTimeout(() => el.remove(), 450); }, undoFn ? 6000 : 2600);
   }
+  // Genuine failures (a bad import, a share link that will not open) route here
+  // so they read as errors, not the neutral confirmations Undo toasts use.
+  function toastError(msg) { toast(msg, null, { error: true }); }
 
   // ---------- events ----------
   $('#addBtn').addEventListener('click', () => openItemModal(null));
