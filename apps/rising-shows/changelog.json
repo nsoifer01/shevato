@@ -1,6 +1,192 @@
 {
   "updates": [
     {
+      "builtAt": "2026-07-25T08:15:56.559Z",
+      "totals": {
+        "seasons": 65968,
+        "delta": 7
+      },
+      "shapeCounts": {
+        "mid-peak": 4628,
+        "rebound": 10067,
+        "rising": 2927,
+        "slow-burn": 4372,
+        "big-finale": 12026,
+        "u-shaped": 3093,
+        "rollercoaster": 14020,
+        "saved-best-for-last": 1537,
+        "front-loaded": 3462,
+        "declining": 1878,
+        "bad-finale": 4644,
+        "consistent": 2620,
+        "shape-drift": 1632
+      },
+      "shapeDeltas": {
+        "mid-peak": -1,
+        "rebound": 3,
+        "rising": -1,
+        "slow-burn": 1,
+        "big-finale": 1,
+        "u-shaped": 3,
+        "rollercoaster": -6,
+        "saved-best-for-last": 1,
+        "front-loaded": 1,
+        "declining": 3,
+        "bad-finale": -3,
+        "consistent": 1,
+        "shape-drift": 1
+      },
+      "added": [
+        {
+          "seriesId": "tt0098740",
+          "title": "America's Funniest Home Videos",
+          "season": 25,
+          "seasonYear": 2015
+        },
+        {
+          "seriesId": "tt37803840",
+          "title": "Police Police",
+          "season": 1,
+          "seasonYear": 2025
+        },
+        {
+          "seriesId": "tt6546832",
+          "title": "YouTube Money",
+          "season": 2,
+          "seasonYear": 2017
+        },
+        {
+          "seriesId": "tt12258686",
+          "title": "Dertigers",
+          "season": 7,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt28455470",
+          "title": "Burning Flames",
+          "season": 1,
+          "seasonYear": 2024
+        },
+        {
+          "seriesId": "tt30063915",
+          "title": "The Crow Girl",
+          "season": 2,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt38264348",
+          "title": "The Hairdresser Mysteries",
+          "season": 1,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt5188404",
+          "title": "Comedy Club",
+          "season": 1,
+          "seasonYear": 2005
+        }
+      ],
+      "removed": [
+        {
+          "seriesId": "tt4508624",
+          "title": "My Lottery Dream Home",
+          "season": 9,
+          "seasonYear": 2020
+        }
+      ],
+      "ratingSwings": [
+        {
+          "seriesId": "tt0329829",
+          "title": "Fireman Sam",
+          "season": 11,
+          "from": 4.84,
+          "to": 6.11,
+          "delta": 1.27
+        },
+        {
+          "seriesId": "tt7301292",
+          "title": "Dry Bar Comedy",
+          "season": 6,
+          "from": 7.28,
+          "to": 6.47,
+          "delta": -0.81
+        },
+        {
+          "seriesId": "tt0329829",
+          "title": "Fireman Sam",
+          "season": 10,
+          "from": 3.82,
+          "to": 4.36,
+          "delta": 0.54
+        },
+        {
+          "seriesId": "tt37543285",
+          "title": "Solo Traveling with Tracee Ellis Ross",
+          "season": 1,
+          "from": 6.37,
+          "to": 5.87,
+          "delta": -0.5
+        },
+        {
+          "seriesId": "tt27422891",
+          "title": "LOL: Last One Laughing Poland",
+          "season": 4,
+          "from": 6.95,
+          "to": 7.36,
+          "delta": 0.41
+        },
+        {
+          "seriesId": "tt43405601",
+          "title": "Doganin Kanunu",
+          "season": 1,
+          "from": 7.88,
+          "to": 8.26,
+          "delta": 0.38
+        },
+        {
+          "seriesId": "tt10580092",
+          "title": "The Oval",
+          "season": 7,
+          "from": 7.57,
+          "to": 7.21,
+          "delta": -0.36
+        },
+        {
+          "seriesId": "tt38610771",
+          "title": "Jinn Ki Shadi Unki Shadi",
+          "season": 1,
+          "from": 8.35,
+          "to": 8.7,
+          "delta": 0.35
+        },
+        {
+          "seriesId": "tt0144061",
+          "title": "Medicopter 117 - Jedes Leben zählt",
+          "season": 2,
+          "from": 7.58,
+          "to": 7.91,
+          "delta": 0.33
+        },
+        {
+          "seriesId": "tt43658578",
+          "title": "Katie Price: Nothing to Hide",
+          "season": 1,
+          "from": 6.32,
+          "to": 6.65,
+          "delta": 0.33
+        }
+      ],
+      "modifiedCounts": {
+        "seriesVotes": 15278,
+        "avgRating": 631,
+        "shapes": 100,
+        "seriesRating": 137,
+        "episodeCount": 31,
+        "poster": 14,
+        "overview": 4
+      }
+    },
+    {
       "builtAt": "2026-07-24T08:43:25.508Z",
       "totals": {
         "seasons": 65961,
