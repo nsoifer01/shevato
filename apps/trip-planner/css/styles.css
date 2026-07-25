@@ -256,6 +256,11 @@
     color: var(--text-faint); pointer-events: none;
   }
   .toolbar .view-switch { background: var(--bg-soft); }
+  /* the traveller filter is BUILT into this span (only on a 2+ traveller trip),
+     so the span itself must not exist as a box: display:contents hands the
+     select straight to the .tb-filters flex row, where it sizes and wraps
+     exactly like the type and status selects beside it */
+  .tb-traveler { display: contents; }
 
   /* ---------- issues ---------- */
   .issues { margin: 0 0 14px; }
@@ -577,6 +582,22 @@
   /* same honesty as the amber Confirmed total: a share missing an unconvertible
      amount must not read as complete */
   .tt-row.incomplete .tt-val { color: var(--amber); }
+
+  /* ---------- settle up + cost by type ----------
+     Both reuse the .traveler-totals card and the .tt-row shape on purpose: they
+     are the same money as the split above, read from two other angles, so they
+     must not read as three different kinds of thing stacked on each other. */
+  .su-row { display: flex; justify-content: space-between; align-items: baseline; gap: 16px; }
+  .su-empty { color: var(--text-dim); font-size: 13px; }
+  /* the amount we could not convert is missing from EVERY line below it, so the
+     caveat sits on the heading rather than on one row that happens to show it */
+  .settle-up.incomplete .tt-head { color: var(--amber); }
+  .type-totals .ty-ico { margin-right: 8px; }
+
+  /* "Paid by" (item modal): a plain .field, so it inherits the label, control
+     and caret styling every other field in the dialog already has */
+  .paid-by { margin-top: 2px; }
+  .paid-by .sel-wrap { max-width: 260px; }
 
   /* ---------- trip-in-progress dimming (distinct from cancelled: no strike) ---------- */
   .tp-row.is-past .c-when, .tp-row.is-past .c-dot,
@@ -2539,4 +2560,73 @@
     /* Days view: print only the day cards, not the (hidden) timeline/strip. */
     body.view-days .board, body.view-days .strip-box, body.view-days .summary { display: none !important; }
     body.view-days .days-box { display: block !important; }
+  }
+
+  /* ---------- "Up next" summary chip ----------
+     A .chip that is also a button: same surface as the chips beside it, but it
+     clicks through to the row it names. main.css paints every button gray with
+     a red hover ring and a translucent red press flash, so the ring and the
+     press tint are pinned here next to the colour pins further up. */
+  .trip-planner-app .nextup-chip {
+    display: block; text-align: left; font: inherit; margin: 0; cursor: pointer;
+  }
+  .nextup-chip .k, .nextup-chip .v { display: block; }
+  .trip-planner-app .nextup-chip .k { color: var(--accent); }
+  .trip-planner-app .nextup-chip:hover { border-color: var(--accent); box-shadow: none; }
+  .trip-planner-app .nextup-chip:hover:active { background-color: var(--bg-raised); }
+  /* the only unbounded string on the summary bar: it clips, and the full title
+     rides on the button's own title attribute (the truncation contract) */
+  .nextup-chip .nu-title {
+    display: inline-block; max-width: 190px; vertical-align: bottom;
+    overflow: hidden; text-overflow: ellipsis;
+  }
+
+  /* ---------- packing checklist ---------- */
+  .pk-count { margin-left: auto; font-size: 12.5px; font-weight: 700; color: var(--text-dim); white-space: nowrap; }
+  .pk-list { display: flex; flex-direction: column; gap: 6px; }
+  .pk-row {
+    display: flex; align-items: center; gap: 8px;
+    background: var(--bg-raised); border: 1px solid var(--border-soft);
+    border-radius: 10px; padding: 8px 8px 8px 12px;
+  }
+  .pk-check { display: flex; align-items: center; gap: 11px; flex: 1 1 auto; min-width: 0; cursor: pointer; }
+  .pk-text { font-size: 14px; color: var(--text); overflow-wrap: anywhere; }
+  .pk-row.is-done .pk-text { color: var(--text-dim); text-decoration: line-through; }
+  /* main.css hides every native checkbox (opacity 0, z-index -1) so it can draw
+     a fake box on a SIBLING label, which these rows do not have: the input sits
+     INSIDE its label. Handed back and repainted from the theme tokens, the same
+     way the radio rows further up already are. */
+  .trip-planner-app .pk-check input[type="checkbox"] {
+    -webkit-appearance: none; appearance: none;
+    display: inline-block; float: none; opacity: 1; z-index: auto;
+    box-sizing: border-box; padding: 0; margin: 0; cursor: pointer;
+    width: 18px; height: 18px; flex: none; min-height: 0;
+    border: 2px solid var(--text-faint); border-radius: 5px;
+    background: var(--bg-card); box-shadow: none;
+    transition: border-color .12s, background-color .12s;
+  }
+  .trip-planner-app .pk-check:hover input[type="checkbox"] { border-color: var(--text-dim); }
+  .trip-planner-app .pk-check input[type="checkbox"]:checked {
+    border-color: var(--accent-fill); background-color: var(--accent-fill);
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpath d='M3.4 8.4l3 3 6.2-6.6' stroke='%23ffffff' stroke-width='2.2' fill='none' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+    background-repeat: no-repeat; background-position: center; background-size: 13px 13px;
+  }
+  .pk-del {
+    background: none; border: 1px solid transparent; border-radius: 8px;
+    padding: 4px 9px; font-size: 13px; line-height: 1; flex: none;
+  }
+  .trip-planner-app .pk-del { color: var(--text-dim) !important; }
+  .trip-planner-app .pk-del:hover { color: var(--red) !important; border-color: var(--red); box-shadow: none; }
+  .trip-planner-app .pk-del:hover:active { background-color: var(--red-soft); }
+  .pk-add { display: flex; gap: 8px; align-items: flex-start; margin-top: 10px; }
+  .pk-add .field { flex: 1 1 auto; }
+  .trip-planner-app .pk-add .btn { flex: none; min-height: var(--m-ctl-h); }
+  @media (max-width: 560px) {
+    /* the chip strip scrolls sideways on a phone, so the title gets less room
+       before it clips */
+    .nextup-chip .nu-title { max-width: 148px; }
+    /* the same 44px tap target every other phone control takes */
+    .trip-planner-app .pk-check input[type="checkbox"] { width: 22px; height: 22px; }
+    .pk-row { padding: 10px 8px 10px 12px; }
+    .trip-planner-app .pk-del { min-height: 34px; padding: 4px 12px; }
   }

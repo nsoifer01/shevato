@@ -955,6 +955,122 @@ const TripLogic = (() => {
     return totals;
   }
 
+  // ---------- settle up (who owes whom) ----------
+  // travelerTotals answers "what did this trip cost each of us"; this answers
+  // the question that actually gets asked at the end of it, "so who pays who".
+  //
+  // WHICH ITEMS COUNT, and why this filter is narrower than travelerTotals':
+  // only a BOOKED item, with a convertible cost, that names who actually paid.
+  // A "to book" cost is money nobody has handed over yet, so settling it would
+  // invent a debt; an item with no `paidBy` is money we were never told about.
+  // Both are deliberately worth $0 here even though they still count towards a
+  // traveller's share above, so the two blocks answer two different questions
+  // and neither one lies.
+  //
+  // RETURN SHAPE: an array of { from, to, amount } payments, from = the debtor,
+  // to = the creditor, amount in the trip's currency, netted down to the fewest
+  // payments that clear every balance. `tracked` (how many item costs carried a
+  // usable payer) and `unconverted` (booked, paid-for items whose currency we
+  // could not convert) ride along as NON-ENUMERABLE properties so a deepEqual
+  // against a plain array of payments still holds: the render needs `tracked` to
+  // tell "nobody recorded a payer" (say so, do not print a wall of $0.00) apart
+  // from "everyone is already square".
+  //
+  // A `paidBy` naming somebody the trip no longer lists (renamed, removed) is
+  // matched case-insensitively to the roster and otherwise ignored entirely,
+  // the same treatment an item's `travelers` assignment gets: a stale name can
+  // never conjure a debt for a person who is not on the trip.
+  function settlements(trip, ratesObj) {
+    const names = normalizeTravelers(trip && trip.travelers);
+    const out = [];
+    const unconverted = [];
+    let tracked = 0;
+    const finish = () => {
+      Object.defineProperty(out, 'unconverted', { value: unconverted, enumerable: false });
+      Object.defineProperty(out, 'tracked', { value: tracked, enumerable: false });
+      return out;
+    };
+    if (names.length < 2) return finish();
+    const base = (trip && trip.currency) || 'USD';
+    const canon = new Map(names.map(n => [n.toLowerCase(), n]));
+    const net = {};
+    for (const n of names) net[n] = 0;
+    for (const it of (trip.items || [])) {
+      if (it.status !== 'booked') continue;
+      if (it.cost == null || it.cost === '' || isNaN(it.cost)) continue;
+      const payer = canon.get(String(it.paidBy == null ? '' : it.paidBy).trim().toLowerCase());
+      if (!payer) continue;
+      const conv = convertAmount(Number(it.cost), it.costCurrency || base, base, ratesObj);
+      if (conv === null) { unconverted.push(it); continue; }
+      tracked++;
+      const assigned = [];
+      if (Array.isArray(it.travelers)) {
+        for (const raw of it.travelers) {
+          const c = canon.get(String(raw == null ? '' : raw).trim().toLowerCase());
+          if (c && !assigned.includes(c)) assigned.push(c);
+        }
+      }
+      const owers = assigned.length ? assigned : names; // Everyone, never "nobody"
+      net[payer] += conv;
+      for (const n of owers) net[n] -= conv / owers.length;
+    }
+    // Round to cents BEFORE pairing. Netting at full precision leaves balances
+    // like -33.33333 that pair into a 0.0000001 payment, i.e. a "Sam owes Alex
+    // $0.00" line, which is worse than no line at all.
+    const cents = n => Math.round(n * 100) / 100;
+    const rank = new Map(names.map((n, i) => [n, i]));
+    const creditors = [], debtors = [];
+    for (const n of names) {
+      const v = cents(net[n]);
+      if (v >= 0.005) creditors.push({ name: n, amt: v });
+      else if (v <= -0.005) debtors.push({ name: n, amt: -v });
+    }
+    // Largest against largest is the classic greedy minimum-payments pairing.
+    // Ties break on roster order so the same trip always renders the same rows.
+    const bySize = (a, b) => b.amt - a.amt || rank.get(a.name) - rank.get(b.name);
+    creditors.sort(bySize);
+    debtors.sort(bySize);
+    let ci = 0, di = 0;
+    while (ci < creditors.length && di < debtors.length) {
+      const c = creditors[ci], d = debtors[di];
+      const pay = cents(Math.min(c.amt, d.amt));
+      if (pay >= 0.005) out.push({ from: d.name, to: c.name, amount: pay });
+      c.amt = cents(c.amt - pay);
+      d.amt = cents(d.amt - pay);
+      if (c.amt < 0.005) ci++;
+      if (d.amt < 0.005) di++;
+    }
+    return finish();
+  }
+
+  // ---------- cost by type ----------
+  // "Where did the money go", one row per item type that has at least one
+  // BOOKED costed item, biggest first. Booked-only is the same filter the
+  // Confirmed total uses, so these rows add up to that number rather than to
+  // some third figure nothing else on the page shows.
+  //
+  // A type with nothing booked and costed gets NO row: a $0.00 placeholder for
+  // a type the trip never used reads as "we spent nothing on transport" when
+  // the truth is "there is no transport here". A type whose amount could not be
+  // converted still gets its row, carrying the offending items in `unconverted`
+  // so the render can flag it amber, because dropping the row would hide money.
+  const TYPE_SORT = ['flight', 'transport', 'local', 'activity', 'stay', 'note'];
+  function costsByType(trip, ratesObj) {
+    const base = (trip && trip.currency) || 'USD';
+    const rows = new Map();
+    for (const it of ((trip && trip.items) || [])) {
+      if (it.status !== 'booked') continue;
+      if (it.cost == null || it.cost === '' || isNaN(it.cost)) continue;
+      let row = rows.get(it.type);
+      if (!row) { row = { type: it.type, total: 0, unconverted: [] }; rows.set(it.type, row); }
+      const conv = convertAmount(Number(it.cost), it.costCurrency || base, base, ratesObj);
+      if (conv === null) row.unconverted.push(it);
+      else row.total += conv;
+    }
+    const ord = t => { const i = TYPE_SORT.indexOf(t); return i < 0 ? TYPE_SORT.length : i; };
+    return [...rows.values()].sort((a, b) => b.total - a.total || ord(a.type) - ord(b.type));
+  }
+
   // ---------- base64url (share links) ----------
   const B64URL = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_';
   function bytesToBase64url(bytes) {
@@ -1544,6 +1660,10 @@ const TripLogic = (() => {
       // who owes this cost travels with the item; the far side clamps it to the
       // shared traveller list, so an empty or all-hands assignment stays absent
       if (Array.isArray(it.travelers) && it.travelers.length) out.travelers = it.travelers;
+      // and so does who actually paid it: a shared trip that kept the split but
+      // lost the payer answers "what did it cost us" and not "who owes whom",
+      // which is the half of the settle-up block worth sharing
+      if (keep(it.paidBy)) out.paidBy = it.paidBy;
       return out;
     });
     return slim;
@@ -3230,9 +3350,87 @@ const TripLogic = (() => {
     };
   }
 
+  // ---------- what is on right now, and what is next ----------
+  // The one input behind the "Up next" summary chip. It compares a wall-clock
+  // stamp ("YYYY-MM-DDTHH:MM", read off the DEVICE clock) to every item that
+  // carries BOTH a date and a typed clock time.
+  //
+  // Stays and untimed rows never take part. The day view assumes a check-in and
+  // a check-out time (see ASSUMED_CHECKIN_TIME) purely to ORDER rows, and those
+  // assumptions are never rendered as times; announcing one on the summary bar
+  // as "up next in 40m" would turn a sorting convenience into a claim about the
+  // traveller's afternoon.
+  //
+  // Past this window the chip has nothing useful left to say: "in 3 days" is
+  // what the Countdown chip already reads, so repeating it here would only be a
+  // second copy of the same number in a different unit.
+  const NEXT_UP_WINDOW_MIN = 36 * 60;
+
+  const clockStamp = (date, time) => (isIsoDate(date) && TIME_RE.test(time || '')) ? stampMin(date, time) : null;
+
+  function nextUpEvent(items, nowIso) {
+    const raw = String(nowIso || '');
+    const now = clockStamp(raw.slice(0, 10), raw.slice(11, 16));
+    if (now == null) return null;
+    let onNow = null, soonest = null;
+    for (const it of (items || [])) {
+      if (!it || it.status === 'cancelled' || isStay(it)) continue;
+      const dep = clockStamp(it.startDate, it.startTime);
+      if (dep == null) continue;
+      // Only a leg with an arrival time the traveller actually typed has a span
+      // to be INSIDE of. legArrival's fallback to the departure time is right
+      // for a connection check and wrong here: it would give every timed row a
+      // zero-length span, and "Now" could never fire.
+      const arr = TRAVEL_TYPE[it.type]
+        ? clockStamp(isIsoDate(it.endDate) ? it.endDate : it.startDate, it.endTime)
+        : null;
+      if (arr != null && dep <= now && now < arr) {
+        // two overlapping legs are already reported as a collision; between
+        // them, the one that started most recently is the one you are on
+        if (!onNow || dep > onNow.at) onNow = { it, at: dep };
+      } else if (dep >= now && (!soonest || dep < soonest.at)) {
+        soonest = { it, at: dep };
+      }
+    }
+    if (onNow) return { mode: 'now', id: onNow.it.id, title: onNow.it.title || '', minutes: null, dur: '' };
+    if (!soonest) return null;
+    const minutes = soonest.at - now;
+    if (minutes > NEXT_UP_WINDOW_MIN) return null;
+    return { mode: 'next', id: soonest.it.id, title: soonest.it.title || '', minutes, dur: fmtDur(minutes) };
+  }
+
+  // ---------- packing checklist ----------
+  // What a trip's list is seeded with, ONCE, the first time it is opened. Two
+  // of these rows are facts about THIS itinerary rather than generic advice: the
+  // boarding-pass row only appears when the trip actually contains a flight, and
+  // the warm layer only when a leg sleeps in transit. Nothing here guesses at a
+  // destination or a season (adapters, swimwear, thermals), because the app
+  // knows the plan, not the weather or the sockets.
+  const PACKING_BASICS = [
+    'Passport or photo ID',
+    'Phone, charger and cable',
+    'Medication and toiletries',
+    'Cards, cash and a backup card',
+    'Travel insurance and booking details',
+  ];
+
+  function defaultPackingItems(trip) {
+    const items = (trip && Array.isArray(trip.items)) ? trip.items.filter(Boolean) : [];
+    const out = [...PACKING_BASICS];
+    if (items.some(it => it.type === 'flight' && it.status !== 'cancelled')) {
+      out.push('Boarding passes downloaded or mobile wallet ready');
+    }
+    // isTransitSpan is the same "the plane is that night's bed" test night
+    // coverage uses: a flight or transport leg, not cancelled, arriving on a
+    // later date than it left.
+    if (items.some(isTransitSpan)) out.push('Something warm to sleep in transit');
+    return out;
+  }
+
   return {
     isIsoDate, toUtc, diffDays, addDays,
     isStay, nights, sortKey, sortedItems, tripLegs,
+    nextUpEvent, NEXT_UP_WINDOW_MIN, defaultPackingItems,
     isTransitType, isTransitSpan, overnightTransit,
     validateItem, coverageGaps, tripStats, MAX_TRIP_DAYS, DATE_MIN, DATE_MAX, isDateInRange,
     ISLANDISH, distKm, flagEmoji, compass, fmtDur, modeOptions,
@@ -3244,6 +3442,7 @@ const TripLogic = (() => {
     slimTripForShare, hasFastRail, viewFromHash, hashForView,
     buildIcs, buildCsv, csvColumns, convertAmount, sumInCurrency,
     normalizeTravelers, travelerTotals,
+    settlements, costsByType,
     bytesToBase64url, base64urlToBytes,
     transportGaps, connectionWarnings, sameTimeCollisions, TIGHT_CONNECTION_MIN, tripPhase, isPastRow,
     dayCards, dayHostStay, emptyDayNote, stripPlaceCode, parseTravelOrigin, dayMorningCity,

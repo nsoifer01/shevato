@@ -2,7 +2,7 @@
 (() => {
 
   // ---------- constants ----------
-  const TP_BUILD = 30; // bump with every asset-version bump; shown in the footer
+  const TP_BUILD = 31; // bump with every asset-version bump; shown in the footer
   const LS_KEY = 'trip-planner:v1';
   const TIMEFMT_KEY = 'trip-planner:timefmt';
   const TYPE_META = {
@@ -46,12 +46,14 @@
   const {
     isIsoDate, toUtc, diffDays, addDays,
     isStay, nights, sortKey, sortedItems, tripLegs,
+    nextUpEvent, defaultPackingItems,
     validateItem, coverageGaps, tripStats, MAX_TRIP_DAYS, DATE_MIN, DATE_MAX, isDateInRange,
     ISLANDISH, distKm, flagEmoji, compass, fmtDur, modeOptions,
     routeBadges, routeFlags, routeTips, routeLinks, modeLink, ROUTE_HONESTY,
     classifyGeoMatch, geoMatchNote, GEO_MATCH_RANK, GEO_MATCH_TEXT,
     classifyVisa, parseVisaMatrix, visaCountryUsable, visaUnconfirmedNames, visaVintageNote, slimTripForShare, hasFastRail, viewFromHash, hashForView,
     buildIcs, buildCsv, convertAmount, sumInCurrency, normalizeTravelers, travelerTotals,
+    settlements, costsByType,
     bytesToBase64url, base64urlToBytes,
     transportGaps, connectionWarnings, sameTimeCollisions, TIGHT_CONNECTION_MIN, tripPhase, isPastRow,
     dayCards, dayMorningCity, emptyDayNote, departureOrigin, suggestedPassport, passportAssumptionParts, defaultPlanDay, planDayGroups, overnightTransit,
@@ -66,7 +68,7 @@
 
   // ---------- state ----------
   let db = loadDb();
-  const ui = { search: '', filterType: '', filterStatus: '', editingId: null, shiftTarget: null, tripModalMode: 'new', confirmAction: null, flashId: null, view: 'timeline' };
+  const ui = { search: '', filterType: '', filterStatus: '', filterTraveler: '', editingId: null, shiftTarget: null, tripModalMode: 'new', confirmAction: null, flashId: null, view: 'timeline' };
 
   // ---------- timeline collapse state ----------
   // Which stays and which days inside them the traveller has opened. Kept OUT
@@ -617,6 +619,7 @@
       syncUndoButtons();
       refreshDocIndicators();
       syncAssistPanel();
+      syncPackingModal();
     } catch (err) {
       $('#board').innerHTML = `
         <div class="error-card">
@@ -709,6 +712,17 @@
     const s = tripStats(trip);
     const money = tripMoney(trip);
     const chips = [];
+    // FIRST chip when it exists at all: what is happening now, or the next
+    // thing with a real clock time on it. It is the one number on this bar that
+    // changes while you are looking at it, so nextUpTick repaints it.
+    const up = nextUpEvent(trip.items, nowStamp());
+    nextUpKey = upKey(up);
+    if (up) {
+      const dur = up.mode === 'next' ? ` <small>in ${esc(up.dur)}</small>` : '';
+      chips.push(`<button type="button" class="chip nextup-chip" data-nextup="${esc(up.id)}" title="${esc(up.title)}">`
+        + `<span class="k">${up.mode === 'now' ? 'Now' : 'Up next'}</span>`
+        + `<span class="v"><span class="nu-title">${esc(up.title)}</span>${dur}</span></button>`);
+    }
     if (s.start && s.end) {
       chips.push(chip('Dates', s.start === s.end ? fmtDate(s.start) : fmtRange(s.start, s.end)));
       const days = diffDays(s.start, s.end) + 1;
@@ -775,11 +789,21 @@
       </li>`).join('');
   }
 
-  const filtersActive = () => !!(ui.search || ui.filterType || ui.filterStatus);
+  const filtersActive = () => !!(ui.search || ui.filterType || ui.filterStatus || ui.filterTraveler);
 
   function matchesFilters(it) {
     if (ui.filterType && it.type !== ui.filterType) return false;
     if (ui.filterStatus && it.status !== ui.filterStatus) return false;
+    // "Show me only Sam's day". An item assigned to nobody is Everyone's, so it
+    // stays visible under every name: the same reading of an empty `travelers`
+    // that travelerTotals uses to split a cost across the whole trip. This only
+    // decides which ROWS are drawn; the strip, the warnings and every total are
+    // computed from the whole trip and are untouched by it.
+    if (ui.filterTraveler) {
+      const who = Array.isArray(it.travelers) ? it.travelers : [];
+      const want = ui.filterTraveler.toLowerCase();
+      if (who.length && !who.some(n => String(n == null ? '' : n).trim().toLowerCase() === want)) return false;
+    }
     if (ui.search) {
       const q = ui.search.toLowerCase();
       // the confirmation code is searchable too: pasting the code out of an
@@ -804,8 +828,42 @@
     $('#searchBox').value = '';
     $('#filterType').value = '';
     $('#filterStatus').value = '';
-    ui.search = ''; ui.filterType = ''; ui.filterStatus = '';
+    // the traveller select only exists on a trip that names two or more, so it
+    // is cleared through the state and repainted by syncTravelerFilter
+    const tv = $('#filterTraveler');
+    if (tv) tv.value = '';
+    ui.search = ''; ui.filterType = ''; ui.filterStatus = ''; ui.filterTraveler = '';
     render();
+  }
+
+  // The "Filter by traveller" select is BUILT, not hidden: a trip that names
+  // fewer than two people has no such control in the DOM at all, exactly as its
+  // item modal has no "Who's this for" fieldset. Rebuilt only when the roster
+  // itself changes, so choosing a name (which re-renders) does not yank the
+  // focus out of the select the traveller is still using.
+  //
+  // It also guards the stranding case: switching to a trip that does not name
+  // the person currently filtered would otherwise leave a filter nothing on
+  // screen can see, silently hiding rows. The stale name is dropped here,
+  // before anything is drawn from it.
+  function syncTravelerFilter(trip) {
+    const wrap = $('#travelerFilterWrap');
+    const names = normalizeTravelers(trip.travelers);
+    if (names.length < 2) {
+      ui.filterTraveler = '';
+      if (wrap.dataset.names !== '') { wrap.innerHTML = ''; wrap.dataset.names = ''; }
+      return;
+    }
+    if (ui.filterTraveler && !names.includes(ui.filterTraveler)) ui.filterTraveler = '';
+    const sig = JSON.stringify(names);
+    if (wrap.dataset.names !== sig) {
+      wrap.innerHTML = `<select id="filterTraveler" class="tb-traveler-sel" aria-label="Filter by traveler">`
+        + `<option value="">Everyone</option>`
+        + names.map(n => `<option value="${esc(n)}">${esc(n)}</option>`).join('')
+        + `</select>`;
+      wrap.dataset.names = sig;
+    }
+    $('#filterTraveler').value = ui.filterTraveler;
   }
 
   // item id -> highest issue severity ('error' beats 'warn'). Both the timeline
@@ -821,6 +879,10 @@
 
   function renderBoard(trip, issues) {
     const board = $('#board');
+    // ahead of the first matchesFilters call of this render, and ahead of the
+    // day view (applyView runs after this), so neither can read a traveller
+    // filter this trip's roster no longer supports
+    syncTravelerFilter(trip);
     const items = sortedItems(trip);
 
     if (!items.length) {
@@ -909,6 +971,8 @@
         <div class="t confirmed${money.confirmed.unconverted.length ? ' incomplete' : ''}"><div class="k">Confirmed bookings</div><div class="v">${moneyHtml(trip, money.confirmed.total, undefined, 'total')}</div></div>
       </div>`;
     html += travelerTotalsHtml(trip);
+    html += settleUpHtml(trip);
+    html += typeTotalsHtml(trip);
     const notes = moneyNotes(trip, money);
     if (notes) html += notes;
 
@@ -951,6 +1015,56 @@
         + `</div>`;
     }).join('');
     return `<div class="traveler-totals"><div class="tt-head">Cost per traveler</div><div class="tt-list">${rows}</div></div>`;
+  }
+
+  // "Settle up": the payments that clear the trip, under the per-traveller split
+  // that explains them. Same 2+ traveller gate as the block above, so a solo
+  // trip has no trace of it in the DOM.
+  //
+  // The two empty states are NOT the same thing and must not read the same. No
+  // item names a payer -> we were never told anything, so ask for it rather than
+  // printing a row of $0.00 that looks like a settled trip. Payers recorded and
+  // everything nets to zero -> genuinely square, say so.
+  function settleUpHtml(trip) {
+    const names = normalizeTravelers(trip.travelers);
+    if (names.length < 2) return '';
+    const pays = settlements(trip, activeRates(trip));
+    const missing = pays.unconverted.length;
+    const short = missing ? ` <small>+ ${missing} not converted</small>` : '';
+    let body;
+    if (!pays.tracked && !missing) {
+      body = `<div class="su-empty">Add "Paid by" to a cost to see who owes whom</div>`;
+    } else if (!pays.length) {
+      body = `<div class="su-empty">All settled up</div>`;
+    } else {
+      body = pays.map(p => `<div class="su-row">`
+        + `<span class="tt-name">${esc(p.from)} owes ${esc(p.to)}</span>`
+        + `<span class="tt-val">${moneyHtml(trip, p.amount, undefined, 'total')}</span>`
+        + `</div>`).join('');
+    }
+    return `<div class="traveler-totals settle-up${missing ? ' incomplete' : ''}">`
+      + `<div class="tt-head">Settle up${short}</div>`
+      + `<div class="tt-list">${body}</div></div>`;
+  }
+
+  // "Cost by type": where the confirmed money went. Gated on cost data alone, so
+  // it renders on a solo trip exactly as it does on a shared one, and only types
+  // with a booked cost get a row (never a $0.00 line for a type this trip does
+  // not use). A type carrying an amount we could not convert is amber with the
+  // count, the same honesty rule the Confirmed total follows.
+  function typeTotalsHtml(trip) {
+    const rows = costsByType(trip, activeRates(trip));
+    if (!rows.length) return '';
+    const short = n => n ? ` <small>+ ${n} not converted</small>` : '';
+    const html = rows.map(r => {
+      const meta = TYPE_META[r.type] || TYPE_META.note;
+      const missing = r.unconverted.length;
+      return `<div class="tt-row${missing ? ' incomplete' : ''}" data-type="${esc(r.type)}">`
+        + `<span class="tt-name"><span class="ty-ico" aria-hidden="true">${meta.icon}</span>${esc(meta.label)}</span>`
+        + `<span class="tt-val">${moneyHtml(trip, r.total, undefined, 'total')}${short(missing)}</span>`
+        + `</div>`;
+    }).join('');
+    return `<div class="traveler-totals type-totals"><div class="tt-head">Cost by type</div><div class="tt-list">${html}</div></div>`;
   }
 
   // Note under the totals: which items could not be converted, and how old the
@@ -1898,6 +2012,9 @@
     if (names.length < 2) { box.innerHTML = ''; box.hidden = true; return; }
     box.hidden = false;
     const picked = new Set((Array.isArray(it && it.travelers) ? it.travelers : []).map(n => String(n).toLowerCase()));
+    // a payer the trip no longer names (renamed, removed) opens as "Not tracked"
+    // rather than as a phantom option, and saving the item clears it for good
+    const paidBy = names.find(n => n.toLowerCase() === String((it && it.paidBy) || '').trim().toLowerCase()) || '';
     box.innerHTML = `
       <fieldset class="who-for" id="whoFor">
         <legend>Who's this for <small>(optional)</small></legend>
@@ -1905,7 +2022,16 @@
           ${names.map(n => `<label class="who-chk"><input type="checkbox" value="${esc(n)}"${picked.has(n.toLowerCase()) ? ' checked' : ''}>${esc(n)}</label>`).join('')}
         </div>
         <div class="hint">Leave all unchecked to split this cost evenly across everyone. Pick some to split it only among them.</div>
-      </fieldset>`;
+      </fieldset>
+      <div class="field paid-by">
+        <label for="inPaidBy">Paid by <small>(optional, drives "Settle up")</small></label>
+        <span class="sel-wrap">
+          <select id="inPaidBy" class="paid-by-sel">
+            <option value="">Not tracked</option>
+            ${names.map(n => `<option value="${esc(n)}"${paidBy === n ? ' selected' : ''}>${esc(n)}</option>`).join('')}
+          </select>
+        </span>
+      </div>`;
   }
 
   // A textarea can't hold live links, so the edit view lists every link the item
@@ -2026,9 +2152,17 @@
       const picked = [...whoFor.querySelectorAll('input:checked')].map(c => c.value)
         .filter(n => names.includes(n));
       if (picked.length && picked.length < names.length) it.travelers = picked;
+      // "Not tracked" is the absence of a claim, so it stores nothing at all and
+      // the item is worth $0 to the settle-up maths
+      const payer = $('#inPaidBy').value;
+      if (payer && names.includes(payer)) it.paidBy = payer;
     } else if (Array.isArray(prev.travelers) && prev.travelers.length) {
       it.travelers = prev.travelers;
     }
+    // the payer field shares the "Who's this for" gate, so on a solo trip or in
+    // the read-only shared view it is carried rather than blanked, exactly as
+    // the assignment above is
+    if (!$('#inPaidBy') && prev.paidBy) it.paidBy = prev.paidBy;
     // The estimate survives an ordinary edit and dies on adoption, because
     // adopting has already copied the number into the cost field above. But
     // "adopted, then changed my mind and cleared the box" is not an adoption:
@@ -2181,6 +2315,16 @@
       t.name = name; t.currency = currency; t.budget = budget;
       if (travelers.length) t.travelers = travelers;
       else delete t.travelers;
+      // Editing the roster must not leave items pointing at a payer who is no
+      // longer on it. A respelling (case, or a rename that keeps the person)
+      // follows the roster; anyone dropped from it takes their payer flag with
+      // them, so no item can owe money to a name the trip does not carry.
+      for (const it of t.items) {
+        if (!it.paidBy) continue;
+        const payer = travelers.find(n => n.toLowerCase() === String(it.paidBy).trim().toLowerCase());
+        if (payer) it.paidBy = payer;
+        else delete it.paidBy;
+      }
     }
     save(ui.tripModalMode === 'new' ? `Trip "${name}" created` : 'Trip updated');
     closeOverlays();
@@ -2349,6 +2493,12 @@
         if (c && !picked.includes(c)) picked.push(c);
       }
       if (picked.length && picked.length < known.length) out.travelers = picked;
+    }
+    // who paid gets the same clamp: a payer the incoming trip does not name is
+    // dropped rather than imported as a debt owed to a stranger
+    if (known.length >= 2 && raw.paidBy != null) {
+      const payer = known.find(n => n.toLowerCase() === String(raw.paidBy).trim().toLowerCase());
+      if (payer) out.paidBy = payer;
     }
     return out;
   }
@@ -4407,6 +4557,130 @@
     markProposalDone(card, p.op);
   }
 
+  // ---------- "Up next" chip ----------
+  // The DEVICE clock as a wall-clock stamp. Deliberately LOCAL, unlike
+  // todayIso's UTC slice: the times on the items are wall-clock times the
+  // traveller typed, so "is it 10:00 yet" has to be asked in the clock they are
+  // reading, not in UTC.
+  function nowStamp() {
+    const d = new Date();
+    const p = n => String(n).padStart(2, '0');
+    return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}T${p(d.getHours())}:${p(d.getMinutes())}`;
+  }
+  const upKey = up => up ? `${up.mode}|${up.id}|${up.dur}` : '';
+  let nextUpKey = '';
+  // This is the one thing on the summary bar that goes stale while you look at
+  // it: the app sits open on a phone for hours. The tick recomputes cheaply
+  // every 30 seconds and repaints the summary ONLY when the chip's own text
+  // would change, so no other part of the page moves under the traveller.
+  setInterval(() => {
+    const trip = activeTrip();
+    if (!trip) return;
+    if (upKey(nextUpEvent(trip.items, nowStamp())) === nextUpKey) return;
+    renderSummary(trip, computeIssues(trip));
+  }, 30000);
+
+  $('#summary').addEventListener('click', e => {
+    const btn = e.target.closest('button[data-nextup]');
+    if (!btn) return;
+    // same jump the Issues panel and the coverage strip use
+    ui.view = 'timeline';
+    ui.flashId = btn.dataset.nextup;
+    render();
+  });
+
+  // ---------- packing checklist ----------
+  // Rows live on the trip itself (trip.packing), so they ride along with every
+  // mechanism the trip already has: save() is the undo choke point, the whole db
+  // is one localStorage key, and sync-system carries that key. No new storage.
+  // The ARRAY'S EXISTENCE is the "already seeded" flag, which is why an emptied
+  // list is still written as [] rather than deleted: a traveller who cleared
+  // every row must not have the defaults handed back to them on the next open.
+  function ensurePacking(trip) {
+    if (Array.isArray(trip.packing)) return;
+    trip.packing = defaultPackingItems(trip).map(text => ({ id: uid(), text, done: false }));
+    save();
+  }
+  const packingRows = trip => (Array.isArray(trip.packing) ? trip.packing : []).filter(r => r && typeof r.text === 'string');
+
+  function openPackingModal() {
+    const trip = activeTrip();
+    if (!trip) return;
+    ensurePacking(trip);
+    openOverlay('#packingOverlay');
+    renderPacking();
+    syncUndoButtons();
+  }
+
+  function packingCountText(rows) {
+    return `${rows.filter(r => r.done).length} of ${rows.length} packed`;
+  }
+
+  function renderPacking() {
+    const trip = activeTrip();
+    if (!trip) return;
+    const rows = packingRows(trip);
+    $('#packingCount').textContent = packingCountText(rows);
+    $('#packingList').innerHTML = rows.length ? rows.map(r => `
+      <div class="pk-row${r.done ? ' is-done' : ''}">
+        <label class="pk-check">
+          <input type="checkbox" data-pk="${esc(r.id)}"${r.done ? ' checked' : ''}>
+          <span class="pk-text">${esc(r.text)}</span>
+        </label>
+        <button type="button" class="pk-del" data-pk-del="${esc(r.id)}" title="Remove this row" aria-label="Remove ${esc(r.text)}">✕</button>
+      </div>`).join('') : `
+      <div class="m-empty">
+        <span class="me-ico" aria-hidden="true">🎒</span>
+        <span class="me-title">Nothing on the list</span>
+        <span>Add whatever you do not want to forget. It stays with this trip.</span>
+      </div>`;
+  }
+  // An undo or a remote change repaints through render(), and the dialog can be
+  // open while that happens.
+  function syncPackingModal() {
+    if ($('#packingOverlay').classList.contains('open')) renderPacking();
+  }
+
+  $('#packingList').addEventListener('change', e => {
+    const box = e.target.closest('input[data-pk]');
+    if (!box) return;
+    const row = packingRows(activeTrip()).find(r => r.id === box.dataset.pk);
+    if (!row) return;
+    row.done = box.checked;
+    // updated in place rather than re-rendered: rebuilding the list would throw
+    // away the checkbox the keyboard is standing on
+    box.closest('.pk-row').classList.toggle('is-done', row.done);
+    $('#packingCount').textContent = packingCountText(packingRows(activeTrip()));
+    save();
+    syncUndoButtons();
+  });
+
+  $('#packingList').addEventListener('click', e => {
+    const btn = e.target.closest('button[data-pk-del]');
+    if (!btn) return;
+    const trip = activeTrip();
+    const idx = trip.packing.findIndex(r => r && r.id === btn.dataset.pkDel);
+    if (idx < 0) return;
+    const gone = trip.packing[idx];
+    trip.packing.splice(idx, 1);
+    save(`Removed "${gone.text}"`, undo);
+    renderPacking();
+    syncUndoButtons();
+  });
+
+  $('#packingAddForm').addEventListener('submit', e => {
+    e.preventDefault();
+    const input = $('#packingAddInput');
+    const text = input.value.trim();
+    if (!text) { input.focus(); return; }
+    activeTrip().packing.push({ id: uid(), text, done: false });
+    input.value = '';
+    save(`Added "${text}"`, undo);
+    renderPacking();
+    syncUndoButtons();
+    input.focus();
+  });
+
   // ---------- overlays / toast ----------
   const FOCUSABLE = 'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])';
   let overlayReturnFocus = null;
@@ -4676,6 +4950,7 @@
     if (act === 'new-trip') openTripModal('new');
     else if (act === 'rename-trip') openTripModal('rename');
     else if (act === 'duplicate-trip') duplicateTrip();
+    else if (act === 'packing') openPackingModal();
     else if (act === 'export-trip') exportTrip();
     else if (act === 'export-csv') exportCsv();
     else if (act === 'export-ics') exportIcs();
@@ -4718,6 +4993,13 @@
       ui.filterStatus = $('#filterStatus').value;
       render();
     });
+  });
+  // delegated: the traveller select is rebuilt whenever the roster changes, so
+  // the listener lives on the wrapper that never is
+  $('#travelerFilterWrap').addEventListener('input', e => {
+    if (e.target.id !== 'filterTraveler') return;
+    ui.filterTraveler = e.target.value;
+    render();
   });
 
   $('#issuesBox').addEventListener('click', e => {

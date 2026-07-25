@@ -4142,3 +4142,394 @@ test('an item with no confirmation key validates exactly as one with an empty co
   assert.deepEqual(L.validateItem({ ...base, confirmation: '' }), {});
   assert.deepEqual(L.validateItem({ ...base, confirmation: 'XJ7K2Q' }), {});
 });
+
+// ---------- settle up (who owes whom) ----------
+// The point of every case below: a settlement is a CLAIM ABOUT MONEY somebody
+// has to hand over. It may only come from money that actually moved (booked,
+// costed, with a payer named), it must net down so nobody is asked to pay a
+// person who owes them, and it must never print a line for a rounding artefact.
+
+function paid(id, cost, paidBy, extra) {
+  return { id, type: 'activity', title: id, startDate: '2027-05-01', status: 'booked', cost, paidBy, ...(extra || {}) };
+}
+
+test('settlements: one Everyone cost paid by one traveller is a single half-share debt', () => {
+  const trip = { currency: 'USD', travelers: ['Alex', 'Sam'], items: [paid('a', 200, 'Alex')] };
+  assert.deepEqual(L.settlements(trip), [{ from: 'Sam', to: 'Alex', amount: 100 }]);
+});
+
+test('settlements nets opposing debts into ONE payment, never two crossing ones', () => {
+  const trip = {
+    currency: 'USD', travelers: ['Alex', 'Sam'],
+    items: [paid('a', 200, 'Alex'), paid('b', 60, 'Sam')],
+  };
+  // Alex is owed 100, Sam is owed 30: asking each to pay the other is two
+  // transfers to settle one 70-dollar difference
+  assert.deepEqual(L.settlements(trip), [{ from: 'Sam', to: 'Alex', amount: 70 }]);
+});
+
+test('settlements pays a single creditor directly, never through a chain', () => {
+  const trip = {
+    currency: 'USD', travelers: ['Alex', 'Sam', 'Jo'],
+    items: [paid('a', 300, 'Alex')],
+  };
+  assert.deepEqual(L.settlements(trip), [
+    { from: 'Sam', to: 'Alex', amount: 100 },
+    { from: 'Jo', to: 'Alex', amount: 100 },
+  ]);
+});
+
+test('settlements ignores a cost with no payer, and says nothing was tracked', () => {
+  const trip = { currency: 'USD', travelers: ['Alex', 'Sam'], items: [paid('a', 60, undefined)] };
+  const s = L.settlements(trip);
+  assert.deepEqual(s, []);
+  // the render needs this to ask for a payer instead of printing a settled trip
+  assert.equal(s.tracked, 0);
+  // and the same cost still counts towards each traveller's share
+  assert.deepEqual(L.travelerTotals(trip), { Alex: 30, Sam: 30 });
+});
+
+test('settlements counts only BOOKED costs: money not yet spent is not a debt', () => {
+  const trip = {
+    currency: 'USD', travelers: ['Alex', 'Sam'],
+    items: [
+      paid('a', 200, 'Alex', { status: 'to-book' }),
+      paid('b', 500, 'Alex', { status: 'cancelled' }),
+      paid('c', 40, 'Alex'),
+    ],
+  };
+  assert.deepEqual(L.settlements(trip), [{ from: 'Sam', to: 'Alex', amount: 20 }]);
+});
+
+test('settlements honours the item split: a cost for one person is owed in full', () => {
+  const trip = {
+    currency: 'USD', travelers: ['Alex', 'Sam'],
+    items: [paid('a', 90, 'Alex', { travelers: ['Sam'] })],
+  };
+  assert.deepEqual(L.settlements(trip), [{ from: 'Sam', to: 'Alex', amount: 90 }]);
+});
+
+test('settlements: a cost the payer alone owes settles nothing', () => {
+  const trip = {
+    currency: 'USD', travelers: ['Alex', 'Sam'],
+    items: [paid('a', 90, 'Alex', { travelers: ['Alex'] })],
+  };
+  const s = L.settlements(trip);
+  assert.deepEqual(s, []);
+  // tracked, unlike the untracked case: the trip is genuinely square
+  assert.equal(s.tracked, 1);
+});
+
+test('settlements rounds to whole cents and never emits a sub-cent line', () => {
+  const trip = {
+    currency: 'USD', travelers: ['Alex', 'Sam', 'Jo'],
+    items: [paid('a', 100, 'Alex')], // 33.333... each
+  };
+  const s = L.settlements(trip);
+  assert.deepEqual(s, [
+    { from: 'Sam', to: 'Alex', amount: 33.33 },
+    { from: 'Jo', to: 'Alex', amount: 33.33 },
+  ]);
+  for (const p of s) assert.equal(p.amount, Math.round(p.amount * 100) / 100);
+});
+
+test('settlements: a perfectly even split leaves no payment at all', () => {
+  const trip = {
+    currency: 'USD', travelers: ['Alex', 'Sam'],
+    items: [paid('a', 50, 'Alex'), paid('b', 50, 'Sam')],
+  };
+  const s = L.settlements(trip);
+  assert.deepEqual(s, []);
+  assert.equal(s.tracked, 2);
+});
+
+test('settlements converts foreign costs, and flags one it cannot convert', () => {
+  const rates = { base: 'USD', rates: { EUR: 0.5 } }; // no THB rate
+  const trip = {
+    currency: 'USD', travelers: ['Alex', 'Sam'],
+    items: [
+      paid('a', 100, 'Alex', { costCurrency: 'EUR' }),  // 200 USD -> Sam owes 100
+      paid('b', 900, 'Sam', { costCurrency: 'THB' }),   // unconvertible: no debt invented
+    ],
+  };
+  const s = L.settlements(trip, rates);
+  assert.deepEqual(s, [{ from: 'Sam', to: 'Alex', amount: 100 }]);
+  assert.equal(s.unconverted.length, 1);
+  assert.equal(s.unconverted[0].id, 'b');
+  assert.equal(s.tracked, 1);
+});
+
+test('settlements ignores a payer the trip no longer names, and matches case', () => {
+  const trip = {
+    currency: 'USD', travelers: ['Alex', 'Sam'],
+    items: [paid('a', 200, 'Ghost'), paid('b', 80, 'alex')],
+  };
+  const s = L.settlements(trip);
+  assert.deepEqual(s, [{ from: 'Sam', to: 'Alex', amount: 40 }]);
+  assert.equal(s.tracked, 1);
+});
+
+test('settlements is absent on a solo or unnamed trip', () => {
+  assert.deepEqual(L.settlements({ currency: 'USD', items: [paid('a', 60, 'Alex')] }), []);
+  assert.deepEqual(L.settlements({ currency: 'USD', travelers: ['Alex'], items: [paid('a', 60, 'Alex')] }), []);
+  assert.deepEqual(L.settlements(null), []);
+});
+
+test('settlements minimises payments across four travellers', () => {
+  const trip = {
+    currency: 'USD', travelers: ['Alex', 'Sam', 'Jo', 'Kim'],
+    items: [paid('a', 400, 'Alex'), paid('b', 200, 'Sam')],
+  };
+  // shares are 150 each: Alex is owed 250, Sam 50, Jo and Kim owe 150 each.
+  // Four balances can always be cleared in three transfers or fewer.
+  const s = L.settlements(trip);
+  assert.ok(s.length <= 3, `expected at most 3 payments, got ${s.length}`);
+  const net = { Alex: 0, Sam: 0, Jo: 0, Kim: 0 };
+  for (const p of s) { net[p.to] += p.amount; net[p.from] -= p.amount; }
+  assert.deepEqual(net, { Alex: 250, Sam: 50, Jo: -150, Kim: -150 });
+});
+
+test('a share link carries who paid, so the copy can still settle up', () => {
+  const slim = L.slimTripForShare({
+    name: 'T', currency: 'USD', travelers: ['Alex', 'Sam'],
+    items: [
+      { id: 'a', type: 'activity', title: 'Tour', startDate: '2027-05-01', status: 'booked', cost: 200, paidBy: 'Alex' },
+      { id: 'b', type: 'activity', title: 'Park', startDate: '2027-05-02', status: 'booked' },
+    ],
+  });
+  assert.equal(slim.items[0].paidBy, 'Alex');
+  assert.equal('paidBy' in slim.items[1], false);
+});
+
+// ---------- cost by type ----------
+// The rule under all of these: a row is a claim that this trip spent that much
+// on that kind of thing. No booked cost of a type means no claim to make (not a
+// $0.00 one), and an amount we could not convert has to stay visible as missing.
+
+function booked(id, type, cost, extra) {
+  return { id, type, title: id, startDate: '2027-05-01', status: 'booked', cost, ...(extra || {}) };
+}
+
+test('costsByType lists one row per booked type, biggest first', () => {
+  const trip = {
+    currency: 'USD',
+    items: [booked('a', 'activity', 40), booked('b', 'flight', 500), booked('c', 'stay', 300)],
+  };
+  assert.deepEqual(L.costsByType(trip).map(r => [r.type, r.total]), [
+    ['flight', 500], ['stay', 300], ['activity', 40],
+  ]);
+});
+
+test('costsByType sums several items of the same type into one row', () => {
+  const trip = { currency: 'USD', items: [booked('a', 'flight', 500), booked('b', 'flight', 120)] };
+  const rows = L.costsByType(trip);
+  assert.equal(rows.length, 1);
+  assert.deepEqual([rows[0].type, rows[0].total], ['flight', 620]);
+});
+
+test('costsByType gives a type with nothing booked no row at all, never a $0.00 one', () => {
+  const trip = {
+    currency: 'USD',
+    items: [
+      booked('a', 'flight', 500),
+      booked('b', 'transport', 90, { status: 'to-book' }),
+      booked('c', 'stay', 400, { status: 'cancelled' }),
+      { id: 'd', type: 'note', title: 'Passport', startDate: '2027-05-01', status: 'booked' }, // no cost
+    ],
+  };
+  assert.deepEqual(L.costsByType(trip).map(r => r.type), ['flight']);
+});
+
+test('costsByType totals match the Confirmed total, so the page shows one number twice', () => {
+  const trip = {
+    currency: 'USD',
+    items: [booked('a', 'flight', 500), booked('b', 'stay', 300), booked('c', 'activity', 40),
+      booked('d', 'local', 25, { status: 'to-book' })],
+  };
+  const byType = L.costsByType(trip).reduce((n, r) => n + r.total, 0);
+  const confirmed = L.sumInCurrency(trip.items.filter(i => i.status === 'booked'), 'USD', null).total;
+  assert.equal(byType, confirmed);
+});
+
+test('costsByType keeps the row for an amount it could not convert, flagged not dropped', () => {
+  const rates = { base: 'USD', rates: { EUR: 0.5 } }; // no JPY rate
+  const trip = {
+    currency: 'USD',
+    items: [
+      booked('a', 'stay', 90000, { costCurrency: 'JPY' }),
+      booked('b', 'flight', 100, { costCurrency: 'EUR' }), // 200 USD
+    ],
+  };
+  const rows = L.costsByType(trip, rates);
+  assert.deepEqual(rows.map(r => r.type), ['flight', 'stay']);
+  assert.equal(rows[0].total, 200);
+  assert.equal(rows[1].total, 0);
+  assert.equal(rows[1].unconverted.length, 1);
+  assert.equal(rows[1].unconverted[0].id, 'a');
+});
+
+test('costsByType converts a foreign cost into the trip currency before ranking', () => {
+  const rates = { base: 'USD', rates: { EUR: 0.5 } };
+  const trip = {
+    currency: 'USD',
+    items: [booked('a', 'stay', 300, { costCurrency: 'EUR' }), booked('b', 'flight', 500)],
+  };
+  // 300 EUR is 600 USD, so the stay outranks the flight despite the smaller figure
+  assert.deepEqual(L.costsByType(trip, rates).map(r => [r.type, r.total]), [['stay', 600], ['flight', 500]]);
+});
+
+test('costsByType breaks a tie on the app type order, so the rows never shuffle', () => {
+  const trip = { currency: 'USD', items: [booked('a', 'activity', 100), booked('b', 'flight', 100)] };
+  assert.deepEqual(L.costsByType(trip).map(r => r.type), ['flight', 'activity']);
+});
+
+test('costsByType needs no travellers: it is gated on cost data alone', () => {
+  const trip = { currency: 'USD', items: [booked('a', 'flight', 500)] };
+  assert.deepEqual(L.costsByType(trip).map(r => [r.type, r.total]), [['flight', 500]]);
+  assert.deepEqual(L.costsByType({ currency: 'USD', items: [] }), []);
+  assert.deepEqual(L.costsByType(null), []);
+});
+
+// ---------- "Up next" chip and the packing checklist (round 3, agent A) ----------
+
+const timed = (id, type, title, startDate, startTime, extra = {}) =>
+  ({ id, type, title, startDate, startTime, status: 'booked', ...extra });
+
+test('nextUpEvent names the soonest timed item and how long until it starts', () => {
+  const items = [
+    timed('a', 'activity', 'Museum visit', '2026-09-01', '10:00'),
+    timed('b', 'activity', 'Dinner', '2026-09-01', '19:30'),
+  ];
+  const up = L.nextUpEvent(items, '2026-09-01T08:00');
+  assert.equal(up.mode, 'next');
+  assert.equal(up.title, 'Museum visit');
+  assert.equal(up.id, 'a');
+  assert.equal(up.dur, '2h');
+  assert.equal(up.minutes, 120);
+  // and the duration is fmtDur's, minutes and all
+  assert.equal(L.nextUpEvent(items, '2026-09-01T08:30').dur, '1h 30m');
+  assert.equal(L.nextUpEvent(items, '2026-09-01T09:15').dur, '45m');
+});
+
+test('nextUpEvent reads "now" while a leg is in the air, and stops naming it once it lands', () => {
+  const items = [
+    timed('f', 'flight', 'BOS to KEF', '2026-09-01', '21:30', { endDate: '2026-09-02', endTime: '06:45' }),
+    timed('c', 'activity', 'Blue Lagoon', '2026-09-02', '11:00'),
+  ];
+  const mid = L.nextUpEvent(items, '2026-09-02T02:00');
+  assert.equal(mid.mode, 'now');
+  assert.equal(mid.title, 'BOS to KEF');
+  // "Now" carries no duration: the chip must not print a countdown for it
+  assert.equal(mid.minutes, null);
+  assert.equal(mid.dur, '');
+  // the moment of departure is already inside the span, the arrival is not
+  assert.equal(L.nextUpEvent(items, '2026-09-01T21:30').mode, 'now');
+  const landed = L.nextUpEvent(items, '2026-09-02T06:45');
+  assert.equal(landed.mode, 'next');
+  assert.equal(landed.title, 'Blue Lagoon');
+});
+
+test('a leg with no arrival time is never a "now": an assumed span is not a fact', () => {
+  const items = [timed('f', 'flight', 'BOS to KEF', '2026-09-01', '21:30')];
+  // an hour after it left, with no arrival typed, there is nothing to be inside of
+  assert.equal(L.nextUpEvent(items, '2026-09-01T22:30'), null);
+});
+
+test('nextUpEvent skips cancelled items even when they are chronologically closer', () => {
+  const items = [
+    timed('x', 'activity', 'Cancelled tour', '2026-09-01', '09:00', { status: 'cancelled' }),
+    timed('y', 'activity', 'Castle', '2026-09-01', '11:00'),
+  ];
+  const up = L.nextUpEvent(items, '2026-09-01T08:00');
+  assert.equal(up.id, 'y');
+  assert.equal(up.title, 'Castle');
+});
+
+test('stays and untimed items never take part', () => {
+  const items = [
+    { id: 's', type: 'stay', title: 'Hotel Kyoto', startDate: '2026-09-01', endDate: '2026-09-04', status: 'booked' },
+    { id: 'n', type: 'activity', title: 'Somewhere, some time', startDate: '2026-09-01', status: 'booked' },
+  ];
+  assert.equal(L.nextUpEvent(items, '2026-09-01T08:00'), null);
+  // a stay carrying a stray time is still not an event: check-in time is assumed
+  const withTime = [{ ...items[0], startTime: '15:00' }];
+  assert.equal(L.nextUpEvent(withTime, '2026-09-01T08:00'), null);
+});
+
+test('the chip goes quiet past the 36-hour window, and at the boundary it does not', () => {
+  const at = t => L.nextUpEvent([timed('a', 'activity', 'Tour', '2026-09-03', t)], '2026-09-01T08:00');
+  assert.equal(L.NEXT_UP_WINDOW_MIN, 36 * 60);
+  // 2026-09-01 08:00 plus 36h is 2026-09-02 20:00, so both of these are further out
+  assert.equal(at('08:00'), null);           // 48 hours
+  assert.equal(at('00:00'), null);           // 40 hours
+  const edge = L.nextUpEvent([timed('a', 'activity', 'Tour', '2026-09-02', '20:00')], '2026-09-01T08:00');
+  assert.equal(edge.minutes, 36 * 60);
+  assert.equal(edge.dur, '36h');
+  assert.equal(L.nextUpEvent([timed('a', 'activity', 'Tour', '2026-09-02', '20:01')], '2026-09-01T08:00'), null);
+});
+
+test('nextUpEvent is silent rather than wrong when it has nothing to read', () => {
+  assert.equal(L.nextUpEvent([], '2026-09-01T08:00'), null);
+  assert.equal(L.nextUpEvent(null, '2026-09-01T08:00'), null);
+  assert.equal(L.nextUpEvent([timed('a', 'activity', 'Tour', '2026-09-01', '10:00')], ''), null);
+  assert.equal(L.nextUpEvent([timed('a', 'activity', 'Tour', '2026-09-01', '10:00')], 'not-a-stamp'), null);
+  // everything already behind the clock, and none of it a span
+  assert.equal(L.nextUpEvent([timed('a', 'activity', 'Tour', '2026-09-01', '07:00')], '2026-09-01T08:00'), null);
+});
+
+test('the packing seed always carries the universal basics', () => {
+  const seed = L.defaultPackingItems({ items: [] });
+  assert.equal(seed[0], 'Passport or photo ID');
+  assert.equal(seed.length, 5);
+  assert.equal(new Set(seed).size, seed.length);
+  assert.deepEqual(L.defaultPackingItems({}), seed);
+});
+
+test('the boarding-pass row seeds only for a trip that actually has a flight', () => {
+  const BP = 'Boarding passes downloaded or mobile wallet ready';
+  const noFlight = L.defaultPackingItems({ items: [
+    { id: 'a', type: 'transport', title: 'Train', startDate: '2026-09-01', status: 'booked' },
+  ] });
+  assert.equal(noFlight.includes(BP), false);
+  const withFlight = L.defaultPackingItems({ items: [
+    { id: 'a', type: 'flight', title: 'BOS to KEF', startDate: '2026-09-01', status: 'booked' },
+  ] });
+  assert.equal(withFlight.includes(BP), true);
+  // a cancelled flight is not a flight you are catching
+  const cancelled = L.defaultPackingItems({ items: [
+    { id: 'a', type: 'flight', title: 'BOS to KEF', startDate: '2026-09-01', status: 'cancelled' },
+  ] });
+  assert.equal(cancelled.includes(BP), false);
+});
+
+test('the sleep-in-transit row seeds only for an overnight leg', () => {
+  const WARM = 'Something warm to sleep in transit';
+  const sameDay = L.defaultPackingItems({ items: [
+    { id: 'a', type: 'flight', title: 'BOS to JFK', startDate: '2026-09-01', endDate: '2026-09-01', status: 'booked' },
+  ] });
+  assert.equal(sameDay.includes(WARM), false);
+  const redEye = L.defaultPackingItems({ items: [
+    { id: 'a', type: 'flight', title: 'BOS to KEF', startDate: '2026-09-01', endDate: '2026-09-02', status: 'booked' },
+  ] });
+  assert.equal(redEye.includes(WARM), true);
+  // a sleeper train counts; a taxi that somehow spans midnight is not a bed
+  const sleeper = L.defaultPackingItems({ items: [
+    { id: 'a', type: 'transport', title: 'Bangkok to Chiang Mai', startDate: '2026-09-01', endDate: '2026-09-02', status: 'booked' },
+  ] });
+  assert.equal(sleeper.includes(WARM), true);
+  const taxi = L.defaultPackingItems({ items: [
+    { id: 'a', type: 'local', title: 'Night taxi', startDate: '2026-09-01', endDate: '2026-09-02', status: 'booked' },
+  ] });
+  assert.equal(taxi.includes(WARM), false);
+});
+
+test('a trip with a flight and an overnight leg seeds seven rows, all distinct', () => {
+  const seed = L.defaultPackingItems({ items: [
+    { id: 'a', type: 'flight', title: 'BOS to KEF', startDate: '2026-09-01', endDate: '2026-09-02', status: 'booked' },
+    { id: 'b', type: 'stay', title: 'Hotel', startDate: '2026-09-02', endDate: '2026-09-05', status: 'booked' },
+  ] });
+  assert.equal(seed.length, 7);
+  assert.equal(new Set(seed).size, 7);
+  // and the seed says nothing about a destination or a season it cannot know
+  assert.equal(seed.some(t => /adapter|swimwear|thermal|sunscreen/i.test(t)), false);
+});
