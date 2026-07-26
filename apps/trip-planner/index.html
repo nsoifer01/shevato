@@ -43,7 +43,7 @@
   <meta name="theme-color" content="#0e1116">
   <link rel="stylesheet" href="../../assets/css/main.css">
   <link rel="stylesheet" href="../../assets/css/sync-status.css">
-  <link rel="stylesheet" href="css/styles.css?v=32">
+  <link rel="stylesheet" href="css/styles.css?v=33">
 </head>
 <body class="tp-page">
   <div id="sync-banner" class="sync-banner" role="status" aria-live="polite" hidden></div>
@@ -552,6 +552,13 @@
           </div>
           <p class="hint passport-guess" id="passportGuess" hidden></p>
         </div>
+        <!-- device-level like the passport above it, never part of a trip:
+             it is a fact about the traveller, not about the itinerary -->
+        <div class="field">
+          <label for="passportExpiry">Passport expiry date <small>(optional)</small></label>
+          <input type="date" id="passportExpiry" class="passport-expiry">
+          <p class="passport-expiry-note" id="passportExpiryNote" hidden></p>
+        </div>
         <div class="m-panel visa-results" id="visaResults">Loading...</div>
         <div class="field">
           <div class="sel-wrap">
@@ -692,7 +699,7 @@
     }
   </script>
 
-  <script src="js/trip-logic.js?v=19"></script>
-  <script src="js/app.js?v=36"></script>
+  <script src="js/trip-logic.js?v=20"></script>
+  <script src="js/app.js?v=37"></script>
 </body>
 </html>
