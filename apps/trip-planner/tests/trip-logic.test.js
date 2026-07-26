@@ -4533,3 +4533,164 @@ test('a trip with a flight and an overnight leg seeds seven rows, all distinct',
   // and the seed says nothing about a destination or a season it cannot know
   assert.equal(seed.some(t => /adapter|swimwear|thermal|sunscreen/i.test(t)), false);
 });
+
+// ---------- booking deadlines ----------
+// The rule under all of these: a deadline is a TASK, and only a "to book" item
+// with a real date of its own can still carry one. Everything else stored on an
+// item is history, and history must not nag.
+
+function toBook(id, bookBy, startDate = '2027-05-20', extra) {
+  return { id, type: 'activity', title: id, startDate, status: 'to-book', bookBy, ...(extra || {}) };
+}
+
+test('a deadline inside the seven-day window is due, with the days left counted', () => {
+  const rows = L.bookingDeadlines([toBook('Sumo tickets', '2027-05-05')], '2027-05-02');
+  assert.deepEqual(rows, [{ id: 'Sumo tickets', title: 'Sumo tickets', date: '2027-05-05', daysLeft: 3, kind: 'due' }]);
+});
+
+test('exactly seven days out is inside the window, eight days out is not', () => {
+  const items = [toBook('seven', '2027-05-09'), toBook('eight', '2027-05-10')];
+  const rows = L.bookingDeadlines(items, '2027-05-02');
+  assert.deepEqual(rows.map(r => [r.id, r.daysLeft, r.kind]), [['seven', 7, 'due']]);
+});
+
+test('the deadline falling today is still due, with zero days left', () => {
+  const rows = L.bookingDeadlines([toBook('today', '2027-05-02')], '2027-05-02');
+  assert.deepEqual(rows.map(r => [r.daysLeft, r.kind]), [[0, 'due']]);
+});
+
+test('a deadline already behind us is passed, and says how far behind', () => {
+  const rows = L.bookingDeadlines([toBook('missed', '2027-04-20')], '2027-05-02');
+  assert.deepEqual(rows.map(r => [r.kind, r.daysLeft]), [['passed', -12]]);
+});
+
+test('only a "to book" item can carry a live deadline', () => {
+  const dates = { bookBy: '2027-05-05', startDate: '2027-05-20' };
+  const items = [
+    { id: 'a', type: 'activity', title: 'booked', status: 'booked', ...dates },
+    { id: 'b', type: 'activity', title: 'later', status: 'decide', ...dates },
+    { id: 'c', type: 'activity', title: 'off', status: 'cancelled', ...dates },
+    { id: 'd', type: 'activity', title: 'live', status: 'to-book', ...dates },
+  ];
+  assert.deepEqual(L.bookingDeadlines(items, '2027-05-02').map(r => r.id), ['d']);
+  // and the same holds once the date is behind us: a booked item is not late
+  assert.deepEqual(L.bookingDeadlines(items, '2027-05-10').map(r => r.id), ['d']);
+});
+
+test('an item with no date of its own raises no deadline, matching validateItem', () => {
+  assert.deepEqual(L.bookingDeadlines([toBook('no date', '2027-05-05', '')], '2027-05-02'), []);
+  assert.deepEqual(L.bookingDeadlines([toBook('junk date', '2027-05-05', 'soon')], '2027-05-02'), []);
+});
+
+test('no deadline stored means no deadline reported: the field is opt-in', () => {
+  const items = [
+    { id: 'a', type: 'flight', title: 'SHV to HND', startDate: '2027-05-20', status: 'to-book' },
+    toBook('blank', '', '2027-05-20'),
+    toBook('junk', 'next week', '2027-05-20'),
+  ];
+  assert.deepEqual(L.bookingDeadlines(items, '2027-05-02'), []);
+});
+
+test('every late booking gets its own line, soonest deadline first, never a count', () => {
+  const items = [
+    toBook('c', '2027-05-04'),
+    toBook('a', '2027-04-28'),
+    toBook('b', '2027-05-01'),
+  ];
+  const rows = L.bookingDeadlines(items, '2027-05-02');
+  assert.deepEqual(rows.map(r => [r.id, r.kind]), [['a', 'passed'], ['b', 'passed'], ['c', 'due']]);
+});
+
+test('a nonsense today reports nothing rather than guessing at one', () => {
+  assert.deepEqual(L.bookingDeadlines([toBook('a', '2027-05-05')], ''), []);
+  assert.deepEqual(L.bookingDeadlines(undefined, '2027-05-02'), []);
+});
+
+test('validateItem rejects a deadline dated after the item it books', () => {
+  const late = L.validateItem({ title: 'Sumo', startDate: '2027-05-20', bookBy: '2027-05-21' });
+  assert.equal(typeof late.bookBy, 'string');
+  // the same day is fine (book it on the morning of), and so is earlier
+  assert.equal(L.validateItem({ title: 'Sumo', startDate: '2027-05-20', bookBy: '2027-05-20' }).bookBy, undefined);
+  assert.equal(L.validateItem({ title: 'Sumo', startDate: '2027-05-20', bookBy: '2027-04-01' }).bookBy, undefined);
+  // no item date means nothing to bound it against, so no second complaint on
+  // top of the missing-date one
+  assert.deepEqual(Object.keys(L.validateItem({ title: 'Sumo', startDate: '', bookBy: '2027-05-21' })), ['start']);
+  // and an item that never had the field is untouched by any of it
+  assert.deepEqual(L.validateItem({ title: 'Sumo', startDate: '2027-05-20' }), {});
+});
+
+// ---------- cash needed, per currency ----------
+// The rule under all of these: this block answers "how much of THIS currency do
+// I have to carry", so it never converts, never invents a row for a currency
+// nobody tagged, and never hides an amount because it nets out awkwardly.
+
+function cash(id, cost, costCurrency, extra) {
+  return { id, type: 'activity', title: id, startDate: '2027-05-01', status: 'to-book', payment: 'cash', cost, costCurrency, ...(extra || {}) };
+}
+
+test('cashNeeded sums the cash-tagged costs per currency, in that currency', () => {
+  const trip = { currency: 'USD', items: [cash('a', 12000, 'JPY'), cash('b', 3000, 'JPY'), cash('c', 40, 'USD')] };
+  assert.deepEqual(L.cashNeeded(trip), [{ currency: 'JPY', total: 15000 }, { currency: 'USD', total: 40 }]);
+});
+
+test('cash rows sort by currency code, not by size or entry order', () => {
+  const trip = { currency: 'USD', items: [cash('a', 5, 'USD'), cash('b', 900, 'THB'), cash('c', 20, 'EUR')] };
+  assert.deepEqual(L.cashNeeded(trip).map(r => r.currency), ['EUR', 'THB', 'USD']);
+});
+
+test('an untagged item is not cash, whatever else it is', () => {
+  const trip = {
+    currency: 'USD',
+    items: [
+      { id: 'a', type: 'activity', title: 'a', startDate: '2027-05-01', status: 'booked', cost: 100 },
+      { id: 'b', type: 'activity', title: 'b', startDate: '2027-05-01', status: 'booked', cost: 50, payment: 'card' },
+      { id: 'c', type: 'activity', title: 'c', startDate: '2027-05-01', status: 'booked', cost: 25, payment: 'prepaid' },
+    ],
+  };
+  assert.deepEqual(L.cashNeeded(trip), []);
+});
+
+test('a cancelled cash item leaves no trace, and takes its row with it', () => {
+  const trip = { currency: 'USD', items: [cash('a', 12000, 'JPY', { status: 'cancelled' })] };
+  assert.deepEqual(L.cashNeeded(trip), []);
+  const mixed = { currency: 'USD', items: [cash('a', 12000, 'JPY', { status: 'cancelled' }), cash('b', 3000, 'JPY')] };
+  assert.deepEqual(L.cashNeeded(mixed), [{ currency: 'JPY', total: 3000 }]);
+});
+
+test('a cash item with no cost contributes nothing and cannot conjure a row', () => {
+  const trip = { currency: 'USD', items: [cash('a', null, 'JPY'), cash('b', '', 'JPY'), cash('c', 'free', 'JPY')] };
+  assert.deepEqual(L.cashNeeded(trip), []);
+});
+
+test('a cash refund nets into its currency, even down to zero or below', () => {
+  const zeroed = { currency: 'USD', items: [cash('a', 100, 'EUR'), cash('b', -100, 'EUR')] };
+  assert.deepEqual(L.cashNeeded(zeroed), [{ currency: 'EUR', total: 0 }]);
+  const negative = { currency: 'USD', items: [cash('a', 40, 'EUR'), cash('b', -100, 'EUR')] };
+  assert.deepEqual(L.cashNeeded(negative), [{ currency: 'EUR', total: -60 }]);
+});
+
+test('a cash item with no currency of its own counts in the trip currency', () => {
+  const trip = { currency: 'THB', items: [cash('a', 500), cash('b', 20, 'USD')] };
+  assert.deepEqual(L.cashNeeded(trip), [{ currency: 'THB', total: 500 }, { currency: 'USD', total: 20 }]);
+  // and with no trip currency either, the same USD default every total uses
+  assert.deepEqual(L.cashNeeded({ items: [cash('a', 500)] }), [{ currency: 'USD', total: 500 }]);
+});
+
+test('cash totals are rounded to cents, so a row never prints float dust', () => {
+  const trip = { currency: 'USD', items: [cash('a', 0.1, 'USD'), cash('b', 0.2, 'USD')] };
+  assert.deepEqual(L.cashNeeded(trip), [{ currency: 'USD', total: 0.3 }]);
+});
+
+test('cash is counted whatever the booking status, except cancelled', () => {
+  const trip = {
+    currency: 'JPY',
+    items: [cash('a', 100, 'JPY', { status: 'booked' }), cash('b', 200, 'JPY', { status: 'decide' }), cash('c', 400, 'JPY')],
+  };
+  assert.deepEqual(L.cashNeeded(trip), [{ currency: 'JPY', total: 700 }]);
+});
+
+test('cashNeeded survives an empty or absent trip', () => {
+  assert.deepEqual(L.cashNeeded({ items: [] }), []);
+  assert.deepEqual(L.cashNeeded({}), []);
+  assert.deepEqual(L.cashNeeded(null), []);
+});

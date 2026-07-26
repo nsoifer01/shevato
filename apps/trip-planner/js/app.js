@@ -53,9 +53,10 @@
     classifyGeoMatch, geoMatchNote, GEO_MATCH_RANK, GEO_MATCH_TEXT,
     classifyVisa, parseVisaMatrix, visaCountryUsable, visaUnconfirmedNames, visaVintageNote, slimTripForShare, hasFastRail, viewFromHash, hashForView,
     buildIcs, buildCsv, convertAmount, sumInCurrency, normalizeTravelers, travelerTotals,
-    settlements, costsByType,
+    settlements, costsByType, cashNeeded,
     bytesToBase64url, base64urlToBytes,
     transportGaps, connectionWarnings, sameTimeCollisions, TIGHT_CONNECTION_MIN, tripPhase, isPastRow,
+    bookingDeadlines,
     dayCards, dayMorningCity, emptyDayNote, departureOrigin, suggestedPassport, passportAssumptionParts, defaultPlanDay, planDayGroups, overnightTransit,
     timelineGroups, mealKind, isFoodOrDrink, isLongDetails, mealTitlePrefixes, itemMapsQuery, displayTitle,
     weatherKey, summarizeClimate, weatherLine, weatherRange, pickMonthSamples, docGuard,
@@ -510,6 +511,21 @@
       }
     }
 
+    // booking deadlines coming up (or already missed) on things still to book.
+    // One line per item rather than a count: the whole point is knowing WHICH
+    // booking needs an email today.
+    for (const d of bookingDeadlines(items, todayIso())) {
+      // a deadline landing on today is "today", not "0 days left": the countdown
+      // wording only starts making sense from one day out
+      const left = d.daysLeft === 0
+        ? 'today'
+        : `${d.daysLeft} ${d.daysLeft === 1 ? 'day' : 'days'} left`;
+      const text = d.kind === 'passed'
+        ? `${d.title}: booking deadline passed (${fmtDate(d.date)})`
+        : `${d.title}: book by ${fmtDate(d.date)}, ${left}`;
+      issues.push({ level: 'warn', text, ids: [d.id] });
+    }
+
     // city changes with no flight/transport logged between them (only when
     // both places are already geocoded, so we never touch the network here)
     for (const g of transportGaps(trip)) {
@@ -833,6 +849,7 @@
     const tv = $('#filterTraveler');
     if (tv) tv.value = '';
     ui.search = ''; ui.filterType = ''; ui.filterStatus = ''; ui.filterTraveler = '';
+    exitSelectMode();
     render();
   }
 
@@ -877,6 +894,121 @@
     return map;
   }
 
+  // ---------- bulk selection ----------
+  // Which rows are ticked is VIEW state, like the collapse map: it never
+  // reaches save(), so it can never land in undo. renderBoard prunes it down to
+  // the rows it actually drew, which is what keeps a bulk action honest - a
+  // filter change, a trip switch or a remote update can never leave the bar
+  // pointed at rows nobody on screen can see.
+  let selMode = false;
+  const selIds = new Set();
+  // every id the last render drew, in board order, nested rows included: what
+  // "Select all" means and what the "{n} selected" count is measured against
+  let selVisible = [];
+
+  function exitSelectMode() {
+    selMode = false;
+    selIds.clear();
+  }
+
+  // The toolbar toggle and the bulk bar, brought in line with the rows the
+  // board just drew. Called from both of renderBoard's exits, so an empty trip
+  // and a filtered-to-nothing trip are handled by the same code.
+  function syncSelectUi(visibleIds) {
+    selVisible = visibleIds;
+    const btn = $('#selectBtn');
+    btn.textContent = selMode ? 'Cancel select' : 'Select items';
+    btn.classList.toggle('on', selMode);
+    btn.setAttribute('aria-pressed', String(selMode));
+    // an empty trip keeps the button, disabled: a control that disappears is a
+    // feature the traveller has to rediscover
+    btn.disabled = sharedMode || !activeTrip().items.length;
+    let bar = $('#bulkBar');
+    if (!selMode) { if (bar) bar.remove(); return; }
+    if (!bar) bar = buildBulkBar();
+    const n = selIds.size;
+    $('#bulkCount').textContent = `${n} selected`;
+    const all = $('#bulkAll');
+    all.checked = !!visibleIds.length && n === visibleIds.length;
+    all.indeterminate = n > 0 && n < visibleIds.length;
+    // nothing ticked means nothing to act on, so the two actions are dead
+    // rather than silently doing nothing
+    $('#bulkStatus').disabled = !n;
+    $('#bulkStatus').value = '';
+    $('#bulkDelete').disabled = !n;
+  }
+
+  function buildBulkBar() {
+    const bar = document.createElement('div');
+    bar.className = 'bulk-bar';
+    bar.id = 'bulkBar';
+    bar.setAttribute('role', 'group');
+    bar.setAttribute('aria-label', 'Bulk actions');
+    bar.innerHTML = `
+      <label class="bulk-all"><input type="checkbox" id="bulkAll"><span>Select all</span></label>
+      <span class="bulk-count" id="bulkCount">0 selected</span>
+      <select class="bulk-status" id="bulkStatus" aria-label="Set the status of the selected items">
+        <option value="">Set status</option>
+        ${Object.entries(STATUS_META).map(([k, v]) => `<option value="${k}">${v.label}</option>`).join('')}
+      </select>
+      <button type="button" class="btn danger bulk-del" id="bulkDelete">Delete selected</button>`;
+    const board = $('#board');
+    board.parentNode.insertBefore(bar, board);
+    $('#bulkAll').addEventListener('change', e => {
+      selIds.clear();
+      // only what the filters are showing: ticking "all" must never reach a row
+      // the traveller cannot see
+      if (e.target.checked) for (const id of selVisible) selIds.add(id);
+      render();
+    });
+    $('#bulkStatus').addEventListener('change', e => bulkStatus(e.target.value));
+    $('#bulkDelete').addEventListener('click', bulkDelete);
+    return bar;
+  }
+
+  // ONE save() for the whole batch, so the whole batch is ONE undo step. A row
+  // that already has the target status is written anyway: refusing part of a
+  // batch is how a bulk action becomes untrustworthy.
+  function bulkStatus(status) {
+    if (!status || !selIds.size) return;
+    const trip = activeTrip();
+    const n = selIds.size;
+    for (const it of trip.items) if (selIds.has(it.id)) it.status = status;
+    save(`${n} item${n === 1 ? '' : 's'} set to ${STATUS_META[status].label}`);
+    render();
+  }
+
+  function bulkDelete() {
+    const trip = activeTrip();
+    const doomed = trip.items.filter(it => selIds.has(it.id));
+    if (!doomed.length) return;
+    // one ticked row is a single delete: it goes through deleteItem, so the
+    // confirm reads "Delete this stay?" like every other single delete in the
+    // app rather than "Delete 1 items?"
+    if (doomed.length === 1) { deleteItem(doomed[0].id); return; }
+    const n = doomed.length;
+    const label = `${n} items`;
+    const stays = doomed.filter(isStay);
+    const notes = ['The selected items will be permanently deleted.'];
+    if (stays.length) {
+      notes.push(`This includes ${stays.length === 1 ? 'a stay' : `${stays.length} stays`} (${stays.map(s => s.title).join(', ')}), so those nights lose their booking.`);
+    }
+    if (doomed.some(it => (docCounts.get(it.id) || 0) > 0)) notes.push('Attached documents cannot be recovered.');
+    confirmDialog(`Delete ${n} items?`, notes.join(' '), `Delete ${label}`, () => {
+      const ids = new Set(doomed.map(it => it.id));
+      for (const id of ids) { if ((docCounts.get(id) || 0) > 0) deleteDocsForItem(id); }
+      trip.items = trip.items.filter(it => !ids.has(it.id));
+      const ok = save();
+      const snapshot = lastSaved;
+      render();
+      if (ok) toast(`Deleted ${label}`, () => {
+        // only safe while ours is still the newest snapshot; anything saved
+        // since would be what undo() actually reverses
+        if (lastSaved === snapshot) undo();
+      });
+    });
+  }
+
   function renderBoard(trip, issues) {
     const board = $('#board');
     // ahead of the first matchesFilters call of this render, and ahead of the
@@ -884,6 +1016,8 @@
     // filter this trip's roster no longer supports
     syncTravelerFilter(trip);
     const items = sortedItems(trip);
+    // nothing to select: the mode cannot survive the last item leaving
+    if (!items.length) exitSelectMode();
 
     if (!items.length) {
       // The dropdown starts on whatever the trip's own name points at, so
@@ -909,6 +1043,7 @@
         </div>`;
       $('#emptyAdd').addEventListener('click', () => openItemModal(null));
       $('#emptySample').addEventListener('click', () => loadSample($('#emptySampleDest').value));
+      syncSelectUi([]);
       return;
     }
 
@@ -930,6 +1065,14 @@
     const nodes = timelineGroups(items);
     let shownCount = 0;
     let html = '';
+    // Every row the board DRAWS is selectable, nested activities included: a
+    // booking spree is exactly the kind of thing folded inside a stay, so
+    // leaving those out made "Select all" quietly incomplete. The rule is the
+    // same at both levels - a row is selectable exactly when it matches the
+    // filters itself, so "has a checkbox", "counts in Select all" and "can be
+    // acted on" stay the same set. A stay that is drawn only because something
+    // inside it matches still gets NO checkbox of its own.
+    const selectableIds = [];
 
     const legsByToId = {};
     for (const leg of tripLegs(trip)) legsByToId[leg.toId] = leg;
@@ -943,6 +1086,11 @@
       const kidMatches = filtering ? kids.filter(matchesFilters) : kids;
       if (filtering && !selfMatch && !kidMatches.length) continue;
       shownCount += (selfMatch ? 1 : 0) + kidMatches.length;
+      // in board order, so "Select all" reads top to bottom: the stay, then the
+      // rows folded under it. Parent and child are independent picks - ticking
+      // a stay never reaches inside it, and ticking every child never ticks it.
+      if (selfMatch) selectableIds.push(it.id);
+      if (node.kind === 'stay') for (const k of kidMatches) selectableIds.push(k.id);
 
       // gap banner rendered right before the first node at/after the gap start
       for (const g of gaps) {
@@ -952,8 +1100,14 @@
       if (leg) {
         html += `<div class="leg-row"><button class="leg-btn" data-leg-from="${esc(leg.from)}" data-leg-to="${esc(leg.to)}" data-leg-date="${esc(leg.date)}">🧭 ${esc(leg.from)} → ${esc(leg.to)} · how to get there?</button></div>`;
       }
-      html += node.kind === 'stay' ? stayNodeHtml(node, kidMatches, ctx) : `<div class="tl-node">${rowHtml(trip, it, issueById[it.id], ctx.during && isPastRow(it, today))}</div>`;
+      const pickable = selMode && selfMatch;
+      html += node.kind === 'stay'
+        ? stayNodeHtml(node, kidMatches, ctx, pickable)
+        : `<div class="tl-node">${rowHtml(trip, it, issueById[it.id], ctx.during && isPastRow(it, today), pickable)}</div>`;
     }
+    // prune to what was actually drawn, so a selection can never outlive the
+    // rows it was made from
+    for (const id of [...selIds]) if (!selectableIds.includes(id)) selIds.delete(id);
     for (const g of gaps) {
       if (!g.rendered) html += gapHtml(g);
     }
@@ -970,13 +1124,12 @@
         ${money.planned.total !== money.confirmed.total ? `<div class="t"><div class="k">Full plan</div><div class="v">${moneyHtml(trip, money.planned.total, undefined, 'total')}</div></div>` : ''}
         <div class="t confirmed${money.confirmed.unconverted.length ? ' incomplete' : ''}"><div class="k">Confirmed bookings</div><div class="v">${moneyHtml(trip, money.confirmed.total, undefined, 'total')}</div></div>
       </div>`;
-    html += travelerTotalsHtml(trip);
-    html += settleUpHtml(trip);
-    html += typeTotalsHtml(trip);
+    html += breakdownGroupHtml(trip);
     const notes = moneyNotes(trip, money);
     if (notes) html += notes;
 
     board.innerHTML = html;
+    syncSelectUi(selectableIds);
     // Paint any ratings the session already knows and batch-fetch only the
     // genuinely-missing queries. Routing through hydrateRatings means a re-render
     // or a repeat venue costs nothing (placesKnown dedups), and a trip with no
@@ -994,6 +1147,25 @@
       if (el) { el.classList.add('flash'); el.scrollIntoView({ behavior: 'smooth', block: 'center' }); }
       ui.flashId = null;
     }
+  }
+
+  // The breakdown cards under the totals bar. They answer four versions of the
+  // same "where is the money" question, so two or more of them must read as one
+  // group rather than as a stack of unrelated cards: the wrapper pulls them
+  // tight together and pushes the whole group away from the totals bar above.
+  // A LONE card is not a group and gets no wrapper, so its spacing stays exactly
+  // what it was before this existed (no manufactured air around one card).
+  function breakdownGroupHtml(trip) {
+    const cards = [travelerTotalsHtml(trip), settleUpHtml(trip), typeTotalsHtml(trip), cashNeededHtml(trip)]
+      .filter(Boolean);
+    if (cards.length < 2) return cards.join('');
+    return `<div class="breakdown-group">${cards.join('')}</div>`;
+  }
+
+  // The heading of a breakdown card: its own icon, so the four cards are told
+  // apart at a glance instead of by reading the rows under them.
+  function ttHead(icon, label, extra = '') {
+    return `<div class="tt-head"><span class="tt-head-ico" aria-hidden="true">${icon}</span>${label}${extra}</div>`;
   }
 
   // "Cost per traveller" block: one row per named traveller, rendered ONLY when
@@ -1014,7 +1186,7 @@
         + `<span class="tt-val">${moneyHtml(trip, totals[n] || 0, undefined, 'total')}${short(missing)}</span>`
         + `</div>`;
     }).join('');
-    return `<div class="traveler-totals"><div class="tt-head">Cost per traveler</div><div class="tt-list">${rows}</div></div>`;
+    return `<div class="traveler-totals">${ttHead('👥', 'Cost per traveler')}<div class="tt-list">${rows}</div></div>`;
   }
 
   // "Settle up": the payments that clear the trip, under the per-traveller split
@@ -1043,7 +1215,7 @@
         + `</div>`).join('');
     }
     return `<div class="traveler-totals settle-up${missing ? ' incomplete' : ''}">`
-      + `<div class="tt-head">Settle up${short}</div>`
+      + ttHead('🤝', 'Settle up', short)
       + `<div class="tt-list">${body}</div></div>`;
   }
 
@@ -1064,7 +1236,22 @@
         + `<span class="tt-val">${moneyHtml(trip, r.total, undefined, 'total')}${short(missing)}</span>`
         + `</div>`;
     }).join('');
-    return `<div class="traveler-totals type-totals"><div class="tt-head">Cost by type</div><div class="tt-list">${html}</div></div>`;
+    return `<div class="traveler-totals type-totals">${ttHead('🧾', 'Cost by type')}<div class="tt-list">${html}</div></div>`;
+  }
+
+  // "Cash needed": how much actual cash to carry, per currency, for everything
+  // tagged as a cash payment. The ONE money block on the page that never
+  // converts, because "carry 40000 yen" is the answer and "carry $260" is not.
+  // Gated purely on cash-tagged costs existing, so it renders the same on a solo
+  // trip as on a shared one, and a currency nobody tagged gets no row at all.
+  function cashNeededHtml(trip) {
+    const rows = cashNeeded(trip);
+    if (!rows.length) return '';
+    const html = rows.map(r => `<div class="tt-row">`
+      + `<span class="tt-name">${esc(r.currency)}</span>`
+      + `<span class="tt-val">${moneyInHtml(r.currency, r.total, undefined, 'total')}</span>`
+      + `</div>`).join('');
+    return `<div class="traveler-totals cash-needed">${ttHead('💵', 'Cash needed')}<div class="tt-list">${html}</div></div>`;
   }
 
   // Note under the totals: which items could not be converted, and how old the
@@ -1106,10 +1293,10 @@
     return level;
   }
 
-  function stayNodeHtml(node, kids, ctx) {
+  function stayNodeHtml(node, kids, ctx, pickable) {
     const { trip, issueById, today, filtering } = ctx;
     const it = node.item;
-    const stayRow = rowHtml(trip, it, issueById[it.id], ctx.during && isPastRow(it, today));
+    const stayRow = rowHtml(trip, it, issueById[it.id], ctx.during && isPastRow(it, today), pickable);
     if (!kids.length) return `<div class="tl-node tl-stay">${stayRow}</div>`;
 
     const kidIds = new Set(kids.map(k => k.id));
@@ -1117,11 +1304,16 @@
       .map(d => ({ date: d.date, items: d.items.filter(x => kidIds.has(x.id)) }))
       .filter(d => d.items.length);
     const holdsFlash = ctx.flashId && kidIds.has(ctx.flashId);
+    // a selection must never be invisible: "Select all" on a trip whose groups
+    // are collapsed would otherwise report rows nobody can see. Derived like
+    // the filter and flash overrides, so nothing is written to the saved
+    // collapse map and the group falls back the moment the pick is dropped.
+    const holdsSel = kids.some(k => selIds.has(k.id));
     // default: collapsed, except the stay you are inside today while the trip
     // is running. A live filter or a jump target always wins over both.
     const coversToday = ctx.during && isIsoDate(it.startDate) && isIsoDate(it.endDate)
       && it.startDate <= today && today < it.endDate;
-    const open = filtering || holdsFlash || isOpen(trip.id, 'stay:' + it.id, coversToday);
+    const open = filtering || holdsFlash || holdsSel || isOpen(trip.id, 'stay:' + it.id, coversToday);
     const level = nestedIssueLevel(kids, issueById);
     const badge = level ? `<span class="tl-warn ${level === 'error' ? 'is-err' : ''}" title="${level === 'error' ? 'Something inside has invalid data' : 'A warning applies inside this stay'}">⚠️</span>` : '';
     const total = node.count;
@@ -1132,11 +1324,14 @@
 
     const dayHtml = days.map(d => {
       const dayOpen = filtering || (holdsFlash && d.items.some(x => x.id === ctx.flashId))
+        || d.items.some(x => selIds.has(x.id))
         || isOpen(trip.id, `day:${it.id}:${d.date}`, ctx.during && d.date === today);
       const dLevel = nestedIssueLevel(d.items, issueById);
       const dBadge = dLevel ? `<span class="tl-warn ${dLevel === 'error' ? 'is-err' : ''}" aria-hidden="true">⚠️</span>` : '';
       const dId = `tlday-${it.id}-${d.date}`;
-      const rows = d.items.map(x => rowHtml(trip, x, issueById[x.id], ctx.during && isPastRow(x, today))).join('');
+      // `kids` is already the matching set (renderBoard filtered it), so every
+      // row drawn here is selectable while the mode is on - no second filter test
+      const rows = d.items.map(x => rowHtml(trip, x, issueById[x.id], ctx.during && isPastRow(x, today), selMode)).join('');
       return `
         <div class="tl-day ${dayOpen ? 'is-open' : ''}">
           <button type="button" class="tl-toggle tl-day-toggle" data-toggle="day:${esc(it.id)}:${esc(d.date)}" aria-expanded="${dayOpen}" aria-controls="${dId}">
@@ -1181,7 +1376,7 @@
     btn.textContent = open ? 'Show less' : 'Show more';
   }
 
-  function rowHtml(trip, it, issueLevel, isPast) {
+  function rowHtml(trip, it, issueLevel, isPast, pickable) {
     const look = rowLook(it);
     const sm = STATUS_META[it.status] || STATUS_META['to-book'];
     const n = nights(it);
@@ -1210,8 +1405,15 @@
     // and a flatter card keep a taxi hop from competing with the museum it
     // takes you to. Each of the three travel types keeps its own accent.
     const travelCls = TRAVEL_TYPES[it.type] ? ' is-travel' : '';
+    // Both levels are pickable (see renderBoard): a row folded inside a stay's
+    // day group carries the same checkbox, and picks independently of the stay.
+    const picked = pickable && selIds.has(it.id);
+    const selBox = pickable
+      ? `<label class="c-sel"><input type="checkbox" data-sel-id="${it.id}" ${picked ? 'checked' : ''} aria-label="Select ${esc(displayTitle(it))}"></label>`
+      : '';
     return `
-      <div class="tp-row ${look.cls}${travelCls} ${issueCls} ${it.status === 'cancelled' ? 'is-cancelled' : ''} ${isPast ? 'is-past' : ''}" data-id="${it.id}">
+      <div class="tp-row ${look.cls}${travelCls} ${issueCls} ${it.status === 'cancelled' ? 'is-cancelled' : ''} ${isPast ? 'is-past' : ''}${pickable ? ' is-selectable' : ''}${picked ? ' is-sel' : ''}" data-id="${it.id}">
+        ${selBox}
         <span class="c-dot" role="img" aria-label="${esc(look.label)}" title="${esc(look.label)}">${look.icon}</span>
         <div class="c-when">
           <span class="c-date">${dates}</span>${time}${n ? `<span class="c-nights">${n} night${n === 1 ? '' : 's'}</span>` : ''}
@@ -1957,6 +2159,11 @@
     $('#inCost').style.paddingLeft = (sym.length > 1 ? 18 + sym.length * 9 : 34) + 'px';
   }
 
+  // How a cost gets paid. '' is "Not tracked" and stores nothing at all: only
+  // 'cash' drives anything (the Cash needed block), the other two are notes to
+  // self. The list is the one gate the form and an import both check against.
+  const PAYMENT_METHODS = ['cash', 'card', 'prepaid'];
+
   function openItemModal(itemId, presetDate) {
     ui.editingId = itemId;
     const it = itemId ? activeTrip().items.find(x => x.id === itemId) : null;
@@ -1990,6 +2197,11 @@
     // items saved before this field existed carry no `confirmation` key at all,
     // which reads as empty here and needs no migration
     $('#inConfirmation').value = it ? (it.confirmation || '') : '';
+    $('#inBookBy').value = it ? (it.bookBy || '') : '';
+    // an unknown method (hand-edited JSON, a future value) falls back to the
+    // blank "Not tracked" option rather than leaving the select on whatever
+    // happened to be first
+    $('#inPayment').value = it && PAYMENT_METHODS.includes(it.payment) ? it.payment : '';
     renderWhoFor(it);
     $('#inDetails').value = it ? (it.details || '') : '';
     renderDetailLinks(it);
@@ -2136,8 +2348,13 @@
       costCurrency: $('#inCost').value === '' ? undefined : $('#inCostCurrency').value,
       costNote: $('#inCostNote').value.trim(),
       confirmation: $('#inConfirmation').value.trim(),
+      bookBy: $('#inBookBy').value,
       details: $('#inDetails').value.trim(),
     };
+    // "Not tracked" is the absence of a claim, so it stores nothing rather than
+    // an empty string every item would then carry
+    const payment = $('#inPayment').value;
+    if (PAYMENT_METHODS.includes(payment)) it.payment = payment;
     if (it.costCurrency === undefined) delete it.costCurrency;
     // the Maps field is not user-editable, so carry it across an edit instead
     // of silently dropping it
@@ -2200,6 +2417,10 @@
       else $('#arrErr').textContent = msg || 'Arrival cannot be before departure.';
     }
     if (errs.cost) $('#fCost').classList.add('invalid');
+    if (errs.bookBy) {
+      $('#fBookBy').classList.add('invalid');
+      $('#bookByErr').textContent = typeof errs.bookBy === 'string' ? errs.bookBy : 'Book by must be on or before the item date.';
+    }
     if (Object.keys(errs).length) return;
 
     const trip = activeTrip();
@@ -2467,9 +2688,13 @@
       // same 40 as the form: an import or a share link must not be able to
       // smuggle in a code longer than the field that has to render it
       confirmation: String(raw.confirmation || '').slice(0, 40),
+      // a booking deadline that is not a real date is dropped rather than
+      // imported as a warning nobody can act on
+      bookBy: isIsoDate(raw.bookBy) ? raw.bookBy : '',
       details: String(raw.details || '').slice(0, 500),
       createdAt: new Date().toISOString(),
     };
+    if (PAYMENT_METHODS.includes(raw.payment)) out.payment = raw.payment;
     if (/^[A-Z]{3}$/.test(raw.costCurrency || '')) out.costCurrency = raw.costCurrency;
     else if (out.cost != null) out.costCurrency = undefined; // stamped by the caller with the trip currency
     // an imported or shared itinerary keeps its suggested prices, still uncounted
@@ -4875,9 +5100,22 @@
   }
   $('#undoBtn').addEventListener('click', undo);
   $('#redoBtn').addEventListener('click', redo);
-  $('#viewTimeline').addEventListener('click', () => { ui.view = 'timeline'; applyView(); });
-  $('#viewDays').addEventListener('click', () => { ui.view = 'days'; applyView(); });
-  $('#viewMap').addEventListener('click', () => { ui.view = 'map'; applyView(); });
+  // Picking rows is a Timeline motion. Leaving the Timeline leaves the mode
+  // (checkboxes and bar go with it), and entering the mode from Days or Map
+  // brings you back to the view that has the checkboxes.
+  function setView(v) {
+    ui.view = v;
+    if (selMode && v !== 'timeline') { exitSelectMode(); render(); return; }
+    applyView();
+  }
+  $('#viewTimeline').addEventListener('click', () => setView('timeline'));
+  $('#viewDays').addEventListener('click', () => setView('days'));
+  $('#viewMap').addEventListener('click', () => setView('map'));
+  $('#selectBtn').addEventListener('click', () => {
+    if (selMode) exitSelectMode();
+    else { selMode = true; selIds.clear(); ui.view = 'timeline'; }
+    render();
+  });
   // Editing the fragment by hand, or a Back/Forward that lands on a different
   // one, syncs the view. Share payloads are handled at boot only.
   window.addEventListener('hashchange', () => {
@@ -4889,8 +5127,7 @@
     // showing another, and a reload then landed somewhere else entirely.
     // syncViewHash rewrites it either way.
     if (parsed.view === ui.view) { syncViewHash(); return; }
-    ui.view = parsed.view;
-    applyView();
+    setView(parsed.view);
   });
   $('#routeForm').addEventListener('submit', e => { e.preventDefault(); checkRoute(); });
   $('#routeSwap').addEventListener('click', () => {
@@ -4942,7 +5179,8 @@
   document.addEventListener('click', () => $('#tripMenu').classList.remove('open'));
   $('#tripMenu').querySelector('.tp-menu-panel').addEventListener('click', e => {
     const b = e.target.closest('button[data-act]');
-    if (!b) return;
+    // clicks on captions/dividers/padding are inert: keep the panel open
+    if (!b) { e.stopPropagation(); return; }
     $('#tripMenu').classList.remove('open');
     const act = b.dataset.act;
     // shared view is read-only: only the export/share actions are allowed
@@ -4991,6 +5229,9 @@
       ui.search = $('#searchBox').value.trim();
       ui.filterType = $('#filterType').value;
       ui.filterStatus = $('#filterStatus').value;
+      // moving the filters moves which rows exist, so the selection made
+      // against the old ones is dropped rather than silently re-pointed
+      exitSelectMode();
       render();
     });
   });
@@ -4999,6 +5240,7 @@
   $('#travelerFilterWrap').addEventListener('input', e => {
     if (e.target.id !== 'filterTraveler') return;
     ui.filterTraveler = e.target.value;
+    exitSelectMode();
     render();
   });
 
@@ -5046,6 +5288,17 @@
       trip.currency = e.target.value;
       save(`Costs now shown in ${trip.currency} (${currencySymbol(trip.currency)}); amounts keep their entered currency and convert`);
       render();
+      return;
+    }
+    const box = e.target.closest('input[data-sel-id]');
+    if (box) {
+      // no render(): ticking a box must not repaint the board under the cursor,
+      // so the row class and the bar are updated in place
+      const id = box.dataset.selId;
+      if (box.checked) selIds.add(id); else selIds.delete(id);
+      const row = box.closest('.tp-row');
+      if (row) row.classList.toggle('is-sel', box.checked);
+      syncSelectUi(selVisible);
       return;
     }
     const sel = e.target.closest('select[data-status-for]');
@@ -5133,7 +5386,7 @@
   // the submit handler is what actually enforces DATE_MIN/DATE_MAX. Stamping
   // them from the same constants keeps the widget and the check in step, and
   // keeps the bounds out of the markup entirely.
-  for (const id of ['#inStart', '#inEnd', '#inArrDate', '#dupDayDate']) {
+  for (const id of ['#inStart', '#inEnd', '#inArrDate', '#inBookBy', '#dupDayDate']) {
     $(id).min = DATE_MIN;
     $(id).max = DATE_MAX;
   }

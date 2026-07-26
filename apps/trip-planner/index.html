@@ -43,7 +43,7 @@
   <meta name="theme-color" content="#0e1116">
   <link rel="stylesheet" href="../../assets/css/main.css">
   <link rel="stylesheet" href="../../assets/css/sync-status.css">
-  <link rel="stylesheet" href="css/styles.css?v=30">
+  <link rel="stylesheet" href="css/styles.css?v=31">
 </head>
 <body class="tp-page">
   <div id="sync-banner" class="sync-banner" role="status" aria-live="polite" hidden></div>
@@ -65,11 +65,13 @@
       <div class="tp-menu" id="tripMenu">
         <button class="icon-btn" id="tripMenuBtn" title="Trip actions" aria-haspopup="true">⋯</button>
         <div class="tp-menu-panel">
+          <div class="tp-menu-cap">Trip</div>
           <button data-act="new-trip">➕ New trip</button>
           <button data-act="rename-trip">✏️ Rename / currency</button>
           <button data-act="duplicate-trip">📄 Duplicate trip</button>
           <button data-act="packing">🎒 Packing list</button>
           <div class="sep"></div>
+          <div class="tp-menu-cap">Import &amp; export</div>
           <button data-act="export-trip">⬇️ Export trip (JSON)</button>
           <button data-act="export-csv">⬇️ Export trip (CSV)</button>
           <button data-act="export-ics">⬇️ Export trip (.ics)</button>
@@ -77,6 +79,7 @@
           <button data-act="share-trip">🔗 Share itinerary</button>
           <button data-act="import">⬆️ Import JSON</button>
           <div class="sep"></div>
+          <div class="tp-menu-cap">Preferences</div>
           <button data-act="timefmt" id="timefmtBtn">🕐 Use 24-hour times</button>
           <div class="sep"></div>
           <button data-act="delete-trip" class="danger">🗑 Delete trip</button>
@@ -105,6 +108,7 @@
 
   <div class="toolbar">
     <button class="btn primary" id="addBtn">+ Add item</button>
+    <button class="btn" id="selectBtn" title="Pick several items and change or delete them together" aria-pressed="false">Select items</button>
     <span class="tb-sep" aria-hidden="true"></span>
     <div class="tb-group tb-tools" role="group" aria-label="Trip tools">
       <button class="btn" id="shiftTripBtn" title="Shift the whole trip by N days">⇄ Shift trip</button>
@@ -245,6 +249,23 @@
                 <option value="to-book" selected>To book</option>
                 <option value="decide">Decide later</option>
                 <option value="cancelled">Cancelled</option>
+              </select>
+            </div>
+          </div>
+          <div class="field" id="fBookBy">
+            <label for="inBookBy">Book by <small>(optional)</small></label>
+            <input type="date" id="inBookBy">
+            <div class="err" id="bookByErr">Book by must be on or before the item date.</div>
+            <div class="hint">Warnings nudge you as this date nears, while the item is still "To book".</div>
+          </div>
+          <div class="field">
+            <label for="inPayment">Payment method <small>(optional)</small></label>
+            <div class="sel-wrap">
+              <select id="inPayment">
+                <option value="">Not tracked</option>
+                <option value="cash">Cash</option>
+                <option value="card">Card</option>
+                <option value="prepaid">Prepaid / already paid</option>
               </select>
             </div>
           </div>
@@ -620,7 +641,7 @@
     }
   </script>
 
-  <script src="js/trip-logic.js?v=17"></script>
-  <script src="js/app.js?v=34"></script>
+  <script src="js/trip-logic.js?v=18"></script>
+  <script src="js/app.js?v=35"></script>
 </body>
 </html>
