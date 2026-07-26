@@ -2986,3 +2986,67 @@
     .trip-planner-app .split-amt { width: 128px; min-height: 40px; }
     .split-seg { max-width: none; }
   }
+
+/* ===== Round 6: cross-trip overlap warning and passport expiry ===== */
+
+  /* the other trip's name is the control in that warning line, so it carries
+     the weight; .issues li a already gives it the accent colour and the
+     pointer, and main.css's sitewide red `a` colour loses on specificity */
+  .issues li a[data-trip] { font-weight: 700; }
+
+  /* Passport expiry: a native date input inside a .field, so it inherits the
+     modal control sizing and colours that #inBookBy already relies on. The
+     colour-scheme is dark page-wide, which is what keeps the native calendar
+     icon and picker legible; these pin the parts main.css still reaches -
+     `input { color: #555 }` and its width/height defaults. */
+  .trip-planner-app input.passport-expiry {
+    width: 100%; min-height: var(--m-ctl-h); height: auto;
+    color: var(--text); font-family: var(--tp-font); font-size: 15px;
+  }
+  /* Two tones, both borrowed from the issues panel so an amber line here means
+     the same thing it means there. Deliberately no green state: a passport with
+     plenty of validity gets silence, not a tick. */
+  .passport-expiry-note {
+    margin: 2px 0 0; font-size: var(--m-help, 12px); font-weight: 600; line-height: 1.5;
+    border-radius: 10px; padding: 8px 11px;
+  }
+  .passport-expiry-note.pe-error { background: var(--red-soft); color: var(--red); }
+  .passport-expiry-note.pe-warn { background: var(--amber-soft); color: var(--amber); }
+
+/* ===== Round 6: popover focus return, strip keyboard access, chip bars ===== */
+
+  /* The night-coverage cells are real buttons now (role, name, Enter/Space), so
+     they need the ring every other control here has. --text, not the --accent
+     used everywhere else: a focused "in transit" night IS --accent, and a blue
+     ring on a blue cell is no ring at all. The ring sits OUTSIDE a 3px-wide
+     cell because inside it there is no room, which means it overlaps the 2px
+     gap to each neighbour - hence the lift, so it is never half-drawn under the
+     night beside it. 1px offset + 2px width = exactly the 3px of vertical
+     padding .strip reserves on a phone, where overflow-x makes the cross axis
+     clip. main.css cannot reach these (they are divs, not buttons), but the
+     colour is pinned to the app's own token regardless. */
+  .trip-planner-app .strip .cell:focus-visible {
+    outline: 2px solid var(--text); outline-offset: 1px;
+    position: relative; z-index: 1;
+  }
+
+  /* The three chips that state a part of a whole ("Day 5 of 10") get that same
+     ratio as a picture, using the Cost-by-type bar unchanged; only the layout
+     differs, because a chip is a block and a .tt-row is a flex line.
+     It is fitted INSIDE the chip's existing 9px of bottom padding (3 + 4 + 2),
+     which is what keeps the chips WITHOUT a ratio pixel-identical: .summary is
+     a flex row that stretches every chip to the tallest, so one chip growing
+     10px would have grown all eight. */
+  .summary .chip.has-bar { padding-bottom: 2px; }
+  .summary .chip .tt-bar { display: block; margin-top: 3px; }
+  /* The bar takes the chip's own verdict colour so it never makes a second
+     claim: green only where the chip already reads green (every night booked,
+     the day counter), amber only where the chip itself went amber (over
+     budget, or a total with money missing from it), neutral accent otherwise. */
+  .summary .chip.ok-chip .tt-bar > i { background: color-mix(in srgb, var(--green) 78%, transparent); }
+  .summary .chip.warn-chip .tt-bar > i { background: color-mix(in srgb, var(--amber) 78%, transparent); }
+
+  @media (max-width: 560px) {
+    /* the phone chip has 8px of bottom padding to fit into, not 9px */
+    .summary .chip .tt-bar { margin-top: 2px; }
+  }

@@ -190,6 +190,35 @@ const TripLogic = (() => {
     return { start, end, renderEnd, spanCapped, confirmed, planned, bookedNights, totalTripNights, count: items.length };
   }
 
+  // Every other collision check in this app looks INSIDE one trip, so the one
+  // way to be in two places at once - two saved trips booked over the same
+  // days - was the one the app could not see. This compares the active trip's
+  // overall span against every other saved trip's, one entry per trip that
+  // shares at least one calendar DAY.
+  //
+  // A shared day, not a shared night: trips are compared on their span, so a
+  // trip ending the 10th and one starting the 11th are adjacent and fine,
+  // while ending and starting on the same day is a real conflict (you cannot
+  // fly home and check in somewhere else on the same date without noticing).
+  // A trip with no dated item has no computable span, so it neither triggers
+  // this nor gets named by it, in either direction.
+  function overlappingTrips(trips, activeId) {
+    const all = (Array.isArray(trips) ? trips : []).filter(t => t && Array.isArray(t.items));
+    const active = all.find(t => t.id === activeId);
+    if (!active) return [];
+    const mine = tripStats(active);
+    if (!mine.start || !mine.end) return [];
+    const out = [];
+    for (const t of all) {
+      if (t.id === activeId) continue;
+      const s = tripStats(t);
+      if (!s.start || !s.end) continue;
+      if (s.start > mine.end || s.end < mine.start) continue;
+      out.push({ id: t.id, name: t.name || '', start: s.start, end: s.end });
+    }
+    return out;
+  }
+
   // ---------- route helper math ----------
   const ISLANDISH = /\b(koh?|ko|phi phi|railay|samui|lanta|tao|phangan|chang|lipe|similan|island|isla|beach)\b/i;
 
@@ -735,6 +764,40 @@ const TripLogic = (() => {
     if (d2 < d1) months -= 1;
     if (months < 1) return `Rules as published on ${when}.`;
     return `Rules as published on ${when}, about ${months} month${months === 1 ? '' : 's'} ago.`;
+  }
+
+  // The "six months of remaining validity" rule denies boarding more often than
+  // any visa question this dialog answers, and the app already knows both dates
+  // it needs: the passport expiry the traveller typed and the last dated day of
+  // the open trip.
+  //
+  // Three branches, and only two of them speak. Expiring on or before the last
+  // day of the trip is a flat error. Expiring inside the six-month window after
+  // it is a warning, worded as a warning about OTHER countries' rules rather
+  // than a rule this app is asserting: 180 days is the common shape of it, not
+  // a universal law, and plenty of destinations ask for less. Anything further
+  // out says nothing at all, matching the rest of this app - silence means
+  // nothing is wrong, and a green tick would be a promise about foreign border
+  // policy we have no business making.
+  //
+  // `fmt` is the app's own date formatter, passed in the way suggestedPassport
+  // takes its country lookup, so no ISO string ever reaches the copy.
+  const PASSPORT_VALIDITY_DAYS = 180;
+  function passportExpiryStatus(expiry, tripEnd, fmt) {
+    if (!isIsoDate(expiry) || !isIsoDate(tripEnd)) return null;
+    const after = diffDays(tripEnd, expiry);
+    if (after <= 0) {
+      return { level: 'error', text: `Your passport expires ${fmt(expiry)} - before this trip ends on ${fmt(tripEnd)}.` };
+    }
+    if (after < PASSPORT_VALIDITY_DAYS) {
+      return {
+        level: 'warn',
+        text: `Your passport is valid for this trip but expires ${fmt(expiry)} - within 6 months of your return.`
+          + ` Many countries require 6+ months of remaining validity to let you in;`
+          + ` always check each destination's exact rule.`,
+      };
+    }
+    return null;
   }
 
   // ---------- visa helpers ----------
@@ -3657,13 +3720,14 @@ const TripLogic = (() => {
     isStay, nights, sortKey, sortedItems, tripLegs,
     nextUpEvent, NEXT_UP_WINDOW_MIN, defaultPackingItems,
     isTransitType, isTransitSpan, overnightTransit,
-    validateItem, coverageGaps, tripStats, MAX_TRIP_DAYS, DATE_MIN, DATE_MAX, isDateInRange,
+    validateItem, coverageGaps, tripStats, overlappingTrips, MAX_TRIP_DAYS, DATE_MIN, DATE_MAX, isDateInRange,
     ISLANDISH, distKm, flagEmoji, compass, fmtDur, modeOptions,
     modeCost, modeCo2, routeBadges, corridorFacts, routeFlags, routeTips,
     routeLinks, modeLink, ROUTE_HONESTY,
     classifyGeoMatch, geoInputIsQualified, geoMatchNote,
     GEO_RIVAL_GAP, GEO_WEAK_IMPORTANCE, GEO_SETTLEMENT_KINDS, GEO_MATCH_RANK, GEO_MATCH_TEXT,
     classifyVisa, parseVisaMatrix, visaCountryUsable, visaUnconfirmedNames, visaVintageNote,
+    passportExpiryStatus, PASSPORT_VALIDITY_DAYS,
     slimTripForShare, hasFastRail, viewFromHash, hashForView,
     buildIcs, buildCsv, csvColumns, convertAmount, sumInCurrency,
     normalizeTravelers, travelerTotals,

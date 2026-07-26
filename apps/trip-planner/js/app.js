@@ -47,11 +47,11 @@
     isIsoDate, toUtc, diffDays, addDays,
     isStay, nights, sortKey, sortedItems, tripLegs,
     nextUpEvent, defaultPackingItems,
-    validateItem, coverageGaps, tripStats, MAX_TRIP_DAYS, DATE_MIN, DATE_MAX, isDateInRange,
+    validateItem, coverageGaps, tripStats, overlappingTrips, MAX_TRIP_DAYS, DATE_MIN, DATE_MAX, isDateInRange,
     ISLANDISH, distKm, flagEmoji, compass, fmtDur, modeOptions,
     routeBadges, routeFlags, routeTips, routeLinks, modeLink, ROUTE_HONESTY,
     classifyGeoMatch, geoMatchNote, GEO_MATCH_RANK, GEO_MATCH_TEXT,
-    classifyVisa, parseVisaMatrix, visaCountryUsable, visaUnconfirmedNames, visaVintageNote, slimTripForShare, hasFastRail, viewFromHash, hashForView,
+    classifyVisa, parseVisaMatrix, visaCountryUsable, visaUnconfirmedNames, visaVintageNote, passportExpiryStatus, slimTripForShare, hasFastRail, viewFromHash, hashForView,
     buildIcs, buildCsv, convertAmount, sumInCurrency, normalizeTravelers, travelerTotals,
     evenSplitAmounts, splitAmountsMatch, customSplitShares,
     settlements, costsByType, typeBarShares, cashNeeded,
@@ -557,6 +557,22 @@
         ids: [c.aId, c.bId],
       });
     }
+
+    // The one conflict that lives OUTSIDE this trip: another saved trip booked
+    // over the same days. Computed against db.trips on every render from the
+    // trip being shown, so opening either side of a clash names the other.
+    // The other trip's name is the link: the same switch #tripSelect performs,
+    // which deliberately leaves the current filters alone.
+    for (const o of overlappingTrips(db.trips, trip.id)) {
+      const name = o.name || '(untitled)';
+      issues.push({
+        level: 'warn',
+        text: `Overlaps with another trip: "${name}" (${o.start === o.end ? fmtDate(o.start) : fmtRange(o.start, o.end)})`,
+        ids: [],
+        html: `Overlaps with another trip: "<a data-trip="${esc(o.id)}">${esc(name)}</a>"`
+          + ` (${esc(o.start === o.end ? fmtDate(o.start) : fmtRange(o.start, o.end))})`,
+      });
+    }
     return issues;
   }
 
@@ -707,7 +723,12 @@
         tip = `${fmtDate(d)}: in transit (${transit.title})`;
         id = transit.id;
       }
-      cells.push(`<div class="cell ${cls}" title="${esc(tip)}" ${id ? `data-goto="${id}"` : ''}></div>`);
+      // A jumpable night is a real button: reachable by Tab, named by the same
+      // sentence the hover tooltip shows, and operated by Enter/Space. A night
+      // with nothing to jump to stays exactly as inert as it looks, so tabbing
+      // through the strip stops only where a stop actually does something.
+      const jump = id ? ` data-goto="${id}" tabindex="0" role="button" aria-label="${esc(tip)}"` : '';
+      cells.push(`<div class="cell ${cls}" title="${esc(tip)}"${jump}></div>`);
     }
     $('#strip').innerHTML = cells.join('');
     const nightWord = n => `${n} ${n === 1 ? 'night' : 'nights'}`;
@@ -749,14 +770,14 @@
         const until = diffDays(todayIso(), s.start);
         if (until > 0) chips.push(chip('Countdown', `${until} day${until === 1 ? '' : 's'} to go`));
       } else if (phase.phase === 'during') {
-        chips.push(chip('Progress', `Day ${phase.dayNumber} <small>of ${phase.totalDays}</small>`, 'ok-chip'));
+        chips.push(chip('Progress', `Day ${phase.dayNumber} <small>of ${phase.totalDays}</small>`, 'ok-chip', phase.dayNumber / phase.totalDays));
       } else {
         chips.push(chip('Status', 'Trip completed'));
       }
     }
     if (s.totalTripNights > 0) {
       const cls = s.bookedNights >= s.totalTripNights ? 'ok-chip' : '';
-      chips.push(chip('Nights booked', `${s.bookedNights} <small>of ${s.totalTripNights}</small>`, cls));
+      chips.push(chip('Nights booked', `${s.bookedNights} <small>of ${s.totalTripNights}</small>`, cls, s.bookedNights / s.totalTripNights));
     }
     // The caveat has to travel WITH the number. moneyNotes explains an
     // unconvertible amount, but it only renders under the Timeline board, so on
@@ -779,13 +800,28 @@
       const body = verdict === 'refund'
         ? `${moneyHtml(trip, money.confirmed.total, undefined, 'total')} <small>budget ${esc(fmtMoney(trip, trip.budget))}</small>`
         : `${esc(fmtMoney(trip, money.confirmed.total))} <small>of ${esc(fmtMoney(trip, trip.budget))}</small>`;
-      chips.push(chip('Budget', body + short(missing), (verdict === 'ok' || verdict === 'refund') ? 'ok-chip' : 'warn-chip'));
+      chips.push(chip('Budget', body + short(missing), (verdict === 'ok' || verdict === 'refund') ? 'ok-chip' : 'warn-chip', spentShare(money.confirmed.total, trip.budget)));
     }
     const warnCount = issues.length;
     chips.push(chip('Issues', warnCount ? String(warnCount) : 'None', warnCount ? 'warn-chip' : 'ok-chip'));
     $('#summary').innerHTML = chips.join('');
   }
-  const chip = (k, v, cls = '') => `<div class="chip ${cls}"><div class="k">${k}</div><div class="v">${v}</div></div>`;
+  // How much of the budget is gone, as a fraction the bar can draw. Clamped at
+  // both ends: over budget the bar is full (the amber chip already says by how
+  // much, and a bar past its own track says nothing), and on a refund the net
+  // is negative, which is 0% spent rather than a bar running backwards.
+  function spentShare(total, budget) {
+    const b = Number(budget);
+    if (!(b > 0)) return 0;
+    return Math.max(0, Math.min(1, Number(total) / b));
+  }
+  // The optional fourth argument is a ratio the chip's own text ALREADY states,
+  // drawn with the same bar the Cost-by-type rows use. It is never a new number:
+  // a chip with nothing to be a part of gets no bar and stays byte-identical.
+  const chip = (k, v, cls = '', ratio = null) => `<div class="chip ${cls}${ratio == null ? '' : ' has-bar'}">`
+    + `<div class="k">${k}</div><div class="v">${v}</div>`
+    + (ratio == null ? '' : `<span class="tt-bar" aria-hidden="true"><i style="width:${(Math.max(0, Math.min(1, ratio)) * 100).toFixed(2)}%"></i></span>`)
+    + `</div>`;
 
   function renderIssues(issues) {
     const box = $('#issuesBox');
@@ -802,7 +838,7 @@
     $('#issuesList').innerHTML = issues.map((iss, idx) => `
       <li>
         <span class="tag ${iss.level === 'error' ? 'err' : 'warn'}">${iss.level === 'error' ? 'ERROR' : 'WARN'}</span>
-        <span>${esc(iss.text)} ${iss.ids.length ? `<a data-jump="${iss.ids[0]}">show</a>` : ''}</span>
+        <span>${iss.html || esc(iss.text)}${iss.ids.length ? ` <a data-jump="${iss.ids[0]}">show</a>` : ''}</span>
       </li>`).join('');
   }
 
@@ -2830,8 +2866,42 @@
       + (more ? `<p class="ts-note ts-more">+${more} more - narrow your search</p>` : '');
   }
 
-  function openTripSearch() {
+  // The two header popovers borrow the modal focus contract (openOverlay /
+  // closeOverlays): whoever opened one gets the focus back when it closes, so
+  // dismissing search does not strand a keyboard user on a now-hidden input.
+  // Only ONE of them can be open at a time (each opener closes the other), so
+  // one slot is enough. Paths that deliberately hand focus somewhere else clear
+  // the slot BEFORE closing: picking a search result (focus follows the jump),
+  // choosing a menu action that opens a dialog (the dialog owns focus), and
+  // either opener replacing the other popover (the new opener holds focus).
+  let popoverReturnFocus = null;
+  function returnPopoverFocus() {
+    const el = popoverReturnFocus;
+    popoverReturnFocus = null;
+    if (!el || !document.contains(el) || typeof el.focus !== 'function') return;
+    // Reclaim only the focus the popover itself was holding, or focus the
+    // dismissal dropped on nothing. An outside click that landed on another
+    // control has already given focus to something the traveller chose, and
+    // stealing it back would lose their place rather than keep it.
+    const a = document.activeElement;
+    if (a && a !== document.body && !$('#tripSearch').contains(a) && !$('#tripMenu').contains(a)) return;
+    el.focus();
+  }
+
+  function openTripMenu() {
+    popoverReturnFocus = null; // the search panel is being replaced, not dismissed
+    closeTripSearch();
+    $('#tripMenu').classList.add('open');
+    popoverReturnFocus = $('#tripMenuBtn');
+  }
+  function closeTripMenu() {
     $('#tripMenu').classList.remove('open');
+    returnPopoverFocus();
+  }
+
+  function openTripSearch() {
+    popoverReturnFocus = null; // the menu is being replaced, not dismissed
+    closeTripMenu();
     $('#tripSearch').classList.add('open');
     $('#tripSearchBtn').setAttribute('aria-expanded', 'true');
     renderTripSearch();
@@ -2839,16 +2909,19 @@
     // pre-selected: one keystroke replaces it
     $('#tripSearchInput').focus();
     $('#tripSearchInput').select();
+    popoverReturnFocus = $('#tripSearchBtn');
   }
   function closeTripSearch() {
     $('#tripSearch').classList.remove('open');
     $('#tripSearchBtn').setAttribute('aria-expanded', 'false');
+    returnPopoverFocus();
   }
 
   function jumpToSearchResult(tripId, itemId) {
     const trip = db.trips.find(t => t.id === tripId);
     if (!trip) return;
     if (db.activeTripId !== tripId) { db.activeTripId = tripId; save(); }
+    popoverReturnFocus = null; // the jump, not the search button, is where you now are
     closeTripSearch();
     // the same jump the Issues list, the night strip and the Up next chip use
     ui.view = 'timeline';
@@ -3511,6 +3584,11 @@
   // ---------- visa requirements ----------
   const VISA_KEY = 'trip-planner:visa:v1';
   const PASSPORT_KEY = 'trip-planner:passport';
+  // Device-level, exactly like PASSPORT_KEY: which passport you hold and when it
+  // runs out are facts about the traveller, so they follow the person across
+  // every trip on this device and never enter a trip's data (no export, no
+  // share link).
+  const PASSPORT_EXPIRY_KEY = 'trip-planner:passport-expiry';
   // Repointed 2026-07-20. The previous source (ilyankou/passport-index-dataset)
   // declares itself archived and last updated 12 January 2025, and points here
   // for February 2026 onward. VERIFIED before switching: identical 199x200
@@ -3561,6 +3639,14 @@
   async function openVisaModal() {
     const token = ++visaToken;
     openOverlay('#visaOverlay');
+    // Before any awaiting: the expiry check needs no dataset and no network, so
+    // it must still be filled in and answered on the offline and failed-fetch
+    // paths below, which return early.
+    const exp = $('#passportExpiry');
+    exp.min = DATE_MIN;
+    exp.max = DATE_MAX;
+    exp.value = localStorage.getItem(PASSPORT_EXPIRY_KEY) || '';
+    renderPassportExpiry();
     const box = $('#visaResults');
     box.innerHTML = '<div class="route-loading"><span class="spinner"></span>Loading visa dataset...</div>';
     if (!navigator.onLine && !localStorage.getItem(VISA_KEY)) {
@@ -3672,6 +3758,20 @@
       + `<span class="passport-guess-src">(${esc(parts.source)})</span> `
       + '<button type="button" class="passport-change">Change</button>';
     el.hidden = false;
+  }
+
+  // The "six months of remaining validity" check, against the trip that is
+  // open. passportExpiryStatus owns the three branches and both sentences; this
+  // only decides where it is painted. Nothing to say means nothing on screen -
+  // a plenty-of-validity passport gets no green tick, the same way a trip with
+  // no problems gets no issues panel.
+  function renderPassportExpiry() {
+    const el = $('#passportExpiryNote');
+    const trip = activeTrip();
+    const status = passportExpiryStatus($('#passportExpiry').value, trip ? tripStats(trip).end : '', fmtDate);
+    el.className = 'passport-expiry-note' + (status ? ` pe-${status.level}` : '');
+    el.textContent = status ? status.text : '';
+    el.hidden = !status;
   }
 
   // itinerary countries + manually added ones (layovers, land borders)
@@ -5352,6 +5452,14 @@
     renderPassportGuess();
     renderVisaRows();
   });
+  $('#passportExpiry').addEventListener('change', () => {
+    const v = $('#passportExpiry').value;
+    // cleared means cleared: a renewed passport must be able to take the old
+    // date off this device, which is why this one removes rather than only sets
+    if (v) localStorage.setItem(PASSPORT_EXPIRY_KEY, v);
+    else localStorage.removeItem(PASSPORT_EXPIRY_KEY);
+    renderPassportExpiry();
+  });
   $('#passportGuess').addEventListener('click', e => {
     if (!e.target.closest('.passport-change')) return;
     const sel = $('#passportSel');
@@ -5438,9 +5546,26 @@
   });
   $('#routeFrom').addEventListener('input', () => updateRouteLinks());
   $('#routeTo').addEventListener('input', () => updateRouteLinks());
+  const gotoStripCell = cell => { ui.view = 'timeline'; ui.flashId = cell.dataset.goto; render(); };
   $('#stripBox').addEventListener('click', e => {
     const cell = e.target.closest('[data-goto]');
-    if (cell) { ui.view = 'timeline'; ui.flashId = cell.dataset.goto; render(); }
+    if (cell) gotoStripCell(cell);
+  });
+  // the keyboard half of the same control: role="button" promises Enter and
+  // Space, and Space would otherwise scroll the page out from under the jump
+  $('#stripBox').addEventListener('keydown', e => {
+    if (e.key !== 'Enter' && e.key !== ' ') return;
+    const cell = e.target.closest('[data-goto]');
+    if (!cell) return;
+    e.preventDefault();
+    // render() rebuilds the strip, so the activated cell is gone by the time
+    // the jump lands: hand focus to its replacement (preventScroll, or focusing
+    // it would drag the page back off the row we just jumped to) instead of
+    // dropping a keyboard traveller on <body> with nowhere to carry on from.
+    const idx = [...$('#strip').children].indexOf(cell);
+    gotoStripCell(cell);
+    const next = $('#strip').children[idx];
+    if (next && next.hasAttribute('data-goto')) next.focus({ preventScroll: true });
   });
   $('#itemForm').addEventListener('submit', submitItemForm);
   $('#docsAttachBtn').addEventListener('click', () => $('#inDocs').click());
@@ -5479,10 +5604,14 @@
 
   $('#tripSelect').addEventListener('change', e => { db.activeTripId = e.target.value; save(); render(); });
 
-  $('#tripMenuBtn').addEventListener('click', e => { e.stopPropagation(); closeTripSearch(); $('#tripMenu').classList.toggle('open'); });
+  $('#tripMenuBtn').addEventListener('click', e => {
+    e.stopPropagation();
+    if ($('#tripMenu').classList.contains('open')) closeTripMenu();
+    else openTripMenu();
+  });
   // both header popovers close on any click that is not inside them; each
   // opener stops propagation, which is why each also closes the other
-  document.addEventListener('click', () => { $('#tripMenu').classList.remove('open'); closeTripSearch(); });
+  document.addEventListener('click', () => { closeTripMenu(); closeTripSearch(); });
 
   $('#tripSearchBtn').addEventListener('click', e => {
     e.stopPropagation();
@@ -5501,7 +5630,7 @@
     const b = e.target.closest('button[data-act]');
     // clicks on captions/dividers/padding are inert: keep the panel open
     if (!b) { e.stopPropagation(); return; }
-    $('#tripMenu').classList.remove('open');
+    closeTripMenu();
     const act = b.dataset.act;
     // shared view is read-only: only the export/share actions are allowed
     if (sharedMode && !['export-trip', 'export-csv', 'export-ics', 'export-all', 'share-trip'].includes(act)) return;
@@ -5567,7 +5696,15 @@
 
   $('#issuesBox').addEventListener('click', e => {
     const a = e.target.closest('a[data-jump]');
-    if (a) { ui.flashId = a.dataset.jump; render(); }
+    if (a) { ui.flashId = a.dataset.jump; render(); return; }
+    // the overlapping-trip warning names the other trip; the name switches to
+    // it, exactly as picking it from #tripSelect does - filters untouched
+    const t = e.target.closest('a[data-trip]');
+    if (t && db.trips.some(x => x.id === t.dataset.trip)) {
+      db.activeTripId = t.dataset.trip;
+      save();
+      render();
+    }
   });
 
   $('#board').addEventListener('click', e => {
@@ -5639,7 +5776,7 @@
       if (document.querySelector('.overlay.open')) { closeOverlays(); return; }
       if (!$('#assistPanel').hidden) { closeAssist(); return; }
       if ($('#tripSearch').classList.contains('open')) { closeTripSearch(); return; }
-      if ($('#tripMenu').classList.contains('open')) { $('#tripMenu').classList.remove('open'); return; }
+      if ($('#tripMenu').classList.contains('open')) { closeTripMenu(); return; }
       return;
     }
     const top = topOverlay();

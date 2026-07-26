@@ -5050,3 +5050,118 @@ test('typeBarShares reads the rows costsByType actually produces', () => {
   ] };
   assert.deepEqual(L.typeBarShares(L.costsByType(trip)), [1, 0.5, 0.25]);
 });
+
+// ---------- cross-trip date overlap ----------
+// The point: every other collision check in this app looks inside ONE trip, so
+// the only way to double-book yourself was to do it across two saved trips.
+// The check is per active trip, which is what makes both sides of a clash
+// report it instead of only whichever one happened to be computed first.
+
+const tripOf = (id, name, items) => ({ id, name, currency: 'USD', items });
+const dated = (id, startDate, endDate = '', status = 'booked') =>
+  ({ id, type: 'stay', title: 'Hotel', location: 'X', startDate, endDate, status });
+
+test('overlappingTrips names the other trip from either side of the clash', () => {
+  const a = tripOf('a', 'Japan', [dated('a1', '2027-06-01', '2027-06-10')]);
+  const b = tripOf('b', 'Portugal', [dated('b1', '2027-06-08', '2027-06-15')]);
+  const trips = [a, b];
+  assert.deepEqual(L.overlappingTrips(trips, 'a'), [{ id: 'b', name: 'Portugal', start: '2027-06-08', end: '2027-06-15' }]);
+  assert.deepEqual(L.overlappingTrips(trips, 'b'), [{ id: 'a', name: 'Japan', start: '2027-06-01', end: '2027-06-10' }]);
+});
+
+test('overlappingTrips leaves adjacent trips alone but flags a single shared day', () => {
+  const a = tripOf('a', 'Japan', [dated('a1', '2027-06-01', '2027-06-10')]);
+  const c = tripOf('c', 'Rome', [dated('c1', '2027-06-11', '2027-06-14')]);
+  assert.deepEqual(L.overlappingTrips([a, c], 'a'), []);
+  assert.deepEqual(L.overlappingTrips([a, c], 'c'), []);
+  // touching on one date is NOT adjacent: that day is claimed twice
+  const sameDay = tripOf('d', 'Rome', [dated('d1', '2027-06-10', '2027-06-14')]);
+  assert.deepEqual(L.overlappingTrips([a, sameDay], 'a').map(o => o.id), ['d']);
+  // one trip swallowing another is still exactly one warning
+  const inside = tripOf('e', 'Weekend', [dated('e1', '2027-06-03', '2027-06-05')]);
+  assert.deepEqual(L.overlappingTrips([a, inside], 'a').map(o => o.id), ['e']);
+  assert.deepEqual(L.overlappingTrips([a, inside], 'e').map(o => o.id), ['a']);
+});
+
+test('three mutually overlapping trips each report exactly the other two', () => {
+  const trips = [
+    tripOf('a', 'A', [dated('a1', '2027-06-01', '2027-06-10')]),
+    tripOf('b', 'B', [dated('b1', '2027-06-05', '2027-06-12')]),
+    tripOf('c', 'C', [dated('c1', '2027-06-08', '2027-06-20')]),
+  ];
+  assert.deepEqual(L.overlappingTrips(trips, 'a').map(o => o.id), ['b', 'c']);
+  assert.deepEqual(L.overlappingTrips(trips, 'b').map(o => o.id), ['a', 'c']);
+  assert.deepEqual(L.overlappingTrips(trips, 'c').map(o => o.id), ['a', 'b']);
+});
+
+test('a trip with no computable span neither triggers the warning nor is named by it', () => {
+  const a = tripOf('a', 'Japan', [dated('a1', '2027-06-01', '2027-06-10')]);
+  const empty = tripOf('z', 'Someday', []);
+  const undated = tripOf('u', 'Ideas', [{ id: 'u1', type: 'note', title: 'Look at flights', startDate: '', status: 'to-book' }]);
+  // cancelled is dropped by tripStats, so a trip holding only cancelled dates
+  // has no span either - and no claim on those days
+  const cancelled = tripOf('x', 'Called off', [dated('x1', '2027-06-02', '2027-06-09', 'cancelled')]);
+  const trips = [a, empty, undated, cancelled];
+  assert.deepEqual(L.overlappingTrips(trips, 'a'), []);
+  assert.deepEqual(L.overlappingTrips(trips, 'z'), []);
+  assert.deepEqual(L.overlappingTrips(trips, 'u'), []);
+  assert.deepEqual(L.overlappingTrips(trips, 'x'), []);
+  // the only trip on the device can never overlap anything
+  assert.deepEqual(L.overlappingTrips([a], 'a'), []);
+  // an id nobody holds asks about no trip at all
+  assert.deepEqual(L.overlappingTrips(trips, 'nope'), []);
+  assert.deepEqual(L.overlappingTrips(null, 'a'), []);
+});
+
+// ---------- passport expiry ----------
+// The point: this is the six-month rule, which denies boarding, so the wording
+// must never harden "many countries ask for 6 months" into "you are fine" or
+// "you are refused". Two sentences speak, the third branch is silence.
+
+// the app's own display format (app.js FMT_FULL), so the copy asserted here is
+// character-for-character what the dialog renders
+const fmtD = s => new Intl.DateTimeFormat('en-US', { month: 'short', day: 'numeric', year: 'numeric', timeZone: 'UTC' })
+  .format(new Date(s + 'T00:00:00Z'));
+
+test('a passport expiring during the trip is a flat error naming both dates', () => {
+  assert.deepEqual(L.passportExpiryStatus('2027-06-05', '2027-06-10', fmtD), {
+    level: 'error',
+    text: 'Your passport expires Jun 5, 2027 - before this trip ends on Jun 10, 2027.',
+  });
+  // expiring ON the last day is the same problem: you are still abroad that day
+  assert.deepEqual(L.passportExpiryStatus('2027-06-10', '2027-06-10', fmtD), {
+    level: 'error',
+    text: 'Your passport expires Jun 10, 2027 - before this trip ends on Jun 10, 2027.',
+  });
+});
+
+test('a passport expiring inside six months of the return warns without asserting a rule', () => {
+  const expected = 'Your passport is valid for this trip but expires Dec 6, 2027 - within 6 months of your return.'
+    + ' Many countries require 6+ months of remaining validity to let you in;'
+    + " always check each destination's exact rule.";
+  // 2027-06-10 + 179 days
+  assert.deepEqual(L.passportExpiryStatus('2027-12-06', '2027-06-10', fmtD), { level: 'warn', text: expected });
+  // one day past the end of the trip is the other edge of the same branch
+  assert.equal(L.passportExpiryStatus('2027-06-11', '2027-06-10', fmtD).level, 'warn');
+});
+
+test('180 days of remaining validity is where the app goes quiet', () => {
+  const end = '2027-06-10';
+  assert.equal(L.diffDays(end, '2027-12-06'), 179);
+  assert.equal(L.diffDays(end, '2027-12-07'), 180);
+  assert.equal(L.passportExpiryStatus('2027-12-06', end, fmtD).level, 'warn');
+  assert.equal(L.passportExpiryStatus('2027-12-07', end, fmtD), null);
+  assert.equal(L.passportExpiryStatus('2027-12-08', end, fmtD), null);
+  assert.equal(L.passportExpiryStatus('2035-01-01', end, fmtD), null);
+  assert.equal(L.PASSPORT_VALIDITY_DAYS, 180);
+});
+
+test('passportExpiryStatus says nothing without both dates', () => {
+  // blank field on a dated trip, and a filled field on a trip with no dates:
+  // both are legal states of the dialog and neither has a comparison to make
+  assert.equal(L.passportExpiryStatus('', '2027-06-10', fmtD), null);
+  assert.equal(L.passportExpiryStatus('2027-06-05', '', fmtD), null);
+  assert.equal(L.passportExpiryStatus('2027-06-05', null, fmtD), null);
+  assert.equal(L.passportExpiryStatus('06/05/2027', '2027-06-10', fmtD), null);
+  assert.equal(L.passportExpiryStatus(null, null, fmtD), null);
+});
