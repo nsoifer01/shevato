@@ -756,6 +756,14 @@ const TripLogic = (() => {
 
   // ---------- ICS calendar export ----------
   const ICS_STATUS = { booked: 'Booked', 'to-book': 'To book', decide: 'Decide later', cancelled: 'Cancelled' };
+  // The wording from the payment picker in the item modal. Both exports that
+  // carry the tag print this, never the stored token: a CSV cell and a calendar
+  // entry are read by a person, and "prepaid" is not what the app calls it.
+  const PAYMENT_LABEL = { cash: 'Cash', card: 'Card', prepaid: 'Prepaid / already paid' };
+  // A deadline dropped into a sentence has to read as a date. Cached because it
+  // is built once per export run, not once per item.
+  const ICS_DATE_FMT = new Intl.DateTimeFormat('en-US', { year: 'numeric', month: 'long', day: 'numeric', timeZone: 'UTC' });
+  const icsDate = s => ICS_DATE_FMT.format(new Date(s + 'T00:00:00Z'));
 
   // RFC 5545 text escaping: backslash, semicolon, comma and newlines.
   function icsEscapeText(s) {
@@ -800,6 +808,12 @@ const TripLogic = (() => {
     // rather than a column of its own because ICS has no field for it.
     if (it.confirmation) descParts.push('Ref: ' + it.confirmation);
     descParts.push('Status: ' + (ICS_STATUS[it.status] || it.status || ''));
+    // The booking deadline and the payment tag ride along for the same reason
+    // the code does: they are what you check on the phone, away from the app.
+    // Each line exists only when its field does, so an item carrying neither
+    // has exactly the description it always had.
+    if (isIsoDate(it.bookBy)) descParts.push('Book by: ' + icsDate(it.bookBy));
+    if (PAYMENT_LABEL[it.payment]) descParts.push('Payment: ' + PAYMENT_LABEL[it.payment]);
     if (it.costNote) descParts.push(it.costNote);
     lines.push(`DESCRIPTION:${icsEscapeText(descParts.join('\n'))}`);
     lines.push('END:VEVENT');
@@ -837,10 +851,14 @@ const TripLogic = (() => {
   // the index it had. It carries who a cost is split between (the whole point of
   // a CSV export of a shared trip is a split-the-bill sheet), empty meaning the
   // cost is shared across everyone.
+  // `bookBy` and `paymentMethod` are appended after those two, for that same
+  // reason again: never in the middle. paymentMethod prints the picker's own
+  // wording ("Prepaid / already paid") rather than the stored token, because a
+  // CSV is read by a person; bookBy stays ISO like every other date column.
   function csvColumns(base) {
     return ['startDate', 'startTime', 'endDate', 'endTime', 'nights', 'type', 'title', 'location',
       'details', 'status', 'cost', 'costCurrency', `costIn${base}`, 'estimatedCost',
-      'estimatedCostCurrency', 'costNote', 'confirmation', 'travelers'];
+      'estimatedCostCurrency', 'costNote', 'confirmation', 'travelers', 'bookBy', 'paymentMethod'];
   }
   const csvCell = v => `"${String(v).replace(/"/g, '""')}"`;
   function buildCsv(trip, base, ratesObj) {
@@ -857,6 +875,7 @@ const TripLogic = (() => {
         it.estCost ?? '', it.estCost != null ? (it.estCostCurrency || cur) : '',
         it.costNote || '', it.confirmation || '',
         Array.isArray(it.travelers) ? it.travelers.join('; ') : '',
+        it.bookBy || '', PAYMENT_LABEL[it.payment] || '',
       ].map(csvCell).join(','));
     }
     return lines.join('\n');
@@ -1725,7 +1744,10 @@ const TripLogic = (() => {
       // person you share a trip with is the person travelling on it, and a copy
       // that quietly lost every booking code would be worse than no copy. It is
       // no more exposed than a code typed into the details box already was.
-      for (const k of ['type', 'title', 'location', 'startDate', 'endDate', 'startTime', 'endTime', 'status', 'cost', 'costCurrency', 'estCost', 'estCostCurrency', 'costNote', 'confirmation', 'details', 'mapsQuery']) {
+      // bookBy and payment ride the same list, and so pay the same way: both are
+      // empty on almost every item, `keep` drops them there, and a trip that
+      // never used either produces byte-for-byte the payload it did before.
+      for (const k of ['type', 'title', 'location', 'startDate', 'endDate', 'startTime', 'endTime', 'status', 'cost', 'costCurrency', 'estCost', 'estCostCurrency', 'costNote', 'confirmation', 'bookBy', 'payment', 'details', 'mapsQuery']) {
         if (keep(it[k])) out[k] = it[k];
       }
       // who owes this cost travels with the item; the far side clamps it to the
