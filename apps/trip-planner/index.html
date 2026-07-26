@@ -43,7 +43,7 @@
   <meta name="theme-color" content="#0e1116">
   <link rel="stylesheet" href="../../assets/css/main.css">
   <link rel="stylesheet" href="../../assets/css/sync-status.css">
-  <link rel="stylesheet" href="css/styles.css?v=31">
+  <link rel="stylesheet" href="css/styles.css?v=32">
 </head>
 <body class="tp-page">
   <div id="sync-banner" class="sync-banner" role="status" aria-live="polite" hidden></div>
@@ -62,6 +62,16 @@
     </div>
     <div class="trip-bar">
       <select class="trip-select" id="tripSelect" aria-label="Active trip"></select>
+      <!-- cross-trip search: finds an item in ANY saved trip, not just the active one -->
+      <div class="tp-search" id="tripSearch">
+        <button class="icon-btn" type="button" id="tripSearchBtn" title="Search all trips" aria-haspopup="true" aria-expanded="false">🔎</button>
+        <div class="tp-search-panel" id="tripSearchPanel">
+          <div class="field">
+            <input id="tripSearchInput" maxlength="60" placeholder="Search every trip..." aria-label="Search across all trips" autocomplete="off">
+          </div>
+          <div class="ts-results" id="tripSearchResults" aria-live="polite"></div>
+        </div>
+      </div>
       <div class="tp-menu" id="tripMenu">
         <button class="icon-btn" id="tripMenuBtn" title="Trip actions" aria-haspopup="true">⋯</button>
         <div class="tp-menu-panel">
@@ -69,6 +79,7 @@
           <button data-act="new-trip">➕ New trip</button>
           <button data-act="rename-trip">✏️ Rename / currency</button>
           <button data-act="duplicate-trip">📄 Duplicate trip</button>
+          <button data-act="essentials">🆘 Trip essentials</button>
           <button data-act="packing">🎒 Packing list</button>
           <div class="sep"></div>
           <div class="tp-menu-cap">Import &amp; export</div>
@@ -486,6 +497,46 @@
   </div>
 </div>
 
+<!-- trip essentials modal (emergency contact, insurance, medical notes) -->
+<div class="overlay" id="essentialsOverlay">
+  <form class="modal small" id="essentialsForm" role="dialog" aria-modal="true" aria-labelledby="essentialsTitle" tabindex="-1">
+    <div class="m-head">
+      <span class="m-icon" aria-hidden="true">🆘</span>
+      <h2 id="essentialsTitle">Trip essentials</h2>
+    </div>
+    <div class="m-body">
+      <section class="m-section">
+        <p class="hint es-empty" id="essentialsEmpty">Nothing saved yet - add an emergency contact, insurance info or a medical note.</p>
+        <div class="field">
+          <label for="inEssContactName">Emergency contact <small>(optional)</small></label>
+          <input id="inEssContactName" maxlength="60" placeholder="e.g. Dana Levi (sister)" autocomplete="off">
+        </div>
+        <div class="field">
+          <label for="inEssContactPhone">Emergency contact phone <small>(optional)</small></label>
+          <input id="inEssContactPhone" maxlength="30" placeholder="e.g. +1 555 0134" autocomplete="off">
+        </div>
+        <div class="field">
+          <label for="inEssInsurer">Insurance provider <small>(optional)</small></label>
+          <input id="inEssInsurer" maxlength="60" placeholder="e.g. World Nomads" autocomplete="off">
+        </div>
+        <div class="field">
+          <label for="inEssInsurerPhone">Policy / insurer phone <small>(optional)</small></label>
+          <input id="inEssInsurerPhone" maxlength="60" placeholder="e.g. WN-44-2213, +44 20 7946 0000" autocomplete="off">
+        </div>
+        <div class="field">
+          <label for="inEssMedical">Medical notes <small>(optional)</small></label>
+          <textarea id="inEssMedical" maxlength="300" placeholder="Allergies, medication, blood type: whatever someone helping you would need to know."></textarea>
+        </div>
+        <p class="hint">Saved with this trip, and included in its JSON export and in a full backup. It is deliberately left out of the CSV, the calendar file and any itinerary you share.</p>
+      </section>
+    </div>
+    <div class="modal-foot">
+      <button type="button" class="btn ghost" data-close>Cancel</button>
+      <button type="submit" class="btn primary" id="essentialsSaveBtn">Save</button>
+    </div>
+  </form>
+</div>
+
 <!-- visa requirements modal -->
 <div class="overlay" id="visaOverlay">
   <div class="modal" role="dialog" aria-modal="true" aria-labelledby="visaModalTitle" tabindex="-1">
@@ -641,7 +692,7 @@
     }
   </script>
 
-  <script src="js/trip-logic.js?v=18"></script>
-  <script src="js/app.js?v=35"></script>
+  <script src="js/trip-logic.js?v=19"></script>
+  <script src="js/app.js?v=36"></script>
 </body>
 </html>

@@ -2792,3 +2792,197 @@
   /* the left cell here is a currency CODE, not a name, so it gets the same
      even spacing the amounts opposite it already have */
   .cash-needed .tt-name { letter-spacing: 0.5px; }
+
+/* ===== Round 5: trip essentials and cross-trip search ===== */
+
+  /* ---------- trip essentials dialog ----------
+     Five plain .fields, so every control here is already dressed by the modal
+     recipe. The only new part is the "nothing here yet" line, which sits above
+     the fields it describes and reads as the section's lead-in. */
+  .es-empty { margin: 0; }
+
+  /* ---------- search across every trip ----------
+     The panel is anchored to the TRIP BAR, not to its own button: on a phone the
+     button sits ~50px in from the right edge, and a panel hung off it would run
+     past the left edge of the screen. Anchored to the bar it can never be wider
+     than the bar itself, at any width, with no per-breakpoint arithmetic. */
+  .trip-planner-app .trip-bar { position: relative; }
+  /* the .tp-menu-panel surface exactly (bg-card + border + shadow + radius):
+     this floats over the page the same way that menu does */
+  .tp-search-panel {
+    position: absolute; right: 0; top: calc(100% + 6px); z-index: 41;
+    width: min(360px, 100%);
+    background: var(--bg-card); border: 1px solid var(--border); border-radius: 12px;
+    box-shadow: var(--shadow); padding: 8px; display: none;
+  }
+  .tp-search.open .tp-search-panel { display: block; }
+  /* the shared view holds exactly one trip, so "search across your trips" is
+     both useless and untrue there; display:none also keeps the button out of
+     the tab order, which visibility/opacity would not */
+  body.tp-shared .tp-search { display: none !important; }
+  /* outside a .modal the app's focus halo does not apply, and the global
+     input:focus neutralizer has already removed main.css's red one */
+  .tp-search-panel .field input:focus {
+    border-color: var(--accent);
+    box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 22%, transparent);
+  }
+  .ts-results { display: flex; flex-direction: column; gap: 2px; margin-top: 8px; max-height: 300px; overflow-y: auto; }
+  /* a result row is a two-line button: main.css nowraps every button and paints
+     it #555 with a red hover, so both are pinned back here */
+  .trip-planner-app .ts-row {
+    display: flex; flex-direction: column; align-items: flex-start; gap: 2px;
+    width: 100%; text-align: left; white-space: normal;
+    background: none; border: 0; border-radius: 8px; padding: 7px 9px;
+    color: var(--text) !important;
+  }
+  .trip-planner-app .ts-row:hover,
+  .trip-planner-app .ts-row:focus { background: var(--accent-soft); color: var(--text) !important; }
+  .trip-planner-app .ts-row:hover:active { background-color: var(--accent-soft); }
+  .ts-title { font-size: 13.5px; font-weight: 600; line-height: 1.35; }
+  .ts-meta { display: flex; align-items: baseline; gap: 8px; min-width: 0; max-width: 100%; font-size: 11.5px; color: var(--text-dim); }
+  /* the trip name is the answer to "which trip was it in", so it is the part
+     that is allowed to clip rather than push the date off the row */
+  .ts-date { flex: none; }
+  .ts-trip { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 600; }
+  .ts-trip::before { content: '·'; margin-right: 8px; color: var(--text-faint); }
+  .ts-note { margin: 0; padding: 8px 9px; font-size: 12.5px; color: var(--text-dim); line-height: 1.45; }
+  /* the list scrolls, and "there are more than these" is the one line that must
+     never be the thing you have to scroll to find */
+  .ts-more {
+    position: sticky; bottom: 0; margin-top: 4px;
+    background: var(--bg-card); border-top: 1px solid var(--border-soft);
+  }
+
+  @media (max-width: 560px) {
+    /* the same 44px tap target every other phone control in this bar takes */
+    .trip-planner-app #tripSearchBtn { min-height: 44px; }
+    /* three controls now share a nowrap bar, so the trip name gives up the room */
+    .trip-bar select.trip-select { min-width: 0; }
+    .ts-results { max-height: 46vh; }
+    .trip-planner-app .ts-row { padding: 9px 9px; }
+  }
+
+/* ===== Round 5: cost splits, settle-up state and cost-by-type bars ===== */
+
+  /* The "Who's this for" tick boxes were never visible: main.css hides every
+     native checkbox (opacity 0, float left, z-index -1) to draw a fake box on a
+     SIBLING label, and these sit INSIDE their label, so the names rendered as
+     three words of unmarked text with a full-width invisible input stretched
+     behind them (.field input's width:100% won that tie too). Same neutralizer
+     the row-select and packing boxes already carry, so all three checkboxes in
+     the app are one control. Without it there is no way to pick the two people
+     an uneven split is entered for. */
+  .trip-planner-app .who-chk input[type="checkbox"] {
+    -webkit-appearance: none; appearance: none;
+    display: inline-block; float: none; opacity: 1; z-index: auto;
+    box-sizing: border-box; padding: 0; margin: 0; cursor: pointer;
+    width: 18px; height: 18px; flex: none; min-height: 0;
+    border: 2px solid var(--text-faint); border-radius: 5px;
+    background: var(--bg-card); box-shadow: none;
+    transition: border-color .12s, background-color .12s;
+  }
+  .trip-planner-app .who-chk:hover input[type="checkbox"] { border-color: var(--text-dim); }
+  .trip-planner-app .who-chk input[type="checkbox"]:checked {
+    border-color: var(--accent-fill); background-color: var(--accent-fill);
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpath d='M3.4 8.4l3 3 6.2-6.6' stroke='%23ffffff' stroke-width='2.2' fill='none' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+    background-repeat: no-repeat; background-position: center; background-size: 13px 13px;
+  }
+  .trip-planner-app .who-chk input[type="checkbox"]:focus-visible {
+    outline: 2px solid var(--accent); outline-offset: 2px;
+  }
+
+  /* ---------- uneven cost splits (item modal) ----------
+     The toggle reuses .seg, the app's one "pick exactly one of a few" control,
+     so it inherits every main.css counter-pin that track already carries (gray
+     button text, a red hover, a red press flash). Only the layout is new. */
+  .split-mode { margin-top: 11px; border-top: 1px solid var(--border-soft); padding-top: 11px; }
+  .split-seg { max-width: 300px; }
+  .split-rows { display: flex; flex-wrap: wrap; gap: 8px 14px; margin-top: 10px; }
+  .split-row { display: flex; align-items: center; gap: 8px; margin: 0; cursor: default; }
+  /* the cap only catches a pathological 40-character name; ordinary ones fit
+     whole, because "Chris..." owing $57.12 is not a split anybody can check */
+  .split-who {
+    color: var(--text); font-size: 13px; font-weight: 600;
+    max-width: 150px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  }
+  /* the amount box wears the cost field's own currency prefix, so a split reads
+     in the currency it is entered in and never as a bare number */
+  .split-amt-wrap { position: relative; display: inline-flex; align-items: center; }
+  .split-cur {
+    position: absolute; left: 9px; color: var(--text-dim);
+    font-size: 12.5px; font-weight: 600; pointer-events: none;
+  }
+  /* main.css sizes bare inputs at 2.75em and stretches them to 100%; .field
+     input then re-stretches them, and this one has to stay a small money box
+     inside a row, so it pins its own width, height and colour */
+  .trip-planner-app .split-amt {
+    width: 104px; min-height: 36px; padding: 6px 9px 6px 24px;
+    background: var(--bg-soft); color: var(--text);
+    border: 1px solid var(--border); border-radius: 9px;
+    font-size: 14px; font-variant-numeric: tabular-nums; text-align: right;
+  }
+  .trip-planner-app .split-amt:hover:not(:focus) { border-color: color-mix(in srgb, var(--text-dim) 45%, var(--border)); }
+  .trip-planner-app .split-amt:focus {
+    outline: none; border-color: var(--accent);
+    box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 22%, transparent);
+  }
+  /* the blocked save speaks in the same red the field errors above it use, and
+     sits under the amounts it is about rather than at the foot of the dialog */
+  .split-err {
+    margin-top: 9px; color: var(--red); font-size: var(--m-help, 12px); font-weight: 600;
+  }
+  .split-err[hidden] { display: none; }
+
+  /* ---------- settle up: three states, told apart before they are read ----------
+     .su-empty ("add a Paid by") stays exactly the gray sentence it was: it is a
+     request, not an outcome. All square is an OUTCOME, so it takes the green
+     this app already spends on one, plus a tick the request does not have and a
+     tinted plate so the shape differs too, not just the hue. */
+  .su-settled {
+    display: flex; align-items: center; gap: 8px;
+    padding: 7px 11px; border-radius: 9px;
+    background: var(--green-soft);
+    box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--green) 35%, transparent);
+    color: var(--green); font-size: 13px; font-weight: 700;
+  }
+  .su-ico { font-size: 13px; line-height: 1; }
+  /* an unconvertible amount already ambers the heading; the body must not then
+     claim a clean green outcome the numbers cannot back */
+  .settle-up.incomplete .su-settled {
+    background: var(--amber-soft); color: var(--amber);
+    box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--amber) 35%, transparent);
+  }
+
+  /* ---------- cost by type: a bar per row ----------
+     The bar takes its own full-width line inside the row (the row wraps), so it
+     can never squeeze, truncate or reflow the icon, label and amount that share
+     the line above it, at any width. */
+  /* row-gap 0 is load-bearing: .tt-row's 16px gap applies BETWEEN FLEX LINES
+     once the row wraps, which pushed each bar further from its own label than
+     from the next row's, so every bar read as belonging to the row below it.
+     The bar keeps a 6px lead of its own and the list opens to 12px, so the
+     spacing says label-amount-bar, then the next type. */
+  .type-totals .tt-list { gap: 12px; }
+  .type-totals .tt-row { flex-wrap: wrap; row-gap: 0; }
+  .type-totals .tt-name, .type-totals .tt-val { flex: 0 1 auto; }
+  .tt-bar {
+    flex: 0 0 100%; height: 4px; margin-top: 6px;
+    background: var(--bg-raised); border-radius: 999px; overflow: hidden;
+  }
+  .tt-bar > i {
+    display: block; height: 100%; border-radius: inherit;
+    background: color-mix(in srgb, var(--accent) 78%, transparent);
+  }
+  /* deliberately NOT amber on an incomplete row: the bar is a picture of the
+     number beside it, and the "+N not converted" text is where the caveat
+     belongs. Two amber things would read as two separate problems. */
+
+  @media (max-width: 560px) {
+    /* one amount per line: two 104px boxes plus their names do not fit 390px
+       without the labels ellipsing down to nothing */
+    .split-rows { flex-direction: column; align-items: stretch; gap: 8px; }
+    .split-row { justify-content: space-between; }
+    .split-who { max-width: none; }
+    .trip-planner-app .split-amt { width: 128px; min-height: 40px; }
+    .split-seg { max-width: none; }
+  }
