@@ -4840,3 +4840,213 @@ test('an item with neither field has exactly the description it had before', () 
   const desc = icsDesc(bookedItem({ confirmation: 'XJ7K2Q', costNote: 'cash, on arrival' }));
   assert.equal(desc, 'DESCRIPTION:Ref: XJ7K2Q\\nStatus: To book\\ncash\\, on arrival');
 });
+
+// ---------- uneven cost splits ----------
+// The point of every case below: an even divide is a GUESS about who owed what,
+// and it is the wrong guess exactly when the settle-up ledger matters most (one
+// person's upgrade, one person covering the table). A hand-entered split is a
+// CLAIM, so it may only be spent while it still adds up to the money that was
+// actually spent; the moment it stops describing the item, the even divide,
+// unchanged and byte for byte what it always was, has to take back over.
+
+function split(id, cost, travelers, amounts, extra) {
+  return {
+    id, type: 'activity', title: id, startDate: '2027-05-01', status: 'booked',
+    cost, travelers, splitAmounts: amounts, ...(extra || {}),
+  };
+}
+
+test('evenSplitAmounts divides to the cent and always adds back up to the cost', () => {
+  assert.deepEqual(L.evenSplitAmounts(100, ['Alex', 'Sam']), { Alex: 50, Sam: 50 });
+  // three 33.33s leave a cent nobody owes, which is a default that cannot be saved
+  const three = L.evenSplitAmounts(100, ['Alex', 'Sam', 'Jo']);
+  assert.deepEqual(three, { Alex: 33.34, Sam: 33.33, Jo: 33.33 });
+  assert.equal(L.splitAmountsSum(three, ['Alex', 'Sam', 'Jo']), 100);
+  // the odd cents land in roster order, so the same item always opens the same
+  const two = L.evenSplitAmounts(0.01, ['Alex', 'Sam']);
+  assert.deepEqual(two, { Alex: 0.01, Sam: 0 });
+});
+
+test('evenSplitAmounts splits a refund the same way it splits a charge', () => {
+  const r = L.evenSplitAmounts(-100, ['Alex', 'Sam', 'Jo']);
+  assert.deepEqual(r, { Alex: -33.34, Sam: -33.33, Jo: -33.33 });
+  assert.equal(L.splitAmountsSum(r, ['Alex', 'Sam', 'Jo']), -100);
+});
+
+test('evenSplitAmounts has nothing to divide with no cost or nobody to divide it among', () => {
+  assert.deepEqual(L.evenSplitAmounts(100, []), {});
+  assert.deepEqual(L.evenSplitAmounts(null, ['Alex', 'Sam']), {});
+  assert.deepEqual(L.evenSplitAmounts('', ['Alex', 'Sam']), {});
+  assert.deepEqual(L.evenSplitAmounts('abc', ['Alex', 'Sam']), {});
+});
+
+test('splitAmountsMatch compares to the CENT, so binary float noise never blocks a save', () => {
+  // 70.1 + 29.9 is 100.00000000000001 added as floats
+  assert.equal(L.splitAmountsMatch(100, { Alex: 70.1, Sam: 29.9 }, ['Alex', 'Sam']), true);
+  assert.equal(L.splitAmountsMatch(100, { Alex: 70, Sam: 30 }, ['Alex', 'Sam']), true);
+  // and one cent out is out: the boundary is exact, not fuzzy
+  assert.equal(L.splitAmountsMatch(100, { Alex: 70, Sam: 29.99 }, ['Alex', 'Sam']), false);
+  assert.equal(L.splitAmountsMatch(100, { Alex: 70, Sam: 30.01 }, ['Alex', 'Sam']), false);
+  // a blank or junk entry is not a zero, it is an unfinished split
+  assert.equal(L.splitAmountsMatch(100, { Alex: 100, Sam: '' }, ['Alex', 'Sam']), false);
+  assert.equal(L.splitAmountsMatch(100, { Alex: 100 }, ['Alex', 'Sam']), false);
+  assert.equal(L.splitAmountsSum({ Alex: 'abc', Sam: 30 }, ['Alex', 'Sam']), null);
+});
+
+test('customSplitShares pays out a 70/30 split exactly as it was entered', () => {
+  const item = split('a', 100, ['Alex', 'Sam'], { Alex: 70, Sam: 30 });
+  assert.deepEqual(L.customSplitShares(item, ['Alex', 'Sam']), { Alex: 70, Sam: 30 });
+});
+
+test('customSplitShares refuses a split that no longer describes the item', () => {
+  const names = ['Alex', 'Sam', 'Jo'];
+  // the cost was edited elsewhere and the amounts no longer add up to it
+  assert.equal(L.customSplitShares(split('a', 120, ['Alex', 'Sam'], { Alex: 70, Sam: 30 }), names), null);
+  // a traveller was dropped from the trip, so one amount now belongs to nobody
+  assert.equal(L.customSplitShares(split('b', 100, ['Alex', 'Ghost'], { Alex: 70, Ghost: 30 }), names), null);
+  // an amount is missing for somebody the item is assigned to
+  assert.equal(L.customSplitShares(split('c', 100, names, { Alex: 70, Sam: 30 }), names), null);
+  // an extra amount for somebody the item is not assigned to
+  assert.equal(L.customSplitShares(split('d', 100, ['Alex', 'Sam'], { Alex: 70, Sam: 30, Jo: 0 }), names), null);
+  // junk from a hand-edited import
+  assert.equal(L.customSplitShares(split('e', 100, ['Alex', 'Sam'], { Alex: 'seventy', Sam: 30 }), names), null);
+  assert.equal(L.customSplitShares(split('f', 100, ['Alex', 'Sam'], 'nope'), names), null);
+});
+
+test('customSplitShares needs a cost and 2+ NAMED travellers, never "Everyone"', () => {
+  const names = ['Alex', 'Sam'];
+  // no cost: nothing to split
+  assert.equal(L.customSplitShares(split('a', null, names, { Alex: 70, Sam: 30 }), names), null);
+  assert.equal(L.customSplitShares(split('b', '', names, { Alex: 70, Sam: 30 }), names), null);
+  // "Everyone" (no assignment) has no fixed roster to key amounts by
+  assert.equal(L.customSplitShares(split('c', 100, undefined, { Alex: 70, Sam: 30 }), names), null);
+  assert.equal(L.customSplitShares(split('d', 100, [], { Alex: 70, Sam: 30 }), names), null);
+  // one person owes the whole thing: there is nothing to divide unevenly
+  assert.equal(L.customSplitShares(split('e', 100, ['Alex'], { Alex: 100 }), names), null);
+  // and an item that never carried a split is untouched
+  assert.equal(L.customSplitShares({ id: 'f', cost: 100, travelers: names }, names), null);
+});
+
+test('travelerTotals spends a 70/30 split instead of dividing, and settle up follows it', () => {
+  const trip = {
+    currency: 'USD', travelers: ['Alex', 'Sam'],
+    items: [split('a', 100, ['Alex', 'Sam'], { Alex: 70, Sam: 30 }, { paidBy: 'Alex' })],
+  };
+  assert.deepEqual(L.travelerTotals(trip), { Alex: 70, Sam: 30 });
+  // Alex paid 100 and owed 70, so Sam owes 30, NOT the 50 an even divide claims
+  assert.deepEqual(L.settlements(trip), [{ from: 'Sam', to: 'Alex', amount: 30 }]);
+});
+
+test('a split reverted to even is byte for byte the old even divide', () => {
+  const custom = {
+    currency: 'USD', travelers: ['Alex', 'Sam'],
+    items: [split('a', 100, ['Alex', 'Sam'], { Alex: 70, Sam: 30 }, { paidBy: 'Alex' })],
+  };
+  // reverting is the ABSENCE of the key, which is what the form saves
+  const even = { ...custom, items: [{ ...custom.items[0], splitAmounts: undefined }] };
+  delete even.items[0].splitAmounts;
+  assert.deepEqual(L.travelerTotals(even), { Alex: 50, Sam: 50 });
+  assert.deepEqual(L.settlements(even), [{ from: 'Sam', to: 'Alex', amount: 50 }]);
+  // and an item that never had one is identical to the same item without the key
+  const legacy = { ...custom, items: [{ id: 'a', type: 'activity', title: 'a', startDate: '2027-05-01', status: 'booked', cost: 100, travelers: ['Alex', 'Sam'], paidBy: 'Alex' }] };
+  assert.deepEqual(L.travelerTotals(legacy), L.travelerTotals(even));
+  assert.deepEqual(L.settlements(legacy), L.settlements(even));
+});
+
+test('a split that stopped adding up falls back to the even divide, never to stale numbers', () => {
+  const trip = {
+    currency: 'USD', travelers: ['Alex', 'Sam'],
+    items: [split('a', 200, ['Alex', 'Sam'], { Alex: 70, Sam: 30 }, { paidBy: 'Alex' })],
+  };
+  assert.deepEqual(L.travelerTotals(trip), { Alex: 100, Sam: 100 });
+  assert.deepEqual(L.settlements(trip), [{ from: 'Sam', to: 'Alex', amount: 100 }]);
+});
+
+test('a hand-entered split converts, and a whole-cent split of thirds still nets out', () => {
+  const rates = { base: 'USD', rates: { EUR: 0.5 } };
+  const trip = {
+    currency: 'USD', travelers: ['Alex', 'Sam'],
+    items: [split('a', 100, ['Alex', 'Sam'], { Alex: 70, Sam: 30 }, { paidBy: 'Alex', costCurrency: 'EUR' })],
+  };
+  // 100 EUR is 200 USD, so the 70/30 split is 140/60 in the trip's currency
+  assert.deepEqual(L.travelerTotals(trip, rates), { Alex: 140, Sam: 60 });
+  assert.deepEqual(L.settlements(trip, rates), [{ from: 'Sam', to: 'Alex', amount: 60 }]);
+  // the uneven cent from evenSplitAmounts is a legal saved split too
+  const thirds = {
+    currency: 'USD', travelers: ['Alex', 'Sam', 'Jo'],
+    items: [split('b', 100, ['Alex', 'Sam', 'Jo'], { Alex: 33.34, Sam: 33.33, Jo: 33.33 }, { paidBy: 'Alex' })],
+  };
+  assert.deepEqual(L.travelerTotals(thirds), { Alex: 33.34, Sam: 33.33, Jo: 33.33 });
+  assert.deepEqual(L.settlements(thirds), [
+    { from: 'Sam', to: 'Alex', amount: 33.33 },
+    { from: 'Jo', to: 'Alex', amount: 33.33 },
+  ]);
+});
+
+test('a split can hand one person the whole cost, and settle up says so', () => {
+  const trip = {
+    currency: 'USD', travelers: ['Alex', 'Sam'],
+    items: [split('a', 80, ['Alex', 'Sam'], { Alex: 0, Sam: 80 }, { paidBy: 'Alex' })],
+  };
+  assert.deepEqual(L.travelerTotals(trip), { Alex: 0, Sam: 80 });
+  assert.deepEqual(L.settlements(trip), [{ from: 'Sam', to: 'Alex', amount: 80 }]);
+});
+
+test('a hand-entered split survives a share link, and an item without one is unchanged', () => {
+  const slim = L.slimTripForShare({
+    name: 'T', currency: 'USD', travelers: ['Alex', 'Sam'],
+    items: [
+      split('a', 100, ['Alex', 'Sam'], { Alex: 70, Sam: 30 }),
+      { id: 'b', type: 'activity', title: 'Park', startDate: '2027-05-02', status: 'booked', cost: 40 },
+    ],
+  });
+  assert.deepEqual(slim.items[0].splitAmounts, { Alex: 70, Sam: 30 });
+  assert.equal('splitAmounts' in slim.items[1], false);
+  // the far side reads the same numbers back
+  assert.deepEqual(L.travelerTotals(slim), { Alex: 90, Sam: 50 });
+});
+
+test('an assistant can never write a cost split', () => {
+  const add = L.validateTripAction({ op: 'add', item: {
+    type: 'activity', title: 'Dinner', startDate: '2027-05-01', cost: 100,
+    travelers: ['Alex', 'Sam'], splitAmounts: { Alex: 100, Sam: 0 },
+  } }, { items: [] });
+  assert.equal(add.ok, true);
+  assert.equal('splitAmounts' in add.proposal.fields, false);
+});
+
+// ---------- cost by type: proportional bars ----------
+// The point: the bar is a picture of the ranking the rows already carry, so it
+// may never claim something the amounts do not. The largest row is the whole
+// track and everything else is measured against it, never against the total.
+
+test('typeBarShares makes the largest row the whole track and the rest proportional', () => {
+  const rows = [{ total: 900 }, { total: 600 }, { total: 260 }, { total: 45 }];
+  const shares = L.typeBarShares(rows);
+  assert.equal(shares[0], 1);
+  assert.deepEqual(shares.map(s => Math.round(s * 1000) / 1000), [1, 0.667, 0.289, 0.05]);
+  // strictly shorter, in the order the rows came in
+  for (let i = 1; i < shares.length; i++) assert.ok(shares[i] < shares[i - 1]);
+});
+
+test('typeBarShares gives a lone row the full track rather than skipping it', () => {
+  assert.deepEqual(L.typeBarShares([{ total: 42 }]), [1]);
+});
+
+test('typeBarShares draws no backwards bar for a refunded row', () => {
+  // a booking cancelled and refunded can leave a type at or below zero
+  assert.deepEqual(L.typeBarShares([{ total: 500 }, { total: 0 }, { total: -80 }]), [1, 0, 0]);
+  // nothing positive at all means there is no largest to measure against
+  assert.deepEqual(L.typeBarShares([{ total: -80 }, { total: -20 }]), [0, 0]);
+  assert.deepEqual(L.typeBarShares([]), []);
+  assert.deepEqual(L.typeBarShares(null), []);
+});
+
+test('typeBarShares reads the rows costsByType actually produces', () => {
+  const trip = { currency: 'USD', items: [
+    { id: 'a', type: 'flight', title: 'F', startDate: '2027-05-01', status: 'booked', cost: 900 },
+    { id: 'b', type: 'stay', title: 'S', startDate: '2027-05-01', endDate: '2027-05-03', status: 'booked', cost: 450 },
+    { id: 'c', type: 'activity', title: 'A', startDate: '2027-05-02', status: 'booked', cost: 225 },
+  ] };
+  assert.deepEqual(L.typeBarShares(L.costsByType(trip)), [1, 0.5, 0.25]);
+});

@@ -53,7 +53,8 @@
     classifyGeoMatch, geoMatchNote, GEO_MATCH_RANK, GEO_MATCH_TEXT,
     classifyVisa, parseVisaMatrix, visaCountryUsable, visaUnconfirmedNames, visaVintageNote, slimTripForShare, hasFastRail, viewFromHash, hashForView,
     buildIcs, buildCsv, convertAmount, sumInCurrency, normalizeTravelers, travelerTotals,
-    settlements, costsByType, cashNeeded,
+    evenSplitAmounts, splitAmountsMatch, customSplitShares,
+    settlements, costsByType, typeBarShares, cashNeeded,
     bytesToBase64url, base64urlToBytes,
     transportGaps, connectionWarnings, sameTimeCollisions, TIGHT_CONNECTION_MIN, tripPhase, isPastRow,
     bookingDeadlines,
@@ -1197,6 +1198,13 @@
   // item names a payer -> we were never told anything, so ask for it rather than
   // printing a row of $0.00 that looks like a settled trip. Payers recorded and
   // everything nets to zero -> genuinely square, say so.
+  //
+  // That difference was in the words alone, and the words are the last thing
+  // read: both states were the same gray sentence, so a glance could not tell
+  // "you are done" from "you never told me". The settled state now takes the
+  // green the app already spends on a good outcome plus a tick, and the ask
+  // keeps its plain gray, so the three shapes this card can take (rows owed,
+  // nothing recorded, all square) are told apart before a word is read.
   function settleUpHtml(trip) {
     const names = normalizeTravelers(trip.travelers);
     if (names.length < 2) return '';
@@ -1207,7 +1215,7 @@
     if (!pays.tracked && !missing) {
       body = `<div class="su-empty">Add "Paid by" to a cost to see who owes whom</div>`;
     } else if (!pays.length) {
-      body = `<div class="su-empty">All settled up</div>`;
+      body = `<div class="su-settled"><span class="su-ico" aria-hidden="true">✅</span>All settled up</div>`;
     } else {
       body = pays.map(p => `<div class="su-row">`
         + `<span class="tt-name">${esc(p.from)} owes ${esc(p.to)}</span>`
@@ -1224,16 +1232,24 @@
   // with a booked cost get a row (never a $0.00 line for a type this trip does
   // not use). A type carrying an amount we could not convert is amber with the
   // count, the same honesty rule the Confirmed total follows.
+  //
+  // Each row carries a bar as long as its share of the BIGGEST row, so the
+  // ranking the rows already have is readable without comparing four amounts
+  // digit by digit. The bar is decoration for the number beside it, never a
+  // second claim: it stays the neutral accent even on an amber incomplete row,
+  // because the honesty cue belongs on the text that names what is missing.
   function typeTotalsHtml(trip) {
     const rows = costsByType(trip, activeRates(trip));
     if (!rows.length) return '';
+    const shares = typeBarShares(rows);
     const short = n => n ? ` <small>+ ${n} not converted</small>` : '';
-    const html = rows.map(r => {
+    const html = rows.map((r, i) => {
       const meta = TYPE_META[r.type] || TYPE_META.note;
       const missing = r.unconverted.length;
       return `<div class="tt-row${missing ? ' incomplete' : ''}" data-type="${esc(r.type)}">`
         + `<span class="tt-name"><span class="ty-ico" aria-hidden="true">${meta.icon}</span>${esc(meta.label)}</span>`
         + `<span class="tt-val">${moneyHtml(trip, r.total, undefined, 'total')}${short(missing)}</span>`
+        + `<span class="tt-bar" aria-hidden="true"><i style="width:${(shares[i] * 100).toFixed(2)}%"></i></span>`
         + `</div>`;
     }).join('');
     return `<div class="traveler-totals type-totals">${ttHead('🧾', 'Cost by type')}<div class="tt-list">${html}</div></div>`;
@@ -2157,6 +2173,9 @@
     const sym = currencySymbol($('#inCostCurrency').value);
     $('#costPrefix').textContent = sym;
     $('#inCost').style.paddingLeft = (sym.length > 1 ? 18 + sym.length * 9 : 34) + 'px';
+    // the split amounts are in the item's own currency, so they carry the same
+    // symbol and have to follow it
+    renderSplitControl(typedSplitAmounts());
   }
 
   // How a cost gets paid. '' is "Not tracked" and stores nothing at all: only
@@ -2213,20 +2232,34 @@
     $('#inTitle').focus({ preventScroll: true });
   }
 
+  // How the item currently open divides its cost among the people ticked below.
+  // Module scope rather than a DOM read because the toggle has to survive the
+  // rebuild that ticking a box or editing the cost forces on the control.
+  let splitMode = 'even';
+
   // "Who's this for": a checkbox per traveller, shown ONLY when the trip names
   // two or more. Below that the whole control (legend and boxes) is not built at
   // all, so a solo trip's item modal has no trace of it in the DOM, never a
   // hidden node. None checked, or all checked, both mean Everyone and persist as
   // no `travelers` key; a proper subset persists as that subset.
+  //
+  // The one exception is a hand-entered split: those amounts are keyed by name,
+  // so the item has to name them even when that list happens to be everybody,
+  // or a third traveller joining the trip later would silently inherit a share
+  // of a split that was agreed between two people.
   function renderWhoFor(it) {
     const box = $('#fItemTravelers');
     const names = normalizeTravelers(activeTrip().travelers);
-    if (names.length < 2) { box.innerHTML = ''; box.hidden = true; return; }
+    if (names.length < 2) { box.innerHTML = ''; box.hidden = true; splitMode = 'even'; return; }
     box.hidden = false;
     const picked = new Set((Array.isArray(it && it.travelers) ? it.travelers : []).map(n => String(n).toLowerCase()));
     // a payer the trip no longer names (renamed, removed) opens as "Not tracked"
     // rather than as a phantom option, and saving the item clears it for good
     const paidBy = names.find(n => n.toLowerCase() === String((it && it.paidBy) || '').trim().toLowerCase()) || '';
+    // the item reopens on the split it was SAVED with, but only while that split
+    // still adds up (customSplitShares is the same gate the totals apply), so a
+    // stale set of numbers is never presented as the live answer
+    splitMode = customSplitShares(it, names) ? 'amount' : 'even';
     box.innerHTML = `
       <fieldset class="who-for" id="whoFor">
         <legend>Who's this for <small>(optional)</small></legend>
@@ -2234,6 +2267,7 @@
           ${names.map(n => `<label class="who-chk"><input type="checkbox" value="${esc(n)}"${picked.has(n.toLowerCase()) ? ' checked' : ''}>${esc(n)}</label>`).join('')}
         </div>
         <div class="hint">Leave all unchecked to split this cost evenly across everyone. Pick some to split it only among them.</div>
+        <div class="split-mode" id="splitMode" hidden></div>
       </fieldset>
       <div class="field paid-by">
         <label for="inPaidBy">Paid by <small>(optional, drives "Settle up")</small></label>
@@ -2244,6 +2278,82 @@
           </select>
         </span>
       </div>`;
+    // bound to the FRESH fieldset this render just built, so reopening the modal
+    // cannot stack a second copy of these handlers
+    const fs = $('#whoFor');
+    fs.addEventListener('change', e => {
+      if (e.target.closest('.who-chk')) renderSplitControl(typedSplitAmounts());
+    });
+    fs.addEventListener('click', e => {
+      const b = e.target.closest('.split-opt');
+      if (!b || b.dataset.split === splitMode) return;
+      splitMode = b.dataset.split;
+      // switching TO "by amount" opens on the even divide, which is both the
+      // answer most splits want and the only prefill that can be saved as is
+      renderSplitControl(null);
+    });
+    fs.addEventListener('input', e => {
+      if (e.target.classList.contains('split-amt')) $('#splitErr').hidden = true;
+    });
+    renderSplitControl(it && it.splitAmounts);
+  }
+
+  // Which travellers are ticked right now, in roster order. Empty means
+  // "Everyone", exactly as it does on a saved item.
+  function pickedTravelers() {
+    const fs = $('#whoFor');
+    if (!fs) return [];
+    const names = normalizeTravelers(activeTrip().travelers);
+    return [...fs.querySelectorAll('.who-chk input:checked')].map(c => c.value).filter(n => names.includes(n));
+  }
+
+  function typedSplitAmounts() {
+    const out = {};
+    document.querySelectorAll('#splitMode .split-amt').forEach(i => { out[i.dataset.name] = i.value; });
+    return out;
+  }
+
+  // The "Split evenly / Split by amount" control. It is built ONLY where an
+  // uneven split is a real question: two or more people ticked (one person owes
+  // the whole thing, nobody ticked is Everyone) and an actual cost to divide.
+  // Outside that it is not hidden with amounts waiting inside it, it is emptied,
+  // so dropping back to one person or to Everyone discards the numbers rather
+  // than saving them behind the traveller's back.
+  //
+  // `seed` is the amounts to open the inputs on: the saved split when the modal
+  // opens, whatever is typed when the tick boxes or the cost move underneath it,
+  // and null to re-prefill from the even divide.
+  function renderSplitControl(seed) {
+    const wrap = $('#splitMode');
+    if (!wrap) return;
+    const picked = pickedTravelers();
+    const raw = $('#inCost').value;
+    const cost = raw === '' ? null : roundMoney(raw);
+    if (picked.length < 2 || cost == null || isNaN(cost)) {
+      splitMode = 'even';
+      wrap.hidden = true;
+      wrap.innerHTML = '';
+      return;
+    }
+    wrap.hidden = false;
+    const even = evenSplitAmounts(cost, picked);
+    const val = n => {
+      const v = seed ? seed[n] : undefined;
+      return (v == null || v === '' || isNaN(v)) ? even[n] : Number(v);
+    };
+    const sym = currencySymbol($('#inCostCurrency').value);
+    const opt = (mode, label) => `<button type="button" class="split-opt${splitMode === mode ? ' on' : ''}"`
+      + ` data-split="${mode}" aria-pressed="${splitMode === mode}">${label}</button>`;
+    const rows = picked.map(n => `<label class="split-row">`
+      + `<span class="split-who">${esc(n)}</span>`
+      + `<span class="split-amt-wrap"><span class="split-cur" aria-hidden="true">${esc(sym)}</span>`
+      + `<input type="number" class="split-amt" step="0.01" inputmode="decimal" data-name="${esc(n)}" value="${val(n).toFixed(2)}"></span>`
+      + `</label>`).join('');
+    wrap.innerHTML = `<div class="seg split-seg" role="group" aria-label="How to split this cost">`
+      + opt('even', 'Split evenly') + opt('amount', 'Split by amount') + `</div>`
+      + (splitMode === 'amount'
+        ? `<div class="split-rows">${rows}</div><div class="split-err" id="splitErr" hidden></div>`
+        : '');
   }
 
   // A textarea can't hold live links, so the edit view lists every link the item
@@ -2312,7 +2422,12 @@
     }
   }
 
-  function clearFieldErrors() { document.querySelectorAll('#itemForm .field.invalid').forEach(f => f.classList.remove('invalid')); }
+  function clearFieldErrors() {
+    document.querySelectorAll('#itemForm .field.invalid').forEach(f => f.classList.remove('invalid'));
+    // the split error lives on its own node inside the fieldset, not on a .field
+    const se = $('#splitErr');
+    if (se) { se.hidden = true; se.textContent = ''; }
+  }
 
   function submitItemForm(e) {
     e.preventDefault();
@@ -2363,18 +2478,38 @@
     // absent (solo trip, or the read-only shared view) the previous assignment
     // is carried rather than blanked. All-checked and none-checked both collapse
     // to Everyone and store nothing, so a proper subset is the only thing kept.
+    let splitErr = '';
     const whoFor = $('#whoFor');
     if (whoFor) {
       const names = normalizeTravelers(activeTrip().travelers);
-      const picked = [...whoFor.querySelectorAll('input:checked')].map(c => c.value)
-        .filter(n => names.includes(n));
+      const picked = pickedTravelers();
       if (picked.length && picked.length < names.length) it.travelers = picked;
+      // A hand-entered split is only stored when it still accounts for the whole
+      // cost, and a split that does not is a BLOCKED save rather than a silent
+      // fallback: the traveller typed those numbers, so the app has to say the
+      // sum is wrong instead of quietly dividing evenly behind them.
+      if (splitMode === 'amount' && picked.length >= 2 && it.cost != null) {
+        const typed = typedSplitAmounts();
+        const custom = {};
+        for (const n of picked) custom[n] = typed[n] === '' || typed[n] == null ? '' : roundMoney(typed[n]);
+        if (splitAmountsMatch(it.cost, custom, picked)) {
+          // named explicitly even when that is everybody: the amounts are keyed
+          // by name and mean nothing without the roster they were agreed for
+          it.travelers = picked;
+          it.splitAmounts = custom;
+        } else {
+          splitErr = `Split amounts must add up to ${fmtMoneyIn($('#inCostCurrency').value, it.cost)}`;
+        }
+      }
       // "Not tracked" is the absence of a claim, so it stores nothing at all and
       // the item is worth $0 to the settle-up maths
       const payer = $('#inPaidBy').value;
       if (payer && names.includes(payer)) it.paidBy = payer;
     } else if (Array.isArray(prev.travelers) && prev.travelers.length) {
       it.travelers = prev.travelers;
+      // the split rides with the assignment it is keyed by, or the item would
+      // come back from a solo-trip edit split evenly among names it still lists
+      if (prev.splitAmounts) it.splitAmounts = prev.splitAmounts;
     }
     // the payer field shares the "Who's this for" gate, so on a solo trip or in
     // the read-only shared view it is carried rather than blanked, exactly as
@@ -2420,6 +2555,15 @@
     if (errs.bookBy) {
       $('#fBookBy').classList.add('invalid');
       $('#bookByErr').textContent = typeof errs.bookBy === 'string' ? errs.bookBy : 'Book by must be on or before the item date.';
+    }
+    // the split error is the same kind of "caught at entry" check the date range
+    // above is, so it is raised here rather than in validateItem: an item that
+    // arrives with a split that no longer adds up is not an error, it just falls
+    // back to the even divide (see customSplitShares)
+    if (splitErr) {
+      errs.split = true;
+      const el = $('#splitErr');
+      if (el) { el.textContent = splitErr; el.hidden = false; }
     }
     if (Object.keys(errs).length) return;
 
@@ -2563,6 +2707,155 @@
     save('Trip duplicated'); render();
   }
 
+  // ---------- trip essentials ----------
+  // The "if something goes wrong" block: who to call, who insures you, what a
+  // stranger would need to know. It lives on the trip itself (trip.essentials),
+  // exactly like the packing list, so it rides every mechanism the trip already
+  // has (save() as the undo choke point, one localStorage key, sync-system
+  // carrying that key) and is deleted with the trip.
+  // Being TRIP-level is also what keeps it private: the CSV and the .ics are
+  // built from items alone, and slimTripForShare copies an explicit whitelist of
+  // trip keys, so none of the three can carry a medical note by accident.
+  const ESSENTIAL_FIELDS = [
+    { key: 'contactName', input: '#inEssContactName', max: 60 },
+    { key: 'contactPhone', input: '#inEssContactPhone', max: 30 },
+    { key: 'insurer', input: '#inEssInsurer', max: 60 },
+    { key: 'insurerPhone', input: '#inEssInsurerPhone', max: 60 },
+    { key: 'medical', input: '#inEssMedical', max: 300 },
+  ];
+
+  // storage and imported files are untrusted JSON, so every read is clamped here
+  function readEssentials(src) {
+    const raw = src && src.essentials && typeof src.essentials === 'object' ? src.essentials : {};
+    const out = {};
+    for (const f of ESSENTIAL_FIELDS) out[f.key] = String(raw[f.key] == null ? '' : raw[f.key]).trim().slice(0, f.max);
+    return out;
+  }
+  // a blank field is ABSENT rather than an empty string, so a trip that never
+  // used this is byte for byte the trip it was before the field existed
+  function packEssentials(vals) {
+    const out = {};
+    for (const f of ESSENTIAL_FIELDS) if (vals[f.key]) out[f.key] = vals[f.key];
+    return out;
+  }
+  const formEssentials = () => {
+    const out = {};
+    for (const f of ESSENTIAL_FIELDS) out[f.key] = $(f.input).value.trim().slice(0, f.max);
+    return out;
+  };
+
+  function openEssentialsModal() {
+    const trip = activeTrip();
+    if (!trip) return;
+    const vals = readEssentials(trip);
+    for (const f of ESSENTIAL_FIELDS) $(f.input).value = vals[f.key];
+    syncEssentialsEmpty();
+    openOverlay('#essentialsOverlay');
+    $(ESSENTIAL_FIELDS[0].input).focus();
+  }
+
+  // the empty line answers the dialog's own question, so it tracks what is
+  // typed rather than only what was last saved
+  function syncEssentialsEmpty() {
+    const typed = formEssentials();
+    $('#essentialsEmpty').hidden = ESSENTIAL_FIELDS.some(f => typed[f.key]);
+  }
+
+  function submitEssentialsForm(e) {
+    e.preventDefault();
+    const trip = activeTrip();
+    if (!trip) return;
+    const before = JSON.stringify(trip.essentials || null);
+    const next = packEssentials(formEssentials());
+    if (Object.keys(next).length) trip.essentials = next;
+    else delete trip.essentials;
+    // a save that changed nothing must not offer an Undo: it would step back
+    // over whatever edit came before this dialog was opened
+    const changed = JSON.stringify(trip.essentials || null) !== before;
+    save('Trip essentials saved', changed ? undo : null);
+    closeOverlays();
+    syncUndoButtons();
+  }
+
+  // ---------- search across every trip ----------
+  // The toolbar search filters the trip you are looking at. This one answers the
+  // other question ("which trip did I put that rail pass confirmation in") by
+  // reading db.trips directly, so a trip you have not opened all year matches.
+  const TRIP_SEARCH_MAX = 20;
+
+  function tripSearchMatches(q) {
+    const needle = q.toLowerCase();
+    const rows = [];
+    for (const t of db.trips) {
+      for (const it of (Array.isArray(t.items) ? t.items : [])) {
+        // the same four haystack fields matchesFilters searches, including the
+        // confirmation code: pasting a code out of an email is the whole point
+        const hay = `${it.title || ''} ${it.location || ''} ${it.details || ''} ${it.confirmation || ''}`.toLowerCase();
+        if (hay.includes(needle)) rows.push({ tripId: t.id, tripName: t.name || '', id: it.id, title: it.title || '', date: it.startDate || '' });
+      }
+    }
+    // trip name, then date. An undated item sorts to the END of its trip rather
+    // than the top, where an empty string would otherwise put it.
+    rows.sort((a, b) => a.tripName.localeCompare(b.tripName)
+      || (a.date || '~').localeCompare(b.date || '~')
+      || a.title.localeCompare(b.title));
+    return rows;
+  }
+
+  function renderTripSearch() {
+    const q = $('#tripSearchInput').value.trim();
+    const box = $('#tripSearchResults');
+    // one character matches most of everything, so the panel keeps saying what
+    // it is for until the query is worth running
+    if (q.length < 2) {
+      const n = db.trips.length;
+      box.innerHTML = `<p class="ts-note">Type to search across your ${n} ${n === 1 ? 'trip' : 'trips'}</p>`;
+      return;
+    }
+    const rows = tripSearchMatches(q);
+    if (!rows.length) {
+      box.innerHTML = `<p class="ts-note">No items match "${esc(q)}" in any trip</p>`;
+      return;
+    }
+    const shown = rows.slice(0, TRIP_SEARCH_MAX);
+    const more = rows.length - shown.length;
+    box.innerHTML = shown.map(r => `
+      <button type="button" class="ts-row" data-ts-trip="${esc(r.tripId)}" data-ts-item="${esc(r.id)}">
+        <span class="ts-title">${esc(r.title || '(untitled)')}</span>
+        <span class="ts-meta">
+          <span class="ts-date">${esc(isIsoDate(r.date) ? fmtDate(r.date) : 'No date')}</span>
+          <span class="ts-trip">${esc(r.tripName)}</span>
+        </span>
+      </button>`).join('')
+      + (more ? `<p class="ts-note ts-more">+${more} more - narrow your search</p>` : '');
+  }
+
+  function openTripSearch() {
+    $('#tripMenu').classList.remove('open');
+    $('#tripSearch').classList.add('open');
+    $('#tripSearchBtn').setAttribute('aria-expanded', 'true');
+    renderTripSearch();
+    // the query survives a close so you can pick a second result, but it is
+    // pre-selected: one keystroke replaces it
+    $('#tripSearchInput').focus();
+    $('#tripSearchInput').select();
+  }
+  function closeTripSearch() {
+    $('#tripSearch').classList.remove('open');
+    $('#tripSearchBtn').setAttribute('aria-expanded', 'false');
+  }
+
+  function jumpToSearchResult(tripId, itemId) {
+    const trip = db.trips.find(t => t.id === tripId);
+    if (!trip) return;
+    if (db.activeTripId !== tripId) { db.activeTripId = tripId; save(); }
+    closeTripSearch();
+    // the same jump the Issues list, the night strip and the Up next chip use
+    ui.view = 'timeline';
+    ui.flashId = itemId;
+    render();
+  }
+
   function confirmDialog(title, text, yesLabel, action) {
     $('#confirmTitle').textContent = title;
     $('#confirmText').textContent = text;
@@ -2648,6 +2941,12 @@
       items: t.items.map(raw => sanitizeItem(raw, notes, travelers)).filter(Boolean),
     };
     if (travelers.length) nt.travelers = travelers;
+    // the emergency/insurance/medical block is trip-level, so a JSON export and
+    // a full backup both carry it and re-importing one has to hand it back. A
+    // share link never carries it in the first place (see slimTripForShare), so
+    // this reads as absent there and the imported trip simply has none.
+    const essentials = packEssentials(readEssentials(t));
+    if (Object.keys(essentials).length) nt.essentials = essentials;
     stampCostCurrencies(nt, nt.currency);
     return nt;
   }
@@ -5162,11 +5461,16 @@
   $('#dupDayForm').addEventListener('submit', submitDupDayForm);
   $('#tripForm').addEventListener('submit', submitTripForm);
   $('#inTripName').addEventListener('input', syncTripNameHint);
+  $('#essentialsForm').addEventListener('submit', submitEssentialsForm);
+  $('#essentialsForm').addEventListener('input', syncEssentialsEmpty);
   $('#typePicker').addEventListener('click', e => {
     const b = e.target.closest('button[data-type]');
     if (b) setModalType(b.dataset.type);
   });
   $('#inCostCurrency').addEventListener('change', syncCostPrefix);
+  // clearing the cost takes the split control with it, and a cost appearing
+  // brings it back: there is nothing to divide unevenly without an amount
+  $('#inCost').addEventListener('input', () => renderSplitControl(typedSplitAmounts()));
   $('#costEstHint').addEventListener('click', e => {
     if (e.target.closest('#adoptEstBtn')) adoptEstimate();
   });
@@ -5175,8 +5479,24 @@
 
   $('#tripSelect').addEventListener('change', e => { db.activeTripId = e.target.value; save(); render(); });
 
-  $('#tripMenuBtn').addEventListener('click', e => { e.stopPropagation(); $('#tripMenu').classList.toggle('open'); });
-  document.addEventListener('click', () => $('#tripMenu').classList.remove('open'));
+  $('#tripMenuBtn').addEventListener('click', e => { e.stopPropagation(); closeTripSearch(); $('#tripMenu').classList.toggle('open'); });
+  // both header popovers close on any click that is not inside them; each
+  // opener stops propagation, which is why each also closes the other
+  document.addEventListener('click', () => { $('#tripMenu').classList.remove('open'); closeTripSearch(); });
+
+  $('#tripSearchBtn').addEventListener('click', e => {
+    e.stopPropagation();
+    if ($('#tripSearch').classList.contains('open')) closeTripSearch();
+    else openTripSearch();
+  });
+  // typing and scrolling inside the panel must not reach the document closer;
+  // picking a result closes it explicitly
+  $('#tripSearchPanel').addEventListener('click', e => e.stopPropagation());
+  $('#tripSearchInput').addEventListener('input', renderTripSearch);
+  $('#tripSearchResults').addEventListener('click', e => {
+    const btn = e.target.closest('button[data-ts-trip]');
+    if (btn) jumpToSearchResult(btn.dataset.tsTrip, btn.dataset.tsItem);
+  });
   $('#tripMenu').querySelector('.tp-menu-panel').addEventListener('click', e => {
     const b = e.target.closest('button[data-act]');
     // clicks on captions/dividers/padding are inert: keep the panel open
@@ -5188,6 +5508,7 @@
     if (act === 'new-trip') openTripModal('new');
     else if (act === 'rename-trip') openTripModal('rename');
     else if (act === 'duplicate-trip') duplicateTrip();
+    else if (act === 'essentials') openEssentialsModal();
     else if (act === 'packing') openPackingModal();
     else if (act === 'export-trip') exportTrip();
     else if (act === 'export-csv') exportCsv();
@@ -5313,8 +5634,12 @@
   document.querySelectorAll('[data-close]').forEach(b => b.addEventListener('click', closeOverlays));
   document.addEventListener('keydown', e => {
     if (e.key === 'Escape') {
+      // one keypress dismisses one layer, topmost first: modals (z 90), then
+      // the assistant panel (80), then the header popovers (search 41, menu 40)
       if (document.querySelector('.overlay.open')) { closeOverlays(); return; }
       if (!$('#assistPanel').hidden) { closeAssist(); return; }
+      if ($('#tripSearch').classList.contains('open')) { closeTripSearch(); return; }
+      if ($('#tripMenu').classList.contains('open')) { $('#tripMenu').classList.remove('open'); return; }
       return;
     }
     const top = topOverlay();

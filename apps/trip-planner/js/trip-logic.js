@@ -931,6 +931,114 @@ const TripLogic = (() => {
     return out;
   }
 
+  // Which named travellers an item is assigned to, canonicalised against the
+  // roster. An EMPTY result means "Everyone" (see travelerTotals): a `travelers`
+  // entry naming somebody the trip no longer lists is dropped here, so a stale
+  // name can never conjure a share for a person who is not on the trip.
+  function assignedTravelers(item, names) {
+    const canon = new Map(names.map(n => [n.toLowerCase(), n]));
+    const out = [];
+    if (Array.isArray(item && item.travelers)) {
+      for (const raw of item.travelers) {
+        const c = canon.get(String(raw == null ? '' : raw).trim().toLowerCase());
+        if (c && !out.includes(c)) out.push(c);
+      }
+    }
+    return out;
+  }
+
+  // ---------- uneven cost splits ----------
+  // A shared cost is rarely even: one person's solo upgrade, one person covering
+  // the table. An item may therefore carry `splitAmounts`, a hand-entered amount
+  // per assigned traveller IN THE ITEM'S OWN CURRENCY, which the per-traveller
+  // split and the settle-up ledger both spend instead of dividing.
+  //
+  // The even divide stays the default and stays untouched: nothing below runs
+  // for an item without `splitAmounts`, so a trip that never used this feature
+  // produces byte-for-byte the numbers it did before.
+
+  // What the "Split by amount" inputs open with: the even divide, already
+  // rounded to cents and guaranteed to add back UP to the cost. A $100 three-way
+  // split is 33.34 / 33.33 / 33.33, never three 33.33s leaving a cent
+  // unaccounted for, because the amounts must sum to the cost to be saved and a
+  // default nobody can save is a trap. The odd cents go to the first travellers
+  // in roster order, so the same item always opens on the same numbers.
+  function evenSplitAmounts(cost, names) {
+    const out = {};
+    const list = Array.isArray(names) ? names : [];
+    // the same "is there a cost here at all" test every money block runs: a
+    // blank cost is nothing to divide, not a row of zeroes
+    if (cost == null || cost === '' || isNaN(cost)) return out;
+    const total = Math.round(Number(cost) * 100);
+    if (!list.length || !Number.isFinite(total)) return out;
+    const base = Math.trunc(total / list.length);
+    // sign follows the total, so a refund splits the same way a charge does
+    const step = total < 0 ? -1 : 1;
+    let rest = total - base * list.length;
+    for (const name of list) {
+      let cents = base;
+      if (rest !== 0) { cents += step; rest -= step; }
+      out[name] = cents / 100;
+    }
+    return out;
+  }
+
+  // Sum of a hand-entered split, or null when any entry is not a number.
+  // Added in whole CENTS: 70.1 + 29.9 is 100.00000000000001 in binary floating
+  // point, and a traveller who typed a correct split must never be told it is
+  // wrong by a rounding artefact.
+  function splitAmountsSum(amounts, names) {
+    let cents = 0;
+    for (const n of (Array.isArray(names) ? names : [])) {
+      const raw = amounts ? amounts[n] : undefined;
+      if (raw === '' || raw == null) return null;
+      const v = Number(raw);
+      if (!Number.isFinite(v)) return null;
+      cents += Math.round(v * 100);
+    }
+    return cents / 100;
+  }
+
+  // Does a hand-entered split still account for the whole cost, to the cent?
+  // This is the one gate: the form blocks a save that fails it, and every
+  // consumer below refuses to spend a split that fails it.
+  function splitAmountsMatch(cost, amounts, names) {
+    const sum = splitAmountsSum(amounts, names);
+    if (sum === null) return false;
+    const target = Math.round(Number(cost) * 100);
+    if (!Number.isFinite(target)) return false;
+    return Math.round(sum * 100) === target;
+  }
+
+  // The per-person amounts an item's cost actually splits into, in the ITEM's
+  // own currency, or null when there is no hand-entered split to honour and the
+  // caller's even divide stands.
+  //
+  // A custom split is only honoured while it still DESCRIBES the item in front
+  // of us: a finite cost, 2+ named travellers (never "Everyone", which has no
+  // fixed roster to key amounts by), one finite amount for each of exactly those
+  // people, and a total that still adds up to the cost. Anything else (a
+  // traveller dropped from the trip, a cost edited elsewhere, a hand-edited
+  // import or share link) falls back to the even divide rather than paying out a
+  // stale set of numbers that no longer adds up to what was spent.
+  function customSplitShares(item, names) {
+    if (!item || !item.splitAmounts || typeof item.splitAmounts !== 'object') return null;
+    if (item.cost == null || item.cost === '' || isNaN(item.cost)) return null;
+    const assigned = assignedTravelers(item, Array.isArray(names) ? names : []);
+    if (assigned.length < 2) return null;
+    if (Object.keys(item.splitAmounts).length !== assigned.length) return null;
+    const out = {};
+    for (const n of assigned) {
+      const raw = item.splitAmounts[n];
+      if (raw === '' || raw == null) return null;
+      const v = Number(raw);
+      if (!Number.isFinite(v)) return null;
+      out[n] = v;
+    }
+    if (!splitAmountsMatch(item.cost, out, assigned)) return null;
+    return out;
+  }
+
   // Per-traveller cost split, in the trip's own currency.
   //
   // RETURN SHAPE: a plain object mapping each named traveller to their numeric
@@ -952,6 +1060,12 @@ const TripLogic = (() => {
   // `ratesObj` is the same { base, rates } sumInCurrency takes; an amount whose
   // currency cannot be converted adds nothing to the number and is recorded
   // under every traveller who owed a share of it.
+  //
+  // An item carrying a valid hand-entered split (see customSplitShares) spends
+  // those amounts instead of dividing: a $100 dinner split 70/30 is 70 and 30
+  // here, never 50 and 50. Each share converts on its own, which is the same
+  // arithmetic as converting the total and splitting it, conversion being a
+  // multiplication.
   function travelerTotals(trip, ratesObj) {
     const names = normalizeTravelers(trip && trip.travelers);
     const totals = {}, unconverted = {};
@@ -959,22 +1073,17 @@ const TripLogic = (() => {
     if (names.length < 2) return totals;
     for (const n of names) { totals[n] = 0; unconverted[n] = []; }
     const base = (trip && trip.currency) || 'USD';
-    const canon = new Map(names.map(n => [n.toLowerCase(), n]));
     for (const it of (trip.items || [])) {
       if (it.status === 'cancelled') continue;
       if (it.cost == null || it.cost === '' || isNaN(it.cost)) continue;
-      const assigned = [];
-      if (Array.isArray(it.travelers)) {
-        for (const raw of it.travelers) {
-          const c = canon.get(String(raw == null ? '' : raw).trim().toLowerCase());
-          if (c && !assigned.includes(c)) assigned.push(c);
-        }
-      }
+      const assigned = assignedTravelers(it, names);
       const payers = assigned.length ? assigned : names; // Everyone, never "nobody"
       const from = it.costCurrency || base;
       const conv = convertAmount(Number(it.cost), from, base, ratesObj);
+      const custom = customSplitShares(it, names);
       for (const n of payers) {
         if (conv === null) unconverted[n].push(it);
+        else if (custom) totals[n] += convertAmount(custom[n], from, base, ratesObj);
         else totals[n] += conv / payers.length;
       }
     }
@@ -1026,19 +1135,20 @@ const TripLogic = (() => {
       if (it.cost == null || it.cost === '' || isNaN(it.cost)) continue;
       const payer = canon.get(String(it.paidBy == null ? '' : it.paidBy).trim().toLowerCase());
       if (!payer) continue;
-      const conv = convertAmount(Number(it.cost), it.costCurrency || base, base, ratesObj);
+      const from = it.costCurrency || base;
+      const conv = convertAmount(Number(it.cost), from, base, ratesObj);
       if (conv === null) { unconverted.push(it); continue; }
       tracked++;
-      const assigned = [];
-      if (Array.isArray(it.travelers)) {
-        for (const raw of it.travelers) {
-          const c = canon.get(String(raw == null ? '' : raw).trim().toLowerCase());
-          if (c && !assigned.includes(c)) assigned.push(c);
-        }
-      }
+      const assigned = assignedTravelers(it, names);
       const owers = assigned.length ? assigned : names; // Everyone, never "nobody"
+      // a hand-entered split is what each of them actually owes, so the ledger
+      // clears the debt that was agreed rather than the one an even divide
+      // would have invented
+      const custom = customSplitShares(it, names);
       net[payer] += conv;
-      for (const n of owers) net[n] -= conv / owers.length;
+      for (const n of owers) {
+        net[n] -= custom ? convertAmount(custom[n], from, base, ratesObj) : conv / owers.length;
+      }
     }
     // Round to cents BEFORE pairing. Netting at full precision leaves balances
     // like -33.33333 that pair into a 0.0000001 payment, i.e. a "Sam owes Alex
@@ -1095,6 +1205,21 @@ const TripLogic = (() => {
     }
     const ord = t => { const i = TYPE_SORT.indexOf(t); return i < 0 ? TYPE_SORT.length : i; };
     return [...rows.values()].sort((a, b) => b.total - a.total || ord(a.type) - ord(b.type));
+  }
+
+  // Bar length per "Cost by type" row, as a 0..1 share of the LARGEST row, so
+  // the ranking those rows already carry is readable without comparing four
+  // amounts digit by digit. The biggest row is always exactly 1.
+  //
+  // A row can total zero or less (a refund cancelling a booking out), and those
+  // get no bar rather than a backwards one; if no row is positive at all there
+  // is no meaningful largest, so nothing gets a bar. Which rows exist is
+  // costsByType's decision, never this one: a zero bar is still a row.
+  function typeBarShares(rows) {
+    const list = Array.isArray(rows) ? rows : [];
+    const amount = r => { const v = Number(r && r.total); return Number.isFinite(v) ? v : 0; };
+    const max = list.reduce((m, r) => Math.max(m, amount(r)), 0);
+    return list.map(r => (max > 0 ? Math.max(0, amount(r)) / max : 0));
   }
 
   // ---------- cash needed, per currency ----------
@@ -1753,6 +1878,13 @@ const TripLogic = (() => {
       // who owes this cost travels with the item; the far side clamps it to the
       // shared traveller list, so an empty or all-hands assignment stays absent
       if (Array.isArray(it.travelers) && it.travelers.length) out.travelers = it.travelers;
+      // and so does a hand-entered split: dropping it would leave the far side
+      // showing an EVEN divide of the same cost, i.e. a confidently wrong answer
+      // to "who owes whom", which is worse than not sharing the split at all.
+      // customSplitShares re-checks it there, so a stale copy still falls back.
+      if (it.splitAmounts && typeof it.splitAmounts === 'object' && Object.keys(it.splitAmounts).length) {
+        out.splitAmounts = it.splitAmounts;
+      }
       // and so does who actually paid it: a shared trip that kept the split but
       // lost the payer answers "what did it cost us" and not "who owes whom",
       // which is the half of the settle-up block worth sharing
@@ -3535,7 +3667,8 @@ const TripLogic = (() => {
     slimTripForShare, hasFastRail, viewFromHash, hashForView,
     buildIcs, buildCsv, csvColumns, convertAmount, sumInCurrency,
     normalizeTravelers, travelerTotals,
-    settlements, costsByType, cashNeeded,
+    assignedTravelers, evenSplitAmounts, splitAmountsSum, splitAmountsMatch, customSplitShares,
+    settlements, costsByType, typeBarShares, cashNeeded,
     bytesToBase64url, base64urlToBytes,
     transportGaps, connectionWarnings, sameTimeCollisions, TIGHT_CONNECTION_MIN, tripPhase, isPastRow,
     bookingDeadlines, BOOKING_LEAD_DAYS,
