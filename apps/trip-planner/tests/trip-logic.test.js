@@ -1992,7 +1992,7 @@ test('slimTripForShare omits the roster entirely for a solo trip', () => {
 
 test('buildCsv appends a travelers column without disturbing the cost total', () => {
   const cols = L.csvColumns('USD');
-  assert.equal(cols[cols.length - 1], 'travelers');
+  assert.equal(cols.indexOf('travelers'), 17); // appended after confirmation, and still there
   assert.equal(cols.indexOf('cost'), 10); // cost column index is unchanged by the append
   const trip = { currency: 'USD', items: [
     { id: 'a', type: 'stay', title: 'Hotel', startDate: '2027-01-01', endDate: '2027-01-02',
@@ -2001,8 +2001,8 @@ test('buildCsv appends a travelers column without disturbing the cost total', ()
   ] };
   const csv = L.buildCsv(trip, 'USD', null);
   assert.ok(csv.includes('"Alex; Sam"'));
-  const rows = csv.split('\n').slice(1);
-  assert.ok(rows[1].endsWith(',""')); // the Everyone item leaves the last cell empty
+  const rows = parseCsv(csv);
+  assert.equal(rows[2][rows[0].indexOf('travelers')], ''); // the Everyone item leaves its cell empty
 });
 
 test('the ICS export has nowhere honest to put a guess, so it carries none', () => {
@@ -4069,12 +4069,13 @@ test('sameTimeCollisions reports every pair in a three-way pile-up', () => {
 
 test('CSV exports the confirmation code, and every older column keeps its index', () => {
   const cols = L.csvColumns('USD');
-  // confirmation is now second to last, travelers was appended after it; both
-  // were added by appending, never inserting, so a spreadsheet built against the
-  // old header still reads the same values out of the same columns
-  assert.equal(cols[cols.length - 1], 'travelers');
-  assert.equal(cols[cols.length - 2], 'confirmation');
-  assert.deepEqual(cols.slice(0, -2), ['startDate', 'startTime', 'endDate', 'endTime', 'nights',
+  // confirmation came first, travelers after it, bookBy and paymentMethod after
+  // those; every one of them was added by appending, never inserting, so a
+  // spreadsheet built against the old header still reads the same values out of
+  // the same columns
+  assert.equal(cols.indexOf('confirmation'), 16);
+  assert.equal(cols.indexOf('travelers'), 17);
+  assert.deepEqual(cols.slice(0, 16), ['startDate', 'startTime', 'endDate', 'endTime', 'nights',
     'type', 'title', 'location', 'details', 'status', 'cost', 'costCurrency', 'costInUSD',
     'estimatedCost', 'estimatedCostCurrency', 'costNote']);
 });
@@ -4693,4 +4694,149 @@ test('cashNeeded survives an empty or absent trip', () => {
   assert.deepEqual(L.cashNeeded({ items: [] }), []);
   assert.deepEqual(L.cashNeeded({}), []);
   assert.deepEqual(L.cashNeeded(null), []);
+});
+
+// ---------- bookBy / payment reach every export ----------
+// Both fields already survive the JSON export because sanitizeItem accepts
+// them. Share links, CSV and ICS each dropped them silently, which is the worst
+// kind of data loss: the traveller has no way to notice.
+
+function bookedItem(extra) {
+  return { id: 'x1', type: 'activity', title: 'Museum', location: 'Rome', startDate: '2027-03-01',
+    endDate: '', startTime: '', endTime: '', status: 'to-book', cost: 40, costCurrency: 'EUR',
+    costNote: '', confirmation: '', details: '', bookBy: '', createdAt: '2026-07-18T00:00:00Z', ...extra };
+}
+
+test('slimTripForShare carries the booking deadline and the payment tag', () => {
+  const trip = { name: 'T', currency: 'USD', items: [bookedItem({ bookBy: '2027-02-10', payment: 'prepaid' })] };
+  const slim = L.slimTripForShare(trip);
+  assert.equal(slim.items[0].bookBy, '2027-02-10');
+  assert.equal(slim.items[0].payment, 'prepaid');
+});
+
+test('a share payload omits both fields when neither is set, never an empty string', () => {
+  const slim = L.slimTripForShare({ name: 'T', currency: 'USD', items: [bookedItem()] });
+  assert.equal('bookBy' in slim.items[0], false);
+  assert.equal('payment' in slim.items[0], false);
+  // an item tagged Not tracked stores no `payment` at all; an explicit empty
+  // one (hand-edited JSON, an older export) must not leak into the URL either
+  const blanked = L.slimTripForShare({ name: 'T', currency: 'USD', items: [bookedItem({ payment: '' })] });
+  assert.equal('payment' in blanked.items[0], false);
+});
+
+test('a trip using neither field shares byte-for-byte the payload it did before', () => {
+  // The fragment carries the whole trip, warns past 8k and is refused past 30k,
+  // so "two more optional fields" may not cost a single byte on a trip that
+  // never uses them. This literal is the pre-change output, captured before the
+  // fields were added to the keep list.
+  const trip = { name: 'T', currency: 'USD', items: [
+    { id: 'f9b2c8d1-aaaa-bbbb-cccc-1234567890ab', type: 'flight', title: 'A to B', location: 'JFK',
+      startDate: '2027-03-01', endDate: '', startTime: '07:35', endTime: '', status: 'to-book',
+      cost: 200, costCurrency: 'USD', costNote: '', confirmation: 'XJ7K2Q', details: '',
+      bookBy: '', createdAt: '2026-07-18T00:00:00Z' },
+  ] };
+  assert.equal(
+    JSON.stringify(L.slimTripForShare(trip)),
+    '{"name":"T","currency":"USD","items":[{"id":"i1","type":"flight","title":"A to B","location":"JFK","startDate":"2027-03-01","startTime":"07:35","status":"to-book","cost":200,"costCurrency":"USD","confirmation":"XJ7K2Q"}]}',
+  );
+});
+
+// The link itself: slim -> JSON -> deflate -> base64url, and back. Same steps
+// and the same exported helpers shareTrip/decodeShare use in app.js, so this is
+// the real wire format rather than a stand-in for it.
+async function through(Ctor, bytes) {
+  const s = new Ctor('deflate');
+  const w = s.writable.getWriter();
+  w.write(bytes);
+  w.close();
+  return new Uint8Array(await new Response(s.readable).arrayBuffer());
+}
+
+test('both fields survive the real share link round trip and the receiver guards', async () => {
+  const trip = { name: 'T', currency: 'USD', items: [bookedItem({ bookBy: '2027-02-10', payment: 'cash' })] };
+  const json = JSON.stringify({ version: 1, trip: L.slimTripForShare(trip) });
+  const link = L.bytesToBase64url(await through(CompressionStream, new TextEncoder().encode(json)));
+  const back = JSON.parse(new TextDecoder().decode(await through(DecompressionStream, L.base64urlToBytes(link))));
+  const item = back.trip.items[0];
+  assert.equal(item.bookBy, '2027-02-10');
+  assert.equal(item.payment, 'cash');
+  // sanitizeItem (app.js) clears a bookBy that is not a real date and drops a
+  // payment outside the picker's three, so a payload that failed either guard
+  // would arrive stripped even though it travelled intact
+  assert.equal(L.isIsoDate(item.bookBy), true);
+  assert.ok(['cash', 'card', 'prepaid'].includes(item.payment));
+  // and the deadline is still actionable on the far side
+  assert.deepEqual(L.bookingDeadlines([{ ...item, id: 'x1' }], '2027-02-08'),
+    [{ id: 'x1', title: 'Museum', date: '2027-02-10', daysLeft: 2, kind: 'due' }]);
+});
+
+test('buildCsv appends bookBy and paymentMethod LAST, leaving every prior column where it was', () => {
+  const cols = L.csvColumns('USD');
+  assert.deepEqual(cols.slice(-2), ['bookBy', 'paymentMethod']);
+  // the columns a spreadsheet may already be built against keep their indexes
+  assert.equal(cols.indexOf('cost'), 10);
+  assert.equal(cols.indexOf('confirmation'), 16);
+  assert.equal(cols.indexOf('travelers'), 17);
+});
+
+test('CSV prints the payment wording a person reads, not the stored token', () => {
+  const trip = { name: 'T', currency: 'USD', items: [
+    bookedItem({ id: 'a', bookBy: '2027-02-10', payment: 'prepaid' }),
+    bookedItem({ id: 'b', startDate: '2027-03-02', payment: 'cash' }),
+    bookedItem({ id: 'c', startDate: '2027-03-03', payment: 'card' }),
+  ] };
+  const rows = parseCsv(L.buildCsv(trip, 'USD', null));
+  const head = rows[0];
+  const bookByCol = head.indexOf('bookBy'), payCol = head.indexOf('paymentMethod');
+  assert.equal(rows[1][bookByCol], '2027-02-10');
+  assert.deepEqual(rows.slice(1).map(r => r[payCol]), ['Prepaid / already paid', 'Cash', 'Card']);
+  assert.ok(!/"prepaid"/.test(L.buildCsv(trip, 'USD', null)));
+});
+
+test('an item using neither field gets two empty cells, not the word undefined', () => {
+  const trip = { name: 'T', currency: 'USD', items: [bookedItem()] };
+  const csv = L.buildCsv(trip, 'USD', null);
+  assert.ok(!/undefined/.test(csv));
+  const rows = parseCsv(csv);
+  assert.equal(rows[1][rows[0].indexOf('bookBy')], '');
+  assert.equal(rows[1][rows[0].indexOf('paymentMethod')], '');
+  assert.ok(csv.endsWith(',"",""'));
+});
+
+test('a comma and a quote earlier in the row cannot shift the two new columns', () => {
+  const trip = { name: 'T', currency: 'USD', items: [
+    bookedItem({ title: 'Dinner: Ki"chi, Rome', costNote: 'split, later', bookBy: '2027-02-10', payment: 'cash' }),
+  ] };
+  const rows = parseCsv(L.buildCsv(trip, 'USD', null));
+  const head = rows[0];
+  assert.equal(rows[1].length, head.length);
+  assert.equal(rows[1][head.indexOf('title')], 'Dinner: Ki"chi, Rome');
+  assert.equal(rows[1][head.indexOf('bookBy')], '2027-02-10');
+  assert.equal(rows[1][head.indexOf('paymentMethod')], 'Cash');
+});
+
+function icsDesc(item) {
+  return L.buildIcs({ name: 'T', items: [item] }).split('\r\n').find(l => l.startsWith('DESCRIPTION:'));
+}
+
+test('the calendar entry carries the deadline and the payment, as readable text', () => {
+  const desc = icsDesc(bookedItem({ confirmation: 'XJ7K2Q', bookBy: '2027-02-10', payment: 'prepaid', costNote: 'cash, on arrival' }));
+  // a raw ISO string in the middle of a sentence is not what a calendar shows
+  assert.ok(!desc.includes('2027-02-10'));
+  assert.equal(desc, 'DESCRIPTION:Ref: XJ7K2Q\\nStatus: To book\\nBook by: February 10\\, 2027\\nPayment: Prepaid / already paid\\ncash\\, on arrival');
+});
+
+test('each ICS line appears only with its own field', () => {
+  const onlyDeadline = icsDesc(bookedItem({ bookBy: '2027-02-10' }));
+  assert.ok(onlyDeadline.includes('Book by: February 10'));
+  assert.ok(!onlyDeadline.includes('Payment:'));
+  const onlyPayment = icsDesc(bookedItem({ payment: 'card' }));
+  assert.ok(onlyPayment.includes('Payment: Card'));
+  assert.ok(!onlyPayment.includes('Book by:'));
+});
+
+test('an item with neither field has exactly the description it had before', () => {
+  // pre-change output, captured before the two lines were added
+  const desc = icsDesc(bookedItem({ confirmation: 'XJ7K2Q', costNote: 'cash, on arrival' }));
+  assert.equal(desc, 'DESCRIPTION:Ref: XJ7K2Q\\nStatus: To book\\ncash\\, on arrival');
 });
