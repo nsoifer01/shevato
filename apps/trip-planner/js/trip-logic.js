@@ -108,6 +108,13 @@ const TripLogic = (() => {
     // back). Only a value that is not a finite number is an error, because that
     // is the one thing no total can be built from.
     if (it.cost != null && it.cost !== '' && !Number.isFinite(Number(it.cost))) errs.cost = true;
+    // A booking deadline only means anything BEFORE the thing it books happens,
+    // so a Book-by date after the item's own date is a typo, caught here the
+    // same way check-out-before-check-in is. With no item date there is nothing
+    // to bound it against, so nothing is claimed.
+    if (isIsoDate(it.bookBy) && isIsoDate(it.startDate) && diffDays(it.bookBy, it.startDate) < 0) {
+      errs.bookBy = 'Book by must be on or before the item date.';
+    }
     return errs;
   }
 
@@ -1071,6 +1078,36 @@ const TripLogic = (() => {
     return [...rows.values()].sort((a, b) => b.total - a.total || ord(a.type) - ord(b.type));
   }
 
+  // ---------- cash needed, per currency ----------
+  // "How much yen do I actually have to carry" is a question no converted grand
+  // total can answer, so this is the ONE money block that never converts: each
+  // row is the sum of the cash-tagged costs entered in that currency, in that
+  // currency. An item with no `payment` tag is not counted, because "not
+  // tracked" is the absence of a claim, not a claim that a card will do.
+  //
+  // Cancelled items drop out (that money is not going anywhere), a blank cost
+  // contributes nothing, and a negative amount (a refund of cash) nets into its
+  // currency rather than being hidden: a row may legitimately read zero or
+  // negative. A currency nobody tagged as cash simply has no row, never a $0.00
+  // placeholder, the same rule costsByType follows.
+  //
+  // Returns [{ currency, total }] sorted by currency code so the block is
+  // stable across renders, and totals are rounded to cents before display for
+  // the same reason settlements rounds before pairing.
+  function cashNeeded(trip) {
+    const base = (trip && trip.currency) || 'USD';
+    const sums = new Map();
+    for (const it of ((trip && trip.items) || [])) {
+      if (!it || it.payment !== 'cash' || it.status === 'cancelled') continue;
+      if (it.cost == null || it.cost === '' || isNaN(it.cost)) continue;
+      const cur = it.costCurrency || base;
+      sums.set(cur, (sums.get(cur) || 0) + Number(it.cost));
+    }
+    return [...sums.entries()]
+      .map(([currency, total]) => ({ currency, total: Math.round(total * 100) / 100 }))
+      .sort((a, b) => a.currency < b.currency ? -1 : 1);
+  }
+
   // ---------- base64url (share links) ----------
   const B64URL = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_';
   function bytesToBase64url(bytes) {
@@ -1222,6 +1259,40 @@ const TripLogic = (() => {
       }
     }
     return out;
+  }
+
+  // ---------- booking deadlines ----------
+  // The app already says "this is in the past and still To book", which arrives
+  // too late for anything that sells out or reprices. An item may carry an
+  // optional `bookBy` date; this reports the ones worth acting on NOW.
+  //
+  // Only a "to book" item qualifies: Booked is done, Decide later is a
+  // deliberate maybe and Cancelled is off the trip, so a stored deadline on any
+  // of them is history, not a task. An item with no real date of its own is out
+  // too, matching validateItem, which has nothing to bound the deadline against.
+  //
+  // Returns one entry per item, never a merged count, so the panel can name each
+  // deadline and link to its row: { id, title, date, daysLeft, kind }, kind
+  // 'passed' (deadline behind us, daysLeft negative) or 'due' (inside the
+  // window, daysLeft 0..BOOKING_LEAD_DAYS). Sorted by deadline, soonest first.
+  const BOOKING_LEAD_DAYS = 7;
+  function bookingDeadlines(items, todayStr) {
+    if (!isIsoDate(todayStr)) return [];
+    const out = [];
+    for (const it of (items || [])) {
+      if (!it || it.status !== 'to-book') continue;
+      if (!isIsoDate(it.bookBy) || !isIsoDate(it.startDate)) continue;
+      const daysLeft = diffDays(todayStr, it.bookBy);
+      if (daysLeft > BOOKING_LEAD_DAYS) continue;
+      out.push({
+        id: it.id,
+        title: it.title || '',
+        date: it.bookBy,
+        daysLeft,
+        kind: daysLeft < 0 ? 'passed' : 'due',
+      });
+    }
+    return out.sort((a, b) => a.date < b.date ? -1 : (a.date > b.date ? 1 : 0));
   }
 
   // ---------- trip-in-progress ----------
@@ -3442,9 +3513,10 @@ const TripLogic = (() => {
     slimTripForShare, hasFastRail, viewFromHash, hashForView,
     buildIcs, buildCsv, csvColumns, convertAmount, sumInCurrency,
     normalizeTravelers, travelerTotals,
-    settlements, costsByType,
+    settlements, costsByType, cashNeeded,
     bytesToBase64url, base64urlToBytes,
     transportGaps, connectionWarnings, sameTimeCollisions, TIGHT_CONNECTION_MIN, tripPhase, isPastRow,
+    bookingDeadlines, BOOKING_LEAD_DAYS,
     dayCards, dayHostStay, emptyDayNote, stripPlaceCode, parseTravelOrigin, dayMorningCity,
     departureOrigin, suggestedPassport, passportAssumptionParts,
     coveringStay, timelineGroups,
