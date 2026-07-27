@@ -3069,7 +3069,19 @@ const TripLogic = (() => {
   // Sanitizes the model's proposed fields the same way the import path does:
   // only keys the model actually supplied are returned, so an `update` never
   // silently blanks fields it didn't mention. Bad costs/currencies/dates drop.
-  function sanitizeActionFields(raw) {
+  //
+  // `opts.transcribed` marks fields that were READ OFF A DOCUMENT THE
+  // TRAVELLER SUPPLIED (see extractBookings) rather than produced by a model.
+  // That is a different kind of claim and it unlocks exactly two fields:
+  // `confirmation` and a `booked` status. Both are refused from a model on
+  // purpose - see the notes on each below - and neither refusal was about the
+  // FIELD being dangerous, it was about a model being able to invent one.
+  // Nothing else changes: a transcribed cost is still clamped, a transcribed
+  // type must still be a real type, and every value still goes through the
+  // same validation. A caller must opt in explicitly; the default is
+  // unchanged, so every existing assistant path behaves exactly as before.
+  function sanitizeActionFields(raw, opts = {}) {
+    const transcribed = opts.transcribed === true;
     const f = {};
     if (typeof raw.type === 'string' && ASSIST_ACTION_TYPES.has(raw.type)) f.type = raw.type;
     if (raw.title != null) f.title = clampStr(raw.title, 120).trim();
@@ -3094,18 +3106,34 @@ const TripLogic = (() => {
     if (raw.costNote != null) f.costNote = clampStr(raw.costNote, 80).trim();
     if (raw.details != null) f.details = clampStr(raw.details, 500).trim();
     if (raw.mapsQuery != null) f.mapsQuery = clampStr(raw.mapsQuery, 200).trim();
-    // `confirmation` is deliberately NOT read here. A booking reference is a
-    // fact only the traveller holds; a model can only guess one, and a guessed
-    // code that looks real is worse at a check-in counter than an empty field.
-    // An update never touches the traveller's own code either, because the
-    // merge below only copies the keys this function returns.
+    // `confirmation` is deliberately NOT read from a MODEL. A booking reference
+    // is a fact only the traveller holds; a model can only guess one, and a
+    // guessed code that looks real is worse at a check-in counter than an
+    // empty field. An update never touches the traveller's own code either,
+    // because the merge below only copies the keys this function returns.
+    //
+    // Transcribing one off the traveller's own confirmation is the opposite
+    // situation: the code is not being invented, it is being copied, and the
+    // reader shows the line it was copied from. So it is accepted when, and
+    // only when, the caller says the fields were transcribed.
+    if (transcribed && raw.confirmation != null) {
+      f.confirmation = clampStr(raw.confirmation, 40).trim();
+    }
     return f;
   }
 
   // Booked/cancelled never pass from an AI suggestion: a proposal is always
   // something the traveller still has to act on, so it lands as "to book"
   // unless the model explicitly said "decide" (decide later).
-  const forceProposalStatus = raw => (raw === 'decide' ? 'decide' : 'to-book');
+  //
+  // A TRANSCRIBED item is not a suggestion. A booking confirmation is evidence
+  // that the thing is already booked, so `booked` survives from that source
+  // only. `cancelled` still never does: nothing in a confirmation says an item
+  // is cancelled, so a reader claiming it would be reading something else.
+  function forceProposalStatus(raw, transcribed) {
+    if (transcribed && raw === 'booked') return 'booked';
+    return raw === 'decide' ? 'decide' : 'to-book';
+  }
 
   // A price the MODEL supplied is a guess, so the display bag carries it as an
   // estimate (estCost) and the card renders it with a tilde, exactly as the
@@ -3156,9 +3184,16 @@ const TripLogic = (() => {
         if (!isIsoDate(item.endDate)) return { ok: false, reason: 'The end date is not a valid date.' };
         if (diffDays(item.startDate, item.endDate) < 0) return { ok: false, reason: 'The end date is before the start date.' };
       }
-      const status = forceProposalStatus(item.status);
-      const fields = sanitizeActionFields(item);
+      // Only an action that says so carries transcription provenance, and
+      // only the document reader sets it (see importBookingText in app.js).
+      const transcribed = action.source === 'document';
+      const status = forceProposalStatus(item.status, transcribed);
+      const fields = sanitizeActionFields(item, { transcribed });
       const proposal = { op: 'add', status, fields, display: displayFor(fields, status, fields.mapsQuery) };
+      // Carried so the item builder can tell a transcribed fact from a model's
+      // guess: a price printed on a confirmation the traveller paid belongs in
+      // `cost`, not in the estimate bag.
+      if (transcribed) proposal.transcribed = true;
       // Alternative sets: the model has put the group on the action in some
       // replies and on the item in others, so accept either. Absent group means
       // a plain single proposal, exactly as before.
@@ -4087,6 +4122,639 @@ const TripLogic = (() => {
     return out;
   }
 
+  // ---------- booking-confirmation extraction ----------
+  // Reads trip items out of the TEXT of a flight or hotel confirmation. No
+  // model and no network: this is the deterministic half of PDF import, and
+  // the assistant is only asked about what this cannot settle.
+  //
+  // Everything here is pure. The browser side (turning a PDF into text, and
+  // turning these proposals into reviewable cards) lives in app.js.
+  //
+  // Output matches the app's own item fields plus provenance:
+  //   { item, kind, confidence, evidence: [{field, raw, line}], warnings, signals }
+  // Provenance is the point: a wrong read has to be VISIBLE next to the line
+  // it came from rather than merely plausible in a form field.
+
+  const MONTHS = {
+    jan: 1, january: 1, feb: 2, february: 2, mar: 3, march: 3, apr: 4, april: 4,
+    may: 5, jun: 6, june: 6, jul: 7, july: 7, aug: 8, august: 8, sep: 9, sept: 9,
+    september: 9, oct: 10, october: 10, nov: 11, november: 11, dec: 12, december: 12,
+  };
+
+  const pad = n => String(n).padStart(2, '0');
+  const iso = (y, m, d) => `${y}-${pad(m)}-${pad(d)}`;
+
+  /** Real calendar check, so "31 Feb" is rejected rather than normalised. */
+  function validYmd(y, m, d) {
+    if (!(y >= 2000 && y <= 2100) || m < 1 || m > 12 || d < 1 || d > 31) return false;
+    const dt = new Date(Date.UTC(y, m - 1, d));
+    return dt.getUTCFullYear() === y && dt.getUTCMonth() === m - 1 && dt.getUTCDate() === d;
+  }
+
+  /**
+   * Parses the date formats airlines and hotels actually print.
+   * Returns { iso, raw, ambiguous } or null.
+   *
+   * `ambiguous` matters more than it looks: "08/12/2027" is August 12th to a US
+   * carrier and 12th August to a European one, and there is NO way to tell from
+   * the string alone. Guessing silently is the single easiest way for this
+   * feature to put a traveller at an airport on the wrong day, so an ambiguous
+   * date is flagged and the proposal it feeds is downgraded rather than trusted.
+   *
+   * THE DEFAULT IS MONTH-FIRST (owner decision): "08/12/2027" reads as
+   * 12 August 2027. Pass `{ dayFirst: true }` to read the same string as
+   * 8 December. The default only ever decides the AMBIGUOUS cases - a date where
+   * one number is above 12 is resolved from the number itself and ignores this
+   * setting entirely.
+   *
+   * `{ orderKnown: true }` says the CALLER has established this document's date
+   * order (see inferDateOrder). An otherwise-ambiguous date is then reported as
+   * resolved rather than ambiguous, and carries `resolvedByDocument` so the
+   * caller can still say out loud how it was settled.
+   */
+  function parseDate(s, opts = {}) {
+    const text = String(s || '').trim();
+
+    let m = /\b(\d{4})-(\d{2})-(\d{2})\b/.exec(text);
+    if (m) {
+      const [y, mo, d] = [+m[1], +m[2], +m[3]];
+      return validYmd(y, mo, d) ? { iso: iso(y, mo, d), raw: m[0], ambiguous: false } : null;
+    }
+
+    // 12 Aug 2027 / 12 August 2027 / 12-Aug-2027
+    m = /\b(\d{1,2})[\s\-]+([A-Za-z]{3,9})\.?[\s\-,]+(\d{4})\b/.exec(text);
+    if (m && MONTHS[m[2].toLowerCase()]) {
+      const [d, mo, y] = [+m[1], MONTHS[m[2].toLowerCase()], +m[3]];
+      return validYmd(y, mo, d) ? { iso: iso(y, mo, d), raw: m[0], ambiguous: false } : null;
+    }
+
+    // Aug 12, 2027 / August 12 2027
+    m = /\b([A-Za-z]{3,9})\.?[\s\-]+(\d{1,2})(?:st|nd|rd|th)?[\s,]+(\d{4})\b/.exec(text);
+    if (m && MONTHS[m[1].toLowerCase()]) {
+      const [mo, d, y] = [MONTHS[m[1].toLowerCase()], +m[2], +m[3]];
+      return validYmd(y, mo, d) ? { iso: iso(y, mo, d), raw: m[0], ambiguous: false } : null;
+    }
+
+    // All-numeric. Month-first by default (see the note above); unambiguous only
+    // when one of the two numbers cannot be a month, in which case the numbers
+    // decide and the default is not consulted.
+    m = /\b(\d{1,2})[\/.](\d{1,2})[\/.](\d{4})\b/.exec(text);
+    if (m) {
+      const a = +m[1], b = +m[2], y = +m[3];
+      const dayFirst = opts.dayFirst === true;
+      let d = dayFirst ? a : b;
+      let mo = dayFirst ? b : a;
+      let ambiguous = a <= 12 && b <= 12 && a !== b;
+      if (a > 12 && b <= 12) { d = a; mo = b; ambiguous = false; }
+      else if (b > 12 && a <= 12) { d = b; mo = a; ambiguous = false; }
+      if (!validYmd(y, mo, d)) return null;
+      const out = { iso: iso(y, mo, d), raw: m[0], ambiguous };
+      // When the string alone is ambiguous both numbers are 1-12, so the other
+      // reading is always a real date too. Carrying it lets the caller name both
+      // instead of vaguely saying "or the other way round".
+      if (ambiguous) {
+        out.altIso = iso(y, d, mo);
+        // The document has already settled which order it uses, so this one is
+        // no longer a guess. It still says so, because "resolved from elsewhere
+        // in the document" is a different claim from "unambiguous on its face".
+        if (opts.orderKnown === true) {
+          out.ambiguous = false;
+          out.resolvedByDocument = true;
+        }
+      }
+      return out;
+    }
+    return null;
+  }
+
+  const NUMERIC_DATE = /\b(\d{1,2})[\/.](\d{1,2})[\/.](\d{4})\b/g;
+
+  /**
+   * Works out which order THIS DOCUMENT writes its all-numeric dates in, so the
+   * ambiguous ones can be read the same way as the decisive ones.
+   *
+   * A confirmation is written by one system in one locale, so its dates are all
+   * the same shape. If any of them carries a number above 12 it can only be read
+   * one way, and that settles the rest: a page holding both "25/12/2027" and
+   * "08/12/2027" is day-first throughout, so the second is 8 December and not a
+   * coin toss. This is what makes a global default mostly unnecessary - it is
+   * only consulted when the document itself offers no evidence at all.
+   *
+   * Returns { dayFirst, source: 'document'|'default'|'conflict', evidence, conflict }.
+   *
+   * Conflicting evidence (one date that can only be day-first AND another that
+   * can only be month-first) is NOT averaged or won by majority. Such a document
+   * is not trustworthy on dates at all, so it falls back to the default and says
+   * so, and every date it produced stays flagged.
+   */
+  function inferDateOrder(lines, opts = {}) {
+    const fallback = opts.dayFirst === true;
+    const votes = [];
+    (lines || []).forEach((ln, i) => {
+      for (const m of String(ln).matchAll(NUMERIC_DATE)) {
+        const a = +m[1], b = +m[2], y = +m[3];
+        // A vote only counts if the reading it forces is a real calendar date;
+        // "31/02/2027" forces day-first on its face but is not a date at all.
+        if (a > 12 && b <= 12 && validYmd(y, b, a)) votes.push({ dayFirst: true, raw: m[0], line: i });
+        else if (b > 12 && a <= 12 && validYmd(y, a, b)) votes.push({ dayFirst: false, raw: m[0], line: i });
+      }
+    });
+
+    if (!votes.length) return { dayFirst: fallback, source: 'default', evidence: [], conflict: false };
+    const dmy = votes.filter(v => v.dayFirst);
+    const mdy = votes.filter(v => !v.dayFirst);
+    if (dmy.length && mdy.length) {
+      return { dayFirst: fallback, source: 'conflict', evidence: [dmy[0], mdy[0]], conflict: true };
+    }
+    return { dayFirst: dmy.length > 0, source: 'document', evidence: votes.slice(0, 2), conflict: false };
+  }
+
+  /** "21:30", "9:30 PM", "09.30" -> "21:30". Returns null when there is no time. */
+  function parseTime(s) {
+    const text = String(s || '');
+    let m = /\b(\d{1,2})[:.](\d{2})\s*([AaPp])\.?[Mm]\.?\b/.exec(text);
+    if (m) {
+      let h = +m[1] % 12;
+      if (m[3].toLowerCase() === 'p') h += 12;
+      return +m[2] < 60 ? `${pad(h)}:${m[2]}` : null;
+    }
+    m = /\b([01]?\d|2[0-3])[:.]([0-5]\d)\b/.exec(text);
+    return m ? `${pad(+m[1])}:${m[2]}` : null;
+  }
+
+  // A booking reference is only accepted next to a label. An unlabelled
+  // six-character token is far more often a fare class, an aircraft type or a
+  // terminal than a PNR, and a wrong code printed confidently is worse at a
+  // check-in desk than a blank field.
+  const PNR_LABEL = /(booking\s*(reference|ref|code|id)|confirmation\s*(number|code|no\.?|#)?|reservation\s*(number|code|no\.?)?|record\s*locator|\bPNR\b|airline\s*reference)/i;
+  const PNR_TOKEN = /\b(?=[A-Z0-9]{5,8}\b)(?=.*[A-Z])[A-Z0-9]{5,8}\b/;
+
+  function findConfirmation(lines) {
+    for (let i = 0; i < lines.length; i++) {
+      if (!PNR_LABEL.test(lines[i])) continue;
+      // the code usually sits on the label's line, occasionally on the next one
+      for (const j of [i, i + 1]) {
+        if (j >= lines.length) continue;
+        const after = j === i ? lines[j].replace(PNR_LABEL, ' ') : lines[j];
+        const m = PNR_TOKEN.exec(after);
+        if (m && !/^(FLIGHT|TICKET|BOOKING|NUMBER|AIRLINE|HOTEL)$/.test(m[0])) {
+          return { code: m[0], line: j, raw: lines[j].trim() };
+        }
+      }
+    }
+    return null;
+  }
+
+  const CUR_SYMBOL = { '£': 'GBP', '$': 'USD', '€': 'EUR', '¥': 'JPY' };
+
+  /** "£1,234.56", "EUR 220.00", "220.00 USD" -> { value, currency }. */
+  function parseDocMoney(s) {
+    const text = String(s || '');
+    let m = /([£$€¥])\s?([\d,]+(?:\.\d{2})?)/.exec(text);
+    if (m) return { value: +m[2].replace(/,/g, ''), currency: CUR_SYMBOL[m[1]] };
+    m = /\b([A-Z]{3})\s?([\d,]+(?:\.\d{2})?)\b/.exec(text);
+    if (m) return { value: +m[2].replace(/,/g, ''), currency: m[1] };
+    m = /\b([\d,]+(?:\.\d{2})?)\s?([A-Z]{3})\b/.exec(text);
+    if (m) return { value: +m[1].replace(/,/g, ''), currency: m[2] };
+    return null;
+  }
+
+  // Flight designator: 2-character airline code (which may contain a digit, as
+  // in U2 or 3K) followed by 1-4 digits.
+  const FLIGHT_NO = /\b([A-Z]{2}|[A-Z]\d|\d[A-Z])\s?(\d{1,4})\b(?!\d)/;
+
+  /**
+   * Three-letter tokens that are also ordinary words or currencies. Every one of
+   * these IS a real IATA code, so the airport table alone cannot reject them:
+   * ALL is Albenga, ARE is Arecibo, CAR is Caruaru, ONE is Onepusu, VAT is
+   * Vatomandry. Accepting them turns any sentence into a route.
+   */
+  const CODE_STOPWORDS = new Set([
+    'ALL', 'AND', 'ANY', 'ARE', 'BUS', 'CAR', 'FOR', 'GBP', 'EUR', 'USD', 'JPY',
+    'NEW', 'NOT', 'ONE', 'OUT', 'PDF', 'PER', 'PNR', 'TAX', 'THE', 'TWO', 'VAT',
+    'YOU', 'MAY', 'DAY', 'AGE', 'FEE', 'NET', 'SUM', 'TOP', 'END', 'ETA', 'ETD',
+  ]);
+
+  /**
+   * A separator sitting between two airport codes: "to", an arrow, a slash or a
+   * dash. Anchored on non-letters so a hyphen inside a word is not a separator.
+   */
+  const ROUTE_SEP = /(?:^|[^A-Za-z])(?:-->|->|→|>|—|–|-|\/|to)(?:[^A-Za-z]|$)/i;
+
+  // How much text may sit between the two codes and still read as one route.
+  // "(LHR) to New York JFK" is 14 characters of gap; a whole paragraph is not a
+  // route, it is two codes that happen to share a line.
+  const ROUTE_GAP_MAX = 40;
+
+  function codeIsAirport(code, byIata) {
+    return !CODE_STOPWORDS.has(code) && byIata.has(code);
+  }
+
+  /**
+   * Finds the origin/destination pair. An EXPLICIT route pattern is trusted;
+   * otherwise bare codes are collected in reading order and only used when
+   * exactly two survive, because "two codes somewhere on the page" is a much
+   * weaker claim than "A to B written as a route".
+   */
+  function findRoute(lines, byIata) {
+    // Pass 1: an explicit route on a single line. Matching is done on the
+    // POSITIONS of valid codes rather than on one regex, because the real
+    // layouts put text between them: "London Heathrow (LHR) to New York JFK
+    // (JFK)" and "London LHR to New York JFK" both defeated an adjacency
+    // pattern, and between them they cover most airline confirmations.
+    for (let i = 0; i < lines.length; i++) {
+      const codes = [...lines[i].matchAll(/\b([A-Z]{3})\b/g)]
+        .filter(m => codeIsAirport(m[1], byIata));
+      for (let k = 0; k + 1 < codes.length; k++) {
+        const a = codes[k], b = codes[k + 1];
+        if (a[1] === b[1]) continue;
+        const gap = lines[i].slice(a.index + a[0].length, b.index);
+        if (gap.length <= ROUTE_GAP_MAX && ROUTE_SEP.test(gap)) {
+          return { from: a[1], to: b[1], line: i, raw: lines[i].trim(), explicit: true };
+        }
+      }
+    }
+    const hits = [];
+    for (let i = 0; i < lines.length; i++) {
+      for (const m of lines[i].matchAll(/\b([A-Z]{3})\b/g)) {
+        if (codeIsAirport(m[1], byIata) && !hits.some(h => h.code === m[1])) {
+          hits.push({ code: m[1], line: i });
+        }
+      }
+    }
+    if (hits.length === 2) {
+      return { from: hits[0].code, to: hits[1].code, line: hits[0].line, raw: lines[hits[0].line].trim(), explicit: false };
+    }
+    return null;
+  }
+
+  /**
+   * What to say about how a date's order was decided. Three cases, and each one
+   * is a different claim, so each gets its own wording:
+   *   - the document settled it  -> say which line settled it, informational
+   *   - the document contradicts itself -> warn, and it is still a guess
+   *   - no evidence either way   -> warn, name both readings
+   */
+  function dateOrderNotes(d, ctx) {
+    if (!d) return [];
+    const order = ctx.order || {};
+    if (d.resolvedByDocument) {
+      if (order.source === 'plausibility') {
+        const other = order.rejected && order.rejected.dayFirst ? 'day-first' : 'month-first';
+        return [`"${d.raw}" could be read either way on its own; taken as ${d.iso} because reading this document ${other} produces an itinerary that could not happen. That is a judgement about what is likely, not something the page states - check it.`];
+      }
+      const src = (order.evidence || [])[0];
+      const how = src
+        ? `"${src.raw}" on line ${src.line + 1} can only be read that way`
+        : 'another date in this document can only be read that way';
+      return [`"${d.raw}" could be read either way on its own; taken as ${d.iso} because ${how}.`];
+    }
+    if (!d.ambiguous) return [];
+    const conflict = order.conflict
+      ? ' This document also contains dates in BOTH orders, so it cannot be trusted on dates at all.'
+      : '';
+    return [`"${d.raw}" is an all-numeric date with no way to tell the order from the string. Read as ${d.iso}; it could equally be ${d.altIso}.${conflict} Confirm before saving.`];
+  }
+
+
+  /**
+   * Reads a flight confirmation. Returns a proposal or null.
+   *
+   * Times: the FIRST time on or after the route line is treated as departure and
+   * the second as arrival, which is the layout every confirmation uses. An
+   * arrival earlier than the departure means the leg lands the next day, and
+   * that is set explicitly rather than left for the app to guess, because an
+   * overnight flight with no end date silently loses a night of coverage.
+   */
+  function readFlight(lines, byIata, ctx) {
+    const route = findRoute(lines, byIata);
+    if (!route) return null;
+
+    const warnings = [];
+    const evidence = [];
+    const from = byIata.get(route.from);
+    const to = byIata.get(route.to);
+    evidence.push({ field: 'route', raw: route.raw, line: route.line });
+    if (!route.explicit) {
+      warnings.push(`Route was inferred from two airport codes on the page ("${route.from}", "${route.to}"), not from an explicit "A to B" line. Check the direction.`);
+    }
+
+    // WHICH date is the departure. Taking the first date on the page is wrong
+    // on any confirmation that prints an issue or "booked on" date above the
+    // itinerary, and plenty do. So the line a date sits on decides, in order:
+    //   1. a line labelled as a departure ("Departs", "Outbound", "Travel date")
+    //   2. the route line itself, which often carries the date too
+    //   3. the nearest remaining date to the route line, preferring one below it
+    //   4. anything left, which is reported as a guess
+    // Lines labelled as an issue, invoice or payment date are struck out first
+    // and can never win, whatever their position.
+    const dated = [];
+    lines.forEach((ln, i) => {
+      const d = parseDate(ln, ctx);
+      if (d) dated.push({ ...d, line: i, ln });
+    });
+    const travel = dated.filter(d => !NOT_TRAVEL.test(d.ln));
+    const skipped = dated.filter(d => NOT_TRAVEL.test(d.ln));
+
+    let dep = travel.find(d => DEP_LABEL.test(d.ln))
+      || travel.find(d => d.line === route.line)
+      || travel.slice().sort((a, b) => {
+        // nearest to the route line; a date BELOW the route beats one the same
+        // distance above it, because itineraries read downwards
+        const da = (a.line >= route.line ? 0 : 0.5) + Math.abs(a.line - route.line);
+        const db = (b.line >= route.line ? 0 : 0.5) + Math.abs(b.line - route.line);
+        return da - db;
+      })[0]
+      || null;
+    let depGuessed = false;
+    if (!dep && dated.length) { dep = dated[0]; depGuessed = true; }
+
+    if (dep) {
+      // full line, not just the matched substring: provenance is only useful
+      // if the traveller can see the context the value came out of
+      evidence.push({ field: 'startDate', raw: lines[dep.line].trim(), line: dep.line });
+      warnings.push(...dateOrderNotes(dep, ctx));
+      if (depGuessed || !DEP_LABEL.test(dep.ln)) {
+        warnings.push(`No line is labelled as the departure, so "${lines[dep.line].trim().slice(0, 60)}" was used for the date. Check it is not an issue or booking date.`);
+      }
+      if (skipped.length) {
+        warnings.push(`Ignored ${skipped.length} date${skipped.length > 1 ? 's' : ''} on issue/booking/invoice lines (e.g. "${skipped[0].ln.trim().slice(0, 48)}").`);
+      }
+    } else {
+      warnings.push('No departure date could be read.');
+    }
+
+    const times = [];
+    lines.forEach((ln, i) => {
+      if (i < route.line) return;
+      const t = parseTime(ln);
+      if (t) times.push({ t, line: i, raw: ln.trim() });
+    });
+    const depTime = times[0] || null;
+    const arrTime = times[1] || null;
+    if (depTime) evidence.push({ field: 'startTime', raw: depTime.raw, line: depTime.line });
+    if (arrTime) evidence.push({ field: 'endTime', raw: arrTime.raw, line: arrTime.line });
+
+    // Landing date. A date printed on an ARRIVAL line is authoritative and beats
+    // inferring one; the "+1" inference is only for confirmations that print no
+    // arrival date at all.
+    let endDate = '';
+    let contradicted = false;
+    const arr = dep ? travel.find(d => d !== dep && ARR_LABEL.test(d.ln)) : null;
+    if (arr && arr.iso > dep.iso) {
+      endDate = arr.iso;
+      evidence.push({ field: 'endDate', raw: lines[arr.line].trim(), line: arr.line });
+      const days = Math.round((Date.parse(arr.iso) - Date.parse(dep.iso)) / 86400000);
+      warnings.push(`Overnight leg: lands ${endDate}, read from "${lines[arr.line].trim().slice(0, 50)}".`);
+      if (days > 2) {
+        warnings.push(`That is ${days} days after departure, which is not a plausible flight. If these dates are all-numeric, the day/month order is probably being read the wrong way round.`);
+      }
+    } else {
+      if (arr && arr.iso < dep.iso) {
+        // Independent evidence disagrees with itself. The clock is still worth
+        // believing (it is a separate reading from the date), so the +1 below
+        // still runs, but the document is no longer trustworthy and the
+        // proposal says so by dropping a confidence step.
+        contradicted = true;
+        warnings.push(`An arrival line reads ${arr.iso}, which is BEFORE the departure date ${dep.iso}. It was ignored, but one of the two dates is being read wrongly - most likely the day/month order.`);
+      }
+      // Overnight: an explicit "+1" marker, or an arrival clock earlier than the
+      // departure clock.
+      const plusOne = lines.some(ln => /\+\s?1\b|\bnext day\b/i.test(ln));
+      const wrapped = !!(depTime && arrTime && arrTime.t < depTime.t);
+      if (dep && (plusOne || wrapped)) {
+        const d = new Date(Date.UTC(+dep.iso.slice(0, 4), +dep.iso.slice(5, 7) - 1, +dep.iso.slice(8, 10) + 1));
+        endDate = iso(d.getUTCFullYear(), d.getUTCMonth() + 1, d.getUTCDate());
+        warnings.push(`Read as an overnight leg landing ${endDate} (${plusOne ? 'a "+1" marker was printed' : 'the arrival time is earlier than the departure time'}); no arrival date was printed.`);
+      }
+    }
+
+    const flightNo = (() => {
+      for (let i = 0; i < lines.length; i++) {
+        const m = FLIGHT_NO.exec(lines[i]);
+        if (m && !codeIsAirport(m[1] + m[2].slice(0, 1), byIata)) return { code: `${m[1]}${m[2]}`, line: i, raw: lines[i].trim() };
+      }
+      return null;
+    })();
+    if (flightNo) evidence.push({ field: 'details', raw: flightNo.raw, line: flightNo.line });
+
+    const pnr = findConfirmation(lines);
+    if (pnr) evidence.push({ field: 'confirmation', raw: pnr.raw, line: pnr.line });
+
+    const moneyLine = lines.findIndex(ln => /total|fare|price|amount|paid/i.test(ln) && parseDocMoney(ln));
+    const money = moneyLine >= 0 ? parseDocMoney(lines[moneyLine]) : null;
+    if (money) evidence.push({ field: 'cost', raw: lines[moneyLine].trim(), line: moneyLine });
+
+    const item = {
+      type: 'flight',
+      title: `${(from ? airportLabel(from) : route.from)} to ${(to ? airportLabel(to) : route.to)}`,
+      location: '',
+      startDate: dep ? dep.iso : '',
+      endDate,
+      startTime: depTime ? depTime.t : '',
+      endTime: arrTime ? arrTime.t : '',
+      status: 'booked',
+    };
+    if (money) { item.cost = money.value; item.costCurrency = money.currency; }
+    if (pnr) item.confirmation = pnr.code;
+    if (flightNo) item.details = `Flight ${flightNo.code}`;
+
+    let confidence = 'high';
+    if (!dep || !route.explicit) confidence = 'low';
+    else if (!depTime || dep.ambiguous || depGuessed || contradicted) confidence = 'medium';
+    // A date order settled by plausibility rather than by a decisive number is
+    // strong evidence but still an inference, so it caps the claim.
+    else if (dep.resolvedByDocument && (ctx.order || {}).source === 'plausibility') confidence = 'medium';
+
+    // How many days the document CLAIMS this leg takes, before any refusal.
+    // Scored by the plausibility tiebreak: a flight is a day, not a month, so a
+    // reading that produces a 31-day leg is evidence about the date order.
+    const spanDays = (dep && arr) ? Math.round((Date.parse(arr.iso) - Date.parse(dep.iso)) / 86400000)
+      : (dep && endDate ? Math.round((Date.parse(endDate) - Date.parse(dep.iso)) / 86400000) : null);
+
+    return { kind: 'flight', item, confidence, evidence, warnings, signals: { spanDays } };
+  }
+
+  // Which line a date sits on decides what it means.
+  const DEP_LABEL = /\b(depart\w*|outbound|leaves?|leaving|flight date|travel date|date of travel)\b/i;
+  const ARR_LABEL = /\b(arriv\w*|inbound|lands?|landing)\b/i;
+  // These can never be the travel date, wherever they appear on the page.
+  const NOT_TRAVEL = /\b(issued?|issue date|booked on|booking date|invoice|printed|purchased?|payment date|valid (until|through)|expir\w*)\b/i;
+
+  const CHECKIN = /check[\s\-]?in/i;
+  const CHECKOUT = /check[\s\-]?out|departure date/i;
+
+  /**
+   * Reads a hotel confirmation. Weaker than the flight reader by nature: a
+   * property name is free text with no code to anchor it, so the name is a
+   * heuristic and always lands as medium confidence at best.
+   */
+  function readStay(lines, ctx) {
+    const inLine = lines.findIndex(l => CHECKIN.test(l) && parseDate(l, ctx));
+    const outLine = lines.findIndex(l => CHECKOUT.test(l) && parseDate(l, ctx));
+    if (inLine < 0 || outLine < 0) return null;
+
+    const warnings = [];
+    const evidence = [];
+    const start = parseDate(lines[inLine], ctx);
+    const end = parseDate(lines[outLine], ctx);
+    evidence.push({ field: 'startDate', raw: lines[inLine].trim(), line: inLine });
+    evidence.push({ field: 'endDate', raw: lines[outLine].trim(), line: outLine });
+    for (const d of [start, end]) warnings.push(...dateOrderNotes(d, ctx));
+    if (end.iso <= start.iso) warnings.push('Check-out is not after check-in; the dates may have been read in the wrong order.');
+
+    // Property name: the first line that looks like a name rather than a label.
+    // Deliberately crude, and reported as such.
+    const nameLine = lines.findIndex((l, i) => i < inLine && l.trim().length > 3
+      && !/reservation|confirmation|booking|guest|address|total|nights?|room|invoice|tax|www\.|@/i.test(l)
+      && !parseDate(l, ctx) && !/^\d/.test(l.trim()));
+    const name = nameLine >= 0 ? lines[nameLine].trim().slice(0, 80) : '';
+    if (name) evidence.push({ field: 'title', raw: lines[nameLine].trim(), line: nameLine });
+    else warnings.push('No property name could be identified; fill the title in by hand.');
+
+    const cityLine = lines.findIndex(l => /^(city|location|address)\b/i.test(l));
+    const city = cityLine >= 0 ? lines[cityLine].replace(/^[a-z]+\s*:?\s*/i, '').trim().slice(0, 80) : '';
+    if (city) evidence.push({ field: 'location', raw: lines[cityLine].trim(), line: cityLine });
+
+    const pnr = findConfirmation(lines);
+    if (pnr) evidence.push({ field: 'confirmation', raw: pnr.raw, line: pnr.line });
+
+    const moneyLine = lines.findIndex(l => /total|amount|price|rate/i.test(l) && parseDocMoney(l));
+    const money = moneyLine >= 0 ? parseDocMoney(lines[moneyLine]) : null;
+    if (money) evidence.push({ field: 'cost', raw: lines[moneyLine].trim(), line: moneyLine });
+
+    const item = {
+      type: 'stay',
+      title: name || 'Hotel booking',
+      location: city,
+      startDate: start.iso,
+      endDate: end.iso,
+      startTime: '',
+      endTime: '',
+      status: 'booked',
+    };
+    if (money) { item.cost = money.value; item.costCurrency = money.currency; }
+    if (pnr) item.confirmation = pnr.code;
+
+    return {
+      kind: 'stay',
+      item,
+      confidence: name && !start.ambiguous && !end.ambiguous ? 'medium' : 'low',
+      evidence,
+      warnings,
+      signals: { nights: Math.round((Date.parse(end.iso) - Date.parse(start.iso)) / 86400000) },
+    };
+  }
+
+  /** Splits to trimmed non-empty lines, preserving original indexing. */
+  function toLines(text) {
+    return String(text || '').replace(/\r/g, '').split('\n').map(l => l.replace(/\s+/g, ' ').trim());
+  }
+
+  /**
+   * Main entry. `airports` is the rows array from airportIndex(); pass [] to run
+   * without airport validation (routes will then not be found).
+   */
+  // A flight is a day, not a month. A stay is a fortnight, not a season. These
+  // are the bounds the plausibility tiebreak scores against; anything inside
+  // them costs nothing.
+  const MAX_PLAUSIBLE_FLIGHT_DAYS = 2;
+  const MAX_PLAUSIBLE_STAY_NIGHTS = 30;
+  // A backwards itinerary is not merely unlikely, it is impossible, so it
+  // outweighs any amount of ordinary length.
+  const IMPOSSIBLE_PENALTY = 60;
+  // How much better the alternative has to be before it overturns the caller's
+  // default. One or two days of difference is noise; a month is not.
+  const PLAUSIBILITY_MARGIN = 3;
+
+  /**
+   * Scores how unlikely a set of proposals is as a real itinerary. Zero means
+   * nothing looks wrong. Only used to compare the SAME document read two ways.
+   */
+  function implausibility(proposals) {
+    let score = 0;
+    for (const p of (proposals || [])) {
+      const s = p.signals || {};
+      if (p.kind === 'flight' && s.spanDays != null) {
+        if (s.spanDays < 0) score += IMPOSSIBLE_PENALTY + Math.abs(s.spanDays);
+        else score += Math.max(0, s.spanDays - MAX_PLAUSIBLE_FLIGHT_DAYS);
+      }
+      if (p.kind === 'stay' && s.nights != null) {
+        if (s.nights <= 0) score += IMPOSSIBLE_PENALTY + Math.abs(s.nights);
+        else score += Math.max(0, s.nights - MAX_PLAUSIBLE_STAY_NIGHTS);
+      }
+    }
+    return score;
+  }
+
+  /**
+   * Main entry. `airports` is the rows array from airportIndex(); pass [] to run
+   * without airport validation (routes will then not be found).
+   */
+  function extractBookings(text, opts = {}) {
+    const lines = toLines(text);
+    const byIata = new Map((opts.airports || []).map(a => [a.iata, a]));
+
+    // Ask the document which order it writes dates in before reading any of
+    // them; the caller's default is only the fallback when it stays silent.
+    const fallbackDayFirst = opts.dayFirst === true;
+    const base = inferDateOrder(lines, { dayFirst: fallbackDayFirst });
+
+    const readAll = (order) => {
+      const ctx = { dayFirst: order.dayFirst, orderKnown: order.source === 'document' || order.source === 'plausibility', order };
+      const out = [];
+      const flight = readFlight(lines, byIata, ctx);
+      if (flight) out.push(flight);
+      const stay = readStay(lines, ctx);
+      if (stay) out.push(stay);
+      return out;
+    };
+
+    let order = base;
+    let proposals = readAll(order);
+
+    // PLAUSIBILITY TIEBREAK. Only when the page offered no decisive date: read
+    // it the other way too and see which produces an itinerary that could
+    // actually happen. A confirmation whose dates say the flight takes 31 days
+    // is not describing a 31-day flight, it is being read in the wrong order.
+    //
+    // This is weaker evidence than a number above 12 - it is a claim about the
+    // world rather than a fact on the page - so it needs a clear margin before
+    // it overturns the default, and it never restores full confidence.
+    if (base.source === 'default' && lines.some(ln => (parseDate(ln, { dayFirst: fallbackDayFirst }) || {}).ambiguous)) {
+      const altOrder = { dayFirst: !base.dayFirst, source: 'default', evidence: [], conflict: false };
+      const altProposals = readAll(altOrder);
+      const here = implausibility(proposals);
+      const there = implausibility(altProposals);
+      // A clear margin is the test, NOT a spotless winner. Requiring the
+      // alternative to score zero meant a reading that made the flight 122 days
+      // long beat one that made it 4, because 4 is still a day over the bound.
+      // The less-bad reading wins, and anything still odd about it is warned
+      // about downstream as usual.
+      if (here - there >= PLAUSIBILITY_MARGIN) {
+        order = {
+          dayFirst: altOrder.dayFirst,
+          source: 'plausibility',
+          conflict: false,
+          evidence: [],
+          rejected: { dayFirst: base.dayFirst, score: here },
+        };
+        proposals = readAll(order);
+      }
+    }
+
+    return {
+      proposals,
+      lines,
+      order,
+      stats: {
+        lines: lines.filter(Boolean).length,
+        found: proposals.length,
+        unreadable: !proposals.length,
+      },
+    };
+  }
+
   return {
     isIsoDate, toUtc, diffDays, addDays, localDateIso,
     isStay, nights, sortKey, bySortKey, sortedItems, tripLegs,
@@ -4100,6 +4768,9 @@ const TripLogic = (() => {
     GEO_RIVAL_GAP, GEO_WEAK_IMPORTANCE, GEO_SETTLEMENT_KINDS, GEO_MATCH_RANK, GEO_MATCH_TEXT,
     foldPlace, normalizePlaceRow, placeScore, rankPlaceResults, PLACE_FEATURE_RE, PLACE_POP_WEIGHT, PLACE_PREFIX_BONUS, PLACE_EXACT_BONUS,
     airportIndex, airportLabel, airportDetail, airportScore, searchAirports, PRIMARY_HUBS,
+    parseBookingDate: parseDate, parseBookingTime: parseTime, parseDocMoney,
+    findConfirmation, findRoute, inferDateOrder, implausibility,
+    extractBookings, bookingTextToLines: toLines,
     flightTitleFromAirports, parseFlightAirports,
     classifyVisa, parseVisaMatrix, visaCountryUsable, visaUnconfirmedNames, visaVintageNote,
     passportExpiryStatus, PASSPORT_VALIDITY_DAYS,

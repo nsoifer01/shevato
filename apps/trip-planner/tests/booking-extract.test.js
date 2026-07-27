@@ -1,15 +1,16 @@
-import { test } from 'node:test';
-import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
-import { dirname, resolve } from 'node:path';
-import { fileURLToPath } from 'node:url';
-import { extractBookings, parseDate, parseTime, parseMoney, findConfirmation, findRoute, toLines, inferDateOrder, implausibility } from './extract-booking.mjs';
+'use strict';
 
-const HERE = dirname(fileURLToPath(import.meta.url));
-const payload = JSON.parse(readFileSync(resolve(HERE, '../../data/airports.json'), 'utf8'));
-const AIRPORTS = payload.rows.map(r => ({
-  iata: r[0], name: r[1], city: r[2], cc: r[3], lat: r[4], lon: r[5], big: r[6] === 1, alt: r[7],
-}));
+const { test } = require('node:test');
+const assert = require('node:assert/strict');
+const L = require('../js/trip-logic.js');
+
+const {
+  extractBookings, inferDateOrder, implausibility, findConfirmation, findRoute,
+  parseBookingDate: parseDate, parseBookingTime: parseTime,
+  parseDocMoney: parseMoney, bookingTextToLines: toLines,
+} = L;
+
+const AIRPORTS = L.airportIndex(require('../data/airports.json'));
 const run = (text, opts) => extractBookings(text, { airports: AIRPORTS, ...opts });
 const byIata = new Map(AIRPORTS.map(a => [a.iata, a]));
 
@@ -534,4 +535,66 @@ test('implausibility scores a set of proposals, not a single date', () => {
   assert.ok(implausibility([{ kind: 'flight', signals: { spanDays: -3 } }]) > 60);
   assert.equal(implausibility([{ kind: 'stay', signals: { nights: 4 } }]), 0);
   assert.ok(implausibility([{ kind: 'stay', signals: { nights: 0 } }]) >= 60);
+});
+
+// ---------- transcription provenance ----------
+// The one place the document reader is allowed more trust than the assistant.
+
+const tripFor = () => ({ id: 't1', name: 'Trip', currency: 'USD', items: [] });
+const addAction = (extra = {}) => ({
+  op: 'add',
+  item: {
+    type: 'flight', title: 'London (LHR) to New York (JFK)',
+    startDate: '2027-08-12', startTime: '21:30',
+    confirmation: 'XJ7K2Q', status: 'booked',
+  },
+  ...extra,
+});
+
+test('a MODEL action still cannot supply a confirmation code or a booked status', () => {
+  // unchanged behaviour, and the reason it exists: a guessed code that looks
+  // real is worse at a check-in desk than an empty field
+  const res = L.validateTripAction(addAction(), tripFor());
+  assert.equal(res.ok, true);
+  assert.equal(res.proposal.fields.confirmation, undefined);
+  assert.equal(res.proposal.status, 'to-book');
+});
+
+test('a TRANSCRIBED action may carry both, because they were copied not invented', () => {
+  const res = L.validateTripAction(addAction({ source: 'document' }), tripFor());
+  assert.equal(res.ok, true);
+  assert.equal(res.proposal.fields.confirmation, 'XJ7K2Q');
+  assert.equal(res.proposal.status, 'booked');
+});
+
+test('transcription unlocks exactly two fields and relaxes nothing else', () => {
+  const bad = addAction({ source: 'document' });
+  bad.item.cost = -500;              // a refund is the traveller's to enter
+  bad.item.type = 'teleport';        // still has to be a real type
+  const res = L.validateTripAction(bad, tripFor());
+  assert.equal(res.ok, false);       // rejected on the type
+  const ok = L.validateTripAction(
+    { op: 'add', item: { ...addAction().item, cost: -500 }, source: 'document' }, tripFor());
+  assert.equal(ok.ok, true);
+  assert.equal(ok.proposal.fields.cost, undefined);   // negative cost still dropped
+});
+
+test('cancelled never survives, from either source', () => {
+  const a = addAction({ source: 'document' });
+  a.item.status = 'cancelled';
+  assert.equal(L.validateTripAction(a, tripFor()).proposal.status, 'to-book');
+});
+
+test('a confirmation code is clamped like every other transcribed string', () => {
+  const a = addAction({ source: 'document' });
+  a.item.confirmation = 'X'.repeat(120);
+  assert.equal(L.validateTripAction(a, tripFor()).proposal.fields.confirmation.length, 40);
+});
+
+test('only a transcribed proposal is marked as such, for the item builder', () => {
+  // proposalToItem keys the cost/confirmation handling off this flag, so a
+  // model proposal must never carry it.
+  assert.equal(L.validateTripAction(addAction({ source: 'document' }), tripFor()).proposal.transcribed, true);
+  assert.equal(L.validateTripAction(addAction(), tripFor()).proposal.transcribed, undefined);
+  assert.equal(L.validateTripAction(addAction({ source: 'model' }), tripFor()).proposal.transcribed, undefined);
 });
