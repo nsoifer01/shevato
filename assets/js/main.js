@@ -1102,6 +1102,33 @@
         // byte-identical site-wide (no per-page hiding of the current page's
         // link, which previously made the footer one row shorter on the five
         // top-level marketing pages and inconsistent against the app pages).
+
+        // Copyright year. This is done HERE rather than by a <script src>
+        // inside the footer partial, and that is the whole point of it.
+        //
+        // jQuery evaluates a <script> found in injected HTML through
+        // _evalUrl -> globalEval -> DOMEval, and DOMEval ends with:
+        //     doc.head.appendChild( script ).parentNode.removeChild( script )
+        // with no null guard (true in our jQuery 3.2.1 and still true in
+        // 3.7). Anything that strips injected <script> nodes back out of
+        // <head> - which several common privacy and ad-blocking extensions
+        // do - leaves parentNode null, and the page throws
+        //     Uncaught TypeError: Cannot read properties of null
+        //     (reading 'removeChild')
+        // from deep inside jquery.min.js on EVERY page load, with a stack
+        // that points at jQuery rather than at us. Filling the year from the
+        // include callback deletes that entire code path from the site: no
+        // partial ships a script tag any more, so there is nothing for
+        // jQuery to eval.
+        if (includeFile.indexOf('footer') === 0) {
+          const year = new Date().getFullYear();
+          // One span per language: the Moadon Alef footer is trilingual and
+          // carries year-ru and year-he alongside the shared year.
+          ['year', 'year-ru', 'year-he'].forEach((id) => {
+            const el = document.getElementById(id);
+            if (el) { el.textContent = year; }
+          });
+        }
       });
     });
 

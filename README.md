@@ -16,7 +16,6 @@ shevato/
 │   │   ├── jquery.min.js             # jQuery (vendored)
 │   │   ├── analytics.js              # Google Analytics bootstrap
 │   │   ├── language-switcher.js      # Tri-lingual switcher for the separately-branded landing
-│   │   ├── year-updater.js           # Footer copyright year
 │   │   ├── passive-events-fix.js     # Passive listeners polyfill
 │   │   ├── breakpoints.min.js, browser.min.js, util.js  # Responsive helpers
 │   │   └── pagination.js, global-icons.js
