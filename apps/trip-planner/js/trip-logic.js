@@ -47,6 +47,19 @@ const TripLogic = (() => {
     return d.toISOString().slice(0, 10);
   }
 
+  // The one deliberately LOCAL reader, and the app's only source of "today".
+  // Every date the traveller types is a wall-clock date carrying no zone, so
+  // which day it is has to be asked in the clock they are reading. A UTC slice
+  // of the device clock is a different day for part of every day at any real
+  // offset: it already said tomorrow from 17:00 in California and still said
+  // yesterday until 03:00 in Israel, which moved the countdown, the past-row
+  // dimming and the booking deadlines a day off for those hours. Everything
+  // else above stays UTC because it is arithmetic on those zone-less strings.
+  function localDateIso(d) {
+    const p = n => String(n).padStart(2, '0');
+    return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
+  }
+
   // ---------- items ----------
   const isStay = it => it.type === 'stay';
 
@@ -74,7 +87,18 @@ const TripLogic = (() => {
     const t = TYPE_ORDER[it.type] !== undefined ? TYPE_ORDER[it.type] : 9;
     return `${it.startDate || '9999-99-99'}|${it.startTime || '99:99'}|${t}|${it.createdAt || ''}`;
   }
-  function sortedItems(trip) { return [...trip.items].sort((a, b) => sortKey(a) < sortKey(b) ? -1 : 1); }
+  // 0 on an identical key, not 1. Every sort here used `sortKey(a) < sortKey(b)
+  // ? -1 : 1`, which reports "b comes first" for two items that are equal. That
+  // is a comparator the sort spec does not have to honour in any particular
+  // way, so the resulting order was V8's stability by luck rather than by
+  // contract. Identical keys are routine, not exotic: duplicateDay stamps every
+  // copy of a day with the same createdAt millisecond, and the rest of the key
+  // (date, time, type) is copied verbatim.
+  function bySortKey(a, b) {
+    const ka = sortKey(a), kb = sortKey(b);
+    return ka < kb ? -1 : ka > kb ? 1 : 0;
+  }
+  function sortedItems(trip) { return [...trip.items].sort(bySortKey); }
 
   // consecutive stays in different places = a travel leg for the route helper
   function tripLegs(trip) {
@@ -679,6 +703,352 @@ const TripLogic = (() => {
     if (!list.length || list.some(l => !(l in GEO_MATCH_RANK))) return '';
     const worst = list.reduce((a, b) => (GEO_MATCH_RANK[b] > GEO_MATCH_RANK[a] ? b : a));
     return GEO_MATCH_TEXT[worst] || '';
+  }
+
+  // ---------- place picker: city suggestions (Open-Meteo geocoding) ----------
+  // Pure shaping and ranking for the city combobox. The fetch itself lives in
+  // app.js; everything that decides WHICH rows a traveller sees, and in what
+  // order, is here so the node suite can pin it.
+  //
+  // WHY NOT NOMINATIM, which the app already talks to: its usage policy
+  // forbids autocomplete against the public instance outright. Open-Meteo's
+  // geocoding endpoint is keyless, CORS-open, built for typeahead, and is
+  // already the provider behind the climate strip, so it adds no new
+  // dependency and no new attribution.
+
+  // GeoNames feature codes. PPL* is "populated place", ADM* an administrative
+  // division (a region someone can legitimately base a trip in). Everything
+  // else the endpoint returns - heliports (AIRH), parks (PRK), stations - is
+  // not a place you sleep, and a search for "Kyoto" surfaces three of them.
+  const PLACE_FEATURE_RE = /^(PPL|ADM)/;
+
+  // Diacritic-blind compare so "Koln" finds "Köln" and "Malaga" finds "Málaga".
+  function foldPlace(s) {
+    return String(s == null ? '' : s)
+      .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+      .toLowerCase().trim();
+  }
+
+  // Number(null) and Number('') are both 0, which is a REAL coordinate in the
+  // Gulf of Guinea: a row with a missing latitude would otherwise pass every
+  // finite check, seed the geocode cache from it and drop a map pin in the
+  // ocean. Anything absent has to become NaN before it is tested.
+  const numOrNaN = v => (v == null || v === '' ? NaN : Number(v));
+
+  // Open-Meteo row -> the shape the picker renders and stores.
+  // `label` is the disambiguated one-liner ("Paris, Texas, United States");
+  // `value` is what lands in the field, and is deliberately the BARE name:
+  // it is also the day-card chip and the weather-lookup key, and "Staying in
+  // Paris, Texas, United States" reads badly on a card. The country the
+  // traveller actually picked is preserved by seeding the geocode cache (see
+  // rememberPickedPlace in app.js), not by bloating the stored string.
+  function normalizePlaceRow(r) {
+    if (!r || !r.name) return null;
+    const region = String(r.admin1 || '').trim();
+    const country = String(r.country || '').trim();
+    const parts = [String(r.name).trim(), region, country].filter(Boolean);
+    // "Tokyo, Tokyo, Japan" is noise: drop a region that just repeats the name.
+    const deduped = parts.filter((p, i) => i === 0 || foldPlace(p) !== foldPlace(parts[0]));
+    return {
+      value: String(r.name).trim(),
+      label: deduped.join(', '),
+      detail: deduped.slice(1).join(', '),
+      cc: String(r.country_code || '').toUpperCase(),
+      country,
+      region,
+      lat: numOrNaN(r.latitude),
+      lon: numOrNaN(r.longitude),
+      population: Number(r.population) || 0,
+      feature: String(r.feature_code || ''),
+      id: r.id,
+    };
+  }
+
+  // In a TYPEAHEAD an exact match is weak evidence: the query is a half-typed
+  // word, so "tok" matches the village of Tok, Alaska (pop 1,258) exactly and
+  // Tokyo (pop 9.7M) only as a prefix. An earlier draft scored exactness far
+  // above size and duly buried Tokyo below four hamlets. So POPULATION is the
+  // dominant term here, and exactness is a strong tiebreak rather than a veto.
+  // The log keeps it proportionate: a 20M city leads a 200k one by ~90 points,
+  // not by 20 million.
+  // The prefix bonus is deliberately modest for the same reason. The endpoint
+  // resolves alternate and native names, and it hands back only the ENGLISH
+  // one: "koln" comes back as "Cologne", which does not start with "koln" at
+  // all. A prefix bonus big enough to be decisive therefore ranked Kolno,
+  // Poland (pop 10k) above Cologne (pop 963k) on the traveller's behalf. Two
+  // cities in a hundred hinge on these constants; they are tuned so that the
+  // bigger place wins unless the smaller one is a materially better match.
+  const PLACE_POP_WEIGHT = 50;
+  const PLACE_PREFIX_BONUS = 80;
+  const PLACE_EXACT_BONUS = 60;
+  function placeScore(query, row) {
+    const q = foldPlace(query);
+    const name = foldPlace(row.value);
+    let score = Math.log10(Math.max(0, row.population) + 1) * PLACE_POP_WEIGHT;
+    if (name.startsWith(q)) score += PLACE_PREFIX_BONUS;
+    if (name === q) score += PLACE_EXACT_BONUS;
+    if (row.feature === 'PPLC') score += 50;           // national capital
+    if (row.feature.startsWith('PPL')) score += 30;    // a settlement, not a region
+    return score;
+  }
+
+  /**
+   * Ranked, de-duplicated city suggestions from a raw Open-Meteo payload.
+   * Returns [] for anything unusable (the endpoint omits `results` entirely
+   * when nothing matches, and for one-character queries).
+   */
+  function rankPlaceResults(query, payload, limit) {
+    const raw = (payload && Array.isArray(payload.results)) ? payload.results : [];
+    const seen = new Set();
+    const rows = [];
+    for (const r of raw) {
+      const row = normalizePlaceRow(r);
+      if (!row || !PLACE_FEATURE_RE.test(row.feature)) continue;
+      if (!Number.isFinite(row.lat) || !Number.isFinite(row.lon)) continue;
+      // The same place often arrives twice, once as a settlement and once as
+      // the admin division of the same name. Keep whichever scored higher.
+      const key = `${foldPlace(row.value)}|${row.cc}|${foldPlace(row.region)}`;
+      if (seen.has(key)) continue;
+      seen.add(key);
+      rows.push(row);
+    }
+    return rows
+      .map(row => ({ row, score: placeScore(query, row) }))
+      .sort((a, b) => b.score - a.score)
+      .slice(0, limit || 8)
+      .map(x => x.row);
+  }
+
+  // ---------- place picker: airport suggestions (bundled OurAirports) ----------
+  // The data ships with the app (see scripts/build-airports.mjs for why), so
+  // this is a local scan over ~3.3k rows: no debounce, no network, works
+  // offline. A linear pass costs well under a millisecond, which is why there
+  // is no prefix index to keep in sync.
+
+  // ---------- primary hubs ----------
+  // Thirty metros in the bundled data have two or more LARGE airports filed
+  // under the same city name. Nothing in OurAirports separates them: there is
+  // no passenger count, no hub flag, and both rows score identically, so the
+  // order fell to the alphabet and "london" answered Gatwick before Heathrow.
+  //
+  // Each entry maps the code to THE METRO IT SERVES, and that second half is
+  // load-bearing, not documentation. The main airport of a metro is very often
+  // not filed under the metro at all: Otopeni, Dulles, Ferno and Zaventem are
+  // municipalities. So "bucharest" only matched Otopeni's NAME, two tiers
+  // below little Baneasa, which sits inside the city limits and matched on
+  // CITY. Naming the metro here lets airportScore treat "is this the metro
+  // they typed" as a city-level match (see the promotion there).
+  //
+  // An earlier draft promoted ANY name-prefix match instead, which needed no
+  // metro names but was far too blunt: airport names begin with people, so
+  // "queen" put Amman (Queen Alia) above Queenstown and "ch" put Paris
+  // (Charles de Gaulle) above Chicago. Spelling the metro out is the whole
+  // difference between those two behaviours.
+  //
+  // Scope is exactly the metros that actually tie, not a general "important
+  // airport" list, so it stays small enough to re-derive and check by hand.
+  // It was built by running every city name and every leading name-word in
+  // the data through searchAirports and collecting the cases where the top
+  // two scored identically and both were large. That catches Milan, whose two
+  // airports are filed under Segrate and Ferno and tie on the NAME rather
+  // than the city, which a city-only sweep misses.
+  //
+  // Entries are listed even where the alphabet already lands on the right one
+  // (CDG, JFK, BRU): the point is to state the answer rather than depend on a
+  // lucky sort. Two kinds of tie are deliberately NOT here:
+  //   - no settled primary:  Chengdu CTU/TFU, where Tianfu is still taking
+  //     over the international traffic
+  //   - namesakes in different countries: Portland OR/ME, Barcelona ES/VE,
+  //     Santiago CL/CU, Victoria SC/CA. Those ask "which CITY did you mean",
+  //     which is a question the row's own country line answers on screen, and
+  //     picking a winner here would just be guessing at the traveller.
+  const PRIMARY_HUBS = new Map([
+    ['AMM', 'Amman'],          // Queen Alia, over Marka (ADJ)
+    ['BKK', 'Bangkok'],        // Suvarnabhumi, over Don Mueang (DMK)
+    ['PEK', 'Beijing'],        // Capital, over Daxing (PKX)
+    ['BRU', 'Brussels'],       // Zaventem, over Charleroi (CRL) 50 km south
+    ['OTP', 'Bucharest'],      // Otopeni, over Baneasa (BBU), now business aviation
+    ['EZE', 'Buenos Aires'],   // Ezeiza, over the domestic Aeroparque (AEP)
+    ['ORD', 'Chicago'],        // O'Hare, over Midway (MDW)
+    ['CMB', 'Colombo'],        // Bandaranaike, over Ratmalana (RML)
+    ['DSS', 'Dakar'],          // Blaise Diagne, over the retired Senghor (DKR)
+    ['DFW', 'Dallas'],         // over the close-in Love Field (DAL)
+    ['DOH', 'Doha'],           // Hamad, over the old Doha International (DIA)
+    ['DXB', 'Dubai'],          // over Al Maktoum (DWC)
+    ['DUS', 'Dusseldorf'],     // over Weeze (NRN), which is 70 km away
+    ['FRA', 'Frankfurt'],      // over Hahn (HHN), which is 120 km away
+    ['IAH', 'Houston'],        // Bush, over Hobby (HOU)
+    ['IST', 'Istanbul'],       // over Sabiha Gokcen (SAW)
+    ['CGK', 'Jakarta'],        // Soekarno-Hatta, over Halim (HLP)
+    ['JNB', 'Johannesburg'],   // OR Tambo, over Lanseria (HLA)
+    ['LHR', 'London'],         // Heathrow, over Gatwick (LGW)
+    ['LAD', 'Luanda'],         // Quatro de Fevereiro, over the new Agostinho Neto (NBJ)
+    ['MAN', 'Manchester'],     // Manchester UK, over Manchester, New Hampshire (MHT),
+                               //   a regional field whose city string is the exact
+                               //   word and was winning the match on it
+    ['MEX', 'Mexico City'],    // Benito Juarez, over Felipe Angeles (NLU)
+    ['MXP', 'Milan'],          // Malpensa, over the short-haul Linate (LIN)
+    ['SVO', 'Moscow'],         // Sheremetyevo, over DME / VKO / ZIA
+    ['JFK', 'New York'],       // over LaGuardia (LGA)
+    ['MCO', 'Orlando'],        // over Sanford (SFB)
+    ['KIX', 'Osaka'],          // Kansai, over the domestic Itami (ITM)
+    ['CDG', 'Paris'],          // over Orly (ORY) and Le Bourget (LBG)
+    ['GIG', 'Rio de Janeiro'], // Galeao, over the domestic Santos Dumont (SDU)
+    ['FCO', 'Rome'],           // Fiumicino, over Ciampino (CIA)
+    ['GRU', 'Sao Paulo'],      // Guarulhos, over Congonhas (CGH)
+    ['ICN', 'Seoul'],          // Incheon, over Gimpo (GMP)
+    ['PVG', 'Shanghai'],       // Pudong, over Hongqiao (SHA)
+    ['IKA', 'Tehran'],         // Imam Khomeini, over the domestic Mehrabad (THR)
+    ['TFS', 'Tenerife'],       // South, which is where the flights land, over North (TFN)
+    ['IAD', 'Washington'],     // Dulles, over Reagan National (DCA). The closest call
+                               //   in this list - DCA is inside the city and carries
+                               //   comparable domestic traffic - but Dulles is the
+                               //   intercontinental gateway and DCA's perimeter rule
+                               //   keeps long-haul off it, so it is the likelier
+                               //   answer when someone is building an itinerary.
+  ]);
+
+  // Below this a query is not naming a place, it is two letters on the way to
+  // one, and "lo" should not declare London on the traveller's behalf.
+  const AP_METRO_MIN = 3;
+
+  /** Expands the compact {fields, rows, countries} payload into row objects. */
+  function airportIndex(payload) {
+    const rows = (payload && Array.isArray(payload.rows)) ? payload.rows : [];
+    const countries = (payload && payload.countries) || {};
+    return rows.map(r => ({
+      iata: String(r[0] || ''),
+      name: String(r[1] || ''),
+      city: String(r[2] || ''),
+      cc: String(r[3] || ''),
+      lat: Number(r[4]),
+      lon: Number(r[5]),
+      big: r[6] === 1,
+      alt: String(r[7] || ''),
+      country: countries[r[3]] || String(r[3] || ''),
+    }));
+  }
+
+  /**
+   * How a row reads in the dropdown and, once picked, in a flight title.
+   * `city` is the municipality and is empty on a handful of rows, so the
+   * airport name is the fallback.
+   */
+  function airportLabel(a) {
+    if (!a) return '';
+    return `${a.city || a.name} (${a.iata})`;
+  }
+  function airportDetail(a) {
+    if (!a) return '';
+    // The bundled names have a trailing "Airport" stripped to save bytes
+    // across 3.3k rows; it goes back on for reading.
+    const name = /airport$/i.test(a.name) ? a.name : `${a.name} Airport`;
+    return [name, a.country].filter(Boolean).join(' · ');
+  }
+
+  // Match quality, best first. Named because the hub rule below has to talk
+  // about which tier a row landed in.
+  const AP_TIER = {
+    IATA: 2000,        // the typed query IS the code
+    CITY_EXACT: 900,
+    CITY_PREFIX: 600,
+    NAME_PREFIX: 450,
+    ALIAS_WORD: 400,   // a word of the alias text starts with the query
+    CITY_PART: 250,
+    NAME_PART: 150,
+    ALIAS_PART: 100,
+  };
+  const AP_BIG_BONUS = 50;
+
+  function airportScore(q, a) {
+    const iata = a.iata.toLowerCase();
+    const city = foldPlace(a.city);
+    const name = foldPlace(a.name);
+    const alt = foldPlace(a.alt);
+    let tier;
+    // A typed three-letter code is almost never a coincidence, so an exact
+    // IATA hit outranks every name match: "LAX" must not surface Laxou first.
+    if (iata === q) tier = AP_TIER.IATA;
+    else if (city === q) tier = AP_TIER.CITY_EXACT;
+    else if (city.startsWith(q)) tier = AP_TIER.CITY_PREFIX;
+    else if (name.startsWith(q)) tier = AP_TIER.NAME_PREFIX;
+    // Word-anchored on the aliases, so "new york" reaches EWR through its
+    // "New York City" keyword without "york" also dragging in every row whose
+    // alias merely contains those letters.
+    else if (new RegExp(`\\b${q.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}`).test(alt)) tier = AP_TIER.ALIAS_WORD;
+    else if (city.includes(q)) tier = AP_TIER.CITY_PART;
+    else if (name.includes(q)) tier = AP_TIER.NAME_PART;
+    else if (alt.includes(q)) tier = AP_TIER.ALIAS_PART;
+    else return -1;
+
+    // THE METRO PROMOTION. A hub whose data files it under a suburb (Otopeni,
+    // Dulles, Ferno) only ever matched the metro name through its airport
+    // NAME, two tiers below the small second airport that sits inside the city
+    // limits and matches on CITY. That gap is what put Baneasa above Otopeni,
+    // Love Field above DFW, and Manchester, New Hampshire above Manchester,
+    // England. So when the query names the metro this airport is the gateway
+    // for, that counts as a city match.
+    //
+    // It raises the tier and never lowers it, and it stops AT the city tier
+    // rather than above it, so the hub ends up level with the metro's other
+    // airport and hubRank settles the order. A hub can still never overtake a
+    // row that matched better - an exact IATA hit stays on top.
+    const metro = PRIMARY_HUBS.get(a.iata);
+    if (metro && q.length >= AP_METRO_MIN && tier < AP_TIER.CITY_EXACT && foldPlace(metro).startsWith(q)) {
+      tier = AP_TIER.CITY_EXACT;
+    }
+    return tier + (a.big ? AP_BIG_BONUS : 0);
+  }
+
+  const hubRank = a => (PRIMARY_HUBS.has(a.iata) ? 1 : 0);
+
+  /**
+   * Ranked airport matches for a typed query. `rows` comes from airportIndex.
+   * Order is: how well it matched, then the curated hub tiebreak, then the
+   * alphabet so the result is stable and never depends on file order.
+   */
+  function searchAirports(query, rows, limit) {
+    const q = foldPlace(query);
+    if (q.length < 2) return [];
+    const out = [];
+    for (const a of (rows || [])) {
+      const score = airportScore(q, a);
+      if (score >= 0) out.push({ a, score });
+    }
+    return out
+      .sort((x, y) => y.score - x.score
+        || hubRank(y.a) - hubRank(x.a)
+        || x.a.iata.localeCompare(y.a.iata))
+      .slice(0, limit || 8)
+      .map(x => x.a);
+  }
+
+  /**
+   * Composes the flight title in the SAME shape the rest of the app already
+   * reads: dayMorningCity runs parseTravelOrigin over "A to B" and strips the
+   * parenthetical with stripPlaceCode, so "Tokyo (HND) to Seoul (ICN)" yields
+   * the departure city "Tokyo" for the day chip and the weather lookup.
+   * Writing the title any other way would silently cost that.
+   */
+  function flightTitleFromAirports(from, to) {
+    const a = airportLabel(from);
+    const b = airportLabel(to);
+    if (!a || !b) return '';
+    return `${a} to ${b}`;
+  }
+
+  /**
+   * Reads the two IATA codes back out of an existing flight title so editing
+   * an item re-fills the pickers instead of showing them blank. Returns
+   * { from, to } airport rows, either of which may be null. Only codes that
+   * are actually in the bundled table count, so "Dinner (7pm) to follow"
+   * parses to nothing.
+   */
+  function parseFlightAirports(title, rows) {
+    const codes = String(title || '').match(/\(([A-Za-z]{3})\)/g) || [];
+    const byIata = new Map((rows || []).map(a => [a.iata, a]));
+    const hits = codes.map(c => byIata.get(c.slice(1, 4).toUpperCase())).filter(Boolean);
+    return { from: hits[0] || null, to: hits[1] || null };
   }
 
   // A geocode is only allowed to NAME A COUNTRY in the visa dialog when it is
@@ -1416,7 +1786,7 @@ const TripLogic = (() => {
   // one leaves before the first one lands, or so soon after that the change is
   // unlikely to hold.
   function connectionWarnings(items) {
-    const live = [...(items || [])].filter(it => it && it.status !== 'cancelled').sort((a, b) => sortKey(a) < sortKey(b) ? -1 : 1);
+    const live = [...(items || [])].filter(it => it && it.status !== 'cancelled').sort(bySortKey);
     const stays = live.filter(it => isStay(it) && isIsoDate(it.startDate));
     const out = [];
     for (let i = 1; i < live.length; i++) {
@@ -1452,7 +1822,7 @@ const TripLogic = (() => {
   function sameTimeCollisions(items) {
     const live = [...(items || [])]
       .filter(it => it && it.status !== 'cancelled' && !isStay(it) && isIsoDate(it.startDate) && TIME_RE.test(it.startTime || ''))
-      .sort((a, b) => sortKey(a) < sortKey(b) ? -1 : 1);
+      .sort(bySortKey);
     const out = [];
     for (let i = 0; i < live.length; i++) {
       for (let j = i + 1; j < live.length; j++) {
@@ -1585,7 +1955,7 @@ const TripLogic = (() => {
   function dayItemsInOrder(items, date) {
     return (items || [])
       .filter(it => it.startDate === date && it.status !== 'cancelled' && !isStay(it))
-      .sort((a, b) => sortKey(a) < sortKey(b) ? -1 : 1);
+      .sort(bySortKey);
   }
 
   // "Where am I on the MORNING of this day", in precedence order:
@@ -1616,7 +1986,7 @@ const TripLogic = (() => {
   function departureOrigin(items) {
     const flight = (items || [])
       .filter(it => it.type === 'flight' && it.status !== 'cancelled' && isIsoDate(it.startDate))
-      .sort((a, b) => sortKey(a) < sortKey(b) ? -1 : 1)[0];
+      .sort(bySortKey)[0];
     return flight ? parseTravelOrigin(flight.title) : '';
   }
 
@@ -1890,8 +2260,10 @@ const TripLogic = (() => {
 
   // Returns { view, isShare }. isShare means "the caller owns nothing here":
   // never write the fragment while it is set. The share sniff is deliberately
-  // case-insensitive (looser than the boot-time check, which matches the exact
-  // generated prefix) so anything that even looks like a payload is left alone.
+  // case-insensitive so anything that even looks like a payload is left alone,
+  // and boot decides on THIS same reader: when boot matched the exact generated
+  // prefix instead, a retyped "#SHARE=..." loaded normally and then had its
+  // payload pinned in the URL by the writer's looser guard, doing nothing.
   // View names are matched case-insensitively after trimming, and must match
   // the whole fragment: "#daysofourlives" is not the days view.
   function viewFromHash(hash, fallback) {
@@ -3716,8 +4088,8 @@ const TripLogic = (() => {
   }
 
   return {
-    isIsoDate, toUtc, diffDays, addDays,
-    isStay, nights, sortKey, sortedItems, tripLegs,
+    isIsoDate, toUtc, diffDays, addDays, localDateIso,
+    isStay, nights, sortKey, bySortKey, sortedItems, tripLegs,
     nextUpEvent, NEXT_UP_WINDOW_MIN, defaultPackingItems,
     isTransitType, isTransitSpan, overnightTransit,
     validateItem, coverageGaps, tripStats, overlappingTrips, MAX_TRIP_DAYS, DATE_MIN, DATE_MAX, isDateInRange,
@@ -3726,6 +4098,9 @@ const TripLogic = (() => {
     routeLinks, modeLink, ROUTE_HONESTY,
     classifyGeoMatch, geoInputIsQualified, geoMatchNote,
     GEO_RIVAL_GAP, GEO_WEAK_IMPORTANCE, GEO_SETTLEMENT_KINDS, GEO_MATCH_RANK, GEO_MATCH_TEXT,
+    foldPlace, normalizePlaceRow, placeScore, rankPlaceResults, PLACE_FEATURE_RE, PLACE_POP_WEIGHT, PLACE_PREFIX_BONUS, PLACE_EXACT_BONUS,
+    airportIndex, airportLabel, airportDetail, airportScore, searchAirports, PRIMARY_HUBS,
+    flightTitleFromAirports, parseFlightAirports,
     classifyVisa, parseVisaMatrix, visaCountryUsable, visaUnconfirmedNames, visaVintageNote,
     passportExpiryStatus, PASSPORT_VALIDITY_DAYS,
     slimTripForShare, hasFastRail, viewFromHash, hashForView,
@@ -3736,7 +4111,7 @@ const TripLogic = (() => {
     bytesToBase64url, base64urlToBytes,
     transportGaps, connectionWarnings, sameTimeCollisions, TIGHT_CONNECTION_MIN, tripPhase, isPastRow,
     bookingDeadlines, BOOKING_LEAD_DAYS,
-    dayCards, dayHostStay, emptyDayNote, stripPlaceCode, parseTravelOrigin, dayMorningCity,
+    dayCards, dayHostStay, dayItemsInOrder, emptyDayNote, stripPlaceCode, parseTravelOrigin, dayMorningCity,
     departureOrigin, suggestedPassport, passportAssumptionParts,
     coveringStay, timelineGroups,
     defaultPlanDay, planDayGroups, weatherKey, summarizeClimate, weatherLine, weatherRange, pickMonthSamples, docGuard,

@@ -14,6 +14,7 @@
     "test:tp-assist-quota": "node --test netlify/functions/tests/tp-assist-quota.test.mjs",
     "test:sync": "node --test sync-system/tests/",
     "sync:mario-kart-courses": "node apps/mario-kart/scripts/sync-courses.mjs",
+    "build:trip-planner:airports": "node apps/trip-planner/scripts/build-airports.mjs",
     "build:rising-shows": "node apps/rising-shows/scripts/build-data.js",
     "build:rising-shows:pages": "node apps/rising-shows/scripts/build-show-pages.js",
     "build:gym-tracker:pages": "node apps/gym-tracker/scripts/build-exercise-pages.cjs",

@@ -280,8 +280,10 @@
   .issues li .tag { font-size: 11px; font-weight: 700; border-radius: 6px; padding: 2px 7px; flex: none; }
   .issues li .tag.err { background: var(--red-soft); color: var(--red); }
   .issues li .tag.warn { background: var(--amber-soft); color: var(--amber); }
-  .issues li a { color: var(--accent); cursor: pointer; text-decoration: none; }
-  .issues li a:hover { text-decoration: underline; }
+  /* the two jump controls are <button> (see the audit block at the end of this
+     file for the main.css pins that keep them looking like the links they read as) */
+  .issues li .issue-jump { color: var(--accent); cursor: pointer; text-decoration: none; }
+  .issues li .issue-jump:hover { text-decoration: underline; }
 
   /* ---------- timeline ----------
      The board is a stack of cards on a spine, not a table: every item owns a
@@ -747,6 +749,7 @@
     --m-ctl-radius: 10px;
     --m-ctl-px: 12px;
     --m-label: 12.5px;
+    --m-label-lh: 1.35;     /* one label line; rows reserve two of these */
     --m-help: 12px;
     --m-title: 19px;
     display: flex; flex-direction: column; max-height: 100%;
@@ -813,13 +816,22 @@
   /* a field that needs real room (an amount plus its currency) states its own
      minimum and drops to a full line when the viewport cannot give it */
   .m-row > .field.is-wide { flex: 1 1 265px; }
+  /* labels in a row top-align (align-items above) but do not END together: a
+     "(optional)" marker wraps onto a second line at some width for almost
+     every one of them ("Confirmation / reference #" next to "Cost" at 600px,
+     "Departure time" next to "Departs" at 390px), which used to push that
+     field's control a line below its neighbour's. So every label in a row
+     RESERVES two lines of its own type, wrapped or not: the labels start on
+     one baseline and the controls under them stay on one. Rows only, since a
+     full-width field has no neighbour to disagree with. */
+  .m-row > .field > label { min-height: calc(2 * var(--m-label-lh) * 1em); }
 
   .field { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
   /* margin: main.css gives every bare <label> a 1rem bottom margin; the field's
      own flex gap owns that spacing here */
   .field > label {
     margin: 0; font-size: var(--m-label); font-weight: 650; color: var(--text);
-    letter-spacing: 0.01em; line-height: 1.35;
+    letter-spacing: 0.01em; line-height: var(--m-label-lh);
   }
   /* optional / helper text rides with the label but never reads as the label */
   /* --text-dim, not --text-faint: faint lands at 3.0:1 (light) and 3.5:1
@@ -1221,14 +1233,19 @@
   .strip-legend { display: flex; gap: 12px; flex-wrap: wrap; font-size: 11.5px; color: var(--text-dim); }
   .strip-legend .dot { display: inline-block; width: 9px; height: 9px; border-radius: 3px; margin-right: 5px; vertical-align: -1px; }
   .strip { display: flex; gap: 2px; }
-  .strip .cell { flex: 1; min-width: 3px; height: 16px; border-radius: 3px; cursor: pointer; transition: transform .1s; }
-  .strip .cell:hover { transform: scaleY(1.35); }
+  .strip .cell { flex: 1; min-width: 3px; height: 16px; border-radius: 3px; transition: transform .1s; }
+  /* A8: the pointer and the hover lift are the strip's only "this does
+     something" signals, and they belong to the cells that actually jump
+     (renderStrip gives those, and only those, a data-goto). An uncovered night
+     has nothing to jump to, so it must not feel like the booked night beside
+     it - the one pair of cells a traveller most needs to tell apart. */
+  .strip .cell[data-goto] { cursor: pointer; }
+  .strip .cell[data-goto]:hover { transform: scaleY(1.35); }
   .cell.cv-booked { background: var(--green); }
   .cell.cv-decide { background: var(--purple); }
   .cell.cv-to-book { background: var(--amber); }
   .cell.cv-transit { background: var(--accent); }
   .cell.cv-gap { background: repeating-linear-gradient(45deg, var(--red) 0 4px, transparent 4px 8px); border: 1px solid var(--red); }
-  .cell.cv-none { background: var(--bg-raised); }
   .strip-dates { display: flex; justify-content: space-between; font-size: 11px; color: var(--text-dim); margin-top: 6px; }
 
   /* ---------- route legs ---------- */
@@ -1238,6 +1255,40 @@
     padding: 4px 14px; font-size: 12.5px; font-weight: 600; color: var(--text);
   }
   .leg-btn:hover { color: var(--accent); border-color: var(--accent); background: var(--accent-soft); }
+  /* ---------- combobox popup (city and airport pickers) ---------- */
+  /* Anchored in VIEWPORT coordinates from JS because the popup is a child of
+     <body>, not of the field: .m-body is an overflow-y:auto scroller and would
+     clip a dropdown opened from any field in its lower half. z-index clears
+     .overlay (90) and the site header. */
+  .cb-pop {
+    position: fixed; z-index: 200; overflow-y: auto; overscroll-behavior: contain;
+    background: var(--bg-raised); border: 1px solid var(--border);
+    border-radius: var(--m-ctl-radius, 10px);
+    box-shadow: 0 14px 34px rgba(0, 0, 0, .42);
+    padding: 4px; font-family: var(--tp-font);
+  }
+  .cb-pop[hidden] { display: none; }
+  .cb-opt {
+    display: grid; grid-template-columns: 1fr auto; align-items: baseline;
+    gap: 2px 8px; padding: 7px 10px; border-radius: 7px; cursor: pointer;
+  }
+  /* .on is keyboard/highlight state and :hover is the pointer equivalent: both
+     paint the same so arrowing down and mousing over never disagree */
+  .cb-opt.on, .cb-opt:hover { background: var(--accent-soft); }
+  .cb-main { font-size: 14px; font-weight: 600; color: var(--text); }
+  /* the disambiguating line IS the feature (Paris, France vs Paris, Texas), so
+     it takes --text-dim rather than --text-faint, which lands under 3:1 */
+  .cb-sub { grid-column: 1 / -1; font-size: 12.5px; color: var(--text-dim); }
+  .cb-tag {
+    font-size: 10.5px; font-weight: 700; letter-spacing: .04em; text-transform: uppercase;
+    color: var(--accent); background: var(--accent-soft);
+    padding: 2px 7px; border-radius: 999px; white-space: nowrap;
+  }
+
+  /* the flight form's two airport fields, arrow between them */
+  .ap-io { display: grid; grid-template-columns: 1fr auto 1fr; gap: 8px; align-items: center; }
+  .ap-arrow { color: var(--text-faint); font-size: 14px; line-height: 1; }
+
   /* per-modal layout, not a new look: the swap button has to sit BETWEEN the
      two place fields, which no shared row primitive can express */
   .route-io { display: grid; grid-template-columns: 1fr auto 1fr; gap: 10px; align-items: end; }
@@ -2528,6 +2579,11 @@
     .trip-planner-app .cost-cur-sel { min-width: 100px; }
     /* six type cells never fit one phone row */
     .seg-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+    /* two airport fields side by side leave ~120px each, which truncates the
+       placeholder and any picked label ("Tokyo Haneda Internation..."), so
+       they stack and the arrow turns to point down the column */
+    .ap-io { grid-template-columns: 1fr; gap: 6px; justify-items: stretch; }
+    .ap-arrow { justify-self: center; transform: rotate(90deg); }
     .trip-planner-app .seg > button { min-height: 44px; }
     .trip-planner-app .seg-grid > button { min-height: 62px; }
     .modal-foot { flex-wrap: wrap; }
@@ -2990,9 +3046,9 @@
 /* ===== Round 6: cross-trip overlap warning and passport expiry ===== */
 
   /* the other trip's name is the control in that warning line, so it carries
-     the weight; .issues li a already gives it the accent colour and the
-     pointer, and main.css's sitewide red `a` colour loses on specificity */
-  .issues li a[data-trip] { font-weight: 700; }
+     the weight; .issues li .issue-jump already gives it the accent colour and
+     the pointer */
+  .issues li .issue-jump[data-trip] { font-weight: 700; }
 
   /* Passport expiry: a native date input inside a .field, so it inherits the
      modal control sizing and colours that #inBookBy already relies on. The
@@ -3049,4 +3105,165 @@
   @media (max-width: 560px) {
     /* the phone chip has 8px of bottom padding to fit into, not 9px */
     .summary .chip .tt-bar { margin-top: 2px; }
+  }
+
+  /* ===== Audit 2026-07-26: functional fixes ===== */
+
+  /* The item form's blocked-save line. It sits in .modal-foot, which is
+     flex:none outside the scrolling .m-body, so it is on screen whatever the
+     form is scrolled to; it takes the leading space and pushes Cancel/Save to
+     the right, and wraps onto its own line on a phone (.modal-foot wraps
+     there). Same red and weight as the .field .err messages it stands in for. */
+  .modal-foot .form-err {
+    flex: 1 1 240px; min-width: 0; text-align: left;
+    color: var(--red); font-size: var(--m-help, 12px); font-weight: 600; line-height: 1.45;
+  }
+
+  /* Empty-state currency picker: the totals bar (and with it #currencySel)
+     only exists once a trip has an item, so a brand-new trip had no inline way
+     to say what its money is in, while "Load an example trip" right above it
+     builds that example in exactly this currency. Same id as the totals-bar
+     picker on purpose: the two can never coexist, so the board's change
+     handler keeps seeing one control. */
+  .empty .empty-currency {
+    display: flex; align-items: center; justify-content: center; gap: 9px;
+    margin: 18px 0 0; font-size: 12.5px; color: var(--text-dim);
+  }
+  /* main.css makes every <label> a 1rem block with a 1rem bottom margin, which
+     would drop the select onto its own line and shove the note down */
+  .trip-planner-app .empty-currency label {
+    display: inline; margin: 0; font-size: inherit; font-weight: 600; color: inherit;
+  }
+  .empty .empty-currency .sel-wrap { display: inline-block; }
+  /* main.css also stretches every bare select to width:100% / height:3.25rem
+     and paints its own chevron background-image; all three are pinned here
+     (.sel-wrap draws the chevron), the same way .sample-select next to it does */
+  .trip-planner-app select.empty-currency-sel {
+    width: auto; height: auto; appearance: none; -webkit-appearance: none;
+    background: var(--bg-card); border: 1px solid var(--border); border-radius: 9px;
+    padding: 6px 30px 6px 11px; font-size: 12.5px; font-weight: 700; color: var(--text);
+  }
+  .trip-planner-app select.empty-currency-sel:hover:not(:disabled) { border-color: var(--accent); }
+  .trip-planner-app select.empty-currency-sel:disabled { opacity: 0.6; cursor: not-allowed; }
+
+  @media (max-width: 560px) {
+    /* a tap target, like every other control on the phone layout */
+    .trip-planner-app select.empty-currency-sel { min-height: 44px; }
+  }
+
+  /* A5: the issues panel's "show" and cross-trip jumps used to be href-less
+     <a>, which no keyboard could reach. They are <button> now, so main.css
+     reaches them: `button { height:3.25rem; line-height:3.25rem;
+     padding:0 1.75rem; white-space:nowrap; color:#555 !important }` plus a red
+     :hover colour. Everything below undoes exactly that, so they still read as
+     the inline links they always looked like. (.trip-planner-app button:hover
+     already kills main.css's inset red ring and its :hover:active wash.) */
+  .trip-planner-app .issues li .issue-jump {
+    display: inline; height: auto; line-height: inherit; padding: 0;
+    background: none; border: 0; border-radius: 0; box-shadow: none;
+    font: inherit; font-weight: inherit; white-space: normal; text-align: left;
+    color: var(--accent) !important;
+  }
+  .trip-planner-app .issues li .issue-jump:hover,
+  .trip-planner-app .issues li .issue-jump:focus,
+  .trip-planner-app .issues li .issue-jump:active {
+    background: none; color: var(--accent) !important;
+  }
+  .trip-planner-app .issues li .issue-jump[data-trip] { font-weight: 700; }
+
+  /* C2: the "that item is hidden by your filters" toast is a whole sentence
+     plus an action, which is the first toast wide enough to expose how .toasts
+     is sized. It is fixed at left:50% with no width, so it shrink-to-fits into
+     the space LEFT of the viewport edge (half the screen): on a phone that is
+     195px, and the flex row stacked the sentence one word per line inside it.
+     width:max-content takes the box off that available-space budget, and the
+     max-width puts it back on the viewport. */
+  .toasts { width: max-content; max-width: min(680px, calc(100vw - 24px)); }
+  .toasts .toast { max-width: 100%; }
+  .trip-planner-app .toast > span { min-width: 0; }
+  .trip-planner-app .toast button { flex: none; white-space: nowrap; }
+
+  /* A3: a shared view cannot write, so the trip actions that would write are
+     disabled rather than silently inert. main.css does not style :disabled at
+     all, but .tp-menu-panel button:hover/:focus would still light the row up,
+     and the .danger colour pin on "Delete trip" outranks the app's blanket
+     disabled colour; both are settled here (this block is last in the file, so
+     equal-specificity !important pins earlier in it lose). */
+  .trip-planner-app .tp-menu-panel button:disabled,
+  .trip-planner-app .tp-menu-panel button:disabled:hover,
+  .trip-planner-app .tp-menu-panel button:disabled:focus {
+    background: none; color: var(--text-faint) !important;
+  }
+
+  /* D7: a documents store that cannot be read says so where the tiles would
+     be. It lives INSIDE .docs-list so the sibling ".docs-list:not(:empty) +
+     .docs-empty" rule hides the "No documents yet" card, which would
+     otherwise claim the item has no documents when that is exactly what is
+     not known. Same red and weight as .docs-err. */
+  .trip-planner-app .docs-unavailable {
+    width: 100%; color: var(--red); font-size: var(--m-help, 12px);
+    font-weight: 600; line-height: 1.45;
+  }
+
+  /* A11: the shared trip picker is disabled now, not just pointer-blocked. The
+     colour is pinned because a disabled <select> is greyed by the UA and this
+     app is dark-only; the 0.7 opacity in the shared-view block above already
+     carries the "you cannot touch this" signal, so the text keeps the app's
+     own token instead of an unreadable platform grey. */
+  .trip-planner-app select.trip-select:disabled {
+    color: var(--text); background-color: var(--bg-card); cursor: default;
+  }
+
+  /* C14: the toolbar's clear-filters control. It is the LAST thing in the
+     filter row, after the control that most recently caused the filtering.
+     main.css paints every <button> `color:#555 !important` with a red :hover
+     and gives it `display:inline-block`, so this needs both a colour pin and a
+     [hidden] pin - the UA's `[hidden]{display:none}` loses to any author
+     display, which would leave a "Clear filters" button on screen with no
+     filters to clear. It reads accent rather than neutral because its being
+     there at all is the signal that a filter is on. */
+  .trip-planner-app .tb-clear[hidden] { display: none; }
+  .trip-planner-app .tb-clear {
+    flex: none; padding: 8px 12px; font-size: 12.5px;
+    background: var(--accent-soft);
+    border-color: color-mix(in srgb, var(--accent) 42%, transparent);
+    color: var(--accent) !important;
+  }
+  .trip-planner-app .tb-clear:hover,
+  .trip-planner-app .tb-clear:focus {
+    background: color-mix(in srgb, var(--accent) 22%, transparent);
+    border-color: var(--accent); color: var(--accent) !important;
+  }
+  .trip-planner-app .tb-clear:hover:active { background-color: var(--accent-soft); }
+
+  /* C13: the weather caveat and its CC-BY credit ship hidden and are revealed
+     by the first temperature actually written (revealWeatherNote). .days-note
+     sets display:flex, which outranks the UA's [hidden] rule, so hiding it
+     takes a pin of its own. */
+  .trip-planner-app .days-wx[hidden] { display: none; }
+
+  /* C11: the timeline paperclip is part of the row's markup now (same hidden
+     span the day view has always used) instead of a node appended after paint,
+     so it takes the same spacing .dc-clip has rather than the leading space its
+     imperative textContent used to carry. */
+  .tp-clip { margin-left: 5px; }
+
+  /* C10: filters can leave the bulk bar with nothing selectable while selection
+     mode stays on. The bar says so in its own count slot, and Select all is
+     disabled because there is nothing for it to tick; the whole bar drops to
+     the neutral surface so it stops reading as a live accent-tinted control. */
+  .bulk-bar.is-empty {
+    background: var(--gray-soft);
+    border-color: var(--border-soft);
+  }
+  .bulk-bar.is-empty .bulk-count { font-weight: 600; }
+  .trip-planner-app .bulk-bar.is-empty .bulk-all {
+    color: var(--text-faint); opacity: 0.55; cursor: not-allowed;
+  }
+
+  /* A9: dropping a name from the roster deletes "paid by" from every item that
+     named them. The line that says so is a .hint that reads as a warning, not
+     as the neutral guidance above it. .modal [hidden] already hides it. */
+  .trip-planner-app .roster-warn {
+    margin-top: 5px; color: var(--amber); font-weight: 600;
   }
