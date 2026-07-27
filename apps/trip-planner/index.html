@@ -43,7 +43,7 @@
   <meta name="theme-color" content="#0e1116">
   <link rel="stylesheet" href="../../assets/css/main.css">
   <link rel="stylesheet" href="../../assets/css/sync-status.css">
-  <link rel="stylesheet" href="css/styles.css?v=33">
+  <link rel="stylesheet" href="css/styles.css?v=36">
 </head>
 <body class="tp-page">
   <div id="sync-banner" class="sync-banner" role="status" aria-live="polite" hidden></div>
@@ -77,7 +77,10 @@
         <div class="tp-menu-panel">
           <div class="tp-menu-cap">Trip</div>
           <button data-act="new-trip">➕ New trip</button>
-          <button data-act="rename-trip">✏️ Rename / currency</button>
+          <!-- the dialog behind this row is titled "Trip settings" and edits the
+               name, the currency, the budget AND the traveller roster, so the
+               label says that rather than naming two of the four -->
+          <button data-act="rename-trip">⚙️ Trip settings</button>
           <button data-act="duplicate-trip">📄 Duplicate trip</button>
           <button data-act="essentials">🆘 Trip essentials</button>
           <button data-act="packing">🎒 Packing list</button>
@@ -133,10 +136,14 @@
       <button class="icon-btn" id="redoBtn" title="Redo (Ctrl+Y)" aria-label="Redo" disabled><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 14l5-5-5-5"/><path d="M20 9H10a6 6 0 0 0 0 12h3"/></svg></button>
     </div>
     <span class="tb-sep" aria-hidden="true"></span>
-    <span class="view-switch" role="tablist">
-      <button id="viewTimeline" class="on">Timeline</button>
-      <button id="viewDays">Days</button>
-      <button id="viewMap">Map</button>
+    <!-- a real tablist: applyView() keeps aria-selected in step with the .on
+         class, and each tab names the container it actually shows. All three
+         stay in the Tab order on purpose (no roving tabindex), which is how
+         they have always behaved. -->
+    <span class="view-switch" role="tablist" aria-label="Board view">
+      <button id="viewTimeline" class="on" role="tab" aria-selected="true" aria-controls="board">Timeline</button>
+      <button id="viewDays" role="tab" aria-selected="false" aria-controls="daysBox">Days</button>
+      <button id="viewMap" role="tab" aria-selected="false" aria-controls="mapBox">Map</button>
     </span>
     <div class="tb-group tb-filters" role="group" aria-label="Search and filters">
     <span class="search-wrap">
@@ -163,6 +170,13 @@
          when the trip names two or more travellers, so a solo trip's toolbar
          has no such control at all rather than a hidden one -->
     <span class="tb-traveler" id="travelerFilterWrap"></span>
+    <!-- the way out of a filter, wherever you are: the board's own "Clear
+         filters" only exists once a filter has hidden everything (Timeline) or
+         some days (Days), so a filter that still shows rows, and any filter at
+         all on the Map, had no reset. syncClearFilters shows this exactly while
+         a filter is active. -->
+    <button type="button" class="btn tb-clear" id="clearFiltersBtn" data-act="clear-filters"
+            title="Clear the search and every filter" hidden>✕ Clear filters</button>
     </div>
   </div>
 
@@ -173,13 +187,15 @@
     </details>
   </div>
 
-  <div class="board" id="board"></div>
+  <!-- the three panels of the tablist above; the unselected two are
+       display:none, so assistive tech only ever sees the selected one -->
+  <div class="board" id="board" role="tabpanel" aria-labelledby="viewTimeline"></div>
 
-  <div class="days-box" id="daysBox">
+  <div class="days-box" id="daysBox" role="tabpanel" aria-labelledby="viewDays">
     <div class="days-list" id="daysList"></div>
   </div>
 
-  <div class="map-box" id="mapBox">
+  <div class="map-box" id="mapBox" role="tabpanel" aria-labelledby="viewMap">
     <div class="map-status" id="mapStatus"></div>
     <div id="mapCanvas"></div>
   </div>
@@ -206,6 +222,15 @@
             <button type="button" data-type="note"><span class="seg-ico" aria-hidden="true">📝</span><span>Note</span></button>
           </div>
         </div>
+        <div class="field" id="fFlightRoute">
+          <label id="flightRouteLabel">Airports <small>(optional)</small></label>
+          <div class="ap-io" role="group" aria-labelledby="flightRouteLabel">
+            <input id="inFlightFrom" maxlength="60" placeholder="From: city or code" autocomplete="off" aria-label="Departure airport">
+            <span class="ap-arrow" aria-hidden="true">→</span>
+            <input id="inFlightTo" maxlength="60" placeholder="To: city or code" autocomplete="off" aria-label="Arrival airport">
+          </div>
+          <div class="hint">Search 3,300 airports by city or IATA code. Picking both writes the title below.</div>
+        </div>
         <div class="field" id="fTitle">
           <label id="titleLabel" for="inTitle">Title</label>
           <input id="inTitle" maxlength="120" placeholder="e.g. Shreveport to Tokyo (HND)">
@@ -214,7 +239,7 @@
         </div>
         <div class="field">
           <label for="inLocation">Place <small>(optional)</small></label>
-          <input id="inLocation" maxlength="80" placeholder="e.g. Tokyo">
+          <input id="inLocation" maxlength="80" placeholder="e.g. Tokyo" autocomplete="off">
         </div>
       </section>
 
@@ -337,6 +362,7 @@
       </section>
     </div>
     <div class="modal-foot">
+      <div class="form-err" id="itemFormErr" role="alert" hidden></div>
       <button type="button" class="btn ghost" data-close>Cancel</button>
       <button type="submit" class="btn primary" id="itemSaveBtn">Save item</button>
     </div>
@@ -345,13 +371,13 @@
 
 <!-- shift modal -->
 <div class="overlay" id="shiftOverlay">
-  <form class="modal small" id="shiftForm" role="dialog" aria-modal="true" aria-labelledby="shiftTitle" tabindex="-1">
+  <form class="modal small" id="shiftForm" role="dialog" aria-modal="true" aria-labelledby="shiftTitle" tabindex="-1" novalidate>
     <div class="m-head">
       <h2 id="shiftTitle">Shift dates</h2>
     </div>
     <div class="m-body">
       <section class="m-section">
-        <div class="field">
+        <div class="field" id="fShiftDays">
           <label for="shiftDays">Shift by</label>
           <div class="m-row">
             <div class="input-group stepper">
@@ -361,6 +387,7 @@
             </div>
             <span class="stepper-unit">day(s)</span>
           </div>
+          <div class="err" id="shiftErr">A number of days is required.</div>
           <div class="hint">Use a negative number to move earlier.</div>
         </div>
       </section>
@@ -405,7 +432,7 @@
 
 <!-- trip modal -->
 <div class="overlay" id="tripOverlay">
-  <form class="modal small" id="tripForm" role="dialog" aria-modal="true" aria-labelledby="tripModalTitle" tabindex="-1">
+  <form class="modal small" id="tripForm" role="dialog" aria-modal="true" aria-labelledby="tripModalTitle" tabindex="-1" novalidate>
     <div class="m-head">
       <h2 id="tripModalTitle">New trip</h2>
     </div>
@@ -444,6 +471,10 @@
           <label for="inTripTravelers">Travelers <small>(optional, comma-separated, up to 6)</small></label>
           <input id="inTripTravelers" maxlength="160" placeholder="e.g. Alex, Sam" autocomplete="off">
           <div class="hint">Name two or more people to split each cost and see who is paying for what.</div>
+          <!-- taking a name off the roster deletes "paid by" from every item
+               that named them (see submitTripForm). syncTravelerWarning counts
+               those items while you type; the edit is never blocked -->
+          <div class="hint roster-warn" id="tripTravelersWarn" hidden></div>
         </div>
       </section>
     </div>
@@ -588,15 +619,14 @@
         <div class="route-io">
           <div class="field">
             <label for="routeFrom">From</label>
-            <input id="routeFrom" maxlength="80" placeholder="e.g. Tokyo" list="placeList" autocomplete="off">
+            <input id="routeFrom" maxlength="80" placeholder="e.g. Tokyo" autocomplete="off">
           </div>
           <button type="button" class="icon-btn route-swap" id="routeSwap" title="Swap from and to" aria-label="Swap from and to">⇅</button>
           <div class="field">
             <label for="routeTo">To</label>
-            <input id="routeTo" maxlength="80" placeholder="e.g. Kyoto" list="placeList" autocomplete="off">
+            <input id="routeTo" maxlength="80" placeholder="e.g. Kyoto" autocomplete="off">
           </div>
         </div>
-        <datalist id="placeList"></datalist>
         <div class="m-panel route-result" id="routeResult">Enter two places and hit "Check route".</div>
       </section>
       <section class="m-section">
@@ -665,7 +695,7 @@
        CC BY 4.0. Static HTML so it shows without JS too. Mirrors the
        .data-attribution block in apps/rising-shows/index.html. -->
   <div class="data-attribution">
-    <p class="da-text">Place lookup and map data &copy; <a class="da-link" href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener noreferrer">OpenStreetMap</a> contributors, available under the <a class="da-link" href="https://opendatacommons.org/licenses/odbl/" target="_blank" rel="noopener noreferrer">Open Database License</a>, via <a class="da-link" href="https://nominatim.openstreetmap.org/" target="_blank" rel="noopener noreferrer">Nominatim</a>. Typical weather from <a class="da-link" href="https://open-meteo.com/" target="_blank" rel="noopener noreferrer">Open-Meteo</a>, licensed <a class="da-link" href="https://creativecommons.org/licenses/by/4.0/" target="_blank" rel="noopener noreferrer">CC BY 4.0</a>. Visa requirements from the community-maintained <a class="da-link" href="https://github.com/imorte/passport-index-data" target="_blank" rel="noopener noreferrer">Passport Index dataset</a>. Exchange rates from <a class="da-link" href="https://frankfurter.app/" target="_blank" rel="noopener noreferrer">Frankfurter</a>. None of these are official sources for entry requirements.</p>
+    <p class="da-text">Place lookup and map data &copy; <a class="da-link" href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener noreferrer">OpenStreetMap</a> contributors, available under the <a class="da-link" href="https://opendatacommons.org/licenses/odbl/" target="_blank" rel="noopener noreferrer">Open Database License</a>, via <a class="da-link" href="https://nominatim.openstreetmap.org/" target="_blank" rel="noopener noreferrer">Nominatim</a>. City suggestions and typical weather from <a class="da-link" href="https://open-meteo.com/" target="_blank" rel="noopener noreferrer">Open-Meteo</a>, licensed <a class="da-link" href="https://creativecommons.org/licenses/by/4.0/" target="_blank" rel="noopener noreferrer">CC BY 4.0</a>. Airport list from <a class="da-link" href="https://ourairports.com/data/" target="_blank" rel="noopener noreferrer">OurAirports</a>, released into the public domain. Visa requirements from the community-maintained <a class="da-link" href="https://github.com/imorte/passport-index-data" target="_blank" rel="noopener noreferrer">Passport Index dataset</a>. Exchange rates from <a class="da-link" href="https://frankfurter.app/" target="_blank" rel="noopener noreferrer">Frankfurter</a>. None of these are official sources for entry requirements.</p>
   </div>
 
   <div data-include="footer"></div>
@@ -699,7 +729,7 @@
     }
   </script>
 
-  <script src="js/trip-logic.js?v=20"></script>
-  <script src="js/app.js?v=37"></script>
+  <script src="js/trip-logic.js?v=21"></script>
+  <script src="js/app.js?v=39"></script>
 </body>
 </html>

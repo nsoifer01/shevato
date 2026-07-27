@@ -2,7 +2,12 @@
 (() => {
 
   // ---------- constants ----------
-  const TP_BUILD = 31; // bump with every asset-version bump; shown in the footer
+  // Shown at the bottom of the trip menu so a bug report can name the exact
+  // build it came from. THE RULE: TP_BUILD must always equal the `?v=` on
+  // js/app.js, in index.html and in sw.js's PRECACHE list alike. Bumping the
+  // cache-buster without bumping this number is what made "build 31" outlive
+  // v=32..38 and stop identifying anything.
+  const TP_BUILD = 39;
   const LS_KEY = 'trip-planner:v1';
   const TIMEFMT_KEY = 'trip-planner:timefmt';
   const TYPE_META = {
@@ -44,13 +49,16 @@
   // Pure logic (dates, validation, coverage, stats, route math) lives in
   // js/trip-logic.js so the node:test suite can exercise it directly.
   const {
-    isIsoDate, toUtc, diffDays, addDays,
+    isIsoDate, toUtc, diffDays, addDays, localDateIso,
     isStay, nights, sortKey, sortedItems, tripLegs,
     nextUpEvent, defaultPackingItems,
     validateItem, coverageGaps, tripStats, overlappingTrips, MAX_TRIP_DAYS, DATE_MIN, DATE_MAX, isDateInRange,
     ISLANDISH, distKm, flagEmoji, compass, fmtDur, modeOptions,
     routeBadges, routeFlags, routeTips, routeLinks, modeLink, ROUTE_HONESTY,
     classifyGeoMatch, geoMatchNote, GEO_MATCH_RANK, GEO_MATCH_TEXT,
+    foldPlace, rankPlaceResults,
+    airportIndex, airportLabel, airportDetail, searchAirports,
+    flightTitleFromAirports, parseFlightAirports,
     classifyVisa, parseVisaMatrix, visaCountryUsable, visaUnconfirmedNames, visaVintageNote, passportExpiryStatus, slimTripForShare, hasFastRail, viewFromHash, hashForView,
     buildIcs, buildCsv, convertAmount, sumInCurrency, normalizeTravelers, travelerTotals,
     evenSplitAmounts, splitAmountsMatch, customSplitShares,
@@ -95,6 +103,13 @@
     const rec = collapseFor(tripId);
     return typeof rec[key] === 'boolean' ? rec[key] : fallback;
   }
+  // Nothing else ever collected these: one sub-object per trip id accumulated
+  // here forever, on the same localStorage budget save() runs out of.
+  function dropCollapse(tripId) {
+    if (!(tripId in collapseState)) return;
+    delete collapseState[tripId];
+    try { localStorage.setItem(COLLAPSE_KEY, JSON.stringify(collapseState)); } catch { /* best effort */ }
+  }
 
   // read-only share view: the real db is parked in realDb; save() is a no-op
   // so nothing the visitor touches ever reaches trip-planner:v1.
@@ -137,25 +152,42 @@
   // toasted by the caller because a confirmation is a claim that the change was
   // STORED: "Item added" followed by "Could not save" was a lie, and both
   // messages then auto-dismissed while the item existed only in memory.
-  function save(okMsg, undoFn) {
+  // `outsideHistory` persists the change and moves the baseline with it, but
+  // never files it as an Undo step. See ensureTrip: the app restoring its own
+  // floor is not an edit the traveller made.
+  function save(okMsg, undoFn, outsideHistory) {
     if (sharedMode) return false; // shared view never writes to storage
     let ok = true;
     try {
       const next = JSON.stringify(db);
       const key = historyKey();
-      if (lastSavedKey !== null && key !== lastSavedKey) {
+      // The write lands FIRST. Booking the history before it did meant a
+      // quota-exceeded setItem left the history believing this state was
+      // stored when it never reached disk, so the next Undo reversed a change
+      // that only ever existed in memory.
+      localStorage.setItem(LS_KEY, next);
+      if (!outsideHistory && lastSavedKey !== null && key !== lastSavedKey) {
         undoPast.push(lastSaved);
         if (undoPast.length > HISTORY_MAX) undoPast.shift();
         undoFuture.length = 0;
       }
       lastSaved = next;
       lastSavedKey = key;
-      localStorage.setItem(LS_KEY, next);
     }
     catch (err) { ok = false; }
     setSaveFailed(!ok);
-    if (ok && okMsg) toast(okMsg, undoFn);
+    if (ok && okMsg) toast(okMsg, undoFn ? undoThisSave(undoFn) : null);
     return ok;
+  }
+
+  // An Undo toast lives 6 seconds and its offer is to reverse THIS save, so it
+  // has to go inert the moment anything else is saved: a stale toast was
+  // reversing whatever edit the traveller made in between instead.
+  // clearDay/bulkDelete/duplicateDay spell the same guard out inline because
+  // they toast for themselves rather than through save().
+  function undoThisSave(fn) {
+    const snapshot = lastSaved;
+    return () => { if (lastSaved === snapshot) fn(); };
   }
 
   // A toast that disappears after 2.6 seconds is the wrong shape for "your data
@@ -202,11 +234,17 @@
   // the restore fires exactly when that accept is what is being undone.
   const assistUndo = new Map();
 
+  // Both stacks hold whole-db snapshots, so both are capped at HISTORY_MAX and
+  // not just the one save() feeds. Each shift() drops the entry FURTHEST from
+  // the current state (the oldest undo, the newest redo), which is the same
+  // trade save() already makes: the steps nearest to hand always survive.
   function undo() {
     if (!undoPast.length) return;
     undoFuture.push(lastSaved);
+    if (undoFuture.length > HISTORY_MAX) undoFuture.shift();
     const snapshot = undoPast.pop();
     restoreSnapshot(snapshot);
+    syncDeletedChats();
     const restore = assistUndo.get(snapshot);
     if (restore) { assistUndo.delete(snapshot); restore(); }
     toast('Undone');
@@ -214,7 +252,9 @@
   function redo() {
     if (!undoFuture.length) return;
     undoPast.push(lastSaved);
+    if (undoPast.length > HISTORY_MAX) undoPast.shift();
     restoreSnapshot(undoFuture.pop());
+    syncDeletedChats();
     toast('Redone');
   }
   function syncUndoButtons() {
@@ -225,7 +265,18 @@
 
   // Repair anything structurally broken (hand-edited storage, partial imports)
   // so one bad item can never take the whole app down.
+  // A repair that changed something is WRITTEN BACK. It used to live in memory
+  // only, so the fixed shape reached disk on whatever unrelated edit happened
+  // next (or never), and the markSaved() right after boot made the UNrepaired
+  // state the undo baseline: one Undo could hand the broken data back. Written
+  // outsideHistory because the app straightening its own storage is
+  // housekeeping, not an edit the traveller made and should have to undo.
   function repairDb() {
+    const before = historyKey();
+    repairTrips();
+    if (historyKey() !== before) save(null, null, true);
+  }
+  function repairTrips() {
     if (!Array.isArray(db.trips)) db.trips = [];
     db.trips = db.trips.filter(t => t && typeof t === 'object');
     for (const t of db.trips) {
@@ -263,14 +314,22 @@
 
   function activeTrip() { return db.trips.find(t => t.id === db.activeTripId) || null; }
 
+  // Both repairs save outsideHistory. Auto-creating the fallback trip is the
+  // app restoring its own floor, not something the traveller did, and as a
+  // history step it competed with theirs: deleting the last trip saved the
+  // empty db, then this render's ensureTrip saved a fresh "My trip" on top, so
+  // Undo popped the empty state, ensureTrip immediately re-created a trip and
+  // filed ANOTHER step. Every press produced one more blank trip and never the
+  // trip that was deleted. Kept out of the history, the top of the stack stays
+  // the deleted trip and one Undo brings it back.
   function ensureTrip() {
     if (!db.trips.length) {
       const t = { id: uid(), name: 'My trip', currency: 'USD', items: [] };
       db.trips.push(t);
       db.activeTripId = t.id;
-      save();
+      save(null, null, true);
     }
-    if (!activeTrip()) { db.activeTripId = db.trips[0].id; save(); }
+    if (!activeTrip()) { db.activeTripId = db.trips[0].id; save(null, null, true); }
   }
 
   // ---------- date display ----------
@@ -299,7 +358,11 @@
     // "12:30 PM" needs ~64px of text, "12:30" needs ~36px (see --dc-rail-w)
     document.body.classList.toggle('tp-24h', use24h);
   }
-  function todayIso() { return new Date().toISOString().slice(0, 10); }
+  // The traveller's LOCAL date, not a UTC slice of the clock. See localDateIso:
+  // the dates on the items are zone-less wall dates, so the countdown, the
+  // past-row dimming, the booking deadlines and the Up-next chip all have to
+  // agree with the calendar on the traveller's own wall.
+  function todayIso() { return localDateIso(new Date()); }
 
   // ---------- money ----------
   // CHF is deliberately absent: the Swiss franc has no real symbol (it
@@ -569,7 +632,7 @@
         level: 'warn',
         text: `Overlaps with another trip: "${name}" (${o.start === o.end ? fmtDate(o.start) : fmtRange(o.start, o.end)})`,
         ids: [],
-        html: `Overlaps with another trip: "<a data-trip="${esc(o.id)}">${esc(name)}</a>"`
+        html: `Overlaps with another trip: "<button type="button" class="issue-jump" data-trip="${esc(o.id)}">${esc(name)}</button>"`
           + ` (${esc(o.start === o.end ? fmtDate(o.start) : fmtRange(o.start, o.end))})`,
       });
     }
@@ -637,6 +700,14 @@
   // section (see itemMapsQuery for which types derive a query).
   const mapsHtmlFor = it => tripMapsRatingHtml(itemMapsQuery(it));
 
+  // The issue list render() last built. computeIssues is O(n^2) over stays (the
+  // overlap check) and over timed items (sameTimeCollisions), and the day view
+  // wants exactly the list that has just been computed, so it reads this rather
+  // than paying for the whole pass a second time on every repaint. It cannot go
+  // stale: every write to a trip goes through save() + render(), and setView -
+  // the one applyView call outside render() - changes no data at all.
+  let currentIssues = [];
+
   function render() {
     try {
       ensureTrip();
@@ -644,11 +715,13 @@
       const trip = activeTrip();
       ensureRates(trip);
       const issues = computeIssues(trip);
+      currentIssues = issues;
       renderSummary(trip, issues);
       renderStrip(trip);
       renderIssues(issues);
       renderBoard(trip, issues);
       applyView();
+      syncClearFilters();
       syncUndoButtons();
       refreshDocIndicators();
       syncAssistPanel();
@@ -670,9 +743,15 @@
     $('#board').style.display = v === 'timeline' ? '' : 'none';
     $('#mapBox').classList.toggle('on', v === 'map');
     $('#daysBox').classList.toggle('on', v === 'days');
-    $('#viewTimeline').classList.toggle('on', v === 'timeline');
-    $('#viewDays').classList.toggle('on', v === 'days');
-    $('#viewMap').classList.toggle('on', v === 'map');
+    // .on paints the tab; aria-selected is the same fact said out loud. They
+    // are set together so the tablist can never claim a tab the eye disagrees
+    // with (it used to claim nothing at all: three plain buttons under a
+    // role="tablist" that had no tabs in it).
+    for (const [id, on] of [['#viewTimeline', v === 'timeline'], ['#viewDays', v === 'days'], ['#viewMap', v === 'map']]) {
+      const b = $(id);
+      b.classList.toggle('on', on);
+      b.setAttribute('aria-selected', on ? 'true' : 'false');
+    }
     document.body.classList.toggle('view-days', v === 'days');
     if (v === 'map') renderMap();
     if (v === 'days') renderDays();
@@ -744,6 +823,11 @@
     // select clips at 260px, so it carries the full name as its own title.
     const active = db.trips.find(t => t.id === db.activeTripId);
     sel.title = active ? active.name : '';
+    // A11: shared mode used to block this with pointer-events only, which stops
+    // the mouse and nothing else - it stayed in the tab order and changed with
+    // the arrow keys. That it broke nothing was luck (a shared db holds exactly
+    // one trip), so it is disabled here like every other blocked control.
+    sel.disabled = sharedMode;
   }
 
   function renderSummary(trip, issues) {
@@ -835,10 +919,14 @@
       (errs && warns ? ' · ' : '') +
       (warns ? `<span class="count-warn">${warns} warning${warns === 1 ? '' : 's'}</span>` : '') +
       `</span><span style="color:var(--text-dim);font-weight:400;font-size:13px">(click to review)</span>`;
+    // Both jump controls - "show" here and the other trip's name inside
+    // iss.html - are <button>, not <a>. They navigate inside the app rather
+    // than to a URL, so as href-less anchors they were unfocusable: neither
+    // could be reached with Tab or fired with Enter.
     $('#issuesList').innerHTML = issues.map((iss, idx) => `
       <li>
         <span class="tag ${iss.level === 'error' ? 'err' : 'warn'}">${iss.level === 'error' ? 'ERROR' : 'WARN'}</span>
-        <span>${iss.html || esc(iss.text)}${iss.ids.length ? ` <a data-jump="${iss.ids[0]}">show</a>` : ''}</span>
+        <span>${iss.html || esc(iss.text)}${iss.ids.length ? ` <button type="button" class="issue-jump" data-jump="${esc(iss.ids[0])}">show</button>` : ''}</span>
       </li>`).join('');
   }
 
@@ -888,6 +976,16 @@
     ui.search = ''; ui.filterType = ''; ui.filterStatus = ''; ui.filterTraveler = '';
     exitSelectMode();
     render();
+  }
+
+  // The toolbar's own way out, next to the controls that caused the filtering.
+  // The board's clear buttons only appear once something has been hidden
+  // ENTIRELY (Timeline) or partly (Days), so a filter still showing rows, and
+  // any filter at all while the Map is up, left no reset on screen. This one is
+  // tied to the filters themselves, not to what they happened to hide, and it
+  // calls the same clearFilters() the board's buttons do.
+  function syncClearFilters() {
+    $('#clearFiltersBtn').hidden = !filtersActive();
   }
 
   // The "Filter by traveller" select is BUILT, not hidden: a trip that names
@@ -964,10 +1062,21 @@
     if (!selMode) { if (bar) bar.remove(); return; }
     if (!bar) bar = buildBulkBar();
     const n = selIds.size;
-    $('#bulkCount').textContent = `${n} selected`;
+    // Filters can hide every row while the mode stays on - only an empty TRIP
+    // exits it - so the bar sat over "No items match" reading "0 selected" with
+    // a Select all that ticked nothing. The mode is KEPT (a filter is a
+    // transient thing to undo, and turning the mode off as you type a search
+    // that momentarily matches nothing means re-entering it by hand once you
+    // fix the search) and the bar says why it has nothing to work with instead.
+    const nothingToSelect = !visibleIds.length;
+    bar.classList.toggle('is-empty', nothingToSelect);
+    $('#bulkCount').textContent = nothingToSelect
+      ? 'Nothing to select: the filters are hiding every item'
+      : `${n} selected`;
     const all = $('#bulkAll');
-    all.checked = !!visibleIds.length && n === visibleIds.length;
+    all.checked = !nothingToSelect && n === visibleIds.length;
     all.indeterminate = n > 0 && n < visibleIds.length;
+    all.disabled = nothingToSelect;
     // nothing ticked means nothing to act on, so the two actions are dead
     // rather than silently doing nothing
     $('#bulkStatus').disabled = !n;
@@ -1046,6 +1155,16 @@
     });
   }
 
+  // The trip currency is offered in two places (the totals bar, and the empty
+  // state that exists precisely when there is no totals bar), and both must
+  // list the same thing: a trip already saved in a currency CURRENCIES does not
+  // carry has to keep it as an option or picking anything would lose it.
+  function currencyOptionsHtml(trip) {
+    const cur = trip.currency || 'USD';
+    const list = CURRENCIES.includes(cur) ? CURRENCIES : [...CURRENCIES, cur];
+    return list.map(c => `<option value="${c}" ${c === cur ? 'selected' : ''}>${c} (${esc(currencySymbol(c))})</option>`).join('');
+  }
+
   function renderBoard(trip, issues) {
     const board = $('#board');
     // ahead of the first matchesFilters call of this render, and ahead of the
@@ -1076,6 +1195,12 @@
               </span>
             </span>
           </div>
+          <p class="empty-currency">
+            <label for="currencySel">Costs in</label>
+            <span class="sel-wrap">
+              <select id="currencySel" class="empty-currency-sel" ${sharedMode ? 'disabled' : ''}>${currencyOptionsHtml(trip)}</select>
+            </span>
+          </p>
           <p class="sample-note">Examples are illustrative sample data: rough round costs, not quotes or live availability.</p>
         </div>`;
       $('#emptyAdd').addEventListener('click', () => openItemModal(null));
@@ -1085,7 +1210,13 @@
     }
 
     const issueById = buildIssueById(issues);
-    const gaps = issues.filter(i => i.gap).map(i => i.gap);
+    // Gap banners describe the WHOLE trip, not the filtered subset, so a live
+    // filter takes them off the board entirely. They were emitted for the nodes
+    // the filter skipped and every unrendered one was dumped after the loop, so
+    // a search matching nothing drew "3 nights without a stay" directly above
+    // "No items match the current search and filters". The gaps are unaffected
+    // by filters and still read in full from the Issues panel.
+    const gaps = filtersActive() ? [] : issues.filter(i => i.gap).map(i => i.gap);
     const st = tripStats(trip);
     const phase = (st.start && st.end) ? tripPhase(st.start, st.end, todayIso()) : { phase: 'before' };
     const today = todayIso();
@@ -1152,12 +1283,10 @@
     if (!shownCount) html += filterEmptyHtml('items');
 
     const money = tripMoney(trip);
-    const curList = CURRENCIES.includes(trip.currency || 'USD') ? CURRENCIES : [...CURRENCIES, trip.currency];
-    const curOptions = curList.map(c => `<option value="${c}" ${c === (trip.currency || 'USD') ? 'selected' : ''}>${c} (${esc(currencySymbol(c))})</option>`).join('');
     const curDisabled = sharedMode ? 'disabled' : '';
     html += `
       <div class="totals">
-        <div class="t currency-pick"><div class="k">Currency</div><select id="currencySel" class="currency-sel" aria-label="Trip currency" ${curDisabled}>${curOptions}</select></div>
+        <div class="t currency-pick"><div class="k">Currency</div><select id="currencySel" class="currency-sel" aria-label="Trip currency" ${curDisabled}>${currencyOptionsHtml(trip)}</select></div>
         ${money.planned.total !== money.confirmed.total ? `<div class="t"><div class="k">Full plan</div><div class="v">${moneyHtml(trip, money.planned.total, undefined, 'total')}</div></div>` : ''}
         <div class="t confirmed${money.confirmed.unconverted.length ? ' incomplete' : ''}"><div class="k">Confirmed bookings</div><div class="v">${moneyHtml(trip, money.confirmed.total, undefined, 'total')}</div></div>
       </div>`;
@@ -1182,6 +1311,16 @@
     if (ui.flashId) {
       const el = board.querySelector(`[data-id="${ui.flashId}"]`);
       if (el) { el.classList.add('flash'); el.scrollIntoView({ behavior: 'smooth', block: 'center' }); }
+      // A jump into a row the filters hide used to do nothing at all: every
+      // entry point (Issues panel, night strip, Up next chip, trip search,
+      // duplicate) burned ui.flashId on a row that was never drawn. The item is
+      // still in the trip, so say so - and offer the one action that reveals
+      // it, rather than clearing filters the traveller set without asking.
+      else if (filtering && trip.items.some(x => x.id === ui.flashId)) {
+        const wanted = ui.flashId;
+        toast('That item is hidden by the current search and filters.',
+          () => { ui.flashId = wanted; clearFilters(); }, { action: 'Clear filters' });
+      }
       ui.flashId = null;
     }
   }
@@ -1369,8 +1508,12 @@
     const level = nestedIssueLevel(kids, issueById);
     const badge = level ? `<span class="tl-warn ${level === 'error' ? 'is-err' : ''}" title="${level === 'error' ? 'Something inside has invalid data' : 'A warning applies inside this stay'}">⚠️</span>` : '';
     const total = node.count;
+    // "1 of 3 items matches" read as a mistake: the verb agreed with the matched
+    // count while the noun was hard-coded plural. Fronting the subject settles
+    // it for every count - "Filters match 1 of 3 items", "... 0 of 1 item" - and
+    // the noun now agrees with the total the way the day toggle's does.
     const label = filtering && kids.length !== total
-      ? `${kids.length} of ${total} items match${kids.length === 1 ? 'es' : ''}`
+      ? `Filters match ${kids.length} of ${total} item${total === 1 ? '' : 's'}`
       : `${total} item${total === 1 ? '' : 's'} during this stay`;
     const bodyId = `tlkids-${it.id}`;
 
@@ -1471,7 +1614,7 @@
           <span class="c-date">${dates}</span>${time}${n ? `<span class="c-nights">${n} night${n === 1 ? '' : 's'}</span>` : ''}
         </div>
         <div class="c-main">
-          <div class="c-title">${esc(displayTitle(it))}</div>
+          <div class="c-title">${esc(displayTitle(it))}<span class="tp-clip" data-clip-for="${it.id}" title="Has attached documents" hidden>📎</span></div>
           ${it.location ? `<div class="c-loc">${esc(it.location)}</div>` : ''}
           ${refTagHtml(it)}
           ${detailsHtml(it)}
@@ -1840,6 +1983,13 @@
       $('#dupDayErr').textContent = isIsoDate(target) ? `Use a date between ${DATE_MIN} and ${DATE_MAX}.` : 'A valid date is required.';
       return;
     }
+    // A day copied onto itself is not a copy, it is every item on it duplicated
+    // in place with "(copy)" on the end, which is never what "copy to" meant.
+    if (target === dupDaySource) {
+      $('#fDupDayDate').classList.add('invalid');
+      $('#dupDayErr').textContent = 'Pick a different day: this is the day you are copying from.';
+      return;
+    }
     const source = dupDaySource;
     closeOverlays();
     duplicateDay(source, target);
@@ -1888,7 +2038,7 @@
         </div>`;
       return;
     }
-    const issueById = buildIssueById(computeIssues(trip));
+    const issueById = buildIssueById(currentIssues);
     const st = tripStats(trip);
     const phase = (st.start && st.end) ? tripPhase(st.start, st.end, todayIso()) : { phase: 'before' };
     const today = todayIso();
@@ -1926,7 +2076,11 @@
     // touch device, which is most of the traffic for a trip planner. It is a
     // visible line under the grid instead, and it carries the Open-Meteo credit
     // its CC-BY licence requires, in the one view the data appears in.
-    const wx = '<div class="days-note days-wx">Temperatures are typical for that month across the last '
+    // It ships HIDDEN and is revealed by the first temperature actually written
+    // (see revealWeatherNote): a trip whose days resolve no city, or whose
+    // cities have no climate record, showed a caveat and a licence credit for
+    // data that was nowhere on the screen.
+    const wx = '<div class="days-note days-wx" id="daysWx" hidden>Temperatures are typical for that month across the last '
       + WEATHER_YEARS + ' years of records, not a forecast. Weather data by '
       + '<a href="https://open-meteo.com/" target="_blank" rel="noopener">Open-Meteo</a> (CC BY 4.0).</div>';
     box.innerHTML = note + cards.map(c => dayCardHtml(c, phase.phase === 'during' && c.date === today, trip, issueById)).join('') + wx;
@@ -1958,6 +2112,17 @@
     chip.querySelector('.dc-chip-sep').hidden = !chip.querySelector('.dc-chip-city').textContent;
     chip.title = `${weatherLine(place, rec)}. Typical for this month across the last ${WEATHER_YEARS} years of records, not a forecast.`;
     chip.hidden = false;
+    revealWeatherNote();
+  }
+  // The one place a temperature is ever written is the one place that can say
+  // the caveat and the credit are now about something on screen. Both the
+  // cached paint (during renderDays) and the async archive response land here,
+  // so the note appears the moment the data does rather than waiting for an
+  // unrelated re-render. The note is absent while the day view is empty or
+  // filtered to nothing, which is why this checks before it writes.
+  function revealWeatherNote() {
+    const el = $('#daysWx');
+    if (el) el.hidden = false;
   }
   function applyWeather(key, place, rec) {
     document.querySelectorAll('#daysList .dc-chip').forEach(chip => {
@@ -1988,6 +2153,13 @@
     }
   }
 
+  // Bounded like every other network call here (8s rates, 9s geocode, 12s
+  // places, 15s visa). Unbounded, a hung connection never settled the promise,
+  // so its key sat in weatherInflight for the rest of the session and that
+  // city+month could never be looked up again. 12s covers a five-year daily
+  // range, which is the heaviest response the app asks for.
+  const WEATHER_TIMEOUT = 12000;
+
   function ensureWeather(pair) {
     const { key, place, month, date } = pair;
     if (weatherCache[key] || weatherInflight.has(key) || !navigator.onLine) return;
@@ -2011,9 +2183,14 @@
         + `?latitude=${hit.lat}&longitude=${hit.lon}`
         + `&start_date=${from}-${mm}-01&end_date=${year}-${mm}-${String(lastDay).padStart(2, '0')}`
         + '&daily=temperature_2m_max,temperature_2m_min,precipitation_sum&timezone=auto';
-      const res = await fetch(url);
-      if (!res.ok) throw new Error('http ' + res.status);
-      const data = await res.json();
+      const ctrl = new AbortController();
+      const timer = setTimeout(() => ctrl.abort(), WEATHER_TIMEOUT);
+      let data;
+      try {
+        const res = await fetch(url, { signal: ctrl.signal });
+        if (!res.ok) throw new Error('http ' + res.status);
+        data = await res.json();
+      } finally { clearTimeout(timer); }
       const daily = data && data.daily;
       if (!daily || !Array.isArray(daily.time)) return null;
       const keep = pickMonthSamples(daily.time, mm, [daily.temperature_2m_min, daily.temperature_2m_max, daily.precipitation_sum]);
@@ -2025,7 +2202,9 @@
       return rec;
     })()
       .then(rec => { if (rec && ui.view === 'days') applyWeather(key, place, rec); return rec; })
-      .catch(() => { /* offline / geocode miss / bad response: leave the slot empty */ })
+      .catch(() => { /* offline / geocode miss / bad response / timed out: leave the slot empty */ })
+      // every path lands here, aborted included, so the pair is free to be
+      // tried again later in the session
       .finally(() => weatherInflight.delete(key));
     weatherInflight.set(key, p);
   }
@@ -2043,6 +2222,12 @@
         req.onsuccess = () => resolve(req.result);
         req.onerror = () => reject(req.error);
       });
+      // A memoized rejection is permanent. One failure to open (private
+      // browsing blocks the store outright, and the open can fail transiently)
+      // poisoned every attach, list and delete for the rest of the session,
+      // with no way back short of a reload. Forgetting the failed promise
+      // means the next attempt simply opens the database again.
+      docsDbPromise.catch(() => { docsDbPromise = null; });
     }
     return docsDbPromise;
   }
@@ -2102,24 +2287,16 @@
     } catch { docCounts = new Map(); }
     applyDocIndicators();
   }
+  // ONE mechanism for both views. The timeline used to build its paperclip
+  // imperatively after paint, so the clip was missing from board.innerHTML and
+  // from anything reading that markup until the async IndexedDB sweep landed,
+  // while the day view shipped a hidden span in the HTML string and just
+  // unhid it. The day view's way is the one that survives: the element is part
+  // of the row from the first paint, and the sweep only decides whether it
+  // shows. Both carry data-clip-for, so one query patches every clip on screen.
   function applyDocIndicators() {
-    document.querySelectorAll('.dc-clip[data-clip-for]').forEach(el => {
+    document.querySelectorAll('[data-clip-for]').forEach(el => {
       el.hidden = !(docCounts.get(el.dataset.clipFor) > 0);
-    });
-    document.querySelectorAll('#board .tp-row[data-id]').forEach(row => {
-      const title = row.querySelector('.c-title');
-      if (!title) return;
-      let clip = title.querySelector('.tp-clip');
-      const has = docCounts.get(row.dataset.id) > 0;
-      if (has && !clip) {
-        clip = document.createElement('span');
-        clip.className = 'tp-clip';
-        clip.textContent = ' 📎';
-        clip.title = 'Has attached documents';
-        title.appendChild(clip);
-      } else if (!has && clip) {
-        clip.remove();
-      }
     });
   }
 
@@ -2127,34 +2304,62 @@
   let docObjectUrls = [];
   function revokeDocUrls() { docObjectUrls.forEach(u => URL.revokeObjectURL(u)); docObjectUrls = []; }
 
+  // IndexedDB can simply refuse: private browsing blocks the store outright and
+  // a write can hit the origin's quota. Every one of those used to fail
+  // silently, leaving the list showing whatever it showed last, which reads as
+  // "it worked". #docsErr is the in-context explanation; the toast is what
+  // guarantees it is seen, because that line sits at the bottom of a scrolling
+  // section and can be below the fold.
+  const DOCS_UNREADABLE = 'Attached documents could not be read on this device.';
+  function showDocsError(msg) {
+    const errBox = $('#docsErr');
+    errBox.textContent = msg;
+    errBox.hidden = false;
+    toastError(msg);
+  }
+
+  // Never rejects. syncDocsSection fires it without awaiting, so a rejection
+  // here would be an unhandled one. A store that cannot be read says so IN
+  // PLACE of the list: an empty list is the claim "this item has no
+  // documents", and that is not what happened.
   async function renderDocsList(itemId) {
     const list = $('#docsList');
     revokeDocUrls();
-    const docs = await listDocs(itemId);
-    list.innerHTML = docs.map(d => {
-      let preview;
-      if ((d.type || '').startsWith('image/')) {
-        const url = URL.createObjectURL(d.blob);
-        docObjectUrls.push(url);
-        preview = `<img src="${url}" alt="">`;
-      } else {
-        preview = `<span class="doc-file">📄</span>`;
-      }
-      return `<div class="doc-thumb" data-doc-id="${d.id}">
-        <div class="doc-preview">${preview}</div>
-        <span class="doc-name" title="${esc(d.name)}">${esc(d.name)}</span>
-        <button type="button" class="doc-remove" data-doc-remove="${d.id}" aria-label="Remove ${esc(d.name)}">✕</button>
-      </div>`;
-    }).join('');
+    try {
+      const docs = await listDocs(itemId);
+      list.innerHTML = docs.map(d => {
+        let preview;
+        if ((d.type || '').startsWith('image/')) {
+          const url = URL.createObjectURL(d.blob);
+          docObjectUrls.push(url);
+          preview = `<img src="${url}" alt="">`;
+        } else {
+          preview = `<span class="doc-file">📄</span>`;
+        }
+        return `<div class="doc-thumb" data-doc-id="${d.id}">
+          <div class="doc-preview">${preview}</div>
+          <span class="doc-name" title="${esc(d.name)}">${esc(d.name)}</span>
+          <button type="button" class="doc-remove" data-doc-remove="${d.id}" aria-label="Remove ${esc(d.name)}">✕</button>
+        </div>`;
+      }).join('');
+    } catch {
+      // a non-empty #docsList is also what suppresses the "No documents yet"
+      // empty state next to it, so the wrong claim cannot show through
+      list.innerHTML = `<div class="docs-unavailable">${esc(DOCS_UNREADABLE)}</div>`;
+      toastError(DOCS_UNREADABLE);
+    }
   }
 
   async function attachDocs(files) {
     const itemId = ui.editingId;
     if (!itemId || !files.length) return;
     const errBox = $('#docsErr');
-    let count = (await listDocs(itemId)).length;
+    let count;
+    try { count = (await listDocs(itemId)).length; }
+    catch { showDocsError(`${DOCS_UNREADABLE} Nothing was attached.`); return; }
     const problems = [];
     let added = 0;
+    let storeRefused = false;
     for (const f of files) {
       const g = docGuard(count, f.size);
       if (!g.ok) {
@@ -2162,10 +2367,20 @@
         problems.push(`"${f.name}" is over the 2MB limit and was not added.`);
         continue;
       }
-      await addDoc(itemId, f);
+      try { await addDoc(itemId, f); }
+      catch {
+        // the store refused this write, so it will refuse the rest the same way
+        storeRefused = true;
+        problems.push(`"${f.name}" could not be stored on this device. Storage may be full.`);
+        break;
+      }
       count++; added++;
     }
-    if (problems.length) { errBox.textContent = problems.join(' '); errBox.hidden = false; }
+    // a size or count refusal is the traveller's own file being too big, and
+    // the error line alone has always been the right weight for it. Only a
+    // store that refused outright escalates to a toast.
+    if (problems.length && storeRefused) showDocsError(problems.join(' '));
+    else if (problems.length) { errBox.textContent = problems.join(' '); errBox.hidden = false; }
     else errBox.hidden = true;
     await renderDocsList(itemId);
     refreshDocIndicators();
@@ -2226,6 +2441,7 @@
     $('#itemSaveBtn').textContent = it ? 'Save changes' : 'Add item';
     setModalType(it ? it.type : 'flight');
     $('#inTitle').value = it ? it.title : '';
+    syncFlightPickers(it);
     $('#inLocation').value = it ? (it.location || '') : '';
     $('#inStart').value = it ? (it.startDate || '') : (presetDate || '');
     $('#inEnd').value = it && it.type === 'stay' ? (it.endDate || '') : '';
@@ -2417,6 +2633,9 @@
     $('#docsExisting').hidden = !editing;
     $('#docsErr').hidden = true;
     revokeDocUrls();
+    // deliberately not awaited: opening the modal must not wait on a store
+    // read. renderDocsList reports its own failures and never rejects, which is
+    // what makes that safe.
     if (editing) renderDocsList(it.id);
     else $('#docsList').innerHTML = '';
   }
@@ -2435,6 +2654,9 @@
     // too. Without it a local leg's arrival date sat in a hidden field and was
     // blanked on the next save.
     const travel = !!TRAVEL_TYPES[t];
+    // Airports are a flight-only affordance: a train or a taxi has no IATA
+    // code, and the row would only be noise on the other four types.
+    $('#fFlightRoute').style.display = t === 'flight' ? '' : 'none';
     $('#fEnd').style.display = stay ? '' : 'none';
     $('#fTime').style.display = stay ? 'none' : '';
     $('#fArrivalRow').style.display = travel ? '' : 'none';
@@ -2463,6 +2685,22 @@
     // the split error lives on its own node inside the fieldset, not on a .field
     const se = $('#splitErr');
     if (se) { se.hidden = true; se.textContent = ''; }
+    const fe = $('#itemFormErr');
+    fe.hidden = true;
+    fe.textContent = '';
+  }
+
+  // A blocked save that says nothing is the worst thing this form can do, and
+  // half its fields are hidden per type: an activity or a note has no end-date
+  // field at all (setModalType hides both the check-out field and the arrival
+  // row), yet it can carry an end date from an import, a share link or the
+  // assistant. Painting that message into a display:none field refused the save
+  // in silence. This line lives in the footer, outside the scrolling body, so
+  // it is always on screen next to the button that just refused.
+  function formError(msg) {
+    const fe = $('#itemFormErr');
+    fe.textContent = msg;
+    fe.hidden = false;
   }
 
   function submitItemForm(e) {
@@ -2581,11 +2819,24 @@
       $('#startErr').textContent = startOutOfRange ? rangeMsg : 'A valid date is required.';
     }
     if (errs.end) {
-      const endField = modalType === 'stay' ? '#fEnd' : '#fArrDate';
-      $(endField).classList.add('invalid');
       const msg = typeof errs.end === 'string' ? errs.end : '';
-      if (modalType === 'stay') $('#endErr').textContent = msg || 'Check-out must be after check-in.';
-      else $('#arrErr').textContent = msg || 'Arrival cannot be before departure.';
+      if (modalType === 'stay') {
+        $('#fEnd').classList.add('invalid');
+        $('#endErr').textContent = msg || 'Check-out must be after check-in.';
+      } else if (travel) {
+        $('#fArrDate').classList.add('invalid');
+        $('#arrErr').textContent = msg || 'Arrival cannot be before departure.';
+      } else {
+        // No end-date field is on screen for this type, so the message goes to
+        // the footer line instead of a hidden one. The date is NAMED rather
+        // than quietly dropped: it came from somewhere (an import, a share
+        // link), and clearing it to let the save through would destroy it
+        // without ever telling the traveller it existed.
+        const label = TYPE_META[modalType] ? TYPE_META[modalType].label.toLowerCase() : 'item';
+        const why = endOutOfRange ? `it is outside ${DATE_MIN} to ${DATE_MAX}`
+          : (isIsoDate(it.endDate) ? "it is before the item's own date" : 'it is not a valid date');
+        formError(`This ${label} carries an end date (${it.endDate}) that only a stay or a travel type has a field for, and ${why}. Switch the type to fix it.`);
+      }
     }
     if (errs.cost) $('#fCost').classList.add('invalid');
     if (errs.bookBy) {
@@ -2606,6 +2857,16 @@
     const trip = activeTrip();
     if (ui.editingId) {
       const idx = trip.items.findIndex(x => x.id === ui.editingId);
+      // A remote merge replaces `db` under an open dialog on purpose (it does
+      // not close overlays), so the row being edited can be gone by the time
+      // Save is pressed. Pushing it back would resurrect what another device
+      // deleted, so the edit is dropped and said out loud instead of throwing
+      // into the console with the modal still sitting there.
+      if (idx < 0) {
+        toastError('That item is no longer in this trip, so nothing was saved');
+        closeOverlays();
+        return;
+      }
       it.createdAt = trip.items[idx].createdAt;
       trip.items[idx] = it;
     } else {
@@ -2619,20 +2880,45 @@
   }
 
   // ---------- shifting ----------
+  // The widest shift that could still land an in-range date back in range.
+  const MAX_SHIFT_DAYS = diffDays(DATE_MIN, DATE_MAX);
+
   function openShiftModal(target) {
     // target: item id, or null for whole trip
     ui.shiftTarget = target;
     $('#shiftTitle').textContent = target ? 'Shift item dates' : 'Shift entire trip';
     $('#shiftScopeField').style.display = target ? '' : 'none';
+    $('#fShiftDays').classList.remove('invalid');
     $('#shiftDays').value = 1;
     openOverlay('#shiftOverlay');
     $('#shiftDays').focus();
   }
 
+  // Every rejection below says so on screen. A shift that quietly closes the
+  // dialog is indistinguishable from Cancel, and a shift of 0 is a request the
+  // traveller made, not one to swallow.
+  function shiftError(msg) {
+    $('#fShiftDays').classList.add('invalid');
+    $('#shiftErr').textContent = msg;
+  }
+
   function submitShiftForm(e) {
     e.preventDefault();
-    const days = parseInt($('#shiftDays').value, 10);
-    if (!days || isNaN(days)) { closeOverlays(); return; }
+    const raw = $('#shiftDays').value.trim();
+    const days = Number(raw);
+    // #shiftForm carries novalidate like #itemForm, so step="1" never fires on a
+    // typed value and a fraction has to be refused here, in the app's own voice.
+    if (!raw || !Number.isFinite(days)) { shiftError('Enter the number of days to shift by.'); return; }
+    if (!Number.isInteger(days)) { shiftError('Shift by a whole number of days.'); return; }
+    if (days === 0) { shiftError('A shift of 0 days leaves every date where it is. Use a positive or negative number.'); return; }
+    // Same bounds the item form catches a mistyped year with, checked BEFORE
+    // anything moves: a shift big enough to push the trip past DATE_MAX only
+    // surfaces afterwards as a spanCapped error, on a trip whose dates are
+    // already wrecked.
+    const rangeMsg = `Shifting by ${days} days would move dates outside the calendar. Use a date between ${DATE_MIN} and ${DATE_MAX}.`;
+    // wider than the whole supported calendar, so no date could survive it and
+    // addDays would be asked for one the Date object cannot even serialise
+    if (Math.abs(days) > MAX_SHIFT_DAYS) { shiftError(rangeMsg); return; }
     const trip = activeTrip();
     let targets;
     if (!ui.shiftTarget) {
@@ -2648,6 +2934,11 @@
         targets = trip.items.filter(x => sortKey(x) >= key);
       }
     }
+    // A date that is out of range ALREADY is left alone: it arrived that way by
+    // import or share link, computeIssues names it, and refusing to shift it
+    // would freeze the whole trip.
+    const leavesRange = d => isDateInRange(d) && !isDateInRange(addDays(d, days));
+    if (targets.some(it => leavesRange(it.startDate) || leavesRange(it.endDate))) { shiftError(rangeMsg); return; }
     let moved = 0;
     for (const it of targets) {
       if (isIsoDate(it.startDate)) { it.startDate = addDays(it.startDate, days); moved++; }
@@ -2670,6 +2961,39 @@
     if (opt) el.textContent = `We have an example ${opt.label} itinerary you can load into this trip.`;
   }
 
+  // Editing the roster is not just editing a list of names: submitTripForm
+  // deletes paidBy from every item that named someone who is no longer on it.
+  // That is money data the dialog cannot give back, and it used to happen
+  // without a word. The edit is never blocked - the roster belongs to the
+  // traveller - but the cost is spelled out, with the count, while the dialog is
+  // still open. The names are matched exactly the way submitTripForm matches
+  // them (same normalizeTravelers output, same case-insensitive compare), so
+  // this cannot warn about a respelling that will in fact be carried over.
+  function syncTravelerWarning() {
+    const el = $('#tripTravelersWarn');
+    const t = ui.tripModalMode === 'rename' ? activeTrip() : null;
+    if (!t) { el.hidden = true; el.textContent = ''; return; }
+    const keep = new Set(normalizeTravelers($('#inTripTravelers').value.split(',')).map(n => n.toLowerCase()));
+    // lower-cased name -> { name as the items spell it, how many items name it }
+    const dropped = new Map();
+    for (const it of t.items) {
+      if (!it.paidBy) continue;
+      const who = String(it.paidBy).trim();
+      const key = who.toLowerCase();
+      if (keep.has(key)) continue;
+      const rec = dropped.get(key) || { name: who, count: 0 };
+      rec.count++;
+      dropped.set(key, rec);
+    }
+    if (!dropped.size) { el.hidden = true; el.textContent = ''; return; }
+    const recs = [...dropped.values()];
+    const n = recs.reduce((a, r) => a + r.count, 0);
+    el.textContent = `Saving removes ${recs.map(r => r.name).join(', ')} from this trip,`
+      + ` which clears "paid by" on ${n} item${n === 1 ? '' : 's'}.`
+      + ' The costs stay; only who paid for them is forgotten.';
+    el.hidden = false;
+  }
+
   function openTripModal(mode) {
     ui.tripModalMode = mode;
     const t = activeTrip();
@@ -2681,7 +3005,9 @@
     $('#inTripCurrency').value = mode === 'rename' && t ? (t.currency || 'USD') : 'USD';
     $('#inTripBudget').value = mode === 'rename' && t && t.budget != null ? t.budget : '';
     $('#inTripTravelers').value = mode === 'rename' && t && Array.isArray(t.travelers) ? t.travelers.join(', ') : '';
+    syncTravelerWarning();
     $('#fTripName').classList.remove('invalid');
+    $('#fTripBudget').classList.remove('invalid');
     openOverlay('#tripOverlay');
     $('#inTripName').focus();
   }
@@ -2689,13 +3015,19 @@
   function submitTripForm(e) {
     e.preventDefault();
     const name = $('#inTripName').value.trim();
+    // Both errors are cleared before either is raised: the budget check below is
+    // now reachable (see novalidate), so a resubmit can leave the form open with
+    // the OTHER field's message still on screen next to a value that is fine.
+    $('#fTripName').classList.remove('invalid');
+    $('#fTripBudget').classList.remove('invalid');
     if (!name) { $('#fTripName').classList.add('invalid'); return; }
     const currency = $('#inTripCurrency').value;
     const rawBudget = $('#inTripBudget').value.trim();
     const budget = parseMoney(rawBudget).value;
     // parseMoney stopped rejecting negatives when refunds became legal, and
-    // #tripForm's native min="0" is the only thing that was refusing a negative
-    // budget. A budget is a ceiling, not a transaction, so it is checked here.
+    // #tripForm now carries novalidate like #itemForm, so its native min="0"
+    // never fires on a typed value and this is what refuses a negative budget.
+    // A budget is a ceiling, not a transaction, so it is checked here.
     if (budget != null && budget < 0) { $('#fTripBudget').classList.add('invalid'); return; }
     // trimmed, deduped, capped at 6 by the one gate in trip-logic; an empty list
     // leaves the trip with no `travelers` key at all, so a solo trip is byte for
@@ -2888,9 +3220,31 @@
     el.focus();
   }
 
+  // What a shared view is allowed to do from the trip menu. Everything else
+  // writes to a trip the visitor does not own, and save() is a no-op there, so
+  // those eight rows are DISABLED rather than left looking live and doing
+  // nothing when pressed, which is what every blocked row used to do.
+  //
+  // "Backup all trips" is deliberately not on this list even though it only
+  // reads: shared mode parks the visitor's own trips aside and leaves `db`
+  // holding nothing but the borrowed trip, so the file it writes would be
+  // named like a full backup while containing a stranger's itinerary and none
+  // of their own.
+  //
+  // The 12/24-hour toggle IS on it. It is a device display preference written
+  // to its own TIMEFMT_KEY, never to a trip; blocking it would make the one
+  // harmless row in the menu look broken for no gain.
+  const SHARED_MENU_ACTS = ['export-trip', 'export-csv', 'export-ics', 'share-trip', 'timefmt'];
+  function syncTripMenuShared() {
+    for (const b of $('#tripMenu').querySelectorAll('.tp-menu-panel button[data-act]')) {
+      b.disabled = sharedMode && !SHARED_MENU_ACTS.includes(b.dataset.act);
+    }
+  }
+
   function openTripMenu() {
     popoverReturnFocus = null; // the search panel is being replaced, not dismissed
     closeTripSearch();
+    syncTripMenuShared();
     $('#tripMenu').classList.add('open');
     popoverReturnFocus = $('#tripMenuBtn');
   }
@@ -2991,6 +3345,10 @@
         toastError(`Import failed: ${err.message}`);
       }
     };
+    // A read that never completes (the file moved, a permissions error, an
+    // unreadable device) fired nothing at all, so the picker closed and the
+    // traveller was told nothing. Same voice as the parse failures above.
+    reader.onerror = () => toastError('Import failed: the file could not be read');
     reader.readAsText(file);
   }
 
@@ -3020,6 +3378,26 @@
     // this reads as absent there and the imported trip simply has none.
     const essentials = packEssentials(readEssentials(t));
     if (Object.keys(essentials).length) nt.essentials = essentials;
+    // the packing list is trip-level state like the essentials block, so a JSON
+    // export and a full backup both carry it and re-importing one has to hand it
+    // back. The ARRAY'S EXISTENCE is the "already seeded" flag (see
+    // ensurePacking), so an EMPTY list has to survive as an empty list: a
+    // traveller who deliberately cleared every row must not be handed the
+    // defaults back by the import. Rows are rebuilt field by field with the
+    // form's own 80-character limit, and 200 of them is far past any real list.
+    if (Array.isArray(t.packing)) {
+      const rows = [];
+      let unreadable = 0, overflow = 0;
+      for (const r of t.packing) {
+        const text = r && typeof r.text === 'string' ? r.text.trim().slice(0, 80) : '';
+        if (!text) { unreadable++; continue; }
+        if (rows.length === 200) { overflow++; continue; }
+        rows.push({ id: uid(), text, done: r.done === true });
+      }
+      nt.packing = rows;
+      if (unreadable) notes.push(`Packing list: ${unreadable} row${unreadable === 1 ? '' : 's'} had no text, so ${unreadable === 1 ? 'it was' : 'they were'} left out.`);
+      if (overflow) notes.push(`Packing list: only the first 200 rows were imported, so ${overflow} more were left out.`);
+    }
     stampCostCurrencies(nt, nt.currency);
     return nt;
   }
@@ -3080,13 +3458,15 @@
     // who a cost is split between is only meaningful against names the trip
     // actually carries: an import can list anyone, so each is matched (case
     // -insensitively) to a known traveller and mapped to that canonical spelling.
-    // An empty or all-hands result is Everyone and stays unset.
+    // An empty or all-hands result is Everyone and stays unset, unless a
+    // hand-entered split needs that roster named (see the split block below).
     const known = normalizeTravelers(knownTravelers);
+    const canon = new Map(known.map(n => [n.toLowerCase(), n]));
+    const canonName = n => canon.get(String(n == null ? '' : n).trim().toLowerCase());
+    const picked = [];
     if (known.length >= 2 && Array.isArray(raw.travelers)) {
-      const canon = new Map(known.map(n => [n.toLowerCase(), n]));
-      const picked = [];
       for (const n of raw.travelers) {
-        const c = canon.get(String(n == null ? '' : n).trim().toLowerCase());
+        const c = canonName(n);
         if (c && !picked.includes(c)) picked.push(c);
       }
       if (picked.length && picked.length < known.length) out.travelers = picked;
@@ -3094,8 +3474,49 @@
     // who paid gets the same clamp: a payer the incoming trip does not name is
     // dropped rather than imported as a debt owed to a stranger
     if (known.length >= 2 && raw.paidBy != null) {
-      const payer = known.find(n => n.toLowerCase() === String(raw.paidBy).trim().toLowerCase());
+      const payer = canonName(raw.paidBy);
       if (payer) out.paidBy = payer;
+    }
+    // and so does a hand-entered split. Dropping it left the receiving end
+    // showing an EVEN divide of the same cost, i.e. a confidently wrong answer
+    // to "who owes whom" (a 70/30 import settled as 50/50), which is exactly
+    // what slimTripForShare carries it to avoid. The amounts are keyed by
+    // traveller, so every key goes through the same canonical roster match as
+    // `travelers` above and every value through the same parseMoney the cost
+    // uses: a hand-edited "abc" or 1e999 cannot get in. One bad key or amount
+    // drops the WHOLE object rather than storing a half-valid split.
+    // A split that no longer ADDS UP to the cost is kept as given: it is
+    // customSplitShares that re-checks the total at read time and falls back to
+    // the even divide, which is the forgiving answer untrusted numbers deserve.
+    const rawSplit = raw.splitAmounts;
+    if (known.length >= 2 && rawSplit && typeof rawSplit === 'object' && !Array.isArray(rawSplit) && Object.keys(rawSplit).length) {
+      // a Map, not an object literal, so a traveller literally named
+      // "__proto__" cannot turn an import into a prototype write
+      const split = new Map();
+      let bad = '';
+      for (const [name, val] of Object.entries(rawSplit)) {
+        const who = canonName(name);
+        if (!who || split.has(who)) { bad = 'names someone the trip does not'; break; }
+        const amount = parseMoney(val);
+        if (!amount.ok || amount.value == null) { bad = `has an amount that ${amount.reason || 'is missing'}`; break; }
+        split.set(who, amount.value);
+      }
+      // The amounts only mean anything against the roster they were agreed for,
+      // so they are honoured only when the item is assigned to exactly the
+      // people they name; no `travelers` key means Everyone, i.e. all of them.
+      // On the way in that assignment is then made EXPLICIT even when it is
+      // everybody, exactly as saving the form does (see submitItemForm): the
+      // all-hands case otherwise collapsed back to Everyone above, leaving
+      // customSplitShares with no roster and the same wrong even divide.
+      const assigned = picked.length ? picked : known;
+      if (!bad && !(split.size >= 2 && assigned.length === split.size && assigned.every(n => split.has(n)))) {
+        bad = 'does not cover exactly the people that cost is for';
+      }
+      if (bad) notes.push(`"${label}": the custom cost split ${bad}, so it was dropped and that cost divides evenly.`);
+      else {
+        out.travelers = known.filter(n => split.has(n));
+        out.splitAmounts = Object.fromEntries(out.travelers.map(n => [n, split.get(n)]));
+      }
     }
     return out;
   }
@@ -3296,6 +3717,338 @@
       .finally(() => { clearTimeout(timer); setTimeout(() => { geoBusy = false; pumpGeo(); }, 1100); });
   }
 
+  // ---------- combobox primitive (shared by the city and airport pickers) ----------
+  // One control, two sources: cities come from Open-Meteo over the network,
+  // airports from a table bundled with the app. Both render the same two-line
+  // row and follow the ARIA 1.2 combobox pattern (aria-expanded on the input,
+  // a role=listbox popup, aria-activedescendant tracking the highlight).
+  //
+  // WHY NOT <datalist>, which this app used for the route fields: it cannot
+  // show the second line, and the second line IS the feature. "Paris" and
+  // "Paris" are the same string in a datalist; "Paris, Île-de-France, France"
+  // and "Paris, Texas, United States" are the whole reason to have a picker.
+  //
+  // WHY THE POPUP LIVES ON <body>: .m-body is an overflow-y:auto scroller, so
+  // a dropdown positioned inside a field gets clipped at the modal's bottom
+  // edge, which is exactly where the lower fields need to open one. Fixed
+  // positioning off getBoundingClientRect avoids that; the cost is having to
+  // reposition on scroll and resize, which is what `place()` below is for.
+  const CB_LIMIT = 8;
+  let cbSeq = 0;
+  const cbOpen = new Set();
+
+  function createCombobox(input, opts) {
+    const id = `cb-list-${++cbSeq}`;
+    const pop = document.createElement('div');
+    pop.className = 'cb-pop';
+    pop.id = id;
+    pop.setAttribute('role', 'listbox');
+    pop.hidden = true;
+    document.body.appendChild(pop);
+
+    input.setAttribute('role', 'combobox');
+    input.setAttribute('aria-expanded', 'false');
+    input.setAttribute('aria-autocomplete', 'list');
+    input.setAttribute('aria-controls', id);
+    input.setAttribute('autocomplete', 'off');
+
+    let rows = [];
+    let active = -1;
+    let token = 0;
+    let timer = 0;
+
+    // Anchored to the input in viewport coordinates, flipping above the field
+    // when there is more room up than down (the last field in a tall modal).
+    function place() {
+      const r = input.getBoundingClientRect();
+      const below = window.innerHeight - r.bottom;
+      pop.style.left = `${Math.max(8, r.left)}px`;
+      pop.style.width = `${r.width}px`;
+      if (below < 180 && r.top > below) {
+        pop.style.top = 'auto';
+        pop.style.bottom = `${window.innerHeight - r.top + 4}px`;
+        pop.style.maxHeight = `${Math.max(80, Math.min(300, r.top - 12))}px`;
+      } else {
+        pop.style.bottom = 'auto';
+        pop.style.top = `${r.bottom + 4}px`;
+        pop.style.maxHeight = `${Math.max(80, Math.min(300, below - 12))}px`;
+      }
+    }
+
+    function close() {
+      if (pop.hidden) return;
+      pop.hidden = true;
+      cbOpen.delete(api);
+      active = -1;
+      input.setAttribute('aria-expanded', 'false');
+      input.removeAttribute('aria-activedescendant');
+    }
+
+    function setActive(i) {
+      active = i;
+      [...pop.children].forEach((el, n) => {
+        const on = n === i;
+        el.classList.toggle('on', on);
+        el.setAttribute('aria-selected', on ? 'true' : 'false');
+      });
+      if (i >= 0 && pop.children[i]) {
+        input.setAttribute('aria-activedescendant', pop.children[i].id);
+        pop.children[i].scrollIntoView({ block: 'nearest' });
+      } else {
+        input.removeAttribute('aria-activedescendant');
+      }
+    }
+
+    function render(list) {
+      rows = list;
+      if (!rows.length) return close();
+      pop.innerHTML = rows.map((row, i) => {
+        const r = opts.render(row);
+        return `<div class="cb-opt" role="option" id="${id}-o${i}" aria-selected="false">`
+          + `<span class="cb-main">${esc(r.primary)}</span>`
+          + (r.secondary ? `<span class="cb-sub">${esc(r.secondary)}</span>` : '')
+          + (r.tag ? `<span class="cb-tag">${esc(r.tag)}</span>` : '')
+          + '</div>';
+      }).join('');
+      pop.hidden = false;
+      cbOpen.add(api);
+      input.setAttribute('aria-expanded', 'true');
+      place();
+      setActive(-1);
+    }
+
+    function pick(i) {
+      const row = rows[i];
+      if (!row) return;
+      input.value = opts.value(row);
+      close();
+      if (opts.onPick) opts.onPick(row, input);
+      // Downstream listeners (the route modal's Check button, the item form's
+      // dirty tracking) listen for `input`, and setting .value fires nothing.
+      input.dispatchEvent(new Event('input', { bubbles: true }));
+    }
+
+    function search() {
+      const q = input.value.trim();
+      const mine = ++token;
+      if (q.length < (opts.minChars || 2)) return close();
+      Promise.resolve(opts.rows(q))
+        .then(list => { if (mine === token) render((list || []).slice(0, CB_LIMIT)); })
+        .catch(() => { if (mine === token) close(); });
+    }
+
+    input.addEventListener('input', () => {
+      clearTimeout(timer);
+      timer = setTimeout(search, opts.debounce == null ? 220 : opts.debounce);
+    });
+    input.addEventListener('focus', () => { if (input.value.trim()) search(); });
+    input.addEventListener('blur', () => { clearTimeout(timer); close(); });
+
+    input.addEventListener('keydown', e => {
+      if (e.key === 'ArrowDown' && pop.hidden) { search(); return; }
+      if (pop.hidden) return;
+      if (e.key === 'ArrowDown') { e.preventDefault(); setActive((active + 1) % rows.length); }
+      else if (e.key === 'ArrowUp') { e.preventDefault(); setActive((active - 1 + rows.length) % rows.length); }
+      else if (e.key === 'Enter') {
+        // Only swallow Enter when a row is actually highlighted. Otherwise the
+        // key still submits the item form, which is what a traveller who typed
+        // a place we do not list expects it to do.
+        if (active >= 0) { e.preventDefault(); pick(active); }
+        else close();
+      } else if (e.key === 'Escape') {
+        // The overlay closes on Escape too; swallow it so the first press only
+        // dismisses the dropdown and the traveller does not lose the form.
+        e.preventDefault(); e.stopPropagation(); close();
+      } else if (e.key === 'Tab') { close(); }
+    });
+
+    // pointerdown, not click: click lands after blur has already closed the
+    // popup, so the row would be gone before the event reached it.
+    pop.addEventListener('pointerdown', e => {
+      const opt = e.target.closest('.cb-opt');
+      if (!opt) return;
+      e.preventDefault();  // keep focus on the input
+      pick([...pop.children].indexOf(opt));
+    });
+
+    const api = { close, place, input };
+    return api;
+  }
+
+  // Fixed-position popups do not move with their anchor, so anything that
+  // scrolls or resizes has to push them back. Capture phase catches the
+  // modal body's own scroll, which does not bubble.
+  const repositionCombos = () => cbOpen.forEach(cb => cb.place());
+  window.addEventListener('scroll', repositionCombos, true);
+  window.addEventListener('resize', repositionCombos);
+
+  // ---------- city picker source (Open-Meteo geocoding) ----------
+  // Keyless, CORS-open and explicitly built for typeahead. Nominatim, which
+  // geocode() above uses for one-shot lookups, forbids autocomplete against
+  // its public instance, so it deliberately is NOT the source here.
+  const PLACE_API = 'https://geocoding-api.open-meteo.com/v1/search';
+  const placeSuggestCache = new Map();
+  let placeAbort = null;
+
+  function fetchPlaceSuggestions(q) {
+    const key = q.toLowerCase();
+    if (placeSuggestCache.has(key)) return Promise.resolve(placeSuggestCache.get(key));
+    if (placeAbort) placeAbort.abort();
+    placeAbort = new AbortController();
+    const ctrl = placeAbort;
+    const timeout = setTimeout(() => ctrl.abort(), 7000);
+    return fetch(`${PLACE_API}?name=${encodeURIComponent(q)}&count=10&language=en&format=json`, { signal: ctrl.signal })
+      .then(r => { if (!r.ok) throw new Error('http ' + r.status); return r.json(); })
+      .then(json => {
+        const rows = rankPlaceResults(q, json, CB_LIMIT);
+        // Bounded so a long session of typing cannot grow this without limit.
+        if (placeSuggestCache.size > 120) placeSuggestCache.clear();
+        placeSuggestCache.set(key, rows);
+        return rows;
+      })
+      // Offline or rate-limited is not an error state worth shouting about:
+      // the field is still a plain text input and typing a place still works.
+      .catch(() => [])
+      .finally(() => clearTimeout(timeout));
+  }
+
+  // Places already in this trip, offered first. This is what the old
+  // `placeList` datalist did, kept because re-typing "Kyoto" for the fifth
+  // activity is the single most common thing anyone does in this form.
+  function tripPlaceRows(q) {
+    const f = foldPlace(q);
+    const seen = new Set();
+    const out = [];
+    for (const it of activeTrip().items) {
+      const loc = (it.location || '').trim();
+      if (!loc || seen.has(loc.toLowerCase())) continue;
+      if (!foldPlace(loc).includes(f)) continue;
+      seen.add(loc.toLowerCase());
+      out.push({ value: loc, label: loc, detail: '', inTrip: true });
+      if (out.length >= 3) break;
+    }
+    return out;
+  }
+
+  function placeRows(q) {
+    const local = tripPlaceRows(q);
+    return fetchPlaceSuggestions(q).then(remote => {
+      const have = new Set(local.map(r => r.value.toLowerCase()));
+      return [...local, ...remote.filter(r => !have.has(r.value.toLowerCase()))];
+    });
+  }
+
+  // A picked row is a FACT the traveller asserted, so it seeds the geocode
+  // cache directly and the app never spends a Nominatim call on that name
+  // again. `conf` is 'confident' on purpose: classifyGeoMatch exists to judge
+  // a guess made FOR the traveller from an ambiguous string, and the visa
+  // dialog gates on it because picking the wrong "Nara" states a false entry
+  // requirement. None of that applies once a human has chosen the row that
+  // says "Nara, Japan" out of a list that also offered Nara, Mali.
+  //
+  // A shared or imported trip carries only the location STRING, so the
+  // recipient's browser re-geocodes it through Nominatim and lands back on
+  // the old, gated behaviour. That is a safe degradation, not a regression.
+  function rememberPickedPlace(row) {
+    if (!row || row.inTrip || !Number.isFinite(row.lat)) return;
+    const key = String(row.value || '').trim().toLowerCase();
+    if (!key) return;
+    geoCache[key] = {
+      lat: row.lat, lon: row.lon, name: row.value,
+      cc: row.cc, country: row.country, conf: 'confident',
+    };
+    geoMisses.delete(key);
+    try { localStorage.setItem(GEO_KEY, JSON.stringify(geoCache)); } catch { /* cache is best-effort */ }
+  }
+
+  const renderPlaceRow = row => ({
+    primary: row.value,
+    secondary: row.inTrip ? '' : (row.detail || ''),
+    tag: row.inTrip ? 'in this trip' : '',
+  });
+
+  function attachPlacePicker(input) {
+    return createCombobox(input, {
+      rows: placeRows,
+      render: renderPlaceRow,
+      value: row => row.value,
+      onPick: rememberPickedPlace,
+    });
+  }
+
+  // ---------- airport picker source (bundled OurAirports table) ----------
+  // Fetched once, on the first flight form opened, then held for the session.
+  // It is in the service worker's precache too, so this resolves offline.
+  let airportRows = null;
+  let airportLoading = null;
+  function loadAirports() {
+    if (airportRows) return Promise.resolve(airportRows);
+    if (!airportLoading) {
+      airportLoading = fetch('data/airports.json')
+        .then(r => { if (!r.ok) throw new Error('http ' + r.status); return r.json(); })
+        .then(json => { airportRows = airportIndex(json); return airportRows; })
+        // A failed load leaves the two fields as plain text inputs. Retry on
+        // the next open rather than caching the failure for the session.
+        .catch(() => { airportLoading = null; return []; });
+    }
+    return airportLoading;
+  }
+
+  // The two airports currently chosen in the item form. NOTHING NEW IS STORED
+  // ON THE ITEM: the title stays the single source of truth, in the same
+  // "City (CODE) to City (CODE)" shape the samples already use and that
+  // dayMorningCity already parses (parseTravelOrigin + stripPlaceCode). So the
+  // picker is a way to WRITE that title, and `wrote` remembers what it wrote.
+  let flightPick = { from: null, to: null, wrote: '' };
+
+  // Composes the title, but never over a title the traveller made their own.
+  // Someone editing "Red-eye BA179, exit row" should be able to correct an
+  // airport without the picker flattening their note; the rewrite therefore
+  // only happens while the field is empty or still holds exactly what a
+  // previous pick put there.
+  function syncFlightTitle() {
+    if (!flightPick.from || !flightPick.to) return;
+    const title = flightTitleFromAirports(flightPick.from, flightPick.to);
+    if (!title) return;
+    const cur = $('#inTitle').value.trim();
+    if (cur && cur !== flightPick.wrote) return;
+    $('#inTitle').value = title;
+    flightPick.wrote = title;
+    $('#fTitle').classList.remove('invalid');
+  }
+
+  // Re-fills both pickers when an existing flight is opened, so editing one
+  // leg does not start from blank fields. A title that does not carry two
+  // known IATA codes ("Ferry to Naxos") simply leaves them empty.
+  function syncFlightPickers(item) {
+    flightPick = { from: null, to: null, wrote: '' };
+    $('#inFlightFrom').value = '';
+    $('#inFlightTo').value = '';
+    const title = (item && item.title) || '';
+    if (!title) return;
+    loadAirports().then(list => {
+      // The modal may have been closed, or moved to another item, while the
+      // airport table was still loading.
+      if (ui.editingId !== (item && item.id) || modalType !== 'flight') return;
+      const { from, to } = parseFlightAirports(title, list);
+      if (!from || !to) return;
+      flightPick = { from, to, wrote: title.trim() };
+      $('#inFlightFrom').value = airportLabel(from);
+      $('#inFlightTo').value = airportLabel(to);
+    });
+  }
+
+  function attachAirportPicker(input, onPick) {
+    return createCombobox(input, {
+      minChars: 2,
+      debounce: 0,          // local data: no network, so no reason to wait
+      rows: q => loadAirports().then(list => searchAirports(q, list, CB_LIMIT)),
+      render: a => ({ primary: airportLabel(a), secondary: airportDetail(a) }),
+      value: a => airportLabel(a),
+      onPick,
+    });
+  }
+
   // ---------- route helper modal ----------
   let routeToken = 0;
   let routeDate = '';
@@ -3320,9 +4073,9 @@
   function openRouteModal(from, to, date) {
     routeDate = date || '';
     lastRouteKey = '';
-    // suggest places already used in this trip
-    const locs = [...new Set(activeTrip().items.map(it => (it.location || '').trim()).filter(Boolean))];
-    $('#placeList').innerHTML = locs.map(l => `<option value="${esc(l)}">`).join('');
+    // Places already used in this trip are no longer pushed into a datalist
+    // here: the combobox on both fields offers them itself (tripPlaceRows),
+    // ranked above the geocoder's suggestions.
     $('#routeFrom').value = from || '';
     $('#routeTo').value = to || '';
     setRouteResult(ROUTE_BLANK);
@@ -3506,7 +4259,21 @@
     return stops;
   }
 
+  // A12: everything the map draws comes from the stop list, so this string is
+  // the whole map as data - trip, stop order, stop names, and every item that
+  // feeds a popup (icon, title, dates) or its "+N more" tail. Two renders with
+  // the same signature would paint the same map, which is exactly when the one
+  // already on screen must be left alone, pan and zoom included.
+  function mapSignature(trip, stops) {
+    return trip.id + '|' + stops.map(s =>
+      s.name + '~' + s.items.map(it => `${it.id}:${it.type}:${it.title}:${it.startDate}:${it.endDate || ''}`).join(',')
+    ).join('|');
+  }
+
   let mapRunToken = 0;
+  // The stops the map currently on screen was drawn from, or the ones the run
+  // in flight is drawing. Cleared by mapFailed, so a dead end always rebuilds.
+  let mapSig = null;
   // The map canvas is a fixed 540px box, and the free geocoder is rate-limited
   // to about one stop a second: a 12-stop trip therefore spent ~13 seconds
   // showing a large empty slab under a progress line, and every dead end (no
@@ -3525,13 +4292,31 @@
   function mapFailed(icon, heading, msg) {
     $('#mapStatus').innerHTML = `<div class="empty"><div class="big">${icon}</div><h2>${esc(heading)}</h2><p>${esc(msg)}</p></div>`;
     setMapState('blank');
+    mapSig = null;
   }
 
   async function renderMap() {
     const status = $('#mapStatus');
-    const token = ++mapRunToken;
     const trip = activeTrip();
     const stops = mapStops(trip);
+    // render() runs whole, so the Map view was torn down and rebuilt by a rate
+    // fetch resolving, a remote sync, an undo or any modal save - each one
+    // throwing away the pan and zoom the traveller had set and re-walking the
+    // geocode queue. Nothing about the route changed in any of those, so the
+    // map already on screen (or the one being drawn right now) stands.
+    const sig = mapSignature(trip, stops);
+    if (mapInstance && sig === mapSig) {
+      // .map-box is display:none off-view, and Leaflet only re-measures its
+      // container when told: a window resize while the Timeline was up would
+      // otherwise leave the kept map sized to the old window. It keeps the
+      // centre, and does nothing at all when the size has not moved.
+      mapInstance.invalidateSize({ animate: false });
+      return;
+    }
+    // Claimed before the first await: a later render that genuinely differs
+    // must see a different signature and take the token off this run.
+    mapSig = sig;
+    const token = ++mapRunToken;
     if (!stops.length) {
       if (mapInstance) { mapInstance.remove(); mapInstance = null; }
       mapFailed('🗺️', 'No places to map yet', 'Add items with a "Place" (Tokyo, Kyoto, ...) and they will show up here as a route.');
@@ -3567,11 +4352,20 @@
       const ll = [stop.lat, stop.lon];
       latlngs.push(ll);
       const icon = L.divIcon({ className: '', html: `<div class="stop-pin">${i + 1}</div>`, iconSize: [26, 26], iconAnchor: [13, 13] });
+      const rule = '<hr style="border:none;border-top:1px solid var(--border-soft);margin:6px 0">';
       const lines = stop.items.slice(0, 5).map(it => {
         const range = isStay(it) && isIsoDate(it.endDate) ? fmtRange(it.startDate, it.endDate) : fmtDate(it.startDate);
         return `${TYPE_META[it.type].icon} ${esc(it.title)}<br><small style="color:var(--text-dim)">${range}</small>`;
-      }).join('<hr style="border:none;border-top:1px solid var(--border-soft);margin:6px 0">');
-      L.marker(ll, { icon }).addTo(mapInstance).bindPopup(`<b>${i + 1}. ${esc(stop.name)}</b><br>${lines}`);
+      }).join(rule);
+      // C8: the popup shows five items and a busy stop can hold far more, so it
+      // said "these are your five things in Kyoto" when it meant "here are five
+      // of your twelve". The tail counts what is not on screen; the timeline is
+      // where the rest of them live.
+      const hidden = stop.items.length - 5;
+      const more = hidden > 0
+        ? `${rule}<small style="color:var(--text-dim)">+${hidden} more ${hidden === 1 ? 'item' : 'items'} here</small>`
+        : '';
+      L.marker(ll, { icon }).addTo(mapInstance).bindPopup(`<b>${i + 1}. ${esc(stop.name)}</b><br>${lines}${more}`);
     });
     if (latlngs.length > 1) {
       L.polyline(latlngs, { color: '#4f8cff', weight: 3, opacity: 0.8, dashArray: '6 8' }).addTo(mapInstance);
@@ -3862,8 +4656,17 @@
     site: { short: 'Free assistant', note: "Your trip goes to this site's server and on to Google Gemini on a shared key, with daily limits. That key is on a paid project, whose terms do not allow the input to be used for training or human review." },
   };
 
+  // Whichever control opened the panel, so closing it puts the keyboard back
+  // there instead of on <body>. Two openers reach here - #assistBtn and a day
+  // card's [data-act="ask-day"] - so it is read off the focus rather than
+  // passed in. A call from INSIDE the open panel is a re-focus, not an open,
+  // and must not overwrite the control that is still waiting for its focus.
+  let assistReturnFocus = null;
+
   function openAssist(focusDate) {
     const panel = $('#assistPanel');
+    const opener = document.activeElement;
+    if (opener && opener !== document.body && !panel.contains(opener)) assistReturnFocus = opener;
     const trip = activeTrip();
     const id = trip ? trip.id : '';
     if (panel.dataset.tripId !== id) {
@@ -3877,7 +4680,6 @@
     if (assistFocusDate) panel.dataset.focusDate = assistFocusDate; else delete panel.dataset.focusDate;
     setAssistMinimized(false);
     panel.hidden = false;
-    document.body.classList.add('assist-open');
     renderTierGroup();
     renderTierBody(assistTier);
     renderFocusChip();
@@ -3889,7 +4691,20 @@
   function closeAssist() {
     setAssistMinimized(false);
     $('#assistPanel').hidden = true;
-    document.body.classList.remove('assist-open');
+    returnAssistFocus();
+  }
+
+  // The same contract returnPopoverFocus applies to the header popovers:
+  // reclaim only the focus the panel itself was holding, or the focus its
+  // dismissal dropped on nothing. Focus the traveller has since handed to
+  // another control is theirs, and taking it back would lose their place.
+  function returnAssistFocus() {
+    const el = assistReturnFocus;
+    assistReturnFocus = null;
+    if (!el || !document.contains(el) || typeof el.focus !== 'function') return;
+    const a = document.activeElement;
+    if (a && a !== document.body && !$('#assistPanel').contains(a)) return;
+    el.focus();
   }
 
   // Minimize collapses the panel to a pill without unmounting anything, so the
@@ -4150,6 +4965,40 @@
     try { localStorage.removeItem(chatKey(trip.id)); } catch { /* best effort */ }
     $('#assistMessages').innerHTML = '';
     assistActions.clear();
+  }
+
+  // Deleting a trip has to take its thread with it (until Clear chat, this key
+  // was never collected and outlived the trip forever), but a conversation the
+  // traveller typed is not something an Undo may silently drop. So the thread
+  // is held for the session and syncDeletedChats keeps storage agreeing with
+  // the db through any depth of undo and redo: a trip that is back has its
+  // thread back, a trip that is gone does not keep one. Session-scoped because
+  // once the tab closes no Undo can resurrect the trip anyway.
+  const deletedChats = new Map();
+  function syncDeletedChats() {
+    for (const [id, raw] of deletedChats) {
+      const alive = db.trips.some(t => t.id === id);
+      const stored = localStorage.getItem(chatKey(id)) !== null;
+      if (alive && !stored) putChat(id, raw);
+      else if (!alive && stored) deletedChats.set(id, takeChat(id));
+    }
+  }
+  function takeChat(tripId) {
+    let raw = null;
+    try {
+      raw = localStorage.getItem(chatKey(tripId));
+      localStorage.removeItem(chatKey(tripId));
+    } catch { /* best effort */ }
+    return raw;
+  }
+  function putChat(tripId, raw) {
+    if (raw == null) return;
+    try { localStorage.setItem(chatKey(tripId), raw); } catch { /* best effort */ }
+    const trip = activeTrip();
+    const panel = $('#assistPanel');
+    // the undo's own render already repainted the (then empty) log. Same guard
+    // syncAssistPanel uses: the copy tier has no thread on screen to repaint.
+    if (trip && trip.id === tripId && panel && !panel.hidden && assistTier !== 'copy') restoreChat();
   }
 
   // ---------- chat UI helpers ----------
@@ -5182,14 +6031,15 @@
   }
 
   // ---------- "Up next" chip ----------
-  // The DEVICE clock as a wall-clock stamp. Deliberately LOCAL, unlike
-  // todayIso's UTC slice: the times on the items are wall-clock times the
-  // traveller typed, so "is it 10:00 yet" has to be asked in the clock they are
-  // reading, not in UTC.
+  // The DEVICE clock as a wall-clock stamp: the times on the items are
+  // wall-clock times the traveller typed, so "is it 10:00 yet" has to be asked
+  // in the clock they are reading. Its date half is todayIso's, both through
+  // localDateIso, so the chip can never sit on a different day than the
+  // countdown and the past-row dimming.
   function nowStamp() {
     const d = new Date();
     const p = n => String(n).padStart(2, '0');
-    return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}T${p(d.getHours())}:${p(d.getMinutes())}`;
+    return `${localDateIso(d)}T${p(d.getHours())}:${p(d.getMinutes())}`;
   }
   const upKey = up => up ? `${up.mode}|${up.id}|${up.dur}` : '';
   let nextUpKey = '';
@@ -5327,7 +6177,14 @@
   }
   function closeOverlays() {
     const wasOpen = document.querySelector('.overlay.open');
-    if (wasOpen && wasOpen.id === 'itemOverlay') revokeDocUrls();
+    // The picker popups are children of <body>, not of the modal, so closing
+    // the overlay does not take them with it: they would hang over the board.
+    [...cbOpen].forEach(cb => cb.close());
+    // ui.editingId is the item dialog's own state and outlived it, so between a
+    // Cancel and the next Add, "which item is being edited" answered with the
+    // last one edited. Cleared here with the object URLs, the same way
+    // ui.confirmAction is cleared below.
+    if (wasOpen && wasOpen.id === 'itemOverlay') { revokeDocUrls(); ui.editingId = null; }
     document.querySelectorAll('.overlay.open').forEach(o => o.classList.remove('open'));
     document.body.classList.remove('tp-modal-open');
     ui.confirmAction = null;
@@ -5342,7 +6199,10 @@
     const box = $('#toasts');
     const el = document.createElement('div');
     el.className = 'toast' + (opts && opts.error ? ' toast-error' : '');
-    el.innerHTML = `<span>${esc(msg)}</span>${undoFn ? '<button type="button">Undo</button>' : ''}`;
+    // the action defaults to Undo because almost every toast that carries one is
+    // an undo; opts.action names it when it is something else ("Clear filters")
+    const actLabel = (opts && opts.action) || 'Undo';
+    el.innerHTML = `<span>${esc(msg)}</span>${undoFn ? `<button type="button">${esc(actLabel)}</button>` : ''}`;
     if (undoFn) el.querySelector('button').addEventListener('click', () => { undoFn(); el.remove(); });
     box.appendChild(el);
     setTimeout(() => { el.style.opacity = '0'; el.style.transition = 'opacity .4s'; setTimeout(() => el.remove(), 450); }, undoFn ? 6000 : 2600);
@@ -5446,7 +6306,11 @@
   });
   $('#passportSel').addEventListener('change', () => {
     const v = $('#passportSel').value;
+    // cleared means cleared, the same as the expiry below: picking the blank
+    // option has to take the old passport off this device, not leave it saved
+    // and have it come back on the next load
     if (v) localStorage.setItem(PASSPORT_KEY, v);
+    else localStorage.removeItem(PASSPORT_KEY);
     // the traveller has now said it themselves: it is no longer an assumption
     passportGuess = null;
     renderPassportGuess();
@@ -5455,7 +6319,7 @@
   $('#passportExpiry').addEventListener('change', () => {
     const v = $('#passportExpiry').value;
     // cleared means cleared: a renewed passport must be able to take the old
-    // date off this device, which is why this one removes rather than only sets
+    // date off this device, so this removes rather than only sets
     if (v) localStorage.setItem(PASSPORT_EXPIRY_KEY, v);
     else localStorage.removeItem(PASSPORT_EXPIRY_KEY);
     renderPassportExpiry();
@@ -5577,7 +6441,13 @@
   $('#docsList').addEventListener('click', async e => {
     const btn = e.target.closest('button[data-doc-remove]');
     if (!btn || !ui.editingId) return;
-    await deleteDoc(Number(btn.dataset.docRemove));
+    try { await deleteDoc(Number(btn.dataset.docRemove)); }
+    catch {
+      // the thumbnail is still there because the document still is. Saying so
+      // beats leaving the row looking like a button that does nothing.
+      toastError('That document could not be removed on this device.');
+      return;
+    }
     await renderDocsList(ui.editingId);
     refreshDocIndicators();
     toast('Document removed');
@@ -5586,12 +6456,18 @@
   $('#dupDayForm').addEventListener('submit', submitDupDayForm);
   $('#tripForm').addEventListener('submit', submitTripForm);
   $('#inTripName').addEventListener('input', syncTripNameHint);
+  $('#inTripTravelers').addEventListener('input', syncTravelerWarning);
   $('#essentialsForm').addEventListener('submit', submitEssentialsForm);
   $('#essentialsForm').addEventListener('input', syncEssentialsEmpty);
   $('#typePicker').addEventListener('click', e => {
     const b = e.target.closest('button[data-type]');
     if (b) setModalType(b.dataset.type);
   });
+  attachPlacePicker($('#inLocation'));
+  attachPlacePicker($('#routeFrom'));
+  attachPlacePicker($('#routeTo'));
+  attachAirportPicker($('#inFlightFrom'), a => { flightPick.from = a; syncFlightTitle(); });
+  attachAirportPicker($('#inFlightTo'), a => { flightPick.to = a; syncFlightTitle(); });
   $('#inCostCurrency').addEventListener('change', syncCostPrefix);
   // clearing the cost takes the split control with it, and a cost appearing
   // brings it back: there is nothing to divide unevenly without an amount
@@ -5602,7 +6478,15 @@
   $('#shiftMinus').addEventListener('click', () => { $('#shiftDays').value = (parseInt($('#shiftDays').value, 10) || 0) - 1; });
   $('#shiftPlus').addEventListener('click', () => { $('#shiftDays').value = (parseInt($('#shiftDays').value, 10) || 0) + 1; });
 
-  $('#tripSelect').addEventListener('change', e => { db.activeTripId = e.target.value; save(); render(); });
+  // a selection belongs to the rows it was made from, so a trip switch drops it
+  // exactly as a filter change does: the bulk bar could otherwise sit over
+  // another trip's board reading "0 selected"
+  $('#tripSelect').addEventListener('change', e => {
+    db.activeTripId = e.target.value;
+    exitSelectMode();
+    save();
+    render();
+  });
 
   $('#tripMenuBtn').addEventListener('click', e => {
     e.stopPropagation();
@@ -5632,8 +6516,10 @@
     if (!b) { e.stopPropagation(); return; }
     closeTripMenu();
     const act = b.dataset.act;
-    // shared view is read-only: only the export/share actions are allowed
-    if (sharedMode && !['export-trip', 'export-csv', 'export-ics', 'export-all', 'share-trip'].includes(act)) return;
+    // The same allow-list syncTripMenuShared disables the rows by; a disabled
+    // button cannot be clicked, so this is the backstop for a menu opened
+    // before sharedMode was set rather than the primary block.
+    if (sharedMode && !SHARED_MENU_ACTS.includes(act)) return;
     if (act === 'new-trip') openTripModal('new');
     else if (act === 'rename-trip') openTripModal('rename');
     else if (act === 'duplicate-trip') duplicateTrip();
@@ -5656,9 +6542,25 @@
       const t = activeTrip();
       confirmDialog('Delete this trip?', `"${t.name}" and its ${t.items.length} item(s) will be permanently deleted.`, 'Delete trip', () => {
         for (const it of t.items) deleteDocsForItem(it.id);
+        // The two per-trip stores the db does not own. Both were left behind by
+        // a delete and nothing else ever pruned them, so they grew forever on
+        // the same storage budget that pushes save() into the quota banner.
+        // Deleting a trip is undoable, so the thread is kept in hand rather
+        // than destroyed: an Undo hands the conversation back (see
+        // syncDeletedChats). The collapse record deliberately does NOT come
+        // back. Which stays were expanded is a view preference that costs one
+        // click to redo and re-seeds itself, while a conversation the traveller
+        // typed cannot be got back at all.
+        const chat = takeChat(t.id);
+        if (chat != null) {
+          deletedChats.set(t.id, chat);
+          if (deletedChats.size > HISTORY_MAX) deletedChats.delete(deletedChats.keys().next().value);
+        }
+        dropCollapse(t.id);
         db.trips = db.trips.filter(x => x.id !== t.id);
         db.activeTripId = db.trips.length ? db.trips[0].id : null;
-        save(`Trip "${t.name}" deleted`); render();
+        save(`Trip "${t.name}" deleted`);
+        render();
       });
     }
   });
@@ -5685,6 +6587,7 @@
       render();
     });
   });
+  $('#clearFiltersBtn').addEventListener('click', clearFilters);
   // delegated: the traveller select is rebuilt whenever the roster changes, so
   // the listener lives on the wrapper that never is
   $('#travelerFilterWrap').addEventListener('input', e => {
@@ -5695,11 +6598,15 @@
   });
 
   $('#issuesBox').addEventListener('click', e => {
-    const a = e.target.closest('a[data-jump]');
-    if (a) { ui.flashId = a.dataset.jump; render(); return; }
+    const a = e.target.closest('button[data-jump]');
+    // the same jump the night strip, the Up next chip and trip search use: the
+    // panel is on screen in all three views, and the flashed row only exists on
+    // the timeline, so the view has to come along or "show" flashes a row inside
+    // a hidden board and burns ui.flashId doing it
+    if (a) { ui.view = 'timeline'; ui.flashId = a.dataset.jump; render(); return; }
     // the overlapping-trip warning names the other trip; the name switches to
     // it, exactly as picking it from #tripSelect does - filters untouched
-    const t = e.target.closest('a[data-trip]');
+    const t = e.target.closest('button[data-trip]');
     if (t && db.trips.some(x => x.id === t.dataset.trip)) {
       db.activeTripId = t.dataset.trip;
       save();
@@ -5799,7 +6706,10 @@
       if (k === 'z' && !e.shiftKey) { e.preventDefault(); undo(); return; }
       if (k === 'y' || (k === 'z' && e.shiftKey)) { e.preventDefault(); redo(); return; }
     }
-    if ((e.key === 'n' || e.key === 'N') && !e.ctrlKey && !e.metaKey && !e.target.closest('input, textarea, select')) {
+    // "n" for a new item, gated on sharedMode for the same reason #addBtn is
+    // hidden there: save() is a no-op in a shared view, so the item the modal
+    // added would appear on screen and exist nowhere.
+    if ((e.key === 'n' || e.key === 'N') && !e.ctrlKey && !e.metaKey && !sharedMode && !e.target.closest('input, textarea, select')) {
       openItemModal(null);
     }
   });
@@ -5854,7 +6764,11 @@
   }
   syncTimefmtLabel();
   repairDb();
-  if (location.hash.startsWith(SHARE_PREFIX)) {
+  // Same reader the view-hash writer consults, so the two can never disagree.
+  // A hand-retyped "#SHARE=..." used to boot as a normal load, while that
+  // writer (correctly case-insensitive) then refused to touch the fragment, so
+  // the payload just sat in the URL doing nothing.
+  if (viewFromHash(location.hash, ui.view).isShare) {
     enterSharedMode();
   } else {
     // Set before the first render so there is no flash of Timeline on a

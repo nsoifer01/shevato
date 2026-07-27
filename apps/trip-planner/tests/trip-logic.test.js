@@ -28,6 +28,54 @@ test('diffDays and addDays are inverse and cross month/year ends', () => {
   assert.equal(L.addDays('2027-01-10', -12), '2026-12-29');
 });
 
+// localDateIso is the only local-clock reader in the module, so it is checked
+// against a mocked device timezone. A UTC slice of the SAME instant names a
+// different day for part of every day at any real offset, and that is the
+// reading the app's "today" used to take: it moved the countdown, the past-row
+// dimming and the booking deadlines a day off for those hours.
+function atZone(tz, fn) {
+  const had = 'TZ' in process.env;
+  const prev = process.env.TZ;
+  process.env.TZ = tz;
+  try { return fn(); } finally { if (had) process.env.TZ = prev; else delete process.env.TZ; }
+}
+
+test('localDateIso reads the local calendar day where a UTC slice reads another', () => {
+  atZone('America/Los_Angeles', () => {
+    const evening = new Date('2026-07-26T02:00:00Z'); // 19:00 on the 25th locally
+    assert.equal(L.localDateIso(evening), '2026-07-25');
+    assert.equal(evening.toISOString().slice(0, 10), '2026-07-26'); // what "today" used to say
+  });
+  atZone('Asia/Jerusalem', () => {
+    const smallHours = new Date('2026-07-25T22:00:00Z'); // 01:00 on the 26th locally
+    assert.equal(L.localDateIso(smallHours), '2026-07-26');
+    assert.equal(smallHours.toISOString().slice(0, 10), '2026-07-25'); // what "today" used to say
+  });
+});
+
+test('localDateIso pads to YYYY-MM-DD and matches UTC when the offset cannot bite', () => {
+  atZone('UTC', () => {
+    assert.equal(L.localDateIso(new Date('2026-01-05T12:00:00Z')), '2026-01-05');
+  });
+  atZone('Asia/Jerusalem', () => {
+    assert.equal(L.localDateIso(new Date('2026-03-09T09:30:00Z')), '2026-03-09');
+  });
+  atZone('America/Los_Angeles', () => {
+    assert.equal(L.localDateIso(new Date('2026-11-02T18:00:00Z')), '2026-11-02');
+  });
+});
+
+// Every date the app compares against "today" is a zero-padded ISO string it
+// also sorts and diffs, so the local reader must produce the same shape.
+test('localDateIso output is usable by the ISO date helpers', () => {
+  atZone('Pacific/Kiritimati', () => { // UTC+14, the largest real offset
+    const iso = L.localDateIso(new Date('2026-07-25T12:00:00Z')); // already the 26th there
+    assert.equal(iso, '2026-07-26');
+    assert.equal(L.isIsoDate(iso), true);
+    assert.equal(L.addDays(iso, 1), '2026-07-27');
+  });
+});
+
 // ---------- item helpers ----------
 
 test('nights counts stay nights and rejects non-stays and inverted ranges', () => {
@@ -43,6 +91,45 @@ test('sortedItems orders by date, then time, then travel before stays', () => {
     stay('t', 'Tokyo', '2026-12-30', '2027-01-10'),
   ] };
   assert.deepEqual(L.sortedItems(trip).map(i => i.id), ['t', 'a', 'b']);
+});
+
+// Every sort in here used `sortKey(a) < sortKey(b) ? -1 : 1`, which answers
+// "b comes first" for a pair that is equal. Nothing in the sort spec has to
+// honour a comparator that inconsistent, so the resulting order was V8's
+// stability by luck rather than by contract. Identical keys are routine, not
+// exotic: duplicateDay stamps every copy of a day with the same createdAt
+// millisecond and copies the date, time and type verbatim.
+test('bySortKey returns 0 on an identical key and is antisymmetric', () => {
+  const a = { id: 'a', type: 'activity', startDate: '2027-01-16', startTime: '09:00', createdAt: '2027-01-01T00:00:00.000Z' };
+  const b = { ...a, id: 'b' };
+  const later = { ...a, id: 'c', startTime: '10:00' };
+  assert.equal(L.sortKey(a), L.sortKey(b));
+  assert.equal(L.bySortKey(a, b), 0);
+  assert.equal(L.bySortKey(a, a), 0);
+  assert.equal(L.bySortKey(a, later), -1);
+  assert.equal(L.bySortKey(later, a), 1);
+});
+
+test('items with an identical sort key keep the order they were given', () => {
+  // exactly the shape duplicateDay produces: same date, same time, same type,
+  // and one createdAt for the whole batch
+  const at = '2027-01-01T00:00:00.000Z';
+  const items = ['Breakfast', 'Museum', 'Dinner'].map((title, i) => ({
+    id: `c${i}`, type: 'activity', title, location: '', status: 'booked',
+    startDate: '2027-01-16', startTime: '09:00', endDate: '', createdAt: at,
+  }));
+  const keys = items.map(L.sortKey);
+  assert.equal(new Set(keys).size, 1);
+  assert.deepEqual(L.sortedItems({ items }).map(i => i.id), ['c0', 'c1', 'c2']);
+  assert.deepEqual(L.dayItemsInOrder(items, '2027-01-16').map(i => i.id), ['c0', 'c1', 'c2']);
+});
+
+test('departureOrigin reads the first flight when two share a sort key', () => {
+  const at = '2027-01-01T00:00:00.000Z';
+  const a = { ...flight('a', 'Tokyo to Bangkok', '2027-01-16'), startTime: '09:00', createdAt: at };
+  const b = { ...flight('b', 'Osaka to Bangkok', '2027-01-16'), startTime: '09:00', createdAt: at };
+  assert.equal(L.sortKey(a), L.sortKey(b));
+  assert.equal(L.departureOrigin([a, b]), 'Tokyo');
 });
 
 test('tripLegs finds consecutive stays in different places, skipping cancelled', () => {
@@ -5164,4 +5251,301 @@ test('passportExpiryStatus says nothing without both dates', () => {
   assert.equal(L.passportExpiryStatus('2027-06-05', null, fmtD), null);
   assert.equal(L.passportExpiryStatus('06/05/2027', '2027-06-10', fmtD), null);
   assert.equal(L.passportExpiryStatus(null, null, fmtD), null);
+});
+
+// ---------- city picker (Open-Meteo geocoding results) ----------
+
+// Shaped like a real Open-Meteo row so the tests exercise the same keys the
+// endpoint actually sends.
+function omRow(name, country, cc, population, extra = {}) {
+  return {
+    id: Math.abs(`${name}${cc}${population}`.length * 7919),
+    name, country, country_code: cc, population,
+    latitude: 1, longitude: 2, feature_code: 'PPL',
+    ...extra,
+  };
+}
+const omPayload = (...results) => ({ results });
+
+test('rankPlaceResults survives the payloads the endpoint really sends', () => {
+  // no match and a one-character query both come back WITHOUT a results key
+  assert.deepEqual(L.rankPlaceResults('zzzq', { generationtime_ms: 0.4 }, 8), []);
+  assert.deepEqual(L.rankPlaceResults('a', {}, 8), []);
+  assert.deepEqual(L.rankPlaceResults('x', null, 8), []);
+  assert.deepEqual(L.rankPlaceResults('x', { results: null }, 8), []);
+});
+
+test('rankPlaceResults drops everything that is not a place you can stay', () => {
+  // a search for Kyoto really does return a heliport and a palace
+  const out = L.rankPlaceResults('kyoto', omPayload(
+    omRow('Kyoto', 'Japan', 'JP', 1463723, { feature_code: 'PPLA' }),
+    omRow('Kyoto Heliport', 'Japan', 'JP', 0, { feature_code: 'AIRH' }),
+    omRow('Kyoto Imperial Palace', 'Japan', 'JP', 0, { feature_code: 'PRK' }),
+  ), 8);
+  assert.deepEqual(out.map(r => r.value), ['Kyoto']);
+});
+
+test('rankPlaceResults ranks the big city over the exact small one', () => {
+  // THE regression this scoring exists for: "tok" matches the village of Tok,
+  // Alaska exactly and Tokyo only as a prefix, and a traveller means Tokyo.
+  const out = L.rankPlaceResults('tok', omPayload(
+    omRow('Tok', 'United States', 'US', 1258, { admin1: 'Alaska' }),
+    omRow('Tok', 'Kazakhstan', 'KZ', 0),
+    omRow('Tokyo', 'Japan', 'JP', 9733276, { admin1: 'Tokyo' }),
+  ), 8);
+  assert.equal(out[0].value, 'Tokyo');
+  assert.equal(out[1].label, 'Tok, Alaska, United States');
+});
+
+test('rankPlaceResults keeps a match that is neither exact nor a prefix', () => {
+  // the endpoint resolves native and alternate names but returns only the
+  // ENGLISH one, so "koln" legitimately comes back as "Cologne"
+  const out = L.rankPlaceResults('koln', omPayload(
+    omRow('Kolno', 'Poland', 'PL', 10659),
+    omRow('Cologne', 'Germany', 'DE', 963395),
+  ), 8);
+  assert.equal(out[0].value, 'Cologne');
+  assert.equal(out.length, 2);
+});
+
+test('rankPlaceResults disambiguates the namesakes in the label', () => {
+  const out = L.rankPlaceResults('paris', omPayload(
+    omRow('Paris', 'United States', 'US', 24782, { admin1: 'Texas' }),
+    omRow('Paris', 'France', 'FR', 2138551, { admin1: 'Île-de-France Region', feature_code: 'PPLC' }),
+  ), 8);
+  assert.deepEqual(out.map(r => r.label), [
+    'Paris, Île-de-France Region, France',
+    'Paris, Texas, United States',
+  ]);
+  // what lands in the field is the BARE name: the label is for choosing, but
+  // the value is also the day-card chip and the weather lookup key
+  assert.deepEqual(out.map(r => r.value), ['Paris', 'Paris']);
+  assert.equal(out[0].cc, 'FR');
+});
+
+test('rankPlaceResults does not repeat a region that echoes the city', () => {
+  const [row] = L.rankPlaceResults('tokyo', omPayload(
+    omRow('Tokyo', 'Japan', 'JP', 9733276, { admin1: 'Tokyo' }),
+  ), 8);
+  assert.equal(row.label, 'Tokyo, Japan');
+  assert.equal(row.detail, 'Japan');
+});
+
+test('rankPlaceResults de-duplicates the settlement and its admin twin', () => {
+  const out = L.rankPlaceResults('berlin', omPayload(
+    omRow('Berlin', 'Germany', 'DE', 3426354, { admin1: 'Berlin', feature_code: 'PPLC' }),
+    omRow('Berlin', 'Germany', 'DE', 3426354, { admin1: 'Berlin', feature_code: 'ADM1' }),
+  ), 8);
+  assert.equal(out.length, 1);
+  assert.equal(out[0].feature, 'PPLC');
+});
+
+test('rankPlaceResults honours the limit and drops unplottable rows', () => {
+  const many = Array.from({ length: 12 }, (_, i) => omRow(`Springfield ${i}`, 'United States', 'US', 1000 * i));
+  assert.equal(L.rankPlaceResults('springfield', omPayload(...many), 5).length, 5);
+  const broken = L.rankPlaceResults('nowhere', omPayload(
+    { name: 'Nowhere', country: 'X', country_code: 'XX', feature_code: 'PPL', latitude: null, longitude: null },
+  ), 8);
+  assert.deepEqual(broken, []);
+});
+
+test('foldPlace is blind to case and diacritics', () => {
+  assert.equal(L.foldPlace('Köln'), 'koln');
+  assert.equal(L.foldPlace('  MÁLAGA '), 'malaga');
+  assert.equal(L.foldPlace(null), '');
+});
+
+// ---------- airport picker (bundled OurAirports table) ----------
+
+const AIRPORT_FIXTURE = {
+  countries: { JP: 'Japan', US: 'United States', GB: 'United Kingdom', FR: 'France' },
+  rows: [
+    ['HND', 'Tokyo Haneda International', 'Tokyo', 'JP', 35.55, 139.79, 1, 'TYO'],
+    ['NRT', 'Narita International', 'Narita', 'JP', 35.77, 140.39, 1, 'TYO Tokyo New'],
+    ['LHR', 'London Heathrow', 'London', 'GB', 51.47, -0.46, 1, 'LON'],
+    ['LGW', 'London Gatwick', 'London', 'GB', 51.15, -0.19, 1, 'LON'],
+    ['LCY', 'London City', 'London', 'GB', 51.51, 0.05, 0, 'LON'],
+    ['JFK', 'John F. Kennedy International', 'New York', 'US', 40.64, -73.78, 1, 'NYC Idlewild'],
+    ['EWR', 'Newark Liberty International', 'Newark', 'US', 40.69, -74.17, 1, 'Manhattan New York City NYC'],
+    ['LAX', 'Los Angeles International', 'Los Angeles', 'US', 33.94, -118.41, 1, ''],
+    ['CDG', 'Charles de Gaulle International', 'Paris', 'FR', 49.01, 2.55, 1, 'PAR Roissy'],
+  ],
+};
+const AIRPORTS = L.airportIndex(AIRPORT_FIXTURE);
+const codes = (q, n) => L.searchAirports(q, AIRPORTS, n).map(a => a.iata);
+
+test('airportIndex expands the compact payload and resolves the country', () => {
+  const hnd = AIRPORTS.find(a => a.iata === 'HND');
+  assert.equal(hnd.city, 'Tokyo');
+  assert.equal(hnd.country, 'Japan');
+  assert.equal(hnd.big, true);
+  assert.equal(AIRPORTS.find(a => a.iata === 'LCY').big, false);
+  assert.deepEqual(L.airportIndex(null), []);
+  assert.deepEqual(L.airportIndex({ rows: 'nope' }), []);
+});
+
+test('a typed IATA code beats every name match', () => {
+  assert.equal(codes('lax')[0], 'LAX');
+  assert.equal(codes('jfk')[0], 'JFK');
+  // LHR by code, even though four other rows contain "l"
+  assert.equal(codes('lhr')[0], 'LHR');
+});
+
+test('airport search finds the alternate city travellers actually type', () => {
+  // Narita's municipality is Narita, not Tokyo: without the keyword aliases
+  // from the upstream data, "tokyo" would never surface NRT at all
+  assert.deepEqual(codes('tokyo'), ['HND', 'NRT']);
+  // and Newark is how you fly to New York
+  assert.ok(codes('new york').includes('EWR'));
+  assert.equal(codes('new york')[0], 'JFK');
+  // metro codes are real search terms
+  assert.ok(codes('par').includes('CDG'));
+});
+
+test('a large airport outranks a small one in the same city', () => {
+  const london = codes('london');
+  // London City is a medium airport, so it sorts below the two large ones
+  // whatever the alphabet and the hub list do above it.
+  assert.equal(london[london.length - 1], 'LCY');
+});
+
+test('the hub list breaks a tie the alphabet would get backwards', () => {
+  // Heathrow and Gatwick are both large, both filed under London, and score
+  // identically; nothing in OurAirports separates them, so the raw sort gave
+  // Gatwick first. PRIMARY_HUBS is the curated answer.
+  assert.deepEqual(codes('london'), ['LHR', 'LGW', 'LCY']);
+  assert.ok(L.PRIMARY_HUBS.has('LHR'));
+  assert.ok(!L.PRIMARY_HUBS.has('LGW'));
+});
+
+test('the hub list is ONLY a tiebreak and never beats a better match', () => {
+  // LHR is a hub and LCY is not, but a typed code is an exact IATA match and
+  // outranks everything: a hub bonus that could cross tiers would break this.
+  assert.equal(codes('lcy')[0], 'LCY');
+  // and a hub cannot pull itself above a closer name match either
+  assert.equal(codes('london city')[0], 'LCY');
+});
+
+// ---------- the metro promotion ----------
+
+test('naming a metro finds its gateway even when the data files it elsewhere', () => {
+  // MXP's city is Ferno, so "milan" reaches it only through the airport name,
+  // two tiers below any airport whose city string IS the metro. Declaring the
+  // metro in PRIMARY_HUBS lifts that to a city-level match.
+  const rows = L.airportIndex(require('../data/airports.json'));
+  const top = q => L.searchAirports(q, rows, 3).map(a => a.iata)[0];
+  assert.equal(L.PRIMARY_HUBS.get('MXP'), 'Milan');
+  assert.equal(top('milan'), 'MXP');
+  // partial typing gets there too, so the promotion is not an exact-match trick
+  assert.equal(top('mil'), 'MXP');
+  assert.equal(top('buch'), 'OTP');
+  assert.equal(top('washi'), 'IAD');
+});
+
+test('the promotion needs the METRO name, not any prefix of the airport name', () => {
+  // An earlier draft promoted any name-prefix match. Airport names start with
+  // people, so that put Amman (Queen Alia) above Queenstown and Paris
+  // (Charles de Gaulle) above Chicago. Both must stay where they were.
+  const rows = L.airportIndex(require('../data/airports.json'));
+  const top = q => L.searchAirports(q, rows, 3).map(a => a.iata)[0];
+  assert.equal(top('queen'), 'ZQN');   // Queenstown, not AMM
+  assert.equal(top('ch'), 'ORD');      // Chicago, not CDG
+  assert.equal(top('john'), 'JST');    // Johnstown, not JFK
+  assert.equal(top('ge'), 'AVV');      // not IAH via "George Bush"
+});
+
+test('two letters do not name a metro', () => {
+  // "lo" is on the way to somewhere, not a declaration of London.
+  const rows = L.airportIndex(require('../data/airports.json'));
+  assert.equal(L.airportScore('lo', rows.find(a => a.iata === 'LHR')), 650);  // prefix + big, unpromoted
+  assert.equal(L.airportScore('lon', rows.find(a => a.iata === 'LHR')), 950); // promoted
+});
+
+test('every hub code and metro name in the list actually resolves', () => {
+  // A typo in a curated list is silent: the entry simply never matches. This
+  // pins both halves against the shipped table, so a bad code OR a metro name
+  // that no longer reaches its airport fails loudly.
+  const rows = L.airportIndex(require('../data/airports.json'));
+  const shipped = new Set(rows.map(a => a.iata));
+  const missing = [...L.PRIMARY_HUBS.keys()].filter(c => !shipped.has(c));
+  assert.deepEqual(missing, []);
+  const unreachable = [...L.PRIMARY_HUBS].filter(([iata, metro]) =>
+    L.searchAirports(metro, rows, 3).map(a => a.iata)[0] !== iata);
+  assert.deepEqual(unreachable, []);
+});
+
+test('the shipped data still ranks the real multi-airport metros correctly', () => {
+  const rows = L.airportIndex(require('../data/airports.json'));
+  const top = q => L.searchAirports(q, rows, 4).map(a => a.iata)[0];
+  // One assertion per metro the hub list exists to arbitrate. These are the
+  // cases where the alphabet was wrong before it.
+  assert.equal(top('london'), 'LHR');
+  assert.equal(top('chicago'), 'ORD');
+  assert.equal(top('houston'), 'IAH');
+  assert.equal(top('moscow'), 'SVO');
+  assert.equal(top('rome'), 'FCO');
+  assert.equal(top('seoul'), 'ICN');
+  assert.equal(top('osaka'), 'KIX');
+  assert.equal(top('milan'), 'MXP');
+  assert.equal(top('sao paulo'), 'GRU');
+  assert.equal(top('johannesburg'), 'JNB');
+  assert.equal(top('dubai'), 'DXB');
+  assert.equal(top('doha'), 'DOH');
+  assert.equal(top('tenerife'), 'TFS');
+  // the four the metro promotion fixed: each one's gateway is filed under a
+  // suburb, and a smaller airport inside the city limits was beating it
+  assert.equal(top('bucharest'), 'OTP');   // was BBU (Baneasa)
+  assert.equal(top('dallas'), 'DFW');      // was DAL (Love Field)
+  assert.equal(top('washington'), 'IAD');  // was DCA
+  assert.equal(top('manchester'), 'MAN');  // was MHT (New Hampshire)
+  // and the ones it merely confirms
+  assert.equal(top('paris'), 'CDG');
+  assert.equal(top('new york'), 'JFK');
+  assert.equal(top('tokyo'), 'HND');
+  assert.equal(top('istanbul'), 'IST');
+});
+
+test('airport search ignores queries too short to mean anything', () => {
+  assert.deepEqual(L.searchAirports('l', AIRPORTS, 8), []);
+  assert.deepEqual(L.searchAirports('', AIRPORTS, 8), []);
+  assert.deepEqual(L.searchAirports('zzzz', AIRPORTS, 8), []);
+  assert.deepEqual(L.searchAirports('tokyo', null, 8), []);
+});
+
+test('airport rows read as a label and a detail line', () => {
+  const hnd = AIRPORTS.find(a => a.iata === 'HND');
+  assert.equal(L.airportLabel(hnd), 'Tokyo (HND)');
+  // the trailing "Airport" is stripped in the data to save bytes, and put back
+  // for reading
+  assert.equal(L.airportDetail(hnd), 'Tokyo Haneda International Airport · Japan');
+  assert.equal(L.airportLabel(null), '');
+});
+
+test('flightTitleFromAirports writes the shape the day cards already parse', () => {
+  const hnd = AIRPORTS.find(a => a.iata === 'HND');
+  const cdg = AIRPORTS.find(a => a.iata === 'CDG');
+  const title = L.flightTitleFromAirports(hnd, cdg);
+  assert.equal(title, 'Tokyo (HND) to Paris (CDG)');
+  // THE POINT of that shape: dayMorningCity runs these two over the title to
+  // decide which city a travel day starts in, and keys the weather off it
+  assert.equal(L.parseTravelOrigin(title), 'Tokyo');
+  assert.equal(L.stripPlaceCode('Paris (CDG)'), 'Paris');
+  assert.equal(L.flightTitleFromAirports(hnd, null), '');
+});
+
+test('parseFlightAirports re-fills the pickers from an existing title', () => {
+  const { from, to } = L.parseFlightAirports('Tokyo (HND) to Paris (CDG)', AIRPORTS);
+  assert.equal(from.iata, 'HND');
+  assert.equal(to.iata, 'CDG');
+  // lower case and a hand-written title still resolve
+  assert.equal(L.parseFlightAirports('red-eye (hnd) to (lhr)', AIRPORTS).to.iata, 'LHR');
+});
+
+test('parseFlightAirports refuses parentheses that are not airports', () => {
+  assert.deepEqual(L.parseFlightAirports('Dinner (7pm) to follow', AIRPORTS), { from: null, to: null });
+  assert.deepEqual(L.parseFlightAirports('Ferry to Naxos', AIRPORTS), { from: null, to: null });
+  // one known code is not a route: the caller needs both to compose a title
+  assert.equal(L.parseFlightAirports('Flight to Tokyo (HND)', AIRPORTS).to, null);
+  assert.deepEqual(L.parseFlightAirports('', AIRPORTS), { from: null, to: null });
+  assert.deepEqual(L.parseFlightAirports(null, null), { from: null, to: null });
 });
