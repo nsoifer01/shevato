@@ -9,9 +9,10 @@
  * Add --text to dump the extracted text, which is the fastest way to see why
  * a PDF read badly.
  *
- * All-numeric dates are read MONTH-FIRST (08/12/2027 = 12 August). Add
- * --day-first to read the same confirmation the European way, which is the
- * quickest way to check whether an ambiguous date flipped the trip.
+ * All-numeric dates: the document is asked first. If any of its dates carries
+ * a number above 12 the order is settled from that and the flags below are not
+ * consulted. Only when the document offers no evidence does the default apply,
+ * which is MONTH-FIRST (08/12/2027 = 12 August); --day-first flips it.
  *
  * PDF SUPPORT IS BEST-EFFORT AND DELIBERATELY DEPENDENCY-FREE. It inflates
  * FlateDecode content streams with node's own zlib and pulls the text-showing
@@ -128,10 +129,17 @@ if (showText) {
   process.stdout.write(`${C.dim}--- extracted text ---${C.off}\n${text}\n${C.dim}--- end ---${C.off}\n\n`);
 }
 
-const { proposals, stats } = extractBookings(text, { airports: loadAirports(), dayFirst });
+const { proposals, stats, order } = extractBookings(text, { airports: loadAirports(), dayFirst });
 
-process.stdout.write(`${C.b}${target}${C.off}  ${C.dim}(${stats.lines} non-empty lines, `
-  + `all-numeric dates read ${dayFirst ? 'day-first' : 'month-first'})${C.off}\n\n`);
+const orderWord = order.dayFirst ? 'day-first' : 'month-first';
+const orderWhy = {
+  document: () => `settled by the document itself (${order.evidence.map(e => e.raw).join(', ')})`,
+  conflict: () => `${C.r}THIS DOCUMENT USES BOTH ORDERS${C.off}${C.dim} (${order.evidence.map(e => e.raw).join(' vs ')}); falling back to the default`,
+  default: () => 'no decisive date in the document, so the default applies',
+}[order.source]();
+
+process.stdout.write(`${C.b}${target}${C.off}  ${C.dim}(${stats.lines} non-empty lines)${C.off}\n`);
+process.stdout.write(`${C.dim}all-numeric dates read ${C.off}${C.b}${orderWord}${C.off}${C.dim}: ${orderWhy}${C.off}\n\n`);
 
 if (!proposals.length) {
   process.stdout.write(`${C.r}Nothing could be read with confidence.${C.off}\n`

@@ -48,6 +48,11 @@ function validYmd(y, m, d) {
  * 8 December. The default only ever decides the AMBIGUOUS cases - a date where
  * one number is above 12 is resolved from the number itself and ignores this
  * setting entirely.
+ *
+ * `{ orderKnown: true }` says the CALLER has established this document's date
+ * order (see inferDateOrder). An otherwise-ambiguous date is then reported as
+ * resolved rather than ambiguous, and carries `resolvedByDocument` so the
+ * caller can still say out loud how it was settled.
  */
 export function parseDate(s, opts = {}) {
   const text = String(s || '').trim();
@@ -86,13 +91,64 @@ export function parseDate(s, opts = {}) {
     else if (b > 12 && a <= 12) { d = b; mo = a; ambiguous = false; }
     if (!validYmd(y, mo, d)) return null;
     const out = { iso: iso(y, mo, d), raw: m[0], ambiguous };
-    // When it IS ambiguous both numbers are 1-12, so the other reading is
-    // always a real date too. Carrying it lets the warning name both instead
-    // of vaguely saying "or the other way round".
-    if (ambiguous) out.altIso = iso(y, d, mo);
+    // When the string alone is ambiguous both numbers are 1-12, so the other
+    // reading is always a real date too. Carrying it lets the caller name both
+    // instead of vaguely saying "or the other way round".
+    if (ambiguous) {
+      out.altIso = iso(y, d, mo);
+      // The document has already settled which order it uses, so this one is
+      // no longer a guess. It still says so, because "resolved from elsewhere
+      // in the document" is a different claim from "unambiguous on its face".
+      if (opts.orderKnown === true) {
+        out.ambiguous = false;
+        out.resolvedByDocument = true;
+      }
+    }
     return out;
   }
   return null;
+}
+
+const NUMERIC_DATE = /\b(\d{1,2})[\/.](\d{1,2})[\/.](\d{4})\b/g;
+
+/**
+ * Works out which order THIS DOCUMENT writes its all-numeric dates in, so the
+ * ambiguous ones can be read the same way as the decisive ones.
+ *
+ * A confirmation is written by one system in one locale, so its dates are all
+ * the same shape. If any of them carries a number above 12 it can only be read
+ * one way, and that settles the rest: a page holding both "25/12/2027" and
+ * "08/12/2027" is day-first throughout, so the second is 8 December and not a
+ * coin toss. This is what makes a global default mostly unnecessary - it is
+ * only consulted when the document itself offers no evidence at all.
+ *
+ * Returns { dayFirst, source: 'document'|'default'|'conflict', evidence, conflict }.
+ *
+ * Conflicting evidence (one date that can only be day-first AND another that
+ * can only be month-first) is NOT averaged or won by majority. Such a document
+ * is not trustworthy on dates at all, so it falls back to the default and says
+ * so, and every date it produced stays flagged.
+ */
+export function inferDateOrder(lines, opts = {}) {
+  const fallback = opts.dayFirst === true;
+  const votes = [];
+  (lines || []).forEach((ln, i) => {
+    for (const m of String(ln).matchAll(NUMERIC_DATE)) {
+      const a = +m[1], b = +m[2], y = +m[3];
+      // A vote only counts if the reading it forces is a real calendar date;
+      // "31/02/2027" forces day-first on its face but is not a date at all.
+      if (a > 12 && b <= 12 && validYmd(y, b, a)) votes.push({ dayFirst: true, raw: m[0], line: i });
+      else if (b > 12 && a <= 12 && validYmd(y, a, b)) votes.push({ dayFirst: false, raw: m[0], line: i });
+    }
+  });
+
+  if (!votes.length) return { dayFirst: fallback, source: 'default', evidence: [], conflict: false };
+  const dmy = votes.filter(v => v.dayFirst);
+  const mdy = votes.filter(v => !v.dayFirst);
+  if (dmy.length && mdy.length) {
+    return { dayFirst: fallback, source: 'conflict', evidence: [dmy[0], mdy[0]], conflict: true };
+  }
+  return { dayFirst: dmy.length > 0, source: 'document', evidence: votes.slice(0, 2), conflict: false };
 }
 
 /** "21:30", "9:30 PM", "09.30" -> "21:30". Returns null when there is no time. */
@@ -214,6 +270,30 @@ export function findRoute(lines, byIata) {
   return null;
 }
 
+/**
+ * What to say about how a date's order was decided. Three cases, and each one
+ * is a different claim, so each gets its own wording:
+ *   - the document settled it  -> say which line settled it, informational
+ *   - the document contradicts itself -> warn, and it is still a guess
+ *   - no evidence either way   -> warn, name both readings
+ */
+function dateOrderNotes(d, ctx) {
+  if (!d) return [];
+  const order = ctx.order || {};
+  if (d.resolvedByDocument) {
+    const src = (order.evidence || [])[0];
+    const how = src
+      ? `"${src.raw}" on line ${src.line + 1} can only be read that way`
+      : 'another date in this document can only be read that way';
+    return [`"${d.raw}" could be read either way on its own; taken as ${d.iso} because ${how}.`];
+  }
+  if (!d.ambiguous) return [];
+  const conflict = order.conflict
+    ? ' This document also contains dates in BOTH orders, so it cannot be trusted on dates at all.'
+    : '';
+  return [`"${d.raw}" is an all-numeric date with no way to tell the order from the string. Read as ${d.iso}; it could equally be ${d.altIso}.${conflict} Confirm before saving.`];
+}
+
 const label = (a, code) => (a ? `${a.city || a.name} (${code})` : code);
 
 /**
@@ -251,9 +331,7 @@ function readFlight(lines, byIata, ctx) {
     // full line, not just the matched substring: provenance is only useful
     // if the traveller can see the context the value came out of
     evidence.push({ field: 'startDate', raw: lines[dep.line].trim(), line: dep.line });
-    if (dep.ambiguous) {
-      warnings.push(`"${dep.raw}" is an all-numeric date with no way to tell the order from the string. Read as ${dep.iso}; it could equally be ${dep.altIso}. Confirm before saving.`);
-    }
+    warnings.push(...dateOrderNotes(dep, ctx));
   } else {
     warnings.push('No departure date could be read.');
   }
@@ -336,11 +414,7 @@ function readStay(lines, ctx) {
   const end = parseDate(lines[outLine], ctx);
   evidence.push({ field: 'startDate', raw: lines[inLine].trim(), line: inLine });
   evidence.push({ field: 'endDate', raw: lines[outLine].trim(), line: outLine });
-  if (start.ambiguous || end.ambiguous) {
-    const amb = [start, end].filter(x => x.ambiguous)
-      .map(x => `"${x.raw}" read as ${x.iso}, could be ${x.altIso}`).join('; ');
-    warnings.push(`All-numeric stay date with no way to tell the order from the string: ${amb}. Confirm before saving.`);
-  }
+  for (const d of [start, end]) warnings.push(...dateOrderNotes(d, ctx));
   if (end.iso <= start.iso) warnings.push('Check-out is not after check-in; the dates may have been read in the wrong order.');
 
   // Property name: the first line that looks like a name rather than a label.
@@ -397,8 +471,10 @@ export function toLines(text) {
 export function extractBookings(text, opts = {}) {
   const lines = toLines(text);
   const byIata = new Map((opts.airports || []).map(a => [a.iata, a]));
-  // Month-first unless the caller explicitly asks for day-first.
-  const ctx = { dayFirst: opts.dayFirst === true };
+  // Ask the document which order it writes dates in before reading any of
+  // them; the caller's default is only the fallback when it stays silent.
+  const order = inferDateOrder(lines, { dayFirst: opts.dayFirst === true });
+  const ctx = { dayFirst: order.dayFirst, orderKnown: order.source === 'document', order };
 
   const proposals = [];
   const flight = readFlight(lines, byIata, ctx);
@@ -409,6 +485,7 @@ export function extractBookings(text, opts = {}) {
   return {
     proposals,
     lines,
+    order,
     stats: {
       lines: lines.filter(Boolean).length,
       found: proposals.length,

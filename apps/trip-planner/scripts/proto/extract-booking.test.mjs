@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { extractBookings, parseDate, parseTime, parseMoney, findConfirmation, findRoute, toLines } from './extract-booking.mjs';
+import { extractBookings, parseDate, parseTime, parseMoney, findConfirmation, findRoute, toLines, inferDateOrder } from './extract-booking.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const payload = JSON.parse(readFileSync(resolve(HERE, '../../data/airports.json'), 'utf8'));
@@ -253,4 +253,88 @@ test('extracted fields survive the app\'s own sanitiser shape', () => {
   assert.match(item.startTime, /^\d{2}:\d{2}$/);
   assert.ok(item.cost >= 0);
   assert.match(item.costCurrency, /^[A-Z]{3}$/);
+});
+
+// ---------- per-document date-order inference ----------
+
+test('a decisive date settles the order for the whole document', () => {
+  const dmy = inferDateOrder(toLines('Issued 25/12/2027\nDeparts 08/12/2027'));
+  assert.equal(dmy.dayFirst, true);
+  assert.equal(dmy.source, 'document');
+  assert.equal(dmy.evidence[0].raw, '25/12/2027');
+
+  const mdy = inferDateOrder(toLines('Issued 12/25/2027\nDeparts 08/12/2027'));
+  assert.equal(mdy.dayFirst, false);
+  assert.equal(mdy.source, 'document');
+});
+
+test('document evidence beats the caller default, in both directions', () => {
+  // the caller asking for day-first does not override a document that
+  // demonstrably writes month-first
+  const o = inferDateOrder(toLines('Issued 12/25/2027'), { dayFirst: true });
+  assert.equal(o.dayFirst, false);
+  assert.equal(o.source, 'document');
+});
+
+test('with no decisive date the caller default is used and named as such', () => {
+  const a = inferDateOrder(toLines('Departs 08/12/2027'));
+  assert.equal(a.source, 'default');
+  assert.equal(a.dayFirst, false);
+  assert.deepEqual(a.evidence, []);
+  assert.equal(inferDateOrder(toLines('Departs 08/12/2027'), { dayFirst: true }).dayFirst, true);
+  assert.equal(inferDateOrder([]).source, 'default');
+});
+
+test('a date that is impossible under the order it forces does not vote', () => {
+  // 31/02 looks day-first on its face, but 31 February is not a date, so it
+  // is not evidence of anything
+  assert.equal(inferDateOrder(toLines('Ref 31/02/2027')).source, 'default');
+  assert.equal(inferDateOrder(toLines('Ref 20/30/2027')).source, 'default');
+});
+
+test('a document written in BOTH orders is refused rather than averaged', () => {
+  const o = inferDateOrder(toLines('Issued 25/12/2027\nDeparts 12/25/2027'));
+  assert.equal(o.conflict, true);
+  assert.equal(o.source, 'conflict');
+  assert.equal(o.dayFirst, false);     // falls back to the default
+  assert.equal(o.evidence.length, 2);  // one example of each
+});
+
+const RYANAIR = `Ryanair - Booking confirmation
+Booking reference: QJ8W2N
+Flight FR 1928
+Dublin DUB to Rome Ciampino CIA
+Departs 08/12/2027 at 06:40
+Arrives 08/12/2027 at 10:15
+Return leg 22/12/2027
+Total: EUR 148.00`;
+
+test('an ambiguous date is resolved by a decisive one elsewhere in the document', () => {
+  const r = run(RYANAIR);
+  assert.equal(r.order.source, 'document');
+  assert.equal(r.order.dayFirst, true);
+  const p = r.proposals[0];
+  // 08/12 is 8 December here, NOT 12 August, because 22/12 on the return line
+  // can only be day-first
+  assert.equal(p.item.startDate, '2027-12-08');
+  // and because the document settled it, the date no longer costs confidence
+  assert.equal(p.confidence, 'high');
+  const note = p.warnings.find(w => /could be read either way/i.test(w));
+  assert.ok(note, 'no resolution note');
+  assert.match(note, /22\/12\/2027/);   // names the line that settled it
+  assert.match(note, /2027-12-08/);
+});
+
+test('the same document with no decisive date falls back and stays flagged', () => {
+  const p = run(RYANAIR.replace('Return leg 22/12/2027', 'Return leg to be confirmed')).proposals[0];
+  assert.equal(p.item.startDate, '2027-08-12');   // month-first default
+  assert.equal(p.confidence, 'medium');
+  assert.ok(p.warnings.some(w => /no way to tell the order/i.test(w)));
+});
+
+test('a self-contradicting document warns loudly and trusts nothing', () => {
+  const p = run(RYANAIR.replace('Return leg 22/12/2027', 'Issued 12/25/2027\nReturn leg 22/12/2027')).proposals[0];
+  assert.equal(p.confidence, 'medium');
+  const w = p.warnings.find(x => /BOTH orders/i.test(x));
+  assert.ok(w, 'no conflict warning');
 });
