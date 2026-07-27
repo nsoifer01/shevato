@@ -5439,7 +5439,20 @@ test('naming a metro finds its gateway even when the data files it elsewhere', (
   // partial typing gets there too, so the promotion is not an exact-match trick
   assert.equal(top('mil'), 'MXP');
   assert.equal(top('buch'), 'OTP');
-  assert.equal(top('washi'), 'IAD');
+  assert.equal(top('dall'), 'DFW');
+});
+
+test('Washington answers DCA, not Dulles (owner decision)', () => {
+  // Dulles is the intercontinental gateway, but Reagan National is inside the
+  // city and is what its city field says it is. IAD is deliberately absent
+  // from PRIMARY_HUBS so no metro promotion fires and the plain city match
+  // wins. Pinned because the "obvious" change is to add IAD back.
+  const rows = L.airportIndex(require('../data/airports.json'));
+  assert.ok(!L.PRIMARY_HUBS.has('IAD'));
+  assert.deepEqual(L.searchAirports('washington', rows, 3).map(a => a.iata), ['DCA', 'IAD', 'BWI']);
+  // Dulles is still perfectly reachable by its own name and code
+  assert.equal(L.searchAirports('dulles', rows, 3).map(a => a.iata)[0], 'IAD');
+  assert.equal(L.searchAirports('iad', rows, 3).map(a => a.iata)[0], 'IAD');
 });
 
 test('the promotion needs the METRO name, not any prefix of the airport name', () => {
@@ -5496,7 +5509,6 @@ test('the shipped data still ranks the real multi-airport metros correctly', () 
   // suburb, and a smaller airport inside the city limits was beating it
   assert.equal(top('bucharest'), 'OTP');   // was BBU (Baneasa)
   assert.equal(top('dallas'), 'DFW');      // was DAL (Love Field)
-  assert.equal(top('washington'), 'IAD');  // was DCA
   assert.equal(top('manchester'), 'MAN');  // was MHT (New Hampshire)
   // and the ones it merely confirms
   assert.equal(top('paris'), 'CDG');
