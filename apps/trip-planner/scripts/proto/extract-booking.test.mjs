@@ -338,3 +338,107 @@ test('a self-contradicting document warns loudly and trusts nothing', () => {
   const w = p.warnings.find(x => /BOTH orders/i.test(x));
   assert.ok(w, 'no conflict warning');
 });
+
+// ---------- which date is the departure ----------
+
+const LH = `Lufthansa e-Ticket
+Issued 03 June 2027
+Booked on 03 June 2027
+Booking reference: LH8842K
+Flight LH 401
+Frankfurt FRA to New York JFK
+Departs 14 September 2027 at 13:20
+Arrives 14 September 2027 at 16:05
+Total: EUR 638.00`;
+
+test('an issue date above the itinerary is not mistaken for the departure', () => {
+  // The regression this anchoring exists for: taking the first date on the
+  // page put this flight three months early.
+  const p = run(LH).proposals[0];
+  assert.equal(p.item.startDate, '2027-09-14');
+  assert.notEqual(p.item.startDate, '2027-06-03');
+  const ev = p.evidence.find(e => e.field === 'startDate');
+  assert.match(ev.raw, /^Departs/);
+});
+
+test('dates on issue/booking/invoice lines are struck out and reported', () => {
+  const p = run(LH).proposals[0];
+  const w = p.warnings.find(x => /Ignored 2 dates/i.test(x));
+  assert.ok(w, 'skipped dates not reported');
+  assert.match(w, /Issued 03 June 2027/);
+});
+
+test('a labelled departure wins wherever it sits on the page', () => {
+  // the departure line is BELOW a later-dated line that is not labelled
+  const p = run(`Booking reference: AB12CD
+Frankfurt FRA to New York JFK
+Some note 20 December 2027
+Departs 14 September 2027 at 13:20`).proposals[0];
+  assert.equal(p.item.startDate, '2027-09-14');
+});
+
+test('with no labelled departure the date nearest the route is used, and said so', () => {
+  const p = run(`Header 01 March 2027
+Dublin DUB to Rome Ciampino CIA
+15 April 2027 06:40
+Booking reference: QJ8W2N`).proposals[0];
+  assert.equal(p.item.startDate, '2027-04-15');
+  assert.ok(p.warnings.some(w => /No line is labelled as the departure/i.test(w)));
+});
+
+test('a date printed on the route line itself is used', () => {
+  const p = run(`Booking reference: QJ8W2N
+Dublin DUB to Rome Ciampino CIA on 15 April 2027
+Departs 06:40`).proposals[0];
+  assert.equal(p.item.startDate, '2027-04-15');
+});
+
+// ---------- which date is the arrival ----------
+
+test('an explicit arrival date beats the +1 inference', () => {
+  const p = run(`Booking reference: AB12CD
+London LHR to Singapore SIN
+Departs 12 August 2027 at 21:30
+Arrives 14 August 2027 at 06:45`).proposals[0];
+  // the clock alone would have inferred +1 (06:45 < 21:30); the printed date
+  // says +2, and the document wins
+  assert.equal(p.item.endDate, '2027-08-14');
+  assert.ok(p.warnings.some(w => /read from "Arrives/i.test(w)));
+  assert.ok(p.evidence.some(e => e.field === 'endDate'));
+});
+
+test('the +1 inference still applies when no arrival date is printed', () => {
+  const p = run(`Booking reference: AB12CD
+London LHR to New York JFK
+Departs 12 August 2027 at 21:30
+Arrives 06:45`).proposals[0];
+  assert.equal(p.item.endDate, '2027-08-13');
+  assert.ok(p.warnings.some(w => /no arrival date was printed/i.test(w)));
+});
+
+test('an arrival date before the departure is refused and costs confidence', () => {
+  const p = run(`Booking reference: AB12CD
+London LHR to New York JFK
+Departs 12 August 2027 at 21:30
+Arrives 02 August 2027 at 06:45`).proposals[0];
+  // The printed arrival date is not stored. The CLOCK is separate evidence
+  // and still says the leg wraps past midnight, so +1 is kept rather than
+  // throwing away a real overnight; the contradiction costs a confidence step.
+  assert.equal(p.item.endDate, '2027-08-13');
+  assert.notEqual(p.item.endDate, '2027-08-02');
+  assert.equal(p.confidence, 'medium');
+  assert.ok(p.warnings.some(w => /BEFORE the departure date/i.test(w)));
+});
+
+test('an implausible flight length is called out', () => {
+  const p = run(`Booking reference: AB12CD
+Chicago ORD to London LHR
+Departs 08/12/2027 at 18:05
+Arrives 09/12/2027 at 08:10`).proposals[0];
+  // no decisive date, so month-first gives a 31-day "flight"
+  assert.equal(p.item.startDate, '2027-08-12');
+  assert.equal(p.item.endDate, '2027-09-12');
+  const w = p.warnings.find(x => /not a plausible flight/i.test(x));
+  assert.ok(w, 'implausible gap not flagged');
+  assert.match(w, /31 days/);
+});

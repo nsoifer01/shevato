@@ -318,20 +318,47 @@ function readFlight(lines, byIata, ctx) {
     warnings.push(`Route was inferred from two airport codes on the page ("${route.from}", "${route.to}"), not from an explicit "A to B" line. Check the direction.`);
   }
 
-  // Dates, in document order. The first is the departure date; a second
-  // distinct date is only used as the arrival when the times say it lands
-  // after midnight.
-  const dates = [];
+  // WHICH date is the departure. Taking the first date on the page is wrong
+  // on any confirmation that prints an issue or "booked on" date above the
+  // itinerary, and plenty do. So the line a date sits on decides, in order:
+  //   1. a line labelled as a departure ("Departs", "Outbound", "Travel date")
+  //   2. the route line itself, which often carries the date too
+  //   3. the nearest remaining date to the route line, preferring one below it
+  //   4. anything left, which is reported as a guess
+  // Lines labelled as an issue, invoice or payment date are struck out first
+  // and can never win, whatever their position.
+  const dated = [];
   lines.forEach((ln, i) => {
     const d = parseDate(ln, ctx);
-    if (d && !dates.some(x => x.iso === d.iso)) dates.push({ ...d, line: i });
+    if (d) dated.push({ ...d, line: i, ln });
   });
-  const dep = dates[0] || null;
+  const travel = dated.filter(d => !NOT_TRAVEL.test(d.ln));
+  const skipped = dated.filter(d => NOT_TRAVEL.test(d.ln));
+
+  let dep = travel.find(d => DEP_LABEL.test(d.ln))
+    || travel.find(d => d.line === route.line)
+    || travel.slice().sort((a, b) => {
+      // nearest to the route line; a date BELOW the route beats one the same
+      // distance above it, because itineraries read downwards
+      const da = (a.line >= route.line ? 0 : 0.5) + Math.abs(a.line - route.line);
+      const db = (b.line >= route.line ? 0 : 0.5) + Math.abs(b.line - route.line);
+      return da - db;
+    })[0]
+    || null;
+  let depGuessed = false;
+  if (!dep && dated.length) { dep = dated[0]; depGuessed = true; }
+
   if (dep) {
     // full line, not just the matched substring: provenance is only useful
     // if the traveller can see the context the value came out of
     evidence.push({ field: 'startDate', raw: lines[dep.line].trim(), line: dep.line });
     warnings.push(...dateOrderNotes(dep, ctx));
+    if (depGuessed || !DEP_LABEL.test(dep.ln)) {
+      warnings.push(`No line is labelled as the departure, so "${lines[dep.line].trim().slice(0, 60)}" was used for the date. Check it is not an issue or booking date.`);
+    }
+    if (skipped.length) {
+      warnings.push(`Ignored ${skipped.length} date${skipped.length > 1 ? 's' : ''} on issue/booking/invoice lines (e.g. "${skipped[0].ln.trim().slice(0, 48)}").`);
+    }
   } else {
     warnings.push('No departure date could be read.');
   }
@@ -347,15 +374,38 @@ function readFlight(lines, byIata, ctx) {
   if (depTime) evidence.push({ field: 'startTime', raw: depTime.raw, line: depTime.line });
   if (arrTime) evidence.push({ field: 'endTime', raw: arrTime.raw, line: arrTime.line });
 
-  // Overnight: an explicit "+1" marker, or an arrival clock earlier than the
-  // departure clock.
-  const plusOne = lines.some(ln => /\+\s?1\b|\bnext day\b/i.test(ln));
-  const wrapped = !!(depTime && arrTime && arrTime.t < depTime.t);
+  // Landing date. A date printed on an ARRIVAL line is authoritative and beats
+  // inferring one; the "+1" inference is only for confirmations that print no
+  // arrival date at all.
   let endDate = '';
-  if (dep && (plusOne || wrapped)) {
-    const d = new Date(Date.UTC(+dep.iso.slice(0, 4), +dep.iso.slice(5, 7) - 1, +dep.iso.slice(8, 10) + 1));
-    endDate = iso(d.getUTCFullYear(), d.getUTCMonth() + 1, d.getUTCDate());
-    warnings.push(`Read as an overnight leg landing ${endDate} (${plusOne ? 'a "+1" marker was printed' : 'the arrival time is earlier than the departure time'}).`);
+  let contradicted = false;
+  const arr = dep ? travel.find(d => d !== dep && ARR_LABEL.test(d.ln)) : null;
+  if (arr && arr.iso > dep.iso) {
+    endDate = arr.iso;
+    evidence.push({ field: 'endDate', raw: lines[arr.line].trim(), line: arr.line });
+    const days = Math.round((Date.parse(arr.iso) - Date.parse(dep.iso)) / 86400000);
+    warnings.push(`Overnight leg: lands ${endDate}, read from "${lines[arr.line].trim().slice(0, 50)}".`);
+    if (days > 2) {
+      warnings.push(`That is ${days} days after departure, which is not a plausible flight. If these dates are all-numeric, the day/month order is probably being read the wrong way round.`);
+    }
+  } else {
+    if (arr && arr.iso < dep.iso) {
+      // Independent evidence disagrees with itself. The clock is still worth
+      // believing (it is a separate reading from the date), so the +1 below
+      // still runs, but the document is no longer trustworthy and the
+      // proposal says so by dropping a confidence step.
+      contradicted = true;
+      warnings.push(`An arrival line reads ${arr.iso}, which is BEFORE the departure date ${dep.iso}. It was ignored, but one of the two dates is being read wrongly - most likely the day/month order.`);
+    }
+    // Overnight: an explicit "+1" marker, or an arrival clock earlier than the
+    // departure clock.
+    const plusOne = lines.some(ln => /\+\s?1\b|\bnext day\b/i.test(ln));
+    const wrapped = !!(depTime && arrTime && arrTime.t < depTime.t);
+    if (dep && (plusOne || wrapped)) {
+      const d = new Date(Date.UTC(+dep.iso.slice(0, 4), +dep.iso.slice(5, 7) - 1, +dep.iso.slice(8, 10) + 1));
+      endDate = iso(d.getUTCFullYear(), d.getUTCMonth() + 1, d.getUTCDate());
+      warnings.push(`Read as an overnight leg landing ${endDate} (${plusOne ? 'a "+1" marker was printed' : 'the arrival time is earlier than the departure time'}); no arrival date was printed.`);
+    }
   }
 
   const flightNo = (() => {
@@ -390,10 +440,16 @@ function readFlight(lines, byIata, ctx) {
 
   let confidence = 'high';
   if (!dep || !route.explicit) confidence = 'low';
-  else if (!depTime || (dep && dep.ambiguous)) confidence = 'medium';
+  else if (!depTime || dep.ambiguous || depGuessed || contradicted) confidence = 'medium';
 
   return { kind: 'flight', item, confidence, evidence, warnings };
 }
+
+// Which line a date sits on decides what it means.
+const DEP_LABEL = /\b(depart\w*|outbound|leaves?|leaving|flight date|travel date|date of travel)\b/i;
+const ARR_LABEL = /\b(arriv\w*|inbound|lands?|landing)\b/i;
+// These can never be the travel date, wherever they appear on the page.
+const NOT_TRAVEL = /\b(issued?|issue date|booked on|booking date|invoice|printed|purchased?|payment date|valid (until|through)|expir\w*)\b/i;
 
 const CHECKIN = /check[\s\-]?in/i;
 const CHECKOUT = /check[\s\-]?out|departure date/i;
