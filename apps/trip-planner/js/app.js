@@ -7,7 +7,7 @@
   // js/app.js, in index.html and in sw.js's PRECACHE list alike. Bumping the
   // cache-buster without bumping this number is what made "build 31" outlive
   // v=32..38 and stop identifying anything.
-  const TP_BUILD = 42;
+  const TP_BUILD = 43;
   const LS_KEY = 'trip-planner:v1';
   const TIMEFMT_KEY = 'trip-planner:timefmt';
   const TYPE_META = {
@@ -57,6 +57,7 @@
     routeBadges, routeFlags, routeTips, routeLinks, modeLink, ROUTE_HONESTY,
     classifyGeoMatch, geoMatchNote, GEO_MATCH_RANK, GEO_MATCH_TEXT,
     foldPlace, rankPlaceResults,
+    HOTEL_TAGS, rankHotelResults,
     airportIndex, airportLabel, airportDetail, searchAirports,
     flightTitleFromAirports, parseFlightAirports,
     extractBookings,
@@ -2442,6 +2443,9 @@
     $('#itemSaveBtn').textContent = it ? 'Save changes' : 'Add item';
     setModalType(it ? it.type : 'flight');
     $('#inTitle').value = it ? it.title : '';
+    // A rating belongs to the row a traveller picked in THIS form, never to a
+    // saved item, so opening any item starts without one.
+    clearStayRating();
     syncFlightPickers(it);
     $('#inLocation').value = it ? (it.location || '') : '';
     $('#inStart').value = it ? (it.startDate || '') : (presetDate || '');
@@ -2673,6 +2677,9 @@
     // so a traveller could see the colour and never be able to choose it. The
     // rule is now printed where it is used instead of the type list growing an
     // entry that would fork the data model and the assistant contract.
+    // The rating belongs to a hotel that was picked from the dropdown, so
+    // switching the type away from Stay retires it with the picker.
+    if (!stay) clearStayRating();
     const meal = $('#mealHint');
     meal.hidden = t !== 'activity';
     if (t === 'activity') {
@@ -4020,6 +4027,7 @@
     let active = -1;
     let token = 0;
     let timer = 0;
+    let selfInput = false;   // see pick(): our own synthetic `input` echo
 
     // Anchored to the input in viewport coordinates, flipping above the field
     // when there is more room up than down (the last field in a tall modal).
@@ -4068,10 +4076,16 @@
       if (!rows.length) return close();
       pop.innerHTML = rows.map((row, i) => {
         const r = opts.render(row);
+        // TAG BEFORE SUB, and the order matters: .cb-opt is a two-column grid
+        // whose .cb-sub spans both columns, so a row carrying BOTH (the hotel
+        // picker: "Kyoto, Japan" + a HOTEL pill) auto-placed the tag onto a
+        // third row where the 1fr column stretched it into a full-width bar.
+        // No picker set both until now, which is why the markup could hold
+        // this order and look correct everywhere.
         return `<div class="cb-opt" role="option" id="${id}-o${i}" aria-selected="false">`
           + `<span class="cb-main">${esc(r.primary)}</span>`
-          + (r.secondary ? `<span class="cb-sub">${esc(r.secondary)}</span>` : '')
           + (r.tag ? `<span class="cb-tag">${esc(r.tag)}</span>` : '')
+          + (r.secondary ? `<span class="cb-sub">${esc(r.secondary)}</span>` : '')
           + '</div>';
       }).join('');
       pop.hidden = false;
@@ -4089,12 +4103,23 @@
       if (opts.onPick) opts.onPick(row, input);
       // Downstream listeners (the route modal's Check button, the item form's
       // dirty tracking) listen for `input`, and setting .value fires nothing.
+      // The flag keeps our OWN listener out of it: without it the echo
+      // re-searches the text we just wrote and the dropdown springs straight
+      // back open under the traveller, offering the row they already chose.
+      // dispatchEvent is synchronous, so clearing it on the next line is safe.
+      selfInput = true;
       input.dispatchEvent(new Event('input', { bubbles: true }));
+      selfInput = false;
     }
 
     function search() {
       const q = input.value.trim();
       const mine = ++token;
+      // One input can be a combobox for one type of item and a plain text
+      // field for the other five (#inTitle: a hotel picker on a stay, a free
+      // title everywhere else). Asked every search rather than at attach time,
+      // because the type switches under a form that is already open.
+      if (opts.enabled && !opts.enabled()) return close();
       if (q.length < (opts.minChars || 2)) return close();
       Promise.resolve(opts.rows(q))
         .then(list => { if (mine === token) render((list || []).slice(0, CB_LIMIT)); })
@@ -4102,6 +4127,7 @@
     }
 
     input.addEventListener('input', () => {
+      if (selfInput) return;
       clearTimeout(timer);
       timer = setTimeout(search, opts.debounce == null ? 220 : opts.debounce);
     });
@@ -4237,6 +4263,117 @@
       render: renderPlaceRow,
       value: row => row.value,
       onPick: rememberPickedPlace,
+    });
+  }
+
+  // ---------- hotel picker source (Photon, OpenStreetMap) ----------
+  // See the block comment over rankHotelResults in trip-logic.js for why this
+  // is a live lookup rather than a bundled table like the airports, and why
+  // Photon rather than the two geocoders already wired up.
+  const HOTEL_API = 'https://photon.komoot.io/api/';
+  const HOTEL_TAG_Q = [...HOTEL_TAGS.keys()].map(t => 'osm_tag=' + encodeURIComponent('tourism:' + t)).join('&');
+  const hotelSuggestCache = new Map();
+  let hotelAbort = null;
+
+  // The city already typed into the Place field, and its coordinates if the
+  // geocode cache happens to know them. Both are optional: the picker works
+  // with neither, it just ranks worse.
+  function hotelBias() {
+    const city = ($('#inLocation').value || '').trim();
+    const hit = city ? geoCache[city.toLowerCase()] : null;
+    return {
+      city,
+      lat: hit && Number.isFinite(hit.lat) ? hit.lat : null,
+      lon: hit && Number.isFinite(hit.lon) ? hit.lon : null,
+    };
+  }
+
+  function fetchHotelSuggestions(q, bias) {
+    // Keyed on the city too: the same three letters mean different hotels once
+    // the traveller fills the Place field in, and a cache that ignored it
+    // would serve the pre-city answer for the rest of the session.
+    const key = `${q.toLowerCase()}|${(bias.city || '').toLowerCase()}`;
+    if (hotelSuggestCache.has(key)) return Promise.resolve(hotelSuggestCache.get(key));
+    if (hotelAbort) hotelAbort.abort();
+    hotelAbort = new AbortController();
+    const ctrl = hotelAbort;
+    const timeout = setTimeout(() => ctrl.abort(), 7000);
+    // lat/lon ONLY. The spike tried Photon's location_bias_scale and zoom and
+    // both made the bias WORSE (they reverted the order to the unbiased one),
+    // and a bbox is worse still: it hard-filters, so "ace hotel" in a city
+    // whose Ace is not in OSM returned an EMPTY list instead of the nearest
+    // real answers. A weak bias that never empties the list beats a strong one
+    // that sometimes does.
+    const at = (Number.isFinite(bias.lat) && Number.isFinite(bias.lon)) ? `&lat=${bias.lat}&lon=${bias.lon}` : '';
+    return fetch(`${HOTEL_API}?q=${encodeURIComponent(q)}&limit=12&lang=en&${HOTEL_TAG_Q}${at}`, { signal: ctrl.signal })
+      .then(r => { if (!r.ok) throw new Error('http ' + r.status); return r.json(); })
+      .then(json => {
+        const rows = rankHotelResults(q, json, bias.city, CB_LIMIT);
+        if (hotelSuggestCache.size > 120) hotelSuggestCache.clear();
+        hotelSuggestCache.set(key, rows);
+        return rows;
+      })
+      // Same posture as the city picker: offline or rate-limited is not an
+      // error worth shouting about. The field is still a plain text input and
+      // typing a hotel name still works.
+      .catch(() => [])
+      .finally(() => clearTimeout(timeout));
+  }
+
+  // A picked hotel is a FACT, exactly as a picked city is (see
+  // rememberPickedPlace): it seeds the geocode cache under the hotel's own
+  // name with the hotel's own coordinates. That is the real prize here. A
+  // stay's map pin, its leg distances and its route legs were all derived by
+  // geocoding the CITY string, so every hotel in Kyoto sat on the same pin;
+  // now the one the traveller picked sits on its own doorstep.
+  function rememberPickedHotel(row) {
+    if (!row || !Number.isFinite(row.lat)) return;
+    const key = String(row.value || '').trim().toLowerCase();
+    if (!key) return;
+    geoCache[key] = {
+      lat: row.lat, lon: row.lon, name: row.value,
+      cc: row.cc, country: row.country, conf: 'confident',
+    };
+    geoMisses.delete(key);
+    try { localStorage.setItem(GEO_KEY, JSON.stringify(geoCache)); } catch { /* cache is best-effort */ }
+    // Filling an EMPTY Place field is a convenience; overwriting a filled one
+    // would fight a traveller who deliberately wrote "Gion, Kyoto".
+    const loc = $('#inLocation');
+    if (!loc.value.trim() && row.locality) loc.value = row.locality;
+    $('#fTitle').classList.remove('invalid');
+    showStayRating(row);
+  }
+
+  // The ONE paid call in this feature, and it fires on a pick rather than on a
+  // keystroke: typing is free (Photon), and Google is asked only once a human
+  // has committed to a hotel. Everything it needs already exists - the batched
+  // proxy, the session cache, the quota stop and the attribution chip - so
+  // this is a slot plus a hydrate call, not a second integration.
+  function showStayRating(row) {
+    const slot = $('#stayRating');
+    if (!slot) return;
+    const q = [row.value, row.locality, row.country].filter(Boolean).join(', ');
+    slot.innerHTML = ratingSlotHtml(q);
+    slot.hidden = false;
+    hydrateRatings(slot);
+  }
+
+  function clearStayRating() {
+    const slot = $('#stayRating');
+    if (!slot) return;
+    slot.innerHTML = '';
+    slot.hidden = true;
+  }
+
+  function attachHotelPicker(input) {
+    return createCombobox(input, {
+      minChars: 3,          // "ho" matches half the lodging in the world
+      debounce: 320,        // a shared, unpaid, fair-use endpoint: do not type at it
+      enabled: () => modalType === 'stay',
+      rows: q => fetchHotelSuggestions(q, hotelBias()),
+      render: row => ({ primary: row.value, secondary: row.detail || '', tag: row.kindLabel }),
+      value: row => row.value,
+      onPick: rememberPickedHotel,
     });
   }
 
@@ -6760,6 +6897,9 @@
   attachPlacePicker($('#routeTo'));
   attachAirportPicker($('#inFlightFrom'), a => { flightPick.from = a; syncFlightTitle(); });
   attachAirportPicker($('#inFlightTo'), a => { flightPick.to = a; syncFlightTitle(); });
+  // Gated on the stay type inside the combobox (see `enabled`), so the other
+  // five types keep #inTitle as the plain free-text field it has always been.
+  attachHotelPicker($('#inTitle'));
   $('#inCostCurrency').addEventListener('change', syncCostPrefix);
   // clearing the cost takes the split control with it, and a cost appearing
   // brings it back: there is nothing to divide unevenly without an amount

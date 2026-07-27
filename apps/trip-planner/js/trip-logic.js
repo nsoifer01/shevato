@@ -819,6 +819,137 @@ const TripLogic = (() => {
       .map(x => x.row);
   }
 
+  // ---------- stay picker: hotel suggestions (Photon, OpenStreetMap) ----------
+  // WHY THIS IS NOT A BUNDLED TABLE like the airports below: airports are a
+  // closed set of ~3.3k rows that fits in 260 KB and changes a few times a
+  // year. OSM carries over a million lodging POIs and they change daily, so
+  // hotels have to be a live lookup however much we would prefer the offline
+  // story the airport table gets. The UI is shared (createCombobox); only the
+  // data strategy differs.
+  //
+  // WHY PHOTON and not either geocoder already wired up: Nominatim forbids
+  // autocomplete against its public instance (see geocode() in app.js, which
+  // uses it only for one-shot lookups), and Open-Meteo's geocoder resolves
+  // settlements and admin areas, never POIs. Photon is the same OSM data,
+  // keyless, CORS-open and explicitly built for type-ahead.
+
+  // The tags asked for on the wire AND the word shown on the row, in ONE list
+  // so the query and the label can never drift apart. app.js builds the
+  // osm_tag parameters from these keys.
+  const HOTEL_TAGS = new Map([
+    ['hotel', 'Hotel'],
+    ['hostel', 'Hostel'],
+    ['guest_house', 'Guest house'],
+    ['motel', 'Motel'],
+    ['apartment', 'Apartment'],
+  ]);
+
+  // Photon hands back its own relevance order, and it is good: the list is
+  // already sorted before we see it. So position is the BASE score and every
+  // term below is a nudge measured in positions, not a replacement ranking.
+  // With 8 rows the position spread is 175 points, which is what calibrates
+  // the rest: the city bonus can lift a row ~5 places, a prefix hit ~2, being
+  // a hotel rather than an apartment ~1.
+  const HOTEL_POSITION_WEIGHT = 25;
+  // The city already in the Place field is the strongest signal there is.
+  // "Novotel" typed with "Bangkok" in the form means the Bangkok one, and
+  // Photon's own lat/lon bias does not always get there (it answers
+  // Christchurch for that exact pair). This is what fixes it.
+  const HOTEL_CITY_BONUS = 120;
+  const HOTEL_PREFIX_BONUS = 60;
+  const HOTEL_EXACT_BONUS = 40;
+  // A traveller adding a "stay" means a hotel far more often than any of the
+  // other four, and OSM tags a 6-bed guest house and a 400-room chain hotel
+  // with equal confidence.
+  const HOTEL_KIND_BONUS = new Map([
+    ['hotel', 40], ['motel', 25], ['guest_house', 20], ['hostel', 15], ['apartment', 10],
+  ]);
+
+  /**
+   * One Photon GeoJSON feature -> the shape the picker renders and stores.
+   * `value` is the BARE hotel name for the same reason normalizePlaceRow uses
+   * the bare city name: it becomes the item title on every card, and "Hotel
+   * Granvia Kyoto, Kyoto, Japan" reads badly there. The city and country
+   * survive on the row, which is what seeds the geocode cache on pick.
+   */
+  function normalizeHotelRow(f) {
+    const p = (f && f.properties) || null;
+    const coords = (f && f.geometry && Array.isArray(f.geometry.coordinates)) ? f.geometry.coordinates : [];
+    if (!p || !p.name) return null;
+    // Defensive: the osm_tag filter is a request, not a guarantee, and a row
+    // that is not lodging must never reach a field labelled "Hotel / stay name".
+    if (p.osm_key !== 'tourism' || !HOTEL_TAGS.has(p.osm_value)) return null;
+    // Same trap as normalizePlaceRow: Number('') is 0, a real coordinate in
+    // the Gulf of Guinea, so a missing coordinate has to become NaN.
+    const lon = numOrNaN(coords[0]);
+    const lat = numOrNaN(coords[1]);
+    if (!Number.isFinite(lat) || !Number.isFinite(lon)) return null;
+    const name = String(p.name).trim();
+    const locality = String(p.city || p.district || p.state || '').trim();
+    const country = String(p.country || '').trim();
+    const parts = [name, locality, country].filter(Boolean);
+    // "Kyoto Hotel, Kyoto, Japan" is fine; "Kyoto, Kyoto, Japan" is noise.
+    const deduped = parts.filter((x, i) => i === 0 || foldPlace(x) !== foldPlace(parts[0]));
+    return {
+      value: name,
+      label: deduped.join(', '),
+      detail: deduped.slice(1).join(', '),
+      kind: p.osm_value,
+      kindLabel: HOTEL_TAGS.get(p.osm_value) || '',
+      locality,
+      country,
+      cc: String(p.countrycode || '').toUpperCase(),
+      lat,
+      lon,
+    };
+  }
+
+  function hotelScore(query, row, cityHint, position) {
+    const q = foldPlace(query);
+    const name = foldPlace(row.value);
+    let score = Math.max(0, HOTEL_POSITION_WEIGHT * (8 - (position || 0)));
+    if (name.startsWith(q)) score += HOTEL_PREFIX_BONUS;
+    if (name === q) score += HOTEL_EXACT_BONUS;
+    score += HOTEL_KIND_BONUS.get(row.kind) || 0;
+    const city = foldPlace(cityHint);
+    // `includes` both ways on purpose: the Place field may hold "Kyoto" while
+    // OSM files the hotel under "Shimogyo Ward", and it may hold "New York"
+    // while OSM says "New York City".
+    if (city && row.locality) {
+      const loc = foldPlace(row.locality);
+      if (loc === city || loc.includes(city) || city.includes(loc)) score += HOTEL_CITY_BONUS;
+    }
+    return score;
+  }
+
+  /**
+   * Ranked, de-duplicated lodging suggestions from a raw Photon payload.
+   * `cityHint` is whatever is in the Place field, and may be empty.
+   * Returns [] for anything unusable: Photon answers with an empty feature
+   * list rather than an error when nothing matches.
+   */
+  function rankHotelResults(query, payload, cityHint, limit) {
+    const raw = (payload && Array.isArray(payload.features)) ? payload.features : [];
+    const seen = new Set();
+    const rows = [];
+    raw.forEach((f, i) => {
+      const row = normalizeHotelRow(f);
+      if (!row) return;
+      // OSM routinely holds the same hotel twice, once as the building way and
+      // once as an entrance node, and Photon returns both: "Novotel, Paris,
+      // France" listed twice is the single ugliest thing in the raw response.
+      const key = `${foldPlace(row.value)}|${foldPlace(row.locality)}|${row.cc}`;
+      if (seen.has(key)) return;
+      seen.add(key);
+      rows.push({ row, score: hotelScore(query, row, cityHint, i) });
+    });
+    // Array#sort is stable, so rows that tie keep Photon's order.
+    return rows
+      .sort((a, b) => b.score - a.score)
+      .slice(0, limit || 8)
+      .map(x => x.row);
+  }
+
   // ---------- place picker: airport suggestions (bundled OurAirports) ----------
   // The data ships with the app (see scripts/build-airports.mjs for why), so
   // this is a local scan over ~3.3k rows: no debounce, no network, works
@@ -4767,6 +4898,8 @@ const TripLogic = (() => {
     classifyGeoMatch, geoInputIsQualified, geoMatchNote,
     GEO_RIVAL_GAP, GEO_WEAK_IMPORTANCE, GEO_SETTLEMENT_KINDS, GEO_MATCH_RANK, GEO_MATCH_TEXT,
     foldPlace, normalizePlaceRow, placeScore, rankPlaceResults, PLACE_FEATURE_RE, PLACE_POP_WEIGHT, PLACE_PREFIX_BONUS, PLACE_EXACT_BONUS,
+    HOTEL_TAGS, normalizeHotelRow, hotelScore, rankHotelResults,
+    HOTEL_POSITION_WEIGHT, HOTEL_CITY_BONUS, HOTEL_PREFIX_BONUS, HOTEL_EXACT_BONUS, HOTEL_KIND_BONUS,
     airportIndex, airportLabel, airportDetail, airportScore, searchAirports, PRIMARY_HUBS,
     parseBookingDate: parseDate, parseBookingTime: parseTime, parseDocMoney,
     findConfirmation, findRoute, inferDateOrder, implausibility,

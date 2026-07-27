@@ -1315,6 +1315,18 @@
     padding: 2px 7px; border-radius: 999px; white-space: nowrap;
   }
 
+  /* Google's rating for a hotel picked from the stay dropdown. The chip itself
+     is .apr-chip, already styled for the assistant's proposal cards and reused
+     verbatim here so the Maps attribution looks identical everywhere it
+     appears. This wrapper only positions it under the title field. */
+  .stay-rating { display: flex; }
+  .stay-rating[hidden] { display: none; }
+  /* The slot is filled on a pick but stays EMPTY until (and unless) a rating
+     arrives, and an unconfigured or out-of-quota endpoint means it never
+     does. Without this the field's 6px row gap would still be spent on it,
+     so picking a hotel nudged the form down by 6px for no visible reason. */
+  .stay-rating:not(:has(.apr-chip)) { display: none; }
+
   /* the flight form's two airport fields, arrow between them */
   .ap-io { display: grid; grid-template-columns: 1fr auto 1fr; gap: 8px; align-items: center; }
   .ap-arrow { color: var(--text-faint); font-size: 14px; line-height: 1; }
