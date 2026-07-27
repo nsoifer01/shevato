@@ -5561,3 +5561,139 @@ test('parseFlightAirports refuses parentheses that are not airports', () => {
   assert.deepEqual(L.parseFlightAirports('', AIRPORTS), { from: null, to: null });
   assert.deepEqual(L.parseFlightAirports(null, null), { from: null, to: null });
 });
+
+// ---------- hotel picker (Photon) ----------
+
+// Shaped exactly like a Photon feature, including the fields it omits: the
+// spike showed `city` missing on rural rows and `district` standing in for it
+// inside Tokyo, so both paths are exercised below.
+function photon(name, opts = {}) {
+  return {
+    type: 'Feature',
+    geometry: { type: 'Point', coordinates: [opts.lon == null ? 139.7 : opts.lon, opts.lat == null ? 35.6 : opts.lat] },
+    properties: {
+      name,
+      osm_key: opts.key || 'tourism',
+      osm_value: opts.value || 'hotel',
+      city: opts.city,
+      district: opts.district,
+      state: opts.state,
+      country: opts.country || 'Japan',
+      countrycode: opts.cc || 'JP',
+    },
+  };
+}
+const fc = (...features) => ({ type: 'FeatureCollection', features });
+
+test('normalizeHotelRow builds the bare-name row the field stores', () => {
+  const row = L.normalizeHotelRow(photon('Hotel Granvia Kyoto', { city: 'Kyoto', country: 'Japan' }));
+  // the FIELD gets the bare name: it becomes the item title on every card
+  assert.equal(row.value, 'Hotel Granvia Kyoto');
+  assert.equal(row.label, 'Hotel Granvia Kyoto, Kyoto, Japan');
+  assert.equal(row.detail, 'Kyoto, Japan');
+  assert.equal(row.kindLabel, 'Hotel');
+  assert.equal(row.locality, 'Kyoto');
+  assert.equal(row.cc, 'JP');
+});
+
+test('normalizeHotelRow drops a locality that just repeats the name', () => {
+  const row = L.normalizeHotelRow(photon('Kyoto', { city: 'Kyoto', country: 'Japan' }));
+  assert.equal(row.label, 'Kyoto, Japan');
+});
+
+test('normalizeHotelRow falls back through city -> district -> state', () => {
+  assert.equal(L.normalizeHotelRow(photon('A', { district: 'Minato' })).locality, 'Minato');
+  assert.equal(L.normalizeHotelRow(photon('B', { state: 'Bali' })).locality, 'Bali');
+  assert.equal(L.normalizeHotelRow(photon('C', { city: 'Kyoto', district: 'Shimogyo' })).locality, 'Kyoto');
+});
+
+test('normalizeHotelRow rejects rows that are not lodging or not locatable', () => {
+  // the osm_tag filter is a request, not a guarantee
+  assert.equal(L.normalizeHotelRow(photon('Kyoto Station', { key: 'railway', value: 'station' })), null);
+  assert.equal(L.normalizeHotelRow(photon('Some Museum', { value: 'museum' })), null);
+  assert.equal(L.normalizeHotelRow(photon('')), null);
+  assert.equal(L.normalizeHotelRow(null), null);
+  // THE GULF OF GUINEA TRAP: Number('') is 0, a real coordinate, so a row with
+  // no latitude must not survive and drop a pin in the ocean
+  const noCoords = photon('Nowhere');
+  noCoords.geometry.coordinates = ['', ''];
+  assert.equal(L.normalizeHotelRow(noCoords), null);
+  const noGeom = photon('Nowhere2');
+  delete noGeom.geometry;
+  assert.equal(L.normalizeHotelRow(noGeom), null);
+});
+
+test('rankHotelResults de-duplicates the same hotel returned twice', () => {
+  // OSM holds a building way AND an entrance node for the same hotel, and
+  // Photon returns both: "Novotel, Paris, France" listed twice
+  const out = L.rankHotelResults('novotel', fc(
+    photon('Novotel', { city: 'Paris', country: 'France', cc: 'FR' }),
+    photon('Novotel', { city: 'Paris', country: 'France', cc: 'FR', lat: 48.9 }),
+    photon('Novotel Bangkok', { city: 'Bangkok', country: 'Thailand', cc: 'TH' }),
+  ), '', 8);
+  assert.equal(out.length, 2);
+  assert.deepEqual(out.map(r => r.value), ['Novotel', 'Novotel Bangkok']);
+});
+
+test('rankHotelResults lets the typed city outrank Photon own order', () => {
+  // the exact failure the spike found: Photon answers Christchurch first for
+  // "novotel" even with a Bangkok lat/lon bias
+  const payload = fc(
+    photon('Novotel', { city: 'Christchurch', country: 'New Zealand', cc: 'NZ' }),
+    photon('Novotel', { city: 'Leeds', country: 'United Kingdom', cc: 'GB' }),
+    photon('Novotel Bangkok Platinum', { city: 'Bangkok', country: 'Thailand', cc: 'TH' }),
+  );
+  assert.equal(L.rankHotelResults('novotel', payload, '', 8)[0].locality, 'Christchurch');
+  assert.equal(L.rankHotelResults('novotel', payload, 'Bangkok', 8)[0].locality, 'Bangkok');
+});
+
+test('rankHotelResults matches a city the two sources spell differently', () => {
+  const payload = fc(
+    photon('Far Inn', { city: 'Osaka', country: 'Japan' }),
+    photon('Near Inn', { city: 'Shimogyo Ward, Kyoto', country: 'Japan' }),
+  );
+  // the Place field says "Kyoto", OSM files the hotel under a ward of it
+  assert.equal(L.rankHotelResults('inn', payload, 'Kyoto', 8)[0].value, 'Near Inn');
+  // and the other direction: the field is more specific than OSM. Both names
+  // match the query equally here on purpose, so the city is the only thing
+  // separating them (an exact NAME hit is worth more than a city hit, and
+  // would mask this).
+  const other = fc(photon('Inn A', { city: 'Osaka' }), photon('Inn B', { city: 'York' }));
+  assert.equal(L.rankHotelResults('inn', other, 'York, England', 8)[0].value, 'Inn B');
+});
+
+test('rankHotelResults prefers a hotel over an apartment on an equal match', () => {
+  const out = L.rankHotelResults('sakura', fc(
+    photon('Sakura', { value: 'apartment', city: 'Kyoto' }),
+    photon('Sakura', { value: 'hotel', city: 'Nara' }),
+  ), '', 8);
+  assert.equal(out[0].kind, 'hotel');
+  assert.equal(out[0].kindLabel, 'Hotel');
+});
+
+test('rankHotelResults keeps Photon order when nothing else separates rows', () => {
+  const out = L.rankHotelResults('inn', fc(
+    photon('Inn One', { city: 'Kyoto' }),
+    photon('Inn Two', { city: 'Kyoto' }),
+    photon('Inn Three', { city: 'Kyoto' }),
+  ), '', 8);
+  assert.deepEqual(out.map(r => r.value), ['Inn One', 'Inn Two', 'Inn Three']);
+});
+
+test('rankHotelResults honours the limit and survives junk payloads', () => {
+  const many = fc(...Array.from({ length: 12 }, (_, i) => photon(`Hotel ${i}`, { city: 'Kyoto' })));
+  assert.equal(L.rankHotelResults('hotel', many, 'Kyoto', 8).length, 8);
+  // Photon answers with an empty feature list rather than an error
+  assert.deepEqual(L.rankHotelResults('nothing', fc(), '', 8), []);
+  assert.deepEqual(L.rankHotelResults('x', null, '', 8), []);
+  assert.deepEqual(L.rankHotelResults('x', { features: 'not an array' }, '', 8), []);
+});
+
+test('HOTEL_TAGS is the single source for the query and the row label', () => {
+  // app.js builds the osm_tag parameters from these keys, and the picker shows
+  // the value as the row tag: a key added to one and not the other is the bug
+  // this pins
+  assert.deepEqual([...L.HOTEL_TAGS.keys()], ['hotel', 'hostel', 'guest_house', 'motel', 'apartment']);
+  assert.equal(L.HOTEL_TAGS.get('guest_house'), 'Guest house');
+  for (const key of L.HOTEL_TAGS.keys()) assert.ok(L.HOTEL_KIND_BONUS.has(key), `${key} needs a kind bonus`);
+});
