@@ -281,6 +281,10 @@ function dateOrderNotes(d, ctx) {
   if (!d) return [];
   const order = ctx.order || {};
   if (d.resolvedByDocument) {
+    if (order.source === 'plausibility') {
+      const other = order.rejected && order.rejected.dayFirst ? 'day-first' : 'month-first';
+      return [`"${d.raw}" could be read either way on its own; taken as ${d.iso} because reading this document ${other} produces an itinerary that could not happen. That is a judgement about what is likely, not something the page states - check it.`];
+    }
     const src = (order.evidence || [])[0];
     const how = src
       ? `"${src.raw}" on line ${src.line + 1} can only be read that way`
@@ -441,8 +445,17 @@ function readFlight(lines, byIata, ctx) {
   let confidence = 'high';
   if (!dep || !route.explicit) confidence = 'low';
   else if (!depTime || dep.ambiguous || depGuessed || contradicted) confidence = 'medium';
+  // A date order settled by plausibility rather than by a decisive number is
+  // strong evidence but still an inference, so it caps the claim.
+  else if (dep.resolvedByDocument && (ctx.order || {}).source === 'plausibility') confidence = 'medium';
 
-  return { kind: 'flight', item, confidence, evidence, warnings };
+  // How many days the document CLAIMS this leg takes, before any refusal.
+  // Scored by the plausibility tiebreak: a flight is a day, not a month, so a
+  // reading that produces a 31-day leg is evidence about the date order.
+  const spanDays = (dep && arr) ? Math.round((Date.parse(arr.iso) - Date.parse(dep.iso)) / 86400000)
+    : (dep && endDate ? Math.round((Date.parse(endDate) - Date.parse(dep.iso)) / 86400000) : null);
+
+  return { kind: 'flight', item, confidence, evidence, warnings, signals: { spanDays } };
 }
 
 // Which line a date sits on decides what it means.
@@ -512,6 +525,7 @@ function readStay(lines, ctx) {
     confidence: name && !start.ambiguous && !end.ambiguous ? 'medium' : 'low',
     evidence,
     warnings,
+    signals: { nights: Math.round((Date.parse(end.iso) - Date.parse(start.iso)) / 86400000) },
   };
 }
 
@@ -524,19 +538,93 @@ export function toLines(text) {
  * Main entry. `airports` is the rows array from airportIndex(); pass [] to run
  * without airport validation (routes will then not be found).
  */
+// A flight is a day, not a month. A stay is a fortnight, not a season. These
+// are the bounds the plausibility tiebreak scores against; anything inside
+// them costs nothing.
+const MAX_PLAUSIBLE_FLIGHT_DAYS = 2;
+const MAX_PLAUSIBLE_STAY_NIGHTS = 30;
+// A backwards itinerary is not merely unlikely, it is impossible, so it
+// outweighs any amount of ordinary length.
+const IMPOSSIBLE_PENALTY = 60;
+// How much better the alternative has to be before it overturns the caller's
+// default. One or two days of difference is noise; a month is not.
+const PLAUSIBILITY_MARGIN = 3;
+
+/**
+ * Scores how unlikely a set of proposals is as a real itinerary. Zero means
+ * nothing looks wrong. Only used to compare the SAME document read two ways.
+ */
+export function implausibility(proposals) {
+  let score = 0;
+  for (const p of (proposals || [])) {
+    const s = p.signals || {};
+    if (p.kind === 'flight' && s.spanDays != null) {
+      if (s.spanDays < 0) score += IMPOSSIBLE_PENALTY + Math.abs(s.spanDays);
+      else score += Math.max(0, s.spanDays - MAX_PLAUSIBLE_FLIGHT_DAYS);
+    }
+    if (p.kind === 'stay' && s.nights != null) {
+      if (s.nights <= 0) score += IMPOSSIBLE_PENALTY + Math.abs(s.nights);
+      else score += Math.max(0, s.nights - MAX_PLAUSIBLE_STAY_NIGHTS);
+    }
+  }
+  return score;
+}
+
+/**
+ * Main entry. `airports` is the rows array from airportIndex(); pass [] to run
+ * without airport validation (routes will then not be found).
+ */
 export function extractBookings(text, opts = {}) {
   const lines = toLines(text);
   const byIata = new Map((opts.airports || []).map(a => [a.iata, a]));
+
   // Ask the document which order it writes dates in before reading any of
   // them; the caller's default is only the fallback when it stays silent.
-  const order = inferDateOrder(lines, { dayFirst: opts.dayFirst === true });
-  const ctx = { dayFirst: order.dayFirst, orderKnown: order.source === 'document', order };
+  const fallbackDayFirst = opts.dayFirst === true;
+  const base = inferDateOrder(lines, { dayFirst: fallbackDayFirst });
 
-  const proposals = [];
-  const flight = readFlight(lines, byIata, ctx);
-  if (flight) proposals.push(flight);
-  const stay = readStay(lines, ctx);
-  if (stay) proposals.push(stay);
+  const readAll = (order) => {
+    const ctx = { dayFirst: order.dayFirst, orderKnown: order.source === 'document' || order.source === 'plausibility', order };
+    const out = [];
+    const flight = readFlight(lines, byIata, ctx);
+    if (flight) out.push(flight);
+    const stay = readStay(lines, ctx);
+    if (stay) out.push(stay);
+    return out;
+  };
+
+  let order = base;
+  let proposals = readAll(order);
+
+  // PLAUSIBILITY TIEBREAK. Only when the page offered no decisive date: read
+  // it the other way too and see which produces an itinerary that could
+  // actually happen. A confirmation whose dates say the flight takes 31 days
+  // is not describing a 31-day flight, it is being read in the wrong order.
+  //
+  // This is weaker evidence than a number above 12 - it is a claim about the
+  // world rather than a fact on the page - so it needs a clear margin before
+  // it overturns the default, and it never restores full confidence.
+  if (base.source === 'default' && lines.some(ln => (parseDate(ln, { dayFirst: fallbackDayFirst }) || {}).ambiguous)) {
+    const altOrder = { dayFirst: !base.dayFirst, source: 'default', evidence: [], conflict: false };
+    const altProposals = readAll(altOrder);
+    const here = implausibility(proposals);
+    const there = implausibility(altProposals);
+    // A clear margin is the test, NOT a spotless winner. Requiring the
+    // alternative to score zero meant a reading that made the flight 122 days
+    // long beat one that made it 4, because 4 is still a day over the bound.
+    // The less-bad reading wins, and anything still odd about it is warned
+    // about downstream as usual.
+    if (here - there >= PLAUSIBILITY_MARGIN) {
+      order = {
+        dayFirst: altOrder.dayFirst,
+        source: 'plausibility',
+        conflict: false,
+        evidence: [],
+        rejected: { dayFirst: base.dayFirst, score: here },
+      };
+      proposals = readAll(order);
+    }
+  }
 
   return {
     proposals,

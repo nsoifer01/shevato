@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { extractBookings, parseDate, parseTime, parseMoney, findConfirmation, findRoute, toLines, inferDateOrder } from './extract-booking.mjs';
+import { extractBookings, parseDate, parseTime, parseMoney, findConfirmation, findRoute, toLines, inferDateOrder, implausibility } from './extract-booking.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const payload = JSON.parse(readFileSync(resolve(HERE, '../../data/airports.json'), 'utf8'));
@@ -175,22 +175,25 @@ test('every proposal carries the source line for each field it filled', () => {
   }
 });
 
-test('an ambiguous date downgrades confidence and names both readings', () => {
-  const p = run(BA.replace('Sat, 12 Aug 2027', '08/12/2027')
-    .replace('Sun, 13 Aug 2027', '09/12/2027')).proposals[0];
+// One ambiguous date and no arrival date, so neither a decisive number nor
+// the plausibility tiebreak has anything to work with.
+const UNRESOLVABLE = `Booking reference: XJ7K2Q
+London LHR to New York JFK
+Departs 08/12/2027 at 21:30`;
+
+test('a genuinely unresolvable date downgrades confidence and names both readings', () => {
+  const p = run(UNRESOLVABLE).proposals[0];
   assert.equal(p.confidence, 'medium');
-  // month-first, so this lands on the same day the spelled-out version did
-  assert.equal(p.item.startDate, '2027-08-12');
+  assert.equal(p.item.startDate, '2027-08-12');   // month-first default
   const w = p.warnings.find(x => /no way to tell the order/i.test(x));
   assert.ok(w, 'no order warning');
   assert.match(w, /2027-08-12/);   // as read
   assert.match(w, /2027-12-08/);   // and the alternative, spelled out
 });
 
-test('the whole extraction honours the day-first flag when asked', () => {
-  const text = BA.replace('Sat, 12 Aug 2027', '08/12/2027').replace('Sun, 13 Aug 2027', '09/12/2027');
-  assert.equal(run(text).proposals[0].item.startDate, '2027-08-12');
-  assert.equal(run(text, { dayFirst: true }).proposals[0].item.startDate, '2027-12-08');
+test('the day-first flag decides when nothing else can', () => {
+  assert.equal(run(UNRESOLVABLE).proposals[0].item.startDate, '2027-08-12');
+  assert.equal(run(UNRESOLVABLE, { dayFirst: true }).proposals[0].item.startDate, '2027-12-08');
 });
 
 test('an inferred (non-explicit) route downgrades to low and warns', () => {
@@ -430,15 +433,105 @@ Arrives 02 August 2027 at 06:45`).proposals[0];
   assert.ok(p.warnings.some(w => /BEFORE the departure date/i.test(w)));
 });
 
-test('an implausible flight length is called out', () => {
+test('an implausible length is still called out when the order is not in doubt', () => {
+  // spelled-out dates, so there is nothing for the tiebreak to flip: the
+  // itinerary really does claim 39 days and the reader has to say so
   const p = run(`Booking reference: AB12CD
 Chicago ORD to London LHR
-Departs 08/12/2027 at 18:05
-Arrives 09/12/2027 at 08:10`).proposals[0];
-  // no decisive date, so month-first gives a 31-day "flight"
+Departs 12 August 2027 at 18:05
+Arrives 20 September 2027 at 08:10`).proposals[0];
   assert.equal(p.item.startDate, '2027-08-12');
-  assert.equal(p.item.endDate, '2027-09-12');
+  assert.equal(p.item.endDate, '2027-09-20');
   const w = p.warnings.find(x => /not a plausible flight/i.test(x));
   assert.ok(w, 'implausible gap not flagged');
-  assert.match(w, /31 days/);
+  assert.match(w, /39 days/);
+});
+
+
+// ---------- plausibility as a tiebreak ----------
+
+const AMBIG_PAIR = `Booking reference: AB12CD
+Chicago ORD to London LHR
+Departs 08/12/2027 at 18:05
+Arrives 09/12/2027 at 08:10`;
+
+test('an itinerary that could not happen settles the date order', () => {
+  // Month-first reads this as 12 Aug -> 12 Sep, a 31-day flight. Day-first
+  // reads it as 8 Dec -> 9 Dec. No number here is above 12, so only
+  // plausibility can tell them apart.
+  const r = run(AMBIG_PAIR);
+  assert.equal(r.order.source, 'plausibility');
+  assert.equal(r.order.dayFirst, true);
+  const p = r.proposals[0];
+  assert.equal(p.item.startDate, '2027-12-08');
+  assert.equal(p.item.endDate, '2027-12-09');
+  assert.ok(!p.warnings.some(w => /not a plausible flight/i.test(w)));
+});
+
+test('a plausibility-settled date explains itself and does NOT claim high confidence', () => {
+  const p = run(AMBIG_PAIR).proposals[0];
+  // strong evidence, but a claim about the world rather than a fact on the
+  // page, so it never reads as certain
+  assert.equal(p.confidence, 'medium');
+  const w = p.warnings.find(x => /could not happen/i.test(x));
+  assert.ok(w, 'no plausibility note');
+  assert.match(w, /month-first/);
+  assert.match(w, /not something the page states/);
+});
+
+test('plausibility overturns the caller default in either direction', () => {
+  // even asked for day-first, a document that is only plausible month-first
+  // wins
+  const mdy = `Booking reference: AB12CD
+Chicago ORD to London LHR
+Departs 12/08/2027 at 18:05
+Arrives 12/09/2027 at 08:10`;
+  const r = run(mdy, { dayFirst: true });
+  assert.equal(r.order.source, 'plausibility');
+  assert.equal(r.order.dayFirst, false);
+  assert.equal(r.proposals[0].item.startDate, '2027-12-08');
+});
+
+test('a decisive number outranks plausibility', () => {
+  // 22/12 can only be day-first; that is a fact on the page and is not put to
+  // a plausibility vote
+  const r = run(`Booking reference: AB12CD
+Chicago ORD to London LHR
+Departs 08/12/2027 at 18:05
+Arrives 09/12/2027 at 08:10
+Return 22/12/2027`);
+  assert.equal(r.order.source, 'document');
+  assert.equal(r.proposals[0].item.startDate, '2027-12-08');
+});
+
+test('an already-plausible default is never overturned', () => {
+  // Asked for day-first, this document reads 8 Dec -> 9 Dec and nothing is
+  // wrong with it. The tiebreak must not go looking for a reason to flip.
+  const r = run(AMBIG_PAIR, { dayFirst: true });
+  assert.equal(r.order.source, 'default');
+  assert.equal(r.proposals[0].item.startDate, '2027-12-08');
+});
+
+test('the winner only needs to be clearly better, not spotless', () => {
+  // 08/12 -> 12/12 is 122 days month-first and 4 days day-first. Four days is
+  // still over the two-day bound, so a rule demanding a perfect winner would
+  // have kept the 122-day reading.
+  const r = run(`Booking reference: AB12CD
+London LHR to Sydney SYD
+Departs 08/12/2027 at 21:30
+Arrives 12/12/2027 at 06:45`);
+  assert.equal(r.order.source, 'plausibility');
+  assert.equal(r.proposals[0].item.startDate, '2027-12-08');
+  assert.equal(r.proposals[0].item.endDate, '2027-12-12');
+  // and the residual oddity is still reported rather than swallowed
+  assert.ok(r.proposals[0].warnings.some(w => /not a plausible flight/i.test(w)));
+});
+
+test('implausibility scores a set of proposals, not a single date', () => {
+  assert.equal(implausibility([]), 0);
+  assert.equal(implausibility([{ kind: 'flight', signals: { spanDays: 1 } }]), 0);
+  assert.equal(implausibility([{ kind: 'flight', signals: { spanDays: 31 } }]), 29);
+  assert.ok(implausibility([{ kind: 'flight', signals: { spanDays: -3 } }]) > 60);
+  assert.equal(implausibility([{ kind: 'stay', signals: { nights: 4 } }]), 0);
+  assert.ok(implausibility([{ kind: 'stay', signals: { nights: 0 } }]) >= 60);
 });

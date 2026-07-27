@@ -132,11 +132,16 @@ if (showText) {
 const { proposals, stats, order } = extractBookings(text, { airports: loadAirports(), dayFirst });
 
 const orderWord = order.dayFirst ? 'day-first' : 'month-first';
-const orderWhy = {
+const WHY = {
   document: () => `settled by the document itself (${order.evidence.map(e => e.raw).join(', ')})`,
+  plausibility: () => `no decisive date, so this was inferred: reading it `
+    + `${order.rejected && order.rejected.dayFirst ? 'day-first' : 'month-first'} gives an itinerary that could not happen`,
   conflict: () => `${C.r}THIS DOCUMENT USES BOTH ORDERS${C.off}${C.dim} (${order.evidence.map(e => e.raw).join(' vs ')}); falling back to the default`,
   default: () => 'no decisive date in the document, so the default applies',
-}[order.source]();
+};
+// Fall back rather than crash if the extractor grows a source this tool has
+// not been taught yet.
+const orderWhy = (WHY[order.source] || (() => `source: ${order.source}`))();
 
 process.stdout.write(`${C.b}${target}${C.off}  ${C.dim}(${stats.lines} non-empty lines)${C.off}\n`);
 process.stdout.write(`${C.dim}all-numeric dates read ${C.off}${C.b}${orderWord}${C.off}${C.dim}: ${orderWhy}${C.off}\n\n`);
