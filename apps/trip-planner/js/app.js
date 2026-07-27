@@ -7,7 +7,7 @@
   // js/app.js, in index.html and in sw.js's PRECACHE list alike. Bumping the
   // cache-buster without bumping this number is what made "build 31" outlive
   // v=32..38 and stop identifying anything.
-  const TP_BUILD = 39;
+  const TP_BUILD = 40;
   const LS_KEY = 'trip-planner:v1';
   const TIMEFMT_KEY = 'trip-planner:timefmt';
   const TYPE_META = {
@@ -59,6 +59,7 @@
     foldPlace, rankPlaceResults,
     airportIndex, airportLabel, airportDetail, searchAirports,
     flightTitleFromAirports, parseFlightAirports,
+    extractBookings,
     classifyVisa, parseVisaMatrix, visaCountryUsable, visaUnconfirmedNames, visaVintageNote, passportExpiryStatus, slimTripForShare, hasFastRail, viewFromHash, hashForView,
     buildIcs, buildCsv, convertAmount, sumInCurrency, normalizeTravelers, travelerTotals,
     evenSplitAmounts, splitAmountsMatch, customSplitShares,
@@ -3539,6 +3540,167 @@
     return new Uint8Array(ab);
   }
 
+  // ---------- import from a booking confirmation ----------
+  // Reads a flight or hotel confirmation and offers the items it found as
+  // ordinary proposal cards, so accepting one goes through exactly the same
+  // validation, undo and save path as an assistant suggestion.
+  //
+  // THE FILE NEVER LEAVES THE DEVICE AND IS NEVER STORED. It is read into
+  // memory, turned into text, and dropped. Nothing is written to the documents
+  // pocket, nothing is uploaded, and no model is called: the reader in
+  // trip-logic is entirely deterministic.
+
+  /** Unescapes a PDF literal string: \( \) \\ \n \t and \ddd octal. */
+  function pdfLiteral(s) {
+    return s.replace(/\\([nrtbf()\\]|[0-7]{1,3})/g, (_, c) => {
+      const simple = { n: '\n', r: '', t: ' ', b: '', f: '', '(': '(', ')': ')', '\\': '\\' };
+      return simple[c] !== undefined ? simple[c] : String.fromCharCode(parseInt(c, 8));
+    });
+  }
+
+  // Text-showing operators out of one decoded content stream. Tm counts as a
+  // line break as well as Td/TD/T*: plenty of generators position every line
+  // with a text matrix and never emit Td, which collapses a whole document
+  // onto one line if you only watch for Td.
+  function pdfStreamText(content) {
+    const re = /\((?:\\.|[^\\()])*\)|\bTJ\b|\bTj\b|\bT\*\b|\bTD\b|\bTd\b|\bTm\b|\bET\b/g;
+    const out = [];
+    let line = [];
+    let m;
+    while ((m = re.exec(content))) {
+      if (m[0].startsWith('(')) line.push(pdfLiteral(m[0].slice(1, -1)));
+      else if (line.length) { out.push(line.join('')); line = []; }
+    }
+    if (line.length) out.push(line.join(''));
+    return out.join('\n');
+  }
+
+  // Deliberately dependency-free. pdf.js would read more PDFs than this, but
+  // it is 1.7 MB of vendored library and this covers the ordinary case (a
+  // confirmation emailed and printed to PDF) in about forty lines. When it
+  // cannot find a text layer the dialog says so and offers the paste box,
+  // which always works. If real confirmations turn out to defeat it often,
+  // that measurement is what would justify the 1.7 MB.
+  async function pdfToText(bytes) {
+    const raw = new TextDecoder('latin1').decode(bytes);
+    const chunks = [];
+    const re = /stream\r?\n?([\s\S]*?)endstream/g;
+    let m;
+    while ((m = re.exec(raw))) {
+      const body = m[1];
+      let decoded = null;
+      if (typeof DecompressionStream !== 'undefined') {
+        const enc = new Uint8Array(body.length);
+        for (let i = 0; i < body.length; i++) enc[i] = body.charCodeAt(i) & 0xff;
+        for (const fmt of ['deflate', 'deflate-raw']) {
+          try {
+            const s = new DecompressionStream(fmt);
+            const w = s.writable.getWriter();
+            w.write(enc); w.close();
+            decoded = new TextDecoder('latin1').decode(await new Response(s.readable).arrayBuffer());
+            break;
+          } catch { /* not this codec */ }
+        }
+      }
+      if (!decoded && /\bT[Jj]\b/.test(body)) decoded = body;   // uncompressed
+      if (decoded && /\bT[Jj]\b/.test(decoded)) chunks.push(pdfStreamText(decoded));
+    }
+    return chunks.join('\n');
+  }
+
+  // A PDF whose fonts are subset with a custom encoding yields glyph indices
+  // rather than words, which looks like text but reads as mojibake. Rather
+  // than hand that to the extractor and produce confident nonsense, the ratio
+  // of ordinary letters decides whether we got words at all.
+  function looksLikeProse(text) {
+    const t = String(text || '');
+    if (t.replace(/\s/g, '').length < 20) return false;
+    const letters = (t.match(/[A-Za-z]/g) || []).length;
+    return letters / t.replace(/\s/g, '').length > 0.35;
+  }
+
+  let importText = '';
+
+  function openImportBookingModal() {
+    importText = '';
+    $('#importBookingFile').value = '';
+    $('#importBookingPaste').value = '';
+    setImportState('<div class="m-empty"><span class="me-ico" aria-hidden="true">📄</span>'
+      + '<span class="me-title">Read a booking confirmation</span>'
+      + '<span>Pick the PDF your airline or hotel sent, or paste the text of it. '
+      + 'Nothing is uploaded and the file is not saved: it is read on this device and discarded.</span></div>');
+    openOverlay('#importBookingOverlay');
+  }
+
+  function setImportState(html) { $('#importBookingResult').innerHTML = html; }
+
+  async function readBookingFile(file) {
+    if (!file) return;
+    setImportState('<div class="route-loading"><span class="spinner"></span>Reading the file...</div>');
+    let text = '';
+    try {
+      const bytes = new Uint8Array(await file.arrayBuffer());
+      const isPdf = String.fromCharCode(...bytes.slice(0, 5)) === '%PDF-';
+      text = isPdf ? await pdfToText(bytes) : new TextDecoder().decode(bytes);
+      if (isPdf && !looksLikeProse(text)) text = '';
+    } catch { text = ''; }
+    if (!text.trim()) {
+      setImportState('<div class="m-empty err"><span class="me-ico" aria-hidden="true">🚫</span>'
+        + '<span class="me-title">This file could not be read</span>'
+        + '<span>It is probably a scan (a picture of a document) or it stores its text in a way '
+        + 'this reader does not handle. Open it, select all, copy, and paste it into the box below '
+        + 'instead: that always works.</span></div>');
+      return;
+    }
+    runBookingExtraction(text);
+  }
+
+  async function runBookingExtraction(text) {
+    importText = text;
+    // The airport table is what turns "LHR" into a route at all, so it has to
+    // be here before we read anything. It is normally loaded by the flight
+    // form; on this path nothing has opened one yet.
+    const airports = await loadAirports();
+    const res = extractBookings(text, { airports });
+    if (!res.proposals.length) {
+      setImportState('<div class="m-empty err"><span class="me-ico" aria-hidden="true">🤷</span>'
+        + '<span class="me-title">Nothing could be read with confidence</span>'
+        + '<span>No flight or hotel details could be picked out of that text. Adding the item by '
+        + 'hand will be quicker than fighting it.</span></div>');
+      return;
+    }
+    const box = document.createElement('div');
+    box.className = 'import-found';
+    const orderLine = {
+      document: () => `Dates read ${res.order.dayFirst ? 'day-first' : 'month-first'}, settled by the document itself.`,
+      plausibility: () => `Dates read ${res.order.dayFirst ? 'day-first' : 'month-first'}. Nothing on the page settles the order, so this was inferred from what makes a possible trip. Worth a look.`,
+      conflict: () => 'This document writes dates in BOTH orders, so none of them can be trusted. Check every date below.',
+      default: () => `No date on the page settles day-first from month-first, so they are read ${res.order.dayFirst ? 'day-first' : 'month-first'}. Check them.`,
+    }[res.order.source];
+    box.innerHTML = `<p class="import-order">${esc(orderLine ? orderLine() : '')}</p>`;
+    for (const p of res.proposals) {
+      const card = document.createElement('div');
+      card.className = 'import-read';
+      card.innerHTML = `<div class="ir-head"><span class="ir-kind">${esc(p.kind)}</span>`
+        + `<span class="ir-conf ir-${esc(p.confidence)}">${esc(p.confidence)} confidence</span></div>`
+        + `<dl class="ir-fields">${p.evidence.map(e => `<dt>${esc(e.field)}</dt>`
+          + `<dd><span class="ir-line">line ${e.line + 1}</span>${esc(e.raw.slice(0, 90))}</dd>`).join('')}</dl>`
+        + (p.warnings.length
+          ? `<ul class="ir-warn">${p.warnings.map(w => `<li>${esc(w)}</li>`).join('')}</ul>` : '');
+      box.appendChild(card);
+    }
+    setImportState('');
+    $('#importBookingResult').appendChild(box);
+
+    // Hand off to the ordinary proposal machinery: same validation, same
+    // accept path, same undo. `source: 'document'` is what lets a transcribed
+    // confirmation code and a booked status through (see sanitizeActionFields).
+    const container = document.createElement('div');
+    container.className = 'assist-proposals';
+    $('#importBookingResult').appendChild(container);
+    renderProposals(res.proposals.map(p => ({ op: 'add', item: p.item, source: 'document' })), container);
+  }
+
   async function shareTrip() {
     if (typeof CompressionStream === 'undefined') { toastError('Sharing is not supported in this browser'); return; }
     const t = activeTrip();
@@ -5931,16 +6093,24 @@
   // total until the traveller adopts the number in the edit modal.
   function proposalToItem(p, trip) {
     const f = p.fields;
-    const est = f.cost != null ? f.cost : null;
+    // A MODEL's price is a guess, so it lands in the estimate bag and stays
+    // out of the budget until the traveller adopts it. A price TRANSCRIBED off
+    // a confirmation is not a guess - it is what the trip cost - so it goes
+    // straight into `cost` and counts, which is the whole point of reading the
+    // document. Same for the booking reference.
+    const est = (!p.transcribed && f.cost != null) ? f.cost : null;
     const item = {
       id: uid(), type: f.type, title: f.title, location: f.location || '',
       startDate: f.startDate, endDate: f.endDate || '',
       startTime: f.startTime || '', endTime: f.endTime || '',
-      status: p.status, cost: null, costNote: f.costNote || '',
+      status: p.status, costNote: f.costNote || '',
+      cost: (p.transcribed && f.cost != null) ? f.cost : null,
       details: String(f.details || '').slice(0, 500),
       createdAt: new Date().toISOString(),
     };
     if (f.mapsQuery) item.mapsQuery = f.mapsQuery;
+    if (p.transcribed && f.confirmation) item.confirmation = f.confirmation;
+    if (p.transcribed && f.cost != null) item.costCurrency = f.costCurrency || (trip.currency || 'USD');
     if (est != null) {
       item.estCost = est;
       item.estCostCurrency = f.costCurrency || (trip.currency || 'USD');
@@ -6257,7 +6427,10 @@
   // the review summary is a separate node from the picker, so it needs the same
   // click handler (Expand and the one primary action live there)
   $('#assistReview').addEventListener('click', onPlannerClick);
-  $('#assistMessages').addEventListener('click', e => {
+  // Proposal cards are rendered in two places now - the assistant panel and
+  // the booking-import dialog - so the accept/reject delegation is a named
+  // handler bound to both rather than an inline one bound to the panel.
+  function onProposalClick(e) {
     const btn = e.target.closest('button[data-act]');
     if (!btn) return;
     const card = btn.closest('.assist-proposal');
@@ -6282,7 +6455,9 @@
     const pid = card.dataset.proposalId;
     if (act === 'reject-proposal') { assistActions.delete(pid); card.remove(); }
     else if (act === 'accept-proposal') acceptProposal(pid, card);
-  });
+  }
+  $('#assistMessages').addEventListener('click', onProposalClick);
+  $('#importBookingResult').addEventListener('click', onProposalClick);
   $('#assistMessages').addEventListener('change', e => {
     const radio = e.target.closest('.assist-set input[type="radio"]');
     if (!radio) return;
@@ -6463,6 +6638,21 @@
     const b = e.target.closest('button[data-type]');
     if (b) setModalType(b.dataset.type);
   });
+  $('#importBookingBtn').addEventListener('click', () => $('#importBookingFile').click());
+  $('#importBookingFile').addEventListener('change', e => {
+    const f = e.target.files[0];
+    e.target.value = '';
+    readBookingFile(f);
+  });
+  // Debounced so a long paste is read once, not once per keystroke.
+  let importPasteTimer = 0;
+  $('#importBookingPaste').addEventListener('input', e => {
+    clearTimeout(importPasteTimer);
+    const text = e.target.value;
+    importPasteTimer = setTimeout(() => {
+      if (text.trim().length > 20) runBookingExtraction(text);
+    }, 400);
+  });
   attachPlacePicker($('#inLocation'));
   attachPlacePicker($('#routeFrom'));
   attachPlacePicker($('#routeTo'));
@@ -6525,6 +6715,7 @@
     else if (act === 'duplicate-trip') duplicateTrip();
     else if (act === 'essentials') openEssentialsModal();
     else if (act === 'packing') openPackingModal();
+    else if (act === 'import-booking') openImportBookingModal();
     else if (act === 'export-trip') exportTrip();
     else if (act === 'export-csv') exportCsv();
     else if (act === 'export-ics') exportIcs();

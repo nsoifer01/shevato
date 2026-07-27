@@ -1255,6 +1255,36 @@
     padding: 4px 14px; font-size: 12.5px; font-weight: 600; color: var(--text);
   }
   .leg-btn:hover { color: var(--accent); border-color: var(--accent); background: var(--accent-soft); }
+  /* ---------- read a booking confirmation ---------- */
+  .import-pick { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin-bottom: var(--m-gap); }
+  .import-or { color: var(--text-dim); font-size: var(--m-help); }
+  .import-order {
+    margin: 0 0 12px; padding: 8px 11px; border-radius: 8px;
+    background: var(--gray-soft); color: var(--text-dim); font-size: var(--m-help);
+  }
+  /* what the reader SAW, shown above what it proposes: a wrong read has to be
+     visible next to the line it came from, not merely plausible in a field */
+  .import-read {
+    border: 1px solid var(--border-soft); border-radius: 10px;
+    padding: 11px 13px; margin-bottom: 10px; background: var(--bg-soft);
+  }
+  .ir-head { display: flex; align-items: center; gap: 9px; margin-bottom: 8px; }
+  .ir-kind { font-weight: 700; font-size: 13px; text-transform: capitalize; color: var(--text); }
+  .ir-conf {
+    font-size: 10.5px; font-weight: 700; letter-spacing: .04em; text-transform: uppercase;
+    padding: 2px 7px; border-radius: 999px;
+  }
+  .ir-high { color: var(--green); background: var(--green-soft); }
+  .ir-medium { color: var(--amber); background: var(--amber-soft); }
+  .ir-low { color: var(--red); background: var(--red-soft); }
+  .ir-fields { display: grid; grid-template-columns: auto 1fr; gap: 3px 12px; margin: 0; font-size: 12.5px; }
+  .ir-fields dt { color: var(--text-dim); }
+  .ir-fields dd { margin: 0; color: var(--text); overflow-wrap: anywhere; }
+  .ir-line { color: var(--text-faint); margin-right: 7px; }
+  .ir-warn { margin: 9px 0 0; padding-left: 17px; font-size: 12.5px; color: var(--amber); }
+  .ir-warn li + li { margin-top: 4px; }
+  #importBookingResult { max-height: 46vh; overflow-y: auto; }
+
   /* ---------- combobox popup (city and airport pickers) ---------- */
   /* Anchored in VIEWPORT coordinates from JS because the popup is a child of
      <body>, not of the field: .m-body is an overflow-y:auto scroller and would

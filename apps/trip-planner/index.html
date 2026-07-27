@@ -43,7 +43,7 @@
   <meta name="theme-color" content="#0e1116">
   <link rel="stylesheet" href="../../assets/css/main.css">
   <link rel="stylesheet" href="../../assets/css/sync-status.css">
-  <link rel="stylesheet" href="css/styles.css?v=36">
+  <link rel="stylesheet" href="css/styles.css?v=37">
 </head>
 <body class="tp-page">
   <div id="sync-banner" class="sync-banner" role="status" aria-live="polite" hidden></div>
@@ -92,6 +92,7 @@
           <button data-act="export-all">⬇️ Backup all trips</button>
           <button data-act="share-trip">🔗 Share itinerary</button>
           <button data-act="import">⬆️ Import JSON</button>
+          <button data-act="import-booking">📄 Read a booking PDF</button>
           <div class="sep"></div>
           <div class="tp-menu-cap">Preferences</div>
           <button data-act="timefmt" id="timefmtBtn">🕐 Use 24-hour times</button>
@@ -607,6 +608,38 @@
   </div>
 </div>
 
+<!-- read a booking confirmation -->
+<div class="overlay" id="importBookingOverlay">
+  <form class="modal" id="importBookingForm" role="dialog" aria-modal="true" aria-labelledby="importBookingTitle" tabindex="-1">
+    <div class="m-head">
+      <span class="m-icon" aria-hidden="true">📄</span>
+      <h2 id="importBookingTitle">Read a booking confirmation</h2>
+    </div>
+    <div class="m-body">
+      <section class="m-section">
+        <div class="import-pick">
+          <input type="file" id="importBookingFile" accept="application/pdf,text/plain,.pdf,.txt" hidden>
+          <button type="button" class="btn" id="importBookingBtn">Choose a PDF</button>
+          <span class="import-or">or paste the text of it</span>
+        </div>
+        <div class="field">
+          <textarea id="importBookingPaste" rows="4" maxlength="20000"
+                    aria-label="Paste your booking confirmation"
+                    placeholder="Paste a confirmation here and it will be read as you type..."></textarea>
+        </div>
+        <p class="hint">Read on this device only. The file is never uploaded, never saved, and no AI is
+          involved: the details are picked out by pattern, and you approve every one before it is added.</p>
+      </section>
+      <section class="m-section">
+        <div class="m-panel" id="importBookingResult"></div>
+      </section>
+    </div>
+    <div class="modal-foot">
+      <button type="button" class="btn" data-close>Close</button>
+    </div>
+  </form>
+</div>
+
 <!-- route helper modal -->
 <div class="overlay" id="routeOverlay">
   <form class="modal" id="routeForm" role="dialog" aria-modal="true" aria-labelledby="routeModalTitle" tabindex="-1">
@@ -729,7 +762,7 @@
     }
   </script>
 
-  <script src="js/trip-logic.js?v=21"></script>
-  <script src="js/app.js?v=39"></script>
+  <script src="js/trip-logic.js?v=22"></script>
+  <script src="js/app.js?v=40"></script>
 </body>
 </html>
