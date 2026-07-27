@@ -862,6 +862,12 @@ const TripLogic = (() => {
   //     Santiago CL/CU, Victoria SC/CA. Those ask "which CITY did you mean",
   //     which is a question the row's own country line answers on screen, and
   //     picking a winner here would just be guessing at the traveller.
+  //   - Washington DCA/IAD: OWNER DECISION, do not "fix" this by adding IAD.
+  //     Dulles is the intercontinental gateway, but Reagan National is inside
+  //     the city, carries comparable domestic traffic, and is what its city
+  //     field says it is. So "washington" answers DCA on the plain city match
+  //     and Dulles lists second, which is where an unpromoted NAME_PREFIX hit
+  //     puts it.
   const PRIMARY_HUBS = new Map([
     ['AMM', 'Amman'],          // Queen Alia, over Marka (ADJ)
     ['BKK', 'Bangkok'],        // Suvarnabhumi, over Don Mueang (DMK)
@@ -900,12 +906,6 @@ const TripLogic = (() => {
     ['PVG', 'Shanghai'],       // Pudong, over Hongqiao (SHA)
     ['IKA', 'Tehran'],         // Imam Khomeini, over the domestic Mehrabad (THR)
     ['TFS', 'Tenerife'],       // South, which is where the flights land, over North (TFN)
-    ['IAD', 'Washington'],     // Dulles, over Reagan National (DCA). The closest call
-                               //   in this list - DCA is inside the city and carries
-                               //   comparable domestic traffic - but Dulles is the
-                               //   intercontinental gateway and DCA's perimeter rule
-                               //   keeps long-haul off it, so it is the likelier
-                               //   answer when someone is building an itinerary.
   ]);
 
   // Below this a query is not naming a place, it is two letters on the way to
