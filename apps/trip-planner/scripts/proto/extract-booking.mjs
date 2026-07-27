@@ -42,6 +42,12 @@ function validYmd(y, m, d) {
  * the string alone. Guessing silently is the single easiest way for this
  * feature to put a traveller at an airport on the wrong day, so an ambiguous
  * date is flagged and the proposal it feeds is downgraded rather than trusted.
+ *
+ * THE DEFAULT IS MONTH-FIRST (owner decision): "08/12/2027" reads as
+ * 12 August 2027. Pass `{ dayFirst: true }` to read the same string as
+ * 8 December. The default only ever decides the AMBIGUOUS cases - a date where
+ * one number is above 12 is resolved from the number itself and ignores this
+ * setting entirely.
  */
 export function parseDate(s, opts = {}) {
   const text = String(s || '').trim();
@@ -66,18 +72,25 @@ export function parseDate(s, opts = {}) {
     return validYmd(y, mo, d) ? { iso: iso(y, mo, d), raw: m[0], ambiguous: false } : null;
   }
 
-  // All-numeric. Day-first unless told otherwise; unambiguous only when one
-  // of the two numbers cannot be a month.
+  // All-numeric. Month-first by default (see the note above); unambiguous only
+  // when one of the two numbers cannot be a month, in which case the numbers
+  // decide and the default is not consulted.
   m = /\b(\d{1,2})[\/.](\d{1,2})[\/.](\d{4})\b/.exec(text);
   if (m) {
     const a = +m[1], b = +m[2], y = +m[3];
-    const dayFirst = opts.dayFirst !== false;
+    const dayFirst = opts.dayFirst === true;
     let d = dayFirst ? a : b;
     let mo = dayFirst ? b : a;
     let ambiguous = a <= 12 && b <= 12 && a !== b;
     if (a > 12 && b <= 12) { d = a; mo = b; ambiguous = false; }
     else if (b > 12 && a <= 12) { d = b; mo = a; ambiguous = false; }
-    return validYmd(y, mo, d) ? { iso: iso(y, mo, d), raw: m[0], ambiguous } : null;
+    if (!validYmd(y, mo, d)) return null;
+    const out = { iso: iso(y, mo, d), raw: m[0], ambiguous };
+    // When it IS ambiguous both numbers are 1-12, so the other reading is
+    // always a real date too. Carrying it lets the warning name both instead
+    // of vaguely saying "or the other way round".
+    if (ambiguous) out.altIso = iso(y, d, mo);
+    return out;
   }
   return null;
 }
@@ -239,7 +252,7 @@ function readFlight(lines, byIata, ctx) {
     // if the traveller can see the context the value came out of
     evidence.push({ field: 'startDate', raw: lines[dep.line].trim(), line: dep.line });
     if (dep.ambiguous) {
-      warnings.push(`"${dep.raw}" is an ambiguous all-numeric date: it could be ${dep.iso} or the day and month the other way round. Confirm before saving.`);
+      warnings.push(`"${dep.raw}" is an all-numeric date with no way to tell the order from the string. Read as ${dep.iso}; it could equally be ${dep.altIso}. Confirm before saving.`);
     }
   } else {
     warnings.push('No departure date could be read.');
@@ -324,7 +337,9 @@ function readStay(lines, ctx) {
   evidence.push({ field: 'startDate', raw: lines[inLine].trim(), line: inLine });
   evidence.push({ field: 'endDate', raw: lines[outLine].trim(), line: outLine });
   if (start.ambiguous || end.ambiguous) {
-    warnings.push('One of the stay dates is an all-numeric format that could be read day-first or month-first. Confirm before saving.');
+    const amb = [start, end].filter(x => x.ambiguous)
+      .map(x => `"${x.raw}" read as ${x.iso}, could be ${x.altIso}`).join('; ');
+    warnings.push(`All-numeric stay date with no way to tell the order from the string: ${amb}. Confirm before saving.`);
   }
   if (end.iso <= start.iso) warnings.push('Check-out is not after check-in; the dates may have been read in the wrong order.');
 
@@ -382,7 +397,8 @@ export function toLines(text) {
 export function extractBookings(text, opts = {}) {
   const lines = toLines(text);
   const byIata = new Map((opts.airports || []).map(a => [a.iata, a]));
-  const ctx = { dayFirst: opts.dayFirst !== false };
+  // Month-first unless the caller explicitly asks for day-first.
+  const ctx = { dayFirst: opts.dayFirst === true };
 
   const proposals = [];
   const flight = readFlight(lines, byIata, ctx);

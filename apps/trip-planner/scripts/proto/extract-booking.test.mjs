@@ -33,21 +33,31 @@ test('parseDate rejects impossible dates rather than normalising them', () => {
   assert.equal(parseDate(null), null);
 });
 
-test('an all-numeric date is flagged ambiguous instead of silently guessed', () => {
+test('an all-numeric date is read MONTH-FIRST and flagged ambiguous', () => {
   // THE dangerous case: 08/12 is August 12th to a US carrier and 12th August
-  // to a European one, and the string alone cannot say which.
+  // to a European one, and the string alone cannot say which. Month-first is
+  // the owner's chosen default; the flag flips it.
   const a = parseDate('08/12/2027');
   assert.equal(a.ambiguous, true);
-  assert.equal(a.iso, '2027-12-08');            // day-first default...
-  assert.equal(parseDate('08/12/2027', { dayFirst: false }).iso, '2027-08-12');  // ...and the flip
+  assert.equal(a.iso, '2027-08-12');                                    // month-first default
+  assert.equal(a.altIso, '2027-12-08');                                 // the other reading, named
+  assert.equal(parseDate('08/12/2027', { dayFirst: true }).iso, '2027-12-08');
+  assert.equal(parseDate('08/12/2027', { dayFirst: true }).altIso, '2027-08-12');
 
-  // Unambiguous whenever one number cannot be a month.
+  // A number that cannot be a month settles it from the numbers alone, and
+  // the default is not consulted either way.
   const b = parseDate('25/12/2027');
   assert.equal(b.ambiguous, false);
   assert.equal(b.iso, '2027-12-25');
+  assert.equal(b.altIso, undefined);
+  assert.equal(parseDate('25/12/2027', { dayFirst: true }).iso, '2027-12-25');
   const c = parseDate('12/25/2027');
   assert.equal(c.ambiguous, false);
   assert.equal(c.iso, '2027-12-25');
+  assert.equal(parseDate('12/25/2027', { dayFirst: true }).iso, '2027-12-25');
+
+  // Same number both sides is not ambiguous: both readings are the same day.
+  assert.equal(parseDate('07/07/2027').ambiguous, false);
 });
 
 // ---------- times, money, references ----------
@@ -165,11 +175,22 @@ test('every proposal carries the source line for each field it filled', () => {
   }
 });
 
-test('an ambiguous date downgrades confidence and says why', () => {
+test('an ambiguous date downgrades confidence and names both readings', () => {
   const p = run(BA.replace('Sat, 12 Aug 2027', '08/12/2027')
     .replace('Sun, 13 Aug 2027', '09/12/2027')).proposals[0];
   assert.equal(p.confidence, 'medium');
-  assert.ok(p.warnings.some(w => /ambiguous/i.test(w)));
+  // month-first, so this lands on the same day the spelled-out version did
+  assert.equal(p.item.startDate, '2027-08-12');
+  const w = p.warnings.find(x => /no way to tell the order/i.test(x));
+  assert.ok(w, 'no order warning');
+  assert.match(w, /2027-08-12/);   // as read
+  assert.match(w, /2027-12-08/);   // and the alternative, spelled out
+});
+
+test('the whole extraction honours the day-first flag when asked', () => {
+  const text = BA.replace('Sat, 12 Aug 2027', '08/12/2027').replace('Sun, 13 Aug 2027', '09/12/2027');
+  assert.equal(run(text).proposals[0].item.startDate, '2027-08-12');
+  assert.equal(run(text, { dayFirst: true }).proposals[0].item.startDate, '2027-12-08');
 });
 
 test('an inferred (non-explicit) route downgrades to low and warns', () => {

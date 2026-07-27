@@ -9,6 +9,10 @@
  * Add --text to dump the extracted text, which is the fastest way to see why
  * a PDF read badly.
  *
+ * All-numeric dates are read MONTH-FIRST (08/12/2027 = 12 August). Add
+ * --day-first to read the same confirmation the European way, which is the
+ * quickest way to check whether an ambiguous date flipped the trip.
+ *
  * PDF SUPPORT IS BEST-EFFORT AND DELIBERATELY DEPENDENCY-FREE. It inflates
  * FlateDecode content streams with node's own zlib and pulls the text-showing
  * operators out. That covers the ordinary "confirmation email printed to PDF"
@@ -102,15 +106,20 @@ async function readInput(arg) {
   return buf.toString('utf8');
 }
 
+// Piping into `head` closes stdout early; without this the tool dies with an
+// unhandled EPIPE instead of just stopping.
+process.stdout.on('error', (e) => { if (e.code === 'EPIPE') process.exit(0); throw e; });
+
 const C = { dim: '\x1b[2m', b: '\x1b[1m', g: '\x1b[32m', y: '\x1b[33m', r: '\x1b[31m', off: '\x1b[0m' };
 const tint = { high: C.g, medium: C.y, low: C.r };
 
 const args = process.argv.slice(2);
 const showText = args.includes('--text');
-const target = args.find(a => a !== '--text');
+const dayFirst = args.includes('--day-first');
+const target = args.find(a => !a.startsWith('--'));
 
 if (!target) {
-  process.stderr.write('usage: npm run proto:extract -- <file.pdf|file.txt|->  [--text]\n');
+  process.stderr.write('usage: npm run proto:extract -- <file.pdf|file.txt|->  [--text] [--day-first]\n');
   process.exit(1);
 }
 
@@ -119,9 +128,10 @@ if (showText) {
   process.stdout.write(`${C.dim}--- extracted text ---${C.off}\n${text}\n${C.dim}--- end ---${C.off}\n\n`);
 }
 
-const { proposals, stats } = extractBookings(text, { airports: loadAirports() });
+const { proposals, stats } = extractBookings(text, { airports: loadAirports(), dayFirst });
 
-process.stdout.write(`${C.b}${target}${C.off}  ${C.dim}(${stats.lines} non-empty lines)${C.off}\n\n`);
+process.stdout.write(`${C.b}${target}${C.off}  ${C.dim}(${stats.lines} non-empty lines, `
+  + `all-numeric dates read ${dayFirst ? 'day-first' : 'month-first'})${C.off}\n\n`);
 
 if (!proposals.length) {
   process.stdout.write(`${C.r}Nothing could be read with confidence.${C.off}\n`
