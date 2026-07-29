@@ -12,13 +12,18 @@ const path = require('path');
 const { showPath } = require('./slugify.js');
 const { renderShowPage, shapeToSlug } = require('./render-show-page.js');
 const { renderShowsIndex } = require('./render-shows-index.js');
-const { renderShowsSitemap } = require('./render-sitemap.js');
+const { renderShowsSitemap, selectSitemapSeries } = require('./render-sitemap.js');
 
 const ROOT = path.join(__dirname, '..');
 const DATA_FILE = path.join(ROOT, 'data.json');
 const EXTRAS_FILE = path.join(ROOT, 'data', 'show-modal-extras.json');
 const SHOWS_DIR = path.join(ROOT, 'shows');
 const SITEMAP_FILE = path.join(ROOT, 'sitemap-shows.xml');
+
+// Only the most-voted shows go into the sitemap (all pages are still
+// built). At 2,000 the cutoff sits around 15k IMDb votes, i.e. shows
+// with real search demand. See renderShowsSitemap for the rationale.
+const SITEMAP_LIMIT = 2000;
 
 function main() {
   if (!fs.existsSync(DATA_FILE)) {
@@ -81,7 +86,9 @@ function main() {
     path.join(SHOWS_DIR, 'index.html'),
     renderShowsIndex(series.map(toIndexEntry), data.builtAt),
   );
-  fs.writeFileSync(SITEMAP_FILE, renderShowsSitemap(series.map(toIndexEntry), data.builtAt));
+  const sitemapSeries = selectSitemapSeries(series, SITEMAP_LIMIT);
+  fs.writeFileSync(SITEMAP_FILE, renderShowsSitemap(sitemapSeries.map(toIndexEntry), data.builtAt));
+  console.log(`[build-show-pages] sitemap curated to top ${sitemapSeries.length} of ${series.length} series by votes; the rest stay crawlable via the A-Z index`);
 
   const elapsed = ((Date.now() - start) / 1000).toFixed(1);
   console.log(`[build-show-pages] wrote ${pageCount} show pages (${castCount} with cast) + index + sitemap in ${elapsed}s`);

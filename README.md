@@ -38,6 +38,7 @@ shevato/
 │
 ├── images/                           # Logos, backgrounds, OG cards, and app artwork
 ├── netlify/, .netlify/               # Netlify functions and build artifacts
+├── scripts/                          # Site-level build helpers (sitemap index lastmod stamping)
 ├── sync-system/                      # localStorage ↔ Firestore sync used by the apps
 │
 ├── index.html                        # Apex shell — redirects to /home.html (noindex)
@@ -54,7 +55,7 @@ shevato/
 ├── netlify.toml                      # Netlify build, headers, and CSP-Report-Only config
 ├── firebase-config.js                # Firebase v10 modular SDK bootstrap
 ├── firestore.rules, database.rules.json
-└── package.json                      # Test runner only (no build step)
+└── package.json                      # Test + build scripts (build:site runs on every deploy)
 ```
 
 ## Apps

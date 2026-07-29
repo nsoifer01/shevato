@@ -3,7 +3,7 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 
-const { renderShowsSitemap } = require('../scripts/render-sitemap.js');
+const { renderShowsSitemap, selectSitemapSeries } = require('../scripts/render-sitemap.js');
 const { renderShowsIndex, sortTitle, firstLetter } = require('../scripts/render-shows-index.js');
 
 const SERIES = [
@@ -35,6 +35,35 @@ test('renderShowsSitemap URLs use the slug + tconst path scheme', () => {
 test('renderShowsSitemap stamps lastmod from builtAt', () => {
   const xml = renderShowsSitemap(SERIES, '2026-05-18T12:34:56.000Z');
   assert.ok(xml.includes('<lastmod>2026-05-18</lastmod>'));
+});
+
+test('selectSitemapSeries keeps the top-voted shows up to the limit', () => {
+  const series = [
+    { seriesId: 'tt1', title: 'Low', seriesVotes: 100 },
+    { seriesId: 'tt2', title: 'High', seriesVotes: 90000 },
+    { seriesId: 'tt3', title: 'Mid', seriesVotes: 5000 },
+  ];
+  const picked = selectSitemapSeries(series, 2);
+  assert.deepEqual(picked.map((s) => s.seriesId), ['tt2', 'tt3']);
+});
+
+test('selectSitemapSeries sorts missing vote counts last and breaks ties by title', () => {
+  const series = [
+    { seriesId: 'tt1', title: 'Zeta', seriesVotes: 500 },
+    { seriesId: 'tt2', title: 'No Votes' },
+    { seriesId: 'tt3', title: 'Alpha', seriesVotes: 500 },
+  ];
+  const picked = selectSitemapSeries(series, 3);
+  assert.deepEqual(picked.map((s) => s.title), ['Alpha', 'Zeta', 'No Votes']);
+});
+
+test('selectSitemapSeries does not mutate the input order', () => {
+  const series = [
+    { seriesId: 'tt1', title: 'B', seriesVotes: 1 },
+    { seriesId: 'tt2', title: 'A', seriesVotes: 2 },
+  ];
+  selectSitemapSeries(series, 1);
+  assert.deepEqual(series.map((s) => s.seriesId), ['tt1', 'tt2']);
 });
 
 test('sortTitle drops leading articles for alphabetization', () => {

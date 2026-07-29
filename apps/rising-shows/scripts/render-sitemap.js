@@ -3,9 +3,12 @@
 const { showPath } = require('./slugify.js');
 const { SITE } = require('./render-show-page.js');
 
-// Emit a single sitemap.xml referencing every show page plus the
-// /shows/ browse index. Spec caps a sitemap at 50,000 URLs or 50 MB —
-// ~7k entries fits comfortably, so no chunking yet.
+// Emit a single sitemap.xml referencing the curated top show pages plus
+// the /shows/ browse index. Every show page is still built and served;
+// the sitemap deliberately lists only the most-voted subset so Google
+// spends its crawl budget on shows people actually search for instead
+// of parking 30k+ long-tail pages in "Discovered - currently not
+// indexed" (GSC, 2026-07). The rest stay reachable via the A-Z index.
 function renderShowsSitemap(series, builtAt) {
   const lastmod = builtAt ? new Date(builtAt).toISOString().slice(0, 10) : new Date().toISOString().slice(0, 10);
   const urls = [
@@ -32,4 +35,14 @@ ${urls.join('\n')}
 `;
 }
 
-module.exports = { renderShowsSitemap };
+// Pick the `limit` series with the most IMDb votes (ties broken by
+// title so output is deterministic). Series without a vote count sort
+// last. Callers pass the full grouped-series list; the returned subset
+// is what goes into the sitemap.
+function selectSitemapSeries(series, limit) {
+  return [...series]
+    .sort((a, b) => (b.seriesVotes || 0) - (a.seriesVotes || 0) || a.title.localeCompare(b.title))
+    .slice(0, limit);
+}
+
+module.exports = { renderShowsSitemap, selectSitemapSeries };
