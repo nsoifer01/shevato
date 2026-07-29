@@ -10,8 +10,9 @@ const fs = require('fs');
 const path = require('path');
 
 const { showPath } = require('./slugify.js');
-const { renderShowPage, shapeToSlug } = require('./render-show-page.js');
+const { renderShowPage, computeDominantShape } = require('./render-show-page.js');
 const { renderShowsIndex } = require('./render-shows-index.js');
+const { renderShapeHub, selectHubShows, SHAPE_SLUGS } = require('./render-shape-hub.js');
 const { renderShowsSitemap, selectSitemapSeries } = require('./render-sitemap.js');
 
 const ROOT = path.join(__dirname, '..');
@@ -86,8 +87,19 @@ function main() {
     path.join(SHOWS_DIR, 'index.html'),
     renderShowsIndex(series.map(toIndexEntry), data.builtAt),
   );
+
+  // Per-shape topic hubs. Safe to nest inside SHOWS_DIR: show directories
+  // always end in -tt<digits>, so "shape" can never collide with one.
+  for (const slug of SHAPE_SLUGS) {
+    const dir = path.join(SHOWS_DIR, 'shape', slug);
+    fs.mkdirSync(dir, { recursive: true });
+    const hubShows = selectHubShows(series, slug);
+    fs.writeFileSync(path.join(dir, 'index.html'), renderShapeHub(slug, hubShows, data.builtAt));
+    console.log(`[build-show-pages] shape hub /${slug}/ · ${hubShows.length} shows`);
+  }
+
   const sitemapSeries = selectSitemapSeries(series, SITEMAP_LIMIT);
-  fs.writeFileSync(SITEMAP_FILE, renderShowsSitemap(sitemapSeries.map(toIndexEntry), data.builtAt));
+  fs.writeFileSync(SITEMAP_FILE, renderShowsSitemap(sitemapSeries.map(toIndexEntry), data.builtAt, SHAPE_SLUGS));
   console.log(`[build-show-pages] sitemap curated to top ${sitemapSeries.length} of ${series.length} series by votes; the rest stay crawlable via the A-Z index`);
 
   const elapsed = ((Date.now() - start) / 1000).toFixed(1);
@@ -149,21 +161,6 @@ function fillIfEmpty(target, src, keys) {
 
 function toIndexEntry(s) {
   return { seriesId: s.seriesId, title: s.title, year: s.year };
-}
-
-// Pick the shape from the season with the highest seriesVotes (all seasons
-// in a series share the same seriesVotes, so break ties by avgRating).
-// Returns null when the show has no shape classifications at all.
-function computeDominantShape(show) {
-  let bestSeason = null;
-  for (const s of show.seasons) {
-    if (!s.shapes || s.shapes.length === 0) continue;
-    if (!bestSeason) { bestSeason = s; continue; }
-    if (s.avgRating > bestSeason.avgRating) bestSeason = s;
-  }
-  if (!bestSeason) return { dominantShape: null, dominantShapeSlug: null };
-  const shape = bestSeason.shapes[0];
-  return { dominantShape: shape, dominantShapeSlug: shapeToSlug(shape) };
 }
 
 // Build an inverted index: shape slug → array of series objects sorted by

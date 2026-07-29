@@ -1,7 +1,8 @@
 'use strict';
 
 const { showPath } = require('./slugify.js');
-const { escapeHtml, SITE } = require('./render-show-page.js');
+const { escapeHtml, SITE, SHAPE_LABELS } = require('./render-show-page.js');
+const { SHAPE_SLUGS, hubPath } = require('./render-shape-hub.js');
 const { renderMoreFooter } = require('./render-footer.js');
 
 // Single A-Z browse index of every show. This is the crawler's primary
@@ -85,6 +86,11 @@ function renderShowsIndex(series, builtAt) {
       <h1>All shows</h1>
       <p class="lede">Every series in Rising Shows (${sorted.length.toLocaleString()} shows). Each links to an episode-by-episode rating page with season-shape analysis.</p>
     </header>
+
+    <nav class="shape-nav" aria-label="Browse by shape">
+      <span class="shape-nav-label">Browse by shape</span>
+      ${SHAPE_SLUGS.map((slug) => `<a href="${hubPath(slug)}">${escapeHtml(SHAPE_LABELS[slug] || slug)}</a>`).join('\n      ')}
+    </nav>
 
     <nav class="alpha-jump" aria-label="Jump to letter">
       ${letters.map((l) => `<a href="#letter-${escapeHtml(l)}">${escapeHtml(l)}</a>`).join('')}

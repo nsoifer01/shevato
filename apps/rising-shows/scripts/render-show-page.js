@@ -26,7 +26,45 @@ const SHAPE_LABELS = {
   'bad-finale': 'Bad finale',
   rollercoaster: 'Rollercoaster',
   'mid-peak': 'Mid-peak',
+  'u-shaped': 'U-shaped',
+  'saved-best-for-last': 'Saved best for last',
+  'shape-drift': 'Shape drift',
 };
+
+// One-line plain-English definition per shape, kept verbatim in sync with
+// SHAPE_DESCS in js/app.js so the static shape hubs describe a shape the
+// same way the in-app chips do.
+const SHAPE_DESCS = {
+  rising: 'Each episode at least as good as the last',
+  consistent: 'Excellent throughout, no weak link',
+  'slow-burn': 'Second half lifts off',
+  'big-finale': 'The last episode is the peak',
+  rebound: 'Dips, then comes back stronger',
+  'front-loaded': 'Strong start, weaker back half',
+  declining: 'Each episode no better than the last',
+  'bad-finale': 'Finale is the worst episode',
+  rollercoaster: 'Big swings episode to episode',
+  'mid-peak': 'Climaxes mid-season, falls after',
+  'u-shaped': 'Strong opener and finale, sag in the middle',
+  'saved-best-for-last': 'Final season is the show\'s highest-rated',
+  'shape-drift': 'Rating pattern or quality changed significantly late in the run',
+};
+
+// Pick the shape from the show's highest-rated season (all seasons in a series
+// share the same seriesVotes, so the season average is the tiebreaker). Returns
+// nulls when the show has no shape classifications at all. Drives the show
+// page's CTA/recommendations and the per-shape hub membership.
+function computeDominantShape(show) {
+  let bestSeason = null;
+  for (const s of show.seasons) {
+    if (!s.shapes || s.shapes.length === 0) continue;
+    if (!bestSeason) { bestSeason = s; continue; }
+    if (s.avgRating > bestSeason.avgRating) bestSeason = s;
+  }
+  if (!bestSeason) return { dominantShape: null, dominantShapeSlug: null };
+  const shape = bestSeason.shapes[0];
+  return { dominantShape: shape, dominantShapeSlug: shapeToSlug(shape) };
+}
 
 // --- sensitive (adult) posters ---
 // Titles carrying the IMDb "Adult" genre get their poster blurred behind a
@@ -277,7 +315,7 @@ function renderSeasonSection(season, seriesId) {
   const shapeEntries = (season.shapes || []).map((s) => ({ label: SHAPE_LABELS[s] || s, slug: shapeToSlug(s) }));
   const shapesHtml = shapeEntries.length
     ? `<ul class="season-shapes" aria-label="Season shape classifications">${shapeEntries
-        .map((e) => `<li><a class="shape-badge" href="/apps/rising-shows/#shape=${escapeHtml(e.slug)}" target="_blank" rel="noopener">${escapeHtml(e.label)}</a></li>`)
+        .map((e) => `<li><a class="shape-badge" href="/apps/rising-shows/shows/shape/${escapeHtml(e.slug)}/">${escapeHtml(e.label)}</a></li>`)
         .join('')}</ul>`
     : '';
   const curveSvg = renderCurve(season.episodes, { width: 720, height: 220 });
@@ -346,7 +384,7 @@ function renderRelatedShows(relatedShows, dominantShape, dominantShapeSlug) {
   return `<section class="related-shows" aria-labelledby="related-heading">
     <h2 id="related-heading">Shows like this</h2>
     <div class="rec-strip">${cards}</div>
-    <p class="rec-see-all"><a href="/apps/rising-shows/#shape=${escapeHtml(dominantShapeSlug)}">See all ${escapeHtml(shapeLabel)} shows in the explorer →</a></p>
+    <p class="rec-see-all"><a href="/apps/rising-shows/shows/shape/${escapeHtml(dominantShapeSlug)}/">See all ${escapeHtml(shapeLabel)} shows →</a></p>
   </section>`;
 }
 
@@ -518,4 +556,17 @@ function escapeHtml(s) {
     .replace(/'/g, '&#39;');
 }
 
-module.exports = { renderShowPage, escapeHtml, buildDescription, shapeToSlug, SITE, buildTvSeasonSchema, renderSeasonNav };
+module.exports = {
+  renderShowPage,
+  escapeHtml,
+  buildDescription,
+  shapeToSlug,
+  SITE,
+  buildTvSeasonSchema,
+  renderSeasonNav,
+  SHAPE_LABELS,
+  SHAPE_DESCS,
+  computeDominantShape,
+  computeOverallAvgRating,
+  jsonLd,
+};

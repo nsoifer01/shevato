@@ -9,7 +9,7 @@ const { SITE } = require('./render-show-page.js');
 // spends its crawl budget on shows people actually search for instead
 // of parking 30k+ long-tail pages in "Discovered - currently not
 // indexed" (GSC, 2026-07). The rest stay reachable via the A-Z index.
-function renderShowsSitemap(series, builtAt) {
+function renderShowsSitemap(series, builtAt, shapeSlugs = []) {
   const lastmod = builtAt ? new Date(builtAt).toISOString().slice(0, 10) : new Date().toISOString().slice(0, 10);
   const urls = [
     `  <url>
@@ -18,6 +18,14 @@ function renderShowsSitemap(series, builtAt) {
     <changefreq>weekly</changefreq>
     <priority>0.7</priority>
   </url>`,
+    // Per-shape hubs sit above the individual shows: they're the topic
+    // landing pages the show pages link back into.
+    ...shapeSlugs.map((slug) => `  <url>
+    <loc>${SITE}/apps/rising-shows/shows/shape/${slug}/</loc>
+    <lastmod>${lastmod}</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.6</priority>
+  </url>`),
     ...series.map((s) => {
       const slug = showPath(s.title, s.seriesId);
       return `  <url>

@@ -5,6 +5,7 @@ const assert = require('node:assert/strict');
 
 const { renderShowsSitemap, selectSitemapSeries } = require('../scripts/render-sitemap.js');
 const { renderShowsIndex, sortTitle, firstLetter } = require('../scripts/render-shows-index.js');
+const { SHAPE_SLUGS } = require('../scripts/render-shape-hub.js');
 
 const SERIES = [
   { seriesId: 'tt0903747', title: 'Breaking Bad', year: 2008 },
@@ -23,6 +24,19 @@ test('renderShowsSitemap includes one URL per series plus the index', () => {
   const xml = renderShowsSitemap(SERIES, '2026-05-18T00:00:00.000Z');
   const locs = xml.match(/<loc>/g) || [];
   assert.equal(locs.length, SERIES.length + 1);
+});
+
+test('renderShowsSitemap adds one URL per shape hub when given the slugs', () => {
+  const xml = renderShowsSitemap(SERIES, '2026-05-18T00:00:00.000Z', SHAPE_SLUGS);
+  const locs = xml.match(/<loc>/g) || [];
+  assert.equal(locs.length, SERIES.length + 1 + SHAPE_SLUGS.length);
+  for (const slug of SHAPE_SLUGS) {
+    assert.ok(xml.includes(`<loc>https://shevato.com/apps/rising-shows/shows/shape/${slug}/</loc>`), slug);
+  }
+  // Hubs sit between the /shows/ index and the individual show pages.
+  assert.ok(xml.indexOf('/shows/shape/rising/') > xml.indexOf('<loc>https://shevato.com/apps/rising-shows/shows/</loc>'));
+  assert.ok(xml.indexOf('/shows/shape/shape-drift/') < xml.indexOf('/shows/breaking-bad-tt0903747/'));
+  assert.equal((xml.match(/<priority>0\.6<\/priority>/g) || []).length, SHAPE_SLUGS.length);
 });
 
 test('renderShowsSitemap URLs use the slug + tconst path scheme', () => {
@@ -86,4 +100,12 @@ test('renderShowsIndex emits the count and links to every series', () => {
   // "The Office" is alphabetized under O, not T
   assert.ok(html.includes('id="letter-O"'));
   assert.ok(html.includes('/apps/rising-shows/shows/the-office-tt0386676/'));
+});
+
+test('renderShowsIndex carries a browse-by-shape strip to all 13 hubs', () => {
+  const html = renderShowsIndex(SERIES, '2026-05-18T00:00:00.000Z');
+  const hubLinks = new Set([...html.matchAll(/href="(\/apps\/rising-shows\/shows\/shape\/[a-z-]+\/)"/g)].map((m) => m[1]));
+  assert.equal(hubLinks.size, SHAPE_SLUGS.length);
+  assert.ok(hubLinks.has('/apps/rising-shows/shows/shape/slow-burn/'));
+  assert.ok(html.includes('>Saved best for last<'));
 });

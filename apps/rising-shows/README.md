@@ -62,11 +62,13 @@ A season can match more than one shape — the card shows all of them.
 
 `scripts/build-show-pages.js` (run via `npm run build:rising-shows:pages`, and on
 every Netlify deploy through `npm run build:site`) renders one static HTML page per
-series under `apps/rising-shows/shows/` plus an A-Z index and `sitemap-shows.xml`.
+series under `apps/rising-shows/shows/` plus an A-Z index, 13 per-shape hub pages, and
+`sitemap-shows.xml`.
 These are gitignored build artifacts, derived from `data.json` (which the build downloads from the `rising-shows-data` release first).
 
 `sitemap-shows.xml` is deliberately curated: it lists only the top 2,000 series by
-IMDb vote count (`SITEMAP_LIMIT` in `build-show-pages.js`), not all ~34k. Every page
+IMDb vote count (`SITEMAP_LIMIT` in `build-show-pages.js`), not all ~34k, plus the
+A-Z index and the 13 shape hubs (2,014 URLs in total). Every page
 is still built and reachable through the A-Z index; the sitemap just focuses Google's
 crawl budget on shows with real search demand instead of parking the long tail in
 "Discovered - currently not indexed" (GSC, 2026-07). After the page builders run,
@@ -82,6 +84,18 @@ Each page (`scripts/render-show-page.js`) emits:
   `#season-N` anchor.
 - Open Graph and Twitter card meta, including `og:image:alt` and `twitter:label`/`data`
   pairs that carry the dominant shape and average episode rating into link previews.
+
+**Shape hubs.** `scripts/render-shape-hub.js` renders one topic landing page per shape at
+`apps/rising-shows/shows/shape/<slug>/` (13 of them: `rising`, `consistent`, `slow-burn`,
+`big-finale`, `rebound`, `front-loaded`, `declining`, `bad-finale`, `rollercoaster`,
+`mid-peak`, `u-shaped`, `saved-best-for-last`, `shape-drift`). A show appears on exactly
+one hub, the one matching its **dominant shape** (the first shape tag of its highest-rated
+season, `computeDominantShape` in `render-show-page.js`), ranked by IMDb vote count and
+capped at the top 100; the `CollectionPage` JSON-LD `ItemList` carries the first 25.
+Each hub cross-links the other 12, the A-Z index, and the shape-filtered explorer view
+(`/apps/rising-shows/#shape=<slug>`). The per-season shape badges on show pages and the
+"See all X shows" link under the recommendations point at these hubs, the A-Z index carries
+a "Browse by shape" strip, and all 13 URLs are listed in `sitemap-shows.xml`.
 
 **Sensitive (adult) posters.** Pages for titles carrying the IMDb "Adult" genre blur
 the hero poster (and any adult related-show thumbnail) behind a CSS-only click-to-reveal

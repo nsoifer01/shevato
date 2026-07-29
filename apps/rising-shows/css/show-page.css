@@ -369,6 +369,44 @@ a.shape-badge:hover {
 .shows-list .muted { color: var(--muted); font-size: 13px; }
 
 .index-footer { margin-top: 28px; color: var(--muted); font-size: 14px; }
+.index-footer a { color: var(--accent); }
+
+/* --- Per-shape hubs (/shows/shape/<slug>/) --- */
+.shape-nav {
+  display: flex; flex-wrap: wrap; align-items: center; gap: 8px;
+  margin: 18px 0 26px; padding: 12px 16px;
+  background: var(--panel); border-radius: 10px; border: 1px solid var(--border);
+}
+.shape-nav-label {
+  font-size: 12px; text-transform: uppercase; letter-spacing: 0.05em;
+  color: var(--muted); margin-right: 4px;
+}
+.shape-nav a, .shape-nav-current {
+  display: inline-block; padding: 4px 12px; border-radius: 999px;
+  text-decoration: none; font-size: 14px;
+  background: var(--bg-2); color: var(--text);
+}
+.shape-nav a:hover { background: var(--shape); color: var(--shape-text); }
+.shape-nav-current { background: var(--shape); color: var(--shape-text); font-weight: 600; }
+.shape-nav a.shape-nav-all { color: var(--accent); }
+
+.shape-hub .hub-hero { margin-bottom: 4px; }
+.shape-hub .hub-hero h1 { margin: 0 0 8px; font-size: clamp(28px, 4vw, 36px); }
+.shape-hub .lede { color: var(--muted); margin: 0 0 16px; max-width: 70ch; }
+
+.rank-list { list-style: none; margin: 0; padding: 0; }
+.rank-list li { border-bottom: 1px solid var(--border); }
+.rank-row {
+  display: grid; grid-template-columns: 44px 1fr auto; align-items: baseline;
+  gap: 12px; padding: 10px 8px; text-decoration: none; color: var(--text);
+  border-radius: 8px;
+}
+.rank-row:hover { background: var(--bg-2); color: var(--text); }
+.rank-row:hover .rank-title { color: var(--accent); }
+.rank-num { color: var(--muted); font-variant-numeric: tabular-nums; font-size: 14px; }
+.rank-title { font-weight: 500; }
+.rank-title .muted { color: var(--muted); font-weight: 400; font-size: 13px; }
+.rank-stats { color: var(--muted); font-size: 13px; white-space: nowrap; }
 
 /* --- Freshness line --- */
 .hero-freshness {
@@ -527,4 +565,7 @@ body:has(.sticky-cta-banner:not([hidden])) .back-to-top:hover:active {
   .sticky-cta-title { font-size: 13px; }
   .page-nav { display: none; }
   .page-header { padding: 10px 16px; }
+  .rank-row { grid-template-columns: 30px 1fr; row-gap: 2px; padding: 10px 6px; }
+  .rank-stats { grid-column: 2; white-space: normal; }
+  .shape-nav { padding: 12px; }
 }
