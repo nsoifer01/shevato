@@ -2681,18 +2681,21 @@ function cycleFinderGenreState(name) {
 
 // ---- Finder: show-level shape chips ----
 
-// Core shapes detectShapes() can emit, in display order. (saved-best-for-last
-// and shape-drift are season-level tags, never produced by detectShapes, so
-// they don't apply at the whole-show level and are intentionally omitted.)
+// Core shapes detectShapes() can emit, in display order, followed by the two
+// categorical season tags (saved-best-for-last, shape-drift). Those aren't
+// trajectory shapes, but buildShowAgg carries them up from any tagged season
+// so their chips and #shape= deep links (used by the per-shape hub pages)
+// filter meaningfully.
 const FINDER_SHAPE_ORDER = [
   'rising', 'consistent', 'slow-burn', 'big-finale', 'rebound',
   'front-loaded', 'declining', 'bad-finale', 'rollercoaster', 'mid-peak', 'u-shaped',
+  'saved-best-for-last', 'shape-drift',
 ];
 
 const FINDER_SHAPE_ICONS = {
   rising: '↗', consistent: '═', 'slow-burn': '⤴', 'big-finale': '⇧', rebound: '∪',
   'front-loaded': '↘', declining: '↘↘', 'bad-finale': '⇩', rollercoaster: '∿',
-  'mid-peak': '∩', 'u-shaped': '⌣',
+  'mid-peak': '∩', 'u-shaped': '⌣', 'saved-best-for-last': '★', 'shape-drift': '↝',
 };
 
 // Whole-show wording for each shape (the Seasons descriptions are per-episode;
@@ -2709,6 +2712,8 @@ const FINDER_SHAPE_DESCS = {
   rollercoaster: 'Big swings from season to season',
   'mid-peak': 'Peaks mid-run, falls after',
   'u-shaped': 'Strong first and last seasons, a sag between',
+  'saved-best-for-last': 'The final season is the show\'s highest-rated',
+  'shape-drift': 'The rating pattern changed significantly late in the run',
 };
 
 function finderShapeCounts(rows) {

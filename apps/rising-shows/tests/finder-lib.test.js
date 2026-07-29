@@ -5,6 +5,7 @@ const assert = require('node:assert/strict');
 const {
   FINDER_DEFAULTS,
   buildShowAgg,
+  CATEGORICAL_SHAPES,
   parseFinderQuery,
   passesFinderFilters,
   passesShapeAnd,
@@ -53,6 +54,35 @@ const MATCHES = [
     genres: [], seriesVotes: 1200,
     episodes: [{ episode: 1, rating: 7, votes: 10 }] },
 ];
+
+test('buildShowAgg carries categorical season tags up to the show', () => {
+  assert.deepEqual(CATEGORICAL_SHAPES, ['saved-best-for-last', 'shape-drift']);
+  const matches = [
+    // Two-season riser whose finale season is tagged saved-best-for-last:
+    // the tag must append after the trajectory shapes.
+    { seriesId: 'tt0000030', title: 'Tagged', year: 2020, language: 'en', season: 1,
+      genres: [], seriesRating: 7, seriesVotes: 1000, avgRuntime: 60, shapes: ['rising'],
+      episodes: [{ episode: 1, rating: 7, votes: 100 }] },
+    { seriesId: 'tt0000030', title: 'Tagged', year: 2020, language: 'en', season: 2,
+      genres: [], seriesRating: 7, seriesVotes: 1000, avgRuntime: 60,
+      shapes: ['big-finale', 'saved-best-for-last'],
+      episodes: [{ episode: 1, rating: 8, votes: 100 }] },
+    // Single-season show: no cross-season trajectory, but the categorical
+    // tag still applies at the show level.
+    { seriesId: 'tt0000031', title: 'Drifter', year: 2021, language: 'en', season: 1,
+      genres: [], seriesRating: 7, seriesVotes: 1000, avgRuntime: 60, shapes: ['shape-drift'],
+      episodes: [{ episode: 1, rating: 7, votes: 100 }] },
+  ];
+  const rows = buildShowAgg(matches, stubDetectShapes);
+  const tagged = rows.find((r) => r.seriesId === 'tt0000030');
+  assert.deepEqual(tagged.shapes, ['rising', 'saved-best-for-last']);
+  const drifter = rows.find((r) => r.seriesId === 'tt0000031');
+  assert.deepEqual(drifter.shapes, ['shape-drift']);
+  // The #shape= filter path used by the hub CTAs matches on the carried tag.
+  assert.equal(passesShapeAnd(tagged, new Set(['saved-best-for-last'])), true);
+  assert.equal(passesShapeAnd(drifter, new Set(['shape-drift'])), true);
+  assert.equal(passesShapeAnd(tagged, new Set(['shape-drift'])), false);
+});
 
 test('buildShowAgg aggregates seasons into show rows', () => {
   const rows = buildShowAgg(MATCHES, stubDetectShapes);
