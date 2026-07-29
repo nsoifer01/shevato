@@ -65,6 +65,14 @@ every Netlify deploy through `npm run build:site`) renders one static HTML page 
 series under `apps/rising-shows/shows/` plus an A-Z index and `sitemap-shows.xml`.
 These are gitignored build artifacts, derived from `data.json` (which the build downloads from the `rising-shows-data` release first).
 
+`sitemap-shows.xml` is deliberately curated: it lists only the top 2,000 series by
+IMDb vote count (`SITEMAP_LIMIT` in `build-show-pages.js`), not all ~34k. Every page
+is still built and reachable through the A-Z index; the sitemap just focuses Google's
+crawl budget on shows with real search demand instead of parking the long tail in
+"Discovered - currently not indexed" (GSC, 2026-07). After the page builders run,
+`scripts/stamp-sitemap-index.mjs` (repo root) re-stamps the root `sitemap.xml`
+index's `<lastmod>` entries from the freshly generated sub-sitemaps.
+
 Each page (`scripts/render-show-page.js`) emits:
 
 - `BreadcrumbList` and `TVSeries` JSON-LD, plus one `TVSeason` block per season with

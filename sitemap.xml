@@ -5,18 +5,23 @@
     - sitemap-shows.xml      — auto-generated per-show pages for Rising Shows
     - sitemap-exercises.xml  — auto-generated per-exercise pages for Gym Tracker
   Submitting this single URL to Google Search Console covers all three.
+
+  The <lastmod> values below are placeholders: scripts/stamp-sitemap-index.mjs
+  rewrites each one at deploy time (last step of `npm run build:site`) to the
+  max per-URL <lastmod> inside that sub-sitemap, so the deployed index always
+  reflects the freshly generated files.
 -->
 <sitemapindex xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
   <sitemap>
     <loc>https://shevato.com/sitemap-pages.xml</loc>
-    <lastmod>2026-07-20</lastmod>
+    <lastmod>2026-07-22</lastmod>
   </sitemap>
   <sitemap>
     <loc>https://shevato.com/apps/rising-shows/sitemap-shows.xml</loc>
-    <lastmod>2026-05-19</lastmod>
+    <lastmod>2026-07-07</lastmod>
   </sitemap>
   <sitemap>
     <loc>https://shevato.com/apps/gym-tracker/sitemap-exercises.xml</loc>
-    <lastmod>2026-05-19</lastmod>
+    <lastmod>2026-07-19</lastmod>
   </sitemap>
 </sitemapindex>
