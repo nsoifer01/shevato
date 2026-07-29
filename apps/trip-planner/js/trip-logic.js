@@ -4777,6 +4777,274 @@ const TripLogic = (() => {
     };
   }
 
+  // ---------- multi-leg itineraries (Depart / Arrive blocks) ----------
+  // Airline sites and e-tickets print connections as repeated blocks:
+  //
+  //   Depart              Arrive
+  //   Tue, Dec 29         Tue, Dec 29
+  //   6:00 AM             8:50 AM
+  //   Shreveport (SHV)    Atlanta, GA (ATL)
+  //
+  // readFlight above reads ONE route per document, which on a six-leg
+  // itinerary silently dropped five flights (and worse: the one it kept came
+  // from an upgrade-offer banner, not from the itinerary). These blocks are
+  // stronger evidence than anything readFlight infers, so when they exist
+  // they take over entirely.
+
+  const MONTH_NAME_RE = '(jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|jun(?:e)?|jul(?:y)?|aug(?:ust)?|sep(?:t|tember)?|oct(?:ober)?|nov(?:ember)?|dec(?:ember)?)';
+
+  // "Tue, Dec 29" / "WED, DEC 30" / "29 Dec": a date printed WITHOUT a year,
+  // which is how itinerary pages label each leg. The lookahead keeps these
+  // from double-reading full dates like "December 29, 2026".
+  const YEARLESS_MD = new RegExp('\\b' + MONTH_NAME_RE + '\\.?\\s+(\\d{1,2})(?:st|nd|rd|th)?\\b(?!\\s*,?\\s*\\d{4})', 'i');
+  const YEARLESS_DM = new RegExp('\\b(\\d{1,2})(?:st|nd|rd|th)?\\s+' + MONTH_NAME_RE + '\\b(?!\\s*,?\\s*\\d{4})', 'i');
+
+  function parseDayMonthNoYear(s) {
+    const text = String(s || '');
+    let m = YEARLESS_MD.exec(text);
+    if (m && MONTHS[m[1].toLowerCase()]) return { m: MONTHS[m[1].toLowerCase()], d: +m[2], raw: m[0] };
+    m = YEARLESS_DM.exec(text);
+    if (m && MONTHS[m[2].toLowerCase()]) return { m: MONTHS[m[2].toLowerCase()], d: +m[1], raw: m[0] };
+    return null;
+  }
+
+  /**
+   * Every fully-dated line in the document (month spelled out, year printed),
+   * for anchoring the year of the year-less leg dates. Issue/expiry lines are
+   * excluded: "Ticket Expiration: July 16, 2027" is not part of the journey
+   * and would stretch the plausible-range test below for no reason.
+   */
+  function collectDateAnchors(lines) {
+    const anchors = [];
+    const mdY = new RegExp('\\b' + MONTH_NAME_RE + '\\.?\\s+(\\d{1,2})(?:st|nd|rd|th)?,?\\s+(\\d{4})\\b', 'gi');
+    const dMy = new RegExp('\\b(\\d{1,2})(?:st|nd|rd|th)?\\s+' + MONTH_NAME_RE + '\\.?,?\\s+(\\d{4})\\b', 'gi');
+    (lines || []).forEach((ln, i) => {
+      if (NOT_TRAVEL.test(ln)) return;
+      for (const m of String(ln).matchAll(mdY)) {
+        const mo = MONTHS[m[1].toLowerCase()], d = +m[2], y = +m[3];
+        if (mo && validYmd(y, mo, d)) anchors.push({ y, m: mo, d, iso: iso(y, mo, d), raw: m[0], line: i });
+      }
+      for (const m of String(ln).matchAll(dMy)) {
+        const d = +m[1], mo = MONTHS[m[2].toLowerCase()], y = +m[3];
+        if (mo && validYmd(y, mo, d)) anchors.push({ y, m: mo, d, iso: iso(y, mo, d), raw: m[0], line: i });
+      }
+    });
+    return anchors;
+  }
+
+  /**
+   * Decides which year a year-less "Dec 29" belongs to.
+   *
+   * Two rules, in order of strength. EXACT: a full date elsewhere in the
+   * document names the same month and day ("Tue, December 29, 2026" in the
+   * header settles every "Tue, Dec 29" leg label). RANGE: only one candidate
+   * year places the date inside the document's own dated span, padded a few
+   * days for legs that land just past the printed end. A date that neither
+   * rule can settle stays unresolved rather than guessed: a flight silently
+   * filed under the wrong year is exactly the failure this feature must not
+   * produce.
+   */
+  const YEAR_RANGE_PAD_DAYS = 3;
+  function resolveYear(mo, d, anchors) {
+    if (!anchors.length) return null;
+    const exactYears = [...new Set(anchors.filter(a => a.m === mo && a.d === d).map(a => a.y))];
+    if (exactYears.length === 1 && validYmd(exactYears[0], mo, d)) {
+      return { iso: iso(exactYears[0], mo, d), how: 'exact' };
+    }
+    const isos = anchors.map(a => a.iso).sort();
+    const pad = YEAR_RANGE_PAD_DAYS * 86400000;
+    const min = Date.parse(isos[0]) - pad;
+    const max = Date.parse(isos[isos.length - 1]) + pad;
+    const years = [...new Set(anchors.map(a => a.y))];
+    const fits = years.filter(y => {
+      if (!validYmd(y, mo, d)) return false;
+      const t = Date.parse(iso(y, mo, d));
+      return t >= min && t <= max;
+    });
+    if (fits.length === 1) return { iso: iso(fits[0], mo, d), how: 'range' };
+    return null;
+  }
+
+  const LEG_DEP = /\bdepart\w*\b/i;
+  const LEG_ARR = /\barriv\w*\b/i;
+  // Aircraft-name lines defeat the flight-number regex ("Airbus A330-300"
+  // reads as flight A3 330), so they are skipped wholesale.
+  const AIRCRAFT_LINE = /\b(airbus|boeing|embraer|bombardier|canadair|dreamliner|winglets|md-\d)\b/i;
+  // Like FLIGHT_NO but tolerant of text glued straight onto the digits, which
+  // is how copied web pages print "DL7937Operated byKorean Air".
+  const LEG_FLIGHT_NO = /\b([A-Z]{2}|[A-Z]\d|\d[A-Z])\s?(\d{2,4})(?!\d)/;
+  // A seat only counts on a line of its own: "13B" inside prose is a postcode
+  // fragment or a paragraph label as often as it is a seat.
+  const SEAT_LINE = /^\s*(\d{1,3}[A-HJ-NP-Z])\s*$/;
+
+  /**
+   * Reads one endpoint (the departure or arrival half of a leg) from the
+   * lines between `start` and `end`: the first airport code, the first date
+   * (full or year-less) and the first clock time found there.
+   */
+  function readLegEndpoint(lines, start, end, byIata, anchors, ctx) {
+    const out = { code: null, codeLine: -1, date: null, time: null, timeLine: -1, pending: null };
+    for (let i = start; i < end && i < lines.length; i++) {
+      const ln = lines[i];
+      if (!out.code) {
+        const paren = /\(([A-Z]{3})\)/.exec(ln);
+        if (paren && codeIsAirport(paren[1], byIata)) { out.code = paren[1]; out.codeLine = i; }
+        else {
+          const bare = /^\s*([A-Z]{3})\s*$/.exec(ln);
+          if (bare && codeIsAirport(bare[1], byIata)) { out.code = bare[1]; out.codeLine = i; }
+        }
+      }
+      if (!out.date && !out.pending && !NOT_TRAVEL.test(ln)) {
+        const full = parseDate(ln, ctx);
+        if (full) out.date = { iso: full.iso, how: 'full', raw: full.raw, line: i };
+        else {
+          const md = parseDayMonthNoYear(ln);
+          if (md) {
+            const y = resolveYear(md.m, md.d, anchors);
+            if (y) out.date = { iso: y.iso, how: y.how, raw: md.raw, line: i };
+            else out.pending = { raw: md.raw, line: i };   // seen but unresolvable
+          }
+        }
+      }
+      if (!out.time) {
+        const t = parseTime(ln);
+        if (t) { out.time = t; out.timeLine = i; }
+      }
+    }
+    return out;
+  }
+
+  /**
+   * Reads EVERY leg printed as a Depart/Arrive block pair. Returns [] when
+   * the document has none, and the caller falls back to the one-route reader.
+   * A block only becomes a leg when BOTH endpoints carry a recognised airport
+   * code, so prose that merely mentions departing never manufactures one.
+   */
+  function readFlightLegs(lines, byIata, ctx) {
+    const anchors = collectDateAnchors(lines);
+    const pnr = findConfirmation(lines);
+    const depIdx = [];
+    for (let i = 0; i < lines.length; i++) {
+      if (LEG_DEP.test(lines[i]) && lines[i].length <= 80) depIdx.push(i);
+    }
+
+    const legs = [];
+    let consumedTo = -1;
+    let prevArrLine = -1;
+    for (let k = 0; k < depIdx.length; k++) {
+      const i = depIdx[k];
+      if (i <= consumedTo) continue;
+      let j = -1;
+      for (let n = i + 1; n <= i + 14 && n < lines.length; n++) {
+        if (LEG_ARR.test(lines[n]) && lines[n].length <= 80) { j = n; break; }
+      }
+      if (j < 0) continue;
+      const nextDep = depIdx.find(x => x > j);
+      const blockEnd = Math.min(nextDep == null ? lines.length : nextDep, j + 14);
+
+      const dep = readLegEndpoint(lines, i, j, byIata, anchors, ctx);
+      const arr = readLegEndpoint(lines, j, blockEnd, byIata, anchors, ctx);
+      if (!dep.code || !arr.code || dep.code === arr.code) continue;
+      consumedTo = j;
+
+      const warnings = [];
+      const evidence = [];
+      const from = byIata.get(dep.code);
+      const to = byIata.get(arr.code);
+      evidence.push({ field: 'route', raw: lines[dep.codeLine].trim(), line: dep.codeLine });
+      evidence.push({ field: 'route', raw: lines[arr.codeLine].trim(), line: arr.codeLine });
+
+      if (dep.date) {
+        evidence.push({ field: 'startDate', raw: lines[dep.date.line].trim(), line: dep.date.line });
+        if (dep.date.how === 'range') {
+          warnings.push(`No year is printed next to "${dep.date.raw}"; taken as ${dep.date.iso} because only that year fits between the document's dated span. Check it.`);
+        }
+      } else if (dep.pending) {
+        warnings.push(`"${dep.pending.raw}" is printed without a year and nothing else on the page settles which year it is. Set the date by hand.`);
+      } else {
+        warnings.push('No departure date could be read for this leg.');
+      }
+      if (dep.time) evidence.push({ field: 'startTime', raw: lines[dep.timeLine].trim(), line: dep.timeLine });
+      if (arr.time) evidence.push({ field: 'endTime', raw: lines[arr.timeLine].trim(), line: arr.timeLine });
+
+      // Landing date: an explicit arrival date wins; an arrival date equal to
+      // the departure date is a normal same-day leg (including eastbound
+      // date-line crossings where the clock lands EARLIER than it took off,
+      // so the wrapped-clock inference must not fire); only a missing arrival
+      // date leaves the overnight question to the clocks.
+      let endDate = '';
+      if (dep.date && arr.date) {
+        if (arr.date.iso > dep.date.iso) {
+          endDate = arr.date.iso;
+          evidence.push({ field: 'endDate', raw: lines[arr.date.line].trim(), line: arr.date.line });
+          warnings.push(`Overnight leg: lands ${endDate}, read from "${lines[arr.date.line].trim().slice(0, 50)}".`);
+          if (arr.date.how === 'range') {
+            warnings.push(`No year is printed next to "${arr.date.raw}"; taken as ${arr.date.iso} because only that year fits between the document's dated span. Check it.`);
+          }
+        } else if (arr.date.iso < dep.date.iso) {
+          warnings.push(`An arrival line reads ${arr.date.iso}, which is BEFORE the departure date ${dep.date.iso}. It was ignored; check both dates.`);
+        }
+      } else if (dep.date && dep.time && arr.time && arr.time < dep.time) {
+        const d = new Date(Date.UTC(+dep.date.iso.slice(0, 4), +dep.date.iso.slice(5, 7) - 1, +dep.date.iso.slice(8, 10) + 1));
+        endDate = iso(d.getUTCFullYear(), d.getUTCMonth() + 1, d.getUTCDate());
+        warnings.push(`Read as an overnight leg landing ${endDate} (the arrival time is earlier than the departure time); no arrival date was printed.`);
+      }
+
+      // Flight number: the nearest preceding designator, skipping aircraft
+      // names, bounded so it cannot poach the previous leg's number.
+      let flightNo = null;
+      const backStop = Math.max(i - 18, prevArrLine);
+      for (let n = i - 1; n > backStop; n--) {
+        if (AIRCRAFT_LINE.test(lines[n])) continue;
+        const m = LEG_FLIGHT_NO.exec(lines[n]);
+        if (m && !codeIsAirport(m[1] + m[2].slice(0, 1), byIata)) {
+          flightNo = { code: `${m[1]}${m[2]}`, line: n };
+          break;
+        }
+      }
+      if (flightNo) evidence.push({ field: 'details', raw: lines[flightNo.line].trim(), line: flightNo.line });
+
+      // Seat: a bare "13B" line shortly after the arrival block, which is
+      // where itinerary pages print the passenger's seat for the leg.
+      let seat = null;
+      for (let n = j; n < blockEnd; n++) {
+        const m = SEAT_LINE.exec(lines[n]);
+        if (m) { seat = m[1]; break; }
+      }
+
+      const item = {
+        type: 'flight',
+        title: `${from ? airportLabel(from) : dep.code} to ${to ? airportLabel(to) : arr.code}`,
+        location: '',
+        startDate: dep.date ? dep.date.iso : '',
+        endDate,
+        startTime: dep.time || '',
+        endTime: arr.time || '',
+        status: 'booked',
+      };
+      if (pnr) item.confirmation = pnr.code;
+      const details = [];
+      if (flightNo) details.push(`Flight ${flightNo.code}`);
+      if (seat) details.push(`Seat ${seat}`);
+      if (details.length) item.details = details.join(', ');
+      if (pnr && !evidence.some(e => e.field === 'confirmation')) {
+        evidence.push({ field: 'confirmation', raw: pnr.raw, line: pnr.line });
+      }
+
+      let confidence = 'high';
+      if (!dep.date) confidence = 'low';
+      else if (dep.date.how === 'range' || !dep.time || !arr.time) confidence = 'medium';
+
+      const spanDays = (dep.date && endDate)
+        ? Math.round((Date.parse(endDate) - Date.parse(dep.date.iso)) / 86400000)
+        : (dep.date ? 0 : null);
+
+      legs.push({ kind: 'flight', item, confidence, evidence, warnings, signals: { spanDays } });
+      prevArrLine = j;
+    }
+    return legs;
+  }
+
   /** Splits to trimmed non-empty lines, preserving original indexing. */
   function toLines(text) {
     return String(text || '').replace(/\r/g, '').split('\n').map(l => l.replace(/\s+/g, ' ').trim());
@@ -4834,8 +5102,16 @@ const TripLogic = (() => {
     const readAll = (order) => {
       const ctx = { dayFirst: order.dayFirst, orderKnown: order.source === 'document' || order.source === 'plausibility', order };
       const out = [];
-      const flight = readFlight(lines, byIata, ctx);
-      if (flight) out.push(flight);
+      // Depart/Arrive blocks first: they carry a code, date and time PER LEG,
+      // which beats anything the one-route reader can infer, and they are the
+      // only reading that keeps a connection from collapsing to one flight.
+      const legs = readFlightLegs(lines, byIata, ctx);
+      if (legs.length) {
+        out.push(...legs);
+      } else {
+        const flight = readFlight(lines, byIata, ctx);
+        if (flight) out.push(flight);
+      }
       const stay = readStay(lines, ctx);
       if (stay) out.push(stay);
       return out;
@@ -4903,6 +5179,7 @@ const TripLogic = (() => {
     airportIndex, airportLabel, airportDetail, airportScore, searchAirports, PRIMARY_HUBS,
     parseBookingDate: parseDate, parseBookingTime: parseTime, parseDocMoney,
     findConfirmation, findRoute, inferDateOrder, implausibility,
+    readFlightLegs, parseDayMonthNoYear, collectDateAnchors, resolveYear,
     extractBookings, bookingTextToLines: toLines,
     flightTitleFromAirports, parseFlightAirports,
     classifyVisa, parseVisaMatrix, visaCountryUsable, visaUnconfirmedNames, visaVintageNote,

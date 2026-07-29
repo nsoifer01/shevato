@@ -3740,6 +3740,11 @@
     if (!file) return;
     setImportState('<div class="route-loading"><span class="spinner"></span>Reading the file...</div>');
     let text = '';
+    // Set when pdf.js opened the document fine and found (almost) no text in
+    // it. That is a different diagnosis from "could not decode": the pages
+    // are pictures or vector outlines of letters, so no PDF tool can copy
+    // text out of this file, and the advice has to say so.
+    let noTextLayer = false;
     try {
       const bytes = new Uint8Array(await file.arrayBuffer());
       const isPdf = String.fromCharCode(...bytes.slice(0, 5)) === '%PDF-';
@@ -3749,15 +3754,32 @@
         // pdf.js first because it is the one that reads real confirmations;
         // the built-in reader only covers for it being unreachable.
         text = await pdfTextOrNull(bytes);
+        if (text !== null && text.replace(/\s/g, '').length < 20) noTextLayer = true;
         if (!looksLikeProse(text)) text = await pdfToText(bytes);
-        if (!looksLikeProse(text)) text = '';
+        if (!looksLikeProse(text)) text = ''; else noTextLayer = false;
       }
     } catch { text = ''; }
     if (!text.trim()) {
+      if (noTextLayer) {
+        // The honest version: selecting and copying inside this PDF cannot
+        // work either, so do not send anyone off to try it.
+        setImportState('<div class="m-empty err"><span class="me-ico" aria-hidden="true">🖼️</span>'
+          + '<span class="me-title">This PDF is a picture of text</span>'
+          + '<span>The file opened fine, but its pages contain no actual text: every letter is '
+          + 'stored as an image or as drawn shapes. Scans do this, and so do some "print to PDF" '
+          + 'tools (Microsoft Print to PDF is a common culprit). No app can copy text out of a '
+          + 'file like this, so selecting and copying inside the PDF will not work either.</span>'
+          + '<span><strong>What works instead:</strong> go back to where the PDF came from - the '
+          + 'confirmation email or the airline\'s booking page - select the text there, copy it, '
+          + 'and paste it into the box above. If you need a readable PDF, save the page again '
+          + 'using the browser\'s own "Save as PDF" destination rather than a printer driver.</span></div>');
+        return;
+      }
       setImportState('<div class="m-empty err"><span class="me-ico" aria-hidden="true">🚫</span>'
         + '<span class="me-title">This file could not be read</span>'
-        + '<span>It is probably a scan (a picture of a document) or it stores its text in a way '
-        + 'this reader does not handle. Open it, select all, copy, and paste it into the box below '
+        + '<span>It stores its text in a way this reader does not handle. Open the PDF, select '
+        + 'all, copy, and paste it into the box above. If nothing can be selected in the PDF '
+        + 'either, copy the text from the confirmation email or booking page it came from '
         + 'instead: that always works.</span></div>');
       return;
     }
@@ -3780,13 +3802,21 @@
     }
     const box = document.createElement('div');
     box.className = 'import-found';
+    // The day-first / month-first question only exists for all-numeric dates
+    // ("08/12/2027"). On a document whose dates are all spelled out ("Tue,
+    // Dec 29") the default-order note is unanswerable noise, so it is only
+    // shown when a numeric date is actually on the page.
+    const hasNumericDate = res.lines.some(l => /\b\d{1,2}[\/.]\d{1,2}[\/.]\d{4}\b/.test(l));
     const orderLine = {
       document: () => `Dates read ${res.order.dayFirst ? 'day-first' : 'month-first'}, settled by the document itself.`,
       plausibility: () => `Dates read ${res.order.dayFirst ? 'day-first' : 'month-first'}. Nothing on the page settles the order, so this was inferred from what makes a possible trip. Worth a look.`,
       conflict: () => 'This document writes dates in BOTH orders, so none of them can be trusted. Check every date below.',
-      default: () => `No date on the page settles day-first from month-first, so they are read ${res.order.dayFirst ? 'day-first' : 'month-first'}. Check them.`,
+      default: () => (hasNumericDate
+        ? `No date on the page settles day-first from month-first, so they are read ${res.order.dayFirst ? 'day-first' : 'month-first'}. Check them.`
+        : ''),
     }[res.order.source];
-    box.innerHTML = `<p class="import-order">${esc(orderLine ? orderLine() : '')}</p>`;
+    const orderText = orderLine ? orderLine() : '';
+    box.innerHTML = orderText ? `<p class="import-order">${esc(orderText)}</p>` : '';
     for (const p of res.proposals) {
       const card = document.createElement('div');
       card.className = 'import-read';

@@ -537,6 +537,255 @@ test('implausibility scores a set of proposals, not a single date', () => {
   assert.ok(implausibility([{ kind: 'stay', signals: { nights: 0 } }]) >= 60);
 });
 
+// ---------- multi-leg itineraries (Depart / Arrive blocks) ----------
+
+// Condensed from a real Delta "My Trips" page pasted as text: six legs in
+// Depart/Arrive blocks, leg dates printed WITHOUT years, flight numbers glued
+// to the text after them, an upgrade-offer banner carrying a route-shaped
+// "SHV - ATL" line that must NOT become the itinerary, and a date-line
+// crossing where the arrival clock is earlier than the departure clock on
+// the SAME day.
+const DELTA = `My Trips
+Tokyo-Haneda Airport, Japan
+
+Tue, December 29, 2026 - Fri, February 5, 2027
+Round Trip, 1 Passenger
+Confirmation #
+GUWAZN
+Ticket Expiration : July 16, 2027
+Upgrade to Delta First
+$160.00 USD or 16,000 Miles
+SHV - ATL ,  Price is Per Passenger
+1 of 3
+View Flight Operation Details for
+DL3504
+Embraer 175 (Enhanced Winglets)opens in a new tab
+Operated by SkyWest DBA Delta Connection
+SHV
+on time
+ATL
+1h 50m
+Depart
+Tue, Dec 29
+6:00 AM
+Shreveport, LA (SHV)
+Terminal TBD (Gate TBD)
+Arrive
+Tue, Dec 29
+8:50 AM
+Atlanta, GA (ATL)opens in a new tab
+Domestic Term-South (Gate TBD)
+Nikita Soifer
+eTicket: #0062447086355
+13B
+Delta Main Extra (X)
+2 of 3
+View Flight Operation Details for
+DL1240
+Airbus A321opens in a new tab
+ATL
+on time
+DTW
+1h 59m
+Depart
+Tue, Dec 29
+10:35 AM
+Atlanta, GA (ATL)opens in a new tab
+Arrive
+Tue, Dec 29
+12:34 PM
+Detroit, MI (DTW)opens in a new tab
+McNamara Terminal (Gate TBD)
+Nikita Soifer
+eTicket: #0062447086355
+22C
+3 of 3
+View Flight Operation Details for
+DL0275
+Airbus A350-900opens in a new tab
+DTW
+on time
+HND
+13h 40m
+Depart
+Tue, Dec 29
+2:05 PM
+Detroit, MI (DTW)opens in a new tab
+Arrive
+Wed, Dec 30
+5:45 PM
+Tokyo-Haneda Airport, Japan (HND)opens in a new tab
+Terminal 3 (Gate TBD)
+Nikita Soifer
+eTicket: #0062447086355
+50F
+1 of 3
+View Flight Operation Details for
+DL7937Operated byKorean Air
+Airbus A330-300opens in a new tab
+Operated by Korean Air
+HKT
+on time
+ICN
+5h 55m
+Depart
+Fri, Feb 5
+11:40 PM
+Phuket, Thailand (HKT)
+International Terminal (Gate TBD)
+Arrive
+Sat, Feb 6
+7:35 AM
+Seoul-Incheon, South Korea (ICN)opens in a new tab
+Terminal 2 (Gate TBD)
+Nikita Soifer
+eTicket: #0062447086355
+34C
+2 of 3
+View Flight Operation Details for
+DL7878Operated byKorean Air
+Boeing 777-300ERopens in a new tab
+ICN
+on time
+ATL
+13h 35m
+Depart
+Sat, Feb 6
+8:45 AM
+Seoul-Incheon, South Korea (ICN)opens in a new tab
+Arrive
+Sat, Feb 6
+8:20 AM
+Atlanta, GA (ATL)opens in a new tab
+International Term (Gate TBD)
+Nikita Soifer
+eTicket: #0062447086355
+33D
+3 of 3
+View Flight Operation Details for
+DL3733
+Embraer 175 (Enhanced Winglets)opens in a new tab
+ATL
+on time
+SHV
+1h 54m
+Depart
+Sat, Feb 6
+10:30 AM
+Atlanta, GA (ATL)opens in a new tab
+Arrive
+Sat, Feb 6
+11:24 AM
+Shreveport, LA (SHV)
+Terminal TBD (Gate TBD)
+Nikita Soifer
+eTicket: #0062447086355
+18B`;
+
+test('a six-leg itinerary extracts as six flights, in order', () => {
+  const { proposals } = run(DELTA);
+  const flights = proposals.filter(p => p.kind === 'flight');
+  assert.equal(flights.length, 6);
+  assert.deepEqual(
+    flights.map(p => p.item.title),
+    ['Shreveport (SHV) to Atlanta (ATL)', 'Atlanta (ATL) to Detroit (DTW)',
+      'Detroit (DTW) to Tokyo (HND)', 'Phuket (HKT) to Seoul (ICN)',
+      'Seoul (ICN) to Atlanta (ATL)', 'Atlanta (ATL) to Shreveport (SHV)']);
+});
+
+test('leg dates without a printed year are resolved from the document header', () => {
+  const f = run(DELTA).proposals;
+  // "Tue, Dec 29" matches "December 29, 2026" in the header exactly
+  assert.equal(f[0].item.startDate, '2026-12-29');
+  assert.equal(f[3].item.startDate, '2027-02-05');
+  // "Sat, Feb 6" matches nothing exactly; only 2027 fits the trip's own span
+  assert.equal(f[4].item.startDate, '2027-02-06');
+  assert.equal(f[5].item.startDate, '2027-02-06');
+  assert.ok(f[4].warnings.some(w => /No year is printed/i.test(w)));
+  // a year settled by the span test is an inference, so it costs confidence
+  assert.equal(f[4].confidence, 'medium');
+  // a year settled by an exact header date does not
+  assert.equal(f[0].confidence, 'high');
+});
+
+test('each leg carries its own times, flight number and seat', () => {
+  const f = run(DELTA).proposals;
+  assert.equal(f[0].item.startTime, '06:00');
+  assert.equal(f[0].item.endTime, '08:50');
+  assert.equal(f[0].item.details, 'Flight DL3504, Seat 13B');
+  assert.equal(f[2].item.startTime, '14:05');
+  assert.equal(f[2].item.details, 'Flight DL0275, Seat 50F');
+  // a flight number glued to prose ("DL7937Operated byKorean Air") still reads
+  assert.equal(f[3].item.details, 'Flight DL7937, Seat 34C');
+  // and an aircraft name ("Airbus A330-300") never becomes one
+  assert.ok(!f.some(p => /A3\d\d/.test(p.item.details || '')));
+  // the shared confirmation code lands on every leg
+  for (const p of f) assert.equal(p.item.confirmation, 'GUWAZN');
+});
+
+test('an overnight leg reads its printed landing date; a date-line crossing stays same-day', () => {
+  const f = run(DELTA).proposals;
+  // DTW to HND departs Dec 29, lands Dec 30: the printed arrival date wins
+  assert.equal(f[2].item.endDate, '2026-12-30');
+  // ICN to ATL lands at 8:20 AM after an 8:45 AM departure on the SAME
+  // printed date (eastbound across the date line). The wrapped-clock +1
+  // inference must not fire when the document says same-day.
+  assert.equal(f[4].item.startDate, '2027-02-06');
+  assert.equal(f[4].item.endDate, '');
+  assert.equal(f[4].item.startTime, '08:45');
+  assert.equal(f[4].item.endTime, '08:20');
+});
+
+test('a route-shaped upgrade banner does not become the itinerary', () => {
+  const f = run(DELTA).proposals;
+  // the old reader returned exactly one flight, built from the "SHV - ATL"
+  // upsell line; the block reader must not read that line at all
+  assert.ok(!f.some(p => p.evidence.some(e => /Price is Per Passenger/i.test(e.raw))));
+});
+
+test('leg proposals carry line-level provenance like everything else', () => {
+  const f = run(DELTA).proposals;
+  for (const p of f) {
+    for (const field of ['route', 'startDate', 'startTime', 'confirmation']) {
+      assert.ok(p.evidence.some(e => e.field === field), `missing ${field} evidence`);
+    }
+    for (const e of p.evidence) {
+      assert.ok(e.line >= 0 && typeof e.raw === 'string' && e.raw.length > 0);
+    }
+  }
+});
+
+test('a document with Depart/Arrive blocks but no year anywhere refuses to guess', () => {
+  const noYear = `Confirmation # ABC123
+Depart
+Tue, Dec 29
+6:00 AM
+Shreveport, LA (SHV)
+Arrive
+Tue, Dec 29
+8:50 AM
+Atlanta, GA (ATL)`;
+  const f = run(noYear).proposals.filter(p => p.kind === 'flight');
+  assert.equal(f.length, 1);
+  assert.equal(f[0].item.startDate, '');
+  assert.equal(f[0].confidence, 'low');
+  assert.ok(f[0].warnings.some(w => /without a year/i.test(w)));
+});
+
+test('prose that merely mentions departing never manufactures a leg', () => {
+  // "depart" and "arrive" both present, but no airport codes: the one-route
+  // reader (or nothing) must handle it, not the block reader
+  const r = run('Please depart your hotel early. You will arrive refreshed.');
+  assert.deepEqual(r.proposals, []);
+});
+
+test('single-flight confirmations still read exactly as before', () => {
+  // the BA fixture has no Depart/Arrive blocks, so the block reader stays out
+  const { proposals } = run(BA);
+  assert.equal(proposals.length, 1);
+  assert.equal(proposals[0].item.startDate, '2027-08-12');
+});
+
 // ---------- transcription provenance ----------
 // The one place the document reader is allowed more trust than the assistant.
 
