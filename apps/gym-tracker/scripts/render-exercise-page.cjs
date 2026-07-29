@@ -86,7 +86,7 @@ ${jsonLd(buildExerciseSchema({ exercise, canonical, description }))}
 
   <main id="main" class="exercise-page">
     <nav class="crumbs" aria-label="Breadcrumb">
-      <a href="/">Shevato</a> ›
+      <a href="/home">Shevato</a> ›
       <a href="/apps/gym-tracker/">Gym Tracker</a> ›
       <a href="/apps/gym-tracker/exercises/">Exercises</a> ›
       <a href="/apps/gym-tracker/exercises/muscle/${escapeHtml(exercise.muscleGroup || exercise.category)}/">${escapeHtml(labelOf(exercise.muscleGroup || exercise.category))}</a> ›

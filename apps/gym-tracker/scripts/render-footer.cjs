@@ -18,7 +18,7 @@ function renderMoreFooter() {
         <li><a href="/apps/trip-planner/"><strong>Trip Planner</strong><span> · itineraries with maps, costs and warnings</span></a></li>
       </ul>
     </nav>
-    <p class="copyright">© Shevato LLC · <a href="/">shevato.com</a> · <a href="/about.html">About</a> · <a href="/contact.html">Contact</a></p>
+    <p class="copyright">© Shevato LLC · <a href="/home">shevato.com</a> · <a href="/about.html">About</a> · <a href="/contact.html">Contact</a></p>
   </footer>`;
 }
 

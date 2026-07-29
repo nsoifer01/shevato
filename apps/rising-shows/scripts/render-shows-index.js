@@ -76,7 +76,7 @@ function renderShowsIndex(series, builtAt) {
 
   <main id="main" class="shows-index">
     <nav class="crumbs" aria-label="Breadcrumb">
-      <a href="/">Shevato</a> ›
+      <a href="/home">Shevato</a> ›
       <a href="/apps/rising-shows/">Rising Shows</a> ›
       <span>All shows</span>
     </nav>
