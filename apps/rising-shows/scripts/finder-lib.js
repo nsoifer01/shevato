@@ -32,6 +32,11 @@ const FINDER_DEFAULTS = {
 const HIDDEN_GEM_MIN_AVG = 8.5;
 const HIDDEN_GEM_MAX_VOTES_PER_EP = 500;
 
+// Categorical season-level tags the trajectory classifier never emits. A show
+// carries one when any of its seasons does, so shape chips and #shape= links
+// work for them (matching how the per-shape hub pages and Kometa treat them).
+const CATEGORICAL_SHAPES = ['saved-best-for-last', 'shape-drift'];
+
 // Aggregate per-season records (data.json `matches`) into one row per series.
 // `detectShapes` is the per-episode shape classifier from match.js - passed in
 // rather than required so the browser can hand over its global and a missing
@@ -58,8 +63,15 @@ function buildShowAgg(matches, detectShapes) {
         seasonsCount: 0,
         seasonAvgs: [],
         seasonEpisodeSeries: [],
+        categoricalShapes: new Set(),
       };
       byId.set(m.seriesId, s);
+    }
+    // saved-best-for-last and shape-drift are categorical season-level tags
+    // (never produced by the trajectory classifier below); carry them up to
+    // the show so the Finder's shape chips and #shape= links can match them.
+    for (const tag of CATEGORICAL_SHAPES) {
+      if ((m.shapes || []).includes(tag)) s.categoricalShapes.add(tag);
     }
     // External IDs ride on every season record post-enrichment; keep the
     // first one seen so the Kometa export can build tmdb_show/tvdb_show lists.
@@ -101,11 +113,15 @@ function buildShowAgg(matches, detectShapes) {
     const seasonAvgs = s.seasonAvgs.slice().sort((a, b) => a.season - b.season);
     // Whole-show shape: feed the ordered per-season averages to the same shape
     // detectors the Seasons view uses per episode. A single season has no
-    // cross-season trajectory, so such shows carry no shape and are excluded
-    // when a shape filter is active.
-    const shapes = (seasonAvgs.length >= 2 && typeof detectShapes === 'function')
+    // cross-season trajectory, so such shows carry no trajectory shape.
+    // Categorical season tags (saved-best-for-last, shape-drift) are appended
+    // after the trajectory shapes regardless of season count.
+    const trajectoryShapes = (seasonAvgs.length >= 2 && typeof detectShapes === 'function')
       ? detectShapes(seasonAvgs.map((a) => ({ rating: a.avg })))
       : [];
+    const shapes = trajectoryShapes.concat(
+      CATEGORICAL_SHAPES.filter((t) => s.categoricalShapes.has(t) && !trajectoryShapes.includes(t)),
+    );
     out.push({
       seriesId: s.seriesId,
       title: s.title,
@@ -239,6 +255,7 @@ const API = {
   FINDER_DEFAULTS,
   HIDDEN_GEM_MIN_AVG,
   HIDDEN_GEM_MAX_VOTES_PER_EP,
+  CATEGORICAL_SHAPES,
   buildShowAgg,
   parseFinderQuery,
   passesFinderFilters,
