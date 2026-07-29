@@ -169,6 +169,27 @@ test('renderShowPage hero-actions has three buttons: shape CTA, app-btn, IMDb li
   assert.ok(html.indexOf('class="app-btn"') < html.indexOf('class="secondary-btn"'));
 });
 
+test('renderShowPage season shape badges link the static shape hub in the same tab', () => {
+  const html = renderShowPage({ ...BREAKING_BAD, dominantShape: 'rising', dominantShapeSlug: 'rising', relatedShows: [] });
+  const badges = [...html.matchAll(/<a class="shape-badge"[^>]*>/g)].map((m) => m[0]);
+  assert.equal(badges.length, 1);
+  assert.ok(badges[0].includes('href="/apps/rising-shows/shows/shape/rising/"'));
+  // Hub links stay in the same tab, so no target/rel on the badge.
+  assert.ok(!badges[0].includes('target='));
+  assert.ok(!badges[0].includes('rel='));
+});
+
+test('renderShowPage sends "See all" to the hub but keeps the CTAs on the explorer', () => {
+  const related = [{ seriesId: 'tt0944947', title: 'Game of Thrones', year: 2011, poster: null, genres: ['Drama'], dominantShape: 'rising', dominantShapeSlug: 'rising', slug: 'game-of-thrones-tt0944947' }];
+  const html = renderShowPage({ ...BREAKING_BAD, dominantShape: 'rising', dominantShapeSlug: 'rising', relatedShows: related });
+  assert.ok(html.includes('<p class="rec-see-all"><a href="/apps/rising-shows/shows/shape/rising/">See all Rising shows'));
+  // Conversion path into the app is unchanged for both CTAs.
+  const primaryIdx = html.indexOf('class="primary-btn"');
+  assert.ok(html.slice(primaryIdx, primaryIdx + 160).includes('href="/apps/rising-shows/#shape=rising"'));
+  const stickyIdx = html.indexOf('class="primary-btn sticky-cta-btn"');
+  assert.ok(html.slice(stickyIdx, stickyIdx + 160).includes('href="/apps/rising-shows/#shape=rising"'));
+});
+
 test('renderShowPage app-btn is present even when show has no dominant shape', () => {
   const html = renderShowPage({ ...BREAKING_BAD, dominantShape: null, dominantShapeSlug: null, relatedShows: [] });
   assert.ok(html.includes('class="app-btn"'));
