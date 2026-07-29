@@ -171,7 +171,7 @@ ${seasonSchemas}
 
   <main id="main" class="show-page">
     <nav class="crumbs" aria-label="Breadcrumb">
-      <a href="/">Shevato</a> ›
+      <a href="/home">Shevato</a> ›
       <a href="/apps/rising-shows/">Rising Shows</a> ›
       <a href="/apps/rising-shows/shows/">All shows</a> ›
       <span>${escapeHtml(title)}</span>
