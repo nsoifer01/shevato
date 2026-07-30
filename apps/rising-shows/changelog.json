@@ -1,6 +1,305 @@
 {
   "updates": [
     {
+      "builtAt": "2026-07-30T08:38:14.708Z",
+      "totals": {
+        "seasons": 66066,
+        "delta": 22
+      },
+      "shapeCounts": {
+        "mid-peak": 4620,
+        "rebound": 10063,
+        "rising": 2926,
+        "slow-burn": 4369,
+        "big-finale": 12063,
+        "u-shaped": 3089,
+        "rollercoaster": 14043,
+        "saved-best-for-last": 1541,
+        "front-loaded": 3464,
+        "declining": 1877,
+        "bad-finale": 4651,
+        "consistent": 2632,
+        "shape-drift": 1638
+      },
+      "shapeDeltas": {
+        "mid-peak": 4,
+        "rebound": 1,
+        "rising": -6,
+        "slow-burn": -3,
+        "big-finale": 4,
+        "u-shaped": 5,
+        "rollercoaster": 1,
+        "saved-best-for-last": -1,
+        "front-loaded": -1,
+        "declining": 6,
+        "bad-finale": 11,
+        "shape-drift": 10
+      },
+      "added": [
+        {
+          "seriesId": "tt43717420",
+          "title": "The Vampire Lestat",
+          "season": 1,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt1178618",
+          "title": "Wallander",
+          "season": 3,
+          "seasonYear": 2012
+        },
+        {
+          "seriesId": "tt9095260",
+          "title": "Criminal Justice: A Family Matter",
+          "season": 4,
+          "seasonYear": 2025
+        },
+        {
+          "seriesId": "tt9095260",
+          "title": "Criminal Justice: A Family Matter",
+          "season": 3,
+          "seasonYear": 2022
+        },
+        {
+          "seriesId": "tt9095260",
+          "title": "Criminal Justice: A Family Matter",
+          "season": 2,
+          "seasonYear": 2020
+        },
+        {
+          "seriesId": "tt40367753",
+          "title": "Dancing with the Stars: The Next Pro",
+          "season": 1,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt13321232",
+          "title": "Karma's World",
+          "season": 1,
+          "seasonYear": 2021
+        },
+        {
+          "seriesId": "tt0159226",
+          "title": "Within These Walls",
+          "season": 1,
+          "seasonYear": 1974
+        },
+        {
+          "seriesId": "tt0065358",
+          "title": "The Young Rebels",
+          "season": 1,
+          "seasonYear": 1970
+        },
+        {
+          "seriesId": "tt4864850",
+          "title": "For My Man",
+          "season": 1,
+          "seasonYear": 2015
+        },
+        {
+          "seriesId": "tt7331194",
+          "title": "GW:s mord",
+          "season": 4,
+          "seasonYear": 2018
+        },
+        {
+          "seriesId": "tt7331194",
+          "title": "GW:s mord",
+          "season": 3,
+          "seasonYear": 2018
+        },
+        {
+          "seriesId": "tt7331194",
+          "title": "GW:s mord",
+          "season": 1,
+          "seasonYear": 2017
+        },
+        {
+          "seriesId": "tt7331194",
+          "title": "GW:s mord",
+          "season": 2,
+          "seasonYear": 2017
+        },
+        {
+          "seriesId": "tt38047786",
+          "title": "Mladá krev",
+          "season": 1,
+          "seasonYear": 2025
+        },
+        {
+          "seriesId": "tt6957252",
+          "title": "Rebels Recon",
+          "season": 4,
+          "seasonYear": 2017
+        },
+        {
+          "seriesId": "tt0077082",
+          "title": "The South Bank Show",
+          "season": 3,
+          "seasonYear": 1979
+        },
+        {
+          "seriesId": "tt8465918",
+          "title": "Homicide: Hours to Kill",
+          "season": 3,
+          "seasonYear": 2021
+        },
+        {
+          "seriesId": "tt14898638",
+          "title": "Spökjakt",
+          "season": 7,
+          "seasonYear": 2026
+        },
+        {
+          "seriesId": "tt14341684",
+          "title": "The Matumbila's",
+          "season": 1,
+          "seasonYear": 2020
+        },
+        {
+          "seriesId": "tt32320966",
+          "title": "Surviving a Serial Killer",
+          "season": 1,
+          "seasonYear": 2021
+        },
+        {
+          "seriesId": "tt37399646",
+          "title": "Sew-ey's No Armor Hardcore",
+          "season": 1,
+          "seasonYear": 2025
+        },
+        {
+          "seriesId": "tt38573453",
+          "title": "New Orleans: Soul of a City",
+          "season": 1,
+          "seasonYear": 2025
+        },
+        {
+          "seriesId": "tt24399798",
+          "title": "9/11: Crime Scene to Courtroom",
+          "season": 1,
+          "seasonYear": 2024
+        },
+        {
+          "seriesId": "tt6961982",
+          "title": "McDonaldland",
+          "season": 1,
+          "seasonYear": 1963
+        }
+      ],
+      "removed": [
+        {
+          "seriesId": "tt36813889",
+          "title": "Criminal Justice: A Family Matter",
+          "season": 1,
+          "seasonYear": 2025
+        },
+        {
+          "seriesId": "tt21818260",
+          "title": "Criminal Justice: Adhura Sach",
+          "season": 1,
+          "seasonYear": 2022
+        },
+        {
+          "seriesId": "tt13690576",
+          "title": "Criminal Justice: Behind Closed Doors",
+          "season": 1,
+          "seasonYear": 2020
+        }
+      ],
+      "ratingSwings": [
+        {
+          "seriesId": "tt13011686",
+          "title": "Talking Tom Shorts",
+          "season": 1,
+          "from": 8.41,
+          "to": 7.13,
+          "delta": -1.28
+        },
+        {
+          "seriesId": "tt21438656",
+          "title": "Boarders",
+          "season": 3,
+          "from": 8.03,
+          "to": 6.77,
+          "delta": -1.26
+        },
+        {
+          "seriesId": "tt21248022",
+          "title": "Iyanu",
+          "season": 2,
+          "from": 8.66,
+          "to": 7.85,
+          "delta": -0.81
+        },
+        {
+          "seriesId": "tt40527341",
+          "title": "Girl from Nowhere: The Reset",
+          "season": 1,
+          "from": 8,
+          "to": 7.2,
+          "delta": -0.8
+        },
+        {
+          "seriesId": "tt41278592",
+          "title": "Red River",
+          "season": 1,
+          "from": 6.7,
+          "to": 5.97,
+          "delta": -0.73
+        },
+        {
+          "seriesId": "tt0059992",
+          "title": "Hawk",
+          "season": 1,
+          "from": 7.52,
+          "to": 6.86,
+          "delta": -0.66
+        },
+        {
+          "seriesId": "tt0329829",
+          "title": "Fireman Sam",
+          "season": 8,
+          "from": 4.68,
+          "to": 5.3,
+          "delta": 0.62
+        },
+        {
+          "seriesId": "tt32104971",
+          "title": "First Copy",
+          "season": 2,
+          "from": 4.56,
+          "to": 5.17,
+          "delta": 0.61
+        },
+        {
+          "seriesId": "tt1091877",
+          "title": "Deligianneion Parthenagogeion",
+          "season": 1,
+          "from": 7.97,
+          "to": 8.53,
+          "delta": 0.56
+        },
+        {
+          "seriesId": "tt43625977",
+          "title": "Kraken. El libro negro de las horas",
+          "season": 1,
+          "from": 6.17,
+          "to": 5.65,
+          "delta": -0.52
+        }
+      ],
+      "modifiedCounts": {
+        "seriesVotes": 20062,
+        "avgRating": 1199,
+        "shapes": 208,
+        "seriesRating": 267,
+        "episodeCount": 85,
+        "overview": 2,
+        "poster": 2
+      }
+    },
+    {
       "builtAt": "2026-07-29T08:39:23.302Z",
       "totals": {
         "seasons": 66044,
@@ -7428,144 +7727,6 @@
         "episodeCount": 23,
         "poster": 2,
         "overview": 1
-      }
-    },
-    {
-      "builtAt": "2026-07-03T09:27:42.109Z",
-      "totals": {
-        "seasons": 65614,
-        "delta": 2
-      },
-      "shapeCounts": {
-        "mid-peak": 4625,
-        "rebound": 10028,
-        "rising": 2914,
-        "slow-burn": 4339,
-        "big-finale": 12003,
-        "u-shaped": 3064,
-        "rollercoaster": 14009,
-        "saved-best-for-last": 1515,
-        "front-loaded": 3436,
-        "declining": 1855,
-        "bad-finale": 4630,
-        "consistent": 2597,
-        "shape-drift": 1609
-      },
-      "shapeDeltas": {
-        "mid-peak": 5,
-        "rebound": 6,
-        "rising": 1,
-        "slow-burn": -4,
-        "rollercoaster": -2,
-        "front-loaded": -4,
-        "declining": -2,
-        "bad-finale": -5,
-        "consistent": 2,
-        "shape-drift": 1
-      },
-      "added": [
-        {
-          "seriesId": "tt1815377",
-          "title": "Strawberry Shortcake's Berry Bitty Adventures",
-          "season": 2,
-          "seasonYear": 2010
-        },
-        {
-          "seriesId": "tt36957464",
-          "title": "The Homeless Harry Show",
-          "season": 1,
-          "seasonYear": 2025
-        }
-      ],
-      "removed": [],
-      "ratingSwings": [
-        {
-          "seriesId": "tt40816852",
-          "title": "Pervaya raketka",
-          "season": 1,
-          "from": 5.2,
-          "to": 5.84,
-          "delta": 0.64
-        },
-        {
-          "seriesId": "tt1114855",
-          "title": "Bakugan Battle Brawlers",
-          "season": 4,
-          "from": 8.07,
-          "to": 8.52,
-          "delta": 0.45
-        },
-        {
-          "seriesId": "tt0944181",
-          "title": "Most Shocking",
-          "season": 6,
-          "from": 9.23,
-          "to": 8.8,
-          "delta": -0.43
-        },
-        {
-          "seriesId": "tt1450143",
-          "title": "Mighty Ships",
-          "season": 2,
-          "from": 7.32,
-          "to": 7.67,
-          "delta": 0.35
-        },
-        {
-          "seriesId": "tt6581428",
-          "title": "Booba",
-          "season": 4,
-          "from": 5.27,
-          "to": 5.6,
-          "delta": 0.33
-        },
-        {
-          "seriesId": "tt13241650",
-          "title": "Ada Twist, Scientist",
-          "season": 1,
-          "from": 4.42,
-          "to": 4.12,
-          "delta": -0.3
-        },
-        {
-          "seriesId": "tt2230557",
-          "title": "Smile PreCure!",
-          "season": 1,
-          "from": 7.83,
-          "to": 8.13,
-          "delta": 0.3
-        },
-        {
-          "seriesId": "tt34498121",
-          "title": "Thukra Ke Mera Pyaar",
-          "season": 2,
-          "from": 7.07,
-          "to": 6.8,
-          "delta": -0.27
-        },
-        {
-          "seriesId": "tt35114768",
-          "title": "Pokoli rokonok",
-          "season": 1,
-          "from": 6.06,
-          "to": 5.79,
-          "delta": -0.27
-        },
-        {
-          "seriesId": "tt15281840",
-          "title": "Not a Love Triangle",
-          "season": 1,
-          "from": 9.7,
-          "to": 9.44,
-          "delta": -0.26
-        }
-      ],
-      "modifiedCounts": {
-        "seriesVotes": 13240,
-        "avgRating": 493,
-        "shapes": 79,
-        "seriesRating": 93,
-        "episodeCount": 23
       }
     }
   ]
